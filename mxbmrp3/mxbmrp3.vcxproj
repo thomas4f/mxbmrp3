@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{e80bffaa-36b5-4dc8-b65b-401965cf40f6}</ProjectGuid>
+    <RootNamespace>mxbmrp3</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <OutDir>$(SolutionDir)build\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
+    <TargetExt>.dlo</TargetExt>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(SolutionDir)build\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
+    <TargetExt>.dlo</TargetExt>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>xinput.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>if defined MXBIKES_PLUGIN_PATH copy "$(TargetPath)" "%MXBIKES_PLUGIN_PATH%\mxbmrp3.dlo"</Command>
+    </PostBuildEvent>
+    <PostBuildEvent>
+      <Message>copy mxbmrp3.dlo (if MXBIKES_PLUGIN_PATH set)</Message>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>xinput.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>if defined MXBIKES_PLUGIN_PATH copy "$(TargetPath)" "%MXBIKES_PLUGIN_PATH%\mxbmrp3.dlo"</Command>
+    </PostBuildEvent>
+    <PostBuildEvent>
+      <Message>copy mxbmrp3.dlo (if MXBIKES_PLUGIN_PATH set)</Message>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="core\handler_singleton.h" />
+    <ClInclude Include="core\hud_manager.h" />
+    <ClInclude Include="core\input_manager.h" />
+    <ClInclude Include="core\plugin_constants.h" />
+    <ClInclude Include="core\plugin_data.h" />
+    <ClInclude Include="core\plugin_manager.h" />
+    <ClInclude Include="core\plugin_utils.h" />
+    <ClInclude Include="core\settings_manager.h" />
+    <ClInclude Include="core\widget_constants.h" />
+    <ClInclude Include="core\xinput_reader.h" />
+    <ClInclude Include="diagnostics\logger.h" />
+    <ClInclude Include="diagnostics\timer.h" />
+    <ClInclude Include="handlers\draw_handler.h" />
+    <ClInclude Include="handlers\event_handler.h" />
+    <ClInclude Include="handlers\race_classification_handler.h" />
+    <ClInclude Include="handlers\race_communication_handler.h" />
+    <ClInclude Include="handlers\race_entry_handler.h" />
+    <ClInclude Include="handlers\race_event_handler.h" />
+    <ClInclude Include="handlers\race_lap_handler.h" />
+    <ClInclude Include="handlers\race_session_handler.h" />
+    <ClInclude Include="handlers\race_split_handler.h" />
+    <ClInclude Include="handlers\race_track_position_handler.h" />
+    <ClInclude Include="handlers\race_vehicle_data_handler.h" />
+    <ClInclude Include="handlers\run_handler.h" />
+    <ClInclude Include="handlers\run_lap_handler.h" />
+    <ClInclude Include="handlers\run_split_handler.h" />
+    <ClInclude Include="handlers\run_telemetry_handler.h" />
+    <ClInclude Include="handlers\spectate_handler.h" />
+    <ClInclude Include="handlers\track_centerline_handler.h" />
+    <ClInclude Include="hud\bars_widget.h" />
+    <ClInclude Include="hud\base_hud.h" />
+    <ClInclude Include="hud\cursor.h" />
+    <ClInclude Include="hud\input_hud.h" />
+    <ClInclude Include="hud\lap_log_hud.h" />
+    <ClInclude Include="hud\lap_widget.h" />
+    <ClInclude Include="hud\map_hud.h" />
+    <ClInclude Include="hud\performance_hud.h" />
+    <ClInclude Include="hud\pitboard_hud.h" />
+    <ClInclude Include="hud\position_widget.h" />
+    <ClInclude Include="hud\session_best_hud.h" />
+    <ClInclude Include="hud\session_widget.h" />
+    <ClInclude Include="hud\settings_button_widget.h" />
+    <ClInclude Include="hud\settings_hud.h" />
+    <ClInclude Include="hud\speed_widget.h" />
+    <ClInclude Include="hud\speedo_widget.h" />
+    <ClInclude Include="hud\tacho_widget.h" />
+    <ClInclude Include="hud\standings_hud.h" />
+    <ClInclude Include="hud\telemetry_hud.h" />
+    <ClInclude Include="hud\time_widget.h" />
+    <ClInclude Include="hud\timing_widget.h" />
+    <ClInclude Include="hud\notices_widget.h" />
+    <ClInclude Include="hud\version_widget.h" />
+    <ClInclude Include="vendor\piboso\mxb_api.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="core\hud_manager.cpp" />
+    <ClCompile Include="core\input_manager.cpp" />
+    <ClCompile Include="core\plugin_data.cpp" />
+    <ClCompile Include="core\plugin_manager.cpp" />
+    <ClCompile Include="core\plugin_utils.cpp" />
+    <ClCompile Include="core\settings_manager.cpp" />
+    <ClCompile Include="core\xinput_reader.cpp" />
+    <ClCompile Include="diagnostics\logger.cpp" />
+    <ClCompile Include="handlers\draw_handler.cpp" />
+    <ClCompile Include="handlers\event_handler.cpp" />
+    <ClCompile Include="handlers\race_classification_handler.cpp" />
+    <ClCompile Include="handlers\race_communication_handler.cpp" />
+    <ClCompile Include="handlers\race_entry_handler.cpp" />
+    <ClCompile Include="handlers\race_event_handler.cpp" />
+    <ClCompile Include="handlers\race_lap_handler.cpp" />
+    <ClCompile Include="handlers\race_session_handler.cpp" />
+    <ClCompile Include="handlers\race_split_handler.cpp" />
+    <ClCompile Include="handlers\race_track_position_handler.cpp" />
+    <ClCompile Include="handlers\race_vehicle_data_handler.cpp" />
+    <ClCompile Include="handlers\run_handler.cpp" />
+    <ClCompile Include="handlers\run_lap_handler.cpp" />
+    <ClCompile Include="handlers\run_split_handler.cpp" />
+    <ClCompile Include="handlers\run_telemetry_handler.cpp" />
+    <ClCompile Include="handlers\spectate_handler.cpp" />
+    <ClCompile Include="handlers\track_centerline_handler.cpp" />
+    <ClCompile Include="hud\bars_widget.cpp" />
+    <ClCompile Include="hud\base_hud.cpp" />
+    <ClCompile Include="hud\cursor.cpp" />
+    <ClCompile Include="hud\input_hud.cpp" />
+    <ClCompile Include="hud\lap_log_hud.cpp" />
+    <ClCompile Include="hud\lap_widget.cpp" />
+    <ClCompile Include="hud\map_hud.cpp" />
+    <ClCompile Include="hud\performance_hud.cpp" />
+    <ClCompile Include="hud\pitboard_hud.cpp" />
+    <ClCompile Include="hud\position_widget.cpp" />
+    <ClCompile Include="hud\session_best_hud.cpp" />
+    <ClCompile Include="hud\session_widget.cpp" />
+    <ClCompile Include="hud\settings_button_widget.cpp" />
+    <ClCompile Include="hud\settings_hud.cpp" />
+    <ClCompile Include="hud\speed_widget.cpp" />
+    <ClCompile Include="hud\speedo_widget.cpp" />
+    <ClCompile Include="hud\tacho_widget.cpp" />
+    <ClCompile Include="hud\standings_hud.cpp" />
+    <ClCompile Include="hud\telemetry_hud.cpp" />
+    <ClCompile Include="hud\time_widget.cpp" />
+    <ClCompile Include="hud\timing_widget.cpp" />
+    <ClCompile Include="hud\notices_widget.cpp" />
+    <ClCompile Include="hud\version_widget.cpp" />
+    <ClCompile Include="vendor\piboso\mxb_api.cpp" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

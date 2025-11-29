@@ -1,0 +1,363 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Header Files\handlers">
+      <UniqueIdentifier>{bc3191fb-8b2e-4c6c-b5af-ddbd9508de17}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\handlers">
+      <UniqueIdentifier>{ad5c82ae-fdc8-4e60-a597-565943d86931}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\core">
+      <UniqueIdentifier>{7dc58290-a879-447f-b069-087a7581ab15}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\core">
+      <UniqueIdentifier>{2eaa1dec-abdd-4975-acbb-fee157d8c526}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\vendor">
+      <UniqueIdentifier>{e8aef3ef-709b-4577-b198-e35d7ea1e301}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\vendor\piboso">
+      <UniqueIdentifier>{1a45387b-39e6-47b8-b261-defa8abb387f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\vendor">
+      <UniqueIdentifier>{9c5c079c-e2a3-4d81-959f-5742abec63f7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\vendor\piboso">
+      <UniqueIdentifier>{d7dbc1f8-2ca5-47e5-8ff7-d57494c0597e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\hud">
+      <UniqueIdentifier>{05124215-40cd-405e-927d-731afae3f5c9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\hud">
+      <UniqueIdentifier>{44b3cdb5-9f38-4836-b125-d67ad51048a9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\diagnostics">
+      <UniqueIdentifier>{a1b2c3d4-e5f6-7890-abcd-ef1234567890}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\diagnostics">
+      <UniqueIdentifier>{b2c3d4e5-f6a7-8901-bcde-f12345678901}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="core\plugin_utils.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\plugin_constants.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\plugin_manager.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="vendor\piboso\mxb_api.h">
+      <Filter>Header Files\vendor\piboso</Filter>
+    </ClInclude>
+    <ClInclude Include="handlers\race_classification_handler.h">
+      <Filter>Header Files\handlers</Filter>
+    </ClInclude>
+    <ClInclude Include="handlers\race_event_handler.h">
+      <Filter>Header Files\handlers</Filter>
+    </ClInclude>
+    <ClInclude Include="handlers\race_session_handler.h">
+      <Filter>Header Files\handlers</Filter>
+    </ClInclude>
+    <ClInclude Include="handlers\race_track_position_handler.h">
+      <Filter>Header Files\handlers</Filter>
+    </ClInclude>
+    <ClInclude Include="core\hud_manager.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\base_hud.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="handlers\run_handler.h">
+      <Filter>Header Files\handlers</Filter>
+    </ClInclude>
+    <ClInclude Include="handlers\run_lap_handler.h">
+      <Filter>Header Files\handlers</Filter>
+    </ClInclude>
+    <ClInclude Include="handlers\run_split_handler.h">
+      <Filter>Header Files\handlers</Filter>
+    </ClInclude>
+    <ClInclude Include="handlers\run_telemetry_handler.h">
+      <Filter>Header Files\handlers</Filter>
+    </ClInclude>
+    <ClInclude Include="core\plugin_data.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\cursor.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="core\input_manager.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="diagnostics\logger.h">
+      <Filter>Header Files\diagnostics</Filter>
+    </ClInclude>
+    <ClInclude Include="diagnostics\timer.h">
+      <Filter>Header Files\diagnostics</Filter>
+    </ClInclude>
+    <ClInclude Include="handlers\draw_handler.h">
+      <Filter>Header Files\handlers</Filter>
+    </ClInclude>
+    <ClInclude Include="handlers\event_handler.h">
+      <Filter>Header Files\handlers</Filter>
+    </ClInclude>
+    <ClInclude Include="core\handler_singleton.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="handlers\race_communication_handler.h">
+      <Filter>Header Files\handlers</Filter>
+    </ClInclude>
+    <ClInclude Include="handlers\race_entry_handler.h">
+      <Filter>Header Files\handlers</Filter>
+    </ClInclude>
+    <ClInclude Include="handlers\race_lap_handler.h">
+      <Filter>Header Files\handlers</Filter>
+    </ClInclude>
+    <ClInclude Include="handlers\race_split_handler.h">
+      <Filter>Header Files\handlers</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\standings_hud.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\time_widget.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\position_widget.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\lap_widget.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\session_widget.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\performance_hud.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\telemetry_hud.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\bars_widget.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\input_hud.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\session_best_hud.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\settings_button_widget.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\settings_hud.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\lap_log_hud.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="core\xinput_reader.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\settings_manager.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\widget_constants.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\map_hud.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\speed_widget.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\timing_widget.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\notices_widget.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="handlers\track_centerline_handler.h">
+      <Filter>Header Files\handlers</Filter>
+    </ClInclude>
+    <ClInclude Include="handlers\race_vehicle_data_handler.h">
+      <Filter>Header Files\handlers</Filter>
+    </ClInclude>
+    <ClInclude Include="handlers\spectate_handler.h">
+      <Filter>Header Files\handlers</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\pitboard_hud.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\version_widget.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\speedo_widget.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\tacho_widget.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="core\plugin_utils.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\plugin_manager.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\piboso\mxb_api.cpp">
+      <Filter>Source Files\vendor\piboso</Filter>
+    </ClCompile>
+    <ClCompile Include="handlers\race_classification_handler.cpp">
+      <Filter>Source Files\handlers</Filter>
+    </ClCompile>
+    <ClCompile Include="handlers\race_event_handler.cpp">
+      <Filter>Source Files\handlers</Filter>
+    </ClCompile>
+    <ClCompile Include="handlers\race_session_handler.cpp">
+      <Filter>Source Files\handlers</Filter>
+    </ClCompile>
+    <ClCompile Include="handlers\race_track_position_handler.cpp">
+      <Filter>Source Files\handlers</Filter>
+    </ClCompile>
+    <ClCompile Include="core\hud_manager.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="handlers\run_handler.cpp">
+      <Filter>Source Files\handlers</Filter>
+    </ClCompile>
+    <ClCompile Include="handlers\run_lap_handler.cpp">
+      <Filter>Source Files\handlers</Filter>
+    </ClCompile>
+    <ClCompile Include="handlers\run_split_handler.cpp">
+      <Filter>Source Files\handlers</Filter>
+    </ClCompile>
+    <ClCompile Include="handlers\run_telemetry_handler.cpp">
+      <Filter>Source Files\handlers</Filter>
+    </ClCompile>
+    <ClCompile Include="core\plugin_data.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\cursor.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="core\input_manager.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\base_hud.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="diagnostics\logger.cpp">
+      <Filter>Source Files\diagnostics</Filter>
+    </ClCompile>
+    <ClCompile Include="handlers\draw_handler.cpp">
+      <Filter>Source Files\handlers</Filter>
+    </ClCompile>
+    <ClCompile Include="handlers\event_handler.cpp">
+      <Filter>Source Files\handlers</Filter>
+    </ClCompile>
+    <ClCompile Include="handlers\race_communication_handler.cpp">
+      <Filter>Source Files\handlers</Filter>
+    </ClCompile>
+    <ClCompile Include="handlers\race_entry_handler.cpp">
+      <Filter>Source Files\handlers</Filter>
+    </ClCompile>
+    <ClCompile Include="handlers\race_lap_handler.cpp">
+      <Filter>Source Files\handlers</Filter>
+    </ClCompile>
+    <ClCompile Include="handlers\race_split_handler.cpp">
+      <Filter>Source Files\handlers</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\standings_hud.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\time_widget.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\position_widget.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\lap_widget.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\session_widget.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\performance_hud.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\telemetry_hud.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\bars_widget.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\input_hud.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\session_best_hud.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\settings_button_widget.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\settings_hud.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\lap_log_hud.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="core\xinput_reader.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\settings_manager.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\map_hud.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\speed_widget.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\timing_widget.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\notices_widget.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="handlers\track_centerline_handler.cpp">
+      <Filter>Source Files\handlers</Filter>
+    </ClCompile>
+    <ClCompile Include="handlers\race_vehicle_data_handler.cpp">
+      <Filter>Source Files\handlers</Filter>
+    </ClCompile>
+    <ClCompile Include="handlers\spectate_handler.cpp">
+      <Filter>Source Files\handlers</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\pitboard_hud.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\version_widget.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\speedo_widget.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\tacho_widget.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>
