@@ -74,7 +74,7 @@ HUDs pull fresh from PluginData on rebuild - they only cache formatted render da
 This enforces PluginData as single source of truth and prevents synchronization issues.
 
 **Widget vs HUD Distinction**
-Widgets (TimeWidget, PositionWidget, LapWidget, SessionWidget, SpeedWidget, SpeedoWidget, TachoWidget, BarsWidget, TimingWidget, NoticesWidget, VersionWidget) are simplified HUD components with:
+Widgets (TimeWidget, PositionWidget, LapWidget, SessionWidget, SpeedWidget, SpeedoWidget, TachoWidget, BarsWidget, TimingWidget, NoticesWidget, VersionWidget, SettingsButtonWidget) are simplified HUD components with:
 - Single-purpose display (no configurable columns/rows)
 - Minimal settings (just position, scale, opacity)
 - Simpler rendering logic
@@ -118,30 +118,6 @@ When implementing event handlers or debugging timing/lap data:
 - **Example:** When displaying lap numbers, the API uses 0-based indexing internally (`m_iLapNum=0` for first lap) but UI typically shows 1-based (display as "L1")
 - **Tip:** Many timing/position issues come from misunderstanding the API contract - always verify assumptions against the header
 
-## Recent Refactors (2024)
-
-- **Code duplication elimination** - Extracted helper methods to eliminate ~210 lines of duplication:
-  - `addStatsRow()` in performance_hud.cpp (consolidates FPS/CPU stats rendering)
-  - `addDisplayModeControl()` in settings_hud.cpp (consolidates display mode UI)
-  - `addClickRegion()` in settings_hud.cpp (reduces ClickRegion boilerplate)
-  - Added layout constants (LABEL_WIDTH, SMALL_GAP, etc.) to replace magic numbers
-- **Maintainability quick wins** - Added reusable patterns to eliminate boilerplate:
-  - `HANDLER_NULL_CHECK()` macro in handler_singleton.h (replaces 14 defensive checks)
-  - `PluginUtils::applyOpacity()` helper (eliminates RGB extraction boilerplate)
-  - `BaseHud::positionString()` helper (eliminates ~60 lines of widget string positioning)
-  - Graph scaling constants (MAX_FPS_DISPLAY, GRID_LINE_*_PERCENT) for tunability
-- **Magic number extraction** - Improved code clarity with named constants:
-  - Penalty rounding constants (MS_TO_SEC_DIVISOR, MS_TO_SEC_ROUNDING_OFFSET)
-  - Racing blue color constants (BLUE_FLAG_COLOR_R/G/B)
-  - Map memory reservation constants (RESERVE_TRACK_SEGMENTS, etc.)
-  - FPS calculation constants (MIN_FPS_CLAMP, MAX_FPS_CLAMP, DEFAULT_FRAME_BUDGET_MS)
-- **Comment accuracy audit** - Fixed incorrect parameter count comment
-- **Dead code removal** - Removed 4 unused functions
-- **Memory safety** - Fixed dangling pointer bug in `HudManager::clear()`
-- **Exception handling** - Added try-catch for settings file parsing
-- **DRY refactor** - Created `saveBaseHudProperties()` helper (eliminated 93 lines)
-- **Click handler refactor** - Extracted 12 handlers from 233-line switch statement
-
 ## Files You'll Likely Need
 
 **Core:**
@@ -158,7 +134,7 @@ When implementing event handlers or debugging timing/lap data:
 - `mxbmrp3/hud/map_hud.cpp` - Advanced (2D rendering, rotation)
 
 **Settings:**
-- `mxbmrp3/hud/settings_hud.cpp` - Settings UI (longest file, 1300+ lines)
+- `mxbmrp3/hud/settings_hud.cpp` - Settings UI (longest file, ~1500 lines)
 - `mxbmrp3/core/settings_manager.cpp` - Persistence layer
 
 ---
@@ -181,14 +157,7 @@ When implementing event handlers or debugging timing/lap data:
 ### Version Management
 - **No git tags** - Version is hardcoded in `mxbmrp3/core/plugin_constants.h`
 - Update `PLUGIN_VERSION` constant when releasing
-- Current version: 1.5.1.0
 
 ### Development Style
 - **Iterative refinement:** Expect many small commits for UI tweaks, alignment fixes, etc.
-- **PR workflow:** Heavy use of pull requests (36+ merged PRs)
-- **AI-developed:** 95% of commits by Claude (695+ commits out of 730+)
 - **Quick iterations:** Debug strings added/removed, grid alignment tweaks, constant adjustments
-
----
-
-**Last Updated:** November 2024 (documentation accuracy review)

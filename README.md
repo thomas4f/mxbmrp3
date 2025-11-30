@@ -20,20 +20,27 @@ A HUD plugin for MX Bikes that displays real-time race information, standings, a
 
 ### Manual Installation
 
-1. Download the latest release archive from [Releases](https://github.com/thomas4f/mxbmrp3/releases)
-2. Extract all files to your MX Bikes plugins folder. Your directory should look something like this:
+1. Download the latest release archive (`mxbmrp3-vX.X.X.X.zip`) from [Releases](https://github.com/thomas4f/mxbmrp3/releases)
+2. Extract the plugin files to your MX Bikes plugins folder:
+   - Copy `mxbmrp3.dlo` to `[MX Bikes]/plugins/`
+   - Copy the `mxbmrp3_data/` folder to `[MX Bikes]/plugins/`
+
+   **Do NOT delete the existing game files** (`proxy64.dlo`, `proxy_udp64.dlo`, `xinput64.dli`) - these are native MX Bikes files, not old plugin versions.
+
+   Your directory should look like this after installation:
    ```
    MX Bikes/
    │   mxbikes.exe
    │   ...
    │
    └───plugins/
-       |   xinput64.dli
-       │   mxbmrp3.dlo
-       │
-       └───mxbmrp3_data/
-               *.tga
-               *.fnt
+       ├── mxbmrp3_data/        ← Add this folder (from release)
+       │       *.tga
+       │       *.fnt
+       ├── mxbmrp3.dlo          ← Add this (from release)
+       ├── proxy_udp64.dlo      ← Keep (native game file)
+       ├── proxy64.dlo          ← Keep (native game file)
+       └── xinput64.dli         ← Keep (native game file)
    ```
 3. Ensure you have [Microsoft Visual C++ Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) installed
 4. Launch MX Bikes - the HUD will automatically appear during sessions

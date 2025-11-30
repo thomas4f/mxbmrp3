@@ -39,19 +39,27 @@ echo HUD plugin for MX Bikes
 echo.
 echo ## Installation
 echo.
-echo 1. Extract all files to your MX Bikes plugins folder.
-echo    Your directory should look like this:
+echo 1. Copy the plugin files to your MX Bikes plugins folder:
+echo    - Copy mxbmrp3.dlo to [MX Bikes]/plugins/
+echo    - Copy the mxbmrp3_data/ folder to [MX Bikes]/plugins/
+echo.
+echo    Do NOT delete the existing game files (proxy64.dlo, proxy_udp64.dlo,
+echo    xinput64.dli^) - these are native MX Bikes files, not old plugin versions.
+echo.
+echo    Your directory should look like this after installation:
 echo.
 echo    MX Bikes\
 echo    ^|   mxbikes.exe
 echo    ^|   ...
 echo    ^|
 echo    +---plugins\
-echo        ^|   mxbmrp3.dlo
-echo        ^|
-echo        +---mxbmrp3_data\
-echo                *.tga
-echo                *.fnt
+echo        +-- mxbmrp3_data\        ^<-- Add this folder ^(from release^)
+echo        ^|       *.tga
+echo        ^|       *.fnt
+echo        +-- mxbmrp3.dlo          ^<-- Add this ^(from release^)
+echo        +-- proxy_udp64.dlo      ^<-- Keep ^(native game file^)
+echo        +-- proxy64.dlo          ^<-- Keep ^(native game file^)
+echo        +-- xinput64.dli         ^<-- Keep ^(native game file^)
 echo.
 echo 2. Launch MX Bikes - the HUD will automatically appear during sessions
 echo.
