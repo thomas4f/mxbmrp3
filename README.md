@@ -21,13 +21,14 @@ A HUD plugin for MX Bikes that displays real-time race information, standings, a
 ### Manual Installation
 
 1. Download the latest release archive from [Releases](https://github.com/thomas4f/mxbmrp3/releases)
-2. Extract all files to your MX Bikes plugins folder. Your directory should look like this:
+2. Extract all files to your MX Bikes plugins folder. Your directory should look something like this:
    ```
    MX Bikes/
    │   mxbikes.exe
    │   ...
    │
    └───plugins/
+       |   xinput64.dli
        │   mxbmrp3.dlo
        │
        └───mxbmrp3_data/
