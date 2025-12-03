@@ -43,6 +43,13 @@ public:
     static unsigned long getBikeBrandColor(const char* bikeName);
     static float calculateMonospaceTextWidth(int numChars, float fontSize);
 
+    // Match rider names, handling server-forced rating prefixes (e.g., "B1 | Thomas" matches "Thomas")
+    // entryName: name from RaceAddEntry (may have prefix)
+    // playerName: name from EventInit (original name)
+    // maxEntryLen: maximum length for entry name comparison (handles game truncation)
+    // Returns true if names match (exact or with prefix stripped)
+    static bool matchRiderName(const char* entryName, const char* playerName, size_t maxEntryLen);
+
     // Column position helper - used by standings and lap log HUDs
     // Sets target column position if flag is enabled, or -1.0 if disabled
     // Advances current position by the column width if enabled

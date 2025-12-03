@@ -373,8 +373,10 @@ void VersionWidget::rebuildLayout() {
     const float minPaddingH = dim.paddingH * 0.3f;
     const float minPaddingV = dim.paddingV * 0.3f;
 
-    // Calculate text width for "MXBMRP3 v1.5.0.0" (16 characters)
-    const float textWidth = PluginUtils::calculateMonospaceTextWidth(16, dim.fontSize);
+    // Calculate text width based on actual version string length
+    // Format: "MXBMRP3 v" (9 chars) + version string
+    const int textLength = 9 + static_cast<int>(strlen(PLUGIN_VERSION));
+    const float textWidth = PluginUtils::calculateMonospaceTextWidth(textLength, dim.fontSize);
     const float backgroundWidth = minPaddingH + textWidth + minPaddingH;
     const float backgroundHeight = minPaddingV + dim.lineHeightNormal + minPaddingV;
 
@@ -411,8 +413,13 @@ void VersionWidget::rebuildRenderData() {
     const float minPaddingH = dim.paddingH * 0.3f;
     const float minPaddingV = dim.paddingV * 0.3f;
 
-    // Calculate text width for "MXBMRP3 v1.5.0.0" (16 characters)
-    const float textWidth = PluginUtils::calculateMonospaceTextWidth(16, dim.fontSize);
+    // Create version string first so we can measure it
+    char versionText[64];
+    snprintf(versionText, sizeof(versionText), "MXBMRP3 v%s", PLUGIN_VERSION);
+
+    // Calculate text width based on actual string length
+    const int textLength = static_cast<int>(strlen(versionText));
+    const float textWidth = PluginUtils::calculateMonospaceTextWidth(textLength, dim.fontSize);
     const float backgroundWidth = minPaddingH + textWidth + minPaddingH;
     const float backgroundHeight = minPaddingV + dim.lineHeightNormal + minPaddingV;
 
@@ -422,10 +429,6 @@ void VersionWidget::rebuildRenderData() {
 
     // Add background quad (opaque black)
     addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
-
-    // Create version string
-    char versionText[64];
-    snprintf(versionText, sizeof(versionText), "MXBMRP3 v%s", PLUGIN_VERSION);
 
     // Add string
     float contentStartX = startX + minPaddingH;

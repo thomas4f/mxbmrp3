@@ -555,8 +555,8 @@ public:
 
 private:
     PluginData() : m_currentSessionTime(0), m_playerRaceNum(-1), m_bPlayerRaceNumValid(false),
-                   m_bPlayerIsRunning(false), m_drawState(0), m_spectatedRaceNum(-1),
-                   m_activeRiderCount(0), m_bPositionCacheDirty(true) {}
+                   m_bPlayerNotFoundWarned(false), m_bPlayerIsRunning(false), m_drawState(0),
+                   m_spectatedRaceNum(-1), m_activeRiderCount(0), m_bPositionCacheDirty(true) {}
     ~PluginData() {}
     PluginData(const PluginData&) = delete;
     PluginData& operator=(const PluginData&) = delete;
@@ -609,6 +609,7 @@ private:
     // If multi-threading is added in the future, these will need synchronization
     mutable int m_playerRaceNum;           // Cached player race number for performance
     mutable bool m_bPlayerRaceNumValid;     // Is the cached player race number still valid?
+    mutable bool m_bPlayerNotFoundWarned;   // Have we already warned about player not found?
 
     bool m_bPlayerIsRunning;                // Set by RunStart, cleared by RunStop/RunDeinit
 

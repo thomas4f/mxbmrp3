@@ -240,7 +240,6 @@ void PluginData::setPlayerRaceNum(int raceNum) {
     if (m_playerRaceNum != raceNum || !m_bPlayerRaceNumValid) {
         m_playerRaceNum = raceNum;
         m_bPlayerRaceNumValid = true;
-        DEBUG_INFO_F("Player race number set directly: %d", raceNum);
     }
 }
 
@@ -1168,6 +1167,7 @@ void PluginData::clear() {
     m_currentSessionTime = 0;
     m_playerRaceNum = -1;
     m_bPlayerRaceNumValid = false;
+    m_bPlayerNotFoundWarned = false;
     m_bPlayerIsRunning = false;
     m_drawState = 0;  // Reset to ON_TRACK
     m_spectatedRaceNum = -1;  // Reset spectated rider
@@ -1190,14 +1190,13 @@ void PluginData::updatePlayerRaceNum() const {
     }
 
     // Linear search through race entries
-    // NOTE: The game truncates names in RaceAddEntry to ~31 chars, but EventInit sends full name (up to 100).
-    // Use strncmp with the entry name length to handle long nicknames correctly.
+    // Handles exact match and server-forced rating prefixes (e.g., "B1 | Thomas" matches "Thomas")
     for (const auto& entry : m_raceEntries) {
-        size_t entryNameLen = strlen(entry.second.name);
-        if (strncmp(entry.second.name, playerName, entryNameLen) == 0
-            && (playerName[entryNameLen] == '\0' || entryNameLen >= PluginConstants::GameLimits::RACE_ENTRY_NAME_MAX)) {
+        if (PluginUtils::matchRiderName(entry.second.name, playerName,
+                                         PluginConstants::GameLimits::RACE_ENTRY_NAME_MAX)) {
             m_playerRaceNum = entry.second.raceNum;
             m_bPlayerRaceNumValid = true;
+            m_bPlayerNotFoundWarned = false;  // Reset so we can warn again in future sessions
             DEBUG_INFO_F("Player race number cached: %d", m_playerRaceNum);
             return;
         }
@@ -1205,6 +1204,12 @@ void PluginData::updatePlayerRaceNum() const {
 
     m_playerRaceNum = -1;
     m_bPlayerRaceNumValid = false;
+
+    // Warn once if player not found - helps debug server-forced name prefix issues
+    if (!m_raceEntries.empty() && !m_bPlayerNotFoundWarned) {
+        DEBUG_WARN_F("Local player '%s' not found in %zu race entries", playerName, m_raceEntries.size());
+        m_bPlayerNotFoundWarned = true;
+    }
 }
 
 void PluginData::updateDebugMetrics(float fps, float pluginTimeMs, float pluginPercent) {

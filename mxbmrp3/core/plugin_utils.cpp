@@ -512,3 +512,48 @@ unsigned long PluginUtils::getBikeBrandColor(const char* bikeName) {
     // If not found in map, return default gray
     return DEFAULT;
 }
+
+bool PluginUtils::matchRiderName(const char* entryName, const char* playerName, size_t maxEntryLen) {
+    if (!entryName || !playerName || entryName[0] == '\0' || playerName[0] == '\0') {
+        return false;
+    }
+
+    size_t entryNameLen = strlen(entryName);
+
+    // Try exact match first (existing behavior with truncation handling)
+    // The game truncates names in RaceAddEntry to ~31 chars, but EventInit sends full name.
+    // Use strncmp with the entry name length to handle long nicknames correctly.
+    if (strncmp(entryName, playerName, entryNameLen) == 0
+        && (playerName[entryNameLen] == '\0' || entryNameLen >= maxEntryLen)) {
+        return true;
+    }
+
+    // Fallback: Check for server-forced rating prefix pattern (e.g., "B1 | Thomas")
+    // Pattern: alphanumeric rating + " | " + original name
+    const char* pipePos = strstr(entryName, " | ");
+    if (pipePos) {
+        const char* nameAfterPrefix = pipePos + 3;  // Skip " | "
+
+        // Verify prefix is alphanumeric (rating like "B1", "A3", "C2", etc.)
+        bool validPrefix = true;
+        for (const char* p = entryName; p < pipePos; ++p) {
+            char c = *p;
+            if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'))) {
+                validPrefix = false;
+                break;
+            }
+        }
+
+        if (validPrefix && nameAfterPrefix[0] != '\0') {
+            size_t nameAfterPrefixLen = strlen(nameAfterPrefix);
+
+            // Try matching the name after the prefix
+            if (strncmp(nameAfterPrefix, playerName, nameAfterPrefixLen) == 0
+                && (playerName[nameAfterPrefixLen] == '\0' || nameAfterPrefixLen >= maxEntryLen)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
