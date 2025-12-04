@@ -25,23 +25,29 @@ void RaceEntryHandler::handleRaceAddEntry(SPluginsRaceAddEntry_t* psRaceAddEntry
         psRaceAddEntry->m_szBikeName
     );
 
-    // Check if this entry is the player by comparing with stored rider name
-    // Handles exact match and server-forced rating prefixes (e.g., "B1 | Thomas" matches "Thomas")
-    const SessionData& data = PluginData::getInstance().getSessionData();
-    if (PluginUtils::matchRiderName(psRaceAddEntry->m_szName, data.riderName,
-                                     PluginConstants::GameLimits::RACE_ENTRY_NAME_MAX)) {
-        // This is the player - cache the race number directly to avoid name-based lookup
-        PluginData::getInstance().setPlayerRaceNum(psRaceAddEntry->m_iRaceNum);
-        DEBUG_INFO_F("Local player identified: raceNum=%d, entry='%s', player='%s'",
-                     psRaceAddEntry->m_iRaceNum,
-                     psRaceAddEntry->m_szName,
-                     data.riderName);
+    // Identify local player: first RaceAddEntry with unactive=0 after EventInit is the player
+    // This is more reliable than name matching since servers can modify rider names
+    if (psRaceAddEntry->m_iUnactive == 0) {
+        if (PluginData::getInstance().isWaitingForPlayerEntry()) {
+            // EventInit already fired - this is our entry
+            PluginData::getInstance().setWaitingForPlayerEntry(false);
+            PluginData::getInstance().clearPendingPlayerRaceNum();
+            PluginData::getInstance().setPlayerRaceNum(psRaceAddEntry->m_iRaceNum);
+            DEBUG_INFO_F("Local player identified: raceNum=%d, name='%s'",
+                         psRaceAddEntry->m_iRaceNum,
+                         psRaceAddEntry->m_szName);
 
-        // FALLBACK: If EventInit() was not called (e.g., joined mid-session),
-        // extract category from player's entry
-        if (data.category[0] == '\0' && psRaceAddEntry->m_szCategory[0] != '\0') {
-            DEBUG_INFO_F("FALLBACK: Extracting category from RaceAddEntry: %s", psRaceAddEntry->m_szCategory);
-            PluginData::getInstance().setCategory(psRaceAddEntry->m_szCategory);
+            // FALLBACK: If EventInit() was not called (e.g., joined mid-session),
+            // extract category from player's entry
+            const SessionData& data = PluginData::getInstance().getSessionData();
+            if (data.category[0] == '\0' && psRaceAddEntry->m_szCategory[0] != '\0') {
+                DEBUG_INFO_F("FALLBACK: Extracting category from RaceAddEntry: %s", psRaceAddEntry->m_szCategory);
+                PluginData::getInstance().setCategory(psRaceAddEntry->m_szCategory);
+            }
+        } else if (PluginData::getInstance().getPlayerRaceNum() < 0) {
+            // EventInit hasn't fired yet and player not identified - store as pending
+            // This handles spectate-first case where RaceAddEntry arrives before EventInit
+            PluginData::getInstance().setPendingPlayerRaceNum(psRaceAddEntry->m_iRaceNum);
         }
     }
 }

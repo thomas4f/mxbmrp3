@@ -434,6 +434,15 @@ public:
     int getPlayerRaceNum() const;
     void setPlayerRaceNum(int raceNum);  // Directly set player's race number (avoids name-based lookup)
 
+    // Player entry detection (first RaceAddEntry with unactive=0 after EventInit is the player)
+    void setWaitingForPlayerEntry(bool waiting) { m_bWaitingForPlayerEntry = waiting; }
+    bool isWaitingForPlayerEntry() const { return m_bWaitingForPlayerEntry; }
+
+    // Pending player entry (for spectate-first case where RaceAddEntry arrives before EventInit)
+    void setPendingPlayerRaceNum(int raceNum) { m_iPendingPlayerRaceNum = raceNum; }
+    int getPendingPlayerRaceNum() const { return m_iPendingPlayerRaceNum; }
+    void clearPendingPlayerRaceNum() { m_iPendingPlayerRaceNum = -1; }
+
     // Spectate mode tracking
     void setDrawState(int state);  // Set current draw state (ON_TRACK/SPECTATE/REPLAY)
     void setSpectatedRaceNum(int raceNum);  // Set which rider is being spectated
@@ -555,7 +564,8 @@ public:
 
 private:
     PluginData() : m_currentSessionTime(0), m_playerRaceNum(-1), m_bPlayerRaceNumValid(false),
-                   m_bPlayerNotFoundWarned(false), m_bPlayerIsRunning(false), m_drawState(0),
+                   m_bPlayerNotFoundWarned(false), m_bWaitingForPlayerEntry(false),
+                   m_iPendingPlayerRaceNum(-1), m_bPlayerIsRunning(false), m_drawState(0),
                    m_spectatedRaceNum(-1), m_activeRiderCount(0), m_bPositionCacheDirty(true) {}
     ~PluginData() {}
     PluginData(const PluginData&) = delete;
@@ -610,6 +620,8 @@ private:
     mutable int m_playerRaceNum;           // Cached player race number for performance
     mutable bool m_bPlayerRaceNumValid;     // Is the cached player race number still valid?
     mutable bool m_bPlayerNotFoundWarned;   // Have we already warned about player not found?
+    mutable bool m_bWaitingForPlayerEntry;  // True after EventInit, cleared when player entry is identified
+    int m_iPendingPlayerRaceNum;            // Stores raceNum from RaceAddEntry before EventInit (spectate-first case)
 
     bool m_bPlayerIsRunning;                // Set by RunStart, cleared by RunStop/RunDeinit
 

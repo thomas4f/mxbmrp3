@@ -1168,6 +1168,8 @@ void PluginData::clear() {
     m_playerRaceNum = -1;
     m_bPlayerRaceNumValid = false;
     m_bPlayerNotFoundWarned = false;
+    m_bWaitingForPlayerEntry = false;
+    m_iPendingPlayerRaceNum = -1;
     m_bPlayerIsRunning = false;
     m_drawState = 0;  // Reset to ON_TRACK
     m_spectatedRaceNum = -1;  // Reset spectated rider
@@ -1197,6 +1199,7 @@ void PluginData::updatePlayerRaceNum() const {
             m_playerRaceNum = entry.second.raceNum;
             m_bPlayerRaceNumValid = true;
             m_bPlayerNotFoundWarned = false;  // Reset so we can warn again in future sessions
+            m_bWaitingForPlayerEntry = false;  // Prevent primary path from overwriting with wrong player
             DEBUG_INFO_F("Player race number cached: %d", m_playerRaceNum);
             return;
         }

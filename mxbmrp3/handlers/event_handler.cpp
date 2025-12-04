@@ -27,6 +27,18 @@ void EventHandler::handleEventInit(SPluginsBikeEvent_t* psEventData) {
         psEventData->m_afSuspMaxTravel[0],  // Front suspension max travel
         psEventData->m_afSuspMaxTravel[1]   // Rear suspension max travel
     );
+
+    // Check if a RaceAddEntry with unactive=0 already arrived (spectate-first case)
+    int pendingRaceNum = PluginData::getInstance().getPendingPlayerRaceNum();
+    if (pendingRaceNum >= 0) {
+        // Use the pending entry - it arrived before EventInit
+        PluginData::getInstance().setPlayerRaceNum(pendingRaceNum);
+        PluginData::getInstance().clearPendingPlayerRaceNum();
+        DEBUG_INFO_F("Local player identified from pending entry: raceNum=%d", pendingRaceNum);
+    } else {
+        // The next RaceAddEntry with unactive=0 will be the local player
+        PluginData::getInstance().setWaitingForPlayerEntry(true);
+    }
 }
 
 void EventHandler::handleEventDeinit() {
