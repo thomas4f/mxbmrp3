@@ -24,6 +24,7 @@
 #include "../hud/notices_widget.h"
 #include "../hud/settings_button_widget.h"
 #include "../hud/map_hud.h"
+#include "../hud/radar_hud.h"
 #include "../hud/pitboard_hud.h"
 #include <fstream>
 #include <sstream>
@@ -198,6 +199,19 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     file << "anchorX=" << mapHud.m_fAnchorX << "\n";
     file << "anchorY=" << mapHud.m_fAnchorY << "\n\n";
 
+    // Save RadarHud
+    auto& radarHud = hudManager.getRadarHud();
+    saveBaseHudProperties(file, radarHud, "RadarHud");
+    file << "radarRange=" << radarHud.getRadarRange() << "\n";
+    file << "colorizeRiders=" << (radarHud.getColorizeRiders() ? 1 : 0) << "\n";
+    file << "alertDistance=" << radarHud.getAlertDistance() << "\n";
+    file << "labelMode=" << static_cast<int>(radarHud.getLabelMode()) << "\n\n";
+
+    // Save PitboardHud
+    saveBaseHudProperties(file, hudManager.getPitboardHud(), "PitboardHud");
+    file << "enabledRows=" << hudManager.getPitboardHud().m_enabledRows << "\n";
+    file << "displayMode=" << static_cast<int>(hudManager.getPitboardHud().m_displayMode) << "\n\n";
+
     // Save LapLogHud
     saveBaseHudProperties(file, hudManager.getLapLogHud(), "LapLogHud");
     file << "enabledColumns=" << hudManager.getLapLogHud().m_enabledColumns << "\n";
@@ -220,11 +234,6 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     saveBaseHudProperties(file, hudManager.getPerformanceHud(), "PerformanceHud");
     file << "enabledElements=" << hudManager.getPerformanceHud().m_enabledElements << "\n";
     file << "displayMode=" << static_cast<int>(hudManager.getPerformanceHud().m_displayMode) << "\n\n";
-
-    // Save PitboardHud
-    saveBaseHudProperties(file, hudManager.getPitboardHud(), "PitboardHud");
-    file << "enabledRows=" << hudManager.getPitboardHud().m_enabledRows << "\n";
-    file << "displayMode=" << static_cast<int>(hudManager.getPitboardHud().m_displayMode) << "\n\n";
 
     // Save Widgets
     // Save LapWidget
@@ -371,6 +380,7 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
             {"LapWidget", [&]() { return HudLoadInfo{&hudManager.getLapWidget(), nullptr}; }},
             {"SessionWidget", [&]() { return HudLoadInfo{&hudManager.getSessionWidget(), nullptr}; }},
             {"MapHud", [&]() { return HudLoadInfo{&hudManager.getMapHud(), nullptr}; }},
+            {"RadarHud", [&]() { return HudLoadInfo{&hudManager.getRadarHud(), nullptr}; }},
             {"SpeedWidget", [&]() { return HudLoadInfo{&hudManager.getSpeedWidget(), nullptr}; }},
             {"SpeedoWidget", [&]() { return HudLoadInfo{&hudManager.getSpeedoWidget(), nullptr}; }},
             {"TachoWidget", [&]() { return HudLoadInfo{&hudManager.getTachoWidget(), nullptr}; }},
@@ -472,6 +482,22 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                 hudManager.getMapHud().m_fAnchorX = std::stof(value);
             } else if (key == "anchorY" && currentSection == "MapHud") {
                 hudManager.getMapHud().m_fAnchorY = std::stof(value);
+            } else if (key == "radarRange" && currentSection == "RadarHud") {
+                float range = std::stof(value);
+                if (range < RadarHud::MIN_RADAR_RANGE) range = RadarHud::MIN_RADAR_RANGE;
+                if (range > RadarHud::MAX_RADAR_RANGE) range = RadarHud::MAX_RADAR_RANGE;
+                hudManager.getRadarHud().setRadarRange(range);
+            } else if (key == "colorizeRiders" && currentSection == "RadarHud") {
+                hudManager.getRadarHud().setColorizeRiders(std::stoi(value) != 0);
+            } else if (key == "trackFilter" && currentSection == "RadarHud") {
+                // Deprecated setting, ignore (track filtering now uses radar range automatically)
+            } else if (key == "alertDistance" && currentSection == "RadarHud") {
+                float distance = std::stof(value);
+                if (distance < RadarHud::MIN_ALERT_DISTANCE) distance = RadarHud::MIN_ALERT_DISTANCE;
+                if (distance > RadarHud::MAX_ALERT_DISTANCE) distance = RadarHud::MAX_ALERT_DISTANCE;
+                hudManager.getRadarHud().setAlertDistance(distance);
+            } else if (key == "labelMode" && currentSection == "RadarHud") {
+                hudManager.getRadarHud().setLabelMode(static_cast<RadarHud::LabelMode>(std::stoi(value)));
             }
         }
         catch ([[maybe_unused]] const std::exception& e) {

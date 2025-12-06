@@ -48,6 +48,9 @@ public:
     // Rider position data handling (high-frequency update)
     void updateRiderPositions(int numVehicles, SPluginsRaceTrackPosition_t* positions);
 
+    // Radar HUD position update (called alongside MapHud)
+    void updateRadarPositions(int numVehicles, SPluginsRaceTrackPosition_t* positions);
+
     // Get HUD references for settings persistence
     class SessionBestHud& getSessionBestHud() const { return *m_pSessionBest; }
     class LapLogHud& getLapLogHud() const { return *m_pLapLog; }
@@ -60,6 +63,7 @@ public:
     class LapWidget& getLapWidget() const { return *m_pLap; }
     class SessionWidget& getSessionWidget() const { return *m_pSession; }
     class MapHud& getMapHud() const { return *m_pMapHud; }
+    class RadarHud& getRadarHud() const { return *m_pRadarHud; }
     class SpeedWidget& getSpeedWidget() const { return *m_pSpeed; }
     class SpeedoWidget& getSpeedoWidget() const { return *m_pSpeedo; }
     class TachoWidget& getTachoWidget() const { return *m_pTacho; }
@@ -75,7 +79,7 @@ private:
                    m_pDraggingHud(nullptr), m_pSettingsHud(nullptr), m_pSettingsButton(nullptr),
                    m_pSessionBest(nullptr), m_pLapLog(nullptr), m_pStandings(nullptr),
                    m_pPerformance(nullptr), m_pTelemetry(nullptr),
-                   m_pInput(nullptr), m_pTime(nullptr), m_pPosition(nullptr), m_pLap(nullptr), m_pSession(nullptr), m_pMapHud(nullptr), m_pSpeed(nullptr), m_pSpeedo(nullptr), m_pTacho(nullptr), m_pTiming(nullptr), m_pBars(nullptr), m_pVersion(nullptr), m_pNotices(nullptr), m_pPitboard(nullptr),
+                   m_pInput(nullptr), m_pTime(nullptr), m_pPosition(nullptr), m_pLap(nullptr), m_pSession(nullptr), m_pMapHud(nullptr), m_pRadarHud(nullptr), m_pSpeed(nullptr), m_pSpeedo(nullptr), m_pTacho(nullptr), m_pTiming(nullptr), m_pBars(nullptr), m_pVersion(nullptr), m_pNotices(nullptr), m_pPitboard(nullptr),
                    m_numSpriteNames(0), m_numFontNames(0),
                    m_bAllHudsToggledOff(false), m_bAllWidgetsToggledOff(false) {
         m_spriteBuffer[0] = '\0';
@@ -112,6 +116,7 @@ private:
     class LapWidget* m_pLap;
     class SessionWidget* m_pSession;
     class MapHud* m_pMapHud;
+    class RadarHud* m_pRadarHud;
     class SpeedWidget* m_pSpeed;
     class SpeedoWidget* m_pSpeedo;
     class TachoWidget* m_pTacho;
@@ -130,7 +135,7 @@ private:
     std::vector<SPluginString_t> m_strings;
 
     // Resource management - using fixed-size buffers instead of std::string
-    static constexpr size_t MAX_SPRITE_NAMES = 20;  // Increased for HUD background textures
+    static constexpr size_t MAX_SPRITE_NAMES = 24;  // Increased for HUD background textures
     static constexpr size_t MAX_FONT_NAMES = 10;
     static constexpr size_t MAX_NAME_LENGTH = 256;
 

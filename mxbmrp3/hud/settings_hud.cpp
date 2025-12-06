@@ -20,7 +20,7 @@ SettingsHud::SettingsHud(SessionBestHud* sessionBest, LapLogHud* lapLog,
                          StandingsHud* standings,
                          PerformanceHud* performance,
                          TelemetryHud* telemetry, InputHud* input,
-                         TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionWidget* session, MapHud* mapHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingWidget* timing, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard)
+                         TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionWidget* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingWidget* timing, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard)
     : m_sessionBest(sessionBest),
       m_lapLog(lapLog),
       m_standings(standings),
@@ -32,6 +32,7 @@ SettingsHud::SettingsHud(SessionBestHud* sessionBest, LapLogHud* lapLog,
       m_lap(lap),
       m_session(session),
       m_mapHud(mapHud),
+      m_radarHud(radarHud),
       m_speed(speed),
       m_speedo(speedo),
       m_tacho(tacho),
@@ -264,6 +265,7 @@ void SettingsHud::rebuildRenderData() {
             case TAB_INPUT:        isHudEnabled = m_input && m_input->isVisible(); break;
             case TAB_PERFORMANCE:  isHudEnabled = m_performance && m_performance->isVisible(); break;
             case TAB_WIDGETS:      isHudEnabled = false; break;  // Widgets tab has no single HUD
+            case TAB_RADAR:        isHudEnabled = m_radarHud && m_radarHud->isVisible(); break;
         }
 
         // Color: green if enabled, white if active but disabled, gray if inactive and disabled
@@ -280,7 +282,8 @@ void SettingsHud::rebuildRenderData() {
                  i == TAB_INPUT ? "Input" :
                  i == TAB_PERFORMANCE ? "Performance" :
                  i == TAB_PITBOARD ? "Pitboard" :
-                 "Widgets");
+                 i == TAB_WIDGETS ? "Widgets" :
+                 "Radar");
 
         addString(tabLabel, tabStartX, tabStartY, Justify::LEFT, tabFont, tabColor, dim.fontSize);
 
@@ -1051,6 +1054,91 @@ void SettingsHud::rebuildRenderData() {
             }
             break;
 
+        case TAB_RADAR:
+            activeHud = m_radarHud;
+            dataStartY = addHudControls(m_radarHud, false);  // No title support
+
+            // Range control
+            {
+                float controlX = leftColumnX;
+                char rangeText[32];
+                snprintf(rangeText, sizeof(rangeText), "Range: %.0fm", m_radarHud->getRadarRange());
+                addString(rangeText, controlX, currentY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
+
+                float rangeButtonX = controlX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::SCALE_LABEL_WIDTH, dim.fontSize);
+                addControlButtons(rangeButtonX, currentY, ClickRegion::RADAR_RANGE_DOWN, ClickRegion::RADAR_RANGE_UP, m_radarHud);
+
+                currentY += dim.lineHeightNormal;
+            }
+
+            // Alert distance control (when triangles light up)
+            {
+                float controlX = leftColumnX;
+                char alertText[32];
+                snprintf(alertText, sizeof(alertText), "Alert: %.0fm", m_radarHud->getAlertDistance());
+                addString(alertText, controlX, currentY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
+
+                float alertButtonX = controlX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::SCALE_LABEL_WIDTH, dim.fontSize);
+                addControlButtons(alertButtonX, currentY, ClickRegion::RADAR_ALERT_DISTANCE_DOWN, ClickRegion::RADAR_ALERT_DISTANCE_UP, m_radarHud);
+
+                currentY += dim.lineHeightNormal;
+            }
+
+            // Colorize riders toggle
+            {
+                float controlX = leftColumnX;
+                float colorizeY = currentY;
+
+                bool colorizeRiders = m_radarHud->getColorizeRiders();
+                const char* colorizeCheckbox = colorizeRiders ? "[X]" : "[ ]";
+                addString(colorizeCheckbox, controlX, colorizeY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
+                float colorizeLabelX = controlX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::CHECKBOX_WIDTH, dim.fontSize);
+                addString("Colorize", colorizeLabelX, colorizeY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
+
+                m_clickRegions.push_back(ClickRegion(
+                    controlX, colorizeY,
+                    PluginUtils::calculateMonospaceTextWidth(SettingsHud::CHECKBOX_LABEL_MEDIUM, dim.fontSize),
+                    dim.lineHeightNormal,
+                    ClickRegion::RADAR_COLORIZE_TOGGLE, m_radarHud, 0, false, 0
+                ));
+
+                currentY += dim.lineHeightNormal;
+            }
+
+            // Label mode control
+            {
+                float controlX = leftColumnX;
+                char labelModeText[32];
+                const char* modeStr = "";
+                switch (m_radarHud->getLabelMode()) {
+                    case RadarHud::LabelMode::NONE:     modeStr = "None"; break;
+                    case RadarHud::LabelMode::POSITION: modeStr = "Position"; break;
+                    case RadarHud::LabelMode::RACE_NUM: modeStr = "Race Num"; break;
+                    case RadarHud::LabelMode::BOTH:     modeStr = "Both"; break;
+                    default:
+                        DEBUG_WARN_F("Unknown LabelMode: %d", static_cast<int>(m_radarHud->getLabelMode()));
+                        modeStr = "Unknown";
+                        break;
+                }
+                snprintf(labelModeText, sizeof(labelModeText), "Labels: %s", modeStr);
+                addString(labelModeText, controlX, currentY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
+
+                m_clickRegions.push_back(ClickRegion(
+                    controlX, currentY,
+                    PluginUtils::calculateMonospaceTextWidth(20, dim.fontSize),
+                    dim.lineHeightNormal,
+                    ClickRegion::RADAR_LABEL_MODE_CYCLE, m_radarHud, 0, false, 0
+                ));
+
+                currentY += dim.lineHeightNormal;
+            }
+            break;
+
         default:
             DEBUG_WARN_F("Invalid tab index: %d, defaulting to TAB_STANDINGS", m_activeTab);
             activeHud = m_standings;
@@ -1152,6 +1240,24 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                 case ClickRegion::MAP_LABEL_MODE_CYCLE:
                     handleMapLabelModeClick(region);
                     break;
+                case ClickRegion::RADAR_RANGE_UP:
+                    handleRadarRangeClick(region, true);
+                    break;
+                case ClickRegion::RADAR_RANGE_DOWN:
+                    handleRadarRangeClick(region, false);
+                    break;
+                case ClickRegion::RADAR_COLORIZE_TOGGLE:
+                    handleRadarColorizeClick(region);
+                    break;
+                case ClickRegion::RADAR_ALERT_DISTANCE_UP:
+                    handleRadarAlertDistanceClick(region, true);
+                    break;
+                case ClickRegion::RADAR_ALERT_DISTANCE_DOWN:
+                    handleRadarAlertDistanceClick(region, false);
+                    break;
+                case ClickRegion::RADAR_LABEL_MODE_CYCLE:
+                    handleRadarLabelModeClick(region);
+                    break;
                 case ClickRegion::DISPLAY_MODE_UP:
                     handleDisplayModeClick(region, true);
                     break;
@@ -1191,6 +1297,7 @@ void SettingsHud::resetToDefaults() {
     if (m_telemetry) m_telemetry->resetToDefaults();
     if (m_input) m_input->resetToDefaults();
     if (m_mapHud) m_mapHud->resetToDefaults();
+    if (m_radarHud) m_radarHud->resetToDefaults();
     if (m_pitboard) m_pitboard->resetToDefaults();
 
     // Reset all widgets to their constructor defaults
@@ -1415,6 +1522,57 @@ void SettingsHud::handleMapLabelModeClick(const ClickRegion& region) {
         mapHud->setLabelMode(newMode);
         rebuildRenderData();
         DEBUG_INFO_F("MapHud label mode changed to %d", static_cast<int>(newMode));
+    }
+}
+
+void SettingsHud::handleRadarRangeClick(const ClickRegion& region, bool increase) {
+    RadarHud* radarHud = dynamic_cast<RadarHud*>(region.targetHud);
+    if (radarHud) {
+        float newRange = radarHud->getRadarRange() + (increase ? RadarHud::RADAR_RANGE_STEP : -RadarHud::RADAR_RANGE_STEP);
+        radarHud->setRadarRange(newRange);
+        rebuildRenderData();
+        DEBUG_INFO_F("RadarHud range %s to %.0fm", increase ? "increased" : "decreased", newRange);
+    }
+}
+
+void SettingsHud::handleRadarColorizeClick(const ClickRegion& region) {
+    RadarHud* radarHud = dynamic_cast<RadarHud*>(region.targetHud);
+    if (radarHud) {
+        bool newColorize = !radarHud->getColorizeRiders();
+        radarHud->setColorizeRiders(newColorize);
+        rebuildRenderData();
+        DEBUG_INFO_F("RadarHud colorize riders %s", newColorize ? "enabled" : "disabled");
+    }
+}
+
+void SettingsHud::handleRadarAlertDistanceClick(const ClickRegion& region, bool increase) {
+    RadarHud* radarHud = dynamic_cast<RadarHud*>(region.targetHud);
+    if (radarHud) {
+        float newDist = radarHud->getAlertDistance() + (increase ? RadarHud::ALERT_DISTANCE_STEP : -RadarHud::ALERT_DISTANCE_STEP);
+        radarHud->setAlertDistance(newDist);
+        rebuildRenderData();
+        DEBUG_INFO_F("RadarHud alert distance %s to %.0fm", increase ? "increased" : "decreased", newDist);
+    }
+}
+
+void SettingsHud::handleRadarLabelModeClick(const ClickRegion& region) {
+    RadarHud* radarHud = dynamic_cast<RadarHud*>(region.targetHud);
+    if (radarHud) {
+        RadarHud::LabelMode currentMode = radarHud->getLabelMode();
+        RadarHud::LabelMode newMode;
+
+        // Cycle: NONE -> POSITION -> RACE_NUM -> BOTH -> NONE
+        switch (currentMode) {
+            case RadarHud::LabelMode::NONE:     newMode = RadarHud::LabelMode::POSITION; break;
+            case RadarHud::LabelMode::POSITION: newMode = RadarHud::LabelMode::RACE_NUM; break;
+            case RadarHud::LabelMode::RACE_NUM: newMode = RadarHud::LabelMode::BOTH; break;
+            case RadarHud::LabelMode::BOTH:     newMode = RadarHud::LabelMode::NONE; break;
+            default:                            newMode = RadarHud::LabelMode::POSITION; break;
+        }
+
+        radarHud->setLabelMode(newMode);
+        rebuildRenderData();
+        DEBUG_INFO_F("RadarHud label mode changed to %d", static_cast<int>(newMode));
     }
 }
 

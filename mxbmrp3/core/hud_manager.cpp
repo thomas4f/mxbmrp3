@@ -31,6 +31,7 @@
 #include "../hud/settings_hud.h"
 #include "../hud/settings_button_widget.h"
 #include "../hud/map_hud.h"
+#include "../hud/radar_hud.h"
 #include "../hud/pitboard_hud.h"
 #include "../hud/cursor.h"
 #include <windows.h>
@@ -70,6 +71,11 @@ void HudManager::initialize() {
     m_pMapHud = mapPtr.get();
     m_pMapHud->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_MAP_HUD);
     registerHud(std::move(mapPtr));
+
+    auto radarPtr = std::make_unique<RadarHud>();
+    m_pRadarHud = radarPtr.get();
+    m_pRadarHud->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_RADAR_HUD);
+    registerHud(std::move(radarPtr));
 
     auto lapLogPtr = std::make_unique<LapLogHud>();
     m_pLapLog = lapLogPtr.get();
@@ -155,9 +161,9 @@ void HudManager::initialize() {
     m_pNotices = noticesPtr.get();
     registerHud(std::move(noticesPtr));
 
-    // Register SettingsHud with pointers to all 20 configurable HUDs and widgets
+    // Register SettingsHud with pointers to all 21 configurable HUDs and widgets
     auto settingsPtr = std::make_unique<SettingsHud>(m_pSessionBest, m_pLapLog, m_pStandings,
-                                                       m_pPerformance, m_pTelemetry, m_pInput, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pSpeed, m_pSpeedo, m_pTacho, m_pTiming, m_pBars, m_pVersion, m_pNotices, m_pPitboard);
+                                                       m_pPerformance, m_pTelemetry, m_pInput, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pSpeedo, m_pTacho, m_pTiming, m_pBars, m_pVersion, m_pNotices, m_pPitboard);
     m_pSettingsHud = settingsPtr.get();
     registerHud(std::move(settingsPtr));
 
@@ -210,6 +216,7 @@ void HudManager::clear() {
     m_pLap = nullptr;
     m_pSession = nullptr;
     m_pMapHud = nullptr;
+    m_pRadarHud = nullptr;
     m_pSpeed = nullptr;
     m_pSpeedo = nullptr;
     m_pTiming = nullptr;
@@ -514,6 +521,8 @@ void HudManager::setupDefaultResources() {
     addSprite("mxbmrp3_data\\pitboard_hud.tga");    // SpriteIndex::BG_PITBOARD_HUD = 17
     addSprite("mxbmrp3_data\\speedo_widget.tga"); // SpriteIndex::SPEEDO_DIAL = 18
     addSprite("mxbmrp3_data\\tacho_widget.tga");  // SpriteIndex::TACHO_DIAL = 19
+    addSprite("mxbmrp3_data\\radar_hud.tga");     // SpriteIndex::BG_RADAR_HUD = 20
+    addSprite("mxbmrp3_data\\radar_sector.tga"); // SpriteIndex::RADAR_SECTOR = 21
 
     // Add default fonts needed by HUDs
     // Safety: Check array bounds before incrementing to prevent buffer overflow
@@ -664,9 +673,17 @@ void HudManager::updateTrackCenterline(int numSegments, SPluginsTrackSegment_t* 
 
 void HudManager::updateRiderPositions(int numVehicles, SPluginsRaceTrackPosition_t* positions) {
     // Skip logging - this is a high-frequency event
-    if (!m_bInitialized || !m_pMapHud) {
+    if (!m_bInitialized) {
         return;
     }
 
-    m_pMapHud->updateRiderPositions(numVehicles, positions);
+    // Update MapHud
+    if (m_pMapHud) {
+        m_pMapHud->updateRiderPositions(numVehicles, positions);
+    }
+
+    // Update RadarHud
+    if (m_pRadarHud) {
+        m_pRadarHud->updateRiderPositions(numVehicles, positions);
+    }
 }

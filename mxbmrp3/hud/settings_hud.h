@@ -24,6 +24,7 @@
 #include "notices_widget.h"
 #include <variant>
 #include "map_hud.h"
+#include "radar_hud.h"
 #include "../core/plugin_constants.h"
 
 // Forward declarations
@@ -35,7 +36,7 @@ public:
                 StandingsHud* standings,
                 PerformanceHud* performance,
                 TelemetryHud* telemetry, InputHud* input,
-                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionWidget* session, MapHud* mapHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingWidget* timing, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard);
+                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionWidget* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingWidget* timing, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard);
     virtual ~SettingsHud() = default;
 
     void update() override;
@@ -75,6 +76,12 @@ private:
             MAP_TRACK_WIDTH_UP,        // Increase track line width (MapHud)
             MAP_TRACK_WIDTH_DOWN,      // Decrease track line width (MapHud)
             MAP_LABEL_MODE_CYCLE,      // Cycle label display mode (MapHud)
+            RADAR_RANGE_UP,            // Increase radar range (RadarHud)
+            RADAR_RANGE_DOWN,          // Decrease radar range (RadarHud)
+            RADAR_COLORIZE_TOGGLE,     // Toggle rider colorization (RadarHud)
+            RADAR_ALERT_DISTANCE_UP,   // Increase alert distance (RadarHud)
+            RADAR_ALERT_DISTANCE_DOWN, // Decrease alert distance (RadarHud)
+            RADAR_LABEL_MODE_CYCLE,    // Cycle label display mode (RadarHud)
             DISPLAY_MODE_UP,           // Cycle display mode forward (PerformanceHud)
             DISPLAY_MODE_DOWN,         // Cycle display mode backward (PerformanceHud)
             TAB,                       // Select tab
@@ -159,6 +166,10 @@ private:
     void handleMapColorizeClick(const ClickRegion& region);
     void handleMapTrackWidthClick(const ClickRegion& region, bool increase);
     void handleMapLabelModeClick(const ClickRegion& region);
+    void handleRadarRangeClick(const ClickRegion& region, bool increase);
+    void handleRadarColorizeClick(const ClickRegion& region);
+    void handleRadarAlertDistanceClick(const ClickRegion& region, bool increase);
+    void handleRadarLabelModeClick(const ClickRegion& region);
     void handleDisplayModeClick(const ClickRegion& region, bool increase);
     void handleTabClick(const ClickRegion& region);
     void handleCloseButtonClick();
@@ -204,6 +215,7 @@ private:
     LapWidget* m_lap;
     SessionWidget* m_session;
     MapHud* m_mapHud;
+    RadarHud* m_radarHud;
     SpeedWidget* m_speed;
     SpeedoWidget* m_speedo;
     TachoWidget* m_tacho;
@@ -221,18 +233,19 @@ private:
     int m_cachedWindowWidth;
     int m_cachedWindowHeight;
 
-    // Tab system (order matches F-key assignments: F1-F8)
+    // Tab system (order matches F-key assignments: F1-F10)
     enum Tab {
         TAB_STANDINGS = 0,     // F1
         TAB_MAP = 1,           // F2
-        TAB_PITBOARD = 2,      // F3
-        TAB_LAP_LOG = 3,       // F4
-        TAB_SESSION_BEST = 4,  // F5
-        TAB_TELEMETRY = 5,     // F6
-        TAB_INPUT = 6,         // F7
-        TAB_PERFORMANCE = 7,   // F8
-        TAB_WIDGETS = 8,       // F9 (toggles all)
-        TAB_COUNT = 9
+        TAB_RADAR = 2,         // F3
+        TAB_PITBOARD = 3,      // F4
+        TAB_LAP_LOG = 4,       // F5
+        TAB_SESSION_BEST = 5,  // F6
+        TAB_TELEMETRY = 6,     // F7
+        TAB_INPUT = 7,         // F8
+        TAB_PERFORMANCE = 8,   // F9
+        TAB_WIDGETS = 9,       // F10 (toggles all)
+        TAB_COUNT = 10
     };
     int m_activeTab;
 
