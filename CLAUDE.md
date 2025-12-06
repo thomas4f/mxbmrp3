@@ -96,11 +96,15 @@ Requires game engine to run. Manual testing in-game is current workflow.
 ## Common Tasks
 
 ### Adding a New HUD
-1. Create class inheriting from `BaseHud`
-2. Implement `rebuildRenderData()` - builds vectors of quads/strings
-3. Register in `HudManager` constructor
-4. Add tab in `SettingsHud` for configuration
-5. Add save/load in `SettingsManager`
+1. Create class inheriting from `BaseHud` (`.h` and `.cpp` files in `mxbmrp3/hud/`)
+2. **Add files to Visual Studio project:**
+   - `mxbmrp3/mxbmrp3.vcxproj` - Add `<ClInclude>` for `.h` and `<ClCompile>` for `.cpp`
+   - `mxbmrp3/mxbmrp3.vcxproj.filters` - Add filter entries to place files in `Header Files\hud` and `Source Files\hud`
+   - **Without these entries, the build will fail with linker errors (LNK2019 unresolved externals)**
+3. Implement `rebuildRenderData()` - builds vectors of quads/strings
+4. Register in `HudManager` constructor (add pointer, getter, initialize in `initialize()`, null in `clear()`)
+5. Add tab in `SettingsHud` for configuration
+6. Add save/load in `SettingsManager`
 
 ### Debugging Rendering Issues
 - Check if HUD is visible: `hud->isVisible()`

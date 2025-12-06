@@ -180,6 +180,9 @@
     <ClInclude Include="hud\map_hud.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
+    <ClInclude Include="hud\radar_hud.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
     <ClInclude Include="hud\speed_widget.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
@@ -327,6 +330,9 @@
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="hud\map_hud.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\radar_hud.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\speed_widget.cpp">
