@@ -1239,14 +1239,6 @@ void PluginData::updateSpeedometer(float speedometer, int gear, int rpm, float f
     }
     m_historyBuffers.addSample(m_historyBuffers.rpm, normalizedRpm);
 
-    // Add fuel to history (normalize to 0-1 range using maxFuel as max)
-    // Safety: Only normalize if maxFuel is valid to avoid division by zero
-    float normalizedFuel = 0.0f;
-    if (m_bikeTelemetry.maxFuel > 0) {
-        normalizedFuel = fuel / m_bikeTelemetry.maxFuel;
-    }
-    m_historyBuffers.addSample(m_historyBuffers.fuel, normalizedFuel);
-
     // Add gear to history (normalize to 0-1 range using numberOfGears as max)
     // Safety: Only normalize if numberOfGears is valid to avoid division by zero
     float normalizedGear = 0.0f;

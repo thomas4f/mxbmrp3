@@ -14,7 +14,7 @@ TimeWidget::TimeWidget()
     : m_cachedRenderedTime(-1)
 {
     initializeWidget("TimeWidget", 2);  // Two strings: label (optional), time
-    setPosition(-0.286f, -0.0999f);
+    setPosition(-0.275f, -0.0999f);
 }
 
 bool TimeWidget::handlesDataType(DataChangeType dataType) const {
@@ -142,6 +142,6 @@ void TimeWidget::resetToDefaults() {
     m_bShowBackgroundTexture = false;  // No texture by default
     m_fBackgroundOpacity = 0.1f;
     m_fScale = 1.0f;
-    setPosition(-0.286f, -0.0999f);
+    setPosition(-0.275f, -0.0999f);
     setDataDirty();
 }

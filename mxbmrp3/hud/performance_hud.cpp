@@ -24,7 +24,7 @@ PerformanceHud::PerformanceHud() : m_historyIndex(0), m_fpsMin(0.0f), m_fpsMax(0
     // Set defaults to match user configuration
     m_bVisible = false;  // Hidden by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
-    setPosition(-0.0165f, 0.0444f);
+    setPosition(-0.0165f, 0.0222f);
 
     // Initialize history arrays
     m_fpsHistory.fill(0.0f);
@@ -503,7 +503,7 @@ void PerformanceHud::resetToDefaults() {
     m_bShowBackgroundTexture = false;  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(-0.0165f, 0.0333f);
+    setPosition(-0.0165f, 0.0222f);
     m_enabledElements = ELEM_DEFAULT;
     m_displayMode = DISPLAY_BOTH;  // Show both graphs and values by default
     setDataDirty();

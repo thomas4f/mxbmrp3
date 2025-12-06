@@ -23,7 +23,7 @@ TelemetryHud::TelemetryHud() {
     // Set defaults to match user configuration
     m_bShowTitle = true;
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
-    setPosition(0.6875f, -0.0666f);
+    setPosition(0.6875f, -0.0777f);
 
     // Pre-allocate render buffers to avoid reallocations
     m_quads.reserve(1000);   // 1 bg + 4 grid + 4 inputs × 199 line segments = ~1000 quads max
@@ -82,7 +82,6 @@ void TelemetryHud::rebuildRenderData() {
     if ((m_enabledElements & ELEM_RPM) && showValues) legendLines++;
     if ((m_enabledElements & ELEM_FRONT_SUSP) && showValues && bikeTelemetry.isValid && bikeTelemetry.frontSuspMaxTravel > 0) legendLines++;  // Front suspension only for player
     if ((m_enabledElements & ELEM_REAR_SUSP) && showValues && bikeTelemetry.isValid && bikeTelemetry.rearSuspMaxTravel > 0) legendLines++;  // Rear suspension only for player
-    if ((m_enabledElements & ELEM_FUEL) && showValues && bikeTelemetry.isValid && bikeTelemetry.maxFuel > 0) legendLines++;
     if ((m_enabledElements & ELEM_GEAR) && showValues) legendLines++;
     float legendHeight = legendLines * dims.lineHeightNormal;
 
@@ -192,15 +191,6 @@ void TelemetryHud::rebuildRenderData() {
             float rearSuspPercent = (isViewingPlayerBike && !history.rearSusp.empty()) ? history.rearSusp.back() : 0.0f;
             char buffer[16];
             snprintf(buffer, sizeof(buffer), "RSU  %3d%%", static_cast<int>(rearSuspPercent * 100));
-            addString(buffer, legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, PluginConstants::TextColors::SECONDARY, dims.fontSize);
-            legendY += dims.lineHeightNormal;
-        }
-
-        // FUEL (if enabled and telemetry is valid - fuel data not available when spectating)
-        if ((m_enabledElements & ELEM_FUEL) && bikeTelemetry.isValid && bikeTelemetry.maxFuel > 0) {
-            char buffer[16];
-            snprintf(buffer, sizeof(buffer), "FUE %.2fL", bikeTelemetry.fuel);
             addString(buffer, legendStartX, legendY, PluginConstants::Justify::LEFT,
                 PluginConstants::Fonts::ROBOTO_MONO, PluginConstants::TextColors::SECONDARY, dims.fontSize);
             legendY += dims.lineHeightNormal;
@@ -324,21 +314,6 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
             }
         }
 
-        // Fuel graph (only render if telemetry is valid and maxFuel > 0 - fuel data not available when spectating)
-        if ((m_enabledElements & ELEM_FUEL) && bikeTelemetry.isValid && bikeTelemetry.maxFuel > 0) {
-            const std::deque<float>& data = history.fuel;
-            if (i < data.size() && (i + 1) < data.size()) {
-                float value1 = std::max(0.0f, std::min(1.0f, data[i]));
-                float value2 = std::max(0.0f, std::min(1.0f, data[i + 1]));
-
-                if (value1 >= 0.01f || value2 >= 0.01f) {
-                    float y1 = y + height - (value1 * height);
-                    float y2 = y + height - (value2 * height);
-                    addLineSegment(x1, y1, x2, y2, PluginConstants::Colors::YELLOW, lineThickness);
-                }
-            }
-        }
-
         // Front suspension graph (only render if viewing player's bike - suspension data not available when spectating)
         if ((m_enabledElements & ELEM_FRONT_SUSP) && isViewingPlayerBike && bikeTelemetry.frontSuspMaxTravel > 0) {
             const std::deque<float>& data = history.frontSusp;
@@ -406,7 +381,7 @@ void TelemetryHud::resetToDefaults() {
     m_bShowBackgroundTexture = false;  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.6875f, -0.0666f);
+    setPosition(0.6875f, -0.0777f);
     m_enabledElements = ELEM_DEFAULT;
     m_displayMode = DISPLAY_DEFAULT;
     setDataDirty();

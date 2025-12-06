@@ -31,7 +31,7 @@ SessionBestHud::SessionBestHud()
     // Set defaults to match user configuration
     m_bShowTitle = true;
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
-    setPosition(0.088f, 0.0999f);
+    setPosition(0.0935f, 0.0999f);
 
     // Pre-allocate vectors
     m_quads.reserve(1);
@@ -305,7 +305,7 @@ void SessionBestHud::resetToDefaults() {
     m_bShowBackgroundTexture = false;  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.088f, 0.0999f);
+    setPosition(0.0935f, 0.0999f);
     m_enabledRows = ROW_DEFAULT;
     setDataDirty();
 }

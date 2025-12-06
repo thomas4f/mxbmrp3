@@ -151,6 +151,7 @@
     <ClInclude Include="hud\timing_widget.h" />
     <ClInclude Include="hud\notices_widget.h" />
     <ClInclude Include="hud\version_widget.h" />
+    <ClInclude Include="hud\fuel_widget.h" />
     <ClInclude Include="vendor\piboso\mxb_api.h" />
   </ItemGroup>
   <ItemGroup>
@@ -203,6 +204,7 @@
     <ClCompile Include="hud\timing_widget.cpp" />
     <ClCompile Include="hud\notices_widget.cpp" />
     <ClCompile Include="hud\version_widget.cpp" />
+    <ClCompile Include="hud\fuel_widget.cpp" />
     <ClCompile Include="vendor\piboso\mxb_api.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

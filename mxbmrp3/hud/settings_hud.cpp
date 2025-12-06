@@ -20,7 +20,7 @@ SettingsHud::SettingsHud(SessionBestHud* sessionBest, LapLogHud* lapLog,
                          StandingsHud* standings,
                          PerformanceHud* performance,
                          TelemetryHud* telemetry, InputHud* input,
-                         TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionWidget* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingWidget* timing, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard)
+                         TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionWidget* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingWidget* timing, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, FuelWidget* fuel)
     : m_sessionBest(sessionBest),
       m_lapLog(lapLog),
       m_standings(standings),
@@ -41,6 +41,7 @@ SettingsHud::SettingsHud(SessionBestHud* sessionBest, LapLogHud* lapLog,
       m_version(version),
       m_notices(notices),
       m_pitboard(pitboard),
+      m_fuel(fuel),
       m_bVisible(false),
       m_cachedWindowWidth(0),
       m_cachedWindowHeight(0),
@@ -930,16 +931,15 @@ void SettingsHud::rebuildRenderData() {
             // Display mode control (with cycle buttons)
             addDisplayModeControl(leftColumnX, currentY, dim, &m_telemetry->m_displayMode, m_telemetry);
 
-            // Right column data toggles (9 items: Throttle, Front Brake, Rear Brake, Clutch, RPM, Fuel, Front Susp, Rear Susp, Gear)
+            // Right column data toggles (8 items: Throttle, Front Brake, Rear Brake, Clutch, RPM, Front Susp, Rear Susp, Gear)
             addDataCheckbox("Throttle", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_THROTTLE, false, m_telemetry, dataStartY);
             addDataCheckbox("Front Brake", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_FRONT_BRAKE, false, m_telemetry, dataStartY + dim.lineHeightNormal);
             addDataCheckbox("Rear Brake", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_REAR_BRAKE, false, m_telemetry, dataStartY + dim.lineHeightNormal * 2);
             addDataCheckbox("Clutch", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_CLUTCH, false, m_telemetry, dataStartY + dim.lineHeightNormal * 3);
             addDataCheckbox("RPM", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_RPM, false, m_telemetry, dataStartY + dim.lineHeightNormal * 4);
-            addDataCheckbox("Fuel", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_FUEL, false, m_telemetry, dataStartY + dim.lineHeightNormal * 5);
-            addDataCheckbox("Front Susp", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_FRONT_SUSP, false, m_telemetry, dataStartY + dim.lineHeightNormal * 6);
-            addDataCheckbox("Rear Susp", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_REAR_SUSP, false, m_telemetry, dataStartY + dim.lineHeightNormal * 7);
-            addDataCheckbox("Gear", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_GEAR, false, m_telemetry, dataStartY + dim.lineHeightNormal * 8);
+            addDataCheckbox("Front Susp", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_FRONT_SUSP, false, m_telemetry, dataStartY + dim.lineHeightNormal * 5);
+            addDataCheckbox("Rear Susp", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_REAR_SUSP, false, m_telemetry, dataStartY + dim.lineHeightNormal * 6);
+            addDataCheckbox("Gear", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_GEAR, false, m_telemetry, dataStartY + dim.lineHeightNormal * 7);
             break;
 
         case TAB_INPUT:
@@ -1048,6 +1048,7 @@ void SettingsHud::rebuildRenderData() {
                 addWidgetRow("Timing", m_timing, false);  // No title for timing widget
                 addWidgetRow("Notices", m_notices, false);  // No title for notices widget
                 addWidgetRow("Version", m_version, false, false, false, true, false);  // Only visibility toggle enabled
+                addWidgetRow("Fuel", m_fuel);  // Title enabled
 
                 // No active HUD for multi-widget tab
                 activeHud = nullptr;
@@ -1312,6 +1313,7 @@ void SettingsHud::resetToDefaults() {
     if (m_notices) m_notices->resetToDefaults();
     if (m_bars) m_bars->resetToDefaults();
     if (m_version) m_version->resetToDefaults();
+    if (m_fuel) m_fuel->resetToDefaults();
 
     // Reset settings button (managed by HudManager)
     HudManager::getInstance().getSettingsButtonWidget().resetToDefaults();

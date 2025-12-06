@@ -27,12 +27,11 @@ public:
         ELEM_REAR_BRAKE  = 1 << 2,  // Rear brake metric (only available for player)
         ELEM_CLUTCH      = 1 << 3,  // Clutch metric (only available for player)
         ELEM_RPM         = 1 << 4,  // RPM metric
-        ELEM_FUEL        = 1 << 5,  // Fuel metric (only available for player)
         ELEM_FRONT_SUSP  = 1 << 6,  // Front suspension compression (only available for player)
         ELEM_REAR_SUSP   = 1 << 7,  // Rear suspension compression (only available for player)
         ELEM_GEAR        = 1 << 8,  // Gear indicator
 
-        ELEM_DEFAULT     = 0x1B     // Throttle, front brake, rear brake, clutch, RPM enabled; fuel, suspension, gear disabled (binary: 00011011)
+        ELEM_DEFAULT     = 0x1B     // Throttle, front brake, rear brake, clutch, RPM enabled; suspension, gear disabled (binary: 00011011)
     };
 
     // Display mode - controls whether to show graphs, numbers, or both

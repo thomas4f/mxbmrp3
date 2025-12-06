@@ -17,7 +17,7 @@ SpeedWidget::SpeedWidget()
 {
     initializeWidget("SpeedWidget", 4, 1.0f);  // Four strings, full opacity background
     m_bShowTitle = false;  // No title rendered (widget design doesn't support titles)
-    setPosition(0.4125f, 0.6882f);
+    setPosition(0.319f, 0.6882f);
 }
 
 bool SpeedWidget::handlesDataType(DataChangeType dataType) const {
@@ -206,6 +206,6 @@ void SpeedWidget::resetToDefaults() {
     m_bShowBackgroundTexture = false;  // No texture by default
     m_fBackgroundOpacity = 1.0f;  // Full opacity
     m_fScale = 1.0f;
-    setPosition(0.4125f, 0.6882f);
+    setPosition(0.319f, 0.6882f);
     setDataDirty();
 }

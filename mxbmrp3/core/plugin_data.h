@@ -249,7 +249,6 @@ struct HistoryBuffers {
     std::deque<float> steer;
     std::deque<float> rpm;               // Engine RPM (normalized 0-1 range)
     std::deque<float> gear;              // Current gear (normalized 0-1 range, gear/numberOfGears)
-    std::deque<float> fuel;              // Fuel level (normalized 0-1 range, fuel/maxFuel)
     std::deque<float> frontSusp;         // Front suspension compression (normalized 0-1 range)
     std::deque<float> rearSusp;          // Rear suspension compression (normalized 0-1 range)
     std::deque<StickSample> leftStick;   // Left analog stick (steering/throttle)
@@ -284,7 +283,6 @@ struct HistoryBuffers {
         steer.clear();
         rpm.clear();
         gear.clear();
-        fuel.clear();
         frontSusp.clear();
         rearSusp.clear();
         leftStick.clear();

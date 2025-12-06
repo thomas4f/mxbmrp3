@@ -32,7 +32,7 @@ BarsWidget::BarsWidget() {
     // No title for this widget (user specified)
     m_bShowTitle = false;
     m_fBackgroundOpacity = 1.0f;  // Full opacity background
-    setPosition(0.88f, 0.4995f);
+    setPosition(0.8085f, 0.4995f);
 
     // Pre-allocate render buffers
     m_quads.reserve(17);     // 1 background + 8 bars (6 positions, 2 split) × 2 quads each (filled + empty)
@@ -211,6 +211,6 @@ void BarsWidget::resetToDefaults() {
     m_bShowBackgroundTexture = false;  // No texture by default
     m_fBackgroundOpacity = 1.0f;  // Full opacity
     m_fScale = 1.0f;
-    setPosition(0.88f, 0.4995f);
+    setPosition(0.8085f, 0.4995f);
     setDataDirty();
 }

@@ -22,6 +22,7 @@
 #include "bars_widget.h"
 #include "version_widget.h"
 #include "notices_widget.h"
+#include "fuel_widget.h"
 #include <variant>
 #include "map_hud.h"
 #include "radar_hud.h"
@@ -36,7 +37,7 @@ public:
                 StandingsHud* standings,
                 PerformanceHud* performance,
                 TelemetryHud* telemetry, InputHud* input,
-                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionWidget* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingWidget* timing, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard);
+                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionWidget* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingWidget* timing, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, FuelWidget* fuel);
     virtual ~SettingsHud() = default;
 
     void update() override;
@@ -224,6 +225,7 @@ private:
     VersionWidget* m_version;
     NoticesWidget* m_notices;
     PitboardHud* m_pitboard;
+    FuelWidget* m_fuel;
 
     // Visibility flag
     bool m_bVisible;

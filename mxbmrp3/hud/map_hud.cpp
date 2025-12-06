@@ -43,7 +43,7 @@ MapHud::MapHud()
     m_fBackgroundOpacity = 0.0f;
 
     // Set initial position and anchor (top-right corner)
-    setPosition(0.8085f, -0.1665f);
+    setPosition(0.8085f, -0.0444f);
     m_anchorPoint = AnchorPoint::TOP_RIGHT;
     m_fAnchorX = 0.994125f;
     m_fAnchorY = 0.0113039f;

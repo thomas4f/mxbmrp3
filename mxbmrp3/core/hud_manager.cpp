@@ -33,6 +33,7 @@
 #include "../hud/map_hud.h"
 #include "../hud/radar_hud.h"
 #include "../hud/pitboard_hud.h"
+#include "../hud/fuel_widget.h"
 #include "../hud/cursor.h"
 #include <windows.h>
 #include <memory>
@@ -161,9 +162,14 @@ void HudManager::initialize() {
     m_pNotices = noticesPtr.get();
     registerHud(std::move(noticesPtr));
 
-    // Register SettingsHud with pointers to all 21 configurable HUDs and widgets
+    auto fuelPtr = std::make_unique<FuelWidget>();
+    m_pFuel = fuelPtr.get();
+    m_pFuel->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_FUEL_WIDGET);
+    registerHud(std::move(fuelPtr));
+
+    // Register SettingsHud with pointers to all 22 configurable HUDs and widgets
     auto settingsPtr = std::make_unique<SettingsHud>(m_pSessionBest, m_pLapLog, m_pStandings,
-                                                       m_pPerformance, m_pTelemetry, m_pInput, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pSpeedo, m_pTacho, m_pTiming, m_pBars, m_pVersion, m_pNotices, m_pPitboard);
+                                                       m_pPerformance, m_pTelemetry, m_pInput, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pSpeedo, m_pTacho, m_pTiming, m_pBars, m_pVersion, m_pNotices, m_pPitboard, m_pFuel);
     m_pSettingsHud = settingsPtr.get();
     registerHud(std::move(settingsPtr));
 
@@ -222,6 +228,7 @@ void HudManager::clear() {
     m_pTiming = nullptr;
     m_pNotices = nullptr;
     m_pPitboard = nullptr;
+    m_pFuel = nullptr;
     m_pSettingsHud = nullptr;
     m_pSettingsButton = nullptr;
     m_pDraggingHud = nullptr;
@@ -467,7 +474,7 @@ void HudManager::collectRenderData() {
                            hud.get() == m_pSpeed || hud.get() == m_pSpeedo ||
                            hud.get() == m_pTacho || hud.get() == m_pTiming ||
                            hud.get() == m_pBars || hud.get() == m_pVersion ||
-                           hud.get() == m_pNotices);
+                           hud.get() == m_pNotices || hud.get() == m_pFuel);
             if (m_bAllWidgetsToggledOff && isWidget) {
                 continue;
             }
@@ -523,6 +530,7 @@ void HudManager::setupDefaultResources() {
     addSprite("mxbmrp3_data\\tacho_widget.tga");  // SpriteIndex::TACHO_DIAL = 19
     addSprite("mxbmrp3_data\\radar_hud.tga");     // SpriteIndex::BG_RADAR_HUD = 20
     addSprite("mxbmrp3_data\\radar_sector.tga"); // SpriteIndex::RADAR_SECTOR = 21
+    addSprite("mxbmrp3_data\\fuel_widget.tga");  // SpriteIndex::BG_FUEL_WIDGET = 22
 
     // Add default fonts needed by HUDs
     // Safety: Check array bounds before incrementing to prevent buffer overflow

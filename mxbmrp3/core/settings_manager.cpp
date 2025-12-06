@@ -22,6 +22,7 @@
 #include "../hud/bars_widget.h"
 #include "../hud/version_widget.h"
 #include "../hud/notices_widget.h"
+#include "../hud/fuel_widget.h"
 #include "../hud/settings_button_widget.h"
 #include "../hud/map_hud.h"
 #include "../hud/radar_hud.h"
@@ -280,6 +281,10 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     saveBaseHudProperties(file, hudManager.getNoticesWidget(), "NoticesWidget");
     file << "\n";
 
+    // Save FuelWidget
+    saveBaseHudProperties(file, hudManager.getFuelWidget(), "FuelWidget");
+    file << "\n";
+
     // Save SettingsButtonWidget
     saveBaseHudProperties(file, hudManager.getSettingsButtonWidget(), "SettingsButtonWidget");
     file << "\n";
@@ -388,6 +393,7 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
             {"BarsWidget", [&]() { return HudLoadInfo{&hudManager.getBarsWidget(), nullptr}; }},
             {"VersionWidget", [&]() { return HudLoadInfo{&hudManager.getVersionWidget(), nullptr}; }},
             {"NoticesWidget", [&]() { return HudLoadInfo{&hudManager.getNoticesWidget(), nullptr}; }},
+            {"FuelWidget", [&]() { return HudLoadInfo{&hudManager.getFuelWidget(), nullptr}; }},
             {"SettingsButtonWidget", [&]() { return HudLoadInfo{&hudManager.getSettingsButtonWidget(), nullptr}; }},
         };
 

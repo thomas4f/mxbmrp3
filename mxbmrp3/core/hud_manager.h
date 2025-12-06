@@ -73,13 +73,14 @@ public:
     class NoticesWidget& getNoticesWidget() const { return *m_pNotices; }
     class SettingsButtonWidget& getSettingsButtonWidget() const { return *m_pSettingsButton; }
     class PitboardHud& getPitboardHud() const { return *m_pPitboard; }
+    class FuelWidget& getFuelWidget() const { return *m_pFuel; }
 
 private:
     HudManager() : m_bInitialized(false), m_bResourcesInitialized(false),
                    m_pDraggingHud(nullptr), m_pSettingsHud(nullptr), m_pSettingsButton(nullptr),
                    m_pSessionBest(nullptr), m_pLapLog(nullptr), m_pStandings(nullptr),
                    m_pPerformance(nullptr), m_pTelemetry(nullptr),
-                   m_pInput(nullptr), m_pTime(nullptr), m_pPosition(nullptr), m_pLap(nullptr), m_pSession(nullptr), m_pMapHud(nullptr), m_pRadarHud(nullptr), m_pSpeed(nullptr), m_pSpeedo(nullptr), m_pTacho(nullptr), m_pTiming(nullptr), m_pBars(nullptr), m_pVersion(nullptr), m_pNotices(nullptr), m_pPitboard(nullptr),
+                   m_pInput(nullptr), m_pTime(nullptr), m_pPosition(nullptr), m_pLap(nullptr), m_pSession(nullptr), m_pMapHud(nullptr), m_pRadarHud(nullptr), m_pSpeed(nullptr), m_pSpeedo(nullptr), m_pTacho(nullptr), m_pTiming(nullptr), m_pBars(nullptr), m_pVersion(nullptr), m_pNotices(nullptr), m_pPitboard(nullptr), m_pFuel(nullptr),
                    m_numSpriteNames(0), m_numFontNames(0),
                    m_bAllHudsToggledOff(false), m_bAllWidgetsToggledOff(false) {
         m_spriteBuffer[0] = '\0';
@@ -125,6 +126,7 @@ private:
     class VersionWidget* m_pVersion;
     class NoticesWidget* m_pNotices;
     class PitboardHud* m_pPitboard;
+    class FuelWidget* m_pFuel;
 
     // Temporary HUD visibility toggle (doesn't modify actual visibility state)
     bool m_bAllHudsToggledOff;

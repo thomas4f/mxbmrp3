@@ -19,7 +19,7 @@ LapWidget::LapWidget()
     , m_cachedSessionLength(-1)
 {
     initializeWidget("LapWidget", 2);  // Two strings: label (optional), lap value
-    setPosition(-0.374f, 0.0111f);
+    setPosition(-0.3685f, 0.0111f);
 }
 
 bool LapWidget::handlesDataType(DataChangeType dataType) const {
@@ -184,6 +184,6 @@ void LapWidget::resetToDefaults() {
     m_bShowBackgroundTexture = false;  // No texture by default
     m_fBackgroundOpacity = 0.1f;
     m_fScale = 1.0f;
-    setPosition(-0.374f, 0.0111f);
+    setPosition(-0.3685f, 0.0111f);
     setDataDirty();
 }

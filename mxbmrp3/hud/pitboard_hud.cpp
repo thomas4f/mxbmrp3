@@ -26,7 +26,7 @@ PitboardHud::PitboardHud()
     m_fBackgroundOpacity = 1.0f;  // 100% opacity
     m_fScale = 1.0f;  // 100% default scale
     m_displayMode = MODE_SPLITS;  // Show at splits by default
-    setPosition(-0.0055f, 0.0222f);
+    setPosition(0.0f, 0.0222f);
 
     // Pre-allocate vectors
     m_quads.reserve(1);
@@ -397,7 +397,7 @@ void PitboardHud::resetToDefaults() {
     m_bShowBackgroundTexture = true;  // Show texture by default
     m_fBackgroundOpacity = 1.0f;  // 100% opacity
     m_fScale = 1.0f;  // 100% default scale
-    setPosition(-0.0055f, 0.0222f);
+    setPosition(0.0f, 0.0222f);
     m_enabledRows = ROW_DEFAULT;
     m_displayMode = MODE_SPLITS;  // Show at splits by default
     m_cachedSplit1 = -1;

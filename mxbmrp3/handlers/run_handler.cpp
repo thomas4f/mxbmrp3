@@ -7,6 +7,7 @@
 #include "../core/plugin_data.h"
 #include "../core/input_manager.h"
 #include "../core/hud_manager.h"
+#include "../hud/fuel_widget.h"
 #include "../diagnostics/logger.h"
 
 DEFINE_HANDLER_SINGLETON(RunHandler)
@@ -28,6 +29,9 @@ void RunHandler::handleRunStart() {
 
     // Set player running flag (cleared in RunStop/RunDeinit)
     PluginData::getInstance().setPlayerRunning(true);
+
+    // Reset fuel tracking for new run
+    HudManager::getInstance().getFuelWidget().resetFuelTracking();
 
     // Refresh window information at run start to detect any resolution changes
     // that might have happened while in menus
