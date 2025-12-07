@@ -262,7 +262,7 @@ void PitboardHud::rebuildRenderData() {
     // Title row (optional)
     if (m_bShowTitle) {
         addTitleString("Pitboard", centerX, currentY, Justify::CENTER,
-            Fonts::FUZZY_BUBBLES, Colors::BLACK, dim.fontSize);
+            Fonts::FUZZY_BUBBLES, ColorPalette::BLACK, dim.fontSize);
         currentY += titleHeight;
     }
 
@@ -285,7 +285,7 @@ void PitboardHud::rebuildRenderData() {
             snprintf(riderIdStr, sizeof(riderIdStr), "%s", Placeholders::GENERIC);
         }
         addString(riderIdStr, centerX, currentY, Justify::CENTER,
-                  Fonts::FUZZY_BUBBLES, Colors::BLACK, dim.fontSize);
+                  Fonts::FUZZY_BUBBLES, ColorPalette::BLACK, dim.fontSize);
     }
     currentY += dim.lineHeightNormal;
 
@@ -294,7 +294,7 @@ void PitboardHud::rebuildRenderData() {
         const char* sessionName = PluginUtils::getSessionString(sessionData.eventType, sessionData.session);
         if (sessionName) {
             addString(sessionName, centerX, currentY, Justify::CENTER,
-                      Fonts::FUZZY_BUBBLES, Colors::BLACK, dim.fontSize);
+                      Fonts::FUZZY_BUBBLES, ColorPalette::BLACK, dim.fontSize);
         }
     }
     currentY += dim.lineHeightNormal;
@@ -309,7 +309,7 @@ void PitboardHud::rebuildRenderData() {
             snprintf(positionStr, sizeof(positionStr), "P%s", Placeholders::GENERIC);
         }
         addString(positionStr, leftX, plY, Justify::LEFT,
-                  Fonts::FUZZY_BUBBLES, Colors::BLACK, dim.fontSizeLarge);
+                  Fonts::FUZZY_BUBBLES, ColorPalette::BLACK, dim.fontSizeLarge);
     }
     if (m_enabledRows & ROW_TIME) {
         char timeStr[24];
@@ -324,7 +324,7 @@ void PitboardHud::rebuildRenderData() {
                 snprintf(timeStr, sizeof(timeStr), "%dm", minutes);
             }
             addString(timeStr, centerX, currentY, Justify::CENTER,
-                      Fonts::FUZZY_BUBBLES, Colors::BLACK, dim.fontSize);
+                      Fonts::FUZZY_BUBBLES, ColorPalette::BLACK, dim.fontSize);
         }
     }
     if (m_enabledRows & ROW_LAP) {
@@ -346,7 +346,7 @@ void PitboardHud::rebuildRenderData() {
         }
         if (showLap) {
             addString(lapStr, rightX, plY, Justify::RIGHT,
-                      Fonts::FUZZY_BUBBLES, Colors::BLACK, dim.fontSizeLarge);
+                      Fonts::FUZZY_BUBBLES, ColorPalette::BLACK, dim.fontSizeLarge);
         }
     }
     currentY += dim.lineHeightNormal;
@@ -368,7 +368,7 @@ void PitboardHud::rebuildRenderData() {
             char timeStr[16];
             PluginUtils::formatLapTimeTenths(timeToShow, timeStr, sizeof(timeStr));
             addString(timeStr, centerX, currentY, Justify::CENTER,
-                      Fonts::FUZZY_BUBBLES, Colors::BLACK, dim.fontSize);
+                      Fonts::FUZZY_BUBBLES, ColorPalette::BLACK, dim.fontSize);
         }
     }
     currentY += dim.lineHeightNormal;
@@ -386,7 +386,7 @@ void PitboardHud::rebuildRenderData() {
         }
         if (hasGap) {
             addString(gapStr, centerX, currentY, Justify::CENTER,
-                      Fonts::FUZZY_BUBBLES, Colors::BLACK, dim.fontSize);
+                      Fonts::FUZZY_BUBBLES, ColorPalette::BLACK, dim.fontSize);
         }
     }
 }

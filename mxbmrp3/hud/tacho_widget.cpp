@@ -105,7 +105,7 @@ void TachoWidget::addNeedleQuad(float centerX, float centerY, float angleRad, fl
     needle.m_aafPos[3][1] = baseLeftY;
 
     needle.m_iSprite = SpriteIndex::SOLID_COLOR;
-    needle.m_ulColor = Colors::RED;  // Red needle
+    needle.m_ulColor = ColorPalette::RED;  // Red needle
     m_quads.push_back(needle);
 }
 

@@ -148,7 +148,7 @@ private:
     DataProvider m_provider;
     int m_categoryIndex;  // Index into m_categoryList (0 = "All")
     uint32_t m_enabledColumns = COL_DEFAULT;  // Bitfield of enabled columns
-    int m_recordsToShow = 1;  // Number of records to display (1-10, default 1)
+    int m_recordsToShow = 3;  // Number of records to display (1-10, default 3)
     char m_lastSessionCategory[64] = {0};  // Track session category to auto-update on bike change
 
     // Fetch state

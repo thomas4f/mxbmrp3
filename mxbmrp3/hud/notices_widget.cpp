@@ -12,6 +12,7 @@
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
 #include "../core/widget_constants.h"
+#include "../core/color_config.h"
 
 using namespace PluginConstants;
 using namespace CenterDisplayPositions;
@@ -159,6 +160,8 @@ void NoticesWidget::rebuildRenderData() {
     float noticeQuadY = TIMING_DIVIDER_Y - rowGap - noticeQuadHeight;
     float noticeY = noticeQuadY + dim.paddingV * 0.5f;
 
+    const ColorConfig& colors = ColorConfig::getInstance();
+
     if (m_bIsWrongWay) {
         // Add notice background (red for warning)
         SPluginQuad_t noticeQuad;
@@ -167,12 +170,12 @@ void NoticesWidget::rebuildRenderData() {
         applyOffset(quadX, quadY);
         setQuadPositions(noticeQuad, quadX, quadY, noticeQuadWidth, noticeQuadHeight);
         noticeQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        noticeQuad.m_ulColor = PluginUtils::applyOpacity(SemanticColors::NEGATIVE, m_fBackgroundOpacity);
+        noticeQuad.m_ulColor = PluginUtils::applyOpacity(colors.getNegative(), m_fBackgroundOpacity);
         m_quads.push_back(noticeQuad);
 
         // Add notice text (white)
         addString("WRONG WAY", CENTER_X, noticeY, Justify::CENTER,
-            Fonts::ENTER_SANSMAN, TextColors::PRIMARY, dim.fontSizeLarge);
+            Fonts::ENTER_SANSMAN, colors.getPrimary(), dim.fontSizeLarge);
     }
     else if (!m_blueFlagRaceNums.empty()) {
         // Build blue flag text with race numbers only (max 2): "#XX #YY"
@@ -195,13 +198,12 @@ void NoticesWidget::rebuildRenderData() {
         noticeQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
 
         // Racing blue background for blue flag notice
-        unsigned long blueColor = PluginUtils::makeColor(BLUE_FLAG_COLOR_R, BLUE_FLAG_COLOR_G, BLUE_FLAG_COLOR_B, 255);
-        noticeQuad.m_ulColor = PluginUtils::applyOpacity(blueColor, m_fBackgroundOpacity);
+        noticeQuad.m_ulColor = PluginUtils::applyOpacity(ColorPalette::BLUE, m_fBackgroundOpacity);
         m_quads.push_back(noticeQuad);
 
         // Add notice text (white)
         addString(blueFlagText.c_str(), CENTER_X, noticeY, Justify::CENTER,
-            Fonts::ENTER_SANSMAN, TextColors::PRIMARY, dim.fontSizeLarge);
+            Fonts::ENTER_SANSMAN, colors.getPrimary(), dim.fontSizeLarge);
     }
 
     setBounds(noticeQuadX, noticeQuadY, noticeQuadX + noticeQuadWidth, noticeQuadY + noticeQuadHeight);

@@ -36,9 +36,4 @@ private:
 
     // Wrong way grace period (10 seconds after race start)
     static constexpr int WRONG_WAY_GRACE_PERIOD_MS = 10000;
-
-    // Blue flag background color (racing blue)
-    static constexpr uint8_t BLUE_FLAG_COLOR_R = 0;
-    static constexpr uint8_t BLUE_FLAG_COLOR_G = 100;
-    static constexpr uint8_t BLUE_FLAG_COLOR_B = 255;
 };

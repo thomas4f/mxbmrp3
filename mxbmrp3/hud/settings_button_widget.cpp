@@ -7,6 +7,7 @@
 #include "../core/hud_manager.h"
 #include "../core/input_manager.h"
 #include "../core/plugin_utils.h"
+#include "../core/color_config.h"
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
 
@@ -145,7 +146,7 @@ void SettingsButtonWidget::rebuildRenderData() {
     // Add background quad with hover-based color
     if (isHovering) {
         // Green when closed (can open), Red when open (can close)
-        unsigned long hoverBgColor = settingsVisible ? Colors::RED : Colors::GREEN;
+        unsigned long hoverBgColor = settingsVisible ? ColorPalette::RED : ColorPalette::GREEN;
         SPluginQuad_t backgroundQuad;
         float x = startX, y = startY;
         applyOffset(x, y);
@@ -159,7 +160,7 @@ void SettingsButtonWidget::rebuildRenderData() {
     }
 
     // Use PRIMARY color when hovering, MUTED when not
-    unsigned long textColor = isHovering ? TextColors::PRIMARY : TextColors::MUTED;
+    unsigned long textColor = isHovering ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getMuted();
 
     // Add button text
     addString(buttonText, contentStartX, contentStartY, Justify::LEFT,

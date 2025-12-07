@@ -6,6 +6,7 @@
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
 #include "../core/plugin_utils.h"
+#include "../core/color_config.h"
 #include "../diagnostics/logger.h"
 #include <cmath>
 #include <algorithm>
@@ -701,7 +702,7 @@ void MapHud::renderStartMarker(float rotationAngle) {
     triangle.m_aafPos[3][1] = screenBaseLeftY;
 
     triangle.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-    triangle.m_ulColor = TextColors::PRIMARY;  // White start/finish indicator
+    triangle.m_ulColor = ColorConfig::getInstance().getPrimary();  // White start/finish indicator
     m_quads.push_back(triangle);
 }
 
@@ -812,14 +813,14 @@ void MapHud::renderRiders(float rotationAngle) {
             cone.m_ulColor = PluginUtils::applyOpacity(entry->bikeBrandColor, 0.75f);
         } else {
             // Non-colorized: Others in uniform tertiary color
-            cone.m_ulColor = TextColors::TERTIARY;
+            cone.m_ulColor = ColorConfig::getInstance().getTertiary();
         }
         m_quads.push_back(cone);
 
         // Render label centered on arrow based on label mode
         if (m_labelMode != LabelMode::NONE) {
-            // Center text on arrow's center point (adjust for text baseline)
-            float offsetY = screenY - (dim.fontSizeSmall * 0.5f);
+            // Offset label slightly below the arrow (matches radar)
+            float offsetY = screenY + (dim.fontSizeSmall * 0.8f);
 
             char labelStr[20];  // Sized for "P100" (5) + "#999" (5) = "P100#999" (9 + null)
             int position = pluginData.getPositionForRaceNum(pos.m_iRaceNum);
@@ -855,7 +856,7 @@ void MapHud::renderRiders(float rotationAngle) {
 
             if (labelStr[0] != '\0') {
                 // Use podium colors for position labels (P1/P2/P3)
-                unsigned long labelColor = TextColors::PRIMARY;
+                unsigned long labelColor = ColorConfig::getInstance().getPrimary();
                 if (m_labelMode == LabelMode::POSITION || m_labelMode == LabelMode::BOTH) {
                     if (position == Position::FIRST) {
                         labelColor = PodiumColors::GOLD;
@@ -966,15 +967,15 @@ void MapHud::rebuildRenderData() {
     float titleX = x + dim.paddingH;
     float titleY = y + dim.paddingV;
     addTitleString("MAP", titleX, titleY, Justify::LEFT,
-                  Fonts::TINY5, TextColors::PRIMARY, dim.fontSizeLarge);
+                  Fonts::TINY5, ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
 
     // Render track with optional outline effect (two passes for visual clarity)
     size_t quadsBeforeTrack = m_quads.size();
     constexpr float OUTLINE_WIDTH_MULTIPLIER = 1.4f;  // Outline is 40% wider than track
     if (m_bShowOutline) {
-        renderTrack(rotationAngle, TextColors::PRIMARY, OUTLINE_WIDTH_MULTIPLIER);  // White outline
+        renderTrack(rotationAngle, ColorConfig::getInstance().getPrimary(), OUTLINE_WIDTH_MULTIPLIER);  // White outline
     }
-    renderTrack(rotationAngle, TextColors::BACKGROUND, 1.0f);  // Black fill
+    renderTrack(rotationAngle, ColorConfig::getInstance().getBackground(), 1.0f);  // Black fill
     size_t trackQuads = m_quads.size() - quadsBeforeTrack;
 
     // Render start marker on top of track

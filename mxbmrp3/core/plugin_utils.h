@@ -65,7 +65,7 @@ public:
     }
 
     // Apply opacity to an existing color (extracts RGB, applies alpha)
-    // Example: applyOpacity(TextColors::PRIMARY, 0.5f) -> semi-transparent primary color
+    // Example: applyOpacity(color, 0.5f) -> semi-transparent color
     static constexpr unsigned long applyOpacity(unsigned long baseColor, float opacity) {
         uint8_t r = baseColor & 0xFF;
         uint8_t g = (baseColor >> 8) & 0xFF;

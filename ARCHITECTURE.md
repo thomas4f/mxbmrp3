@@ -318,7 +318,7 @@ void MyHud::rebuildRenderData() {
 
     // Add text
     addString("Hello", x, y, Justify::LEFT, Fonts::ROBOTO_MONO,
-              TextColors::PRIMARY, dim.fontSize);
+              ColorConfig::getInstance().getPrimary(), dim.fontSize);
 
     setBounds(START_X, START_Y, START_X + width, START_Y + height);
 }
@@ -517,10 +517,8 @@ namespace PluginConstants {
         constexpr float LARGE = 0.0300f;
     }
 
-    namespace TextColors {
-        constexpr unsigned long PRIMARY = makeColor(255, 255, 255);
-        constexpr unsigned long MUTED = makeColor(100, 100, 100);
-    }
+    // Colors are configurable via ColorConfig singleton
+    // ColorConfig::getInstance().getPrimary(), getSecondary(), etc.
 
     namespace Session {
         constexpr int RACE_1 = 6;

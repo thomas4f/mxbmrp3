@@ -12,6 +12,12 @@
 
 class FuelWidget : public BaseHud {
 public:
+    // Fuel unit options
+    enum class FuelUnit : uint8_t {
+        LITERS = 0,
+        GALLONS = 1
+    };
+
     FuelWidget();
     virtual ~FuelWidget() = default;
 
@@ -21,6 +27,13 @@ public:
 
     // Called when a new session starts to reset fuel tracking
     void resetFuelTracking();
+
+    // Fuel unit setting
+    FuelUnit getFuelUnit() const { return m_fuelUnit; }
+    void setFuelUnit(FuelUnit unit) { m_fuelUnit = unit; setDataDirty(); }
+
+    // Public for settings access
+    FuelUnit m_fuelUnit = FuelUnit::LITERS;
 
 protected:
     void rebuildLayout() override;

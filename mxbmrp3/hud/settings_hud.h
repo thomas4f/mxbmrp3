@@ -28,6 +28,7 @@
 #include "map_hud.h"
 #include "radar_hud.h"
 #include "../core/plugin_constants.h"
+#include "../core/color_config.h"
 
 // Forward declarations
 class TelemetryHud;
@@ -81,13 +82,22 @@ private:
             RADAR_RANGE_UP,            // Increase radar range (RadarHud)
             RADAR_RANGE_DOWN,          // Decrease radar range (RadarHud)
             RADAR_COLORIZE_TOGGLE,     // Toggle rider colorization (RadarHud)
+            RADAR_PLAYER_ARROW_TOGGLE, // Toggle player's own arrow (RadarHud)
             RADAR_ALERT_DISTANCE_UP,   // Increase alert distance (RadarHud)
             RADAR_ALERT_DISTANCE_DOWN, // Decrease alert distance (RadarHud)
             RADAR_LABEL_MODE_CYCLE,    // Cycle label display mode (RadarHud)
+            RADAR_FADE_TOGGLE,         // Toggle fade when empty (RadarHud)
             DISPLAY_MODE_UP,           // Cycle display mode forward (PerformanceHud)
             DISPLAY_MODE_DOWN,         // Cycle display mode backward (PerformanceHud)
             RECORDS_COUNT_UP,          // Increase records to show (RecordsHud)
             RECORDS_COUNT_DOWN,        // Decrease records to show (RecordsHud)
+            PITBOARD_SHOW_MODE_UP,     // Cycle pitboard show mode forward (PitboardHud)
+            PITBOARD_SHOW_MODE_DOWN,   // Cycle pitboard show mode backward (PitboardHud)
+            COLOR_CYCLE_PREV,          // Cycle color backward (General tab)
+            COLOR_CYCLE_NEXT,          // Cycle color forward (General tab)
+            SPEED_UNIT_TOGGLE,         // Toggle speed unit (mph/km/h)
+            FUEL_UNIT_TOGGLE,          // Toggle fuel unit (L/gal)
+            GRID_SNAP_TOGGLE,          // Toggle grid snapping for HUD positioning
             TAB,                       // Select tab
             CLOSE_BUTTON               // Close the settings menu
         } type;
@@ -99,7 +109,8 @@ private:
             uint32_t*,                                   // For CHECKBOX (targetBitfield)
             StandingsHud::GapMode*,                      // For GAP_MODE_CYCLE
             StandingsHud::GapIndicatorMode*,             // For GAP_INDICATOR_CYCLE
-            uint8_t*                                     // For DISPLAY_MODE_UP/DOWN
+            uint8_t*,                                    // For DISPLAY_MODE_UP/DOWN
+            ColorSlot                                    // For COLOR_CYCLE_PREV/NEXT
         >;
         TargetPointer targetPointer;
 
@@ -144,6 +155,13 @@ private:
               targetPointer(displayMode), flagBit(0), isRequired(false),
               targetHud(_targetHud), tabIndex(0) {}
 
+        // Constructor for COLOR_CYCLE regions
+        ClickRegion(float _x, float _y, float _width, float _height, Type _type,
+                   ColorSlot colorSlot)
+            : x(_x), y(_y), width(_width), height(_height), type(_type),
+              targetPointer(colorSlot), flagBit(0), isRequired(false),
+              targetHud(nullptr), tabIndex(0) {}
+
         // Default constructor
         ClickRegion() : x(0), y(0), width(0), height(0), type(CLOSE_BUTTON),
                        targetPointer(std::monostate{}), flagBit(0), isRequired(false),
@@ -175,6 +193,8 @@ private:
     void handleRadarAlertDistanceClick(const ClickRegion& region, bool increase);
     void handleRadarLabelModeClick(const ClickRegion& region);
     void handleDisplayModeClick(const ClickRegion& region, bool increase);
+    void handlePitboardShowModeClick(const ClickRegion& region, bool increase);
+    void handleColorCycleClick(const ClickRegion& region, bool forward);
     void handleTabClick(const ClickRegion& region);
     void handleCloseButtonClick();
 
@@ -241,18 +261,19 @@ private:
 
     // Tab system
     enum Tab {
-        TAB_STANDINGS = 0,     // F1
-        TAB_MAP = 1,           // F2
-        TAB_RADAR = 2,         // F3
-        TAB_LAP_LOG = 3,       // F4
-        TAB_SESSION_BEST = 4,  // F5
-        TAB_TELEMETRY = 5,     // F6
-        TAB_INPUT = 6,         // F7
-        TAB_RECORDS = 7,       // F8 - Lap Records (online)
-        TAB_PITBOARD = 8,
-        TAB_PERFORMANCE = 9,
-        TAB_WIDGETS = 10,
-        TAB_COUNT = 11
+        TAB_GENERAL = 0,       // General settings (colors)
+        TAB_STANDINGS = 1,     // F1
+        TAB_MAP = 2,           // F2
+        TAB_RADAR = 3,         // F3
+        TAB_LAP_LOG = 4,       // F4
+        TAB_SESSION_BEST = 5,  // F5
+        TAB_TELEMETRY = 6,     // F6
+        TAB_INPUT = 7,         // F7
+        TAB_RECORDS = 8,       // F8 - Lap Records (online)
+        TAB_PITBOARD = 9,
+        TAB_PERFORMANCE = 10,
+        TAB_WIDGETS = 11,
+        TAB_COUNT = 12
     };
     int m_activeTab;
 

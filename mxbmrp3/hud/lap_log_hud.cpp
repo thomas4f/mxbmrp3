@@ -8,6 +8,7 @@
 #include "../core/plugin_utils.h"
 #include "../core/plugin_constants.h"
 #include "../core/plugin_data.h"
+#include "../core/color_config.h"
 #include <cstring>
 #include <cstdio>
 
@@ -235,9 +236,12 @@ void LapLogHud::rebuildRenderData() {
     // Best lap time: use the separately-stored best lap entry if available
     int bestLapTime = (bestLapEntry && bestLapEntry->isComplete) ? bestLapEntry->lapTime : -1;
 
+    // Get color configuration
+    const ColorConfig& colors = ColorConfig::getInstance();
+
     // Render title at TOP (if shown)
     addTitleString("Lap Log", contentStartX, currentY, Justify::LEFT,
-        Fonts::ENTER_SANSMAN, TextColors::PRIMARY, dim.fontSizeLarge);
+        Fonts::ENTER_SANSMAN, colors.getPrimary(), dim.fontSizeLarge);
     currentY += titleHeight;
 
     // Render data rows from top to bottom (best lap first, then oldest to newest)
@@ -294,36 +298,36 @@ void LapLogHud::rebuildRenderData() {
 
             // Determine colors and fonts
             // Invalid laps (track cuts in race mode) show muted times
-            unsigned long colorLap = TextColors::SECONDARY;  // Lap number always secondary
+            unsigned long colorLap = colors.getSecondary();  // Lap number always secondary
             unsigned long colorS1, colorS2, colorS3, colorTime;
             int fontLapTime;
 
             // For invalid laps, show all timing data as muted
             // For valid laps, highlight PBs in green, others in primary
             if (!entry.isValid || entry.sector1 <= 0) {
-                colorS1 = TextColors::MUTED;
+                colorS1 = colors.getMuted();
             } else {
-                colorS1 = (entry.sector1 == bestSector1) ? SemanticColors::POSITIVE : TextColors::PRIMARY;
+                colorS1 = (entry.sector1 == bestSector1) ? colors.getPositive() : colors.getPrimary();
             }
 
             if (!entry.isValid || entry.sector2 <= 0) {
-                colorS2 = TextColors::MUTED;
+                colorS2 = colors.getMuted();
             } else {
-                colorS2 = (entry.sector2 == bestSector2) ? SemanticColors::POSITIVE : TextColors::PRIMARY;
+                colorS2 = (entry.sector2 == bestSector2) ? colors.getPositive() : colors.getPrimary();
             }
 
             if (!entry.isValid || entry.sector3 <= 0) {
-                colorS3 = TextColors::MUTED;
+                colorS3 = colors.getMuted();
             } else {
-                colorS3 = (entry.sector3 == bestSector3) ? SemanticColors::POSITIVE : TextColors::PRIMARY;
+                colorS3 = (entry.sector3 == bestSector3) ? colors.getPositive() : colors.getPrimary();
             }
 
             bool hasLapTime = (entry.lapTime > 0 && entry.isComplete);
             if (!entry.isValid || !hasLapTime) {
-                colorTime = TextColors::MUTED;
+                colorTime = colors.getMuted();
                 fontLapTime = Fonts::ROBOTO_MONO;
             } else {
-                colorTime = (entry.lapTime == bestLapTime) ? SemanticColors::POSITIVE : TextColors::PRIMARY;
+                colorTime = (entry.lapTime == bestLapTime) ? colors.getPositive() : colors.getPrimary();
                 fontLapTime = Fonts::ROBOTO_MONO_BOLD;
             }
 
@@ -341,11 +345,11 @@ void LapLogHud::rebuildRenderData() {
             strcpy_s(s3Str, sizeof(s3Str), Placeholders::GENERIC);
             strcpy_s(timeStr, sizeof(timeStr), Placeholders::LAP_TIME);
 
-            addString((m_enabledColumns & COL_LAP) ? lapStr : "", m_columns.lap, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, TextColors::MUTED, dim.fontSize);
-            addString((m_enabledColumns & COL_S1) ? s1Str : "", m_columns.s1, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, TextColors::MUTED, dim.fontSize);
-            addString((m_enabledColumns & COL_S2) ? s2Str : "", m_columns.s2, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, TextColors::MUTED, dim.fontSize);
-            addString((m_enabledColumns & COL_S3) ? s3Str : "", m_columns.s3, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, TextColors::MUTED, dim.fontSize);
-            addString((m_enabledColumns & COL_TIME) ? timeStr : "", m_columns.time, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, TextColors::MUTED, dim.fontSize);
+            addString((m_enabledColumns & COL_LAP) ? lapStr : "", m_columns.lap, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, colors.getMuted(), dim.fontSize);
+            addString((m_enabledColumns & COL_S1) ? s1Str : "", m_columns.s1, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, colors.getMuted(), dim.fontSize);
+            addString((m_enabledColumns & COL_S2) ? s2Str : "", m_columns.s2, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, colors.getMuted(), dim.fontSize);
+            addString((m_enabledColumns & COL_S3) ? s3Str : "", m_columns.s3, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, colors.getMuted(), dim.fontSize);
+            addString((m_enabledColumns & COL_TIME) ? timeStr : "", m_columns.time, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, colors.getMuted(), dim.fontSize);
         }
 
         currentY += dim.lineHeightNormal;  // Move down to next row

@@ -11,12 +11,25 @@
 
 class SpeedWidget : public BaseHud {
 public:
+    // Speed unit options
+    enum class SpeedUnit : uint8_t {
+        MPH = 0,
+        KMH = 1
+    };
+
     SpeedWidget();
     virtual ~SpeedWidget() = default;
 
     void update() override;
     bool handlesDataType(DataChangeType dataType) const override;
     void resetToDefaults();
+
+    // Speed unit setting
+    SpeedUnit getSpeedUnit() const { return m_speedUnit; }
+    void setSpeedUnit(SpeedUnit unit) { m_speedUnit = unit; setDataDirty(); }
+
+    // Public for settings access
+    SpeedUnit m_speedUnit = SpeedUnit::MPH;
 
 protected:
     void rebuildLayout() override;

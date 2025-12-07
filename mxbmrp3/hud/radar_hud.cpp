@@ -6,6 +6,7 @@
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
 #include "../core/plugin_utils.h"
+#include "../core/color_config.h"
 #include "../diagnostics/logger.h"
 #include <cmath>
 #include <algorithm>
@@ -20,6 +21,8 @@ using namespace PluginConstants::Math;
 RadarHud::RadarHud()
     : m_fRadarRangeMeters(DEFAULT_RADAR_RANGE),
       m_bColorizeRiders(true),
+      m_bShowPlayerArrow(false),
+      m_bFadeWhenEmpty(false),
       m_fAlertDistance(DEFAULT_ALERT_DISTANCE),
       m_labelMode(LabelMode::POSITION) {
 
@@ -28,7 +31,7 @@ RadarHud::RadarHud()
     // Set defaults
     m_bShowTitle = false;  // No title for radar (compact display)
     m_bShowBackgroundTexture = true;  // Show texture by default
-    m_fBackgroundOpacity = 0.2f;
+    m_fBackgroundOpacity = 0.1f;
 
     // Set initial position (horizontally centered at scale 1.0)
     setPosition(0.43275f, 0.0111f);
@@ -201,7 +204,7 @@ void RadarHud::renderRiderLabel(float radarX, float radarY, int raceNum, int pos
 
     if (labelStr[0] != '\0') {
         // Use podium colors for position labels
-        unsigned long labelColor = TextColors::PRIMARY;
+        unsigned long labelColor = ColorConfig::getInstance().getPrimary();
         if (m_labelMode == LabelMode::POSITION || m_labelMode == LabelMode::BOTH) {
             if (position == Position::FIRST) {
                 labelColor = PodiumColors::GOLD;
@@ -240,25 +243,7 @@ void RadarHud::rebuildRenderData() {
     // Set bounds for dragging
     setBounds(x, y, x + width, y + height);
 
-    // Add background
-    addBackgroundQuad(x, y, width, height);
-
-    // Add title
-    if (m_bShowTitle) {
-        float titleX = x + dim.paddingH;
-        float titleY = y + dim.paddingV;
-        addTitleString("RADAR", titleX, titleY, Justify::LEFT,
-                      Fonts::TINY5, TextColors::PRIMARY, dim.fontSizeLarge);
-    }
-
-    // Calculate radar center position
-    float centerX = x + width * 0.5f;
-    float centerY = y + titleHeight + dim.paddingV + radarRadius;
-
-    // Number of sectors for proximity highlighting (4 = front, right, back, left)
-    constexpr int NUM_SECTORS = 4;
-
-    // Get plugin data and find local player
+    // Get plugin data and find local player (needed for opacity calculation)
     const PluginData& pluginData = PluginData::getInstance();
     int displayRaceNum = pluginData.getDisplayRaceNum();
 
@@ -269,6 +254,64 @@ void RadarHud::rebuildRenderData() {
             break;
         }
     }
+
+    // Pre-calculate max rider opacity for background fade (only if fade is enabled)
+    float maxRiderOpacity = 1.0f;  // Default: fully visible
+    if (m_bFadeWhenEmpty && localPlayer) {
+        maxRiderOpacity = 0.0f;  // Start at 0, find max
+        float playerX = localPlayer->m_fPosX;
+        float playerZ = localPlayer->m_fPosZ;
+        float trackLength = pluginData.getSessionData().trackLength;
+
+        for (const auto& pos : m_riderPositions) {
+            if (pos.m_iRaceNum == displayRaceNum) continue;
+
+            float relX = pos.m_fPosX - playerX;
+            float relZ = pos.m_fPosZ - playerZ;
+            float distance = std::sqrt(relX * relX + relZ * relZ);
+            if (distance > m_fRadarRangeMeters) continue;
+
+            // Calculate track distance fade
+            float trackDist = std::abs(pos.m_fTrackPos - localPlayer->m_fTrackPos);
+            if (trackDist > 0.5f) trackDist = 1.0f - trackDist;
+
+            float trackFadeOpacity = 1.0f;
+            if (trackLength > 0.0f) {
+                float trackDistMeters = trackDist * trackLength;
+                if (trackDistMeters >= m_fRadarRangeMeters) continue;
+                trackFadeOpacity = 1.0f - (trackDistMeters / m_fRadarRangeMeters);
+            } else {
+                constexpr float FALLBACK_THRESHOLD = 0.05f;
+                if (trackDist >= FALLBACK_THRESHOLD) continue;
+                trackFadeOpacity = 1.0f - (trackDist / FALLBACK_THRESHOLD);
+            }
+
+            maxRiderOpacity = std::max(maxRiderOpacity, trackFadeOpacity);
+        }
+    }
+
+    // Add background (opacity scaled by max rider visibility when fade enabled)
+    float savedOpacity = m_fBackgroundOpacity;
+    m_fBackgroundOpacity = savedOpacity * maxRiderOpacity;
+    addBackgroundQuad(x, y, width, height);
+    m_fBackgroundOpacity = savedOpacity;
+
+    // Add title (also fades with background when fade enabled)
+    if (m_bShowTitle) {
+        float titleX = x + dim.paddingH;
+        float titleY = y + dim.paddingV;
+        unsigned long titleColor = PluginUtils::applyOpacity(
+            ColorConfig::getInstance().getPrimary(), maxRiderOpacity);
+        addTitleString("RADAR", titleX, titleY, Justify::LEFT,
+                      Fonts::TINY5, titleColor, dim.fontSizeLarge);
+    }
+
+    // Calculate radar center position
+    float centerX = x + width * 0.5f;
+    float centerY = y + titleHeight + dim.paddingV + radarRadius;
+
+    // Number of sectors for proximity highlighting (4 = front, right, back, left)
+    constexpr int NUM_SECTORS = 4;
 
     // Track closest rider distance per section (for intensity-based highlighting)
     // Section angles (in radar space where 0° = forward/up, 90° each):
@@ -436,15 +479,17 @@ void RadarHud::rebuildRenderData() {
         return;
     }
 
-    // Draw the local player at center (always pointing up)
-    const RaceEntryData* localEntry = pluginData.getRaceEntry(localPlayer->m_iRaceNum);
-    if (localEntry) {
-        renderRiderArrow(0.0f, 0.0f, 0.0f, localEntry->bikeBrandColor,
-                        centerX, centerY, radarRadius);
+    // Draw the local player at center (always pointing up) if enabled
+    if (m_bShowPlayerArrow) {
+        const RaceEntryData* localEntry = pluginData.getRaceEntry(localPlayer->m_iRaceNum);
+        if (localEntry) {
+            renderRiderArrow(0.0f, 0.0f, 0.0f, localEntry->bikeBrandColor,
+                            centerX, centerY, radarRadius);
 
-        int playerPosition = pluginData.getPositionForRaceNum(localPlayer->m_iRaceNum);
-        renderRiderLabel(0.0f, 0.0f, localPlayer->m_iRaceNum, playerPosition,
-                        centerX, centerY, radarRadius);
+            int playerPosition = pluginData.getPositionForRaceNum(localPlayer->m_iRaceNum);
+            renderRiderLabel(0.0f, 0.0f, localPlayer->m_iRaceNum, playerPosition,
+                            centerX, centerY, radarRadius);
+        }
     }
 
     // Render other riders
@@ -496,7 +541,7 @@ void RadarHud::rebuildRenderData() {
         if (m_bColorizeRiders) {
             riderColor = PluginUtils::applyOpacity(entry->bikeBrandColor, 0.75f * trackFadeOpacity);
         } else {
-            riderColor = PluginUtils::applyOpacity(TextColors::TERTIARY, trackFadeOpacity);
+            riderColor = PluginUtils::applyOpacity(ColorConfig::getInstance().getTertiary(), trackFadeOpacity);
         }
 
         renderRiderArrow(radarX, radarY, relativeYaw, riderColor,
@@ -515,10 +560,12 @@ void RadarHud::resetToDefaults() {
     m_bVisible = true;
     m_bShowTitle = false;  // No title for radar (compact display)
     m_bShowBackgroundTexture = true;  // Show texture by default
-    m_fBackgroundOpacity = 0.2f;
+    m_fBackgroundOpacity = 0.1f;
     m_fScale = 1.0f;
     m_fRadarRangeMeters = DEFAULT_RADAR_RANGE;
     m_bColorizeRiders = true;
+    m_bShowPlayerArrow = false;  // Hide player arrow by default
+    m_bFadeWhenEmpty = false;    // Don't fade by default (always visible)
     m_fAlertDistance = DEFAULT_ALERT_DISTANCE;
     m_labelMode = LabelMode::POSITION;
     setPosition(0.43275f, 0.0111f);  // Horizontally centered at scale 1.0

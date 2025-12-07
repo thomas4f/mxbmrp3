@@ -57,6 +57,9 @@
     <ClInclude Include="core\plugin_utils.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
+    <ClInclude Include="core\color_config.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
     <ClInclude Include="core\plugin_constants.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
@@ -228,6 +231,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="core\plugin_utils.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\color_config.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="core\plugin_manager.cpp">

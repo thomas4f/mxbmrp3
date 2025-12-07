@@ -7,6 +7,7 @@
 #include "../diagnostics/timer.h"
 #include "../core/plugin_utils.h"
 #include "../core/plugin_constants.h"
+#include "../core/color_config.h"
 #include "../core/input_manager.h"
 #include "../core/plugin_manager.h"
 #include <algorithm>
@@ -100,17 +101,20 @@ void StandingsHud::formatStatus(DisplayEntry& entry, int sessionNumLaps, int fin
 void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder, float currentY, const ScaledDimensions& dim) {
 
     const char* placeholder = Placeholders::GENERIC;
+    const char* lapTimePlaceholder = Placeholders::LAP_TIME;
 
     // Determine text color
-    unsigned long textColor = TextColors::PRIMARY;
+    const ColorConfig& colors = ColorConfig::getInstance();
+    unsigned long textColor = colors.getPrimary();
+    unsigned long mutedColor = colors.getMuted();
     if (!isPlaceholder && entry.isGapRow) {
         // Gap rows: red for rider ahead (you're losing), green for rider behind (you're gaining)
-        textColor = entry.isGapToRiderAhead ? SemanticColors::NEGATIVE : SemanticColors::POSITIVE;
+        textColor = entry.isGapToRiderAhead ? colors.getNegative() : colors.getPositive();
     } else if (!isPlaceholder && !entry.isGapRow) {
         // Regular riders: use muted for DNS/DSQ/RETIRED
         using namespace PluginConstants::RiderState;
         if (entry.state == DNS || entry.state == DSQ || entry.state == RETIRED) {
-            textColor = TextColors::MUTED;
+            textColor = colors.getMuted();
         }
     }
 
@@ -145,7 +149,7 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
             }
         }
 
-        // Use podium colors for position column (P1/P2/P3)
+        // Use podium colors for position column (P1/P2/P3), secondary for others
         unsigned long columnColor = textColor;
         if (col.columnIndex == 0 && !isPlaceholder && !entry.isGapRow && entry.position > 0) {
             if (entry.position == Position::FIRST) {
@@ -154,7 +158,14 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
                 columnColor = PodiumColors::SILVER;
             } else if (entry.position == Position::THIRD) {
                 columnColor = PodiumColors::BRONZE;
+            } else {
+                columnColor = colors.getSecondary();
             }
+        }
+
+        // Use muted color for placeholder values
+        if (strcmp(text, placeholder) == 0 || strcmp(text, lapTimePlaceholder) == 0) {
+            columnColor = mutedColor;
         }
 
         addString(text, col.position, currentY, static_cast<int>(col.justify), Fonts::ROBOTO_MONO, columnColor, dim.fontSize);
@@ -783,7 +794,7 @@ void StandingsHud::rebuildRenderData() {
 
     // Title
     addTitleString("Standings", hudDim.contentStartX, currentY, Justify::LEFT,
-        Fonts::ENTER_SANSMAN, TextColors::PRIMARY, dim.fontSizeLarge);
+        Fonts::ENTER_SANSMAN, ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
 
     currentY += hudDim.titleHeight;
 

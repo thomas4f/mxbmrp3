@@ -26,7 +26,7 @@ public:
         COL_TIME = 1 << 4,  // Total lap time
 
         COL_REQUIRED = 0,    // No required columns
-        COL_DEFAULT  = 0x11  // LAP and TIME columns enabled (binary: 10001)
+        COL_DEFAULT  = 0x1F  // All columns enabled (binary: 11111)
     };
 
     // Row count limits (public so static_assert can access them)

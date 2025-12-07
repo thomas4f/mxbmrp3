@@ -19,7 +19,7 @@ struct HudStringConfig {
     // Text formatting
     int justify = PluginConstants::Justify::LEFT;
     int fontIndex = PluginConstants::Fonts::ROBOTO_MONO;
-    unsigned long color = PluginConstants::TextColors::PRIMARY;
+    unsigned long color = PluginUtils::makeColor(255, 255, 255);  // White default
     float fontSize = PluginConstants::FontSizes::NORMAL;
 
     // Layout padding (affects spacing and HUD bounds calculation)

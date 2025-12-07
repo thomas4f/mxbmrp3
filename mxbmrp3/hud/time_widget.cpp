@@ -6,6 +6,7 @@
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
 #include "../core/plugin_utils.h"
+#include "../core/color_config.h"
 #include <cstdio>
 
 using namespace PluginConstants;
@@ -102,7 +103,7 @@ void TimeWidget::rebuildRenderData() {
     PluginUtils::formatTimeMinutesSeconds(sessionTime, timeBuffer, sizeof(timeBuffer));
 
     // Use full opacity for text
-    unsigned long textColor = TextColors::PRIMARY;
+    unsigned long textColor = ColorConfig::getInstance().getPrimary();
 
     float startX = WidgetPositions::WIDGET_STACK_X;
     float startY = WidgetPositions::TIME_Y;

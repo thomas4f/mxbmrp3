@@ -11,24 +11,25 @@
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
 #include "../core/input_manager.h"
+#include "../core/color_config.h"
 #include "../handlers/draw_handler.h"
 
 using namespace PluginConstants;
 
 // Brick colors by row (from top: red, orange, yellow, green)
 namespace BrickColors {
-    constexpr unsigned long ROW_0 = PluginUtils::makeColor(220, 60, 60, 255);    // Red
-    constexpr unsigned long ROW_1 = PluginUtils::makeColor(240, 150, 50, 255);   // Orange
-    constexpr unsigned long ROW_2 = PluginUtils::makeColor(240, 220, 60, 255);   // Yellow
-    constexpr unsigned long ROW_3 = PluginUtils::makeColor(80, 200, 80, 255);    // Green
+    constexpr unsigned long ROW_0 = ColorPalette::RED;
+    constexpr unsigned long ROW_1 = ColorPalette::ORANGE;
+    constexpr unsigned long ROW_2 = ColorPalette::YELLOW;
+    constexpr unsigned long ROW_3 = ColorPalette::GREEN;
 }
 
 // Game UI colors
 namespace GameColors {
-    constexpr unsigned long PADDLE = PluginUtils::makeColor(200, 200, 200, 255);
-    constexpr unsigned long BALL = PluginUtils::makeColor(255, 255, 255, 255);
-    constexpr unsigned long BORDER = PluginUtils::makeColor(100, 100, 100, 255);
-    constexpr unsigned long BACKGROUND = PluginUtils::makeColor(20, 20, 30, 240);
+    constexpr unsigned long PADDLE = ColorPalette::LIGHT_GRAY;
+    constexpr unsigned long BALL = ColorPalette::WHITE;
+    constexpr unsigned long BORDER = ColorPalette::GRAY;
+    constexpr unsigned long BACKGROUND = PluginUtils::makeColor(20, 20, 30, 240);  // Dark blue-gray with transparency
 }
 
 VersionWidget::VersionWidget() {
@@ -435,7 +436,7 @@ void VersionWidget::rebuildRenderData() {
     float contentStartY = startY + minPaddingV;
 
     addString(versionText, contentStartX, contentStartY, Justify::LEFT,
-              Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
+              Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
@@ -536,7 +537,7 @@ void VersionWidget::renderGame() {
     scoreString.m_iFont = Fonts::ROBOTO_MONO;
     scoreString.m_fSize = FontSizes::SMALL;
     scoreString.m_iJustify = Justify::LEFT;
-    scoreString.m_ulColor = TextColors::PRIMARY;
+    scoreString.m_ulColor = ColorConfig::getInstance().getPrimary();
     m_strings.push_back(scoreString);
 
     // Instructions or game state message
@@ -556,7 +557,7 @@ void VersionWidget::renderGame() {
         msgString.m_iFont = Fonts::ROBOTO_MONO;
         msgString.m_fSize = FontSizes::NORMAL;
         msgString.m_iJustify = Justify::CENTER;
-        msgString.m_ulColor = TextColors::SECONDARY;
+        msgString.m_ulColor = ColorConfig::getInstance().getSecondary();
         m_strings.push_back(msgString);
     }
 

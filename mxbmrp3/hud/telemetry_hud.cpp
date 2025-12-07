@@ -5,6 +5,7 @@
 #include "telemetry_hud.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_utils.h"
+#include "../core/color_config.h"
 #include "../diagnostics/logger.h"
 #include <cmath>
 #include <algorithm>
@@ -100,7 +101,7 @@ void TelemetryHud::rebuildRenderData() {
 
     // Title
     addTitleString("Telemetry", contentStartX, currentY, PluginConstants::Justify::LEFT,
-        PluginConstants::Fonts::ENTER_SANSMAN, PluginConstants::TextColors::PRIMARY, dims.fontSizeLarge);
+        PluginConstants::Fonts::ENTER_SANSMAN, ColorConfig::getInstance().getPrimary(), dims.fontSizeLarge);
     currentY += titleHeight;
 
     // Side-by-side layout: graph on left (36 chars), gap (1 char), legend on right (9 chars)
@@ -126,87 +127,100 @@ void TelemetryHud::rebuildRenderData() {
         float clutchPercent = (isViewingPlayerBike && !history.clutch.empty()) ? history.clutch.back() : 0.0f;
 
         float legendY = currentY;  // Start at same Y as graph
+        float valueX = legendStartX + PluginUtils::calculateMonospaceTextWidth(4, dims.fontSize);  // After "XXX "
 
         // THR (if enabled)
         if (m_enabledElements & ELEM_THROTTLE) {
+            addString("THR", legendStartX, legendY, PluginConstants::Justify::LEFT,
+                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
             char buffer[16];
-            snprintf(buffer, sizeof(buffer), "THR  %3d%%", static_cast<int>(throttlePercent * 100));
-            addString(buffer, legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, PluginConstants::TextColors::SECONDARY, dims.fontSize);
+            snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(throttlePercent * 100));
+            addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
+                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
             legendY += dims.lineHeightNormal;
         }
 
         // FBR (front brake - if enabled, always available)
         if (m_enabledElements & ELEM_FRONT_BRAKE) {
+            addString("FBR", legendStartX, legendY, PluginConstants::Justify::LEFT,
+                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
             char buffer[16];
-            snprintf(buffer, sizeof(buffer), "FBR  %3d%%", static_cast<int>(frontBrakePercent * 100));
-            addString(buffer, legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, PluginConstants::TextColors::SECONDARY, dims.fontSize);
+            snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(frontBrakePercent * 100));
+            addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
+                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
             legendY += dims.lineHeightNormal;
         }
 
         // RBR (rear brake - if enabled and telemetry is valid, rear brake data not available when spectating)
         if ((m_enabledElements & ELEM_REAR_BRAKE) && bikeTelemetry.isValid) {
+            addString("RBR", legendStartX, legendY, PluginConstants::Justify::LEFT,
+                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
             char buffer[16];
-            snprintf(buffer, sizeof(buffer), "RBR  %3d%%", static_cast<int>(rearBrakePercent * 100));
-            addString(buffer, legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, PluginConstants::TextColors::SECONDARY, dims.fontSize);
+            snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(rearBrakePercent * 100));
+            addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
+                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
             legendY += dims.lineHeightNormal;
         }
 
         // CLU (if enabled and telemetry is valid - clutch data not available when spectating)
         if ((m_enabledElements & ELEM_CLUTCH) && bikeTelemetry.isValid) {
+            addString("CLU", legendStartX, legendY, PluginConstants::Justify::LEFT,
+                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
             char buffer[16];
-            snprintf(buffer, sizeof(buffer), "CLU  %3d%%", static_cast<int>(clutchPercent * 100));
-            addString(buffer, legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, PluginConstants::TextColors::SECONDARY, dims.fontSize);
+            snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(clutchPercent * 100));
+            addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
+                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
             legendY += dims.lineHeightNormal;
         }
 
-        // RPM (if enabled)
+        // RPM (if enabled) - uses fixed gray to match bars widget
         if (m_enabledElements & ELEM_RPM) {
+            addString("RPM", legendStartX, legendY, PluginConstants::Justify::LEFT,
+                PluginConstants::Fonts::ROBOTO_MONO, ColorPalette::GRAY, dims.fontSize);
             char buffer[16];
-            // Clamp RPM to non-negative values
             int displayRpm = std::max(0, bikeTelemetry.rpm);
-            snprintf(buffer, sizeof(buffer), "RPM %5d", displayRpm);
-            addString(buffer, legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, PluginConstants::TextColors::SECONDARY, dims.fontSize);
+            snprintf(buffer, sizeof(buffer), "%5d", displayRpm);
+            addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
+                PluginConstants::Fonts::ROBOTO_MONO, ColorPalette::GRAY, dims.fontSize);
             legendY += dims.lineHeightNormal;
         }
 
         // FSU (front suspension - if enabled and telemetry is valid, suspension data not available when spectating)
         if ((m_enabledElements & ELEM_FRONT_SUSP) && bikeTelemetry.isValid && bikeTelemetry.frontSuspMaxTravel > 0) {
-            // Only show suspension data when viewing player's bike
             float frontSuspPercent = (isViewingPlayerBike && !history.frontSusp.empty()) ? history.frontSusp.back() : 0.0f;
+            addString("FSU", legendStartX, legendY, PluginConstants::Justify::LEFT,
+                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
             char buffer[16];
-            snprintf(buffer, sizeof(buffer), "FSU  %3d%%", static_cast<int>(frontSuspPercent * 100));
-            addString(buffer, legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, PluginConstants::TextColors::SECONDARY, dims.fontSize);
+            snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(frontSuspPercent * 100));
+            addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
+                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
             legendY += dims.lineHeightNormal;
         }
 
         // RSU (rear suspension - if enabled and telemetry is valid, suspension data not available when spectating)
         if ((m_enabledElements & ELEM_REAR_SUSP) && bikeTelemetry.isValid && bikeTelemetry.rearSuspMaxTravel > 0) {
-            // Only show suspension data when viewing player's bike
             float rearSuspPercent = (isViewingPlayerBike && !history.rearSusp.empty()) ? history.rearSusp.back() : 0.0f;
+            addString("RSU", legendStartX, legendY, PluginConstants::Justify::LEFT,
+                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
             char buffer[16];
-            snprintf(buffer, sizeof(buffer), "RSU  %3d%%", static_cast<int>(rearSuspPercent * 100));
-            addString(buffer, legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, PluginConstants::TextColors::SECONDARY, dims.fontSize);
+            snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(rearSuspPercent * 100));
+            addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
+                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
             legendY += dims.lineHeightNormal;
         }
 
         // GEAR (if enabled - always available)
         if (m_enabledElements & ELEM_GEAR) {
+            addString("GEA", legendStartX, legendY, PluginConstants::Justify::LEFT,
+                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
             char buffer[16];
-            // Display gear as N for neutral, number for other gears
             if (bikeTelemetry.gear == 0) {
-                snprintf(buffer, sizeof(buffer), "GEA     N");
+                snprintf(buffer, sizeof(buffer), "    N");
             } else {
-                snprintf(buffer, sizeof(buffer), "GEA     %d", bikeTelemetry.gear);
+                snprintf(buffer, sizeof(buffer), "    %d", bikeTelemetry.gear);
             }
-            addString(buffer, legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, PluginConstants::TextColors::SECONDARY, dims.fontSize);
+            addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
+                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
         }
     }
 }
@@ -217,7 +231,7 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
 
     // Grid lines (0-100% range, drawn first so dots appear on top)
     float gridLineThickness = 0.001f * getScale();  // ~1px at 1080p for subtle grid lines
-    constexpr unsigned long gridColor = PluginConstants::TextColors::MUTED;  // Muted gray for subtle grid lines
+    unsigned long gridColor = ColorConfig::getInstance().getMuted();  // Muted gray for subtle grid lines
 
     // Grid line percentages (defined as constants in header)
     const float gridValues[] = {
@@ -309,7 +323,7 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
                 if (value1 >= 0.01f || value2 >= 0.01f) {
                     float y1 = y + height - (value1 * height);
                     float y2 = y + height - (value2 * height);
-                    addLineSegment(x1, y1, x2, y2, PluginConstants::TextColors::SECONDARY, lineThickness);
+                    addLineSegment(x1, y1, x2, y2, ColorPalette::GRAY, lineThickness);
                 }
             }
         }

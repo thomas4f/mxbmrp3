@@ -10,6 +10,7 @@
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
 #include "../core/plugin_utils.h"
+#include "../core/color_config.h"
 
 using namespace PluginConstants;
 
@@ -124,7 +125,7 @@ void SpeedWidget::rebuildRenderData() {
     float currentY = contentStartY;
 
     // Use full opacity for text
-    unsigned long textColor = TextColors::PRIMARY;
+    unsigned long textColor = ColorConfig::getInstance().getPrimary();
 
     // Build speed value string and gear string separately
     char speedValueBuffer[64];
@@ -135,9 +136,14 @@ void SpeedWidget::rebuildRenderData() {
         snprintf(speedValueBuffer, sizeof(speedValueBuffer), "%s", Placeholders::GENERIC);
         snprintf(gearValueBuffer, sizeof(gearValueBuffer), "");
     } else {
-        // Convert speedometer to mph (meters/sec to mph) and round to integer
-        int speedMph = static_cast<int>(bikeData.speedometer * UnitConversion::MS_TO_MPH + 0.5f);
-        snprintf(speedValueBuffer, sizeof(speedValueBuffer), "%d", speedMph);
+        // Convert speedometer based on unit setting
+        int speed;
+        if (m_speedUnit == SpeedUnit::KMH) {
+            speed = static_cast<int>(bikeData.speedometer * UnitConversion::MS_TO_KMH + 0.5f);
+        } else {
+            speed = static_cast<int>(bikeData.speedometer * UnitConversion::MS_TO_MPH + 0.5f);
+        }
+        snprintf(speedValueBuffer, sizeof(speedValueBuffer), "%d", speed);
 
         // Display gear: NEUTRAL = N, 1-6 = gear number
         if (bikeData.gear == GearValue::NEUTRAL) {
@@ -155,7 +161,8 @@ void SpeedWidget::rebuildRenderData() {
         Fonts::ENTER_SANSMAN, textColor, dim.fontSizeExtraLarge);
 
     // Add units label (normal font) - centered
-    addString("mph", centerX, currentY + dim.lineHeightLarge, Justify::CENTER,
+    const char* unitsLabel = (m_speedUnit == SpeedUnit::KMH) ? "km/h" : "mph";
+    addString(unitsLabel, centerX, currentY + dim.lineHeightLarge, Justify::CENTER,
         Fonts::ENTER_SANSMAN, textColor, dim.fontSize);
 
     // Add gear circle indicator if limiter RPM is reached (behind gear text)
@@ -182,16 +189,16 @@ void SpeedWidget::rebuildRenderData() {
         applyOffset(circleX, circleTopY);
         setQuadPositions(circleQuad, circleX, circleTopY, circleWidth, circleHeight);
         circleQuad.m_iSprite = PluginConstants::SpriteIndex::GEAR_CIRCLE;
-        circleQuad.m_ulColor = 0xFFFFFFFF;  // White color, full opacity
+        circleQuad.m_ulColor = ColorPalette::WHITE;  // Includes full alpha by default
         m_quads.push_back(circleQuad);
     }
 
     // Add gear value (large font but normal line height) - centered
-    // Color: red if recommended shift point is reached, otherwise primary
+    // Color: negative (red) if recommended shift point is reached, otherwise primary
     // Gear circle sprite appears at limiter (higher RPM threshold)
     // Skip color change if shiftRPM is 0 (some bikes don't report this value)
     unsigned long gearColor = (bikeData.isValid && isViewingPlayerBike && sessionData.shiftRPM > 0 && bikeData.rpm >= sessionData.shiftRPM)
-        ? PluginConstants::Colors::RED
+        ? ColorConfig::getInstance().getNegative()
         : textColor;
     addString(gearValueBuffer, centerX, currentY + dim.lineHeightLarge + dim.lineHeightNormal, Justify::CENTER,
         Fonts::ENTER_SANSMAN, gearColor, dim.fontSizeLarge);
@@ -206,6 +213,7 @@ void SpeedWidget::resetToDefaults() {
     m_bShowBackgroundTexture = false;  // No texture by default
     m_fBackgroundOpacity = 1.0f;  // Full opacity
     m_fScale = 1.0f;
+    m_speedUnit = SpeedUnit::MPH;  // Default to mph
     setPosition(0.319f, 0.6882f);
     setDataDirty();
 }

@@ -12,6 +12,7 @@
 #include "../core/plugin_utils.h"
 #include "../core/plugin_constants.h"
 #include "../core/plugin_data.h"
+#include "../core/color_config.h"
 
 using namespace PluginConstants;
 
@@ -31,7 +32,7 @@ SessionBestHud::SessionBestHud()
     // Set defaults to match user configuration
     m_bShowTitle = true;
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
-    setPosition(0.0935f, 0.0999f);
+    setPosition(0.2585f, 0.0999f);
 
     // Pre-allocate vectors
     m_quads.reserve(1);
@@ -170,7 +171,7 @@ void SessionBestHud::rebuildRenderData() {
 
     // Title row
     addTitleString("Session Best", contentStartX, currentY, Justify::LEFT,
-        Fonts::ENTER_SANSMAN, TextColors::PRIMARY, dim.fontSizeLarge);
+        Fonts::ENTER_SANSMAN, ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
     currentY += titleHeight;
 
     // Recalculate column positions for current scale
@@ -234,17 +235,17 @@ void SessionBestHud::rebuildRenderData() {
         snprintf(paddedLabel, sizeof(paddedLabel), "%5s", label);
 
         // Label in secondary color
-        addString(paddedLabel, m_columns.label, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
+        addString(paddedLabel, m_columns.label, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
 
         // Show time or placeholder
         if (timeMs > 0) {
             PluginUtils::formatLapTime(timeMs, timeStr, sizeof(timeStr));
             // Time in primary color - use specified font (bold for "Best")
-            addString(timeStr, m_columns.time, currentY, Justify::LEFT, timeFont, TextColors::PRIMARY, dim.fontSize);
+            addString(timeStr, m_columns.time, currentY, Justify::LEFT, timeFont, ColorConfig::getInstance().getPrimary(), dim.fontSize);
         } else {
             strcpy_s(timeStr, sizeof(timeStr), Placeholders::LAP_TIME);
             // Placeholder in muted color
-            addString(timeStr, m_columns.time, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, TextColors::MUTED, dim.fontSize);
+            addString(timeStr, m_columns.time, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getMuted(), dim.fontSize);
         }
 
         // Always add a third string to maintain 3 strings per row (required for layout)
@@ -255,7 +256,7 @@ void SessionBestHud::rebuildRenderData() {
                 if (diff != 0) {
                     // Show colored diff for improvement/loss using central formatting
                     PluginUtils::formatTimeDiff(diffStr, sizeof(diffStr), diff);
-                    unsigned long diffColor = (diff < 0) ? SemanticColors::POSITIVE : SemanticColors::NEGATIVE;
+                    unsigned long diffColor = (diff < 0) ? ColorConfig::getInstance().getPositive() : ColorConfig::getInstance().getNegative();
                     addString(diffStr, m_columns.diff, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, diffColor, dim.fontSize);
                 } else {
                     // Diff is exactly zero - this is a new PB
@@ -263,20 +264,20 @@ void SessionBestHud::rebuildRenderData() {
                     if (previousPbTimeMs > 0) {
                         int prevDiff = timeMs - previousPbTimeMs;
                         PluginUtils::formatTimeDiff(diffStr, sizeof(diffStr), prevDiff);
-                        unsigned long diffColor = (prevDiff < 0) ? SemanticColors::POSITIVE : SemanticColors::NEGATIVE;
+                        unsigned long diffColor = (prevDiff < 0) ? ColorConfig::getInstance().getPositive() : ColorConfig::getInstance().getNegative();
                         addString(diffStr, m_columns.diff, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, diffColor, dim.fontSize);
                     } else {
                         // No previous PB to compare - this is the first PB
-                        addString(Placeholders::GENERIC, m_columns.diff, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, TextColors::MUTED, dim.fontSize);
+                        addString(Placeholders::GENERIC, m_columns.diff, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getMuted(), dim.fontSize);
                     }
                 }
             } else {
                 // No PB to compare or no valid time - show placeholder in muted color
-                addString(Placeholders::GENERIC, m_columns.diff, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, TextColors::MUTED, dim.fontSize);
+                addString(Placeholders::GENERIC, m_columns.diff, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getMuted(), dim.fontSize);
             }
         } else {
             // For rows without diff (Best, Ideal), add empty string to maintain layout
-            addString("", m_columns.diff, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, TextColors::MUTED, dim.fontSize);
+            addString("", m_columns.diff, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getMuted(), dim.fontSize);
         }
 
         currentY += dim.lineHeightNormal;
@@ -305,7 +306,7 @@ void SessionBestHud::resetToDefaults() {
     m_bShowBackgroundTexture = false;  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.0935f, 0.0999f);
+    setPosition(0.2585f, 0.0999f);
     m_enabledRows = ROW_DEFAULT;
     setDataDirty();
 }

@@ -6,6 +6,7 @@
 #include "../core/plugin_constants.h"
 #include "../core/plugin_manager.h"
 #include "../core/plugin_utils.h"
+#include "../core/color_config.h"
 #include "../core/settings_manager.h"
 #include "../core/hud_manager.h"
 #include "../diagnostics/logger.h"
@@ -70,9 +71,11 @@ bool BaseHud::handleMouseInput(bool allowInput) {
         const WindowBounds& windowBounds = input.getWindowBounds();
         clampPositionToBounds(newOffsetX, newOffsetY, windowBounds);
 
-        // Snap to grid (use separate horizontal/vertical grids for perfect alignment)
-        newOffsetX = PluginConstants::HudGrid::SNAP_TO_GRID_X(newOffsetX);
-        newOffsetY = PluginConstants::HudGrid::SNAP_TO_GRID_Y(newOffsetY);
+        // Snap to grid if enabled (use separate horizontal/vertical grids for perfect alignment)
+        if (ColorConfig::getInstance().getGridSnapping()) {
+            newOffsetX = PluginConstants::HudGrid::SNAP_TO_GRID_X(newOffsetX);
+            newOffsetY = PluginConstants::HudGrid::SNAP_TO_GRID_Y(newOffsetY);
+        }
 
         // Update position if changed
         if (m_fOffsetX != newOffsetX || m_fOffsetY != newOffsetY) {
@@ -216,17 +219,14 @@ void BaseHud::addBackgroundQuad(float x, float y, float width, float height) {
     if (m_bShowBackgroundTexture && m_iBackgroundTextureIndex > 0) {
         // Use sprite texture for background
         quadEntry.m_iSprite = m_iBackgroundTextureIndex;
-        // Calculate alpha from opacity (0.0 to 1.0)
-        uint8_t alpha = static_cast<uint8_t>(m_fBackgroundOpacity * 255.0f);
-        // White color with alpha to allow texture to show through with opacity
-        quadEntry.m_ulColor = PluginUtils::makeColor(255, 255, 255, alpha);
+        // White color with opacity to allow texture to show through
+        quadEntry.m_ulColor = PluginUtils::applyOpacity(ColorPalette::WHITE, m_fBackgroundOpacity);
     } else {
         // Use solid color background
         quadEntry.m_iSprite = SpriteIndex::SOLID_COLOR;
-        // Calculate alpha from opacity (0.0 to 1.0)
-        uint8_t alpha = static_cast<uint8_t>(m_fBackgroundOpacity * 255.0f);
-        // Use background color (black) with dynamic alpha from widget opacity setting
-        quadEntry.m_ulColor = PluginUtils::makeColor(0, 0, 0, alpha);  // TextColors::BACKGROUND with variable alpha
+        // Get configured background color and apply opacity
+        unsigned long bgColor = ColorConfig::getInstance().getBackground();
+        quadEntry.m_ulColor = PluginUtils::applyOpacity(bgColor, m_fBackgroundOpacity);
     }
 
     m_quads.push_back(quadEntry);

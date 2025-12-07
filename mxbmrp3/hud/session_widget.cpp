@@ -10,6 +10,7 @@
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
 #include "../core/plugin_utils.h"
+#include "../core/color_config.h"
 
 using namespace PluginConstants;
 
@@ -150,7 +151,7 @@ void SessionWidget::rebuildRenderData() {
     float currentY = contentStartY;
 
     // Use full opacity for text
-    unsigned long textColor = TextColors::PRIMARY;
+    unsigned long textColor = ColorConfig::getInstance().getPrimary();
 
     // "Session" label (optional, controlled by title toggle)
     if (m_bShowTitle) {

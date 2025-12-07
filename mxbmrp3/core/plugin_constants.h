@@ -5,12 +5,13 @@
 #pragma once
 
 #include "plugin_utils.h"
+#include "color_config.h"  // ColorPalette is the source of truth for basic colors
 
 namespace PluginConstants {
     // Plugin identification
     constexpr const char* PLUGIN_NAME = "mxbmrp3";
     constexpr const char* PLUGIN_DISPLAY_NAME = "MXBMRP3";
-    constexpr const char* PLUGIN_VERSION = "1.5.5.2";
+    constexpr const char* PLUGIN_VERSION = "1.5.5.3";
     constexpr const char* PLUGIN_AUTHOR = "thomas4f";
 
     // MXBikes API constants
@@ -126,15 +127,6 @@ namespace PluginConstants {
         constexpr unsigned long DEFAULT = PluginUtils::makeColor(128, 128, 128);  // #808080 - Default Gray
     }
 
-    // UI Text Colors
-    namespace TextColors {
-        constexpr unsigned long PRIMARY = PluginUtils::makeColor(255, 255, 255);    // #ffffff
-        constexpr unsigned long SECONDARY = PluginUtils::makeColor(190, 190, 190);  // #bebebe
-        constexpr unsigned long TERTIARY = PluginUtils::makeColor(140, 140, 140);   // #8c8c8c
-        constexpr unsigned long MUTED = PluginUtils::makeColor(100, 100, 100);      // #646464
-        constexpr unsigned long BACKGROUND = PluginUtils::makeColor(0, 0, 0);       // #000000
-    }
-
     // Podium Colors
     namespace PodiumColors {
         constexpr unsigned long GOLD = PluginUtils::makeColor(255, 215, 0);      // #ffd700 - Gold
@@ -142,37 +134,18 @@ namespace PluginConstants {
         constexpr unsigned long BRONZE = PluginUtils::makeColor(205, 127, 50);   // #cd7f32 - Bronze
     }
 
-    // Standard UI Colors
-    namespace Colors {
-        constexpr unsigned long BLACK = PluginUtils::makeColor(0, 0, 0);          // #000000
-        constexpr unsigned long WHITE = PluginUtils::makeColor(255, 255, 255);    // #ffffff
-        constexpr unsigned long RED = PluginUtils::makeColor(255, 0, 0);          // #ff0000
-        constexpr unsigned long GREEN = PluginUtils::makeColor(0, 255, 0);        // #00ff00
-        constexpr unsigned long BLUE = PluginUtils::makeColor(0, 0, 255);         // #0000ff
-        constexpr unsigned long PURPLE = PluginUtils::makeColor(200, 0, 255);     // #c800ff
-        constexpr unsigned long ORANGE = PluginUtils::makeColor(255, 165, 0);     // #ffa500
-        constexpr unsigned long YELLOW = PluginUtils::makeColor(255, 255, 0);     // #ffff00
-        constexpr unsigned long CYAN = PluginUtils::makeColor(0, 255, 255);       // #00ffff
-        constexpr unsigned long DARK_GRAY = PluginUtils::makeColor(64, 64, 64);   // #404040
-    }
-
-    // Semantic color aliases for common use cases
+    // Semantic color aliases for input controls (used in input visualizer)
+    // Basic colors are defined in ColorPalette (color_config.h)
     namespace SemanticColors {
-        // Performance/comparison colors (used in lap times, diffs, performance graphs)
-        constexpr unsigned long POSITIVE = Colors::GREEN;   // Improvements, best times, good performance
-        constexpr unsigned long NEGATIVE = Colors::RED;     // Losses, worse times, bad performance
-        constexpr unsigned long WARNING = Colors::YELLOW;   // Caution, intermediate state
-
-        // Input control colors (used in input visualizer)
-        constexpr unsigned long THROTTLE = Colors::GREEN;
-        constexpr unsigned long FRONT_BRAKE = Colors::RED;                        // Bright red (255, 0, 0)
+        constexpr unsigned long THROTTLE = ColorPalette::GREEN;
+        constexpr unsigned long FRONT_BRAKE = ColorPalette::RED;                  // Bright red (255, 0, 0)
         constexpr unsigned long REAR_BRAKE = PluginUtils::makeColor(180, 0, 0);   // Dark red
-        constexpr unsigned long CLUTCH = Colors::BLUE;
-        constexpr unsigned long FRONT_SUSP = Colors::PURPLE;                      // Bright purple (200, 0, 255)
+        constexpr unsigned long CLUTCH = ColorPalette::BLUE;
+        constexpr unsigned long FRONT_SUSP = ColorPalette::PURPLE;                // Bright purple (200, 0, 255)
         constexpr unsigned long REAR_SUSP = PluginUtils::makeColor(120, 0, 200);  // Dark purple
-        constexpr unsigned long GEAR = Colors::ORANGE;                            // Orange for gear indicator
-        constexpr unsigned long STICK_L = Colors::BLUE;     // Left stick (bike control)
-        constexpr unsigned long STICK_R = Colors::GREEN;    // Right stick (rider lean)
+        constexpr unsigned long GEAR = ColorPalette::ORANGE;                      // Orange for gear indicator
+        constexpr unsigned long STICK_L = ColorPalette::BLUE;   // Left stick (bike control)
+        constexpr unsigned long STICK_R = ColorPalette::GREEN;  // Right stick (rider lean)
     }
 
     // Mathematical constants
@@ -187,6 +160,9 @@ namespace PluginConstants {
         // Speed conversions
         constexpr float MS_TO_KMH = 3.6f;       // meters/second to kilometers/hour
         constexpr float MS_TO_MPH = 2.23694f;   // meters/second to miles/hour
+
+        // Volume conversions
+        constexpr float LITERS_TO_GALLONS = 0.264172f;  // liters to US gallons
 
         // Temperature conversions
         constexpr float CELSIUS_TO_FAHRENHEIT_MULT = 9.0f / 5.0f;

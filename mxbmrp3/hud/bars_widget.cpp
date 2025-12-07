@@ -10,6 +10,7 @@
 // ============================================================================
 #include "bars_widget.h"
 #include "../core/plugin_utils.h"
+#include "../core/color_config.h"
 #include "../diagnostics/logger.h"
 #include <algorithm>
 #include <cstdio>
@@ -121,8 +122,8 @@ void BarsWidget::rebuildRenderData() {
     unsigned long frontBrakeColor = SemanticColors::FRONT_BRAKE;  // Red
     unsigned long rearBrakeColor = SemanticColors::REAR_BRAKE;    // Dark red
     unsigned long clutchColor = SemanticColors::CLUTCH;           // Blue
-    unsigned long rpmColor = TextColors::SECONDARY;               // Gray
-    unsigned long fuelColor = Colors::YELLOW;                     // Yellow
+    unsigned long rpmColor = ColorPalette::GRAY;                                        // Gray (fixed)
+    unsigned long fuelColor = ColorPalette::YELLOW;                     // Yellow
     unsigned long frontSuspColor = SemanticColors::FRONT_SUSP;    // Purple
     unsigned long rearSuspColor = SemanticColors::REAR_SUSP;      // Dark purple
 
@@ -132,39 +133,39 @@ void BarsWidget::rebuildRenderData() {
     // Bar 0: Throttle (T) - single bar
     addVerticalBar(currentX, contentStartY, barWidth, barHeight, throttleValue, throttleColor);
     addString("T", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-              Fonts::ROBOTO_MONO, TextColors::TERTIARY, dims.fontSize);
+              Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
     currentX += barWidth + barSpacing;
 
     // Bar 1: Brake (B) - split into FBR | RBR
     addVerticalBar(currentX, contentStartY, halfBarWidth, barHeight, frontBrakeValue, frontBrakeColor);
     addVerticalBar(currentX + halfBarWidth, contentStartY, halfBarWidth, barHeight, rearBrakeValue, rearBrakeColor);
     addString("B", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-              Fonts::ROBOTO_MONO, TextColors::TERTIARY, dims.fontSize);
+              Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
     currentX += barWidth + barSpacing;
 
     // Bar 2: Clutch (C) - single bar
     addVerticalBar(currentX, contentStartY, barWidth, barHeight, clutchValue, clutchColor);
     addString("C", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-              Fonts::ROBOTO_MONO, TextColors::TERTIARY, dims.fontSize);
+              Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
     currentX += barWidth + barSpacing;
 
     // Bar 3: RPM (R) - single bar
     addVerticalBar(currentX, contentStartY, barWidth, barHeight, rpmValue, rpmColor);
     addString("R", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-              Fonts::ROBOTO_MONO, TextColors::TERTIARY, dims.fontSize);
+              Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
     currentX += barWidth + barSpacing;
 
     // Bar 4: Suspension (S) - split into FSU | RSU
     addVerticalBar(currentX, contentStartY, halfBarWidth, barHeight, frontSuspValue, frontSuspColor);
     addVerticalBar(currentX + halfBarWidth, contentStartY, halfBarWidth, barHeight, rearSuspValue, rearSuspColor);
     addString("S", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-              Fonts::ROBOTO_MONO, TextColors::TERTIARY, dims.fontSize);
+              Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
     currentX += barWidth + barSpacing;
 
     // Bar 5: Fuel (F) - single bar
     addVerticalBar(currentX, contentStartY, barWidth, barHeight, fuelValue, fuelColor);
     addString("F", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-              Fonts::ROBOTO_MONO, TextColors::TERTIARY, dims.fontSize);
+              Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
 }
 
 void BarsWidget::addVerticalBar(float x, float y, float barWidth, float barHeight,
@@ -185,7 +186,7 @@ void BarsWidget::addVerticalBar(float x, float y, float barWidth, float barHeigh
         emptyQuad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
 
         // Apply background opacity to empty portion (half opacity)
-        emptyQuad.m_ulColor = PluginUtils::applyOpacity(TextColors::MUTED, m_fBackgroundOpacity * 0.5f);
+        emptyQuad.m_ulColor = PluginUtils::applyOpacity(ColorConfig::getInstance().getMuted(), m_fBackgroundOpacity * 0.5f);
 
         m_quads.push_back(emptyQuad);
     }

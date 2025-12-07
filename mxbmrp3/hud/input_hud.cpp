@@ -5,6 +5,7 @@
 #include "input_hud.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_utils.h"
+#include "../core/color_config.h"
 #include "../diagnostics/logger.h"
 #include <cmath>
 #include <algorithm>
@@ -83,7 +84,7 @@ void InputHud::rebuildRenderData() {
 
     // Title
     addTitleString("Input", contentStartX, currentY, PluginConstants::Justify::LEFT,
-        PluginConstants::Fonts::ENTER_SANSMAN, PluginConstants::TextColors::PRIMARY, dims.fontSizeLarge);
+        PluginConstants::Fonts::ENTER_SANSMAN, ColorConfig::getInstance().getPrimary(), dims.fontSizeLarge);
     currentY += titleHeight;
 
     // Calculate stick dimensions - make them square (7 lines high)
@@ -120,35 +121,35 @@ void InputHud::rebuildRenderData() {
         // Header row - LS and RS column headers (offset by 1 char to align with digit, not sign)
         float headerOffsetX = PluginUtils::calculateMonospaceTextWidth(1, dims.fontSize);
         addString("LS", lsValueX + headerOffsetX, tableY, PluginConstants::Justify::LEFT,
-            PluginConstants::Fonts::ROBOTO_MONO, PluginConstants::TextColors::TERTIARY, dims.fontSize);
+            PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
         addString("RS", rsValueX + headerOffsetX, tableY, PluginConstants::Justify::LEFT,
-            PluginConstants::Fonts::ROBOTO_MONO, PluginConstants::TextColors::TERTIARY, dims.fontSize);
+            PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
 
         // X row
         float xRowY = tableY + dims.lineHeightNormal;
         addString("X", labelColX, xRowY, PluginConstants::Justify::LEFT,
-            PluginConstants::Fonts::ROBOTO_MONO, PluginConstants::TextColors::TERTIARY, dims.fontSize);
+            PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
         char lsXValue[8];
         char rsXValue[8];
         snprintf(lsXValue, sizeof(lsXValue), "%+.2f", inputData.leftStickX);
         snprintf(rsXValue, sizeof(rsXValue), "%+.2f", inputData.rightStickX);
         addString(lsXValue, lsValueX, xRowY, PluginConstants::Justify::LEFT,
-            PluginConstants::Fonts::ROBOTO_MONO, PluginConstants::TextColors::SECONDARY, dims.fontSize);
+            PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
         addString(rsXValue, rsValueX, xRowY, PluginConstants::Justify::LEFT,
-            PluginConstants::Fonts::ROBOTO_MONO, PluginConstants::TextColors::SECONDARY, dims.fontSize);
+            PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
 
         // Y row
         float yRowY = xRowY + dims.lineHeightNormal;
         addString("Y", labelColX, yRowY, PluginConstants::Justify::LEFT,
-            PluginConstants::Fonts::ROBOTO_MONO, PluginConstants::TextColors::TERTIARY, dims.fontSize);
+            PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
         char lsYValue[8];
         char rsYValue[8];
         snprintf(lsYValue, sizeof(lsYValue), "%+.2f", inputData.leftStickY);
         snprintf(rsYValue, sizeof(rsYValue), "%+.2f", inputData.rightStickY);
         addString(lsYValue, lsValueX, yRowY, PluginConstants::Justify::LEFT,
-            PluginConstants::Fonts::ROBOTO_MONO, PluginConstants::TextColors::SECONDARY, dims.fontSize);
+            PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
         addString(rsYValue, rsValueX, yRowY, PluginConstants::Justify::LEFT,
-            PluginConstants::Fonts::ROBOTO_MONO, PluginConstants::TextColors::SECONDARY, dims.fontSize);
+            PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
     }
 }
 
@@ -170,7 +171,7 @@ void InputHud::addStickTrail(const char* label, const std::deque<HistoryBuffers:
         // Horizontal center line (use grid line styling for consistency)
         SPluginQuad_t hLineQuad;
         hLineQuad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-        hLineQuad.m_ulColor = PluginConstants::TextColors::MUTED;  // Match grid line color
+        hLineQuad.m_ulColor = ColorConfig::getInstance().getMuted();  // Match grid line color
         setQuadPositions(hLineQuad, ox, centerY - crosshairThickness / 2,
                         width, crosshairThickness);
         m_quads.push_back(hLineQuad);
@@ -179,7 +180,7 @@ void InputHud::addStickTrail(const char* label, const std::deque<HistoryBuffers:
         // Apply aspect ratio correction to thickness (used as width for vertical line)
         SPluginQuad_t vLineQuad;
         vLineQuad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-        vLineQuad.m_ulColor = PluginConstants::TextColors::MUTED;  // Match grid line color
+        vLineQuad.m_ulColor = ColorConfig::getInstance().getMuted();  // Match grid line color
         setQuadPositions(vLineQuad, centerX - (crosshairThickness / 2) / PluginConstants::UI_ASPECT_RATIO,
                         oy, crosshairThickness / PluginConstants::UI_ASPECT_RATIO, height);
         m_quads.push_back(vLineQuad);

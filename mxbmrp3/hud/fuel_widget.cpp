@@ -10,6 +10,7 @@
 
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
+#include "../core/color_config.h"
 
 using namespace PluginConstants;
 
@@ -194,15 +195,19 @@ void FuelWidget::rebuildRenderData() {
     float rightX = startX + backgroundWidth - dim.paddingH;
     float currentY = contentStartY;
 
-    unsigned long labelColor = TextColors::SECONDARY;
-    unsigned long valueColor = TextColors::PRIMARY;
-    unsigned long estColor = TextColors::PRIMARY;
+    unsigned long labelColor = ColorConfig::getInstance().getTertiary();
+    unsigned long valueColor = ColorConfig::getInstance().getSecondary();
+    unsigned long mutedColor = ColorConfig::getInstance().getMuted();
 
-    // Prepare display values
+    // Prepare display values and their colors (muted for placeholders)
     char fuelValueBuffer[16];
     char usedValueBuffer[16];
     char avgValueBuffer[16];
     char lapsValueBuffer[16];
+    unsigned long fuelColor = valueColor;
+    unsigned long usedColor = valueColor;
+    unsigned long avgColor = valueColor;
+    unsigned long estColor = ColorConfig::getInstance().getPrimary();
 
     if (!bikeData.isValid) {
         // Show placeholders when telemetry not available
@@ -210,16 +215,23 @@ void FuelWidget::rebuildRenderData() {
         snprintf(usedValueBuffer, sizeof(usedValueBuffer), "%s", Placeholders::GENERIC);
         snprintf(avgValueBuffer, sizeof(avgValueBuffer), "%s", Placeholders::GENERIC);
         snprintf(lapsValueBuffer, sizeof(lapsValueBuffer), "%s", Placeholders::GENERIC);
+        fuelColor = usedColor = avgColor = estColor = mutedColor;
     } else {
-        // Current fuel (liters)
-        snprintf(fuelValueBuffer, sizeof(fuelValueBuffer), "%.1fL", bikeData.fuel);
+        // Determine unit label and conversion factor
+        const char* unitLabel = (m_fuelUnit == FuelUnit::GALLONS) ? "g" : "L";
+        float unitConversion = (m_fuelUnit == FuelUnit::GALLONS) ? UnitConversion::LITERS_TO_GALLONS : 1.0f;
+
+        // Current fuel
+        float displayFuel = bikeData.fuel * unitConversion;
+        snprintf(fuelValueBuffer, sizeof(fuelValueBuffer), "%.1f%s", displayFuel, unitLabel);
 
         // Total fuel used this run
         if (m_bTrackingActive && m_fuelAtRunStart > 0.0f) {
-            float fuelUsed = m_fuelAtRunStart - bikeData.fuel;
-            snprintf(usedValueBuffer, sizeof(usedValueBuffer), "%.1fL", fuelUsed);
+            float fuelUsed = (m_fuelAtRunStart - bikeData.fuel) * unitConversion;
+            snprintf(usedValueBuffer, sizeof(usedValueBuffer), "%.1f%s", fuelUsed, unitLabel);
         } else {
             snprintf(usedValueBuffer, sizeof(usedValueBuffer), "%s", Placeholders::GENERIC);
+            usedColor = mutedColor;
         }
 
         // Calculate average fuel per lap
@@ -238,22 +250,25 @@ void FuelWidget::rebuildRenderData() {
         }
 
         if (avgFuelPerLap > 0.0f) {
-            snprintf(avgValueBuffer, sizeof(avgValueBuffer), "%.1fL", avgFuelPerLap);
+            float displayAvg = avgFuelPerLap * unitConversion;
+            snprintf(avgValueBuffer, sizeof(avgValueBuffer), "%.1f%s", displayAvg, unitLabel);
 
             // Estimated laps remaining
             float estimatedLaps = bikeData.fuel / avgFuelPerLap;
             snprintf(lapsValueBuffer, sizeof(lapsValueBuffer), "%.1f", estimatedLaps);
 
-            // Color code estimated laps (red if < 2 laps, yellow if < 4)
+            // Color code estimated laps (negative if < 2 laps, warning if < 4)
             if (estimatedLaps < 2.0f) {
-                estColor = Colors::RED;
+                estColor = ColorConfig::getInstance().getNegative();
             } else if (estimatedLaps < 4.0f) {
-                estColor = Colors::YELLOW;
+                estColor = ColorConfig::getInstance().getWarning();
             }
         } else {
             // No lap data yet - show dashes
             snprintf(avgValueBuffer, sizeof(avgValueBuffer), "%s", Placeholders::GENERIC);
             snprintf(lapsValueBuffer, sizeof(lapsValueBuffer), "%s", Placeholders::GENERIC);
+            avgColor = mutedColor;
+            estColor = mutedColor;
         }
     }
 
@@ -268,28 +283,28 @@ void FuelWidget::rebuildRenderData() {
     addString("Fue", contentStartX, currentY, Justify::LEFT,
         Fonts::ROBOTO_MONO, labelColor, dim.fontSize);
     addString(fuelValueBuffer, rightX, currentY, Justify::RIGHT,
-        Fonts::ROBOTO_MONO, valueColor, dim.fontSize);
+        Fonts::ROBOTO_MONO, fuelColor, dim.fontSize);
     currentY += dim.lineHeightNormal;
 
     // Row 2: Use (total fuel used this run)
     addString("Use", contentStartX, currentY, Justify::LEFT,
         Fonts::ROBOTO_MONO, labelColor, dim.fontSize);
     addString(usedValueBuffer, rightX, currentY, Justify::RIGHT,
-        Fonts::ROBOTO_MONO, valueColor, dim.fontSize);
+        Fonts::ROBOTO_MONO, usedColor, dim.fontSize);
     currentY += dim.lineHeightNormal;
 
     // Row 3: Avg (abbreviated from Avg/Lap)
     addString("Avg", contentStartX, currentY, Justify::LEFT,
         Fonts::ROBOTO_MONO, labelColor, dim.fontSize);
     addString(avgValueBuffer, rightX, currentY, Justify::RIGHT,
-        Fonts::ROBOTO_MONO, valueColor, dim.fontSize);
+        Fonts::ROBOTO_MONO, avgColor, dim.fontSize);
     currentY += dim.lineHeightNormal;
 
     // Row 4: Est (abbreviated from Est Laps)
     addString("Est", contentStartX, currentY, Justify::LEFT,
         Fonts::ROBOTO_MONO, labelColor, dim.fontSize);
     addString(lapsValueBuffer, rightX, currentY, Justify::RIGHT,
-        Fonts::ROBOTO_MONO, estColor, dim.fontSize);
+        Fonts::ROBOTO_MONO_BOLD, estColor, dim.fontSize);
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
@@ -301,6 +316,7 @@ void FuelWidget::resetToDefaults() {
     m_bShowBackgroundTexture = false;
     m_fBackgroundOpacity = 1.0f;
     m_fScale = 1.0f;
+    m_fuelUnit = FuelUnit::LITERS;  // Default to liters
     setPosition(0.462f, 0.5772f);
     resetFuelTracking();
     setDataDirty();

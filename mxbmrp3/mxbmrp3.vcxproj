@@ -98,6 +98,7 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="core\color_config.h" />
     <ClInclude Include="core\handler_singleton.h" />
     <ClInclude Include="core\hud_manager.h" />
     <ClInclude Include="core\input_manager.h" />
@@ -157,6 +158,7 @@
     <ClInclude Include="vendor\nlohmann\json.hpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="core\color_config.cpp" />
     <ClCompile Include="core\hud_manager.cpp" />
     <ClCompile Include="core\input_manager.cpp" />
     <ClCompile Include="core\plugin_data.cpp" />

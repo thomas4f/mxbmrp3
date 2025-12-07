@@ -46,7 +46,7 @@ SettingsHud::SettingsHud(SessionBestHud* sessionBest, LapLogHud* lapLog,
       m_bVisible(false),
       m_cachedWindowWidth(0),
       m_cachedWindowHeight(0),
-      m_activeTab(TAB_STANDINGS)
+      m_activeTab(TAB_GENERAL)
 {
     DEBUG_INFO("SettingsHud created");
     setDraggable(true);
@@ -146,7 +146,7 @@ void SettingsHud::addClickRegion(ClickRegion::Type type, float x, float y, float
 
 float SettingsHud::addDisplayModeControl(float x, float& currentY, const ScaledDimensions& dims,
                                          uint8_t* displayMode, BaseHud* targetHud) {
-    // Renders "Display: [Mode]" with [-] and [+] cycle buttons
+    // Renders "Display < Mode >" with cycle control
     // Returns the final Y position after rendering
 
     // Determine display mode text
@@ -159,26 +159,30 @@ float SettingsHud::addDisplayModeControl(float x, float& currentY, const ScaledD
         displayModeText = "Both";    // Enum value 2
     }
 
-    // Render label with current mode
-    char displayModeLabel[32];
-    snprintf(displayModeLabel, sizeof(displayModeLabel), "Display: %s", displayModeText);
-    addString(displayModeLabel, x, currentY, Justify::LEFT,
-        Fonts::ROBOTO_MONO, TextColors::SECONDARY, dims.fontSize);
+    // Render label
+    addString("Display", x, currentY, Justify::LEFT,
+        Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
 
-    // Calculate button positions
-    float displayModeButtonX = x + PluginUtils::calculateMonospaceTextWidth(SettingsHud::SCALE_LABEL_WIDTH, dims.fontSize);
-    float minusX = displayModeButtonX;
-    float plusX = displayModeButtonX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::SCALE_BUTTON_GAP, dims.fontSize);
-    float buttonWidth = PluginUtils::calculateMonospaceTextWidth(SettingsHud::BUTTON_WIDTH, dims.fontSize);
+    // Cycle control position
+    float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dims.fontSize);
+    float controlX = x + PluginUtils::calculateMonospaceTextWidth(12, dims.fontSize);  // Align with other controls
+    constexpr int MAX_VALUE_WIDTH = 7;  // "Numbers" is longest
 
-    // Render [-] button
-    addString("[-]", minusX, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, TextColors::SECONDARY, dims.fontSize);
-    addClickRegion(ClickRegion::DISPLAY_MODE_DOWN, minusX, currentY, buttonWidth, dims.lineHeightNormal,
+    // Left arrow "<"
+    addString("<", controlX, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+    addClickRegion(ClickRegion::DISPLAY_MODE_DOWN, controlX, currentY, charWidth * 2, dims.lineHeightNormal,
                    targetHud, nullptr, displayMode, 0, false, 0);
+    controlX += charWidth * 2;
 
-    // Render [+] button
-    addString("[+]", plusX, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, TextColors::SECONDARY, dims.fontSize);
-    addClickRegion(ClickRegion::DISPLAY_MODE_UP, plusX, currentY, buttonWidth, dims.lineHeightNormal,
+    // Value with fixed width
+    char paddedValue[32];
+    snprintf(paddedValue, sizeof(paddedValue), "%-*s", MAX_VALUE_WIDTH, displayModeText);
+    addString(paddedValue, controlX, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getPrimary(), dims.fontSize);
+    controlX += PluginUtils::calculateMonospaceTextWidth(MAX_VALUE_WIDTH, dims.fontSize);
+
+    // Right arrow " >"
+    addString(" >", controlX, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+    addClickRegion(ClickRegion::DISPLAY_MODE_UP, controlX, currentY, charWidth * 2, dims.lineHeightNormal,
                    targetHud, nullptr, displayMode, 0, false, 0);
 
     // Advance Y position
@@ -225,12 +229,12 @@ void SettingsHud::rebuildRenderData() {
     // Main title
     float titleX = contentStartX + (panelWidth - dim.paddingH - dim.paddingH) / 2.0f;
     addString("HUD SETTINGS", titleX, currentY, Justify::CENTER,
-        Fonts::ENTER_SANSMAN, TextColors::PRIMARY, dim.fontSizeLarge);
+        Fonts::ENTER_SANSMAN, ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
 
     // [X] close button in upper right corner
     float closeButtonTopX = startX + panelWidth - dim.paddingH - PluginUtils::calculateMonospaceTextWidth(3, dim.fontSize);
     addString("[x]", closeButtonTopX, currentY, Justify::LEFT,
-        Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
+        Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
     ClickRegion closeRegion;
     closeRegion.x = closeButtonTopX;
     closeRegion.y = currentY;
@@ -258,6 +262,7 @@ void SettingsHud::rebuildRenderData() {
         // Check if the HUD for this tab is enabled (visible)
         bool isHudEnabled = false;
         switch (i) {
+            case TAB_GENERAL:      isHudEnabled = true; break;  // General tab is always "enabled"
             case TAB_STANDINGS:    isHudEnabled = m_standings && m_standings->isVisible(); break;
             case TAB_MAP:          isHudEnabled = m_mapHud && m_mapHud->isVisible(); break;
             case TAB_PITBOARD:     isHudEnabled = m_pitboard && m_pitboard->isVisible(); break;
@@ -272,11 +277,12 @@ void SettingsHud::rebuildRenderData() {
         }
 
         // Color: green if enabled, white if active but disabled, gray if inactive and disabled
-        unsigned long tabColor = isHudEnabled ? SemanticColors::POSITIVE :
-                                 isActive ? TextColors::PRIMARY : TextColors::MUTED;
+        unsigned long tabColor = isHudEnabled ? ColorConfig::getInstance().getPositive() :
+                                 isActive ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getMuted();
 
         char tabLabel[20];
         snprintf(tabLabel, sizeof(tabLabel), isActive ? "[%s]" : " %s ",
+                 i == TAB_GENERAL ? "General" :
                  i == TAB_STANDINGS ? "Standings" :
                  i == TAB_MAP ? "Map" :
                  i == TAB_LAP_LOG ? "Lap Log" :
@@ -320,26 +326,97 @@ void SettingsHud::rebuildRenderData() {
     float leftColumnX = contentAreaStartX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::SETTINGS_LEFT_COLUMN, dim.fontSize);
     float rightColumnX = contentAreaStartX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::SETTINGS_RIGHT_COLUMN, dim.fontSize);
 
-    // Helper lambda to add control buttons (minus/plus pair) - shared across all controls
-    auto addControlButtons = [&](float baseX, float y, ClickRegion::Type downType, ClickRegion::Type upType, BaseHud* targetHud) {
-        float minusX = baseX;
-        float plusX = baseX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::SCALE_BUTTON_GAP, dim.fontSize);
+    // Helper lambda to add cycle control with < value > pattern - shared across all controls
+    // If enabled is false, no click regions are added and muted color is used
+    auto addCycleControl = [&](float baseX, float y, const char* value, int maxValueWidth,
+                               ClickRegion::Type downType, ClickRegion::Type upType, BaseHud* targetHud,
+                               bool enabled = true) {
+        float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+        float currentX = baseX;
+        unsigned long arrowColor = enabled ? ColorConfig::getInstance().getSecondary() : ColorConfig::getInstance().getMuted();
+        unsigned long valueColor = enabled ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getMuted();
 
-        addString("[-]", minusX, y, Justify::LEFT, Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
-        m_clickRegions.push_back(ClickRegion(
-            minusX, y,
-            PluginUtils::calculateMonospaceTextWidth(SettingsHud::BUTTON_WIDTH, dim.fontSize),
-            dim.lineHeightNormal,
-            downType, targetHud, 0, false, 0
-        ));
+        // Left arrow "<"
+        addString("<", currentX, y, Justify::LEFT, Fonts::ROBOTO_MONO, arrowColor, dim.fontSize);
+        if (enabled) {
+            m_clickRegions.push_back(ClickRegion(
+                currentX, y, charWidth * 2, dim.lineHeightNormal,
+                downType, targetHud, 0, false, 0
+            ));
+        }
+        currentX += charWidth * 2;  // "< "
 
-        addString("[+]", plusX, y, Justify::LEFT, Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
-        m_clickRegions.push_back(ClickRegion(
-            plusX, y,
-            PluginUtils::calculateMonospaceTextWidth(SettingsHud::BUTTON_WIDTH, dim.fontSize),
-            dim.lineHeightNormal,
-            upType, targetHud, 0, false, 0
-        ));
+        // Value with fixed width (left-aligned, padded)
+        char paddedValue[32];
+        snprintf(paddedValue, sizeof(paddedValue), "%-*s", maxValueWidth, value);
+        addString(paddedValue, currentX, y, Justify::LEFT, Fonts::ROBOTO_MONO, valueColor, dim.fontSize);
+        currentX += PluginUtils::calculateMonospaceTextWidth(maxValueWidth, dim.fontSize);
+
+        // Right arrow " >"
+        addString(" >", currentX, y, Justify::LEFT, Fonts::ROBOTO_MONO, arrowColor, dim.fontSize);
+        if (enabled) {
+            m_clickRegions.push_back(ClickRegion(
+                currentX, y, charWidth * 2, dim.lineHeightNormal,
+                upType, targetHud, 0, false, 0
+            ));
+        }
+    };
+
+    // Helper lambda to add toggle control with < On/Off > pattern - for boolean settings
+    // Both arrows trigger the same toggle action. If enabled is false, muted colors are used.
+    auto addToggleControl = [&](float baseX, float y, bool isOn,
+                                ClickRegion::Type toggleType, BaseHud* targetHud,
+                                uint32_t* bitfield = nullptr, uint32_t flag = 0,
+                                bool enabled = true) {
+        float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+        float currentX = baseX;
+        unsigned long arrowColor = enabled ? ColorConfig::getInstance().getSecondary() : ColorConfig::getInstance().getMuted();
+        unsigned long valueColor = enabled ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getMuted();
+        const char* value = isOn ? "On" : "Off";
+        constexpr int VALUE_WIDTH = 3;  // "Off" is longest
+
+        // Left arrow "<"
+        addString("<", currentX, y, Justify::LEFT, Fonts::ROBOTO_MONO, arrowColor, dim.fontSize);
+        if (enabled) {
+            if (bitfield != nullptr) {
+                // CHECKBOX type with bitfield
+                m_clickRegions.push_back(ClickRegion(
+                    currentX, y, charWidth * 2, dim.lineHeightNormal,
+                    toggleType, bitfield, flag, false, targetHud
+                ));
+            } else {
+                // Simple toggle without bitfield
+                m_clickRegions.push_back(ClickRegion(
+                    currentX, y, charWidth * 2, dim.lineHeightNormal,
+                    toggleType, targetHud
+                ));
+            }
+        }
+        currentX += charWidth * 2;  // "< "
+
+        // Value with fixed width
+        char paddedValue[8];
+        snprintf(paddedValue, sizeof(paddedValue), "%-*s", VALUE_WIDTH, value);
+        addString(paddedValue, currentX, y, Justify::LEFT, Fonts::ROBOTO_MONO, valueColor, dim.fontSize);
+        currentX += PluginUtils::calculateMonospaceTextWidth(VALUE_WIDTH, dim.fontSize);
+
+        // Right arrow " >"
+        addString(" >", currentX, y, Justify::LEFT, Fonts::ROBOTO_MONO, arrowColor, dim.fontSize);
+        if (enabled) {
+            if (bitfield != nullptr) {
+                // CHECKBOX type with bitfield
+                m_clickRegions.push_back(ClickRegion(
+                    currentX, y, charWidth * 2, dim.lineHeightNormal,
+                    toggleType, bitfield, flag, false, targetHud
+                ));
+            } else {
+                // Simple toggle without bitfield
+                m_clickRegions.push_back(ClickRegion(
+                    currentX, y, charWidth * 2, dim.lineHeightNormal,
+                    toggleType, targetHud
+                ));
+            }
+        }
     };
 
     auto addHudControls = [&](BaseHud* hud, bool enableTitle = true) -> float {
@@ -348,80 +425,46 @@ void SettingsHud::rebuildRenderData() {
 
         // LEFT COLUMN: Basic controls
         float controlX = leftColumnX;
+        float toggleX = controlX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);  // Align all toggles (longest: "BG Texture")
 
-        // Visibility checkbox
+        // Visibility toggle
         bool isVisible = hud->isVisible();
-        const char* visCheckbox = isVisible ? "[X]" : "[ ]";
-        addString(visCheckbox, controlX, currentY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
-        float visLabelX = controlX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::CHECKBOX_WIDTH, dim.fontSize);
-        addString("Visible", visLabelX, currentY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
-
-        m_clickRegions.push_back(ClickRegion(
-            controlX, currentY,
-            PluginUtils::calculateMonospaceTextWidth(SettingsHud::CHECKBOX_LABEL_SMALL, dim.fontSize),
-            dim.lineHeightNormal,
-            ClickRegion::HUD_TOGGLE, hud, 0, false, 0
-        ));
+        addString("Visible", controlX, currentY, Justify::LEFT,
+            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+        addToggleControl(toggleX, currentY, isVisible, ClickRegion::HUD_TOGGLE, hud);
         currentY += dim.lineHeightNormal;
 
-        // Title checkbox (can be disabled/grayed out)
+        // Title toggle (can be disabled/grayed out)
         bool showTitle = enableTitle ? hud->getShowTitle() : false;
-        const char* titleCheckbox = showTitle ? "[X]" : "[ ]";
-        unsigned long titleColor = enableTitle ? TextColors::SECONDARY : TextColors::MUTED;
-        addString(titleCheckbox, controlX, currentY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, titleColor, dim.fontSize);
-        addString("Show Title", visLabelX, currentY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, titleColor, dim.fontSize);
-
-        if (enableTitle) {
-            m_clickRegions.push_back(ClickRegion(
-                controlX, currentY,
-                PluginUtils::calculateMonospaceTextWidth(SettingsHud::CHECKBOX_LABEL_MEDIUM, dim.fontSize),
-                dim.lineHeightNormal,
-                ClickRegion::TITLE_TOGGLE, hud, 0, false, 0
-            ));
-        }
+        addString("Title", controlX, currentY, Justify::LEFT,
+            Fonts::ROBOTO_MONO, enableTitle ? ColorConfig::getInstance().getSecondary() : ColorConfig::getInstance().getMuted(), dim.fontSize);
+        addToggleControl(toggleX, currentY, showTitle, ClickRegion::TITLE_TOGGLE, hud, nullptr, 0, enableTitle);
         currentY += dim.lineHeightNormal;
 
-        // Background texture checkbox
+        // Background texture toggle
         bool showBgTexture = hud->getShowBackgroundTexture();
-        const char* bgTexCheckbox = showBgTexture ? "[X]" : "[ ]";
-        addString(bgTexCheckbox, controlX, currentY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
-        addString("BG Texture", visLabelX, currentY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
-
-        m_clickRegions.push_back(ClickRegion(
-            controlX, currentY,
-            PluginUtils::calculateMonospaceTextWidth(SettingsHud::CHECKBOX_LABEL_MEDIUM, dim.fontSize),
-            dim.lineHeightNormal,
-            ClickRegion::BACKGROUND_TEXTURE_TOGGLE, hud, 0, false, 0
-        ));
+        addString("BG Texture", controlX, currentY, Justify::LEFT,
+            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+        addToggleControl(toggleX, currentY, showBgTexture, ClickRegion::BACKGROUND_TEXTURE_TOGGLE, hud);
         currentY += dim.lineHeightNormal;
 
         // Background opacity controls
-        char opacityText[32];
+        addString("Opacity", controlX, currentY, Justify::LEFT,
+            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+        char opacityValue[16];
         int opacityPercent = static_cast<int>(hud->getBackgroundOpacity() * 100.0f);
-        snprintf(opacityText, sizeof(opacityText), "Opacity: %d%%", opacityPercent);
-        addString(opacityText, controlX, currentY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
-
-        float opacityButtonX = controlX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::SCALE_LABEL_WIDTH, dim.fontSize);
-        addControlButtons(opacityButtonX, currentY, ClickRegion::BACKGROUND_OPACITY_DOWN, ClickRegion::BACKGROUND_OPACITY_UP, hud);
-
+        snprintf(opacityValue, sizeof(opacityValue), "%d%%", opacityPercent);
+        addCycleControl(toggleX, currentY, opacityValue, 4,
+            ClickRegion::BACKGROUND_OPACITY_DOWN, ClickRegion::BACKGROUND_OPACITY_UP, hud);
         currentY += dim.lineHeightNormal;
 
         // Scale controls
-        char scaleText[32];
-        snprintf(scaleText, sizeof(scaleText), "Scale: %.2f", hud->getScale());
-        addString(scaleText, controlX, currentY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
-
-        float scaleButtonX = controlX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::SCALE_LABEL_WIDTH, dim.fontSize);
-        addControlButtons(scaleButtonX, currentY, ClickRegion::SCALE_DOWN, ClickRegion::SCALE_UP, hud);
-
+        addString("Scale", controlX, currentY, Justify::LEFT,
+            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+        char scaleValue[16];
+        snprintf(scaleValue, sizeof(scaleValue), "%.2f", hud->getScale());
+        addCycleControl(toggleX, currentY, scaleValue, 4,
+            ClickRegion::SCALE_DOWN, ClickRegion::SCALE_UP, hud);
         currentY += dim.lineHeightNormal;
 
         // Return the starting Y for right column (data toggles)
@@ -429,175 +472,82 @@ void SettingsHud::rebuildRenderData() {
     };
 
     // Widget table row - displays widget settings in columnar format
+    // Layout: Name | Visible | Title | BG Tex | Opacity | Scale
     auto addWidgetRow = [&](const char* name, BaseHud* hud, bool enableTitle = true, bool enableOpacity = true, bool enableScale = true, bool enableVisibility = true, bool enableBgTexture = true) {
-        // Column positions (spacing for table layout)
+        // Column positions (spacing for table layout with toggle controls)
         float nameX = contentAreaStartX;
-        float visX = nameX + PluginUtils::calculateMonospaceTextWidth(10, dim.fontSize);  // After name
-        float titleX = visX + PluginUtils::calculateMonospaceTextWidth(5, dim.fontSize);  // After visibility checkbox
-        float bgTexX = titleX + PluginUtils::calculateMonospaceTextWidth(7, dim.fontSize);  // After title checkbox
-        float opacityX = bgTexX + PluginUtils::calculateMonospaceTextWidth(6, dim.fontSize);  // After BG Texture checkbox
-        float scaleX = opacityX + PluginUtils::calculateMonospaceTextWidth(14, dim.fontSize);  // After opacity controls
+        float visX = nameX + PluginUtils::calculateMonospaceTextWidth(10, dim.fontSize);   // After name
+        float titleX = visX + PluginUtils::calculateMonospaceTextWidth(8, dim.fontSize);   // After Vis toggle (< On >)
+        float bgTexX = titleX + PluginUtils::calculateMonospaceTextWidth(8, dim.fontSize); // After Title toggle
+        float opacityX = bgTexX + PluginUtils::calculateMonospaceTextWidth(8, dim.fontSize); // After BG Tex toggle
+        float scaleX = opacityX + PluginUtils::calculateMonospaceTextWidth(9, dim.fontSize); // After Opacity cycle
 
         // Widget name
         addString(name, nameX, currentY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, TextColors::PRIMARY, dim.fontSize);
+            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getPrimary(), dim.fontSize);
 
-        // Visibility checkbox
-        bool isVisible = enableVisibility ? hud->isVisible() : false;  // Force unchecked when disabled
-        const char* visCheckbox = isVisible ? "[X]" : "[ ]";
-        unsigned long visColor = enableVisibility ? TextColors::SECONDARY : TextColors::MUTED;
-        addString(visCheckbox, visX, currentY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, visColor, dim.fontSize);
+        // Visibility toggle
+        bool isVisible = enableVisibility ? hud->isVisible() : false;
+        addToggleControl(visX, currentY, isVisible, ClickRegion::HUD_TOGGLE, hud, nullptr, 0, enableVisibility);
 
-        // Only add click region if visibility is enabled for this widget
-        if (enableVisibility) {
-            m_clickRegions.push_back(ClickRegion(
-                visX, currentY,
-                PluginUtils::calculateMonospaceTextWidth(SettingsHud::CHECKBOX_WIDTH, dim.fontSize),
-                dim.lineHeightNormal,
-                ClickRegion::HUD_TOGGLE, hud, 0, false, 0
-            ));
-        }
+        // Title toggle
+        bool showTitle = enableTitle ? hud->getShowTitle() : false;
+        addToggleControl(titleX, currentY, showTitle, ClickRegion::TITLE_TOGGLE, hud, nullptr, 0, enableTitle);
 
-        // Title checkbox
-        bool showTitle = enableTitle ? hud->getShowTitle() : false;  // Force unchecked when disabled
-        const char* titleCheckbox = showTitle ? "[X]" : "[ ]";
-        unsigned long titleColor = enableTitle ? TextColors::SECONDARY : TextColors::MUTED;
-        addString(titleCheckbox, titleX, currentY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, titleColor, dim.fontSize);
-
-        // Only add click region if title is enabled for this widget
-        if (enableTitle) {
-            m_clickRegions.push_back(ClickRegion(
-                titleX, currentY,
-                PluginUtils::calculateMonospaceTextWidth(SettingsHud::CHECKBOX_WIDTH, dim.fontSize),
-                dim.lineHeightNormal,
-                ClickRegion::TITLE_TOGGLE, hud, 0, false, 0
-            ));
-        }
-
-        // BG Texture checkbox
+        // BG Texture toggle
         bool showBgTexture = enableBgTexture ? hud->getShowBackgroundTexture() : false;
-        const char* bgTexCheckbox = showBgTexture ? "[X]" : "[ ]";
-        unsigned long bgTexColor = enableBgTexture ? TextColors::SECONDARY : TextColors::MUTED;
-        addString(bgTexCheckbox, bgTexX, currentY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, bgTexColor, dim.fontSize);
-
-        if (enableBgTexture) {
-            m_clickRegions.push_back(ClickRegion(
-                bgTexX, currentY,
-                PluginUtils::calculateMonospaceTextWidth(SettingsHud::CHECKBOX_WIDTH, dim.fontSize),
-                dim.lineHeightNormal,
-                ClickRegion::BACKGROUND_TEXTURE_TOGGLE, hud, 0, false, 0
-            ));
-        }
+        addToggleControl(bgTexX, currentY, showBgTexture, ClickRegion::BACKGROUND_TEXTURE_TOGGLE, hud, nullptr, 0, enableBgTexture);
 
         // BG Opacity
-        char opacityText[16];
+        char opacityValue[16];
         int opacityPercent = static_cast<int>(hud->getBackgroundOpacity() * 100.0f);
-        snprintf(opacityText, sizeof(opacityText), "%3d%%", opacityPercent);
-        unsigned long opacityColor = enableOpacity ? TextColors::SECONDARY : TextColors::MUTED;
-        addString(opacityText, opacityX, currentY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, opacityColor, dim.fontSize);
-
-        float opacityButtonX = opacityX + PluginUtils::calculateMonospaceTextWidth(5, dim.fontSize);
-        addString("[-]", opacityButtonX, currentY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, opacityColor, dim.fontSize);
-        if (enableOpacity) {
-            m_clickRegions.push_back(ClickRegion(
-                opacityButtonX, currentY,
-                PluginUtils::calculateMonospaceTextWidth(SettingsHud::BUTTON_WIDTH, dim.fontSize),
-                dim.lineHeightNormal,
-                ClickRegion::BACKGROUND_OPACITY_DOWN, hud, 0, false, 0
-            ));
-        }
-
-        float opacityPlusX = opacityButtonX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::SCALE_BUTTON_GAP, dim.fontSize);
-        addString("[+]", opacityPlusX, currentY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, opacityColor, dim.fontSize);
-        if (enableOpacity) {
-            m_clickRegions.push_back(ClickRegion(
-                opacityPlusX, currentY,
-                PluginUtils::calculateMonospaceTextWidth(SettingsHud::BUTTON_WIDTH, dim.fontSize),
-                dim.lineHeightNormal,
-                ClickRegion::BACKGROUND_OPACITY_UP, hud, 0, false, 0
-            ));
-        }
+        snprintf(opacityValue, sizeof(opacityValue), "%d%%", opacityPercent);
+        addCycleControl(opacityX, currentY, opacityValue, 4,
+            ClickRegion::BACKGROUND_OPACITY_DOWN, ClickRegion::BACKGROUND_OPACITY_UP, hud, enableOpacity);
 
         // Scale
-        char scaleText[16];
-        snprintf(scaleText, sizeof(scaleText), "%.2f", hud->getScale());
-        unsigned long scaleColor = enableScale ? TextColors::SECONDARY : TextColors::MUTED;
-        addString(scaleText, scaleX, currentY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, scaleColor, dim.fontSize);
-
-        float scaleButtonX = scaleX + PluginUtils::calculateMonospaceTextWidth(5, dim.fontSize);
-        addString("[-]", scaleButtonX, currentY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, scaleColor, dim.fontSize);
-        if (enableScale) {
-            m_clickRegions.push_back(ClickRegion(
-                scaleButtonX, currentY,
-                PluginUtils::calculateMonospaceTextWidth(SettingsHud::BUTTON_WIDTH, dim.fontSize),
-                dim.lineHeightNormal,
-                ClickRegion::SCALE_DOWN, hud, 0, false, 0
-            ));
-        }
-
-        float scalePlusX = scaleButtonX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::SCALE_BUTTON_GAP, dim.fontSize);
-        addString("[+]", scalePlusX, currentY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, scaleColor, dim.fontSize);
-        if (enableScale) {
-            m_clickRegions.push_back(ClickRegion(
-                scalePlusX, currentY,
-                PluginUtils::calculateMonospaceTextWidth(SettingsHud::BUTTON_WIDTH, dim.fontSize),
-                dim.lineHeightNormal,
-                ClickRegion::SCALE_UP, hud, 0, false, 0
-            ));
-        }
+        char scaleValue[16];
+        snprintf(scaleValue, sizeof(scaleValue), "%.2f", hud->getScale());
+        addCycleControl(scaleX, currentY, scaleValue, 4,
+            ClickRegion::SCALE_DOWN, ClickRegion::SCALE_UP, hud, enableScale);
 
         currentY += dim.lineHeightNormal;
     };
 
-    auto addDataCheckbox = [&](const char* label, uint32_t* bitfield, uint32_t flag, bool isRequired, BaseHud* hud, float yPos) {
+    // Data toggle control - displays "Label: < On/Off >" format
+    // labelWidth should accommodate the longest label in the group for alignment
+    auto addDataToggle = [&](const char* label, uint32_t* bitfield, uint32_t flag, bool isRequired, BaseHud* hud, float yPos, int labelWidth = 12) {
         float dataX = rightColumnX;
         bool isChecked = (*bitfield & flag) != 0;
-        const char* checkbox = isRequired ? "[*]" : (isChecked ? "[X]" : "[ ]");
-        unsigned long color = isRequired ? TextColors::MUTED : TextColors::SECONDARY;
+        bool enabled = !isRequired;
 
-        addString(checkbox, dataX, yPos, Justify::LEFT, Fonts::ROBOTO_MONO, color, dim.fontSize);
-        float labelX = dataX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::CHECKBOX_WIDTH, dim.fontSize);
-        addString(label, labelX, yPos, Justify::LEFT, Fonts::ROBOTO_MONO, color, dim.fontSize);
+        // Label with padding
+        char paddedLabel[32];
+        snprintf(paddedLabel, sizeof(paddedLabel), "%-*s", labelWidth, label);
+        addString(paddedLabel, dataX, yPos, Justify::LEFT, Fonts::ROBOTO_MONO,
+            enabled ? ColorConfig::getInstance().getSecondary() : ColorConfig::getInstance().getMuted(), dim.fontSize);
 
-        if (!isRequired) {
-            m_clickRegions.push_back(ClickRegion(
-                dataX, yPos,
-                PluginUtils::calculateMonospaceTextWidth(SettingsHud::CHECKBOX_CLICKABLE, dim.fontSize),
-                dim.lineHeightNormal,
-                ClickRegion::CHECKBOX, bitfield, flag, false, hud
-            ));
-        }
+        // Toggle control
+        float toggleX = dataX + PluginUtils::calculateMonospaceTextWidth(labelWidth, dim.fontSize);
+        addToggleControl(toggleX, yPos, isChecked, ClickRegion::CHECKBOX, hud, bitfield, flag, enabled);
     };
 
-    // Helper for grouped checkboxes that toggle multiple bits
-    auto addGroupCheckbox = [&](const char* label, uint32_t* bitfield, uint32_t groupFlags, bool isRequired, BaseHud* hud, float yPos) {
+    // Helper for grouped toggles that toggle multiple bits
+    auto addGroupToggle = [&](const char* label, uint32_t* bitfield, uint32_t groupFlags, bool isRequired, BaseHud* hud, float yPos, int labelWidth = 12) {
         float dataX = rightColumnX;
         // Group is checked if all bits in group are set
         bool isChecked = (*bitfield & groupFlags) == groupFlags;
-        const char* checkbox = isRequired ? "[*]" : (isChecked ? "[X]" : "[ ]");
-        unsigned long color = isRequired ? TextColors::MUTED : TextColors::SECONDARY;
+        bool enabled = !isRequired;
 
-        addString(checkbox, dataX, yPos, Justify::LEFT, Fonts::ROBOTO_MONO, color, dim.fontSize);
-        float labelX = dataX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::CHECKBOX_WIDTH, dim.fontSize);
-        addString(label, labelX, yPos, Justify::LEFT, Fonts::ROBOTO_MONO, color, dim.fontSize);
+        // Label with padding
+        char paddedLabel[32];
+        snprintf(paddedLabel, sizeof(paddedLabel), "%-*s", labelWidth, label);
+        addString(paddedLabel, dataX, yPos, Justify::LEFT, Fonts::ROBOTO_MONO,
+            enabled ? ColorConfig::getInstance().getSecondary() : ColorConfig::getInstance().getMuted(), dim.fontSize);
 
-        if (!isRequired) {
-            m_clickRegions.push_back(ClickRegion(
-                dataX, yPos,
-                PluginUtils::calculateMonospaceTextWidth(SettingsHud::CHECKBOX_CLICKABLE, dim.fontSize),
-                dim.lineHeightNormal,
-                ClickRegion::CHECKBOX, bitfield, groupFlags, false, hud
-            ));
-        }
+        // Toggle control
+        float toggleX = dataX + PluginUtils::calculateMonospaceTextWidth(labelWidth, dim.fontSize);
+        addToggleControl(toggleX, yPos, isChecked, ClickRegion::CHECKBOX, hud, bitfield, groupFlags, enabled);
     };
 
     // Render controls for active tab only
@@ -605,35 +555,193 @@ void SettingsHud::rebuildRenderData() {
     float dataStartY = 0.0f;
 
     switch (m_activeTab) {
-        case TAB_STANDINGS:
-            activeHud = m_standings;
-            dataStartY = addHudControls(m_standings);
+        case TAB_GENERAL:
+        {
+            // General settings tab - color configuration
+            ColorConfig& colorConfig = ColorConfig::getInstance();
 
-            // Row count control (specific to StandingsHud)
+            // Section header
+            addString("Colors", leftColumnX, currentY, Justify::LEFT,
+                Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+            currentY += dim.lineHeightNormal * 1.5f;
+
+            // Helper lambda to add a color row with preview and cycle buttons
+            auto addColorRow = [&](ColorSlot slot) {
+                const char* slotName = ColorConfig::getSlotName(slot);
+                unsigned long color = colorConfig.getColor(slot);
+                const char* colorName = ColorPalette::getColorName(color);
+
+                // Slot name label
+                addString(slotName, leftColumnX, currentY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+
+                // Color preview quad (small square showing the actual color)
+                float previewX = leftColumnX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);
+                float previewSize = dim.lineHeightNormal * 0.8f;
+                {
+                    SPluginQuad_t previewQuad;
+                    float quadX = previewX;
+                    float quadY = currentY + dim.lineHeightNormal * 0.1f;
+                    applyOffset(quadX, quadY);
+                    setQuadPositions(previewQuad, quadX, quadY, previewSize, previewSize);
+                    previewQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+                    previewQuad.m_ulColor = color;
+                    m_quads.push_back(previewQuad);
+                }
+
+                // Cycle buttons and color name
+                float buttonX = previewX + previewSize + PluginUtils::calculateMonospaceTextWidth(2, dim.fontSize);
+
+                // [-] button
+                addString("<", buttonX, currentY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                float buttonWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+                m_clickRegions.push_back(ClickRegion(
+                    buttonX, currentY, buttonWidth, dim.lineHeightNormal,
+                    ClickRegion::COLOR_CYCLE_PREV, slot
+                ));
+
+                // Color name (centered between buttons)
+                float nameX = buttonX + PluginUtils::calculateMonospaceTextWidth(2, dim.fontSize);
+                char colorLabel[20];
+                snprintf(colorLabel, sizeof(colorLabel), "%-11s", colorName);
+                addString(colorLabel, nameX, currentY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, color, dim.fontSize);
+
+                // [+] button
+                float plusX = nameX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);
+                addString(">", plusX, currentY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                m_clickRegions.push_back(ClickRegion(
+                    plusX, currentY, buttonWidth, dim.lineHeightNormal,
+                    ClickRegion::COLOR_CYCLE_NEXT, slot
+                ));
+
+                currentY += dim.lineHeightNormal;
+            };
+
+            // All color slots
+            addColorRow(ColorSlot::PRIMARY);
+            addColorRow(ColorSlot::SECONDARY);
+            addColorRow(ColorSlot::TERTIARY);
+            addColorRow(ColorSlot::MUTED);
+            addColorRow(ColorSlot::BACKGROUND);
+            addColorRow(ColorSlot::POSITIVE);
+            addColorRow(ColorSlot::WARNING);
+            addColorRow(ColorSlot::NEUTRAL);
+            addColorRow(ColorSlot::NEGATIVE);
+
+            // Units section
+            currentY += dim.lineHeightNormal;  // Spacing between sections
+            addString("Units", leftColumnX, currentY, Justify::LEFT,
+                Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+            currentY += dim.lineHeightNormal * 1.5f;
+
+            // Speed unit toggle
             {
-                float controlX = leftColumnX;
-                char rowCountText[32];
-                snprintf(rowCountText, sizeof(rowCountText), "Rows: %d", m_standings->m_displayRowCount);
-                addString(rowCountText, controlX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
+                float toggleX = leftColumnX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);
 
-                float rowCountButtonX = controlX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::SCALE_LABEL_WIDTH, dim.fontSize);
-                addControlButtons(rowCountButtonX, currentY, ClickRegion::ROW_COUNT_DOWN, ClickRegion::ROW_COUNT_UP, m_standings);
+                addString("Speed", leftColumnX, currentY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+
+                // Display current unit with < > cycle pattern
+                const char* unitLabel = (m_speed && m_speed->getSpeedUnit() == SpeedWidget::SpeedUnit::KMH)
+                    ? "< km/h >" : "< mph  >";
+                addString(unitLabel, toggleX, currentY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+
+                // Click region for the entire toggle area
+                float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+                m_clickRegions.push_back(ClickRegion(
+                    toggleX, currentY, charWidth * 8, dim.lineHeightNormal,
+                    ClickRegion::SPEED_UNIT_TOGGLE, m_speed
+                ));
 
                 currentY += dim.lineHeightNormal;
             }
 
-            // Column configuration table: Column | Non-Race | Race
+            // Fuel unit toggle
             {
-                float tableY = dataStartY;
+                float toggleX = leftColumnX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);
+
+                addString("Fuel", leftColumnX, currentY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+
+                // Display current unit with < > cycle pattern
+                const char* unitLabel = (m_fuel && m_fuel->getFuelUnit() == FuelWidget::FuelUnit::GALLONS)
+                    ? "< gal  >" : "< L    >";
+                addString(unitLabel, toggleX, currentY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+
+                // Click region for the entire toggle area
+                float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+                m_clickRegions.push_back(ClickRegion(
+                    toggleX, currentY, charWidth * 8, dim.lineHeightNormal,
+                    ClickRegion::FUEL_UNIT_TOGGLE, m_fuel
+                ));
+
+                currentY += dim.lineHeightNormal;
+            }
+
+            // Positioning section
+            currentY += dim.lineHeightNormal;  // Spacing between sections
+            addString("Positioning", leftColumnX, currentY, Justify::LEFT,
+                Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+            currentY += dim.lineHeightNormal * 1.5f;
+
+            // Grid snap toggle
+            {
+                float toggleX = leftColumnX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);
+
+                addString("Grid Snap", leftColumnX, currentY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+
+                // Display current state with < > cycle pattern
+                bool gridSnapEnabled = ColorConfig::getInstance().getGridSnapping();
+                const char* snapLabel = gridSnapEnabled ? "< On  >" : "< Off >";
+                addString(snapLabel, toggleX, currentY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+
+                // Click region for the entire toggle area
+                float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+                m_clickRegions.push_back(ClickRegion(
+                    toggleX, currentY, charWidth * 7, dim.lineHeightNormal,
+                    ClickRegion::GRID_SNAP_TOGGLE, nullptr
+                ));
+
+                currentY += dim.lineHeightNormal;
+            }
+        }
+        break;
+
+        case TAB_STANDINGS:
+            activeHud = m_standings;
+            dataStartY = addHudControls(m_standings);
+
+            // RIGHT COLUMN: HUD-specific controls and column configuration
+            {
+                float rightY = dataStartY;
+                float toggleX = rightColumnX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);
+
+                // Row count control (specific to StandingsHud)
+                addString("Rows", rightColumnX, rightY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                char rowCountValue[8];
+                snprintf(rowCountValue, sizeof(rowCountValue), "%d", m_standings->m_displayRowCount);
+                addCycleControl(toggleX, rightY, rowCountValue, 2,
+                    ClickRegion::ROW_COUNT_DOWN, ClickRegion::ROW_COUNT_UP, m_standings);
+                rightY += dim.lineHeightNormal * 2;  // Extra spacing before column table
+
+                // Column configuration table: Column | Non-Race | Race
+                float tableY = rightY;
                 float columnNameX = rightColumnX;
                 float nonRaceX = rightColumnX + PluginUtils::calculateMonospaceTextWidth(14, dim.fontSize);  // After "Official Gap "
-                float raceX = nonRaceX + PluginUtils::calculateMonospaceTextWidth(10, dim.fontSize);  // After "Non-Race  "
+                float raceX = nonRaceX + PluginUtils::calculateMonospaceTextWidth(9, dim.fontSize);  // After "< On  > "
 
                 // Table header
-                addString("Column", columnNameX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO_BOLD, TextColors::PRIMARY, dim.fontSize);
-                addString("Non-Race", nonRaceX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO_BOLD, TextColors::PRIMARY, dim.fontSize);
-                addString("Race", raceX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO_BOLD, TextColors::PRIMARY, dim.fontSize);
+                addString("Column", columnNameX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                addString("Non-Race", nonRaceX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                addString("Race", raceX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
                 tableY += dim.lineHeightNormal;
 
                 // Table rows - each row shows column name and two state labels
@@ -650,13 +758,13 @@ void SettingsHud::rebuildRenderData() {
                     {"Live Gap",     StandingsHud::COL_LIVE_GAP,    true,  true}   // Multi-state gap column (race-only)
                 };
 
-                // Helper lambda to get gap mode label
+                // Helper lambda to get gap mode label with < > brackets
                 auto getGapModeLabel = [](StandingsHud::GapMode mode) -> const char* {
                     switch (mode) {
-                        case StandingsHud::GapMode::OFF: return "Off";
-                        case StandingsHud::GapMode::ME: return "Me";
-                        case StandingsHud::GapMode::ALL: return "All";
-                        default: return "Off";
+                        case StandingsHud::GapMode::OFF: return "< Off >";
+                        case StandingsHud::GapMode::ME:  return "< Me  >";
+                        case StandingsHud::GapMode::ALL: return "< All >";
+                        default: return "< Off >";
                     }
                 };
 
@@ -665,7 +773,7 @@ void SettingsHud::rebuildRenderData() {
                     ClickRegion region;
                     region.x = x;
                     region.y = y;
-                    region.width = PluginUtils::calculateMonospaceTextWidth(4, dim.fontSize);
+                    region.width = PluginUtils::calculateMonospaceTextWidth(7, dim.fontSize);  // "< Off >"
                     region.height = dim.lineHeightNormal;
                     region.type = ClickRegion::GAP_MODE_CYCLE;
                     region.targetPointer = modePtr;
@@ -676,12 +784,12 @@ void SettingsHud::rebuildRenderData() {
                     m_clickRegions.push_back(region);
                 };
 
-                // Helper lambda to add column checkbox region
-                auto addColumnCheckbox = [&](float x, float y, uint32_t* bitfield, uint32_t flag) {
+                // Helper lambda to add column toggle region
+                auto addColumnToggle = [&](float x, float y, uint32_t* bitfield, uint32_t flag) {
                     ClickRegion region;
                     region.x = x;
                     region.y = y;
-                    region.width = PluginUtils::calculateMonospaceTextWidth(3, dim.fontSize);
+                    region.width = PluginUtils::calculateMonospaceTextWidth(7, dim.fontSize);  // "< On  >"
                     region.height = dim.lineHeightNormal;
                     region.type = ClickRegion::CHECKBOX;
                     region.targetPointer = bitfield;
@@ -694,47 +802,47 @@ void SettingsHud::rebuildRenderData() {
 
                 for (const auto& col : columns) {
                     // Column name
-                    addString(col.name, columnNameX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
+                    addString(col.name, columnNameX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
 
                     // Non-Race column state
                     if (col.raceOnly) {
                         // Race-only column - show N/A
-                        addString("N/A", nonRaceX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO, TextColors::MUTED, dim.fontSize);
+                        addString("  N/A  ", nonRaceX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getMuted(), dim.fontSize);
                     } else if (col.isGapColumn) {
-                        // Gap column - show Off/Me/All
+                        // Gap column - show < Off/Me/All >
                         StandingsHud::GapMode* gapModePtr = (col.flag == StandingsHud::COL_OFFICIAL_GAP)
                             ? &m_standings->m_officialGapMode_NonRace
                             : &m_standings->m_liveGapMode_NonRace;
                         const char* label = getGapModeLabel(*gapModePtr);
-                        unsigned long color = (*gapModePtr == StandingsHud::GapMode::OFF) ? TextColors::MUTED : TextColors::SECONDARY;
+                        unsigned long color = (*gapModePtr == StandingsHud::GapMode::OFF) ? ColorConfig::getInstance().getMuted() : ColorConfig::getInstance().getSecondary();
                         addString(label, nonRaceX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO, color, dim.fontSize);
                         addGapModeRegion(nonRaceX, tableY, gapModePtr);
                     } else {
-                        // Regular column - show On/Off
+                        // Regular column - show < On/Off >
                         bool enabled = (m_standings->m_nonRaceEnabledColumns & col.flag) != 0;
-                        const char* label = enabled ? "On" : "Off";
-                        unsigned long color = enabled ? TextColors::SECONDARY : TextColors::MUTED;
+                        const char* label = enabled ? "< On  >" : "< Off >";
+                        unsigned long color = enabled ? ColorConfig::getInstance().getSecondary() : ColorConfig::getInstance().getMuted();
                         addString(label, nonRaceX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO, color, dim.fontSize);
-                        addColumnCheckbox(nonRaceX, tableY, &m_standings->m_nonRaceEnabledColumns, col.flag);
+                        addColumnToggle(nonRaceX, tableY, &m_standings->m_nonRaceEnabledColumns, col.flag);
                     }
 
                     // Race column state
                     if (col.isGapColumn) {
-                        // Gap column - show Off/Me/All
+                        // Gap column - show < Off/Me/All >
                         StandingsHud::GapMode* gapModePtr = (col.flag == StandingsHud::COL_OFFICIAL_GAP)
                             ? &m_standings->m_officialGapMode_Race
                             : &m_standings->m_liveGapMode_Race;
                         const char* label = getGapModeLabel(*gapModePtr);
-                        unsigned long color = (*gapModePtr == StandingsHud::GapMode::OFF) ? TextColors::MUTED : TextColors::SECONDARY;
+                        unsigned long color = (*gapModePtr == StandingsHud::GapMode::OFF) ? ColorConfig::getInstance().getMuted() : ColorConfig::getInstance().getSecondary();
                         addString(label, raceX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO, color, dim.fontSize);
                         addGapModeRegion(raceX, tableY, gapModePtr);
                     } else {
-                        // Regular column - show On/Off
+                        // Regular column - show < On/Off >
                         bool enabled = (m_standings->m_raceEnabledColumns & col.flag) != 0;
-                        const char* label = enabled ? "On" : "Off";
-                        unsigned long color = enabled ? TextColors::SECONDARY : TextColors::MUTED;
+                        const char* label = enabled ? "< On  >" : "< Off >";
+                        unsigned long color = enabled ? ColorConfig::getInstance().getSecondary() : ColorConfig::getInstance().getMuted();
                         addString(label, raceX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO, color, dim.fontSize);
-                        addColumnCheckbox(raceX, tableY, &m_standings->m_raceEnabledColumns, col.flag);
+                        addColumnToggle(raceX, tableY, &m_standings->m_raceEnabledColumns, col.flag);
                     }
 
                     tableY += dim.lineHeightNormal;
@@ -742,24 +850,27 @@ void SettingsHud::rebuildRenderData() {
 
                 // Adjacent rider gaps mode (race-only feature)
                 tableY += dim.lineHeightNormal * 0.5f;  // Add some spacing
-                addString("Adjacent Rider Gaps", columnNameX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
+                addString("Adjacent Gaps", columnNameX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+
+                // Non-Race column - N/A (race-only feature)
+                addString("  N/A  ", nonRaceX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getMuted(), dim.fontSize);
 
                 // Get label for current gap indicator mode
                 const char* gapRowsLabel;
                 switch (m_standings->m_gapIndicatorMode) {
-                    case StandingsHud::GapIndicatorMode::OFF:      gapRowsLabel = "Off"; break;
-                    case StandingsHud::GapIndicatorMode::OFFICIAL: gapRowsLabel = "Official"; break;
-                    case StandingsHud::GapIndicatorMode::LIVE:     gapRowsLabel = "Live"; break;
-                    case StandingsHud::GapIndicatorMode::BOTH:     gapRowsLabel = "Both"; break;
-                    default: gapRowsLabel = "Off"; break;
+                    case StandingsHud::GapIndicatorMode::OFF:      gapRowsLabel = "< Off      >"; break;
+                    case StandingsHud::GapIndicatorMode::OFFICIAL: gapRowsLabel = "< Official >"; break;
+                    case StandingsHud::GapIndicatorMode::LIVE:     gapRowsLabel = "< Live     >"; break;
+                    case StandingsHud::GapIndicatorMode::BOTH:     gapRowsLabel = "< Both     >"; break;
+                    default: gapRowsLabel = "< Off      >"; break;
                 }
-                unsigned long gapRowsColor = (m_standings->m_gapIndicatorMode == StandingsHud::GapIndicatorMode::OFF) ? TextColors::MUTED : TextColors::SECONDARY;
+                unsigned long gapRowsColor = (m_standings->m_gapIndicatorMode == StandingsHud::GapIndicatorMode::OFF) ? ColorConfig::getInstance().getMuted() : ColorConfig::getInstance().getSecondary();
                 addString(gapRowsLabel, raceX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO, gapRowsColor, dim.fontSize);
 
                 ClickRegion region;
                 region.x = raceX;
                 region.y = tableY;
-                region.width = PluginUtils::calculateMonospaceTextWidth(9, dim.fontSize);  // "Official" is longest at 8 chars + padding
+                region.width = PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);  // "< Official >"
                 region.height = dim.lineHeightNormal;
                 region.type = ClickRegion::GAP_INDICATOR_CYCLE;
                 region.targetPointer = &m_standings->m_gapIndicatorMode;
@@ -775,93 +886,42 @@ void SettingsHud::rebuildRenderData() {
             activeHud = m_mapHud;
             dataStartY = addHudControls(m_mapHud);
 
-            // Add rotation toggle checkbox
+            // RIGHT COLUMN: Map-specific controls
             {
-                float controlX = leftColumnX;
-                float rotationY = currentY;
+                float rightY = dataStartY;
+                float toggleX = rightColumnX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);
 
-                bool rotateToPlayer = m_mapHud->getRotateToPlayer();
-                const char* rotationCheckbox = rotateToPlayer ? "[X]" : "[ ]";
-                addString(rotationCheckbox, controlX, rotationY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
-                float rotationLabelX = controlX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::CHECKBOX_WIDTH, dim.fontSize);
-                addString("Rotate", rotationLabelX, rotationY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
+                // Rotation toggle
+                addString("Rotate", rightColumnX, rightY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                addToggleControl(toggleX, rightY, m_mapHud->getRotateToPlayer(),
+                    ClickRegion::MAP_ROTATION_TOGGLE, m_mapHud);
+                rightY += dim.lineHeightNormal;
 
-                m_clickRegions.push_back(ClickRegion(
-                    controlX, rotationY,
-                    PluginUtils::calculateMonospaceTextWidth(SettingsHud::CHECKBOX_LABEL_MEDIUM, dim.fontSize),
-                    dim.lineHeightNormal,
-                    ClickRegion::MAP_ROTATION_TOGGLE, m_mapHud, 0, false, 0
-                ));
+                // Outline toggle
+                addString("Outline", rightColumnX, rightY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                addToggleControl(toggleX, rightY, m_mapHud->getShowOutline(),
+                    ClickRegion::MAP_OUTLINE_TOGGLE, m_mapHud);
+                rightY += dim.lineHeightNormal;
 
-                currentY += dim.lineHeightNormal;
-            }
+                // Colorize riders toggle
+                addString("Colorize", rightColumnX, rightY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                addToggleControl(toggleX, rightY, m_mapHud->getColorizeRiders(),
+                    ClickRegion::MAP_COLORIZE_TOGGLE, m_mapHud);
+                rightY += dim.lineHeightNormal;
 
-            // Add outline toggle checkbox
-            {
-                float controlX = leftColumnX;
-                float outlineY = currentY;
+                // Track line width controls
+                addString("Width", rightColumnX, rightY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                char trackWidthValue[16];
+                snprintf(trackWidthValue, sizeof(trackWidthValue), "%.0fm", m_mapHud->getTrackLineWidthMeters());
+                addCycleControl(toggleX, rightY, trackWidthValue, 4,  // "9.0m"
+                    ClickRegion::MAP_TRACK_WIDTH_DOWN, ClickRegion::MAP_TRACK_WIDTH_UP, m_mapHud);
+                rightY += dim.lineHeightNormal;
 
-                bool showOutline = m_mapHud->getShowOutline();
-                const char* outlineCheckbox = showOutline ? "[X]" : "[ ]";
-                addString(outlineCheckbox, controlX, outlineY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
-                float outlineLabelX = controlX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::CHECKBOX_WIDTH, dim.fontSize);
-                addString("Outline", outlineLabelX, outlineY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
-
-                m_clickRegions.push_back(ClickRegion(
-                    controlX, outlineY,
-                    PluginUtils::calculateMonospaceTextWidth(SettingsHud::CHECKBOX_LABEL_MEDIUM, dim.fontSize),
-                    dim.lineHeightNormal,
-                    ClickRegion::MAP_OUTLINE_TOGGLE, m_mapHud, 0, false, 0
-                ));
-
-                currentY += dim.lineHeightNormal;
-            }
-
-            // Add colorize riders toggle checkbox
-            {
-                float controlX = leftColumnX;
-                float colorizeY = currentY;
-
-                bool colorizeRiders = m_mapHud->getColorizeRiders();
-                const char* colorizeCheckbox = colorizeRiders ? "[X]" : "[ ]";
-                addString(colorizeCheckbox, controlX, colorizeY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
-                float colorizeLabelX = controlX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::CHECKBOX_WIDTH, dim.fontSize);
-                addString("Colorize", colorizeLabelX, colorizeY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
-
-                m_clickRegions.push_back(ClickRegion(
-                    controlX, colorizeY,
-                    PluginUtils::calculateMonospaceTextWidth(SettingsHud::CHECKBOX_LABEL_MEDIUM, dim.fontSize),
-                    dim.lineHeightNormal,
-                    ClickRegion::MAP_COLORIZE_TOGGLE, m_mapHud, 0, false, 0
-                ));
-
-                currentY += dim.lineHeightNormal;
-            }
-
-            // Add track line width controls
-            {
-                float controlX = leftColumnX;
-                char trackWidthText[32];
-                snprintf(trackWidthText, sizeof(trackWidthText), "Width: %.1fm", m_mapHud->getTrackLineWidthMeters());
-                addString(trackWidthText, controlX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
-
-                float trackWidthButtonX = controlX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::SCALE_LABEL_WIDTH, dim.fontSize);
-                addControlButtons(trackWidthButtonX, currentY, ClickRegion::MAP_TRACK_WIDTH_DOWN, ClickRegion::MAP_TRACK_WIDTH_UP, m_mapHud);
-
-                currentY += dim.lineHeightNormal;
-            }
-
-            // Add label mode control
-            {
-                float controlX = leftColumnX;
-                char labelModeText[32];
+                // Label mode control
                 const char* modeStr = "";
                 switch (m_mapHud->getLabelMode()) {
                     case MapHud::LabelMode::NONE:     modeStr = "None"; break;
@@ -873,19 +933,11 @@ void SettingsHud::rebuildRenderData() {
                         modeStr = "Unknown";
                         break;
                 }
-                snprintf(labelModeText, sizeof(labelModeText), "Labels: %s", modeStr);
-                addString(labelModeText, controlX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
-
-                // Click region for cycling through modes
-                m_clickRegions.push_back(ClickRegion(
-                    controlX, currentY,
-                    PluginUtils::calculateMonospaceTextWidth(SettingsHud::SCALE_LABEL_WIDTH + 3, dim.fontSize),
-                    dim.lineHeightNormal,
-                    ClickRegion::MAP_LABEL_MODE_CYCLE, m_mapHud, 0, false, 0
-                ));
-
-                currentY += dim.lineHeightNormal;
+                addString("Labels", rightColumnX, rightY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                addCycleControl(toggleX, rightY, modeStr, 8,  // "Race Num" is longest
+                    ClickRegion::MAP_LABEL_MODE_CYCLE, ClickRegion::MAP_LABEL_MODE_CYCLE, m_mapHud);
+                rightY += dim.lineHeightNormal;
             }
             break;
 
@@ -893,36 +945,37 @@ void SettingsHud::rebuildRenderData() {
             activeHud = m_lapLog;
             dataStartY = addHudControls(m_lapLog);
 
-            // Row count control (specific to LapLogHud)
+            // RIGHT COLUMN: HUD-specific controls and data toggles
             {
-                float controlX = leftColumnX;
-                char rowCountText[32];
-                snprintf(rowCountText, sizeof(rowCountText), "Rows: %d", m_lapLog->m_maxDisplayLaps);
-                addString(rowCountText, controlX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
+                float rightY = dataStartY;
+                float toggleX = rightColumnX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);
 
-                float rowCountButtonX = controlX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::SCALE_LABEL_WIDTH, dim.fontSize);
-                addControlButtons(rowCountButtonX, currentY, ClickRegion::LAP_LOG_ROW_COUNT_DOWN, ClickRegion::LAP_LOG_ROW_COUNT_UP, m_lapLog);
+                // Row count control (specific to LapLogHud)
+                addString("Rows", rightColumnX, rightY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                char rowCountValue[8];
+                snprintf(rowCountValue, sizeof(rowCountValue), "%d", m_lapLog->m_maxDisplayLaps);
+                addCycleControl(toggleX, rightY, rowCountValue, 2,
+                    ClickRegion::LAP_LOG_ROW_COUNT_DOWN, ClickRegion::LAP_LOG_ROW_COUNT_UP, m_lapLog);
+                rightY += dim.lineHeightNormal;  // Move to next row
 
-                currentY += dim.lineHeightNormal;
+                // Data toggles
+                addDataToggle("Lap #", &m_lapLog->m_enabledColumns, LapLogHud::COL_LAP, false, m_lapLog, rightY);
+                addGroupToggle("Sectors", &m_lapLog->m_enabledColumns,
+                    LapLogHud::COL_S1 | LapLogHud::COL_S2 | LapLogHud::COL_S3,
+                    false, m_lapLog, rightY + dim.lineHeightNormal);
+                addDataToggle("Time", &m_lapLog->m_enabledColumns, LapLogHud::COL_TIME, false, m_lapLog, rightY + dim.lineHeightNormal * 2);
             }
-
-            // Right column data toggles (3 items)
-            addDataCheckbox("Lap #", &m_lapLog->m_enabledColumns, LapLogHud::COL_LAP, false, m_lapLog, dataStartY);
-            addGroupCheckbox("Sectors", &m_lapLog->m_enabledColumns,
-                LapLogHud::COL_S1 | LapLogHud::COL_S2 | LapLogHud::COL_S3,
-                false, m_lapLog, dataStartY + dim.lineHeightNormal);
-            addDataCheckbox("Time", &m_lapLog->m_enabledColumns, LapLogHud::COL_TIME, false, m_lapLog, dataStartY + dim.lineHeightNormal * 2);
             break;
 
         case TAB_SESSION_BEST:
             activeHud = m_sessionBest;
             dataStartY = addHudControls(m_sessionBest);
             // Right column data toggles (2 items)
-            addGroupCheckbox("Sectors", &m_sessionBest->m_enabledRows,
+            addGroupToggle("Sectors", &m_sessionBest->m_enabledRows,
                 SessionBestHud::ROW_S1 | SessionBestHud::ROW_S2 | SessionBestHud::ROW_S3,
                 false, m_sessionBest, dataStartY);
-            addGroupCheckbox("Laps", &m_sessionBest->m_enabledRows,
+            addGroupToggle("Laps", &m_sessionBest->m_enabledRows,
                 SessionBestHud::ROW_LAST | SessionBestHud::ROW_BEST | SessionBestHud::ROW_IDEAL,
                 false, m_sessionBest, dataStartY + dim.lineHeightNormal);
             break;
@@ -931,48 +984,61 @@ void SettingsHud::rebuildRenderData() {
             activeHud = m_telemetry;
             dataStartY = addHudControls(m_telemetry);
 
-            // Display mode control (with cycle buttons)
-            addDisplayModeControl(leftColumnX, currentY, dim, &m_telemetry->m_displayMode, m_telemetry);
+            // RIGHT COLUMN: HUD-specific controls and data toggles
+            {
+                float rightY = dataStartY;
 
-            // Right column data toggles (8 items: Throttle, Front Brake, Rear Brake, Clutch, RPM, Front Susp, Rear Susp, Gear)
-            addDataCheckbox("Throttle", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_THROTTLE, false, m_telemetry, dataStartY);
-            addDataCheckbox("Front Brake", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_FRONT_BRAKE, false, m_telemetry, dataStartY + dim.lineHeightNormal);
-            addDataCheckbox("Rear Brake", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_REAR_BRAKE, false, m_telemetry, dataStartY + dim.lineHeightNormal * 2);
-            addDataCheckbox("Clutch", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_CLUTCH, false, m_telemetry, dataStartY + dim.lineHeightNormal * 3);
-            addDataCheckbox("RPM", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_RPM, false, m_telemetry, dataStartY + dim.lineHeightNormal * 4);
-            addDataCheckbox("Front Susp", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_FRONT_SUSP, false, m_telemetry, dataStartY + dim.lineHeightNormal * 5);
-            addDataCheckbox("Rear Susp", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_REAR_SUSP, false, m_telemetry, dataStartY + dim.lineHeightNormal * 6);
-            addDataCheckbox("Gear", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_GEAR, false, m_telemetry, dataStartY + dim.lineHeightNormal * 7);
+                // Display mode control (with cycle buttons)
+                addDisplayModeControl(rightColumnX, rightY, dim, &m_telemetry->m_displayMode, m_telemetry);
+
+                // Data toggles
+                addDataToggle("Throttle", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_THROTTLE, false, m_telemetry, rightY);
+                addDataToggle("Front Brake", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_FRONT_BRAKE, false, m_telemetry, rightY + dim.lineHeightNormal);
+                addDataToggle("Rear Brake", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_REAR_BRAKE, false, m_telemetry, rightY + dim.lineHeightNormal * 2);
+                addDataToggle("Clutch", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_CLUTCH, false, m_telemetry, rightY + dim.lineHeightNormal * 3);
+                addDataToggle("RPM", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_RPM, false, m_telemetry, rightY + dim.lineHeightNormal * 4);
+                addDataToggle("Front Susp", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_FRONT_SUSP, false, m_telemetry, rightY + dim.lineHeightNormal * 5);
+                addDataToggle("Rear Susp", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_REAR_SUSP, false, m_telemetry, rightY + dim.lineHeightNormal * 6);
+                addDataToggle("Gear", &m_telemetry->m_enabledElements, TelemetryHud::ELEM_GEAR, false, m_telemetry, rightY + dim.lineHeightNormal * 7);
+            }
             break;
 
         case TAB_INPUT:
             activeHud = m_input;
             dataStartY = addHudControls(m_input);
             // Right column data toggles (3 items)
-            addDataCheckbox("Crosshairs", &m_input->m_enabledElements, InputHud::ELEM_CROSSHAIRS, false, m_input, dataStartY);
-            addDataCheckbox("Stick Trails", &m_input->m_enabledElements, InputHud::ELEM_TRAILS, false, m_input, dataStartY + dim.lineHeightNormal);
-            addDataCheckbox("Numeric Values", &m_input->m_enabledElements, InputHud::ELEM_VALUES, false, m_input, dataStartY + dim.lineHeightNormal * 2);
+            addDataToggle("Crosshairs", &m_input->m_enabledElements, InputHud::ELEM_CROSSHAIRS, false, m_input, dataStartY);
+            addDataToggle("Trails", &m_input->m_enabledElements, InputHud::ELEM_TRAILS, false, m_input, dataStartY + dim.lineHeightNormal);
+            addDataToggle("Numbers", &m_input->m_enabledElements, InputHud::ELEM_VALUES, false, m_input, dataStartY + dim.lineHeightNormal * 2);
             break;
 
         case TAB_PERFORMANCE:
             activeHud = m_performance;
             dataStartY = addHudControls(m_performance);
 
-            // Display mode control (with cycle buttons)
-            addDisplayModeControl(leftColumnX, currentY, dim, &m_performance->m_displayMode, m_performance);
+            // RIGHT COLUMN: HUD-specific controls and data toggles
+            {
+                float rightY = dataStartY;
 
-            // Right column data toggles (2 items: FPS and CPU metrics)
-            addDataCheckbox("FPS", &m_performance->m_enabledElements, PerformanceHud::ELEM_FPS, false, m_performance, dataStartY);
-            addDataCheckbox("CPU", &m_performance->m_enabledElements, PerformanceHud::ELEM_CPU, false, m_performance, dataStartY + dim.lineHeightNormal);
+                // Display mode control (with cycle buttons)
+                addDisplayModeControl(rightColumnX, rightY, dim, &m_performance->m_displayMode, m_performance);
+
+                // Data toggles
+                addDataToggle("FPS", &m_performance->m_enabledElements, PerformanceHud::ELEM_FPS, false, m_performance, rightY);
+                addDataToggle("CPU", &m_performance->m_enabledElements, PerformanceHud::ELEM_CPU, false, m_performance, rightY + dim.lineHeightNormal);
+            }
             break;
 
         case TAB_PITBOARD:
             activeHud = m_pitboard;
             dataStartY = addHudControls(m_pitboard, false);  // No title support
 
-            // Display mode control (left column, below scale)
+            // RIGHT COLUMN: HUD-specific controls and data toggles
             {
-                // Determine display mode text (Always/Pit/Splits)
+                float rightY = dataStartY;
+                float toggleX = rightColumnX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);
+
+                // Display mode control (Always/Pit/Splits)
                 const char* displayModeText = "";
                 if (m_pitboard->m_displayMode == PitboardHud::MODE_ALWAYS) {
                     displayModeText = "Always";
@@ -981,87 +1047,73 @@ void SettingsHud::rebuildRenderData() {
                 } else if (m_pitboard->m_displayMode == PitboardHud::MODE_SPLITS) {
                     displayModeText = "Splits";
                 }
+                addString("Show", rightColumnX, rightY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                addCycleControl(toggleX, rightY, displayModeText, 6,  // "Always" is longest
+                    ClickRegion::PITBOARD_SHOW_MODE_DOWN, ClickRegion::PITBOARD_SHOW_MODE_UP, m_pitboard);
+                rightY += dim.lineHeightNormal;  // Move to next row
 
-                char displayModeLabel[32];
-                snprintf(displayModeLabel, sizeof(displayModeLabel), "Show: %s", displayModeText);
-                addString(displayModeLabel, leftColumnX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
-
-                float displayModeButtonX = leftColumnX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::SCALE_LABEL_WIDTH, dim.fontSize);
-                float minusX = displayModeButtonX;
-                float plusX = displayModeButtonX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::SCALE_BUTTON_GAP, dim.fontSize);
-                float buttonWidth = PluginUtils::calculateMonospaceTextWidth(SettingsHud::BUTTON_WIDTH, dim.fontSize);
-
-                addString("[-]", minusX, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
-                addClickRegion(ClickRegion::DISPLAY_MODE_DOWN, minusX, currentY, buttonWidth, dim.lineHeightNormal,
-                               m_pitboard, nullptr, &m_pitboard->m_displayMode, 0, false, 0);
-
-                addString("[+]", plusX, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
-                addClickRegion(ClickRegion::DISPLAY_MODE_UP, plusX, currentY, buttonWidth, dim.lineHeightNormal,
-                               m_pitboard, nullptr, &m_pitboard->m_displayMode, 0, false, 0);
-
-                currentY += dim.lineHeightNormal;
+                // Data toggles
+                addDataToggle("Rider", &m_pitboard->m_enabledRows, PitboardHud::ROW_RIDER_ID, false, m_pitboard, rightY);
+                addDataToggle("Session", &m_pitboard->m_enabledRows, PitboardHud::ROW_SESSION, false, m_pitboard, rightY + dim.lineHeightNormal);
+                addDataToggle("Position", &m_pitboard->m_enabledRows, PitboardHud::ROW_POSITION, false, m_pitboard, rightY + dim.lineHeightNormal * 2);
+                addDataToggle("Time", &m_pitboard->m_enabledRows, PitboardHud::ROW_TIME, false, m_pitboard, rightY + dim.lineHeightNormal * 3);
+                addDataToggle("Lap", &m_pitboard->m_enabledRows, PitboardHud::ROW_LAP, false, m_pitboard, rightY + dim.lineHeightNormal * 4);
+                addDataToggle("Last Lap", &m_pitboard->m_enabledRows, PitboardHud::ROW_LAST_LAP, false, m_pitboard, rightY + dim.lineHeightNormal * 5);
+                addDataToggle("Gap", &m_pitboard->m_enabledRows, PitboardHud::ROW_GAP, false, m_pitboard, rightY + dim.lineHeightNormal * 6);
             }
-
-            // Right column data toggles (7 items)
-            addDataCheckbox("Rider", &m_pitboard->m_enabledRows, PitboardHud::ROW_RIDER_ID, false, m_pitboard, dataStartY);
-            addDataCheckbox("Session", &m_pitboard->m_enabledRows, PitboardHud::ROW_SESSION, false, m_pitboard, dataStartY + dim.lineHeightNormal);
-            addDataCheckbox("Position", &m_pitboard->m_enabledRows, PitboardHud::ROW_POSITION, false, m_pitboard, dataStartY + dim.lineHeightNormal * 2);
-            addDataCheckbox("Time", &m_pitboard->m_enabledRows, PitboardHud::ROW_TIME, false, m_pitboard, dataStartY + dim.lineHeightNormal * 3);
-            addDataCheckbox("Lap", &m_pitboard->m_enabledRows, PitboardHud::ROW_LAP, false, m_pitboard, dataStartY + dim.lineHeightNormal * 4);
-            addDataCheckbox("Last Lap", &m_pitboard->m_enabledRows, PitboardHud::ROW_LAST_LAP, false, m_pitboard, dataStartY + dim.lineHeightNormal * 5);
-            addDataCheckbox("Gap", &m_pitboard->m_enabledRows, PitboardHud::ROW_GAP, false, m_pitboard, dataStartY + dim.lineHeightNormal * 6);
             break;
 
         case TAB_RECORDS:
             activeHud = m_records;
             dataStartY = addHudControls(m_records);  // Visibility/title/scale/opacity controls
 
-            // Records count control (left column, after scale)
+            // RIGHT COLUMN: HUD-specific controls and data toggles
             {
-                float controlX = leftColumnX;
-                char recordsText[32];
-                snprintf(recordsText, sizeof(recordsText), "Records: %d", m_records->m_recordsToShow);
-                addString(recordsText, controlX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
+                float rightY = dataStartY;
+                float toggleX = rightColumnX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);
 
-                float recordsButtonX = controlX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::SCALE_LABEL_WIDTH, dim.fontSize);
-                addControlButtons(recordsButtonX, currentY, ClickRegion::RECORDS_COUNT_DOWN, ClickRegion::RECORDS_COUNT_UP, m_records);
+                // Rows count control
+                addString("Rows", rightColumnX, rightY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                char recordsValue[8];
+                snprintf(recordsValue, sizeof(recordsValue), "%d", m_records->m_recordsToShow);
+                addCycleControl(toggleX, rightY, recordsValue, 2,
+                    ClickRegion::RECORDS_COUNT_DOWN, ClickRegion::RECORDS_COUNT_UP, m_records);
+                rightY += dim.lineHeightNormal;  // Move to next row
 
-                currentY += dim.lineHeightNormal;
+                // Data toggles
+                addDataToggle("Position", &m_records->m_enabledColumns, RecordsHud::COL_POS, false, m_records, rightY);
+                addDataToggle("Rider", &m_records->m_enabledColumns, RecordsHud::COL_RIDER, false, m_records, rightY + dim.lineHeightNormal);
+                addDataToggle("Bike", &m_records->m_enabledColumns, RecordsHud::COL_BIKE, false, m_records, rightY + dim.lineHeightNormal * 2);
+                addDataToggle("Laptime", &m_records->m_enabledColumns, RecordsHud::COL_LAPTIME, false, m_records, rightY + dim.lineHeightNormal * 3);
+                addDataToggle("Date", &m_records->m_enabledColumns, RecordsHud::COL_DATE, false, m_records, rightY + dim.lineHeightNormal * 4);
             }
-
-            // Right column data toggles (5 items)
-            addDataCheckbox("Position", &m_records->m_enabledColumns, RecordsHud::COL_POS, false, m_records, dataStartY);
-            addDataCheckbox("Rider", &m_records->m_enabledColumns, RecordsHud::COL_RIDER, false, m_records, dataStartY + dim.lineHeightNormal);
-            addDataCheckbox("Bike", &m_records->m_enabledColumns, RecordsHud::COL_BIKE, false, m_records, dataStartY + dim.lineHeightNormal * 2);
-            addDataCheckbox("Laptime", &m_records->m_enabledColumns, RecordsHud::COL_LAPTIME, false, m_records, dataStartY + dim.lineHeightNormal * 3);
-            addDataCheckbox("Date", &m_records->m_enabledColumns, RecordsHud::COL_DATE, false, m_records, dataStartY + dim.lineHeightNormal * 4);
             break;
 
         case TAB_WIDGETS:
             // Widgets tab - table format with header row
             {
-                // Table header - columns must match addWidgetRow positions
+                // Table header - columns must match addWidgetRow positions exactly
                 float nameX = contentAreaStartX;
                 float visX = nameX + PluginUtils::calculateMonospaceTextWidth(10, dim.fontSize);
-                float titleX = visX + PluginUtils::calculateMonospaceTextWidth(5, dim.fontSize);
-                float bgTexX = titleX + PluginUtils::calculateMonospaceTextWidth(7, dim.fontSize);
-                float opacityX = bgTexX + PluginUtils::calculateMonospaceTextWidth(6, dim.fontSize);
-                float scaleX = opacityX + PluginUtils::calculateMonospaceTextWidth(14, dim.fontSize);
+                float titleX = visX + PluginUtils::calculateMonospaceTextWidth(8, dim.fontSize);   // Match addWidgetRow
+                float bgTexX = titleX + PluginUtils::calculateMonospaceTextWidth(8, dim.fontSize); // Match addWidgetRow
+                float opacityX = bgTexX + PluginUtils::calculateMonospaceTextWidth(8, dim.fontSize); // Match addWidgetRow
+                float scaleX = opacityX + PluginUtils::calculateMonospaceTextWidth(9, dim.fontSize); // Match addWidgetRow
 
                 addString("Widget", nameX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO_BOLD, TextColors::PRIMARY, dim.fontSize);
+                    Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
                 addString("Vis", visX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO_BOLD, TextColors::PRIMARY, dim.fontSize);
+                    Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
                 addString("Title", titleX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO_BOLD, TextColors::PRIMARY, dim.fontSize);
+                    Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
                 addString("BgTex", bgTexX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO_BOLD, TextColors::PRIMARY, dim.fontSize);
+                    Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
                 addString("Opacity", opacityX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO_BOLD, TextColors::PRIMARY, dim.fontSize);
+                    Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
                 addString("Scale", scaleX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO_BOLD, TextColors::PRIMARY, dim.fontSize);
+                    Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
                 currentY += dim.lineHeightNormal;
 
                 // Widget rows
@@ -1088,61 +1140,51 @@ void SettingsHud::rebuildRenderData() {
             activeHud = m_radarHud;
             dataStartY = addHudControls(m_radarHud, false);  // No title support
 
-            // Range control
+            // RIGHT COLUMN: Radar-specific controls
             {
-                float controlX = leftColumnX;
-                char rangeText[32];
-                snprintf(rangeText, sizeof(rangeText), "Range: %.0fm", m_radarHud->getRadarRange());
-                addString(rangeText, controlX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
+                float rightY = dataStartY;
+                float toggleX = rightColumnX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);
 
-                float rangeButtonX = controlX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::SCALE_LABEL_WIDTH, dim.fontSize);
-                addControlButtons(rangeButtonX, currentY, ClickRegion::RADAR_RANGE_DOWN, ClickRegion::RADAR_RANGE_UP, m_radarHud);
+                // Range control
+                addString("Range", rightColumnX, rightY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                char rangeValue[16];
+                snprintf(rangeValue, sizeof(rangeValue), "%.0fm", m_radarHud->getRadarRange());
+                addCycleControl(toggleX, rightY, rangeValue, 4,  // "100m"
+                    ClickRegion::RADAR_RANGE_DOWN, ClickRegion::RADAR_RANGE_UP, m_radarHud);
+                rightY += dim.lineHeightNormal;
 
-                currentY += dim.lineHeightNormal;
-            }
+                // Alert distance control (when triangles light up)
+                addString("Alert", rightColumnX, rightY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                char alertValue[16];
+                snprintf(alertValue, sizeof(alertValue), "%.0fm", m_radarHud->getAlertDistance());
+                addCycleControl(toggleX, rightY, alertValue, 4,  // "100m"
+                    ClickRegion::RADAR_ALERT_DISTANCE_DOWN, ClickRegion::RADAR_ALERT_DISTANCE_UP, m_radarHud);
+                rightY += dim.lineHeightNormal;
 
-            // Alert distance control (when triangles light up)
-            {
-                float controlX = leftColumnX;
-                char alertText[32];
-                snprintf(alertText, sizeof(alertText), "Alert: %.0fm", m_radarHud->getAlertDistance());
-                addString(alertText, controlX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
+                // Colorize riders toggle
+                addString("Colorize", rightColumnX, rightY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                addToggleControl(toggleX, rightY, m_radarHud->getColorizeRiders(),
+                    ClickRegion::RADAR_COLORIZE_TOGGLE, m_radarHud);
+                rightY += dim.lineHeightNormal;
 
-                float alertButtonX = controlX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::SCALE_LABEL_WIDTH, dim.fontSize);
-                addControlButtons(alertButtonX, currentY, ClickRegion::RADAR_ALERT_DISTANCE_DOWN, ClickRegion::RADAR_ALERT_DISTANCE_UP, m_radarHud);
+                // Show player arrow toggle
+                addString("Player", rightColumnX, rightY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                addToggleControl(toggleX, rightY, m_radarHud->getShowPlayerArrow(),
+                    ClickRegion::RADAR_PLAYER_ARROW_TOGGLE, m_radarHud);
+                rightY += dim.lineHeightNormal;
 
-                currentY += dim.lineHeightNormal;
-            }
+                // Auto-hide toggle (fade when no riders nearby)
+                addString("Auto-hide", rightColumnX, rightY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                addToggleControl(toggleX, rightY, m_radarHud->getFadeWhenEmpty(),
+                    ClickRegion::RADAR_FADE_TOGGLE, m_radarHud);
+                rightY += dim.lineHeightNormal;
 
-            // Colorize riders toggle
-            {
-                float controlX = leftColumnX;
-                float colorizeY = currentY;
-
-                bool colorizeRiders = m_radarHud->getColorizeRiders();
-                const char* colorizeCheckbox = colorizeRiders ? "[X]" : "[ ]";
-                addString(colorizeCheckbox, controlX, colorizeY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
-                float colorizeLabelX = controlX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::CHECKBOX_WIDTH, dim.fontSize);
-                addString("Colorize", colorizeLabelX, colorizeY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
-
-                m_clickRegions.push_back(ClickRegion(
-                    controlX, colorizeY,
-                    PluginUtils::calculateMonospaceTextWidth(SettingsHud::CHECKBOX_LABEL_MEDIUM, dim.fontSize),
-                    dim.lineHeightNormal,
-                    ClickRegion::RADAR_COLORIZE_TOGGLE, m_radarHud, 0, false, 0
-                ));
-
-                currentY += dim.lineHeightNormal;
-            }
-
-            // Label mode control
-            {
-                float controlX = leftColumnX;
-                char labelModeText[32];
+                // Label mode control
                 const char* modeStr = "";
                 switch (m_radarHud->getLabelMode()) {
                     case RadarHud::LabelMode::NONE:     modeStr = "None"; break;
@@ -1154,18 +1196,11 @@ void SettingsHud::rebuildRenderData() {
                         modeStr = "Unknown";
                         break;
                 }
-                snprintf(labelModeText, sizeof(labelModeText), "Labels: %s", modeStr);
-                addString(labelModeText, controlX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
-
-                m_clickRegions.push_back(ClickRegion(
-                    controlX, currentY,
-                    PluginUtils::calculateMonospaceTextWidth(20, dim.fontSize),
-                    dim.lineHeightNormal,
-                    ClickRegion::RADAR_LABEL_MODE_CYCLE, m_radarHud, 0, false, 0
-                ));
-
-                currentY += dim.lineHeightNormal;
+                addString("Labels", rightColumnX, rightY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                addCycleControl(toggleX, rightY, modeStr, 8,  // "Race Num" is longest
+                    ClickRegion::RADAR_LABEL_MODE_CYCLE, ClickRegion::RADAR_LABEL_MODE_CYCLE, m_radarHud);
+                rightY += dim.lineHeightNormal;
             }
             break;
 
@@ -1181,7 +1216,7 @@ void SettingsHud::rebuildRenderData() {
     float closeButtonBottomY = startY + backgroundHeight - dim.paddingV - dim.lineHeightNormal;
     float closeButtonBottomX = contentStartX + (panelWidth - dim.paddingH - dim.paddingH) / 2.0f;
     addString("[Close]", closeButtonBottomX, closeButtonBottomY, Justify::CENTER,
-        Fonts::ROBOTO_MONO_BOLD, TextColors::PRIMARY, dim.fontSize);
+        Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
     m_clickRegions.push_back(ClickRegion(
         closeButtonBottomX - PluginUtils::calculateMonospaceTextWidth(3, dim.fontSize),  // Half of "[Close]" width (7 chars)
         closeButtonBottomY,
@@ -1194,7 +1229,7 @@ void SettingsHud::rebuildRenderData() {
     float resetButtonY = closeButtonBottomY;
     float resetButtonX = startX + panelWidth - dim.paddingH - PluginUtils::calculateMonospaceTextWidth(SettingsHud::RESET_BUTTON_WIDTH, dim.fontSize);
     addString("[Restore Defaults]", resetButtonX, resetButtonY, Justify::LEFT,
-        Fonts::ROBOTO_MONO_BOLD, TextColors::SECONDARY, dim.fontSize);
+        Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getSecondary(), dim.fontSize);
     m_clickRegions.push_back(ClickRegion(
         resetButtonX,
         resetButtonY,
@@ -1279,6 +1314,18 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                 case ClickRegion::RADAR_COLORIZE_TOGGLE:
                     handleRadarColorizeClick(region);
                     break;
+                case ClickRegion::RADAR_PLAYER_ARROW_TOGGLE:
+                    if (m_radarHud) {
+                        m_radarHud->setShowPlayerArrow(!m_radarHud->getShowPlayerArrow());
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RADAR_FADE_TOGGLE:
+                    if (m_radarHud) {
+                        m_radarHud->setFadeWhenEmpty(!m_radarHud->getFadeWhenEmpty());
+                        setDataDirty();
+                    }
+                    break;
                 case ClickRegion::RADAR_ALERT_DISTANCE_UP:
                     handleRadarAlertDistanceClick(region, true);
                     break;
@@ -1305,6 +1352,46 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                     if (m_records && m_records->m_recordsToShow > 1) {
                         m_records->m_recordsToShow--;
                         m_records->setDataDirty();
+                        setDataDirty();  // Update settings display
+                    }
+                    break;
+                case ClickRegion::PITBOARD_SHOW_MODE_UP:
+                    handlePitboardShowModeClick(region, true);
+                    break;
+                case ClickRegion::PITBOARD_SHOW_MODE_DOWN:
+                    handlePitboardShowModeClick(region, false);
+                    break;
+                case ClickRegion::COLOR_CYCLE_NEXT:
+                    handleColorCycleClick(region, true);
+                    break;
+                case ClickRegion::COLOR_CYCLE_PREV:
+                    handleColorCycleClick(region, false);
+                    break;
+                case ClickRegion::SPEED_UNIT_TOGGLE:
+                    if (m_speed) {
+                        // Toggle between mph and km/h
+                        auto currentUnit = m_speed->getSpeedUnit();
+                        m_speed->setSpeedUnit(currentUnit == SpeedWidget::SpeedUnit::MPH
+                            ? SpeedWidget::SpeedUnit::KMH
+                            : SpeedWidget::SpeedUnit::MPH);
+                        setDataDirty();  // Update settings display
+                    }
+                    break;
+                case ClickRegion::FUEL_UNIT_TOGGLE:
+                    if (m_fuel) {
+                        // Toggle between liters and gallons
+                        auto currentUnit = m_fuel->getFuelUnit();
+                        m_fuel->setFuelUnit(currentUnit == FuelWidget::FuelUnit::LITERS
+                            ? FuelWidget::FuelUnit::GALLONS
+                            : FuelWidget::FuelUnit::LITERS);
+                        setDataDirty();  // Update settings display
+                    }
+                    break;
+                case ClickRegion::GRID_SNAP_TOGGLE:
+                    {
+                        // Toggle grid snapping
+                        bool current = ColorConfig::getInstance().getGridSnapping();
+                        ColorConfig::getInstance().setGridSnapping(!current);
                         setDataDirty();  // Update settings display
                     }
                     break;
@@ -1361,6 +1448,9 @@ void SettingsHud::resetToDefaults() {
 
     // Reset settings button (managed by HudManager)
     HudManager::getInstance().getSettingsButtonWidget().resetToDefaults();
+
+    // Reset color configuration
+    ColorConfig::getInstance().resetToDefaults();
 
     // Update settings display
     rebuildRenderData();
@@ -1543,10 +1633,10 @@ void SettingsHud::handleMapColorizeClick(const ClickRegion& region) {
 void SettingsHud::handleMapTrackWidthClick(const ClickRegion& region, bool increase) {
     MapHud* mapHud = dynamic_cast<MapHud*>(region.targetHud);
     if (mapHud) {
-        float newWidth = mapHud->getTrackLineWidthMeters() + (increase ? 0.5f : -0.5f);
+        float newWidth = mapHud->getTrackLineWidthMeters() + (increase ? 1.0f : -1.0f);
         mapHud->setTrackLineWidthMeters(newWidth);
         rebuildRenderData();
-        DEBUG_INFO_F("MapHud track line width %s to %.1fm", increase ? "increased" : "decreased", newWidth);
+        DEBUG_INFO_F("MapHud track line width %s to %.0fm", increase ? "increased" : "decreased", newWidth);
     }
 }
 
@@ -1654,6 +1744,75 @@ void SettingsHud::handleDisplayModeClick(const ClickRegion& region, bool increas
 
     const char* modeNames[] = {"Graphs", "Numbers", "Both"};
     DEBUG_INFO_F("Display mode changed to %s", modeNames[newMode]);
+}
+
+void SettingsHud::handlePitboardShowModeClick(const ClickRegion& region, bool increase) {
+    if (!m_pitboard) return;
+
+    // PitboardHud display modes: MODE_ALWAYS(0), MODE_PIT(1), MODE_SPLITS(2)
+    uint8_t currentMode = m_pitboard->m_displayMode;
+    uint8_t newMode;
+
+    if (increase) {
+        // Cycle forward: ALWAYS(0) -> PIT(1) -> SPLITS(2) -> ALWAYS(0)
+        switch (currentMode) {
+            case PitboardHud::MODE_ALWAYS: newMode = PitboardHud::MODE_PIT; break;
+            case PitboardHud::MODE_PIT:    newMode = PitboardHud::MODE_SPLITS; break;
+            case PitboardHud::MODE_SPLITS: newMode = PitboardHud::MODE_ALWAYS; break;
+            default:                       newMode = PitboardHud::MODE_ALWAYS; break;
+        }
+    } else {
+        // Cycle backward: ALWAYS(0) -> SPLITS(2) -> PIT(1) -> ALWAYS(0)
+        switch (currentMode) {
+            case PitboardHud::MODE_ALWAYS: newMode = PitboardHud::MODE_SPLITS; break;
+            case PitboardHud::MODE_PIT:    newMode = PitboardHud::MODE_ALWAYS; break;
+            case PitboardHud::MODE_SPLITS: newMode = PitboardHud::MODE_PIT; break;
+            default:                       newMode = PitboardHud::MODE_ALWAYS; break;
+        }
+    }
+
+    m_pitboard->m_displayMode = newMode;
+    m_pitboard->setDataDirty();
+    rebuildRenderData();
+
+    const char* modeNames[] = {"Always", "Pit", "Splits"};
+    DEBUG_INFO_F("Pitboard show mode changed to %s", modeNames[newMode]);
+}
+
+void SettingsHud::handleColorCycleClick(const ClickRegion& region, bool forward) {
+    auto* colorSlotPtr = std::get_if<ColorSlot>(&region.targetPointer);
+    if (!colorSlotPtr) return;
+
+    ColorSlot slot = *colorSlotPtr;
+    ColorConfig& colorConfig = ColorConfig::getInstance();
+
+    colorConfig.cycleColor(slot, forward);
+
+    // Mark all HUDs as dirty so they rebuild with new colors immediately
+    if (m_standings) m_standings->setDataDirty();
+    if (m_mapHud) m_mapHud->setDataDirty();
+    if (m_radarHud) m_radarHud->setDataDirty();
+    if (m_lapLog) m_lapLog->setDataDirty();
+    if (m_sessionBest) m_sessionBest->setDataDirty();
+    if (m_telemetry) m_telemetry->setDataDirty();
+    if (m_input) m_input->setDataDirty();
+    if (m_performance) m_performance->setDataDirty();
+    if (m_pitboard) m_pitboard->setDataDirty();
+    if (m_records) m_records->setDataDirty();
+    if (m_time) m_time->setDataDirty();
+    if (m_position) m_position->setDataDirty();
+    if (m_lap) m_lap->setDataDirty();
+    if (m_session) m_session->setDataDirty();
+    if (m_speed) m_speed->setDataDirty();
+    if (m_speedo) m_speedo->setDataDirty();
+    if (m_tacho) m_tacho->setDataDirty();
+    if (m_timing) m_timing->setDataDirty();
+    if (m_bars) m_bars->setDataDirty();
+    if (m_notices) m_notices->setDataDirty();
+    if (m_version) m_version->setDataDirty();
+    if (m_fuel) m_fuel->setDataDirty();
+
+    rebuildRenderData();
 }
 
 void SettingsHud::handleTabClick(const ClickRegion& region) {

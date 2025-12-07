@@ -28,6 +28,7 @@
 #include "../hud/radar_hud.h"
 #include "../hud/pitboard_hud.h"
 #include "../hud/records_hud.h"
+#include "color_config.h"
 #include <fstream>
 #include <sstream>
 #include <unordered_map>
@@ -206,6 +207,8 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     saveBaseHudProperties(file, radarHud, "RadarHud");
     file << "radarRange=" << radarHud.getRadarRange() << "\n";
     file << "colorizeRiders=" << (radarHud.getColorizeRiders() ? 1 : 0) << "\n";
+    file << "showPlayerArrow=" << (radarHud.getShowPlayerArrow() ? 1 : 0) << "\n";
+    file << "fadeWhenEmpty=" << (radarHud.getFadeWhenEmpty() ? 1 : 0) << "\n";
     file << "alertDistance=" << radarHud.getAlertDistance() << "\n";
     file << "labelMode=" << static_cast<int>(radarHud.getLabelMode()) << "\n\n";
 
@@ -262,6 +265,7 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
 
     // Save SpeedWidget
     saveBaseHudProperties(file, hudManager.getSpeedWidget(), "SpeedWidget");
+    file << "speedUnit=" << static_cast<int>(hudManager.getSpeedWidget().m_speedUnit) << "\n";
     file << "\n";
 
     // Save SpeedoWidget
@@ -290,11 +294,29 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
 
     // Save FuelWidget
     saveBaseHudProperties(file, hudManager.getFuelWidget(), "FuelWidget");
+    file << "fuelUnit=" << static_cast<int>(hudManager.getFuelWidget().m_fuelUnit) << "\n";
     file << "\n";
 
     // Save SettingsButtonWidget
     saveBaseHudProperties(file, hudManager.getSettingsButtonWidget(), "SettingsButtonWidget");
     file << "\n";
+
+    // Save ColorConfig
+    {
+        const ColorConfig& colorConfig = ColorConfig::getInstance();
+        file << "[ColorConfig]\n";
+        file << "primary=0x" << std::hex << colorConfig.getPrimary() << std::dec << "\n";
+        file << "secondary=0x" << std::hex << colorConfig.getSecondary() << std::dec << "\n";
+        file << "tertiary=0x" << std::hex << colorConfig.getTertiary() << std::dec << "\n";
+        file << "muted=0x" << std::hex << colorConfig.getMuted() << std::dec << "\n";
+        file << "background=0x" << std::hex << colorConfig.getBackground() << std::dec << "\n";
+        file << "positive=0x" << std::hex << colorConfig.getPositive() << std::dec << "\n";
+        file << "warning=0x" << std::hex << colorConfig.getWarning() << std::dec << "\n";
+        file << "neutral=0x" << std::hex << colorConfig.getNeutral() << std::dec << "\n";
+        file << "negative=0x" << std::hex << colorConfig.getNegative() << std::dec << "\n";
+        file << "gridSnapping=" << (colorConfig.getGridSnapping() ? 1 : 0) << "\n";
+        file << "\n";
+    }
 
     // Validate all writes succeeded before closing
     if (!file.good()) {
@@ -405,6 +427,47 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
             {"SettingsButtonWidget", [&]() { return HudLoadInfo{&hudManager.getSettingsButtonWidget(), nullptr}; }},
         };
 
+        // Handle ColorConfig section (not a HUD, so handle separately before HUD lookup)
+        if (currentSection == "ColorConfig") {
+            try {
+                ColorConfig& colorConfig = ColorConfig::getInstance();
+
+                // Handle non-color settings first
+                if (key == "gridSnapping") {
+                    colorConfig.setGridSnapping(std::stoi(value) != 0);
+                    continue;
+                }
+
+                // All other settings are colors
+                unsigned long colorValue = std::stoul(value, nullptr, 0);  // Handles 0x prefix
+
+                if (key == "primary") {
+                    colorConfig.setColor(ColorSlot::PRIMARY, colorValue);
+                } else if (key == "secondary") {
+                    colorConfig.setColor(ColorSlot::SECONDARY, colorValue);
+                } else if (key == "tertiary") {
+                    colorConfig.setColor(ColorSlot::TERTIARY, colorValue);
+                } else if (key == "muted") {
+                    colorConfig.setColor(ColorSlot::MUTED, colorValue);
+                } else if (key == "background") {
+                    colorConfig.setColor(ColorSlot::BACKGROUND, colorValue);
+                } else if (key == "positive") {
+                    colorConfig.setColor(ColorSlot::POSITIVE, colorValue);
+                } else if (key == "warning") {
+                    colorConfig.setColor(ColorSlot::WARNING, colorValue);
+                } else if (key == "neutral") {
+                    colorConfig.setColor(ColorSlot::NEUTRAL, colorValue);
+                } else if (key == "negative") {
+                    colorConfig.setColor(ColorSlot::NEGATIVE, colorValue);
+                }
+            }
+            catch ([[maybe_unused]] const std::exception& e) {
+                DEBUG_WARN_F("Failed to parse ColorConfig setting '%s=%s': %s",
+                            key.c_str(), value.c_str(), e.what());
+            }
+            continue;
+        }
+
         // Lookup HUD info from table
         auto it = hudLookupTable.find(currentSection);
         if (it == hudLookupTable.end()) continue;
@@ -503,6 +566,10 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                 hudManager.getRadarHud().setRadarRange(range);
             } else if (key == "colorizeRiders" && currentSection == "RadarHud") {
                 hudManager.getRadarHud().setColorizeRiders(std::stoi(value) != 0);
+            } else if (key == "showPlayerArrow" && currentSection == "RadarHud") {
+                hudManager.getRadarHud().setShowPlayerArrow(std::stoi(value) != 0);
+            } else if (key == "fadeWhenEmpty" && currentSection == "RadarHud") {
+                hudManager.getRadarHud().setFadeWhenEmpty(std::stoi(value) != 0);
             } else if (key == "trackFilter" && currentSection == "RadarHud") {
                 // Deprecated setting, ignore (track filtering now uses radar range automatically)
             } else if (key == "alertDistance" && currentSection == "RadarHud") {
@@ -526,6 +593,18 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                 int count = std::stoi(value);
                 if (count >= 1 && count <= 10) {
                     hudManager.getRecordsHud().m_recordsToShow = count;
+                }
+                hud->setDataDirty();
+            } else if (key == "speedUnit" && currentSection == "SpeedWidget") {
+                int unit = std::stoi(value);
+                if (unit >= 0 && unit <= 1) {
+                    hudManager.getSpeedWidget().m_speedUnit = static_cast<SpeedWidget::SpeedUnit>(unit);
+                }
+                hud->setDataDirty();
+            } else if (key == "fuelUnit" && currentSection == "FuelWidget") {
+                int unit = std::stoi(value);
+                if (unit >= 0 && unit <= 1) {
+                    hudManager.getFuelWidget().m_fuelUnit = static_cast<FuelWidget::FuelUnit>(unit);
                 }
                 hud->setDataDirty();
             }

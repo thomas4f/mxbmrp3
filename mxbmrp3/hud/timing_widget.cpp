@@ -14,6 +14,7 @@
 #include "../diagnostics/timer.h"
 #include "../core/plugin_utils.h"
 #include "../core/widget_constants.h"
+#include "../core/color_config.h"
 
 using namespace PluginConstants;
 using namespace CenterDisplayPositions;
@@ -404,11 +405,11 @@ void TimingWidget::rebuildRenderData() {
     // Set background color based on performance
     unsigned long baseColor;
     if (isFaster) {
-        baseColor = SemanticColors::POSITIVE;  // Green for faster
+        baseColor = ColorConfig::getInstance().getPositive();  // Green for faster
     } else if (isSlower) {
-        baseColor = SemanticColors::NEGATIVE;  // Red for slower/invalid
+        baseColor = ColorConfig::getInstance().getNegative();  // Red for slower/invalid
     } else {
-        baseColor = TextColors::BACKGROUND;    // Black for neutral
+        baseColor = ColorConfig::getInstance().getBackground();    // Black for neutral
     }
 
     gapQuad.m_ulColor = PluginUtils::applyOpacity(baseColor, m_fBackgroundOpacity);
@@ -432,7 +433,7 @@ void TimingWidget::rebuildRenderData() {
     // Add label string (right-aligned in label quad, white text)
     float labelX = labelQuadX + labelQuadWidth - dim.paddingH;
     addString(labelBuffer, labelX, labelY, Justify::RIGHT,
-        Fonts::ENTER_SANSMAN, TextColors::PRIMARY, dim.fontSizeLarge);
+        Fonts::ENTER_SANSMAN, ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
 
     // Format the time (show placeholder if no timing data)
     char timeBuffer[32];
@@ -446,12 +447,12 @@ void TimingWidget::rebuildRenderData() {
     // Add time string (centered in time quad, always primary color)
     float timeX = timeQuadX + timeQuadWidth / 2.0f;
     addString(timeBuffer, timeX, timeY, Justify::CENTER,
-        Fonts::ENTER_SANSMAN, TextColors::PRIMARY, dim.fontSizeLarge);
+        Fonts::ENTER_SANSMAN, ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
 
     // Add gap string (left-aligned in gap quad, white text)
     float gapX = gapQuadX + dim.paddingH;
     addString(gapBuffer, gapX, gapY, Justify::LEFT,
-        Fonts::ENTER_SANSMAN, TextColors::PRIMARY, dim.fontSizeLarge);
+        Fonts::ENTER_SANSMAN, ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
 
     // Set bounds for timing display
     float leftX = labelQuadX;
