@@ -23,6 +23,7 @@
 #include "version_widget.h"
 #include "notices_widget.h"
 #include "fuel_widget.h"
+#include "records_hud.h"
 #include <variant>
 #include "map_hud.h"
 #include "radar_hud.h"
@@ -37,7 +38,7 @@ public:
                 StandingsHud* standings,
                 PerformanceHud* performance,
                 TelemetryHud* telemetry, InputHud* input,
-                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionWidget* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingWidget* timing, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, FuelWidget* fuel);
+                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionWidget* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingWidget* timing, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel);
     virtual ~SettingsHud() = default;
 
     void update() override;
@@ -85,6 +86,8 @@ private:
             RADAR_LABEL_MODE_CYCLE,    // Cycle label display mode (RadarHud)
             DISPLAY_MODE_UP,           // Cycle display mode forward (PerformanceHud)
             DISPLAY_MODE_DOWN,         // Cycle display mode backward (PerformanceHud)
+            RECORDS_COUNT_UP,          // Increase records to show (RecordsHud)
+            RECORDS_COUNT_DOWN,        // Decrease records to show (RecordsHud)
             TAB,                       // Select tab
             CLOSE_BUTTON               // Close the settings menu
         } type;
@@ -225,6 +228,7 @@ private:
     VersionWidget* m_version;
     NoticesWidget* m_notices;
     PitboardHud* m_pitboard;
+    RecordsHud* m_records;
     FuelWidget* m_fuel;
 
     // Visibility flag
@@ -235,19 +239,20 @@ private:
     int m_cachedWindowWidth;
     int m_cachedWindowHeight;
 
-    // Tab system (order matches F-key assignments: F1-F10)
+    // Tab system
     enum Tab {
         TAB_STANDINGS = 0,     // F1
         TAB_MAP = 1,           // F2
         TAB_RADAR = 2,         // F3
-        TAB_PITBOARD = 3,      // F4
-        TAB_LAP_LOG = 4,       // F5
-        TAB_SESSION_BEST = 5,  // F6
-        TAB_TELEMETRY = 6,     // F7
-        TAB_INPUT = 7,         // F8
-        TAB_PERFORMANCE = 8,   // F9
-        TAB_WIDGETS = 9,       // F10 (toggles all)
-        TAB_COUNT = 10
+        TAB_LAP_LOG = 3,       // F4
+        TAB_SESSION_BEST = 4,  // F5
+        TAB_TELEMETRY = 5,     // F6
+        TAB_INPUT = 6,         // F7
+        TAB_RECORDS = 7,       // F8 - Lap Records (online)
+        TAB_PITBOARD = 8,
+        TAB_PERFORMANCE = 9,
+        TAB_WIDGETS = 10,
+        TAB_COUNT = 11
     };
     int m_activeTab;
 

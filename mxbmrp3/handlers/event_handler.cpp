@@ -17,6 +17,7 @@ void EventHandler::handleEventInit(SPluginsBikeEvent_t* psEventData) {
     PluginData::getInstance().setRiderName(psEventData->m_szRiderName);
     PluginData::getInstance().setBikeName(psEventData->m_szBikeName);
     PluginData::getInstance().setCategory(psEventData->m_szCategory);
+    PluginData::getInstance().setTrackId(psEventData->m_szTrackID);
     PluginData::getInstance().setTrackName(psEventData->m_szTrackName);
     PluginData::getInstance().setEventType(psEventData->m_iType);
     PluginData::getInstance().setShiftRPM(psEventData->m_iShiftRPM);

@@ -31,6 +31,9 @@
     <Filter Include="Header Files\vendor\piboso">
       <UniqueIdentifier>{1a45387b-39e6-47b8-b261-defa8abb387f}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\vendor\nlohmann">
+      <UniqueIdentifier>{2b56498c-4ae7-58c9-c372-efab9bcc498g}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Source Files\vendor">
       <UniqueIdentifier>{9c5c079c-e2a3-4d81-959f-5742abec63f7}</UniqueIdentifier>
     </Filter>
@@ -62,6 +65,9 @@
     </ClInclude>
     <ClInclude Include="vendor\piboso\mxb_api.h">
       <Filter>Header Files\vendor\piboso</Filter>
+    </ClInclude>
+    <ClInclude Include="vendor\nlohmann\json.hpp">
+      <Filter>Header Files\vendor\nlohmann</Filter>
     </ClInclude>
     <ClInclude Include="handlers\race_classification_handler.h">
       <Filter>Header Files\handlers</Filter>
@@ -202,6 +208,9 @@
       <Filter>Header Files\handlers</Filter>
     </ClInclude>
     <ClInclude Include="hud\pitboard_hud.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\records_hud.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
     <ClInclude Include="hud\version_widget.h">
@@ -357,6 +366,9 @@
       <Filter>Source Files\handlers</Filter>
     </ClCompile>
     <ClCompile Include="hud\pitboard_hud.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\records_hud.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\version_widget.cpp">

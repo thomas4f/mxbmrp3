@@ -24,7 +24,8 @@ struct SessionData {
     char riderName[100];
     char bikeName[100];
     char category[100];
-    char trackName[100];
+    char trackId[100];      // Short track identifier (e.g., "club")
+    char trackName[100];    // Full track name (e.g., "Club MX")
     float trackLength;      // meters
     int eventType;
 
@@ -53,6 +54,7 @@ struct SessionData {
         riderName[0] = '\0';
         bikeName[0] = '\0';
         category[0] = '\0';
+        trackId[0] = '\0';
         trackName[0] = '\0';
         setupFileName[0] = '\0';
     }
@@ -61,6 +63,7 @@ struct SessionData {
         riderName[0] = '\0';
         bikeName[0] = '\0';
         category[0] = '\0';
+        trackId[0] = '\0';
         trackName[0] = '\0';
         trackLength = 0.0f;
         eventType = 2;  // Default to Race (Testing events are offline-only)
@@ -407,6 +410,7 @@ public:
     void setRiderName(const char* riderName);
     void setBikeName(const char* bikeName);
     void setCategory(const char* category);
+    void setTrackId(const char* trackId);
     void setTrackName(const char* trackName);
     void setTrackLength(float trackLength);
     void setEventType(int eventType);

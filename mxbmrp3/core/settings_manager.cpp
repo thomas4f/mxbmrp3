@@ -27,6 +27,7 @@
 #include "../hud/map_hud.h"
 #include "../hud/radar_hud.h"
 #include "../hud/pitboard_hud.h"
+#include "../hud/records_hud.h"
 #include <fstream>
 #include <sstream>
 #include <unordered_map>
@@ -213,6 +214,12 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     file << "enabledRows=" << hudManager.getPitboardHud().m_enabledRows << "\n";
     file << "displayMode=" << static_cast<int>(hudManager.getPitboardHud().m_displayMode) << "\n\n";
 
+    // Save RecordsHud (categoryIndex not saved - defaults to current bike category)
+    saveBaseHudProperties(file, hudManager.getRecordsHud(), "RecordsHud");
+    file << "provider=" << static_cast<int>(hudManager.getRecordsHud().m_provider) << "\n";
+    file << "enabledColumns=" << hudManager.getRecordsHud().m_enabledColumns << "\n";
+    file << "recordsToShow=" << hudManager.getRecordsHud().m_recordsToShow << "\n\n";
+
     // Save LapLogHud
     saveBaseHudProperties(file, hudManager.getLapLogHud(), "LapLogHud");
     file << "enabledColumns=" << hudManager.getLapLogHud().m_enabledColumns << "\n";
@@ -380,6 +387,7 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
             {"TelemetryHud", [&]() { return HudLoadInfo{&hudManager.getTelemetryHud(), &hudManager.getTelemetryHud().m_enabledElements}; }},
             {"InputHud", [&]() { return HudLoadInfo{&hudManager.getInputHud(), &hudManager.getInputHud().m_enabledElements}; }},
             {"PitboardHud", [&]() { return HudLoadInfo{&hudManager.getPitboardHud(), &hudManager.getPitboardHud().m_enabledRows}; }},
+            {"RecordsHud", [&]() { return HudLoadInfo{&hudManager.getRecordsHud(), nullptr}; }},
             {"TimeWidget", [&]() { return HudLoadInfo{&hudManager.getTimeWidget(), nullptr}; }},
             {"PositionWidget", [&]() { return HudLoadInfo{&hudManager.getPositionWidget(), nullptr}; }},
             {"LapWidget", [&]() { return HudLoadInfo{&hudManager.getLapWidget(), nullptr}; }},
@@ -504,6 +512,22 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                 hudManager.getRadarHud().setAlertDistance(distance);
             } else if (key == "labelMode" && currentSection == "RadarHud") {
                 hudManager.getRadarHud().setLabelMode(static_cast<RadarHud::LabelMode>(std::stoi(value)));
+            } else if (key == "provider" && currentSection == "RecordsHud") {
+                int provider = std::stoi(value);
+                if (provider >= 0 && provider < static_cast<int>(RecordsHud::DataProvider::COUNT)) {
+                    hudManager.getRecordsHud().m_provider = static_cast<RecordsHud::DataProvider>(provider);
+                }
+                hud->setDataDirty();
+            // categoryIndex not loaded - defaults to current bike category
+            } else if (key == "enabledColumns" && currentSection == "RecordsHud") {
+                hudManager.getRecordsHud().m_enabledColumns = static_cast<uint32_t>(std::stoul(value));
+                hud->setDataDirty();
+            } else if (key == "recordsToShow" && currentSection == "RecordsHud") {
+                int count = std::stoi(value);
+                if (count >= 1 && count <= 10) {
+                    hudManager.getRecordsHud().m_recordsToShow = count;
+                }
+                hud->setDataDirty();
             }
         }
         catch ([[maybe_unused]] const std::exception& e) {

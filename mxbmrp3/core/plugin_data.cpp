@@ -48,6 +48,12 @@ void PluginData::setCategory(const char* category) {
     }
 }
 
+void PluginData::setTrackId(const char* trackId) {
+    if (setStringValue(m_sessionData.trackId, sizeof(m_sessionData.trackId), trackId)) {
+        notifyHudManager(DataChangeType::SessionData);
+    }
+}
+
 void PluginData::setTrackName(const char* trackName) {
     if (setStringValue(m_sessionData.trackName, sizeof(m_sessionData.trackName), trackName)) {
         notifyHudManager(DataChangeType::SessionData);

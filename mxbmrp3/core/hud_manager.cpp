@@ -34,6 +34,7 @@
 #include "../hud/radar_hud.h"
 #include "../hud/pitboard_hud.h"
 #include "../hud/fuel_widget.h"
+#include "../hud/records_hud.h"
 #include "../hud/cursor.h"
 #include <windows.h>
 #include <memory>
@@ -108,6 +109,11 @@ void HudManager::initialize() {
     m_pPitboard->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_PITBOARD_HUD);
     registerHud(std::move(pitboardPtr));
 
+    auto recordsPtr = std::make_unique<RecordsHud>();
+    m_pRecords = recordsPtr.get();
+    m_pRecords->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_RECORDS_HUD);
+    registerHud(std::move(recordsPtr));
+
     // Widgets
     auto lapPtr = std::make_unique<LapWidget>();
     m_pLap = lapPtr.get();
@@ -167,9 +173,9 @@ void HudManager::initialize() {
     m_pFuel->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_FUEL_WIDGET);
     registerHud(std::move(fuelPtr));
 
-    // Register SettingsHud with pointers to all 22 configurable HUDs and widgets
+    // Register SettingsHud with pointers to all configurable HUDs and widgets
     auto settingsPtr = std::make_unique<SettingsHud>(m_pSessionBest, m_pLapLog, m_pStandings,
-                                                       m_pPerformance, m_pTelemetry, m_pInput, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pSpeedo, m_pTacho, m_pTiming, m_pBars, m_pVersion, m_pNotices, m_pPitboard, m_pFuel);
+                                                       m_pPerformance, m_pTelemetry, m_pInput, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pSpeedo, m_pTacho, m_pTiming, m_pBars, m_pVersion, m_pNotices, m_pPitboard, m_pRecords, m_pFuel);
     m_pSettingsHud = settingsPtr.get();
     registerHud(std::move(settingsPtr));
 
@@ -228,6 +234,7 @@ void HudManager::clear() {
     m_pTiming = nullptr;
     m_pNotices = nullptr;
     m_pPitboard = nullptr;
+    m_pRecords = nullptr;
     m_pFuel = nullptr;
     m_pSettingsHud = nullptr;
     m_pSettingsButton = nullptr;
@@ -531,6 +538,7 @@ void HudManager::setupDefaultResources() {
     addSprite("mxbmrp3_data\\radar_hud.tga");     // SpriteIndex::BG_RADAR_HUD = 20
     addSprite("mxbmrp3_data\\radar_sector.tga"); // SpriteIndex::RADAR_SECTOR = 21
     addSprite("mxbmrp3_data\\fuel_widget.tga");  // SpriteIndex::BG_FUEL_WIDGET = 22
+    addSprite("mxbmrp3_data\\records_hud.tga");  // SpriteIndex::BG_RECORDS_HUD = 23
 
     // Add default fonts needed by HUDs
     // Safety: Check array bounds before incrementing to prevent buffer overflow
@@ -628,9 +636,9 @@ void HudManager::processKeyboardInput() {
         DEBUG_INFO_F("F2: Map %s", m_pMapHud->isVisible() ? "shown" : "hidden");
     }
 
-    if (input.getF3Key().isClicked() && m_pPitboard) {
-        m_pPitboard->setVisible(!m_pPitboard->isVisible());
-        DEBUG_INFO_F("F3: Pitboard %s", m_pPitboard->isVisible() ? "shown" : "hidden");
+    if (input.getF3Key().isClicked() && m_pRadarHud) {
+        m_pRadarHud->setVisible(!m_pRadarHud->isVisible());
+        DEBUG_INFO_F("F3: Radar %s", m_pRadarHud->isVisible() ? "shown" : "hidden");
     }
 
     if (input.getF4Key().isClicked() && m_pLapLog) {
@@ -653,9 +661,9 @@ void HudManager::processKeyboardInput() {
         DEBUG_INFO_F("F7: Input %s", m_pInput->isVisible() ? "shown" : "hidden");
     }
 
-    if (input.getF8Key().isClicked() && m_pPerformance) {
-        m_pPerformance->setVisible(!m_pPerformance->isVisible());
-        DEBUG_INFO_F("F8: Performance %s", m_pPerformance->isVisible() ? "shown" : "hidden");
+    if (input.getF8Key().isClicked() && m_pRecords) {
+        m_pRecords->setVisible(!m_pRecords->isVisible());
+        DEBUG_INFO_F("F8: Records %s", m_pRecords->isVisible() ? "shown" : "hidden");
     }
 
     if (input.getF9Key().isClicked()) {

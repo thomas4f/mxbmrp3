@@ -20,7 +20,7 @@ SettingsHud::SettingsHud(SessionBestHud* sessionBest, LapLogHud* lapLog,
                          StandingsHud* standings,
                          PerformanceHud* performance,
                          TelemetryHud* telemetry, InputHud* input,
-                         TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionWidget* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingWidget* timing, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, FuelWidget* fuel)
+                         TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionWidget* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingWidget* timing, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel)
     : m_sessionBest(sessionBest),
       m_lapLog(lapLog),
       m_standings(standings),
@@ -41,6 +41,7 @@ SettingsHud::SettingsHud(SessionBestHud* sessionBest, LapLogHud* lapLog,
       m_version(version),
       m_notices(notices),
       m_pitboard(pitboard),
+      m_records(records),
       m_fuel(fuel),
       m_bVisible(false),
       m_cachedWindowWidth(0),
@@ -265,6 +266,7 @@ void SettingsHud::rebuildRenderData() {
             case TAB_TELEMETRY:    isHudEnabled = m_telemetry && m_telemetry->isVisible(); break;
             case TAB_INPUT:        isHudEnabled = m_input && m_input->isVisible(); break;
             case TAB_PERFORMANCE:  isHudEnabled = m_performance && m_performance->isVisible(); break;
+            case TAB_RECORDS:      isHudEnabled = m_records && m_records->isVisible(); break;
             case TAB_WIDGETS:      isHudEnabled = false; break;  // Widgets tab has no single HUD
             case TAB_RADAR:        isHudEnabled = m_radarHud && m_radarHud->isVisible(); break;
         }
@@ -283,6 +285,7 @@ void SettingsHud::rebuildRenderData() {
                  i == TAB_INPUT ? "Input" :
                  i == TAB_PERFORMANCE ? "Performance" :
                  i == TAB_PITBOARD ? "Pitboard" :
+                 i == TAB_RECORDS ? "Records" :
                  i == TAB_WIDGETS ? "Widgets" :
                  "Radar");
 
@@ -1010,6 +1013,32 @@ void SettingsHud::rebuildRenderData() {
             addDataCheckbox("Gap", &m_pitboard->m_enabledRows, PitboardHud::ROW_GAP, false, m_pitboard, dataStartY + dim.lineHeightNormal * 6);
             break;
 
+        case TAB_RECORDS:
+            activeHud = m_records;
+            dataStartY = addHudControls(m_records);  // Visibility/title/scale/opacity controls
+
+            // Records count control (left column, after scale)
+            {
+                float controlX = leftColumnX;
+                char recordsText[32];
+                snprintf(recordsText, sizeof(recordsText), "Records: %d", m_records->m_recordsToShow);
+                addString(recordsText, controlX, currentY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, TextColors::SECONDARY, dim.fontSize);
+
+                float recordsButtonX = controlX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::SCALE_LABEL_WIDTH, dim.fontSize);
+                addControlButtons(recordsButtonX, currentY, ClickRegion::RECORDS_COUNT_DOWN, ClickRegion::RECORDS_COUNT_UP, m_records);
+
+                currentY += dim.lineHeightNormal;
+            }
+
+            // Right column data toggles (5 items)
+            addDataCheckbox("Position", &m_records->m_enabledColumns, RecordsHud::COL_POS, false, m_records, dataStartY);
+            addDataCheckbox("Rider", &m_records->m_enabledColumns, RecordsHud::COL_RIDER, false, m_records, dataStartY + dim.lineHeightNormal);
+            addDataCheckbox("Bike", &m_records->m_enabledColumns, RecordsHud::COL_BIKE, false, m_records, dataStartY + dim.lineHeightNormal * 2);
+            addDataCheckbox("Laptime", &m_records->m_enabledColumns, RecordsHud::COL_LAPTIME, false, m_records, dataStartY + dim.lineHeightNormal * 3);
+            addDataCheckbox("Date", &m_records->m_enabledColumns, RecordsHud::COL_DATE, false, m_records, dataStartY + dim.lineHeightNormal * 4);
+            break;
+
         case TAB_WIDGETS:
             // Widgets tab - table format with header row
             {
@@ -1265,6 +1294,20 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                 case ClickRegion::DISPLAY_MODE_DOWN:
                     handleDisplayModeClick(region, false);
                     break;
+                case ClickRegion::RECORDS_COUNT_UP:
+                    if (m_records && m_records->m_recordsToShow < 10) {
+                        m_records->m_recordsToShow++;
+                        m_records->setDataDirty();
+                        setDataDirty();  // Update settings display
+                    }
+                    break;
+                case ClickRegion::RECORDS_COUNT_DOWN:
+                    if (m_records && m_records->m_recordsToShow > 1) {
+                        m_records->m_recordsToShow--;
+                        m_records->setDataDirty();
+                        setDataDirty();  // Update settings display
+                    }
+                    break;
                 case ClickRegion::RESET_BUTTON:
                     resetToDefaults();
                     DEBUG_INFO("All settings reset to defaults");
@@ -1300,6 +1343,7 @@ void SettingsHud::resetToDefaults() {
     if (m_mapHud) m_mapHud->resetToDefaults();
     if (m_radarHud) m_radarHud->resetToDefaults();
     if (m_pitboard) m_pitboard->resetToDefaults();
+    if (m_records) m_records->resetToDefaults();
 
     // Reset all widgets to their constructor defaults
     if (m_lap) m_lap->resetToDefaults();

@@ -10,7 +10,7 @@ namespace PluginConstants {
     // Plugin identification
     constexpr const char* PLUGIN_NAME = "mxbmrp3";
     constexpr const char* PLUGIN_DISPLAY_NAME = "MXBMRP3";
-    constexpr const char* PLUGIN_VERSION = "1.5.5.1";
+    constexpr const char* PLUGIN_VERSION = "1.5.5.2";
     constexpr const char* PLUGIN_AUTHOR = "thomas4f";
 
     // MXBikes API constants
@@ -484,5 +484,6 @@ namespace PluginConstants {
         constexpr int BG_RADAR_HUD = 20;
         constexpr int RADAR_SECTOR = 21;  // Proximity sector highlight sprite
         constexpr int BG_FUEL_WIDGET = 22;
+        constexpr int BG_RECORDS_HUD = 23;
     }
 }

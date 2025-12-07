@@ -137,6 +137,7 @@
     <ClInclude Include="hud\radar_hud.h" />
     <ClInclude Include="hud\performance_hud.h" />
     <ClInclude Include="hud\pitboard_hud.h" />
+    <ClInclude Include="hud\records_hud.h" />
     <ClInclude Include="hud\position_widget.h" />
     <ClInclude Include="hud\session_best_hud.h" />
     <ClInclude Include="hud\session_widget.h" />
@@ -153,6 +154,7 @@
     <ClInclude Include="hud\version_widget.h" />
     <ClInclude Include="hud\fuel_widget.h" />
     <ClInclude Include="vendor\piboso\mxb_api.h" />
+    <ClInclude Include="vendor\nlohmann\json.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="core\hud_manager.cpp" />
@@ -190,6 +192,7 @@
     <ClCompile Include="hud\radar_hud.cpp" />
     <ClCompile Include="hud\performance_hud.cpp" />
     <ClCompile Include="hud\pitboard_hud.cpp" />
+    <ClCompile Include="hud\records_hud.cpp" />
     <ClCompile Include="hud\position_widget.cpp" />
     <ClCompile Include="hud\session_best_hud.cpp" />
     <ClCompile Include="hud\session_widget.cpp" />
