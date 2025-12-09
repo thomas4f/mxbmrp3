@@ -13,10 +13,10 @@ IF "%~1"=="" (
 )
 
 set "VERSION=%~1"
-set "RELEASE_NAME=mxbmrp3-v%VERSION%"
+set "RELEASE_NAME=mxbmrp3"
 
 echo.
-echo === Building release %RELEASE_NAME% ===
+echo === Building release %RELEASE_NAME% v%VERSION% ===
 
 REM 1) Create folder structure
 mkdir ".\dist\%RELEASE_NAME%\mxbmrp3_data" 2>nul

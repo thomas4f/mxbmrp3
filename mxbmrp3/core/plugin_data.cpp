@@ -267,6 +267,9 @@ void PluginData::setDrawState(int state) {
             m_historyBuffers.clear();
             DEBUG_INFO("Cleared input histories (leaving on-track mode)");
         }
+
+        // Notify HudManager so profile auto-switch can detect spectate/replay mode changes
+        notifyHudManager(DataChangeType::SpectateTarget);
     }
 }
 
@@ -577,19 +580,6 @@ void PluginData::updateStandings(int raceNum, int state, int bestLap, int bestLa
             it->second.gapLaps != gapLaps || it->second.penalty != penalty ||
             it->second.bestLapNum != bestLapNum || it->second.pit != pit) {
 
-            // Track active rider count change if state changed
-            using namespace PluginConstants::RiderState;
-            if (it->second.state != state) {
-                bool wasActive = (it->second.state != DNS && it->second.state != RETIRED && it->second.state != DSQ);
-                bool isActive = (state != DNS && state != RETIRED && state != DSQ);
-
-                if (wasActive && !isActive) {
-                    m_activeRiderCount--;  // Rider became inactive
-                } else if (!wasActive && isActive) {
-                    m_activeRiderCount++;  // Rider became active
-                }
-            }
-
             it->second.state = state;
             it->second.bestLap = bestLap;
             it->second.bestLapNum = bestLapNum;
@@ -605,13 +595,7 @@ void PluginData::updateStandings(int raceNum, int state, int bestLap, int bestLa
         }
     }
     else {
-        // New entry - increment active count if rider is active
-        using namespace PluginConstants::RiderState;
-        bool isActive = (state != DNS && state != RETIRED && state != DSQ);
-        if (isActive) {
-            m_activeRiderCount++;
-        }
-
+        // New entry
         m_standings.emplace(raceNum, StandingsData(raceNum, state, bestLap, bestLapNum,
             numLaps, gap, gapLaps, penalty, pit));
     }
@@ -669,19 +653,6 @@ void PluginData::batchUpdateStandings(SPluginsRaceClassificationEntry_t* entries
                 standing.penalty != entry.m_iPenalty ||
                 standing.pit != entry.m_iPit) {
 
-                // Track active rider count change if state changed
-                using namespace PluginConstants::RiderState;
-                if (standing.state != entry.m_iState) {
-                    bool wasActive = (standing.state != DNS && standing.state != RETIRED && standing.state != DSQ);
-                    bool isActive = (entry.m_iState != DNS && entry.m_iState != RETIRED && entry.m_iState != DSQ);
-
-                    if (wasActive && !isActive) {
-                        m_activeRiderCount--;  // Rider became inactive
-                    } else if (!wasActive && isActive) {
-                        m_activeRiderCount++;  // Rider became active
-                    }
-                }
-
                 standing.state = entry.m_iState;
                 standing.bestLap = entry.m_iBestLap;
                 standing.bestLapNum = entry.m_iBestLapNum;
@@ -695,13 +666,7 @@ void PluginData::batchUpdateStandings(SPluginsRaceClassificationEntry_t* entries
             }
         }
         else {
-            // New entry - increment active count if rider is active
-            using namespace PluginConstants::RiderState;
-            bool isActive = (entry.m_iState != DNS && entry.m_iState != RETIRED && entry.m_iState != DSQ);
-            if (isActive) {
-                m_activeRiderCount++;
-            }
-
+            // New entry
             int effectiveGap = entry.m_iGap;
             if (effectiveGap > 0) {
                 m_lastValidOfficialGap[entry.m_iRaceNum] = effectiveGap;
@@ -759,7 +724,6 @@ void PluginData::batchUpdateStandings(SPluginsRaceClassificationEntry_t* entries
 void PluginData::clearStandings() {
     if (!m_standings.empty()) {
         m_standings.clear();
-        m_activeRiderCount = 0;  // Reset active count when clearing standings
         DEBUG_INFO("Standings data cleared");
         notifyHudManager(DataChangeType::Standings);
     }
@@ -1151,7 +1115,6 @@ void PluginData::clear() {
     m_sessionData.clear();
     m_raceEntries.clear();
     m_standings.clear();
-    m_activeRiderCount = 0;
     m_classificationOrder.clear();
     m_positionCache.clear();
     m_bPositionCacheDirty = true;
@@ -1381,4 +1344,20 @@ bool PluginData::isRaceSession() const {
         // Regular race sessions (not practice, qualify, or warmup)
         return (session == RACE_1 || session == RACE_2);
     }
+}
+
+bool PluginData::isQualifySession() const {
+    using namespace PluginConstants::Session;
+    using namespace PluginConstants::EventType;
+
+    int eventType = m_sessionData.eventType;
+    int session = m_sessionData.session;
+
+    // Straight Rhythm doesn't have qualifying sessions
+    if (eventType == STRAIGHT_RHYTHM) {
+        return false;
+    }
+
+    // Regular qualifying sessions
+    return (session == PRE_QUALIFY || session == QUALIFY_PRACTICE || session == QUALIFY);
 }

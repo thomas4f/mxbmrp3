@@ -210,6 +210,20 @@ Each handler processes a specific category of game events. They're all singleton
 - `TrackCenterlineHandler` - Track geometry for map display
 - `SpectateHandler` - Camera/vehicle selection in spectator mode
 
+### 6. ProfileManager (`core/profile_manager.*`)
+
+Manages HUD layout profiles for different game contexts:
+- **PRACTICE** - Used during practice and warmup sessions
+- **QUALIFY** - Used during pre-qualify, qualify practice, and qualify sessions
+- **RACE** - Used during Race 1, Race 2, Straight Rhythm sessions
+- **SPECTATE** - Used when spectating or viewing replays
+
+Features:
+- Auto-switch between profiles based on game state (optional)
+- Each profile stores complete HUD layout configuration
+- Manual profile selection via settings menu
+- Seamless transitions when session type changes
+
 ## The HUD System
 
 ### BaseHud (`hud/base_hud.*`)
@@ -244,18 +258,29 @@ Abstract base class that all HUDs inherit from. Provides:
 - `StandingsHud` - Race standings table with columns
 - `LapLogHud` - History of lap times with sector breakdown
 - `SessionBestHud` - Best sector times with PB comparison
-- `MapHud` - 2D track map with rider positions
+- `MapHud` - 2D track map with rider positions and zoom/range mode
 - `TelemetryHud` - Throttle/brake/suspension graphs
 - `InputHud` - Controller stick visualization
 - `PerformanceHud` - FPS, CPU usage graphs
+- `RadarHud` - Proximity radar with nearby rider alerts
+- `PitboardHud` - Pitboard-style lap/split information
+- `RecordsHud` - Track records from online database
+- `SettingsHud` - Interactive settings menu UI
 
 **Widgets** (simple, focused):
-- `SpeedWidget` - Speedometer and gear display
+- `SpeedWidget` - Speed and gear display
 - `PositionWidget` - Current race position (P1, P2...)
 - `LapWidget` - Current lap number
 - `TimeWidget` - Session time remaining
+- `SessionWidget` - Session type display
+- `SpeedoWidget` - Analog speedometer dial
+- `TachoWidget` - Analog tachometer dial
+- `BarsWidget` - Visual telemetry bars (throttle, brake, etc.)
+- `FuelWidget` - Fuel calculator with consumption tracking
 - `TimingWidget` - Split time comparison popup
 - `NoticesWidget` - Wrong way and blue flag warnings
+- `VersionWidget` - Plugin version display
+- `SettingsButtonWidget` - Settings menu toggle button
 
 ### HUD Lifecycle
 

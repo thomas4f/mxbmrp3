@@ -91,6 +91,23 @@ public:
     static constexpr float MIN_TRACK_LINE_WIDTH = 5.0f;       // Min 5 meters
     static constexpr float MAX_TRACK_LINE_WIDTH = 15.0f;     // Max 15 meters
 
+    // Zoom mode constants (Range setting)
+    static constexpr float DEFAULT_ZOOM_DISTANCE = 100.0f;   // Default when zoom first enabled
+    static constexpr float MIN_ZOOM_DISTANCE = 50.0f;        // Min 50 meters
+    static constexpr float MAX_ZOOM_DISTANCE = 500.0f;       // Max 500 meters
+
+    // Zoom mode - follow player showing limited track distance
+    void setZoomEnabled(bool enabled) {
+        if (m_bZoomEnabled != enabled) {
+            m_bZoomEnabled = enabled;
+            setDataDirty();
+        }
+    }
+    bool getZoomEnabled() const { return m_bZoomEnabled; }
+
+    void setZoomDistance(float meters);
+    float getZoomDistance() const { return m_fZoomDistance; }
+
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;
     friend class SettingsManager;
@@ -148,8 +165,16 @@ private:
     float m_fAnchorX;  // Desired anchor position in screen space
     float m_fAnchorY;
 
+    // Zoom mode configuration
+    bool m_bZoomEnabled;         // Follow player with limited view distance
+    float m_fZoomDistance;       // Total view distance in meters (Range setting)
+
     // Calculate track bounds from segments
     void calculateTrackBounds();
+
+    // Calculate zoom bounds centered on player position
+    // Returns true if player found, false otherwise (falls back to full track)
+    bool calculateZoomBounds(float& zoomMinX, float& zoomMaxX, float& zoomMinY, float& zoomMaxY) const;
 
     // Calculate which corner to anchor to based on current position
     AnchorPoint calculateAnchorFromPosition() const;
@@ -168,11 +193,14 @@ private:
     void worldToScreen(float worldX, float worldY, float& screenX, float& screenY, float rotationAngle = 0.0f) const;
 
     // Render the track as quads (takes pre-calculated rotation angle, color, and width multiplier)
-    void renderTrack(float rotationAngle, unsigned long trackColor, float widthMultiplier);
+    void renderTrack(float rotationAngle, unsigned long trackColor, float widthMultiplier,
+                     float clipLeft, float clipTop, float clipRight, float clipBottom);
 
-    // Render start marker (takes pre-calculated rotation angle)
-    void renderStartMarker(float rotationAngle);
+    // Render start marker (takes pre-calculated rotation angle and clip bounds)
+    void renderStartMarker(float rotationAngle,
+                          float clipLeft, float clipTop, float clipRight, float clipBottom);
 
-    // Render rider positions as strings (takes pre-calculated rotation angle)
-    void renderRiders(float rotationAngle);
+    // Render rider positions as strings (takes pre-calculated rotation angle and clip bounds)
+    void renderRiders(float rotationAngle,
+                     float clipLeft, float clipTop, float clipRight, float clipBottom);
 };

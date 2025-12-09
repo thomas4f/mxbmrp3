@@ -29,7 +29,7 @@ void PositionWidget::update() {
     // Check if position or total entries changed
     int currentPosition = calculatePlayerPosition();
     const PluginData& pluginData = PluginData::getInstance();
-    int totalEntries = pluginData.getActiveRiderCount();
+    int totalEntries = static_cast<int>(pluginData.getClassificationOrder().size());
 
     if (currentPosition != m_cachedPosition || totalEntries != m_cachedTotalEntries) {
         setDataDirty();
@@ -109,7 +109,7 @@ void PositionWidget::rebuildRenderData() {
     // Get position data
     int position = calculatePlayerPosition();
     const PluginData& pluginData = PluginData::getInstance();
-    int totalEntries = pluginData.getActiveRiderCount();
+    int totalEntries = static_cast<int>(pluginData.getClassificationOrder().size());
 
     float startX = WidgetPositions::WIDGET_STACK_X;
     float startY = WidgetPositions::POSITION_Y;

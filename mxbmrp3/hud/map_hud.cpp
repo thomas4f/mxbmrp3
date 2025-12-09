@@ -29,7 +29,9 @@ MapHud::MapHud()
       m_bColorizeRiders(false),  // Disable rider colorization by default for cleaner look
       m_labelMode(LabelMode::POSITION),
       m_anchorPoint(AnchorPoint::TOP_RIGHT),
-      m_fAnchorX(0.0f), m_fAnchorY(0.0f) {
+      m_fAnchorX(0.0f), m_fAnchorY(0.0f),
+      m_bZoomEnabled(false),
+      m_fZoomDistance(DEFAULT_ZOOM_DISTANCE) {
 
     using namespace PluginConstants;
 
@@ -41,7 +43,7 @@ MapHud::MapHud()
 
     // Set defaults to match user configuration
     m_bShowTitle = false;
-    m_fBackgroundOpacity = 0.0f;
+    m_fBackgroundOpacity = 0.1f;  // 10% opacity
 
     // Set initial position and anchor (top-right corner)
     setPosition(0.8085f, -0.0444f);
@@ -94,6 +96,17 @@ void MapHud::setTrackLineWidthMeters(float widthMeters) {
 
     if (m_fTrackLineWidthMeters != widthMeters) {
         m_fTrackLineWidthMeters = widthMeters;
+        setDataDirty();
+    }
+}
+
+void MapHud::setZoomDistance(float meters) {
+    // Clamp to valid range
+    if (meters < MIN_ZOOM_DISTANCE) meters = MIN_ZOOM_DISTANCE;
+    if (meters > MAX_ZOOM_DISTANCE) meters = MAX_ZOOM_DISTANCE;
+
+    if (m_fZoomDistance != meters) {
+        m_fZoomDistance = meters;
         setDataDirty();
     }
 }
@@ -379,6 +392,48 @@ void MapHud::calculateTrackBounds() {
                  m_minX, m_maxX, m_minY, m_maxY, trackAspectRatio, m_fBaseMapWidth, m_fTrackScale);
 }
 
+bool MapHud::calculateZoomBounds(float& zoomMinX, float& zoomMaxX, float& zoomMinY, float& zoomMaxY) const {
+    // Find the local player position
+    const PluginData& pluginData = PluginData::getInstance();
+    int displayRaceNum = pluginData.getDisplayRaceNum();
+
+    float playerX = 0.0f;
+    float playerZ = 0.0f;
+    bool foundPlayer = false;
+
+    for (const auto& pos : m_riderPositions) {
+        if (pos.m_iRaceNum == displayRaceNum) {
+            if (!pos.m_iCrashed) {
+                playerX = pos.m_fPosX;
+                playerZ = pos.m_fPosZ;
+            } else {
+                // Use cached position when crashed
+                playerX = m_fLastPlayerX;
+                playerZ = m_fLastPlayerZ;
+            }
+            foundPlayer = true;
+            break;
+        }
+    }
+
+    if (!foundPlayer) {
+        // No player found - fall back to full track bounds
+        return false;
+    }
+
+    // Center zoom bounds on the PLAYER position
+    // This ensures the player arrow is always visible and centered
+    // Use a square viewport based on zoom distance (100m = 50m each direction)
+    float halfBounds = m_fZoomDistance * 0.5f;
+
+    zoomMinX = playerX - halfBounds;
+    zoomMaxX = playerX + halfBounds;
+    zoomMinY = playerZ - halfBounds;
+    zoomMaxY = playerZ + halfBounds;
+
+    return true;
+}
+
 void MapHud::calculateTrackScreenBounds(float rotationAngle, float& minX, float& maxX, float& minY, float& maxY) const {
     // Track corners in world space
     float corners[4][2] = {
@@ -475,7 +530,8 @@ void MapHud::worldToScreen(float worldX, float worldY, float& screenX, float& sc
     screenY = (1.0f - normY) * scaleY;  // Flip Y axis since screen Y increases downward
 }
 
-void MapHud::renderTrack(float rotationAngle, unsigned long trackColor, float widthMultiplier) {
+void MapHud::renderTrack(float rotationAngle, unsigned long trackColor, float widthMultiplier,
+                         float clipLeft, float clipTop, float clipRight, float clipBottom) {
     if (m_trackSegments.empty()) {
         return;
     }
@@ -486,6 +542,43 @@ void MapHud::renderTrack(float rotationAngle, unsigned long trackColor, float wi
 
     // Track half-width in world coordinates (ribbon edge offset from centerline)
     float halfWidth = m_fTrackLineWidthMeters * 0.5f * widthMultiplier;
+
+    // --- Spatial culling setup ---
+    // Expand bounds by track width + some margin to ensure we don't clip visible track
+    float cullMargin = m_fTrackLineWidthMeters * 2.0f;
+    float cullMinX = m_minX - cullMargin;
+    float cullMaxX = m_maxX + cullMargin;
+    float cullMinY = m_minY - cullMargin;
+    float cullMaxY = m_maxY + cullMargin;
+
+    // Adaptive spacing for zoom mode - finer detail at closer zoom
+    // At 50m: 0.5m spacing (min), at 500m: 2.0m spacing (same as default)
+    float adaptiveSpacing = PIXEL_SPACING;  // Default non-zoom spacing
+    if (m_bZoomEnabled) {
+        adaptiveSpacing = std::max(0.5f, PIXEL_SPACING * (m_fZoomDistance / MAX_ZOOM_DISTANCE));
+    }
+
+    // Lambda to check if a point is within culling bounds
+    auto isPointInBounds = [&](float x, float y) -> bool {
+        return x >= cullMinX && x <= cullMaxX && y >= cullMinY && y <= cullMaxY;
+    };
+
+    // Lambda to check if a point is inside the clip region
+    auto isPointInClip = [&](float x, float y) -> bool {
+        return x >= clipLeft && x <= clipRight && y >= clipTop && y <= clipBottom;
+    };
+
+    // Lambda to check if quad centerline is inside clip region
+    // Using centerline (not vertices) ensures outline and track clip at same position
+    auto isQuadCenterlineInside = [&](float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3) -> bool {
+        // Centerline points: midpoint of each edge pair (left-right)
+        // Quad vertices: 0=prevLeft, 1=currLeft, 2=currRight, 3=prevRight
+        float prevCenterX = (x0 + x3) * 0.5f;
+        float prevCenterY = (y0 + y3) * 0.5f;
+        float currCenterX = (x1 + x2) * 0.5f;
+        float currCenterY = (y1 + y2) * 0.5f;
+        return isPointInClip(prevCenterX, prevCenterY) && isPointInClip(currCenterX, currCenterY);
+    };
 
     // Start position and angle
     float currentX = m_trackSegments[0].m_afStart[0];
@@ -531,6 +624,17 @@ void MapHud::renderTrack(float rotationAngle, unsigned long trackColor, float wi
         applyOffset(screenLeftX, screenLeftY);
         applyOffset(screenRightX, screenRightY);
 
+        // Skip quad if centerline not inside clip region (ensures outline and track clip together)
+        if (!isQuadCenterlineInside(screenPrevLeftX, screenPrevLeftY, screenLeftX, screenLeftY,
+                                    screenRightX, screenRightY, screenPrevRightX, screenPrevRightY)) {
+            // Still store current edges for next iteration
+            prevLeftX = leftX;
+            prevLeftY = leftY;
+            prevRightX = rightX;
+            prevRightY = rightY;
+            return;
+        }
+
         // Create quad connecting previous edges to current edges (counter-clockwise ordering to match engine)
         SPluginQuad_t quad;
         quad.m_aafPos[0][0] = screenPrevLeftX;
@@ -558,9 +662,41 @@ void MapHud::renderTrack(float rotationAngle, unsigned long trackColor, float wi
         float startX = currentX;
         float startY = currentY;
 
+        // Calculate segment end position for culling check
+        float endX = startX;
+        float endY = startY;
+
         if (segment.m_iType == TrackSegmentType::STRAIGHT) {
-            // Straight segment - optimized to create only 1 quad (2 points: start and end)
-            // Subdivision is unnecessary since affine transforms preserve straight lines
+            float angleRad = currentAngle * DEG_TO_RAD;
+            endX = startX + std::sin(angleRad) * segment.m_fLength;
+            endY = startY + std::cos(angleRad) * segment.m_fLength;
+        } else {
+            // For curves, approximate end position
+            float radius = segment.m_fRadius;
+            float arcLength = segment.m_fLength;
+            float absRadius = std::abs(radius);
+            float totalAngleChange = arcLength / absRadius;
+            if (radius < 0) totalAngleChange = -totalAngleChange;
+            // Rough approximation - use chord
+            float angleRad = currentAngle * DEG_TO_RAD;
+            endX = startX + std::sin(angleRad) * segment.m_fLength * 0.9f;
+            endY = startY + std::cos(angleRad) * segment.m_fLength * 0.9f;
+        }
+
+        // Check if segment is within culling bounds (either endpoint or midpoint)
+        float midX = (startX + endX) * 0.5f;
+        float midY = (startY + endY) * 0.5f;
+        bool segmentInBounds = isPointInBounds(startX, startY) ||
+                               isPointInBounds(endX, endY) ||
+                               isPointInBounds(midX, midY);
+
+        // If segment is outside bounds, reset ribbon continuity and skip rendering
+        if (!segmentInBounds) {
+            hasPrevPoint = false;  // Reset ribbon for next visible segment
+        }
+
+        if (segment.m_iType == TrackSegmentType::STRAIGHT) {
+            // Straight segment
             float angleRad = currentAngle * DEG_TO_RAD;
             float dx = std::sin(angleRad) * segment.m_fLength;
             float dy = std::cos(angleRad) * segment.m_fLength;
@@ -571,21 +707,29 @@ void MapHud::renderTrack(float rotationAngle, unsigned long trackColor, float wi
             float perpDx = std::sin(perpAngleRad) * halfWidth;
             float perpDy = std::cos(perpAngleRad) * halfWidth;
 
-            // Only need start and end points for straight segments (1 quad)
-            int numSteps = 1;
+            // Only render if segment is in bounds
+            if (segmentInBounds) {
+                // When zoom mode is active, subdivide straights for better clipping
+                // Otherwise use 1 quad (optimal for non-zoomed rendering)
+                int numSteps = 1;
+                if (m_bZoomEnabled) {
+                    // Subdivide using adaptive spacing (finer at closer zoom)
+                    numSteps = std::max(1, static_cast<int>(segment.m_fLength / adaptiveSpacing));
+                }
 
-            for (int i = 0; i <= numSteps; ++i) {
-                float t = static_cast<float>(i) / numSteps;
-                float worldX = startX + dx * t;
-                float worldY = startY + dy * t;
+                for (int i = 0; i <= numSteps; ++i) {
+                    float t = static_cast<float>(i) / numSteps;
+                    float worldX = startX + dx * t;
+                    float worldY = startY + dy * t;
 
-                // Calculate left and right edge points perpendicular to track direction
-                float leftX = worldX + perpDx;
-                float leftY = worldY + perpDy;
-                float rightX = worldX - perpDx;
-                float rightY = worldY - perpDy;
+                    // Calculate left and right edge points perpendicular to track direction
+                    float leftX = worldX + perpDx;
+                    float leftY = worldY + perpDy;
+                    float rightX = worldX - perpDx;
+                    float rightY = worldY - perpDy;
 
-                createRibbonQuad(leftX, leftY, rightX, rightY);
+                    createRibbonQuad(leftX, leftY, rightX, rightY);
+                }
             }
 
             currentX += dx;
@@ -603,7 +747,9 @@ void MapHud::renderTrack(float rotationAngle, unsigned long trackColor, float wi
             }
 
             // Calculate number of steps needed based on arc length
-            int numSteps = std::max(3, static_cast<int>(arcLength / PIXEL_SPACING));
+            // Use adaptive spacing when zoom enabled (finer at closer zoom)
+            float curveSpacing = m_bZoomEnabled ? adaptiveSpacing : PIXEL_SPACING;
+            int numSteps = std::max(3, static_cast<int>(arcLength / curveSpacing));
             float stepLength = arcLength / numSteps;
             float stepAngle = totalAngleChange / numSteps;
 
@@ -613,17 +759,25 @@ void MapHud::renderTrack(float rotationAngle, unsigned long trackColor, float wi
             float tempAngle = currentAngle;
 
             for (int i = 0; i <= numSteps; ++i) {
-                // Calculate perpendicular direction for ribbon edges at current point
-                float perpAngle = tempAngle + 90.0f;
-                float perpAngleRad = perpAngle * DEG_TO_RAD;
+                // Only render points that are in bounds
+                bool pointInBounds = isPointInBounds(tempX, tempY);
 
-                // Calculate left and right edge points perpendicular to current heading
-                float leftX = tempX + std::sin(perpAngleRad) * halfWidth;
-                float leftY = tempY + std::cos(perpAngleRad) * halfWidth;
-                float rightX = tempX - std::sin(perpAngleRad) * halfWidth;
-                float rightY = tempY - std::cos(perpAngleRad) * halfWidth;
+                if (segmentInBounds || pointInBounds) {
+                    // Calculate perpendicular direction for ribbon edges at current point
+                    float perpAngle = tempAngle + 90.0f;
+                    float perpAngleRad = perpAngle * DEG_TO_RAD;
 
-                createRibbonQuad(leftX, leftY, rightX, rightY);
+                    // Calculate left and right edge points perpendicular to current heading
+                    float leftX = tempX + std::sin(perpAngleRad) * halfWidth;
+                    float leftY = tempY + std::cos(perpAngleRad) * halfWidth;
+                    float rightX = tempX - std::sin(perpAngleRad) * halfWidth;
+                    float rightY = tempY - std::cos(perpAngleRad) * halfWidth;
+
+                    createRibbonQuad(leftX, leftY, rightX, rightY);
+                } else if (hasPrevPoint) {
+                    // Reset ribbon if we're leaving bounds
+                    hasPrevPoint = false;
+                }
 
                 // Step forward (except after last point)
                 if (i < numSteps) {
@@ -642,8 +796,20 @@ void MapHud::renderTrack(float rotationAngle, unsigned long trackColor, float wi
     }
 }
 
-void MapHud::renderStartMarker(float rotationAngle) {
+void MapHud::renderStartMarker(float rotationAngle,
+                               float clipLeft, float clipTop, float clipRight, float clipBottom) {
     if (m_trackSegments.empty()) {
+        return;
+    }
+
+    // Get start position
+    float startX = m_trackSegments[0].m_afStart[0];
+    float startY = m_trackSegments[0].m_afStart[1];
+
+    // Cull if start marker is outside current bounds (with margin for marker size)
+    float cullMargin = m_fTrackLineWidthMeters;
+    if (startX < m_minX - cullMargin || startX > m_maxX + cullMargin ||
+        startY < m_minY - cullMargin || startY > m_maxY + cullMargin) {
         return;
     }
 
@@ -652,8 +818,6 @@ void MapHud::renderStartMarker(float rotationAngle) {
     float titleOffset = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
 
     // Draw white triangle quad at track start pointing in direction
-    float startX = m_trackSegments[0].m_afStart[0];
-    float startY = m_trackSegments[0].m_afStart[1];
     float startAngle = m_trackSegments[0].m_fAngle;
 
     // Triangle dimensions: width = track width, length = 0.5× track width
@@ -690,6 +854,16 @@ void MapHud::renderStartMarker(float rotationAngle) {
     applyOffset(screenBaseLeftX, screenBaseLeftY);
     applyOffset(screenBaseRightX, screenBaseRightY);
 
+    // Skip if any vertex is outside clip bounds (clean cutoff, no distortion)
+    auto isPointInClip = [&](float x, float y) -> bool {
+        return x >= clipLeft && x <= clipRight && y >= clipTop && y <= clipBottom;
+    };
+    if (!isPointInClip(screenPointX, screenPointY) ||
+        !isPointInClip(screenBaseLeftX, screenBaseLeftY) ||
+        !isPointInClip(screenBaseRightX, screenBaseRightY)) {
+        return;
+    }
+
     // Create triangle quad (duplicate one vertex to make 4 points)
     SPluginQuad_t triangle;
     triangle.m_aafPos[0][0] = screenPointX;       // Point
@@ -706,11 +880,16 @@ void MapHud::renderStartMarker(float rotationAngle) {
     m_quads.push_back(triangle);
 }
 
-void MapHud::renderRiders(float rotationAngle) {
+void MapHud::renderRiders(float rotationAngle,
+                          float clipLeft, float clipTop, float clipRight, float clipBottom) {
     if (m_riderPositions.empty() || !m_bHasTrackData) {
         return;
     }
 
+    // Helper to check if a point is inside the clip region
+    auto isPointInClip = [&](float x, float y) -> bool {
+        return x >= clipLeft && x <= clipRight && y >= clipTop && y <= clipBottom;
+    };
 
     // Get dimensions for title offset
     auto dim = getScaledDimensions();
@@ -746,6 +925,12 @@ void MapHud::renderRiders(float rotationAngle) {
             renderX = m_fLastPlayerX;
             renderZ = m_fLastPlayerZ;
         }
+
+        // Cull riders outside current bounds
+        if (renderX < m_minX || renderX > m_maxX || renderZ < m_minY || renderZ > m_maxY) {
+            continue;
+        }
+
         float renderYaw = pos.m_fYaw;  // Always use current yaw for arrow direction
 
         // Convert world coordinates to screen coordinates
@@ -789,6 +974,12 @@ void MapHud::renderRiders(float rotationAngle) {
         applyOffset(leftX, leftY);
         applyOffset(backX, backY);
         applyOffset(rightX, rightY);
+
+        // Skip rider if any vertex is outside clip bounds (clean cutoff, no distortion)
+        if (!isPointInClip(tipX, tipY) || !isPointInClip(leftX, leftY) ||
+            !isPointInClip(backX, backY) || !isPointInClip(rightX, rightY)) {
+            continue;
+        }
 
         // Create quad following clockwise ordering: tip -> right -> back -> left
         // NOTE: Must use clockwise for proper rendering (counter-clockwise gets face-culled)
@@ -890,47 +1081,82 @@ void MapHud::rebuildRenderData() {
     // Calculate actual rotation angle for rendering
     float rotationAngle = calculateRotationAngle();
 
+    // Calculate container size FIRST using original track bounds (before any zoom override)
     float titleHeight = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
     float width, height, x, y;
 
-    if (m_bRotateToPlayer) {
-        // ROTATION MODE: Background stays fixed size, positioned to center the track
-        // Calculate maximum bounds at current scale (needed when scale changes)
-        float maxWidth = 0.0f;
-        float maxHeight = 0.0f;
+    // Calculate maximum bounds across all rotation angles to ensure container fits track at any angle
+    float maxScreenWidth = 0.0f;
+    float maxScreenHeight = 0.0f;
 
-        float testAngles[] = {0.0f, 45.0f, 90.0f, 135.0f};
-        for (float angle : testAngles) {
-            float minX, maxX, minY, maxY;
-            calculateTrackScreenBounds(angle, minX, maxX, minY, maxY);
-            maxWidth = std::max(maxWidth, maxX - minX);
-            maxHeight = std::max(maxHeight, maxY - minY);
+    float testAngles[] = {0.0f, 45.0f, 90.0f, 135.0f};
+    for (float angle : testAngles) {
+        float minX, maxX, minY, maxY;
+        calculateTrackScreenBounds(angle, minX, maxX, minY, maxY);
+        maxScreenWidth = std::max(maxScreenWidth, maxX - minX);
+        maxScreenHeight = std::max(maxScreenHeight, maxY - minY);
+    }
+
+    // SQUARE CONTAINER: Account for UI_ASPECT_RATIO to make visually square
+    // Convert screen coords to visual space, find max, convert back
+    float visualWidth = maxScreenWidth * UI_ASPECT_RATIO;  // Expand X to visual space
+    float visualHeight = maxScreenHeight;                   // Y is already in visual space
+    float visualSquareSize = std::max(visualWidth, visualHeight);
+
+    // Convert back to screen coordinates
+    float squareWidth = visualSquareSize / UI_ASPECT_RATIO;  // Screen X coord
+    float squareHeight = visualSquareSize;                    // Screen Y coord
+
+    // Calculate current track bounds at actual rotation angle for positioning
+    float currMinX, currMaxX, currMinY, currMaxY;
+    calculateTrackScreenBounds(rotationAngle, currMinX, currMaxX, currMinY, currMaxY);
+
+    float currWidth = currMaxX - currMinX;
+    float currHeight = currMaxY - currMinY;
+
+    // Container dimensions (visually square)
+    width = squareWidth;
+    height = squareHeight + titleHeight;
+
+    // Center the track in the square container
+    x = currMinX - (squareWidth - currWidth) / 2.0f;
+    y = currMinY - (squareHeight - currHeight) / 2.0f;
+
+    // --- ZOOM MODE: Override bounds for rendering AFTER container size is calculated ---
+    float savedMinX = m_minX, savedMaxX = m_maxX;
+    float savedMinY = m_minY, savedMaxY = m_maxY;
+    float savedBaseMapWidth = m_fBaseMapWidth;
+    float savedBaseMapHeight = m_fBaseMapHeight;
+    float savedTrackScale = m_fTrackScale;
+    bool usingZoom = false;
+
+    if (m_bZoomEnabled) {
+        float zoomMinX, zoomMaxX, zoomMinY, zoomMaxY;
+        if (calculateZoomBounds(zoomMinX, zoomMaxX, zoomMinY, zoomMaxY)) {
+            usingZoom = true;
+
+            // Override world bounds with zoom bounds for rendering
+            m_minX = zoomMinX;
+            m_maxX = zoomMaxX;
+            m_minY = zoomMinY;
+            m_maxY = zoomMaxY;
+
+            // Override base map dimensions to match the square container
+            // This ensures worldToScreen produces correct aspect ratio for zoom
+            m_fBaseMapWidth = squareWidth;
+            m_fBaseMapHeight = squareHeight;
+
+            // Recalculate scale to fit zoom bounds into the container
+            float zoomWidth = zoomMaxX - zoomMinX;
+            float zoomHeight = zoomMaxY - zoomMinY;
+            float scaleX = m_fBaseMapWidth / zoomWidth;
+            float scaleY = m_fBaseMapHeight / zoomHeight;
+            m_fTrackScale = std::min(scaleX, scaleY);
+
+            // Keep same x/y as non-zoom mode so container doesn't jump
+            // The zoom content will be centered because zoom bounds are square
+            // and centered on the player
         }
-
-        // Calculate current track bounds at actual rotation angle
-        float currMinX, currMaxX, currMinY, currMaxY;
-        calculateTrackScreenBounds(rotationAngle, currMinX, currMaxX, currMinY, currMaxY);
-
-        float currWidth = currMaxX - currMinX;
-        float currHeight = currMaxY - currMinY;
-
-        // Background size is fixed to maximum
-        width = maxWidth;
-        height = maxHeight + titleHeight;
-
-        // Center the track in the background (horizontally and vertically)
-        x = currMinX - (maxWidth - currWidth) / 2.0f;
-        y = currMinY - (maxHeight - currHeight) / 2.0f;
-    } else {
-        // NON-ROTATION MODE: Background fits actual track at 0° rotation
-        float trackMinX, trackMaxX, trackMinY, trackMaxY;
-        calculateTrackScreenBounds(0.0f, trackMinX, trackMaxX, trackMinY, trackMaxY);
-
-        // Size to actual track bounds and position where track renders
-        width = trackMaxX - trackMinX;
-        height = (trackMaxY - trackMinY) + titleHeight;
-        x = trackMinX;
-        y = trackMinY;
     }
 
     // Store previous bounds to detect dimension changes
@@ -966,23 +1192,45 @@ void MapHud::rebuildRenderData() {
     // Add title
     float titleX = x + dim.paddingH;
     float titleY = y + dim.paddingV;
-    addTitleString("MAP", titleX, titleY, Justify::LEFT,
-                  Fonts::TINY5, ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
+    addTitleString("Map", titleX, titleY, Justify::LEFT,
+                  Fonts::ENTER_SANSMAN, ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
+
+    // Calculate clip bounds for track rendering (absolute screen coords)
+    // Clip to the map area below the title
+    // Inset by half outline width since we clip on centerline but edges extend beyond
+    constexpr float OUTLINE_WIDTH_MULTIPLIER = 1.4f;
+    float outlineHalfWidth = m_fTrackLineWidthMeters * 0.5f * OUTLINE_WIDTH_MULTIPLIER * m_fTrackScale;
+    float clipLeft = x + m_fOffsetX + outlineHalfWidth;
+    float clipTop = y + titleHeight + m_fOffsetY + outlineHalfWidth;
+    float clipRight = x + width + m_fOffsetX - outlineHalfWidth;
+    float clipBottom = y + height + m_fOffsetY - outlineHalfWidth;
+
+    // For zoom mode, temporarily adjust offset so content aligns with container
+    // worldToScreen outputs coords at (0,0) for zoom, but container is at (x,y)
+    float savedOffsetX = m_fOffsetX;
+    float savedOffsetY = m_fOffsetY;
+    if (usingZoom) {
+        m_fOffsetX += x;
+        m_fOffsetY += y;
+    }
 
     // Render track with optional outline effect (two passes for visual clarity)
+    // Both use same clip bounds - outline clips first (wider), track extends to edge
+    // This gives natural "outline on sides only" effect at boundaries
     size_t quadsBeforeTrack = m_quads.size();
-    constexpr float OUTLINE_WIDTH_MULTIPLIER = 1.4f;  // Outline is 40% wider than track
     if (m_bShowOutline) {
-        renderTrack(rotationAngle, ColorConfig::getInstance().getPrimary(), OUTLINE_WIDTH_MULTIPLIER);  // White outline
+        renderTrack(rotationAngle, ColorConfig::getInstance().getPrimary(), OUTLINE_WIDTH_MULTIPLIER,
+                    clipLeft, clipTop, clipRight, clipBottom);  // White outline
     }
-    renderTrack(rotationAngle, ColorConfig::getInstance().getBackground(), 1.0f);  // Black fill
+    renderTrack(rotationAngle, ColorConfig::getInstance().getBackground(), 1.0f,
+                clipLeft, clipTop, clipRight, clipBottom);  // Black fill
     size_t trackQuads = m_quads.size() - quadsBeforeTrack;
 
     // Render start marker on top of track
-    renderStartMarker(rotationAngle);
+    renderStartMarker(rotationAngle, clipLeft, clipTop, clipRight, clipBottom);
 
     // Render rider positions on top of track
-    renderRiders(rotationAngle);
+    renderRiders(rotationAngle, clipLeft, clipTop, clipRight, clipBottom);
 
     // Log quad count once for performance analysis
     static bool quadCountLogged = false;
@@ -1001,13 +1249,26 @@ void MapHud::rebuildRenderData() {
                      m_quads.size(), trackQuads, m_quads.size() - trackQuads);
         quadCountLogged = true;
     }
+
+    // --- ZOOM MODE: Restore original values ---
+    if (usingZoom) {
+        m_minX = savedMinX;
+        m_maxX = savedMaxX;
+        m_minY = savedMinY;
+        m_maxY = savedMaxY;
+        m_fBaseMapWidth = savedBaseMapWidth;
+        m_fBaseMapHeight = savedBaseMapHeight;
+        m_fTrackScale = savedTrackScale;
+        m_fOffsetX = savedOffsetX;
+        m_fOffsetY = savedOffsetY;
+    }
 }
 
 void MapHud::resetToDefaults() {
     m_bVisible = true;
     m_bShowTitle = false;
     m_bShowBackgroundTexture = false;  // No texture by default
-    m_fBackgroundOpacity = 0.0f;
+    m_fBackgroundOpacity = 0.1f;  // 10% opacity
     m_fScale = 1.0f;
     m_anchorPoint = AnchorPoint::TOP_RIGHT;
     m_fAnchorX = 0.994125f;
@@ -1017,6 +1278,8 @@ void MapHud::resetToDefaults() {
     m_bColorizeRiders = false;  // Disable rider colorization by default
     m_labelMode = LabelMode::POSITION;
     m_fTrackLineWidthMeters = DEFAULT_TRACK_LINE_WIDTH;
+    m_bZoomEnabled = false;
+    m_fZoomDistance = DEFAULT_ZOOM_DISTANCE;
     // Reset bounds to trigger "first rebuild" behavior in rebuildRenderData
     // This ensures position is recalculated from anchor values
     setBounds(0.0f, 0.0f, 0.0f, 0.0f);

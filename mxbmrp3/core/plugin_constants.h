@@ -11,7 +11,7 @@ namespace PluginConstants {
     // Plugin identification
     constexpr const char* PLUGIN_NAME = "mxbmrp3";
     constexpr const char* PLUGIN_DISPLAY_NAME = "MXBMRP3";
-    constexpr const char* PLUGIN_VERSION = "1.5.5.3";
+    constexpr const char* PLUGIN_VERSION = "1.6.0.0";
     constexpr const char* PLUGIN_AUTHOR = "thomas4f";
 
     // MXBikes API constants

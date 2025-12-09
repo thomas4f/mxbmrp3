@@ -10,6 +10,7 @@
 #include "plugin_data.h"
 #include "plugin_manager.h"
 #include "settings_manager.h"
+#include "profile_manager.h"
 #include "../hud/base_hud.h"
 #include "../hud/standings_hud.h"
 #include "../hud/performance_hud.h"
@@ -326,6 +327,33 @@ void HudManager::onDataChanged(DataChangeType changeType) {
             hud->setDataDirty();
         }
     }
+
+    // Check for auto profile switching when session or view state changes
+    if (changeType == DataChangeType::SessionData || changeType == DataChangeType::SpectateTarget) {
+        ProfileManager& profileMgr = ProfileManager::getInstance();
+        if (profileMgr.isAutoSwitchEnabled()) {
+            const PluginData& pluginData = PluginData::getInstance();
+            int drawState = pluginData.getDrawState();
+
+            // Determine target profile based on view state and session type
+            ProfileType targetProfile;
+            if (drawState == PluginConstants::ViewState::SPECTATE ||
+                drawState == PluginConstants::ViewState::REPLAY) {
+                targetProfile = ProfileType::SPECTATE;
+            } else if (pluginData.isRaceSession()) {
+                targetProfile = ProfileType::RACE;
+            } else if (pluginData.isQualifySession()) {
+                targetProfile = ProfileType::QUALIFY;
+            } else {
+                targetProfile = ProfileType::PRACTICE;
+            }
+
+            // If target differs from current, switch profiles
+            if (targetProfile != profileMgr.getActiveProfile()) {
+                SettingsManager::getInstance().switchProfile(*this, targetProfile);
+            }
+        }
+    }
 }
 
 void HudManager::validateAllHudPositions() {
@@ -334,6 +362,14 @@ void HudManager::validateAllHudPositions() {
     for (auto& hud : m_huds) {
         if (hud) {
             hud->validatePosition();
+        }
+    }
+}
+
+void HudManager::markAllHudsDirty() {
+    for (auto& hud : m_huds) {
+        if (hud) {
+            hud->setDataDirty();
         }
     }
 }

@@ -1,9 +1,11 @@
 // ============================================================================
 // core/settings_manager.cpp
 // Manages persistence of HUD settings (position, scale, visibility, etc.)
+// Supports per-profile settings (Practice, Race, Spectate)
 // ============================================================================
 #include "settings_manager.h"
 #include "hud_manager.h"
+#include "profile_manager.h"
 #include "../diagnostics/logger.h"
 #include "../hud/session_best_hud.h"
 #include "../hud/lap_log_hud.h"
@@ -31,25 +33,12 @@
 #include "color_config.h"
 #include <fstream>
 #include <sstream>
-#include <unordered_map>
-#include <functional>
+#include <array>
 #include <windows.h>
 
 namespace {
     constexpr const char* SETTINGS_SUBDIRECTORY = "mxbmrp3";
     constexpr const char* SETTINGS_FILENAME = "mxbmrp3_settings.ini";
-
-    // Helper function to save base HUD properties (reduces duplication)
-    void saveBaseHudProperties(std::ofstream& file, const BaseHud& hud, const char* sectionName) {
-        file << "[" << sectionName << "]\n";
-        file << "visible=" << (hud.isVisible() ? 1 : 0) << "\n";
-        file << "showTitle=" << (hud.getShowTitle() ? 1 : 0) << "\n";
-        file << "showBackgroundTexture=" << (hud.getShowBackgroundTexture() ? 1 : 0) << "\n";
-        file << "backgroundOpacity=" << hud.getBackgroundOpacity() << "\n";
-        file << "scale=" << hud.getScale() << "\n";
-        file << "offsetX=" << hud.getOffsetX() << "\n";
-        file << "offsetY=" << hud.getOffsetY() << "\n";
-    }
 
     // Validation helper functions
     float validateScale(float value) {
@@ -118,6 +107,101 @@ namespace {
         }
         return value;
     }
+
+    float validateZoomDistance(float value) {
+        if (value < MapHud::MIN_ZOOM_DISTANCE || value > MapHud::MAX_ZOOM_DISTANCE) {
+            DEBUG_WARN_F("Invalid zoom distance %.2f, clamping to [%.2f, %.2f]",
+                        value, MapHud::MIN_ZOOM_DISTANCE, MapHud::MAX_ZOOM_DISTANCE);
+            return (value < MapHud::MIN_ZOOM_DISTANCE) ? MapHud::MIN_ZOOM_DISTANCE : MapHud::MAX_ZOOM_DISTANCE;
+        }
+        return value;
+    }
+
+    // Helper to format a section name with profile index
+    std::string formatSectionName(const char* hudName, ProfileType profile) {
+        return std::string(hudName) + ":" + std::to_string(static_cast<int>(profile));
+    }
+
+    // Parse section name to extract HUD name and profile index
+    // Returns true if successfully parsed, false if no profile index (global section)
+    bool parseSectionName(const std::string& section, std::string& hudName, int& profileIndex) {
+        size_t colonPos = section.find(':');
+        if (colonPos == std::string::npos) {
+            hudName = section;
+            profileIndex = -1;  // Global section
+            return false;
+        }
+        hudName = section.substr(0, colonPos);
+        try {
+            profileIndex = std::stoi(section.substr(colonPos + 1));
+            return true;
+        } catch (...) {
+            hudName = section;
+            profileIndex = -1;
+            return false;
+        }
+    }
+
+    // Helper to capture base HUD properties to a settings map
+    void captureBaseHudSettings(SettingsManager::HudSettings& settings, const BaseHud& hud) {
+        settings["visible"] = std::to_string(hud.isVisible() ? 1 : 0);
+        settings["showTitle"] = std::to_string(hud.getShowTitle() ? 1 : 0);
+        settings["showBackgroundTexture"] = std::to_string(hud.getShowBackgroundTexture() ? 1 : 0);
+        settings["backgroundOpacity"] = std::to_string(hud.getBackgroundOpacity());
+        settings["scale"] = std::to_string(hud.getScale());
+        settings["offsetX"] = std::to_string(hud.getOffsetX());
+        settings["offsetY"] = std::to_string(hud.getOffsetY());
+    }
+
+    // Helper to write base HUD properties to file
+    void writeBaseHudSettings(std::ofstream& file, const SettingsManager::HudSettings& settings) {
+        static const std::array<const char*, 7> baseKeys = {
+            "visible", "showTitle", "showBackgroundTexture", "backgroundOpacity",
+            "scale", "offsetX", "offsetY"
+        };
+        for (const auto& key : baseKeys) {
+            auto it = settings.find(key);
+            if (it != settings.end()) {
+                file << key << "=" << it->second << "\n";
+            }
+        }
+    }
+
+    // Helper to apply base HUD settings from a map
+    void applyBaseHudSettings(BaseHud& hud, const SettingsManager::HudSettings& settings) {
+        float pendingOffsetX = 0, pendingOffsetY = 0;
+        bool hasOffsetX = false, hasOffsetY = false;
+
+        for (const auto& [key, value] : settings) {
+            try {
+                if (key == "visible") {
+                    hud.setVisible(std::stoi(value) != 0);
+                } else if (key == "showTitle") {
+                    hud.setShowTitle(std::stoi(value) != 0);
+                } else if (key == "showBackgroundTexture") {
+                    hud.setShowBackgroundTexture(std::stoi(value) != 0);
+                } else if (key == "backgroundOpacity") {
+                    hud.setBackgroundOpacity(validateOpacity(std::stof(value)));
+                } else if (key == "scale") {
+                    hud.setScale(validateScale(std::stof(value)));
+                } else if (key == "offsetX") {
+                    pendingOffsetX = validateOffset(std::stof(value));
+                    hasOffsetX = true;
+                } else if (key == "offsetY") {
+                    pendingOffsetY = validateOffset(std::stof(value));
+                    hasOffsetY = true;
+                }
+            } catch (...) {
+                DEBUG_WARN_F("Failed to parse base setting '%s=%s'", key.c_str(), value.c_str());
+            }
+        }
+        // Apply buffered position
+        if (hasOffsetX || hasOffsetY) {
+            float finalX = hasOffsetX ? pendingOffsetX : hud.getOffsetX();
+            float finalY = hasOffsetY ? pendingOffsetY : hud.getOffsetY();
+            hud.setPosition(finalX, finalY);
+        }
+    }
 }
 
 SettingsManager& SettingsManager::getInstance() {
@@ -129,7 +213,6 @@ std::string SettingsManager::getSettingsFilePath(const char* savePath) const {
     if (!savePath || savePath[0] == '\0') {
         // Use relative path when savePath is not provided
         std::string subdir = std::string(".\\") + SETTINGS_SUBDIRECTORY;
-        // Create directory if it doesn't exist
         if (!CreateDirectoryA(subdir.c_str(), NULL)) {
             DWORD error = GetLastError();
             if (error != ERROR_ALREADY_EXISTS) {
@@ -140,33 +223,555 @@ std::string SettingsManager::getSettingsFilePath(const char* savePath) const {
     }
 
     std::string path = savePath;
-    // Ensure path ends with backslash
     if (!path.empty() && path.back() != '/' && path.back() != '\\') {
         path += '\\';
     }
-
-    // Create subdirectory path
     path += SETTINGS_SUBDIRECTORY;
 
-    // Create directory if it doesn't exist
-    // Safety: Validate directory creation to catch disk full, permissions, etc.
     if (!CreateDirectoryA(path.c_str(), NULL)) {
         DWORD error = GetLastError();
         if (error != ERROR_ALREADY_EXISTS) {
             DEBUG_WARN_F("Failed to create settings directory: %s (error %lu)", path.c_str(), error);
-            // Continue anyway - file operations will fail later with clearer error message
         }
     }
 
-    // Add filename
     path += '\\';
     path += SETTINGS_FILENAME;
-
     return path;
+}
+
+void SettingsManager::captureCurrentState(const HudManager& hudManager) {
+    ProfileType activeProfile = ProfileManager::getInstance().getActiveProfile();
+    captureToProfile(hudManager, activeProfile);
+}
+
+void SettingsManager::captureToProfile(const HudManager& hudManager, ProfileType profile) {
+    if (profile >= ProfileType::COUNT) return;
+
+    ProfileCache& cache = m_profileCache[static_cast<size_t>(profile)];
+    cache.clear();
+
+    // Capture StandingsHud
+    {
+        HudSettings settings;
+        const auto& hud = hudManager.getStandingsHud();
+        captureBaseHudSettings(settings, hud);
+        settings["displayRowCount"] = std::to_string(hud.m_displayRowCount);
+        settings["enabledColumns"] = std::to_string(hud.m_enabledColumns);
+        settings["officialGapMode"] = std::to_string(static_cast<int>(hud.m_officialGapMode));
+        settings["liveGapMode"] = std::to_string(static_cast<int>(hud.m_liveGapMode));
+        settings["gapIndicatorMode"] = std::to_string(static_cast<int>(hud.m_gapIndicatorMode));
+        cache["StandingsHud"] = std::move(settings);
+    }
+
+    // Capture MapHud
+    {
+        HudSettings settings;
+        const auto& hud = hudManager.getMapHud();
+        captureBaseHudSettings(settings, hud);
+        settings["rotateToPlayer"] = std::to_string(hud.getRotateToPlayer() ? 1 : 0);
+        settings["showOutline"] = std::to_string(hud.getShowOutline() ? 1 : 0);
+        settings["colorizeRiders"] = std::to_string(hud.getColorizeRiders() ? 1 : 0);
+        settings["trackLineWidthMeters"] = std::to_string(hud.getTrackLineWidthMeters());
+        settings["labelMode"] = std::to_string(static_cast<int>(hud.getLabelMode()));
+        settings["anchorPoint"] = std::to_string(static_cast<int>(hud.getAnchorPoint()));
+        settings["anchorX"] = std::to_string(hud.m_fAnchorX);
+        settings["anchorY"] = std::to_string(hud.m_fAnchorY);
+        settings["zoomEnabled"] = std::to_string(hud.getZoomEnabled() ? 1 : 0);
+        settings["zoomDistance"] = std::to_string(hud.getZoomDistance());
+        cache["MapHud"] = std::move(settings);
+    }
+
+    // Capture RadarHud
+    {
+        HudSettings settings;
+        const auto& hud = hudManager.getRadarHud();
+        captureBaseHudSettings(settings, hud);
+        settings["radarRange"] = std::to_string(hud.getRadarRange());
+        settings["colorizeRiders"] = std::to_string(hud.getColorizeRiders() ? 1 : 0);
+        settings["showPlayerArrow"] = std::to_string(hud.getShowPlayerArrow() ? 1 : 0);
+        settings["fadeWhenEmpty"] = std::to_string(hud.getFadeWhenEmpty() ? 1 : 0);
+        settings["alertDistance"] = std::to_string(hud.getAlertDistance());
+        settings["labelMode"] = std::to_string(static_cast<int>(hud.getLabelMode()));
+        cache["RadarHud"] = std::move(settings);
+    }
+
+    // Capture PitboardHud
+    {
+        HudSettings settings;
+        const auto& hud = hudManager.getPitboardHud();
+        captureBaseHudSettings(settings, hud);
+        settings["enabledRows"] = std::to_string(hud.m_enabledRows);
+        settings["displayMode"] = std::to_string(static_cast<int>(hud.m_displayMode));
+        cache["PitboardHud"] = std::move(settings);
+    }
+
+    // Capture RecordsHud
+    {
+        HudSettings settings;
+        const auto& hud = hudManager.getRecordsHud();
+        captureBaseHudSettings(settings, hud);
+        settings["provider"] = std::to_string(static_cast<int>(hud.m_provider));
+        settings["enabledColumns"] = std::to_string(hud.m_enabledColumns);
+        settings["recordsToShow"] = std::to_string(hud.m_recordsToShow);
+        cache["RecordsHud"] = std::move(settings);
+    }
+
+    // Capture LapLogHud
+    {
+        HudSettings settings;
+        const auto& hud = hudManager.getLapLogHud();
+        captureBaseHudSettings(settings, hud);
+        settings["enabledColumns"] = std::to_string(hud.m_enabledColumns);
+        settings["maxDisplayLaps"] = std::to_string(hud.m_maxDisplayLaps);
+        cache["LapLogHud"] = std::move(settings);
+    }
+
+    // Capture SessionBestHud
+    {
+        HudSettings settings;
+        const auto& hud = hudManager.getSessionBestHud();
+        captureBaseHudSettings(settings, hud);
+        settings["enabledRows"] = std::to_string(hud.m_enabledRows);
+        cache["SessionBestHud"] = std::move(settings);
+    }
+
+    // Capture TelemetryHud
+    {
+        HudSettings settings;
+        const auto& hud = hudManager.getTelemetryHud();
+        captureBaseHudSettings(settings, hud);
+        settings["enabledElements"] = std::to_string(hud.m_enabledElements);
+        settings["displayMode"] = std::to_string(static_cast<int>(hud.m_displayMode));
+        cache["TelemetryHud"] = std::move(settings);
+    }
+
+    // Capture InputHud
+    {
+        HudSettings settings;
+        const auto& hud = hudManager.getInputHud();
+        captureBaseHudSettings(settings, hud);
+        settings["enabledElements"] = std::to_string(hud.m_enabledElements);
+        cache["InputHud"] = std::move(settings);
+    }
+
+    // Capture PerformanceHud
+    {
+        HudSettings settings;
+        const auto& hud = hudManager.getPerformanceHud();
+        captureBaseHudSettings(settings, hud);
+        settings["enabledElements"] = std::to_string(hud.m_enabledElements);
+        settings["displayMode"] = std::to_string(static_cast<int>(hud.m_displayMode));
+        cache["PerformanceHud"] = std::move(settings);
+    }
+
+    // Capture Widgets (base properties only for most)
+    auto captureWidget = [&](const char* name, const BaseHud& hud) {
+        HudSettings settings;
+        captureBaseHudSettings(settings, hud);
+        cache[name] = std::move(settings);
+    };
+
+    captureWidget("LapWidget", hudManager.getLapWidget());
+    captureWidget("PositionWidget", hudManager.getPositionWidget());
+    captureWidget("TimeWidget", hudManager.getTimeWidget());
+    captureWidget("SessionWidget", hudManager.getSessionWidget());
+    captureWidget("SpeedoWidget", hudManager.getSpeedoWidget());
+    captureWidget("TachoWidget", hudManager.getTachoWidget());
+    captureWidget("TimingWidget", hudManager.getTimingWidget());
+    captureWidget("BarsWidget", hudManager.getBarsWidget());
+    captureWidget("VersionWidget", hudManager.getVersionWidget());
+    captureWidget("NoticesWidget", hudManager.getNoticesWidget());
+    captureWidget("SettingsButtonWidget", hudManager.getSettingsButtonWidget());
+
+    // SpeedWidget has speedUnit
+    {
+        HudSettings settings;
+        const auto& hud = hudManager.getSpeedWidget();
+        captureBaseHudSettings(settings, hud);
+        settings["speedUnit"] = std::to_string(static_cast<int>(hud.m_speedUnit));
+        cache["SpeedWidget"] = std::move(settings);
+    }
+
+    // FuelWidget has fuelUnit
+    {
+        HudSettings settings;
+        const auto& hud = hudManager.getFuelWidget();
+        captureBaseHudSettings(settings, hud);
+        settings["fuelUnit"] = std::to_string(static_cast<int>(hud.m_fuelUnit));
+        cache["FuelWidget"] = std::move(settings);
+    }
+
+    // Capture ColorConfig (per-profile)
+    {
+        HudSettings settings;
+        const ColorConfig& colorConfig = ColorConfig::getInstance();
+        std::ostringstream oss;
+        auto formatColor = [&oss](uint32_t color) -> std::string {
+            oss.str("");
+            oss << "0x" << std::hex << color;
+            return oss.str();
+        };
+        settings["primary"] = formatColor(colorConfig.getPrimary());
+        settings["secondary"] = formatColor(colorConfig.getSecondary());
+        settings["tertiary"] = formatColor(colorConfig.getTertiary());
+        settings["muted"] = formatColor(colorConfig.getMuted());
+        settings["background"] = formatColor(colorConfig.getBackground());
+        settings["positive"] = formatColor(colorConfig.getPositive());
+        settings["warning"] = formatColor(colorConfig.getWarning());
+        settings["neutral"] = formatColor(colorConfig.getNeutral());
+        settings["negative"] = formatColor(colorConfig.getNegative());
+        settings["accent"] = formatColor(colorConfig.getAccent());
+        settings["gridSnapping"] = std::to_string(colorConfig.getGridSnapping() ? 1 : 0);
+        settings["widgetsEnabled"] = std::to_string(HudManager::getInstance().areWidgetsEnabled() ? 1 : 0);
+        cache["ColorConfig"] = std::move(settings);
+    }
+
+    m_cacheInitialized = true;
+}
+
+void SettingsManager::applyActiveProfile(HudManager& hudManager) {
+    ProfileType activeProfile = ProfileManager::getInstance().getActiveProfile();
+    applyProfile(hudManager, activeProfile);
+}
+
+void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) {
+    if (profile >= ProfileType::COUNT) return;
+    if (!m_cacheInitialized) return;
+
+    const ProfileCache& cache = m_profileCache[static_cast<size_t>(profile)];
+
+    // Helper to apply settings to a HUD
+    auto applyToHud = [&](const char* hudName, BaseHud& hud) {
+        auto it = cache.find(hudName);
+        if (it == cache.end()) return;
+        applyBaseHudSettings(hud, it->second);
+        hud.setDataDirty();
+    };
+
+    // Apply StandingsHud
+    {
+        auto it = cache.find("StandingsHud");
+        if (it != cache.end()) {
+            auto& hud = hudManager.getStandingsHud();
+            applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                if (settings.count("displayRowCount")) hud.m_displayRowCount = validateDisplayRows(std::stoi(settings.at("displayRowCount")));
+                if (settings.count("enabledColumns")) hud.m_enabledColumns = static_cast<uint32_t>(std::stoul(settings.at("enabledColumns")));
+                if (settings.count("officialGapMode")) hud.m_officialGapMode = static_cast<StandingsHud::GapMode>(std::stoi(settings.at("officialGapMode")));
+                if (settings.count("liveGapMode")) hud.m_liveGapMode = static_cast<StandingsHud::GapMode>(std::stoi(settings.at("liveGapMode")));
+                if (settings.count("gapIndicatorMode")) hud.m_gapIndicatorMode = static_cast<StandingsHud::GapIndicatorMode>(std::stoi(settings.at("gapIndicatorMode")));
+            } catch (...) {}
+            hud.setDataDirty();
+        }
+    }
+
+    // Apply MapHud
+    {
+        auto it = cache.find("MapHud");
+        if (it != cache.end()) {
+            auto& hud = hudManager.getMapHud();
+            applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                if (settings.count("rotateToPlayer")) hud.setRotateToPlayer(std::stoi(settings.at("rotateToPlayer")) != 0);
+                if (settings.count("showOutline")) hud.setShowOutline(std::stoi(settings.at("showOutline")) != 0);
+                if (settings.count("colorizeRiders")) hud.setColorizeRiders(std::stoi(settings.at("colorizeRiders")) != 0);
+                if (settings.count("trackLineWidthMeters")) hud.setTrackLineWidthMeters(validateTrackLineWidth(std::stof(settings.at("trackLineWidthMeters"))));
+                if (settings.count("labelMode")) hud.setLabelMode(static_cast<MapHud::LabelMode>(std::stoi(settings.at("labelMode"))));
+                if (settings.count("anchorPoint")) hud.setAnchorPoint(static_cast<MapHud::AnchorPoint>(std::stoi(settings.at("anchorPoint"))));
+                if (settings.count("anchorX")) hud.m_fAnchorX = std::stof(settings.at("anchorX"));
+                if (settings.count("anchorY")) hud.m_fAnchorY = std::stof(settings.at("anchorY"));
+                if (settings.count("zoomEnabled")) hud.setZoomEnabled(std::stoi(settings.at("zoomEnabled")) != 0);
+                if (settings.count("zoomDistance")) hud.setZoomDistance(validateZoomDistance(std::stof(settings.at("zoomDistance"))));
+            } catch (...) {}
+            hud.setDataDirty();
+        }
+    }
+
+    // Apply RadarHud
+    {
+        auto it = cache.find("RadarHud");
+        if (it != cache.end()) {
+            auto& hud = hudManager.getRadarHud();
+            applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                if (settings.count("radarRange")) {
+                    float range = std::stof(settings.at("radarRange"));
+                    if (range < RadarHud::MIN_RADAR_RANGE) range = RadarHud::MIN_RADAR_RANGE;
+                    if (range > RadarHud::MAX_RADAR_RANGE) range = RadarHud::MAX_RADAR_RANGE;
+                    hud.setRadarRange(range);
+                }
+                if (settings.count("colorizeRiders")) hud.setColorizeRiders(std::stoi(settings.at("colorizeRiders")) != 0);
+                if (settings.count("showPlayerArrow")) hud.setShowPlayerArrow(std::stoi(settings.at("showPlayerArrow")) != 0);
+                if (settings.count("fadeWhenEmpty")) hud.setFadeWhenEmpty(std::stoi(settings.at("fadeWhenEmpty")) != 0);
+                if (settings.count("alertDistance")) {
+                    float distance = std::stof(settings.at("alertDistance"));
+                    if (distance < RadarHud::MIN_ALERT_DISTANCE) distance = RadarHud::MIN_ALERT_DISTANCE;
+                    if (distance > RadarHud::MAX_ALERT_DISTANCE) distance = RadarHud::MAX_ALERT_DISTANCE;
+                    hud.setAlertDistance(distance);
+                }
+                if (settings.count("labelMode")) hud.setLabelMode(static_cast<RadarHud::LabelMode>(std::stoi(settings.at("labelMode"))));
+            } catch (...) {}
+            hud.setDataDirty();
+        }
+    }
+
+    // Apply PitboardHud
+    {
+        auto it = cache.find("PitboardHud");
+        if (it != cache.end()) {
+            auto& hud = hudManager.getPitboardHud();
+            applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                if (settings.count("enabledRows")) hud.m_enabledRows = static_cast<uint32_t>(std::stoul(settings.at("enabledRows")));
+                if (settings.count("displayMode")) hud.m_displayMode = validateDisplayMode(std::stoi(settings.at("displayMode")));
+            } catch (...) {}
+            hud.setDataDirty();
+        }
+    }
+
+    // Apply RecordsHud
+    {
+        auto it = cache.find("RecordsHud");
+        if (it != cache.end()) {
+            auto& hud = hudManager.getRecordsHud();
+            applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                if (settings.count("provider")) {
+                    int provider = std::stoi(settings.at("provider"));
+                    if (provider >= 0 && provider < static_cast<int>(RecordsHud::DataProvider::COUNT)) {
+                        hud.m_provider = static_cast<RecordsHud::DataProvider>(provider);
+                    }
+                }
+                if (settings.count("enabledColumns")) hud.m_enabledColumns = static_cast<uint32_t>(std::stoul(settings.at("enabledColumns")));
+                if (settings.count("recordsToShow")) {
+                    int count = std::stoi(settings.at("recordsToShow"));
+                    if (count >= 1 && count <= 10) hud.m_recordsToShow = count;
+                }
+            } catch (...) {}
+            hud.setDataDirty();
+        }
+    }
+
+    // Apply LapLogHud
+    {
+        auto it = cache.find("LapLogHud");
+        if (it != cache.end()) {
+            auto& hud = hudManager.getLapLogHud();
+            applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                if (settings.count("enabledColumns")) hud.m_enabledColumns = static_cast<uint32_t>(std::stoul(settings.at("enabledColumns")));
+                if (settings.count("maxDisplayLaps")) hud.m_maxDisplayLaps = validateDisplayLaps(std::stoi(settings.at("maxDisplayLaps")));
+            } catch (...) {}
+            hud.setDataDirty();
+        }
+    }
+
+    // Apply SessionBestHud
+    {
+        auto it = cache.find("SessionBestHud");
+        if (it != cache.end()) {
+            auto& hud = hudManager.getSessionBestHud();
+            applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                if (settings.count("enabledRows")) hud.m_enabledRows = static_cast<uint32_t>(std::stoul(settings.at("enabledRows")));
+            } catch (...) {}
+            hud.setDataDirty();
+        }
+    }
+
+    // Apply TelemetryHud
+    {
+        auto it = cache.find("TelemetryHud");
+        if (it != cache.end()) {
+            auto& hud = hudManager.getTelemetryHud();
+            applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                if (settings.count("enabledElements")) hud.m_enabledElements = static_cast<uint32_t>(std::stoul(settings.at("enabledElements")));
+                if (settings.count("displayMode")) hud.m_displayMode = validateDisplayMode(std::stoi(settings.at("displayMode")));
+            } catch (...) {}
+            hud.setDataDirty();
+        }
+    }
+
+    // Apply InputHud
+    {
+        auto it = cache.find("InputHud");
+        if (it != cache.end()) {
+            auto& hud = hudManager.getInputHud();
+            applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                if (settings.count("enabledElements")) hud.m_enabledElements = static_cast<uint32_t>(std::stoul(settings.at("enabledElements")));
+            } catch (...) {}
+            hud.setDataDirty();
+        }
+    }
+
+    // Apply PerformanceHud
+    {
+        auto it = cache.find("PerformanceHud");
+        if (it != cache.end()) {
+            auto& hud = hudManager.getPerformanceHud();
+            applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                if (settings.count("enabledElements")) hud.m_enabledElements = static_cast<uint32_t>(std::stoul(settings.at("enabledElements")));
+                if (settings.count("displayMode")) hud.m_displayMode = validateDisplayMode(std::stoi(settings.at("displayMode")));
+            } catch (...) {}
+            hud.setDataDirty();
+        }
+    }
+
+    // Apply simple widgets
+    applyToHud("LapWidget", hudManager.getLapWidget());
+    applyToHud("PositionWidget", hudManager.getPositionWidget());
+    applyToHud("TimeWidget", hudManager.getTimeWidget());
+    applyToHud("SessionWidget", hudManager.getSessionWidget());
+    applyToHud("SpeedoWidget", hudManager.getSpeedoWidget());
+    applyToHud("TachoWidget", hudManager.getTachoWidget());
+    applyToHud("TimingWidget", hudManager.getTimingWidget());
+    applyToHud("BarsWidget", hudManager.getBarsWidget());
+    applyToHud("VersionWidget", hudManager.getVersionWidget());
+    applyToHud("NoticesWidget", hudManager.getNoticesWidget());
+    applyToHud("SettingsButtonWidget", hudManager.getSettingsButtonWidget());
+
+    // Apply SpeedWidget with speedUnit
+    {
+        auto it = cache.find("SpeedWidget");
+        if (it != cache.end()) {
+            auto& hud = hudManager.getSpeedWidget();
+            applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                if (settings.count("speedUnit")) {
+                    int unit = std::stoi(settings.at("speedUnit"));
+                    if (unit >= 0 && unit <= 1) hud.m_speedUnit = static_cast<SpeedWidget::SpeedUnit>(unit);
+                }
+            } catch (...) {}
+            hud.setDataDirty();
+        }
+    }
+
+    // Apply FuelWidget with fuelUnit
+    {
+        auto it = cache.find("FuelWidget");
+        if (it != cache.end()) {
+            auto& hud = hudManager.getFuelWidget();
+            applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                if (settings.count("fuelUnit")) {
+                    int unit = std::stoi(settings.at("fuelUnit"));
+                    if (unit >= 0 && unit <= 1) hud.m_fuelUnit = static_cast<FuelWidget::FuelUnit>(unit);
+                }
+            } catch (...) {}
+            hud.setDataDirty();
+        }
+    }
+
+    // Apply ColorConfig (per-profile)
+    {
+        auto it = cache.find("ColorConfig");
+        if (it != cache.end()) {
+            ColorConfig& colorConfig = ColorConfig::getInstance();
+            const auto& settings = it->second;
+            try {
+                if (settings.count("primary")) colorConfig.setColor(ColorSlot::PRIMARY, std::stoul(settings.at("primary"), nullptr, 0));
+                if (settings.count("secondary")) colorConfig.setColor(ColorSlot::SECONDARY, std::stoul(settings.at("secondary"), nullptr, 0));
+                if (settings.count("tertiary")) colorConfig.setColor(ColorSlot::TERTIARY, std::stoul(settings.at("tertiary"), nullptr, 0));
+                if (settings.count("muted")) colorConfig.setColor(ColorSlot::MUTED, std::stoul(settings.at("muted"), nullptr, 0));
+                if (settings.count("background")) colorConfig.setColor(ColorSlot::BACKGROUND, std::stoul(settings.at("background"), nullptr, 0));
+                if (settings.count("positive")) colorConfig.setColor(ColorSlot::POSITIVE, std::stoul(settings.at("positive"), nullptr, 0));
+                if (settings.count("warning")) colorConfig.setColor(ColorSlot::WARNING, std::stoul(settings.at("warning"), nullptr, 0));
+                if (settings.count("neutral")) colorConfig.setColor(ColorSlot::NEUTRAL, std::stoul(settings.at("neutral"), nullptr, 0));
+                if (settings.count("negative")) colorConfig.setColor(ColorSlot::NEGATIVE, std::stoul(settings.at("negative"), nullptr, 0));
+                if (settings.count("accent")) colorConfig.setColor(ColorSlot::ACCENT, std::stoul(settings.at("accent"), nullptr, 0));
+                if (settings.count("gridSnapping")) colorConfig.setGridSnapping(std::stoi(settings.at("gridSnapping")) != 0);
+                if (settings.count("widgetsEnabled")) hudManager.setWidgetsEnabled(std::stoi(settings.at("widgetsEnabled")) != 0);
+            } catch (...) {}
+
+            // Mark all HUDs dirty so they rebuild with new colors
+            hudManager.markAllHudsDirty();
+        }
+    }
+
+    DEBUG_INFO_F("Applied profile: %s", ProfileManager::getProfileName(profile));
+}
+
+bool SettingsManager::switchProfile(HudManager& hudManager, ProfileType newProfile) {
+    ProfileManager& profileManager = ProfileManager::getInstance();
+    ProfileType oldProfile = profileManager.getActiveProfile();
+
+    if (newProfile == oldProfile) return false;
+    if (newProfile >= ProfileType::COUNT) return false;
+
+    // Capture current state to old profile
+    captureToProfile(hudManager, oldProfile);
+
+    // Switch active profile
+    profileManager.setActiveProfile(newProfile);
+
+    // Apply new profile settings
+    applyProfile(hudManager, newProfile);
+
+    // Save to disk
+    if (!m_savePath.empty()) {
+        saveSettings(hudManager, m_savePath.c_str());
+    }
+
+    return true;
+}
+
+void SettingsManager::applyToAllProfiles(HudManager& hudManager) {
+    ProfileType activeProfile = ProfileManager::getInstance().getActiveProfile();
+
+    // Capture current HUD state to active profile (ensure it's up to date)
+    captureToProfile(hudManager, activeProfile);
+
+    // Copy active profile's cache to all other profiles
+    const ProfileCache& sourceCache = m_profileCache[static_cast<size_t>(activeProfile)];
+    for (int i = 0; i < static_cast<int>(ProfileType::COUNT); ++i) {
+        ProfileType targetProfile = static_cast<ProfileType>(i);
+        if (targetProfile != activeProfile) {
+            m_profileCache[i] = sourceCache;
+        }
+    }
+
+    // Save to disk
+    if (!m_savePath.empty()) {
+        saveSettings(hudManager, m_savePath.c_str());
+    }
+
+    DEBUG_INFO_F("Applied %s profile settings to all profiles", ProfileManager::getProfileName(activeProfile));
 }
 
 void SettingsManager::saveSettings(const HudManager& hudManager, const char* savePath) {
     std::string filePath = getSettingsFilePath(savePath);
+    m_savePath = savePath ? savePath : "";
+
+    // Capture current state to active profile before saving
+    const_cast<SettingsManager*>(this)->captureCurrentState(hudManager);
 
     std::ofstream file(filePath);
     if (!file.is_open()) {
@@ -176,155 +781,54 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
 
     DEBUG_INFO_F("Saving settings to: %s", filePath.c_str());
 
-    // Save in order matching settings tabs for consistency
+    // Write meta section (global, not per-profile)
+    const ProfileManager& profileManager = ProfileManager::getInstance();
+    file << "[Meta]\n";
+    file << "activeProfile=" << static_cast<int>(profileManager.getActiveProfile()) << "\n";
+    file << "autoSwitch=" << (profileManager.isAutoSwitchEnabled() ? 1 : 0) << "\n\n";
 
-    // Save StandingsHud
-    auto& standings = hudManager.getStandingsHud();
-    saveBaseHudProperties(file, standings, "StandingsHud");
-    file << "displayRowCount=" << standings.m_displayRowCount << "\n";
-    file << "nonRaceEnabledColumns=" << standings.m_nonRaceEnabledColumns << "\n";
-    file << "raceEnabledColumns=" << standings.m_raceEnabledColumns << "\n";
-    file << "officialGapMode_NonRace=" << static_cast<int>(standings.m_officialGapMode_NonRace) << "\n";
-    file << "officialGapMode_Race=" << static_cast<int>(standings.m_officialGapMode_Race) << "\n";
-    file << "liveGapMode_NonRace=" << static_cast<int>(standings.m_liveGapMode_NonRace) << "\n";
-    file << "liveGapMode_Race=" << static_cast<int>(standings.m_liveGapMode_Race) << "\n";
-    file << "gapIndicatorMode=" << static_cast<int>(standings.m_gapIndicatorMode) << "\n\n";
+    // Write all profiles (including ColorConfig per-profile)
+    static const std::array<const char*, 24> hudOrder = {
+        "ColorConfig",
+        "StandingsHud", "MapHud", "RadarHud", "PitboardHud", "RecordsHud",
+        "LapLogHud", "SessionBestHud", "TelemetryHud", "InputHud", "PerformanceHud",
+        "LapWidget", "PositionWidget", "TimeWidget", "SessionWidget", "SpeedWidget",
+        "SpeedoWidget", "TachoWidget", "TimingWidget", "BarsWidget", "VersionWidget",
+        "NoticesWidget", "FuelWidget", "SettingsButtonWidget"
+    };
 
-    // Save MapHud
-    auto& mapHud = hudManager.getMapHud();
-    saveBaseHudProperties(file, mapHud, "MapHud");
-    file << "rotateToPlayer=" << (mapHud.getRotateToPlayer() ? 1 : 0) << "\n";
-    file << "showOutline=" << (mapHud.getShowOutline() ? 1 : 0) << "\n";
-    file << "colorizeRiders=" << (mapHud.getColorizeRiders() ? 1 : 0) << "\n";
-    file << "trackLineWidthMeters=" << mapHud.getTrackLineWidthMeters() << "\n";
-    file << "labelMode=" << static_cast<int>(mapHud.getLabelMode()) << "\n";
-    file << "anchorPoint=" << static_cast<int>(mapHud.getAnchorPoint()) << "\n";
-    file << "anchorX=" << mapHud.m_fAnchorX << "\n";
-    file << "anchorY=" << mapHud.m_fAnchorY << "\n\n";
+    for (int profileIdx = 0; profileIdx < static_cast<int>(ProfileType::COUNT); ++profileIdx) {
+        ProfileType profile = static_cast<ProfileType>(profileIdx);
+        const ProfileCache& cache = m_profileCache[profileIdx];
 
-    // Save RadarHud
-    auto& radarHud = hudManager.getRadarHud();
-    saveBaseHudProperties(file, radarHud, "RadarHud");
-    file << "radarRange=" << radarHud.getRadarRange() << "\n";
-    file << "colorizeRiders=" << (radarHud.getColorizeRiders() ? 1 : 0) << "\n";
-    file << "showPlayerArrow=" << (radarHud.getShowPlayerArrow() ? 1 : 0) << "\n";
-    file << "fadeWhenEmpty=" << (radarHud.getFadeWhenEmpty() ? 1 : 0) << "\n";
-    file << "alertDistance=" << radarHud.getAlertDistance() << "\n";
-    file << "labelMode=" << static_cast<int>(radarHud.getLabelMode()) << "\n\n";
+        file << "# Profile: " << ProfileManager::getProfileName(profile) << "\n";
 
-    // Save PitboardHud
-    saveBaseHudProperties(file, hudManager.getPitboardHud(), "PitboardHud");
-    file << "enabledRows=" << hudManager.getPitboardHud().m_enabledRows << "\n";
-    file << "displayMode=" << static_cast<int>(hudManager.getPitboardHud().m_displayMode) << "\n\n";
+        for (const char* hudName : hudOrder) {
+            auto it = cache.find(hudName);
+            if (it == cache.end()) continue;
 
-    // Save RecordsHud (categoryIndex not saved - defaults to current bike category)
-    saveBaseHudProperties(file, hudManager.getRecordsHud(), "RecordsHud");
-    file << "provider=" << static_cast<int>(hudManager.getRecordsHud().m_provider) << "\n";
-    file << "enabledColumns=" << hudManager.getRecordsHud().m_enabledColumns << "\n";
-    file << "recordsToShow=" << hudManager.getRecordsHud().m_recordsToShow << "\n\n";
+            file << "[" << hudName << ":" << profileIdx << "]\n";
 
-    // Save LapLogHud
-    saveBaseHudProperties(file, hudManager.getLapLogHud(), "LapLogHud");
-    file << "enabledColumns=" << hudManager.getLapLogHud().m_enabledColumns << "\n";
-    file << "maxDisplayLaps=" << hudManager.getLapLogHud().m_maxDisplayLaps << "\n\n";
+            // Write base properties first
+            writeBaseHudSettings(file, it->second);
 
-    // Save SessionBestHud
-    saveBaseHudProperties(file, hudManager.getSessionBestHud(), "SessionBestHud");
-    file << "enabledRows=" << hudManager.getSessionBestHud().m_enabledRows << "\n\n";
-
-    // Save TelemetryHud
-    saveBaseHudProperties(file, hudManager.getTelemetryHud(), "TelemetryHud");
-    file << "enabledElements=" << hudManager.getTelemetryHud().m_enabledElements << "\n";
-    file << "displayMode=" << static_cast<int>(hudManager.getTelemetryHud().m_displayMode) << "\n\n";
-
-    // Save InputHud
-    saveBaseHudProperties(file, hudManager.getInputHud(), "InputHud");
-    file << "enabledElements=" << hudManager.getInputHud().m_enabledElements << "\n\n";
-
-    // Save PerformanceHud
-    saveBaseHudProperties(file, hudManager.getPerformanceHud(), "PerformanceHud");
-    file << "enabledElements=" << hudManager.getPerformanceHud().m_enabledElements << "\n";
-    file << "displayMode=" << static_cast<int>(hudManager.getPerformanceHud().m_displayMode) << "\n\n";
-
-    // Save Widgets
-    // Save LapWidget
-    saveBaseHudProperties(file, hudManager.getLapWidget(), "LapWidget");
-    file << "\n";
-
-    // Save PositionWidget
-    saveBaseHudProperties(file, hudManager.getPositionWidget(), "PositionWidget");
-    file << "\n";
-
-    // Save TimeWidget
-    saveBaseHudProperties(file, hudManager.getTimeWidget(), "TimeWidget");
-    file << "\n";
-
-    // Save SessionWidget
-    saveBaseHudProperties(file, hudManager.getSessionWidget(), "SessionWidget");
-    file << "\n";
-
-    // Save SpeedWidget
-    saveBaseHudProperties(file, hudManager.getSpeedWidget(), "SpeedWidget");
-    file << "speedUnit=" << static_cast<int>(hudManager.getSpeedWidget().m_speedUnit) << "\n";
-    file << "\n";
-
-    // Save SpeedoWidget
-    saveBaseHudProperties(file, hudManager.getSpeedoWidget(), "SpeedoWidget");
-    file << "\n";
-
-    // Save TachoWidget
-    saveBaseHudProperties(file, hudManager.getTachoWidget(), "TachoWidget");
-    file << "\n";
-
-    // Save TimingWidget
-    saveBaseHudProperties(file, hudManager.getTimingWidget(), "TimingWidget");
-    file << "\n";
-
-    // Save BarsWidget
-    saveBaseHudProperties(file, hudManager.getBarsWidget(), "BarsWidget");
-    file << "\n";
-
-    // Save VersionWidget
-    saveBaseHudProperties(file, hudManager.getVersionWidget(), "VersionWidget");
-    file << "\n";
-
-    // Save NoticesWidget
-    saveBaseHudProperties(file, hudManager.getNoticesWidget(), "NoticesWidget");
-    file << "\n";
-
-    // Save FuelWidget
-    saveBaseHudProperties(file, hudManager.getFuelWidget(), "FuelWidget");
-    file << "fuelUnit=" << static_cast<int>(hudManager.getFuelWidget().m_fuelUnit) << "\n";
-    file << "\n";
-
-    // Save SettingsButtonWidget
-    saveBaseHudProperties(file, hudManager.getSettingsButtonWidget(), "SettingsButtonWidget");
-    file << "\n";
-
-    // Save ColorConfig
-    {
-        const ColorConfig& colorConfig = ColorConfig::getInstance();
-        file << "[ColorConfig]\n";
-        file << "primary=0x" << std::hex << colorConfig.getPrimary() << std::dec << "\n";
-        file << "secondary=0x" << std::hex << colorConfig.getSecondary() << std::dec << "\n";
-        file << "tertiary=0x" << std::hex << colorConfig.getTertiary() << std::dec << "\n";
-        file << "muted=0x" << std::hex << colorConfig.getMuted() << std::dec << "\n";
-        file << "background=0x" << std::hex << colorConfig.getBackground() << std::dec << "\n";
-        file << "positive=0x" << std::hex << colorConfig.getPositive() << std::dec << "\n";
-        file << "warning=0x" << std::hex << colorConfig.getWarning() << std::dec << "\n";
-        file << "neutral=0x" << std::hex << colorConfig.getNeutral() << std::dec << "\n";
-        file << "negative=0x" << std::hex << colorConfig.getNegative() << std::dec << "\n";
-        file << "gridSnapping=" << (colorConfig.getGridSnapping() ? 1 : 0) << "\n";
-        file << "\n";
+            // Write HUD-specific properties
+            for (const auto& [key, value] : it->second) {
+                // Skip base properties (already written)
+                if (key == "visible" || key == "showTitle" || key == "showBackgroundTexture" ||
+                    key == "backgroundOpacity" || key == "scale" || key == "offsetX" || key == "offsetY") {
+                    continue;
+                }
+                file << key << "=" << value << "\n";
+            }
+            file << "\n";
+        }
     }
 
-    // Validate all writes succeeded before closing
     if (!file.good()) {
-        DEBUG_WARN_F("Stream error occurred while writing settings to: %s (disk full or I/O error)", filePath.c_str());
+        DEBUG_WARN_F("Stream error occurred while writing settings to: %s", filePath.c_str());
         file.close();
-        // Delete corrupted partial file to prevent loading invalid settings
         std::remove(filePath.c_str());
-        DEBUG_WARN_F("Deleted corrupted partial settings file: %s", filePath.c_str());
         return;
     }
 
@@ -334,50 +838,45 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
 
 void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath) {
     std::string filePath = getSettingsFilePath(savePath);
+    m_savePath = savePath ? savePath : "";
 
     std::ifstream file(filePath);
     if (!file.is_open()) {
         DEBUG_INFO_F("No settings file found at: %s (using defaults)", filePath.c_str());
+        // Initialize cache with current (default) state for all profiles
+        for (int i = 0; i < static_cast<int>(ProfileType::COUNT); ++i) {
+            captureToProfile(hudManager, static_cast<ProfileType>(i));
+        }
         return;
     }
 
     DEBUG_INFO_F("Loading settings from: %s", filePath.c_str());
 
+    // Clear existing cache
+    for (auto& cache : m_profileCache) {
+        cache.clear();
+    }
+
     std::string line;
     std::string currentSection;
-    BaseHud* lastHud = nullptr;
-    float pendingOffsetX = 0.0f;
-    float pendingOffsetY = 0.0f;
-    bool hasOffsetX = false;
-    bool hasOffsetY = false;
-
-    // Lambda to apply pending offsets when switching sections
-    auto applyPendingOffsets = [&]() {
-        if (lastHud && (hasOffsetX || hasOffsetY)) {
-            // If we only got one offset, keep the current value for the other
-            float finalX = hasOffsetX ? pendingOffsetX : lastHud->getOffsetX();
-            float finalY = hasOffsetY ? pendingOffsetY : lastHud->getOffsetY();
-            lastHud->setPosition(finalX, finalY);
-            hasOffsetX = false;
-            hasOffsetY = false;
-        }
-    };
+    std::string currentHudName;
+    int currentProfileIndex = -1;
 
     while (std::getline(file, line)) {
         // Trim whitespace
         size_t start = line.find_first_not_of(" \t\r\n");
         size_t end = line.find_last_not_of(" \t\r\n");
-        if (start == std::string::npos) continue;  // Empty line
-
-        // Safety: Check that end is valid before using in arithmetic
-        if (end == std::string::npos) continue;  // Should not happen if start is valid, but be defensive
+        if (start == std::string::npos) continue;
+        if (end == std::string::npos) continue;
         line = line.substr(start, end - start + 1);
 
-        // Check for section header [HudName]
-        // Safety: Check length before accessing front/back to avoid undefined behavior
+        // Skip comments
+        if (line[0] == '#') continue;
+
+        // Check for section header
         if (line.length() >= 3 && line.front() == '[' && line.back() == ']') {
-            applyPendingOffsets();  // Apply any pending offsets from previous section
             currentSection = line.substr(1, line.length() - 2);
+            parseSectionName(currentSection, currentHudName, currentProfileIndex);
             continue;
         }
 
@@ -388,237 +887,50 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
         std::string key = line.substr(0, equals);
         std::string value = line.substr(equals + 1);
 
-        // Apply setting to appropriate HUD
-        // PERFORMANCE OPTIMIZATION: Use lookup table instead of if-else chain
-        // Previous: O(n) linear search through 15 branches (avg 7-8 comparisons)
-        // New: O(1) hash table lookup (single comparison)
-        // Impact: Faster settings loading, especially for large config files
-
-        struct HudLoadInfo {
-            BaseHud* hud;
-            uint32_t* enabledBitfield;
-        };
-
-        // Build lookup table for HUD section name -> HUD object mapping
-        // Non-static to avoid dangling reference issues with lambda captures
-        const std::unordered_map<std::string, std::function<HudLoadInfo()>> hudLookupTable = {
-            {"SessionBestHud", [&]() { return HudLoadInfo{&hudManager.getSessionBestHud(), &hudManager.getSessionBestHud().m_enabledRows}; }},
-            {"LapLogHud", [&]() { return HudLoadInfo{&hudManager.getLapLogHud(), &hudManager.getLapLogHud().m_enabledColumns}; }},
-            {"StandingsHud", [&]() { return HudLoadInfo{&hudManager.getStandingsHud(), &hudManager.getStandingsHud().m_enabledColumns}; }},
-            {"PerformanceHud", [&]() { return HudLoadInfo{&hudManager.getPerformanceHud(), &hudManager.getPerformanceHud().m_enabledElements}; }},
-            {"TelemetryHud", [&]() { return HudLoadInfo{&hudManager.getTelemetryHud(), &hudManager.getTelemetryHud().m_enabledElements}; }},
-            {"InputHud", [&]() { return HudLoadInfo{&hudManager.getInputHud(), &hudManager.getInputHud().m_enabledElements}; }},
-            {"PitboardHud", [&]() { return HudLoadInfo{&hudManager.getPitboardHud(), &hudManager.getPitboardHud().m_enabledRows}; }},
-            {"RecordsHud", [&]() { return HudLoadInfo{&hudManager.getRecordsHud(), nullptr}; }},
-            {"TimeWidget", [&]() { return HudLoadInfo{&hudManager.getTimeWidget(), nullptr}; }},
-            {"PositionWidget", [&]() { return HudLoadInfo{&hudManager.getPositionWidget(), nullptr}; }},
-            {"LapWidget", [&]() { return HudLoadInfo{&hudManager.getLapWidget(), nullptr}; }},
-            {"SessionWidget", [&]() { return HudLoadInfo{&hudManager.getSessionWidget(), nullptr}; }},
-            {"MapHud", [&]() { return HudLoadInfo{&hudManager.getMapHud(), nullptr}; }},
-            {"RadarHud", [&]() { return HudLoadInfo{&hudManager.getRadarHud(), nullptr}; }},
-            {"SpeedWidget", [&]() { return HudLoadInfo{&hudManager.getSpeedWidget(), nullptr}; }},
-            {"SpeedoWidget", [&]() { return HudLoadInfo{&hudManager.getSpeedoWidget(), nullptr}; }},
-            {"TachoWidget", [&]() { return HudLoadInfo{&hudManager.getTachoWidget(), nullptr}; }},
-            {"TimingWidget", [&]() { return HudLoadInfo{&hudManager.getTimingWidget(), nullptr}; }},
-            {"BarsWidget", [&]() { return HudLoadInfo{&hudManager.getBarsWidget(), nullptr}; }},
-            {"VersionWidget", [&]() { return HudLoadInfo{&hudManager.getVersionWidget(), nullptr}; }},
-            {"NoticesWidget", [&]() { return HudLoadInfo{&hudManager.getNoticesWidget(), nullptr}; }},
-            {"FuelWidget", [&]() { return HudLoadInfo{&hudManager.getFuelWidget(), nullptr}; }},
-            {"SettingsButtonWidget", [&]() { return HudLoadInfo{&hudManager.getSettingsButtonWidget(), nullptr}; }},
-        };
-
-        // Handle ColorConfig section (not a HUD, so handle separately before HUD lookup)
-        if (currentSection == "ColorConfig") {
+        // Handle Meta section
+        if (currentHudName == "Meta") {
             try {
-                ColorConfig& colorConfig = ColorConfig::getInstance();
-
-                // Handle non-color settings first
-                if (key == "gridSnapping") {
-                    colorConfig.setGridSnapping(std::stoi(value) != 0);
-                    continue;
+                if (key == "activeProfile") {
+                    int profileIdx = std::stoi(value);
+                    if (profileIdx >= 0 && profileIdx < static_cast<int>(ProfileType::COUNT)) {
+                        ProfileManager::getInstance().setActiveProfile(static_cast<ProfileType>(profileIdx));
+                    }
+                } else if (key == "autoSwitch") {
+                    ProfileManager::getInstance().setAutoSwitchEnabled(std::stoi(value) != 0);
                 }
-
-                // All other settings are colors
-                unsigned long colorValue = std::stoul(value, nullptr, 0);  // Handles 0x prefix
-
-                if (key == "primary") {
-                    colorConfig.setColor(ColorSlot::PRIMARY, colorValue);
-                } else if (key == "secondary") {
-                    colorConfig.setColor(ColorSlot::SECONDARY, colorValue);
-                } else if (key == "tertiary") {
-                    colorConfig.setColor(ColorSlot::TERTIARY, colorValue);
-                } else if (key == "muted") {
-                    colorConfig.setColor(ColorSlot::MUTED, colorValue);
-                } else if (key == "background") {
-                    colorConfig.setColor(ColorSlot::BACKGROUND, colorValue);
-                } else if (key == "positive") {
-                    colorConfig.setColor(ColorSlot::POSITIVE, colorValue);
-                } else if (key == "warning") {
-                    colorConfig.setColor(ColorSlot::WARNING, colorValue);
-                } else if (key == "neutral") {
-                    colorConfig.setColor(ColorSlot::NEUTRAL, colorValue);
-                } else if (key == "negative") {
-                    colorConfig.setColor(ColorSlot::NEGATIVE, colorValue);
-                }
-            }
-            catch ([[maybe_unused]] const std::exception& e) {
-                DEBUG_WARN_F("Failed to parse ColorConfig setting '%s=%s': %s",
-                            key.c_str(), value.c_str(), e.what());
-            }
+            } catch (...) {}
             continue;
         }
 
-        // Lookup HUD info from table
-        auto it = hudLookupTable.find(currentSection);
-        if (it == hudLookupTable.end()) continue;
-
-        HudLoadInfo hudInfo = it->second();
-        BaseHud* hud = hudInfo.hud;
-        uint32_t* enabledBitfield = hudInfo.enabledBitfield;
-
-        // Track current HUD for offset buffering
-        lastHud = hud;
-
-        // Apply setting
-        try {
-            if (key == "visible") {
-                hud->setVisible(std::stoi(value) != 0);
-            } else if (key == "showTitle") {
-                hud->setShowTitle(std::stoi(value) != 0);
-            } else if (key == "showBackgroundTexture") {
-                hud->setShowBackgroundTexture(std::stoi(value) != 0);
-            } else if (key == "backgroundOpacity") {
-                float opacity = validateOpacity(std::stof(value));
-                hud->setBackgroundOpacity(opacity);
-            } else if (key == "scale") {
-                float scale = validateScale(std::stof(value));
-                hud->setScale(scale);
-            } else if (key == "offsetX") {
-                // Buffer offsetX - will apply when section changes or at end
-                pendingOffsetX = validateOffset(std::stof(value));
-                hasOffsetX = true;
-            } else if (key == "offsetY") {
-                // Buffer offsetY - will apply when section changes or at end
-                pendingOffsetY = validateOffset(std::stof(value));
-                hasOffsetY = true;
-            } else if ((key == "enabledRows" || key == "enabledColumns" || key == "enabledElements") && enabledBitfield) {
-                *enabledBitfield = static_cast<uint32_t>(std::stoul(value));
-                hud->setDataDirty();  // Force rebuild with new columns
-            } else if (key == "displayMode" && currentSection == "PerformanceHud") {
-                hudManager.getPerformanceHud().m_displayMode = validateDisplayMode(std::stoi(value));
-                hud->setDataDirty();  // Force rebuild with new display mode
-            } else if (key == "displayMode" && currentSection == "TelemetryHud") {
-                hudManager.getTelemetryHud().m_displayMode = validateDisplayMode(std::stoi(value));
-                hud->setDataDirty();  // Force rebuild with new display mode
-            } else if (key == "displayMode" && currentSection == "PitboardHud") {
-                hudManager.getPitboardHud().m_displayMode = validateDisplayMode(std::stoi(value));
-                hud->setDataDirty();  // Force rebuild with new display mode
-            } else if (key == "maxDisplayLaps" && currentSection == "LapLogHud") {
-                int laps = validateDisplayLaps(std::stoi(value));
-                hudManager.getLapLogHud().m_maxDisplayLaps = laps;
-                hud->setDataDirty();
-            } else if (key == "nonRaceEnabledColumns" && currentSection == "StandingsHud") {
-                hudManager.getStandingsHud().m_nonRaceEnabledColumns = static_cast<uint32_t>(std::stoul(value));
-                hud->setDataDirty();
-            } else if (key == "raceEnabledColumns" && currentSection == "StandingsHud") {
-                hudManager.getStandingsHud().m_raceEnabledColumns = static_cast<uint32_t>(std::stoul(value));
-                hud->setDataDirty();
-            } else if (key == "displayRowCount" && currentSection == "StandingsHud") {
-                int rows = validateDisplayRows(std::stoi(value));
-                hudManager.getStandingsHud().m_displayRowCount = rows;
-                hud->setDataDirty();
-            } else if (key == "officialGapMode_NonRace" && currentSection == "StandingsHud") {
-                hudManager.getStandingsHud().m_officialGapMode_NonRace = static_cast<StandingsHud::GapMode>(std::stoi(value));
-                hud->setDataDirty();
-            } else if (key == "officialGapMode_Race" && currentSection == "StandingsHud") {
-                hudManager.getStandingsHud().m_officialGapMode_Race = static_cast<StandingsHud::GapMode>(std::stoi(value));
-                hud->setDataDirty();
-            } else if (key == "liveGapMode_NonRace" && currentSection == "StandingsHud") {
-                hudManager.getStandingsHud().m_liveGapMode_NonRace = static_cast<StandingsHud::GapMode>(std::stoi(value));
-                hud->setDataDirty();
-            } else if (key == "liveGapMode_Race" && currentSection == "StandingsHud") {
-                hudManager.getStandingsHud().m_liveGapMode_Race = static_cast<StandingsHud::GapMode>(std::stoi(value));
-                hud->setDataDirty();
-            } else if (key == "gapIndicatorMode" && currentSection == "StandingsHud") {
-                hudManager.getStandingsHud().m_gapIndicatorMode = static_cast<StandingsHud::GapIndicatorMode>(std::stoi(value));
-                hud->setDataDirty();
-            } else if (key == "rotateToPlayer" && currentSection == "MapHud") {
-                hudManager.getMapHud().setRotateToPlayer(std::stoi(value) != 0);
-            } else if (key == "showOutline" && currentSection == "MapHud") {
-                hudManager.getMapHud().setShowOutline(std::stoi(value) != 0);
-            } else if (key == "colorizeRiders" && currentSection == "MapHud") {
-                hudManager.getMapHud().setColorizeRiders(std::stoi(value) != 0);
-            } else if (key == "trackLineWidthMeters" && currentSection == "MapHud") {
-                float width = validateTrackLineWidth(std::stof(value));
-                hudManager.getMapHud().setTrackLineWidthMeters(width);
-            } else if (key == "labelMode" && currentSection == "MapHud") {
-                hudManager.getMapHud().setLabelMode(static_cast<MapHud::LabelMode>(std::stoi(value)));
-            } else if (key == "anchorPoint" && currentSection == "MapHud") {
-                hudManager.getMapHud().setAnchorPoint(static_cast<MapHud::AnchorPoint>(std::stoi(value)));
-            } else if (key == "anchorX" && currentSection == "MapHud") {
-                hudManager.getMapHud().m_fAnchorX = std::stof(value);
-            } else if (key == "anchorY" && currentSection == "MapHud") {
-                hudManager.getMapHud().m_fAnchorY = std::stof(value);
-            } else if (key == "radarRange" && currentSection == "RadarHud") {
-                float range = std::stof(value);
-                if (range < RadarHud::MIN_RADAR_RANGE) range = RadarHud::MIN_RADAR_RANGE;
-                if (range > RadarHud::MAX_RADAR_RANGE) range = RadarHud::MAX_RADAR_RANGE;
-                hudManager.getRadarHud().setRadarRange(range);
-            } else if (key == "colorizeRiders" && currentSection == "RadarHud") {
-                hudManager.getRadarHud().setColorizeRiders(std::stoi(value) != 0);
-            } else if (key == "showPlayerArrow" && currentSection == "RadarHud") {
-                hudManager.getRadarHud().setShowPlayerArrow(std::stoi(value) != 0);
-            } else if (key == "fadeWhenEmpty" && currentSection == "RadarHud") {
-                hudManager.getRadarHud().setFadeWhenEmpty(std::stoi(value) != 0);
-            } else if (key == "trackFilter" && currentSection == "RadarHud") {
-                // Deprecated setting, ignore (track filtering now uses radar range automatically)
-            } else if (key == "alertDistance" && currentSection == "RadarHud") {
-                float distance = std::stof(value);
-                if (distance < RadarHud::MIN_ALERT_DISTANCE) distance = RadarHud::MIN_ALERT_DISTANCE;
-                if (distance > RadarHud::MAX_ALERT_DISTANCE) distance = RadarHud::MAX_ALERT_DISTANCE;
-                hudManager.getRadarHud().setAlertDistance(distance);
-            } else if (key == "labelMode" && currentSection == "RadarHud") {
-                hudManager.getRadarHud().setLabelMode(static_cast<RadarHud::LabelMode>(std::stoi(value)));
-            } else if (key == "provider" && currentSection == "RecordsHud") {
-                int provider = std::stoi(value);
-                if (provider >= 0 && provider < static_cast<int>(RecordsHud::DataProvider::COUNT)) {
-                    hudManager.getRecordsHud().m_provider = static_cast<RecordsHud::DataProvider>(provider);
-                }
-                hud->setDataDirty();
-            // categoryIndex not loaded - defaults to current bike category
-            } else if (key == "enabledColumns" && currentSection == "RecordsHud") {
-                hudManager.getRecordsHud().m_enabledColumns = static_cast<uint32_t>(std::stoul(value));
-                hud->setDataDirty();
-            } else if (key == "recordsToShow" && currentSection == "RecordsHud") {
-                int count = std::stoi(value);
-                if (count >= 1 && count <= 10) {
-                    hudManager.getRecordsHud().m_recordsToShow = count;
-                }
-                hud->setDataDirty();
-            } else if (key == "speedUnit" && currentSection == "SpeedWidget") {
-                int unit = std::stoi(value);
-                if (unit >= 0 && unit <= 1) {
-                    hudManager.getSpeedWidget().m_speedUnit = static_cast<SpeedWidget::SpeedUnit>(unit);
-                }
-                hud->setDataDirty();
-            } else if (key == "fuelUnit" && currentSection == "FuelWidget") {
-                int unit = std::stoi(value);
-                if (unit >= 0 && unit <= 1) {
-                    hudManager.getFuelWidget().m_fuelUnit = static_cast<FuelWidget::FuelUnit>(unit);
-                }
-                hud->setDataDirty();
-            }
+        // Handle profile-specific HUD settings (v2 format only)
+        // Note: ColorConfig is now per-profile and handled here as well
+        if (currentProfileIndex >= 0 && currentProfileIndex < static_cast<int>(ProfileType::COUNT)) {
+            m_profileCache[currentProfileIndex][currentHudName][key] = value;
         }
-        catch ([[maybe_unused]] const std::exception& e) {
-            // Corrupted value in settings file - log and skip this setting
-            DEBUG_WARN_F("Failed to parse setting '%s=%s' in section [%s]: %s",
-                        key.c_str(), value.c_str(), currentSection.c_str(), e.what());
-            // Continue loading other settings rather than crashing
+        // Legacy v1 format (no profile index) is ignored - users start fresh
+    }
+
+    file.close();
+
+    // If cache is empty (v1 file or corrupted), initialize all profiles with current defaults
+    bool anyProfileEmpty = false;
+    for (const auto& cache : m_profileCache) {
+        if (cache.empty()) {
+            anyProfileEmpty = true;
+            break;
+        }
+    }
+    if (anyProfileEmpty) {
+        DEBUG_INFO("Initializing profiles with defaults (legacy or empty settings file)");
+        for (int i = 0; i < static_cast<int>(ProfileType::COUNT); ++i) {
+            captureToProfile(hudManager, static_cast<ProfileType>(i));
         }
     }
 
-    applyPendingOffsets();  // Apply any pending offsets from last section
+    m_cacheInitialized = true;
 
-    file.close();
+    // Apply active profile to HUDs
+    applyActiveProfile(hudManager);
+
     DEBUG_INFO("Settings loaded successfully");
 }

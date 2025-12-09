@@ -41,7 +41,7 @@ namespace ColorPalette {
     int getColorIndex(unsigned long color);
 }
 
-// Color slot identifiers for the 9 configurable colors
+// Color slot identifiers for the 10 configurable colors
 enum class ColorSlot {
     PRIMARY = 0,      // Main text color
     SECONDARY,        // Secondary text color
@@ -52,6 +52,7 @@ enum class ColorSlot {
     WARNING,          // Warning indicator
     NEUTRAL,          // Neutral indicator
     NEGATIVE,         // Negative/bad indicator (e.g., slower times)
+    ACCENT,           // Button/interactive element backgrounds
     COUNT
 };
 
@@ -72,6 +73,7 @@ public:
     unsigned long getWarning() const { return m_colors[static_cast<size_t>(ColorSlot::WARNING)]; }
     unsigned long getNeutral() const { return m_colors[static_cast<size_t>(ColorSlot::NEUTRAL)]; }
     unsigned long getNegative() const { return m_colors[static_cast<size_t>(ColorSlot::NEGATIVE)]; }
+    unsigned long getAccent() const { return m_colors[static_cast<size_t>(ColorSlot::ACCENT)]; }
 
     // Set color for a specific slot
     void setColor(ColorSlot slot, unsigned long color);

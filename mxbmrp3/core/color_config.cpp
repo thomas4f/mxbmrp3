@@ -98,6 +98,7 @@ void ColorConfig::resetToDefaults() {
     m_colors[static_cast<size_t>(ColorSlot::WARNING)] = getDefaultColor(ColorSlot::WARNING);
     m_colors[static_cast<size_t>(ColorSlot::NEUTRAL)] = getDefaultColor(ColorSlot::NEUTRAL);
     m_colors[static_cast<size_t>(ColorSlot::NEGATIVE)] = getDefaultColor(ColorSlot::NEGATIVE);
+    m_colors[static_cast<size_t>(ColorSlot::ACCENT)] = getDefaultColor(ColorSlot::ACCENT);
     m_bGridSnapping = true;  // Grid snapping enabled by default
 
     DEBUG_INFO("ColorConfig: Reset to defaults");
@@ -114,6 +115,7 @@ const char* ColorConfig::getSlotName(ColorSlot slot) {
         case ColorSlot::WARNING:    return "Warning";
         case ColorSlot::NEUTRAL:    return "Neutral";
         case ColorSlot::NEGATIVE:   return "Negative";
+        case ColorSlot::ACCENT:     return "Accent";
         default:                    return "Unknown";
     }
 }
@@ -130,6 +132,7 @@ unsigned long ColorConfig::getDefaultColor(ColorSlot slot) {
         case ColorSlot::WARNING:    return ColorPalette::ORANGE;      // #ffa500
         case ColorSlot::NEUTRAL:    return ColorPalette::YELLOW;      // #ffff00
         case ColorSlot::NEGATIVE:   return ColorPalette::RED;         // #ff0000
+        case ColorSlot::ACCENT:     return ColorPalette::PINK;        // #ff69b4
         default:                    return ColorPalette::WHITE;
     }
 }

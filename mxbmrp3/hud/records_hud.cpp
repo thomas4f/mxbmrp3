@@ -449,9 +449,13 @@ void RecordsHud::performFetch() {
 
     // Process response
     if (!responseBody.empty()) {
-        processFetchResult(responseBody);
-        m_fetchState = FetchState::SUCCESS;
-        DEBUG_INFO("RecordsHud: Fetch successful");
+        if (processFetchResult(responseBody)) {
+            m_fetchState = FetchState::SUCCESS;
+            DEBUG_INFO("RecordsHud: Fetch successful");
+        } else {
+            m_fetchState = FetchState::FETCH_ERROR;
+            DEBUG_WARN("RecordsHud: Failed to parse response");
+        }
     } else {
         {
             std::lock_guard<std::mutex> lock(m_recordsMutex);
@@ -465,7 +469,7 @@ void RecordsHud::performFetch() {
     setDataDirty();
 }
 
-void RecordsHud::processFetchResult(const std::string& response) {
+bool RecordsHud::processFetchResult(const std::string& response) {
     try {
         nlohmann::json j = nlohmann::json::parse(response);
 
@@ -519,10 +523,13 @@ void RecordsHud::processFetchResult(const std::string& response) {
 
             DEBUG_INFO_F("RecordsHud: Parsed %zu records", m_records.size());
         }
+
+        return true;
     } catch (const std::exception& e) {
         std::lock_guard<std::mutex> lock(m_recordsMutex);
-        m_lastError = "JSON parse error";
+        m_lastError = "Parse error";
         DEBUG_WARN_F("RecordsHud: JSON parse error: %s", e.what());
+        return false;
     }
 }
 
@@ -678,12 +685,14 @@ void RecordsHud::rebuildRenderData() {
 
     // Copy records for display (minimize mutex hold time)
     std::vector<RecordEntry> displayRecords;
+    std::string lastError;
     {
         std::lock_guard<std::mutex> lock(m_recordsMutex);
         int copyCount = std::min(static_cast<int>(m_records.size()), m_recordsToShow);
         if (copyCount > 0) {
             displayRecords.assign(m_records.begin(), m_records.begin() + copyCount);
         }
+        lastError = m_lastError;
     }
     int displayCount = static_cast<int>(displayRecords.size());
     int totalRows = HEADER_ROWS + m_recordsToShow + FOOTER_ROWS;  // Fixed height based on setting
@@ -726,7 +735,7 @@ void RecordsHud::rebuildRenderData() {
     float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
 
     // Provider selector: "< CBR >"
-    addString("<", rowX, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+    addString("<", rowX, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
     m_clickRegions.push_back({rowX, currentY, charWidth * 2, dim.lineHeightNormal, ClickRegionType::PROVIDER_LEFT});
     rowX += charWidth * 2;  // "< "
 
@@ -734,7 +743,7 @@ void RecordsHud::rebuildRenderData() {
               Fonts::ROBOTO_MONO, ColorConfig::getInstance().getPrimary(), dim.fontSize);
     rowX += PluginUtils::calculateMonospaceTextWidth(static_cast<int>(strlen(getProviderDisplayName(m_provider))), dim.fontSize);
 
-    addString(" >", rowX, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+    addString(" >", rowX, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
     m_clickRegions.push_back({rowX, currentY, charWidth * 2, dim.lineHeightNormal, ClickRegionType::PROVIDER_RIGHT});
     rowX += charWidth * 4;  // " > " + gap
 
@@ -742,7 +751,7 @@ void RecordsHud::rebuildRenderData() {
     static constexpr int CATEGORY_WIDTH_CHARS = 10;  // Longest: "MX1-2T OEM"
     float categoryFixedWidth = PluginUtils::calculateMonospaceTextWidth(CATEGORY_WIDTH_CHARS, dim.fontSize);
 
-    addString("<", rowX, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+    addString("<", rowX, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
     m_clickRegions.push_back({rowX, currentY, charWidth * 2, dim.lineHeightNormal, ClickRegionType::CATEGORY_LEFT});
     rowX += charWidth * 2;  // "< "
 
@@ -751,32 +760,48 @@ void RecordsHud::rebuildRenderData() {
               Fonts::ROBOTO_MONO, ColorConfig::getInstance().getPrimary(), dim.fontSize);
     rowX += categoryFixedWidth;  // Fixed width regardless of actual name length
 
-    addString(" >", rowX, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+    addString(" >", rowX, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
     m_clickRegions.push_back({rowX, currentY, charWidth * 2, dim.lineHeightNormal, ClickRegionType::CATEGORY_RIGHT});
     rowX += charWidth * 4;  // " > " + gap
 
     // Fetch button
-    const char* fetchLabel = "[ Fetch ]";
+    const char* fetchLabel = "[Fetch]";
     FetchState state = m_fetchState.load();
     if (state == FetchState::FETCHING) {
-        fetchLabel = "[ ... ]";
+        fetchLabel = "[...]";
     } else if (state == FetchState::SUCCESS) {
-        fetchLabel = "[ OK ]";
+        fetchLabel = "[OK]";
     } else if (state == FetchState::FETCH_ERROR) {
-        fetchLabel = "[ ERR ]";
+        fetchLabel = "[ERR]";
     }
 
-    unsigned long fetchColor = ColorConfig::getInstance().getSecondary();
-    if (m_fetchButtonHovered && state != FetchState::FETCHING) {
-        fetchColor = ColorConfig::getInstance().getPositive();  // Highlight on hover
-    } else if (state == FetchState::SUCCESS) {
+    unsigned long fetchColor;
+    if (state == FetchState::SUCCESS) {
         fetchColor = ColorConfig::getInstance().getPositive();
     } else if (state == FetchState::FETCH_ERROR) {
         fetchColor = ColorConfig::getInstance().getNegative();
+    } else {
+        // Use PRIMARY when hovered, SECONDARY when not (consistent with other buttons)
+        fetchColor = m_fetchButtonHovered ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getSecondary();
     }
 
-    float fetchWidth = PluginUtils::calculateMonospaceTextWidth(static_cast<int>(strlen("[ Fetch ]")), dim.fontSize);
+    float fetchWidth = PluginUtils::calculateMonospaceTextWidth(static_cast<int>(strlen("[Fetch]")), dim.fontSize);
     m_clickRegions.push_back({rowX, currentY, fetchWidth, dim.lineHeightNormal, ClickRegionType::FETCH_BUTTON});
+
+    // Button background - accent with opacity normally, full accent on hover
+    {
+        SPluginQuad_t bgQuad;
+        float bgX = rowX;
+        float bgY = currentY;
+        applyOffset(bgX, bgY);
+        setQuadPositions(bgQuad, bgX, bgY, fetchWidth, dim.lineHeightNormal);
+        bgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+        bgQuad.m_ulColor = m_fetchButtonHovered && state != FetchState::FETCHING
+            ? ColorConfig::getInstance().getAccent()
+            : PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(), 128.0f / 255.0f);
+        m_quads.push_back(bgQuad);
+    }
+
     addString(fetchLabel, rowX, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, fetchColor, dim.fontSize);
 
     currentY += dim.lineHeightNormal;
@@ -788,12 +813,16 @@ void RecordsHud::rebuildRenderData() {
     // Note: Using local displayRecords copy (mutex already released above)
     if (displayRecords.empty()) {
         // Show appropriate message based on fetch state
-        const char* emptyMessage = "No records loaded. Click Fetch to load.";
+        char emptyMessage[64] = "No records loaded. Click Fetch to load.";
         FetchState currentState = m_fetchState.load();
         if (currentState == FetchState::SUCCESS) {
-            emptyMessage = "No records found for this track/category.";
+            strncpy_s(emptyMessage, sizeof(emptyMessage), "No records found for this track/category.", sizeof(emptyMessage) - 1);
         } else if (currentState == FetchState::FETCH_ERROR) {
-            emptyMessage = "Fetch failed. Try again.";
+            if (!lastError.empty()) {
+                snprintf(emptyMessage, sizeof(emptyMessage), "Fetch failed (%s). Try again later.", lastError.c_str());
+            } else {
+                strncpy_s(emptyMessage, sizeof(emptyMessage), "Fetch failed. Try again later.", sizeof(emptyMessage) - 1);
+            }
         }
         addString(emptyMessage, contentStartX, currentY,
                   Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getMuted(), dim.fontSize);

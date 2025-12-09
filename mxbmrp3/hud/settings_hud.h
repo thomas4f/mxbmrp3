@@ -62,6 +62,7 @@ private:
             GAP_MODE_CYCLE,            // Cycle through gap modes (Off/Me/All)
             GAP_INDICATOR_CYCLE,       // Cycle through gap indicator modes (Off/Official/Live/Both)
             RESET_BUTTON,              // Reset to defaults button
+            RESET_CONFIRM_CHECKBOX,    // Confirmation checkbox for reset
             HUD_TOGGLE,                // Toggle entire HUD visibility
             TITLE_TOGGLE,              // Toggle HUD title
             BACKGROUND_TEXTURE_TOGGLE, // Toggle background texture
@@ -79,6 +80,8 @@ private:
             MAP_TRACK_WIDTH_UP,        // Increase track line width (MapHud)
             MAP_TRACK_WIDTH_DOWN,      // Decrease track line width (MapHud)
             MAP_LABEL_MODE_CYCLE,      // Cycle label display mode (MapHud)
+            MAP_RANGE_UP,              // Increase map range / decrease zoom (MapHud)
+            MAP_RANGE_DOWN,            // Decrease map range / increase zoom (MapHud)
             RADAR_RANGE_UP,            // Increase radar range (RadarHud)
             RADAR_RANGE_DOWN,          // Decrease radar range (RadarHud)
             RADAR_COLORIZE_TOGGLE,     // Toggle rider colorization (RadarHud)
@@ -98,6 +101,10 @@ private:
             SPEED_UNIT_TOGGLE,         // Toggle speed unit (mph/km/h)
             FUEL_UNIT_TOGGLE,          // Toggle fuel unit (L/gal)
             GRID_SNAP_TOGGLE,          // Toggle grid snapping for HUD positioning
+            PROFILE_CYCLE,             // Cycle through profiles (Practice/Qualify/Race/Spectate)
+            AUTO_SWITCH_TOGGLE,        // Toggle auto-switch for profiles
+            APPLY_TO_ALL_PROFILES,     // Copy current profile settings to all other profiles
+            WIDGETS_TOGGLE,            // Toggle all widgets visibility (master switch)
             TAB,                       // Select tab
             CLOSE_BUTTON               // Close the settings menu
         } type;
@@ -188,6 +195,7 @@ private:
     void handleMapColorizeClick(const ClickRegion& region);
     void handleMapTrackWidthClick(const ClickRegion& region, bool increase);
     void handleMapLabelModeClick(const ClickRegion& region);
+    void handleMapRangeClick(const ClickRegion& region, bool increase);
     void handleRadarRangeClick(const ClickRegion& region, bool increase);
     void handleRadarColorizeClick(const ClickRegion& region);
     void handleRadarAlertDistanceClick(const ClickRegion& region, bool increase);
@@ -211,7 +219,7 @@ private:
 
     // Settings panel layout constants (character widths for monospace text)
     static constexpr int SETTINGS_PANEL_WIDTH = 75;     // Settings panel total width (increased for vertical tabs)
-    static constexpr int SETTINGS_TAB_WIDTH = 15;       // Width of vertical tab column (fits "[Session Best]")
+    static constexpr int SETTINGS_TAB_WIDTH = 16;       // Width of vertical tab column (fits "[X] Session Best")
     static constexpr int SETTINGS_LEFT_COLUMN = 2;      // Left column offset within content area
     static constexpr int SETTINGS_RIGHT_COLUMN = 28;    // Right column offset within content area
 
@@ -226,6 +234,7 @@ private:
     static constexpr int SCALE_BUTTON_GAP = 4;          // Gap between scale label and buttons
     static constexpr int RESET_BUTTON_WIDTH = 18;       // "[Restore Defaults]" width
     static constexpr int RESET_BUTTON_HALF = 9;         // Half of reset button for centering
+    static constexpr int APPLY_ALL_BUTTON_WIDTH = 14;   // "[Apply to All]" width
 
     // HUD references (non-owning pointers)
     SessionBestHud* m_sessionBest;
@@ -254,6 +263,9 @@ private:
     // Visibility flag
     bool m_bVisible;
 
+    // Reset confirmation checkbox state
+    bool m_resetConfirmChecked;
+
     // Window bounds cache for detecting resize
     // Cache actual pixel dimensions for resize detection
     int m_cachedWindowWidth;
@@ -276,6 +288,9 @@ private:
         TAB_COUNT = 12
     };
     int m_activeTab;
+
+    // Hover tracking for button backgrounds
+    int m_hoveredRegionIndex;  // -1 = none hovered
 
     std::vector<ClickRegion> m_clickRegions;
 };

@@ -196,20 +196,18 @@ private:
     std::vector<DisplayEntry> m_displayEntries;  // Only contains entries that will be displayed (max m_displayRowCount)
     std::vector<RiderClickRegion> m_riderClickRegions;  // Click regions for rider selection
     ColumnPositions m_columns;
-    uint32_t m_enabledColumns = COL_DEFAULT;  // Bitfield of enabled columns (populated from race/non-race configs)
-    uint32_t m_nonRaceEnabledColumns = 0xCF;  // Non-race: POS, RACENUM, NAME, BIKE, BEST_LAP, OFFICIAL_GAP
-    uint32_t m_raceEnabledColumns = 0x1B7;    // Race: POS, RACENUM, NAME, STATUS, PENALTY, OFFICIAL_GAP, LIVE_GAP
+    uint32_t m_enabledColumns = COL_DEFAULT;  // Bitfield of enabled columns (managed by profile system)
 
     // Gap column modes (separate from bitfield to support 3 states: Off/Me/All)
-    GapMode m_officialGapMode_NonRace = GapMode::ALL;  // Non-race mode default: show all
-    GapMode m_officialGapMode_Race = GapMode::ALL;     // Race mode default: show all
-    GapMode m_liveGapMode_NonRace = GapMode::OFF;      // Non-race mode default: off (race-only feature)
-    GapMode m_liveGapMode_Race = GapMode::ME;          // Race mode default: show player only
-    GapIndicatorMode m_gapIndicatorMode = GapIndicatorMode::BOTH;  // Gap indicator rows mode (race-only)
+    // These are now single values - profile system handles per-event differentiation
+    GapMode m_officialGapMode = GapMode::ALL;
+    GapMode m_liveGapMode = GapMode::ME;
+    GapIndicatorMode m_gapIndicatorMode = GapIndicatorMode::BOTH;
     std::vector<ColumnDescriptor> m_columnTable;  // Cached table of enabled columns (only includes enabled ones)
     int m_cachedBackgroundWidth = -1;  // Cached width in chars
     int m_cachedPlayerIndex = -1;  // Cached index of player in m_displayEntries (-1 if not found or beyond m_displayRowCount)
     int m_cachedHighlightQuadIndex = -1;  // Cached index of highlight quad in m_quads (-1 if no highlight)
+    int m_hoveredRowIndex = -1;  // Row index currently hovered by cursor (-1 if none)
     int m_displayRowCount = 10;  // Number of rows to display (configurable 8-30, increment 2)
 
     // Time-based official gap visibility

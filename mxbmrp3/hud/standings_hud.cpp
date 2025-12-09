@@ -365,7 +365,7 @@ StandingsHud::StandingsHud()
     m_bShowTitle = true;
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     setPosition(-0.55f, 0.1443f);
-    m_liveGapMode_Race = GapMode::ME;  // Default to ME instead of ALL
+    m_liveGapMode = GapMode::ME;  // Default to ME instead of ALL
 
     // Pre-allocate vectors to avoid reallocations
     m_displayEntries.reserve(m_displayRowCount);  // Only build entries we display
@@ -396,6 +396,43 @@ void StandingsHud::update() {
         if (cursor.isValid) {
             handleClick(cursor.x, cursor.y);
         }
+    }
+
+    // Track hover state in spectator mode only
+    const PluginData& pluginData = PluginData::getInstance();
+    int drawState = pluginData.getDrawState();
+    bool isSpectatorMode = (drawState == PluginConstants::ViewState::SPECTATE);
+
+    if (isSpectatorMode) {
+        const CursorPosition& cursor = input.getCursorPosition();
+        int newHoveredRow = -1;
+
+        if (cursor.isValid) {
+            // Check which row (if any) the cursor is over
+            for (size_t i = 0; i < m_riderClickRegions.size(); ++i) {
+                const auto& region = m_riderClickRegions[i];
+                if (isPointInRect(cursor.x, cursor.y, region.x, region.y, region.width, region.height)) {
+                    // Find this rider's index in m_displayEntries
+                    for (size_t j = 0; j < m_displayEntries.size(); ++j) {
+                        if (!m_displayEntries[j].isGapRow && m_displayEntries[j].raceNum == region.raceNum) {
+                            newHoveredRow = static_cast<int>(j);
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+        // If hover state changed, trigger rebuild
+        if (newHoveredRow != m_hoveredRowIndex) {
+            m_hoveredRowIndex = newHoveredRow;
+            setDataDirty();
+        }
+    } else if (m_hoveredRowIndex != -1) {
+        // Clear hover state when not in spectator mode
+        m_hoveredRowIndex = -1;
+        setDataDirty();
     }
 
     // Check data dirty first (takes precedence)
@@ -482,37 +519,30 @@ void StandingsHud::rebuildRenderData() {
     const SessionData& sessionData = pluginData.getSessionData();
     const auto& classificationOrder = pluginData.getClassificationOrder();
 
-    // Select appropriate column configuration based on session type
+    // Column configuration is now managed by the profile system
+    // m_enabledColumns, m_officialGapMode, m_liveGapMode are set when profile is applied
     bool isRace = pluginData.isRaceSession();
-    uint32_t newEnabledColumns = isRace ? m_raceEnabledColumns : m_nonRaceEnabledColumns;
-
-    // Force-exclude penalty column in non-race sessions (N/A in practice/qualifying)
-    if (!isRace) {
-        newEnabledColumns &= ~COL_PENALTY;  // Penalties don't apply in non-race sessions
-    }
 
     // Apply gap modes - disable columns if mode is OFF
-    GapMode officialGapMode = isRace ? m_officialGapMode_Race : m_officialGapMode_NonRace;
-    GapMode liveGapMode = isRace ? m_liveGapMode_Race : m_liveGapMode_NonRace;
-
-    if (officialGapMode == GapMode::OFF) {
-        newEnabledColumns &= ~COL_OFFICIAL_GAP;  // Disable official gap column
+    uint32_t effectiveColumns = m_enabledColumns;
+    if (m_officialGapMode == GapMode::OFF) {
+        effectiveColumns &= ~COL_OFFICIAL_GAP;
     }
-    if (liveGapMode == GapMode::OFF) {
-        newEnabledColumns &= ~COL_LIVE_GAP;  // Disable live gap column
+    if (m_liveGapMode == GapMode::OFF) {
+        effectiveColumns &= ~COL_LIVE_GAP;
     }
 
     // Only log when configuration actually changes
-    static int prevSession = -1;
-    static uint32_t prevEnabledColumns = 0;
-    if (sessionData.session != prevSession || newEnabledColumns != prevEnabledColumns) {
-        DEBUG_INFO_F("StandingsHud column config changed: isRace=%d, eventType=%d, session=%d, raceColumns=0x%X, nonRaceColumns=0x%X, selected=0x%X",
-            isRace, sessionData.eventType, sessionData.session, m_raceEnabledColumns, m_nonRaceEnabledColumns, newEnabledColumns);
-        prevSession = sessionData.session;
-        prevEnabledColumns = newEnabledColumns;
+    static uint32_t prevEffectiveColumns = 0;
+    if (effectiveColumns != prevEffectiveColumns) {
+        DEBUG_INFO_F("StandingsHud column config: enabledColumns=0x%X, effective=0x%X",
+            m_enabledColumns, effectiveColumns);
+        prevEffectiveColumns = effectiveColumns;
     }
 
-    m_enabledColumns = newEnabledColumns;
+    // Use effective columns (with gap mode adjustments) for rendering
+    uint32_t savedEnabledColumns = m_enabledColumns;
+    m_enabledColumns = effectiveColumns;
 
     // Calculate current elapsed time (same logic as TimeWidget)
     int sessionTime = pluginData.getSessionTime();
@@ -677,7 +707,7 @@ void StandingsHud::rebuildRenderData() {
 
         // Check gap mode filtering
         bool isPlayerRow = (entry.raceNum == displayRaceNum);
-        if (shouldShowGapForMode(officialGapMode, isPlayerRow)) {
+        if (shouldShowGapForMode(m_officialGapMode, isPlayerRow)) {
             if (!pluginData.isRaceSession()) {
                 // Non-race mode: always show gaps (practice/qualify)
                 shouldShowOfficialGap = true;
@@ -732,7 +762,7 @@ void StandingsHud::rebuildRenderData() {
         // Format live gap with tenths precision (M:SS.s format)
         // Only show live gaps during actual race sessions (not practice/qualify)
         // Gap mode filtering: ME mode only shows player's gap
-        bool shouldShowLiveGap = shouldShowGapForMode(liveGapMode, isPlayerRow);
+        bool shouldShowLiveGap = shouldShowGapForMode(m_liveGapMode, isPlayerRow);
 
         if (entry.state != RiderState::NORMAL || entry.position == Position::FIRST) {
             entry.formattedLiveGap[0] = '\0';
@@ -820,6 +850,19 @@ void StandingsHud::rebuildRenderData() {
             m_cachedHighlightQuadIndex = static_cast<int>(m_quads.size());  // Track quad index
             m_quads.push_back(highlight);
         }
+        // Hover highlight for other riders (spectator mode only, skip gap rows and current player)
+        else if (i == m_hoveredRowIndex && !entry.isGapRow && i != m_cachedPlayerIndex) {
+            SPluginQuad_t hoverHighlight;
+            float hoverX = START_X;
+            float hoverY = currentY;
+            applyOffset(hoverX, hoverY);
+            setQuadPositions(hoverHighlight, hoverX, hoverY, hudDim.backgroundWidth, dim.lineHeightNormal);
+            hoverHighlight.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
+
+            // Use accent color with transparency for hover
+            hoverHighlight.m_ulColor = PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(), 60.0f / 255.0f);
+            m_quads.push_back(hoverHighlight);
+        }
 
         renderRiderRow(entry, false, currentY, dim);
 
@@ -837,6 +880,9 @@ void StandingsHud::rebuildRenderData() {
 
         currentY += dim.lineHeightNormal;
     }
+
+    // Restore m_enabledColumns to the profile-set value (we temporarily modified it for gap mode filtering)
+    m_enabledColumns = savedEnabledColumns;
 }
 
 void StandingsHud::handleClick(float mouseX, float mouseY) {
@@ -862,13 +908,10 @@ void StandingsHud::resetToDefaults() {
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
     setPosition(-0.55f, 0.1443f);
-    m_liveGapMode_Race = GapMode::ME;
-    m_liveGapMode_NonRace = GapMode::OFF;
-    m_officialGapMode_Race = GapMode::ALL;
-    m_officialGapMode_NonRace = GapMode::ALL;  // Show all riders' gaps in non-race mode
+    m_officialGapMode = GapMode::ALL;
+    m_liveGapMode = GapMode::ME;
     m_gapIndicatorMode = GapIndicatorMode::BOTH;
-    m_nonRaceEnabledColumns = 0xCF;
-    m_raceEnabledColumns = 0x1B7;
+    m_enabledColumns = COL_DEFAULT;
     m_displayRowCount = DEFAULT_ROW_COUNT;
     setDataDirty();
 }

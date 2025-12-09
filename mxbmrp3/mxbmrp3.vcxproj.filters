@@ -111,6 +111,9 @@
     <ClInclude Include="core\input_manager.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
+    <ClInclude Include="core\profile_manager.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
     <ClInclude Include="diagnostics\logger.h">
       <Filter>Header Files\diagnostics</Filter>
     </ClInclude>
@@ -276,6 +279,9 @@
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="core\input_manager.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\profile_manager.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="hud\base_hud.cpp">

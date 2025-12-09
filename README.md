@@ -13,6 +13,7 @@ A HUD plugin for MX Bikes that displays real-time race information, standings, a
 - Lap records from online database
 - Fuel calculator with consumption estimates
 - Fully customizable layout, scale, and visibility for all HUD elements
+- Per-event-type profiles (Practice, Race, Spectate) with auto-switching
 - User-configurable color themes
 - Widgets for lap, position, speed, and more
 - Telemetry visualization (inputs, suspension, RPM, gear)
@@ -24,7 +25,7 @@ A HUD plugin for MX Bikes that displays real-time race information, standings, a
 
 ### Manual Installation
 
-1. Download the latest release archive (`mxbmrp3-vX.X.X.X.zip`) from [Releases](https://github.com/thomas4f/mxbmrp3/releases)
+1. Download the latest release archive [`mxbmrp3.zip`](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3.zip)
 2. Extract the plugin files to your MX Bikes plugins folder:
    - Copy `mxbmrp3.dlo` to `[MX Bikes]/plugins/`
    - Copy the `mxbmrp3_data/` folder to `[MX Bikes]/plugins/`
@@ -51,7 +52,7 @@ A HUD plugin for MX Bikes that displays real-time race information, standings, a
 
 ### Automatic Installation
 
-1. Download the latest installer (`mxbmrp3-vX.X.X.X-Setup.exe`) from [Releases](https://github.com/thomas4f/mxbmrp3/releases)
+1. Download the latest installer [`mxbmrp3-Setup.exe`](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3-Setup.exe)
 2. Run the installer - it will:
    - Auto-detect your MX Bikes installation (Steam or standalone)
    - Install to the correct plugins folder
@@ -95,7 +96,8 @@ Top-down track map showing:
 - Track layout with configurable rotation
 - Rider positions in real-time
 - Color-coded rider dots
-- Configurable labels and track width
+- Configurable labels, track width, and outline
+- Range mode: Full track view or follow-player zoom
 
 ### Pitboard HUD
 Pitboard-style information display:
@@ -184,6 +186,17 @@ Use the settings menu (backtick/tilde key or `[=]` button) to:
 - Configure displayed data columns/rows
 - Reset to defaults
 
+### Profiles
+
+The plugin supports four separate profiles, each storing a complete HUD layout configuration:
+
+- **Practice** - Used during practice and warmup sessions
+- **Qualify** - Used during pre-qualify, qualify practice, and qualify sessions
+- **Race** - Used during race sessions (Race 1, Race 2, Straight Rhythm)
+- **Spectate** - Used when spectating or viewing replays
+
+**Auto-Switch** (disabled by default): Automatically switches profiles based on session type. You can manually select a profile or disable auto-switching from the General tab in settings.
+
 ## Troubleshooting
 
 **HUD Not Appearing**
@@ -211,13 +224,11 @@ Use the settings menu (backtick/tilde key or `[=]` button) to:
 
 Ideas under consideration (no guarantees):
 
-- Save/load HUD layout presets
 - Configurable keyboard shortcuts
 - Persistent session history (personal bests, total distance)
 - Extended telemetry (g-force, lean angle)
 - Event log (fastest laps, penalties, DSQs, etc.)
 - HTTP data export for OBS overlays
-- Replay/broadcasting overlay mode
 
 ## Building from Source
 

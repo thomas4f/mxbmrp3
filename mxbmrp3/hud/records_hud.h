@@ -105,7 +105,7 @@ private:
     // HTTP fetch operations
     void startFetch();
     void performFetch();  // Runs in background thread
-    void processFetchResult(const std::string& response);
+    bool processFetchResult(const std::string& response);  // Returns true on success
     std::string buildRequestUrl() const;
     static std::string getProviderBaseUrl(DataProvider provider);
     static const char* getProviderDisplayName(DataProvider provider);

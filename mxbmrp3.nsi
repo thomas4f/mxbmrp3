@@ -8,7 +8,7 @@
 !define PLUGIN_NAME_LC "mxbmrp3"
 !define PLUGIN_PUBLISHER "thomas4f"
 !define MXBIKES_STEAM_APPID "655500"
-!define PLUGIN_SOURCE_PATH "dist\mxbmrp3-v${PLUGIN_VERSION}"
+!define PLUGIN_SOURCE_PATH "dist\mxbmrp3"
 !ifndef PLUGIN_VERSION
   !define PLUGIN_VERSION 1.0.0.0
   ;!error "PLUGIN_VERSION is not defined. Please define it before building."
@@ -24,7 +24,7 @@ Name "${PLUGIN_NAME}"
 RequestExecutionLevel admin
 SetCompressor /SOLID LZMA
 Target AMD64-Unicode
-OutFile "dist\${PLUGIN_NAME_LC}-v${PLUGIN_VERSION}-Setup.exe"
+OutFile "dist\${PLUGIN_NAME_LC}-Setup.exe"
 
 ; Variables
 Var pluginInstallActionChoice

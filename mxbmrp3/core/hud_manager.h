@@ -36,11 +36,18 @@ public:
     // Call this after resolution changes
     void validateAllHudPositions();
 
+    // Mark all HUDs as needing rebuild (e.g., after color config change)
+    void markAllHudsDirty();
+
     // Check if HudManager is initialized
     bool isInitialized() const { return m_bInitialized; }
 
     // Check if settings menu is currently visible
     bool isSettingsVisible() const;
+
+    // Widgets master toggle (hides all widgets without changing individual states)
+    bool areWidgetsEnabled() const { return !m_bAllWidgetsToggledOff; }
+    void setWidgetsEnabled(bool enabled) { m_bAllWidgetsToggledOff = !enabled; }
 
     // Track centerline data handling
     void updateTrackCenterline(int numSegments, SPluginsTrackSegment_t* segments);

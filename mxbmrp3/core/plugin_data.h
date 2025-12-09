@@ -501,9 +501,6 @@ public:
     // Uses cached map that's only rebuilt when classification changes
     int getPositionForRaceNum(int raceNum) const;
 
-    // Active rider count (cached, updated when standings change)
-    int getActiveRiderCount() const { return m_activeRiderCount; }
-
     // Real-time track position management (for time-based gap calculation)
     void setSessionTime(int sessionTime) { m_currentSessionTime = sessionTime; }
     int getSessionTime() const { return m_currentSessionTime; }
@@ -530,7 +527,8 @@ public:
     bool isPlayerRunning() const { return m_bPlayerIsRunning; }
 
     // Session type checks
-    bool isRaceSession() const;  // Returns true for RACE_1, RACE_2, SR sessions
+    bool isRaceSession() const;     // Returns true for RACE_1, RACE_2, SR sessions
+    bool isQualifySession() const;  // Returns true for PRE_QUALIFY, QUALIFY_PRACTICE, QUALIFY
 
     // Data accessors for HUD components
     const SessionData& getSessionData() const { return m_sessionData; }
@@ -568,7 +566,7 @@ private:
     PluginData() : m_currentSessionTime(0), m_playerRaceNum(-1), m_bPlayerRaceNumValid(false),
                    m_bPlayerNotFoundWarned(false), m_bWaitingForPlayerEntry(false),
                    m_iPendingPlayerRaceNum(-1), m_bPlayerIsRunning(false), m_drawState(0),
-                   m_spectatedRaceNum(-1), m_activeRiderCount(0), m_bPositionCacheDirty(true) {}
+                   m_spectatedRaceNum(-1), m_bPositionCacheDirty(true) {}
     ~PluginData() {}
     PluginData(const PluginData&) = delete;
     PluginData& operator=(const PluginData&) = delete;
@@ -596,7 +594,6 @@ private:
     HistoryBuffers m_historyBuffers;
     std::unordered_map<int, RaceEntryData> m_raceEntries;
     std::unordered_map<int, StandingsData> m_standings;
-    int m_activeRiderCount;  // Cached count of active riders (excluding DNS, DSQ, Retired)
     std::unordered_map<int, int> m_lastValidOfficialGap;  // Cache of last valid official gap per rider (prevents flicker)
     std::vector<int> m_classificationOrder;  // Official race position order from game
     mutable std::unordered_map<int, int> m_positionCache;  // Cached position lookup (race number -> position), rebuilt when classification changes

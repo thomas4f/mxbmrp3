@@ -25,7 +25,7 @@ SettingsButtonWidget::SettingsButtonWidget()
 
     // Pre-allocate vectors
     m_strings.reserve(1);  // One string: button text
-    m_quads.reserve(1);    // One quad: background
+    m_quads.reserve(2);    // Two quads: HUD background + button background
 
     rebuildRenderData();
 }
@@ -143,24 +143,24 @@ void SettingsButtonWidget::rebuildRenderData() {
         isHovering = isPointInBounds(cursor.x, cursor.y);
     }
 
-    // Add background quad with hover-based color
-    if (isHovering) {
-        // Green when closed (can open), Red when open (can close)
-        unsigned long hoverBgColor = settingsVisible ? ColorPalette::RED : ColorPalette::GREEN;
-        SPluginQuad_t backgroundQuad;
+    // Add HUD background
+    addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
+
+    // Add button-style background (accent with opacity, full on hover)
+    {
+        SPluginQuad_t buttonBgQuad;
         float x = startX, y = startY;
         applyOffset(x, y);
-        setQuadPositions(backgroundQuad, x, y, backgroundWidth, backgroundHeight);
-        backgroundQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        backgroundQuad.m_ulColor = PluginUtils::applyOpacity(hoverBgColor, m_fBackgroundOpacity);
-        m_quads.push_back(backgroundQuad);
-    } else {
-        // Default background when not hovering
-        addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
+        setQuadPositions(buttonBgQuad, x, y, backgroundWidth, backgroundHeight);
+        buttonBgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+        buttonBgQuad.m_ulColor = isHovering
+            ? ColorConfig::getInstance().getAccent()
+            : PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(), 128.0f / 255.0f);
+        m_quads.push_back(buttonBgQuad);
     }
 
-    // Use PRIMARY color when hovering, MUTED when not
-    unsigned long textColor = isHovering ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getMuted();
+    // Use PRIMARY color when hovering, SECONDARY when not
+    unsigned long textColor = isHovering ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getSecondary();
 
     // Add button text
     addString(buttonText, contentStartX, contentStartY, Justify::LEFT,
