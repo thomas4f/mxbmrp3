@@ -11,7 +11,7 @@ namespace PluginConstants {
     // Plugin identification
     constexpr const char* PLUGIN_NAME = "mxbmrp3";
     constexpr const char* PLUGIN_DISPLAY_NAME = "MXBMRP3";
-    constexpr const char* PLUGIN_VERSION = "1.6.0.0";
+    constexpr const char* PLUGIN_VERSION = "1.7.0.0";
     constexpr const char* PLUGIN_AUTHOR = "thomas4f";
 
     // MXBikes API constants
@@ -136,14 +136,15 @@ namespace PluginConstants {
 
     // Semantic color aliases for input controls (used in input visualizer)
     // Basic colors are defined in ColorPalette (color_config.h)
+    // Rear variants are darkened versions of front colors for visual distinction
     namespace SemanticColors {
         constexpr unsigned long THROTTLE = ColorPalette::GREEN;
-        constexpr unsigned long FRONT_BRAKE = ColorPalette::RED;                  // Bright red (255, 0, 0)
-        constexpr unsigned long REAR_BRAKE = PluginUtils::makeColor(180, 0, 0);   // Dark red
+        constexpr unsigned long FRONT_BRAKE = ColorPalette::RED;
+        constexpr unsigned long REAR_BRAKE = PluginUtils::darkenColor(FRONT_BRAKE, 0.7f);
         constexpr unsigned long CLUTCH = ColorPalette::BLUE;
-        constexpr unsigned long FRONT_SUSP = ColorPalette::PURPLE;                // Bright purple (200, 0, 255)
-        constexpr unsigned long REAR_SUSP = PluginUtils::makeColor(120, 0, 200);  // Dark purple
-        constexpr unsigned long GEAR = ColorPalette::ORANGE;                      // Orange for gear indicator
+        constexpr unsigned long FRONT_SUSP = ColorPalette::PURPLE;
+        constexpr unsigned long REAR_SUSP = PluginUtils::darkenColor(FRONT_SUSP, 0.6f);
+        constexpr unsigned long GEAR = ColorPalette::ORANGE;
         constexpr unsigned long STICK_L = ColorPalette::BLUE;   // Left stick (bike control)
         constexpr unsigned long STICK_R = ColorPalette::GREEN;  // Right stick (rider lean)
     }
@@ -452,7 +453,7 @@ namespace PluginConstants {
         constexpr int BG_TIME_WIDGET = 12;
         constexpr int BG_SESSION_WIDGET = 13;
         constexpr int BG_SPEED_WIDGET = 14;
-        constexpr int BG_TIMING_WIDGET = 15;
+        constexpr int BG_TIMING_HUD = 15;
         constexpr int BG_BARS_WIDGET = 16;
         constexpr int BG_PITBOARD_HUD = 17;
         constexpr int SPEEDO_DIAL = 18;
@@ -461,5 +462,11 @@ namespace PluginConstants {
         constexpr int RADAR_SECTOR = 21;  // Proximity sector highlight sprite
         constexpr int BG_FUEL_WIDGET = 22;
         constexpr int BG_RECORDS_HUD = 23;
+        constexpr int BG_GAP_BAR_HUD = 24;
+
+        // Rider shape sprites (for map/radar)
+        constexpr int RIDER_CIRCLE = 25;
+        constexpr int RIDER_TRIANGLE = 26;
+        constexpr int RIDER_WEDGE = 27;
     }
 }

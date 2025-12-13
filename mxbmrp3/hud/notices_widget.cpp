@@ -1,7 +1,7 @@
 // ============================================================================
 // hud/notices_widget.cpp
 // Notices widget - displays wrong way and blue flag warnings
-// Shows centered notices above the timing widget area
+// Shows centered notices above the timing HUD area
 // ============================================================================
 #include "notices_widget.h"
 
@@ -21,6 +21,8 @@ NoticesWidget::NoticesWidget()
     : m_bIsWrongWay(false)
     , m_sessionStartTime(0)
     , m_lastSessionState(-1)
+    , m_bIsLastLap(false)
+    , m_bIsFinished(false)
 {
     // NOTE: Does not use initializeWidget() helper due to special requirements:
     // - Non-draggable (center display position)
@@ -87,6 +89,43 @@ void NoticesWidget::update() {
         setDataDirty();
     }
 
+    // Check last lap / finished status (same logic as StandingsHud::formatStatus)
+    bool isLastLap = false;
+    bool isFinished = false;
+    int displayRaceNum = pluginData.getDisplayRaceNum();
+    const StandingsData* standing = (displayRaceNum > 0) ? pluginData.getStanding(displayRaceNum) : nullptr;
+    if (standing && standing->numLaps >= 0) {
+        int numLaps = standing->numLaps;
+        int sessionNumLaps = sessionData.sessionNumLaps;
+        int finishLap = sessionData.finishLap;
+        int sessionLength = sessionData.sessionLength;
+
+        // Check isFinished
+        if (sessionLength > 0 && sessionNumLaps > 0) {
+            // Time+laps race
+            isFinished = finishLap > 0 && numLaps >= finishLap;
+            if (!isFinished && finishLap > 0 && numLaps == finishLap - 1) {
+                isLastLap = true;
+            }
+        } else {
+            // Pure lap or pure time race
+            isFinished = (finishLap > 0 && numLaps >= finishLap) ||
+                         (sessionNumLaps > 0 && finishLap <= 0 && numLaps >= sessionNumLaps);
+            if (!isFinished && sessionNumLaps > 0 && numLaps == sessionNumLaps - 1) {
+                isLastLap = true;
+            }
+        }
+    }
+
+    if (isLastLap != m_bIsLastLap) {
+        m_bIsLastLap = isLastLap;
+        setDataDirty();
+    }
+    if (isFinished != m_bIsFinished) {
+        m_bIsFinished = isFinished;
+        setDataDirty();
+    }
+
     // Check data dirty first (takes precedence)
     if (isDataDirty()) {
         rebuildRenderData();
@@ -108,7 +147,7 @@ void NoticesWidget::rebuildLayout() {
 
     auto dim = getScaledDimensions();
 
-    // Notice dimensions (uses own scale - independent of TimingWidget)
+    // Notice dimensions (uses own scale - independent of TimingHud)
     float noticeTextWidth = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::STANDARD_WIDTH, dim.fontSizeLarge);
     float noticeQuadWidth = dim.paddingH + noticeTextWidth + dim.paddingH;
     float noticeQuadHeight = dim.paddingV + dim.fontSizeLarge;
@@ -140,15 +179,15 @@ void NoticesWidget::rebuildRenderData() {
     m_quads.clear();
 
     // Only render if there's something to show
-    // Priority: WRONG WAY > BLUE FLAG
-    if (!m_bIsWrongWay && m_blueFlagRaceNums.empty()) {
+    // Priority: WRONG WAY > BLUE FLAG > LAST LAP / FINISHED
+    if (!m_bIsWrongWay && m_blueFlagRaceNums.empty() && !m_bIsLastLap && !m_bIsFinished) {
         setBounds(0.0f, 0.0f, 0.0f, 0.0f);
         return;
     }
 
     auto dim = getScaledDimensions();
 
-    // Notice dimensions (uses own scale - independent of TimingWidget)
+    // Notice dimensions (uses own scale - independent of TimingHud)
     float noticeTextWidth = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::STANDARD_WIDTH, dim.fontSizeLarge);
     float noticeQuadWidth = dim.paddingH + noticeTextWidth + dim.paddingH;
     float noticeQuadHeight = dim.paddingV + dim.fontSizeLarge;
@@ -173,9 +212,9 @@ void NoticesWidget::rebuildRenderData() {
         noticeQuad.m_ulColor = PluginUtils::applyOpacity(colors.getNegative(), m_fBackgroundOpacity);
         m_quads.push_back(noticeQuad);
 
-        // Add notice text (white)
+        // Add notice text (red)
         addString("WRONG WAY", CENTER_X, noticeY, Justify::CENTER,
-            Fonts::ENTER_SANSMAN, colors.getPrimary(), dim.fontSizeLarge);
+            Fonts::ENTER_SANSMAN, colors.getNegative(), dim.fontSizeLarge);
     }
     else if (!m_blueFlagRaceNums.empty()) {
         // Build blue flag text with race numbers only (max 2): "#XX #YY"
@@ -201,8 +240,38 @@ void NoticesWidget::rebuildRenderData() {
         noticeQuad.m_ulColor = PluginUtils::applyOpacity(ColorPalette::BLUE, m_fBackgroundOpacity);
         m_quads.push_back(noticeQuad);
 
-        // Add notice text (white)
+        // Add notice text (blue)
         addString(blueFlagText.c_str(), CENTER_X, noticeY, Justify::CENTER,
+            Fonts::ENTER_SANSMAN, ColorPalette::BLUE, dim.fontSizeLarge);
+    }
+    else if (m_bIsFinished) {
+        // Add notice background (semantic background color for finished)
+        SPluginQuad_t noticeQuad;
+        float quadX = noticeQuadX;
+        float quadY = noticeQuadY;
+        applyOffset(quadX, quadY);
+        setQuadPositions(noticeQuad, quadX, quadY, noticeQuadWidth, noticeQuadHeight);
+        noticeQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+        noticeQuad.m_ulColor = PluginUtils::applyOpacity(colors.getBackground(), m_fBackgroundOpacity);
+        m_quads.push_back(noticeQuad);
+
+        // Add notice text (white)
+        addString("FINISHED", CENTER_X, noticeY, Justify::CENTER,
+            Fonts::ENTER_SANSMAN, colors.getPrimary(), dim.fontSizeLarge);
+    }
+    else if (m_bIsLastLap) {
+        // Add notice background (semantic neutral color for last lap)
+        SPluginQuad_t noticeQuad;
+        float quadX = noticeQuadX;
+        float quadY = noticeQuadY;
+        applyOffset(quadX, quadY);
+        setQuadPositions(noticeQuad, quadX, quadY, noticeQuadWidth, noticeQuadHeight);
+        noticeQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+        noticeQuad.m_ulColor = PluginUtils::applyOpacity(colors.getNeutral(), m_fBackgroundOpacity);
+        m_quads.push_back(noticeQuad);
+
+        // Add notice text (white)
+        addString("LAST LAP", CENTER_X, noticeY, Justify::CENTER,
             Fonts::ENTER_SANSMAN, colors.getPrimary(), dim.fontSizeLarge);
     }
 

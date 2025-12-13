@@ -7,9 +7,6 @@
 #include "plugin_constants.h"
 #include <algorithm>
 
-#undef min
-#undef max
-
 using namespace PluginConstants;
 
 XInputReader& XInputReader::getInstance() {

@@ -21,8 +21,6 @@
 
 // Use WinHTTP for HTTPS support (built into Windows, no external dependencies)
 #include <windows.h>
-#undef min
-#undef max
 #include <winhttp.h>
 #pragma comment(lib, "winhttp.lib")
 
@@ -397,7 +395,6 @@ void RecordsHud::performFetch() {
     std::string responseBody;
     DWORD dwSize = 0;
     DWORD dwDownloaded = 0;
-    char* pszOutBuffer;
     bool sizeLimitExceeded = false;
 
     do {
@@ -415,16 +412,11 @@ void RecordsHud::performFetch() {
             break;
         }
 
-        pszOutBuffer = new char[dwSize + 1];
-        if (!pszOutBuffer) break;
+        std::vector<char> buffer(dwSize + 1, 0);
 
-        ZeroMemory(pszOutBuffer, dwSize + 1);
-
-        if (WinHttpReadData(hRequest, pszOutBuffer, dwSize, &dwDownloaded)) {
-            responseBody.append(pszOutBuffer, dwDownloaded);
+        if (WinHttpReadData(hRequest, buffer.data(), dwSize, &dwDownloaded)) {
+            responseBody.append(buffer.data(), dwDownloaded);
         }
-
-        delete[] pszOutBuffer;
 
     } while (dwSize > 0);
 
@@ -764,15 +756,15 @@ void RecordsHud::rebuildRenderData() {
     m_clickRegions.push_back({rowX, currentY, charWidth * 2, dim.lineHeightNormal, ClickRegionType::CATEGORY_RIGHT});
     rowX += charWidth * 4;  // " > " + gap
 
-    // Fetch button
+    // Fetch button - all labels same width as [Fetch] (7 chars)
     const char* fetchLabel = "[Fetch]";
     FetchState state = m_fetchState.load();
     if (state == FetchState::FETCHING) {
-        fetchLabel = "[...]";
+        fetchLabel = "[ ... ]";
     } else if (state == FetchState::SUCCESS) {
-        fetchLabel = "[OK]";
+        fetchLabel = "[ OK  ]";
     } else if (state == FetchState::FETCH_ERROR) {
-        fetchLabel = "[ERR]";
+        fetchLabel = "[Error]";
     }
 
     unsigned long fetchColor;

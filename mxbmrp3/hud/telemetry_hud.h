@@ -21,15 +21,17 @@ public:
     void resetToDefaults();
 
     // Element flags - each bit represents a metric that can be toggled
+    // Note: Some elements are only available when ON_TRACK (via RunTelemetry callback).
+    //       During SPECTATE/REPLAY, only limited data from RaceVehicleData is available.
     enum ElementFlags : uint32_t {
-        ELEM_THROTTLE    = 1 << 0,  // Throttle metric
-        ELEM_FRONT_BRAKE = 1 << 1,  // Front brake metric (available for player and spectated riders)
-        ELEM_REAR_BRAKE  = 1 << 2,  // Rear brake metric (only available for player)
-        ELEM_CLUTCH      = 1 << 3,  // Clutch metric (only available for player)
-        ELEM_RPM         = 1 << 4,  // RPM metric
-        ELEM_FRONT_SUSP  = 1 << 6,  // Front suspension compression (only available for player)
-        ELEM_REAR_SUSP   = 1 << 7,  // Rear suspension compression (only available for player)
-        ELEM_GEAR        = 1 << 8,  // Gear indicator
+        ELEM_THROTTLE    = 1 << 0,  // Throttle metric (always available)
+        ELEM_FRONT_BRAKE = 1 << 1,  // Front brake metric (always available)
+        ELEM_REAR_BRAKE  = 1 << 2,  // Rear brake metric (ON_TRACK only - not in SPluginsRaceVehicleData_t)
+        ELEM_CLUTCH      = 1 << 3,  // Clutch metric (ON_TRACK only - not in SPluginsRaceVehicleData_t)
+        ELEM_RPM         = 1 << 4,  // RPM metric (always available)
+        ELEM_FRONT_SUSP  = 1 << 6,  // Front suspension compression (ON_TRACK only)
+        ELEM_REAR_SUSP   = 1 << 7,  // Rear suspension compression (ON_TRACK only)
+        ELEM_GEAR        = 1 << 8,  // Gear indicator (always available)
 
         ELEM_DEFAULT     = 0x1B     // Throttle, front brake, rear brake, clutch, RPM enabled; suspension, gear disabled (binary: 00011011)
     };
@@ -64,8 +66,9 @@ private:
     }
 
     // Helper to add combined input graph (all inputs as lines in one graph)
+    // hasFullTelemetry: true when ON_TRACK (full data via RunTelemetry), false during SPECTATE/REPLAY
     void addCombinedInputGraph(const HistoryBuffers& history, const BikeTelemetryData& bikeTelemetry,
-                               float x, float y, float width, float height, bool isViewingPlayerBike);
+                               float x, float y, float width, float height, bool hasFullTelemetry);
 
     // Grid-aligned positions (0.0055 = 1 char width, 0.0222 = 1 line height)
     static constexpr float START_X = HudPositions::LEFT_SIDE_X;

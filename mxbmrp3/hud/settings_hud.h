@@ -18,13 +18,16 @@
 #include "speed_widget.h"
 #include "speedo_widget.h"
 #include "tacho_widget.h"
-#include "timing_widget.h"
+#include "timing_hud.h"
+#include "gap_bar_hud.h"
 #include "bars_widget.h"
 #include "version_widget.h"
 #include "notices_widget.h"
 #include "fuel_widget.h"
+#include "pointer_widget.h"
 #include "records_hud.h"
 #include <variant>
+#include <string>
 #include "map_hud.h"
 #include "radar_hud.h"
 #include "../core/plugin_constants.h"
@@ -39,7 +42,7 @@ public:
                 StandingsHud* standings,
                 PerformanceHud* performance,
                 TelemetryHud* telemetry, InputHud* input,
-                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionWidget* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingWidget* timing, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel);
+                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionWidget* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer);
     virtual ~SettingsHud() = default;
 
     void update() override;
@@ -61,8 +64,10 @@ private:
             CHECKBOX,                  // Toggle column/row visibility (bitfield)
             GAP_MODE_CYCLE,            // Cycle through gap modes (Off/Me/All)
             GAP_INDICATOR_CYCLE,       // Cycle through gap indicator modes (Off/Official/Live/Both)
-            RESET_BUTTON,              // Reset to defaults button
-            RESET_CONFIRM_CHECKBOX,    // Confirmation checkbox for reset
+            RESET_BUTTON,              // Reset all profiles to defaults button (General tab)
+            RESET_CONFIRM_CHECKBOX,    // Confirmation checkbox for reset all
+            RESET_TAB_BUTTON,          // Reset current tab to defaults (footer)
+            RESET_PROFILE_BUTTON,      // Reset current profile to defaults (General tab)
             HUD_TOGGLE,                // Toggle entire HUD visibility
             TITLE_TOGGLE,              // Toggle HUD title
             BACKGROUND_TEXTURE_TOGGLE, // Toggle background texture
@@ -76,31 +81,50 @@ private:
             LAP_LOG_ROW_COUNT_DOWN,    // Decrease lap log row count (LapLogHud)
             MAP_ROTATION_TOGGLE,       // Toggle map rotation mode (MapHud)
             MAP_OUTLINE_TOGGLE,        // Toggle track outline (MapHud)
-            MAP_COLORIZE_TOGGLE,       // Toggle rider colorization (MapHud)
+            MAP_COLORIZE_CYCLE,        // Cycle rider color mode (MapHud)
             MAP_TRACK_WIDTH_UP,        // Increase track line width (MapHud)
             MAP_TRACK_WIDTH_DOWN,      // Decrease track line width (MapHud)
             MAP_LABEL_MODE_CYCLE,      // Cycle label display mode (MapHud)
             MAP_RANGE_UP,              // Increase map range / decrease zoom (MapHud)
             MAP_RANGE_DOWN,            // Decrease map range / increase zoom (MapHud)
+            MAP_RIDER_SHAPE_CYCLE,     // Cycle rider shape (MapHud)
             RADAR_RANGE_UP,            // Increase radar range (RadarHud)
             RADAR_RANGE_DOWN,          // Decrease radar range (RadarHud)
-            RADAR_COLORIZE_TOGGLE,     // Toggle rider colorization (RadarHud)
+            RADAR_COLORIZE_CYCLE,      // Cycle rider color mode (RadarHud)
             RADAR_PLAYER_ARROW_TOGGLE, // Toggle player's own arrow (RadarHud)
             RADAR_ALERT_DISTANCE_UP,   // Increase alert distance (RadarHud)
             RADAR_ALERT_DISTANCE_DOWN, // Decrease alert distance (RadarHud)
             RADAR_LABEL_MODE_CYCLE,    // Cycle label display mode (RadarHud)
             RADAR_FADE_TOGGLE,         // Toggle fade when empty (RadarHud)
+            RADAR_RIDER_SHAPE_CYCLE,   // Cycle rider shape (RadarHud)
             DISPLAY_MODE_UP,           // Cycle display mode forward (PerformanceHud)
             DISPLAY_MODE_DOWN,         // Cycle display mode backward (PerformanceHud)
             RECORDS_COUNT_UP,          // Increase records to show (RecordsHud)
             RECORDS_COUNT_DOWN,        // Decrease records to show (RecordsHud)
             PITBOARD_SHOW_MODE_UP,     // Cycle pitboard show mode forward (PitboardHud)
             PITBOARD_SHOW_MODE_DOWN,   // Cycle pitboard show mode backward (PitboardHud)
+            TIMING_LABEL_MODE_UP,      // Cycle label column mode forward (TimingHud)
+            TIMING_LABEL_MODE_DOWN,    // Cycle label column mode backward (TimingHud)
+            TIMING_TIME_MODE_UP,       // Cycle time column mode forward (TimingHud)
+            TIMING_TIME_MODE_DOWN,     // Cycle time column mode backward (TimingHud)
+            TIMING_GAP_MODE_UP,        // Cycle gap column mode forward (TimingHud)
+            TIMING_GAP_MODE_DOWN,      // Cycle gap column mode backward (TimingHud)
+            TIMING_DURATION_UP,        // Increase timing display duration (TimingHud)
+            TIMING_DURATION_DOWN,      // Decrease timing display duration (TimingHud)
+            GAPBAR_FREEZE_UP,          // Increase freeze duration (GapBarHud)
+            GAPBAR_FREEZE_DOWN,        // Decrease freeze duration (GapBarHud)
+            GAPBAR_MARKER_TOGGLE,      // Toggle position markers (GapBarHud)
+            GAPBAR_MODE_CYCLE,         // Unused (kept for compatibility)
+            GAPBAR_RANGE_UP,           // Increase gap range (GapBarHud)
+            GAPBAR_RANGE_DOWN,         // Decrease gap range (GapBarHud)
+            GAPBAR_WIDTH_UP,           // Increase bar width (GapBarHud)
+            GAPBAR_WIDTH_DOWN,         // Decrease bar width (GapBarHud)
             COLOR_CYCLE_PREV,          // Cycle color backward (General tab)
             COLOR_CYCLE_NEXT,          // Cycle color forward (General tab)
             SPEED_UNIT_TOGGLE,         // Toggle speed unit (mph/km/h)
             FUEL_UNIT_TOGGLE,          // Toggle fuel unit (L/gal)
             GRID_SNAP_TOGGLE,          // Toggle grid snapping for HUD positioning
+            UPDATE_CHECK_TOGGLE,       // Toggle automatic update checking
             PROFILE_CYCLE,             // Cycle through profiles (Practice/Qualify/Race/Spectate)
             AUTO_SWITCH_TOGGLE,        // Toggle auto-switch for profiles
             APPLY_TO_ALL_PROFILES,     // Copy current profile settings to all other profiles
@@ -177,7 +201,9 @@ private:
 
     void rebuildRenderData() override;
     void handleClick(float mouseX, float mouseY);
-    void resetToDefaults();
+    void resetToDefaults();        // Reset all profiles to defaults
+    void resetCurrentTab();        // Reset current tab for current profile
+    void resetCurrentProfile();    // Reset all HUDs for current profile
 
     // Click handlers per type
     void handleCheckboxClick(const ClickRegion& region);
@@ -196,7 +222,9 @@ private:
     void handleMapTrackWidthClick(const ClickRegion& region, bool increase);
     void handleMapLabelModeClick(const ClickRegion& region);
     void handleMapRangeClick(const ClickRegion& region, bool increase);
+    void handleMapRiderShapeClick(const ClickRegion& region);
     void handleRadarRangeClick(const ClickRegion& region, bool increase);
+    void handleRadarRiderShapeClick(const ClickRegion& region);
     void handleRadarColorizeClick(const ClickRegion& region);
     void handleRadarAlertDistanceClick(const ClickRegion& region, bool increase);
     void handleRadarLabelModeClick(const ClickRegion& region);
@@ -232,9 +260,10 @@ private:
     static constexpr int CHECKBOX_CLICKABLE = 40;       // Clickable area for data checkboxes
     static constexpr int SCALE_LABEL_WIDTH = 14;        // "Scale: 0.00" width
     static constexpr int SCALE_BUTTON_GAP = 4;          // Gap between scale label and buttons
-    static constexpr int RESET_BUTTON_WIDTH = 18;       // "[Restore Defaults]" width
-    static constexpr int RESET_BUTTON_HALF = 9;         // Half of reset button for centering
-    static constexpr int APPLY_ALL_BUTTON_WIDTH = 14;   // "[Apply to All]" width
+    static constexpr int RESET_ALL_BUTTON_WIDTH = 20;    // "[Reset All Profiles]" width
+    static constexpr int RESET_TAB_BUTTON_WIDTH = 12;   // "[Reset Tab]" width
+    static constexpr int RESET_PROFILE_BUTTON_WIDTH = 16; // "[Reset Profile]" width
+    static constexpr int COPY_TO_ALL_BUTTON_WIDTH = 13; // "[Copy to All]" width
 
     // HUD references (non-owning pointers)
     SessionBestHud* m_sessionBest;
@@ -252,19 +281,33 @@ private:
     SpeedWidget* m_speed;
     SpeedoWidget* m_speedo;
     TachoWidget* m_tacho;
-    TimingWidget* m_timing;
+    TimingHud* m_timing;
+    GapBarHud* m_gapBar;
     BarsWidget* m_bars;
     VersionWidget* m_version;
     NoticesWidget* m_notices;
     PitboardHud* m_pitboard;
     RecordsHud* m_records;
     FuelWidget* m_fuel;
+    PointerWidget* m_pointer;
 
     // Visibility flag
     bool m_bVisible;
 
     // Reset confirmation checkbox state
     bool m_resetConfirmChecked;
+
+    // Update checker mock state (for visual design testing)
+    bool m_checkForUpdates;  // Setting: check for updates on load
+    enum class UpdateStatus {
+        UNKNOWN,      // Not checked yet / check disabled
+        CHECKING,     // Currently checking
+        UP_TO_DATE,   // Current version is latest
+        UPDATE_AVAILABLE,  // Newer version available
+        CHECK_FAILED  // Network error
+    };
+    UpdateStatus m_updateStatus;
+    std::string m_latestVersion;  // Latest version from GitHub (when update available)
 
     // Window bounds cache for detecting resize
     // Cache actual pixel dimensions for resize detection
@@ -283,9 +326,11 @@ private:
         TAB_INPUT = 7,         // F7
         TAB_RECORDS = 8,       // F8 - Lap Records (online)
         TAB_PITBOARD = 9,
-        TAB_PERFORMANCE = 10,
-        TAB_WIDGETS = 11,
-        TAB_COUNT = 12
+        TAB_TIMING = 10,       // Timing HUD (center display)
+        TAB_GAP_BAR = 11,      // Gap Bar HUD (lap timing comparison)
+        TAB_PERFORMANCE = 12,
+        TAB_WIDGETS = 13,
+        TAB_COUNT = 14
     };
     int m_activeTab;
 

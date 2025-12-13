@@ -74,6 +74,53 @@ public:
         return makeColor(r, g, b, a);
     }
 
+    // Lighten a color by blending toward white
+    // factor: 0.0 = original color, 1.0 = white
+    static constexpr unsigned long lightenColor(unsigned long baseColor, float factor) {
+        uint8_t r = baseColor & 0xFF;
+        uint8_t g = (baseColor >> 8) & 0xFF;
+        uint8_t b = (baseColor >> 16) & 0xFF;
+        uint8_t a = (baseColor >> 24) & 0xFF;
+        r = static_cast<uint8_t>(r + (255 - r) * factor);
+        g = static_cast<uint8_t>(g + (255 - g) * factor);
+        b = static_cast<uint8_t>(b + (255 - b) * factor);
+        return makeColor(r, g, b, a);
+    }
+
+    // Darken a color by multiplying RGB values
+    // factor: 1.0 = original color, 0.0 = black
+    static constexpr unsigned long darkenColor(unsigned long baseColor, float factor) {
+        uint8_t r = baseColor & 0xFF;
+        uint8_t g = (baseColor >> 8) & 0xFF;
+        uint8_t b = (baseColor >> 16) & 0xFF;
+        uint8_t a = (baseColor >> 24) & 0xFF;
+        r = static_cast<uint8_t>(r * factor);
+        g = static_cast<uint8_t>(g * factor);
+        b = static_cast<uint8_t>(b * factor);
+        return makeColor(r, g, b, a);
+    }
+
+    // Get color for a rider based on their position relative to player
+    // Returns: neutralColor (ahead), warningColor (behind), with lightened/darkened variants for lap differences
+    static unsigned long getRelativePositionColor(int playerPosition, int riderPosition,
+                                                   int playerLaps, int riderLaps,
+                                                   unsigned long neutralColor, unsigned long warningColor,
+                                                   unsigned long fallbackColor) {
+        if (playerPosition <= 0 || riderPosition <= 0) {
+            return fallbackColor;
+        }
+
+        int lapDiff = riderLaps - playerLaps;
+
+        if (riderPosition < playerPosition) {
+            // Rider is ahead
+            return (lapDiff >= 1) ? lightenColor(neutralColor, 0.5f) : neutralColor;
+        } else {
+            // Rider is behind
+            return (lapDiff <= -1) ? darkenColor(warningColor, 0.7f) : warningColor;
+        }
+    }
+
 private:
     PluginUtils() = delete;
     ~PluginUtils() = delete;

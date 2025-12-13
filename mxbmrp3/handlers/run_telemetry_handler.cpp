@@ -5,7 +5,9 @@
 #include "run_telemetry_handler.h"
 #include "../core/handler_singleton.h"
 #include "../core/plugin_data.h"
+#include "../core/plugin_constants.h"
 #include "../core/xinput_reader.h"
+#include "../diagnostics/logger.h"
 
 DEFINE_HANDLER_SINGLETON(RunTelemetryHandler)
 

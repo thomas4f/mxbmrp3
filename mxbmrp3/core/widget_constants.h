@@ -38,7 +38,7 @@ namespace CenterDisplayPositions {
 
     // Divider line between notices and timing display
     // NoticesWidget: bottom edge at this line, grows UP
-    // TimingWidget: top edge at this line, grows DOWN
+    // TimingHud: top edge at this line, grows DOWN
     constexpr float TIMING_DIVIDER_Y = 0.1665f;
 
     // Small gap between divider and widget edges

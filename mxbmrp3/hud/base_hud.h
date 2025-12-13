@@ -123,7 +123,7 @@ public:
     float getOffsetX() const { return m_fOffsetX; }
     float getOffsetY() const { return m_fOffsetY; }
 
-    void setScale(float scale) {
+    virtual void setScale(float scale) {
         if (scale <= 0.0f) scale = 0.1f;
         if (m_fScale != scale) {
             m_fScale = scale;
@@ -172,8 +172,8 @@ protected:
     // reservation, and rebuildRenderData() call.
     //
     // Use for simple widgets with standard initialization. Do NOT use if widget needs:
-    // - Non-draggable positioning (e.g., TimingWidget center display)
-    // - Quad reservation (e.g., BarsWidget, TimingWidget)
+    // - Non-draggable positioning (e.g., TimingHud center display)
+    // - Quad reservation (e.g., BarsWidget, TimingHud)
     // - Custom scale/opacity values
     //
     // Examples:

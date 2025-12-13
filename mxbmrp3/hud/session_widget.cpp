@@ -24,7 +24,7 @@ SessionWidget::SessionWidget()
     initializeWidget("SessionWidget", 4, 0.1f);  // Four strings, 0.1 background opacity
     m_bVisible = false;  // Disabled by default
     m_bShowTitle = false;  // Override default
-    setPosition(-0.462f, 0.0111f);
+    setPosition(-0.462f, 0.0222f);
 }
 
 bool SessionWidget::handlesDataType(DataChangeType dataType) const {
@@ -216,6 +216,6 @@ void SessionWidget::resetToDefaults() {
     m_bShowBackgroundTexture = false;  // No texture by default
     m_fBackgroundOpacity = 0.1f;
     m_fScale = 1.0f;
-    setPosition(-0.462f, 0.0111f);
+    setPosition(-0.462f, 0.0222f);
     setDataDirty();
 }

@@ -4,15 +4,13 @@
 // ============================================================================
 #include "telemetry_hud.h"
 #include "../core/plugin_data.h"
+#include "../core/plugin_constants.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
 #include "../diagnostics/logger.h"
 #include <cmath>
 #include <algorithm>
 #include <vector>
-
-#undef min
-#undef max
 
 using namespace PluginConstants;
 
@@ -57,8 +55,10 @@ void TelemetryHud::rebuildRenderData() {
     const HistoryBuffers& history = pluginData.getHistoryBuffers();
     const BikeTelemetryData& bikeTelemetry = pluginData.getBikeTelemetry();
 
-    // Check if viewing player's bike (clutch/suspension data only available for player)
-    bool isViewingPlayerBike = (pluginData.getDisplayRaceNum() == pluginData.getPlayerRaceNum());
+    // Full telemetry data (rear brake, clutch, steer, suspension) is ONLY available when ON_TRACK
+    // because RunTelemetry() callback with SPluginsBikeData_t only fires when player is on track.
+    // During SPECTATE/REPLAY, only limited SPluginsRaceVehicleData_t is available (throttle, front brake, RPM, gear).
+    bool hasFullTelemetry = (pluginData.getDrawState() == PluginConstants::ViewState::ON_TRACK);
 
     // Calculate dimensions
     int widthChars = getBackgroundWidthChars();
@@ -74,15 +74,15 @@ void TelemetryHud::rebuildRenderData() {
     bool showValues = (m_displayMode == DISPLAY_VALUES || m_displayMode == DISPLAY_BOTH);
 
     // Calculate legend height (values are shown vertically on the right)
-    // Count enabled metrics to determine legend height
+    // Count enabled metrics to determine legend height - show all enabled even if data unavailable
     int legendLines = 0;
     if ((m_enabledElements & ELEM_THROTTLE) && showValues) legendLines++;
     if ((m_enabledElements & ELEM_FRONT_BRAKE) && showValues) legendLines++;
-    if ((m_enabledElements & ELEM_REAR_BRAKE) && showValues && bikeTelemetry.isValid) legendLines++;  // Rear brake only for player
-    if ((m_enabledElements & ELEM_CLUTCH) && showValues && bikeTelemetry.isValid) legendLines++;
+    if ((m_enabledElements & ELEM_REAR_BRAKE) && showValues) legendLines++;
+    if ((m_enabledElements & ELEM_CLUTCH) && showValues) legendLines++;
     if ((m_enabledElements & ELEM_RPM) && showValues) legendLines++;
-    if ((m_enabledElements & ELEM_FRONT_SUSP) && showValues && bikeTelemetry.isValid && bikeTelemetry.frontSuspMaxTravel > 0) legendLines++;  // Front suspension only for player
-    if ((m_enabledElements & ELEM_REAR_SUSP) && showValues && bikeTelemetry.isValid && bikeTelemetry.rearSuspMaxTravel > 0) legendLines++;  // Rear suspension only for player
+    if ((m_enabledElements & ELEM_FRONT_SUSP) && showValues) legendLines++;
+    if ((m_enabledElements & ELEM_REAR_SUSP) && showValues) legendLines++;
     if ((m_enabledElements & ELEM_GEAR) && showValues) legendLines++;
     float legendHeight = legendLines * dims.lineHeightNormal;
 
@@ -113,7 +113,7 @@ void TelemetryHud::rebuildRenderData() {
 
     // Input Graph - only render if graphs are shown
     if (showGraphs) {
-        addCombinedInputGraph(history, bikeTelemetry, contentStartX, currentY, graphWidth, graphHeight, isViewingPlayerBike);
+        addCombinedInputGraph(history, bikeTelemetry, contentStartX, currentY, graphWidth, graphHeight, hasFullTelemetry);
     }
 
     // Legend (vertical format on right side)
@@ -123,16 +123,16 @@ void TelemetryHud::rebuildRenderData() {
         float frontBrakePercent = history.frontBrake.empty() ? 0.0f : history.frontBrake.back();
         float rearBrakePercent = history.rearBrake.empty() ? 0.0f : history.rearBrake.back();
 
-        // Clutch (only available for player - show 0 when spectating)
-        float clutchPercent = (isViewingPlayerBike && !history.clutch.empty()) ? history.clutch.back() : 0.0f;
+        // Clutch (only available when ON_TRACK - show 0 when spectating/replay)
+        float clutchPercent = (hasFullTelemetry && !history.clutch.empty()) ? history.clutch.back() : 0.0f;
 
         float legendY = currentY;  // Start at same Y as graph
         float valueX = legendStartX + PluginUtils::calculateMonospaceTextWidth(4, dims.fontSize);  // After "XXX "
 
-        // THR (if enabled)
+        // THR (if enabled) - color matches throttle graph
         if (m_enabledElements & ELEM_THROTTLE) {
             addString("THR", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+                PluginConstants::Fonts::ROBOTO_MONO, PluginConstants::SemanticColors::THROTTLE, dims.fontSize);
             char buffer[16];
             snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(throttlePercent * 100));
             addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
@@ -140,10 +140,10 @@ void TelemetryHud::rebuildRenderData() {
             legendY += dims.lineHeightNormal;
         }
 
-        // FBR (front brake - if enabled, always available)
+        // FBR (front brake - if enabled, always available) - color matches front brake graph
         if (m_enabledElements & ELEM_FRONT_BRAKE) {
             addString("FBR", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+                PluginConstants::Fonts::ROBOTO_MONO, PluginConstants::SemanticColors::FRONT_BRAKE, dims.fontSize);
             char buffer[16];
             snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(frontBrakePercent * 100));
             addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
@@ -151,25 +151,37 @@ void TelemetryHud::rebuildRenderData() {
             legendY += dims.lineHeightNormal;
         }
 
-        // RBR (rear brake - if enabled and telemetry is valid, rear brake data not available when spectating)
-        if ((m_enabledElements & ELEM_REAR_BRAKE) && bikeTelemetry.isValid) {
+        // RBR (rear brake - only available when ON_TRACK, not in spectate/replay) - color matches rear brake graph
+        if (m_enabledElements & ELEM_REAR_BRAKE) {
+            unsigned long labelColor = hasFullTelemetry ? PluginConstants::SemanticColors::REAR_BRAKE : ColorConfig::getInstance().getMuted();
             addString("RBR", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+                PluginConstants::Fonts::ROBOTO_MONO, labelColor, dims.fontSize);
             char buffer[16];
-            snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(rearBrakePercent * 100));
-            addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            if (hasFullTelemetry) {
+                snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(rearBrakePercent * 100));
+                addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
+                    PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            } else {
+                addString("  N/A", valueX, legendY, PluginConstants::Justify::LEFT,
+                    PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getMuted(), dims.fontSize);
+            }
             legendY += dims.lineHeightNormal;
         }
 
-        // CLU (if enabled and telemetry is valid - clutch data not available when spectating)
-        if ((m_enabledElements & ELEM_CLUTCH) && bikeTelemetry.isValid) {
+        // CLU (only available when ON_TRACK, not in spectate/replay) - color matches clutch graph
+        if (m_enabledElements & ELEM_CLUTCH) {
+            unsigned long labelColor = hasFullTelemetry ? PluginConstants::SemanticColors::CLUTCH : ColorConfig::getInstance().getMuted();
             addString("CLU", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+                PluginConstants::Fonts::ROBOTO_MONO, labelColor, dims.fontSize);
             char buffer[16];
-            snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(clutchPercent * 100));
-            addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            if (hasFullTelemetry) {
+                snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(clutchPercent * 100));
+                addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
+                    PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            } else {
+                addString("  N/A", valueX, legendY, PluginConstants::Justify::LEFT,
+                    PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getMuted(), dims.fontSize);
+            }
             legendY += dims.lineHeightNormal;
         }
 
@@ -185,34 +197,48 @@ void TelemetryHud::rebuildRenderData() {
             legendY += dims.lineHeightNormal;
         }
 
-        // FSU (front suspension - if enabled and telemetry is valid, suspension data not available when spectating)
-        if ((m_enabledElements & ELEM_FRONT_SUSP) && bikeTelemetry.isValid && bikeTelemetry.frontSuspMaxTravel > 0) {
-            float frontSuspPercent = (isViewingPlayerBike && !history.frontSusp.empty()) ? history.frontSusp.back() : 0.0f;
+        // FSU (front suspension - only available when ON_TRACK, not in spectate/replay) - color matches front susp graph
+        if (m_enabledElements & ELEM_FRONT_SUSP) {
+            bool hasSuspData = hasFullTelemetry && bikeTelemetry.frontSuspMaxTravel > 0;
+            unsigned long labelColor = hasSuspData ? PluginConstants::SemanticColors::FRONT_SUSP : ColorConfig::getInstance().getMuted();
             addString("FSU", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
-            char buffer[16];
-            snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(frontSuspPercent * 100));
-            addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                PluginConstants::Fonts::ROBOTO_MONO, labelColor, dims.fontSize);
+            if (hasSuspData) {
+                float frontSuspPercent = (!history.frontSusp.empty()) ? history.frontSusp.back() : 0.0f;
+                char buffer[16];
+                snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(frontSuspPercent * 100));
+                addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
+                    PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            } else {
+                addString("  N/A", valueX, legendY, PluginConstants::Justify::LEFT,
+                    PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getMuted(), dims.fontSize);
+            }
             legendY += dims.lineHeightNormal;
         }
 
-        // RSU (rear suspension - if enabled and telemetry is valid, suspension data not available when spectating)
-        if ((m_enabledElements & ELEM_REAR_SUSP) && bikeTelemetry.isValid && bikeTelemetry.rearSuspMaxTravel > 0) {
-            float rearSuspPercent = (isViewingPlayerBike && !history.rearSusp.empty()) ? history.rearSusp.back() : 0.0f;
+        // RSU (rear suspension - only available when ON_TRACK, not in spectate/replay) - color matches rear susp graph
+        if (m_enabledElements & ELEM_REAR_SUSP) {
+            bool hasSuspData = hasFullTelemetry && bikeTelemetry.rearSuspMaxTravel > 0;
+            unsigned long labelColor = hasSuspData ? PluginConstants::SemanticColors::REAR_SUSP : ColorConfig::getInstance().getMuted();
             addString("RSU", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
-            char buffer[16];
-            snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(rearSuspPercent * 100));
-            addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                PluginConstants::Fonts::ROBOTO_MONO, labelColor, dims.fontSize);
+            if (hasSuspData) {
+                float rearSuspPercent = (!history.rearSusp.empty()) ? history.rearSusp.back() : 0.0f;
+                char buffer[16];
+                snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(rearSuspPercent * 100));
+                addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
+                    PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            } else {
+                addString("  N/A", valueX, legendY, PluginConstants::Justify::LEFT,
+                    PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getMuted(), dims.fontSize);
+            }
             legendY += dims.lineHeightNormal;
         }
 
-        // GEAR (if enabled - always available)
+        // GEAR (if enabled - always available) - color matches gear graph
         if (m_enabledElements & ELEM_GEAR) {
             addString("GEA", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+                PluginConstants::Fonts::ROBOTO_MONO, PluginConstants::SemanticColors::GEAR, dims.fontSize);
             char buffer[16];
             if (bikeTelemetry.gear == 0) {
                 snprintf(buffer, sizeof(buffer), "    N");
@@ -226,7 +252,7 @@ void TelemetryHud::rebuildRenderData() {
 }
 
 void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const BikeTelemetryData& bikeTelemetry,
-                                                float x, float y, float width, float height, bool isViewingPlayerBike) {
+                                                float x, float y, float width, float height, bool hasFullTelemetry) {
     const auto dims = getScaledDimensions();
 
     // Grid lines (0-100% range, drawn first so dots appear on top)
@@ -283,8 +309,8 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
             }
         }
 
-        // Rear brake graph (only render if telemetry is valid - rear brake data not available when spectating)
-        if ((m_enabledElements & ELEM_REAR_BRAKE) && bikeTelemetry.isValid) {
+        // Rear brake graph (only available when ON_TRACK, not in spectate/replay)
+        if ((m_enabledElements & ELEM_REAR_BRAKE) && hasFullTelemetry) {
             const std::deque<float>& data = history.rearBrake;
             if (i < data.size() && (i + 1) < data.size()) {
                 float value1 = std::max(0.0f, std::min(1.0f, data[i]));
@@ -298,8 +324,8 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
             }
         }
 
-        // Clutch graph (only render if viewing player's bike - clutch data not available when spectating)
-        if ((m_enabledElements & ELEM_CLUTCH) && isViewingPlayerBike) {
+        // Clutch graph (only available when ON_TRACK, not in spectate/replay)
+        if ((m_enabledElements & ELEM_CLUTCH) && hasFullTelemetry) {
             const std::deque<float>& data = history.clutch;
             if (i < data.size() && (i + 1) < data.size()) {
                 float value1 = std::max(0.0f, std::min(1.0f, data[i]));
@@ -328,8 +354,8 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
             }
         }
 
-        // Front suspension graph (only render if viewing player's bike - suspension data not available when spectating)
-        if ((m_enabledElements & ELEM_FRONT_SUSP) && isViewingPlayerBike && bikeTelemetry.frontSuspMaxTravel > 0) {
+        // Front suspension graph (only available when ON_TRACK, not in spectate/replay)
+        if ((m_enabledElements & ELEM_FRONT_SUSP) && hasFullTelemetry && bikeTelemetry.frontSuspMaxTravel > 0) {
             const std::deque<float>& data = history.frontSusp;
             if (i < data.size() && (i + 1) < data.size()) {
                 float value1 = std::max(0.0f, std::min(1.0f, data[i]));
@@ -343,8 +369,8 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
             }
         }
 
-        // Rear suspension graph (only render if viewing player's bike - suspension data not available when spectating)
-        if ((m_enabledElements & ELEM_REAR_SUSP) && isViewingPlayerBike && bikeTelemetry.rearSuspMaxTravel > 0) {
+        // Rear suspension graph (only available when ON_TRACK, not in spectate/replay)
+        if ((m_enabledElements & ELEM_REAR_SUSP) && hasFullTelemetry && bikeTelemetry.rearSuspMaxTravel > 0) {
             const std::deque<float>& data = history.rearSusp;
             if (i < data.size() && (i + 1) < data.size()) {
                 float value1 = std::max(0.0f, std::min(1.0f, data[i]));

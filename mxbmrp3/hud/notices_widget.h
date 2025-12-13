@@ -1,7 +1,7 @@
 // ============================================================================
 // hud/notices_widget.h
 // Notices widget - displays wrong way and blue flag warnings
-// Shows centered notices above the timing widget area
+// Shows centered notices above the timing HUD area
 // ============================================================================
 #pragma once
 
@@ -29,6 +29,8 @@ private:
     // Notice state
     bool m_bIsWrongWay;                    // Whether player is currently going wrong way
     std::vector<int> m_blueFlagRaceNums;   // Race numbers of riders to let past (blue flag)
+    bool m_bIsLastLap;                     // Whether player is on their last lap
+    bool m_bIsFinished;                    // Whether player has finished the race
 
     // Session tracking for wrong-way grace period
     int m_sessionStartTime;    // Session time when race went to "in progress" state

@@ -25,7 +25,7 @@
 #include "../hud/speed_widget.h"
 #include "../hud/speedo_widget.h"
 #include "../hud/tacho_widget.h"
-#include "../hud/timing_widget.h"
+#include "../hud/timing_hud.h"
 #include "../hud/bars_widget.h"
 #include "../hud/version_widget.h"
 #include "../hud/notices_widget.h"
@@ -36,7 +36,8 @@
 #include "../hud/pitboard_hud.h"
 #include "../hud/fuel_widget.h"
 #include "../hud/records_hud.h"
-#include "../hud/cursor.h"
+#include "../hud/gap_bar_hud.h"
+#include "../hud/pointer_widget.h"
 #include <windows.h>
 #include <memory>
 #include <cstring>
@@ -151,10 +152,15 @@ void HudManager::initialize() {
     m_pTacho->setBackgroundTextureIndex(PluginConstants::SpriteIndex::TACHO_DIAL);
     registerHud(std::move(tachoPtr));
 
-    auto timingPtr = std::make_unique<TimingWidget>();
+    auto timingPtr = std::make_unique<TimingHud>();
     m_pTiming = timingPtr.get();
-    m_pTiming->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_TIMING_WIDGET);
+    m_pTiming->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_TIMING_HUD);
     registerHud(std::move(timingPtr));
+
+    auto gapBarPtr = std::make_unique<GapBarHud>();
+    m_pGapBar = gapBarPtr.get();
+    m_pGapBar->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_GAP_BAR_HUD);
+    registerHud(std::move(gapBarPtr));
 
     auto barsPtr = std::make_unique<BarsWidget>();
     m_pBars = barsPtr.get();
@@ -174,9 +180,14 @@ void HudManager::initialize() {
     m_pFuel->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_FUEL_WIDGET);
     registerHud(std::move(fuelPtr));
 
+    // Create PointerWidget early so it can be passed to SettingsHud
+    // (will be registered last to render on top)
+    auto pointerPtr = std::make_unique<PointerWidget>();
+    m_pPointer = pointerPtr.get();
+
     // Register SettingsHud with pointers to all configurable HUDs and widgets
     auto settingsPtr = std::make_unique<SettingsHud>(m_pSessionBest, m_pLapLog, m_pStandings,
-                                                       m_pPerformance, m_pTelemetry, m_pInput, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pSpeedo, m_pTacho, m_pTiming, m_pBars, m_pVersion, m_pNotices, m_pPitboard, m_pRecords, m_pFuel);
+                                                       m_pPerformance, m_pTelemetry, m_pInput, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, m_pRecords, m_pFuel, m_pPointer);
     m_pSettingsHud = settingsPtr.get();
     registerHud(std::move(settingsPtr));
 
@@ -184,6 +195,9 @@ void HudManager::initialize() {
     auto settingsButtonPtr = std::make_unique<SettingsButtonWidget>();
     m_pSettingsButton = settingsButtonPtr.get();
     registerHud(std::move(settingsButtonPtr));
+
+    // Register PointerWidget last so it renders on top of everything
+    registerHud(std::move(pointerPtr));
 
     // Load settings from disk (must happen after HUD registration)
     SettingsManager::getInstance().loadSettings(*this, PluginManager::getInstance().getSavePath());
@@ -239,6 +253,7 @@ void HudManager::clear() {
     m_pFuel = nullptr;
     m_pSettingsHud = nullptr;
     m_pSettingsButton = nullptr;
+    m_pPointer = nullptr;
     m_pDraggingHud = nullptr;
 
     // Now safe to destroy HUD objects
@@ -389,10 +404,8 @@ void HudManager::draw(int iState, int* piNumQuads, void** ppQuad, int* piNumStri
     updateHuds();
 
     // Collect render data from all HUDs
+    // Note: PointerWidget is registered last, so pointer renders on top
     collectRenderData();
-
-    // Add cursor quad (if cursor should be visible)
-    CursorRenderer::addCursorQuad(m_quads);
 
     // Set output parameters
     *piNumQuads = static_cast<int>(m_quads.size());
@@ -480,8 +493,8 @@ void HudManager::collectRenderData() {
         }
     }
 
-    // Reserve space for cursor and settings button (always allocated, conditionally added)
-    totalQuads += 2;     // Cursor quad + settings button background quad
+    // Reserve space for pointer and settings button (always allocated, conditionally added)
+    totalQuads += 2;     // Pointer quad + settings button background quad
     totalStrings += 1;   // Settings button text
 
     // Ensure vectors have sufficient capacity - grow if needed but never shrink
@@ -505,9 +518,10 @@ void HudManager::collectRenderData() {
     // Settings and settings button are always rendered (even when toggle key pressed)
     for (const auto& hud : m_huds) {
         if (hud && hud->isVisible()) {
-            // Skip rendering if temporary toggle is active (except settings HUDs)
+            // Skip rendering if temporary toggle is active (except settings HUDs and pointer)
             bool isSettingsHud = (hud.get() == m_pSettingsHud || hud.get() == m_pSettingsButton);
-            if (m_bAllHudsToggledOff && !isSettingsHud) {
+            bool isPointer = (hud.get() == m_pPointer);
+            if (m_bAllHudsToggledOff && !isSettingsHud && !isPointer) {
                 continue;
             }
 
@@ -515,7 +529,7 @@ void HudManager::collectRenderData() {
             bool isWidget = (hud.get() == m_pLap || hud.get() == m_pPosition ||
                            hud.get() == m_pTime || hud.get() == m_pSession ||
                            hud.get() == m_pSpeed || hud.get() == m_pSpeedo ||
-                           hud.get() == m_pTacho || hud.get() == m_pTiming ||
+                           hud.get() == m_pTacho ||
                            hud.get() == m_pBars || hud.get() == m_pVersion ||
                            hud.get() == m_pNotices || hud.get() == m_pFuel);
             if (m_bAllWidgetsToggledOff && isWidget) {
@@ -546,10 +560,10 @@ void HudManager::setupDefaultResources() {
         }
     };
 
-    // Add default sprites needed by HUDs (including cursor)
+    // Add default sprites needed by HUDs (including pointer)
     // IMPORTANT: Sprite order must match SpriteIndex constants in plugin_constants.h
     // Index 1: pointer, Index 2: gear-circle, Index 3+: background textures
-    addSprite("mxbmrp3_data\\pointer.tga");          // SpriteIndex::POINTER = 1
+    addSprite("mxbmrp3_data\\pointer_widget.tga");    // SpriteIndex::POINTER = 1
     addSprite("mxbmrp3_data\\gear-circle.tga");      // SpriteIndex::GEAR_CIRCLE = 2
 
     // Add HUD/widget background texture sprites (optional - files may not exist)
@@ -566,7 +580,7 @@ void HudManager::setupDefaultResources() {
     addSprite("mxbmrp3_data\\time_widget.tga");      // SpriteIndex::BG_TIME_WIDGET = 12
     addSprite("mxbmrp3_data\\session_widget.tga");   // SpriteIndex::BG_SESSION_WIDGET = 13
     addSprite("mxbmrp3_data\\speed_widget.tga");     // SpriteIndex::BG_SPEED_WIDGET = 14
-    addSprite("mxbmrp3_data\\timing_widget.tga");    // SpriteIndex::BG_TIMING_WIDGET = 15
+    addSprite("mxbmrp3_data\\timing_hud.tga");       // SpriteIndex::BG_TIMING_HUD = 15
     addSprite("mxbmrp3_data\\bars_widget.tga");      // SpriteIndex::BG_BARS_WIDGET = 16
     addSprite("mxbmrp3_data\\pitboard_hud.tga");    // SpriteIndex::BG_PITBOARD_HUD = 17
     addSprite("mxbmrp3_data\\speedo_widget.tga"); // SpriteIndex::SPEEDO_DIAL = 18
@@ -575,6 +589,12 @@ void HudManager::setupDefaultResources() {
     addSprite("mxbmrp3_data\\radar_sector.tga"); // SpriteIndex::RADAR_SECTOR = 21
     addSprite("mxbmrp3_data\\fuel_widget.tga");  // SpriteIndex::BG_FUEL_WIDGET = 22
     addSprite("mxbmrp3_data\\records_hud.tga");  // SpriteIndex::BG_RECORDS_HUD = 23
+    addSprite("mxbmrp3_data\\gap_bar_hud.tga");  // SpriteIndex::BG_GAP_BAR_HUD = 24
+
+    // Rider shape sprites (for map/radar)
+    addSprite("mxbmrp3_data\\rider_circle.tga");   // SpriteIndex::RIDER_CIRCLE = 25
+    addSprite("mxbmrp3_data\\rider_triangle.tga"); // SpriteIndex::RIDER_TRIANGLE = 26
+    addSprite("mxbmrp3_data\\rider_wedge.tga");    // SpriteIndex::RIDER_WEDGE = 27
 
     // Add default fonts needed by HUDs
     // Safety: Check array bounds before incrementing to prevent buffer overflow
@@ -737,5 +757,37 @@ void HudManager::updateRiderPositions(int numVehicles, SPluginsRaceTrackPosition
     // Update RadarHud
     if (m_pRadarHud) {
         m_pRadarHud->updateRiderPositions(numVehicles, positions);
+    }
+
+    // Update TimingHud and GapBarHud with track position for S/F detection
+    if (m_pTiming || m_pGapBar) {
+        const PluginData& pluginData = PluginData::getInstance();
+        int displayRaceNum = pluginData.getDisplayRaceNum();
+
+        // Find the display rider's position data
+        for (int i = 0; i < numVehicles; ++i) {
+            if (positions[i].m_iRaceNum == displayRaceNum) {
+                // Get lap number from standings
+                const StandingsData* standing = pluginData.getStanding(displayRaceNum);
+                int lapNum = standing ? standing->numLaps : 0;
+
+                if (m_pTiming) {
+                    m_pTiming->updateTrackPosition(
+                        displayRaceNum,
+                        positions[i].m_fTrackPos,
+                        lapNum
+                    );
+                }
+
+                if (m_pGapBar) {
+                    m_pGapBar->updateTrackPosition(
+                        displayRaceNum,
+                        positions[i].m_fTrackPos,
+                        lapNum
+                    );
+                }
+                break;
+            }
+        }
     }
 }

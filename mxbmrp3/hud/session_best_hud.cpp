@@ -30,6 +30,7 @@ SessionBestHud::SessionBestHud()
     setDraggable(true);
 
     // Set defaults to match user configuration
+    m_bVisible = false;  // Disabled by default
     m_bShowTitle = true;
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     setPosition(0.2585f, 0.0999f);
@@ -301,7 +302,7 @@ void SessionBestHud::rebuildRenderData() {
 }
 
 void SessionBestHud::resetToDefaults() {
-    m_bVisible = true;
+    m_bVisible = false;  // Disabled by default
     m_bShowTitle = true;
     m_bShowBackgroundTexture = false;  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;

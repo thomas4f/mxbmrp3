@@ -68,7 +68,7 @@ void RaceLapHandler::handleRaceLap(SPluginsRaceLap_t* psRaceLap) {
     // Lap number that just finished (API gives lap we're NOW on, so subtract 1)
     int completedLapNum = psRaceLap->m_iLapNum - 1;
 
-    // Update session data for ALL completed laps (so TimingWidget can detect them)
+    // Update session data for ALL completed laps (so TimingHud can detect them)
     // Best sectors only updated for valid laps; invalid laps still trigger detection
     data.updateSessionBest(raceNum, completedLapNum, lapTime, sector1, sector2, sector3, isLapValid);
 

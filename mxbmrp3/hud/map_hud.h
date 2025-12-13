@@ -43,14 +43,20 @@ public:
     }
     bool getShowOutline() const { return m_bShowOutline; }
 
-    // Colorize riders toggle - show riders in bike brand colors vs uniform gray
-    void setColorizeRiders(bool colorize) {
-        if (m_bColorizeRiders != colorize) {
-            m_bColorizeRiders = colorize;
+    // Rider color mode - how to color other riders on the map
+    enum class RiderColorMode {
+        UNIFORM = 0,        // Gray for all riders
+        BRAND = 1,          // Bike brand colors
+        RELATIVE_POS = 2    // Color based on position relative to player
+    };
+
+    void setRiderColorMode(RiderColorMode mode) {
+        if (m_riderColorMode != mode) {
+            m_riderColorMode = mode;
             setDataDirty();
         }
     }
-    bool getColorizeRiders() const { return m_bColorizeRiders; }
+    RiderColorMode getRiderColorMode() const { return m_riderColorMode; }
 
     // Track line width configuration (in world meters)
     void setTrackLineWidthMeters(float widthMeters);
@@ -64,6 +70,14 @@ public:
         BOTH = 3        // Show both (P1 #5)
     };
 
+    // Rider shape display mode
+    enum class RiderShape {
+        OFF = 0,        // Don't render other riders
+        CIRCLE = 1,     // Use circle sprite
+        TRIANGLE = 2,   // Use triangle sprite
+        WEDGE = 3       // Use wedge sprite
+    };
+
     void setLabelMode(LabelMode mode) {
         if (m_labelMode != mode) {
             m_labelMode = mode;
@@ -71,6 +85,14 @@ public:
         }
     }
     LabelMode getLabelMode() const { return m_labelMode; }
+
+    void setRiderShape(RiderShape shape) {
+        if (m_riderShape != shape) {
+            m_riderShape = shape;
+            setDataDirty();
+        }
+    }
+    RiderShape getRiderShape() const { return m_riderShape; }
 
     // Anchor point for positioning (determines how map grows when dimensions change)
     enum class AnchorPoint {
@@ -155,10 +177,13 @@ private:
     bool m_bShowOutline;  // Show white outline around black track for visual clarity
 
     // Rider colorization
-    bool m_bColorizeRiders;  // Show riders in bike brand colors (false = uniform gray)
+    RiderColorMode m_riderColorMode;  // How to color other riders on the map
 
     // Rider label display mode
     LabelMode m_labelMode;
+
+    // Rider shape display mode (for other riders)
+    RiderShape m_riderShape;
 
     // Anchor point for positioning
     AnchorPoint m_anchorPoint;

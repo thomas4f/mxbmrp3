@@ -105,7 +105,7 @@
     <ClInclude Include="core\plugin_data.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
-    <ClInclude Include="hud\cursor.h">
+    <ClInclude Include="hud\pointer_widget.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
     <ClInclude Include="core\input_manager.h">
@@ -186,6 +186,9 @@
     <ClInclude Include="core\settings_manager.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
+    <ClInclude Include="core\update_checker.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
     <ClInclude Include="core\widget_constants.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
@@ -198,7 +201,10 @@
     <ClInclude Include="hud\speed_widget.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
-    <ClInclude Include="hud\timing_widget.h">
+    <ClInclude Include="hud\timing_hud.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\gap_bar_hud.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
     <ClInclude Include="hud\notices_widget.h">
@@ -275,7 +281,7 @@
     <ClCompile Include="core\plugin_data.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
-    <ClCompile Include="hud\cursor.cpp">
+    <ClCompile Include="hud\pointer_widget.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="core\input_manager.cpp">
@@ -353,6 +359,9 @@
     <ClCompile Include="core\settings_manager.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
+    <ClCompile Include="core\update_checker.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
     <ClCompile Include="hud\map_hud.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
@@ -362,7 +371,10 @@
     <ClCompile Include="hud\speed_widget.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
-    <ClCompile Include="hud\timing_widget.cpp">
+    <ClCompile Include="hud\timing_hud.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\gap_bar_hud.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\notices_widget.cpp">

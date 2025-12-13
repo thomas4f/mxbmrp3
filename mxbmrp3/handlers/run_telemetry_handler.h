@@ -13,8 +13,8 @@ public:
     void handleRunTelemetry(SPluginsBikeData_t* psBikeData, float fTime, float fPos);
 
 private:
-    RunTelemetryHandler() {}
-    ~RunTelemetryHandler() {}
+    RunTelemetryHandler() = default;
+    ~RunTelemetryHandler() = default;
     RunTelemetryHandler(const RunTelemetryHandler&) = delete;
     RunTelemetryHandler& operator=(const RunTelemetryHandler&) = delete;
 };

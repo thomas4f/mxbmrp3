@@ -331,16 +331,46 @@ void PitboardHud::rebuildRenderData() {
         char lapStr[16];
         bool showLap = false;
         if (standing && standing->numLaps >= 0) {
-            if (m_displayMode == MODE_PIT) {
-                // In Pit mode, show previous lap number (empty on lap 1)
-                if (standing->numLaps > 0) {
-                    snprintf(lapStr, sizeof(lapStr), "L%d", standing->numLaps);
+            int numLaps = standing->numLaps;
+            int sessionNumLaps = sessionData.sessionNumLaps;
+            int finishLap = sessionData.finishLap;
+            int sessionLength = sessionData.sessionLength;
+
+            // Check isFinished (same logic as StandingsHud::formatStatus)
+            bool isFinished = false;
+            if (sessionLength > 0 && sessionNumLaps > 0) {
+                // Time+laps race
+                isFinished = finishLap > 0 && numLaps >= finishLap;
+            } else {
+                // Pure lap or pure time race
+                isFinished = (finishLap > 0 && numLaps >= finishLap) ||
+                             (sessionNumLaps > 0 && finishLap <= 0 && numLaps >= sessionNumLaps);
+            }
+
+            if (isFinished) {
+                strcpy_s(lapStr, sizeof(lapStr), "FIN");
+                showLap = true;
+            } else if (sessionLength > 0 && sessionNumLaps > 0) {
+                // Time+laps race - check last lap
+                if (finishLap > 0 && numLaps == finishLap - 1) {
+                    strcpy_s(lapStr, sizeof(lapStr), "LL");
+                    showLap = true;
+                } else if (m_displayMode == MODE_PIT && numLaps > 0) {
+                    snprintf(lapStr, sizeof(lapStr), "L%d", numLaps);
+                    showLap = true;
+                } else {
+                    snprintf(lapStr, sizeof(lapStr), "L%d", numLaps + 1);
                     showLap = true;
                 }
+            } else if (sessionNumLaps > 0 && numLaps == sessionNumLaps - 1) {
+                // Pure lap race - on last lap
+                strcpy_s(lapStr, sizeof(lapStr), "LL");
+                showLap = true;
+            } else if (m_displayMode == MODE_PIT && numLaps > 0) {
+                snprintf(lapStr, sizeof(lapStr), "L%d", numLaps);
+                showLap = true;
             } else {
-                // In other modes, show current lap number
-                int currentLap = standing->numLaps + 1;
-                snprintf(lapStr, sizeof(lapStr), "L%d", currentLap);
+                snprintf(lapStr, sizeof(lapStr), "L%d", numLaps + 1);
                 showLap = true;
             }
         }

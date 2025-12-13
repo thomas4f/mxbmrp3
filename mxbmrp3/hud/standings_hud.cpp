@@ -14,9 +14,6 @@
 #include <cstring>
 #include <cstdio>
 
-#undef min
-#undef max
-
 using namespace PluginConstants;
 
 StandingsHud::ColumnPositions::ColumnPositions(float contentStartX, float scale, uint32_t enabledColumns) {

@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal EnableDelayedExpansion
 
 REM --------------------------------------------------------
 REM Usage: make_release.bat <version>
@@ -14,24 +14,48 @@ IF "%~1"=="" (
 
 set "VERSION=%~1"
 set "RELEASE_NAME=mxbmrp3"
+set "VERSION_DIR=.\dist\%RELEASE_NAME%-v%VERSION%"
+set "STAGING_DIR=.\dist\staging"
 
 echo.
 echo === Building release %RELEASE_NAME% v%VERSION% ===
 
-REM 1) Create folder structure
-mkdir ".\dist\%RELEASE_NAME%\mxbmrp3_data" 2>nul
+REM 1) Check if release already exists and warn user
+if exist "%VERSION_DIR%\%RELEASE_NAME%.zip" (
+    echo.
+    echo WARNING: Release v%VERSION% already exists in %VERSION_DIR%
+    echo This will overwrite the existing release files.
+    echo.
+    set /p "CONFIRM=Continue? [y/N] "
+    if /i not "!CONFIRM!"=="y" (
+        echo Aborted.
+        exit /b 1
+    )
+)
 
-REM 2) Copy data directory recursively
-xcopy ".\mxbmrp3_data" ".\dist\%RELEASE_NAME%\mxbmrp3_data" /E /I /Y || exit /b %ERRORLEVEL%
+REM 2) Clean up staging folder from previous builds
+if exist "%STAGING_DIR%" (
+    echo Cleaning up staging folder...
+    rmdir /s /q "%STAGING_DIR%"
+)
 
-REM 3) Copy the .dlo file
-copy ".\build\Release\mxbmrp3.dlo" ".\dist\%RELEASE_NAME%\mxbmrp3.dlo" || exit /b %ERRORLEVEL%
+REM 3) Create version output directory
+if not exist "%VERSION_DIR%" mkdir "%VERSION_DIR%"
 
-REM 4) Copy docs
-copy ".\README.md" ".\dist\%RELEASE_NAME%\" || exit /b %ERRORLEVEL%
-copy ".\LICENSE" ".\dist\%RELEASE_NAME%\" || exit /b %ERRORLEVEL%
+REM 4) Create staging folder structure
+mkdir "%STAGING_DIR%\mxbmrp3_data" 2>nul
 
-REM 5) Generate release README
+REM 5) Copy data directory recursively
+xcopy ".\mxbmrp3_data" "%STAGING_DIR%\mxbmrp3_data" /E /I /Y || exit /b %ERRORLEVEL%
+
+REM 6) Copy the .dlo file
+copy ".\build\Release\mxbmrp3.dlo" "%STAGING_DIR%\mxbmrp3.dlo" || exit /b %ERRORLEVEL%
+
+REM 7) Copy docs
+copy ".\README.md" "%STAGING_DIR%\" || exit /b %ERRORLEVEL%
+copy ".\LICENSE" "%STAGING_DIR%\" || exit /b %ERRORLEVEL%
+
+REM 8) Generate release README
 (
 echo # MXBMRP3 v%VERSION%
 echo.
@@ -61,20 +85,23 @@ echo        +-- proxy_udp64.dlo      ^<-- Keep ^(native game file^)
 echo        +-- proxy64.dlo          ^<-- Keep ^(native game file^)
 echo        +-- xinput64.dli         ^<-- Keep ^(native game file^)
 echo.
-echo 2. Launch MX Bikes - the HUD will automatically appear during sessions
+echo 2. Launch MX Bikes - the plugin will load and can be configured via the settings menu
 echo.
 echo For more information, see README.md or visit:
 echo https://github.com/thomas4f/mxbmrp3
-) > ".\dist\%RELEASE_NAME%\README.txt"
+) > "%STAGING_DIR%\README.txt"
 
-REM 6) Zip it up
-7z a ".\dist\%RELEASE_NAME%.zip" ".\dist\%RELEASE_NAME%\*" || exit /b %ERRORLEVEL%
+REM 9) Zip it up to version directory
+7z a "%VERSION_DIR%\%RELEASE_NAME%.zip" "%STAGING_DIR%\*" || exit /b %ERRORLEVEL%
 echo.
-echo ZIP complete: dist\%RELEASE_NAME%.zip
+echo ZIP complete: %VERSION_DIR%\%RELEASE_NAME%.zip
 
-REM 7) Build NSIS installer
-makensis -DPLUGIN_VERSION="%VERSION%" mxbmrp3.nsi || exit /b %ERRORLEVEL%
+REM 10) Build NSIS installer to version directory
+makensis -DPLUGIN_VERSION="%VERSION%" -DOUTPUT_DIR="%VERSION_DIR%" mxbmrp3.nsi || exit /b %ERRORLEVEL%
 echo.
-echo Installer built: dist\%RELEASE_NAME%-Setup.exe
+echo Installer built: %VERSION_DIR%\%RELEASE_NAME%-Setup.exe
+
+REM 11) Clean up staging folder
+rmdir /s /q "%STAGING_DIR%"
 
 pause

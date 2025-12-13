@@ -6,6 +6,7 @@
 #include "../core/handler_singleton.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
+#include "../diagnostics/logger.h"
 
 DEFINE_HANDLER_SINGLETON(RaceVehicleDataHandler)
 

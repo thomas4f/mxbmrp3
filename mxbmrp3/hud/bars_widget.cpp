@@ -15,9 +15,6 @@
 #include <algorithm>
 #include <cstdio>
 
-#undef min
-#undef max
-
 using namespace PluginConstants;
 
 BarsWidget::BarsWidget() {
@@ -69,8 +66,10 @@ void BarsWidget::rebuildRenderData() {
     const BikeTelemetryData& bikeTelemetry = pluginData.getBikeTelemetry();
     const SessionData& sessionData = pluginData.getSessionData();
 
-    // Check if viewing player's bike (clutch/suspension data only available for player)
-    bool isViewingPlayerBike = (pluginData.getDisplayRaceNum() == pluginData.getPlayerRaceNum());
+    // Full telemetry data (rear brake, clutch, suspension, fuel) is ONLY available when ON_TRACK
+    // because RunTelemetry() callback only fires when player is on track.
+    // During SPECTATE/REPLAY, only limited RaceVehicleData is available (throttle, front brake, RPM, gear).
+    bool hasFullTelemetry = (pluginData.getDrawState() == PluginConstants::ViewState::ON_TRACK);
 
     // Calculate bar dimensions
     float barWidth = PluginUtils::calculateMonospaceTextWidth(BAR_WIDTH_CHARS, dims.fontSize);
@@ -91,41 +90,42 @@ void BarsWidget::rebuildRenderData() {
     float contentStartX = START_X + dims.paddingH;
     float contentStartY = START_Y + dims.paddingV;
 
-    // Get current values
+    // Get current values - throttle and front brake always available
     float throttleValue = history.throttle.empty() ? 0.0f : history.throttle.back();
     float frontBrakeValue = history.frontBrake.empty() ? 0.0f : history.frontBrake.back();
-    float rearBrakeValue = history.rearBrake.empty() ? 0.0f : history.rearBrake.back();
 
-    // Clutch (only available for player - show 0 when spectating)
-    float clutchValue = (isViewingPlayerBike && !history.clutch.empty()) ? history.clutch.back() : 0.0f;
+    // Rear brake (only available when ON_TRACK - show 0 when spectating/replay)
+    float rearBrakeValue = (hasFullTelemetry && !history.rearBrake.empty()) ? history.rearBrake.back() : 0.0f;
 
-    // RPM normalized to 0-1 range
+    // Clutch (only available when ON_TRACK - show 0 when spectating/replay)
+    float clutchValue = (hasFullTelemetry && !history.clutch.empty()) ? history.clutch.back() : 0.0f;
+
+    // RPM normalized to 0-1 range (always available)
     float rpmValue = 0.0f;
-    if (bikeTelemetry.isValid) {
-        int rpm = std::max(0, bikeTelemetry.rpm);
-        int limiterRPM = sessionData.limiterRPM;
-        rpmValue = (limiterRPM > 0) ? static_cast<float>(rpm) / limiterRPM : 0.0f;
-    }
+    int rpm = std::max(0, bikeTelemetry.rpm);
+    int limiterRPM = sessionData.limiterRPM;
+    rpmValue = (limiterRPM > 0) ? static_cast<float>(rpm) / limiterRPM : 0.0f;
 
-    // Fuel normalized to 0-1 range (only for player)
+    // Fuel normalized to 0-1 range (only available when ON_TRACK)
     float fuelValue = 0.0f;
-    if (bikeTelemetry.isValid && bikeTelemetry.maxFuel > 0) {
+    if (hasFullTelemetry && bikeTelemetry.maxFuel > 0) {
         fuelValue = bikeTelemetry.fuel / bikeTelemetry.maxFuel;
     }
 
-    // Suspension compression normalized to 0-1 range (only for player - show 0 when spectating)
-    float frontSuspValue = (isViewingPlayerBike && !history.frontSusp.empty()) ? history.frontSusp.back() : 0.0f;
-    float rearSuspValue = (isViewingPlayerBike && !history.rearSusp.empty()) ? history.rearSusp.back() : 0.0f;
+    // Suspension compression normalized to 0-1 range (only available when ON_TRACK)
+    float frontSuspValue = (hasFullTelemetry && !history.frontSusp.empty()) ? history.frontSusp.back() : 0.0f;
+    float rearSuspValue = (hasFullTelemetry && !history.rearSusp.empty()) ? history.rearSusp.back() : 0.0f;
 
-    // Bar colors
-    unsigned long throttleColor = SemanticColors::THROTTLE;       // Green
-    unsigned long frontBrakeColor = SemanticColors::FRONT_BRAKE;  // Red
-    unsigned long rearBrakeColor = SemanticColors::REAR_BRAKE;    // Dark red
-    unsigned long clutchColor = SemanticColors::CLUTCH;           // Blue
-    unsigned long rpmColor = ColorPalette::GRAY;                                        // Gray (fixed)
-    unsigned long fuelColor = ColorPalette::YELLOW;                     // Yellow
-    unsigned long frontSuspColor = SemanticColors::FRONT_SUSP;    // Purple
-    unsigned long rearSuspColor = SemanticColors::REAR_SUSP;      // Dark purple
+    // Bar colors - use muted gray when data unavailable
+    unsigned long mutedColor = ColorConfig::getInstance().getMuted();
+    unsigned long throttleColor = SemanticColors::THROTTLE;       // Green (always available)
+    unsigned long frontBrakeColor = SemanticColors::FRONT_BRAKE;  // Red (always available)
+    unsigned long rearBrakeColor = hasFullTelemetry ? SemanticColors::REAR_BRAKE : mutedColor;
+    unsigned long clutchColor = hasFullTelemetry ? SemanticColors::CLUTCH : mutedColor;
+    unsigned long rpmColor = ColorPalette::GRAY;                  // Gray (always available)
+    unsigned long fuelColor = hasFullTelemetry ? ColorPalette::YELLOW : mutedColor;
+    unsigned long frontSuspColor = hasFullTelemetry ? SemanticColors::FRONT_SUSP : mutedColor;
+    unsigned long rearSuspColor = hasFullTelemetry ? SemanticColors::REAR_SUSP : mutedColor;
 
     // Render bars (6 positions, with positions 1 and 5 split into two half-width bars)
     float currentX = contentStartX;
@@ -136,17 +136,23 @@ void BarsWidget::rebuildRenderData() {
               Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
     currentX += barWidth + barSpacing;
 
-    // Bar 1: Brake (B) - split into FBR | RBR
-    addVerticalBar(currentX, contentStartY, halfBarWidth, barHeight, frontBrakeValue, frontBrakeColor);
-    addVerticalBar(currentX + halfBarWidth, contentStartY, halfBarWidth, barHeight, rearBrakeValue, rearBrakeColor);
+    // Bar 1: Brake (B) - split into FBR | RBR when both available, full width FBR when rear unavailable
+    if (hasFullTelemetry) {
+        // Split bar: front brake (left) | rear brake (right)
+        addVerticalBar(currentX, contentStartY, halfBarWidth, barHeight, frontBrakeValue, frontBrakeColor);
+        addVerticalBar(currentX + halfBarWidth, contentStartY, halfBarWidth, barHeight, rearBrakeValue, rearBrakeColor);
+    } else {
+        // Full width: only front brake available
+        addVerticalBar(currentX, contentStartY, barWidth, barHeight, frontBrakeValue, frontBrakeColor);
+    }
     addString("B", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
               Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
     currentX += barWidth + barSpacing;
 
-    // Bar 2: Clutch (C) - single bar
+    // Bar 2: Clutch (C) - single bar (muted when unavailable)
     addVerticalBar(currentX, contentStartY, barWidth, barHeight, clutchValue, clutchColor);
     addString("C", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-              Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+              Fonts::ROBOTO_MONO, hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
     currentX += barWidth + barSpacing;
 
     // Bar 3: RPM (R) - single bar
@@ -155,17 +161,17 @@ void BarsWidget::rebuildRenderData() {
               Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
     currentX += barWidth + barSpacing;
 
-    // Bar 4: Suspension (S) - split into FSU | RSU
+    // Bar 4: Suspension (S) - split into FSU | RSU (muted when unavailable)
     addVerticalBar(currentX, contentStartY, halfBarWidth, barHeight, frontSuspValue, frontSuspColor);
     addVerticalBar(currentX + halfBarWidth, contentStartY, halfBarWidth, barHeight, rearSuspValue, rearSuspColor);
     addString("S", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-              Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+              Fonts::ROBOTO_MONO, hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
     currentX += barWidth + barSpacing;
 
-    // Bar 5: Fuel (F) - single bar
+    // Bar 5: Fuel (F) - single bar (muted when unavailable)
     addVerticalBar(currentX, contentStartY, barWidth, barHeight, fuelValue, fuelColor);
     addString("F", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-              Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+              Fonts::ROBOTO_MONO, hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
 }
 
 void BarsWidget::addVerticalBar(float x, float y, float barWidth, float barHeight,

@@ -8,10 +8,13 @@
 !define PLUGIN_NAME_LC "mxbmrp3"
 !define PLUGIN_PUBLISHER "thomas4f"
 !define MXBIKES_STEAM_APPID "655500"
-!define PLUGIN_SOURCE_PATH "dist\mxbmrp3"
+!define PLUGIN_SOURCE_PATH "dist\staging"
 !ifndef PLUGIN_VERSION
   !define PLUGIN_VERSION 1.0.0.0
   ;!error "PLUGIN_VERSION is not defined. Please define it before building."
+!endif
+!ifndef OUTPUT_DIR
+  !define OUTPUT_DIR "dist"
 !endif
 
 !define VC_REDIST_URL "https://aka.ms/vs/17/release/vc_redist.x64.exe"
@@ -24,7 +27,7 @@ Name "${PLUGIN_NAME}"
 RequestExecutionLevel admin
 SetCompressor /SOLID LZMA
 Target AMD64-Unicode
-OutFile "dist\${PLUGIN_NAME_LC}-Setup.exe"
+OutFile "${OUTPUT_DIR}\${PLUGIN_NAME_LC}-Setup.exe"
 
 ; Variables
 Var pluginInstallActionChoice
@@ -275,12 +278,15 @@ Section "Install ${PLUGIN_NAME}" Section_InstallPlugin
   File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\pitboard_hud.tga"
   File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\RobotoMono-Regular.fnt"
   File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\RobotoMono-Bold.fnt"
-  File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\pointer.tga"
+  File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\pointer_widget.tga"
   File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\gear-circle.tga"
   File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\speedo_widget.tga"
   File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\tacho_widget.tga"
   File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\radar_hud.tga"
   File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\radar_sector.tga"
+  File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\rider_circle.tga"
+  File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\rider_triangle.tga"
+  File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\rider_wedge.tga"
   Call PromptInstallVCRedist
   WriteUninstaller "$INSTDIR\${PLUGIN_NAME_LC}_uninstall.exe"
   WriteRegStr HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "DisplayName" "${PLUGIN_NAME}"
@@ -305,12 +311,16 @@ Section "Uninstall"
   Delete "$INSTDIR\mxbmrp3_data\pitboard_hud.tga"
   Delete "$INSTDIR\mxbmrp3_data\RobotoMono-Regular.fnt"
   Delete "$INSTDIR\mxbmrp3_data\RobotoMono-Bold.fnt"
-  Delete "$INSTDIR\mxbmrp3_data\pointer.tga"
+  Delete "$INSTDIR\mxbmrp3_data\pointer_widget.tga"
+  Delete "$INSTDIR\mxbmrp3_data\pointer.tga"  ; Legacy filename cleanup
   Delete "$INSTDIR\mxbmrp3_data\gear-circle.tga"
   Delete "$INSTDIR\mxbmrp3_data\speedo_widget.tga"
   Delete "$INSTDIR\mxbmrp3_data\tacho_widget.tga"
   Delete "$INSTDIR\mxbmrp3_data\radar_hud.tga"
   Delete "$INSTDIR\mxbmrp3_data\radar_sector.tga"
+  Delete "$INSTDIR\mxbmrp3_data\rider_circle.tga"
+  Delete "$INSTDIR\mxbmrp3_data\rider_triangle.tga"
+  Delete "$INSTDIR\mxbmrp3_data\rider_wedge.tga"
   RMDir "$INSTDIR\mxbmrp3_data"
   Delete "$INSTDIR\${PLUGIN_NAME_LC}_uninstall.exe"
   DeleteRegKey HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}"

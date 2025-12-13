@@ -265,6 +265,8 @@ Abstract base class that all HUDs inherit from. Provides:
 - `RadarHud` - Proximity radar with nearby rider alerts
 - `PitboardHud` - Pitboard-style lap/split information
 - `RecordsHud` - Track records from online database
+- `TimingHud` - Split time comparison popup (center display)
+- `GapBarHud` - Live gap visualization bar with ghost position marker
 - `SettingsHud` - Interactive settings menu UI
 
 **Widgets** (simple, focused):
@@ -277,8 +279,7 @@ Abstract base class that all HUDs inherit from. Provides:
 - `TachoWidget` - Analog tachometer dial
 - `BarsWidget` - Visual telemetry bars (throttle, brake, etc.)
 - `FuelWidget` - Fuel calculator with consumption tracking
-- `TimingWidget` - Split time comparison popup
-- `NoticesWidget` - Wrong way and blue flag warnings
+- `NoticesWidget` - Race status notices (wrong way, blue flag, last lap, finished)
 - `VersionWidget` - Plugin version display
 - `SettingsButtonWidget` - Settings menu toggle button
 

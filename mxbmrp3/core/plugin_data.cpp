@@ -12,9 +12,6 @@
 #include <algorithm>
 #include <cstring>
 
-#undef min
-#undef max
-
 PluginData& PluginData::getInstance() {
     static PluginData instance;
     return instance;
@@ -359,7 +356,7 @@ void PluginData::updateSessionBest(int raceNum, int completedLapNum, int lapTime
     bool updated = false;
     bool isFirstValidLap = isValid && (sessionBest.bestSector1 < 0);
 
-    // Always update lap completion info (for TimingWidget detection)
+    // Always update lap completion info (for TimingHud detection)
     // This triggers even for invalid laps with no timing data
     if (sessionBest.lastCompletedLapNum != completedLapNum) {
         sessionBest.lastCompletedLapNum = completedLapNum;

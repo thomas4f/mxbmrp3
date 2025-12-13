@@ -32,7 +32,7 @@ void PluginUtils::formatTimeMinutesSeconds(int milliseconds, char* buffer, size_
 }
 
 void PluginUtils::formatLapTime(int lapTimeMs, char* buffer, size_t bufferSize) {
-    if (lapTimeMs > 0) {
+    if (lapTimeMs >= 0) {
         using namespace PluginConstants::TimeConversion;
         int minutes = lapTimeMs / MS_PER_MINUTE;
         int seconds = (lapTimeMs % MS_PER_MINUTE) / MS_PER_SECOND;
@@ -88,7 +88,7 @@ void PluginUtils::formatTimeDiffTenths(char* buffer, size_t bufferSize, int diff
 }
 
 void PluginUtils::formatLapTimeTenths(int lapTimeMs, char* buffer, size_t bufferSize) {
-    if (lapTimeMs > 0) {
+    if (lapTimeMs >= 0) {
         using namespace PluginConstants::TimeConversion;
         int minutes = lapTimeMs / MS_PER_MINUTE;
         int seconds = (lapTimeMs % MS_PER_MINUTE) / MS_PER_SECOND;

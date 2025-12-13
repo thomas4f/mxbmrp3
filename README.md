@@ -1,27 +1,63 @@
-A HUD plugin for MX Bikes that displays real-time race information, standings, and telemetry data.
+A customizable, [open-source](https://github.com/thomas4f/mxbmrp3) HUD plugin for MX Bikes displaying real-time race information and telemetry.
 
 ![MXBMRP3 HUD Screenshot](./mxbmrp3.png)
 *Example HUD layout showing standings, map, telemetry, and widgets. All elements are fully customizable.*
 
-**Note:** First public release - stable but may still have undiscovered issues.
+### Features
 
-## Features
+- Live race standings, track map, and proximity radar with approach alerts
+- Lap timing with splits, personal bests, gap-to-PB visualization, and online lap records
+- Telemetry visualization and compact info widgets
+- Drag-and-drop positioning with color themes
+- Automatic profile switching for Practice, Qualify, Race, and Spectate sessions
 
-- Live race standings with gap times and rider info
-- Interactive track map with real-time positions
-- Proximity radar with alerts for nearby riders
-- Lap records from online database
-- Fuel calculator with consumption estimates
-- Fully customizable layout, scale, and visibility for all HUD elements
-- Per-event-type profiles (Practice, Race, Spectate) with auto-switching
-- User-configurable color themes
-- Widgets for lap, position, speed, and more
-- Telemetry visualization (inputs, suspension, RPM, gear)
-- Controller input display
-- Drag-and-drop positioning with auto-save
-- Minimal performance impact
+### Get Started
+
+Download and install the plugin to begin customizing your HUD. Most users should use the automatic installer. Use the ZIP for manual installation.
+
+[![Download Installer](https://img.shields.io/badge/Download-Installer-green?style=for-the-badge)](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3-Setup.exe)
+[![Download ZIP](https://img.shields.io/badge/Download-ZIP-blue?style=for-the-badge)](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3.zip)
+
+See [Installation](#installation) for setup instructions.
+
+## Contents
+
+- [Installation](#installation)
+  - [Automatic](#automatic-installation)
+  - [Manual](#manual-installation)
+- [Controls](#controls)
+- [Configuration](#configuration)
+- [HUDs](#huds)
+  - [Standings](#standings-hud)
+  - [Map](#map-hud)
+  - [Radar](#radar-hud)
+  - [Timing](#timing-hud)
+  - [Pitboard](#pitboard-hud)
+  - [Lap Log](#lap-log-hud)
+  - [Session Best](#session-best-hud)
+  - [Records](#records-hud)
+  - [Telemetry](#telemetry-hud)
+  - [Input](#input-hud)
+  - [Performance](#performance-hud)
+- [Widgets](#widgets)
+- [Modding](#modding)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
 
 ## Installation
+
+**Requirements:**
+- MX Bikes **Beta 20 or newer**
+- [Microsoft Visual C++ Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) (the automatic installer will check for this)
+
+### Automatic Installation
+
+1. Download the latest installer [`mxbmrp3-Setup.exe`](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3-Setup.exe)
+2. Run the installer - it will:
+   - Auto-detect your MX Bikes installation (Steam or standalone)
+   - Install to the correct plugins folder
+   - Check for and offer to install Visual C++ Redistributable if needed
+   - Handle upgrades automatically (preserves your settings)
 
 ### Manual Installation
 
@@ -47,25 +83,17 @@ A HUD plugin for MX Bikes that displays real-time race information, standings, a
        ├── proxy64.dlo          ← Keep (native game file)
        └── xinput64.dli         ← Keep (native game file)
    ```
-3. Ensure you have [Microsoft Visual C++ Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) installed
-4. Launch MX Bikes - the HUD will automatically appear during sessions
 
-### Automatic Installation
+### After Installation
 
-1. Download the latest installer [`mxbmrp3-Setup.exe`](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3-Setup.exe)
-2. Run the installer - it will:
-   - Auto-detect your MX Bikes installation (Steam or standalone)
-   - Install to the correct plugins folder
-   - Check for and offer to install Visual C++ Redistributable if needed
-   - Handle upgrades automatically (preserves your settings)
-3. Launch MX Bikes - the HUD will automatically appear during sessions
+Launch MX Bikes - the plugin will load automatically. Some elements are enabled by default and can be repositioned or configured via the settings menu. If nothing appears, see [Troubleshooting](#troubleshooting).
 
 ## Controls
 
 ### Mouse
-- **Move Mouse** - Show cursor and settings button (auto-hides after 2 seconds)
-- **Right Click & Drag** - Reposition HUDs
-- **Settings Button** - Click the `[=]` button in top-right to open/interact with settings menu
+- **Move Mouse** - Show cursor and `[=]` settings button (auto-hides after inactivity)
+- **Left Click** - Interact with settings menu and HUD elements
+- **Right Click & Drag** - Reposition elements
 
 ### Keyboard Shortcuts
 - **F1** - Toggle Standings HUD
@@ -77,16 +105,44 @@ A HUD plugin for MX Bikes that displays real-time race information, standings, a
 - **F7** - Toggle Input HUD
 - **F8** - Toggle Records HUD
 - **F9** - Toggle all Widgets
-- **`** (backtick/tilde key - below ESC, left of 1) or **\\** - Toggle settings menu
-- **Ctrl+`** or **Ctrl+\\** - Temporarily toggle ALL HUDs on/off
+- **Tilde** (below Esc, above Tab) or **Backslash** (above Enter) - Toggle settings menu
+- **Ctrl+Tilde** or **Ctrl+Backslash** - Temporarily toggle all elements on/off
+
+## Configuration
+
+All element positions, scales, and visibility settings are automatically saved between sessions.
+
+Use the settings menu (Tilde key or `[=]` settings button) to access tabs for each HUD:
+- Toggle visibility
+- Adjust scale and opacity
+- Configure individual HUD settings (columns, rows, display modes)
+- Customize color theme
+- Set preferences (speed/fuel units, grid snapping)
+- Check for updates (optional, checks GitHub releases on startup)
+- Reset settings (per-tab, per-profile, or all profiles)
+
+### Profiles
+
+The plugin supports four separate profiles, each storing a complete HUD layout configuration:
+
+- **Practice** - Used during practice and warmup sessions
+- **Qualify** - Used during pre-qualify, qualify practice, and qualify sessions
+- **Race** - Used during race sessions (Race 1, Race 2, Straight Rhythm)
+- **Spectate** - Used when spectating or viewing replays
+
+**Auto-Switch** (disabled by default): Automatically switches profiles based on session type. You can manually select a profile or disable auto-switching from the General tab in settings.
+
+**Copy to All**: Applies the current profile's layout to all other profiles.
 
 ## HUDs
+
+Full-featured displays with extensive customization options:
 
 ### Standings HUD
 Displays live race positions with detailed rider information:
 - Position, race number, rider name
 - Bike brand (color-coded by manufacturer)
-- Current status (lap count, finished, DNS/DNF/DSQ, pit, penalties)
+- Status column (L1, L2... for lap count, LL for last lap, FIN when finished, PIT, DNS/DSQ/RET)
 - Gap times (official split-based and live timing)
 - Pagination that focuses on player position
 - Click rider names to follow them (spectating/replay mode)
@@ -95,14 +151,34 @@ Displays live race positions with detailed rider information:
 Top-down track map showing:
 - Track layout with configurable rotation
 - Rider positions in real-time
-- Color-coded rider dots
+- Color modes: Position (ahead/behind), Brand (bike colors), or Uniform (gray)
 - Configurable labels, track width, and outline
 - Range mode: Full track view or follow-player zoom
+
+### Radar HUD
+Proximity radar showing nearby riders:
+- Adjustable range
+- Proximity alerts with configurable distance
+- Color modes: Brand (bike colors), Position (ahead/behind), or Uniform (gray)
+- Multiple label modes (position, race number, name)
+
+### Timing HUD
+Real-time split and lap time display:
+- Accumulated split times with gap comparison
+- Appears center-screen after crossing splits
+- Configurable display duration
+
+### Gap Bar HUD
+Visual gap-to-personal-best display:
+- Horizontal bar showing live gap (green=ahead, red=behind)
+- Current position and ghost position markers
+- Freezes to show official gap at splits/lap completion
+- Configurable width, range, and freeze duration
 
 ### Pitboard HUD
 Pitboard-style information display:
 - Rider ID (race number and name)
-- Position and current lap
+- Position and lap status (L1, L2..., LL for last lap, FIN when finished)
 - Session time
 - Accumulated split times at splits, lap time at finish
 - Gap to leader
@@ -120,6 +196,13 @@ Quick reference for session records:
 - Best sector times (S1, S2, S3 - individual sector durations, not accumulated)
 - Current session information
 
+### Records HUD
+Lap records from online database:
+- Track-specific lap records
+- Rider name, bike, and lap time
+- Configurable number of records displayed
+- Category filtering
+
 ### Telemetry HUD
 Real-time bike data visualization:
 - Throttle, brake, clutch inputs
@@ -136,20 +219,6 @@ Visual representation of controller inputs:
 Plugin and game performance metrics:
 - FPS counter
 - Plugin CPU usage
-
-### Radar HUD
-Proximity radar showing nearby riders:
-- Adjustable range (20-100m)
-- Proximity alerts with configurable distance
-- Color-coded rider indicators
-- Multiple label modes (position, race number, name)
-
-### Records HUD
-Lap records from online database (CBR):
-- Track-specific lap records
-- Rider name, bike, and lap time
-- Configurable number of records displayed
-- Category filtering
 
 ## Widgets
 
@@ -170,100 +239,60 @@ Simple, focused display elements:
    - **S** - Suspension (split: purple front / dark purple rear)
    - **F** - Fuel (yellow)
 9. **Fuel Widget** - Fuel calculator with consumption tracking:
-   - Current fuel level and estimated laps remaining
-   - Average consumption per lap
-   - Fuel needed for target laps
-10. **Timing Widget** - Real-time accumulated split/lap times with gap comparison (appears center-screen for 3 seconds after crossing splits)
-11. **Notices Widget** *(experimental)* - Displays "WRONG WAY" and blue flag warnings
+   - **Fue** - Current fuel level
+   - **Use** - Total fuel used this session
+   - **Avg** - Average consumption per lap
+   - **Est** - Estimated laps remaining
+10. **Notices Widget** - Race status notices (priority order: wrong way, blue flag, last lap, finished)
 
-## Configuration
+## Modding
 
-All HUD positions, scales, and visibility settings are automatically saved between sessions.
-
-Use the settings menu (backtick/tilde key or `[=]` button) to:
-- Toggle HUD visibility
-- Adjust scale and opacity
-- Configure displayed data columns/rows
-- Reset to defaults
-
-### Profiles
-
-The plugin supports four separate profiles, each storing a complete HUD layout configuration:
-
-- **Practice** - Used during practice and warmup sessions
-- **Qualify** - Used during pre-qualify, qualify practice, and qualify sessions
-- **Race** - Used during race sessions (Race 1, Race 2, Straight Rhythm)
-- **Spectate** - Used when spectating or viewing replays
-
-**Auto-Switch** (disabled by default): Automatically switches profiles based on session type. You can manually select a profile or disable auto-switching from the General tab in settings.
+Customize the look of any HUD or widget by replacing or creating TGA textures in the `mxbmrp3_data/` folder. Files use the naming convention `{name}.tga` (e.g., `standings_hud.tga`, `pitboard_hud.tga`, `speedo_widget.tga`). Enable "BG Texture" in settings to use your custom texture.
 
 ## Troubleshooting
 
 **HUD Not Appearing**
 - Verify `mxbmrp3.dlo` and `mxbmrp3_data/` directory are in `[MX Bikes]/plugins/` folder (see [Manual Installation](#manual-installation) for expected structure)
-- Requires MX Bikes Beta 20 or newer
-- **Requires Microsoft Visual C++ Redistributable** (vc_redist) - Download from [Microsoft](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)
+- Check [Installation requirements](#installation) (MX Bikes Beta 20+, Visual C++ Redistributable)
 
-**HUDs Appearing Twice (Ghost/Duplicate)**
+**Elements Appearing Twice (Ghost/Duplicate)**
 - Check for duplicate `mxbmrp3.dlo` files - only ONE should exist in your plugins folder
 
-**HUDs Overlapping**
-- Drag HUDs to reposition them
+**Elements Overlapping**
+- Drag elements to reposition them
 - Use settings menu to adjust scale
 
-## Support
+**Controller Not Working**
+- If you accidentally deleted `xinput64.dli` from the plugins folder, controller input may stop working
+- To restore: verify game files integrity (Steam) or reinstall MX Bikes
 
-- **Bug Reports**: [GitHub Issues](https://github.com/thomas4f/mxbmrp3/issues)
+For bug reports or feature requests, open an issue on [GitHub](https://github.com/thomas4f/mxbmrp3/issues).
 
-## Documentation
+## Development
+
+Built with C++17, Visual Studio 2022, MX Bikes Plugin API, and Claude Code.
 
 - [`CLAUDE.md`](CLAUDE.md) - Quick-start guide for developers and AI assistants
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) - Comprehensive technical documentation with diagrams
 
-## Roadmap
+### Building from Source
 
-Ideas under consideration (no guarantees):
-
-- Configurable keyboard shortcuts
-- Persistent session history (personal bests, total distance)
-- Extended telemetry (g-force, lean angle)
-- Event log (fastest laps, penalties, DSQs, etc.)
-- HTTP data export for OBS overlays
-
-## Building from Source
-
-### Requirements
-- Visual Studio 2022 (or newer)
-- Windows SDK 10.0
-- Platform Toolset v143
-
-### Build Steps
+**Requirements:** Visual Studio 2022+, Windows SDK 10.0, Platform Toolset v143
 
 1. Clone the repository:
    ```bash
    git clone https://github.com/thomas4f/mxbmrp3.git
    cd mxbmrp3
    ```
-
 2. Open `mxbmrp3.sln` in Visual Studio 2022
-
 3. Select **Release** configuration (or Debug for development)
-
 4. Build the solution (Ctrl+Shift+B)
-
 5. Output: `build/Release/mxbmrp3.dlo`
 
-## License
+### Roadmap
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Built With
-
-- C++17
-- Visual Studio 2022
-- MX Bikes Plugin API
-- Claude Code
+Ideas under consideration (no guarantees): configurable keyboard shortcuts, persistent session history, extended telemetry (g-force, lean angle), event log, HTTP data export for OBS overlays.
 
 ---
 
-Feedback and contributions are always welcome.
+Licensed under the [MIT License](LICENSE). Feedback and contributions are welcome.

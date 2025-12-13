@@ -12,10 +12,6 @@
 #include <algorithm>
 #include <unordered_map>
 
-// Undefine Windows min/max macros to avoid conflicts with std::min/std::max
-#undef min
-#undef max
-
 using namespace PluginConstants;
 using namespace PluginConstants::Math;
 
@@ -26,8 +22,9 @@ MapHud::MapHud()
       m_bRotateToPlayer(false), m_fLastRotationAngle(0.0f),
       m_fLastPlayerX(0.0f), m_fLastPlayerZ(0.0f),
       m_bShowOutline(true),  // Enable outline by default for visual clarity
-      m_bColorizeRiders(false),  // Disable rider colorization by default for cleaner look
+      m_riderColorMode(RiderColorMode::RELATIVE_POS),  // Default to relative position coloring
       m_labelMode(LabelMode::POSITION),
+      m_riderShape(RiderShape::WEDGE),  // Default to wedge sprite
       m_anchorPoint(AnchorPoint::TOP_RIGHT),
       m_fAnchorX(0.0f), m_fAnchorY(0.0f),
       m_bZoomEnabled(false),
@@ -895,8 +892,8 @@ void MapHud::renderRiders(float rotationAngle,
     auto dim = getScaledDimensions();
     float titleOffset = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
 
-    // Scale cone size by HUD scale factor (25% larger than previous 0.012f)
-    constexpr float baseConeSize = 0.015f;
+    // Scale cone size by HUD scale factor
+    constexpr float baseConeSize = 0.006f;
     float scaledConeSize = baseConeSize * m_fScale;
 
     // Calculate geometric centroid offset to center arrow on player position
@@ -909,26 +906,21 @@ void MapHud::renderRiders(float rotationAngle,
     const PluginData& pluginData = PluginData::getInstance();
     int displayRaceNum = pluginData.getDisplayRaceNum();
 
-    // Render each rider position
-    for (const auto& pos : m_riderPositions) {
+    // Helper lambda to render a single rider (used for both passes)
+    auto renderRider = [&](const SPluginsRaceTrackPosition_t& pos, bool isLocalPlayer) {
         // Get rider entry data
         const RaceEntryData* entry = pluginData.getRaceEntry(pos.m_iRaceNum);
         if (!entry) {
-            continue;  // Skip if we don't have race entry data
+            return;  // Skip if we don't have race entry data
         }
 
         // For the active player with rotation mode enabled, use cached position if crashed
         // to keep screen position stable. But use actual yaw so arrow can spin in place.
         float renderX = pos.m_fPosX;
         float renderZ = pos.m_fPosZ;
-        if (pos.m_iRaceNum == displayRaceNum && pos.m_iCrashed && m_bRotateToPlayer) {
+        if (isLocalPlayer && pos.m_iCrashed && m_bRotateToPlayer) {
             renderX = m_fLastPlayerX;
             renderZ = m_fLastPlayerZ;
-        }
-
-        // Cull riders outside current bounds
-        if (renderX < m_minX || renderX > m_maxX || renderZ < m_minY || renderZ > m_maxY) {
-            continue;
         }
 
         float renderYaw = pos.m_fYaw;  // Always use current yaw for arrow direction
@@ -939,74 +931,120 @@ void MapHud::renderRiders(float rotationAngle,
         worldToScreen(renderX, renderZ, screenX, screenY, rotationAngle);
         screenY += titleOffset;
 
-        // Add colored cone/arrow at rider position pointing in heading direction
-        // Adjust yaw to compensate for world rotation (subtract because we're compensating)
+        unsigned long riderColor;
+        if (isLocalPlayer) {
+            // Player always shows green in relative position mode, otherwise bike brand color
+            if (m_riderColorMode == RiderColorMode::RELATIVE_POS) {
+                riderColor = ColorConfig::getInstance().getPositive();  // Green
+            } else {
+                riderColor = entry->bikeBrandColor;
+            }
+        } else if (m_riderColorMode == RiderColorMode::RELATIVE_POS) {
+            // Relative position coloring: color based on position/lap relative to player
+            const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
+            const StandingsData* riderStanding = pluginData.getStanding(pos.m_iRaceNum);
+            int playerPosition = pluginData.getPositionForRaceNum(displayRaceNum);
+            int riderPosition = pluginData.getPositionForRaceNum(pos.m_iRaceNum);
+            int playerLaps = playerStanding ? playerStanding->numLaps : 0;
+            int riderLaps = riderStanding ? riderStanding->numLaps : 0;
+
+            riderColor = PluginUtils::getRelativePositionColor(
+                playerPosition, riderPosition, playerLaps, riderLaps,
+                ColorConfig::getInstance().getNeutral(),
+                ColorConfig::getInstance().getWarning(),
+                ColorConfig::getInstance().getTertiary());
+        } else if (m_riderColorMode == RiderColorMode::BRAND) {
+            // Brand colors at full opacity
+            riderColor = entry->bikeBrandColor;
+        } else {
+            // Uniform: Others in uniform tertiary color
+            riderColor = ColorConfig::getInstance().getTertiary();
+        }
+
+        // Render sprite quad centered on rider position, rotated to match heading
+        float spriteHalfSize = scaledConeSize;
+
+        // Apply per-shape scale to compensate for visual fill differences
+        // Circle ~78% fill, Triangle ~50% fill, Wedge ~35% fill
+        // OFF uses WEDGE sprite for local player, so apply WEDGE scale
+        switch (m_riderShape) {
+            case RiderShape::CIRCLE:   break;  // baseline
+            case RiderShape::TRIANGLE: spriteHalfSize *= 1.25f; break;
+            case RiderShape::OFF:
+            case RiderShape::WEDGE:    spriteHalfSize *= 1.5f; break;
+        }
+
+        // Calculate rotation angle (adjust yaw to compensate for world rotation)
         float adjustedYaw = renderYaw - rotationAngle;
         float yawRad = adjustedYaw * DEG_TO_RAD;
+        float cosYaw = std::cos(yawRad);
+        float sinYaw = std::sin(yawRad);
 
-        // Center the arrow on player position by offsetting backward along yaw direction
-        // This ensures the geometric center of the arrow aligns with the player's actual position
-        float centeredX = screenX - (std::sin(yawRad) * scaledConeSize * CENTROID_OFFSET) / UI_ASPECT_RATIO;
-        float centeredY = screenY + std::cos(yawRad) * scaledConeSize * CENTROID_OFFSET;
-
-        // Create simple kite/cone shape: front tip + two sides + back point
-        // Apply aspect ratio correction to X offsets to maintain proper proportions
-        // Front tip (pointing in yaw direction)
-        float tipX = centeredX + (std::sin(yawRad) * scaledConeSize) / UI_ASPECT_RATIO;
-        float tipY = centeredY - std::cos(yawRad) * scaledConeSize;
-
-        // Left side point (narrower for easier direction identification)
-        float leftAngle = yawRad + (PI * 0.45f);  // 81 degrees left
-        float leftX = centeredX + (std::sin(leftAngle) * scaledConeSize * 0.45f) / UI_ASPECT_RATIO;
-        float leftY = centeredY - std::cos(leftAngle) * scaledConeSize * 0.45f;
-
-        // Back point (goes backward from center for sharper arrow shape)
-        float backX = centeredX - (std::sin(yawRad) * scaledConeSize * 0.2f) / UI_ASPECT_RATIO;
-        float backY = centeredY + std::cos(yawRad) * scaledConeSize * 0.2f;
-
-        // Right side point (narrower for easier direction identification)
-        float rightAngle = yawRad - (PI * 0.45f);  // 81 degrees right
-        float rightX = centeredX + (std::sin(rightAngle) * scaledConeSize * 0.45f) / UI_ASPECT_RATIO;
-        float rightY = centeredY - std::cos(rightAngle) * scaledConeSize * 0.45f;
-
-        // Apply HUD offset
-        applyOffset(tipX, tipY);
-        applyOffset(leftX, leftY);
-        applyOffset(backX, backY);
-        applyOffset(rightX, rightY);
-
-        // Skip rider if any vertex is outside clip bounds (clean cutoff, no distortion)
-        if (!isPointInClip(tipX, tipY) || !isPointInClip(leftX, leftY) ||
-            !isPointInClip(backX, backY) || !isPointInClip(rightX, rightY)) {
-            continue;
+        // Skip if center is outside clip bounds
+        float centerXClip = screenX, centerYClip = screenY;
+        applyOffset(centerXClip, centerYClip);
+        if (!isPointInClip(centerXClip, centerYClip)) {
+            return;
         }
 
-        // Create quad following clockwise ordering: tip -> right -> back -> left
-        // NOTE: Must use clockwise for proper rendering (counter-clockwise gets face-culled)
-        SPluginQuad_t cone;
-        cone.m_aafPos[0][0] = tipX;      // Front tip
-        cone.m_aafPos[0][1] = tipY;
-        cone.m_aafPos[1][0] = rightX;    // Right side (clockwise from tip)
-        cone.m_aafPos[1][1] = rightY;
-        cone.m_aafPos[2][0] = backX;     // Back center
-        cone.m_aafPos[2][1] = backY;
-        cone.m_aafPos[3][0] = leftX;     // Left side (completes the kite)
-        cone.m_aafPos[3][1] = leftY;
-
-        cone.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-        // Determine rider color: player always colorized, others based on setting
-        bool isLocalPlayer = (pos.m_iRaceNum == displayRaceNum);
-        if (isLocalPlayer) {
-            // Player always shows their bike brand color
-            cone.m_ulColor = entry->bikeBrandColor;
-        } else if (m_bColorizeRiders) {
-            // Colorized: Others at 75% opacity
-            cone.m_ulColor = PluginUtils::applyOpacity(entry->bikeBrandColor, 0.75f);
-        } else {
-            // Non-colorized: Others in uniform tertiary color
-            cone.m_ulColor = ColorConfig::getInstance().getTertiary();
+        // Determine sprite index based on rider shape (OFF uses WEDGE for local player)
+        int spriteIndex;
+        switch (m_riderShape) {
+            case RiderShape::CIRCLE:
+                spriteIndex = PluginConstants::SpriteIndex::RIDER_CIRCLE;
+                break;
+            case RiderShape::TRIANGLE:
+                spriteIndex = PluginConstants::SpriteIndex::RIDER_TRIANGLE;
+                break;
+            case RiderShape::OFF:
+            case RiderShape::WEDGE:
+            default:
+                spriteIndex = PluginConstants::SpriteIndex::RIDER_WEDGE;
+                break;
         }
-        m_quads.push_back(cone);
+
+        // Helper lambda to create rotated sprite quad
+        auto createRotatedSprite = [&](float halfSize, unsigned long spriteColor) {
+            // Define corner offsets in uniform (square) space for proper rotation
+            // TL, BL, BR, TR in local space
+            float corners[4][2] = {
+                {-halfSize, -halfSize},  // Top-left
+                {-halfSize,  halfSize},  // Bottom-left
+                { halfSize,  halfSize},  // Bottom-right
+                { halfSize, -halfSize}   // Top-right
+            };
+
+            // Rotate corners in uniform space, then apply aspect ratio to X
+            float rotatedCorners[4][2];
+            for (int i = 0; i < 4; i++) {
+                float dx = corners[i][0];
+                float dy = corners[i][1];
+                // Rotate in uniform space
+                float rotX = dx * cosYaw - dy * sinYaw;
+                float rotY = dx * sinYaw + dy * cosYaw;
+                // Apply aspect ratio to X after rotation
+                rotatedCorners[i][0] = screenX + rotX / UI_ASPECT_RATIO;
+                rotatedCorners[i][1] = screenY + rotY;
+                applyOffset(rotatedCorners[i][0], rotatedCorners[i][1]);
+            }
+
+            // Create rotated sprite quad
+            SPluginQuad_t sprite;
+            sprite.m_aafPos[0][0] = rotatedCorners[0][0];  // Top-left
+            sprite.m_aafPos[0][1] = rotatedCorners[0][1];
+            sprite.m_aafPos[1][0] = rotatedCorners[1][0];  // Bottom-left
+            sprite.m_aafPos[1][1] = rotatedCorners[1][1];
+            sprite.m_aafPos[2][0] = rotatedCorners[2][0];  // Bottom-right
+            sprite.m_aafPos[2][1] = rotatedCorners[2][1];
+            sprite.m_aafPos[3][0] = rotatedCorners[3][0];  // Top-right
+            sprite.m_aafPos[3][1] = rotatedCorners[3][1];
+            sprite.m_iSprite = spriteIndex;
+            sprite.m_ulColor = spriteColor;
+            m_quads.push_back(sprite);
+        };
+
+        // Render rider sprite (outline baked into sprite asset)
+        createRotatedSprite(spriteHalfSize, riderColor);
 
         // Render label centered on arrow based on label mode
         if (m_labelMode != LabelMode::NONE) {
@@ -1058,9 +1096,39 @@ void MapHud::renderRiders(float rotationAngle,
                     }
                 }
 
+                // Create text outline by rendering dark text at offsets first
+                float outlineOffset = dim.fontSizeSmall * 0.05f;  // Small offset for outline
+                unsigned long outlineColor = 0xFF000000;  // Black with full opacity
+
+                // Render outline at 4 cardinal directions
+                addString(labelStr, screenX - outlineOffset, offsetY, Justify::CENTER,
+                         Fonts::TINY5, outlineColor, dim.fontSizeSmall);
+                addString(labelStr, screenX + outlineOffset, offsetY, Justify::CENTER,
+                         Fonts::TINY5, outlineColor, dim.fontSizeSmall);
+                addString(labelStr, screenX, offsetY - outlineOffset, Justify::CENTER,
+                         Fonts::TINY5, outlineColor, dim.fontSizeSmall);
+                addString(labelStr, screenX, offsetY + outlineOffset, Justify::CENTER,
+                         Fonts::TINY5, outlineColor, dim.fontSizeSmall);
+
+                // Render main text on top
                 addString(labelStr, screenX, offsetY, Justify::CENTER,
                          Fonts::TINY5, labelColor, dim.fontSizeSmall);
             }
+        }
+    };
+
+    // First pass: render all other riders (not local player)
+    for (const auto& pos : m_riderPositions) {
+        if (pos.m_iRaceNum == displayRaceNum) continue;  // Skip player, render last
+        if (m_riderShape == RiderShape::OFF) continue;   // Skip if shape is OFF
+        renderRider(pos, false);
+    }
+
+    // Second pass: render local player LAST (always on top)
+    for (const auto& pos : m_riderPositions) {
+        if (pos.m_iRaceNum == displayRaceNum) {
+            renderRider(pos, true);
+            break;  // Found and rendered player, done
         }
     }
 }
@@ -1275,8 +1343,9 @@ void MapHud::resetToDefaults() {
     m_fAnchorY = 0.0113039f;
     m_bRotateToPlayer = false;
     m_bShowOutline = true;  // Enable outline by default
-    m_bColorizeRiders = false;  // Disable rider colorization by default
+    m_riderColorMode = RiderColorMode::RELATIVE_POS;  // Default to relative position coloring
     m_labelMode = LabelMode::POSITION;
+    m_riderShape = RiderShape::WEDGE;  // Default to wedge sprite
     m_fTrackLineWidthMeters = DEFAULT_TRACK_LINE_WIDTH;
     m_bZoomEnabled = false;
     m_fZoomDistance = DEFAULT_ZOOM_DISTANCE;

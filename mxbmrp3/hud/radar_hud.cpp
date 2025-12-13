@@ -11,20 +11,17 @@
 #include <cmath>
 #include <algorithm>
 
-// Undefine Windows min/max macros to avoid conflicts with std::min/std::max
-#undef min
-#undef max
-
 using namespace PluginConstants;
 using namespace PluginConstants::Math;
 
 RadarHud::RadarHud()
     : m_fRadarRangeMeters(DEFAULT_RADAR_RANGE),
-      m_bColorizeRiders(true),
+      m_riderColorMode(RiderColorMode::BRAND),  // Default to bike brand colors
       m_bShowPlayerArrow(false),
       m_bFadeWhenEmpty(false),
       m_fAlertDistance(DEFAULT_ALERT_DISTANCE),
-      m_labelMode(LabelMode::POSITION) {
+      m_labelMode(LabelMode::POSITION),
+      m_riderShape(RiderShape::CIRCLE) {  // Default to circle sprite
 
     setDraggable(true);
 
@@ -96,74 +93,91 @@ void RadarHud::updateRiderPositions(int numVehicles, const SPluginsRaceTrackPosi
     setDataDirty();
 }
 
-void RadarHud::renderRiderArrow(float radarX, float radarY, float yaw, unsigned long color,
-                                  float centerX, float centerY, float radarRadius) {
-    auto dim = getScaledDimensions();
-
-    // Scale cone size by HUD scale factor (same as MapHud)
-    constexpr float baseConeSize = 0.015f;
+void RadarHud::renderRiderSprite(float radarX, float radarY, float yaw, unsigned long color,
+                                   float centerX, float centerY, float radarRadius) {
+    // Scale sprite size by HUD scale factor
+    constexpr float baseConeSize = 0.006f;
     float scaledConeSize = baseConeSize * m_fScale;
+    float spriteHalfSize = scaledConeSize;
 
-    // Calculate geometric centroid offset to center arrow on position
-    constexpr float CENTROID_OFFSET = 0.235f;
+    // Apply per-shape scale to compensate for visual fill differences
+    // Circle ~78% fill, Triangle ~50% fill, Wedge ~35% fill
+    switch (m_riderShape) {
+        case RiderShape::CIRCLE:   break;  // baseline
+        case RiderShape::TRIANGLE: spriteHalfSize *= 1.25f; break;
+        case RiderShape::WEDGE:    spriteHalfSize *= 1.5f; break;
+    }
 
     // Convert radar coordinates (-1 to 1) to screen coordinates
-    // Note: radarY is negated because screen Y increases downward
     float screenX = centerX + (radarX * radarRadius) / UI_ASPECT_RATIO;
     float screenY = centerY - radarY * radarRadius;
 
-    // The arrow should point in the direction the rider is facing
-    // In radar view: player is always facing up (0 degrees), so we show
-    // relative heading of other riders
+    // Calculate rotation
     float yawRad = yaw * DEG_TO_RAD;
+    float cosYaw = std::cos(yawRad);
+    float sinYaw = std::sin(yawRad);
 
-    // Center the arrow on position by offsetting backward along yaw direction
-    float centeredX = screenX - (std::sin(yawRad) * scaledConeSize * CENTROID_OFFSET) / UI_ASPECT_RATIO;
-    float centeredY = screenY + std::cos(yawRad) * scaledConeSize * CENTROID_OFFSET;
+    // Determine sprite index based on rider shape
+    int spriteIndex;
+    switch (m_riderShape) {
+        case RiderShape::CIRCLE:
+            spriteIndex = SpriteIndex::RIDER_CIRCLE;
+            break;
+        case RiderShape::TRIANGLE:
+            spriteIndex = SpriteIndex::RIDER_TRIANGLE;
+            break;
+        case RiderShape::WEDGE:
+        default:
+            spriteIndex = SpriteIndex::RIDER_WEDGE;
+            break;
+    }
 
-    // Create kite/cone shape: front tip + two sides + back point (same as MapHud)
-    // Front tip (pointing in yaw direction)
-    float tipX = centeredX + (std::sin(yawRad) * scaledConeSize) / UI_ASPECT_RATIO;
-    float tipY = centeredY - std::cos(yawRad) * scaledConeSize;
+    // Helper lambda to create rotated sprite quad
+    auto createRotatedSprite = [&](float halfSize, unsigned long spriteColor) {
+        // Define corner offsets in uniform (square) space for proper rotation
+        // TL, BL, BR, TR in local space
+        float corners[4][2] = {
+            {-halfSize, -halfSize},  // Top-left
+            {-halfSize,  halfSize},  // Bottom-left
+            { halfSize,  halfSize},  // Bottom-right
+            { halfSize, -halfSize}   // Top-right
+        };
 
-    // Left side point
-    float leftAngle = yawRad + (PI * 0.45f);  // 81 degrees left
-    float leftX = centeredX + (std::sin(leftAngle) * scaledConeSize * 0.45f) / UI_ASPECT_RATIO;
-    float leftY = centeredY - std::cos(leftAngle) * scaledConeSize * 0.45f;
+        // Rotate corners in uniform space, then apply aspect ratio to X
+        float rotatedCorners[4][2];
+        for (int i = 0; i < 4; i++) {
+            float dx = corners[i][0];
+            float dy = corners[i][1];
+            // Rotate in uniform space
+            float rotX = dx * cosYaw - dy * sinYaw;
+            float rotY = dx * sinYaw + dy * cosYaw;
+            // Apply aspect ratio to X after rotation
+            rotatedCorners[i][0] = screenX + rotX / UI_ASPECT_RATIO;
+            rotatedCorners[i][1] = screenY + rotY;
+            applyOffset(rotatedCorners[i][0], rotatedCorners[i][1]);
+        }
 
-    // Back point
-    float backX = centeredX - (std::sin(yawRad) * scaledConeSize * 0.2f) / UI_ASPECT_RATIO;
-    float backY = centeredY + std::cos(yawRad) * scaledConeSize * 0.2f;
+        // Create rotated sprite quad
+        SPluginQuad_t sprite;
+        sprite.m_aafPos[0][0] = rotatedCorners[0][0];  // Top-left
+        sprite.m_aafPos[0][1] = rotatedCorners[0][1];
+        sprite.m_aafPos[1][0] = rotatedCorners[1][0];  // Bottom-left
+        sprite.m_aafPos[1][1] = rotatedCorners[1][1];
+        sprite.m_aafPos[2][0] = rotatedCorners[2][0];  // Bottom-right
+        sprite.m_aafPos[2][1] = rotatedCorners[2][1];
+        sprite.m_aafPos[3][0] = rotatedCorners[3][0];  // Top-right
+        sprite.m_aafPos[3][1] = rotatedCorners[3][1];
+        sprite.m_iSprite = spriteIndex;
+        sprite.m_ulColor = spriteColor;
+        m_quads.push_back(sprite);
+    };
 
-    // Right side point
-    float rightAngle = yawRad - (PI * 0.45f);  // 81 degrees right
-    float rightX = centeredX + (std::sin(rightAngle) * scaledConeSize * 0.45f) / UI_ASPECT_RATIO;
-    float rightY = centeredY - std::cos(rightAngle) * scaledConeSize * 0.45f;
-
-    // Apply HUD offset
-    applyOffset(tipX, tipY);
-    applyOffset(leftX, leftY);
-    applyOffset(backX, backY);
-    applyOffset(rightX, rightY);
-
-    // Create quad following clockwise ordering
-    SPluginQuad_t cone;
-    cone.m_aafPos[0][0] = tipX;
-    cone.m_aafPos[0][1] = tipY;
-    cone.m_aafPos[1][0] = rightX;
-    cone.m_aafPos[1][1] = rightY;
-    cone.m_aafPos[2][0] = backX;
-    cone.m_aafPos[2][1] = backY;
-    cone.m_aafPos[3][0] = leftX;
-    cone.m_aafPos[3][1] = leftY;
-
-    cone.m_iSprite = SpriteIndex::SOLID_COLOR;
-    cone.m_ulColor = color;
-    m_quads.push_back(cone);
+    // Render rider sprite (outline baked into sprite asset)
+    createRotatedSprite(spriteHalfSize, color);
 }
 
 void RadarHud::renderRiderLabel(float radarX, float radarY, int raceNum, int position,
-                                  float centerX, float centerY, float radarRadius) {
+                                  float centerX, float centerY, float radarRadius, float opacity) {
     if (m_labelMode == LabelMode::NONE) return;
 
     auto dim = getScaledDimensions();
@@ -215,6 +229,24 @@ void RadarHud::renderRiderLabel(float radarX, float radarY, int raceNum, int pos
             }
         }
 
+        // Apply opacity to colors to match sprite fading
+        labelColor = PluginUtils::applyOpacity(labelColor, opacity);
+        unsigned long outlineColor = PluginUtils::applyOpacity(0x000000, opacity);  // Black with matching opacity
+
+        // Create text outline by rendering dark text at offsets first
+        float outlineOffset = dim.fontSizeSmall * 0.05f;  // Small offset for outline
+
+        // Render outline at 4 cardinal directions
+        addString(labelStr, screenX - outlineOffset, labelY, Justify::CENTER,
+                 Fonts::TINY5, outlineColor, dim.fontSizeSmall);
+        addString(labelStr, screenX + outlineOffset, labelY, Justify::CENTER,
+                 Fonts::TINY5, outlineColor, dim.fontSizeSmall);
+        addString(labelStr, screenX, labelY - outlineOffset, Justify::CENTER,
+                 Fonts::TINY5, outlineColor, dim.fontSizeSmall);
+        addString(labelStr, screenX, labelY + outlineOffset, Justify::CENTER,
+                 Fonts::TINY5, outlineColor, dim.fontSizeSmall);
+
+        // Render main text on top
         addString(labelStr, screenX, labelY, Justify::CENTER,
                  Fonts::TINY5, labelColor, dim.fontSizeSmall);
     }
@@ -479,20 +511,7 @@ void RadarHud::rebuildRenderData() {
         return;
     }
 
-    // Draw the local player at center (always pointing up) if enabled
-    if (m_bShowPlayerArrow) {
-        const RaceEntryData* localEntry = pluginData.getRaceEntry(localPlayer->m_iRaceNum);
-        if (localEntry) {
-            renderRiderArrow(0.0f, 0.0f, 0.0f, localEntry->bikeBrandColor,
-                            centerX, centerY, radarRadius);
-
-            int playerPosition = pluginData.getPositionForRaceNum(localPlayer->m_iRaceNum);
-            renderRiderLabel(0.0f, 0.0f, localPlayer->m_iRaceNum, playerPosition,
-                            centerX, centerY, radarRadius);
-        }
-    }
-
-    // Render other riders
+    // Render other riders first (player rendered last to appear on top)
     for (const auto& pos : m_riderPositions) {
         if (pos.m_iRaceNum == displayRaceNum) continue;
 
@@ -538,22 +557,77 @@ void RadarHud::rebuildRenderData() {
         while (relativeYaw < -180.0f) relativeYaw += 360.0f;
 
         unsigned long riderColor;
-        if (m_bColorizeRiders) {
+        if (m_riderColorMode == RiderColorMode::RELATIVE_POS) {
+            // Relative position coloring: color based on position/lap relative to player
+            const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
+            const StandingsData* riderStanding = pluginData.getStanding(pos.m_iRaceNum);
+            int playerPosition = pluginData.getPositionForRaceNum(displayRaceNum);
+            int riderPosition = pluginData.getPositionForRaceNum(pos.m_iRaceNum);
+            int playerLaps = playerStanding ? playerStanding->numLaps : 0;
+            int riderLaps = riderStanding ? riderStanding->numLaps : 0;
+
+            unsigned long baseColor = PluginUtils::getRelativePositionColor(
+                playerPosition, riderPosition, playerLaps, riderLaps,
+                ColorConfig::getInstance().getNeutral(),
+                ColorConfig::getInstance().getWarning(),
+                ColorConfig::getInstance().getTertiary());
+            riderColor = PluginUtils::applyOpacity(baseColor, trackFadeOpacity);
+        } else if (m_riderColorMode == RiderColorMode::BRAND) {
             riderColor = PluginUtils::applyOpacity(entry->bikeBrandColor, 0.75f * trackFadeOpacity);
         } else {
             riderColor = PluginUtils::applyOpacity(ColorConfig::getInstance().getTertiary(), trackFadeOpacity);
         }
 
-        renderRiderArrow(radarX, radarY, relativeYaw, riderColor,
-                        centerX, centerY, radarRadius);
+        // Render rider sprite with relative heading
+        renderRiderSprite(radarX, radarY, relativeYaw, riderColor,
+                         centerX, centerY, radarRadius);
 
-        // Only show label if rider is mostly visible
-        if (trackFadeOpacity > 0.5f) {
-            int position = pluginData.getPositionForRaceNum(pos.m_iRaceNum);
-            renderRiderLabel(radarX, radarY, pos.m_iRaceNum, position,
-                            centerX, centerY, radarRadius);
+        // Render label with matching fade opacity
+        int position = pluginData.getPositionForRaceNum(pos.m_iRaceNum);
+        renderRiderLabel(radarX, radarY, pos.m_iRaceNum, position,
+                        centerX, centerY, radarRadius, trackFadeOpacity);
+    }
+
+    // Draw the local player at center LAST (always on top, always pointing up = 0 yaw)
+    if (m_bShowPlayerArrow) {
+        const RaceEntryData* localEntry = pluginData.getRaceEntry(localPlayer->m_iRaceNum);
+        if (localEntry) {
+            // Player shows green in relative position mode, otherwise bike brand color
+            unsigned long playerColor = (m_riderColorMode == RiderColorMode::RELATIVE_POS)
+                ? ColorConfig::getInstance().getPositive()  // Green
+                : localEntry->bikeBrandColor;
+            renderRiderSprite(0.0f, 0.0f, 0.0f, playerColor,
+                             centerX, centerY, radarRadius);
+
+            int playerPosition = pluginData.getPositionForRaceNum(localPlayer->m_iRaceNum);
+            renderRiderLabel(0.0f, 0.0f, localPlayer->m_iRaceNum, playerPosition,
+                            centerX, centerY, radarRadius, 1.0f);  // Player always fully visible
         }
     }
+}
+
+void RadarHud::setScale(float scale) {
+    if (scale <= 0.0f) scale = 0.1f;
+    float oldScale = m_fScale;
+    if (oldScale == scale) return;
+
+    // Calculate current dimensions
+    float oldWidth = m_fBoundsRight - m_fBoundsLeft;
+    float oldHeight = m_fBoundsBottom - m_fBoundsTop;
+
+    // Calculate new dimensions (scale changes proportionally)
+    float ratio = scale / oldScale;
+    float newWidth = oldWidth * ratio;
+    float newHeight = oldHeight * ratio;
+
+    // Adjust offset to keep center fixed
+    float deltaX = (oldWidth - newWidth) / 2.0f;
+    float deltaY = (oldHeight - newHeight) / 2.0f;
+    setPosition(m_fOffsetX + deltaX, m_fOffsetY + deltaY);
+
+    // Apply the new scale
+    m_fScale = scale;
+    setDataDirty();
 }
 
 void RadarHud::resetToDefaults() {
@@ -563,11 +637,12 @@ void RadarHud::resetToDefaults() {
     m_fBackgroundOpacity = 0.1f;
     m_fScale = 1.0f;
     m_fRadarRangeMeters = DEFAULT_RADAR_RANGE;
-    m_bColorizeRiders = true;
+    m_riderColorMode = RiderColorMode::BRAND;  // Default to bike brand colors
     m_bShowPlayerArrow = false;  // Hide player arrow by default
     m_bFadeWhenEmpty = false;    // Don't fade by default (always visible)
     m_fAlertDistance = DEFAULT_ALERT_DISTANCE;
     m_labelMode = LabelMode::POSITION;
+    m_riderShape = RiderShape::CIRCLE;  // Default to circle sprite
     setPosition(0.43275f, 0.0111f);  // Horizontally centered at scale 1.0
     setDataDirty();
 }

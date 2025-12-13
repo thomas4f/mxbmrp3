@@ -19,8 +19,8 @@ SettingsButtonWidget::SettingsButtonWidget()
     DEBUG_INFO("SettingsButtonWidget created");
     setDraggable(true);
 
-    // Set defaults - small compact button (match TimingWidget opacity)
-    m_fBackgroundOpacity = 0.1f;  // Low opacity background like TimingWidget
+    // Set defaults - small compact button (match TimingHud opacity)
+    m_fBackgroundOpacity = 0.1f;  // Low opacity background like TimingHud
     setPosition(0.957f, 0.0111f);  // Top-right corner
 
     // Pre-allocate vectors
@@ -174,7 +174,7 @@ void SettingsButtonWidget::resetToDefaults() {
     m_bVisible = true;
     m_bShowTitle = true;
     m_bShowBackgroundTexture = false;  // No texture by default
-    m_fBackgroundOpacity = 0.1f;  // Match TimingWidget opacity
+    m_fBackgroundOpacity = 0.1f;  // Match TimingHud opacity
     m_fScale = 1.0f;
     setPosition(0.957f, 0.0111f);
     setDataDirty();

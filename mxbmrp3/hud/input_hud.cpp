@@ -10,9 +10,6 @@
 #include <cmath>
 #include <algorithm>
 
-#undef min
-#undef max
-
 using namespace PluginConstants;
 
 InputHud::InputHud() {

@@ -16,6 +16,9 @@ public:
     bool handlesDataType(DataChangeType dataType) const override;
     void resetToDefaults();
 
+    // Override setScale to grow from center instead of top-left
+    void setScale(float scale);
+
     // Update rider positions (called frequently - must be fast)
     void updateRiderPositions(int numVehicles, const SPluginsRaceTrackPosition_t* positions);
 
@@ -23,14 +26,20 @@ public:
     void setRadarRange(float rangeMeters);
     float getRadarRange() const { return m_fRadarRangeMeters; }
 
-    // Colorize riders toggle - show riders in bike brand colors vs uniform gray
-    void setColorizeRiders(bool colorize) {
-        if (m_bColorizeRiders != colorize) {
-            m_bColorizeRiders = colorize;
+    // Rider color mode - how to color other riders on the radar
+    enum class RiderColorMode {
+        UNIFORM = 0,        // Gray for all riders
+        BRAND = 1,          // Bike brand colors
+        RELATIVE_POS = 2    // Color based on position relative to player
+    };
+
+    void setRiderColorMode(RiderColorMode mode) {
+        if (m_riderColorMode != mode) {
+            m_riderColorMode = mode;
             setDataDirty();
         }
     }
-    bool getColorizeRiders() const { return m_bColorizeRiders; }
+    RiderColorMode getRiderColorMode() const { return m_riderColorMode; }
 
     // Show player arrow toggle - display or hide the local player's arrow
     void setShowPlayerArrow(bool show) {
@@ -62,6 +71,13 @@ public:
         BOTH = 3        // Show both (P1 #5)
     };
 
+    // Rider shape display mode
+    enum class RiderShape {
+        CIRCLE = 0,     // Use circle sprite
+        TRIANGLE = 1,   // Use triangle sprite
+        WEDGE = 2       // Use wedge sprite
+    };
+
     void setLabelMode(LabelMode mode) {
         if (m_labelMode != mode) {
             m_labelMode = mode;
@@ -69,6 +85,14 @@ public:
         }
     }
     LabelMode getLabelMode() const { return m_labelMode; }
+
+    void setRiderShape(RiderShape shape) {
+        if (m_riderShape != shape) {
+            m_riderShape = shape;
+            setDataDirty();
+        }
+    }
+    RiderShape getRiderShape() const { return m_riderShape; }
 
     // Public constants for settings UI
     static constexpr float DEFAULT_RADAR_RANGE = 50.0f;   // Default 50 meters
@@ -105,7 +129,7 @@ private:
     static constexpr size_t RESERVE_STRINGS = 50;    // Title + rider labels
 
     // Rider colorization
-    bool m_bColorizeRiders;
+    RiderColorMode m_riderColorMode;
 
     // Show player's own arrow
     bool m_bShowPlayerArrow;
@@ -119,11 +143,14 @@ private:
     // Rider label display mode
     LabelMode m_labelMode;
 
-    // Helper: Render a rider arrow at radar coordinates
-    void renderRiderArrow(float radarX, float radarY, float yaw, unsigned long color,
-                          float centerX, float centerY, float radarRadius);
+    // Rider shape display mode
+    RiderShape m_riderShape;
+
+    // Helper: Render a rider sprite at radar coordinates with rotation
+    void renderRiderSprite(float radarX, float radarY, float yaw, unsigned long color,
+                           float centerX, float centerY, float radarRadius);
 
     // Helper: Render rider label
     void renderRiderLabel(float radarX, float radarY, int raceNum, int position,
-                          float centerX, float centerY, float radarRadius);
+                          float centerX, float centerY, float radarRadius, float opacity);
 };

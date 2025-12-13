@@ -13,8 +13,8 @@ public:
     void handleRaceVehicleData(SPluginsRaceVehicleData_t* psRaceVehicleData);
 
 private:
-    RaceVehicleDataHandler() {}
-    ~RaceVehicleDataHandler() {}
+    RaceVehicleDataHandler() = default;
+    ~RaceVehicleDataHandler() = default;
     RaceVehicleDataHandler(const RaceVehicleDataHandler&) = delete;
     RaceVehicleDataHandler& operator=(const RaceVehicleDataHandler&) = delete;
 };
