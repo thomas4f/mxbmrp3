@@ -11,7 +11,7 @@ namespace PluginConstants {
     // Plugin identification
     constexpr const char* PLUGIN_NAME = "mxbmrp3";
     constexpr const char* PLUGIN_DISPLAY_NAME = "MXBMRP3";
-    constexpr const char* PLUGIN_VERSION = "1.7.0.0";
+    constexpr const char* PLUGIN_VERSION = "1.8.0.0";
     constexpr const char* PLUGIN_AUTHOR = "thomas4f";
 
     // MXBikes API constants
@@ -463,10 +463,11 @@ namespace PluginConstants {
         constexpr int BG_FUEL_WIDGET = 22;
         constexpr int BG_RECORDS_HUD = 23;
         constexpr int BG_GAP_BAR_HUD = 24;
+        constexpr int BG_RUMBLE_HUD = 25;
 
         // Rider shape sprites (for map/radar)
-        constexpr int RIDER_CIRCLE = 25;
-        constexpr int RIDER_TRIANGLE = 26;
-        constexpr int RIDER_WEDGE = 27;
+        constexpr int RIDER_CIRCLE = 26;
+        constexpr int RIDER_TRIANGLE = 27;
+        constexpr int RIDER_WEDGE = 28;
     }
 }

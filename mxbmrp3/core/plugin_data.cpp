@@ -217,6 +217,12 @@ void PluginData::removeRaceEntry(int raceNum) {
         m_riderBestLap.erase(raceNum);
         m_trackPositions.erase(raceNum);
 
+        // Reset lap timer if we're removing the display rider
+        if (raceNum == m_displayLapTimerRaceNum) {
+            m_displayLapTimer.reset();
+            m_displayLapTimerRaceNum = -1;
+        }
+
         m_raceEntries.erase(it);
         notifyHudManager(DataChangeType::RaceEntries);
     }
@@ -563,6 +569,151 @@ const LapLogEntry* PluginData::getBestLapEntry(int raceNum) const {
         return &it->second;
     }
     return nullptr;
+}
+
+// ============================================================================
+// Centralized Lap Timer Management
+// Single timer for display rider only (follows GapBarHud pattern)
+// ============================================================================
+
+bool PluginData::updateLapTimerTrackPosition(int raceNum, float trackPos, int lapNum) {
+    // Only track the display rider (like GapBarHud)
+    int displayRaceNum = getDisplayRaceNum();
+    if (raceNum != displayRaceNum) {
+        return false;
+    }
+
+    // Reset timer if spectate target changed
+    if (m_displayLapTimerRaceNum != displayRaceNum) {
+        DEBUG_INFO_F("LapTimer: Display rider changed %d -> %d, resetting timer",
+                     m_displayLapTimerRaceNum, displayRaceNum);
+        m_displayLapTimer.reset();
+        m_displayLapTimerRaceNum = displayRaceNum;
+    }
+
+    LapTimer& timer = m_displayLapTimer;
+
+    if (!timer.trackMonitorInitialized) {
+        timer.lastTrackPos = trackPos;
+        timer.lastLapNum = lapNum;
+        timer.trackMonitorInitialized = true;
+        return false;
+    }
+
+    float delta = trackPos - timer.lastTrackPos;
+    bool sfCrossingDetected = false;
+
+    // Detect S/F crossing: large negative delta (0.95 → 0.05 gives delta ~ -0.9)
+    if (delta < -LapTimer::WRAP_THRESHOLD) {
+        // Crossed S/F line - set anchor if we don't have one or lap changed
+        if (!timer.anchorValid || lapNum != timer.lastLapNum) {
+            timer.setAnchor(0);  // Start timing from 0
+            timer.currentLapNum = lapNum;
+            timer.currentSector = 0;  // Reset to sector 0 (before S1)
+            timer.lastSplit1Time = -1;
+            timer.lastSplit2Time = -1;
+            sfCrossingDetected = true;
+            DEBUG_INFO_F("LapTimer: S/F crossing detected via track position, lap=%d", lapNum);
+        }
+    }
+
+    timer.lastTrackPos = trackPos;
+    timer.lastLapNum = lapNum;
+
+    return sfCrossingDetected;
+}
+
+void PluginData::setLapTimerAnchor(int raceNum, int accumulatedTime, int lapNum, int sectorIndex) {
+    // Only update if this is the display rider
+    if (raceNum != getDisplayRaceNum() || raceNum != m_displayLapTimerRaceNum) {
+        return;
+    }
+
+    LapTimer& timer = m_displayLapTimer;
+    timer.setAnchor(accumulatedTime);
+    timer.currentLapNum = lapNum;
+
+    // Update sector tracking based on which split was crossed
+    // sectorIndex: 0=S1, 1=S2, 2=S3 (lap complete)
+    if (sectorIndex == 0) {
+        timer.currentSector = 1;  // Now in sector 2 (between S1 and S2)
+        timer.lastSplit1Time = accumulatedTime;
+    } else if (sectorIndex == 1) {
+        timer.currentSector = 2;  // Now in sector 3 (between S2 and S3/finish)
+        timer.lastSplit2Time = accumulatedTime;
+    }
+    // Note: sectorIndex == 2 (lap complete) is handled by resetLapTimerForNewLap
+
+    DEBUG_INFO_F("LapTimer: Anchor set, time=%d ms, lap=%d, sector=%d",
+                 accumulatedTime, lapNum, sectorIndex);
+}
+
+void PluginData::resetLapTimerForNewLap(int raceNum, int lapNum) {
+    // Only update if this is the display rider
+    if (raceNum != getDisplayRaceNum() || raceNum != m_displayLapTimerRaceNum) {
+        return;
+    }
+
+    LapTimer& timer = m_displayLapTimer;
+
+    // Reset anchor for new lap (accumulated = 0)
+    timer.setAnchor(0);
+    timer.currentLapNum = lapNum;
+    timer.currentSector = 0;  // Reset to sector 0 (before S1)
+    timer.lastSplit1Time = -1;
+    timer.lastSplit2Time = -1;
+    // Keep track monitor initialized - we don't want to lose position tracking
+
+    DEBUG_INFO_F("LapTimer: Reset for new lap, lap=%d", lapNum);
+}
+
+void PluginData::resetLapTimer(int raceNum) {
+    // Only reset if this is the rider we're tracking
+    if (raceNum == m_displayLapTimerRaceNum) {
+        m_displayLapTimer.reset();
+        DEBUG_INFO_F("LapTimer: Reset for raceNum=%d", raceNum);
+    }
+}
+
+void PluginData::resetAllLapTimers() {
+    m_displayLapTimer.reset();
+    m_displayLapTimerRaceNum = -1;
+    DEBUG_INFO("LapTimer: Timer reset");
+}
+
+int PluginData::getElapsedLapTime(int raceNum) const {
+    if (raceNum == m_displayLapTimerRaceNum) {
+        return m_displayLapTimer.getElapsedLapTime();
+    }
+    return -1;
+}
+
+int PluginData::getElapsedSectorTime(int raceNum, int sectorIndex) const {
+    if (raceNum == m_displayLapTimerRaceNum) {
+        return m_displayLapTimer.getElapsedSectorTime(sectorIndex);
+    }
+    return -1;
+}
+
+bool PluginData::isLapTimerValid(int raceNum) const {
+    if (raceNum == m_displayLapTimerRaceNum) {
+        return m_displayLapTimer.anchorValid;
+    }
+    return false;
+}
+
+int PluginData::getLapTimerCurrentLap(int raceNum) const {
+    if (raceNum == m_displayLapTimerRaceNum) {
+        return m_displayLapTimer.currentLapNum;
+    }
+    return 0;
+}
+
+int PluginData::getLapTimerCurrentSector(int raceNum) const {
+    if (raceNum == m_displayLapTimerRaceNum) {
+        return m_displayLapTimer.currentSector;
+    }
+    return 0;
 }
 
 void PluginData::updateStandings(int raceNum, int state, int bestLap, int bestLapNum,
@@ -1120,6 +1271,10 @@ void PluginData::clear() {
     m_riderSessionBest.clear();
     m_riderLapLog.clear();
     m_riderBestLap.clear();
+
+    // Reset single lap timer
+    m_displayLapTimer.reset();
+    m_displayLapTimerRaceNum = -1;
 
     // Clear leader timing points
     m_leaderTimingPoints.clear();

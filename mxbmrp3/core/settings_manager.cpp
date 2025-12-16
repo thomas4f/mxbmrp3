@@ -32,8 +32,10 @@
 #include "../hud/radar_hud.h"
 #include "../hud/pitboard_hud.h"
 #include "../hud/records_hud.h"
+#include "../hud/rumble_hud.h"
 #include "color_config.h"
 #include "update_checker.h"
+#include "xinput_reader.h"
 #include <fstream>
 #include <sstream>
 #include <array>
@@ -459,6 +461,7 @@ void SettingsManager::captureToProfile(const HudManager& hudManager, ProfileType
         const auto& hud = hudManager.getSessionBestHud();
         captureBaseHudSettings(settings, hud);
         settings["enabledRows"] = std::to_string(hud.m_enabledRows);
+        settings["showLiveSectorTime"] = hud.m_bShowLiveSectorTime ? "1" : "0";
         cache["SessionBestHud"] = std::move(settings);
     }
 
@@ -509,6 +512,7 @@ void SettingsManager::captureToProfile(const HudManager& hudManager, ProfileType
     captureWidget("NoticesWidget", hudManager.getNoticesWidget());
     captureWidget("SettingsButtonWidget", hudManager.getSettingsButtonWidget());
     captureWidget("PointerWidget", hudManager.getPointerWidget());
+    captureWidget("RumbleHud", hudManager.getRumbleHud());
 
     // SpeedWidget has speedUnit
     {
@@ -763,6 +767,7 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
             const auto& settings = it->second;
             try {
                 if (settings.count("enabledRows")) hud.m_enabledRows = static_cast<uint32_t>(std::stoul(settings.at("enabledRows")));
+                if (settings.count("showLiveSectorTime")) hud.m_bShowLiveSectorTime = (settings.at("showLiveSectorTime") == "1");
             } catch (...) {}
             hud.setDataDirty();
         }
@@ -827,6 +832,7 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
     applyToHud("NoticesWidget", hudManager.getNoticesWidget());
     applyToHud("SettingsButtonWidget", hudManager.getSettingsButtonWidget());
     applyToHud("PointerWidget", hudManager.getPointerWidget());
+    applyToHud("RumbleHud", hudManager.getRumbleHud());
 
     // Apply SpeedWidget with speedUnit
     {
@@ -1057,14 +1063,62 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     file << ACTIVE_PROFILE << "=" << static_cast<int>(profileManager.getActiveProfile()) << "\n";
     file << AUTO_SWITCH << "=" << (profileManager.isAutoSwitchEnabled() ? 1 : 0) << "\n\n";
 
+    // Write rumble section (global, not per-profile - hardware config)
+    const RumbleConfig& rumbleConfig = XInputReader::getInstance().getRumbleConfig();
+    file << "[Rumble]\n";
+    file << "enabled=" << (rumbleConfig.enabled ? 1 : 0) << "\n";
+    file << "controller=" << rumbleConfig.controllerIndex << "\n";
+    file << "additive_blend=" << (rumbleConfig.additiveBlend ? 1 : 0) << "\n";
+    file << "rumble_when_crashed=" << (rumbleConfig.rumbleWhenCrashed ? 1 : 0) << "\n";
+    file << "susp_motor=" << static_cast<int>(rumbleConfig.suspensionEffect.motor) << "\n";
+    file << "susp_min_input=" << rumbleConfig.suspensionEffect.minInput << "\n";
+    file << "susp_max_input=" << rumbleConfig.suspensionEffect.maxInput << "\n";
+    file << "susp_min_strength=" << rumbleConfig.suspensionEffect.minStrength << "\n";
+    file << "susp_max_strength=" << rumbleConfig.suspensionEffect.maxStrength << "\n";
+    file << "wheel_motor=" << static_cast<int>(rumbleConfig.wheelspinEffect.motor) << "\n";
+    file << "wheel_min_input=" << rumbleConfig.wheelspinEffect.minInput << "\n";
+    file << "wheel_max_input=" << rumbleConfig.wheelspinEffect.maxInput << "\n";
+    file << "wheel_min_strength=" << rumbleConfig.wheelspinEffect.minStrength << "\n";
+    file << "wheel_max_strength=" << rumbleConfig.wheelspinEffect.maxStrength << "\n";
+    file << "lockup_motor=" << static_cast<int>(rumbleConfig.brakeLockupEffect.motor) << "\n";
+    file << "lockup_min_input=" << rumbleConfig.brakeLockupEffect.minInput << "\n";
+    file << "lockup_max_input=" << rumbleConfig.brakeLockupEffect.maxInput << "\n";
+    file << "lockup_min_strength=" << rumbleConfig.brakeLockupEffect.minStrength << "\n";
+    file << "lockup_max_strength=" << rumbleConfig.brakeLockupEffect.maxStrength << "\n";
+    file << "rpm_motor=" << static_cast<int>(rumbleConfig.rpmEffect.motor) << "\n";
+    file << "rpm_min_input=" << rumbleConfig.rpmEffect.minInput << "\n";
+    file << "rpm_max_input=" << rumbleConfig.rpmEffect.maxInput << "\n";
+    file << "rpm_min_strength=" << rumbleConfig.rpmEffect.minStrength << "\n";
+    file << "rpm_max_strength=" << rumbleConfig.rpmEffect.maxStrength << "\n";
+    file << "slide_motor=" << static_cast<int>(rumbleConfig.slideEffect.motor) << "\n";
+    file << "slide_min_input=" << rumbleConfig.slideEffect.minInput << "\n";
+    file << "slide_max_input=" << rumbleConfig.slideEffect.maxInput << "\n";
+    file << "slide_min_strength=" << rumbleConfig.slideEffect.minStrength << "\n";
+    file << "slide_max_strength=" << rumbleConfig.slideEffect.maxStrength << "\n";
+    file << "surface_motor=" << static_cast<int>(rumbleConfig.surfaceEffect.motor) << "\n";
+    file << "surface_min_input=" << rumbleConfig.surfaceEffect.minInput << "\n";
+    file << "surface_max_input=" << rumbleConfig.surfaceEffect.maxInput << "\n";
+    file << "surface_min_strength=" << rumbleConfig.surfaceEffect.minStrength << "\n";
+    file << "surface_max_strength=" << rumbleConfig.surfaceEffect.maxStrength << "\n";
+    file << "steer_motor=" << static_cast<int>(rumbleConfig.steerEffect.motor) << "\n";
+    file << "steer_min_input=" << rumbleConfig.steerEffect.minInput << "\n";
+    file << "steer_max_input=" << rumbleConfig.steerEffect.maxInput << "\n";
+    file << "steer_min_strength=" << rumbleConfig.steerEffect.minStrength << "\n";
+    file << "steer_max_strength=" << rumbleConfig.steerEffect.maxStrength << "\n";
+    file << "wheelie_motor=" << static_cast<int>(rumbleConfig.wheelieEffect.motor) << "\n";
+    file << "wheelie_min_input=" << rumbleConfig.wheelieEffect.minInput << "\n";
+    file << "wheelie_max_input=" << rumbleConfig.wheelieEffect.maxInput << "\n";
+    file << "wheelie_min_strength=" << rumbleConfig.wheelieEffect.minStrength << "\n";
+    file << "wheelie_max_strength=" << rumbleConfig.wheelieEffect.maxStrength << "\n\n";
+
     // Write all profiles (including ColorConfig per-profile)
-    static const std::array<const char*, 26> hudOrder = {
+    static const std::array<const char*, 27> hudOrder = {
         "ColorConfig",
         "StandingsHud", "MapHud", "RadarHud", "PitboardHud", "RecordsHud",
         "LapLogHud", "SessionBestHud", "TelemetryHud", "InputHud", "PerformanceHud",
         "LapWidget", "PositionWidget", "TimeWidget", "SessionWidget", "SpeedWidget",
         "SpeedoWidget", "TachoWidget", "TimingHud", "GapBarHud", "BarsWidget", "VersionWidget",
-        "NoticesWidget", "FuelWidget", "SettingsButtonWidget", "PointerWidget"
+        "NoticesWidget", "FuelWidget", "SettingsButtonWidget", "PointerWidget", "RumbleHud"
     };
 
     for (int profileIdx = 0; profileIdx < static_cast<int>(ProfileType::COUNT); ++profileIdx) {
@@ -1167,6 +1221,127 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                     }
                 } else if (key == AUTO_SWITCH) {
                     ProfileManager::getInstance().setAutoSwitchEnabled(std::stoi(value) != 0);
+                }
+            } catch (...) {}
+            continue;
+        }
+
+        // Handle Rumble section (global controller settings)
+        if (currentHudName == "Rumble") {
+            RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+            try {
+                if (key == "enabled") {
+                    config.enabled = std::stoi(value) != 0;
+                } else if (key == "controller") {
+                    config.controllerIndex = std::stoi(value);
+                    XInputReader::getInstance().setControllerIndex(config.controllerIndex);
+                } else if (key == "additive_blend") {
+                    config.additiveBlend = std::stoi(value) != 0;
+                } else if (key == "rumble_when_crashed") {
+                    config.rumbleWhenCrashed = std::stoi(value) != 0;
+                } else if (key == "disable_on_crash") {
+                    // Backward compatibility: invert the old setting
+                    config.rumbleWhenCrashed = std::stoi(value) == 0;
+                } else if (key == "susp_motor") {
+                    int motor = std::stoi(value);
+                    if (motor >= 0 && motor <= 3) config.suspensionEffect.motor = static_cast<MotorTarget>(motor);
+                } else if (key == "susp_enabled") {
+                    // Backward compatibility: enabled=1 -> Heavy (default), enabled=0 -> Off
+                    config.suspensionEffect.motor = std::stoi(value) != 0 ? MotorTarget::Heavy : MotorTarget::Off;
+                } else if (key == "susp_min_input") {
+                    config.suspensionEffect.minInput = std::stof(value);
+                } else if (key == "susp_max_input") {
+                    config.suspensionEffect.maxInput = std::stof(value);
+                } else if (key == "susp_min_strength") {
+                    config.suspensionEffect.minStrength = std::stof(value);
+                } else if (key == "susp_max_strength") {
+                    config.suspensionEffect.maxStrength = std::stof(value);
+                } else if (key == "wheel_motor") {
+                    int motor = std::stoi(value);
+                    if (motor >= 0 && motor <= 3) config.wheelspinEffect.motor = static_cast<MotorTarget>(motor);
+                } else if (key == "wheel_enabled") {
+                    // Backward compatibility: enabled=1 -> Light (default), enabled=0 -> Off
+                    config.wheelspinEffect.motor = std::stoi(value) != 0 ? MotorTarget::Light : MotorTarget::Off;
+                } else if (key == "wheel_min_input") {
+                    config.wheelspinEffect.minInput = std::stof(value);
+                } else if (key == "wheel_max_input") {
+                    config.wheelspinEffect.maxInput = std::stof(value);
+                } else if (key == "wheel_min_strength") {
+                    config.wheelspinEffect.minStrength = std::stof(value);
+                } else if (key == "wheel_max_strength") {
+                    config.wheelspinEffect.maxStrength = std::stof(value);
+                } else if (key == "lockup_motor") {
+                    int motor = std::stoi(value);
+                    if (motor >= 0 && motor <= 3) config.brakeLockupEffect.motor = static_cast<MotorTarget>(motor);
+                } else if (key == "lockup_enabled") {
+                    // Backward compatibility: enabled=1 -> Light (default), enabled=0 -> Off
+                    config.brakeLockupEffect.motor = std::stoi(value) != 0 ? MotorTarget::Light : MotorTarget::Off;
+                } else if (key == "lockup_min_input") {
+                    config.brakeLockupEffect.minInput = std::stof(value);
+                } else if (key == "lockup_max_input") {
+                    config.brakeLockupEffect.maxInput = std::stof(value);
+                } else if (key == "lockup_min_strength") {
+                    config.brakeLockupEffect.minStrength = std::stof(value);
+                } else if (key == "lockup_max_strength") {
+                    config.brakeLockupEffect.maxStrength = std::stof(value);
+                } else if (key == "rpm_motor") {
+                    int motor = std::stoi(value);
+                    if (motor >= 0 && motor <= 3) config.rpmEffect.motor = static_cast<MotorTarget>(motor);
+                } else if (key == "rpm_enabled") {
+                    // Backward compatibility: enabled=1 -> Light (default), enabled=0 -> Off
+                    config.rpmEffect.motor = std::stoi(value) != 0 ? MotorTarget::Light : MotorTarget::Off;
+                } else if (key == "rpm_min_input") {
+                    config.rpmEffect.minInput = std::stof(value);
+                } else if (key == "rpm_max_input") {
+                    config.rpmEffect.maxInput = std::stof(value);
+                } else if (key == "rpm_min_strength") {
+                    config.rpmEffect.minStrength = std::stof(value);
+                } else if (key == "rpm_max_strength") {
+                    config.rpmEffect.maxStrength = std::stof(value);
+                } else if (key == "slide_motor") {
+                    int motor = std::stoi(value);
+                    if (motor >= 0 && motor <= 3) config.slideEffect.motor = static_cast<MotorTarget>(motor);
+                } else if (key == "slide_min_input") {
+                    config.slideEffect.minInput = std::stof(value);
+                } else if (key == "slide_max_input") {
+                    config.slideEffect.maxInput = std::stof(value);
+                } else if (key == "slide_min_strength") {
+                    config.slideEffect.minStrength = std::stof(value);
+                } else if (key == "slide_max_strength") {
+                    config.slideEffect.maxStrength = std::stof(value);
+                } else if (key == "surface_motor") {
+                    int motor = std::stoi(value);
+                    if (motor >= 0 && motor <= 3) config.surfaceEffect.motor = static_cast<MotorTarget>(motor);
+                } else if (key == "surface_min_input") {
+                    config.surfaceEffect.minInput = std::stof(value);
+                } else if (key == "surface_max_input") {
+                    config.surfaceEffect.maxInput = std::stof(value);
+                } else if (key == "surface_min_strength") {
+                    config.surfaceEffect.minStrength = std::stof(value);
+                } else if (key == "surface_max_strength") {
+                    config.surfaceEffect.maxStrength = std::stof(value);
+                } else if (key == "steer_motor") {
+                    int motor = std::stoi(value);
+                    if (motor >= 0 && motor <= 3) config.steerEffect.motor = static_cast<MotorTarget>(motor);
+                } else if (key == "steer_min_input") {
+                    config.steerEffect.minInput = std::stof(value);
+                } else if (key == "steer_max_input") {
+                    config.steerEffect.maxInput = std::stof(value);
+                } else if (key == "steer_min_strength") {
+                    config.steerEffect.minStrength = std::stof(value);
+                } else if (key == "steer_max_strength") {
+                    config.steerEffect.maxStrength = std::stof(value);
+                } else if (key == "wheelie_motor") {
+                    int motor = std::stoi(value);
+                    if (motor >= 0 && motor <= 3) config.wheelieEffect.motor = static_cast<MotorTarget>(motor);
+                } else if (key == "wheelie_min_input") {
+                    config.wheelieEffect.minInput = std::stof(value);
+                } else if (key == "wheelie_max_input") {
+                    config.wheelieEffect.maxInput = std::stof(value);
+                } else if (key == "wheelie_min_strength") {
+                    config.wheelieEffect.minStrength = std::stof(value);
+                } else if (key == "wheelie_max_strength") {
+                    config.wheelieEffect.maxStrength = std::stof(value);
                 }
             } catch (...) {}
             continue;

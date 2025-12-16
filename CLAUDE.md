@@ -26,7 +26,8 @@ Game Engine (renders quads/strings)
 - `PluginData` - Central game state cache, change detection
 - `HudManager` - HUD lifecycle, owns all HUD instances
 - `SettingsManager` - Save/load HUD configurations
-- `InputManager` - Mouse, keyboard, XInput controller
+- `InputManager` - Mouse and keyboard input
+- `XInputReader` - Controller state and rumble effects
 
 ## Build & Test
 

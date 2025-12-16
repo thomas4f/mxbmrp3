@@ -97,4 +97,8 @@ void RaceLapHandler::handleRaceLap(SPluginsRaceLap_t* psRaceLap) {
     // m_iLapNum is the lap we just started (after completing the previous lap)
     // This must happen for ALL laps (valid or invalid) to keep lap numbering in sync
     data.setCurrentLapNumber(raceNum, psRaceLap->m_iLapNum);
+
+    // Reset centralized lap timer for new lap (start timing from 0)
+    // m_iLapNum is the new lap number we're starting
+    data.resetLapTimerForNewLap(raceNum, psRaceLap->m_iLapNum);
 }

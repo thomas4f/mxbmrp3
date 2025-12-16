@@ -23,6 +23,7 @@ TachoWidget::TachoWidget()
     // This is an intentional design decision - see base_hud.h initializeWidget() docs
     m_quads.reserve(2);  // dial background + needle
     setDraggable(true);
+    m_bVisible = false;  // Off by default
     m_bShowTitle = false;
     m_bShowBackgroundTexture = true;  // Show dial texture by default
     m_fBackgroundOpacity = 1.0f;  // 100% opacity
@@ -168,7 +169,7 @@ void TachoWidget::rebuildRenderData() {
 }
 
 void TachoWidget::resetToDefaults() {
-    m_bVisible = true;
+    m_bVisible = false;
     m_bShowTitle = false;
     m_bShowBackgroundTexture = true;  // Show dial texture by default
     m_fBackgroundOpacity = 1.0f;  // 100% opacity

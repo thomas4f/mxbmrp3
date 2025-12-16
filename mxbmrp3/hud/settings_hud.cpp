@@ -4,6 +4,7 @@
 // ============================================================================
 #include "settings_hud.h"
 #include "telemetry_hud.h"
+#include "rumble_hud.h"
 #include "settings_button_widget.h"
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
@@ -16,8 +17,22 @@
 #include "../core/update_checker.h"
 #include <cstring>
 #include <algorithm>
+#include <cmath>
 
 using namespace PluginConstants;
+
+namespace {
+    // Helper to convert MotorTarget to display string
+    const char* motorTargetToString(MotorTarget motor) {
+        switch (motor) {
+            case MotorTarget::Off:   return "Off  ";
+            case MotorTarget::Heavy: return "Heavy";
+            case MotorTarget::Light: return "Light";
+            case MotorTarget::Both:  return "Both ";
+            default:                 return "Off  ";
+        }
+    }
+}
 
 SettingsHud::SettingsHud(SessionBestHud* sessionBest, LapLogHud* lapLog,
                          StandingsHud* standings,
@@ -239,7 +254,7 @@ void SettingsHud::rebuildRenderData() {
     float panelWidth = PluginUtils::calculateMonospaceTextWidth(panelWidthChars, dim.fontSize) + dim.paddingH + dim.paddingH;
 
     // Estimate height - much smaller now (tabs + one HUD's controls)
-    int estimatedRows = 25;  // Enough for General tab (profiles + 10 colors + preferences + updates + spacing)
+    int estimatedRows = 28;  // Enough for General tab (profiles + controller + 10 colors + preferences + updates + spacing)
     float backgroundHeight = dim.paddingV + dim.lineHeightLarge + dim.lineHeightNormal + (estimatedRows * dim.lineHeightNormal) + dim.paddingV;
 
     // Center the panel horizontally and vertically
@@ -294,6 +309,8 @@ void SettingsHud::rebuildRenderData() {
             isHudEnabled = tabHud->isVisible();
         } else if (i == TAB_WIDGETS) {
             isHudEnabled = HudManager::getInstance().areWidgetsEnabled();
+        } else if (i == TAB_RUMBLE) {
+            isHudEnabled = XInputReader::getInstance().getRumbleConfig().enabled;
         } else {
             isHudEnabled = true;  // General is always "enabled"
         }
@@ -322,6 +339,19 @@ void SettingsHud::rebuildRenderData() {
             m_clickRegions.push_back(ClickRegion(
                 currentTabX, tabStartY, checkboxWidth, dim.lineHeightNormal,
                 ClickRegion::WIDGETS_TOGGLE, nullptr
+            ));
+
+            // Checkbox text
+            const char* checkboxText = isHudEnabled ? "[X]" : "[ ]";
+            addString(checkboxText, currentTabX, tabStartY, Justify::LEFT,
+                Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+
+            currentTabX += checkboxWidth;
+        } else if (i == TAB_RUMBLE) {
+            // Checkbox click region for rumble master toggle
+            m_clickRegions.push_back(ClickRegion(
+                currentTabX, tabStartY, checkboxWidth, dim.lineHeightNormal,
+                ClickRegion::RUMBLE_TOGGLE, nullptr
             ));
 
             // Checkbox text
@@ -385,6 +415,7 @@ void SettingsHud::rebuildRenderData() {
                               i == TAB_TIMING ? "Timing" :
                               i == TAB_GAP_BAR ? "Gap Bar" :
                               i == TAB_WIDGETS ? "Widgets" :
+                              i == TAB_RUMBLE ? "Rumble" :
                               "Radar";
 
         addString(tabName, currentTabX, tabStartY, Justify::LEFT, tabFont, tabColor, dim.fontSize);
@@ -763,6 +794,45 @@ void SettingsHud::rebuildRenderData() {
                 renderButton("[Copy to All]", copyToAllWidth, ClickRegion::APPLY_TO_ALL_PROFILES);
                 renderButton("[Reset Profile]", resetProfileWidth, ClickRegion::RESET_PROFILE_BUTTON);
                 renderButton("[Reset All Profiles]", resetAllWidth, ClickRegion::RESET_BUTTON);
+
+                currentY += dim.lineHeightNormal;
+            }
+
+            // Controller section
+            currentY += dim.lineHeightNormal * 0.5f;  // Spacing between sections
+            addString("Controller", leftColumnX, currentY, Justify::LEFT,
+                Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+            currentY += dim.lineHeightNormal * 1.5f;
+
+            // Controller index selector (used by both Input HUD and Rumble)
+            {
+                float toggleX = leftColumnX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);
+                float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+
+                RumbleConfig& rumbleConfig = XInputReader::getInstance().getRumbleConfig();
+                bool isConnected = XInputReader::isControllerConnected(rumbleConfig.controllerIndex);
+
+                addString("Index", leftColumnX, currentY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+
+                float currentX = toggleX;
+                addString("<", currentX, currentY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+                currentX += charWidth * 2;
+
+                char indexStr[4];
+                snprintf(indexStr, sizeof(indexStr), "%d", rumbleConfig.controllerIndex + 1);
+                addString(indexStr, currentX, currentY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, isConnected ? ColorConfig::getInstance().getPositive() : ColorConfig::getInstance().getMuted(), dim.fontSize);
+                currentX += charWidth * 2;
+
+                addString(" >", currentX, currentY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+
+                m_clickRegions.push_back(ClickRegion(
+                    toggleX, currentY, charWidth * 7, dim.lineHeightNormal,
+                    ClickRegion::RUMBLE_CONTROLLER_UP, nullptr
+                ));
 
                 currentY += dim.lineHeightNormal;
             }
@@ -1603,6 +1673,195 @@ void SettingsHud::rebuildRenderData() {
             }
             break;
 
+        case TAB_RUMBLE:
+            // Rumble settings tab - standard HUD controls + effects table
+            {
+                RumbleHud* rumbleHud = &HudManager::getInstance().getRumbleHud();
+                activeHud = rumbleHud;
+                dataStartY = addHudControls(rumbleHud);
+
+                RumbleConfig& rumbleConfig = XInputReader::getInstance().getRumbleConfig();
+                float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+
+                // RIGHT COLUMN: Rumble-specific controls
+                {
+                    float rightY = dataStartY;
+                    float toggleX = rightColumnX + PluginUtils::calculateMonospaceTextWidth(14, dim.fontSize);
+
+                    // Master rumble enable (mirrors tab checkbox for clarity)
+                    addString("Rumble", rightColumnX, rightY, Justify::LEFT,
+                        Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    addToggleControl(toggleX, rightY, rumbleConfig.enabled,
+                        ClickRegion::RUMBLE_TOGGLE, nullptr);
+                    rightY += dim.lineHeightNormal;
+
+                    // Stack mode: On = effects add up, Off = max wins
+                    addString("Stack", rightColumnX, rightY, Justify::LEFT,
+                        Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    addToggleControl(toggleX, rightY, rumbleConfig.additiveBlend,
+                        ClickRegion::RUMBLE_BLEND_TOGGLE, nullptr);
+                    rightY += dim.lineHeightNormal;
+
+                    // Rumble when crashed control
+                    addString("When Crashed", rightColumnX, rightY, Justify::LEFT,
+                        Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    addToggleControl(toggleX, rightY, rumbleConfig.rumbleWhenCrashed,
+                        ClickRegion::RUMBLE_CRASH_TOGGLE, nullptr);
+                    rightY += dim.lineHeightNormal;
+                }
+
+                // Effects table below the standard controls
+                currentY += dim.lineHeightNormal;  // Extra spacing before table
+
+                // Table header - columns: Effect | Motor | Sens | Strength
+                float effectX = leftColumnX;
+                float motorX = effectX + PluginUtils::calculateMonospaceTextWidth(10, dim.fontSize);
+                float sensX = motorX + PluginUtils::calculateMonospaceTextWidth(10, dim.fontSize);
+                float strengthX = sensX + PluginUtils::calculateMonospaceTextWidth(10, dim.fontSize);
+
+                addString("Effect", effectX, currentY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                addString("Motor", motorX, currentY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                addString("Sens", sensX, currentY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                addString("Strength", strengthX, currentY, Justify::LEFT,
+                    Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                currentY += dim.lineHeightNormal;
+
+                // Helper to convert minInput to sensitivity percentage string
+                auto getSensitivityPercent = [](const RumbleEffect& eff, char* buf, size_t bufSize) {
+                    // Sensitivity ratio as percentage (10-100%)
+                    float ratio = eff.minInput / eff.maxInput;
+                    int percent = static_cast<int>(std::round(ratio * 100.0f));
+                    // Clamp to valid range
+                    if (percent < 10) percent = 10;
+                    if (percent > 100) percent = 100;
+                    snprintf(buf, bufSize, "%d%%", percent);
+                };
+
+                // Lambda for rumble effect rows
+                auto addRumbleRow = [&](const char* name, RumbleEffect& effect,
+                                        ClickRegion::Type motorDown,
+                                        ClickRegion::Type motorUp,
+                                        ClickRegion::Type sensDown,
+                                        ClickRegion::Type sensUp,
+                                        ClickRegion::Type strengthDown,
+                                        ClickRegion::Type strengthUp) {
+                    // Effect name
+                    addString(name, effectX, currentY, Justify::LEFT,
+                        Fonts::ROBOTO_MONO, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+
+                    // Motor target control: < Off/Heavy/Light/Both >
+                    {
+                        float currentX = motorX;
+                        addString("<", currentX, currentY, Justify::LEFT,
+                            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+                        m_clickRegions.push_back(ClickRegion(
+                            currentX, currentY, charWidth * 2, dim.lineHeightNormal,
+                            motorDown, nullptr
+                        ));
+                        currentX += charWidth * 2;
+                        char paddedMotor[8];
+                        snprintf(paddedMotor, sizeof(paddedMotor), "%-5s", motorTargetToString(effect.motor));
+                        addString(paddedMotor, currentX, currentY, Justify::LEFT,
+                            Fonts::ROBOTO_MONO, effect.isEnabled() ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getMuted(), dim.fontSize);
+                        currentX += charWidth * 5;
+                        addString(" >", currentX, currentY, Justify::LEFT,
+                            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+                        m_clickRegions.push_back(ClickRegion(
+                            currentX, currentY, charWidth * 2, dim.lineHeightNormal,
+                            motorUp, nullptr
+                        ));
+                    }
+
+                    // Sensitivity control: < 10%-100% >
+                    {
+                        float currentX = sensX;
+                        addString("<", currentX, currentY, Justify::LEFT,
+                            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+                        m_clickRegions.push_back(ClickRegion(
+                            currentX, currentY, charWidth * 2, dim.lineHeightNormal,
+                            sensDown, nullptr
+                        ));
+                        currentX += charWidth * 2;
+                        char sensBuf[8];
+                        getSensitivityPercent(effect, sensBuf, sizeof(sensBuf));
+                        char paddedSens[8];
+                        snprintf(paddedSens, sizeof(paddedSens), "%-4s", sensBuf);
+                        addString(paddedSens, currentX, currentY, Justify::LEFT,
+                            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                        currentX += charWidth * 4;
+                        addString(" >", currentX, currentY, Justify::LEFT,
+                            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+                        m_clickRegions.push_back(ClickRegion(
+                            currentX, currentY, charWidth * 2, dim.lineHeightNormal,
+                            sensUp, nullptr
+                        ));
+                    }
+
+                    // Strength control
+                    {
+                        char valueStr[8];
+                        snprintf(valueStr, sizeof(valueStr), "%3.0f%%", effect.maxStrength * 100.0f);
+                        float currentX = strengthX;
+                        addString("<", currentX, currentY, Justify::LEFT,
+                            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+                        m_clickRegions.push_back(ClickRegion(
+                            currentX, currentY, charWidth * 2, dim.lineHeightNormal,
+                            strengthDown, nullptr
+                        ));
+                        currentX += charWidth * 2;
+                        addString(valueStr, currentX, currentY, Justify::LEFT,
+                            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                        currentX += charWidth * 4;
+                        addString(" >", currentX, currentY, Justify::LEFT,
+                            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+                        m_clickRegions.push_back(ClickRegion(
+                            currentX, currentY, charWidth * 2, dim.lineHeightNormal,
+                            strengthUp, nullptr
+                        ));
+                    }
+
+                    currentY += dim.lineHeightNormal;
+                };
+
+                // Effect rows (motorDown, motorUp, sensDown, sensUp, strengthDown, strengthUp)
+                addRumbleRow("Bumps", rumbleConfig.suspensionEffect,
+                    ClickRegion::RUMBLE_SUSP_MOTOR_DOWN, ClickRegion::RUMBLE_SUSP_TOGGLE,
+                    ClickRegion::RUMBLE_SUSP_MIN_DOWN, ClickRegion::RUMBLE_SUSP_MIN_UP,
+                    ClickRegion::RUMBLE_SUSP_STRENGTH_DOWN, ClickRegion::RUMBLE_SUSP_STRENGTH_UP);
+                addRumbleRow("Slide", rumbleConfig.slideEffect,
+                    ClickRegion::RUMBLE_SLIDE_MOTOR_DOWN, ClickRegion::RUMBLE_SLIDE_TOGGLE,
+                    ClickRegion::RUMBLE_SLIDE_THRESH_DOWN, ClickRegion::RUMBLE_SLIDE_THRESH_UP,
+                    ClickRegion::RUMBLE_SLIDE_STRENGTH_DOWN, ClickRegion::RUMBLE_SLIDE_STRENGTH_UP);
+                addRumbleRow("Spin", rumbleConfig.wheelspinEffect,
+                    ClickRegion::RUMBLE_WHEEL_MOTOR_DOWN, ClickRegion::RUMBLE_WHEEL_TOGGLE,
+                    ClickRegion::RUMBLE_WHEEL_MIN_DOWN, ClickRegion::RUMBLE_WHEEL_MIN_UP,
+                    ClickRegion::RUMBLE_WHEEL_STRENGTH_DOWN, ClickRegion::RUMBLE_WHEEL_STRENGTH_UP);
+                addRumbleRow("Lockup", rumbleConfig.brakeLockupEffect,
+                    ClickRegion::RUMBLE_LOCKUP_MOTOR_DOWN, ClickRegion::RUMBLE_LOCKUP_TOGGLE,
+                    ClickRegion::RUMBLE_LOCKUP_THRESH_DOWN, ClickRegion::RUMBLE_LOCKUP_THRESH_UP,
+                    ClickRegion::RUMBLE_LOCKUP_STRENGTH_DOWN, ClickRegion::RUMBLE_LOCKUP_STRENGTH_UP);
+                addRumbleRow("Wheelie", rumbleConfig.wheelieEffect,
+                    ClickRegion::RUMBLE_WHEELIE_MOTOR_DOWN, ClickRegion::RUMBLE_WHEELIE_TOGGLE,
+                    ClickRegion::RUMBLE_WHEELIE_THRESH_DOWN, ClickRegion::RUMBLE_WHEELIE_THRESH_UP,
+                    ClickRegion::RUMBLE_WHEELIE_STRENGTH_DOWN, ClickRegion::RUMBLE_WHEELIE_STRENGTH_UP);
+                addRumbleRow("RPM", rumbleConfig.rpmEffect,
+                    ClickRegion::RUMBLE_RPM_MOTOR_DOWN, ClickRegion::RUMBLE_RPM_TOGGLE,
+                    ClickRegion::RUMBLE_RPM_THRESH_DOWN, ClickRegion::RUMBLE_RPM_THRESH_UP,
+                    ClickRegion::RUMBLE_RPM_STRENGTH_DOWN, ClickRegion::RUMBLE_RPM_STRENGTH_UP);
+                addRumbleRow("Steer", rumbleConfig.steerEffect,
+                    ClickRegion::RUMBLE_STEER_MOTOR_DOWN, ClickRegion::RUMBLE_STEER_TOGGLE,
+                    ClickRegion::RUMBLE_STEER_THRESH_DOWN, ClickRegion::RUMBLE_STEER_THRESH_UP,
+                    ClickRegion::RUMBLE_STEER_STRENGTH_DOWN, ClickRegion::RUMBLE_STEER_STRENGTH_UP);
+                addRumbleRow("Surface", rumbleConfig.surfaceEffect,
+                    ClickRegion::RUMBLE_SURFACE_MOTOR_DOWN, ClickRegion::RUMBLE_SURFACE_TOGGLE,
+                    ClickRegion::RUMBLE_SURFACE_THRESH_DOWN, ClickRegion::RUMBLE_SURFACE_THRESH_UP,
+                    ClickRegion::RUMBLE_SURFACE_STRENGTH_DOWN, ClickRegion::RUMBLE_SURFACE_STRENGTH_UP);
+            }
+            break;
+
         default:
             DEBUG_WARN_F("Invalid tab index: %d, defaulting to TAB_STANDINGS", m_activeTab);
             activeHud = m_standings;
@@ -2136,6 +2395,444 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                     handleCloseButtonClick();
                     return;  // Don't save settings, just close the menu
 
+                // Controller/Rumble settings
+                case ClickRegion::RUMBLE_TOGGLE:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.enabled = !config.enabled;
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_CONTROLLER_UP:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.controllerIndex = (config.controllerIndex + 1) % 4;
+                        XInputReader::getInstance().setControllerIndex(config.controllerIndex);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_CONTROLLER_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.controllerIndex = (config.controllerIndex + 3) % 4;  // +3 = -1 mod 4
+                        XInputReader::getInstance().setControllerIndex(config.controllerIndex);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_BLEND_TOGGLE:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.additiveBlend = !config.additiveBlend;
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_CRASH_TOGGLE:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.rumbleWhenCrashed = !config.rumbleWhenCrashed;
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_SUSP_TOGGLE:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.suspensionEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.suspensionEffect.motor) + 1) % 4);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_SUSP_MOTOR_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.suspensionEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.suspensionEffect.motor) + 3) % 4);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_SUSP_MIN_UP:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float ratio = config.suspensionEffect.minInput / config.suspensionEffect.maxInput;
+                        float newRatio = ratio + 0.10f;
+                        if (newRatio > 0.95f) newRatio = 0.10f;
+                        config.suspensionEffect.minInput = newRatio * config.suspensionEffect.maxInput;
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_SUSP_MIN_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float ratio = config.suspensionEffect.minInput / config.suspensionEffect.maxInput;
+                        float newRatio = ratio - 0.10f;
+                        if (newRatio < 0.05f) newRatio = 1.00f;
+                        config.suspensionEffect.minInput = newRatio * config.suspensionEffect.maxInput;
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_SUSP_STRENGTH_UP:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.suspensionEffect.maxStrength = std::min(1.0f, config.suspensionEffect.maxStrength + 0.1f);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_SUSP_STRENGTH_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.suspensionEffect.maxStrength = std::max(0.0f, config.suspensionEffect.maxStrength - 0.1f);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_WHEEL_TOGGLE:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.wheelspinEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.wheelspinEffect.motor) + 1) % 4);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_WHEEL_MOTOR_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.wheelspinEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.wheelspinEffect.motor) + 3) % 4);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_WHEEL_MIN_UP:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float ratio = config.wheelspinEffect.minInput / config.wheelspinEffect.maxInput;
+                        float newRatio = ratio + 0.10f;
+                        if (newRatio > 0.95f) newRatio = 0.10f;
+                        config.wheelspinEffect.minInput = newRatio * config.wheelspinEffect.maxInput;
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_WHEEL_MIN_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float ratio = config.wheelspinEffect.minInput / config.wheelspinEffect.maxInput;
+                        float newRatio = ratio - 0.10f;
+                        if (newRatio < 0.05f) newRatio = 1.00f;
+                        config.wheelspinEffect.minInput = newRatio * config.wheelspinEffect.maxInput;
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_WHEEL_STRENGTH_UP:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.wheelspinEffect.maxStrength = std::min(1.0f, config.wheelspinEffect.maxStrength + 0.1f);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_WHEEL_STRENGTH_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.wheelspinEffect.maxStrength = std::max(0.0f, config.wheelspinEffect.maxStrength - 0.1f);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_LOCKUP_TOGGLE:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.brakeLockupEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.brakeLockupEffect.motor) + 1) % 4);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_LOCKUP_MOTOR_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.brakeLockupEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.brakeLockupEffect.motor) + 3) % 4);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_LOCKUP_THRESH_UP:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float ratio = config.brakeLockupEffect.minInput / config.brakeLockupEffect.maxInput;
+                        float newRatio = ratio + 0.10f;
+                        if (newRatio > 0.95f) newRatio = 0.10f;
+                        config.brakeLockupEffect.minInput = newRatio * config.brakeLockupEffect.maxInput;
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_LOCKUP_THRESH_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float ratio = config.brakeLockupEffect.minInput / config.brakeLockupEffect.maxInput;
+                        float newRatio = ratio - 0.10f;
+                        if (newRatio < 0.05f) newRatio = 1.00f;
+                        config.brakeLockupEffect.minInput = newRatio * config.brakeLockupEffect.maxInput;
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_LOCKUP_STRENGTH_UP:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.brakeLockupEffect.maxStrength = std::min(1.0f, config.brakeLockupEffect.maxStrength + 0.1f);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_LOCKUP_STRENGTH_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.brakeLockupEffect.maxStrength = std::max(0.0f, config.brakeLockupEffect.maxStrength - 0.1f);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_RPM_TOGGLE:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.rpmEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.rpmEffect.motor) + 1) % 4);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_RPM_MOTOR_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.rpmEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.rpmEffect.motor) + 3) % 4);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_RPM_THRESH_UP:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float ratio = config.rpmEffect.minInput / config.rpmEffect.maxInput;
+                        float newRatio = ratio + 0.10f;
+                        if (newRatio > 0.95f) newRatio = 0.10f;
+                        config.rpmEffect.minInput = newRatio * config.rpmEffect.maxInput;
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_RPM_THRESH_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float ratio = config.rpmEffect.minInput / config.rpmEffect.maxInput;
+                        float newRatio = ratio - 0.10f;
+                        if (newRatio < 0.05f) newRatio = 1.00f;
+                        config.rpmEffect.minInput = newRatio * config.rpmEffect.maxInput;
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_RPM_STRENGTH_UP:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.rpmEffect.maxStrength = std::min(1.0f, config.rpmEffect.maxStrength + 0.1f);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_RPM_STRENGTH_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.rpmEffect.maxStrength = std::max(0.0f, config.rpmEffect.maxStrength - 0.1f);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_SLIDE_TOGGLE:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.slideEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.slideEffect.motor) + 1) % 4);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_SLIDE_MOTOR_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.slideEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.slideEffect.motor) + 3) % 4);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_SLIDE_THRESH_UP:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float ratio = config.slideEffect.minInput / config.slideEffect.maxInput;
+                        float newRatio = ratio + 0.10f;
+                        if (newRatio > 0.95f) newRatio = 0.10f;
+                        config.slideEffect.minInput = newRatio * config.slideEffect.maxInput;
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_SLIDE_THRESH_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float ratio = config.slideEffect.minInput / config.slideEffect.maxInput;
+                        float newRatio = ratio - 0.10f;
+                        if (newRatio < 0.05f) newRatio = 1.00f;
+                        config.slideEffect.minInput = newRatio * config.slideEffect.maxInput;
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_SLIDE_STRENGTH_UP:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.slideEffect.maxStrength = std::min(1.0f, config.slideEffect.maxStrength + 0.1f);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_SLIDE_STRENGTH_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.slideEffect.maxStrength = std::max(0.0f, config.slideEffect.maxStrength - 0.1f);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_SURFACE_TOGGLE:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.surfaceEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.surfaceEffect.motor) + 1) % 4);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_SURFACE_MOTOR_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.surfaceEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.surfaceEffect.motor) + 3) % 4);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_SURFACE_THRESH_UP:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float ratio = config.surfaceEffect.minInput / config.surfaceEffect.maxInput;
+                        float newRatio = ratio + 0.10f;
+                        if (newRatio > 0.95f) newRatio = 0.10f;
+                        config.surfaceEffect.minInput = newRatio * config.surfaceEffect.maxInput;
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_SURFACE_THRESH_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float ratio = config.surfaceEffect.minInput / config.surfaceEffect.maxInput;
+                        float newRatio = ratio - 0.10f;
+                        if (newRatio < 0.05f) newRatio = 1.00f;
+                        config.surfaceEffect.minInput = newRatio * config.surfaceEffect.maxInput;
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_SURFACE_STRENGTH_UP:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.surfaceEffect.maxStrength = std::min(1.0f, config.surfaceEffect.maxStrength + 0.1f);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_SURFACE_STRENGTH_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.surfaceEffect.maxStrength = std::max(0.0f, config.surfaceEffect.maxStrength - 0.1f);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_STEER_TOGGLE:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.steerEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.steerEffect.motor) + 1) % 4);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_STEER_MOTOR_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.steerEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.steerEffect.motor) + 3) % 4);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_STEER_THRESH_UP:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float ratio = config.steerEffect.minInput / config.steerEffect.maxInput;
+                        float newRatio = ratio + 0.10f;
+                        if (newRatio > 0.95f) newRatio = 0.10f;
+                        config.steerEffect.minInput = newRatio * config.steerEffect.maxInput;
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_STEER_THRESH_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float ratio = config.steerEffect.minInput / config.steerEffect.maxInput;
+                        float newRatio = ratio - 0.10f;
+                        if (newRatio < 0.05f) newRatio = 1.00f;
+                        config.steerEffect.minInput = newRatio * config.steerEffect.maxInput;
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_STEER_STRENGTH_UP:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.steerEffect.maxStrength = std::min(1.0f, config.steerEffect.maxStrength + 0.1f);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_STEER_STRENGTH_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.steerEffect.maxStrength = std::max(0.0f, config.steerEffect.maxStrength - 0.1f);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_WHEELIE_TOGGLE:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.wheelieEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.wheelieEffect.motor) + 1) % 4);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_WHEELIE_MOTOR_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.wheelieEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.wheelieEffect.motor) + 3) % 4);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_WHEELIE_THRESH_UP:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float ratio = config.wheelieEffect.minInput / config.wheelieEffect.maxInput;
+                        // Increment by 10%, wrap from 100% to 10%
+                        float newRatio = ratio + 0.10f;
+                        if (newRatio > 0.95f) newRatio = 0.10f;
+                        config.wheelieEffect.minInput = newRatio * config.wheelieEffect.maxInput;
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_WHEELIE_THRESH_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float ratio = config.wheelieEffect.minInput / config.wheelieEffect.maxInput;
+                        // Decrement by 10%, wrap from 10% to 100%
+                        float newRatio = ratio - 0.10f;
+                        if (newRatio < 0.05f) newRatio = 1.00f;
+                        config.wheelieEffect.minInput = newRatio * config.wheelieEffect.maxInput;
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_WHEELIE_STRENGTH_UP:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.wheelieEffect.maxStrength = std::min(1.0f, config.wheelieEffect.maxStrength + 0.1f);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_WHEELIE_STRENGTH_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        config.wheelieEffect.maxStrength = std::max(0.0f, config.wheelieEffect.maxStrength - 0.1f);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_HUD_TOGGLE:
+                    {
+                        auto& rumbleHud = HudManager::getInstance().getRumbleHud();
+                        rumbleHud.setVisible(!rumbleHud.isVisible());
+                        setDataDirty();
+                    }
+                    break;
+                // Reserved for advanced tuning - not exposed in UI
+                case ClickRegion::RUMBLE_SUSP_MAX_UP:
+                case ClickRegion::RUMBLE_SUSP_MAX_DOWN:
+                case ClickRegion::RUMBLE_WHEEL_MAX_UP:
+                case ClickRegion::RUMBLE_WHEEL_MAX_DOWN:
+                    break;
+
                 default:
                     DEBUG_WARN_F("Unknown ClickRegion type: %d", static_cast<int>(region.type));
                     break;
@@ -2172,7 +2869,6 @@ void SettingsHud::resetToDefaults() {
     if (m_speed) m_speed->resetToDefaults();
     if (m_speedo) m_speedo->resetToDefaults();
     if (m_tacho) m_tacho->resetToDefaults();
-    if (m_timing) m_timing->resetToDefaults();
     if (m_notices) m_notices->resetToDefaults();
     if (m_bars) m_bars->resetToDefaults();
     if (m_version) m_version->resetToDefaults();
@@ -2181,6 +2877,10 @@ void SettingsHud::resetToDefaults() {
 
     // Reset settings button (managed by HudManager)
     HudManager::getInstance().getSettingsButtonWidget().resetToDefaults();
+
+    // Reset rumble configuration and RumbleHud
+    XInputReader::getInstance().getRumbleConfig().resetToDefaults();
+    HudManager::getInstance().getRumbleHud().resetToDefaults();
 
     // Reset color configuration
     ColorConfig::getInstance().resetToDefaults();
@@ -2283,6 +2983,11 @@ void SettingsHud::resetCurrentTab() {
             if (m_pointer) m_pointer->resetToDefaults();
             HudManager::getInstance().getSettingsButtonWidget().resetToDefaults();
             break;
+        case TAB_RUMBLE:
+            // Reset rumble configuration and RumbleHud to defaults
+            XInputReader::getInstance().getRumbleConfig().resetToDefaults();
+            HudManager::getInstance().getRumbleHud().resetToDefaults();
+            break;
         default:
             DEBUG_WARN_F("Unknown tab index for reset: %d", m_activeTab);
             break;
@@ -2321,12 +3026,15 @@ void SettingsHud::resetCurrentProfile() {
     if (m_speed) m_speed->resetToDefaults();
     if (m_speedo) m_speedo->resetToDefaults();
     if (m_tacho) m_tacho->resetToDefaults();
-    if (m_timing) m_timing->resetToDefaults();
     if (m_notices) m_notices->resetToDefaults();
     if (m_bars) m_bars->resetToDefaults();
     if (m_version) m_version->resetToDefaults();
     if (m_fuel) m_fuel->resetToDefaults();
     if (m_pointer) m_pointer->resetToDefaults();
+
+    // Reset rumble configuration and RumbleHud
+    XInputReader::getInstance().getRumbleConfig().resetToDefaults();
+    HudManager::getInstance().getRumbleHud().resetToDefaults();
 
     // Reset settings button (managed by HudManager)
     HudManager::getInstance().getSettingsButtonWidget().resetToDefaults();

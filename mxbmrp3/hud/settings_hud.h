@@ -32,6 +32,7 @@
 #include "radar_hud.h"
 #include "../core/plugin_constants.h"
 #include "../core/color_config.h"
+#include "../core/xinput_reader.h"
 
 // Forward declarations
 class TelemetryHud;
@@ -130,7 +131,66 @@ private:
             APPLY_TO_ALL_PROFILES,     // Copy current profile settings to all other profiles
             WIDGETS_TOGGLE,            // Toggle all widgets visibility (master switch)
             TAB,                       // Select tab
-            CLOSE_BUTTON               // Close the settings menu
+            CLOSE_BUTTON,              // Close the settings menu
+            // Controller/Rumble settings
+            RUMBLE_TOGGLE,             // Toggle rumble master enable
+            RUMBLE_CONTROLLER_UP,      // Cycle controller index up
+            RUMBLE_CONTROLLER_DOWN,    // Cycle controller index down
+            RUMBLE_BLEND_TOGGLE,       // Toggle blend mode (max vs additive)
+            RUMBLE_CRASH_TOGGLE,       // Toggle disable on crash
+            RUMBLE_SUSP_MOTOR_DOWN,    // Cycle suspension motor backward
+            RUMBLE_SUSP_TOGGLE,        // Cycle suspension motor forward
+            RUMBLE_SUSP_MIN_UP,        // Increase suspension sensitivity
+            RUMBLE_SUSP_MIN_DOWN,      // Decrease suspension sensitivity
+            RUMBLE_SUSP_MAX_UP,        // Increase suspension max input
+            RUMBLE_SUSP_MAX_DOWN,      // Decrease suspension max input
+            RUMBLE_SUSP_STRENGTH_UP,   // Increase suspension max strength
+            RUMBLE_SUSP_STRENGTH_DOWN, // Decrease suspension max strength
+            RUMBLE_WHEEL_MOTOR_DOWN,   // Cycle spin motor backward
+            RUMBLE_WHEEL_TOGGLE,       // Cycle spin motor forward
+            RUMBLE_WHEEL_MIN_UP,       // Increase spin sensitivity
+            RUMBLE_WHEEL_MIN_DOWN,     // Decrease spin sensitivity
+            RUMBLE_WHEEL_MAX_UP,       // Increase spin max input
+            RUMBLE_WHEEL_MAX_DOWN,     // Decrease spin max input
+            RUMBLE_WHEEL_STRENGTH_UP,  // Increase spin max strength
+            RUMBLE_WHEEL_STRENGTH_DOWN, // Decrease spin max strength
+            RUMBLE_LOCKUP_MOTOR_DOWN,  // Cycle brake lockup motor backward
+            RUMBLE_LOCKUP_TOGGLE,      // Cycle brake lockup motor forward
+            RUMBLE_LOCKUP_THRESH_UP,   // Increase brake lockup sensitivity
+            RUMBLE_LOCKUP_THRESH_DOWN, // Decrease brake lockup sensitivity
+            RUMBLE_LOCKUP_STRENGTH_UP, // Increase brake lockup max strength
+            RUMBLE_LOCKUP_STRENGTH_DOWN, // Decrease brake lockup max strength
+            RUMBLE_WHEELIE_MOTOR_DOWN,  // Cycle wheelie motor backward
+            RUMBLE_WHEELIE_TOGGLE,      // Cycle wheelie motor forward
+            RUMBLE_WHEELIE_THRESH_UP,   // Increase wheelie sensitivity
+            RUMBLE_WHEELIE_THRESH_DOWN, // Decrease wheelie sensitivity
+            RUMBLE_WHEELIE_STRENGTH_UP, // Increase wheelie max strength
+            RUMBLE_WHEELIE_STRENGTH_DOWN, // Decrease wheelie max strength
+            RUMBLE_RPM_MOTOR_DOWN,     // Cycle RPM motor backward
+            RUMBLE_RPM_TOGGLE,         // Cycle RPM motor forward
+            RUMBLE_RPM_THRESH_UP,      // Increase RPM sensitivity
+            RUMBLE_RPM_THRESH_DOWN,    // Decrease RPM sensitivity
+            RUMBLE_RPM_STRENGTH_UP,    // Increase RPM max strength
+            RUMBLE_RPM_STRENGTH_DOWN,  // Decrease RPM max strength
+            RUMBLE_SLIDE_MOTOR_DOWN,   // Cycle slide motor backward
+            RUMBLE_SLIDE_TOGGLE,       // Cycle slide motor forward
+            RUMBLE_SLIDE_THRESH_UP,    // Increase slide sensitivity
+            RUMBLE_SLIDE_THRESH_DOWN,  // Decrease slide sensitivity
+            RUMBLE_SLIDE_STRENGTH_UP,  // Increase slide max strength
+            RUMBLE_SLIDE_STRENGTH_DOWN, // Decrease slide max strength
+            RUMBLE_SURFACE_MOTOR_DOWN, // Cycle surface motor backward
+            RUMBLE_SURFACE_TOGGLE,     // Cycle surface motor forward
+            RUMBLE_SURFACE_THRESH_UP,  // Increase surface sensitivity
+            RUMBLE_SURFACE_THRESH_DOWN, // Decrease surface sensitivity
+            RUMBLE_SURFACE_STRENGTH_UP, // Increase surface max strength
+            RUMBLE_SURFACE_STRENGTH_DOWN, // Decrease surface max strength
+            RUMBLE_STEER_MOTOR_DOWN,   // Cycle steer motor backward
+            RUMBLE_STEER_TOGGLE,       // Cycle steer motor forward
+            RUMBLE_STEER_THRESH_UP,    // Increase steer sensitivity
+            RUMBLE_STEER_THRESH_DOWN,  // Decrease steer sensitivity
+            RUMBLE_STEER_STRENGTH_UP,  // Increase steer max strength
+            RUMBLE_STEER_STRENGTH_DOWN, // Decrease steer max strength
+            RUMBLE_HUD_TOGGLE          // Toggle RumbleHud visibility
         } type;
 
         // Type-safe variant instead of unsafe union (C++17)
@@ -330,7 +390,8 @@ private:
         TAB_GAP_BAR = 11,      // Gap Bar HUD (lap timing comparison)
         TAB_PERFORMANCE = 12,
         TAB_WIDGETS = 13,
-        TAB_COUNT = 14
+        TAB_RUMBLE = 14,
+        TAB_COUNT = 15
     };
     int m_activeTab;
 

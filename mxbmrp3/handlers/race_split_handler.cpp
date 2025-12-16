@@ -20,15 +20,17 @@ void RaceSplitHandler::handleRaceSplit(SPluginsRaceSplit_t* psRaceSplit) {
 
     PluginData& data = PluginData::getInstance();
     int raceNum = psRaceSplit->m_iRaceNum;
+    int lapNum = psRaceSplit->m_iLapNum;
+    int splitIndex = psRaceSplit->m_iSplit;
+    int splitTime = psRaceSplit->m_iSplitTime;
 
     // Update current lap split data (used by SessionBestHud for real-time tracking)
     // m_iSplit is 0-indexed (0 = split 1, 1 = split 2, 2 = split 3/finish line)
-    data.updateCurrentLapSplit(
-        raceNum,
-        psRaceSplit->m_iLapNum,  // Use lap number directly from event
-        psRaceSplit->m_iSplit,
-        psRaceSplit->m_iSplitTime
-    );
+    data.updateCurrentLapSplit(raceNum, lapNum, splitIndex, splitTime);
+
+    // Update centralized lap timer anchor for real-time elapsed time calculation
+    // This allows HUDs to show continuously ticking time from last split
+    data.setLapTimerAnchor(raceNum, splitTime, lapNum, splitIndex);
 
     // Note: Lap log is NOT updated here - it only updates on RaceLap events
     // This keeps lap log simple and consistent with historical lap data

@@ -24,48 +24,6 @@ enum class ColumnMode : uint8_t {
 };
 
 // ============================================================================
-// Live timing anchor state - tracks when current lap/segment started
-// Uses wall clock time since session time can count UP (practice) or DOWN (races)
-// ============================================================================
-struct LiveTimingAnchor {
-    std::chrono::steady_clock::time_point wallClockTime;  // Real time when anchor was set
-    int accumulatedTime;      // Known accumulated lap time at anchor (ms)
-    bool valid;               // Do we have a usable anchor?
-
-    LiveTimingAnchor() : accumulatedTime(0), valid(false) {}
-
-    void reset() {
-        accumulatedTime = 0;
-        valid = false;
-    }
-
-    void set(int accumTime) {
-        wallClockTime = std::chrono::steady_clock::now();
-        accumulatedTime = accumTime;
-        valid = true;
-    }
-};
-
-// ============================================================================
-// Track position monitoring for S/F line detection
-// ============================================================================
-struct TrackPositionMonitor {
-    float lastTrackPos;       // Previous track position (0.0-1.0)
-    int lastLapNum;           // Previous lap number
-    bool initialized;         // Have we received first position?
-
-    static constexpr float WRAP_THRESHOLD = 0.5f;  // Position jump > 0.5 = S/F crossing
-
-    TrackPositionMonitor() : lastTrackPos(0.0f), lastLapNum(0), initialized(false) {}
-
-    void reset() {
-        lastTrackPos = 0.0f;
-        lastLapNum = 0;
-        initialized = false;
-    }
-};
-
-// ============================================================================
 // Cached official timing data - retained between timing events
 // ============================================================================
 struct OfficialTimingData {
@@ -103,9 +61,6 @@ public:
     bool handlesDataType(DataChangeType dataType) const override;
     void resetToDefaults();
 
-    // Track position update for S/F detection (called from HudManager)
-    void updateTrackPosition(int raceNum, float trackPos, int lapNum);
-
     // Column indices
     enum Column : int {
         COL_LABEL = 0,
@@ -131,11 +86,9 @@ private:
     void checkFreezeExpiration();
     bool shouldShowColumn(Column col) const;
     bool needsFrequentUpdates() const;
-    int calculateElapsedTime() const;
     int calculateGapToBest(int currentTime, int bestTime) const;
     int getVisibleColumnCount() const;
     void resetLiveTimingState();
-    void softResetAnchor();
 
     // Per-column visibility modes
     ColumnMode m_columnModes[COL_COUNT];
@@ -150,11 +103,6 @@ private:
     int m_cachedDisplayRaceNum;      // Track spectate target changes
     int m_cachedSession;             // Track session changes (new event)
     int m_cachedPitState;            // Track pit entry/exit (0 = on track, 1 = in pits)
-
-    // Live timing state
-    LiveTimingAnchor m_anchor;       // Anchor for elapsed time calculation
-    TrackPositionMonitor m_trackMonitor;  // For S/F line detection
-    int m_currentLapNum;             // Current lap being timed
 
     // Display state
     bool m_isFrozen;                 // Currently showing official time (frozen)?

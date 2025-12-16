@@ -33,7 +33,7 @@ public:
         COL_LIVE_GAP    = 1 << 8,   // Live gap (multi-state: see GapMode)
 
         COL_REQUIRED = 0,      // No required columns
-        COL_DEFAULT  = 0x1FF   // All 9 columns enabled (binary: 111111111)
+        COL_DEFAULT  = 0x1D7   // Default columns (excludes Bike and Penalty)
     };
 
     // Gap column display modes (for COL_OFFICIAL_GAP and COL_LIVE_GAP)

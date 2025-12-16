@@ -7,6 +7,7 @@ A customizable, [open-source](https://github.com/thomas4f/mxbmrp3) HUD plugin fo
 
 - Live race standings, track map, and proximity radar with approach alerts
 - Lap timing with splits, personal bests, gap-to-PB visualization, and online lap records
+- Controller rumble feedback with customizable effects (bumps, slide, spin, lockup, wheelie, etc.)
 - Telemetry visualization and compact info widgets
 - Drag-and-drop positioning with color themes
 - Automatic profile switching for Practice, Qualify, Race, and Spectate sessions
@@ -40,6 +41,7 @@ See [Installation](#installation) for setup instructions.
   - [Input](#input-hud)
   - [Performance](#performance-hud)
 - [Widgets](#widgets)
+- [Controller Rumble](#controller-rumble)
 - [Modding](#modding)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
@@ -118,6 +120,7 @@ Use the settings menu (Tilde key or `[=]` settings button) to access tabs for ea
 - Configure individual HUD settings (columns, rows, display modes)
 - Customize color theme
 - Set preferences (speed/fuel units, grid snapping)
+- Select controller index for Input HUD and rumble feedback
 - Check for updates (optional, checks GitHub releases on startup)
 - Reset settings (per-tab, per-profile, or all profiles)
 
@@ -244,6 +247,35 @@ Simple, focused display elements:
    - **Avg** - Average consumption per lap
    - **Est** - Estimated laps remaining
 10. **Notices Widget** - Race status notices (priority order: wrong way, blue flag, last lap, finished)
+
+## Controller Rumble
+
+Configure vibration feedback in the **Rumble** tab. Each effect can be assigned to heavy (left) or light (right) motors:
+
+| Effect | Description |
+|--------|-------------|
+| **Bumps** | Feel suspension compression from bumps, jumps, and hard landings through rumble intensity |
+| **Slide** | Feel when the bike is sliding laterally, useful for detecting and controlling drifts |
+| **Spin** | Feedback when the rear wheel loses traction under acceleration, helping you modulate throttle |
+| **Lockup** | Warning vibration when front or rear wheel locks up under heavy braking |
+| **Wheelie** | Feel the intensity of wheelies - vibration scales with pitch angle when front wheel lifts |
+| **RPM** | Continuous vibration that increases with engine RPM, giving a sense of engine load |
+| **Steer** | Handlebar resistance feedback - feel ruts, rocks, and terrain forces through the controller |
+| **Surface** | Vibration when riding off-track on grass, dirt, or gravel surfaces |
+
+Each effect has:
+- **Motor** - Target motor (Off, Heavy, Light, or Both)
+- **Sens** - Sensitivity level (10-100% in 10% increments) - higher sensitivity triggers the effect more easily
+- **Strength** - Maximum vibration intensity
+
+### Forces HUD
+
+Real-time visualization of controller rumble effects:
+- Graph showing force intensities over time
+- Heavy motor (red) and light motor (blue) output levels
+- Individual effect contributions when enabled (bumps, spin, lockup, etc.)
+- Useful for tuning rumble settings and debugging
+- Disabled by default (enable in Rumble tab)
 
 ## Modding
 

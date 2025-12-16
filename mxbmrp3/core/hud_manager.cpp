@@ -38,6 +38,7 @@
 #include "../hud/records_hud.h"
 #include "../hud/gap_bar_hud.h"
 #include "../hud/pointer_widget.h"
+#include "../hud/rumble_hud.h"
 #include <windows.h>
 #include <memory>
 #include <cstring>
@@ -180,6 +181,11 @@ void HudManager::initialize() {
     m_pFuel->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_FUEL_WIDGET);
     registerHud(std::move(fuelPtr));
 
+    auto rumblePtr = std::make_unique<RumbleHud>();
+    m_pRumble = rumblePtr.get();
+    m_pRumble->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_RUMBLE_HUD);
+    registerHud(std::move(rumblePtr));
+
     // Create PointerWidget early so it can be passed to SettingsHud
     // (will be registered last to render on top)
     auto pointerPtr = std::make_unique<PointerWidget>();
@@ -251,6 +257,7 @@ void HudManager::clear() {
     m_pPitboard = nullptr;
     m_pRecords = nullptr;
     m_pFuel = nullptr;
+    m_pRumble = nullptr;
     m_pSettingsHud = nullptr;
     m_pSettingsButton = nullptr;
     m_pPointer = nullptr;
@@ -590,11 +597,12 @@ void HudManager::setupDefaultResources() {
     addSprite("mxbmrp3_data\\fuel_widget.tga");  // SpriteIndex::BG_FUEL_WIDGET = 22
     addSprite("mxbmrp3_data\\records_hud.tga");  // SpriteIndex::BG_RECORDS_HUD = 23
     addSprite("mxbmrp3_data\\gap_bar_hud.tga");  // SpriteIndex::BG_GAP_BAR_HUD = 24
+    addSprite("mxbmrp3_data\\rumble_hud.tga");  // SpriteIndex::BG_RUMBLE_HUD = 25
 
     // Rider shape sprites (for map/radar)
-    addSprite("mxbmrp3_data\\rider_circle.tga");   // SpriteIndex::RIDER_CIRCLE = 25
-    addSprite("mxbmrp3_data\\rider_triangle.tga"); // SpriteIndex::RIDER_TRIANGLE = 26
-    addSprite("mxbmrp3_data\\rider_wedge.tga");    // SpriteIndex::RIDER_WEDGE = 27
+    addSprite("mxbmrp3_data\\rider_circle.tga");   // SpriteIndex::RIDER_CIRCLE = 26
+    addSprite("mxbmrp3_data\\rider_triangle.tga"); // SpriteIndex::RIDER_TRIANGLE = 27
+    addSprite("mxbmrp3_data\\rider_wedge.tga");    // SpriteIndex::RIDER_WEDGE = 28
 
     // Add default fonts needed by HUDs
     // Safety: Check array bounds before incrementing to prevent buffer overflow
@@ -759,35 +767,33 @@ void HudManager::updateRiderPositions(int numVehicles, SPluginsRaceTrackPosition
         m_pRadarHud->updateRiderPositions(numVehicles, positions);
     }
 
-    // Update TimingHud and GapBarHud with track position for S/F detection
-    if (m_pTiming || m_pGapBar) {
-        const PluginData& pluginData = PluginData::getInstance();
-        int displayRaceNum = pluginData.getDisplayRaceNum();
+    // Update centralized lap timer and HUDs with track position for S/F detection
+    PluginData& pluginData = PluginData::getInstance();
+    int displayRaceNum = pluginData.getDisplayRaceNum();
 
-        // Find the display rider's position data
-        for (int i = 0; i < numVehicles; ++i) {
-            if (positions[i].m_iRaceNum == displayRaceNum) {
-                // Get lap number from standings
-                const StandingsData* standing = pluginData.getStanding(displayRaceNum);
-                int lapNum = standing ? standing->numLaps : 0;
+    // Find the display rider's position data
+    for (int i = 0; i < numVehicles; ++i) {
+        if (positions[i].m_iRaceNum == displayRaceNum) {
+            // Get lap number from standings
+            const StandingsData* standing = pluginData.getStanding(displayRaceNum);
+            int lapNum = standing ? standing->numLaps : 0;
 
-                if (m_pTiming) {
-                    m_pTiming->updateTrackPosition(
-                        displayRaceNum,
-                        positions[i].m_fTrackPos,
-                        lapNum
-                    );
-                }
+            // Update centralized lap timer (used by TimingHud, SessionBestHud, and others)
+            pluginData.updateLapTimerTrackPosition(
+                displayRaceNum,
+                positions[i].m_fTrackPos,
+                lapNum
+            );
 
-                if (m_pGapBar) {
-                    m_pGapBar->updateTrackPosition(
-                        displayRaceNum,
-                        positions[i].m_fTrackPos,
-                        lapNum
-                    );
-                }
-                break;
+            // Update GapBarHud
+            if (m_pGapBar) {
+                m_pGapBar->updateTrackPosition(
+                    displayRaceNum,
+                    positions[i].m_fTrackPos,
+                    lapNum
+                );
             }
+            break;
         }
     }
 }

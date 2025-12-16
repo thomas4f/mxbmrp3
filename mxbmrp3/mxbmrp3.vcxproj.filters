@@ -225,6 +225,9 @@
     <ClInclude Include="hud\records_hud.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
+    <ClInclude Include="hud\rumble_hud.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
     <ClInclude Include="hud\version_widget.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
@@ -393,6 +396,9 @@
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\records_hud.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\rumble_hud.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\version_widget.cpp">

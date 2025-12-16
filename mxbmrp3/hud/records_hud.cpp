@@ -69,6 +69,7 @@ RecordsHud::RecordsHud()
     setDraggable(true);
 
     // Set defaults
+    m_bVisible = false;  // Off by default
     m_bShowTitle = true;
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     setPosition(-0.2365f, 0.333f);
@@ -899,7 +900,7 @@ void RecordsHud::rebuildRenderData() {
 }
 
 void RecordsHud::resetToDefaults() {
-    m_bVisible = true;
+    m_bVisible = false;
     m_bShowTitle = true;
     m_bShowBackgroundTexture = false;
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;

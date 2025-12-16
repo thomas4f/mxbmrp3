@@ -28,7 +28,6 @@ TimingHud::TimingHud()
     , m_cachedDisplayRaceNum(-1)
     , m_cachedSession(-1)
     , m_cachedPitState(-1)
-    , m_currentLapNum(0)
     , m_isFrozen(false)
 {
     // Initialize column modes to defaults
@@ -43,6 +42,7 @@ TimingHud::TimingHud()
     setDraggable(true);  // Allow repositioning from default center position
 
     // Set defaults to match user configuration
+    m_bVisible = false;  // Off by default
     m_bShowTitle = false;  // No title displayed (consistent with BarsWidget)
     m_fBackgroundOpacity = 0.1f;
 
@@ -106,14 +106,14 @@ void TimingHud::update() {
         setDataDirty();
     }
 
-    // Detect pit entry/exit and reset anchor (but keep official data for gap)
+    // Detect pit entry/exit (for cache tracking)
+    // Note: Anchor reset is now handled centrally by PluginData's track position monitoring
     const StandingsData* standing = pluginData.getStanding(currentDisplayRaceNum);
     if (standing) {
         int currentPitState = standing->pit;
         if (m_cachedPitState != -1 && currentPitState != m_cachedPitState) {
             DEBUG_INFO_F("TimingHud: Pit state changed from %d to %d", m_cachedPitState, currentPitState);
-            // Soft reset - clear anchor but keep official gap data
-            softResetAnchor();
+            // Just trigger a redraw - centralized timer handles anchor reset automatically
             setDataDirty();
         }
         m_cachedPitState = currentPitState;
@@ -180,11 +180,8 @@ void TimingHud::processTimingUpdates() {
             m_officialData.isSlower = (gap > 0);
             m_officialData.isInvalid = false;
 
-            // Set anchor at this split (uses wall clock time internally)
-            m_anchor.set(splitTime);
-            m_currentLapNum = currentLap->lapNum;
-
             // Freeze display (if freeze is enabled)
+            // Note: Anchor is now managed centrally by PluginData (set by RaceSplitHandler)
             if (m_displayDurationMs > 0) {
                 m_isFrozen = true;
                 m_frozenAt = std::chrono::steady_clock::now();
@@ -224,11 +221,8 @@ void TimingHud::processTimingUpdates() {
             m_officialData.isSlower = (gap > 0);
             m_officialData.isInvalid = false;
 
-            // Set anchor at this split (uses wall clock time internally)
-            m_anchor.set(splitTime);
-            m_currentLapNum = currentLap->lapNum;
-
             // Freeze display (if freeze is enabled)
+            // Note: Anchor is now managed centrally by PluginData (set by RaceSplitHandler)
             if (m_displayDurationMs > 0) {
                 m_isFrozen = true;
                 m_frozenAt = std::chrono::steady_clock::now();
@@ -279,11 +273,8 @@ void TimingHud::processTimingUpdates() {
         m_officialData.isSlower = (gap > 0) || !isValid;
         m_officialData.isInvalid = !isValid;
 
-        // Reset anchor for new lap (accumulated = 0, uses wall clock time internally)
-        m_anchor.set(0);
-        m_currentLapNum = completedLapNum + 1;
-
         // Reset split caches for next lap
+        // Note: Anchor is now managed centrally by PluginData (reset by RaceLapHandler)
         m_cachedSplit1 = -1;
         m_cachedSplit2 = -1;
 
@@ -297,40 +288,6 @@ void TimingHud::processTimingUpdates() {
         DEBUG_INFO_F("TimingHud: Lap %d completed, time=%d ms, gap=%d ms, valid=%d", completedLapNum, lapTime, gap, isValid);
         setDataDirty();
     }
-}
-
-void TimingHud::updateTrackPosition(int raceNum, float trackPos, int lapNum) {
-    // Only process for the rider we're currently displaying
-    if (raceNum != m_cachedDisplayRaceNum) {
-        return;
-    }
-
-    if (!m_trackMonitor.initialized) {
-        m_trackMonitor.lastTrackPos = trackPos;
-        m_trackMonitor.lastLapNum = lapNum;
-        m_trackMonitor.initialized = true;
-        return;
-    }
-
-    float delta = trackPos - m_trackMonitor.lastTrackPos;
-
-    // Detect S/F crossing: large negative delta (0.95 → 0.05 gives delta ~ -0.9)
-    if (delta < -TrackPositionMonitor::WRAP_THRESHOLD) {
-        // Crossed S/F line - set anchor if we don't have one or lap changed
-        if (!m_anchor.valid || lapNum != m_trackMonitor.lastLapNum) {
-            m_anchor.set(0);  // Start timing from 0, uses wall clock time internally
-            // lapNum is number of completed laps (0-based), which matches m_currentLapNum indexing
-            // Display adds +1, so lapNum=0 shows "Lap 1", lapNum=1 shows "Lap 2", etc.
-            m_currentLapNum = lapNum;
-            DEBUG_INFO_F("TimingHud: S/F crossing detected via track position, lap=%d", m_currentLapNum);
-            // Don't update m_officialData - this is estimated, not official
-            // Gap column retains previous official value
-            setDataDirty();
-        }
-    }
-
-    m_trackMonitor.lastTrackPos = trackPos;
-    m_trackMonitor.lastLapNum = lapNum;
 }
 
 void TimingHud::checkFreezeExpiration() {
@@ -365,29 +322,10 @@ bool TimingHud::shouldShowColumn(Column col) const {
 }
 
 bool TimingHud::needsFrequentUpdates() const {
-    // Need frequent updates when time column is in ALWAYS mode, not frozen, and we have an anchor
+    // Need frequent updates when time column is in ALWAYS mode, not frozen, and timer is valid
     if (m_isFrozen) return false;
     if (m_columnModes[COL_TIME] != ColumnMode::ALWAYS) return false;
-    return m_anchor.valid;
-}
-
-int TimingHud::calculateElapsedTime() const {
-    if (!m_anchor.valid) {
-        return -1;  // No anchor - show placeholder
-    }
-
-    // Use wall clock time for elapsed calculation (works regardless of session time direction)
-    auto now = std::chrono::steady_clock::now();
-    auto wallElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now - m_anchor.wallClockTime
-    ).count();
-
-    int elapsed = m_anchor.accumulatedTime + static_cast<int>(wallElapsed);
-
-    // Sanity check - don't show negative time
-    if (elapsed < 0) elapsed = 0;
-
-    return elapsed;
+    return PluginData::getInstance().isLapTimerValid();
 }
 
 int TimingHud::calculateGapToBest(int currentTime, int bestTime) const {
@@ -406,20 +344,13 @@ int TimingHud::getVisibleColumnCount() const {
 }
 
 void TimingHud::resetLiveTimingState() {
-    m_anchor.reset();
-    m_trackMonitor.reset();
+    // Note: Anchor and track monitor are now managed centrally by PluginData
+    // Reset local display state only
     m_isFrozen = false;
-    m_currentLapNum = 0;
     m_officialData.reset();
     m_cachedSplit1 = -1;
     m_cachedSplit2 = -1;
     m_cachedLastCompletedLapNum = -1;
-}
-
-void TimingHud::softResetAnchor() {
-    m_anchor.reset();
-    m_trackMonitor.reset();
-    // Keep m_officialData - gap still relevant
 }
 
 void TimingHud::rebuildLayout() {
@@ -431,6 +362,8 @@ void TimingHud::rebuildRenderData() {
     // Clear render data
     m_strings.clear();
     m_quads.clear();
+
+    const PluginData& pluginData = PluginData::getInstance();
 
     // Check if any columns are visible
     int visibleCount = getVisibleColumnCount();
@@ -483,8 +416,9 @@ void TimingHud::rebuildRenderData() {
         }
     } else {
         // Ticking - show current lap (or placeholder if no timing context yet)
-        if (m_anchor.valid) {
-            snprintf(labelBuffer, sizeof(labelBuffer), "Lap %d", m_currentLapNum + 1);
+        if (pluginData.isLapTimerValid()) {
+            int currentLapNum = pluginData.getLapTimerCurrentLap();
+            snprintf(labelBuffer, sizeof(labelBuffer), "Lap %d", currentLapNum + 1);
         } else {
             strcpy_s(labelBuffer, sizeof(labelBuffer), "Lap -");
         }
@@ -499,8 +433,8 @@ void TimingHud::rebuildRenderData() {
             strcpy_s(timeBuffer, sizeof(timeBuffer), Placeholders::LAP_TIME);
         }
     } else {
-        // Calculate elapsed time
-        int elapsed = calculateElapsedTime();
+        // Get elapsed time from centralized timer
+        int elapsed = pluginData.getElapsedLapTime();
         if (elapsed >= 0) {
             PluginUtils::formatLapTime(elapsed, timeBuffer, sizeof(timeBuffer));
         } else {
@@ -596,7 +530,7 @@ void TimingHud::rebuildRenderData() {
 }
 
 void TimingHud::resetToDefaults() {
-    m_bVisible = true;
+    m_bVisible = false;  // Off by default
     m_bShowTitle = false;
     m_bShowBackgroundTexture = false;
     m_fBackgroundOpacity = 0.1f;

@@ -20,6 +20,7 @@ mxbmrp3/
 │   │   ├── plugin_data.*       # Central game state cache
 │   │   ├── hud_manager.*       # Owns and updates all HUDs
 │   │   ├── input_manager.*     # Keyboard and mouse input
+│   │   ├── xinput_reader.*     # XInput controller state and rumble
 │   │   ├── settings_manager.*  # Save/load configuration (INI file)
 │   │   ├── plugin_constants.h  # All named constants
 │   │   └── plugin_utils.*      # Shared helper functions

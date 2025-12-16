@@ -131,9 +131,9 @@ private:
 
     // Column width constants (in character counts)
     // Each width = content chars + 1 gap (matches pattern used by other HUDs)
-    // Total default (POS+RIDER+BIKE+LAPTIME): 4+13+18+8 = 43 chars (last col has no gap)
+    // Total default (POS+RIDER+BIKE+LAPTIME): 4+14+18+8 = 44 chars (last col has no gap)
     static constexpr int COL_POS_WIDTH = 4;       // "P99" = 3 chars + 1 gap
-    static constexpr int COL_RIDER_WIDTH = 13;    // Up to 12 chars displayed + 1 gap
+    static constexpr int COL_RIDER_WIDTH = 14;    // Up to 13 chars displayed + 1 gap
     static constexpr int COL_BIKE_WIDTH = 18;     // Up to 17 chars displayed + 1 gap
     static constexpr int COL_LAPTIME_WIDTH = 9;   // M:SS.mmm = 8 chars + 1 gap
     static constexpr int COL_DATE_WIDTH = 11;     // YYYY-MM-DD = 10 chars + 1 gap

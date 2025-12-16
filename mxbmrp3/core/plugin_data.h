@@ -11,6 +11,7 @@
 #include <array>
 #include <deque>
 #include <cstring>
+#include <chrono>
 
 #include "../vendor/piboso/mxb_api.h"  // For SPluginsRaceClassificationEntry_t
 #include "plugin_constants.h"  // For Placeholders namespace
@@ -375,6 +376,101 @@ struct LapLogEntry {
           lapTime(total), isValid(valid), isComplete(complete) {}
 };
 
+// ============================================================================
+// Centralized Lap Timer for real-time elapsed time calculation
+// Used by TimingHud, SessionBestHud, and other components that need live timing
+// Uses wall clock time since session time can count UP (practice) or DOWN (races)
+// ============================================================================
+struct LapTimer {
+    // Wall clock anchor for elapsed time calculation
+    std::chrono::steady_clock::time_point anchorTime;  // Real time when anchor was set
+    int anchorAccumulatedTime;    // Known accumulated lap time at anchor (ms)
+    bool anchorValid;             // Do we have a usable anchor?
+
+    // Track position monitoring for S/F line detection
+    float lastTrackPos;           // Previous track position (0.0-1.0)
+    int lastLapNum;               // Previous lap number
+    bool trackMonitorInitialized; // Have we received first position?
+
+    // Current state
+    int currentLapNum;            // Current lap being timed
+    int currentSector;            // Current sector (0=before S1, 1=before S2, 2=before S3)
+    int lastSplit1Time;           // Accumulated time at S1 (for sector 2 calculation)
+    int lastSplit2Time;           // Accumulated time at S2 (for sector 3 calculation)
+
+    // Threshold for S/F line detection (position jump > 0.5 = S/F crossing)
+    static constexpr float WRAP_THRESHOLD = 0.5f;
+
+    LapTimer()
+        : anchorAccumulatedTime(0), anchorValid(false)
+        , lastTrackPos(0.0f), lastLapNum(0), trackMonitorInitialized(false)
+        , currentLapNum(0), currentSector(0)
+        , lastSplit1Time(-1), lastSplit2Time(-1) {}
+
+    void reset() {
+        anchorAccumulatedTime = 0;
+        anchorValid = false;
+        lastTrackPos = 0.0f;
+        lastLapNum = 0;
+        trackMonitorInitialized = false;
+        currentLapNum = 0;
+        currentSector = 0;
+        lastSplit1Time = -1;
+        lastSplit2Time = -1;
+    }
+
+    void setAnchor(int accumulatedTime) {
+        anchorTime = std::chrono::steady_clock::now();
+        anchorAccumulatedTime = accumulatedTime;
+        anchorValid = true;
+    }
+
+    // Calculate elapsed lap time since anchor
+    int getElapsedLapTime() const {
+        if (!anchorValid) {
+            return -1;  // No anchor - show placeholder
+        }
+
+        auto now = std::chrono::steady_clock::now();
+        auto wallElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - anchorTime
+        ).count();
+
+        int elapsed = anchorAccumulatedTime + static_cast<int>(wallElapsed);
+
+        // Sanity check - don't show negative time
+        if (elapsed < 0) elapsed = 0;
+
+        return elapsed;
+    }
+
+    // Calculate elapsed sector time
+    // sectorIndex: 0=S1 (from lap start), 1=S2 (from S1), 2=S3 (from S2)
+    int getElapsedSectorTime(int sectorIndex) const {
+        int lapTime = getElapsedLapTime();
+        if (lapTime < 0) {
+            return -1;  // No valid elapsed time
+        }
+
+        switch (sectorIndex) {
+            case 0:  // S1: time from lap start
+                return lapTime;
+            case 1:  // S2: time from S1
+                if (lastSplit1Time > 0) {
+                    return lapTime - lastSplit1Time;
+                }
+                return -1;  // S1 not crossed yet
+            case 2:  // S3: time from S2
+                if (lastSplit2Time > 0) {
+                    return lapTime - lastSplit2Time;
+                }
+                return -1;  // S2 not crossed yet
+            default:
+                return -1;
+        }
+    }
+};
+
 // Data change notification types
 enum class DataChangeType {
     SessionData,
@@ -484,6 +580,47 @@ public:
     const SessionBestData* getSessionBestData() const { return getSessionBestData(getDisplayRaceNum()); }
     const std::vector<LapLogEntry>* getLapLog() const { return getLapLog(getDisplayRaceNum()); }
     const LapLogEntry* getBestLapEntry() const { return getBestLapEntry(getDisplayRaceNum()); }
+
+    // ========================================================================
+    // Centralized Lap Timer Management (display rider only)
+    // Provides real-time elapsed lap and sector timing for HUDs
+    // Tracks only the currently displayed rider (like GapBarHud pattern)
+    // ========================================================================
+
+    // Update lap timer with track position for S/F crossing detection
+    // Returns true if S/F crossing was detected (anchor was set)
+    bool updateLapTimerTrackPosition(int raceNum, float trackPos, int lapNum);
+
+    // Set timer anchor when official split/lap event occurs
+    // Called by handlers when splits are received
+    void setLapTimerAnchor(int raceNum, int accumulatedTime, int lapNum, int sectorIndex);
+
+    // Reset timer on new lap (called when lap completes)
+    void resetLapTimerForNewLap(int raceNum, int lapNum);
+
+    // Reset timer completely (for session change, spectate target change, pit entry)
+    void resetLapTimer(int raceNum);
+    void resetAllLapTimers();
+
+    // Get elapsed times (returns -1 if no valid anchor or different rider)
+    int getElapsedLapTime(int raceNum) const;
+    int getElapsedSectorTime(int raceNum, int sectorIndex) const;  // sectorIndex: 0=S1, 1=S2, 2=S3
+
+    // Check if timer has valid anchor
+    bool isLapTimerValid(int raceNum) const;
+
+    // Get current lap number being timed
+    int getLapTimerCurrentLap(int raceNum) const;
+
+    // Get current sector being timed (0=before S1, 1=before S2, 2=before S3)
+    int getLapTimerCurrentSector(int raceNum) const;
+
+    // Convenience methods for display race number
+    int getElapsedLapTime() const { return getElapsedLapTime(getDisplayRaceNum()); }
+    int getElapsedSectorTime(int sectorIndex) const { return getElapsedSectorTime(getDisplayRaceNum(), sectorIndex); }
+    bool isLapTimerValid() const { return isLapTimerValid(getDisplayRaceNum()); }
+    int getLapTimerCurrentLap() const { return getLapTimerCurrentLap(getDisplayRaceNum()); }
+    int getLapTimerCurrentSector() const { return getLapTimerCurrentSector(getDisplayRaceNum()); }
 
     // Standings management
     void updateStandings(int raceNum, int state, int bestLap, int bestLapNum,
@@ -603,6 +740,11 @@ private:
     std::unordered_map<int, SessionBestData> m_riderSessionBest;  // Session best sectors per rider
     std::unordered_map<int, std::vector<LapLogEntry>> m_riderLapLog;  // Lap log per rider (newest first)
     std::unordered_map<int, LapLogEntry> m_riderBestLap;  // Best lap entry per rider (for easy access)
+
+    // Single centralized lap timer for display rider only (follows GapBarHud pattern)
+    // Resets when spectate target changes - no need to track all riders
+    LapTimer m_displayLapTimer;
+    int m_displayLapTimerRaceNum = -1;  // Which rider the timer is currently tracking
 
     // Leader timing points for time-based gap calculation
     // Stores when leader crossed each 1% position, indexed by lap number

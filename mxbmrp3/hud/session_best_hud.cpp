@@ -30,10 +30,10 @@ SessionBestHud::SessionBestHud()
     setDraggable(true);
 
     // Set defaults to match user configuration
-    m_bVisible = false;  // Disabled by default
+    m_bVisible = true;  // Enabled by default
     m_bShowTitle = true;
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
-    setPosition(0.2585f, 0.0999f);
+    setPosition(0.0935f, 0.0999f);
 
     // Pre-allocate vectors
     m_quads.reserve(1);
@@ -60,6 +60,19 @@ int SessionBestHud::getEnabledRowCount() const {
 }
 
 void SessionBestHud::update() {
+    // Check if we need frequent updates for ticking sector time
+    if (needsFrequentUpdates()) {
+        auto now = std::chrono::steady_clock::now();
+        auto sinceLastTick = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - m_lastTickUpdate
+        ).count();
+
+        if (sinceLastTick >= TICK_UPDATE_INTERVAL_MS) {
+            m_lastTickUpdate = now;
+            setDataDirty();
+        }
+    }
+
     // Check if data changed or layout dirty
     if (isDataDirty()) {
         // Data changed - full rebuild needed (also rebuilds layout)
@@ -71,6 +84,34 @@ void SessionBestHud::update() {
         // Only layout changed (e.g., dragging) - fast path
         rebuildLayout();
         clearLayoutDirty();
+    }
+}
+
+bool SessionBestHud::needsFrequentUpdates() const {
+    // Need frequent updates when showing live sector time and timer is valid
+    if (!m_bShowLiveSectorTime) return false;
+    if (!m_bVisible) return false;
+
+    const PluginData& data = PluginData::getInstance();
+    return data.isLapTimerValid();
+}
+
+int SessionBestHud::getCurrentActiveSector() const {
+    // Determine which sector is currently being timed (not yet completed)
+    // Returns 0 for S1, 1 for S2, 2 for S3, -1 if no active timing
+    const PluginData& data = PluginData::getInstance();
+    const CurrentLapData* currentLap = data.getCurrentLapData();
+
+    if (!data.isLapTimerValid()) {
+        return -1;  // No active timing
+    }
+
+    if (!currentLap || currentLap->split1 < 0) {
+        return 0;  // S1 not crossed yet - timing S1
+    } else if (currentLap->split2 < 0) {
+        return 1;  // S1 crossed, S2 not - timing S2
+    } else {
+        return 2;  // S2 crossed - timing S3
     }
 }
 
@@ -195,35 +236,62 @@ void SessionBestHud::rebuildRenderData() {
         }
     }
 
-    // Determine which split times to display (progressive clear behavior):
-    // - If no splits crossed yet: Show all last lap data
-    // - If S1 crossed: Show current S1, clear S2/S3 (placeholders)
-    // - If S1+S2 crossed: Show current S1/S2, clear S3 (placeholder)
-    // - After lap completes: currentLap is cleared, so we show last lap data again
+    // Determine which split times to display
+    // With live sector timing enabled, show elapsed time for the current sector
+    // - If no splits crossed yet: Show elapsed S1 (ticking) or last lap data
+    // - If S1 crossed: Show official S1, elapsed S2 (ticking) or placeholder
+    // - If S1+S2 crossed: Show official S1/S2, elapsed S3 (ticking) or placeholder
+    // - After lap completes: Show last lap data (currentLap is cleared)
     int displaySector1, displaySector2, displaySector3;
+    bool sector1IsLive = false, sector2IsLive = false, sector3IsLive = false;
+
+    // Check if we have active timing for live sector display
+    int activeSector = m_bShowLiveSectorTime ? getCurrentActiveSector() : -1;
 
     if (currentSector1 >= 0) {
-        // We've crossed S1 in current lap
+        // We've crossed S1 in current lap - show official S1 time
         displaySector1 = currentSector1;
 
         if (currentSector2 >= 0) {
-            // We've crossed S2 as well
+            // We've crossed S2 as well - show official S2 time
             displaySector2 = currentSector2;
-            displaySector3 = -1;  // S3 not crossed yet, show placeholder
+
+            // S3 is in progress - show elapsed time if live timing enabled
+            if (activeSector == 2) {
+                displaySector3 = data.getElapsedSectorTime(2);
+                sector3IsLive = (displaySector3 >= 0);
+            } else {
+                displaySector3 = -1;  // Show placeholder
+            }
         } else {
-            // Only S1 crossed, S2 and S3 not crossed yet
-            displaySector2 = -1;
-            displaySector3 = -1;
+            // Only S1 crossed - S2 is in progress
+            if (activeSector == 1) {
+                displaySector2 = data.getElapsedSectorTime(1);
+                sector2IsLive = (displaySector2 >= 0);
+            } else {
+                displaySector2 = -1;  // Show placeholder
+            }
+            displaySector3 = -1;  // Show placeholder
         }
     } else {
-        // Haven't crossed any splits yet, show last lap data
-        displaySector1 = sessionBest ? sessionBest->lastLapSector1 : -1;
-        displaySector2 = sessionBest ? sessionBest->lastLapSector2 : -1;
-        displaySector3 = sessionBest ? sessionBest->lastLapSector3 : -1;
+        // Haven't crossed any splits yet
+        if (activeSector == 0) {
+            // S1 is in progress - show elapsed time
+            displaySector1 = data.getElapsedSectorTime(0);
+            sector1IsLive = (displaySector1 >= 0);
+            displaySector2 = -1;  // Show placeholder
+            displaySector3 = -1;  // Show placeholder
+        } else {
+            // No active timing - show last lap data
+            displaySector1 = sessionBest ? sessionBest->lastLapSector1 : -1;
+            displaySector2 = sessionBest ? sessionBest->lastLapSector2 : -1;
+            displaySector3 = sessionBest ? sessionBest->lastLapSector3 : -1;
+        }
     }
 
     // Helper for adding a row (only adds strings for enabled rows)
-    auto addRow = [&](bool enabled, const char* label, int timeMs, int pbTimeMs, int previousPbTimeMs, bool showDiff, int timeFont = Fonts::ROBOTO_MONO) {
+    // isLive: true if showing real-time ticking sector time (use muted color, no diff)
+    auto addRow = [&](bool enabled, const char* label, int timeMs, int pbTimeMs, int previousPbTimeMs, bool showDiff, bool isLive = false, int timeFont = Fonts::ROBOTO_MONO) {
         if (!enabled) {
             return;  // Skip disabled rows entirely - don't add strings or advance Y
         }
@@ -241,8 +309,10 @@ void SessionBestHud::rebuildRenderData() {
         // Show time or placeholder
         if (timeMs > 0) {
             PluginUtils::formatLapTime(timeMs, timeStr, sizeof(timeStr));
-            // Time in primary color - use specified font (bold for "Best")
-            addString(timeStr, m_columns.time, currentY, Justify::LEFT, timeFont, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+            // Live (ticking) times use muted color to distinguish from official times
+            // Official times use primary color (or specified font for Best)
+            unsigned long timeColor = isLive ? ColorConfig::getInstance().getMuted() : ColorConfig::getInstance().getPrimary();
+            addString(timeStr, m_columns.time, currentY, Justify::LEFT, timeFont, timeColor, dim.fontSize);
         } else {
             strcpy_s(timeStr, sizeof(timeStr), Placeholders::LAP_TIME);
             // Placeholder in muted color
@@ -251,7 +321,8 @@ void SessionBestHud::rebuildRenderData() {
 
         // Always add a third string to maintain 3 strings per row (required for layout)
         // Show diff, or "-" if no PB to compare against, or empty for non-diff rows
-        if (showDiff) {
+        // Live times don't show diff (meaningless to compare incomplete sector to completed PB)
+        if (showDiff && !isLive) {
             if (pbTimeMs > 0 && timeMs >= 0) {
                 int diff = timeMs - pbTimeMs;
                 if (diff != 0) {
@@ -277,7 +348,7 @@ void SessionBestHud::rebuildRenderData() {
                 addString(Placeholders::GENERIC, m_columns.diff, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getMuted(), dim.fontSize);
             }
         } else {
-            // For rows without diff (Best, Ideal), add empty string to maintain layout
+            // For rows without diff (Best, Ideal, or live times), add empty string to maintain layout
             addString("", m_columns.diff, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getMuted(), dim.fontSize);
         }
 
@@ -287,27 +358,29 @@ void SessionBestHud::rebuildRenderData() {
     // Add rows (only enabled rows will be added)
     // Lambda returns early for disabled rows
     // Compare sectors against actual PB lap's sectors (not purple/ideal sectors)
-    addRow(m_enabledRows & ROW_S1, "S1", displaySector1, personalBest ? personalBest->sector1 : -1, sessionBest ? sessionBest->previousBestSector1 : -1, true);
-    addRow(m_enabledRows & ROW_S2, "S2", displaySector2, personalBest ? personalBest->sector2 : -1, sessionBest ? sessionBest->previousBestSector2 : -1, true);
-    addRow(m_enabledRows & ROW_S3, "S3", displaySector3, personalBest ? personalBest->sector3 : -1, sessionBest ? sessionBest->previousBestSector3 : -1, true);
+    // Pass isLive flag to indicate which sector is currently being timed (ticking display)
+    addRow(m_enabledRows & ROW_S1, "S1", displaySector1, personalBest ? personalBest->sector1 : -1, sessionBest ? sessionBest->previousBestSector1 : -1, true, sector1IsLive);
+    addRow(m_enabledRows & ROW_S2, "S2", displaySector2, personalBest ? personalBest->sector2 : -1, sessionBest ? sessionBest->previousBestSector2 : -1, true, sector2IsLive);
+    addRow(m_enabledRows & ROW_S3, "S3", displaySector3, personalBest ? personalBest->sector3 : -1, sessionBest ? sessionBest->previousBestSector3 : -1, true, sector3IsLive);
 
     int lastLap = (sessionBest && sessionBest->lastLapTime > 0) ? sessionBest->lastLapTime : -1;
-    addRow(m_enabledRows & ROW_LAST, "Last", lastLap, personalBest ? personalBest->lapTime : -1, sessionBest ? sessionBest->previousBestLapTime : -1, true);
+    addRow(m_enabledRows & ROW_LAST, "Last", lastLap, personalBest ? personalBest->lapTime : -1, sessionBest ? sessionBest->previousBestLapTime : -1, true, false);
 
     int bestLap = personalBest ? personalBest->lapTime : -1;
-    addRow(m_enabledRows & ROW_BEST, "Best", bestLap, -1, -1, false, Fonts::ROBOTO_MONO_BOLD);
+    addRow(m_enabledRows & ROW_BEST, "Best", bestLap, -1, -1, false, false, Fonts::ROBOTO_MONO_BOLD);
 
     int idealLap = sessionBest ? sessionBest->getIdealLapTime() : -1;
-    addRow(m_enabledRows & ROW_IDEAL, "Ideal", idealLap, -1, -1, false);
+    addRow(m_enabledRows & ROW_IDEAL, "Ideal", idealLap, -1, -1, false, false);
 }
 
 void SessionBestHud::resetToDefaults() {
-    m_bVisible = false;  // Disabled by default
+    m_bVisible = true;  // Enabled by default
     m_bShowTitle = true;
     m_bShowBackgroundTexture = false;  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.2585f, 0.0999f);
+    setPosition(0.0935f, 0.0999f);
     m_enabledRows = ROW_DEFAULT;
+    m_bShowLiveSectorTime = true;  // Live sector time enabled by default
     setDataDirty();
 }

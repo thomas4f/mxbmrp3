@@ -7,6 +7,7 @@
 #include "base_hud.h"
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
+#include <chrono>
 
 class SessionBestHud : public BaseHud {
 public:
@@ -16,6 +17,9 @@ public:
     void update() override;
     bool handlesDataType(DataChangeType dataType) const override;
     void resetToDefaults();
+
+    // Settings for real-time sector time display
+    bool m_bShowLiveSectorTime = true;  // Show ticking sector time until split is crossed
 
     // Row flags - each bit represents a row that can be toggled
     enum RowFlags : uint32_t {
@@ -71,6 +75,16 @@ private:
         ColumnPositions(float contentStartX, float scale = 1.0f);
     };
 
+    // Check if we need frequent updates for ticking sector time
+    bool needsFrequentUpdates() const;
+
+    // Get current sector being timed (0=S1, 1=S2, 2=S3, -1=no active timing)
+    int getCurrentActiveSector() const;
+
     ColumnPositions m_columns;
     uint32_t m_enabledRows = ROW_DEFAULT;  // Bitfield of enabled rows
+
+    // Rate limiting for ticking display
+    std::chrono::time_point<std::chrono::steady_clock> m_lastTickUpdate;
+    static constexpr int TICK_UPDATE_INTERVAL_MS = 16;  // Update ticking display every 16ms (~60Hz)
 };

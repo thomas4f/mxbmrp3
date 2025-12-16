@@ -20,9 +20,10 @@ TelemetryHud::TelemetryHud() {
     setDraggable(true);
 
     // Set defaults to match user configuration
+    m_bVisible = false;  // Off by default
     m_bShowTitle = true;
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
-    setPosition(0.6875f, -0.0777f);
+    setPosition(0.6875f, -0.1221f);
 
     // Pre-allocate render buffers to avoid reallocations
     m_quads.reserve(1000);   // 1 bg + 4 grid + 4 inputs × 199 line segments = ~1000 quads max
@@ -416,12 +417,12 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
 }
 
 void TelemetryHud::resetToDefaults() {
-    m_bVisible = true;
+    m_bVisible = false;  // Off by default
     m_bShowTitle = true;
     m_bShowBackgroundTexture = false;  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.6875f, -0.0777f);
+    setPosition(0.6875f, -0.1221f);
     m_enabledElements = ELEM_DEFAULT;
     m_displayMode = DISPLAY_DEFAULT;
     setDataDirty();

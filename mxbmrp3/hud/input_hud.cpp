@@ -18,6 +18,7 @@ InputHud::InputHud() {
     setDraggable(true);
 
     // Set defaults to match user configuration
+    m_bVisible = false;  // Hidden by default
     m_bShowTitle = false;
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     setPosition(0.6875f, 0.0f);
@@ -319,7 +320,7 @@ void InputHud::addStickTrail(const char* label, const std::deque<HistoryBuffers:
 }
 
 void InputHud::resetToDefaults() {
-    m_bVisible = true;
+    m_bVisible = false;  // Hidden by default
     m_bShowTitle = false;
     m_bShowBackgroundTexture = false;  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
