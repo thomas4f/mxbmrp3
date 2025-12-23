@@ -10,6 +10,7 @@
 #include "../diagnostics/timer.h"
 #include "hud_manager.h"
 #include "input_manager.h"
+#include "hotkey_manager.h"
 #include "../handlers/draw_handler.h"
 #include "../handlers/event_handler.h"
 #include "../handlers/race_event_handler.h"
@@ -57,6 +58,7 @@ void PluginManager::initialize(const char* savePath) {
 
     // Initialize components
     InputManager::getInstance().initialize();
+    HotkeyManager::getInstance().initialize();
     HudManager::getInstance().initialize();
 
     DEBUG_INFO("PluginManager initialized");
@@ -306,7 +308,7 @@ void PluginManager::handleRaceClassification(SPluginsRaceClassification_t* psRac
 
 void PluginManager::handleRaceTrackPosition(int iNumVehicles, SPluginsRaceTrackPosition_t* pasRaceTrackPosition) {
     ACCUMULATE_CALLBACK_TIME();
-    SCOPED_TIMER_THRESHOLD("Plugin::handleRaceTrackPosition", 500);
+    // SCOPED_TIMER_THRESHOLD("Plugin::handleRaceTrackPosition", 500);  // Commented out - too noisy for debugging
     // Skip logging (high-frequency event - runs at vehicle update rate)
 
     // Null check and bounds validation moved to handler

@@ -60,8 +60,9 @@ private:
         }
     }
 
-    static constexpr float START_X = HudPositions::RIGHT_SIDE_X;
-    static constexpr float START_Y = HudPositions::TOP_Y;
+    // Base position (0,0) - actual position comes from m_fOffsetX/m_fOffsetY
+    static constexpr float START_X = 0.0f;
+    static constexpr float START_Y = 0.0f;
 
     // Graph configuration
     static constexpr int GRAPH_HISTORY_SIZE = 120;  // Number of data points in performance graphs

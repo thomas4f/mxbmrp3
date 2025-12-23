@@ -60,6 +60,12 @@
     <ClInclude Include="core\color_config.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
+    <ClInclude Include="core\asset_manager.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\font_config.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
     <ClInclude Include="core\plugin_constants.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
@@ -129,6 +135,15 @@
     <ClInclude Include="core\handler_singleton.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
+    <ClInclude Include="core\hotkey_config.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\hotkey_manager.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\tracked_riders_manager.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
     <ClInclude Include="handlers\race_communication_handler.h">
       <Filter>Header Files\handlers</Filter>
     </ClInclude>
@@ -168,7 +183,7 @@
     <ClInclude Include="hud\input_hud.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
-    <ClInclude Include="hud\session_best_hud.h">
+    <ClInclude Include="hud\ideal_lap_hud.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
     <ClInclude Include="hud\settings_button_widget.h">
@@ -248,6 +263,12 @@
     <ClCompile Include="core\color_config.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
+    <ClCompile Include="core\asset_manager.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\font_config.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
     <ClCompile Include="core\plugin_manager.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
@@ -267,6 +288,12 @@
       <Filter>Source Files\handlers</Filter>
     </ClCompile>
     <ClCompile Include="core\hud_manager.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\hotkey_manager.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\tracked_riders_manager.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="handlers\run_handler.cpp">
@@ -344,7 +371,7 @@
     <ClCompile Include="hud\input_hud.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
-    <ClCompile Include="hud\session_best_hud.cpp">
+    <ClCompile Include="hud\ideal_lap_hud.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\settings_button_widget.cpp">

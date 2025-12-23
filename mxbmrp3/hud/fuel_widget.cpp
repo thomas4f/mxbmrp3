@@ -27,10 +27,19 @@ FuelWidget::FuelWidget()
     , m_bTrackingActive(false)
     , m_totalLapsRecorded(0)
 {
-    initializeWidget("FuelWidget", 9, 1.0f);  // 9 strings: title + 4 labels + 4 values
-    m_bShowTitle = false;  // No title by default
-    setPosition(0.462f, 0.5772f);
+    // One-time setup
+    DEBUG_INFO("FuelWidget created");
+    setDraggable(true);
+    m_strings.reserve(9);  // title + 4 labels + 4 values
     m_fuelPerLap.reserve(MAX_FUEL_HISTORY);
+
+    // Set texture base name for dynamic texture discovery
+    setTextureBaseName("fuel_widget");
+
+    // Set all configurable defaults
+    resetToDefaults();
+
+    rebuildRenderData();
 }
 
 bool FuelWidget::handlesDataType(DataChangeType dataType) const {
@@ -69,13 +78,13 @@ void FuelWidget::updateFuelTracking() {
         DEBUG_INFO_F("FuelWidget: Started tracking with %.2fL", m_fuelAtRunStart);
     }
 
-    // Get current lap number from session best data
-    const SessionBestData* sessionBest = pluginData.getSessionBestData(pluginData.getPlayerRaceNum());
-    if (!sessionBest) {
+    // Get current lap number from ideal lap data
+    const IdealLapData* idealLapData = pluginData.getIdealLapData(pluginData.getPlayerRaceNum());
+    if (!idealLapData) {
         return;
     }
 
-    int currentLapNum = sessionBest->lastCompletedLapNum;
+    int currentLapNum = idealLapData->lastCompletedLapNum;
 
     // Check if a new lap was completed
     if (currentLapNum > m_lastTrackedLapNum) {
@@ -115,17 +124,27 @@ void FuelWidget::resetFuelTracking() {
     DEBUG_INFO("FuelWidget: Fuel tracking reset");
 }
 
+int FuelWidget::getEnabledRowCount() const {
+    int count = 0;
+    if (m_enabledRows & ROW_FUEL) count++;
+    if (m_enabledRows & ROW_USED) count++;
+    if (m_enabledRows & ROW_AVG) count++;
+    if (m_enabledRows & ROW_EST) count++;
+    return count;
+}
+
 void FuelWidget::rebuildLayout() {
     // Fast path - only update positions
     auto dim = getScaledDimensions();
 
-    float startX = WidgetPositions::WIDGET_STACK_X;
-    float startY = FUEL_WIDGET_Y;
+    float startX = 0.0f;
+    float startY = 0.0f;
 
-    // Calculate dimensions
+    // Calculate dimensions based on enabled rows
+    int rowCount = getEnabledRowCount();
     float backgroundWidth = calculateBackgroundWidth(FUEL_WIDGET_WIDTH);
     float titleHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
-    float contentHeight = titleHeight + dim.lineHeightNormal * 4;  // title (optional) + 4 data rows
+    float contentHeight = titleHeight + dim.lineHeightNormal * rowCount;
     float backgroundHeight = dim.paddingV + contentHeight + dim.paddingV;
 
     // Set bounds for drag detection
@@ -149,23 +168,31 @@ void FuelWidget::rebuildLayout() {
     }
 
     // Row 1: Fuel label and value
-    positionString(stringIndex++, contentStartX, currentY);
-    positionString(stringIndex++, rightX, currentY);
-    currentY += dim.lineHeightNormal;
+    if (m_enabledRows & ROW_FUEL) {
+        positionString(stringIndex++, contentStartX, currentY);
+        positionString(stringIndex++, rightX, currentY);
+        currentY += dim.lineHeightNormal;
+    }
 
     // Row 2: Use label and value
-    positionString(stringIndex++, contentStartX, currentY);
-    positionString(stringIndex++, rightX, currentY);
-    currentY += dim.lineHeightNormal;
+    if (m_enabledRows & ROW_USED) {
+        positionString(stringIndex++, contentStartX, currentY);
+        positionString(stringIndex++, rightX, currentY);
+        currentY += dim.lineHeightNormal;
+    }
 
     // Row 3: Avg label and value
-    positionString(stringIndex++, contentStartX, currentY);
-    positionString(stringIndex++, rightX, currentY);
-    currentY += dim.lineHeightNormal;
+    if (m_enabledRows & ROW_AVG) {
+        positionString(stringIndex++, contentStartX, currentY);
+        positionString(stringIndex++, rightX, currentY);
+        currentY += dim.lineHeightNormal;
+    }
 
     // Row 4: Est label and value
-    positionString(stringIndex++, contentStartX, currentY);
-    positionString(stringIndex, rightX, currentY);
+    if (m_enabledRows & ROW_EST) {
+        positionString(stringIndex++, contentStartX, currentY);
+        positionString(stringIndex, rightX, currentY);
+    }
 }
 
 void FuelWidget::rebuildRenderData() {
@@ -178,13 +205,14 @@ void FuelWidget::rebuildRenderData() {
     const PluginData& pluginData = PluginData::getInstance();
     const BikeTelemetryData& bikeData = pluginData.getBikeTelemetry();
 
-    float startX = WidgetPositions::WIDGET_STACK_X;
-    float startY = FUEL_WIDGET_Y;
+    float startX = 0.0f;
+    float startY = 0.0f;
 
-    // Calculate dimensions
+    // Calculate dimensions based on enabled rows
+    int rowCount = getEnabledRowCount();
     float backgroundWidth = calculateBackgroundWidth(FUEL_WIDGET_WIDTH);
     float titleHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
-    float contentHeight = titleHeight + dim.lineHeightNormal * 4;  // title (optional) + 4 data rows
+    float contentHeight = titleHeight + dim.lineHeightNormal * rowCount;
     float backgroundHeight = dim.paddingV + contentHeight + dim.paddingV;
 
     // Add background quad
@@ -275,36 +303,44 @@ void FuelWidget::rebuildRenderData() {
     // Title (optional)
     if (m_bShowTitle) {
         addString("Fuel", contentStartX, currentY, Justify::LEFT,
-            Fonts::ENTER_SANSMAN, valueColor, dim.fontSize);
+            Fonts::getTitle(), valueColor, dim.fontSize);
         currentY += titleHeight;
     }
 
     // Row 1: Fuel level
-    addString("Fue", contentStartX, currentY, Justify::LEFT,
-        Fonts::ROBOTO_MONO, labelColor, dim.fontSize);
-    addString(fuelValueBuffer, rightX, currentY, Justify::RIGHT,
-        Fonts::ROBOTO_MONO, fuelColor, dim.fontSize);
-    currentY += dim.lineHeightNormal;
+    if (m_enabledRows & ROW_FUEL) {
+        addString("Fue", contentStartX, currentY, Justify::LEFT,
+            Fonts::getNormal(), labelColor, dim.fontSize);
+        addString(fuelValueBuffer, rightX, currentY, Justify::RIGHT,
+            Fonts::getNormal(), fuelColor, dim.fontSize);
+        currentY += dim.lineHeightNormal;
+    }
 
     // Row 2: Use (total fuel used this run)
-    addString("Use", contentStartX, currentY, Justify::LEFT,
-        Fonts::ROBOTO_MONO, labelColor, dim.fontSize);
-    addString(usedValueBuffer, rightX, currentY, Justify::RIGHT,
-        Fonts::ROBOTO_MONO, usedColor, dim.fontSize);
-    currentY += dim.lineHeightNormal;
+    if (m_enabledRows & ROW_USED) {
+        addString("Use", contentStartX, currentY, Justify::LEFT,
+            Fonts::getNormal(), labelColor, dim.fontSize);
+        addString(usedValueBuffer, rightX, currentY, Justify::RIGHT,
+            Fonts::getNormal(), usedColor, dim.fontSize);
+        currentY += dim.lineHeightNormal;
+    }
 
     // Row 3: Avg (abbreviated from Avg/Lap)
-    addString("Avg", contentStartX, currentY, Justify::LEFT,
-        Fonts::ROBOTO_MONO, labelColor, dim.fontSize);
-    addString(avgValueBuffer, rightX, currentY, Justify::RIGHT,
-        Fonts::ROBOTO_MONO, avgColor, dim.fontSize);
-    currentY += dim.lineHeightNormal;
+    if (m_enabledRows & ROW_AVG) {
+        addString("Avg", contentStartX, currentY, Justify::LEFT,
+            Fonts::getNormal(), labelColor, dim.fontSize);
+        addString(avgValueBuffer, rightX, currentY, Justify::RIGHT,
+            Fonts::getNormal(), avgColor, dim.fontSize);
+        currentY += dim.lineHeightNormal;
+    }
 
     // Row 4: Est (abbreviated from Est Laps)
-    addString("Est", contentStartX, currentY, Justify::LEFT,
-        Fonts::ROBOTO_MONO, labelColor, dim.fontSize);
-    addString(lapsValueBuffer, rightX, currentY, Justify::RIGHT,
-        Fonts::ROBOTO_MONO_BOLD, estColor, dim.fontSize);
+    if (m_enabledRows & ROW_EST) {
+        addString("Est", contentStartX, currentY, Justify::LEFT,
+            Fonts::getNormal(), labelColor, dim.fontSize);
+        addString(lapsValueBuffer, rightX, currentY, Justify::RIGHT,
+            Fonts::getStrong(), estColor, dim.fontSize);
+    }
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
@@ -313,11 +349,11 @@ void FuelWidget::rebuildRenderData() {
 void FuelWidget::resetToDefaults() {
     m_bVisible = true;
     m_bShowTitle = false;  // No title by default
-    m_bShowBackgroundTexture = false;
+    setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 1.0f;
     m_fScale = 1.0f;
-    m_fuelUnit = FuelUnit::LITERS;  // Default to liters
-    setPosition(0.462f, 0.5772f);
+    // Note: fuelUnit is NOT reset here - it's a global preference, not per-profile
+    setPosition(0.9295f, 0.8547f);
     resetFuelTracking();
     setDataDirty();
 }

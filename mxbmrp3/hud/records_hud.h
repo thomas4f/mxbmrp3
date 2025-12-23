@@ -121,9 +121,9 @@ private:
     void cycleProvider(int direction);
     void cycleCategory(int direction);
 
-    // HUD positioning constants
-    static constexpr float START_X = HudPositions::CENTER_LEFT_X;
-    static constexpr float START_Y = HudPositions::UPPER_Y;
+    // Base position (0,0) - actual position comes from m_fOffsetX/m_fOffsetY
+    static constexpr float START_X = 0.0f;
+    static constexpr float START_Y = 0.0f;
     static constexpr int MAX_RECORDS = 10;
     static constexpr size_t MAX_RESPONSE_SIZE = 64 * 1024;  // 64KB max response to prevent memory exhaustion
     static constexpr int HEADER_ROWS = 3;  // Title + Provider/Category/Fetch + empty row (no column headers)

@@ -7,6 +7,7 @@
 #include "base_hud.h"
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
+#include <chrono>
 
 class LapLogHud : public BaseHud {
 public:
@@ -26,7 +27,7 @@ public:
         COL_TIME = 1 << 4,  // Total lap time
 
         COL_REQUIRED = 0,    // No required columns
-        COL_DEFAULT  = 0x11  // Default: Lap and Time only (excludes sectors)
+        COL_DEFAULT  = 0x1F  // Default: All columns (Lap, S1, S2, S3, Time)
     };
 
     // Row count limits (public so static_assert can access them)
@@ -53,11 +54,11 @@ private:
     int getBackgroundWidthChars() const;
 
     // HUD positioning constants
-    // Positioned in bottom-left area, below session best
-    // NOTE: START_Y is the TOP anchor point - HUD grows DOWNWARD as laps are completed
-    // Title appears at TOP of HUD, best lap first, then oldest to newest laps
-    static constexpr float START_X = HudPositions::LEFT_EDGE_X;
-    static constexpr float START_Y = HudPositions::BOTTOM_Y;
+    // Positioned in bottom-left area, below ideal lap
+    // Base position (0,0) - actual position comes from m_fOffsetX/m_fOffsetY
+    // NOTE: HUD grows DOWNWARD as laps are completed
+    static constexpr float START_X = 0.0f;
+    static constexpr float START_Y = 0.0f;
     static constexpr int BACKGROUND_WIDTH_CHARS = 43;  // Max: "L99 44:44.444 44:44.444 44:44.444 44:44.444"
     static constexpr int NUM_COLUMNS = 5;  // Number of columns per row (lap, s1, s2, s3, time)
 
@@ -80,6 +81,15 @@ private:
 
     ColumnPositions m_columns;
     uint32_t m_enabledColumns = COL_DEFAULT;  // Bitfield of enabled columns
-    int m_maxDisplayLaps = 6;  // Configurable number of laps to display (default: 6, matches SessionBestHud)
+    int m_maxDisplayLaps = 6;  // Configurable number of laps to display (default: 6, matches IdealLapHud)
     int m_cachedNumDataRows = 6;  // Cached count for rebuildLayout
+
+    // Live timing support
+    bool m_showLiveTiming = true;  // Show current lap in progress with live sectors/timer
+
+    // Check if we need frequent updates for ticking timer
+    bool needsFrequentUpdates() const override;
+
+    // Get current sector index (0=S1 in progress, 1=S2, 2=S3, -1=no active lap)
+    int getCurrentActiveSector() const;
 };

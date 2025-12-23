@@ -28,6 +28,7 @@ GapBarHud::GapBarHud()
     , m_cachedLastCompletedLapNum(-1)
     , m_cachedSplit1(-1)
     , m_cachedSplit2(-1)
+    , m_cachedPlayerRunning(true)
     , m_bikeBrandColor(ColorPalette::WHITE)
     , m_isFrozen(false)
     , m_frozenGap(0)
@@ -37,28 +38,23 @@ GapBarHud::GapBarHud()
     , m_gapRangeMs(DEFAULT_RANGE_MS)
     , m_barWidthPercent(DEFAULT_WIDTH_PERCENT)
 {
+    // One-time setup
     DEBUG_INFO("GapBarHud created");
     setDraggable(true);
-
-    // Default position: centered horizontally, above notices with matching gap
-    // X offset is bar center (0.5 = screen center), Y is top edge
-    // Y position gives 17px gap to notices (same as notices-to-timing gap at 1080p)
-    setPosition(0.5f, 0.043f);
-
-    // Set defaults
-    m_bVisible = false;  // Disabled by default
-    m_bShowTitle = false;
-    m_fBackgroundOpacity = 0.1f;
-
-    // Pre-allocate vectors
     m_quads.reserve(4);    // Background, progress bar, best lap marker
     m_strings.reserve(1);  // Gap text
+
+    // Set texture base name for dynamic texture discovery
+    setTextureBaseName("gap_bar_hud");
+
+    // Set all configurable defaults
+    resetToDefaults();
 
     rebuildRenderData();
 }
 
 bool GapBarHud::handlesDataType(DataChangeType dataType) const {
-    return dataType == DataChangeType::SessionBest ||
+    return dataType == DataChangeType::IdealLap ||
            dataType == DataChangeType::SpectateTarget ||
            dataType == DataChangeType::SessionData ||
            dataType == DataChangeType::Standings ||
@@ -69,10 +65,23 @@ void GapBarHud::update() {
     const PluginData& pluginData = PluginData::getInstance();
     const SessionData& sessionData = pluginData.getSessionData();
 
+    // Handle pause/resume - sync anchor pause state with player running state
+    // Only check pause when on track (spectate/replay don't have pause concept)
+    bool playerRunning = pluginData.isPlayerRunning();
+    bool onTrack = (pluginData.getDrawState() == PluginConstants::ViewState::ON_TRACK);
+    if (onTrack && playerRunning != m_cachedPlayerRunning) {
+        if (playerRunning) {
+            m_anchor.resume();
+        } else {
+            m_anchor.pause();
+        }
+        m_cachedPlayerRunning = playerRunning;
+    }
+
     // Detect session changes (new event) and reset state
     int currentSession = sessionData.session;
-    const SessionBestData* sessionBest = pluginData.getSessionBestData();
-    int currentLastCompletedLap = sessionBest ? sessionBest->lastCompletedLapNum : -1;
+    const IdealLapData* idealLapData = pluginData.getIdealLapData();
+    int currentLastCompletedLap = idealLapData ? idealLapData->lastCompletedLapNum : -1;
 
     bool sessionTypeChanged = (currentSession != m_cachedSession);
     bool sessionDataCleared = (m_cachedLastCompletedLapNum >= 0 && currentLastCompletedLap < 0);
@@ -104,8 +113,8 @@ void GapBarHud::update() {
             m_cachedSplit1 = currentLap->split1;
             m_cachedSplit2 = currentLap->split2;
         }
-        if (sessionBest) {
-            m_cachedLastCompletedLapNum = sessionBest->lastCompletedLapNum;
+        if (idealLapData) {
+            m_cachedLastCompletedLapNum = idealLapData->lastCompletedLapNum;
         }
 
         // Get bike brand color for the new target
@@ -140,21 +149,21 @@ void GapBarHud::update() {
     checkFreezeExpiration();
 
     // Check for lap completion - mirrors TimingHud's processTimingUpdates() logic
-    if (sessionBest && sessionBest->lastCompletedLapNum >= 0 &&
-        sessionBest->lastCompletedLapNum != m_cachedLastCompletedLapNum) {
+    if (idealLapData && idealLapData->lastCompletedLapNum >= 0 &&
+        idealLapData->lastCompletedLapNum != m_cachedLastCompletedLapNum) {
 
         // Check if this lap was a PB and save timing data
         checkAndSavePreviousLap();
 
         const LapLogEntry* personalBest = pluginData.getBestLapEntry();
-        int lapTime = sessionBest->lastLapTime;
+        int lapTime = idealLapData->lastLapTime;
         int bestTime = personalBest ? personalBest->lapTime : -1;
-        int previousBestTime = sessionBest->previousBestLapTime;
+        int previousBestTime = idealLapData->previousBestLapTime;
 
         // Check if this lap was valid by looking at the lap log
         bool isValid = true;
-        int completedLapNum = sessionBest->lastCompletedLapNum;
-        const std::vector<LapLogEntry>* lapLog = pluginData.getLapLog();
+        int completedLapNum = idealLapData->lastCompletedLapNum;
+        const std::deque<LapLogEntry>* lapLog = pluginData.getLapLog();
         if (lapLog && !lapLog->empty()) {
             const LapLogEntry& mostRecentLap = (*lapLog)[0];
             isValid = mostRecentLap.isValid;
@@ -191,7 +200,7 @@ void GapBarHud::update() {
         m_cachedSplit1 = -1;
         m_cachedSplit2 = -1;
 
-        m_cachedLastCompletedLapNum = sessionBest->lastCompletedLapNum;
+        m_cachedLastCompletedLapNum = idealLapData->lastCompletedLapNum;
         setDataDirty();
     }
 
@@ -203,6 +212,18 @@ void GapBarHud::update() {
     if (sinceLastUpdate >= UPDATE_INTERVAL_MS) {
         m_lastUpdate = now;
         updateCurrentLapTiming();
+
+        // Publish live gap to PluginData for use by LapLogHud and other HUDs
+        if (m_hasBestLap && m_anchor.valid) {
+            m_cachedGap = calculateCurrentGap();
+            m_cachedGapValid = true;
+            PluginData::getInstance().setLiveGap(m_cachedGap, true);
+        } else {
+            m_cachedGap = 0;
+            m_cachedGapValid = false;
+            PluginData::getInstance().setLiveGap(0, false);
+        }
+
         setDataDirty();
     }
 
@@ -224,6 +245,8 @@ void GapBarHud::updateTrackPosition(int raceNum, float trackPos, int lapNum) {
         return;
     }
 
+    // Clamp track position to valid range (defensive - API should provide valid values)
+    trackPos = std::clamp(trackPos, 0.0f, 1.0f);
     m_currentTrackPos = trackPos;
 
     if (!m_trackMonitor.initialized) {
@@ -253,19 +276,19 @@ void GapBarHud::updateTrackPosition(int raceNum, float trackPos, int lapNum) {
 
 void GapBarHud::checkAndSavePreviousLap() {
     const PluginData& pluginData = PluginData::getInstance();
-    const SessionBestData* sessionBest = pluginData.getSessionBestData();
+    const IdealLapData* idealLapData = pluginData.getIdealLapData();
     const LapLogEntry* personalBest = pluginData.getBestLapEntry();
 
     // Check if this lap was a PB
-    if (personalBest && sessionBest && sessionBest->lastLapTime > 0 &&
-        sessionBest->lastLapTime == personalBest->lapTime) {
+    if (personalBest && idealLapData && idealLapData->lastLapTime > 0 &&
+        idealLapData->lastLapTime == personalBest->lapTime) {
 
         // Only save timing data if we observed the lap start at S/F
         // This prevents saving partial data when joining mid-lap
         if (m_observedLapStart) {
-            DEBUG_INFO_F("GapBarHud: New PB! Lap time: %d ms", sessionBest->lastLapTime);
+            DEBUG_INFO_F("GapBarHud: New PB! Lap time: %d ms", idealLapData->lastLapTime);
             m_bestLapTimingPoints = m_currentLapTimingPoints;
-            m_bestLapTime = sessionBest->lastLapTime;
+            m_bestLapTime = idealLapData->lastLapTime;
             m_hasBestLap = true;
         }
     }
@@ -288,7 +311,7 @@ void GapBarHud::updateCurrentLapTiming() {
 void GapBarHud::processSplitUpdates() {
     const PluginData& pluginData = PluginData::getInstance();
     const CurrentLapData* currentLap = pluginData.getCurrentLapData();
-    const SessionBestData* sessionBest = pluginData.getSessionBestData();
+    const IdealLapData* idealLapData = pluginData.getIdealLapData();
     const LapLogEntry* personalBest = pluginData.getBestLapEntry();
 
     if (!currentLap) return;
@@ -297,7 +320,7 @@ void GapBarHud::processSplitUpdates() {
     if (currentLap->split1 > 0 && currentLap->split1 != m_cachedSplit1) {
         int splitTime = currentLap->split1;
         int bestTime = personalBest ? personalBest->sector1 : -1;
-        int previousBestTime = sessionBest ? sessionBest->previousBestSector1 : -1;
+        int previousBestTime = idealLapData ? idealLapData->previousBestSector1 : -1;
 
         // Calculate gap (like TimingHud::calculateGapToBest)
         int gap = (splitTime > 0 && bestTime > 0) ? splitTime - bestTime : 0;
@@ -329,8 +352,8 @@ void GapBarHud::processSplitUpdates() {
         if (personalBest && personalBest->sector1 > 0 && personalBest->sector2 > 0) {
             bestTime = personalBest->sector1 + personalBest->sector2;
         }
-        if (sessionBest && sessionBest->previousBestSector1 > 0 && sessionBest->previousBestSector2 > 0) {
-            previousBestTime = sessionBest->previousBestSector1 + sessionBest->previousBestSector2;
+        if (idealLapData && idealLapData->previousBestSector1 > 0 && idealLapData->previousBestSector2 > 0) {
+            previousBestTime = idealLapData->previousBestSector1 + idealLapData->previousBestSector2;
         }
 
         // Calculate gap
@@ -465,11 +488,17 @@ void GapBarHud::resetTimingState() {
     m_cachedLastCompletedLapNum = -1;
     m_cachedSplit1 = -1;
     m_cachedSplit2 = -1;
+    m_cachedPlayerRunning = true;
     m_isFrozen = false;
     m_frozenGap = 0;
     m_frozenSplitIndex = -1;
+    m_cachedGap = 0;
+    m_cachedGapValid = false;
     m_bestLapTimingPoints.fill(BestLapTimingPoint());
     m_currentLapTimingPoints.fill(BestLapTimingPoint());
+
+    // Clear live gap in PluginData
+    PluginData::getInstance().setLiveGap(0, false);
 }
 
 void GapBarHud::rebuildLayout() {
@@ -501,15 +530,22 @@ void GapBarHud::rebuildRenderData() {
     float startX = -barWidth / 2.0f;
     float startY = 0.0f;
 
-    // ==== BACKGROUND QUAD (BACKGROUND color) ====
+    // ==== BACKGROUND QUAD ====
     SPluginQuad_t bgQuad;
     float bgX = startX;
     float bgY = startY;
     applyOffset(bgX, bgY);
     setQuadPositions(bgQuad, bgX, bgY, barWidth, barHeight);
-    bgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-    bgQuad.m_ulColor = PluginUtils::applyOpacity(
-        ColorConfig::getInstance().getBackground(), m_fBackgroundOpacity);
+
+    // Check if background texture should be used
+    if (m_bShowBackgroundTexture && m_iBackgroundTextureIndex > 0) {
+        bgQuad.m_iSprite = m_iBackgroundTextureIndex;
+        bgQuad.m_ulColor = PluginUtils::applyOpacity(ColorPalette::WHITE, m_fBackgroundOpacity);
+    } else {
+        bgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+        bgQuad.m_ulColor = PluginUtils::applyOpacity(
+            ColorConfig::getInstance().getBackground(), m_fBackgroundOpacity);
+    }
     m_quads.push_back(bgQuad);
 
     // Common inner dimensions
@@ -519,12 +555,12 @@ void GapBarHud::rebuildRenderData() {
 
     // ==== GAP BAR (grows from center based on live gap - never frozen) ====
     {
-        // Always use live gap for the bar visualization
+        // Always use live gap for the bar visualization (use cached value)
         int gap = 0;
         const LapLogEntry* personalBest = PluginData::getInstance().getBestLapEntry();
 
-        if (m_hasBestLap && m_anchor.valid && personalBest) {
-            gap = calculateCurrentGap();
+        if (m_cachedGapValid && personalBest) {
+            gap = m_cachedGap;
         }
 
         // Calculate bar extent: gap / range = percentage of half-bar
@@ -617,10 +653,9 @@ void GapBarHud::rebuildRenderData() {
     if (m_isFrozen && personalBest) {
         // Show frozen official gap from split/lap crossing (full precision)
         PluginUtils::formatTimeDiff(gapBuffer, sizeof(gapBuffer), m_frozenGap);
-    } else if (m_hasBestLap && m_anchor.valid && personalBest) {
-        // Show live gap (compact format)
-        int gap = calculateCurrentGap();
-        PluginUtils::formatGapCompact(gapBuffer, sizeof(gapBuffer), gap);
+    } else if (m_cachedGapValid && personalBest) {
+        // Show live gap (compact format, use cached value)
+        PluginUtils::formatGapCompact(gapBuffer, sizeof(gapBuffer), m_cachedGap);
     } else {
         // No best lap - show placeholder in primary color
         strcpy_s(gapBuffer, sizeof(gapBuffer), Placeholders::GENERIC);
@@ -628,7 +663,7 @@ void GapBarHud::rebuildRenderData() {
 
     // Gap text (monospace font, normal size, centered)
     addString(gapBuffer, gapTextX, gapTextY, Justify::CENTER,
-              Fonts::ROBOTO_MONO, gapColor, dim.fontSize);
+              Fonts::getNormal(), gapColor, dim.fontSize);
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + barWidth, startY + barHeight);
@@ -671,7 +706,7 @@ void GapBarHud::setBarWidth(int percent) {
 void GapBarHud::resetToDefaults() {
     m_bVisible = false;  // Disabled by default
     m_bShowTitle = false;
-    m_bShowBackgroundTexture = false;
+    setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.1f;
     m_fScale = 1.0f;
     setPosition(0.5f, 0.043f);

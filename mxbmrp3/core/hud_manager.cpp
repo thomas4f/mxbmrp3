@@ -5,6 +5,7 @@
 #include "hud_manager.h"
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
+#include "asset_manager.h"
 #include "input_manager.h"
 #include "xinput_reader.h"
 #include "plugin_data.h"
@@ -16,7 +17,7 @@
 #include "../hud/performance_hud.h"
 #include "../hud/telemetry_hud.h"
 #include "../hud/input_hud.h"
-#include "../hud/session_best_hud.h"
+#include "../hud/ideal_lap_hud.h"
 #include "../hud/lap_log_hud.h"
 #include "../hud/time_widget.h"
 #include "../hud/position_widget.h"
@@ -39,6 +40,7 @@
 #include "../hud/gap_bar_hud.h"
 #include "../hud/pointer_widget.h"
 #include "../hud/rumble_hud.h"
+#include "hotkey_manager.h"
 #include <windows.h>
 #include <memory>
 #include <cstring>
@@ -57,6 +59,9 @@ void HudManager::initialize() {
 
     DEBUG_INFO("HudManager initializing");
 
+    // Discover assets before setting up resources
+    AssetManager::getInstance().discoverAssets();
+
     // Pre-allocate render data vectors for optimal performance
     m_quads.reserve(INITIAL_QUAD_CAPACITY);
     m_strings.reserve(INITIAL_STRING_CAPACITY);
@@ -67,105 +72,106 @@ void HudManager::initialize() {
     // Register HUDs
     // Capture pointers to HUDs for SettingsHud and settings persistence
     // Order matches settings tabs for consistency
+    // Note: Texture base names match files in mxbmrp3_data/textures/ (e.g., "standings_hud" for "standings_hud_1.tga")
     auto standingsPtr = std::make_unique<StandingsHud>();
     m_pStandings = standingsPtr.get();
-    m_pStandings->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_STANDINGS_HUD);
+    m_pStandings->setTextureBaseName("standings_hud");
     registerHud(std::move(standingsPtr));
 
     auto mapPtr = std::make_unique<MapHud>();
     m_pMapHud = mapPtr.get();
-    m_pMapHud->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_MAP_HUD);
+    m_pMapHud->setTextureBaseName("map_hud");
     registerHud(std::move(mapPtr));
 
     auto radarPtr = std::make_unique<RadarHud>();
     m_pRadarHud = radarPtr.get();
-    m_pRadarHud->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_RADAR_HUD);
+    m_pRadarHud->setTextureBaseName("radar_hud");
     registerHud(std::move(radarPtr));
 
     auto lapLogPtr = std::make_unique<LapLogHud>();
     m_pLapLog = lapLogPtr.get();
-    m_pLapLog->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_LAP_LOG_HUD);
+    m_pLapLog->setTextureBaseName("lap_log_hud");
     registerHud(std::move(lapLogPtr));
 
-    auto sessionBestPtr = std::make_unique<SessionBestHud>();
-    m_pSessionBest = sessionBestPtr.get();
-    m_pSessionBest->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_SESSION_BEST_HUD);
-    registerHud(std::move(sessionBestPtr));
+    auto idealLapPtr = std::make_unique<IdealLapHud>();
+    m_pIdealLap = idealLapPtr.get();
+    m_pIdealLap->setTextureBaseName("ideal_lap_hud");
+    registerHud(std::move(idealLapPtr));
 
     auto telemetryPtr = std::make_unique<TelemetryHud>();
     m_pTelemetry = telemetryPtr.get();
-    m_pTelemetry->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_TELEMETRY_HUD);
+    m_pTelemetry->setTextureBaseName("telemetry_hud");
     registerHud(std::move(telemetryPtr));
 
     auto inputPtr = std::make_unique<InputHud>();
     m_pInput = inputPtr.get();
-    m_pInput->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_INPUT_HUD);
+    m_pInput->setTextureBaseName("input_hud");
     registerHud(std::move(inputPtr));
 
     auto performancePtr = std::make_unique<PerformanceHud>();
     m_pPerformance = performancePtr.get();
-    m_pPerformance->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_PERFORMANCE_HUD);
+    m_pPerformance->setTextureBaseName("performance_hud");
     registerHud(std::move(performancePtr));
 
     auto pitboardPtr = std::make_unique<PitboardHud>();
     m_pPitboard = pitboardPtr.get();
-    m_pPitboard->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_PITBOARD_HUD);
+    m_pPitboard->setTextureBaseName("pitboard_hud");
     registerHud(std::move(pitboardPtr));
 
     auto recordsPtr = std::make_unique<RecordsHud>();
     m_pRecords = recordsPtr.get();
-    m_pRecords->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_RECORDS_HUD);
+    m_pRecords->setTextureBaseName("records_hud");
     registerHud(std::move(recordsPtr));
 
     // Widgets
     auto lapPtr = std::make_unique<LapWidget>();
     m_pLap = lapPtr.get();
-    m_pLap->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_LAP_WIDGET);
+    m_pLap->setTextureBaseName("lap_widget");
     registerHud(std::move(lapPtr));
 
     auto positionPtr = std::make_unique<PositionWidget>();
     m_pPosition = positionPtr.get();
-    m_pPosition->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_POSITION_WIDGET);
+    m_pPosition->setTextureBaseName("position_widget");
     registerHud(std::move(positionPtr));
 
     auto timePtr = std::make_unique<TimeWidget>();
     m_pTime = timePtr.get();
-    m_pTime->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_TIME_WIDGET);
+    m_pTime->setTextureBaseName("time_widget");
     registerHud(std::move(timePtr));
 
     auto sessionPtr = std::make_unique<SessionWidget>();
     m_pSession = sessionPtr.get();
-    m_pSession->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_SESSION_WIDGET);
+    m_pSession->setTextureBaseName("session_widget");
     registerHud(std::move(sessionPtr));
 
     auto speedPtr = std::make_unique<SpeedWidget>();
     m_pSpeed = speedPtr.get();
-    m_pSpeed->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_SPEED_WIDGET);
+    m_pSpeed->setTextureBaseName("speed_widget");
     registerHud(std::move(speedPtr));
 
     auto speedoPtr = std::make_unique<SpeedoWidget>();
     m_pSpeedo = speedoPtr.get();
-    m_pSpeedo->setBackgroundTextureIndex(PluginConstants::SpriteIndex::SPEEDO_DIAL);
+    m_pSpeedo->setTextureBaseName("speedo_widget");
     registerHud(std::move(speedoPtr));
 
     auto tachoPtr = std::make_unique<TachoWidget>();
     m_pTacho = tachoPtr.get();
-    m_pTacho->setBackgroundTextureIndex(PluginConstants::SpriteIndex::TACHO_DIAL);
+    m_pTacho->setTextureBaseName("tacho_widget");
     registerHud(std::move(tachoPtr));
 
     auto timingPtr = std::make_unique<TimingHud>();
     m_pTiming = timingPtr.get();
-    m_pTiming->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_TIMING_HUD);
+    m_pTiming->setTextureBaseName("timing_hud");
     registerHud(std::move(timingPtr));
 
     auto gapBarPtr = std::make_unique<GapBarHud>();
     m_pGapBar = gapBarPtr.get();
-    m_pGapBar->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_GAP_BAR_HUD);
+    m_pGapBar->setTextureBaseName("gap_bar_hud");
     registerHud(std::move(gapBarPtr));
 
     auto barsPtr = std::make_unique<BarsWidget>();
     m_pBars = barsPtr.get();
-    m_pBars->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_BARS_WIDGET);
+    m_pBars->setTextureBaseName("bars_widget");
     registerHud(std::move(barsPtr));
 
     auto versionPtr = std::make_unique<VersionWidget>();
@@ -178,12 +184,12 @@ void HudManager::initialize() {
 
     auto fuelPtr = std::make_unique<FuelWidget>();
     m_pFuel = fuelPtr.get();
-    m_pFuel->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_FUEL_WIDGET);
+    m_pFuel->setTextureBaseName("fuel_widget");
     registerHud(std::move(fuelPtr));
 
     auto rumblePtr = std::make_unique<RumbleHud>();
     m_pRumble = rumblePtr.get();
-    m_pRumble->setBackgroundTextureIndex(PluginConstants::SpriteIndex::BG_RUMBLE_HUD);
+    m_pRumble->setTextureBaseName("rumble_hud");
     registerHud(std::move(rumblePtr));
 
     // Create PointerWidget early so it can be passed to SettingsHud
@@ -192,8 +198,8 @@ void HudManager::initialize() {
     m_pPointer = pointerPtr.get();
 
     // Register SettingsHud with pointers to all configurable HUDs and widgets
-    auto settingsPtr = std::make_unique<SettingsHud>(m_pSessionBest, m_pLapLog, m_pStandings,
-                                                       m_pPerformance, m_pTelemetry, m_pInput, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, m_pRecords, m_pFuel, m_pPointer);
+    auto settingsPtr = std::make_unique<SettingsHud>(m_pIdealLap, m_pLapLog, m_pStandings,
+                                                       m_pPerformance, m_pTelemetry, m_pInput, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, m_pRecords, m_pFuel, m_pPointer, m_pRumble);
     m_pSettingsHud = settingsPtr.get();
     registerHud(std::move(settingsPtr));
 
@@ -238,7 +244,7 @@ void HudManager::shutdown() {
 void HudManager::clear() {
     // Reset cached HUD pointers BEFORE destroying the objects
     // This prevents any dangling pointer window (defensive programming)
-    m_pSessionBest = nullptr;
+    m_pIdealLap = nullptr;
     m_pLapLog = nullptr;
     m_pStandings = nullptr;
     m_pPerformance = nullptr;
@@ -407,6 +413,9 @@ void HudManager::draw(int iState, int* piNumQuads, void** ppQuad, int* piNumStri
     // Update input data once per frame at the beginning
     InputManager::getInstance().updateFrame();
 
+    // Update hotkey manager (checks for triggered actions)
+    HotkeyManager::getInstance().update();
+
     // Update all HUDs (they will only rebuild if marked dirty)
     updateHuds();
 
@@ -525,10 +534,13 @@ void HudManager::collectRenderData() {
     // Settings and settings button are always rendered (even when toggle key pressed)
     for (const auto& hud : m_huds) {
         if (hud && hud->isVisible()) {
-            // Skip rendering if temporary toggle is active (except settings HUDs and pointer)
+            // Check if version widget's easter egg game is active (bypasses all toggles)
+            bool isVersionGameActive = (hud.get() == m_pVersion && m_pVersion && m_pVersion->isGameActive());
+
+            // Skip rendering if temporary toggle is active (except settings HUDs, pointer, and active game)
             bool isSettingsHud = (hud.get() == m_pSettingsHud || hud.get() == m_pSettingsButton);
             bool isPointer = (hud.get() == m_pPointer);
-            if (m_bAllHudsToggledOff && !isSettingsHud && !isPointer) {
+            if (m_bAllHudsToggledOff && !isSettingsHud && !isPointer && !isVersionGameActive) {
                 continue;
             }
 
@@ -539,7 +551,7 @@ void HudManager::collectRenderData() {
                            hud.get() == m_pTacho ||
                            hud.get() == m_pBars || hud.get() == m_pVersion ||
                            hud.get() == m_pNotices || hud.get() == m_pFuel);
-            if (m_bAllWidgetsToggledOff && isWidget) {
+            if (m_bAllWidgetsToggledOff && isWidget && !isVersionGameActive) {
                 continue;
             }
 
@@ -558,85 +570,59 @@ void HudManager::setupDefaultResources() {
     m_numSpriteNames = 0;
     m_numFontNames = 0;
 
+    const AssetManager& assetMgr = AssetManager::getInstance();
+
     // Helper lambda to add sprite with bounds checking
-    auto addSprite = [this](const char* path) {
+    auto addSprite = [this](const std::string& path) {
         if (m_numSpriteNames < MAX_SPRITE_NAMES) {
-            strcpy_s(m_spriteNames[m_numSpriteNames++], MAX_NAME_LENGTH, path);
+            strcpy_s(m_spriteNames[m_numSpriteNames++], MAX_NAME_LENGTH, path.c_str());
         } else {
-            DEBUG_WARN_F("MAX_SPRITE_NAMES exceeded, cannot add %s", path);
+            DEBUG_WARN_F("MAX_SPRITE_NAMES exceeded, cannot add %s", path.c_str());
         }
     };
 
-    // Add default sprites needed by HUDs (including pointer)
-    // IMPORTANT: Sprite order must match SpriteIndex constants in plugin_constants.h
-    // Index 1: pointer, Index 2: gear-circle, Index 3+: background textures
-    addSprite("mxbmrp3_data\\pointer_widget.tga");    // SpriteIndex::POINTER = 1
-    addSprite("mxbmrp3_data\\gear-circle.tga");      // SpriteIndex::GEAR_CIRCLE = 2
+    // Helper lambda to add font with bounds checking
+    auto addFont = [this](const std::string& path) {
+        if (m_numFontNames < MAX_FONT_NAMES) {
+            strcpy_s(m_fontNames[m_numFontNames++], MAX_NAME_LENGTH, path.c_str());
+        } else {
+            DEBUG_WARN_F("MAX_FONT_NAMES exceeded, cannot add %s", path.c_str());
+        }
+    };
 
-    // Add HUD/widget background texture sprites (optional - files may not exist)
-    // These map to SpriteIndex::BG_* constants (3-16)
-    addSprite("mxbmrp3_data\\standings_hud.tga");    // SpriteIndex::BG_STANDINGS_HUD = 3
-    addSprite("mxbmrp3_data\\map_hud.tga");          // SpriteIndex::BG_MAP_HUD = 4
-    addSprite("mxbmrp3_data\\lap_log_hud.tga");      // SpriteIndex::BG_LAP_LOG_HUD = 5
-    addSprite("mxbmrp3_data\\session_best_hud.tga"); // SpriteIndex::BG_SESSION_BEST_HUD = 6
-    addSprite("mxbmrp3_data\\telemetry_hud.tga");    // SpriteIndex::BG_TELEMETRY_HUD = 7
-    addSprite("mxbmrp3_data\\input_hud.tga");        // SpriteIndex::BG_INPUT_HUD = 8
-    addSprite("mxbmrp3_data\\performance_hud.tga");  // SpriteIndex::BG_PERFORMANCE_HUD = 9
-    addSprite("mxbmrp3_data\\lap_widget.tga");       // SpriteIndex::BG_LAP_WIDGET = 10
-    addSprite("mxbmrp3_data\\position_widget.tga");  // SpriteIndex::BG_POSITION_WIDGET = 11
-    addSprite("mxbmrp3_data\\time_widget.tga");      // SpriteIndex::BG_TIME_WIDGET = 12
-    addSprite("mxbmrp3_data\\session_widget.tga");   // SpriteIndex::BG_SESSION_WIDGET = 13
-    addSprite("mxbmrp3_data\\speed_widget.tga");     // SpriteIndex::BG_SPEED_WIDGET = 14
-    addSprite("mxbmrp3_data\\timing_hud.tga");       // SpriteIndex::BG_TIMING_HUD = 15
-    addSprite("mxbmrp3_data\\bars_widget.tga");      // SpriteIndex::BG_BARS_WIDGET = 16
-    addSprite("mxbmrp3_data\\pitboard_hud.tga");    // SpriteIndex::BG_PITBOARD_HUD = 17
-    addSprite("mxbmrp3_data\\speedo_widget.tga"); // SpriteIndex::SPEEDO_DIAL = 18
-    addSprite("mxbmrp3_data\\tacho_widget.tga");  // SpriteIndex::TACHO_DIAL = 19
-    addSprite("mxbmrp3_data\\radar_hud.tga");     // SpriteIndex::BG_RADAR_HUD = 20
-    addSprite("mxbmrp3_data\\radar_sector.tga"); // SpriteIndex::RADAR_SECTOR = 21
-    addSprite("mxbmrp3_data\\fuel_widget.tga");  // SpriteIndex::BG_FUEL_WIDGET = 22
-    addSprite("mxbmrp3_data\\records_hud.tga");  // SpriteIndex::BG_RECORDS_HUD = 23
-    addSprite("mxbmrp3_data\\gap_bar_hud.tga");  // SpriteIndex::BG_GAP_BAR_HUD = 24
-    addSprite("mxbmrp3_data\\rumble_hud.tga");  // SpriteIndex::BG_RUMBLE_HUD = 25
-
-    // Rider shape sprites (for map/radar)
-    addSprite("mxbmrp3_data\\rider_circle.tga");   // SpriteIndex::RIDER_CIRCLE = 26
-    addSprite("mxbmrp3_data\\rider_triangle.tga"); // SpriteIndex::RIDER_TRIANGLE = 27
-    addSprite("mxbmrp3_data\\rider_wedge.tga");    // SpriteIndex::RIDER_WEDGE = 28
-
-    // Add default fonts needed by HUDs
-    // Safety: Check array bounds before incrementing to prevent buffer overflow
-    if (m_numFontNames < MAX_FONT_NAMES) {
-        strcpy_s(m_fontNames[m_numFontNames++], MAX_NAME_LENGTH, "mxbmrp3_data\\EnterSansman-Italic.fnt");
-    } else {
-        DEBUG_WARN("MAX_FONT_NAMES exceeded, cannot add EnterSansman-Italic.fnt");
+    // Add texture sprites from AssetManager (discovered dynamically)
+    // Textures are sorted alphabetically by base name, each with variants
+    const auto& textures = assetMgr.getTextures();
+    for (const auto& texture : textures) {
+        for (int variant : texture.variants) {
+            std::string path = assetMgr.getTexturePath(texture.baseName, variant);
+            addSprite(path);
+        }
     }
 
-    if (m_numFontNames < MAX_FONT_NAMES) {
-        strcpy_s(m_fontNames[m_numFontNames++], MAX_NAME_LENGTH, "mxbmrp3_data\\RobotoMono-Regular.fnt");
-    } else {
-        DEBUG_WARN("MAX_FONT_NAMES exceeded, cannot add RobotoMono-Regular.fnt");
+    DEBUG_INFO_F("Added %zu texture sprites from %zu texture bases",
+        assetMgr.getTotalTextureSprites(), textures.size());
+
+    // Add icon sprites from AssetManager (discovered dynamically)
+    // Icons are sorted alphabetically
+    size_t iconCount = assetMgr.getIconCount();
+    for (size_t i = 0; i < iconCount; ++i) {
+        std::string path = assetMgr.getIconPath(i);
+        addSprite(path);
     }
 
-    if (m_numFontNames < MAX_FONT_NAMES) {
-        strcpy_s(m_fontNames[m_numFontNames++], MAX_NAME_LENGTH, "mxbmrp3_data\\RobotoMono-Bold.fnt");
-    } else {
-        DEBUG_WARN("MAX_FONT_NAMES exceeded, cannot add RobotoMono-Bold.fnt");
+    DEBUG_INFO_F("Added %zu icon sprites", iconCount);
+
+    // Add fonts from AssetManager (discovered dynamically)
+    size_t fontCount = assetMgr.getFontCount();
+    for (size_t i = 0; i < fontCount; ++i) {
+        std::string path = assetMgr.getFontPath(i);
+        addFont(path);
     }
 
-    if (m_numFontNames < MAX_FONT_NAMES) {
-        strcpy_s(m_fontNames[m_numFontNames++], MAX_NAME_LENGTH, "mxbmrp3_data\\FuzzyBubbles-Regular.fnt");
-    } else {
-        DEBUG_WARN("MAX_FONT_NAMES exceeded, cannot add FuzzyBubbles-Regular.fnt");
-    }
+    DEBUG_INFO_F("Added %zu fonts", fontCount);
 
-    if (m_numFontNames < MAX_FONT_NAMES) {
-        strcpy_s(m_fontNames[m_numFontNames++], MAX_NAME_LENGTH, "mxbmrp3_data\\Tiny5-Regular.fnt");
-    } else {
-        DEBUG_WARN("MAX_FONT_NAMES exceeded, cannot add Tiny5-Regular.fnt");
-    }
-
-    DEBUG_INFO("Default HUD resources configured");
+    DEBUG_INFO("Default HUD resources configured via AssetManager");
 }
 
 void HudManager::handleSettingsButton() {
@@ -656,84 +642,135 @@ void HudManager::handleSettingsButton() {
 }
 
 void HudManager::processKeyboardInput() {
-    const InputManager& input = InputManager::getInstance();
-
-    // `~ or \| key: Toggle settings menu (or Ctrl+key for HUD visibility)
-    // Process this BEFORE modifier key check to allow Ctrl+OEM3/5
-    // Supports both VK_OEM_3 (`~ on US, § on some EU) and VK_OEM_5 (\| on US)
-    if (input.getOem3Key().isClicked() || input.getOem5Key().isClicked()) {
-        bool ctrlPressed = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
-
-        if (ctrlPressed) {
-            // Ctrl+`~ or Ctrl+\|: Temporary toggle all HUDs on/off (doesn't modify actual visibility state)
-            m_bAllHudsToggledOff = !m_bAllHudsToggledOff;
-            DEBUG_INFO_F("Ctrl+Toggle key: All HUDs temporarily %s", m_bAllHudsToggledOff ? "hidden" : "shown");
-        } else {
-            // `~ or \| alone: Toggle settings menu
-            if (m_pSettingsHud) {
-                if (m_pSettingsHud->isVisible()) {
-                    m_pSettingsHud->hide();
-                    DEBUG_INFO("Toggle key: Settings hidden");
-                } else {
-                    m_pSettingsHud->show();
-                    DEBUG_INFO("Toggle key: Settings shown");
-                }
-            }
-        }
-        return;  // Don't process other shortcuts after handling OEM keys
-    }
-
-    // Ignore keyboard shortcuts when modifier keys are pressed (Shift, Ctrl, Alt)
-    // This prevents conflicts with system shortcuts like Alt+Tab, Shift+F4, etc.
-    if (input.isAnyModifierKeyPressed()) {
+    // Skip hotkey processing if in capture mode or if capture just completed this frame
+    // Use didCaptureCompleteThisFrame() to avoid consuming the flag (settings UI needs it)
+    HotkeyManager& hotkeyMgr = HotkeyManager::getInstance();
+    if (hotkeyMgr.isCapturing() || hotkeyMgr.didCaptureCompleteThisFrame()) {
         return;
     }
 
-    // F1-F8: Toggle individual HUDs
-    if (input.getF1Key().isClicked() && m_pStandings) {
+    // Settings toggle - handle based on configured key
+    const HotkeyBinding& settingsBinding = hotkeyMgr.getBinding(HotkeyAction::TOGGLE_SETTINGS);
+    uint8_t configuredKey = settingsBinding.keyboard.keyCode;
+    bool settingsTriggered = false;
+
+    if ((configuredKey == VK_OEM_3 || configuredKey == VK_OEM_5) &&
+        settingsBinding.keyboard.modifiers == ModifierFlags::NONE) {
+        // For ` and \ keys without modifiers, use InputManager directly (handles keyboard layout differences)
+        // Check both keys as fallback, but only trigger if no modifiers are held
+        bool noModifiers = !(GetAsyncKeyState(VK_CONTROL) & 0x8000) &&
+                           !(GetAsyncKeyState(VK_SHIFT) & 0x8000) &&
+                           !(GetAsyncKeyState(VK_MENU) & 0x8000);  // VK_MENU = Alt
+        const InputManager& input = InputManager::getInstance();
+        if (noModifiers &&
+            (input.getOem3Key().isClicked() || input.getOem5Key().isClicked())) {
+            settingsTriggered = true;
+        }
+    } else if (configuredKey != 0) {
+        // For other keys, use HotkeyManager
+        settingsTriggered = hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_SETTINGS);
+    }
+    // If cleared (configuredKey == 0), nothing triggers
+
+    if (settingsTriggered && m_pSettingsHud) {
+        if (m_pSettingsHud->isVisible()) {
+            m_pSettingsHud->hide();
+            DEBUG_INFO("Hotkey: Settings hidden");
+        } else {
+            m_pSettingsHud->show();
+            DEBUG_INFO("Hotkey: Settings shown");
+        }
+    }
+
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_ALL_HUDS)) {
+        m_bAllHudsToggledOff = !m_bAllHudsToggledOff;
+        DEBUG_INFO_F("Hotkey: All HUDs temporarily %s", m_bAllHudsToggledOff ? "hidden" : "shown");
+    }
+
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_STANDINGS) && m_pStandings) {
         m_pStandings->setVisible(!m_pStandings->isVisible());
-        DEBUG_INFO_F("F1: Standings %s", m_pStandings->isVisible() ? "shown" : "hidden");
+        DEBUG_INFO_F("Hotkey: Standings %s", m_pStandings->isVisible() ? "shown" : "hidden");
     }
 
-    if (input.getF2Key().isClicked() && m_pMapHud) {
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_MAP) && m_pMapHud) {
         m_pMapHud->setVisible(!m_pMapHud->isVisible());
-        DEBUG_INFO_F("F2: Map %s", m_pMapHud->isVisible() ? "shown" : "hidden");
+        DEBUG_INFO_F("Hotkey: Map %s", m_pMapHud->isVisible() ? "shown" : "hidden");
     }
 
-    if (input.getF3Key().isClicked() && m_pRadarHud) {
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_RADAR) && m_pRadarHud) {
         m_pRadarHud->setVisible(!m_pRadarHud->isVisible());
-        DEBUG_INFO_F("F3: Radar %s", m_pRadarHud->isVisible() ? "shown" : "hidden");
+        DEBUG_INFO_F("Hotkey: Radar %s", m_pRadarHud->isVisible() ? "shown" : "hidden");
     }
 
-    if (input.getF4Key().isClicked() && m_pLapLog) {
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_LAP_LOG) && m_pLapLog) {
         m_pLapLog->setVisible(!m_pLapLog->isVisible());
-        DEBUG_INFO_F("F4: Lap Log %s", m_pLapLog->isVisible() ? "shown" : "hidden");
+        DEBUG_INFO_F("Hotkey: Lap Log %s", m_pLapLog->isVisible() ? "shown" : "hidden");
     }
 
-    if (input.getF5Key().isClicked() && m_pSessionBest) {
-        m_pSessionBest->setVisible(!m_pSessionBest->isVisible());
-        DEBUG_INFO_F("F5: Session Best %s", m_pSessionBest->isVisible() ? "shown" : "hidden");
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_IDEAL_LAP) && m_pIdealLap) {
+        m_pIdealLap->setVisible(!m_pIdealLap->isVisible());
+        DEBUG_INFO_F("Hotkey: Ideal Lap %s", m_pIdealLap->isVisible() ? "shown" : "hidden");
     }
 
-    if (input.getF6Key().isClicked() && m_pTelemetry) {
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_TELEMETRY) && m_pTelemetry) {
         m_pTelemetry->setVisible(!m_pTelemetry->isVisible());
-        DEBUG_INFO_F("F6: Telemetry %s", m_pTelemetry->isVisible() ? "shown" : "hidden");
+        DEBUG_INFO_F("Hotkey: Telemetry %s", m_pTelemetry->isVisible() ? "shown" : "hidden");
     }
 
-    if (input.getF7Key().isClicked() && m_pInput) {
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_INPUT) && m_pInput) {
         m_pInput->setVisible(!m_pInput->isVisible());
-        DEBUG_INFO_F("F7: Input %s", m_pInput->isVisible() ? "shown" : "hidden");
+        DEBUG_INFO_F("Hotkey: Input %s", m_pInput->isVisible() ? "shown" : "hidden");
     }
 
-    if (input.getF8Key().isClicked() && m_pRecords) {
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_RECORDS) && m_pRecords) {
         m_pRecords->setVisible(!m_pRecords->isVisible());
-        DEBUG_INFO_F("F8: Records %s", m_pRecords->isVisible() ? "shown" : "hidden");
+        DEBUG_INFO_F("Hotkey: Records %s", m_pRecords->isVisible() ? "shown" : "hidden");
     }
 
-    if (input.getF9Key().isClicked()) {
-        // F9: Temporary toggle all widgets on/off (doesn't modify actual visibility state)
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_WIDGETS)) {
         m_bAllWidgetsToggledOff = !m_bAllWidgetsToggledOff;
-        DEBUG_INFO_F("F9: Widgets temporarily %s", m_bAllWidgetsToggledOff ? "hidden" : "shown");
+        DEBUG_INFO_F("Hotkey: Widgets temporarily %s", m_bAllWidgetsToggledOff ? "hidden" : "shown");
+    }
+
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_PITBOARD) && m_pPitboard) {
+        m_pPitboard->setVisible(!m_pPitboard->isVisible());
+        DEBUG_INFO_F("Hotkey: Pitboard %s", m_pPitboard->isVisible() ? "shown" : "hidden");
+    }
+
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_TIMING) && m_pTiming) {
+        m_pTiming->setVisible(!m_pTiming->isVisible());
+        DEBUG_INFO_F("Hotkey: Timing %s", m_pTiming->isVisible() ? "shown" : "hidden");
+    }
+
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_GAP_BAR) && m_pGapBar) {
+        m_pGapBar->setVisible(!m_pGapBar->isVisible());
+        DEBUG_INFO_F("Hotkey: Gap Bar %s", m_pGapBar->isVisible() ? "shown" : "hidden");
+    }
+
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_PERFORMANCE) && m_pPerformance) {
+        m_pPerformance->setVisible(!m_pPerformance->isVisible());
+        DEBUG_INFO_F("Hotkey: Performance %s", m_pPerformance->isVisible() ? "shown" : "hidden");
+    }
+
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_RUMBLE) && m_pRumble) {
+        m_pRumble->setVisible(!m_pRumble->isVisible());
+        DEBUG_INFO_F("Hotkey: Rumble %s", m_pRumble->isVisible() ? "shown" : "hidden");
+    }
+
+    // If any visibility toggle happened while settings is open, refresh it
+    // All actions before TOGGLE_SETTINGS are visibility toggles
+    if (m_pSettingsHud && m_pSettingsHud->isVisible()) {
+        for (uint8_t i = 0; i < static_cast<uint8_t>(HotkeyAction::TOGGLE_SETTINGS); ++i) {
+            if (hotkeyMgr.wasActionTriggered(static_cast<HotkeyAction>(i))) {
+                m_pSettingsHud->setDataDirty();
+                break;
+            }
+        }
+
+        // Refresh when controller connection state changes
+        if (XInputReader::getInstance().didConnectionStateChange()) {
+            m_pSettingsHud->setDataDirty();
+        }
     }
 }
 
@@ -778,7 +815,7 @@ void HudManager::updateRiderPositions(int numVehicles, SPluginsRaceTrackPosition
             const StandingsData* standing = pluginData.getStanding(displayRaceNum);
             int lapNum = standing ? standing->numLaps : 0;
 
-            // Update centralized lap timer (used by TimingHud, SessionBestHud, and others)
+            // Update centralized lap timer (used by TimingHud, IdealLapHud, and others)
             pluginData.updateLapTimerTrackPosition(
                 displayRaceNum,
                 positions[i].m_fTrackPos,

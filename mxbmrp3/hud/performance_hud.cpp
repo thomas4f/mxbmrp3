@@ -19,13 +19,9 @@ PerformanceHud::PerformanceHud() : m_historyIndex(0), m_fpsMin(0.0f), m_fpsMax(0
     m_fpsSum(0.0f), m_pluginTimeSum(0.0f), m_validFpsCount(0), m_validPluginTimeCount(0),
     m_fpsMinIndex(-1), m_fpsMaxIndex(-1), m_pluginMinIndex(-1), m_pluginMaxIndex(-1)
 {
+    // One-time setup
     DEBUG_INFO("PerformanceHud created");
     setDraggable(true);
-
-    // Set defaults to match user configuration
-    m_bVisible = false;  // Hidden by default
-    m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
-    setPosition(-0.0165f, 0.0222f);
 
     // Initialize history arrays
     m_fpsHistory.fill(0.0f);
@@ -33,9 +29,14 @@ PerformanceHud::PerformanceHud() : m_historyIndex(0), m_fpsMin(0.0f), m_fpsMax(0
     m_pluginTimePercentHistory.fill(0.0f);
 
     // Pre-allocate vectors (background + 2 line graphs with grid lines)
-    // Background: 1, FPS: 4 grid lines + 119 line segments, Plugin: 4 grid lines + 119 line segments = 247 total
     m_quads.reserve(250);
     m_strings.reserve(15);  // Title + (3 labels + 3 values) per graph x 2 graphs = 13 total
+
+    // Set texture base name for dynamic texture discovery
+    setTextureBaseName("performance_hud");
+
+    // Set all configurable defaults
+    resetToDefaults();
 
     rebuildRenderData();
 }
@@ -62,7 +63,7 @@ void PerformanceHud::addStatsRow(float startX, float y, const ScaledDimensions& 
 
     // Current value (with label)
     addString(currentLabel, currentX, y, Justify::LEFT,
-        Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+        Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(LABEL_WIDTH, dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(SMALL_GAP, dims.fontSize);
 
@@ -73,13 +74,13 @@ void PerformanceHud::addStatsRow(float startX, float y, const ScaledDimensions& 
         snprintf(currentBuffer, sizeof(currentBuffer), "%*.2f", DECIMAL_VALUE_WIDTH, currentValue);
     }
     addString(currentBuffer, currentX, y, Justify::LEFT,
-        Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+        Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(currentPrecision == 0 ? INTEGER_VALUE_WIDTH : DECIMAL_VALUE_WIDTH, dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(LARGE_GAP, dims.fontSize);
 
     // Max
     addString("Max", currentX, y, Justify::LEFT,
-        Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+        Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(LABEL_WIDTH, dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(SMALL_GAP, dims.fontSize);
 
@@ -90,13 +91,13 @@ void PerformanceHud::addStatsRow(float startX, float y, const ScaledDimensions& 
         snprintf(maxBuffer, sizeof(maxBuffer), "%*.2f", DECIMAL_VALUE_WIDTH, maxValue);
     }
     addString(maxBuffer, currentX, y, Justify::LEFT,
-        Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+        Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(currentPrecision == 0 ? INTEGER_VALUE_WIDTH : DECIMAL_VALUE_WIDTH, dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(LARGE_GAP, dims.fontSize);
 
     // Avg
     addString("Avg", currentX, y, Justify::LEFT,
-        Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+        Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(LABEL_WIDTH, dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(SMALL_GAP, dims.fontSize);
 
@@ -107,13 +108,13 @@ void PerformanceHud::addStatsRow(float startX, float y, const ScaledDimensions& 
         snprintf(avgBuffer, sizeof(avgBuffer), "%*.2f", DECIMAL_VALUE_WIDTH, avgValue);
     }
     addString(avgBuffer, currentX, y, Justify::LEFT,
-        Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+        Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(currentPrecision == 0 ? INTEGER_VALUE_WIDTH : DECIMAL_VALUE_WIDTH, dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(LARGE_GAP, dims.fontSize);
 
     // Min
     addString("Min", currentX, y, Justify::LEFT,
-        Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+        Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(LABEL_WIDTH, dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(SMALL_GAP, dims.fontSize);
 
@@ -124,7 +125,7 @@ void PerformanceHud::addStatsRow(float startX, float y, const ScaledDimensions& 
         snprintf(minBuffer, sizeof(minBuffer), "%*.2f", DECIMAL_VALUE_WIDTH, minValue);
     }
     addString(minBuffer, currentX, y, Justify::LEFT,
-        Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+        Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
 }
 
 void PerformanceHud::rebuildRenderData() {
@@ -248,7 +249,7 @@ void PerformanceHud::rebuildRenderData() {
 
     // Title
     addTitleString("Performance", contentStartX, currentY, Justify::LEFT,
-        Fonts::ENTER_SANSMAN, ColorConfig::getInstance().getPrimary(), dims.fontSizeLarge);
+        Fonts::getTitle(), ColorConfig::getInstance().getPrimary(), dims.fontSizeLarge);
     currentY += titleHeight;
 
     // Side-by-side layout: graph on left (36 chars), gap (1 char), legend on right (9 chars)
@@ -326,34 +327,34 @@ void PerformanceHud::rebuildRenderData() {
 
             // FPS current value
             addString("FPS", legendStartX, legendY, Justify::LEFT,
-                Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+                Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
             snprintf(buffer, sizeof(buffer), "%4d", (int)metrics.currentFps);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Max
             addString("Max", legendStartX, legendY, Justify::LEFT,
-                Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+                Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
             snprintf(buffer, sizeof(buffer), "%4d", (int)m_fpsMax);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Avg
             addString("Avg", legendStartX, legendY, Justify::LEFT,
-                Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+                Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
             snprintf(buffer, sizeof(buffer), "%4d", (int)m_fpsAvg);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Min
             addString("Min", legendStartX, legendY, Justify::LEFT,
-                Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+                Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
             snprintf(buffer, sizeof(buffer), "%4d", (int)m_fpsMin);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Add gap before CPU section if both are enabled
@@ -430,34 +431,34 @@ void PerformanceHud::rebuildRenderData() {
 
             // CPU current value
             addString("CPU", legendStartX, legendY, Justify::LEFT,
-                Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+                Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
             snprintf(buffer, sizeof(buffer), "%5.2f", metrics.pluginTimeMs);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Max
             addString("Max", legendStartX, legendY, Justify::LEFT,
-                Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+                Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
             snprintf(buffer, sizeof(buffer), "%5.2f", m_pluginTimeMsMax);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Avg
             addString("Avg", legendStartX, legendY, Justify::LEFT,
-                Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+                Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
             snprintf(buffer, sizeof(buffer), "%5.2f", m_pluginTimeMsAvg);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Min
             addString("Min", legendStartX, legendY, Justify::LEFT,
-                Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+                Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
             snprintf(buffer, sizeof(buffer), "%5.2f", m_pluginTimeMsMin);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
         }
     }
 }
@@ -519,10 +520,10 @@ void PerformanceHud::recalculatePluginTimeMinMax() {
 void PerformanceHud::resetToDefaults() {
     m_bVisible = false;  // Hidden by default
     m_bShowTitle = true;
-    m_bShowBackgroundTexture = false;  // No texture by default
+    setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(-0.0165f, 0.0222f);
+    setPosition(0.737f, 0.0888f);
     m_enabledElements = ELEM_DEFAULT;
     m_displayMode = DISPLAY_BOTH;  // Show both graphs and values by default
     setDataDirty();

@@ -22,25 +22,26 @@ public:
 
     // Column flags - each bit represents a column that can be toggled
     enum ColumnFlags : uint32_t {
-        COL_POS         = 1 << 0,   // Position
-        COL_RACENUM     = 1 << 1,   // Race number
-        COL_NAME        = 1 << 2,   // Rider name
-        COL_BIKE        = 1 << 3,   // Bike name
-        COL_STATUS      = 1 << 4,   // Status (PIT, DNS, etc.)
-        COL_PENALTY     = 1 << 5,   // Penalty seconds
-        COL_BEST_LAP    = 1 << 6,   // Best lap time
-        COL_OFFICIAL_GAP = 1 << 7,  // Official gap (multi-state: see GapMode)
-        COL_LIVE_GAP    = 1 << 8,   // Live gap (multi-state: see GapMode)
+        COL_TRACKED     = 1 << 0,   // Tracked rider indicator (sprite)
+        COL_POS         = 1 << 1,   // Position
+        COL_RACENUM     = 1 << 2,   // Race number
+        COL_NAME        = 1 << 3,   // Rider name
+        COL_BIKE        = 1 << 4,   // Bike name
+        COL_STATUS      = 1 << 5,   // Status (PIT, DNS, etc.)
+        COL_PENALTY     = 1 << 6,   // Penalty seconds
+        COL_BEST_LAP    = 1 << 7,   // Best lap time
+        COL_OFFICIAL_GAP = 1 << 8,  // Official gap (multi-state: see GapMode)
+        COL_LIVE_GAP    = 1 << 9,   // Live gap (multi-state: see GapMode)
 
         COL_REQUIRED = 0,      // No required columns
-        COL_DEFAULT  = 0x1D7   // Default columns (excludes Bike and Penalty)
+        COL_DEFAULT  = 0x3AF   // Default columns (excludes Bike and Penalty, includes Tracked)
     };
 
     // Gap column display modes (for COL_OFFICIAL_GAP and COL_LIVE_GAP)
     enum class GapMode : uint8_t {
-        OFF = 0,  // Column hidden
-        ME = 1,   // Show only player's gap
-        ALL = 2   // Show all riders' gaps
+        OFF = 0,     // Column hidden
+        PLAYER = 1,  // Show only player's gap
+        ALL = 2      // Show all riders' gaps
     };
 
     // Gap indicator row display modes (what data to show in gap rows)
@@ -49,6 +50,12 @@ public:
         OFFICIAL = 1,  // Show only official gap
         LIVE = 2,      // Show only live gap
         BOTH = 3       // Show both official and live gap
+    };
+
+    // Gap reference point (what gaps are relative to)
+    enum class GapReferenceMode : uint8_t {
+        LEADER = 0,  // Gaps relative to race leader (default)
+        PLAYER = 1   // Gaps relative to player (negative = ahead, positive = behind)
     };
 
     // Allow SettingsHud and SettingsManager to access private members
@@ -124,22 +131,14 @@ private:
 
         static DisplayEntry fromRaceEntry(const RaceEntryData& entry, const StandingsData* standings);
 
-        bool isFinished(int sessionNumLaps, int finishLap, int sessionLength) const {
-            if (sessionLength > 0 && sessionNumLaps > 0) {
-                return finishLap > 0 && numLaps >= finishLap;
-            }
-            return (finishLap > 0 && numLaps >= finishLap) ||
-                   (sessionNumLaps > 0 && finishLap <= 0 && numLaps >= sessionNumLaps);
-        }
-
-        void updateFormattedStrings(int sessionNumLaps, int finishLap, int sessionLength);
+        void updateFormattedStrings();
     };
 
     // Rendering helpers (declared after DisplayEntry)
     void renderRiderRow(const DisplayEntry& entry, bool isPlaceholder, float currentY, const ScaledDimensions& dim);
 
     // Formatting helpers (declared after DisplayEntry)
-    void formatStatus(DisplayEntry& entry, int sessionNumLaps, int finishLap, int sessionLength) const;
+    void formatStatus(DisplayEntry& entry, const SessionData& sessionData) const;
 
     // Build gap indicator row for adjacent rider (ahead=red, behind=green)
     // Calculates relative gaps and applies m_gapIndicatorMode filtering
@@ -159,6 +158,7 @@ private:
     bool isPointInRect(float x, float y, float rectX, float rectY, float width, float height) const;
 
     struct ColumnPositions {
+        float tracked;
         float pos;
         float raceNum;
         float name;
@@ -174,7 +174,7 @@ private:
 
     // Column descriptor for table-driven rendering
     struct ColumnDescriptor {
-        uint8_t columnIndex;  // 0-8 for the 9 columns
+        uint8_t columnIndex;  // 0-9 for the 10 columns
         float position;
         uint8_t justify;
         bool useEmptyForPlaceholder;  // Some columns show "" for placeholder instead of "---"
@@ -198,11 +198,12 @@ private:
     ColumnPositions m_columns;
     uint32_t m_enabledColumns = COL_DEFAULT;  // Bitfield of enabled columns (managed by profile system)
 
-    // Gap column modes (separate from bitfield to support 3 states: Off/Me/All)
+    // Gap column modes (separate from bitfield to support 3 states: Off/Player/All)
     // These are now single values - profile system handles per-event differentiation
     GapMode m_officialGapMode = GapMode::ALL;
-    GapMode m_liveGapMode = GapMode::ME;
+    GapMode m_liveGapMode = GapMode::PLAYER;
     GapIndicatorMode m_gapIndicatorMode = GapIndicatorMode::BOTH;
+    GapReferenceMode m_gapReferenceMode = GapReferenceMode::LEADER;
     std::vector<ColumnDescriptor> m_columnTable;  // Cached table of enabled columns (only includes enabled ones)
     int m_cachedBackgroundWidth = -1;  // Cached width in chars
     int m_cachedPlayerIndex = -1;  // Cached index of player in m_displayEntries (-1 if not found or beyond m_displayRowCount)
@@ -219,11 +220,13 @@ private:
     static constexpr int MIN_ROW_COUNT = 8;         // Minimum for useful context (top 3 + player with 1 before/after + 2 gap rows)
     static constexpr int MAX_ROW_COUNT = 30;
     static constexpr int DEFAULT_ROW_COUNT = 10;  // Shows top 3 + player with 2 before/after symmetrically
-    static constexpr int NUM_COLUMNS = 9;
-    static constexpr float START_X = HudPositions::CENTER_RIGHT_X;
-    static constexpr float START_Y = HudPositions::UPPER_Y;
+    static constexpr int NUM_COLUMNS = 10;
+    // Base position (0,0) - actual position comes from m_fOffsetX/m_fOffsetY
+    static constexpr float START_X = 0.0f;
+    static constexpr float START_Y = 0.0f;
 
     // Column widths: max_length + 1 for spacing, except last column
+    static constexpr int COL_TRACKED_WIDTH = 3;   // Sprite indicator (3 chars width for sprite + padding)
     static constexpr int COL_POS_WIDTH = 4;
     static constexpr int COL_RACENUM_WIDTH = 5;
     static constexpr int COL_NAME_WIDTH = 4;
@@ -234,7 +237,7 @@ private:
     static constexpr int COL_OFFICIAL_GAP_WIDTH = 11;  // Supports +M:SS.mmm format (10 chars + 1 spacing)
     static constexpr int COL_LIVE_GAP_WIDTH = 8;       // Supports +M:SS.s format (8 chars, last column)
 
-    static constexpr int BACKGROUND_WIDTH_CHARS = COL_POS_WIDTH + COL_RACENUM_WIDTH +
+    static constexpr int BACKGROUND_WIDTH_CHARS = COL_TRACKED_WIDTH + COL_POS_WIDTH + COL_RACENUM_WIDTH +
         COL_NAME_WIDTH + COL_BIKE_WIDTH + COL_STATUS_WIDTH + COL_PENALTY_WIDTH +
         COL_BEST_LAP_WIDTH + COL_OFFICIAL_GAP_WIDTH + COL_LIVE_GAP_WIDTH;
 };

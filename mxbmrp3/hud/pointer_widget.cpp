@@ -5,6 +5,7 @@
 #include "pointer_widget.h"
 #include "../core/input_manager.h"
 #include "../core/color_config.h"
+#include "../core/asset_manager.h"
 #include "../diagnostics/logger.h"
 
 using namespace PluginConstants;
@@ -14,6 +15,9 @@ PointerWidget::PointerWidget() {
 
     // Pointer is not draggable (it follows mouse position)
     setDraggable(false);
+
+    // Set texture base name for dynamic texture discovery
+    setTextureBaseName("pointer_widget");
 
     // Set defaults
     m_fScale = 1.0f;
@@ -104,7 +108,7 @@ void PointerWidget::createPointerSprite(float x, float y) {
     sprite.m_aafPos[2][1] = y + scaledHeight;
     sprite.m_aafPos[3][0] = x + scaledWidth;      // Top-right
     sprite.m_aafPos[3][1] = y;
-    sprite.m_iSprite = SpriteIndex::POINTER;
+    sprite.m_iSprite = getBackgroundTextureIndex();
 
     // Apply background opacity (alpha channel)
     const unsigned char alpha = static_cast<unsigned char>(m_fBackgroundOpacity * 255.0f);
@@ -232,6 +236,6 @@ void PointerWidget::resetToDefaults() {
     m_bVisible = true;
     m_fScale = 1.0f;
     m_fBackgroundOpacity = 1.0f;  // 100% for sprite-based rendering
-    m_bShowBackgroundTexture = false;  // Quad-based by default
+    setTextureVariant(0);  // Quad-based by default (variant 0 = Off)
     setDataDirty();
 }

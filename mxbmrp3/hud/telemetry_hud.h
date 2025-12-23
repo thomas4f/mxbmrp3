@@ -70,9 +70,9 @@ private:
     void addCombinedInputGraph(const HistoryBuffers& history, const BikeTelemetryData& bikeTelemetry,
                                float x, float y, float width, float height, bool hasFullTelemetry);
 
-    // Grid-aligned positions (0.0055 = 1 char width, 0.0222 = 1 line height)
-    static constexpr float START_X = HudPositions::LEFT_SIDE_X;
-    static constexpr float START_Y = HudPositions::MID_LOWER_Y;
+    // Base position (0,0) - actual position comes from m_fOffsetX/m_fOffsetY
+    static constexpr float START_X = 0.0f;
+    static constexpr float START_Y = 0.0f;
 
     static constexpr int GRAPH_WIDTH_CHARS = 33;    // Width for graph display (left side)
     static constexpr int LEGEND_WIDTH_CHARS = 9;    // Width for legend/values (right side) - fits "RPM 12345"

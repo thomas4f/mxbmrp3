@@ -41,9 +41,9 @@ private:
     void addStickTrail(const char* label, const std::deque<HistoryBuffers::StickSample>& stickHistory,
                        float x, float y, float width, float height, unsigned long color, bool xinputConnected);
 
-    // Grid-aligned positions (0.0055 = 1 char width, 0.0222 = 1 line height)
-    static constexpr float START_X = HudPositions::LEFT_SIDE_X;
-    static constexpr float START_Y = HudPositions::LOWER_Y;
+    // Base position (0,0) - actual position comes from m_fOffsetX/m_fOffsetY
+    static constexpr float START_X = 0.0f;
+    static constexpr float START_Y = 0.0f;
     static constexpr int BACKGROUND_WIDTH_CHARS = 43;  // Matches Performance/Telemetry graph HUD width
 
     // Stick trail dimensions - compact 6-line height

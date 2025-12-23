@@ -7,6 +7,8 @@
 #include "../core/plugin_constants.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
+#include "../core/asset_manager.h"
+#include "../core/tracked_riders_manager.h"
 #include "../diagnostics/logger.h"
 #include <cmath>
 #include <algorithm>
@@ -16,29 +18,26 @@ using namespace PluginConstants::Math;
 
 RadarHud::RadarHud()
     : m_fRadarRangeMeters(DEFAULT_RADAR_RANGE),
-      m_riderColorMode(RiderColorMode::BRAND),  // Default to bike brand colors
+      m_riderColorMode(RiderColorMode::BRAND),
       m_bShowPlayerArrow(false),
       m_bFadeWhenEmpty(false),
       m_fAlertDistance(DEFAULT_ALERT_DISTANCE),
       m_labelMode(LabelMode::POSITION),
-      m_riderShape(RiderShape::CIRCLE) {  // Default to circle sprite
+      m_riderShape(RiderShape::CIRCLE),
+      m_fMarkerScale(DEFAULT_MARKER_SCALE) {
 
+    // One-time setup
+    DEBUG_INFO("RadarHud created");
     setDraggable(true);
-
-    // Set defaults
-    m_bShowTitle = false;  // No title for radar (compact display)
-    m_bShowBackgroundTexture = true;  // Show texture by default
-    m_fBackgroundOpacity = 0.1f;
-
-    // Set initial position (horizontally centered at scale 1.0)
-    setPosition(0.43275f, 0.0111f);
-
-    // Pre-allocate memory
     m_riderPositions.reserve(RESERVE_MAX_RIDERS);
     m_quads.reserve(RESERVE_QUADS);
     m_strings.reserve(RESERVE_STRINGS);
 
-    DEBUG_INFO("RadarHud initialized");
+    // Set texture base name for dynamic texture discovery
+    setTextureBaseName("radar_hud");
+
+    // Set all configurable defaults
+    resetToDefaults();
 }
 
 void RadarHud::update() {
@@ -54,8 +53,10 @@ void RadarHud::update() {
 
 bool RadarHud::handlesDataType(DataChangeType dataType) const {
     // Rebuild when standings change (for position labels)
+    // Also rebuild when tracked riders change (color/shape)
     return dataType == DataChangeType::Standings ||
-           dataType == DataChangeType::SpectateTarget;
+           dataType == DataChangeType::SpectateTarget ||
+           dataType == DataChangeType::TrackedRiders;
 }
 
 void RadarHud::setRadarRange(float rangeMeters) {
@@ -80,6 +81,17 @@ void RadarHud::setAlertDistance(float meters) {
     }
 }
 
+void RadarHud::setMarkerScale(float scale) {
+    // Clamp to valid range
+    if (scale < MIN_MARKER_SCALE) scale = MIN_MARKER_SCALE;
+    if (scale > MAX_MARKER_SCALE) scale = MAX_MARKER_SCALE;
+
+    if (m_fMarkerScale != scale) {
+        m_fMarkerScale = scale;
+        setDataDirty();
+    }
+}
+
 void RadarHud::updateRiderPositions(int numVehicles, const SPluginsRaceTrackPosition_t* positions) {
     if (numVehicles <= 0 || positions == nullptr) {
         m_riderPositions.clear();
@@ -94,43 +106,55 @@ void RadarHud::updateRiderPositions(int numVehicles, const SPluginsRaceTrackPosi
 }
 
 void RadarHud::renderRiderSprite(float radarX, float radarY, float yaw, unsigned long color,
-                                   float centerX, float centerY, float radarRadius) {
-    // Scale sprite size by HUD scale factor
+                                   float centerX, float centerY, float radarRadius,
+                                   int shapeOverride) {
+    // Scale sprite size by HUD scale factor and marker scale
     constexpr float baseConeSize = 0.006f;
-    float scaledConeSize = baseConeSize * m_fScale;
+    float scaledConeSize = baseConeSize * m_fScale * m_fMarkerScale;
     float spriteHalfSize = scaledConeSize;
 
-    // Apply per-shape scale to compensate for visual fill differences
-    // Circle ~78% fill, Triangle ~50% fill, Wedge ~35% fill
-    switch (m_riderShape) {
-        case RiderShape::CIRCLE:   break;  // baseline
-        case RiderShape::TRIANGLE: spriteHalfSize *= 1.25f; break;
-        case RiderShape::WEDGE:    spriteHalfSize *= 1.5f; break;
+    // Determine effective shape (use override if provided, otherwise use global setting)
+    // shapeOverride uses TrackedRidersManager values: 1-N for all rider icons
+    // m_riderShape uses RadarHud values: 0-9 for the 10 selectable icons
+    const int iconCount = static_cast<int>(AssetManager::getInstance().getIconCount());
+    int effectiveShape;
+    if (shapeOverride >= 1 && shapeOverride <= iconCount) {
+        effectiveShape = shapeOverride;
+    } else {
+        // Map RadarHud::RiderShape to TrackedRidersManager shape values
+        switch (m_riderShape) {
+            case RiderShape::ARROWUP:    effectiveShape = TrackedRidersManager::SHAPE_ARROWUP; break;
+            case RiderShape::CHEVRON:    effectiveShape = TrackedRidersManager::SHAPE_CHEVRON; break;
+            case RiderShape::CIRCLEPLAY: effectiveShape = TrackedRidersManager::SHAPE_CIRCLEPLAY; break;
+            case RiderShape::CIRCLEUP:   effectiveShape = TrackedRidersManager::SHAPE_CIRCLEUP; break;
+            case RiderShape::DOT:        effectiveShape = TrackedRidersManager::SHAPE_DOT; break;
+            case RiderShape::LOCATION:   effectiveShape = TrackedRidersManager::SHAPE_LOCATION; break;
+            case RiderShape::PIN:        effectiveShape = TrackedRidersManager::SHAPE_PIN; break;
+            case RiderShape::PLANE:      effectiveShape = TrackedRidersManager::SHAPE_PLANE; break;
+            case RiderShape::VINYL:      effectiveShape = TrackedRidersManager::SHAPE_VINYL; break;
+            case RiderShape::CIRCLE:
+            default:                     effectiveShape = TrackedRidersManager::SHAPE_CIRCLE; break;
+        }
     }
+
+    // All icons use uniform baseline scale
 
     // Convert radar coordinates (-1 to 1) to screen coordinates
     float screenX = centerX + (radarX * radarRadius) / UI_ASPECT_RATIO;
     float screenY = centerY - radarY * radarRadius;
 
-    // Calculate rotation
-    float yawRad = yaw * DEG_TO_RAD;
-    float cosYaw = std::cos(yawRad);
-    float sinYaw = std::sin(yawRad);
-
-    // Determine sprite index based on rider shape
-    int spriteIndex;
-    switch (m_riderShape) {
-        case RiderShape::CIRCLE:
-            spriteIndex = SpriteIndex::RIDER_CIRCLE;
-            break;
-        case RiderShape::TRIANGLE:
-            spriteIndex = SpriteIndex::RIDER_TRIANGLE;
-            break;
-        case RiderShape::WEDGE:
-        default:
-            spriteIndex = SpriteIndex::RIDER_WEDGE;
-            break;
+    // Calculate rotation only for directional icons
+    float cosYaw = 1.0f;
+    float sinYaw = 0.0f;
+    if (TrackedRidersManager::shouldRotate(effectiveShape)) {
+        float yawRad = yaw * DEG_TO_RAD;
+        cosYaw = std::cos(yawRad);
+        sinYaw = std::sin(yawRad);
     }
+
+    // Determine sprite index - directly convert shape index to sprite index
+    // shapeIndex 1-N maps to icon sprite indices (dynamically assigned)
+    int spriteIndex = AssetManager::getInstance().getFirstIconSpriteIndex() + effectiveShape - 1;
 
     // Helper lambda to create rotated sprite quad
     auto createRotatedSprite = [&](float halfSize, unsigned long spriteColor) {
@@ -182,12 +206,19 @@ void RadarHud::renderRiderLabel(float radarX, float radarY, int raceNum, int pos
 
     auto dim = getScaledDimensions();
 
+    // Scale font size by marker scale
+    float labelFontSize = dim.fontSizeSmall * m_fMarkerScale;
+
+    // Calculate scaled icon size (must match renderRiderSprite)
+    constexpr float baseConeSize = 0.006f;
+    float scaledConeSize = baseConeSize * m_fScale * m_fMarkerScale;
+
     // Convert radar coordinates to screen coordinates
     float screenX = centerX + (radarX * radarRadius) / UI_ASPECT_RATIO;
     float screenY = centerY - radarY * radarRadius;
 
-    // Offset label slightly below the arrow
-    float labelY = screenY + dim.fontSizeSmall * 0.8f;
+    // Offset label below the icon (based on icon size plus small gap)
+    float labelY = screenY + scaledConeSize + (dim.fontSizeSmall * 0.3f * m_fMarkerScale);
 
     char labelStr[20];
     switch (m_labelMode) {
@@ -234,21 +265,21 @@ void RadarHud::renderRiderLabel(float radarX, float radarY, int raceNum, int pos
         unsigned long outlineColor = PluginUtils::applyOpacity(0x000000, opacity);  // Black with matching opacity
 
         // Create text outline by rendering dark text at offsets first
-        float outlineOffset = dim.fontSizeSmall * 0.05f;  // Small offset for outline
+        float outlineOffset = labelFontSize * 0.05f;  // Small offset for outline
 
         // Render outline at 4 cardinal directions
         addString(labelStr, screenX - outlineOffset, labelY, Justify::CENTER,
-                 Fonts::TINY5, outlineColor, dim.fontSizeSmall);
+                 Fonts::getSmall(), outlineColor, labelFontSize);
         addString(labelStr, screenX + outlineOffset, labelY, Justify::CENTER,
-                 Fonts::TINY5, outlineColor, dim.fontSizeSmall);
+                 Fonts::getSmall(), outlineColor, labelFontSize);
         addString(labelStr, screenX, labelY - outlineOffset, Justify::CENTER,
-                 Fonts::TINY5, outlineColor, dim.fontSizeSmall);
+                 Fonts::getSmall(), outlineColor, labelFontSize);
         addString(labelStr, screenX, labelY + outlineOffset, Justify::CENTER,
-                 Fonts::TINY5, outlineColor, dim.fontSizeSmall);
+                 Fonts::getSmall(), outlineColor, labelFontSize);
 
         // Render main text on top
         addString(labelStr, screenX, labelY, Justify::CENTER,
-                 Fonts::TINY5, labelColor, dim.fontSizeSmall);
+                 Fonts::getSmall(), labelColor, labelFontSize);
     }
 }
 
@@ -335,7 +366,7 @@ void RadarHud::rebuildRenderData() {
         unsigned long titleColor = PluginUtils::applyOpacity(
             ColorConfig::getInstance().getPrimary(), maxRiderOpacity);
         addTitleString("RADAR", titleX, titleY, Justify::LEFT,
-                      Fonts::TINY5, titleColor, dim.fontSizeLarge);
+                      Fonts::getSmall(), titleColor, dim.fontSizeLarge);
     }
 
     // Calculate radar center position
@@ -501,7 +532,7 @@ void RadarHud::rebuildRenderData() {
             sector.m_aafPos[j][1] = py;
         }
 
-        sector.m_iSprite = SpriteIndex::RADAR_SECTOR;
+        sector.m_iSprite = AssetManager::getInstance().getSpriteIndex("radar_sector", 1);
         sector.m_ulColor = sectorColor;
         m_quads.push_back(sector);
     }
@@ -557,7 +588,34 @@ void RadarHud::rebuildRenderData() {
         while (relativeYaw < -180.0f) relativeYaw += 360.0f;
 
         unsigned long riderColor;
-        if (m_riderColorMode == RiderColorMode::RELATIVE_POS) {
+        int trackedShape = -1;  // -1 = use global shape, 1-3 = tracked rider's shape
+
+        // Check if rider is tracked - tracked riders use their configured color with position modulation
+        const TrackedRidersManager& trackedMgr = TrackedRidersManager::getInstance();
+        const TrackedRiderConfig* trackedConfig = trackedMgr.getTrackedRider(entry->name);
+
+        if (trackedConfig) {
+            // Tracked rider - use their configured color with position-based modulation
+            unsigned long baseColor = trackedConfig->color;
+            trackedShape = trackedConfig->shapeIndex;
+
+            // Apply position-based color modulation (lighten if ahead by laps, darken if behind by laps)
+            const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
+            const StandingsData* riderStanding = pluginData.getStanding(pos.m_iRaceNum);
+            int playerLaps = playerStanding ? playerStanding->numLaps : 0;
+            int riderLaps = riderStanding ? riderStanding->numLaps : 0;
+            int lapDiff = riderLaps - playerLaps;
+
+            if (lapDiff >= 1) {
+                // Rider is ahead by laps - lighten color
+                baseColor = PluginUtils::lightenColor(baseColor, 0.4f);
+            } else if (lapDiff <= -1) {
+                // Rider is behind by laps - darken color
+                baseColor = PluginUtils::darkenColor(baseColor, 0.6f);
+            }
+
+            riderColor = PluginUtils::applyOpacity(baseColor, trackFadeOpacity);
+        } else if (m_riderColorMode == RiderColorMode::RELATIVE_POS) {
             // Relative position coloring: color based on position/lap relative to player
             const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
             const StandingsData* riderStanding = pluginData.getStanding(pos.m_iRaceNum);
@@ -578,9 +636,9 @@ void RadarHud::rebuildRenderData() {
             riderColor = PluginUtils::applyOpacity(ColorConfig::getInstance().getTertiary(), trackFadeOpacity);
         }
 
-        // Render rider sprite with relative heading
+        // Render rider sprite with relative heading (pass tracked shape if available)
         renderRiderSprite(radarX, radarY, relativeYaw, riderColor,
-                         centerX, centerY, radarRadius);
+                         centerX, centerY, radarRadius, trackedShape);
 
         // Render label with matching fade opacity
         int position = pluginData.getPositionForRaceNum(pos.m_iRaceNum);
@@ -592,12 +650,24 @@ void RadarHud::rebuildRenderData() {
     if (m_bShowPlayerArrow) {
         const RaceEntryData* localEntry = pluginData.getRaceEntry(localPlayer->m_iRaceNum);
         if (localEntry) {
-            // Player shows green in relative position mode, otherwise bike brand color
-            unsigned long playerColor = (m_riderColorMode == RiderColorMode::RELATIVE_POS)
-                ? ColorConfig::getInstance().getPositive()  // Green
-                : localEntry->bikeBrandColor;
+            unsigned long playerColor;
+            int playerTrackedShape = -1;  // -1 = use global shape
+
+            // Check if player is tracked - use their configured color and shape
+            const TrackedRiderConfig* playerTrackedConfig = TrackedRidersManager::getInstance().getTrackedRider(localEntry->name);
+            if (playerTrackedConfig) {
+                playerColor = playerTrackedConfig->color;
+                playerTrackedShape = playerTrackedConfig->shapeIndex;
+            } else if (m_riderColorMode == RiderColorMode::RELATIVE_POS) {
+                // Player shows green in relative position mode
+                playerColor = ColorConfig::getInstance().getPositive();
+            } else {
+                // Otherwise use bike brand color
+                playerColor = localEntry->bikeBrandColor;
+            }
+
             renderRiderSprite(0.0f, 0.0f, 0.0f, playerColor,
-                             centerX, centerY, radarRadius);
+                             centerX, centerY, radarRadius, playerTrackedShape);
 
             int playerPosition = pluginData.getPositionForRaceNum(localPlayer->m_iRaceNum);
             renderRiderLabel(0.0f, 0.0f, localPlayer->m_iRaceNum, playerPosition,
@@ -633,7 +703,7 @@ void RadarHud::setScale(float scale) {
 void RadarHud::resetToDefaults() {
     m_bVisible = true;
     m_bShowTitle = false;  // No title for radar (compact display)
-    m_bShowBackgroundTexture = true;  // Show texture by default
+    setTextureVariant(1);  // Use first texture variant by default
     m_fBackgroundOpacity = 0.1f;
     m_fScale = 1.0f;
     m_fRadarRangeMeters = DEFAULT_RADAR_RANGE;
@@ -643,6 +713,7 @@ void RadarHud::resetToDefaults() {
     m_fAlertDistance = DEFAULT_ALERT_DISTANCE;
     m_labelMode = LabelMode::POSITION;
     m_riderShape = RiderShape::CIRCLE;  // Default to circle sprite
+    m_fMarkerScale = DEFAULT_MARKER_SCALE;
     setPosition(0.43275f, 0.0111f);  // Horizontally centered at scale 1.0
     setDataDirty();
 }

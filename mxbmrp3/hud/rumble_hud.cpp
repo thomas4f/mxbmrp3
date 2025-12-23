@@ -14,20 +14,17 @@
 using namespace PluginConstants;
 
 RumbleHud::RumbleHud() {
-    DEBUG_INFO("RumbleHud initialized");
-    setScale(1.0f);
+    // One-time setup
+    DEBUG_INFO("RumbleHud created");
     setDraggable(true);
-
-    // Set defaults
-    m_bVisible = false;  // Disabled by default (debug/tuning HUD)
-    m_bShowTitle = true;
-    m_bShowBackgroundTexture = false;  // No texture by default
-    m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
-    setPosition(START_X, START_Y);
-
-    // Pre-allocate render buffers
     m_quads.reserve(500);   // Line segments for graphs
     m_strings.reserve(20);  // Title + labels
+
+    // Set texture base name for dynamic texture discovery
+    setTextureBaseName("rumble_hud");
+
+    // Set all configurable defaults
+    resetToDefaults();
 
     rebuildRenderData();
 }
@@ -47,9 +44,9 @@ bool RumbleHud::handlesDataType(DataChangeType dataType) const {
 void RumbleHud::resetToDefaults() {
     m_bVisible = false;
     m_bShowTitle = true;
-    m_bShowBackgroundTexture = false;  // No texture by default
+    setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
-    setPosition(START_X, START_Y);
+    setPosition(0.737f, 0.3663f);
     setScale(1.0f);
     setDataDirty();
 }
@@ -79,24 +76,63 @@ void RumbleHud::addHistoryGraph(const std::deque<float>& history, unsigned long 
     }
 }
 
+void RumbleHud::addVerticalBar(float x, float y, float barWidth, float barHeight,
+                                float value, unsigned long color) {
+    // Clamp value to 0-1 range
+    value = std::max(0.0f, std::min(1.0f, value));
+
+    // Calculate filled and empty heights
+    float filledHeight = barHeight * value;
+    float emptyHeight = barHeight - filledHeight;
+
+    // Empty portion (top) - darker gray
+    if (emptyHeight > 0.001f) {
+        SPluginQuad_t emptyQuad;
+        float emptyX = x, emptyY = y;
+        applyOffset(emptyX, emptyY);
+        setQuadPositions(emptyQuad, emptyX, emptyY, barWidth, emptyHeight);
+        emptyQuad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
+
+        // Apply background opacity to empty portion (half opacity)
+        emptyQuad.m_ulColor = PluginUtils::applyOpacity(ColorConfig::getInstance().getMuted(), m_fBackgroundOpacity * 0.5f);
+
+        m_quads.push_back(emptyQuad);
+    }
+
+    // Filled portion (bottom) - colored
+    if (filledHeight > 0.001f) {
+        SPluginQuad_t filledQuad;
+        float filledX = x, filledY = y + emptyHeight;
+        applyOffset(filledX, filledY);
+        setQuadPositions(filledQuad, filledX, filledY, barWidth, filledHeight);
+        filledQuad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
+
+        // Apply full opacity to filled portion
+        filledQuad.m_ulColor = PluginUtils::applyOpacity(color, 1.0f);
+
+        m_quads.push_back(filledQuad);
+    }
+}
+
 void RumbleHud::rebuildRenderData() {
     m_quads.clear();
     m_strings.clear();
 
     const auto dims = getScaledDimensions();
-    const XInputReader& xinput = XInputReader::getInstance();
+    const XInputReader& xinput = PluginData::getInstance().getXInputReader();
     const RumbleConfig& config = xinput.getRumbleConfig();
 
     // Calculate dimensions
     float graphWidth = PluginUtils::calculateMonospaceTextWidth(GRAPH_WIDTH_CHARS, dims.fontSize);
-    float legendWidth = PluginUtils::calculateMonospaceTextWidth(LEGEND_WIDTH_CHARS, dims.fontSize);
-    float gapWidth = PluginUtils::calculateMonospaceTextWidth(1, dims.fontSize);
+    float barWidth = PluginUtils::calculateMonospaceTextWidth(BAR_WIDTH_CHARS, dims.fontSize);
+    float gapWidth = PluginUtils::calculateMonospaceTextWidth(GAP_WIDTH_CHARS, dims.fontSize);
     float backgroundWidth = PluginUtils::calculateMonospaceTextWidth(BACKGROUND_WIDTH_CHARS, dims.fontSize)
         + dims.paddingH + dims.paddingH;
     float graphHeight = GRAPH_HEIGHT_LINES * dims.lineHeightNormal;
+    float labelHeight = dims.lineHeightNormal;  // Height for "H" and "L" labels
 
-    // Calculate legend height (count enabled items)
-    int legendLines = 2;  // Always show Heavy and Light motors
+    // Calculate legend height (count enabled effects)
+    int legendLines = 0;
     if (config.suspensionEffect.isEnabled()) legendLines++;
     if (config.wheelspinEffect.isEnabled()) legendLines++;
     if (config.brakeLockupEffect.isEnabled()) legendLines++;
@@ -107,9 +143,11 @@ void RumbleHud::rebuildRenderData() {
     if (config.steerEffect.isEnabled()) legendLines++;
     float legendHeight = legendLines * dims.lineHeightNormal;
 
-    // Height: title + max(graph height, legend height)
+    // Height: title + max(graph height, legend height, bar height + label height)
     float titleHeight = m_bShowTitle ? dims.lineHeightLarge : 0.0f;
+    float barTotalHeight = graphHeight + labelHeight;  // Bars + labels below
     float contentHeight = graphHeight > legendHeight ? graphHeight : legendHeight;
+    if (barTotalHeight > contentHeight) contentHeight = barTotalHeight;
     float backgroundHeight = dims.paddingV + titleHeight + contentHeight + dims.paddingV;
 
     setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + backgroundHeight);
@@ -123,8 +161,8 @@ void RumbleHud::rebuildRenderData() {
 
     // Title
     if (m_bShowTitle) {
-        addTitleString("Forces", contentStartX, currentY, Justify::LEFT,
-            Fonts::ENTER_SANSMAN, ColorConfig::getInstance().getPrimary(), dims.fontSizeLarge);
+        addTitleString("Rumble", contentStartX, currentY, Justify::LEFT,
+            Fonts::getTitle(), ColorConfig::getInstance().getPrimary(), dims.fontSizeLarge);
         currentY += titleHeight;
     }
 
@@ -197,110 +235,109 @@ void RumbleHud::rebuildRenderData() {
                         graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
     }
 
-    // Motor outputs on top
-    addHistoryGraph(xinput.getHeavyMotorHistory(), heavyColor,
-                    graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
-    addHistoryGraph(xinput.getLightMotorHistory(), lightColor,
-                    graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
+    // === MIDDLE: Force Bars (LGT and HVY) ===
+    float barsStartX = contentStartX + graphWidth + gapWidth;
+    float barsStartY = currentY;
 
-    // === RIGHT SIDE: Legend ===
-    float legendStartX = contentStartX + graphWidth + gapWidth;
+    // Get accumulated motor values from history (history contains correct values even when rumble disabled)
+    const auto& heavyHistory = xinput.getHeavyMotorHistory();
+    const auto& lightHistory = xinput.getLightMotorHistory();
+    float heavyValue = heavyHistory.empty() ? 0.0f : heavyHistory.back();
+    float lightValue = lightHistory.empty() ? 0.0f : lightHistory.back();
+
+    // Light motor bar (first)
+    addVerticalBar(barsStartX, barsStartY, barWidth, graphHeight, lightValue, lightColor);
+    addString("L", barsStartX + barWidth / 2.0f, barsStartY + graphHeight, Justify::CENTER,
+              Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+
+    // Heavy motor bar (second)
+    float heavyBarX = barsStartX + barWidth + gapWidth;
+    addVerticalBar(heavyBarX, barsStartY, barWidth, graphHeight, heavyValue, heavyColor);
+    addString("H", heavyBarX + barWidth / 2.0f, barsStartY + graphHeight, Justify::CENTER,
+              Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+
+    // === RIGHT SIDE: Legend (effects only, motor totals shown in bars) ===
+    float legendStartX = heavyBarX + barWidth + gapWidth;
     float legendY = currentY;
     float valueX = legendStartX + PluginUtils::calculateMonospaceTextWidth(4, dims.fontSize);  // After "XXX "
-
-    // Heavy motor
-    addString("HVY", legendStartX, legendY, Justify::LEFT,
-        Fonts::ROBOTO_MONO, heavyColor, dims.fontSize);
     char buffer[16];
-    snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(xinput.getLastHeavyMotor() * 100));
-    addString(buffer, valueX, legendY, Justify::LEFT,
-        Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
-    legendY += dims.lineHeightNormal;
-
-    // Light motor
-    addString("LGT", legendStartX, legendY, Justify::LEFT,
-        Fonts::ROBOTO_MONO, lightColor, dims.fontSize);
-    snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(xinput.getLastLightMotor() * 100));
-    addString(buffer, valueX, legendY, Justify::LEFT,
-        Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
-    legendY += dims.lineHeightNormal;
 
     // Bumps/Suspension effect
     if (config.suspensionEffect.isEnabled()) {
         addString("BMP", legendStartX, legendY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, bumpsColor, dims.fontSize);
+            Fonts::getNormal(), bumpsColor, dims.fontSize);
         snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(xinput.getLastSuspensionRumble() * 100));
         addString(buffer, valueX, legendY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
         legendY += dims.lineHeightNormal;
     }
 
     // Spin effect
     if (config.wheelspinEffect.isEnabled()) {
         addString("SPN", legendStartX, legendY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, wheelColor, dims.fontSize);
+            Fonts::getNormal(), wheelColor, dims.fontSize);
         snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(xinput.getLastWheelspinRumble() * 100));
         addString(buffer, valueX, legendY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
         legendY += dims.lineHeightNormal;
     }
 
     // Brake lockup effect
     if (config.brakeLockupEffect.isEnabled()) {
         addString("LCK", legendStartX, legendY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, lockupColor, dims.fontSize);
+            Fonts::getNormal(), lockupColor, dims.fontSize);
         snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(xinput.getLastLockupRumble() * 100));
         addString(buffer, valueX, legendY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
         legendY += dims.lineHeightNormal;
     }
 
     // Wheelie effect
     if (config.wheelieEffect.isEnabled()) {
         addString("WHL", legendStartX, legendY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, wheelieColor, dims.fontSize);
+            Fonts::getNormal(), wheelieColor, dims.fontSize);
         snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(xinput.getLastWheelieRumble() * 100));
         addString(buffer, valueX, legendY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
         legendY += dims.lineHeightNormal;
     }
 
     // RPM effect
     if (config.rpmEffect.isEnabled()) {
         addString("RPM", legendStartX, legendY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, rpmColor, dims.fontSize);
+            Fonts::getNormal(), rpmColor, dims.fontSize);
         snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(xinput.getLastRpmRumble() * 100));
         addString(buffer, valueX, legendY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
         legendY += dims.lineHeightNormal;
     }
 
     // Slide effect
     if (config.slideEffect.isEnabled()) {
         addString("SLD", legendStartX, legendY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, slideColor, dims.fontSize);
+            Fonts::getNormal(), slideColor, dims.fontSize);
         snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(xinput.getLastSlideRumble() * 100));
         addString(buffer, valueX, legendY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
         legendY += dims.lineHeightNormal;
     }
 
     // Surface effect
     if (config.surfaceEffect.isEnabled()) {
         addString("SRF", legendStartX, legendY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, terrainColor, dims.fontSize);
+            Fonts::getNormal(), terrainColor, dims.fontSize);
         snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(xinput.getLastSurfaceRumble() * 100));
         addString(buffer, valueX, legendY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
         legendY += dims.lineHeightNormal;
     }
 
     // Steer torque effect
     if (config.steerEffect.isEnabled()) {
         addString("STR", legendStartX, legendY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, steerColor, dims.fontSize);
+            Fonts::getNormal(), steerColor, dims.fontSize);
         snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(xinput.getLastSteerRumble() * 100));
         addString(buffer, valueX, legendY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
     }
 }

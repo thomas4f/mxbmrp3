@@ -6,6 +6,7 @@
 #include <vector>
 #include <string>
 #include <cmath>
+#include <chrono>
 #include "../vendor/piboso/mxb_api.h"
 #include "../core/input_manager.h"
 #include "../core/plugin_data.h"
@@ -18,7 +19,7 @@ struct HudStringConfig {
 
     // Text formatting
     int justify = PluginConstants::Justify::LEFT;
-    int fontIndex = PluginConstants::Fonts::ROBOTO_MONO;
+    int fontIndex = PluginConstants::Fonts::getNormal();
     unsigned long color = PluginUtils::makeColor(255, 255, 255);  // White default
     float fontSize = PluginConstants::FontSizes::NORMAL;
 
@@ -49,12 +50,16 @@ struct HudStringConfig {
 
 class BaseHud {
 public:
+    // Standard update interval for live timing displays (~165Hz for smooth ticking)
+    static constexpr int TICK_UPDATE_INTERVAL_MS = 6;
+
     BaseHud() : m_bDataDirty(true), m_bLayoutDirty(true), m_bDraggable(false), m_bDragging(false),
         m_fOffsetX(0.0f), m_fOffsetY(0.0f), m_fDragStartX(0.0f), m_fDragStartY(0.0f),
         m_fInitialOffsetX(0.0f), m_fInitialOffsetY(0.0f),
         m_fBoundsLeft(0.0f), m_fBoundsTop(0.0f), m_fBoundsRight(0.0f), m_fBoundsBottom(0.0f),
         m_fScale(1.0f), m_bVisible(true), m_bShowTitle(true), m_fBackgroundOpacity(0.85f),
-        m_bShowBackgroundTexture(false), m_iBackgroundTextureIndex(0) {}
+        m_bShowBackgroundTexture(false), m_iBackgroundTextureIndex(0),
+        m_lastTickUpdate() {}
 
     virtual ~BaseHud() = default;
 
@@ -105,8 +110,24 @@ public:
     }
     bool getShowBackgroundTexture() const { return m_bShowBackgroundTexture; }
 
+    // Legacy texture index support (for compatibility)
     void setBackgroundTextureIndex(int index) { m_iBackgroundTextureIndex = index; }
     int getBackgroundTextureIndex() const { return m_iBackgroundTextureIndex; }
+
+    // Dynamic texture variant support
+    // Sets the base texture name (e.g., "standings_hud") for this HUD
+    void setTextureBaseName(const std::string& baseName);
+    const std::string& getTextureBaseName() const { return m_textureBaseName; }
+
+    // Texture variant: 0 = Off (solid color), 1+ = variant number
+    void setTextureVariant(int variant);
+    int getTextureVariant() const { return m_textureVariant; }
+
+    // Cycle through available variants: Off -> 1 -> 2 -> ... -> Off
+    void cycleTextureVariant(bool forward = true);
+
+    // Get available variants for this HUD's texture (empty if no texture set)
+    std::vector<int> getAvailableTextureVariants() const;
 
     // Drag and drop functionality
     void setDraggable(bool draggable) { m_bDraggable = draggable; }
@@ -142,6 +163,18 @@ public:
     void setLayoutDirty() {
         m_bLayoutDirty = true;
     }
+
+    // ========================================================================
+    // Frequent Update Support (for live timing displays)
+    // ========================================================================
+    // Override needsFrequentUpdates() to return true when HUD should tick at high frequency.
+    // Call checkFrequentUpdates() in update() to apply the standard ticking logic.
+    virtual bool needsFrequentUpdates() const { return false; }
+
+    // Check if enough time has passed since last tick update; if so, marks data dirty.
+    // Returns true if an update was triggered, false otherwise.
+    // Use this in update() instead of duplicating the tick check logic.
+    bool checkFrequentUpdates();
 
     virtual bool handleMouseInput(bool allowInput = true);
     bool isPointInBounds(float x, float y) const;
@@ -268,9 +301,16 @@ protected:
     bool m_bShowBackgroundTexture;  // If true and texture exists, render sprite background
     int m_iBackgroundTextureIndex;  // 1-based sprite index (0 = no texture)
 
+    // Dynamic texture support
+    std::string m_textureBaseName;  // Base texture name (e.g., "standings_hud")
+    int m_textureVariant = 0;       // Selected variant: 0 = Off, 1+ = variant number
+
     // Position and bounds (protected so derived classes can access for advanced positioning)
     float m_fOffsetX, m_fOffsetY;
     float m_fBoundsLeft, m_fBoundsTop, m_fBoundsRight, m_fBoundsBottom;
+
+    // Frequent update timing (for live timing displays)
+    std::chrono::steady_clock::time_point m_lastTickUpdate;
 
 private:
     bool m_bDataDirty;

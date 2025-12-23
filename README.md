@@ -7,9 +7,10 @@ A customizable, [open-source](https://github.com/thomas4f/mxbmrp3) HUD plugin fo
 
 - Live race standings, track map, and proximity radar with approach alerts
 - Lap timing with splits, personal bests, gap-to-PB visualization, and online lap records
+- Track specific riders with custom colors and icons across all HUDs
 - Controller rumble feedback with customizable effects (bumps, slide, spin, lockup, wheelie, etc.)
 - Telemetry visualization and compact info widgets
-- Drag-and-drop positioning with color themes
+- Drag-and-drop positioning with color themes and customizable hotkeys
 - Automatic profile switching for Practice, Qualify, Race, and Spectate sessions
 
 ### Get Started
@@ -28,20 +29,24 @@ See [Installation](#installation) for setup instructions.
   - [Manual](#manual-installation)
 - [Controls](#controls)
 - [Configuration](#configuration)
+  - [Profiles](#profiles)
+  - [Appearance](#appearance)
+  - [Tracked Riders](#tracked-riders)
+  - [Controller Rumble](#controller-rumble)
 - [HUDs](#huds)
   - [Standings](#standings-hud)
   - [Map](#map-hud)
   - [Radar](#radar-hud)
   - [Timing](#timing-hud)
+  - [Gap Bar](#gap-bar-hud)
   - [Pitboard](#pitboard-hud)
   - [Lap Log](#lap-log-hud)
-  - [Session Best](#session-best-hud)
+  - [Ideal Lap](#ideal-lap-hud)
   - [Records](#records-hud)
   - [Telemetry](#telemetry-hud)
   - [Input](#input-hud)
   - [Performance](#performance-hud)
 - [Widgets](#widgets)
-- [Controller Rumble](#controller-rumble)
 - [Modding](#modding)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
@@ -78,8 +83,9 @@ See [Installation](#installation) for setup instructions.
    │
    └───plugins/
        ├── mxbmrp3_data/        ← Add this folder (from release)
-       │       *.tga
-       │       *.fnt
+       │   ├── fonts/           ← Font files (.fnt)
+       │   ├── textures/        ← Texture files (.tga)
+       │   └── icons/           ← Icon files (.tga)
        ├── mxbmrp3.dlo          ← Add this (from release)
        ├── proxy_udp64.dlo      ← Keep (native game file)
        ├── proxy64.dlo          ← Keep (native game file)
@@ -98,31 +104,25 @@ Launch MX Bikes - the plugin will load automatically. Some elements are enabled 
 - **Right Click & Drag** - Reposition elements
 
 ### Keyboard Shortcuts
-- **F1** - Toggle Standings HUD
-- **F2** - Toggle Map HUD
-- **F3** - Toggle Radar HUD
-- **F4** - Toggle Lap Log HUD
-- **F5** - Toggle Session Best HUD
-- **F6** - Toggle Telemetry HUD
-- **F7** - Toggle Input HUD
-- **F8** - Toggle Records HUD
-- **F9** - Toggle all Widgets
-- **Tilde** (below Esc, above Tab) or **Backslash** (above Enter) - Toggle settings menu
-- **Ctrl+Tilde** or **Ctrl+Backslash** - Temporarily toggle all elements on/off
+
+Keyboard and controller hotkeys can be customized in Settings > Hotkeys. By default, only the settings menu hotkey is configured:
+
+- **Tilde** (below Esc) - Toggle settings menu
 
 ## Configuration
 
-All element positions, scales, and visibility settings are automatically saved between sessions.
-
 Use the settings menu (Tilde key or `[=]` settings button) to access tabs for each HUD:
 - Toggle visibility
-- Adjust scale and opacity
+- Adjust scale, opacity, and background textures
 - Configure individual HUD settings (columns, rows, display modes)
-- Customize color theme
+- Customize appearance (fonts and color theme)
 - Set preferences (speed/fuel units, grid snapping)
+- Customize keyboard and controller hotkeys
 - Select controller index for Input HUD and rumble feedback
 - Check for updates (optional, checks GitHub releases on startup)
-- Reset settings (per-tab, per-profile, or all profiles)
+- Reset settings (per-tab, per-profile, or all settings)
+
+All element positions, scales, and visibility settings are automatically saved between sessions.
 
 ### Profiles
 
@@ -135,7 +135,74 @@ The plugin supports four separate profiles, each storing a complete HUD layout c
 
 **Auto-Switch** (disabled by default): Automatically switches profiles based on session type. You can manually select a profile or disable auto-switching from the General tab in settings.
 
-**Copy to All**: Applies the current profile's layout to all other profiles.
+**Copy**: Copy the current profile's layout to a specific profile or all other profiles.
+
+### Appearance
+
+Customize fonts and colors in **Settings > Appearance**:
+
+**Fonts**: Assign fonts to five categories used across all HUDs:
+- **Title** - HUD titles
+- **Normal** - General text
+- **Strong** - Emphasis/important text
+- **Marker** - Pitboard text
+- **Small** - Map/radar labels
+
+**Colors**: Customize the color theme with nine configurable slots:
+- **Primary** - Main text and highlights
+- **Secondary** - Labels and secondary text
+- **Muted** - Disabled/inactive elements
+- **Positive** - Ahead/faster indicators (green)
+- **Warning** - Behind/slower indicators (red)
+- **Tertiary** - Neutral/other riders
+- **Neutral** - Borders and dividers
+- **Background** - HUD backgrounds
+- **Highlight** - Selection highlights
+
+### Tracked Riders
+
+Track specific riders to highlight them across all HUDs with custom colors and icons. Access the **Riders** tab in settings to manage tracked riders:
+
+- **Server Players**: Shows all riders currently on the server. Click to add/remove from tracking.
+- **Tracked Riders**: Your list of tracked riders with customizable appearance.
+  - **Left-click**: Cycle through colors
+  - **Right-click**: Cycle through 50 available icons
+  - **Hover + click X**: Remove from tracking
+
+Tracked riders appear with their custom colors and icons in:
+- **Standings HUD**: Toggleable icon column showing tracked rider indicators
+- **Map HUD**: Custom icons and colors on the track map
+- **Radar HUD**: Custom icons and colors on the proximity radar
+
+Tracked riders persist across sessions and servers - add a rider once and they'll be highlighted whenever you race together.
+
+### Controller Rumble
+
+Configure vibration feedback in the **Rumble** tab. Each effect can be assigned to heavy (left) or light (right) motors:
+
+| Effect | Unit | Description |
+|--------|------|-------------|
+| **Bumps** | m/s | Feel suspension compression from bumps, jumps, and hard landings, driven by suspension compression velocity |
+| **Slide** | deg | Feel when the bike is sliding laterally, based on lateral slip angle, useful for detecting and controlling drifts |
+| **Spin** | x | Feedback when the rear wheel loses traction under acceleration, driven by rear wheel overrun multiplier (e.g., 5x = 500% slip) |
+| **Lockup** | ratio | Warning vibration when front or rear wheel locks under heavy braking, based on wheel underrun ratio |
+| **Wheelie** | deg | Feel the intensity of wheelies – vibration scales with pitch angle as the front wheel lifts |
+| **Steer** | Nm | Handlebar resistance feedback – feel ruts, rocks, and terrain forces driven by handlebar torque |
+| **RPM** | rpm | Continuous vibration that increases with engine RPM, giving a sense of engine load |
+| **Surface** | m/s | Vibration when riding off-track on grass, dirt, or gravel, scaled by riding speed on rough terrain |
+
+Each effect has:
+- **Light/Heavy** - Motor strength (Off, 10-100%)
+- **Min/Max** - Threshold values in the effect's unit where rumble scales from zero to full
+
+#### Forces HUD
+
+Real-time visualization of controller rumble effects:
+- Graph showing force intensities over time
+- Heavy motor (red) and light motor (blue) output levels
+- Individual effect contributions when enabled (bumps, spin, lockup, etc.)
+- Useful for tuning rumble settings and debugging
+- Disabled by default (enable in Rumble tab)
 
 ## HUDs
 
@@ -144,9 +211,13 @@ Full-featured displays with extensive customization options:
 ### Standings HUD
 Displays live race positions with detailed rider information:
 - Position, race number, rider name
+- Tracked rider indicators (custom icons for riders you're following)
 - Bike brand (color-coded by manufacturer)
 - Status column (L1, L2... for lap count, LL for last lap, FIN when finished, PIT, DNS/DSQ/RET)
-- Gap times (official split-based and live timing)
+- Gap times with configurable modes (Off, Player gaps only, All gaps)
+- Gap indicator showing live/official time to adjacent riders
+- Gap reference: Compare gaps to race leader or to yourself
+- Configurable row count (8-30 rows)
 - Pagination that focuses on player position
 - Click rider names to follow them (spectating/replay mode)
 
@@ -154,20 +225,29 @@ Displays live race positions with detailed rider information:
 Top-down track map showing:
 - Track layout with configurable rotation
 - Rider positions in real-time
-- Color modes: Position (ahead/behind), Brand (bike colors), or Uniform (gray)
-- Configurable labels, track width, and outline
-- Range mode: Full track view or follow-player zoom
+- Multiple rider shapes (arrow, chevron, circle, dot, pin, etc.)
+- Color modes: Position (green/red by relative position), Brand (bike colors), or Uniform (same color, brightness varies by lap)
+- Configurable labels, track width scale, and outline
+- Adjustable marker scale for rider icons
+- Range mode: Full track view or follow-player zoom with configurable distance
 
 ### Radar HUD
 Proximity radar showing nearby riders:
-- Adjustable range
-- Proximity alerts with configurable distance
-- Color modes: Brand (bike colors), Position (ahead/behind), or Uniform (gray)
+- Adjustable range (10-100m)
+- Proximity alerts with configurable alert distance
+- Multiple rider shapes (arrow, chevron, circle, dot, pin, etc.)
+- Color modes: Brand (bike colors), Position (green/red by relative position), or Uniform (same color, brightness varies by lap)
+- Tracked riders displayed with their custom colors and icons
+- Adjustable marker scale for rider icons
+- Toggle player arrow visibility
+- Auto-fade when no riders nearby
 - Multiple label modes (position, race number, name)
 
 ### Timing HUD
 Real-time split and lap time display:
-- Accumulated split times with gap comparison
+- Accumulated split times at each sector
+- Gap comparison options: Personal Best, Ideal Lap, or Session Best
+- Multiple gap types can be stacked vertically
 - Appears center-screen after crossing splits
 - Configurable display duration
 
@@ -180,9 +260,8 @@ Visual gap-to-personal-best display:
 
 ### Pitboard HUD
 Pitboard-style information display:
-- Rider ID (race number and name)
+- Configurable rows: Rider ID, Position, Session, Time, Lap, Last Lap, Gap
 - Position and lap status (L1, L2..., LL for last lap, FIN when finished)
-- Session time
 - Accumulated split times at splits, lap time at finish
 - Gap to leader
 - Display modes: Always visible, Pit area only, or Splits triggered
@@ -191,13 +270,15 @@ Pitboard-style information display:
 Historical lap times and performance:
 - Lap-by-lap time listing
 - Personal best indicators
+- Live gap coloring (green when ahead, red when behind)
+- Race finish time display
 
-### Session Best HUD
-Quick reference for session records:
-- Best lap time
-- Ideal lap time
-- Best sector times (S1, S2, S3 - individual sector durations, not accumulated)
-- Current session information
+### Ideal Lap HUD
+Shows ideal (purple) sector times and gaps to theoretical best lap:
+- S1, S2, S3: Best individual sector times with gap to current sector
+- Last: Last lap time with gap to ideal
+- Best: Personal best lap time with gap to ideal
+- Ideal: Sum of best individual sectors (theoretical perfect lap)
 
 ### Records HUD
 Lap records from online database:
@@ -248,44 +329,83 @@ Simple, focused display elements:
    - **Est** - Estimated laps remaining
 10. **Notices Widget** - Race status notices (priority order: wrong way, blue flag, last lap, finished)
 
-## Controller Rumble
-
-Configure vibration feedback in the **Rumble** tab. Each effect can be assigned to heavy (left) or light (right) motors:
-
-| Effect | Description |
-|--------|-------------|
-| **Bumps** | Feel suspension compression from bumps, jumps, and hard landings through rumble intensity |
-| **Slide** | Feel when the bike is sliding laterally, useful for detecting and controlling drifts |
-| **Spin** | Feedback when the rear wheel loses traction under acceleration, helping you modulate throttle |
-| **Lockup** | Warning vibration when front or rear wheel locks up under heavy braking |
-| **Wheelie** | Feel the intensity of wheelies - vibration scales with pitch angle when front wheel lifts |
-| **RPM** | Continuous vibration that increases with engine RPM, giving a sense of engine load |
-| **Steer** | Handlebar resistance feedback - feel ruts, rocks, and terrain forces through the controller |
-| **Surface** | Vibration when riding off-track on grass, dirt, or gravel surfaces |
-
-Each effect has:
-- **Motor** - Target motor (Off, Heavy, Light, or Both)
-- **Sens** - Sensitivity level (10-100% in 10% increments) - higher sensitivity triggers the effect more easily
-- **Strength** - Maximum vibration intensity
-
-### Forces HUD
-
-Real-time visualization of controller rumble effects:
-- Graph showing force intensities over time
-- Heavy motor (red) and light motor (blue) output levels
-- Individual effect contributions when enabled (bumps, spin, lockup, etc.)
-- Useful for tuning rumble settings and debugging
-- Disabled by default (enable in Rumble tab)
-
 ## Modding
 
-Customize the look of any HUD or widget by replacing or creating TGA textures in the `mxbmrp3_data/` folder. Files use the naming convention `{name}.tga` (e.g., `standings_hud.tga`, `pitboard_hud.tga`, `speedo_widget.tga`). Enable "BG Texture" in settings to use your custom texture.
+### Custom Textures
+
+Customize the look of HUDs and widgets by adding TGA textures to `mxbmrp3_data/textures/`. Files use the naming convention `{name}_{number}.tga`:
+
+| Element | Texture Name |
+|-----------|--------------|
+| Gap Bar | `gap_bar_hud` |
+| Ideal Lap | `ideal_lap_hud` |
+| Input | `input_hud` |
+| Lap Log | `lap_log_hud` |
+| Map | `map_hud` |
+| Performance | `performance_hud` |
+| Pitboard | `pitboard_hud` |
+| Radar | `radar_hud` |
+| Records | `records_hud` |
+| Rumble | `rumble_hud` |
+| Standings | `standings_hud` |
+| Telemetry | `telemetry_hud` |
+| Timing | `timing_hud` |
+| Bars | `bars_widget` |
+| Fuel | `fuel_widget` |
+| Lap | `lap_widget` |
+| Notices | `notices_widget` |
+| Pointer | `pointer_widget` |
+| Position | `position_widget` |
+| Session | `session_widget` |
+| Speed | `speed_widget` |
+| Speedometer | `speedo_widget` |
+| Tachometer | `tacho_widget` |
+| Time | `time_widget` |
+
+Textures are automatically discovered at startup. Cycle through them in each HUD's settings tab using the Texture control.
+
+### Custom Fonts
+
+Add custom fonts to `mxbmrp3_data/fonts/`. Fonts are automatically discovered and can be assigned to categories in **Settings > Appearance**:
+
+| Category | Usage | Default |
+|----------|-------|---------|
+| **Title** | HUD titles | EnterSansman Italic |
+| **Normal** | General text | Roboto Mono Regular |
+| **Strong** | Emphasis/important | Roboto Mono Bold |
+| **Marker** | Pitboard text | Fuzzy Bubbles Regular |
+| **Small** | Map/radar labels | Tiny5 Regular |
+
+To generate fonts, use the `fontgen` utility provided by PiBoSo. See [this forum post](https://forum.piboso.com/index.php?topic=1458.msg20183#msg20183) for details. An example configuration is provided in [`fontgen.cfg`](fontgen.cfg).
+
+### Advanced INI Settings
+
+Some widgets support hidden row toggles that can only be changed by manually editing `mxbmrp3.ini` (located in the MX Bikes user data folder).
+
+Settings use `[WidgetName:N]` sections where N is the profile index: 0=Practice, 1=Qualify, 2=Race, 3=Spectate.
+
+**Row Toggles** (`enabledRows`): Bitmask controlling which rows are displayed.
+
+| Widget | Rows | Default |
+|--------|------|---------|
+| **FuelWidget** | Fuel (1), Used (2), Avg (4), Est (8) | 15 |
+| **SpeedWidget** | Speed (1), Units (2), Gear (4) | 7 |
+
+Examples:
+```ini
+[SpeedWidget:0]
+enabledRows=3
+
+[FuelWidget:0]
+enabledRows=8
+```
+Speed+Units only (1+2=3), Est laps only (8).
 
 ## Troubleshooting
 
 **HUD Not Appearing**
-- Verify `mxbmrp3.dlo` and `mxbmrp3_data/` directory are in `[MX Bikes]/plugins/` folder (see [Manual Installation](#manual-installation) for expected structure)
 - Check [Installation requirements](#installation) (MX Bikes Beta 20+, Visual C++ Redistributable)
+- Verify `mxbmrp3.dlo` and `mxbmrp3_data/` are in the correct `plugins/` folder (see [Manual Installation](#manual-installation)). MX Bikes has two directories - the **game installation** (contains `mxbikes.exe`) and **user data** (`Documents\PiBoSo\MX Bikes\`). Plugins go in the game installation, not Documents.
 
 **Elements Appearing Twice (Ghost/Duplicate)**
 - Check for duplicate `mxbmrp3.dlo` files - only ONE should exist in your plugins folder
@@ -323,7 +443,7 @@ Built with C++17, Visual Studio 2022, MX Bikes Plugin API, and Claude Code.
 
 ### Roadmap
 
-Ideas under consideration (no guarantees): configurable keyboard shortcuts, persistent session history, extended telemetry (g-force, lean angle), event log, HTTP data export for OBS overlays.
+Ideas under consideration (no guarantees): persistent session history, extended telemetry (g-force, lean angle), event log, HTTP data export for OBS overlays.
 
 ---
 

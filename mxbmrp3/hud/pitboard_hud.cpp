@@ -17,27 +17,24 @@ using namespace PluginConstants;
 
 PitboardHud::PitboardHud()
 {
+    // One-time setup
     DEBUG_INFO("PitboardHud created");
     setDraggable(true);
-
-    // Set defaults
-    m_bShowTitle = false;  // Pitboard typically doesn't have a title
-    m_bShowBackgroundTexture = true;  // Show texture by default
-    m_fBackgroundOpacity = 1.0f;  // 100% opacity
-    m_fScale = 1.0f;  // 100% default scale
-    m_displayMode = MODE_SPLITS;  // Show at splits by default
-    setPosition(0.0f, 0.0222f);
-
-    // Pre-allocate vectors
     m_quads.reserve(1);
     m_strings.reserve(8);  // Up to 7 data elements + optional title
+
+    // Set texture base name for dynamic texture discovery
+    setTextureBaseName("pitboard_hud");
+
+    // Set all configurable defaults
+    resetToDefaults();
 
     rebuildRenderData();
 }
 
 bool PitboardHud::handlesDataType(DataChangeType dataType) const {
     return (dataType == DataChangeType::Standings ||
-            dataType == DataChangeType::SessionBest ||
+            dataType == DataChangeType::IdealLap ||
             dataType == DataChangeType::SessionData ||
             dataType == DataChangeType::RaceEntries ||
             dataType == DataChangeType::SpectateTarget);
@@ -104,10 +101,10 @@ void PitboardHud::update() {
     // Also detect when underlying data has been cleared (session change)
     // If we have cached splits but CurrentLapData is null or empty, reset caches
     const CurrentLapData* currentLap = pluginData.getCurrentLapData();
-    const SessionBestData* sessionBest = pluginData.getSessionBestData();
+    const IdealLapData* idealLapData = pluginData.getIdealLapData();
     bool dataCleared = (m_cachedSplit1 > 0 || m_cachedSplit2 > 0 || m_cachedLastLapTime > 0) &&
                        (!currentLap || (currentLap->split1 <= 0 && currentLap->split2 <= 0)) &&
-                       (!sessionBest || sessionBest->lastLapTime <= 0);
+                       (!idealLapData || idealLapData->lastLapTime <= 0);
 
     if (targetChanged || dataCleared) {
         // Reset all cached values
@@ -124,8 +121,8 @@ void PitboardHud::update() {
             m_cachedSplit1 = currentLap->split1;
             m_cachedSplit2 = currentLap->split2;
         }
-        if (sessionBest) {
-            m_cachedLastLapTime = sessionBest->lastLapTime;
+        if (idealLapData) {
+            m_cachedLastLapTime = idealLapData->lastLapTime;
         }
         setDataDirty();
     }
@@ -152,10 +149,10 @@ void PitboardHud::update() {
     }
 
     // Check for lap completion (split 3 / finish line)
-    if (sessionBest && sessionBest->lastLapTime > 0 &&
-        sessionBest->lastLapTime != m_cachedLastLapTime) {
-        m_cachedLastLapTime = sessionBest->lastLapTime;
-        m_displayedTime = sessionBest->lastLapTime;
+    if (idealLapData && idealLapData->lastLapTime > 0 &&
+        idealLapData->lastLapTime != m_cachedLastLapTime) {
+        m_cachedLastLapTime = idealLapData->lastLapTime;
+        m_displayedTime = idealLapData->lastLapTime;
         m_splitType = LAP;
         // Reset split caches for next lap
         m_cachedSplit1 = -1;
@@ -262,14 +259,14 @@ void PitboardHud::rebuildRenderData() {
     // Title row (optional)
     if (m_bShowTitle) {
         addTitleString("Pitboard", centerX, currentY, Justify::CENTER,
-            Fonts::FUZZY_BUBBLES, ColorPalette::BLACK, dim.fontSize);
+            Fonts::getMarker(), ColorPalette::BLACK, dim.fontSize);
         currentY += titleHeight;
     }
 
     // Get rider data if available
     const RaceEntryData* raceEntry = (displayRaceNum > 0) ? data.getRaceEntry(displayRaceNum) : nullptr;
     const StandingsData* standing = (displayRaceNum > 0) ? data.getStanding(displayRaceNum) : nullptr;
-    const SessionBestData* sessionBest = data.getSessionBestData();
+    const IdealLapData* idealLapData = data.getIdealLapData();
     const SessionData& sessionData = data.getSessionData();
     int position = (displayRaceNum > 0) ? data.getPositionForRaceNum(displayRaceNum) : -1;
 
@@ -285,7 +282,7 @@ void PitboardHud::rebuildRenderData() {
             snprintf(riderIdStr, sizeof(riderIdStr), "%s", Placeholders::GENERIC);
         }
         addString(riderIdStr, centerX, currentY, Justify::CENTER,
-                  Fonts::FUZZY_BUBBLES, ColorPalette::BLACK, dim.fontSize);
+                  Fonts::getMarker(), ColorPalette::BLACK, dim.fontSize);
     }
     currentY += dim.lineHeightNormal;
 
@@ -294,7 +291,7 @@ void PitboardHud::rebuildRenderData() {
         const char* sessionName = PluginUtils::getSessionString(sessionData.eventType, sessionData.session);
         if (sessionName) {
             addString(sessionName, centerX, currentY, Justify::CENTER,
-                      Fonts::FUZZY_BUBBLES, ColorPalette::BLACK, dim.fontSize);
+                      Fonts::getMarker(), ColorPalette::BLACK, dim.fontSize);
         }
     }
     currentY += dim.lineHeightNormal;
@@ -309,7 +306,7 @@ void PitboardHud::rebuildRenderData() {
             snprintf(positionStr, sizeof(positionStr), "P%s", Placeholders::GENERIC);
         }
         addString(positionStr, leftX, plY, Justify::LEFT,
-                  Fonts::FUZZY_BUBBLES, ColorPalette::BLACK, dim.fontSizeLarge);
+                  Fonts::getMarker(), ColorPalette::BLACK, dim.fontSizeLarge);
     }
     if (m_enabledRows & ROW_TIME) {
         char timeStr[24];
@@ -324,7 +321,7 @@ void PitboardHud::rebuildRenderData() {
                 snprintf(timeStr, sizeof(timeStr), "%dm", minutes);
             }
             addString(timeStr, centerX, currentY, Justify::CENTER,
-                      Fonts::FUZZY_BUBBLES, ColorPalette::BLACK, dim.fontSize);
+                      Fonts::getMarker(), ColorPalette::BLACK, dim.fontSize);
         }
     }
     if (m_enabledRows & ROW_LAP) {
@@ -332,38 +329,11 @@ void PitboardHud::rebuildRenderData() {
         bool showLap = false;
         if (standing && standing->numLaps >= 0) {
             int numLaps = standing->numLaps;
-            int sessionNumLaps = sessionData.sessionNumLaps;
-            int finishLap = sessionData.finishLap;
-            int sessionLength = sessionData.sessionLength;
 
-            // Check isFinished (same logic as StandingsHud::formatStatus)
-            bool isFinished = false;
-            if (sessionLength > 0 && sessionNumLaps > 0) {
-                // Time+laps race
-                isFinished = finishLap > 0 && numLaps >= finishLap;
-            } else {
-                // Pure lap or pure time race
-                isFinished = (finishLap > 0 && numLaps >= finishLap) ||
-                             (sessionNumLaps > 0 && finishLap <= 0 && numLaps >= sessionNumLaps);
-            }
-
-            if (isFinished) {
+            if (sessionData.isRiderFinished(numLaps)) {
                 strcpy_s(lapStr, sizeof(lapStr), "FIN");
                 showLap = true;
-            } else if (sessionLength > 0 && sessionNumLaps > 0) {
-                // Time+laps race - check last lap
-                if (finishLap > 0 && numLaps == finishLap - 1) {
-                    strcpy_s(lapStr, sizeof(lapStr), "LL");
-                    showLap = true;
-                } else if (m_displayMode == MODE_PIT && numLaps > 0) {
-                    snprintf(lapStr, sizeof(lapStr), "L%d", numLaps);
-                    showLap = true;
-                } else {
-                    snprintf(lapStr, sizeof(lapStr), "L%d", numLaps + 1);
-                    showLap = true;
-                }
-            } else if (sessionNumLaps > 0 && numLaps == sessionNumLaps - 1) {
-                // Pure lap race - on last lap
+            } else if (sessionData.isRiderOnLastLap(numLaps)) {
                 strcpy_s(lapStr, sizeof(lapStr), "LL");
                 showLap = true;
             } else if (m_displayMode == MODE_PIT && numLaps > 0) {
@@ -376,7 +346,7 @@ void PitboardHud::rebuildRenderData() {
         }
         if (showLap) {
             addString(lapStr, rightX, plY, Justify::RIGHT,
-                      Fonts::FUZZY_BUBBLES, ColorPalette::BLACK, dim.fontSizeLarge);
+                      Fonts::getMarker(), ColorPalette::BLACK, dim.fontSizeLarge);
         }
     }
     currentY += dim.lineHeightNormal;
@@ -387,8 +357,8 @@ void PitboardHud::rebuildRenderData() {
         int timeToShow = 0;
         if (m_displayMode == MODE_PIT) {
             // Only show previous lap time (nothing on lap 1)
-            if (sessionBest && sessionBest->lastLapTime > 0) {
-                timeToShow = sessionBest->lastLapTime;
+            if (idealLapData && idealLapData->lastLapTime > 0) {
+                timeToShow = idealLapData->lastLapTime;
             }
         } else {
             // In other modes, show current split/lap time
@@ -398,7 +368,7 @@ void PitboardHud::rebuildRenderData() {
             char timeStr[16];
             PluginUtils::formatLapTimeTenths(timeToShow, timeStr, sizeof(timeStr));
             addString(timeStr, centerX, currentY, Justify::CENTER,
-                      Fonts::FUZZY_BUBBLES, ColorPalette::BLACK, dim.fontSize);
+                      Fonts::getMarker(), ColorPalette::BLACK, dim.fontSize);
         }
     }
     currentY += dim.lineHeightNormal;
@@ -416,7 +386,7 @@ void PitboardHud::rebuildRenderData() {
         }
         if (hasGap) {
             addString(gapStr, centerX, currentY, Justify::CENTER,
-                      Fonts::FUZZY_BUBBLES, ColorPalette::BLACK, dim.fontSize);
+                      Fonts::getMarker(), ColorPalette::BLACK, dim.fontSize);
         }
     }
 }
@@ -424,10 +394,10 @@ void PitboardHud::rebuildRenderData() {
 void PitboardHud::resetToDefaults() {
     m_bVisible = true;
     m_bShowTitle = false;
-    m_bShowBackgroundTexture = true;  // Show texture by default
+    setTextureVariant(1);  // Show texture by default
     m_fBackgroundOpacity = 1.0f;  // 100% opacity
     m_fScale = 1.0f;  // 100% default scale
-    setPosition(0.0f, 0.0222f);
+    setPosition(0.0055f, 0.1332f);
     m_enabledRows = ROW_DEFAULT;
     m_displayMode = MODE_SPLITS;  // Show at splits by default
     m_cachedSplit1 = -1;

@@ -17,6 +17,12 @@ public:
     bool handlesDataType(DataChangeType dataType) const override;
     void resetToDefaults();
 
+    // Start the easter egg game (called from SettingsHud)
+    void startGame();
+
+    // Check if game is active (used by HudManager to bypass widgets toggle)
+    bool isGameActive() const { return m_gameActive; }
+
     // Allow SettingsManager to access private members
     friend class SettingsManager;
 
@@ -44,18 +50,14 @@ private:
     static constexpr float GAME_AREA_WIDTH = 0.40f;
     static constexpr float GAME_AREA_HEIGHT = 0.35f;
 
-    // Click detection for Easter egg trigger
-    static constexpr int CLICKS_TO_ACTIVATE = 5;
-    static constexpr long long CLICK_TIMEOUT_US = 2000000;  // 2 seconds in microseconds
-
-    int m_clickCount = 0;
-    long long m_lastClickTimeUs = 0;
+    // Click detection for game input (ball launch / exit)
     bool m_wasLeftPressed = false;
 
     // Game state
     bool m_gameActive = false;
     bool m_ballLaunched = false;
     bool m_gameOver = false;
+    bool m_wasVisibleBeforeGame = false;  // Restore visibility after game ends
 
     // Ball state
     float m_ballX = 0.0f;
@@ -81,7 +83,6 @@ private:
 
     // Game methods
     void handleClickDetection();
-    void startGame();
     void updateGame(float deltaTime);
     void resetBall();
     void launchBall();

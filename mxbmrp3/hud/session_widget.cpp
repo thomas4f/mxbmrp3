@@ -21,10 +21,18 @@ SessionWidget::SessionWidget()
     , m_cachedSessionLength(-1)
     , m_cachedSessionNumLaps(-1)
 {
-    initializeWidget("SessionWidget", 4, 0.1f);  // Four strings, 0.1 background opacity
-    m_bVisible = false;  // Disabled by default
-    m_bShowTitle = false;  // Override default
-    setPosition(-0.462f, 0.0222f);
+    // One-time setup
+    DEBUG_INFO("SessionWidget created");
+    setDraggable(true);
+    m_strings.reserve(4);
+
+    // Set texture base name for dynamic texture discovery
+    setTextureBaseName("session_widget");
+
+    // Set all configurable defaults
+    resetToDefaults();
+
+    rebuildRenderData();
 }
 
 bool SessionWidget::handlesDataType(DataChangeType dataType) const {
@@ -69,8 +77,8 @@ void SessionWidget::rebuildLayout() {
     // Fast path - only update positions (not colors/opacity)
     auto dim = getScaledDimensions();
 
-    float startX = WidgetPositions::WIDGET_STACK_X;
-    float startY = WidgetPositions::SESSION_Y;
+    float startX = 0.0f;
+    float startY = 0.0f;
 
     // Calculate dimensions using base helper
     float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::SESSION_WIDTH);
@@ -132,8 +140,8 @@ void SessionWidget::rebuildRenderData() {
     const char* sessionString = PluginUtils::getSessionString(eventType, session);
     const char* stateString = PluginUtils::getSessionStateString(sessionState);
 
-    float startX = WidgetPositions::WIDGET_STACK_X;
-    float startY = WidgetPositions::SESSION_Y;
+    float startX = 0.0f;
+    float startY = 0.0f;
 
     // Calculate dimensions using base helper
     float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::SESSION_WIDTH);
@@ -156,19 +164,19 @@ void SessionWidget::rebuildRenderData() {
     // "Session" label (optional, controlled by title toggle)
     if (m_bShowTitle) {
         addString("Session", contentStartX, currentY, Justify::LEFT,
-            Fonts::ENTER_SANSMAN, textColor, dim.fontSize);
+            Fonts::getTitle(), textColor, dim.fontSize);
         currentY += labelHeight;
     }
 
     // Session type (extra large font - e.g., "PRACTICE", "RACE 2")
     const char* sessionTypeString = sessionString ? sessionString : Placeholders::GENERIC;
     addString(sessionTypeString, contentStartX, currentY, Justify::LEFT,
-        Fonts::ENTER_SANSMAN, textColor, dim.fontSizeExtraLarge);
+        Fonts::getTitle(), textColor, dim.fontSizeExtraLarge);
 
     // Track name (normal font)
     const char* trackName = sessionData.trackName[0] != '\0' ? sessionData.trackName : Placeholders::GENERIC;
     addString(trackName, contentStartX, currentY + dim.lineHeightLarge, Justify::LEFT,
-        Fonts::ENTER_SANSMAN, textColor, dim.fontSize);
+        Fonts::getTitle(), textColor, dim.fontSize);
 
     // Format + Session state (combined on one line, e.g., "10:00 + 2 Laps, In Progress")
     bool hasTime = (sessionData.sessionLength > 0);
@@ -204,7 +212,7 @@ void SessionWidget::rebuildRenderData() {
     }
 
     addString(combinedBuffer, contentStartX, currentY + dim.lineHeightLarge + dim.lineHeightNormal, Justify::LEFT,
-        Fonts::ENTER_SANSMAN, textColor, dim.fontSize);
+        Fonts::getTitle(), textColor, dim.fontSize);
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
@@ -213,9 +221,9 @@ void SessionWidget::rebuildRenderData() {
 void SessionWidget::resetToDefaults() {
     m_bVisible = false;  // Disabled by default
     m_bShowTitle = false;  // No title by default
-    m_bShowBackgroundTexture = false;  // No texture by default
+    setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.1f;
     m_fScale = 1.0f;
-    setPosition(-0.462f, 0.0222f);
+    setPosition(0.0055f, 0.1332f);
     setDataDirty();
 }

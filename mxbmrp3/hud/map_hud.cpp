@@ -7,6 +7,8 @@
 #include "../core/plugin_constants.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
+#include "../core/asset_manager.h"
+#include "../core/tracked_riders_manager.h"
 #include "../diagnostics/logger.h"
 #include <cmath>
 #include <algorithm>
@@ -15,38 +17,33 @@
 using namespace PluginConstants;
 using namespace PluginConstants::Math;
 
+// Track width is calculated as a percentage of the smaller track dimension
+// This ensures consistent visual appearance across different track sizes
+static constexpr float TRACK_WIDTH_BASE_RATIO = 0.036f;  // 3.6% of smaller dimension
+
 MapHud::MapHud()
-    : m_fTrackLineWidthMeters(DEFAULT_TRACK_LINE_WIDTH),  // Reordered to match header declaration order
+    : m_fTrackWidthScale(DEFAULT_TRACK_WIDTH_SCALE),  // Reordered to match header declaration order
       m_minX(0.0f), m_maxX(0.0f), m_minY(0.0f), m_maxY(0.0f),
       m_fTrackScale(1.0f), m_fBaseMapWidth(0.0f), m_fBaseMapHeight(0.0f), m_bHasTrackData(false),
       m_bRotateToPlayer(false), m_fLastRotationAngle(0.0f),
       m_fLastPlayerX(0.0f), m_fLastPlayerZ(0.0f),
-      m_bShowOutline(true),  // Enable outline by default for visual clarity
-      m_riderColorMode(RiderColorMode::RELATIVE_POS),  // Default to relative position coloring
+      m_bShowOutline(true),
+      m_riderColorMode(RiderColorMode::RELATIVE_POS),
       m_labelMode(LabelMode::POSITION),
-      m_riderShape(RiderShape::WEDGE),  // Default to wedge sprite
+      m_riderShape(RiderShape::CIRCLE),
       m_anchorPoint(AnchorPoint::TOP_RIGHT),
       m_fAnchorX(0.0f), m_fAnchorY(0.0f),
       m_bZoomEnabled(false),
-      m_fZoomDistance(DEFAULT_ZOOM_DISTANCE) {
+      m_fZoomDistance(DEFAULT_ZOOM_DISTANCE),
+      m_fMarkerScale(DEFAULT_MARKER_SCALE) {
 
-    using namespace PluginConstants;
-
-    // Initialize with square dimensions (will be adjusted when track data loads)
-    m_fBaseMapHeight = MAP_HEIGHT;
-    m_fBaseMapWidth = MAP_HEIGHT / UI_ASPECT_RATIO;
-
+    // One-time setup
+    DEBUG_INFO("MapHud created");
     setDraggable(true);
 
-    // Set defaults to match user configuration
-    m_bShowTitle = false;
-    m_fBackgroundOpacity = 0.1f;  // 10% opacity
-
-    // Set initial position and anchor (top-right corner)
-    setPosition(0.8085f, -0.0444f);
-    m_anchorPoint = AnchorPoint::TOP_RIGHT;
-    m_fAnchorX = 0.994125f;
-    m_fAnchorY = 0.0113039f;
+    // Initialize map dimensions (will be adjusted when track data loads)
+    m_fBaseMapHeight = MAP_HEIGHT;
+    m_fBaseMapWidth = MAP_HEIGHT / UI_ASPECT_RATIO;
 
     // Pre-allocate memory for track segments, quads, and rider positions
     m_trackSegments.reserve(RESERVE_TRACK_SEGMENTS);
@@ -54,7 +51,11 @@ MapHud::MapHud()
     m_quads.reserve(RESERVE_QUADS);
     m_strings.reserve(RESERVE_STRINGS);
 
-    DEBUG_INFO("MapHud initialized");
+    // Set texture base name for dynamic texture discovery
+    setTextureBaseName("map_hud");
+
+    // Set all configurable defaults (including anchor-based position)
+    resetToDefaults();
 }
 
 void MapHud::update() {
@@ -82,17 +83,19 @@ bool MapHud::handleMouseInput(bool allowInput) {
 
 bool MapHud::handlesDataType(DataChangeType dataType) const {
     // Need to rebuild rider labels when standings/positions change
+    // Also rebuild when tracked riders change (color/shape)
     return dataType == DataChangeType::Standings ||
-           dataType == DataChangeType::SpectateTarget;
+           dataType == DataChangeType::SpectateTarget ||
+           dataType == DataChangeType::TrackedRiders;
 }
 
-void MapHud::setTrackLineWidthMeters(float widthMeters) {
+void MapHud::setTrackWidthScale(float scale) {
     // Clamp to valid range
-    if (widthMeters < MIN_TRACK_LINE_WIDTH) widthMeters = MIN_TRACK_LINE_WIDTH;
-    if (widthMeters > MAX_TRACK_LINE_WIDTH) widthMeters = MAX_TRACK_LINE_WIDTH;
+    if (scale < MIN_TRACK_WIDTH_SCALE) scale = MIN_TRACK_WIDTH_SCALE;
+    if (scale > MAX_TRACK_WIDTH_SCALE) scale = MAX_TRACK_WIDTH_SCALE;
 
-    if (m_fTrackLineWidthMeters != widthMeters) {
-        m_fTrackLineWidthMeters = widthMeters;
+    if (m_fTrackWidthScale != scale) {
+        m_fTrackWidthScale = scale;
         setDataDirty();
     }
 }
@@ -104,6 +107,17 @@ void MapHud::setZoomDistance(float meters) {
 
     if (m_fZoomDistance != meters) {
         m_fZoomDistance = meters;
+        setDataDirty();
+    }
+}
+
+void MapHud::setMarkerScale(float scale) {
+    // Clamp to valid range
+    if (scale < MIN_MARKER_SCALE) scale = MIN_MARKER_SCALE;
+    if (scale > MAX_MARKER_SCALE) scale = MAX_MARKER_SCALE;
+
+    if (m_fMarkerScale != scale) {
+        m_fMarkerScale = scale;
         setDataDirty();
     }
 }
@@ -537,12 +551,19 @@ void MapHud::renderTrack(float rotationAngle, unsigned long trackColor, float wi
     auto dim = getScaledDimensions();
     float titleOffset = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
 
+    // Calculate base track width from track dimensions
+    float trackWidth = m_maxX - m_minX;
+    float trackHeight = m_maxY - m_minY;
+    float baseWidthMeters = std::min(trackWidth, trackHeight) * TRACK_WIDTH_BASE_RATIO;
+    // Apply user scale and clamp to reasonable bounds (1m - 30m)
+    float effectiveWidthMeters = std::clamp(baseWidthMeters * m_fTrackWidthScale, 1.0f, 30.0f);
+
     // Track half-width in world coordinates (ribbon edge offset from centerline)
-    float halfWidth = m_fTrackLineWidthMeters * 0.5f * widthMultiplier;
+    float halfWidth = effectiveWidthMeters * 0.5f * widthMultiplier;
 
     // --- Spatial culling setup ---
     // Expand bounds by track width + some margin to ensure we don't clip visible track
-    float cullMargin = m_fTrackLineWidthMeters * 2.0f;
+    float cullMargin = effectiveWidthMeters * 2.0f;
     float cullMinX = m_minX - cullMargin;
     float cullMaxX = m_maxX + cullMargin;
     float cullMinY = m_minY - cullMargin;
@@ -799,12 +820,18 @@ void MapHud::renderStartMarker(float rotationAngle,
         return;
     }
 
+    // Calculate effective track width (same formula as renderTrack)
+    float trackWidth = m_maxX - m_minX;
+    float trackHeight = m_maxY - m_minY;
+    float baseWidthMeters = std::min(trackWidth, trackHeight) * TRACK_WIDTH_BASE_RATIO;
+    float effectiveWidthMeters = std::clamp(baseWidthMeters * m_fTrackWidthScale, 1.0f, 30.0f);
+
     // Get start position
     float startX = m_trackSegments[0].m_afStart[0];
     float startY = m_trackSegments[0].m_afStart[1];
 
     // Cull if start marker is outside current bounds (with margin for marker size)
-    float cullMargin = m_fTrackLineWidthMeters;
+    float cullMargin = effectiveWidthMeters;
     if (startX < m_minX - cullMargin || startX > m_maxX + cullMargin ||
         startY < m_minY - cullMargin || startY > m_maxY + cullMargin) {
         return;
@@ -820,13 +847,13 @@ void MapHud::renderStartMarker(float rotationAngle,
     // Triangle dimensions: width = track width, length = 0.5× track width
     // Triangle point is along track direction
     float forwardAngleRad = startAngle * DEG_TO_RAD;
-    float pointX = startX + std::sin(forwardAngleRad) * (m_fTrackLineWidthMeters * 0.5f);
-    float pointY = startY + std::cos(forwardAngleRad) * (m_fTrackLineWidthMeters * 0.5f);
+    float pointX = startX + std::sin(forwardAngleRad) * (effectiveWidthMeters * 0.5f);
+    float pointY = startY + std::cos(forwardAngleRad) * (effectiveWidthMeters * 0.5f);
 
     // Base endpoints (perpendicular to track at start, total width = track width)
     float perpAngle = startAngle + 90.0f;
     float perpAngleRad = perpAngle * DEG_TO_RAD;
-    float baseHalfWidth = m_fTrackLineWidthMeters * 0.5f;
+    float baseHalfWidth = effectiveWidthMeters * 0.5f;
 
     float baseLeftX = startX + std::sin(perpAngleRad) * baseHalfWidth;
     float baseLeftY = startY + std::cos(perpAngleRad) * baseHalfWidth;
@@ -894,7 +921,7 @@ void MapHud::renderRiders(float rotationAngle,
 
     // Scale cone size by HUD scale factor
     constexpr float baseConeSize = 0.006f;
-    float scaledConeSize = baseConeSize * m_fScale;
+    float scaledConeSize = baseConeSize * m_fScale * m_fMarkerScale;
 
     // Calculate geometric centroid offset to center arrow on player position
     // Centroid = (tip_forward + left_forward + back_forward + right_forward) / 4
@@ -932,7 +959,42 @@ void MapHud::renderRiders(float rotationAngle,
         screenY += titleOffset;
 
         unsigned long riderColor;
-        if (isLocalPlayer) {
+
+        // Check if rider is tracked - tracked riders use their configured color with position modulation
+        const TrackedRidersManager& trackedMgr = TrackedRidersManager::getInstance();
+        const TrackedRiderConfig* trackedConfig = trackedMgr.getTrackedRider(entry->name);
+
+        // Tracked riders use their own icon index, non-tracked use global shape
+        // trackedSpriteIndex: -1 = use global shape, otherwise direct sprite index
+        int trackedSpriteIndex = -1;
+        if (trackedConfig) {
+            // Convert shapeIndex to sprite index (dynamically assigned)
+            trackedSpriteIndex = AssetManager::getInstance().getFirstIconSpriteIndex() + trackedConfig->shapeIndex - 1;
+        }
+        RiderShape effectiveShape = m_riderShape;  // For non-tracked riders
+
+        if (trackedConfig) {
+            // Tracked rider - use their configured color with position-based modulation
+            unsigned long baseColor = trackedConfig->color;
+
+            // Apply position-based color modulation (lighten if ahead by laps, darken if behind by laps)
+            const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
+            const StandingsData* riderStanding = pluginData.getStanding(pos.m_iRaceNum);
+            int playerLaps = playerStanding ? playerStanding->numLaps : 0;
+            int riderLaps = riderStanding ? riderStanding->numLaps : 0;
+            int lapDiff = riderLaps - playerLaps;
+
+            if (lapDiff >= 1) {
+                // Rider is ahead by laps - lighten color
+                riderColor = PluginUtils::lightenColor(baseColor, 0.4f);
+            } else if (lapDiff <= -1) {
+                // Rider is behind by laps - darken color
+                riderColor = PluginUtils::darkenColor(baseColor, 0.6f);
+            } else {
+                // Same lap - use base color
+                riderColor = baseColor;
+            }
+        } else if (isLocalPlayer) {
             // Player always shows green in relative position mode, otherwise bike brand color
             if (m_riderColorMode == RiderColorMode::RELATIVE_POS) {
                 riderColor = ColorConfig::getInstance().getPositive();  // Green
@@ -964,21 +1026,7 @@ void MapHud::renderRiders(float rotationAngle,
         // Render sprite quad centered on rider position, rotated to match heading
         float spriteHalfSize = scaledConeSize;
 
-        // Apply per-shape scale to compensate for visual fill differences
-        // Circle ~78% fill, Triangle ~50% fill, Wedge ~35% fill
-        // OFF uses WEDGE sprite for local player, so apply WEDGE scale
-        switch (m_riderShape) {
-            case RiderShape::CIRCLE:   break;  // baseline
-            case RiderShape::TRIANGLE: spriteHalfSize *= 1.25f; break;
-            case RiderShape::OFF:
-            case RiderShape::WEDGE:    spriteHalfSize *= 1.5f; break;
-        }
-
-        // Calculate rotation angle (adjust yaw to compensate for world rotation)
-        float adjustedYaw = renderYaw - rotationAngle;
-        float yawRad = adjustedYaw * DEG_TO_RAD;
-        float cosYaw = std::cos(yawRad);
-        float sinYaw = std::sin(yawRad);
+        // All icons use uniform baseline scale
 
         // Skip if center is outside clip bounds
         float centerXClip = screenX, centerYClip = screenY;
@@ -987,20 +1035,60 @@ void MapHud::renderRiders(float rotationAngle,
             return;
         }
 
-        // Determine sprite index based on rider shape (OFF uses WEDGE for local player)
+        // Determine sprite index and shape index for rotation check
         int spriteIndex;
-        switch (m_riderShape) {
-            case RiderShape::CIRCLE:
-                spriteIndex = PluginConstants::SpriteIndex::RIDER_CIRCLE;
-                break;
-            case RiderShape::TRIANGLE:
-                spriteIndex = PluginConstants::SpriteIndex::RIDER_TRIANGLE;
-                break;
-            case RiderShape::OFF:
-            case RiderShape::WEDGE:
-            default:
-                spriteIndex = PluginConstants::SpriteIndex::RIDER_WEDGE;
-                break;
+        int shapeIndex;
+        if (trackedSpriteIndex >= 0) {
+            // Tracked rider - use their assigned icon
+            spriteIndex = trackedSpriteIndex;
+            shapeIndex = spriteIndex - AssetManager::getInstance().getFirstIconSpriteIndex() + 1;
+        } else {
+            // Non-tracked rider - use global shape (OFF uses CIRCLE for local player)
+            switch (effectiveShape) {
+                case RiderShape::ARROWUP:
+                    shapeIndex = TrackedRidersManager::SHAPE_ARROWUP;
+                    break;
+                case RiderShape::CHEVRON:
+                    shapeIndex = TrackedRidersManager::SHAPE_CHEVRON;
+                    break;
+                case RiderShape::CIRCLEPLAY:
+                    shapeIndex = TrackedRidersManager::SHAPE_CIRCLEPLAY;
+                    break;
+                case RiderShape::CIRCLEUP:
+                    shapeIndex = TrackedRidersManager::SHAPE_CIRCLEUP;
+                    break;
+                case RiderShape::DOT:
+                    shapeIndex = TrackedRidersManager::SHAPE_DOT;
+                    break;
+                case RiderShape::LOCATION:
+                    shapeIndex = TrackedRidersManager::SHAPE_LOCATION;
+                    break;
+                case RiderShape::PIN:
+                    shapeIndex = TrackedRidersManager::SHAPE_PIN;
+                    break;
+                case RiderShape::PLANE:
+                    shapeIndex = TrackedRidersManager::SHAPE_PLANE;
+                    break;
+                case RiderShape::VINYL:
+                    shapeIndex = TrackedRidersManager::SHAPE_VINYL;
+                    break;
+                case RiderShape::OFF:
+                case RiderShape::CIRCLE:
+                default:
+                    shapeIndex = TrackedRidersManager::SHAPE_CIRCLE;
+                    break;
+            }
+            spriteIndex = AssetManager::getInstance().getFirstIconSpriteIndex() + shapeIndex - 1;
+        }
+
+        // Calculate rotation only for directional icons
+        float cosYaw = 1.0f;
+        float sinYaw = 0.0f;
+        if (TrackedRidersManager::shouldRotate(shapeIndex)) {
+            float adjustedYaw = renderYaw - rotationAngle;
+            float yawRad = adjustedYaw * DEG_TO_RAD;
+            cosYaw = std::cos(yawRad);
+            sinYaw = std::sin(yawRad);
         }
 
         // Helper lambda to create rotated sprite quad
@@ -1048,8 +1136,11 @@ void MapHud::renderRiders(float rotationAngle,
 
         // Render label centered on arrow based on label mode
         if (m_labelMode != LabelMode::NONE) {
-            // Offset label slightly below the arrow (matches radar)
-            float offsetY = screenY + (dim.fontSizeSmall * 0.8f);
+            // Scale font size by marker scale
+            float labelFontSize = dim.fontSizeSmall * m_fMarkerScale;
+
+            // Offset label below the icon (based on icon size plus small gap)
+            float offsetY = screenY + scaledConeSize + (dim.fontSizeSmall * 0.3f * m_fMarkerScale);
 
             char labelStr[20];  // Sized for "P100" (5) + "#999" (5) = "P100#999" (9 + null)
             int position = pluginData.getPositionForRaceNum(pos.m_iRaceNum);
@@ -1097,22 +1188,22 @@ void MapHud::renderRiders(float rotationAngle,
                 }
 
                 // Create text outline by rendering dark text at offsets first
-                float outlineOffset = dim.fontSizeSmall * 0.05f;  // Small offset for outline
+                float outlineOffset = labelFontSize * 0.05f;  // Small offset for outline
                 unsigned long outlineColor = 0xFF000000;  // Black with full opacity
 
                 // Render outline at 4 cardinal directions
                 addString(labelStr, screenX - outlineOffset, offsetY, Justify::CENTER,
-                         Fonts::TINY5, outlineColor, dim.fontSizeSmall);
+                         Fonts::getSmall(), outlineColor, labelFontSize);
                 addString(labelStr, screenX + outlineOffset, offsetY, Justify::CENTER,
-                         Fonts::TINY5, outlineColor, dim.fontSizeSmall);
+                         Fonts::getSmall(), outlineColor, labelFontSize);
                 addString(labelStr, screenX, offsetY - outlineOffset, Justify::CENTER,
-                         Fonts::TINY5, outlineColor, dim.fontSizeSmall);
+                         Fonts::getSmall(), outlineColor, labelFontSize);
                 addString(labelStr, screenX, offsetY + outlineOffset, Justify::CENTER,
-                         Fonts::TINY5, outlineColor, dim.fontSizeSmall);
+                         Fonts::getSmall(), outlineColor, labelFontSize);
 
                 // Render main text on top
                 addString(labelStr, screenX, offsetY, Justify::CENTER,
-                         Fonts::TINY5, labelColor, dim.fontSizeSmall);
+                         Fonts::getSmall(), labelColor, labelFontSize);
             }
         }
     };
@@ -1120,7 +1211,16 @@ void MapHud::renderRiders(float rotationAngle,
     // First pass: render all other riders (not local player)
     for (const auto& pos : m_riderPositions) {
         if (pos.m_iRaceNum == displayRaceNum) continue;  // Skip player, render last
-        if (m_riderShape == RiderShape::OFF) continue;   // Skip if shape is OFF
+
+        // Skip non-tracked riders if global shape is OFF
+        // Tracked riders always render with their own shape
+        if (m_riderShape == RiderShape::OFF) {
+            const RaceEntryData* entry = pluginData.getRaceEntry(pos.m_iRaceNum);
+            if (!entry || !TrackedRidersManager::getInstance().isTracked(entry->name)) {
+                continue;
+            }
+        }
+
         renderRider(pos, false);
     }
 
@@ -1261,13 +1361,18 @@ void MapHud::rebuildRenderData() {
     float titleX = x + dim.paddingH;
     float titleY = y + dim.paddingV;
     addTitleString("Map", titleX, titleY, Justify::LEFT,
-                  Fonts::ENTER_SANSMAN, ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
+                  Fonts::getTitle(), ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
 
     // Calculate clip bounds for track rendering (absolute screen coords)
     // Clip to the map area below the title
     // Inset by half outline width since we clip on centerline but edges extend beyond
     constexpr float OUTLINE_WIDTH_MULTIPLIER = 1.4f;
-    float outlineHalfWidth = m_fTrackLineWidthMeters * 0.5f * OUTLINE_WIDTH_MULTIPLIER * m_fTrackScale;
+    // Calculate effective track width for clipping (same ratio as renderTrack)
+    float clipTrackWidth = m_maxX - m_minX;
+    float clipTrackHeight = m_maxY - m_minY;
+    float clipBaseWidthMeters = std::min(clipTrackWidth, clipTrackHeight) * TRACK_WIDTH_BASE_RATIO;
+    float clipEffectiveWidthMeters = std::clamp(clipBaseWidthMeters * m_fTrackWidthScale, 1.0f, 30.0f);
+    float outlineHalfWidth = clipEffectiveWidthMeters * 0.5f * OUTLINE_WIDTH_MULTIPLIER * m_fTrackScale;
     float clipLeft = x + m_fOffsetX + outlineHalfWidth;
     float clipTop = y + titleHeight + m_fOffsetY + outlineHalfWidth;
     float clipRight = x + width + m_fOffsetX - outlineHalfWidth;
@@ -1335,7 +1440,7 @@ void MapHud::rebuildRenderData() {
 void MapHud::resetToDefaults() {
     m_bVisible = true;
     m_bShowTitle = false;
-    m_bShowBackgroundTexture = false;  // No texture by default
+    setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.1f;  // 10% opacity
     m_fScale = 1.0f;
     m_anchorPoint = AnchorPoint::TOP_RIGHT;
@@ -1345,10 +1450,11 @@ void MapHud::resetToDefaults() {
     m_bShowOutline = true;  // Enable outline by default
     m_riderColorMode = RiderColorMode::RELATIVE_POS;  // Default to relative position coloring
     m_labelMode = LabelMode::POSITION;
-    m_riderShape = RiderShape::WEDGE;  // Default to wedge sprite
-    m_fTrackLineWidthMeters = DEFAULT_TRACK_LINE_WIDTH;
+    m_riderShape = RiderShape::CIRCLE;  // Default to circle sprite
+    m_fTrackWidthScale = DEFAULT_TRACK_WIDTH_SCALE;
     m_bZoomEnabled = false;
     m_fZoomDistance = DEFAULT_ZOOM_DISTANCE;
+    m_fMarkerScale = DEFAULT_MARKER_SCALE;
     // Reset bounds to trigger "first rebuild" behavior in rebuildRenderData
     // This ensures position is recalculated from anchor values
     setBounds(0.0f, 0.0f, 0.0f, 0.0f);

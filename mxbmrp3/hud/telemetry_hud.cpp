@@ -15,19 +15,17 @@
 using namespace PluginConstants;
 
 TelemetryHud::TelemetryHud() {
-    DEBUG_INFO("TelemetryHud initialized");
-    setScale(1.0f);
+    // One-time setup
+    DEBUG_INFO("TelemetryHud created");
     setDraggable(true);
-
-    // Set defaults to match user configuration
-    m_bVisible = false;  // Off by default
-    m_bShowTitle = true;
-    m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
-    setPosition(0.6875f, -0.1221f);
-
-    // Pre-allocate render buffers to avoid reallocations
     m_quads.reserve(1000);   // 1 bg + 4 grid + 4 inputs × 199 line segments = ~1000 quads max
     m_strings.reserve(9);    // Title + up to 4 × (label + value) in duotone = 1 + 8 = 9
+
+    // Set texture base name for dynamic texture discovery
+    setTextureBaseName("telemetry_hud");
+
+    // Set all configurable defaults
+    resetToDefaults();
 
     rebuildRenderData();
 }
@@ -102,7 +100,7 @@ void TelemetryHud::rebuildRenderData() {
 
     // Title
     addTitleString("Telemetry", contentStartX, currentY, PluginConstants::Justify::LEFT,
-        PluginConstants::Fonts::ENTER_SANSMAN, ColorConfig::getInstance().getPrimary(), dims.fontSizeLarge);
+        PluginConstants::Fonts::getTitle(), ColorConfig::getInstance().getPrimary(), dims.fontSizeLarge);
     currentY += titleHeight;
 
     // Side-by-side layout: graph on left (36 chars), gap (1 char), legend on right (9 chars)
@@ -133,22 +131,22 @@ void TelemetryHud::rebuildRenderData() {
         // THR (if enabled) - color matches throttle graph
         if (m_enabledElements & ELEM_THROTTLE) {
             addString("THR", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, PluginConstants::SemanticColors::THROTTLE, dims.fontSize);
+                PluginConstants::Fonts::getNormal(), PluginConstants::SemanticColors::THROTTLE, dims.fontSize);
             char buffer[16];
             snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(throttlePercent * 100));
             addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             legendY += dims.lineHeightNormal;
         }
 
         // FBR (front brake - if enabled, always available) - color matches front brake graph
         if (m_enabledElements & ELEM_FRONT_BRAKE) {
             addString("FBR", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, PluginConstants::SemanticColors::FRONT_BRAKE, dims.fontSize);
+                PluginConstants::Fonts::getNormal(), PluginConstants::SemanticColors::FRONT_BRAKE, dims.fontSize);
             char buffer[16];
             snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(frontBrakePercent * 100));
             addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             legendY += dims.lineHeightNormal;
         }
 
@@ -156,15 +154,15 @@ void TelemetryHud::rebuildRenderData() {
         if (m_enabledElements & ELEM_REAR_BRAKE) {
             unsigned long labelColor = hasFullTelemetry ? PluginConstants::SemanticColors::REAR_BRAKE : ColorConfig::getInstance().getMuted();
             addString("RBR", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, labelColor, dims.fontSize);
+                PluginConstants::Fonts::getNormal(), labelColor, dims.fontSize);
             char buffer[16];
             if (hasFullTelemetry) {
                 snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(rearBrakePercent * 100));
                 addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                    PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                    PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             } else {
                 addString("  N/A", valueX, legendY, PluginConstants::Justify::LEFT,
-                    PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getMuted(), dims.fontSize);
+                    PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dims.fontSize);
             }
             legendY += dims.lineHeightNormal;
         }
@@ -173,15 +171,15 @@ void TelemetryHud::rebuildRenderData() {
         if (m_enabledElements & ELEM_CLUTCH) {
             unsigned long labelColor = hasFullTelemetry ? PluginConstants::SemanticColors::CLUTCH : ColorConfig::getInstance().getMuted();
             addString("CLU", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, labelColor, dims.fontSize);
+                PluginConstants::Fonts::getNormal(), labelColor, dims.fontSize);
             char buffer[16];
             if (hasFullTelemetry) {
                 snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(clutchPercent * 100));
                 addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                    PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                    PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             } else {
                 addString("  N/A", valueX, legendY, PluginConstants::Justify::LEFT,
-                    PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getMuted(), dims.fontSize);
+                    PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dims.fontSize);
             }
             legendY += dims.lineHeightNormal;
         }
@@ -189,12 +187,12 @@ void TelemetryHud::rebuildRenderData() {
         // RPM (if enabled) - uses fixed gray to match bars widget
         if (m_enabledElements & ELEM_RPM) {
             addString("RPM", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, ColorPalette::GRAY, dims.fontSize);
+                PluginConstants::Fonts::getNormal(), ColorPalette::GRAY, dims.fontSize);
             char buffer[16];
             int displayRpm = std::max(0, bikeTelemetry.rpm);
             snprintf(buffer, sizeof(buffer), "%5d", displayRpm);
             addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, ColorPalette::GRAY, dims.fontSize);
+                PluginConstants::Fonts::getNormal(), ColorPalette::GRAY, dims.fontSize);
             legendY += dims.lineHeightNormal;
         }
 
@@ -203,16 +201,16 @@ void TelemetryHud::rebuildRenderData() {
             bool hasSuspData = hasFullTelemetry && bikeTelemetry.frontSuspMaxTravel > 0;
             unsigned long labelColor = hasSuspData ? PluginConstants::SemanticColors::FRONT_SUSP : ColorConfig::getInstance().getMuted();
             addString("FSU", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, labelColor, dims.fontSize);
+                PluginConstants::Fonts::getNormal(), labelColor, dims.fontSize);
             if (hasSuspData) {
                 float frontSuspPercent = (!history.frontSusp.empty()) ? history.frontSusp.back() : 0.0f;
                 char buffer[16];
                 snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(frontSuspPercent * 100));
                 addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                    PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                    PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             } else {
                 addString("  N/A", valueX, legendY, PluginConstants::Justify::LEFT,
-                    PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getMuted(), dims.fontSize);
+                    PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dims.fontSize);
             }
             legendY += dims.lineHeightNormal;
         }
@@ -222,16 +220,16 @@ void TelemetryHud::rebuildRenderData() {
             bool hasSuspData = hasFullTelemetry && bikeTelemetry.rearSuspMaxTravel > 0;
             unsigned long labelColor = hasSuspData ? PluginConstants::SemanticColors::REAR_SUSP : ColorConfig::getInstance().getMuted();
             addString("RSU", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, labelColor, dims.fontSize);
+                PluginConstants::Fonts::getNormal(), labelColor, dims.fontSize);
             if (hasSuspData) {
                 float rearSuspPercent = (!history.rearSusp.empty()) ? history.rearSusp.back() : 0.0f;
                 char buffer[16];
                 snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(rearSuspPercent * 100));
                 addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                    PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                    PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             } else {
                 addString("  N/A", valueX, legendY, PluginConstants::Justify::LEFT,
-                    PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getMuted(), dims.fontSize);
+                    PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dims.fontSize);
             }
             legendY += dims.lineHeightNormal;
         }
@@ -239,7 +237,7 @@ void TelemetryHud::rebuildRenderData() {
         // GEAR (if enabled - always available) - color matches gear graph
         if (m_enabledElements & ELEM_GEAR) {
             addString("GEA", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, PluginConstants::SemanticColors::GEAR, dims.fontSize);
+                PluginConstants::Fonts::getNormal(), PluginConstants::SemanticColors::GEAR, dims.fontSize);
             char buffer[16];
             if (bikeTelemetry.gear == 0) {
                 snprintf(buffer, sizeof(buffer), "    N");
@@ -247,7 +245,7 @@ void TelemetryHud::rebuildRenderData() {
                 snprintf(buffer, sizeof(buffer), "    %d", bikeTelemetry.gear);
             }
             addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
         }
     }
 }
@@ -419,10 +417,10 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
 void TelemetryHud::resetToDefaults() {
     m_bVisible = false;  // Off by default
     m_bShowTitle = true;
-    m_bShowBackgroundTexture = false;  // No texture by default
+    setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.6875f, -0.1221f);
+    setPosition(0.737f, 0.6216f);
     m_enabledElements = ELEM_DEFAULT;
     m_displayMode = DISPLAY_DEFAULT;
     setDataDirty();

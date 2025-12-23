@@ -15,7 +15,12 @@
 #include "../core/color_config.h"
 
 using namespace PluginConstants;
-using namespace CenterDisplayPositions;
+
+// Center display positioning constants (fixed center-screen layout)
+namespace {
+    constexpr float CENTER_X = 0.5f;
+    constexpr float TIMING_DIVIDER_Y = 0.1665f;
+}
 
 NoticesWidget::NoticesWidget()
     : m_bIsWrongWay(false)
@@ -24,20 +29,17 @@ NoticesWidget::NoticesWidget()
     , m_bIsLastLap(false)
     , m_bIsFinished(false)
 {
-    // NOTE: Does not use initializeWidget() helper due to special requirements:
-    // - Non-draggable (center display position)
-    // - Requires quad reservation
+    // One-time setup
     DEBUG_INFO("NoticesWidget created");
     setDraggable(false);  // Center display shouldn't be draggable
-
-    // Set defaults
-    m_bVisible = false;  // Disabled by default
-    m_bShowTitle = false;
-    m_fBackgroundOpacity = 0.1f;
-
-    // Pre-allocate vectors
     m_quads.reserve(1);
     m_strings.reserve(1);
+
+    // Set texture base name for dynamic texture discovery
+    setTextureBaseName("notices_widget");
+
+    // Set all configurable defaults
+    resetToDefaults();
 
     rebuildRenderData();
 }
@@ -89,31 +91,15 @@ void NoticesWidget::update() {
         setDataDirty();
     }
 
-    // Check last lap / finished status (same logic as StandingsHud::formatStatus)
+    // Check last lap / finished status
     bool isLastLap = false;
     bool isFinished = false;
     int displayRaceNum = pluginData.getDisplayRaceNum();
     const StandingsData* standing = (displayRaceNum > 0) ? pluginData.getStanding(displayRaceNum) : nullptr;
     if (standing && standing->numLaps >= 0) {
-        int numLaps = standing->numLaps;
-        int sessionNumLaps = sessionData.sessionNumLaps;
-        int finishLap = sessionData.finishLap;
-        int sessionLength = sessionData.sessionLength;
-
-        // Check isFinished
-        if (sessionLength > 0 && sessionNumLaps > 0) {
-            // Time+laps race
-            isFinished = finishLap > 0 && numLaps >= finishLap;
-            if (!isFinished && finishLap > 0 && numLaps == finishLap - 1) {
-                isLastLap = true;
-            }
-        } else {
-            // Pure lap or pure time race
-            isFinished = (finishLap > 0 && numLaps >= finishLap) ||
-                         (sessionNumLaps > 0 && finishLap <= 0 && numLaps >= sessionNumLaps);
-            if (!isFinished && sessionNumLaps > 0 && numLaps == sessionNumLaps - 1) {
-                isLastLap = true;
-            }
+        isFinished = sessionData.isRiderFinished(standing->numLaps);
+        if (!isFinished) {
+            isLastLap = sessionData.isRiderOnLastLap(standing->numLaps);
         }
     }
 
@@ -214,7 +200,7 @@ void NoticesWidget::rebuildRenderData() {
 
         // Add notice text (red)
         addString("WRONG WAY", CENTER_X, noticeY, Justify::CENTER,
-            Fonts::ENTER_SANSMAN, colors.getNegative(), dim.fontSizeLarge);
+            Fonts::getTitle(), colors.getNegative(), dim.fontSizeLarge);
     }
     else if (!m_blueFlagRaceNums.empty()) {
         // Build blue flag text with race numbers only (max 2): "#XX #YY"
@@ -242,7 +228,7 @@ void NoticesWidget::rebuildRenderData() {
 
         // Add notice text (blue)
         addString(blueFlagText.c_str(), CENTER_X, noticeY, Justify::CENTER,
-            Fonts::ENTER_SANSMAN, ColorPalette::BLUE, dim.fontSizeLarge);
+            Fonts::getTitle(), ColorPalette::BLUE, dim.fontSizeLarge);
     }
     else if (m_bIsFinished) {
         // Add notice background (semantic background color for finished)
@@ -257,7 +243,7 @@ void NoticesWidget::rebuildRenderData() {
 
         // Add notice text (white)
         addString("FINISHED", CENTER_X, noticeY, Justify::CENTER,
-            Fonts::ENTER_SANSMAN, colors.getPrimary(), dim.fontSizeLarge);
+            Fonts::getTitle(), colors.getPrimary(), dim.fontSizeLarge);
     }
     else if (m_bIsLastLap) {
         // Add notice background (semantic neutral color for last lap)
@@ -272,7 +258,7 @@ void NoticesWidget::rebuildRenderData() {
 
         // Add notice text (white)
         addString("LAST LAP", CENTER_X, noticeY, Justify::CENTER,
-            Fonts::ENTER_SANSMAN, colors.getPrimary(), dim.fontSizeLarge);
+            Fonts::getTitle(), colors.getPrimary(), dim.fontSizeLarge);
     }
 
     setBounds(noticeQuadX, noticeQuadY, noticeQuadX + noticeQuadWidth, noticeQuadY + noticeQuadHeight);
@@ -281,7 +267,7 @@ void NoticesWidget::rebuildRenderData() {
 void NoticesWidget::resetToDefaults() {
     m_bVisible = false;  // Disabled by default
     m_bShowTitle = false;
-    m_bShowBackgroundTexture = false;
+    setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.1f;
     m_fScale = 1.0f;
     setPosition(0.0f, 0.0f);

@@ -115,14 +115,14 @@ void PluginUtils::formatGapCompact(char* buffer, size_t bufferSize, int diffMs) 
 
     int minutes = absDiff / MS_PER_MINUTE;
     int seconds = (absDiff % MS_PER_MINUTE) / MS_PER_SECOND;
-    int tenths = (absDiff % MS_PER_SECOND) / 100;
+    int ms = absDiff % MS_PER_SECOND;
 
     if (minutes > 0) {
-        // >= 1 minute: show "+1:13.3"
-        snprintf(buffer, bufferSize, "%c%d:%02d.%d", sign, minutes, seconds, tenths);
+        // >= 1 minute: show "+1:13.345"
+        snprintf(buffer, bufferSize, "%c%d:%02d.%03d", sign, minutes, seconds, ms);
     } else {
-        // < 1 minute: show "+13.3" (compact format)
-        snprintf(buffer, bufferSize, "%c%d.%d", sign, seconds, tenths);
+        // < 1 minute: show "+13.345" (compact format)
+        snprintf(buffer, bufferSize, "%c%d.%03d", sign, seconds, ms);
     }
 }
 

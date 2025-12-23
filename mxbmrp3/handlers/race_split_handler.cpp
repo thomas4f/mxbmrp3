@@ -19,12 +19,23 @@ void RaceSplitHandler::handleRaceSplit(SPluginsRaceSplit_t* psRaceSplit) {
     }
 
     PluginData& data = PluginData::getInstance();
+
+    // Filter out historical split events from previous sessions
+    // When joining mid-race, the game sends RaceSplit events from earlier sessions
+    // which would create phantom "current lap" data
+    int currentSession = data.getSessionData().session;
+    if (psRaceSplit->m_iSession != currentSession) {
+        DEBUG_INFO_F("RaceSplit: Ignoring event from session %d (current session is %d)",
+                     psRaceSplit->m_iSession, currentSession);
+        return;
+    }
+
     int raceNum = psRaceSplit->m_iRaceNum;
     int lapNum = psRaceSplit->m_iLapNum;
     int splitIndex = psRaceSplit->m_iSplit;
     int splitTime = psRaceSplit->m_iSplitTime;
 
-    // Update current lap split data (used by SessionBestHud for real-time tracking)
+    // Update current lap split data (used by IdealLapHud for real-time tracking)
     // m_iSplit is 0-indexed (0 = split 1, 1 = split 2, 2 = split 3/finish line)
     data.updateCurrentLapSplit(raceNum, lapNum, splitIndex, splitTime);
 

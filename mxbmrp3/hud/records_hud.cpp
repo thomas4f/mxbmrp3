@@ -65,28 +65,25 @@ RecordsHud::RecordsHud()
     , m_fetchButtonHovered(false)
     , m_fetchResultTimestamp(0)
 {
+    // One-time setup
     DEBUG_INFO("RecordsHud created");
     setDraggable(true);
-
-    // Set defaults
-    m_bVisible = false;  // Off by default
-    m_bShowTitle = true;
-    m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
-    setPosition(-0.2365f, 0.333f);
-
-    // Initialize column positions
-    m_columns = ColumnPositions(START_X + Padding::HUD_HORIZONTAL, m_fScale, m_enabledColumns);
-
-    // Pre-allocate vectors
     m_quads.reserve(2);  // Background + fetch button
     m_strings.reserve(60);  // Header rows + 10 record rows * 5 cols + footer
     m_records.reserve(MAX_RECORDS);
     m_clickRegions.reserve(5);
 
-    // Build initial category list
-    buildCategoryList();
+    // Set texture base name for dynamic texture discovery
+    setTextureBaseName("records_hud");
 
-    // Note: Category auto-detection happens in update() when session data becomes available
+    // Set all configurable defaults
+    resetToDefaults();
+
+    // Initialize column positions (after resetToDefaults sets m_enabledColumns)
+    m_columns = ColumnPositions(START_X + Padding::HUD_HORIZONTAL, m_fScale, m_enabledColumns);
+
+    // Build initial category list (after resetToDefaults sets m_provider)
+    buildCategoryList();
 
     rebuildRenderData();
 }
@@ -719,7 +716,7 @@ void RecordsHud::rebuildRenderData() {
 
     // === Title Row ===
     addTitleString("Records", contentStartX, currentY, Justify::LEFT,
-                   Fonts::ENTER_SANSMAN, ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
+                   Fonts::getTitle(), ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
     currentY += titleHeight;
 
     // === Provider / Category / Fetch Row ===
@@ -728,15 +725,15 @@ void RecordsHud::rebuildRenderData() {
     float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
 
     // Provider selector: "< CBR >"
-    addString("<", rowX, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+    addString("<", rowX, currentY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
     m_clickRegions.push_back({rowX, currentY, charWidth * 2, dim.lineHeightNormal, ClickRegionType::PROVIDER_LEFT});
     rowX += charWidth * 2;  // "< "
 
     addString(getProviderDisplayName(m_provider), rowX, currentY, Justify::LEFT,
-              Fonts::ROBOTO_MONO, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+              Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
     rowX += PluginUtils::calculateMonospaceTextWidth(static_cast<int>(strlen(getProviderDisplayName(m_provider))), dim.fontSize);
 
-    addString(" >", rowX, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+    addString(" >", rowX, currentY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
     m_clickRegions.push_back({rowX, currentY, charWidth * 2, dim.lineHeightNormal, ClickRegionType::PROVIDER_RIGHT});
     rowX += charWidth * 4;  // " > " + gap
 
@@ -744,16 +741,16 @@ void RecordsHud::rebuildRenderData() {
     static constexpr int CATEGORY_WIDTH_CHARS = 10;  // Longest: "MX1-2T OEM"
     float categoryFixedWidth = PluginUtils::calculateMonospaceTextWidth(CATEGORY_WIDTH_CHARS, dim.fontSize);
 
-    addString("<", rowX, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+    addString("<", rowX, currentY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
     m_clickRegions.push_back({rowX, currentY, charWidth * 2, dim.lineHeightNormal, ClickRegionType::CATEGORY_LEFT});
     rowX += charWidth * 2;  // "< "
 
     const char* catName = getCurrentCategoryDisplay();
     addString(catName, rowX, currentY, Justify::LEFT,
-              Fonts::ROBOTO_MONO, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+              Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
     rowX += categoryFixedWidth;  // Fixed width regardless of actual name length
 
-    addString(" >", rowX, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+    addString(" >", rowX, currentY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
     m_clickRegions.push_back({rowX, currentY, charWidth * 2, dim.lineHeightNormal, ClickRegionType::CATEGORY_RIGHT});
     rowX += charWidth * 4;  // " > " + gap
 
@@ -795,7 +792,7 @@ void RecordsHud::rebuildRenderData() {
         m_quads.push_back(bgQuad);
     }
 
-    addString(fetchLabel, rowX, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, fetchColor, dim.fontSize);
+    addString(fetchLabel, rowX, currentY, Justify::LEFT, Fonts::getNormal(), fetchColor, dim.fontSize);
 
     currentY += dim.lineHeightNormal;
 
@@ -818,7 +815,7 @@ void RecordsHud::rebuildRenderData() {
             }
         }
         addString(emptyMessage, contentStartX, currentY,
-                  Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getMuted(), dim.fontSize);
+                  Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dim.fontSize);
         currentY += dim.lineHeightNormal;
     } else {
         for (const auto& record : displayRecords) {
@@ -830,7 +827,7 @@ void RecordsHud::rebuildRenderData() {
                 if (record.position == 1) posColor = PodiumColors::GOLD;
                 else if (record.position == 2) posColor = PodiumColors::SILVER;
                 else if (record.position == 3) posColor = PodiumColors::BRONZE;
-                addString(posStr, m_columns.pos, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, posColor, dim.fontSize);
+                addString(posStr, m_columns.pos, currentY, Justify::LEFT, Fonts::getNormal(), posColor, dim.fontSize);
             }
 
             // Rider (truncate with ... if too long)
@@ -844,7 +841,7 @@ void RecordsHud::rebuildRenderData() {
                 } else {
                     strncpy_s(riderStr, sizeof(riderStr), record.rider, sizeof(riderStr) - 1);
                 }
-                addString(riderStr, m_columns.rider, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                addString(riderStr, m_columns.rider, currentY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
             }
 
             // Bike (truncate with ... if too long)
@@ -858,7 +855,7 @@ void RecordsHud::rebuildRenderData() {
                 } else {
                     strncpy_s(bikeStr, sizeof(bikeStr), record.bike, sizeof(bikeStr) - 1);
                 }
-                addString(bikeStr, m_columns.bike, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                addString(bikeStr, m_columns.bike, currentY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
             }
 
             // Laptime
@@ -867,17 +864,17 @@ void RecordsHud::rebuildRenderData() {
                 if (record.laptime > 0) {
                     PluginUtils::formatLapTime(record.laptime, laptimeStr, sizeof(laptimeStr));
                     addString(laptimeStr, m_columns.laptime, currentY, Justify::LEFT,
-                              Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                              Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
                 } else {
                     addString(Placeholders::LAP_TIME, m_columns.laptime, currentY, Justify::LEFT,
-                              Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getMuted(), dim.fontSize);
+                              Fonts::getStrong(), ColorConfig::getInstance().getMuted(), dim.fontSize);
                 }
             }
 
             // Date
             if (isColumnEnabled(COL_DATE)) {
                 addString(record.date[0] != '\0' ? record.date : "---", m_columns.date, currentY,
-                          Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dim.fontSize);
+                          Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dim.fontSize);
             }
 
             currentY += dim.lineHeightNormal;
@@ -891,21 +888,21 @@ void RecordsHud::rebuildRenderData() {
     char providerText[64];
     snprintf(providerText, sizeof(providerText), "Data provided by %s", getProviderDisplayName(m_provider));
     addString(providerText, contentStartX, currentY,
-              Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getMuted(), dim.fontSize);
+              Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dim.fontSize);
     currentY += dim.lineHeightNormal;
 
     // Line 2: How to submit (small font)
     addString("Submit records by playing on their servers", contentStartX, currentY,
-              Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getMuted(), dim.fontSizeSmall);
+              Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dim.fontSizeSmall);
 }
 
 void RecordsHud::resetToDefaults() {
     m_bVisible = false;
     m_bShowTitle = true;
-    m_bShowBackgroundTexture = false;
+    setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(-0.2365f, 0.333f);
+    setPosition(0.0055f, 0.4884f);
     m_provider = DataProvider::CBR;
     m_categoryIndex = 0;
     m_lastSessionCategory[0] = '\0';  // Reset so update() will pick up current session category

@@ -31,8 +31,9 @@ public:
     // Get profile name for display
     static const char* getProfileName(ProfileType profile);
 
-    // Get next profile in cycle order (for UI)
+    // Get next/previous profile in cycle order (for UI)
     static ProfileType getNextProfile(ProfileType current);
+    static ProfileType getPreviousProfile(ProfileType current);
 
     // Cycle to next profile (for UI)
     void cycleProfile();

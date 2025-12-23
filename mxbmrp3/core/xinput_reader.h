@@ -7,53 +7,61 @@
 #include <windows.h>
 #include <Xinput.h>
 #include <deque>
+#include <string>
+#include <vector>
 
-// Motor target selection for rumble effects
-// Cycle order: Off -> Light -> Heavy -> Both (light before heavy since less intense)
-enum class MotorTarget {
-    Off = 0,    // Effect disabled
-    Light = 1,  // Right motor only (high-frequency)
-    Heavy = 2,  // Left motor only (low-frequency)
-    Both = 3    // Both motors
-};
+// Forward declare WinRT types to avoid pulling headers into every translation unit
+namespace winrt::Windows::Gaming::Input {
+    struct RawGameController;
+}
 
 // Rumble effect configuration for a single source
+// Each effect has independent strength settings for light and heavy motors
 struct RumbleEffect {
-    MotorTarget motor;  // Which motor(s) to use
-    float minInput;     // Input value where rumble starts (e.g., 0.04 = 4% slip)
-    float maxInput;     // Input value where rumble reaches max (e.g., 0.15 = 15% slip)
-    float minStrength;  // Rumble strength at minInput (0.0 to 1.0)
-    float maxStrength;  // Rumble strength at maxInput (0.0 to 1.0)
+    float minInput;       // Input value where rumble starts (e.g., 0.04 = 4% slip)
+    float maxInput;       // Input value where rumble reaches max (e.g., 0.15 = 15% slip)
+    float lightStrength;  // Peak strength for light motor (0.0 = off, up to 1.0)
+    float heavyStrength;  // Peak strength for heavy motor (0.0 = off, up to 1.0)
 
-    RumbleEffect() : motor(MotorTarget::Heavy), minInput(0.0f), maxInput(1.0f),
-                     minStrength(0.0f), maxStrength(1.0f) {}
+    RumbleEffect() : minInput(0.0f), maxInput(1.0f),
+                     lightStrength(0.0f), heavyStrength(0.0f) {}
 
-    RumbleEffect(MotorTarget _motor, float _minIn, float _maxIn, float _minStr, float _maxStr)
-        : motor(_motor), minInput(_minIn), maxInput(_maxIn),
-          minStrength(_minStr), maxStrength(_maxStr) {}
+    RumbleEffect(float _minIn, float _maxIn, float _lightStr, float _heavyStr)
+        : minInput(_minIn), maxInput(_maxIn),
+          lightStrength(_lightStr), heavyStrength(_heavyStr) {}
 
     // Check if effect targets a specific motor
-    bool targetsHeavy() const { return motor == MotorTarget::Heavy || motor == MotorTarget::Both; }
-    bool targetsLight() const { return motor == MotorTarget::Light || motor == MotorTarget::Both; }
-    bool isEnabled() const { return motor != MotorTarget::Off; }
+    bool targetsHeavy() const { return heavyStrength > 0.0f; }
+    bool targetsLight() const { return lightStrength > 0.0f; }
+    bool isEnabled() const { return lightStrength > 0.0f || heavyStrength > 0.0f; }
 
-    // Calculate rumble intensity from input value using linear interpolation
-    float calculate(float inputValue) const {
-        if (motor == MotorTarget::Off || inputValue < minInput) return 0.0f;
-        if (inputValue >= maxInput) return maxStrength;
+    // Calculate normalized intensity (0-1) from input value
+    // Caller should multiply by lightStrength/heavyStrength for actual motor output
+    float calculateNormalized(float inputValue) const {
+        if (!isEnabled() || inputValue < minInput) return 0.0f;
+        if (inputValue >= maxInput) return 1.0f;
         // Protect against division by zero if minInput equals maxInput
         float range = maxInput - minInput;
-        if (range <= 0.0f) return maxStrength;
-        // Linear interpolation between min and max
-        float t = (inputValue - minInput) / range;
-        return minStrength + t * (maxStrength - minStrength);
+        if (range <= 0.0f) return 1.0f;
+        // Linear interpolation from 0 to 1
+        return (inputValue - minInput) / range;
+    }
+
+    // Calculate rumble intensity for light motor
+    float calculateLight(float inputValue) const {
+        return calculateNormalized(inputValue) * lightStrength;
+    }
+
+    // Calculate rumble intensity for heavy motor
+    float calculateHeavy(float inputValue) const {
+        return calculateNormalized(inputValue) * heavyStrength;
     }
 };
 
 // Controller rumble configuration
 struct RumbleConfig {
     bool enabled;           // Master enable/disable
-    int controllerIndex;    // Which XInput controller (0-3)
+    int controllerIndex;    // Which XInput controller (0-3), or -1 for disabled
     bool additiveBlend;     // true = add effects (clamped), false = max wins
     bool rumbleWhenCrashed; // false = stop all rumble when player is crashed (default)
 
@@ -84,37 +92,38 @@ struct RumbleConfig {
     // Input is absolute steer torque in Nm
     RumbleEffect steerEffect;
 
-    RumbleConfig() : enabled(false), controllerIndex(0), additiveBlend(false), rumbleWhenCrashed(false),
-        // Bumps: Both motors, 50% sens, 50% strength
-        suspensionEffect(MotorTarget::Both, 1.5f, 3.0f, 0.0f, 0.5f),
-        // Spin: Light motor, 50% sens, 20% strength
-        wheelspinEffect(MotorTarget::Light, 0.10f, 0.20f, 0.0f, 0.2f),
-        // Lockup: Light motor, 50% sens, 20% strength
-        brakeLockupEffect(MotorTarget::Light, 0.20f, 0.40f, 0.0f, 0.2f),
-        // Wheelie: Off, 50% sens, 100% strength
-        wheelieEffect(MotorTarget::Off, 45.0f, 90.0f, 0.0f, 1.0f),
-        // RPM: Off, 50% sens, 10% strength
-        rpmEffect(MotorTarget::Off, 6000.0f, 12000.0f, 0.0f, 0.1f),
-        // Slide: Light motor, 50% sens, 20% strength
-        slideEffect(MotorTarget::Light, 15.0f, 30.0f, 0.0f, 0.2f),
-        // Surface: Off, 50% sens, 10% strength
-        surfaceEffect(MotorTarget::Off, 15.0f, 30.0f, 0.0f, 0.1f),
-        // Steer: Off, 50% sens, 10% strength
-        steerEffect(MotorTarget::Off, 10.0f, 20.0f, 0.0f, 0.1f) {}
+    // Constructor: RumbleEffect(minInput, maxInput, lightStrength, heavyStrength)
+    RumbleConfig() : enabled(false), controllerIndex(0), additiveBlend(true), rumbleWhenCrashed(false),
+        // Bumps: Both motors, full at 10 m/s (peaks ~14 m/s on big landings)
+        suspensionEffect(0.0f, 10.0f, 0.5f, 0.5f),
+        // Spin: Light motor only, full at 1500% overrun
+        wheelspinEffect(0.0f, 15.0f, 0.2f, 0.0f),
+        // Lockup: Light motor only, 20% strength
+        brakeLockupEffect(0.2f, 1.0f, 0.2f, 0.0f),
+        // Wheelie: Off by default
+        wheelieEffect(0.0f, 90.0f, 0.0f, 0.0f),
+        // RPM: Off by default
+        rpmEffect(2000.0f, 15000.0f, 0.0f, 0.0f),
+        // Slide: Light motor only, 20% strength
+        slideEffect(15.0f, 45.0f, 0.2f, 0.0f),
+        // Surface: Off by default
+        surfaceEffect(5.0f, 60.0f, 0.0f, 0.0f),
+        // Steer: Off by default
+        steerEffect(20.0f, 80.0f, 0.0f, 0.0f) {}
 
     void resetToDefaults() {
         enabled = false;
         controllerIndex = 0;
-        additiveBlend = false;
+        additiveBlend = true;
         rumbleWhenCrashed = false;
-        suspensionEffect = RumbleEffect(MotorTarget::Both, 1.5f, 3.0f, 0.0f, 0.5f);
-        wheelspinEffect = RumbleEffect(MotorTarget::Light, 0.10f, 0.20f, 0.0f, 0.2f);
-        brakeLockupEffect = RumbleEffect(MotorTarget::Light, 0.20f, 0.40f, 0.0f, 0.2f);
-        wheelieEffect = RumbleEffect(MotorTarget::Off, 45.0f, 90.0f, 0.0f, 1.0f);
-        rpmEffect = RumbleEffect(MotorTarget::Off, 6000.0f, 12000.0f, 0.0f, 0.1f);
-        slideEffect = RumbleEffect(MotorTarget::Light, 15.0f, 30.0f, 0.0f, 0.2f);
-        surfaceEffect = RumbleEffect(MotorTarget::Off, 15.0f, 30.0f, 0.0f, 0.1f);
-        steerEffect = RumbleEffect(MotorTarget::Off, 10.0f, 20.0f, 0.0f, 0.1f);
+        suspensionEffect = RumbleEffect(0.0f, 10.0f, 0.5f, 0.5f);
+        wheelspinEffect = RumbleEffect(0.0f, 15.0f, 0.2f, 0.0f);
+        brakeLockupEffect = RumbleEffect(0.2f, 1.0f, 0.2f, 0.0f);
+        wheelieEffect = RumbleEffect(0.0f, 90.0f, 0.0f, 0.0f);
+        rpmEffect = RumbleEffect(2000.0f, 15000.0f, 0.0f, 0.0f);
+        slideEffect = RumbleEffect(15.0f, 45.0f, 0.2f, 0.0f);
+        surfaceEffect = RumbleEffect(5.0f, 60.0f, 0.0f, 0.0f);
+        steerEffect = RumbleEffect(20.0f, 80.0f, 0.0f, 0.0f);
     }
 };
 
@@ -180,6 +189,14 @@ public:
 
     // Check if a specific controller index is connected (0-3)
     static bool isControllerConnected(int index);
+
+    // Check if any controller connection state changed since last call
+    // Returns true once per state change (consumes the flag)
+    bool didConnectionStateChange();
+
+    // Get controller name (uses Windows.Gaming.Input)
+    // Returns empty string if controller not found
+    static std::string getControllerName(int index);
 
     // Vibration control
     // leftMotor: low-frequency rumble (0.0 to 1.0)
@@ -250,6 +267,10 @@ private:
 
     XInputData m_data;
     int m_controllerIndex;
+
+    // Connection state tracking for change detection
+    bool m_lastConnectedState[4];
+    bool m_connectionStateChanged;
 
     // Vibration state tracking to avoid redundant API calls
     float m_lastLeftMotor;

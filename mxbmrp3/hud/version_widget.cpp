@@ -33,15 +33,18 @@ namespace GameColors {
 }
 
 VersionWidget::VersionWidget() {
-    initializeWidget("VersionWidget", 1, 1.0f);  // One string, full opacity
-    m_bShowTitle = false;  // No title
-    m_bVisible = false;    // Hidden by default
+    // One-time setup
+    DEBUG_INFO("VersionWidget created");
+    setDraggable(true);
+    m_strings.reserve(1);
 
-    // Position at top center (0.5 is screen center horizontally)
-    setPosition(0.5f, 0.01f);
-
-    // Initialize brick array
+    // Initialize brick array (game state, not configurable)
     m_bricks.fill(true);
+
+    // Set all configurable defaults
+    resetToDefaults();
+
+    rebuildRenderData();
 }
 
 bool VersionWidget::handlesDataType(DataChangeType dataType) const {
@@ -85,59 +88,36 @@ void VersionWidget::update() {
 }
 
 void VersionWidget::handleClickDetection() {
-    if (!m_bVisible) return;
+    // Only handle clicks when game is active (for ball launch / exit)
+    if (!m_gameActive || !m_bVisible) return;
 
     const InputManager& input = InputManager::getInstance();
     if (!input.isCursorEnabled()) return;
 
     const MouseButton& leftButton = input.getLeftButton();
-    const CursorPosition& cursor = input.getCursorPosition();
 
     // Detect click (transition from not pressed to pressed)
     bool isLeftPressed = leftButton.isPressed;
     bool isClick = isLeftPressed && !m_wasLeftPressed;
     m_wasLeftPressed = isLeftPressed;
 
-    if (!isClick || !cursor.isValid) return;
+    if (!isClick) return;
 
-    long long currentTimeUs = DrawHandler::getCurrentTimeUs();
-
-    // If game is active, handle game clicks
-    if (m_gameActive) {
-        if (m_gameOver) {
-            // Click to exit
-            exitGame();
-        } else if (!m_ballLaunched) {
-            // Click to launch ball
-            launchBall();
-        }
-        return;
-    }
-
-    // Check if click is within widget bounds
-    if (!isPointInBounds(cursor.x, cursor.y)) {
-        // Click outside - reset counter
-        m_clickCount = 0;
-        return;
-    }
-
-    // Check for timeout - reset counter if too slow
-    if (m_clickCount > 0 && (currentTimeUs - m_lastClickTimeUs) > CLICK_TIMEOUT_US) {
-        m_clickCount = 0;
-    }
-
-    // Increment click counter
-    m_clickCount++;
-    m_lastClickTimeUs = currentTimeUs;
-
-    // Check if we've reached the activation threshold
-    if (m_clickCount >= CLICKS_TO_ACTIVATE) {
-        m_clickCount = 0;
-        startGame();
+    // Handle game clicks
+    if (m_gameOver) {
+        // Click to exit
+        exitGame();
+    } else if (!m_ballLaunched) {
+        // Click to launch ball
+        launchBall();
     }
 }
 
 void VersionWidget::startGame() {
+    // Save original visibility state and ensure widget is visible for game
+    m_wasVisibleBeforeGame = m_bVisible;
+    m_bVisible = true;
+
     // Suppress cursor during game
     InputManager::getInstance().setCursorSuppressed(true);
 
@@ -348,17 +328,21 @@ bool VersionWidget::checkBrickCollision(float newX, float newY) {
 
 void VersionWidget::exitGame() {
     m_gameActive = false;
-    m_clickCount = 0;
 
     // Restore cursor
     InputManager::getInstance().setCursorSuppressed(false);
+
+    // Restore original visibility state
+    m_bVisible = m_wasVisibleBeforeGame;
 
     // Clear game render data so widget rebuilds properly
     m_strings.clear();
     m_quads.clear();
 
-    // Force immediate rebuild of widget render data
-    rebuildRenderData();
+    // Force immediate rebuild of widget render data (if still visible)
+    if (m_bVisible) {
+        rebuildRenderData();
+    }
 }
 
 void VersionWidget::rebuildLayout() {
@@ -436,7 +420,7 @@ void VersionWidget::rebuildRenderData() {
     float contentStartY = startY + minPaddingV;
 
     addString(versionText, contentStartX, contentStartY, Justify::LEFT,
-              Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+              Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
@@ -534,7 +518,7 @@ void VersionWidget::renderGame() {
               sizeof(scoreString.m_szString) - 1);
     scoreString.m_afPos[0] = m_gameLeft + 0.01f;
     scoreString.m_afPos[1] = m_gameTop + 0.01f;
-    scoreString.m_iFont = Fonts::ROBOTO_MONO;
+    scoreString.m_iFont = Fonts::getNormal();
     scoreString.m_fSize = FontSizes::SMALL;
     scoreString.m_iJustify = Justify::LEFT;
     scoreString.m_ulColor = ColorConfig::getInstance().getPrimary();
@@ -554,7 +538,7 @@ void VersionWidget::renderGame() {
                   sizeof(msgString.m_szString) - 1);
         msgString.m_afPos[0] = m_gameLeft + GAME_AREA_WIDTH / 2.0f;
         msgString.m_afPos[1] = m_gameTop + GAME_AREA_HEIGHT - 0.04f;
-        msgString.m_iFont = Fonts::ROBOTO_MONO;
+        msgString.m_iFont = Fonts::getNormal();
         msgString.m_fSize = FontSizes::NORMAL;
         msgString.m_iJustify = Justify::CENTER;
         msgString.m_ulColor = ColorConfig::getInstance().getSecondary();
@@ -568,7 +552,7 @@ void VersionWidget::renderGame() {
 void VersionWidget::resetToDefaults() {
     m_bVisible = false;    // Hidden by default
     m_bShowTitle = false;  // No title
-    m_bShowBackgroundTexture = false;  // No texture by default
+    setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 1.0f;  // Full opacity
     m_fScale = 1.0f;
     setPosition(0.5f, 0.01f);  // Top center (0.5 is screen center)
@@ -578,7 +562,6 @@ void VersionWidget::resetToDefaults() {
         InputManager::getInstance().setCursorSuppressed(false);
     }
     m_gameActive = false;
-    m_clickCount = 0;
 
     setDataDirty();
 }

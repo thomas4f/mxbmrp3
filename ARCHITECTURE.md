@@ -22,6 +22,9 @@ mxbmrp3/
 │   │   ├── input_manager.*     # Keyboard and mouse input
 │   │   ├── xinput_reader.*     # XInput controller state and rumble
 │   │   ├── settings_manager.*  # Save/load configuration (INI file)
+│   │   ├── asset_manager.*     # Dynamic asset discovery (fonts, textures, icons)
+│   │   ├── font_config.*       # User-configurable font categories
+│   │   ├── color_config.*      # User-configurable color palette
 │   │   ├── plugin_constants.h  # All named constants
 │   │   └── plugin_utils.*      # Shared helper functions
 │   ├── handlers/               # Event processors (one per API callback type)
@@ -36,6 +39,10 @@ mxbmrp3/
 │   └── diagnostics/            # Debugging tools
 │       ├── logger.*            # Debug logging to file
 │       └── timer.h             # Performance measurement
+├── mxbmrp3_data/               # Runtime assets (discovered dynamically)
+│   ├── fonts/                  # .fnt files (bitmap fonts)
+│   ├── textures/               # .tga files (HUD backgrounds with variants)
+│   └── icons/                  # .tga files (rider icons for map/radar)
 ├── docs/                       # Documentation
 ├── replay_tool/                # Separate tool for replay analysis
 └── mxbmrp3.sln                 # Visual Studio solution
@@ -161,7 +168,7 @@ Key data structures:
 - `RaceEntryData` - Rider name, bike, race number
 - `StandingsData` - Position, gap, best lap for each rider
 - `BikeTelemetryData` - Speed, RPM, gear, fuel
-- `SessionBestData` - Best sector/lap times per rider
+- `IdealLapData` - Best sector/lap times per rider
 
 ```cpp
 // Example: Handler stores data, HUD reads it
@@ -258,7 +265,7 @@ Abstract base class that all HUDs inherit from. Provides:
 **Full HUDs** (complex, highly configurable):
 - `StandingsHud` - Race standings table with columns
 - `LapLogHud` - History of lap times with sector breakdown
-- `SessionBestHud` - Best sector times with PB comparison
+- `IdealLapHud` - Ideal (purple) sector times with gap comparison
 - `MapHud` - 2D track map with rider positions and zoom/range mode
 - `TelemetryHud` - Throttle/brake/suspension graphs
 - `InputHud` - Controller stick visualization
@@ -448,6 +455,45 @@ In-game settings menu (toggle with `~` key). Allows users to:
 - Toggle specific columns/rows in data tables
 - Configure display modes
 
+## Asset Management
+
+The plugin uses a dynamic asset discovery system that scans subdirectories at startup.
+
+### AssetManager (`core/asset_manager.*`)
+
+Discovers and registers assets from `plugins/mxbmrp3_data/` subdirectories:
+
+| Directory | File Type | Purpose |
+|-----------|-----------|---------|
+| `fonts/` | `.fnt` | Bitmap fonts (game engine format) |
+| `textures/` | `.tga` | HUD background textures with variants (e.g., `standings_hud_1.tga`) |
+| `icons/` | `.tga` | Rider icons for map/radar display |
+
+**Texture Variants**: Textures can have numbered variants (e.g., `standings_hud_1.tga`, `standings_hud_2.tga`). Users can cycle through variants in settings.
+
+**Icon Discovery**: Icons are discovered alphabetically. The `SHAPE_*` constants in `tracked_riders_manager.h` map to this alphabetical order.
+
+### FontConfig (`core/font_config.*`)
+
+Maps semantic font categories to user-selected fonts:
+
+| Category | Default Font | Usage |
+|----------|--------------|-------|
+| `TITLE` | EnterSansman-Italic | HUD titles |
+| `NORMAL` | RobotoMono-Regular | Standard text |
+| `STRONG` | RobotoMono-Bold | Emphasized text |
+| `MARKER` | FuzzyBubbles-Regular | Handwritten style |
+| `SMALL` | Tiny5-Regular | Map/radar labels |
+
+Access via `PluginConstants::Fonts::getTitle()`, `getNormal()`, etc.
+
+### ColorConfig (`core/color_config.*`)
+
+User-configurable color palette with semantic slots:
+- `PRIMARY`, `SECONDARY` - Main UI colors
+- `POSITIVE`, `NEGATIVE`, `WARNING`, `NEUTRAL` - Status indicators
+- `ACCENT` - Highlights
+
 ## Input Handling
 
 ### InputManager (`core/input_manager.*`)
@@ -591,6 +637,8 @@ SCOPED_TIMER_THRESHOLD("MyFunction", 100);  // Logs if > 100us
 
 6. **Font indices are 1-based** - Font index 0 is invalid.
 
+7. **Icon ordering is alphabetical** - Icons in `mxbmrp3_data/icons/` are discovered alphabetically. The `SHAPE_*` constants in `tracked_riders_manager.h` depend on this order. Renaming icon files will break the constant mappings.
+
 ## Quick Reference: File Locations
 
 | What | Where |
@@ -599,9 +647,13 @@ SCOPED_TIMER_THRESHOLD("MyFunction", 100);  // Logs if > 100us
 | Central state | `core/plugin_data.cpp` |
 | HUD base class | `hud/base_hud.cpp` |
 | All constants | `core/plugin_constants.h` |
+| Asset manager | `core/asset_manager.cpp` |
+| Font configuration | `core/font_config.cpp` |
+| Color configuration | `core/color_config.cpp` |
 | Settings file | `{save_path}/mxbmrp3/mxbmrp3_settings.ini` |
 | Log file | `{save_path}/mxbmrp3/mxbmrp3.log` |
 | Build output | `build/Release/mxbmrp3.dlo` |
+| Runtime assets | `{game_path}/plugins/mxbmrp3_data/{fonts,textures,icons}/` |
 
 ## Quick Reference: Adding Features
 
@@ -612,3 +664,6 @@ SCOPED_TIMER_THRESHOLD("MyFunction", 100);  // Logs if > 100us
 | Add new setting | Add field to HUD, save/load in SettingsManager |
 | Add keyboard shortcut | Handle in HudManager::processKeyboardInput() |
 | Add new handler | Create handler class, route from PluginManager |
+| Add new font | Place `.fnt` file in `mxbmrp3_data/fonts/` (auto-discovered) |
+| Add new texture | Place `.tga` file in `mxbmrp3_data/textures/` (auto-discovered) |
+| Add new icon | Place `.tga` file in `mxbmrp3_data/icons/` (auto-discovered, alphabetical order) |

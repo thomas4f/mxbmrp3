@@ -212,7 +212,7 @@ void PluginData::removeRaceEntry(int raceNum) {
 
         // Clean up all per-rider data structures to prevent memory leaks
         m_riderCurrentLap.erase(raceNum);
-        m_riderSessionBest.erase(raceNum);
+        m_riderIdealLap.erase(raceNum);
         m_riderLapLog.erase(raceNum);
         m_riderBestLap.erase(raceNum);
         m_trackPositions.erase(raceNum);
@@ -296,8 +296,14 @@ int PluginData::getDisplayRaceNum() const {
     return getPlayerRaceNum();
 }
 
+bool PluginData::isDisplayRiderFinished() const {
+    int displayRaceNum = getDisplayRaceNum();
+    const StandingsData* standing = getStanding(displayRaceNum);
+    return standing && m_sessionData.isRiderFinished(standing->numLaps);
+}
+
 // ============================================================================
-// Current Lap and Session Best Management
+// Current Lap and Ideal Lap Management
 // ============================================================================
 
 void PluginData::updateCurrentLapSplit(int raceNum, int lapNum, int splitIndex, int accumulatedTime) {
@@ -343,7 +349,7 @@ void PluginData::updateCurrentLapSplit(int raceNum, int lapNum, int splitIndex, 
     }
 
     if (updated) {
-        notifyHudManager(DataChangeType::SessionBest);
+        notifyHudManager(DataChangeType::IdealLap);
     }
 }
 
@@ -355,77 +361,77 @@ void PluginData::setCurrentLapNumber(int raceNum, int lapNum) {
     currentLap.lapNum = lapNum;
 }
 
-void PluginData::updateSessionBest(int raceNum, int completedLapNum, int lapTime, int sector1, int sector2, int sector3, bool isValid) {
-    // Get or create session best data for this rider
-    SessionBestData& sessionBest = m_riderSessionBest[raceNum];
+void PluginData::updateIdealLap(int raceNum, int completedLapNum, int lapTime, int sector1, int sector2, int sector3, bool isValid) {
+    // Get or create ideal lap data for this rider
+    IdealLapData& idealLap = m_riderIdealLap[raceNum];
 
     bool updated = false;
-    bool isFirstValidLap = isValid && (sessionBest.bestSector1 < 0);
+    bool isFirstValidLap = isValid && (idealLap.bestSector1 < 0);
 
     // Always update lap completion info (for TimingHud detection)
     // This triggers even for invalid laps with no timing data
-    if (sessionBest.lastCompletedLapNum != completedLapNum) {
-        sessionBest.lastCompletedLapNum = completedLapNum;
+    if (idealLap.lastCompletedLapNum != completedLapNum) {
+        idealLap.lastCompletedLapNum = completedLapNum;
         updated = true;
     }
-    if (sessionBest.lastLapTime != lapTime) {
-        sessionBest.lastLapTime = lapTime;
+    if (idealLap.lastLapTime != lapTime) {
+        idealLap.lastLapTime = lapTime;
         updated = true;
     }
-    if (sessionBest.lastLapSector1 != sector1) {
-        sessionBest.lastLapSector1 = sector1;
+    if (idealLap.lastLapSector1 != sector1) {
+        idealLap.lastLapSector1 = sector1;
         updated = true;
     }
-    if (sessionBest.lastLapSector2 != sector2) {
-        sessionBest.lastLapSector2 = sector2;
+    if (idealLap.lastLapSector2 != sector2) {
+        idealLap.lastLapSector2 = sector2;
         updated = true;
     }
-    if (sessionBest.lastLapSector3 != sector3) {
-        sessionBest.lastLapSector3 = sector3;
+    if (idealLap.lastLapSector3 != sector3) {
+        idealLap.lastLapSector3 = sector3;
         updated = true;
     }
 
     // Only update best sectors for valid laps (invalid laps don't count as PBs)
     if (isValid) {
-        if (sector1 > 0 && (isFirstValidLap || sector1 < sessionBest.bestSector1)) {
-            sessionBest.bestSector1 = sector1;
+        if (sector1 > 0 && (isFirstValidLap || sector1 < idealLap.bestSector1)) {
+            idealLap.bestSector1 = sector1;
             updated = true;
         }
-        if (sector2 > 0 && (isFirstValidLap || sector2 < sessionBest.bestSector2)) {
-            sessionBest.bestSector2 = sector2;
+        if (sector2 > 0 && (isFirstValidLap || sector2 < idealLap.bestSector2)) {
+            idealLap.bestSector2 = sector2;
             updated = true;
         }
-        if (sector3 > 0 && (isFirstValidLap || sector3 < sessionBest.bestSector3)) {
-            sessionBest.bestSector3 = sector3;
+        if (sector3 > 0 && (isFirstValidLap || sector3 < idealLap.bestSector3)) {
+            idealLap.bestSector3 = sector3;
             updated = true;
         }
     }
 
     if (updated) {
-        notifyHudManager(DataChangeType::SessionBest);
+        notifyHudManager(DataChangeType::IdealLap);
     }
 }
 
-void PluginData::clearSessionBest(int raceNum) {
+void PluginData::clearIdealLap(int raceNum) {
     auto itCurrent = m_riderCurrentLap.find(raceNum);
     if (itCurrent != m_riderCurrentLap.end()) {
         itCurrent->second.clear();
     }
 
-    auto itBest = m_riderSessionBest.find(raceNum);
-    if (itBest != m_riderSessionBest.end()) {
+    auto itBest = m_riderIdealLap.find(raceNum);
+    if (itBest != m_riderIdealLap.end()) {
         itBest->second.clear();
     }
 
-    DEBUG_INFO_F("Session best data cleared for race #%d", raceNum);
-    notifyHudManager(DataChangeType::SessionBest);
+    DEBUG_INFO_F("Ideal lap data cleared for race #%d", raceNum);
+    notifyHudManager(DataChangeType::IdealLap);
 }
 
-void PluginData::clearAllSessionBest() {
+void PluginData::clearAllIdealLap() {
     m_riderCurrentLap.clear();
-    m_riderSessionBest.clear();
-    DEBUG_INFO("All riders' session best data cleared");
-    notifyHudManager(DataChangeType::SessionBest);
+    m_riderIdealLap.clear();
+    DEBUG_INFO("All riders' ideal lap data cleared");
+    notifyHudManager(DataChangeType::IdealLap);
 }
 
 const CurrentLapData* PluginData::getCurrentLapData(int raceNum) const {
@@ -436,10 +442,10 @@ const CurrentLapData* PluginData::getCurrentLapData(int raceNum) const {
     return nullptr;
 }
 
-const SessionBestData* PluginData::getSessionBestData(int raceNum) const {
-    auto it = m_riderSessionBest.find(raceNum);
-    if (it != m_riderSessionBest.end()) {
-        const SessionBestData& data = it->second;
+const IdealLapData* PluginData::getIdealLapData(int raceNum) const {
+    auto it = m_riderIdealLap.find(raceNum);
+    if (it != m_riderIdealLap.end()) {
+        const IdealLapData& data = it->second;
         // Return data if any meaningful info exists (PB sectors OR lap completion)
         if (data.bestSector1 > 0 || data.bestSector2 > 0 || data.bestSector3 > 0 ||
             data.lastCompletedLapNum >= 0) {
@@ -455,7 +461,7 @@ const SessionBestData* PluginData::getSessionBestData(int raceNum) const {
 
 void PluginData::updateLapLog(int raceNum, const LapLogEntry& entry) {
     // Get or create lap log for this rider
-    std::vector<LapLogEntry>& lapLog = m_riderLapLog[raceNum];
+    std::deque<LapLogEntry>& lapLog = m_riderLapLog[raceNum];
 
     bool wasUpdated = false;
 
@@ -484,8 +490,8 @@ void PluginData::updateLapLog(int raceNum, const LapLogEntry& entry) {
             notifyHudManager(DataChangeType::LapLog);
         }
     } else {
-        // New lap - add to front of log
-        lapLog.insert(lapLog.begin(), entry);
+        // New lap - add to front of log (O(1) with deque)
+        lapLog.push_front(entry);
 
         // Keep only recent laps (best lap is stored separately via setBestLapEntry)
         // Limit enforced by shared constant to match display capacity
@@ -510,8 +516,8 @@ void PluginData::clearLapLog(int raceNum) {
     }
 
     // Also clear previous PB data since we're clearing the current PB
-    auto itSession = m_riderSessionBest.find(raceNum);
-    if (itSession != m_riderSessionBest.end()) {
+    auto itSession = m_riderIdealLap.find(raceNum);
+    if (itSession != m_riderIdealLap.end()) {
         itSession->second.previousBestLapTime = -1;
         itSession->second.previousBestSector1 = -1;
         itSession->second.previousBestSector2 = -1;
@@ -527,7 +533,7 @@ void PluginData::clearAllLapLog() {
     m_riderBestLap.clear();
 
     // Also clear previous PB data for all riders since we're clearing all current PBs
-    for (auto& pair : m_riderSessionBest) {
+    for (auto& pair : m_riderIdealLap) {
         pair.second.previousBestLapTime = -1;
         pair.second.previousBestSector1 = -1;
         pair.second.previousBestSector2 = -1;
@@ -538,7 +544,7 @@ void PluginData::clearAllLapLog() {
     notifyHudManager(DataChangeType::LapLog);
 }
 
-const std::vector<LapLogEntry>* PluginData::getLapLog(int raceNum) const {
+const std::deque<LapLogEntry>* PluginData::getLapLog(int raceNum) const {
     auto it = m_riderLapLog.find(raceNum);
     if (it != m_riderLapLog.end()) {
         return &it->second;
@@ -552,11 +558,11 @@ void PluginData::setBestLapEntry(int raceNum, const LapLogEntry& entry) {
     if (it != m_riderBestLap.end() && it->second.lapNum >= 0) {
         // There's an existing PB - save it as previous best
         const LapLogEntry& currentBest = it->second;
-        SessionBestData& sessionBest = m_riderSessionBest[raceNum];
-        sessionBest.previousBestLapTime = currentBest.lapTime;
-        sessionBest.previousBestSector1 = currentBest.sector1;
-        sessionBest.previousBestSector2 = currentBest.sector2;
-        sessionBest.previousBestSector3 = currentBest.sector3;
+        IdealLapData& idealLap = m_riderIdealLap[raceNum];
+        idealLap.previousBestLapTime = currentBest.lapTime;
+        idealLap.previousBestSector1 = currentBest.sector1;
+        idealLap.previousBestSector2 = currentBest.sector2;
+        idealLap.previousBestSector3 = currentBest.sector3;
     }
 
     // Update to new PB
@@ -696,6 +702,12 @@ int PluginData::getElapsedSectorTime(int raceNum, int sectorIndex) const {
 }
 
 bool PluginData::isLapTimerValid(int raceNum) const {
+    // Timer is only valid if the anchor is set for this race
+    // When on track, also check if simulation is paused (RunStop called)
+    // Spectate/replay modes don't have pause concept - simulation always runs
+    if (m_drawState == PluginConstants::ViewState::ON_TRACK && !m_bPlayerIsRunning) {
+        return false;
+    }
     if (raceNum == m_displayLapTimerRaceNum) {
         return m_displayLapTimer.anchorValid;
     }
@@ -827,37 +839,30 @@ void PluginData::batchUpdateStandings(SPluginsRaceClassificationEntry_t* entries
         }
     }
 
-    // Detect leader finish and capture their race time
-    // Only capture once (when leaderFinishTime transitions from -1)
-    if (!m_classificationOrder.empty() && m_sessionData.leaderFinishTime < 0) {
-        int leaderRaceNum = m_classificationOrder[0];
-        auto leaderIt = m_standings.find(leaderRaceNum);
-        if (leaderIt != m_standings.end()) {
-            const StandingsData& leader = leaderIt->second;
+    // Capture finish time for each rider when they finish
+    // Calculate elapsed time based on race type (same formula for all riders)
+    auto calculateElapsedTime = [&]() -> int {
+        if (m_sessionData.sessionLength > 0) {
+            // Timed race: elapsed = sessionLength - sessionTime
+            return m_sessionData.sessionLength - m_currentSessionTime;
+        } else {
+            // Lap-based race: sessionTime is elapsed time
+            return m_currentSessionTime > 0 ? m_currentSessionTime : 0;
+        }
+    };
 
-            // Check if leader has finished (same logic as DisplayEntry::isFinished)
-            bool leaderFinished = false;
-            if (m_sessionData.sessionLength > 0 && m_sessionData.sessionNumLaps > 0) {
-                // Time+laps race
-                leaderFinished = m_sessionData.finishLap > 0 && leader.numLaps >= m_sessionData.finishLap;
-            } else if (m_sessionData.sessionNumLaps > 0) {
-                // Lap-only race
-                leaderFinished = (m_sessionData.finishLap > 0 && leader.numLaps >= m_sessionData.finishLap) ||
-                                 (m_sessionData.finishLap <= 0 && leader.numLaps >= m_sessionData.sessionNumLaps);
-            }
+    // Check each rider for finish
+    for (auto& [raceNum, standing] : m_standings) {
+        // Only capture once (when finishTime transitions from -1)
+        if (standing.finishTime < 0 && m_sessionData.isRiderFinished(standing.numLaps)) {
+            standing.finishTime = calculateElapsedTime();
+            DEBUG_INFO_F("[RIDER FINISHED] Rider #%d finished race in %d ms", raceNum, standing.finishTime);
+            anyChanged = true;
 
-            if (leaderFinished) {
-                // Calculate elapsed time based on race type
-                int elapsedTime;
-                if (m_sessionData.sessionLength > 0) {
-                    // Timed race: elapsed = sessionLength - sessionTime
-                    elapsedTime = m_sessionData.sessionLength - m_currentSessionTime;
-                } else {
-                    // Lap-based race: sessionTime is elapsed time
-                    elapsedTime = m_currentSessionTime > 0 ? m_currentSessionTime : 0;
-                }
-                m_sessionData.leaderFinishTime = elapsedTime;
-                DEBUG_INFO_F("Leader #%d finished race in %d ms", leaderRaceNum, elapsedTime);
+            // Also update leader finish time if this is the leader
+            if (!m_classificationOrder.empty() && raceNum == m_classificationOrder[0] && m_sessionData.leaderFinishTime < 0) {
+                m_sessionData.leaderFinishTime = standing.finishTime;
+                DEBUG_INFO_F("[LEADER FINISHED] Leader #%d finished race in %d ms", raceNum, standing.finishTime);
             }
         }
     }
@@ -1132,7 +1137,9 @@ void PluginData::updateRealTimeGaps() {
 
     for (int raceNum : m_classificationOrder) {
         if (raceNum == leaderRaceNum) {
-            continue;  // Skip leader (gap = 0)
+            // Explicitly set leader's gap to 0 (prevents stale data after lead changes)
+            leaderStandingIt->second.realTimeGap = 0;
+            continue;
         }
 
         auto posIt = m_trackPositions.find(raceNum);
@@ -1146,19 +1153,8 @@ void PluginData::updateRealTimeGaps() {
         StandingsData& standing = standingIt->second;
         int riderLap = standing.numLaps;
 
-        // Check if rider has finished the race
-        bool isFinished = false;
-        if (m_sessionData.sessionLength > 0 && m_sessionData.sessionNumLaps > 0) {
-            // Time+laps race: only use finishLap
-            isFinished = m_sessionData.finishLap > 0 && riderLap >= m_sessionData.finishLap;
-        } else {
-            // Pure lap race OR pure time race: use finishLap if set, otherwise sessionNumLaps
-            isFinished = (m_sessionData.finishLap > 0 && riderLap >= m_sessionData.finishLap) ||
-                        (m_sessionData.sessionNumLaps > 0 && m_sessionData.finishLap <= 0 && riderLap >= m_sessionData.sessionNumLaps);
-        }
-
         // If rider finished, freeze their gap by skipping calculation
-        if (isFinished) {
+        if (m_sessionData.isRiderFinished(riderLap)) {
             continue;  // Gap is frozen at last calculated value
         }
 
@@ -1268,7 +1264,7 @@ void PluginData::clear() {
     m_bPositionCacheDirty = true;
     m_trackPositions.clear();
     m_riderCurrentLap.clear();
-    m_riderSessionBest.clear();
+    m_riderIdealLap.clear();
     m_riderLapLog.clear();
     m_riderBestLap.clear();
 
@@ -1300,6 +1296,14 @@ void PluginData::clear() {
 // Direct call to HudManager, no callback/observer overhead
 void PluginData::notifyHudManager(DataChangeType changeType) {
     HudManager::getInstance().onDataChanged(changeType);
+}
+
+const XInputReader& PluginData::getXInputReader() const {
+    return XInputReader::getInstance();
+}
+
+void PluginData::notifyTrackedRidersChanged() {
+    notifyHudManager(DataChangeType::TrackedRiders);
 }
 
 void PluginData::updatePlayerRaceNum() const {

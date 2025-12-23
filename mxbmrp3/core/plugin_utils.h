@@ -5,6 +5,8 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
+#include <sstream>
 
 class PluginUtils {
 public:
@@ -98,6 +100,18 @@ public:
         g = static_cast<uint8_t>(g * factor);
         b = static_cast<uint8_t>(b * factor);
         return makeColor(r, g, b, a);
+    }
+
+    // Format color as hex string (e.g., "0xFFFFFFFF")
+    static std::string formatColorHex(uint32_t color) {
+        std::ostringstream oss;
+        oss << "0x" << std::hex << color;
+        return oss.str();
+    }
+
+    // Parse color from hex string (e.g., "0xFFFFFFFF" or "4294967295")
+    static uint32_t parseColorHex(const std::string& value) {
+        return static_cast<uint32_t>(std::stoul(value, nullptr, 0));
     }
 
     // Get color for a rider based on their position relative to player

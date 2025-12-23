@@ -65,13 +65,15 @@ void RunTelemetryHandler::handleRunTelemetry(SPluginsBikeData_t* psBikeData, flo
 
         // Brake lockup: wheel underrun (only for wheels in contact with ground)
         // Requires some vehicle speed - can't lock up wheels when stationary
+        // Also requires positive wheel speed - when rolling backwards, wheel speed is negative
+        // but speedometer shows positive (absolute) speed, causing false lockup detection
         if (vehicleSpeed > 1.0f) {
             float frontUnderrun = 0.0f;
             float rearUnderrun = 0.0f;
-            if (frontWheelContact && frontWheelSpeed < vehicleSpeed) {
+            if (frontWheelContact && frontWheelSpeed >= 0.0f && frontWheelSpeed < vehicleSpeed) {
                 frontUnderrun = (vehicleSpeed - frontWheelSpeed) / vehicleSpeed;
             }
-            if (rearWheelContact && rearWheelSpeed < vehicleSpeed) {
+            if (rearWheelContact && rearWheelSpeed >= 0.0f && rearWheelSpeed < vehicleSpeed) {
                 rearUnderrun = (vehicleSpeed - rearWheelSpeed) / vehicleSpeed;
             }
             wheelUnderrun = std::max(frontUnderrun, rearUnderrun);

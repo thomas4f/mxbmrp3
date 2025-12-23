@@ -18,6 +18,16 @@ public:
         GALLONS = 1
     };
 
+    // Row visibility flags (configurable via INI file)
+    enum RowFlags : uint32_t {
+        ROW_FUEL = 1 << 0,  // Current fuel level
+        ROW_USED = 1 << 1,  // Total fuel used this run
+        ROW_AVG  = 1 << 2,  // Average fuel per lap
+        ROW_EST  = 1 << 3,  // Estimated laps remaining
+
+        ROW_DEFAULT = 0x0F  // All 4 rows enabled (binary: 1111)
+    };
+
     FuelWidget();
     virtual ~FuelWidget() = default;
 
@@ -34,6 +44,10 @@ public:
 
     // Public for settings access
     FuelUnit m_fuelUnit = FuelUnit::LITERS;
+    uint32_t m_enabledRows = ROW_DEFAULT;  // Bitfield of enabled rows (INI-configurable)
+
+    // Helper to count enabled rows
+    int getEnabledRowCount() const;
 
 protected:
     void rebuildLayout() override;

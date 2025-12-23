@@ -97,11 +97,12 @@ public:
     void forceWindowRefresh();
 
 private:
-    InputManager() : m_bInitialized(false), m_gameWindow(nullptr),
+    InputManager() : m_bInitialized(false), m_gameWindow(nullptr), m_processId(0),
         m_bCursorEnabled(false), m_bWasCursorEnabled(false),
         m_bShouldShowCursor(false), m_bWasCursorVisible(false), m_bCursorSuppressed(false),
         m_fLastMouseX(0.0f), m_fLastMouseY(0.0f),
-        m_framesSinceLastMovement(0), m_windowWidth(0), m_windowHeight(0) {}
+        m_framesSinceLastMovement(0), m_framesSinceFocusLost(0),
+        m_windowWidth(0), m_windowHeight(0) {}
     ~InputManager() { shutdown(); }
     InputManager(const InputManager&) = delete;
     InputManager& operator=(const InputManager&) = delete;
@@ -115,6 +116,7 @@ private:
     void refreshWindowInformation();
 
     HWND m_gameWindow;
+    DWORD m_processId;  // Cached process ID (never changes)
     int m_windowWidth;
     int m_windowHeight;
 
@@ -148,8 +150,12 @@ private:
     float m_fLastMouseY;
     int m_framesSinceLastMovement;
 
+    // Focus debouncing - prevents flicker during alt-tab transitions
+    int m_framesSinceFocusLost;
+
     // Constants
     static constexpr float ASPECT_RATIO = PluginConstants::UI_ASPECT_RATIO;
     static constexpr int CURSOR_HIDE_FRAMES = 120;  // Frames of inactivity before hiding cursor (~2 seconds at 60fps)
     static constexpr float MOVEMENT_THRESHOLD = 0.001f;  // Minimum movement to count as "moved"
+    static constexpr int FOCUS_DEBOUNCE_FRAMES = 5;  // Frames to wait before disabling cursor on focus loss
 };

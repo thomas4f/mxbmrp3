@@ -9,6 +9,7 @@
 #include "../core/color_config.h"
 #include "../core/settings_manager.h"
 #include "../core/hud_manager.h"
+#include "../core/asset_manager.h"
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
 #include <cmath>
@@ -75,6 +76,33 @@ bool BaseHud::handleMouseInput(bool allowInput) {
         if (ColorConfig::getInstance().getGridSnapping()) {
             newOffsetX = PluginConstants::HudGrid::SNAP_TO_GRID_X(newOffsetX);
             newOffsetY = PluginConstants::HudGrid::SNAP_TO_GRID_Y(newOffsetY);
+
+            // Edge magnetism: snap to window edges if within one grid cell
+            // This allows HUDs to be positioned flush against screen borders
+            const float gridH = PluginConstants::HudGrid::GRID_SIZE_HORIZONTAL;
+            const float gridV = PluginConstants::HudGrid::GRID_SIZE_VERTICAL;
+
+            // Calculate where HUD edges would be with current offset
+            float hudLeft = m_fBoundsLeft + newOffsetX;
+            float hudRight = m_fBoundsRight + newOffsetX;
+            float hudTop = m_fBoundsTop + newOffsetY;
+            float hudBottom = m_fBoundsBottom + newOffsetY;
+
+            // Snap to left/right edge if close
+            if (std::abs(hudLeft - windowBounds.left) < gridH) {
+                newOffsetX = windowBounds.left - m_fBoundsLeft;
+            }
+            else if (std::abs(hudRight - windowBounds.right) < gridH) {
+                newOffsetX = windowBounds.right - m_fBoundsRight;
+            }
+
+            // Snap to top/bottom edge if close
+            if (std::abs(hudTop - windowBounds.top) < gridV) {
+                newOffsetY = windowBounds.top - m_fBoundsTop;
+            }
+            else if (std::abs(hudBottom - windowBounds.bottom) < gridV) {
+                newOffsetY = windowBounds.bottom - m_fBoundsBottom;
+            }
         }
 
         // Update position if changed
@@ -115,6 +143,25 @@ void BaseHud::validatePosition() {
         DEBUG_INFO_F("HUD position adjusted to fit window bounds: (%.3f, %.3f)",
             m_fOffsetX, m_fOffsetY);
     }
+}
+
+bool BaseHud::checkFrequentUpdates() {
+    if (!needsFrequentUpdates()) {
+        return false;
+    }
+
+    auto now = std::chrono::steady_clock::now();
+    auto sinceLastTick = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now - m_lastTickUpdate
+    ).count();
+
+    if (sinceLastTick >= TICK_UPDATE_INTERVAL_MS) {
+        m_lastTickUpdate = now;
+        setDataDirty();
+        return true;
+    }
+
+    return false;
 }
 
 void BaseHud::setBounds(float left, float top, float right, float bottom) {
@@ -172,6 +219,91 @@ void BaseHud::initializeWidget(const char* widgetName, int stringsReserve, float
     m_fBackgroundOpacity = backgroundOpacity;
     m_strings.reserve(stringsReserve);
     rebuildRenderData();
+}
+
+// ============================================================================
+// Dynamic Texture Variant Support
+// ============================================================================
+
+void BaseHud::setTextureBaseName(const std::string& baseName) {
+    m_textureBaseName = baseName;
+
+    // If variant is set, update the background texture index
+    if (m_textureVariant > 0) {
+        int spriteIndex = AssetManager::getInstance().getSpriteIndex(baseName, m_textureVariant);
+        if (spriteIndex > 0) {
+            m_iBackgroundTextureIndex = spriteIndex;
+        }
+    }
+}
+
+void BaseHud::setTextureVariant(int variant) {
+    if (variant < 0) variant = 0;
+
+    if (m_textureVariant != variant) {
+        m_textureVariant = variant;
+
+        // Update background texture index based on variant
+        if (variant == 0) {
+            // Variant 0 = Off (solid color background)
+            m_bShowBackgroundTexture = false;
+        } else if (!m_textureBaseName.empty()) {
+            int spriteIndex = AssetManager::getInstance().getSpriteIndex(m_textureBaseName, variant);
+            if (spriteIndex > 0) {
+                m_iBackgroundTextureIndex = spriteIndex;
+                m_bShowBackgroundTexture = true;
+            } else {
+                // Variant not found, fall back to solid color
+                m_bShowBackgroundTexture = false;
+                DEBUG_WARN_F("Texture variant %d not found for %s", variant, m_textureBaseName.c_str());
+            }
+        }
+
+        setDataDirty();
+    }
+}
+
+void BaseHud::cycleTextureVariant(bool forward) {
+    if (m_textureBaseName.empty()) {
+        return;
+    }
+
+    std::vector<int> variants = getAvailableTextureVariants();
+    if (variants.empty()) {
+        return;
+    }
+
+    // Build cycle order: 0 (Off), then all variants
+    std::vector<int> cycleOrder = {0};
+    cycleOrder.insert(cycleOrder.end(), variants.begin(), variants.end());
+
+    // Find current position in cycle
+    int currentIndex = 0;
+    for (size_t i = 0; i < cycleOrder.size(); ++i) {
+        if (cycleOrder[i] == m_textureVariant) {
+            currentIndex = static_cast<int>(i);
+            break;
+        }
+    }
+
+    // Calculate next position
+    int cycleSize = static_cast<int>(cycleOrder.size());
+    int newIndex;
+    if (forward) {
+        newIndex = (currentIndex + 1) % cycleSize;
+    } else {
+        newIndex = (currentIndex - 1 + cycleSize) % cycleSize;
+    }
+
+    setTextureVariant(cycleOrder[newIndex]);
+}
+
+std::vector<int> BaseHud::getAvailableTextureVariants() const {
+    if (m_textureBaseName.empty()) {
+        return {};
+    }
+
+    return AssetManager::getInstance().getAvailableVariants(m_textureBaseName);
 }
 
 // ============================================================================

@@ -17,7 +17,7 @@ PluginData (singleton - caches all game state)
     ↓ (notifies on data changes)
 HudManager (singleton - owns all HUD instances)
     ↓
-Individual HUDs (SessionBest, Standings, Map, etc.)
+Individual HUDs (IdealLap, Standings, Map, etc.)
     ↓ (build render primitives)
 Game Engine (renders quads/strings)
 ```
@@ -28,6 +28,9 @@ Game Engine (renders quads/strings)
 - `SettingsManager` - Save/load HUD configurations
 - `InputManager` - Mouse and keyboard input
 - `XInputReader` - Controller state and rumble effects
+- `AssetManager` - Dynamic discovery of fonts, textures, icons from subdirectories
+- `FontConfig` - User-configurable font categories (Title, Normal, Strong, Marker, Small)
+- `ColorConfig` - User-configurable color palette
 
 ## Build & Test
 
@@ -129,12 +132,15 @@ When implementing event handlers or debugging timing/lap data:
 - `mxbmrp3/core/plugin_manager.cpp` - Plugin entry point
 - `mxbmrp3/core/plugin_data.h/.cpp` - Game state cache
 - `mxbmrp3/core/hud_manager.h/.cpp` - HUD ownership
+- `mxbmrp3/core/asset_manager.h/.cpp` - Dynamic asset discovery
+- `mxbmrp3/core/font_config.h/.cpp` - Font category configuration
+- `mxbmrp3/core/color_config.h/.cpp` - Color palette configuration
 
 **HUD Base:**
 - `mxbmrp3/hud/base_hud.h/.cpp` - Base class for all HUDs
 
 **Example HUDs:**
-- `mxbmrp3/hud/session_best_hud.cpp` - Simple HUD (good starting point)
+- `mxbmrp3/hud/ideal_lap_hud.cpp` - Simple HUD (good starting point)
 - `mxbmrp3/hud/standings_hud.cpp` - Complex HUD (dynamic table)
 - `mxbmrp3/hud/map_hud.cpp` - Advanced (2D rendering, rotation)
 

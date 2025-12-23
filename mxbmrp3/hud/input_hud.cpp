@@ -13,15 +13,9 @@
 using namespace PluginConstants;
 
 InputHud::InputHud() {
-    DEBUG_INFO("InputHud initialized");
-    setScale(1.0f);
+    // One-time setup
+    DEBUG_INFO("InputHud created");
     setDraggable(true);
-
-    // Set defaults to match user configuration
-    m_bVisible = false;  // Hidden by default
-    m_bShowTitle = false;
-    m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
-    setPosition(0.6875f, 0.0f);
 
     // Pre-allocate calculation buffers to avoid per-frame allocation
     const size_t maxHistory = HistoryBuffers::MAX_STICK_HISTORY;
@@ -36,6 +30,12 @@ InputHud::InputHud() {
     // Pre-allocate render buffers to avoid reallocations
     m_quads.reserve(110);    // 1 bg + 4 crosshair + 2 sticks × 49 trapezoids + 2 markers = ~107 quads max
     m_strings.reserve(10);   // Title + table (header + 2 rows × 3 cells) = 9 strings
+
+    // Set texture base name for dynamic texture discovery
+    setTextureBaseName("input_hud");
+
+    // Set all configurable defaults
+    resetToDefaults();
 
     rebuildRenderData();
 }
@@ -82,7 +82,7 @@ void InputHud::rebuildRenderData() {
 
     // Title
     addTitleString("Input", contentStartX, currentY, PluginConstants::Justify::LEFT,
-        PluginConstants::Fonts::ENTER_SANSMAN, ColorConfig::getInstance().getPrimary(), dims.fontSizeLarge);
+        PluginConstants::Fonts::getTitle(), ColorConfig::getInstance().getPrimary(), dims.fontSizeLarge);
     currentY += titleHeight;
 
     // Calculate stick dimensions - make them square (7 lines high)
@@ -119,35 +119,35 @@ void InputHud::rebuildRenderData() {
         // Header row - LS and RS column headers (offset by 1 char to align with digit, not sign)
         float headerOffsetX = PluginUtils::calculateMonospaceTextWidth(1, dims.fontSize);
         addString("LS", lsValueX + headerOffsetX, tableY, PluginConstants::Justify::LEFT,
-            PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+            PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
         addString("RS", rsValueX + headerOffsetX, tableY, PluginConstants::Justify::LEFT,
-            PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+            PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
 
         // X row
         float xRowY = tableY + dims.lineHeightNormal;
         addString("X", labelColX, xRowY, PluginConstants::Justify::LEFT,
-            PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+            PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
         char lsXValue[8];
         char rsXValue[8];
         snprintf(lsXValue, sizeof(lsXValue), "%+.2f", inputData.leftStickX);
         snprintf(rsXValue, sizeof(rsXValue), "%+.2f", inputData.rightStickX);
         addString(lsXValue, lsValueX, xRowY, PluginConstants::Justify::LEFT,
-            PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
         addString(rsXValue, rsValueX, xRowY, PluginConstants::Justify::LEFT,
-            PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
 
         // Y row
         float yRowY = xRowY + dims.lineHeightNormal;
         addString("Y", labelColX, yRowY, PluginConstants::Justify::LEFT,
-            PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+            PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
         char lsYValue[8];
         char rsYValue[8];
         snprintf(lsYValue, sizeof(lsYValue), "%+.2f", inputData.leftStickY);
         snprintf(rsYValue, sizeof(rsYValue), "%+.2f", inputData.rightStickY);
         addString(lsYValue, lsValueX, yRowY, PluginConstants::Justify::LEFT,
-            PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
         addString(rsYValue, rsValueX, yRowY, PluginConstants::Justify::LEFT,
-            PluginConstants::Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
     }
 }
 
@@ -321,11 +321,11 @@ void InputHud::addStickTrail(const char* label, const std::deque<HistoryBuffers:
 
 void InputHud::resetToDefaults() {
     m_bVisible = false;  // Hidden by default
-    m_bShowTitle = false;
-    m_bShowBackgroundTexture = false;  // No texture by default
+    m_bShowTitle = true;
+    setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.6875f, 0.0f);
+    setPosition(0.374f, 0.777f);
     m_enabledElements = ELEM_DEFAULT;
     setDataDirty();
 }

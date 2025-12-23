@@ -5,7 +5,7 @@
 #pragma once
 
 #include "base_hud.h"
-#include "session_best_hud.h"
+#include "ideal_lap_hud.h"
 #include "lap_log_hud.h"
 #include "standings_hud.h"
 #include "performance_hud.h"
@@ -32,18 +32,21 @@
 #include "radar_hud.h"
 #include "../core/plugin_constants.h"
 #include "../core/color_config.h"
+#include "../core/font_config.h"
 #include "../core/xinput_reader.h"
+#include "../core/hotkey_config.h"
 
 // Forward declarations
 class TelemetryHud;
+class RumbleHud;
 
 class SettingsHud : public BaseHud {
 public:
-    SettingsHud(SessionBestHud* sessionBest, LapLogHud* lapLog,
+    SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog,
                 StandingsHud* standings,
                 PerformanceHud* performance,
                 TelemetryHud* telemetry, InputHud* input,
-                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionWidget* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer);
+                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionWidget* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble);
     virtual ~SettingsHud() = default;
 
     void update() override;
@@ -63,15 +66,23 @@ private:
         float x, y, width, height;
         enum Type {
             CHECKBOX,                  // Toggle column/row visibility (bitfield)
-            GAP_MODE_CYCLE,            // Cycle through gap modes (Off/Me/All)
-            GAP_INDICATOR_CYCLE,       // Cycle through gap indicator modes (Off/Official/Live/Both)
-            RESET_BUTTON,              // Reset all profiles to defaults button (General tab)
-            RESET_CONFIRM_CHECKBOX,    // Confirmation checkbox for reset all
+            GAP_MODE_UP,               // Cycle gap mode forward (Off/Me/All)
+            GAP_MODE_DOWN,             // Cycle gap mode backward
+            GAP_INDICATOR_UP,          // Cycle gap indicator forward (Off/Official/Live/Both)
+            GAP_INDICATOR_DOWN,        // Cycle gap indicator backward
+            GAP_REFERENCE_UP,          // Cycle gap reference forward (Leader/Player)
+            GAP_REFERENCE_DOWN,        // Cycle gap reference backward
+            RESET_BUTTON,              // Unified reset button (General tab) - action depends on checkbox
             RESET_TAB_BUTTON,          // Reset current tab to defaults (footer)
-            RESET_PROFILE_BUTTON,      // Reset current profile to defaults (General tab)
+            COPY_TARGET_UP,            // Cycle copy target forward
+            COPY_TARGET_DOWN,          // Cycle copy target backward
+            COPY_BUTTON,               // Execute copy to selected target profile(s)
+            RESET_PROFILE_CHECKBOX,    // Radio-style checkbox for Reset Profile
+            RESET_ALL_CHECKBOX,        // Radio-style checkbox for Reset All Profiles
             HUD_TOGGLE,                // Toggle entire HUD visibility
             TITLE_TOGGLE,              // Toggle HUD title
-            BACKGROUND_TEXTURE_TOGGLE, // Toggle background texture
+            TEXTURE_VARIANT_UP,        // Cycle texture variant forward (Off, 1, 2, ...)
+            TEXTURE_VARIANT_DOWN,      // Cycle texture variant backward
             BACKGROUND_OPACITY_UP,     // Increase background opacity
             BACKGROUND_OPACITY_DOWN,   // Decrease background opacity
             SCALE_UP,                  // Increase scale
@@ -82,22 +93,32 @@ private:
             LAP_LOG_ROW_COUNT_DOWN,    // Decrease lap log row count (LapLogHud)
             MAP_ROTATION_TOGGLE,       // Toggle map rotation mode (MapHud)
             MAP_OUTLINE_TOGGLE,        // Toggle track outline (MapHud)
-            MAP_COLORIZE_CYCLE,        // Cycle rider color mode (MapHud)
+            MAP_COLORIZE_UP,           // Cycle rider color mode forward (MapHud)
+            MAP_COLORIZE_DOWN,         // Cycle rider color mode backward (MapHud)
             MAP_TRACK_WIDTH_UP,        // Increase track line width (MapHud)
             MAP_TRACK_WIDTH_DOWN,      // Decrease track line width (MapHud)
-            MAP_LABEL_MODE_CYCLE,      // Cycle label display mode (MapHud)
+            MAP_LABEL_MODE_UP,         // Cycle label mode forward (MapHud)
+            MAP_LABEL_MODE_DOWN,       // Cycle label mode backward (MapHud)
             MAP_RANGE_UP,              // Increase map range / decrease zoom (MapHud)
             MAP_RANGE_DOWN,            // Decrease map range / increase zoom (MapHud)
-            MAP_RIDER_SHAPE_CYCLE,     // Cycle rider shape (MapHud)
+            MAP_RIDER_SHAPE_UP,        // Cycle rider shape forward (MapHud)
+            MAP_RIDER_SHAPE_DOWN,      // Cycle rider shape backward (MapHud)
+            MAP_MARKER_SCALE_UP,       // Increase marker scale (MapHud)
+            MAP_MARKER_SCALE_DOWN,     // Decrease marker scale (MapHud)
             RADAR_RANGE_UP,            // Increase radar range (RadarHud)
             RADAR_RANGE_DOWN,          // Decrease radar range (RadarHud)
-            RADAR_COLORIZE_CYCLE,      // Cycle rider color mode (RadarHud)
+            RADAR_COLORIZE_UP,         // Cycle rider color mode forward (RadarHud)
+            RADAR_COLORIZE_DOWN,       // Cycle rider color mode backward (RadarHud)
             RADAR_PLAYER_ARROW_TOGGLE, // Toggle player's own arrow (RadarHud)
             RADAR_ALERT_DISTANCE_UP,   // Increase alert distance (RadarHud)
             RADAR_ALERT_DISTANCE_DOWN, // Decrease alert distance (RadarHud)
-            RADAR_LABEL_MODE_CYCLE,    // Cycle label display mode (RadarHud)
+            RADAR_LABEL_MODE_UP,       // Cycle label mode forward (RadarHud)
+            RADAR_LABEL_MODE_DOWN,     // Cycle label mode backward (RadarHud)
             RADAR_FADE_TOGGLE,         // Toggle fade when empty (RadarHud)
-            RADAR_RIDER_SHAPE_CYCLE,   // Cycle rider shape (RadarHud)
+            RADAR_RIDER_SHAPE_UP,      // Cycle rider shape forward (RadarHud)
+            RADAR_RIDER_SHAPE_DOWN,    // Cycle rider shape backward (RadarHud)
+            RADAR_MARKER_SCALE_UP,     // Increase marker scale (RadarHud)
+            RADAR_MARKER_SCALE_DOWN,   // Decrease marker scale (RadarHud)
             DISPLAY_MODE_UP,           // Cycle display mode forward (PerformanceHud)
             DISPLAY_MODE_DOWN,         // Cycle display mode backward (PerformanceHud)
             RECORDS_COUNT_UP,          // Increase records to show (RecordsHud)
@@ -112,6 +133,9 @@ private:
             TIMING_GAP_MODE_DOWN,      // Cycle gap column mode backward (TimingHud)
             TIMING_DURATION_UP,        // Increase timing display duration (TimingHud)
             TIMING_DURATION_DOWN,      // Decrease timing display duration (TimingHud)
+            TIMING_GAP_PB_TOGGLE,      // Toggle gap to PB comparison (TimingHud)
+            TIMING_GAP_IDEAL_TOGGLE,   // Toggle gap to ideal lap comparison (TimingHud)
+            TIMING_GAP_SESSION_TOGGLE, // Toggle gap to session best comparison (TimingHud)
             GAPBAR_FREEZE_UP,          // Increase freeze duration (GapBarHud)
             GAPBAR_FREEZE_DOWN,        // Decrease freeze duration (GapBarHud)
             GAPBAR_MARKER_TOGGLE,      // Toggle position markers (GapBarHud)
@@ -120,15 +144,17 @@ private:
             GAPBAR_RANGE_DOWN,         // Decrease gap range (GapBarHud)
             GAPBAR_WIDTH_UP,           // Increase bar width (GapBarHud)
             GAPBAR_WIDTH_DOWN,         // Decrease bar width (GapBarHud)
-            COLOR_CYCLE_PREV,          // Cycle color backward (General tab)
-            COLOR_CYCLE_NEXT,          // Cycle color forward (General tab)
+            COLOR_CYCLE_PREV,          // Cycle color backward (Appearance tab)
+            COLOR_CYCLE_NEXT,          // Cycle color forward (Appearance tab)
+            FONT_CATEGORY_PREV,        // Cycle font backward for category (Appearance tab)
+            FONT_CATEGORY_NEXT,        // Cycle font forward for category (Appearance tab)
             SPEED_UNIT_TOGGLE,         // Toggle speed unit (mph/km/h)
             FUEL_UNIT_TOGGLE,          // Toggle fuel unit (L/gal)
             GRID_SNAP_TOGGLE,          // Toggle grid snapping for HUD positioning
             UPDATE_CHECK_TOGGLE,       // Toggle automatic update checking
-            PROFILE_CYCLE,             // Cycle through profiles (Practice/Qualify/Race/Spectate)
+            PROFILE_CYCLE_DOWN,        // Cycle to previous profile (Practice/Qualify/Race/Spectate)
+            PROFILE_CYCLE_UP,          // Cycle to next profile
             AUTO_SWITCH_TOGGLE,        // Toggle auto-switch for profiles
-            APPLY_TO_ALL_PROFILES,     // Copy current profile settings to all other profiles
             WIDGETS_TOGGLE,            // Toggle all widgets visibility (master switch)
             TAB,                       // Select tab
             CLOSE_BUTTON,              // Close the settings menu
@@ -138,59 +164,89 @@ private:
             RUMBLE_CONTROLLER_DOWN,    // Cycle controller index down
             RUMBLE_BLEND_TOGGLE,       // Toggle blend mode (max vs additive)
             RUMBLE_CRASH_TOGGLE,       // Toggle disable on crash
-            RUMBLE_SUSP_MOTOR_DOWN,    // Cycle suspension motor backward
-            RUMBLE_SUSP_TOGGLE,        // Cycle suspension motor forward
-            RUMBLE_SUSP_MIN_UP,        // Increase suspension sensitivity
-            RUMBLE_SUSP_MIN_DOWN,      // Decrease suspension sensitivity
+            RUMBLE_SUSP_LIGHT_DOWN,    // Decrease suspension light motor strength
+            RUMBLE_SUSP_LIGHT_UP,      // Increase suspension light motor strength
+            RUMBLE_SUSP_HEAVY_DOWN,    // Decrease suspension heavy motor strength
+            RUMBLE_SUSP_HEAVY_UP,      // Increase suspension heavy motor strength
+            RUMBLE_SUSP_MIN_UP,        // Increase suspension min input
+            RUMBLE_SUSP_MIN_DOWN,      // Decrease suspension min input
             RUMBLE_SUSP_MAX_UP,        // Increase suspension max input
             RUMBLE_SUSP_MAX_DOWN,      // Decrease suspension max input
-            RUMBLE_SUSP_STRENGTH_UP,   // Increase suspension max strength
-            RUMBLE_SUSP_STRENGTH_DOWN, // Decrease suspension max strength
-            RUMBLE_WHEEL_MOTOR_DOWN,   // Cycle spin motor backward
-            RUMBLE_WHEEL_TOGGLE,       // Cycle spin motor forward
-            RUMBLE_WHEEL_MIN_UP,       // Increase spin sensitivity
-            RUMBLE_WHEEL_MIN_DOWN,     // Decrease spin sensitivity
+            RUMBLE_WHEEL_LIGHT_DOWN,   // Decrease spin light motor strength
+            RUMBLE_WHEEL_LIGHT_UP,     // Increase spin light motor strength
+            RUMBLE_WHEEL_HEAVY_DOWN,   // Decrease spin heavy motor strength
+            RUMBLE_WHEEL_HEAVY_UP,     // Increase spin heavy motor strength
+            RUMBLE_WHEEL_MIN_UP,       // Increase spin min input
+            RUMBLE_WHEEL_MIN_DOWN,     // Decrease spin min input
             RUMBLE_WHEEL_MAX_UP,       // Increase spin max input
             RUMBLE_WHEEL_MAX_DOWN,     // Decrease spin max input
-            RUMBLE_WHEEL_STRENGTH_UP,  // Increase spin max strength
-            RUMBLE_WHEEL_STRENGTH_DOWN, // Decrease spin max strength
-            RUMBLE_LOCKUP_MOTOR_DOWN,  // Cycle brake lockup motor backward
-            RUMBLE_LOCKUP_TOGGLE,      // Cycle brake lockup motor forward
-            RUMBLE_LOCKUP_THRESH_UP,   // Increase brake lockup sensitivity
-            RUMBLE_LOCKUP_THRESH_DOWN, // Decrease brake lockup sensitivity
-            RUMBLE_LOCKUP_STRENGTH_UP, // Increase brake lockup max strength
-            RUMBLE_LOCKUP_STRENGTH_DOWN, // Decrease brake lockup max strength
-            RUMBLE_WHEELIE_MOTOR_DOWN,  // Cycle wheelie motor backward
-            RUMBLE_WHEELIE_TOGGLE,      // Cycle wheelie motor forward
-            RUMBLE_WHEELIE_THRESH_UP,   // Increase wheelie sensitivity
-            RUMBLE_WHEELIE_THRESH_DOWN, // Decrease wheelie sensitivity
-            RUMBLE_WHEELIE_STRENGTH_UP, // Increase wheelie max strength
-            RUMBLE_WHEELIE_STRENGTH_DOWN, // Decrease wheelie max strength
-            RUMBLE_RPM_MOTOR_DOWN,     // Cycle RPM motor backward
-            RUMBLE_RPM_TOGGLE,         // Cycle RPM motor forward
-            RUMBLE_RPM_THRESH_UP,      // Increase RPM sensitivity
-            RUMBLE_RPM_THRESH_DOWN,    // Decrease RPM sensitivity
-            RUMBLE_RPM_STRENGTH_UP,    // Increase RPM max strength
-            RUMBLE_RPM_STRENGTH_DOWN,  // Decrease RPM max strength
-            RUMBLE_SLIDE_MOTOR_DOWN,   // Cycle slide motor backward
-            RUMBLE_SLIDE_TOGGLE,       // Cycle slide motor forward
-            RUMBLE_SLIDE_THRESH_UP,    // Increase slide sensitivity
-            RUMBLE_SLIDE_THRESH_DOWN,  // Decrease slide sensitivity
-            RUMBLE_SLIDE_STRENGTH_UP,  // Increase slide max strength
-            RUMBLE_SLIDE_STRENGTH_DOWN, // Decrease slide max strength
-            RUMBLE_SURFACE_MOTOR_DOWN, // Cycle surface motor backward
-            RUMBLE_SURFACE_TOGGLE,     // Cycle surface motor forward
-            RUMBLE_SURFACE_THRESH_UP,  // Increase surface sensitivity
-            RUMBLE_SURFACE_THRESH_DOWN, // Decrease surface sensitivity
-            RUMBLE_SURFACE_STRENGTH_UP, // Increase surface max strength
-            RUMBLE_SURFACE_STRENGTH_DOWN, // Decrease surface max strength
-            RUMBLE_STEER_MOTOR_DOWN,   // Cycle steer motor backward
-            RUMBLE_STEER_TOGGLE,       // Cycle steer motor forward
-            RUMBLE_STEER_THRESH_UP,    // Increase steer sensitivity
-            RUMBLE_STEER_THRESH_DOWN,  // Decrease steer sensitivity
-            RUMBLE_STEER_STRENGTH_UP,  // Increase steer max strength
-            RUMBLE_STEER_STRENGTH_DOWN, // Decrease steer max strength
-            RUMBLE_HUD_TOGGLE          // Toggle RumbleHud visibility
+            RUMBLE_LOCKUP_LIGHT_DOWN,  // Decrease brake lockup light motor strength
+            RUMBLE_LOCKUP_LIGHT_UP,    // Increase brake lockup light motor strength
+            RUMBLE_LOCKUP_HEAVY_DOWN,  // Decrease brake lockup heavy motor strength
+            RUMBLE_LOCKUP_HEAVY_UP,    // Increase brake lockup heavy motor strength
+            RUMBLE_LOCKUP_MIN_UP,      // Increase brake lockup min input
+            RUMBLE_LOCKUP_MIN_DOWN,    // Decrease brake lockup min input
+            RUMBLE_LOCKUP_MAX_UP,      // Increase brake lockup max input
+            RUMBLE_LOCKUP_MAX_DOWN,    // Decrease brake lockup max input
+            RUMBLE_WHEELIE_LIGHT_DOWN, // Decrease wheelie light motor strength
+            RUMBLE_WHEELIE_LIGHT_UP,   // Increase wheelie light motor strength
+            RUMBLE_WHEELIE_HEAVY_DOWN, // Decrease wheelie heavy motor strength
+            RUMBLE_WHEELIE_HEAVY_UP,   // Increase wheelie heavy motor strength
+            RUMBLE_WHEELIE_MIN_UP,     // Increase wheelie min input
+            RUMBLE_WHEELIE_MIN_DOWN,   // Decrease wheelie min input
+            RUMBLE_WHEELIE_MAX_UP,     // Increase wheelie max input
+            RUMBLE_WHEELIE_MAX_DOWN,   // Decrease wheelie max input
+            RUMBLE_RPM_LIGHT_DOWN,     // Decrease RPM light motor strength
+            RUMBLE_RPM_LIGHT_UP,       // Increase RPM light motor strength
+            RUMBLE_RPM_HEAVY_DOWN,     // Decrease RPM heavy motor strength
+            RUMBLE_RPM_HEAVY_UP,       // Increase RPM heavy motor strength
+            RUMBLE_RPM_MIN_UP,         // Increase RPM min input
+            RUMBLE_RPM_MIN_DOWN,       // Decrease RPM min input
+            RUMBLE_RPM_MAX_UP,         // Increase RPM max input
+            RUMBLE_RPM_MAX_DOWN,       // Decrease RPM max input
+            RUMBLE_SLIDE_LIGHT_DOWN,   // Decrease slide light motor strength
+            RUMBLE_SLIDE_LIGHT_UP,     // Increase slide light motor strength
+            RUMBLE_SLIDE_HEAVY_DOWN,   // Decrease slide heavy motor strength
+            RUMBLE_SLIDE_HEAVY_UP,     // Increase slide heavy motor strength
+            RUMBLE_SLIDE_MIN_UP,       // Increase slide min input
+            RUMBLE_SLIDE_MIN_DOWN,     // Decrease slide min input
+            RUMBLE_SLIDE_MAX_UP,       // Increase slide max input
+            RUMBLE_SLIDE_MAX_DOWN,     // Decrease slide max input
+            RUMBLE_SURFACE_LIGHT_DOWN, // Decrease surface light motor strength
+            RUMBLE_SURFACE_LIGHT_UP,   // Increase surface light motor strength
+            RUMBLE_SURFACE_HEAVY_DOWN, // Decrease surface heavy motor strength
+            RUMBLE_SURFACE_HEAVY_UP,   // Increase surface heavy motor strength
+            RUMBLE_SURFACE_MIN_UP,     // Increase surface min input
+            RUMBLE_SURFACE_MIN_DOWN,   // Decrease surface min input
+            RUMBLE_SURFACE_MAX_UP,     // Increase surface max input
+            RUMBLE_SURFACE_MAX_DOWN,   // Decrease surface max input
+            RUMBLE_STEER_LIGHT_DOWN,   // Decrease steer light motor strength
+            RUMBLE_STEER_LIGHT_UP,     // Increase steer light motor strength
+            RUMBLE_STEER_HEAVY_DOWN,   // Decrease steer heavy motor strength
+            RUMBLE_STEER_HEAVY_UP,     // Increase steer heavy motor strength
+            RUMBLE_STEER_MIN_UP,       // Increase steer min input
+            RUMBLE_STEER_MIN_DOWN,     // Decrease steer min input
+            RUMBLE_STEER_MAX_UP,       // Increase steer max input
+            RUMBLE_STEER_MAX_DOWN,     // Decrease steer max input
+            RUMBLE_HUD_TOGGLE,         // Toggle RumbleHud visibility
+            // Hotkey settings
+            HOTKEY_KEYBOARD_BIND,      // Click to capture keyboard binding
+            HOTKEY_CONTROLLER_BIND,    // Click to capture controller binding
+            HOTKEY_KEYBOARD_CLEAR,     // Clear keyboard binding
+            HOTKEY_CONTROLLER_CLEAR,   // Clear controller binding
+            // Tracked Riders settings
+            RIDER_ADD,                 // Add rider to tracking list
+            RIDER_REMOVE,              // Remove rider from tracking list
+            RIDER_COLOR_PREV,          // Cycle rider color backward
+            RIDER_COLOR_NEXT,          // Cycle rider color forward
+            RIDER_SHAPE_PREV,          // Cycle rider shape backward
+            RIDER_SHAPE_NEXT,          // Cycle rider shape forward
+            // Pagination for Riders tab
+            SERVER_PAGE_PREV,          // Previous page of server players
+            SERVER_PAGE_NEXT,          // Next page of server players
+            TRACKED_PAGE_PREV,         // Previous page of tracked riders
+            TRACKED_PAGE_NEXT,         // Next page of tracked riders
+            VERSION_CLICK              // Easter egg trigger (version string click)
         } type;
 
         // Type-safe variant instead of unsafe union (C++17)
@@ -200,8 +256,12 @@ private:
             uint32_t*,                                   // For CHECKBOX (targetBitfield)
             StandingsHud::GapMode*,                      // For GAP_MODE_CYCLE
             StandingsHud::GapIndicatorMode*,             // For GAP_INDICATOR_CYCLE
+            StandingsHud::GapReferenceMode*,             // For GAP_REFERENCE_UP/DOWN
             uint8_t*,                                    // For DISPLAY_MODE_UP/DOWN
-            ColorSlot                                    // For COLOR_CYCLE_PREV/NEXT
+            ColorSlot,                                   // For COLOR_CYCLE_PREV/NEXT
+            FontCategory,                                // For FONT_CATEGORY_PREV/NEXT
+            HotkeyAction,                                // For HOTKEY_* controls
+            std::string                                  // For RIDER_* controls (rider name)
         >;
         TargetPointer targetPointer;
 
@@ -225,18 +285,25 @@ private:
               targetPointer(bitfield), flagBit(_flagBit), isRequired(_isRequired),
               targetHud(_targetHud), tabIndex(0) {}
 
-        // Constructor for GAP_MODE_CYCLE regions
+        // Constructor for GAP_MODE_UP/DOWN regions
         ClickRegion(float _x, float _y, float _width, float _height, Type _type,
                    StandingsHud::GapMode* gapMode, BaseHud* _targetHud)
             : x(_x), y(_y), width(_width), height(_height), type(_type),
               targetPointer(gapMode), flagBit(0), isRequired(false),
               targetHud(_targetHud), tabIndex(0) {}
 
-        // Constructor for GAP_INDICATOR_CYCLE regions
+        // Constructor for GAP_INDICATOR_UP/DOWN regions
         ClickRegion(float _x, float _y, float _width, float _height, Type _type,
                    StandingsHud::GapIndicatorMode* gapIndicatorMode, BaseHud* _targetHud)
             : x(_x), y(_y), width(_width), height(_height), type(_type),
               targetPointer(gapIndicatorMode), flagBit(0), isRequired(false),
+              targetHud(_targetHud), tabIndex(0) {}
+
+        // Constructor for GAP_REFERENCE_UP/DOWN regions
+        ClickRegion(float _x, float _y, float _width, float _height, Type _type,
+                   StandingsHud::GapReferenceMode* gapReferenceMode, BaseHud* _targetHud)
+            : x(_x), y(_y), width(_width), height(_height), type(_type),
+              targetPointer(gapReferenceMode), flagBit(0), isRequired(false),
               targetHud(_targetHud), tabIndex(0) {}
 
         // Constructor for DISPLAY_MODE regions
@@ -253,6 +320,27 @@ private:
               targetPointer(colorSlot), flagBit(0), isRequired(false),
               targetHud(nullptr), tabIndex(0) {}
 
+        // Constructor for FONT_CATEGORY regions
+        ClickRegion(float _x, float _y, float _width, float _height, Type _type,
+                   FontCategory fontCategory)
+            : x(_x), y(_y), width(_width), height(_height), type(_type),
+              targetPointer(fontCategory), flagBit(0), isRequired(false),
+              targetHud(nullptr), tabIndex(0) {}
+
+        // Constructor for HOTKEY_* regions
+        ClickRegion(float _x, float _y, float _width, float _height, Type _type,
+                   HotkeyAction hotkeyAction)
+            : x(_x), y(_y), width(_width), height(_height), type(_type),
+              targetPointer(hotkeyAction), flagBit(0), isRequired(false),
+              targetHud(nullptr), tabIndex(0) {}
+
+        // Constructor for RIDER_* regions
+        ClickRegion(float _x, float _y, float _width, float _height, Type _type,
+                   const std::string& riderName)
+            : x(_x), y(_y), width(_width), height(_height), type(_type),
+              targetPointer(riderName), flagBit(0), isRequired(false),
+              targetHud(nullptr), tabIndex(0) {}
+
         // Default constructor
         ClickRegion() : x(0), y(0), width(0), height(0), type(CLOSE_BUTTON),
                        targetPointer(std::monostate{}), flagBit(0), isRequired(false),
@@ -261,33 +349,36 @@ private:
 
     void rebuildRenderData() override;
     void handleClick(float mouseX, float mouseY);
+    void handleRightClick(float mouseX, float mouseY);  // Right-click for shape cycling
     void resetToDefaults();        // Reset all profiles to defaults
     void resetCurrentTab();        // Reset current tab for current profile
     void resetCurrentProfile();    // Reset all HUDs for current profile
 
     // Click handlers per type
     void handleCheckboxClick(const ClickRegion& region);
-    void handleGapModeClick(const ClickRegion& region);
-    void handleGapIndicatorClick(const ClickRegion& region);
+    void handleGapModeClick(const ClickRegion& region, bool forward);
+    void handleGapIndicatorClick(const ClickRegion& region, bool forward);
+    void handleGapReferenceClick(const ClickRegion& region, bool forward);
     void handleHudToggleClick(const ClickRegion& region);
     void handleTitleToggleClick(const ClickRegion& region);
-    void handleBackgroundTextureToggleClick(const ClickRegion& region);
     void handleOpacityClick(const ClickRegion& region, bool increase);
     void handleScaleClick(const ClickRegion& region, bool increase);
     void handleRowCountClick(const ClickRegion& region, bool increase);
     void handleLapLogRowCountClick(const ClickRegion& region, bool increase);
     void handleMapRotationClick(const ClickRegion& region);
     void handleMapOutlineClick(const ClickRegion& region);
-    void handleMapColorizeClick(const ClickRegion& region);
+    void handleMapColorizeClick(const ClickRegion& region, bool forward);
     void handleMapTrackWidthClick(const ClickRegion& region, bool increase);
-    void handleMapLabelModeClick(const ClickRegion& region);
+    void handleMapLabelModeClick(const ClickRegion& region, bool forward);
     void handleMapRangeClick(const ClickRegion& region, bool increase);
-    void handleMapRiderShapeClick(const ClickRegion& region);
+    void handleMapRiderShapeClick(const ClickRegion& region, bool forward);
+    void handleMapMarkerScaleClick(const ClickRegion& region, bool increase);
     void handleRadarRangeClick(const ClickRegion& region, bool increase);
-    void handleRadarRiderShapeClick(const ClickRegion& region);
-    void handleRadarColorizeClick(const ClickRegion& region);
+    void handleRadarRiderShapeClick(const ClickRegion& region, bool forward);
+    void handleRadarMarkerScaleClick(const ClickRegion& region, bool increase);
+    void handleRadarColorizeClick(const ClickRegion& region, bool forward);
     void handleRadarAlertDistanceClick(const ClickRegion& region, bool increase);
-    void handleRadarLabelModeClick(const ClickRegion& region);
+    void handleRadarLabelModeClick(const ClickRegion& region, bool forward);
     void handleDisplayModeClick(const ClickRegion& region, bool increase);
     void handlePitboardShowModeClick(const ClickRegion& region, bool increase);
     void handleColorCycleClick(const ClickRegion& region, bool forward);
@@ -307,7 +398,7 @@ private:
 
     // Settings panel layout constants (character widths for monospace text)
     static constexpr int SETTINGS_PANEL_WIDTH = 75;     // Settings panel total width (increased for vertical tabs)
-    static constexpr int SETTINGS_TAB_WIDTH = 16;       // Width of vertical tab column (fits "[X] Session Best")
+    static constexpr int SETTINGS_TAB_WIDTH = 16;       // Width of vertical tab column (fits "[X] Ideal Lap")
     static constexpr int SETTINGS_LEFT_COLUMN = 2;      // Left column offset within content area
     static constexpr int SETTINGS_RIGHT_COLUMN = 28;    // Right column offset within content area
 
@@ -320,13 +411,10 @@ private:
     static constexpr int CHECKBOX_CLICKABLE = 40;       // Clickable area for data checkboxes
     static constexpr int SCALE_LABEL_WIDTH = 14;        // "Scale: 0.00" width
     static constexpr int SCALE_BUTTON_GAP = 4;          // Gap between scale label and buttons
-    static constexpr int RESET_ALL_BUTTON_WIDTH = 20;    // "[Reset All Profiles]" width
     static constexpr int RESET_TAB_BUTTON_WIDTH = 12;   // "[Reset Tab]" width
-    static constexpr int RESET_PROFILE_BUTTON_WIDTH = 16; // "[Reset Profile]" width
-    static constexpr int COPY_TO_ALL_BUTTON_WIDTH = 13; // "[Copy to All]" width
 
     // HUD references (non-owning pointers)
-    SessionBestHud* m_sessionBest;
+    IdealLapHud* m_idealLap;
     LapLogHud* m_lapLog;
     StandingsHud* m_standings;
     PerformanceHud* m_performance;
@@ -350,12 +438,16 @@ private:
     RecordsHud* m_records;
     FuelWidget* m_fuel;
     PointerWidget* m_pointer;
+    RumbleHud* m_rumble;
 
     // Visibility flag
     bool m_bVisible;
 
-    // Reset confirmation checkbox state
-    bool m_resetConfirmChecked;
+    // Profile copy target: -1 = none, 0-3 = specific ProfileType, 4 = all profiles
+    int8_t m_copyTargetProfile;
+    // Reset radio button states (mutually exclusive)
+    bool m_resetProfileConfirmed;
+    bool m_resetAllConfirmed;
 
     // Update checker mock state (for visual design testing)
     bool m_checkForUpdates;  // Setting: check for updates on load
@@ -369,6 +461,12 @@ private:
     UpdateStatus m_updateStatus;
     std::string m_latestVersion;  // Latest version from GitHub (when update available)
 
+    // Easter egg click detection (version string)
+    static constexpr int EASTER_EGG_CLICKS = 5;
+    static constexpr long long EASTER_EGG_TIMEOUT_US = 2000000;  // 2 seconds
+    int m_versionClickCount = 0;
+    long long m_lastVersionClickTimeUs = 0;
+
     // Window bounds cache for detecting resize
     // Cache actual pixel dimensions for resize detection
     int m_cachedWindowWidth;
@@ -376,12 +474,12 @@ private:
 
     // Tab system
     enum Tab {
-        TAB_GENERAL = 0,       // General settings (colors)
+        TAB_GENERAL = 0,       // General settings (preferences, profiles)
         TAB_STANDINGS = 1,     // F1
         TAB_MAP = 2,           // F2
         TAB_RADAR = 3,         // F3
         TAB_LAP_LOG = 4,       // F4
-        TAB_SESSION_BEST = 5,  // F5
+        TAB_IDEAL_LAP = 5,     // F5
         TAB_TELEMETRY = 6,     // F6
         TAB_INPUT = 7,         // F7
         TAB_RECORDS = 8,       // F8 - Lap Records (online)
@@ -390,13 +488,36 @@ private:
         TAB_GAP_BAR = 11,      // Gap Bar HUD (lap timing comparison)
         TAB_PERFORMANCE = 12,
         TAB_WIDGETS = 13,
-        TAB_RUMBLE = 14,
-        TAB_COUNT = 15
+        TAB_RIDERS = 14,       // Tracked riders configuration
+        TAB_RUMBLE = 15,
+        TAB_APPEARANCE = 16,   // Appearance configuration (fonts, colors)
+        TAB_HOTKEYS = 17,      // Keyboard/controller hotkey bindings
+        TAB_COUNT = 18
     };
     int m_activeTab;
 
     // Hover tracking for button backgrounds
     int m_hoveredRegionIndex;  // -1 = none hovered
+    int m_hoveredHotkeyRow;    // -1 = none, tracks which hotkey row is hovered
+    enum class HotkeyColumn { NONE, KEYBOARD, CONTROLLER };
+    HotkeyColumn m_hoveredHotkeyColumn;  // Which column is hovered
+    float m_hotkeyContentStartY;  // Y position where hotkey rows start (set during rebuild)
+    float m_hotkeyRowHeight;      // Row height for hotkey tab (set during rebuild)
+    float m_hotkeyKeyboardX;      // X position of keyboard column (set during rebuild)
+    float m_hotkeyControllerX;    // X position of controller column (set during rebuild)
+    float m_hotkeyFieldCharWidth; // Character width for field calculations (set during rebuild)
+
+    // Tracked Riders tab hover tracking
+    int m_hoveredTrackedRiderIndex;    // -1 = none, tracks which tracked rider cell is hovered
+    float m_trackedRidersStartY;       // Y position where tracked riders section starts
+    float m_trackedRidersCellHeight;   // Height of each tracked rider cell
+    float m_trackedRidersCellWidth;    // Width of each tracked rider cell
+    float m_trackedRidersStartX;       // X position where tracked riders section starts
+    int m_trackedRidersPerRow;         // Number of tracked riders per row
+
+    // Pagination for Riders tab
+    int m_serverPlayersPage;           // Current page of server players (0-based)
+    int m_trackedRidersPage;           // Current page of tracked riders (0-based)
 
     std::vector<ClickRegion> m_clickRegions;
 };

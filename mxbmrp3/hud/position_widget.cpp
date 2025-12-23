@@ -16,8 +16,18 @@ PositionWidget::PositionWidget()
     : m_cachedPosition(-1)
     , m_cachedTotalEntries(-1)
 {
-    initializeWidget("PositionWidget", 2);  // Two strings: label (optional), position value
-    setPosition(-0.462f, -0.0444f);
+    // One-time setup
+    DEBUG_INFO("PositionWidget created");
+    setDraggable(true);
+    m_strings.reserve(2);  // label (optional), position value
+
+    // Set texture base name for dynamic texture discovery
+    setTextureBaseName("position_widget");
+
+    // Set all configurable defaults
+    resetToDefaults();
+
+    rebuildRenderData();
 }
 
 bool PositionWidget::handlesDataType(DataChangeType dataType) const {
@@ -65,8 +75,8 @@ void PositionWidget::rebuildLayout() {
     // Fast path - only update positions (not colors/opacity)
     auto dim = getScaledDimensions();
 
-    float startX = WidgetPositions::WIDGET_STACK_X;
-    float startY = WidgetPositions::POSITION_Y;
+    float startX = 0.0f;
+    float startY = 0.0f;
 
     // Calculate dimensions using base helper
     float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::STANDARD_WIDTH);
@@ -111,8 +121,8 @@ void PositionWidget::rebuildRenderData() {
     const PluginData& pluginData = PluginData::getInstance();
     int totalEntries = static_cast<int>(pluginData.getClassificationOrder().size());
 
-    float startX = WidgetPositions::WIDGET_STACK_X;
-    float startY = WidgetPositions::POSITION_Y;
+    float startX = 0.0f;
+    float startY = 0.0f;
 
     // Calculate dimensions using base helper
     float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::STANDARD_WIDTH);
@@ -134,7 +144,7 @@ void PositionWidget::rebuildRenderData() {
 
     // Label (optional, controlled by title toggle)
     if (m_bShowTitle) {
-        addString("Position", contentStartX, currentY, Justify::LEFT, Fonts::ENTER_SANSMAN, textColor, dim.fontSize);
+        addString("Position", contentStartX, currentY, Justify::LEFT, Fonts::getTitle(), textColor, dim.fontSize);
         currentY += labelHeight;
     }
 
@@ -148,7 +158,7 @@ void PositionWidget::rebuildRenderData() {
 
     // Add position value (extra large font - spans 2 lines)
     addString(positionValueBuffer, contentStartX, currentY, Justify::LEFT,
-        Fonts::ENTER_SANSMAN, textColor, dim.fontSizeExtraLarge);
+        Fonts::getTitle(), textColor, dim.fontSizeExtraLarge);
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
@@ -157,9 +167,9 @@ void PositionWidget::rebuildRenderData() {
 void PositionWidget::resetToDefaults() {
     m_bVisible = true;
     m_bShowTitle = true;
-    m_bShowBackgroundTexture = false;  // No texture by default
+    setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.1f;
     m_fScale = 1.0f;
-    setPosition(-0.462f, -0.0444f);
+    setPosition(0.0055f, 0.0111f);
     setDataDirty();
 }

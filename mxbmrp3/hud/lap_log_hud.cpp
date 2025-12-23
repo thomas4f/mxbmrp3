@@ -34,23 +34,24 @@ LapLogHud::ColumnPositions::ColumnPositions(float contentStartX, float scale, ui
 LapLogHud::LapLogHud()
     : m_columns(START_X + Padding::HUD_HORIZONTAL, m_fScale, m_enabledColumns)
 {
+    // One-time setup
     DEBUG_INFO("LapLogHud created");
     setDraggable(true);
-
-    // Set defaults to match user configuration
-    m_bShowTitle = true;
-    m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
-    setPosition(-0.0055f, -0.0111f);
-
-    // Pre-allocate vectors
     m_quads.reserve(1);
     m_strings.reserve(1 + m_maxDisplayLaps * NUM_COLUMNS);  // Title + data rows (NUM_COLUMNS strings per row)
+
+    // Set texture base name for dynamic texture discovery
+    setTextureBaseName("lap_log_hud");
+
+    // Set all configurable defaults
+    resetToDefaults();
 
     rebuildRenderData();
 }
 
 bool LapLogHud::handlesDataType(DataChangeType dataType) const {
     return (dataType == DataChangeType::LapLog ||
+            dataType == DataChangeType::IdealLap ||  // For live sector updates (current lap splits)
             dataType == DataChangeType::SpectateTarget);
 }
 
@@ -65,6 +66,9 @@ int LapLogHud::getBackgroundWidthChars() const {
 }
 
 void LapLogHud::update() {
+    // Check if we need frequent updates for ticking timer (uses BaseHud helper)
+    checkFrequentUpdates();
+
     // Check if data changed or layout dirty
     if (isDataDirty()) {
         // Data changed - full rebuild needed (also rebuilds layout)
@@ -77,6 +81,26 @@ void LapLogHud::update() {
         rebuildLayout();
         clearLayoutDirty();
     }
+}
+
+bool LapLogHud::needsFrequentUpdates() const {
+    // Need frequent updates when live timing is enabled and timer is valid
+    if (!m_showLiveTiming) return false;
+    if (!m_bVisible) return false;
+
+    const PluginData& data = PluginData::getInstance();
+    if (!data.isLapTimerValid()) return false;
+    if (data.isDisplayRiderFinished()) return false;  // Timer stopped after finish
+
+    return true;
+}
+
+int LapLogHud::getCurrentActiveSector() const {
+    const PluginData& data = PluginData::getInstance();
+    if (!data.isLapTimerValid()) return -1;
+    if (data.isDisplayRiderFinished()) return -1;  // No active sector after finish
+
+    return data.getLapTimerCurrentSector();
 }
 
 void LapLogHud::rebuildLayout() {
@@ -154,18 +178,30 @@ void LapLogHud::rebuildRenderData() {
     // Get display rider data (player or spectated rider)
     const PluginData& data = PluginData::getInstance();
 
-    const std::vector<LapLogEntry>* lapLog = data.getLapLog();
+    const std::deque<LapLogEntry>* lapLog = data.getLapLog();
+    const CurrentLapData* currentLap = data.getCurrentLapData();
 
     // Apply scale to all dimensions
     auto dim = getScaledDimensions();
 
-    // Build display list: best lap first (if not in recent), then recent laps oldest to newest
-    // This ensures the best lap is always visible at the top and HUD grows downward
+    // Check if we should show a live "current lap in progress" row
+    // Don't show live timing if rider has finished (timer is meaningless after checkered flag)
+    bool showCurrentLapRow = m_showLiveTiming && data.isLapTimerValid() && !data.isDisplayRiderFinished();
+
+    // Build display list: current lap first (if live), then best lap (if not in recent), then recent laps
+    // This ensures the current lap is always visible at the top and HUD grows downward
     struct DisplayEntry {
-        int historyIndex;  // Index into lapLog vector (-3 for best lap, -2 for placeholder)
+        int historyIndex;  // Index into lapLog vector (-4 for current lap, -3 for best lap, -2 for placeholder)
         DisplayEntry(int idx) : historyIndex(idx) {}
     };
     std::vector<DisplayEntry> displayList;
+
+    // Reserve first row for current lap in progress (if enabled and valid)
+    int maxRecentLaps = m_maxDisplayLaps;
+    if (showCurrentLapRow) {
+        displayList.push_back(DisplayEntry(-4));  // -4 = current lap in progress
+        maxRecentLaps = m_maxDisplayLaps - 1;  // Leave room for current lap
+    }
 
     // Get the best lap entry (stored separately)
     const LapLogEntry* bestLapEntry = data.getBestLapEntry();
@@ -173,7 +209,7 @@ void LapLogHud::rebuildRenderData() {
     // Check if best lap is in the recent history (first N laps)
     bool bestLapInRecent = false;
     if (bestLapEntry && lapLog) {
-        for (int i = 0; i < m_maxDisplayLaps && i < static_cast<int>(lapLog->size()); i++) {
+        for (int i = 0; i < maxRecentLaps && i < static_cast<int>(lapLog->size()); i++) {
             if ((*lapLog)[i].lapNum == bestLapEntry->lapNum) {
                 bestLapInRecent = true;
                 break;
@@ -181,11 +217,10 @@ void LapLogHud::rebuildRenderData() {
         }
     }
 
-    // If best lap is not in the recent window, add it first
-    int maxRecentLaps = m_maxDisplayLaps;
+    // If best lap is not in the recent window, add it
     if (bestLapEntry && !bestLapInRecent) {
         displayList.push_back(DisplayEntry(-3));  // -3 = use bestLapEntry
-        maxRecentLaps = m_maxDisplayLaps - 1;  // Leave room for best lap
+        maxRecentLaps = maxRecentLaps - 1;  // Leave room for best lap
     }
 
     // Add recent laps in reverse order (oldest to newest, so HUD grows downward)
@@ -226,12 +261,12 @@ void LapLogHud::rebuildRenderData() {
     // Recalculate column positions for current scale
     m_columns = ColumnPositions(contentStartX, m_fScale, m_enabledColumns);
 
-    // Get best sector times from cached session data (performance optimization)
+    // Get best sector times from cached ideal lap data (performance optimization)
     // Previously recalculated from all laps on every rebuild - now use cached values
-    const SessionBestData* sessionBest = data.getSessionBestData();
-    int bestSector1 = sessionBest ? sessionBest->bestSector1 : -1;
-    int bestSector2 = sessionBest ? sessionBest->bestSector2 : -1;
-    int bestSector3 = sessionBest ? sessionBest->bestSector3 : -1;
+    const IdealLapData* idealLapData = data.getIdealLapData();
+    int bestSector1 = idealLapData ? idealLapData->bestSector1 : -1;
+    int bestSector2 = idealLapData ? idealLapData->bestSector2 : -1;
+    int bestSector3 = idealLapData ? idealLapData->bestSector3 : -1;
 
     // Best lap time: use the separately-stored best lap entry if available
     int bestLapTime = (bestLapEntry && bestLapEntry->isComplete) ? bestLapEntry->lapTime : -1;
@@ -241,10 +276,10 @@ void LapLogHud::rebuildRenderData() {
 
     // Render title at TOP (if shown)
     addTitleString("Lap Log", contentStartX, currentY, Justify::LEFT,
-        Fonts::ENTER_SANSMAN, colors.getPrimary(), dim.fontSizeLarge);
+        Fonts::getTitle(), colors.getPrimary(), dim.fontSizeLarge);
     currentY += titleHeight;
 
-    // Render data rows from top to bottom (best lap first, then oldest to newest)
+    // Render data rows from top to bottom (current lap, best lap, then oldest to newest)
     for (int displayIdx = 0; displayIdx < static_cast<int>(displayList.size()); displayIdx++) {
         const DisplayEntry& displayEntry = displayList[displayIdx];
 
@@ -253,6 +288,97 @@ void LapLogHud::rebuildRenderData() {
         char s2Str[16];
         char s3Str[16];
         char timeStr[16];
+
+        // Handle current lap in progress (live timing row)
+        if (displayEntry.historyIndex == -4) {
+            // Current lap in progress - show live timing
+            int currentLapNum = data.getLapTimerCurrentLap();
+            int activeSector = getCurrentActiveSector();
+
+            // Lap number (1-based display)
+            snprintf(lapStr, sizeof(lapStr), "L%d", currentLapNum + 1);
+
+            // Get official split times from currentLap data (if available)
+            int officialS1 = (currentLap && currentLap->split1 > 0) ? currentLap->split1 : -1;
+            int officialS2 = -1;
+            if (currentLap && currentLap->split2 > 0 && currentLap->split1 > 0) {
+                officialS2 = currentLap->split2 - currentLap->split1;
+            }
+
+            // Format S1: official time if crossed, else live elapsed if in S1
+            if (officialS1 > 0) {
+                PluginUtils::formatLapTime(officialS1, s1Str, sizeof(s1Str));
+            } else if (activeSector == 0) {
+                int elapsed = data.getElapsedSectorTime(0);
+                if (elapsed > 0) {
+                    PluginUtils::formatLapTime(elapsed, s1Str, sizeof(s1Str));
+                } else {
+                    strcpy_s(s1Str, sizeof(s1Str), Placeholders::GENERIC);
+                }
+            } else {
+                strcpy_s(s1Str, sizeof(s1Str), Placeholders::GENERIC);
+            }
+
+            // Format S2: official time if crossed, else live elapsed if in S2
+            if (officialS2 > 0) {
+                PluginUtils::formatLapTime(officialS2, s2Str, sizeof(s2Str));
+            } else if (activeSector == 1) {
+                int elapsed = data.getElapsedSectorTime(1);
+                if (elapsed > 0) {
+                    PluginUtils::formatLapTime(elapsed, s2Str, sizeof(s2Str));
+                } else {
+                    strcpy_s(s2Str, sizeof(s2Str), Placeholders::GENERIC);
+                }
+            } else {
+                strcpy_s(s2Str, sizeof(s2Str), Placeholders::GENERIC);
+            }
+
+            // Format S3: live elapsed if in S3, else placeholder
+            if (activeSector == 2) {
+                int elapsed = data.getElapsedSectorTime(2);
+                if (elapsed > 0) {
+                    PluginUtils::formatLapTime(elapsed, s3Str, sizeof(s3Str));
+                } else {
+                    strcpy_s(s3Str, sizeof(s3Str), Placeholders::GENERIC);
+                }
+            } else {
+                strcpy_s(s3Str, sizeof(s3Str), Placeholders::GENERIC);
+            }
+
+            // Format lap time: live elapsed time
+            int elapsedLapTime = data.getElapsedLapTime();
+            if (elapsedLapTime > 0) {
+                PluginUtils::formatLapTime(elapsedLapTime, timeStr, sizeof(timeStr));
+            } else {
+                strcpy_s(timeStr, sizeof(timeStr), Placeholders::LAP_TIME);
+            }
+
+            // Colors for live timing: use muted color for ticking values, primary for official
+            unsigned long colorLap = colors.getSecondary();
+            unsigned long colorS1 = (officialS1 > 0) ? colors.getPrimary() : colors.getMuted();
+            unsigned long colorS2 = (officialS2 > 0) ? colors.getPrimary() : colors.getMuted();
+            unsigned long colorS3 = colors.getMuted();  // S3 is always in progress or placeholder
+
+            // Color lap time based on live gap (green = on pace or ahead, red = behind PB)
+            unsigned long colorTime = colors.getMuted();  // Default when no valid gap
+            if (data.hasValidLiveGap()) {
+                int liveGap = data.getLiveGap();
+                if (liveGap <= 0) {
+                    colorTime = colors.getPositive();  // On pace or ahead (green)
+                } else {
+                    colorTime = colors.getNegative();  // Behind PB (red)
+                }
+            }
+
+            addString((m_enabledColumns & COL_LAP) ? lapStr : "", m_columns.lap, currentY, Justify::LEFT, Fonts::getNormal(), colorLap, dim.fontSize);
+            addString((m_enabledColumns & COL_S1) ? s1Str : "", m_columns.s1, currentY, Justify::LEFT, Fonts::getNormal(), colorS1, dim.fontSize);
+            addString((m_enabledColumns & COL_S2) ? s2Str : "", m_columns.s2, currentY, Justify::LEFT, Fonts::getNormal(), colorS2, dim.fontSize);
+            addString((m_enabledColumns & COL_S3) ? s3Str : "", m_columns.s3, currentY, Justify::LEFT, Fonts::getNormal(), colorS3, dim.fontSize);
+            addString((m_enabledColumns & COL_TIME) ? timeStr : "", m_columns.time, currentY, Justify::LEFT, Fonts::getNormal(), colorTime, dim.fontSize);
+
+            currentY += dim.lineHeightNormal;
+            continue;
+        }
 
         // Determine which entry to display
         const LapLogEntry* entryPtr = nullptr;
@@ -325,17 +451,17 @@ void LapLogHud::rebuildRenderData() {
             bool hasLapTime = (entry.lapTime > 0 && entry.isComplete);
             if (!entry.isValid || !hasLapTime) {
                 colorTime = colors.getMuted();
-                fontLapTime = Fonts::ROBOTO_MONO;
+                fontLapTime = Fonts::getNormal();
             } else {
                 colorTime = (entry.lapTime == bestLapTime) ? colors.getPositive() : colors.getPrimary();
-                fontLapTime = Fonts::ROBOTO_MONO_BOLD;
+                fontLapTime = Fonts::getStrong();
             }
 
             // Always add all NUM_COLUMNS strings for index consistency (use empty string if column disabled)
-            addString((m_enabledColumns & COL_LAP) ? lapStr : "", m_columns.lap, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, colorLap, dim.fontSize);
-            addString((m_enabledColumns & COL_S1) ? s1Str : "", m_columns.s1, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, colorS1, dim.fontSize);
-            addString((m_enabledColumns & COL_S2) ? s2Str : "", m_columns.s2, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, colorS2, dim.fontSize);
-            addString((m_enabledColumns & COL_S3) ? s3Str : "", m_columns.s3, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, colorS3, dim.fontSize);
+            addString((m_enabledColumns & COL_LAP) ? lapStr : "", m_columns.lap, currentY, Justify::LEFT, Fonts::getNormal(), colorLap, dim.fontSize);
+            addString((m_enabledColumns & COL_S1) ? s1Str : "", m_columns.s1, currentY, Justify::LEFT, Fonts::getNormal(), colorS1, dim.fontSize);
+            addString((m_enabledColumns & COL_S2) ? s2Str : "", m_columns.s2, currentY, Justify::LEFT, Fonts::getNormal(), colorS2, dim.fontSize);
+            addString((m_enabledColumns & COL_S3) ? s3Str : "", m_columns.s3, currentY, Justify::LEFT, Fonts::getNormal(), colorS3, dim.fontSize);
             addString((m_enabledColumns & COL_TIME) ? timeStr : "", m_columns.time, currentY, Justify::LEFT, fontLapTime, colorTime, dim.fontSize);
         } else {
             // Placeholder row - always add all NUM_COLUMNS strings for index consistency
@@ -345,11 +471,11 @@ void LapLogHud::rebuildRenderData() {
             strcpy_s(s3Str, sizeof(s3Str), Placeholders::GENERIC);
             strcpy_s(timeStr, sizeof(timeStr), Placeholders::LAP_TIME);
 
-            addString((m_enabledColumns & COL_LAP) ? lapStr : "", m_columns.lap, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, colors.getMuted(), dim.fontSize);
-            addString((m_enabledColumns & COL_S1) ? s1Str : "", m_columns.s1, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, colors.getMuted(), dim.fontSize);
-            addString((m_enabledColumns & COL_S2) ? s2Str : "", m_columns.s2, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, colors.getMuted(), dim.fontSize);
-            addString((m_enabledColumns & COL_S3) ? s3Str : "", m_columns.s3, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, colors.getMuted(), dim.fontSize);
-            addString((m_enabledColumns & COL_TIME) ? timeStr : "", m_columns.time, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, colors.getMuted(), dim.fontSize);
+            addString((m_enabledColumns & COL_LAP) ? lapStr : "", m_columns.lap, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
+            addString((m_enabledColumns & COL_S1) ? s1Str : "", m_columns.s1, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
+            addString((m_enabledColumns & COL_S2) ? s2Str : "", m_columns.s2, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
+            addString((m_enabledColumns & COL_S3) ? s3Str : "", m_columns.s3, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
+            addString((m_enabledColumns & COL_TIME) ? timeStr : "", m_columns.time, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
         }
 
         currentY += dim.lineHeightNormal;  // Move down to next row
@@ -359,11 +485,12 @@ void LapLogHud::rebuildRenderData() {
 void LapLogHud::resetToDefaults() {
     m_bVisible = true;
     m_bShowTitle = true;
-    m_bShowBackgroundTexture = false;  // No texture by default
+    setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(-0.0055f, -0.0111f);
+    setPosition(0.0055f, 0.7659f);
     m_enabledColumns = COL_DEFAULT;
     m_maxDisplayLaps = 6;
+    m_showLiveTiming = true;
     setDataDirty();
 }

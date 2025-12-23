@@ -53,6 +53,11 @@ ProfileType ProfileManager::getNextProfile(ProfileType current) {
     return static_cast<ProfileType>(next);
 }
 
+ProfileType ProfileManager::getPreviousProfile(ProfileType current) {
+    int prev = (static_cast<int>(current) - 1 + static_cast<int>(ProfileType::COUNT)) % static_cast<int>(ProfileType::COUNT);
+    return static_cast<ProfileType>(prev);
+}
+
 void ProfileManager::cycleProfile() {
     setActiveProfile(getNextProfile(m_activeProfile));
 }

@@ -73,10 +73,9 @@ private:
     // Check if pitboard should be visible based on display mode
     bool shouldBeVisible() const;
 
-    // HUD positioning constants
-    // Positioned in top-left area (like a pitboard sign)
-    static constexpr float START_X = HudPositions::LEFT_EDGE_X;
-    static constexpr float START_Y = HudPositions::TOP_Y;
+    // Base position (0,0) - actual position comes from m_fOffsetX/m_fOffsetY
+    static constexpr float START_X = 0.0f;
+    static constexpr float START_Y = 0.0f;
     static constexpr int BACKGROUND_WIDTH_CHARS = 14;  // Optimized for max content width
     static constexpr int MAX_ROW_COUNT = 5;            // Fixed row count for consistent background size
     static constexpr float LEFT_ALIGN_OFFSET = 0.175f;  // Position column (adjusted for 1920x1080)

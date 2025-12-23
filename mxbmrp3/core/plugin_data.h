@@ -16,8 +16,9 @@
 #include "../vendor/piboso/mxb_api.h"  // For SPluginsRaceClassificationEntry_t
 #include "plugin_constants.h"  // For Placeholders namespace
 
-// Forward declaration
+// Forward declarations
 struct XInputData;
+class XInputReader;
 
 // Data structure for race session and event information
 struct SessionData {
@@ -82,6 +83,28 @@ struct SessionData {
         lastSessionTime = 0;
         leaderFinishTime = -1;
     }
+
+    // Race finish detection helpers
+    // For timed+laps races: numLaps is current lap, finishLap set during overtime
+    // For pure lap races: numLaps = completed laps, use sessionNumLaps directly
+    bool isRiderFinished(int numLaps) const {
+        if (sessionLength > 0 && sessionNumLaps > 0) {
+            // Timed+laps race
+            return finishLap > 0 && numLaps > finishLap;
+        }
+        // Pure lap or pure time race
+        return (finishLap > 0 && numLaps > finishLap) ||
+               (sessionNumLaps > 0 && finishLap <= 0 && numLaps >= sessionNumLaps);
+    }
+
+    bool isRiderOnLastLap(int numLaps) const {
+        if (sessionLength > 0 && sessionNumLaps > 0) {
+            // Timed+laps race
+            return finishLap > 0 && numLaps == finishLap;
+        }
+        // Pure lap race: last lap when completed = total - 1
+        return sessionNumLaps > 0 && numLaps == sessionNumLaps - 1;
+    }
 };
 
 // Race entry data for tracking riders/vehicles in race events
@@ -134,15 +157,16 @@ struct StandingsData {
     int realTimeGap;    // real-time estimated gap in milliseconds
     int penalty;        // penalty time in milliseconds
     int pit;            // 0 = on track, 1 = in pits
+    int finishTime;     // total race time in milliseconds (-1 if not finished)
 
     StandingsData() : raceNum(-1), state(0), bestLap(-1), bestLapNum(-1),
-        numLaps(0), gap(0), gapLaps(0), realTimeGap(0), penalty(0), pit(0) {
+        numLaps(0), gap(0), gapLaps(0), realTimeGap(0), penalty(0), pit(0), finishTime(-1) {
     }
 
     StandingsData(int num, int st, int bLap, int bLapNum, int nLaps,
         int g, int gLaps, int pen, int p)
         : raceNum(num), state(st), bestLap(bLap), bestLapNum(bLapNum),
-        numLaps(nLaps), gap(g), gapLaps(gLaps), realTimeGap(0), penalty(pen), pit(p) {
+        numLaps(nLaps), gap(g), gapLaps(gLaps), realTimeGap(0), penalty(pen), pit(p), finishTime(-1) {
     }
 };
 
@@ -311,8 +335,8 @@ struct CurrentLapData {
     }
 };
 
-// Session best data (best sector times and last lap time, player-only)
-struct SessionBestData {
+// Ideal lap data (best sector times and last lap time, per-rider)
+struct IdealLapData {
     int lastCompletedLapNum;  // 0-indexed - last completed lap number (for detection)
     int lastLapTime;     // milliseconds - last completed lap time (0 if no timing data)
     int lastLapSector1;  // milliseconds - last completed lap sector 1 time
@@ -328,7 +352,7 @@ struct SessionBestData {
     int previousBestSector2;     // milliseconds - previous PB sector 2 time
     int previousBestSector3;     // milliseconds - previous PB sector 3 time
 
-    SessionBestData() : lastCompletedLapNum(-1), lastLapTime(-1),
+    IdealLapData() : lastCompletedLapNum(-1), lastLapTime(-1),
                         lastLapSector1(-1), lastLapSector2(-1), lastLapSector3(-1),
                         bestSector1(-1), bestSector2(-1), bestSector3(-1),
                         previousBestLapTime(-1), previousBestSector1(-1),
@@ -378,7 +402,7 @@ struct LapLogEntry {
 
 // ============================================================================
 // Centralized Lap Timer for real-time elapsed time calculation
-// Used by TimingHud, SessionBestHud, and other components that need live timing
+// Used by TimingHud, IdealLapHud, and other components that need live timing
 // Uses wall clock time since session time can count UP (practice) or DOWN (races)
 // ============================================================================
 struct LapTimer {
@@ -386,6 +410,10 @@ struct LapTimer {
     std::chrono::steady_clock::time_point anchorTime;  // Real time when anchor was set
     int anchorAccumulatedTime;    // Known accumulated lap time at anchor (ms)
     bool anchorValid;             // Do we have a usable anchor?
+
+    // Pause support
+    std::chrono::steady_clock::time_point pausedAt;  // When pause started
+    bool isPaused;                // Is timer currently paused?
 
     // Track position monitoring for S/F line detection
     float lastTrackPos;           // Previous track position (0.0-1.0)
@@ -402,7 +430,7 @@ struct LapTimer {
     static constexpr float WRAP_THRESHOLD = 0.5f;
 
     LapTimer()
-        : anchorAccumulatedTime(0), anchorValid(false)
+        : anchorAccumulatedTime(0), anchorValid(false), isPaused(false)
         , lastTrackPos(0.0f), lastLapNum(0), trackMonitorInitialized(false)
         , currentLapNum(0), currentSector(0)
         , lastSplit1Time(-1), lastSplit2Time(-1) {}
@@ -410,6 +438,7 @@ struct LapTimer {
     void reset() {
         anchorAccumulatedTime = 0;
         anchorValid = false;
+        isPaused = false;
         lastTrackPos = 0.0f;
         lastLapNum = 0;
         trackMonitorInitialized = false;
@@ -423,6 +452,24 @@ struct LapTimer {
         anchorTime = std::chrono::steady_clock::now();
         anchorAccumulatedTime = accumulatedTime;
         anchorValid = true;
+        isPaused = false;  // Clear pause state when setting new anchor
+    }
+
+    // Pause/resume support - adjusts anchor to exclude pause duration
+    void pause() {
+        if (!isPaused && anchorValid) {
+            pausedAt = std::chrono::steady_clock::now();
+            isPaused = true;
+        }
+    }
+
+    void resume() {
+        if (isPaused && anchorValid) {
+            // Adjust anchor forward by the pause duration so elapsed time is correct
+            auto pauseDuration = std::chrono::steady_clock::now() - pausedAt;
+            anchorTime += pauseDuration;
+            isPaused = false;
+        }
     }
 
     // Calculate elapsed lap time since anchor
@@ -431,9 +478,10 @@ struct LapTimer {
             return -1;  // No anchor - show placeholder
         }
 
-        auto now = std::chrono::steady_clock::now();
+        // Use pause time if paused, otherwise use now
+        auto endTime = isPaused ? pausedAt : std::chrono::steady_clock::now();
         auto wallElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            now - anchorTime
+            endTime - anchorTime
         ).count();
 
         int elapsed = anchorAccumulatedTime + static_cast<int>(wallElapsed);
@@ -478,9 +526,10 @@ enum class DataChangeType {
     Standings,
     DebugMetrics,
     InputTelemetry,
-    SessionBest,
+    IdealLap,
     LapLog,
-    SpectateTarget  // Spectate target changed (switch to different rider)
+    SpectateTarget,  // Spectate target changed (switch to different rider)
+    TrackedRiders    // Tracked riders list or settings changed
 };
 
 // Helper function to convert DataChangeType to string for debugging
@@ -491,9 +540,10 @@ inline const char* dataChangeTypeToString(DataChangeType type) {
     case DataChangeType::Standings: return "Standings";
     case DataChangeType::DebugMetrics: return "DebugMetrics";
     case DataChangeType::InputTelemetry: return "InputTelemetry";
-    case DataChangeType::SessionBest: return "SessionBest";
+    case DataChangeType::IdealLap: return "IdealLap";
     case DataChangeType::LapLog: return "LapLog";
     case DataChangeType::SpectateTarget: return "SpectateTarget";
+    case DataChangeType::TrackedRiders: return "TrackedRiders";
     default: return "Unknown";
     }
 }
@@ -548,7 +598,7 @@ public:
     int getDisplayRaceNum() const;  // Get race number to display (player when on track, spectated rider otherwise)
 
     // ========================================================================
-    // Per-Rider Data Management (Session Bests, Lap Logs, Current Lap)
+    // Per-Rider Data Management (Ideal Lap, Lap Logs, Current Lap)
     // ========================================================================
     // API Design Pattern:
     //   - Per-rider getters return POINTERS (nullable, returns nullptr if no data for that rider)
@@ -556,20 +606,20 @@ public:
     //   - This allows callers to distinguish "no data" from "empty data"
     // ========================================================================
 
-    // Current lap and session best management (per-rider)
+    // Current lap and ideal lap management (per-rider)
     void updateCurrentLapSplit(int raceNum, int lapNum, int splitIndex, int accumulatedTime);
     void setCurrentLapNumber(int raceNum, int lapNum);  // Initialize lap number for next lap
-    void updateSessionBest(int raceNum, int completedLapNum, int lapTime, int sector1, int sector2, int sector3, bool isValid = true);
-    void clearSessionBest(int raceNum);
-    void clearAllSessionBest();  // Clear all riders' session best data
+    void updateIdealLap(int raceNum, int completedLapNum, int lapTime, int sector1, int sector2, int sector3, bool isValid = true);
+    void clearIdealLap(int raceNum);
+    void clearAllIdealLap();  // Clear all riders' ideal lap data
     const CurrentLapData* getCurrentLapData(int raceNum) const;  // Returns nullptr if no data
-    const SessionBestData* getSessionBestData(int raceNum) const;  // Returns nullptr if no data
+    const IdealLapData* getIdealLapData(int raceNum) const;  // Returns nullptr if no data
 
     // Lap log management (per-rider, stores completed and in-progress laps)
     void updateLapLog(int raceNum, const LapLogEntry& entry);
     void clearLapLog(int raceNum);
     void clearAllLapLog();  // Clear all riders' lap log
-    const std::vector<LapLogEntry>* getLapLog(int raceNum) const;  // Returns nullptr if no data
+    const std::deque<LapLogEntry>* getLapLog(int raceNum) const;  // Returns nullptr if no data
 
     // Best lap entry storage (per-rider, separate from lap log for easy access)
     void setBestLapEntry(int raceNum, const LapLogEntry& entry);
@@ -577,9 +627,12 @@ public:
 
     // Convenience methods for display race number (uses getDisplayRaceNum internally)
     const CurrentLapData* getCurrentLapData() const { return getCurrentLapData(getDisplayRaceNum()); }
-    const SessionBestData* getSessionBestData() const { return getSessionBestData(getDisplayRaceNum()); }
-    const std::vector<LapLogEntry>* getLapLog() const { return getLapLog(getDisplayRaceNum()); }
+    const IdealLapData* getIdealLapData() const { return getIdealLapData(getDisplayRaceNum()); }
+    const std::deque<LapLogEntry>* getLapLog() const { return getLapLog(getDisplayRaceNum()); }
     const LapLogEntry* getBestLapEntry() const { return getBestLapEntry(getDisplayRaceNum()); }
+
+    // Check if display rider has finished the race (convenience helper)
+    bool isDisplayRiderFinished() const;
 
     // ========================================================================
     // Centralized Lap Timer Management (display rider only)
@@ -660,7 +713,15 @@ public:
     int getLeaderFinishTime() const { return m_sessionData.leaderFinishTime; }
 
     // Player running state (set by RunStart, cleared by RunStop/RunDeinit)
-    void setPlayerRunning(bool running) { m_bPlayerIsRunning = running; }
+    void setPlayerRunning(bool running) {
+        m_bPlayerIsRunning = running;
+        // Pause/resume lap timer to account for game pause time
+        if (running) {
+            m_displayLapTimer.resume();
+        } else {
+            m_displayLapTimer.pause();
+        }
+    }
     bool isPlayerRunning() const { return m_bPlayerIsRunning; }
 
     // Session type checks
@@ -698,6 +759,28 @@ public:
     // Direct notification to HudManager (no observer pattern overhead)
     // Made public for batch update optimization (call once after multiple updates)
     void notifyHudManager(DataChangeType changeType);
+
+    // ========================================================================
+    // XInputReader Access (provides single access point for controller data)
+    // ========================================================================
+    // Returns const reference to XInputReader singleton
+    // HUDs should use this instead of accessing XInputReader::getInstance() directly
+    const XInputReader& getXInputReader() const;
+
+    // ========================================================================
+    // TrackedRiders Notification
+    // ========================================================================
+    // Called by TrackedRidersManager when tracked riders list/settings change
+    // Triggers DataChangeType::TrackedRiders notification to HUDs
+    void notifyTrackedRidersChanged();
+
+    // ========================================================================
+    // Live Gap (published by GapBarHud for use by LapLogHud and other HUDs)
+    // ========================================================================
+    // Positive = behind PB, Negative = ahead of PB
+    void setLiveGap(int gapMs, bool valid) { m_liveGapMs = gapMs; m_liveGapValid = valid; }
+    int getLiveGap() const { return m_liveGapMs; }
+    bool hasValidLiveGap() const { return m_liveGapValid; }
 
 private:
     PluginData() : m_currentSessionTime(0), m_playerRaceNum(-1), m_bPlayerRaceNumValid(false),
@@ -737,8 +820,8 @@ private:
     mutable bool m_bPositionCacheDirty;  // Flag to rebuild position cache
     std::unordered_map<int, TrackPositionData> m_trackPositions;  // Real-time track positions
     std::unordered_map<int, CurrentLapData> m_riderCurrentLap;  // Current lap split data per rider
-    std::unordered_map<int, SessionBestData> m_riderSessionBest;  // Session best sectors per rider
-    std::unordered_map<int, std::vector<LapLogEntry>> m_riderLapLog;  // Lap log per rider (newest first)
+    std::unordered_map<int, IdealLapData> m_riderIdealLap;  // Ideal lap sectors per rider
+    std::unordered_map<int, std::deque<LapLogEntry>> m_riderLapLog;  // Lap log per rider (newest first, deque for O(1) front insert)
     std::unordered_map<int, LapLogEntry> m_riderBestLap;  // Best lap entry per rider (for easy access)
 
     // Single centralized lap timer for display rider only (follows GapBarHud pattern)
@@ -769,4 +852,8 @@ private:
     // Spectate mode tracking
     int m_drawState;                       // Current draw state (ON_TRACK=0, SPECTATE=1, REPLAY=2)
     int m_spectatedRaceNum;                // Race number of rider being spectated (-1 if none)
+
+    // Live gap tracking (published by GapBarHud)
+    int m_liveGapMs = 0;                   // Current gap in milliseconds (positive = behind PB, negative = ahead)
+    bool m_liveGapValid = false;           // Is the live gap valid?
 };

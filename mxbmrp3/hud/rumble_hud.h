@@ -30,14 +30,21 @@ private:
                          float x, float y, float width, float height,
                          float lineThickness, size_t maxHistory);
 
-    // Grid-aligned positions
-    static constexpr float START_X = 0.6875f;
-    static constexpr float START_Y = -0.0444f;
+    // Helper to draw a vertical bar (similar to BarsWidget)
+    void addVerticalBar(float x, float y, float barWidth, float barHeight,
+                        float value, unsigned long color);
+
+    // Base position (0,0) - actual position comes from m_fOffsetX/m_fOffsetY
+    static constexpr float START_X = 0.0f;
+    static constexpr float START_Y = 0.0f;
 
     // Layout constants (matching TelemetryHud style)
-    static constexpr int GRAPH_WIDTH_CHARS = 33;     // Width for graph display (left side)
+    static constexpr int GRAPH_WIDTH_CHARS = 29;     // Width for graph display (left side, narrower to fit bars)
+    static constexpr int BAR_WIDTH_CHARS = 1;        // Width for each force bar
+    static constexpr int GAP_WIDTH_CHARS = 1;        // Gap between elements
     static constexpr int LEGEND_WIDTH_CHARS = 9;     // Width for legend/values (right side)
-    static constexpr int BACKGROUND_WIDTH_CHARS = GRAPH_WIDTH_CHARS + 1 + LEGEND_WIDTH_CHARS;  // +1 for gap
+    // Total: graph + gap + bar + gap + bar + gap + legend = 29 + 1 + 1 + 1 + 1 + 1 + 9 = 43
+    static constexpr int BACKGROUND_WIDTH_CHARS = GRAPH_WIDTH_CHARS + GAP_WIDTH_CHARS + BAR_WIDTH_CHARS + GAP_WIDTH_CHARS + BAR_WIDTH_CHARS + GAP_WIDTH_CHARS + LEGEND_WIDTH_CHARS;
     static constexpr float GRAPH_HEIGHT_LINES = 6;   // Height in line units
 
     // Graph grid line percentages

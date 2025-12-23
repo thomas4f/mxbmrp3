@@ -1,6 +1,6 @@
 // ============================================================================
-// hud/session_best_hud.h
-// Displays session best split times with comparison to personal best
+// hud/ideal_lap_hud.h
+// Displays ideal lap (best individual sectors) with comparison to current
 // ============================================================================
 #pragma once
 
@@ -9,26 +9,23 @@
 #include "../core/widget_constants.h"
 #include <chrono>
 
-class SessionBestHud : public BaseHud {
+class IdealLapHud : public BaseHud {
 public:
-    SessionBestHud();
-    virtual ~SessionBestHud() = default;
+    IdealLapHud();
+    virtual ~IdealLapHud() = default;
 
     void update() override;
     bool handlesDataType(DataChangeType dataType) const override;
     void resetToDefaults();
 
-    // Settings for real-time sector time display
-    bool m_bShowLiveSectorTime = true;  // Show ticking sector time until split is crossed
-
     // Row flags - each bit represents a row that can be toggled
     enum RowFlags : uint32_t {
-        ROW_S1    = 1 << 0,  // Sector 1 time
-        ROW_S2    = 1 << 1,  // Sector 2 time
-        ROW_S3    = 1 << 2,  // Sector 3 time
-        ROW_LAST  = 1 << 3,  // Last lap time
-        ROW_BEST  = 1 << 4,  // Best lap
-        ROW_IDEAL = 1 << 5,  // Ideal lap time
+        ROW_S1    = 1 << 0,  // Sector 1 time (best S1 ever)
+        ROW_S2    = 1 << 1,  // Sector 2 time (best S2 ever)
+        ROW_S3    = 1 << 2,  // Sector 3 time (best S3 ever)
+        ROW_LAST  = 1 << 3,  // Last lap time (gap to ideal)
+        ROW_BEST  = 1 << 4,  // Best lap (gap to ideal)
+        ROW_IDEAL = 1 << 5,  // Ideal lap time (sum of best sectors)
 
         ROW_REQUIRED = 0,    // No required rows
         ROW_DEFAULT  = 0x3F  // All 6 rows enabled (binary: 111111)
@@ -53,10 +50,9 @@ private:
     // Count enabled rows (for height calculation)
     int getEnabledRowCount() const;
 
-    // HUD positioning constants
-    // Positioned in bottom-left area
-    static constexpr float START_X = HudPositions::LEFT_EDGE_X;
-    static constexpr float START_Y = HudPositions::LOWER_Y;
+    // Base position (0,0) - actual position comes from m_fOffsetX/m_fOffsetY
+    static constexpr float START_X = 0.0f;
+    static constexpr float START_Y = 0.0f;
     static constexpr int BACKGROUND_WIDTH_CHARS = 26;  // Optimized for max content: "Ideal" + "99:59.999" + "+99:59.999"
     static constexpr int NUM_ROWS = 7;  // Title + S1 + S2 + S3 + Last + Best + Ideal
 
@@ -70,21 +66,14 @@ private:
     struct ColumnPositions {
         float label;   // Label column (left-aligned split names)
         float time;    // Time column
-        float diff;    // Diff column (comparison to PB)
+        float diff;    // Diff column (comparison to ideal)
 
         ColumnPositions(float contentStartX, float scale = 1.0f);
     };
 
-    // Check if we need frequent updates for ticking sector time
-    bool needsFrequentUpdates() const;
-
-    // Get current sector being timed (0=S1, 1=S2, 2=S3, -1=no active timing)
-    int getCurrentActiveSector() const;
+    // Override: never needs frequent updates (only updates on split/lap events)
+    bool needsFrequentUpdates() const override;
 
     ColumnPositions m_columns;
     uint32_t m_enabledRows = ROW_DEFAULT;  // Bitfield of enabled rows
-
-    // Rate limiting for ticking display
-    std::chrono::time_point<std::chrono::steady_clock> m_lastTickUpdate;
-    static constexpr int TICK_UPDATE_INTERVAL_MS = 16;  // Update ticking display every 16ms (~60Hz)
 };

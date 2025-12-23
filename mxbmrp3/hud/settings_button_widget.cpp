@@ -16,16 +16,14 @@ using namespace PluginConstants;
 SettingsButtonWidget::SettingsButtonWidget()
     : m_bCachedSettingsVisible(false)
 {
+    // One-time setup
     DEBUG_INFO("SettingsButtonWidget created");
     setDraggable(true);
-
-    // Set defaults - small compact button (match TimingHud opacity)
-    m_fBackgroundOpacity = 0.1f;  // Low opacity background like TimingHud
-    setPosition(0.957f, 0.0111f);  // Top-right corner
-
-    // Pre-allocate vectors
     m_strings.reserve(1);  // One string: button text
     m_quads.reserve(2);    // Two quads: HUD background + button background
+
+    // Set all configurable defaults
+    resetToDefaults();
 
     rebuildRenderData();
 }
@@ -164,7 +162,7 @@ void SettingsButtonWidget::rebuildRenderData() {
 
     // Add button text
     addString(buttonText, contentStartX, contentStartY, Justify::LEFT,
-        Fonts::ROBOTO_MONO, textColor, dim.fontSize);
+        Fonts::getNormal(), textColor, dim.fontSize);
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
@@ -173,7 +171,7 @@ void SettingsButtonWidget::rebuildRenderData() {
 void SettingsButtonWidget::resetToDefaults() {
     m_bVisible = true;
     m_bShowTitle = true;
-    m_bShowBackgroundTexture = false;  // No texture by default
+    setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.1f;  // Match TimingHud opacity
     m_fScale = 1.0f;
     setPosition(0.957f, 0.0111f);

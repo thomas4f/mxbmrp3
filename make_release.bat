@@ -78,8 +78,9 @@ echo    ^|   ...
 echo    ^|
 echo    +---plugins\
 echo        +-- mxbmrp3_data\        ^<-- Add this folder ^(from release^)
-echo        ^|       *.tga
-echo        ^|       *.fnt
+echo        ^|   +-- fonts\          ^<-- Font files ^(.fnt^)
+echo        ^|   +-- textures\       ^<-- Texture files ^(.tga^)
+echo        ^|   +-- icons\          ^<-- Icon files ^(.tga^)
 echo        +-- mxbmrp3.dlo          ^<-- Add this ^(from release^)
 echo        +-- proxy_udp64.dlo      ^<-- Keep ^(native game file^)
 echo        +-- proxy64.dlo          ^<-- Keep ^(native game file^)

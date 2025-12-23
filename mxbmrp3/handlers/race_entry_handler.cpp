@@ -13,10 +13,10 @@ DEFINE_HANDLER_SINGLETON(RaceEntryHandler)
 void RaceEntryHandler::handleRaceAddEntry(SPluginsRaceAddEntry_t* psRaceAddEntry) {
     HANDLER_NULL_CHECK(psRaceAddEntry);
 
-    DEBUG_INFO_F("RaceAddEntry: raceNum=%d, name='%s', unactive=%d",
-                 psRaceAddEntry->m_iRaceNum,
-                 psRaceAddEntry->m_szName,
-                 psRaceAddEntry->m_iUnactive);
+    // DEBUG_INFO_F("RaceAddEntry: raceNum=%d, name='%s', unactive=%d",
+    //              psRaceAddEntry->m_iRaceNum,
+    //              psRaceAddEntry->m_szName,
+    //              psRaceAddEntry->m_iUnactive);
 
     // Store race entry data
     PluginData::getInstance().addRaceEntry(

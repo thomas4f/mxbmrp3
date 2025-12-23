@@ -19,8 +19,18 @@ LapWidget::LapWidget()
     , m_cachedTotalLaps(-1)
     , m_cachedSessionLength(-1)
 {
-    initializeWidget("LapWidget", 2);  // Two strings: label (optional), lap value
-    setPosition(-0.3685f, 0.0111f);
+    // One-time setup
+    DEBUG_INFO("LapWidget created");
+    setDraggable(true);
+    m_strings.reserve(2);  // label (optional), lap value
+
+    // Set texture base name for dynamic texture discovery
+    setTextureBaseName("lap_widget");
+
+    // Set all configurable defaults
+    resetToDefaults();
+
+    rebuildRenderData();
 }
 
 bool LapWidget::handlesDataType(DataChangeType dataType) const {
@@ -71,8 +81,8 @@ void LapWidget::rebuildLayout() {
     // Fast path - only update positions (not colors/opacity)
     auto dim = getScaledDimensions();
 
-    float startX = WidgetPositions::WIDGET_STACK_X;
-    float startY = WidgetPositions::LAP_Y;
+    float startX = 0.0f;
+    float startY = 0.0f;
 
     // Calculate dimensions using base helper
     float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::STANDARD_WIDTH);
@@ -127,8 +137,8 @@ void LapWidget::rebuildRenderData() {
         }
     }
 
-    float startX = WidgetPositions::WIDGET_STACK_X;
-    float startY = WidgetPositions::LAP_Y;
+    float startX = 0.0f;
+    float startY = 0.0f;
 
     // Calculate dimensions using base helper
     float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::STANDARD_WIDTH);
@@ -150,7 +160,7 @@ void LapWidget::rebuildRenderData() {
 
     // Label (optional, controlled by title toggle)
     if (m_bShowTitle) {
-        addString("Lap", contentStartX, currentY, Justify::LEFT, Fonts::ENTER_SANSMAN, textColor, dim.fontSize);
+        addString("Lap", contentStartX, currentY, Justify::LEFT, Fonts::getTitle(), textColor, dim.fontSize);
         currentY += labelHeight;
     }
 
@@ -173,7 +183,7 @@ void LapWidget::rebuildRenderData() {
 
     // Add lap value (extra large font - spans 2 lines)
     addString(lapValueBuffer, contentStartX, currentY, Justify::LEFT,
-        Fonts::ENTER_SANSMAN, textColor, dim.fontSizeExtraLarge);
+        Fonts::getTitle(), textColor, dim.fontSizeExtraLarge);
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
@@ -182,9 +192,9 @@ void LapWidget::rebuildRenderData() {
 void LapWidget::resetToDefaults() {
     m_bVisible = true;
     m_bShowTitle = true;
-    m_bShowBackgroundTexture = false;  // No texture by default
+    setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.1f;
     m_fScale = 1.0f;
-    setPosition(-0.3685f, 0.0111f);
+    setPosition(0.099f, 0.0111f);
     setDataDirty();
 }

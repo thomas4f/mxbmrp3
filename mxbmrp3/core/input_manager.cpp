@@ -6,6 +6,7 @@
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
 #include "../core/hud_manager.h"
+#include "../hud/version_widget.h"
 #include <windows.h>
 
 InputManager& InputManager::getInstance() {
@@ -19,6 +20,7 @@ void InputManager::initialize() {
     DEBUG_INFO("InputManager initializing");
 
     m_gameWindow = nullptr;
+    m_processId = GetCurrentProcessId();  // Cache once - never changes
     m_windowWidth = 0;
     m_windowHeight = 0;
     m_bCursorEnabled = false;
@@ -28,6 +30,7 @@ void InputManager::initialize() {
     m_fLastMouseX = 0.0f;
     m_fLastMouseY = 0.0f;
     m_framesSinceLastMovement = 0;
+    m_framesSinceFocusLost = 0;
 
     m_bInitialized = true;
     DEBUG_INFO("InputManager initialized");
@@ -39,6 +42,7 @@ void InputManager::shutdown() {
     DEBUG_INFO("InputManager shutting down");
 
     m_gameWindow = nullptr;
+    m_processId = 0;
     m_windowWidth = 0;
     m_windowHeight = 0;
     m_bCursorEnabled = false;
@@ -48,6 +52,7 @@ void InputManager::shutdown() {
     m_fLastMouseX = 0.0f;
     m_fLastMouseY = 0.0f;
     m_framesSinceLastMovement = 0;
+    m_framesSinceFocusLost = 0;
     m_leftButton = MouseButton();
     m_rightButton = MouseButton();
 
@@ -56,6 +61,8 @@ void InputManager::shutdown() {
 }
 
 void InputManager::updateFrame() {
+    if (!m_bInitialized) return;
+
     // Step 1: Store previous button and key states
     m_leftButton.wasPressed = m_leftButton.isPressed;
     m_rightButton.wasPressed = m_rightButton.isPressed;
@@ -112,7 +119,8 @@ void InputManager::updateFrame() {
 
     // Step 5: Refresh window information when cursor becomes visible after being hidden
     // This catches window resizes that happen while the game is running
-    if (m_bShouldShowCursor && !m_bWasCursorVisible) {
+    // Only do this when the actual game window is focused (not console or dialogs)
+    if (m_bShouldShowCursor && !m_bWasCursorVisible && GetForegroundWindow() == m_gameWindow) {
         DEBUG_INFO("Cursor became visible - checking for window changes");
         refreshWindowInformation();
 
@@ -127,47 +135,72 @@ void InputManager::updateFrame() {
 }
 
 void InputManager::updateCursorEnabled() {
-    // Cursor is always enabled when game window is foreground (no Caps Lock check)
+    // Cursor is enabled when a window belonging to our process is foreground
+    // This is more robust than hardcoding the window title "MX Bikes"
 
-    // Check if game window is foreground
     HWND foreground = GetForegroundWindow();
     if (!foreground) {
-        m_bCursorEnabled = false;
+        // No foreground window - apply debouncing before disabling
+        m_framesSinceFocusLost++;
+        if (m_framesSinceFocusLost >= FOCUS_DEBOUNCE_FRAMES) {
+            if (m_bCursorEnabled) {
+                DEBUG_INFO("Cursor disabled: no foreground window");
+            }
+            m_bCursorEnabled = false;
+        }
         return;
     }
 
-    // If we have a cached window, check if it's still valid and foreground
-    if (m_gameWindow) {
-        // Verify the window is still valid
-        if (IsWindow(m_gameWindow)) {
-            if (foreground == m_gameWindow) {
-                m_bCursorEnabled = true;
+    // Check if the foreground window belongs to our process
+    DWORD foregroundPid = 0;
+    GetWindowThreadProcessId(foreground, &foregroundPid);
+
+    if (foregroundPid == m_processId) {
+        // Foreground window is ours - enable cursor
+        if (!m_bCursorEnabled) {
+            DEBUG_INFO_F("Cursor enabled: process window focused (HWND=%p, PID=%lu)",
+                         static_cast<void*>(foreground), foregroundPid);
+        }
+        m_framesSinceFocusLost = 0;
+        m_bCursorEnabled = true;
+
+        // Only update cached game window if this is the actual game window
+        // (skip console windows, small dialogs, etc.)
+        if (m_gameWindow != foreground) {
+            // Skip console window (debug builds)
+            HWND consoleWindow = GetConsoleWindow();
+            if (foreground == consoleWindow) {
+                // Console is focused - keep using existing game window (don't log every frame)
                 return;
             }
-            // Window is valid but not foreground
+
+            RECT rect;
+            if (GetClientRect(foreground, &rect)) {
+                int w = rect.right - rect.left;
+                int h = rect.bottom - rect.top;
+                // Accept if window is reasonably large (likely the game window)
+                // or if we don't have a valid window yet
+                if ((w >= 640 && h >= 480) || !m_gameWindow || !IsWindow(m_gameWindow)) {
+                    m_gameWindow = foreground;
+                    DEBUG_INFO_F("Game window updated: HWND=%p, size=%dx%d",
+                                 static_cast<void*>(foreground), w, h);
+                }
+                // Don't log small window skips every frame - too noisy
+            }
+        }
+    }
+    else {
+        // Foreground window is not ours - debounce before disabling
+        // This prevents flicker during alt-tab transitions
+        m_framesSinceFocusLost++;
+        if (m_framesSinceFocusLost >= FOCUS_DEBOUNCE_FRAMES) {
+            if (m_bCursorEnabled) {
+                DEBUG_INFO_F("Cursor disabled: foreign window focused (HWND=%p, PID=%lu, ours=%lu)",
+                             static_cast<void*>(foreground), foregroundPid, m_processId);
+            }
             m_bCursorEnabled = false;
-            return;  // Don't search - we already have the window cached
-        }
-        else {
-            // Window is no longer valid, clear cache
-            DEBUG_INFO("Cached window is invalid, clearing");
-            m_gameWindow = nullptr;
         }
     }
-
-    // Only search if we don't have a cached window (first run or window became invalid)
-    HWND gameWindow = FindWindowA(nullptr, "MX Bikes");
-    if (gameWindow && foreground == gameWindow) {
-        if (m_gameWindow != gameWindow) {
-            m_gameWindow = gameWindow;
-            DEBUG_INFO("Game window found and cached");
-        }
-        m_bCursorEnabled = true;
-        return;
-    }
-
-    // Game window is not foreground
-    m_bCursorEnabled = false;
 }
 
 void InputManager::updateCursorPosition() {
@@ -254,14 +287,30 @@ void InputManager::updateKeyboardKeys() {
 }
 
 void InputManager::refreshWindowInformation() {
-    HWND gameWindow = FindWindowA(nullptr, "MX Bikes");
+    // Use cached window if valid, otherwise find a window belonging to our process
+    HWND gameWindow = m_gameWindow;
 
-    if (!gameWindow) {
-        DEBUG_WARN("Failed to find game window");
-        m_gameWindow = nullptr;
-        m_windowWidth = 0;
-        m_windowHeight = 0;
-        return;
+    if (!gameWindow || !IsWindow(gameWindow)) {
+        // Try to find a visible top-level window belonging to our process
+        gameWindow = nullptr;
+
+        // Check foreground window first (most likely candidate)
+        HWND foreground = GetForegroundWindow();
+        if (foreground) {
+            DWORD foregroundPid = 0;
+            GetWindowThreadProcessId(foreground, &foregroundPid);
+            if (foregroundPid == m_processId) {
+                gameWindow = foreground;
+            }
+        }
+
+        if (!gameWindow) {
+            DEBUG_WARN("No valid game window found for refresh");
+            m_gameWindow = nullptr;
+            m_windowWidth = 0;
+            m_windowHeight = 0;
+            return;
+        }
     }
 
     // Get window dimensions
@@ -286,9 +335,6 @@ void InputManager::refreshWindowInformation() {
     }
 
     // Update cached window information
-    bool windowChanged = (m_gameWindow != gameWindow);
-    bool dimensionsChanged = (m_windowWidth != width || m_windowHeight != height);
-
     m_gameWindow = gameWindow;
     m_windowWidth = width;
     m_windowHeight = height;
@@ -336,8 +382,9 @@ void InputManager::updateCursorVisibility() {
         return;
     }
 
-    // Always show cursor when settings menu is open
-    if (HudManager::getInstance().isSettingsVisible()) {
+    // Always show cursor when settings menu is open or easter egg game is active
+    if (HudManager::getInstance().isSettingsVisible() ||
+        HudManager::getInstance().getVersionWidget().isGameActive()) {
         m_framesSinceLastMovement = 0;
         m_bShouldShowCursor = true;
         m_fLastMouseX = m_cursorPosition.x;

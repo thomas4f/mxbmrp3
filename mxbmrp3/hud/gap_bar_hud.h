@@ -29,27 +29,46 @@ struct BestLapTimingPoint {
 // ============================================================================
 struct GapBarAnchor {
     std::chrono::steady_clock::time_point wallClockTime;  // Real time when anchor was set
+    std::chrono::steady_clock::time_point pausedAt;       // When pause started
     int accumulatedTime;      // Known accumulated lap time at anchor (ms)
     bool valid;               // Do we have a usable anchor?
+    bool isPaused;            // Is timer currently paused?
 
-    GapBarAnchor() : accumulatedTime(0), valid(false) {}
+    GapBarAnchor() : accumulatedTime(0), valid(false), isPaused(false) {}
 
     void reset() {
         accumulatedTime = 0;
         valid = false;
+        isPaused = false;
     }
 
     void set(int accumTime = 0) {
         wallClockTime = std::chrono::steady_clock::now();
         accumulatedTime = accumTime;
         valid = true;
+        isPaused = false;
+    }
+
+    void pause() {
+        if (!isPaused && valid) {
+            pausedAt = std::chrono::steady_clock::now();
+            isPaused = true;
+        }
+    }
+
+    void resume() {
+        if (isPaused && valid) {
+            auto pauseDuration = std::chrono::steady_clock::now() - pausedAt;
+            wallClockTime += pauseDuration;
+            isPaused = false;
+        }
     }
 
     int getElapsedMs() const {
         if (!valid) return 0;
-        auto now = std::chrono::steady_clock::now();
+        auto endTime = isPaused ? pausedAt : std::chrono::steady_clock::now();
         int wallClockDelta = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
-            now - wallClockTime).count());
+            endTime - wallClockTime).count());
         return accumulatedTime + wallClockDelta;
     }
 };
@@ -156,6 +175,7 @@ private:
     int m_cachedLastCompletedLapNum;  // Track lap completions
     int m_cachedSplit1;               // Track split 1 changes
     int m_cachedSplit2;               // Track split 2 changes
+    bool m_cachedPlayerRunning;       // Track pause state for anchor pause/resume
 
     // Player bike brand color (for best lap marker)
     unsigned long m_bikeBrandColor;
@@ -175,4 +195,8 @@ private:
     bool m_showMarkers;               // Show vertical position markers (current + best lap)
     int m_gapRangeMs;                 // Time range for gap bar (full bar at ±range)
     int m_barWidthPercent;            // Bar width as percentage of default (50-400%)
+
+    // Cached gap for publishing to PluginData (avoids calculating twice)
+    int m_cachedGap = 0;              // Last calculated gap in milliseconds
+    bool m_cachedGapValid = false;    // Is the cached gap valid?
 };

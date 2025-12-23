@@ -14,8 +14,18 @@ using namespace PluginConstants;
 TimeWidget::TimeWidget()
     : m_cachedRenderedTime(-1)
 {
-    initializeWidget("TimeWidget", 2);  // Two strings: label (optional), time
-    setPosition(-0.275f, -0.0999f);
+    // One-time setup
+    DEBUG_INFO("TimeWidget created");
+    setDraggable(true);
+    m_strings.reserve(2);  // label (optional), time
+
+    // Set texture base name for dynamic texture discovery
+    setTextureBaseName("time_widget");
+
+    // Set all configurable defaults
+    resetToDefaults();
+
+    rebuildRenderData();
 }
 
 bool TimeWidget::handlesDataType(DataChangeType dataType) const {
@@ -53,8 +63,8 @@ void TimeWidget::rebuildLayout() {
     // Fast path - only update positions (not colors/opacity)
     auto dim = getScaledDimensions();
 
-    float startX = WidgetPositions::WIDGET_STACK_X;
-    float startY = WidgetPositions::TIME_Y;
+    float startX = 0.0f;
+    float startY = 0.0f;
 
     // Calculate dimensions using base helper
     float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::STANDARD_WIDTH);
@@ -105,8 +115,8 @@ void TimeWidget::rebuildRenderData() {
     // Use full opacity for text
     unsigned long textColor = ColorConfig::getInstance().getPrimary();
 
-    float startX = WidgetPositions::WIDGET_STACK_X;
-    float startY = WidgetPositions::TIME_Y;
+    float startX = 0.0f;
+    float startY = 0.0f;
 
     // Calculate dimensions using base helper
     float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::STANDARD_WIDTH);
@@ -125,13 +135,13 @@ void TimeWidget::rebuildRenderData() {
 
     // Label (optional, controlled by title toggle)
     if (m_bShowTitle) {
-        addString("Time", contentStartX, currentY, Justify::LEFT, Fonts::ENTER_SANSMAN, textColor, dim.fontSize);
+        addString("Time", contentStartX, currentY, Justify::LEFT, Fonts::getTitle(), textColor, dim.fontSize);
         currentY += labelHeight;
     }
 
     // Time value (ENTER_SANSMAN, extra large font - spans 2 lines)
     addString(timeBuffer, contentStartX, currentY, Justify::LEFT,
-        Fonts::ENTER_SANSMAN, textColor, dim.fontSizeExtraLarge);
+        Fonts::getTitle(), textColor, dim.fontSizeExtraLarge);
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
@@ -140,9 +150,9 @@ void TimeWidget::rebuildRenderData() {
 void TimeWidget::resetToDefaults() {
     m_bVisible = true;
     m_bShowTitle = true;
-    m_bShowBackgroundTexture = false;  // No texture by default
+    setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.1f;
     m_fScale = 1.0f;
-    setPosition(-0.275f, -0.0999f);
+    setPosition(0.1925f, 0.0111f);
     setDataDirty();
 }

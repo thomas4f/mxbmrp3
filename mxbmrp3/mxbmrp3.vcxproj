@@ -98,9 +98,14 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="core\asset_manager.h" />
     <ClInclude Include="core\color_config.h" />
+    <ClInclude Include="core\font_config.h" />
     <ClInclude Include="core\handler_singleton.h" />
+    <ClInclude Include="core\hotkey_config.h" />
+    <ClInclude Include="core\hotkey_manager.h" />
     <ClInclude Include="core\hud_manager.h" />
+    <ClInclude Include="core\tracked_riders_manager.h" />
     <ClInclude Include="core\input_manager.h" />
     <ClInclude Include="core\profile_manager.h" />
     <ClInclude Include="core\plugin_constants.h" />
@@ -143,7 +148,7 @@
     <ClInclude Include="hud\records_hud.h" />
     <ClInclude Include="hud\rumble_hud.h" />
     <ClInclude Include="hud\position_widget.h" />
-    <ClInclude Include="hud\session_best_hud.h" />
+    <ClInclude Include="hud\ideal_lap_hud.h" />
     <ClInclude Include="hud\session_widget.h" />
     <ClInclude Include="hud\settings_button_widget.h" />
     <ClInclude Include="hud\settings_hud.h" />
@@ -162,8 +167,12 @@
     <ClInclude Include="vendor\nlohmann\json.hpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="core\asset_manager.cpp" />
     <ClCompile Include="core\color_config.cpp" />
+    <ClCompile Include="core\font_config.cpp" />
+    <ClCompile Include="core\hotkey_manager.cpp" />
     <ClCompile Include="core\hud_manager.cpp" />
+    <ClCompile Include="core\tracked_riders_manager.cpp" />
     <ClCompile Include="core\input_manager.cpp" />
     <ClCompile Include="core\profile_manager.cpp" />
     <ClCompile Include="core\plugin_data.cpp" />
@@ -203,7 +212,7 @@
     <ClCompile Include="hud\records_hud.cpp" />
     <ClCompile Include="hud\rumble_hud.cpp" />
     <ClCompile Include="hud\position_widget.cpp" />
-    <ClCompile Include="hud\session_best_hud.cpp" />
+    <ClCompile Include="hud\ideal_lap_hud.cpp" />
     <ClCompile Include="hud\session_widget.cpp" />
     <ClCompile Include="hud\settings_button_widget.cpp" />
     <ClCompile Include="hud\settings_hud.cpp" />

@@ -15,22 +15,17 @@ using namespace PluginConstants::Math;
 
 SpeedoWidget::SpeedoWidget()
 {
-    // NOTE: Does not use initializeWidget() helper due to special requirements:
-    // - Only needs quad reservation (no strings - needle-only rendering)
-    // - Custom scale initialization (1.5f, not default 1.0f)
-    // - Uses full opacity (1.0f) instead of default 0.8f
-    // - Has custom background texture (dial sprite)
-    // This is an intentional design decision - see base_hud.h initializeWidget() docs
-    m_quads.reserve(2);  // dial background + needle
+    // One-time setup
+    DEBUG_INFO("SpeedoWidget created");
     setDraggable(true);
-    m_bVisible = false;  // Off by default
-    m_bShowTitle = false;
-    m_bShowBackgroundTexture = true;  // Show dial texture by default
-    m_fBackgroundOpacity = 1.0f;  // 100% opacity
-    m_fScale = 1.5f;  // 150% default scale
-    setPosition(0.605f, 0.7659f);
+    m_quads.reserve(2);  // dial background + needle
 
-    DEBUG_INFO("SpeedoWidget initialized");
+    // Set texture base name for dynamic texture discovery
+    setTextureBaseName("speedo_widget");
+
+    // Set all configurable defaults
+    resetToDefaults();
+
     rebuildRenderData();
 }
 
@@ -171,10 +166,10 @@ void SpeedoWidget::rebuildRenderData() {
 void SpeedoWidget::resetToDefaults() {
     m_bVisible = false;
     m_bShowTitle = false;
-    m_bShowBackgroundTexture = true;  // Show dial texture by default
+    setTextureVariant(1);  // Show dial texture by default
     m_fBackgroundOpacity = 1.0f;  // 100% opacity
     m_fScale = 1.5f;  // 150% default scale
-    setPosition(0.605f, 0.7659f);
+    setPosition(0.6875f, 0.7659f);
     m_smoothedSpeed = 0.0f;
     setDataDirty();
 }

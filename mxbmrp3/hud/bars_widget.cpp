@@ -18,23 +18,17 @@
 using namespace PluginConstants;
 
 BarsWidget::BarsWidget() {
-    // NOTE: Does not use initializeWidget() helper due to special requirements:
-    // - Requires quad reservation (bars need filled/empty quads)
-    // - Custom scale initialization (setScale(1.0f))
-    // - Uses full opacity (1.0f) instead of default 0.8f
-    // This is an intentional design decision - see base_hud.h initializeWidget() docs
-    DEBUG_INFO("BarsWidget initialized");
-    setScale(1.0f);
+    // One-time setup
+    DEBUG_INFO("BarsWidget created");
     setDraggable(true);
+    m_quads.reserve(17);   // 1 background + 8 bars (6 positions, 2 split) × 2 quads each (filled + empty)
+    m_strings.reserve(6);  // 6 labels: T, B, C, R, F, S
 
-    // No title for this widget (user specified)
-    m_bShowTitle = false;
-    m_fBackgroundOpacity = 1.0f;  // Full opacity background
-    setPosition(0.8085f, 0.4995f);
+    // Set texture base name for dynamic texture discovery
+    setTextureBaseName("bars_widget");
 
-    // Pre-allocate render buffers
-    m_quads.reserve(17);     // 1 background + 8 bars (6 positions, 2 split) × 2 quads each (filled + empty)
-    m_strings.reserve(6);    // 6 labels: T, B, C, R, F, S
+    // Set all configurable defaults
+    resetToDefaults();
 
     rebuildRenderData();
 }
@@ -133,7 +127,7 @@ void BarsWidget::rebuildRenderData() {
     // Bar 0: Throttle (T) - single bar
     addVerticalBar(currentX, contentStartY, barWidth, barHeight, throttleValue, throttleColor);
     addString("T", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-              Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+              Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
     currentX += barWidth + barSpacing;
 
     // Bar 1: Brake (B) - split into FBR | RBR when both available, full width FBR when rear unavailable
@@ -146,32 +140,32 @@ void BarsWidget::rebuildRenderData() {
         addVerticalBar(currentX, contentStartY, barWidth, barHeight, frontBrakeValue, frontBrakeColor);
     }
     addString("B", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-              Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+              Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
     currentX += barWidth + barSpacing;
 
     // Bar 2: Clutch (C) - single bar (muted when unavailable)
     addVerticalBar(currentX, contentStartY, barWidth, barHeight, clutchValue, clutchColor);
     addString("C", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-              Fonts::ROBOTO_MONO, hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
+              Fonts::getNormal(), hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
     currentX += barWidth + barSpacing;
 
     // Bar 3: RPM (R) - single bar
     addVerticalBar(currentX, contentStartY, barWidth, barHeight, rpmValue, rpmColor);
     addString("R", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-              Fonts::ROBOTO_MONO, ColorConfig::getInstance().getTertiary(), dims.fontSize);
+              Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
     currentX += barWidth + barSpacing;
 
     // Bar 4: Suspension (S) - split into FSU | RSU (muted when unavailable)
     addVerticalBar(currentX, contentStartY, halfBarWidth, barHeight, frontSuspValue, frontSuspColor);
     addVerticalBar(currentX + halfBarWidth, contentStartY, halfBarWidth, barHeight, rearSuspValue, rearSuspColor);
     addString("S", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-              Fonts::ROBOTO_MONO, hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
+              Fonts::getNormal(), hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
     currentX += barWidth + barSpacing;
 
     // Bar 5: Fuel (F) - single bar (muted when unavailable)
     addVerticalBar(currentX, contentStartY, barWidth, barHeight, fuelValue, fuelColor);
     addString("F", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-              Fonts::ROBOTO_MONO, hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
+              Fonts::getNormal(), hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
 }
 
 void BarsWidget::addVerticalBar(float x, float y, float barWidth, float barHeight,
@@ -215,9 +209,9 @@ void BarsWidget::addVerticalBar(float x, float y, float barWidth, float barHeigh
 void BarsWidget::resetToDefaults() {
     m_bVisible = true;
     m_bShowTitle = false;  // No title by default
-    m_bShowBackgroundTexture = false;  // No texture by default
+    setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 1.0f;  // Full opacity
     m_fScale = 1.0f;
-    setPosition(0.8085f, 0.4995f);
+    setPosition(0.858f, 0.8547f);
     setDataDirty();
 }

@@ -15,31 +15,48 @@
 #include "../core/hud_manager.h"
 #include "../core/profile_manager.h"
 #include "../core/update_checker.h"
+#include "../core/hotkey_manager.h"
+#include "../core/tracked_riders_manager.h"
+#include "../core/asset_manager.h"
+#include "../core/font_config.h"
+#include "../core/plugin_data.h"
+#include "../handlers/draw_handler.h"
 #include <cstring>
 #include <algorithm>
 #include <cmath>
 
 using namespace PluginConstants;
 
-namespace {
-    // Helper to convert MotorTarget to display string
-    const char* motorTargetToString(MotorTarget motor) {
-        switch (motor) {
-            case MotorTarget::Off:   return "Off  ";
-            case MotorTarget::Heavy: return "Heavy";
-            case MotorTarget::Light: return "Light";
-            case MotorTarget::Both:  return "Both ";
-            default:                 return "Off  ";
-        }
+// Helper template to cycle enum values forward or backward with wrap-around
+// EnumT must be an enum class with sequential values starting from 0
+template<typename EnumT>
+EnumT cycleEnum(EnumT current, int enumCount, bool forward) {
+    int val = static_cast<int>(current);
+    if (forward) {
+        val = (val + 1) % enumCount;
+    } else {
+        val = (val - 1 + enumCount) % enumCount;
     }
+    return static_cast<EnumT>(val);
 }
 
-SettingsHud::SettingsHud(SessionBestHud* sessionBest, LapLogHud* lapLog,
+// Mode name lookup tables for debug output
+static const char* getRiderColorModeName(int mode) {
+    static const char* names[] = { "Uniform", "Brand", "Position" };
+    return (mode >= 0 && mode < 3) ? names[mode] : "Unknown";
+}
+
+static const char* getLabelModeName(int mode) {
+    static const char* names[] = { "None", "Position", "RaceNum", "Both" };
+    return (mode >= 0 && mode < 4) ? names[mode] : "Unknown";
+}
+
+SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog,
                          StandingsHud* standings,
                          PerformanceHud* performance,
                          TelemetryHud* telemetry, InputHud* input,
-                         TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionWidget* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer)
-    : m_sessionBest(sessionBest),
+                         TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionWidget* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble)
+    : m_idealLap(idealLap),
       m_lapLog(lapLog),
       m_standings(standings),
       m_performance(performance),
@@ -63,15 +80,33 @@ SettingsHud::SettingsHud(SessionBestHud* sessionBest, LapLogHud* lapLog,
       m_records(records),
       m_fuel(fuel),
       m_pointer(pointer),
+      m_rumble(rumble),
       m_bVisible(false),
-      m_resetConfirmChecked(false),
+      m_copyTargetProfile(-1),  // -1 = no target selected
+      m_resetProfileConfirmed(false),
+      m_resetAllConfirmed(false),
       m_checkForUpdates(false),
       m_updateStatus(UpdateStatus::UNKNOWN),
       m_latestVersion(""),
       m_cachedWindowWidth(0),
       m_cachedWindowHeight(0),
       m_activeTab(TAB_GENERAL),
-      m_hoveredRegionIndex(-1)
+      m_hoveredRegionIndex(-1),
+      m_hoveredHotkeyRow(-1),
+      m_hoveredHotkeyColumn(HotkeyColumn::NONE),
+      m_hotkeyContentStartY(0.0f),
+      m_hotkeyRowHeight(0.0f),
+      m_hotkeyKeyboardX(0.0f),
+      m_hotkeyControllerX(0.0f),
+      m_hotkeyFieldCharWidth(0.0f),
+      m_hoveredTrackedRiderIndex(-1),
+      m_trackedRidersStartY(0.0f),
+      m_trackedRidersCellHeight(0.0f),
+      m_trackedRidersCellWidth(0.0f),
+      m_trackedRidersStartX(0.0f),
+      m_trackedRidersPerRow(0),
+      m_serverPlayersPage(0),
+      m_trackedRidersPage(0)
 {
     DEBUG_INFO("SettingsHud created");
     setDraggable(true);
@@ -79,7 +114,7 @@ SettingsHud::SettingsHud(SessionBestHud* sessionBest, LapLogHud* lapLog,
     // Pre-allocate vectors
     m_quads.reserve(1);
     m_strings.reserve(60);  // Less text now with tabs
-    m_clickRegions.reserve(30);  // Fewer regions per tab
+    m_clickRegions.reserve(60);  // Sized for largest tab (TAB_RIDERS has ~56 regions)
 
     // Start hidden
     hide();
@@ -134,6 +169,74 @@ void SettingsHud::update() {
             m_hoveredRegionIndex = newHoveredIndex;
             rebuildRenderData();  // Rebuild to update button backgrounds
         }
+
+        // For hotkeys tab, track row and column hover
+        if (m_activeTab == TAB_HOTKEYS && m_hotkeyRowHeight > 0.0f) {
+            int newHoveredRow = -1;
+            HotkeyColumn newHoveredColumn = HotkeyColumn::NONE;
+
+            if (cursor.y >= m_hotkeyContentStartY) {
+                // Calculate which row the mouse is over
+                float relativeY = cursor.y - m_hotkeyContentStartY;
+
+                // Row 0 is Settings Menu
+                if (relativeY < m_hotkeyRowHeight) {
+                    newHoveredRow = 0;
+                } else {
+                    // After row 0, there's a 0.5 row gap, then rows 1+
+                    float afterFirstRow = relativeY - m_hotkeyRowHeight;
+                    float gapHeight = m_hotkeyRowHeight * 0.5f;
+
+                    if (afterFirstRow >= gapHeight) {
+                        float afterGap = afterFirstRow - gapHeight;
+                        newHoveredRow = 1 + static_cast<int>(afterGap / m_hotkeyRowHeight);
+                    }
+                    // During gap, newHoveredRow stays -1
+                }
+
+                // Check which column the cursor is in (only if on a valid row)
+                if (newHoveredRow >= 0) {
+                    constexpr int kbFieldWidth = 16;
+                    constexpr int ctrlFieldWidth = 12;
+                    float kbFieldEnd = m_hotkeyKeyboardX + m_hotkeyFieldCharWidth * (kbFieldWidth + 2);
+                    float ctrlFieldEnd = m_hotkeyControllerX + m_hotkeyFieldCharWidth * (ctrlFieldWidth + 2);
+
+                    if (cursor.x >= m_hotkeyKeyboardX && cursor.x < kbFieldEnd) {
+                        newHoveredColumn = HotkeyColumn::KEYBOARD;
+                    } else if (cursor.x >= m_hotkeyControllerX && cursor.x < ctrlFieldEnd) {
+                        newHoveredColumn = HotkeyColumn::CONTROLLER;
+                    }
+                }
+            }
+
+            if (newHoveredRow != m_hoveredHotkeyRow || newHoveredColumn != m_hoveredHotkeyColumn) {
+                m_hoveredHotkeyRow = newHoveredRow;
+                m_hoveredHotkeyColumn = newHoveredColumn;
+                rebuildRenderData();
+            }
+        }
+
+        // For riders tab, track which tracked rider cell is hovered
+        if (m_activeTab == TAB_RIDERS && m_trackedRidersCellHeight > 0.0f && m_trackedRidersPerRow > 0) {
+            int newHoveredIndex = -1;
+
+            if (cursor.y >= m_trackedRidersStartY && cursor.x >= m_trackedRidersStartX) {
+                float relativeY = cursor.y - m_trackedRidersStartY;
+                float relativeX = cursor.x - m_trackedRidersStartX;
+
+                int row = static_cast<int>(relativeY / m_trackedRidersCellHeight);
+                int col = static_cast<int>(relativeX / m_trackedRidersCellWidth);
+
+                if (col >= 0 && col < m_trackedRidersPerRow) {
+                    newHoveredIndex = row * m_trackedRidersPerRow + col;
+                }
+            }
+
+            if (newHoveredIndex != m_hoveredTrackedRiderIndex) {
+                m_hoveredTrackedRiderIndex = newHoveredIndex;
+                rebuildRenderData();
+            }
+        }
     }
 
     // Handle mouse input
@@ -141,6 +244,33 @@ void SettingsHud::update() {
         if (cursor.isValid) {
             handleClick(cursor.x, cursor.y);
         }
+    }
+
+    // Handle right-click for shape cycling (TAB_RIDERS only)
+    if (input.getRightButton().isClicked()) {
+        if (cursor.isValid && m_activeTab == TAB_RIDERS) {
+            handleRightClick(cursor.x, cursor.y);
+        }
+    }
+
+    // Handle hotkey capture mode
+    HotkeyManager& hotkeyMgr = HotkeyManager::getInstance();
+    if (hotkeyMgr.isCapturing()) {
+        // Check for ESC to cancel capture
+        if ((GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0) {
+            hotkeyMgr.cancelCapture();
+            rebuildRenderData();
+        }
+        // Rebuild every frame during capture to show real-time modifier feedback
+        else {
+            rebuildRenderData();
+        }
+    }
+    // Check if capture completed (must be outside isCapturing block - capture ends same frame)
+    if (hotkeyMgr.wasCaptureCompleted()) {
+        rebuildRenderData();
+        // Save settings after binding change
+        SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
     }
 
     // Check if layout dirty (e.g., scale changed)
@@ -202,7 +332,7 @@ float SettingsHud::addDisplayModeControl(float x, float& currentY, const ScaledD
 
     // Render label
     addString("Display", x, currentY, Justify::LEFT,
-        Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dims.fontSize);
+        Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
 
     // Cycle control position
     float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dims.fontSize);
@@ -210,7 +340,7 @@ float SettingsHud::addDisplayModeControl(float x, float& currentY, const ScaledD
     constexpr int MAX_VALUE_WIDTH = 7;  // "Numbers" is longest
 
     // Left arrow "<"
-    addString("<", controlX, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dims.fontSize);
+    addString("<", controlX, currentY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dims.fontSize);
     addClickRegion(ClickRegion::DISPLAY_MODE_DOWN, controlX, currentY, charWidth * 2, dims.lineHeightNormal,
                    targetHud, nullptr, displayMode, 0, false, 0);
     controlX += charWidth * 2;
@@ -218,11 +348,11 @@ float SettingsHud::addDisplayModeControl(float x, float& currentY, const ScaledD
     // Value with fixed width
     char paddedValue[32];
     snprintf(paddedValue, sizeof(paddedValue), "%-*s", MAX_VALUE_WIDTH, displayModeText);
-    addString(paddedValue, controlX, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getPrimary(), dims.fontSize);
+    addString(paddedValue, controlX, currentY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), dims.fontSize);
     controlX += PluginUtils::calculateMonospaceTextWidth(MAX_VALUE_WIDTH, dims.fontSize);
 
     // Right arrow " >"
-    addString(" >", controlX, currentY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dims.fontSize);
+    addString(" >", controlX, currentY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dims.fontSize);
     addClickRegion(ClickRegion::DISPLAY_MODE_UP, controlX, currentY, charWidth * 2, dims.lineHeightNormal,
                    targetHud, nullptr, displayMode, 0, false, 0);
 
@@ -253,8 +383,8 @@ void SettingsHud::rebuildRenderData() {
 
     float panelWidth = PluginUtils::calculateMonospaceTextWidth(panelWidthChars, dim.fontSize) + dim.paddingH + dim.paddingH;
 
-    // Estimate height - much smaller now (tabs + one HUD's controls)
-    int estimatedRows = 28;  // Enough for General tab (profiles + controller + 10 colors + preferences + updates + spacing)
+    // Estimate height - sized to fit Riders tab content (6 server + 12 tracked + headers + pagination)
+    int estimatedRows = 25;
     float backgroundHeight = dim.paddingV + dim.lineHeightLarge + dim.lineHeightNormal + (estimatedRows * dim.lineHeightNormal) + dim.paddingV;
 
     // Center the panel horizontally and vertically
@@ -269,8 +399,8 @@ void SettingsHud::rebuildRenderData() {
 
     // Main title
     float titleX = contentStartX + (panelWidth - dim.paddingH - dim.paddingH) / 2.0f;
-    addString("HUD SETTINGS", titleX, currentY, Justify::CENTER,
-        Fonts::ENTER_SANSMAN, ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
+    addString("MXBMRP3 SETTINGS", titleX, currentY, Justify::CENTER,
+        Fonts::getTitle(), ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
 
     currentY += dim.lineHeightLarge + tabSpacing;
 
@@ -281,9 +411,93 @@ void SettingsHud::rebuildRenderData() {
 
     float checkboxWidth = PluginUtils::calculateMonospaceTextWidth(4, dim.fontSize);  // "[X] " or "    "
 
-    for (int i = 0; i < TAB_COUNT; i++) {
+    // Define visual tab order with section markers
+    static constexpr int TAB_SECTION_GLOBAL = -1;
+    static constexpr int TAB_SECTION_PROFILE = -2;
+    static constexpr int TAB_SECTION_ELEMENTS = -3;
+    static constexpr int tabDisplayOrder[] = {
+        TAB_SECTION_GLOBAL,
+        TAB_GENERAL,
+        TAB_APPEARANCE,
+        TAB_HOTKEYS,
+        TAB_RIDERS,
+        TAB_RUMBLE,
+        TAB_SECTION_PROFILE,
+        TAB_SECTION_ELEMENTS,
+        TAB_STANDINGS,
+        TAB_MAP,
+        TAB_RADAR,
+        TAB_LAP_LOG,
+        TAB_IDEAL_LAP,
+        TAB_TELEMETRY,
+        TAB_INPUT,
+        TAB_RECORDS,
+        TAB_PITBOARD,
+        TAB_TIMING,
+        TAB_GAP_BAR,
+        TAB_PERFORMANCE,
+        TAB_WIDGETS
+    };
+
+    for (size_t orderIdx = 0; orderIdx < sizeof(tabDisplayOrder)/sizeof(tabDisplayOrder[0]); orderIdx++) {
+        int i = tabDisplayOrder[orderIdx];
+
+        // Section headers (bold, primary color, not clickable)
+        if (i == TAB_SECTION_GLOBAL) {
+            addString("Global", tabStartX, tabStartY, Justify::LEFT,
+                Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+            tabStartY += dim.lineHeightNormal;
+            continue;
+        }
+        if (i == TAB_SECTION_PROFILE) {
+            tabStartY += dim.lineHeightNormal * 0.5f;  // Extra spacing before section
+            addString("Profile", tabStartX, tabStartY, Justify::LEFT,
+                Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+            tabStartY += dim.lineHeightNormal;
+
+            // Profile cycle control: < Practice >
+            float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+            ProfileType activeProfile = ProfileManager::getInstance().getActiveProfile();
+            const char* profileName = ProfileManager::getProfileName(activeProfile);
+
+            float currentX = tabStartX;
+
+            // Left arrow "<" with click region (cycles to previous profile)
+            addString("<", currentX, tabStartY, Justify::LEFT,
+                Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+            m_clickRegions.push_back(ClickRegion(
+                currentX, tabStartY, charWidth * 2, dim.lineHeightNormal,
+                ClickRegion::PROFILE_CYCLE_DOWN, nullptr
+            ));
+            currentX += charWidth * 2;
+
+            // Profile name (not clickable)
+            char profileLabel[12];
+            snprintf(profileLabel, sizeof(profileLabel), "%-8s", profileName);
+            addString(profileLabel, currentX, tabStartY, Justify::LEFT,
+                Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+            currentX += charWidth * 8;
+
+            // Right arrow " >" with click region (cycles to next profile)
+            addString(" >", currentX, tabStartY, Justify::LEFT,
+                Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+            m_clickRegions.push_back(ClickRegion(
+                currentX, tabStartY, charWidth * 2, dim.lineHeightNormal,
+                ClickRegion::PROFILE_CYCLE_UP, nullptr
+            ));
+
+            tabStartY += dim.lineHeightNormal;
+            continue;
+        }
+        if (i == TAB_SECTION_ELEMENTS) {
+            tabStartY += dim.lineHeightNormal * 0.5f;  // Extra spacing before section
+            addString("Elements", tabStartX, tabStartY, Justify::LEFT,
+                Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+            tabStartY += dim.lineHeightNormal;
+            continue;
+        }
+
         bool isActive = (i == m_activeTab);
-        int tabFont = isActive ? Fonts::ROBOTO_MONO_BOLD : Fonts::ROBOTO_MONO;
 
         // Get the HUD for this tab (nullptr for General and Widgets)
         BaseHud* tabHud = nullptr;
@@ -292,7 +506,7 @@ void SettingsHud::rebuildRenderData() {
             case TAB_MAP:          tabHud = m_mapHud; break;
             case TAB_PITBOARD:     tabHud = m_pitboard; break;
             case TAB_LAP_LOG:      tabHud = m_lapLog; break;
-            case TAB_SESSION_BEST: tabHud = m_sessionBest; break;
+            case TAB_IDEAL_LAP: tabHud = m_idealLap; break;
             case TAB_TELEMETRY:    tabHud = m_telemetry; break;
             case TAB_INPUT:        tabHud = m_input; break;
             case TAB_PERFORMANCE:  tabHud = m_performance; break;
@@ -331,7 +545,7 @@ void SettingsHud::rebuildRenderData() {
             // Checkbox text
             const char* checkboxText = isHudEnabled ? "[X]" : "[ ]";
             addString(checkboxText, currentTabX, tabStartY, Justify::LEFT,
-                Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
 
             currentTabX += checkboxWidth;
         } else if (i == TAB_WIDGETS) {
@@ -344,7 +558,7 @@ void SettingsHud::rebuildRenderData() {
             // Checkbox text
             const char* checkboxText = isHudEnabled ? "[X]" : "[ ]";
             addString(checkboxText, currentTabX, tabStartY, Justify::LEFT,
-                Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
 
             currentTabX += checkboxWidth;
         } else if (i == TAB_RUMBLE) {
@@ -357,7 +571,7 @@ void SettingsHud::rebuildRenderData() {
             // Checkbox text
             const char* checkboxText = isHudEnabled ? "[X]" : "[ ]";
             addString(checkboxText, currentTabX, tabStartY, Justify::LEFT,
-                Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
 
             currentTabX += checkboxWidth;
         } else {
@@ -403,10 +617,11 @@ void SettingsHud::rebuildRenderData() {
         }
 
         const char* tabName = i == TAB_GENERAL ? "General" :
+                              i == TAB_APPEARANCE ? "Appearance" :
                               i == TAB_STANDINGS ? "Standings" :
                               i == TAB_MAP ? "Map" :
                               i == TAB_LAP_LOG ? "Lap Log" :
-                              i == TAB_SESSION_BEST ? "Session Best" :
+                              i == TAB_IDEAL_LAP ? "Ideal Lap" :
                               i == TAB_TELEMETRY ? "Telemetry" :
                               i == TAB_INPUT ? "Input" :
                               i == TAB_PERFORMANCE ? "Performance" :
@@ -416,9 +631,11 @@ void SettingsHud::rebuildRenderData() {
                               i == TAB_GAP_BAR ? "Gap Bar" :
                               i == TAB_WIDGETS ? "Widgets" :
                               i == TAB_RUMBLE ? "Rumble" :
+                              i == TAB_HOTKEYS ? "Hotkeys" :
+                              i == TAB_RIDERS ? "Riders" :
                               "Radar";
 
-        addString(tabName, currentTabX, tabStartY, Justify::LEFT, tabFont, tabColor, dim.fontSize);
+        addString(tabName, currentTabX, tabStartY, Justify::LEFT, Fonts::getNormal(), tabColor, dim.fontSize);
 
         tabStartY += dim.lineHeightNormal;
     }
@@ -447,7 +664,7 @@ void SettingsHud::rebuildRenderData() {
 
         // Left arrow "<" - only show when enabled
         if (enabled) {
-            addString("<", currentX, y, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+            addString("<", currentX, y, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
             m_clickRegions.push_back(ClickRegion(
                 currentX, y, charWidth * 2, dim.lineHeightNormal,
                 downType, targetHud, 0, false, 0
@@ -458,12 +675,12 @@ void SettingsHud::rebuildRenderData() {
         // Value with fixed width (left-aligned, padded)
         char paddedValue[32];
         snprintf(paddedValue, sizeof(paddedValue), "%-*s", maxValueWidth, value);
-        addString(paddedValue, currentX, y, Justify::LEFT, Fonts::ROBOTO_MONO, valueColor, dim.fontSize);
+        addString(paddedValue, currentX, y, Justify::LEFT, Fonts::getNormal(), valueColor, dim.fontSize);
         currentX += PluginUtils::calculateMonospaceTextWidth(maxValueWidth, dim.fontSize);
 
         // Right arrow " >" - only show when enabled
         if (enabled) {
-            addString(" >", currentX, y, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+            addString(" >", currentX, y, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
             m_clickRegions.push_back(ClickRegion(
                 currentX, y, charWidth * 2, dim.lineHeightNormal,
                 upType, targetHud, 0, false, 0
@@ -486,7 +703,7 @@ void SettingsHud::rebuildRenderData() {
 
         // Left arrow "<" - only show when enabled
         if (enabled) {
-            addString("<", currentX, y, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+            addString("<", currentX, y, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
             if (bitfield != nullptr) {
                 // CHECKBOX type with bitfield
                 m_clickRegions.push_back(ClickRegion(
@@ -506,12 +723,12 @@ void SettingsHud::rebuildRenderData() {
         // Value with fixed width
         char paddedValue[8];
         snprintf(paddedValue, sizeof(paddedValue), "%-*s", VALUE_WIDTH, value);
-        addString(paddedValue, currentX, y, Justify::LEFT, Fonts::ROBOTO_MONO, valueColor, dim.fontSize);
+        addString(paddedValue, currentX, y, Justify::LEFT, Fonts::getNormal(), valueColor, dim.fontSize);
         currentX += PluginUtils::calculateMonospaceTextWidth(VALUE_WIDTH, dim.fontSize);
 
         // Right arrow " >" - only show when enabled
         if (enabled) {
-            addString(" >", currentX, y, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+            addString(" >", currentX, y, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
             if (bitfield != nullptr) {
                 // CHECKBOX type with bitfield
                 m_clickRegions.push_back(ClickRegion(
@@ -539,29 +756,38 @@ void SettingsHud::rebuildRenderData() {
         // Visibility toggle
         bool isVisible = hud->isVisible();
         addString("Visible", controlX, currentY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+            Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
         addToggleControl(toggleX, currentY, isVisible, ClickRegion::HUD_TOGGLE, hud);
         currentY += dim.lineHeightNormal;
 
         // Title toggle (can be disabled/grayed out)
         bool showTitle = enableTitle ? hud->getShowTitle() : false;
         addString("Title", controlX, currentY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, enableTitle ? ColorConfig::getInstance().getSecondary() : ColorConfig::getInstance().getMuted(), dim.fontSize);
+            Fonts::getNormal(), enableTitle ? ColorConfig::getInstance().getSecondary() : ColorConfig::getInstance().getMuted(), dim.fontSize);
         addToggleControl(toggleX, currentY, showTitle, ClickRegion::TITLE_TOGGLE, hud, nullptr, 0, enableTitle);
         currentY += dim.lineHeightNormal;
 
-        // Background texture toggle
-        bool showBgTexture = hud->getShowBackgroundTexture();
+        // Background texture variant cycle (Off, 1, 2, ...)
+        // Only enable if textures are available for this HUD
+        bool hasTextures = !hud->getAvailableTextureVariants().empty();
         addString("Texture", controlX, currentY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
-        addToggleControl(toggleX, currentY, showBgTexture, ClickRegion::BACKGROUND_TEXTURE_TOGGLE, hud);
+            Fonts::getNormal(), hasTextures ? ColorConfig::getInstance().getSecondary() : ColorConfig::getInstance().getMuted(), dim.fontSize);
+        char textureValue[16];
+        int variant = hud->getTextureVariant();
+        if (!hasTextures || variant == 0) {
+            snprintf(textureValue, sizeof(textureValue), "Off");
+        } else {
+            snprintf(textureValue, sizeof(textureValue), "%d", variant);
+        }
+        addCycleControl(toggleX, currentY, textureValue, 4,
+            ClickRegion::TEXTURE_VARIANT_DOWN, ClickRegion::TEXTURE_VARIANT_UP, hud, hasTextures);
         currentY += dim.lineHeightNormal;
 
         // Background opacity controls
         addString("Opacity", controlX, currentY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+            Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
         char opacityValue[16];
-        int opacityPercent = static_cast<int>(hud->getBackgroundOpacity() * 100.0f);
+        int opacityPercent = static_cast<int>(std::round(hud->getBackgroundOpacity() * 100.0f));
         snprintf(opacityValue, sizeof(opacityValue), "%d%%", opacityPercent);
         addCycleControl(toggleX, currentY, opacityValue, 4,
             ClickRegion::BACKGROUND_OPACITY_DOWN, ClickRegion::BACKGROUND_OPACITY_UP, hud);
@@ -569,9 +795,9 @@ void SettingsHud::rebuildRenderData() {
 
         // Scale controls
         addString("Scale", controlX, currentY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+            Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
         char scaleValue[16];
-        int scalePercent = static_cast<int>(hud->getScale() * 100.0f + 0.5f);
+        int scalePercent = static_cast<int>(std::round(hud->getScale() * 100.0f));
         snprintf(scaleValue, sizeof(scaleValue), "%d%%", scalePercent);
         addCycleControl(toggleX, currentY, scaleValue, 4,
             ClickRegion::SCALE_DOWN, ClickRegion::SCALE_UP, hud);
@@ -594,7 +820,7 @@ void SettingsHud::rebuildRenderData() {
 
         // Widget name
         addString(name, nameX, currentY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+            Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
 
         // Visibility toggle (shows actual value, grayed out when disabled)
         addToggleControl(visX, currentY, hud->isVisible(), ClickRegion::HUD_TOGGLE, hud, nullptr, 0, enableVisibility);
@@ -602,19 +828,24 @@ void SettingsHud::rebuildRenderData() {
         // Title toggle (shows actual value, grayed out when disabled)
         addToggleControl(titleX, currentY, hud->getShowTitle(), ClickRegion::TITLE_TOGGLE, hud, nullptr, 0, enableTitle);
 
-        // BG Texture toggle (shows actual value, grayed out when disabled)
-        addToggleControl(bgTexX, currentY, hud->getShowBackgroundTexture(), ClickRegion::BACKGROUND_TEXTURE_TOGGLE, hud, nullptr, 0, enableBgTexture);
+        // BG Texture variant cycle (disabled if no textures available)
+        bool hasTextures = !hud->getAvailableTextureVariants().empty();
+        char texValue[8];
+        int texVariant = hud->getTextureVariant();
+        snprintf(texValue, sizeof(texValue), (!hasTextures || texVariant == 0) ? "Off" : "%d", texVariant);
+        addCycleControl(bgTexX, currentY, texValue, 3,
+            ClickRegion::TEXTURE_VARIANT_DOWN, ClickRegion::TEXTURE_VARIANT_UP, hud, enableBgTexture && hasTextures);
 
         // BG Opacity (shows muted value without arrows when disabled)
         char opacityValue[16];
-        int opacityPercent = static_cast<int>(hud->getBackgroundOpacity() * 100.0f);
+        int opacityPercent = static_cast<int>(std::round(hud->getBackgroundOpacity() * 100.0f));
         snprintf(opacityValue, sizeof(opacityValue), "%d%%", opacityPercent);
         addCycleControl(opacityX, currentY, opacityValue, 4,
             ClickRegion::BACKGROUND_OPACITY_DOWN, ClickRegion::BACKGROUND_OPACITY_UP, hud, enableOpacity);
 
         // Scale (shows muted value without arrows when disabled)
         char scaleValue[16];
-        int scalePercent = static_cast<int>(hud->getScale() * 100.0f + 0.5f);
+        int scalePercent = static_cast<int>(std::round(hud->getScale() * 100.0f));
         snprintf(scaleValue, sizeof(scaleValue), "%d%%", scalePercent);
         addCycleControl(scaleX, currentY, scaleValue, 4,
             ClickRegion::SCALE_DOWN, ClickRegion::SCALE_UP, hud, enableScale);
@@ -632,7 +863,7 @@ void SettingsHud::rebuildRenderData() {
         // Label with padding
         char paddedLabel[32];
         snprintf(paddedLabel, sizeof(paddedLabel), "%-*s", labelWidth, label);
-        addString(paddedLabel, dataX, yPos, Justify::LEFT, Fonts::ROBOTO_MONO,
+        addString(paddedLabel, dataX, yPos, Justify::LEFT, Fonts::getNormal(),
             enabled ? ColorConfig::getInstance().getSecondary() : ColorConfig::getInstance().getMuted(), dim.fontSize);
 
         // Toggle control
@@ -650,7 +881,7 @@ void SettingsHud::rebuildRenderData() {
         // Label with padding
         char paddedLabel[32];
         snprintf(paddedLabel, sizeof(paddedLabel), "%-*s", labelWidth, label);
-        addString(paddedLabel, dataX, yPos, Justify::LEFT, Fonts::ROBOTO_MONO,
+        addString(paddedLabel, dataX, yPos, Justify::LEFT, Fonts::getNormal(),
             enabled ? ColorConfig::getInstance().getSecondary() : ColorConfig::getInstance().getMuted(), dim.fontSize);
 
         // Toggle control
@@ -668,42 +899,186 @@ void SettingsHud::rebuildRenderData() {
             // General settings tab
             ColorConfig& colorConfig = ColorConfig::getInstance();
 
-            // Profiles section (at top - affects all other settings)
-            addString("Profiles", leftColumnX, currentY, Justify::LEFT,
-                Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
-            currentY += dim.lineHeightNormal * 1.5f;
+            // Preferences section (first - no spacing before)
+            addString("Preferences", leftColumnX, currentY, Justify::LEFT,
+                Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+            currentY += dim.lineHeightNormal;
 
-            // Active profile selector
+            // Controller selector (used by both Input HUD and Rumble)
+            // Cycles: Disabled -> 1 -> 2 -> 3 -> 4 -> Disabled
             {
                 float toggleX = leftColumnX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);
                 float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
 
-                addString("Profile", leftColumnX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                RumbleConfig& rumbleConfig = XInputReader::getInstance().getRumbleConfig();
+                int controllerIdx = rumbleConfig.controllerIndex;
+                bool isDisabled = (controllerIdx < 0);
+                bool isConnected = !isDisabled && XInputReader::isControllerConnected(controllerIdx);
+                std::string controllerName = isDisabled ? "" : XInputReader::getControllerName(controllerIdx);
 
-                // Display current profile with < > cycle pattern (arrows=accent, value=primary)
-                ProfileType activeProfile = ProfileManager::getInstance().getActiveProfile();
-                const char* profileName = ProfileManager::getProfileName(activeProfile);
+                addString("Controller", leftColumnX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+
                 float currentX = toggleX;
                 addString("<", currentX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
                 currentX += charWidth * 2;
-                char profileLabel[12];
-                snprintf(profileLabel, sizeof(profileLabel), "%-8s", profileName);
-                addString(profileLabel, currentX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getPrimary(), dim.fontSize);
-                currentX += charWidth * 8;
-                addString(" >", currentX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
 
-                // Click region for the entire toggle area
+                // Show controller status
+                // Format: "Disabled" or "1: Name..." or "1: Not Connected"
+                char displayStr[40];
+                if (isDisabled) {
+                    snprintf(displayStr, sizeof(displayStr), "Disabled");
+                } else {
+                    int slot = controllerIdx + 1;
+                    if (!controllerName.empty()) {
+                        snprintf(displayStr, sizeof(displayStr), "%d: %-20.20s", slot, controllerName.c_str());
+                    } else if (isConnected) {
+                        snprintf(displayStr, sizeof(displayStr), "%d: Connected", slot);
+                    } else {
+                        snprintf(displayStr, sizeof(displayStr), "%d: Not Connected", slot);
+                    }
+                }
+
+                // Color: muted for disabled, positive for connected, muted for not connected
+                uint32_t textColor = isDisabled ? ColorConfig::getInstance().getMuted() :
+                    (isConnected ? ColorConfig::getInstance().getPositive() : ColorConfig::getInstance().getMuted());
+                addString(displayStr, currentX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), textColor, dim.fontSize);
+                currentX += charWidth * 24;
+
+                addString(">", currentX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+
                 m_clickRegions.push_back(ClickRegion(
-                    toggleX, currentY, charWidth * 12, dim.lineHeightNormal,
-                    ClickRegion::PROFILE_CYCLE, nullptr
+                    toggleX, currentY, charWidth * 27, dim.lineHeightNormal,
+                    ClickRegion::RUMBLE_CONTROLLER_UP, nullptr
                 ));
 
                 currentY += dim.lineHeightNormal;
             }
+
+            // Speed unit toggle
+            {
+                float toggleX = leftColumnX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);
+                float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+
+                addString("Speed", leftColumnX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+
+                // Display current unit with < > cycle pattern (arrows=accent, value=primary)
+                bool isKmh = m_speed && m_speed->getSpeedUnit() == SpeedWidget::SpeedUnit::KMH;
+                float currentX = toggleX;
+                addString("<", currentX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+                currentX += charWidth * 2;
+                addString(isKmh ? "km/h" : "mph ", currentX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                currentX += charWidth * 4;
+                addString(" >", currentX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+
+                // Click region for the entire toggle area
+                m_clickRegions.push_back(ClickRegion(
+                    toggleX, currentY, charWidth * 8, dim.lineHeightNormal,
+                    ClickRegion::SPEED_UNIT_TOGGLE, m_speed
+                ));
+
+                currentY += dim.lineHeightNormal;
+            }
+
+            // Fuel unit toggle
+            {
+                float toggleX = leftColumnX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);
+                float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+
+                addString("Fuel", leftColumnX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+
+                // Display current unit with < > cycle pattern (arrows=accent, value=primary)
+                bool isGallons = m_fuel && m_fuel->getFuelUnit() == FuelWidget::FuelUnit::GALLONS;
+                float currentX = toggleX;
+                addString("<", currentX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+                currentX += charWidth * 2;
+                addString(isGallons ? "gal" : "L  ", currentX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                currentX += charWidth * 3;
+                addString(" >", currentX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+
+                // Click region for the entire toggle area
+                m_clickRegions.push_back(ClickRegion(
+                    toggleX, currentY, charWidth * 8, dim.lineHeightNormal,
+                    ClickRegion::FUEL_UNIT_TOGGLE, m_fuel
+                ));
+
+                currentY += dim.lineHeightNormal;
+            }
+
+            // Grid snap toggle
+            {
+                float toggleX = leftColumnX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);
+                float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+
+                addString("Grid Snap", leftColumnX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+
+                // Display current state with < > cycle pattern (arrows=accent, value=primary)
+                bool gridSnapEnabled = ColorConfig::getInstance().getGridSnapping();
+                float currentX = toggleX;
+                addString("<", currentX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+                currentX += charWidth * 2;
+                addString(gridSnapEnabled ? "On " : "Off", currentX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), gridSnapEnabled ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getMuted(), dim.fontSize);
+                currentX += charWidth * 3;
+                addString(" >", currentX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+
+                // Click region for the entire toggle area
+                m_clickRegions.push_back(ClickRegion(
+                    toggleX, currentY, charWidth * 7, dim.lineHeightNormal,
+                    ClickRegion::GRID_SNAP_TOGGLE, nullptr
+                ));
+
+                currentY += dim.lineHeightNormal;
+            }
+
+            // Check for Updates toggle
+            {
+                float toggleX = leftColumnX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);
+                float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+
+                addString("Updates", leftColumnX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+
+                // Display current state with < > cycle pattern
+                bool updatesEnabled = UpdateChecker::getInstance().isEnabled();
+                float currentX = toggleX;
+                addString("<", currentX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+                currentX += charWidth * 2;
+                addString(updatesEnabled ? "On " : "Off", currentX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), updatesEnabled ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getMuted(), dim.fontSize);
+                currentX += charWidth * 3;
+                addString(" >", currentX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+
+                // Click region for the entire toggle area
+                m_clickRegions.push_back(ClickRegion(
+                    toggleX, currentY, charWidth * 7, dim.lineHeightNormal,
+                    ClickRegion::UPDATE_CHECK_TOGGLE, nullptr
+                ));
+
+                currentY += dim.lineHeightNormal;
+            }
+
+            // Profiles section
+            currentY += dim.lineHeightNormal * 0.5f;  // Extra spacing before section
+            addString("Profiles", leftColumnX, currentY, Justify::LEFT,
+                Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+            currentY += dim.lineHeightNormal;
 
             // Auto-switch toggle
             {
@@ -711,19 +1086,19 @@ void SettingsHud::rebuildRenderData() {
                 float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
 
                 addString("Auto-Switch", leftColumnX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
 
                 // Display current state with < > cycle pattern (arrows=accent, value=primary)
                 bool autoSwitchEnabled = ProfileManager::getInstance().isAutoSwitchEnabled();
                 float currentX = toggleX;
                 addString("<", currentX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
                 currentX += charWidth * 2;
                 addString(autoSwitchEnabled ? "On " : "Off", currentX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, autoSwitchEnabled ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getMuted(), dim.fontSize);
+                    Fonts::getNormal(), autoSwitchEnabled ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getMuted(), dim.fontSize);
                 currentX += charWidth * 3;
                 addString(" >", currentX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
 
                 // Click region for the entire toggle area
                 m_clickRegions.push_back(ClickRegion(
@@ -734,42 +1109,83 @@ void SettingsHud::rebuildRenderData() {
                 currentY += dim.lineHeightNormal;
             }
 
-            // Profile action buttons: [ ] [Copy to All] [Reset Profile] [Reset All Profiles]
-            // Single checkbox enables all three buttons (safety mechanism)
-            currentY += dim.lineHeightNormal * 0.5f;  // Small spacing
+            // Copy profile: "Copy [Profile] profile to < target >" with [Copy] button
+            currentY += dim.lineHeightNormal * 0.5f;  // Extra spacing before copy
             {
-                float checkboxWidth = PluginUtils::calculateMonospaceTextWidth(CHECKBOX_WIDTH, dim.fontSize);
-                float copyToAllWidth = PluginUtils::calculateMonospaceTextWidth(COPY_TO_ALL_BUTTON_WIDTH, dim.fontSize);
-                float resetProfileWidth = PluginUtils::calculateMonospaceTextWidth(RESET_PROFILE_BUTTON_WIDTH, dim.fontSize);
-                float resetAllWidth = PluginUtils::calculateMonospaceTextWidth(RESET_ALL_BUTTON_WIDTH, dim.fontSize);
+                ProfileType activeProfile = ProfileManager::getInstance().getActiveProfile();
+                const char* activeProfileName = ProfileManager::getInstance().getProfileName(activeProfile);
                 float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
 
+                // Build the display: "Copy Practice profile to < All >"
                 float currentX = leftColumnX;
 
-                // Confirmation checkbox - enables all buttons
+                addString("Copy", currentX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                currentX += charWidth * 5;
+
+                addString(activeProfileName, currentX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                currentX += charWidth * 9;
+
+                addString("profile to", currentX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                currentX += charWidth * 11;
+
+                // Target cycle control
+                const char* targetName;
+                bool hasTarget = (m_copyTargetProfile != -1);
+                if (m_copyTargetProfile == -1) {
+                    targetName = "Select";
+                } else if (m_copyTargetProfile == 4) {
+                    targetName = "All";
+                } else {
+                    targetName = ProfileManager::getInstance().getProfileName(static_cast<ProfileType>(m_copyTargetProfile));
+                }
+
+                // Left arrow "<" with click region
+                float arrowStartX = currentX;
+                addString("<", currentX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
                 m_clickRegions.push_back(ClickRegion(
-                    currentX, currentY, checkboxWidth, dim.lineHeightNormal,
-                    ClickRegion::RESET_CONFIRM_CHECKBOX, nullptr
+                    currentX, currentY, charWidth * 2, dim.lineHeightNormal,
+                    ClickRegion::COPY_TARGET_DOWN, nullptr
+                ));
+                currentX += charWidth * 2;
+
+                // Target name (no click region)
+                unsigned long targetColor = hasTarget ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getMuted();
+                addString(targetName, currentX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), targetColor, dim.fontSize);
+                currentX += charWidth * 8;
+
+                // Right arrow ">" with click region
+                addString(" >", currentX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+                m_clickRegions.push_back(ClickRegion(
+                    currentX, currentY, charWidth * 2, dim.lineHeightNormal,
+                    ClickRegion::COPY_TARGET_UP, nullptr
                 ));
 
-                const char* checkboxText = m_resetConfirmChecked ? "[X]" : "[ ]";
-                addString(checkboxText, currentX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
-                currentX += checkboxWidth;
+                currentY += dim.lineHeightNormal;
 
-                // Helper lambda for button rendering (reduces repetition)
-                auto renderButton = [&](const char* label, float width, ClickRegion::Type type) {
+                // [Copy] button - centered like [Close] button
+                currentY += dim.lineHeightNormal * 0.5f;
+                {
+                    float buttonWidth = PluginUtils::calculateMonospaceTextWidth(6, dim.fontSize);
+                    float buttonCenterX = contentStartX + (panelWidth - dim.paddingH - dim.paddingH) / 2.0f;
+                    float buttonX = buttonCenterX - buttonWidth / 2.0f;
+
                     size_t regionIndex = m_clickRegions.size();
                     m_clickRegions.push_back(ClickRegion(
-                        currentX, currentY, width, dim.lineHeightNormal, type, nullptr
+                        buttonX, currentY, buttonWidth, dim.lineHeightNormal,
+                        ClickRegion::COPY_BUTTON, nullptr
                     ));
 
-                    // Button background - only show when checkbox is checked
-                    if (m_resetConfirmChecked) {
+                    if (hasTarget) {
                         SPluginQuad_t bgQuad;
-                        float bgX = currentX, bgY = currentY;
+                        float bgX = buttonX, bgY = currentY;
                         applyOffset(bgX, bgY);
-                        setQuadPositions(bgQuad, bgX, bgY, width, dim.lineHeightNormal);
+                        setQuadPositions(bgQuad, bgX, bgY, buttonWidth, dim.lineHeightNormal);
                         bgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
                         bgQuad.m_ulColor = (m_hoveredRegionIndex == static_cast<int>(regionIndex))
                             ? ColorConfig::getInstance().getAccent()
@@ -777,81 +1193,192 @@ void SettingsHud::rebuildRenderData() {
                         m_quads.push_back(bgQuad);
                     }
 
-                    // Button text - MUTED when disabled
-                    unsigned long textColor;
-                    if (!m_resetConfirmChecked) {
-                        textColor = ColorConfig::getInstance().getMuted();
-                    } else if (m_hoveredRegionIndex == static_cast<int>(regionIndex)) {
-                        textColor = ColorConfig::getInstance().getPrimary();
-                    } else {
-                        textColor = ColorConfig::getInstance().getSecondary();
-                    }
-                    addString(label, currentX + width / 2.0f, currentY, Justify::CENTER,
-                        Fonts::ROBOTO_MONO, textColor, dim.fontSize);
-                    currentX += width + charWidth;  // Add gap after button
-                };
+                    unsigned long textColor = !hasTarget ? ColorConfig::getInstance().getMuted()
+                        : (m_hoveredRegionIndex == static_cast<int>(regionIndex))
+                            ? ColorConfig::getInstance().getPrimary()
+                            : ColorConfig::getInstance().getSecondary();
+                    addString("[Copy]", buttonCenterX, currentY, Justify::CENTER,
+                        Fonts::getNormal(), textColor, dim.fontSize);
 
-                renderButton("[Copy to All]", copyToAllWidth, ClickRegion::APPLY_TO_ALL_PROFILES);
-                renderButton("[Reset Profile]", resetProfileWidth, ClickRegion::RESET_PROFILE_BUTTON);
-                renderButton("[Reset All Profiles]", resetAllWidth, ClickRegion::RESET_BUTTON);
-
-                currentY += dim.lineHeightNormal;
+                    currentY += dim.lineHeightNormal;
+                }
             }
 
-            // Controller section
-            currentY += dim.lineHeightNormal * 0.5f;  // Spacing between sections
-            addString("Controller", leftColumnX, currentY, Justify::LEFT,
-                Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
-            currentY += dim.lineHeightNormal * 1.5f;
-
-            // Controller index selector (used by both Input HUD and Rumble)
+            // Reset section - radio options + [Reset] button
+            currentY += dim.lineHeightNormal * 0.5f;
             {
-                float toggleX = leftColumnX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);
+                ProfileType activeProfile = ProfileManager::getInstance().getActiveProfile();
+                const char* activeProfileName = ProfileManager::getInstance().getProfileName(activeProfile);
+                float radioWidth = PluginUtils::calculateMonospaceTextWidth(CHECKBOX_WIDTH, dim.fontSize);
                 float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
 
-                RumbleConfig& rumbleConfig = XInputReader::getInstance().getRumbleConfig();
-                bool isConnected = XInputReader::isControllerConnected(rumbleConfig.controllerIndex);
+                // Reset [Profile] profile radio row
+                {
+                    float rowWidth = radioWidth + PluginUtils::calculateMonospaceTextWidth(22, dim.fontSize);
+                    m_clickRegions.push_back(ClickRegion(
+                        leftColumnX, currentY, rowWidth, dim.lineHeightNormal,
+                        ClickRegion::RESET_PROFILE_CHECKBOX, nullptr
+                    ));
 
-                addString("Index", leftColumnX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    addString(m_resetProfileConfirmed ? "(O)" : "( )", leftColumnX, currentY, Justify::LEFT,
+                        Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
 
-                float currentX = toggleX;
-                addString("<", currentX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
-                currentX += charWidth * 2;
+                    float textX = leftColumnX + radioWidth;
+                    unsigned long labelColor = ColorConfig::getInstance().getSecondary();
+                    unsigned long profileColor = m_resetProfileConfirmed
+                        ? ColorConfig::getInstance().getPrimary()
+                        : ColorConfig::getInstance().getSecondary();
 
-                char indexStr[4];
-                snprintf(indexStr, sizeof(indexStr), "%d", rumbleConfig.controllerIndex + 1);
-                addString(indexStr, currentX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, isConnected ? ColorConfig::getInstance().getPositive() : ColorConfig::getInstance().getMuted(), dim.fontSize);
-                currentX += charWidth * 2;
+                    addString("Reset", textX, currentY, Justify::LEFT,
+                        Fonts::getNormal(), labelColor, dim.fontSize);
+                    textX += charWidth * 6;
 
-                addString(" >", currentX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+                    addString(activeProfileName, textX, currentY, Justify::LEFT,
+                        Fonts::getNormal(), profileColor, dim.fontSize);
+                    textX += charWidth * 9;
 
+                    addString("profile", textX, currentY, Justify::LEFT,
+                        Fonts::getNormal(), labelColor, dim.fontSize);
+
+                    currentY += dim.lineHeightNormal;
+                }
+
+                // Reset All Settings radio row
+                {
+                    float rowWidth = radioWidth + PluginUtils::calculateMonospaceTextWidth(18, dim.fontSize);
+                    m_clickRegions.push_back(ClickRegion(
+                        leftColumnX, currentY, rowWidth, dim.lineHeightNormal,
+                        ClickRegion::RESET_ALL_CHECKBOX, nullptr
+                    ));
+
+                    addString(m_resetAllConfirmed ? "(O)" : "( )", leftColumnX, currentY, Justify::LEFT,
+                        Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+
+                    unsigned long labelColor = m_resetAllConfirmed
+                        ? ColorConfig::getInstance().getPrimary()
+                        : ColorConfig::getInstance().getSecondary();
+                    addString("Reset All Settings", leftColumnX + radioWidth, currentY, Justify::LEFT,
+                        Fonts::getNormal(), labelColor, dim.fontSize);
+
+                    currentY += dim.lineHeightNormal;
+                }
+
+                // [Reset] button - centered like [Close] button
+                currentY += dim.lineHeightNormal * 0.5f;
+                {
+                    bool resetEnabled = m_resetProfileConfirmed || m_resetAllConfirmed;
+                    float buttonWidth = PluginUtils::calculateMonospaceTextWidth(7, dim.fontSize);
+                    float buttonCenterX = contentStartX + (panelWidth - dim.paddingH - dim.paddingH) / 2.0f;
+                    float buttonX = buttonCenterX - buttonWidth / 2.0f;
+
+                    size_t regionIndex = m_clickRegions.size();
+                    m_clickRegions.push_back(ClickRegion(
+                        buttonX, currentY, buttonWidth, dim.lineHeightNormal,
+                        ClickRegion::RESET_BUTTON, nullptr
+                    ));
+
+                    if (resetEnabled) {
+                        SPluginQuad_t bgQuad;
+                        float bgX = buttonX, bgY = currentY;
+                        applyOffset(bgX, bgY);
+                        setQuadPositions(bgQuad, bgX, bgY, buttonWidth, dim.lineHeightNormal);
+                        bgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+                        bgQuad.m_ulColor = (m_hoveredRegionIndex == static_cast<int>(regionIndex))
+                            ? ColorConfig::getInstance().getAccent()
+                            : PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(), 128.0f / 255.0f);
+                        m_quads.push_back(bgQuad);
+                    }
+
+                    unsigned long textColor = !resetEnabled ? ColorConfig::getInstance().getMuted()
+                        : (m_hoveredRegionIndex == static_cast<int>(regionIndex))
+                            ? ColorConfig::getInstance().getPrimary()
+                            : ColorConfig::getInstance().getSecondary();
+                    addString("[Reset]", buttonCenterX, currentY, Justify::CENTER,
+                        Fonts::getNormal(), textColor, dim.fontSize);
+
+                    currentY += dim.lineHeightNormal;
+                }
+            }
+        }
+        break;
+
+        case TAB_APPEARANCE:
+        {
+            // Appearance tab - font categories and color configuration
+            FontConfig& fontConfig = FontConfig::getInstance();
+            ColorConfig& colorConfig = ColorConfig::getInstance();
+            float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+
+            // ============================================
+            // Fonts section
+            // ============================================
+            addString("Fonts", leftColumnX, currentY, Justify::LEFT,
+                Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+            currentY += dim.lineHeightNormal;
+
+            // Helper lambda to add a font category row with cycle buttons
+            auto addFontRow = [&](FontCategory category) {
+                const char* categoryName = FontConfig::getCategoryName(category);
+                const char* fontDisplayName = fontConfig.getFontDisplayName(category);
+
+                // Category name label
+                addString(categoryName, leftColumnX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+
+                // Font name with cycle arrows
+                float cycleX = leftColumnX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);
+
+                // Left arrow "<" with click region for PREV
+                addString("<", cycleX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
                 m_clickRegions.push_back(ClickRegion(
-                    toggleX, currentY, charWidth * 7, dim.lineHeightNormal,
-                    ClickRegion::RUMBLE_CONTROLLER_UP, nullptr
+                    cycleX, currentY, charWidth * 2, dim.lineHeightNormal,
+                    ClickRegion::FONT_CATEGORY_PREV, category
+                ));
+                cycleX += charWidth * 2;
+
+                // Font name (no click region)
+                addString(fontDisplayName, cycleX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                cycleX += charWidth * 22;  // Max font display name width
+
+                // Right arrow ">" with click region for NEXT
+                addString(" >", cycleX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+                m_clickRegions.push_back(ClickRegion(
+                    cycleX, currentY, charWidth * 2, dim.lineHeightNormal,
+                    ClickRegion::FONT_CATEGORY_NEXT, category
                 ));
 
                 currentY += dim.lineHeightNormal;
-            }
+            };
 
+            // All font categories
+            addFontRow(FontCategory::TITLE);
+            addFontRow(FontCategory::NORMAL);
+            addFontRow(FontCategory::STRONG);
+            addFontRow(FontCategory::MARKER);
+            addFontRow(FontCategory::SMALL);
+
+            currentY += dim.lineHeightNormal * 0.5f;  // Spacing before Colors section
+
+            // ============================================
             // Colors section
-            currentY += dim.lineHeightNormal * 0.5f;  // Spacing between sections
+            // ============================================
             addString("Colors", leftColumnX, currentY, Justify::LEFT,
-                Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
-            currentY += dim.lineHeightNormal * 1.5f;
+                Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+            currentY += dim.lineHeightNormal;
 
             // Helper lambda to add a color row with preview and cycle buttons
             auto addColorRow = [&](ColorSlot slot) {
                 const char* slotName = ColorConfig::getSlotName(slot);
                 unsigned long color = colorConfig.getColor(slot);
                 const char* colorName = ColorPalette::getColorName(color);
+                float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
 
                 // Slot name label
                 addString(slotName, leftColumnX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
 
                 // Color preview quad (small square showing the actual color)
                 float previewX = leftColumnX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);
@@ -867,31 +1394,28 @@ void SettingsHud::rebuildRenderData() {
                     m_quads.push_back(previewQuad);
                 }
 
-                // Cycle buttons and color name
-                float buttonX = previewX + previewSize + PluginUtils::calculateMonospaceTextWidth(2, dim.fontSize);
+                // Color name with cycle arrows (following addCycleControl pattern)
+                float cycleX = previewX + previewSize + PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
 
-                // [-] button
-                addString("<", buttonX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
-                float buttonWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+                // Left arrow "<" with click region for PREV
+                addString("<", cycleX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
                 m_clickRegions.push_back(ClickRegion(
-                    buttonX, currentY, buttonWidth, dim.lineHeightNormal,
+                    cycleX, currentY, charWidth * 2, dim.lineHeightNormal,
                     ClickRegion::COLOR_CYCLE_PREV, slot
                 ));
+                cycleX += charWidth * 2;
 
-                // Color name (centered between buttons)
-                float nameX = buttonX + PluginUtils::calculateMonospaceTextWidth(2, dim.fontSize);
-                char colorLabel[20];
-                snprintf(colorLabel, sizeof(colorLabel), "%-11s", colorName);
-                addString(colorLabel, nameX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, color, dim.fontSize);
+                // Color name (no click region)
+                addString(colorName, cycleX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                cycleX += charWidth * 10;  // Max color name width
 
-                // [+] button
-                float plusX = nameX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);
-                addString(">", plusX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+                // Right arrow ">" with click region for NEXT
+                addString(" >", cycleX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
                 m_clickRegions.push_back(ClickRegion(
-                    plusX, currentY, buttonWidth, dim.lineHeightNormal,
+                    cycleX, currentY, charWidth * 2, dim.lineHeightNormal,
                     ClickRegion::COLOR_CYCLE_NEXT, slot
                 ));
 
@@ -909,128 +1433,202 @@ void SettingsHud::rebuildRenderData() {
             addColorRow(ColorSlot::NEUTRAL);
             addColorRow(ColorSlot::WARNING);
             addColorRow(ColorSlot::NEGATIVE);
+        }
+        break;
 
-            // Preferences section (units and positioning)
-            currentY += dim.lineHeightNormal;  // Spacing between sections
-            addString("Preferences", leftColumnX, currentY, Justify::LEFT,
-                Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
-            currentY += dim.lineHeightNormal * 1.5f;
+        case TAB_HOTKEYS:
+        {
+            // Hotkeys tab - keyboard and controller binding configuration
+            HotkeyManager& hotkeyMgr = HotkeyManager::getInstance();
+            float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
 
-            // Speed unit toggle
-            {
-                float toggleX = leftColumnX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);
-                float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+            // Column layout - wider fields for better readability
+            float actionX = leftColumnX;
+            float keyboardX = actionX + charWidth * 14;  // After action name
+            float controllerX = keyboardX + charWidth * 22;  // After keyboard binding (wider)
 
-                addString("Speed", leftColumnX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+            // Field widths (characters inside brackets)
+            constexpr int kbFieldWidth = 16;   // Fits "Ctrl+Shift+F12"
+            constexpr int ctrlFieldWidth = 12; // Fits "Right Shoulder"
 
-                // Display current unit with < > cycle pattern (arrows=accent, value=primary)
-                bool isKmh = m_speed && m_speed->getSpeedUnit() == SpeedWidget::SpeedUnit::KMH;
-                float currentX = toggleX;
-                addString("<", currentX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
-                currentX += charWidth * 2;
-                addString(isKmh ? "km/h" : "mph ", currentX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getPrimary(), dim.fontSize);
-                currentX += charWidth * 4;
-                addString(" >", currentX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+            addString("Toggle", actionX, currentY, Justify::LEFT,
+                Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+            addString("Keyboard", keyboardX, currentY, Justify::LEFT,
+                Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+            addString("Controller", controllerX, currentY, Justify::LEFT,
+                Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+            currentY += dim.lineHeightNormal;
 
-                // Click region for the entire toggle area
-                m_clickRegions.push_back(ClickRegion(
-                    toggleX, currentY, charWidth * 8, dim.lineHeightNormal,
-                    ClickRegion::SPEED_UNIT_TOGGLE, m_speed
-                ));
+            // Store layout info for hover detection in update()
+            m_hotkeyContentStartY = currentY;
+            m_hotkeyRowHeight = dim.lineHeightNormal;
+            m_hotkeyKeyboardX = keyboardX;
+            m_hotkeyControllerX = controllerX;
+            m_hotkeyFieldCharWidth = charWidth;
+
+            // Check if we're in capture mode
+            bool isCapturing = hotkeyMgr.isCapturing();
+            HotkeyAction captureAction = hotkeyMgr.getCaptureAction();
+            CaptureType captureType = hotkeyMgr.getCaptureType();
+
+            // Track row index for hover detection
+            int currentRowIndex = 0;
+
+            // Helper to add a hotkey row
+            auto addHotkeyRow = [&](HotkeyAction action) {
+                const HotkeyBinding& binding = hotkeyMgr.getBinding(action);
+
+                // Check if this row is hovered (using tracked row index)
+                bool isRowHovered = (currentRowIndex == m_hoveredHotkeyRow);
+
+                // Action name
+                addString(getActionDisplayName(action), actionX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+
+                // Keyboard binding
+                bool isCapturingKeyboard = isCapturing && captureAction == action && captureType == CaptureType::KEYBOARD;
+                float kbX = keyboardX;
+
+                if (isCapturingKeyboard) {
+                    // Show capture prompt with real-time modifier feedback (accent color)
+                    ModifierFlags currentMods = hotkeyMgr.getCurrentModifiers();
+                    char capturePrompt[40];
+                    std::string modPrefix;
+                    if (hasModifier(currentMods, ModifierFlags::CTRL)) modPrefix += "Ctrl+";
+                    if (hasModifier(currentMods, ModifierFlags::SHIFT)) modPrefix += "Shift+";
+                    if (hasModifier(currentMods, ModifierFlags::ALT)) modPrefix += "Alt+";
+
+                    if (modPrefix.empty()) {
+                        snprintf(capturePrompt, sizeof(capturePrompt), "[%-*s]", kbFieldWidth, "Press Key...");
+                    } else {
+                        char inner[32];
+                        snprintf(inner, sizeof(inner), "%s...", modPrefix.c_str());
+                        snprintf(capturePrompt, sizeof(capturePrompt), "[%-*s]", kbFieldWidth, inner);
+                    }
+                    addString(capturePrompt, kbX, currentY, Justify::LEFT,
+                        Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+                } else {
+                    // Show current binding with brackets
+                    char keyStr[32];
+                    formatKeyBinding(binding.keyboard, keyStr, sizeof(keyStr));
+
+                    // Format as clickable: [binding] - wider field, truncate if too long
+                    char displayStr[48];
+                    snprintf(displayStr, sizeof(displayStr), "[%-*.*s]", kbFieldWidth, kbFieldWidth, keyStr);
+
+                    // Determine color: hovered > bound > unbound
+                    bool isKbHovered = (m_hoveredHotkeyRow == currentRowIndex && m_hoveredHotkeyColumn == HotkeyColumn::KEYBOARD);
+                    unsigned long keyColor;
+                    if (isKbHovered) {
+                        keyColor = ColorConfig::getInstance().getAccent();
+                    } else if (binding.hasKeyboard()) {
+                        keyColor = ColorConfig::getInstance().getPrimary();
+                    } else {
+                        keyColor = ColorConfig::getInstance().getMuted();
+                    }
+                    addString(displayStr, kbX, currentY, Justify::LEFT,
+                        Fonts::getNormal(), keyColor, dim.fontSize);
+
+                    // Click region for keyboard binding (covers full field)
+                    m_clickRegions.push_back(ClickRegion(
+                        kbX, currentY, charWidth * (kbFieldWidth + 2), dim.lineHeightNormal,
+                        ClickRegion::HOTKEY_KEYBOARD_BIND, action
+                    ));
+
+                    // Clear button if bound (only show on hover)
+                    if (binding.hasKeyboard() && isRowHovered) {
+                        float clearX = kbX + charWidth * (kbFieldWidth + 2.5f);
+                        addString("x", clearX, currentY, Justify::LEFT,
+                            Fonts::getNormal(), ColorConfig::getInstance().getNegative(), dim.fontSize);
+                        m_clickRegions.push_back(ClickRegion(
+                            clearX, currentY, charWidth * 2, dim.lineHeightNormal,
+                            ClickRegion::HOTKEY_KEYBOARD_CLEAR, action
+                        ));
+                    }
+                }
+
+                // Controller binding
+                bool isCapturingController = isCapturing && captureAction == action && captureType == CaptureType::CONTROLLER;
+                float ctrlX = controllerX;
+
+                if (isCapturingController) {
+                    // Show capture prompt (accent color)
+                    char capturePrompt[32];
+                    snprintf(capturePrompt, sizeof(capturePrompt), "[%-*s]", ctrlFieldWidth, "Press Btn...");
+                    addString(capturePrompt, ctrlX, currentY, Justify::LEFT,
+                        Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+                } else {
+                    // Show current binding
+                    const char* btnName = getControllerButtonName(binding.controller);
+
+                    // Format as clickable: [binding] - wider field, truncate if too long
+                    char displayStr[32];
+                    snprintf(displayStr, sizeof(displayStr), "[%-*.*s]", ctrlFieldWidth, ctrlFieldWidth, btnName);
+
+                    // Determine color: hovered > bound > unbound
+                    bool isCtrlHovered = (m_hoveredHotkeyRow == currentRowIndex && m_hoveredHotkeyColumn == HotkeyColumn::CONTROLLER);
+                    unsigned long btnColor;
+                    if (isCtrlHovered) {
+                        btnColor = ColorConfig::getInstance().getAccent();
+                    } else if (binding.hasController()) {
+                        btnColor = ColorConfig::getInstance().getPrimary();
+                    } else {
+                        btnColor = ColorConfig::getInstance().getMuted();
+                    }
+                    addString(displayStr, ctrlX, currentY, Justify::LEFT,
+                        Fonts::getNormal(), btnColor, dim.fontSize);
+
+                    // Click region for controller binding (covers full field)
+                    m_clickRegions.push_back(ClickRegion(
+                        ctrlX, currentY, charWidth * (ctrlFieldWidth + 2), dim.lineHeightNormal,
+                        ClickRegion::HOTKEY_CONTROLLER_BIND, action
+                    ));
+
+                    // Clear button if bound (only show on hover)
+                    if (binding.hasController() && isRowHovered) {
+                        float clearX = ctrlX + charWidth * (ctrlFieldWidth + 2.5f);
+                        addString("x", clearX, currentY, Justify::LEFT,
+                            Fonts::getNormal(), ColorConfig::getInstance().getNegative(), dim.fontSize);
+                        m_clickRegions.push_back(ClickRegion(
+                            clearX, currentY, charWidth * 2, dim.lineHeightNormal,
+                            ClickRegion::HOTKEY_CONTROLLER_CLEAR, action
+                        ));
+                    }
+                }
 
                 currentY += dim.lineHeightNormal;
-            }
+                ++currentRowIndex;
+            };
 
-            // Fuel unit toggle
-            {
-                float toggleX = leftColumnX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);
-                float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+            // Settings Menu first
+            addHotkeyRow(HotkeyAction::TOGGLE_SETTINGS);
 
-                addString("Fuel", leftColumnX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+            currentY += dim.lineHeightNormal * 0.5f;  // Spacing after settings
 
-                // Display current unit with < > cycle pattern (arrows=accent, value=primary)
-                bool isGallons = m_fuel && m_fuel->getFuelUnit() == FuelWidget::FuelUnit::GALLONS;
-                float currentX = toggleX;
-                addString("<", currentX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
-                currentX += charWidth * 2;
-                addString(isGallons ? "gal" : "L  ", currentX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getPrimary(), dim.fontSize);
-                currentX += charWidth * 3;
-                addString(" >", currentX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+            // All HUD toggles
+            addHotkeyRow(HotkeyAction::TOGGLE_STANDINGS);
+            addHotkeyRow(HotkeyAction::TOGGLE_MAP);
+            addHotkeyRow(HotkeyAction::TOGGLE_RADAR);
+            addHotkeyRow(HotkeyAction::TOGGLE_LAP_LOG);
+            addHotkeyRow(HotkeyAction::TOGGLE_IDEAL_LAP);
+            addHotkeyRow(HotkeyAction::TOGGLE_TELEMETRY);
+            addHotkeyRow(HotkeyAction::TOGGLE_INPUT);
+            addHotkeyRow(HotkeyAction::TOGGLE_RECORDS);
+            addHotkeyRow(HotkeyAction::TOGGLE_PITBOARD);
+            addHotkeyRow(HotkeyAction::TOGGLE_TIMING);
+            addHotkeyRow(HotkeyAction::TOGGLE_GAP_BAR);
+            addHotkeyRow(HotkeyAction::TOGGLE_PERFORMANCE);
+            addHotkeyRow(HotkeyAction::TOGGLE_RUMBLE);
 
-                // Click region for the entire toggle area
-                m_clickRegions.push_back(ClickRegion(
-                    toggleX, currentY, charWidth * 8, dim.lineHeightNormal,
-                    ClickRegion::FUEL_UNIT_TOGGLE, m_fuel
-                ));
+            currentY += dim.lineHeightNormal * 0.5f;  // Spacing before All Widgets
 
-                currentY += dim.lineHeightNormal;
-            }
+            addHotkeyRow(HotkeyAction::TOGGLE_WIDGETS);
+            addHotkeyRow(HotkeyAction::TOGGLE_ALL_HUDS);
 
-            // Grid snap toggle
-            {
-                float toggleX = leftColumnX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);
-                float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
-
-                addString("Grid Snap", leftColumnX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
-
-                // Display current state with < > cycle pattern (arrows=accent, value=primary)
-                bool gridSnapEnabled = ColorConfig::getInstance().getGridSnapping();
-                float currentX = toggleX;
-                addString("<", currentX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
-                currentX += charWidth * 2;
-                addString(gridSnapEnabled ? "On " : "Off", currentX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, gridSnapEnabled ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getMuted(), dim.fontSize);
-                currentX += charWidth * 3;
-                addString(" >", currentX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
-
-                // Click region for the entire toggle area
-                m_clickRegions.push_back(ClickRegion(
-                    toggleX, currentY, charWidth * 7, dim.lineHeightNormal,
-                    ClickRegion::GRID_SNAP_TOGGLE, nullptr
-                ));
-
-                currentY += dim.lineHeightNormal;
-            }
-
-            // Check for Updates toggle
-            {
-                float toggleX = leftColumnX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);
-                float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
-
-                addString("Updates", leftColumnX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
-
-                // Display current state with < > cycle pattern
-                bool updatesEnabled = UpdateChecker::getInstance().isEnabled();
-                float currentX = toggleX;
-                addString("<", currentX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
-                currentX += charWidth * 2;
-                addString(updatesEnabled ? "On " : "Off", currentX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, updatesEnabled ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getMuted(), dim.fontSize);
-                currentX += charWidth * 3;
-                addString(" >", currentX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
-
-                // Click region for the entire toggle area
-                m_clickRegions.push_back(ClickRegion(
-                    toggleX, currentY, charWidth * 7, dim.lineHeightNormal,
-                    ClickRegion::UPDATE_CHECK_TOGGLE, nullptr
-                ));
-
-                currentY += dim.lineHeightNormal;
-            }
+            // Info text at bottom
+            currentY += dim.lineHeightNormal * 0.5f;
+            addString("Click to rebind, ESC to cancel", actionX, currentY, Justify::LEFT,
+                Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dim.fontSize * 0.9f);
         }
         break;
 
@@ -1042,28 +1640,80 @@ void SettingsHud::rebuildRenderData() {
             {
                 float rightY = dataStartY;
                 float toggleX = rightColumnX + PluginUtils::calculateMonospaceTextWidth(14, dim.fontSize);
+                float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
 
                 // Row count control (specific to StandingsHud)
                 addString("Rows", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                 char rowCountValue[8];
                 snprintf(rowCountValue, sizeof(rowCountValue), "%d", m_standings->m_displayRowCount);
                 addCycleControl(toggleX, rightY, rowCountValue, 2,
                     ClickRegion::ROW_COUNT_DOWN, ClickRegion::ROW_COUNT_UP, m_standings);
-                rightY += dim.lineHeightNormal * 2;  // Extra spacing before column table
+                rightY += dim.lineHeightNormal;
+
+                // Adjacent rider gaps mode
+                addString("Adjacent Gaps", rightColumnX, rightY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                const char* gapRowsValue;
+                switch (m_standings->m_gapIndicatorMode) {
+                    case StandingsHud::GapIndicatorMode::OFF:      gapRowsValue = "Off     "; break;
+                    case StandingsHud::GapIndicatorMode::OFFICIAL: gapRowsValue = "Official"; break;
+                    case StandingsHud::GapIndicatorMode::LIVE:     gapRowsValue = "Live    "; break;
+                    case StandingsHud::GapIndicatorMode::BOTH:     gapRowsValue = "Both    "; break;
+                    default: gapRowsValue = "Off     "; break;
+                }
+                unsigned long gapRowsValueColor = (m_standings->m_gapIndicatorMode == StandingsHud::GapIndicatorMode::OFF)
+                    ? ColorConfig::getInstance().getMuted()
+                    : ColorConfig::getInstance().getPrimary();
+                float gapCurrentX = toggleX;
+                addString("<", gapCurrentX, rightY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+                m_clickRegions.push_back(ClickRegion(
+                    gapCurrentX, rightY, charWidth * 2, dim.lineHeightNormal,
+                    ClickRegion::GAP_INDICATOR_DOWN, &m_standings->m_gapIndicatorMode, m_standings
+                ));
+                gapCurrentX += charWidth * 2;
+                addString(gapRowsValue, gapCurrentX, rightY, Justify::LEFT, Fonts::getNormal(), gapRowsValueColor, dim.fontSize);
+                gapCurrentX += charWidth * 8;
+                addString(" >", gapCurrentX, rightY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+                m_clickRegions.push_back(ClickRegion(
+                    gapCurrentX, rightY, charWidth * 2, dim.lineHeightNormal,
+                    ClickRegion::GAP_INDICATOR_UP, &m_standings->m_gapIndicatorMode, m_standings
+                ));
+                rightY += dim.lineHeightNormal;
+
+                // Gap reference mode (gaps relative to leader or player)
+                addString("Gap Reference", rightColumnX, rightY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                const char* gapRefValue = (m_standings->m_gapReferenceMode == StandingsHud::GapReferenceMode::LEADER)
+                    ? "Leader" : "Player";
+                float refCurrentX = toggleX;
+                addString("<", refCurrentX, rightY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+                m_clickRegions.push_back(ClickRegion(
+                    refCurrentX, rightY, charWidth * 2, dim.lineHeightNormal,
+                    ClickRegion::GAP_REFERENCE_DOWN, &m_standings->m_gapReferenceMode, m_standings
+                ));
+                refCurrentX += charWidth * 2;
+                addString(gapRefValue, refCurrentX, rightY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                refCurrentX += charWidth * 6;
+                addString(" >", refCurrentX, rightY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+                m_clickRegions.push_back(ClickRegion(
+                    refCurrentX, rightY, charWidth * 2, dim.lineHeightNormal,
+                    ClickRegion::GAP_REFERENCE_UP, &m_standings->m_gapReferenceMode, m_standings
+                ));
+                rightY += dim.lineHeightNormal;
+                rightY += dim.lineHeightNormal * 0.5f;  // Extra spacing before column table
 
                 // Column configuration table: Column | Enabled
                 float tableY = rightY;
                 float columnNameX = rightColumnX;
 
                 // Table header
-                addString("Column", columnNameX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
-                addString("Enabled", toggleX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                addString("Column", columnNameX, tableY, Justify::LEFT, Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                addString("Enabled", toggleX, tableY, Justify::LEFT, Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
                 tableY += dim.lineHeightNormal;
 
                 // Table rows - each row shows column name and state
                 struct ColumnRow { const char* name; uint32_t flag; bool isGapColumn; };
                 ColumnRow columns[] = {
+                    {"Tracked",      StandingsHud::COL_TRACKED,     false},
                     {"Position",     StandingsHud::COL_POS,         false},
                     {"Race #",       StandingsHud::COL_RACENUM,     false},
                     {"Name",         StandingsHud::COL_NAME,        false},
@@ -1075,20 +1725,18 @@ void SettingsHud::rebuildRenderData() {
                     {"Live Gap",     StandingsHud::COL_LIVE_GAP,    true}    // Multi-state gap column
                 };
 
-                // Helper lambda to add gap mode click region
-                auto addGapModeRegion = [&](float x, float y, StandingsHud::GapMode* modePtr) {
-                    ClickRegion region;
-                    region.x = x;
-                    region.y = y;
-                    region.width = PluginUtils::calculateMonospaceTextWidth(7, dim.fontSize);  // "< Off >"
-                    region.height = dim.lineHeightNormal;
-                    region.type = ClickRegion::GAP_MODE_CYCLE;
-                    region.targetPointer = modePtr;
-                    region.flagBit = 0;
-                    region.isRequired = false;
-                    region.targetHud = m_standings;
-                    region.tabIndex = 0;
-                    m_clickRegions.push_back(region);
+                // Helper lambda to add gap mode click regions (separate for < and >)
+                auto addGapModeRegions = [&](float x, float y, StandingsHud::GapMode* modePtr) {
+                    // Left arrow "<" - GAP_MODE_DOWN
+                    m_clickRegions.push_back(ClickRegion(
+                        x, y, charWidth * 2, dim.lineHeightNormal,
+                        ClickRegion::GAP_MODE_DOWN, modePtr, m_standings
+                    ));
+                    // Right arrow ">" - GAP_MODE_UP (after "< Player " = 2 + 6 = 8 chars)
+                    m_clickRegions.push_back(ClickRegion(
+                        x + charWidth * 8, y, charWidth * 2, dim.lineHeightNormal,
+                        ClickRegion::GAP_MODE_UP, modePtr, m_standings
+                    ));
                 };
 
                 // Helper lambda to add column toggle region
@@ -1109,85 +1757,47 @@ void SettingsHud::rebuildRenderData() {
 
                 for (const auto& col : columns) {
                     // Column name
-                    addString(col.name, columnNameX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    addString(col.name, columnNameX, tableY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
 
-                    float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
                     float currentX = toggleX;
 
                     if (col.isGapColumn) {
-                        // Gap column - show < Off/Me/All > with accent arrows
+                        // Gap column - show < Off/Player/All > with accent arrows
                         StandingsHud::GapMode* gapModePtr = (col.flag == StandingsHud::COL_OFFICIAL_GAP)
                             ? &m_standings->m_officialGapMode
                             : &m_standings->m_liveGapMode;
                         const char* value;
                         switch (*gapModePtr) {
-                            case StandingsHud::GapMode::OFF: value = "Off"; break;
-                            case StandingsHud::GapMode::ME:  value = "Me "; break;
-                            case StandingsHud::GapMode::ALL: value = "All"; break;
-                            default: value = "Off"; break;
+                            case StandingsHud::GapMode::OFF:    value = "Off   "; break;
+                            case StandingsHud::GapMode::PLAYER: value = "Player"; break;
+                            case StandingsHud::GapMode::ALL:    value = "All   "; break;
+                            default: value = "Off   "; break;
                         }
                         unsigned long valueColor = (*gapModePtr == StandingsHud::GapMode::OFF)
                             ? ColorConfig::getInstance().getMuted()
                             : ColorConfig::getInstance().getPrimary();
-                        addString("<", currentX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+                        addString("<", currentX, tableY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
                         currentX += charWidth * 2;
-                        addString(value, currentX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO, valueColor, dim.fontSize);
-                        currentX += charWidth * 3;
-                        addString(" >", currentX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
-                        addGapModeRegion(toggleX, tableY, gapModePtr);
+                        addString(value, currentX, tableY, Justify::LEFT, Fonts::getNormal(), valueColor, dim.fontSize);
+                        currentX += charWidth * 6;
+                        addString(" >", currentX, tableY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+                        addGapModeRegions(toggleX, tableY, gapModePtr);
                     } else {
                         // Regular column - show < On/Off > with accent arrows
                         bool enabled = (m_standings->m_enabledColumns & col.flag) != 0;
                         unsigned long valueColor = enabled
                             ? ColorConfig::getInstance().getPrimary()
                             : ColorConfig::getInstance().getMuted();
-                        addString("<", currentX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+                        addString("<", currentX, tableY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
                         currentX += charWidth * 2;
-                        addString(enabled ? "On " : "Off", currentX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO, valueColor, dim.fontSize);
+                        addString(enabled ? "On " : "Off", currentX, tableY, Justify::LEFT, Fonts::getNormal(), valueColor, dim.fontSize);
                         currentX += charWidth * 3;
-                        addString(" >", currentX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+                        addString(" >", currentX, tableY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
                         addColumnToggle(toggleX, tableY, &m_standings->m_enabledColumns, col.flag);
                     }
 
                     tableY += dim.lineHeightNormal;
                 }
-
-                // Adjacent rider gaps mode
-                tableY += dim.lineHeightNormal * 0.5f;  // Add some spacing
-                addString("Adjacent Gaps", columnNameX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
-
-                // Get value for current gap indicator mode (arrows rendered separately with accent)
-                const char* gapRowsValue;
-                switch (m_standings->m_gapIndicatorMode) {
-                    case StandingsHud::GapIndicatorMode::OFF:      gapRowsValue = "Off     "; break;
-                    case StandingsHud::GapIndicatorMode::OFFICIAL: gapRowsValue = "Official"; break;
-                    case StandingsHud::GapIndicatorMode::LIVE:     gapRowsValue = "Live    "; break;
-                    case StandingsHud::GapIndicatorMode::BOTH:     gapRowsValue = "Both    "; break;
-                    default: gapRowsValue = "Off     "; break;
-                }
-                unsigned long gapRowsValueColor = (m_standings->m_gapIndicatorMode == StandingsHud::GapIndicatorMode::OFF)
-                    ? ColorConfig::getInstance().getMuted()
-                    : ColorConfig::getInstance().getPrimary();
-                float gapCharWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
-                float gapCurrentX = toggleX;
-                addString("<", gapCurrentX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
-                gapCurrentX += gapCharWidth * 2;
-                addString(gapRowsValue, gapCurrentX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO, gapRowsValueColor, dim.fontSize);
-                gapCurrentX += gapCharWidth * 8;
-                addString(" >", gapCurrentX, tableY, Justify::LEFT, Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
-
-                ClickRegion region;
-                region.x = toggleX;
-                region.y = tableY;
-                region.width = PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);  // "< Official >"
-                region.height = dim.lineHeightNormal;
-                region.type = ClickRegion::GAP_INDICATOR_CYCLE;
-                region.targetPointer = &m_standings->m_gapIndicatorMode;
-                region.flagBit = 0;
-                region.isRequired = false;
-                region.targetHud = m_standings;
-                region.tabIndex = 0;
-                m_clickRegions.push_back(region);
             }
             break;
 
@@ -1202,7 +1812,7 @@ void SettingsHud::rebuildRenderData() {
 
                 // Range control (Full = no zoom, or zoom distance in meters) - TOP for visibility
                 addString("Range", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                 char rangeValue[16];
                 if (m_mapHud->getZoomEnabled()) {
                     snprintf(rangeValue, sizeof(rangeValue), "%.0fm", m_mapHud->getZoomDistance());
@@ -1215,14 +1825,14 @@ void SettingsHud::rebuildRenderData() {
 
                 // Rotation toggle
                 addString("Rotate", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                 addToggleControl(toggleX, rightY, m_mapHud->getRotateToPlayer(),
                     ClickRegion::MAP_ROTATION_TOGGLE, m_mapHud);
                 rightY += dim.lineHeightNormal;
 
                 // Outline toggle
                 addString("Outline", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                 addToggleControl(toggleX, rightY, m_mapHud->getShowOutline(),
                     ClickRegion::MAP_OUTLINE_TOGGLE, m_mapHud);
                 rightY += dim.lineHeightNormal;
@@ -1235,17 +1845,17 @@ void SettingsHud::rebuildRenderData() {
                     case MapHud::RiderColorMode::RELATIVE_POS: mapColorModeStr = "Position"; break;
                 }
                 addString("Colors", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                 addCycleControl(toggleX, rightY, mapColorModeStr, 8,  // "Position" is longest
-                    ClickRegion::MAP_COLORIZE_CYCLE, ClickRegion::MAP_COLORIZE_CYCLE, m_mapHud);
+                    ClickRegion::MAP_COLORIZE_DOWN, ClickRegion::MAP_COLORIZE_UP, m_mapHud);
                 rightY += dim.lineHeightNormal;
 
-                // Track line width controls
+                // Track line width scale controls
                 addString("Width", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                 char trackWidthValue[16];
-                snprintf(trackWidthValue, sizeof(trackWidthValue), "%.0fm", m_mapHud->getTrackLineWidthMeters());
-                addCycleControl(toggleX, rightY, trackWidthValue, 4,  // "9.0m"
+                snprintf(trackWidthValue, sizeof(trackWidthValue), "%.0f%%", m_mapHud->getTrackWidthScale() * 100.0f);
+                addCycleControl(toggleX, rightY, trackWidthValue, 4,  // "200%"
                     ClickRegion::MAP_TRACK_WIDTH_DOWN, ClickRegion::MAP_TRACK_WIDTH_UP, m_mapHud);
                 rightY += dim.lineHeightNormal;
 
@@ -1263,24 +1873,40 @@ void SettingsHud::rebuildRenderData() {
                         break;
                 }
                 addString("Labels", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                 addCycleControl(toggleX, rightY, modeStr, 8,  // "Race Num" is longest
-                    ClickRegion::MAP_LABEL_MODE_CYCLE, ClickRegion::MAP_LABEL_MODE_CYCLE, m_mapHud, true, labelIsOff);
+                    ClickRegion::MAP_LABEL_MODE_DOWN, ClickRegion::MAP_LABEL_MODE_UP, m_mapHud, true, labelIsOff);
                 rightY += dim.lineHeightNormal;
 
                 // Rider shape control
                 const char* shapeStr = "";
                 bool shapeIsOff = (m_mapHud->getRiderShape() == MapHud::RiderShape::OFF);
                 switch (m_mapHud->getRiderShape()) {
-                    case MapHud::RiderShape::OFF:      shapeStr = "Off"; break;
-                    case MapHud::RiderShape::CIRCLE:   shapeStr = "Circle"; break;
-                    case MapHud::RiderShape::TRIANGLE: shapeStr = "Triangle"; break;
-                    case MapHud::RiderShape::WEDGE:    shapeStr = "Wedge"; break;
+                    case MapHud::RiderShape::OFF:        shapeStr = "Off"; break;
+                    case MapHud::RiderShape::ARROWUP:    shapeStr = "ArrowUp"; break;
+                    case MapHud::RiderShape::CHEVRON:    shapeStr = "Chevron"; break;
+                    case MapHud::RiderShape::CIRCLE:     shapeStr = "Circle"; break;
+                    case MapHud::RiderShape::CIRCLEPLAY: shapeStr = "CirclePlay"; break;
+                    case MapHud::RiderShape::CIRCLEUP:   shapeStr = "CircleUp"; break;
+                    case MapHud::RiderShape::DOT:        shapeStr = "Dot"; break;
+                    case MapHud::RiderShape::LOCATION:   shapeStr = "Location"; break;
+                    case MapHud::RiderShape::PIN:        shapeStr = "Pin"; break;
+                    case MapHud::RiderShape::PLANE:      shapeStr = "Plane"; break;
+                    case MapHud::RiderShape::VINYL:      shapeStr = "Vinyl"; break;
                 }
                 addString("Riders", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
-                addCycleControl(toggleX, rightY, shapeStr, 8,  // "Triangle" is longest
-                    ClickRegion::MAP_RIDER_SHAPE_CYCLE, ClickRegion::MAP_RIDER_SHAPE_CYCLE, m_mapHud, true, shapeIsOff);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                addCycleControl(toggleX, rightY, shapeStr, 10,  // "CirclePlay" is longest
+                    ClickRegion::MAP_RIDER_SHAPE_DOWN, ClickRegion::MAP_RIDER_SHAPE_UP, m_mapHud, true, shapeIsOff);
+                rightY += dim.lineHeightNormal;
+
+                // Marker scale control (independent scale for icons/labels)
+                addString("Markers", rightColumnX, rightY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                char mapMarkerScaleValue[16];
+                snprintf(mapMarkerScaleValue, sizeof(mapMarkerScaleValue), "%.0f%%", m_mapHud->getMarkerScale() * 100.0f);
+                addCycleControl(toggleX, rightY, mapMarkerScaleValue, 4,  // "200%"
+                    ClickRegion::MAP_MARKER_SCALE_DOWN, ClickRegion::MAP_MARKER_SCALE_UP, m_mapHud);
                 rightY += dim.lineHeightNormal;
             }
             break;
@@ -1296,7 +1922,7 @@ void SettingsHud::rebuildRenderData() {
 
                 // Row count control (specific to LapLogHud)
                 addString("Rows", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                 char rowCountValue[8];
                 snprintf(rowCountValue, sizeof(rowCountValue), "%d", m_lapLog->m_maxDisplayLaps);
                 addCycleControl(toggleX, rightY, rowCountValue, 2,
@@ -1312,16 +1938,16 @@ void SettingsHud::rebuildRenderData() {
             }
             break;
 
-        case TAB_SESSION_BEST:
-            activeHud = m_sessionBest;
-            dataStartY = addHudControls(m_sessionBest);
+        case TAB_IDEAL_LAP:
+            activeHud = m_idealLap;
+            dataStartY = addHudControls(m_idealLap);
             // Right column data toggles (2 items)
-            addGroupToggle("Sectors", &m_sessionBest->m_enabledRows,
-                SessionBestHud::ROW_S1 | SessionBestHud::ROW_S2 | SessionBestHud::ROW_S3,
-                false, m_sessionBest, dataStartY);
-            addGroupToggle("Laps", &m_sessionBest->m_enabledRows,
-                SessionBestHud::ROW_LAST | SessionBestHud::ROW_BEST | SessionBestHud::ROW_IDEAL,
-                false, m_sessionBest, dataStartY + dim.lineHeightNormal);
+            addGroupToggle("Sectors", &m_idealLap->m_enabledRows,
+                IdealLapHud::ROW_S1 | IdealLapHud::ROW_S2 | IdealLapHud::ROW_S3,
+                false, m_idealLap, dataStartY);
+            addGroupToggle("Laps", &m_idealLap->m_enabledRows,
+                IdealLapHud::ROW_LAST | IdealLapHud::ROW_BEST | IdealLapHud::ROW_IDEAL,
+                false, m_idealLap, dataStartY + dim.lineHeightNormal);
             break;
 
         case TAB_TELEMETRY:
@@ -1354,6 +1980,11 @@ void SettingsHud::rebuildRenderData() {
             addDataToggle("Crosshairs", &m_input->m_enabledElements, InputHud::ELEM_CROSSHAIRS, false, m_input, dataStartY);
             addDataToggle("Trails", &m_input->m_enabledElements, InputHud::ELEM_TRAILS, false, m_input, dataStartY + dim.lineHeightNormal);
             addDataToggle("Numbers", &m_input->m_enabledElements, InputHud::ELEM_VALUES, false, m_input, dataStartY + dim.lineHeightNormal * 2);
+
+            // Info text (placed after left column controls)
+            currentY += dim.lineHeightNormal * 0.5f;
+            addString("Select your controller in the General tab", leftColumnX, currentY, Justify::LEFT,
+                Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dim.fontSize * 0.9f);
             break;
 
         case TAB_PERFORMANCE:
@@ -1392,7 +2023,7 @@ void SettingsHud::rebuildRenderData() {
                     displayModeText = "Splits";
                 }
                 addString("Show", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                 addCycleControl(toggleX, rightY, displayModeText, 6,  // "Always" is longest
                     ClickRegion::PITBOARD_SHOW_MODE_DOWN, ClickRegion::PITBOARD_SHOW_MODE_UP, m_pitboard);
                 rightY += dim.lineHeightNormal;  // Move to next row
@@ -1419,7 +2050,7 @@ void SettingsHud::rebuildRenderData() {
 
                 // Rows count control
                 addString("Rows", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                 char recordsValue[8];
                 snprintf(recordsValue, sizeof(recordsValue), "%d", m_records->m_recordsToShow);
                 addCycleControl(toggleX, rightY, recordsValue, 2,
@@ -1456,21 +2087,21 @@ void SettingsHud::rebuildRenderData() {
 
                 // Per-column mode controls
                 addString("Label", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                 addCycleControl(toggleX, rightY, getModeText(m_timing->m_columnModes[TimingHud::COL_LABEL]), 6,
                     ClickRegion::TIMING_LABEL_MODE_DOWN, ClickRegion::TIMING_LABEL_MODE_UP, m_timing,
                     true, m_timing->m_columnModes[TimingHud::COL_LABEL] == ColumnMode::OFF);
                 rightY += dim.lineHeightNormal;
 
                 addString("Time", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                 addCycleControl(toggleX, rightY, getModeText(m_timing->m_columnModes[TimingHud::COL_TIME]), 6,
                     ClickRegion::TIMING_TIME_MODE_DOWN, ClickRegion::TIMING_TIME_MODE_UP, m_timing,
                     true, m_timing->m_columnModes[TimingHud::COL_TIME] == ColumnMode::OFF);
                 rightY += dim.lineHeightNormal;
 
                 addString("Gap", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                 addCycleControl(toggleX, rightY, getModeText(m_timing->m_columnModes[TimingHud::COL_GAP]), 6,
                     ClickRegion::TIMING_GAP_MODE_DOWN, ClickRegion::TIMING_GAP_MODE_UP, m_timing,
                     true, m_timing->m_columnModes[TimingHud::COL_GAP] == ColumnMode::OFF);
@@ -1485,9 +2116,44 @@ void SettingsHud::rebuildRenderData() {
                     snprintf(freezeValue, sizeof(freezeValue), "%.1fs", m_timing->m_displayDurationMs / 1000.0f);
                 }
                 addString("Freeze", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                 addCycleControl(toggleX, rightY, freezeValue, 4,  // "10.0s" is longest
                     ClickRegion::TIMING_DURATION_DOWN, ClickRegion::TIMING_DURATION_UP, m_timing, true, freezeIsOff);
+                rightY += dim.lineHeightNormal;
+
+                // Gap type toggles - which gap comparisons to show
+                // Only show these controls if gap column is not off
+                bool gapColumnEnabled = (m_timing->m_columnModes[TimingHud::COL_GAP] != ColumnMode::OFF);
+                if (gapColumnEnabled) {
+                    rightY += dim.lineHeightNormal * 0.5f;  // Small gap before section
+
+                    addString("Gap Types", rightColumnX, rightY, Justify::LEFT,
+                        Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                    rightY += dim.lineHeightNormal;
+
+                    // Gap to PB toggle
+                    bool gapPBEnabled = m_timing->isGapTypeEnabled(GAP_TO_PB);
+                    addString("PB", rightColumnX, rightY, Justify::LEFT,
+                        Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    addToggleControl(toggleX, rightY, gapPBEnabled,
+                        ClickRegion::TIMING_GAP_PB_TOGGLE, m_timing);
+                    rightY += dim.lineHeightNormal;
+
+                    // Gap to Ideal toggle
+                    bool gapIdealEnabled = m_timing->isGapTypeEnabled(GAP_TO_IDEAL);
+                    addString("Ideal", rightColumnX, rightY, Justify::LEFT,
+                        Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    addToggleControl(toggleX, rightY, gapIdealEnabled,
+                        ClickRegion::TIMING_GAP_IDEAL_TOGGLE, m_timing);
+                    rightY += dim.lineHeightNormal;
+
+                    // Gap to Session Best toggle
+                    bool gapSessionEnabled = m_timing->isGapTypeEnabled(GAP_TO_SESSION);
+                    addString("Session", rightColumnX, rightY, Justify::LEFT,
+                        Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    addToggleControl(toggleX, rightY, gapSessionEnabled,
+                        ClickRegion::TIMING_GAP_SESSION_TOGGLE, m_timing);
+                }
             }
             break;
 
@@ -1502,7 +2168,7 @@ void SettingsHud::rebuildRenderData() {
 
                 // Markers toggle (show both position markers)
                 addString("Markers", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                 addToggleControl(toggleX, rightY, m_gapBar->m_showMarkers,
                     ClickRegion::GAPBAR_MARKER_TOGGLE, m_gapBar);
                 rightY += dim.lineHeightNormal;
@@ -1511,7 +2177,7 @@ void SettingsHud::rebuildRenderData() {
                 char widthValue[16];
                 snprintf(widthValue, sizeof(widthValue), "%d%%", m_gapBar->m_barWidthPercent);
                 addString("Width", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                 addCycleControl(toggleX, rightY, widthValue, 4,
                     ClickRegion::GAPBAR_WIDTH_DOWN, ClickRegion::GAPBAR_WIDTH_UP, m_gapBar);
                 rightY += dim.lineHeightNormal;
@@ -1520,7 +2186,7 @@ void SettingsHud::rebuildRenderData() {
                 char rangeValue[16];
                 snprintf(rangeValue, sizeof(rangeValue), "%.1fs", m_gapBar->m_gapRangeMs / 1000.0f);
                 addString("Range", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                 addCycleControl(toggleX, rightY, rangeValue, 4,
                     ClickRegion::GAPBAR_RANGE_DOWN, ClickRegion::GAPBAR_RANGE_UP, m_gapBar);
                 rightY += dim.lineHeightNormal;
@@ -1534,7 +2200,7 @@ void SettingsHud::rebuildRenderData() {
                     snprintf(freezeValue, sizeof(freezeValue), "%.1fs", m_gapBar->m_freezeDurationMs / 1000.0f);
                 }
                 addString("Freeze", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                 addCycleControl(toggleX, rightY, freezeValue, 4,
                     ClickRegion::GAPBAR_FREEZE_DOWN, ClickRegion::GAPBAR_FREEZE_UP, m_gapBar, true, gapFreezeIsOff);
             }
@@ -1552,17 +2218,17 @@ void SettingsHud::rebuildRenderData() {
                 float scaleX = opacityX + PluginUtils::calculateMonospaceTextWidth(9, dim.fontSize); // Match addWidgetRow
 
                 addString("Widget", nameX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                    Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
                 addString("Visible", visX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                    Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
                 addString("Title", titleX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                    Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
                 addString("Texture", bgTexX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                    Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
                 addString("Opacity", opacityX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                    Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
                 addString("Scale", scaleX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                    Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
                 currentY += dim.lineHeightNormal;
 
                 // Widget rows
@@ -1596,7 +2262,7 @@ void SettingsHud::rebuildRenderData() {
 
                 // Range control
                 addString("Range", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                 char rangeValue[16];
                 snprintf(rangeValue, sizeof(rangeValue), "%.0fm", m_radarHud->getRadarRange());
                 addCycleControl(toggleX, rightY, rangeValue, 4,  // "100m"
@@ -1605,7 +2271,7 @@ void SettingsHud::rebuildRenderData() {
 
                 // Alert distance control (when triangles light up)
                 addString("Alert", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                 char alertValue[16];
                 snprintf(alertValue, sizeof(alertValue), "%.0fm", m_radarHud->getAlertDistance());
                 addCycleControl(toggleX, rightY, alertValue, 4,  // "100m"
@@ -1620,21 +2286,21 @@ void SettingsHud::rebuildRenderData() {
                     case RadarHud::RiderColorMode::RELATIVE_POS: radarColorModeStr = "Position"; break;
                 }
                 addString("Colors", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                 addCycleControl(toggleX, rightY, radarColorModeStr, 8,  // "Position" is longest
-                    ClickRegion::RADAR_COLORIZE_CYCLE, ClickRegion::RADAR_COLORIZE_CYCLE, m_radarHud);
+                    ClickRegion::RADAR_COLORIZE_DOWN, ClickRegion::RADAR_COLORIZE_UP, m_radarHud);
                 rightY += dim.lineHeightNormal;
 
                 // Show player arrow toggle
                 addString("Player", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                 addToggleControl(toggleX, rightY, m_radarHud->getShowPlayerArrow(),
                     ClickRegion::RADAR_PLAYER_ARROW_TOGGLE, m_radarHud);
                 rightY += dim.lineHeightNormal;
 
                 // Auto-hide toggle (fade when no riders nearby)
                 addString("Auto-hide", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                 addToggleControl(toggleX, rightY, m_radarHud->getFadeWhenEmpty(),
                     ClickRegion::RADAR_FADE_TOGGLE, m_radarHud);
                 rightY += dim.lineHeightNormal;
@@ -1653,22 +2319,38 @@ void SettingsHud::rebuildRenderData() {
                         break;
                 }
                 addString("Labels", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                 addCycleControl(toggleX, rightY, radarModeStr, 8,  // "Race Num" is longest
-                    ClickRegion::RADAR_LABEL_MODE_CYCLE, ClickRegion::RADAR_LABEL_MODE_CYCLE, m_radarHud, true, radarLabelIsOff);
+                    ClickRegion::RADAR_LABEL_MODE_DOWN, ClickRegion::RADAR_LABEL_MODE_UP, m_radarHud, true, radarLabelIsOff);
                 rightY += dim.lineHeightNormal;
 
                 // Rider shape control (no Off option for radar - riders always shown)
                 const char* radarShapeStr = "";
                 switch (m_radarHud->getRiderShape()) {
-                    case RadarHud::RiderShape::CIRCLE:   radarShapeStr = "Circle"; break;
-                    case RadarHud::RiderShape::TRIANGLE: radarShapeStr = "Triangle"; break;
-                    case RadarHud::RiderShape::WEDGE:    radarShapeStr = "Wedge"; break;
+                    case RadarHud::RiderShape::ARROWUP:    radarShapeStr = "ArrowUp"; break;
+                    case RadarHud::RiderShape::CHEVRON:    radarShapeStr = "Chevron"; break;
+                    case RadarHud::RiderShape::CIRCLE:     radarShapeStr = "Circle"; break;
+                    case RadarHud::RiderShape::CIRCLEPLAY: radarShapeStr = "CirclePlay"; break;
+                    case RadarHud::RiderShape::CIRCLEUP:   radarShapeStr = "CircleUp"; break;
+                    case RadarHud::RiderShape::DOT:        radarShapeStr = "Dot"; break;
+                    case RadarHud::RiderShape::LOCATION:   radarShapeStr = "Location"; break;
+                    case RadarHud::RiderShape::PIN:        radarShapeStr = "Pin"; break;
+                    case RadarHud::RiderShape::PLANE:      radarShapeStr = "Plane"; break;
+                    case RadarHud::RiderShape::VINYL:      radarShapeStr = "Vinyl"; break;
                 }
                 addString("Riders", rightColumnX, rightY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
-                addCycleControl(toggleX, rightY, radarShapeStr, 8,  // "Triangle" is longest
-                    ClickRegion::RADAR_RIDER_SHAPE_CYCLE, ClickRegion::RADAR_RIDER_SHAPE_CYCLE, m_radarHud);
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                addCycleControl(toggleX, rightY, radarShapeStr, 10,  // "CirclePlay" is longest
+                    ClickRegion::RADAR_RIDER_SHAPE_DOWN, ClickRegion::RADAR_RIDER_SHAPE_UP, m_radarHud);
+                rightY += dim.lineHeightNormal;
+
+                // Marker scale control (independent scale for icons/labels)
+                addString("Markers", rightColumnX, rightY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                char radarMarkerScaleValue[16];
+                snprintf(radarMarkerScaleValue, sizeof(radarMarkerScaleValue), "%.0f%%", m_radarHud->getMarkerScale() * 100.0f);
+                addCycleControl(toggleX, rightY, radarMarkerScaleValue, 4,  // "200%"
+                    ClickRegion::RADAR_MARKER_SCALE_DOWN, ClickRegion::RADAR_MARKER_SCALE_UP, m_radarHud);
                 rightY += dim.lineHeightNormal;
             }
             break;
@@ -1676,9 +2358,8 @@ void SettingsHud::rebuildRenderData() {
         case TAB_RUMBLE:
             // Rumble settings tab - standard HUD controls + effects table
             {
-                RumbleHud* rumbleHud = &HudManager::getInstance().getRumbleHud();
-                activeHud = rumbleHud;
-                dataStartY = addHudControls(rumbleHud);
+                activeHud = m_rumble;
+                dataStartY = addHudControls(m_rumble);
 
                 RumbleConfig& rumbleConfig = XInputReader::getInstance().getRumbleConfig();
                 float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
@@ -1690,177 +2371,527 @@ void SettingsHud::rebuildRenderData() {
 
                     // Master rumble enable (mirrors tab checkbox for clarity)
                     addString("Rumble", rightColumnX, rightY, Justify::LEFT,
-                        Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                        Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                     addToggleControl(toggleX, rightY, rumbleConfig.enabled,
                         ClickRegion::RUMBLE_TOGGLE, nullptr);
                     rightY += dim.lineHeightNormal;
 
                     // Stack mode: On = effects add up, Off = max wins
-                    addString("Stack", rightColumnX, rightY, Justify::LEFT,
-                        Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                    addString("Stack Forces", rightColumnX, rightY, Justify::LEFT,
+                        Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                     addToggleControl(toggleX, rightY, rumbleConfig.additiveBlend,
                         ClickRegion::RUMBLE_BLEND_TOGGLE, nullptr);
                     rightY += dim.lineHeightNormal;
 
                     // Rumble when crashed control
                     addString("When Crashed", rightColumnX, rightY, Justify::LEFT,
-                        Fonts::ROBOTO_MONO, ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                        Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
                     addToggleControl(toggleX, rightY, rumbleConfig.rumbleWhenCrashed,
                         ClickRegion::RUMBLE_CRASH_TOGGLE, nullptr);
                     rightY += dim.lineHeightNormal;
                 }
 
                 // Effects table below the standard controls
-                currentY += dim.lineHeightNormal;  // Extra spacing before table
+                currentY += dim.lineHeightNormal * 0.5f;  // Extra spacing before table
 
-                // Table header - columns: Effect | Motor | Sens | Strength
+                // Table header - columns: Effect | Light | Heavy | Min | Max
                 float effectX = leftColumnX;
-                float motorX = effectX + PluginUtils::calculateMonospaceTextWidth(10, dim.fontSize);
-                float sensX = motorX + PluginUtils::calculateMonospaceTextWidth(10, dim.fontSize);
-                float strengthX = sensX + PluginUtils::calculateMonospaceTextWidth(10, dim.fontSize);
+                float lightX = effectX + PluginUtils::calculateMonospaceTextWidth(8, dim.fontSize);
+                float heavyX = lightX + PluginUtils::calculateMonospaceTextWidth(9, dim.fontSize);
+                float minX = heavyX + PluginUtils::calculateMonospaceTextWidth(9, dim.fontSize);
+                float maxX = minX + PluginUtils::calculateMonospaceTextWidth(10, dim.fontSize);  // Extra space after Min
 
                 addString("Effect", effectX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
-                addString("Motor", motorX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
-                addString("Sens", sensX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
-                addString("Strength", strengthX, currentY, Justify::LEFT,
-                    Fonts::ROBOTO_MONO_BOLD, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                    Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                addString("Light", lightX, currentY, Justify::LEFT,
+                    Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                addString("Heavy", heavyX, currentY, Justify::LEFT,
+                    Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                addString("Min", minX, currentY, Justify::LEFT,
+                    Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                addString("Max", maxX, currentY, Justify::LEFT,
+                    Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
                 currentY += dim.lineHeightNormal;
 
-                // Helper to convert minInput to sensitivity percentage string
-                auto getSensitivityPercent = [](const RumbleEffect& eff, char* buf, size_t bufSize) {
-                    // Sensitivity ratio as percentage (10-100%)
-                    float ratio = eff.minInput / eff.maxInput;
-                    int percent = static_cast<int>(std::round(ratio * 100.0f));
-                    // Clamp to valid range
-                    if (percent < 10) percent = 10;
-                    if (percent > 100) percent = 100;
-                    snprintf(buf, bufSize, "%d%%", percent);
-                };
-
                 // Lambda for rumble effect rows
+                // Parameters: name, effect, lightDown, lightUp, heavyDown, heavyUp, minDown, minUp, maxDown, maxUp, useIntegers, unit, displayFactor
                 auto addRumbleRow = [&](const char* name, RumbleEffect& effect,
-                                        ClickRegion::Type motorDown,
-                                        ClickRegion::Type motorUp,
-                                        ClickRegion::Type sensDown,
-                                        ClickRegion::Type sensUp,
-                                        ClickRegion::Type strengthDown,
-                                        ClickRegion::Type strengthUp) {
+                                        ClickRegion::Type lightDown,
+                                        ClickRegion::Type lightUp,
+                                        ClickRegion::Type heavyDown,
+                                        ClickRegion::Type heavyUp,
+                                        ClickRegion::Type minDown,
+                                        ClickRegion::Type minUp,
+                                        ClickRegion::Type maxDown,
+                                        ClickRegion::Type maxUp,
+                                        bool useIntegers = false,
+                                        const char* unit = "",
+                                        float displayFactor = 1.0f) {
                     // Effect name
                     addString(name, effectX, currentY, Justify::LEFT,
-                        Fonts::ROBOTO_MONO, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                        Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
 
-                    // Motor target control: < Off/Heavy/Light/Both >
-                    {
-                        float currentX = motorX;
-                        addString("<", currentX, currentY, Justify::LEFT,
-                            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
-                        m_clickRegions.push_back(ClickRegion(
-                            currentX, currentY, charWidth * 2, dim.lineHeightNormal,
-                            motorDown, nullptr
-                        ));
-                        currentX += charWidth * 2;
-                        char paddedMotor[8];
-                        snprintf(paddedMotor, sizeof(paddedMotor), "%-5s", motorTargetToString(effect.motor));
-                        addString(paddedMotor, currentX, currentY, Justify::LEFT,
-                            Fonts::ROBOTO_MONO, effect.isEnabled() ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getMuted(), dim.fontSize);
-                        currentX += charWidth * 5;
-                        addString(" >", currentX, currentY, Justify::LEFT,
-                            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
-                        m_clickRegions.push_back(ClickRegion(
-                            currentX, currentY, charWidth * 2, dim.lineHeightNormal,
-                            motorUp, nullptr
-                        ));
-                    }
-
-                    // Sensitivity control: < 10%-100% >
-                    {
-                        float currentX = sensX;
-                        addString("<", currentX, currentY, Justify::LEFT,
-                            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
-                        m_clickRegions.push_back(ClickRegion(
-                            currentX, currentY, charWidth * 2, dim.lineHeightNormal,
-                            sensDown, nullptr
-                        ));
-                        currentX += charWidth * 2;
-                        char sensBuf[8];
-                        getSensitivityPercent(effect, sensBuf, sizeof(sensBuf));
-                        char paddedSens[8];
-                        snprintf(paddedSens, sizeof(paddedSens), "%-4s", sensBuf);
-                        addString(paddedSens, currentX, currentY, Justify::LEFT,
-                            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getPrimary(), dim.fontSize);
-                        currentX += charWidth * 4;
-                        addString(" >", currentX, currentY, Justify::LEFT,
-                            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
-                        m_clickRegions.push_back(ClickRegion(
-                            currentX, currentY, charWidth * 2, dim.lineHeightNormal,
-                            sensUp, nullptr
-                        ));
-                    }
-
-                    // Strength control
+                    // Light motor strength control: < XX% > or < Off >
                     {
                         char valueStr[8];
-                        snprintf(valueStr, sizeof(valueStr), "%3.0f%%", effect.maxStrength * 100.0f);
-                        float currentX = strengthX;
+                        int percent = static_cast<int>(std::round(effect.lightStrength * 100.0f));
+                        if (percent <= 0) {
+                            snprintf(valueStr, sizeof(valueStr), "%-4s", "Off");
+                        } else {
+                            char tempStr[8];
+                            snprintf(tempStr, sizeof(tempStr), "%d%%", percent);
+                            snprintf(valueStr, sizeof(valueStr), "%-4s", tempStr);
+                        }
+                        float currentX = lightX;
                         addString("<", currentX, currentY, Justify::LEFT,
-                            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+                            Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
                         m_clickRegions.push_back(ClickRegion(
                             currentX, currentY, charWidth * 2, dim.lineHeightNormal,
-                            strengthDown, nullptr
+                            lightDown, nullptr
                         ));
                         currentX += charWidth * 2;
                         addString(valueStr, currentX, currentY, Justify::LEFT,
-                            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                            Fonts::getNormal(), effect.lightStrength > 0 ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getMuted(), dim.fontSize);
                         currentX += charWidth * 4;
                         addString(" >", currentX, currentY, Justify::LEFT,
-                            Fonts::ROBOTO_MONO, ColorConfig::getInstance().getAccent(), dim.fontSize);
+                            Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
                         m_clickRegions.push_back(ClickRegion(
                             currentX, currentY, charWidth * 2, dim.lineHeightNormal,
-                            strengthUp, nullptr
+                            lightUp, nullptr
                         ));
+                    }
+
+                    // Heavy motor strength control: < XX% > or < Off >
+                    {
+                        char valueStr[8];
+                        int percent = static_cast<int>(std::round(effect.heavyStrength * 100.0f));
+                        if (percent <= 0) {
+                            snprintf(valueStr, sizeof(valueStr), "%-4s", "Off");
+                        } else {
+                            char tempStr[8];
+                            snprintf(tempStr, sizeof(tempStr), "%d%%", percent);
+                            snprintf(valueStr, sizeof(valueStr), "%-4s", tempStr);
+                        }
+                        float currentX = heavyX;
+                        addString("<", currentX, currentY, Justify::LEFT,
+                            Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+                        m_clickRegions.push_back(ClickRegion(
+                            currentX, currentY, charWidth * 2, dim.lineHeightNormal,
+                            heavyDown, nullptr
+                        ));
+                        currentX += charWidth * 2;
+                        addString(valueStr, currentX, currentY, Justify::LEFT,
+                            Fonts::getNormal(), effect.heavyStrength > 0 ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getMuted(), dim.fontSize);
+                        currentX += charWidth * 4;
+                        addString(" >", currentX, currentY, Justify::LEFT,
+                            Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+                        m_clickRegions.push_back(ClickRegion(
+                            currentX, currentY, charWidth * 2, dim.lineHeightNormal,
+                            heavyUp, nullptr
+                        ));
+                    }
+
+                    // Min input control: < X.X > or < X >
+                    {
+                        char valueStr[8];
+                        float displayValue = effect.minInput * displayFactor;
+                        // Round to nearest 5 when using display conversion (e.g., Surface in mph/km/h)
+                        if (displayFactor != 1.0f) {
+                            int rounded = static_cast<int>(std::round(displayValue / 5.0f)) * 5;
+                            snprintf(valueStr, sizeof(valueStr), "%d", rounded);
+                        } else if (useIntegers) {
+                            snprintf(valueStr, sizeof(valueStr), "%d", static_cast<int>(std::round(displayValue)));
+                        } else {
+                            snprintf(valueStr, sizeof(valueStr), "%.1f", displayValue);
+                        }
+                        float currentX = minX;
+                        addString("<", currentX, currentY, Justify::LEFT,
+                            Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+                        m_clickRegions.push_back(ClickRegion(
+                            currentX, currentY, charWidth * 2, dim.lineHeightNormal,
+                            minDown, nullptr
+                        ));
+                        currentX += charWidth * 2;
+                        addString(valueStr, currentX, currentY, Justify::LEFT,
+                            Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                        currentX += charWidth * 6;  // Extra space for wide values like RPM
+                        addString(">", currentX, currentY, Justify::LEFT,
+                            Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+                        m_clickRegions.push_back(ClickRegion(
+                            currentX, currentY, charWidth * 2, dim.lineHeightNormal,
+                            minUp, nullptr
+                        ));
+                    }
+
+                    // Max input control: < X.X > unit or < X > unit
+                    {
+                        char valueStr[8];
+                        float displayValue = effect.maxInput * displayFactor;
+                        // Round to nearest 5 when using display conversion (e.g., Surface in mph/km/h)
+                        if (displayFactor != 1.0f) {
+                            int rounded = static_cast<int>(std::round(displayValue / 5.0f)) * 5;
+                            snprintf(valueStr, sizeof(valueStr), "%d", rounded);
+                        } else if (useIntegers) {
+                            snprintf(valueStr, sizeof(valueStr), "%d", static_cast<int>(std::round(displayValue)));
+                        } else {
+                            snprintf(valueStr, sizeof(valueStr), "%.1f", displayValue);
+                        }
+                        float currentX = maxX;
+                        addString("<", currentX, currentY, Justify::LEFT,
+                            Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+                        m_clickRegions.push_back(ClickRegion(
+                            currentX, currentY, charWidth * 2, dim.lineHeightNormal,
+                            maxDown, nullptr
+                        ));
+                        currentX += charWidth * 2;
+                        addString(valueStr, currentX, currentY, Justify::LEFT,
+                            Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                        currentX += charWidth * 6;  // Extra space for wide values like RPM
+                        addString(">", currentX, currentY, Justify::LEFT,
+                            Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+                        m_clickRegions.push_back(ClickRegion(
+                            currentX, currentY, charWidth * 2, dim.lineHeightNormal,
+                            maxUp, nullptr
+                        ));
+                        if (unit[0] != '\0') {
+                            currentX += charWidth * 2;
+                            addString(unit, currentX, currentY, Justify::LEFT,
+                                Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dim.fontSize);
+                        }
                     }
 
                     currentY += dim.lineHeightNormal;
                 };
 
-                // Effect rows (motorDown, motorUp, sensDown, sensUp, strengthDown, strengthUp)
+                // Effect rows (lightDown, lightUp, heavyDown, heavyUp, minDown, minUp, maxDown, maxUp, useIntegers, unit)
                 addRumbleRow("Bumps", rumbleConfig.suspensionEffect,
-                    ClickRegion::RUMBLE_SUSP_MOTOR_DOWN, ClickRegion::RUMBLE_SUSP_TOGGLE,
+                    ClickRegion::RUMBLE_SUSP_LIGHT_DOWN, ClickRegion::RUMBLE_SUSP_LIGHT_UP,
+                    ClickRegion::RUMBLE_SUSP_HEAVY_DOWN, ClickRegion::RUMBLE_SUSP_HEAVY_UP,
                     ClickRegion::RUMBLE_SUSP_MIN_DOWN, ClickRegion::RUMBLE_SUSP_MIN_UP,
-                    ClickRegion::RUMBLE_SUSP_STRENGTH_DOWN, ClickRegion::RUMBLE_SUSP_STRENGTH_UP);
+                    ClickRegion::RUMBLE_SUSP_MAX_DOWN, ClickRegion::RUMBLE_SUSP_MAX_UP, true, "m/s");
                 addRumbleRow("Slide", rumbleConfig.slideEffect,
-                    ClickRegion::RUMBLE_SLIDE_MOTOR_DOWN, ClickRegion::RUMBLE_SLIDE_TOGGLE,
-                    ClickRegion::RUMBLE_SLIDE_THRESH_DOWN, ClickRegion::RUMBLE_SLIDE_THRESH_UP,
-                    ClickRegion::RUMBLE_SLIDE_STRENGTH_DOWN, ClickRegion::RUMBLE_SLIDE_STRENGTH_UP);
+                    ClickRegion::RUMBLE_SLIDE_LIGHT_DOWN, ClickRegion::RUMBLE_SLIDE_LIGHT_UP,
+                    ClickRegion::RUMBLE_SLIDE_HEAVY_DOWN, ClickRegion::RUMBLE_SLIDE_HEAVY_UP,
+                    ClickRegion::RUMBLE_SLIDE_MIN_DOWN, ClickRegion::RUMBLE_SLIDE_MIN_UP,
+                    ClickRegion::RUMBLE_SLIDE_MAX_DOWN, ClickRegion::RUMBLE_SLIDE_MAX_UP, true, "deg");
                 addRumbleRow("Spin", rumbleConfig.wheelspinEffect,
-                    ClickRegion::RUMBLE_WHEEL_MOTOR_DOWN, ClickRegion::RUMBLE_WHEEL_TOGGLE,
+                    ClickRegion::RUMBLE_WHEEL_LIGHT_DOWN, ClickRegion::RUMBLE_WHEEL_LIGHT_UP,
+                    ClickRegion::RUMBLE_WHEEL_HEAVY_DOWN, ClickRegion::RUMBLE_WHEEL_HEAVY_UP,
                     ClickRegion::RUMBLE_WHEEL_MIN_DOWN, ClickRegion::RUMBLE_WHEEL_MIN_UP,
-                    ClickRegion::RUMBLE_WHEEL_STRENGTH_DOWN, ClickRegion::RUMBLE_WHEEL_STRENGTH_UP);
+                    ClickRegion::RUMBLE_WHEEL_MAX_DOWN, ClickRegion::RUMBLE_WHEEL_MAX_UP, true, "x");
                 addRumbleRow("Lockup", rumbleConfig.brakeLockupEffect,
-                    ClickRegion::RUMBLE_LOCKUP_MOTOR_DOWN, ClickRegion::RUMBLE_LOCKUP_TOGGLE,
-                    ClickRegion::RUMBLE_LOCKUP_THRESH_DOWN, ClickRegion::RUMBLE_LOCKUP_THRESH_UP,
-                    ClickRegion::RUMBLE_LOCKUP_STRENGTH_DOWN, ClickRegion::RUMBLE_LOCKUP_STRENGTH_UP);
+                    ClickRegion::RUMBLE_LOCKUP_LIGHT_DOWN, ClickRegion::RUMBLE_LOCKUP_LIGHT_UP,
+                    ClickRegion::RUMBLE_LOCKUP_HEAVY_DOWN, ClickRegion::RUMBLE_LOCKUP_HEAVY_UP,
+                    ClickRegion::RUMBLE_LOCKUP_MIN_DOWN, ClickRegion::RUMBLE_LOCKUP_MIN_UP,
+                    ClickRegion::RUMBLE_LOCKUP_MAX_DOWN, ClickRegion::RUMBLE_LOCKUP_MAX_UP, false, "ratio");
                 addRumbleRow("Wheelie", rumbleConfig.wheelieEffect,
-                    ClickRegion::RUMBLE_WHEELIE_MOTOR_DOWN, ClickRegion::RUMBLE_WHEELIE_TOGGLE,
-                    ClickRegion::RUMBLE_WHEELIE_THRESH_DOWN, ClickRegion::RUMBLE_WHEELIE_THRESH_UP,
-                    ClickRegion::RUMBLE_WHEELIE_STRENGTH_DOWN, ClickRegion::RUMBLE_WHEELIE_STRENGTH_UP);
-                addRumbleRow("RPM", rumbleConfig.rpmEffect,
-                    ClickRegion::RUMBLE_RPM_MOTOR_DOWN, ClickRegion::RUMBLE_RPM_TOGGLE,
-                    ClickRegion::RUMBLE_RPM_THRESH_DOWN, ClickRegion::RUMBLE_RPM_THRESH_UP,
-                    ClickRegion::RUMBLE_RPM_STRENGTH_DOWN, ClickRegion::RUMBLE_RPM_STRENGTH_UP);
+                    ClickRegion::RUMBLE_WHEELIE_LIGHT_DOWN, ClickRegion::RUMBLE_WHEELIE_LIGHT_UP,
+                    ClickRegion::RUMBLE_WHEELIE_HEAVY_DOWN, ClickRegion::RUMBLE_WHEELIE_HEAVY_UP,
+                    ClickRegion::RUMBLE_WHEELIE_MIN_DOWN, ClickRegion::RUMBLE_WHEELIE_MIN_UP,
+                    ClickRegion::RUMBLE_WHEELIE_MAX_DOWN, ClickRegion::RUMBLE_WHEELIE_MAX_UP, true, "deg");
                 addRumbleRow("Steer", rumbleConfig.steerEffect,
-                    ClickRegion::RUMBLE_STEER_MOTOR_DOWN, ClickRegion::RUMBLE_STEER_TOGGLE,
-                    ClickRegion::RUMBLE_STEER_THRESH_DOWN, ClickRegion::RUMBLE_STEER_THRESH_UP,
-                    ClickRegion::RUMBLE_STEER_STRENGTH_DOWN, ClickRegion::RUMBLE_STEER_STRENGTH_UP);
-                addRumbleRow("Surface", rumbleConfig.surfaceEffect,
-                    ClickRegion::RUMBLE_SURFACE_MOTOR_DOWN, ClickRegion::RUMBLE_SURFACE_TOGGLE,
-                    ClickRegion::RUMBLE_SURFACE_THRESH_DOWN, ClickRegion::RUMBLE_SURFACE_THRESH_UP,
-                    ClickRegion::RUMBLE_SURFACE_STRENGTH_DOWN, ClickRegion::RUMBLE_SURFACE_STRENGTH_UP);
+                    ClickRegion::RUMBLE_STEER_LIGHT_DOWN, ClickRegion::RUMBLE_STEER_LIGHT_UP,
+                    ClickRegion::RUMBLE_STEER_HEAVY_DOWN, ClickRegion::RUMBLE_STEER_HEAVY_UP,
+                    ClickRegion::RUMBLE_STEER_MIN_DOWN, ClickRegion::RUMBLE_STEER_MIN_UP,
+                    ClickRegion::RUMBLE_STEER_MAX_DOWN, ClickRegion::RUMBLE_STEER_MAX_UP, true, "Nm");
+                addRumbleRow("RPM", rumbleConfig.rpmEffect,
+                    ClickRegion::RUMBLE_RPM_LIGHT_DOWN, ClickRegion::RUMBLE_RPM_LIGHT_UP,
+                    ClickRegion::RUMBLE_RPM_HEAVY_DOWN, ClickRegion::RUMBLE_RPM_HEAVY_UP,
+                    ClickRegion::RUMBLE_RPM_MIN_DOWN, ClickRegion::RUMBLE_RPM_MIN_UP,
+                    ClickRegion::RUMBLE_RPM_MAX_DOWN, ClickRegion::RUMBLE_RPM_MAX_UP, true, "rpm");
+                // Surface uses user's speed unit preference
+                {
+                    bool isKmh = m_speed && m_speed->getSpeedUnit() == SpeedWidget::SpeedUnit::KMH;
+                    const char* surfaceUnit = isKmh ? "km/h" : "mph";
+                    float surfaceFactor = isKmh ? 3.6f : 2.23694f;  // m/s to km/h or mph
+                    addRumbleRow("Surface", rumbleConfig.surfaceEffect,
+                        ClickRegion::RUMBLE_SURFACE_LIGHT_DOWN, ClickRegion::RUMBLE_SURFACE_LIGHT_UP,
+                        ClickRegion::RUMBLE_SURFACE_HEAVY_DOWN, ClickRegion::RUMBLE_SURFACE_HEAVY_UP,
+                        ClickRegion::RUMBLE_SURFACE_MIN_DOWN, ClickRegion::RUMBLE_SURFACE_MIN_UP,
+                        ClickRegion::RUMBLE_SURFACE_MAX_DOWN, ClickRegion::RUMBLE_SURFACE_MAX_UP, true, surfaceUnit, surfaceFactor);
+                }
+
+                // Info text
+                currentY += dim.lineHeightNormal * 0.5f;
+                addString("Select your controller in the General tab", leftColumnX, currentY, Justify::LEFT,
+                    Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dim.fontSize * 0.9f);
             }
             break;
+
+        case TAB_RIDERS:
+        {
+            // Tracked Riders tab - two-section layout:
+            // Top: Server players grid (clickable to add)
+            // Bottom: Tracked riders with icon (left=color, right=shape), hover shows remove on right
+            TrackedRidersManager& trackedMgr = TrackedRidersManager::getInstance();
+            const PluginData& pluginData = PluginData::getInstance();
+            float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+            const ColorConfig& colors = ColorConfig::getInstance();
+
+            // Use normal font for grid content (readable size)
+            float gridFontSize = dim.fontSize;
+            float gridLineHeight = dim.lineHeightNormal;
+            float gridCharWidth = charWidth;
+
+            // Grid layout constants - 3 columns with pagination
+            constexpr int SERVER_PLAYERS_PER_ROW = 3;
+            constexpr int SERVER_PLAYERS_ROWS = 6;
+            constexpr int SERVER_PLAYERS_PER_PAGE = SERVER_PLAYERS_PER_ROW * SERVER_PLAYERS_ROWS;  // 18 per page
+            constexpr int TRACKED_PER_ROW = 3;
+            constexpr int TRACKED_ROWS = 12;
+            constexpr int TRACKED_PER_PAGE = TRACKED_PER_ROW * TRACKED_ROWS;  // 36 per page
+
+            // Calculate available content width (same method as version number)
+            float rightEdgeX = contentStartX + panelWidth - dim.paddingH - dim.paddingH;
+            float availableGridWidth = rightEdgeX - leftColumnX;
+
+            // Calculate cell dimensions based on available width
+            float serverCellWidth = availableGridWidth / SERVER_PLAYERS_PER_ROW;
+            float trackedCellWidth = availableGridWidth / TRACKED_PER_ROW;
+
+            // Calculate cell chars for name truncation (cell width in chars)
+            int serverCellChars = static_cast<int>(serverCellWidth / gridCharWidth);
+            int trackedCellChars = static_cast<int>(trackedCellWidth / gridCharWidth);
+
+            // Server cell format: "#123 Name" - race num takes 5 chars, 1 char buffer, rest for name
+            int serverNameChars = serverCellChars - 6;  // 5 = "#" + 3 digits + space, +1 buffer
+            if (serverNameChars < 5) serverNameChars = 5;  // Minimum name length
+
+            // Tracked cell format: "[ico] Name-" - icon takes 3 chars, remove takes 2, 1 char buffer
+            int trackedNameChars = trackedCellChars - 6;  // 3 for icon, 2 for remove, 1 buffer
+            if (trackedNameChars < 5) trackedNameChars = 5;  // Minimum name length
+
+            float cellHeight = gridLineHeight;
+
+            // Helper lambda to render pagination controls (reduces duplication)
+            // Returns the updated Y position after rendering
+            auto renderPagination = [&](float& y, int currentPage, int totalPages,
+                                        ClickRegion::Type prevType, ClickRegion::Type nextType) {
+                if (totalPages <= 1) return;
+
+                y += dim.lineHeightNormal * 0.5f;  // Gap before pagination
+                char pageText[16];
+                snprintf(pageText, sizeof(pageText), "Page %d/%d", currentPage + 1, totalPages);
+                float pageTextWidth = PluginUtils::calculateMonospaceTextWidth(
+                    static_cast<int>(strlen(pageText)), gridFontSize);
+
+                // Position pagination at right edge
+                // Format: "< Page x/y >" with spaces around arrows
+                float paginationTotalWidth = gridCharWidth * 2 + pageTextWidth + gridCharWidth * 2;
+                float paginationX = rightEdgeX - paginationTotalWidth;
+
+                // "< " button
+                addString("< ", paginationX, y, Justify::LEFT, Fonts::getNormal(),
+                         colors.getAccent(), gridFontSize);
+                m_clickRegions.push_back(ClickRegion(paginationX, y, gridCharWidth * 2, cellHeight,
+                    prevType, nullptr, 0, false, 0));
+                paginationX += gridCharWidth * 2;
+
+                // Page text
+                addString(pageText, paginationX, y, Justify::LEFT, Fonts::getNormal(),
+                         colors.getSecondary(), gridFontSize);
+                paginationX += pageTextWidth;
+
+                // " >" button
+                addString(" >", paginationX, y, Justify::LEFT, Fonts::getNormal(),
+                         colors.getAccent(), gridFontSize);
+                m_clickRegions.push_back(ClickRegion(paginationX, y, gridCharWidth * 2, cellHeight,
+                    nextType, nullptr, 0, false, 0));
+
+                y += dim.lineHeightNormal;
+            };
+
+            // =====================================================
+            // SECTION 1: Server Players Grid
+            // =====================================================
+            addString("Server Players", leftColumnX, currentY, Justify::LEFT,
+                Fonts::getStrong(), colors.getPrimary(), dim.fontSize);
+            addString("(click to track/untrack)", leftColumnX + charWidth * 16, currentY, Justify::LEFT,
+                Fonts::getNormal(), colors.getMuted(), dim.fontSize * 0.9f);
+            currentY += dim.lineHeightNormal;
+
+            // Get all race entries and build display list
+            const auto& raceEntries = pluginData.getRaceEntries();
+            std::vector<const RaceEntryData*> serverPlayers;
+            for (const auto& pair : raceEntries) {
+                serverPlayers.push_back(&pair.second);
+            }
+
+            // Sort by race number
+            std::sort(serverPlayers.begin(), serverPlayers.end(),
+                [](const RaceEntryData* a, const RaceEntryData* b) {
+                    return a->raceNum < b->raceNum;
+                });
+
+            // Calculate total server players and pagination
+            int totalServerPlayers = static_cast<int>(serverPlayers.size());
+            int serverTotalPages = (totalServerPlayers + SERVER_PLAYERS_PER_PAGE - 1) / SERVER_PLAYERS_PER_PAGE;
+            if (serverTotalPages < 1) serverTotalPages = 1;
+            if (m_serverPlayersPage >= serverTotalPages) m_serverPlayersPage = serverTotalPages - 1;
+            if (m_serverPlayersPage < 0) m_serverPlayersPage = 0;
+            int serverStartIndex = m_serverPlayersPage * SERVER_PLAYERS_PER_PAGE;
+
+            // Render server players grid (current page only)
+            float serverGridStartY = currentY;
+            for (int row = 0; row < SERVER_PLAYERS_ROWS; row++) {
+                float rowY = serverGridStartY + row * cellHeight;
+                for (int col = 0; col < SERVER_PLAYERS_PER_ROW; col++) {
+                    int playerIndex = serverStartIndex + row * SERVER_PLAYERS_PER_ROW + col;
+                    if (playerIndex >= totalServerPlayers) break;
+
+                    float cellX = leftColumnX + col * serverCellWidth;
+                    const RaceEntryData* player = serverPlayers[playerIndex];
+                    bool isTracked = trackedMgr.isTracked(player->name);
+
+                    // Format: "#123 Name" (dynamic width based on available space)
+                    char cellText[48];
+                    snprintf(cellText, sizeof(cellText), "#%-3d %-*.*s", player->raceNum, serverNameChars, serverNameChars, player->name);
+
+                    unsigned long textColor = isTracked ? colors.getPositive() : colors.getSecondary();
+                    addString(cellText, cellX, rowY, Justify::LEFT,
+                        Fonts::getNormal(), textColor, gridFontSize);
+
+                    // Click region to add/remove tracking
+                    if (isTracked) {
+                        m_clickRegions.push_back(ClickRegion(
+                            cellX, rowY, serverCellWidth, cellHeight,
+                            ClickRegion::RIDER_REMOVE, std::string(player->name)
+                        ));
+                    } else {
+                        m_clickRegions.push_back(ClickRegion(
+                            cellX, rowY, serverCellWidth, cellHeight,
+                            ClickRegion::RIDER_ADD, std::string(player->name)
+                        ));
+                    }
+                }
+            }
+            currentY = serverGridStartY + SERVER_PLAYERS_ROWS * cellHeight;
+
+            // Server pagination
+            renderPagination(currentY, m_serverPlayersPage, serverTotalPages,
+                            ClickRegion::SERVER_PAGE_PREV, ClickRegion::SERVER_PAGE_NEXT);
+
+            currentY += dim.lineHeightNormal * 0.3f;
+
+            // =====================================================
+            // SECTION 2: Tracked Riders Grid
+            // =====================================================
+            addString("Tracked Riders", leftColumnX, currentY, Justify::LEFT,
+                Fonts::getStrong(), colors.getPrimary(), dim.fontSize);
+            addString("(L-click: color, R-click: icon)", leftColumnX + charWidth * 16, currentY, Justify::LEFT,
+                Fonts::getNormal(), colors.getMuted(), dim.fontSize * 0.9f);
+            currentY += dim.lineHeightNormal;
+
+            // Get tracked riders
+            const auto& allTracked = trackedMgr.getAllTrackedRiders();
+            std::vector<const TrackedRiderConfig*> trackedList;
+            for (const auto& pair : allTracked) {
+                trackedList.push_back(&pair.second);
+            }
+
+            // Sort tracked by name
+            std::sort(trackedList.begin(), trackedList.end(),
+                [](const TrackedRiderConfig* a, const TrackedRiderConfig* b) {
+                    return a->name < b->name;
+                });
+
+            // Calculate total tracked riders and pagination
+            int totalTrackedRiders = static_cast<int>(trackedList.size());
+            int trackedTotalPages = (totalTrackedRiders + TRACKED_PER_PAGE - 1) / TRACKED_PER_PAGE;
+            if (trackedTotalPages < 1) trackedTotalPages = 1;
+            if (m_trackedRidersPage >= trackedTotalPages) m_trackedRidersPage = trackedTotalPages - 1;
+            if (m_trackedRidersPage < 0) m_trackedRidersPage = 0;
+            int trackedStartIndex = m_trackedRidersPage * TRACKED_PER_PAGE;
+
+            // Store layout info for hover tracking
+            m_trackedRidersStartY = currentY;
+            m_trackedRidersStartX = leftColumnX;
+            m_trackedRidersCellHeight = cellHeight;
+            m_trackedRidersCellWidth = trackedCellWidth;
+            m_trackedRidersPerRow = TRACKED_PER_ROW;
+
+            // Sprite sizing - match StandingsHud icon size (0.006f base)
+            constexpr float baseConeSize = 0.006f;
+            float baseHalfSize = baseConeSize;  // Same as StandingsHud
+
+            // Render tracked riders grid (current page only)
+            float trackedGridStartY = currentY;
+            for (int row = 0; row < TRACKED_ROWS; row++) {
+                float rowY = trackedGridStartY + row * cellHeight;
+                for (int col = 0; col < TRACKED_PER_ROW; col++) {
+                    int trackedIndex = trackedStartIndex + row * TRACKED_PER_ROW + col;
+                    if (trackedIndex >= totalTrackedRiders) break;
+
+                    float cellX = leftColumnX + col * trackedCellWidth;
+                    const TrackedRiderConfig* config = trackedList[trackedIndex];
+                    const std::string& riderName = config->name;
+                    unsigned long riderColor = config->color;
+                    int shapeIndex = config->shapeIndex;
+
+                    // Adjust hover index for pagination
+                    int displayIndex = trackedIndex - trackedStartIndex;
+                    bool isHovered = (displayIndex == m_hoveredTrackedRiderIndex);
+
+                    float x = cellX;
+
+                    // Icon sprite (clickable for color on left-click, icon on right-click)
+                    {
+                        float spriteHalfSize = baseHalfSize;
+                        int spriteIndex = AssetManager::getInstance().getFirstIconSpriteIndex() + shapeIndex - 1;
+
+                        float spriteCenterX = x + gridCharWidth * 1.5f;  // Center icon in 3-char space
+                        float spriteCenterY = rowY + cellHeight * 0.5f;
+                        float spriteHalfWidth = spriteHalfSize / UI_ASPECT_RATIO;
+
+                        SPluginQuad_t sprite;
+                        float sx = spriteCenterX, sy = spriteCenterY;
+                        applyOffset(sx, sy);
+                        sprite.m_aafPos[0][0] = sx - spriteHalfWidth;
+                        sprite.m_aafPos[0][1] = sy - spriteHalfSize;
+                        sprite.m_aafPos[1][0] = sx - spriteHalfWidth;
+                        sprite.m_aafPos[1][1] = sy + spriteHalfSize;
+                        sprite.m_aafPos[2][0] = sx + spriteHalfWidth;
+                        sprite.m_aafPos[2][1] = sy + spriteHalfSize;
+                        sprite.m_aafPos[3][0] = sx + spriteHalfWidth;
+                        sprite.m_aafPos[3][1] = sy - spriteHalfSize;
+                        sprite.m_iSprite = spriteIndex;
+                        sprite.m_ulColor = riderColor;
+                        m_quads.push_back(sprite);
+
+                        // Click region for color cycling (left-click) and shape cycling (right-click)
+                        // Covers icon + name area (icon3 + nameChars = trackedCellChars - 2 for remove)
+                        m_clickRegions.push_back(ClickRegion(
+                            x, rowY, gridCharWidth * (3 + trackedNameChars), cellHeight,
+                            ClickRegion::RIDER_COLOR_NEXT, riderName
+                        ));
+                    }
+                    x += gridCharWidth * 3;  // Space for icon (3 chars)
+
+                    // Name (dynamic width based on available space)
+                    char truncName[48];
+                    snprintf(truncName, sizeof(truncName), "%-*.*s", trackedNameChars, trackedNameChars, riderName.c_str());
+                    addString(truncName, x, rowY, Justify::LEFT,
+                        Fonts::getNormal(), riderColor, gridFontSize);
+
+                    // Remove "x" only shown on hover, fixed at right edge of cell
+                    if (isHovered) {
+                        float removeX = cellX + trackedCellWidth - gridCharWidth * 2;
+                        addString("x", removeX, rowY, Justify::LEFT,
+                            Fonts::getNormal(), colors.getNegative(), gridFontSize);
+                        m_clickRegions.push_back(ClickRegion(
+                            removeX, rowY, gridCharWidth * 2, cellHeight,
+                            ClickRegion::RIDER_REMOVE, riderName
+                        ));
+                    }
+                }
+            }
+            currentY = trackedGridStartY + TRACKED_ROWS * cellHeight;
+
+            // Tracked pagination
+            renderPagination(currentY, m_trackedRidersPage, trackedTotalPages,
+                            ClickRegion::TRACKED_PAGE_PREV, ClickRegion::TRACKED_PAGE_NEXT);
+        }
+        break;
 
         default:
             DEBUG_WARN_F("Invalid tab index: %d, defaulting to TAB_STANDINGS", m_activeTab);
@@ -1901,7 +2932,7 @@ void SettingsHud::rebuildRenderData() {
         ? ColorConfig::getInstance().getPrimary()
         : ColorConfig::getInstance().getSecondary();
     addString("[Close]", closeButtonBottomX, closeButtonBottomY, Justify::CENTER,
-        Fonts::ROBOTO_MONO_BOLD, closeTextColor, dim.fontSize);
+        Fonts::getStrong(), closeTextColor, dim.fontSize);
 
     // [Reset Tab] button - bottom left corner
     float resetTabButtonY = closeButtonBottomY;
@@ -1933,7 +2964,7 @@ void SettingsHud::rebuildRenderData() {
         ? ColorConfig::getInstance().getPrimary()
         : ColorConfig::getInstance().getSecondary();
     addString("[Reset Tab]", resetTabButtonX + resetTabButtonWidth / 2.0f, resetTabButtonY, Justify::CENTER,
-        Fonts::ROBOTO_MONO, resetTabTextColor, dim.fontSize);
+        Fonts::getNormal(), resetTabTextColor, dim.fontSize);
 
     // Version + update status display - bottom right corner
     {
@@ -1999,7 +3030,16 @@ void SettingsHud::rebuildRenderData() {
 
         // Draw version text
         addString(versionStr, versionX, versionY, Justify::LEFT,
-            Fonts::ROBOTO_MONO, versionColor, dim.fontSize);
+            Fonts::getNormal(), versionColor, dim.fontSize);
+
+        // Add click region for easter egg trigger
+        ClickRegion versionRegion;
+        versionRegion.x = versionX;
+        versionRegion.y = versionY;
+        versionRegion.width = versionWidth;
+        versionRegion.height = dim.lineHeightNormal;
+        versionRegion.type = ClickRegion::VERSION_CLICK;
+        m_clickRegions.push_back(versionRegion);
     }
 }
 
@@ -2012,11 +3052,23 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                 case ClickRegion::CHECKBOX:
                     handleCheckboxClick(region);
                     break;
-                case ClickRegion::GAP_MODE_CYCLE:
-                    handleGapModeClick(region);
+                case ClickRegion::GAP_MODE_UP:
+                    handleGapModeClick(region, true);
                     break;
-                case ClickRegion::GAP_INDICATOR_CYCLE:
-                    handleGapIndicatorClick(region);
+                case ClickRegion::GAP_MODE_DOWN:
+                    handleGapModeClick(region, false);
+                    break;
+                case ClickRegion::GAP_INDICATOR_UP:
+                    handleGapIndicatorClick(region, true);
+                    break;
+                case ClickRegion::GAP_INDICATOR_DOWN:
+                    handleGapIndicatorClick(region, false);
+                    break;
+                case ClickRegion::GAP_REFERENCE_UP:
+                    handleGapReferenceClick(region, true);
+                    break;
+                case ClickRegion::GAP_REFERENCE_DOWN:
+                    handleGapReferenceClick(region, false);
                     break;
                 case ClickRegion::HUD_TOGGLE:
                     handleHudToggleClick(region);
@@ -2032,8 +3084,17 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                 case ClickRegion::TITLE_TOGGLE:
                     handleTitleToggleClick(region);
                     break;
-                case ClickRegion::BACKGROUND_TEXTURE_TOGGLE:
-                    handleBackgroundTextureToggleClick(region);
+                case ClickRegion::TEXTURE_VARIANT_UP:
+                    if (region.targetHud) {
+                        region.targetHud->cycleTextureVariant(true);
+                        rebuildRenderData();
+                    }
+                    break;
+                case ClickRegion::TEXTURE_VARIANT_DOWN:
+                    if (region.targetHud) {
+                        region.targetHud->cycleTextureVariant(false);
+                        rebuildRenderData();
+                    }
                     break;
                 case ClickRegion::BACKGROUND_OPACITY_UP:
                     handleOpacityClick(region, true);
@@ -2065,8 +3126,11 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                 case ClickRegion::MAP_OUTLINE_TOGGLE:
                     handleMapOutlineClick(region);
                     break;
-                case ClickRegion::MAP_COLORIZE_CYCLE:
-                    handleMapColorizeClick(region);
+                case ClickRegion::MAP_COLORIZE_UP:
+                    handleMapColorizeClick(region, true);
+                    break;
+                case ClickRegion::MAP_COLORIZE_DOWN:
+                    handleMapColorizeClick(region, false);
                     break;
                 case ClickRegion::MAP_TRACK_WIDTH_UP:
                     handleMapTrackWidthClick(region, true);
@@ -2074,8 +3138,11 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                 case ClickRegion::MAP_TRACK_WIDTH_DOWN:
                     handleMapTrackWidthClick(region, false);
                     break;
-                case ClickRegion::MAP_LABEL_MODE_CYCLE:
-                    handleMapLabelModeClick(region);
+                case ClickRegion::MAP_LABEL_MODE_UP:
+                    handleMapLabelModeClick(region, true);
+                    break;
+                case ClickRegion::MAP_LABEL_MODE_DOWN:
+                    handleMapLabelModeClick(region, false);
                     break;
                 case ClickRegion::MAP_RANGE_UP:
                     handleMapRangeClick(region, true);
@@ -2083,8 +3150,17 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                 case ClickRegion::MAP_RANGE_DOWN:
                     handleMapRangeClick(region, false);
                     break;
-                case ClickRegion::MAP_RIDER_SHAPE_CYCLE:
-                    handleMapRiderShapeClick(region);
+                case ClickRegion::MAP_RIDER_SHAPE_UP:
+                    handleMapRiderShapeClick(region, true);
+                    break;
+                case ClickRegion::MAP_RIDER_SHAPE_DOWN:
+                    handleMapRiderShapeClick(region, false);
+                    break;
+                case ClickRegion::MAP_MARKER_SCALE_UP:
+                    handleMapMarkerScaleClick(region, true);
+                    break;
+                case ClickRegion::MAP_MARKER_SCALE_DOWN:
+                    handleMapMarkerScaleClick(region, false);
                     break;
                 case ClickRegion::RADAR_RANGE_UP:
                     handleRadarRangeClick(region, true);
@@ -2092,8 +3168,11 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                 case ClickRegion::RADAR_RANGE_DOWN:
                     handleRadarRangeClick(region, false);
                     break;
-                case ClickRegion::RADAR_COLORIZE_CYCLE:
-                    handleRadarColorizeClick(region);
+                case ClickRegion::RADAR_COLORIZE_UP:
+                    handleRadarColorizeClick(region, true);
+                    break;
+                case ClickRegion::RADAR_COLORIZE_DOWN:
+                    handleRadarColorizeClick(region, false);
                     break;
                 case ClickRegion::RADAR_PLAYER_ARROW_TOGGLE:
                     if (m_radarHud) {
@@ -2113,11 +3192,23 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                 case ClickRegion::RADAR_ALERT_DISTANCE_DOWN:
                     handleRadarAlertDistanceClick(region, false);
                     break;
-                case ClickRegion::RADAR_LABEL_MODE_CYCLE:
-                    handleRadarLabelModeClick(region);
+                case ClickRegion::RADAR_LABEL_MODE_UP:
+                    handleRadarLabelModeClick(region, true);
                     break;
-                case ClickRegion::RADAR_RIDER_SHAPE_CYCLE:
-                    handleRadarRiderShapeClick(region);
+                case ClickRegion::RADAR_LABEL_MODE_DOWN:
+                    handleRadarLabelModeClick(region, false);
+                    break;
+                case ClickRegion::RADAR_RIDER_SHAPE_UP:
+                    handleRadarRiderShapeClick(region, true);
+                    break;
+                case ClickRegion::RADAR_RIDER_SHAPE_DOWN:
+                    handleRadarRiderShapeClick(region, false);
+                    break;
+                case ClickRegion::RADAR_MARKER_SCALE_UP:
+                    handleRadarMarkerScaleClick(region, true);
+                    break;
+                case ClickRegion::RADAR_MARKER_SCALE_DOWN:
+                    handleRadarMarkerScaleClick(region, false);
                     break;
                 case ClickRegion::DISPLAY_MODE_UP:
                     handleDisplayModeClick(region, true);
@@ -2205,6 +3296,27 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                         setDataDirty();
                     }
                     break;
+                case ClickRegion::TIMING_GAP_PB_TOGGLE:
+                    if (m_timing) {
+                        m_timing->setGapType(GAP_TO_PB, !m_timing->isGapTypeEnabled(GAP_TO_PB));
+                        m_timing->setDataDirty();
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::TIMING_GAP_IDEAL_TOGGLE:
+                    if (m_timing) {
+                        m_timing->setGapType(GAP_TO_IDEAL, !m_timing->isGapTypeEnabled(GAP_TO_IDEAL));
+                        m_timing->setDataDirty();
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::TIMING_GAP_SESSION_TOGGLE:
+                    if (m_timing) {
+                        m_timing->setGapType(GAP_TO_SESSION, !m_timing->isGapTypeEnabled(GAP_TO_SESSION));
+                        m_timing->setDataDirty();
+                        setDataDirty();
+                    }
+                    break;
                 case ClickRegion::GAPBAR_FREEZE_UP:
                     if (m_gapBar) {
                         m_gapBar->m_freezeDurationMs = std::min(
@@ -2268,6 +3380,22 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                     break;
                 case ClickRegion::COLOR_CYCLE_PREV:
                     handleColorCycleClick(region, false);
+                    break;
+                case ClickRegion::FONT_CATEGORY_NEXT:
+                    if (auto* category = std::get_if<FontCategory>(&region.targetPointer)) {
+                        FontConfig::getInstance().cycleFont(*category, true);
+                        // Mark all HUDs as dirty so they rebuild with new fonts immediately
+                        HudManager::getInstance().markAllHudsDirty();
+                        rebuildRenderData();  // Update settings menu itself
+                    }
+                    break;
+                case ClickRegion::FONT_CATEGORY_PREV:
+                    if (auto* category = std::get_if<FontCategory>(&region.targetPointer)) {
+                        FontConfig::getInstance().cycleFont(*category, false);
+                        // Mark all HUDs as dirty so they rebuild with new fonts immediately
+                        HudManager::getInstance().markAllHudsDirty();
+                        rebuildRenderData();  // Update settings menu itself
+                    }
                     break;
                 case ClickRegion::SPEED_UNIT_TOGGLE:
                     if (m_speed) {
@@ -2337,11 +3465,19 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                         setDataDirty();  // Update settings display
                     }
                     break;
-                case ClickRegion::PROFILE_CYCLE:
+                case ClickRegion::PROFILE_CYCLE_UP:
                     {
                         ProfileType nextProfile = ProfileManager::getNextProfile(
                             ProfileManager::getInstance().getActiveProfile());
                         SettingsManager::getInstance().switchProfile(HudManager::getInstance(), nextProfile);
+                        rebuildRenderData();
+                    }
+                    return;  // switchProfile() already saves, don't double-save
+                case ClickRegion::PROFILE_CYCLE_DOWN:
+                    {
+                        ProfileType prevProfile = ProfileManager::getPreviousProfile(
+                            ProfileManager::getInstance().getActiveProfile());
+                        SettingsManager::getInstance().switchProfile(HudManager::getInstance(), prevProfile);
                         rebuildRenderData();
                     }
                     return;  // switchProfile() already saves, don't double-save
@@ -2353,25 +3489,100 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                         setDataDirty();  // Update settings display
                     }
                     break;
-                case ClickRegion::APPLY_TO_ALL_PROFILES:
-                    if (m_resetConfirmChecked) {
-                        // Copy current profile settings to all other profiles
-                        SettingsManager::getInstance().applyToAllProfiles(HudManager::getInstance());
-                        m_resetConfirmChecked = false;  // Reset checkbox after action
-                        DEBUG_INFO("Applied current profile settings to all profiles");
-                    }
-                    break;
-                case ClickRegion::RESET_CONFIRM_CHECKBOX:
+                case ClickRegion::COPY_TARGET_UP:
                     {
-                        // Toggle confirmation checkbox (enables all profile action buttons)
-                        m_resetConfirmChecked = !m_resetConfirmChecked;
-                        rebuildRenderData();  // Update checkbox display
+                        // Cycle forward through valid copy targets: -1 (none) -> 4 (All) -> 0-3 (profiles, skip current)
+                        ProfileType activeProfile = ProfileManager::getInstance().getActiveProfile();
+                        int8_t activeIdx = static_cast<int8_t>(activeProfile);
+
+                        if (m_copyTargetProfile == -1) {
+                            m_copyTargetProfile = 4;  // All
+                        } else if (m_copyTargetProfile == 4) {
+                            // Start with first profile, skip if it's the active one
+                            m_copyTargetProfile = 0;
+                            if (m_copyTargetProfile == activeIdx) {
+                                m_copyTargetProfile++;
+                            }
+                        } else {
+                            m_copyTargetProfile++;
+                            // Skip current profile
+                            if (m_copyTargetProfile == activeIdx) {
+                                m_copyTargetProfile++;
+                            }
+                            // Wrap back to -1 if past last profile
+                            if (m_copyTargetProfile >= static_cast<int8_t>(ProfileType::COUNT)) {
+                                m_copyTargetProfile = -1;
+                            }
+                        }
+                        rebuildRenderData();
                     }
                     return;  // Don't save settings, just UI state change
+                case ClickRegion::COPY_TARGET_DOWN:
+                    {
+                        // Cycle backward through valid copy targets
+                        ProfileType activeProfile = ProfileManager::getInstance().getActiveProfile();
+                        int8_t activeIdx = static_cast<int8_t>(activeProfile);
+
+                        if (m_copyTargetProfile == -1) {
+                            // Go to last profile, skip if it's the active one
+                            m_copyTargetProfile = static_cast<int8_t>(ProfileType::COUNT) - 1;
+                            if (m_copyTargetProfile == activeIdx) {
+                                m_copyTargetProfile--;
+                            }
+                        } else if (m_copyTargetProfile == 4) {
+                            m_copyTargetProfile = -1;  // None
+                        } else if (m_copyTargetProfile == 0) {
+                            m_copyTargetProfile = 4;  // All
+                        } else {
+                            m_copyTargetProfile--;
+                            // Skip current profile
+                            if (m_copyTargetProfile == activeIdx) {
+                                m_copyTargetProfile--;
+                            }
+                            // If we went below 0, go to All
+                            if (m_copyTargetProfile < 0) {
+                                m_copyTargetProfile = 4;
+                            }
+                        }
+                        rebuildRenderData();
+                    }
+                    return;  // Don't save settings, just UI state change
+                case ClickRegion::RESET_PROFILE_CHECKBOX:
+                    m_resetProfileConfirmed = !m_resetProfileConfirmed;
+                    if (m_resetProfileConfirmed) {
+                        m_resetAllConfirmed = false;  // Mutual exclusion
+                    }
+                    rebuildRenderData();
+                    return;  // Don't save settings, just UI state change
+                case ClickRegion::RESET_ALL_CHECKBOX:
+                    m_resetAllConfirmed = !m_resetAllConfirmed;
+                    if (m_resetAllConfirmed) {
+                        m_resetProfileConfirmed = false;  // Mutual exclusion
+                    }
+                    rebuildRenderData();
+                    return;  // Don't save settings, just UI state change
+                case ClickRegion::COPY_BUTTON:
+                    if (m_copyTargetProfile != -1) {
+                        if (m_copyTargetProfile == 4) {
+                            // Copy to all other profiles
+                            SettingsManager::getInstance().applyToAllProfiles(HudManager::getInstance());
+                        } else {
+                            // Copy to specific profile
+                            ProfileType targetProfile = static_cast<ProfileType>(m_copyTargetProfile);
+                            SettingsManager::getInstance().copyToProfile(HudManager::getInstance(), targetProfile);
+                        }
+                        m_copyTargetProfile = -1;  // Reset selection after action
+                    }
+                    break;
                 case ClickRegion::RESET_BUTTON:
-                    if (m_resetConfirmChecked) {
+                    // Unified reset button - action depends on which checkbox is checked
+                    if (m_resetProfileConfirmed) {
+                        resetCurrentProfile();
+                        m_resetProfileConfirmed = false;
+                        DEBUG_INFO("Current profile reset to defaults");
+                    } else if (m_resetAllConfirmed) {
                         resetToDefaults();
-                        m_resetConfirmChecked = false;  // Reset checkbox after action
+                        m_resetAllConfirmed = false;
                         DEBUG_INFO("All settings reset to defaults");
                     }
                     break;
@@ -2379,13 +3590,6 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                     {
                         resetCurrentTab();
                         DEBUG_INFO_F("Tab %d reset to defaults", m_activeTab);
-                    }
-                    break;
-                case ClickRegion::RESET_PROFILE_BUTTON:
-                    if (m_resetConfirmChecked) {
-                        resetCurrentProfile();
-                        m_resetConfirmChecked = false;  // Reset checkbox after action
-                        DEBUG_INFO("Current profile reset to defaults");
                     }
                     break;
                 case ClickRegion::TAB:
@@ -2400,21 +3604,31 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
                         config.enabled = !config.enabled;
+                        // When disabling rumble, stop vibration and hide the RumbleHud
+                        // (but don't auto-show it when enabling - user must enable HUD separately)
+                        if (!config.enabled) {
+                            XInputReader::getInstance().stopVibration();
+                            if (m_rumble) {
+                                m_rumble->setVisible(false);
+                            }
+                        }
                         setDataDirty();
                     }
                     break;
                 case ClickRegion::RUMBLE_CONTROLLER_UP:
                     {
+                        // Cycle: -1 (disabled) -> 0 -> 1 -> 2 -> 3 -> -1
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.controllerIndex = (config.controllerIndex + 1) % 4;
+                        config.controllerIndex = (config.controllerIndex + 2) % 5 - 1;  // Maps -1,0,1,2,3 -> 0,1,2,3,-1
                         XInputReader::getInstance().setControllerIndex(config.controllerIndex);
                         setDataDirty();
                     }
                     break;
                 case ClickRegion::RUMBLE_CONTROLLER_DOWN:
                     {
+                        // Cycle: -1 (disabled) <- 0 <- 1 <- 2 <- 3 <- -1
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.controllerIndex = (config.controllerIndex + 3) % 4;  // +3 = -1 mod 4
+                        config.controllerIndex = (config.controllerIndex + 5) % 5 - 1;  // Maps -1,0,1,2,3 -> 3,-1,0,1,2
                         XInputReader::getInstance().setControllerIndex(config.controllerIndex);
                         setDataDirty();
                     }
@@ -2433,404 +3647,676 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_SUSP_TOGGLE:
+                // Suspension effect - light/heavy strength controls
+                case ClickRegion::RUMBLE_SUSP_LIGHT_UP:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.suspensionEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.suspensionEffect.motor) + 1) % 4);
+                        float newVal = std::round((config.suspensionEffect.lightStrength + 0.1f) * 10.0f) / 10.0f;
+                        config.suspensionEffect.lightStrength = std::min(1.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_SUSP_MOTOR_DOWN:
+                case ClickRegion::RUMBLE_SUSP_LIGHT_DOWN:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.suspensionEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.suspensionEffect.motor) + 3) % 4);
+                        float newVal = std::round((config.suspensionEffect.lightStrength - 0.1f) * 10.0f) / 10.0f;
+                        config.suspensionEffect.lightStrength = std::max(0.0f, newVal);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_SUSP_HEAVY_UP:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float newVal = std::round((config.suspensionEffect.heavyStrength + 0.1f) * 10.0f) / 10.0f;
+                        config.suspensionEffect.heavyStrength = std::min(1.0f, newVal);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_SUSP_HEAVY_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float newVal = std::round((config.suspensionEffect.heavyStrength - 0.1f) * 10.0f) / 10.0f;
+                        config.suspensionEffect.heavyStrength = std::max(0.0f, newVal);
                         setDataDirty();
                     }
                     break;
                 case ClickRegion::RUMBLE_SUSP_MIN_UP:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        float ratio = config.suspensionEffect.minInput / config.suspensionEffect.maxInput;
-                        float newRatio = ratio + 0.10f;
-                        if (newRatio > 0.95f) newRatio = 0.10f;
-                        config.suspensionEffect.minInput = newRatio * config.suspensionEffect.maxInput;
+                        float newVal = std::round(config.suspensionEffect.minInput + 1.0f);
+                        config.suspensionEffect.minInput = std::min(config.suspensionEffect.maxInput - 1.0f, newVal);
                         setDataDirty();
                     }
                     break;
                 case ClickRegion::RUMBLE_SUSP_MIN_DOWN:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        float ratio = config.suspensionEffect.minInput / config.suspensionEffect.maxInput;
-                        float newRatio = ratio - 0.10f;
-                        if (newRatio < 0.05f) newRatio = 1.00f;
-                        config.suspensionEffect.minInput = newRatio * config.suspensionEffect.maxInput;
+                        float newVal = std::round(config.suspensionEffect.minInput - 1.0f);
+                        config.suspensionEffect.minInput = std::max(0.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_SUSP_STRENGTH_UP:
+                case ClickRegion::RUMBLE_SUSP_MAX_UP:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.suspensionEffect.maxStrength = std::min(1.0f, config.suspensionEffect.maxStrength + 0.1f);
+                        float newVal = std::round(config.suspensionEffect.maxInput + 1.0f);
+                        config.suspensionEffect.maxInput = std::min(50.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_SUSP_STRENGTH_DOWN:
+                case ClickRegion::RUMBLE_SUSP_MAX_DOWN:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.suspensionEffect.maxStrength = std::max(0.0f, config.suspensionEffect.maxStrength - 0.1f);
+                        float newVal = std::round(config.suspensionEffect.maxInput - 1.0f);
+                        config.suspensionEffect.maxInput = std::max(config.suspensionEffect.minInput + 1.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_WHEEL_TOGGLE:
+                // Wheelspin effect - light/heavy strength controls
+                case ClickRegion::RUMBLE_WHEEL_LIGHT_UP:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.wheelspinEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.wheelspinEffect.motor) + 1) % 4);
+                        float newVal = std::round((config.wheelspinEffect.lightStrength + 0.1f) * 10.0f) / 10.0f;
+                        config.wheelspinEffect.lightStrength = std::min(1.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_WHEEL_MOTOR_DOWN:
+                case ClickRegion::RUMBLE_WHEEL_LIGHT_DOWN:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.wheelspinEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.wheelspinEffect.motor) + 3) % 4);
+                        float newVal = std::round((config.wheelspinEffect.lightStrength - 0.1f) * 10.0f) / 10.0f;
+                        config.wheelspinEffect.lightStrength = std::max(0.0f, newVal);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_WHEEL_HEAVY_UP:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float newVal = std::round((config.wheelspinEffect.heavyStrength + 0.1f) * 10.0f) / 10.0f;
+                        config.wheelspinEffect.heavyStrength = std::min(1.0f, newVal);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_WHEEL_HEAVY_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float newVal = std::round((config.wheelspinEffect.heavyStrength - 0.1f) * 10.0f) / 10.0f;
+                        config.wheelspinEffect.heavyStrength = std::max(0.0f, newVal);
                         setDataDirty();
                     }
                     break;
                 case ClickRegion::RUMBLE_WHEEL_MIN_UP:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        float ratio = config.wheelspinEffect.minInput / config.wheelspinEffect.maxInput;
-                        float newRatio = ratio + 0.10f;
-                        if (newRatio > 0.95f) newRatio = 0.10f;
-                        config.wheelspinEffect.minInput = newRatio * config.wheelspinEffect.maxInput;
+                        float newVal = std::round(config.wheelspinEffect.minInput + 1.0f);
+                        config.wheelspinEffect.minInput = std::min(config.wheelspinEffect.maxInput - 1.0f, newVal);
                         setDataDirty();
                     }
                     break;
                 case ClickRegion::RUMBLE_WHEEL_MIN_DOWN:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        float ratio = config.wheelspinEffect.minInput / config.wheelspinEffect.maxInput;
-                        float newRatio = ratio - 0.10f;
-                        if (newRatio < 0.05f) newRatio = 1.00f;
-                        config.wheelspinEffect.minInput = newRatio * config.wheelspinEffect.maxInput;
+                        float newVal = std::round(config.wheelspinEffect.minInput - 1.0f);
+                        config.wheelspinEffect.minInput = std::max(0.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_WHEEL_STRENGTH_UP:
+                case ClickRegion::RUMBLE_WHEEL_MAX_UP:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.wheelspinEffect.maxStrength = std::min(1.0f, config.wheelspinEffect.maxStrength + 0.1f);
+                        float newVal = std::round(config.wheelspinEffect.maxInput + 1.0f);
+                        config.wheelspinEffect.maxInput = std::min(30.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_WHEEL_STRENGTH_DOWN:
+                case ClickRegion::RUMBLE_WHEEL_MAX_DOWN:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.wheelspinEffect.maxStrength = std::max(0.0f, config.wheelspinEffect.maxStrength - 0.1f);
+                        float newVal = std::round(config.wheelspinEffect.maxInput - 1.0f);
+                        config.wheelspinEffect.maxInput = std::max(config.wheelspinEffect.minInput + 1.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_LOCKUP_TOGGLE:
+                // Brake lockup effect - light/heavy strength controls
+                case ClickRegion::RUMBLE_LOCKUP_LIGHT_UP:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.brakeLockupEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.brakeLockupEffect.motor) + 1) % 4);
+                        float newVal = std::round((config.brakeLockupEffect.lightStrength + 0.1f) * 10.0f) / 10.0f;
+                        config.brakeLockupEffect.lightStrength = std::min(1.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_LOCKUP_MOTOR_DOWN:
+                case ClickRegion::RUMBLE_LOCKUP_LIGHT_DOWN:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.brakeLockupEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.brakeLockupEffect.motor) + 3) % 4);
+                        float newVal = std::round((config.brakeLockupEffect.lightStrength - 0.1f) * 10.0f) / 10.0f;
+                        config.brakeLockupEffect.lightStrength = std::max(0.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_LOCKUP_THRESH_UP:
+                case ClickRegion::RUMBLE_LOCKUP_HEAVY_UP:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        float ratio = config.brakeLockupEffect.minInput / config.brakeLockupEffect.maxInput;
-                        float newRatio = ratio + 0.10f;
-                        if (newRatio > 0.95f) newRatio = 0.10f;
-                        config.brakeLockupEffect.minInput = newRatio * config.brakeLockupEffect.maxInput;
+                        float newVal = std::round((config.brakeLockupEffect.heavyStrength + 0.1f) * 10.0f) / 10.0f;
+                        config.brakeLockupEffect.heavyStrength = std::min(1.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_LOCKUP_THRESH_DOWN:
+                case ClickRegion::RUMBLE_LOCKUP_HEAVY_DOWN:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        float ratio = config.brakeLockupEffect.minInput / config.brakeLockupEffect.maxInput;
-                        float newRatio = ratio - 0.10f;
-                        if (newRatio < 0.05f) newRatio = 1.00f;
-                        config.brakeLockupEffect.minInput = newRatio * config.brakeLockupEffect.maxInput;
+                        float newVal = std::round((config.brakeLockupEffect.heavyStrength - 0.1f) * 10.0f) / 10.0f;
+                        config.brakeLockupEffect.heavyStrength = std::max(0.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_LOCKUP_STRENGTH_UP:
+                case ClickRegion::RUMBLE_LOCKUP_MIN_UP:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.brakeLockupEffect.maxStrength = std::min(1.0f, config.brakeLockupEffect.maxStrength + 0.1f);
+                        float newVal = std::round((config.brakeLockupEffect.minInput + 0.1f) * 10.0f) / 10.0f;
+                        config.brakeLockupEffect.minInput = std::min(config.brakeLockupEffect.maxInput - 0.1f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_LOCKUP_STRENGTH_DOWN:
+                case ClickRegion::RUMBLE_LOCKUP_MIN_DOWN:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.brakeLockupEffect.maxStrength = std::max(0.0f, config.brakeLockupEffect.maxStrength - 0.1f);
+                        float newVal = std::round((config.brakeLockupEffect.minInput - 0.1f) * 10.0f) / 10.0f;
+                        config.brakeLockupEffect.minInput = std::max(0.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_RPM_TOGGLE:
+                case ClickRegion::RUMBLE_LOCKUP_MAX_UP:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.rpmEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.rpmEffect.motor) + 1) % 4);
+                        float newVal = std::round((config.brakeLockupEffect.maxInput + 0.1f) * 10.0f) / 10.0f;
+                        config.brakeLockupEffect.maxInput = std::min(5.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_RPM_MOTOR_DOWN:
+                case ClickRegion::RUMBLE_LOCKUP_MAX_DOWN:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.rpmEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.rpmEffect.motor) + 3) % 4);
+                        float newVal = std::round((config.brakeLockupEffect.maxInput - 0.1f) * 10.0f) / 10.0f;
+                        config.brakeLockupEffect.maxInput = std::max(config.brakeLockupEffect.minInput + 0.1f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_RPM_THRESH_UP:
+                // RPM effect - light/heavy strength controls
+                case ClickRegion::RUMBLE_RPM_LIGHT_UP:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        float ratio = config.rpmEffect.minInput / config.rpmEffect.maxInput;
-                        float newRatio = ratio + 0.10f;
-                        if (newRatio > 0.95f) newRatio = 0.10f;
-                        config.rpmEffect.minInput = newRatio * config.rpmEffect.maxInput;
+                        float newVal = std::round((config.rpmEffect.lightStrength + 0.1f) * 10.0f) / 10.0f;
+                        config.rpmEffect.lightStrength = std::min(1.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_RPM_THRESH_DOWN:
+                case ClickRegion::RUMBLE_RPM_LIGHT_DOWN:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        float ratio = config.rpmEffect.minInput / config.rpmEffect.maxInput;
-                        float newRatio = ratio - 0.10f;
-                        if (newRatio < 0.05f) newRatio = 1.00f;
-                        config.rpmEffect.minInput = newRatio * config.rpmEffect.maxInput;
+                        float newVal = std::round((config.rpmEffect.lightStrength - 0.1f) * 10.0f) / 10.0f;
+                        config.rpmEffect.lightStrength = std::max(0.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_RPM_STRENGTH_UP:
+                case ClickRegion::RUMBLE_RPM_HEAVY_UP:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.rpmEffect.maxStrength = std::min(1.0f, config.rpmEffect.maxStrength + 0.1f);
+                        float newVal = std::round((config.rpmEffect.heavyStrength + 0.1f) * 10.0f) / 10.0f;
+                        config.rpmEffect.heavyStrength = std::min(1.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_RPM_STRENGTH_DOWN:
+                case ClickRegion::RUMBLE_RPM_HEAVY_DOWN:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.rpmEffect.maxStrength = std::max(0.0f, config.rpmEffect.maxStrength - 0.1f);
+                        float newVal = std::round((config.rpmEffect.heavyStrength - 0.1f) * 10.0f) / 10.0f;
+                        config.rpmEffect.heavyStrength = std::max(0.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_SLIDE_TOGGLE:
+                case ClickRegion::RUMBLE_RPM_MIN_UP:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.slideEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.slideEffect.motor) + 1) % 4);
+                        float newVal = std::round((config.rpmEffect.minInput + 1000.0f) / 1000.0f) * 1000.0f;
+                        config.rpmEffect.minInput = std::min(config.rpmEffect.maxInput - 1000.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_SLIDE_MOTOR_DOWN:
+                case ClickRegion::RUMBLE_RPM_MIN_DOWN:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.slideEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.slideEffect.motor) + 3) % 4);
+                        float newVal = std::round((config.rpmEffect.minInput - 1000.0f) / 1000.0f) * 1000.0f;
+                        config.rpmEffect.minInput = std::max(0.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_SLIDE_THRESH_UP:
+                case ClickRegion::RUMBLE_RPM_MAX_UP:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        float ratio = config.slideEffect.minInput / config.slideEffect.maxInput;
-                        float newRatio = ratio + 0.10f;
-                        if (newRatio > 0.95f) newRatio = 0.10f;
-                        config.slideEffect.minInput = newRatio * config.slideEffect.maxInput;
+                        float newVal = std::round((config.rpmEffect.maxInput + 1000.0f) / 1000.0f) * 1000.0f;
+                        config.rpmEffect.maxInput = std::min(20000.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_SLIDE_THRESH_DOWN:
+                case ClickRegion::RUMBLE_RPM_MAX_DOWN:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        float ratio = config.slideEffect.minInput / config.slideEffect.maxInput;
-                        float newRatio = ratio - 0.10f;
-                        if (newRatio < 0.05f) newRatio = 1.00f;
-                        config.slideEffect.minInput = newRatio * config.slideEffect.maxInput;
+                        float newVal = std::round((config.rpmEffect.maxInput - 1000.0f) / 1000.0f) * 1000.0f;
+                        config.rpmEffect.maxInput = std::max(config.rpmEffect.minInput + 1000.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_SLIDE_STRENGTH_UP:
+                // Slide effect - light/heavy strength controls
+                case ClickRegion::RUMBLE_SLIDE_LIGHT_UP:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.slideEffect.maxStrength = std::min(1.0f, config.slideEffect.maxStrength + 0.1f);
+                        float newVal = std::round((config.slideEffect.lightStrength + 0.1f) * 10.0f) / 10.0f;
+                        config.slideEffect.lightStrength = std::min(1.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_SLIDE_STRENGTH_DOWN:
+                case ClickRegion::RUMBLE_SLIDE_LIGHT_DOWN:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.slideEffect.maxStrength = std::max(0.0f, config.slideEffect.maxStrength - 0.1f);
+                        float newVal = std::round((config.slideEffect.lightStrength - 0.1f) * 10.0f) / 10.0f;
+                        config.slideEffect.lightStrength = std::max(0.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_SURFACE_TOGGLE:
+                case ClickRegion::RUMBLE_SLIDE_HEAVY_UP:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.surfaceEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.surfaceEffect.motor) + 1) % 4);
+                        float newVal = std::round((config.slideEffect.heavyStrength + 0.1f) * 10.0f) / 10.0f;
+                        config.slideEffect.heavyStrength = std::min(1.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_SURFACE_MOTOR_DOWN:
+                case ClickRegion::RUMBLE_SLIDE_HEAVY_DOWN:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.surfaceEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.surfaceEffect.motor) + 3) % 4);
+                        float newVal = std::round((config.slideEffect.heavyStrength - 0.1f) * 10.0f) / 10.0f;
+                        config.slideEffect.heavyStrength = std::max(0.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_SURFACE_THRESH_UP:
+                case ClickRegion::RUMBLE_SLIDE_MIN_UP:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        float ratio = config.surfaceEffect.minInput / config.surfaceEffect.maxInput;
-                        float newRatio = ratio + 0.10f;
-                        if (newRatio > 0.95f) newRatio = 0.10f;
-                        config.surfaceEffect.minInput = newRatio * config.surfaceEffect.maxInput;
+                        float newVal = std::round(config.slideEffect.minInput + 1.0f);
+                        config.slideEffect.minInput = std::min(config.slideEffect.maxInput - 1.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_SURFACE_THRESH_DOWN:
+                case ClickRegion::RUMBLE_SLIDE_MIN_DOWN:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        float ratio = config.surfaceEffect.minInput / config.surfaceEffect.maxInput;
-                        float newRatio = ratio - 0.10f;
-                        if (newRatio < 0.05f) newRatio = 1.00f;
-                        config.surfaceEffect.minInput = newRatio * config.surfaceEffect.maxInput;
+                        float newVal = std::round(config.slideEffect.minInput - 1.0f);
+                        config.slideEffect.minInput = std::max(0.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_SURFACE_STRENGTH_UP:
+                case ClickRegion::RUMBLE_SLIDE_MAX_UP:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.surfaceEffect.maxStrength = std::min(1.0f, config.surfaceEffect.maxStrength + 0.1f);
+                        float newVal = std::round(config.slideEffect.maxInput + 1.0f);
+                        config.slideEffect.maxInput = std::min(90.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_SURFACE_STRENGTH_DOWN:
+                case ClickRegion::RUMBLE_SLIDE_MAX_DOWN:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.surfaceEffect.maxStrength = std::max(0.0f, config.surfaceEffect.maxStrength - 0.1f);
+                        float newVal = std::round(config.slideEffect.maxInput - 1.0f);
+                        config.slideEffect.maxInput = std::max(config.slideEffect.minInput + 1.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_STEER_TOGGLE:
+                // Surface effect - light/heavy strength controls
+                case ClickRegion::RUMBLE_SURFACE_LIGHT_UP:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.steerEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.steerEffect.motor) + 1) % 4);
+                        float newVal = std::round((config.surfaceEffect.lightStrength + 0.1f) * 10.0f) / 10.0f;
+                        config.surfaceEffect.lightStrength = std::min(1.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_STEER_MOTOR_DOWN:
+                case ClickRegion::RUMBLE_SURFACE_LIGHT_DOWN:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.steerEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.steerEffect.motor) + 3) % 4);
+                        float newVal = std::round((config.surfaceEffect.lightStrength - 0.1f) * 10.0f) / 10.0f;
+                        config.surfaceEffect.lightStrength = std::max(0.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_STEER_THRESH_UP:
+                case ClickRegion::RUMBLE_SURFACE_HEAVY_UP:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        float ratio = config.steerEffect.minInput / config.steerEffect.maxInput;
-                        float newRatio = ratio + 0.10f;
-                        if (newRatio > 0.95f) newRatio = 0.10f;
-                        config.steerEffect.minInput = newRatio * config.steerEffect.maxInput;
+                        float newVal = std::round((config.surfaceEffect.heavyStrength + 0.1f) * 10.0f) / 10.0f;
+                        config.surfaceEffect.heavyStrength = std::min(1.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_STEER_THRESH_DOWN:
+                case ClickRegion::RUMBLE_SURFACE_HEAVY_DOWN:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        float ratio = config.steerEffect.minInput / config.steerEffect.maxInput;
-                        float newRatio = ratio - 0.10f;
-                        if (newRatio < 0.05f) newRatio = 1.00f;
-                        config.steerEffect.minInput = newRatio * config.steerEffect.maxInput;
+                        float newVal = std::round((config.surfaceEffect.heavyStrength - 0.1f) * 10.0f) / 10.0f;
+                        config.surfaceEffect.heavyStrength = std::max(0.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_STEER_STRENGTH_UP:
+                case ClickRegion::RUMBLE_SURFACE_MIN_UP:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.steerEffect.maxStrength = std::min(1.0f, config.steerEffect.maxStrength + 0.1f);
+                        // Step of 5 in display units (mph or km/h), converted to m/s
+                        bool isKmh = m_speed && m_speed->getSpeedUnit() == SpeedWidget::SpeedUnit::KMH;
+                        float step = isKmh ? (5.0f / 3.6f) : (5.0f / 2.23694f);
+                        float newVal = config.surfaceEffect.minInput + step;
+                        config.surfaceEffect.minInput = std::min(config.surfaceEffect.maxInput - step, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_STEER_STRENGTH_DOWN:
+                case ClickRegion::RUMBLE_SURFACE_MIN_DOWN:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.steerEffect.maxStrength = std::max(0.0f, config.steerEffect.maxStrength - 0.1f);
+                        bool isKmh = m_speed && m_speed->getSpeedUnit() == SpeedWidget::SpeedUnit::KMH;
+                        float step = isKmh ? (5.0f / 3.6f) : (5.0f / 2.23694f);
+                        float newVal = config.surfaceEffect.minInput - step;
+                        config.surfaceEffect.minInput = std::max(0.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_WHEELIE_TOGGLE:
+                case ClickRegion::RUMBLE_SURFACE_MAX_UP:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.wheelieEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.wheelieEffect.motor) + 1) % 4);
+                        bool isKmh = m_speed && m_speed->getSpeedUnit() == SpeedWidget::SpeedUnit::KMH;
+                        float step = isKmh ? (5.0f / 3.6f) : (5.0f / 2.23694f);
+                        float newVal = config.surfaceEffect.maxInput + step;
+                        config.surfaceEffect.maxInput = std::min(50.0f, newVal);  // ~110 mph or ~180 km/h max
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_WHEELIE_MOTOR_DOWN:
+                case ClickRegion::RUMBLE_SURFACE_MAX_DOWN:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.wheelieEffect.motor = static_cast<MotorTarget>((static_cast<int>(config.wheelieEffect.motor) + 3) % 4);
+                        bool isKmh = m_speed && m_speed->getSpeedUnit() == SpeedWidget::SpeedUnit::KMH;
+                        float step = isKmh ? (5.0f / 3.6f) : (5.0f / 2.23694f);
+                        float newVal = config.surfaceEffect.maxInput - step;
+                        config.surfaceEffect.maxInput = std::max(config.surfaceEffect.minInput + step, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_WHEELIE_THRESH_UP:
+                // Steer effect - light/heavy strength controls
+                case ClickRegion::RUMBLE_STEER_LIGHT_UP:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        float ratio = config.wheelieEffect.minInput / config.wheelieEffect.maxInput;
-                        // Increment by 10%, wrap from 100% to 10%
-                        float newRatio = ratio + 0.10f;
-                        if (newRatio > 0.95f) newRatio = 0.10f;
-                        config.wheelieEffect.minInput = newRatio * config.wheelieEffect.maxInput;
+                        float newVal = std::round((config.steerEffect.lightStrength + 0.1f) * 10.0f) / 10.0f;
+                        config.steerEffect.lightStrength = std::min(1.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_WHEELIE_THRESH_DOWN:
+                case ClickRegion::RUMBLE_STEER_LIGHT_DOWN:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        float ratio = config.wheelieEffect.minInput / config.wheelieEffect.maxInput;
-                        // Decrement by 10%, wrap from 10% to 100%
-                        float newRatio = ratio - 0.10f;
-                        if (newRatio < 0.05f) newRatio = 1.00f;
-                        config.wheelieEffect.minInput = newRatio * config.wheelieEffect.maxInput;
+                        float newVal = std::round((config.steerEffect.lightStrength - 0.1f) * 10.0f) / 10.0f;
+                        config.steerEffect.lightStrength = std::max(0.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_WHEELIE_STRENGTH_UP:
+                case ClickRegion::RUMBLE_STEER_HEAVY_UP:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.wheelieEffect.maxStrength = std::min(1.0f, config.wheelieEffect.maxStrength + 0.1f);
+                        float newVal = std::round((config.steerEffect.heavyStrength + 0.1f) * 10.0f) / 10.0f;
+                        config.steerEffect.heavyStrength = std::min(1.0f, newVal);
                         setDataDirty();
                     }
                     break;
-                case ClickRegion::RUMBLE_WHEELIE_STRENGTH_DOWN:
+                case ClickRegion::RUMBLE_STEER_HEAVY_DOWN:
                     {
                         RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                        config.wheelieEffect.maxStrength = std::max(0.0f, config.wheelieEffect.maxStrength - 0.1f);
+                        float newVal = std::round((config.steerEffect.heavyStrength - 0.1f) * 10.0f) / 10.0f;
+                        config.steerEffect.heavyStrength = std::max(0.0f, newVal);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_STEER_MIN_UP:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float newVal = std::round((config.steerEffect.minInput + 5.0f) / 5.0f) * 5.0f;
+                        config.steerEffect.minInput = std::min(config.steerEffect.maxInput - 5.0f, newVal);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_STEER_MIN_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float newVal = std::round((config.steerEffect.minInput - 5.0f) / 5.0f) * 5.0f;
+                        config.steerEffect.minInput = std::max(0.0f, newVal);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_STEER_MAX_UP:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float newVal = std::round((config.steerEffect.maxInput + 5.0f) / 5.0f) * 5.0f;
+                        config.steerEffect.maxInput = std::min(200.0f, newVal);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_STEER_MAX_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float newVal = std::round((config.steerEffect.maxInput - 5.0f) / 5.0f) * 5.0f;
+                        config.steerEffect.maxInput = std::max(config.steerEffect.minInput + 5.0f, newVal);
+                        setDataDirty();
+                    }
+                    break;
+                // Wheelie effect - light/heavy strength controls
+                case ClickRegion::RUMBLE_WHEELIE_LIGHT_UP:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float newVal = std::round((config.wheelieEffect.lightStrength + 0.1f) * 10.0f) / 10.0f;
+                        config.wheelieEffect.lightStrength = std::min(1.0f, newVal);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_WHEELIE_LIGHT_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float newVal = std::round((config.wheelieEffect.lightStrength - 0.1f) * 10.0f) / 10.0f;
+                        config.wheelieEffect.lightStrength = std::max(0.0f, newVal);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_WHEELIE_HEAVY_UP:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float newVal = std::round((config.wheelieEffect.heavyStrength + 0.1f) * 10.0f) / 10.0f;
+                        config.wheelieEffect.heavyStrength = std::min(1.0f, newVal);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_WHEELIE_HEAVY_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float newVal = std::round((config.wheelieEffect.heavyStrength - 0.1f) * 10.0f) / 10.0f;
+                        config.wheelieEffect.heavyStrength = std::max(0.0f, newVal);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_WHEELIE_MIN_UP:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float newVal = std::round((config.wheelieEffect.minInput + 5.0f) / 5.0f) * 5.0f;
+                        config.wheelieEffect.minInput = std::min(config.wheelieEffect.maxInput - 5.0f, newVal);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_WHEELIE_MIN_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float newVal = std::round((config.wheelieEffect.minInput - 5.0f) / 5.0f) * 5.0f;
+                        config.wheelieEffect.minInput = std::max(0.0f, newVal);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_WHEELIE_MAX_UP:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float newVal = std::round((config.wheelieEffect.maxInput + 5.0f) / 5.0f) * 5.0f;
+                        config.wheelieEffect.maxInput = std::min(180.0f, newVal);
+                        setDataDirty();
+                    }
+                    break;
+                case ClickRegion::RUMBLE_WHEELIE_MAX_DOWN:
+                    {
+                        RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+                        float newVal = std::round((config.wheelieEffect.maxInput - 5.0f) / 5.0f) * 5.0f;
+                        config.wheelieEffect.maxInput = std::max(config.wheelieEffect.minInput + 5.0f, newVal);
                         setDataDirty();
                     }
                     break;
                 case ClickRegion::RUMBLE_HUD_TOGGLE:
-                    {
-                        auto& rumbleHud = HudManager::getInstance().getRumbleHud();
-                        rumbleHud.setVisible(!rumbleHud.isVisible());
+                    if (m_rumble) {
+                        m_rumble->setVisible(!m_rumble->isVisible());
                         setDataDirty();
                     }
                     break;
-                // Reserved for advanced tuning - not exposed in UI
-                case ClickRegion::RUMBLE_SUSP_MAX_UP:
-                case ClickRegion::RUMBLE_SUSP_MAX_DOWN:
-                case ClickRegion::RUMBLE_WHEEL_MAX_UP:
-                case ClickRegion::RUMBLE_WHEEL_MAX_DOWN:
+
+                // Hotkey binding controls
+                case ClickRegion::HOTKEY_KEYBOARD_BIND:
+                    {
+                        auto* actionPtr = std::get_if<HotkeyAction>(&region.targetPointer);
+                        if (actionPtr) {
+                            HotkeyManager::getInstance().startCapture(*actionPtr, CaptureType::KEYBOARD);
+                            setDataDirty();
+                        }
+                    }
+                    break;
+                case ClickRegion::HOTKEY_CONTROLLER_BIND:
+                    {
+                        auto* actionPtr = std::get_if<HotkeyAction>(&region.targetPointer);
+                        if (actionPtr) {
+                            HotkeyManager::getInstance().startCapture(*actionPtr, CaptureType::CONTROLLER);
+                            setDataDirty();
+                        }
+                    }
+                    break;
+                case ClickRegion::HOTKEY_KEYBOARD_CLEAR:
+                    {
+                        auto* actionPtr = std::get_if<HotkeyAction>(&region.targetPointer);
+                        if (actionPtr) {
+                            HotkeyManager::getInstance().clearKeyboardBinding(*actionPtr);
+                            setDataDirty();
+                        }
+                    }
+                    break;
+                case ClickRegion::HOTKEY_CONTROLLER_CLEAR:
+                    {
+                        auto* actionPtr = std::get_if<HotkeyAction>(&region.targetPointer);
+                        if (actionPtr) {
+                            HotkeyManager::getInstance().clearControllerBinding(*actionPtr);
+                            setDataDirty();
+                        }
+                    }
+                    break;
+
+                // Tracked Riders controls
+                case ClickRegion::RIDER_ADD:
+                    {
+                        auto* namePtr = std::get_if<std::string>(&region.targetPointer);
+                        if (namePtr) {
+                            TrackedRidersManager::getInstance().addTrackedRider(*namePtr);
+                            rebuildRenderData();
+                        }
+                    }
+                    break;
+                case ClickRegion::RIDER_REMOVE:
+                    {
+                        auto* namePtr = std::get_if<std::string>(&region.targetPointer);
+                        if (namePtr) {
+                            TrackedRidersManager::getInstance().removeTrackedRider(*namePtr);
+                            rebuildRenderData();
+                        }
+                    }
+                    break;
+                case ClickRegion::RIDER_COLOR_PREV:
+                    {
+                        auto* namePtr = std::get_if<std::string>(&region.targetPointer);
+                        if (namePtr) {
+                            TrackedRidersManager::getInstance().cycleTrackedRiderColor(*namePtr, false);
+                            rebuildRenderData();
+                        }
+                    }
+                    break;
+                case ClickRegion::RIDER_COLOR_NEXT:
+                    {
+                        auto* namePtr = std::get_if<std::string>(&region.targetPointer);
+                        if (namePtr) {
+                            TrackedRidersManager::getInstance().cycleTrackedRiderColor(*namePtr, true);
+                            rebuildRenderData();
+                        }
+                    }
+                    break;
+                case ClickRegion::RIDER_SHAPE_PREV:
+                    {
+                        auto* namePtr = std::get_if<std::string>(&region.targetPointer);
+                        if (namePtr) {
+                            TrackedRidersManager::getInstance().cycleTrackedRiderShape(*namePtr, false);
+                            rebuildRenderData();
+                        }
+                    }
+                    break;
+                case ClickRegion::RIDER_SHAPE_NEXT:
+                    {
+                        auto* namePtr = std::get_if<std::string>(&region.targetPointer);
+                        if (namePtr) {
+                            TrackedRidersManager::getInstance().cycleTrackedRiderShape(*namePtr, true);
+                            rebuildRenderData();
+                        }
+                    }
+                    break;
+
+                // Pagination controls
+                case ClickRegion::SERVER_PAGE_PREV:
+                    if (m_serverPlayersPage > 0) {
+                        m_serverPlayersPage--;
+                        rebuildRenderData();
+                    }
+                    break;
+                case ClickRegion::SERVER_PAGE_NEXT:
+                    m_serverPlayersPage++;
+                    rebuildRenderData();
+                    break;
+                case ClickRegion::TRACKED_PAGE_PREV:
+                    if (m_trackedRidersPage > 0) {
+                        m_trackedRidersPage--;
+                        rebuildRenderData();
+                    }
+                    break;
+                case ClickRegion::TRACKED_PAGE_NEXT:
+                    m_trackedRidersPage++;
+                    rebuildRenderData();
+                    break;
+
+                case ClickRegion::VERSION_CLICK:
+                    {
+                        long long currentTimeUs = DrawHandler::getCurrentTimeUs();
+                        // Reset counter if timeout elapsed
+                        if (m_versionClickCount > 0 && (currentTimeUs - m_lastVersionClickTimeUs) > EASTER_EGG_TIMEOUT_US) {
+                            m_versionClickCount = 0;
+                        }
+                        m_versionClickCount++;
+                        m_lastVersionClickTimeUs = currentTimeUs;
+                        // Check if threshold reached
+                        if (m_versionClickCount >= EASTER_EGG_CLICKS) {
+                            m_versionClickCount = 0;
+                            if (m_version) {
+                                hide();  // Close settings before starting game
+                                m_version->startGame();
+                            }
+                        }
+                    }
                     break;
 
                 default:
@@ -2846,9 +4332,27 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
     }
 }
 
+void SettingsHud::handleRightClick(float mouseX, float mouseY) {
+    // Right-click handling for TAB_RIDERS - cycles shape on icon
+    for (const auto& region : m_clickRegions) {
+        if (isPointInRect(mouseX, mouseY, region.x, region.y, region.width, region.height)) {
+            // On right-click, treat RIDER_COLOR_NEXT as shape cycle
+            if (region.type == ClickRegion::RIDER_COLOR_NEXT) {
+                auto* namePtr = std::get_if<std::string>(&region.targetPointer);
+                if (namePtr) {
+                    TrackedRidersManager::getInstance().cycleTrackedRiderShape(*namePtr, true);
+                    rebuildRenderData();
+                    SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
+                }
+                return;
+            }
+        }
+    }
+}
+
 void SettingsHud::resetToDefaults() {
     // Reset all HUDs to their constructor defaults
-    if (m_sessionBest) m_sessionBest->resetToDefaults();
+    if (m_idealLap) m_idealLap->resetToDefaults();
     if (m_lapLog) m_lapLog->resetToDefaults();
     if (m_standings) m_standings->resetToDefaults();
     if (m_performance) m_performance->resetToDefaults();
@@ -2880,10 +4384,20 @@ void SettingsHud::resetToDefaults() {
 
     // Reset rumble configuration and RumbleHud
     XInputReader::getInstance().getRumbleConfig().resetToDefaults();
-    HudManager::getInstance().getRumbleHud().resetToDefaults();
+    if (m_rumble) m_rumble->resetToDefaults();
 
     // Reset color configuration
     ColorConfig::getInstance().resetToDefaults();
+
+    // Reset font configuration
+    FontConfig::getInstance().resetToDefaults();
+
+    // Reset hotkey bindings
+    HotkeyManager::getInstance().resetToDefaults();
+
+    // Reset global preferences (speed/fuel units)
+    if (m_speed) m_speed->setSpeedUnit(SpeedWidget::SpeedUnit::MPH);
+    if (m_fuel) m_fuel->setFuelUnit(FuelWidget::FuelUnit::LITERS);
 
     // Reset update checker to default (off)
     UpdateChecker::getInstance().setEnabled(false);
@@ -2901,13 +4415,23 @@ void SettingsHud::resetCurrentTab() {
     // Reset only the HUD(s) associated with the current tab
     switch (m_activeTab) {
         case TAB_GENERAL:
-            // General tab - reset color config and update checker
-            ColorConfig::getInstance().resetToDefaults();
+            // General tab - reset global preferences
+            XInputReader::getInstance().getRumbleConfig().controllerIndex = 0;
+            XInputReader::getInstance().setControllerIndex(0);
+            if (m_speed) m_speed->setSpeedUnit(SpeedWidget::SpeedUnit::MPH);
+            if (m_fuel) m_fuel->setFuelUnit(FuelWidget::FuelUnit::LITERS);
+            ColorConfig::getInstance().setGridSnapping(true);  // Reset grid snap
+            // Reset update checker
             UpdateChecker::getInstance().setEnabled(false);
             m_updateStatus = UpdateStatus::UNKNOWN;
             m_latestVersion = "";
+            break;
+        case TAB_APPEARANCE:
+            // Appearance tab - reset font and color configuration
+            FontConfig::getInstance().resetToDefaults();
+            ColorConfig::getInstance().resetToDefaults();
             // Mark all HUDs dirty so they pick up new colors
-            if (m_sessionBest) m_sessionBest->setDataDirty();
+            if (m_idealLap) m_idealLap->setDataDirty();
             if (m_lapLog) m_lapLog->setDataDirty();
             if (m_standings) m_standings->setDataDirty();
             if (m_performance) m_performance->setDataDirty();
@@ -2943,8 +4467,8 @@ void SettingsHud::resetCurrentTab() {
         case TAB_LAP_LOG:
             if (m_lapLog) m_lapLog->resetToDefaults();
             break;
-        case TAB_SESSION_BEST:
-            if (m_sessionBest) m_sessionBest->resetToDefaults();
+        case TAB_IDEAL_LAP:
+            if (m_idealLap) m_idealLap->resetToDefaults();
             break;
         case TAB_TELEMETRY:
             if (m_telemetry) m_telemetry->resetToDefaults();
@@ -2986,7 +4510,15 @@ void SettingsHud::resetCurrentTab() {
         case TAB_RUMBLE:
             // Reset rumble configuration and RumbleHud to defaults
             XInputReader::getInstance().getRumbleConfig().resetToDefaults();
-            HudManager::getInstance().getRumbleHud().resetToDefaults();
+            if (m_rumble) m_rumble->resetToDefaults();
+            break;
+        case TAB_HOTKEYS:
+            // Reset hotkey bindings to defaults
+            HotkeyManager::getInstance().resetToDefaults();
+            break;
+        case TAB_RIDERS:
+            // Clear all tracked riders
+            TrackedRidersManager::getInstance().clearAll();
             break;
         default:
             DEBUG_WARN_F("Unknown tab index for reset: %d", m_activeTab);
@@ -3001,11 +4533,11 @@ void SettingsHud::resetCurrentTab() {
 }
 
 void SettingsHud::resetCurrentProfile() {
-    // Reset all HUDs and widgets for the current profile only
-    // (This is similar to resetToDefaults but doesn't touch other profiles' cached settings)
+    // Reset only Elements (HUDs and Widgets) for the current profile
+    // Global settings (ColorConfig, Rumble, UpdateChecker) are NOT reset here
 
     // Reset all HUDs to their constructor defaults
-    if (m_sessionBest) m_sessionBest->resetToDefaults();
+    if (m_idealLap) m_idealLap->resetToDefaults();
     if (m_lapLog) m_lapLog->resetToDefaults();
     if (m_standings) m_standings->resetToDefaults();
     if (m_performance) m_performance->resetToDefaults();
@@ -3032,20 +4564,14 @@ void SettingsHud::resetCurrentProfile() {
     if (m_fuel) m_fuel->resetToDefaults();
     if (m_pointer) m_pointer->resetToDefaults();
 
-    // Reset rumble configuration and RumbleHud
-    XInputReader::getInstance().getRumbleConfig().resetToDefaults();
-    HudManager::getInstance().getRumbleHud().resetToDefaults();
-
     // Reset settings button (managed by HudManager)
     HudManager::getInstance().getSettingsButtonWidget().resetToDefaults();
 
-    // Reset color configuration (per-profile)
-    ColorConfig::getInstance().resetToDefaults();
+    // Reset RumbleHud position only (not RumbleConfig which is global)
+    if (m_rumble) m_rumble->resetToDefaults();
 
-    // Reset update checker to default (off)
-    UpdateChecker::getInstance().setEnabled(false);
-    m_updateStatus = UpdateStatus::UNKNOWN;
-    m_latestVersion = "";
+    // Note: ColorConfig, RumbleConfig, and UpdateChecker are global settings
+    // They are NOT reset when resetting a single profile
 
     // Update settings display
     rebuildRenderData();
@@ -3069,57 +4595,113 @@ void SettingsHud::handleCheckboxClick(const ClickRegion& region) {
     }
 }
 
-void SettingsHud::handleGapModeClick(const ClickRegion& region) {
+void SettingsHud::handleGapModeClick(const ClickRegion& region, bool forward) {
     auto* gapMode = std::get_if<StandingsHud::GapMode*>(&region.targetPointer);
     if (!gapMode || !*gapMode || !region.targetHud) return;
 
     StandingsHud::GapMode oldMode = **gapMode;
-    switch (**gapMode) {
-        case StandingsHud::GapMode::OFF:
-            **gapMode = StandingsHud::GapMode::ME;
-            break;
-        case StandingsHud::GapMode::ME:
-            **gapMode = StandingsHud::GapMode::ALL;
-            break;
-        case StandingsHud::GapMode::ALL:
-            **gapMode = StandingsHud::GapMode::OFF;
-            break;
-        default:
-            DEBUG_WARN_F("Invalid GapMode: %d, resetting to OFF", static_cast<int>(**gapMode));
-            **gapMode = StandingsHud::GapMode::OFF;
-            break;
+    if (forward) {
+        // Cycle forward: OFF -> Player -> ALL -> OFF
+        switch (**gapMode) {
+            case StandingsHud::GapMode::OFF:
+                **gapMode = StandingsHud::GapMode::PLAYER;
+                break;
+            case StandingsHud::GapMode::PLAYER:
+                **gapMode = StandingsHud::GapMode::ALL;
+                break;
+            case StandingsHud::GapMode::ALL:
+                **gapMode = StandingsHud::GapMode::OFF;
+                break;
+            default:
+                **gapMode = StandingsHud::GapMode::OFF;
+                break;
+        }
+    } else {
+        // Cycle backward: OFF <- Player <- ALL <- OFF
+        switch (**gapMode) {
+            case StandingsHud::GapMode::OFF:
+                **gapMode = StandingsHud::GapMode::ALL;
+                break;
+            case StandingsHud::GapMode::PLAYER:
+                **gapMode = StandingsHud::GapMode::OFF;
+                break;
+            case StandingsHud::GapMode::ALL:
+                **gapMode = StandingsHud::GapMode::PLAYER;
+                break;
+            default:
+                **gapMode = StandingsHud::GapMode::OFF;
+                break;
+        }
     }
     region.targetHud->setDataDirty();
     rebuildRenderData();
     DEBUG_INFO_F("Gap mode cycled: %d -> %d", static_cast<int>(oldMode), static_cast<int>(**gapMode));
 }
 
-void SettingsHud::handleGapIndicatorClick(const ClickRegion& region) {
+void SettingsHud::handleGapIndicatorClick(const ClickRegion& region, bool forward) {
     auto* gapIndicatorMode = std::get_if<StandingsHud::GapIndicatorMode*>(&region.targetPointer);
     if (!gapIndicatorMode || !*gapIndicatorMode || !region.targetHud) return;
 
     StandingsHud::GapIndicatorMode oldMode = **gapIndicatorMode;
-    switch (**gapIndicatorMode) {
-        case StandingsHud::GapIndicatorMode::OFF:
-            **gapIndicatorMode = StandingsHud::GapIndicatorMode::OFFICIAL;
-            break;
-        case StandingsHud::GapIndicatorMode::OFFICIAL:
-            **gapIndicatorMode = StandingsHud::GapIndicatorMode::LIVE;
-            break;
-        case StandingsHud::GapIndicatorMode::LIVE:
-            **gapIndicatorMode = StandingsHud::GapIndicatorMode::BOTH;
-            break;
-        case StandingsHud::GapIndicatorMode::BOTH:
-            **gapIndicatorMode = StandingsHud::GapIndicatorMode::OFF;
-            break;
-        default:
-            DEBUG_WARN_F("Invalid GapIndicatorMode: %d, resetting to OFF", static_cast<int>(**gapIndicatorMode));
-            **gapIndicatorMode = StandingsHud::GapIndicatorMode::OFF;
-            break;
+    if (forward) {
+        // Cycle forward: OFF -> OFFICIAL -> LIVE -> BOTH -> OFF
+        switch (**gapIndicatorMode) {
+            case StandingsHud::GapIndicatorMode::OFF:
+                **gapIndicatorMode = StandingsHud::GapIndicatorMode::OFFICIAL;
+                break;
+            case StandingsHud::GapIndicatorMode::OFFICIAL:
+                **gapIndicatorMode = StandingsHud::GapIndicatorMode::LIVE;
+                break;
+            case StandingsHud::GapIndicatorMode::LIVE:
+                **gapIndicatorMode = StandingsHud::GapIndicatorMode::BOTH;
+                break;
+            case StandingsHud::GapIndicatorMode::BOTH:
+                **gapIndicatorMode = StandingsHud::GapIndicatorMode::OFF;
+                break;
+            default:
+                **gapIndicatorMode = StandingsHud::GapIndicatorMode::OFF;
+                break;
+        }
+    } else {
+        // Cycle backward: OFF <- OFFICIAL <- LIVE <- BOTH <- OFF
+        switch (**gapIndicatorMode) {
+            case StandingsHud::GapIndicatorMode::OFF:
+                **gapIndicatorMode = StandingsHud::GapIndicatorMode::BOTH;
+                break;
+            case StandingsHud::GapIndicatorMode::OFFICIAL:
+                **gapIndicatorMode = StandingsHud::GapIndicatorMode::OFF;
+                break;
+            case StandingsHud::GapIndicatorMode::LIVE:
+                **gapIndicatorMode = StandingsHud::GapIndicatorMode::OFFICIAL;
+                break;
+            case StandingsHud::GapIndicatorMode::BOTH:
+                **gapIndicatorMode = StandingsHud::GapIndicatorMode::LIVE;
+                break;
+            default:
+                **gapIndicatorMode = StandingsHud::GapIndicatorMode::OFF;
+                break;
+        }
     }
     region.targetHud->setDataDirty();
     rebuildRenderData();
     DEBUG_INFO_F("Gap indicator mode cycled: %d -> %d", static_cast<int>(oldMode), static_cast<int>(**gapIndicatorMode));
+}
+
+void SettingsHud::handleGapReferenceClick(const ClickRegion& region, bool forward) {
+    auto* gapReferenceMode = std::get_if<StandingsHud::GapReferenceMode*>(&region.targetPointer);
+    if (!gapReferenceMode || !*gapReferenceMode || !region.targetHud) return;
+
+    StandingsHud::GapReferenceMode oldMode = **gapReferenceMode;
+    // Toggle between LEADER and PLAYER (only two modes)
+    if (**gapReferenceMode == StandingsHud::GapReferenceMode::LEADER) {
+        **gapReferenceMode = StandingsHud::GapReferenceMode::PLAYER;
+    } else {
+        **gapReferenceMode = StandingsHud::GapReferenceMode::LEADER;
+    }
+
+    region.targetHud->setDataDirty();
+    rebuildRenderData();
+    DEBUG_INFO_F("Gap reference mode cycled: %d -> %d", static_cast<int>(oldMode), static_cast<int>(**gapReferenceMode));
 }
 
 void SettingsHud::handleHudToggleClick(const ClickRegion& region) {
@@ -3138,32 +4720,24 @@ void SettingsHud::handleTitleToggleClick(const ClickRegion& region) {
     DEBUG_INFO_F("HUD title toggled: %s", region.targetHud->getShowTitle() ? "shown" : "hidden");
 }
 
-void SettingsHud::handleBackgroundTextureToggleClick(const ClickRegion& region) {
-    if (!region.targetHud) return;
-
-    region.targetHud->setShowBackgroundTexture(!region.targetHud->getShowBackgroundTexture());
-    rebuildRenderData();
-    DEBUG_INFO_F("HUD background texture toggled: %s", region.targetHud->getShowBackgroundTexture() ? "enabled" : "disabled");
-}
-
 void SettingsHud::handleOpacityClick(const ClickRegion& region, bool increase) {
     if (!region.targetHud) return;
 
-    float newOpacity = region.targetHud->getBackgroundOpacity() + (increase ? 0.10f : -0.10f);
-    if (newOpacity > 1.0f) newOpacity = 1.0f;
-    if (newOpacity < 0.0f) newOpacity = 0.0f;
+    float currentOpacity = region.targetHud->getBackgroundOpacity();
+    float newOpacity = std::round((currentOpacity + (increase ? 0.10f : -0.10f)) * 10.0f) / 10.0f;
+    newOpacity = std::max(0.0f, std::min(1.0f, newOpacity));
     region.targetHud->setBackgroundOpacity(newOpacity);
     rebuildRenderData();
     DEBUG_INFO_F("HUD background opacity %s to %d%%",
-        increase ? "increased" : "decreased", static_cast<int>(newOpacity * 100.0f));
+        increase ? "increased" : "decreased", static_cast<int>(std::round(newOpacity * 100.0f)));
 }
 
 void SettingsHud::handleScaleClick(const ClickRegion& region, bool increase) {
     if (!region.targetHud) return;
 
-    float newScale = region.targetHud->getScale() + (increase ? 0.1f : -0.1f);
-    if (newScale > 3.0f) newScale = 3.0f;
-    if (newScale < 0.1f) newScale = 0.1f;
+    float currentScale = region.targetHud->getScale();
+    float newScale = std::round((currentScale + (increase ? 0.1f : -0.1f)) * 10.0f) / 10.0f;
+    newScale = std::max(0.5f, std::min(3.0f, newScale));
     region.targetHud->setScale(newScale);
     rebuildRenderData();
     DEBUG_INFO_F("HUD scale %s to %.2f", increase ? "increased" : "decreased", newScale);
@@ -3215,62 +4789,34 @@ void SettingsHud::handleMapOutlineClick(const ClickRegion& region) {
     }
 }
 
-void SettingsHud::handleMapColorizeClick(const ClickRegion& region) {
+void SettingsHud::handleMapColorizeClick(const ClickRegion& region, bool forward) {
     MapHud* mapHud = dynamic_cast<MapHud*>(region.targetHud);
     if (mapHud) {
-        // Cycle through: UNIFORM -> BRAND -> RELATIVE_POS -> UNIFORM
-        MapHud::RiderColorMode currentMode = mapHud->getRiderColorMode();
-        MapHud::RiderColorMode newMode;
-        const char* modeStr;
-        switch (currentMode) {
-            case MapHud::RiderColorMode::UNIFORM:
-                newMode = MapHud::RiderColorMode::BRAND;
-                modeStr = "Brand";
-                break;
-            case MapHud::RiderColorMode::BRAND:
-                newMode = MapHud::RiderColorMode::RELATIVE_POS;
-                modeStr = "Position";
-                break;
-            case MapHud::RiderColorMode::RELATIVE_POS:
-            default:
-                newMode = MapHud::RiderColorMode::UNIFORM;
-                modeStr = "Uniform";
-                break;
-        }
+        auto newMode = cycleEnum(mapHud->getRiderColorMode(), 3, forward);
         mapHud->setRiderColorMode(newMode);
         rebuildRenderData();
-        DEBUG_INFO_F("MapHud rider color mode set to %s", modeStr);
+        DEBUG_INFO_F("MapHud rider color mode set to %s", getRiderColorModeName(static_cast<int>(newMode)));
     }
 }
 
 void SettingsHud::handleMapTrackWidthClick(const ClickRegion& region, bool increase) {
     MapHud* mapHud = dynamic_cast<MapHud*>(region.targetHud);
     if (mapHud) {
-        float newWidth = mapHud->getTrackLineWidthMeters() + (increase ? 1.0f : -1.0f);
-        mapHud->setTrackLineWidthMeters(newWidth);
+        // Adjust track width scale in 10% increments (0.1)
+        float newScale = mapHud->getTrackWidthScale() + (increase ? 0.1f : -0.1f);
+        mapHud->setTrackWidthScale(newScale);  // Setter clamps to valid range
         rebuildRenderData();
-        DEBUG_INFO_F("MapHud track line width %s to %.0fm", increase ? "increased" : "decreased", newWidth);
+        DEBUG_INFO_F("MapHud track width scale %s to %.0f%%", increase ? "increased" : "decreased", mapHud->getTrackWidthScale() * 100.0f);
     }
 }
 
-void SettingsHud::handleMapLabelModeClick(const ClickRegion& region) {
+void SettingsHud::handleMapLabelModeClick(const ClickRegion& region, bool forward) {
     MapHud* mapHud = dynamic_cast<MapHud*>(region.targetHud);
     if (mapHud) {
-        MapHud::LabelMode currentMode = mapHud->getLabelMode();
-        MapHud::LabelMode newMode;
-
-        // Cycle: NONE -> POSITION -> RACE_NUM -> BOTH -> NONE
-        switch (currentMode) {
-            case MapHud::LabelMode::NONE:     newMode = MapHud::LabelMode::POSITION; break;
-            case MapHud::LabelMode::POSITION: newMode = MapHud::LabelMode::RACE_NUM; break;
-            case MapHud::LabelMode::RACE_NUM: newMode = MapHud::LabelMode::BOTH; break;
-            case MapHud::LabelMode::BOTH:     newMode = MapHud::LabelMode::NONE; break;
-            default:                          newMode = MapHud::LabelMode::POSITION; break;
-        }
-
+        auto newMode = cycleEnum(mapHud->getLabelMode(), 4, forward);
         mapHud->setLabelMode(newMode);
         rebuildRenderData();
-        DEBUG_INFO_F("MapHud label mode changed to %d", static_cast<int>(newMode));
+        DEBUG_INFO_F("MapHud label mode set to %s", getLabelModeName(static_cast<int>(newMode)));
     }
 }
 
@@ -3318,24 +4864,27 @@ void SettingsHud::handleMapRangeClick(const ClickRegion& region, bool increase) 
     rebuildRenderData();
 }
 
-void SettingsHud::handleMapRiderShapeClick(const ClickRegion& region) {
+void SettingsHud::handleMapRiderShapeClick(const ClickRegion& region, bool forward) {
     MapHud* mapHud = dynamic_cast<MapHud*>(region.targetHud);
     if (mapHud) {
-        MapHud::RiderShape currentShape = mapHud->getRiderShape();
-        MapHud::RiderShape newShape;
-
-        // Cycle: OFF -> CIRCLE -> TRIANGLE -> WEDGE -> OFF
-        switch (currentShape) {
-            case MapHud::RiderShape::OFF:      newShape = MapHud::RiderShape::CIRCLE; break;
-            case MapHud::RiderShape::CIRCLE:   newShape = MapHud::RiderShape::TRIANGLE; break;
-            case MapHud::RiderShape::TRIANGLE: newShape = MapHud::RiderShape::WEDGE; break;
-            case MapHud::RiderShape::WEDGE:    newShape = MapHud::RiderShape::OFF; break;
-            default:                           newShape = MapHud::RiderShape::CIRCLE; break;
-        }
-
-        mapHud->setRiderShape(newShape);
+        // Map has 11 shapes: OFF(0), ARROWUP(1)...VINYL(10)
+        constexpr int NUM_SHAPES = 11;
+        int current = static_cast<int>(mapHud->getRiderShape());
+        int next = forward ? (current + 1) % NUM_SHAPES : (current - 1 + NUM_SHAPES) % NUM_SHAPES;
+        mapHud->setRiderShape(static_cast<MapHud::RiderShape>(next));
         rebuildRenderData();
-        DEBUG_INFO_F("MapHud rider shape changed to %d", static_cast<int>(newShape));
+        DEBUG_INFO_F("MapHud rider shape changed to %d", next);
+    }
+}
+
+void SettingsHud::handleMapMarkerScaleClick(const ClickRegion& region, bool increase) {
+    MapHud* mapHud = dynamic_cast<MapHud*>(region.targetHud);
+    if (mapHud) {
+        // Adjust marker scale in 10% increments (0.1)
+        float newScale = mapHud->getMarkerScale() + (increase ? 0.1f : -0.1f);
+        mapHud->setMarkerScale(newScale);  // Setter clamps to valid range
+        rebuildRenderData();
+        DEBUG_INFO_F("MapHud marker scale %s to %.0f%%", increase ? "increased" : "decreased", mapHud->getMarkerScale() * 100.0f);
     }
 }
 
@@ -3349,31 +4898,13 @@ void SettingsHud::handleRadarRangeClick(const ClickRegion& region, bool increase
     }
 }
 
-void SettingsHud::handleRadarColorizeClick(const ClickRegion& region) {
+void SettingsHud::handleRadarColorizeClick(const ClickRegion& region, bool forward) {
     RadarHud* radarHud = dynamic_cast<RadarHud*>(region.targetHud);
     if (radarHud) {
-        // Cycle through: UNIFORM -> BRAND -> RELATIVE_POS -> UNIFORM
-        RadarHud::RiderColorMode currentMode = radarHud->getRiderColorMode();
-        RadarHud::RiderColorMode newMode;
-        const char* modeStr;
-        switch (currentMode) {
-            case RadarHud::RiderColorMode::UNIFORM:
-                newMode = RadarHud::RiderColorMode::BRAND;
-                modeStr = "Brand";
-                break;
-            case RadarHud::RiderColorMode::BRAND:
-                newMode = RadarHud::RiderColorMode::RELATIVE_POS;
-                modeStr = "Position";
-                break;
-            case RadarHud::RiderColorMode::RELATIVE_POS:
-            default:
-                newMode = RadarHud::RiderColorMode::UNIFORM;
-                modeStr = "Uniform";
-                break;
-        }
+        auto newMode = cycleEnum(radarHud->getRiderColorMode(), 3, forward);
         radarHud->setRiderColorMode(newMode);
         rebuildRenderData();
-        DEBUG_INFO_F("RadarHud rider color mode set to %s", modeStr);
+        DEBUG_INFO_F("RadarHud rider color mode set to %s", getRiderColorModeName(static_cast<int>(newMode)));
     }
 }
 
@@ -3387,44 +4918,37 @@ void SettingsHud::handleRadarAlertDistanceClick(const ClickRegion& region, bool 
     }
 }
 
-void SettingsHud::handleRadarLabelModeClick(const ClickRegion& region) {
+void SettingsHud::handleRadarLabelModeClick(const ClickRegion& region, bool forward) {
     RadarHud* radarHud = dynamic_cast<RadarHud*>(region.targetHud);
     if (radarHud) {
-        RadarHud::LabelMode currentMode = radarHud->getLabelMode();
-        RadarHud::LabelMode newMode;
-
-        // Cycle: NONE -> POSITION -> RACE_NUM -> BOTH -> NONE
-        switch (currentMode) {
-            case RadarHud::LabelMode::NONE:     newMode = RadarHud::LabelMode::POSITION; break;
-            case RadarHud::LabelMode::POSITION: newMode = RadarHud::LabelMode::RACE_NUM; break;
-            case RadarHud::LabelMode::RACE_NUM: newMode = RadarHud::LabelMode::BOTH; break;
-            case RadarHud::LabelMode::BOTH:     newMode = RadarHud::LabelMode::NONE; break;
-            default:                            newMode = RadarHud::LabelMode::POSITION; break;
-        }
-
+        auto newMode = cycleEnum(radarHud->getLabelMode(), 4, forward);
         radarHud->setLabelMode(newMode);
         rebuildRenderData();
-        DEBUG_INFO_F("RadarHud label mode changed to %d", static_cast<int>(newMode));
+        DEBUG_INFO_F("RadarHud label mode set to %s", getLabelModeName(static_cast<int>(newMode)));
     }
 }
 
-void SettingsHud::handleRadarRiderShapeClick(const ClickRegion& region) {
+void SettingsHud::handleRadarRiderShapeClick(const ClickRegion& region, bool forward) {
     RadarHud* radarHud = dynamic_cast<RadarHud*>(region.targetHud);
     if (radarHud) {
-        RadarHud::RiderShape currentShape = radarHud->getRiderShape();
-        RadarHud::RiderShape newShape;
-
-        // Cycle: CIRCLE -> TRIANGLE -> WEDGE -> CIRCLE
-        switch (currentShape) {
-            case RadarHud::RiderShape::CIRCLE:   newShape = RadarHud::RiderShape::TRIANGLE; break;
-            case RadarHud::RiderShape::TRIANGLE: newShape = RadarHud::RiderShape::WEDGE; break;
-            case RadarHud::RiderShape::WEDGE:    newShape = RadarHud::RiderShape::CIRCLE; break;
-            default:                             newShape = RadarHud::RiderShape::CIRCLE; break;
-        }
-
-        radarHud->setRiderShape(newShape);
+        // Radar has 10 shapes: ARROWUP(0)...VINYL(9), no OFF option
+        constexpr int NUM_SHAPES = 10;
+        int current = static_cast<int>(radarHud->getRiderShape());
+        int next = forward ? (current + 1) % NUM_SHAPES : (current - 1 + NUM_SHAPES) % NUM_SHAPES;
+        radarHud->setRiderShape(static_cast<RadarHud::RiderShape>(next));
         rebuildRenderData();
-        DEBUG_INFO_F("RadarHud rider shape changed to %d", static_cast<int>(newShape));
+        DEBUG_INFO_F("RadarHud rider shape changed to %d", next);
+    }
+}
+
+void SettingsHud::handleRadarMarkerScaleClick(const ClickRegion& region, bool increase) {
+    RadarHud* radarHud = dynamic_cast<RadarHud*>(region.targetHud);
+    if (radarHud) {
+        // Adjust marker scale in 10% increments (0.1)
+        float newScale = radarHud->getMarkerScale() + (increase ? 0.1f : -0.1f);
+        radarHud->setMarkerScale(newScale);  // Setter clamps to valid range
+        rebuildRenderData();
+        DEBUG_INFO_F("RadarHud marker scale %s to %.0f%%", increase ? "increased" : "decreased", radarHud->getMarkerScale() * 100.0f);
     }
 }
 

@@ -6,12 +6,14 @@
 
 #include "plugin_utils.h"
 #include "color_config.h"  // ColorPalette is the source of truth for basic colors
+#include "font_config.h"   // For dynamic font category selection
+#include "asset_manager.h" // For dynamic font index lookup by name
 
 namespace PluginConstants {
     // Plugin identification
     constexpr const char* PLUGIN_NAME = "mxbmrp3";
     constexpr const char* PLUGIN_DISPLAY_NAME = "MXBMRP3";
-    constexpr const char* PLUGIN_VERSION = "1.8.0.0";
+    constexpr const char* PLUGIN_VERSION = "1.9.2.0";
     constexpr const char* PLUGIN_AUTHOR = "thomas4f";
 
     // MXBikes API constants
@@ -34,15 +36,22 @@ namespace PluginConstants {
         constexpr float MONOSPACE_CHAR_WIDTH_RATIO = 0.275f;
     }
 
-    // Font indices
+    // Font accessors - all use dynamic lookup by name (safe regardless of discovery order)
     namespace Fonts {
-        constexpr int ENTER_SANSMAN = 1;
-        constexpr int ROBOTO_MONO = 2;
-        constexpr int ROBOTO_MONO_BOLD = 3;
-        constexpr int FUZZY_BUBBLES = 4;
-        constexpr int TINY5 = 5;
+        // Direct font lookups by name (use these for specific fonts)
+        inline int ENTER_SANSMAN() { return AssetManager::getInstance().getFontIndexByName("EnterSansman-Italic"); }
+        inline int FUZZY_BUBBLES() { return AssetManager::getInstance().getFontIndexByName("FuzzyBubbles-Regular"); }
+        inline int ROBOTO_MONO_BOLD() { return AssetManager::getInstance().getFontIndexByName("RobotoMono-Bold"); }
+        inline int ROBOTO_MONO() { return AssetManager::getInstance().getFontIndexByName("RobotoMono-Regular"); }
+        inline int TINY5() { return AssetManager::getInstance().getFontIndexByName("Tiny5-Regular"); }
 
-        constexpr int NORMAL_FONT = ROBOTO_MONO;
+        // Category-based font accessors (use FontConfig for user-selected fonts)
+        // These should be used for configurable UI elements
+        inline int getTitle() { return FontConfig::getInstance().getFont(FontCategory::TITLE); }
+        inline int getNormal() { return FontConfig::getInstance().getFont(FontCategory::NORMAL); }
+        inline int getStrong() { return FontConfig::getInstance().getFont(FontCategory::STRONG); }
+        inline int getMarker() { return FontConfig::getInstance().getFont(FontCategory::MARKER); }
+        inline int getSmall() { return FontConfig::getInstance().getFont(FontCategory::SMALL); }
 
         // CHAR_WIDTH = 0.0200f * 0.275f (FontSizes::NORMAL * FontMetrics::MONOSPACE_CHAR_WIDTH_RATIO)
         constexpr float CHAR_WIDTH = 0.0055f;
@@ -430,44 +439,32 @@ namespace PluginConstants {
         }
     }
 
-    // Sprite indices for rendering
-    // Note: Sprite indices are 1-based (0 = solid color fill)
-    // Indices 1-2 are existing sprites, 3+ are background textures
+    // ========================================================================
+    // Sprite Index Constants
+    // ========================================================================
+    // IMPORTANT: Sprite indices are now dynamically assigned by AssetManager.
+    // Textures and icons are discovered from mxbmrp3_data/ subdirectories:
+    //   - fonts/    -> Font files (.fnt)
+    //   - textures/ -> HUD/widget textures with variants (e.g., standings_hud_1.tga)
+    //   - icons/    -> Rider icon sprites (e.g., trophy-solid-full.tga)
+    //
+    // To get texture indices, use:
+    //   AssetManager::getInstance().getSpriteIndex("texture_name", variant)
+    //
+    // For rider icons, use:
+    //   AssetManager::getInstance().getFirstIconSpriteIndex() + shapeIndex - 1
+    // where shapeIndex is 1-based (1 = first icon)
+    // ========================================================================
     namespace SpriteIndex {
+        // SOLID_COLOR is always 0 - means "no texture, use quad color directly"
         constexpr int SOLID_COLOR = 0;
-        constexpr int POINTER = 1;
-        constexpr int GEAR_CIRCLE = 2;
 
-        // Background texture sprites (optional, loaded from mxbmrp3_data/*.tga)
-        // Each HUD/widget can have an optional background texture
-        // Files must be named: mxbmrp3_data/{name}.tga (e.g., standings_hud.tga)
-        constexpr int BG_STANDINGS_HUD = 3;
-        constexpr int BG_MAP_HUD = 4;
-        constexpr int BG_LAP_LOG_HUD = 5;
-        constexpr int BG_SESSION_BEST_HUD = 6;
-        constexpr int BG_TELEMETRY_HUD = 7;
-        constexpr int BG_INPUT_HUD = 8;
-        constexpr int BG_PERFORMANCE_HUD = 9;
-        constexpr int BG_LAP_WIDGET = 10;
-        constexpr int BG_POSITION_WIDGET = 11;
-        constexpr int BG_TIME_WIDGET = 12;
-        constexpr int BG_SESSION_WIDGET = 13;
-        constexpr int BG_SPEED_WIDGET = 14;
-        constexpr int BG_TIMING_HUD = 15;
-        constexpr int BG_BARS_WIDGET = 16;
-        constexpr int BG_PITBOARD_HUD = 17;
-        constexpr int SPEEDO_DIAL = 18;
-        constexpr int TACHO_DIAL = 19;
-        constexpr int BG_RADAR_HUD = 20;
-        constexpr int RADAR_SECTOR = 21;  // Proximity sector highlight sprite
-        constexpr int BG_FUEL_WIDGET = 22;
-        constexpr int BG_RECORDS_HUD = 23;
-        constexpr int BG_GAP_BAR_HUD = 24;
-        constexpr int BG_RUMBLE_HUD = 25;
+        // Rider icon count - icons are discovered dynamically from icons/ directory
+        // This is used for UI cycling through available shapes (updated to match actual count)
+        constexpr int RIDER_ICON_COUNT = 51;
 
-        // Rider shape sprites (for map/radar)
-        constexpr int RIDER_CIRCLE = 26;
-        constexpr int RIDER_TRIANGLE = 27;
-        constexpr int RIDER_WEDGE = 28;
+        // Helper to get first icon sprite index at runtime
+        // Use: AssetManager::getInstance().getFirstIconSpriteIndex()
+        // Individual icon: getFirstIconSpriteIndex() + shapeIndex - 1  (shapeIndex 1-based)
     }
 }

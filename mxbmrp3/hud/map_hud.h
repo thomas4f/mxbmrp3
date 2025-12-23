@@ -58,9 +58,9 @@ public:
     }
     RiderColorMode getRiderColorMode() const { return m_riderColorMode; }
 
-    // Track line width configuration (in world meters)
-    void setTrackLineWidthMeters(float widthMeters);
-    float getTrackLineWidthMeters() const { return m_fTrackLineWidthMeters; }
+    // Track line width scale (percentage multiplier, 0.5-2.0)
+    void setTrackWidthScale(float scale);
+    float getTrackWidthScale() const { return m_fTrackWidthScale; }
 
     // Rider label display mode
     enum class LabelMode {
@@ -72,10 +72,17 @@ public:
 
     // Rider shape display mode
     enum class RiderShape {
-        OFF = 0,        // Don't render other riders
-        CIRCLE = 1,     // Use circle sprite
-        TRIANGLE = 2,   // Use triangle sprite
-        WEDGE = 3       // Use wedge sprite
+        OFF = 0,         // Don't render other riders
+        ARROWUP = 1,     // circle-arrow-up
+        CHEVRON = 2,     // circle-chevron-up
+        CIRCLE = 3,      // circle
+        CIRCLEPLAY = 4,  // circle-play
+        CIRCLEUP = 5,    // circle-up
+        DOT = 6,         // circle-dot
+        LOCATION = 7,    // location-arrow
+        PIN = 8,         // location-pin
+        PLANE = 9,       // paper-plane
+        VINYL = 10       // record-vinyl
     };
 
     void setLabelMode(LabelMode mode) {
@@ -109,14 +116,19 @@ public:
     void updatePositionFromAnchor();
 
     // Public constants for settings UI
-    static constexpr float DEFAULT_TRACK_LINE_WIDTH = 10.0f;  // Default 10 meters
-    static constexpr float MIN_TRACK_LINE_WIDTH = 5.0f;       // Min 5 meters
-    static constexpr float MAX_TRACK_LINE_WIDTH = 15.0f;     // Max 15 meters
+    static constexpr float DEFAULT_TRACK_WIDTH_SCALE = 1.0f;  // Default 100%
+    static constexpr float MIN_TRACK_WIDTH_SCALE = 0.5f;      // Min 50%
+    static constexpr float MAX_TRACK_WIDTH_SCALE = 3.0f;      // Max 300%
 
     // Zoom mode constants (Range setting)
     static constexpr float DEFAULT_ZOOM_DISTANCE = 100.0f;   // Default when zoom first enabled
     static constexpr float MIN_ZOOM_DISTANCE = 50.0f;        // Min 50 meters
     static constexpr float MAX_ZOOM_DISTANCE = 500.0f;       // Max 500 meters
+
+    // Marker scale constants (independent icon/label scaling)
+    static constexpr float DEFAULT_MARKER_SCALE = 1.0f;      // Default 100%
+    static constexpr float MIN_MARKER_SCALE = 0.5f;          // Min 50%
+    static constexpr float MAX_MARKER_SCALE = 3.0f;          // Max 300%
 
     // Zoom mode - follow player showing limited track distance
     void setZoomEnabled(bool enabled) {
@@ -129,6 +141,10 @@ public:
 
     void setZoomDistance(float meters);
     float getZoomDistance() const { return m_fZoomDistance; }
+
+    // Marker scale - independently scale rider icons and labels
+    void setMarkerScale(float scale);
+    float getMarkerScale() const { return m_fMarkerScale; }
 
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;
@@ -151,8 +167,8 @@ private:
     static constexpr float MAP_PADDING = 0.01f;  // Padding from screen edge
     static constexpr float PIXEL_SPACING = 2.0f;  // Distance between pixels in world meters (smaller = denser)
 
-    // Configurable track line width (in world meters)
-    float m_fTrackLineWidthMeters;
+    // Configurable track line width scale (percentage multiplier)
+    float m_fTrackWidthScale;
 
     // Memory reservation sizes (optimize initial allocation)
     static constexpr size_t RESERVE_TRACK_SEGMENTS = 200;  // Typical track has 100-200 segments
@@ -193,6 +209,9 @@ private:
     // Zoom mode configuration
     bool m_bZoomEnabled;         // Follow player with limited view distance
     float m_fZoomDistance;       // Total view distance in meters (Range setting)
+
+    // Marker scale (independent of HUD scale)
+    float m_fMarkerScale;        // Scale factor for rider icons and labels
 
     // Calculate track bounds from segments
     void calculateTrackBounds();

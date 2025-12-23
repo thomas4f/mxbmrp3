@@ -38,9 +38,9 @@ private:
     void addVerticalBar(float x, float y, float barWidth, float barHeight,
                         float value, unsigned long color);
 
-    // Widget positioning (grid-aligned)
-    static constexpr float START_X = HudPositions::LEFT_SIDE_X;
-    static constexpr float START_Y = 0.3552f;  // Between MID_UPPER and MID_LOWER
+    // Base position (0,0) - actual position comes from m_fOffsetX/m_fOffsetY
+    static constexpr float START_X = 0.0f;
+    static constexpr float START_Y = 0.0f;
 
     // Bar dimensions (in characters/lines)
     static constexpr int BAR_WIDTH_CHARS = 1;        // Width of each bar (1 char)

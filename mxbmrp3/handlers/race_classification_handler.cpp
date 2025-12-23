@@ -36,18 +36,27 @@ void RaceClassificationHandler::handleRaceClassification(
 
     if (!sessionData.overtimeStarted && sessionData.sessionNumLaps > 0 && sessionData.sessionLength > 0) {
         // This is a time+laps race, check if overtime just started
-        if (sessionData.lastSessionTime > 0 && psRaceClassification->m_iSessionTime < 0 &&
+        // Only detect when race is in progress (state 16), not during pre-start (256)
+        // Pre-start can have negative sessionTime (countdown) which would falsely trigger this
+        if (psRaceClassification->m_iSessionState == 16 &&
+            sessionData.lastSessionTime > 0 && psRaceClassification->m_iSessionTime < 0 &&
             pasRaceClassificationEntry && iNumEntries > 0) {
-            // Overtime just started! Capture leader's lap count
+            // Overtime just started! Capture leader's current lap
+            // m_iNumLaps is the lap currently being raced (1-indexed), not completed laps
             const SPluginsRaceClassificationEntry_t& leader = pasRaceClassificationEntry[0];
-            int leaderCompletedLaps = leader.m_iNumLaps;
+            int leaderCurrentLap = leader.m_iNumLaps;
 
-            // Calculate finish lap: current lap (completed + 1) + sessionNumLaps more laps
-            int finishLap = leaderCompletedLaps + 1 + sessionData.sessionNumLaps;
+            // Calculate finish lap: current lap + extra laps to complete
+            // Leader finishes when m_iNumLaps > finishLap (i.e., they've COMPLETED finishLap)
+            int finishLap = leaderCurrentLap + sessionData.sessionNumLaps;
+
+            DEBUG_INFO_F("[OVERTIME STARTED] leader on lap %d, finishLap=%d (+%d laps), sessionNumLaps=%d",
+                leaderCurrentLap, finishLap, sessionData.sessionNumLaps, sessionData.sessionNumLaps);
 
             pluginData.setFinishLap(finishLap);
             pluginData.setOvertimeStarted(true);
         }
     }
+
     pluginData.setLastSessionTime(psRaceClassification->m_iSessionTime);
 }

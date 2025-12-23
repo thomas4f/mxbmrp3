@@ -7,7 +7,7 @@
 #include "hud_manager.h"
 #include "profile_manager.h"
 #include "../diagnostics/logger.h"
-#include "../hud/session_best_hud.h"
+#include "../hud/ideal_lap_hud.h"
 #include "../hud/lap_log_hud.h"
 #include "../hud/standings_hud.h"
 #include "../hud/performance_hud.h"
@@ -34,8 +34,11 @@
 #include "../hud/records_hud.h"
 #include "../hud/rumble_hud.h"
 #include "color_config.h"
+#include "font_config.h"
 #include "update_checker.h"
 #include "xinput_reader.h"
+#include "hotkey_manager.h"
+#include "tracked_riders_manager.h"
 #include <fstream>
 #include <sstream>
 #include <array>
@@ -55,16 +58,11 @@ namespace {
             constexpr const char* VISIBLE = "visible";
             constexpr const char* SHOW_TITLE = "showTitle";
             constexpr const char* SHOW_BG_TEXTURE = "showBackgroundTexture";
+            constexpr const char* TEXTURE_VARIANT = "textureVariant";
             constexpr const char* BG_OPACITY = "backgroundOpacity";
             constexpr const char* SCALE = "scale";
             constexpr const char* OFFSET_X = "offsetX";
             constexpr const char* OFFSET_Y = "offsetY";
-        }
-
-        // Meta section (global settings)
-        namespace Meta {
-            constexpr const char* ACTIVE_PROFILE = "activeProfile";
-            constexpr const char* AUTO_SWITCH = "autoSwitch";
         }
 
         // Shared keys used by multiple HUDs
@@ -84,13 +82,15 @@ namespace {
             constexpr const char* OFFICIAL_GAP_MODE = "officialGapMode";
             constexpr const char* LIVE_GAP_MODE = "liveGapMode";
             constexpr const char* GAP_INDICATOR_MODE = "gapIndicatorMode";
+            constexpr const char* GAP_REFERENCE_MODE = "gapReferenceMode";
         }
 
         // MapHud-specific keys
         namespace Map {
             constexpr const char* ROTATE_TO_PLAYER = "rotateToPlayer";
             constexpr const char* SHOW_OUTLINE = "showOutline";
-            constexpr const char* TRACK_LINE_WIDTH = "trackLineWidthMeters";
+            constexpr const char* TRACK_WIDTH_SCALE = "trackWidthScale";
+            constexpr const char* TRACK_LINE_WIDTH = "trackLineWidthMeters";  // Legacy key (meters)
             constexpr const char* ANCHOR_POINT = "anchorPoint";
             constexpr const char* ANCHOR_X = "anchorX";
             constexpr const char* ANCHOR_Y = "anchorY";
@@ -135,21 +135,6 @@ namespace {
             constexpr const char* FUEL_UNIT = "fuelUnit";
         }
 
-        // ColorConfig keys
-        namespace Color {
-            constexpr const char* PRIMARY = "primary";
-            constexpr const char* SECONDARY = "secondary";
-            constexpr const char* TERTIARY = "tertiary";
-            constexpr const char* MUTED = "muted";
-            constexpr const char* BACKGROUND = "background";
-            constexpr const char* POSITIVE = "positive";
-            constexpr const char* WARNING = "warning";
-            constexpr const char* NEUTRAL = "neutral";
-            constexpr const char* NEGATIVE = "negative";
-            constexpr const char* ACCENT = "accent";
-            constexpr const char* GRID_SNAPPING = "gridSnapping";
-            constexpr const char* WIDGETS_ENABLED = "widgetsEnabled";
-        }
     }
 
     // Validation helper functions
@@ -211,11 +196,11 @@ namespace {
         return value;
     }
 
-    float validateTrackLineWidth(float value) {
-        if (value < MapHud::MIN_TRACK_LINE_WIDTH || value > MapHud::MAX_TRACK_LINE_WIDTH) {
-            DEBUG_WARN_F("Invalid track line width %.2f, clamping to [%.2f, %.2f]",
-                        value, MapHud::MIN_TRACK_LINE_WIDTH, MapHud::MAX_TRACK_LINE_WIDTH);
-            return (value < MapHud::MIN_TRACK_LINE_WIDTH) ? MapHud::MIN_TRACK_LINE_WIDTH : MapHud::MAX_TRACK_LINE_WIDTH;
+    float validateTrackWidthScale(float value) {
+        if (value < MapHud::MIN_TRACK_WIDTH_SCALE || value > MapHud::MAX_TRACK_WIDTH_SCALE) {
+            DEBUG_WARN_F("Invalid track width scale %.2f, clamping to [%.2f, %.2f]",
+                        value, MapHud::MIN_TRACK_WIDTH_SCALE, MapHud::MAX_TRACK_WIDTH_SCALE);
+            return (value < MapHud::MIN_TRACK_WIDTH_SCALE) ? MapHud::MIN_TRACK_WIDTH_SCALE : MapHud::MAX_TRACK_WIDTH_SCALE;
         }
         return value;
     }
@@ -260,6 +245,7 @@ namespace {
         settings[VISIBLE] = std::to_string(hud.isVisible() ? 1 : 0);
         settings[SHOW_TITLE] = std::to_string(hud.getShowTitle() ? 1 : 0);
         settings[SHOW_BG_TEXTURE] = std::to_string(hud.getShowBackgroundTexture() ? 1 : 0);
+        settings[TEXTURE_VARIANT] = std::to_string(hud.getTextureVariant());
         settings[BG_OPACITY] = std::to_string(hud.getBackgroundOpacity());
         settings[SCALE] = std::to_string(hud.getScale());
         settings[OFFSET_X] = std::to_string(hud.getOffsetX());
@@ -302,6 +288,8 @@ namespace {
                     hud.setShowTitle(std::stoi(value) != 0);
                 } else if (key == SHOW_BG_TEXTURE) {
                     hud.setShowBackgroundTexture(std::stoi(value) != 0);
+                } else if (key == TEXTURE_VARIANT) {
+                    hud.setTextureVariant(std::stoi(value));
                 } else if (key == BG_OPACITY) {
                     hud.setBackgroundOpacity(validateOpacity(std::stof(value)));
                 } else if (key == SCALE) {
@@ -387,6 +375,7 @@ void SettingsManager::captureToProfile(const HudManager& hudManager, ProfileType
         settings[OFFICIAL_GAP_MODE] = std::to_string(static_cast<int>(hud.m_officialGapMode));
         settings[LIVE_GAP_MODE] = std::to_string(static_cast<int>(hud.m_liveGapMode));
         settings[GAP_INDICATOR_MODE] = std::to_string(static_cast<int>(hud.m_gapIndicatorMode));
+        settings[GAP_REFERENCE_MODE] = std::to_string(static_cast<int>(hud.m_gapReferenceMode));
         cache["StandingsHud"] = std::move(settings);
     }
 
@@ -398,7 +387,7 @@ void SettingsManager::captureToProfile(const HudManager& hudManager, ProfileType
         settings["rotateToPlayer"] = std::to_string(hud.getRotateToPlayer() ? 1 : 0);
         settings["showOutline"] = std::to_string(hud.getShowOutline() ? 1 : 0);
         settings["riderColorMode"] = std::to_string(static_cast<int>(hud.getRiderColorMode()));
-        settings["trackLineWidthMeters"] = std::to_string(hud.getTrackLineWidthMeters());
+        settings["trackWidthScale"] = std::to_string(hud.getTrackWidthScale());
         settings["labelMode"] = std::to_string(static_cast<int>(hud.getLabelMode()));
         settings["riderShape"] = std::to_string(static_cast<int>(hud.getRiderShape()));
         settings["anchorPoint"] = std::to_string(static_cast<int>(hud.getAnchorPoint()));
@@ -406,6 +395,7 @@ void SettingsManager::captureToProfile(const HudManager& hudManager, ProfileType
         settings["anchorY"] = std::to_string(hud.m_fAnchorY);
         settings["zoomEnabled"] = std::to_string(hud.getZoomEnabled() ? 1 : 0);
         settings["zoomDistance"] = std::to_string(hud.getZoomDistance());
+        settings["markerScale"] = std::to_string(hud.getMarkerScale());
         cache["MapHud"] = std::move(settings);
     }
 
@@ -421,6 +411,7 @@ void SettingsManager::captureToProfile(const HudManager& hudManager, ProfileType
         settings["alertDistance"] = std::to_string(hud.getAlertDistance());
         settings["labelMode"] = std::to_string(static_cast<int>(hud.getLabelMode()));
         settings["riderShape"] = std::to_string(static_cast<int>(hud.getRiderShape()));
+        settings["markerScale"] = std::to_string(hud.getMarkerScale());
         cache["RadarHud"] = std::move(settings);
     }
 
@@ -455,14 +446,13 @@ void SettingsManager::captureToProfile(const HudManager& hudManager, ProfileType
         cache["LapLogHud"] = std::move(settings);
     }
 
-    // Capture SessionBestHud
+    // Capture IdealLapHud (key preserved for backward compatibility)
     {
         HudSettings settings;
-        const auto& hud = hudManager.getSessionBestHud();
+        const auto& hud = hudManager.getIdealLapHud();
         captureBaseHudSettings(settings, hud);
         settings["enabledRows"] = std::to_string(hud.m_enabledRows);
-        settings["showLiveSectorTime"] = hud.m_bShowLiveSectorTime ? "1" : "0";
-        cache["SessionBestHud"] = std::move(settings);
+        cache["IdealLapHud"] = std::move(settings);
     }
 
     // Capture TelemetryHud
@@ -514,21 +504,21 @@ void SettingsManager::captureToProfile(const HudManager& hudManager, ProfileType
     captureWidget("PointerWidget", hudManager.getPointerWidget());
     captureWidget("RumbleHud", hudManager.getRumbleHud());
 
-    // SpeedWidget has speedUnit
+    // SpeedWidget has enabledRows - speedUnit is now global (in Preferences section)
     {
         HudSettings settings;
         const auto& hud = hudManager.getSpeedWidget();
         captureBaseHudSettings(settings, hud);
-        settings["speedUnit"] = std::to_string(static_cast<int>(hud.m_speedUnit));
+        settings["enabledRows"] = std::to_string(hud.m_enabledRows);
         cache["SpeedWidget"] = std::move(settings);
     }
 
-    // FuelWidget has fuelUnit
+    // FuelWidget has enabledRows - fuelUnit is now global (in Preferences section)
     {
         HudSettings settings;
         const auto& hud = hudManager.getFuelWidget();
         captureBaseHudSettings(settings, hud);
-        settings["fuelUnit"] = std::to_string(static_cast<int>(hud.m_fuelUnit));
+        settings["enabledRows"] = std::to_string(hud.m_enabledRows);
         cache["FuelWidget"] = std::move(settings);
     }
 
@@ -541,6 +531,7 @@ void SettingsManager::captureToProfile(const HudManager& hudManager, ProfileType
         settings["timeMode"] = std::to_string(static_cast<int>(hud.m_columnModes[TimingHud::COL_TIME]));
         settings["gapMode"] = std::to_string(static_cast<int>(hud.m_columnModes[TimingHud::COL_GAP]));
         settings["displayDuration"] = std::to_string(hud.m_displayDurationMs);
+        settings["gapTypes"] = std::to_string(hud.getGapTypes());
         cache["TimingHud"] = std::move(settings);
     }
 
@@ -556,31 +547,7 @@ void SettingsManager::captureToProfile(const HudManager& hudManager, ProfileType
         cache["GapBarHud"] = std::move(settings);
     }
 
-    // Capture ColorConfig (per-profile)
-    {
-        HudSettings settings;
-        const ColorConfig& colorConfig = ColorConfig::getInstance();
-        std::ostringstream oss;
-        auto formatColor = [&oss](uint32_t color) -> std::string {
-            oss.str("");
-            oss << "0x" << std::hex << color;
-            return oss.str();
-        };
-        settings["primary"] = formatColor(colorConfig.getPrimary());
-        settings["secondary"] = formatColor(colorConfig.getSecondary());
-        settings["tertiary"] = formatColor(colorConfig.getTertiary());
-        settings["muted"] = formatColor(colorConfig.getMuted());
-        settings["background"] = formatColor(colorConfig.getBackground());
-        settings["positive"] = formatColor(colorConfig.getPositive());
-        settings["warning"] = formatColor(colorConfig.getWarning());
-        settings["neutral"] = formatColor(colorConfig.getNeutral());
-        settings["negative"] = formatColor(colorConfig.getNegative());
-        settings["accent"] = formatColor(colorConfig.getAccent());
-        settings["gridSnapping"] = std::to_string(colorConfig.getGridSnapping() ? 1 : 0);
-        settings["widgetsEnabled"] = std::to_string(HudManager::getInstance().areWidgetsEnabled() ? 1 : 0);
-        settings["checkForUpdates"] = std::to_string(UpdateChecker::getInstance().isEnabled() ? 1 : 0);
-        cache["ColorConfig"] = std::move(settings);
-    }
+    // Note: ColorConfig is now global (not per-profile) - saved/loaded in saveSettings/loadSettings directly
 
     m_cacheInitialized = true;
 }
@@ -625,6 +592,7 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
                 if (settings.count(OFFICIAL_GAP_MODE)) hud.m_officialGapMode = static_cast<StandingsHud::GapMode>(std::stoi(settings.at(OFFICIAL_GAP_MODE)));
                 if (settings.count(LIVE_GAP_MODE)) hud.m_liveGapMode = static_cast<StandingsHud::GapMode>(std::stoi(settings.at(LIVE_GAP_MODE)));
                 if (settings.count(GAP_INDICATOR_MODE)) hud.m_gapIndicatorMode = static_cast<StandingsHud::GapIndicatorMode>(std::stoi(settings.at(GAP_INDICATOR_MODE)));
+                if (settings.count(GAP_REFERENCE_MODE)) hud.m_gapReferenceMode = static_cast<StandingsHud::GapReferenceMode>(std::stoi(settings.at(GAP_REFERENCE_MODE)));
             } catch (...) {}
             hud.setDataDirty();
         }
@@ -649,7 +617,15 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
                     hud.setRiderColorMode(std::stoi(settings.at("colorizeRiders")) != 0
                         ? MapHud::RiderColorMode::BRAND : MapHud::RiderColorMode::UNIFORM);
                 }
-                if (settings.count("trackLineWidthMeters")) hud.setTrackLineWidthMeters(validateTrackLineWidth(std::stof(settings.at("trackLineWidthMeters"))));
+                // New trackWidthScale key; fallback to old trackLineWidthMeters for backwards compatibility
+                if (settings.count("trackWidthScale")) {
+                    hud.setTrackWidthScale(validateTrackWidthScale(std::stof(settings.at("trackWidthScale"))));
+                } else if (settings.count("trackLineWidthMeters")) {
+                    // Legacy: convert meters to scale factor (old default 10m = 1.0 scale)
+                    float legacyMeters = std::stof(settings.at("trackLineWidthMeters"));
+                    float scale = legacyMeters / 10.0f;  // 10m was the old default
+                    hud.setTrackWidthScale(validateTrackWidthScale(scale));
+                }
                 if (settings.count("labelMode")) hud.setLabelMode(static_cast<MapHud::LabelMode>(std::stoi(settings.at("labelMode"))));
                 if (settings.count("riderShape")) hud.setRiderShape(static_cast<MapHud::RiderShape>(std::stoi(settings.at("riderShape"))));
                 if (settings.count("anchorPoint")) hud.setAnchorPoint(static_cast<MapHud::AnchorPoint>(std::stoi(settings.at("anchorPoint"))));
@@ -657,6 +633,7 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
                 if (settings.count("anchorY")) hud.m_fAnchorY = std::stof(settings.at("anchorY"));
                 if (settings.count("zoomEnabled")) hud.setZoomEnabled(std::stoi(settings.at("zoomEnabled")) != 0);
                 if (settings.count("zoomDistance")) hud.setZoomDistance(validateZoomDistance(std::stof(settings.at("zoomDistance"))));
+                if (settings.count("markerScale")) hud.setMarkerScale(std::stof(settings.at("markerScale")));
             } catch (...) {}
             hud.setDataDirty();
         }
@@ -695,6 +672,7 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
                 }
                 if (settings.count("labelMode")) hud.setLabelMode(static_cast<RadarHud::LabelMode>(std::stoi(settings.at("labelMode"))));
                 if (settings.count("riderShape")) hud.setRiderShape(static_cast<RadarHud::RiderShape>(std::stoi(settings.at("riderShape"))));
+                if (settings.count("markerScale")) hud.setMarkerScale(std::stof(settings.at("markerScale")));
             } catch (...) {}
             hud.setDataDirty();
         }
@@ -757,17 +735,16 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
         }
     }
 
-    // Apply SessionBestHud
+    // Apply IdealLapHud
     {
-        auto it = cache.find("SessionBestHud");
+        auto it = cache.find("IdealLapHud");
         if (it != cache.end()) {
-            auto& hud = hudManager.getSessionBestHud();
+            auto& hud = hudManager.getIdealLapHud();
             applyBaseHudSettings(hud, it->second);
 
             const auto& settings = it->second;
             try {
                 if (settings.count("enabledRows")) hud.m_enabledRows = static_cast<uint32_t>(std::stoul(settings.at("enabledRows")));
-                if (settings.count("showLiveSectorTime")) hud.m_bShowLiveSectorTime = (settings.at("showLiveSectorTime") == "1");
             } catch (...) {}
             hud.setDataDirty();
         }
@@ -834,7 +811,7 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
     applyToHud("PointerWidget", hudManager.getPointerWidget());
     applyToHud("RumbleHud", hudManager.getRumbleHud());
 
-    // Apply SpeedWidget with speedUnit
+    // Apply SpeedWidget with enabledRows - speedUnit is now global (in Preferences section)
     {
         auto it = cache.find("SpeedWidget");
         if (it != cache.end()) {
@@ -843,16 +820,13 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
 
             const auto& settings = it->second;
             try {
-                if (settings.count("speedUnit")) {
-                    int unit = std::stoi(settings.at("speedUnit"));
-                    if (unit >= 0 && unit <= 1) hud.m_speedUnit = static_cast<SpeedWidget::SpeedUnit>(unit);
-                }
+                if (settings.count("enabledRows")) hud.m_enabledRows = static_cast<uint32_t>(std::stoul(settings.at("enabledRows")));
             } catch (...) {}
             hud.setDataDirty();
         }
     }
 
-    // Apply FuelWidget with fuelUnit
+    // Apply FuelWidget with enabledRows - fuelUnit is now global (in Preferences section)
     {
         auto it = cache.find("FuelWidget");
         if (it != cache.end()) {
@@ -861,10 +835,7 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
 
             const auto& settings = it->second;
             try {
-                if (settings.count("fuelUnit")) {
-                    int unit = std::stoi(settings.at("fuelUnit"));
-                    if (unit >= 0 && unit <= 1) hud.m_fuelUnit = static_cast<FuelWidget::FuelUnit>(unit);
-                }
+                if (settings.count("enabledRows")) hud.m_enabledRows = static_cast<uint32_t>(std::stoul(settings.at("enabledRows")));
             } catch (...) {}
             hud.setDataDirty();
         }
@@ -895,6 +866,13 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
                     int duration = std::stoi(settings.at("displayDuration"));
                     if (duration >= TimingHud::MIN_DURATION_MS && duration <= TimingHud::MAX_DURATION_MS) {
                         hud.m_displayDurationMs = duration;
+                    }
+                }
+                if (settings.count("gapTypes")) {
+                    int gapTypes = std::stoi(settings.at("gapTypes"));
+                    // Validate: only GAP_TO_PB, GAP_TO_IDEAL, GAP_TO_SESSION bits are valid (0-7)
+                    if (gapTypes >= 0 && gapTypes <= 7) {
+                        hud.m_gapTypes = static_cast<uint8_t>(gapTypes);
                     }
                 }
                 // Migration: handle old settings format
@@ -960,32 +938,7 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
         }
     }
 
-    // Apply ColorConfig (per-profile)
-    {
-        auto it = cache.find("ColorConfig");
-        if (it != cache.end()) {
-            ColorConfig& colorConfig = ColorConfig::getInstance();
-            const auto& settings = it->second;
-            try {
-                if (settings.count("primary")) colorConfig.setColor(ColorSlot::PRIMARY, std::stoul(settings.at("primary"), nullptr, 0));
-                if (settings.count("secondary")) colorConfig.setColor(ColorSlot::SECONDARY, std::stoul(settings.at("secondary"), nullptr, 0));
-                if (settings.count("tertiary")) colorConfig.setColor(ColorSlot::TERTIARY, std::stoul(settings.at("tertiary"), nullptr, 0));
-                if (settings.count("muted")) colorConfig.setColor(ColorSlot::MUTED, std::stoul(settings.at("muted"), nullptr, 0));
-                if (settings.count("background")) colorConfig.setColor(ColorSlot::BACKGROUND, std::stoul(settings.at("background"), nullptr, 0));
-                if (settings.count("positive")) colorConfig.setColor(ColorSlot::POSITIVE, std::stoul(settings.at("positive"), nullptr, 0));
-                if (settings.count("warning")) colorConfig.setColor(ColorSlot::WARNING, std::stoul(settings.at("warning"), nullptr, 0));
-                if (settings.count("neutral")) colorConfig.setColor(ColorSlot::NEUTRAL, std::stoul(settings.at("neutral"), nullptr, 0));
-                if (settings.count("negative")) colorConfig.setColor(ColorSlot::NEGATIVE, std::stoul(settings.at("negative"), nullptr, 0));
-                if (settings.count("accent")) colorConfig.setColor(ColorSlot::ACCENT, std::stoul(settings.at("accent"), nullptr, 0));
-                if (settings.count("gridSnapping")) colorConfig.setGridSnapping(std::stoi(settings.at("gridSnapping")) != 0);
-                if (settings.count("widgetsEnabled")) hudManager.setWidgetsEnabled(std::stoi(settings.at("widgetsEnabled")) != 0);
-                if (settings.count("checkForUpdates")) UpdateChecker::getInstance().setEnabled(std::stoi(settings.at("checkForUpdates")) != 0);
-            } catch (...) {}
-
-            // Mark all HUDs dirty so they rebuild with new colors
-            hudManager.markAllHudsDirty();
-        }
-    }
+    // Note: ColorConfig is now global (not per-profile) - loaded once in loadSettings
 
     DEBUG_INFO_F("Applied profile: %s", ProfileManager::getProfileName(profile));
 }
@@ -1040,6 +993,31 @@ void SettingsManager::applyToAllProfiles(HudManager& hudManager) {
     DEBUG_INFO_F("Applied %s profile settings to all profiles", ProfileManager::getProfileName(activeProfile));
 }
 
+void SettingsManager::copyToProfile(HudManager& hudManager, ProfileType targetProfile) {
+    ProfileType activeProfile = ProfileManager::getInstance().getActiveProfile();
+
+    // Don't copy to self
+    if (targetProfile == activeProfile) {
+        DEBUG_WARN("Cannot copy profile to itself");
+        return;
+    }
+
+    // Capture current HUD state to active profile (ensure it's up to date)
+    captureToProfile(hudManager, activeProfile);
+
+    // Copy to target profile
+    m_profileCache[static_cast<size_t>(targetProfile)] = m_profileCache[static_cast<size_t>(activeProfile)];
+
+    // Save to disk
+    if (!m_savePath.empty()) {
+        saveSettings(hudManager, m_savePath.c_str());
+    }
+
+    DEBUG_INFO_F("Copied %s profile settings to %s",
+        ProfileManager::getProfileName(activeProfile),
+        ProfileManager::getProfileName(targetProfile));
+}
+
 void SettingsManager::saveSettings(const HudManager& hudManager, const char* savePath) {
     std::string filePath = getSettingsFilePath(savePath);
     m_savePath = savePath ? savePath : "";
@@ -1056,66 +1034,115 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
 
     DEBUG_INFO_F("Saving settings to: %s", filePath.c_str());
 
-    // Write meta section (global, not per-profile)
-    using namespace Keys::Meta;
+    // Write Profiles section
     const ProfileManager& profileManager = ProfileManager::getInstance();
-    file << "[Meta]\n";
-    file << ACTIVE_PROFILE << "=" << static_cast<int>(profileManager.getActiveProfile()) << "\n";
-    file << AUTO_SWITCH << "=" << (profileManager.isAutoSwitchEnabled() ? 1 : 0) << "\n\n";
+    file << "[Profiles]\n";
+    file << "activeProfile=" << static_cast<int>(profileManager.getActiveProfile()) << "\n";
+    file << "autoSwitch=" << (profileManager.isAutoSwitchEnabled() ? 1 : 0) << "\n\n";
 
-    // Write rumble section (global, not per-profile - hardware config)
+    // Write General section (global preferences)
+    file << "[General]\n";
+    file << "widgetsEnabled=" << (HudManager::getInstance().areWidgetsEnabled() ? 1 : 0) << "\n";
+    file << "gridSnapping=" << (ColorConfig::getInstance().getGridSnapping() ? 1 : 0) << "\n";
+    file << "checkForUpdates=" << (UpdateChecker::getInstance().isEnabled() ? 1 : 0) << "\n";
+    file << "controller=" << XInputReader::getInstance().getRumbleConfig().controllerIndex << "\n";
+    file << "speedUnit=" << static_cast<int>(hudManager.getSpeedWidget().m_speedUnit) << "\n";
+    file << "fuelUnit=" << static_cast<int>(hudManager.getFuelWidget().m_fuelUnit) << "\n\n";
+
+    // Write Colors section
+    const ColorConfig& colorConfig = ColorConfig::getInstance();
+    file << "[Colors]\n";
+    file << "primary=" << PluginUtils::formatColorHex(colorConfig.getPrimary()) << "\n";
+    file << "secondary=" << PluginUtils::formatColorHex(colorConfig.getSecondary()) << "\n";
+    file << "tertiary=" << PluginUtils::formatColorHex(colorConfig.getTertiary()) << "\n";
+    file << "muted=" << PluginUtils::formatColorHex(colorConfig.getMuted()) << "\n";
+    file << "background=" << PluginUtils::formatColorHex(colorConfig.getBackground()) << "\n";
+    file << "positive=" << PluginUtils::formatColorHex(colorConfig.getPositive()) << "\n";
+    file << "warning=" << PluginUtils::formatColorHex(colorConfig.getWarning()) << "\n";
+    file << "neutral=" << PluginUtils::formatColorHex(colorConfig.getNeutral()) << "\n";
+    file << "negative=" << PluginUtils::formatColorHex(colorConfig.getNegative()) << "\n";
+    file << "accent=" << PluginUtils::formatColorHex(colorConfig.getAccent()) << "\n\n";
+
+    // Write Fonts section
+    const FontConfig& fontConfig = FontConfig::getInstance();
+    file << "[Fonts]\n";
+    file << "title=" << fontConfig.getFontName(FontCategory::TITLE) << "\n";
+    file << "normal=" << fontConfig.getFontName(FontCategory::NORMAL) << "\n";
+    file << "strong=" << fontConfig.getFontName(FontCategory::STRONG) << "\n";
+    file << "marker=" << fontConfig.getFontName(FontCategory::MARKER) << "\n";
+    file << "small=" << fontConfig.getFontName(FontCategory::SMALL) << "\n\n";
+
+    // Write Rumble section (effect configuration)
     const RumbleConfig& rumbleConfig = XInputReader::getInstance().getRumbleConfig();
     file << "[Rumble]\n";
     file << "enabled=" << (rumbleConfig.enabled ? 1 : 0) << "\n";
-    file << "controller=" << rumbleConfig.controllerIndex << "\n";
     file << "additive_blend=" << (rumbleConfig.additiveBlend ? 1 : 0) << "\n";
     file << "rumble_when_crashed=" << (rumbleConfig.rumbleWhenCrashed ? 1 : 0) << "\n";
-    file << "susp_motor=" << static_cast<int>(rumbleConfig.suspensionEffect.motor) << "\n";
+    // Suspension effect
     file << "susp_min_input=" << rumbleConfig.suspensionEffect.minInput << "\n";
     file << "susp_max_input=" << rumbleConfig.suspensionEffect.maxInput << "\n";
-    file << "susp_min_strength=" << rumbleConfig.suspensionEffect.minStrength << "\n";
-    file << "susp_max_strength=" << rumbleConfig.suspensionEffect.maxStrength << "\n";
-    file << "wheel_motor=" << static_cast<int>(rumbleConfig.wheelspinEffect.motor) << "\n";
+    file << "susp_light_strength=" << rumbleConfig.suspensionEffect.lightStrength << "\n";
+    file << "susp_heavy_strength=" << rumbleConfig.suspensionEffect.heavyStrength << "\n";
+    // Wheelspin effect
     file << "wheel_min_input=" << rumbleConfig.wheelspinEffect.minInput << "\n";
     file << "wheel_max_input=" << rumbleConfig.wheelspinEffect.maxInput << "\n";
-    file << "wheel_min_strength=" << rumbleConfig.wheelspinEffect.minStrength << "\n";
-    file << "wheel_max_strength=" << rumbleConfig.wheelspinEffect.maxStrength << "\n";
-    file << "lockup_motor=" << static_cast<int>(rumbleConfig.brakeLockupEffect.motor) << "\n";
+    file << "wheel_light_strength=" << rumbleConfig.wheelspinEffect.lightStrength << "\n";
+    file << "wheel_heavy_strength=" << rumbleConfig.wheelspinEffect.heavyStrength << "\n";
+    // Brake lockup effect
     file << "lockup_min_input=" << rumbleConfig.brakeLockupEffect.minInput << "\n";
     file << "lockup_max_input=" << rumbleConfig.brakeLockupEffect.maxInput << "\n";
-    file << "lockup_min_strength=" << rumbleConfig.brakeLockupEffect.minStrength << "\n";
-    file << "lockup_max_strength=" << rumbleConfig.brakeLockupEffect.maxStrength << "\n";
-    file << "rpm_motor=" << static_cast<int>(rumbleConfig.rpmEffect.motor) << "\n";
+    file << "lockup_light_strength=" << rumbleConfig.brakeLockupEffect.lightStrength << "\n";
+    file << "lockup_heavy_strength=" << rumbleConfig.brakeLockupEffect.heavyStrength << "\n";
+    // RPM effect
     file << "rpm_min_input=" << rumbleConfig.rpmEffect.minInput << "\n";
     file << "rpm_max_input=" << rumbleConfig.rpmEffect.maxInput << "\n";
-    file << "rpm_min_strength=" << rumbleConfig.rpmEffect.minStrength << "\n";
-    file << "rpm_max_strength=" << rumbleConfig.rpmEffect.maxStrength << "\n";
-    file << "slide_motor=" << static_cast<int>(rumbleConfig.slideEffect.motor) << "\n";
+    file << "rpm_light_strength=" << rumbleConfig.rpmEffect.lightStrength << "\n";
+    file << "rpm_heavy_strength=" << rumbleConfig.rpmEffect.heavyStrength << "\n";
+    // Slide effect
     file << "slide_min_input=" << rumbleConfig.slideEffect.minInput << "\n";
     file << "slide_max_input=" << rumbleConfig.slideEffect.maxInput << "\n";
-    file << "slide_min_strength=" << rumbleConfig.slideEffect.minStrength << "\n";
-    file << "slide_max_strength=" << rumbleConfig.slideEffect.maxStrength << "\n";
-    file << "surface_motor=" << static_cast<int>(rumbleConfig.surfaceEffect.motor) << "\n";
+    file << "slide_light_strength=" << rumbleConfig.slideEffect.lightStrength << "\n";
+    file << "slide_heavy_strength=" << rumbleConfig.slideEffect.heavyStrength << "\n";
+    // Surface effect
     file << "surface_min_input=" << rumbleConfig.surfaceEffect.minInput << "\n";
     file << "surface_max_input=" << rumbleConfig.surfaceEffect.maxInput << "\n";
-    file << "surface_min_strength=" << rumbleConfig.surfaceEffect.minStrength << "\n";
-    file << "surface_max_strength=" << rumbleConfig.surfaceEffect.maxStrength << "\n";
-    file << "steer_motor=" << static_cast<int>(rumbleConfig.steerEffect.motor) << "\n";
+    file << "surface_light_strength=" << rumbleConfig.surfaceEffect.lightStrength << "\n";
+    file << "surface_heavy_strength=" << rumbleConfig.surfaceEffect.heavyStrength << "\n";
+    // Steer effect
     file << "steer_min_input=" << rumbleConfig.steerEffect.minInput << "\n";
     file << "steer_max_input=" << rumbleConfig.steerEffect.maxInput << "\n";
-    file << "steer_min_strength=" << rumbleConfig.steerEffect.minStrength << "\n";
-    file << "steer_max_strength=" << rumbleConfig.steerEffect.maxStrength << "\n";
-    file << "wheelie_motor=" << static_cast<int>(rumbleConfig.wheelieEffect.motor) << "\n";
+    file << "steer_light_strength=" << rumbleConfig.steerEffect.lightStrength << "\n";
+    file << "steer_heavy_strength=" << rumbleConfig.steerEffect.heavyStrength << "\n";
+    // Wheelie effect
     file << "wheelie_min_input=" << rumbleConfig.wheelieEffect.minInput << "\n";
     file << "wheelie_max_input=" << rumbleConfig.wheelieEffect.maxInput << "\n";
-    file << "wheelie_min_strength=" << rumbleConfig.wheelieEffect.minStrength << "\n";
-    file << "wheelie_max_strength=" << rumbleConfig.wheelieEffect.maxStrength << "\n\n";
+    file << "wheelie_light_strength=" << rumbleConfig.wheelieEffect.lightStrength << "\n";
+    file << "wheelie_heavy_strength=" << rumbleConfig.wheelieEffect.heavyStrength << "\n\n";
 
-    // Write all profiles (including ColorConfig per-profile)
-    static const std::array<const char*, 27> hudOrder = {
-        "ColorConfig",
+    // Write Hotkeys section
+    const HotkeyManager& hotkeyMgr = HotkeyManager::getInstance();
+    file << "[Hotkeys]\n";
+    for (int i = 0; i < static_cast<int>(HotkeyAction::COUNT); ++i) {
+        HotkeyAction action = static_cast<HotkeyAction>(i);
+        const HotkeyBinding& binding = hotkeyMgr.getBinding(action);
+
+        // Save keyboard binding
+        file << "action" << i << "_key=" << static_cast<int>(binding.keyboard.keyCode) << "\n";
+        file << "action" << i << "_mod=" << static_cast<int>(binding.keyboard.modifiers) << "\n";
+        // Save controller binding
+        file << "action" << i << "_btn=" << static_cast<int>(binding.controller) << "\n";
+    }
+    file << "\n";
+
+    // Write TrackedRiders section
+    file << "[TrackedRiders]\n";
+    file << "data=" << TrackedRidersManager::getInstance().serializeToString() << "\n";
+    file << "\n";
+
+    // Write all profiles (HUDs and Widgets)
+    static const std::array<const char*, 26> hudOrder = {
         "StandingsHud", "MapHud", "RadarHud", "PitboardHud", "RecordsHud",
-        "LapLogHud", "SessionBestHud", "TelemetryHud", "InputHud", "PerformanceHud",
+        "LapLogHud", "IdealLapHud", "TelemetryHud", "InputHud", "PerformanceHud",
         "LapWidget", "PositionWidget", "TimeWidget", "SessionWidget", "SpeedWidget",
         "SpeedoWidget", "TachoWidget", "TimingHud", "GapBarHud", "BarsWidget", "VersionWidget",
         "NoticesWidget", "FuelWidget", "SettingsButtonWidget", "PointerWidget", "RumbleHud"
@@ -1210,31 +1237,101 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
         std::string key = line.substr(0, equals);
         std::string value = line.substr(equals + 1);
 
-        // Handle Meta section
-        if (currentHudName == "Meta") {
-            using namespace Keys::Meta;
+        // Handle Profiles section
+        if (currentHudName == "Profiles") {
             try {
-                if (key == ACTIVE_PROFILE) {
+                if (key == "activeProfile") {
                     int profileIdx = std::stoi(value);
                     if (profileIdx >= 0 && profileIdx < static_cast<int>(ProfileType::COUNT)) {
                         ProfileManager::getInstance().setActiveProfile(static_cast<ProfileType>(profileIdx));
                     }
-                } else if (key == AUTO_SWITCH) {
+                } else if (key == "autoSwitch") {
                     ProfileManager::getInstance().setAutoSwitchEnabled(std::stoi(value) != 0);
                 }
             } catch (...) {}
             continue;
         }
 
-        // Handle Rumble section (global controller settings)
+        // Handle General section (global preferences)
+        if (currentHudName == "General") {
+            try {
+                if (key == "widgetsEnabled") {
+                    HudManager::getInstance().setWidgetsEnabled(std::stoi(value) != 0);
+                } else if (key == "gridSnapping") {
+                    ColorConfig::getInstance().setGridSnapping(std::stoi(value) != 0);
+                } else if (key == "checkForUpdates") {
+                    UpdateChecker::getInstance().setEnabled(std::stoi(value) != 0);
+                } else if (key == "controller") {
+                    int idx = std::stoi(value);
+                    XInputReader::getInstance().getRumbleConfig().controllerIndex = idx;
+                    XInputReader::getInstance().setControllerIndex(idx);
+                } else if (key == "speedUnit") {
+                    int unit = std::stoi(value);
+                    if (unit >= 0 && unit <= 1) {
+                        hudManager.getSpeedWidget().m_speedUnit = static_cast<SpeedWidget::SpeedUnit>(unit);
+                    }
+                } else if (key == "fuelUnit") {
+                    int unit = std::stoi(value);
+                    if (unit >= 0 && unit <= 1) {
+                        hudManager.getFuelWidget().m_fuelUnit = static_cast<FuelWidget::FuelUnit>(unit);
+                    }
+                }
+            } catch (...) {}
+            continue;
+        }
+
+        // Handle Colors section
+        if (currentHudName == "Colors") {
+            ColorConfig& colorConfig = ColorConfig::getInstance();
+            try {
+                if (key == "primary") {
+                    colorConfig.setColor(ColorSlot::PRIMARY, PluginUtils::parseColorHex(value));
+                } else if (key == "secondary") {
+                    colorConfig.setColor(ColorSlot::SECONDARY, PluginUtils::parseColorHex(value));
+                } else if (key == "tertiary") {
+                    colorConfig.setColor(ColorSlot::TERTIARY, PluginUtils::parseColorHex(value));
+                } else if (key == "muted") {
+                    colorConfig.setColor(ColorSlot::MUTED, PluginUtils::parseColorHex(value));
+                } else if (key == "background") {
+                    colorConfig.setColor(ColorSlot::BACKGROUND, PluginUtils::parseColorHex(value));
+                } else if (key == "positive") {
+                    colorConfig.setColor(ColorSlot::POSITIVE, PluginUtils::parseColorHex(value));
+                } else if (key == "warning") {
+                    colorConfig.setColor(ColorSlot::WARNING, PluginUtils::parseColorHex(value));
+                } else if (key == "neutral") {
+                    colorConfig.setColor(ColorSlot::NEUTRAL, PluginUtils::parseColorHex(value));
+                } else if (key == "negative") {
+                    colorConfig.setColor(ColorSlot::NEGATIVE, PluginUtils::parseColorHex(value));
+                } else if (key == "accent") {
+                    colorConfig.setColor(ColorSlot::ACCENT, PluginUtils::parseColorHex(value));
+                }
+            } catch (...) {}
+            continue;
+        }
+
+        // Handle Fonts section
+        if (currentHudName == "Fonts") {
+            FontConfig& fontConfig = FontConfig::getInstance();
+            if (key == "title") {
+                fontConfig.setFont(FontCategory::TITLE, value);
+            } else if (key == "normal") {
+                fontConfig.setFont(FontCategory::NORMAL, value);
+            } else if (key == "strong") {
+                fontConfig.setFont(FontCategory::STRONG, value);
+            } else if (key == "marker") {
+                fontConfig.setFont(FontCategory::MARKER, value);
+            } else if (key == "small") {
+                fontConfig.setFont(FontCategory::SMALL, value);
+            }
+            continue;
+        }
+
+        // Handle Rumble section (effect configuration)
         if (currentHudName == "Rumble") {
             RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
             try {
                 if (key == "enabled") {
                     config.enabled = std::stoi(value) != 0;
-                } else if (key == "controller") {
-                    config.controllerIndex = std::stoi(value);
-                    XInputReader::getInstance().setControllerIndex(config.controllerIndex);
                 } else if (key == "additive_blend") {
                     config.additiveBlend = std::stoi(value) != 0;
                 } else if (key == "rumble_when_crashed") {
@@ -1242,113 +1339,131 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                 } else if (key == "disable_on_crash") {
                     // Backward compatibility: invert the old setting
                     config.rumbleWhenCrashed = std::stoi(value) == 0;
-                } else if (key == "susp_motor") {
-                    int motor = std::stoi(value);
-                    if (motor >= 0 && motor <= 3) config.suspensionEffect.motor = static_cast<MotorTarget>(motor);
-                } else if (key == "susp_enabled") {
-                    // Backward compatibility: enabled=1 -> Heavy (default), enabled=0 -> Off
-                    config.suspensionEffect.motor = std::stoi(value) != 0 ? MotorTarget::Heavy : MotorTarget::Off;
-                } else if (key == "susp_min_input") {
+                }
+                // Suspension effect - new format
+                else if (key == "susp_min_input") {
                     config.suspensionEffect.minInput = std::stof(value);
                 } else if (key == "susp_max_input") {
                     config.suspensionEffect.maxInput = std::stof(value);
-                } else if (key == "susp_min_strength") {
-                    config.suspensionEffect.minStrength = std::stof(value);
-                } else if (key == "susp_max_strength") {
-                    config.suspensionEffect.maxStrength = std::stof(value);
-                } else if (key == "wheel_motor") {
-                    int motor = std::stoi(value);
-                    if (motor >= 0 && motor <= 3) config.wheelspinEffect.motor = static_cast<MotorTarget>(motor);
-                } else if (key == "wheel_enabled") {
-                    // Backward compatibility: enabled=1 -> Light (default), enabled=0 -> Off
-                    config.wheelspinEffect.motor = std::stoi(value) != 0 ? MotorTarget::Light : MotorTarget::Off;
-                } else if (key == "wheel_min_input") {
+                } else if (key == "susp_light_strength") {
+                    config.suspensionEffect.lightStrength = std::stof(value);
+                } else if (key == "susp_heavy_strength") {
+                    config.suspensionEffect.heavyStrength = std::stof(value);
+                }
+                // Wheelspin effect
+                else if (key == "wheel_min_input") {
                     config.wheelspinEffect.minInput = std::stof(value);
                 } else if (key == "wheel_max_input") {
                     config.wheelspinEffect.maxInput = std::stof(value);
-                } else if (key == "wheel_min_strength") {
-                    config.wheelspinEffect.minStrength = std::stof(value);
-                } else if (key == "wheel_max_strength") {
-                    config.wheelspinEffect.maxStrength = std::stof(value);
-                } else if (key == "lockup_motor") {
-                    int motor = std::stoi(value);
-                    if (motor >= 0 && motor <= 3) config.brakeLockupEffect.motor = static_cast<MotorTarget>(motor);
-                } else if (key == "lockup_enabled") {
-                    // Backward compatibility: enabled=1 -> Light (default), enabled=0 -> Off
-                    config.brakeLockupEffect.motor = std::stoi(value) != 0 ? MotorTarget::Light : MotorTarget::Off;
-                } else if (key == "lockup_min_input") {
+                } else if (key == "wheel_light_strength") {
+                    config.wheelspinEffect.lightStrength = std::stof(value);
+                } else if (key == "wheel_heavy_strength") {
+                    config.wheelspinEffect.heavyStrength = std::stof(value);
+                }
+                // Brake lockup effect
+                else if (key == "lockup_min_input") {
                     config.brakeLockupEffect.minInput = std::stof(value);
                 } else if (key == "lockup_max_input") {
                     config.brakeLockupEffect.maxInput = std::stof(value);
-                } else if (key == "lockup_min_strength") {
-                    config.brakeLockupEffect.minStrength = std::stof(value);
-                } else if (key == "lockup_max_strength") {
-                    config.brakeLockupEffect.maxStrength = std::stof(value);
-                } else if (key == "rpm_motor") {
-                    int motor = std::stoi(value);
-                    if (motor >= 0 && motor <= 3) config.rpmEffect.motor = static_cast<MotorTarget>(motor);
-                } else if (key == "rpm_enabled") {
-                    // Backward compatibility: enabled=1 -> Light (default), enabled=0 -> Off
-                    config.rpmEffect.motor = std::stoi(value) != 0 ? MotorTarget::Light : MotorTarget::Off;
-                } else if (key == "rpm_min_input") {
+                } else if (key == "lockup_light_strength") {
+                    config.brakeLockupEffect.lightStrength = std::stof(value);
+                } else if (key == "lockup_heavy_strength") {
+                    config.brakeLockupEffect.heavyStrength = std::stof(value);
+                }
+                // RPM effect
+                else if (key == "rpm_min_input") {
                     config.rpmEffect.minInput = std::stof(value);
                 } else if (key == "rpm_max_input") {
                     config.rpmEffect.maxInput = std::stof(value);
-                } else if (key == "rpm_min_strength") {
-                    config.rpmEffect.minStrength = std::stof(value);
-                } else if (key == "rpm_max_strength") {
-                    config.rpmEffect.maxStrength = std::stof(value);
-                } else if (key == "slide_motor") {
-                    int motor = std::stoi(value);
-                    if (motor >= 0 && motor <= 3) config.slideEffect.motor = static_cast<MotorTarget>(motor);
-                } else if (key == "slide_min_input") {
+                } else if (key == "rpm_light_strength") {
+                    config.rpmEffect.lightStrength = std::stof(value);
+                } else if (key == "rpm_heavy_strength") {
+                    config.rpmEffect.heavyStrength = std::stof(value);
+                }
+                // Slide effect
+                else if (key == "slide_min_input") {
                     config.slideEffect.minInput = std::stof(value);
                 } else if (key == "slide_max_input") {
                     config.slideEffect.maxInput = std::stof(value);
-                } else if (key == "slide_min_strength") {
-                    config.slideEffect.minStrength = std::stof(value);
-                } else if (key == "slide_max_strength") {
-                    config.slideEffect.maxStrength = std::stof(value);
-                } else if (key == "surface_motor") {
-                    int motor = std::stoi(value);
-                    if (motor >= 0 && motor <= 3) config.surfaceEffect.motor = static_cast<MotorTarget>(motor);
-                } else if (key == "surface_min_input") {
+                } else if (key == "slide_light_strength") {
+                    config.slideEffect.lightStrength = std::stof(value);
+                } else if (key == "slide_heavy_strength") {
+                    config.slideEffect.heavyStrength = std::stof(value);
+                }
+                // Surface effect
+                else if (key == "surface_min_input") {
                     config.surfaceEffect.minInput = std::stof(value);
                 } else if (key == "surface_max_input") {
                     config.surfaceEffect.maxInput = std::stof(value);
-                } else if (key == "surface_min_strength") {
-                    config.surfaceEffect.minStrength = std::stof(value);
-                } else if (key == "surface_max_strength") {
-                    config.surfaceEffect.maxStrength = std::stof(value);
-                } else if (key == "steer_motor") {
-                    int motor = std::stoi(value);
-                    if (motor >= 0 && motor <= 3) config.steerEffect.motor = static_cast<MotorTarget>(motor);
-                } else if (key == "steer_min_input") {
+                } else if (key == "surface_light_strength") {
+                    config.surfaceEffect.lightStrength = std::stof(value);
+                } else if (key == "surface_heavy_strength") {
+                    config.surfaceEffect.heavyStrength = std::stof(value);
+                }
+                // Steer effect
+                else if (key == "steer_min_input") {
                     config.steerEffect.minInput = std::stof(value);
                 } else if (key == "steer_max_input") {
                     config.steerEffect.maxInput = std::stof(value);
-                } else if (key == "steer_min_strength") {
-                    config.steerEffect.minStrength = std::stof(value);
-                } else if (key == "steer_max_strength") {
-                    config.steerEffect.maxStrength = std::stof(value);
-                } else if (key == "wheelie_motor") {
-                    int motor = std::stoi(value);
-                    if (motor >= 0 && motor <= 3) config.wheelieEffect.motor = static_cast<MotorTarget>(motor);
-                } else if (key == "wheelie_min_input") {
+                } else if (key == "steer_light_strength") {
+                    config.steerEffect.lightStrength = std::stof(value);
+                } else if (key == "steer_heavy_strength") {
+                    config.steerEffect.heavyStrength = std::stof(value);
+                }
+                // Wheelie effect
+                else if (key == "wheelie_min_input") {
                     config.wheelieEffect.minInput = std::stof(value);
                 } else if (key == "wheelie_max_input") {
                     config.wheelieEffect.maxInput = std::stof(value);
-                } else if (key == "wheelie_min_strength") {
-                    config.wheelieEffect.minStrength = std::stof(value);
-                } else if (key == "wheelie_max_strength") {
-                    config.wheelieEffect.maxStrength = std::stof(value);
+                } else if (key == "wheelie_light_strength") {
+                    config.wheelieEffect.lightStrength = std::stof(value);
+                } else if (key == "wheelie_heavy_strength") {
+                    config.wheelieEffect.heavyStrength = std::stof(value);
                 }
             } catch (...) {}
             continue;
         }
 
-        // Handle profile-specific HUD settings (v2 format only)
-        // Note: ColorConfig is now per-profile and handled here as well
+        // Handle Hotkeys section
+        if (currentHudName == "Hotkeys") {
+            HotkeyManager& hotkeyMgr = HotkeyManager::getInstance();
+            try {
+                // Parse action index from key name (e.g., "action0_key" -> 0)
+                if (key.length() > 7 && key.substr(0, 6) == "action") {
+                    size_t underscorePos = key.find('_', 6);
+                    if (underscorePos != std::string::npos) {
+                        int actionIdx = std::stoi(key.substr(6, underscorePos - 6));
+                        if (actionIdx >= 0 && actionIdx < static_cast<int>(HotkeyAction::COUNT)) {
+                            HotkeyAction action = static_cast<HotkeyAction>(actionIdx);
+                            std::string suffix = key.substr(underscorePos + 1);
+
+                            HotkeyBinding binding = hotkeyMgr.getBinding(action);
+                            if (suffix == "key") {
+                                binding.keyboard.keyCode = static_cast<uint8_t>(std::stoi(value));
+                            } else if (suffix == "mod") {
+                                binding.keyboard.modifiers = static_cast<ModifierFlags>(std::stoi(value));
+                            } else if (suffix == "btn") {
+                                binding.controller = static_cast<ControllerButton>(std::stoi(value));
+                            }
+                            hotkeyMgr.setBinding(action, binding);
+                        }
+                    }
+                }
+            } catch (...) {}
+            continue;
+        }
+
+        // Handle TrackedRiders section
+        if (currentHudName == "TrackedRiders") {
+            try {
+                if (key == "data") {
+                    TrackedRidersManager::getInstance().deserializeFromString(value);
+                }
+            } catch (...) {}
+            continue;
+        }
+
+        // Handle profile-specific HUD settings
         if (currentProfileIndex >= 0 && currentProfileIndex < static_cast<int>(ProfileType::COUNT)) {
             m_profileCache[currentProfileIndex][currentHudName][key] = value;
         }

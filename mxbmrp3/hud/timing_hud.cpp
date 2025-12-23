@@ -18,10 +18,17 @@
 #include "../core/color_config.h"
 
 using namespace PluginConstants;
-using namespace CenterDisplayPositions;
+
+// Center display positioning constants (fixed center-screen layout)
+namespace {
+    constexpr float CENTER_X = 0.5f;
+    constexpr float TIMING_DIVIDER_Y = 0.1665f;
+    constexpr float DIVIDER_GAP = 0.005f;
+}
 
 TimingHud::TimingHud()
     : m_displayDurationMs(DEFAULT_DURATION_MS)
+    , m_gapTypes(GAP_DEFAULT)
     , m_cachedSplit1(-1)
     , m_cachedSplit2(-1)
     , m_cachedLastCompletedLapNum(-1)
@@ -30,31 +37,23 @@ TimingHud::TimingHud()
     , m_cachedPitState(-1)
     , m_isFrozen(false)
 {
-    // Initialize column modes to defaults
-    m_columnModes[COL_LABEL] = ColumnMode::SPLITS;
-    m_columnModes[COL_TIME] = ColumnMode::ALWAYS;
-    m_columnModes[COL_GAP] = ColumnMode::SPLITS;
-
-    // NOTE: Does not use initializeWidget() helper due to special requirements:
-    // - Requires quad reservation (timing HUDs need background quads)
-    // This is an intentional design decision - see base_hud.h initializeWidget() docs
+    // One-time setup
     DEBUG_INFO("TimingHud created");
-    setDraggable(true);  // Allow repositioning from default center position
+    setDraggable(true);
+    m_quads.reserve(6);    // Background quads (label + time + up to 3 gap rows)
+    m_strings.reserve(6);  // Label + time + up to 3 gap strings
 
-    // Set defaults to match user configuration
-    m_bVisible = false;  // Off by default
-    m_bShowTitle = false;  // No title displayed (consistent with BarsWidget)
-    m_fBackgroundOpacity = 0.1f;
+    // Set texture base name for dynamic texture discovery
+    setTextureBaseName("timing_hud");
 
-    // Pre-allocate vectors
-    m_quads.reserve(4);    // Four background quads (reverse + label + time + gap)
-    m_strings.reserve(4);  // Reverse notice + label + time + gap
+    // Set all configurable defaults
+    resetToDefaults();
 
     rebuildRenderData();
 }
 
 bool TimingHud::handlesDataType(DataChangeType dataType) const {
-    return dataType == DataChangeType::SessionBest ||
+    return dataType == DataChangeType::IdealLap ||
            dataType == DataChangeType::SpectateTarget ||
            dataType == DataChangeType::SessionData ||  // Reset on new session/event
            dataType == DataChangeType::Standings;       // Detect pit entry/exit
@@ -67,8 +66,8 @@ void TimingHud::update() {
     // Detect session changes (new event) and reset state
     // Check both session type AND if session data was cleared (lastCompletedLapNum reset to -1)
     int currentSession = sessionData.session;
-    const SessionBestData* sessionBest = pluginData.getSessionBestData();
-    int currentLastCompletedLap = sessionBest ? sessionBest->lastCompletedLapNum : -1;
+    const IdealLapData* idealLapData = pluginData.getIdealLapData();
+    int currentLastCompletedLap = idealLapData ? idealLapData->lastCompletedLapNum : -1;
 
     bool sessionTypeChanged = (currentSession != m_cachedSession);
     bool sessionDataCleared = (m_cachedLastCompletedLapNum >= 0 && currentLastCompletedLap < 0);
@@ -94,13 +93,13 @@ void TimingHud::update() {
 
         // Update cached values with new rider's current data (without triggering display)
         const CurrentLapData* currentLap = pluginData.getCurrentLapData();
-        const SessionBestData* sessionBest = pluginData.getSessionBestData();
+        const IdealLapData* idealLap = pluginData.getIdealLapData();
         if (currentLap) {
             m_cachedSplit1 = currentLap->split1;
             m_cachedSplit2 = currentLap->split2;
         }
-        if (sessionBest) {
-            m_cachedLastCompletedLapNum = sessionBest->lastCompletedLapNum;
+        if (idealLap) {
+            m_cachedLastCompletedLapNum = idealLap->lastCompletedLapNum;
         }
 
         setDataDirty();
@@ -125,18 +124,8 @@ void TimingHud::update() {
     // Check if freeze period has expired
     checkFreezeExpiration();
 
-    // Check if we need frequent updates for ticking timer
-    if (needsFrequentUpdates()) {
-        auto now = std::chrono::steady_clock::now();
-        auto sinceLastTick = std::chrono::duration_cast<std::chrono::milliseconds>(
-            now - m_lastTickUpdate
-        ).count();
-
-        if (sinceLastTick >= TICK_UPDATE_INTERVAL_MS) {
-            m_lastTickUpdate = now;
-            setDataDirty();
-        }
-    }
+    // Check if we need frequent updates for ticking timer (uses BaseHud helper)
+    checkFrequentUpdates();
 
     // Check data dirty first (takes precedence)
     if (isDataDirty()) {
@@ -153,99 +142,68 @@ void TimingHud::update() {
 void TimingHud::processTimingUpdates() {
     const PluginData& pluginData = PluginData::getInstance();
     const CurrentLapData* currentLap = pluginData.getCurrentLapData();
-    const SessionBestData* sessionBest = pluginData.getSessionBestData();
-    const LapLogEntry* personalBest = pluginData.getBestLapEntry();
+    const IdealLapData* idealLapData = pluginData.getIdealLapData();
 
     // Check current lap splits (CurrentLapData tracks accumulated times for current lap)
     if (currentLap) {
         // Check split 1 (accumulated time to S1)
         if (currentLap->split1 > 0 && currentLap->split1 != m_cachedSplit1) {
             int splitTime = currentLap->split1;
-            int bestTime = personalBest ? personalBest->sector1 : -1;
-            int previousBestTime = sessionBest ? sessionBest->previousBestSector1 : -1;
-
-            // Calculate gap
-            int gap = calculateGapToBest(splitTime, bestTime);
-            if (gap == 0 && previousBestTime > 0) {
-                gap = splitTime - previousBestTime;  // New PB - compare to previous
-            }
 
             // Update official data cache
             m_officialData.time = splitTime;
-            m_officialData.gap = gap;
             m_officialData.splitIndex = 0;
             m_officialData.lapNum = currentLap->lapNum;
-            m_officialData.hasGap = (bestTime > 0 || previousBestTime > 0);
-            m_officialData.isFaster = (gap < 0);
-            m_officialData.isSlower = (gap > 0);
             m_officialData.isInvalid = false;
 
+            // Calculate gaps for all enabled types
+            calculateAllGaps(splitTime, 0, false);
+
             // Freeze display (if freeze is enabled)
-            // Note: Anchor is now managed centrally by PluginData (set by RaceSplitHandler)
             if (m_displayDurationMs > 0) {
                 m_isFrozen = true;
                 m_frozenAt = std::chrono::steady_clock::now();
             }
 
             m_cachedSplit1 = currentLap->split1;
-            DEBUG_INFO_F("TimingHud: Split 1 crossed, accumulated=%d ms, gap=%d ms, lap=%d", splitTime, gap, currentLap->lapNum);
+            DEBUG_INFO_F("TimingHud: Split 1 crossed, accumulated=%d ms, lap=%d", splitTime, currentLap->lapNum);
             setDataDirty();
         }
         // Check split 2 (accumulated time to S2)
         else if (currentLap->split2 > 0 && currentLap->split2 != m_cachedSplit2) {
             int splitTime = currentLap->split2;
 
-            // Compare against PB lap's accumulated time to S2 (sector1 + sector2)
-            int bestTime = -1;
-            int previousBestTime = -1;
-            if (personalBest && personalBest->sector1 > 0 && personalBest->sector2 > 0) {
-                bestTime = personalBest->sector1 + personalBest->sector2;
-            }
-            if (sessionBest && sessionBest->previousBestSector1 > 0 && sessionBest->previousBestSector2 > 0) {
-                previousBestTime = sessionBest->previousBestSector1 + sessionBest->previousBestSector2;
-            }
-
-            // Calculate gap
-            int gap = calculateGapToBest(splitTime, bestTime);
-            if (gap == 0 && previousBestTime > 0) {
-                gap = splitTime - previousBestTime;
-            }
-
             // Update official data cache
             m_officialData.time = splitTime;
-            m_officialData.gap = gap;
             m_officialData.splitIndex = 1;
             m_officialData.lapNum = currentLap->lapNum;
-            m_officialData.hasGap = (bestTime > 0 || previousBestTime > 0);
-            m_officialData.isFaster = (gap < 0);
-            m_officialData.isSlower = (gap > 0);
             m_officialData.isInvalid = false;
 
+            // Calculate gaps for all enabled types
+            calculateAllGaps(splitTime, 1, false);
+
             // Freeze display (if freeze is enabled)
-            // Note: Anchor is now managed centrally by PluginData (set by RaceSplitHandler)
             if (m_displayDurationMs > 0) {
                 m_isFrozen = true;
                 m_frozenAt = std::chrono::steady_clock::now();
             }
 
             m_cachedSplit2 = currentLap->split2;
-            DEBUG_INFO_F("TimingHud: Split 2 crossed, accumulated=%d ms, gap=%d ms, lap=%d", splitTime, gap, currentLap->lapNum);
+            DEBUG_INFO_F("TimingHud: Split 2 crossed, accumulated=%d ms, lap=%d", splitTime, currentLap->lapNum);
             setDataDirty();
         }
     }
 
     // Check for lap completion (split 3 / finish line)
-    if (sessionBest && sessionBest->lastCompletedLapNum >= 0 &&
-        sessionBest->lastCompletedLapNum != m_cachedLastCompletedLapNum) {
+    if (idealLapData && idealLapData->lastCompletedLapNum >= 0 &&
+        idealLapData->lastCompletedLapNum != m_cachedLastCompletedLapNum) {
 
-        int lapTime = sessionBest->lastLapTime;
-        int bestTime = personalBest ? personalBest->lapTime : -1;
-        int previousBestTime = sessionBest->previousBestLapTime;
+        int lapTime = idealLapData->lastLapTime;
 
         // Check if this lap was valid by looking at the lap log
         bool isValid = true;
-        int completedLapNum = sessionBest->lastCompletedLapNum;
-        const std::vector<LapLogEntry>* lapLog = pluginData.getLapLog();
+        int completedLapNum = idealLapData->lastCompletedLapNum;
+        const std::deque<LapLogEntry>* lapLog = pluginData.getLapLog();
         if (lapLog && !lapLog->empty()) {
             const LapLogEntry& mostRecentLap = (*lapLog)[0];
             isValid = mostRecentLap.isValid;
@@ -254,27 +212,23 @@ void TimingHud::processTimingUpdates() {
             }
         }
 
-        // Calculate gap
-        int gap = 0;
-        if (isValid && lapTime > 0) {
-            gap = calculateGapToBest(lapTime, bestTime);
-            if (gap == 0 && previousBestTime > 0) {
-                gap = lapTime - previousBestTime;
-            }
-        }
-
         // Update official data cache
         m_officialData.time = lapTime;
-        m_officialData.gap = gap;
         m_officialData.splitIndex = -1;  // Indicates lap complete
         m_officialData.lapNum = completedLapNum;
-        m_officialData.hasGap = isValid && (bestTime > 0 || previousBestTime > 0);
-        m_officialData.isFaster = (gap < 0);
-        m_officialData.isSlower = (gap > 0) || !isValid;
         m_officialData.isInvalid = !isValid;
 
+        // Calculate gaps for all enabled types (only if valid lap)
+        if (isValid && lapTime > 0) {
+            calculateAllGaps(lapTime, -1, true);
+        } else {
+            // Invalid lap - clear all gaps
+            m_officialData.gapToPB.reset();
+            m_officialData.gapToIdeal.reset();
+            m_officialData.gapToSession.reset();
+        }
+
         // Reset split caches for next lap
-        // Note: Anchor is now managed centrally by PluginData (reset by RaceLapHandler)
         m_cachedSplit1 = -1;
         m_cachedSplit2 = -1;
 
@@ -284,8 +238,8 @@ void TimingHud::processTimingUpdates() {
             m_frozenAt = std::chrono::steady_clock::now();
         }
 
-        m_cachedLastCompletedLapNum = sessionBest->lastCompletedLapNum;
-        DEBUG_INFO_F("TimingHud: Lap %d completed, time=%d ms, gap=%d ms, valid=%d", completedLapNum, lapTime, gap, isValid);
+        m_cachedLastCompletedLapNum = idealLapData->lastCompletedLapNum;
+        DEBUG_INFO_F("TimingHud: Lap %d completed, time=%d ms, valid=%d", completedLapNum, lapTime, isValid);
         setDataDirty();
     }
 }
@@ -325,14 +279,134 @@ bool TimingHud::needsFrequentUpdates() const {
     // Need frequent updates when time column is in ALWAYS mode, not frozen, and timer is valid
     if (m_isFrozen) return false;
     if (m_columnModes[COL_TIME] != ColumnMode::ALWAYS) return false;
-    return PluginData::getInstance().isLapTimerValid();
+
+    const PluginData& data = PluginData::getInstance();
+    if (!data.isLapTimerValid()) return false;
+    if (data.isDisplayRiderFinished()) return false;  // Timer stopped after finish
+
+    return true;
 }
 
-int TimingHud::calculateGapToBest(int currentTime, int bestTime) const {
-    if (currentTime <= 0 || bestTime <= 0) {
+int TimingHud::calculateGap(int currentTime, int referenceTime) const {
+    if (currentTime <= 0 || referenceTime <= 0) {
         return 0;
     }
-    return currentTime - bestTime;
+    return currentTime - referenceTime;
+}
+
+void TimingHud::setGapType(GapTypeFlags flag, bool enabled) {
+    if (enabled) {
+        m_gapTypes |= flag;
+    } else {
+        m_gapTypes &= ~flag;
+    }
+    setDataDirty();
+}
+
+int TimingHud::getEnabledGapCount() const {
+    int count = 0;
+    if (m_gapTypes & GAP_TO_PB) count++;
+    if (m_gapTypes & GAP_TO_IDEAL) count++;
+    if (m_gapTypes & GAP_TO_SESSION) count++;
+    return count;
+}
+
+int TimingHud::getSessionBestLapTime() const {
+    const PluginData& pluginData = PluginData::getInstance();
+    const auto& standings = pluginData.getStandings();
+
+    int sessionBest = -1;
+    for (const auto& [raceNum, standing] : standings) {
+        if (standing.bestLap > 0) {
+            if (sessionBest < 0 || standing.bestLap < sessionBest) {
+                sessionBest = standing.bestLap;
+            }
+        }
+    }
+    return sessionBest;
+}
+
+int TimingHud::getSessionBestSplit1() const {
+    // Session best split times are not tracked per-split in standings
+    // For now, return -1 (no data) for split comparisons
+    // Future: Could track this in PluginData if needed
+    return -1;
+}
+
+int TimingHud::getSessionBestSplit2() const {
+    // Session best split times are not tracked per-split in standings
+    return -1;
+}
+
+void TimingHud::calculateAllGaps(int splitTime, int splitIndex, bool isLapComplete) {
+    const PluginData& pluginData = PluginData::getInstance();
+    const LapLogEntry* personalBest = pluginData.getBestLapEntry();
+    const IdealLapData* idealLapData = pluginData.getIdealLapData();
+
+    // === Gap to Personal Best ===
+    {
+        int pbTime = -1;
+        int previousPbTime = -1;
+
+        if (isLapComplete) {
+            // Full lap comparison
+            pbTime = personalBest ? personalBest->lapTime : -1;
+            previousPbTime = idealLapData ? idealLapData->previousBestLapTime : -1;
+        } else if (splitIndex == 0) {
+            // Split 1 comparison
+            pbTime = personalBest ? personalBest->sector1 : -1;
+            previousPbTime = idealLapData ? idealLapData->previousBestSector1 : -1;
+        } else if (splitIndex == 1) {
+            // Split 2 comparison (accumulated S1+S2)
+            if (personalBest && personalBest->sector1 > 0 && personalBest->sector2 > 0) {
+                pbTime = personalBest->sector1 + personalBest->sector2;
+            }
+            if (idealLapData && idealLapData->previousBestSector1 > 0 && idealLapData->previousBestSector2 > 0) {
+                previousPbTime = idealLapData->previousBestSector1 + idealLapData->previousBestSector2;
+            }
+        }
+
+        int gap = calculateGap(splitTime, pbTime);
+        if (gap == 0 && previousPbTime > 0) {
+            gap = splitTime - previousPbTime;  // New PB - compare to previous
+        }
+        m_officialData.gapToPB.set(gap, (pbTime > 0 || previousPbTime > 0) ? 1 : -1);
+    }
+
+    // === Gap to Ideal Lap (sum of best sectors) ===
+    {
+        int idealTime = -1;
+
+        if (isLapComplete) {
+            // Full lap: compare to ideal lap time
+            idealTime = idealLapData ? idealLapData->getIdealLapTime() : -1;
+        } else if (splitIndex == 0) {
+            // Split 1: compare to best sector 1
+            idealTime = idealLapData ? idealLapData->bestSector1 : -1;
+        } else if (splitIndex == 1) {
+            // Split 2: compare to best S1 + best S2
+            if (idealLapData && idealLapData->bestSector1 > 0 && idealLapData->bestSector2 > 0) {
+                idealTime = idealLapData->bestSector1 + idealLapData->bestSector2;
+            }
+        }
+
+        int gap = calculateGap(splitTime, idealTime);
+        m_officialData.gapToIdeal.set(gap, idealTime);
+    }
+
+    // === Gap to Session Best (fastest lap by anyone) ===
+    {
+        int sessionBestTime = -1;
+
+        if (isLapComplete) {
+            // Full lap: compare to session best lap
+            sessionBestTime = getSessionBestLapTime();
+        }
+        // Note: Split comparisons to session best are not supported (data not tracked)
+
+        int gap = calculateGap(splitTime, sessionBestTime);
+        m_officialData.gapToSession.set(gap, sessionBestTime);
+    }
 }
 
 int TimingHud::getVisibleColumnCount() const {
@@ -395,9 +469,19 @@ void TimingHud::rebuildRenderData() {
     // Prepare content for each column
     char labelBuffer[16];
     char timeBuffer[32];
-    char gapBuffer[32];
     bool gapIsFaster = false;
     bool gapIsSlower = false;
+
+    // Check if display rider has finished the race
+    bool riderFinished = pluginData.isDisplayRiderFinished();
+    int riderFinishTime = -1;
+    if (riderFinished) {
+        int displayRaceNum = pluginData.getDisplayRaceNum();
+        const StandingsData* standing = pluginData.getStanding(displayRaceNum);
+        if (standing) {
+            riderFinishTime = standing->finishTime;
+        }
+    }
 
     // === LABEL COLUMN CONTENT ===
     if (m_isFrozen) {
@@ -414,6 +498,9 @@ void TimingHud::rebuildRenderData() {
                 strcpy_s(labelBuffer, sizeof(labelBuffer), "Lap -");
             }
         }
+    } else if (riderFinished && riderFinishTime > 0) {
+        // Rider finished - show "Finish" label
+        strcpy_s(labelBuffer, sizeof(labelBuffer), "Finish");
     } else {
         // Ticking - show current lap (or placeholder if no timing context yet)
         if (pluginData.isLapTimerValid()) {
@@ -432,6 +519,9 @@ void TimingHud::rebuildRenderData() {
         } else {
             strcpy_s(timeBuffer, sizeof(timeBuffer), Placeholders::LAP_TIME);
         }
+    } else if (riderFinished && riderFinishTime > 0) {
+        // Rider finished - show total race time
+        PluginUtils::formatLapTime(riderFinishTime, timeBuffer, sizeof(timeBuffer));
     } else {
         // Get elapsed time from centralized timer
         int elapsed = pluginData.getElapsedLapTime();
@@ -440,25 +530,6 @@ void TimingHud::rebuildRenderData() {
         } else {
             strcpy_s(timeBuffer, sizeof(timeBuffer), Placeholders::LAP_TIME);
         }
-    }
-
-    // === GAP COLUMN CONTENT ===
-    // When frozen: show official gap data
-    // When ticking: show placeholder (gap is only meaningful at timing events)
-    if (m_isFrozen) {
-        if (m_officialData.isInvalid) {
-            strcpy_s(gapBuffer, sizeof(gapBuffer), "INVALID");
-            gapIsSlower = true;
-        } else if (!m_officialData.hasGap) {
-            strcpy_s(gapBuffer, sizeof(gapBuffer), Placeholders::GENERIC);
-        } else {
-            PluginUtils::formatTimeDiff(gapBuffer, sizeof(gapBuffer), m_officialData.gap);
-            gapIsFaster = m_officialData.isFaster;
-            gapIsSlower = m_officialData.isSlower;
-        }
-    } else {
-        // Ticking - show placeholder
-        strcpy_s(gapBuffer, sizeof(gapBuffer), Placeholders::GENERIC);
     }
 
     // === RENDER COLUMNS ===
@@ -471,7 +542,7 @@ void TimingHud::rebuildRenderData() {
             : currentX + columnQuadWidth - dim.paddingH;
         int labelJustify = (visibleCount == 1) ? Justify::CENTER : Justify::RIGHT;
         addString(labelBuffer, labelX, textY, labelJustify,
-            Fonts::ENTER_SANSMAN, ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
+            Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
         currentX += columnQuadWidth + charGap;
     }
 
@@ -480,59 +551,114 @@ void TimingHud::rebuildRenderData() {
         addBackgroundQuad(currentX, quadY, columnQuadWidth, quadHeight);
         float timeX = currentX + columnQuadWidth / 2.0f;
         addString(timeBuffer, timeX, textY, Justify::CENTER,
-            Fonts::ENTER_SANSMAN, ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
+            Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
         currentX += columnQuadWidth + charGap;
     }
 
-    // Add GAP column if visible (with colored background)
+    // Add GAP column(s) if visible - supports multiple gap types stacked vertically
+    float gapColumnX = currentX;  // Save starting X for gap column
+    float gapRowY = quadY;
+    float gapTextY = textY;
+    int gapRowsRendered = 0;
+
     if (shouldShowColumn(COL_GAP)) {
-        SPluginQuad_t gapQuad;
-        float gapQuadX = currentX;
-        float gapQuadY = quadY;
-        applyOffset(gapQuadX, gapQuadY);
-        setQuadPositions(gapQuad, gapQuadX, gapQuadY, columnQuadWidth, quadHeight);
-        gapQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+        // Helper lambda to render a single gap row
+        auto renderGapRow = [&](const GapData& gapData, bool showInvalid) {
+            char gapBuffer[32];
+            bool gapIsFaster = false;
+            bool gapIsSlower = false;
 
-        unsigned long baseColor;
-        if (gapIsFaster) {
-            baseColor = ColorConfig::getInstance().getPositive();
-        } else if (gapIsSlower) {
-            baseColor = ColorConfig::getInstance().getNegative();
+            if (showInvalid) {
+                strcpy_s(gapBuffer, sizeof(gapBuffer), "INVALID");
+                gapIsSlower = true;
+            } else if (!gapData.hasGap) {
+                strcpy_s(gapBuffer, sizeof(gapBuffer), Placeholders::GENERIC);
+            } else {
+                PluginUtils::formatTimeDiff(gapBuffer, sizeof(gapBuffer), gapData.gap);
+                gapIsFaster = gapData.isFaster;
+                gapIsSlower = gapData.isSlower;
+            }
+
+            // Create colored background quad
+            SPluginQuad_t gapQuad;
+            float gapQuadX = gapColumnX;
+            float gapQuadY = gapRowY;
+            applyOffset(gapQuadX, gapQuadY);
+            setQuadPositions(gapQuad, gapQuadX, gapQuadY, columnQuadWidth, quadHeight);
+            gapQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+
+            unsigned long baseColor;
+            if (gapIsFaster) {
+                baseColor = ColorConfig::getInstance().getPositive();
+            } else if (gapIsSlower) {
+                baseColor = ColorConfig::getInstance().getNegative();
+            } else {
+                baseColor = ColorConfig::getInstance().getBackground();
+            }
+            gapQuad.m_ulColor = PluginUtils::applyOpacity(baseColor, m_fBackgroundOpacity);
+            m_quads.push_back(gapQuad);
+
+            // Add gap text
+            float gapX = (visibleCount == 1)
+                ? gapColumnX + columnQuadWidth / 2.0f
+                : gapColumnX + dim.paddingH;
+            int gapJustify = (visibleCount == 1) ? Justify::CENTER : Justify::LEFT;
+
+            unsigned long gapTextColor;
+            if (gapIsFaster) {
+                gapTextColor = ColorConfig::getInstance().getPositive();
+            } else if (gapIsSlower) {
+                gapTextColor = ColorConfig::getInstance().getNegative();
+            } else {
+                gapTextColor = ColorConfig::getInstance().getPrimary();
+            }
+            addString(gapBuffer, gapX, gapTextY, gapJustify,
+                Fonts::getNormal(), gapTextColor, dim.fontSizeLarge);
+
+            // Move to next row
+            gapRowY += quadHeight;
+            gapTextY += quadHeight;
+            gapRowsRendered++;
+        };
+
+        // Determine if we should show gaps or placeholders
+        // Only show actual gap data when frozen (displaying official split/lap time)
+        bool showGapData = m_isFrozen;
+        bool showInvalid = m_officialData.isInvalid;
+
+        if (showGapData) {
+            // Render enabled gap types
+            if (m_gapTypes & GAP_TO_PB) {
+                renderGapRow(m_officialData.gapToPB, showInvalid);
+            }
+            if (m_gapTypes & GAP_TO_IDEAL) {
+                renderGapRow(m_officialData.gapToIdeal, false);  // Ideal gap doesn't use invalid
+            }
+            if (m_gapTypes & GAP_TO_SESSION) {
+                renderGapRow(m_officialData.gapToSession, false);  // Session gap doesn't use invalid
+            }
         } else {
-            baseColor = ColorConfig::getInstance().getBackground();
+            // No gap data yet - show placeholder for each enabled gap type
+            GapData emptyGap;
+            int enabledCount = getEnabledGapCount();
+            for (int i = 0; i < enabledCount; i++) {
+                renderGapRow(emptyGap, false);
+            }
         }
-        gapQuad.m_ulColor = PluginUtils::applyOpacity(baseColor, m_fBackgroundOpacity);
-        m_quads.push_back(gapQuad);
 
-        float gapX = (visibleCount == 1)
-            ? currentX + columnQuadWidth / 2.0f
-            : currentX + dim.paddingH;
-        int gapJustify = (visibleCount == 1) ? Justify::CENTER : Justify::LEFT;
-
-        // Use colored text for gap (green for faster, red for slower)
-        unsigned long gapTextColor;
-        if (gapIsFaster) {
-            gapTextColor = ColorConfig::getInstance().getPositive();
-        } else if (gapIsSlower) {
-            gapTextColor = ColorConfig::getInstance().getNegative();
-        } else {
-            gapTextColor = ColorConfig::getInstance().getPrimary();
-        }
-        addString(gapBuffer, gapX, textY, gapJustify,
-            Fonts::ENTER_SANSMAN, gapTextColor, dim.fontSizeLarge);
-        currentX += columnQuadWidth;
+        currentX = gapColumnX + columnQuadWidth;
     }
 
-    // Set bounds
+    // Set bounds (account for multiple gap rows)
     rightX = currentX;
-    float bottomY = quadY + quadHeight;
+    float bottomY = (gapRowsRendered > 1) ? gapRowY : (quadY + quadHeight);
     setBounds(leftX, quadY, rightX, bottomY);
 }
 
 void TimingHud::resetToDefaults() {
     m_bVisible = false;  // Off by default
     m_bShowTitle = false;
-    m_bShowBackgroundTexture = false;
+    setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.1f;
     m_fScale = 1.0f;
     setPosition(0.0f, 0.0f);
@@ -543,6 +669,7 @@ void TimingHud::resetToDefaults() {
     m_columnModes[COL_GAP] = ColumnMode::SPLITS;
 
     m_displayDurationMs = DEFAULT_DURATION_MS;
+    m_gapTypes = GAP_DEFAULT;  // Default: only gap to PB
 
     // Reset live timing state
     resetLiveTimingState();

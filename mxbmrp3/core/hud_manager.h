@@ -59,7 +59,7 @@ public:
     void updateRadarPositions(int numVehicles, SPluginsRaceTrackPosition_t* positions);
 
     // Get HUD references for settings persistence
-    class SessionBestHud& getSessionBestHud() const { return *m_pSessionBest; }
+    class IdealLapHud& getIdealLapHud() const { return *m_pIdealLap; }
     class LapLogHud& getLapLogHud() const { return *m_pLapLog; }
     class StandingsHud& getStandingsHud() const { return *m_pStandings; }
     class PerformanceHud& getPerformanceHud() const { return *m_pPerformance; }
@@ -89,7 +89,7 @@ public:
 private:
     HudManager() : m_bInitialized(false), m_bResourcesInitialized(false),
                    m_pDraggingHud(nullptr), m_pSettingsHud(nullptr), m_pSettingsButton(nullptr),
-                   m_pSessionBest(nullptr), m_pLapLog(nullptr), m_pStandings(nullptr),
+                   m_pIdealLap(nullptr), m_pLapLog(nullptr), m_pStandings(nullptr),
                    m_pPerformance(nullptr), m_pTelemetry(nullptr),
                    m_pInput(nullptr), m_pTime(nullptr), m_pPosition(nullptr), m_pLap(nullptr), m_pSession(nullptr), m_pMapHud(nullptr), m_pRadarHud(nullptr), m_pSpeed(nullptr), m_pSpeedo(nullptr), m_pTacho(nullptr), m_pTiming(nullptr), m_pGapBar(nullptr), m_pBars(nullptr), m_pVersion(nullptr), m_pNotices(nullptr), m_pPitboard(nullptr), m_pRecords(nullptr), m_pFuel(nullptr), m_pPointer(nullptr), m_pRumble(nullptr),
                    m_numSpriteNames(0), m_numFontNames(0),
@@ -117,7 +117,7 @@ private:
     // Pointers to HUDs (for settings persistence and button clicks)
     class SettingsHud* m_pSettingsHud;
     class SettingsButtonWidget* m_pSettingsButton;
-    class SessionBestHud* m_pSessionBest;
+    class IdealLapHud* m_pIdealLap;
     class LapLogHud* m_pLapLog;
     class StandingsHud* m_pStandings;
     class PerformanceHud* m_pPerformance;
@@ -152,7 +152,7 @@ private:
     std::vector<SPluginString_t> m_strings;
 
     // Resource management - using fixed-size buffers instead of std::string
-    static constexpr size_t MAX_SPRITE_NAMES = 29;  // Increased for rumble HUD texture
+    static constexpr size_t MAX_SPRITE_NAMES = 80;  // Increased for 50 rider icon sprites
     static constexpr size_t MAX_FONT_NAMES = 10;
     static constexpr size_t MAX_NAME_LENGTH = 256;
 

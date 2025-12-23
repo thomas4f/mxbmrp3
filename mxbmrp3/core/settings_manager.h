@@ -34,6 +34,9 @@ public:
     // Copy current profile's settings to all other profiles
     void applyToAllProfiles(HudManager& hudManager);
 
+    // Copy current profile's settings to a specific target profile
+    void copyToProfile(HudManager& hudManager, ProfileType targetProfile);
+
     // Capture current HUD state to the active profile's cache
     void captureCurrentState(const HudManager& hudManager);
 

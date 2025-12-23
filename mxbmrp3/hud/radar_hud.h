@@ -73,9 +73,16 @@ public:
 
     // Rider shape display mode
     enum class RiderShape {
-        CIRCLE = 0,     // Use circle sprite
-        TRIANGLE = 1,   // Use triangle sprite
-        WEDGE = 2       // Use wedge sprite
+        ARROWUP = 0,     // circle-arrow-up
+        CHEVRON = 1,     // circle-chevron-up
+        CIRCLE = 2,      // circle
+        CIRCLEPLAY = 3,  // circle-play
+        CIRCLEUP = 4,    // circle-up
+        DOT = 5,         // circle-dot
+        LOCATION = 6,    // location-arrow
+        PIN = 7,         // location-pin
+        PLANE = 8,       // paper-plane
+        VINYL = 9        // record-vinyl
     };
 
     void setLabelMode(LabelMode mode) {
@@ -94,6 +101,10 @@ public:
     }
     RiderShape getRiderShape() const { return m_riderShape; }
 
+    // Marker scale - independently scale rider icons and labels
+    void setMarkerScale(float scale);
+    float getMarkerScale() const { return m_fMarkerScale; }
+
     // Public constants for settings UI
     static constexpr float DEFAULT_RADAR_RANGE = 50.0f;   // Default 50 meters
     static constexpr float MIN_RADAR_RANGE = 10.0f;       // Min 10 meters
@@ -105,6 +116,11 @@ public:
     static constexpr float MIN_ALERT_DISTANCE = 10.0f;      // Min 10 meters (matches RADAR_RANGE step)
     static constexpr float MAX_ALERT_DISTANCE = 100.0f;     // Max 100 meters
     static constexpr float ALERT_DISTANCE_STEP = 10.0f;     // 10 meter increments (matches RADAR_RANGE_STEP)
+
+    // Marker scale constants (independent icon/label scaling)
+    static constexpr float DEFAULT_MARKER_SCALE = 1.0f;     // Default 100%
+    static constexpr float MIN_MARKER_SCALE = 0.5f;         // Min 50%
+    static constexpr float MAX_MARKER_SCALE = 3.0f;         // Max 300%
 
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;
@@ -146,9 +162,14 @@ private:
     // Rider shape display mode
     RiderShape m_riderShape;
 
+    // Marker scale (independent of HUD scale)
+    float m_fMarkerScale;
+
     // Helper: Render a rider sprite at radar coordinates with rotation
+    // shapeOverride: -1 = use m_riderShape, 1=Circle, 2=Triangle, 3=Wedge (TrackedRidersManager values)
     void renderRiderSprite(float radarX, float radarY, float yaw, unsigned long color,
-                           float centerX, float centerY, float radarRadius);
+                           float centerX, float centerY, float radarRadius,
+                           int shapeOverride = -1);
 
     // Helper: Render rider label
     void renderRiderLabel(float radarX, float radarY, int raceNum, int position,
