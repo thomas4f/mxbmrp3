@@ -18,6 +18,11 @@ public:
     bool handlesDataType(DataChangeType dataType) const override;
     void resetToDefaults();
 
+    // Needle color (configurable via INI)
+    void setNeedleColor(unsigned long color) { m_needleColor = color; setDataDirty(); }
+    unsigned long getNeedleColor() const { return m_needleColor; }
+    static constexpr unsigned long DEFAULT_NEEDLE_COLOR = PluginUtils::makeColor(255, 0, 0);  // Red
+
 protected:
     void rebuildLayout() override;
 
@@ -35,4 +40,7 @@ private:
     // Needle smoothing (simulates physical inertia of analog gauge)
     static constexpr float NEEDLE_SMOOTH_FACTOR = 0.15f;  // 0.0-1.0: lower = smoother, higher = faster response
     float m_smoothedRpm = 0.0f;  // Current smoothed RPM value for needle display
+
+    // Needle appearance
+    unsigned long m_needleColor = DEFAULT_NEEDLE_COLOR;
 };

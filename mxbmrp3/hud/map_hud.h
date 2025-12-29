@@ -70,21 +70,6 @@ public:
         BOTH = 3        // Show both (P1 #5)
     };
 
-    // Rider shape display mode
-    enum class RiderShape {
-        OFF = 0,         // Don't render other riders
-        ARROWUP = 1,     // circle-arrow-up
-        CHEVRON = 2,     // circle-chevron-up
-        CIRCLE = 3,      // circle
-        CIRCLEPLAY = 4,  // circle-play
-        CIRCLEUP = 5,    // circle-up
-        DOT = 6,         // circle-dot
-        LOCATION = 7,    // location-arrow
-        PIN = 8,         // location-pin
-        PLANE = 9,       // paper-plane
-        VINYL = 10       // record-vinyl
-    };
-
     void setLabelMode(LabelMode mode) {
         if (m_labelMode != mode) {
             m_labelMode = mode;
@@ -93,13 +78,9 @@ public:
     }
     LabelMode getLabelMode() const { return m_labelMode; }
 
-    void setRiderShape(RiderShape shape) {
-        if (m_riderShape != shape) {
-            m_riderShape = shape;
-            setDataDirty();
-        }
-    }
-    RiderShape getRiderShape() const { return m_riderShape; }
+    // Rider shape index (0=OFF, 1-N=icons from AssetManager)
+    void setRiderShape(int shapeIndex);
+    int getRiderShape() const { return m_riderShapeIndex; }
 
     // Anchor point for positioning (determines how map grows when dimensions change)
     enum class AnchorPoint {
@@ -130,6 +111,11 @@ public:
     static constexpr float MIN_MARKER_SCALE = 0.5f;          // Min 50%
     static constexpr float MAX_MARKER_SCALE = 3.0f;          // Max 300%
 
+    // Pixel spacing constants (track rendering density)
+    static constexpr float DEFAULT_PIXEL_SPACING = 2.0f;     // Default 2 meters between quads
+    static constexpr float MIN_PIXEL_SPACING = 0.5f;         // Min 0.5m (very dense, high GPU)
+    static constexpr float MAX_PIXEL_SPACING = 8.0f;         // Max 8m (sparse, low GPU)
+
     // Zoom mode - follow player showing limited track distance
     void setZoomEnabled(bool enabled) {
         if (m_bZoomEnabled != enabled) {
@@ -146,6 +132,10 @@ public:
     void setMarkerScale(float scale);
     float getMarkerScale() const { return m_fMarkerScale; }
 
+    // Pixel spacing - track rendering density (lower = more quads, higher GPU usage)
+    void setPixelSpacing(float spacing);
+    float getPixelSpacing() const { return m_fPixelSpacing; }
+
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;
     friend class SettingsManager;
@@ -156,11 +146,20 @@ protected:
     // This is appropriate for HUDs with many dynamically-generated quads
 
 private:
+    // Click region for rider selection (spectator switching)
+    struct RiderClickRegion {
+        float x, y, width, height;
+        int raceNum;
+    };
+
     // Track segment storage
     std::vector<SPluginsTrackSegment_t> m_trackSegments;
 
     // Rider position storage (updated frequently)
     std::vector<SPluginsRaceTrackPosition_t> m_riderPositions;
+
+    // Click regions for rider selection (populated during renderRiders)
+    std::vector<RiderClickRegion> m_riderClickRegions;
 
     // Map rendering configuration
     static constexpr float MAP_HEIGHT = 0.33f;  // Map height as fraction of screen (0.33 = 33%)
@@ -172,9 +171,8 @@ private:
 
     // Memory reservation sizes (optimize initial allocation)
     static constexpr size_t RESERVE_TRACK_SEGMENTS = 200;  // Typical track has 100-200 segments
-    static constexpr size_t RESERVE_MAX_RIDERS = 40;       // Max riders in a race
     static constexpr size_t RESERVE_QUADS = 1000;          // 1 background + ~400-1000 track pixels (2x density)
-    static constexpr size_t RESERVE_STRINGS = 50;          // Title + optional message + rider numbers (max ~40 riders)
+    static constexpr size_t RESERVE_STRINGS = 60;          // Title + optional message + rider labels
 
     // Map bounds (calculated from track data)
     float m_minX, m_maxX, m_minY, m_maxY;
@@ -198,8 +196,8 @@ private:
     // Rider label display mode
     LabelMode m_labelMode;
 
-    // Rider shape display mode (for other riders)
-    RiderShape m_riderShape;
+    // Rider shape index (0=OFF, 1-N=icons from AssetManager)
+    int m_riderShapeIndex;
 
     // Anchor point for positioning
     AnchorPoint m_anchorPoint;
@@ -212,6 +210,9 @@ private:
 
     // Marker scale (independent of HUD scale)
     float m_fMarkerScale;        // Scale factor for rider icons and labels
+
+    // Pixel spacing (track rendering density)
+    float m_fPixelSpacing;       // Distance in meters between track quads
 
     // Calculate track bounds from segments
     void calculateTrackBounds();
@@ -247,4 +248,7 @@ private:
     // Render rider positions as strings (takes pre-calculated rotation angle and clip bounds)
     void renderRiders(float rotationAngle,
                      float clipLeft, float clipTop, float clipRight, float clipBottom);
+
+    // Handle click on rider marker to switch spectator target
+    void handleClick(float mouseX, float mouseY);
 };

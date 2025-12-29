@@ -5,7 +5,9 @@
 #pragma once
 
 #include <vector>
+#include <string>
 #include <memory>
+#include <cassert>
 #include "../vendor/piboso/mxb_api.h"
 #include "../hud/base_hud.h"
 
@@ -59,43 +61,41 @@ public:
     void updateRadarPositions(int numVehicles, SPluginsRaceTrackPosition_t* positions);
 
     // Get HUD references for settings persistence
-    class IdealLapHud& getIdealLapHud() const { return *m_pIdealLap; }
-    class LapLogHud& getLapLogHud() const { return *m_pLapLog; }
-    class StandingsHud& getStandingsHud() const { return *m_pStandings; }
-    class PerformanceHud& getPerformanceHud() const { return *m_pPerformance; }
-    class TelemetryHud& getTelemetryHud() const { return *m_pTelemetry; }
-    class InputHud& getInputHud() const { return *m_pInput; }
-    class TimeWidget& getTimeWidget() const { return *m_pTime; }
-    class PositionWidget& getPositionWidget() const { return *m_pPosition; }
-    class LapWidget& getLapWidget() const { return *m_pLap; }
-    class SessionWidget& getSessionWidget() const { return *m_pSession; }
-    class MapHud& getMapHud() const { return *m_pMapHud; }
-    class RadarHud& getRadarHud() const { return *m_pRadarHud; }
-    class SpeedWidget& getSpeedWidget() const { return *m_pSpeed; }
-    class SpeedoWidget& getSpeedoWidget() const { return *m_pSpeedo; }
-    class TachoWidget& getTachoWidget() const { return *m_pTacho; }
-    class TimingHud& getTimingHud() const { return *m_pTiming; }
-    class BarsWidget& getBarsWidget() const { return *m_pBars; }
-    class VersionWidget& getVersionWidget() const { return *m_pVersion; }
-    class NoticesWidget& getNoticesWidget() const { return *m_pNotices; }
-    class SettingsButtonWidget& getSettingsButtonWidget() const { return *m_pSettingsButton; }
-    class PitboardHud& getPitboardHud() const { return *m_pPitboard; }
-    class RecordsHud& getRecordsHud() const { return *m_pRecords; }
-    class FuelWidget& getFuelWidget() const { return *m_pFuel; }
-    class GapBarHud& getGapBarHud() const { return *m_pGapBar; }
-    class PointerWidget& getPointerWidget() const { return *m_pPointer; }
-    class RumbleHud& getRumbleHud() const { return *m_pRumble; }
+    // Note: These assert m_bInitialized - only call after initialize() and before shutdown()
+    class IdealLapHud& getIdealLapHud() const { assert(m_pIdealLap && "HudManager not initialized"); return *m_pIdealLap; }
+    class LapLogHud& getLapLogHud() const { assert(m_pLapLog && "HudManager not initialized"); return *m_pLapLog; }
+    class StandingsHud& getStandingsHud() const { assert(m_pStandings && "HudManager not initialized"); return *m_pStandings; }
+    class PerformanceHud& getPerformanceHud() const { assert(m_pPerformance && "HudManager not initialized"); return *m_pPerformance; }
+    class TelemetryHud& getTelemetryHud() const { assert(m_pTelemetry && "HudManager not initialized"); return *m_pTelemetry; }
+    class TimeWidget& getTimeWidget() const { assert(m_pTime && "HudManager not initialized"); return *m_pTime; }
+    class PositionWidget& getPositionWidget() const { assert(m_pPosition && "HudManager not initialized"); return *m_pPosition; }
+    class LapWidget& getLapWidget() const { assert(m_pLap && "HudManager not initialized"); return *m_pLap; }
+    class SessionWidget& getSessionWidget() const { assert(m_pSession && "HudManager not initialized"); return *m_pSession; }
+    class MapHud& getMapHud() const { assert(m_pMapHud && "HudManager not initialized"); return *m_pMapHud; }
+    class RadarHud& getRadarHud() const { assert(m_pRadarHud && "HudManager not initialized"); return *m_pRadarHud; }
+    class SpeedWidget& getSpeedWidget() const { assert(m_pSpeed && "HudManager not initialized"); return *m_pSpeed; }
+    class SpeedoWidget& getSpeedoWidget() const { assert(m_pSpeedo && "HudManager not initialized"); return *m_pSpeedo; }
+    class TachoWidget& getTachoWidget() const { assert(m_pTacho && "HudManager not initialized"); return *m_pTacho; }
+    class TimingHud& getTimingHud() const { assert(m_pTiming && "HudManager not initialized"); return *m_pTiming; }
+    class BarsWidget& getBarsWidget() const { assert(m_pBars && "HudManager not initialized"); return *m_pBars; }
+    class VersionWidget& getVersionWidget() const { assert(m_pVersion && "HudManager not initialized"); return *m_pVersion; }
+    class NoticesWidget& getNoticesWidget() const { assert(m_pNotices && "HudManager not initialized"); return *m_pNotices; }
+    class SettingsButtonWidget& getSettingsButtonWidget() const { assert(m_pSettingsButton && "HudManager not initialized"); return *m_pSettingsButton; }
+    class PitboardHud& getPitboardHud() const { assert(m_pPitboard && "HudManager not initialized"); return *m_pPitboard; }
+    class RecordsHud& getRecordsHud() const { assert(m_pRecords && "HudManager not initialized"); return *m_pRecords; }
+    class FuelWidget& getFuelWidget() const { assert(m_pFuel && "HudManager not initialized"); return *m_pFuel; }
+    class GapBarHud& getGapBarHud() const { assert(m_pGapBar && "HudManager not initialized"); return *m_pGapBar; }
+    class PointerWidget& getPointerWidget() const { assert(m_pPointer && "HudManager not initialized"); return *m_pPointer; }
+    class RumbleHud& getRumbleHud() const { assert(m_pRumble && "HudManager not initialized"); return *m_pRumble; }
+    class GamepadWidget& getGamepadWidget() const { assert(m_pGamepad && "HudManager not initialized"); return *m_pGamepad; }
 
 private:
     HudManager() : m_bInitialized(false), m_bResourcesInitialized(false),
                    m_pDraggingHud(nullptr), m_pSettingsHud(nullptr), m_pSettingsButton(nullptr),
                    m_pIdealLap(nullptr), m_pLapLog(nullptr), m_pStandings(nullptr),
                    m_pPerformance(nullptr), m_pTelemetry(nullptr),
-                   m_pInput(nullptr), m_pTime(nullptr), m_pPosition(nullptr), m_pLap(nullptr), m_pSession(nullptr), m_pMapHud(nullptr), m_pRadarHud(nullptr), m_pSpeed(nullptr), m_pSpeedo(nullptr), m_pTacho(nullptr), m_pTiming(nullptr), m_pGapBar(nullptr), m_pBars(nullptr), m_pVersion(nullptr), m_pNotices(nullptr), m_pPitboard(nullptr), m_pRecords(nullptr), m_pFuel(nullptr), m_pPointer(nullptr), m_pRumble(nullptr),
-                   m_numSpriteNames(0), m_numFontNames(0),
+                   m_pTime(nullptr), m_pPosition(nullptr), m_pLap(nullptr), m_pSession(nullptr), m_pMapHud(nullptr), m_pRadarHud(nullptr), m_pSpeed(nullptr), m_pSpeedo(nullptr), m_pTacho(nullptr), m_pTiming(nullptr), m_pGapBar(nullptr), m_pBars(nullptr), m_pVersion(nullptr), m_pNotices(nullptr), m_pPitboard(nullptr), m_pRecords(nullptr), m_pFuel(nullptr), m_pPointer(nullptr), m_pRumble(nullptr), m_pGamepad(nullptr),
                    m_bAllHudsToggledOff(false), m_bAllWidgetsToggledOff(false) {
-        m_spriteBuffer[0] = '\0';
-        m_fontBuffer[0] = '\0';
     }
     ~HudManager();
     HudManager(const HudManager&) = delete;
@@ -122,7 +122,6 @@ private:
     class StandingsHud* m_pStandings;
     class PerformanceHud* m_pPerformance;
     class TelemetryHud* m_pTelemetry;
-    class InputHud* m_pInput;
     class TimeWidget* m_pTime;
     class PositionWidget* m_pPosition;
     class LapWidget* m_pLap;
@@ -142,6 +141,7 @@ private:
     class FuelWidget* m_pFuel;
     class PointerWidget* m_pPointer;
     class RumbleHud* m_pRumble;
+    class GamepadWidget* m_pGamepad;
 
     // Temporary HUD visibility toggle (doesn't modify actual visibility state)
     bool m_bAllHudsToggledOff;
@@ -151,18 +151,12 @@ private:
     std::vector<SPluginQuad_t> m_quads;
     std::vector<SPluginString_t> m_strings;
 
-    // Resource management - using fixed-size buffers instead of std::string
-    static constexpr size_t MAX_SPRITE_NAMES = 80;  // Increased for 50 rider icon sprites
-    static constexpr size_t MAX_FONT_NAMES = 10;
-    static constexpr size_t MAX_NAME_LENGTH = 256;
+    // Resource management - dynamically sized based on discovered assets
+    std::vector<std::string> m_spriteNames;
+    std::vector<std::string> m_fontNames;
 
-    char m_spriteNames[MAX_SPRITE_NAMES][MAX_NAME_LENGTH];
-    char m_fontNames[MAX_FONT_NAMES][MAX_NAME_LENGTH];
-    int m_numSpriteNames;
-    int m_numFontNames;
-
-    char m_spriteBuffer[MAX_SPRITE_NAMES * MAX_NAME_LENGTH];  // Null-separated sprite names
-    char m_fontBuffer[MAX_FONT_NAMES * MAX_NAME_LENGTH];      // Null-separated font names
+    std::vector<char> m_spriteBuffer;  // Null-separated sprite names for API
+    std::vector<char> m_fontBuffer;    // Null-separated font names for API
 
     // Performance optimization constants
     // Set to typical first-frame usage to avoid multiple reallocations

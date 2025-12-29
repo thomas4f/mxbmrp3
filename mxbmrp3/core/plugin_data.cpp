@@ -531,6 +531,7 @@ void PluginData::clearLapLog(int raceNum) {
 void PluginData::clearAllLapLog() {
     m_riderLapLog.clear();
     m_riderBestLap.clear();
+    clearOverallBestLap();
 
     // Also clear previous PB data for all riders since we're clearing all current PBs
     for (auto& pair : m_riderIdealLap) {
@@ -573,6 +574,19 @@ const LapLogEntry* PluginData::getBestLapEntry(int raceNum) const {
     auto it = m_riderBestLap.find(raceNum);
     if (it != m_riderBestLap.end() && it->second.lapNum >= 0) {
         return &it->second;
+    }
+    return nullptr;
+}
+
+void PluginData::setOverallBestLap(const LapLogEntry& entry) {
+    m_overallBestLap = entry;
+    DEBUG_INFO_F("Overall best lap updated: lapTime=%d, S1=%d, S2=%d",
+                 entry.lapTime, entry.sector1, entry.sector2);
+}
+
+const LapLogEntry* PluginData::getOverallBestLap() const {
+    if (m_overallBestLap.lapNum >= 0 && m_overallBestLap.lapTime > 0) {
+        return &m_overallBestLap;
     }
     return nullptr;
 }
@@ -1267,6 +1281,7 @@ void PluginData::clear() {
     m_riderIdealLap.clear();
     m_riderLapLog.clear();
     m_riderBestLap.clear();
+    clearOverallBestLap();
 
     // Reset single lap timer
     m_displayLapTimer.reset();

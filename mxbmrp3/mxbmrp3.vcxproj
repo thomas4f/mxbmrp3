@@ -113,6 +113,7 @@
     <ClInclude Include="core\plugin_manager.h" />
     <ClInclude Include="core\plugin_utils.h" />
     <ClInclude Include="core\settings_manager.h" />
+    <ClInclude Include="core\personal_best_manager.h" />
     <ClInclude Include="core\update_checker.h" />
     <ClInclude Include="core\widget_constants.h" />
     <ClInclude Include="core\xinput_reader.h" />
@@ -138,7 +139,6 @@
     <ClInclude Include="hud\bars_widget.h" />
     <ClInclude Include="hud\base_hud.h" />
     <ClInclude Include="hud\pointer_widget.h" />
-    <ClInclude Include="hud\input_hud.h" />
     <ClInclude Include="hud\lap_log_hud.h" />
     <ClInclude Include="hud\lap_widget.h" />
     <ClInclude Include="hud\map_hud.h" />
@@ -163,6 +163,7 @@
     <ClInclude Include="hud\notices_widget.h" />
     <ClInclude Include="hud\version_widget.h" />
     <ClInclude Include="hud\fuel_widget.h" />
+    <ClInclude Include="hud\gamepad_widget.h" />
     <ClInclude Include="vendor\piboso\mxb_api.h" />
     <ClInclude Include="vendor\nlohmann\json.hpp" />
   </ItemGroup>
@@ -179,6 +180,7 @@
     <ClCompile Include="core\plugin_manager.cpp" />
     <ClCompile Include="core\plugin_utils.cpp" />
     <ClCompile Include="core\settings_manager.cpp" />
+    <ClCompile Include="core\personal_best_manager.cpp" />
     <ClCompile Include="core\update_checker.cpp" />
     <ClCompile Include="core\xinput_reader.cpp" />
     <ClCompile Include="diagnostics\logger.cpp" />
@@ -202,7 +204,6 @@
     <ClCompile Include="hud\bars_widget.cpp" />
     <ClCompile Include="hud\base_hud.cpp" />
     <ClCompile Include="hud\pointer_widget.cpp" />
-    <ClCompile Include="hud\input_hud.cpp" />
     <ClCompile Include="hud\lap_log_hud.cpp" />
     <ClCompile Include="hud\lap_widget.cpp" />
     <ClCompile Include="hud\map_hud.cpp" />
@@ -227,6 +228,7 @@
     <ClCompile Include="hud\notices_widget.cpp" />
     <ClCompile Include="hud\version_widget.cpp" />
     <ClCompile Include="hud\fuel_widget.cpp" />
+    <ClCompile Include="hud\gamepad_widget.cpp" />
     <ClCompile Include="vendor\piboso\mxb_api.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

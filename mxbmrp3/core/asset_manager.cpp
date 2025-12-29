@@ -328,3 +328,19 @@ int AssetManager::getIconSpriteIndex(const std::string& name) const {
     }
     return 0;
 }
+
+std::string AssetManager::getIconFilename(int spriteIndex) const {
+    int arrayIndex = spriteIndex - m_firstIconSpriteIndex;
+    if (arrayIndex >= 0 && arrayIndex < static_cast<int>(m_icons.size())) {
+        return m_icons[arrayIndex].filename;
+    }
+    return "";
+}
+
+std::string AssetManager::getIconDisplayName(int spriteIndex) const {
+    int arrayIndex = spriteIndex - m_firstIconSpriteIndex;
+    if (arrayIndex >= 0 && arrayIndex < static_cast<int>(m_icons.size())) {
+        return m_icons[arrayIndex].displayName;
+    }
+    return "";
+}

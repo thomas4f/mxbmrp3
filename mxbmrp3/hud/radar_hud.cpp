@@ -16,20 +16,36 @@
 using namespace PluginConstants;
 using namespace PluginConstants::Math;
 
+// Default icon filenames
+static constexpr const char* DEFAULT_RIDER_ICON = "circle";
+static constexpr const char* DEFAULT_PROXIMITY_ARROW_ICON = "angle-up";
+
+// Helper to get shape index from filename (returns 1 if not found)
+static int getShapeIndexByFilename(const char* filename) {
+    const auto& assetMgr = AssetManager::getInstance();
+    int spriteIndex = assetMgr.getIconSpriteIndex(filename);
+    if (spriteIndex <= 0) return 1;  // Fallback to first icon
+    return spriteIndex - assetMgr.getFirstIconSpriteIndex() + 1;
+}
+
 RadarHud::RadarHud()
     : m_fRadarRangeMeters(DEFAULT_RADAR_RANGE),
       m_riderColorMode(RiderColorMode::BRAND),
       m_bShowPlayerArrow(false),
-      m_bFadeWhenEmpty(false),
+      m_radarMode(RadarMode::ON),
+      m_proximityArrowMode(ProximityArrowMode::OFF),
       m_fAlertDistance(DEFAULT_ALERT_DISTANCE),
       m_labelMode(LabelMode::POSITION),
-      m_riderShape(RiderShape::CIRCLE),
+      m_riderShapeIndex(1),  // Will be set properly via settings or resetToDefaults
+      m_proximityArrowShapeIndex(1),
+      m_fProximityArrowScale(DEFAULT_PROXIMITY_ARROW_SCALE),
+      m_proximityArrowColorMode(ProximityArrowColorMode::DISTANCE),
       m_fMarkerScale(DEFAULT_MARKER_SCALE) {
 
     // One-time setup
     DEBUG_INFO("RadarHud created");
     setDraggable(true);
-    m_riderPositions.reserve(RESERVE_MAX_RIDERS);
+    m_riderPositions.reserve(GameLimits::MAX_CONNECTIONS);
     m_quads.reserve(RESERVE_QUADS);
     m_strings.reserve(RESERVE_STRINGS);
 
@@ -92,6 +108,41 @@ void RadarHud::setMarkerScale(float scale) {
     }
 }
 
+void RadarHud::setRiderShape(int shapeIndex) {
+    // Clamp to valid range (1 to icon count)
+    int maxShape = static_cast<int>(AssetManager::getInstance().getIconCount());
+    if (shapeIndex < 1) shapeIndex = 1;
+    if (shapeIndex > maxShape) shapeIndex = maxShape;
+
+    if (m_riderShapeIndex != shapeIndex) {
+        m_riderShapeIndex = shapeIndex;
+        setDataDirty();
+    }
+}
+
+void RadarHud::setProximityArrowShape(int shapeIndex) {
+    // Clamp to valid range (1 to icon count)
+    int maxShape = static_cast<int>(AssetManager::getInstance().getIconCount());
+    if (shapeIndex < 1) shapeIndex = 1;
+    if (shapeIndex > maxShape) shapeIndex = maxShape;
+
+    if (m_proximityArrowShapeIndex != shapeIndex) {
+        m_proximityArrowShapeIndex = shapeIndex;
+        setDataDirty();
+    }
+}
+
+void RadarHud::setProximityArrowScale(float scale) {
+    // Clamp to valid range
+    if (scale < MIN_PROXIMITY_ARROW_SCALE) scale = MIN_PROXIMITY_ARROW_SCALE;
+    if (scale > MAX_PROXIMITY_ARROW_SCALE) scale = MAX_PROXIMITY_ARROW_SCALE;
+
+    if (m_fProximityArrowScale != scale) {
+        m_fProximityArrowScale = scale;
+        setDataDirty();
+    }
+}
+
 void RadarHud::updateRiderPositions(int numVehicles, const SPluginsRaceTrackPosition_t* positions) {
     if (numVehicles <= 0 || positions == nullptr) {
         m_riderPositions.clear();
@@ -117,24 +168,12 @@ void RadarHud::renderRiderSprite(float radarX, float radarY, float yaw, unsigned
     // shapeOverride uses TrackedRidersManager values: 1-N for all rider icons
     // m_riderShape uses RadarHud values: 0-9 for the 10 selectable icons
     const int iconCount = static_cast<int>(AssetManager::getInstance().getIconCount());
+    // Use override shape if provided, otherwise use the configured rider shape
     int effectiveShape;
     if (shapeOverride >= 1 && shapeOverride <= iconCount) {
         effectiveShape = shapeOverride;
     } else {
-        // Map RadarHud::RiderShape to TrackedRidersManager shape values
-        switch (m_riderShape) {
-            case RiderShape::ARROWUP:    effectiveShape = TrackedRidersManager::SHAPE_ARROWUP; break;
-            case RiderShape::CHEVRON:    effectiveShape = TrackedRidersManager::SHAPE_CHEVRON; break;
-            case RiderShape::CIRCLEPLAY: effectiveShape = TrackedRidersManager::SHAPE_CIRCLEPLAY; break;
-            case RiderShape::CIRCLEUP:   effectiveShape = TrackedRidersManager::SHAPE_CIRCLEUP; break;
-            case RiderShape::DOT:        effectiveShape = TrackedRidersManager::SHAPE_DOT; break;
-            case RiderShape::LOCATION:   effectiveShape = TrackedRidersManager::SHAPE_LOCATION; break;
-            case RiderShape::PIN:        effectiveShape = TrackedRidersManager::SHAPE_PIN; break;
-            case RiderShape::PLANE:      effectiveShape = TrackedRidersManager::SHAPE_PLANE; break;
-            case RiderShape::VINYL:      effectiveShape = TrackedRidersManager::SHAPE_VINYL; break;
-            case RiderShape::CIRCLE:
-            default:                     effectiveShape = TrackedRidersManager::SHAPE_CIRCLE; break;
-        }
+        effectiveShape = m_riderShapeIndex;
     }
 
     // All icons use uniform baseline scale
@@ -318,12 +357,26 @@ void RadarHud::rebuildRenderData() {
         }
     }
 
-    // Pre-calculate max rider opacity for background fade (only if fade is enabled)
+    // Pre-calculate player position for proximity arrows (needed even when radar is off)
+    float playerX = localPlayer ? localPlayer->m_fPosX : 0.0f;
+    float playerZ = localPlayer ? localPlayer->m_fPosZ : 0.0f;
+    float cosYaw = 1.0f, sinYaw = 0.0f;
+    if (localPlayer) {
+        float yawRad = localPlayer->m_fYaw * DEG_TO_RAD;
+        cosYaw = std::cos(yawRad);
+        sinYaw = std::sin(yawRad);
+    }
+
+    // If radar mode is OFF, skip radar rendering but still render proximity arrows
+    if (m_radarMode == RadarMode::OFF) {
+        renderProximityArrows(localPlayer, playerX, playerZ, cosYaw, sinYaw);
+        return;
+    }
+
+    // Pre-calculate max rider opacity for background fade (only if auto-hide is enabled)
     float maxRiderOpacity = 1.0f;  // Default: fully visible
-    if (m_bFadeWhenEmpty && localPlayer) {
+    if (m_radarMode == RadarMode::AUTO_HIDE && localPlayer) {
         maxRiderOpacity = 0.0f;  // Start at 0, find max
-        float playerX = localPlayer->m_fPosX;
-        float playerZ = localPlayer->m_fPosZ;
         float trackLength = pluginData.getSessionData().trackLength;
 
         for (const auto& pos : m_riderPositions) {
@@ -384,20 +437,8 @@ void RadarHud::rebuildRenderData() {
     // Section 3: 225°-315° (left)
     float sectionClosestDist[NUM_SECTORS] = { -1.0f, -1.0f, -1.0f, -1.0f };
 
-    // Pre-calculate player rotation if we have a local player
-    float playerYawRad = 0.0f;
-    float cosYaw = 1.0f;
-    float sinYaw = 0.0f;
-    float playerX = 0.0f;
-    float playerZ = 0.0f;
-
+    // Player position and rotation already calculated at start of function
     if (localPlayer) {
-        playerX = localPlayer->m_fPosX;
-        playerZ = localPlayer->m_fPosZ;
-        playerYawRad = localPlayer->m_fYaw * DEG_TO_RAD;
-        cosYaw = std::cos(playerYawRad);
-        sinYaw = std::sin(playerYawRad);
-
         // First pass: calculate section distances for all riders
         for (const auto& pos : m_riderPositions) {
             if (pos.m_iRaceNum == displayRaceNum) continue;
@@ -674,6 +715,9 @@ void RadarHud::rebuildRenderData() {
                             centerX, centerY, radarRadius, 1.0f);  // Player always fully visible
         }
     }
+
+    // Render proximity arrows at screen edges (independent of radar position)
+    renderProximityArrows(localPlayer, playerX, playerZ, cosYaw, sinYaw);
 }
 
 void RadarHud::setScale(float scale) {
@@ -709,11 +753,215 @@ void RadarHud::resetToDefaults() {
     m_fRadarRangeMeters = DEFAULT_RADAR_RANGE;
     m_riderColorMode = RiderColorMode::BRAND;  // Default to bike brand colors
     m_bShowPlayerArrow = false;  // Hide player arrow by default
-    m_bFadeWhenEmpty = false;    // Don't fade by default (always visible)
+    m_radarMode = RadarMode::ON;  // Default to always visible
+    m_proximityArrowMode = ProximityArrowMode::OFF;  // Disable proximity arrows by default
     m_fAlertDistance = DEFAULT_ALERT_DISTANCE;
     m_labelMode = LabelMode::POSITION;
-    m_riderShape = RiderShape::CIRCLE;  // Default to circle sprite
+    m_riderShapeIndex = getShapeIndexByFilename(DEFAULT_RIDER_ICON);
+    m_proximityArrowShapeIndex = getShapeIndexByFilename(DEFAULT_PROXIMITY_ARROW_ICON);
+    m_fProximityArrowScale = DEFAULT_PROXIMITY_ARROW_SCALE;
+    m_proximityArrowColorMode = ProximityArrowColorMode::DISTANCE;
     m_fMarkerScale = DEFAULT_MARKER_SCALE;
     setPosition(0.43275f, 0.0111f);  // Horizontally centered at scale 1.0
     setDataDirty();
+}
+
+void RadarHud::renderProximityArrows(const SPluginsRaceTrackPosition_t* localPlayer,
+                                      float playerX, float playerZ,
+                                      float cosYaw, float sinYaw) {
+    if (m_proximityArrowMode == ProximityArrowMode::OFF || !localPlayer) return;
+
+    const PluginData& pluginData = PluginData::getInstance();
+    int displayRaceNum = pluginData.getDisplayRaceNum();
+    float trackLength = pluginData.getSessionData().trackLength;
+
+    // Screen edge margins and arrow size
+    constexpr float EDGE_MARGIN = 0.03f;      // Distance from screen edge
+    constexpr float ARROW_SIZE = 0.025f;      // Arrow sprite size (in screen height units)
+
+    // Circle mode settings
+    constexpr float CIRCLE_RADIUS = 0.42f;    // Radius of circular path (in screen height units)
+    constexpr float CIRCLE_CENTER_X = 0.5f;   // Screen center X
+    constexpr float CIRCLE_CENTER_Y = 0.5f;   // Screen center Y
+
+    // Get sprite index for the configured arrow shape
+    int arrowSpriteIndex = AssetManager::getInstance().getFirstIconSpriteIndex() +
+                           m_proximityArrowShapeIndex - 1;
+    bool arrowShouldRotate = TrackedRidersManager::shouldRotate(m_proximityArrowShapeIndex);
+
+    // Process each rider and render arrows for those within alert distance
+    for (const auto& pos : m_riderPositions) {
+        if (pos.m_iRaceNum == displayRaceNum) continue;
+
+        // Calculate relative position
+        float relX = pos.m_fPosX - playerX;
+        float relZ = pos.m_fPosZ - playerZ;
+
+        // Rotate to player's heading (so forward = up on screen)
+        float rotatedX = relX * cosYaw - relZ * sinYaw;
+        float rotatedZ = relX * sinYaw + relZ * cosYaw;
+
+        float distance = std::sqrt(rotatedX * rotatedX + rotatedZ * rotatedZ);
+
+        // Only show arrows for riders within alert distance
+        if (distance > m_fAlertDistance || distance < 1.0f) continue;
+
+        // Filter by track distance (skip riders on parallel straights)
+        float trackDist = std::abs(pos.m_fTrackPos - localPlayer->m_fTrackPos);
+        if (trackDist > 0.5f) trackDist = 1.0f - trackDist;
+
+        if (trackLength > 0.0f) {
+            float trackDistMeters = trackDist * trackLength;
+            if (trackDistMeters > m_fAlertDistance) continue;
+        } else {
+            constexpr float FALLBACK_THRESHOLD = 0.05f;
+            if (trackDist > FALLBACK_THRESHOLD) continue;
+        }
+
+        // Calculate angle in radar space (0° = forward/up, clockwise positive)
+        // atan2(x, z) gives angle where 0 = forward (+Z), positive = right
+        float angle = std::atan2(rotatedX, rotatedZ);  // radians, -PI to PI
+
+        // Skip riders in the front arc (9 o'clock to 3 o'clock = -90° to +90°)
+        // You can see riders in front, arrows only needed for blind spots
+        float absAngle = std::abs(angle);
+        if (absAngle < PI * 0.5f) continue;  // Skip front 180° arc
+
+        float screenX, screenY;
+        float arrowRotation;  // Rotation of arrow sprite (pointing outward toward rider)
+
+        if (m_proximityArrowMode == ProximityArrowMode::CIRCLE) {
+            // Circle mode: arrows follow a circular path around screen center
+            // Angle 0 = top (forward), rotates clockwise
+            screenX = CIRCLE_CENTER_X + (CIRCLE_RADIUS / UI_ASPECT_RATIO) * std::sin(angle);
+            screenY = CIRCLE_CENTER_Y - CIRCLE_RADIUS * std::cos(angle);
+
+            // Arrow points outward (toward the rider) - same direction as angle
+            arrowRotation = angle * RAD_TO_DEG;
+        } else {
+            // Edge mode: arrows follow screen edges (rectangular path)
+            // Convert to normalized angle (0 to 1, where 0 = forward, 0.25 = right, 0.5 = back, 0.75 = left)
+            float normalizedAngle = angle / (2.0f * PI);
+            if (normalizedAngle < 0) normalizedAngle += 1.0f;
+
+            // Top edge: angle -45° to 45° (normalized: 0.875-1.0 and 0.0-0.125)
+            // Right edge: angle 45° to 135° (normalized: 0.125-0.375)
+            // Bottom edge: angle 135° to 225° (normalized: 0.375-0.625)
+            // Left edge: angle 225° to 315° (normalized: 0.625-0.875)
+
+            if (normalizedAngle < 0.125f || normalizedAngle >= 0.875f) {
+                // Top edge (forward)
+                float edgePos = (normalizedAngle < 0.5f) ? (normalizedAngle + 0.125f) : (normalizedAngle - 0.875f);
+                edgePos = edgePos / 0.25f;  // Normalize to 0-1 along edge
+                screenX = 0.5f + (edgePos - 0.5f) * (1.0f - 2.0f * EDGE_MARGIN);
+                screenY = EDGE_MARGIN;
+                arrowRotation = 0.0f;  // Point up (outward)
+            } else if (normalizedAngle < 0.375f) {
+                // Right edge
+                float edgePos = (normalizedAngle - 0.125f) / 0.25f;
+                screenX = 1.0f - EDGE_MARGIN;
+                screenY = EDGE_MARGIN + edgePos * (1.0f - 2.0f * EDGE_MARGIN);
+                arrowRotation = 90.0f;  // Point right (outward)
+            } else if (normalizedAngle < 0.625f) {
+                // Bottom edge (behind)
+                float edgePos = (normalizedAngle - 0.375f) / 0.25f;
+                screenX = 0.5f + (0.5f - edgePos) * (1.0f - 2.0f * EDGE_MARGIN);
+                screenY = 1.0f - EDGE_MARGIN;
+                arrowRotation = 180.0f;  // Point down (outward)
+            } else {
+                // Left edge
+                float edgePos = (normalizedAngle - 0.625f) / 0.25f;
+                screenX = EDGE_MARGIN;
+                screenY = EDGE_MARGIN + (1.0f - edgePos) * (1.0f - 2.0f * EDGE_MARGIN);
+                arrowRotation = 270.0f;  // Point left (outward)
+            }
+        }
+
+        // Calculate normalized distance for opacity and size scaling
+        float normalizedDist = distance / m_fAlertDistance;
+
+        // Opacity based on distance - fade in/out smoothly at range boundary
+        // 0% at edge of range, 100% when very close
+        float opacity = 1.0f - normalizedDist;
+        unsigned char alpha = static_cast<unsigned char>(255 * opacity);
+
+        // Calculate color based on color mode
+        unsigned long arrowColor;
+        if (m_proximityArrowColorMode == ProximityArrowColorMode::POSITION) {
+            // Position-based coloring: same as radar RELATIVE_POS mode
+            int playerPosition = pluginData.getPositionForRaceNum(displayRaceNum);
+            int riderPosition = pluginData.getPositionForRaceNum(pos.m_iRaceNum);
+            const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
+            const StandingsData* riderStanding = pluginData.getStanding(pos.m_iRaceNum);
+            int playerLaps = playerStanding ? playerStanding->numLaps : 0;
+            int riderLaps = riderStanding ? riderStanding->numLaps : 0;
+
+            unsigned long baseColor = PluginUtils::getRelativePositionColor(
+                playerPosition, riderPosition, playerLaps, riderLaps,
+                ColorConfig::getInstance().getNeutral(),
+                ColorConfig::getInstance().getWarning(),
+                ColorConfig::getInstance().getTertiary());
+            arrowColor = PluginUtils::applyOpacity(baseColor, opacity);
+        } else {
+            // Distance-based coloring: red = close, yellow = mid, green = far
+            constexpr unsigned char RED_R = 0xFF, RED_G = 0x40, RED_B = 0x40;
+            constexpr unsigned char YEL_R = 0xFF, YEL_G = 0xD0, YEL_B = 0x40;
+            constexpr unsigned char GRN_R = 0x40, GRN_G = 0xFF, GRN_B = 0x40;
+
+            unsigned char r, g, b;
+            if (normalizedDist < 0.5f) {
+                float t = normalizedDist * 2.0f;
+                r = static_cast<unsigned char>(RED_R + t * (YEL_R - RED_R));
+                g = static_cast<unsigned char>(RED_G + t * (YEL_G - RED_G));
+                b = static_cast<unsigned char>(RED_B + t * (YEL_B - RED_B));
+            } else {
+                float t = (normalizedDist - 0.5f) * 2.0f;
+                r = static_cast<unsigned char>(YEL_R + t * (GRN_R - YEL_R));
+                g = static_cast<unsigned char>(YEL_G + t * (GRN_G - YEL_G));
+                b = static_cast<unsigned char>(YEL_B + t * (GRN_B - YEL_B));
+            }
+            arrowColor = PluginUtils::makeColor(r, g, b, alpha);
+        }
+
+        // Scale arrow size (closer = larger, plus user scale setting)
+        float sizeScale = 1.0f + 0.5f * (1.0f - normalizedDist);
+        float scaledArrowSize = ARROW_SIZE * sizeScale * m_fProximityArrowScale * m_fScale;
+
+        // Create rotated arrow sprite
+        float halfSize = scaledArrowSize;
+        float halfSizeX = halfSize / UI_ASPECT_RATIO;
+
+        // Only rotate directional icons
+        float cosA = 1.0f;
+        float sinA = 0.0f;
+        if (arrowShouldRotate) {
+            float arrowRad = arrowRotation * DEG_TO_RAD;
+            cosA = std::cos(arrowRad);
+            sinA = std::sin(arrowRad);
+        }
+
+        // Vertex order: TL, BL, BR, TR
+        float corners[4][2] = {
+            { -halfSizeX, -halfSize },
+            { -halfSizeX,  halfSize },
+            {  halfSizeX,  halfSize },
+            {  halfSizeX, -halfSize }
+        };
+
+        SPluginQuad_t arrow;
+        for (int j = 0; j < 4; ++j) {
+            float rx = corners[j][0] * UI_ASPECT_RATIO;
+            float ry = corners[j][1];
+            float rotX = rx * cosA - ry * sinA;
+            float rotY = rx * sinA + ry * cosA;
+            rotX /= UI_ASPECT_RATIO;
+
+            arrow.m_aafPos[j][0] = screenX + rotX;
+            arrow.m_aafPos[j][1] = screenY + rotY;
+        }
+
+        arrow.m_iSprite = arrowSpriteIndex;
+        arrow.m_ulColor = arrowColor;
+        m_quads.push_back(arrow);
+    }
 }

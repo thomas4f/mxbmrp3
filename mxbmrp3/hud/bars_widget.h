@@ -17,6 +17,15 @@
 
 class BarsWidget : public BaseHud {
 public:
+    // Column visibility flags (bitfield) - configurable via INI
+    static constexpr uint32_t COL_THROTTLE   = 1 << 0;  // T - Throttle
+    static constexpr uint32_t COL_BRAKE      = 1 << 1;  // B - Brakes (front/rear)
+    static constexpr uint32_t COL_CLUTCH     = 1 << 2;  // C - Clutch
+    static constexpr uint32_t COL_RPM        = 1 << 3;  // R - RPM
+    static constexpr uint32_t COL_SUSPENSION = 1 << 4;  // S - Suspension (front/rear)
+    static constexpr uint32_t COL_FUEL       = 1 << 5;  // F - Fuel
+    static constexpr uint32_t COL_DEFAULT    = COL_THROTTLE | COL_BRAKE | COL_CLUTCH | COL_RPM | COL_SUSPENSION | COL_FUEL;
+
     BarsWidget();
     virtual ~BarsWidget() = default;
 
@@ -47,4 +56,7 @@ private:
     static constexpr float BAR_HEIGHT_LINES = 4.0f;  // Height of bars (4 lines)
     static constexpr float BAR_SPACING_CHARS = 0.5f; // Space between bars (0.5 char)
     static constexpr int LABEL_HEIGHT_LINES = 1;     // Height for labels at bottom
+
+    // Settings (configurable via INI)
+    uint32_t m_enabledColumns = COL_DEFAULT;  // Bitfield of enabled bars
 };

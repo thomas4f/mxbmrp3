@@ -4,6 +4,7 @@
 // ============================================================================
 #include "map_hud.h"
 #include "../core/plugin_data.h"
+#include "../core/plugin_manager.h"
 #include "../core/plugin_constants.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
@@ -21,6 +22,17 @@ using namespace PluginConstants::Math;
 // This ensures consistent visual appearance across different track sizes
 static constexpr float TRACK_WIDTH_BASE_RATIO = 0.036f;  // 3.6% of smaller dimension
 
+// Default icon filename
+static constexpr const char* DEFAULT_RIDER_ICON = "circle-chevron-up";
+
+// Helper to get shape index from filename (returns 1 if not found)
+static int getShapeIndexByFilename(const char* filename) {
+    const auto& assetMgr = AssetManager::getInstance();
+    int spriteIndex = assetMgr.getIconSpriteIndex(filename);
+    if (spriteIndex <= 0) return 1;  // Fallback to first icon
+    return spriteIndex - assetMgr.getFirstIconSpriteIndex() + 1;
+}
+
 MapHud::MapHud()
     : m_fTrackWidthScale(DEFAULT_TRACK_WIDTH_SCALE),  // Reordered to match header declaration order
       m_minX(0.0f), m_maxX(0.0f), m_minY(0.0f), m_maxY(0.0f),
@@ -30,12 +42,13 @@ MapHud::MapHud()
       m_bShowOutline(true),
       m_riderColorMode(RiderColorMode::RELATIVE_POS),
       m_labelMode(LabelMode::POSITION),
-      m_riderShape(RiderShape::CIRCLE),
+      m_riderShapeIndex(1),  // Will be set properly via settings or resetToDefaults
       m_anchorPoint(AnchorPoint::TOP_RIGHT),
       m_fAnchorX(0.0f), m_fAnchorY(0.0f),
       m_bZoomEnabled(false),
       m_fZoomDistance(DEFAULT_ZOOM_DISTANCE),
-      m_fMarkerScale(DEFAULT_MARKER_SCALE) {
+      m_fMarkerScale(DEFAULT_MARKER_SCALE),
+      m_fPixelSpacing(DEFAULT_PIXEL_SPACING) {
 
     // One-time setup
     DEBUG_INFO("MapHud created");
@@ -47,7 +60,8 @@ MapHud::MapHud()
 
     // Pre-allocate memory for track segments, quads, and rider positions
     m_trackSegments.reserve(RESERVE_TRACK_SEGMENTS);
-    m_riderPositions.reserve(RESERVE_MAX_RIDERS);
+    m_riderPositions.reserve(GameLimits::MAX_CONNECTIONS);
+    m_riderClickRegions.reserve(GameLimits::MAX_CONNECTIONS);
     m_quads.reserve(RESERVE_QUADS);
     m_strings.reserve(RESERVE_STRINGS);
 
@@ -66,6 +80,21 @@ void MapHud::update() {
     } else if (isLayoutDirty()) {
         rebuildLayout();
         clearLayoutDirty();
+    }
+
+    // Check for click in spectator/replay mode to switch to different rider
+    const PluginData& pluginData = PluginData::getInstance();
+    int drawState = pluginData.getDrawState();
+    bool canSwitchRider = (drawState == ViewState::SPECTATE || drawState == ViewState::REPLAY);
+
+    if (canSwitchRider) {
+        InputManager& input = InputManager::getInstance();
+        if (input.getLeftButton().isClicked()) {
+            const CursorPosition& cursor = input.getCursorPosition();
+            if (cursor.isValid && isPointInBounds(cursor.x, cursor.y)) {
+                handleClick(cursor.x, cursor.y);
+            }
+        }
     }
 }
 
@@ -118,6 +147,29 @@ void MapHud::setMarkerScale(float scale) {
 
     if (m_fMarkerScale != scale) {
         m_fMarkerScale = scale;
+        setDataDirty();
+    }
+}
+
+void MapHud::setPixelSpacing(float spacing) {
+    // Clamp to valid range
+    if (spacing < MIN_PIXEL_SPACING) spacing = MIN_PIXEL_SPACING;
+    if (spacing > MAX_PIXEL_SPACING) spacing = MAX_PIXEL_SPACING;
+
+    if (m_fPixelSpacing != spacing) {
+        m_fPixelSpacing = spacing;
+        setDataDirty();
+    }
+}
+
+void MapHud::setRiderShape(int shapeIndex) {
+    // Clamp to valid range (0=OFF, 1-N=shapes)
+    int maxShape = static_cast<int>(AssetManager::getInstance().getIconCount());
+    if (shapeIndex < 0) shapeIndex = 0;
+    if (shapeIndex > maxShape) shapeIndex = maxShape;
+
+    if (m_riderShapeIndex != shapeIndex) {
+        m_riderShapeIndex = shapeIndex;
         setDataDirty();
     }
 }
@@ -310,7 +362,7 @@ void MapHud::calculateTrackBounds() {
             }
 
             // Sample points along the curve for accurate bounds
-            int numSamples = std::max(3, static_cast<int>(arcLength / PIXEL_SPACING));
+            int numSamples = std::max(3, static_cast<int>(arcLength / m_fPixelSpacing));
             float stepLength = arcLength / numSamples;
             float stepAngle = totalAngleChange / numSamples;
 
@@ -570,10 +622,10 @@ void MapHud::renderTrack(float rotationAngle, unsigned long trackColor, float wi
     float cullMaxY = m_maxY + cullMargin;
 
     // Adaptive spacing for zoom mode - finer detail at closer zoom
-    // At 50m: 0.5m spacing (min), at 500m: 2.0m spacing (same as default)
-    float adaptiveSpacing = PIXEL_SPACING;  // Default non-zoom spacing
+    // At 50m: MIN_PIXEL_SPACING, at 500m: use configured m_fPixelSpacing
+    float adaptiveSpacing = m_fPixelSpacing;  // Use configured spacing
     if (m_bZoomEnabled) {
-        adaptiveSpacing = std::max(0.5f, PIXEL_SPACING * (m_fZoomDistance / MAX_ZOOM_DISTANCE));
+        adaptiveSpacing = std::max(MIN_PIXEL_SPACING, m_fPixelSpacing * (m_fZoomDistance / MAX_ZOOM_DISTANCE));
     }
 
     // Lambda to check if a point is within culling bounds
@@ -766,7 +818,7 @@ void MapHud::renderTrack(float rotationAngle, unsigned long trackColor, float wi
 
             // Calculate number of steps needed based on arc length
             // Use adaptive spacing when zoom enabled (finer at closer zoom)
-            float curveSpacing = m_bZoomEnabled ? adaptiveSpacing : PIXEL_SPACING;
+            float curveSpacing = m_bZoomEnabled ? adaptiveSpacing : m_fPixelSpacing;
             int numSteps = std::max(3, static_cast<int>(arcLength / curveSpacing));
             float stepLength = arcLength / numSteps;
             float stepAngle = totalAngleChange / numSteps;
@@ -971,7 +1023,6 @@ void MapHud::renderRiders(float rotationAngle,
             // Convert shapeIndex to sprite index (dynamically assigned)
             trackedSpriteIndex = AssetManager::getInstance().getFirstIconSpriteIndex() + trackedConfig->shapeIndex - 1;
         }
-        RiderShape effectiveShape = m_riderShape;  // For non-tracked riders
 
         if (trackedConfig) {
             // Tracked rider - use their configured color with position-based modulation
@@ -1043,41 +1094,8 @@ void MapHud::renderRiders(float rotationAngle,
             spriteIndex = trackedSpriteIndex;
             shapeIndex = spriteIndex - AssetManager::getInstance().getFirstIconSpriteIndex() + 1;
         } else {
-            // Non-tracked rider - use global shape (OFF uses CIRCLE for local player)
-            switch (effectiveShape) {
-                case RiderShape::ARROWUP:
-                    shapeIndex = TrackedRidersManager::SHAPE_ARROWUP;
-                    break;
-                case RiderShape::CHEVRON:
-                    shapeIndex = TrackedRidersManager::SHAPE_CHEVRON;
-                    break;
-                case RiderShape::CIRCLEPLAY:
-                    shapeIndex = TrackedRidersManager::SHAPE_CIRCLEPLAY;
-                    break;
-                case RiderShape::CIRCLEUP:
-                    shapeIndex = TrackedRidersManager::SHAPE_CIRCLEUP;
-                    break;
-                case RiderShape::DOT:
-                    shapeIndex = TrackedRidersManager::SHAPE_DOT;
-                    break;
-                case RiderShape::LOCATION:
-                    shapeIndex = TrackedRidersManager::SHAPE_LOCATION;
-                    break;
-                case RiderShape::PIN:
-                    shapeIndex = TrackedRidersManager::SHAPE_PIN;
-                    break;
-                case RiderShape::PLANE:
-                    shapeIndex = TrackedRidersManager::SHAPE_PLANE;
-                    break;
-                case RiderShape::VINYL:
-                    shapeIndex = TrackedRidersManager::SHAPE_VINYL;
-                    break;
-                case RiderShape::OFF:
-                case RiderShape::CIRCLE:
-                default:
-                    shapeIndex = TrackedRidersManager::SHAPE_CIRCLE;
-                    break;
-            }
+            // Non-tracked rider - use global shape (0=OFF defaults to circle for local player)
+            shapeIndex = (m_riderShapeIndex > 0) ? m_riderShapeIndex : getShapeIndexByFilename(DEFAULT_RIDER_ICON);
             spriteIndex = AssetManager::getInstance().getFirstIconSpriteIndex() + shapeIndex - 1;
         }
 
@@ -1134,13 +1152,28 @@ void MapHud::renderRiders(float rotationAngle,
         // Render rider sprite (outline baked into sprite asset)
         createRotatedSprite(spriteHalfSize, riderColor);
 
+        // Add click region for this rider (for spectator switching)
+        // Click region is a rectangle centered on the sprite, with offset applied
+        RiderClickRegion clickRegion;
+        float clickWidth = spriteHalfSize * 2.0f / UI_ASPECT_RATIO;  // Account for aspect ratio
+        float clickHeight = spriteHalfSize * 2.0f;
+        clickRegion.x = screenX - spriteHalfSize / UI_ASPECT_RATIO + m_fOffsetX;
+        clickRegion.y = screenY - spriteHalfSize + m_fOffsetY;
+        clickRegion.width = clickWidth;
+        clickRegion.height = clickHeight;
+        clickRegion.raceNum = pos.m_iRaceNum;
+        m_riderClickRegions.push_back(clickRegion);
+
         // Render label centered on arrow based on label mode
         if (m_labelMode != LabelMode::NONE) {
             // Scale font size by marker scale
             float labelFontSize = dim.fontSizeSmall * m_fMarkerScale;
 
-            // Offset label below the icon (based on icon size plus small gap)
-            float offsetY = screenY + scaledConeSize + (dim.fontSizeSmall * 0.3f * m_fMarkerScale);
+            // Position label just below the icon:
+            // - spriteHalfSize is the icon's half-height (already includes m_fMarkerScale)
+            // - Add a small gap proportional to icon size (20% of icon half-size)
+            float labelGap = spriteHalfSize * 0.2f;
+            float offsetY = screenY + spriteHalfSize + labelGap;
 
             char labelStr[20];  // Sized for "P100" (5) + "#999" (5) = "P100#999" (9 + null)
             int position = pluginData.getPositionForRaceNum(pos.m_iRaceNum);
@@ -1212,9 +1245,9 @@ void MapHud::renderRiders(float rotationAngle,
     for (const auto& pos : m_riderPositions) {
         if (pos.m_iRaceNum == displayRaceNum) continue;  // Skip player, render last
 
-        // Skip non-tracked riders if global shape is OFF
+        // Skip non-tracked riders if global shape is OFF (0)
         // Tracked riders always render with their own shape
-        if (m_riderShape == RiderShape::OFF) {
+        if (m_riderShapeIndex == 0) {
             const RaceEntryData* entry = pluginData.getRaceEntry(pos.m_iRaceNum);
             if (!entry || !TrackedRidersManager::getInstance().isTracked(entry->name)) {
                 continue;
@@ -1236,6 +1269,7 @@ void MapHud::renderRiders(float rotationAngle,
 void MapHud::rebuildRenderData() {
     m_quads.clear();
     m_strings.clear();
+    m_riderClickRegions.clear();
 
     // Don't render until we have track data
     // TrackCenterline callback fires during track load, before first render
@@ -1450,13 +1484,25 @@ void MapHud::resetToDefaults() {
     m_bShowOutline = true;  // Enable outline by default
     m_riderColorMode = RiderColorMode::RELATIVE_POS;  // Default to relative position coloring
     m_labelMode = LabelMode::POSITION;
-    m_riderShape = RiderShape::CIRCLE;  // Default to circle sprite
+    m_riderShapeIndex = getShapeIndexByFilename(DEFAULT_RIDER_ICON);
     m_fTrackWidthScale = DEFAULT_TRACK_WIDTH_SCALE;
     m_bZoomEnabled = false;
     m_fZoomDistance = DEFAULT_ZOOM_DISTANCE;
     m_fMarkerScale = DEFAULT_MARKER_SCALE;
+    m_fPixelSpacing = DEFAULT_PIXEL_SPACING;
     // Reset bounds to trigger "first rebuild" behavior in rebuildRenderData
     // This ensures position is recalculated from anchor values
     setBounds(0.0f, 0.0f, 0.0f, 0.0f);
     setDataDirty();
+}
+
+void MapHud::handleClick(float mouseX, float mouseY) {
+    // Check if click is within any rider marker region
+    for (const auto& region : m_riderClickRegions) {
+        if (isPointInRect(mouseX, mouseY, region.x, region.y, region.width, region.height)) {
+            DEBUG_INFO_F("MapHud: Switching to rider #%d", region.raceNum);
+            PluginManager::getInstance().requestSpectateRider(region.raceNum);
+            return;  // Only process one click
+        }
+    }
 }

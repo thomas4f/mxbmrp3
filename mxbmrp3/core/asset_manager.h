@@ -101,8 +101,14 @@ public:
     // Get icon path for registration
     std::string getIconPath(size_t index) const;
 
-    // Get icon sprite index by name
+    // Get icon sprite index by name (returns 0 if not found)
     int getIconSpriteIndex(const std::string& name) const;
+
+    // Get icon filename by sprite index (returns empty string if not found)
+    std::string getIconFilename(int spriteIndex) const;
+
+    // Get icon display name by sprite index (returns empty string if not found)
+    std::string getIconDisplayName(int spriteIndex) const;
 
     // Get first icon sprite index (for calculating offsets)
     int getFirstIconSpriteIndex() const { return m_firstIconSpriteIndex; }

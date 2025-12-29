@@ -231,13 +231,9 @@ __declspec(dllexport) int SpectateVehicles(int _iNumVehicles, void* _pVehicleDat
 }
 
 /* Return 1 if _piSelect is set, from 0 to _iNumCameras - 1 */
+/* _pCameraData contains null-terminated camera names (iterate with strlen+1) */
 __declspec(dllexport) int SpectateCameras(int _iNumCameras, void* _pCameraData, int _iCurSelection, int* _piSelect)
 {
-	char* pszCameraName = (char*)_pCameraData;
-	for (int i = 0; i < _iNumCameras; i++)
-	{
-		pszCameraName += strlen(pszCameraName) + 1;
-	}
-
+	// TODO: Camera switching not yet implemented
 	return PluginManager::getInstance().handleSpectateCameras(_iNumCameras, _pCameraData, _iCurSelection, _piSelect);
 }

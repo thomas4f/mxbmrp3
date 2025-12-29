@@ -22,7 +22,7 @@
 !system 'cmd /c "(for %f in (${PLUGIN_SOURCE_PATH}\mxbmrp3_data\textures\*.tga) do @echo Delete "$INSTDIR\mxbmrp3_data\textures\%~nxf") > dist\uninstall_textures.nsh"'
 !system 'cmd /c "(for %f in (${PLUGIN_SOURCE_PATH}\mxbmrp3_data\icons\*.tga) do @echo Delete "$INSTDIR\mxbmrp3_data\icons\%~nxf") > dist\uninstall_icons.nsh"'
 
-!define VC_REDIST_URL "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+!define VC_REDIST_URL "https://aka.ms/vc14/vc_redist.x64.exe"
 !define VC_REDIST_EXE_PATH "$TEMP\vc_redist.x64.exe"
 !define REG_UNINSTALL_KEY_PATH "Software\Microsoft\Windows\CurrentVersion\Uninstall"
 

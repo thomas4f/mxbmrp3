@@ -72,9 +72,21 @@ void BarsWidget::rebuildRenderData() {
     float barHeight = BAR_HEIGHT_LINES * dims.lineHeightNormal;
     float labelHeight = LABEL_HEIGHT_LINES * dims.lineHeightNormal;
 
-    // Use standard widget width (consistent with other widgets)
-    float backgroundWidth = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::BARS_WIDTH, dims.fontSize);
-    float backgroundHeight = dims.paddingV + barHeight + labelHeight;  // No bottom padding below labels
+    // Count enabled bars to calculate width dynamically
+    int enabledBarCount = 0;
+    if (m_enabledColumns & COL_THROTTLE) enabledBarCount++;
+    if (m_enabledColumns & COL_BRAKE) enabledBarCount++;
+    if (m_enabledColumns & COL_CLUTCH) enabledBarCount++;
+    if (m_enabledColumns & COL_RPM) enabledBarCount++;
+    if (m_enabledColumns & COL_SUSPENSION) enabledBarCount++;
+    if (m_enabledColumns & COL_FUEL) enabledBarCount++;
+
+    // Calculate dynamic width based on enabled bars
+    float barsWidth = enabledBarCount > 0
+        ? (enabledBarCount * barWidth) + ((enabledBarCount - 1) * barSpacing)
+        : 0.0f;
+    float backgroundWidth = dims.paddingH * 2 + barsWidth;
+    float backgroundHeight = dims.paddingV + barHeight + labelHeight;
 
     setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + backgroundHeight);
 
@@ -121,51 +133,63 @@ void BarsWidget::rebuildRenderData() {
     unsigned long frontSuspColor = hasFullTelemetry ? SemanticColors::FRONT_SUSP : mutedColor;
     unsigned long rearSuspColor = hasFullTelemetry ? SemanticColors::REAR_SUSP : mutedColor;
 
-    // Render bars (6 positions, with positions 1 and 5 split into two half-width bars)
+    // Render enabled bars (dynamically positioned)
     float currentX = contentStartX;
 
     // Bar 0: Throttle (T) - single bar
-    addVerticalBar(currentX, contentStartY, barWidth, barHeight, throttleValue, throttleColor);
-    addString("T", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-              Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
-    currentX += barWidth + barSpacing;
+    if (m_enabledColumns & COL_THROTTLE) {
+        addVerticalBar(currentX, contentStartY, barWidth, barHeight, throttleValue, throttleColor);
+        addString("T", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
+                  Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+        currentX += barWidth + barSpacing;
+    }
 
     // Bar 1: Brake (B) - split into FBR | RBR when both available, full width FBR when rear unavailable
-    if (hasFullTelemetry) {
-        // Split bar: front brake (left) | rear brake (right)
-        addVerticalBar(currentX, contentStartY, halfBarWidth, barHeight, frontBrakeValue, frontBrakeColor);
-        addVerticalBar(currentX + halfBarWidth, contentStartY, halfBarWidth, barHeight, rearBrakeValue, rearBrakeColor);
-    } else {
-        // Full width: only front brake available
-        addVerticalBar(currentX, contentStartY, barWidth, barHeight, frontBrakeValue, frontBrakeColor);
+    if (m_enabledColumns & COL_BRAKE) {
+        if (hasFullTelemetry) {
+            // Split bar: front brake (left) | rear brake (right)
+            addVerticalBar(currentX, contentStartY, halfBarWidth, barHeight, frontBrakeValue, frontBrakeColor);
+            addVerticalBar(currentX + halfBarWidth, contentStartY, halfBarWidth, barHeight, rearBrakeValue, rearBrakeColor);
+        } else {
+            // Full width: only front brake available
+            addVerticalBar(currentX, contentStartY, barWidth, barHeight, frontBrakeValue, frontBrakeColor);
+        }
+        addString("B", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
+                  Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+        currentX += barWidth + barSpacing;
     }
-    addString("B", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-              Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
-    currentX += barWidth + barSpacing;
 
     // Bar 2: Clutch (C) - single bar (muted when unavailable)
-    addVerticalBar(currentX, contentStartY, barWidth, barHeight, clutchValue, clutchColor);
-    addString("C", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-              Fonts::getNormal(), hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
-    currentX += barWidth + barSpacing;
+    if (m_enabledColumns & COL_CLUTCH) {
+        addVerticalBar(currentX, contentStartY, barWidth, barHeight, clutchValue, clutchColor);
+        addString("C", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
+                  Fonts::getNormal(), hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
+        currentX += barWidth + barSpacing;
+    }
 
     // Bar 3: RPM (R) - single bar
-    addVerticalBar(currentX, contentStartY, barWidth, barHeight, rpmValue, rpmColor);
-    addString("R", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-              Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
-    currentX += barWidth + barSpacing;
+    if (m_enabledColumns & COL_RPM) {
+        addVerticalBar(currentX, contentStartY, barWidth, barHeight, rpmValue, rpmColor);
+        addString("R", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
+                  Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+        currentX += barWidth + barSpacing;
+    }
 
     // Bar 4: Suspension (S) - split into FSU | RSU (muted when unavailable)
-    addVerticalBar(currentX, contentStartY, halfBarWidth, barHeight, frontSuspValue, frontSuspColor);
-    addVerticalBar(currentX + halfBarWidth, contentStartY, halfBarWidth, barHeight, rearSuspValue, rearSuspColor);
-    addString("S", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-              Fonts::getNormal(), hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
-    currentX += barWidth + barSpacing;
+    if (m_enabledColumns & COL_SUSPENSION) {
+        addVerticalBar(currentX, contentStartY, halfBarWidth, barHeight, frontSuspValue, frontSuspColor);
+        addVerticalBar(currentX + halfBarWidth, contentStartY, halfBarWidth, barHeight, rearSuspValue, rearSuspColor);
+        addString("S", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
+                  Fonts::getNormal(), hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
+        currentX += barWidth + barSpacing;
+    }
 
     // Bar 5: Fuel (F) - single bar (muted when unavailable)
-    addVerticalBar(currentX, contentStartY, barWidth, barHeight, fuelValue, fuelColor);
-    addString("F", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-              Fonts::getNormal(), hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
+    if (m_enabledColumns & COL_FUEL) {
+        addVerticalBar(currentX, contentStartY, barWidth, barHeight, fuelValue, fuelColor);
+        addString("F", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
+                  Fonts::getNormal(), hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
+    }
 }
 
 void BarsWidget::addVerticalBar(float x, float y, float barWidth, float barHeight,
@@ -213,5 +237,6 @@ void BarsWidget::resetToDefaults() {
     m_fBackgroundOpacity = 1.0f;  // Full opacity
     m_fScale = 1.0f;
     setPosition(0.858f, 0.8547f);
+    m_enabledColumns = COL_DEFAULT;
     setDataDirty();
 }

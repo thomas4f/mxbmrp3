@@ -16,6 +16,7 @@
 #include "../core/plugin_utils.h"
 #include "../core/widget_constants.h"
 #include "../core/color_config.h"
+#include "../core/personal_best_manager.h"
 
 using namespace PluginConstants;
 
@@ -35,6 +36,9 @@ TimingHud::TimingHud()
     , m_cachedDisplayRaceNum(-1)
     , m_cachedSession(-1)
     , m_cachedPitState(-1)
+    , m_previousAllTimeLap(-1)
+    , m_previousAllTimeSector1(-1)
+    , m_previousAllTimeS1PlusS2(-1)
     , m_isFrozen(false)
 {
     // One-time setup
@@ -225,7 +229,8 @@ void TimingHud::processTimingUpdates() {
             // Invalid lap - clear all gaps
             m_officialData.gapToPB.reset();
             m_officialData.gapToIdeal.reset();
-            m_officialData.gapToSession.reset();
+            m_officialData.gapToOverall.reset();
+            m_officialData.gapToAllTime.reset();
         }
 
         // Reset split caches for next lap
@@ -241,6 +246,10 @@ void TimingHud::processTimingUpdates() {
         m_cachedLastCompletedLapNum = idealLapData->lastCompletedLapNum;
         DEBUG_INFO_F("TimingHud: Lap %d completed, time=%d ms, valid=%d", completedLapNum, lapTime, isValid);
         setDataDirty();
+
+        // Cache the updated all-time PB for next lap comparison
+        // This captures the new PB (if set) after race_lap_handler has updated PersonalBestManager
+        cacheAllTimePB();
     }
 }
 
@@ -306,36 +315,25 @@ void TimingHud::setGapType(GapTypeFlags flag, bool enabled) {
 int TimingHud::getEnabledGapCount() const {
     int count = 0;
     if (m_gapTypes & GAP_TO_PB) count++;
+    if (m_gapTypes & GAP_TO_ALLTIME) count++;
     if (m_gapTypes & GAP_TO_IDEAL) count++;
-    if (m_gapTypes & GAP_TO_SESSION) count++;
+    if (m_gapTypes & GAP_TO_OVERALL) count++;
     return count;
 }
 
-int TimingHud::getSessionBestLapTime() const {
+int TimingHud::getOverallBestLapTime() const {
     const PluginData& pluginData = PluginData::getInstance();
     const auto& standings = pluginData.getStandings();
 
-    int sessionBest = -1;
+    int overallBest = -1;
     for (const auto& [raceNum, standing] : standings) {
         if (standing.bestLap > 0) {
-            if (sessionBest < 0 || standing.bestLap < sessionBest) {
-                sessionBest = standing.bestLap;
+            if (overallBest < 0 || standing.bestLap < overallBest) {
+                overallBest = standing.bestLap;
             }
         }
     }
-    return sessionBest;
-}
-
-int TimingHud::getSessionBestSplit1() const {
-    // Session best split times are not tracked per-split in standings
-    // For now, return -1 (no data) for split comparisons
-    // Future: Could track this in PluginData if needed
-    return -1;
-}
-
-int TimingHud::getSessionBestSplit2() const {
-    // Session best split times are not tracked per-split in standings
-    return -1;
+    return overallBest;
 }
 
 void TimingHud::calculateAllGaps(int splitTime, int splitIndex, bool isLapComplete) {
@@ -373,7 +371,7 @@ void TimingHud::calculateAllGaps(int splitTime, int splitIndex, bool isLapComple
         m_officialData.gapToPB.set(gap, (pbTime > 0 || previousPbTime > 0) ? 1 : -1);
     }
 
-    // === Gap to Ideal Lap (sum of best sectors) ===
+    // === Gap to Ideal (sum of best sectors) ===
     {
         int idealTime = -1;
 
@@ -394,18 +392,47 @@ void TimingHud::calculateAllGaps(int splitTime, int splitIndex, bool isLapComple
         m_officialData.gapToIdeal.set(gap, idealTime);
     }
 
-    // === Gap to Session Best (fastest lap by anyone) ===
+    // === Gap to Overall (overall best lap by anyone in session) ===
     {
-        int sessionBestTime = -1;
+        int overallBestTime = -1;
+        const LapLogEntry* overallBest = pluginData.getOverallBestLap();
 
         if (isLapComplete) {
-            // Full lap: compare to session best lap
-            sessionBestTime = getSessionBestLapTime();
+            // Full lap: compare to overall best lap in session
+            overallBestTime = getOverallBestLapTime();
+        } else if (overallBest) {
+            // Split comparisons using stored overall best splits
+            if (splitIndex == 0) {
+                overallBestTime = overallBest->sector1;
+            } else if (splitIndex == 1) {
+                // S1 + S2 cumulative time
+                if (overallBest->sector1 > 0 && overallBest->sector2 > 0) {
+                    overallBestTime = overallBest->sector1 + overallBest->sector2;
+                }
+            }
         }
-        // Note: Split comparisons to session best are not supported (data not tracked)
 
-        int gap = calculateGap(splitTime, sessionBestTime);
-        m_officialData.gapToSession.set(gap, sessionBestTime);
+        int gap = calculateGap(splitTime, overallBestTime);
+        m_officialData.gapToOverall.set(gap, overallBestTime);
+    }
+
+    // === Gap to All-Time PB (persisted across sessions) ===
+    {
+        // Use cached previous all-time PB values (captured at session start and after each lap)
+        // This allows showing improvement when beating the PB, since PersonalBestManager
+        // may have already been updated with the new time by race_lap_handler
+        int previousAllTimeTime = -1;
+
+        if (isLapComplete) {
+            previousAllTimeTime = m_previousAllTimeLap;
+        } else if (splitIndex == 0) {
+            previousAllTimeTime = m_previousAllTimeSector1;
+        } else if (splitIndex == 1) {
+            previousAllTimeTime = m_previousAllTimeS1PlusS2;
+        }
+
+        int gap = calculateGap(splitTime, previousAllTimeTime);
+        m_officialData.gapToAllTime.set(gap, previousAllTimeTime);
     }
 }
 
@@ -425,6 +452,30 @@ void TimingHud::resetLiveTimingState() {
     m_cachedSplit1 = -1;
     m_cachedSplit2 = -1;
     m_cachedLastCompletedLapNum = -1;
+
+    // Cache current all-time PB for comparison when beating it
+    cacheAllTimePB();
+}
+
+void TimingHud::cacheAllTimePB() {
+    const PluginData& pluginData = PluginData::getInstance();
+    const SessionData& sessionData = pluginData.getSessionData();
+    const PersonalBestEntry* allTimePB = PersonalBestManager::getInstance()
+        .getPersonalBest(sessionData.trackId, sessionData.bikeName);
+
+    if (allTimePB && allTimePB->isValid()) {
+        m_previousAllTimeLap = allTimePB->lapTime;
+        m_previousAllTimeSector1 = allTimePB->sector1;
+        if (allTimePB->sector1 > 0 && allTimePB->sector2 > 0) {
+            m_previousAllTimeS1PlusS2 = allTimePB->sector1 + allTimePB->sector2;
+        } else {
+            m_previousAllTimeS1PlusS2 = -1;
+        }
+    } else {
+        m_previousAllTimeLap = -1;
+        m_previousAllTimeSector1 = -1;
+        m_previousAllTimeS1PlusS2 = -1;
+    }
 }
 
 void TimingHud::rebuildLayout() {
@@ -627,15 +678,19 @@ void TimingHud::rebuildRenderData() {
         bool showInvalid = m_officialData.isInvalid;
 
         if (showGapData) {
-            // Render enabled gap types
+            // Render enabled gap types in display order:
+            // Session PB, All-Time PB, Ideal, Overall
             if (m_gapTypes & GAP_TO_PB) {
                 renderGapRow(m_officialData.gapToPB, showInvalid);
+            }
+            if (m_gapTypes & GAP_TO_ALLTIME) {
+                renderGapRow(m_officialData.gapToAllTime, showInvalid);  // All-time gap uses invalid
             }
             if (m_gapTypes & GAP_TO_IDEAL) {
                 renderGapRow(m_officialData.gapToIdeal, false);  // Ideal gap doesn't use invalid
             }
-            if (m_gapTypes & GAP_TO_SESSION) {
-                renderGapRow(m_officialData.gapToSession, false);  // Session gap doesn't use invalid
+            if (m_gapTypes & GAP_TO_OVERALL) {
+                renderGapRow(m_officialData.gapToOverall, false);  // Overall doesn't use invalid
             }
         } else {
             // No gap data yet - show placeholder for each enabled gap type

@@ -161,7 +161,9 @@ void TelemetryHud::rebuildRenderData() {
                 addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
                     PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             } else {
-                addString("  N/A", valueX, legendY, PluginConstants::Justify::LEFT,
+                char naBuffer[16];
+                snprintf(naBuffer, sizeof(naBuffer), "%5s", Placeholders::NOT_AVAILABLE);
+                addString(naBuffer, valueX, legendY, PluginConstants::Justify::LEFT,
                     PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dims.fontSize);
             }
             legendY += dims.lineHeightNormal;
@@ -178,7 +180,9 @@ void TelemetryHud::rebuildRenderData() {
                 addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
                     PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             } else {
-                addString("  N/A", valueX, legendY, PluginConstants::Justify::LEFT,
+                char naBuffer[16];
+                snprintf(naBuffer, sizeof(naBuffer), "%5s", Placeholders::NOT_AVAILABLE);
+                addString(naBuffer, valueX, legendY, PluginConstants::Justify::LEFT,
                     PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dims.fontSize);
             }
             legendY += dims.lineHeightNormal;
@@ -209,7 +213,9 @@ void TelemetryHud::rebuildRenderData() {
                 addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
                     PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             } else {
-                addString("  N/A", valueX, legendY, PluginConstants::Justify::LEFT,
+                char naBuffer[16];
+                snprintf(naBuffer, sizeof(naBuffer), "%5s", Placeholders::NOT_AVAILABLE);
+                addString(naBuffer, valueX, legendY, PluginConstants::Justify::LEFT,
                     PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dims.fontSize);
             }
             legendY += dims.lineHeightNormal;
@@ -228,7 +234,9 @@ void TelemetryHud::rebuildRenderData() {
                 addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
                     PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             } else {
-                addString("  N/A", valueX, legendY, PluginConstants::Justify::LEFT,
+                char naBuffer[16];
+                snprintf(naBuffer, sizeof(naBuffer), "%5s", Placeholders::NOT_AVAILABLE);
+                addString(naBuffer, valueX, legendY, PluginConstants::Justify::LEFT,
                     PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dims.fontSize);
             }
             legendY += dims.lineHeightNormal;

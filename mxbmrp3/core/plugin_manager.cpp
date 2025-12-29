@@ -28,6 +28,7 @@
 #include "../handlers/track_centerline_handler.h"
 #include "../handlers/race_vehicle_data_handler.h"
 #include "../handlers/spectate_handler.h"
+#include "personal_best_manager.h"
 #include <cstring>
 #include <vector>
 #include <windows.h>
@@ -91,6 +92,9 @@ int PluginManager::handleStartup(const char* savePath) {
 
     // Initialize with savePath (Logger is initialized first and will log startup info)
     initialize(m_savePath);
+
+    // Load personal bests from disk
+    PersonalBestManager::getInstance().load(m_savePath);
 
     if (savePath != nullptr) {
         DEBUG_INFO_F("Startup called with save path: %s", savePath);

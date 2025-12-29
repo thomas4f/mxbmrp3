@@ -13,9 +13,9 @@
 struct TrackedRiderConfig {
     std::string name;        // Rider name (used as key, stored normalized for matching)
     unsigned long color;     // Custom color for this rider
-    int shapeIndex;          // Icon index (1-50): maps to rider icon sprites
+    int shapeIndex;          // Icon shape index (1-based offset into icon list)
 
-    TrackedRiderConfig() : color(ColorPalette::RED), shapeIndex(12) {}  // Default to Circle (SHAPE_CIRCLE = 12)
+    TrackedRiderConfig() : color(ColorPalette::RED), shapeIndex(1) {}  // Default to first icon
     TrackedRiderConfig(const std::string& riderName, unsigned long c, int shape)
         : name(riderName), color(c), shapeIndex(shape) {}
 };
@@ -24,84 +24,23 @@ class TrackedRidersManager {
 public:
     static TrackedRidersManager& getInstance();
 
-    // Icon constants - 50 icons alphabetically ordered by filename (1-indexed)
-    // Files: award, ban, bolt-lightning, bomb, bullseye, certificate, circle-arrow-up,
-    //        circle-chevron-up, circle-dot, circle-exclamation, circle-play, circle,
-    //        circle-up, circle-user, circle-xmark, crown, diamond, eye, fire, flag,
-    //        ghost, heart, hexagon, location-arrow, location-pin, mask, medal, meteor,
-    //        mug-hot, octagon, paper-plane, peace, pentagon, plane-up, play, poo,
-    //        radiation, record-vinyl, robot, rocket, shield, skull-crossbones, skull,
-    //        snowflake, star-of-life, star, triangle-exclamation, trophy, web-awesome, xmark
-    static constexpr int SHAPE_AWARD = 1;
-    static constexpr int SHAPE_BAN = 2;
-    static constexpr int SHAPE_BOLT = 3;
-    static constexpr int SHAPE_BOMB = 4;
-    static constexpr int SHAPE_BULLSEYE = 5;
-    static constexpr int SHAPE_CERTIFICATE = 6;
-    static constexpr int SHAPE_ARROWUP = 7;
-    static constexpr int SHAPE_CHEVRON = 8;
-    static constexpr int SHAPE_DOT = 9;
-    static constexpr int SHAPE_ALERT = 10;
-    static constexpr int SHAPE_CIRCLEPLAY = 11;
-    static constexpr int SHAPE_CIRCLE = 12;
-    static constexpr int SHAPE_CIRCLEUP = 13;
-    static constexpr int SHAPE_USER = 14;
-    static constexpr int SHAPE_X = 15;
-    static constexpr int SHAPE_CROWN = 16;
-    static constexpr int SHAPE_DIAMOND = 17;
-    static constexpr int SHAPE_EYE = 18;
-    static constexpr int SHAPE_FIRE = 19;
-    static constexpr int SHAPE_FLAG = 20;
-    static constexpr int SHAPE_GHOST = 21;
-    static constexpr int SHAPE_HEART = 22;
-    static constexpr int SHAPE_HEXAGON = 23;
-    static constexpr int SHAPE_LOCATION = 24;
-    static constexpr int SHAPE_PIN = 25;
-    static constexpr int SHAPE_MASK = 26;
-    static constexpr int SHAPE_MEDAL = 27;
-    static constexpr int SHAPE_METEOR = 28;
-    static constexpr int SHAPE_MUG = 29;
-    static constexpr int SHAPE_OCTAGON = 30;
-    static constexpr int SHAPE_PLANE = 31;
-    static constexpr int SHAPE_PEACE = 32;
-    static constexpr int SHAPE_PENTAGON = 33;
-    static constexpr int SHAPE_PLANEUP = 34;
-    static constexpr int SHAPE_PLAY = 35;
-    static constexpr int SHAPE_POO = 36;
-    static constexpr int SHAPE_RADIATION = 37;
-    static constexpr int SHAPE_VINYL = 38;
-    static constexpr int SHAPE_ROBOT = 39;
-    static constexpr int SHAPE_ROCKET = 40;
-    static constexpr int SHAPE_SHIELD = 41;
-    static constexpr int SHAPE_CROSSBONES = 42;
-    static constexpr int SHAPE_SKULL = 43;
-    static constexpr int SHAPE_SNOWFLAKE = 44;
-    static constexpr int SHAPE_STARLIFE = 45;
-    static constexpr int SHAPE_STAR = 46;
-    static constexpr int SHAPE_WARNING = 47;
-    static constexpr int SHAPE_TROPHY = 48;
-    static constexpr int SHAPE_WEB = 49;
-    static constexpr int SHAPE_XMARK = 50;
-    // Icon range
-    static constexpr int SHAPE_COUNT = 50;
-    static constexpr int SHAPE_MIN = 1;
-    static constexpr int SHAPE_MAX = 50;
+    // Icon shape indices are 1-based offsets into the icon list discovered by AssetManager
+    // The actual icons available depend on files in mxbmrp3_data/icons/
+    // Use AssetManager::getIconSpriteIndex(filename) to get sprite index for a specific icon
+    // Use AssetManager::getIconCount() to get the maximum valid shape index
 
     // Maximum tracked riders (5 pages × 36 per page)
     static constexpr int MAX_TRACKED_RIDERS = 180;
 
-    // Get display name for shape index
-    static const char* getShapeName(int shapeIndex);
-
-    // Check if icon should rotate with rider heading (directional icons)
+    // Check if icon should rotate with rider heading (based on filename patterns)
     static bool shouldRotate(int shapeIndex);
 
     // Get next color for new rider (cycles through ColorPalette::ALL_COLORS)
     unsigned long getNextColor() const;
 
-    // Add a rider to tracking list (color=0 means auto-assign next color)
+    // Add a rider to tracking list (color=0 means auto-assign next color, shapeIndex=0 means use default)
     // Returns true if added, false if already exists or at capacity
-    bool addTrackedRider(const std::string& name, unsigned long color = 0, int shapeIndex = SHAPE_CIRCLE);
+    bool addTrackedRider(const std::string& name, unsigned long color = 0, int shapeIndex = 0);
 
     // Check if at maximum capacity
     bool isAtCapacity() const { return static_cast<int>(m_trackedRiders.size()) >= MAX_TRACKED_RIDERS; }

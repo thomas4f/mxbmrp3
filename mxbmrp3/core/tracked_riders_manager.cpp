@@ -4,6 +4,7 @@
 // ============================================================================
 #include "tracked_riders_manager.h"
 #include "plugin_data.h"
+#include "asset_manager.h"
 #include "../diagnostics/logger.h"
 #include <algorithm>
 #include <sstream>
@@ -16,80 +17,45 @@ TrackedRidersManager& TrackedRidersManager::getInstance() {
     return instance;
 }
 
-const char* TrackedRidersManager::getShapeName(int shapeIndex) {
-    switch (shapeIndex) {
-        case SHAPE_ALERT:       return "Alert";
-        case SHAPE_ARROWUP:     return "ArrowUp";
-        case SHAPE_AWARD:       return "Award";
-        case SHAPE_BAN:         return "Ban";
-        case SHAPE_BOLT:        return "Bolt";
-        case SHAPE_BOMB:        return "Bomb";
-        case SHAPE_BULLSEYE:    return "Bullseye";
-        case SHAPE_CERTIFICATE: return "Certificate";
-        case SHAPE_CHEVRON:     return "Chevron";
-        case SHAPE_CIRCLE:      return "Circle";
-        case SHAPE_CIRCLEPLAY:  return "CirclePlay";
-        case SHAPE_CIRCLEUP:    return "CircleUp";
-        case SHAPE_CROSSBONES:  return "Crossbones";
-        case SHAPE_CROWN:       return "Crown";
-        case SHAPE_DIAMOND:     return "Diamond";
-        case SHAPE_DOT:         return "Dot";
-        case SHAPE_EYE:         return "Eye";
-        case SHAPE_FIRE:        return "Fire";
-        case SHAPE_FLAG:        return "Flag";
-        case SHAPE_GHOST:       return "Ghost";
-        case SHAPE_HEART:       return "Heart";
-        case SHAPE_HEXAGON:     return "Hexagon";
-        case SHAPE_LOCATION:    return "Location";
-        case SHAPE_MASK:        return "Mask";
-        case SHAPE_MEDAL:       return "Medal";
-        case SHAPE_METEOR:      return "Meteor";
-        case SHAPE_MUG:         return "Mug";
-        case SHAPE_OCTAGON:     return "Octagon";
-        case SHAPE_PEACE:       return "Peace";
-        case SHAPE_PENTAGON:    return "Pentagon";
-        case SHAPE_PIN:         return "Pin";
-        case SHAPE_PLANE:       return "Plane";
-        case SHAPE_PLANEUP:     return "PlaneUp";
-        case SHAPE_PLAY:        return "Play";
-        case SHAPE_POO:         return "Poo";
-        case SHAPE_RADIATION:   return "Radiation";
-        case SHAPE_ROBOT:       return "Robot";
-        case SHAPE_ROCKET:      return "Rocket";
-        case SHAPE_SHIELD:      return "Shield";
-        case SHAPE_SKULL:       return "Skull";
-        case SHAPE_SNOWFLAKE:   return "Snowflake";
-        case SHAPE_STAR:        return "Star";
-        case SHAPE_STARLIFE:    return "StarLife";
-        case SHAPE_TROPHY:      return "Trophy";
-        case SHAPE_USER:        return "User";
-        case SHAPE_VINYL:       return "Vinyl";
-        case SHAPE_WARNING:     return "Warning";
-        case SHAPE_WEB:         return "Web";
-        case SHAPE_X:           return "X";
-        case SHAPE_XMARK:       return "Xmark";
-        default:                return "Circle";
-    }
+// Default icon filename for tracked riders
+static constexpr const char* DEFAULT_RIDER_ICON = "circle";
+
+// Helper to get shape index from filename (returns 1 if not found)
+static int getDefaultShapeIndex() {
+    const auto& assetMgr = AssetManager::getInstance();
+    int spriteIndex = assetMgr.getIconSpriteIndex(DEFAULT_RIDER_ICON);
+    if (spriteIndex <= 0) return 1;
+    return spriteIndex - assetMgr.getFirstIconSpriteIndex() + 1;
+}
+
+// Helper to get valid shape bounds
+static int getMaxShapeIndex() {
+    return static_cast<int>(AssetManager::getInstance().getIconCount());
 }
 
 bool TrackedRidersManager::shouldRotate(int shapeIndex) {
-    // Directional icons that should rotate with rider heading
-    switch (shapeIndex) {
-        case SHAPE_ARROWUP:
-        case SHAPE_CHEVRON:
-        case SHAPE_CIRCLEPLAY:
-        case SHAPE_CIRCLEUP:
-        case SHAPE_GHOST:
-        case SHAPE_LOCATION:
-        case SHAPE_METEOR:
-        case SHAPE_PLANE:
-        case SHAPE_PLANEUP:
-        case SHAPE_PLAY:
-        case SHAPE_ROCKET:
-            return true;
-        default:
-            return false;  // Symmetric icons don't rotate
-    }
+    // Get the icon filename and check for directional patterns
+    const auto& assetMgr = AssetManager::getInstance();
+    int spriteIndex = assetMgr.getFirstIconSpriteIndex() + shapeIndex - 1;
+    std::string filename = assetMgr.getIconFilename(spriteIndex);
+
+    if (filename.empty()) return false;
+
+    // Directional icons contain these patterns in their filename
+    return filename.find("angle-up") != std::string::npos ||
+           filename.find("angles-up") != std::string::npos ||
+           filename.find("arrow-up") != std::string::npos ||
+           filename.find("caret-up") != std::string::npos ||
+           filename.find("chevron") != std::string::npos ||
+           filename.find("circle-play") != std::string::npos ||
+           filename.find("circle-up") != std::string::npos ||
+           filename.find("ghost") != std::string::npos ||
+           filename.find("location") != std::string::npos ||
+           filename.find("meteor") != std::string::npos ||
+           filename.find("paper-plane") != std::string::npos ||
+           filename.find("plane-up") != std::string::npos ||
+           filename.find("play") != std::string::npos ||
+           filename.find("rocket") != std::string::npos;
 }
 
 std::string TrackedRidersManager::normalizeName(const std::string& name) {
@@ -138,8 +104,9 @@ bool TrackedRidersManager::addTrackedRider(const std::string& name, unsigned lon
     }
 
     // Clamp shape index to valid range
-    if (shapeIndex < SHAPE_MIN || shapeIndex > SHAPE_MAX) {
-        shapeIndex = SHAPE_CIRCLE;
+    int maxShape = getMaxShapeIndex();
+    if (shapeIndex < 1 || shapeIndex > maxShape) {
+        shapeIndex = getDefaultShapeIndex();
     }
 
     // Add new tracked rider (store original name for display)
@@ -203,9 +170,10 @@ void TrackedRidersManager::setTrackedRiderShape(const std::string& name, int sha
     std::string normalizedName = normalizeName(name);
     auto it = m_trackedRiders.find(normalizedName);
     if (it != m_trackedRiders.end()) {
-        // Clamp to valid range
-        if (shapeIndex < SHAPE_MIN) shapeIndex = SHAPE_MAX;
-        else if (shapeIndex > SHAPE_MAX) shapeIndex = SHAPE_MIN;
+        // Wrap around to valid range
+        int maxShape = getMaxShapeIndex();
+        if (shapeIndex < 1) shapeIndex = maxShape;
+        else if (shapeIndex > maxShape) shapeIndex = 1;
         it->second.shapeIndex = shapeIndex;
         m_bDirty = true;
         PluginData::getInstance().notifyTrackedRidersChanged();
@@ -242,13 +210,14 @@ void TrackedRidersManager::cycleTrackedRiderShape(const std::string& name, bool 
     std::string normalizedName = normalizeName(name);
     auto it = m_trackedRiders.find(normalizedName);
     if (it != m_trackedRiders.end()) {
+        int maxShape = getMaxShapeIndex();
         int shape = it->second.shapeIndex;
         if (forward) {
             shape++;
-            if (shape > SHAPE_MAX) shape = SHAPE_MIN;
+            if (shape > maxShape) shape = 1;
         } else {
             shape--;
-            if (shape < SHAPE_MIN) shape = SHAPE_MAX;
+            if (shape < 1) shape = maxShape;
         }
         it->second.shapeIndex = shape;
         m_bDirty = true;
@@ -360,8 +329,9 @@ void TrackedRidersManager::deserializeFromString(const std::string& data) {
                 int shapeIndex = std::stoi(shapeStr);
 
                 // Clamp shape to valid range
-                if (shapeIndex < SHAPE_MIN || shapeIndex > SHAPE_MAX) {
-                    shapeIndex = SHAPE_CIRCLE;
+                int maxShape = getMaxShapeIndex();
+                if (shapeIndex < 1 || shapeIndex > maxShape) {
+                    shapeIndex = getDefaultShapeIndex();
                 }
 
                 // Add rider (normalized internally)

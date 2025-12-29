@@ -9,7 +9,6 @@
 #include "lap_log_hud.h"
 #include "standings_hud.h"
 #include "performance_hud.h"
-#include "input_hud.h"
 #include "pitboard_hud.h"
 #include "time_widget.h"
 #include "position_widget.h"
@@ -26,6 +25,7 @@
 #include "fuel_widget.h"
 #include "pointer_widget.h"
 #include "records_hud.h"
+#include "gamepad_widget.h"
 #include <variant>
 #include <string>
 #include "map_hud.h"
@@ -45,8 +45,8 @@ public:
     SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog,
                 StandingsHud* standings,
                 PerformanceHud* performance,
-                TelemetryHud* telemetry, InputHud* input,
-                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionWidget* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble);
+                TelemetryHud* telemetry,
+                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionWidget* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad);
     virtual ~SettingsHud() = default;
 
     void update() override;
@@ -72,6 +72,7 @@ private:
             GAP_INDICATOR_DOWN,        // Cycle gap indicator backward
             GAP_REFERENCE_UP,          // Cycle gap reference forward (Leader/Player)
             GAP_REFERENCE_DOWN,        // Cycle gap reference backward
+            STANDINGS_DEBUG_TOGGLE,    // Unused - debug column is INI-only (col_debug=1)
             RESET_BUTTON,              // Unified reset button (General tab) - action depends on checkbox
             RESET_TAB_BUTTON,          // Reset current tab to defaults (footer)
             COPY_TARGET_UP,            // Cycle copy target forward
@@ -114,7 +115,16 @@ private:
             RADAR_ALERT_DISTANCE_DOWN, // Decrease alert distance (RadarHud)
             RADAR_LABEL_MODE_UP,       // Cycle label mode forward (RadarHud)
             RADAR_LABEL_MODE_DOWN,     // Cycle label mode backward (RadarHud)
-            RADAR_FADE_TOGGLE,         // Toggle fade when empty (RadarHud)
+            RADAR_MODE_UP,             // Cycle radar mode forward (RadarHud)
+            RADAR_MODE_DOWN,           // Cycle radar mode backward (RadarHud)
+            RADAR_PROXIMITY_ARROWS_UP, // Cycle proximity arrow mode forward (RadarHud)
+            RADAR_PROXIMITY_ARROWS_DOWN, // Cycle proximity arrow mode backward (RadarHud)
+            RADAR_PROXIMITY_SHAPE_UP,  // Cycle proximity arrow shape forward (RadarHud)
+            RADAR_PROXIMITY_SHAPE_DOWN, // Cycle proximity arrow shape backward (RadarHud)
+            RADAR_PROXIMITY_SCALE_UP,  // Increase proximity arrow scale (RadarHud)
+            RADAR_PROXIMITY_SCALE_DOWN, // Decrease proximity arrow scale (RadarHud)
+            RADAR_PROXIMITY_COLOR_UP,  // Cycle proximity arrow color mode forward (RadarHud)
+            RADAR_PROXIMITY_COLOR_DOWN, // Cycle proximity arrow color mode backward (RadarHud)
             RADAR_RIDER_SHAPE_UP,      // Cycle rider shape forward (RadarHud)
             RADAR_RIDER_SHAPE_DOWN,    // Cycle rider shape backward (RadarHud)
             RADAR_MARKER_SCALE_UP,     // Increase marker scale (RadarHud)
@@ -133,9 +143,10 @@ private:
             TIMING_GAP_MODE_DOWN,      // Cycle gap column mode backward (TimingHud)
             TIMING_DURATION_UP,        // Increase timing display duration (TimingHud)
             TIMING_DURATION_DOWN,      // Decrease timing display duration (TimingHud)
-            TIMING_GAP_PB_TOGGLE,      // Toggle gap to PB comparison (TimingHud)
-            TIMING_GAP_IDEAL_TOGGLE,   // Toggle gap to ideal lap comparison (TimingHud)
-            TIMING_GAP_SESSION_TOGGLE, // Toggle gap to session best comparison (TimingHud)
+            TIMING_GAP_PB_TOGGLE,      // Toggle "Session PB" comparison (TimingHud)
+            TIMING_GAP_IDEAL_TOGGLE,   // Toggle "Ideal" comparison (TimingHud)
+            TIMING_GAP_OVERALL_TOGGLE, // Toggle "Overall" comparison (TimingHud)
+            TIMING_GAP_ALLTIME_TOGGLE, // Toggle "All-Time PB" comparison (TimingHud)
             GAPBAR_FREEZE_UP,          // Increase freeze duration (GapBarHud)
             GAPBAR_FREEZE_DOWN,        // Decrease freeze duration (GapBarHud)
             GAPBAR_MARKER_TOGGLE,      // Toggle position markers (GapBarHud)
@@ -375,6 +386,7 @@ private:
     void handleMapMarkerScaleClick(const ClickRegion& region, bool increase);
     void handleRadarRangeClick(const ClickRegion& region, bool increase);
     void handleRadarRiderShapeClick(const ClickRegion& region, bool forward);
+    void handleRadarProximityShapeClick(const ClickRegion& region, bool forward);
     void handleRadarMarkerScaleClick(const ClickRegion& region, bool increase);
     void handleRadarColorizeClick(const ClickRegion& region, bool forward);
     void handleRadarAlertDistanceClick(const ClickRegion& region, bool increase);
@@ -419,7 +431,6 @@ private:
     StandingsHud* m_standings;
     PerformanceHud* m_performance;
     TelemetryHud* m_telemetry;
-    InputHud* m_input;
     TimeWidget* m_time;
     PositionWidget* m_position;
     LapWidget* m_lap;
@@ -439,6 +450,7 @@ private:
     FuelWidget* m_fuel;
     PointerWidget* m_pointer;
     RumbleHud* m_rumble;
+    GamepadWidget* m_gamepad;
 
     // Visibility flag
     bool m_bVisible;
@@ -481,18 +493,17 @@ private:
         TAB_LAP_LOG = 4,       // F4
         TAB_IDEAL_LAP = 5,     // F5
         TAB_TELEMETRY = 6,     // F6
-        TAB_INPUT = 7,         // F7
-        TAB_RECORDS = 8,       // F8 - Lap Records (online)
-        TAB_PITBOARD = 9,
-        TAB_TIMING = 10,       // Timing HUD (center display)
-        TAB_GAP_BAR = 11,      // Gap Bar HUD (lap timing comparison)
-        TAB_PERFORMANCE = 12,
-        TAB_WIDGETS = 13,
-        TAB_RIDERS = 14,       // Tracked riders configuration
-        TAB_RUMBLE = 15,
-        TAB_APPEARANCE = 16,   // Appearance configuration (fonts, colors)
-        TAB_HOTKEYS = 17,      // Keyboard/controller hotkey bindings
-        TAB_COUNT = 18
+        TAB_RECORDS = 7,       // F7 - Lap Records (online)
+        TAB_PITBOARD = 8,
+        TAB_TIMING = 9,        // Timing HUD (center display)
+        TAB_GAP_BAR = 10,      // Gap Bar HUD (lap timing comparison)
+        TAB_PERFORMANCE = 11,
+        TAB_WIDGETS = 12,
+        TAB_RIDERS = 13,       // Tracked riders configuration
+        TAB_RUMBLE = 14,
+        TAB_APPEARANCE = 15,   // Appearance configuration (fonts, colors)
+        TAB_HOTKEYS = 16,      // Keyboard/controller hotkey bindings
+        TAB_COUNT = 17
     };
     int m_activeTab;
 

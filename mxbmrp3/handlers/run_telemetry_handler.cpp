@@ -88,8 +88,7 @@ void RunTelemetryHandler::handleRunTelemetry(SPluginsBikeData_t* psBikeData, flo
         float lateralG = 0.0f;
         float speed = psBikeData->m_fSpeedometer;
         if (speed > 2.0f) {
-            constexpr float DEG_TO_RAD = 3.14159265358979f / 180.0f;
-            constexpr float RAD_TO_DEG = 180.0f / 3.14159265358979f;
+            using namespace PluginConstants::Math;
             float yawRad = psBikeData->m_fYaw * DEG_TO_RAD;
             float sinYaw = std::sin(yawRad);
             float cosYaw = std::cos(yawRad);

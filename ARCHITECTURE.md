@@ -268,7 +268,6 @@ Abstract base class that all HUDs inherit from. Provides:
 - `IdealLapHud` - Ideal (purple) sector times with gap comparison
 - `MapHud` - 2D track map with rider positions and zoom/range mode
 - `TelemetryHud` - Throttle/brake/suspension graphs
-- `InputHud` - Controller stick visualization
 - `PerformanceHud` - FPS, CPU usage graphs
 - `RadarHud` - Proximity radar with nearby rider alerts
 - `PitboardHud` - Pitboard-style lap/split information
@@ -288,6 +287,7 @@ Abstract base class that all HUDs inherit from. Provides:
 - `BarsWidget` - Visual telemetry bars (throttle, brake, etc.)
 - `FuelWidget` - Fuel calculator with consumption tracking
 - `NoticesWidget` - Race status notices (wrong way, blue flag, last lap, finished)
+- `GamepadWidget` - Controller visualization with button/stick/trigger display
 - `VersionWidget` - Plugin version display
 - `SettingsButtonWidget` - Settings menu toggle button
 
@@ -471,7 +471,7 @@ Discovers and registers assets from `plugins/mxbmrp3_data/` subdirectories:
 
 **Texture Variants**: Textures can have numbered variants (e.g., `standings_hud_1.tga`, `standings_hud_2.tga`). Users can cycle through variants in settings.
 
-**Icon Discovery**: Icons are discovered alphabetically. The `SHAPE_*` constants in `tracked_riders_manager.h` map to this alphabetical order.
+**Icon Discovery**: Icons are discovered alphabetically. Use `AssetManager::getIconSpriteIndex(filename)` to get the sprite index for a specific icon by filename. Settings store icon filenames for persistence.
 
 ### FontConfig (`core/font_config.*`)
 
@@ -637,7 +637,7 @@ SCOPED_TIMER_THRESHOLD("MyFunction", 100);  // Logs if > 100us
 
 6. **Font indices are 1-based** - Font index 0 is invalid.
 
-7. **Icon ordering is alphabetical** - Icons in `mxbmrp3_data/icons/` are discovered alphabetically. The `SHAPE_*` constants in `tracked_riders_manager.h` depend on this order. Renaming icon files will break the constant mappings.
+7. **Icon ordering is alphabetical** - Icons in `mxbmrp3_data/icons/` are discovered alphabetically. Use filename-based lookups via `AssetManager` for persistence; icon additions/removals won't break saved settings.
 
 ## Quick Reference: File Locations
 

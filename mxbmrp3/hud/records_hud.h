@@ -117,23 +117,27 @@ private:
 
     // Click handling
     void handleClick(float mouseX, float mouseY);
-    bool isPointInRect(float x, float y, float rectX, float rectY, float width, float height) const;
     void cycleProvider(int direction);
     void cycleCategory(int direction);
+
+    // Personal best integration
+    // Returns the position the player's PB would have in the records list (1-based)
+    // Returns -1 if no PB exists, 0 if faster than all records
+    int findPlayerPositionInRecords(int playerPBTime) const;
 
     // Base position (0,0) - actual position comes from m_fOffsetX/m_fOffsetY
     static constexpr float START_X = 0.0f;
     static constexpr float START_Y = 0.0f;
-    static constexpr int MAX_RECORDS = 10;
-    static constexpr size_t MAX_RESPONSE_SIZE = 64 * 1024;  // 64KB max response to prevent memory exhaustion
-    static constexpr int HEADER_ROWS = 3;  // Title + Provider/Category/Fetch + empty row (no column headers)
-    static constexpr int FOOTER_ROWS = 3;  // Empty row + two lines of note
+    static constexpr int MAX_RECORDS = 50;  // API only returns 50 results
+    static constexpr size_t MAX_RESPONSE_SIZE = 256 * 1024;  // 256KB max response to prevent memory exhaustion
+    static constexpr int HEADER_ROWS = 3;  // Title + Provider/Category/Compare + empty row (no column headers)
+    static constexpr int FOOTER_ROWS = 2;  // Gap row + footer note
 
     // Column width constants (in character counts)
     // Each width = content chars + 1 gap (matches pattern used by other HUDs)
-    // Total default (POS+RIDER+BIKE+LAPTIME): 4+14+18+8 = 44 chars (last col has no gap)
+    // Total default (POS+RIDER+BIKE+LAPTIME): 4+13+18+8 = 43 chars (last col has no gap)
     static constexpr int COL_POS_WIDTH = 4;       // "P99" = 3 chars + 1 gap
-    static constexpr int COL_RIDER_WIDTH = 14;    // Up to 13 chars displayed + 1 gap
+    static constexpr int COL_RIDER_WIDTH = 13;    // Up to 12 chars displayed + 1 gap
     static constexpr int COL_BIKE_WIDTH = 18;     // Up to 17 chars displayed + 1 gap
     static constexpr int COL_LAPTIME_WIDTH = 9;   // M:SS.mmm = 8 chars + 1 gap
     static constexpr int COL_DATE_WIDTH = 11;     // YYYY-MM-DD = 10 chars + 1 gap
@@ -150,6 +154,7 @@ private:
     uint32_t m_enabledColumns = COL_DEFAULT;  // Bitfield of enabled columns
     int m_recordsToShow = 3;  // Number of records to display (1-10, default 3)
     char m_lastSessionCategory[64] = {0};  // Track session category to auto-update on bike change
+    bool m_bShowFooter = true;  // Show provider attribution at bottom (configurable via INI)
 
     // Fetch state
     std::atomic<FetchState> m_fetchState;

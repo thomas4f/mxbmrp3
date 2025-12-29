@@ -13,12 +13,22 @@
 
 class NoticesWidget : public BaseHud {
 public:
+    // Notice visibility flags (bitfield) - configurable via INI
+    static constexpr uint32_t NOTICE_WRONG_WAY = 1 << 0;
+    static constexpr uint32_t NOTICE_BLUE_FLAG = 1 << 1;
+    static constexpr uint32_t NOTICE_LAST_LAP  = 1 << 2;
+    static constexpr uint32_t NOTICE_FINISHED  = 1 << 3;
+    static constexpr uint32_t NOTICE_DEFAULT   = NOTICE_WRONG_WAY | NOTICE_BLUE_FLAG | NOTICE_LAST_LAP | NOTICE_FINISHED;
+
     NoticesWidget();
     virtual ~NoticesWidget() = default;
 
     void update() override;
     bool handlesDataType(DataChangeType dataType) const override;
     void resetToDefaults();
+
+    // Allow SettingsManager to access private members
+    friend class SettingsManager;
 
 protected:
     void rebuildLayout() override;
@@ -38,4 +48,7 @@ private:
 
     // Wrong way grace period (10 seconds after race start)
     static constexpr int WRONG_WAY_GRACE_PERIOD_MS = 10000;
+
+    // Settings (configurable via INI)
+    uint32_t m_enabledNotices = NOTICE_DEFAULT;  // Bitfield of enabled notices
 };

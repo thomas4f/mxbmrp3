@@ -35,6 +35,12 @@ void RaceSplitHandler::handleRaceSplit(SPluginsRaceSplit_t* psRaceSplit) {
     int splitIndex = psRaceSplit->m_iSplit;
     int splitTime = psRaceSplit->m_iSplitTime;
 
+    // Validate split index (expected range: 0-2 for split1, split2, finish)
+    if (splitIndex < 0 || splitIndex > 2) {
+        DEBUG_WARN_F("RaceSplit: Invalid split index %d (expected 0-2), raceNum=%d", splitIndex, raceNum);
+        return;
+    }
+
     // Update current lap split data (used by IdealLapHud for real-time tracking)
     // m_iSplit is 0-indexed (0 = split 1, 1 = split 2, 2 = split 3/finish line)
     data.updateCurrentLapSplit(raceNum, lapNum, splitIndex, splitTime);

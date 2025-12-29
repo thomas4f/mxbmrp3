@@ -164,9 +164,15 @@ void NoticesWidget::rebuildRenderData() {
     m_strings.clear();
     m_quads.clear();
 
+    // Check which notices are both active and enabled
+    bool showWrongWay = m_bIsWrongWay && (m_enabledNotices & NOTICE_WRONG_WAY);
+    bool showBlueFlag = !m_blueFlagRaceNums.empty() && (m_enabledNotices & NOTICE_BLUE_FLAG);
+    bool showFinished = m_bIsFinished && (m_enabledNotices & NOTICE_FINISHED);
+    bool showLastLap = m_bIsLastLap && (m_enabledNotices & NOTICE_LAST_LAP);
+
     // Only render if there's something to show
-    // Priority: WRONG WAY > BLUE FLAG > LAST LAP / FINISHED
-    if (!m_bIsWrongWay && m_blueFlagRaceNums.empty() && !m_bIsLastLap && !m_bIsFinished) {
+    // Priority: WRONG WAY > BLUE FLAG > FINISHED > LAST LAP
+    if (!showWrongWay && !showBlueFlag && !showLastLap && !showFinished) {
         setBounds(0.0f, 0.0f, 0.0f, 0.0f);
         return;
     }
@@ -187,7 +193,7 @@ void NoticesWidget::rebuildRenderData() {
 
     const ColorConfig& colors = ColorConfig::getInstance();
 
-    if (m_bIsWrongWay) {
+    if (showWrongWay) {
         // Add notice background (red for warning)
         SPluginQuad_t noticeQuad;
         float quadX = noticeQuadX;
@@ -202,7 +208,7 @@ void NoticesWidget::rebuildRenderData() {
         addString("WRONG WAY", CENTER_X, noticeY, Justify::CENTER,
             Fonts::getTitle(), colors.getNegative(), dim.fontSizeLarge);
     }
-    else if (!m_blueFlagRaceNums.empty()) {
+    else if (showBlueFlag) {
         // Build blue flag text with race numbers only (max 2): "#XX #YY"
         std::string blueFlagText = "";
         int count = 0;
@@ -230,7 +236,7 @@ void NoticesWidget::rebuildRenderData() {
         addString(blueFlagText.c_str(), CENTER_X, noticeY, Justify::CENTER,
             Fonts::getTitle(), ColorPalette::BLUE, dim.fontSizeLarge);
     }
-    else if (m_bIsFinished) {
+    else if (showFinished) {
         // Add notice background (semantic background color for finished)
         SPluginQuad_t noticeQuad;
         float quadX = noticeQuadX;
@@ -245,7 +251,7 @@ void NoticesWidget::rebuildRenderData() {
         addString("FINISHED", CENTER_X, noticeY, Justify::CENTER,
             Fonts::getTitle(), colors.getPrimary(), dim.fontSizeLarge);
     }
-    else if (m_bIsLastLap) {
+    else if (showLastLap) {
         // Add notice background (semantic neutral color for last lap)
         SPluginQuad_t noticeQuad;
         float quadX = noticeQuadX;
@@ -271,5 +277,6 @@ void NoticesWidget::resetToDefaults() {
     m_fBackgroundOpacity = 0.1f;
     m_fScale = 1.0f;
     setPosition(0.0f, 0.0f);
+    m_enabledNotices = NOTICE_DEFAULT;
     setDataDirty();
 }

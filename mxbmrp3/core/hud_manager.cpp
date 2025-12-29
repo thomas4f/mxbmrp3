@@ -16,7 +16,6 @@
 #include "../hud/standings_hud.h"
 #include "../hud/performance_hud.h"
 #include "../hud/telemetry_hud.h"
-#include "../hud/input_hud.h"
 #include "../hud/ideal_lap_hud.h"
 #include "../hud/lap_log_hud.h"
 #include "../hud/time_widget.h"
@@ -40,6 +39,7 @@
 #include "../hud/gap_bar_hud.h"
 #include "../hud/pointer_widget.h"
 #include "../hud/rumble_hud.h"
+#include "../hud/gamepad_widget.h"
 #include "hotkey_manager.h"
 #include <windows.h>
 #include <memory>
@@ -102,11 +102,6 @@ void HudManager::initialize() {
     m_pTelemetry = telemetryPtr.get();
     m_pTelemetry->setTextureBaseName("telemetry_hud");
     registerHud(std::move(telemetryPtr));
-
-    auto inputPtr = std::make_unique<InputHud>();
-    m_pInput = inputPtr.get();
-    m_pInput->setTextureBaseName("input_hud");
-    registerHud(std::move(inputPtr));
 
     auto performancePtr = std::make_unique<PerformanceHud>();
     m_pPerformance = performancePtr.get();
@@ -192,6 +187,11 @@ void HudManager::initialize() {
     m_pRumble->setTextureBaseName("rumble_hud");
     registerHud(std::move(rumblePtr));
 
+    auto gamepadPtr = std::make_unique<GamepadWidget>();
+    m_pGamepad = gamepadPtr.get();
+    m_pGamepad->setTextureBaseName("gamepad_widget");
+    registerHud(std::move(gamepadPtr));
+
     // Create PointerWidget early so it can be passed to SettingsHud
     // (will be registered last to render on top)
     auto pointerPtr = std::make_unique<PointerWidget>();
@@ -199,7 +199,7 @@ void HudManager::initialize() {
 
     // Register SettingsHud with pointers to all configurable HUDs and widgets
     auto settingsPtr = std::make_unique<SettingsHud>(m_pIdealLap, m_pLapLog, m_pStandings,
-                                                       m_pPerformance, m_pTelemetry, m_pInput, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, m_pRecords, m_pFuel, m_pPointer, m_pRumble);
+                                                       m_pPerformance, m_pTelemetry, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, m_pRecords, m_pFuel, m_pPointer, m_pRumble, m_pGamepad);
     m_pSettingsHud = settingsPtr.get();
     registerHud(std::move(settingsPtr));
 
@@ -249,7 +249,6 @@ void HudManager::clear() {
     m_pStandings = nullptr;
     m_pPerformance = nullptr;
     m_pTelemetry = nullptr;
-    m_pInput = nullptr;
     m_pTime = nullptr;
     m_pPosition = nullptr;
     m_pLap = nullptr;
@@ -264,6 +263,7 @@ void HudManager::clear() {
     m_pRecords = nullptr;
     m_pFuel = nullptr;
     m_pRumble = nullptr;
+    m_pGamepad = nullptr;
     m_pSettingsHud = nullptr;
     m_pSettingsButton = nullptr;
     m_pPointer = nullptr;
@@ -275,10 +275,10 @@ void HudManager::clear() {
     m_strings.clear();
 
     // Clean up resource name storage
-    m_numSpriteNames = 0;
-    m_numFontNames = 0;
-    m_spriteBuffer[0] = '\0';
-    m_fontBuffer[0] = '\0';
+    m_spriteNames.clear();
+    m_fontNames.clear();
+    m_spriteBuffer.clear();
+    m_fontBuffer.clear();
 
     DEBUG_INFO("HudManager data cleared");
 }
@@ -291,49 +291,54 @@ int HudManager::initializeResources(int* piNumSprites, char** pszSpriteName, int
 
     DEBUG_INFO("HudManager initializing resources");
 
-    // Build null-separated sprite names buffer
-    char* bufferPos = m_spriteBuffer;
-    size_t remainingSpace = sizeof(m_spriteBuffer);
-
-    for (int i = 0; i < m_numSpriteNames; ++i) {
-        size_t nameLen = strlen(m_spriteNames[i]);
-        if (nameLen + 1 > remainingSpace) break;  // +1 for null terminator
-
-        memcpy(bufferPos, m_spriteNames[i], nameLen + 1);
-        bufferPos += nameLen + 1;
-        remainingSpace -= nameLen + 1;
+    // Calculate total buffer size needed for sprites
+    size_t spriteBufferSize = 0;
+    for (const auto& name : m_spriteNames) {
+        spriteBufferSize += name.size() + 1;  // +1 for null terminator
     }
 
-    // Build null-separated font names buffer  
-    bufferPos = m_fontBuffer;
-    remainingSpace = sizeof(m_fontBuffer);
+    // Build null-separated sprite names buffer
+    m_spriteBuffer.resize(spriteBufferSize);
+    char* bufferPos = m_spriteBuffer.data();
+    for (const auto& name : m_spriteNames) {
+        memcpy(bufferPos, name.c_str(), name.size() + 1);
+        bufferPos += name.size() + 1;
+    }
 
-    for (int i = 0; i < m_numFontNames; ++i) {
-        size_t nameLen = strlen(m_fontNames[i]);
-        if (nameLen + 1 > remainingSpace) break;  // +1 for null terminator
+    // Calculate total buffer size needed for fonts
+    size_t fontBufferSize = 0;
+    for (const auto& name : m_fontNames) {
+        fontBufferSize += name.size() + 1;
+    }
 
-        memcpy(bufferPos, m_fontNames[i], nameLen + 1);
-        bufferPos += nameLen + 1;
-        remainingSpace -= nameLen + 1;
+    // Build null-separated font names buffer
+    m_fontBuffer.resize(fontBufferSize);
+    bufferPos = m_fontBuffer.data();
+    for (const auto& name : m_fontNames) {
+        memcpy(bufferPos, name.c_str(), name.size() + 1);
+        bufferPos += name.size() + 1;
     }
 
     // Set output parameters
-    *piNumSprites = m_numSpriteNames;
-    *pszSpriteName = (m_numSpriteNames > 0) ? m_spriteBuffer : nullptr;
+    int numSprites = static_cast<int>(m_spriteNames.size());
+    int numFonts = static_cast<int>(m_fontNames.size());
 
-    *piNumFonts = m_numFontNames;
-    *pszFontName = (m_numFontNames > 0) ? m_fontBuffer : nullptr;
+    *piNumSprites = numSprites;
+    *pszSpriteName = (numSprites > 0) ? m_spriteBuffer.data() : nullptr;
+
+    *piNumFonts = numFonts;
+    *pszFontName = (numFonts > 0) ? m_fontBuffer.data() : nullptr;
 
     m_bResourcesInitialized = true;
 
-    DEBUG_INFO_F("Resources initialized: %d sprites, %d fonts", m_numSpriteNames, m_numFontNames);
+    DEBUG_INFO_F("Resources initialized: %d sprites, %d fonts", numSprites, numFonts);
 
-    for (int i = 0; i < m_numSpriteNames; ++i) {
-        DEBUG_INFO_F("Sprite: %s", m_spriteNames[i]);
+    for (const auto& name : m_spriteNames) {
+        DEBUG_INFO_F("Sprite: %s", name.c_str());
     }
 
-    for (int i = 0; i < m_numFontNames; ++i) {
-        DEBUG_INFO_F("Font: %s", m_fontNames[i]);
+    for (const auto& name : m_fontNames) {
+        DEBUG_INFO_F("Font: %s", name.c_str());
     }
 
     return 0;
@@ -550,7 +555,8 @@ void HudManager::collectRenderData() {
                            hud.get() == m_pSpeed || hud.get() == m_pSpeedo ||
                            hud.get() == m_pTacho ||
                            hud.get() == m_pBars || hud.get() == m_pVersion ||
-                           hud.get() == m_pNotices || hud.get() == m_pFuel);
+                           hud.get() == m_pNotices || hud.get() == m_pFuel ||
+                           hud.get() == m_pGamepad);
             if (m_bAllWidgetsToggledOff && isWidget && !isVersionGameActive) {
                 continue;
             }
@@ -566,37 +572,23 @@ void HudManager::collectRenderData() {
 }
 
 void HudManager::setupDefaultResources() {
-    // Initialize counters
-    m_numSpriteNames = 0;
-    m_numFontNames = 0;
+    // Clear any existing resources
+    m_spriteNames.clear();
+    m_fontNames.clear();
 
     const AssetManager& assetMgr = AssetManager::getInstance();
 
-    // Helper lambda to add sprite with bounds checking
-    auto addSprite = [this](const std::string& path) {
-        if (m_numSpriteNames < MAX_SPRITE_NAMES) {
-            strcpy_s(m_spriteNames[m_numSpriteNames++], MAX_NAME_LENGTH, path.c_str());
-        } else {
-            DEBUG_WARN_F("MAX_SPRITE_NAMES exceeded, cannot add %s", path.c_str());
-        }
-    };
-
-    // Helper lambda to add font with bounds checking
-    auto addFont = [this](const std::string& path) {
-        if (m_numFontNames < MAX_FONT_NAMES) {
-            strcpy_s(m_fontNames[m_numFontNames++], MAX_NAME_LENGTH, path.c_str());
-        } else {
-            DEBUG_WARN_F("MAX_FONT_NAMES exceeded, cannot add %s", path.c_str());
-        }
-    };
+    // Pre-allocate based on expected counts
+    size_t expectedSprites = assetMgr.getTotalTextureSprites() + assetMgr.getIconCount();
+    m_spriteNames.reserve(expectedSprites);
+    m_fontNames.reserve(assetMgr.getFontCount());
 
     // Add texture sprites from AssetManager (discovered dynamically)
     // Textures are sorted alphabetically by base name, each with variants
     const auto& textures = assetMgr.getTextures();
     for (const auto& texture : textures) {
         for (int variant : texture.variants) {
-            std::string path = assetMgr.getTexturePath(texture.baseName, variant);
-            addSprite(path);
+            m_spriteNames.push_back(assetMgr.getTexturePath(texture.baseName, variant));
         }
     }
 
@@ -607,8 +599,7 @@ void HudManager::setupDefaultResources() {
     // Icons are sorted alphabetically
     size_t iconCount = assetMgr.getIconCount();
     for (size_t i = 0; i < iconCount; ++i) {
-        std::string path = assetMgr.getIconPath(i);
-        addSprite(path);
+        m_spriteNames.push_back(assetMgr.getIconPath(i));
     }
 
     DEBUG_INFO_F("Added %zu icon sprites", iconCount);
@@ -616,13 +607,13 @@ void HudManager::setupDefaultResources() {
     // Add fonts from AssetManager (discovered dynamically)
     size_t fontCount = assetMgr.getFontCount();
     for (size_t i = 0; i < fontCount; ++i) {
-        std::string path = assetMgr.getFontPath(i);
-        addFont(path);
+        m_fontNames.push_back(assetMgr.getFontPath(i));
     }
 
     DEBUG_INFO_F("Added %zu fonts", fontCount);
 
-    DEBUG_INFO("Default HUD resources configured via AssetManager");
+    DEBUG_INFO_F("Default HUD resources configured: %zu sprites, %zu fonts",
+        m_spriteNames.size(), m_fontNames.size());
 }
 
 void HudManager::handleSettingsButton() {
@@ -717,9 +708,9 @@ void HudManager::processKeyboardInput() {
         DEBUG_INFO_F("Hotkey: Telemetry %s", m_pTelemetry->isVisible() ? "shown" : "hidden");
     }
 
-    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_INPUT) && m_pInput) {
-        m_pInput->setVisible(!m_pInput->isVisible());
-        DEBUG_INFO_F("Hotkey: Input %s", m_pInput->isVisible() ? "shown" : "hidden");
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_INPUT) && m_pGamepad) {
+        m_pGamepad->setVisible(!m_pGamepad->isVisible());
+        DEBUG_INFO_F("Hotkey: Gamepad %s", m_pGamepad->isVisible() ? "shown" : "hidden");
     }
 
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_RECORDS) && m_pRecords) {
@@ -755,6 +746,19 @@ void HudManager::processKeyboardInput() {
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_RUMBLE) && m_pRumble) {
         m_pRumble->setVisible(!m_pRumble->isVisible());
         DEBUG_INFO_F("Hotkey: Rumble %s", m_pRumble->isVisible() ? "shown" : "hidden");
+    }
+
+    // Reload config from file
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::RELOAD_CONFIG)) {
+        SettingsManager& settingsMgr = SettingsManager::getInstance();
+        const std::string& savePath = settingsMgr.getSavePath();
+        if (!savePath.empty()) {
+            DEBUG_INFO("Hotkey: Reloading config from file");
+            settingsMgr.loadSettings(*this, savePath.c_str());
+            // Mark all HUDs dirty to force rebuild
+            if (m_pGamepad) m_pGamepad->setDataDirty();
+            if (m_pSettingsHud) m_pSettingsHud->setDataDirty();
+        }
     }
 
     // If any visibility toggle happened while settings is open, refresh it

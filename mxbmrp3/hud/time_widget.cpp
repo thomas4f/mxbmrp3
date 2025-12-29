@@ -13,11 +13,14 @@ using namespace PluginConstants;
 
 TimeWidget::TimeWidget()
     : m_cachedRenderedTime(-1)
+    , m_cachedEventType(-1)
+    , m_cachedSession(-1)
+    , m_bShowSessionType(false)
 {
     // One-time setup
     DEBUG_INFO("TimeWidget created");
     setDraggable(true);
-    m_strings.reserve(2);  // label (optional), time
+    m_strings.reserve(3);  // label (optional), time, session type (optional)
 
     // Set texture base name for dynamic texture discovery
     setTextureBaseName("time_widget");
@@ -37,6 +40,7 @@ void TimeWidget::update() {
     // Check if time changed enough to update display
     // Only rebuild when seconds change, not every millisecond
     const PluginData& pluginData = PluginData::getInstance();
+    const SessionData& sessionData = pluginData.getSessionData();
     int currentTime = pluginData.getSessionTime();
     int currentSeconds = currentTime / TimeConversion::MS_PER_SECOND;
     int lastSeconds = m_cachedRenderedTime / TimeConversion::MS_PER_SECOND;
@@ -45,10 +49,19 @@ void TimeWidget::update() {
         setDataDirty();
     }
 
+    // Check if session type changed (for session type display)
+    if (m_bShowSessionType) {
+        if (sessionData.eventType != m_cachedEventType || sessionData.session != m_cachedSession) {
+            setDataDirty();
+        }
+    }
+
     // Check data dirty first (takes precedence)
     if (isDataDirty()) {
         rebuildRenderData();
         m_cachedRenderedTime = currentTime;
+        m_cachedEventType = sessionData.eventType;
+        m_cachedSession = sessionData.session;
         clearDataDirty();
         clearLayoutDirty();
     }
@@ -71,7 +84,8 @@ void TimeWidget::rebuildLayout() {
 
     // Height calculation is widget-specific due to lineHeightLarge value display
     float labelHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
-    float contentHeight = labelHeight + dim.lineHeightLarge;  // Label (optional, 1 line) + Time (2 lines)
+    float sessionTypeHeight = m_bShowSessionType ? dim.lineHeightNormal : 0.0f;
+    float contentHeight = labelHeight + dim.lineHeightLarge + sessionTypeHeight;  // Label (optional) + Time (2 lines) + Session type (optional)
     float backgroundHeight = dim.paddingV + contentHeight + dim.paddingV;
 
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
@@ -93,7 +107,15 @@ void TimeWidget::rebuildLayout() {
     }
 
     // Time value (extra large font - spans 2 lines)
-    positionString(stringIndex, contentStartX, currentY);
+    if (positionString(stringIndex, contentStartX, currentY)) {
+        stringIndex++;
+        currentY += dim.lineHeightLarge;
+    }
+
+    // Session type (optional, same size as label)
+    if (m_bShowSessionType) {
+        positionString(stringIndex, contentStartX, currentY);
+    }
 }
 
 void TimeWidget::rebuildRenderData() {
@@ -123,7 +145,8 @@ void TimeWidget::rebuildRenderData() {
 
     // Height calculation is widget-specific due to lineHeightLarge value display
     float labelHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
-    float contentHeight = labelHeight + dim.lineHeightLarge;  // Label (optional, 1 line) + Time (2 lines)
+    float sessionTypeHeight = m_bShowSessionType ? dim.lineHeightNormal : 0.0f;
+    float contentHeight = labelHeight + dim.lineHeightLarge + sessionTypeHeight;  // Label (optional) + Time (2 lines) + Session type (optional)
     float backgroundHeight = dim.paddingV + contentHeight + dim.paddingV;
 
     // Add background quad
@@ -139,9 +162,18 @@ void TimeWidget::rebuildRenderData() {
         currentY += labelHeight;
     }
 
-    // Time value (ENTER_SANSMAN, extra large font - spans 2 lines)
+    // Time value (extra large font - spans 2 lines)
     addString(timeBuffer, contentStartX, currentY, Justify::LEFT,
         Fonts::getTitle(), textColor, dim.fontSizeExtraLarge);
+    currentY += dim.lineHeightLarge;
+
+    // Session type (optional, same size as label)
+    if (m_bShowSessionType) {
+        const char* sessionString = PluginUtils::getSessionString(sessionData.eventType, sessionData.session);
+        const char* displayString = sessionString ? sessionString : Placeholders::GENERIC;
+        addString(displayString, contentStartX, currentY, Justify::LEFT,
+            Fonts::getTitle(), textColor, dim.fontSize);
+    }
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
@@ -150,6 +182,7 @@ void TimeWidget::rebuildRenderData() {
 void TimeWidget::resetToDefaults() {
     m_bVisible = true;
     m_bShowTitle = true;
+    m_bShowSessionType = false;  // Hide session type by default
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.1f;
     m_fScale = 1.0f;

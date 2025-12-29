@@ -32,6 +32,7 @@ public:
         COL_BEST_LAP    = 1 << 7,   // Best lap time
         COL_OFFICIAL_GAP = 1 << 8,  // Official gap (multi-state: see GapMode)
         COL_LIVE_GAP    = 1 << 9,   // Live gap (multi-state: see GapMode)
+        COL_DEBUG       = 1 << 10,  // Debug column (RTG diagnostics)
 
         COL_REQUIRED = 0,      // No required columns
         COL_DEFAULT  = 0x3AF   // Default columns (excludes Bike and Penalty, includes Tracked)
@@ -106,6 +107,7 @@ private:
         bool hasOfficialGap;
         bool isGapRow;  // Special row showing gap to neighbor
         bool isGapToRiderAhead;  // true = gap to rider ahead (red), false = gap to rider behind (green)
+        bool isGapInverted;  // true = track position inverted vs classification (use warning color)
 
         char formattedPosition[4];
         char formattedRaceNum[12];  // Sized for "#999" (5 bytes) with margin
@@ -114,10 +116,11 @@ private:
         char formattedLiveGap[16];
         char formattedPenalty[8];
         char formattedLapTime[16];
+        char formattedDebug[24];    // Debug column for RTG diagnostics
 
         DisplayEntry() : position(0), raceNum(-1), bikeBrandColor(0),
             officialGap(0), gapLaps(0), realTimeGap(0), penalty(0), state(0), pit(0), numLaps(0), bestLap(-1),
-            isFinishedRace(false), hasBestLap(false), hasOfficialGap(false), isGapRow(false), isGapToRiderAhead(false) {
+            isFinishedRace(false), hasBestLap(false), hasOfficialGap(false), isGapRow(false), isGapToRiderAhead(false), isGapInverted(false) {
             name[0] = '\0';
             bikeShortName[0] = '\0';
             formattedPosition[0] = '\0';
@@ -127,6 +130,7 @@ private:
             formattedLiveGap[0] = '\0';
             formattedPenalty[0] = '\0';
             formattedLapTime[0] = '\0';
+            formattedDebug[0] = '\0';
         }
 
         static DisplayEntry fromRaceEntry(const RaceEntryData& entry, const StandingsData* standings);
@@ -155,7 +159,6 @@ private:
 
     // Click handling for rider selection
     void handleClick(float mouseX, float mouseY);
-    bool isPointInRect(float x, float y, float rectX, float rectY, float width, float height) const;
 
     struct ColumnPositions {
         float tracked;
@@ -168,6 +171,7 @@ private:
         float bestLap;
         float officialGap;
         float liveGap;
+        float debug;
 
         ColumnPositions(float contentStartX, float scale, uint32_t enabledColumns);
     };
@@ -220,7 +224,7 @@ private:
     static constexpr int MIN_ROW_COUNT = 8;         // Minimum for useful context (top 3 + player with 1 before/after + 2 gap rows)
     static constexpr int MAX_ROW_COUNT = 30;
     static constexpr int DEFAULT_ROW_COUNT = 10;  // Shows top 3 + player with 2 before/after symmetrically
-    static constexpr int NUM_COLUMNS = 10;
+    static constexpr int NUM_COLUMNS = 11;
     // Base position (0,0) - actual position comes from m_fOffsetX/m_fOffsetY
     static constexpr float START_X = 0.0f;
     static constexpr float START_Y = 0.0f;
@@ -235,9 +239,10 @@ private:
     static constexpr int COL_PENALTY_WIDTH = 5;        // Supports +99s format (4 chars + 1 spacing)
     static constexpr int COL_BEST_LAP_WIDTH = 10;      // Supports M:SS.mmm format (9 chars + 1 spacing)
     static constexpr int COL_OFFICIAL_GAP_WIDTH = 11;  // Supports +M:SS.mmm format (10 chars + 1 spacing)
-    static constexpr int COL_LIVE_GAP_WIDTH = 8;       // Supports +M:SS.s format (8 chars, last column)
+    static constexpr int COL_LIVE_GAP_WIDTH = 8;       // Supports +M:SS.s format (8 chars)
+    static constexpr int COL_DEBUG_WIDTH = 19;         // Debug column for RTG diagnostics (D+M:SS.s:A+M:SS.s format)
 
     static constexpr int BACKGROUND_WIDTH_CHARS = COL_TRACKED_WIDTH + COL_POS_WIDTH + COL_RACENUM_WIDTH +
         COL_NAME_WIDTH + COL_BIKE_WIDTH + COL_STATUS_WIDTH + COL_PENALTY_WIDTH +
-        COL_BEST_LAP_WIDTH + COL_OFFICIAL_GAP_WIDTH + COL_LIVE_GAP_WIDTH;
+        COL_BEST_LAP_WIDTH + COL_OFFICIAL_GAP_WIDTH + COL_LIVE_GAP_WIDTH + COL_DEBUG_WIDTH;
 };

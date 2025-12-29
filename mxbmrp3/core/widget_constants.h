@@ -9,7 +9,6 @@ namespace WidgetDimensions {
     constexpr int STANDARD_WIDTH = 12;       // Standard widget width (lap, position, duration, timing)
     constexpr int SPEED_WIDTH = 8;           // Speed widget width
     constexpr int SESSION_WIDTH = 46;        // Session widget width
-    constexpr int BARS_WIDTH = 12;           // Bars widget width (6 bars * 1 char + 5 spaces * 0.5 char + padding)
 
     // Speed widget specific dimensions
     constexpr int SPEED_GEAR_OFFSET = 11;    // Gear offset in chars from left edge

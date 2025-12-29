@@ -625,6 +625,11 @@ public:
     void setBestLapEntry(int raceNum, const LapLogEntry& entry);
     const LapLogEntry* getBestLapEntry(int raceNum) const;  // Returns nullptr if no data
 
+    // Overall best lap (fastest lap by any rider, with splits for gap comparison)
+    void setOverallBestLap(const LapLogEntry& entry);
+    const LapLogEntry* getOverallBestLap() const;
+    void clearOverallBestLap() { m_overallBestLap.lapNum = -1; }
+
     // Convenience methods for display race number (uses getDisplayRaceNum internally)
     const CurrentLapData* getCurrentLapData() const { return getCurrentLapData(getDisplayRaceNum()); }
     const IdealLapData* getIdealLapData() const { return getIdealLapData(getDisplayRaceNum()); }
@@ -823,6 +828,7 @@ private:
     std::unordered_map<int, IdealLapData> m_riderIdealLap;  // Ideal lap sectors per rider
     std::unordered_map<int, std::deque<LapLogEntry>> m_riderLapLog;  // Lap log per rider (newest first, deque for O(1) front insert)
     std::unordered_map<int, LapLogEntry> m_riderBestLap;  // Best lap entry per rider (for easy access)
+    LapLogEntry m_overallBestLap;  // Overall best lap (any rider) with splits for gap comparison
 
     // Single centralized lap timer for display rider only (follows GapBarHud pattern)
     // Resets when spectate target changes - no need to track all riders

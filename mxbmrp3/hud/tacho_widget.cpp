@@ -101,7 +101,7 @@ void TachoWidget::addNeedleQuad(float centerX, float centerY, float angleRad, fl
     needle.m_aafPos[3][1] = baseLeftY;
 
     needle.m_iSprite = SpriteIndex::SOLID_COLOR;
-    needle.m_ulColor = ColorPalette::RED;  // Red needle
+    needle.m_ulColor = m_needleColor;
     m_quads.push_back(needle);
 }
 
@@ -171,5 +171,6 @@ void TachoWidget::resetToDefaults() {
     m_fScale = 1.0f;  // 100% default scale
     setPosition(0.616f, 0.8436f);
     m_smoothedRpm = 0.0f;
+    m_needleColor = DEFAULT_NEEDLE_COLOR;
     setDataDirty();
 }

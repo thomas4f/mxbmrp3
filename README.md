@@ -31,6 +31,7 @@ See [Installation](#installation) for setup instructions.
 - [Configuration](#configuration)
   - [Profiles](#profiles)
   - [Appearance](#appearance)
+  - [Hotkeys](#hotkeys)
   - [Tracked Riders](#tracked-riders)
   - [Controller Rumble](#controller-rumble)
 - [HUDs](#huds)
@@ -44,7 +45,6 @@ See [Installation](#installation) for setup instructions.
   - [Ideal Lap](#ideal-lap-hud)
   - [Records](#records-hud)
   - [Telemetry](#telemetry-hud)
-  - [Input](#input-hud)
   - [Performance](#performance-hud)
 - [Widgets](#widgets)
 - [Modding](#modding)
@@ -55,7 +55,7 @@ See [Installation](#installation) for setup instructions.
 
 **Requirements:**
 - MX Bikes **Beta 20 or newer**
-- [Microsoft Visual C++ Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) (the automatic installer will check for this)
+- [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vc14/vc_redist.x64.exe) (the automatic installer will check for this)
 
 ### Automatic Installation
 
@@ -69,7 +69,10 @@ See [Installation](#installation) for setup instructions.
 ### Manual Installation
 
 1. Download the latest release archive [`mxbmrp3.zip`](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3.zip)
-2. Extract the plugin files to your MX Bikes plugins folder:
+2. Find your MX Bikes plugins folder:
+   - **Steam**: Right-click MX Bikes in your library → **Manage** → **Browse local files** → open `plugins`
+   - **Standalone**: Navigate to your MX Bikes installation folder (e.g., `C:\Games\MX Bikes\`) → open `plugins`
+3. Extract the plugin files:
    - Copy `mxbmrp3.dlo` to `[MX Bikes]/plugins/`
    - Copy the `mxbmrp3_data/` folder to `[MX Bikes]/plugins/`
 
@@ -118,7 +121,7 @@ Use the settings menu (Tilde key or `[=]` settings button) to access tabs for ea
 - Customize appearance (fonts and color theme)
 - Set preferences (speed/fuel units, grid snapping)
 - Customize keyboard and controller hotkeys
-- Select controller index for Input HUD and rumble feedback
+- Select controller index for Gamepad Widget and rumble feedback
 - Check for updates (optional, checks GitHub releases on startup)
 - Reset settings (per-tab, per-profile, or all settings)
 
@@ -158,6 +161,17 @@ Customize fonts and colors in **Settings > Appearance**:
 - **Neutral** - Borders and dividers
 - **Background** - HUD backgrounds
 - **Highlight** - Selection highlights
+
+### Hotkeys
+
+Bind keyboard keys or controller buttons to toggle HUDs and widgets. Access the **Hotkeys** tab in settings to customize bindings.
+
+- **Actions**: Toggle individual HUDs, all widgets, all elements, settings menu, or reload config
+- **Reload Config**: Hotkey action to reload settings from the INI file without restarting the game
+- **Keyboard**: Any key with optional modifiers (Ctrl, Shift, Alt)
+- **Controller**: D-Pad, Start, Back, L3/R3, LB/RB, A/B/X/Y
+
+Only the settings menu hotkey is configured by default (tilde key).
 
 ### Tracked Riders
 
@@ -216,6 +230,8 @@ Displays live race positions with detailed rider information:
 - Status column (L1, L2... for lap count, LL for last lap, FIN when finished, PIT, DNS/DSQ/RET)
 - Gap times with configurable modes (Off, Player gaps only, All gaps)
 - Gap indicator showing live/official time to adjacent riders
+- **Inverted gaps** shown in warning color (when track positions don't match classification)
+- Live gap shows N/A in muted color for non-race sessions
 - Gap reference: Compare gaps to race leader or to yourself
 - Configurable row count (8-30 rows)
 - Pagination that focuses on player position
@@ -225,6 +241,7 @@ Displays live race positions with detailed rider information:
 Top-down track map showing:
 - Track layout with configurable rotation
 - Rider positions in real-time
+- **Click rider markers to spectate** them (in spectate/replay mode)
 - Multiple rider shapes (arrow, chevron, circle, dot, pin, etc.)
 - Color modes: Position (green/red by relative position), Brand (bike colors), or Uniform (same color, brightness varies by lap)
 - Configurable labels, track width scale, and outline
@@ -235,6 +252,9 @@ Top-down track map showing:
 Proximity radar showing nearby riders:
 - Adjustable range (10-100m)
 - Proximity alerts with configurable alert distance
+- **Proximity arrows**: Visual indicators for riders outside radar range (Edge or Circle mode)
+  - Distance-based color gradient (red when close, yellow mid-range, green when far)
+  - Configurable arrow shape and scale
 - Multiple rider shapes (arrow, chevron, circle, dot, pin, etc.)
 - Color modes: Brand (bike colors), Position (green/red by relative position), or Uniform (same color, brightness varies by lap)
 - Tracked riders displayed with their custom colors and icons
@@ -246,7 +266,8 @@ Proximity radar showing nearby riders:
 ### Timing HUD
 Real-time split and lap time display:
 - Accumulated split times at each sector
-- Gap comparison options: Personal Best, Ideal Lap, or Session Best
+- Gap comparison options: Personal Best (session), Ideal Lap, Session Best, or All-Time PB
+- **Shows actual improvement** when beating your personal best (compares to previous PB)
 - Multiple gap types can be stacked vertically
 - Appears center-screen after crossing splits
 - Configurable display duration
@@ -284,6 +305,7 @@ Shows ideal (purple) sector times and gaps to theoretical best lap:
 Lap records from online database:
 - Track-specific lap records
 - Rider name, bike, and lap time
+- **Your personal best** displayed and highlighted (stored locally across sessions)
 - Configurable number of records displayed
 - Category filtering
 
@@ -293,11 +315,6 @@ Real-time bike data visualization:
 - Suspension travel
 - RPM, gear, and fuel
 - Customizable graphs or numeric display
-
-### Input HUD
-Visual representation of controller inputs:
-- Real-time input display
-- Useful for streaming or analysis
 
 ### Performance HUD
 Plugin and game performance metrics:
@@ -328,6 +345,7 @@ Simple, focused display elements:
    - **Avg** - Average consumption per lap
    - **Est** - Estimated laps remaining
 10. **Notices Widget** - Race status notices (priority order: wrong way, blue flag, last lap, finished)
+11. **Gamepad Widget** - Visual controller display with real-time button, stick, and trigger states. Multiple texture variants available.
 
 ## Modding
 
@@ -338,8 +356,8 @@ Customize the look of HUDs and widgets by adding TGA textures to `mxbmrp3_data/t
 | Element | Texture Name |
 |-----------|--------------|
 | Gap Bar | `gap_bar_hud` |
+| Gamepad | `gamepad_widget` |
 | Ideal Lap | `ideal_lap_hud` |
-| Input | `input_hud` |
 | Lap Log | `lap_log_hud` |
 | Map | `map_hud` |
 | Performance | `performance_hud` |
@@ -380,32 +398,63 @@ To generate fonts, use the `fontgen` utility provided by PiBoSo. See [this forum
 
 ### Advanced INI Settings
 
-Some widgets support hidden row toggles that can only be changed by manually editing `mxbmrp3.ini` (located in the MX Bikes user data folder).
+Power users can manually edit `mxbmrp3_settings.ini` (located in the MX Bikes user data folder under `mxbmrp3/`) for settings not exposed in the UI.
 
-Settings use `[WidgetName:N]` sections where N is the profile index: 0=Practice, 1=Qualify, 2=Race, 3=Spectate.
+Settings use `[HudName:N]` sections where N is the profile index: 0=Practice, 1=Qualify, 2=Race, 3=Spectate.
 
-**Row Toggles** (`enabledRows`): Bitmask controlling which rows are displayed.
+**Named Keys**: Settings use human-readable keys instead of numeric bitmasks. Toggle individual elements by setting their key to `1` (enabled) or `0` (disabled).
 
-| Widget | Rows | Default |
+| Widget | Keys | Default |
 |--------|------|---------|
-| **FuelWidget** | Fuel (1), Used (2), Avg (4), Est (8) | 15 |
-| **SpeedWidget** | Speed (1), Units (2), Gear (4) | 7 |
+| **TimeWidget** | `showSessionType` | Disabled |
+| **SpeedWidget** | `row_speed`, `row_units`, `row_gear` | All enabled |
+| **FuelWidget** | `row_fuel`, `row_used`, `row_avg`, `row_est` | All enabled |
+| **BarsWidget** | `col_throttle`, `col_brake`, `col_clutch`, `col_rpm`, `col_suspension`, `col_fuel` | All enabled |
+| **NoticesWidget** | `notice_wrong_way`, `notice_blue_flag`, `notice_last_lap`, `notice_finished` | All enabled |
+
+**Enum Settings**: Mode settings use string values instead of integers for clarity.
+
+| Setting | Values |
+|---------|--------|
+| `riderColorMode` | `UNIFORM`, `BRAND`, `RELATIVE_POS` |
+| `labelMode` | `NONE`, `POSITION`, `RACE_NUM`, `BOTH` |
+| `officialGapMode` / `liveGapMode` | `OFF`, `PLAYER`, `ALL` |
+| `gapIndicatorMode` | `OFF`, `OFFICIAL`, `LIVE`, `BOTH` |
+| `gapReferenceMode` | `LEADER`, `PLAYER` |
 
 Examples:
 ```ini
 [SpeedWidget:0]
-enabledRows=3
+row_speed=1
+row_units=0
+row_gear=1
 
-[FuelWidget:0]
-enabledRows=8
+[StandingsHud:2]
+liveGapMode=ALL
+gapReferenceMode=PLAYER
 ```
-Speed+Units only (1+2=3), Est laps only (8).
+
+### Data Files
+
+Plugin data is stored in the MX Bikes user data folder under `mxbmrp3/`:
+
+| File | Description |
+|------|-------------|
+| `mxbmrp3_settings.ini` | All HUD settings (positions, visibility, options) |
+| `mxbmrp3_personal_bests.json` | Your personal best lap times per track/bike/category |
+| `mxbmrp3_tracked_riders.json` | Tracked riders with colors and icons |
+
+Personal bests are stored locally and persist across sessions. They are displayed in the Records HUD alongside online records.
 
 ## Troubleshooting
 
 **HUD Not Appearing**
 - Check [Installation requirements](#installation) (MX Bikes Beta 20+, Visual C++ Redistributable)
 - Verify `mxbmrp3.dlo` and `mxbmrp3_data/` are in the correct `plugins/` folder (see [Manual Installation](#manual-installation)). MX Bikes has two directories - the **game installation** (contains `mxbikes.exe`) and **user data** (`Documents\PiBoSo\MX Bikes\`). Plugins go in the game installation, not Documents.
+
+**Black Screen on Game Startup**
+- Ensure the [Visual C++ Redistributable (x64)](https://aka.ms/vc14/vc_redist.x64.exe) is installed
+- Restart your computer after installing - the runtime may not load until after a reboot
 
 **Elements Appearing Twice (Ghost/Duplicate)**
 - Check for duplicate `mxbmrp3.dlo` files - only ONE should exist in your plugins folder
@@ -443,7 +492,7 @@ Built with C++17, Visual Studio 2022, MX Bikes Plugin API, and Claude Code.
 
 ### Roadmap
 
-Ideas under consideration (no guarantees): persistent session history, extended telemetry (g-force, lean angle), event log, HTTP data export for OBS overlays.
+Ideas under consideration (no guarantees): extended telemetry (g-force, lean angle), event log, HTTP data export for OBS overlays.
 
 ---
 

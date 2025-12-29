@@ -6,11 +6,26 @@
 #include "../core/handler_singleton.h"
 #include "../core/plugin_utils.h"
 #include "../core/plugin_data.h"
+#include "../core/personal_best_manager.h"
+#include "../core/hud_manager.h"
+#include "../hud/records_hud.h"
+#include <ctime>
 
 DEFINE_HANDLER_SINGLETON(RaceLapHandler)
 
 void RaceLapHandler::handleRaceLap(SPluginsRaceLap_t* psRaceLap) {
     HANDLER_NULL_CHECK(psRaceLap);
+
+    // =========================================================================
+    // API Lap Numbering Convention:
+    // m_iLapNum is 1-indexed and represents the lap just completed.
+    // For a 3-lap race, RaceLap fires 3 times with m_iLapNum = 1, 2, 3.
+    //
+    // Usage in this handler:
+    // - Finish detection (line ~62): use m_iLapNum directly (1-indexed count)
+    // - Lap log storage (line ~105): subtract 1 for 0-indexed internal storage
+    // - New lap setup (lines ~158, ~162): m_iLapNum is the new lap starting
+    // =========================================================================
 
     // Debug logging: log all RaceLap data
     // DEBUG_INFO_F("RaceLap: session=%d, raceNum=%d, lapNum=%d, invalid=%d, lapTime=%d, split[0]=%d, split[1]=%d, best=%d",
@@ -97,7 +112,7 @@ void RaceLapHandler::handleRaceLap(SPluginsRaceLap_t* psRaceLap) {
     // A lap is valid only if timing data exists AND m_iInvalid flag is not set
     bool isLapValid = hasValidTimingData && !psRaceLap->m_iInvalid;
 
-    // Lap number that just finished (API gives lap we're NOW on, so subtract 1)
+    // Convert to 0-indexed for internal storage (see lap numbering convention above)
     int completedLapNum = psRaceLap->m_iLapNum - 1;
 
     // Update ideal lap data for ALL completed laps (so TimingHud can detect them)
@@ -123,11 +138,40 @@ void RaceLapHandler::handleRaceLap(SPluginsRaceLap_t* psRaceLap) {
     // m_iBest: 1 = personal best, 2 = overall best (either way, update our personal best)
     if (psRaceLap->m_iBest > 0) {
         data.setBestLapEntry(raceNum, completedLap);
+
+        // If this is the overall best lap (m_iBest == 2), store it with splits
+        // for gap comparison at splits (not just lap completion)
+        if (psRaceLap->m_iBest == 2) {
+            data.setOverallBestLap(completedLap);
+        }
+
+        // Check if this is the local player and potentially update all-time PB
+        // Only valid laps from the local player are candidates for all-time PB
+        int playerRaceNum = data.getPlayerRaceNum();
+        if (raceNum == playerRaceNum && isLapValid) {
+            PersonalBestEntry pbEntry;
+            pbEntry.trackId = sessionData.trackId;
+            pbEntry.bikeName = sessionData.bikeName;
+            pbEntry.lapTime = lapTime;
+            pbEntry.sector1 = sector1;
+            pbEntry.sector2 = sector2;
+            pbEntry.sector3 = sector3;
+            pbEntry.setupName = sessionData.setupFileName;
+            pbEntry.conditions = sessionData.conditions;
+            pbEntry.timestamp = std::time(nullptr);
+
+            // updatePersonalBest only saves if this beats the existing all-time PB
+            bool newPB = PersonalBestManager::getInstance().updatePersonalBest(pbEntry);
+            if (newPB) {
+                // Notify RecordsHud to refresh player's position in the leaderboard
+                HudManager::getInstance().getRecordsHud().setDataDirty();
+            }
+        }
     }
 
-    // Initialize the next lap (clears splits but sets lap number for upcoming splits)
-    // m_iLapNum is the lap we just started (after completing the previous lap)
-    // This must happen for ALL laps (valid or invalid) to keep lap numbering in sync
+    // Initialize tracking for the next lap (clears splits, sets lap number)
+    // After completing lap N, we're now on lap N+1, but the API gives us N
+    // So setCurrentLapNumber(N) sets us to be tracking lap N (the one just starting)
     data.setCurrentLapNumber(raceNum, psRaceLap->m_iLapNum);
 
     // Reset centralized lap timer for new lap (start timing from 0)

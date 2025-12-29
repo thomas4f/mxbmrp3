@@ -54,6 +54,7 @@ copy ".\build\Release\mxbmrp3.dlo" "%STAGING_DIR%\mxbmrp3.dlo" || exit /b %ERROR
 REM 7) Copy docs
 copy ".\README.md" "%STAGING_DIR%\" || exit /b %ERRORLEVEL%
 copy ".\LICENSE" "%STAGING_DIR%\" || exit /b %ERRORLEVEL%
+copy ".\THIRD_PARTY_LICENSES.md" "%STAGING_DIR%\" || exit /b %ERRORLEVEL%
 
 REM 8) Generate release README
 (

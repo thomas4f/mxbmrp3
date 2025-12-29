@@ -52,11 +52,14 @@ void RaceSessionHandler::handleRaceSessionState(SPluginsRaceSessionState_t* psRa
     DEBUG_INFO_F("RaceSessionState changed: session=%d, state=%d",
         psRaceSessionState->m_iSession, psRaceSessionState->m_iSessionState);
 
-    // When race transitions to "in progress" (state 16), reset lastSessionTime
+    // When race transitions to "in progress" (state 16), reset timing state
     // This prevents false overtime detection when transitioning from pre-start (256)
     // where sessionTime values during countdown could falsely trigger the positive→negative transition
+    // Also clear live gap timing points to prevent stale RTG values from pre-start
+    // (track position updates during pre-start would otherwise contaminate RTG calculations)
     if (psRaceSessionState->m_iSessionState == 16) {
         PluginData::getInstance().setLastSessionTime(0);
+        PluginData::getInstance().clearLiveGapTimingPoints();
     }
 
     // Update plugin data store

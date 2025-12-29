@@ -6,6 +6,7 @@
 
 #include <cstring>
 #include <cstdio>
+#include <ctime>
 #include <algorithm>
 
 #include "../diagnostics/logger.h"
@@ -18,6 +19,7 @@
 #include "../core/settings_manager.h"
 #include "../core/input_manager.h"
 #include "../core/color_config.h"
+#include "../core/personal_best_manager.h"
 
 // Use WinHTTP for HTTPS support (built into Windows, no external dependencies)
 #include <windows.h>
@@ -406,7 +408,8 @@ void RecordsHud::performFetch() {
         // Check size limit to prevent memory exhaustion
         if (responseBody.size() + dwSize > MAX_RESPONSE_SIZE) {
             sizeLimitExceeded = true;
-            DEBUG_WARN_F("RecordsHud: Response size limit exceeded (%zu bytes)", responseBody.size() + dwSize);
+            DEBUG_WARN_F("RecordsHud: Response size limit exceeded (current=%zu, chunk=%lu, limit=%zu)",
+                         responseBody.size(), dwSize, MAX_RESPONSE_SIZE);
             break;
         }
 
@@ -564,10 +567,6 @@ void RecordsHud::handleClick(float mouseX, float mouseY) {
     }
 }
 
-bool RecordsHud::isPointInRect(float x, float y, float rectX, float rectY, float width, float height) const {
-    return x >= rectX && x <= rectX + width && y >= rectY && y <= rectY + height;
-}
-
 void RecordsHud::cycleProvider(int direction) {
     int count = static_cast<int>(DataProvider::COUNT);
     int current = static_cast<int>(m_provider);
@@ -579,6 +578,21 @@ void RecordsHud::cycleCategory(int direction) {
     int count = static_cast<int>(m_categoryList.size());
     if (count == 0) return;
     m_categoryIndex = (m_categoryIndex + direction + count) % count;
+}
+
+int RecordsHud::findPlayerPositionInRecords(int playerPBTime) const {
+    if (playerPBTime <= 0) return -1;  // No valid PB
+    if (m_records.empty()) return 0;   // Faster than all (no records to compare)
+
+    // Find where player's PB would rank
+    for (size_t i = 0; i < m_records.size(); i++) {
+        if (playerPBTime < m_records[i].laptime) {
+            return static_cast<int>(i);  // Player is faster, would be at this position
+        }
+    }
+
+    // Player is slower than all records
+    return static_cast<int>(m_records.size());
 }
 
 // ============================================================================
@@ -673,19 +687,17 @@ void RecordsHud::rebuildRenderData() {
     auto dim = getScaledDimensions();
     float titleHeight = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
 
-    // Copy records for display (minimize mutex hold time)
-    std::vector<RecordEntry> displayRecords;
+    // Copy ALL records for pagination (minimize mutex hold time)
+    std::vector<RecordEntry> allRecords;
     std::string lastError;
     {
         std::lock_guard<std::mutex> lock(m_recordsMutex);
-        int copyCount = std::min(static_cast<int>(m_records.size()), m_recordsToShow);
-        if (copyCount > 0) {
-            displayRecords.assign(m_records.begin(), m_records.begin() + copyCount);
-        }
+        allRecords = m_records;  // Copy all for proper pagination
         lastError = m_lastError;
     }
-    int displayCount = static_cast<int>(displayRecords.size());
-    int totalRows = HEADER_ROWS + m_recordsToShow + FOOTER_ROWS;  // Fixed height based on setting
+    int totalRecords = static_cast<int>(allRecords.size());
+    int footerRows = m_bShowFooter ? FOOTER_ROWS : 0;
+    int totalRows = HEADER_ROWS + m_recordsToShow + footerRows;
 
     // Calculate background width based on enabled columns
     // Note: padding is added by calculateBackgroundWidth(), don't double-count
@@ -754,146 +766,287 @@ void RecordsHud::rebuildRenderData() {
     m_clickRegions.push_back({rowX, currentY, charWidth * 2, dim.lineHeightNormal, ClickRegionType::CATEGORY_RIGHT});
     rowX += charWidth * 4;  // " > " + gap
 
-    // Fetch button - all labels same width as [Fetch] (7 chars)
-    const char* fetchLabel = "[Fetch]";
+    // Compare button - all labels same width as [Compare] (9 chars)
+    // Button is disabled when trackId is unavailable (spectating mode)
+    const SessionData& sessionForButton = PluginData::getInstance().getSessionData();
+    bool trackIdAvailable = sessionForButton.trackId[0] != '\0';
+
+    const char* compareLabel = "[Compare]";
     FetchState state = m_fetchState.load();
-    if (state == FetchState::FETCHING) {
-        fetchLabel = "[ ... ]";
+    if (!trackIdAvailable) {
+        compareLabel = "[Compare]";  // Show normal label but muted
+    } else if (state == FetchState::FETCHING) {
+        compareLabel = "[  ...  ]";
     } else if (state == FetchState::SUCCESS) {
-        fetchLabel = "[ OK  ]";
+        compareLabel = "[   OK  ]";
     } else if (state == FetchState::FETCH_ERROR) {
-        fetchLabel = "[Error]";
+        compareLabel = "[ Error ]";
     }
 
-    unsigned long fetchColor;
-    if (state == FetchState::SUCCESS) {
-        fetchColor = ColorConfig::getInstance().getPositive();
+    unsigned long compareColor;
+    if (!trackIdAvailable) {
+        compareColor = ColorConfig::getInstance().getMuted();  // Muted when disabled
+    } else if (state == FetchState::SUCCESS) {
+        compareColor = ColorConfig::getInstance().getPositive();
     } else if (state == FetchState::FETCH_ERROR) {
-        fetchColor = ColorConfig::getInstance().getNegative();
+        compareColor = ColorConfig::getInstance().getNegative();
     } else {
         // Use PRIMARY when hovered, SECONDARY when not (consistent with other buttons)
-        fetchColor = m_fetchButtonHovered ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getSecondary();
+        compareColor = m_fetchButtonHovered ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getSecondary();
     }
 
-    float fetchWidth = PluginUtils::calculateMonospaceTextWidth(static_cast<int>(strlen("[Fetch]")), dim.fontSize);
-    m_clickRegions.push_back({rowX, currentY, fetchWidth, dim.lineHeightNormal, ClickRegionType::FETCH_BUTTON});
+    float compareWidth = PluginUtils::calculateMonospaceTextWidth(static_cast<int>(strlen("[Compare]")), dim.fontSize);
 
-    // Button background - accent with opacity normally, full accent on hover
+    // Only add click region if trackId is available
+    if (trackIdAvailable) {
+        m_clickRegions.push_back({rowX, currentY, compareWidth, dim.lineHeightNormal, ClickRegionType::FETCH_BUTTON});
+    }
+
+    // Button background - muted when disabled, accent when enabled
     {
         SPluginQuad_t bgQuad;
         float bgX = rowX;
         float bgY = currentY;
         applyOffset(bgX, bgY);
-        setQuadPositions(bgQuad, bgX, bgY, fetchWidth, dim.lineHeightNormal);
+        setQuadPositions(bgQuad, bgX, bgY, compareWidth, dim.lineHeightNormal);
         bgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        bgQuad.m_ulColor = m_fetchButtonHovered && state != FetchState::FETCHING
-            ? ColorConfig::getInstance().getAccent()
-            : PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(), 128.0f / 255.0f);
+        if (!trackIdAvailable) {
+            bgQuad.m_ulColor = PluginUtils::applyOpacity(ColorConfig::getInstance().getMuted(), 64.0f / 255.0f);
+        } else {
+            bgQuad.m_ulColor = m_fetchButtonHovered && state != FetchState::FETCHING
+                ? ColorConfig::getInstance().getAccent()
+                : PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(), 128.0f / 255.0f);
+        }
         m_quads.push_back(bgQuad);
     }
 
-    addString(fetchLabel, rowX, currentY, Justify::LEFT, Fonts::getNormal(), fetchColor, dim.fontSize);
+    addString(compareLabel, rowX, currentY, Justify::LEFT, Fonts::getNormal(), compareColor, dim.fontSize);
 
     currentY += dim.lineHeightNormal;
 
     // === Empty row (no column headers) ===
     currentY += dim.lineHeightNormal;
 
-    // === Record Rows ===
-    // Note: Using local displayRecords copy (mutex already released above)
-    if (displayRecords.empty()) {
-        // Show appropriate message based on fetch state
-        char emptyMessage[64] = "No records loaded. Click Fetch to load.";
-        FetchState currentState = m_fetchState.load();
-        if (currentState == FetchState::SUCCESS) {
-            strncpy_s(emptyMessage, sizeof(emptyMessage), "No records found for this track/category.", sizeof(emptyMessage) - 1);
-        } else if (currentState == FetchState::FETCH_ERROR) {
-            if (!lastError.empty()) {
-                snprintf(emptyMessage, sizeof(emptyMessage), "Fetch failed (%s). Try again later.", lastError.c_str());
-            } else {
-                strncpy_s(emptyMessage, sizeof(emptyMessage), "Fetch failed. Try again later.", sizeof(emptyMessage) - 1);
-            }
-        }
-        addString(emptyMessage, contentStartX, currentY,
-                  Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dim.fontSize);
-        currentY += dim.lineHeightNormal;
-    } else {
-        for (const auto& record : displayRecords) {
-            // Position (P1, P2, etc.)
-            if (isColumnEnabled(COL_POS)) {
-                char posStr[8];
-                snprintf(posStr, sizeof(posStr), "P%d", record.position);
-                unsigned long posColor = ColorConfig::getInstance().getPrimary();
-                if (record.position == 1) posColor = PodiumColors::GOLD;
-                else if (record.position == 2) posColor = PodiumColors::SILVER;
-                else if (record.position == 3) posColor = PodiumColors::BRONZE;
-                addString(posStr, m_columns.pos, currentY, Justify::LEFT, Fonts::getNormal(), posColor, dim.fontSize);
-            }
+    // === Record Rows (with Personal Best integration) ===
+    // Get player's all-time PB for this track+bike
+    const SessionData& session = PluginData::getInstance().getSessionData();
+    const PersonalBestEntry* playerPB = nullptr;
+    int playerPosition = -1;  // -1 = no PB, 0+ = position in records
 
-            // Rider (truncate with ... if too long)
-            if (isColumnEnabled(COL_RIDER)) {
-                char riderStr[16];
-                size_t maxLen = COL_RIDER_WIDTH - 1;  // 1 char gap (matches other HUDs)
-                if (strlen(record.rider) > maxLen) {
-                    strncpy_s(riderStr, sizeof(riderStr), record.rider, maxLen - 3);
-                    riderStr[maxLen - 3] = '\0';
-                    strcat_s(riderStr, sizeof(riderStr), "...");
-                } else {
-                    strncpy_s(riderStr, sizeof(riderStr), record.rider, sizeof(riderStr) - 1);
-                }
-                addString(riderStr, m_columns.rider, currentY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
-            }
-
-            // Bike (truncate with ... if too long)
-            if (isColumnEnabled(COL_BIKE)) {
-                char bikeStr[20];
-                size_t maxLen = COL_BIKE_WIDTH - 1;  // 1 char gap (matches other HUDs)
-                if (strlen(record.bike) > maxLen) {
-                    strncpy_s(bikeStr, sizeof(bikeStr), record.bike, maxLen - 3);
-                    bikeStr[maxLen - 3] = '\0';
-                    strcat_s(bikeStr, sizeof(bikeStr), "...");
-                } else {
-                    strncpy_s(bikeStr, sizeof(bikeStr), record.bike, sizeof(bikeStr) - 1);
-                }
-                addString(bikeStr, m_columns.bike, currentY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
-            }
-
-            // Laptime
-            if (isColumnEnabled(COL_LAPTIME)) {
-                char laptimeStr[16];
-                if (record.laptime > 0) {
-                    PluginUtils::formatLapTime(record.laptime, laptimeStr, sizeof(laptimeStr));
-                    addString(laptimeStr, m_columns.laptime, currentY, Justify::LEFT,
-                              Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
-                } else {
-                    addString(Placeholders::LAP_TIME, m_columns.laptime, currentY, Justify::LEFT,
-                              Fonts::getStrong(), ColorConfig::getInstance().getMuted(), dim.fontSize);
-                }
-            }
-
-            // Date
-            if (isColumnEnabled(COL_DATE)) {
-                addString(record.date[0] != '\0' ? record.date : "---", m_columns.date, currentY,
-                          Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dim.fontSize);
-            }
-
-            currentY += dim.lineHeightNormal;
+    if (session.trackId[0] != '\0' && session.bikeName[0] != '\0') {
+        playerPB = PersonalBestManager::getInstance().getPersonalBest(session.trackId, session.bikeName);
+        if (playerPB && playerPB->isValid()) {
+            playerPosition = findPlayerPositionInRecords(playerPB->lapTime);
         }
     }
 
-    // === Empty Row + Footer Notes ===
-    currentY += dim.lineHeightNormal;  // Empty row for spacing
+    // Lambda to render a single record row
+    // isPlayerRow: add highlight background, skip position column
+    auto renderRecordRow = [&](int position, const char* rider, const char* bike, int laptime, const char* date, bool isPlayerRow) {
+        // Add highlight background quad for player row
+        if (isPlayerRow) {
+            SPluginQuad_t highlight;
+            float highlightX = START_X;
+            float highlightY = currentY;
+            applyOffset(highlightX, highlightY);
+            setQuadPositions(highlight, highlightX, highlightY, backgroundWidth, dim.lineHeightNormal);
+            highlight.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
+            highlight.m_ulColor = PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(), 80.0f / 255.0f);
+            m_quads.push_back(highlight);
+        }
 
-    // Line 1: Data provider (normal font)
-    char providerText[64];
-    snprintf(providerText, sizeof(providerText), "Data provided by %s", getProviderDisplayName(m_provider));
-    addString(providerText, contentStartX, currentY,
-              Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dim.fontSize);
-    currentY += dim.lineHeightNormal;
+        // Position (P1, P2, etc.) - skip for player row
+        if (isColumnEnabled(COL_POS) && !isPlayerRow) {
+            char posStr[8];
+            snprintf(posStr, sizeof(posStr), "P%d", position);
+            unsigned long posColor;
+            if (position == 1) posColor = PodiumColors::GOLD;
+            else if (position == 2) posColor = PodiumColors::SILVER;
+            else if (position == 3) posColor = PodiumColors::BRONZE;
+            else posColor = ColorConfig::getInstance().getPrimary();
+            addString(posStr, m_columns.pos, currentY, Justify::LEFT, Fonts::getNormal(), posColor, dim.fontSize);
+        }
 
-    // Line 2: How to submit (small font)
-    addString("Submit records by playing on their servers", contentStartX, currentY,
-              Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dim.fontSizeSmall);
+        // Rider (truncate if too long)
+        if (isColumnEnabled(COL_RIDER)) {
+            char riderStr[16];
+            size_t maxLen = COL_RIDER_WIDTH - 1;
+            strncpy_s(riderStr, sizeof(riderStr), rider, maxLen);
+            riderStr[maxLen] = '\0';
+            // Player row keeps same column alignment (skip position but stay in rider column)
+            addString(riderStr, m_columns.rider, currentY, Justify::LEFT, Fonts::getNormal(),
+                      ColorConfig::getInstance().getPrimary(), dim.fontSize);
+        }
+
+        // Bike (truncate if too long)
+        if (isColumnEnabled(COL_BIKE)) {
+            char bikeStr[20];
+            size_t maxLen = COL_BIKE_WIDTH - 1;
+            strncpy_s(bikeStr, sizeof(bikeStr), bike, maxLen);
+            bikeStr[maxLen] = '\0';
+            addString(bikeStr, m_columns.bike, currentY, Justify::LEFT, Fonts::getNormal(),
+                      ColorConfig::getInstance().getSecondary(), dim.fontSize);
+        }
+
+        // Laptime
+        if (isColumnEnabled(COL_LAPTIME)) {
+            char laptimeStr[16];
+            if (laptime > 0) {
+                PluginUtils::formatLapTime(laptime, laptimeStr, sizeof(laptimeStr));
+                addString(laptimeStr, m_columns.laptime, currentY, Justify::LEFT,
+                          Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+            } else {
+                addString(Placeholders::LAP_TIME, m_columns.laptime, currentY, Justify::LEFT,
+                          Fonts::getStrong(), ColorConfig::getInstance().getMuted(), dim.fontSize);
+            }
+        }
+
+        // Date
+        if (isColumnEnabled(COL_DATE)) {
+            addString(date && date[0] != '\0' ? date : "---", m_columns.date, currentY,
+                      Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dim.fontSize);
+        }
+
+        currentY += dim.lineHeightNormal;
+    };
+
+    FetchState currentState = m_fetchState.load();
+    bool hasFetched = (currentState == FetchState::SUCCESS || !allRecords.empty());
+
+    if (!hasFetched) {
+        // Before fetch: show player's PB or message
+        if (playerPB && playerPB->isValid()) {
+            const char* playerName = session.riderName[0] != '\0' ? session.riderName : "You";
+            renderRecordRow(1, playerName, playerPB->bikeName.c_str(), playerPB->lapTime, "", true);
+        } else {
+            char emptyMessage[64] = "Click Compare to load records.";
+            if (currentState == FetchState::FETCH_ERROR) {
+                if (!lastError.empty()) {
+                    snprintf(emptyMessage, sizeof(emptyMessage), "Compare failed (%s). Try again.", lastError.c_str());
+                } else {
+                    strncpy_s(emptyMessage, sizeof(emptyMessage), "Compare failed. Try again.", sizeof(emptyMessage) - 1);
+                }
+            }
+            addString(emptyMessage, contentStartX, currentY,
+                      Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dim.fontSize);
+            currentY += dim.lineHeightNormal;
+        }
+    } else if (allRecords.empty()) {
+        // Fetched but no records found
+        if (playerPB && playerPB->isValid()) {
+            const char* playerName = session.riderName[0] != '\0' ? session.riderName : "You";
+            renderRecordRow(1, playerName, playerPB->bikeName.c_str(), playerPB->lapTime, "", true);
+        } else {
+            addString("No records found for this track/category.", contentStartX, currentY,
+                      Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dim.fontSize);
+            currentY += dim.lineHeightNormal;
+        }
+    } else {
+        // Has records - show with StandingsHud-style pagination
+        // Strategy (like StandingsHud):
+        // - If player is in top 3 (or no PB): show first N records with player inserted
+        // - If player is beyond top 3: show top 3, then context around player position
+
+        static constexpr int TOP_POSITIONS = 3;
+        const char* playerName = session.riderName[0] != '\0' ? session.riderName : "You";
+        bool hasPlayerPB = (playerPB && playerPB->isValid());
+
+        // Format player's PB date from timestamp
+        char playerDateStr[16] = "";
+        if (hasPlayerPB && playerPB->timestamp > 0) {
+            std::tm tm;
+            if (localtime_s(&tm, &playerPB->timestamp) == 0) {
+                snprintf(playerDateStr, sizeof(playerDateStr), "%04d-%02d-%02d",
+                         tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+            }
+        }
+
+        // Helper lambda to render a range of server records, optionally inserting player
+        auto renderRecordRange = [&](int startIdx, int endIdx, bool insertPlayer) {
+            for (int i = startIdx; i <= endIdx && i < totalRecords; i++) {
+                // Insert player row before this record if player position matches
+                if (insertPlayer && hasPlayerPB && playerPosition == i) {
+                    renderRecordRow(0, playerName, playerPB->bikeName.c_str(), playerPB->lapTime, playerDateStr, true);
+                }
+                // Render the server record
+                const auto& record = allRecords[i];
+                renderRecordRow(record.position, record.rider, record.bike, record.laptime, record.date, false);
+            }
+            // Insert player at end if they're after the last record in range
+            if (insertPlayer && hasPlayerPB && playerPosition > endIdx && playerPosition <= endIdx + 1) {
+                renderRecordRow(0, playerName, playerPB->bikeName.c_str(), playerPB->lapTime, playerDateStr, true);
+            }
+        };
+
+        if (!hasPlayerPB || playerPosition < TOP_POSITIONS) {
+            // Player is in top 3 (or no PB) - show first N records with player inserted
+            int recordsToShow = std::min(totalRecords, m_recordsToShow - (hasPlayerPB ? 1 : 0));
+            renderRecordRange(0, recordsToShow - 1, true);
+        } else {
+            // Player is beyond top 3 - show top 3, then context around player
+            // 1. Show top 3 records
+            int topToShow = std::min(totalRecords, TOP_POSITIONS);
+            renderRecordRange(0, topToShow - 1, false);
+
+            // 2. Calculate context window around player
+            // Available rows = total - top3 - 1 (for player row)
+            int availableRows = m_recordsToShow - TOP_POSITIONS - 1;
+            int contextStart, contextEnd;
+
+            if (playerPosition >= totalRecords) {
+                // Player is slower than all fetched records - show bottom N records before them
+                contextEnd = totalRecords - 1;
+                contextStart = std::max(TOP_POSITIONS, totalRecords - availableRows);
+            } else {
+                // Player is within the records - show context around them
+                int contextBefore = availableRows / 2;
+                int contextAfter = availableRows - contextBefore - 1;
+
+                contextStart = std::max(TOP_POSITIONS, playerPosition - contextBefore);
+                contextEnd = std::min(totalRecords - 1, playerPosition + contextAfter);
+
+                // Adjust if we hit boundaries - shift the window to use all available rows
+                if (contextEnd == totalRecords - 1 && contextStart > TOP_POSITIONS) {
+                    // Hit bottom - extend start upward to fill rows
+                    contextStart = std::max(TOP_POSITIONS, contextEnd - availableRows + 1);
+                } else if (contextStart == TOP_POSITIONS && contextEnd < totalRecords - 1) {
+                    // Hit top (right after top 3) - extend end downward to fill rows
+                    contextEnd = std::min(totalRecords - 1, contextStart + availableRows - 1);
+                }
+            }
+
+            // 3. Render context around player
+            for (int i = contextStart; i <= contextEnd && i < totalRecords; i++) {
+                // Insert player row at correct position
+                if (hasPlayerPB && playerPosition == i) {
+                    renderRecordRow(0, playerName, playerPB->bikeName.c_str(), playerPB->lapTime, playerDateStr, true);
+                }
+                const auto& record = allRecords[i];
+                renderRecordRow(record.position, record.rider, record.bike, record.laptime, record.date, false);
+            }
+            // Insert player at end if they're after the last context record
+            if (hasPlayerPB && playerPosition > contextEnd) {
+                renderRecordRow(0, playerName, playerPB->bikeName.c_str(), playerPB->lapTime, playerDateStr, true);
+            }
+        }
+    }
+
+    // === Footer Note ===
+    if (m_bShowFooter) {
+        // Skip to footer position (fixed row count ensures consistent height)
+        // +1 for blank row gap before footer
+        currentY = contentStartY + titleHeight + ((HEADER_ROWS - 1 + m_recordsToShow + 1) * dim.lineHeightNormal);
+
+        // Footer: provider-specific part in secondary, rest in muted
+        char providerPart[32];
+        snprintf(providerPart, sizeof(providerPart), "%s records", getProviderDisplayName(m_provider));
+        addString(providerPart, contentStartX, currentY,
+                  Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSizeSmall);
+
+        float providerWidth = PluginUtils::calculateMonospaceTextWidth(static_cast<int>(strlen(providerPart)), dim.fontSizeSmall);
+        addString(" - submit by playing on their servers", contentStartX + providerWidth, currentY,
+                  Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dim.fontSizeSmall);
+    }
 }
 
 void RecordsHud::resetToDefaults() {
@@ -907,7 +1060,8 @@ void RecordsHud::resetToDefaults() {
     m_categoryIndex = 0;
     m_lastSessionCategory[0] = '\0';  // Reset so update() will pick up current session category
     m_enabledColumns = COL_DEFAULT;
-    m_recordsToShow = 3;  // Default to 3 rows
+    m_recordsToShow = 10;  // Default to 10 rows (matches StandingsHud)
+    m_bShowFooter = true;
     {
         std::lock_guard<std::mutex> lock(m_recordsMutex);
         m_records.clear();

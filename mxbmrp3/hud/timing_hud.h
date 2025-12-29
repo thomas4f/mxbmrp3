@@ -25,17 +25,19 @@ enum class ColumnMode : uint8_t {
 
 // ============================================================================
 // Gap type flags - which gap comparisons to show (can enable multiple)
+// Display order: Session PB, All-Time PB, Ideal, Overall
 // ============================================================================
 enum GapTypeFlags : uint8_t {
-    GAP_TO_PB      = 1 << 0,  // Gap to personal best lap
-    GAP_TO_IDEAL   = 1 << 1,  // Gap to ideal lap (sum of best sectors)
-    GAP_TO_SESSION = 1 << 2,  // Gap to session best (fastest lap by anyone)
+    GAP_TO_PB      = 1 << 0,  // "Session PB" - gap to personal best lap this session
+    GAP_TO_IDEAL   = 1 << 1,  // "Ideal" - gap to ideal lap (sum of best sectors)
+    GAP_TO_OVERALL = 1 << 2,  // "Overall" - gap to overall best lap by anyone in session
+    GAP_TO_ALLTIME = 1 << 3,  // "All-Time PB" - gap to all-time personal best (persisted)
 
-    GAP_DEFAULT = GAP_TO_PB   // Default: only PB comparison
+    GAP_DEFAULT = GAP_TO_PB   // Default: only Session PB comparison
 };
 
 // Gap type count (for iteration)
-static constexpr int GAP_TYPE_COUNT = 3;
+static constexpr int GAP_TYPE_COUNT = 4;
 
 // ============================================================================
 // Gap data for a single gap type
@@ -72,10 +74,11 @@ struct OfficialTimingData {
     int splitIndex;           // -1=lap complete, 0=S1, 1=S2
     bool isInvalid;           // Was this an invalid lap?
 
-    // Gap data for each comparison type
-    GapData gapToPB;          // Gap to personal best
-    GapData gapToIdeal;       // Gap to ideal lap
-    GapData gapToSession;     // Gap to session best
+    // Gap data for each comparison type (display names in quotes)
+    GapData gapToPB;          // "Session PB" - gap to personal best this session
+    GapData gapToIdeal;       // "Ideal" - gap to ideal lap (sum of best sectors)
+    GapData gapToOverall;     // "Overall" - gap to overall best lap by anyone in session
+    GapData gapToAllTime;     // "All-Time PB" - gap to all-time personal best
 
     OfficialTimingData()
         : time(0), lapNum(0), splitIndex(-1), isInvalid(false) {}
@@ -87,7 +90,8 @@ struct OfficialTimingData {
         isInvalid = false;
         gapToPB.reset();
         gapToIdeal.reset();
-        gapToSession.reset();
+        gapToOverall.reset();
+        gapToAllTime.reset();
     }
 
     // Legacy accessors for backwards compatibility
@@ -141,10 +145,9 @@ private:
     void resetLiveTimingState();
 
     // Gap calculation helpers
-    int getSessionBestLapTime() const;
-    int getSessionBestSplit1() const;
-    int getSessionBestSplit2() const;
+    int getOverallBestLapTime() const;
     void calculateAllGaps(int splitTime, int splitIndex, bool isLapComplete);
+    void cacheAllTimePB();  // Cache current all-time PB for showing improvement
 
     // Per-column visibility modes
     ColumnMode m_columnModes[COL_COUNT];
@@ -160,6 +163,11 @@ private:
     int m_cachedDisplayRaceNum;      // Track spectate target changes
     int m_cachedSession;             // Track session changes (new event)
     int m_cachedPitState;            // Track pit entry/exit (0 = on track, 1 = in pits)
+
+    // Cached all-time PB (for showing improvement when beating PB)
+    int m_previousAllTimeLap;        // Previous all-time PB lap time
+    int m_previousAllTimeSector1;    // Previous all-time PB sector 1
+    int m_previousAllTimeS1PlusS2;   // Previous all-time PB sector 1+2
 
     // Display state
     bool m_isFrozen;                 // Currently showing official time (frozen)?

@@ -101,7 +101,7 @@ void SpeedoWidget::addNeedleQuad(float centerX, float centerY, float angleRad, f
     needle.m_aafPos[3][1] = baseLeftY;
 
     needle.m_iSprite = SpriteIndex::SOLID_COLOR;
-    needle.m_ulColor = ColorPalette::RED;  // Red needle
+    needle.m_ulColor = m_needleColor;
     m_quads.push_back(needle);
 }
 
@@ -171,5 +171,6 @@ void SpeedoWidget::resetToDefaults() {
     m_fScale = 1.5f;  // 150% default scale
     setPosition(0.6875f, 0.7659f);
     m_smoothedSpeed = 0.0f;
+    m_needleColor = DEFAULT_NEEDLE_COLOR;
     setDataDirty();
 }

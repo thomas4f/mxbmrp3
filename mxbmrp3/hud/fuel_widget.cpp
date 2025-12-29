@@ -352,6 +352,7 @@ void FuelWidget::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 1.0f;
     m_fScale = 1.0f;
+    m_enabledRows = ROW_DEFAULT;  // Reset row visibility
     // Note: fuelUnit is NOT reset here - it's a global preference, not per-profile
     setPosition(0.9295f, 0.8547f);
     resetFuelTracking();

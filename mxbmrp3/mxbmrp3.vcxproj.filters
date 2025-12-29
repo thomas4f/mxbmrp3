@@ -180,9 +180,6 @@
     <ClInclude Include="hud\bars_widget.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
-    <ClInclude Include="hud\input_hud.h">
-      <Filter>Header Files\hud</Filter>
-    </ClInclude>
     <ClInclude Include="hud\ideal_lap_hud.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
@@ -199,6 +196,9 @@
       <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="core\settings_manager.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\personal_best_manager.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="core\update_checker.h">
@@ -247,6 +247,9 @@
       <Filter>Header Files\hud</Filter>
     </ClInclude>
     <ClInclude Include="hud\fuel_widget.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\gamepad_widget.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
     <ClInclude Include="hud\speedo_widget.h">
@@ -368,9 +371,6 @@
     <ClCompile Include="hud\bars_widget.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
-    <ClCompile Include="hud\input_hud.cpp">
-      <Filter>Source Files\hud</Filter>
-    </ClCompile>
     <ClCompile Include="hud\ideal_lap_hud.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
@@ -387,6 +387,9 @@
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="core\settings_manager.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\personal_best_manager.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="core\update_checker.cpp">
@@ -432,6 +435,9 @@
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\fuel_widget.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\gamepad_widget.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\speedo_widget.cpp">

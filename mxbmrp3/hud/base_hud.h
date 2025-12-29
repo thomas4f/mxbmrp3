@@ -289,6 +289,12 @@ protected:
     // Returns true if string was positioned, false if stringIndex >= m_strings.size()
     bool positionString(size_t stringIndex, float x, float y);
 
+    // Helper for click detection - checks if point (x,y) is inside rectangle
+    // Shared by StandingsHud, RecordsHud, MapHud for click region testing
+    static bool isPointInRect(float x, float y, float rectX, float rectY, float width, float height) {
+        return x >= rectX && x <= rectX + width && y >= rectY && y <= rectY + height;
+    }
+
     std::vector<SPluginQuad_t> m_quads;
     std::vector<SPluginString_t> m_strings;
     std::vector<HudStringConfig> m_styledStringConfigs;  // Storage for styled string configurations

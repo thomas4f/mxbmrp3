@@ -18,6 +18,15 @@ public:
     bool handlesDataType(DataChangeType dataType) const override;
     void resetToDefaults();
 
+    // Session type display toggle
+    void setShowSessionType(bool show) {
+        if (m_bShowSessionType != show) {
+            m_bShowSessionType = show;
+            setDataDirty();
+        }
+    }
+    bool getShowSessionType() const { return m_bShowSessionType; }
+
 protected:
     void rebuildLayout() override;
 
@@ -26,4 +35,11 @@ private:
 
     // Cached rendered time to avoid unnecessary rebuilds
     int m_cachedRenderedTime;
+
+    // Cached session info to detect changes
+    int m_cachedEventType;
+    int m_cachedSession;
+
+    // Configuration
+    bool m_bShowSessionType;  // Show session type (Practice, Warmup, etc.) below counter
 };

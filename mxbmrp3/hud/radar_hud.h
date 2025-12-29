@@ -50,14 +50,35 @@ public:
     }
     bool getShowPlayerArrow() const { return m_bShowPlayerArrow; }
 
-    // Fade when empty toggle - fade out radar when no riders are nearby
-    void setFadeWhenEmpty(bool fade) {
-        if (m_bFadeWhenEmpty != fade) {
-            m_bFadeWhenEmpty = fade;
+    // Radar display mode - controls visibility behavior
+    enum class RadarMode {
+        OFF = 0,        // Radar hidden (proximity arrows still work)
+        ON = 1,         // Radar always visible
+        AUTO_HIDE = 2   // Radar fades when no riders nearby
+    };
+
+    void setRadarMode(RadarMode mode) {
+        if (m_radarMode != mode) {
+            m_radarMode = mode;
             setDataDirty();
         }
     }
-    bool getFadeWhenEmpty() const { return m_bFadeWhenEmpty; }
+    RadarMode getRadarMode() const { return m_radarMode; }
+
+    // Proximity arrows toggle - show arrows at screen edges pointing to nearby riders
+    enum class ProximityArrowMode {
+        OFF = 0,     // No proximity arrows
+        EDGE = 1,    // Arrows follow screen edges (rectangular path)
+        CIRCLE = 2   // Arrows follow circular path around screen center
+    };
+
+    void setProximityArrowMode(ProximityArrowMode mode) {
+        if (m_proximityArrowMode != mode) {
+            m_proximityArrowMode = mode;
+            setDataDirty();
+        }
+    }
+    ProximityArrowMode getProximityArrowMode() const { return m_proximityArrowMode; }
 
     // Proximity alert distance - at what distance should warning triangles light up (in meters)
     void setAlertDistance(float meters);
@@ -71,20 +92,6 @@ public:
         BOTH = 3        // Show both (P1 #5)
     };
 
-    // Rider shape display mode
-    enum class RiderShape {
-        ARROWUP = 0,     // circle-arrow-up
-        CHEVRON = 1,     // circle-chevron-up
-        CIRCLE = 2,      // circle
-        CIRCLEPLAY = 3,  // circle-play
-        CIRCLEUP = 4,    // circle-up
-        DOT = 5,         // circle-dot
-        LOCATION = 6,    // location-arrow
-        PIN = 7,         // location-pin
-        PLANE = 8,       // paper-plane
-        VINYL = 9        // record-vinyl
-    };
-
     void setLabelMode(LabelMode mode) {
         if (m_labelMode != mode) {
             m_labelMode = mode;
@@ -93,13 +100,31 @@ public:
     }
     LabelMode getLabelMode() const { return m_labelMode; }
 
-    void setRiderShape(RiderShape shape) {
-        if (m_riderShape != shape) {
-            m_riderShape = shape;
+    // Rider shape index (1-N=icons from AssetManager)
+    void setRiderShape(int shapeIndex);
+    int getRiderShape() const { return m_riderShapeIndex; }
+
+    // Proximity arrow shape index (1-N=icons from AssetManager)
+    void setProximityArrowShape(int shapeIndex);
+    int getProximityArrowShape() const { return m_proximityArrowShapeIndex; }
+
+    // Proximity arrow scale - independently scale proximity arrow icons
+    void setProximityArrowScale(float scale);
+    float getProximityArrowScale() const { return m_fProximityArrowScale; }
+
+    // Proximity arrow color mode - how to color proximity arrows
+    enum class ProximityArrowColorMode {
+        DISTANCE = 0,   // Color based on distance (red=close, yellow=mid, green=far)
+        POSITION = 1    // Color based on position relative to player (same as radar)
+    };
+
+    void setProximityArrowColorMode(ProximityArrowColorMode mode) {
+        if (m_proximityArrowColorMode != mode) {
+            m_proximityArrowColorMode = mode;
             setDataDirty();
         }
     }
-    RiderShape getRiderShape() const { return m_riderShape; }
+    ProximityArrowColorMode getProximityArrowColorMode() const { return m_proximityArrowColorMode; }
 
     // Marker scale - independently scale rider icons and labels
     void setMarkerScale(float scale);
@@ -122,6 +147,11 @@ public:
     static constexpr float MIN_MARKER_SCALE = 0.5f;         // Min 50%
     static constexpr float MAX_MARKER_SCALE = 3.0f;         // Max 300%
 
+    // Proximity arrow scale constants
+    static constexpr float DEFAULT_PROXIMITY_ARROW_SCALE = 1.0f;  // Default 100%
+    static constexpr float MIN_PROXIMITY_ARROW_SCALE = 0.5f;      // Min 50%
+    static constexpr float MAX_PROXIMITY_ARROW_SCALE = 3.0f;      // Max 300%
+
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;
     friend class SettingsManager;
@@ -140,9 +170,8 @@ private:
     static constexpr float RADAR_SIZE = 0.20f;       // Radar diameter as fraction of screen height
 
     // Memory reservation sizes
-    static constexpr size_t RESERVE_MAX_RIDERS = 40;
-    static constexpr size_t RESERVE_QUADS = 50;      // Background + rider arrows
-    static constexpr size_t RESERVE_STRINGS = 50;    // Title + rider labels
+    static constexpr size_t RESERVE_QUADS = 60;            // Background + rider arrows
+    static constexpr size_t RESERVE_STRINGS = 60;          // Title + rider labels
 
     // Rider colorization
     RiderColorMode m_riderColorMode;
@@ -150,8 +179,11 @@ private:
     // Show player's own arrow
     bool m_bShowPlayerArrow;
 
-    // Fade radar when no riders nearby
-    bool m_bFadeWhenEmpty;
+    // Radar display mode (Off, On, Auto-hide)
+    RadarMode m_radarMode;
+
+    // Proximity arrow display mode
+    ProximityArrowMode m_proximityArrowMode;
 
     // Proximity alert distance (triangles only light up within this distance)
     float m_fAlertDistance;
@@ -159,8 +191,17 @@ private:
     // Rider label display mode
     LabelMode m_labelMode;
 
-    // Rider shape display mode
-    RiderShape m_riderShape;
+    // Rider shape index (1-N=icons from AssetManager)
+    int m_riderShapeIndex;
+
+    // Proximity arrow shape index (1-N=icons from AssetManager)
+    int m_proximityArrowShapeIndex;
+
+    // Proximity arrow scale (independent of HUD scale)
+    float m_fProximityArrowScale;
+
+    // Proximity arrow color mode
+    ProximityArrowColorMode m_proximityArrowColorMode;
 
     // Marker scale (independent of HUD scale)
     float m_fMarkerScale;
@@ -174,4 +215,9 @@ private:
     // Helper: Render rider label
     void renderRiderLabel(float radarX, float radarY, int raceNum, int position,
                           float centerX, float centerY, float radarRadius, float opacity);
+
+    // Helper: Render proximity arrows at screen edges
+    void renderProximityArrows(const SPluginsRaceTrackPosition_t* localPlayer,
+                               float playerX, float playerZ,
+                               float cosYaw, float sinYaw);
 };
