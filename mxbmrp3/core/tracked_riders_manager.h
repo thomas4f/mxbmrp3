@@ -70,18 +70,20 @@ public:
     // Clear all tracked riders
     void clearAll();
 
-    // Persistence - load/save from/to INI format strings
-    // Format: "name1|color1|shape1;name2|color2|shape2;..."
-    std::string serializeToString() const;
-    void deserializeFromString(const std::string& data);
+    // Persistence - load/save from JSON file
+    void load(const char* savePath);
+    void save();
 
     // Mark that tracked riders have changed (for HUD updates)
     void markDirty() { m_bDirty = true; }
     bool isDirty() const { return m_bDirty; }
     void clearDirty() { m_bDirty = false; }
 
+    // Check if data needs to be saved (modified since last save/load)
+    bool needsSave() const { return m_needsSave; }
+
 private:
-    TrackedRidersManager() : m_bDirty(false) {}
+    TrackedRidersManager() : m_bDirty(false), m_needsSave(false) {}
     ~TrackedRidersManager() = default;
     TrackedRidersManager(const TrackedRidersManager&) = delete;
     TrackedRidersManager& operator=(const TrackedRidersManager&) = delete;
@@ -89,9 +91,18 @@ private:
     // Normalize name for consistent matching (lowercase, trimmed)
     static std::string normalizeName(const std::string& name);
 
+    // Get full path to JSON file
+    std::string getFilePath() const;
+
     // Tracked riders storage (key = normalized name)
     std::unordered_map<std::string, TrackedRiderConfig> m_trackedRiders;
 
+    // Save path (set during load)
+    std::string m_savePath;
+
     // Dirty flag for HUD updates
     bool m_bDirty;
+
+    // Flag to track if data has changed since last save/load
+    bool m_needsSave;
 };

@@ -32,6 +32,10 @@ public:
     // Single decimal (tenths) for cleaner pitboard-style display
     static void formatGapCompact(char* buffer, size_t bufferSize, int diffMs);
 
+    // Format sector time as "SS.mmm" (for sectors under 1 minute)
+    // Used by RecordsHud for MXB-Ranked sector times
+    static void formatSectorTime(int sectorTimeMs, char* buffer, size_t bufferSize);
+
     static const char* getEventTypeString(int eventType);
     static const char* getSessionString(int eventType, int session);
     static const char* getSessionStateString(int sessionState);

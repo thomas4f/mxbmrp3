@@ -126,6 +126,27 @@ void PluginUtils::formatGapCompact(char* buffer, size_t bufferSize, int diffMs) 
     }
 }
 
+void PluginUtils::formatSectorTime(int sectorTimeMs, char* buffer, size_t bufferSize) {
+    if (sectorTimeMs >= 0) {
+        using namespace PluginConstants::TimeConversion;
+
+        if (sectorTimeMs >= MS_PER_MINUTE) {
+            // M:SS.mmm format for sectors >= 1 minute
+            int minutes = sectorTimeMs / MS_PER_MINUTE;
+            int seconds = (sectorTimeMs % MS_PER_MINUTE) / MS_PER_SECOND;
+            int ms = sectorTimeMs % MS_PER_SECOND;
+            snprintf(buffer, bufferSize, "%d:%02d.%03d", minutes, seconds, ms);
+        } else {
+            // SS.mmm format for sectors < 1 minute
+            int seconds = sectorTimeMs / MS_PER_SECOND;
+            int ms = sectorTimeMs % MS_PER_SECOND;
+            snprintf(buffer, bufferSize, "%02d.%03d", seconds, ms);
+        }
+    } else {
+        buffer[0] = '\0';
+    }
+}
+
 const char* PluginUtils::getEventTypeString(int eventType) {
     namespace Enum = PluginConstants::EventType;
     namespace Str = PluginConstants::DisplayStrings::EventType;

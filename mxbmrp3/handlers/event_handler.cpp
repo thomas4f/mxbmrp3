@@ -22,6 +22,7 @@ void EventHandler::handleEventInit(SPluginsBikeEvent_t* psEventData) {
     PluginData::getInstance().setEventType(psEventData->m_iType);
     PluginData::getInstance().setShiftRPM(psEventData->m_iShiftRPM);
     PluginData::getInstance().setLimiterRPM(psEventData->m_iLimiter);
+    PluginData::getInstance().setSteerLock(psEventData->m_fSteerLock);
     PluginData::getInstance().setMaxFuel(psEventData->m_fMaxFuel);
     PluginData::getInstance().setNumberOfGears(psEventData->m_iNumberOfGears);
     PluginData::getInstance().updateSuspensionMaxTravel(

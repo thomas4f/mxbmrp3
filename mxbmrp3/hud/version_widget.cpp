@@ -12,6 +12,11 @@
 #include "../core/plugin_utils.h"
 #include "../core/input_manager.h"
 #include "../core/color_config.h"
+#include "../core/update_checker.h"
+#include "../core/settings_manager.h"
+#include "../core/hud_manager.h"
+#include "../core/plugin_manager.h"
+#include "settings_hud.h"
 #include "../handlers/draw_handler.h"
 
 using namespace PluginConstants;
@@ -81,27 +86,95 @@ void VersionWidget::update() {
         rebuildLayout();
         clearLayoutDirty();
     }
-    // Build render data once on first update
-    else if (m_strings.empty()) {
+
+    // Rebuild render data when dirty or on first update
+    if (isDataDirty() || m_strings.empty()) {
         rebuildRenderData();
+        clearDataDirty();
     }
 }
 
 void VersionWidget::handleClickDetection() {
-    // Only handle clicks when game is active (for ball launch / exit)
-    if (!m_gameActive || !m_bVisible) return;
+    if (!m_bVisible) return;
 
     const InputManager& input = InputManager::getInstance();
     if (!input.isCursorEnabled()) return;
 
     const MouseButton& leftButton = input.getLeftButton();
 
-    // Detect click (transition from not pressed to pressed)
+    // Detect left click (transition from not pressed to pressed)
     bool isLeftPressed = leftButton.isPressed;
-    bool isClick = isLeftPressed && !m_wasLeftPressed;
+    bool isLeftClick = isLeftPressed && !m_wasLeftPressed;
     m_wasLeftPressed = isLeftPressed;
 
-    if (!isClick) return;
+    // Handle notification button hover and clicks (not during game)
+    if (m_showingUpdateNotification && !m_gameActive) {
+        const CursorPosition& cursor = input.getCursorPosition();
+
+        // Track which button is hovered (need to apply offset for comparison)
+        NotificationButton oldHover = m_hoveredButton;
+        m_hoveredButton = NotificationButton::NONE;
+
+        if (cursor.isValid) {
+            // Check View button bounds (apply offset to button coords)
+            float viewLeft = m_viewButtonLeft + m_fOffsetX;
+            float viewTop = m_viewButtonTop + m_fOffsetY;
+            if (cursor.x >= viewLeft && cursor.x <= viewLeft + m_viewButtonWidth &&
+                cursor.y >= viewTop && cursor.y <= viewTop + m_viewButtonHeight) {
+                m_hoveredButton = NotificationButton::VIEW;
+            }
+
+            // Check Dismiss button bounds
+            float dismissLeft = m_dismissButtonLeft + m_fOffsetX;
+            float dismissTop = m_dismissButtonTop + m_fOffsetY;
+            if (cursor.x >= dismissLeft && cursor.x <= dismissLeft + m_dismissButtonWidth &&
+                cursor.y >= dismissTop && cursor.y <= dismissTop + m_dismissButtonHeight) {
+                m_hoveredButton = NotificationButton::DISMISS;
+            }
+        }
+
+        // Rebuild if hover state changed
+        if (m_hoveredButton != oldHover) {
+            setDataDirty();
+        }
+
+        // Handle button clicks
+        if (isLeftClick) {
+            if (m_hoveredButton == NotificationButton::VIEW) {
+                // Clear notification mode since they're going to settings
+                m_showingUpdateNotification = false;
+                m_bVisible = false;
+                m_hoveredButton = NotificationButton::NONE;
+                setDataDirty();
+
+                // Open settings panel to Updates tab
+                HudManager::getInstance().getSettingsHud().showUpdatesTab();
+                return;
+            }
+
+            if (m_hoveredButton == NotificationButton::DISMISS) {
+                UpdateChecker& checker = UpdateChecker::getInstance();
+                std::string latestVersion = checker.getLatestVersion();
+                checker.setDismissedVersion(latestVersion);
+                DEBUG_INFO_F("VersionWidget: Update notification dismissed for version %s", latestVersion.c_str());
+
+                // Hide the widget and clear notification state
+                m_showingUpdateNotification = false;
+                m_bVisible = false;
+                m_hoveredButton = NotificationButton::NONE;
+
+                // Save settings to persist the dismissed version
+                SettingsManager::getInstance().saveSettings(HudManager::getInstance(),
+                    PluginManager::getInstance().getSavePath());
+                return;
+            }
+        }
+        return;  // Don't process game input while notification is showing
+    }
+
+    // Only handle left clicks when game is active (for ball launch / exit)
+    if (!m_gameActive) return;
+    if (!isLeftClick) return;
 
     // Handle game clicks
     if (m_gameOver) {
@@ -345,6 +418,21 @@ void VersionWidget::exitGame() {
     }
 }
 
+void VersionWidget::showUpdateNotification() {
+    // Don't show if already in notification mode
+    if (m_showingUpdateNotification) return;
+
+    UpdateChecker& checker = UpdateChecker::getInstance();
+    if (!checker.shouldShowUpdateNotification()) return;
+
+    DEBUG_INFO_F("VersionWidget: Showing update notification for version %s",
+                checker.getLatestVersion().c_str());
+
+    m_showingUpdateNotification = true;
+    m_bVisible = true;
+    setDataDirty();
+}
+
 void VersionWidget::rebuildLayout() {
     if (m_gameActive) {
         // Game handles its own layout
@@ -354,16 +442,46 @@ void VersionWidget::rebuildLayout() {
     // Fast path - only update positions
     auto dim = getScaledDimensions();
 
-    // Use minimal padding (30% of normal padding)
-    const float minPaddingH = dim.paddingH * 0.3f;
-    const float minPaddingV = dim.paddingV * 0.3f;
+    // Check if we should show update notification
+    bool showNotification = m_showingUpdateNotification &&
+                           UpdateChecker::getInstance().shouldShowUpdateNotification();
 
-    // Calculate text width based on actual version string length
-    // Format: "MXBMRP3 v" (9 chars) + version string
-    const int textLength = 9 + static_cast<int>(strlen(PLUGIN_VERSION));
-    const float textWidth = PluginUtils::calculateMonospaceTextWidth(textLength, dim.fontSize);
-    const float backgroundWidth = minPaddingH + textWidth + minPaddingH;
-    const float backgroundHeight = minPaddingV + dim.lineHeightNormal + minPaddingV;
+    float backgroundWidth, backgroundHeight;
+    float contentPaddingH, contentPaddingV;
+
+    if (showNotification) {
+        // Notification mode uses full padding
+        contentPaddingH = dim.paddingH;
+        contentPaddingV = dim.paddingV;
+
+        // "MXBMRP3 " (8 chars) + version string + " available!" (11 chars)
+        std::string latestVersion = UpdateChecker::getInstance().getLatestVersion();
+        int textLength = 8 + static_cast<int>(latestVersion.length()) + 11;
+        const float textWidth = PluginUtils::calculateMonospaceTextWidth(textLength, dim.fontSize);
+
+        // Button dimensions (must match rebuildRenderData)
+        const float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+        const float buttonGap = charWidth * 1.0f;
+        const float viewButtonWidth = charWidth * VIEW_BUTTON_CHARS;
+        const float dismissButtonWidth = charWidth * DISMISS_BUTTON_CHARS;
+
+        // Width is max of text row or button row
+        const float buttonRowWidth = viewButtonWidth + buttonGap + dismissButtonWidth;
+        const float contentWidth = std::fmax(textWidth, buttonRowWidth);
+        backgroundWidth = contentPaddingH + contentWidth + contentPaddingH;
+        // Two rows: text + buttons
+        backgroundHeight = contentPaddingV + dim.lineHeightNormal + dim.lineHeightNormal + contentPaddingV;
+    } else {
+        // Normal mode uses full padding for consistency
+        contentPaddingH = dim.paddingH;
+        contentPaddingV = dim.paddingV;
+
+        // "MXBMRP3 v" (9 chars) + version string
+        int textLength = 9 + static_cast<int>(strlen(PLUGIN_VERSION));
+        const float textWidth = PluginUtils::calculateMonospaceTextWidth(textLength, dim.fontSize);
+        backgroundWidth = contentPaddingH + textWidth + contentPaddingH;
+        backgroundHeight = contentPaddingV + dim.lineHeightNormal + contentPaddingV;
+    }
 
     // Base position centers widget at (0.5, 0.01) - offset applied automatically by BaseHud
     float startX = -backgroundWidth / 2.0f;  // Centers around X=0.5 when offset=0.5
@@ -375,11 +493,12 @@ void VersionWidget::rebuildLayout() {
     // Update background quad position
     updateBackgroundQuadPosition(startX, startY, backgroundWidth, backgroundHeight);
 
-    // Position string
-    float contentStartX = startX + minPaddingH;
-    float contentStartY = startY + minPaddingV;
-
-    positionString(0, contentStartX, contentStartY);
+    // Position first string (only used in normal mode, notification rebuilds all strings)
+    if (!showNotification) {
+        float contentStartX = startX + contentPaddingH;
+        float contentStartY = startY + contentPaddingV;
+        positionString(0, contentStartX, contentStartY);
+    }
 }
 
 void VersionWidget::rebuildRenderData() {
@@ -393,37 +512,144 @@ void VersionWidget::rebuildRenderData() {
     }
 
     auto dim = getScaledDimensions();
+    ColorConfig& colorConfig = ColorConfig::getInstance();
 
-    // Use minimal padding (30% of normal padding)
-    const float minPaddingH = dim.paddingH * 0.3f;
-    const float minPaddingV = dim.paddingV * 0.3f;
+    // Check if we should show update notification
+    bool showNotification = m_showingUpdateNotification &&
+                           UpdateChecker::getInstance().shouldShowUpdateNotification();
 
-    // Create version string first so we can measure it
-    char versionText[64];
-    snprintf(versionText, sizeof(versionText), "MXBMRP3 v%s", PLUGIN_VERSION);
+    if (showNotification) {
+        // ===== NOTIFICATION MODE: Show update message with buttons on separate row =====
+        std::string latestVersion = UpdateChecker::getInstance().getLatestVersion();
 
-    // Calculate text width based on actual string length
-    const int textLength = static_cast<int>(strlen(versionText));
-    const float textWidth = PluginUtils::calculateMonospaceTextWidth(textLength, dim.fontSize);
-    const float backgroundWidth = minPaddingH + textWidth + minPaddingH;
-    const float backgroundHeight = minPaddingV + dim.lineHeightNormal + minPaddingV;
+        // Calculate text width for update message
+        char displayText[64];
+        snprintf(displayText, sizeof(displayText), "MXBMRP3 %s available!", latestVersion.c_str());
+        const int textLength = static_cast<int>(strlen(displayText));
+        const float textWidth = PluginUtils::calculateMonospaceTextWidth(textLength, dim.fontSize);
 
-    // Base position centers widget at (0.5, 0.01) - offset applied automatically by BaseHud
-    float startX = -backgroundWidth / 2.0f;  // Centers around X=0.5 when offset=0.5
-    float startY = 0.01f;  // Top of screen
+        // Button dimensions
+        const float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+        const float buttonGap = charWidth * 1.0f;  // Gap between buttons
+        const float viewButtonWidth = charWidth * VIEW_BUTTON_CHARS;
+        const float dismissButtonWidth = charWidth * DISMISS_BUTTON_CHARS;
+        const float buttonHeight = dim.lineHeightNormal;
 
-    // Add background quad (opaque black)
-    addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
+        // Width is max of text row or button row
+        const float buttonRowWidth = viewButtonWidth + buttonGap + dismissButtonWidth;
+        const float contentWidth = std::fmax(textWidth, buttonRowWidth);
+        const float backgroundWidth = dim.paddingH + contentWidth + dim.paddingH;
+        // Two rows: text + buttons
+        const float backgroundHeight = dim.paddingV + dim.lineHeightNormal + dim.lineHeightNormal + dim.paddingV;
 
-    // Add string
-    float contentStartX = startX + minPaddingH;
-    float contentStartY = startY + minPaddingV;
+        // Center widget at top of screen
+        float startX = -backgroundWidth / 2.0f;
+        float startY = 0.01f;
 
-    addString(versionText, contentStartX, contentStartY, Justify::LEFT,
-              Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+        // Add background quad
+        addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
 
-    // Set bounds for drag detection
-    setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
+        // Render update available text (centered on first row)
+        float row1Y = startY + dim.paddingV;
+        float centerX = startX + backgroundWidth / 2.0f;
+        addString(displayText, centerX, row1Y, Justify::CENTER,
+                  Fonts::getNormal(), colorConfig.getSecondary(), dim.fontSize);
+
+        // Second row: buttons centered
+        float row2Y = row1Y + dim.lineHeightNormal;
+        float buttonsStartX = centerX - buttonRowWidth / 2.0f;
+
+        // ===== [View in Settings] Button (accent color) =====
+        float viewBtnX = buttonsStartX;
+        float viewBtnY = row2Y;
+
+        // Store button bounds for click detection (before offset)
+        m_viewButtonLeft = viewBtnX;
+        m_viewButtonTop = viewBtnY;
+        m_viewButtonWidth = viewButtonWidth;
+        m_viewButtonHeight = buttonHeight;
+
+        bool isViewHovered = (m_hoveredButton == NotificationButton::VIEW);
+
+        // View button background
+        SPluginQuad_t viewBgQuad;
+        float viewBgX = viewBtnX, viewBgY = viewBtnY;
+        applyOffset(viewBgX, viewBgY);
+        setQuadPositions(viewBgQuad, viewBgX, viewBgY, viewButtonWidth, buttonHeight);
+        viewBgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+        viewBgQuad.m_ulColor = isViewHovered ? colorConfig.getAccent()
+            : PluginUtils::applyOpacity(colorConfig.getAccent(), 0.5f);
+        m_quads.push_back(viewBgQuad);
+
+        // View button text (center-aligned on button)
+        unsigned long viewTextColor = isViewHovered ? colorConfig.getPrimary() : colorConfig.getAccent();
+        addString("[View in Settings]", viewBtnX + viewButtonWidth / 2.0f, viewBtnY, Justify::CENTER,
+                  Fonts::getNormal(), viewTextColor, dim.fontSize);
+
+        // ===== [Dismiss] Button (negative color) =====
+        float dismissBtnX = viewBtnX + viewButtonWidth + buttonGap;
+        float dismissBtnY = row2Y;
+
+        // Store button bounds for click detection (before offset)
+        m_dismissButtonLeft = dismissBtnX;
+        m_dismissButtonTop = dismissBtnY;
+        m_dismissButtonWidth = dismissButtonWidth;
+        m_dismissButtonHeight = buttonHeight;
+
+        bool isDismissHovered = (m_hoveredButton == NotificationButton::DISMISS);
+
+        // Dismiss button background
+        SPluginQuad_t dismissBgQuad;
+        float dismissBgX = dismissBtnX, dismissBgY = dismissBtnY;
+        applyOffset(dismissBgX, dismissBgY);
+        setQuadPositions(dismissBgQuad, dismissBgX, dismissBgY, dismissButtonWidth, buttonHeight);
+        dismissBgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+        dismissBgQuad.m_ulColor = isDismissHovered ? colorConfig.getNegative()
+            : PluginUtils::applyOpacity(colorConfig.getNegative(), 0.5f);
+        m_quads.push_back(dismissBgQuad);
+
+        // Dismiss button text (center-aligned on button)
+        unsigned long dismissTextColor = isDismissHovered ? colorConfig.getPrimary() : colorConfig.getNegative();
+        addString("[Dismiss]", dismissBtnX + dismissButtonWidth / 2.0f, dismissBtnY, Justify::CENTER,
+                  Fonts::getNormal(), dismissTextColor, dim.fontSize);
+
+        // Set bounds for the whole widget
+        setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
+
+    } else {
+        // ===== NORMAL MODE: Show plugin version =====
+
+        // Clear notification state if we're visible but notification no longer applies
+        if (m_showingUpdateNotification) {
+            m_showingUpdateNotification = false;
+        }
+
+        char displayText[64];
+        snprintf(displayText, sizeof(displayText), "MXBMRP3 v%s", PLUGIN_VERSION);
+
+        // Calculate text width based on actual string length
+        const int textLength = static_cast<int>(strlen(displayText));
+        const float textWidth = PluginUtils::calculateMonospaceTextWidth(textLength, dim.fontSize);
+        const float backgroundWidth = dim.paddingH + textWidth + dim.paddingH;
+        const float backgroundHeight = dim.paddingV + dim.lineHeightNormal + dim.paddingV;
+
+        // Base position centers widget at (0.5, 0.01) - offset applied automatically by BaseHud
+        float startX = -backgroundWidth / 2.0f;  // Centers around X=0.5 when offset=0.5
+        float startY = 0.01f;  // Top of screen
+
+        // Add background quad (opaque black)
+        addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
+
+        // Add main text
+        float contentStartX = startX + dim.paddingH;
+        float contentStartY = startY + dim.paddingV;
+
+        addString(displayText, contentStartX, contentStartY, Justify::LEFT,
+                  Fonts::getNormal(), colorConfig.getSecondary(), dim.fontSize);
+
+        // Set bounds for drag detection
+        setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
+    }
 }
 
 void VersionWidget::renderGame() {

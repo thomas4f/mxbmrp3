@@ -112,16 +112,8 @@ void NoticesWidget::update() {
         setDataDirty();
     }
 
-    // Check data dirty first (takes precedence)
-    if (isDataDirty()) {
-        rebuildRenderData();
-        clearDataDirty();
-        clearLayoutDirty();
-    }
-    else if (isLayoutDirty()) {
-        rebuildLayout();
-        clearLayoutDirty();
-    }
+    // Handle dirty flags using base class helper
+    processDirtyFlags();
 }
 
 void NoticesWidget::rebuildLayout() {

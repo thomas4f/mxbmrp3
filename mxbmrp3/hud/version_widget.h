@@ -23,6 +23,10 @@ public:
     // Check if game is active (used by HudManager to bypass widgets toggle)
     bool isGameActive() const { return m_gameActive; }
 
+    // Update notification mode - auto-enables widget when update is available
+    void showUpdateNotification();
+    bool isShowingUpdateNotification() const { return m_showingUpdateNotification; }
+
     // Allow SettingsManager to access private members
     friend class SettingsManager;
 
@@ -50,8 +54,29 @@ private:
     static constexpr float GAME_AREA_WIDTH = 0.40f;
     static constexpr float GAME_AREA_HEIGHT = 0.35f;
 
+    // Notification button constants (char counts for width calculation)
+    static constexpr int VIEW_BUTTON_CHARS = 18;     // "[View in Settings]"
+    static constexpr int DISMISS_BUTTON_CHARS = 9;   // "[Dismiss]"
+
     // Click detection for game input (ball launch / exit)
     bool m_wasLeftPressed = false;
+
+    // Update notification state
+    bool m_showingUpdateNotification = false;  // True when auto-enabled for update notification
+
+    // Notification button state
+    enum class NotificationButton { NONE, VIEW, DISMISS };
+    NotificationButton m_hoveredButton = NotificationButton::NONE;
+
+    // Button bounds (screen coordinates, before offset applied)
+    float m_viewButtonLeft = 0.0f;
+    float m_viewButtonTop = 0.0f;
+    float m_viewButtonWidth = 0.0f;
+    float m_viewButtonHeight = 0.0f;
+    float m_dismissButtonLeft = 0.0f;
+    float m_dismissButtonTop = 0.0f;
+    float m_dismissButtonWidth = 0.0f;
+    float m_dismissButtonHeight = 0.0f;
 
     // Game state
     bool m_gameActive = false;

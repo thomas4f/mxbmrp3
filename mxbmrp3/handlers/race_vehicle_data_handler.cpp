@@ -28,15 +28,19 @@ void RaceVehicleDataHandler::handleRaceVehicleData(SPluginsRaceVehicleData_t* ps
     int displayRaceNum = pluginData.getDisplayRaceNum();
 
     // If this vehicle data is for the rider we're displaying, update telemetry
-    // Only updates data available in SPluginsRaceVehicleData_t (throttle, frontBrake, rpm, gear, speedometer)
-    // Other graphs (rearBrake, clutch, steer, fuel, suspension) will be frozen - no data available
+    // Only updates data available in SPluginsRaceVehicleData_t (throttle, frontBrake, rpm, gear, speedometer, lean)
+    // Other data (rearBrake, clutch, steer, fuel, suspension) is not available when spectating
     if (psRaceVehicleData->m_iRaceNum == displayRaceNum) {
+        // Note: m_fLean uses opposite sign convention from m_fRoll (player telemetry)
+        // m_fLean: "Negative = left", m_fRoll: standard rotation (positive = right)
+        // Negate to match the convention used by LeanWidget
         pluginData.updateRaceVehicleTelemetry(
             psRaceVehicleData->m_fSpeedometer,
             psRaceVehicleData->m_iGear,
             psRaceVehicleData->m_iRPM,
             psRaceVehicleData->m_fThrottle,
-            psRaceVehicleData->m_fFrontBrake
+            psRaceVehicleData->m_fFrontBrake,
+            -psRaceVehicleData->m_fLean
         );
     }
 }

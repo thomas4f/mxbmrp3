@@ -24,8 +24,13 @@ UpdateChecker& UpdateChecker::getInstance() {
 
 UpdateChecker::UpdateChecker()
     : m_status(Status::IDLE)
-    , m_enabled(false)  // Off by default
+    , m_mode(UpdateMode::OFF)  // Off by default
+    , m_channel(UpdateChannel::STABLE)  // Stable by default
+    , m_downloadSize(0)
+    , m_latestIsPrerelease(false)
     , m_shutdownRequested(false)
+    , m_debugMode(false)
+    , m_lastCheckTimestamp(0)
 {
 }
 
@@ -41,10 +46,19 @@ void UpdateChecker::shutdown() {
 }
 
 void UpdateChecker::checkForUpdates() {
+    // Cooldown check - prevent spam (silently ignore if on cooldown)
+    unsigned long now = GetTickCount();
+    if (now - m_lastCheckTimestamp < CHECK_COOLDOWN_MS) {
+        return;
+    }
+
     // Don't start another check if one is in progress
     if (m_status == Status::CHECKING) {
         return;
     }
+
+    // Record check start time for cooldown
+    m_lastCheckTimestamp = now;
 
     // Wait for any previous thread to complete
     if (m_workerThread.joinable()) {
@@ -58,9 +72,70 @@ void UpdateChecker::checkForUpdates() {
     m_workerThread = std::thread(&UpdateChecker::workerThread, this);
 }
 
+bool UpdateChecker::isOnCooldown() const {
+    return (GetTickCount() - m_lastCheckTimestamp < CHECK_COOLDOWN_MS);
+}
+
 std::string UpdateChecker::getLatestVersion() const {
     std::lock_guard<std::mutex> lock(m_mutex);
     return m_latestVersion;
+}
+
+std::string UpdateChecker::getReleaseNotes() const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_releaseNotes;
+}
+
+std::string UpdateChecker::getDownloadUrl() const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_downloadUrl;
+}
+
+size_t UpdateChecker::getDownloadSize() const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_downloadSize;
+}
+
+std::string UpdateChecker::getAssetName() const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_assetName;
+}
+
+std::string UpdateChecker::getChecksumHash() const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_checksumHash;
+}
+
+void UpdateChecker::setDismissedVersion(const std::string& version) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_dismissedVersion = version;
+}
+
+std::string UpdateChecker::getDismissedVersion() const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_dismissedVersion;
+}
+
+void UpdateChecker::setChannel(UpdateChannel channel) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    UpdateChannel old = m_channel.exchange(channel);
+    if (old != channel) {
+        m_dismissedVersion.clear();  // Clear stale dismissal from other channel
+    }
+}
+
+bool UpdateChecker::isLatestPrerelease() const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_latestIsPrerelease;
+}
+
+bool UpdateChecker::shouldShowUpdateNotification() const {
+    if (m_status != Status::UPDATE_AVAILABLE) {
+        return false;
+    }
+    std::lock_guard<std::mutex> lock(m_mutex);
+    // Show notification if no version dismissed, or if latest version differs from dismissed
+    return m_dismissedVersion.empty() || m_latestVersion != m_dismissedVersion;
 }
 
 void UpdateChecker::setCompletionCallback(std::function<void()> callback) {
@@ -88,15 +163,22 @@ void UpdateChecker::workerThread() {
             m_latestVersion = latestVersion;
         }
 
-        // Compare versions
+        // Compare versions (debug mode forces update available)
+        // Log both versions for easier debugging regardless of result
         int cmp = compareVersions(latestVersion, PluginConstants::PLUGIN_VERSION);
-        if (cmp > 0) {
+        DEBUG_INFO_F("UpdateChecker: Version comparison - Latest: %s, Current: %s, Result: %d",
+                    latestVersion.c_str(), PluginConstants::PLUGIN_VERSION, cmp);
+
+        if (cmp > 0 || m_debugMode) {
             m_status = Status::UPDATE_AVAILABLE;
-            DEBUG_INFO_F("UpdateChecker: Update available! Latest: %s, Current: %s",
-                        latestVersion.c_str(), PluginConstants::PLUGIN_VERSION);
+            if (m_debugMode && cmp <= 0) {
+                DEBUG_INFO_F("UpdateChecker: DEBUG MODE - Forcing update available");
+            } else {
+                DEBUG_INFO_F("UpdateChecker: Update available!");
+            }
         } else {
             m_status = Status::UP_TO_DATE;
-            DEBUG_INFO_F("UpdateChecker: Up to date (v%s)", PluginConstants::PLUGIN_VERSION);
+            DEBUG_INFO_F("UpdateChecker: Up to date");
         }
     } else {
         m_status = Status::CHECK_FAILED;
@@ -119,6 +201,12 @@ bool UpdateChecker::parseVersion(const std::string& version, int& major, int& mi
     std::string ver = version;
     if (!ver.empty() && (ver[0] == 'v' || ver[0] == 'V')) {
         ver = ver.substr(1);
+    }
+
+    // Strip suffix after hyphen (e.g., "1.11.0.0-beta1" -> "1.11.0.0")
+    size_t hyphen = ver.find('-');
+    if (hyphen != std::string::npos) {
+        ver = ver.substr(0, hyphen);
     }
 
     major = minor = patch = build = 0;
@@ -166,9 +254,17 @@ bool UpdateChecker::fetchLatestRelease(std::string& outVersion, std::string& out
              PluginConstants::PLUGIN_VERSION);
     std::wstring userAgent(userAgentA, userAgentA + strlen(userAgentA));
 
+    // Construct API path from centralized repo constants (supports repo moves/renames)
+    // Use /releases endpoint to get array of releases (supports prerelease filtering)
+    std::string apiPath = "/repos/";
+    apiPath += PluginConstants::GITHUB_REPO_OWNER;
+    apiPath += "/";
+    apiPath += PluginConstants::GITHUB_REPO_NAME;
+    apiPath += "/releases?per_page=15";
+
     // Wide string versions of host and path
     std::wstring wHost(GITHUB_API_HOST, GITHUB_API_HOST + strlen(GITHUB_API_HOST));
-    std::wstring wPath(GITHUB_RELEASES_PATH, GITHUB_RELEASES_PATH + strlen(GITHUB_RELEASES_PATH));
+    std::wstring wPath(apiPath.begin(), apiPath.end());
 
     // Initialize WinHTTP
     HINTERNET hSession = WinHttpOpen(userAgent.c_str(),
@@ -246,7 +342,7 @@ bool UpdateChecker::fetchLatestRelease(std::string& outVersion, std::string& out
     std::string responseBody;
     DWORD dwSize = 0;
     DWORD dwDownloaded = 0;
-    constexpr size_t MAX_RESPONSE_SIZE = 64 * 1024;  // 64KB limit
+    constexpr size_t MAX_RESPONSE_SIZE = 256 * 1024;  // 256KB limit (array of releases)
 
     do {
         dwSize = 0;
@@ -278,17 +374,106 @@ bool UpdateChecker::fetchLatestRelease(std::string& outVersion, std::string& out
     WinHttpCloseHandle(hConnect);
     WinHttpCloseHandle(hSession);
 
-    // Parse JSON response
+    // Parse JSON response (array of releases)
     try {
-        nlohmann::json j = nlohmann::json::parse(responseBody);
+        nlohmann::json releases = nlohmann::json::parse(responseBody);
 
-        if (j.contains("tag_name") && j["tag_name"].is_string()) {
-            outVersion = j["tag_name"].get<std::string>();
-            return true;
-        } else {
-            outError = "No tag_name in response";
+        if (!releases.is_array() || releases.empty()) {
+            outError = "No releases found";
             return false;
         }
+
+        // Find best matching release based on channel
+        UpdateChannel channel = m_channel.load();
+        nlohmann::json* selectedRelease = nullptr;
+
+        for (auto& release : releases) {
+            // Skip releases without tag_name
+            if (!release.contains("tag_name") || !release["tag_name"].is_string()) {
+                continue;
+            }
+            // Skip drafts
+            if (release.contains("draft") && release["draft"].get<bool>()) {
+                continue;
+            }
+
+            bool isPrerelease = release.contains("prerelease") && release["prerelease"].get<bool>();
+
+            // Stable channel skips prereleases
+            if (channel == UpdateChannel::STABLE && isPrerelease) {
+                continue;
+            }
+
+            // First matching release is the newest (GitHub returns newest first)
+            selectedRelease = &release;
+            break;
+        }
+
+        if (!selectedRelease) {
+            outError = "No suitable release found";
+            return false;
+        }
+
+        // Extract data from selected release
+        nlohmann::json& j = *selectedRelease;
+        outVersion = j["tag_name"].get<std::string>();
+        bool isPrerelease = j.contains("prerelease") && j["prerelease"].get<bool>();
+
+        // Extract release notes (body field)
+        std::string releaseNotes;
+        if (j.contains("body") && j["body"].is_string()) {
+            releaseNotes = j["body"].get<std::string>();
+        }
+
+        // Extract asset info (find first .zip file)
+        std::string downloadUrl;
+        std::string assetName;
+        size_t downloadSize = 0;
+        std::string checksumHash;
+
+        if (j.contains("assets") && j["assets"].is_array()) {
+            for (const auto& asset : j["assets"]) {
+                if (asset.contains("name") && asset["name"].is_string()) {
+                    std::string name = asset["name"].get<std::string>();
+                    // Look for .zip file
+                    if (name.size() >= 4 && name.substr(name.size() - 4) == ".zip") {
+                        assetName = name;
+                        if (asset.contains("browser_download_url") && asset["browser_download_url"].is_string()) {
+                            downloadUrl = asset["browser_download_url"].get<std::string>();
+                        }
+                        if (asset.contains("size") && asset["size"].is_number()) {
+                            downloadSize = asset["size"].get<size_t>();
+                        }
+                        // Extract SHA256 from digest field (format: "sha256:abc123...")
+                        if (asset.contains("digest") && asset["digest"].is_string()) {
+                            std::string digest = asset["digest"].get<std::string>();
+                            if (digest.substr(0, 7) == "sha256:") {
+                                checksumHash = digest.substr(7);
+                            }
+                        }
+                        break;  // Use first .zip found
+                    }
+                }
+            }
+        }
+
+        // Store the additional data under mutex
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_releaseNotes = releaseNotes;
+            m_downloadUrl = downloadUrl;
+            m_assetName = assetName;
+            m_downloadSize = downloadSize;
+            m_checksumHash = checksumHash;
+            m_latestIsPrerelease = isPrerelease;
+        }
+
+        DEBUG_INFO_F("UpdateChecker: Parsed release %s%s, notes: %zu chars, asset: %s (%zu bytes), checksum: %s",
+                    outVersion.c_str(), isPrerelease ? " (prerelease)" : "",
+                    releaseNotes.size(), assetName.c_str(), downloadSize,
+                    checksumHash.empty() ? "none" : checksumHash.substr(0, 16).c_str());
+
+        return true;
     } catch (const nlohmann::json::exception& e) {
         outError = std::string("JSON parse error: ") + e.what();
         return false;

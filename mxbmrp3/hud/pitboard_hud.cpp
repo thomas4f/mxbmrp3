@@ -201,18 +201,8 @@ void PitboardHud::update() {
         }
     }
 
-    // Check if data changed or layout dirty
-    if (isDataDirty()) {
-        // Data changed - full rebuild needed (also rebuilds layout)
-        rebuildRenderData();
-        clearDataDirty();
-        clearLayoutDirty();  // Clear layout dirty too since full rebuild done
-    }
-    else if (isLayoutDirty()) {
-        // Only layout changed (e.g., dragging) - fast path
-        rebuildLayout();
-        clearLayoutDirty();
-    }
+    // Handle dirty flags using base class helper
+    processDirtyFlags();
 }
 
 void PitboardHud::rebuildLayout() {

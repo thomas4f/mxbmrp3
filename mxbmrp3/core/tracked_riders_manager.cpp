@@ -6,11 +6,18 @@
 #include "plugin_data.h"
 #include "asset_manager.h"
 #include "../diagnostics/logger.h"
+#include "../vendor/nlohmann/json.hpp"
 #include <algorithm>
 #include <sstream>
 #include <iomanip>
+#include <fstream>
 #include <cstdlib>
 #include <cctype>
+#include <windows.h>
+
+// Subdirectory and file name (matches PersonalBestManager pattern)
+static constexpr const char* TRACKED_SUBDIRECTORY = "mxbmrp3";
+static constexpr const char* TRACKED_FILENAME = "mxbmrp3_tracked_riders.json";
 
 TrackedRidersManager& TrackedRidersManager::getInstance() {
     static TrackedRidersManager instance;
@@ -117,6 +124,7 @@ bool TrackedRidersManager::addTrackedRider(const std::string& name, unsigned lon
 
     m_trackedRiders[normalizedName] = config;
     m_bDirty = true;
+    m_needsSave = true;
     PluginData::getInstance().notifyTrackedRidersChanged();
 
     DEBUG_INFO_F("TrackedRidersManager: Added rider '%s' with color %lu and shape %d",
@@ -137,6 +145,7 @@ bool TrackedRidersManager::removeTrackedRider(const std::string& name) {
     DEBUG_INFO_F("TrackedRidersManager: Removed rider '%s'", name.c_str());
     m_trackedRiders.erase(it);
     m_bDirty = true;
+    m_needsSave = true;
     PluginData::getInstance().notifyTrackedRidersChanged();
 
     return true;
@@ -162,6 +171,7 @@ void TrackedRidersManager::setTrackedRiderColor(const std::string& name, unsigne
     if (it != m_trackedRiders.end()) {
         it->second.color = color;
         m_bDirty = true;
+        m_needsSave = true;
         PluginData::getInstance().notifyTrackedRidersChanged();
     }
 }
@@ -176,6 +186,7 @@ void TrackedRidersManager::setTrackedRiderShape(const std::string& name, int sha
         else if (shapeIndex > maxShape) shapeIndex = 1;
         it->second.shapeIndex = shapeIndex;
         m_bDirty = true;
+        m_needsSave = true;
         PluginData::getInstance().notifyTrackedRidersChanged();
     }
 }
@@ -202,6 +213,7 @@ void TrackedRidersManager::cycleTrackedRiderColor(const std::string& name, bool 
 
         it->second.color = ColorPalette::ALL_COLORS[currentIndex];
         m_bDirty = true;
+        m_needsSave = true;
         PluginData::getInstance().notifyTrackedRidersChanged();
     }
 }
@@ -221,6 +233,7 @@ void TrackedRidersManager::cycleTrackedRiderShape(const std::string& name, bool 
         }
         it->second.shapeIndex = shape;
         m_bDirty = true;
+        m_needsSave = true;
         PluginData::getInstance().notifyTrackedRidersChanged();
     }
 }
@@ -229,126 +242,176 @@ void TrackedRidersManager::clearAll() {
     if (!m_trackedRiders.empty()) {
         m_trackedRiders.clear();
         m_bDirty = true;
+        m_needsSave = true;
         PluginData::getInstance().notifyTrackedRidersChanged();
         DEBUG_INFO("TrackedRidersManager: Cleared all tracked riders");
     }
 }
 
-// Encode special characters in name for safe serialization
-// Uses percent-encoding for delimiters: % -> %25, | -> %7C, ; -> %3B
-static std::string encodeName(const std::string& name) {
-    std::ostringstream encoded;
-    for (char c : name) {
-        if (c == '%') {
-            encoded << "%25";
-        } else if (c == '|') {
-            encoded << "%7C";
-        } else if (c == ';') {
-            encoded << "%3B";
-        } else {
-            encoded << c;
+std::string TrackedRidersManager::getFilePath() const {
+    std::string path;
+
+    if (m_savePath.empty()) {
+        path = std::string(".\\") + TRACKED_SUBDIRECTORY;
+    } else {
+        path = m_savePath;
+        if (!path.empty() && path.back() != '/' && path.back() != '\\') {
+            path += '\\';
         }
-    }
-    return encoded.str();
-}
-
-// Decode percent-encoded name
-static std::string decodeName(const std::string& encoded) {
-    std::string decoded;
-    decoded.reserve(encoded.size());
-    for (size_t i = 0; i < encoded.size(); ++i) {
-        if (encoded[i] == '%' && i + 2 < encoded.size()) {
-            char hex[3] = { encoded[i + 1], encoded[i + 2], '\0' };
-            char* end;
-            long val = strtol(hex, &end, 16);
-            if (end == hex + 2) {
-                decoded += static_cast<char>(val);
-                i += 2;
-                continue;
-            }
-        }
-        decoded += encoded[i];
-    }
-    return decoded;
-}
-
-std::string TrackedRidersManager::serializeToString() const {
-    std::ostringstream oss;
-    bool first = true;
-
-    for (const auto& pair : m_trackedRiders) {
-        const TrackedRiderConfig& config = pair.second;
-
-        if (!first) {
-            oss << ";";
-        }
-        first = false;
-
-        // Format: name|#RRGGBB|shape
-        // Encode name to handle special characters (|, ;, %)
-        // Store color as hex for readability
-        oss << encodeName(config.name) << "|#";
-        oss << std::hex << std::setfill('0') << std::setw(6) << (config.color & 0xFFFFFF);
-        oss << std::dec << "|" << config.shapeIndex;
+        path += TRACKED_SUBDIRECTORY;
     }
 
-    return oss.str();
+    // Ensure directory exists
+    if (!CreateDirectoryA(path.c_str(), NULL)) {
+        DWORD error = GetLastError();
+        if (error != ERROR_ALREADY_EXISTS) {
+            DEBUG_INFO_F("[TrackedRidersManager] Failed to create directory: %s (error %lu)", path.c_str(), error);
+        }
+    }
+
+    return path + "\\" + TRACKED_FILENAME;
 }
 
-void TrackedRidersManager::deserializeFromString(const std::string& data) {
+void TrackedRidersManager::load(const char* savePath) {
+    m_savePath = savePath ? savePath : "";
     m_trackedRiders.clear();
+    m_needsSave = false;  // Reset save flag on load
 
-    if (data.empty()) {
+    std::string filePath = getFilePath();
+
+    std::ifstream file(filePath);
+    if (!file.is_open()) {
+        DEBUG_INFO_F("[TrackedRidersManager] No tracked riders file found at %s", filePath.c_str());
         return;
     }
 
-    std::istringstream iss(data);
-    std::string entry;
+    try {
+        nlohmann::json j;
+        file >> j;
 
-    while (std::getline(iss, entry, ';')) {
-        if (entry.empty()) continue;
+        // Check version
+        int version = j.value("version", 0);
+        if (version != 1) {
+            DEBUG_INFO_F("[TrackedRidersManager] Version mismatch: file=%d, expected=1. Starting fresh.", version);
+            return;
+        }
 
-        // Parse: name|color|shape
-        std::istringstream entryStream(entry);
-        std::string encodedName, colorStr, shapeStr;
+        // Parse riders array
+        if (j.contains("riders") && j["riders"].is_array()) {
+            const auto& assetMgr = AssetManager::getInstance();
 
-        if (std::getline(entryStream, encodedName, '|') &&
-            std::getline(entryStream, colorStr, '|') &&
-            std::getline(entryStream, shapeStr, '|')) {
+            for (const auto& riderJson : j["riders"]) {
+                std::string name = riderJson.value("name", "");
+                std::string colorStr = riderJson.value("color", "");
 
-            try {
-                // Decode name (handles percent-encoded special chars)
-                std::string name = decodeName(encodedName);
+                if (name.empty() || colorStr.empty()) continue;
 
                 // Parse color (#RRGGBB hex format)
-                if (colorStr.empty() || colorStr[0] != '#') {
-                    continue;  // Skip malformed entries
-                }
-                unsigned long color = std::stoul(colorStr.substr(1), nullptr, 16) | 0xFF000000;
-
-                int shapeIndex = std::stoi(shapeStr);
-
-                // Clamp shape to valid range
-                int maxShape = getMaxShapeIndex();
-                if (shapeIndex < 1 || shapeIndex > maxShape) {
-                    shapeIndex = getDefaultShapeIndex();
+                unsigned long color = ColorPalette::RED;
+                if (colorStr.length() == 7 && colorStr[0] == '#') {
+                    try {
+                        color = std::stoul(colorStr.substr(1), nullptr, 16) | 0xFF000000;
+                    } catch (...) {
+                        color = ColorPalette::RED;
+                    }
                 }
 
-                // Add rider (normalized internally)
+                // Parse icon by name
+                int shapeIndex = getDefaultShapeIndex();
+                std::string iconName = riderJson.value("icon", "");
+                if (!iconName.empty()) {
+                    int spriteIndex = assetMgr.getIconSpriteIndex(iconName);
+                    if (spriteIndex > 0) {
+                        shapeIndex = spriteIndex - assetMgr.getFirstIconSpriteIndex() + 1;
+                    }
+                }
+
+                // Add rider
                 std::string normalizedName = normalizeName(name);
                 if (!normalizedName.empty()) {
                     TrackedRiderConfig config;
-                    config.name = name;  // Preserve original case
+                    config.name = name;
                     config.color = color;
                     config.shapeIndex = shapeIndex;
                     m_trackedRiders[normalizedName] = config;
                 }
-            } catch (...) {
-                // Skip malformed entries
-                DEBUG_INFO_F("TrackedRidersManager: Skipping malformed entry '%s'", entry.c_str());
             }
         }
+
+        DEBUG_INFO_F("[TrackedRidersManager] Loaded %zu tracked riders from %s",
+                     m_trackedRiders.size(), filePath.c_str());
+
+    } catch (const nlohmann::json::exception& e) {
+        DEBUG_INFO_F("[TrackedRidersManager] Failed to parse JSON: %s", e.what());
+        m_trackedRiders.clear();
+    } catch (const std::exception& e) {
+        DEBUG_INFO_F("[TrackedRidersManager] Error loading tracked riders: %s", e.what());
+        m_trackedRiders.clear();
+    }
+}
+
+void TrackedRidersManager::save() {
+    // Only save if data has changed since last save/load
+    if (!m_needsSave) {
+        return;
     }
 
-    DEBUG_INFO_F("TrackedRidersManager: Loaded %zu tracked riders", m_trackedRiders.size());
+    std::string filePath = getFilePath();
+    std::string tempPath = filePath + ".tmp";
+
+    try {
+        nlohmann::json j;
+        j["version"] = 1;
+
+        nlohmann::json riders = nlohmann::json::array();
+        for (const auto& [key, config] : m_trackedRiders) {
+            nlohmann::json riderJson;
+            riderJson["name"] = config.name;
+
+            // Format color as #RRGGBB
+            std::ostringstream colorStream;
+            colorStream << "#" << std::hex << std::setfill('0') << std::setw(6) << (config.color & 0xFFFFFF);
+            riderJson["color"] = colorStream.str();
+
+            // Convert shape index to icon filename for robustness
+            const auto& assetMgr = AssetManager::getInstance();
+            int spriteIndex = assetMgr.getFirstIconSpriteIndex() + config.shapeIndex - 1;
+            std::string iconName = assetMgr.getIconFilename(spriteIndex);
+            riderJson["icon"] = iconName.empty() ? DEFAULT_RIDER_ICON : iconName;
+
+            riders.push_back(riderJson);
+        }
+        j["riders"] = riders;
+
+        // Write to temp file first
+        std::ofstream tempFile(tempPath);
+        if (!tempFile.is_open()) {
+            DEBUG_INFO_F("[TrackedRidersManager] Failed to open temp file for writing: %s", tempPath.c_str());
+            return;
+        }
+
+        tempFile << j.dump(2);  // Pretty print with 2-space indent
+        tempFile.close();
+
+        if (tempFile.fail()) {
+            DEBUG_INFO_F("[TrackedRidersManager] Failed to write temp file: %s", tempPath.c_str());
+            std::remove(tempPath.c_str());
+            return;
+        }
+
+        // Atomic rename
+        if (!MoveFileExA(tempPath.c_str(), filePath.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+            DEBUG_WARN_F("[TrackedRidersManager] Failed to save file (error %lu): %s", GetLastError(), filePath.c_str());
+            std::remove(tempPath.c_str());
+            return;
+        }
+
+        m_needsSave = false;  // Reset flag after successful save
+        DEBUG_INFO_F("[TrackedRidersManager] Saved %zu tracked riders to %s",
+                     m_trackedRiders.size(), filePath.c_str());
+
+    } catch (const std::exception& e) {
+        DEBUG_INFO_F("[TrackedRidersManager] Error saving tracked riders: %s", e.what());
+        std::remove(tempPath.c_str());
+    }
 }

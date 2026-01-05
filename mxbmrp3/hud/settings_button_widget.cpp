@@ -38,16 +38,8 @@ void SettingsButtonWidget::update() {
     // Button is lightweight (1 quad, 1 string) so rebuilding every frame is fine
     setDataDirty();
 
-    // Check data dirty first (takes precedence)
-    if (isDataDirty()) {
-        rebuildRenderData();
-        clearDataDirty();
-        clearLayoutDirty();
-    }
-    else if (isLayoutDirty()) {
-        rebuildLayout();
-        clearLayoutDirty();
-    }
+    // Handle dirty flags using base class helper
+    processDirtyFlags();
 }
 
 bool SettingsButtonWidget::isClicked() const {
@@ -157,8 +149,8 @@ void SettingsButtonWidget::rebuildRenderData() {
         m_quads.push_back(buttonBgQuad);
     }
 
-    // Use PRIMARY color when hovering, SECONDARY when not
-    unsigned long textColor = isHovering ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getSecondary();
+    // Use PRIMARY color when hovering, ACCENT when not (accent on accent)
+    unsigned long textColor = isHovering ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getAccent();
 
     // Add button text
     addString(buttonText, contentStartX, contentStartY, Justify::LEFT,

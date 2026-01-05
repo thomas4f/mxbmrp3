@@ -140,13 +140,13 @@ private:
     static constexpr int MIN_FREEZE_MS = 0;         // 0 = disabled
     static constexpr int MAX_FREEZE_MS = 10000;     // 10 seconds maximum
     static constexpr int DEFAULT_FREEZE_MS = 3000;  // 3 seconds default
-    static constexpr int FREEZE_STEP_MS = 500;      // 0.5 second steps
+    static constexpr int FREEZE_STEP_MS = 1000;     // 1 second steps
 
     // Gap bar time range limits (how much time fits from center to edge)
-    static constexpr int MIN_RANGE_MS = 500;        // 0.5 second minimum
+    static constexpr int MIN_RANGE_MS = 1000;       // 1 second minimum
     static constexpr int MAX_RANGE_MS = 5000;       // 5 seconds maximum
     static constexpr int DEFAULT_RANGE_MS = 2000;   // 2 seconds default
-    static constexpr int RANGE_STEP_MS = 500;       // 0.5 second steps
+    static constexpr int RANGE_STEP_MS = 1000;      // 1 second steps
 
     // Bar width limits (percentage of base width which matches notices widget)
     static constexpr int MIN_WIDTH_PERCENT = 50;    // 50% minimum

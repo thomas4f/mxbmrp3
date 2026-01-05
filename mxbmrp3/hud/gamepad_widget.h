@@ -47,6 +47,9 @@ public:
         float dpadSpacing = 1.0f;
         float faceButtonSpacing = 1.0f;
         float menuButtonSpacing = 1.0f;
+
+        // Trigger display mode: 0=fade (texture brightness), 1=fill (quad from bottom)
+        int triggerFillMode = 0;
     };
 
     // Get layout for a specific variant (creates default if not exists)

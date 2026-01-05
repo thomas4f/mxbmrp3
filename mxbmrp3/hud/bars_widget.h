@@ -47,6 +47,12 @@ private:
     void addVerticalBar(float x, float y, float barWidth, float barHeight,
                         float value, unsigned long color);
 
+    // Helper to add a horizontal max marker line
+    void addMaxMarker(float x, float y, float barWidth, float barHeight, float maxValue);
+
+    // Update max tracking for a bar (returns true if max was updated)
+    void updateMaxTracking(int barIndex, float currentValue);
+
     // Base position (0,0) - actual position comes from m_fOffsetX/m_fOffsetY
     static constexpr float START_X = 0.0f;
     static constexpr float START_Y = 0.0f;
@@ -54,9 +60,21 @@ private:
     // Bar dimensions (in characters/lines)
     static constexpr int BAR_WIDTH_CHARS = 1;        // Width of each bar (1 char)
     static constexpr float BAR_HEIGHT_LINES = 4.0f;  // Height of bars (4 lines)
-    static constexpr float BAR_SPACING_CHARS = 0.5f; // Space between bars (0.5 char)
+    static constexpr float BAR_SPACING_CHARS = 0.4f; // Space between bars (0.4 char) - tuned so 6 bars = 8 chars total
     static constexpr int LABEL_HEIGHT_LINES = 1;     // Height for labels at bottom
+
+    // Max marker constants
+    static constexpr int NUM_BARS = 6;  // Number of trackable bars
+
+    // Max marker tracking for each bar (index matches bar order: T, B, C, R, S, F)
+    // Markers show when value starts decreasing, hide when increasing
+    float m_maxValues[NUM_BARS] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};       // Overall max (for reference)
+    float m_markerValues[NUM_BARS] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};    // Current marker position
+    float m_prevValues[NUM_BARS] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};      // Previous frame values
+    int m_maxFramesRemaining[NUM_BARS] = {0, 0, 0, 0, 0, 0};
 
     // Settings (configurable via INI)
     uint32_t m_enabledColumns = COL_DEFAULT;  // Bitfield of enabled bars
+    bool m_bShowMaxMarkers = false;           // Show peak value markers (default OFF)
+    int m_maxMarkerLingerFrames = 60;         // How long max markers linger (~frames, 60 = 1 second at 60fps)
 };

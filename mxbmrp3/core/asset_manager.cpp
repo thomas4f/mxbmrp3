@@ -14,11 +14,14 @@ AssetManager& AssetManager::getInstance() {
     return instance;
 }
 
-void AssetManager::discoverAssets() {
+void AssetManager::discoverAssets(const char* savePath) {
     if (m_initialized) {
         DEBUG_WARN("AssetManager::discoverAssets called multiple times");
         return;
     }
+
+    // Sync user override assets before discovery
+    syncUserAssets(savePath);
 
     DEBUG_INFO("AssetManager: Starting asset discovery...");
 
@@ -41,6 +44,83 @@ void AssetManager::discoverAssets() {
 
     DEBUG_INFO_F("AssetManager: Discovery complete - %zu fonts, %zu texture bases (%zu sprites), %zu icons",
         m_fonts.size(), m_textures.size(), m_totalTextureSprites, m_icons.size());
+}
+
+void AssetManager::syncUserAssets(const char* savePath) {
+    if (!savePath || savePath[0] == '\0') {
+        DEBUG_INFO("AssetManager: No savePath provided, skipping user asset sync");
+        return;
+    }
+
+    // Build user override base path: savePath/mxbmrp3/
+    std::string userBaseDir = savePath;
+    if (!userBaseDir.empty() && userBaseDir.back() != '\\' && userBaseDir.back() != '/') {
+        userBaseDir += '\\';
+    }
+    userBaseDir += USER_OVERRIDE_DIR;
+
+    // Check if user override directory exists
+    DWORD attrs = GetFileAttributesA(userBaseDir.c_str());
+    if (attrs == INVALID_FILE_ATTRIBUTES || !(attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+        // User override directory doesn't exist - this is normal for most users
+        return;
+    }
+
+    DEBUG_INFO_F("AssetManager: Syncing user assets from %s", userBaseDir.c_str());
+
+    // Ensure destination directories exist
+    CreateDirectoryA(DISCOVERY_DIR, NULL);
+
+    std::string destFonts = std::string(DISCOVERY_DIR) + "\\" + FONTS_SUBDIR;
+    std::string destTextures = std::string(DISCOVERY_DIR) + "\\" + TEXTURES_SUBDIR;
+    std::string destIcons = std::string(DISCOVERY_DIR) + "\\" + ICONS_SUBDIR;
+
+    CreateDirectoryA(destFonts.c_str(), NULL);
+    CreateDirectoryA(destTextures.c_str(), NULL);
+    CreateDirectoryA(destIcons.c_str(), NULL);
+
+    // Sync each asset type
+    syncDirectory(userBaseDir + "\\" + FONTS_SUBDIR, destFonts, "*.fnt");
+    syncDirectory(userBaseDir + "\\" + TEXTURES_SUBDIR, destTextures, "*.tga");
+    syncDirectory(userBaseDir + "\\" + ICONS_SUBDIR, destIcons, "*.tga");
+}
+
+void AssetManager::syncDirectory(const std::string& sourceDir, const std::string& destDir, const char* extension) {
+    std::string searchPath = sourceDir + "\\" + extension;
+
+    WIN32_FIND_DATAA findData;
+    HANDLE hFind = FindFirstFileA(searchPath.c_str(), &findData);
+
+    if (hFind == INVALID_HANDLE_VALUE) {
+        // No files found - this is normal if user hasn't added overrides for this type
+        return;
+    }
+
+    do {
+        if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            std::string destPath = destDir + "\\" + findData.cFileName;
+
+            // Check if destination exists with same timestamp (skip if unchanged)
+            WIN32_FILE_ATTRIBUTE_DATA destAttrs;
+            if (GetFileAttributesExA(destPath.c_str(), GetFileExInfoStandard, &destAttrs)) {
+                // Compare timestamps - CopyFileA preserves source timestamp on dest
+                if (CompareFileTime(&findData.ftLastWriteTime, &destAttrs.ftLastWriteTime) == 0) {
+                    // Timestamps match, skip copy
+                    continue;
+                }
+            }
+
+            std::string sourcePath = sourceDir + "\\" + findData.cFileName;
+            if (CopyFileA(sourcePath.c_str(), destPath.c_str(), FALSE)) {
+                DEBUG_INFO_F("AssetManager: Copied user asset: %s", findData.cFileName);
+            } else {
+                DEBUG_WARN_F("AssetManager: Failed to copy user asset: %s (error %lu)",
+                    findData.cFileName, GetLastError());
+            }
+        }
+    } while (FindNextFileA(hFind, &findData));
+
+    FindClose(hFind);
 }
 
 void AssetManager::discoverFonts() {

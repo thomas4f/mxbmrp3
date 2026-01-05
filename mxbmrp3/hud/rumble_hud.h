@@ -52,4 +52,19 @@ private:
     static constexpr float GRID_LINE_60_PERCENT = 0.6f;
     static constexpr float GRID_LINE_40_PERCENT = 0.4f;
     static constexpr float GRID_LINE_20_PERCENT = 0.2f;
+
+    // Max marker tracking for motor bars (0 = light, 1 = heavy)
+    // Markers show when value starts decreasing, hide when increasing
+    float m_maxValues[2] = {0.0f, 0.0f};          // Overall max (for reference)
+    float m_markerValues[2] = {0.0f, 0.0f};       // Current marker position
+    float m_prevValues[2] = {0.0f, 0.0f};         // Previous frame values
+    int m_maxFramesRemaining[2] = {0, 0};
+
+    // Helper to add max marker line
+    void addMaxMarker(float x, float y, float barWidth, float barHeight, float maxValue);
+    void updateMaxTracking(int barIndex, float currentValue);
+
+    // Settings (configurable via INI)
+    bool m_bShowMaxMarkers = false;  // Show peak value markers (default OFF)
+    int m_maxMarkerLingerFrames = 60;  // How long max markers linger (~frames, 60 = 1 second at 60fps)
 };

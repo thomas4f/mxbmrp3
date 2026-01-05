@@ -34,6 +34,9 @@ void RunTelemetryHandler::handleRunTelemetry(SPluginsBikeData_t* psBikeData, flo
             psBikeData->m_afSuspLength[1]   // Rear suspension current length
         );
 
+        // Update roll/lean angle
+        PluginData::getInstance().updateRoll(psBikeData->m_fRoll);
+
         // Controller rumble based on suspension and wheel slip
         // Suspension velocity: negative = compression, we want max compression rate
         // m_afSuspVelocity[0] = front, [1] = rear

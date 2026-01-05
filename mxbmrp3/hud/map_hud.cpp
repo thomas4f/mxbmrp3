@@ -73,14 +73,8 @@ MapHud::MapHud()
 }
 
 void MapHud::update() {
-    if (isDataDirty()) {
-        rebuildRenderData();
-        clearDataDirty();
-        clearLayoutDirty();
-    } else if (isLayoutDirty()) {
-        rebuildLayout();
-        clearLayoutDirty();
-    }
+    // Handle dirty flags using base class helper
+    processDirtyFlags();
 
     // Check for click in spectator/replay mode to switch to different rider
     const PluginData& pluginData = PluginData::getInstance();

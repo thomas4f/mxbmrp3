@@ -240,7 +240,7 @@ void GamepadWidget::addStick(float centerX, float centerY, float stickX, float s
         if (isPressed) {
             markerQuad.m_ulColor = ColorPalette::WHITE;
         } else {
-            markerQuad.m_ulColor = PluginUtils::makeColor(40, 40, 40);
+            markerQuad.m_ulColor = PluginUtils::makeColor(80, 80, 80);
         }
         setQuadPositions(markerQuad, currentX - markerWidth / 2, currentY - markerHeight / 2,
                        markerWidth, markerHeight);
@@ -376,29 +376,161 @@ void GamepadWidget::addTriggerButton(float centerX, float centerY, float width, 
     float ox = centerX, oy = centerY;
     applyOffset(ox, oy);
 
-    // Get sprite index for trigger texture
-    int spriteIndex = 0;
-    if (m_textureVariant > 0) {
-        const char* textureName = isLeft ? "gamepad_trigger_button_l" : "gamepad_trigger_button_r";
-        spriteIndex = AssetManager::getInstance().getSpriteIndex(textureName, m_textureVariant);
-    }
-
-    SPluginQuad_t buttonQuad;
-    if (spriteIndex > 0) {
-        buttonQuad.m_iSprite = spriteIndex;
-        // Interpolate color from dark to white based on trigger value
-        int brightness = 40 + static_cast<int>(value * 215);  // 40 to 255
-        buttonQuad.m_ulColor = PluginUtils::makeColor(brightness, brightness, brightness);
-    } else {
-        buttonQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        buttonQuad.m_ulColor = value > 0.5f ? COLOR_TRIGGER : COLOR_INACTIVE;
-    }
-
     float hw = width / 2.0f;
     float hh = height / 2.0f;
-    setQuadPositions(buttonQuad, ox - hw, oy - hh, width, height);
 
-    m_quads.push_back(buttonQuad);
+    // Fill mode: draw trigger shape with quads that fill from bottom to top
+    if (getCurrentLayout().triggerFillMode == 1) {
+        // SVG-accurate trigger shape using multiple segments
+        // Based on the SVG path: 89x61 viewBox with curved outer edge
+        // The outer edge (left for LT, right for RT) curves inward at the top
+        // The inner edge is more vertical
+        //
+        // Define outline points as (outerX, innerX) at different Y levels (0=top, 1=bottom)
+        // Normalized to width, where 0=left edge, 1=right edge
+        // These approximate the SVG Bezier curves
+        // SVG path analysis: viewBox 89x61, transform translate(68.02, -0.45)
+        // After transform, shape spans roughly x=1 to x=90, y=0 to y=62
+        // Normalized to 0-1 range based on the 89x61 dimensions:
+        // - Inner edge (right): nearly vertical at x≈89 (normalized ~1.0)
+        // - Outer edge (left): curves from x≈68 at top to x≈0 at bottom
+        // - Top width: ~22 pixels = 22/89 ≈ 0.247 (from x=68 to x=90)
+        // - The outer edge curve follows the SVG bezier path
+        struct OutlinePoint { float y; float outer; float inner; };
+        constexpr int NUM_POINTS = 9;
+        const OutlinePoint outline[NUM_POINTS] = {
+            { 0.00f, 0.85f, 0.98f },  // Top: very narrow, curves to top-right
+            { 0.04f, 0.50f, 0.98f },  // Outer curves out quickly
+            { 0.10f, 0.30f, 0.99f },  // Continuing curve
+            { 0.20f, 0.15f, 0.99f },  // Upper: outer still curving
+            { 0.35f, 0.04f, 1.00f },  // Mid-upper: outer nearly at edge
+            { 0.55f, 0.00f, 1.00f },  // Mid: outer at full width
+            { 0.80f, 0.00f, 1.00f },  // Lower: stays at full width
+            { 0.92f, 0.00f, 1.00f },  // Bottom-right corner (inner edge ends here)
+            { 1.00f, 0.00f, 0.00f },  // Bottom-left corner (tapers to point)
+        };
+
+        float baseX = ox - hw;  // Left edge of bounding box
+        float topY = oy - hh;
+
+        // Helper lambda to get X positions at a given Y ratio
+        auto getEdgeX = [&](float yRatio, bool getOuter) -> float {
+            // Find the two points to interpolate between
+            int i = 0;
+            for (; i < NUM_POINTS - 1 && outline[i + 1].y < yRatio; ++i) {}
+            if (i >= NUM_POINTS - 1) i = NUM_POINTS - 2;
+
+            float t = (yRatio - outline[i].y) / (outline[i + 1].y - outline[i].y);
+            float val = getOuter
+                ? outline[i].outer + t * (outline[i + 1].outer - outline[i].outer)
+                : outline[i].inner + t * (outline[i + 1].inner - outline[i].inner);
+
+            // Convert normalized to actual X, accounting for left/right trigger mirroring
+            if (isLeft) {
+                return baseX + val * width;  // outer=left edge, inner=right edge
+            } else {
+                return baseX + (1.0f - val) * width;  // mirror: outer=right, inner=left
+            }
+        };
+
+        // Draw background segments
+        for (int i = 0; i < NUM_POINTS - 1; ++i) {
+            float y0 = topY + outline[i].y * height;
+            float y1 = topY + outline[i + 1].y * height;
+
+            float outerX0, innerX0, outerX1, innerX1;
+            if (isLeft) {
+                outerX0 = baseX + outline[i].outer * width;
+                innerX0 = baseX + outline[i].inner * width;
+                outerX1 = baseX + outline[i + 1].outer * width;
+                innerX1 = baseX + outline[i + 1].inner * width;
+            } else {
+                // Mirror for right trigger
+                outerX0 = baseX + (1.0f - outline[i].outer) * width;
+                innerX0 = baseX + (1.0f - outline[i].inner) * width;
+                outerX1 = baseX + (1.0f - outline[i + 1].outer) * width;
+                innerX1 = baseX + (1.0f - outline[i + 1].inner) * width;
+            }
+
+            SPluginQuad_t bgQuad;
+            bgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+            bgQuad.m_ulColor = COLOR_INACTIVE;
+            if (isLeft) {
+                bgQuad.m_aafPos[0][0] = outerX0; bgQuad.m_aafPos[0][1] = y0;
+                bgQuad.m_aafPos[1][0] = outerX1; bgQuad.m_aafPos[1][1] = y1;
+                bgQuad.m_aafPos[2][0] = innerX1; bgQuad.m_aafPos[2][1] = y1;
+                bgQuad.m_aafPos[3][0] = innerX0; bgQuad.m_aafPos[3][1] = y0;
+            } else {
+                bgQuad.m_aafPos[0][0] = innerX0; bgQuad.m_aafPos[0][1] = y0;
+                bgQuad.m_aafPos[1][0] = innerX1; bgQuad.m_aafPos[1][1] = y1;
+                bgQuad.m_aafPos[2][0] = outerX1; bgQuad.m_aafPos[2][1] = y1;
+                bgQuad.m_aafPos[3][0] = outerX0; bgQuad.m_aafPos[3][1] = y0;
+            }
+            m_quads.push_back(bgQuad);
+        }
+
+        // Draw fill segments (from bottom up based on value)
+        if (value > 0.01f) {
+            float fillStartY = 1.0f - value;  // Y ratio where fill starts (0=top, 1=bottom)
+
+            for (int i = 0; i < NUM_POINTS - 1; ++i) {
+                float segTopY = outline[i].y;
+                float segBotY = outline[i + 1].y;
+
+                // Skip segments entirely above the fill level
+                if (segBotY <= fillStartY) continue;
+
+                // Clip segment to fill level
+                float clippedTopY = std::max(segTopY, fillStartY);
+                float clippedBotY = segBotY;
+
+                float y0 = topY + clippedTopY * height;
+                float y1 = topY + clippedBotY * height;
+
+                float outerX0 = getEdgeX(clippedTopY, true);
+                float innerX0 = getEdgeX(clippedTopY, false);
+                float outerX1 = getEdgeX(clippedBotY, true);
+                float innerX1 = getEdgeX(clippedBotY, false);
+
+                SPluginQuad_t fillQuad;
+                fillQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+                fillQuad.m_ulColor = ColorConfig::getInstance().getPrimary();
+                if (isLeft) {
+                    fillQuad.m_aafPos[0][0] = outerX0; fillQuad.m_aafPos[0][1] = y0;
+                    fillQuad.m_aafPos[1][0] = outerX1; fillQuad.m_aafPos[1][1] = y1;
+                    fillQuad.m_aafPos[2][0] = innerX1; fillQuad.m_aafPos[2][1] = y1;
+                    fillQuad.m_aafPos[3][0] = innerX0; fillQuad.m_aafPos[3][1] = y0;
+                } else {
+                    fillQuad.m_aafPos[0][0] = innerX0; fillQuad.m_aafPos[0][1] = y0;
+                    fillQuad.m_aafPos[1][0] = innerX1; fillQuad.m_aafPos[1][1] = y1;
+                    fillQuad.m_aafPos[2][0] = outerX1; fillQuad.m_aafPos[2][1] = y1;
+                    fillQuad.m_aafPos[3][0] = outerX0; fillQuad.m_aafPos[3][1] = y0;
+                }
+                m_quads.push_back(fillQuad);
+            }
+        }
+    } else {
+        // Fade mode (default): use texture with brightness interpolation
+        int spriteIndex = 0;
+        if (m_textureVariant > 0) {
+            const char* textureName = isLeft ? "gamepad_trigger_button_l" : "gamepad_trigger_button_r";
+            spriteIndex = AssetManager::getInstance().getSpriteIndex(textureName, m_textureVariant);
+        }
+
+        SPluginQuad_t buttonQuad;
+        if (spriteIndex > 0) {
+            buttonQuad.m_iSprite = spriteIndex;
+            // Interpolate color from dark to white based on trigger value
+            int brightness = 40 + static_cast<int>(value * 215);  // 40 to 255
+            buttonQuad.m_ulColor = PluginUtils::makeColor(brightness, brightness, brightness);
+        } else {
+            buttonQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+            buttonQuad.m_ulColor = value > 0.5f ? COLOR_TRIGGER : COLOR_INACTIVE;
+        }
+
+        setQuadPositions(buttonQuad, ox - hw, oy - hh, width, height);
+        m_quads.push_back(buttonQuad);
+    }
 }
 
 void GamepadWidget::addBumperButton(float centerX, float centerY, float width, float height,

@@ -11,6 +11,7 @@
 #include "hud_manager.h"
 #include "input_manager.h"
 #include "hotkey_manager.h"
+#include "asset_manager.h"
 #include "../handlers/draw_handler.h"
 #include "../handlers/event_handler.h"
 #include "../handlers/race_event_handler.h"
@@ -29,6 +30,7 @@
 #include "../handlers/race_vehicle_data_handler.h"
 #include "../handlers/spectate_handler.h"
 #include "personal_best_manager.h"
+#include "tracked_riders_manager.h"
 #include <cstring>
 #include <vector>
 #include <windows.h>
@@ -56,6 +58,10 @@ PluginManager& PluginManager::getInstance() {
 void PluginManager::initialize(const char* savePath) {
     // Initialize logger first (so we can log everything else)
     Logger::getInstance().initialize(savePath);
+
+    // Discover assets (syncs user overrides, then scans plugin data directory)
+    // Must happen before HudManager::initialize() which sets up resources
+    AssetManager::getInstance().discoverAssets(savePath);
 
     // Initialize components
     InputManager::getInstance().initialize();
@@ -95,6 +101,9 @@ int PluginManager::handleStartup(const char* savePath) {
 
     // Load personal bests from disk
     PersonalBestManager::getInstance().load(m_savePath);
+
+    // Load tracked riders from disk
+    TrackedRidersManager::getInstance().load(m_savePath);
 
     if (savePath != nullptr) {
         DEBUG_INFO_F("Startup called with save path: %s", savePath);

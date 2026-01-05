@@ -39,11 +39,8 @@ void PointerWidget::update() {
     // Pointer is lightweight (4 quads) so rebuilding every frame is fine
     setDataDirty();
 
-    if (isDataDirty()) {
-        rebuildRenderData();
-        clearDataDirty();
-        clearLayoutDirty();
-    }
+    // Handle dirty flags using base class helper
+    processDirtyFlags();
 }
 
 void PointerWidget::setScale(float scale) {

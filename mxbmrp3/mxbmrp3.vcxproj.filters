@@ -34,6 +34,12 @@
     <Filter Include="Header Files\vendor\nlohmann">
       <UniqueIdentifier>{2b56498c-4ae7-58c9-c372-efab9bcc498g}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\vendor\miniz">
+      <UniqueIdentifier>{3c67509d-5bf8-69da-d483-fgbc0dcc509h}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\vendor\miniz">
+      <UniqueIdentifier>{4d78610e-6cg9-7aeb-e594-ghcd1edd610i}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Source Files\vendor">
       <UniqueIdentifier>{9c5c079c-e2a3-4d81-959f-5742abec63f7}</UniqueIdentifier>
     </Filter>
@@ -45,6 +51,12 @@
     </Filter>
     <Filter Include="Source Files\hud">
       <UniqueIdentifier>{44b3cdb5-9f38-4836-b125-d67ad51048a9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\hud\settings">
+      <UniqueIdentifier>{c3d4e5f6-a7b8-9012-cdef-234567890abc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\hud\settings">
+      <UniqueIdentifier>{d4e5f6a7-b8c9-0123-defa-3456789abcde}</UniqueIdentifier>
     </Filter>
     <Filter Include="Header Files\diagnostics">
       <UniqueIdentifier>{a1b2c3d4-e5f6-7890-abcd-ef1234567890}</UniqueIdentifier>
@@ -58,6 +70,9 @@
       <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="core\color_config.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\tooltip_manager.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="core\asset_manager.h">
@@ -77,6 +92,24 @@
     </ClInclude>
     <ClInclude Include="vendor\nlohmann\json.hpp">
       <Filter>Header Files\vendor\nlohmann</Filter>
+    </ClInclude>
+    <ClInclude Include="vendor\miniz\miniz.h">
+      <Filter>Header Files\vendor\miniz</Filter>
+    </ClInclude>
+    <ClInclude Include="vendor\miniz\miniz_common.h">
+      <Filter>Header Files\vendor\miniz</Filter>
+    </ClInclude>
+    <ClInclude Include="vendor\miniz\miniz_tdef.h">
+      <Filter>Header Files\vendor\miniz</Filter>
+    </ClInclude>
+    <ClInclude Include="vendor\miniz\miniz_tinfl.h">
+      <Filter>Header Files\vendor\miniz</Filter>
+    </ClInclude>
+    <ClInclude Include="vendor\miniz\miniz_zip.h">
+      <Filter>Header Files\vendor\miniz</Filter>
+    </ClInclude>
+    <ClInclude Include="vendor\miniz\miniz_export.h">
+      <Filter>Header Files\vendor\miniz</Filter>
     </ClInclude>
     <ClInclude Include="handlers\race_classification_handler.h">
       <Filter>Header Files\handlers</Filter>
@@ -189,6 +222,9 @@
     <ClInclude Include="hud\settings_hud.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
+    <ClInclude Include="hud\settings\settings_layout.h">
+      <Filter>Header Files\hud\settings</Filter>
+    </ClInclude>
     <ClInclude Include="hud\lap_log_hud.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
@@ -202,6 +238,9 @@
       <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="core\update_checker.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\update_downloader.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="core\widget_constants.h">
@@ -252,6 +291,9 @@
     <ClInclude Include="hud\gamepad_widget.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
+    <ClInclude Include="hud\lean_widget.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
     <ClInclude Include="hud\speedo_widget.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
@@ -277,6 +319,18 @@
     </ClCompile>
     <ClCompile Include="vendor\piboso\mxb_api.cpp">
       <Filter>Source Files\vendor\piboso</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\miniz\miniz.c">
+      <Filter>Source Files\vendor\miniz</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\miniz\miniz_tdef.c">
+      <Filter>Source Files\vendor\miniz</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\miniz\miniz_tinfl.c">
+      <Filter>Source Files\vendor\miniz</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\miniz\miniz_zip.c">
+      <Filter>Source Files\vendor\miniz</Filter>
     </ClCompile>
     <ClCompile Include="handlers\race_classification_handler.cpp">
       <Filter>Source Files\handlers</Filter>
@@ -380,6 +434,63 @@
     <ClCompile Include="hud\settings_hud.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
+    <ClCompile Include="hud\settings\settings_layout.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_ideal_lap.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_lap_log.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_telemetry.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_performance.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_records.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_pitboard.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_timing.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_gap_bar.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_standings.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_map.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_radar.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_widgets.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_rumble.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_general.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_appearance.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_hotkeys.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_riders.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_updates.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
     <ClCompile Include="hud\lap_log_hud.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
@@ -393,6 +504,9 @@
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="core\update_checker.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\update_downloader.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="hud\map_hud.cpp">
@@ -438,6 +552,9 @@
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\gamepad_widget.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\lean_widget.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\speedo_widget.cpp">

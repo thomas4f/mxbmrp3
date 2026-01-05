@@ -13,8 +13,12 @@ namespace PluginConstants {
     // Plugin identification
     constexpr const char* PLUGIN_NAME = "mxbmrp3";
     constexpr const char* PLUGIN_DISPLAY_NAME = "MXBMRP3";
-    constexpr const char* PLUGIN_VERSION = "1.10.0.0";
+    constexpr const char* PLUGIN_VERSION = "1.11.0.0";
     constexpr const char* PLUGIN_AUTHOR = "thomas4f";
+
+    // GitHub repository for updates (centralized to support repo moves/renames)
+    constexpr const char* GITHUB_REPO_OWNER = "thomas4f";
+    constexpr const char* GITHUB_REPO_NAME = "mxbmrp3";
 
     // MXBikes API constants
     constexpr const char* MOD_ID = "mxbikes";
@@ -195,9 +199,9 @@ namespace PluginConstants {
 
     // Display formatting placeholders
     namespace Placeholders {
-        constexpr const char* LAP_TIME = "-:--.---";   // For lap times in M:SS.mmm format
-        constexpr const char* GENERIC = "-";           // For gaps, diffs, or missing data
-        constexpr const char* NOT_AVAILABLE = "N/A";   // For structurally unavailable data (e.g., live gap in practice)
+        constexpr const char* LAP_TIME = "-:--.---";    // For lap times in M:SS.mmm format
+        constexpr const char* GENERIC = "-";            // For simple missing data
+        constexpr const char* NOT_AVAILABLE = "N/A";    // For structurally unavailable data (e.g., live gap in practice)
     }
 
     // Text justification

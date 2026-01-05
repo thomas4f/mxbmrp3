@@ -523,7 +523,7 @@ void PerformanceHud::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.737f, 0.0888f);
+    setPosition(0.737f, 0.3219f);
     m_enabledElements = ELEM_DEFAULT;
     m_displayMode = DISPLAY_BOTH;  // Show both graphs and values by default
     setDataDirty();

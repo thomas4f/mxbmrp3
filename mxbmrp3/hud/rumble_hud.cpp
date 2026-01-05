@@ -48,6 +48,17 @@ void RumbleHud::resetToDefaults() {
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     setPosition(0.737f, 0.3663f);
     setScale(1.0f);
+    m_bShowMaxMarkers = false;  // Max markers OFF by default
+    m_maxMarkerLingerFrames = 60;  // ~1 second at 60fps
+
+    // Reset max tracking state
+    for (int i = 0; i < 2; ++i) {
+        m_maxValues[i] = 0.0f;
+        m_markerValues[i] = 0.0f;
+        m_prevValues[i] = 0.0f;
+        m_maxFramesRemaining[i] = 0;
+    }
+
     setDataDirty();
 }
 
@@ -112,6 +123,54 @@ void RumbleHud::addVerticalBar(float x, float y, float barWidth, float barHeight
 
         m_quads.push_back(filledQuad);
     }
+}
+
+void RumbleHud::updateMaxTracking(int barIndex, float currentValue) {
+    if (barIndex < 0 || barIndex >= 2) return;
+
+    // Track overall max
+    if (currentValue > m_maxValues[barIndex]) {
+        m_maxValues[barIndex] = currentValue;
+    }
+
+    // Max marker: show at peak when value starts decreasing, hide when increasing
+    // Use small threshold to avoid jitter from noise
+    constexpr float THRESHOLD = 0.02f;
+
+    if (currentValue > m_markerValues[barIndex] + THRESHOLD) {
+        // Value exceeds marker - update marker position, hide it
+        m_markerValues[barIndex] = currentValue;
+        m_maxFramesRemaining[barIndex] = 0;
+    } else if (currentValue < m_markerValues[barIndex] - THRESHOLD && m_maxFramesRemaining[barIndex] == 0) {
+        // Value dropped below marker - start showing marker (linger at peak)
+        m_maxFramesRemaining[barIndex] = m_maxMarkerLingerFrames;
+    } else if (m_maxFramesRemaining[barIndex] > 0) {
+        // Marker is showing - countdown
+        m_maxFramesRemaining[barIndex]--;
+        // When linger ends, reset marker to 0 so it disappears
+        if (m_maxFramesRemaining[barIndex] == 0) {
+            m_markerValues[barIndex] = 0.0f;
+        }
+    }
+
+    m_prevValues[barIndex] = currentValue;
+}
+
+void RumbleHud::addMaxMarker(float x, float y, float barWidth, float barHeight, float maxValue) {
+    // Draw a thin horizontal white line at the max value position
+    maxValue = std::max(0.0f, std::min(1.0f, maxValue));
+    if (maxValue < 0.01f) return;  // Don't draw if max is essentially zero
+
+    float markerHeight = barHeight * 0.02f;  // Thin line (2% of bar height)
+    float markerY = y + barHeight * (1.0f - maxValue) - markerHeight * 0.5f;
+
+    SPluginQuad_t markerQuad;
+    float markerX = x;
+    applyOffset(markerX, markerY);
+    setQuadPositions(markerQuad, markerX, markerY, barWidth, markerHeight);
+    markerQuad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
+    markerQuad.m_ulColor = ColorConfig::getInstance().getPrimary();  // White
+    m_quads.push_back(markerQuad);
 }
 
 void RumbleHud::rebuildRenderData() {
@@ -245,14 +304,22 @@ void RumbleHud::rebuildRenderData() {
     float heavyValue = heavyHistory.empty() ? 0.0f : heavyHistory.back();
     float lightValue = lightHistory.empty() ? 0.0f : lightHistory.back();
 
-    // Light motor bar (first)
+    // Light motor bar (first) - index 0
+    updateMaxTracking(0, lightValue);
     addVerticalBar(barsStartX, barsStartY, barWidth, graphHeight, lightValue, lightColor);
+    if (m_bShowMaxMarkers && m_maxFramesRemaining[0] > 0) {
+        addMaxMarker(barsStartX, barsStartY, barWidth, graphHeight, m_markerValues[0]);
+    }
     addString("L", barsStartX + barWidth / 2.0f, barsStartY + graphHeight, Justify::CENTER,
               Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
 
-    // Heavy motor bar (second)
+    // Heavy motor bar (second) - index 1
     float heavyBarX = barsStartX + barWidth + gapWidth;
+    updateMaxTracking(1, heavyValue);
     addVerticalBar(heavyBarX, barsStartY, barWidth, graphHeight, heavyValue, heavyColor);
+    if (m_bShowMaxMarkers && m_maxFramesRemaining[1] > 0) {
+        addMaxMarker(heavyBarX, barsStartY, barWidth, graphHeight, m_markerValues[1]);
+    }
     addString("H", heavyBarX + barWidth / 2.0f, barsStartY + graphHeight, Justify::CENTER,
               Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
 

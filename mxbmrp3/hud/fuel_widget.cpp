@@ -78,6 +78,16 @@ void FuelWidget::updateFuelTracking() {
         DEBUG_INFO_F("FuelWidget: Started tracking with %.2fL", m_fuelAtRunStart);
     }
 
+    // Detect refueling: if current fuel exceeds what we started with, rider refueled in pits
+    // Reset tracking to avoid negative usage values
+    if (m_bTrackingActive && bikeData.fuel > m_fuelAtRunStart) {
+        DEBUG_INFO_F("FuelWidget: Detected refueling (%.2fL > %.2fL start), resetting tracking",
+                    bikeData.fuel, m_fuelAtRunStart);
+        m_fuelAtRunStart = bikeData.fuel;
+        m_fuelAtLapStart = bikeData.fuel;
+        // Keep lap history for averaging, just reset the run start reference
+    }
+
     // Get current lap number from ideal lap data
     const IdealLapData* idealLapData = pluginData.getIdealLapData(pluginData.getPlayerRaceNum());
     if (!idealLapData) {
@@ -205,6 +215,9 @@ void FuelWidget::rebuildRenderData() {
     const PluginData& pluginData = PluginData::getInstance();
     const BikeTelemetryData& bikeData = pluginData.getBikeTelemetry();
 
+    // Fuel data is only available when player is on track (not when spectating/replay)
+    bool hasFuelData = (pluginData.getDrawState() == ViewState::ON_TRACK);
+
     float startX = 0.0f;
     float startY = 0.0f;
 
@@ -237,8 +250,15 @@ void FuelWidget::rebuildRenderData() {
     unsigned long avgColor = valueColor;
     unsigned long estColor = ColorConfig::getInstance().getPrimary();
 
-    if (!bikeData.isValid) {
-        // Show placeholders when telemetry not available
+    if (!hasFuelData) {
+        // Show N/A when spectating/replay (fuel data structurally unavailable)
+        snprintf(fuelValueBuffer, sizeof(fuelValueBuffer), "%s", Placeholders::NOT_AVAILABLE);
+        snprintf(usedValueBuffer, sizeof(usedValueBuffer), "%s", Placeholders::NOT_AVAILABLE);
+        snprintf(avgValueBuffer, sizeof(avgValueBuffer), "%s", Placeholders::NOT_AVAILABLE);
+        snprintf(lapsValueBuffer, sizeof(lapsValueBuffer), "%s", Placeholders::NOT_AVAILABLE);
+        fuelColor = usedColor = avgColor = estColor = mutedColor;
+    } else if (!bikeData.isValid) {
+        // Show placeholders when telemetry temporarily not available
         snprintf(fuelValueBuffer, sizeof(fuelValueBuffer), "%s", Placeholders::GENERIC);
         snprintf(usedValueBuffer, sizeof(usedValueBuffer), "%s", Placeholders::GENERIC);
         snprintf(avgValueBuffer, sizeof(avgValueBuffer), "%s", Placeholders::GENERIC);

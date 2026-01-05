@@ -26,6 +26,7 @@
 #include "pointer_widget.h"
 #include "records_hud.h"
 #include "gamepad_widget.h"
+#include "lean_widget.h"
 #include <variant>
 #include <string>
 #include "map_hud.h"
@@ -39,6 +40,7 @@
 // Forward declarations
 class TelemetryHud;
 class RumbleHud;
+struct SettingsLayoutContext;
 
 class SettingsHud : public BaseHud {
 public:
@@ -46,7 +48,7 @@ public:
                 StandingsHud* standings,
                 PerformanceHud* performance,
                 TelemetryHud* telemetry,
-                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionWidget* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad);
+                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionWidget* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean);
     virtual ~SettingsHud() = default;
 
     void update() override;
@@ -57,11 +59,10 @@ public:
     void hide();
     bool isVisible() const { return m_bVisible; }
 
-protected:
-    void rebuildLayout() override;
+    // Open settings panel directly to Updates tab
+    void showUpdatesTab();
 
-private:
-    // Clickable regions for checkboxes, buttons, and scale controls
+    // Clickable regions for checkboxes, buttons, and scale controls (public for SettingsLayoutContext)
     struct ClickRegion {
         float x, y, width, height;
         enum Type {
@@ -133,20 +134,26 @@ private:
             DISPLAY_MODE_DOWN,         // Cycle display mode backward (PerformanceHud)
             RECORDS_COUNT_UP,          // Increase records to show (RecordsHud)
             RECORDS_COUNT_DOWN,        // Decrease records to show (RecordsHud)
+            RECORDS_PROVIDER_UP,       // Cycle provider forward (RecordsHud)
+            RECORDS_PROVIDER_DOWN,     // Cycle provider backward (RecordsHud)
+            RECORDS_AUTO_FETCH_TOGGLE, // Toggle auto-fetch on event start (RecordsHud)
             PITBOARD_SHOW_MODE_UP,     // Cycle pitboard show mode forward (PitboardHud)
             PITBOARD_SHOW_MODE_DOWN,   // Cycle pitboard show mode backward (PitboardHud)
-            TIMING_LABEL_MODE_UP,      // Cycle label column mode forward (TimingHud)
-            TIMING_LABEL_MODE_DOWN,    // Cycle label column mode backward (TimingHud)
-            TIMING_TIME_MODE_UP,       // Cycle time column mode forward (TimingHud)
-            TIMING_TIME_MODE_DOWN,     // Cycle time column mode backward (TimingHud)
-            TIMING_GAP_MODE_UP,        // Cycle gap column mode forward (TimingHud)
-            TIMING_GAP_MODE_DOWN,      // Cycle gap column mode backward (TimingHud)
-            TIMING_DURATION_UP,        // Increase timing display duration (TimingHud)
-            TIMING_DURATION_DOWN,      // Decrease timing display duration (TimingHud)
-            TIMING_GAP_PB_TOGGLE,      // Toggle "Session PB" comparison (TimingHud)
-            TIMING_GAP_IDEAL_TOGGLE,   // Toggle "Ideal" comparison (TimingHud)
-            TIMING_GAP_OVERALL_TOGGLE, // Toggle "Overall" comparison (TimingHud)
-            TIMING_GAP_ALLTIME_TOGGLE, // Toggle "All-Time PB" comparison (TimingHud)
+            TIMING_LABEL_TOGGLE,       // Toggle label column on/off (TimingHud)
+            TIMING_TIME_TOGGLE,        // Toggle time column on/off (TimingHud)
+            TIMING_GAP_UP,             // Cycle gap (Off/Session PB/Alltime/Ideal/Overall/Record) forward (TimingHud)
+            TIMING_GAP_DOWN,           // Cycle gap backward (TimingHud)
+            TIMING_DISPLAY_MODE_UP,    // Cycle show mode (Splits/Always) forward (TimingHud)
+            TIMING_DISPLAY_MODE_DOWN,  // Cycle show mode backward (TimingHud)
+            TIMING_DURATION_UP,        // Increase freeze duration (TimingHud)
+            TIMING_DURATION_DOWN,      // Decrease freeze duration (TimingHud)
+            TIMING_REFERENCE_TOGGLE,   // Toggle reference time display on/off (TimingHud)
+            TIMING_LAYOUT_TOGGLE,      // Toggle layout mode (Horizontal/Vertical) (TimingHud)
+            TIMING_GAP_PB_TOGGLE,      // Toggle "Session PB" as secondary (TimingHud)
+            TIMING_GAP_IDEAL_TOGGLE,   // Toggle "Ideal" as secondary chip (TimingHud)
+            TIMING_GAP_OVERALL_TOGGLE, // Toggle "Server Best" as secondary chip (TimingHud)
+            TIMING_GAP_ALLTIME_TOGGLE, // Toggle "All-Time PB" as secondary chip (TimingHud)
+            TIMING_GAP_RECORD_TOGGLE,  // Toggle "Record" as secondary chip (TimingHud)
             GAPBAR_FREEZE_UP,          // Increase freeze duration (GapBarHud)
             GAPBAR_FREEZE_DOWN,        // Decrease freeze duration (GapBarHud)
             GAPBAR_MARKER_TOGGLE,      // Toggle position markers (GapBarHud)
@@ -257,7 +264,15 @@ private:
             SERVER_PAGE_NEXT,          // Next page of server players
             TRACKED_PAGE_PREV,         // Previous page of tracked riders
             TRACKED_PAGE_NEXT,         // Next page of tracked riders
-            VERSION_CLICK              // Easter egg trigger (version string click)
+            VERSION_CLICK,             // Easter egg trigger (version string click)
+            TOOLTIP_ROW,               // Hover-only region for row tooltips (no click action)
+            // Update settings
+            UPDATE_CHECK_NOW,          // Manual check for updates button
+            UPDATE_INSTALL,            // Install available update
+            UPDATE_SKIP_VERSION,       // Skip this version (acts as Retry)
+            UPDATE_DEBUG_MODE,         // Toggle debug mode for testing
+            UPDATE_CHANNEL_UP,         // Cycle update channel forward (Stable -> Pre-release)
+            UPDATE_CHANNEL_DOWN        // Cycle update channel backward (Pre-release -> Stable)
         } type;
 
         // Type-safe variant instead of unsafe union (C++17)
@@ -280,6 +295,7 @@ private:
         bool isRequired;           // Can't toggle if required (for CHECKBOX)
         BaseHud* targetHud;        // HUD to mark dirty after toggle
         int tabIndex;              // Which tab to switch to (for TAB type)
+        std::string tooltipId;     // Tooltip ID for hover display (Phase 3)
 
         // Constructor for simple regions (no pointer needed)
         ClickRegion(float _x, float _y, float _width, float _height, Type _type,
@@ -287,77 +303,156 @@ private:
                    bool _isRequired = false, int _tabIndex = 0)
             : x(_x), y(_y), width(_width), height(_height), type(_type),
               targetPointer(std::monostate{}), flagBit(_flagBit), isRequired(_isRequired),
-              targetHud(_targetHud), tabIndex(_tabIndex) {}
+              targetHud(_targetHud), tabIndex(_tabIndex), tooltipId() {}
+
+        // Constructor for TOOLTIP_ROW regions (hover-only, no click)
+        ClickRegion(float _x, float _y, float _width, float _height, const char* _tooltipId)
+            : x(_x), y(_y), width(_width), height(_height), type(TOOLTIP_ROW),
+              targetPointer(std::monostate{}), flagBit(0), isRequired(false),
+              targetHud(nullptr), tabIndex(0), tooltipId(_tooltipId ? _tooltipId : "") {}
 
         // Constructor for CHECKBOX regions (uses uint32_t* bitfield)
         ClickRegion(float _x, float _y, float _width, float _height, Type _type,
                    uint32_t* bitfield, uint32_t _flagBit, bool _isRequired, BaseHud* _targetHud)
             : x(_x), y(_y), width(_width), height(_height), type(_type),
               targetPointer(bitfield), flagBit(_flagBit), isRequired(_isRequired),
-              targetHud(_targetHud), tabIndex(0) {}
+              targetHud(_targetHud), tabIndex(0), tooltipId() {}
 
         // Constructor for GAP_MODE_UP/DOWN regions
         ClickRegion(float _x, float _y, float _width, float _height, Type _type,
                    StandingsHud::GapMode* gapMode, BaseHud* _targetHud)
             : x(_x), y(_y), width(_width), height(_height), type(_type),
               targetPointer(gapMode), flagBit(0), isRequired(false),
-              targetHud(_targetHud), tabIndex(0) {}
+              targetHud(_targetHud), tabIndex(0), tooltipId() {}
 
         // Constructor for GAP_INDICATOR_UP/DOWN regions
         ClickRegion(float _x, float _y, float _width, float _height, Type _type,
                    StandingsHud::GapIndicatorMode* gapIndicatorMode, BaseHud* _targetHud)
             : x(_x), y(_y), width(_width), height(_height), type(_type),
               targetPointer(gapIndicatorMode), flagBit(0), isRequired(false),
-              targetHud(_targetHud), tabIndex(0) {}
+              targetHud(_targetHud), tabIndex(0), tooltipId() {}
 
         // Constructor for GAP_REFERENCE_UP/DOWN regions
         ClickRegion(float _x, float _y, float _width, float _height, Type _type,
                    StandingsHud::GapReferenceMode* gapReferenceMode, BaseHud* _targetHud)
             : x(_x), y(_y), width(_width), height(_height), type(_type),
               targetPointer(gapReferenceMode), flagBit(0), isRequired(false),
-              targetHud(_targetHud), tabIndex(0) {}
+              targetHud(_targetHud), tabIndex(0), tooltipId() {}
 
         // Constructor for DISPLAY_MODE regions
         ClickRegion(float _x, float _y, float _width, float _height, Type _type,
                    uint8_t* displayMode, BaseHud* _targetHud)
             : x(_x), y(_y), width(_width), height(_height), type(_type),
               targetPointer(displayMode), flagBit(0), isRequired(false),
-              targetHud(_targetHud), tabIndex(0) {}
+              targetHud(_targetHud), tabIndex(0), tooltipId() {}
 
         // Constructor for COLOR_CYCLE regions
         ClickRegion(float _x, float _y, float _width, float _height, Type _type,
                    ColorSlot colorSlot)
             : x(_x), y(_y), width(_width), height(_height), type(_type),
               targetPointer(colorSlot), flagBit(0), isRequired(false),
-              targetHud(nullptr), tabIndex(0) {}
+              targetHud(nullptr), tabIndex(0), tooltipId() {}
 
         // Constructor for FONT_CATEGORY regions
         ClickRegion(float _x, float _y, float _width, float _height, Type _type,
                    FontCategory fontCategory)
             : x(_x), y(_y), width(_width), height(_height), type(_type),
               targetPointer(fontCategory), flagBit(0), isRequired(false),
-              targetHud(nullptr), tabIndex(0) {}
+              targetHud(nullptr), tabIndex(0), tooltipId() {}
 
         // Constructor for HOTKEY_* regions
         ClickRegion(float _x, float _y, float _width, float _height, Type _type,
                    HotkeyAction hotkeyAction)
             : x(_x), y(_y), width(_width), height(_height), type(_type),
               targetPointer(hotkeyAction), flagBit(0), isRequired(false),
-              targetHud(nullptr), tabIndex(0) {}
+              targetHud(nullptr), tabIndex(0), tooltipId() {}
 
         // Constructor for RIDER_* regions
         ClickRegion(float _x, float _y, float _width, float _height, Type _type,
                    const std::string& riderName)
             : x(_x), y(_y), width(_width), height(_height), type(_type),
               targetPointer(riderName), flagBit(0), isRequired(false),
-              targetHud(nullptr), tabIndex(0) {}
+              targetHud(nullptr), tabIndex(0), tooltipId() {}
 
         // Default constructor
         ClickRegion() : x(0), y(0), width(0), height(0), type(CLOSE_BUTTON),
                        targetPointer(std::monostate{}), flagBit(0), isRequired(false),
-                       targetHud(nullptr), tabIndex(0) {}
+                       targetHud(nullptr), tabIndex(0), tooltipId() {}
     };
 
+    // Friend declarations for settings layout system
+    friend struct SettingsLayoutContext;
+
+    // Static tab rendering functions (inherit friend access to HUD classes)
+    // Implemented in separate files under hud/settings/
+    static BaseHud* renderTabIdealLap(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabLapLog(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabTelemetry(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabPerformance(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabRecords(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabPitboard(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabTiming(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabGapBar(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabStandings(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabMap(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabRadar(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabWidgets(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabRumble(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabGeneral(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabAppearance(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabHotkeys(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabRiders(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabUpdates(SettingsLayoutContext& ctx);
+
+    // Static click handler functions (implemented in tab files)
+    // Return true if the click was handled, false otherwise
+    bool handleClickTabMap(const ClickRegion& region);
+    bool handleClickTabRadar(const ClickRegion& region);
+    bool handleClickTabTiming(const ClickRegion& region);
+    bool handleClickTabGapBar(const ClickRegion& region);
+    bool handleClickTabStandings(const ClickRegion& region);
+    bool handleClickTabRumble(const ClickRegion& region);
+    bool handleClickTabAppearance(const ClickRegion& region);
+    bool handleClickTabGeneral(const ClickRegion& region);
+    bool handleClickTabHotkeys(const ClickRegion& region);
+    bool handleClickTabRiders(const ClickRegion& region);
+    bool handleClickTabRecords(const ClickRegion& region);
+    bool handleClickTabPitboard(const ClickRegion& region);
+    bool handleClickTabLapLog(const ClickRegion& region);
+    bool handleClickTabUpdates(const ClickRegion& region);
+
+    // HUD getter methods (for tab rendering functions)
+    IdealLapHud* getIdealLapHud() const { return m_idealLap; }
+    LapLogHud* getLapLogHud() const { return m_lapLog; }
+    StandingsHud* getStandingsHud() const { return m_standings; }
+    PerformanceHud* getPerformanceHud() const { return m_performance; }
+    TelemetryHud* getTelemetryHud() const { return m_telemetry; }
+    TimeWidget* getTimeWidget() const { return m_time; }
+    PositionWidget* getPositionWidget() const { return m_position; }
+    LapWidget* getLapWidget() const { return m_lap; }
+    SessionWidget* getSessionWidget() const { return m_session; }
+    MapHud* getMapHud() const { return m_mapHud; }
+    RadarHud* getRadarHud() const { return m_radarHud; }
+    SpeedWidget* getSpeedWidget() const { return m_speed; }
+    SpeedoWidget* getSpeedoWidget() const { return m_speedo; }
+    TachoWidget* getTachoWidget() const { return m_tacho; }
+    TimingHud* getTimingHud() const { return m_timing; }
+    GapBarHud* getGapBarHud() const { return m_gapBar; }
+    BarsWidget* getBarsWidget() const { return m_bars; }
+    VersionWidget* getVersionWidget() const { return m_version; }
+    NoticesWidget* getNoticesWidget() const { return m_notices; }
+    PitboardHud* getPitboardHud() const { return m_pitboard; }
+    RecordsHud* getRecordsHud() const { return m_records; }
+    FuelWidget* getFuelWidget() const { return m_fuel; }
+    PointerWidget* getPointerWidget() const { return m_pointer; }
+    RumbleHud* getRumbleHud() const { return m_rumble; }
+    GamepadWidget* getGamepadWidget() const { return m_gamepad; }
+    LeanWidget* getLeanWidget() const { return m_lean; }
+
+protected:
+    void rebuildLayout() override;
+
+private:
     void rebuildRenderData() override;
     void handleClick(float mouseX, float mouseY);
     void handleRightClick(float mouseX, float mouseY);  // Right-click for shape cycling
@@ -365,37 +460,16 @@ private:
     void resetCurrentTab();        // Reset current tab for current profile
     void resetCurrentProfile();    // Reset all HUDs for current profile
 
-    // Click handlers per type
+    // Click handlers - common handlers used by multiple tabs
     void handleCheckboxClick(const ClickRegion& region);
-    void handleGapModeClick(const ClickRegion& region, bool forward);
-    void handleGapIndicatorClick(const ClickRegion& region, bool forward);
-    void handleGapReferenceClick(const ClickRegion& region, bool forward);
     void handleHudToggleClick(const ClickRegion& region);
     void handleTitleToggleClick(const ClickRegion& region);
     void handleOpacityClick(const ClickRegion& region, bool increase);
     void handleScaleClick(const ClickRegion& region, bool increase);
-    void handleRowCountClick(const ClickRegion& region, bool increase);
-    void handleLapLogRowCountClick(const ClickRegion& region, bool increase);
-    void handleMapRotationClick(const ClickRegion& region);
-    void handleMapOutlineClick(const ClickRegion& region);
-    void handleMapColorizeClick(const ClickRegion& region, bool forward);
-    void handleMapTrackWidthClick(const ClickRegion& region, bool increase);
-    void handleMapLabelModeClick(const ClickRegion& region, bool forward);
-    void handleMapRangeClick(const ClickRegion& region, bool increase);
-    void handleMapRiderShapeClick(const ClickRegion& region, bool forward);
-    void handleMapMarkerScaleClick(const ClickRegion& region, bool increase);
-    void handleRadarRangeClick(const ClickRegion& region, bool increase);
-    void handleRadarRiderShapeClick(const ClickRegion& region, bool forward);
-    void handleRadarProximityShapeClick(const ClickRegion& region, bool forward);
-    void handleRadarMarkerScaleClick(const ClickRegion& region, bool increase);
-    void handleRadarColorizeClick(const ClickRegion& region, bool forward);
-    void handleRadarAlertDistanceClick(const ClickRegion& region, bool increase);
-    void handleRadarLabelModeClick(const ClickRegion& region, bool forward);
     void handleDisplayModeClick(const ClickRegion& region, bool increase);
-    void handlePitboardShowModeClick(const ClickRegion& region, bool increase);
-    void handleColorCycleClick(const ClickRegion& region, bool forward);
     void handleTabClick(const ClickRegion& region);
     void handleCloseButtonClick();
+    // Note: Tab-specific handlers inlined into settings_tab_*.cpp files
 
     // Helper methods to reduce code duplication
     float addDisplayModeControl(float x, float& currentY, const ScaledDimensions& dims,
@@ -409,7 +483,7 @@ private:
     bool isPointInRect(float x, float y, float rectX, float rectY, float width, float height) const;
 
     // Settings panel layout constants (character widths for monospace text)
-    static constexpr int SETTINGS_PANEL_WIDTH = 75;     // Settings panel total width (increased for vertical tabs)
+    static constexpr int SETTINGS_PANEL_WIDTH = 71;     // Settings panel total width (fits Rumble effects table)
     static constexpr int SETTINGS_TAB_WIDTH = 16;       // Width of vertical tab column (fits "[X] Ideal Lap")
     static constexpr int SETTINGS_LEFT_COLUMN = 2;      // Left column offset within content area
     static constexpr int SETTINGS_RIGHT_COLUMN = 28;    // Right column offset within content area
@@ -451,6 +525,7 @@ private:
     PointerWidget* m_pointer;
     RumbleHud* m_rumble;
     GamepadWidget* m_gamepad;
+    LeanWidget* m_lean;
 
     // Visibility flag
     bool m_bVisible;
@@ -460,18 +535,6 @@ private:
     // Reset radio button states (mutually exclusive)
     bool m_resetProfileConfirmed;
     bool m_resetAllConfirmed;
-
-    // Update checker mock state (for visual design testing)
-    bool m_checkForUpdates;  // Setting: check for updates on load
-    enum class UpdateStatus {
-        UNKNOWN,      // Not checked yet / check disabled
-        CHECKING,     // Currently checking
-        UP_TO_DATE,   // Current version is latest
-        UPDATE_AVAILABLE,  // Newer version available
-        CHECK_FAILED  // Network error
-    };
-    UpdateStatus m_updateStatus;
-    std::string m_latestVersion;  // Latest version from GitHub (when update available)
 
     // Easter egg click detection (version string)
     static constexpr int EASTER_EGG_CLICKS = 5;
@@ -503,7 +566,8 @@ private:
         TAB_RUMBLE = 14,
         TAB_APPEARANCE = 15,   // Appearance configuration (fonts, colors)
         TAB_HOTKEYS = 16,      // Keyboard/controller hotkey bindings
-        TAB_COUNT = 17
+        TAB_UPDATES = 17,      // Auto-update settings
+        TAB_COUNT = 18
     };
     int m_activeTab;
 
@@ -530,5 +594,15 @@ private:
     int m_serverPlayersPage;           // Current page of server players (0-based)
     int m_trackedRidersPage;           // Current page of tracked riders (0-based)
 
+    // Tooltip support (Phase 2 description system)
+    std::string m_hoveredTooltipId;    // Current tooltip ID from hovered region (empty = none)
+
+    // Update checker cooldown tracking (to refresh button when cooldown expires)
+    bool m_wasUpdateCheckerOnCooldown;
+
     std::vector<ClickRegion> m_clickRegions;
+
+    // Get tooltip ID for a click region type and current active tab
+    // Returns empty string if no tooltip is available
+    static const char* getTooltipIdForRegion(ClickRegion::Type type, int activeTab);
 };

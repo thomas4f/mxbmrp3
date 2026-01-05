@@ -46,6 +46,10 @@ public:
     // Store the save path for later use (set during loadSettings)
     const std::string& getSavePath() const { return m_savePath; }
 
+    // Developer mode - shows debug options in UI when enabled via INI
+    bool isDeveloperMode() const { return m_developerMode; }
+    void setDeveloperMode(bool enabled) { m_developerMode = enabled; }
+
 private:
     SettingsManager() = default;
     ~SettingsManager() = default;
@@ -69,4 +73,7 @@ private:
 
     // Stored save path for saving on profile switch
     std::string m_savePath;
+
+    // Developer mode flag (shows debug options in UI)
+    bool m_developerMode = false;
 };

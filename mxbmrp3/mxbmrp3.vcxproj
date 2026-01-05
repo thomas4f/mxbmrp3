@@ -100,6 +100,7 @@
   <ItemGroup>
     <ClInclude Include="core\asset_manager.h" />
     <ClInclude Include="core\color_config.h" />
+    <ClInclude Include="core\tooltip_manager.h" />
     <ClInclude Include="core\font_config.h" />
     <ClInclude Include="core\handler_singleton.h" />
     <ClInclude Include="core\hotkey_config.h" />
@@ -115,6 +116,7 @@
     <ClInclude Include="core\settings_manager.h" />
     <ClInclude Include="core\personal_best_manager.h" />
     <ClInclude Include="core\update_checker.h" />
+    <ClInclude Include="core\update_downloader.h" />
     <ClInclude Include="core\widget_constants.h" />
     <ClInclude Include="core\xinput_reader.h" />
     <ClInclude Include="diagnostics\logger.h" />
@@ -164,8 +166,16 @@
     <ClInclude Include="hud\version_widget.h" />
     <ClInclude Include="hud\fuel_widget.h" />
     <ClInclude Include="hud\gamepad_widget.h" />
+    <ClInclude Include="hud\lean_widget.h" />
+    <ClInclude Include="hud\settings\settings_layout.h" />
     <ClInclude Include="vendor\piboso\mxb_api.h" />
     <ClInclude Include="vendor\nlohmann\json.hpp" />
+    <ClInclude Include="vendor\miniz\miniz.h" />
+    <ClInclude Include="vendor\miniz\miniz_common.h" />
+    <ClInclude Include="vendor\miniz\miniz_tdef.h" />
+    <ClInclude Include="vendor\miniz\miniz_tinfl.h" />
+    <ClInclude Include="vendor\miniz\miniz_zip.h" />
+    <ClInclude Include="vendor\miniz\miniz_export.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="core\asset_manager.cpp" />
@@ -182,6 +192,7 @@
     <ClCompile Include="core\settings_manager.cpp" />
     <ClCompile Include="core\personal_best_manager.cpp" />
     <ClCompile Include="core\update_checker.cpp" />
+    <ClCompile Include="core\update_downloader.cpp" />
     <ClCompile Include="core\xinput_reader.cpp" />
     <ClCompile Include="diagnostics\logger.cpp" />
     <ClCompile Include="handlers\draw_handler.cpp" />
@@ -217,6 +228,25 @@
     <ClCompile Include="hud\session_widget.cpp" />
     <ClCompile Include="hud\settings_button_widget.cpp" />
     <ClCompile Include="hud\settings_hud.cpp" />
+    <ClCompile Include="hud\settings\settings_layout.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_ideal_lap.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_lap_log.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_telemetry.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_performance.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_records.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_pitboard.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_timing.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_gap_bar.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_standings.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_map.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_radar.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_widgets.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_rumble.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_general.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_appearance.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_hotkeys.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_riders.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_updates.cpp" />
     <ClCompile Include="hud\speed_widget.cpp" />
     <ClCompile Include="hud\speedo_widget.cpp" />
     <ClCompile Include="hud\tacho_widget.cpp" />
@@ -229,7 +259,12 @@
     <ClCompile Include="hud\version_widget.cpp" />
     <ClCompile Include="hud\fuel_widget.cpp" />
     <ClCompile Include="hud\gamepad_widget.cpp" />
+    <ClCompile Include="hud\lean_widget.cpp" />
     <ClCompile Include="vendor\piboso\mxb_api.cpp" />
+    <ClCompile Include="vendor\miniz\miniz.c" />
+    <ClCompile Include="vendor\miniz\miniz_tdef.c" />
+    <ClCompile Include="vendor\miniz\miniz_tinfl.c" />
+    <ClCompile Include="vendor\miniz\miniz_zip.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

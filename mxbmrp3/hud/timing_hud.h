@@ -24,34 +24,55 @@ enum class ColumnMode : uint8_t {
 };
 
 // ============================================================================
-// Gap type flags - which gap comparisons to show (can enable multiple)
-// Display order: Session PB, All-Time PB, Ideal, Overall
+// Gap type flags - which gap comparisons to show
+// Primary gap is shown large, secondary gaps shown as compact chips
 // ============================================================================
 enum GapTypeFlags : uint8_t {
+    GAP_NONE       = 0,       // No gap comparison
     GAP_TO_PB      = 1 << 0,  // "Session PB" - gap to personal best lap this session
     GAP_TO_IDEAL   = 1 << 1,  // "Ideal" - gap to ideal lap (sum of best sectors)
-    GAP_TO_OVERALL = 1 << 2,  // "Overall" - gap to overall best lap by anyone in session
+    GAP_TO_OVERALL = 1 << 2,  // "Server Best" - gap to best lap by anyone in session
     GAP_TO_ALLTIME = 1 << 3,  // "All-Time PB" - gap to all-time personal best (persisted)
+    GAP_TO_RECORD  = 1 << 4,  // "Record" - gap to fastest record from RecordsHud provider
 
-    GAP_DEFAULT = GAP_TO_PB   // Default: only Session PB comparison
+    GAP_DEFAULT_PRIMARY = GAP_TO_PB,           // Default primary: Session PB
+    GAP_DEFAULT_SECONDARY = GAP_TO_ALLTIME | GAP_TO_IDEAL | GAP_TO_OVERALL  // Default secondaries
 };
 
 // Gap type count (for iteration)
-static constexpr int GAP_TYPE_COUNT = 4;
+inline constexpr int GAP_TYPE_COUNT = 5;
+
+// Gap type names and abbreviations for UI
+struct GapTypeInfo {
+    GapTypeFlags flag;
+    const char* name;       // Full name for settings UI
+    const char* abbrev;     // 2-char abbreviation for chips
+};
+
+// Ordered list of gap types for cycling and display
+inline constexpr GapTypeInfo GAP_TYPE_INFO[] = {
+    { GAP_TO_PB,      "Session PB",   "PB" },
+    { GAP_TO_ALLTIME, "Alltime",      "AT" },
+    { GAP_TO_IDEAL,   "Ideal",        "ID" },
+    { GAP_TO_OVERALL, "Overall",      "OA" },
+    { GAP_TO_RECORD,  "Record",       "RC" }
+};
 
 // ============================================================================
 // Gap data for a single gap type
 // ============================================================================
 struct GapData {
-    int gap;          // Gap in ms (positive = slower)
-    bool hasGap;      // Is this gap valid?
-    bool isFaster;    // Faster than reference?
-    bool isSlower;    // Slower than reference?
+    int gap;           // Gap in ms (positive = slower)
+    int refTime;       // Reference time in ms (for display)
+    bool hasGap;       // Is this gap valid?
+    bool isFaster;     // Faster than reference?
+    bool isSlower;     // Slower than reference?
 
-    GapData() : gap(0), hasGap(false), isFaster(false), isSlower(false) {}
+    GapData() : gap(0), refTime(0), hasGap(false), isFaster(false), isSlower(false) {}
 
     void set(int gapMs, int referenceTime) {
         gap = gapMs;
+        refTime = referenceTime;
         hasGap = (referenceTime > 0);
         isFaster = (gapMs < 0);
         isSlower = (gapMs > 0);
@@ -59,6 +80,7 @@ struct GapData {
 
     void reset() {
         gap = 0;
+        refTime = 0;
         hasGap = false;
         isFaster = false;
         isSlower = false;
@@ -79,6 +101,7 @@ struct OfficialTimingData {
     GapData gapToIdeal;       // "Ideal" - gap to ideal lap (sum of best sectors)
     GapData gapToOverall;     // "Overall" - gap to overall best lap by anyone in session
     GapData gapToAllTime;     // "All-Time PB" - gap to all-time personal best
+    GapData gapToRecord;      // "Record" - gap to fastest record from provider
 
     OfficialTimingData()
         : time(0), lapNum(0), splitIndex(-1), isInvalid(false) {}
@@ -92,6 +115,7 @@ struct OfficialTimingData {
         gapToIdeal.reset();
         gapToOverall.reset();
         gapToAllTime.reset();
+        gapToRecord.reset();
     }
 
     // Legacy accessors for backwards compatibility
@@ -119,12 +143,26 @@ public:
     };
 
     // Getters for settings UI
-    ColumnMode getColumnMode(Column col) const { return m_columnModes[col]; }
+    ColumnMode getDisplayMode() const { return m_displayMode; }
+    bool isColumnEnabled(Column col) const { return m_columnEnabled[col]; }
+    bool isReferenceEnabled() const { return m_showReference; }
     int getDisplayDuration() const { return m_displayDurationMs; }
-    uint8_t getGapTypes() const { return m_gapTypes; }
-    bool isGapTypeEnabled(GapTypeFlags flag) const { return (m_gapTypes & flag) != 0; }
-    void setGapType(GapTypeFlags flag, bool enabled);
-    int getEnabledGapCount() const;
+
+    // Primary gap (shown large in main row)
+    GapTypeFlags getPrimaryGapType() const { return m_primaryGapType; }
+    void setPrimaryGapType(GapTypeFlags type);
+    void cyclePrimaryGapType(bool forward);
+
+    // Secondary gaps (shown as compact horizontal chips below primary)
+    uint8_t getSecondaryGapTypes() const { return m_secondaryGapTypes; }
+    bool isSecondaryGapEnabled(GapTypeFlags flag) const { return (m_secondaryGapTypes & flag) != 0; }
+    void setSecondaryGapType(GapTypeFlags flag, bool enabled);
+    int getEnabledSecondaryGapCount(bool skipPrimaryType = true) const;
+
+    // Helper to get gap type info
+    static const GapTypeInfo* getGapTypeInfo(GapTypeFlags flag);
+    static const char* getGapTypeName(GapTypeFlags flag);
+    static const char* getGapTypeAbbrev(GapTypeFlags flag);
 
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;
@@ -147,14 +185,20 @@ private:
     // Gap calculation helpers
     int getOverallBestLapTime() const;
     void calculateAllGaps(int splitTime, int splitIndex, bool isLapComplete);
-    void cacheAllTimePB();  // Cache current all-time PB for showing improvement
+    void cacheAllTimePB();     // Cache current all-time PB for showing improvement
 
-    // Per-column visibility modes
-    ColumnMode m_columnModes[COL_COUNT];
+    // Display mode (Off/Splits/Always) controls when HUD content is shown
+    ColumnMode m_displayMode;
+
+    // Column visibility (simple on/off)
+    bool m_columnEnabled[COL_COUNT];
+    bool m_showReference;            // Show reference time in gap column
 
     // Configuration
     int m_displayDurationMs;         // How long to freeze on official times (in milliseconds)
-    uint8_t m_gapTypes;              // Bitfield of enabled gap comparisons (GapTypeFlags)
+    GapTypeFlags m_primaryGapType;   // Primary gap comparison (shown large)
+    uint8_t m_secondaryGapTypes;     // Bitfield of secondary gap comparisons (as chips)
+    bool m_layoutVertical;           // True = vertical columns, False = horizontal rows
 
     // Cached data to detect changes (accumulated times from CurrentLapData)
     int m_cachedSplit1;              // Accumulated time to split 1
@@ -179,6 +223,6 @@ private:
     // Duration limits
     static constexpr int MIN_DURATION_MS = 0;      // 0 = disabled
     static constexpr int MAX_DURATION_MS = 10000;  // 10 seconds maximum
-    static constexpr int DEFAULT_DURATION_MS = 3000;  // 3 seconds default
-    static constexpr int DURATION_STEP_MS = 500;   // 0.5 second steps
+    static constexpr int DEFAULT_DURATION_MS = 5000;  // 5 seconds default
+    static constexpr int DURATION_STEP_MS = 1000;  // 1 second steps
 };

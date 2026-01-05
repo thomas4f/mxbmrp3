@@ -22,6 +22,9 @@ void RunHandler::handleRunInit(SPluginsBikeSession_t* psSessionData) {
     PluginData::getInstance().setConditions(psSessionData->m_iConditions);
     PluginData::getInstance().setAirTemperature(psSessionData->m_fAirTemperature);
     PluginData::getInstance().setSetupFileName(psSessionData->m_szSetupFileName);
+
+    // Reset fuel tracking when entering track (rider may have refueled in pits)
+    HudManager::getInstance().getFuelWidget().resetFuelTracking();
 }
 
 void RunHandler::handleRunStart() {

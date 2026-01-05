@@ -57,14 +57,8 @@ RadarHud::RadarHud()
 }
 
 void RadarHud::update() {
-    if (isDataDirty()) {
-        rebuildRenderData();
-        clearDataDirty();
-        clearLayoutDirty();
-    } else if (isLayoutDirty()) {
-        rebuildLayout();
-        clearLayoutDirty();
-    }
+    // Handle dirty flags using base class helper
+    processDirtyFlags();
 }
 
 bool RadarHud::handlesDataType(DataChangeType dataType) const {

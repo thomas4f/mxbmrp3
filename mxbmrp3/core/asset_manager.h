@@ -39,8 +39,9 @@ public:
     static AssetManager& getInstance();
 
     // Initialize - must be called before HudManager::setupDefaultResources
-    // Scans directories and builds asset registries
-    void discoverAssets();
+    // Syncs user override assets from savePath, then scans directories and builds asset registries
+    // savePath: Game save directory (e.g., C:\Users\X\Documents\PiBoSo\MX Bikes\)
+    void discoverAssets(const char* savePath);
 
     // Check if assets have been discovered
     bool isInitialized() const { return m_initialized; }
@@ -124,12 +125,18 @@ public:
     static constexpr const char* FONTS_SUBDIR = "fonts";
     static constexpr const char* TEXTURES_SUBDIR = "textures";
     static constexpr const char* ICONS_SUBDIR = "icons";
+    // User override directory (under savePath, e.g., Documents\PiBoSo\MX Bikes\mxbmrp3\)
+    static constexpr const char* USER_OVERRIDE_DIR = "mxbmrp3";
 
 private:
     AssetManager() = default;
     ~AssetManager() = default;
     AssetManager(const AssetManager&) = delete;
     AssetManager& operator=(const AssetManager&) = delete;
+
+    // User asset sync - copies user overrides from savePath to plugin data directory
+    void syncUserAssets(const char* savePath);
+    void syncDirectory(const std::string& sourceDir, const std::string& destDir, const char* extension);
 
     // Discovery helpers
     void discoverFonts();

@@ -34,6 +34,7 @@ struct SessionData {
     // Bike setup data
     int shiftRPM;           // RPM threshold for shift warning (recommended shift point)
     int limiterRPM;         // RPM limiter threshold
+    float steerLock;        // Maximum steering angle in degrees
 
     // Session data
     int session;
@@ -50,8 +51,8 @@ struct SessionData {
     int lastSessionTime;    // Previous sessionTime value for detecting overtime transition
     int leaderFinishTime;   // Leader's total race time in milliseconds (-1 if not finished)
 
-    SessionData() : trackLength(0.0f), eventType(2), shiftRPM(13500), limiterRPM(14000), session(-1), sessionState(-1),
-        sessionLength(-1), sessionNumLaps(-1),
+    SessionData() : trackLength(0.0f), eventType(2), shiftRPM(13500), limiterRPM(14000), steerLock(30.0f),
+        session(-1), sessionState(-1), sessionLength(-1), sessionNumLaps(-1),
         conditions(-1), airTemperature(-1.0f), overtimeStarted(false), finishLap(-1), lastSessionTime(0), leaderFinishTime(-1) {
         riderName[0] = '\0';
         bikeName[0] = '\0';
@@ -71,6 +72,7 @@ struct SessionData {
         eventType = 2;  // Default to Race (Testing events are offline-only)
         shiftRPM = 13500;  // Default fallback value
         limiterRPM = 14000;  // Default fallback value
+        steerLock = 30.0f;  // Default fallback value
         session = -1;
         sessionState = -1;
         sessionLength = -1;
@@ -224,12 +226,13 @@ struct BikeTelemetryData {
     float rearSuspLength;       // Current rear suspension length in meters
     float frontSuspMaxTravel;   // Front suspension maximum travel in meters
     float rearSuspMaxTravel;    // Rear suspension maximum travel in meters
+    float roll;         // Lean angle in degrees (negative = left, positive = right)
     bool isValid;       // True if telemetry data is currently available
 
     BikeTelemetryData() : speedometer(0.0f), gear(0), numberOfGears(6), rpm(0), fuel(0.0f), maxFuel(0.0f),
                           frontSuspLength(0.0f), rearSuspLength(0.0f),
                           frontSuspMaxTravel(0.0f), rearSuspMaxTravel(0.0f),
-                          isValid(false) {}
+                          roll(0.0f), isValid(false) {}
 };
 
 // Input telemetry data from controller/bike inputs
@@ -352,11 +355,18 @@ struct IdealLapData {
     int previousBestSector2;     // milliseconds - previous PB sector 2 time
     int previousBestSector3;     // milliseconds - previous PB sector 3 time
 
+    // Previous ideal sector data (for comparison when new best sector is set)
+    int previousIdealSector1;    // milliseconds - previous best sector 1 time
+    int previousIdealSector2;    // milliseconds - previous best sector 2 time
+    int previousIdealSector3;    // milliseconds - previous best sector 3 time
+
     IdealLapData() : lastCompletedLapNum(-1), lastLapTime(-1),
                         lastLapSector1(-1), lastLapSector2(-1), lastLapSector3(-1),
                         bestSector1(-1), bestSector2(-1), bestSector3(-1),
                         previousBestLapTime(-1), previousBestSector1(-1),
-                        previousBestSector2(-1), previousBestSector3(-1) {}
+                        previousBestSector2(-1), previousBestSector3(-1),
+                        previousIdealSector1(-1), previousIdealSector2(-1),
+                        previousIdealSector3(-1) {}
 
     void clear() {
         lastCompletedLapNum = -1;
@@ -371,6 +381,17 @@ struct IdealLapData {
         previousBestSector1 = -1;
         previousBestSector2 = -1;
         previousBestSector3 = -1;
+        previousIdealSector1 = -1;
+        previousIdealSector2 = -1;
+        previousIdealSector3 = -1;
+    }
+
+    // Get previous ideal lap time (sum of previous best sectors)
+    int getPreviousIdealLapTime() const {
+        if (previousIdealSector1 > 0 && previousIdealSector2 > 0 && previousIdealSector3 > 0) {
+            return previousIdealSector1 + previousIdealSector2 + previousIdealSector3;
+        }
+        return -1;
     }
 
     // Get ideal lap time (sum of best sectors)
@@ -562,6 +583,7 @@ public:
     void setEventType(int eventType);
     void setShiftRPM(int shiftRPM);
     void setLimiterRPM(int limiterRPM);
+    void setSteerLock(float steerLock);
     void setMaxFuel(float maxFuel);
     void setNumberOfGears(int numberOfGears);
     void setSession(int session);
@@ -628,7 +650,8 @@ public:
     // Overall best lap (fastest lap by any rider, with splits for gap comparison)
     void setOverallBestLap(const LapLogEntry& entry);
     const LapLogEntry* getOverallBestLap() const;
-    void clearOverallBestLap() { m_overallBestLap.lapNum = -1; }
+    const LapLogEntry* getPreviousOverallBestLap() const;
+    void clearOverallBestLap() { m_overallBestLap.lapNum = -1; m_previousOverallBestLap.lapNum = -1; }
 
     // Convenience methods for display race number (uses getDisplayRaceNum internally)
     const CurrentLapData* getCurrentLapData() const { return getCurrentLapData(getDisplayRaceNum()); }
@@ -745,6 +768,7 @@ public:
 
     // Bike telemetry update
     void updateSpeedometer(float speedometer, int gear, int rpm, float fuel);
+    void updateRoll(float roll);
     void invalidateSpeedometer();
 
     // Suspension update
@@ -756,7 +780,7 @@ public:
     void updateXInputData(const XInputData& xinputData);
 
     // Limited telemetry update for spectate/replay (only updates data available in SPluginsRaceVehicleData_t)
-    void updateRaceVehicleTelemetry(float speedometer, int gear, int rpm, float throttle, float frontBrake);
+    void updateRaceVehicleTelemetry(float speedometer, int gear, int rpm, float throttle, float frontBrake, float lean);
 
     // Clear all data (useful for reset scenarios)
     void clear();
@@ -828,7 +852,8 @@ private:
     std::unordered_map<int, IdealLapData> m_riderIdealLap;  // Ideal lap sectors per rider
     std::unordered_map<int, std::deque<LapLogEntry>> m_riderLapLog;  // Lap log per rider (newest first, deque for O(1) front insert)
     std::unordered_map<int, LapLogEntry> m_riderBestLap;  // Best lap entry per rider (for easy access)
-    LapLogEntry m_overallBestLap;  // Overall best lap (any rider) with splits for gap comparison
+    LapLogEntry m_overallBestLap;          // Overall best lap (any rider) with splits for gap comparison
+    LapLogEntry m_previousOverallBestLap;  // Previous overall best (for showing improvement)
 
     // Single centralized lap timer for display rider only (follows GapBarHud pattern)
     // Resets when spectate target changes - no need to track all riders

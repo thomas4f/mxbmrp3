@@ -40,7 +40,9 @@
 #include "../hud/pointer_widget.h"
 #include "../hud/rumble_hud.h"
 #include "../hud/gamepad_widget.h"
+#include "../hud/lean_widget.h"
 #include "hotkey_manager.h"
+#include "tooltip_manager.h"
 #include <windows.h>
 #include <memory>
 #include <cstring>
@@ -59,8 +61,7 @@ void HudManager::initialize() {
 
     DEBUG_INFO("HudManager initializing");
 
-    // Discover assets before setting up resources
-    AssetManager::getInstance().discoverAssets();
+    // Note: AssetManager::discoverAssets() is called by PluginManager before this
 
     // Pre-allocate render data vectors for optimal performance
     m_quads.reserve(INITIAL_QUAD_CAPACITY);
@@ -192,6 +193,11 @@ void HudManager::initialize() {
     m_pGamepad->setTextureBaseName("gamepad_widget");
     registerHud(std::move(gamepadPtr));
 
+    auto leanPtr = std::make_unique<LeanWidget>();
+    m_pLean = leanPtr.get();
+    m_pLean->setTextureBaseName("lean_widget");
+    registerHud(std::move(leanPtr));
+
     // Create PointerWidget early so it can be passed to SettingsHud
     // (will be registered last to render on top)
     auto pointerPtr = std::make_unique<PointerWidget>();
@@ -199,7 +205,7 @@ void HudManager::initialize() {
 
     // Register SettingsHud with pointers to all configurable HUDs and widgets
     auto settingsPtr = std::make_unique<SettingsHud>(m_pIdealLap, m_pLapLog, m_pStandings,
-                                                       m_pPerformance, m_pTelemetry, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, m_pRecords, m_pFuel, m_pPointer, m_pRumble, m_pGamepad);
+                                                       m_pPerformance, m_pTelemetry, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, m_pRecords, m_pFuel, m_pPointer, m_pRumble, m_pGamepad, m_pLean);
     m_pSettingsHud = settingsPtr.get();
     registerHud(std::move(settingsPtr));
 
@@ -213,6 +219,9 @@ void HudManager::initialize() {
 
     // Load settings from disk (must happen after HUD registration)
     SettingsManager::getInstance().loadSettings(*this, PluginManager::getInstance().getSavePath());
+
+    // Load UI descriptions for settings panel
+    TooltipManager::getInstance().load();
 
     // NOTE: Individual HUD scaling is available via setScale() method.
     // For grid-aligned edges, use scales where (WIDTH_CHARS × scale) = integer:
@@ -264,6 +273,7 @@ void HudManager::clear() {
     m_pFuel = nullptr;
     m_pRumble = nullptr;
     m_pGamepad = nullptr;
+    m_pLean = nullptr;
     m_pSettingsHud = nullptr;
     m_pSettingsButton = nullptr;
     m_pPointer = nullptr;
@@ -556,7 +566,7 @@ void HudManager::collectRenderData() {
                            hud.get() == m_pTacho ||
                            hud.get() == m_pBars || hud.get() == m_pVersion ||
                            hud.get() == m_pNotices || hud.get() == m_pFuel ||
-                           hud.get() == m_pGamepad);
+                           hud.get() == m_pGamepad || hud.get() == m_pLean);
             if (m_bAllWidgetsToggledOff && isWidget && !isVersionGameActive) {
                 continue;
             }
@@ -755,6 +765,8 @@ void HudManager::processKeyboardInput() {
         if (!savePath.empty()) {
             DEBUG_INFO("Hotkey: Reloading config from file");
             settingsMgr.loadSettings(*this, savePath.c_str());
+            // Reload UI descriptions (hot-reload support)
+            TooltipManager::getInstance().reload();
             // Mark all HUDs dirty to force rebuild
             if (m_pGamepad) m_pGamepad->setDataDirty();
             if (m_pSettingsHud) m_pSettingsHud->setDataDirty();

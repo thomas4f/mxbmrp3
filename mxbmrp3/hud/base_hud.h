@@ -198,28 +198,15 @@ protected:
     }
 
     // ========================================================================
-    // Widget Initialization Helper
+    // Standard Dirty Flag Handling
     // ========================================================================
-    // Helper to initialize simple draggable widgets (eliminates constructor duplication)
-    // Consolidates: DEBUG_INFO logging, setDraggable(true), opacity setting, string
-    // reservation, and rebuildRenderData() call.
+    // Call processDirtyFlags() in update() implementations to handle the common pattern:
+    //   - If data dirty: rebuild all, call onAfterDataRebuild(), clear both flags
+    //   - Else if layout dirty: rebuild layout only, clear layout flag
     //
-    // Use for simple widgets with standard initialization. Do NOT use if widget needs:
-    // - Non-draggable positioning (e.g., TimingHud center display)
-    // - Quad reservation (e.g., BarsWidget, TimingHud)
-    // - Custom scale/opacity values
-    //
-    // Examples:
-    //   initializeWidget("TimeWidget", 2);              // Standard
-    //   initializeWidget("SessionWidget", 4, 0.0f);         // Transparent background
-    //
-    // REFACTORING NOTE: Further extraction was considered but rejected:
-    // - Dimension calculation: Widget-specific height logic varies significantly.
-    //   Existing helpers (calculateBackgroundWidth, updateBackgroundQuadPosition,
-    //   positionString) already provide sufficient abstraction.
-    // - Update pattern: The dirty-flag pattern (11 lines) is clear and readable.
-    //   Template method extraction would reduce clarity without significant benefit.
-    void initializeWidget(const char* widgetName, int stringsReserve, float backgroundOpacity = 0.1f);
+    // Override onAfterDataRebuild() if widget needs to update caches after rebuildRenderData().
+    void processDirtyFlags();
+    virtual void onAfterDataRebuild() {}
 
     // Shared helper methods for HUD rendering (eliminates duplication across HUDs)
     void addString(const char* text, float x, float y, int justify, int fontIndex,

@@ -213,12 +213,17 @@ bool BaseHud::clampPositionToBounds(float& offsetX, float& offsetY, const Window
     return needsAdjustment;
 }
 
-void BaseHud::initializeWidget(const char* widgetName, int stringsReserve, float backgroundOpacity) {
-    DEBUG_INFO_F("%s created", widgetName);
-    setDraggable(true);
-    m_fBackgroundOpacity = backgroundOpacity;
-    m_strings.reserve(stringsReserve);
-    rebuildRenderData();
+void BaseHud::processDirtyFlags() {
+    if (isDataDirty()) {
+        rebuildRenderData();
+        onAfterDataRebuild();
+        clearDataDirty();
+        clearLayoutDirty();
+    }
+    else if (isLayoutDirty()) {
+        rebuildLayout();
+        clearLayoutDirty();
+    }
 }
 
 // ============================================================================

@@ -81,6 +81,12 @@ void PluginData::setLimiterRPM(int limiterRPM) {
     }
 }
 
+void PluginData::setSteerLock(float steerLock) {
+    if (setValue(m_sessionData.steerLock, steerLock)) {
+        notifyHudManager(DataChangeType::SessionData);
+    }
+}
+
 void PluginData::setMaxFuel(float maxFuel) {
     m_bikeTelemetry.maxFuel = maxFuel;
 }
@@ -394,14 +400,26 @@ void PluginData::updateIdealLap(int raceNum, int completedLapNum, int lapTime, i
     // Only update best sectors for valid laps (invalid laps don't count as PBs)
     if (isValid) {
         if (sector1 > 0 && (isFirstValidLap || sector1 < idealLap.bestSector1)) {
+            // Save previous best before updating
+            if (idealLap.bestSector1 > 0) {
+                idealLap.previousIdealSector1 = idealLap.bestSector1;
+            }
             idealLap.bestSector1 = sector1;
             updated = true;
         }
         if (sector2 > 0 && (isFirstValidLap || sector2 < idealLap.bestSector2)) {
+            // Save previous best before updating
+            if (idealLap.bestSector2 > 0) {
+                idealLap.previousIdealSector2 = idealLap.bestSector2;
+            }
             idealLap.bestSector2 = sector2;
             updated = true;
         }
         if (sector3 > 0 && (isFirstValidLap || sector3 < idealLap.bestSector3)) {
+            // Save previous best before updating
+            if (idealLap.bestSector3 > 0) {
+                idealLap.previousIdealSector3 = idealLap.bestSector3;
+            }
             idealLap.bestSector3 = sector3;
             updated = true;
         }
@@ -579,6 +597,10 @@ const LapLogEntry* PluginData::getBestLapEntry(int raceNum) const {
 }
 
 void PluginData::setOverallBestLap(const LapLogEntry& entry) {
+    // Save previous overall best before updating (for showing improvement)
+    if (m_overallBestLap.lapNum >= 0 && m_overallBestLap.lapTime > 0) {
+        m_previousOverallBestLap = m_overallBestLap;
+    }
     m_overallBestLap = entry;
     DEBUG_INFO_F("Overall best lap updated: lapTime=%d, S1=%d, S2=%d",
                  entry.lapTime, entry.sector1, entry.sector2);
@@ -587,6 +609,13 @@ void PluginData::setOverallBestLap(const LapLogEntry& entry) {
 const LapLogEntry* PluginData::getOverallBestLap() const {
     if (m_overallBestLap.lapNum >= 0 && m_overallBestLap.lapTime > 0) {
         return &m_overallBestLap;
+    }
+    return nullptr;
+}
+
+const LapLogEntry* PluginData::getPreviousOverallBestLap() const {
+    if (m_previousOverallBestLap.lapNum >= 0 && m_previousOverallBestLap.lapTime > 0) {
+        return &m_previousOverallBestLap;
     }
     return nullptr;
 }
@@ -1397,6 +1426,12 @@ void PluginData::invalidateSpeedometer() {
     notifyHudManager(DataChangeType::InputTelemetry);
 }
 
+void PluginData::updateRoll(float roll) {
+    m_bikeTelemetry.roll = roll;
+    // No separate notification - roll updates at same frequency as speedometer
+    // which already notifies with InputTelemetry
+}
+
 void PluginData::updateSuspensionMaxTravel(float frontMaxTravel, float rearMaxTravel) {
     m_bikeTelemetry.frontSuspMaxTravel = frontMaxTravel;
     m_bikeTelemetry.rearSuspMaxTravel = rearMaxTravel;
@@ -1449,11 +1484,12 @@ void PluginData::updateInputTelemetry(float steer, float throttle, float frontBr
     notifyHudManager(DataChangeType::InputTelemetry);
 }
 
-void PluginData::updateRaceVehicleTelemetry(float speedometer, int gear, int rpm, float throttle, float frontBrake) {
+void PluginData::updateRaceVehicleTelemetry(float speedometer, int gear, int rpm, float throttle, float frontBrake, float lean) {
     // Update current values (for widgets that display latest value)
     m_bikeTelemetry.speedometer = speedometer;
     m_bikeTelemetry.gear = gear;
     m_bikeTelemetry.rpm = rpm;
+    m_bikeTelemetry.roll = lean;  // Lean angle available in RaceVehicleData
     m_bikeTelemetry.isValid = true;
 
     m_inputTelemetry.throttle = throttle;

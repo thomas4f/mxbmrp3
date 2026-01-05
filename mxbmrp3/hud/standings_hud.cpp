@@ -559,18 +559,8 @@ void StandingsHud::update() {
         setDataDirty();
     }
 
-    // Check data dirty first (takes precedence)
-    if (isDataDirty()) {
-        // Data changed - full rebuild needed
-        rebuildRenderData();
-        clearDataDirty();
-        clearLayoutDirty();
-    }
-    else if (isLayoutDirty()) {
-        // Only layout changed (e.g., dragging) - fast path
-        rebuildLayout();
-        clearLayoutDirty();
-    }
+    // Handle dirty flags using base class helper
+    processDirtyFlags();
 }
 
 void StandingsHud::rebuildLayout() {

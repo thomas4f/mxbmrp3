@@ -138,7 +138,11 @@ void BarsWidget::rebuildRenderData() {
 
     // Bar 0: Throttle (T) - single bar
     if (m_enabledColumns & COL_THROTTLE) {
+        updateMaxTracking(0, throttleValue);
         addVerticalBar(currentX, contentStartY, barWidth, barHeight, throttleValue, throttleColor);
+        if (m_bShowMaxMarkers && m_maxFramesRemaining[0] > 0) {
+            addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[0]);
+        }
         addString("T", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
                   Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
         currentX += barWidth + barSpacing;
@@ -146,6 +150,9 @@ void BarsWidget::rebuildRenderData() {
 
     // Bar 1: Brake (B) - split into FBR | RBR when both available, full width FBR when rear unavailable
     if (m_enabledColumns & COL_BRAKE) {
+        // Track max of both brakes (use highest value)
+        float maxBrakeValue = std::max(frontBrakeValue, rearBrakeValue);
+        updateMaxTracking(1, maxBrakeValue);
         if (hasFullTelemetry) {
             // Split bar: front brake (left) | rear brake (right)
             addVerticalBar(currentX, contentStartY, halfBarWidth, barHeight, frontBrakeValue, frontBrakeColor);
@@ -154,6 +161,9 @@ void BarsWidget::rebuildRenderData() {
             // Full width: only front brake available
             addVerticalBar(currentX, contentStartY, barWidth, barHeight, frontBrakeValue, frontBrakeColor);
         }
+        if (m_bShowMaxMarkers && m_maxFramesRemaining[1] > 0) {
+            addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[1]);
+        }
         addString("B", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
                   Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
         currentX += barWidth + barSpacing;
@@ -161,7 +171,11 @@ void BarsWidget::rebuildRenderData() {
 
     // Bar 2: Clutch (C) - single bar (muted when unavailable)
     if (m_enabledColumns & COL_CLUTCH) {
+        updateMaxTracking(2, clutchValue);
         addVerticalBar(currentX, contentStartY, barWidth, barHeight, clutchValue, clutchColor);
+        if (m_bShowMaxMarkers && m_maxFramesRemaining[2] > 0) {
+            addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[2]);
+        }
         addString("C", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
                   Fonts::getNormal(), hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
         currentX += barWidth + barSpacing;
@@ -169,7 +183,11 @@ void BarsWidget::rebuildRenderData() {
 
     // Bar 3: RPM (R) - single bar
     if (m_enabledColumns & COL_RPM) {
+        updateMaxTracking(3, rpmValue);
         addVerticalBar(currentX, contentStartY, barWidth, barHeight, rpmValue, rpmColor);
+        if (m_bShowMaxMarkers && m_maxFramesRemaining[3] > 0) {
+            addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[3]);
+        }
         addString("R", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
                   Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
         currentX += barWidth + barSpacing;
@@ -177,8 +195,14 @@ void BarsWidget::rebuildRenderData() {
 
     // Bar 4: Suspension (S) - split into FSU | RSU (muted when unavailable)
     if (m_enabledColumns & COL_SUSPENSION) {
+        // Track max of both suspension values (use highest)
+        float maxSuspValue = std::max(frontSuspValue, rearSuspValue);
+        updateMaxTracking(4, maxSuspValue);
         addVerticalBar(currentX, contentStartY, halfBarWidth, barHeight, frontSuspValue, frontSuspColor);
         addVerticalBar(currentX + halfBarWidth, contentStartY, halfBarWidth, barHeight, rearSuspValue, rearSuspColor);
+        if (m_bShowMaxMarkers && m_maxFramesRemaining[4] > 0) {
+            addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[4]);
+        }
         addString("S", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
                   Fonts::getNormal(), hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
         currentX += barWidth + barSpacing;
@@ -186,10 +210,62 @@ void BarsWidget::rebuildRenderData() {
 
     // Bar 5: Fuel (F) - single bar (muted when unavailable)
     if (m_enabledColumns & COL_FUEL) {
+        updateMaxTracking(5, fuelValue);
         addVerticalBar(currentX, contentStartY, barWidth, barHeight, fuelValue, fuelColor);
+        if (m_bShowMaxMarkers && m_maxFramesRemaining[5] > 0) {
+            addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[5]);
+        }
         addString("F", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
                   Fonts::getNormal(), hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
     }
+}
+
+void BarsWidget::updateMaxTracking(int barIndex, float currentValue) {
+    if (barIndex < 0 || barIndex >= NUM_BARS) return;
+
+    // Track overall max
+    if (currentValue > m_maxValues[barIndex]) {
+        m_maxValues[barIndex] = currentValue;
+    }
+
+    // Max marker: show at peak when value starts decreasing, hide when increasing
+    // Use small threshold to avoid jitter from noise
+    constexpr float THRESHOLD = 0.02f;
+
+    if (currentValue > m_markerValues[barIndex] + THRESHOLD) {
+        // Value exceeds marker - update marker position, hide it
+        m_markerValues[barIndex] = currentValue;
+        m_maxFramesRemaining[barIndex] = 0;
+    } else if (currentValue < m_markerValues[barIndex] - THRESHOLD && m_maxFramesRemaining[barIndex] == 0) {
+        // Value dropped below marker - start showing marker (linger at peak)
+        m_maxFramesRemaining[barIndex] = m_maxMarkerLingerFrames;
+    } else if (m_maxFramesRemaining[barIndex] > 0) {
+        // Marker is showing - countdown
+        m_maxFramesRemaining[barIndex]--;
+        // When linger ends, reset marker to 0 so it disappears
+        if (m_maxFramesRemaining[barIndex] == 0) {
+            m_markerValues[barIndex] = 0.0f;
+        }
+    }
+
+    m_prevValues[barIndex] = currentValue;
+}
+
+void BarsWidget::addMaxMarker(float x, float y, float barWidth, float barHeight, float maxValue) {
+    // Draw a thin horizontal white line at the max value position
+    maxValue = std::max(0.0f, std::min(1.0f, maxValue));
+    if (maxValue < 0.01f) return;  // Don't draw if max is essentially zero
+
+    float markerHeight = barHeight * 0.02f;  // Thin line (2% of bar height)
+    float markerY = y + barHeight * (1.0f - maxValue) - markerHeight * 0.5f;
+
+    SPluginQuad_t markerQuad;
+    float markerX = x;
+    applyOffset(markerX, markerY);
+    setQuadPositions(markerQuad, markerX, markerY, barWidth, markerHeight);
+    markerQuad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
+    markerQuad.m_ulColor = ColorConfig::getInstance().getPrimary();  // White
+    m_quads.push_back(markerQuad);
 }
 
 void BarsWidget::addVerticalBar(float x, float y, float barWidth, float barHeight,
@@ -238,5 +314,16 @@ void BarsWidget::resetToDefaults() {
     m_fScale = 1.0f;
     setPosition(0.858f, 0.8547f);
     m_enabledColumns = COL_DEFAULT;
+    m_bShowMaxMarkers = false;  // Max markers OFF by default
+    m_maxMarkerLingerFrames = 60;  // ~1 second at 60fps
+
+    // Reset max tracking state
+    for (int i = 0; i < NUM_BARS; ++i) {
+        m_maxValues[i] = 0.0f;
+        m_markerValues[i] = 0.0f;
+        m_prevValues[i] = 0.0f;
+        m_maxFramesRemaining[i] = 0;
+    }
+
     setDataDirty();
 }
