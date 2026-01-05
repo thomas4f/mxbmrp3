@@ -35,14 +35,19 @@ mxbmrp3/
 │   ├── hud/                    # Display components
 │   │   ├── base_hud.*          # Abstract base class for all HUDs
 │   │   ├── *_hud.*             # Full HUDs (complex, configurable)
-│   │   └── *_widget.*          # Simple widgets (focused display)
+│   │   ├── *_widget.*          # Simple widgets (focused display)
+│   │   └── settings/           # Settings UI components
+│   │       ├── settings_hud.*      # Main settings menu
+│   │       ├── settings_layout.*   # Layout helper context
+│   │       └── settings_tab_*.cpp  # Individual tab renderers
 │   └── diagnostics/            # Debugging tools
 │       ├── logger.*            # Debug logging to file
 │       └── timer.h             # Performance measurement
 ├── mxbmrp3_data/               # Runtime assets (discovered dynamically)
 │   ├── fonts/                  # .fnt files (bitmap fonts)
 │   ├── textures/               # .tga files (HUD backgrounds with variants)
-│   └── icons/                  # .tga files (rider icons for map/radar)
+│   ├── icons/                  # .tga files (rider icons for map/radar)
+│   └── tooltips.json           # UI tooltip definitions
 ├── docs/                       # Documentation
 ├── replay_tool/                # Separate tool for replay analysis
 └── mxbmrp3.sln                 # Visual Studio solution
@@ -271,7 +276,7 @@ Abstract base class that all HUDs inherit from. Provides:
 - `PerformanceHud` - FPS, CPU usage graphs
 - `RadarHud` - Proximity radar with nearby rider alerts
 - `PitboardHud` - Pitboard-style lap/split information
-- `RecordsHud` - Track records from online database
+- `RecordsHud` - Track records from online databases (CBR or MXB-Ranked providers)
 - `TimingHud` - Split time comparison popup (center display)
 - `GapBarHud` - Live gap visualization bar with ghost position marker
 - `SettingsHud` - Interactive settings menu UI
@@ -285,6 +290,7 @@ Abstract base class that all HUDs inherit from. Provides:
 - `SpeedoWidget` - Analog speedometer dial
 - `TachoWidget` - Analog tachometer dial
 - `BarsWidget` - Visual telemetry bars (throttle, brake, etc.)
+- `LeanWidget` - Bike lean/roll angle display with arc gauge and steering bar
 - `FuelWidget` - Fuel calculator with consumption tracking
 - `NoticesWidget` - Race status notices (wrong way, blue flag, last lap, finished)
 - `GamepadWidget` - Controller visualization with button/stick/trigger display
@@ -455,6 +461,74 @@ In-game settings menu (toggle with `~` key). Allows users to:
 - Toggle specific columns/rows in data tables
 - Configure display modes
 
+#### Settings Layout System
+
+The settings UI uses a helper class (`SettingsLayoutContext`) for consistent layout across all tabs:
+
+```
+mxbmrp3/hud/settings/
+├── settings_hud.h/.cpp          # Main SettingsHud class
+├── settings_layout.h/.cpp       # SettingsLayoutContext helper
+├── settings_tab_general.cpp     # General preferences & profiles
+├── settings_tab_appearance.cpp  # Fonts & colors
+├── settings_tab_standings.cpp   # Standings HUD options
+├── settings_tab_map.cpp         # Track map options
+├── settings_tab_radar.cpp       # Radar options
+├── settings_tab_*.cpp           # Other tab implementations
+└── ...
+```
+
+**SettingsLayoutContext** provides standardized control rendering:
+
+| Method | Purpose |
+|--------|---------|
+| `addSectionHeader(title)` | Section divider with label |
+| `addToggleControl(label, value, ...)` | On/Off toggle with `< value >` arrows |
+| `addCycleControl(label, value, ...)` | Multi-value cycle control |
+| `addStandardHudControls(hud)` | Common controls (Visible, Title, Texture, Opacity, Scale) |
+| `addWidgetRow(name, hud, ...)` | Table row for Widgets tab |
+| `addSpacing(factor)` | Vertical spacing |
+
+**Control Width Standardization**: All controls use `VALUE_WIDTH = 10` to ensure vertical alignment - users can toggle settings by moving the mouse vertically without horizontal adjustment.
+
+#### Tooltip System
+
+Tooltips provide contextual help when hovering over controls:
+
+```
+mxbmrp3_data/
+└── tooltips.json    # Tooltip definitions
+```
+
+**tooltips.json structure**:
+```json
+{
+  "version": 1,
+  "tabs": {
+    "standings": {
+      "title": "Standings",
+      "tooltip": "Live race standings showing position, gaps..."
+    }
+  },
+  "controls": {
+    "common.visible": "Show or hide this element during gameplay.",
+    "standings.rows": "Maximum number of rider rows to display.",
+    "map.range": "Zoom level. Full shows entire track..."
+  }
+}
+```
+
+**TooltipManager** (`core/tooltip_manager.h`) is a header-only singleton that:
+- Loads `tooltips.json` at startup
+- Provides `getTabTooltip(tabId)` and `getControlTooltip(controlId)` methods
+- Returns empty string if tooltip not found (graceful fallback)
+
+Tooltips are rendered when hovering over:
+- Tab buttons (shows tab description)
+- Control rows (shows setting description)
+
+The row-wide tooltip regions are created by passing a `tooltipId` parameter to control helpers like `addToggleControl()` and `addCycleControl()`.
+
 ## Asset Management
 
 The plugin uses a dynamic asset discovery system that scans subdirectories at startup.
@@ -472,6 +546,12 @@ Discovers and registers assets from `plugins/mxbmrp3_data/` subdirectories:
 **Texture Variants**: Textures can have numbered variants (e.g., `standings_hud_1.tga`, `standings_hud_2.tga`). Users can cycle through variants in settings.
 
 **Icon Discovery**: Icons are discovered alphabetically. Use `AssetManager::getIconSpriteIndex(filename)` to get the sprite index for a specific icon by filename. Settings store icon filenames for persistence.
+
+**User Asset Overrides**: Users can override bundled assets by placing custom files in the save directory:
+- Location: `{save_path}/mxbmrp3/{fonts,textures,icons}/`
+- On startup, AssetManager syncs user overrides to the plugin data directory
+- User files override bundled files with the same name
+- Allows customization without modifying the plugin installation
 
 ### FontConfig (`core/font_config.*`)
 
@@ -512,6 +592,35 @@ HUDs can be dragged with right-click:
 3. Updates offset while button held
 4. `validatePosition()` keeps HUD on screen
 
+## Auto-Update System
+
+The plugin includes an optional auto-update system that checks for new versions on GitHub.
+
+### UpdateChecker (`core/update_checker.*`)
+
+Checks GitHub releases API for newer versions:
+- Runs asynchronously in background thread
+- Compares semantic version numbers (e.g., "1.6.6.0")
+- Fetches release notes, download URL, and file size
+- User-configurable: Off or Notify mode
+
+### UpdateDownloader (`core/update_downloader.*`)
+
+Downloads and installs plugin updates:
+- Downloads ZIP file from GitHub release assets
+- Verifies SHA256 checksum (if provided in release)
+- Extracts using bundled miniz library
+- Creates backup before installation (atomic update)
+- Stages update for next game restart
+
+**Update Flow**:
+1. UpdateChecker detects new version → status = `UPDATE_AVAILABLE`
+2. User clicks "Install" in settings → UpdateDownloader starts
+3. Download → Verify → Backup existing → Extract → Install
+4. Status = `READY` → Restart required
+
+**Vendor Dependency**: Uses `vendor/miniz/` for ZIP extraction (public domain, single-file library).
+
 ## Key Design Patterns
 
 ### Singletons
@@ -540,6 +649,70 @@ Instead of rebuilding every frame:
 4. If clean -> reuse cached data
 
 This is crucial for performance since `Draw()` is called every frame.
+
+#### Standard Pattern (Most HUDs)
+
+Use `processDirtyFlags()` for HUDs that rely on `DataChangeType` notifications:
+
+```cpp
+void MyHud::update() {
+    processDirtyFlags();  // Handles isDataDirty/isLayoutDirty automatically
+}
+```
+
+#### Self-Detection Pattern (Polling Widgets)
+
+Some widgets display values that don't trigger `DataChangeType` notifications (e.g., session time updates continuously but doesn't fire `SessionData`). These widgets must poll PluginData and detect changes themselves:
+
+```cpp
+void TimeWidget::update() {
+    // 1. Poll fresh data
+    int currentTime = pluginData.getSessionTime();
+
+    // 2. Compare to cached "last rendered" value
+    if (currentSeconds != m_cachedSeconds) {
+        setDataDirty();  // Self-mark dirty
+    }
+
+    // 3. Process dirty flags
+    if (isDataDirty()) {
+        rebuildRenderData();
+        m_cachedSeconds = currentSeconds;  // Update cache AFTER rebuild
+        clearDataDirty();
+        clearLayoutDirty();
+    }
+    else if (isLayoutDirty()) {
+        rebuildLayout();
+        clearLayoutDirty();
+    }
+}
+```
+
+**Why can't these use `processDirtyFlags()`?** The cache update must happen after `rebuildRenderData()` using local variables calculated before the dirty check. The `onAfterDataRebuild()` hook exists for simpler cases, but these widgets use values computed at the top of `update()`.
+
+#### Hybrid Pattern (Change Detection Before, Standard After)
+
+Some HUDs do change detection but don't need post-rebuild caching:
+
+```cpp
+void NoticesWidget::update() {
+    // Change detection - updates member state and marks dirty
+    if (wrongWay != m_bIsWrongWay) {
+        m_bIsWrongWay = wrongWay;  // State updated BEFORE dirty check
+        setDataDirty();
+    }
+
+    processDirtyFlags();  // Can use standard helper
+}
+```
+
+#### When to Use Which Pattern
+
+| Pattern | Use When | Examples |
+|---------|----------|----------|
+| `processDirtyFlags()` | HUD relies on DataChangeType notifications | StandingsHud, IdealLapHud, MapHud |
+| Hybrid | Polls data but caches state BEFORE dirty check | NoticesWidget, GapBarHud |
+| Self-Detection | Needs to cache "last rendered value" AFTER rebuild | TimeWidget, PositionWidget, LapWidget |
 
 ### Handler Singleton Macro
 
@@ -625,7 +798,7 @@ SCOPED_TIMER_THRESHOLD("MyFunction", 100);  // Logs if > 100us
 
 ## Common Gotchas
 
-1. **Don't cache game data in HUDs** - Always read from PluginData. HUDs only cache formatted render data.
+1. **Don't cache game data in HUDs for rendering** - Always read fresh from PluginData when building render data. HUDs only cache formatted render data (`m_quads`, `m_strings`). **Exception:** Widgets that poll continuously-changing values (like session time) may cache "last rendered value" for change detection - see "Self-Detection Pattern" in Dirty Flag Pattern section.
 
 2. **0-based vs 1-based indexing** - API uses 0-based lap numbers, UI shows 1-based. Check the API header comments.
 
@@ -650,10 +823,18 @@ SCOPED_TIMER_THRESHOLD("MyFunction", 100);  // Logs if > 100us
 | Asset manager | `core/asset_manager.cpp` |
 | Font configuration | `core/font_config.cpp` |
 | Color configuration | `core/color_config.cpp` |
+| Update checker | `core/update_checker.cpp` |
+| Update downloader | `core/update_downloader.cpp` |
+| Settings UI | `hud/settings/settings_hud.cpp` |
+| Settings layout helpers | `hud/settings/settings_layout.cpp` |
+| Settings tabs | `hud/settings/settings_tab_*.cpp` |
+| Tooltip definitions | `mxbmrp3_data/tooltips.json` |
+| Tooltip manager | `core/tooltip_manager.h` |
 | Settings file | `{save_path}/mxbmrp3/mxbmrp3_settings.ini` |
 | Log file | `{save_path}/mxbmrp3/mxbmrp3.log` |
 | Build output | `build/Release/mxbmrp3.dlo` |
 | Runtime assets | `{game_path}/plugins/mxbmrp3_data/{fonts,textures,icons}/` |
+| User asset overrides | `{save_path}/mxbmrp3/{fonts,textures,icons}/` |
 
 ## Quick Reference: Adding Features
 
@@ -662,6 +843,8 @@ SCOPED_TIMER_THRESHOLD("MyFunction", 100);  // Logs if > 100us
 | Add new HUD | Create class, inherit BaseHud, register in HudManager |
 | Add new data type | Add struct to PluginData, add DataChangeType enum |
 | Add new setting | Add field to HUD, save/load in SettingsManager |
+| Add settings tab | Create `settings_tab_*.cpp`, add tab enum, register in SettingsHud |
+| Add tooltip | Add entry to `tooltips.json`, pass tooltipId to control helper |
 | Add keyboard shortcut | Handle in HudManager::processKeyboardInput() |
 | Add new handler | Create handler class, route from PluginManager |
 | Add new font | Place `.fnt` file in `mxbmrp3_data/fonts/` (auto-discovered) |

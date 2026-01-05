@@ -78,7 +78,7 @@ HUDs pull fresh from PluginData on rebuild - they only cache formatted render da
 This enforces PluginData as single source of truth and prevents synchronization issues.
 
 **Widget vs HUD Distinction**
-Widgets (TimeWidget, PositionWidget, LapWidget, SessionWidget, SpeedWidget, SpeedoWidget, TachoWidget, BarsWidget, NoticesWidget, VersionWidget, SettingsButtonWidget) are simplified HUD components with:
+Widgets (TimeWidget, PositionWidget, LapWidget, SessionWidget, SpeedWidget, SpeedoWidget, TachoWidget, BarsWidget, LeanWidget, NoticesWidget, VersionWidget, SettingsButtonWidget) are simplified HUD components with:
 - Single-purpose display (no configurable columns/rows)
 - Minimal settings (just position, scale, opacity)
 - Simpler rendering logic
@@ -132,9 +132,12 @@ When implementing event handlers or debugging timing/lap data:
 - `mxbmrp3/core/plugin_manager.cpp` - Plugin entry point
 - `mxbmrp3/core/plugin_data.h/.cpp` - Game state cache
 - `mxbmrp3/core/hud_manager.h/.cpp` - HUD ownership
-- `mxbmrp3/core/asset_manager.h/.cpp` - Dynamic asset discovery
+- `mxbmrp3/core/asset_manager.h/.cpp` - Dynamic asset discovery (with user override support)
 - `mxbmrp3/core/font_config.h/.cpp` - Font category configuration
 - `mxbmrp3/core/color_config.h/.cpp` - Color palette configuration
+- `mxbmrp3/core/update_checker.h/.cpp` - GitHub update checker
+- `mxbmrp3/core/update_downloader.h/.cpp` - Update download and installation
+- `mxbmrp3/core/tooltip_manager.h` - UI tooltip management (header-only)
 
 **HUD Base:**
 - `mxbmrp3/hud/base_hud.h/.cpp` - Base class for all HUDs
@@ -145,7 +148,9 @@ When implementing event handlers or debugging timing/lap data:
 - `mxbmrp3/hud/map_hud.cpp` - Advanced (2D rendering, rotation)
 
 **Settings:**
-- `mxbmrp3/hud/settings_hud.cpp` - Settings UI (longest file, ~1500 lines)
+- `mxbmrp3/hud/settings_hud.cpp` - Main settings UI class
+- `mxbmrp3/hud/settings/settings_tab_*.cpp` - Individual tab implementations
+- `mxbmrp3/hud/settings/settings_layout.cpp` - Layout helper context
 - `mxbmrp3/core/settings_manager.cpp` - Persistence layer
 
 ---

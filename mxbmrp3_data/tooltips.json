@@ -1,0 +1,257 @@
+{
+  "version": 1,
+  "tabs": {
+    "general": {
+      "title": "General",
+      "tooltip": "Global settings including unit preferences, profiles, and configuration options."
+    },
+    "appearance": {
+      "title": "Appearance",
+      "tooltip": "Customize the visual style of all HUD elements including fonts and colors."
+    },
+    "hotkeys": {
+      "title": "Hotkeys",
+      "tooltip": "Configure keyboard shortcuts and controller buttons for quick access to HUD toggles."
+    },
+    "riders": {
+      "title": "Riders",
+      "tooltip": "Track specific riders with custom colors and icons. Highlighted on map and radar."
+    },
+    "rumble": {
+      "title": "Rumble",
+      "tooltip": "Configure controller vibration for racing events like bumps, wheelspin, and impacts."
+    },
+    "updates": {
+      "title": "Updates",
+      "tooltip": "Automatic update checking and installation. Downloads and installs new versions from GitHub."
+    },
+    "standings": {
+      "title": "Standings",
+      "tooltip": "Live race standings showing position, gaps, and rider information for all competitors."
+    },
+    "map": {
+      "title": "Track Map",
+      "tooltip": "Overhead view of the track with real-time rider positions. Supports zoom and display modes."
+    },
+    "radar": {
+      "title": "Radar",
+      "tooltip": "Shows nearby riders relative to your position. Useful for close racing awareness."
+    },
+    "lap_log": {
+      "title": "Lap Log",
+      "tooltip": "History of your recent lap times with sector breakdowns. Shows lap-by-lap performance."
+    },
+    "ideal_lap": {
+      "title": "Ideal Lap",
+      "tooltip": "Displays your theoretical best lap time calculated from your fastest individual sectors."
+    },
+    "telemetry": {
+      "title": "Telemetry",
+      "tooltip": "Real-time input data including throttle, brake, clutch, RPM, suspension travel, and gear."
+    },
+    "performance": {
+      "title": "Performance",
+      "tooltip": "System performance metrics including frame rate and plugin execution time."
+    },
+    "records": {
+      "title": "Records",
+      "tooltip": "Lap records from online providers (CBR, MXB-Ranked) for your current track."
+    },
+    "pitboard": {
+      "title": "Pitboard",
+      "tooltip": "Info displayed at pit area or timing points, showing position, lap times, and gap."
+    },
+    "timing": {
+      "title": "Timing",
+      "tooltip": "Lap and sector timing display with comparisons to session best and personal records."
+    },
+    "gap_bar": {
+      "title": "Gap Bar",
+      "tooltip": "Visual progress bar showing your gap to the rider ahead and behind."
+    },
+    "widgets": {
+      "title": "Widgets",
+      "tooltip": "Simple HUD elements showing speed, position, lap count, session time, and other info."
+    }
+  },
+  "controls": {
+    "common.visible": "Show or hide this element during gameplay.",
+    "common.title": "Toggle the title bar at the top of this HUD.",
+    "common.texture": "Select a background texture variant. Off uses a solid color background.",
+    "common.opacity": "Background transparency. 0% is fully transparent, 100% is fully opaque.",
+    "common.scale": "Size multiplier. Affects all text and graphics in this HUD.",
+
+    "standings.rows": "Maximum rider rows to display. More rows use more screen space.",
+    "standings.col_tracked": "Show icon marker for tracked riders.",
+    "standings.col_pos": "Show position number column.",
+    "standings.col_racenum": "Show race number column.",
+    "standings.col_name": "Show rider name column.",
+    "standings.col_bike": "Show bike model column.",
+    "standings.col_status": "Show session status indicator (PIT, DNS, DSQ, lap count, FIN).",
+    "standings.col_penalty": "Show penalty indicator when riders have active penalties.",
+    "standings.col_bestlap": "Show best lap time column.",
+    "standings.col_debug": "Show debug data column (developer mode only).",
+    "standings.col_official_gap": "Official gap column. Off hides it, Player shows your gap only, All shows all gaps.",
+    "standings.col_live_gap": "Live gap column. Off hides it, Player shows your gap only, All shows all gaps.",
+    "standings.gap_indicator": "Show gap rows between adjacent riders. Off/Official/Live/Both.",
+    "standings.gap_reference": "Gap reference point. Leader shows gaps to P1, Player shows gaps to you.",
+
+    "ideal_lap.sectors": "Show your fastest individual sector times (S1, S2, S3).",
+    "ideal_lap.laps": "Show your last lap, best lap, and calculated ideal lap times.",
+
+    "lap_log.rows": "Number of recent laps to display.",
+    "lap_log.col_lap": "Show lap number column.",
+    "lap_log.col_sectors": "Show sector split times (S1, S2, S3).",
+    "lap_log.col_time": "Show total lap time column.",
+
+    "telemetry.display": "Display mode. Graphs shows visual meters, Numbers shows text values, Both shows both.",
+    "telemetry.throttle": "Show throttle input percentage.",
+    "telemetry.front_brake": "Show front brake input percentage.",
+    "telemetry.rear_brake": "Show rear brake input percentage.",
+    "telemetry.clutch": "Show clutch input percentage.",
+    "telemetry.rpm": "Show engine RPM.",
+    "telemetry.front_susp": "Show front suspension travel.",
+    "telemetry.rear_susp": "Show rear suspension travel.",
+    "telemetry.gear": "Show current gear number.",
+
+    "performance.display": "Display mode. Graphs shows visual meters, Numbers shows text values, Both shows both.",
+    "performance.fps": "Show frames per second.",
+    "performance.cpu": "Show plugin execution time in milliseconds.",
+
+    "pitboard.show_mode": "When to display. Always shows constantly, Pit shows near pit area, Splits after timing points.",
+    "pitboard.rider": "Show rider name row.",
+    "pitboard.session": "Show session information row.",
+    "pitboard.position": "Show race position row.",
+    "pitboard.time": "Show elapsed session time row.",
+    "pitboard.lap": "Show lap number row.",
+    "pitboard.last_lap": "Show last lap time row.",
+    "pitboard.gap": "Show gap to leader row.",
+
+    "records.provider": "Data source for leaderboard records. CBR or MXB Ranked.",
+    "records.count": "Number of records to display from the leaderboard.",
+    "records.autofetch": "Automatically fetch records when entering an event.",
+    "records.col_pos": "Show position/rank column.",
+    "records.col_rider": "Show rider name column.",
+    "records.col_bike": "Show bike model column.",
+    "records.col_laptime": "Show lap time column.",
+    "records.col_sectors": "Show sector time columns (S1, S2, S3). Only available with MXB Ranked provider.",
+    "records.col_date": "Show date when the record was set.",
+
+    "timing.label": "Show the label column (Split 1, Split 2, Lap).",
+    "timing.time": "Show the time column with split/lap times.",
+    "timing.gap": "Gap comparison for primary row. Off hides the gap column, or select a comparison type.",
+    "timing.show": "Splits shows timing only after crossing splits. Always shows timing constantly.",
+    "timing.freeze": "How long to display gap values after crossing a split. Off shows no gaps.",
+    "timing.show_reference": "Show reference times next to gaps.",
+    "timing.layout": "Vertical stacks elements in one column. Horizontal puts primary side-by-side, chips below.",
+    "timing.secondary_pb": "Show session personal best as secondary chip. Disabled when set as primary.",
+    "timing.secondary_alltime": "Show all-time personal best as secondary chip. Disabled when set as primary.",
+    "timing.secondary_ideal": "Show ideal lap (sum of best sectors) as secondary chip. Disabled when set as primary.",
+    "timing.secondary_overall": "Show overall best (any rider) as secondary chip. Disabled when set as primary.",
+    "timing.secondary_record": "Show fastest record from Records HUD as secondary chip. Disabled when set as primary.",
+
+    "map.range": "Zoom level. Full shows entire track, or select a specific range in meters.",
+    "map.rotation": "When On, the map rotates so your heading is always up. When Off, the map stays fixed to track.",
+    "map.outline": "Show the track outline. Useful for orientation but can be disabled for a cleaner look.",
+    "map.track_width": "Thickness of the track outline line.",
+    "map.colorize": "Rider marker colors. Uniform uses same color, Brand uses bike colors, Position by relative pos.",
+    "map.rider_shape": "Icon shape for rider markers on the map. Off hides non-tracked riders.",
+    "map.marker_scale": "Size of rider markers relative to the map.",
+    "map.labels": "Labels next to riders. Position shows P1/P2, Race Num shows numbers, Both shows both.",
+
+    "radar.mode": "Display mode. Off hides radar, On shows always, Auto-hide shows only when riders are nearby.",
+    "radar.range": "Detection radius in meters. Riders outside this range are not shown.",
+    "radar.player_arrow": "Show your own position arrow at the radar center.",
+    "radar.colorize": "Rider marker colors. Uniform uses same color, Brand uses bike colors, Position by relative pos.",
+    "radar.rider_shape": "Icon shape for rider markers on the radar.",
+    "radar.marker_scale": "Size of rider markers on the radar.",
+    "radar.labels": "Labels next to riders. Position shows P1/P2, Race Num shows numbers, Both shows both.",
+    "radar.proximity_arrows": "Directional arrows for nearby riders. Edge shows on screen edge, Circle shows around center.",
+    "radar.alert_distance": "Distance at which proximity arrows appear.",
+    "radar.proximity_color": "Color mode for proximity arrows. Distance fades with proximity, Position uses relative colors.",
+    "radar.proximity_shape": "Icon shape for proximity warning arrows.",
+    "radar.proximity_scale": "Size of proximity warning arrows.",
+
+    "gap_bar.freeze": "How long to freeze the gap bar display after a change.",
+    "gap_bar.markers": "Show position markers on the gap bar.",
+    "gap_bar.range": "Time range displayed on the gap bar in seconds.",
+    "gap_bar.width": "Width multiplier for the gap bar.",
+
+    "general.controller": "Select which controller to use for gamepad widget and rumble effects.",
+    "general.speed_unit": "Unit for speed display. mph or km/h.",
+    "general.fuel_unit": "Unit for fuel display. Liters or Gallons.",
+    "general.grid_snap": "When enabled, HUDs snap to a grid when dragging.",
+    "general.auto_switch": "Automatically switch profiles based on session type.",
+    "general.copy_profile": "Copy current profile settings to another profile.",
+    "general.reset_profile": "Reset current profile to default settings.",
+    "general.reset_all": "Reset all profiles and settings to defaults.",
+
+    "updates.check_enabled": "Check for updates when the game starts.",
+    "updates.debug_mode": "Test update installation without overwriting the real plugin.",
+    "updates.channel": "Stable only shows final releases. Prerelease includes test builds.",
+    "updates.check_now": "Manually check for available updates.",
+    "updates.install": "Download and install the available update. Requires game restart.",
+    "updates.status": "Current update status and version information.",
+
+    "appearance.font_title": "Font used for HUD titles.",
+    "appearance.font_normal": "Font used for normal text.",
+    "appearance.font_strong": "Font used for emphasized text.",
+    "appearance.font_marker": "Font used for map and radar markers.",
+    "appearance.font_small": "Font used for small text and footnotes.",
+    "appearance.color_primary": "Primary text color used for important information.",
+    "appearance.color_secondary": "Secondary text color for labels and less important text.",
+    "appearance.color_tertiary": "Tertiary color for subtle elements.",
+    "appearance.color_muted": "Muted color for disabled or inactive elements.",
+    "appearance.color_background": "Background color for HUD panels.",
+    "appearance.color_accent": "Accent color for buttons and highlights.",
+    "appearance.color_positive": "Color indicating positive values (faster times, improvements).",
+    "appearance.color_neutral": "Color indicating neutral values (no change).",
+    "appearance.color_warning": "Color indicating warnings.",
+    "appearance.color_negative": "Color indicating negative values (slower times, losses).",
+
+    "rumble.enabled": "Enable or disable controller vibration for all events.",
+    "rumble.stack": "When enabled, multiple rumble effects combine. When off, only the strongest effect plays.",
+    "rumble.crashed": "Continue rumble effects while the rider is crashed.",
+    "rumble.bumps": "Vibration from suspension travel over bumps. Min/Max set the suspension velocity range in m/s.",
+    "rumble.slide": "Vibration when the bike slides sideways. Min/Max set the slide angle range in degrees.",
+    "rumble.spin": "Vibration from rear wheel spin. Min/Max set the wheel slip ratio range.",
+    "rumble.lockup": "Vibration when brakes lock up. Min/Max set the wheel slip ratio range.",
+    "rumble.wheelie": "Vibration during wheelies. Min/Max set the pitch angle range in degrees.",
+    "rumble.steer": "Vibration from steering forces. Min/Max set the steering torque range in Newton-meters.",
+    "rumble.rpm": "Vibration synchronized with engine RPM. Min/Max set the RPM range.",
+    "rumble.surface": "Vibration from rough terrain. Min/Max set the vehicle speed range when off-track.",
+
+    "widgets.lap": "Shows current lap number and total laps in the session.",
+    "widgets.position": "Shows your current race position (P1, P2, etc.).",
+    "widgets.time": "Shows elapsed session time or time remaining.",
+    "widgets.session": "Shows current session type (Practice, Qualifying, Race).",
+    "widgets.speed": "Shows current speed with gear indicator that turns red at shift point.",
+    "widgets.speedo": "Analog speedometer gauge showing current speed.",
+    "widgets.tacho": "Tachometer gauge showing engine RPM.",
+    "widgets.bars": "Vertical bars showing throttle, brake, clutch, RPM, suspension, and fuel levels.",
+    "widgets.notices": "Displays game notifications like wrong way, blue flag, last lap, and finished indicators.",
+    "widgets.fuel": "Shows remaining fuel level and estimated laps.",
+    "widgets.gamepad": "Visual representation of controller button inputs.",
+    "widgets.lean": "Shows rider lean angle in degrees with arc gauge.",
+    "widgets.pointer": "Mouse pointer for interacting with HUD elements.",
+    "widgets.version": "Shows plugin version number.",
+
+    "hotkeys.settings": "Toggle the settings menu on/off.",
+    "hotkeys.standings": "Toggle the standings HUD on/off.",
+    "hotkeys.map": "Toggle the track map HUD on/off.",
+    "hotkeys.radar": "Toggle the radar HUD on/off.",
+    "hotkeys.lap_log": "Toggle the lap log HUD on/off.",
+    "hotkeys.ideal_lap": "Toggle the ideal lap HUD on/off.",
+    "hotkeys.telemetry": "Toggle the telemetry HUD on/off.",
+    "hotkeys.input": "Toggle the input display HUD on/off.",
+    "hotkeys.records": "Toggle the records HUD on/off.",
+    "hotkeys.pitboard": "Toggle the pitboard HUD on/off.",
+    "hotkeys.timing": "Toggle the timing HUD on/off.",
+    "hotkeys.gap_bar": "Toggle the gap bar HUD on/off.",
+    "hotkeys.performance": "Toggle the performance HUD on/off.",
+    "hotkeys.rumble": "Toggle the rumble HUD on/off.",
+    "hotkeys.widgets": "Toggle all widgets on/off.",
+    "hotkeys.all_huds": "Toggle all HUDs on/off.",
+    "hotkeys.reload": "Reload configuration from disk."
+  }
+}

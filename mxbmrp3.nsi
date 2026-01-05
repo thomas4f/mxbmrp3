@@ -17,11 +17,6 @@
   !define OUTPUT_DIR "dist"
 !endif
 
-; Generate uninstall file lists at compile time (preserves user-added files during uninstall)
-!system 'cmd /c "(for %f in (${PLUGIN_SOURCE_PATH}\mxbmrp3_data\fonts\*.fnt) do @echo Delete "$INSTDIR\mxbmrp3_data\fonts\%~nxf") > dist\uninstall_fonts.nsh"'
-!system 'cmd /c "(for %f in (${PLUGIN_SOURCE_PATH}\mxbmrp3_data\textures\*.tga) do @echo Delete "$INSTDIR\mxbmrp3_data\textures\%~nxf") > dist\uninstall_textures.nsh"'
-!system 'cmd /c "(for %f in (${PLUGIN_SOURCE_PATH}\mxbmrp3_data\icons\*.tga) do @echo Delete "$INSTDIR\mxbmrp3_data\icons\%~nxf") > dist\uninstall_icons.nsh"'
-
 !define VC_REDIST_URL "https://aka.ms/vc14/vc_redist.x64.exe"
 !define VC_REDIST_EXE_PATH "$TEMP\vc_redist.x64.exe"
 !define REG_UNINSTALL_KEY_PATH "Software\Microsoft\Windows\CurrentVersion\Uninstall"
@@ -289,6 +284,10 @@ Section "Install ${PLUGIN_NAME}" Section_InstallPlugin
   SetOutPath "$INSTDIR\mxbmrp3_data\icons"
   File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\icons\*.tga"
 
+  ; Data files
+  SetOutPath "$INSTDIR\mxbmrp3_data"
+  File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\tooltips.json"
+
   Call PromptInstallVCRedist
   WriteUninstaller "$INSTDIR\${PLUGIN_NAME_LC}_uninstall.exe"
   WriteRegStr HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "DisplayName" "${PLUGIN_NAME}"
@@ -307,36 +306,7 @@ Section "Uninstall"
 
   DetailPrint "Removing ${PLUGIN_NAME} files..."
   Delete "$INSTDIR\mxbmrp3.dlo"
-
-  ; Remove only the files we installed (auto-generated lists preserve user-added files)
-  !include "dist\uninstall_fonts.nsh"
-  RMDir "$INSTDIR\mxbmrp3_data\fonts"
-
-  !include "dist\uninstall_textures.nsh"
-  RMDir "$INSTDIR\mxbmrp3_data\textures"
-
-  !include "dist\uninstall_icons.nsh"
-  RMDir "$INSTDIR\mxbmrp3_data\icons"
-
-  ; Legacy cleanup (old flat structure)
-  Delete "$INSTDIR\mxbmrp3_data\EnterSansman-Italic.fnt"
-  Delete "$INSTDIR\mxbmrp3_data\FuzzyBubbles-Regular.fnt"
-  Delete "$INSTDIR\mxbmrp3_data\Tiny5-Regular.fnt"
-  Delete "$INSTDIR\mxbmrp3_data\RobotoMono-Regular.fnt"
-  Delete "$INSTDIR\mxbmrp3_data\RobotoMono-Bold.fnt"
-  Delete "$INSTDIR\mxbmrp3_data\pitboard_hud.tga"
-  Delete "$INSTDIR\mxbmrp3_data\pointer_widget.tga"
-  Delete "$INSTDIR\mxbmrp3_data\pointer.tga"
-  Delete "$INSTDIR\mxbmrp3_data\gear-circle.tga"
-  Delete "$INSTDIR\mxbmrp3_data\speedo_widget.tga"
-  Delete "$INSTDIR\mxbmrp3_data\tacho_widget.tga"
-  Delete "$INSTDIR\mxbmrp3_data\radar_hud.tga"
-  Delete "$INSTDIR\mxbmrp3_data\radar_sector.tga"
-  Delete "$INSTDIR\mxbmrp3_data\rider_circle.tga"
-  Delete "$INSTDIR\mxbmrp3_data\rider_triangle.tga"
-  Delete "$INSTDIR\mxbmrp3_data\rider_wedge.tga"
-
-  RMDir "$INSTDIR\mxbmrp3_data"
+  RMDir /r "$INSTDIR\mxbmrp3_data"
   Delete "$INSTDIR\${PLUGIN_NAME_LC}_uninstall.exe"
   DeleteRegKey HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}"
   DetailPrint "Uninstallation complete."
