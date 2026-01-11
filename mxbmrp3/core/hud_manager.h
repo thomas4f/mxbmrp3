@@ -41,11 +41,19 @@ public:
     // Mark all HUDs as needing rebuild (e.g., after color config change)
     void markAllHudsDirty();
 
+    // Rebuild all dirty HUDs immediately (without full update logic)
+    // Use after batch settings changes to ensure quads are updated before render
+    void rebuildAllIfDirty();
+
     // Check if HudManager is initialized
     bool isInitialized() const { return m_bInitialized; }
 
     // Check if settings menu is currently visible
     bool isSettingsVisible() const;
+
+    // Visibility queries for optimization (allows PluginData to skip processing)
+    // Returns true if TelemetryHud is visible and needs history buffer updates
+    bool isTelemetryHistoryNeeded() const;
 
     // Widgets master toggle (hides all widgets without changing individual states)
     bool areWidgetsEnabled() const { return !m_bAllWidgetsToggledOff; }

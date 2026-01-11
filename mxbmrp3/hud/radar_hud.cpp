@@ -57,6 +57,13 @@ RadarHud::RadarHud()
 }
 
 void RadarHud::update() {
+    // OPTIMIZATION: Skip processing when not visible
+    if (!isVisible()) {
+        clearDataDirty();
+        clearLayoutDirty();
+        return;
+    }
+
     // Handle dirty flags using base class helper
     processDirtyFlags();
 }
@@ -300,25 +307,25 @@ void RadarHud::renderRiderLabel(float radarX, float radarY, int raceNum, int pos
         // Create text outline by rendering dark text at offsets first
         float outlineOffset = labelFontSize * 0.05f;  // Small offset for outline
 
-        // Render outline at 4 cardinal directions
+        // Render outline at 4 cardinal directions (skip drop shadow - has own outline)
         addString(labelStr, screenX - outlineOffset, labelY, Justify::CENTER,
-                 Fonts::getSmall(), outlineColor, labelFontSize);
+                 Fonts::getSmall(), outlineColor, labelFontSize, true);
         addString(labelStr, screenX + outlineOffset, labelY, Justify::CENTER,
-                 Fonts::getSmall(), outlineColor, labelFontSize);
+                 Fonts::getSmall(), outlineColor, labelFontSize, true);
         addString(labelStr, screenX, labelY - outlineOffset, Justify::CENTER,
-                 Fonts::getSmall(), outlineColor, labelFontSize);
+                 Fonts::getSmall(), outlineColor, labelFontSize, true);
         addString(labelStr, screenX, labelY + outlineOffset, Justify::CENTER,
-                 Fonts::getSmall(), outlineColor, labelFontSize);
+                 Fonts::getSmall(), outlineColor, labelFontSize, true);
 
         // Render main text on top
         addString(labelStr, screenX, labelY, Justify::CENTER,
-                 Fonts::getSmall(), labelColor, labelFontSize);
+                 Fonts::getSmall(), labelColor, labelFontSize, true);
     }
 }
 
 void RadarHud::rebuildRenderData() {
     m_quads.clear();
-    m_strings.clear();
+    clearStrings();
 
     // Calculate dimensions
     auto dim = getScaledDimensions();

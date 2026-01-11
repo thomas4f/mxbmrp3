@@ -9,6 +9,7 @@
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
 #include <chrono>
+#include <map>
 
 class PitboardHud : public BaseHud {
 public:
@@ -47,6 +48,33 @@ public:
         SPLIT_2 = 1,  // Split 2 accumulated time
         LAP     = 2   // Full lap time
     };
+
+    // Per-texture layout configuration
+    // Stored in .ini as [PitboardHud_Layout_N] sections
+    // Offsets are fractions of background width/height (0.0 = no offset)
+    struct LayoutConfig {
+        // Element position offsets (fraction of background dimensions)
+        float riderIdX = 0.0f, riderIdY = 0.0f;      // Row 1: Rider ID
+        float sessionX = 0.0f, sessionY = 0.0f;      // Row 2: Session name
+        float positionX = 0.0f, positionY = 0.0f;    // Row 3 left: Position (P1)
+        float timeX = 0.0f, timeY = 0.0f;            // Row 3 center: Time
+        float lapX = 0.0f, lapY = 0.0f;              // Row 3 right: Lap (L2)
+        float lastLapX = 0.0f, lastLapY = 0.0f;      // Row 4: Last lap time
+        float gapX = 0.0f, gapY = 0.0f;              // Row 5: Gap to leader
+    };
+
+    // Get layout for a specific variant (creates default if not exists)
+    LayoutConfig& getLayout(int variant);
+    const LayoutConfig& getCurrentLayout() const;
+
+    // Get layout for a specific variant if it exists (const-safe, returns nullptr if not found)
+    const LayoutConfig* getLayoutIfExists(int variant) const {
+        auto it = m_layouts.find(variant);
+        return (it != m_layouts.end()) ? &it->second : nullptr;
+    }
+
+    // Check if layout exists (for save optimization)
+    bool hasLayout(int variant) const { return m_layouts.find(variant) != m_layouts.end(); }
 
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;
@@ -105,4 +133,11 @@ private:
 
     // Cached session time for real-time updates (like TimeWidget)
     int m_cachedRenderedTime = -1;  // Last rendered session time (in ms)
+
+    // Per-texture layouts (indexed by texture variant number)
+    // Variant 0 means "no texture", variants 1+ correspond to pitboard_hud_N.tga
+    std::map<int, LayoutConfig> m_layouts;
+
+    // Initialize default layouts for known variants
+    void initDefaultLayouts();
 };

@@ -362,7 +362,7 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
             char truncName[48];
             snprintf(truncName, sizeof(truncName), "%-*.*s", trackedNameChars, trackedNameChars, riderName.c_str());
             ctx.parent->addString(truncName, x, rowY, Justify::LEFT,
-                Fonts::getNormal(), riderColor, gridFontSize);
+                Fonts::getNormal(), colors.getSecondary(), gridFontSize);
 
             // Remove "x" only shown on hover, fixed at right edge of cell
             if (isHovered) {

@@ -15,7 +15,7 @@
     },
     "riders": {
       "title": "Riders",
-      "tooltip": "Track specific riders with custom colors and icons. Highlighted on map and radar."
+      "tooltip": "Track specific riders with custom colors and icons. Highlighted on standings, map, and radar."
     },
     "rumble": {
       "title": "Rumble",
@@ -93,16 +93,16 @@
     "standings.col_debug": "Show debug data column (developer mode only).",
     "standings.col_official_gap": "Official gap column. Off hides it, Player shows your gap only, All shows all gaps.",
     "standings.col_live_gap": "Live gap column. Off hides it, Player shows your gap only, All shows all gaps.",
-    "standings.gap_indicator": "Show gap rows between adjacent riders. Off/Official/Live/Both.",
+    "standings.gap_indicator": "Show gap rows between adjacent riders (races only). Off/Official/Live/Both.",
     "standings.gap_reference": "Gap reference point. Leader shows gaps to P1, Player shows gaps to you.",
 
     "ideal_lap.sectors": "Show your fastest individual sector times (S1, S2, S3).",
     "ideal_lap.laps": "Show your last lap, best lap, and calculated ideal lap times.",
 
     "lap_log.rows": "Number of recent laps to display.",
-    "lap_log.col_lap": "Show lap number column.",
+    "lap_log.order": "Display order. Oldest shows oldest laps at top, Newest shows newest at top.",
+    "lap_log.gap_row": "Show live gap to personal best below the current lap time.",
     "lap_log.col_sectors": "Show sector split times (S1, S2, S3).",
-    "lap_log.col_time": "Show total lap time column.",
 
     "telemetry.display": "Display mode. Graphs shows visual meters, Numbers shows text values, Both shows both.",
     "telemetry.throttle": "Show throttle input percentage.",
@@ -208,6 +208,7 @@
     "appearance.color_neutral": "Color indicating neutral values (no change).",
     "appearance.color_warning": "Color indicating warnings.",
     "appearance.color_negative": "Color indicating negative values (slower times, losses).",
+    "appearance.drop_shadow": "Add a shadow behind all text for improved readability.",
 
     "rumble.enabled": "Enable or disable controller vibration for all events.",
     "rumble.stack": "When enabled, multiple rumble effects combine. When off, only the strongest effect plays.",

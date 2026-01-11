@@ -40,7 +40,7 @@ RecordsHud::ColumnPositions::ColumnPositions(float contentStartX, float scale, u
     float x = contentStartX;
 
     // Position each column based on what's enabled before it
-    // Order: POS, RIDER, BIKE, SECTOR1, SECTOR2, SECTOR3, LAPTIME, DATE
+    // Order: POS, RIDER, BIKE, SECTORS (S1/S2/S3), LAPTIME, DATE
     pos = x;
     if (enabledColumns & COL_POS) x += PluginUtils::calculateMonospaceTextWidth(COL_POS_WIDTH, scaledFontSize);
 
@@ -50,14 +50,11 @@ RecordsHud::ColumnPositions::ColumnPositions(float contentStartX, float scale, u
     bike = x;
     if (enabledColumns & COL_BIKE) x += PluginUtils::calculateMonospaceTextWidth(COL_BIKE_WIDTH, scaledFontSize);
 
+    // Sector columns (S1, S2, S3) - always toggled together
     sector1 = x;
-    if (enabledColumns & COL_SECTOR1) x += PluginUtils::calculateMonospaceTextWidth(COL_SECTOR_WIDTH, scaledFontSize);
-
-    sector2 = x;
-    if (enabledColumns & COL_SECTOR2) x += PluginUtils::calculateMonospaceTextWidth(COL_SECTOR_WIDTH, scaledFontSize);
-
-    sector3 = x;
-    if (enabledColumns & COL_SECTOR3) x += PluginUtils::calculateMonospaceTextWidth(COL_SECTOR_WIDTH, scaledFontSize);
+    sector2 = x + PluginUtils::calculateMonospaceTextWidth(COL_SECTOR_WIDTH, scaledFontSize);
+    sector3 = x + PluginUtils::calculateMonospaceTextWidth(COL_SECTOR_WIDTH * 2, scaledFontSize);
+    if (enabledColumns & COL_SECTORS) x += PluginUtils::calculateMonospaceTextWidth(COL_SECTOR_WIDTH * 3, scaledFontSize);
 
     laptime = x;
     if (enabledColumns & COL_LAPTIME) x += PluginUtils::calculateMonospaceTextWidth(COL_LAPTIME_WIDTH, scaledFontSize);
@@ -709,6 +706,15 @@ bool RecordsHud::handlesDataType(DataChangeType dataType) const {
 }
 
 void RecordsHud::update() {
+    // OPTIMIZATION: Skip all processing when not visible
+    // Note: When made visible, auto-fetch will trigger if track changed while hidden.
+    // This compares current track with m_lastSessionTrackId which wasn't updated while hidden.
+    if (!isVisible()) {
+        clearDataDirty();
+        clearLayoutDirty();
+        return;
+    }
+
     const SessionData& session = PluginData::getInstance().getSessionData();
     bool shouldAutoFetch = false;
 
@@ -804,7 +810,7 @@ void RecordsHud::rebuildLayout() {
 }
 
 void RecordsHud::rebuildRenderData() {
-    m_strings.clear();
+    clearStrings();
     m_quads.clear();
     m_clickRegions.clear();
 
@@ -826,14 +832,12 @@ void RecordsHud::rebuildRenderData() {
 
     // Calculate background width based on enabled columns
     // Note: padding is added by calculateBackgroundWidth(), don't double-count
-    // Order: POS, RIDER, BIKE, SECTOR1, SECTOR2, SECTOR3, LAPTIME, DATE
+    // Order: POS, RIDER, BIKE, SECTORS (S1/S2/S3), LAPTIME, DATE
     int bgWidthChars = 0;
     if (m_enabledColumns & COL_POS) bgWidthChars += COL_POS_WIDTH;
     if (m_enabledColumns & COL_RIDER) bgWidthChars += COL_RIDER_WIDTH;
     if (m_enabledColumns & COL_BIKE) bgWidthChars += COL_BIKE_WIDTH;
-    if (m_enabledColumns & COL_SECTOR1) bgWidthChars += COL_SECTOR_WIDTH;
-    if (m_enabledColumns & COL_SECTOR2) bgWidthChars += COL_SECTOR_WIDTH;
-    if (m_enabledColumns & COL_SECTOR3) bgWidthChars += COL_SECTOR_WIDTH;
+    if (m_enabledColumns & COL_SECTORS) bgWidthChars += COL_SECTOR_WIDTH * 3;  // S1, S2, S3 together
     if (m_enabledColumns & COL_LAPTIME) bgWidthChars += COL_LAPTIME_WIDTH;
     if (m_enabledColumns & COL_DATE) bgWidthChars += COL_DATE_WIDTH;
     // Remove trailing gap from last visible column (gap not needed after last column)
@@ -841,9 +845,7 @@ void RecordsHud::rebuildRenderData() {
     uint32_t lastCol = 0;
     if (m_enabledColumns & COL_DATE) lastCol = COL_DATE;
     else if (m_enabledColumns & COL_LAPTIME) lastCol = COL_LAPTIME;
-    else if (m_enabledColumns & COL_SECTOR3) lastCol = COL_SECTOR3;
-    else if (m_enabledColumns & COL_SECTOR2) lastCol = COL_SECTOR2;
-    else if (m_enabledColumns & COL_SECTOR1) lastCol = COL_SECTOR1;
+    else if (m_enabledColumns & COL_SECTORS) lastCol = COL_SECTORS;
     else if (m_enabledColumns & COL_BIKE) lastCol = COL_BIKE;
     else if (m_enabledColumns & COL_RIDER) lastCol = COL_RIDER;
     if (lastCol != 0 && lastCol != COL_DATE) {
@@ -977,6 +979,9 @@ void RecordsHud::rebuildRenderData() {
     currentY += dim.lineHeightNormal;
 
     // === Record Rows (with Personal Best integration) ===
+    // Track how many rows we render so we can fill with placeholders
+    int rowsRendered = 0;
+
     // Get player's all-time PB for this track+bike
     const SessionData& session = PluginData::getInstance().getSessionData();
     const PersonalBestEntry* playerPB = nullptr;
@@ -1039,40 +1044,39 @@ void RecordsHud::rebuildRenderData() {
                       ColorConfig::getInstance().getSecondary(), dim.fontSize);
         }
 
-        // Sector times (displayed before lap time)
-        if (isColumnEnabled(COL_SECTOR1)) {
+        // Sector times (S1, S2, S3 - always toggled together)
+        if (isColumnEnabled(COL_SECTORS)) {
             char sectorStr[12];
+            const auto& colors = ColorConfig::getInstance();
+
+            // S1
             if (sector1 > 0) {
                 PluginUtils::formatSectorTime(sector1, sectorStr, sizeof(sectorStr));
                 addString(sectorStr, m_columns.sector1, currentY, Justify::LEFT,
-                          Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                          Fonts::getNormal(), colors.getSecondary(), dim.fontSize);
             } else {
                 addString("---.---", m_columns.sector1, currentY, Justify::LEFT,
-                          Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dim.fontSize);
+                          Fonts::getNormal(), colors.getMuted(), dim.fontSize);
             }
-        }
 
-        if (isColumnEnabled(COL_SECTOR2)) {
-            char sectorStr[12];
+            // S2
             if (sector2 > 0) {
                 PluginUtils::formatSectorTime(sector2, sectorStr, sizeof(sectorStr));
                 addString(sectorStr, m_columns.sector2, currentY, Justify::LEFT,
-                          Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                          Fonts::getNormal(), colors.getSecondary(), dim.fontSize);
             } else {
                 addString("---.---", m_columns.sector2, currentY, Justify::LEFT,
-                          Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dim.fontSize);
+                          Fonts::getNormal(), colors.getMuted(), dim.fontSize);
             }
-        }
 
-        if (isColumnEnabled(COL_SECTOR3)) {
-            char sectorStr[12];
+            // S3
             if (sector3 > 0) {
                 PluginUtils::formatSectorTime(sector3, sectorStr, sizeof(sectorStr));
                 addString(sectorStr, m_columns.sector3, currentY, Justify::LEFT,
-                          Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+                          Fonts::getNormal(), colors.getSecondary(), dim.fontSize);
             } else {
                 addString("---.---", m_columns.sector3, currentY, Justify::LEFT,
-                          Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dim.fontSize);
+                          Fonts::getNormal(), colors.getMuted(), dim.fontSize);
             }
         }
 
@@ -1096,20 +1100,31 @@ void RecordsHud::rebuildRenderData() {
         }
 
         currentY += dim.lineHeightNormal;
+        rowsRendered++;
     };
 
     FetchState currentState = m_fetchState.load();
     bool hasFetched = (currentState == FetchState::SUCCESS || !allRecords.empty());
 
+    // Format player's PB date from timestamp (used in all branches)
+    const char* playerName = session.riderName[0] != '\0' ? session.riderName : "You";
+    bool hasPlayerPB = (playerPB && playerPB->isValid());
+    char playerDateStr[16] = "";
+    if (hasPlayerPB && playerPB->timestamp > 0) {
+        std::tm tm;
+        if (localtime_s(&tm, &playerPB->timestamp) == 0) {
+            snprintf(playerDateStr, sizeof(playerDateStr), "%04d-%02d-%02d",
+                     tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+        }
+    }
+
     if (!hasFetched) {
         // Before fetch or error: show player's PB and/or status message
-        bool hasPlayerRow = (playerPB && playerPB->isValid());
-        if (hasPlayerRow) {
-            const char* playerName = session.riderName[0] != '\0' ? session.riderName : "You";
+        if (hasPlayerPB) {
             renderRecordRow(1, playerName, playerPB->bikeName.c_str(), playerPB->lapTime,
-                            playerPB->sector1, playerPB->sector2, playerPB->sector3, "", true);
+                            playerPB->sector1, playerPB->sector2, playerPB->sector3, playerDateStr, true);
         }
-        // Show status message (error or prompt to compare)
+        // Show status message (error or prompt to compare) - counts as a row to maintain layout
         const char* statusMessage = nullptr;
         char errorMessage[64];
         if (currentState == FetchState::FETCH_ERROR) {
@@ -1119,28 +1134,26 @@ void RecordsHud::rebuildRenderData() {
                 strncpy_s(errorMessage, sizeof(errorMessage), "Compare failed. Try again.", sizeof(errorMessage) - 1);
             }
             statusMessage = errorMessage;
-        } else if (!hasPlayerRow) {
+        } else if (!hasPlayerPB) {
             statusMessage = "Click Compare to load records.";
         }
         if (statusMessage) {
-            if (hasPlayerRow) currentY += dim.lineHeightNormal * 0.5f;  // Gap after player row
             addString(statusMessage, contentStartX, currentY,
                       Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dim.fontSize);
             currentY += dim.lineHeightNormal;
+            rowsRendered++;
         }
     } else if (allRecords.empty()) {
         // Fetched but no records found - show player's PB and/or message
-        bool hasPlayerRow = (playerPB && playerPB->isValid());
-        if (hasPlayerRow) {
-            const char* playerName = session.riderName[0] != '\0' ? session.riderName : "You";
+        if (hasPlayerPB) {
             renderRecordRow(1, playerName, playerPB->bikeName.c_str(), playerPB->lapTime,
-                            playerPB->sector1, playerPB->sector2, playerPB->sector3, "", true);
-            currentY += dim.lineHeightNormal * 0.5f;  // Gap after player row
+                            playerPB->sector1, playerPB->sector2, playerPB->sector3, playerDateStr, true);
         }
-        // Always show "no records" message so user knows the fetch worked
+        // Show "no records" message - counts as a row to maintain layout
         addString("No records found for this track/category.", contentStartX, currentY,
                   Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dim.fontSize);
         currentY += dim.lineHeightNormal;
+        rowsRendered++;
     } else {
         // Has records - show with StandingsHud-style pagination
         // Strategy (like StandingsHud):
@@ -1148,18 +1161,6 @@ void RecordsHud::rebuildRenderData() {
         // - If player is beyond top 3: show top 3, then context around player position
 
         static constexpr int TOP_POSITIONS = 3;
-        const char* playerName = session.riderName[0] != '\0' ? session.riderName : "You";
-        bool hasPlayerPB = (playerPB && playerPB->isValid());
-
-        // Format player's PB date from timestamp
-        char playerDateStr[16] = "";
-        if (hasPlayerPB && playerPB->timestamp > 0) {
-            std::tm tm;
-            if (localtime_s(&tm, &playerPB->timestamp) == 0) {
-                snprintf(playerDateStr, sizeof(playerDateStr), "%04d-%02d-%02d",
-                         tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
-            }
-        }
 
         // Helper lambda to render a range of server records, optionally inserting player
         auto renderRecordRange = [&](int startIdx, int endIdx, bool insertPlayer) {
@@ -1237,6 +1238,17 @@ void RecordsHud::rebuildRenderData() {
         }
     }
 
+    // === Placeholder rows to fill up to configured size ===
+    while (rowsRendered < m_recordsToShow) {
+        // Show "-" only in position column, empty for others
+        if (isColumnEnabled(COL_POS)) {
+            addString(Placeholders::GENERIC, m_columns.pos, currentY, Justify::LEFT,
+                      Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dim.fontSize);
+        }
+        currentY += dim.lineHeightNormal;
+        rowsRendered++;
+    }
+
     // === Footer Note ===
     if (m_bShowFooter) {
         // Skip to footer position (fixed row count ensures consistent height)
@@ -1291,7 +1303,7 @@ void RecordsHud::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.0055f, 0.4773f);
+    setPosition(0.737f, 0.333f);
     m_provider = DataProvider::CBR;
     m_recordsProvider = DataProvider::CBR;
     m_categoryIndex = 0;

@@ -269,12 +269,14 @@ void PluginData::setDrawState(int state) {
         const char* stateStr = (state == 0) ? "ON_TRACK" : (state == 1) ? "SPECTATE" : "REPLAY";
         DEBUG_INFO_F("Draw state changed: %s (%d)", stateStr, state);
 
-        // Clear input histories when entering SPECTATE or REPLAY mode
-        // Graphs start fresh when switching to a different data source
-        if ((state == PluginConstants::ViewState::SPECTATE || state == PluginConstants::ViewState::REPLAY) &&
-            previousState == PluginConstants::ViewState::ON_TRACK) {
-            m_historyBuffers.clear();
-            DEBUG_INFO("Cleared input histories (leaving on-track mode)");
+        // Clear telemetry data when switching between view states
+        // This prevents stale data from showing (e.g., spectated rider's data when back on track)
+        bool wasSpectating = (previousState == PluginConstants::ViewState::SPECTATE ||
+                              previousState == PluginConstants::ViewState::REPLAY);
+        bool isSpectating = (state == PluginConstants::ViewState::SPECTATE ||
+                             state == PluginConstants::ViewState::REPLAY);
+        if (wasSpectating != isSpectating) {
+            clearTelemetryData();
         }
 
         // Notify HudManager so profile auto-switch can detect spectate/replay mode changes
@@ -284,8 +286,15 @@ void PluginData::setDrawState(int state) {
 
 void PluginData::setSpectatedRaceNum(int raceNum) {
     if (m_spectatedRaceNum != raceNum) {
+        int previousRaceNum = m_spectatedRaceNum;
         m_spectatedRaceNum = raceNum;
         DEBUG_INFO_F("Spectated race number: %d", raceNum);
+
+        // Clear telemetry when spectate target becomes invalid or changes
+        // This prevents stale data from showing when switching riders or stopping spectate
+        if (raceNum <= 0 || (previousRaceNum > 0 && raceNum != previousRaceNum)) {
+            clearTelemetryData();
+        }
 
         // Notify HudManager to update HUDs that display rider-specific data
         notifyHudManager(DataChangeType::SpectateTarget);
@@ -558,6 +567,9 @@ void PluginData::clearAllLapLog() {
         pair.second.previousBestSector2 = -1;
         pair.second.previousBestSector3 = -1;
     }
+
+    // Clear live gap so gap row doesn't show stale data
+    setLiveGap(0, false);
 
     DEBUG_INFO("All riders' lap log cleared");
     notifyHudManager(DataChangeType::LapLog);
@@ -835,8 +847,12 @@ void PluginData::batchUpdateStandings(SPluginsRaceClassificationEntry_t* entries
             // Handle official gap with caching to prevent flicker
             // The API temporarily clears gaps (sends 0) when leader crosses line
             // We cache the last valid gap and use it when API sends 0
+            // Exception: leader (i==0) should always have gap=0, clear their cache
             int effectiveGap = entry.m_iGap;
-            if (entry.m_iGap > 0) {
+            if (i == 0) {
+                // Leader's gap is always 0 - clear any stale cached gap
+                m_lastValidOfficialGap.erase(entry.m_iRaceNum);
+            } else if (entry.m_iGap > 0) {
                 // Valid gap from API - cache it
                 m_lastValidOfficialGap[entry.m_iRaceNum] = entry.m_iGap;
             } else if (entry.m_iGap == 0 && entry.m_iGapLaps == 0) {
@@ -871,7 +887,8 @@ void PluginData::batchUpdateStandings(SPluginsRaceClassificationEntry_t* entries
         else {
             // New entry
             int effectiveGap = entry.m_iGap;
-            if (effectiveGap > 0) {
+            // Only cache gap for non-leaders (leader gap should always be 0)
+            if (i > 0 && effectiveGap > 0) {
                 m_lastValidOfficialGap[entry.m_iRaceNum] = effectiveGap;
             }
             m_standings.emplace(entry.m_iRaceNum,
@@ -1298,6 +1315,28 @@ void PluginData::clearLiveGapTimingPoints() {
     DEBUG_INFO("Live gap timing points cleared for new session");
 }
 
+void PluginData::clearTelemetryData() {
+    // Preserve static bike configuration values set in EventInit
+    // These don't change during a session and shouldn't be wiped on view state transitions
+    float savedFrontSuspMaxTravel = m_bikeTelemetry.frontSuspMaxTravel;
+    float savedRearSuspMaxTravel = m_bikeTelemetry.rearSuspMaxTravel;
+    float savedMaxFuel = m_bikeTelemetry.maxFuel;
+    int savedNumberOfGears = m_bikeTelemetry.numberOfGears;
+
+    m_bikeTelemetry = BikeTelemetryData();
+
+    // Restore preserved values
+    m_bikeTelemetry.frontSuspMaxTravel = savedFrontSuspMaxTravel;
+    m_bikeTelemetry.rearSuspMaxTravel = savedRearSuspMaxTravel;
+    m_bikeTelemetry.maxFuel = savedMaxFuel;
+    m_bikeTelemetry.numberOfGears = savedNumberOfGears;
+
+    m_inputTelemetry = InputTelemetryData();
+    m_historyBuffers.clear();
+    notifyHudManager(DataChangeType::InputTelemetry);
+    DEBUG_INFO("Telemetry data cleared (bike config preserved)");
+}
+
 void PluginData::clear() {
     m_sessionData.clear();
     m_raceEntries.clear();
@@ -1400,21 +1439,25 @@ void PluginData::updateSpeedometer(float speedometer, int gear, int rpm, float f
     m_bikeTelemetry.fuel = fuel;
     m_bikeTelemetry.isValid = true;
 
-    // Add RPM to history (normalize to 0-1 range using limiterRPM as max, clamp to non-negative)
-    // Safety: Only normalize if limiterRPM is valid to avoid division by zero
-    float normalizedRpm = 0.0f;
-    if (m_sessionData.limiterRPM > 0) {
-        normalizedRpm = static_cast<float>(std::max(0, rpm)) / static_cast<float>(m_sessionData.limiterRPM);
-    }
-    m_historyBuffers.addSample(m_historyBuffers.rpm, normalizedRpm);
+    // OPTIMIZATION: Only add to history buffers if TelemetryHud is visible
+    // This saves ~200 deque operations/second at 100Hz physics rate
+    if (HudManager::getInstance().isTelemetryHistoryNeeded()) {
+        // Add RPM to history (normalize to 0-1 range using limiterRPM as max, clamp to non-negative)
+        // Safety: Only normalize if limiterRPM is valid to avoid division by zero
+        float normalizedRpm = 0.0f;
+        if (m_sessionData.limiterRPM > 0) {
+            normalizedRpm = static_cast<float>(std::max(0, rpm)) / static_cast<float>(m_sessionData.limiterRPM);
+        }
+        m_historyBuffers.addSample(m_historyBuffers.rpm, normalizedRpm);
 
-    // Add gear to history (normalize to 0-1 range using numberOfGears as max)
-    // Safety: Only normalize if numberOfGears is valid to avoid division by zero
-    float normalizedGear = 0.0f;
-    if (m_bikeTelemetry.numberOfGears > 0) {
-        normalizedGear = static_cast<float>(std::max(0, gear)) / static_cast<float>(m_bikeTelemetry.numberOfGears);
+        // Add gear to history (normalize to 0-1 range using numberOfGears as max)
+        // Safety: Only normalize if numberOfGears is valid to avoid division by zero
+        float normalizedGear = 0.0f;
+        if (m_bikeTelemetry.numberOfGears > 0) {
+            normalizedGear = static_cast<float>(std::max(0, gear)) / static_cast<float>(m_bikeTelemetry.numberOfGears);
+        }
+        m_historyBuffers.addSample(m_historyBuffers.gear, normalizedGear);
     }
-    m_historyBuffers.addSample(m_historyBuffers.gear, normalizedGear);
 
     // Notify HudManager that telemetry changed
     notifyHudManager(DataChangeType::InputTelemetry);
@@ -1458,8 +1501,11 @@ void PluginData::updateSuspensionLength(float frontLength, float rearLength) {
         rearCompression = std::max(0.0f, std::min(1.0f, rearCompression));  // Clamp to 0-1
     }
 
-    m_historyBuffers.addSample(m_historyBuffers.frontSusp, frontCompression);
-    m_historyBuffers.addSample(m_historyBuffers.rearSusp, rearCompression);
+    // OPTIMIZATION: Only add to history buffers if TelemetryHud is visible
+    if (HudManager::getInstance().isTelemetryHistoryNeeded()) {
+        m_historyBuffers.addSample(m_historyBuffers.frontSusp, frontCompression);
+        m_historyBuffers.addSample(m_historyBuffers.rearSusp, rearCompression);
+    }
 
     // Notify HudManager that telemetry changed
     notifyHudManager(DataChangeType::InputTelemetry);
@@ -1473,12 +1519,14 @@ void PluginData::updateInputTelemetry(float steer, float throttle, float frontBr
     m_inputTelemetry.rearBrake = rearBrake;
     m_inputTelemetry.clutch = clutch;
 
-    // Add to history
-    m_historyBuffers.addSample(m_historyBuffers.throttle, throttle);
-    m_historyBuffers.addSample(m_historyBuffers.frontBrake, frontBrake);
-    m_historyBuffers.addSample(m_historyBuffers.rearBrake, rearBrake);
-    m_historyBuffers.addSample(m_historyBuffers.clutch, clutch);
-    m_historyBuffers.addSample(m_historyBuffers.steer, steer);
+    // OPTIMIZATION: Only add to history buffers if TelemetryHud is visible
+    if (HudManager::getInstance().isTelemetryHistoryNeeded()) {
+        m_historyBuffers.addSample(m_historyBuffers.throttle, throttle);
+        m_historyBuffers.addSample(m_historyBuffers.frontBrake, frontBrake);
+        m_historyBuffers.addSample(m_historyBuffers.rearBrake, rearBrake);
+        m_historyBuffers.addSample(m_historyBuffers.clutch, clutch);
+        m_historyBuffers.addSample(m_historyBuffers.steer, steer);
+    }
 
     // Notify HudManager that input telemetry changed
     notifyHudManager(DataChangeType::InputTelemetry);
@@ -1495,22 +1543,25 @@ void PluginData::updateRaceVehicleTelemetry(float speedometer, int gear, int rpm
     m_inputTelemetry.throttle = throttle;
     m_inputTelemetry.frontBrake = frontBrake;
 
+    // OPTIMIZATION: Only add to history buffers if TelemetryHud is visible
     // Only add to history for data that's actually available in SPluginsRaceVehicleData_t
     // Other buffers (rearBrake, clutch, steer, fuel, suspension) are not updated
-    float normalizedRpm = 0.0f;
-    if (m_sessionData.limiterRPM > 0) {
-        normalizedRpm = static_cast<float>(std::max(0, rpm)) / static_cast<float>(m_sessionData.limiterRPM);
-    }
-    m_historyBuffers.addSample(m_historyBuffers.rpm, normalizedRpm);
+    if (HudManager::getInstance().isTelemetryHistoryNeeded()) {
+        float normalizedRpm = 0.0f;
+        if (m_sessionData.limiterRPM > 0) {
+            normalizedRpm = static_cast<float>(std::max(0, rpm)) / static_cast<float>(m_sessionData.limiterRPM);
+        }
+        m_historyBuffers.addSample(m_historyBuffers.rpm, normalizedRpm);
 
-    float normalizedGear = 0.0f;
-    if (m_bikeTelemetry.numberOfGears > 0) {
-        normalizedGear = static_cast<float>(std::max(0, gear)) / static_cast<float>(m_bikeTelemetry.numberOfGears);
-    }
-    m_historyBuffers.addSample(m_historyBuffers.gear, normalizedGear);
+        float normalizedGear = 0.0f;
+        if (m_bikeTelemetry.numberOfGears > 0) {
+            normalizedGear = static_cast<float>(std::max(0, gear)) / static_cast<float>(m_bikeTelemetry.numberOfGears);
+        }
+        m_historyBuffers.addSample(m_historyBuffers.gear, normalizedGear);
 
-    m_historyBuffers.addSample(m_historyBuffers.throttle, throttle);
-    m_historyBuffers.addSample(m_historyBuffers.frontBrake, frontBrake);
+        m_historyBuffers.addSample(m_historyBuffers.throttle, throttle);
+        m_historyBuffers.addSample(m_historyBuffers.frontBrake, frontBrake);
+    }
 
     // Notify HudManager that telemetry changed
     notifyHudManager(DataChangeType::InputTelemetry);

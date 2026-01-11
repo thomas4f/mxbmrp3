@@ -49,6 +49,15 @@ bool NoticesWidget::handlesDataType(DataChangeType /*dataType*/) const {
 }
 
 void NoticesWidget::update() {
+    // OPTIMIZATION: Skip processing when not visible
+    // Note: This checks current state from PluginData, not events. When made visible,
+    // wrong-way warning will show immediately if player is currently going wrong way.
+    if (!isVisible()) {
+        clearDataDirty();
+        clearLayoutDirty();
+        return;
+    }
+
     const PluginData& pluginData = PluginData::getInstance();
 
     // Track session state transitions to detect race start
@@ -153,7 +162,7 @@ void NoticesWidget::rebuildLayout() {
 
 void NoticesWidget::rebuildRenderData() {
     // Clear render data
-    m_strings.clear();
+    clearStrings();
     m_quads.clear();
 
     // Check which notices are both active and enabled

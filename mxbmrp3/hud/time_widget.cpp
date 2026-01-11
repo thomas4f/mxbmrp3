@@ -37,6 +37,13 @@ bool TimeWidget::handlesDataType(DataChangeType dataType) const {
 }
 
 void TimeWidget::update() {
+    // OPTIMIZATION: Skip processing when not visible
+    if (!isVisible()) {
+        clearDataDirty();
+        clearLayoutDirty();
+        return;
+    }
+
     // Check if time changed enough to update display
     // Only rebuild when seconds change, not every millisecond
     const PluginData& pluginData = PluginData::getInstance();
@@ -120,7 +127,7 @@ void TimeWidget::rebuildLayout() {
 
 void TimeWidget::rebuildRenderData() {
     // Clear render data
-    m_strings.clear();
+    clearStrings();
     m_quads.clear();
 
     auto dim = getScaledDimensions();

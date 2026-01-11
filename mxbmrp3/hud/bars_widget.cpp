@@ -34,6 +34,13 @@ BarsWidget::BarsWidget() {
 }
 
 void BarsWidget::update() {
+    // OPTIMIZATION: Skip processing when not visible
+    if (!isVisible()) {
+        clearDataDirty();
+        clearLayoutDirty();
+        return;
+    }
+
     // Always rebuild - telemetry updates at physics rate (100Hz)
     rebuildRenderData();
     clearDataDirty();
@@ -52,12 +59,12 @@ void BarsWidget::rebuildLayout() {
 
 void BarsWidget::rebuildRenderData() {
     m_quads.clear();
-    m_strings.clear();
+    clearStrings();
 
     const auto dims = getScaledDimensions();
     const PluginData& pluginData = PluginData::getInstance();
-    const HistoryBuffers& history = pluginData.getHistoryBuffers();
     const BikeTelemetryData& bikeTelemetry = pluginData.getBikeTelemetry();
+    const InputTelemetryData& inputTelemetry = pluginData.getInputTelemetry();
     const SessionData& sessionData = pluginData.getSessionData();
 
     // Full telemetry data (rear brake, clutch, suspension, fuel) is ONLY available when ON_TRACK
@@ -96,15 +103,16 @@ void BarsWidget::rebuildRenderData() {
     float contentStartX = START_X + dims.paddingH;
     float contentStartY = START_Y + dims.paddingV;
 
-    // Get current values - throttle and front brake always available
-    float throttleValue = history.throttle.empty() ? 0.0f : history.throttle.back();
-    float frontBrakeValue = history.frontBrake.empty() ? 0.0f : history.frontBrake.back();
+    // Get current values - throttle and front brake always available from inputTelemetry
+    // (history buffers are only populated when TelemetryHud is visible)
+    float throttleValue = inputTelemetry.throttle;
+    float frontBrakeValue = inputTelemetry.frontBrake;
 
     // Rear brake (only available when ON_TRACK - show 0 when spectating/replay)
-    float rearBrakeValue = (hasFullTelemetry && !history.rearBrake.empty()) ? history.rearBrake.back() : 0.0f;
+    float rearBrakeValue = hasFullTelemetry ? inputTelemetry.rearBrake : 0.0f;
 
     // Clutch (only available when ON_TRACK - show 0 when spectating/replay)
-    float clutchValue = (hasFullTelemetry && !history.clutch.empty()) ? history.clutch.back() : 0.0f;
+    float clutchValue = hasFullTelemetry ? inputTelemetry.clutch : 0.0f;
 
     // RPM normalized to 0-1 range (always available)
     float rpmValue = 0.0f;
@@ -119,8 +127,16 @@ void BarsWidget::rebuildRenderData() {
     }
 
     // Suspension compression normalized to 0-1 range (only available when ON_TRACK)
-    float frontSuspValue = (hasFullTelemetry && !history.frontSusp.empty()) ? history.frontSusp.back() : 0.0f;
-    float rearSuspValue = (hasFullTelemetry && !history.rearSusp.empty()) ? history.rearSusp.back() : 0.0f;
+    float frontSuspValue = 0.0f;
+    float rearSuspValue = 0.0f;
+    if (hasFullTelemetry) {
+        if (bikeTelemetry.frontSuspMaxTravel > 0.0f) {
+            frontSuspValue = 1.0f - (bikeTelemetry.frontSuspLength / bikeTelemetry.frontSuspMaxTravel);
+        }
+        if (bikeTelemetry.rearSuspMaxTravel > 0.0f) {
+            rearSuspValue = 1.0f - (bikeTelemetry.rearSuspLength / bikeTelemetry.rearSuspMaxTravel);
+        }
+    }
 
     // Bar colors - use muted gray when data unavailable
     unsigned long mutedColor = ColorConfig::getInstance().getMuted();

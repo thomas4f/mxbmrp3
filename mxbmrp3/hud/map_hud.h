@@ -10,6 +10,14 @@
 
 class MapHud : public BaseHud {
 public:
+    // Pre-calculated rotation values to avoid redundant trig in tight loops
+    struct RotationCache {
+        float angle = 0.0f;      // Original angle in degrees (needed for yaw adjustment)
+        float cosAngle = 1.0f;   // cos(angle) - 1.0 means no rotation (identity)
+        float sinAngle = 0.0f;   // sin(angle) - 0.0 means no rotation (identity)
+        bool hasRotation = false;
+    };
+
     MapHud();
 
     void update() override;
@@ -227,26 +235,28 @@ private:
     // Update anchor position from current HUD position
     void updateAnchorFromCurrentPosition();
 
-    // Helper: Calculate track screen bounds at given rotation angle
-    void calculateTrackScreenBounds(float rotationAngle, float& minX, float& maxX, float& minY, float& maxY) const;
+    // Helper: Calculate track screen bounds at given rotation
+    void calculateTrackScreenBounds(const RotationCache& rotation, float& minX, float& maxX, float& minY, float& maxY) const;
 
     // Calculate rotation angle for map rotation mode (caches player position when active)
+    // Returns both the angle and a pre-calculated RotationCache for efficient rendering
     float calculateRotationAngle();
+    RotationCache createRotationCache(float rotationAngle) const;
 
     // Convert world coordinates to map screen coordinates
-    // If rotation mode is enabled, also applies rotation around local player
-    void worldToScreen(float worldX, float worldY, float& screenX, float& screenY, float rotationAngle = 0.0f) const;
+    // Uses pre-calculated rotation cache to avoid redundant trig in loops
+    void worldToScreen(float worldX, float worldY, float& screenX, float& screenY, const RotationCache& rotation) const;
 
-    // Render the track as quads (takes pre-calculated rotation angle, color, and width multiplier)
-    void renderTrack(float rotationAngle, unsigned long trackColor, float widthMultiplier,
+    // Render the track as quads (takes pre-calculated rotation cache, color, and width multiplier)
+    void renderTrack(const RotationCache& rotation, unsigned long trackColor, float widthMultiplier,
                      float clipLeft, float clipTop, float clipRight, float clipBottom);
 
-    // Render start marker (takes pre-calculated rotation angle and clip bounds)
-    void renderStartMarker(float rotationAngle,
+    // Render start marker (takes pre-calculated rotation cache and clip bounds)
+    void renderStartMarker(const RotationCache& rotation,
                           float clipLeft, float clipTop, float clipRight, float clipBottom);
 
-    // Render rider positions as strings (takes pre-calculated rotation angle and clip bounds)
-    void renderRiders(float rotationAngle,
+    // Render rider positions as strings (takes pre-calculated rotation cache and clip bounds)
+    void renderRiders(const RotationCache& rotation,
                      float clipLeft, float clipTop, float clipRight, float clipBottom);
 
     // Handle click on rider marker to switch spectator target

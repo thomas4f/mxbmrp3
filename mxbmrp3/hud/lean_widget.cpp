@@ -37,6 +37,13 @@ bool LeanWidget::handlesDataType(DataChangeType dataType) const {
 }
 
 void LeanWidget::update() {
+    // OPTIMIZATION: Skip processing when not visible
+    if (!isVisible()) {
+        clearDataDirty();
+        clearLayoutDirty();
+        return;
+    }
+
     // Always rebuild - lean angle updates at high frequency (telemetry rate)
     rebuildRenderData();
     clearDataDirty();
@@ -118,7 +125,7 @@ void LeanWidget::addArcSegment(float centerX, float centerY, float innerRadius, 
 }
 
 void LeanWidget::rebuildRenderData() {
-    m_strings.clear();
+    clearStrings();
     m_quads.clear();
 
     auto dim = getScaledDimensions();
@@ -336,9 +343,9 @@ void LeanWidget::rebuildRenderData() {
         // Apply smoothing only when not crashed
         m_smoothedLean += (currentLean - m_smoothedLean) * LEAN_SMOOTH_FACTOR;
     }
-    // When crashed, m_smoothedLean stays frozen at last value
-    // Also countdown timers when crashed (so markers eventually disappear)
-    else {
+    else if (isCrashed) {
+        // When crashed, m_smoothedLean stays frozen at last value
+        // Countdown timers so markers eventually disappear
         if (m_maxFramesRemaining[0] > 0) {
             m_maxFramesRemaining[0]--;
             if (m_maxFramesRemaining[0] == 0) m_markerValueLeft = 0.0f;
@@ -347,6 +354,14 @@ void LeanWidget::rebuildRenderData() {
             m_maxFramesRemaining[1]--;
             if (m_maxFramesRemaining[1] == 0) m_markerValueRight = 0.0f;
         }
+    }
+    else {
+        // Data invalid - reset lean to 0 (same as other widgets)
+        m_smoothedLean = 0.0f;
+        m_markerValueLeft = 0.0f;
+        m_markerValueRight = 0.0f;
+        m_maxFramesRemaining[0] = 0;
+        m_maxFramesRemaining[1] = 0;
     }
 
     // Common values used by multiple elements

@@ -18,6 +18,7 @@ public:
 
     void update() override;
     bool handlesDataType(DataChangeType dataType) const override;
+    void setVisible(bool visible) override;
     void resetToDefaults();
 
     // Element flags - each bit represents a metric that can be toggled

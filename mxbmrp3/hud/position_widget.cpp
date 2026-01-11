@@ -36,6 +36,13 @@ bool PositionWidget::handlesDataType(DataChangeType dataType) const {
 }
 
 void PositionWidget::update() {
+    // OPTIMIZATION: Skip processing when not visible
+    if (!isVisible()) {
+        clearDataDirty();
+        clearLayoutDirty();
+        return;
+    }
+
     // Check if position or total entries changed
     int currentPosition = calculatePlayerPosition();
     const PluginData& pluginData = PluginData::getInstance();
@@ -111,7 +118,7 @@ void PositionWidget::rebuildLayout() {
 
 void PositionWidget::rebuildRenderData() {
     // Clear render data
-    m_strings.clear();
+    clearStrings();
     m_quads.clear();
 
     auto dim = getScaledDimensions();

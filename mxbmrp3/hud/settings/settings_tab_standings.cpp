@@ -190,7 +190,7 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
     ctx.addToggleControl("Bike model", (hud->m_enabledColumns & StandingsHud::COL_BIKE) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_BIKE, true,
         "standings.col_bike");
-    ctx.addToggleControl("Connection status", (hud->m_enabledColumns & StandingsHud::COL_STATUS) != 0,
+    ctx.addToggleControl("Rider status", (hud->m_enabledColumns & StandingsHud::COL_STATUS) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_STATUS, true,
         "standings.col_status");
     ctx.addToggleControl("Penalty indicator", (hud->m_enabledColumns & StandingsHud::COL_PENALTY) != 0,
@@ -212,6 +212,36 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
     // === GAPS SECTION ===
     ctx.addSectionHeader("Gap Display");
 
+    // Gap reference mode (first - affects how all gaps are displayed)
+    float cw = PluginUtils::calculateMonospaceTextWidth(1, ctx.fontSize);
+    float rowWidth = ctx.panelWidth - (ctx.labelX - ctx.contentAreaStartX);
+    const char* gapRefValue = (hud->m_gapReferenceMode == StandingsHud::GapReferenceMode::LEADER)
+        ? "Leader" : "Player";
+    ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+        ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "standings.gap_reference"
+    ));
+    ctx.parent->addString("Gap reference point", ctx.labelX, ctx.currentY, PluginConstants::Justify::LEFT,
+        PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), ctx.fontSize);
+    float controlX = ctx.controlX;
+    ctx.parent->addString("<", controlX, ctx.currentY, PluginConstants::Justify::LEFT,
+        PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getAccent(), ctx.fontSize);
+    ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+        controlX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+        SettingsHud::ClickRegion::GAP_REFERENCE_DOWN, &hud->m_gapReferenceMode, hud
+    ));
+    controlX += cw * 2;
+    std::string formattedRef = SettingsLayoutContext::formatValue(gapRefValue, 10, false);
+    ctx.parent->addString(formattedRef.c_str(), controlX, ctx.currentY, PluginConstants::Justify::LEFT,
+        PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), ctx.fontSize);
+    controlX += PluginUtils::calculateMonospaceTextWidth(10, ctx.fontSize);
+    ctx.parent->addString(" >", controlX, ctx.currentY, PluginConstants::Justify::LEFT,
+        PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getAccent(), ctx.fontSize);
+    ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+        controlX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+        SettingsHud::ClickRegion::GAP_REFERENCE_UP, &hud->m_gapReferenceMode, hud
+    ));
+    ctx.currentY += ctx.lineHeightNormal;
+
     // Official gap column mode
     const char* officialGapValue;
     switch (hud->m_officialGapMode) {
@@ -221,15 +251,13 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
         default: officialGapValue = "Off"; break;
     }
     // Add row-wide tooltip region and custom cycle control for gap mode
-    float cw = PluginUtils::calculateMonospaceTextWidth(1, ctx.fontSize);
-    float rowWidth = ctx.panelWidth - (ctx.labelX - ctx.contentAreaStartX);
     ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
         ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "standings.col_official_gap"
     ));
     ctx.parent->addString("Official gap column", ctx.labelX, ctx.currentY, PluginConstants::Justify::LEFT,
         PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), ctx.fontSize);
     // Cycle control
-    float controlX = ctx.controlX;
+    controlX = ctx.controlX;
     ctx.parent->addString("<", controlX, ctx.currentY, PluginConstants::Justify::LEFT,
         PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getAccent(), ctx.fontSize);
     ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
@@ -319,34 +347,6 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
     ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
         controlX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
         SettingsHud::ClickRegion::GAP_INDICATOR_UP, &hud->m_gapIndicatorMode, hud
-    ));
-    ctx.currentY += ctx.lineHeightNormal;
-
-    // Gap reference mode
-    const char* gapRefValue = (hud->m_gapReferenceMode == StandingsHud::GapReferenceMode::LEADER)
-        ? "Leader" : "Player";
-    ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-        ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "standings.gap_reference"
-    ));
-    ctx.parent->addString("Gap reference point", ctx.labelX, ctx.currentY, PluginConstants::Justify::LEFT,
-        PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), ctx.fontSize);
-    controlX = ctx.controlX;
-    ctx.parent->addString("<", controlX, ctx.currentY, PluginConstants::Justify::LEFT,
-        PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getAccent(), ctx.fontSize);
-    ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-        controlX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-        SettingsHud::ClickRegion::GAP_REFERENCE_DOWN, &hud->m_gapReferenceMode, hud
-    ));
-    controlX += cw * 2;
-    std::string formattedRef = SettingsLayoutContext::formatValue(gapRefValue, 10, false);
-    ctx.parent->addString(formattedRef.c_str(), controlX, ctx.currentY, PluginConstants::Justify::LEFT,
-        PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), ctx.fontSize);
-    controlX += PluginUtils::calculateMonospaceTextWidth(10, ctx.fontSize);
-    ctx.parent->addString(" >", controlX, ctx.currentY, PluginConstants::Justify::LEFT,
-        PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getAccent(), ctx.fontSize);
-    ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-        controlX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-        SettingsHud::ClickRegion::GAP_REFERENCE_UP, &hud->m_gapReferenceMode, hud
     ));
     ctx.currentY += ctx.lineHeightNormal;
 

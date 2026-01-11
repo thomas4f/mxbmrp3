@@ -248,13 +248,9 @@ void UpdateDownloader::cleanupOldFiles() {
                     FindClose(hFind);
                 }
 
-                // Also cleanup backup directory if it exists
-                std::string backupDir = pluginDir + "mxbmrp3_update_backup\\";
-                DWORD attrs = GetFileAttributesA(backupDir.c_str());
-                if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
-                    deleteDirectoryRecursive(backupDir);
-                    DEBUG_INFO("UpdateDownloader: Cleaned up old backup directory");
-                }
+                // Note: Backup directory (mxbmrp3_update_backup/) is intentionally NOT deleted here.
+                // It's kept until the next update starts (cleaned in createBackupDirectory()),
+                // allowing users to manually recover files even after multiple game restarts.
             }
         }
     }
@@ -1142,9 +1138,9 @@ bool UpdateDownloader::extractAndInstall(const std::vector<char>& zipData, std::
 
     // Success!
     if (!m_debugMode) {
-        // Intentionally keep backup until next startup for manual recovery if needed.
-        // The backup directory is automatically cleaned up by cleanupOldFiles() on plugin load,
-        // giving users one restart window to manually recover if something goes wrong.
+        // Intentionally keep backup until the next update for manual recovery if needed.
+        // The backup directory is cleaned up by createBackupDirectory() when a new update starts,
+        // allowing users to manually recover files even after multiple game restarts.
         DEBUG_INFO_F("UpdateDownloader: Extraction complete. Backup kept at: %s", backupDir.c_str());
     } else {
         DEBUG_INFO_F("UpdateDownloader: DEBUG MODE - Extraction complete at: %s", pluginDir.c_str());

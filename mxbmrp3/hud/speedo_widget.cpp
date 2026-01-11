@@ -36,6 +36,13 @@ bool SpeedoWidget::handlesDataType(DataChangeType dataType) const {
 }
 
 void SpeedoWidget::update() {
+    // OPTIMIZATION: Skip processing when not visible
+    if (!isVisible()) {
+        clearDataDirty();
+        clearLayoutDirty();
+        return;
+    }
+
     // Always rebuild - speed updates at high frequency (telemetry rate)
     // Rebuild is cheap (single quad calculation), no need for caching
     rebuildRenderData();
@@ -107,7 +114,7 @@ void SpeedoWidget::addNeedleQuad(float centerX, float centerY, float angleRad, f
 
 void SpeedoWidget::rebuildRenderData() {
     // Clear render data
-    m_strings.clear();
+    clearStrings();
     m_quads.clear();
 
     // Get bike telemetry data

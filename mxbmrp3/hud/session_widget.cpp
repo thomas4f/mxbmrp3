@@ -39,7 +39,30 @@ bool SessionWidget::handlesDataType(DataChangeType dataType) const {
     return dataType == DataChangeType::SessionData;
 }
 
+int SessionWidget::getEnabledRowCount() const {
+    int count = 0;
+    if (m_enabledRows & ROW_TYPE) count++;
+    if (m_enabledRows & ROW_TRACK) count++;
+    if (m_enabledRows & ROW_FORMAT) count++;
+    return count;
+}
+
+float SessionWidget::calculateContentHeight(const ScaledDimensions& dim) const {
+    float labelHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
+    float typeHeight = (m_enabledRows & ROW_TYPE) ? dim.lineHeightLarge : 0.0f;
+    float trackHeight = (m_enabledRows & ROW_TRACK) ? dim.lineHeightNormal : 0.0f;
+    float formatHeight = (m_enabledRows & ROW_FORMAT) ? dim.lineHeightNormal : 0.0f;
+    return labelHeight + typeHeight + trackHeight + formatHeight;
+}
+
 void SessionWidget::update() {
+    // OPTIMIZATION: Skip processing when not visible
+    if (!isVisible()) {
+        clearDataDirty();
+        clearLayoutDirty();
+        return;
+    }
+
     // Get session data
     const PluginData& pluginData = PluginData::getInstance();
     const SessionData& sessionData = pluginData.getSessionData();
@@ -80,13 +103,14 @@ void SessionWidget::rebuildLayout() {
     float startX = 0.0f;
     float startY = 0.0f;
 
-    // Calculate dimensions using base helper
+    // Calculate dimensions
     float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::SESSION_WIDTH);
+    float backgroundHeight = dim.paddingV + calculateContentHeight(dim) + dim.paddingV;
 
-    // Height calculation is widget-specific due to lineHeightLarge value display
+    // Individual row heights for positioning
     float labelHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
-    float contentHeight = labelHeight + dim.lineHeightLarge + dim.lineHeightNormal + dim.lineHeightNormal;  // Label (optional) + Type (2 lines) + Track (1) + Format+State (1)
-    float backgroundHeight = dim.paddingV + contentHeight + dim.paddingV;
+    float typeHeight = (m_enabledRows & ROW_TYPE) ? dim.lineHeightLarge : 0.0f;
+    float trackHeight = (m_enabledRows & ROW_TRACK) ? dim.lineHeightNormal : 0.0f;
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
@@ -108,22 +132,30 @@ void SessionWidget::rebuildLayout() {
     }
 
     // Session type (extra large font - spans 2 lines)
-    if (positionString(stringIndex, contentStartX, currentY)) {
-        stringIndex++;
+    if (m_enabledRows & ROW_TYPE) {
+        if (positionString(stringIndex, contentStartX, currentY)) {
+            stringIndex++;
+        }
+        currentY += typeHeight;
     }
 
     // Track name (normal font - 1 line)
-    if (positionString(stringIndex, contentStartX, currentY + dim.lineHeightLarge)) {
-        stringIndex++;
+    if (m_enabledRows & ROW_TRACK) {
+        if (positionString(stringIndex, contentStartX, currentY)) {
+            stringIndex++;
+        }
+        currentY += trackHeight;
     }
 
     // Format + Session state (normal font - 1 line, combined)
-    positionString(stringIndex, contentStartX, currentY + dim.lineHeightLarge + dim.lineHeightNormal);
+    if (m_enabledRows & ROW_FORMAT) {
+        positionString(stringIndex, contentStartX, currentY);
+    }
 }
 
 void SessionWidget::rebuildRenderData() {
     // Clear render data
-    m_strings.clear();
+    clearStrings();
     m_quads.clear();
 
     auto dim = getScaledDimensions();
@@ -143,16 +175,17 @@ void SessionWidget::rebuildRenderData() {
     float startX = 0.0f;
     float startY = 0.0f;
 
-    // Calculate dimensions using base helper
+    // Calculate dimensions
     float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::SESSION_WIDTH);
-
-    // Height calculation is widget-specific due to lineHeightLarge value display
-    float labelHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
-    float contentHeight = labelHeight + dim.lineHeightLarge + dim.lineHeightNormal + dim.lineHeightNormal;  // Label (optional) + Type (2 lines) + Track (1) + Format+State (1)
-    float backgroundHeight = dim.paddingV + contentHeight + dim.paddingV;
+    float backgroundHeight = dim.paddingV + calculateContentHeight(dim) + dim.paddingV;
 
     // Add background quad
     addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
+
+    // Individual row heights for positioning
+    float labelHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
+    float typeHeight = (m_enabledRows & ROW_TYPE) ? dim.lineHeightLarge : 0.0f;
+    float trackHeight = (m_enabledRows & ROW_TRACK) ? dim.lineHeightNormal : 0.0f;
 
     float contentStartX = startX + dim.paddingH;
     float contentStartY = startY + dim.paddingV;
@@ -169,50 +202,58 @@ void SessionWidget::rebuildRenderData() {
     }
 
     // Session type (extra large font - e.g., "PRACTICE", "RACE 2")
-    const char* sessionTypeString = sessionString ? sessionString : Placeholders::GENERIC;
-    addString(sessionTypeString, contentStartX, currentY, Justify::LEFT,
-        Fonts::getTitle(), textColor, dim.fontSizeExtraLarge);
+    if (m_enabledRows & ROW_TYPE) {
+        const char* sessionTypeString = sessionString ? sessionString : Placeholders::GENERIC;
+        addString(sessionTypeString, contentStartX, currentY, Justify::LEFT,
+            Fonts::getTitle(), textColor, dim.fontSizeExtraLarge);
+        currentY += typeHeight;
+    }
 
     // Track name (normal font)
-    const char* trackName = sessionData.trackName[0] != '\0' ? sessionData.trackName : Placeholders::GENERIC;
-    addString(trackName, contentStartX, currentY + dim.lineHeightLarge, Justify::LEFT,
-        Fonts::getTitle(), textColor, dim.fontSize);
+    if (m_enabledRows & ROW_TRACK) {
+        const char* trackName = sessionData.trackName[0] != '\0' ? sessionData.trackName : Placeholders::GENERIC;
+        addString(trackName, contentStartX, currentY, Justify::LEFT,
+            Fonts::getTitle(), textColor, dim.fontSize);
+        currentY += trackHeight;
+    }
 
     // Format + Session state (combined on one line, e.g., "10:00 + 2 Laps, In Progress")
-    bool hasTime = (sessionData.sessionLength > 0);
-    bool hasLaps = (sessionData.sessionNumLaps > 0);
-    const char* sessionStateString = stateString ? stateString : Placeholders::GENERIC;
+    if (m_enabledRows & ROW_FORMAT) {
+        bool hasTime = (sessionData.sessionLength > 0);
+        bool hasLaps = (sessionData.sessionNumLaps > 0);
+        const char* sessionStateString = stateString ? stateString : Placeholders::GENERIC;
 
-    char combinedBuffer[128];
+        char combinedBuffer[128];
 
-    if (hasTime || hasLaps) {
-        char formatBuffer[64];
-        char timeBuffer[16];
+        if (hasTime || hasLaps) {
+            char formatBuffer[64];
+            char timeBuffer[16];
 
-        if (hasTime && hasLaps) {
-            // Time + Laps format (e.g., "10:00 + 2 Laps")
-            PluginUtils::formatTimeMinutesSeconds(sessionData.sessionLength, timeBuffer, sizeof(timeBuffer));
-            snprintf(formatBuffer, sizeof(formatBuffer), "%s + %d Laps", timeBuffer, sessionData.sessionNumLaps);
-        }
-        else if (hasTime) {
-            // Time only (e.g., "10:00")
-            PluginUtils::formatTimeMinutesSeconds(sessionData.sessionLength, formatBuffer, sizeof(formatBuffer));
+            if (hasTime && hasLaps) {
+                // Time + Laps format (e.g., "10:00 + 2 Laps")
+                PluginUtils::formatTimeMinutesSeconds(sessionData.sessionLength, timeBuffer, sizeof(timeBuffer));
+                snprintf(formatBuffer, sizeof(formatBuffer), "%s + %d Laps", timeBuffer, sessionData.sessionNumLaps);
+            }
+            else if (hasTime) {
+                // Time only (e.g., "10:00")
+                PluginUtils::formatTimeMinutesSeconds(sessionData.sessionLength, formatBuffer, sizeof(formatBuffer));
+            }
+            else {
+                // Laps only (e.g., "2 Laps")
+                snprintf(formatBuffer, sizeof(formatBuffer), "%d Laps", sessionData.sessionNumLaps);
+            }
+
+            // Combine format and state with comma separator
+            snprintf(combinedBuffer, sizeof(combinedBuffer), "%s, %s", formatBuffer, sessionStateString);
         }
         else {
-            // Laps only (e.g., "2 Laps")
-            snprintf(formatBuffer, sizeof(formatBuffer), "%d Laps", sessionData.sessionNumLaps);
+            // No format data, just show state
+            snprintf(combinedBuffer, sizeof(combinedBuffer), "%s", sessionStateString);
         }
 
-        // Combine format and state with comma separator
-        snprintf(combinedBuffer, sizeof(combinedBuffer), "%s, %s", formatBuffer, sessionStateString);
+        addString(combinedBuffer, contentStartX, currentY, Justify::LEFT,
+            Fonts::getTitle(), textColor, dim.fontSize);
     }
-    else {
-        // No format data, just show state
-        snprintf(combinedBuffer, sizeof(combinedBuffer), "%s", sessionStateString);
-    }
-
-    addString(combinedBuffer, contentStartX, currentY + dim.lineHeightLarge + dim.lineHeightNormal, Justify::LEFT,
-        Fonts::getTitle(), textColor, dim.fontSize);
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
@@ -224,6 +265,7 @@ void SessionWidget::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.1f;
     m_fScale = 1.0f;
+    m_enabledRows = ROW_DEFAULT;  // Reset row visibility
     setPosition(0.0055f, 0.1332f);
     setDataDirty();
 }

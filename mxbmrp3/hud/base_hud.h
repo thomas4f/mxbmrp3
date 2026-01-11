@@ -68,9 +68,10 @@ public:
 
     const std::vector<SPluginQuad_t>& getQuads() const { return m_quads; }
     const std::vector<SPluginString_t>& getStrings() const { return m_strings; }
+    const std::vector<bool>& getStringSkipShadow() const { return m_stringSkipShadow; }
 
     // Visibility controls
-    void setVisible(bool visible) {
+    virtual void setVisible(bool visible) {
         if (m_bVisible != visible) {
             m_bVisible = visible;
             if (visible) setDataDirty();  // Rebuild when becoming visible
@@ -164,6 +165,12 @@ public:
         m_bLayoutDirty = true;
     }
 
+    // Process dirty flags immediately (without full update logic)
+    // Only rebuilds if already marked dirty - use after batch settings changes
+    void rebuildIfDirty() {
+        processDirtyFlags();
+    }
+
     // ========================================================================
     // Frequent Update Support (for live timing displays)
     // ========================================================================
@@ -209,8 +216,12 @@ protected:
     virtual void onAfterDataRebuild() {}
 
     // Shared helper methods for HUD rendering (eliminates duplication across HUDs)
+    // skipShadow: set true to exclude this string from drop shadow effect
     void addString(const char* text, float x, float y, int justify, int fontIndex,
-                   unsigned long color, float fontSize);
+                   unsigned long color, float fontSize, bool skipShadow = false);
+
+    // Clear strings and associated shadow flags (use instead of m_strings.clear())
+    void clearStrings() { m_strings.clear(); m_stringSkipShadow.clear(); }
     void addTitleString(const char* text, float x, float y, int justify, int fontIndex,
                         unsigned long color, float fontSize);
     void addBackgroundQuad(float x, float y, float width, float height);
@@ -284,6 +295,7 @@ protected:
 
     std::vector<SPluginQuad_t> m_quads;
     std::vector<SPluginString_t> m_strings;
+    std::vector<bool> m_stringSkipShadow;  // Parallel to m_strings: true = skip drop shadow for this string
     std::vector<HudStringConfig> m_styledStringConfigs;  // Storage for styled string configurations
     float m_fScale;
 

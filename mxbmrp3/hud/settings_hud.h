@@ -93,6 +93,9 @@ public:
             ROW_COUNT_DOWN,            // Decrease row count (StandingsHud)
             LAP_LOG_ROW_COUNT_UP,      // Increase lap log row count (LapLogHud)
             LAP_LOG_ROW_COUNT_DOWN,    // Decrease lap log row count (LapLogHud)
+            LAP_LOG_ORDER_UP,          // Cycle display order forward (LapLogHud)
+            LAP_LOG_ORDER_DOWN,        // Cycle display order backward (LapLogHud)
+            LAP_LOG_GAP_ROW_TOGGLE,    // Toggle gap row display (LapLogHud)
             MAP_ROTATION_TOGGLE,       // Toggle map rotation mode (MapHud)
             MAP_OUTLINE_TOGGLE,        // Toggle track outline (MapHud)
             MAP_COLORIZE_UP,           // Cycle rider color mode forward (MapHud)
@@ -169,6 +172,7 @@ public:
             SPEED_UNIT_TOGGLE,         // Toggle speed unit (mph/km/h)
             FUEL_UNIT_TOGGLE,          // Toggle fuel unit (L/gal)
             GRID_SNAP_TOGGLE,          // Toggle grid snapping for HUD positioning
+            DROP_SHADOW_TOGGLE,        // Toggle drop shadow for text rendering
             UPDATE_CHECK_TOGGLE,       // Toggle automatic update checking
             PROFILE_CYCLE_DOWN,        // Cycle to previous profile (Practice/Qualify/Race/Spectate)
             PROFILE_CYCLE_UP,          // Cycle to next profile
@@ -469,6 +473,7 @@ private:
     void handleDisplayModeClick(const ClickRegion& region, bool increase);
     void handleTabClick(const ClickRegion& region);
     void handleCloseButtonClick();
+    const char* getTabName(int tabIndex) const;  // Get display name for a tab
     // Note: Tab-specific handlers inlined into settings_tab_*.cpp files
 
     // Helper methods to reduce code duplication
@@ -497,7 +502,6 @@ private:
     static constexpr int CHECKBOX_CLICKABLE = 40;       // Clickable area for data checkboxes
     static constexpr int SCALE_LABEL_WIDTH = 14;        // "Scale: 0.00" width
     static constexpr int SCALE_BUTTON_GAP = 4;          // Gap between scale label and buttons
-    static constexpr int RESET_TAB_BUTTON_WIDTH = 12;   // "[Reset Tab]" width
 
     // HUD references (non-owning pointers)
     IdealLapHud* m_idealLap;

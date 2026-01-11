@@ -762,6 +762,7 @@ public:
     const BikeTelemetryData& getBikeTelemetry() const { return m_bikeTelemetry; }
     const InputTelemetryData& getInputTelemetry() const { return m_inputTelemetry; }
     const HistoryBuffers& getHistoryBuffers() const { return m_historyBuffers; }
+    void clearHistoryBuffers() { m_historyBuffers.clear(); }
 
     // Debug metrics update
     void updateDebugMetrics(float fps, float pluginTimeMs, float pluginPercent);
@@ -781,6 +782,9 @@ public:
 
     // Limited telemetry update for spectate/replay (only updates data available in SPluginsRaceVehicleData_t)
     void updateRaceVehicleTelemetry(float speedometer, int gear, int rpm, float throttle, float frontBrake, float lean);
+
+    // Clear telemetry data (when spectate target becomes invalid)
+    void clearTelemetryData();
 
     // Clear all data (useful for reset scenarios)
     void clear();

@@ -43,6 +43,7 @@
 #include "../hud/lean_widget.h"
 #include "hotkey_manager.h"
 #include "tooltip_manager.h"
+#include "color_config.h"
 #include <windows.h>
 #include <memory>
 #include <cstring>
@@ -394,6 +395,10 @@ void HudManager::onDataChanged(DataChangeType changeType) {
             // If target differs from current, switch profiles
             if (targetProfile != profileMgr.getActiveProfile()) {
                 SettingsManager::getInstance().switchProfile(*this, targetProfile);
+                // Notify SettingsHud to refresh if visible (shows current profile name)
+                if (m_pSettingsHud) {
+                    m_pSettingsHud->setDataDirty();
+                }
             }
         }
     }
@@ -413,6 +418,14 @@ void HudManager::markAllHudsDirty() {
     for (auto& hud : m_huds) {
         if (hud) {
             hud->setDataDirty();
+        }
+    }
+}
+
+void HudManager::rebuildAllIfDirty() {
+    for (auto& hud : m_huds) {
+        if (hud) {
+            hud->rebuildIfDirty();
         }
     }
 }
@@ -513,6 +526,13 @@ void HudManager::updateHuds() {
 
 void HudManager::collectRenderData() {
 
+    // Get drop shadow settings once (avoid repeated singleton calls)
+    const ColorConfig& colorConfig = ColorConfig::getInstance();
+    bool dropShadowEnabled = colorConfig.getDropShadow();
+    float shadowOffsetXPct = colorConfig.getDropShadowOffsetX();
+    float shadowOffsetYPct = colorConfig.getDropShadowOffsetY();
+    unsigned long shadowColor = colorConfig.getDropShadowColor();
+
     // Calculate total capacity needed to minimize allocations
     size_t totalQuads = 0;
     size_t totalStrings = 0;
@@ -527,6 +547,11 @@ void HudManager::collectRenderData() {
     // Reserve space for pointer and settings button (always allocated, conditionally added)
     totalQuads += 2;     // Pointer quad + settings button background quad
     totalStrings += 1;   // Settings button text
+
+    // If drop shadow is enabled, we may need up to 2x the strings
+    if (dropShadowEnabled) {
+        totalStrings *= 2;
+    }
 
     // Ensure vectors have sufficient capacity - grow if needed but never shrink
     if (m_quads.capacity() < totalQuads) {
@@ -573,10 +598,34 @@ void HudManager::collectRenderData() {
 
             const auto& hudQuads = hud->getQuads();
             const auto& hudStrings = hud->getStrings();
+            const auto& skipShadowFlags = hud->getStringSkipShadow();
 
-            // Use insert with iterators for efficient bulk copy
+            // Use insert with iterators for efficient bulk copy of quads
             m_quads.insert(m_quads.end(), hudQuads.begin(), hudQuads.end());
-            m_strings.insert(m_strings.end(), hudStrings.begin(), hudStrings.end());
+
+            // For strings: if drop shadow enabled, add shadow before each non-skipped string
+            if (dropShadowEnabled) {
+                for (size_t i = 0; i < hudStrings.size(); ++i) {
+                    const auto& str = hudStrings[i];
+                    bool skipShadow = (i < skipShadowFlags.size()) ? skipShadowFlags[i] : false;
+
+                    if (!skipShadow) {
+                        // Add shadow string first (so it renders behind)
+                        SPluginString_t shadowStr = str;
+                        // Offset proportional to font size
+                        shadowStr.m_afPos[0] += str.m_fSize * shadowOffsetXPct;
+                        shadowStr.m_afPos[1] += str.m_fSize * shadowOffsetYPct;
+                        shadowStr.m_ulColor = shadowColor;
+                        m_strings.push_back(shadowStr);
+                    }
+
+                    // Add original string
+                    m_strings.push_back(str);
+                }
+            } else {
+                // No drop shadow - use efficient bulk copy
+                m_strings.insert(m_strings.end(), hudStrings.begin(), hudStrings.end());
+            }
         }
     }
 }
@@ -767,8 +816,9 @@ void HudManager::processKeyboardInput() {
             settingsMgr.loadSettings(*this, savePath.c_str());
             // Reload UI descriptions (hot-reload support)
             TooltipManager::getInstance().reload();
-            // Mark all HUDs dirty to force rebuild
+            // Mark HUDs with per-texture layouts dirty to force rebuild
             if (m_pGamepad) m_pGamepad->setDataDirty();
+            if (m_pPitboard) m_pPitboard->setDataDirty();
             if (m_pSettingsHud) m_pSettingsHud->setDataDirty();
         }
     }
@@ -793,6 +843,13 @@ void HudManager::processKeyboardInput() {
 bool HudManager::isSettingsVisible() const {
     return m_pSettingsHud && m_pSettingsHud->isVisible();
 }
+
+bool HudManager::isTelemetryHistoryNeeded() const {
+    // Returns true if TelemetryHud is visible and showing graphs
+    // This allows PluginData to skip history buffer updates when not needed
+    return m_pTelemetry && m_pTelemetry->isVisible();
+}
+
 
 void HudManager::updateTrackCenterline(int numSegments, SPluginsTrackSegment_t* segments) {
     if (!m_bInitialized || !m_pMapHud) {

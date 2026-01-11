@@ -16,16 +16,14 @@
 class RecordsHud : public BaseHud {
 public:
     // Column visibility flags (bitfield)
-    static constexpr uint32_t COL_POS     = 1 << 0;  // Position (P1, P2, etc.)
-    static constexpr uint32_t COL_RIDER   = 1 << 1;  // Rider name
-    static constexpr uint32_t COL_BIKE    = 1 << 2;  // Bike name
-    static constexpr uint32_t COL_LAPTIME = 1 << 3;  // Lap time
-    static constexpr uint32_t COL_DATE    = 1 << 4;  // Date recorded
-    static constexpr uint32_t COL_SECTOR1 = 1 << 5;  // Sector 1 time (MXB-Ranked only)
-    static constexpr uint32_t COL_SECTOR2 = 1 << 6;  // Sector 2 time (MXB-Ranked only)
-    static constexpr uint32_t COL_SECTOR3 = 1 << 7;  // Sector 3 time (MXB-Ranked only)
-    static constexpr uint32_t COL_SECTORS = COL_SECTOR1 | COL_SECTOR2 | COL_SECTOR3;  // All sectors combined
-    static constexpr uint32_t COL_DEFAULT = COL_POS | COL_RIDER | COL_BIKE | COL_LAPTIME;  // Sectors and date disabled by default
+    static constexpr uint32_t COL_POS     = 1 << 0;  // Position (P1, P2, etc.) - always shown
+    static constexpr uint32_t COL_RIDER   = 1 << 1;  // Rider name - always shown
+    static constexpr uint32_t COL_BIKE    = 1 << 2;  // Bike name - always shown
+    static constexpr uint32_t COL_LAPTIME = 1 << 3;  // Lap time - always shown
+    static constexpr uint32_t COL_DATE    = 1 << 4;  // Date recorded (optional)
+    static constexpr uint32_t COL_SECTORS = 1 << 5;  // Sector times S1/S2/S3 (optional, MXB-Ranked only)
+    static constexpr uint32_t COL_CORE    = COL_POS | COL_RIDER | COL_BIKE | COL_LAPTIME;  // Always-on columns
+    static constexpr uint32_t COL_DEFAULT = COL_CORE;  // Sectors and date disabled by default
 
     bool isColumnEnabled(uint32_t col) const {
         return (m_enabledColumns & col) != 0;

@@ -41,6 +41,15 @@ bool SettingsHud::handleClickTabAppearance(const ClickRegion& region) {
             }
             return true;
 
+        case ClickRegion::DROP_SHADOW_TOGGLE:
+            {
+                ColorConfig& colorConfig = ColorConfig::getInstance();
+                colorConfig.setDropShadow(!colorConfig.getDropShadow());
+                HudManager::getInstance().markAllHudsDirty();
+                rebuildRenderData();
+            }
+            return true;
+
         default:
             return false;
     }
@@ -180,6 +189,15 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
     addColorRow(ColorSlot::NEUTRAL, "appearance.color_neutral");
     addColorRow(ColorSlot::WARNING, "appearance.color_warning");
     addColorRow(ColorSlot::NEGATIVE, "appearance.color_negative");
+
+    // === TEXT EFFECTS SECTION ===
+    ctx.addSpacing(0.5f);
+    ctx.addSectionHeader("Text Effects");
+
+    // Drop shadow toggle
+    ctx.addToggleControl("Drop shadow", colorConfig.getDropShadow(),
+        SettingsHud::ClickRegion::DROP_SHADOW_TOGGLE, nullptr, nullptr, 0, true,
+        "appearance.drop_shadow");
 
     // No active HUD for appearance settings
     return nullptr;

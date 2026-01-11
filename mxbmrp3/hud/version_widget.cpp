@@ -409,7 +409,7 @@ void VersionWidget::exitGame() {
     m_bVisible = m_wasVisibleBeforeGame;
 
     // Clear game render data so widget rebuilds properly
-    m_strings.clear();
+    clearStrings();
     m_quads.clear();
 
     // Force immediate rebuild of widget render data (if still visible)
@@ -503,7 +503,7 @@ void VersionWidget::rebuildLayout() {
 
 void VersionWidget::rebuildRenderData() {
     // Clear existing data
-    m_strings.clear();
+    clearStrings();
     m_quads.clear();
 
     if (m_gameActive) {
@@ -749,6 +749,7 @@ void VersionWidget::renderGame() {
     scoreString.m_iJustify = Justify::LEFT;
     scoreString.m_ulColor = ColorConfig::getInstance().getPrimary();
     m_strings.push_back(scoreString);
+    m_stringSkipShadow.push_back(false);  // Game text should have shadows
 
     // Instructions or game state message
     const char* message = nullptr;
@@ -769,6 +770,7 @@ void VersionWidget::renderGame() {
         msgString.m_iJustify = Justify::CENTER;
         msgString.m_ulColor = ColorConfig::getInstance().getSecondary();
         m_strings.push_back(msgString);
+        m_stringSkipShadow.push_back(false);  // Game text should have shadows
     }
 
     // Set bounds to game area for potential interaction

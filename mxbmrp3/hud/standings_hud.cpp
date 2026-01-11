@@ -92,7 +92,7 @@ void StandingsHud::formatStatus(DisplayEntry& entry, const SessionData& sessionD
     }
 }
 
-void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder, float currentY, const ScaledDimensions& dim) {
+void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder, float currentY, const ScaledDimensions& dim, int rowIndex) {
 
     const char* placeholder = Placeholders::GENERIC;
     const char* lapTimePlaceholder = Placeholders::LAP_TIME;
@@ -159,6 +159,9 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
                         sprite.m_aafPos[3][1] = y - spriteHalfSize;
                         sprite.m_iSprite = spriteIndex;
                         sprite.m_ulColor = trackedConfig->color;
+
+                        // Track the quad index for position updates in rebuildLayout
+                        m_trackedIconQuads.push_back({m_quads.size(), rowIndex});
                         m_quads.push_back(sprite);
                     }
                 }
@@ -265,7 +268,7 @@ void StandingsHud::addDisplayEntries(int startIdx, int endIdx, int positionBase,
 }
 
 StandingsHud::DisplayEntry StandingsHud::buildGapRow(int displayRaceNum, int neighborRaceNum, bool isGapToRiderAhead,
-                                                      int currentElapsedTime, const PluginData& pluginData) {
+                                                      const PluginData& pluginData) {
     DisplayEntry gapRow;
     gapRow.isGapRow = true;
     gapRow.isGapToRiderAhead = isGapToRiderAhead;
@@ -273,25 +276,8 @@ StandingsHud::DisplayEntry StandingsHud::buildGapRow(int displayRaceNum, int nei
     const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
     const StandingsData* neighborStanding = pluginData.getStanding(neighborRaceNum);
 
-    // Check if gap should be visible (display rider or neighbor must have recent update)
-    bool shouldShowGap = false;
-    auto playerUpdateIt = m_lastOfficialGapUpdateTime.find(displayRaceNum);
-    auto neighborUpdateIt = m_lastOfficialGapUpdateTime.find(neighborRaceNum);
-
-    if (playerUpdateIt != m_lastOfficialGapUpdateTime.end()) {
-        int timeSinceUpdate = currentElapsedTime - playerUpdateIt->second;
-        shouldShowGap = shouldShowGap || (timeSinceUpdate >= 0 && timeSinceUpdate < OFFICIAL_GAP_DISPLAY_DURATION_MS);
-    }
-    if (neighborUpdateIt != m_lastOfficialGapUpdateTime.end()) {
-        int timeSinceUpdate = currentElapsedTime - neighborUpdateIt->second;
-        shouldShowGap = shouldShowGap || (timeSinceUpdate >= 0 && timeSinceUpdate < OFFICIAL_GAP_DISPLAY_DURATION_MS);
-    }
-
     // Calculate official gap (from standings)
-    if (!shouldShowGap) {
-        strcpy_s(gapRow.formattedOfficialGap, sizeof(gapRow.formattedOfficialGap), "");
-    }
-    else if (playerStanding && neighborStanding) {
+    if (playerStanding && neighborStanding) {
         int relativeGap;
         if (isGapToRiderAhead) {
             // Gap to rider ahead: player gap - ahead gap
@@ -435,17 +421,19 @@ void StandingsHud::buildColumnTable() {
         int width;
     };
 
+    // useEmpty: true = show "" for placeholder rows, false = show "-"
+    // Only position column shows "-" for placeholders to indicate HUD size
     const ColumnSpec specs[] = {
-        {COL_TRACKED, 0, m_columns.tracked, Justify::LEFT, true, COL_TRACKED_WIDTH},  // Sprite column - handled specially
-        {COL_POS, 1, m_columns.pos, Justify::LEFT, false, COL_POS_WIDTH},
-        {COL_RACENUM, 2, m_columns.raceNum, Justify::LEFT, false, COL_RACENUM_WIDTH},
-        {COL_NAME, 3, m_columns.name, Justify::LEFT, false, COL_NAME_WIDTH},
-        {COL_BIKE, 4, m_columns.bike, Justify::LEFT, false, COL_BIKE_WIDTH},
+        {COL_TRACKED, 0, m_columns.tracked, Justify::LEFT, true, COL_TRACKED_WIDTH},
+        {COL_POS, 1, m_columns.pos, Justify::LEFT, false, COL_POS_WIDTH},  // Show "-" for placeholders
+        {COL_RACENUM, 2, m_columns.raceNum, Justify::LEFT, true, COL_RACENUM_WIDTH},
+        {COL_NAME, 3, m_columns.name, Justify::LEFT, true, COL_NAME_WIDTH},
+        {COL_BIKE, 4, m_columns.bike, Justify::LEFT, true, COL_BIKE_WIDTH},
         {COL_STATUS, 5, m_columns.status, Justify::LEFT, true, COL_STATUS_WIDTH},
-        {COL_PENALTY, 6, m_columns.penalty, Justify::LEFT, false, COL_PENALTY_WIDTH},
-        {COL_BEST_LAP, 7, m_columns.bestLap, Justify::LEFT, false, COL_BEST_LAP_WIDTH},
-        {COL_OFFICIAL_GAP, 8, m_columns.officialGap, Justify::LEFT, false, COL_OFFICIAL_GAP_WIDTH},
-        {COL_LIVE_GAP, 9, m_columns.liveGap, Justify::LEFT, false, COL_LIVE_GAP_WIDTH},
+        {COL_PENALTY, 6, m_columns.penalty, Justify::LEFT, true, COL_PENALTY_WIDTH},
+        {COL_BEST_LAP, 7, m_columns.bestLap, Justify::LEFT, true, COL_BEST_LAP_WIDTH},
+        {COL_OFFICIAL_GAP, 8, m_columns.officialGap, Justify::LEFT, true, COL_OFFICIAL_GAP_WIDTH},
+        {COL_LIVE_GAP, 9, m_columns.liveGap, Justify::LEFT, true, COL_LIVE_GAP_WIDTH},
         {COL_DEBUG, 10, m_columns.debug, Justify::LEFT, true, COL_DEBUG_WIDTH}
     };
 
@@ -512,6 +500,14 @@ int StandingsHud::getBackgroundWidthChars() const {
 }
 
 void StandingsHud::update() {
+    // OPTIMIZATION: Skip all processing when not visible
+    // Mouse handling and hover tracking only matter when HUD is rendered
+    if (!isVisible()) {
+        clearDataDirty();
+        clearLayoutDirty();
+        return;
+    }
+
     // Handle mouse input for rider selection (LMB for clicking, RMB for dragging)
     const InputManager& input = InputManager::getInstance();
 
@@ -569,8 +565,8 @@ void StandingsHud::rebuildLayout() {
     // Apply scale to all dimensions
     auto dim = getScaledDimensions();
 
-    // Calculate actual rows to render (never more than entries available)
-    int rowsToRender = std::min(m_displayRowCount, static_cast<int>(m_displayEntries.size()));
+    // Render all display entries (rider rows + gap rows)
+    int rowsToRender = static_cast<int>(m_displayEntries.size());
     auto hudDim = calculateHudDimensions(dim, rowsToRender);
 
     setBounds(START_X, START_Y, START_X + hudDim.backgroundWidth, START_Y + hudDim.backgroundHeight);
@@ -586,6 +582,42 @@ void StandingsHud::rebuildLayout() {
         float highlightX = START_X;
         applyOffset(highlightX, highlightY);
         setQuadPositions(m_quads[m_cachedHighlightQuadIndex], highlightX, highlightY, hudDim.backgroundWidth, dim.lineHeightNormal);
+    }
+
+    // Update tracked icon quad positions
+    if (!m_trackedIconQuads.empty()) {
+        // Get tracked column position from column table
+        float trackedColPosition = m_columns.tracked;
+
+        // Same size calculations as in renderRiderRow
+        constexpr float baseConeSize = 0.006f;
+        float baseHalfSize = baseConeSize * m_fScale;
+        float baseCenterOffset = baseHalfSize;
+        float spriteHalfSize = baseHalfSize;
+        float spriteHalfWidth = spriteHalfSize / UI_ASPECT_RATIO;
+
+        for (const auto& iconInfo : m_trackedIconQuads) {
+            if (iconInfo.quadIndex >= m_quads.size()) continue;
+
+            // Calculate position for this row
+            float rowY = hudDim.contentStartY + hudDim.titleHeight + (iconInfo.rowIndex * dim.lineHeightNormal);
+            float spriteCenterX = trackedColPosition + baseCenterOffset;
+            float spriteCenterY = rowY + dim.lineHeightNormal * 0.5f;
+
+            float x = spriteCenterX, y = spriteCenterY;
+            applyOffset(x, y);
+
+            // Update quad positions
+            SPluginQuad_t& sprite = m_quads[iconInfo.quadIndex];
+            sprite.m_aafPos[0][0] = x - spriteHalfWidth;  // Top-left
+            sprite.m_aafPos[0][1] = y - spriteHalfSize;
+            sprite.m_aafPos[1][0] = x - spriteHalfWidth;  // Bottom-left
+            sprite.m_aafPos[1][1] = y + spriteHalfSize;
+            sprite.m_aafPos[2][0] = x + spriteHalfWidth;  // Bottom-right
+            sprite.m_aafPos[2][1] = y + spriteHalfSize;
+            sprite.m_aafPos[3][0] = x + spriteHalfWidth;  // Top-right
+            sprite.m_aafPos[3][1] = y - spriteHalfSize;
+        }
     }
 
     // Update all string positions
@@ -626,10 +658,11 @@ void StandingsHud::rebuildLayout() {
 
 void StandingsHud::rebuildRenderData() {
 
-    m_strings.clear();
+    clearStrings();
     m_quads.clear();
     m_displayEntries.clear();
     m_cachedHighlightQuadIndex = -1;  // Reset highlight quad tracking
+    m_trackedIconQuads.clear();  // Reset icon quad tracking
 
     const PluginData& pluginData = PluginData::getInstance();
     int displayRaceNum = pluginData.getDisplayRaceNum();
@@ -661,33 +694,6 @@ void StandingsHud::rebuildRenderData() {
     uint32_t savedEnabledColumns = m_enabledColumns;
     m_enabledColumns = effectiveColumns;
 
-    // Calculate current elapsed time (same logic as TimeWidget)
-    int sessionTime = pluginData.getSessionTime();
-    int currentElapsedTime = 0;
-    if (sessionData.sessionLength > 0) {
-        // Time-based race: elapsed = sessionLength - currentTime
-        currentElapsedTime = sessionData.sessionLength - sessionTime;
-    } else {
-        // Lap-based race: sessionTime already represents elapsed time
-        currentElapsedTime = sessionTime > 0 ? sessionTime : 0;
-    }
-
-    // Track official gap changes and update timestamps
-    for (int raceNum : classificationOrder) {
-        const StandingsData* standing = pluginData.getStanding(raceNum);
-        if (standing) {
-            int currentGap = standing->gap;
-
-            // Check if gap value has changed
-            auto lastValueIt = m_lastOfficialGapValue.find(raceNum);
-            if (lastValueIt == m_lastOfficialGapValue.end() || lastValueIt->second != currentGap) {
-                // Gap changed - record update time and new value
-                m_lastOfficialGapUpdateTime[raceNum] = currentElapsedTime;
-                m_lastOfficialGapValue[raceNum] = currentGap;
-            }
-        }
-    }
-
     // Build display entries with smart pagination
     // Strategy:
     // - If display rider is in top 3 and (running or spectating): show first N riders (simple case)
@@ -703,8 +709,6 @@ void StandingsHud::rebuildRenderData() {
         }
     }
 
-    const int TOP_POSITIONS = 3;  // Always show top 3
-    const int MAX_GAP_ROWS = 2;   // Gap rows before and after player
     const int SEPARATOR_ROWS = 0; // No separator (removed for cleaner display)
 
     m_cachedPlayerIndex = -1;
@@ -715,33 +719,40 @@ void StandingsHud::rebuildRenderData() {
                              drawState == PluginConstants::ViewState::SPECTATE ||
                              drawState == PluginConstants::ViewState::REPLAY;
 
-    if (playerPositionInClassification >= 0 && playerPositionInClassification < TOP_POSITIONS && shouldShowContext) {
-        // Display rider is in top 3 and (running or spectating) - use simple display (first N riders)
-        // Gap rows are added on top of rider rows, not subtracted from the count
+    if (playerPositionInClassification >= 0 && playerPositionInClassification < m_topPositionsCount && shouldShowContext) {
+        // Display rider is in top N - show first m_displayRowCount riders
         int entriesToBuild = std::min(static_cast<int>(classificationOrder.size()), m_displayRowCount);
         m_displayEntries.reserve(entriesToBuild);
         addDisplayEntries(0, entriesToBuild - 1, 1, classificationOrder, pluginData);
-    } else if (playerPositionInClassification >= TOP_POSITIONS && shouldShowContext) {
-        // Display rider is beyond top 3 and (running or spectating) - show top 3 + rider context
+    } else if (playerPositionInClassification >= m_topPositionsCount && shouldShowContext) {
+        // Display rider is beyond top N and (running or spectating) - show top N + rider context
         m_displayEntries.reserve(m_displayRowCount);
 
-        // 1. Add top 3 riders
-        addDisplayEntries(0, TOP_POSITIONS - 1, 1, classificationOrder, pluginData);
+        // 1. Add top N riders
+        addDisplayEntries(0, m_topPositionsCount - 1, 1, classificationOrder, pluginData);
 
-        // 2. Calculate rider context window (gap rows added on top, not subtracted)
-        int availableRows = m_displayRowCount - TOP_POSITIONS - SEPARATOR_ROWS;
+        // 2. Calculate rider context window
+        int availableRows = m_displayRowCount - m_topPositionsCount - SEPARATOR_ROWS;
         int contextBefore = availableRows / 2;
         int contextAfter = availableRows - contextBefore - 1;  // -1 for rider row
 
-        int startIndex = std::max(TOP_POSITIONS, playerPositionInClassification - contextBefore);
-        int endIndex = std::min(static_cast<int>(classificationOrder.size()) - 1,
-                               playerPositionInClassification + contextAfter);
+        int startIndex = std::max(m_topPositionsCount, playerPositionInClassification - contextBefore);
+
+        // Compensate endIndex when startIndex is clamped (overlap with top N)
+        int lostBefore = startIndex - (playerPositionInClassification - contextBefore);
+        int desiredEndIndex = playerPositionInClassification + contextAfter + lostBefore;
+        int endIndex = std::min(static_cast<int>(classificationOrder.size()) - 1, desiredEndIndex);
+
+        // Compensate startIndex when endIndex is clamped (player near end of field)
+        int lostAfter = desiredEndIndex - endIndex;
+        if (lostAfter > 0) {
+            startIndex = std::max(m_topPositionsCount, startIndex - lostAfter);
+        }
 
         // 3. Add rider context
         addDisplayEntries(startIndex, endIndex, startIndex + 1, classificationOrder, pluginData);
     } else {
-        // Display rider not found or no classification - show first N riders (fallback)
-        // Gap rows are added on top of rider rows, not subtracted from the count
+        // Display rider not found or no classification - show first m_displayRowCount riders
         int entriesToBuild = std::min(static_cast<int>(classificationOrder.size()), m_displayRowCount);
         m_displayEntries.reserve(entriesToBuild);
         addDisplayEntries(0, entriesToBuild - 1, 1, classificationOrder, pluginData);
@@ -790,8 +801,7 @@ void StandingsHud::rebuildRenderData() {
                 // Insert gap row BEFORE player row
                 if (i == m_cachedPlayerIndex && hasGapAhead) {
                     int riderAheadRaceNum = classificationOrder[playerPositionInClassification - 1];
-                    newEntries.push_back(buildGapRow(displayRaceNum, riderAheadRaceNum, true,
-                                                     currentElapsedTime, pluginData));
+                    newEntries.push_back(buildGapRow(displayRaceNum, riderAheadRaceNum, true, pluginData));
                 }
 
                 newEntries.push_back(std::move(m_displayEntries[i]));
@@ -799,8 +809,7 @@ void StandingsHud::rebuildRenderData() {
                 // Insert gap row AFTER player row
                 if (i == m_cachedPlayerIndex && hasGapBehind) {
                     int riderBehindRaceNum = classificationOrder[playerPositionInClassification + 1];
-                    newEntries.push_back(buildGapRow(displayRaceNum, riderBehindRaceNum, false,
-                                                     currentElapsedTime, pluginData));
+                    newEntries.push_back(buildGapRow(displayRaceNum, riderBehindRaceNum, false, pluginData));
                 }
             }
 
@@ -813,6 +822,36 @@ void StandingsHud::rebuildRenderData() {
         }
     }
 
+    // Add placeholder rows to fill up to configured size
+    // This shows the user how big the HUD will be when fully populated
+    {
+        // Count non-gap rows
+        int riderRows = 0;
+        int gapRows = 0;
+        for (const auto& entry : m_displayEntries) {
+            if (entry.isGapRow) {
+                gapRows++;
+            } else {
+                riderRows++;
+            }
+        }
+
+        // Calculate how many placeholder rows needed (for rider slots, not gap rows)
+        int placeholderCount = m_displayRowCount - riderRows;
+        if (placeholderCount > 0) {
+            // Reserve space for placeholders
+            m_displayEntries.reserve(m_displayEntries.size() + placeholderCount);
+
+            // Add placeholder rows at the end
+            for (int i = 0; i < placeholderCount; ++i) {
+                DisplayEntry placeholder;
+                placeholder.isPlaceholder = true;
+                strcpy_s(placeholder.formattedPosition, sizeof(placeholder.formattedPosition), Placeholders::GENERIC);
+                m_displayEntries.push_back(placeholder);
+            }
+        }
+    }
+
     // Format strings for all built entries (they're all displayed)
     // Get player's gaps for player-relative mode
     const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
@@ -821,8 +860,8 @@ void StandingsHud::rebuildRenderData() {
     int playerLiveGap = (playerStanding && playerStanding->realTimeGap > 0) ? playerStanding->realTimeGap : 0;
 
     for (auto& entry : m_displayEntries) {
-        // Skip formatting for gap rows (already formatted)
-        if (entry.isGapRow) {
+        // Skip formatting for gap rows (already formatted) and placeholders
+        if (entry.isGapRow || entry.isPlaceholder) {
             continue;
         }
 
@@ -830,55 +869,20 @@ void StandingsHud::rebuildRenderData() {
         formatStatus(entry, sessionData);
 
         // Format official gap using formatTimeDiff
-        // In race mode: only show for a few seconds after update
-        // In non-race mode: always show (no time restriction)
         // Gap mode filtering: ME mode only shows player's gap
         entry.hasOfficialGap = false;
-        bool shouldShowOfficialGap = false;
-
-        // Check gap mode filtering
         bool isPlayerRow = (entry.raceNum == displayRaceNum);
-        if (shouldShowGapForMode(m_officialGapMode, isPlayerRow)) {
-            if (!pluginData.isRaceSession()) {
-                // Non-race mode: always show gaps (practice/qualify)
-                shouldShowOfficialGap = true;
-            } else if (entry.isFinishedRace) {
-                // Finished riders: always show their final gap
-                shouldShowOfficialGap = true;
-            } else {
-                // Race mode: check if gap should be visible based on time since last update
-                auto updateTimeIt = m_lastOfficialGapUpdateTime.find(entry.raceNum);
-                if (updateTimeIt != m_lastOfficialGapUpdateTime.end()) {
-                    int timeSinceUpdate = currentElapsedTime - updateTimeIt->second;
-                    shouldShowOfficialGap = (timeSinceUpdate >= 0 && timeSinceUpdate < OFFICIAL_GAP_DISPLAY_DURATION_MS);
-                }
-            }
-        }
+        bool shouldShowOfficialGap = shouldShowGapForMode(m_officialGapMode, isPlayerRow);
+
+        // Determine if this is the reference point (leader in LEADER mode, player in PLAYER mode)
+        bool isOfficialGapReference = (m_gapReferenceMode == GapReferenceMode::LEADER && entry.position == Position::FIRST) ||
+                                      (m_gapReferenceMode == GapReferenceMode::PLAYER && isPlayerRow);
 
         if (entry.state != RiderState::NORMAL) {
             entry.formattedOfficialGap[0] = '\0';
         }
-        else if (entry.position == Position::FIRST) {
-            // Leader: always show finish time if finished, otherwise show their best lap
-            if (entry.isFinishedRace) {
-                int leaderFinishTime = pluginData.getLeaderFinishTime();
-                if (leaderFinishTime > 0) {
-                    char tempTime[16];
-                    PluginUtils::formatLapTime(leaderFinishTime, tempTime, sizeof(tempTime));
-                    snprintf(entry.formattedOfficialGap, sizeof(entry.formattedOfficialGap), " %s", tempTime);
-                } else {
-                    entry.formattedOfficialGap[0] = '\0';
-                }
-            } else if (entry.bestLap > 0) {
-                char tempTime[16];
-                PluginUtils::formatLapTime(entry.bestLap, tempTime, sizeof(tempTime));
-                snprintf(entry.formattedOfficialGap, sizeof(entry.formattedOfficialGap), " %s", tempTime);
-            } else {
-                entry.formattedOfficialGap[0] = '\0';
-            }
-        }
-        else if (m_gapReferenceMode == GapReferenceMode::PLAYER && isPlayerRow) {
-            // Player-relative mode: player is the reference point, gap to self is meaningless
+        else if (isOfficialGapReference) {
+            // Reference point: gap to self is meaningless
             strcpy_s(entry.formattedOfficialGap, sizeof(entry.formattedOfficialGap), Placeholders::GENERIC);
         }
         else if (!shouldShowOfficialGap) {
@@ -887,16 +891,21 @@ void StandingsHud::rebuildRenderData() {
         }
         else if (m_gapReferenceMode == GapReferenceMode::PLAYER) {
             // Player-relative mode: calculate gap relative to player
-            int relativeLapGap = entry.gapLaps - playerGapLaps;
-            int relativeTimeGap = entry.officialGap - playerOfficialGap;
+            // Leader (P1) has officialGap=0 which is valid - they're 0ms behind themselves
+            // Include P1 in calculation since their relative gap to player is meaningful
+            if (entry.officialGap > 0 || entry.gapLaps > 0 || entry.position == Position::FIRST) {
+                int relativeLapGap = entry.gapLaps - playerGapLaps;
+                int relativeTimeGap = entry.officialGap - playerOfficialGap;
 
-            if (relativeLapGap != 0) {
-                entry.hasOfficialGap = true;
-                snprintf(entry.formattedOfficialGap, sizeof(entry.formattedOfficialGap), "%+dL", relativeLapGap);
-            } else if (relativeTimeGap != 0 || entry.officialGap > 0) {
-                entry.hasOfficialGap = true;
-                PluginUtils::formatTimeDiff(entry.formattedOfficialGap, sizeof(entry.formattedOfficialGap), relativeTimeGap);
+                if (relativeLapGap != 0) {
+                    entry.hasOfficialGap = true;
+                    snprintf(entry.formattedOfficialGap, sizeof(entry.formattedOfficialGap), "%+dL", relativeLapGap);
+                } else {
+                    entry.hasOfficialGap = true;
+                    PluginUtils::formatTimeDiff(entry.formattedOfficialGap, sizeof(entry.formattedOfficialGap), relativeTimeGap);
+                }
             } else {
+                // Rider has no valid gap data yet
                 strcpy_s(entry.formattedOfficialGap, sizeof(entry.formattedOfficialGap), Placeholders::GENERIC);
             }
         }
@@ -942,7 +951,7 @@ void StandingsHud::rebuildRenderData() {
             strcpy_s(entry.formattedDebug, sizeof(entry.formattedDebug), "!RACE");
         }
         else if (isLiveGapReference) {
-            entry.formattedLiveGap[0] = '\0';
+            strcpy_s(entry.formattedLiveGap, sizeof(entry.formattedLiveGap), Placeholders::GENERIC);
             // Show reference point indicator
             if (m_gapReferenceMode == GapReferenceMode::LEADER) {
                 strcpy_s(entry.formattedDebug, sizeof(entry.formattedDebug), "REF:LEADER");
@@ -1010,8 +1019,8 @@ void StandingsHud::rebuildRenderData() {
     m_columns = ColumnPositions(contentStartX, m_fScale, m_enabledColumns);
     buildColumnTable();  // Rebuild column table and cache width
 
-    // Calculate actual rows to render (never more than entries available)
-    int rowsToRender = std::min(m_displayRowCount, static_cast<int>(m_displayEntries.size()));
+    // Render all display entries (rider rows + gap rows)
+    int rowsToRender = static_cast<int>(m_displayEntries.size());
 
     // Calculate dimensions based on actual rows that will be rendered
     auto hudDim = calculateHudDimensions(dim, rowsToRender);
@@ -1035,39 +1044,42 @@ void StandingsHud::rebuildRenderData() {
     for (int i = 0; i < rowsToRender; ++i) {
         const auto& entry = m_displayEntries[i];
 
-        // Highlight player/spectated rider row with bike brand color background
-        if (i == m_cachedPlayerIndex) {
-            SPluginQuad_t highlight;
-            float highlightX = START_X;
-            float highlightY = currentY;
-            applyOffset(highlightX, highlightY);  // Apply drag offset
-            setQuadPositions(highlight, highlightX, highlightY, hudDim.backgroundWidth, dim.lineHeightNormal);
-            highlight.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
+        // Skip highlights for placeholder rows
+        if (!entry.isPlaceholder) {
+            // Highlight player/spectated rider row with bike brand color background
+            if (i == m_cachedPlayerIndex) {
+                SPluginQuad_t highlight;
+                float highlightX = START_X;
+                float highlightY = currentY;
+                applyOffset(highlightX, highlightY);  // Apply drag offset
+                setQuadPositions(highlight, highlightX, highlightY, hudDim.backgroundWidth, dim.lineHeightNormal);
+                highlight.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
 
-            // Apply transparency to bike brand color
-            highlight.m_ulColor = PluginUtils::applyOpacity(entry.bikeBrandColor, 80.0f / 255.0f);
+                // Apply transparency to bike brand color
+                highlight.m_ulColor = PluginUtils::applyOpacity(entry.bikeBrandColor, 80.0f / 255.0f);
 
-            m_cachedHighlightQuadIndex = static_cast<int>(m_quads.size());  // Track quad index
-            m_quads.push_back(highlight);
+                m_cachedHighlightQuadIndex = static_cast<int>(m_quads.size());  // Track quad index
+                m_quads.push_back(highlight);
+            }
+            // Hover highlight for other riders (spectator mode only, skip gap rows and current player)
+            else if (i == m_hoveredRowIndex && !entry.isGapRow && i != m_cachedPlayerIndex) {
+                SPluginQuad_t hoverHighlight;
+                float hoverX = START_X;
+                float hoverY = currentY;
+                applyOffset(hoverX, hoverY);
+                setQuadPositions(hoverHighlight, hoverX, hoverY, hudDim.backgroundWidth, dim.lineHeightNormal);
+                hoverHighlight.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
+
+                // Use accent color with transparency for hover
+                hoverHighlight.m_ulColor = PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(), 60.0f / 255.0f);
+                m_quads.push_back(hoverHighlight);
+            }
         }
-        // Hover highlight for other riders (spectator mode only, skip gap rows and current player)
-        else if (i == m_hoveredRowIndex && !entry.isGapRow && i != m_cachedPlayerIndex) {
-            SPluginQuad_t hoverHighlight;
-            float hoverX = START_X;
-            float hoverY = currentY;
-            applyOffset(hoverX, hoverY);
-            setQuadPositions(hoverHighlight, hoverX, hoverY, hudDim.backgroundWidth, dim.lineHeightNormal);
-            hoverHighlight.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
 
-            // Use accent color with transparency for hover
-            hoverHighlight.m_ulColor = PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(), 60.0f / 255.0f);
-            m_quads.push_back(hoverHighlight);
-        }
+        renderRiderRow(entry, entry.isPlaceholder, currentY, dim, i);
 
-        renderRiderRow(entry, false, currentY, dim);
-
-        // Add click region for this rider (skip gap rows)
-        if (!entry.isGapRow && entry.raceNum >= 0) {
+        // Add click region for this rider (skip gap rows and placeholders)
+        if (!entry.isGapRow && !entry.isPlaceholder && entry.raceNum >= 0) {
             RiderClickRegion region;
             region.x = START_X;
             region.y = currentY;

@@ -31,6 +31,13 @@ GamepadWidget::GamepadWidget() {
 }
 
 void GamepadWidget::update() {
+    // OPTIMIZATION: Skip processing when not visible
+    if (!isVisible()) {
+        clearDataDirty();
+        clearLayoutDirty();
+        return;
+    }
+
     // Always rebuild - XInput data updates every physics callback
     rebuildRenderData();
     clearDataDirty();
@@ -43,7 +50,7 @@ bool GamepadWidget::handlesDataType(DataChangeType dataType) const {
 
 void GamepadWidget::rebuildRenderData() {
     m_quads.clear();
-    m_strings.clear();
+    clearStrings();
 
     const auto dims = getScaledDimensions();
     const XInputData& xinput = XInputReader::getInstance().getData();

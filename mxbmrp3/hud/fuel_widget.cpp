@@ -51,11 +51,14 @@ bool FuelWidget::handlesDataType(DataChangeType dataType) const {
 }
 
 void FuelWidget::update() {
-    // Update fuel tracking logic
+    // NOTE: Fuel tracking always runs so history accumulates even when hidden.
+    // This ensures accurate fuel/lap data is available when widget is enabled.
     updateFuelTracking();
 
-    // Always rebuild - fuel updates at telemetry rate
-    rebuildRenderData();
+    // OPTIMIZATION: Only rebuild render data when visible
+    if (isVisible()) {
+        rebuildRenderData();
+    }
     clearDataDirty();
     clearLayoutDirty();
 }
@@ -206,7 +209,7 @@ void FuelWidget::rebuildLayout() {
 }
 
 void FuelWidget::rebuildRenderData() {
-    m_strings.clear();
+    clearStrings();
     m_quads.clear();
 
     auto dim = getScaledDimensions();

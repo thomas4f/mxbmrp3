@@ -73,6 +73,13 @@ MapHud::MapHud()
 }
 
 void MapHud::update() {
+    // OPTIMIZATION: Skip all processing when not visible
+    if (!isVisible()) {
+        clearDataDirty();
+        clearLayoutDirty();
+        return;
+    }
+
     // Handle dirty flags using base class helper
     processDirtyFlags();
 
@@ -491,7 +498,7 @@ bool MapHud::calculateZoomBounds(float& zoomMinX, float& zoomMaxX, float& zoomMi
     return true;
 }
 
-void MapHud::calculateTrackScreenBounds(float rotationAngle, float& minX, float& maxX, float& minY, float& maxY) const {
+void MapHud::calculateTrackScreenBounds(const RotationCache& rotation, float& minX, float& maxX, float& minY, float& maxY) const {
     // Track corners in world space
     float corners[4][2] = {
         {m_minX, m_minY},
@@ -505,7 +512,7 @@ void MapHud::calculateTrackScreenBounds(float rotationAngle, float& minX, float&
 
     for (int i = 0; i < 4; ++i) {
         float screenX, screenY;
-        worldToScreen(corners[i][0], corners[i][1], screenX, screenY, rotationAngle);
+        worldToScreen(corners[i][0], corners[i][1], screenX, screenY, rotation);
         minX = std::min(minX, screenX);
         maxX = std::max(maxX, screenX);
         minY = std::min(minY, screenY);
@@ -514,9 +521,11 @@ void MapHud::calculateTrackScreenBounds(float rotationAngle, float& minX, float&
 }
 
 float MapHud::calculateRotationAngle() {
-    // Calculate rotation angle if rotation mode is enabled
+    // Always find and cache player position (needed for both rotation and zoom modes)
+    // Calculate rotation angle only if rotation mode is enabled
     float rotationAngle = 0.0f;
-    if (m_bRotateToPlayer && !m_riderPositions.empty()) {
+
+    if (!m_riderPositions.empty()) {
         // Find local player by race number
         const PluginData& pluginData = PluginData::getInstance();
         int displayRaceNum = pluginData.getDisplayRaceNum();
@@ -524,15 +533,21 @@ float MapHud::calculateRotationAngle() {
         for (const auto& pos : m_riderPositions) {
             if (pos.m_iRaceNum == displayRaceNum) {
                 if (!pos.m_iCrashed) {
-                    // Player is riding - update and cache rotation angle and position
-                    rotationAngle = pos.m_fYaw;
-                    m_fLastRotationAngle = rotationAngle;
+                    // Player is riding - always cache position (needed for zoom mode crash freeze)
                     m_fLastPlayerX = pos.m_fPosX;
                     m_fLastPlayerZ = pos.m_fPosZ;
+
+                    // Only update rotation angle if rotation mode is enabled
+                    if (m_bRotateToPlayer) {
+                        rotationAngle = pos.m_fYaw;
+                        m_fLastRotationAngle = rotationAngle;
+                    }
                 } else {
-                    // Player crashed - keep using last rotation angle
-                    // This keeps the map at the same orientation it was before the crash
-                    rotationAngle = m_fLastRotationAngle;
+                    // Player crashed - use cached rotation angle if rotation mode is enabled
+                    // Position cache is already set from before the crash
+                    if (m_bRotateToPlayer) {
+                        rotationAngle = m_fLastRotationAngle;
+                    }
                 }
                 break;
             }
@@ -541,7 +556,19 @@ float MapHud::calculateRotationAngle() {
     return rotationAngle;
 }
 
-void MapHud::worldToScreen(float worldX, float worldY, float& screenX, float& screenY, float rotationAngle) const {
+MapHud::RotationCache MapHud::createRotationCache(float rotationAngle) const {
+    RotationCache cache;
+    cache.angle = rotationAngle;
+    if (rotationAngle != 0.0f) {
+        float angleRad = rotationAngle * DEG_TO_RAD;
+        cache.cosAngle = std::cos(angleRad);
+        cache.sinAngle = std::sin(angleRad);
+        cache.hasRotation = true;
+    }
+    return cache;
+}
+
+void MapHud::worldToScreen(float worldX, float worldY, float& screenX, float& screenY, const RotationCache& rotation) const {
     // Normalize to world space using the same scale for both axes (preserves aspect ratio)
     float trackWidth = m_maxX - m_minX;
     float trackHeight = m_maxY - m_minY;
@@ -556,19 +583,15 @@ void MapHud::worldToScreen(float worldX, float worldY, float& screenX, float& sc
     float centerX = (trackWidth / maxDimension) * 0.5f;
     float centerY = (trackHeight / maxDimension) * 0.5f;
 
-    // Apply rotation around the center of the track
-    if (rotationAngle != 0.0f) {
-        float angleRad = rotationAngle * DEG_TO_RAD;
-        float cosAngle = std::cos(angleRad);
-        float sinAngle = std::sin(angleRad);
-
+    // Apply rotation around the center of the track (using pre-calculated cos/sin)
+    if (rotation.hasRotation) {
         // Center coordinates around track center
         float centeredX = normX - centerX;
         float centeredY = normY - centerY;
 
         // Rotate in square space (equal scale for X and Y)
-        float rotatedX = centeredX * cosAngle - centeredY * sinAngle;
-        float rotatedY = centeredX * sinAngle + centeredY * cosAngle;
+        float rotatedX = centeredX * rotation.cosAngle - centeredY * rotation.sinAngle;
+        float rotatedY = centeredX * rotation.sinAngle + centeredY * rotation.cosAngle;
 
         // Uncenter back
         normX = rotatedX + centerX;
@@ -587,7 +610,7 @@ void MapHud::worldToScreen(float worldX, float worldY, float& screenX, float& sc
     screenY = (1.0f - normY) * scaleY;  // Flip Y axis since screen Y increases downward
 }
 
-void MapHud::renderTrack(float rotationAngle, unsigned long trackColor, float widthMultiplier,
+void MapHud::renderTrack(const RotationCache& rotation, unsigned long trackColor, float widthMultiplier,
                          float clipLeft, float clipTop, float clipRight, float clipBottom) {
     if (m_trackSegments.empty()) {
         return;
@@ -667,19 +690,19 @@ void MapHud::renderTrack(float rotationAngle, unsigned long trackColor, float wi
 
         // Convert all four corners to screen coordinates
         float screenPrevLeftX, screenPrevLeftY;
-        worldToScreen(prevLeftX, prevLeftY, screenPrevLeftX, screenPrevLeftY, rotationAngle);
+        worldToScreen(prevLeftX, prevLeftY, screenPrevLeftX, screenPrevLeftY, rotation);
         screenPrevLeftY += titleOffset;
 
         float screenPrevRightX, screenPrevRightY;
-        worldToScreen(prevRightX, prevRightY, screenPrevRightX, screenPrevRightY, rotationAngle);
+        worldToScreen(prevRightX, prevRightY, screenPrevRightX, screenPrevRightY, rotation);
         screenPrevRightY += titleOffset;
 
         float screenLeftX, screenLeftY;
-        worldToScreen(leftX, leftY, screenLeftX, screenLeftY, rotationAngle);
+        worldToScreen(leftX, leftY, screenLeftX, screenLeftY, rotation);
         screenLeftY += titleOffset;
 
         float screenRightX, screenRightY;
-        worldToScreen(rightX, rightY, screenRightX, screenRightY, rotationAngle);
+        worldToScreen(rightX, rightY, screenRightX, screenRightY, rotation);
         screenRightY += titleOffset;
 
         // Apply HUD offset
@@ -860,7 +883,7 @@ void MapHud::renderTrack(float rotationAngle, unsigned long trackColor, float wi
     }
 }
 
-void MapHud::renderStartMarker(float rotationAngle,
+void MapHud::renderStartMarker(const RotationCache& rotation,
                                float clipLeft, float clipTop, float clipRight, float clipBottom) {
     if (m_trackSegments.empty()) {
         return;
@@ -908,15 +931,15 @@ void MapHud::renderStartMarker(float rotationAngle,
 
     // Convert to screen coordinates
     float screenPointX, screenPointY;
-    worldToScreen(pointX, pointY, screenPointX, screenPointY, rotationAngle);
+    worldToScreen(pointX, pointY, screenPointX, screenPointY, rotation);
     screenPointY += titleOffset;
 
     float screenBaseLeftX, screenBaseLeftY;
-    worldToScreen(baseLeftX, baseLeftY, screenBaseLeftX, screenBaseLeftY, rotationAngle);
+    worldToScreen(baseLeftX, baseLeftY, screenBaseLeftX, screenBaseLeftY, rotation);
     screenBaseLeftY += titleOffset;
 
     float screenBaseRightX, screenBaseRightY;
-    worldToScreen(baseRightX, baseRightY, screenBaseRightX, screenBaseRightY, rotationAngle);
+    worldToScreen(baseRightX, baseRightY, screenBaseRightX, screenBaseRightY, rotation);
     screenBaseRightY += titleOffset;
 
     // Apply HUD offset
@@ -950,7 +973,7 @@ void MapHud::renderStartMarker(float rotationAngle,
     m_quads.push_back(triangle);
 }
 
-void MapHud::renderRiders(float rotationAngle,
+void MapHud::renderRiders(const RotationCache& rotation,
                           float clipLeft, float clipTop, float clipRight, float clipBottom) {
     if (m_riderPositions.empty() || !m_bHasTrackData) {
         return;
@@ -1001,7 +1024,7 @@ void MapHud::renderRiders(float rotationAngle,
         // Convert world coordinates to screen coordinates
         // Use X and Z for ground plane (Y is altitude, not used for top-down map)
         float screenX, screenY;
-        worldToScreen(renderX, renderZ, screenX, screenY, rotationAngle);
+        worldToScreen(renderX, renderZ, screenX, screenY, rotation);
         screenY += titleOffset;
 
         unsigned long riderColor;
@@ -1097,7 +1120,7 @@ void MapHud::renderRiders(float rotationAngle,
         float cosYaw = 1.0f;
         float sinYaw = 0.0f;
         if (TrackedRidersManager::shouldRotate(shapeIndex)) {
-            float adjustedYaw = renderYaw - rotationAngle;
+            float adjustedYaw = renderYaw - rotation.angle;
             float yawRad = adjustedYaw * DEG_TO_RAD;
             cosYaw = std::cos(yawRad);
             sinYaw = std::sin(yawRad);
@@ -1218,19 +1241,19 @@ void MapHud::renderRiders(float rotationAngle,
                 float outlineOffset = labelFontSize * 0.05f;  // Small offset for outline
                 unsigned long outlineColor = 0xFF000000;  // Black with full opacity
 
-                // Render outline at 4 cardinal directions
+                // Render outline at 4 cardinal directions (skip drop shadow - has own outline)
                 addString(labelStr, screenX - outlineOffset, offsetY, Justify::CENTER,
-                         Fonts::getSmall(), outlineColor, labelFontSize);
+                         Fonts::getSmall(), outlineColor, labelFontSize, true);
                 addString(labelStr, screenX + outlineOffset, offsetY, Justify::CENTER,
-                         Fonts::getSmall(), outlineColor, labelFontSize);
+                         Fonts::getSmall(), outlineColor, labelFontSize, true);
                 addString(labelStr, screenX, offsetY - outlineOffset, Justify::CENTER,
-                         Fonts::getSmall(), outlineColor, labelFontSize);
+                         Fonts::getSmall(), outlineColor, labelFontSize, true);
                 addString(labelStr, screenX, offsetY + outlineOffset, Justify::CENTER,
-                         Fonts::getSmall(), outlineColor, labelFontSize);
+                         Fonts::getSmall(), outlineColor, labelFontSize, true);
 
                 // Render main text on top
                 addString(labelStr, screenX, offsetY, Justify::CENTER,
-                         Fonts::getSmall(), labelColor, labelFontSize);
+                         Fonts::getSmall(), labelColor, labelFontSize, true);
             }
         }
     };
@@ -1262,7 +1285,7 @@ void MapHud::renderRiders(float rotationAngle,
 
 void MapHud::rebuildRenderData() {
     m_quads.clear();
-    m_strings.clear();
+    clearStrings();
     m_riderClickRegions.clear();
 
     // Don't render until we have track data
@@ -1274,8 +1297,9 @@ void MapHud::rebuildRenderData() {
     // Calculate scaled dimensions
     auto dim = getScaledDimensions();
 
-    // Calculate actual rotation angle for rendering
+    // Calculate actual rotation angle for rendering and create cache for efficient rendering
     float rotationAngle = calculateRotationAngle();
+    RotationCache rotation = createRotationCache(rotationAngle);
 
     // Calculate container size FIRST using original track bounds (before any zoom override)
     float titleHeight = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
@@ -1288,7 +1312,8 @@ void MapHud::rebuildRenderData() {
     float testAngles[] = {0.0f, 45.0f, 90.0f, 135.0f};
     for (float angle : testAngles) {
         float minX, maxX, minY, maxY;
-        calculateTrackScreenBounds(angle, minX, maxX, minY, maxY);
+        RotationCache testRotation = createRotationCache(angle);
+        calculateTrackScreenBounds(testRotation, minX, maxX, minY, maxY);
         maxScreenWidth = std::max(maxScreenWidth, maxX - minX);
         maxScreenHeight = std::max(maxScreenHeight, maxY - minY);
     }
@@ -1305,7 +1330,7 @@ void MapHud::rebuildRenderData() {
 
     // Calculate current track bounds at actual rotation angle for positioning
     float currMinX, currMaxX, currMinY, currMaxY;
-    calculateTrackScreenBounds(rotationAngle, currMinX, currMaxX, currMinY, currMaxY);
+    calculateTrackScreenBounds(rotation, currMinX, currMaxX, currMinY, currMaxY);
 
     float currWidth = currMaxX - currMinX;
     float currHeight = currMaxY - currMinY;
@@ -1339,8 +1364,10 @@ void MapHud::rebuildRenderData() {
 
             // Override base map dimensions to match the square container
             // This ensures worldToScreen produces correct aspect ratio for zoom
-            m_fBaseMapWidth = squareWidth;
-            m_fBaseMapHeight = squareHeight;
+            // Divide by m_fScale because squareWidth/squareHeight already include scale
+            // (they came from calculateTrackScreenBounds which uses worldToScreen)
+            m_fBaseMapWidth = squareWidth / m_fScale;
+            m_fBaseMapHeight = squareHeight / m_fScale;
 
             // Recalculate scale to fit zoom bounds into the container
             float zoomWidth = zoomMaxX - zoomMinX;
@@ -1420,18 +1447,18 @@ void MapHud::rebuildRenderData() {
     // This gives natural "outline on sides only" effect at boundaries
     size_t quadsBeforeTrack = m_quads.size();
     if (m_bShowOutline) {
-        renderTrack(rotationAngle, ColorConfig::getInstance().getPrimary(), OUTLINE_WIDTH_MULTIPLIER,
+        renderTrack(rotation, ColorConfig::getInstance().getPrimary(), OUTLINE_WIDTH_MULTIPLIER,
                     clipLeft, clipTop, clipRight, clipBottom);  // White outline
     }
-    renderTrack(rotationAngle, ColorConfig::getInstance().getBackground(), 1.0f,
+    renderTrack(rotation, ColorConfig::getInstance().getBackground(), 1.0f,
                 clipLeft, clipTop, clipRight, clipBottom);  // Black fill
     size_t trackQuads = m_quads.size() - quadsBeforeTrack;
 
     // Render start marker on top of track
-    renderStartMarker(rotationAngle, clipLeft, clipTop, clipRight, clipBottom);
+    renderStartMarker(rotation, clipLeft, clipTop, clipRight, clipBottom);
 
     // Render rider positions on top of track
-    renderRiders(rotationAngle, clipLeft, clipTop, clipRight, clipBottom);
+    renderRiders(rotation, clipLeft, clipTop, clipRight, clipBottom);
 
     // Log quad count once for performance analysis
     static bool quadCountLogged = false;

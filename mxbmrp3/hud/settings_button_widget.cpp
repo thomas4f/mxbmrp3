@@ -97,7 +97,7 @@ void SettingsButtonWidget::rebuildLayout() {
 
 void SettingsButtonWidget::rebuildRenderData() {
     // Clear render data
-    m_strings.clear();
+    clearStrings();
     m_quads.clear();
 
     // Don't render button when cursor is hidden (auto-hide after timeout)

@@ -92,6 +92,18 @@ public:
     bool getGridSnapping() const { return m_bGridSnapping; }
     void setGridSnapping(bool enabled) { m_bGridSnapping = enabled; }
 
+    // Drop shadow setting (for text rendering)
+    bool getDropShadow() const { return m_bDropShadow; }
+    void setDropShadow(bool enabled) { m_bDropShadow = enabled; }
+
+    // Drop shadow advanced settings (INI-only)
+    float getDropShadowOffsetX() const { return m_fDropShadowOffsetX; }
+    float getDropShadowOffsetY() const { return m_fDropShadowOffsetY; }
+    unsigned long getDropShadowColor() const { return m_ulDropShadowColor; }
+    void setDropShadowOffsetX(float offset) { m_fDropShadowOffsetX = offset; }
+    void setDropShadowOffsetY(float offset) { m_fDropShadowOffsetY = offset; }
+    void setDropShadowColor(unsigned long color) { m_ulDropShadowColor = color; }
+
     // Get slot name for display
     static const char* getSlotName(ColorSlot slot);
 
@@ -106,4 +118,10 @@ private:
 
     std::array<unsigned long, static_cast<size_t>(ColorSlot::COUNT)> m_colors;
     bool m_bGridSnapping = true;  // Grid snapping enabled by default
+    bool m_bDropShadow = false;   // Drop shadow disabled by default
+
+    // Drop shadow advanced settings (INI-only, as percentage of font size)
+    float m_fDropShadowOffsetX = 0.03f;          // 3% of font size
+    float m_fDropShadowOffsetY = 0.04f;          // 4% of font size
+    unsigned long m_ulDropShadowColor = 0xAA000000;  // Semi-transparent black
 };

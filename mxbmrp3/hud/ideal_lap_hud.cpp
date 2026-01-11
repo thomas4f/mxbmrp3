@@ -49,16 +49,19 @@ bool IdealLapHud::handlesDataType(DataChangeType dataType) const {
 
 int IdealLapHud::getEnabledRowCount() const {
     int count = 0;
-    if (m_enabledRows & ROW_S1) count++;
-    if (m_enabledRows & ROW_S2) count++;
-    if (m_enabledRows & ROW_S3) count++;
-    if (m_enabledRows & ROW_LAST) count++;
-    if (m_enabledRows & ROW_BEST) count++;
-    if (m_enabledRows & ROW_IDEAL) count++;
+    if (m_enabledRows & ROW_SECTORS) count += 3;  // S1, S2, S3
+    if (m_enabledRows & ROW_LAPS) count += 3;     // Last, Best, Ideal
     return count;
 }
 
 void IdealLapHud::update() {
+    // OPTIMIZATION: Skip processing when not visible
+    if (!isVisible()) {
+        clearDataDirty();
+        clearLayoutDirty();
+        return;
+    }
+
     // Check if we need frequent updates for ticking sector time (uses BaseHud helper)
     checkFrequentUpdates();
 
@@ -141,7 +144,7 @@ void IdealLapHud::rebuildLayout() {
 }
 
 void IdealLapHud::rebuildRenderData() {
-    m_strings.clear();
+    clearStrings();
     m_quads.clear();
 
     // Get player data
@@ -249,18 +252,20 @@ void IdealLapHud::rebuildRenderData() {
     // If sector is in progress, show placeholder (gap is meaningless until complete)
     // If sector not started, show placeholder
 
+    bool showSectors = (m_enabledRows & ROW_SECTORS) != 0;
+
     // S1: Show ideal S1, gap = current S1 vs ideal S1
     int s1ForGap = (currentSector1 > 0) ? currentSector1 : -1;
-    addRow(m_enabledRows & ROW_S1, "S1", idealS1, s1ForGap, prevBestS1);
+    addRow(showSectors, "S1", idealS1, s1ForGap, prevBestS1);
 
     // S2: Show ideal S2, gap = current S2 vs ideal S2
     int s2ForGap = (currentSector2 > 0) ? currentSector2 : -1;
-    addRow(m_enabledRows & ROW_S2, "S2", idealS2, s2ForGap, prevBestS2);
+    addRow(showSectors, "S2", idealS2, s2ForGap, prevBestS2);
 
     // S3: Show ideal S3, gap = current S3 vs ideal S3
     // Note: S3 is never "crossed" in currentLap - lap completes and currentLap is cleared
     // So S3 gap column always shows placeholder (actual S3 gap visible in last lap row)
-    addRow(m_enabledRows & ROW_S3, "S3", idealS3, -1, prevBestS3);
+    addRow(showSectors, "S3", idealS3, -1, prevBestS3);
 
     // Calculate previous ideal lap time (sum of previous best sectors)
     // Used to show improvement when beating the ideal
@@ -310,17 +315,19 @@ void IdealLapHud::rebuildRenderData() {
         currentY += dim.lineHeightNormal;
     };
 
+    bool showLaps = (m_enabledRows & ROW_LAPS) != 0;
+
     // Last: Show last lap time, gap = last lap vs ideal lap
     int lastLap = (idealLapData && idealLapData->lastLapTime > 0) ? idealLapData->lastLapTime : -1;
-    addLapRow(m_enabledRows & ROW_LAST, "Last", lastLap, idealLapTime, prevIdealLapTime);
+    addLapRow(showLaps, "Last", lastLap, idealLapTime, prevIdealLapTime);
 
     // Best: Show best lap time, gap = best lap vs ideal lap
     int bestLap = personalBest ? personalBest->lapTime : -1;
-    addLapRow(m_enabledRows & ROW_BEST, "Best", bestLap, idealLapTime, prevIdealLapTime, Fonts::getStrong());
+    addLapRow(showLaps, "Best", bestLap, idealLapTime, prevIdealLapTime, Fonts::getStrong());
 
     // Ideal: Show ideal lap time (no gap - it IS the ideal)
     // Use a special version that doesn't show gap
-    if (m_enabledRows & ROW_IDEAL) {
+    if (showLaps) {
         char timeStr[16];
         char paddedLabel[8];
         snprintf(paddedLabel, sizeof(paddedLabel), "%5s", "Ideal");

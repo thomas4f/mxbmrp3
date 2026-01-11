@@ -133,7 +133,7 @@ void SettingsHud::show() {
 
 void SettingsHud::hide() {
     m_bVisible = false;
-    m_strings.clear();
+    clearStrings();
     m_quads.clear();
     m_clickRegions.clear();
     setBounds(0, 0, 0, 0);  // Clear collision bounds to prevent blocking input
@@ -412,7 +412,7 @@ float SettingsHud::addDisplayModeControl(float x, float& currentY, const ScaledD
 void SettingsHud::rebuildRenderData() {
     if (!m_bVisible) return;
 
-    m_strings.clear();
+    clearStrings();
     m_quads.clear();
     m_clickRegions.clear();
 
@@ -699,26 +699,7 @@ void SettingsHud::rebuildRenderData() {
             m_quads.push_back(hoverQuad);
         }
 
-        const char* tabName = i == TAB_GENERAL ? "General" :
-                              i == TAB_APPEARANCE ? "Appearance" :
-                              i == TAB_STANDINGS ? "Standings" :
-                              i == TAB_MAP ? "Map" :
-                              i == TAB_LAP_LOG ? "Lap Log" :
-                              i == TAB_IDEAL_LAP ? "Ideal Lap" :
-                              i == TAB_TELEMETRY ? "Telemetry" :
-                              i == TAB_PERFORMANCE ? "Performance" :
-                              i == TAB_PITBOARD ? "Pitboard" :
-                              i == TAB_RECORDS ? "Records" :
-                              i == TAB_TIMING ? "Timing" :
-                              i == TAB_GAP_BAR ? "Gap Bar" :
-                              i == TAB_WIDGETS ? "Widgets" :
-                              i == TAB_RUMBLE ? "Rumble" :
-                              i == TAB_HOTKEYS ? "Hotkeys" :
-                              i == TAB_RIDERS ? "Riders" :
-                              i == TAB_UPDATES ? "Updates" :
-                              "Radar";
-
-        addString(tabName, currentTabX, tabStartY, Justify::LEFT, Fonts::getNormal(), tabColor, dim.fontSize);
+        addString(getTabName(i), currentTabX, tabStartY, Justify::LEFT, Fonts::getNormal(), tabColor, dim.fontSize);
 
         tabStartY += dim.lineHeightNormal;
     }
@@ -1242,9 +1223,12 @@ void SettingsHud::rebuildRenderData() {
     addString("[Close]", closeButtonBottomX, closeButtonBottomY, Justify::CENTER,
         Fonts::getStrong(), closeTextColor, dim.fontSize);
 
-    // [Reset Tab] button - bottom left corner
+    // [Reset <TabName>] button - bottom left corner
     float resetTabButtonY = closeButtonBottomY;
-    float resetTabButtonWidth = PluginUtils::calculateMonospaceTextWidth(RESET_TAB_BUTTON_WIDTH, dim.fontSize);
+    char resetTabButtonText[32];
+    snprintf(resetTabButtonText, sizeof(resetTabButtonText), "[Reset %s]", getTabName(m_activeTab));
+    int resetTabButtonChars = static_cast<int>(strlen(resetTabButtonText));
+    float resetTabButtonWidth = PluginUtils::calculateMonospaceTextWidth(resetTabButtonChars, dim.fontSize);
     float resetTabButtonX = contentStartX;
 
     // Add click region first for hover check
@@ -1271,7 +1255,7 @@ void SettingsHud::rebuildRenderData() {
     unsigned long resetTabTextColor = (m_hoveredRegionIndex == static_cast<int>(resetTabRegionIndex))
         ? ColorConfig::getInstance().getPrimary()
         : ColorConfig::getInstance().getAccent();
-    addString("[Reset Tab]", resetTabButtonX + resetTabButtonWidth / 2.0f, resetTabButtonY, Justify::CENTER,
+    addString(resetTabButtonText, resetTabButtonX + resetTabButtonWidth / 2.0f, resetTabButtonY, Justify::CENTER,
         Fonts::getNormal(), resetTabTextColor, dim.fontSize);
 
     // Version + update status display - bottom right corner
@@ -1484,10 +1468,27 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                 case ClickRegion::DISPLAY_MODE_DOWN:
                     handleDisplayModeClick(region, false);
                     break;
+                // Profile cycle controls are in sidebar, must work from ALL tabs
+                case ClickRegion::PROFILE_CYCLE_UP:
+                    {
+                        ProfileType nextProfile = ProfileManager::getNextProfile(
+                            ProfileManager::getInstance().getActiveProfile());
+                        SettingsManager::getInstance().switchProfile(HudManager::getInstance(), nextProfile);
+                        rebuildRenderData();
+                    }
+                    return;  // Don't save - switchProfile already saves
+                case ClickRegion::PROFILE_CYCLE_DOWN:
+                    {
+                        ProfileType prevProfile = ProfileManager::getPreviousProfile(
+                            ProfileManager::getInstance().getActiveProfile());
+                        SettingsManager::getInstance().switchProfile(HudManager::getInstance(), prevProfile);
+                        rebuildRenderData();
+                    }
+                    return;  // Don't save - switchProfile already saves
                 // Note: Tab-specific handlers moved to settings_tab_*.cpp files:
                 // RECORDS_COUNT, PITBOARD_SHOW_MODE, TIMING_*, GAPBAR_*,
                 // COLOR_CYCLE_*, FONT_CATEGORY_*, SPEED_UNIT, FUEL_UNIT,
-                // GRID_SNAP, UPDATE_CHECK, PROFILE_*, COPY_*, RESET_*
+                // GRID_SNAP, UPDATE_CHECK, COPY_*, RESET_*
                 case ClickRegion::RESET_TAB_BUTTON:
                     {
                         resetCurrentTab();
@@ -1909,6 +1910,30 @@ void SettingsHud::handleCloseButtonClick() {
     DEBUG_INFO("Settings menu closed via close button");
 }
 
+const char* SettingsHud::getTabName(int tabIndex) const {
+    switch (tabIndex) {
+        case TAB_GENERAL:     return "General";
+        case TAB_APPEARANCE:  return "Appearance";
+        case TAB_STANDINGS:   return "Standings";
+        case TAB_MAP:         return "Map";
+        case TAB_LAP_LOG:     return "Lap Log";
+        case TAB_IDEAL_LAP:   return "Ideal Lap";
+        case TAB_TELEMETRY:   return "Telemetry";
+        case TAB_PERFORMANCE: return "Performance";
+        case TAB_PITBOARD:    return "Pitboard";
+        case TAB_RECORDS:     return "Records";
+        case TAB_TIMING:      return "Timing";
+        case TAB_GAP_BAR:     return "Gap Bar";
+        case TAB_WIDGETS:     return "Widgets";
+        case TAB_RUMBLE:      return "Rumble";
+        case TAB_HOTKEYS:     return "Hotkeys";
+        case TAB_RIDERS:      return "Riders";
+        case TAB_UPDATES:     return "Updates";
+        case TAB_RADAR:       return "Radar";
+        default:              return "Unknown";
+    }
+}
+
 bool SettingsHud::isPointInRect(float x, float y, float rectX, float rectY, float width, float height) const {
     // Apply offset to rectangle position for dragging support
     float offsetRectX = rectX;
@@ -2025,6 +2050,11 @@ const char* SettingsHud::getTooltipIdForRegion(ClickRegion::Type type, int activ
                 case ClickRegion::LAP_LOG_ROW_COUNT_UP:
                 case ClickRegion::LAP_LOG_ROW_COUNT_DOWN:
                     return "lap_log.rows";
+                case ClickRegion::LAP_LOG_ORDER_UP:
+                case ClickRegion::LAP_LOG_ORDER_DOWN:
+                    return "lap_log.order";
+                case ClickRegion::LAP_LOG_GAP_ROW_TOGGLE:
+                    return "lap_log.gap_row";
                 default:
                     break;
             }

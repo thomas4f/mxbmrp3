@@ -46,7 +46,42 @@ bool PerformanceHud::handlesDataType(DataChangeType dataType) const {
     return (dataType == DataChangeType::DebugMetrics);
 }
 
+void PerformanceHud::setVisible(bool visible) {
+    bool wasVisible = isVisible();
+    BaseHud::setVisible(visible);
+
+    // Clear history when becoming visible so graph starts fresh
+    if (visible && !wasVisible) {
+        m_fpsHistory.fill(0.0f);
+        m_pluginTimeHistory.fill(0.0f);
+        m_pluginTimePercentHistory.fill(0.0f);
+        m_historyIndex = 0;
+        m_fpsMin = 0.0f;
+        m_fpsMax = 0.0f;
+        m_fpsAvg = 0.0f;
+        m_pluginTimeMsMin = 0.0f;
+        m_pluginTimeMsMax = 0.0f;
+        m_pluginTimeMsAvg = 0.0f;
+        m_fpsSum = 0.0f;
+        m_pluginTimeSum = 0.0f;
+        m_validFpsCount = 0;
+        m_validPluginTimeCount = 0;
+        m_fpsMinIndex = -1;
+        m_fpsMaxIndex = -1;
+        m_pluginMinIndex = -1;
+        m_pluginMaxIndex = -1;
+    }
+}
+
 void PerformanceHud::update() {
+    // OPTIMIZATION: Skip expensive graph rebuild when not visible
+    // History is cleared in setVisible() when becoming visible, so graph starts fresh.
+    if (!isVisible()) {
+        clearDataDirty();
+        clearLayoutDirty();
+        return;
+    }
+
     // Always rebuild - external notification system marks this dirty every frame
     // No need for conditional checks since updateDebugMetrics() is called every draw
     rebuildRenderData();
@@ -129,7 +164,7 @@ void PerformanceHud::addStatsRow(float startX, float y, const ScaledDimensions& 
 }
 
 void PerformanceHud::rebuildRenderData() {
-    m_strings.clear();
+    clearStrings();
     m_quads.clear();
 
     // Get debug metrics from PluginData

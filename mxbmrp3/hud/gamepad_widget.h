@@ -56,6 +56,12 @@ public:
     LayoutConfig& getLayout(int variant);
     const LayoutConfig& getCurrentLayout() const;
 
+    // Get layout for a specific variant if it exists (const-safe, returns nullptr if not found)
+    const LayoutConfig* getLayoutIfExists(int variant) const {
+        auto it = m_layouts.find(variant);
+        return (it != m_layouts.end()) ? &it->second : nullptr;
+    }
+
     // Check if layout exists (for save optimization)
     bool hasLayout(int variant) const { return m_layouts.find(variant) != m_layouts.end(); }
 

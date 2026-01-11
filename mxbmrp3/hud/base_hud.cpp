@@ -316,7 +316,7 @@ std::vector<int> BaseHud::getAvailableTextureVariants() const {
 // ============================================================================
 
 void BaseHud::addString(const char* text, float x, float y, int justify, int fontIndex,
-                        unsigned long color, float fontSize) {
+                        unsigned long color, float fontSize, bool skipShadow) {
     SPluginString_t stringEntry;
 
     strncpy_s(stringEntry.m_szString, sizeof(stringEntry.m_szString), text, sizeof(stringEntry.m_szString) - 1);
@@ -331,6 +331,7 @@ void BaseHud::addString(const char* text, float x, float y, int justify, int fon
     stringEntry.m_ulColor = color;
 
     m_strings.push_back(stringEntry);
+    m_stringSkipShadow.push_back(skipShadow);  // Track shadow flag (shadow generated at collection time)
 }
 
 void BaseHud::addTitleString(const char* text, float x, float y, int justify, int fontIndex,

@@ -68,6 +68,14 @@ bool TimingHud::handlesDataType(DataChangeType dataType) const {
 }
 
 void TimingHud::update() {
+    // OPTIMIZATION: Skip all processing when not visible
+    // State tracking (splits, gaps) is only meaningful when displaying
+    if (!isVisible()) {
+        clearDataDirty();
+        clearLayoutDirty();
+        return;
+    }
+
     const PluginData& pluginData = PluginData::getInstance();
     const SessionData& sessionData = pluginData.getSessionData();
 
@@ -592,7 +600,7 @@ void TimingHud::rebuildLayout() {
 
 void TimingHud::rebuildRenderData() {
     // Clear render data
-    m_strings.clear();
+    clearStrings();
     m_quads.clear();
 
     const PluginData& pluginData = PluginData::getInstance();
@@ -978,10 +986,16 @@ void TimingHud::rebuildRenderData() {
             gapTextColor = ColorConfig::getInstance().getPrimary();
         }
 
-        // Add gap value (left-aligned)
-        float gapX = gapColumnX + dim.paddingH;
-        addString(gapBuffer, gapX, gapTextY, Justify::LEFT,
-            Fonts::getNormal(), gapTextColor, dim.fontSizeLarge);
+        // Add gap value (centered in vertical mode without reference, left-aligned otherwise)
+        if (m_layoutVertical && !showRefInGap) {
+            float gapX = gapColumnX + columnWidth / 2.0f;
+            addString(gapBuffer, gapX, gapTextY, Justify::CENTER,
+                Fonts::getNormal(), gapTextColor, dim.fontSizeLarge);
+        } else {
+            float gapX = gapColumnX + dim.paddingH;
+            addString(gapBuffer, gapX, gapTextY, Justify::LEFT,
+                Fonts::getNormal(), gapTextColor, dim.fontSizeLarge);
+        }
 
         // Add reference value (right-aligned) in secondary color
         if (hasRefValue) {

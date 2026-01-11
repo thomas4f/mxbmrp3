@@ -1,7 +1,7 @@
 A customizable, [open-source](https://github.com/thomas4f/mxbmrp3) HUD plugin for MX Bikes displaying real-time race information and telemetry.
 
-![MXBMRP3 HUD Screenshot](./mxbmrp3.png)
-*Example HUD layout showing standings, map, telemetry, and widgets. All elements are fully customizable.*
+![MXBMRP3 HUD Screenshot](./mxbmrp3.gif)
+*Example HUD layouts. All elements are fully customizable.*
 
 ### Features
 
@@ -120,7 +120,7 @@ Auto-switch (disabled by default) automatically changes profiles based on sessio
 
 ## HUDs & Widgets
 
-All HUD and widget settings are documented via **in-game tooltips** - hover over any control in the settings menu to see its description.
+All HUDs and widgets are configurable via the settings menu, with detailed per-option descriptions.
 
 ### HUDs
 

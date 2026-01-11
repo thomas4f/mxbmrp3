@@ -62,6 +62,9 @@ bool GapBarHud::handlesDataType(DataChangeType dataType) const {
 }
 
 void GapBarHud::update() {
+    // NOTE: State tracking runs even when not visible so live gap is published
+    // to PluginData for LapLogHud. Only rendering is skipped when hidden.
+
     const PluginData& pluginData = PluginData::getInstance();
     const SessionData& sessionData = pluginData.getSessionData();
 
@@ -92,7 +95,7 @@ void GapBarHud::update() {
         resetTimingState();
         m_cachedSession = currentSession;
         m_cachedPitState = -1;
-        setDataDirty();
+        if (isVisible()) setDataDirty();
     }
 
     // Detect spectate target changes and reset state
@@ -123,7 +126,7 @@ void GapBarHud::update() {
             m_bikeBrandColor = entry->bikeBrandColor;
         }
 
-        setDataDirty();
+        if (isVisible()) setDataDirty();
     }
 
     // Detect pit entry/exit and reset anchor (but keep best lap data)
@@ -137,7 +140,7 @@ void GapBarHud::update() {
             m_anchor.reset();
             m_trackMonitor.reset();
             m_currentLapTimingPoints.fill(BestLapTimingPoint());
-            setDataDirty();
+            if (isVisible()) setDataDirty();
         }
         m_cachedPitState = currentPitState;
     }
@@ -201,7 +204,7 @@ void GapBarHud::update() {
         m_cachedSplit2 = -1;
 
         m_cachedLastCompletedLapNum = idealLapData->lastCompletedLapNum;
-        setDataDirty();
+        if (isVisible()) setDataDirty();
     }
 
     // Rate-limited updates for smooth animation
@@ -214,6 +217,7 @@ void GapBarHud::update() {
         updateCurrentLapTiming();
 
         // Publish live gap to PluginData for use by LapLogHud and other HUDs
+        // This runs even when hidden so LapLogHud can display gap
         if (m_hasBestLap && m_anchor.valid) {
             m_cachedGap = calculateCurrentGap();
             m_cachedGapValid = true;
@@ -224,14 +228,20 @@ void GapBarHud::update() {
             PluginData::getInstance().setLiveGap(0, false);
         }
 
-        setDataDirty();
+        if (isVisible()) setDataDirty();
     }
 
-    // Handle dirty flags using base class helper
-    processDirtyFlags();
+    // OPTIMIZATION: Only process dirty flags and rebuild when visible
+    if (isVisible()) {
+        processDirtyFlags();
+    } else {
+        clearDataDirty();
+        clearLayoutDirty();
+    }
 }
 
 void GapBarHud::updateTrackPosition(int raceNum, float trackPos, int lapNum) {
+    // NOTE: Track position updates always run (even when hidden) for gap tracking
     // Only process for the rider we're currently displaying
     if (raceNum != m_cachedDisplayRaceNum) {
         return;
@@ -499,7 +509,7 @@ void GapBarHud::rebuildLayout() {
 }
 
 void GapBarHud::rebuildRenderData() {
-    m_strings.clear();
+    clearStrings();
     m_quads.clear();
 
     // Get scaled dimensions
@@ -637,7 +647,8 @@ void GapBarHud::rebuildRenderData() {
     float gapTextY = startY + (barHeight - dim.fontSize) / 2.0f;
 
     char gapBuffer[32];
-    unsigned long gapColor = ColorConfig::getInstance().getPrimary();
+    const ColorConfig& colors = ColorConfig::getInstance();
+    unsigned long gapColor = colors.getPrimary();
 
     // Only show gaps when we have a PB to compare against (like TimingHud)
     const LapLogEntry* personalBest = PluginData::getInstance().getBestLapEntry();
@@ -645,9 +656,21 @@ void GapBarHud::rebuildRenderData() {
     if (m_isFrozen && personalBest) {
         // Show frozen official gap from split/lap crossing (full precision)
         PluginUtils::formatTimeDiff(gapBuffer, sizeof(gapBuffer), m_frozenGap);
+        // Colorize based on gap value: positive = slower (red), negative = faster (green)
+        if (m_frozenGap > 0) {
+            gapColor = colors.getNegative();
+        } else if (m_frozenGap < 0) {
+            gapColor = colors.getPositive();
+        }
     } else if (m_cachedGapValid && personalBest) {
-        // Show live gap (compact format, use cached value)
-        PluginUtils::formatGapCompact(gapBuffer, sizeof(gapBuffer), m_cachedGap);
+        // Show live gap (full precision, use cached value)
+        PluginUtils::formatTimeDiff(gapBuffer, sizeof(gapBuffer), m_cachedGap);
+        // Colorize based on gap value: positive = slower (red), negative = faster (green)
+        if (m_cachedGap > 0) {
+            gapColor = colors.getNegative();
+        } else if (m_cachedGap < 0) {
+            gapColor = colors.getPositive();
+        }
     } else {
         // No best lap - show placeholder in primary color
         strcpy_s(gapBuffer, sizeof(gapBuffer), Placeholders::GENERIC);

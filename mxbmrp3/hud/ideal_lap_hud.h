@@ -18,17 +18,12 @@ public:
     bool handlesDataType(DataChangeType dataType) const override;
     void resetToDefaults();
 
-    // Row flags - each bit represents a row that can be toggled
+    // Row flags - groups of rows that can be toggled together
     enum RowFlags : uint32_t {
-        ROW_S1    = 1 << 0,  // Sector 1 time (best S1 ever)
-        ROW_S2    = 1 << 1,  // Sector 2 time (best S2 ever)
-        ROW_S3    = 1 << 2,  // Sector 3 time (best S3 ever)
-        ROW_LAST  = 1 << 3,  // Last lap time (gap to ideal)
-        ROW_BEST  = 1 << 4,  // Best lap (gap to ideal)
-        ROW_IDEAL = 1 << 5,  // Ideal lap time (sum of best sectors)
+        ROW_SECTORS = 1 << 0,  // Sector times (S1, S2, S3)
+        ROW_LAPS    = 1 << 1,  // Lap times (Last, Best, Ideal)
 
-        ROW_REQUIRED = 0,    // No required rows
-        ROW_DEFAULT  = 0x3F  // All 6 rows enabled (binary: 111111)
+        ROW_DEFAULT = ROW_SECTORS | ROW_LAPS  // All rows enabled
     };
 
     // Allow SettingsHud and SettingsManager to access private members

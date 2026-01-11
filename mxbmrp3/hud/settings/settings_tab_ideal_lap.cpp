@@ -21,18 +21,18 @@ BaseHud* SettingsHud::renderTabIdealLap(SettingsLayoutContext& ctx) {
     // === DATA DISPLAY SECTION ===
     ctx.addSectionHeader("Data Display");
 
-    // Sector rows (S1, S2, S3 as group)
-    bool sectorsOn = (hud->m_enabledRows & (IdealLapHud::ROW_S1 | IdealLapHud::ROW_S2 | IdealLapHud::ROW_S3)) != 0;
+    // Sector rows (S1, S2, S3)
+    bool sectorsOn = (hud->m_enabledRows & IdealLapHud::ROW_SECTORS) != 0;
     ctx.addToggleControl("Show sector times", sectorsOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
-        &hud->m_enabledRows, IdealLapHud::ROW_S1 | IdealLapHud::ROW_S2 | IdealLapHud::ROW_S3, true,
+        &hud->m_enabledRows, IdealLapHud::ROW_SECTORS, true,
         "ideal_lap.sectors");
 
-    // Lap rows (Last, Best, Ideal as group)
-    bool lapsOn = (hud->m_enabledRows & (IdealLapHud::ROW_LAST | IdealLapHud::ROW_BEST | IdealLapHud::ROW_IDEAL)) != 0;
+    // Lap rows (Last, Best, Ideal)
+    bool lapsOn = (hud->m_enabledRows & IdealLapHud::ROW_LAPS) != 0;
     ctx.addToggleControl("Show lap times", lapsOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
-        &hud->m_enabledRows, IdealLapHud::ROW_LAST | IdealLapHud::ROW_BEST | IdealLapHud::ROW_IDEAL, true,
+        &hud->m_enabledRows, IdealLapHud::ROW_LAPS, true,
         "ideal_lap.laps");
 
     return hud;

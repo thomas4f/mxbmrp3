@@ -38,6 +38,13 @@ bool SpeedWidget::handlesDataType(DataChangeType dataType) const {
 }
 
 void SpeedWidget::update() {
+    // OPTIMIZATION: Skip processing when not visible
+    if (!isVisible()) {
+        clearDataDirty();
+        clearLayoutDirty();
+        return;
+    }
+
     // Always rebuild - speed updates at high frequency (telemetry rate)
     // Rebuild is cheap (single snprintf), no need for caching
     rebuildRenderData();
@@ -119,7 +126,7 @@ void SpeedWidget::rebuildLayout() {
 
 void SpeedWidget::rebuildRenderData() {
     // Clear render data
-    m_strings.clear();
+    clearStrings();
     m_quads.clear();
 
     auto dim = getScaledDimensions();
@@ -157,7 +164,7 @@ void SpeedWidget::rebuildRenderData() {
     if (!bikeData.isValid) {
         // Show placeholder when telemetry data is not available
         snprintf(speedValueBuffer, sizeof(speedValueBuffer), "%s", Placeholders::GENERIC);
-        snprintf(gearValueBuffer, sizeof(gearValueBuffer), "");
+        snprintf(gearValueBuffer, sizeof(gearValueBuffer), "%s", Placeholders::GENERIC);
     } else {
         // Convert speedometer based on unit setting
         int speed;

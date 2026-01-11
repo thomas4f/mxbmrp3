@@ -40,6 +40,13 @@ bool LapWidget::handlesDataType(DataChangeType dataType) const {
 }
 
 void LapWidget::update() {
+    // OPTIMIZATION: Skip processing when not visible
+    if (!isVisible()) {
+        clearDataDirty();
+        clearLayoutDirty();
+        return;
+    }
+
     // Get current lap and total laps
     const PluginData& pluginData = PluginData::getInstance();
     const SessionData& sessionData = pluginData.getSessionData();
@@ -116,7 +123,7 @@ void LapWidget::rebuildLayout() {
 
 void LapWidget::rebuildRenderData() {
     // Clear render data
-    m_strings.clear();
+    clearStrings();
     m_quads.clear();
 
     auto dim = getScaledDimensions();

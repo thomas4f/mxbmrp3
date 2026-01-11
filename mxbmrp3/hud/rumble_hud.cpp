@@ -30,6 +30,14 @@ RumbleHud::RumbleHud() {
 }
 
 void RumbleHud::update() {
+    // OPTIMIZATION: Skip processing when not visible
+    // Note: Rumble feedback itself runs via XInputReader regardless of HUD visibility
+    if (!isVisible()) {
+        clearDataDirty();
+        clearLayoutDirty();
+        return;
+    }
+
     // Always rebuild - rumble values update every frame
     rebuildRenderData();
     clearDataDirty();
@@ -70,6 +78,9 @@ void RumbleHud::addHistoryGraph(const std::deque<float>& history, unsigned long 
     // Calculate point spacing based on max history size for consistent graph width
     float pointSpacing = width / (maxHistory - 1);
 
+    // Offset so newest data is always at right edge (scrolls left as data fills in)
+    size_t offset = maxHistory - history.size();
+
     // Draw line segments connecting consecutive points
     for (size_t i = 0; i < history.size() - 1; ++i) {
         float value1 = std::max(0.0f, std::min(1.0f, history[i]));
@@ -78,8 +89,8 @@ void RumbleHud::addHistoryGraph(const std::deque<float>& history, unsigned long 
         // Skip segments where both values are near zero
         if (value1 < 0.01f && value2 < 0.01f) continue;
 
-        float x1 = x + i * pointSpacing;
-        float x2 = x + (i + 1) * pointSpacing;
+        float x1 = x + (offset + i) * pointSpacing;
+        float x2 = x + (offset + i + 1) * pointSpacing;
         float y1 = y + height - (value1 * height);
         float y2 = y + height - (value2 * height);
 
@@ -175,7 +186,7 @@ void RumbleHud::addMaxMarker(float x, float y, float barWidth, float barHeight, 
 
 void RumbleHud::rebuildRenderData() {
     m_quads.clear();
-    m_strings.clear();
+    clearStrings();
 
     const auto dims = getScaledDimensions();
     const XInputReader& xinput = PluginData::getInstance().getXInputReader();

@@ -45,23 +45,7 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
             }
             return true;
 
-        case ClickRegion::PROFILE_CYCLE_UP:
-            {
-                ProfileType nextProfile = ProfileManager::getNextProfile(
-                    ProfileManager::getInstance().getActiveProfile());
-                SettingsManager::getInstance().switchProfile(HudManager::getInstance(), nextProfile);
-                rebuildRenderData();
-            }
-            return true;  // Don't save - switchProfile already saves
-
-        case ClickRegion::PROFILE_CYCLE_DOWN:
-            {
-                ProfileType prevProfile = ProfileManager::getPreviousProfile(
-                    ProfileManager::getInstance().getActiveProfile());
-                SettingsManager::getInstance().switchProfile(HudManager::getInstance(), prevProfile);
-                rebuildRenderData();
-            }
-            return true;  // Don't save - switchProfile already saves
+        // Note: PROFILE_CYCLE_UP/DOWN moved to common handlers (work from all tabs)
 
         case ClickRegion::AUTO_SWITCH_TOGGLE:
             {

@@ -35,7 +35,7 @@ public:
         COL_DEBUG       = 1 << 10,  // Debug column (RTG diagnostics)
 
         COL_REQUIRED = 0,      // No required columns
-        COL_DEFAULT  = 0x3AF   // Default columns (excludes Bike and Penalty, includes Tracked)
+        COL_DEFAULT  = 0x3AE   // Default columns (excludes Bike, Penalty, and Tracked)
     };
 
     // Gap column display modes (for COL_OFFICIAL_GAP and COL_LIVE_GAP)
@@ -108,6 +108,7 @@ private:
         bool isGapRow;  // Special row showing gap to neighbor
         bool isGapToRiderAhead;  // true = gap to rider ahead (red), false = gap to rider behind (green)
         bool isGapInverted;  // true = track position inverted vs classification (use warning color)
+        bool isPlaceholder;  // Empty row to show configured HUD size
 
         char formattedPosition[4];
         char formattedRaceNum[12];  // Sized for "#999" (5 bytes) with margin
@@ -120,7 +121,7 @@ private:
 
         DisplayEntry() : position(0), raceNum(-1), bikeBrandColor(0),
             officialGap(0), gapLaps(0), realTimeGap(0), penalty(0), state(0), pit(0), numLaps(0), bestLap(-1),
-            isFinishedRace(false), hasBestLap(false), hasOfficialGap(false), isGapRow(false), isGapToRiderAhead(false), isGapInverted(false) {
+            isFinishedRace(false), hasBestLap(false), hasOfficialGap(false), isGapRow(false), isGapToRiderAhead(false), isGapInverted(false), isPlaceholder(false) {
             name[0] = '\0';
             bikeShortName[0] = '\0';
             formattedPosition[0] = '\0';
@@ -139,7 +140,7 @@ private:
     };
 
     // Rendering helpers (declared after DisplayEntry)
-    void renderRiderRow(const DisplayEntry& entry, bool isPlaceholder, float currentY, const ScaledDimensions& dim);
+    void renderRiderRow(const DisplayEntry& entry, bool isPlaceholder, float currentY, const ScaledDimensions& dim, int rowIndex);
 
     // Formatting helpers (declared after DisplayEntry)
     void formatStatus(DisplayEntry& entry, const SessionData& sessionData) const;
@@ -147,7 +148,7 @@ private:
     // Build gap indicator row for adjacent rider (ahead=red, behind=green)
     // Calculates relative gaps and applies m_gapIndicatorMode filtering
     DisplayEntry buildGapRow(int displayRaceNum, int neighborRaceNum, bool isGapToRiderAhead,
-                             int currentElapsedTime, const PluginData& pluginData);
+                             const PluginData& pluginData);
 
     // Add riders from classification[startIdx..endIdx] to m_displayEntries
     // Updates m_cachedPlayerIndex when player found; positionBase is display position (e.g., 1 for P1)
@@ -197,7 +198,7 @@ private:
 
     HudDimensions calculateHudDimensions(const ScaledDimensions& dim, int rowCount = -1) const;
 
-    std::vector<DisplayEntry> m_displayEntries;  // Only contains entries that will be displayed (max m_displayRowCount)
+    std::vector<DisplayEntry> m_displayEntries;  // Rider entries (m_displayRowCount) + gap rows
     std::vector<RiderClickRegion> m_riderClickRegions;  // Click regions for rider selection
     ColumnPositions m_columns;
     uint32_t m_enabledColumns = COL_DEFAULT;  // Bitfield of enabled columns (managed by profile system)
@@ -213,17 +214,21 @@ private:
     int m_cachedPlayerIndex = -1;  // Cached index of player in m_displayEntries (-1 if not found or beyond m_displayRowCount)
     int m_cachedHighlightQuadIndex = -1;  // Cached index of highlight quad in m_quads (-1 if no highlight)
     int m_hoveredRowIndex = -1;  // Row index currently hovered by cursor (-1 if none)
+
+    // Tracking for icon quads (so we can update positions in rebuildLayout)
+    struct TrackedIconQuad {
+        size_t quadIndex;  // Index in m_quads
+        int rowIndex;      // Which row it belongs to
+    };
+    std::vector<TrackedIconQuad> m_trackedIconQuads;
     int m_displayRowCount = 10;  // Number of rows to display (configurable 8-30, increment 2)
+    int m_topPositionsCount = DEFAULT_TOP_POSITIONS;  // Always show top N positions (global setting, 0-10)
 
-    // Time-based official gap visibility
-    std::unordered_map<int, int> m_lastOfficialGapUpdateTime;  // raceNum -> elapsed time when gap was last updated
-    std::unordered_map<int, int> m_lastOfficialGapValue;       // raceNum -> last known official gap value
-    static constexpr int OFFICIAL_GAP_DISPLAY_DURATION_MS = 5000;  // Show official gap for 5 seconds after update
-
-    static constexpr int MAX_DISPLAY_ENTRIES = 10;  // Maximum entries to track and display in standings
     static constexpr int MIN_ROW_COUNT = 8;         // Minimum for useful context (top 3 + player with 1 before/after + 2 gap rows)
     static constexpr int MAX_ROW_COUNT = 30;
     static constexpr int DEFAULT_ROW_COUNT = 10;  // Shows top 3 + player with 2 before/after symmetrically
+    static constexpr int DEFAULT_TOP_POSITIONS = 3;  // Default: always show top 3
+    static constexpr int MAX_TOP_POSITIONS = 10;     // Maximum top positions to always show
     static constexpr int NUM_COLUMNS = 11;
     // Base position (0,0) - actual position comes from m_fOffsetX/m_fOffsetY
     static constexpr float START_X = 0.0f;

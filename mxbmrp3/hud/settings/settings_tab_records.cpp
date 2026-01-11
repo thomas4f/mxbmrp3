@@ -105,17 +105,8 @@ BaseHud* SettingsHud::renderTabRecords(SettingsLayoutContext& ctx) {
     ctx.addSpacing(0.5f);
 
     // === COLUMNS SECTION ===
-    ctx.addSectionHeader("Columns");
-
-    ctx.addToggleControl("Position", (hud->m_enabledColumns & RecordsHud::COL_POS) != 0,
-        SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, RecordsHud::COL_POS, true,
-        "records.col_pos");
-    ctx.addToggleControl("Rider name", (hud->m_enabledColumns & RecordsHud::COL_RIDER) != 0,
-        SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, RecordsHud::COL_RIDER, true,
-        "records.col_rider");
-    ctx.addToggleControl("Bike model", (hud->m_enabledColumns & RecordsHud::COL_BIKE) != 0,
-        SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, RecordsHud::COL_BIKE, true,
-        "records.col_bike");
+    // Core columns (Position, Rider, Bike, Lap time) are always shown
+    ctx.addSectionHeader("Optional Columns");
 
     // Sector columns (toggles all 3 sectors together)
     bool sectorsEnabled = (hud->m_enabledColumns & RecordsHud::COL_SECTORS) == RecordsHud::COL_SECTORS;
@@ -123,9 +114,6 @@ BaseHud* SettingsHud::renderTabRecords(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, RecordsHud::COL_SECTORS,
         true, "records.col_sectors");
 
-    ctx.addToggleControl("Lap time", (hud->m_enabledColumns & RecordsHud::COL_LAPTIME) != 0,
-        SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, RecordsHud::COL_LAPTIME, true,
-        "records.col_laptime");
     ctx.addToggleControl("Date recorded", (hud->m_enabledColumns & RecordsHud::COL_DATE) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, RecordsHud::COL_DATE, true,
         "records.col_date");

@@ -18,16 +18,16 @@ public:
     bool handlesDataType(DataChangeType dataType) const override;
     void resetToDefaults();
 
-    // Column flags - each bit represents a column that can be toggled
+    // Column flags for optional columns (lap and time are always shown)
     enum ColumnFlags : uint32_t {
-        COL_LAP  = 1 << 0,  // Lap number
-        COL_S1   = 1 << 1,  // Sector 1 time
-        COL_S2   = 1 << 2,  // Sector 2 time
-        COL_S3   = 1 << 3,  // Sector 3 time
-        COL_TIME = 1 << 4,  // Total lap time
+        COL_SECTORS = 1 << 0,  // Sector times (S1, S2, S3) - toggleable
+        COL_DEFAULT = COL_SECTORS  // Default: sectors enabled
+    };
 
-        COL_REQUIRED = 0,    // No required columns
-        COL_DEFAULT  = 0x1F  // Default: All columns (Lap, S1, S2, S3, Time)
+    // Display order for lap log entries
+    enum class DisplayOrder : uint8_t {
+        OLDEST_FIRST = 0,  // Oldest laps at top, newest at bottom (default, HUD grows downward)
+        NEWEST_FIRST = 1   // Newest laps at top, oldest at bottom (HUD grows upward)
     };
 
     // Row count limits (public so static_assert can access them)
@@ -81,11 +81,13 @@ private:
 
     ColumnPositions m_columns;
     uint32_t m_enabledColumns = COL_DEFAULT;  // Bitfield of enabled columns
-    int m_maxDisplayLaps = 6;  // Configurable number of laps to display (default: 6, matches IdealLapHud)
-    int m_cachedNumDataRows = 6;  // Cached count for rebuildLayout
+    int m_maxDisplayLaps = 5;  // Configurable number of laps to display (default: 5)
+    int m_cachedNumDataRows = 5;  // Cached count for rebuildLayout
+    DisplayOrder m_displayOrder = DisplayOrder::OLDEST_FIRST;  // Order of lap display
 
     // Live timing support
     bool m_showLiveTiming = true;  // Show current lap in progress with live sectors/timer
+    bool m_showGapRow = true;      // Show gap-to-PB row when live timing is active
 
     // Check if we need frequent updates for ticking timer
     bool needsFrequentUpdates() const override;

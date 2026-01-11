@@ -32,6 +32,26 @@ bool SettingsHud::handleClickTabLapLog(const ClickRegion& region) {
             }
             return true;
 
+        case ClickRegion::LAP_LOG_ORDER_UP:
+        case ClickRegion::LAP_LOG_ORDER_DOWN:
+            if (lapLogHud) {
+                // Toggle between OLDEST_FIRST and NEWEST_FIRST
+                lapLogHud->m_displayOrder = (lapLogHud->m_displayOrder == LapLogHud::DisplayOrder::OLDEST_FIRST)
+                    ? LapLogHud::DisplayOrder::NEWEST_FIRST
+                    : LapLogHud::DisplayOrder::OLDEST_FIRST;
+                lapLogHud->setDataDirty();
+                setDataDirty();
+            }
+            return true;
+
+        case ClickRegion::LAP_LOG_GAP_ROW_TOGGLE:
+            if (lapLogHud) {
+                lapLogHud->m_showGapRow = !lapLogHud->m_showGapRow;
+                lapLogHud->setDataDirty();
+                setDataDirty();
+            }
+            return true;
+
         default:
             return false;
     }
@@ -59,25 +79,26 @@ BaseHud* SettingsHud::renderTabLapLog(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::LAP_LOG_ROW_COUNT_DOWN,
         SettingsHud::ClickRegion::LAP_LOG_ROW_COUNT_UP,
         hud, true, false, "lap_log.rows");
-    ctx.addSpacing(0.5f);
 
-    // === COLUMNS SECTION ===
-    ctx.addSectionHeader("Columns");
+    // Display order
+    const char* orderValue = (hud->m_displayOrder == LapLogHud::DisplayOrder::OLDEST_FIRST)
+        ? "Oldest" : "Newest";
+    ctx.addCycleControl("Display order", orderValue, 10,
+        SettingsHud::ClickRegion::LAP_LOG_ORDER_DOWN,
+        SettingsHud::ClickRegion::LAP_LOG_ORDER_UP,
+        hud, true, false, "lap_log.order");
 
-    // Column toggles
-    ctx.addToggleControl("Lap number", (hud->m_enabledColumns & LapLogHud::COL_LAP) != 0,
-        SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, LapLogHud::COL_LAP, true,
-        "lap_log.col_lap");
-
-    bool sectorsOn = (hud->m_enabledColumns & (LapLogHud::COL_S1 | LapLogHud::COL_S2 | LapLogHud::COL_S3)) != 0;
+    // Sector times toggle
+    bool sectorsOn = (hud->m_enabledColumns & LapLogHud::COL_SECTORS) != 0;
     ctx.addToggleControl("Sector times", sectorsOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
-        &hud->m_enabledColumns, LapLogHud::COL_S1 | LapLogHud::COL_S2 | LapLogHud::COL_S3, true,
+        &hud->m_enabledColumns, LapLogHud::COL_SECTORS, true,
         "lap_log.col_sectors");
 
-    ctx.addToggleControl("Lap time", (hud->m_enabledColumns & LapLogHud::COL_TIME) != 0,
-        SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, LapLogHud::COL_TIME, true,
-        "lap_log.col_time");
+    // Gap row toggle
+    ctx.addToggleControl("Live gap row", hud->m_showGapRow,
+        SettingsHud::ClickRegion::LAP_LOG_GAP_ROW_TOGGLE, hud, nullptr, 0, true,
+        "lap_log.gap_row");
 
     return hud;
 }

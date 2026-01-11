@@ -31,8 +31,16 @@ TelemetryHud::TelemetryHud() {
 }
 
 void TelemetryHud::update() {
-    // Always rebuild - scrolling graph needs continuous updates at physics rate (100Hz)
-    // updateInputTelemetry() marks this dirty every physics callback
+    // OPTIMIZATION: Skip expensive graph rebuild when not visible
+    // History is cleared in setVisible() when becoming visible, so graph starts fresh.
+    if (!isVisible()) {
+        clearDataDirty();
+        clearLayoutDirty();
+        return;
+    }
+
+    // Always rebuild - scrolling graph needs continuous updates every frame
+    // History data arrives at 100Hz physics rate, but graph renders at display rate (~60Hz)
     rebuildRenderData();
     clearDataDirty();
     clearLayoutDirty();
@@ -42,9 +50,19 @@ bool TelemetryHud::handlesDataType(DataChangeType dataType) const {
     return dataType == DataChangeType::InputTelemetry;
 }
 
+void TelemetryHud::setVisible(bool visible) {
+    bool wasVisible = isVisible();
+    BaseHud::setVisible(visible);
+
+    // Clear history buffers when becoming visible so graph starts fresh
+    if (visible && !wasVisible) {
+        PluginData::getInstance().clearHistoryBuffers();
+    }
+}
+
 void TelemetryHud::rebuildRenderData() {
     m_quads.clear();
-    m_strings.clear();
+    clearStrings();
 
     // PERFORMANCE TEST: Skip all calculations when disabled
     if (!ENABLED) return;
@@ -297,14 +315,15 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
     // Render inputs in order within each iteration: brake, clutch, RPM, then throttle
     // This maintains the visual appearance (throttle appears on top) while reducing iterations
     for (size_t i = 0; i < HistoryBuffers::MAX_TELEMETRY_HISTORY - 1; ++i) {
-        // Pre-calculate shared position values (used by all graphs)
-        float x1 = x + i * pointSpacing;
-        float x2 = x + (i + 1) * pointSpacing;
-
         // Front brake graph (always available - available for player and spectated riders)
         if (m_enabledElements & ELEM_FRONT_BRAKE) {
             const std::deque<float>& data = history.frontBrake;
             if (i < data.size() && (i + 1) < data.size()) {
+                // Offset so newest data is always at right edge
+                size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
+                float x1 = x + (offset + i) * pointSpacing;
+                float x2 = x + (offset + i + 1) * pointSpacing;
+
                 float value1 = std::max(0.0f, std::min(1.0f, data[i]));
                 float value2 = std::max(0.0f, std::min(1.0f, data[i + 1]));
 
@@ -320,6 +339,10 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
         if ((m_enabledElements & ELEM_REAR_BRAKE) && hasFullTelemetry) {
             const std::deque<float>& data = history.rearBrake;
             if (i < data.size() && (i + 1) < data.size()) {
+                size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
+                float x1 = x + (offset + i) * pointSpacing;
+                float x2 = x + (offset + i + 1) * pointSpacing;
+
                 float value1 = std::max(0.0f, std::min(1.0f, data[i]));
                 float value2 = std::max(0.0f, std::min(1.0f, data[i + 1]));
 
@@ -335,6 +358,10 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
         if ((m_enabledElements & ELEM_CLUTCH) && hasFullTelemetry) {
             const std::deque<float>& data = history.clutch;
             if (i < data.size() && (i + 1) < data.size()) {
+                size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
+                float x1 = x + (offset + i) * pointSpacing;
+                float x2 = x + (offset + i + 1) * pointSpacing;
+
                 float value1 = std::max(0.0f, std::min(1.0f, data[i]));
                 float value2 = std::max(0.0f, std::min(1.0f, data[i + 1]));
 
@@ -350,6 +377,10 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
         if (m_enabledElements & ELEM_RPM) {
             const std::deque<float>& data = history.rpm;
             if (i < data.size() && (i + 1) < data.size()) {
+                size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
+                float x1 = x + (offset + i) * pointSpacing;
+                float x2 = x + (offset + i + 1) * pointSpacing;
+
                 float value1 = std::max(0.0f, std::min(1.0f, data[i]));
                 float value2 = std::max(0.0f, std::min(1.0f, data[i + 1]));
 
@@ -365,6 +396,10 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
         if ((m_enabledElements & ELEM_FRONT_SUSP) && hasFullTelemetry && bikeTelemetry.frontSuspMaxTravel > 0) {
             const std::deque<float>& data = history.frontSusp;
             if (i < data.size() && (i + 1) < data.size()) {
+                size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
+                float x1 = x + (offset + i) * pointSpacing;
+                float x2 = x + (offset + i + 1) * pointSpacing;
+
                 float value1 = std::max(0.0f, std::min(1.0f, data[i]));
                 float value2 = std::max(0.0f, std::min(1.0f, data[i + 1]));
 
@@ -380,6 +415,10 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
         if ((m_enabledElements & ELEM_REAR_SUSP) && hasFullTelemetry && bikeTelemetry.rearSuspMaxTravel > 0) {
             const std::deque<float>& data = history.rearSusp;
             if (i < data.size() && (i + 1) < data.size()) {
+                size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
+                float x1 = x + (offset + i) * pointSpacing;
+                float x2 = x + (offset + i + 1) * pointSpacing;
+
                 float value1 = std::max(0.0f, std::min(1.0f, data[i]));
                 float value2 = std::max(0.0f, std::min(1.0f, data[i + 1]));
 
@@ -395,6 +434,10 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
         if (m_enabledElements & ELEM_GEAR) {
             const std::deque<float>& data = history.gear;
             if (i < data.size() && (i + 1) < data.size()) {
+                size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
+                float x1 = x + (offset + i) * pointSpacing;
+                float x2 = x + (offset + i + 1) * pointSpacing;
+
                 float value1 = std::max(0.0f, std::min(1.0f, data[i]));
                 float value2 = std::max(0.0f, std::min(1.0f, data[i + 1]));
 
@@ -409,6 +452,10 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
         if (m_enabledElements & ELEM_THROTTLE) {
             const std::deque<float>& data = history.throttle;
             if (i < data.size() && (i + 1) < data.size()) {
+                size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
+                float x1 = x + (offset + i) * pointSpacing;
+                float x2 = x + (offset + i + 1) * pointSpacing;
+
                 float value1 = std::max(0.0f, std::min(1.0f, data[i]));
                 float value2 = std::max(0.0f, std::min(1.0f, data[i + 1]));
 
