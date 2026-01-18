@@ -1,78 +1,24 @@
 {
   "version": 1,
   "tabs": {
-    "general": {
-      "title": "General",
-      "tooltip": "Global settings including unit preferences, profiles, and configuration options."
-    },
-    "appearance": {
-      "title": "Appearance",
-      "tooltip": "Customize the visual style of all HUD elements including fonts and colors."
-    },
-    "hotkeys": {
-      "title": "Hotkeys",
-      "tooltip": "Configure keyboard shortcuts and controller buttons for quick access to HUD toggles."
-    },
-    "riders": {
-      "title": "Riders",
-      "tooltip": "Track specific riders with custom colors and icons. Highlighted on standings, map, and radar."
-    },
-    "rumble": {
-      "title": "Rumble",
-      "tooltip": "Configure controller vibration for racing events like bumps, wheelspin, and impacts."
-    },
-    "updates": {
-      "title": "Updates",
-      "tooltip": "Automatic update checking and installation. Downloads and installs new versions from GitHub."
-    },
-    "standings": {
-      "title": "Standings",
-      "tooltip": "Live race standings showing position, gaps, and rider information for all competitors."
-    },
-    "map": {
-      "title": "Track Map",
-      "tooltip": "Overhead view of the track with real-time rider positions. Supports zoom and display modes."
-    },
-    "radar": {
-      "title": "Radar",
-      "tooltip": "Shows nearby riders relative to your position. Useful for close racing awareness."
-    },
-    "lap_log": {
-      "title": "Lap Log",
-      "tooltip": "History of your recent lap times with sector breakdowns. Shows lap-by-lap performance."
-    },
-    "ideal_lap": {
-      "title": "Ideal Lap",
-      "tooltip": "Displays your theoretical best lap time calculated from your fastest individual sectors."
-    },
-    "telemetry": {
-      "title": "Telemetry",
-      "tooltip": "Real-time input data including throttle, brake, clutch, RPM, suspension travel, and gear."
-    },
-    "performance": {
-      "title": "Performance",
-      "tooltip": "System performance metrics including frame rate and plugin execution time."
-    },
-    "records": {
-      "title": "Records",
-      "tooltip": "Lap records from online providers (CBR, MXB-Ranked) for your current track."
-    },
-    "pitboard": {
-      "title": "Pitboard",
-      "tooltip": "Info displayed at pit area or timing points, showing position, lap times, and gap."
-    },
-    "timing": {
-      "title": "Timing",
-      "tooltip": "Lap and sector timing display with comparisons to session best and personal records."
-    },
-    "gap_bar": {
-      "title": "Gap Bar",
-      "tooltip": "Visual progress bar showing your gap to the rider ahead and behind."
-    },
-    "widgets": {
-      "title": "Widgets",
-      "tooltip": "Simple HUD elements showing speed, position, lap count, session time, and other info."
-    }
+    "general": "Global settings including unit preferences, profiles, and configuration options.",
+    "appearance": "Customize the visual style of all HUD elements including fonts and colors.",
+    "hotkeys": "Configure keyboard shortcuts and controller buttons for quick access to HUD toggles.",
+    "riders": "Track specific riders with custom colors and icons. Highlighted on standings, map, and radar.",
+    "rumble": "Configure controller vibration for racing events like bumps, wheelspin, and impacts.",
+    "updates": "Automatic update checking and installation. Downloads and installs new versions from GitHub.",
+    "standings": "Live race standings showing position, gaps, and rider information for all competitors.",
+    "map": "Overhead view of the track with real-time rider positions. Supports zoom and display modes.",
+    "radar": "Shows nearby riders relative to your position. Useful for close racing awareness.",
+    "lap_log": "History of your recent lap times with sector breakdowns. Shows lap-by-lap performance.",
+    "ideal_lap": "Displays your theoretical best lap time calculated from your fastest individual sectors.",
+    "telemetry": "Real-time input data including throttle, brake, clutch, RPM, suspension travel, and gear.",
+    "performance": "System performance metrics including frame rate and plugin execution time.",
+    "records": "Lap records from online providers (CBR, MXB-Ranked) for your current track.",
+    "pitboard": "Info displayed at pit area or timing points, showing position, lap times, and gap.",
+    "timing": "Lap and sector timing display with comparisons to session best and personal records.",
+    "gap_bar": "Visual progress bar showing your gap to the rider ahead and behind.",
+    "widgets": "Simple HUD elements showing speed, position, lap count, session time, and other info."
   },
   "controls": {
     "common.visible": "Show or hide this element during gameplay.",
@@ -173,14 +119,20 @@
     "radar.proximity_scale": "Size of proximity warning arrows.",
 
     "gap_bar.freeze": "How long to freeze the gap bar display after a change.",
-    "gap_bar.markers": "Show position markers on the gap bar.",
+    "gap_bar.show_gap": "Show gap time text in the center of the bar.",
+    "gap_bar.show_gap_bar": "Show the green/red gap visualization bars.",
     "gap_bar.range": "Time range displayed on the gap bar in seconds.",
     "gap_bar.width": "Width multiplier for the gap bar.",
+    "gap_bar.marker_mode": "Ghost shows your best lap marker. Opponents shows other riders. Both shows all.",
+    "gap_bar.icon": "Icon shape used for rider markers on the bar.",
+    "gap_bar.marker_scale": "Size multiplier for rider markers.",
+    "gap_bar.labels": "Labels shown next to markers. Position, race number, or both.",
 
     "general.controller": "Select which controller to use for gamepad widget and rumble effects.",
     "general.speed_unit": "Unit for speed display. mph or km/h.",
     "general.fuel_unit": "Unit for fuel display. Liters or Gallons.",
     "general.grid_snap": "When enabled, HUDs snap to a grid when dragging.",
+    "general.screen_clamp": "When enabled, HUDs are clamped to stay within screen bounds when dragging.",
     "general.auto_switch": "Automatically switch profiles based on session type.",
     "general.copy_profile": "Copy current profile settings to another profile.",
     "general.reset_profile": "Reset current profile to default settings.",

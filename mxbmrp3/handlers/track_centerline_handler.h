@@ -4,13 +4,13 @@
 // ============================================================================
 #pragma once
 
-#include "../vendor/piboso/mxb_api.h"
+#include "../game/unified_types.h"
 
 class TrackCenterlineHandler {
 public:
     static TrackCenterlineHandler& getInstance();
 
-    void handleTrackCenterline(int iNumSegments, SPluginsTrackSegment_t* pasSegment, void* pRaceData);
+    void handleTrackCenterline(int iNumSegments, Unified::TrackSegment* pasSegment, void* pRaceData);
 
 private:
     TrackCenterlineHandler() {}

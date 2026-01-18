@@ -10,6 +10,7 @@
 #include "../../core/update_downloader.h"
 #include "../../core/color_config.h"
 #include "../../core/settings_manager.h"
+#include "../../game/game_config.h"
 #include "../../diagnostics/logger.h"
 
 #include <sstream>
@@ -340,16 +341,18 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
             Fonts::getNormal(), colorConfig.getPositive(), ctx.fontSize);
         ctx.currentY += ctx.lineHeightNormal;
 
-        ctx.parent->addString("Restart MX Bikes to apply.", ctx.labelX, ctx.currentY, Justify::LEFT,
+        ctx.parent->addString("Restart " GAME_NAME " to apply.", ctx.labelX, ctx.currentY, Justify::LEFT,
             Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
         ctx.currentY += ctx.lineHeightNormal;
 
     } else if (downloaderState == UpdateDownloader::State::FAILED) {
         // Download failed
+        ctx.addSpacing(0.5f);
         std::string errorText = "Error: " + downloader.getErrorMessage();
         ctx.parent->addString(errorText.c_str(), ctx.labelX, ctx.currentY, Justify::LEFT,
             Fonts::getNormal(), colorConfig.getNegative(), ctx.fontSize);
         ctx.currentY += ctx.lineHeightNormal;
+        ctx.addSpacing(0.5f);
 
         // Retry button - centered
         {

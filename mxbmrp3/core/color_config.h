@@ -88,10 +88,6 @@ public:
     const std::array<unsigned long, static_cast<size_t>(ColorSlot::COUNT)>& getColors() const { return m_colors; }
     void setColors(const std::array<unsigned long, static_cast<size_t>(ColorSlot::COUNT)>& colors) { m_colors = colors; }
 
-    // Grid snapping setting (for HUD positioning)
-    bool getGridSnapping() const { return m_bGridSnapping; }
-    void setGridSnapping(bool enabled) { m_bGridSnapping = enabled; }
-
     // Drop shadow setting (for text rendering)
     bool getDropShadow() const { return m_bDropShadow; }
     void setDropShadow(bool enabled) { m_bDropShadow = enabled; }
@@ -117,7 +113,6 @@ private:
     ColorConfig& operator=(const ColorConfig&) = delete;
 
     std::array<unsigned long, static_cast<size_t>(ColorSlot::COUNT)> m_colors;
-    bool m_bGridSnapping = true;  // Grid snapping enabled by default
     bool m_bDropShadow = false;   // Drop shadow disabled by default
 
     // Drop shadow advanced settings (INI-only, as percentage of font size)

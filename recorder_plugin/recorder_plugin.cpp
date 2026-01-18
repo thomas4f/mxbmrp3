@@ -15,8 +15,8 @@
 // These three functions are called by MX Bikes to identify and validate the plugin.
 // Without them, MX Bikes will not recognize the DLL as a plugin!
 
-extern "C" __declspec(dllexport) const char* GetModID() {
-    return "mxbikes";  // Must match MX Bikes mod ID
+extern "C" __declspec(dllexport) char* GetModID() {
+    return (char*)"mxbikes";  // Must match MX Bikes mod ID
 }
 
 extern "C" __declspec(dllexport) int GetModDataVersion() {

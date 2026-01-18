@@ -10,7 +10,7 @@
 
 DEFINE_HANDLER_SINGLETON(RaceTrackPositionHandler)
 
-void RaceTrackPositionHandler::handleRaceTrackPosition(int iNumVehicles, SPluginsRaceTrackPosition_t* pasRaceTrackPosition) {
+void RaceTrackPositionHandler::handleRaceTrackPosition(int iNumVehicles, Unified::TrackPositionData* pasRaceTrackPosition) {
     // Defensive null check and bounds validation
     if (!pasRaceTrackPosition || iNumVehicles <= 0) return;
 
@@ -22,15 +22,15 @@ void RaceTrackPositionHandler::handleRaceTrackPosition(int iNumVehicles, SPlugin
 
     // Always update track positions (needed for wrong-way detection in all session types)
     for (int i = 0; i < iNumVehicles; ++i) {
-        const SPluginsRaceTrackPosition_t& pos = pasRaceTrackPosition[i];
-        const StandingsData* standing = pluginData.getStanding(pos.m_iRaceNum);
+        const Unified::TrackPositionData& pos = pasRaceTrackPosition[i];
+        const StandingsData* standing = pluginData.getStanding(pos.raceNum);
         int numLaps = standing ? standing->numLaps : 0;
 
         pluginData.updateTrackPosition(
-            pos.m_iRaceNum,
-            pos.m_fTrackPos,
+            pos.raceNum,
+            pos.trackPos,
             numLaps,
-            pos.m_iCrashed != 0,
+            pos.crashed,
             sessionTime
         );
     }

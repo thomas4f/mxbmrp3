@@ -275,7 +275,7 @@ void MapHud::updatePositionFromAnchor() {
     }
 }
 
-void MapHud::updateTrackData(int numSegments, const SPluginsTrackSegment_t* segments) {
+void MapHud::updateTrackData(int numSegments, const Unified::TrackSegment* segments) {
     if (numSegments <= 0 || segments == nullptr) {
         DEBUG_WARN("MapHud: Invalid track data");
         return;
@@ -299,7 +299,7 @@ void MapHud::updateTrackData(int numSegments, const SPluginsTrackSegment_t* segm
     setDataDirty();
 }
 
-void MapHud::updateRiderPositions(int numVehicles, const SPluginsRaceTrackPosition_t* positions) {
+void MapHud::updateRiderPositions(int numVehicles, const Unified::TrackPositionData* positions) {
     if (numVehicles <= 0 || positions == nullptr) {
         m_riderPositions.clear();
         return;
@@ -321,13 +321,13 @@ void MapHud::calculateTrackBounds() {
     using namespace PluginConstants::Math;
 
     // Initialize bounds with first segment start position
-    m_minX = m_maxX = m_trackSegments[0].m_afStart[0];
-    m_minY = m_maxY = m_trackSegments[0].m_afStart[1];
+    m_minX = m_maxX = m_trackSegments[0].startX;
+    m_minY = m_maxY = m_trackSegments[0].startY;
 
     // Calculate bounds by traversing all segments
-    float currentX = m_trackSegments[0].m_afStart[0];
-    float currentY = m_trackSegments[0].m_afStart[1];
-    float currentAngle = m_trackSegments[0].m_fAngle;
+    float currentX = m_trackSegments[0].startX;
+    float currentY = m_trackSegments[0].startY;
+    float currentAngle = m_trackSegments[0].angle;
 
     for (const auto& segment : m_trackSegments) {
         // Update bounds with current position
@@ -337,28 +337,28 @@ void MapHud::calculateTrackBounds() {
         m_maxY = std::max(m_maxY, currentY);
 
         // Calculate end position based on segment type
-        if (segment.m_iType == TrackSegmentType::STRAIGHT) {
+        if (segment.type == TrackSegmentType::STRAIGHT) {
             // Straight segment
             float angleRad = currentAngle * DEG_TO_RAD;
-            float dx = std::sin(angleRad) * segment.m_fLength;
-            float dy = std::cos(angleRad) * segment.m_fLength;
+            float dx = std::sin(angleRad) * segment.length;
+            float dy = std::cos(angleRad) * segment.length;
             currentX += dx;
             currentY += dy;
         } else {
             // Curved segment - simple stepping approach
-            float radius = segment.m_fRadius;
-            float arcLength = segment.m_fLength;
-            float absRadius = std::abs(radius);
+            float segRadius = segment.radius;
+            float arcLength = segment.length;
+            float absRadius = std::abs(segRadius);
 
             // Safety: Skip curved segments with invalid radius to avoid division by zero
             if (absRadius < 0.01f) {
-                DEBUG_WARN_F("MapHud: Curved segment with invalid radius %.3f, skipping", radius);
+                DEBUG_WARN_F("MapHud: Curved segment with invalid radius %.3f, skipping", segRadius);
                 continue;
             }
 
             // Total angle change through the curve
             float totalAngleChange = arcLength / absRadius;
-            if (radius < 0) {
+            if (segRadius < 0) {
                 totalAngleChange = -totalAngleChange;
             }
 
@@ -466,10 +466,10 @@ bool MapHud::calculateZoomBounds(float& zoomMinX, float& zoomMaxX, float& zoomMi
     bool foundPlayer = false;
 
     for (const auto& pos : m_riderPositions) {
-        if (pos.m_iRaceNum == displayRaceNum) {
-            if (!pos.m_iCrashed) {
-                playerX = pos.m_fPosX;
-                playerZ = pos.m_fPosZ;
+        if (pos.raceNum == displayRaceNum) {
+            if (!pos.crashed) {
+                playerX = pos.posX;
+                playerZ = pos.posZ;
             } else {
                 // Use cached position when crashed
                 playerX = m_fLastPlayerX;
@@ -531,15 +531,15 @@ float MapHud::calculateRotationAngle() {
         int displayRaceNum = pluginData.getDisplayRaceNum();
 
         for (const auto& pos : m_riderPositions) {
-            if (pos.m_iRaceNum == displayRaceNum) {
-                if (!pos.m_iCrashed) {
+            if (pos.raceNum == displayRaceNum) {
+                if (!pos.crashed) {
                     // Player is riding - always cache position (needed for zoom mode crash freeze)
-                    m_fLastPlayerX = pos.m_fPosX;
-                    m_fLastPlayerZ = pos.m_fPosZ;
+                    m_fLastPlayerX = pos.posX;
+                    m_fLastPlayerZ = pos.posZ;
 
                     // Only update rotation angle if rotation mode is enabled
                     if (m_bRotateToPlayer) {
-                        rotationAngle = pos.m_fYaw;
+                        rotationAngle = pos.yaw;
                         m_fLastRotationAngle = rotationAngle;
                     }
                 } else {
@@ -668,9 +668,9 @@ void MapHud::renderTrack(const RotationCache& rotation, unsigned long trackColor
     };
 
     // Start position and angle
-    float currentX = m_trackSegments[0].m_afStart[0];
-    float currentY = m_trackSegments[0].m_afStart[1];
-    float currentAngle = m_trackSegments[0].m_fAngle;
+    float currentX = m_trackSegments[0].startX;
+    float currentY = m_trackSegments[0].startY;
+    float currentAngle = m_trackSegments[0].angle;
 
     // Previous edge points for ribbon quad creation
     float prevLeftX = 0.0f, prevLeftY = 0.0f, prevRightX = 0.0f, prevRightY = 0.0f;
@@ -753,21 +753,21 @@ void MapHud::renderTrack(const RotationCache& rotation, unsigned long trackColor
         float endX = startX;
         float endY = startY;
 
-        if (segment.m_iType == TrackSegmentType::STRAIGHT) {
+        if (segment.type == TrackSegmentType::STRAIGHT) {
             float angleRad = currentAngle * DEG_TO_RAD;
-            endX = startX + std::sin(angleRad) * segment.m_fLength;
-            endY = startY + std::cos(angleRad) * segment.m_fLength;
+            endX = startX + std::sin(angleRad) * segment.length;
+            endY = startY + std::cos(angleRad) * segment.length;
         } else {
             // For curves, approximate end position
-            float radius = segment.m_fRadius;
-            float arcLength = segment.m_fLength;
-            float absRadius = std::abs(radius);
+            float segRadius = segment.radius;
+            float arcLength = segment.length;
+            float absRadius = std::abs(segRadius);
             float totalAngleChange = arcLength / absRadius;
-            if (radius < 0) totalAngleChange = -totalAngleChange;
+            if (segRadius < 0) totalAngleChange = -totalAngleChange;
             // Rough approximation - use chord
             float angleRad = currentAngle * DEG_TO_RAD;
-            endX = startX + std::sin(angleRad) * segment.m_fLength * 0.9f;
-            endY = startY + std::cos(angleRad) * segment.m_fLength * 0.9f;
+            endX = startX + std::sin(angleRad) * segment.length * 0.9f;
+            endY = startY + std::cos(angleRad) * segment.length * 0.9f;
         }
 
         // Check if segment is within culling bounds (either endpoint or midpoint)
@@ -782,11 +782,11 @@ void MapHud::renderTrack(const RotationCache& rotation, unsigned long trackColor
             hasPrevPoint = false;  // Reset ribbon for next visible segment
         }
 
-        if (segment.m_iType == TrackSegmentType::STRAIGHT) {
+        if (segment.type == TrackSegmentType::STRAIGHT) {
             // Straight segment
             float angleRad = currentAngle * DEG_TO_RAD;
-            float dx = std::sin(angleRad) * segment.m_fLength;
-            float dy = std::cos(angleRad) * segment.m_fLength;
+            float dx = std::sin(angleRad) * segment.length;
+            float dy = std::cos(angleRad) * segment.length;
 
             // Calculate perpendicular direction for ribbon edges (constant for straight segments)
             float perpAngle = currentAngle + 90.0f;
@@ -801,7 +801,7 @@ void MapHud::renderTrack(const RotationCache& rotation, unsigned long trackColor
                 int numSteps = 1;
                 if (m_bZoomEnabled) {
                     // Subdivide using adaptive spacing (finer at closer zoom)
-                    numSteps = std::max(1, static_cast<int>(segment.m_fLength / adaptiveSpacing));
+                    numSteps = std::max(1, static_cast<int>(segment.length / adaptiveSpacing));
                 }
 
                 for (int i = 0; i <= numSteps; ++i) {
@@ -823,13 +823,13 @@ void MapHud::renderTrack(const RotationCache& rotation, unsigned long trackColor
             currentY += dy;
         } else {
             // Curved segment - stepping approach with changing perpendicular direction
-            float radius = segment.m_fRadius;  // Keep sign (positive = right turn, negative = left turn)
-            float arcLength = segment.m_fLength;
-            float absRadius = std::abs(radius);
+            float segRadius = segment.radius;  // Keep sign (positive = right turn, negative = left turn)
+            float arcLength = segment.length;
+            float absRadius = std::abs(segRadius);
 
             // Total angle change through the curve (in radians)
             float totalAngleChange = arcLength / absRadius;
-            if (radius < 0) {
+            if (segRadius < 0) {
                 totalAngleChange = -totalAngleChange;  // Left turn = negative angle change
             }
 
@@ -896,8 +896,8 @@ void MapHud::renderStartMarker(const RotationCache& rotation,
     float effectiveWidthMeters = std::clamp(baseWidthMeters * m_fTrackWidthScale, 1.0f, 30.0f);
 
     // Get start position
-    float startX = m_trackSegments[0].m_afStart[0];
-    float startY = m_trackSegments[0].m_afStart[1];
+    float startX = m_trackSegments[0].startX;
+    float startY = m_trackSegments[0].startY;
 
     // Cull if start marker is outside current bounds (with margin for marker size)
     float cullMargin = effectiveWidthMeters;
@@ -911,7 +911,7 @@ void MapHud::renderStartMarker(const RotationCache& rotation,
     float titleOffset = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
 
     // Draw white triangle quad at track start pointing in direction
-    float startAngle = m_trackSegments[0].m_fAngle;
+    float startAngle = m_trackSegments[0].angle;
 
     // Triangle dimensions: width = track width, length = 0.5× track width
     // Triangle point is along track direction
@@ -1003,23 +1003,23 @@ void MapHud::renderRiders(const RotationCache& rotation,
     int displayRaceNum = pluginData.getDisplayRaceNum();
 
     // Helper lambda to render a single rider (used for both passes)
-    auto renderRider = [&](const SPluginsRaceTrackPosition_t& pos, bool isLocalPlayer) {
+    auto renderRider = [&](const Unified::TrackPositionData& pos, bool isLocalPlayer) {
         // Get rider entry data
-        const RaceEntryData* entry = pluginData.getRaceEntry(pos.m_iRaceNum);
+        const RaceEntryData* entry = pluginData.getRaceEntry(pos.raceNum);
         if (!entry) {
             return;  // Skip if we don't have race entry data
         }
 
         // For the active player with rotation mode enabled, use cached position if crashed
         // to keep screen position stable. But use actual yaw so arrow can spin in place.
-        float renderX = pos.m_fPosX;
-        float renderZ = pos.m_fPosZ;
-        if (isLocalPlayer && pos.m_iCrashed && m_bRotateToPlayer) {
+        float renderX = pos.posX;
+        float renderZ = pos.posZ;
+        if (isLocalPlayer && pos.crashed && m_bRotateToPlayer) {
             renderX = m_fLastPlayerX;
             renderZ = m_fLastPlayerZ;
         }
 
-        float renderYaw = pos.m_fYaw;  // Always use current yaw for arrow direction
+        float renderYaw = pos.yaw;  // Always use current yaw for arrow direction
 
         // Convert world coordinates to screen coordinates
         // Use X and Z for ground plane (Y is altitude, not used for top-down map)
@@ -1047,7 +1047,7 @@ void MapHud::renderRiders(const RotationCache& rotation,
 
             // Apply position-based color modulation (lighten if ahead by laps, darken if behind by laps)
             const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
-            const StandingsData* riderStanding = pluginData.getStanding(pos.m_iRaceNum);
+            const StandingsData* riderStanding = pluginData.getStanding(pos.raceNum);
             int playerLaps = playerStanding ? playerStanding->numLaps : 0;
             int riderLaps = riderStanding ? riderStanding->numLaps : 0;
             int lapDiff = riderLaps - playerLaps;
@@ -1072,9 +1072,9 @@ void MapHud::renderRiders(const RotationCache& rotation,
         } else if (m_riderColorMode == RiderColorMode::RELATIVE_POS) {
             // Relative position coloring: color based on position/lap relative to player
             const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
-            const StandingsData* riderStanding = pluginData.getStanding(pos.m_iRaceNum);
+            const StandingsData* riderStanding = pluginData.getStanding(pos.raceNum);
             int playerPosition = pluginData.getPositionForRaceNum(displayRaceNum);
-            int riderPosition = pluginData.getPositionForRaceNum(pos.m_iRaceNum);
+            int riderPosition = pluginData.getPositionForRaceNum(pos.raceNum);
             int playerLaps = playerStanding ? playerStanding->numLaps : 0;
             int riderLaps = riderStanding ? riderStanding->numLaps : 0;
 
@@ -1178,7 +1178,7 @@ void MapHud::renderRiders(const RotationCache& rotation,
         clickRegion.y = screenY - spriteHalfSize + m_fOffsetY;
         clickRegion.width = clickWidth;
         clickRegion.height = clickHeight;
-        clickRegion.raceNum = pos.m_iRaceNum;
+        clickRegion.raceNum = pos.raceNum;
         m_riderClickRegions.push_back(clickRegion);
 
         // Render label centered on arrow based on label mode
@@ -1193,7 +1193,7 @@ void MapHud::renderRiders(const RotationCache& rotation,
             float offsetY = screenY + spriteHalfSize + labelGap;
 
             char labelStr[20];  // Sized for "P100" (5) + "#999" (5) = "P100#999" (9 + null)
-            int position = pluginData.getPositionForRaceNum(pos.m_iRaceNum);
+            int position = pluginData.getPositionForRaceNum(pos.raceNum);
 
             switch (m_labelMode) {
                 case LabelMode::POSITION:
@@ -1207,15 +1207,15 @@ void MapHud::renderRiders(const RotationCache& rotation,
 
                 case LabelMode::RACE_NUM:
                     // Show race number only
-                    snprintf(labelStr, sizeof(labelStr), "%d", pos.m_iRaceNum);
+                    snprintf(labelStr, sizeof(labelStr), "%d", pos.raceNum);
                     break;
 
                 case LabelMode::BOTH:
                     // Show both position and race number (P1 #5)
                     if (position > 0) {
-                        snprintf(labelStr, sizeof(labelStr), "P%d #%d", position, pos.m_iRaceNum);
+                        snprintf(labelStr, sizeof(labelStr), "P%d #%d", position, pos.raceNum);
                     } else {
-                        snprintf(labelStr, sizeof(labelStr), "#%d", pos.m_iRaceNum);
+                        snprintf(labelStr, sizeof(labelStr), "#%d", pos.raceNum);
                     }
                     break;
 
@@ -1260,12 +1260,12 @@ void MapHud::renderRiders(const RotationCache& rotation,
 
     // First pass: render all other riders (not local player)
     for (const auto& pos : m_riderPositions) {
-        if (pos.m_iRaceNum == displayRaceNum) continue;  // Skip player, render last
+        if (pos.raceNum == displayRaceNum) continue;  // Skip player, render last
 
         // Skip non-tracked riders if global shape is OFF (0)
         // Tracked riders always render with their own shape
         if (m_riderShapeIndex == 0) {
-            const RaceEntryData* entry = pluginData.getRaceEntry(pos.m_iRaceNum);
+            const RaceEntryData* entry = pluginData.getRaceEntry(pos.raceNum);
             if (!entry || !TrackedRidersManager::getInstance().isTracked(entry->name)) {
                 continue;
             }
@@ -1276,7 +1276,7 @@ void MapHud::renderRiders(const RotationCache& rotation,
 
     // Second pass: render local player LAST (always on top)
     for (const auto& pos : m_riderPositions) {
-        if (pos.m_iRaceNum == displayRaceNum) {
+        if (pos.raceNum == displayRaceNum) {
             renderRider(pos, true);
             break;  // Found and rendered player, done
         }
@@ -1466,7 +1466,7 @@ void MapHud::rebuildRenderData() {
         // Count segment types
         size_t straightCount = 0, curveCount = 0;
         for (const auto& seg : m_trackSegments) {
-            if (seg.m_iType == 0) straightCount++;
+            if (seg.type == 0) straightCount++;
             else curveCount++;
         }
         DEBUG_INFO_F("MapHud: Rendering %zu segments (%zu straights, %zu curves)",

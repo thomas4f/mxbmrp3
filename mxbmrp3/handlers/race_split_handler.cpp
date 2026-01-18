@@ -9,12 +9,12 @@
 
 DEFINE_HANDLER_SINGLETON(RaceSplitHandler)
 
-void RaceSplitHandler::handleRaceSplit(SPluginsRaceSplit_t* psRaceSplit) {
+void RaceSplitHandler::handleRaceSplit(Unified::RaceSplitData* psRaceSplit) {
     HANDLER_NULL_CHECK(psRaceSplit);
 
     // RaceSplit events fire for ALL riders (includes spectated players)
     // Defensive: validate timing data
-    if (psRaceSplit->m_iSplitTime <= 0) {
+    if (psRaceSplit->splitTime <= 0) {
         return;  // Invalid timing data, skip processing
     }
 
@@ -24,16 +24,16 @@ void RaceSplitHandler::handleRaceSplit(SPluginsRaceSplit_t* psRaceSplit) {
     // When joining mid-race, the game sends RaceSplit events from earlier sessions
     // which would create phantom "current lap" data
     int currentSession = data.getSessionData().session;
-    if (psRaceSplit->m_iSession != currentSession) {
+    if (psRaceSplit->session != currentSession) {
         DEBUG_INFO_F("RaceSplit: Ignoring event from session %d (current session is %d)",
-                     psRaceSplit->m_iSession, currentSession);
+                     psRaceSplit->session, currentSession);
         return;
     }
 
-    int raceNum = psRaceSplit->m_iRaceNum;
-    int lapNum = psRaceSplit->m_iLapNum;
-    int splitIndex = psRaceSplit->m_iSplit;
-    int splitTime = psRaceSplit->m_iSplitTime;
+    int raceNum = psRaceSplit->raceNum;
+    int lapNum = psRaceSplit->lapNum;
+    int splitIndex = psRaceSplit->splitIndex;
+    int splitTime = psRaceSplit->splitTime;
 
     // Validate split index (expected range: 0-2 for split1, split2, finish)
     if (splitIndex < 0 || splitIndex > 2) {
@@ -42,7 +42,7 @@ void RaceSplitHandler::handleRaceSplit(SPluginsRaceSplit_t* psRaceSplit) {
     }
 
     // Update current lap split data (used by IdealLapHud for real-time tracking)
-    // m_iSplit is 0-indexed (0 = split 1, 1 = split 2, 2 = split 3/finish line)
+    // splitIndex is 0-indexed (0 = split 1, 1 = split 2, 2 = split 3/finish line)
     data.updateCurrentLapSplit(raceNum, lapNum, splitIndex, splitTime);
 
     // Update centralized lap timer anchor for real-time elapsed time calculation

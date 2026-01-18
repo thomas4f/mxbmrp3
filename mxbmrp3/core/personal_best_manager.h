@@ -17,6 +17,7 @@ struct PersonalBestEntry {
     int sector1;              // Sector 1 time in milliseconds
     int sector2;              // Sector 2 time in milliseconds
     int sector3;              // Sector 3 time in milliseconds
+    int sector4;              // Sector 4 time in milliseconds (GP Bikes only, -1 if N/A)
 
     // Metadata (not part of key)
     std::string setupName;    // Setup filename used
@@ -24,7 +25,7 @@ struct PersonalBestEntry {
     std::time_t timestamp;    // When PB was set
 
     PersonalBestEntry()
-        : lapTime(-1), sector1(-1), sector2(-1), sector3(-1)
+        : lapTime(-1), sector1(-1), sector2(-1), sector3(-1), sector4(-1)
         , conditions(-1), timestamp(0) {}
 
     bool isValid() const { return lapTime > 0; }

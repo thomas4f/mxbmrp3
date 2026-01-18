@@ -20,7 +20,7 @@ public:
 
     // Column flags for optional columns (lap and time are always shown)
     enum ColumnFlags : uint32_t {
-        COL_SECTORS = 1 << 0,  // Sector times (S1, S2, S3) - toggleable
+        COL_SECTORS = 1 << 0,  // Sector times (S1, S2, S3, S4 for 4-sector games) - toggleable
         COL_DEFAULT = COL_SECTORS  // Default: sectors enabled
     };
 
@@ -74,6 +74,7 @@ private:
         float s1;      // Sector 1 time column
         float s2;      // Sector 2 time column
         float s3;      // Sector 3 time column
+        float s4;      // Sector 4 time column (4-sector games only)
         float time;    // Total lap time column
 
         ColumnPositions(float contentStartX, float scale, uint32_t enabledColumns);

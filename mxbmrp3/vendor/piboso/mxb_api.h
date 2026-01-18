@@ -255,7 +255,7 @@ extern "C" {
 	} SPluginsSpectateVehicle_t;
 
 	// Function declarations
-	__declspec(dllexport) const char* GetModID();
+	__declspec(dllexport) char* GetModID();
 	__declspec(dllexport) int GetModDataVersion();
 	__declspec(dllexport) int GetInterfaceVersion();
 

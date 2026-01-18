@@ -5,7 +5,7 @@
 #pragma once
 
 #include "base_hud.h"
-#include "../vendor/piboso/mxb_api.h"
+#include "../game/unified_types.h"
 #include <vector>
 
 class MapHud : public BaseHud {
@@ -28,10 +28,10 @@ public:
     bool handleMouseInput(bool allowInput = true) override;
 
     // Update track centerline data
-    void updateTrackData(int numSegments, const SPluginsTrackSegment_t* segments);
+    void updateTrackData(int numSegments, const Unified::TrackSegment* segments);
 
     // Update rider positions (called frequently - must be fast)
-    void updateRiderPositions(int numVehicles, const SPluginsRaceTrackPosition_t* positions);
+    void updateRiderPositions(int numVehicles, const Unified::TrackPositionData* positions);
 
     // Rotation mode - rotate map so local player always points up
     void setRotateToPlayer(bool rotate) {
@@ -161,10 +161,10 @@ private:
     };
 
     // Track segment storage
-    std::vector<SPluginsTrackSegment_t> m_trackSegments;
+    std::vector<Unified::TrackSegment> m_trackSegments;
 
     // Rider position storage (updated frequently)
-    std::vector<SPluginsRaceTrackPosition_t> m_riderPositions;
+    std::vector<Unified::TrackPositionData> m_riderPositions;
 
     // Click regions for rider selection (populated during renderRiders)
     std::vector<RiderClickRegion> m_riderClickRegions;

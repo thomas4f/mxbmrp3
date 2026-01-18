@@ -4,13 +4,13 @@
 // ============================================================================
 #pragma once
 
-#include "../vendor/piboso/mxb_api.h"
+#include "../game/unified_types.h"
 
 class RunHandler {
 public:
     static RunHandler& getInstance();
 
-    void handleRunInit(SPluginsBikeSession_t* psSessionData);
+    void handleRunInit(Unified::SessionData* psSessionData);
     void handleRunStart();
     void handleRunStop();
     void handleRunDeinit();

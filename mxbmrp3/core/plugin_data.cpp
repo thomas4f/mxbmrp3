@@ -1,11 +1,10 @@
 // ============================================================================
 // core/plugin_data.cpp
-// Central data store for all game state received from MX Bikes API
+// Central data store for all game state received from the game API
 // ============================================================================
 #include "plugin_data.h"
 #include "plugin_utils.h"
 #include "xinput_reader.h"
-#include "../vendor/piboso/mxb_api.h"
 #include "hud_manager.h"  // Direct include for notification
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
@@ -376,7 +375,7 @@ void PluginData::setCurrentLapNumber(int raceNum, int lapNum) {
     currentLap.lapNum = lapNum;
 }
 
-void PluginData::updateIdealLap(int raceNum, int completedLapNum, int lapTime, int sector1, int sector2, int sector3, bool isValid) {
+void PluginData::updateIdealLap(int raceNum, int completedLapNum, int lapTime, int sector1, int sector2, int sector3, int sector4, bool isValid) {
     // Get or create ideal lap data for this rider
     IdealLapData& idealLap = m_riderIdealLap[raceNum];
 
@@ -405,6 +404,10 @@ void PluginData::updateIdealLap(int raceNum, int completedLapNum, int lapTime, i
         idealLap.lastLapSector3 = sector3;
         updated = true;
     }
+    if (idealLap.lastLapSector4 != sector4) {
+        idealLap.lastLapSector4 = sector4;
+        updated = true;
+    }
 
     // Only update best sectors for valid laps (invalid laps don't count as PBs)
     if (isValid) {
@@ -430,6 +433,15 @@ void PluginData::updateIdealLap(int raceNum, int completedLapNum, int lapTime, i
                 idealLap.previousIdealSector3 = idealLap.bestSector3;
             }
             idealLap.bestSector3 = sector3;
+            updated = true;
+        }
+        // Sector4 only valid for 4-sector games (GP Bikes) - sector4 > 0 means it's present
+        if (sector4 > 0 && (isFirstValidLap || idealLap.bestSector4 < 0 || sector4 < idealLap.bestSector4)) {
+            // Save previous best before updating
+            if (idealLap.bestSector4 > 0) {
+                idealLap.previousIdealSector4 = idealLap.bestSector4;
+            }
+            idealLap.bestSector4 = sector4;
             updated = true;
         }
     }
@@ -508,6 +520,7 @@ void PluginData::updateLapLog(int raceNum, const LapLogEntry& entry) {
         bool changed = (lapLog[0].sector1 != entry.sector1 ||
                         lapLog[0].sector2 != entry.sector2 ||
                         lapLog[0].sector3 != entry.sector3 ||
+                        lapLog[0].sector4 != entry.sector4 ||
                         lapLog[0].lapTime != entry.lapTime ||
                         lapLog[0].isComplete != entry.isComplete);
 
@@ -594,6 +607,7 @@ void PluginData::setBestLapEntry(int raceNum, const LapLogEntry& entry) {
         idealLap.previousBestSector1 = currentBest.sector1;
         idealLap.previousBestSector2 = currentBest.sector2;
         idealLap.previousBestSector3 = currentBest.sector3;
+        idealLap.previousBestSector4 = currentBest.sector4;
     }
 
     // Update to new PB
@@ -821,7 +835,7 @@ void PluginData::updateStandings(int raceNum, int state, int bestLap, int bestLa
     }
 }
 
-void PluginData::batchUpdateStandings(SPluginsRaceClassificationEntry_t* entries, int numEntries) {
+void PluginData::batchUpdateStandings(Unified::RaceClassificationEntry* entries, int numEntries) {
     // Batch update all standings AND build classification order in single pass
     // Eliminates duplicate iteration of the same array
 
@@ -832,13 +846,17 @@ void PluginData::batchUpdateStandings(SPluginsRaceClassificationEntry_t* entries
     m_classificationOrder.reserve(numEntries);
 
     for (int i = 0; i < numEntries; ++i) {
-        const SPluginsRaceClassificationEntry_t& entry = entries[i];
+        const Unified::RaceClassificationEntry& entry = entries[i];
 
         // Build classification order (game already sorted by position)
-        m_classificationOrder.push_back(entry.m_iRaceNum);
+        m_classificationOrder.push_back(entry.raceNum);
 
         // Update standings data
-        auto it = m_standings.find(entry.m_iRaceNum);
+        auto it = m_standings.find(entry.raceNum);
+
+        // Convert unified types to internal types
+        int entryState = static_cast<int>(entry.state);
+        int entryPit = entry.inPit ? 1 : 0;
 
         if (it != m_standings.end()) {
             // Entry exists - check if data changed
@@ -848,53 +866,53 @@ void PluginData::batchUpdateStandings(SPluginsRaceClassificationEntry_t* entries
             // The API temporarily clears gaps (sends 0) when leader crosses line
             // We cache the last valid gap and use it when API sends 0
             // Exception: leader (i==0) should always have gap=0, clear their cache
-            int effectiveGap = entry.m_iGap;
+            int effectiveGap = entry.gap;
             if (i == 0) {
                 // Leader's gap is always 0 - clear any stale cached gap
-                m_lastValidOfficialGap.erase(entry.m_iRaceNum);
-            } else if (entry.m_iGap > 0) {
+                m_lastValidOfficialGap.erase(entry.raceNum);
+            } else if (entry.gap > 0) {
                 // Valid gap from API - cache it
-                m_lastValidOfficialGap[entry.m_iRaceNum] = entry.m_iGap;
-            } else if (entry.m_iGap == 0 && entry.m_iGapLaps == 0) {
+                m_lastValidOfficialGap[entry.raceNum] = entry.gap;
+            } else if (entry.gap == 0 && entry.gapLaps == 0) {
                 // API sent zero gap - check if we have cached value
-                auto cachedIt = m_lastValidOfficialGap.find(entry.m_iRaceNum);
+                auto cachedIt = m_lastValidOfficialGap.find(entry.raceNum);
                 if (cachedIt != m_lastValidOfficialGap.end()) {
                     effectiveGap = cachedIt->second;
                 }
             }
 
-            if (standing.state != entry.m_iState ||
-                standing.bestLap != entry.m_iBestLap ||
-                standing.bestLapNum != entry.m_iBestLapNum ||
-                standing.numLaps != entry.m_iNumLaps ||
+            if (standing.state != entryState ||
+                standing.bestLap != entry.bestLap ||
+                standing.bestLapNum != entry.bestLapNum ||
+                standing.numLaps != entry.numLaps ||
                 standing.gap != effectiveGap ||
-                standing.gapLaps != entry.m_iGapLaps ||
-                standing.penalty != entry.m_iPenalty ||
-                standing.pit != entry.m_iPit) {
+                standing.gapLaps != entry.gapLaps ||
+                standing.penalty != entry.penalty ||
+                standing.pit != entryPit) {
 
-                standing.state = entry.m_iState;
-                standing.bestLap = entry.m_iBestLap;
-                standing.bestLapNum = entry.m_iBestLapNum;
-                standing.numLaps = entry.m_iNumLaps;
+                standing.state = entryState;
+                standing.bestLap = entry.bestLap;
+                standing.bestLapNum = entry.bestLapNum;
+                standing.numLaps = entry.numLaps;
                 standing.gap = effectiveGap;
-                standing.gapLaps = entry.m_iGapLaps;
-                standing.penalty = entry.m_iPenalty;
-                standing.pit = entry.m_iPit;
+                standing.gapLaps = entry.gapLaps;
+                standing.penalty = entry.penalty;
+                standing.pit = entryPit;
 
                 anyChanged = true;
             }
         }
         else {
             // New entry
-            int effectiveGap = entry.m_iGap;
+            int effectiveGap = entry.gap;
             // Only cache gap for non-leaders (leader gap should always be 0)
             if (i > 0 && effectiveGap > 0) {
-                m_lastValidOfficialGap[entry.m_iRaceNum] = effectiveGap;
+                m_lastValidOfficialGap[entry.raceNum] = effectiveGap;
             }
-            m_standings.emplace(entry.m_iRaceNum,
-                StandingsData(entry.m_iRaceNum, entry.m_iState, entry.m_iBestLap,
-                    entry.m_iBestLapNum, entry.m_iNumLaps, effectiveGap,
-                    entry.m_iGapLaps, entry.m_iPenalty, entry.m_iPit));
+            m_standings.emplace(entry.raceNum,
+                StandingsData(entry.raceNum, entryState, entry.bestLap,
+                    entry.bestLapNum, entry.numLaps, effectiveGap,
+                    entry.gapLaps, entry.penalty, entryPit));
             anyChanged = true;
         }
     }

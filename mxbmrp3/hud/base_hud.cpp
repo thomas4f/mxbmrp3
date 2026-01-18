@@ -7,6 +7,7 @@
 #include "../core/plugin_manager.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
+#include "../core/ui_config.h"
 #include "../core/settings_manager.h"
 #include "../core/hud_manager.h"
 #include "../core/asset_manager.h"
@@ -68,12 +69,14 @@ bool BaseHud::handleMouseInput(bool allowInput) {
         float newOffsetX = m_fInitialOffsetX + deltaX;
         float newOffsetY = m_fInitialOffsetY + deltaY;
 
-        // Get actual window bounds and clamp position
+        // Get actual window bounds and clamp position (if enabled)
         const WindowBounds& windowBounds = input.getWindowBounds();
-        clampPositionToBounds(newOffsetX, newOffsetY, windowBounds);
+        if (UiConfig::getInstance().getScreenClamping()) {
+            clampPositionToBounds(newOffsetX, newOffsetY, windowBounds);
+        }
 
         // Snap to grid if enabled (use separate horizontal/vertical grids for perfect alignment)
-        if (ColorConfig::getInstance().getGridSnapping()) {
+        if (UiConfig::getInstance().getGridSnapping()) {
             newOffsetX = PluginConstants::HudGrid::SNAP_TO_GRID_X(newOffsetX);
             newOffsetY = PluginConstants::HudGrid::SNAP_TO_GRID_Y(newOffsetY);
 
@@ -133,6 +136,11 @@ void BaseHud::validatePosition() {
     // This ensures we validate against the correct scaled dimensions
     if (isDataDirty() || isLayoutDirty()) {
         update();
+    }
+
+    // Skip clamping if disabled
+    if (!UiConfig::getInstance().getScreenClamping()) {
+        return;
     }
 
     const WindowBounds& windowBounds = InputManager::getInstance().getWindowBounds();

@@ -4,17 +4,27 @@ This document explains how the MXBMRP3 plugin works, from the ground up. It's de
 
 ## What Is This Project?
 
-MXBMRP3 is a **HUD (Heads-Up Display) plugin** for MX Bikes, a motocross racing simulator. The plugin displays real-time racing information on screen: lap times, standings, speedometer, track map, and more.
+MXBMRP3 is a **HUD (Heads-Up Display) plugin** for Piboso racing simulators (MX Bikes, GP Bikes, WRS, KRP). The plugin displays real-time racing information on screen: lap times, standings, speedometer, track map, and more.
 
-The plugin is a Windows DLL (with `.dlo` extension) that the game loads at startup. The game calls our exported functions to send us data and request rendering instructions.
+The plugin is a Windows DLL (with `.dlo` extension) that each game loads at startup. The game calls our exported functions to send us data and request rendering instructions. A **multi-game translation layer** allows the same core code to work across all supported games.
 
 ## Project Structure
 
 ```
 mxbmrp3/
 ├── mxbmrp3/                    # Main plugin source code
-│   ├── vendor/piboso/          # Game API definitions (read-only)
-│   │   └── mxb_api.h/.cpp      # Plugin interface exported to game
+│   ├── vendor/piboso/          # Game API definitions and exports
+│   │   ├── mxb_api.h/.cpp      # MX Bikes API header and DLL exports
+│   │   ├── gpb_api.h/.cpp      # GP Bikes API header and DLL exports
+│   │   ├── wrs_api.h           # WRS API header (stubbed)
+│   │   └── krp_api.h           # KRP API header (stubbed)
+│   ├── game/                   # Multi-game abstraction layer
+│   │   ├── unified_types.h     # Game-agnostic data structures
+│   │   ├── game_config.h       # Compile-time game selection
+│   │   └── adapters/           # Per-game type converters
+│   │       ├── mxbikes_adapter.h
+│   │       ├── gpbikes_adapter.h
+│   │       └── ...
 │   ├── core/                   # Core infrastructure
 │   │   ├── plugin_manager.*    # Main coordinator, routes API callbacks
 │   │   ├── plugin_data.*       # Central game state cache
@@ -59,13 +69,13 @@ Here's how data flows through the plugin:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                           MX BIKES GAME ENGINE                          │
+│                    GAME ENGINE (MX Bikes / GP Bikes / etc.)             │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
                     ┌───────────────────────────────┐
-                    │      mxb_api.cpp              │
-                    │   (Exported C Functions)      │
+                    │   mxb_api.cpp / gpb_api.cpp   │
+                    │   (Per-Game DLL Exports)      │
                     │                               │
                     │  Startup(), Draw(), RunLap(), │
                     │  RaceEvent(), etc.            │
@@ -73,10 +83,20 @@ Here's how data flows through the plugin:
                                     │
                                     ▼
                     ┌───────────────────────────────┐
+                    │      Game Adapters            │
+                    │   (mxbikes_adapter.h, etc.)   │
+                    │                               │
+                    │  Convert game structs to      │
+                    │  Unified:: types              │
+                    └───────────────────────────────┘
+                                    │
+                                    ▼
+                    ┌───────────────────────────────┐
                     │      PluginManager            │
                     │   (Main Coordinator)          │
                     │                               │
-                    │  Routes callbacks to handlers │
+                    │  Receives Unified:: types,    │
+                    │  routes to handlers           │
                     └───────────────────────────────┘
                                     │
               ┌─────────────────────┼─────────────────────┐
@@ -120,42 +140,61 @@ Here's how data flows through the plugin:
               │ returns render data
               ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                           MX BIKES GAME ENGINE                          │
+│                    GAME ENGINE (MX Bikes / GP Bikes / etc.)             │
 │                          (Renders our output)                           │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Core Components
 
-### 1. The Plugin API (`vendor/piboso/mxb_api.*`)
+### 1. The Plugin API (`vendor/piboso/*_api.*`)
 
-The game defines a C API that plugins must implement. Key exported functions:
+Each Piboso game defines a C API that plugins must implement. The APIs are nearly identical, with game-specific struct variations. Each game has its own API file:
+- `mxb_api.h/.cpp` - MX Bikes
+- `gpb_api.h/.cpp` - GP Bikes
+- `wrs_api.h` / `krp_api.h` - WRS and KRP (headers only, stubs)
+
+Key exported functions (same across all games):
 
 | Function | When Called | Purpose |
 |----------|-------------|---------|
 | `Startup()` | Game starts | Initialize plugin, return telemetry rate |
 | `Shutdown()` | Game closes | Clean up resources |
-| `EventInit()` | Track loaded | Receive track/bike info |
+| `EventInit()` | Track loaded | Receive track/vehicle info |
 | `RunInit()` | Player goes on track | Session begins |
-| `RunTelemetry()` | Every physics tick | Receive bike telemetry (100Hz) |
+| `RunTelemetry()` | Every physics tick | Receive vehicle telemetry (100Hz) |
 | `RunLap()` | Lap completed | Receive lap time |
 | `Draw()` | Every frame | Return quads/strings to render |
 | `RaceEvent()` | Online race starts | Receive race info |
 | `RaceClassification()` | Continuously | Receive standings updates |
 
-The API uses C structs (e.g., `SPluginsBikeData_t`, `SPluginsRaceLap_t`) to pass data. These are defined in `mxb_api.h`.
+The API uses C structs to pass data. Each game's structs have different field names and contents:
+- MX Bikes: `SPluginsBikeData_t`, `SPluginsBikeEvent_t`
+- GP Bikes: `SPluginsGPBBikeData_t`, `SPluginsGPBBikeEvent_t`
+
+**The adapter layer** (`game/adapters/*.h`) converts these game-specific structs to unified types (`Unified::TelemetryData`, `Unified::VehicleEventData`, etc.) that the core plugin uses.
 
 ### 2. PluginManager (`core/plugin_manager.*`)
 
 The central coordinator. It:
-- Receives all API callbacks from the game
+- Receives **unified types** from the per-game API files (after adapter conversion)
 - Initializes core systems on startup
 - Routes each callback to the appropriate handler
 - Measures callback execution time for performance tracking
 
+Note: PluginManager is **game-agnostic** - it never sees raw game API structs, only `Unified::*` types.
+
 ```cpp
-// Example: When the game calls RunLap(), PluginManager routes it:
-void PluginManager::handleRunLap(SPluginsBikeLap_t* psLapData) {
+// Example: mxb_api.cpp converts and forwards to PluginManager:
+// In mxb_api.cpp:
+void RunLap(void* _pData, int _iDataSize) {
+    auto* gameData = static_cast<SPluginsBikeLap_t*>(_pData);
+    auto unified = Adapter::toPlayerLap(gameData);  // Convert to unified type
+    PluginManager::getInstance().handleRunLap(&unified);
+}
+
+// PluginManager receives unified type:
+void PluginManager::handleRunLap(Unified::PlayerLapData* psLapData) {
     RunLapHandler::getInstance().handleRunLap(psLapData);
 }
 ```
@@ -812,11 +851,109 @@ SCOPED_TIMER_THRESHOLD("MyFunction", 100);  // Logs if > 100us
 
 7. **Icon ordering is alphabetical** - Icons in `mxbmrp3_data/icons/` are discovered alphabetically. Use filename-based lookups via `AssetManager` for persistence; icon additions/removals won't break saved settings.
 
+## Multi-Game Support
+
+The plugin supports multiple Piboso racing games from a single codebase using compile-time game selection.
+
+### Supported Games
+
+| Game | Mod ID | Vehicle Type | Splits | Unique Features |
+|------|--------|--------------|--------|-----------------|
+| MX Bikes | `mxbikes` | Bike (2 wheels) | 2 | Holeshot timing, Straight Rhythm |
+| GP Bikes | `gpbikes` | Bike (2 wheels) | 3 | ECU/TC/AW, Tread temps |
+| WRS | `wrs` | Car (4-6 wheels) | 2 | Rolling start, Turbo, Handbrake |
+| KRP | `krp` | Kart (4 wheels) | 2 | Session series, Qualify heats |
+
+### Build Configurations
+
+Each game produces its own DLL:
+
+| Configuration | Output | Install Location |
+|---------------|--------|------------------|
+| MXB-Release | `mxbmrp3.dlo` | MX Bikes `plugins/` |
+| GPB-Release | `gpbmrp3.dlo` | GP Bikes `plugins/` |
+| (future) | `wrsmrp3.dlo` | WRS `plugins/` |
+| (future) | `krpmrp3.dlo` | KRP `plugins/` |
+
+The Visual Studio project uses conditional compilation to include only the relevant API file:
+
+```xml
+<!-- MX Bikes API - excluded from GP Bikes builds -->
+<ClCompile Include="vendor\piboso\mxb_api.cpp">
+  <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='GPB-Debug|x64'">true</ExcludedFromBuild>
+  <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='GPB-Release|x64'">true</ExcludedFromBuild>
+</ClCompile>
+```
+
+### Feature Flags
+
+**Compile-Time** (`game/game_config.h`):
+```cpp
+#if GAME_HAS_HOLESHOT
+void handleRaceHoleshot(const Unified::RaceHoleshotData* data);
+#endif
+```
+
+**Runtime** (adapter constants):
+```cpp
+if constexpr (Game::Adapter::HAS_RACE_SPEED) {
+    // Show speed trap data
+}
+```
+
+Key feature flags:
+- `GAME_HAS_HOLESHOT` - MX Bikes only
+- `GAME_HAS_RACE_SPEED` - All except MX Bikes
+- `GAME_HAS_ECU` - GP Bikes only
+- `GAME_HAS_TRACK_TEMP` - All except MX Bikes
+- `GAME_HAS_CRASH_STATE` - MX Bikes, GP Bikes
+
+### Variable Split Count
+
+Games have different numbers of timing splits. Unified types use a dynamic count:
+
+```cpp
+struct RaceLapData {
+    int splits[MAX_SPLITS];  // MAX_SPLITS = 3
+    int splitCount;          // Actual count (2 for MXB, 3 for GPB)
+};
+```
+
+### Updating Vendor APIs
+
+When Piboso releases a new API version:
+
+1. **Update the vendor header** (`mxb_api.h`, `gpb_api.h`, etc.)
+2. **Update the adapter** to handle new/changed fields
+3. **Update the API cpp** if new callbacks are added
+4. **Update unified types** if new data needs to be shared
+
+The adapter layer isolates changes - core HUDs don't need modification for most API updates.
+
+### API Differences
+
+**Identical across all games:**
+- Draw API (`SPluginQuad_t`, `SPluginString_t`)
+- Track segment structure
+- Callback function names
+- Interface version (9)
+
+**Per-game variations:**
+- Vehicle telemetry fields (wheels, suspension, ECU)
+- Session type meanings
+- Entry state values (MX Bikes has extra "unknown" state)
+- Split counts in lap data
+- Game-specific events (Holeshot, RaceSpeed)
+
 ## Quick Reference: File Locations
 
 | What | Where |
 |------|-------|
-| API entry points | `vendor/piboso/mxb_api.cpp` |
+| API entry points (MX Bikes) | `vendor/piboso/mxb_api.cpp` |
+| API entry points (GP Bikes) | `vendor/piboso/gpb_api.cpp` |
+| Game adapters | `game/adapters/*_adapter.h` |
+| Unified types | `game/unified_types.h` |
+| Game config | `game/game_config.h` |
 | Central state | `core/plugin_data.cpp` |
 | HUD base class | `hud/base_hud.cpp` |
 | All constants | `core/plugin_constants.h` |
@@ -832,7 +969,8 @@ SCOPED_TIMER_THRESHOLD("MyFunction", 100);  // Logs if > 100us
 | Tooltip manager | `core/tooltip_manager.h` |
 | Settings file | `{save_path}/mxbmrp3/mxbmrp3_settings.ini` |
 | Log file | `{save_path}/mxbmrp3/mxbmrp3.log` |
-| Build output | `build/Release/mxbmrp3.dlo` |
+| Build output (MX Bikes) | `build/MXB-Release/mxbmrp3.dlo` |
+| Build output (GP Bikes) | `build/GPB-Release/gpbmrp3.dlo` |
 | Runtime assets | `{game_path}/plugins/mxbmrp3_data/{fonts,textures,icons}/` |
 | User asset overrides | `{save_path}/mxbmrp3/{fonts,textures,icons}/` |
 
@@ -850,3 +988,5 @@ SCOPED_TIMER_THRESHOLD("MyFunction", 100);  // Logs if > 100us
 | Add new font | Place `.fnt` file in `mxbmrp3_data/fonts/` (auto-discovered) |
 | Add new texture | Place `.tga` file in `mxbmrp3_data/textures/` (auto-discovered) |
 | Add new icon | Place `.tga` file in `mxbmrp3_data/icons/` (auto-discovered, alphabetical order) |
+| Add game-specific feature | Add to `unified_types.h`, update adapters, add feature flag to `game_config.h` |
+| Support new game | Create adapter in `game/adapters/`, add API file in `vendor/piboso/`, update `game_config.h` |

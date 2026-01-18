@@ -4,7 +4,7 @@
 // ============================================================================
 #pragma once
 
-#include "../vendor/piboso/mxb_api.h"
+#include "../game/unified_types.h"
 #include "../core/plugin_constants.h"
 
 class RaceClassificationHandler {
@@ -12,8 +12,8 @@ public:
     static RaceClassificationHandler& getInstance();
 
     void handleRaceClassification(
-        SPluginsRaceClassification_t* psRaceClassification,
-        SPluginsRaceClassificationEntry_t* pasRaceClassificationEntry,
+        Unified::RaceClassificationData* psRaceClassification,
+        Unified::RaceClassificationEntry* pasRaceClassificationEntry,
         int iNumEntries
     );
 

@@ -1,16 +1,16 @@
 // ============================================================================
 // handlers/run_telemetry_handler.h
-// Processes run telemetry data (input, controller, bike telemetry)
+// Processes run telemetry data (input, controller, vehicle telemetry)
 // ============================================================================
 #pragma once
 
-#include "../vendor/piboso/mxb_api.h"
+#include "../game/unified_types.h"
 
 class RunTelemetryHandler {
 public:
     static RunTelemetryHandler& getInstance();
 
-    void handleRunTelemetry(SPluginsBikeData_t* psBikeData, float fTime, float fPos);
+    void handleRunTelemetry(Unified::TelemetryData* psTelemetryData);
 
 private:
     RunTelemetryHandler() = default;

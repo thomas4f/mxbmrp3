@@ -144,7 +144,7 @@ void RadarHud::setProximityArrowScale(float scale) {
     }
 }
 
-void RadarHud::updateRiderPositions(int numVehicles, const SPluginsRaceTrackPosition_t* positions) {
+void RadarHud::updateRiderPositions(int numVehicles, const Unified::TrackPositionData* positions) {
     if (numVehicles <= 0 || positions == nullptr) {
         m_riderPositions.clear();
         return;
@@ -350,20 +350,20 @@ void RadarHud::rebuildRenderData() {
     const PluginData& pluginData = PluginData::getInstance();
     int displayRaceNum = pluginData.getDisplayRaceNum();
 
-    const SPluginsRaceTrackPosition_t* localPlayer = nullptr;
+    const Unified::TrackPositionData* localPlayer = nullptr;
     for (const auto& pos : m_riderPositions) {
-        if (pos.m_iRaceNum == displayRaceNum) {
+        if (pos.raceNum == displayRaceNum) {
             localPlayer = &pos;
             break;
         }
     }
 
     // Pre-calculate player position for proximity arrows (needed even when radar is off)
-    float playerX = localPlayer ? localPlayer->m_fPosX : 0.0f;
-    float playerZ = localPlayer ? localPlayer->m_fPosZ : 0.0f;
+    float playerX = localPlayer ? localPlayer->posX : 0.0f;
+    float playerZ = localPlayer ? localPlayer->posZ : 0.0f;
     float cosYaw = 1.0f, sinYaw = 0.0f;
     if (localPlayer) {
-        float yawRad = localPlayer->m_fYaw * DEG_TO_RAD;
+        float yawRad = localPlayer->yaw * DEG_TO_RAD;
         cosYaw = std::cos(yawRad);
         sinYaw = std::sin(yawRad);
     }
@@ -381,15 +381,15 @@ void RadarHud::rebuildRenderData() {
         float trackLength = pluginData.getSessionData().trackLength;
 
         for (const auto& pos : m_riderPositions) {
-            if (pos.m_iRaceNum == displayRaceNum) continue;
+            if (pos.raceNum == displayRaceNum) continue;
 
-            float relX = pos.m_fPosX - playerX;
-            float relZ = pos.m_fPosZ - playerZ;
+            float relX = pos.posX - playerX;
+            float relZ = pos.posZ - playerZ;
             float distance = std::sqrt(relX * relX + relZ * relZ);
             if (distance > m_fRadarRangeMeters) continue;
 
             // Calculate track distance fade
-            float trackDist = std::abs(pos.m_fTrackPos - localPlayer->m_fTrackPos);
+            float trackDist = std::abs(pos.trackPos - localPlayer->trackPos);
             if (trackDist > 0.5f) trackDist = 1.0f - trackDist;
 
             float trackFadeOpacity = 1.0f;
@@ -438,14 +438,24 @@ void RadarHud::rebuildRenderData() {
     // Section 3: 225°-315° (left)
     float sectionClosestDist[NUM_SECTORS] = { -1.0f, -1.0f, -1.0f, -1.0f };
 
+    // Track if any section has a rider about to lap the player (race mode only)
+    // These riders are +1 lap ahead and approaching from behind
+    bool sectionHasLapper[NUM_SECTORS] = { false, false, false, false };
+    float sectionLapperDist[NUM_SECTORS] = { -1.0f, -1.0f, -1.0f, -1.0f };
+    bool isRace = pluginData.isRaceSession();
+
     // Player position and rotation already calculated at start of function
     if (localPlayer) {
+        // Hoist player standing lookup outside loop (same value every iteration)
+        const StandingsData* playerStanding = isRace ? pluginData.getStanding(displayRaceNum) : nullptr;
+        int playerLaps = playerStanding ? playerStanding->numLaps : 0;
+
         // First pass: calculate section distances for all riders
         for (const auto& pos : m_riderPositions) {
-            if (pos.m_iRaceNum == displayRaceNum) continue;
+            if (pos.raceNum == displayRaceNum) continue;
 
-            float relX = pos.m_fPosX - playerX;
-            float relZ = pos.m_fPosZ - playerZ;
+            float relX = pos.posX - playerX;
+            float relZ = pos.posZ - playerZ;
 
             // Rotate to radar space
             float rotatedX = relX * cosYaw - relZ * sinYaw;
@@ -457,7 +467,7 @@ void RadarHud::rebuildRenderData() {
             if (distance > m_fAlertDistance) continue;
 
             // Filter by track distance (skip riders on parallel straights)
-            float trackDist = std::abs(pos.m_fTrackPos - localPlayer->m_fTrackPos);
+            float trackDist = std::abs(pos.trackPos - localPlayer->trackPos);
             if (trackDist > 0.5f) trackDist = 1.0f - trackDist;  // Handle wraparound
 
             float trackLength = pluginData.getSessionData().trackLength;
@@ -498,6 +508,22 @@ void RadarHud::rebuildRenderData() {
             if (sectionClosestDist[section] < 0 || distance < sectionClosestDist[section]) {
                 sectionClosestDist[section] = distance;
             }
+
+            // Check if this rider is about to lap the player (race mode only)
+            // A lapper is +1 or more laps ahead of the player
+            if (isRace) {
+                const StandingsData* riderStanding = pluginData.getStanding(pos.raceNum);
+                int riderLaps = riderStanding ? riderStanding->numLaps : 0;
+                int lapDiff = riderLaps - playerLaps;
+
+                if (lapDiff >= 1) {
+                    // Rider is ahead by 1+ laps - track closest lapper in this section
+                    if (sectionLapperDist[section] < 0 || distance < sectionLapperDist[section]) {
+                        sectionLapperDist[section] = distance;
+                        sectionHasLapper[section] = true;
+                    }
+                }
+            }
         }
     }
 
@@ -508,35 +534,43 @@ void RadarHud::rebuildRenderData() {
     for (int i = 1; i < NUM_SECTORS; ++i) {
         if (sectionClosestDist[i] < 0) continue;  // No rider in this section
 
-        // Calculate normalized distance (0 = touching, 1 = at max alert distance)
-        float normalizedDist = sectionClosestDist[i] / m_fAlertDistance;
+        float normalizedDist;
+        unsigned long sectorColor;
 
-        // Calculate color gradient: Red (close) -> Yellow (mid) -> Green (far)
-        constexpr unsigned char RED_R = 0xFF, RED_G = 0x40, RED_B = 0x40;
-        constexpr unsigned char YEL_R = 0xFF, YEL_G = 0xD0, YEL_B = 0x40;
-        constexpr unsigned char GRN_R = 0x40, GRN_G = 0xFF, GRN_B = 0x40;
-
-        unsigned char r, g, b;
-        if (normalizedDist < 0.5f) {
-            // Red to Yellow (0.0 to 0.5)
-            float t = normalizedDist * 2.0f;
-            r = static_cast<unsigned char>(RED_R + t * (YEL_R - RED_R));
-            g = static_cast<unsigned char>(RED_G + t * (YEL_G - RED_G));
-            b = static_cast<unsigned char>(RED_B + t * (YEL_B - RED_B));
+        // Blue takes priority when a lapper is in this sector (race mode only)
+        if (sectionHasLapper[i]) {
+            // Blue color for riders about to lap the player
+            normalizedDist = sectionLapperDist[i] / m_fAlertDistance;
+            float intensity = 0.4f + 0.6f * (1.0f - normalizedDist);  // 0.4 to 1.0 range
+            sectorColor = PluginUtils::applyOpacity(ColorPalette::BLUE, intensity);
         } else {
-            // Yellow to Green (0.5 to 1.0)
-            float t = (normalizedDist - 0.5f) * 2.0f;
-            r = static_cast<unsigned char>(YEL_R + t * (GRN_R - YEL_R));
-            g = static_cast<unsigned char>(YEL_G + t * (GRN_G - YEL_G));
-            b = static_cast<unsigned char>(YEL_B + t * (GRN_B - YEL_B));
+            // Calculate normalized distance (0 = touching, 1 = at max alert distance)
+            normalizedDist = sectionClosestDist[i] / m_fAlertDistance;
+
+            // Calculate color gradient: Red (close) -> Yellow (mid) -> Green (far)
+            constexpr unsigned char RED_R = 0xFF, RED_G = 0x40, RED_B = 0x40;
+            constexpr unsigned char YEL_R = 0xFF, YEL_G = 0xD0, YEL_B = 0x40;
+            constexpr unsigned char GRN_R = 0x40, GRN_G = 0xFF, GRN_B = 0x40;
+
+            unsigned char r, g, b;
+            if (normalizedDist < 0.5f) {
+                // Red to Yellow (0.0 to 0.5)
+                float t = normalizedDist * 2.0f;
+                r = static_cast<unsigned char>(RED_R + t * (YEL_R - RED_R));
+                g = static_cast<unsigned char>(RED_G + t * (YEL_G - RED_G));
+                b = static_cast<unsigned char>(RED_B + t * (YEL_B - RED_B));
+            } else {
+                // Yellow to Green (0.5 to 1.0)
+                float t = (normalizedDist - 0.5f) * 2.0f;
+                r = static_cast<unsigned char>(YEL_R + t * (GRN_R - YEL_R));
+                g = static_cast<unsigned char>(YEL_G + t * (GRN_G - YEL_G));
+                b = static_cast<unsigned char>(YEL_B + t * (GRN_B - YEL_B));
+            }
+
+            // Intensity affects opacity (closer = more opaque)
+            float intensity = 0.4f + 0.6f * (1.0f - normalizedDist);  // 0.4 to 1.0 range
+            sectorColor = PluginUtils::makeColor(r, g, b, static_cast<unsigned char>(255 * intensity));
         }
-
-        // Intensity affects opacity (closer = more opaque)
-        float intensity = 0.4f + 0.6f * (1.0f - normalizedDist);  // 0.4 to 1.0 range
-        unsigned char alpha = static_cast<unsigned char>(255 * intensity);
-
-        // Build color using ABGR format (matching PluginUtils::makeColor)
-        unsigned long sectorColor = PluginUtils::makeColor(r, g, b, alpha);
 
         // Section rotation angle (in radians, clockwise from up)
         float sectionAngle = (i * 90.0f) * DEG_TO_RAD;
@@ -586,13 +620,13 @@ void RadarHud::rebuildRenderData() {
 
     // Render other riders first (player rendered last to appear on top)
     for (const auto& pos : m_riderPositions) {
-        if (pos.m_iRaceNum == displayRaceNum) continue;
+        if (pos.raceNum == displayRaceNum) continue;
 
-        const RaceEntryData* entry = pluginData.getRaceEntry(pos.m_iRaceNum);
+        const RaceEntryData* entry = pluginData.getRaceEntry(pos.raceNum);
         if (!entry) continue;
 
-        float relX = pos.m_fPosX - playerX;
-        float relZ = pos.m_fPosZ - playerZ;
+        float relX = pos.posX - playerX;
+        float relZ = pos.posZ - playerZ;
 
         float rotatedX = relX * cosYaw - relZ * sinYaw;
         float rotatedZ = relX * sinYaw + relZ * cosYaw;
@@ -602,7 +636,7 @@ void RadarHud::rebuildRenderData() {
 
         // Calculate track distance fade (riders on parallel straights fade out)
         float trackFadeOpacity = 1.0f;
-        float trackDist = std::abs(pos.m_fTrackPos - localPlayer->m_fTrackPos);
+        float trackDist = std::abs(pos.trackPos - localPlayer->trackPos);
         if (trackDist > 0.5f) trackDist = 1.0f - trackDist;  // Handle wraparound
 
         float trackLength = pluginData.getSessionData().trackLength;
@@ -625,7 +659,7 @@ void RadarHud::rebuildRenderData() {
         float radarX = rotatedX / m_fRadarRangeMeters;
         float radarY = rotatedZ / m_fRadarRangeMeters;
 
-        float relativeYaw = pos.m_fYaw - localPlayer->m_fYaw;
+        float relativeYaw = pos.yaw - localPlayer->yaw;
         while (relativeYaw > 180.0f) relativeYaw -= 360.0f;
         while (relativeYaw < -180.0f) relativeYaw += 360.0f;
 
@@ -643,7 +677,7 @@ void RadarHud::rebuildRenderData() {
 
             // Apply position-based color modulation (lighten if ahead by laps, darken if behind by laps)
             const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
-            const StandingsData* riderStanding = pluginData.getStanding(pos.m_iRaceNum);
+            const StandingsData* riderStanding = pluginData.getStanding(pos.raceNum);
             int playerLaps = playerStanding ? playerStanding->numLaps : 0;
             int riderLaps = riderStanding ? riderStanding->numLaps : 0;
             int lapDiff = riderLaps - playerLaps;
@@ -660,9 +694,9 @@ void RadarHud::rebuildRenderData() {
         } else if (m_riderColorMode == RiderColorMode::RELATIVE_POS) {
             // Relative position coloring: color based on position/lap relative to player
             const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
-            const StandingsData* riderStanding = pluginData.getStanding(pos.m_iRaceNum);
+            const StandingsData* riderStanding = pluginData.getStanding(pos.raceNum);
             int playerPosition = pluginData.getPositionForRaceNum(displayRaceNum);
-            int riderPosition = pluginData.getPositionForRaceNum(pos.m_iRaceNum);
+            int riderPosition = pluginData.getPositionForRaceNum(pos.raceNum);
             int playerLaps = playerStanding ? playerStanding->numLaps : 0;
             int riderLaps = riderStanding ? riderStanding->numLaps : 0;
 
@@ -683,14 +717,14 @@ void RadarHud::rebuildRenderData() {
                          centerX, centerY, radarRadius, trackedShape);
 
         // Render label with matching fade opacity
-        int position = pluginData.getPositionForRaceNum(pos.m_iRaceNum);
-        renderRiderLabel(radarX, radarY, pos.m_iRaceNum, position,
+        int position = pluginData.getPositionForRaceNum(pos.raceNum);
+        renderRiderLabel(radarX, radarY, pos.raceNum, position,
                         centerX, centerY, radarRadius, trackFadeOpacity);
     }
 
     // Draw the local player at center LAST (always on top, always pointing up = 0 yaw)
     if (m_bShowPlayerArrow) {
-        const RaceEntryData* localEntry = pluginData.getRaceEntry(localPlayer->m_iRaceNum);
+        const RaceEntryData* localEntry = pluginData.getRaceEntry(localPlayer->raceNum);
         if (localEntry) {
             unsigned long playerColor;
             int playerTrackedShape = -1;  // -1 = use global shape
@@ -711,8 +745,8 @@ void RadarHud::rebuildRenderData() {
             renderRiderSprite(0.0f, 0.0f, 0.0f, playerColor,
                              centerX, centerY, radarRadius, playerTrackedShape);
 
-            int playerPosition = pluginData.getPositionForRaceNum(localPlayer->m_iRaceNum);
-            renderRiderLabel(0.0f, 0.0f, localPlayer->m_iRaceNum, playerPosition,
+            int playerPosition = pluginData.getPositionForRaceNum(localPlayer->raceNum);
+            renderRiderLabel(0.0f, 0.0f, localPlayer->raceNum, playerPosition,
                             centerX, centerY, radarRadius, 1.0f);  // Player always fully visible
         }
     }
@@ -767,7 +801,7 @@ void RadarHud::resetToDefaults() {
     setDataDirty();
 }
 
-void RadarHud::renderProximityArrows(const SPluginsRaceTrackPosition_t* localPlayer,
+void RadarHud::renderProximityArrows(const Unified::TrackPositionData* localPlayer,
                                       float playerX, float playerZ,
                                       float cosYaw, float sinYaw) {
     if (m_proximityArrowMode == ProximityArrowMode::OFF || !localPlayer) return;
@@ -792,11 +826,11 @@ void RadarHud::renderProximityArrows(const SPluginsRaceTrackPosition_t* localPla
 
     // Process each rider and render arrows for those within alert distance
     for (const auto& pos : m_riderPositions) {
-        if (pos.m_iRaceNum == displayRaceNum) continue;
+        if (pos.raceNum == displayRaceNum) continue;
 
         // Calculate relative position
-        float relX = pos.m_fPosX - playerX;
-        float relZ = pos.m_fPosZ - playerZ;
+        float relX = pos.posX - playerX;
+        float relZ = pos.posZ - playerZ;
 
         // Rotate to player's heading (so forward = up on screen)
         float rotatedX = relX * cosYaw - relZ * sinYaw;
@@ -808,7 +842,7 @@ void RadarHud::renderProximityArrows(const SPluginsRaceTrackPosition_t* localPla
         if (distance > m_fAlertDistance || distance < 1.0f) continue;
 
         // Filter by track distance (skip riders on parallel straights)
-        float trackDist = std::abs(pos.m_fTrackPos - localPlayer->m_fTrackPos);
+        float trackDist = std::abs(pos.trackPos - localPlayer->trackPos);
         if (trackDist > 0.5f) trackDist = 1.0f - trackDist;
 
         if (trackLength > 0.0f) {
@@ -891,9 +925,9 @@ void RadarHud::renderProximityArrows(const SPluginsRaceTrackPosition_t* localPla
         if (m_proximityArrowColorMode == ProximityArrowColorMode::POSITION) {
             // Position-based coloring: same as radar RELATIVE_POS mode
             int playerPosition = pluginData.getPositionForRaceNum(displayRaceNum);
-            int riderPosition = pluginData.getPositionForRaceNum(pos.m_iRaceNum);
+            int riderPosition = pluginData.getPositionForRaceNum(pos.raceNum);
             const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
-            const StandingsData* riderStanding = pluginData.getStanding(pos.m_iRaceNum);
+            const StandingsData* riderStanding = pluginData.getStanding(pos.raceNum);
             int playerLaps = playerStanding ? playerStanding->numLaps : 0;
             int riderLaps = riderStanding ? riderStanding->numLaps : 0;
 

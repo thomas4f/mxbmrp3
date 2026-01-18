@@ -1,6 +1,6 @@
 // ============================================================================
 // core/plugin_manager.cpp
-// Main entry point and coordinator for all plugin lifecycle events from MX Bikes API
+// Main entry point and coordinator for all plugin lifecycle events
 // ============================================================================
 #include "plugin_manager.h"
 #include "plugin_constants.h"
@@ -123,7 +123,7 @@ void PluginManager::handleShutdown() {
     m_savePath[0] = '\0';
 }
 
-void PluginManager::handleEventInit(SPluginsBikeEvent_t* psEventData) {
+void PluginManager::handleEventInit(Unified::VehicleEventData* psEventData) {
     ACCUMULATE_CALLBACK_TIME();
     SCOPED_TIMER_THRESHOLD("Plugin::handleEventInit", 100);
     DEBUG_INFO("=== Event Init ===");
@@ -139,7 +139,7 @@ void PluginManager::handleEventDeinit() {
     EventHandler::getInstance().handleEventDeinit();
 }
 
-void PluginManager::handleRunInit(SPluginsBikeSession_t* psSessionData) {
+void PluginManager::handleRunInit(Unified::SessionData* psSessionData) {
     ACCUMULATE_CALLBACK_TIME();
     SCOPED_TIMER_THRESHOLD("Plugin::handleRunInit", 100);
     DEBUG_INFO("=== Run Init ===");
@@ -174,7 +174,7 @@ void PluginManager::handleRunStop() {
     // when cursor is re-enabled (see InputManager::updateFrame)
 }
 
-void PluginManager::handleRunLap(SPluginsBikeLap_t* psLapData) {
+void PluginManager::handleRunLap(Unified::PlayerLapData* psLapData) {
     ACCUMULATE_CALLBACK_TIME();
     SCOPED_TIMER_THRESHOLD("Plugin::handleRunLap", 500);
     DEBUG_INFO("=== Run Lap ===");
@@ -182,7 +182,7 @@ void PluginManager::handleRunLap(SPluginsBikeLap_t* psLapData) {
     RunLapHandler::getInstance().handleRunLap(psLapData);
 }
 
-void PluginManager::handleRunSplit(SPluginsBikeSplit_t* psSplitData) {
+void PluginManager::handleRunSplit(Unified::PlayerSplitData* psSplitData) {
     ACCUMULATE_CALLBACK_TIME();
     SCOPED_TIMER_THRESHOLD("Plugin::handleRunSplit", 500);
     DEBUG_INFO("=== Run Split ===");
@@ -190,13 +190,13 @@ void PluginManager::handleRunSplit(SPluginsBikeSplit_t* psSplitData) {
     RunSplitHandler::getInstance().handleRunSplit(psSplitData);
 }
 
-void PluginManager::handleRunTelemetry(SPluginsBikeData_t* psBikeData, float fTime, float fPos) {
+void PluginManager::handleRunTelemetry(Unified::TelemetryData* psTelemetryData) {
     ACCUMULATE_CALLBACK_TIME();
     SCOPED_TIMER_THRESHOLD("Plugin::handleRunTelemetry", 100);
     // Skip logging (high-frequency event - runs at telemetry rate)
 
     // Delegate to handler
-    RunTelemetryHandler::getInstance().handleRunTelemetry(psBikeData, fTime, fPos);
+    RunTelemetryHandler::getInstance().handleRunTelemetry(psTelemetryData);
 }
 
 int PluginManager::handleDrawInit(int* piNumSprites, char** pszSpriteName, int* piNumFonts, char** pszFontName) {
@@ -221,7 +221,7 @@ void PluginManager::handleDraw(int iState, int* piNumQuads, void** ppQuad, int* 
     DrawHandler::getInstance().handleDraw(iState, piNumQuads, ppQuad, piNumString, ppString);
 }
 
-void PluginManager::handleTrackCenterline(int iNumSegments, SPluginsTrackSegment_t* pasSegment, void* pRaceData) {
+void PluginManager::handleTrackCenterline(int iNumSegments, Unified::TrackSegment* pasSegment, void* pRaceData) {
     ACCUMULATE_CALLBACK_TIME();
     SCOPED_TIMER_THRESHOLD("Plugin::handleTrackCenterline", 100);
     DEBUG_INFO("=== Track Centerline ===");
@@ -229,7 +229,7 @@ void PluginManager::handleTrackCenterline(int iNumSegments, SPluginsTrackSegment
     TrackCenterlineHandler::getInstance().handleTrackCenterline(iNumSegments, pasSegment, pRaceData);
 }
 
-void PluginManager::handleRaceEvent(SPluginsRaceEvent_t* psRaceEvent) {
+void PluginManager::handleRaceEvent(Unified::RaceEventData* psRaceEvent) {
     ACCUMULATE_CALLBACK_TIME();
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceEvent", 100);
     DEBUG_INFO("=== Race Event ===");
@@ -246,7 +246,7 @@ void PluginManager::handleRaceDeinit() {
     RaceEventHandler::getInstance().handleRaceDeinit();
 }
 
-void PluginManager::handleRaceAddEntry(SPluginsRaceAddEntry_t* psRaceAddEntry) {
+void PluginManager::handleRaceAddEntry(Unified::RaceEntryData* psRaceAddEntry) {
     ACCUMULATE_CALLBACK_TIME();
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceAddEntry", 500);
     DEBUG_INFO("=== Race Add Entry ===");
@@ -254,15 +254,15 @@ void PluginManager::handleRaceAddEntry(SPluginsRaceAddEntry_t* psRaceAddEntry) {
     RaceEntryHandler::getInstance().handleRaceAddEntry(psRaceAddEntry);
 }
 
-void PluginManager::handleRaceRemoveEntry(SPluginsRaceRemoveEntry_t* psRaceRemoveEntry) {
+void PluginManager::handleRaceRemoveEntry(int raceNum) {
     ACCUMULATE_CALLBACK_TIME();
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceRemoveEntry", 100);
     DEBUG_INFO("=== Race Remove Entry ===");
 
-    RaceEntryHandler::getInstance().handleRaceRemoveEntry(psRaceRemoveEntry);
+    RaceEntryHandler::getInstance().handleRaceRemoveEntry(raceNum);
 }
 
-void PluginManager::handleRaceSession(SPluginsRaceSession_t* psRaceSession) {
+void PluginManager::handleRaceSession(Unified::RaceSessionData* psRaceSession) {
     ACCUMULATE_CALLBACK_TIME();
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceSession", 100);
     DEBUG_INFO("=== Race Session ===");
@@ -270,7 +270,7 @@ void PluginManager::handleRaceSession(SPluginsRaceSession_t* psRaceSession) {
     RaceSessionHandler::getInstance().handleRaceSession(psRaceSession);
 }
 
-void PluginManager::handleRaceSessionState(SPluginsRaceSessionState_t* psRaceSessionState) {
+void PluginManager::handleRaceSessionState(Unified::RaceSessionStateData* psRaceSessionState) {
     ACCUMULATE_CALLBACK_TIME();
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceSessionState", 100);
     DEBUG_INFO("=== Race Session State ===");
@@ -278,7 +278,7 @@ void PluginManager::handleRaceSessionState(SPluginsRaceSessionState_t* psRaceSes
     RaceSessionHandler::getInstance().handleRaceSessionState(psRaceSessionState);
 }
 
-void PluginManager::handleRaceLap(SPluginsRaceLap_t* psRaceLap) {
+void PluginManager::handleRaceLap(Unified::RaceLapData* psRaceLap) {
     ACCUMULATE_CALLBACK_TIME();
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceLap", 500);
     DEBUG_INFO("=== Race Lap ===");
@@ -286,28 +286,36 @@ void PluginManager::handleRaceLap(SPluginsRaceLap_t* psRaceLap) {
     RaceLapHandler::getInstance().handleRaceLap(psRaceLap);
 }
 
-void PluginManager::handleRaceSplit(SPluginsRaceSplit_t* psRaceSplit) {
+void PluginManager::handleRaceSplit(Unified::RaceSplitData* psRaceSplit) {
     ACCUMULATE_CALLBACK_TIME();
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceSplit", 500);
     DEBUG_INFO("=== Race Split ===");
     RaceSplitHandler::getInstance().handleRaceSplit(psRaceSplit);
 }
 
-void PluginManager::handleRaceHoleshot(SPluginsRaceHoleshot_t* psRaceHoleshot) {
+void PluginManager::handleRaceHoleshot(Unified::RaceHoleshotData* psRaceHoleshot) {
     ACCUMULATE_CALLBACK_TIME();
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceHoleshot", 100);
     DEBUG_INFO("=== Race Holeshot ===");
+    // TODO: Implement holeshot handling if needed
 }
 
-void PluginManager::handleRaceCommunication(SPluginsRaceCommunication_t* psRaceCommunication, int dataSize) {
+void PluginManager::handleRaceSpeed(Unified::RaceSpeedData* psRaceSpeed) {
+    ACCUMULATE_CALLBACK_TIME();
+    SCOPED_TIMER_THRESHOLD("Plugin::handleRaceSpeed", 100);
+    DEBUG_INFO("=== Race Speed ===");
+    // TODO: Implement race speed handling if needed (GP Bikes, WRS, KRP only)
+}
+
+void PluginManager::handleRaceCommunication(Unified::RaceCommunicationData* psRaceCommunication) {
     ACCUMULATE_CALLBACK_TIME();
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceCommunication", 500);
     DEBUG_INFO("=== Race Communication ===");
 
-    RaceCommunicationHandler::getInstance().handleRaceCommunication(psRaceCommunication, dataSize);
+    RaceCommunicationHandler::getInstance().handleRaceCommunication(psRaceCommunication);
 }
 
-void PluginManager::handleRaceClassification(SPluginsRaceClassification_t* psRaceClassification, SPluginsRaceClassificationEntry_t* pasRaceClassificationEntry, int iNumEntries) {
+void PluginManager::handleRaceClassification(Unified::RaceClassificationData* psRaceClassification, Unified::RaceClassificationEntry* pasRaceClassificationEntry, int iNumEntries) {
     ACCUMULATE_CALLBACK_TIME();
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceClassification", 100);
     // Skip logging (high-frequency event)
@@ -319,7 +327,7 @@ void PluginManager::handleRaceClassification(SPluginsRaceClassification_t* psRac
     );
 }
 
-void PluginManager::handleRaceTrackPosition(int iNumVehicles, SPluginsRaceTrackPosition_t* pasRaceTrackPosition) {
+void PluginManager::handleRaceTrackPosition(int iNumVehicles, Unified::TrackPositionData* pasRaceTrackPosition) {
     ACCUMULATE_CALLBACK_TIME();
     // SCOPED_TIMER_THRESHOLD("Plugin::handleRaceTrackPosition", 500);  // Commented out - too noisy for debugging
     // Skip logging (high-frequency event - runs at vehicle update rate)
@@ -328,7 +336,7 @@ void PluginManager::handleRaceTrackPosition(int iNumVehicles, SPluginsRaceTrackP
     RaceTrackPositionHandler::getInstance().handleRaceTrackPosition(iNumVehicles, pasRaceTrackPosition);
 }
 
-void PluginManager::handleRaceVehicleData(SPluginsRaceVehicleData_t* psRaceVehicleData) {
+void PluginManager::handleRaceVehicleData(Unified::RaceVehicleData* psRaceVehicleData) {
     ACCUMULATE_CALLBACK_TIME();
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceVehicleData", 500);
     // Skip logging (high-frequency event)
@@ -336,7 +344,7 @@ void PluginManager::handleRaceVehicleData(SPluginsRaceVehicleData_t* psRaceVehic
     RaceVehicleDataHandler::getInstance().handleRaceVehicleData(psRaceVehicleData);
 }
 
-int PluginManager::handleSpectateVehicles(int iNumVehicles, SPluginsSpectateVehicle_t* pasVehicleData, int iCurSelection, int* piSelect) {
+int PluginManager::handleSpectateVehicles(int iNumVehicles, Unified::SpectateVehicle* pasVehicleData, int iCurSelection, int* piSelect) {
     return SpectateHandler::getInstance().handleSpectateVehicles(iNumVehicles, pasVehicleData, iCurSelection, piSelect);
 }
 

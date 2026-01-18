@@ -7,7 +7,7 @@
 #include <string>
 #include <cmath>
 #include <chrono>
-#include "../vendor/piboso/mxb_api.h"
+#include "../game/game_config.h"
 #include "../core/input_manager.h"
 #include "../core/plugin_data.h"
 

@@ -21,7 +21,7 @@ public:
     static constexpr uint32_t COL_BIKE    = 1 << 2;  // Bike name - always shown
     static constexpr uint32_t COL_LAPTIME = 1 << 3;  // Lap time - always shown
     static constexpr uint32_t COL_DATE    = 1 << 4;  // Date recorded (optional)
-    static constexpr uint32_t COL_SECTORS = 1 << 5;  // Sector times S1/S2/S3 (optional, MXB-Ranked only)
+    static constexpr uint32_t COL_SECTORS = 1 << 5;  // Sector times S1/S2/S3/S4 (optional, MXB-Ranked only)
     static constexpr uint32_t COL_CORE    = COL_POS | COL_RIDER | COL_BIKE | COL_LAPTIME;  // Always-on columns
     static constexpr uint32_t COL_DEFAULT = COL_CORE;  // Sectors and date disabled by default
 
@@ -73,9 +73,10 @@ public:
         int sector1;          // milliseconds (MXB-Ranked only, -1 if not available)
         int sector2;          // milliseconds (MXB-Ranked only, -1 if not available)
         int sector3;          // milliseconds (MXB-Ranked only, -1 if not available)
+        int sector4;          // milliseconds (4-sector games only, -1 if not available)
         char date[32];        // Formatted date string
 
-        RecordEntry() : position(0), laptime(-1), sector1(-1), sector2(-1), sector3(-1) {
+        RecordEntry() : position(0), laptime(-1), sector1(-1), sector2(-1), sector3(-1), sector4(-1) {
             rider[0] = '\0';
             bike[0] = '\0';
             date[0] = '\0';
@@ -95,9 +96,10 @@ public:
         float sector1;
         float sector2;
         float sector3;
+        float sector4;
         float date;
 
-        ColumnPositions() : pos(0), rider(0), bike(0), laptime(0), sector1(0), sector2(0), sector3(0), date(0) {}
+        ColumnPositions() : pos(0), rider(0), bike(0), laptime(0), sector1(0), sector2(0), sector3(0), sector4(0), date(0) {}
         ColumnPositions(float contentStartX, float scale, uint32_t enabledColumns);
     };
 
@@ -115,7 +117,7 @@ public:
 
     // Get sector times for the fastest record (for TimingHud gap comparison)
     // Returns false if sectors not available
-    bool getFastestRecordSectors(int& sector1, int& sector2, int& sector3) const;
+    bool getFastestRecordSectors(int& sector1, int& sector2, int& sector3, int& sector4) const;
 
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;

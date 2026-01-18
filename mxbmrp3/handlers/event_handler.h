@@ -4,13 +4,13 @@
 // ============================================================================
 #pragma once
 
-#include "../vendor/piboso/mxb_api.h"
+#include "../game/unified_types.h"
 
 class EventHandler {
 public:
     static EventHandler& getInstance();
 
-    void handleEventInit(SPluginsBikeEvent_t* psEventData);
+    void handleEventInit(Unified::VehicleEventData* psEventData);
     void handleEventDeinit();
 
 private:

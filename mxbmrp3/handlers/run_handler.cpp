@@ -12,16 +12,16 @@
 
 DEFINE_HANDLER_SINGLETON(RunHandler)
 
-void RunHandler::handleRunInit(SPluginsBikeSession_t* psSessionData) {
+void RunHandler::handleRunInit(Unified::SessionData* psSessionData) {
     HANDLER_NULL_CHECK(psSessionData);
 
     // Event logging now handled by PluginManager
 
     // Update plugin data store
-    PluginData::getInstance().setSession(psSessionData->m_iSession);
-    PluginData::getInstance().setConditions(psSessionData->m_iConditions);
-    PluginData::getInstance().setAirTemperature(psSessionData->m_fAirTemperature);
-    PluginData::getInstance().setSetupFileName(psSessionData->m_szSetupFileName);
+    PluginData::getInstance().setSession(psSessionData->session);
+    PluginData::getInstance().setConditions(static_cast<int>(psSessionData->conditions));
+    PluginData::getInstance().setAirTemperature(psSessionData->airTemperature);
+    PluginData::getInstance().setSetupFileName(psSessionData->setupFileName);
 
     // Reset fuel tracking when entering track (rider may have refueled in pits)
     HudManager::getInstance().getFuelWidget().resetFuelTracking();

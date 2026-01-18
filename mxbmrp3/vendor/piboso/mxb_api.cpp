@@ -1,7 +1,7 @@
 // ============================================================================
 // vendor/piboso/mxb_api.cpp
 // Thin wrapper around the MXBikes Plugin API that forwards to PluginManager
-// Keep this file minimal to allow easy updates when the API changes
+// Uses MXBikesAdapter to convert game-specific types to unified types
 // ============================================================================
 #include <stdio.h>
 #include <cstring>
@@ -9,22 +9,29 @@
 #include "../../core/plugin_manager.h"
 #include "../../core/plugin_constants.h"
 #include "../../diagnostics/logger.h"
+#include "../../game/adapters/mxbikes_adapter.h"
 
 using namespace PluginConstants;
+using Adapter = Adapters::MXBikes::Adapter;
 
-__declspec(dllexport) const char* GetModID()
+// Validate that API version constants match adapter - catches mismatches at compile time
+static_assert(Adapter::MOD_DATA_VERSION == 8, "MOD_DATA_VERSION mismatch: update GetModDataVersion() return value");
+static_assert(Adapter::INTERFACE_VERSION == 9, "INTERFACE_VERSION mismatch: update GetInterfaceVersion() return value");
+
+__declspec(dllexport) char* GetModID()
 {
-	return MOD_ID;
+	static char modId[] = "mxbikes";
+	return modId;
 }
 
 __declspec(dllexport) int GetModDataVersion()
 {
-	return MOD_DATA_VERSION;
+	return 8;
 }
 
 __declspec(dllexport) int GetInterfaceVersion()
 {
-	return INTERFACE_VERSION;
+	return 9;
 }
 
 /* called when software is started */
@@ -42,8 +49,9 @@ __declspec(dllexport) void Shutdown()
 /* called when event is initialized. This function is optional */
 __declspec(dllexport) void EventInit(void* _pData, int _iDataSize)
 {
-	SPluginsBikeEvent_t* psEventData = (SPluginsBikeEvent_t*)_pData;
-	PluginManager::getInstance().handleEventInit(psEventData);
+	auto* gameData = static_cast<SPluginsBikeEvent_t*>(_pData);
+	auto unified = Adapter::toVehicleEvent(gameData);
+	PluginManager::getInstance().handleEventInit(&unified);
 }
 
 /* called when event is closed. This function is optional */
@@ -55,8 +63,9 @@ __declspec(dllexport) void EventDeinit()
 /* called when bike goes to track. This function is optional */
 __declspec(dllexport) void RunInit(void* _pData, int _iDataSize)
 {
-	SPluginsBikeSession_t* psSessionData = (SPluginsBikeSession_t*)_pData;
-	PluginManager::getInstance().handleRunInit(psSessionData);
+	auto* gameData = static_cast<SPluginsBikeSession_t*>(_pData);
+	auto unified = Adapter::toSessionData(gameData);
+	PluginManager::getInstance().handleRunInit(&unified);
 }
 
 /* called when bike leaves the track. This function is optional */
@@ -80,22 +89,25 @@ __declspec(dllexport) void RunStop()
 /* called when a new lap is recorded. This function is optional */
 __declspec(dllexport) void RunLap(void* _pData, int _iDataSize)
 {
-	SPluginsBikeLap_t* psLapData = (SPluginsBikeLap_t*)_pData;
-	PluginManager::getInstance().handleRunLap(psLapData);
+	auto* gameData = static_cast<SPluginsBikeLap_t*>(_pData);
+	auto unified = Adapter::toPlayerLap(gameData);
+	PluginManager::getInstance().handleRunLap(&unified);
 }
 
 /* called when a split is crossed. This function is optional */
 __declspec(dllexport) void RunSplit(void* _pData, int _iDataSize)
 {
-	SPluginsBikeSplit_t* psSplitData = (SPluginsBikeSplit_t*)_pData;
-	PluginManager::getInstance().handleRunSplit(psSplitData);
+	auto* gameData = static_cast<SPluginsBikeSplit_t*>(_pData);
+	auto unified = Adapter::toPlayerSplit(gameData);
+	PluginManager::getInstance().handleRunSplit(&unified);
 }
 
 /* _fTime is the ontrack time, in seconds. _fPos is the position on centerline, from 0 to 1. This function is optional */
 __declspec(dllexport) void RunTelemetry(void* _pData, int _iDataSize, float _fTime, float _fPos)
 {
-	SPluginsBikeData_t* psBikeData = (SPluginsBikeData_t*)_pData;
-	PluginManager::getInstance().handleRunTelemetry(psBikeData, _fTime, _fPos);
+	auto* gameData = static_cast<SPluginsBikeData_t*>(_pData);
+	auto unified = Adapter::toTelemetry(gameData, _fTime, _fPos);
+	PluginManager::getInstance().handleRunTelemetry(&unified);
 }
 
 /*
@@ -129,14 +141,19 @@ This function is optional
 */
 __declspec(dllexport) void TrackCenterline(int _iNumSegments, SPluginsTrackSegment_t* _pasSegment, void* _pRaceData)
 {
-	PluginManager::getInstance().handleTrackCenterline(_iNumSegments, _pasSegment, _pRaceData);
+	// TrackSegment has identical layout to SPluginsTrackSegment_t, safe to reinterpret
+	static_assert(sizeof(Unified::TrackSegment) == sizeof(SPluginsTrackSegment_t),
+		"TrackSegment layout mismatch - update Unified::TrackSegment to match game struct");
+	auto* unified = reinterpret_cast<Unified::TrackSegment*>(_pasSegment);
+	PluginManager::getInstance().handleTrackCenterline(_iNumSegments, unified, _pRaceData);
 }
 
 /* called when event is initialized or a replay is loaded. This function is optional */
 __declspec(dllexport) void RaceEvent(void* _pData, int _iDataSize)
 {
-	SPluginsRaceEvent_t* psRaceEvent = (SPluginsRaceEvent_t*)_pData;
-	PluginManager::getInstance().handleRaceEvent(psRaceEvent);
+	auto* gameData = static_cast<SPluginsRaceEvent_t*>(_pData);
+	auto unified = Adapter::toRaceEvent(gameData);
+	PluginManager::getInstance().handleRaceEvent(&unified);
 }
 
 /* called when event is closed. This function is optional */
@@ -148,86 +165,125 @@ __declspec(dllexport) void RaceDeinit()
 /* This function is optional */
 __declspec(dllexport) void RaceAddEntry(void* _pData, int _iDataSize)
 {
-	SPluginsRaceAddEntry_t* psRaceAddEntry = (SPluginsRaceAddEntry_t*)_pData;
-	PluginManager::getInstance().handleRaceAddEntry(psRaceAddEntry);
+	auto* gameData = static_cast<SPluginsRaceAddEntry_t*>(_pData);
+	auto unified = Adapter::toRaceEntry(gameData);
+	PluginManager::getInstance().handleRaceAddEntry(&unified);
 }
 
 /* This function is optional */
 __declspec(dllexport) void RaceRemoveEntry(void* _pData, int _iDataSize)
 {
-	SPluginsRaceRemoveEntry_t* psRaceRemoveEntry = (SPluginsRaceRemoveEntry_t*)_pData;
-	PluginManager::getInstance().handleRaceRemoveEntry(psRaceRemoveEntry);
+	auto* gameData = static_cast<SPluginsRaceRemoveEntry_t*>(_pData);
+	PluginManager::getInstance().handleRaceRemoveEntry(gameData->m_iRaceNum);
 }
 
 /* This function is optional */
 __declspec(dllexport) void RaceSession(void* _pData, int _iDataSize)
 {
-	SPluginsRaceSession_t* psRaceSession = (SPluginsRaceSession_t*)_pData;
-	PluginManager::getInstance().handleRaceSession(psRaceSession);
+	auto* gameData = static_cast<SPluginsRaceSession_t*>(_pData);
+	auto unified = Adapter::toRaceSession(gameData);
+	PluginManager::getInstance().handleRaceSession(&unified);
 }
 
 /* This function is optional */
 __declspec(dllexport) void RaceSessionState(void* _pData, int _iDataSize)
 {
-	SPluginsRaceSessionState_t* psRaceSessionState = (SPluginsRaceSessionState_t*)_pData;
-	PluginManager::getInstance().handleRaceSessionState(psRaceSessionState);
+	auto* gameData = static_cast<SPluginsRaceSessionState_t*>(_pData);
+	auto unified = Adapter::toRaceSessionState(gameData);
+	PluginManager::getInstance().handleRaceSessionState(&unified);
 }
 
 /* This function is optional */
 __declspec(dllexport) void RaceLap(void* _pData, int _iDataSize)
 {
-	SPluginsRaceLap_t* psRaceLap = (SPluginsRaceLap_t*)_pData;
-	PluginManager::getInstance().handleRaceLap(psRaceLap);
+	auto* gameData = static_cast<SPluginsRaceLap_t*>(_pData);
+	auto unified = Adapter::toRaceLap(gameData);
+	PluginManager::getInstance().handleRaceLap(&unified);
 }
 
 /* This function is optional */
 __declspec(dllexport) void RaceSplit(void* _pData, int _iDataSize)
 {
-	SPluginsRaceSplit_t* psRaceSplit = (SPluginsRaceSplit_t*)_pData;
-	PluginManager::getInstance().handleRaceSplit(psRaceSplit);
+	auto* gameData = static_cast<SPluginsRaceSplit_t*>(_pData);
+	auto unified = Adapter::toRaceSplit(gameData);
+	PluginManager::getInstance().handleRaceSplit(&unified);
 }
 
 /* This function is optional */
 __declspec(dllexport) void RaceHoleshot(void* _pData, int _iDataSize)
 {
-	SPluginsRaceHoleshot_t* psRaceHoleshot = (SPluginsRaceHoleshot_t*)_pData;
-	PluginManager::getInstance().handleRaceHoleshot(psRaceHoleshot);
+	auto* gameData = static_cast<SPluginsRaceHoleshot_t*>(_pData);
+	auto unified = Adapter::toRaceHoleshot(gameData);
+	PluginManager::getInstance().handleRaceHoleshot(&unified);
 }
 
 /* This function is optional */
 __declspec(dllexport) void RaceCommunication(void* _pData, int _iDataSize)
 {
-	SPluginsRaceCommunication_t* psRaceCommunication = (SPluginsRaceCommunication_t*)_pData;
-	PluginManager::getInstance().handleRaceCommunication(psRaceCommunication, _iDataSize);
+	auto* gameData = static_cast<SPluginsRaceCommunication_t*>(_pData);
+	auto unified = Adapter::toRaceCommunication(gameData);
+	PluginManager::getInstance().handleRaceCommunication(&unified);
 }
 
 /* The number of elements of _pArray if given by m_iNumEntries in _pData. This function is optional */
 __declspec(dllexport) void RaceClassification(void* _pData, int _iDataSize, void* _pArray, int _iElemSize)
 {
-	SPluginsRaceClassification_t* psRaceClassification = (SPluginsRaceClassification_t*)_pData;
-	SPluginsRaceClassificationEntry_t* pasRaceClassificationEntry = (SPluginsRaceClassificationEntry_t*)_pArray;
-	PluginManager::getInstance().handleRaceClassification(psRaceClassification, pasRaceClassificationEntry, psRaceClassification->m_iNumEntries);
+	auto* gameData = static_cast<SPluginsRaceClassification_t*>(_pData);
+	auto* gameEntries = static_cast<SPluginsRaceClassificationEntry_t*>(_pArray);
+
+	auto unified = Adapter::toRaceClassification(gameData);
+
+	// Static buffer pattern: Avoid heap allocations in high-frequency callbacks.
+	// These callbacks fire every frame at 240fps+ so per-call allocations would
+	// create significant GC pressure. Thread-safe: Piboso games are single-threaded.
+	static std::vector<Unified::RaceClassificationEntry> unifiedEntries;
+	unifiedEntries.clear();
+	unifiedEntries.reserve(gameData->m_iNumEntries);
+	for (int i = 0; i < gameData->m_iNumEntries; ++i) {
+		unifiedEntries.push_back(Adapter::toRaceClassificationEntry(&gameEntries[i]));
+	}
+
+	PluginManager::getInstance().handleRaceClassification(&unified, unifiedEntries.data(), gameData->m_iNumEntries);
 }
 
 /* This function is optional */
 __declspec(dllexport) void RaceTrackPosition(int _iNumVehicles, void* _pArray, int _iElemSize)
 {
-	SPluginsRaceTrackPosition_t* pasRaceTrackPosition = (SPluginsRaceTrackPosition_t*)_pArray;
-	PluginManager::getInstance().handleRaceTrackPosition(_iNumVehicles, pasRaceTrackPosition);
+	auto* gameData = static_cast<SPluginsRaceTrackPosition_t*>(_pArray);
+
+	// Convert entries array - use static buffer to avoid per-call allocations
+	static std::vector<Unified::TrackPositionData> unified;
+	unified.clear();
+	unified.reserve(_iNumVehicles);
+	for (int i = 0; i < _iNumVehicles; ++i) {
+		unified.push_back(Adapter::toTrackPosition(&gameData[i]));
+	}
+
+	PluginManager::getInstance().handleRaceTrackPosition(_iNumVehicles, unified.data());
 }
 
 /* This function is optional */
 __declspec(dllexport) void RaceVehicleData(void* _pData, int _iDataSize)
 {
-	SPluginsRaceVehicleData_t* psRaceVehicleData = (SPluginsRaceVehicleData_t*)_pData;
-	PluginManager::getInstance().handleRaceVehicleData(psRaceVehicleData);
+	auto* gameData = static_cast<SPluginsRaceVehicleData_t*>(_pData);
+	auto unified = Adapter::toRaceVehicleData(gameData);
+	PluginManager::getInstance().handleRaceVehicleData(&unified);
 }
 
 /* Return 1 if _piSelect is set, from 0 to _iNumVehicles - 1 */
 __declspec(dllexport) int SpectateVehicles(int _iNumVehicles, void* _pVehicleData, int _iCurSelection, int* _piSelect)
 {
-	SPluginsSpectateVehicle_t* pasVehicleData = (SPluginsSpectateVehicle_t*)_pVehicleData;
-	return PluginManager::getInstance().handleSpectateVehicles(_iNumVehicles, pasVehicleData, _iCurSelection, _piSelect);
+	auto* gameData = static_cast<SPluginsSpectateVehicle_t*>(_pVehicleData);
+
+	// Convert entries array - use static buffer to avoid per-call allocations
+	static std::vector<Unified::SpectateVehicle> unified;
+	unified.clear();
+	unified.reserve(_iNumVehicles);
+	for (int i = 0; i < _iNumVehicles; ++i) {
+		unified.push_back(Adapter::toSpectateVehicle(&gameData[i]));
+	}
+
+	return PluginManager::getInstance().handleSpectateVehicles(_iNumVehicles, unified.data(), _iCurSelection, _piSelect);
 }
 
 /* Return 1 if _piSelect is set, from 0 to _iNumCameras - 1 */

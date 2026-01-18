@@ -4,13 +4,13 @@
 // ============================================================================
 #pragma once
 
-#include "../vendor/piboso/mxb_api.h"
+#include "../game/unified_types.h"
 
 class RaceEventHandler {
 public:
     static RaceEventHandler& getInstance();
 
-    void handleRaceEvent(SPluginsRaceEvent_t* psRaceEvent);
+    void handleRaceEvent(Unified::RaceEventData* psRaceEvent);
     void handleRaceDeinit();
 
 private:

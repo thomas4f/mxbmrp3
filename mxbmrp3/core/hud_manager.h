@@ -8,7 +8,8 @@
 #include <string>
 #include <memory>
 #include <cassert>
-#include "../vendor/piboso/mxb_api.h"
+#include "../game/game_config.h"
+#include "../game/unified_types.h"
 #include "../hud/base_hud.h"
 
 // Forward declarations to avoid circular dependency with plugin_data.h
@@ -60,13 +61,13 @@ public:
     void setWidgetsEnabled(bool enabled) { m_bAllWidgetsToggledOff = !enabled; }
 
     // Track centerline data handling
-    void updateTrackCenterline(int numSegments, SPluginsTrackSegment_t* segments);
+    void updateTrackCenterline(int numSegments, Unified::TrackSegment* segments);
 
     // Rider position data handling (high-frequency update)
-    void updateRiderPositions(int numVehicles, SPluginsRaceTrackPosition_t* positions);
+    void updateRiderPositions(int numVehicles, Unified::TrackPositionData* positions);
 
     // Radar HUD position update (called alongside MapHud)
-    void updateRadarPositions(int numVehicles, SPluginsRaceTrackPosition_t* positions);
+    void updateRadarPositions(int numVehicles, Unified::TrackPositionData* positions);
 
     // Get HUD references for settings persistence
     // Note: These assert m_bInitialized - only call after initialize() and before shutdown()
@@ -90,7 +91,9 @@ public:
     class NoticesWidget& getNoticesWidget() const { assert(m_pNotices && "HudManager not initialized"); return *m_pNotices; }
     class SettingsButtonWidget& getSettingsButtonWidget() const { assert(m_pSettingsButton && "HudManager not initialized"); return *m_pSettingsButton; }
     class PitboardHud& getPitboardHud() const { assert(m_pPitboard && "HudManager not initialized"); return *m_pPitboard; }
+#if GAME_HAS_RECORDS_PROVIDER
     class RecordsHud& getRecordsHud() const { assert(m_pRecords && "HudManager not initialized"); return *m_pRecords; }
+#endif
     class FuelWidget& getFuelWidget() const { assert(m_pFuel && "HudManager not initialized"); return *m_pFuel; }
     class GapBarHud& getGapBarHud() const { assert(m_pGapBar && "HudManager not initialized"); return *m_pGapBar; }
     class PointerWidget& getPointerWidget() const { assert(m_pPointer && "HudManager not initialized"); return *m_pPointer; }
@@ -104,7 +107,11 @@ private:
                    m_pDraggingHud(nullptr), m_pSettingsHud(nullptr), m_pSettingsButton(nullptr),
                    m_pIdealLap(nullptr), m_pLapLog(nullptr), m_pStandings(nullptr),
                    m_pPerformance(nullptr), m_pTelemetry(nullptr),
-                   m_pTime(nullptr), m_pPosition(nullptr), m_pLap(nullptr), m_pSession(nullptr), m_pMapHud(nullptr), m_pRadarHud(nullptr), m_pSpeed(nullptr), m_pSpeedo(nullptr), m_pTacho(nullptr), m_pTiming(nullptr), m_pGapBar(nullptr), m_pBars(nullptr), m_pVersion(nullptr), m_pNotices(nullptr), m_pPitboard(nullptr), m_pRecords(nullptr), m_pFuel(nullptr), m_pPointer(nullptr), m_pRumble(nullptr), m_pGamepad(nullptr), m_pLean(nullptr),
+                   m_pTime(nullptr), m_pPosition(nullptr), m_pLap(nullptr), m_pSession(nullptr), m_pMapHud(nullptr), m_pRadarHud(nullptr), m_pSpeed(nullptr), m_pSpeedo(nullptr), m_pTacho(nullptr), m_pTiming(nullptr), m_pGapBar(nullptr), m_pBars(nullptr), m_pVersion(nullptr), m_pNotices(nullptr), m_pPitboard(nullptr),
+#if GAME_HAS_RECORDS_PROVIDER
+                   m_pRecords(nullptr),
+#endif
+                   m_pFuel(nullptr), m_pPointer(nullptr), m_pRumble(nullptr), m_pGamepad(nullptr), m_pLean(nullptr),
                    m_bAllHudsToggledOff(false), m_bAllWidgetsToggledOff(false) {
     }
     ~HudManager();
@@ -147,7 +154,9 @@ private:
     class VersionWidget* m_pVersion;
     class NoticesWidget* m_pNotices;
     class PitboardHud* m_pPitboard;
+#if GAME_HAS_RECORDS_PROVIDER
     class RecordsHud* m_pRecords;
+#endif
     class FuelWidget* m_pFuel;
     class PointerWidget* m_pPointer;
     class RumbleHud* m_pRumble;

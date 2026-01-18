@@ -1,12 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
-    <ProjectConfiguration Include="Debug|x64">
-      <Configuration>Debug</Configuration>
+    <ProjectConfiguration Include="MXB-Debug|x64">
+      <Configuration>MXB-Debug</Configuration>
       <Platform>x64</Platform>
     </ProjectConfiguration>
-    <ProjectConfiguration Include="Release|x64">
-      <Configuration>Release</Configuration>
+    <ProjectConfiguration Include="MXB-Release|x64">
+      <Configuration>MXB-Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="GPB-Debug|x64">
+      <Configuration>GPB-Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="GPB-Release|x64">
+      <Configuration>GPB-Release</Configuration>
       <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
@@ -18,13 +26,30 @@
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+  <!-- Configuration Properties: MXB-Debug -->
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='MXB-Debug|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+  <!-- Configuration Properties: MXB-Release -->
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='MXB-Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <!-- Configuration Properties: GPB-Debug -->
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='GPB-Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <!-- Configuration Properties: GPB-Release -->
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='GPB-Release|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
@@ -36,30 +61,54 @@
   </ImportGroup>
   <ImportGroup Label="Shared">
   </ImportGroup>
-  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='MXB-Debug|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
-  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='MXB-Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='GPB-Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='GPB-Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+  <!-- Output Directories: MXBikes -->
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='MXB-Debug|x64'">
     <OutDir>$(SolutionDir)build\$(Configuration)\</OutDir>
     <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
+    <TargetName>mxbmrp3</TargetName>
     <TargetExt>.dlo</TargetExt>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='MXB-Release|x64'">
     <OutDir>$(SolutionDir)build\$(Configuration)\</OutDir>
     <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
+    <TargetName>mxbmrp3</TargetName>
     <TargetExt>.dlo</TargetExt>
   </PropertyGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+  <!-- Output Directories: GPBikes -->
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='GPB-Debug|x64'">
+    <OutDir>$(SolutionDir)build\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
+    <TargetName>mxbmrp3_gpb</TargetName>
+    <TargetExt>.dlo</TargetExt>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='GPB-Release|x64'">
+    <OutDir>$(SolutionDir)build\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
+    <TargetName>mxbmrp3_gpb</TargetName>
+    <TargetExt>.dlo</TargetExt>
+  </PropertyGroup>
+  <!-- Compiler/Linker: MXB-Debug -->
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='MXB-Debug|x64'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NOMINMAX;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>GAME_MXBIKES;NOMINMAX;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -67,23 +116,23 @@
       <AdditionalDependencies>xinput.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>if defined MXBIKES_PLUGIN_PATH copy "$(TargetPath)" "%MXBIKES_PLUGIN_PATH%\mxbmrp3.dlo"</Command>
-    </PostBuildEvent>
-    <PostBuildEvent>
-      <Message>copy mxbmrp3.dlo (if MXBIKES_PLUGIN_PATH set)</Message>
+      <Command>if defined MXBIKES_PLUGIN_PATH copy "$(TargetPath)" "%MXBIKES_PLUGIN_PATH%\$(TargetName).dlo"</Command>
+      <Message>Copy $(TargetName).dlo to MXBIKES_PLUGIN_PATH (if set)</Message>
     </PostBuildEvent>
   </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+  <!-- Compiler/Linker: MXB-Release -->
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='MXB-Release|x64'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NOMINMAX;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>GAME_MXBIKES;NOMINMAX;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <Optimization>MaxSpeed</Optimization>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -93,16 +142,59 @@
       <AdditionalDependencies>xinput.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>if defined MXBIKES_PLUGIN_PATH copy "$(TargetPath)" "%MXBIKES_PLUGIN_PATH%\mxbmrp3.dlo"</Command>
+      <Command>if defined MXBIKES_PLUGIN_PATH copy "$(TargetPath)" "%MXBIKES_PLUGIN_PATH%\$(TargetName).dlo"</Command>
+      <Message>Copy $(TargetName).dlo to MXBIKES_PLUGIN_PATH (if set)</Message>
     </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <!-- Compiler/Linker: GPB-Debug -->
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='GPB-Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>GAME_GPBIKES;NOMINMAX;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>xinput.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
     <PostBuildEvent>
-      <Message>copy mxbmrp3.dlo (if MXBIKES_PLUGIN_PATH set)</Message>
+      <Command>if defined GPBIKES_PLUGIN_PATH copy "$(TargetPath)" "%GPBIKES_PLUGIN_PATH%\$(TargetName).dlo"</Command>
+      <Message>Copy $(TargetName).dlo to GPBIKES_PLUGIN_PATH (if set)</Message>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <!-- Compiler/Linker: GPB-Release -->
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='GPB-Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>GAME_GPBIKES;NOMINMAX;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>xinput.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>if defined GPBIKES_PLUGIN_PATH copy "$(TargetPath)" "%GPBIKES_PLUGIN_PATH%\$(TargetName).dlo"</Command>
+      <Message>Copy $(TargetName).dlo to GPBIKES_PLUGIN_PATH (if set)</Message>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="core\asset_manager.h" />
     <ClInclude Include="core\color_config.h" />
     <ClInclude Include="core\tooltip_manager.h" />
+    <ClInclude Include="core\ui_config.h" />
     <ClInclude Include="core\font_config.h" />
     <ClInclude Include="core\handler_singleton.h" />
     <ClInclude Include="core\hotkey_config.h" />
@@ -171,6 +263,16 @@
     <ClInclude Include="hud\lean_widget.h" />
     <ClInclude Include="hud\settings\settings_layout.h" />
     <ClInclude Include="vendor\piboso\mxb_api.h" />
+    <ClInclude Include="vendor\piboso\gpb_api.h" />
+    <ClInclude Include="vendor\piboso\wrs_api.h" />
+    <ClInclude Include="vendor\piboso\krp_api.h" />
+    <ClInclude Include="game\unified_types.h" />
+    <ClInclude Include="game\game_config.h" />
+    <ClInclude Include="game\adapters\game_adapter_base.h" />
+    <ClInclude Include="game\adapters\mxbikes_adapter.h" />
+    <ClInclude Include="game\adapters\gpbikes_adapter.h" />
+    <ClInclude Include="game\adapters\wrs_adapter.h" />
+    <ClInclude Include="game\adapters\krp_adapter.h" />
     <ClInclude Include="vendor\nlohmann\json.hpp" />
     <ClInclude Include="vendor\miniz\miniz.h" />
     <ClInclude Include="vendor\miniz\miniz_common.h" />
@@ -183,6 +285,7 @@
     <ClCompile Include="core\asset_manager.cpp" />
     <ClCompile Include="core\color_config.cpp" />
     <ClCompile Include="core\font_config.cpp" />
+    <ClCompile Include="core\ui_config.cpp" />
     <ClCompile Include="core\hotkey_manager.cpp" />
     <ClCompile Include="core\hud_manager.cpp" />
     <ClCompile Include="core\tracked_riders_manager.cpp" />
@@ -262,7 +365,16 @@
     <ClCompile Include="hud\fuel_widget.cpp" />
     <ClCompile Include="hud\gamepad_widget.cpp" />
     <ClCompile Include="hud\lean_widget.cpp" />
-    <ClCompile Include="vendor\piboso\mxb_api.cpp" />
+    <!-- MX Bikes API - only compiled for MXBikes configurations -->
+    <ClCompile Include="vendor\piboso\mxb_api.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='GPB-Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='GPB-Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <!-- GP Bikes API - only compiled for GPBikes configurations -->
+    <ClCompile Include="vendor\piboso\gpb_api.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='MXB-Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='MXB-Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="vendor\miniz\miniz.c" />
     <ClCompile Include="vendor\miniz\miniz_tdef.c" />
     <ClCompile Include="vendor\miniz\miniz_tinfl.c" />

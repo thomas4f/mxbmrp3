@@ -11,12 +11,6 @@
 #include "../diagnostics/logger.h"
 #include "../vendor/nlohmann/json.hpp"
 
-// Tab tooltip info loaded from JSON
-struct TabTooltip {
-    std::string title;        // Tab title (e.g., "Standings")
-    std::string tooltip;      // Tab tooltip shown at top of tab content
-};
-
 class TooltipManager {
 public:
     static TooltipManager& getInstance() {
@@ -42,13 +36,12 @@ public:
                 return;
             }
 
-            // Parse tab tooltips
+            // Parse tab tooltips (simple strings)
             if (j.contains("tabs") && j["tabs"].is_object()) {
                 for (auto& [key, value] : j["tabs"].items()) {
-                    TabTooltip tab;
-                    tab.title = value.value("title", "");
-                    tab.tooltip = value.value("tooltip", "");
-                    m_tabs[key] = tab;
+                    if (value.is_string()) {
+                        m_tabs[key] = value.get<std::string>();
+                    }
                 }
             }
 
@@ -78,9 +71,9 @@ public:
     }
 
     // Get tab tooltip by tab ID (e.g., "standings", "map")
-    const TabTooltip& getTabTooltip(const char* tabId) const {
+    const char* getTabTooltip(const char* tabId) const {
         auto it = m_tabs.find(tabId);
-        return (it != m_tabs.end()) ? it->second : m_emptyTab;
+        return (it != m_tabs.end()) ? it->second.c_str() : "";
     }
 
     // Get control tooltip by control ID (e.g., "common.visible", "standings.rows")
@@ -97,8 +90,7 @@ private:
     TooltipManager(const TooltipManager&) = delete;
     TooltipManager& operator=(const TooltipManager&) = delete;
 
-    std::unordered_map<std::string, TabTooltip> m_tabs;
+    std::unordered_map<std::string, std::string> m_tabs;
     std::unordered_map<std::string, std::string> m_controls;
-    TabTooltip m_emptyTab;
     bool m_loaded;
 };

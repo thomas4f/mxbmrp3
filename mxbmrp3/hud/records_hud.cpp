@@ -5,6 +5,8 @@
 #include "records_hud.h"
 #include "timing_hud.h"
 
+#include "../game/game_config.h"
+
 #include <cstring>
 #include <cstdio>
 #include <ctime>
@@ -40,7 +42,7 @@ RecordsHud::ColumnPositions::ColumnPositions(float contentStartX, float scale, u
     float x = contentStartX;
 
     // Position each column based on what's enabled before it
-    // Order: POS, RIDER, BIKE, SECTORS (S1/S2/S3), LAPTIME, DATE
+    // Order: POS, RIDER, BIKE, SECTORS (S1/S2/S3/S4), LAPTIME, DATE
     pos = x;
     if (enabledColumns & COL_POS) x += PluginUtils::calculateMonospaceTextWidth(COL_POS_WIDTH, scaledFontSize);
 
@@ -50,11 +52,19 @@ RecordsHud::ColumnPositions::ColumnPositions(float contentStartX, float scale, u
     bike = x;
     if (enabledColumns & COL_BIKE) x += PluginUtils::calculateMonospaceTextWidth(COL_BIKE_WIDTH, scaledFontSize);
 
-    // Sector columns (S1, S2, S3) - always toggled together
+    // Sector columns - always toggled together
+    // 3-sector games (MX Bikes): S1, S2, S3
+    // 4-sector games (GP Bikes): S1, S2, S3, S4
     sector1 = x;
     sector2 = x + PluginUtils::calculateMonospaceTextWidth(COL_SECTOR_WIDTH, scaledFontSize);
     sector3 = x + PluginUtils::calculateMonospaceTextWidth(COL_SECTOR_WIDTH * 2, scaledFontSize);
+#if GAME_SECTOR_COUNT >= 4
+    sector4 = x + PluginUtils::calculateMonospaceTextWidth(COL_SECTOR_WIDTH * 3, scaledFontSize);
+    if (enabledColumns & COL_SECTORS) x += PluginUtils::calculateMonospaceTextWidth(COL_SECTOR_WIDTH * 4, scaledFontSize);
+#else
+    sector4 = 0;  // Not used for 3-sector games
     if (enabledColumns & COL_SECTORS) x += PluginUtils::calculateMonospaceTextWidth(COL_SECTOR_WIDTH * 3, scaledFontSize);
+#endif
 
     laptime = x;
     if (enabledColumns & COL_LAPTIME) x += PluginUtils::calculateMonospaceTextWidth(COL_LAPTIME_WIDTH, scaledFontSize);
@@ -706,15 +716,6 @@ bool RecordsHud::handlesDataType(DataChangeType dataType) const {
 }
 
 void RecordsHud::update() {
-    // OPTIMIZATION: Skip all processing when not visible
-    // Note: When made visible, auto-fetch will trigger if track changed while hidden.
-    // This compares current track with m_lastSessionTrackId which wasn't updated while hidden.
-    if (!isVisible()) {
-        clearDataDirty();
-        clearLayoutDirty();
-        return;
-    }
-
     const SessionData& session = PluginData::getInstance().getSessionData();
     bool shouldAutoFetch = false;
 
@@ -750,8 +751,16 @@ void RecordsHud::update() {
     }
 
     // Perform auto-fetch if enabled and conditions met
+    // Note: This runs even when hidden so TimingHud can access records
     if (m_bAutoFetch && shouldAutoFetch && m_fetchState != FetchState::FETCHING) {
         startFetch();
+    }
+
+    // Skip UI processing when not visible
+    if (!isVisible()) {
+        clearDataDirty();
+        clearLayoutDirty();
+        return;
     }
 
     // Handle mouse input for click regions
@@ -837,7 +846,7 @@ void RecordsHud::rebuildRenderData() {
     if (m_enabledColumns & COL_POS) bgWidthChars += COL_POS_WIDTH;
     if (m_enabledColumns & COL_RIDER) bgWidthChars += COL_RIDER_WIDTH;
     if (m_enabledColumns & COL_BIKE) bgWidthChars += COL_BIKE_WIDTH;
-    if (m_enabledColumns & COL_SECTORS) bgWidthChars += COL_SECTOR_WIDTH * 3;  // S1, S2, S3 together
+    if (m_enabledColumns & COL_SECTORS) bgWidthChars += COL_SECTOR_WIDTH * GAME_SECTOR_COUNT;  // S1, S2, S3 (and S4 for 4-sector games)
     if (m_enabledColumns & COL_LAPTIME) bgWidthChars += COL_LAPTIME_WIDTH;
     if (m_enabledColumns & COL_DATE) bgWidthChars += COL_DATE_WIDTH;
     // Remove trailing gap from last visible column (gap not needed after last column)
@@ -996,9 +1005,9 @@ void RecordsHud::rebuildRenderData() {
 
     // Lambda to render a single record row
     // isPlayerRow: add highlight background, skip position column
-    // sector1/2/3: -1 if not available (CBR or player PB)
+    // sector1/2/3/4: -1 if not available (CBR or player PB)
     auto renderRecordRow = [&](int position, const char* rider, const char* bike, int laptime,
-                               int sector1, int sector2, int sector3, const char* date, bool isPlayerRow) {
+                               int sector1, int sector2, int sector3, int sector4, const char* date, bool isPlayerRow) {
         // Add highlight background quad for player row
         if (isPlayerRow) {
             SPluginQuad_t highlight;
@@ -1044,7 +1053,7 @@ void RecordsHud::rebuildRenderData() {
                       ColorConfig::getInstance().getSecondary(), dim.fontSize);
         }
 
-        // Sector times (S1, S2, S3 - always toggled together)
+        // Sector times (S1, S2, S3, and S4 for 4-sector games - always toggled together)
         if (isColumnEnabled(COL_SECTORS)) {
             char sectorStr[12];
             const auto& colors = ColorConfig::getInstance();
@@ -1078,6 +1087,20 @@ void RecordsHud::rebuildRenderData() {
                 addString("---.---", m_columns.sector3, currentY, Justify::LEFT,
                           Fonts::getNormal(), colors.getMuted(), dim.fontSize);
             }
+
+#if GAME_SECTOR_COUNT >= 4
+            // S4 (4-sector games only)
+            if (sector4 > 0) {
+                PluginUtils::formatSectorTime(sector4, sectorStr, sizeof(sectorStr));
+                addString(sectorStr, m_columns.sector4, currentY, Justify::LEFT,
+                          Fonts::getNormal(), colors.getSecondary(), dim.fontSize);
+            } else {
+                addString("---.---", m_columns.sector4, currentY, Justify::LEFT,
+                          Fonts::getNormal(), colors.getMuted(), dim.fontSize);
+            }
+#else
+            (void)sector4;  // Suppress unused warning for 3-sector games
+#endif
         }
 
         // Laptime
@@ -1122,7 +1145,7 @@ void RecordsHud::rebuildRenderData() {
         // Before fetch or error: show player's PB and/or status message
         if (hasPlayerPB) {
             renderRecordRow(1, playerName, playerPB->bikeName.c_str(), playerPB->lapTime,
-                            playerPB->sector1, playerPB->sector2, playerPB->sector3, playerDateStr, true);
+                            playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
         }
         // Show status message (error or prompt to compare) - counts as a row to maintain layout
         const char* statusMessage = nullptr;
@@ -1147,7 +1170,7 @@ void RecordsHud::rebuildRenderData() {
         // Fetched but no records found - show player's PB and/or message
         if (hasPlayerPB) {
             renderRecordRow(1, playerName, playerPB->bikeName.c_str(), playerPB->lapTime,
-                            playerPB->sector1, playerPB->sector2, playerPB->sector3, playerDateStr, true);
+                            playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
         }
         // Show "no records" message - counts as a row to maintain layout
         addString("No records found for this track/category.", contentStartX, currentY,
@@ -1168,17 +1191,17 @@ void RecordsHud::rebuildRenderData() {
                 // Insert player row before this record if player position matches
                 if (insertPlayer && hasPlayerPB && playerPosition == i) {
                     renderRecordRow(0, playerName, playerPB->bikeName.c_str(), playerPB->lapTime,
-                                    playerPB->sector1, playerPB->sector2, playerPB->sector3, playerDateStr, true);
+                                    playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
                 }
                 // Render the server record
                 const auto& record = allRecords[i];
                 renderRecordRow(record.position, record.rider, record.bike, record.laptime,
-                                record.sector1, record.sector2, record.sector3, record.date, false);
+                                record.sector1, record.sector2, record.sector3, record.sector4, record.date, false);
             }
             // Insert player at end if they're after the last record in range
             if (insertPlayer && hasPlayerPB && playerPosition > endIdx && playerPosition <= endIdx + 1) {
                 renderRecordRow(0, playerName, playerPB->bikeName.c_str(), playerPB->lapTime,
-                                playerPB->sector1, playerPB->sector2, playerPB->sector3, playerDateStr, true);
+                                playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
             }
         };
 
@@ -1224,16 +1247,16 @@ void RecordsHud::rebuildRenderData() {
                 // Insert player row at correct position
                 if (hasPlayerPB && playerPosition == i) {
                     renderRecordRow(0, playerName, playerPB->bikeName.c_str(), playerPB->lapTime,
-                                    playerPB->sector1, playerPB->sector2, playerPB->sector3, playerDateStr, true);
+                                    playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
                 }
                 const auto& record = allRecords[i];
                 renderRecordRow(record.position, record.rider, record.bike, record.laptime,
-                                record.sector1, record.sector2, record.sector3, record.date, false);
+                                record.sector1, record.sector2, record.sector3, record.sector4, record.date, false);
             }
             // Insert player at end if they're after the last context record
             if (hasPlayerPB && playerPosition > contextEnd) {
                 renderRecordRow(0, playerName, playerPB->bikeName.c_str(), playerPB->lapTime,
-                                playerPB->sector1, playerPB->sector2, playerPB->sector3, playerDateStr, true);
+                                playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
             }
         }
     }
@@ -1284,7 +1307,7 @@ int RecordsHud::getFastestRecordLapTime() const {
     return m_records[0].laptime;
 }
 
-bool RecordsHud::getFastestRecordSectors(int& sector1, int& sector2, int& sector3) const {
+bool RecordsHud::getFastestRecordSectors(int& sector1, int& sector2, int& sector3, int& sector4) const {
     std::lock_guard<std::mutex> lock(m_recordsMutex);
     if (m_records.empty()) return false;
 
@@ -1294,6 +1317,7 @@ bool RecordsHud::getFastestRecordSectors(int& sector1, int& sector2, int& sector
     sector1 = fastest.sector1;
     sector2 = fastest.sector2;
     sector3 = fastest.sector3;
+    sector4 = fastest.sector4;
     return true;
 }
 

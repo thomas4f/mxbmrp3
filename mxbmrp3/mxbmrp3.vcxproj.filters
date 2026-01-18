@@ -64,6 +64,15 @@
     <Filter Include="Source Files\diagnostics">
       <UniqueIdentifier>{b2c3d4e5-f6a7-8901-bcde-f12345678901}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\game">
+      <UniqueIdentifier>{e1f2a3b4-c5d6-7890-1234-567890abcdef}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\game\adapters">
+      <UniqueIdentifier>{f2a3b4c5-d6e7-8901-2345-67890abcdef1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\game">
+      <UniqueIdentifier>{a3b4c5d6-e7f8-9012-3456-7890abcdef12}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="core\plugin_utils.h">
@@ -81,6 +90,9 @@
     <ClInclude Include="core\font_config.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
+    <ClInclude Include="core\ui_config.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
     <ClInclude Include="core\plugin_constants.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
@@ -89,6 +101,36 @@
     </ClInclude>
     <ClInclude Include="vendor\piboso\mxb_api.h">
       <Filter>Header Files\vendor\piboso</Filter>
+    </ClInclude>
+    <ClInclude Include="vendor\piboso\gpb_api.h">
+      <Filter>Header Files\vendor\piboso</Filter>
+    </ClInclude>
+    <ClInclude Include="vendor\piboso\wrs_api.h">
+      <Filter>Header Files\vendor\piboso</Filter>
+    </ClInclude>
+    <ClInclude Include="vendor\piboso\krp_api.h">
+      <Filter>Header Files\vendor\piboso</Filter>
+    </ClInclude>
+    <ClInclude Include="game\unified_types.h">
+      <Filter>Header Files\game</Filter>
+    </ClInclude>
+    <ClInclude Include="game\game_config.h">
+      <Filter>Header Files\game</Filter>
+    </ClInclude>
+    <ClInclude Include="game\adapters\game_adapter_base.h">
+      <Filter>Header Files\game\adapters</Filter>
+    </ClInclude>
+    <ClInclude Include="game\adapters\mxbikes_adapter.h">
+      <Filter>Header Files\game\adapters</Filter>
+    </ClInclude>
+    <ClInclude Include="game\adapters\gpbikes_adapter.h">
+      <Filter>Header Files\game\adapters</Filter>
+    </ClInclude>
+    <ClInclude Include="game\adapters\wrs_adapter.h">
+      <Filter>Header Files\game\adapters</Filter>
+    </ClInclude>
+    <ClInclude Include="game\adapters\krp_adapter.h">
+      <Filter>Header Files\game\adapters</Filter>
     </ClInclude>
     <ClInclude Include="vendor\nlohmann\json.hpp">
       <Filter>Header Files\vendor\nlohmann</Filter>
@@ -314,10 +356,16 @@
     <ClCompile Include="core\font_config.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
+    <ClCompile Include="core\ui_config.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
     <ClCompile Include="core\plugin_manager.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="vendor\piboso\mxb_api.cpp">
+      <Filter>Source Files\vendor\piboso</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\piboso\gpb_api.cpp">
       <Filter>Source Files\vendor\piboso</Filter>
     </ClCompile>
     <ClCompile Include="vendor\miniz\miniz.c">

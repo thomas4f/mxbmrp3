@@ -9,11 +9,11 @@
 
 DEFINE_HANDLER_SINGLETON(TrackCenterlineHandler)
 
-void TrackCenterlineHandler::handleTrackCenterline(int iNumSegments, SPluginsTrackSegment_t* pasSegment, void* pRaceData) {
+void TrackCenterlineHandler::handleTrackCenterline(int iNumSegments, Unified::TrackSegment* pasSegment, void* pRaceData) {
     // Safety: Validate track centerline data before processing
     // Null pointer or invalid segment count could cause crash in MapHud rendering
     if (!pasSegment || iNumSegments <= 0) {
-        DEBUG_WARN_F("Invalid track centerline data (segments=%d, ptr=%p)", iNumSegments, pasSegment);
+        DEBUG_WARN_F("Invalid track centerline data (segments=%d, ptr=%p)", iNumSegments, static_cast<void*>(pasSegment));
         return;
     }
 

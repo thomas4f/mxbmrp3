@@ -4,13 +4,13 @@
 // ============================================================================
 #pragma once
 
-#include "../vendor/piboso/mxb_api.h"
+#include "../game/unified_types.h"
 
 class RunLapHandler {
 public:
     static RunLapHandler& getInstance();
 
-    void handleRunLap(SPluginsBikeLap_t* psLapData);
+    void handleRunLap(Unified::PlayerLapData* psLapData);
 
 private:
     RunLapHandler() {}

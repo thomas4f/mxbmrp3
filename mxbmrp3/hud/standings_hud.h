@@ -223,6 +223,7 @@ private:
     std::vector<TrackedIconQuad> m_trackedIconQuads;
     int m_displayRowCount = 10;  // Number of rows to display (configurable 8-30, increment 2)
     int m_topPositionsCount = DEFAULT_TOP_POSITIONS;  // Always show top N positions (global setting, 0-10)
+    bool m_bUseAccentForHighlight = false;  // Advanced: use accent color instead of bike brand color for player highlight
 
     static constexpr int MIN_ROW_COUNT = 8;         // Minimum for useful context (top 3 + player with 1 before/after + 2 gap rows)
     static constexpr int MAX_ROW_COUNT = 30;

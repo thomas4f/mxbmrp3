@@ -1055,8 +1055,11 @@ void StandingsHud::rebuildRenderData() {
                 setQuadPositions(highlight, highlightX, highlightY, hudDim.backgroundWidth, dim.lineHeightNormal);
                 highlight.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
 
-                // Apply transparency to bike brand color
-                highlight.m_ulColor = PluginUtils::applyOpacity(entry.bikeBrandColor, 80.0f / 255.0f);
+                // Apply transparency to bike brand color (or accent color if configured)
+                unsigned long highlightColor = m_bUseAccentForHighlight
+                    ? ColorConfig::getInstance().getAccent()
+                    : entry.bikeBrandColor;
+                highlight.m_ulColor = PluginUtils::applyOpacity(highlightColor, 80.0f / 255.0f);
 
                 m_cachedHighlightQuadIndex = static_cast<int>(m_quads.size());  // Track quad index
                 m_quads.push_back(highlight);

@@ -4,13 +4,13 @@
 // ============================================================================
 #pragma once
 
-#include "../vendor/piboso/mxb_api.h"
+#include "../game/unified_types.h"
 
 class RunSplitHandler {
 public:
     static RunSplitHandler& getInstance();
 
-    void handleRunSplit(SPluginsBikeSplit_t* psSplitData);
+    void handleRunSplit(Unified::PlayerSplitData* psSplitData);
 
 private:
     RunSplitHandler() {}

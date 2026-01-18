@@ -9,7 +9,7 @@
 
 DEFINE_HANDLER_SINGLETON(RunSplitHandler)
 
-void RunSplitHandler::handleRunSplit(SPluginsBikeSplit_t* psSplitData) {
+void RunSplitHandler::handleRunSplit(Unified::PlayerSplitData* psSplitData) {
     HANDLER_NULL_CHECK(psSplitData);
 
     // NOTE: RunSplit events are player-only, limiting spectate mode functionality.

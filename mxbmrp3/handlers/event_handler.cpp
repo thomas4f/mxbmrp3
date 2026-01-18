@@ -8,26 +8,26 @@
 
 DEFINE_HANDLER_SINGLETON(EventHandler)
 
-void EventHandler::handleEventInit(SPluginsBikeEvent_t* psEventData) {
+void EventHandler::handleEventInit(Unified::VehicleEventData* psEventData) {
     HANDLER_NULL_CHECK(psEventData);
 
     // Event logging now handled by PluginManager
 
     // Update plugin data store
-    PluginData::getInstance().setRiderName(psEventData->m_szRiderName);
-    PluginData::getInstance().setBikeName(psEventData->m_szBikeName);
-    PluginData::getInstance().setCategory(psEventData->m_szCategory);
-    PluginData::getInstance().setTrackId(psEventData->m_szTrackID);
-    PluginData::getInstance().setTrackName(psEventData->m_szTrackName);
-    PluginData::getInstance().setEventType(psEventData->m_iType);
-    PluginData::getInstance().setShiftRPM(psEventData->m_iShiftRPM);
-    PluginData::getInstance().setLimiterRPM(psEventData->m_iLimiter);
-    PluginData::getInstance().setSteerLock(psEventData->m_fSteerLock);
-    PluginData::getInstance().setMaxFuel(psEventData->m_fMaxFuel);
-    PluginData::getInstance().setNumberOfGears(psEventData->m_iNumberOfGears);
+    PluginData::getInstance().setRiderName(psEventData->pilotName);
+    PluginData::getInstance().setBikeName(psEventData->vehicleName);
+    PluginData::getInstance().setCategory(psEventData->category);
+    PluginData::getInstance().setTrackId(psEventData->trackId);
+    PluginData::getInstance().setTrackName(psEventData->trackName);
+    PluginData::getInstance().setEventType(static_cast<int>(psEventData->eventType));
+    PluginData::getInstance().setShiftRPM(psEventData->shiftRPM);
+    PluginData::getInstance().setLimiterRPM(psEventData->limiterRPM);
+    PluginData::getInstance().setSteerLock(psEventData->steerLock);
+    PluginData::getInstance().setMaxFuel(psEventData->maxFuel);
+    PluginData::getInstance().setNumberOfGears(psEventData->numberOfGears);
     PluginData::getInstance().updateSuspensionMaxTravel(
-        psEventData->m_afSuspMaxTravel[0],  // Front suspension max travel
-        psEventData->m_afSuspMaxTravel[1]   // Rear suspension max travel
+        psEventData->suspMaxTravel[0],  // Front suspension max travel
+        psEventData->suspMaxTravel[1]   // Rear suspension max travel
     );
 
     // Check if a RaceAddEntry with unactive=0 already arrived (spectate-first case)

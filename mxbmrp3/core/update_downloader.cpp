@@ -5,6 +5,7 @@
 #include "update_downloader.h"
 #include "plugin_constants.h"
 #include "plugin_manager.h"
+#include "../game/game_config.h"
 #include "../diagnostics/logger.h"
 
 // Windows HTTP and file operations
@@ -144,7 +145,7 @@ std::string UpdateDownloader::getStatusText() const {
         case State::EXTRACTING:
             return "Extracting files...";
         case State::READY:
-            return "Update installed! Restart MX Bikes to apply.";
+            return "Update installed! Restart " GAME_NAME " to apply.";
         case State::FAILED: {
             std::lock_guard<std::mutex> lock(m_mutex);
             return "Failed: " + m_errorMessage;
@@ -338,11 +339,14 @@ void UpdateDownloader::workerThread() {
 
     // Check file size
     if (m_expectedSize > 0 && zipData.size() != m_expectedSize) {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_errorMessage = "Size mismatch: expected " + std::to_string(m_expectedSize) +
-                        ", got " + std::to_string(zipData.size());
-        m_state = State::FAILED;
-        DEBUG_WARN_F("UpdateDownloader: %s", m_errorMessage.c_str());
+        std::string errorMsg = "Size mismatch: expected " + std::to_string(m_expectedSize) +
+                               ", got " + std::to_string(zipData.size());
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_errorMessage = errorMsg;
+            m_state = State::FAILED;
+        }
+        DEBUG_WARN_F("UpdateDownloader: %s", errorMsg.c_str());
         notifyStateChange();
         return;
     }
@@ -367,9 +371,11 @@ void UpdateDownloader::workerThread() {
         if (actualHash.empty()) {
             DEBUG_WARN("UpdateDownloader: SHA256 calculation failed");
         } else if (actualHash != expectedHash) {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            m_errorMessage = "SHA256 checksum mismatch";
-            m_state = State::FAILED;
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                m_errorMessage = "SHA256 checksum mismatch";
+                m_state = State::FAILED;
+            }
             DEBUG_WARN_F("UpdateDownloader: SHA256 mismatch! Expected: %s, Got: %s",
                         expectedHash.c_str(), actualHash.c_str());
             notifyStateChange();
@@ -391,12 +397,15 @@ void UpdateDownloader::workerThread() {
     // Extract and install (backup/extract/install steps are handled in extractAndInstall)
     m_state = State::EXTRACTING;
     notifyStateChange();
-    DEBUG_INFO("UpdateDownloader: Extracting...");
+    DEBUG_INFO("UpdateDownloader: Processing update...");
 
     if (!extractAndInstall(zipData, error)) {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_errorMessage = error;
-        m_state = State::FAILED;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_errorMessage = error;
+            m_state = State::FAILED;
+        }
+        // notifyStateChange acquires mutex, so must be called outside the lock
         DEBUG_WARN_F("UpdateDownloader: Extract failed - %s", error.c_str());
         notifyStateChange();
         return;
@@ -774,15 +783,15 @@ bool UpdateDownloader::backupExistingFiles(const std::string& pluginDir, const s
     // This is faster and more atomic than copying.
 
     // Move the .dlo file (works even while loaded!)
-    std::string dloSrc = pluginDir + "mxbmrp3.dlo";
-    std::string dloDst = backupDir + "mxbmrp3.dlo";
+    std::string dloSrc = pluginDir + GAME_DLO_NAME;
+    std::string dloDst = backupDir + GAME_DLO_NAME;
     DWORD attrs = GetFileAttributesA(dloSrc.c_str());
     if (attrs != INVALID_FILE_ATTRIBUTES) {
         if (!MoveFileA(dloSrc.c_str(), dloDst.c_str())) {
-            DEBUG_WARN_F("UpdateDownloader: Failed to move mxbmrp3.dlo to backup (error %lu)", GetLastError());
+            DEBUG_WARN_F("UpdateDownloader: Failed to move %s to backup (error %lu)", GAME_DLO_NAME, GetLastError());
             return false;
         }
-        DEBUG_INFO("UpdateDownloader: Moved mxbmrp3.dlo to backup");
+        DEBUG_INFO_F("UpdateDownloader: Moved %s to backup", GAME_DLO_NAME);
     }
 
     // Move the data directory
@@ -793,7 +802,12 @@ bool UpdateDownloader::backupExistingFiles(const std::string& pluginDir, const s
         if (!MoveFileA(dataSrc.c_str(), dataDst.c_str())) {
             DEBUG_WARN_F("UpdateDownloader: Failed to move mxbmrp3_data/ to backup (error %lu)", GetLastError());
             // Try to restore the .dlo we already moved
-            MoveFileA(dloDst.c_str(), dloSrc.c_str());
+            if (MoveFileA(dloDst.c_str(), dloSrc.c_str())) {
+                DEBUG_INFO_F("UpdateDownloader: Restored %s after failed data backup", GAME_DLO_NAME);
+            } else {
+                DEBUG_WARN_F("UpdateDownloader: CRITICAL - Failed to restore %s (error %lu) - DO NOT delete backup!",
+                    GAME_DLO_NAME, GetLastError());
+            }
             return false;
         }
         DEBUG_INFO("UpdateDownloader: Moved mxbmrp3_data/ to backup");
@@ -817,16 +831,16 @@ bool UpdateDownloader::restoreFromBackup(const std::string& pluginDir, const std
     deleteDirectoryRecursive(dataDir + "\\");
 
     // Move the .dlo file back from backup
-    std::string dloSrc = backupDir + "mxbmrp3.dlo";
-    std::string dloDst = pluginDir + "mxbmrp3.dlo";
+    std::string dloSrc = backupDir + GAME_DLO_NAME;
+    std::string dloDst = pluginDir + GAME_DLO_NAME;
     DWORD attrs = GetFileAttributesA(dloSrc.c_str());
     if (attrs != INVALID_FILE_ATTRIBUTES) {
         // Delete any partial .dlo that might have been extracted
         DeleteFileA(dloDst.c_str());
         if (MoveFileA(dloSrc.c_str(), dloDst.c_str())) {
-            DEBUG_INFO("UpdateDownloader: Restored mxbmrp3.dlo");
+            DEBUG_INFO_F("UpdateDownloader: Restored %s", GAME_DLO_NAME);
         } else {
-            DEBUG_WARN_F("UpdateDownloader: Failed to restore mxbmrp3.dlo (error %lu)", GetLastError());
+            DEBUG_WARN_F("UpdateDownloader: Failed to restore %s (error %lu)", GAME_DLO_NAME, GetLastError());
         }
     }
 
@@ -891,7 +905,7 @@ bool UpdateDownloader::verifyExtractedFiles(const std::string& pluginDir,
     return true;
 }
 
-// Check if a file should be skipped during extraction (docs not needed at runtime)
+// Check if a file should be skipped during extraction
 static bool shouldSkipFile(const std::string& filename) {
     // Skip documentation files - not needed for runtime
     if (filename == "LICENSE" ||
@@ -900,6 +914,18 @@ static bool shouldSkipFile(const std::string& filename) {
         filename == "THIRD_PARTY_LICENSES.md") {
         return true;
     }
+
+    // Skip DLO files that don't match the current game
+    // The ZIP may contain multiple game DLOs (mxbmrp3.dlo, mxbmrp3_gpb.dlo, etc.)
+    // We only extract the one that matches GAME_DLO_NAME
+    if (filename.size() >= 4 &&
+        filename.substr(filename.size() - 4) == ".dlo") {
+        if (filename != GAME_DLO_NAME) {
+            DEBUG_INFO_F("UpdateDownloader: Skipping %s (not for this game)", filename.c_str());
+            return true;
+        }
+    }
+
     return false;
 }
 
@@ -927,7 +953,8 @@ bool UpdateDownloader::extractAndInstall(const std::vector<char>& zipData, std::
         return false;
     }
 
-    DEBUG_INFO_F("UpdateDownloader: Extracting to %s", pluginDir.c_str());
+    DEBUG_INFO_F("UpdateDownloader: Target directory: %s", pluginDir.c_str());
+    DEBUG_INFO("UpdateDownloader: Scanning release...");
 
     // Initialize ZIP reader
     mz_zip_archive zip;
@@ -997,6 +1024,23 @@ bool UpdateDownloader::extractAndInstall(const std::vector<char>& zipData, std::
 
     DEBUG_INFO_F("UpdateDownloader: Will extract %zu files", filesToBackup.size());
 
+    // Early check: verify ZIP contains this game's DLO before doing any backup/extraction
+    // This prevents unnecessary backup operations if the ZIP is for a different game
+    bool hasGameDlo = false;
+    for (const auto& file : filesToBackup) {
+        if (file == GAME_DLO_NAME) {
+            hasGameDlo = true;
+            break;
+        }
+    }
+    if (!hasGameDlo) {
+        mz_zip_reader_end(&zip);
+        DEBUG_WARN_F("UpdateDownloader: ZIP does not contain %s - invalid release for this game!", GAME_DLO_NAME);
+        outError = "Release not for " GAME_NAME;
+        return false;
+    }
+    DEBUG_INFO_F("UpdateDownloader: Found %s in ZIP", GAME_DLO_NAME);
+
     // In debug mode, skip backup since we're extracting to an empty test directory
     std::string backupDir;
     if (!m_debugMode) {
@@ -1014,8 +1058,9 @@ bool UpdateDownloader::extractAndInstall(const std::vector<char>& zipData, std::
         // Backup existing files (moves entire mxbmrp3.dlo and mxbmrp3_data/ to backup)
         if (!backupExistingFiles(pluginDir, backupDir)) {
             mz_zip_reader_end(&zip);
-            cleanupBackup(backupDir);
-            outError = "Failed to backup existing files";
+            // DO NOT cleanupBackup here - the DLO might still be in backup if restore failed!
+            // The backup dir will be cleaned up on next successful update attempt.
+            outError = "Backup failed - try manual update";
             return false;
         }
 
@@ -1027,6 +1072,7 @@ bool UpdateDownloader::extractAndInstall(const std::vector<char>& zipData, std::
 
     // Extract step
     setStepStatus(Step::EXTRACT, StepStatus::IN_PROGRESS);
+    DEBUG_INFO("UpdateDownloader: Extracting files...");
 
     // Track what we've extracted for potential rollback
     std::vector<std::string> extractedFiles;
@@ -1105,30 +1151,22 @@ bool UpdateDownloader::extractAndInstall(const std::vector<char>& zipData, std::
         DEBUG_WARN_F("UpdateDownloader: Extraction failed: %s", extractError.c_str());
         if (!m_debugMode) {
             restoreFromBackup(pluginDir, backupDir, extractedFiles);
-            cleanupBackup(backupDir);
-        } else {
-            // In debug mode, just clean up extracted files
-            cleanupExtractedFiles(pluginDir, extractedFiles);
         }
+        // In debug mode, leave files in test dir - cleanup causes crashes
         outError = extractError;
         return false;
     }
 
-    // Extract complete
+    // Extract complete (DLO presence was verified before backup started)
     setStepStatus(Step::EXTRACT, StepStatus::COMPLETE);
 
     // Install step (verification)
     setStepStatus(Step::INSTALL, StepStatus::IN_PROGRESS);
 
-    // Verify all extracted files
-    if (!verifyExtractedFiles(pluginDir, expectedFiles)) {
+    // Verify all extracted files (skip in debug mode)
+    if (!m_debugMode && !verifyExtractedFiles(pluginDir, expectedFiles)) {
         DEBUG_WARN("UpdateDownloader: Verification failed, restoring backup");
-        if (!m_debugMode) {
-            restoreFromBackup(pluginDir, backupDir, extractedFiles);
-            cleanupBackup(backupDir);
-        } else {
-            cleanupExtractedFiles(pluginDir, extractedFiles);
-        }
+        restoreFromBackup(pluginDir, backupDir, extractedFiles);
         outError = "File verification failed";
         return false;
     }

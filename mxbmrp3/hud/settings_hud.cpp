@@ -21,6 +21,7 @@
 #include "../core/tracked_riders_manager.h"
 #include "../core/asset_manager.h"
 #include "../core/font_config.h"
+#include "../core/ui_config.h"
 #include "../core/plugin_data.h"
 #include "../core/tooltip_manager.h"
 #include "../handlers/draw_handler.h"
@@ -488,6 +489,11 @@ void SettingsHud::rebuildRenderData() {
 
     for (size_t orderIdx = 0; orderIdx < sizeof(tabDisplayOrder)/sizeof(tabDisplayOrder[0]); orderIdx++) {
         int i = tabDisplayOrder[orderIdx];
+
+        // Skip Records tab if records provider is not available (e.g., GP Bikes)
+        if (i == TAB_RECORDS && !m_records) {
+            continue;
+        }
 
         // Section headers (bold, primary color, not clickable)
         if (i == TAB_SECTION_GLOBAL) {
@@ -1171,9 +1177,9 @@ void SettingsHud::rebuildRenderData() {
 
         if (isTabHover) {
             // Show tab tooltip for hovered tab
-            const TabTooltip& tabInfo = TooltipManager::getInstance().getTabTooltip(m_hoveredTooltipId.c_str());
-            if (!tabInfo.tooltip.empty()) {
-                renderWrappedText(tabInfo.tooltip, ColorConfig::getInstance().getMuted());
+            const char* tabTooltip = TooltipManager::getInstance().getTabTooltip(m_hoveredTooltipId.c_str());
+            if (tabTooltip && tabTooltip[0] != '\0') {
+                renderWrappedText(std::string(tabTooltip), ColorConfig::getInstance().getMuted());
             }
         } else {
             // Show control tooltip
@@ -1184,9 +1190,9 @@ void SettingsHud::rebuildRenderData() {
         }
     } else if (!layoutCtx.currentTabId.empty()) {
         // Show tab tooltip (when not hovering)
-        const TabTooltip& tabInfo = TooltipManager::getInstance().getTabTooltip(layoutCtx.currentTabId.c_str());
-        if (!tabInfo.tooltip.empty()) {
-            renderWrappedText(tabInfo.tooltip, ColorConfig::getInstance().getMuted());
+        const char* tabTooltip = TooltipManager::getInstance().getTabTooltip(layoutCtx.currentTabId.c_str());
+        if (tabTooltip && tabTooltip[0] != '\0') {
+            renderWrappedText(std::string(tabTooltip), ColorConfig::getInstance().getMuted());
         }
     }
 
@@ -1638,7 +1644,8 @@ void SettingsHud::resetCurrentTab() {
             XInputReader::getInstance().setControllerIndex(0);
             if (m_speed) m_speed->setSpeedUnit(SpeedWidget::SpeedUnit::MPH);
             if (m_fuel) m_fuel->setFuelUnit(FuelWidget::FuelUnit::LITERS);
-            ColorConfig::getInstance().setGridSnapping(true);  // Reset grid snap
+            UiConfig::getInstance().setGridSnapping(true);  // Reset grid snap
+            UiConfig::getInstance().setScreenClamping(true);  // Reset screen clamp
             // Reset update checker
             UpdateChecker::getInstance().setEnabled(false);
             break;
@@ -2099,11 +2106,28 @@ const char* SettingsHud::getTooltipIdForRegion(ClickRegion::Type type, int activ
                 case ClickRegion::GAPBAR_FREEZE_UP:
                 case ClickRegion::GAPBAR_FREEZE_DOWN:
                     return "gap_bar.freeze";
-                case ClickRegion::GAPBAR_MARKER_TOGGLE:
-                    return "gap_bar.markers";
+                case ClickRegion::GAPBAR_MARKER_MODE_UP:
+                case ClickRegion::GAPBAR_MARKER_MODE_DOWN:
+                    return "gap_bar.marker_mode";
+                case ClickRegion::GAPBAR_ICON_UP:
+                case ClickRegion::GAPBAR_ICON_DOWN:
+                    return "gap_bar.icon";
+                case ClickRegion::GAPBAR_GAP_TEXT_TOGGLE:
+                    return "gap_bar.show_gap";
+                case ClickRegion::GAPBAR_GAP_BAR_TOGGLE:
+                    return "gap_bar.show_gap_bar";
                 case ClickRegion::GAPBAR_RANGE_UP:
                 case ClickRegion::GAPBAR_RANGE_DOWN:
                     return "gap_bar.range";
+                case ClickRegion::GAPBAR_WIDTH_UP:
+                case ClickRegion::GAPBAR_WIDTH_DOWN:
+                    return "gap_bar.width";
+                case ClickRegion::GAPBAR_MARKER_SCALE_UP:
+                case ClickRegion::GAPBAR_MARKER_SCALE_DOWN:
+                    return "gap_bar.marker_scale";
+                case ClickRegion::GAPBAR_LABEL_MODE_UP:
+                case ClickRegion::GAPBAR_LABEL_MODE_DOWN:
+                    return "gap_bar.labels";
                 default:
                     break;
             }

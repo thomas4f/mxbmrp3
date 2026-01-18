@@ -11,8 +11,8 @@
 DEFINE_HANDLER_SINGLETON(RaceClassificationHandler)
 
 void RaceClassificationHandler::handleRaceClassification(
-    SPluginsRaceClassification_t* psRaceClassification,
-    SPluginsRaceClassificationEntry_t* pasRaceClassificationEntry,
+    Unified::RaceClassificationData* psRaceClassification,
+    Unified::RaceClassificationEntry* pasRaceClassificationEntry,
     int iNumEntries)
 {
     HANDLER_NULL_CHECK(psRaceClassification);
@@ -23,9 +23,9 @@ void RaceClassificationHandler::handleRaceClassification(
     PluginData& pluginData = PluginData::getInstance();
 
     // Store current session time and state for real-time gap calculations
-    int currentTime = psRaceClassification->m_iSessionTime;
+    int currentTime = psRaceClassification->sessionTime;
     pluginData.setSessionTime(currentTime);
-    pluginData.setSessionState(psRaceClassification->m_iSessionState);
+    pluginData.setSessionState(psRaceClassification->sessionState);
 
     // Batch update all standings AND build classification order in single pass
     // This eliminates the duplicate iteration - both done in one tight loop
@@ -38,16 +38,16 @@ void RaceClassificationHandler::handleRaceClassification(
         // This is a time+laps race, check if overtime just started
         // Only detect when race is in progress (state 16), not during pre-start (256)
         // Pre-start can have negative sessionTime (countdown) which would falsely trigger this
-        if (psRaceClassification->m_iSessionState == 16 &&
-            sessionData.lastSessionTime > 0 && psRaceClassification->m_iSessionTime < 0 &&
+        if (psRaceClassification->sessionState == 16 &&
+            sessionData.lastSessionTime > 0 && psRaceClassification->sessionTime < 0 &&
             pasRaceClassificationEntry && iNumEntries > 0) {
             // Overtime just started! Capture leader's current lap
-            // m_iNumLaps is the lap currently being raced (1-indexed), not completed laps
-            const SPluginsRaceClassificationEntry_t& leader = pasRaceClassificationEntry[0];
-            int leaderCurrentLap = leader.m_iNumLaps;
+            // numLaps is the lap currently being raced (1-indexed), not completed laps
+            const Unified::RaceClassificationEntry& leader = pasRaceClassificationEntry[0];
+            int leaderCurrentLap = leader.numLaps;
 
             // Calculate finish lap: current lap + extra laps to complete
-            // Leader finishes when m_iNumLaps > finishLap (i.e., they've COMPLETED finishLap)
+            // Leader finishes when numLaps > finishLap (i.e., they've COMPLETED finishLap)
             int finishLap = leaderCurrentLap + sessionData.sessionNumLaps;
 
             DEBUG_INFO_F("[OVERTIME STARTED] leader on lap %d, finishLap=%d (+%d laps), sessionNumLaps=%d",
@@ -58,5 +58,5 @@ void RaceClassificationHandler::handleRaceClassification(
         }
     }
 
-    pluginData.setLastSessionTime(psRaceClassification->m_iSessionTime);
+    pluginData.setLastSessionTime(psRaceClassification->sessionTime);
 }

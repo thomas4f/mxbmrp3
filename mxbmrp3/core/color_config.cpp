@@ -99,7 +99,6 @@ void ColorConfig::resetToDefaults() {
     m_colors[static_cast<size_t>(ColorSlot::NEUTRAL)] = getDefaultColor(ColorSlot::NEUTRAL);
     m_colors[static_cast<size_t>(ColorSlot::NEGATIVE)] = getDefaultColor(ColorSlot::NEGATIVE);
     m_colors[static_cast<size_t>(ColorSlot::ACCENT)] = getDefaultColor(ColorSlot::ACCENT);
-    m_bGridSnapping = true;  // Grid snapping enabled by default
 
     DEBUG_INFO("ColorConfig: Reset to defaults");
 }

@@ -4,7 +4,7 @@
 // ============================================================================
 #pragma once
 
-#include "../vendor/piboso/mxb_api.h"
+#include "../game/unified_types.h"
 
 class SpectateHandler {
 public:
@@ -12,7 +12,7 @@ public:
 
     // Handle spectate vehicle selection callback
     // Returns 1 if selection changed, 0 otherwise
-    int handleSpectateVehicles(int iNumVehicles, SPluginsSpectateVehicle_t* pasVehicleData, int iCurSelection, int* piSelect);
+    int handleSpectateVehicles(int iNumVehicles, Unified::SpectateVehicle* pasVehicleData, int iCurSelection, int* piSelect);
 
     // Handle spectate camera selection callback
     // Returns 1 if selection changed, 0 otherwise

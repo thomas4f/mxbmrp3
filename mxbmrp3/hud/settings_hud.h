@@ -159,12 +159,22 @@ public:
             TIMING_GAP_RECORD_TOGGLE,  // Toggle "Record" as secondary chip (TimingHud)
             GAPBAR_FREEZE_UP,          // Increase freeze duration (GapBarHud)
             GAPBAR_FREEZE_DOWN,        // Decrease freeze duration (GapBarHud)
-            GAPBAR_MARKER_TOGGLE,      // Toggle position markers (GapBarHud)
-            GAPBAR_MODE_CYCLE,         // Unused (kept for compatibility)
+            GAPBAR_MARKER_MODE_UP,     // Cycle marker mode forward (Ghost/Opponents/Both)
+            GAPBAR_MARKER_MODE_DOWN,   // Cycle marker mode backward
+            GAPBAR_ICON_UP,            // Cycle marker icon forward (GapBarHud)
+            GAPBAR_ICON_DOWN,          // Cycle marker icon backward (GapBarHud)
+            GAPBAR_GAP_TEXT_TOGGLE,    // Toggle gap text visibility (GapBarHud)
             GAPBAR_RANGE_UP,           // Increase gap range (GapBarHud)
             GAPBAR_RANGE_DOWN,         // Decrease gap range (GapBarHud)
             GAPBAR_WIDTH_UP,           // Increase bar width (GapBarHud)
             GAPBAR_WIDTH_DOWN,         // Decrease bar width (GapBarHud)
+            GAPBAR_MARKER_SCALE_UP,    // Increase marker scale (GapBarHud)
+            GAPBAR_MARKER_SCALE_DOWN,  // Decrease marker scale (GapBarHud)
+            GAPBAR_LABEL_MODE_UP,      // Cycle label mode forward (Off/Position/RaceNum/Both)
+            GAPBAR_LABEL_MODE_DOWN,    // Cycle label mode backward
+            GAPBAR_GAP_BAR_TOGGLE,     // Toggle gap bar visualization (green/red bars)
+            GAPBAR_COLOR_MODE_UP,      // Cycle color mode forward (Uniform/Brand/Position)
+            GAPBAR_COLOR_MODE_DOWN,    // Cycle color mode backward
             COLOR_CYCLE_PREV,          // Cycle color backward (Appearance tab)
             COLOR_CYCLE_NEXT,          // Cycle color forward (Appearance tab)
             FONT_CATEGORY_PREV,        // Cycle font backward for category (Appearance tab)
@@ -172,6 +182,7 @@ public:
             SPEED_UNIT_TOGGLE,         // Toggle speed unit (mph/km/h)
             FUEL_UNIT_TOGGLE,          // Toggle fuel unit (L/gal)
             GRID_SNAP_TOGGLE,          // Toggle grid snapping for HUD positioning
+            SCREEN_CLAMP_TOGGLE,       // Toggle screen clamping for HUD positioning
             DROP_SHADOW_TOGGLE,        // Toggle drop shadow for text rendering
             UPDATE_CHECK_TOGGLE,       // Toggle automatic update checking
             PROFILE_CYCLE_DOWN,        // Cycle to previous profile (Practice/Qualify/Race/Spectate)

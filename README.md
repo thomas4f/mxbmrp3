@@ -1,4 +1,4 @@
-A customizable, [open-source](https://github.com/thomas4f/mxbmrp3) HUD plugin for MX Bikes displaying real-time race information and telemetry.
+A customizable, [open-source](https://github.com/thomas4f/mxbmrp3) HUD plugin for MX Bikes and GP Bikes displaying real-time race information and telemetry.
 
 ![MXBMRP3 HUD Screenshot](./mxbmrp3.gif)
 *Example HUD layouts. All elements are fully customizable.*
@@ -6,16 +6,23 @@ A customizable, [open-source](https://github.com/thomas4f/mxbmrp3) HUD plugin fo
 ### Features
 
 - Live race standings, track map, and proximity radar with approach alerts
-- Lap timing with splits, personal bests, gap-to-PB visualization, and online lap records
+- Lap timing with splits, personal bests, gap-to-PB visualization, and online lap records (MX Bikes)
 - Track specific riders with custom colors and icons across all HUDs
 - Controller rumble feedback with customizable effects (bumps, slide, spin, lockup, wheelie, etc.)
 - Telemetry visualization and compact info widgets
 - Drag-and-drop positioning with color themes and customizable hotkeys
 - Automatic profile switching for Practice, Qualify, Race, and Spectate sessions
 
+### Supported Games
+
+| Game | DLO File | Status |
+|------|----------|--------|
+| MX Bikes | `mxbmrp3.dlo` | Full support |
+| GP Bikes | `mxbmrp3_gpb.dlo` | Core features |
+
 ### Get Started
 
-Download and install the plugin to begin customizing your HUD. Most users should use the automatic installer. Use the ZIP for manual installation.
+Download and install the plugin to begin customizing your HUD.
 
 [![Download Installer](https://img.shields.io/badge/Download-Installer-green?style=for-the-badge)](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3-Setup.exe)
 [![Download ZIP](https://img.shields.io/badge/Download-ZIP-blue?style=for-the-badge)](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3.zip)
@@ -35,34 +42,35 @@ See [Installation](#installation) for setup instructions.
 ## Installation
 
 **Requirements:**
-- MX Bikes **Beta 20 or newer**
+- MX Bikes **Beta 20 or newer** / GP Bikes **Beta 18 or newer**
 - [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vc14/vc_redist.x64.exe) (the automatic installer will check for this)
 
 ### Automatic Installation
 
 1. Download the latest installer [`mxbmrp3-Setup.exe`](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3-Setup.exe)
 2. Run the installer - it will:
-   - Auto-detect your MX Bikes installation (Steam or standalone)
-   - Install to the correct plugins folder
+   - Auto-detect your MX Bikes and GP Bikes installations (Steam or standalone)
+   - Let you choose which games to install for
+   - Install to the correct plugins folder for each game
    - Check for and offer to install Visual C++ Redistributable if needed
    - Handle upgrades automatically (preserves your settings)
 
 ### Manual Installation
 
 1. Download the latest release archive [`mxbmrp3.zip`](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3.zip)
-2. Find your MX Bikes plugins folder:
-   - **Steam**: Right-click MX Bikes in your library → **Manage** → **Browse local files** → open `plugins`
-   - **Standalone**: Navigate to your MX Bikes installation folder (e.g., `C:\Games\MX Bikes\`) → open `plugins`
+2. Find your game's plugins folder:
+   - **Steam**: Right-click the game in your library → **Manage** → **Browse local files** → open `plugins`
+   - **Standalone**: Navigate to your game installation folder (e.g., `C:\Games\MX Bikes\` or `C:\Games\GP Bikes\`) → open `plugins`
 3. Extract the plugin files:
-   - Copy `mxbmrp3.dlo` to `[MX Bikes]/plugins/`
-   - Copy the `mxbmrp3_data/` folder to `[MX Bikes]/plugins/`
+   - Copy `mxbmrp3.dlo` (MX Bikes) or `mxbmrp3_gpb.dlo` (GP Bikes) to the `plugins/` folder
+   - Copy the `mxbmrp3_data/` folder to the `plugins/` folder
 
-   **Do NOT delete the existing game files** (`proxy64.dlo`, `proxy_udp64.dlo`, `xinput64.dli`) - these are native MX Bikes files, not old plugin versions.
+   **Do NOT delete the existing game files** (`proxy64.dlo`, `proxy_udp64.dlo`, `xinput64.dli`, or `telemetry64.dlo` for GP Bikes) - these are native game files, not old plugin versions.
 
-   Your directory should look like this after installation:
+   Your directory should look like this after installation (files vary slightly by game):
    ```
-   MX Bikes/
-   │   mxbikes.exe
+   [Game]/
+   │   mxbikes.exe / gpbikes.exe
    │   ...
    │
    └───plugins/
@@ -70,15 +78,17 @@ See [Installation](#installation) for setup instructions.
        │   ├── fonts/           ← Font files (.fnt)
        │   ├── textures/        ← Texture files (.tga)
        │   └── icons/           ← Icon files (.tga)
-       ├── mxbmrp3.dlo          ← Add this (from release)
+       ├── mxbmrp3.dlo          ← Add this (MX Bikes only)
+       ├── mxbmrp3_gpb.dlo      ← Add this (GP Bikes only)
        ├── proxy_udp64.dlo      ← Keep (native game file)
        ├── proxy64.dlo          ← Keep (native game file)
-       └── xinput64.dli         ← Keep (native game file)
+       ├── xinput64.dli         ← Keep (native game file)
+       └── telemetry64.dlo      ← Keep (GP Bikes only)
    ```
 
 ### After Installation
 
-Launch MX Bikes - the plugin will load automatically. Some elements are enabled by default and can be repositioned or configured via the settings menu. If nothing appears, see [Troubleshooting](#troubleshooting).
+Launch the game - the plugin will load automatically. Some elements are enabled by default and can be repositioned or configured via the settings menu. If nothing appears, see [Troubleshooting](#troubleshooting).
 
 ## Controls
 
@@ -134,7 +144,7 @@ All HUDs and widgets are configurable via the settings menu, with detailed per-o
 | **Pitboard** | Pitboard-style lap information display |
 | **Lap Log** | Historical lap times with PB indicators |
 | **Ideal Lap** | Best sector times and theoretical ideal lap |
-| **Records** | Online lap records (CBR or MXB-Ranked) with personal bests |
+| **Records** | Online lap records (CBR or MXB-Ranked) with personal bests (MX Bikes only) |
 | **Telemetry** | Throttle, brake, suspension graphs |
 | **Performance** | FPS and plugin CPU usage |
 | **Rumble** | Controller rumble effect visualization |
@@ -160,10 +170,19 @@ All HUDs and widgets are configurable via the settings menu, with detailed per-o
 
 ### Custom Assets
 
-Add custom fonts, textures, and icons by placing files in your MX Bikes **user data folder**:
+Add custom fonts, textures, and icons by placing files in your game's **user data folder**:
 
+**MX Bikes:**
 ```
 Documents/PiBoSo/MX Bikes/mxbmrp3/
+├── fonts/       ← Custom .fnt files
+├── textures/    ← Custom .tga textures
+└── icons/       ← Custom .tga icons
+```
+
+**GP Bikes:**
+```
+Documents/PiBoSo/GP Bikes/mxbmrp3/
 ├── fonts/       ← Custom .fnt files
 ├── textures/    ← Custom .tga textures
 └── icons/       ← Custom .tga icons
@@ -179,7 +198,10 @@ On game startup, the plugin syncs these files to the plugin's data directory (`p
 
 ### Data Files
 
-Plugin data is stored in `Documents/PiBoSo/MX Bikes/mxbmrp3/`:
+Plugin data is stored in the game's user data folder:
+
+**MX Bikes:** `Documents/PiBoSo/MX Bikes/mxbmrp3/`
+**GP Bikes:** `Documents/PiBoSo/GP Bikes/mxbmrp3/`
 
 | File | Description |
 |------|-------------|
@@ -190,15 +212,16 @@ Plugin data is stored in `Documents/PiBoSo/MX Bikes/mxbmrp3/`:
 ## Troubleshooting
 
 **HUD Not Appearing**
-- Check [Installation requirements](#installation) (MX Bikes Beta 20+, Visual C++ Redistributable)
-- Verify `mxbmrp3.dlo` and `mxbmrp3_data/` are in the correct `plugins/` folder. MX Bikes has two directories - the **game installation** (contains `mxbikes.exe`) and **user data** (`Documents\PiBoSo\MX Bikes\`). Plugins go in the game installation, not Documents.
+- Check [Installation requirements](#installation) (MX Bikes Beta 20+ / GP Bikes Beta 18+, Visual C++ Redistributable)
+- Verify the DLO file and `mxbmrp3_data/` are in the correct `plugins/` folder. Games have two directories - the **game installation** (contains the game .exe) and **user data** (`Documents\PiBoSo\[Game]\`). Plugins go in the game installation, not Documents.
+- For GP Bikes, ensure you're using `mxbmrp3_gpb.dlo`, not `mxbmrp3.dlo`
 
 **Black Screen on Game Startup**
 - Ensure the [Visual C++ Redistributable (x64)](https://aka.ms/vc14/vc_redist.x64.exe) is installed
 - Restart your computer after installing - the runtime may not load until after a reboot
 
 **Elements Appearing Twice (Ghost/Duplicate)**
-- Check for duplicate `mxbmrp3.dlo` files - only ONE should exist in your plugins folder
+- Check for duplicate DLO files - only ONE plugin DLO should exist in your plugins folder
 
 **Elements Overlapping**
 - Drag elements to reposition them
@@ -206,13 +229,13 @@ Plugin data is stored in `Documents/PiBoSo/MX Bikes/mxbmrp3/`:
 
 **Controller Not Working**
 - If you accidentally deleted `xinput64.dli` from the plugins folder, controller input may stop working
-- To restore: verify game files integrity (Steam) or reinstall MX Bikes
+- To restore: verify game files integrity (Steam) or reinstall the game
 
 For bug reports or feature requests, open an issue on [GitHub](https://github.com/thomas4f/mxbmrp3/issues).
 
 ## Development
 
-Built with C++17, Visual Studio 2022, MX Bikes Plugin API, and Claude Code.
+Built with C++17, Visual Studio 2022, Piboso Plugin API, and Claude Code.
 
 - [`CLAUDE.md`](CLAUDE.md) - Quick-start guide for developers and AI assistants
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) - Comprehensive technical documentation with diagrams
@@ -227,9 +250,13 @@ Built with C++17, Visual Studio 2022, MX Bikes Plugin API, and Claude Code.
    cd mxbmrp3
    ```
 2. Open `mxbmrp3.sln` in Visual Studio 2022
-3. Select **Release** configuration (or Debug for development)
+3. Select configuration:
+   - **MXB-Release** / **MXB-Debug** for MX Bikes
+   - **GPB-Release** / **GPB-Debug** for GP Bikes
 4. Build the solution (Ctrl+Shift+B)
-5. Output: `build/Release/mxbmrp3.dlo`
+5. Output:
+   - MX Bikes: `build/MXB-Release/mxbmrp3.dlo`
+   - GP Bikes: `build/GPB-Release/mxbmrp3_gpb.dlo`
 
 ### Roadmap
 

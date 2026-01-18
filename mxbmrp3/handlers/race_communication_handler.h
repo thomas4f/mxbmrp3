@@ -4,13 +4,13 @@
 // ============================================================================
 #pragma once
 
-#include "../vendor/piboso/mxb_api.h"
+#include "../game/unified_types.h"
 
 class RaceCommunicationHandler {
 public:
     static RaceCommunicationHandler& getInstance();
 
-    void handleRaceCommunication(SPluginsRaceCommunication_t* psRaceCommunication, int dataSize);
+    void handleRaceCommunication(Unified::RaceCommunicationData* psRaceCommunication);
 
 private:
     RaceCommunicationHandler() {}

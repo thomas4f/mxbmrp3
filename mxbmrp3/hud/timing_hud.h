@@ -11,7 +11,6 @@
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
-#include "../vendor/piboso/mxb_api.h"
 #include <chrono>
 
 // ============================================================================
@@ -40,7 +39,11 @@ enum GapTypeFlags : uint8_t {
 };
 
 // Gap type count (for iteration)
+#if GAME_HAS_RECORDS_PROVIDER
 inline constexpr int GAP_TYPE_COUNT = 5;
+#else
+inline constexpr int GAP_TYPE_COUNT = 4;  // No Record gap type without records provider
+#endif
 
 // Gap type names and abbreviations for UI
 struct GapTypeInfo {
@@ -55,7 +58,9 @@ inline constexpr GapTypeInfo GAP_TYPE_INFO[] = {
     { GAP_TO_ALLTIME, "Alltime",      "AT" },
     { GAP_TO_IDEAL,   "Ideal",        "ID" },
     { GAP_TO_OVERALL, "Overall",      "OA" },
+#if GAME_HAS_RECORDS_PROVIDER
     { GAP_TO_RECORD,  "Record",       "RC" }
+#endif
 };
 
 // ============================================================================
@@ -93,7 +98,7 @@ struct GapData {
 struct OfficialTimingData {
     int time;                 // Official split/lap time (ms)
     int lapNum;               // Lap number this data is for
-    int splitIndex;           // -1=lap complete, 0=S1, 1=S2
+    int splitIndex;           // -1=lap complete, 0=S1, 1=S2, 2=S3 (4-sector games)
     bool isInvalid;           // Was this an invalid lap?
 
     // Gap data for each comparison type (display names in quotes)
@@ -203,6 +208,7 @@ private:
     // Cached data to detect changes (accumulated times from CurrentLapData)
     int m_cachedSplit1;              // Accumulated time to split 1
     int m_cachedSplit2;              // Accumulated time to split 2
+    int m_cachedSplit3;              // Accumulated time to split 3 (4-sector games only)
     int m_cachedLastCompletedLapNum; // Last completed lap number (for detection)
     int m_cachedDisplayRaceNum;      // Track spectate target changes
     int m_cachedSession;             // Track session changes (new event)
@@ -212,6 +218,7 @@ private:
     int m_previousAllTimeLap;        // Previous all-time PB lap time
     int m_previousAllTimeSector1;    // Previous all-time PB sector 1
     int m_previousAllTimeS1PlusS2;   // Previous all-time PB sector 1+2
+    int m_previousAllTimeS1PlusS2PlusS3;  // Previous all-time PB sector 1+2+3 (4-sector games)
 
     // Display state
     bool m_isFrozen;                 // Currently showing official time (frozen)?

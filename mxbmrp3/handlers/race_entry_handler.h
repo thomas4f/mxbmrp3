@@ -1,17 +1,17 @@
 // ============================================================================
 // handlers/race_entry_handler.h
-// Processes race entry data (rider/bike information)
+// Processes race entry data (rider/vehicle information)
 // ============================================================================
 #pragma once
 
-#include "../vendor/piboso/mxb_api.h"
+#include "../game/unified_types.h"
 
 class RaceEntryHandler {
 public:
     static RaceEntryHandler& getInstance();
 
-    void handleRaceAddEntry(SPluginsRaceAddEntry_t* psRaceAddEntry);
-    void handleRaceRemoveEntry(SPluginsRaceRemoveEntry_t* psRaceRemoveEntry);
+    void handleRaceAddEntry(Unified::RaceEntryData* psRaceAddEntry);
+    void handleRaceRemoveEntry(int raceNum);
 
 private:
     RaceEntryHandler() {}

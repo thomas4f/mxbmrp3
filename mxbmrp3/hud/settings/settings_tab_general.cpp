@@ -11,6 +11,7 @@
 #include "../../core/hud_manager.h"
 #include "../../core/xinput_reader.h"
 #include "../../core/color_config.h"
+#include "../../core/ui_config.h"
 
 using namespace PluginConstants;
 
@@ -39,8 +40,16 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
 
         case ClickRegion::GRID_SNAP_TOGGLE:
             {
-                bool current = ColorConfig::getInstance().getGridSnapping();
-                ColorConfig::getInstance().setGridSnapping(!current);
+                bool current = UiConfig::getInstance().getGridSnapping();
+                UiConfig::getInstance().setGridSnapping(!current);
+                setDataDirty();
+            }
+            return true;
+
+        case ClickRegion::SCREEN_CLAMP_TOGGLE:
+            {
+                bool current = UiConfig::getInstance().getScreenClamping();
+                UiConfig::getInstance().setScreenClamping(!current);
                 setDataDirty();
             }
             return true;
@@ -206,6 +215,10 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         float currentX = ctx.controlX;
         ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
             Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::RUMBLE_CONTROLLER_DOWN, nullptr
+        ));
         currentX += cw * 2;
 
         // Show controller status
@@ -235,9 +248,8 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
 
         ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
             Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-
         ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            ctx.controlX, ctx.currentY, cw * (2 + CONTROLLER_VALUE_WIDTH + 2), ctx.lineHeightNormal,
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
             SettingsHud::ClickRegion::RUMBLE_CONTROLLER_UP, nullptr
         ));
 
@@ -335,7 +347,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
             Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
 
         // Display current state with < > cycle pattern (arrows=accent, value=primary)
-        bool gridSnapEnabled = colorConfig.getGridSnapping();
+        bool gridSnapEnabled = UiConfig::getInstance().getGridSnapping();
         float currentX = ctx.controlX;
 
         ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
@@ -356,6 +368,43 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
             currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
             SettingsHud::ClickRegion::GRID_SNAP_TOGGLE, nullptr
+        ));
+
+        ctx.currentY += ctx.lineHeightNormal;
+    }
+
+    // Screen clamp toggle
+    {
+        // Add tooltip row
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "general.screen_clamp"
+        ));
+
+        ctx.parent->addString("Screen Clamp", ctx.labelX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
+
+        // Display current state with < > cycle pattern (arrows=accent, value=primary)
+        bool screenClampEnabled = UiConfig::getInstance().getScreenClamping();
+        float currentX = ctx.controlX;
+
+        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::SCREEN_CLAMP_TOGGLE, nullptr
+        ));
+        currentX += cw * 2;
+
+        std::string formattedClamp = ctx.formatValue(screenClampEnabled ? "On" : "Off", VALUE_WIDTH, false);
+        ctx.parent->addString(formattedClamp.c_str(), currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), screenClampEnabled ? colorConfig.getPrimary() : colorConfig.getMuted(), ctx.fontSize);
+        currentX += cw * VALUE_WIDTH;
+
+        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::SCREEN_CLAMP_TOGGLE, nullptr
         ));
 
         ctx.currentY += ctx.lineHeightNormal;

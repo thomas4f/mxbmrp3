@@ -21,8 +21,10 @@ public:
     // Per-variant layout configuration
     // Stored in .ini as [GamepadWidget_Layout_N] sections
     struct LayoutConfig {
-        // Reference background width (texture is scaled to this)
+        // Reference background dimensions (texture aspect ratio)
+        // Defaults match variant 1 (Xbox); initDefaultLayouts() sets per-variant values
         float backgroundWidth = 750.0f;
+        float backgroundHeight = 630.0f;
 
         // Texture dimensions (on backgroundWidth reference)
         float triggerWidth = 89.0f, triggerHeight = 61.0f;
@@ -79,8 +81,7 @@ private:
                   const LayoutConfig& layout, bool isPressed);
 
     // Helper to add a face button with sprite texture (A/B/X/Y)
-    void addFaceButton(float centerX, float centerY, float size, bool isPressed,
-                       unsigned long labelColor, const char* label);
+    void addFaceButton(float centerX, float centerY, float size, bool isPressed, const char* label);
 
     // Helper to add a D-pad button with sprite texture
     // Direction: 0=up, 1=right, 2=down, 3=left
@@ -108,11 +109,7 @@ private:
     static constexpr float STICK_HEIGHT_LINES = 6.0f;  // Height in text lines
     static constexpr int STICK_SPACING_CHARS = 16;     // Spacing between sticks
 
-    // Button colors (Xbox-style)
-    static constexpr unsigned long COLOR_BUTTON_A = PluginUtils::makeColor(107, 201, 80);   // Green
-    static constexpr unsigned long COLOR_BUTTON_B = PluginUtils::makeColor(224, 62, 62);    // Red
-    static constexpr unsigned long COLOR_BUTTON_X = PluginUtils::makeColor(62, 147, 224);   // Blue
-    static constexpr unsigned long COLOR_BUTTON_Y = PluginUtils::makeColor(255, 185, 30);   // Yellow
+    // Button colors
     static constexpr unsigned long COLOR_TRIGGER = PluginUtils::makeColor(180, 180, 180);   // Light gray
     static constexpr unsigned long COLOR_BUMPER = PluginUtils::makeColor(160, 160, 160);    // Gray
     static constexpr unsigned long COLOR_DPAD = PluginUtils::makeColor(200, 200, 200);      // Light gray

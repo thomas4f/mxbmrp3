@@ -85,6 +85,7 @@ void PersonalBestManager::load(const char* savePath) {
                 entry.sector1 = value.value("sector1", -1);
                 entry.sector2 = value.value("sector2", -1);
                 entry.sector3 = value.value("sector3", -1);
+                entry.sector4 = value.value("sector4", -1);
                 entry.setupName = value.value("setupName", "");
                 entry.conditions = value.value("conditions", -1);
                 entry.timestamp = value.value("timestamp", static_cast<std::time_t>(0));
@@ -126,6 +127,7 @@ void PersonalBestManager::save() {
             entryJson["sector1"] = entry.sector1;
             entryJson["sector2"] = entry.sector2;
             entryJson["sector3"] = entry.sector3;
+            entryJson["sector4"] = entry.sector4;
             entryJson["setupName"] = entry.setupName;
             entryJson["conditions"] = entry.conditions;
             entryJson["timestamp"] = entry.timestamp;

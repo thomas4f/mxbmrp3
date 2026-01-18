@@ -30,12 +30,15 @@
 #include "../hud/map_hud.h"
 #include "../hud/radar_hud.h"
 #include "../hud/pitboard_hud.h"
+#if GAME_HAS_RECORDS_PROVIDER
 #include "../hud/records_hud.h"
+#endif
 #include "../hud/rumble_hud.h"
 #include "../hud/gamepad_widget.h"
 #include "../hud/lean_widget.h"
 #include "color_config.h"
 #include "font_config.h"
+#include "ui_config.h"
 #include "update_checker.h"
 #include "update_downloader.h"
 #include "xinput_reader.h"
@@ -117,11 +120,13 @@ namespace {
             constexpr const char* ALERT_DISTANCE = "alertDistance";
         }
 
+#if GAME_HAS_RECORDS_PROVIDER
         // RecordsHud-specific keys
         namespace Records {
             constexpr const char* PROVIDER = "provider";
             constexpr const char* RECORDS_TO_SHOW = "recordsToShow";
         }
+#endif
 
         // LapLogHud-specific keys
         namespace LapLog {
@@ -167,6 +172,7 @@ namespace {
             constexpr const char* DEBUG = "col_debug";
         }
 
+#if GAME_HAS_RECORDS_PROVIDER
         // RecordsHud columns
         namespace RecordsCols {
             constexpr const char* POS = "col_pos";
@@ -176,6 +182,7 @@ namespace {
             constexpr const char* SECTORS = "col_sectors";  // Combined S1+S2+S3
             constexpr const char* DATE = "col_date";
         }
+#endif
 
         // LapLogHud columns (only sectors are configurable)
         namespace LapLogCols {
@@ -449,6 +456,24 @@ namespace {
         return defaultVal;
     }
 
+    // GapBarHud::RiderColorMode
+    const char* gapBarRiderColorModeToString(GapBarHud::RiderColorMode mode) {
+        switch (mode) {
+            case GapBarHud::RiderColorMode::UNIFORM: return "UNIFORM";
+            case GapBarHud::RiderColorMode::BRAND: return "BRAND";
+            case GapBarHud::RiderColorMode::RELATIVE_POS: return "RELATIVE_POS";
+            default: return "RELATIVE_POS";
+        }
+    }
+
+    GapBarHud::RiderColorMode stringToGapBarRiderColorMode(const std::string& str, GapBarHud::RiderColorMode defaultVal = GapBarHud::RiderColorMode::RELATIVE_POS) {
+        if (str == "UNIFORM") return GapBarHud::RiderColorMode::UNIFORM;
+        if (str == "BRAND") return GapBarHud::RiderColorMode::BRAND;
+        if (str == "RELATIVE_POS") return GapBarHud::RiderColorMode::RELATIVE_POS;
+        DEBUG_WARN_F("Unknown GapBarRiderColorMode '%s', using default", str.c_str());
+        return defaultVal;
+    }
+
     // RadarHud::ProximityArrowMode
     const char* proximityArrowModeToString(RadarHud::ProximityArrowMode mode) {
         switch (mode) {
@@ -537,6 +562,7 @@ namespace {
         return defaultVal;
     }
 
+#if GAME_HAS_RECORDS_PROVIDER
     // RecordsHud::DataProvider
     const char* dataProviderToString(RecordsHud::DataProvider provider) {
         switch (provider) {
@@ -552,6 +578,7 @@ namespace {
         DEBUG_WARN_F("Unknown DataProvider '%s', using default", str.c_str());
         return defaultVal;
     }
+#endif
 
     // SpeedWidget::SpeedUnit
     const char* speedUnitToString(SpeedWidget::SpeedUnit unit) {
@@ -800,6 +827,7 @@ namespace {
         loadBitFromKey(settings, DEBUG, cols, StandingsHud::COL_DEBUG);
     }
 
+#if GAME_HAS_RECORDS_PROVIDER
     // RecordsHud: save columns as named keys (only optional columns)
     void saveRecordsColumns(SettingsManager::HudSettings& settings, uint32_t cols) {
         using namespace Keys::RecordsCols;
@@ -818,6 +846,7 @@ namespace {
         loadBitFromKey(settings, SECTORS, cols, RecordsHud::COL_SECTORS);
         loadBitFromKey(settings, DATE, cols, RecordsHud::COL_DATE);
     }
+#endif
 
     // LapLogHud: save columns (only sectors are configurable)
     void saveLapLogColumns(SettingsManager::HudSettings& settings, uint32_t cols) {
@@ -1217,6 +1246,7 @@ void SettingsManager::captureToProfile(const HudManager& hudManager, ProfileType
         cache["PitboardHud"] = std::move(settings);
     }
 
+#if GAME_HAS_RECORDS_PROVIDER
     // Capture RecordsHud (autoFetch is now global, in [General] section)
     {
         HudSettings settings;
@@ -1227,6 +1257,7 @@ void SettingsManager::captureToProfile(const HudManager& hudManager, ProfileType
         settings["recordsToShow"] = std::to_string(hud.m_recordsToShow);
         cache["RecordsHud"] = std::move(settings);
     }
+#endif
 
     // Capture LapLogHud
     {
@@ -1381,15 +1412,21 @@ void SettingsManager::captureToProfile(const HudManager& hudManager, ProfileType
         cache["TimingHud"] = std::move(settings);
     }
 
-    // GapBarHud with freeze, marker, and range settings
+    // GapBarHud with freeze, marker mode, icon, gap text, and range settings
     {
         HudSettings settings;
         const auto& hud = hudManager.getGapBarHud();
         captureBaseHudSettings(settings, hud);
         settings["freezeDuration"] = std::to_string(hud.m_freezeDurationMs);
-        settings["showMarkers"] = hud.m_showMarkers ? "1" : "0";
+        settings["markerMode"] = std::to_string(static_cast<int>(hud.m_markerMode));
+        settings["riderIconIndex"] = std::to_string(hud.m_riderIconIndex);
+        settings["showGapText"] = hud.m_showGapText ? "1" : "0";
+        settings["showGapBar"] = hud.m_showGapBar ? "1" : "0";
         settings["gapRange"] = std::to_string(hud.m_gapRangeMs);
         settings["barWidth"] = std::to_string(hud.m_barWidthPercent);
+        settings["markerScale"] = std::to_string(hud.m_fMarkerScale);
+        settings["labelMode"] = std::to_string(static_cast<int>(hud.m_labelMode));
+        settings["colorMode"] = gapBarRiderColorModeToString(hud.m_riderColorMode);
         cache["GapBarHud"] = std::move(settings);
     }
 
@@ -1554,6 +1591,7 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
         }
     }
 
+#if GAME_HAS_RECORDS_PROVIDER
     // Apply RecordsHud
     {
         auto it = cache.find("RecordsHud");
@@ -1578,6 +1616,7 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
             hud.setDataDirty();
         }
     }
+#endif
 
     // Apply LapLogHud
     {
@@ -1894,7 +1933,7 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
         }
     }
 
-    // Apply GapBarHud with freeze, marker, and range settings
+    // Apply GapBarHud with freeze, marker mode, icon, gap text, and range settings
     {
         auto it = cache.find("GapBarHud");
         if (it != cache.end()) {
@@ -1908,13 +1947,38 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
                         hud.m_freezeDurationMs = freeze;
                     }
                 }
-                // Try new key first, fall back to old key for compatibility
-                if (settings.count("showMarkers")) {
-                    hud.m_showMarkers = (settings.at("showMarkers") == "1");
-                } else if (settings.count("showMarker")) {
-                    hud.m_showMarkers = (settings.at("showMarker") == "1");
+                // New marker mode setting (replaces old showMarkers boolean)
+                if (settings.count("markerMode")) {
+                    int mode = std::stoi(settings.at("markerMode"));
+                    if (mode >= 0 && mode <= 2) {
+                        hud.m_markerMode = static_cast<GapBarHud::MarkerMode>(mode);
+                    }
                 }
-                // Try new key first, fall back to old key for compatibility
+                // Legacy compatibility: convert old showMarkers boolean to markerMode
+                else if (settings.count("showMarkers") || settings.count("showMarker")) {
+                    bool showMarkers = settings.count("showMarkers") ?
+                        (settings.at("showMarkers") == "1") :
+                        (settings.at("showMarker") == "1");
+                    // Old behavior: markers on = ghost mode, off = still ghost mode (markers always shown now)
+                    hud.m_markerMode = GapBarHud::MarkerMode::GHOST;
+                }
+                // Rider icon index
+                if (settings.count("riderIconIndex")) {
+                    int iconIdx = std::stoi(settings.at("riderIconIndex"));
+                    int maxIcon = static_cast<int>(AssetManager::getInstance().getIconCount());
+                    if (iconIdx >= 0 && iconIdx <= maxIcon) {
+                        hud.m_riderIconIndex = iconIdx;
+                    }
+                }
+                // Show gap text toggle
+                if (settings.count("showGapText")) {
+                    hud.m_showGapText = (settings.at("showGapText") == "1");
+                }
+                // Show gap bar toggle (green/red visualization)
+                if (settings.count("showGapBar")) {
+                    hud.m_showGapBar = (settings.at("showGapBar") == "1");
+                }
+                // Gap range
                 if (settings.count("gapRange")) {
                     int range = std::stoi(settings.at("gapRange"));
                     if (range >= GapBarHud::MIN_RANGE_MS && range <= GapBarHud::MAX_RANGE_MS) {
@@ -1931,6 +1995,24 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
                     if (width >= GapBarHud::MIN_WIDTH_PERCENT && width <= GapBarHud::MAX_WIDTH_PERCENT) {
                         hud.m_barWidthPercent = width;
                     }
+                }
+                // Marker scale
+                if (settings.count("markerScale")) {
+                    float scale = std::stof(settings.at("markerScale"));
+                    if (scale >= GapBarHud::MIN_MARKER_SCALE && scale <= GapBarHud::MAX_MARKER_SCALE) {
+                        hud.m_fMarkerScale = scale;
+                    }
+                }
+                // Label mode
+                if (settings.count("labelMode")) {
+                    int mode = std::stoi(settings.at("labelMode"));
+                    if (mode >= 0 && mode <= 3) {
+                        hud.m_labelMode = static_cast<GapBarHud::LabelMode>(mode);
+                    }
+                }
+                // Color mode (string format, with backwards compatibility for integer format)
+                if (settings.count("colorMode")) {
+                    hud.m_riderColorMode = stringToGapBarRiderColorMode(settings.at("colorMode"));
                 }
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("GapBarHud: Failed to parse settings: %s", e.what());
@@ -2075,7 +2157,8 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
 
     // Write General section (global preferences)
     file << "[General]\n";
-    file << "gridSnapping=" << (ColorConfig::getInstance().getGridSnapping() ? 1 : 0) << "\n";
+    file << "gridSnapping=" << (UiConfig::getInstance().getGridSnapping() ? 1 : 0) << "\n";
+    file << "screenClamping=" << (UiConfig::getInstance().getScreenClamping() ? 1 : 0) << "\n";
     file << "dropShadow=" << (ColorConfig::getInstance().getDropShadow() ? 1 : 0) << "\n";
     // Save update mode as string (only OFF and NOTIFY are supported)
     const char* updateModeStr = "off";
@@ -2095,7 +2178,10 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     file << "controller=" << XInputReader::getInstance().getRumbleConfig().controllerIndex << "\n";
     file << "speedUnit=" << speedUnitToString(hudManager.getSpeedWidget().m_speedUnit) << "\n";
     file << "fuelUnit=" << fuelUnitToString(hudManager.getFuelWidget().m_fuelUnit) << "\n";
-    file << "recordsAutoFetch=" << (hudManager.getRecordsHud().m_bAutoFetch ? 1 : 0) << "\n\n";
+#if GAME_HAS_RECORDS_PROVIDER
+    file << "recordsAutoFetch=" << (hudManager.getRecordsHud().m_bAutoFetch ? 1 : 0) << "\n";
+#endif
+    file << "\n";
 
     // Write Advanced section (power-user settings)
     file << "[Advanced]\n";
@@ -2105,8 +2191,11 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     file << "speedoNeedleColor=" << PluginUtils::formatColorHex(hudManager.getSpeedoWidget().getNeedleColor()) << "\n";
     file << "tachoNeedleColor=" << PluginUtils::formatColorHex(hudManager.getTachoWidget().getNeedleColor()) << "\n";
     file << "leanArcFillColor=" << PluginUtils::formatColorHex(hudManager.getLeanWidget().getArcFillColor()) << "\n";
+#if GAME_HAS_RECORDS_PROVIDER
     file << "recordsShowFooter=" << (hudManager.getRecordsHud().m_bShowFooter ? 1 : 0) << "\n";
+#endif
     file << "standingsTopPositions=" << hudManager.getStandingsHud().m_topPositionsCount << "\n";
+    file << "standingsUseAccentHighlight=" << (hudManager.getStandingsHud().m_bUseAccentForHighlight ? 1 : 0) << "\n";
     file << "dropShadowOffsetX=" << ColorConfig::getInstance().getDropShadowOffsetX() << "\n";
     file << "dropShadowOffsetY=" << ColorConfig::getInstance().getDropShadowOffsetY() << "\n";
     file << "dropShadowColor=" << PluginUtils::formatColorHex(ColorConfig::getInstance().getDropShadowColor()) << "\n\n";
@@ -2421,7 +2510,9 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
         if (currentHudName == "General") {
             try {
                 if (key == "gridSnapping") {
-                    ColorConfig::getInstance().setGridSnapping(std::stoi(value) != 0);
+                    UiConfig::getInstance().setGridSnapping(std::stoi(value) != 0);
+                } else if (key == "screenClamping") {
+                    UiConfig::getInstance().setScreenClamping(std::stoi(value) != 0);
                 } else if (key == "dropShadow") {
                     ColorConfig::getInstance().setDropShadow(std::stoi(value) != 0);
                 } else if (key == "updateMode") {
@@ -2452,9 +2543,12 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                     hudManager.getSpeedWidget().m_speedUnit = stringToSpeedUnit(value);
                 } else if (key == "fuelUnit") {
                     hudManager.getFuelWidget().m_fuelUnit = stringToFuelUnit(value);
-                } else if (key == "recordsAutoFetch") {
+                }
+#if GAME_HAS_RECORDS_PROVIDER
+                else if (key == "recordsAutoFetch") {
                     hudManager.getRecordsHud().m_bAutoFetch = (std::stoi(value) != 0);
                 }
+#endif
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("General: Failed to parse settings: %s", e.what());
             }
@@ -2467,7 +2561,9 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                 if (key == "developerMode") {
                     m_developerMode = (std::stoi(value) != 0);
                 } else if (key == "updateDebugMode") {
-                    UpdateChecker::getInstance().setDebugMode(std::stoi(value) != 0);
+                    bool debugMode = (std::stoi(value) != 0);
+                    UpdateChecker::getInstance().setDebugMode(debugMode);
+                    UpdateDownloader::getInstance().setDebugMode(debugMode);
                 } else if (key == "mapPixelSpacing") {
                     hudManager.getMapHud().setPixelSpacing(std::stof(value));
                 } else if (key == "speedoNeedleColor") {
@@ -2476,13 +2572,19 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                     hudManager.getTachoWidget().setNeedleColor(PluginUtils::parseColorHex(value));
                 } else if (key == "leanArcFillColor") {
                     hudManager.getLeanWidget().setArcFillColor(PluginUtils::parseColorHex(value));
-                } else if (key == "recordsShowFooter") {
+                }
+#if GAME_HAS_RECORDS_PROVIDER
+                else if (key == "recordsShowFooter") {
                     hudManager.getRecordsHud().m_bShowFooter = (std::stoi(value) != 0);
-                } else if (key == "standingsTopPositions") {
+                }
+#endif
+                else if (key == "standingsTopPositions") {
                     int topPos = std::stoi(value);
                     // Clamp to valid range (0 to MAX_TOP_POSITIONS)
                     topPos = std::max(0, std::min(topPos, static_cast<int>(StandingsHud::MAX_TOP_POSITIONS)));
                     hudManager.getStandingsHud().m_topPositionsCount = topPos;
+                } else if (key == "standingsUseAccentHighlight") {
+                    hudManager.getStandingsHud().m_bUseAccentForHighlight = (std::stoi(value) != 0);
                 } else if (key == "dropShadowOffsetX") {
                     ColorConfig::getInstance().setDropShadowOffsetX(std::stof(value));
                 } else if (key == "dropShadowOffsetY") {

@@ -2,16 +2,18 @@
 
 ## Read This First
 
-This is a **racing simulator HUD plugin** for MX Bikes (motocross game). It's a DLL plugin written in C++ using the game's proprietary API.
+This is a **racing simulator HUD plugin** for Piboso racing games (MX Bikes, GP Bikes, WRS, KRP). It's a DLL plugin written in C++ using each game's proprietary API, with a shared core that works across all supported games.
 
-**For deep technical details:** See [`ARCHITECTURE.md`](ARCHITECTURE.md) (comprehensive documentation with mermaid diagrams, component descriptions, dependency graphs). This file is a quick-start guide.
+**For deep technical details:** See [`ARCHITECTURE.md`](ARCHITECTURE.md) (comprehensive documentation with mermaid diagrams, component descriptions, dependency graphs, multi-game architecture). This file is a quick-start guide.
 
 ## Quick Architecture
 
 ```
-MX Bikes Game Engine
+Game Engine (MX Bikes / GP Bikes / WRS / KRP)
     ↓ (callbacks via plugin API)
-plugin_manager.cpp (entry point)
+mxb_api.cpp / gpb_api.cpp (per-game DLL exports)
+    ↓ (converts to unified types via adapters)
+PluginManager (receives unified types only)
     ↓
 PluginData (singleton - caches all game state)
     ↓ (notifies on data changes)
@@ -32,6 +34,23 @@ Game Engine (renders quads/strings)
 - `FontConfig` - User-configurable font categories (Title, Normal, Strong, Marker, Small)
 - `ColorConfig` - User-configurable color palette
 
+## Multi-Game Support
+
+The plugin supports multiple Piboso games from a single codebase:
+
+| Game | Config | Output | Status |
+|------|--------|--------|--------|
+| MX Bikes | `MXB-Release` | `mxbmrp3.dlo` | ✅ Full support |
+| GP Bikes | `GPB-Release` | `mxbmrp3_gpb.dlo` | ✅ Core features |
+| WRS | - | `wrsmrp3.dlo` | ⏳ Stubbed |
+| KRP | - | `krpmrp3.dlo` | ⏳ Stubbed |
+
+**Translation Layer:**
+- `game/unified_types.h` - Game-agnostic data structures (`Unified::` namespace)
+- `game/game_config.h` - Compile-time game selection, feature macros
+- `game/adapters/*_adapter.h` - Convert game structs → unified types
+- `vendor/piboso/*_api.cpp` - Per-game DLL exports
+
 ## Build & Test
 
 **⚠️ IMPORTANT - Build Environment:**
@@ -40,14 +59,26 @@ Game Engine (renders quads/strings)
 - Claude Code often runs in Linux - you cannot build this project there
 - Instead: read code, make edits, commit changes, and let Windows users build
 
+**⚠️ IMPORTANT - Shell Commands:**
+- The user runs on **Windows**, not Linux
+- When providing shell commands for the user to run, use Windows syntax:
+  - Use `&` instead of `&&` for chaining commands (or provide separate commands)
+  - Use backslashes `\` for paths, or forward slashes `/` (git accepts both)
+  - Example: `git fetch origin & git reset --hard origin/branch-name`
+
 **Build Instructions (Windows only):**
 - **Build**: Open `mxbmrp3.sln` in Visual Studio 2022 (C++17, v143 toolset)
-- **Platform**: x64 only (MX Bikes is 64-bit only)
-- **Output**: Builds to `build/Release/mxbmrp3.dlo` (not .dll - MX Bikes uses .dlo extension)
-- **Deploy**: Copy `mxbmrp3.dlo` to `MX Bikes/plugins/` folder
-- **Debug**: Use Debug build configuration (enables DEBUG_INFO macros automatically)
+- **Platform**: x64 only (all Piboso games are 64-bit)
+- **Configurations**:
+  - `MXB-Debug` / `MXB-Release` → `build/MXB-Release/mxbmrp3.dlo`
+  - `GPB-Debug` / `GPB-Release` → `build/GPB-Release/mxbmrp3_gpb.dlo`
+- **Deploy**: Copy `.dlo` to game's `plugins/` folder
+- **Debug**: Use Debug configuration (enables DEBUG_INFO macros automatically)
 
 ## Important Patterns & Constraints
+
+### Performance Target: 240fps
+The plugin must run efficiently at **240fps** (4.17ms frame budget). Many competitive players use high refresh rate monitors. Avoid per-frame allocations, unnecessary string operations, and complex calculations in hot paths like `Draw()` and `RunTelemetry()`.
 
 ### DO:
 - Use RAII (smart pointers, no raw `new`/`delete`)
@@ -89,7 +120,7 @@ Full HUDs (StandingsHud, LapLogHud, PitboardHud, TimingHud, etc.) have:
 - More configuration options
 
 **Handler-to-API Event Mapping**
-Each handler corresponds to specific MX Bikes API callback(s):
+Each handler corresponds to game API callback(s), but receives unified types:
 - Run handlers (RunHandler, RunLapHandler, etc.) = player-only events
 - Race handlers (RaceEventHandler, RaceLapHandler, etc.) = multiplayer/all riders
 - See ARCHITECTURE.md for full mapping
@@ -118,18 +149,25 @@ Requires game engine to run. Manual testing in-game is current workflow.
 
 ### Working with Game API Events
 When implementing event handlers or debugging timing/lap data:
-- **Check the API header**: `mxbmrp3/vendor/piboso/mxb_api.h`
+- **Check the API headers**: `mxbmrp3/vendor/piboso/mxb_api.h`, `gpb_api.h`, etc.
+- **Unified types**: Handlers receive `Unified::*` types, not raw game structs
 - **Use cases:**
   - Understanding field indexing (0-based vs 1-based) - e.g., lap numbers, split indices
-  - Clarifying field meanings in event structs (`SPluginsRaceLap_t`, `SPluginsRaceSplit_t`, etc.)
+  - Clarifying field meanings in event structs
   - Determining data types, value ranges, and validation requirements
 - **Example:** When displaying lap numbers, the API uses 0-based indexing internally (`m_iLapNum=0` for first lap) but UI typically shows 1-based (display as "L1")
 - **Tip:** Many timing/position issues come from misunderstanding the API contract - always verify assumptions against the header
 
+### Adding Support for a New Game Feature
+1. Add field to appropriate `Unified::` struct in `game/unified_types.h`
+2. Add conversion in each adapter (`game/adapters/*_adapter.h`)
+3. Add feature flag to `game/game_config.h` if game-specific
+4. Update handlers/HUDs to use the new field
+
 ## Files You'll Likely Need
 
 **Core:**
-- `mxbmrp3/core/plugin_manager.cpp` - Plugin entry point
+- `mxbmrp3/core/plugin_manager.cpp` - Plugin coordinator (receives unified types)
 - `mxbmrp3/core/plugin_data.h/.cpp` - Game state cache
 - `mxbmrp3/core/hud_manager.h/.cpp` - HUD ownership
 - `mxbmrp3/core/asset_manager.h/.cpp` - Dynamic asset discovery (with user override support)
@@ -138,6 +176,14 @@ When implementing event handlers or debugging timing/lap data:
 - `mxbmrp3/core/update_checker.h/.cpp` - GitHub update checker
 - `mxbmrp3/core/update_downloader.h/.cpp` - Update download and installation
 - `mxbmrp3/core/tooltip_manager.h` - UI tooltip management (header-only)
+
+**Multi-Game Layer:**
+- `mxbmrp3/game/unified_types.h` - Game-agnostic data structures
+- `mxbmrp3/game/game_config.h` - Compile-time game selection
+- `mxbmrp3/game/adapters/mxbikes_adapter.h` - MX Bikes type conversion
+- `mxbmrp3/game/adapters/gpbikes_adapter.h` - GP Bikes type conversion
+- `mxbmrp3/vendor/piboso/mxb_api.cpp` - MX Bikes DLL exports
+- `mxbmrp3/vendor/piboso/gpb_api.cpp` - GP Bikes DLL exports
 
 **HUD Base:**
 - `mxbmrp3/hud/base_hud.h/.cpp` - Base class for all HUDs

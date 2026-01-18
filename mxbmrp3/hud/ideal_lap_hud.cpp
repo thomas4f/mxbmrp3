@@ -13,6 +13,7 @@
 #include "../core/plugin_constants.h"
 #include "../core/plugin_data.h"
 #include "../core/color_config.h"
+#include "../game/game_config.h"
 
 using namespace PluginConstants;
 
@@ -49,7 +50,7 @@ bool IdealLapHud::handlesDataType(DataChangeType dataType) const {
 
 int IdealLapHud::getEnabledRowCount() const {
     int count = 0;
-    if (m_enabledRows & ROW_SECTORS) count += 3;  // S1, S2, S3
+    if (m_enabledRows & ROW_SECTORS) count += GAME_SECTOR_COUNT;  // S1, S2, S3 (+ S4 for 4-sector games)
     if (m_enabledRows & ROW_LAPS) count += 3;     // Last, Best, Ideal
     return count;
 }
@@ -182,6 +183,7 @@ void IdealLapHud::rebuildRenderData() {
     int idealS1 = idealLapData ? idealLapData->bestSector1 : -1;
     int idealS2 = idealLapData ? idealLapData->bestSector2 : -1;
     int idealS3 = idealLapData ? idealLapData->bestSector3 : -1;
+    int idealS4 = idealLapData ? idealLapData->bestSector4 : -1;  // Only valid for 4-sector games
     int idealLapTime = idealLapData ? idealLapData->getIdealLapTime() : -1;
 
     // Calculate current sector times from current lap (accumulated times)
@@ -198,6 +200,7 @@ void IdealLapHud::rebuildRenderData() {
     int prevBestS1 = idealLapData ? idealLapData->previousBestSector1 : -1;
     int prevBestS2 = idealLapData ? idealLapData->previousBestSector2 : -1;
     int prevBestS3 = idealLapData ? idealLapData->previousBestSector3 : -1;
+    int prevBestS4 = idealLapData ? idealLapData->previousBestSector4 : -1;  // Only valid for 4-sector games
 
     // Helper for adding a row
     // Shows the ideal time and gap from current to ideal
@@ -267,11 +270,20 @@ void IdealLapHud::rebuildRenderData() {
     // So S3 gap column always shows placeholder (actual S3 gap visible in last lap row)
     addRow(showSectors, "S3", idealS3, -1, prevBestS3);
 
+#if GAME_SECTOR_COUNT >= 4
+    // S4: Show ideal S4 (4-sector games like GP Bikes only)
+    // Like S3, S4 is never "crossed" before lap completion
+    addRow(showSectors, "S4", idealS4, -1, prevBestS4);
+#endif
+
     // Calculate previous ideal lap time (sum of previous best sectors)
     // Used to show improvement when beating the ideal
     int prevIdealLapTime = -1;
     if (prevBestS1 > 0 && prevBestS2 > 0 && prevBestS3 > 0) {
         prevIdealLapTime = prevBestS1 + prevBestS2 + prevBestS3;
+#if GAME_SECTOR_COUNT >= 4
+        if (prevBestS4 > 0) prevIdealLapTime += prevBestS4;
+#endif
     }
 
     // Helper for lap rows (Last/Best) - shows actual lap time and gap to ideal

@@ -4,13 +4,13 @@
 // ============================================================================
 #pragma once
 
-#include "../vendor/piboso/mxb_api.h"
+#include "../game/unified_types.h"
 
 class RaceVehicleDataHandler {
 public:
     static RaceVehicleDataHandler& getInstance();
 
-    void handleRaceVehicleData(SPluginsRaceVehicleData_t* psRaceVehicleData);
+    void handleRaceVehicleData(Unified::RaceVehicleData* psRaceVehicleData);
 
 private:
     RaceVehicleDataHandler() = default;

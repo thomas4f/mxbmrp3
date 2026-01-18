@@ -1,6 +1,6 @@
 // ============================================================================
 // core/plugin_data.h
-// Central data store for all game state received from MX Bikes API
+// Central data store for all game state received from the game API
 // ============================================================================
 #pragma once
 
@@ -13,7 +13,8 @@
 #include <cstring>
 #include <chrono>
 
-#include "../vendor/piboso/mxb_api.h"  // For SPluginsRaceClassificationEntry_t
+#include "../game/game_config.h"      // For SPluginQuad_t, SPluginString_t (via correct game API)
+#include "../game/unified_types.h"    // For Unified::RaceClassificationEntry
 #include "plugin_constants.h"  // For Placeholders namespace
 
 // Forward declarations
@@ -345,28 +346,32 @@ struct IdealLapData {
     int lastLapSector1;  // milliseconds - last completed lap sector 1 time
     int lastLapSector2;  // milliseconds - last completed lap sector 2 time
     int lastLapSector3;  // milliseconds - last completed lap sector 3 time
+    int lastLapSector4;  // milliseconds - last completed lap sector 4 time (GP Bikes only)
     int bestSector1;     // milliseconds - best sector 1 time across all laps
     int bestSector2;     // milliseconds - best sector 2 time across all laps
     int bestSector3;     // milliseconds - best sector 3 time across all laps
+    int bestSector4;     // milliseconds - best sector 4 time across all laps (GP Bikes only)
 
     // Previous PB data (for comparison when new PB is set)
     int previousBestLapTime;     // milliseconds - previous personal best lap time
     int previousBestSector1;     // milliseconds - previous PB sector 1 time
     int previousBestSector2;     // milliseconds - previous PB sector 2 time
     int previousBestSector3;     // milliseconds - previous PB sector 3 time
+    int previousBestSector4;     // milliseconds - previous PB sector 4 time (GP Bikes only)
 
     // Previous ideal sector data (for comparison when new best sector is set)
     int previousIdealSector1;    // milliseconds - previous best sector 1 time
     int previousIdealSector2;    // milliseconds - previous best sector 2 time
     int previousIdealSector3;    // milliseconds - previous best sector 3 time
+    int previousIdealSector4;    // milliseconds - previous best sector 4 time (GP Bikes only)
 
     IdealLapData() : lastCompletedLapNum(-1), lastLapTime(-1),
-                        lastLapSector1(-1), lastLapSector2(-1), lastLapSector3(-1),
-                        bestSector1(-1), bestSector2(-1), bestSector3(-1),
+                        lastLapSector1(-1), lastLapSector2(-1), lastLapSector3(-1), lastLapSector4(-1),
+                        bestSector1(-1), bestSector2(-1), bestSector3(-1), bestSector4(-1),
                         previousBestLapTime(-1), previousBestSector1(-1),
-                        previousBestSector2(-1), previousBestSector3(-1),
+                        previousBestSector2(-1), previousBestSector3(-1), previousBestSector4(-1),
                         previousIdealSector1(-1), previousIdealSector2(-1),
-                        previousIdealSector3(-1) {}
+                        previousIdealSector3(-1), previousIdealSector4(-1) {}
 
     void clear() {
         lastCompletedLapNum = -1;
@@ -374,30 +379,40 @@ struct IdealLapData {
         lastLapSector1 = -1;
         lastLapSector2 = -1;
         lastLapSector3 = -1;
+        lastLapSector4 = -1;
         bestSector1 = -1;
         bestSector2 = -1;
         bestSector3 = -1;
+        bestSector4 = -1;
         previousBestLapTime = -1;
         previousBestSector1 = -1;
         previousBestSector2 = -1;
         previousBestSector3 = -1;
+        previousBestSector4 = -1;
         previousIdealSector1 = -1;
         previousIdealSector2 = -1;
         previousIdealSector3 = -1;
+        previousIdealSector4 = -1;
     }
 
     // Get previous ideal lap time (sum of previous best sectors)
+    // For 3-sector games: S1+S2+S3, for 4-sector games: S1+S2+S3+S4
     int getPreviousIdealLapTime() const {
         if (previousIdealSector1 > 0 && previousIdealSector2 > 0 && previousIdealSector3 > 0) {
-            return previousIdealSector1 + previousIdealSector2 + previousIdealSector3;
+            int total = previousIdealSector1 + previousIdealSector2 + previousIdealSector3;
+            if (previousIdealSector4 > 0) total += previousIdealSector4;
+            return total;
         }
         return -1;
     }
 
     // Get ideal lap time (sum of best sectors)
+    // For 3-sector games: S1+S2+S3, for 4-sector games: S1+S2+S3+S4
     int getIdealLapTime() const {
         if (bestSector1 > 0 && bestSector2 > 0 && bestSector3 > 0) {
-            return bestSector1 + bestSector2 + bestSector3;
+            int total = bestSector1 + bestSector2 + bestSector3;
+            if (bestSector4 > 0) total += bestSector4;
+            return total;
         }
         return -1;
     }
@@ -409,15 +424,16 @@ struct LapLogEntry {
     int sector1;      // milliseconds - sector 1 time
     int sector2;      // milliseconds - sector 2 time
     int sector3;      // milliseconds - sector 3 time
+    int sector4;      // milliseconds - sector 4 time (GP Bikes only, -1 if N/A)
     int lapTime;      // milliseconds - total lap time
     bool isValid;     // false if lap was invalid
     bool isComplete;  // true if lap is completed, false if in progress
 
-    LapLogEntry() : lapNum(-1), sector1(-1), sector2(-1), sector3(-1),
+    LapLogEntry() : lapNum(-1), sector1(-1), sector2(-1), sector3(-1), sector4(-1),
                     lapTime(-1), isValid(true), isComplete(false) {}
 
-    LapLogEntry(int lap, int s1, int s2, int s3, int total, bool valid, bool complete)
-        : lapNum(lap), sector1(s1), sector2(s2), sector3(s3),
+    LapLogEntry(int lap, int s1, int s2, int s3, int s4, int total, bool valid, bool complete)
+        : lapNum(lap), sector1(s1), sector2(s2), sector3(s3), sector4(s4),
           lapTime(total), isValid(valid), isComplete(complete) {}
 };
 
@@ -631,7 +647,7 @@ public:
     // Current lap and ideal lap management (per-rider)
     void updateCurrentLapSplit(int raceNum, int lapNum, int splitIndex, int accumulatedTime);
     void setCurrentLapNumber(int raceNum, int lapNum);  // Initialize lap number for next lap
-    void updateIdealLap(int raceNum, int completedLapNum, int lapTime, int sector1, int sector2, int sector3, bool isValid = true);
+    void updateIdealLap(int raceNum, int completedLapNum, int lapTime, int sector1, int sector2, int sector3, int sector4, bool isValid = true);
     void clearIdealLap(int raceNum);
     void clearAllIdealLap();  // Clear all riders' ideal lap data
     const CurrentLapData* getCurrentLapData(int raceNum) const;  // Returns nullptr if no data
@@ -706,7 +722,7 @@ public:
     // Standings management
     void updateStandings(int raceNum, int state, int bestLap, int bestLapNum,
         int numLaps, int gap, int gapLaps, int penalty, int pit, bool notify);
-    void batchUpdateStandings(SPluginsRaceClassificationEntry_t* entries, int numEntries);
+    void batchUpdateStandings(Unified::RaceClassificationEntry* entries, int numEntries);
     void clearStandings();
     const std::unordered_map<int, StandingsData>& getStandings() const { return m_standings; }  // Collection (never null)
     const StandingsData* getStanding(int raceNum) const;  // Per-rider (nullable)

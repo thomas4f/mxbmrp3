@@ -8,6 +8,8 @@
 #include "timing_hud.h"
 #include "records_hud.h"
 
+#include "../game/game_config.h"
+
 #include <cstdio>
 #include <cmath>
 #include <string>
@@ -36,6 +38,7 @@ TimingHud::TimingHud()
     , m_layoutVertical(false)
     , m_cachedSplit1(-1)
     , m_cachedSplit2(-1)
+    , m_cachedSplit3(-1)
     , m_cachedLastCompletedLapNum(-1)
     , m_cachedDisplayRaceNum(-1)
     , m_cachedSession(-1)
@@ -43,6 +46,7 @@ TimingHud::TimingHud()
     , m_previousAllTimeLap(-1)
     , m_previousAllTimeSector1(-1)
     , m_previousAllTimeS1PlusS2(-1)
+    , m_previousAllTimeS1PlusS2PlusS3(-1)
     , m_isFrozen(false)
 {
     // One-time setup
@@ -113,6 +117,7 @@ void TimingHud::update() {
         if (currentLap) {
             m_cachedSplit1 = currentLap->split1;
             m_cachedSplit2 = currentLap->split2;
+            m_cachedSplit3 = currentLap->split3;
         }
         if (idealLap) {
             m_cachedLastCompletedLapNum = idealLap->lastCompletedLapNum;
@@ -200,9 +205,34 @@ void TimingHud::processTimingUpdates() {
             DEBUG_INFO_F("TimingHud: Split 2 crossed, accumulated=%d ms, lap=%d", splitTime, currentLap->lapNum);
             setDataDirty();
         }
+#if GAME_SECTOR_COUNT >= 4
+        // Check split 3 (accumulated time to S3) - 4-sector games only
+        else if (currentLap->split3 > 0 && currentLap->split3 != m_cachedSplit3) {
+            int splitTime = currentLap->split3;
+
+            // Update official data cache
+            m_officialData.time = splitTime;
+            m_officialData.splitIndex = 2;
+            m_officialData.lapNum = currentLap->lapNum;
+            m_officialData.isInvalid = false;
+
+            // Calculate gaps for all enabled types
+            calculateAllGaps(splitTime, 2, false);
+
+            // Freeze display (if freeze is enabled)
+            if (m_displayDurationMs > 0) {
+                m_isFrozen = true;
+                m_frozenAt = std::chrono::steady_clock::now();
+            }
+
+            m_cachedSplit3 = currentLap->split3;
+            DEBUG_INFO_F("TimingHud: Split 3 crossed, accumulated=%d ms, lap=%d", splitTime, currentLap->lapNum);
+            setDataDirty();
+        }
+#endif
     }
 
-    // Check for lap completion (split 3 / finish line)
+    // Check for lap completion (split 3/4 / finish line)
     if (idealLapData && idealLapData->lastCompletedLapNum >= 0 &&
         idealLapData->lastCompletedLapNum != m_cachedLastCompletedLapNum) {
 
@@ -241,6 +271,7 @@ void TimingHud::processTimingUpdates() {
         // Reset split caches for next lap
         m_cachedSplit1 = -1;
         m_cachedSplit2 = -1;
+        m_cachedSplit3 = -1;
 
         // Freeze display (if freeze is enabled)
         if (m_displayDurationMs > 0) {
@@ -422,6 +453,19 @@ void TimingHud::calculateAllGaps(int splitTime, int splitIndex, bool isLapComple
                 previousPbTime = idealLapData->previousBestSector1 + idealLapData->previousBestSector2;
             }
         }
+#if GAME_SECTOR_COUNT >= 4
+        else if (splitIndex == 2) {
+            // Split 3 comparison (accumulated S1+S2+S3)
+            if (personalBest && personalBest->sector1 > 0 && personalBest->sector2 > 0 && personalBest->sector3 > 0) {
+                pbTime = personalBest->sector1 + personalBest->sector2 + personalBest->sector3;
+            }
+            if (idealLapData && idealLapData->previousBestSector1 > 0 && idealLapData->previousBestSector2 > 0 &&
+                idealLapData->previousBestSector3 > 0) {
+                previousPbTime = idealLapData->previousBestSector1 + idealLapData->previousBestSector2 +
+                                 idealLapData->previousBestSector3;
+            }
+        }
+#endif
 
         int gap = calculateGap(splitTime, pbTime);
         int refTime = pbTime;
@@ -459,6 +503,24 @@ void TimingHud::calculateAllGaps(int splitTime, int splitIndex, bool isLapComple
                 }
             }
         }
+#if GAME_SECTOR_COUNT >= 4
+        else if (splitIndex == 2) {
+            // Split 3: compare to best S1 + best S2 + best S3
+            if (idealLapData && idealLapData->bestSector1 > 0 && idealLapData->bestSector2 > 0 &&
+                idealLapData->bestSector3 > 0) {
+                idealTime = idealLapData->bestSector1 + idealLapData->bestSector2 + idealLapData->bestSector3;
+            }
+            // Previous ideal S1+S2+S3
+            if (idealLapData) {
+                int prevS1 = idealLapData->previousIdealSector1 > 0 ? idealLapData->previousIdealSector1 : idealLapData->bestSector1;
+                int prevS2 = idealLapData->previousIdealSector2 > 0 ? idealLapData->previousIdealSector2 : idealLapData->bestSector2;
+                int prevS3 = idealLapData->previousIdealSector3 > 0 ? idealLapData->previousIdealSector3 : idealLapData->bestSector3;
+                if (prevS1 > 0 && prevS2 > 0 && prevS3 > 0) {
+                    previousIdealTime = prevS1 + prevS2 + prevS3;
+                }
+            }
+        }
+#endif
 
         int gap = calculateGap(splitTime, idealTime);
         int refTime = idealTime;
@@ -495,6 +557,18 @@ void TimingHud::calculateAllGaps(int splitTime, int splitIndex, bool isLapComple
                     previousOverallTime = previousOverall->sector1 + previousOverall->sector2;
                 }
             }
+#if GAME_SECTOR_COUNT >= 4
+            else if (splitIndex == 2) {
+                // S1 + S2 + S3 cumulative time
+                if (overallBest->sector1 > 0 && overallBest->sector2 > 0 && overallBest->sector3 > 0) {
+                    overallBestTime = overallBest->sector1 + overallBest->sector2 + overallBest->sector3;
+                }
+                if (previousOverall && previousOverall->sector1 > 0 && previousOverall->sector2 > 0 &&
+                    previousOverall->sector3 > 0) {
+                    previousOverallTime = previousOverall->sector1 + previousOverall->sector2 + previousOverall->sector3;
+                }
+            }
+#endif
         }
 
         int gap = calculateGap(splitTime, overallBestTime);
@@ -521,12 +595,18 @@ void TimingHud::calculateAllGaps(int splitTime, int splitIndex, bool isLapComple
         } else if (splitIndex == 1) {
             previousAllTimeTime = m_previousAllTimeS1PlusS2;
         }
+#if GAME_SECTOR_COUNT >= 4
+        else if (splitIndex == 2) {
+            previousAllTimeTime = m_previousAllTimeS1PlusS2PlusS3;
+        }
+#endif
 
         int gap = calculateGap(splitTime, previousAllTimeTime);
         m_officialData.gapToAllTime.set(gap, previousAllTimeTime);
     }
 
     // === Gap to Record (fastest from server records) ===
+#if GAME_HAS_RECORDS_PROVIDER
     {
         int recordTime = -1;
         const RecordsHud& recordsHud = HudManager::getInstance().getRecordsHud();
@@ -536,19 +616,25 @@ void TimingHud::calculateAllGaps(int splitTime, int splitIndex, bool isLapComple
             recordTime = recordsHud.getFastestRecordLapTime();
         } else {
             // For splits, try to get sector times if available (MXB-Ranked only)
-            int s1 = 0, s2 = 0, s3 = 0;
-            if (recordsHud.getFastestRecordSectors(s1, s2, s3)) {
+            int s1 = 0, s2 = 0, s3 = 0, s4 = 0;
+            if (recordsHud.getFastestRecordSectors(s1, s2, s3, s4)) {
                 if (splitIndex == 0) {
                     recordTime = s1;
                 } else if (splitIndex == 1) {
                     recordTime = s1 + s2;
                 }
+#if GAME_SECTOR_COUNT >= 4
+                else if (splitIndex == 2) {
+                    recordTime = s1 + s2 + s3;
+                }
+#endif
             }
         }
 
         int gap = calculateGap(splitTime, recordTime);
         m_officialData.gapToRecord.set(gap, recordTime);
     }
+#endif
 }
 
 int TimingHud::getVisibleColumnCount() const {
@@ -566,6 +652,7 @@ void TimingHud::resetLiveTimingState() {
     m_officialData.reset();
     m_cachedSplit1 = -1;
     m_cachedSplit2 = -1;
+    m_cachedSplit3 = -1;
     m_cachedLastCompletedLapNum = -1;
 
     // Cache current all-time PB for comparison when beating it
@@ -586,10 +673,20 @@ void TimingHud::cacheAllTimePB() {
         } else {
             m_previousAllTimeS1PlusS2 = -1;
         }
+#if GAME_SECTOR_COUNT >= 4
+        if (allTimePB->sector1 > 0 && allTimePB->sector2 > 0 && allTimePB->sector3 > 0) {
+            m_previousAllTimeS1PlusS2PlusS3 = allTimePB->sector1 + allTimePB->sector2 + allTimePB->sector3;
+        } else {
+            m_previousAllTimeS1PlusS2PlusS3 = -1;
+        }
+#endif
     } else {
         m_previousAllTimeLap = -1;
         m_previousAllTimeSector1 = -1;
         m_previousAllTimeS1PlusS2 = -1;
+#if GAME_SECTOR_COUNT >= 4
+        m_previousAllTimeS1PlusS2PlusS3 = -1;
+#endif
     }
 }
 
@@ -745,7 +842,13 @@ void TimingHud::rebuildRenderData() {
             strcpy_s(labelBuffer, sizeof(labelBuffer), "Split 1");
         } else if (m_officialData.splitIndex == 1) {
             strcpy_s(labelBuffer, sizeof(labelBuffer), "Split 2");
-        } else {
+        }
+#if GAME_SECTOR_COUNT >= 4
+        else if (m_officialData.splitIndex == 2) {
+            strcpy_s(labelBuffer, sizeof(labelBuffer), "Split 3");
+        }
+#endif
+        else {
             // Lap complete
             if (m_officialData.lapNum >= 0) {
                 snprintf(labelBuffer, sizeof(labelBuffer), "Lap %d", m_officialData.lapNum + 1);
@@ -794,7 +897,9 @@ void TimingHud::rebuildRenderData() {
             case GAP_TO_ALLTIME: return &m_officialData.gapToAllTime;
             case GAP_TO_IDEAL: return &m_officialData.gapToIdeal;
             case GAP_TO_OVERALL: return &m_officialData.gapToOverall;
+#if GAME_HAS_RECORDS_PROVIDER
             case GAP_TO_RECORD: return &m_officialData.gapToRecord;
+#endif
             default: return nullptr;
         }
     };
@@ -814,10 +919,14 @@ void TimingHud::rebuildRenderData() {
         } else if (type == GAP_TO_IDEAL) {
             const IdealLapData* idealLapData = pluginData.getIdealLapData();
             return idealLapData ? idealLapData->getIdealLapTime() : -1;
-        } else if (type == GAP_TO_RECORD) {
+        }
+#if GAME_HAS_RECORDS_PROVIDER
+        else if (type == GAP_TO_RECORD) {
             const RecordsHud& recordsHud = HudManager::getInstance().getRecordsHud();
             return recordsHud.getFastestRecordLapTime();
-        } else if (type == GAP_TO_OVERALL) {
+        }
+#endif
+        else if (type == GAP_TO_OVERALL) {
             return getOverallBestLapTime();  // Scan standings for best lap
         }
         return -1;
@@ -854,12 +963,27 @@ void TimingHud::rebuildRenderData() {
         // Calculate width (may need to expand for wider chips)
         int chipChars = m_showReference ? WidgetDimensions::TIMING_CHIP_WITH_REF_WIDTH : WidgetDimensions::TIMING_CHIP_WIDTH;
         float chipTextWidth = PluginUtils::calculateMonospaceTextWidth(chipChars, dim.fontSize);
-        float chipWidth = std::max(columnWidth, dim.paddingH + chipTextWidth + dim.paddingH);
+        float actualChipWidth = dim.paddingH + chipTextWidth + dim.paddingH;
+        // Only use columnWidth for chips when primary columns are visible
+        float chipWidth = (primaryRowCount > 0) ? std::max(columnWidth, actualChipWidth) : actualChipWidth;
         float contentWidth = (secondaryCount > 0 && showSecondaries) ? std::max(columnWidth, chipWidth) : columnWidth;
+        // When only chips are showing, use chip width not column width and recenter
+        float bgLeftX = leftX;
         float backgroundWidth = dim.paddingH + contentWidth + dim.paddingH;
+        if (primaryRowCount == 0 && secondaryCount > 0 && showSecondaries) {
+            contentWidth = chipWidth;
+            // Chip-only mode: no extra padding around the chip (tighter layout)
+            bgLeftX = CENTER_X - contentWidth / 2.0f;
+            backgroundWidth = contentWidth;  // Chip already includes internal padding
+            // Update leftX/rightX for bounds calculation
+            leftX = bgLeftX;
+            rightX = bgLeftX + contentWidth;
+            // Also update labelColumnX for chip positioning
+            labelColumnX = timeColumnX = gapColumnX = CENTER_X - contentWidth / 2.0f;
+        }
 
         // Add single background quad for entire vertical HUD
-        addBackgroundQuad(leftX, quadY, backgroundWidth, backgroundHeight);
+        addBackgroundQuad(bgLeftX, quadY, backgroundWidth, backgroundHeight);
     }
 
     // Add LABEL column if visible
@@ -907,7 +1031,8 @@ void TimingHud::rebuildRenderData() {
         } else if (shouldShowColumn(COL_LABEL)) {
             bottomY = labelRowY + quadHeight;
         } else {
-            bottomY = quadY + quadHeight;
+            // No primary columns visible - chips start after top padding
+            bottomY = quadY + dim.paddingV;
         }
     } else {
         bottomY = quadY + quadHeight;
@@ -1029,7 +1154,9 @@ void TimingHud::rebuildRenderData() {
             // Calculate chip width based on reference setting
             int chipChars = showRefInGap ? WidgetDimensions::TIMING_CHIP_WITH_REF_WIDTH : WidgetDimensions::TIMING_CHIP_WIDTH;
             float chipTextWidth = PluginUtils::calculateMonospaceTextWidth(chipChars, chipFontSize);
-            float chipWidth = std::max(columnWidth, dim.paddingH + chipTextWidth + dim.paddingH);
+            float actualChipWidth = dim.paddingH + chipTextWidth + dim.paddingH;
+            // Only use columnWidth for chips when primary columns are visible
+            float chipWidth = (visibleCount > 0) ? std::max(columnWidth, actualChipWidth) : actualChipWidth;
 
             // Position chips based on layout mode
             float chipStartX, chipStartY;

@@ -5,7 +5,7 @@
 #pragma once
 
 #include "base_hud.h"
-#include "../vendor/piboso/mxb_api.h"
+#include "../game/unified_types.h"
 #include <vector>
 
 class RadarHud : public BaseHud {
@@ -20,7 +20,7 @@ public:
     void setScale(float scale);
 
     // Update rider positions (called frequently - must be fast)
-    void updateRiderPositions(int numVehicles, const SPluginsRaceTrackPosition_t* positions);
+    void updateRiderPositions(int numVehicles, const Unified::TrackPositionData* positions);
 
     // Distance/range configuration (in meters)
     void setRadarRange(float rangeMeters);
@@ -161,7 +161,7 @@ protected:
 
 private:
     // Rider position storage (updated frequently)
-    std::vector<SPluginsRaceTrackPosition_t> m_riderPositions;
+    std::vector<Unified::TrackPositionData> m_riderPositions;
 
     // Radar configuration
     float m_fRadarRangeMeters;  // How far the radar can see (radius in meters)
@@ -217,7 +217,7 @@ private:
                           float centerX, float centerY, float radarRadius, float opacity);
 
     // Helper: Render proximity arrows at screen edges
-    void renderProximityArrows(const SPluginsRaceTrackPosition_t* localPlayer,
+    void renderProximityArrows(const Unified::TrackPositionData* localPlayer,
                                float playerX, float playerZ,
                                float cosYaw, float sinYaw);
 };

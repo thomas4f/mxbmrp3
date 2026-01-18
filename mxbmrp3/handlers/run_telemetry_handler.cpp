@@ -1,6 +1,6 @@
 // ============================================================================
 // handlers/run_telemetry_handler.cpp
-// Processes run telemetry data (input, controller, bike telemetry)
+// Processes run telemetry data (input, controller, vehicle telemetry)
 // ============================================================================
 #include "run_telemetry_handler.h"
 #include "../core/handler_singleton.h"
@@ -13,45 +13,55 @@
 
 DEFINE_HANDLER_SINGLETON(RunTelemetryHandler)
 
-void RunTelemetryHandler::handleRunTelemetry(SPluginsBikeData_t* psBikeData, float fTime, float fPos) {
+void RunTelemetryHandler::handleRunTelemetry(Unified::TelemetryData* psTelemetryData) {
     // Update input telemetry data
-    if (psBikeData) {
+    if (psTelemetryData) {
         // Update speedometer, gear, RPM, and fuel
-        PluginData::getInstance().updateSpeedometer(psBikeData->m_fSpeedometer, psBikeData->m_iGear, psBikeData->m_iRPM, psBikeData->m_fFuel);
+        PluginData::getInstance().updateSpeedometer(psTelemetryData->speedometer, psTelemetryData->gear, psTelemetryData->rpm, psTelemetryData->fuel);
 
-        // Update input telemetry data
+        // Update input telemetry data (bike-specific uses front/rear brake)
+        float frontBrake = psTelemetryData->brake;
+        float rearBrake = 0.0f;
+        if (psTelemetryData->vehicleType == Unified::VehicleType::Bike) {
+            frontBrake = psTelemetryData->bike.frontBrake;
+            rearBrake = psTelemetryData->bike.rearBrake;
+        }
         PluginData::getInstance().updateInputTelemetry(
-            psBikeData->m_fSteer,
-            psBikeData->m_fThrottle,
-            psBikeData->m_fFrontBrake,
-            psBikeData->m_fRearBrake,
-            psBikeData->m_fClutch
+            psTelemetryData->steer,
+            psTelemetryData->throttle,
+            frontBrake,
+            rearBrake,
+            psTelemetryData->clutch
         );
 
-        // Update suspension telemetry data
-        PluginData::getInstance().updateSuspensionLength(
-            psBikeData->m_afSuspLength[0],  // Front suspension current length
-            psBikeData->m_afSuspLength[1]   // Rear suspension current length
-        );
+        // Update suspension telemetry data (bike-specific)
+        if (psTelemetryData->vehicleType == Unified::VehicleType::Bike) {
+            PluginData::getInstance().updateSuspensionLength(
+                psTelemetryData->bike.suspLength[0],  // Front suspension current length
+                psTelemetryData->bike.suspLength[1]   // Rear suspension current length
+            );
+        }
 
         // Update roll/lean angle
-        PluginData::getInstance().updateRoll(psBikeData->m_fRoll);
+        PluginData::getInstance().updateRoll(psTelemetryData->roll);
 
-        // Controller rumble based on suspension and wheel slip
-        // Suspension velocity: negative = compression, we want max compression rate
-        // m_afSuspVelocity[0] = front, [1] = rear
-        float frontSuspVel = -psBikeData->m_afSuspVelocity[0];  // Negate so compression is positive
-        float rearSuspVel = -psBikeData->m_afSuspVelocity[1];
-        float suspensionVelocity = std::max(frontSuspVel, rearSuspVel);
+        // Controller rumble based on suspension and wheel slip (bike-specific)
+        float suspensionVelocity = 0.0f;
+        if (psTelemetryData->vehicleType == Unified::VehicleType::Bike) {
+            // Suspension velocity: negative = compression, we want max compression rate
+            float frontSuspVel = -psTelemetryData->bike.suspVelocity[0];  // Negate so compression is positive
+            float rearSuspVel = -psTelemetryData->bike.suspVelocity[1];
+            suspensionVelocity = std::max(frontSuspVel, rearSuspVel);
+        }
 
-        // Check wheel contact (m_aiWheelMaterial: 0 = not in contact)
-        bool frontWheelContact = psBikeData->m_aiWheelMaterial[0] != 0;
-        bool rearWheelContact = psBikeData->m_aiWheelMaterial[1] != 0;
+        // Check wheel contact (wheelMaterial: 0 = not in contact)
+        bool frontWheelContact = psTelemetryData->wheelMaterial[0] != 0;
+        bool rearWheelContact = psTelemetryData->wheelMaterial[1] != 0;
 
         // Wheel slip calculations
-        float vehicleSpeed = psBikeData->m_fSpeedometer;
-        float frontWheelSpeed = psBikeData->m_afWheelSpeed[0];
-        float rearWheelSpeed = psBikeData->m_afWheelSpeed[1];
+        float vehicleSpeed = psTelemetryData->speedometer;
+        float frontWheelSpeed = psTelemetryData->wheelSpeed[0];
+        float rearWheelSpeed = psTelemetryData->wheelSpeed[1];
 
         float wheelOverrun = 0.0f;
         float wheelUnderrun = 0.0f;
@@ -83,22 +93,22 @@ void RunTelemetryHandler::handleRunTelemetry(SPluginsBikeData_t* psBikeData, flo
         }
 
         // Get RPM for engine vibration effect
-        float rpm = static_cast<float>(psBikeData->m_iRPM);
+        float rpm = static_cast<float>(psTelemetryData->rpm);
 
         // Calculate slip angle using horizontal velocity (X,Z plane) and yaw
         // Based on map coordinate convention: X=east-west, Y=altitude, Z=north-south
         // Yaw = angle from north, so forward direction = (sin(yaw), cos(yaw)) in X,Z plane
         float lateralG = 0.0f;
-        float speed = psBikeData->m_fSpeedometer;
+        float speed = psTelemetryData->speedometer;
         if (speed > 2.0f) {
             using namespace PluginConstants::Math;
-            float yawRad = psBikeData->m_fYaw * DEG_TO_RAD;
+            float yawRad = psTelemetryData->yaw * DEG_TO_RAD;
             float sinYaw = std::sin(yawRad);
             float cosYaw = std::cos(yawRad);
 
             // Project horizontal velocity onto forward and lateral directions
-            float vx = psBikeData->m_fVelocityX;
-            float vz = psBikeData->m_fVelocityZ;
+            float vx = psTelemetryData->velocityX;
+            float vz = psTelemetryData->velocityZ;
             float forwardVel = vx * sinYaw + vz * cosYaw;
             float lateralVel = vx * cosYaw - vz * sinYaw;
 
@@ -113,22 +123,25 @@ void RunTelemetryHandler::handleRunTelemetry(SPluginsBikeData_t* psBikeData, flo
         // Material 0 = no contact, 1 = main track (tarmac), >1 = grass/dirt/gravel
         // Rumble is proportional to speed when on rough surface
         float surfaceSpeed = 0.0f;
-        int frontMaterial = psBikeData->m_aiWheelMaterial[0];
-        int rearMaterial = psBikeData->m_aiWheelMaterial[1];
+        int frontMaterial = psTelemetryData->wheelMaterial[0];
+        int rearMaterial = psTelemetryData->wheelMaterial[1];
         // Trigger if either wheel is on rough surface (material > 1)
         if (frontMaterial > 1 || rearMaterial > 1) {
             surfaceSpeed = vehicleSpeed;
         }
 
-        // Steer torque for handlebar resistance feedback
-        float steerTorque = psBikeData->m_fSteerTorque;
+        // Steer torque for handlebar resistance feedback (bike-specific)
+        float steerTorque = 0.0f;
+        if (psTelemetryData->vehicleType == Unified::VehicleType::Bike) {
+            steerTorque = psTelemetryData->bike.steerTorque;
+        }
 
         // Wheelie detection: front wheel off ground, rear wheel on ground, bike tilted back
         // Pitch is negative when tilted back (wheelie direction)
         float wheelieIntensity = 0.0f;
-        if (!frontWheelContact && rearWheelContact && psBikeData->m_fPitch < 0.0f) {
+        if (!frontWheelContact && rearWheelContact && psTelemetryData->pitch < 0.0f) {
             // Use absolute pitch angle as intensity (in degrees)
-            wheelieIntensity = std::abs(psBikeData->m_fPitch);
+            wheelieIntensity = std::abs(psTelemetryData->pitch);
         }
 
         // Check if player is crashed and rumble should be suppressed (but still update graph)
@@ -151,9 +164,4 @@ void RunTelemetryHandler::handleRunTelemetry(SPluginsBikeData_t* psBikeData, flo
     // Update XInput controller state (same rate as telemetry)
     XInputReader::getInstance().update();
     PluginData::getInstance().updateXInputData(XInputReader::getInstance().getData());
-
-    // Additional telemetry data available:
-    // psBikeData contains: RPM, gear, speed, position, velocity, acceleration, suspension, etc.
-    // fTime: on-track time in seconds
-    // fPos: position on centerline (0.0 to 1.0)
 }

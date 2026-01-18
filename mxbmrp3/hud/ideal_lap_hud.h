@@ -20,7 +20,7 @@ public:
 
     // Row flags - groups of rows that can be toggled together
     enum RowFlags : uint32_t {
-        ROW_SECTORS = 1 << 0,  // Sector times (S1, S2, S3)
+        ROW_SECTORS = 1 << 0,  // Sector times (S1, S2, S3, S4 if 4-sector game)
         ROW_LAPS    = 1 << 1,  // Lap times (Last, Best, Ideal)
 
         ROW_DEFAULT = ROW_SECTORS | ROW_LAPS  // All rows enabled
@@ -49,7 +49,7 @@ private:
     static constexpr float START_X = 0.0f;
     static constexpr float START_Y = 0.0f;
     static constexpr int BACKGROUND_WIDTH_CHARS = 26;  // Optimized for max content: "Ideal" + "99:59.999" + "+99:59.999"
-    static constexpr int NUM_ROWS = 7;  // Title + S1 + S2 + S3 + Last + Best + Ideal
+    static constexpr int NUM_ROWS = 8;  // Title + S1 + S2 + S3 + (S4 if 4-sector) + Last + Best + Ideal
 
     // Column width constants (in character counts)
     // Width = max_length + 1 for spacing, except last column

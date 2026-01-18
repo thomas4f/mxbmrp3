@@ -4,13 +4,13 @@
 // ============================================================================
 #pragma once
 
-#include "../vendor/piboso/mxb_api.h"
+#include "../game/unified_types.h"
 
 class RaceLapHandler {
 public:
     static RaceLapHandler& getInstance();
 
-    void handleRaceLap(SPluginsRaceLap_t* psRaceLap);
+    void handleRaceLap(Unified::RaceLapData* psRaceLap);
 
 private:
     RaceLapHandler() {}

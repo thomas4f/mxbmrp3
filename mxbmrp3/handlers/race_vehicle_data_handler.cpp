@@ -10,9 +10,9 @@
 
 DEFINE_HANDLER_SINGLETON(RaceVehicleDataHandler)
 
-void RaceVehicleDataHandler::handleRaceVehicleData(SPluginsRaceVehicleData_t* psRaceVehicleData) {
+void RaceVehicleDataHandler::handleRaceVehicleData(Unified::RaceVehicleData* psRaceVehicleData) {
     // Defensive null check and active vehicle check
-    if (!psRaceVehicleData || !psRaceVehicleData->m_iActive) {
+    if (!psRaceVehicleData || !psRaceVehicleData->active) {
         return;
     }
 
@@ -28,19 +28,19 @@ void RaceVehicleDataHandler::handleRaceVehicleData(SPluginsRaceVehicleData_t* ps
     int displayRaceNum = pluginData.getDisplayRaceNum();
 
     // If this vehicle data is for the rider we're displaying, update telemetry
-    // Only updates data available in SPluginsRaceVehicleData_t (throttle, frontBrake, rpm, gear, speedometer, lean)
+    // Only updates data available in RaceVehicleData (throttle, brake, rpm, gear, speedometer, lean)
     // Other data (rearBrake, clutch, steer, fuel, suspension) is not available when spectating
-    if (psRaceVehicleData->m_iRaceNum == displayRaceNum) {
-        // Note: m_fLean uses opposite sign convention from m_fRoll (player telemetry)
-        // m_fLean: "Negative = left", m_fRoll: standard rotation (positive = right)
+    if (psRaceVehicleData->raceNum == displayRaceNum) {
+        // Note: lean uses opposite sign convention from roll (player telemetry)
+        // lean: "Negative = left", roll: standard rotation (positive = right)
         // Negate to match the convention used by LeanWidget
         pluginData.updateRaceVehicleTelemetry(
-            psRaceVehicleData->m_fSpeedometer,
-            psRaceVehicleData->m_iGear,
-            psRaceVehicleData->m_iRPM,
-            psRaceVehicleData->m_fThrottle,
-            psRaceVehicleData->m_fFrontBrake,
-            -psRaceVehicleData->m_fLean
+            psRaceVehicleData->speedometer,
+            psRaceVehicleData->gear,
+            psRaceVehicleData->rpm,
+            psRaceVehicleData->throttle,
+            psRaceVehicleData->brake,
+            -psRaceVehicleData->lean
         );
     }
 }

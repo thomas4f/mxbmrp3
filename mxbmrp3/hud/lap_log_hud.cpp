@@ -9,6 +9,7 @@
 #include "../core/plugin_constants.h"
 #include "../core/plugin_data.h"
 #include "../core/color_config.h"
+#include "../game/game_config.h"
 #include <cstring>
 #include <cstdio>
 
@@ -35,8 +36,14 @@ LapLogHud::ColumnPositions::ColumnPositions(float contentStartX, float scale, ui
         current += PluginUtils::calculateMonospaceTextWidth(COL_TIME_WIDTH, scaledFontSize);
         s3 = current;
         current += PluginUtils::calculateMonospaceTextWidth(COL_TIME_WIDTH, scaledFontSize);
+#if GAME_SECTOR_COUNT >= 4
+        s4 = current;
+        current += PluginUtils::calculateMonospaceTextWidth(COL_TIME_WIDTH, scaledFontSize);
+#else
+        s4 = -1.0f;  // Not used in 3-sector games
+#endif
     } else {
-        s1 = s2 = s3 = -1.0f;  // Not shown
+        s1 = s2 = s3 = s4 = -1.0f;  // Not shown
     }
 
     // Time column (always shown)
@@ -70,7 +77,7 @@ bool LapLogHud::handlesDataType(DataChangeType dataType) const {
 int LapLogHud::getBackgroundWidthChars() const {
     int width = COL_LAP_WIDTH;  // Lap column (always shown)
     if (m_enabledColumns & COL_SECTORS) {
-        width += COL_TIME_WIDTH * 3;  // S1, S2, S3
+        width += COL_TIME_WIDTH * GAME_SECTOR_COUNT;  // S1, S2, S3 (+ S4 for 4-sector games)
     }
     width += COL_LAST_TIME_WIDTH;  // Time column (always shown, no trailing gap)
     return width;
@@ -313,6 +320,7 @@ void LapLogHud::rebuildRenderData() {
     int bestSector1 = idealLapData ? idealLapData->bestSector1 : -1;
     int bestSector2 = idealLapData ? idealLapData->bestSector2 : -1;
     int bestSector3 = idealLapData ? idealLapData->bestSector3 : -1;
+    int bestSector4 = idealLapData ? idealLapData->bestSector4 : -1;  // Only valid for 4-sector games
 
     // Best lap time: use the separately-stored best lap entry if available
     int bestLapTime = (bestLapEntry && bestLapEntry->isComplete) ? bestLapEntry->lapTime : -1;
@@ -336,6 +344,9 @@ void LapLogHud::rebuildRenderData() {
         char s1Str[16];
         char s2Str[16];
         char s3Str[16];
+#if GAME_SECTOR_COUNT >= 4
+        char s4Str[16];
+#endif
         char timeStr[16];
 
         // Handle current lap in progress (live timing row)
@@ -394,6 +405,20 @@ void LapLogHud::rebuildRenderData() {
                 strcpy_s(s3Str, sizeof(s3Str), Placeholders::GENERIC);
             }
 
+#if GAME_SECTOR_COUNT >= 4
+            // Format S4: live elapsed if in S4, else placeholder (4-sector games only)
+            if (activeSector == 3) {
+                int elapsed = data.getElapsedSectorTime(3);
+                if (elapsed > 0) {
+                    PluginUtils::formatLapTime(elapsed, s4Str, sizeof(s4Str));
+                } else {
+                    strcpy_s(s4Str, sizeof(s4Str), Placeholders::GENERIC);
+                }
+            } else {
+                strcpy_s(s4Str, sizeof(s4Str), Placeholders::GENERIC);
+            }
+#endif
+
             // Format lap time: live elapsed time
             int elapsedLapTime = data.getElapsedLapTime();
             if (elapsedLapTime > 0) {
@@ -407,12 +432,18 @@ void LapLogHud::rebuildRenderData() {
             unsigned long colorS1 = (officialS1 > 0) ? colors.getPrimary() : colors.getMuted();
             unsigned long colorS2 = (officialS2 > 0) ? colors.getPrimary() : colors.getMuted();
             unsigned long colorS3 = colors.getMuted();  // S3 is always in progress or placeholder
+#if GAME_SECTOR_COUNT >= 4
+            unsigned long colorS4 = colors.getMuted();  // S4 is always in progress or placeholder
+#endif
             unsigned long colorTime = colors.getMuted();  // Lap time uses muted color (gap shown separately)
 
             addString(lapStr, m_columns.lap, currentY, Justify::LEFT, Fonts::getNormal(), colorLap, dim.fontSize);
             addString(showSectors ? s1Str : "", m_columns.s1, currentY, Justify::LEFT, Fonts::getNormal(), colorS1, dim.fontSize);
             addString(showSectors ? s2Str : "", m_columns.s2, currentY, Justify::LEFT, Fonts::getNormal(), colorS2, dim.fontSize);
             addString(showSectors ? s3Str : "", m_columns.s3, currentY, Justify::LEFT, Fonts::getNormal(), colorS3, dim.fontSize);
+#if GAME_SECTOR_COUNT >= 4
+            addString(showSectors ? s4Str : "", m_columns.s4, currentY, Justify::LEFT, Fonts::getNormal(), colorS4, dim.fontSize);
+#endif
             addString(timeStr, m_columns.time, currentY, Justify::LEFT, Fonts::getNormal(), colorTime, dim.fontSize);
 
             currentY += dim.lineHeightNormal;
@@ -445,6 +476,9 @@ void LapLogHud::rebuildRenderData() {
             addString("", m_columns.s1, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
             addString("", m_columns.s2, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
             addString("", m_columns.s3, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
+#if GAME_SECTOR_COUNT >= 4
+            addString("", m_columns.s4, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
+#endif
             addString(gapStr, gapX, currentY, Justify::LEFT, Fonts::getNormal(), gapColor, dim.fontSize);
 
             currentY += dim.lineHeightNormal;
@@ -457,6 +491,9 @@ void LapLogHud::rebuildRenderData() {
             addString(showSectors ? Placeholders::GENERIC : "", m_columns.s1, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
             addString(showSectors ? Placeholders::GENERIC : "", m_columns.s2, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
             addString(showSectors ? Placeholders::GENERIC : "", m_columns.s3, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
+#if GAME_SECTOR_COUNT >= 4
+            addString(showSectors ? Placeholders::GENERIC : "", m_columns.s4, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
+#endif
             addString(Placeholders::LAP_TIME, m_columns.time, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
             currentY += dim.lineHeightNormal;
             continue;
@@ -497,6 +534,14 @@ void LapLogHud::rebuildRenderData() {
                 strcpy_s(s3Str, sizeof(s3Str), Placeholders::GENERIC);
             }
 
+#if GAME_SECTOR_COUNT >= 4
+            if (entry.sector4 > 0) {
+                PluginUtils::formatLapTime(entry.sector4, s4Str, sizeof(s4Str));
+            } else {
+                strcpy_s(s4Str, sizeof(s4Str), Placeholders::GENERIC);
+            }
+#endif
+
             // Format lap time
             if (entry.lapTime > 0 && entry.isComplete) {
                 PluginUtils::formatLapTime(entry.lapTime, timeStr, sizeof(timeStr));
@@ -508,6 +553,9 @@ void LapLogHud::rebuildRenderData() {
             // Invalid laps (track cuts in race mode) show muted times
             unsigned long colorLap = colors.getSecondary();  // Lap number always secondary
             unsigned long colorS1, colorS2, colorS3, colorTime;
+#if GAME_SECTOR_COUNT >= 4
+            unsigned long colorS4;
+#endif
             int fontLapTime;
 
             // For invalid laps, show all timing data as muted
@@ -530,6 +578,14 @@ void LapLogHud::rebuildRenderData() {
                 colorS3 = (entry.sector3 == bestSector3) ? colors.getPositive() : colors.getPrimary();
             }
 
+#if GAME_SECTOR_COUNT >= 4
+            if (!entry.isValid || entry.sector4 <= 0) {
+                colorS4 = colors.getMuted();
+            } else {
+                colorS4 = (entry.sector4 == bestSector4) ? colors.getPositive() : colors.getPrimary();
+            }
+#endif
+
             bool hasLapTime = (entry.lapTime > 0 && entry.isComplete);
             if (!entry.isValid || !hasLapTime) {
                 colorTime = colors.getMuted();
@@ -544,6 +600,9 @@ void LapLogHud::rebuildRenderData() {
             addString(showSectors ? s1Str : "", m_columns.s1, currentY, Justify::LEFT, Fonts::getNormal(), colorS1, dim.fontSize);
             addString(showSectors ? s2Str : "", m_columns.s2, currentY, Justify::LEFT, Fonts::getNormal(), colorS2, dim.fontSize);
             addString(showSectors ? s3Str : "", m_columns.s3, currentY, Justify::LEFT, Fonts::getNormal(), colorS3, dim.fontSize);
+#if GAME_SECTOR_COUNT >= 4
+            addString(showSectors ? s4Str : "", m_columns.s4, currentY, Justify::LEFT, Fonts::getNormal(), colorS4, dim.fontSize);
+#endif
             addString(timeStr, m_columns.time, currentY, Justify::LEFT, fontLapTime, colorTime, dim.fontSize);
         } else {
             // Placeholder row (entry not found)
@@ -551,6 +610,9 @@ void LapLogHud::rebuildRenderData() {
             addString(showSectors ? Placeholders::GENERIC : "", m_columns.s1, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
             addString(showSectors ? Placeholders::GENERIC : "", m_columns.s2, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
             addString(showSectors ? Placeholders::GENERIC : "", m_columns.s3, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
+#if GAME_SECTOR_COUNT >= 4
+            addString(showSectors ? Placeholders::GENERIC : "", m_columns.s4, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
+#endif
             addString(Placeholders::LAP_TIME, m_columns.time, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
         }
 

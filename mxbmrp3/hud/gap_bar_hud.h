@@ -2,14 +2,18 @@
 // hud/gap_bar_hud.h
 // Gap Bar HUD - visualizes current lap progress vs best lap timing
 // Shows a horizontal bar with current position, best lap marker, and live gap
+// Can also function as a "flat map" showing opponent positions on track
 // ============================================================================
 #pragma once
 
 #include "base_hud.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
+#include "../game/unified_types.h"
 #include <chrono>
 #include <array>
+#include <vector>
+#include <string>
 
 // ============================================================================
 // Timing point for best lap comparison
@@ -94,6 +98,28 @@ struct GapBarTrackMonitor {
 
 class GapBarHud : public BaseHud {
 public:
+    // Marker display mode - controls what markers are shown on the bar
+    enum class MarkerMode {
+        GHOST = 0,           // Self + ghost (best lap) only - original behavior
+        OPPONENTS = 1,       // Self + all opponents (no ghost)
+        GHOST_OPPONENTS = 2  // Self + ghost + opponents (full flat map)
+    };
+
+    // Label display mode - controls what labels appear above markers (like MapHud)
+    enum class LabelMode {
+        NONE = 0,       // No labels
+        POSITION = 1,   // Show position (P1, P2, etc.)
+        RACE_NUM = 2,   // Show race number
+        BOTH = 3        // Show both (P1 #5)
+    };
+
+    // Rider color mode - controls how opponent markers are colored (like MapHud/RadarHud)
+    enum class RiderColorMode {
+        UNIFORM = 0,        // Gray for all riders
+        BRAND = 1,          // Bike brand colors
+        RELATIVE_POS = 2    // Color based on position relative to player
+    };
+
     GapBarHud();
     virtual ~GapBarHud() = default;
 
@@ -109,6 +135,9 @@ public:
 
     // Track position update for lap timing (called from HudManager)
     void updateTrackPosition(int raceNum, float trackPos, int lapNum);
+
+    // Rider positions update for flat map mode (called from HudManager)
+    void updateRiderPositions(int numVehicles, const Unified::TrackPositionData* positions);
 
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;
@@ -133,7 +162,6 @@ private:
     // Bar dimensions
     // Width: STANDARD_WIDTH (12 chars) in fontSizeLarge + paddingH on each side
     // Height: paddingV + fontSizeLarge (matches notices widget)
-    static constexpr float MARKER_WIDTH_CHARS = 0.5f;  // Thin vertical marker
     static constexpr float BAR_PADDING_V_SCALE = 0.25f;  // Inner vertical padding for markers
 
     // Freeze duration limits (matches TimingHud)
@@ -192,11 +220,35 @@ private:
 
     // === Configurable settings ===
     int m_freezeDurationMs;           // How long to freeze on official times
-    bool m_showMarkers;               // Show vertical position markers (current + best lap)
+    MarkerMode m_markerMode;          // What markers to show (ghost/opponents/both)
+    LabelMode m_labelMode;            // What labels to show on markers (like MapHud)
+    RiderColorMode m_riderColorMode;  // How to color opponent markers (like MapHud/RadarHud)
+    int m_riderIconIndex;             // Icon shape index (0=OFF/default, 1-N from AssetManager)
+    bool m_showGapText;               // Show gap timer text (can hide for pure flat map mode)
+    bool m_showGapBar;                // Show green/red gap visualization bars
     int m_gapRangeMs;                 // Time range for gap bar (full bar at ±range)
     int m_barWidthPercent;            // Bar width as percentage of default (50-400%)
+    float m_fMarkerScale;             // Marker scale multiplier (0.5-3.0, like MapHud)
+
+    // Rider position storage for flat map mode (updated from HudManager)
+    std::vector<Unified::TrackPositionData> m_riderPositions;
 
     // Cached gap for publishing to PluginData (avoids calculating twice)
     int m_cachedGap = 0;              // Last calculated gap in milliseconds
     bool m_cachedGapValid = false;    // Is the cached gap valid?
+
+    // Marker scale constants (matches MapHud pattern)
+    static constexpr float DEFAULT_MARKER_BASE_SIZE = 0.012f;  // Base full size (halfSize = 0.006, matches MapHud/StandingsHud)
+    static constexpr float DEFAULT_MARKER_SCALE = 1.0f;        // Default 100%
+    static constexpr float MIN_MARKER_SCALE = 0.5f;            // Min 50%
+    static constexpr float MAX_MARKER_SCALE = 3.0f;            // Max 300%
+
+    // Helper methods for flat map rendering
+    void renderRiderMarkers(float innerX, float innerY, float innerWidth, float innerHeight,
+                           const ScaledDimensions& dim);
+    unsigned long calculateRiderColor(int riderRaceNum, int displayRaceNum) const;
+    void renderMarkerIcon(float centerX, float centerY, float size, int spriteIndex,
+                         unsigned long color, int shapeIndex);
+    void renderMarkerLabel(float centerX, float centerY, float iconHalfSize,
+                          int raceNum, int position, const ScaledDimensions& dim);
 };

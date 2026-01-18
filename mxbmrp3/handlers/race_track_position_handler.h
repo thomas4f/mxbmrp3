@@ -4,13 +4,13 @@
 // ============================================================================
 #pragma once
 
-#include "../vendor/piboso/mxb_api.h"
+#include "../game/unified_types.h"
 
 class RaceTrackPositionHandler {
 public:
     static RaceTrackPositionHandler& getInstance();
 
-    void handleRaceTrackPosition(int iNumVehicles, SPluginsRaceTrackPosition_t* pasRaceTrackPosition);
+    void handleRaceTrackPosition(int iNumVehicles, Unified::TrackPositionData* pasRaceTrackPosition);
 
 private:
     RaceTrackPositionHandler() {}

@@ -60,11 +60,15 @@ void GamepadWidget::rebuildRenderData() {
         + dims.paddingH + dims.paddingH;
     float stickHeight = STICK_HEIGHT_LINES * dims.lineHeightNormal;
 
+    const auto& layout = getCurrentLayout();
+
     // Layout: triggers/bumpers row + sticks row + buttons row (face/dpad/menu)
-    // Proportions tuned to match 750:422 gamepad texture aspect ratio
+    // Content proportions unchanged - extra texture padding handled via background aspect ratio
     float triggersHeight = dims.lineHeightNormal * 1.2f;
-    float buttonsHeight = dims.lineHeightNormal * 2.45f;
-    float backgroundHeight = dims.paddingV + triggersHeight + stickHeight + buttonsHeight + dims.paddingV;
+    // Background height from current layout's texture aspect ratio
+    // Multiply by UI_ASPECT_RATIO to convert from texture pixels to screen coordinates
+    float backgroundHeight = backgroundWidth * (layout.backgroundHeight / layout.backgroundWidth) * UI_ASPECT_RATIO;
+    float stickWidthForLayout = STICK_HEIGHT_LINES * dims.lineHeightNormal / UI_ASPECT_RATIO;
 
     setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + backgroundHeight);
 
@@ -75,92 +79,91 @@ void GamepadWidget::rebuildRenderData() {
     float contentStartY = START_Y + dims.paddingV;
     float currentY = contentStartY;
     float contentWidth = backgroundWidth - dims.paddingH * 2;
-
-    const auto& layout = getCurrentLayout();
     float scale = getScale();
 
-    // ========================================================================
-    // ROW 1: Triggers and Bumpers
-    // ========================================================================
-    float triggerRowY = currentY;
-
-    // Trigger size from layout
-    float triggerWidth = backgroundWidth * (layout.triggerWidth / layout.backgroundWidth);
-    float triggerHeight = triggerWidth * (layout.triggerHeight / layout.triggerWidth) * UI_ASPECT_RATIO;
-    float triggerCenterY = triggerRowY + triggerHeight / 2;
-
-    // Bumper size from layout
-    float bumperWidth = backgroundWidth * (layout.bumperWidth / layout.backgroundWidth);
-    float bumperHeight = bumperWidth * (layout.bumperHeight / layout.bumperWidth) * UI_ASPECT_RATIO;
-
-    // Left trigger (LT) - with offset
-    float ltOffsetX = layout.leftTriggerX * scale;
-    float ltOffsetY = layout.leftTriggerY * scale;
-    float ltCenterX = contentStartX + triggerWidth / 2 + ltOffsetX;
-    float ltCenterY = triggerCenterY + ltOffsetY;
-    addTriggerButton(ltCenterX, ltCenterY, triggerWidth, triggerHeight,
-                     xinput.leftTrigger, true);
-
-    // Left bumper (LB) - with offset
-    float lbOffsetX = layout.leftBumperX * scale;
-    float lbOffsetY = layout.leftBumperY * scale;
-    float lbCenterX = contentStartX + triggerWidth + dims.gridH(1) + bumperWidth / 2 + lbOffsetX;
-    float lbCenterY = triggerCenterY + lbOffsetY;
-    addBumperButton(lbCenterX, lbCenterY, bumperWidth, bumperHeight,
-                    xinput.leftShoulder, true);
-
-    // Right bumper (RB) - with offset
-    float rbOffsetX = layout.rightBumperX * scale;
-    float rbOffsetY = layout.rightBumperY * scale;
-    float rbCenterX = contentStartX + contentWidth - triggerWidth - dims.gridH(1) - bumperWidth / 2 + rbOffsetX;
-    float rbCenterY = triggerCenterY + rbOffsetY;
-    addBumperButton(rbCenterX, rbCenterY, bumperWidth, bumperHeight,
-                    xinput.rightShoulder, false);
-
-    // Right trigger (RT) - with offset
-    float rtOffsetX = layout.rightTriggerX * scale;
-    float rtOffsetY = layout.rightTriggerY * scale;
-    float rtCenterX = contentStartX + contentWidth - triggerWidth / 2 + rtOffsetX;
-    float rtCenterY = triggerCenterY + rtOffsetY;
-    addTriggerButton(rtCenterX, rtCenterY, triggerWidth, triggerHeight,
-                     xinput.rightTrigger, false);
-
-    currentY += triggersHeight;
-
-    // ========================================================================
-    // ROW 2: Analog Sticks
-    // ========================================================================
-    float stickWidth = stickHeight / UI_ASPECT_RATIO;
-    float stickSpacing = PluginUtils::calculateMonospaceTextWidth(STICK_SPACING_CHARS, dims.fontSize);
-
-    // Left stick - with offset
-    float lsOffsetX = layout.leftStickX * scale;
-    float lsOffsetY = layout.leftStickY * scale;
-    float leftStickCenterX = contentStartX + stickWidth / 2 + lsOffsetX;
-    float leftStickCenterY = currentY + stickHeight / 2 + lsOffsetY;
-    addStick(leftStickCenterX, leftStickCenterY, xinput.leftStickX, xinput.leftStickY,
-             stickWidth, stickHeight, backgroundWidth, layout, xinput.leftThumb);
-
-    // Right stick - with offset
-    float rsOffsetX = layout.rightStickX * scale;
-    float rsOffsetY = layout.rightStickY * scale;
-    float rightStickCenterX = contentStartX + stickWidth + stickSpacing + stickWidth / 2 + rsOffsetX;
-    float rightStickCenterY = currentY + stickHeight / 2 + rsOffsetY;
-    addStick(rightStickCenterX, rightStickCenterY, xinput.rightStickX, xinput.rightStickY,
-             stickWidth, stickHeight, backgroundWidth, layout, xinput.rightThumb);
-
-    currentY += stickHeight;
-
-    // ========================================================================
-    // ROW 3: D-Pad, Menu Buttons, Face Buttons
-    // ========================================================================
+    // Only render input overlays when controller is connected
     if (xinput.isConnected) {
+        // ========================================================================
+        // ROW 1: Triggers and Bumpers
+        // ========================================================================
+        float triggerRowY = currentY;
+
+        // Trigger size from layout
+        float triggerWidth = backgroundWidth * (layout.triggerWidth / layout.backgroundWidth);
+        float triggerHeight = triggerWidth * (layout.triggerHeight / layout.triggerWidth) * UI_ASPECT_RATIO;
+        float triggerCenterY = triggerRowY + triggerHeight / 2;
+
+        // Bumper size from layout
+        float bumperWidth = backgroundWidth * (layout.bumperWidth / layout.backgroundWidth);
+        float bumperHeight = bumperWidth * (layout.bumperHeight / layout.bumperWidth) * UI_ASPECT_RATIO;
+
+        // Left trigger (LT) - with offset
+        float ltOffsetX = layout.leftTriggerX * scale;
+        float ltOffsetY = layout.leftTriggerY * scale;
+        float ltCenterX = contentStartX + triggerWidth / 2 + ltOffsetX;
+        float ltCenterY = triggerCenterY + ltOffsetY;
+        addTriggerButton(ltCenterX, ltCenterY, triggerWidth, triggerHeight,
+                         xinput.leftTrigger, true);
+
+        // Left bumper (LB) - with offset
+        float lbOffsetX = layout.leftBumperX * scale;
+        float lbOffsetY = layout.leftBumperY * scale;
+        float lbCenterX = contentStartX + triggerWidth + dims.gridH(1) + bumperWidth / 2 + lbOffsetX;
+        float lbCenterY = triggerCenterY + lbOffsetY;
+        addBumperButton(lbCenterX, lbCenterY, bumperWidth, bumperHeight,
+                        xinput.leftShoulder, true);
+
+        // Right bumper (RB) - with offset
+        float rbOffsetX = layout.rightBumperX * scale;
+        float rbOffsetY = layout.rightBumperY * scale;
+        float rbCenterX = contentStartX + contentWidth - triggerWidth - dims.gridH(1) - bumperWidth / 2 + rbOffsetX;
+        float rbCenterY = triggerCenterY + rbOffsetY;
+        addBumperButton(rbCenterX, rbCenterY, bumperWidth, bumperHeight,
+                        xinput.rightShoulder, false);
+
+        // Right trigger (RT) - with offset
+        float rtOffsetX = layout.rightTriggerX * scale;
+        float rtOffsetY = layout.rightTriggerY * scale;
+        float rtCenterX = contentStartX + contentWidth - triggerWidth / 2 + rtOffsetX;
+        float rtCenterY = triggerCenterY + rtOffsetY;
+        addTriggerButton(rtCenterX, rtCenterY, triggerWidth, triggerHeight,
+                         xinput.rightTrigger, false);
+
+        currentY += triggersHeight;
+
+        // ========================================================================
+        // ROW 2: Analog Sticks
+        // ========================================================================
+        // Use stickWidthForLayout for X positioning (preserves original positions)
+        float stickSpacing = PluginUtils::calculateMonospaceTextWidth(STICK_SPACING_CHARS, dims.fontSize);
+
+        // Left stick - with offset
+        float lsOffsetX = layout.leftStickX * scale;
+        float lsOffsetY = layout.leftStickY * scale;
+        float leftStickCenterX = contentStartX + stickWidthForLayout / 2 + lsOffsetX;
+        float leftStickCenterY = currentY + stickHeight / 2 + lsOffsetY;
+        addStick(leftStickCenterX, leftStickCenterY, xinput.leftStickX, xinput.leftStickY,
+                 stickWidthForLayout, stickHeight, backgroundWidth, layout, xinput.leftThumb);
+
+        // Right stick - with offset
+        float rsOffsetX = layout.rightStickX * scale;
+        float rsOffsetY = layout.rightStickY * scale;
+        float rightStickCenterX = contentStartX + stickWidthForLayout + stickSpacing + stickWidthForLayout / 2 + rsOffsetX;
+        float rightStickCenterY = currentY + stickHeight / 2 + rsOffsetY;
+        addStick(rightStickCenterX, rightStickCenterY, xinput.rightStickX, xinput.rightStickY,
+                 stickWidthForLayout, stickHeight, backgroundWidth, layout, xinput.rightThumb);
+
+        currentY += stickHeight;
+
+        // ========================================================================
+        // ROW 3: D-Pad, Menu Buttons, Face Buttons
+        // ========================================================================
         float buttonRowY = currentY + dims.lineHeightNormal * 0.15f;
 
         // D-Pad (left side, aligned with left stick) - with offset
         float dpadOffsetX = layout.dpadX * scale;
         float dpadOffsetY = layout.dpadY * scale;
-        float dpadCenterX = contentStartX + stickWidth / 2 + dpadOffsetX;
+        float dpadCenterX = contentStartX + stickWidthForLayout / 2 + dpadOffsetX;
         float dpadCenterY = buttonRowY + dims.lineHeightNormal * 0.9f + dpadOffsetY;
 
         float dpadBtnWidth = backgroundWidth * (layout.dpadWidth / layout.backgroundWidth);
@@ -201,22 +204,18 @@ void GamepadWidget::rebuildRenderData() {
         float faceOffsetX = layout.faceButtonsX * scale;
         float faceOffsetY = layout.faceButtonsY * scale;
         float faceButtonSize = backgroundWidth * (layout.faceButtonSize / layout.backgroundWidth) * UI_ASPECT_RATIO;
-        float faceCenterX = contentStartX + stickWidth + stickSpacing + stickWidth / 2 + faceOffsetX;
+        float faceCenterX = contentStartX + stickWidthForLayout + stickSpacing + stickWidthForLayout / 2 + faceOffsetX;
         float faceCenterY = buttonRowY + dims.lineHeightNormal * 0.9f + faceOffsetY;
         float faceSpacing = faceButtonSize * layout.faceButtonSpacing;
 
-        // Y (top) - Yellow
-        addFaceButton(faceCenterX, faceCenterY - faceSpacing, faceButtonSize,
-                      xinput.buttonY, COLOR_BUTTON_Y, "Y");
-        // A (bottom) - Green
-        addFaceButton(faceCenterX, faceCenterY + faceSpacing, faceButtonSize,
-                      xinput.buttonA, COLOR_BUTTON_A, "A");
-        // X (left) - Blue
-        addFaceButton(faceCenterX - faceSpacing / UI_ASPECT_RATIO, faceCenterY, faceButtonSize,
-                      xinput.buttonX, COLOR_BUTTON_X, "X");
-        // B (right) - Red
-        addFaceButton(faceCenterX + faceSpacing / UI_ASPECT_RATIO, faceCenterY, faceButtonSize,
-                      xinput.buttonB, COLOR_BUTTON_B, "B");
+        // Top (Y / Triangle)
+        addFaceButton(faceCenterX, faceCenterY - faceSpacing, faceButtonSize, xinput.buttonY, "Y");
+        // Bottom (A / Cross)
+        addFaceButton(faceCenterX, faceCenterY + faceSpacing, faceButtonSize, xinput.buttonA, "A");
+        // Left (X / Square)
+        addFaceButton(faceCenterX - faceSpacing / UI_ASPECT_RATIO, faceCenterY, faceButtonSize, xinput.buttonX, "X");
+        // Right (B / Circle)
+        addFaceButton(faceCenterX + faceSpacing / UI_ASPECT_RATIO, faceCenterY, faceButtonSize, xinput.buttonB, "B");
     }
 }
 
@@ -265,42 +264,51 @@ void GamepadWidget::addStick(float centerX, float centerY, float stickX, float s
     m_quads.push_back(markerQuad);
 }
 
-void GamepadWidget::addFaceButton(float centerX, float centerY, float size, bool isPressed,
-                                   unsigned long labelColor, const char* label) {
-    const auto dims = getScaledDimensions();
-
+void GamepadWidget::addFaceButton(float centerX, float centerY, float size, bool isPressed, const char* label) {
     float ox = centerX, oy = centerY;
     applyOffset(ox, oy);
 
     float buttonWidth = size / UI_ASPECT_RATIO;
     float buttonHeight = size;
 
-    // Get sprite index for gamepad_face_button texture
-    int spriteIndex = (m_textureVariant > 0)
-        ? AssetManager::getInstance().getSpriteIndex("gamepad_face_button", m_textureVariant)
-        : 0;
+    // Map label to button index: 1=A, 2=B, 3=X, 4=Y
+    int buttonIndex = 0;
+    if (label) {
+        if (strcmp(label, "A") == 0) buttonIndex = 1;
+        else if (strcmp(label, "B") == 0) buttonIndex = 2;
+        else if (strcmp(label, "X") == 0) buttonIndex = 3;
+        else if (strcmp(label, "Y") == 0) buttonIndex = 4;
+    }
+
+    // Find per-button sprites (e.g., gamepad_face_button_1_2.tga, gamepad_face_button_1_pressed_2.tga)
+    int unpressedSprite = 0;
+    int pressedSprite = 0;
+    if (m_textureVariant > 0 && buttonIndex > 0) {
+        char spriteName[48];
+        snprintf(spriteName, sizeof(spriteName), "gamepad_face_button_%d", buttonIndex);
+        unpressedSprite = AssetManager::getInstance().getSpriteIndex(spriteName, m_textureVariant);
+
+        snprintf(spriteName, sizeof(spriteName), "gamepad_face_button_%d_pressed", buttonIndex);
+        pressedSprite = AssetManager::getInstance().getSpriteIndex(spriteName, m_textureVariant);
+    }
 
     SPluginQuad_t buttonQuad;
-    if (spriteIndex > 0) {
-        buttonQuad.m_iSprite = spriteIndex;
-        if (isPressed) {
-            buttonQuad.m_ulColor = ColorPalette::WHITE;
+    if (unpressedSprite > 0 || pressedSprite > 0) {
+        if (isPressed && pressedSprite > 0) {
+            buttonQuad.m_iSprite = pressedSprite;
+        } else if (unpressedSprite > 0) {
+            buttonQuad.m_iSprite = unpressedSprite;
         } else {
-            buttonQuad.m_ulColor = PluginUtils::makeColor(40, 40, 40);
+            buttonQuad.m_iSprite = pressedSprite;
         }
+        buttonQuad.m_ulColor = ColorPalette::WHITE;
     } else {
+        // Fallback to solid color
         buttonQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        buttonQuad.m_ulColor = isPressed ? labelColor : COLOR_INACTIVE;
+        buttonQuad.m_ulColor = isPressed ? COLOR_DPAD : COLOR_INACTIVE;
     }
     setQuadPositions(buttonQuad, ox - buttonWidth / 2, oy - buttonHeight / 2, buttonWidth, buttonHeight);
     m_quads.push_back(buttonQuad);
-
-    // Add label text centered on button
-    if (label) {
-        float labelFontSize = dims.fontSize * 0.75f;
-        addString(label, centerX, centerY - labelFontSize * 0.4f, Justify::CENTER,
-            Fonts::getStrong(), labelColor, labelFontSize);
-    }
 }
 
 void GamepadWidget::addDpadButton(float centerX, float centerY, float width, float height,
@@ -644,51 +652,53 @@ const GamepadWidget::LayoutConfig& GamepadWidget::getCurrentLayout() const {
 void GamepadWidget::initDefaultLayouts() {
     m_layouts.clear();
 
-    // Layout for variant 1 (tuned offsets, original textures)
+    // Layout for variant 1 (Xbox controller, 750x630 texture)
     LayoutConfig& layout1 = m_layouts[1];
     layout1.backgroundWidth = 750.0f;
+    layout1.backgroundHeight = 630.0f;
     layout1.triggerWidth = 89.0f;
     layout1.triggerHeight = 61.0f;
     layout1.bumperWidth = 171.0f;
     layout1.bumperHeight = 63.0f;
     layout1.dpadWidth = 32.0f;
     layout1.dpadHeight = 53.0f;
-    layout1.faceButtonSize = 50.0f;
+    layout1.faceButtonSize = 47.0f;
     layout1.menuButtonWidth = 33.0f;
     layout1.menuButtonHeight = 33.0f;
     layout1.stickSize = 83.0f;
     layout1.leftTriggerX = 0.041f;
-    layout1.leftTriggerY = -0.022f;
+    layout1.leftTriggerY = 0.0143f;
     layout1.rightTriggerX = -0.041f;
-    layout1.rightTriggerY = -0.022f;
+    layout1.rightTriggerY = 0.0143f;
     layout1.leftBumperX = -0.01f;
-    layout1.leftBumperY = 0.021f;
+    layout1.leftBumperY = 0.0573f;
     layout1.rightBumperX = 0.01f;
-    layout1.rightBumperY = 0.021f;
+    layout1.rightBumperY = 0.0573f;
     layout1.leftStickX = 0.015f;
-    layout1.leftStickY = 0.02f;
+    layout1.leftStickY = 0.0563f;
     layout1.rightStickX = -0.049f;
-    layout1.rightStickY = 0.09f;
+    layout1.rightStickY = 0.1263f;
     layout1.dpadX = 0.0473f;
-    layout1.dpadY = 0.0045f;
+    layout1.dpadY = 0.0408f;
     layout1.faceButtonsX = -0.0162f;
-    layout1.faceButtonsY = -0.0706f;
+    layout1.faceButtonsY = -0.0343f;
     layout1.menuButtonsX = 0.0004f;
-    layout1.menuButtonsY = -0.0756f;
+    layout1.menuButtonsY = -0.0393f;
     layout1.dpadSpacing = 0.95f;
-    layout1.faceButtonSpacing = 1.0f;
+    layout1.faceButtonSpacing = 1.07f;
     layout1.menuButtonSpacing = 1.14f;
 
-    // Layout for variant 2 (different texture dimensions, 806x453 background)
+    // Layout for variant 2 (PS4 controller, 806x599 texture)
     LayoutConfig& layout2 = m_layouts[2];
     layout2.backgroundWidth = 806.0f;
+    layout2.backgroundHeight = 599.0f;
     layout2.triggerWidth = 99.0f;
     layout2.triggerHeight = 91.0f;
     layout2.bumperWidth = 99.0f;
     layout2.bumperHeight = 22.0f;
     layout2.dpadWidth = 32.0f;
     layout2.dpadHeight = 45.0f;
-    layout2.faceButtonSize = 52.0f;
+    layout2.faceButtonSize = 50.0f;
     layout2.menuButtonWidth = 27.0f;
     layout2.menuButtonHeight = 45.0f;
     layout2.stickSize = 94.0f;
@@ -711,6 +721,6 @@ void GamepadWidget::initDefaultLayouts() {
     layout2.menuButtonsX = 0.0001f;
     layout2.menuButtonsY = -0.1195f;
     layout2.dpadSpacing = 1.55f;
-    layout2.faceButtonSpacing = 1.1f;
+    layout2.faceButtonSpacing = 1.15f;
     layout2.menuButtonSpacing = 5.51f;
 }

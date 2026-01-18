@@ -13,7 +13,7 @@ namespace PluginConstants {
     // Plugin identification
     constexpr const char* PLUGIN_NAME = "mxbmrp3";
     constexpr const char* PLUGIN_DISPLAY_NAME = "MXBMRP3";
-    constexpr const char* PLUGIN_VERSION = "1.12.0.0";
+    constexpr const char* PLUGIN_VERSION = "1.13.2.0";
     constexpr const char* PLUGIN_AUTHOR = "thomas4f";
 
     // GitHub repository for updates (centralized to support repo moves/renames)

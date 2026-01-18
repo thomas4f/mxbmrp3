@@ -35,7 +35,9 @@
 #include "../hud/radar_hud.h"
 #include "../hud/pitboard_hud.h"
 #include "../hud/fuel_widget.h"
+#if GAME_HAS_RECORDS_PROVIDER
 #include "../hud/records_hud.h"
+#endif
 #include "../hud/gap_bar_hud.h"
 #include "../hud/pointer_widget.h"
 #include "../hud/rumble_hud.h"
@@ -115,10 +117,12 @@ void HudManager::initialize() {
     m_pPitboard->setTextureBaseName("pitboard_hud");
     registerHud(std::move(pitboardPtr));
 
+#if GAME_HAS_RECORDS_PROVIDER
     auto recordsPtr = std::make_unique<RecordsHud>();
     m_pRecords = recordsPtr.get();
     m_pRecords->setTextureBaseName("records_hud");
     registerHud(std::move(recordsPtr));
+#endif
 
     // Widgets
     auto lapPtr = std::make_unique<LapWidget>();
@@ -205,8 +209,13 @@ void HudManager::initialize() {
     m_pPointer = pointerPtr.get();
 
     // Register SettingsHud with pointers to all configurable HUDs and widgets
+#if GAME_HAS_RECORDS_PROVIDER
+    RecordsHud* recordsHudPtr = m_pRecords;
+#else
+    RecordsHud* recordsHudPtr = nullptr;
+#endif
     auto settingsPtr = std::make_unique<SettingsHud>(m_pIdealLap, m_pLapLog, m_pStandings,
-                                                       m_pPerformance, m_pTelemetry, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, m_pRecords, m_pFuel, m_pPointer, m_pRumble, m_pGamepad, m_pLean);
+                                                       m_pPerformance, m_pTelemetry, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, recordsHudPtr, m_pFuel, m_pPointer, m_pRumble, m_pGamepad, m_pLean);
     m_pSettingsHud = settingsPtr.get();
     registerHud(std::move(settingsPtr));
 
@@ -270,7 +279,9 @@ void HudManager::clear() {
     m_pTiming = nullptr;
     m_pNotices = nullptr;
     m_pPitboard = nullptr;
+#if GAME_HAS_RECORDS_PROVIDER
     m_pRecords = nullptr;
+#endif
     m_pFuel = nullptr;
     m_pRumble = nullptr;
     m_pGamepad = nullptr;
@@ -772,10 +783,12 @@ void HudManager::processKeyboardInput() {
         DEBUG_INFO_F("Hotkey: Gamepad %s", m_pGamepad->isVisible() ? "shown" : "hidden");
     }
 
+#if GAME_HAS_RECORDS_PROVIDER
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_RECORDS) && m_pRecords) {
         m_pRecords->setVisible(!m_pRecords->isVisible());
         DEBUG_INFO_F("Hotkey: Records %s", m_pRecords->isVisible() ? "shown" : "hidden");
     }
+#endif
 
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_WIDGETS)) {
         m_bAllWidgetsToggledOff = !m_bAllWidgetsToggledOff;
@@ -851,7 +864,7 @@ bool HudManager::isTelemetryHistoryNeeded() const {
 }
 
 
-void HudManager::updateTrackCenterline(int numSegments, SPluginsTrackSegment_t* segments) {
+void HudManager::updateTrackCenterline(int numSegments, Unified::TrackSegment* segments) {
     if (!m_bInitialized || !m_pMapHud) {
         DEBUG_WARN("HudManager: Cannot update track centerline - not initialized or MapHud not available");
         return;
@@ -861,7 +874,7 @@ void HudManager::updateTrackCenterline(int numSegments, SPluginsTrackSegment_t* 
     m_pMapHud->updateTrackData(numSegments, segments);
 }
 
-void HudManager::updateRiderPositions(int numVehicles, SPluginsRaceTrackPosition_t* positions) {
+void HudManager::updateRiderPositions(int numVehicles, Unified::TrackPositionData* positions) {
     // Skip logging - this is a high-frequency event
     if (!m_bInitialized) {
         return;
@@ -877,13 +890,18 @@ void HudManager::updateRiderPositions(int numVehicles, SPluginsRaceTrackPosition
         m_pRadarHud->updateRiderPositions(numVehicles, positions);
     }
 
+    // Update GapBarHud (for flat map mode)
+    if (m_pGapBar) {
+        m_pGapBar->updateRiderPositions(numVehicles, positions);
+    }
+
     // Update centralized lap timer and HUDs with track position for S/F detection
     PluginData& pluginData = PluginData::getInstance();
     int displayRaceNum = pluginData.getDisplayRaceNum();
 
     // Find the display rider's position data
     for (int i = 0; i < numVehicles; ++i) {
-        if (positions[i].m_iRaceNum == displayRaceNum) {
+        if (positions[i].raceNum == displayRaceNum) {
             // Get lap number from standings
             const StandingsData* standing = pluginData.getStanding(displayRaceNum);
             int lapNum = standing ? standing->numLaps : 0;
@@ -891,7 +909,7 @@ void HudManager::updateRiderPositions(int numVehicles, SPluginsRaceTrackPosition
             // Update centralized lap timer (used by TimingHud, IdealLapHud, and others)
             pluginData.updateLapTimerTrackPosition(
                 displayRaceNum,
-                positions[i].m_fTrackPos,
+                positions[i].trackPos,
                 lapNum
             );
 
@@ -899,7 +917,7 @@ void HudManager::updateRiderPositions(int numVehicles, SPluginsRaceTrackPosition
             if (m_pGapBar) {
                 m_pGapBar->updateTrackPosition(
                     displayRaceNum,
-                    positions[i].m_fTrackPos,
+                    positions[i].trackPos,
                     lapNum
                 );
             }

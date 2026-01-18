@@ -9,10 +9,10 @@
 
 DEFINE_HANDLER_SINGLETON(SpectateHandler)
 
-int SpectateHandler::handleSpectateVehicles(int iNumVehicles, SPluginsSpectateVehicle_t* pasVehicleData, int iCurSelection, int* piSelect) {
+int SpectateHandler::handleSpectateVehicles(int iNumVehicles, Unified::SpectateVehicle* pasVehicleData, int iCurSelection, int* piSelect) {
     // Track the currently spectated rider
     if (iCurSelection >= 0 && iCurSelection < iNumVehicles && pasVehicleData != nullptr) {
-        int spectatedRaceNum = pasVehicleData[iCurSelection].m_iRaceNum;
+        int spectatedRaceNum = pasVehicleData[iCurSelection].raceNum;
         PluginData::getInstance().setSpectatedRaceNum(spectatedRaceNum);
     }
 
@@ -20,9 +20,9 @@ int SpectateHandler::handleSpectateVehicles(int iNumVehicles, SPluginsSpectateVe
     if (m_requestedSpectateRaceNum >= 0 && pasVehicleData != nullptr && piSelect != nullptr) {
         // Find the rider with the requested race number
         for (int i = 0; i < iNumVehicles; ++i) {
-            if (pasVehicleData[i].m_iRaceNum == m_requestedSpectateRaceNum) {
+            if (pasVehicleData[i].raceNum == m_requestedSpectateRaceNum) {
                 // Found the rider - switch to them
-                DEBUG_INFO_F("Spectating rider #%d (%s)", m_requestedSpectateRaceNum, pasVehicleData[i].m_szName);
+                DEBUG_INFO_F("Spectating rider #%d (%s)", m_requestedSpectateRaceNum, pasVehicleData[i].name);
                 *piSelect = i;
                 m_requestedSpectateRaceNum = -1;  // Clear the request
                 return 1;  // Selection changed

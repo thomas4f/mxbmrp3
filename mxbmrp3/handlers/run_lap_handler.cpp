@@ -9,7 +9,7 @@
 
 DEFINE_HANDLER_SINGLETON(RunLapHandler)
 
-void RunLapHandler::handleRunLap(SPluginsBikeLap_t* psLapData) {
+void RunLapHandler::handleRunLap(Unified::PlayerLapData* psLapData) {
     HANDLER_NULL_CHECK(psLapData);
 
     // NOTE: RunLap events are player-only, limiting spectate mode functionality.

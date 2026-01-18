@@ -1,10 +1,10 @@
 // ============================================================================
 // core/plugin_manager.h
-// Main entry point and coordinator for all plugin lifecycle events from MX Bikes API
+// Main entry point and coordinator for all plugin lifecycle events
 // ============================================================================
 #pragma once
 
-#include "../vendor/piboso/mxb_api.h"
+#include "../game/unified_types.h"
 
 class PluginManager {
 public:
@@ -14,32 +14,33 @@ public:
 
     int handleStartup(const char* savePath);
     void handleShutdown();
-    void handleEventInit(SPluginsBikeEvent_t* psEventData);
+    void handleEventInit(Unified::VehicleEventData* psEventData);
     void handleEventDeinit();
-    void handleRunInit(SPluginsBikeSession_t* psSessionData);
+    void handleRunInit(Unified::SessionData* psSessionData);
     void handleRunDeinit();
     void handleRunStart();
     void handleRunStop();
-    void handleRunLap(SPluginsBikeLap_t* psLapData);
-    void handleRunSplit(SPluginsBikeSplit_t* psSplitData);
-    void handleRunTelemetry(SPluginsBikeData_t* psBikeData, float fTime, float fPos);
+    void handleRunLap(Unified::PlayerLapData* psLapData);
+    void handleRunSplit(Unified::PlayerSplitData* psSplitData);
+    void handleRunTelemetry(Unified::TelemetryData* psTelemetryData);
     int handleDrawInit(int* piNumSprites, char** pszSpriteName, int* piNumFonts, char** pszFontName);
     void handleDraw(int iState, int* piNumQuads, void** ppQuad, int* piNumString, void** ppString);
-    void handleTrackCenterline(int iNumSegments, SPluginsTrackSegment_t* pasSegment, void* pRaceData);
-    void handleRaceEvent(SPluginsRaceEvent_t* psRaceEvent);
+    void handleTrackCenterline(int iNumSegments, Unified::TrackSegment* pasSegment, void* pRaceData);
+    void handleRaceEvent(Unified::RaceEventData* psRaceEvent);
     void handleRaceDeinit();
-    void handleRaceAddEntry(SPluginsRaceAddEntry_t* psRaceAddEntry);
-    void handleRaceRemoveEntry(SPluginsRaceRemoveEntry_t* psRaceRemoveEntry);
-    void handleRaceSession(SPluginsRaceSession_t* psRaceSession);
-    void handleRaceSessionState(SPluginsRaceSessionState_t* psRaceSessionState);
-    void handleRaceLap(SPluginsRaceLap_t* psRaceLap);
-    void handleRaceSplit(SPluginsRaceSplit_t* psRaceSplit);
-    void handleRaceHoleshot(SPluginsRaceHoleshot_t* psRaceHoleshot);
-    void handleRaceCommunication(SPluginsRaceCommunication_t* psRaceCommunication, int dataSize);
-    void handleRaceClassification(SPluginsRaceClassification_t* psRaceClassification, SPluginsRaceClassificationEntry_t* pasRaceClassificationEntry, int iNumEntries);
-    void handleRaceTrackPosition(int iNumVehicles, SPluginsRaceTrackPosition_t* pasRaceTrackPosition);
-    void handleRaceVehicleData(SPluginsRaceVehicleData_t* psRaceVehicleData);
-    int handleSpectateVehicles(int iNumVehicles, SPluginsSpectateVehicle_t* pasVehicleData, int iCurSelection, int* piSelect);
+    void handleRaceAddEntry(Unified::RaceEntryData* psRaceAddEntry);
+    void handleRaceRemoveEntry(int raceNum);
+    void handleRaceSession(Unified::RaceSessionData* psRaceSession);
+    void handleRaceSessionState(Unified::RaceSessionStateData* psRaceSessionState);
+    void handleRaceLap(Unified::RaceLapData* psRaceLap);
+    void handleRaceSplit(Unified::RaceSplitData* psRaceSplit);
+    void handleRaceHoleshot(Unified::RaceHoleshotData* psRaceHoleshot);
+    void handleRaceSpeed(Unified::RaceSpeedData* psRaceSpeed);
+    void handleRaceCommunication(Unified::RaceCommunicationData* psRaceCommunication);
+    void handleRaceClassification(Unified::RaceClassificationData* psRaceClassification, Unified::RaceClassificationEntry* pasRaceClassificationEntry, int iNumEntries);
+    void handleRaceTrackPosition(int iNumVehicles, Unified::TrackPositionData* pasRaceTrackPosition);
+    void handleRaceVehicleData(Unified::RaceVehicleData* psRaceVehicleData);
+    int handleSpectateVehicles(int iNumVehicles, Unified::SpectateVehicle* pasVehicleData, int iCurSelection, int* piSelect);
     int handleSpectateCameras(int iNumCameras, void* pCameraData, int iCurSelection, int* piSelect);
 
     // Get save path provided by the game
