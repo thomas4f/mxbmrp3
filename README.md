@@ -13,13 +13,6 @@ A customizable, [open-source](https://github.com/thomas4f/mxbmrp3) HUD plugin fo
 - Drag-and-drop positioning with color themes and customizable hotkeys
 - Automatic profile switching for Practice, Qualify, Race, and Spectate sessions
 
-### Supported Games
-
-| Game | DLO File | Status |
-|------|----------|--------|
-| MX Bikes | `mxbmrp3.dlo` | Full support |
-| GP Bikes | `mxbmrp3_gpb.dlo` | Core features |
-
 ### Get Started
 
 Download and install the plugin to begin customizing your HUD.
