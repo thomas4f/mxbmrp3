@@ -27,7 +27,13 @@ Download and install the plugin to begin customizing your HUD.
 [![Download Installer](https://img.shields.io/badge/Download-Installer-green?style=for-the-badge)](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3-Setup.exe)
 [![Download ZIP](https://img.shields.io/badge/Download-ZIP-blue?style=for-the-badge)](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3.zip)
 
-See [Installation](#installation) for setup instructions.
+> **Quick Start**
+> 1. Install the plugin
+> 2. Launch the game and load a track
+> 3. Right-click drag to reposition elements
+> 4. Press **Tilde** or click **[=]** to customize visibility, scale, opacity, and more
+
+See [Installation](#installation) for detailed setup instructions.
 
 ## Contents
 
@@ -168,21 +174,19 @@ All HUDs and widgets are configurable via the settings menu, with detailed per-o
 
 ## Modding
 
+Plugin data and custom assets are stored in the game's **user data folder**:
+
+| Game | User Data Folder |
+|------|------------------|
+| MX Bikes | `Documents/PiBoSo/MX Bikes/mxbmrp3/` |
+| GP Bikes | `Documents/PiBoSo/GP Bikes/mxbmrp3/` |
+
 ### Custom Assets
 
-Add custom fonts, textures, and icons by placing files in your game's **user data folder**:
+Add custom fonts, textures, and icons by placing files in the appropriate subfolder:
 
-**MX Bikes:**
 ```
-Documents/PiBoSo/MX Bikes/mxbmrp3/
-├── fonts/       ← Custom .fnt files
-├── textures/    ← Custom .tga textures
-└── icons/       ← Custom .tga icons
-```
-
-**GP Bikes:**
-```
-Documents/PiBoSo/GP Bikes/mxbmrp3/
+mxbmrp3/
 ├── fonts/       ← Custom .fnt files
 ├── textures/    ← Custom .tga textures
 └── icons/       ← Custom .tga icons
@@ -198,11 +202,6 @@ On game startup, the plugin syncs these files to the plugin's data directory (`p
 
 ### Data Files
 
-Plugin data is stored in the game's user data folder:
-
-**MX Bikes:** `Documents/PiBoSo/MX Bikes/mxbmrp3/`
-**GP Bikes:** `Documents/PiBoSo/GP Bikes/mxbmrp3/`
-
 | File | Description |
 |------|-------------|
 | `mxbmrp3_settings.ini` | All HUD settings (positions, visibility, options) |
@@ -216,9 +215,15 @@ Plugin data is stored in the game's user data folder:
 - Verify the DLO file and `mxbmrp3_data/` are in the correct `plugins/` folder. Games have two directories - the **game installation** (contains the game .exe) and **user data** (`Documents\PiBoSo\[Game]\`). Plugins go in the game installation, not Documents.
 - For GP Bikes, ensure you're using `mxbmrp3_gpb.dlo`, not `mxbmrp3.dlo`
 
-**Black Screen on Game Startup**
+**Text or Icons Not Appearing**
+- Ensure `mxbmrp3_data/` folder is in the `plugins/` folder alongside the DLO file
+- The `mxbmrp3_data/` folder contains fonts, textures, and icons required for rendering
+- If you moved or renamed this folder, restore it from the release archive
+
+**Game Fails to Start or Shows Black Screen**
 - Ensure the [Visual C++ Redistributable (x64)](https://aka.ms/vc14/vc_redist.x64.exe) is installed
 - Restart your computer after installing - the runtime may not load until after a reboot
+- Try removing the plugin DLO file temporarily to verify the game starts without it
 
 **Elements Appearing Twice (Ghost/Duplicate)**
 - Check for duplicate DLO files - only ONE plugin DLO should exist in your plugins folder
