@@ -9,6 +9,7 @@ A customizable, [open-source](https://github.com/thomas4f/mxbmrp3) HUD plugin fo
 - Lap timing with splits, personal bests, gap-to-PB visualization, and online lap records (MX Bikes)
 - Track specific riders with custom colors and icons across all HUDs
 - Controller rumble feedback with customizable effects (bumps, slide, spin, lockup, wheelie, etc.)
+- Discord Rich Presence integration showing current session and track
 - Telemetry visualization and compact info widgets
 - Drag-and-drop positioning with color themes and customizable hotkeys
 - Automatic profile switching for Practice, Qualify, Race, and Spectate sessions
@@ -34,6 +35,7 @@ See [Installation](#installation) for detailed setup instructions.
 - [Controls](#controls)
 - [Configuration](#configuration)
 - [HUDs & Widgets](#huds--widgets)
+- [Advanced Settings](#advanced-settings)
 - [Modding](#modding)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
@@ -147,6 +149,7 @@ All HUDs and widgets are configurable via the settings menu, with detailed per-o
 | **Telemetry** | Throttle, brake, suspension graphs |
 | **Performance** | FPS and plugin CPU usage |
 | **Rumble** | Controller rumble effect visualization |
+| **Session** | Session info (type, format, track, server, players, password) |
 
 ### Widgets
 
@@ -155,7 +158,6 @@ All HUDs and widgets are configurable via the settings menu, with detailed per-o
 | **Lap** | Current lap number |
 | **Position** | Race position |
 | **Time** | Session time/countdown |
-| **Session** | Session type |
 | **Speed** | Speed and gear |
 | **Speedo** | Analog speedometer |
 | **Tacho** | Analog tachometer |
@@ -165,14 +167,19 @@ All HUDs and widgets are configurable via the settings menu, with detailed per-o
 | **Notices** | Race status notices (wrong way, blue flag, last lap, finished) |
 | **Gamepad** | Controller visualization |
 
+## Advanced Settings
+
+Some power-user settings are only available via manual INI editing. To edit:
+
+1. Disable **Auto-Save** in Settings > General
+2. Edit `mxbmrp3_settings.ini` in your [user data folder](#modding)
+3. Use the **Reload Config** hotkey to apply changes (bind it in Settings > Hotkeys)
+
+The `[Advanced]` section includes options like `mapPixelSpacing` (track rendering density), gauge needle colors (`speedoNeedleColor`, `tachoNeedleColor`), `standingsTopPositions` (always-visible top positions), and drop shadow offsets. Colors use AABBGGRR hex format.
+
 ## Modding
 
-Plugin data and custom assets are stored in the game's **user data folder**:
-
-| Game | User Data Folder |
-|------|------------------|
-| MX Bikes | `Documents/PiBoSo/MX Bikes/mxbmrp3/` |
-| GP Bikes | `Documents/PiBoSo/GP Bikes/mxbmrp3/` |
+Plugin data and custom assets are stored in `Documents\PiBoSo\[Game]\mxbmrp3\`.
 
 ### Custom Assets
 
@@ -187,7 +194,7 @@ mxbmrp3/
 
 On game startup, the plugin syncs these files to the plugin's data directory (`plugins/mxbmrp3_data/`). User files with the same name as bundled assets will override them. This keeps your customizations separate from the plugin installation, so updates won't overwrite your files. **Restart the game after adding or modifying assets.**
 
-**Textures** use the naming convention `{element_name}_{number}.tga` (e.g., `standings_hud_1.tga`). They're auto-discovered and selectable via the Texture control in each HUD's settings.
+**Textures** use the naming convention `{element_name}_{number}.tga` (e.g., `standings_hud_1.tga`). They're auto-discovered and selectable via the Texture control in each HUD's settings. Source design files (PSD) are available in [`assets/`](assets/).
 
 **Fonts** (`.fnt` files) are auto-discovered and assignable to categories (Title, Normal, Strong, Marker, Small) in Settings > Appearance. To generate fonts, use the `fontgen` utility provided by PiBoSo. See [this forum post](https://forum.piboso.com/index.php?topic=1458.msg20183#msg20183) for details. An example configuration is provided in [`fontgen.cfg`](fontgen.cfg).
 
@@ -200,6 +207,8 @@ On game startup, the plugin syncs these files to the plugin's data directory (`p
 | `mxbmrp3_settings.ini` | All HUD settings (positions, visibility, options) |
 | `mxbmrp3_personal_bests.json` | Personal best lap times per track/bike/category |
 | `mxbmrp3_tracked_riders.json` | Tracked riders with colors and icons |
+| `rumble_profiles.json` | Per-bike rumble effect profiles |
+| `odometer.json` | Per-bike odometer and trip meter data |
 
 ## Troubleshooting
 

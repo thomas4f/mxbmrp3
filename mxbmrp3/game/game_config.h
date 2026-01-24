@@ -133,6 +133,13 @@
     #define GAME_HAS_ECU 0
 #endif
 
+// Tyre temperature data (GP Bikes only)
+#if defined(GAME_GPBIKES)
+    #define GAME_HAS_TYRE_TEMP 1
+#else
+    #define GAME_HAS_TYRE_TEMP 0
+#endif
+
 // Penalty clear/change (GP Bikes, WRS, KRP)
 #if defined(GAME_GPBIKES) || defined(GAME_WRS) || defined(GAME_KRP)
     #define GAME_HAS_PENALTY_MANAGEMENT 1
@@ -180,4 +187,18 @@
     #define GAME_HAS_RECORDS_PROVIDER 1
 #else
     #define GAME_HAS_RECORDS_PROVIDER 0
+#endif
+
+// Discord Rich Presence (MX Bikes only - requires separate Discord app per game)
+#if defined(GAME_MXBIKES)
+    #define GAME_HAS_DISCORD 1
+#else
+    #define GAME_HAS_DISCORD 0
+#endif
+
+// Server info (name, password, player count) via memory reading (MX Bikes only)
+#if defined(GAME_MXBIKES)
+    #define GAME_HAS_SERVER_INFO 1
+#else
+    #define GAME_HAS_SERVER_INFO 0
 #endif

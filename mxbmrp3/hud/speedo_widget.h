@@ -23,6 +23,12 @@ public:
     unsigned long getNeedleColor() const { return m_needleColor; }
     static constexpr unsigned long DEFAULT_NEEDLE_COLOR = PluginUtils::makeColor(255, 0, 0);  // Red
 
+    // Odometer/Trip meter visibility (configurable via INI)
+    void setShowOdometer(bool show) { m_showOdometer = show; setDataDirty(); }
+    bool getShowOdometer() const { return m_showOdometer; }
+    void setShowTripmeter(bool show) { m_showTripmeter = show; setDataDirty(); }
+    bool getShowTripmeter() const { return m_showTripmeter; }
+
 protected:
     void rebuildLayout() override;
 
@@ -43,4 +49,8 @@ private:
 
     // Needle appearance
     unsigned long m_needleColor = DEFAULT_NEEDLE_COLOR;
+
+    // Odometer/Trip meter visibility
+    bool m_showOdometer = true;   // Default: ON
+    bool m_showTripmeter = false; // Default: OFF
 };

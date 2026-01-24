@@ -1,20 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
-    <ProjectConfiguration Include="MXB-Debug|x64">
-      <Configuration>MXB-Debug</Configuration>
-      <Platform>x64</Platform>
-    </ProjectConfiguration>
     <ProjectConfiguration Include="MXB-Release|x64">
       <Configuration>MXB-Release</Configuration>
       <Platform>x64</Platform>
     </ProjectConfiguration>
-    <ProjectConfiguration Include="GPB-Debug|x64">
-      <Configuration>GPB-Debug</Configuration>
-      <Platform>x64</Platform>
-    </ProjectConfiguration>
     <ProjectConfiguration Include="GPB-Release|x64">
       <Configuration>GPB-Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="MXB-Debug|x64">
+      <Configuration>MXB-Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="GPB-Debug|x64">
+      <Configuration>GPB-Debug</Configuration>
       <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
@@ -209,8 +209,11 @@
     <ClInclude Include="core\plugin_utils.h" />
     <ClInclude Include="core\settings_manager.h" />
     <ClInclude Include="core\personal_best_manager.h" />
+    <ClInclude Include="core\rumble_profile_manager.h" />
+    <ClInclude Include="core\odometer_manager.h" />
     <ClInclude Include="core\update_checker.h" />
     <ClInclude Include="core\update_downloader.h" />
+    <ClInclude Include="core\discord_manager.h" />
     <ClInclude Include="core\widget_constants.h" />
     <ClInclude Include="core\xinput_reader.h" />
     <ClInclude Include="diagnostics\logger.h" />
@@ -245,7 +248,7 @@
     <ClInclude Include="hud\rumble_hud.h" />
     <ClInclude Include="hud\position_widget.h" />
     <ClInclude Include="hud\ideal_lap_hud.h" />
-    <ClInclude Include="hud\session_widget.h" />
+    <ClInclude Include="hud\session_hud.h" />
     <ClInclude Include="hud\settings_button_widget.h" />
     <ClInclude Include="hud\settings_hud.h" />
     <ClInclude Include="hud\speed_widget.h" />
@@ -261,6 +264,7 @@
     <ClInclude Include="hud\fuel_widget.h" />
     <ClInclude Include="hud\gamepad_widget.h" />
     <ClInclude Include="hud\lean_widget.h" />
+    <ClInclude Include="hud\tyre_temp_widget.h" />
     <ClInclude Include="hud\settings\settings_layout.h" />
     <ClInclude Include="vendor\piboso\mxb_api.h" />
     <ClInclude Include="vendor\piboso\gpb_api.h" />
@@ -273,6 +277,8 @@
     <ClInclude Include="game\adapters\gpbikes_adapter.h" />
     <ClInclude Include="game\adapters\wrs_adapter.h" />
     <ClInclude Include="game\adapters\krp_adapter.h" />
+    <ClInclude Include="game\memory_reader.h" />
+    <ClInclude Include="game\connection_detector.h" />
     <ClInclude Include="vendor\nlohmann\json.hpp" />
     <ClInclude Include="vendor\miniz\miniz.h" />
     <ClInclude Include="vendor\miniz\miniz_common.h" />
@@ -296,9 +302,14 @@
     <ClCompile Include="core\plugin_utils.cpp" />
     <ClCompile Include="core\settings_manager.cpp" />
     <ClCompile Include="core\personal_best_manager.cpp" />
+    <ClCompile Include="core\rumble_profile_manager.cpp" />
+    <ClCompile Include="core\odometer_manager.cpp" />
     <ClCompile Include="core\update_checker.cpp" />
     <ClCompile Include="core\update_downloader.cpp" />
+    <ClCompile Include="core\discord_manager.cpp" />
     <ClCompile Include="core\xinput_reader.cpp" />
+    <ClCompile Include="game\memory_reader.cpp" />
+    <ClCompile Include="game\connection_detector.cpp" />
     <ClCompile Include="diagnostics\logger.cpp" />
     <ClCompile Include="handlers\draw_handler.cpp" />
     <ClCompile Include="handlers\event_handler.cpp" />
@@ -330,7 +341,7 @@
     <ClCompile Include="hud\rumble_hud.cpp" />
     <ClCompile Include="hud\position_widget.cpp" />
     <ClCompile Include="hud\ideal_lap_hud.cpp" />
-    <ClCompile Include="hud\session_widget.cpp" />
+    <ClCompile Include="hud\session_hud.cpp" />
     <ClCompile Include="hud\settings_button_widget.cpp" />
     <ClCompile Include="hud\settings_hud.cpp" />
     <ClCompile Include="hud\settings\settings_layout.cpp" />
@@ -340,6 +351,7 @@
     <ClCompile Include="hud\settings\settings_tab_performance.cpp" />
     <ClCompile Include="hud\settings\settings_tab_records.cpp" />
     <ClCompile Include="hud\settings\settings_tab_pitboard.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_session.cpp" />
     <ClCompile Include="hud\settings\settings_tab_timing.cpp" />
     <ClCompile Include="hud\settings\settings_tab_gap_bar.cpp" />
     <ClCompile Include="hud\settings\settings_tab_standings.cpp" />
@@ -365,6 +377,7 @@
     <ClCompile Include="hud\fuel_widget.cpp" />
     <ClCompile Include="hud\gamepad_widget.cpp" />
     <ClCompile Include="hud\lean_widget.cpp" />
+    <ClCompile Include="hud\tyre_temp_widget.cpp" />
     <!-- MX Bikes API - only compiled for MXBikes configurations -->
     <ClCompile Include="vendor\piboso\mxb_api.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='GPB-Debug|x64'">true</ExcludedFromBuild>

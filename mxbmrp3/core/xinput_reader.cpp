@@ -3,6 +3,7 @@
 // XInput controller reader for raw gamepad input access
 // ============================================================================
 #include "xinput_reader.h"
+#include "rumble_profile_manager.h"
 #include "../diagnostics/logger.h"
 #include "plugin_constants.h"
 #include <algorithm>
@@ -302,11 +303,53 @@ void XInputReader::stopVibration() {
     setVibration(0.0f, 0.0f);
 }
 
+void XInputReader::syncGlobalSettingsToProfile(RumbleConfig* bikeConfig) const {
+    // These settings are always global (stored in INI, never per-bike JSON)
+    bikeConfig->enabled = m_rumbleConfig.enabled;
+    bikeConfig->controllerIndex = m_rumbleConfig.controllerIndex;
+    bikeConfig->additiveBlend = m_rumbleConfig.additiveBlend;
+    bikeConfig->rumbleWhenCrashed = m_rumbleConfig.rumbleWhenCrashed;
+    bikeConfig->usePerBikeEffects = m_rumbleConfig.usePerBikeEffects;
+}
+
+RumbleConfig& XInputReader::getRumbleConfig() {
+    if (m_rumbleConfig.usePerBikeEffects) {
+        auto& profileMgr = RumbleProfileManager::getInstance();
+        RumbleConfig* bikeConfig = profileMgr.getProfileForCurrentBike();
+        if (!bikeConfig) {
+            // No profile yet - auto-create from global
+            profileMgr.createProfileForCurrentBike(m_rumbleConfig);
+            bikeConfig = profileMgr.getProfileForCurrentBike();
+        }
+        if (bikeConfig) {
+            syncGlobalSettingsToProfile(bikeConfig);
+            return *bikeConfig;
+        }
+    }
+    return m_rumbleConfig;  // Global config from INI
+}
+
+const RumbleConfig& XInputReader::getRumbleConfig() const {
+    if (m_rumbleConfig.usePerBikeEffects) {
+        auto& profileMgr = RumbleProfileManager::getInstance();
+        RumbleConfig* bikeConfig = profileMgr.getProfileForCurrentBike();
+        if (bikeConfig) {
+            // Safe: only syncing transient global settings, not persisted per-bike data
+            syncGlobalSettingsToProfile(bikeConfig);
+            return *bikeConfig;
+        }
+    }
+    return m_rumbleConfig;  // Global config from INI
+}
+
 void XInputReader::updateRumbleFromTelemetry(float suspensionVelocity, float wheelOverrun, float wheelUnderrun, float rpm, float slideAngle, float surfaceSpeed, float steerTorque, float wheelieIntensity, bool isAirborne, bool suppressOutput) {
     // If controller is disabled, don't process rumble at all
     if (m_controllerIndex < 0) {
         return;
     }
+
+    // Get active config (global or per-bike based on mode)
+    const RumbleConfig& config = getRumbleConfig();
 
     // Always calculate forces for graph visualization, even when rumble is disabled
     // m_last*Rumble stores the max motor contribution for visualization
@@ -382,23 +425,23 @@ void XInputReader::updateRumbleFromTelemetry(float suspensionVelocity, float whe
         m_lastSteerRumble = 0.0f;
         m_lastWheelieRumble = 0.0f;
         // RPM still active mid-air but reduced (engine under less load)
-        float rpmNorm = m_rumbleConfig.rpmEffect.calculateNormalized(rpmInput) * 0.5f;
-        m_lastRpmRumble = rpmNorm * std::max(m_rumbleConfig.rpmEffect.lightStrength,
-                                              m_rumbleConfig.rpmEffect.heavyStrength);
+        float rpmNorm = config.rpmEffect.calculateNormalized(rpmInput) * 0.5f;
+        m_lastRpmRumble = rpmNorm * std::max(config.rpmEffect.lightStrength,
+                                              config.rpmEffect.heavyStrength);
     } else {
         // Store max motor contribution for visualization (max of light/heavy)
         auto maxContrib = [](const RumbleEffect& eff, float input) {
             float norm = eff.calculateNormalized(input);
             return norm * std::max(eff.lightStrength, eff.heavyStrength);
         };
-        m_lastSuspensionRumble = maxContrib(m_rumbleConfig.suspensionEffect, suspInput);
-        m_lastWheelspinRumble = maxContrib(m_rumbleConfig.wheelspinEffect, spinInput);
-        m_lastLockupRumble = maxContrib(m_rumbleConfig.brakeLockupEffect, lockInput);
-        m_lastWheelieRumble = maxContrib(m_rumbleConfig.wheelieEffect, wheelieInput);
-        m_lastRpmRumble = maxContrib(m_rumbleConfig.rpmEffect, rpmInput);
-        m_lastSlideRumble = maxContrib(m_rumbleConfig.slideEffect, slideInput);
-        m_lastSurfaceRumble = maxContrib(m_rumbleConfig.surfaceEffect, surfaceInput);
-        m_lastSteerRumble = maxContrib(m_rumbleConfig.steerEffect, steerInput);
+        m_lastSuspensionRumble = maxContrib(config.suspensionEffect, suspInput);
+        m_lastWheelspinRumble = maxContrib(config.wheelspinEffect, spinInput);
+        m_lastLockupRumble = maxContrib(config.brakeLockupEffect, lockInput);
+        m_lastWheelieRumble = maxContrib(config.wheelieEffect, wheelieInput);
+        m_lastRpmRumble = maxContrib(config.rpmEffect, rpmInput);
+        m_lastSlideRumble = maxContrib(config.slideEffect, slideInput);
+        m_lastSurfaceRumble = maxContrib(config.surfaceEffect, surfaceInput);
+        m_lastSteerRumble = maxContrib(config.steerEffect, steerInput);
     }
 
     // Combine effects - each effect contributes independently to each motor
@@ -406,6 +449,7 @@ void XInputReader::updateRumbleFromTelemetry(float suspensionVelocity, float whe
     float lightMotor = 0.0f;
 
     // Helper lambda for blending based on mode
+    // Note: additiveBlend comes from global config, not per-bike profile
     const bool additive = m_rumbleConfig.additiveBlend;
     auto blend = [additive](float& motor, float value) {
         if (value <= 0.0f) return;
@@ -419,41 +463,41 @@ void XInputReader::updateRumbleFromTelemetry(float suspensionVelocity, float whe
     // Calculate actual motor contributions (0 when airborne for ground effects)
     if (!isAirborne) {
         // Suspension effect
-        blend(heavyMotor, m_rumbleConfig.suspensionEffect.calculateHeavy(suspInput));
-        blend(lightMotor, m_rumbleConfig.suspensionEffect.calculateLight(suspInput));
+        blend(heavyMotor, config.suspensionEffect.calculateHeavy(suspInput));
+        blend(lightMotor, config.suspensionEffect.calculateLight(suspInput));
 
         // Wheelspin effect
-        blend(heavyMotor, m_rumbleConfig.wheelspinEffect.calculateHeavy(spinInput));
-        blend(lightMotor, m_rumbleConfig.wheelspinEffect.calculateLight(spinInput));
+        blend(heavyMotor, config.wheelspinEffect.calculateHeavy(spinInput));
+        blend(lightMotor, config.wheelspinEffect.calculateLight(spinInput));
 
         // Brake lockup effect
-        blend(heavyMotor, m_rumbleConfig.brakeLockupEffect.calculateHeavy(lockInput));
-        blend(lightMotor, m_rumbleConfig.brakeLockupEffect.calculateLight(lockInput));
+        blend(heavyMotor, config.brakeLockupEffect.calculateHeavy(lockInput));
+        blend(lightMotor, config.brakeLockupEffect.calculateLight(lockInput));
 
         // Wheelie effect
-        blend(heavyMotor, m_rumbleConfig.wheelieEffect.calculateHeavy(wheelieInput));
-        blend(lightMotor, m_rumbleConfig.wheelieEffect.calculateLight(wheelieInput));
+        blend(heavyMotor, config.wheelieEffect.calculateHeavy(wheelieInput));
+        blend(lightMotor, config.wheelieEffect.calculateLight(wheelieInput));
 
         // Slide effect
-        blend(heavyMotor, m_rumbleConfig.slideEffect.calculateHeavy(slideInput));
-        blend(lightMotor, m_rumbleConfig.slideEffect.calculateLight(slideInput));
+        blend(heavyMotor, config.slideEffect.calculateHeavy(slideInput));
+        blend(lightMotor, config.slideEffect.calculateLight(slideInput));
 
         // Surface effect
-        blend(heavyMotor, m_rumbleConfig.surfaceEffect.calculateHeavy(surfaceInput));
-        blend(lightMotor, m_rumbleConfig.surfaceEffect.calculateLight(surfaceInput));
+        blend(heavyMotor, config.surfaceEffect.calculateHeavy(surfaceInput));
+        blend(lightMotor, config.surfaceEffect.calculateLight(surfaceInput));
 
         // Steer effect
-        blend(heavyMotor, m_rumbleConfig.steerEffect.calculateHeavy(steerInput));
-        blend(lightMotor, m_rumbleConfig.steerEffect.calculateLight(steerInput));
+        blend(heavyMotor, config.steerEffect.calculateHeavy(steerInput));
+        blend(lightMotor, config.steerEffect.calculateLight(steerInput));
 
         // RPM effect (full strength on ground)
-        blend(heavyMotor, m_rumbleConfig.rpmEffect.calculateHeavy(rpmInput));
-        blend(lightMotor, m_rumbleConfig.rpmEffect.calculateLight(rpmInput));
+        blend(heavyMotor, config.rpmEffect.calculateHeavy(rpmInput));
+        blend(lightMotor, config.rpmEffect.calculateLight(rpmInput));
     } else {
         // RPM still active mid-air but reduced (engine under less load)
-        float rpmNorm = m_rumbleConfig.rpmEffect.calculateNormalized(rpmInput) * 0.5f;
-        blend(heavyMotor, rpmNorm * m_rumbleConfig.rpmEffect.heavyStrength);
-        blend(lightMotor, rpmNorm * m_rumbleConfig.rpmEffect.lightStrength);
+        float rpmNorm = config.rpmEffect.calculateNormalized(rpmInput) * 0.5f;
+        blend(heavyMotor, rpmNorm * config.rpmEffect.heavyStrength);
+        blend(lightMotor, rpmNorm * config.rpmEffect.lightStrength);
     }
 
     // Clamp to valid range (important for additive mode)
@@ -474,6 +518,7 @@ void XInputReader::updateRumbleFromTelemetry(float suspensionVelocity, float whe
 
     // Send to controller (unless suppressed or disabled)
     // Graph still updates even when output is suppressed
+    // Note: enabled comes from global config, not per-bike profile
     if (suppressOutput || !m_rumbleConfig.enabled) {
         setVibration(0.0f, 0.0f);
     } else {

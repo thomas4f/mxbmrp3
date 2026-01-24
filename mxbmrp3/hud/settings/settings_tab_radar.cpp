@@ -46,13 +46,6 @@ bool SettingsHud::handleClickTabRadar(const ClickRegion& region) {
             }
             return true;
 
-        case ClickRegion::RADAR_PLAYER_ARROW_TOGGLE:
-            if (radarHud) {
-                radarHud->setShowPlayerArrow(!radarHud->getShowPlayerArrow());
-                setDataDirty();
-            }
-            return true;
-
         case ClickRegion::RADAR_MODE_UP:
         case ClickRegion::RADAR_MODE_DOWN:
             if (radarHud) {
@@ -213,12 +206,6 @@ BaseHud* SettingsHud::renderTabRadar(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::RADAR_RANGE_DOWN,
         SettingsHud::ClickRegion::RADAR_RANGE_UP,
         hud, true, false, "radar.range");
-
-    // Show player arrow toggle
-    ctx.addToggleControl("Show player arrow", hud->getShowPlayerArrow(),
-        SettingsHud::ClickRegion::RADAR_PLAYER_ARROW_TOGGLE, hud, nullptr, 0, true,
-        "radar.player_arrow");
-    ctx.addSpacing(0.5f);
 
     // === RIDER MARKERS SECTION ===
     ctx.addSectionHeader("Rider Markers");

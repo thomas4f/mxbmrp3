@@ -18,6 +18,9 @@
 #include "../core/update_checker.h"
 #include "../core/update_downloader.h"
 #include "../core/hotkey_manager.h"
+#if GAME_HAS_DISCORD
+#include "../core/discord_manager.h"
+#endif
 #include "../core/tracked_riders_manager.h"
 #include "../core/asset_manager.h"
 #include "../core/font_config.h"
@@ -59,7 +62,11 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog,
                          StandingsHud* standings,
                          PerformanceHud* performance,
                          TelemetryHud* telemetry,
-                         TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionWidget* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean)
+                         TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean
+#if GAME_HAS_TYRE_TEMP
+                         , TyreTempWidget* tyreTemp
+#endif
+                         )
     : m_idealLap(idealLap),
       m_lapLog(lapLog),
       m_standings(standings),
@@ -86,12 +93,19 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog,
       m_rumble(rumble),
       m_gamepad(gamepad),
       m_lean(lean),
+#if GAME_HAS_TYRE_TEMP
+      m_tyreTemp(tyreTemp),
+#endif
       m_bVisible(false),
       m_copyTargetProfile(-1),  // -1 = no target selected
       m_resetProfileConfirmed(false),
       m_resetAllConfirmed(false),
       m_cachedWindowWidth(0),
       m_cachedWindowHeight(0),
+#if GAME_HAS_DISCORD
+      m_cachedDiscordState(-1),
+      m_cachedDiscordEnabled(false),
+#endif
       m_activeTab(TAB_GENERAL),
       m_hoveredRegionIndex(-1),
       m_hoveredHotkeyRow(-1),
@@ -109,7 +123,9 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog,
       m_trackedRidersPerRow(0),
       m_serverPlayersPage(0),
       m_trackedRidersPage(0),
-      m_wasUpdateCheckerOnCooldown(false)
+      m_wasUpdateCheckerOnCooldown(false),
+      m_cachedUpdateCheckerStatus(-1),
+      m_cachedUpdateDownloaderState(-1)
 {
     DEBUG_INFO("SettingsHud created");
     setDraggable(true);
@@ -168,6 +184,20 @@ void SettingsHud::update() {
         DEBUG_INFO_F("SettingsHud rebuilt after window resize: %dx%d", currentWidth, currentHeight);
         return;  // Skip other processing this frame
     }
+
+#if GAME_HAS_DISCORD
+    // Check for Discord state changes (for live status updates in General tab)
+    if (m_activeTab == TAB_GENERAL) {
+        const DiscordManager& discord = DiscordManager::getInstance();
+        int currentState = static_cast<int>(discord.getState());
+        bool currentEnabled = discord.isEnabled();
+        if (currentState != m_cachedDiscordState || currentEnabled != m_cachedDiscordEnabled) {
+            m_cachedDiscordState = currentState;
+            m_cachedDiscordEnabled = currentEnabled;
+            setDataDirty();
+        }
+    }
+#endif
 
     // Track hover state for button backgrounds
     const CursorPosition& cursor = input.getCursorPosition();
@@ -306,17 +336,33 @@ void SettingsHud::update() {
     // Check if capture completed (must be outside isCapturing block - capture ends same frame)
     if (hotkeyMgr.wasCaptureCompleted()) {
         rebuildRenderData();
-        // Save settings after binding change
-        SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
+        // Save settings after binding change (if auto-save enabled)
+        if (UiConfig::getInstance().getAutoSave()) {
+            SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
+        }
     }
 
-    // Check if UpdateChecker cooldown just expired (need to re-enable Check Now button)
+    // Check for Updates tab state changes (status, downloader state, cooldown)
     if (m_activeTab == TAB_UPDATES) {
         UpdateChecker& checker = UpdateChecker::getInstance();
+        UpdateDownloader& downloader = UpdateDownloader::getInstance();
+
+        // Check cooldown expiry
         bool wasOnCooldown = m_wasUpdateCheckerOnCooldown;
         bool isOnCooldown = checker.isOnCooldown();
         m_wasUpdateCheckerOnCooldown = isOnCooldown;
-        if (wasOnCooldown && !isOnCooldown) {
+
+        // Check status changes (CHECKING → UPDATE_AVAILABLE, etc.)
+        int currentStatus = static_cast<int>(checker.getStatus());
+        int currentDownloaderState = static_cast<int>(downloader.getState());
+
+        bool statusChanged = (currentStatus != m_cachedUpdateCheckerStatus);
+        bool downloaderChanged = (currentDownloaderState != m_cachedUpdateDownloaderState);
+        bool cooldownExpired = (wasOnCooldown && !isOnCooldown);
+
+        if (statusChanged || downloaderChanged || cooldownExpired) {
+            m_cachedUpdateCheckerStatus = currentStatus;
+            m_cachedUpdateDownloaderState = currentDownloaderState;
             setDataDirty();
         }
     }
@@ -481,6 +527,7 @@ void SettingsHud::rebuildRenderData() {
         TAB_TELEMETRY,
         TAB_RECORDS,
         TAB_PITBOARD,
+        TAB_SESSION,
         TAB_TIMING,
         TAB_GAP_BAR,
         TAB_PERFORMANCE,
@@ -558,6 +605,7 @@ void SettingsHud::rebuildRenderData() {
             case TAB_STANDINGS:    tabHud = m_standings; break;
             case TAB_MAP:          tabHud = m_mapHud; break;
             case TAB_PITBOARD:     tabHud = m_pitboard; break;
+            case TAB_SESSION:      tabHud = m_session; break;
             case TAB_LAP_LOG:      tabHud = m_lapLog; break;
             case TAB_IDEAL_LAP: tabHud = m_idealLap; break;
             case TAB_TELEMETRY:    tabHud = m_telemetry; break;
@@ -660,6 +708,7 @@ void SettingsHud::rebuildRenderData() {
                            i == TAB_TELEMETRY ? "telemetry" :
                            i == TAB_PERFORMANCE ? "performance" :
                            i == TAB_PITBOARD ? "pitboard" :
+                           i == TAB_SESSION ? "session" :
                            i == TAB_RECORDS ? "records" :
                            i == TAB_TIMING ? "timing" :
                            i == TAB_GAP_BAR ? "gap_bar" :
@@ -1043,6 +1092,13 @@ void SettingsHud::rebuildRenderData() {
             currentY = layoutCtx.currentY;
             break;
 
+        case TAB_SESSION:
+            // Use extracted tab renderer
+            layoutCtx.currentY = currentY;
+            activeHud = renderTabSession(layoutCtx);
+            currentY = layoutCtx.currentY;
+            break;
+
         case TAB_RECORDS:
             // Use extracted tab renderer
             layoutCtx.currentY = currentY;
@@ -1196,41 +1252,99 @@ void SettingsHud::rebuildRenderData() {
         }
     }
 
-    // [Close] button at bottom center
-    float closeButtonBottomY = startY + backgroundHeight - dim.paddingV - dim.lineHeightNormal;
-    float closeButtonBottomX = contentStartX + (panelWidth - dim.paddingH - dim.paddingH) / 2.0f;
-    float closeButtonWidth = PluginUtils::calculateMonospaceTextWidth(7, dim.fontSize);
-    float closeButtonX = closeButtonBottomX - closeButtonWidth / 2.0f;  // Properly center background
+    // Bottom button row - shows [Save] [Close] when auto-save is off, or just [Close] when on
+    float buttonRowY = startY + backgroundHeight - dim.paddingV - dim.lineHeightNormal;
+    float buttonAreaCenterX = contentStartX + (panelWidth - dim.paddingH - dim.paddingH) / 2.0f;
+    bool autoSaveEnabled = UiConfig::getInstance().getAutoSave();
+    float cw = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
 
-    // Add click region first to get index for hover check
-    size_t closeRegionIndex = m_clickRegions.size();
-    m_clickRegions.push_back(ClickRegion(
-        closeButtonX, closeButtonBottomY, closeButtonWidth, dim.lineHeightNormal,
-        ClickRegion::CLOSE_BUTTON, nullptr, 0, false, 0
-    ));
+    if (!autoSaveEnabled) {
+        // Show [Save] [Close] buttons with gap
+        float saveButtonWidth = PluginUtils::calculateMonospaceTextWidth(6, dim.fontSize);      // [Save]
+        float closeButtonWidth = PluginUtils::calculateMonospaceTextWidth(7, dim.fontSize);     // [Close]
+        float buttonGap = cw;  // 1 character gap between buttons
+        float totalWidth = saveButtonWidth + buttonGap + closeButtonWidth;
+        float startButtonX = buttonAreaCenterX - totalWidth / 2.0f;
 
-    // Button background
-    {
-        SPluginQuad_t bgQuad;
-        float bgX = closeButtonX, bgY = closeButtonBottomY;
-        applyOffset(bgX, bgY);
-        setQuadPositions(bgQuad, bgX, bgY, closeButtonWidth, dim.lineHeightNormal);
-        bgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        bgQuad.m_ulColor = (m_hoveredRegionIndex == static_cast<int>(closeRegionIndex))
-            ? ColorConfig::getInstance().getAccent()
-            : PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(), 128.0f / 255.0f);
-        m_quads.push_back(bgQuad);
+        // [Save] button
+        float saveButtonX = startButtonX;
+        size_t saveRegionIndex = m_clickRegions.size();
+        m_clickRegions.push_back(ClickRegion(
+            saveButtonX, buttonRowY, saveButtonWidth, dim.lineHeightNormal,
+            ClickRegion::SAVE_BUTTON, nullptr, 0, false, 0
+        ));
+        {
+            SPluginQuad_t bgQuad;
+            float bgX = saveButtonX, bgY = buttonRowY;
+            applyOffset(bgX, bgY);
+            setQuadPositions(bgQuad, bgX, bgY, saveButtonWidth, dim.lineHeightNormal);
+            bgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+            bgQuad.m_ulColor = (m_hoveredRegionIndex == static_cast<int>(saveRegionIndex))
+                ? ColorConfig::getInstance().getPositive()
+                : PluginUtils::applyOpacity(ColorConfig::getInstance().getPositive(), 128.0f / 255.0f);
+            m_quads.push_back(bgQuad);
+        }
+        unsigned long saveTextColor = (m_hoveredRegionIndex == static_cast<int>(saveRegionIndex))
+            ? ColorConfig::getInstance().getPrimary()
+            : ColorConfig::getInstance().getPositive();
+        addString("[Save]", saveButtonX + saveButtonWidth / 2.0f, buttonRowY, Justify::CENTER,
+            Fonts::getNormal(), saveTextColor, dim.fontSize);
+
+        // [Close] button
+        float closeButtonX = saveButtonX + saveButtonWidth + buttonGap;
+        size_t closeRegionIndex = m_clickRegions.size();
+        m_clickRegions.push_back(ClickRegion(
+            closeButtonX, buttonRowY, closeButtonWidth, dim.lineHeightNormal,
+            ClickRegion::CLOSE_BUTTON, nullptr, 0, false, 0
+        ));
+        {
+            SPluginQuad_t bgQuad;
+            float bgX = closeButtonX, bgY = buttonRowY;
+            applyOffset(bgX, bgY);
+            setQuadPositions(bgQuad, bgX, bgY, closeButtonWidth, dim.lineHeightNormal);
+            bgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+            bgQuad.m_ulColor = (m_hoveredRegionIndex == static_cast<int>(closeRegionIndex))
+                ? ColorConfig::getInstance().getAccent()
+                : PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(), 128.0f / 255.0f);
+            m_quads.push_back(bgQuad);
+        }
+        unsigned long closeTextColor = (m_hoveredRegionIndex == static_cast<int>(closeRegionIndex))
+            ? ColorConfig::getInstance().getPrimary()
+            : ColorConfig::getInstance().getAccent();
+        addString("[Close]", closeButtonX + closeButtonWidth / 2.0f, buttonRowY, Justify::CENTER,
+            Fonts::getNormal(), closeTextColor, dim.fontSize);
+    } else {
+        // Auto-save is on - just show [Close] button centered
+        float closeButtonWidth = PluginUtils::calculateMonospaceTextWidth(7, dim.fontSize);
+        float closeButtonX = buttonAreaCenterX - closeButtonWidth / 2.0f;
+
+        size_t closeRegionIndex = m_clickRegions.size();
+        m_clickRegions.push_back(ClickRegion(
+            closeButtonX, buttonRowY, closeButtonWidth, dim.lineHeightNormal,
+            ClickRegion::CLOSE_BUTTON, nullptr, 0, false, 0
+        ));
+
+        {
+            SPluginQuad_t bgQuad;
+            float bgX = closeButtonX, bgY = buttonRowY;
+            applyOffset(bgX, bgY);
+            setQuadPositions(bgQuad, bgX, bgY, closeButtonWidth, dim.lineHeightNormal);
+            bgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+            bgQuad.m_ulColor = (m_hoveredRegionIndex == static_cast<int>(closeRegionIndex))
+                ? ColorConfig::getInstance().getAccent()
+                : PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(), 128.0f / 255.0f);
+            m_quads.push_back(bgQuad);
+        }
+
+        unsigned long closeTextColor = (m_hoveredRegionIndex == static_cast<int>(closeRegionIndex))
+            ? ColorConfig::getInstance().getPrimary()
+            : ColorConfig::getInstance().getAccent();
+        addString("[Close]", buttonAreaCenterX, buttonRowY, Justify::CENTER,
+            Fonts::getNormal(), closeTextColor, dim.fontSize);
     }
 
-    // Button text - PRIMARY when hovered, ACCENT when not (purple on purple)
-    unsigned long closeTextColor = (m_hoveredRegionIndex == static_cast<int>(closeRegionIndex))
-        ? ColorConfig::getInstance().getPrimary()
-        : ColorConfig::getInstance().getAccent();
-    addString("[Close]", closeButtonBottomX, closeButtonBottomY, Justify::CENTER,
-        Fonts::getStrong(), closeTextColor, dim.fontSize);
-
     // [Reset <TabName>] button - bottom left corner
-    float resetTabButtonY = closeButtonBottomY;
+    float resetTabButtonY = buttonRowY;
     char resetTabButtonText[32];
     snprintf(resetTabButtonText, sizeof(resetTabButtonText), "[Reset %s]", getTabName(m_activeTab));
     int resetTabButtonChars = static_cast<int>(strlen(resetTabButtonText));
@@ -1266,7 +1380,7 @@ void SettingsHud::rebuildRenderData() {
 
     // Version + update status display - bottom right corner
     {
-        float versionY = closeButtonBottomY;
+        float versionY = buttonRowY;
         float rightEdgeX = contentStartX + panelWidth - dim.paddingH - dim.paddingH;
 
         // Build version/status string based on update state
@@ -1390,14 +1504,17 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                 case TAB_RIDERS:     handled = handleClickTabRiders(region); break;
                 case TAB_RECORDS:    handled = handleClickTabRecords(region); break;
                 case TAB_PITBOARD:   handled = handleClickTabPitboard(region); break;
+                case TAB_SESSION:    handled = handleClickTabSession(region); break;
                 case TAB_LAP_LOG:    handled = handleClickTabLapLog(region); break;
                 case TAB_UPDATES:    handled = handleClickTabUpdates(region); break;
                 default: break;
             }
 
             if (handled) {
-                // Tab handler processed the click - save and return
-                SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
+                // Tab handler processed the click - save and return (if auto-save enabled)
+                if (UiConfig::getInstance().getAutoSave()) {
+                    SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
+                }
                 return;
             }
 
@@ -1507,6 +1624,11 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                 case ClickRegion::CLOSE_BUTTON:
                     handleCloseButtonClick();
                     return;  // Don't save settings, just close the menu
+                case ClickRegion::SAVE_BUTTON:
+                    // Manual save when auto-save is disabled
+                    SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
+                    DEBUG_INFO("Settings saved manually");
+                    return;  // Already saved
                 // Note: Tab-specific handlers moved to settings_tab_*.cpp files:
                 // RUMBLE_*, HOTKEY_*, RIDER_*, pagination controls
 
@@ -1543,8 +1665,11 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                     break;
             }
 
-            // Save settings after any modification (except TAB and CLOSE_BUTTON)
-            SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
+            // Save settings after any modification (except TAB, CLOSE_BUTTON, SAVE_BUTTON, DISCARD_BUTTON)
+            // Only save if auto-save is enabled
+            if (UiConfig::getInstance().getAutoSave()) {
+                SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
+            }
 
             return;  // Only process one click per frame
         }
@@ -1561,7 +1686,9 @@ void SettingsHud::handleRightClick(float mouseX, float mouseY) {
                 if (namePtr) {
                     TrackedRidersManager::getInstance().cycleTrackedRiderShape(*namePtr, true);
                     rebuildRenderData();
-                    SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
+                    if (UiConfig::getInstance().getAutoSave()) {
+                        SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
+                    }
                 }
                 return;
             }
@@ -1597,6 +1724,9 @@ void SettingsHud::resetToDefaults() {
     if (m_fuel) m_fuel->resetToDefaults();
     if (m_gamepad) m_gamepad->resetToDefaults();
     if (m_lean) m_lean->resetToDefaults();
+#if GAME_HAS_TYRE_TEMP
+    if (m_tyreTemp) m_tyreTemp->resetToDefaults();
+#endif
     if (m_pointer) m_pointer->resetToDefaults();
 
     // Reset settings button (managed by HudManager)
@@ -1701,6 +1831,9 @@ void SettingsHud::resetCurrentTab() {
         case TAB_PITBOARD:
             if (m_pitboard) m_pitboard->resetToDefaults();
             break;
+        case TAB_SESSION:
+            if (m_session) m_session->resetToDefaults();
+            break;
         case TAB_PERFORMANCE:
             if (m_performance) m_performance->resetToDefaults();
             break;
@@ -1711,11 +1844,10 @@ void SettingsHud::resetCurrentTab() {
             if (m_gapBar) m_gapBar->resetToDefaults();
             break;
         case TAB_WIDGETS:
-            // Reset all widgets
+            // Reset all widgets (SessionHud has its own tab now)
             if (m_lap) m_lap->resetToDefaults();
             if (m_position) m_position->resetToDefaults();
             if (m_time) m_time->resetToDefaults();
-            if (m_session) m_session->resetToDefaults();
             if (m_speed) m_speed->resetToDefaults();
             if (m_speedo) m_speedo->resetToDefaults();
             if (m_tacho) m_tacho->resetToDefaults();
@@ -1725,6 +1857,9 @@ void SettingsHud::resetCurrentTab() {
             if (m_fuel) m_fuel->resetToDefaults();
             if (m_gamepad) m_gamepad->resetToDefaults();
             if (m_lean) m_lean->resetToDefaults();
+#if GAME_HAS_TYRE_TEMP
+            if (m_tyreTemp) m_tyreTemp->resetToDefaults();
+#endif
             if (m_pointer) m_pointer->resetToDefaults();
             HudManager::getInstance().getSettingsButtonWidget().resetToDefaults();
             break;
@@ -1749,8 +1884,10 @@ void SettingsHud::resetCurrentTab() {
     // Update settings display
     rebuildRenderData();
 
-    // Save settings after reset
-    SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
+    // Save settings after reset (if auto-save enabled)
+    if (UiConfig::getInstance().getAutoSave()) {
+        SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
+    }
 }
 
 void SettingsHud::resetCurrentProfile() {
@@ -1784,6 +1921,9 @@ void SettingsHud::resetCurrentProfile() {
     if (m_fuel) m_fuel->resetToDefaults();
     if (m_gamepad) m_gamepad->resetToDefaults();
     if (m_lean) m_lean->resetToDefaults();
+#if GAME_HAS_TYRE_TEMP
+    if (m_tyreTemp) m_tyreTemp->resetToDefaults();
+#endif
     if (m_pointer) m_pointer->resetToDefaults();
 
     // Reset settings button (managed by HudManager)
@@ -1798,8 +1938,10 @@ void SettingsHud::resetCurrentProfile() {
     // Update settings display
     rebuildRenderData();
 
-    // Save settings for current profile only
-    SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
+    // Save settings for current profile only (if auto-save enabled)
+    if (UiConfig::getInstance().getAutoSave()) {
+        SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
+    }
 }
 
 void SettingsHud::handleCheckboxClick(const ClickRegion& region) {
@@ -1928,6 +2070,7 @@ const char* SettingsHud::getTabName(int tabIndex) const {
         case TAB_TELEMETRY:   return "Telemetry";
         case TAB_PERFORMANCE: return "Performance";
         case TAB_PITBOARD:    return "Pitboard";
+        case TAB_SESSION:     return "Session";
         case TAB_RECORDS:     return "Records";
         case TAB_TIMING:      return "Timing";
         case TAB_GAP_BAR:     return "Gap Bar";
@@ -2030,8 +2173,6 @@ const char* SettingsHud::getTooltipIdForRegion(ClickRegion::Type type, int activ
                 case ClickRegion::RADAR_COLORIZE_UP:
                 case ClickRegion::RADAR_COLORIZE_DOWN:
                     return "radar.colorize";
-                case ClickRegion::RADAR_PLAYER_ARROW_TOGGLE:
-                    return "radar.player_arrow";
                 case ClickRegion::RADAR_ALERT_DISTANCE_UP:
                 case ClickRegion::RADAR_ALERT_DISTANCE_DOWN:
                     return "radar.alert_distance";

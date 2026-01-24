@@ -335,7 +335,7 @@ void FuelWidget::rebuildRenderData() {
         addString("Fue", contentStartX, currentY, Justify::LEFT,
             Fonts::getNormal(), labelColor, dim.fontSize);
         addString(fuelValueBuffer, rightX, currentY, Justify::RIGHT,
-            Fonts::getNormal(), fuelColor, dim.fontSize);
+            Fonts::getDigits(), fuelColor, dim.fontSize);
         currentY += dim.lineHeightNormal;
     }
 
@@ -344,7 +344,7 @@ void FuelWidget::rebuildRenderData() {
         addString("Use", contentStartX, currentY, Justify::LEFT,
             Fonts::getNormal(), labelColor, dim.fontSize);
         addString(usedValueBuffer, rightX, currentY, Justify::RIGHT,
-            Fonts::getNormal(), usedColor, dim.fontSize);
+            Fonts::getDigits(), usedColor, dim.fontSize);
         currentY += dim.lineHeightNormal;
     }
 
@@ -353,7 +353,7 @@ void FuelWidget::rebuildRenderData() {
         addString("Avg", contentStartX, currentY, Justify::LEFT,
             Fonts::getNormal(), labelColor, dim.fontSize);
         addString(avgValueBuffer, rightX, currentY, Justify::RIGHT,
-            Fonts::getNormal(), avgColor, dim.fontSize);
+            Fonts::getDigits(), avgColor, dim.fontSize);
         currentY += dim.lineHeightNormal;
     }
 
@@ -362,7 +362,7 @@ void FuelWidget::rebuildRenderData() {
         addString("Est", contentStartX, currentY, Justify::LEFT,
             Fonts::getNormal(), labelColor, dim.fontSize);
         addString(lapsValueBuffer, rightX, currentY, Justify::RIGHT,
-            Fonts::getStrong(), estColor, dim.fontSize);
+            Fonts::getDigits(), estColor, dim.fontSize);
     }
 
     // Set bounds for drag detection

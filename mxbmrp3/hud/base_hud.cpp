@@ -122,9 +122,11 @@ bool BaseHud::handleMouseInput(bool allowInput) {
         DEBUG_INFO_F("Stopped dragging HUD at position offset: (%.3f, %.3f)",
             m_fOffsetX, m_fOffsetY);
 
-        // Save settings immediately after dragging ends
-        SettingsManager::getInstance().saveSettings(HudManager::getInstance(),
-                                                     PluginManager::getInstance().getSavePath());
+        // Save settings after dragging ends (if auto-save enabled)
+        if (UiConfig::getInstance().getAutoSave()) {
+            SettingsManager::getInstance().saveSettings(HudManager::getInstance(),
+                                                         PluginManager::getInstance().getSavePath());
+        }
     }
 
     // Return true if we're currently dragging (tells HudManager to stop processing other HUDs)

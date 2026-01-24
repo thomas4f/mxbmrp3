@@ -31,11 +31,19 @@ struct SessionData {
     char trackName[100];    // Full track name (e.g., "Club MX")
     float trackLength;      // meters
     int eventType;
+    int connectionType;     // 0=Unknown, 1=Offline, 2=Host, 3=Client (see Memory::ConnectionType)
+    char serverName[100];   // Server name (only set when connectionType is Host or Client)
+    char serverPassword[64]; // Server password (only set when connectionType is Host or Client)
+    int serverClientsCount; // Current number of players on server (including self)
+    int serverMaxClients;   // Maximum players allowed on server
 
     // Bike setup data
     int shiftRPM;           // RPM threshold for shift warning (recommended shift point)
     int limiterRPM;         // RPM limiter threshold
     float steerLock;        // Maximum steering angle in degrees
+    float engineOptTemperature;   // Optimal engine temperature in Celsius
+    float engineTempAlarmLow;     // Engine temperature low alarm threshold in Celsius
+    float engineTempAlarmHigh;    // Engine temperature high alarm threshold in Celsius
 
     // Session data
     int session;
@@ -44,6 +52,7 @@ struct SessionData {
     int sessionNumLaps;
     int conditions;
     float airTemperature;
+    float trackTemperature;     // Celsius (-1 = not available, e.g., MX Bikes)
     char setupFileName[100];
 
     // Overtime tracking for time+laps races
@@ -52,14 +61,18 @@ struct SessionData {
     int lastSessionTime;    // Previous sessionTime value for detecting overtime transition
     int leaderFinishTime;   // Leader's total race time in milliseconds (-1 if not finished)
 
-    SessionData() : trackLength(0.0f), eventType(2), shiftRPM(13500), limiterRPM(14000), steerLock(30.0f),
+    SessionData() : trackLength(0.0f), eventType(2), connectionType(0), serverClientsCount(0), serverMaxClients(0),
+        shiftRPM(13500), limiterRPM(14000), steerLock(30.0f),
+        engineOptTemperature(85.0f), engineTempAlarmLow(60.0f), engineTempAlarmHigh(110.0f),
         session(-1), sessionState(-1), sessionLength(-1), sessionNumLaps(-1),
-        conditions(-1), airTemperature(-1.0f), overtimeStarted(false), finishLap(-1), lastSessionTime(0), leaderFinishTime(-1) {
+        conditions(-1), airTemperature(-1.0f), trackTemperature(-1.0f), overtimeStarted(false), finishLap(-1), lastSessionTime(0), leaderFinishTime(-1) {
         riderName[0] = '\0';
         bikeName[0] = '\0';
         category[0] = '\0';
         trackId[0] = '\0';
         trackName[0] = '\0';
+        serverName[0] = '\0';
+        serverPassword[0] = '\0';
         setupFileName[0] = '\0';
     }
 
@@ -71,15 +84,24 @@ struct SessionData {
         trackName[0] = '\0';
         trackLength = 0.0f;
         eventType = 2;  // Default to Race (Testing events are offline-only)
+        connectionType = 0;  // Unknown
+        serverName[0] = '\0';
+        serverPassword[0] = '\0';
+        serverClientsCount = 0;
+        serverMaxClients = 0;
         shiftRPM = 13500;  // Default fallback value
         limiterRPM = 14000;  // Default fallback value
         steerLock = 30.0f;  // Default fallback value
+        engineOptTemperature = 85.0f;  // Default fallback value
+        engineTempAlarmLow = 60.0f;    // Default fallback value
+        engineTempAlarmHigh = 110.0f;  // Default fallback value
         session = -1;
         sessionState = -1;
         sessionLength = -1;
         sessionNumLaps = -1;
         conditions = -1;
         airTemperature = -1.0f;
+        trackTemperature = -1.0f;
         setupFileName[0] = '\0';
         overtimeStarted = false;
         finishLap = -1;
@@ -228,12 +250,16 @@ struct BikeTelemetryData {
     float frontSuspMaxTravel;   // Front suspension maximum travel in meters
     float rearSuspMaxTravel;    // Rear suspension maximum travel in meters
     float roll;         // Lean angle in degrees (negative = left, positive = right)
+    float engineTemperature;    // Engine temperature in Celsius
+    float waterTemperature;     // Water/coolant temperature in Celsius
+    float treadTemperature[2][3];  // Tyre tread temps [wheel: 0=front,1=rear][section: 0=left,1=mid,2=right] (GP Bikes only)
     bool isValid;       // True if telemetry data is currently available
 
     BikeTelemetryData() : speedometer(0.0f), gear(0), numberOfGears(6), rpm(0), fuel(0.0f), maxFuel(0.0f),
                           frontSuspLength(0.0f), rearSuspLength(0.0f),
                           frontSuspMaxTravel(0.0f), rearSuspMaxTravel(0.0f),
-                          roll(0.0f), isValid(false) {}
+                          roll(0.0f), engineTemperature(0.0f), waterTemperature(0.0f),
+                          treadTemperature{}, isValid(false) {}
 };
 
 // Input telemetry data from controller/bike inputs
@@ -597,9 +623,20 @@ public:
     void setTrackName(const char* trackName);
     void setTrackLength(float trackLength);
     void setEventType(int eventType);
+    void setConnectionType(int connectionType);
+    int getConnectionType() const { return m_sessionData.connectionType; }
+    void setServerName(const char* serverName);
+    const char* getServerName() const { return m_sessionData.serverName; }
+    void setServerPassword(const char* serverPassword);
+    const char* getServerPassword() const { return m_sessionData.serverPassword; }
+    void setServerClientsCount(int count);
+    int getServerClientsCount() const { return m_sessionData.serverClientsCount; }
+    void setServerMaxClients(int max);
+    int getServerMaxClients() const { return m_sessionData.serverMaxClients; }
     void setShiftRPM(int shiftRPM);
     void setLimiterRPM(int limiterRPM);
     void setSteerLock(float steerLock);
+    void setEngineTemperatureThresholds(float optTemp, float alarmLow, float alarmHigh);
     void setMaxFuel(float maxFuel);
     void setNumberOfGears(int numberOfGears);
     void setSession(int session);
@@ -608,6 +645,7 @@ public:
     void setSessionNumLaps(int sessionNumLaps);
     void setConditions(int conditions);
     void setAirTemperature(float airTemperature);
+    void setTrackTemperature(float trackTemperature);
     void setSetupFileName(const char* setupFileName);
 
     // Race entry management
@@ -786,6 +824,8 @@ public:
     // Bike telemetry update
     void updateSpeedometer(float speedometer, int gear, int rpm, float fuel);
     void updateRoll(float roll);
+    void updateTemperatures(float engineTemp, float waterTemp);
+    void updateTreadTemperatures(const float temps[2][3]);
     void invalidateSpeedometer();
 
     // Suspension update

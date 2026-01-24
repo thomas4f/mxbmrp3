@@ -123,6 +123,7 @@ void FontConfig::resetToDefaults() {
     m_fontNames[static_cast<size_t>(FontCategory::TITLE)] = getDefaultFontName(FontCategory::TITLE);
     m_fontNames[static_cast<size_t>(FontCategory::NORMAL)] = getDefaultFontName(FontCategory::NORMAL);
     m_fontNames[static_cast<size_t>(FontCategory::STRONG)] = getDefaultFontName(FontCategory::STRONG);
+    m_fontNames[static_cast<size_t>(FontCategory::DIGITS)] = getDefaultFontName(FontCategory::DIGITS);
     m_fontNames[static_cast<size_t>(FontCategory::MARKER)] = getDefaultFontName(FontCategory::MARKER);
     m_fontNames[static_cast<size_t>(FontCategory::SMALL)] = getDefaultFontName(FontCategory::SMALL);
 
@@ -134,6 +135,7 @@ const char* FontConfig::getCategoryName(FontCategory category) {
         case FontCategory::TITLE:       return "Title";
         case FontCategory::NORMAL:      return "Normal";
         case FontCategory::STRONG:      return "Strong";
+        case FontCategory::DIGITS:      return "Digits";
         case FontCategory::MARKER:      return "Marker";
         case FontCategory::SMALL:       return "Small";
         default:                        return "Unknown";
@@ -145,6 +147,7 @@ const char* FontConfig::getDefaultFontName(FontCategory category) {
         case FontCategory::TITLE:       return "EnterSansman-Italic";
         case FontCategory::NORMAL:      return "RobotoMono-Regular";
         case FontCategory::STRONG:      return "RobotoMono-Bold";
+        case FontCategory::DIGITS:      return "RobotoMono-Regular";
         case FontCategory::MARKER:      return "FuzzyBubbles-Regular";
         case FontCategory::SMALL:       return "Tiny5-Regular";
         default:                        return "RobotoMono-Regular";

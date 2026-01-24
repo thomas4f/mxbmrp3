@@ -13,6 +13,7 @@ enum class FontCategory {
     TITLE = 0,        // Used for HUD titles (default: EnterSansman)
     NORMAL,           // Used for normal text (default: RobotoMono-Regular)
     STRONG,           // Used for emphasis/important text (default: RobotoMono-Bold)
+    DIGITS,           // Used for numeric displays (default: RobotoMono-Regular)
     MARKER,           // Marker/handwritten style (default: FuzzyBubbles-Regular)
     SMALL,            // Small labels on map/radar (default: Tiny5-Regular)
     COUNT

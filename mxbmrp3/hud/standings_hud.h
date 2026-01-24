@@ -55,9 +55,22 @@ public:
 
     // Gap reference point (what gaps are relative to)
     enum class GapReferenceMode : uint8_t {
-        LEADER = 0,  // Gaps relative to race leader (default)
+        LEADER = 0,  // Gaps relative to race leader
         PLAYER = 1   // Gaps relative to player (negative = ahead, positive = behind)
     };
+
+    // Column indices (used with ColumnDef::columnIndex to identify columns)
+    static constexpr uint8_t COL_IDX_TRACKED     = 0;
+    static constexpr uint8_t COL_IDX_POS         = 1;
+    static constexpr uint8_t COL_IDX_RACENUM     = 2;
+    static constexpr uint8_t COL_IDX_NAME        = 3;
+    static constexpr uint8_t COL_IDX_BIKE        = 4;
+    static constexpr uint8_t COL_IDX_STATUS      = 5;
+    static constexpr uint8_t COL_IDX_PENALTY     = 6;
+    static constexpr uint8_t COL_IDX_BEST_LAP    = 7;
+    static constexpr uint8_t COL_IDX_OFFICIAL_GAP = 8;
+    static constexpr uint8_t COL_IDX_LIVE_GAP    = 9;
+    static constexpr uint8_t COL_IDX_DEBUG       = 10;
 
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;

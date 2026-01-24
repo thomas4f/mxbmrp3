@@ -132,6 +132,12 @@
     <ClInclude Include="game\adapters\krp_adapter.h">
       <Filter>Header Files\game\adapters</Filter>
     </ClInclude>
+    <ClInclude Include="game\memory_reader.h">
+      <Filter>Header Files\game</Filter>
+    </ClInclude>
+    <ClInclude Include="game\connection_detector.h">
+      <Filter>Header Files\game</Filter>
+    </ClInclude>
     <ClInclude Include="vendor\nlohmann\json.hpp">
       <Filter>Header Files\vendor\nlohmann</Filter>
     </ClInclude>
@@ -243,7 +249,7 @@
     <ClInclude Include="hud\lap_widget.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
-    <ClInclude Include="hud\session_widget.h">
+    <ClInclude Include="hud\session_hud.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
     <ClInclude Include="hud\performance_hud.h">
@@ -279,10 +285,19 @@
     <ClInclude Include="core\personal_best_manager.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
+    <ClInclude Include="core\rumble_profile_manager.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\odometer_manager.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
     <ClInclude Include="core\update_checker.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="core\update_downloader.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\discord_manager.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="core\widget_constants.h">
@@ -334,6 +349,9 @@
       <Filter>Header Files\hud</Filter>
     </ClInclude>
     <ClInclude Include="hud\lean_widget.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\tyre_temp_widget.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
     <ClInclude Include="hud\speedo_widget.h">
@@ -461,7 +479,7 @@
     <ClCompile Include="hud\lap_widget.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
-    <ClCompile Include="hud\session_widget.cpp">
+    <ClCompile Include="hud\session_hud.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\performance_hud.cpp">
@@ -501,6 +519,9 @@
       <Filter>Source Files\hud\settings</Filter>
     </ClCompile>
     <ClCompile Include="hud\settings\settings_tab_pitboard.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_session.cpp">
       <Filter>Source Files\hud\settings</Filter>
     </ClCompile>
     <ClCompile Include="hud\settings\settings_tab_timing.cpp">
@@ -545,16 +566,31 @@
     <ClCompile Include="core\xinput_reader.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
+    <ClCompile Include="game\memory_reader.cpp">
+      <Filter>Source Files\game</Filter>
+    </ClCompile>
+    <ClCompile Include="game\connection_detector.cpp">
+      <Filter>Source Files\game</Filter>
+    </ClCompile>
     <ClCompile Include="core\settings_manager.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="core\personal_best_manager.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
+    <ClCompile Include="core\rumble_profile_manager.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\odometer_manager.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
     <ClCompile Include="core\update_checker.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="core\update_downloader.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\discord_manager.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="hud\map_hud.cpp">
@@ -603,6 +639,9 @@
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\lean_widget.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\tyre_temp_widget.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\speedo_widget.cpp">

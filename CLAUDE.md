@@ -30,6 +30,8 @@ Game Engine (renders quads/strings)
 - `SettingsManager` - Save/load HUD configurations
 - `InputManager` - Mouse and keyboard input
 - `XInputReader` - Controller state and rumble effects
+- `RumbleProfileManager` - Per-bike rumble profiles stored in JSON
+- `OdometerManager` - Per-bike odometer/trip meter data stored in JSON
 - `AssetManager` - Dynamic discovery of fonts, textures, icons from subdirectories
 - `FontConfig` - User-configurable font categories (Title, Normal, Strong, Marker, Small)
 - `ColorConfig` - User-configurable color palette
@@ -109,7 +111,7 @@ HUDs pull fresh from PluginData on rebuild - they only cache formatted render da
 This enforces PluginData as single source of truth and prevents synchronization issues.
 
 **Widget vs HUD Distinction**
-Widgets (TimeWidget, PositionWidget, LapWidget, SessionWidget, SpeedWidget, SpeedoWidget, TachoWidget, BarsWidget, LeanWidget, NoticesWidget, VersionWidget, SettingsButtonWidget) are simplified HUD components with:
+Widgets (TimeWidget, PositionWidget, LapWidget, SpeedWidget, SpeedoWidget, TachoWidget, BarsWidget, LeanWidget, NoticesWidget, VersionWidget, SettingsButtonWidget) are simplified HUD components with:
 - Single-purpose display (no configurable columns/rows)
 - Minimal settings (just position, scale, opacity)
 - Simpler rendering logic
@@ -176,6 +178,9 @@ When implementing event handlers or debugging timing/lap data:
 - `mxbmrp3/core/update_checker.h/.cpp` - GitHub update checker
 - `mxbmrp3/core/update_downloader.h/.cpp` - Update download and installation
 - `mxbmrp3/core/tooltip_manager.h` - UI tooltip management (header-only)
+- `mxbmrp3/core/xinput_reader.h/.cpp` - Controller input and rumble effects
+- `mxbmrp3/core/rumble_profile_manager.h/.cpp` - Per-bike rumble profiles
+- `mxbmrp3/core/odometer_manager.h/.cpp` - Per-bike odometer and trip meter tracking
 
 **Multi-Game Layer:**
 - `mxbmrp3/game/unified_types.h` - Game-agnostic data structures

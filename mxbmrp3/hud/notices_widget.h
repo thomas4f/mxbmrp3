@@ -14,11 +14,13 @@
 class NoticesWidget : public BaseHud {
 public:
     // Notice visibility flags (bitfield) - configurable via INI
-    static constexpr uint32_t NOTICE_WRONG_WAY = 1 << 0;
-    static constexpr uint32_t NOTICE_BLUE_FLAG = 1 << 1;
-    static constexpr uint32_t NOTICE_LAST_LAP  = 1 << 2;
-    static constexpr uint32_t NOTICE_FINISHED  = 1 << 3;
-    static constexpr uint32_t NOTICE_DEFAULT   = NOTICE_WRONG_WAY | NOTICE_BLUE_FLAG | NOTICE_LAST_LAP | NOTICE_FINISHED;
+    enum NoticeFlags : uint32_t {
+        NOTICE_WRONG_WAY = 1 << 0,
+        NOTICE_BLUE_FLAG = 1 << 1,
+        NOTICE_LAST_LAP  = 1 << 2,
+        NOTICE_FINISHED  = 1 << 3,
+        NOTICE_DEFAULT   = NOTICE_WRONG_WAY | NOTICE_LAST_LAP | NOTICE_FINISHED
+    };
 
     NoticesWidget();
     virtual ~NoticesWidget() = default;

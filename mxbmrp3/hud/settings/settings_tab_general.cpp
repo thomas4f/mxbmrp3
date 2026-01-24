@@ -12,6 +12,9 @@
 #include "../../core/xinput_reader.h"
 #include "../../core/color_config.h"
 #include "../../core/ui_config.h"
+#if GAME_HAS_DISCORD
+#include "../../core/discord_manager.h"
+#endif
 
 using namespace PluginConstants;
 
@@ -38,6 +41,21 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
             }
             return true;
 
+        case ClickRegion::TEMP_UNIT_TOGGLE:
+            {
+                auto currentUnit = UiConfig::getInstance().getTemperatureUnit();
+                UiConfig::getInstance().setTemperatureUnit(
+                    currentUnit == TemperatureUnit::CELSIUS
+                        ? TemperatureUnit::FAHRENHEIT
+                        : TemperatureUnit::CELSIUS);
+                // Also update SessionHud since it displays temperature
+                if (m_session) {
+                    m_session->setDataDirty();
+                }
+                setDataDirty();
+            }
+            return true;
+
         case ClickRegion::GRID_SNAP_TOGGLE:
             {
                 bool current = UiConfig::getInstance().getGridSnapping();
@@ -53,6 +71,24 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
                 setDataDirty();
             }
             return true;
+
+        case ClickRegion::AUTOSAVE_TOGGLE:
+            {
+                bool current = UiConfig::getInstance().getAutoSave();
+                UiConfig::getInstance().setAutoSave(!current);
+                setDataDirty();
+            }
+            return true;
+
+#if GAME_HAS_DISCORD
+        case ClickRegion::DISCORD_TOGGLE:
+            {
+                bool current = DiscordManager::getInstance().isEnabled();
+                DiscordManager::getInstance().setEnabled(!current);
+                setDataDirty();
+            }
+            return true;
+#endif
 
         // Note: PROFILE_CYCLE_UP/DOWN moved to common handlers (work from all tabs)
 
@@ -265,7 +301,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
             ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "general.speed_unit"
         ));
 
-        ctx.parent->addString("Speed", ctx.labelX, ctx.currentY, Justify::LEFT,
+        ctx.parent->addString("Speed Unit", ctx.labelX, ctx.currentY, Justify::LEFT,
             Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
 
         // Display current unit with < > cycle pattern (arrows=accent, value=primary)
@@ -305,7 +341,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
             ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "general.fuel_unit"
         ));
 
-        ctx.parent->addString("Fuel", ctx.labelX, ctx.currentY, Justify::LEFT,
+        ctx.parent->addString("Fuel Unit", ctx.labelX, ctx.currentY, Justify::LEFT,
             Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
 
         // Display current unit with < > cycle pattern (arrows=accent, value=primary)
@@ -331,6 +367,44 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
             currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
             SettingsHud::ClickRegion::FUEL_UNIT_TOGGLE, fuelWidget
+        ));
+
+        ctx.currentY += ctx.lineHeightNormal;
+    }
+
+    // Temperature unit toggle
+    {
+        // Add tooltip row
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "general.temp_unit"
+        ));
+
+        ctx.parent->addString("Temp Unit", ctx.labelX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
+
+        // Display current unit with < > cycle pattern (arrows=accent, value=primary)
+        bool isFahrenheit = UiConfig::getInstance().getTemperatureUnit() == TemperatureUnit::FAHRENHEIT;
+        float currentX = ctx.controlX;
+
+        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::TEMP_UNIT_TOGGLE, nullptr
+        ));
+        currentX += cw * 2;
+
+        // Left-align value within VALUE_WIDTH for consistent positioning
+        std::string formattedTemp = ctx.formatValue(isFahrenheit ? "F" : "C", VALUE_WIDTH, false);
+        ctx.parent->addString(formattedTemp.c_str(), currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getPrimary(), ctx.fontSize);
+        currentX += cw * VALUE_WIDTH;
+
+        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::TEMP_UNIT_TOGGLE, nullptr
         ));
 
         ctx.currentY += ctx.lineHeightNormal;
@@ -409,6 +483,113 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
 
         ctx.currentY += ctx.lineHeightNormal;
     }
+
+    // Auto-save toggle
+    {
+        // Add tooltip row
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "general.auto_save"
+        ));
+
+        ctx.parent->addString("Auto-Save", ctx.labelX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
+
+        // Display current state with < > cycle pattern (arrows=accent, value=primary)
+        bool autoSaveEnabled = UiConfig::getInstance().getAutoSave();
+        float currentX = ctx.controlX;
+
+        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::AUTOSAVE_TOGGLE, nullptr
+        ));
+        currentX += cw * 2;
+
+        std::string formattedAutoSave = ctx.formatValue(autoSaveEnabled ? "On" : "Off", VALUE_WIDTH, false);
+        ctx.parent->addString(formattedAutoSave.c_str(), currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), autoSaveEnabled ? colorConfig.getPrimary() : colorConfig.getMuted(), ctx.fontSize);
+        currentX += cw * VALUE_WIDTH;
+
+        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::AUTOSAVE_TOGGLE, nullptr
+        ));
+
+        ctx.currentY += ctx.lineHeightNormal;
+    }
+
+#if GAME_HAS_DISCORD
+    // Discord Rich Presence toggle
+    {
+        // Add tooltip row
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "general.discord"
+        ));
+
+        ctx.parent->addString("Discord", ctx.labelX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
+
+        // Display current state with < > cycle pattern (arrows=accent, value=primary)
+        bool discordEnabled = DiscordManager::getInstance().isEnabled();
+        DiscordManager::State discordState = DiscordManager::getInstance().getState();
+        bool isConnecting = (discordState == DiscordManager::State::CONNECTING);
+        float currentX = ctx.controlX;
+
+        // Disable toggle arrows during CONNECTING state to prevent freeze
+        uint32_t arrowColor = isConnecting ? colorConfig.getMuted() : colorConfig.getAccent();
+        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), arrowColor, ctx.fontSize);
+        if (!isConnecting) {
+            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+                currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+                SettingsHud::ClickRegion::DISCORD_TOGGLE, nullptr
+            ));
+        }
+        currentX += cw * 2;
+
+        // Show status: On (Connected), On (Connecting...), On (Not Available), Off
+        const char* statusText;
+        uint32_t statusColor;
+        if (!discordEnabled) {
+            statusText = "Off";
+            statusColor = colorConfig.getMuted();
+        } else {
+            switch (discordState) {
+                case DiscordManager::State::CONNECTED:
+                    statusText = "On";
+                    statusColor = colorConfig.getPositive();
+                    break;
+                case DiscordManager::State::CONNECTING:
+                    statusText = "Connecting";
+                    statusColor = colorConfig.getPrimary();
+                    break;
+                default:
+                    statusText = "On";
+                    statusColor = colorConfig.getMuted();
+                    break;
+            }
+        }
+
+        std::string formattedDiscord = ctx.formatValue(statusText, VALUE_WIDTH, false);
+        ctx.parent->addString(formattedDiscord.c_str(), currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), statusColor, ctx.fontSize);
+        currentX += cw * VALUE_WIDTH;
+
+        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), arrowColor, ctx.fontSize);
+        if (!isConnecting) {
+            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+                currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+                SettingsHud::ClickRegion::DISCORD_TOGGLE, nullptr
+            ));
+        }
+
+        ctx.currentY += ctx.lineHeightNormal;
+    }
+#endif
 
     // === PROFILES SECTION ===
     ctx.addSpacing(0.5f);

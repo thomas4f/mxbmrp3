@@ -365,7 +365,7 @@ void PerformanceHud::rebuildRenderData() {
                 Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
             snprintf(buffer, sizeof(buffer), "%4d", (int)metrics.currentFps);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Max
@@ -373,7 +373,7 @@ void PerformanceHud::rebuildRenderData() {
                 Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
             snprintf(buffer, sizeof(buffer), "%4d", (int)m_fpsMax);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Avg
@@ -381,7 +381,7 @@ void PerformanceHud::rebuildRenderData() {
                 Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
             snprintf(buffer, sizeof(buffer), "%4d", (int)m_fpsAvg);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Min
@@ -389,7 +389,7 @@ void PerformanceHud::rebuildRenderData() {
                 Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
             snprintf(buffer, sizeof(buffer), "%4d", (int)m_fpsMin);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Add gap before CPU section if both are enabled
@@ -469,7 +469,7 @@ void PerformanceHud::rebuildRenderData() {
                 Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
             snprintf(buffer, sizeof(buffer), "%5.2f", metrics.pluginTimeMs);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Max
@@ -477,7 +477,7 @@ void PerformanceHud::rebuildRenderData() {
                 Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
             snprintf(buffer, sizeof(buffer), "%5.2f", m_pluginTimeMsMax);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Avg
@@ -485,7 +485,7 @@ void PerformanceHud::rebuildRenderData() {
                 Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
             snprintf(buffer, sizeof(buffer), "%5.2f", m_pluginTimeMsAvg);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Min
@@ -493,7 +493,7 @@ void PerformanceHud::rebuildRenderData() {
                 Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
             snprintf(buffer, sizeof(buffer), "%5.2f", m_pluginTimeMsMin);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
         }
     }
 }

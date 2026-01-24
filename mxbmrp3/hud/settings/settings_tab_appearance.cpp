@@ -114,6 +114,7 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
     addFontRow(FontCategory::TITLE, "appearance.font_title");
     addFontRow(FontCategory::NORMAL, "appearance.font_normal");
     addFontRow(FontCategory::STRONG, "appearance.font_strong");
+    addFontRow(FontCategory::DIGITS, "appearance.font_digits");
     addFontRow(FontCategory::MARKER, "appearance.font_marker");
     addFontRow(FontCategory::SMALL, "appearance.font_small");
 

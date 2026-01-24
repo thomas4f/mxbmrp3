@@ -12,6 +12,7 @@
 #include "plugin_manager.h"
 #include "settings_manager.h"
 #include "profile_manager.h"
+#include "ui_config.h"
 #include "../hud/base_hud.h"
 #include "../hud/standings_hud.h"
 #include "../hud/performance_hud.h"
@@ -21,7 +22,7 @@
 #include "../hud/time_widget.h"
 #include "../hud/position_widget.h"
 #include "../hud/lap_widget.h"
-#include "../hud/session_widget.h"
+#include "../hud/session_hud.h"
 #include "../hud/speed_widget.h"
 #include "../hud/speedo_widget.h"
 #include "../hud/tacho_widget.h"
@@ -43,6 +44,9 @@
 #include "../hud/rumble_hud.h"
 #include "../hud/gamepad_widget.h"
 #include "../hud/lean_widget.h"
+#if GAME_HAS_TYRE_TEMP
+#include "../hud/tyre_temp_widget.h"
+#endif
 #include "hotkey_manager.h"
 #include "tooltip_manager.h"
 #include "color_config.h"
@@ -140,9 +144,9 @@ void HudManager::initialize() {
     m_pTime->setTextureBaseName("time_widget");
     registerHud(std::move(timePtr));
 
-    auto sessionPtr = std::make_unique<SessionWidget>();
+    auto sessionPtr = std::make_unique<SessionHud>();
     m_pSession = sessionPtr.get();
-    m_pSession->setTextureBaseName("session_widget");
+    m_pSession->setTextureBaseName("session_widget");  // Keep same texture for backwards compatibility
     registerHud(std::move(sessionPtr));
 
     auto speedPtr = std::make_unique<SpeedWidget>();
@@ -203,6 +207,13 @@ void HudManager::initialize() {
     m_pLean->setTextureBaseName("lean_widget");
     registerHud(std::move(leanPtr));
 
+#if GAME_HAS_TYRE_TEMP
+    auto tyreTempPtr = std::make_unique<TyreTempWidget>();
+    m_pTyreTemp = tyreTempPtr.get();
+    m_pTyreTemp->setTextureBaseName("tyre_temp_widget");
+    registerHud(std::move(tyreTempPtr));
+#endif
+
     // Create PointerWidget early so it can be passed to SettingsHud
     // (will be registered last to render on top)
     auto pointerPtr = std::make_unique<PointerWidget>();
@@ -215,7 +226,11 @@ void HudManager::initialize() {
     RecordsHud* recordsHudPtr = nullptr;
 #endif
     auto settingsPtr = std::make_unique<SettingsHud>(m_pIdealLap, m_pLapLog, m_pStandings,
-                                                       m_pPerformance, m_pTelemetry, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, recordsHudPtr, m_pFuel, m_pPointer, m_pRumble, m_pGamepad, m_pLean);
+                                                       m_pPerformance, m_pTelemetry, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, recordsHudPtr, m_pFuel, m_pPointer, m_pRumble, m_pGamepad, m_pLean
+#if GAME_HAS_TYRE_TEMP
+                                                       , m_pTyreTemp
+#endif
+                                                       );
     m_pSettingsHud = settingsPtr.get();
     registerHud(std::move(settingsPtr));
 
@@ -250,8 +265,10 @@ void HudManager::shutdown() {
 
     DEBUG_INFO("HudManager shutting down");
 
-    // Save settings before clearing HUDs
-    SettingsManager::getInstance().saveSettings(*this, PluginManager::getInstance().getSavePath());
+    // Save settings before clearing HUDs (if auto-save enabled)
+    if (UiConfig::getInstance().getAutoSave()) {
+        SettingsManager::getInstance().saveSettings(*this, PluginManager::getInstance().getSavePath());
+    }
 
     clear();
 
@@ -286,6 +303,9 @@ void HudManager::clear() {
     m_pRumble = nullptr;
     m_pGamepad = nullptr;
     m_pLean = nullptr;
+#if GAME_HAS_TYRE_TEMP
+    m_pTyreTemp = nullptr;
+#endif
     m_pSettingsHud = nullptr;
     m_pSettingsButton = nullptr;
     m_pPointer = nullptr;

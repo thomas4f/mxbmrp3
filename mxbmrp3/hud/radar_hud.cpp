@@ -31,7 +31,6 @@ static int getShapeIndexByFilename(const char* filename) {
 RadarHud::RadarHud()
     : m_fRadarRangeMeters(DEFAULT_RADAR_RANGE),
       m_riderColorMode(RiderColorMode::BRAND),
-      m_bShowPlayerArrow(false),
       m_radarMode(RadarMode::ON),
       m_proximityArrowMode(ProximityArrowMode::OFF),
       m_fAlertDistance(DEFAULT_ALERT_DISTANCE),
@@ -722,35 +721,6 @@ void RadarHud::rebuildRenderData() {
                         centerX, centerY, radarRadius, trackFadeOpacity);
     }
 
-    // Draw the local player at center LAST (always on top, always pointing up = 0 yaw)
-    if (m_bShowPlayerArrow) {
-        const RaceEntryData* localEntry = pluginData.getRaceEntry(localPlayer->raceNum);
-        if (localEntry) {
-            unsigned long playerColor;
-            int playerTrackedShape = -1;  // -1 = use global shape
-
-            // Check if player is tracked - use their configured color and shape
-            const TrackedRiderConfig* playerTrackedConfig = TrackedRidersManager::getInstance().getTrackedRider(localEntry->name);
-            if (playerTrackedConfig) {
-                playerColor = playerTrackedConfig->color;
-                playerTrackedShape = playerTrackedConfig->shapeIndex;
-            } else if (m_riderColorMode == RiderColorMode::RELATIVE_POS) {
-                // Player shows green in relative position mode
-                playerColor = ColorConfig::getInstance().getPositive();
-            } else {
-                // Otherwise use bike brand color
-                playerColor = localEntry->bikeBrandColor;
-            }
-
-            renderRiderSprite(0.0f, 0.0f, 0.0f, playerColor,
-                             centerX, centerY, radarRadius, playerTrackedShape);
-
-            int playerPosition = pluginData.getPositionForRaceNum(localPlayer->raceNum);
-            renderRiderLabel(0.0f, 0.0f, localPlayer->raceNum, playerPosition,
-                            centerX, centerY, radarRadius, 1.0f);  // Player always fully visible
-        }
-    }
-
     // Render proximity arrows at screen edges (independent of radar position)
     renderProximityArrows(localPlayer, playerX, playerZ, cosYaw, sinYaw);
 }
@@ -787,7 +757,6 @@ void RadarHud::resetToDefaults() {
     m_fScale = 1.0f;
     m_fRadarRangeMeters = DEFAULT_RADAR_RANGE;
     m_riderColorMode = RiderColorMode::BRAND;  // Default to bike brand colors
-    m_bShowPlayerArrow = false;  // Hide player arrow by default
     m_radarMode = RadarMode::ON;  // Default to always visible
     m_proximityArrowMode = ProximityArrowMode::OFF;  // Disable proximity arrows by default
     m_fAlertDistance = DEFAULT_ALERT_DISTANCE;

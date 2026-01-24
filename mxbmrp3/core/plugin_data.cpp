@@ -5,7 +5,12 @@
 #include "plugin_data.h"
 #include "plugin_utils.h"
 #include "xinput_reader.h"
+#include "rumble_profile_manager.h"
+#include "odometer_manager.h"
 #include "hud_manager.h"  // Direct include for notification
+#if GAME_HAS_DISCORD
+#include "discord_manager.h"  // Direct include for Discord presence updates
+#endif
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
 #include <algorithm>
@@ -35,6 +40,10 @@ void PluginData::setRiderName(const char* riderName) {
 void PluginData::setBikeName(const char* bikeName) {
     if (setStringValue(m_sessionData.bikeName, sizeof(m_sessionData.bikeName), bikeName)) {
         notifyHudManager(DataChangeType::SessionData);
+        // Notify rumble profile manager of bike change
+        RumbleProfileManager::getInstance().setCurrentBike(bikeName);
+        // Notify odometer manager of bike change
+        OdometerManager::getInstance().setCurrentBike(bikeName);
     }
 }
 
@@ -68,6 +77,36 @@ void PluginData::setEventType(int eventType) {
     }
 }
 
+void PluginData::setConnectionType(int connectionType) {
+    if (setValue(m_sessionData.connectionType, connectionType)) {
+        notifyHudManager(DataChangeType::SessionData);
+    }
+}
+
+void PluginData::setServerName(const char* serverName) {
+    if (setStringValue(m_sessionData.serverName, sizeof(m_sessionData.serverName), serverName)) {
+        notifyHudManager(DataChangeType::SessionData);
+    }
+}
+
+void PluginData::setServerPassword(const char* serverPassword) {
+    if (setStringValue(m_sessionData.serverPassword, sizeof(m_sessionData.serverPassword), serverPassword)) {
+        notifyHudManager(DataChangeType::SessionData);
+    }
+}
+
+void PluginData::setServerClientsCount(int count) {
+    if (setValue(m_sessionData.serverClientsCount, count)) {
+        notifyHudManager(DataChangeType::SessionData);
+    }
+}
+
+void PluginData::setServerMaxClients(int max) {
+    if (setValue(m_sessionData.serverMaxClients, max)) {
+        notifyHudManager(DataChangeType::SessionData);
+    }
+}
+
 void PluginData::setShiftRPM(int shiftRPM) {
     if (setValue(m_sessionData.shiftRPM, shiftRPM)) {
         notifyHudManager(DataChangeType::SessionData);
@@ -84,6 +123,13 @@ void PluginData::setSteerLock(float steerLock) {
     if (setValue(m_sessionData.steerLock, steerLock)) {
         notifyHudManager(DataChangeType::SessionData);
     }
+}
+
+void PluginData::setEngineTemperatureThresholds(float optTemp, float alarmLow, float alarmHigh) {
+    m_sessionData.engineOptTemperature = optTemp;
+    m_sessionData.engineTempAlarmLow = alarmLow;
+    m_sessionData.engineTempAlarmHigh = alarmHigh;
+    // No notification needed - thresholds are set once during bike initialization
 }
 
 void PluginData::setMaxFuel(float maxFuel) {
@@ -126,6 +172,12 @@ void PluginData::setConditions(int conditions) {
 
 void PluginData::setAirTemperature(float airTemperature) {
     if (setValue(m_sessionData.airTemperature, airTemperature)) {
+        notifyHudManager(DataChangeType::SessionData);
+    }
+}
+
+void PluginData::setTrackTemperature(float trackTemperature) {
+    if (setValue(m_sessionData.trackTemperature, trackTemperature)) {
         notifyHudManager(DataChangeType::SessionData);
     }
 }
@@ -1394,9 +1446,12 @@ void PluginData::clear() {
     DEBUG_INFO("Plugin data cleared");
 }
 
-// Direct call to HudManager, no callback/observer overhead
+// Direct call to HudManager and DiscordManager, no callback/observer overhead
 void PluginData::notifyHudManager(DataChangeType changeType) {
     HudManager::getInstance().onDataChanged(changeType);
+#if GAME_HAS_DISCORD
+    DiscordManager::getInstance().onDataChanged(changeType);
+#endif
 }
 
 const XInputReader& PluginData::getXInputReader() const {
@@ -1491,6 +1546,21 @@ void PluginData::updateRoll(float roll) {
     m_bikeTelemetry.roll = roll;
     // No separate notification - roll updates at same frequency as speedometer
     // which already notifies with InputTelemetry
+}
+
+void PluginData::updateTemperatures(float engineTemp, float waterTemp) {
+    m_bikeTelemetry.engineTemperature = engineTemp;
+    m_bikeTelemetry.waterTemperature = waterTemp;
+    // No separate notification - temperatures update at same frequency as other telemetry
+}
+
+void PluginData::updateTreadTemperatures(const float temps[2][3]) {
+    for (int w = 0; w < 2; w++) {
+        for (int s = 0; s < 3; s++) {
+            m_bikeTelemetry.treadTemperature[w][s] = temps[w][s];
+        }
+    }
+    // No separate notification - temperatures update at same frequency as other telemetry
 }
 
 void PluginData::updateSuspensionMaxTravel(float frontMaxTravel, float rearMaxTravel) {

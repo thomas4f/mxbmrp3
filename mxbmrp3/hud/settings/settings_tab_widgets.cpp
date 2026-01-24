@@ -4,6 +4,7 @@
 // ============================================================================
 #include "settings_layout.h"
 #include "../settings_hud.h"
+#include "../../game/game_config.h"
 
 // Static member function of SettingsHud
 BaseHud* SettingsHud::renderTabWidgets(SettingsLayoutContext& ctx) {
@@ -42,7 +43,7 @@ BaseHud* SettingsHud::renderTabWidgets(SettingsLayoutContext& ctx) {
     ctx.addWidgetRow("Lap", ctx.parent->getLapWidget(), true, true, true, true, true, "widgets.lap");
     ctx.addWidgetRow("Position", ctx.parent->getPositionWidget(), true, true, true, true, true, "widgets.position");
     ctx.addWidgetRow("Time", ctx.parent->getTimeWidget(), true, true, true, true, true, "widgets.time");
-    ctx.addWidgetRow("Session", ctx.parent->getSessionWidget(), true, true, true, true, true, "widgets.session");
+    // Note: SessionHud now has its own dedicated tab with row configuration
     ctx.addWidgetRow("Speed", ctx.parent->getSpeedWidget(), false, true, true, true, true, "widgets.speed");
     ctx.addWidgetRow("Speedo", ctx.parent->getSpeedoWidget(), false, true, true, true, true, "widgets.speedo");
     ctx.addWidgetRow("Tacho", ctx.parent->getTachoWidget(), false, true, true, true, true, "widgets.tacho");
@@ -51,6 +52,9 @@ BaseHud* SettingsHud::renderTabWidgets(SettingsLayoutContext& ctx) {
     ctx.addWidgetRow("Fuel", ctx.parent->getFuelWidget(), true, true, true, true, true, "widgets.fuel");
     ctx.addWidgetRow("Gamepad", ctx.parent->getGamepadWidget(), false, true, true, true, true, "widgets.gamepad");
     ctx.addWidgetRow("Lean", ctx.parent->getLeanWidget(), false, true, true, true, true, "widgets.lean");
+#if GAME_HAS_TYRE_TEMP
+    ctx.addWidgetRow("Tyre Temp", ctx.parent->getTyreTempWidget(), false, true, true, true, true, "widgets.tyre_temp");
+#endif
     ctx.addWidgetRow("Pointer", ctx.parent->getPointerWidget(), false, false, true, false, true, "widgets.pointer");
     ctx.addWidgetRow("Version", ctx.parent->getVersionWidget(), false, false, false, true, false, "widgets.version");
 

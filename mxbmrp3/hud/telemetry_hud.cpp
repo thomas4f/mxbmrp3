@@ -153,7 +153,7 @@ void TelemetryHud::rebuildRenderData() {
             char buffer[16];
             snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(throttlePercent * 100));
             addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                PluginConstants::Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             legendY += dims.lineHeightNormal;
         }
 
@@ -164,7 +164,7 @@ void TelemetryHud::rebuildRenderData() {
             char buffer[16];
             snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(frontBrakePercent * 100));
             addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                PluginConstants::Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             legendY += dims.lineHeightNormal;
         }
 
@@ -177,12 +177,12 @@ void TelemetryHud::rebuildRenderData() {
             if (hasFullTelemetry) {
                 snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(rearBrakePercent * 100));
                 addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                    PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                    PluginConstants::Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             } else {
                 char naBuffer[16];
                 snprintf(naBuffer, sizeof(naBuffer), "%5s", Placeholders::NOT_AVAILABLE);
                 addString(naBuffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                    PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dims.fontSize);
+                    PluginConstants::Fonts::getDigits(), ColorConfig::getInstance().getMuted(), dims.fontSize);
             }
             legendY += dims.lineHeightNormal;
         }
@@ -196,12 +196,12 @@ void TelemetryHud::rebuildRenderData() {
             if (hasFullTelemetry) {
                 snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(clutchPercent * 100));
                 addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                    PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                    PluginConstants::Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             } else {
                 char naBuffer[16];
                 snprintf(naBuffer, sizeof(naBuffer), "%5s", Placeholders::NOT_AVAILABLE);
                 addString(naBuffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                    PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dims.fontSize);
+                    PluginConstants::Fonts::getDigits(), ColorConfig::getInstance().getMuted(), dims.fontSize);
             }
             legendY += dims.lineHeightNormal;
         }
@@ -214,7 +214,7 @@ void TelemetryHud::rebuildRenderData() {
             int displayRpm = std::max(0, bikeTelemetry.rpm);
             snprintf(buffer, sizeof(buffer), "%5d", displayRpm);
             addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), ColorPalette::GRAY, dims.fontSize);
+                PluginConstants::Fonts::getDigits(), ColorPalette::GRAY, dims.fontSize);
             legendY += dims.lineHeightNormal;
         }
 
@@ -229,12 +229,12 @@ void TelemetryHud::rebuildRenderData() {
                 char buffer[16];
                 snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(frontSuspPercent * 100));
                 addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                    PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                    PluginConstants::Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             } else {
                 char naBuffer[16];
                 snprintf(naBuffer, sizeof(naBuffer), "%5s", Placeholders::NOT_AVAILABLE);
                 addString(naBuffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                    PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dims.fontSize);
+                    PluginConstants::Fonts::getDigits(), ColorConfig::getInstance().getMuted(), dims.fontSize);
             }
             legendY += dims.lineHeightNormal;
         }
@@ -250,12 +250,12 @@ void TelemetryHud::rebuildRenderData() {
                 char buffer[16];
                 snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(rearSuspPercent * 100));
                 addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                    PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                    PluginConstants::Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
             } else {
                 char naBuffer[16];
                 snprintf(naBuffer, sizeof(naBuffer), "%5s", Placeholders::NOT_AVAILABLE);
                 addString(naBuffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                    PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dims.fontSize);
+                    PluginConstants::Fonts::getDigits(), ColorConfig::getInstance().getMuted(), dims.fontSize);
             }
             legendY += dims.lineHeightNormal;
         }
@@ -271,7 +271,7 @@ void TelemetryHud::rebuildRenderData() {
                 snprintf(buffer, sizeof(buffer), "    %d", bikeTelemetry.gear);
             }
             addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                PluginConstants::Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
         }
     }
 }

@@ -204,8 +204,10 @@ void LeanWidget::rebuildRenderData() {
         m_steerFramesRemaining[1] = 0;
     }
     // Capture steer angle before updating crash state (for freezing)
-    const HistoryBuffers& history = pluginData.getHistoryBuffers();
-    float currentSteer = (!history.steer.empty()) ? history.steer.back() : 0.0f;
+    // Read steer directly from InputTelemetryData (not history buffer, which is only
+    // populated when TelemetryHud is visible for graph visualization)
+    const InputTelemetryData& inputTelemetry = pluginData.getInputTelemetry();
+    float currentSteer = inputTelemetry.steer;
 
     // Freeze steer value when crash starts
     if (isCrashed && !m_wasCrashed) {
@@ -454,7 +456,7 @@ void LeanWidget::rebuildRenderData() {
             // Position at row 2 (same as FuelWidget "used" row)
             float leanTextY = currentY + dim.lineHeightNormal;
             addString(angleBuffer, centerX, leanTextY, Justify::CENTER,
-                Fonts::getNormal(), textColor, dim.fontSize);
+                Fonts::getDigits(), textColor, dim.fontSize);
         }
 
         currentY += dim.lineHeightNormal * 2;  // Arc takes 2 rows
@@ -469,7 +471,7 @@ void LeanWidget::rebuildRenderData() {
             snprintf(angleBuffer, sizeof(angleBuffer), "%d", displayAngle);
         }
         addString(angleBuffer, centerX, currentY, Justify::CENTER,
-            Fonts::getNormal(), textColor, dim.fontSize);
+            Fonts::getDigits(), textColor, dim.fontSize);
         currentY += dim.lineHeightNormal;
     }
 
@@ -574,7 +576,7 @@ void LeanWidget::rebuildRenderData() {
             snprintf(steerBuffer, sizeof(steerBuffer), "%d", displaySteer);
         }
         addString(steerBuffer, centerX, currentY, Justify::CENTER,
-            Fonts::getNormal(), steerTextColor, dim.fontSize);
+            Fonts::getDigits(), steerTextColor, dim.fontSize);
         currentY += dim.lineHeightNormal;
     }
 }

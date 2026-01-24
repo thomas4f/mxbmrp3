@@ -1017,7 +1017,7 @@ void TimingHud::rebuildRenderData() {
         }
         float timeX = timeColumnX + columnWidth / 2.0f;
         addString(timeBuffer, timeX, timeTextY, Justify::CENTER,
-            Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
+            Fonts::getDigits(), ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
     }
 
     // Track bottom of primary elements for bounds
@@ -1115,18 +1115,18 @@ void TimingHud::rebuildRenderData() {
         if (m_layoutVertical && !showRefInGap) {
             float gapX = gapColumnX + columnWidth / 2.0f;
             addString(gapBuffer, gapX, gapTextY, Justify::CENTER,
-                Fonts::getNormal(), gapTextColor, dim.fontSizeLarge);
+                Fonts::getDigits(), gapTextColor, dim.fontSizeLarge);
         } else {
             float gapX = gapColumnX + dim.paddingH;
             addString(gapBuffer, gapX, gapTextY, Justify::LEFT,
-                Fonts::getNormal(), gapTextColor, dim.fontSizeLarge);
+                Fonts::getDigits(), gapTextColor, dim.fontSizeLarge);
         }
 
         // Add reference value (right-aligned) in secondary color
         if (hasRefValue) {
             float refX = gapColumnX + columnWidth - dim.paddingH;
             addString(refBuffer, refX, gapTextY, Justify::RIGHT,
-                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSizeLarge);
+                Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dim.fontSizeLarge);
         }
     }
 
@@ -1271,12 +1271,12 @@ void TimingHud::rebuildRenderData() {
 
                 // Add gap value in gap color
                 addString(gapValueBuffer, gapCenterX, chipTextY, Justify::CENTER,
-                    Fonts::getNormal(), chipTextColor, chipFontSize);
+                    Fonts::getDigits(), chipTextColor, chipFontSize);
 
                 // Add reference value (right-aligned) in secondary color
                 if (hasRefValue) {
                     addString(refValueBuffer, chipX + chipWidth - dim.paddingH, chipTextY, Justify::RIGHT,
-                        Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), chipFontSize);
+                        Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), chipFontSize);
                 }
 
                 // Advance position based on layout mode

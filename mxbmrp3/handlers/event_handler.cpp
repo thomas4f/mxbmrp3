@@ -5,6 +5,9 @@
 #include "event_handler.h"
 #include "../core/handler_singleton.h"
 #include "../core/plugin_data.h"
+#if GAME_HAS_DISCORD
+#include "../core/discord_manager.h"
+#endif
 
 DEFINE_HANDLER_SINGLETON(EventHandler)
 
@@ -29,6 +32,11 @@ void EventHandler::handleEventInit(Unified::VehicleEventData* psEventData) {
         psEventData->suspMaxTravel[0],  // Front suspension max travel
         psEventData->suspMaxTravel[1]   // Rear suspension max travel
     );
+    PluginData::getInstance().setEngineTemperatureThresholds(
+        psEventData->engineOptTemperature,
+        psEventData->engineTempAlarmLow,
+        psEventData->engineTempAlarmHigh
+    );
 
     // Check if a RaceAddEntry with unactive=0 already arrived (spectate-first case)
     int pendingRaceNum = PluginData::getInstance().getPendingPlayerRaceNum();
@@ -48,4 +56,9 @@ void EventHandler::handleEventDeinit() {
 
     // Clear data when event ends
     PluginData::getInstance().clear();
+
+#if GAME_HAS_DISCORD
+    // Update Discord presence to show "In Menus" (track is now empty)
+    DiscordManager::getInstance().onEventEnd();
+#endif
 }

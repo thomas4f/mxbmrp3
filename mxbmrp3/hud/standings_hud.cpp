@@ -119,8 +119,8 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
 
     // Table-driven rendering - loop only through enabled columns
     for (const auto& col : m_columnTable) {
-        // Special handling for TRACKED column (columnIndex 0) - render sprite instead of text
-        if (col.columnIndex == 0) {
+        // Special handling for TRACKED column - render sprite instead of text
+        if (col.columnIndex == COL_IDX_TRACKED) {
             // Only render tracked indicator for non-placeholder, non-gap rows with valid race number
             if (!isPlaceholder && !entry.isGapRow && entry.raceNum > 0) {
                 const PluginData& pluginData = PluginData::getInstance();
@@ -175,36 +175,35 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
             text = col.useEmptyForPlaceholder ? "" : placeholder;
         } else if (entry.isGapRow) {
             // Gap rows show text in official gap, live gap, and debug columns
-            if (col.columnIndex == 8) {  // OFFICIAL_GAP column
+            if (col.columnIndex == COL_IDX_OFFICIAL_GAP) {
                 text = entry.formattedOfficialGap;
-            } else if (col.columnIndex == 9) {  // LIVE_GAP column
+            } else if (col.columnIndex == COL_IDX_LIVE_GAP) {
                 text = entry.formattedLiveGap;
-            } else if (col.columnIndex == 10) {  // DEBUG column
+            } else if (col.columnIndex == COL_IDX_DEBUG) {
                 text = entry.formattedDebug;
             } else {
                 text = "";
             }
         } else {
-            // Select data field based on column index
-            // 0=TRACKED (handled above), 1=POS, 2=RACENUM, 3=NAME, 4=BIKE, 5=STATUS, 6=PENALTY, 7=BEST_LAP, 8=OFFICIAL_GAP, 9=LIVE_GAP, 10=DEBUG
+            // Select data field based on column index (TRACKED handled above as sprite)
             switch (col.columnIndex) {
-                case 1: text = entry.formattedPosition; break;
-                case 2: text = entry.formattedRaceNum; break;
-                case 3: text = entry.name; break;
-                case 4: text = entry.bikeShortName; break;
-                case 5: text = entry.formattedStatus; break;
-                case 6: text = entry.formattedPenalty; break;
-                case 7: text = entry.formattedLapTime; break;
-                case 8: text = entry.formattedOfficialGap; break;
-                case 9: text = entry.formattedLiveGap; break;
-                case 10: text = entry.formattedDebug; break;
+                case COL_IDX_POS:         text = entry.formattedPosition; break;
+                case COL_IDX_RACENUM:     text = entry.formattedRaceNum; break;
+                case COL_IDX_NAME:        text = entry.name; break;
+                case COL_IDX_BIKE:        text = entry.bikeShortName; break;
+                case COL_IDX_STATUS:      text = entry.formattedStatus; break;
+                case COL_IDX_PENALTY:     text = entry.formattedPenalty; break;
+                case COL_IDX_BEST_LAP:    text = entry.formattedLapTime; break;
+                case COL_IDX_OFFICIAL_GAP: text = entry.formattedOfficialGap; break;
+                case COL_IDX_LIVE_GAP:    text = entry.formattedLiveGap; break;
+                case COL_IDX_DEBUG:       text = entry.formattedDebug; break;
                 default: text = ""; break;
             }
         }
 
         // Use podium colors for position column (P1/P2/P3), secondary for others
         unsigned long columnColor = textColor;
-        if (col.columnIndex == 1 && !isPlaceholder && !entry.isGapRow && entry.position > 0) {
+        if (col.columnIndex == COL_IDX_POS && !isPlaceholder && !entry.isGapRow && entry.position > 0) {
             if (entry.position == Position::FIRST) {
                 columnColor = PodiumColors::GOLD;
             } else if (entry.position == Position::SECOND) {
@@ -216,7 +215,7 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
             }
         }
         // Race number and bike columns use tertiary color
-        if ((col.columnIndex == 2 || col.columnIndex == 4) && !isPlaceholder && !entry.isGapRow) {
+        if ((col.columnIndex == COL_IDX_RACENUM || col.columnIndex == COL_IDX_BIKE) && !isPlaceholder && !entry.isGapRow) {
             columnColor = colors.getTertiary();
         }
 
@@ -226,7 +225,10 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
             columnColor = mutedColor;
         }
 
-        addString(text, col.position, currentY, static_cast<int>(col.justify), Fonts::getNormal(), columnColor, dim.fontSize);
+        // Use Digits font for numeric columns (BEST_LAP, OFFICIAL_GAP, LIVE_GAP)
+        int font = (col.columnIndex == COL_IDX_BEST_LAP || col.columnIndex == COL_IDX_OFFICIAL_GAP || col.columnIndex == COL_IDX_LIVE_GAP)
+            ? Fonts::getDigits() : Fonts::getNormal();
+        addString(text, col.position, currentY, static_cast<int>(col.justify), font, columnColor, dim.fontSize);
     }
 }
 
@@ -640,8 +642,8 @@ void StandingsHud::rebuildLayout() {
     for (int i = 0; i < rowsToRender; ++i) {
         // Each row has strings for enabled columns only
         for (const auto& col : m_columnTable) {
-            // Skip tracked column (index 0) - it uses quads, not strings
-            if (col.columnIndex == 0) continue;
+            // Skip tracked column - it uses quads, not strings
+            if (col.columnIndex == COL_IDX_TRACKED) continue;
 
             if (stringIndex >= m_strings.size()) break;
             float x = col.position;
@@ -1122,7 +1124,7 @@ void StandingsHud::resetToDefaults() {
     m_officialGapMode = GapMode::ALL;
     m_liveGapMode = GapMode::PLAYER;
     m_gapIndicatorMode = GapIndicatorMode::BOTH;
-    m_gapReferenceMode = GapReferenceMode::LEADER;
+    m_gapReferenceMode = GapReferenceMode::PLAYER;
     m_enabledColumns = COL_DEFAULT;
     m_displayRowCount = DEFAULT_ROW_COUNT;
     setDataDirty();

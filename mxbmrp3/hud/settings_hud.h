@@ -13,7 +13,7 @@
 #include "time_widget.h"
 #include "position_widget.h"
 #include "lap_widget.h"
-#include "session_widget.h"
+#include "session_hud.h"
 #include "speed_widget.h"
 #include "speedo_widget.h"
 #include "tacho_widget.h"
@@ -27,6 +27,9 @@
 #include "records_hud.h"
 #include "gamepad_widget.h"
 #include "lean_widget.h"
+#if GAME_HAS_TYRE_TEMP
+#include "tyre_temp_widget.h"
+#endif
 #include <variant>
 #include <string>
 #include "map_hud.h"
@@ -48,7 +51,11 @@ public:
                 StandingsHud* standings,
                 PerformanceHud* performance,
                 TelemetryHud* telemetry,
-                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionWidget* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean);
+                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean
+#if GAME_HAS_TYRE_TEMP
+                , TyreTempWidget* tyreTemp
+#endif
+                );
     virtual ~SettingsHud() = default;
 
     void update() override;
@@ -114,7 +121,6 @@ public:
             RADAR_RANGE_DOWN,          // Decrease radar range (RadarHud)
             RADAR_COLORIZE_UP,         // Cycle rider color mode forward (RadarHud)
             RADAR_COLORIZE_DOWN,       // Cycle rider color mode backward (RadarHud)
-            RADAR_PLAYER_ARROW_TOGGLE, // Toggle player's own arrow (RadarHud)
             RADAR_ALERT_DISTANCE_UP,   // Increase alert distance (RadarHud)
             RADAR_ALERT_DISTANCE_DOWN, // Decrease alert distance (RadarHud)
             RADAR_LABEL_MODE_UP,       // Cycle label mode forward (RadarHud)
@@ -142,6 +148,9 @@ public:
             RECORDS_AUTO_FETCH_TOGGLE, // Toggle auto-fetch on event start (RecordsHud)
             PITBOARD_SHOW_MODE_UP,     // Cycle pitboard show mode forward (PitboardHud)
             PITBOARD_SHOW_MODE_DOWN,   // Cycle pitboard show mode backward (PitboardHud)
+            SESSION_PASSWORD_MODE_UP,  // Cycle password display mode forward (SessionHud)
+            SESSION_PASSWORD_MODE_DOWN,// Cycle password display mode backward (SessionHud)
+            SESSION_ICONS_TOGGLE,      // Toggle icons on/off (SessionHud)
             TIMING_LABEL_TOGGLE,       // Toggle label column on/off (TimingHud)
             TIMING_TIME_TOGGLE,        // Toggle time column on/off (TimingHud)
             TIMING_GAP_UP,             // Cycle gap (Off/Session PB/Alltime/Ideal/Overall/Record) forward (TimingHud)
@@ -181,10 +190,16 @@ public:
             FONT_CATEGORY_NEXT,        // Cycle font forward for category (Appearance tab)
             SPEED_UNIT_TOGGLE,         // Toggle speed unit (mph/km/h)
             FUEL_UNIT_TOGGLE,          // Toggle fuel unit (L/gal)
+            TEMP_UNIT_TOGGLE,          // Toggle temperature unit (C/F)
             GRID_SNAP_TOGGLE,          // Toggle grid snapping for HUD positioning
             SCREEN_CLAMP_TOGGLE,       // Toggle screen clamping for HUD positioning
             DROP_SHADOW_TOGGLE,        // Toggle drop shadow for text rendering
             UPDATE_CHECK_TOGGLE,       // Toggle automatic update checking
+            AUTOSAVE_TOGGLE,           // Toggle auto-save for settings
+            SAVE_BUTTON,               // Manual save button (when auto-save is off)
+#if GAME_HAS_DISCORD
+            DISCORD_TOGGLE,            // Toggle Discord Rich Presence
+#endif
             PROFILE_CYCLE_DOWN,        // Cycle to previous profile (Practice/Qualify/Race/Spectate)
             PROFILE_CYCLE_UP,          // Cycle to next profile
             AUTO_SWITCH_TOGGLE,        // Toggle auto-switch for profiles
@@ -197,6 +212,7 @@ public:
             RUMBLE_CONTROLLER_DOWN,    // Cycle controller index down
             RUMBLE_BLEND_TOGGLE,       // Toggle blend mode (max vs additive)
             RUMBLE_CRASH_TOGGLE,       // Toggle disable on crash
+            RUMBLE_EFFECT_PROFILE_TOGGLE, // Toggle effect profile (global vs per-bike)
             RUMBLE_SUSP_LIGHT_DOWN,    // Decrease suspension light motor strength
             RUMBLE_SUSP_LIGHT_UP,      // Increase suspension light motor strength
             RUMBLE_SUSP_HEAVY_DOWN,    // Decrease suspension heavy motor strength
@@ -406,6 +422,7 @@ public:
     static BaseHud* renderTabPerformance(SettingsLayoutContext& ctx);
     static BaseHud* renderTabRecords(SettingsLayoutContext& ctx);
     static BaseHud* renderTabPitboard(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabSession(SettingsLayoutContext& ctx);
     static BaseHud* renderTabTiming(SettingsLayoutContext& ctx);
     static BaseHud* renderTabGapBar(SettingsLayoutContext& ctx);
     static BaseHud* renderTabStandings(SettingsLayoutContext& ctx);
@@ -433,6 +450,7 @@ public:
     bool handleClickTabRiders(const ClickRegion& region);
     bool handleClickTabRecords(const ClickRegion& region);
     bool handleClickTabPitboard(const ClickRegion& region);
+    bool handleClickTabSession(const ClickRegion& region);
     bool handleClickTabLapLog(const ClickRegion& region);
     bool handleClickTabUpdates(const ClickRegion& region);
 
@@ -445,7 +463,7 @@ public:
     TimeWidget* getTimeWidget() const { return m_time; }
     PositionWidget* getPositionWidget() const { return m_position; }
     LapWidget* getLapWidget() const { return m_lap; }
-    SessionWidget* getSessionWidget() const { return m_session; }
+    SessionHud* getSessionHud() const { return m_session; }
     MapHud* getMapHud() const { return m_mapHud; }
     RadarHud* getRadarHud() const { return m_radarHud; }
     SpeedWidget* getSpeedWidget() const { return m_speed; }
@@ -463,6 +481,9 @@ public:
     RumbleHud* getRumbleHud() const { return m_rumble; }
     GamepadWidget* getGamepadWidget() const { return m_gamepad; }
     LeanWidget* getLeanWidget() const { return m_lean; }
+#if GAME_HAS_TYRE_TEMP
+    TyreTempWidget* getTyreTempWidget() const { return m_tyreTemp; }
+#endif
 
 protected:
     void rebuildLayout() override;
@@ -523,7 +544,7 @@ private:
     TimeWidget* m_time;
     PositionWidget* m_position;
     LapWidget* m_lap;
-    SessionWidget* m_session;
+    SessionHud* m_session;
     MapHud* m_mapHud;
     RadarHud* m_radarHud;
     SpeedWidget* m_speed;
@@ -541,6 +562,9 @@ private:
     RumbleHud* m_rumble;
     GamepadWidget* m_gamepad;
     LeanWidget* m_lean;
+#if GAME_HAS_TYRE_TEMP
+    TyreTempWidget* m_tyreTemp;
+#endif
 
     // Visibility flag
     bool m_bVisible;
@@ -562,6 +586,12 @@ private:
     int m_cachedWindowWidth;
     int m_cachedWindowHeight;
 
+#if GAME_HAS_DISCORD
+    // Discord state cache for live status updates
+    int m_cachedDiscordState;
+    bool m_cachedDiscordEnabled;
+#endif
+
     // Tab system
     enum Tab {
         TAB_GENERAL = 0,       // General settings (preferences, profiles)
@@ -573,16 +603,17 @@ private:
         TAB_TELEMETRY = 6,     // F6
         TAB_RECORDS = 7,       // F7 - Lap Records (online)
         TAB_PITBOARD = 8,
-        TAB_TIMING = 9,        // Timing HUD (center display)
-        TAB_GAP_BAR = 10,      // Gap Bar HUD (lap timing comparison)
-        TAB_PERFORMANCE = 11,
-        TAB_WIDGETS = 12,
-        TAB_RIDERS = 13,       // Tracked riders configuration
-        TAB_RUMBLE = 14,
-        TAB_APPEARANCE = 15,   // Appearance configuration (fonts, colors)
-        TAB_HOTKEYS = 16,      // Keyboard/controller hotkey bindings
-        TAB_UPDATES = 17,      // Auto-update settings
-        TAB_COUNT = 18
+        TAB_SESSION = 9,       // Session HUD (server info, password)
+        TAB_TIMING = 10,       // Timing HUD (center display)
+        TAB_GAP_BAR = 11,      // Gap Bar HUD (lap timing comparison)
+        TAB_PERFORMANCE = 12,
+        TAB_WIDGETS = 13,
+        TAB_RIDERS = 14,       // Tracked riders configuration
+        TAB_RUMBLE = 15,
+        TAB_APPEARANCE = 16,   // Appearance configuration (fonts, colors)
+        TAB_HOTKEYS = 17,      // Keyboard/controller hotkey bindings
+        TAB_UPDATES = 18,      // Auto-update settings
+        TAB_COUNT = 19
     };
     int m_activeTab;
 
@@ -612,8 +643,10 @@ private:
     // Tooltip support (Phase 2 description system)
     std::string m_hoveredTooltipId;    // Current tooltip ID from hovered region (empty = none)
 
-    // Update checker cooldown tracking (to refresh button when cooldown expires)
+    // Update checker state tracking (to refresh UI when status changes)
     bool m_wasUpdateCheckerOnCooldown;
+    int m_cachedUpdateCheckerStatus;
+    int m_cachedUpdateDownloaderState;
 
     std::vector<ClickRegion> m_clickRegions;
 

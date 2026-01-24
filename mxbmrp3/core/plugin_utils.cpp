@@ -159,6 +159,16 @@ const char* PluginUtils::getEventTypeString(int eventType) {
     }
 }
 
+const char* PluginUtils::getConnectionTypeString(int connectionType) {
+    // Values match Memory::ConnectionType enum (0=Unknown, 1=Offline, 2=Host, 3=Client)
+    switch (connectionType) {
+    case 1: return "Offline";
+    case 2: return "Host";
+    case 3: return "Client";
+    default: return "Unknown";
+    }
+}
+
 const char* PluginUtils::getSessionString(int eventType, int session) {
     namespace EventEnum = PluginConstants::EventType;
     namespace SessionEnum = PluginConstants::Session;

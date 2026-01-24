@@ -7,6 +7,7 @@
 #include "../core/plugin_data.h"
 #include "../core/input_manager.h"
 #include "../core/hud_manager.h"
+#include "../core/odometer_manager.h"
 #include "../hud/fuel_widget.h"
 #include "../diagnostics/logger.h"
 
@@ -21,10 +22,14 @@ void RunHandler::handleRunInit(Unified::SessionData* psSessionData) {
     PluginData::getInstance().setSession(psSessionData->session);
     PluginData::getInstance().setConditions(static_cast<int>(psSessionData->conditions));
     PluginData::getInstance().setAirTemperature(psSessionData->airTemperature);
+    PluginData::getInstance().setTrackTemperature(psSessionData->trackTemperature);
     PluginData::getInstance().setSetupFileName(psSessionData->setupFileName);
 
     // Reset fuel tracking when entering track (rider may have refueled in pits)
     HudManager::getInstance().getFuelWidget().resetFuelTracking();
+
+    // Reset trip meter when entering track
+    OdometerManager::getInstance().resetSessionTrip();
 }
 
 void RunHandler::handleRunStart() {
@@ -54,4 +59,7 @@ void RunHandler::handleRunDeinit() {
 
     // Clear player running flag
     PluginData::getInstance().setPlayerRunning(false);
+
+    // Save odometer data when exiting track (prevents data loss on crash)
+    OdometerManager::getInstance().save();
 }

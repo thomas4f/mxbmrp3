@@ -658,7 +658,7 @@ void GapBarHud::rebuildRenderData() {
 
     // Gap text (monospace font, normal size, centered)
     addString(gapBuffer, gapTextX, gapTextY, Justify::CENTER,
-              Fonts::getNormal(), gapColor, dim.fontSize);
+              Fonts::getDigits(), gapColor, dim.fontSize);
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + barWidth, startY + barHeight);

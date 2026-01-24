@@ -79,7 +79,7 @@ public:
     class TimeWidget& getTimeWidget() const { assert(m_pTime && "HudManager not initialized"); return *m_pTime; }
     class PositionWidget& getPositionWidget() const { assert(m_pPosition && "HudManager not initialized"); return *m_pPosition; }
     class LapWidget& getLapWidget() const { assert(m_pLap && "HudManager not initialized"); return *m_pLap; }
-    class SessionWidget& getSessionWidget() const { assert(m_pSession && "HudManager not initialized"); return *m_pSession; }
+    class SessionHud& getSessionHud() const { assert(m_pSession && "HudManager not initialized"); return *m_pSession; }
     class MapHud& getMapHud() const { assert(m_pMapHud && "HudManager not initialized"); return *m_pMapHud; }
     class RadarHud& getRadarHud() const { assert(m_pRadarHud && "HudManager not initialized"); return *m_pRadarHud; }
     class SpeedWidget& getSpeedWidget() const { assert(m_pSpeed && "HudManager not initialized"); return *m_pSpeed; }
@@ -100,6 +100,9 @@ public:
     class RumbleHud& getRumbleHud() const { assert(m_pRumble && "HudManager not initialized"); return *m_pRumble; }
     class GamepadWidget& getGamepadWidget() const { assert(m_pGamepad && "HudManager not initialized"); return *m_pGamepad; }
     class LeanWidget& getLeanWidget() const { assert(m_pLean && "HudManager not initialized"); return *m_pLean; }
+#if GAME_HAS_TYRE_TEMP
+    class TyreTempWidget& getTyreTempWidget() const { assert(m_pTyreTemp && "HudManager not initialized"); return *m_pTyreTemp; }
+#endif
     class SettingsHud& getSettingsHud() const { assert(m_pSettingsHud && "HudManager not initialized"); return *m_pSettingsHud; }
 
 private:
@@ -112,6 +115,9 @@ private:
                    m_pRecords(nullptr),
 #endif
                    m_pFuel(nullptr), m_pPointer(nullptr), m_pRumble(nullptr), m_pGamepad(nullptr), m_pLean(nullptr),
+#if GAME_HAS_TYRE_TEMP
+                   m_pTyreTemp(nullptr),
+#endif
                    m_bAllHudsToggledOff(false), m_bAllWidgetsToggledOff(false) {
     }
     ~HudManager();
@@ -142,7 +148,7 @@ private:
     class TimeWidget* m_pTime;
     class PositionWidget* m_pPosition;
     class LapWidget* m_pLap;
-    class SessionWidget* m_pSession;
+    class SessionHud* m_pSession;
     class MapHud* m_pMapHud;
     class RadarHud* m_pRadarHud;
     class SpeedWidget* m_pSpeed;
@@ -162,6 +168,9 @@ private:
     class RumbleHud* m_pRumble;
     class GamepadWidget* m_pGamepad;
     class LeanWidget* m_pLean;
+#if GAME_HAS_TYRE_TEMP
+    class TyreTempWidget* m_pTyreTemp;
+#endif
 
     // Temporary HUD visibility toggle (doesn't modify actual visibility state)
     bool m_bAllHudsToggledOff;

@@ -15,5 +15,6 @@ UiConfig::UiConfig() {
 
 void UiConfig::resetToDefaults() {
     m_bGridSnapping = true;
-    m_bScreenClamping = true;
+    m_bScreenClamping = false;
+    m_bAutoSave = true;
 }

@@ -7,6 +7,11 @@
 #include "../rumble_hud.h"
 #include "../speed_widget.h"
 #include "../../core/xinput_reader.h"
+#include "../../core/rumble_profile_manager.h"
+#include "../../core/settings_manager.h"
+#include "../../core/plugin_manager.h"
+#include "../../core/hud_manager.h"
+#include "../../core/ui_config.h"
 #include <cmath>
 #include <algorithm>
 
@@ -22,7 +27,18 @@ static void adjustEffectStrength(float& value, bool increase) {
 
 // Member function of SettingsHud - handles click events for Rumble tab
 bool SettingsHud::handleClickTabRumble(const ClickRegion& region) {
+    // Use per-bike or global config for effect settings
     RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+    // Global config for master settings (enabled, blend mode, crashed) - these are never per-bike
+    RumbleConfig& globalConfig = XInputReader::getInstance().getGlobalRumbleConfig();
+    const bool isPerBikeMode = globalConfig.usePerBikeEffects;
+
+    // Helper to mark profile dirty when modifying effects in per-bike mode
+    auto markProfileDirty = [isPerBikeMode]() {
+        if (isPerBikeMode) {
+            RumbleProfileManager::getInstance().markDirty();
+        }
+    };
 
     // Lambda for effect adjustments - avoids massive switch statement
     auto handleEffectControl = [&](RumbleEffect& effect,
@@ -33,34 +49,42 @@ bool SettingsHud::handleClickTabRumble(const ClickRegion& region) {
         float minStep = 1.0f, float maxStep = 1.0f) -> bool {
         if (region.type == lightUp) {
             adjustEffectStrength(effect.lightStrength, true);
+            markProfileDirty();
             setDataDirty();
             return true;
         } else if (region.type == lightDown) {
             adjustEffectStrength(effect.lightStrength, false);
+            markProfileDirty();
             setDataDirty();
             return true;
         } else if (region.type == heavyUp) {
             adjustEffectStrength(effect.heavyStrength, true);
+            markProfileDirty();
             setDataDirty();
             return true;
         } else if (region.type == heavyDown) {
             adjustEffectStrength(effect.heavyStrength, false);
+            markProfileDirty();
             setDataDirty();
             return true;
         } else if (region.type == minUp) {
             effect.minInput += minStep;
+            markProfileDirty();
             setDataDirty();
             return true;
         } else if (region.type == minDown) {
             effect.minInput = std::max(effect.minInput - minStep, 0.0f);
+            markProfileDirty();
             setDataDirty();
             return true;
         } else if (region.type == maxUp) {
             effect.maxInput += maxStep;
+            markProfileDirty();
             setDataDirty();
             return true;
         } else if (region.type == maxDown) {
             effect.maxInput = std::max(effect.maxInput - maxStep, effect.minInput);
+            markProfileDirty();
             setDataDirty();
             return true;
         }
@@ -68,20 +92,41 @@ bool SettingsHud::handleClickTabRumble(const ClickRegion& region) {
     };
 
     switch (region.type) {
+        // Master settings always use global config (never stored per-bike)
         case ClickRegion::RUMBLE_TOGGLE:
-            config.enabled = !config.enabled;
+            globalConfig.enabled = !globalConfig.enabled;
             setDataDirty();
             return true;
 
         case ClickRegion::RUMBLE_BLEND_TOGGLE:
-            config.additiveBlend = !config.additiveBlend;
+            globalConfig.additiveBlend = !globalConfig.additiveBlend;
             setDataDirty();
             return true;
 
         case ClickRegion::RUMBLE_CRASH_TOGGLE:
-            config.rumbleWhenCrashed = !config.rumbleWhenCrashed;
+            globalConfig.rumbleWhenCrashed = !globalConfig.rumbleWhenCrashed;
             setDataDirty();
             return true;
+
+        case ClickRegion::RUMBLE_EFFECT_PROFILE_TOGGLE: {
+            // Toggle effect profile mode (stored in global config)
+            RumbleConfig& globalConfig = XInputReader::getInstance().getGlobalRumbleConfig();
+            bool wasPerBike = globalConfig.usePerBikeEffects;
+            globalConfig.usePerBikeEffects = !globalConfig.usePerBikeEffects;
+
+            // Save rumble effects if switching from per-bike to global
+            if (wasPerBike && !globalConfig.usePerBikeEffects) {
+                RumbleProfileManager::getInstance().save();
+            }
+
+            // Save settings to INI to persist the mode change (if auto-save enabled)
+            if (UiConfig::getInstance().getAutoSave()) {
+                SettingsManager::getInstance().saveSettings(HudManager::getInstance(),
+                    PluginManager::getInstance().getSavePath());
+            }
+            setDataDirty();
+            return true;
+        }
 
         case ClickRegion::RUMBLE_HUD_TOGGLE:
             if (m_rumble) {
@@ -182,6 +227,9 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
     // Add standard HUD controls (Visible, Title, Texture, Opacity, Scale)
     ctx.addStandardHudControls(hud);
 
+    // Global config for master settings (enabled, blend, crashed, profile mode)
+    const RumbleConfig& globalConfig = XInputReader::getInstance().getGlobalRumbleConfig();
+    // Active config for effect settings (global or per-bike based on mode)
     RumbleConfig& rumbleConfig = XInputReader::getInstance().getRumbleConfig();
     float cw = PluginUtils::calculateMonospaceTextWidth(1, ctx.fontSize);
     ColorConfig& colors = ColorConfig::getInstance();
@@ -192,17 +240,23 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
     ctx.addSpacing(0.5f);
     ctx.addSectionHeader("Rumble");
 
-    // Master rumble enable
-    ctx.addToggleControl("Enabled", rumbleConfig.enabled,
+    // Master rumble enable (always from global config)
+    ctx.addToggleControl("Enabled", globalConfig.enabled,
         SettingsHud::ClickRegion::RUMBLE_TOGGLE, hud, nullptr, 0, true, "rumble.enabled");
 
-    // Stack mode
-    ctx.addToggleControl("Stack Forces", rumbleConfig.additiveBlend,
+    // Stack mode (always from global config)
+    ctx.addToggleControl("Stack Forces", globalConfig.additiveBlend,
         SettingsHud::ClickRegion::RUMBLE_BLEND_TOGGLE, hud, nullptr, 0, true, "rumble.stack");
 
-    // Rumble when crashed
-    ctx.addToggleControl("When Crashed", rumbleConfig.rumbleWhenCrashed,
+    // Rumble when crashed (always from global config)
+    ctx.addToggleControl("When Crashed", globalConfig.rumbleWhenCrashed,
         SettingsHud::ClickRegion::RUMBLE_CRASH_TOGGLE, hud, nullptr, 0, true, "rumble.crashed");
+
+    // Effect profile (per-bike vs global) - uses global config to determine mode
+    // Pass true for isOn since both options are valid active states (not on/off)
+    ctx.addToggleControl("Effect Profile", true,
+        SettingsHud::ClickRegion::RUMBLE_EFFECT_PROFILE_TOGGLE, hud, nullptr, 0, true, "rumble.effect_profile",
+        globalConfig.usePerBikeEffects ? "Per-Bike" : "Global");
 
     // === EFFECTS SECTION ===
     ctx.addSpacing(0.5f);
@@ -271,8 +325,9 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
                 lightDown, nullptr
             ));
             currentX += cw * 2;
+            // Use percent for color to match display logic (avoids floating point precision issues)
             ctx.parent->addString(valueStr, currentX, ctx.currentY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), effect.lightStrength > 0 ? colors.getPrimary() : colors.getMuted(), ctx.fontSize);
+                PluginConstants::Fonts::getNormal(), percent > 0 ? colors.getPrimary() : colors.getMuted(), ctx.fontSize);
             currentX += cw * 4;
             ctx.parent->addString(" >", currentX, ctx.currentY, PluginConstants::Justify::LEFT,
                 PluginConstants::Fonts::getNormal(), colors.getAccent(), ctx.fontSize);
@@ -301,8 +356,9 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
                 heavyDown, nullptr
             ));
             currentX += cw * 2;
+            // Use percent for color to match display logic (avoids floating point precision issues)
             ctx.parent->addString(valueStr, currentX, ctx.currentY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), effect.heavyStrength > 0 ? colors.getPrimary() : colors.getMuted(), ctx.fontSize);
+                PluginConstants::Fonts::getNormal(), percent > 0 ? colors.getPrimary() : colors.getMuted(), ctx.fontSize);
             currentX += cw * 4;
             ctx.parent->addString(" >", currentX, ctx.currentY, PluginConstants::Justify::LEFT,
                 PluginConstants::Fonts::getNormal(), colors.getAccent(), ctx.fontSize);
@@ -333,7 +389,7 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
             ));
             currentX += cw * 2;
             ctx.parent->addString(valueStr, currentX, ctx.currentY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), colors.getPrimary(), ctx.fontSize);
+                PluginConstants::Fonts::getNormal(), effect.isEnabled() ? colors.getPrimary() : colors.getMuted(), ctx.fontSize);
             currentX += cw * 6;
             ctx.parent->addString(">", currentX, ctx.currentY, PluginConstants::Justify::LEFT,
                 PluginConstants::Fonts::getNormal(), colors.getAccent(), ctx.fontSize);
@@ -364,7 +420,7 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
             ));
             currentX += cw * 2;
             ctx.parent->addString(valueStr, currentX, ctx.currentY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), colors.getPrimary(), ctx.fontSize);
+                PluginConstants::Fonts::getNormal(), effect.isEnabled() ? colors.getPrimary() : colors.getMuted(), ctx.fontSize);
             currentX += cw * 6;
             ctx.parent->addString(">", currentX, ctx.currentY, PluginConstants::Justify::LEFT,
                 PluginConstants::Fonts::getNormal(), colors.getAccent(), ctx.fontSize);

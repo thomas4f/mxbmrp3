@@ -15,7 +15,7 @@
 #include "../hud/time_widget.h"
 #include "../hud/position_widget.h"
 #include "../hud/lap_widget.h"
-#include "../hud/session_widget.h"
+#include "../hud/session_hud.h"
 #include "../hud/speed_widget.h"
 #include "../hud/speedo_widget.h"
 #include "../hud/tacho_widget.h"
@@ -36,15 +36,25 @@
 #include "../hud/rumble_hud.h"
 #include "../hud/gamepad_widget.h"
 #include "../hud/lean_widget.h"
+#if GAME_HAS_TYRE_TEMP
+#include "../hud/tyre_temp_widget.h"
+#endif
 #include "color_config.h"
 #include "font_config.h"
 #include "ui_config.h"
 #include "update_checker.h"
 #include "update_downloader.h"
+#if GAME_HAS_DISCORD
+#include "discord_manager.h"
+#endif
 #include "xinput_reader.h"
 #include "hotkey_manager.h"
 #include "tracked_riders_manager.h"
 #include "asset_manager.h"
+#include "../game/game_config.h"
+#if defined(GAME_MXBIKES)
+#include "../game/connection_detector.h"
+#endif
 #include <fstream>
 #include <sstream>
 #include <array>
@@ -115,7 +125,6 @@ namespace {
         // RadarHud-specific keys
         namespace Radar {
             constexpr const char* RADAR_RANGE = "radarRange";
-            constexpr const char* SHOW_PLAYER_ARROW = "showPlayerArrow";
             constexpr const char* RADAR_MODE = "radarMode";
             constexpr const char* ALERT_DISTANCE = "alertDistance";
         }
@@ -221,11 +230,21 @@ namespace {
             constexpr const char* EST = "row_est";
         }
 
-        // SessionWidget rows
+        // SessionHud rows
         namespace SessionRows {
             constexpr const char* TYPE = "row_type";
             constexpr const char* TRACK = "row_track";
             constexpr const char* FORMAT = "row_format";
+            constexpr const char* SERVER = "row_server";
+            constexpr const char* PLAYERS = "row_players";
+            constexpr const char* WEATHER = "row_weather";
+            // PASSWORD row removed - now controlled by passwordMode (Off = row hidden)
+        }
+
+        // SessionHud settings
+        namespace Session {
+            constexpr const char* PASSWORD_MODE = "passwordMode";
+            constexpr const char* SHOW_ICONS = "showIcons";
         }
 
         // LeanWidget rows
@@ -236,6 +255,14 @@ namespace {
             constexpr const char* STEER_VALUE = "row_steer_value";
         }
 
+#if GAME_HAS_TYRE_TEMP
+        // TyreTempWidget rows
+        namespace TyreTempRows {
+            constexpr const char* BARS = "row_bars";
+            constexpr const char* VALUES = "row_values";
+        }
+#endif
+
         // BarsWidget columns
         namespace BarsCols {
             constexpr const char* THROTTLE = "col_throttle";
@@ -244,6 +271,8 @@ namespace {
             constexpr const char* RPM = "col_rpm";
             constexpr const char* SUSPENSION = "col_suspension";
             constexpr const char* FUEL = "col_fuel";
+            constexpr const char* ENGINE_TEMP = "col_engine_temp";
+            constexpr const char* WATER_TEMP = "col_water_temp";
         }
 
         // NoticesWidget notices
@@ -612,6 +641,22 @@ namespace {
         return defaultVal;
     }
 
+    // TemperatureUnit
+    const char* tempUnitToString(TemperatureUnit unit) {
+        switch (unit) {
+            case TemperatureUnit::CELSIUS: return "CELSIUS";
+            case TemperatureUnit::FAHRENHEIT: return "FAHRENHEIT";
+            default: return "CELSIUS";
+        }
+    }
+
+    TemperatureUnit stringToTempUnit(const std::string& str, TemperatureUnit defaultVal = TemperatureUnit::CELSIUS) {
+        if (str == "CELSIUS") return TemperatureUnit::CELSIUS;
+        if (str == "FAHRENHEIT") return TemperatureUnit::FAHRENHEIT;
+        DEBUG_WARN_F("Unknown TemperatureUnit '%s', using default", str.c_str());
+        return defaultVal;
+    }
+
     // ========================================================================
 
     // Validation helper functions
@@ -932,20 +977,47 @@ namespace {
         loadBitFromKey(settings, EST, rows, FuelWidget::ROW_EST);
     }
 
-    // SessionWidget: save rows as named keys
+    // SessionHud: save rows as named keys
     void saveSessionRows(SettingsManager::HudSettings& settings, uint32_t rows) {
         using namespace Keys::SessionRows;
-        saveBitAsKey(settings, TYPE, rows, SessionWidget::ROW_TYPE);
-        saveBitAsKey(settings, TRACK, rows, SessionWidget::ROW_TRACK);
-        saveBitAsKey(settings, FORMAT, rows, SessionWidget::ROW_FORMAT);
+        saveBitAsKey(settings, TYPE, rows, SessionHud::ROW_TYPE);
+        saveBitAsKey(settings, TRACK, rows, SessionHud::ROW_TRACK);
+        saveBitAsKey(settings, FORMAT, rows, SessionHud::ROW_FORMAT);
+        saveBitAsKey(settings, SERVER, rows, SessionHud::ROW_SERVER);
+        saveBitAsKey(settings, PLAYERS, rows, SessionHud::ROW_PLAYERS);
+        saveBitAsKey(settings, WEATHER, rows, SessionHud::ROW_WEATHER);
+        // PASSWORD row removed - now controlled by passwordMode (Off = row hidden)
     }
 
-    // SessionWidget: load rows from named keys
+    // SessionHud: load rows from named keys
     void loadSessionRows(const SettingsManager::HudSettings& settings, uint32_t& rows) {
         using namespace Keys::SessionRows;
-        loadBitFromKey(settings, TYPE, rows, SessionWidget::ROW_TYPE);
-        loadBitFromKey(settings, TRACK, rows, SessionWidget::ROW_TRACK);
-        loadBitFromKey(settings, FORMAT, rows, SessionWidget::ROW_FORMAT);
+        loadBitFromKey(settings, TYPE, rows, SessionHud::ROW_TYPE);
+        loadBitFromKey(settings, TRACK, rows, SessionHud::ROW_TRACK);
+        loadBitFromKey(settings, FORMAT, rows, SessionHud::ROW_FORMAT);
+        loadBitFromKey(settings, SERVER, rows, SessionHud::ROW_SERVER);
+        loadBitFromKey(settings, PLAYERS, rows, SessionHud::ROW_PLAYERS);
+        loadBitFromKey(settings, WEATHER, rows, SessionHud::ROW_WEATHER);
+        // PASSWORD row removed - now controlled by passwordMode (Off = row hidden)
+    }
+
+    // SessionHud: password mode string conversion
+    const char* passwordModeToString(PasswordDisplayMode mode) {
+        switch (mode) {
+            case PasswordDisplayMode::Off:      return "off";
+            case PasswordDisplayMode::Hidden:   return "hidden";
+            case PasswordDisplayMode::AsHost:   return "as_host";
+            case PasswordDisplayMode::AsClient: return "as_client";
+            default:                            return "hidden";
+        }
+    }
+
+    PasswordDisplayMode passwordModeFromString(const std::string& str) {
+        if (str == "off")       return PasswordDisplayMode::Off;
+        if (str == "hidden")    return PasswordDisplayMode::Hidden;
+        if (str == "as_host")   return PasswordDisplayMode::AsHost;
+        if (str == "as_client") return PasswordDisplayMode::AsClient;
+        return PasswordDisplayMode::Hidden;  // Default
     }
 
     // LeanWidget: save rows as named keys
@@ -966,6 +1038,22 @@ namespace {
         loadBitFromKey(settings, STEER_VALUE, rows, LeanWidget::ROW_STEER_VALUE);
     }
 
+#if GAME_HAS_TYRE_TEMP
+    // TyreTempWidget: save rows as named keys
+    void saveTyreTempRows(SettingsManager::HudSettings& settings, uint32_t rows) {
+        using namespace Keys::TyreTempRows;
+        saveBitAsKey(settings, BARS, rows, TyreTempWidget::ROW_BARS);
+        saveBitAsKey(settings, VALUES, rows, TyreTempWidget::ROW_VALUES);
+    }
+
+    // TyreTempWidget: load rows from named keys
+    void loadTyreTempRows(const SettingsManager::HudSettings& settings, uint32_t& rows) {
+        using namespace Keys::TyreTempRows;
+        loadBitFromKey(settings, BARS, rows, TyreTempWidget::ROW_BARS);
+        loadBitFromKey(settings, VALUES, rows, TyreTempWidget::ROW_VALUES);
+    }
+#endif
+
     // BarsWidget: save columns as named keys
     void saveBarsColumns(SettingsManager::HudSettings& settings, uint32_t cols) {
         using namespace Keys::BarsCols;
@@ -975,6 +1063,8 @@ namespace {
         saveBitAsKey(settings, RPM, cols, BarsWidget::COL_RPM);
         saveBitAsKey(settings, SUSPENSION, cols, BarsWidget::COL_SUSPENSION);
         saveBitAsKey(settings, FUEL, cols, BarsWidget::COL_FUEL);
+        saveBitAsKey(settings, ENGINE_TEMP, cols, BarsWidget::COL_ENGINE_TEMP);
+        saveBitAsKey(settings, WATER_TEMP, cols, BarsWidget::COL_WATER_TEMP);
     }
 
     // BarsWidget: load columns from named keys
@@ -986,6 +1076,8 @@ namespace {
         loadBitFromKey(settings, RPM, cols, BarsWidget::COL_RPM);
         loadBitFromKey(settings, SUSPENSION, cols, BarsWidget::COL_SUSPENSION);
         loadBitFromKey(settings, FUEL, cols, BarsWidget::COL_FUEL);
+        loadBitFromKey(settings, ENGINE_TEMP, cols, BarsWidget::COL_ENGINE_TEMP);
+        loadBitFromKey(settings, WATER_TEMP, cols, BarsWidget::COL_WATER_TEMP);
     }
 
     // NoticesWidget: save notices as named keys
@@ -1223,7 +1315,6 @@ void SettingsManager::captureToProfile(const HudManager& hudManager, ProfileType
         captureBaseHudSettings(settings, hud);
         settings["radarRange"] = std::to_string(hud.getRadarRange());
         settings["riderColorMode"] = radarRiderColorModeToString(hud.getRiderColorMode());
-        settings["showPlayerArrow"] = std::to_string(hud.getShowPlayerArrow() ? 1 : 0);
         settings["radarMode"] = radarModeToString(hud.getRadarMode());
         settings["proximityArrowMode"] = proximityArrowModeToString(hud.getProximityArrowMode());
         settings["proximityArrowShape"] = shapeIndexToFilename(hud.getProximityArrowShape());
@@ -1317,22 +1408,25 @@ void SettingsManager::captureToProfile(const HudManager& hudManager, ProfileType
         settings["showSessionType"] = std::to_string(hud.getShowSessionType() ? 1 : 0);
         cache["TimeWidget"] = std::move(settings);
     }
-    // SessionWidget with enabledRows
+    // SessionHud with enabledRows, passwordMode, and showIcons
     {
         HudSettings settings;
-        const auto& hud = hudManager.getSessionWidget();
+        const auto& hud = hudManager.getSessionHud();
         captureBaseHudSettings(settings, hud);
         saveSessionRows(settings, hud.m_enabledRows);
-        cache["SessionWidget"] = std::move(settings);
+        settings[Keys::Session::PASSWORD_MODE] = passwordModeToString(hud.m_passwordMode);
+        settings[Keys::Session::SHOW_ICONS] = std::to_string(hud.m_bShowIcons ? 1 : 0);
+        cache["SessionHud"] = std::move(settings);
     }
     captureWidget("SpeedoWidget", hudManager.getSpeedoWidget());
     captureWidget("TachoWidget", hudManager.getTachoWidget());
-    // BarsWidget has enabledColumns and showMaxMarkers
+    // BarsWidget has enabledColumns, showLabels, and showMaxMarkers
     {
         HudSettings settings;
         const auto& hud = hudManager.getBarsWidget();
         captureBaseHudSettings(settings, hud);
         saveBarsColumns(settings, hud.m_enabledColumns);
+        settings["showLabels"] = hud.m_bShowLabels ? "1" : "0";
         settings["showMaxMarkers"] = hud.m_bShowMaxMarkers ? "1" : "0";
         settings["maxMarkerLingerFrames"] = std::to_string(hud.m_maxMarkerLingerFrames);
         cache["BarsWidget"] = std::move(settings);
@@ -1394,6 +1488,19 @@ void SettingsManager::captureToProfile(const HudManager& hudManager, ProfileType
         settings["maxMarkerLingerFrames"] = std::to_string(hud.m_maxMarkerLingerFrames);
         cache["LeanWidget"] = std::move(settings);
     }
+
+#if GAME_HAS_TYRE_TEMP
+    // TyreTempWidget with temperature thresholds and row toggles
+    {
+        HudSettings settings;
+        const auto& hud = hudManager.getTyreTempWidget();
+        captureBaseHudSettings(settings, hud);
+        settings["coldThreshold"] = std::to_string(hud.getColdThreshold());
+        settings["hotThreshold"] = std::to_string(hud.getHotThreshold());
+        saveTyreTempRows(settings, hud.m_enabledRows);  // Named keys for row toggles
+        cache["TyreTempWidget"] = std::move(settings);
+    }
+#endif
 
     // TimingHud has display mode, column toggles, displayDuration, and primary/secondary gaps
     {
@@ -1541,7 +1648,6 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
                 if (settings.count("riderColorMode")) {
                     hud.setRiderColorMode(stringToRadarRiderColorMode(settings.at("riderColorMode")));
                 }
-                if (settings.count("showPlayerArrow")) hud.setShowPlayerArrow(std::stoi(settings.at("showPlayerArrow")) != 0);
                 if (settings.count("radarMode")) {
                     hud.setRadarMode(stringToRadarMode(settings.at("radarMode")));
                 }
@@ -1715,25 +1821,35 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
             hud.setDataDirty();
         }
     }
-    // Apply SessionWidget with enabledRows
+    // Apply SessionHud with enabledRows, passwordMode, and showIcons
+    // Also check for legacy "SessionWidget" key for backwards compatibility
     {
-        auto it = cache.find("SessionWidget");
+        auto it = cache.find("SessionHud");
+        if (it == cache.end()) {
+            it = cache.find("SessionWidget");  // Backwards compatibility
+        }
         if (it != cache.end()) {
-            auto& hud = hudManager.getSessionWidget();
+            auto& hud = hudManager.getSessionHud();
             applyBaseHudSettings(hud, it->second);
 
             const auto& settings = it->second;
             try {
                 loadSessionRows(settings, hud.m_enabledRows);
+                if (settings.count(Keys::Session::PASSWORD_MODE)) {
+                    hud.m_passwordMode = passwordModeFromString(settings.at(Keys::Session::PASSWORD_MODE));
+                }
+                if (settings.count(Keys::Session::SHOW_ICONS)) {
+                    hud.m_bShowIcons = (std::stoi(settings.at(Keys::Session::SHOW_ICONS)) != 0);
+                }
             } catch (const std::exception& e) {
-                DEBUG_WARN_F("SessionWidget: Failed to parse settings: %s", e.what());
+                DEBUG_WARN_F("SessionHud: Failed to parse settings: %s", e.what());
             }
             hud.setDataDirty();
         }
     }
     applyToHud("SpeedoWidget", hudManager.getSpeedoWidget());
     applyToHud("TachoWidget", hudManager.getTachoWidget());
-    // Apply BarsWidget with enabledColumns and showMaxMarkers
+    // Apply BarsWidget with enabledColumns, showLabels, and showMaxMarkers
     {
         auto it = cache.find("BarsWidget");
         if (it != cache.end()) {
@@ -1743,6 +1859,9 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
             const auto& settings = it->second;
             try {
                 loadBarsColumns(settings, hud.m_enabledColumns);
+                if (settings.count("showLabels")) {
+                    hud.m_bShowLabels = std::stoi(settings.at("showLabels")) != 0;
+                }
                 if (settings.count("showMaxMarkers")) {
                     hud.m_bShowMaxMarkers = std::stoi(settings.at("showMaxMarkers")) != 0;
                 }
@@ -1862,6 +1981,31 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
             hud.setDataDirty();
         }
     }
+
+#if GAME_HAS_TYRE_TEMP
+    // Apply TyreTempWidget with temperature thresholds and row toggles
+    {
+        auto it = cache.find("TyreTempWidget");
+        if (it != cache.end()) {
+            auto& hud = hudManager.getTyreTempWidget();
+            applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                if (settings.count("coldThreshold")) {
+                    hud.setColdThreshold(std::stof(settings.at("coldThreshold")));
+                }
+                if (settings.count("hotThreshold")) {
+                    hud.setHotThreshold(std::stof(settings.at("hotThreshold")));
+                }
+                loadTyreTempRows(settings, hud.m_enabledRows);  // Named keys for row toggles
+            } catch (const std::exception& e) {
+                DEBUG_WARN_F("TyreTempWidget: Failed to parse settings: %s", e.what());
+            }
+            hud.setDataDirty();
+        }
+    }
+#endif
 
     // Apply TimingHud with display mode, column toggles, displayDuration, and primary/secondary gaps
     {
@@ -2140,9 +2284,8 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
 
     // Write header comment with usage notes
     file << "; MXBMRP3 Settings File\n";
-    file << "; Auto-saved frequently while the game is running.\n";
-    file << "; You can reload in-game, but avoid making both in-game\n";
-    file << "; and manual edits at the same time.\n";
+    file << "; To edit manually, disable Auto-Save in Settings > General,\n";
+    file << "; then reload in-game with the hotkey after saving changes.\n";
     file << "\n";
 
     // Write Settings section (format versioning)
@@ -2159,6 +2302,7 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     file << "[General]\n";
     file << "gridSnapping=" << (UiConfig::getInstance().getGridSnapping() ? 1 : 0) << "\n";
     file << "screenClamping=" << (UiConfig::getInstance().getScreenClamping() ? 1 : 0) << "\n";
+    file << "autoSave=" << (UiConfig::getInstance().getAutoSave() ? 1 : 0) << "\n";
     file << "dropShadow=" << (ColorConfig::getInstance().getDropShadow() ? 1 : 0) << "\n";
     // Save update mode as string (only OFF and NOTIFY are supported)
     const char* updateModeStr = "off";
@@ -2178,8 +2322,12 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     file << "controller=" << XInputReader::getInstance().getRumbleConfig().controllerIndex << "\n";
     file << "speedUnit=" << speedUnitToString(hudManager.getSpeedWidget().m_speedUnit) << "\n";
     file << "fuelUnit=" << fuelUnitToString(hudManager.getFuelWidget().m_fuelUnit) << "\n";
+    file << "tempUnit=" << tempUnitToString(UiConfig::getInstance().getTemperatureUnit()) << "\n";
 #if GAME_HAS_RECORDS_PROVIDER
     file << "recordsAutoFetch=" << (hudManager.getRecordsHud().m_bAutoFetch ? 1 : 0) << "\n";
+#endif
+#if GAME_HAS_DISCORD
+    file << "discordRichPresence=" << (DiscordManager::getInstance().isEnabled() ? 1 : 0) << "\n";
 #endif
     file << "\n";
 
@@ -2189,6 +2337,8 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     file << "updateDebugMode=" << (UpdateChecker::getInstance().isDebugMode() ? 1 : 0) << "\n";
     file << "mapPixelSpacing=" << hudManager.getMapHud().getPixelSpacing() << "\n";
     file << "speedoNeedleColor=" << PluginUtils::formatColorHex(hudManager.getSpeedoWidget().getNeedleColor()) << "\n";
+    file << "speedoShowOdometer=" << (hudManager.getSpeedoWidget().getShowOdometer() ? 1 : 0) << "\n";
+    file << "speedoShowTripmeter=" << (hudManager.getSpeedoWidget().getShowTripmeter() ? 1 : 0) << "\n";
     file << "tachoNeedleColor=" << PluginUtils::formatColorHex(hudManager.getTachoWidget().getNeedleColor()) << "\n";
     file << "leanArcFillColor=" << PluginUtils::formatColorHex(hudManager.getLeanWidget().getArcFillColor()) << "\n";
 #if GAME_HAS_RECORDS_PROVIDER
@@ -2198,7 +2348,18 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     file << "standingsUseAccentHighlight=" << (hudManager.getStandingsHud().m_bUseAccentForHighlight ? 1 : 0) << "\n";
     file << "dropShadowOffsetX=" << ColorConfig::getInstance().getDropShadowOffsetX() << "\n";
     file << "dropShadowOffsetY=" << ColorConfig::getInstance().getDropShadowOffsetY() << "\n";
-    file << "dropShadowColor=" << PluginUtils::formatColorHex(ColorConfig::getInstance().getDropShadowColor()) << "\n\n";
+    file << "dropShadowColor=" << PluginUtils::formatColorHex(ColorConfig::getInstance().getDropShadowColor()) << "\n";
+#if defined(GAME_MXBIKES)
+    // Memory offsets for connection detection (MX Bikes only)
+    const auto& offsetConfig = Memory::ConnectionDetector::getInstance().getOffsetConfig();
+    file << "memLocalServerName=" << PluginUtils::formatOffsetHex(offsetConfig.localServerName) << "\n";
+    file << "memLocalServerMaxClients=" << PluginUtils::formatOffsetHex(offsetConfig.localServerMaxClients) << "\n";
+    file << "memLocalServerPassword=" << PluginUtils::formatOffsetHex(offsetConfig.localServerPassword) << "\n";
+    file << "memRemoteServerSockaddr=" << PluginUtils::formatOffsetHex(offsetConfig.remoteServerSockaddr) << "\n";
+    file << "memRemoteServerPassword=" << PluginUtils::formatOffsetHex(offsetConfig.remoteServerPassword) << "\n";
+    file << "memServerClientsArray=" << PluginUtils::formatOffsetHex(offsetConfig.serverClientsArray) << "\n";
+#endif
+    file << "\n";
 
     // Write Colors section
     const ColorConfig& colorConfig = ColorConfig::getInstance();
@@ -2220,15 +2381,18 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     file << "title=" << fontConfig.getFontName(FontCategory::TITLE) << "\n";
     file << "normal=" << fontConfig.getFontName(FontCategory::NORMAL) << "\n";
     file << "strong=" << fontConfig.getFontName(FontCategory::STRONG) << "\n";
+    file << "digits=" << fontConfig.getFontName(FontCategory::DIGITS) << "\n";
     file << "marker=" << fontConfig.getFontName(FontCategory::MARKER) << "\n";
     file << "small=" << fontConfig.getFontName(FontCategory::SMALL) << "\n\n";
 
     // Write Rumble section (effect configuration)
-    const RumbleConfig& rumbleConfig = XInputReader::getInstance().getRumbleConfig();
+    // Always save global config to INI (per-bike effects go to JSON)
+    const RumbleConfig& rumbleConfig = XInputReader::getInstance().getGlobalRumbleConfig();
     file << "[Rumble]\n";
     file << "enabled=" << (rumbleConfig.enabled ? 1 : 0) << "\n";
     file << "additive_blend=" << (rumbleConfig.additiveBlend ? 1 : 0) << "\n";
     file << "rumble_when_crashed=" << (rumbleConfig.rumbleWhenCrashed ? 1 : 0) << "\n";
+    file << "use_per_bike_effects=" << (rumbleConfig.usePerBikeEffects ? 1 : 0) << "\n";
     // Suspension effect
     file << "susp_min_input=" << rumbleConfig.suspensionEffect.minInput << "\n";
     file << "susp_max_input=" << rumbleConfig.suspensionEffect.maxInput << "\n";
@@ -2289,12 +2453,12 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     TrackedRidersManager::getInstance().save();
 
     // Write all profiles (HUDs and Widgets)
-    static const std::array<const char*, 28> hudOrder = {
+    static const std::array<const char*, 29> hudOrder = {
         "StandingsHud", "MapHud", "RadarHud", "PitboardHud", "RecordsHud",
         "LapLogHud", "IdealLapHud", "TelemetryHud", "PerformanceHud",
-        "LapWidget", "PositionWidget", "TimeWidget", "SessionWidget", "SpeedWidget",
+        "LapWidget", "PositionWidget", "TimeWidget", "SessionHud", "SpeedWidget",
         "SpeedoWidget", "TachoWidget", "TimingHud", "GapBarHud", "BarsWidget", "VersionWidget",
-        "NoticesWidget", "FuelWidget", "GamepadWidget", "LeanWidget", "SettingsButtonWidget", "PointerWidget", "RumbleHud",
+        "NoticesWidget", "FuelWidget", "GamepadWidget", "LeanWidget", "TyreTempWidget", "SettingsButtonWidget", "PointerWidget", "RumbleHud",
         "Global"
     };
 
@@ -2513,6 +2677,8 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                     UiConfig::getInstance().setGridSnapping(std::stoi(value) != 0);
                 } else if (key == "screenClamping") {
                     UiConfig::getInstance().setScreenClamping(std::stoi(value) != 0);
+                } else if (key == "autoSave") {
+                    UiConfig::getInstance().setAutoSave(std::stoi(value) != 0);
                 } else if (key == "dropShadow") {
                     ColorConfig::getInstance().setDropShadow(std::stoi(value) != 0);
                 } else if (key == "updateMode") {
@@ -2543,10 +2709,17 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                     hudManager.getSpeedWidget().m_speedUnit = stringToSpeedUnit(value);
                 } else if (key == "fuelUnit") {
                     hudManager.getFuelWidget().m_fuelUnit = stringToFuelUnit(value);
+                } else if (key == "tempUnit") {
+                    UiConfig::getInstance().setTemperatureUnit(stringToTempUnit(value));
                 }
 #if GAME_HAS_RECORDS_PROVIDER
                 else if (key == "recordsAutoFetch") {
                     hudManager.getRecordsHud().m_bAutoFetch = (std::stoi(value) != 0);
+                }
+#endif
+#if GAME_HAS_DISCORD
+                else if (key == "discordRichPresence") {
+                    DiscordManager::getInstance().setEnabled(std::stoi(value) != 0);
                 }
 #endif
             } catch (const std::exception& e) {
@@ -2568,6 +2741,10 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                     hudManager.getMapHud().setPixelSpacing(std::stof(value));
                 } else if (key == "speedoNeedleColor") {
                     hudManager.getSpeedoWidget().setNeedleColor(PluginUtils::parseColorHex(value));
+                } else if (key == "speedoShowOdometer") {
+                    hudManager.getSpeedoWidget().setShowOdometer(std::stoi(value) != 0);
+                } else if (key == "speedoShowTripmeter") {
+                    hudManager.getSpeedoWidget().setShowTripmeter(std::stoi(value) != 0);
                 } else if (key == "tachoNeedleColor") {
                     hudManager.getTachoWidget().setNeedleColor(PluginUtils::parseColorHex(value));
                 } else if (key == "leanArcFillColor") {
@@ -2592,6 +2769,22 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                 } else if (key == "dropShadowColor") {
                     ColorConfig::getInstance().setDropShadowColor(PluginUtils::parseColorHex(value));
                 }
+#if defined(GAME_MXBIKES)
+                // Memory offsets for connection detection (MX Bikes only)
+                else if (key == "memLocalServerName") {
+                    Memory::ConnectionDetector::getInstance().getOffsetConfig().localServerName = PluginUtils::parseOffsetHex(value);
+                } else if (key == "memLocalServerMaxClients") {
+                    Memory::ConnectionDetector::getInstance().getOffsetConfig().localServerMaxClients = PluginUtils::parseOffsetHex(value);
+                } else if (key == "memLocalServerPassword") {
+                    Memory::ConnectionDetector::getInstance().getOffsetConfig().localServerPassword = PluginUtils::parseOffsetHex(value);
+                } else if (key == "memRemoteServerSockaddr") {
+                    Memory::ConnectionDetector::getInstance().getOffsetConfig().remoteServerSockaddr = PluginUtils::parseOffsetHex(value);
+                } else if (key == "memRemoteServerPassword") {
+                    Memory::ConnectionDetector::getInstance().getOffsetConfig().remoteServerPassword = PluginUtils::parseOffsetHex(value);
+                } else if (key == "memServerClientsArray") {
+                    Memory::ConnectionDetector::getInstance().getOffsetConfig().serverClientsArray = PluginUtils::parseOffsetHex(value);
+                }
+#endif
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("Advanced: Failed to parse settings: %s", e.what());
             }
@@ -2638,6 +2831,8 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                 fontConfig.setFont(FontCategory::NORMAL, value);
             } else if (key == "strong") {
                 fontConfig.setFont(FontCategory::STRONG, value);
+            } else if (key == "digits") {
+                fontConfig.setFont(FontCategory::DIGITS, value);
             } else if (key == "marker") {
                 fontConfig.setFont(FontCategory::MARKER, value);
             } else if (key == "small") {
@@ -2647,8 +2842,9 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
         }
 
         // Handle Rumble section (effect configuration)
+        // Always load into global config (per-bike profiles loaded from JSON)
         if (currentHudName == "Rumble") {
-            RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+            RumbleConfig& config = XInputReader::getInstance().getGlobalRumbleConfig();
             try {
                 if (key == "enabled") {
                     config.enabled = std::stoi(value) != 0;
@@ -2656,6 +2852,9 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                     config.additiveBlend = std::stoi(value) != 0;
                 } else if (key == "rumble_when_crashed") {
                     config.rumbleWhenCrashed = std::stoi(value) != 0;
+                } else if (key == "use_per_bike_effects" || key == "use_per_bike_profiles") {
+                    // Note: use_per_bike_profiles is backward compatible alias
+                    config.usePerBikeEffects = std::stoi(value) != 0;
                 } else if (key == "disable_on_crash") {
                     // Backward compatibility: invert the old setting
                     config.rumbleWhenCrashed = std::stoi(value) == 0;

@@ -37,6 +37,7 @@ public:
     static void formatSectorTime(int sectorTimeMs, char* buffer, size_t bufferSize);
 
     static const char* getEventTypeString(int eventType);
+    static const char* getConnectionTypeString(int connectionType);
     static const char* getSessionString(int eventType, int session);
     static const char* getSessionStateString(int sessionState);
     static const char* getRiderStateAbbreviation(int riderState);
@@ -116,6 +117,24 @@ public:
     // Parse color from hex string (e.g., "0xFFFFFFFF" or "4294967295")
     static uint32_t parseColorHex(const std::string& value) {
         return static_cast<uint32_t>(std::stoul(value, nullptr, 0));
+    }
+
+    // Format memory offset as hex string (e.g., "0x9D7108")
+    static std::string formatOffsetHex(uintptr_t offset) {
+        std::ostringstream oss;
+        oss << "0x" << std::hex << std::uppercase << offset;
+        return oss.str();
+    }
+
+    // Parse memory offset from hex string (e.g., "0x9D7108" or "10317064")
+    static uintptr_t parseOffsetHex(const std::string& value) {
+        return static_cast<uintptr_t>(std::stoull(value, nullptr, 0));
+    }
+
+    // Check if connection type indicates online play (Host or Client)
+    // ConnectionType values: 0=Unknown, 1=Offline, 2=Host, 3=Client
+    static bool isConnectionOnline(int connectionType) {
+        return connectionType == 2 || connectionType == 3;
     }
 
     // Get color for a rider based on their position relative to player

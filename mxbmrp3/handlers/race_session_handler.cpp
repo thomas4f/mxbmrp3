@@ -44,6 +44,7 @@ void RaceSessionHandler::handleRaceSession(Unified::RaceSessionData* psRaceSessi
     PluginData::getInstance().setSessionNumLaps(psRaceSession->sessionNumLaps);
     PluginData::getInstance().setConditions(static_cast<int>(psRaceSession->conditions));
     PluginData::getInstance().setAirTemperature(psRaceSession->airTemperature);
+    PluginData::getInstance().setTrackTemperature(psRaceSession->trackTemperature);
 }
 
 void RaceSessionHandler::handleRaceSessionState(Unified::RaceSessionStateData* psRaceSessionState) {

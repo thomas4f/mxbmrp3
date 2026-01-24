@@ -23,6 +23,7 @@
 #include "../core/input_manager.h"
 #include "../core/color_config.h"
 #include "../core/personal_best_manager.h"
+#include "../core/ui_config.h"
 
 // Use WinHTTP for HTTPS support (built into Windows, no external dependencies)
 #include <windows.h>
@@ -668,7 +669,7 @@ void RecordsHud::handleClick(float mouseX, float mouseY) {
                     break;
             }
             setDataDirty();
-            if (saveSettings) {
+            if (saveSettings && UiConfig::getInstance().getAutoSave()) {
                 SettingsManager::getInstance().saveSettings(HudManager::getInstance(),
                     PluginManager::getInstance().getSavePath());
             }
@@ -1062,30 +1063,30 @@ void RecordsHud::rebuildRenderData() {
             if (sector1 > 0) {
                 PluginUtils::formatSectorTime(sector1, sectorStr, sizeof(sectorStr));
                 addString(sectorStr, m_columns.sector1, currentY, Justify::LEFT,
-                          Fonts::getNormal(), colors.getSecondary(), dim.fontSize);
+                          Fonts::getDigits(), colors.getSecondary(), dim.fontSize);
             } else {
                 addString("---.---", m_columns.sector1, currentY, Justify::LEFT,
-                          Fonts::getNormal(), colors.getMuted(), dim.fontSize);
+                          Fonts::getDigits(), colors.getMuted(), dim.fontSize);
             }
 
             // S2
             if (sector2 > 0) {
                 PluginUtils::formatSectorTime(sector2, sectorStr, sizeof(sectorStr));
                 addString(sectorStr, m_columns.sector2, currentY, Justify::LEFT,
-                          Fonts::getNormal(), colors.getSecondary(), dim.fontSize);
+                          Fonts::getDigits(), colors.getSecondary(), dim.fontSize);
             } else {
                 addString("---.---", m_columns.sector2, currentY, Justify::LEFT,
-                          Fonts::getNormal(), colors.getMuted(), dim.fontSize);
+                          Fonts::getDigits(), colors.getMuted(), dim.fontSize);
             }
 
             // S3
             if (sector3 > 0) {
                 PluginUtils::formatSectorTime(sector3, sectorStr, sizeof(sectorStr));
                 addString(sectorStr, m_columns.sector3, currentY, Justify::LEFT,
-                          Fonts::getNormal(), colors.getSecondary(), dim.fontSize);
+                          Fonts::getDigits(), colors.getSecondary(), dim.fontSize);
             } else {
                 addString("---.---", m_columns.sector3, currentY, Justify::LEFT,
-                          Fonts::getNormal(), colors.getMuted(), dim.fontSize);
+                          Fonts::getDigits(), colors.getMuted(), dim.fontSize);
             }
 
 #if GAME_SECTOR_COUNT >= 4
@@ -1093,10 +1094,10 @@ void RecordsHud::rebuildRenderData() {
             if (sector4 > 0) {
                 PluginUtils::formatSectorTime(sector4, sectorStr, sizeof(sectorStr));
                 addString(sectorStr, m_columns.sector4, currentY, Justify::LEFT,
-                          Fonts::getNormal(), colors.getSecondary(), dim.fontSize);
+                          Fonts::getDigits(), colors.getSecondary(), dim.fontSize);
             } else {
                 addString("---.---", m_columns.sector4, currentY, Justify::LEFT,
-                          Fonts::getNormal(), colors.getMuted(), dim.fontSize);
+                          Fonts::getDigits(), colors.getMuted(), dim.fontSize);
             }
 #else
             (void)sector4;  // Suppress unused warning for 3-sector games
@@ -1109,10 +1110,10 @@ void RecordsHud::rebuildRenderData() {
             if (laptime > 0) {
                 PluginUtils::formatLapTime(laptime, laptimeStr, sizeof(laptimeStr));
                 addString(laptimeStr, m_columns.laptime, currentY, Justify::LEFT,
-                          Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                          Fonts::getDigits(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
             } else {
                 addString(Placeholders::LAP_TIME, m_columns.laptime, currentY, Justify::LEFT,
-                          Fonts::getStrong(), ColorConfig::getInstance().getMuted(), dim.fontSize);
+                          Fonts::getDigits(), ColorConfig::getInstance().getMuted(), dim.fontSize);
             }
         }
 

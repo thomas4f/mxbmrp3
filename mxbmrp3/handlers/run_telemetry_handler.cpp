@@ -7,6 +7,7 @@
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
 #include "../core/xinput_reader.h"
+#include "../core/odometer_manager.h"
 #include "../diagnostics/logger.h"
 #include <algorithm>
 #include <cmath>
@@ -18,6 +19,9 @@ void RunTelemetryHandler::handleRunTelemetry(Unified::TelemetryData* psTelemetry
     if (psTelemetryData) {
         // Update speedometer, gear, RPM, and fuel
         PluginData::getInstance().updateSpeedometer(psTelemetryData->speedometer, psTelemetryData->gear, psTelemetryData->rpm, psTelemetryData->fuel);
+
+        // Update odometer with current speed (distance calculation happens inside)
+        OdometerManager::getInstance().updateDistance(psTelemetryData->speedometer);
 
         // Update input telemetry data (bike-specific uses front/rear brake)
         float frontBrake = psTelemetryData->brake;
@@ -44,6 +48,17 @@ void RunTelemetryHandler::handleRunTelemetry(Unified::TelemetryData* psTelemetry
 
         // Update roll/lean angle
         PluginData::getInstance().updateRoll(psTelemetryData->roll);
+
+        // Update engine and water temperatures
+        PluginData::getInstance().updateTemperatures(
+            psTelemetryData->engineTemperature,
+            psTelemetryData->waterTemperature
+        );
+
+        // Update tyre tread temperatures (GP Bikes bike-specific)
+        if (psTelemetryData->vehicleType == Unified::VehicleType::Bike) {
+            PluginData::getInstance().updateTreadTemperatures(psTelemetryData->bike.treadTemperature);
+        }
 
         // Controller rumble based on suspension and wheel slip (bike-specific)
         float suspensionVelocity = 0.0f;

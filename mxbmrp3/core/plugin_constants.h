@@ -13,7 +13,7 @@ namespace PluginConstants {
     // Plugin identification
     constexpr const char* PLUGIN_NAME = "mxbmrp3";
     constexpr const char* PLUGIN_DISPLAY_NAME = "MXBMRP3";
-    constexpr const char* PLUGIN_VERSION = "1.13.3.0";
+    constexpr const char* PLUGIN_VERSION = "1.14.0.0";
     constexpr const char* PLUGIN_AUTHOR = "thomas4f";
 
     // GitHub repository for updates (centralized to support repo moves/renames)
@@ -54,6 +54,7 @@ namespace PluginConstants {
         inline int getTitle() { return FontConfig::getInstance().getFont(FontCategory::TITLE); }
         inline int getNormal() { return FontConfig::getInstance().getFont(FontCategory::NORMAL); }
         inline int getStrong() { return FontConfig::getInstance().getFont(FontCategory::STRONG); }
+        inline int getDigits() { return FontConfig::getInstance().getFont(FontCategory::DIGITS); }
         inline int getMarker() { return FontConfig::getInstance().getFont(FontCategory::MARKER); }
         inline int getSmall() { return FontConfig::getInstance().getFont(FontCategory::SMALL); }
 

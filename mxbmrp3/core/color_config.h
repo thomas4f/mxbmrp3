@@ -113,7 +113,7 @@ private:
     ColorConfig& operator=(const ColorConfig&) = delete;
 
     std::array<unsigned long, static_cast<size_t>(ColorSlot::COUNT)> m_colors;
-    bool m_bDropShadow = false;   // Drop shadow disabled by default
+    bool m_bDropShadow = true;    // Drop shadow enabled by default
 
     // Drop shadow advanced settings (INI-only, as percentage of font size)
     float m_fDropShadowOffsetX = 0.03f;          // 3% of font size

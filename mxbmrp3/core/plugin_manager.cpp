@@ -31,6 +31,11 @@
 #include "../handlers/spectate_handler.h"
 #include "personal_best_manager.h"
 #include "tracked_riders_manager.h"
+#include "rumble_profile_manager.h"
+#include "odometer_manager.h"
+#if GAME_HAS_DISCORD
+#include "discord_manager.h"
+#endif
 #include <cstring>
 #include <vector>
 #include <windows.h>
@@ -68,11 +73,27 @@ void PluginManager::initialize(const char* savePath) {
     HotkeyManager::getInstance().initialize();
     HudManager::getInstance().initialize();
 
+#if GAME_HAS_DISCORD
+    // Initialize Discord Rich Presence (runs in background thread)
+    DiscordManager::getInstance().initialize();
+#endif
+
     DEBUG_INFO("PluginManager initialized");
 }
 
 void PluginManager::shutdown() {
     DEBUG_INFO("PluginManager shutdown");
+
+    // Save rumble profiles before shutdown
+    RumbleProfileManager::getInstance().save();
+
+    // Save odometer data before shutdown
+    OdometerManager::getInstance().save();
+
+#if GAME_HAS_DISCORD
+    // Shutdown Discord Rich Presence first (clears presence from Discord)
+    DiscordManager::getInstance().shutdown();
+#endif
 
     // Shutdown HUD manager
     HudManager::getInstance().shutdown();
@@ -104,6 +125,12 @@ int PluginManager::handleStartup(const char* savePath) {
 
     // Load tracked riders from disk
     TrackedRidersManager::getInstance().load(m_savePath);
+
+    // Load rumble profiles from disk
+    RumbleProfileManager::getInstance().load(m_savePath);
+
+    // Load odometer data from disk
+    OdometerManager::getInstance().load(m_savePath);
 
     if (savePath != nullptr) {
         DEBUG_INFO_F("Startup called with save path: %s", savePath);

@@ -41,15 +41,6 @@ public:
     }
     RiderColorMode getRiderColorMode() const { return m_riderColorMode; }
 
-    // Show player arrow toggle - display or hide the local player's arrow
-    void setShowPlayerArrow(bool show) {
-        if (m_bShowPlayerArrow != show) {
-            m_bShowPlayerArrow = show;
-            setDataDirty();
-        }
-    }
-    bool getShowPlayerArrow() const { return m_bShowPlayerArrow; }
-
     // Radar display mode - controls visibility behavior
     enum class RadarMode {
         OFF = 0,        // Radar hidden (proximity arrows still work)
@@ -175,9 +166,6 @@ private:
 
     // Rider colorization
     RiderColorMode m_riderColorMode;
-
-    // Show player's own arrow
-    bool m_bShowPlayerArrow;
 
     // Radar display mode (Off, On, Auto-hide)
     RadarMode m_radarMode;

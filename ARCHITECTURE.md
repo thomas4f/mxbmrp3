@@ -31,6 +31,7 @@ mxbmrp3/
 │   │   ├── hud_manager.*       # Owns and updates all HUDs
 │   │   ├── input_manager.*     # Keyboard and mouse input
 │   │   ├── xinput_reader.*     # XInput controller state and rumble
+│   │   ├── rumble_profile_manager.* # Per-bike rumble profiles (JSON)
 │   │   ├── settings_manager.*  # Save/load configuration (INI file)
 │   │   ├── asset_manager.*     # Dynamic asset discovery (fonts, textures, icons)
 │   │   ├── font_config.*       # User-configurable font categories
@@ -276,6 +277,33 @@ Features:
 - Manual profile selection via settings menu
 - Seamless transitions when session type changes
 
+### 7. RumbleProfileManager (`core/rumble_profile_manager.*`)
+
+Manages per-bike rumble profiles stored in a JSON file:
+- Allows different rumble effect settings for different bikes
+- Each profile stores complete `RumbleConfig` (effect strengths, input ranges)
+- Automatically loads/saves from `{save_path}/mxbmrp3/rumble_profiles.json`
+
+Features:
+- Toggle between global settings (INI) and per-bike profiles (JSON)
+- Profiles keyed by bike name string
+- Auto-creates profile for current bike when enabled
+- Integrates with XInputReader for runtime config access
+
+### 8. OdometerManager (`core/odometer_manager.*`)
+
+Manages per-bike odometer data stored in a JSON file:
+- Tracks total distance traveled per bike (persistent across sessions)
+- Tracks session trip distance (resets when session ends)
+- Automatically loads/saves from `{save_path}/mxbmrp3/odometer.json`
+
+Features:
+- Per-bike odometer keyed by bike name string
+- Uses `double` precision to maintain accuracy at high distances (100k+ km)
+- Thread-safe with mutex protection
+- Distance calculated from speed × delta time in telemetry handler
+- Displayed in SpeedoWidget with odometer/tripmeter rows
+
 ## The HUD System
 
 ### BaseHud (`hud/base_hud.*`)
@@ -319,13 +347,13 @@ Abstract base class that all HUDs inherit from. Provides:
 - `TimingHud` - Split time comparison popup (center display)
 - `GapBarHud` - Live gap visualization bar with ghost position marker
 - `SettingsHud` - Interactive settings menu UI
+- `SessionHud` - Session info (type, format, track, server, players, password)
 
 **Widgets** (simple, focused):
 - `SpeedWidget` - Speed and gear display
 - `PositionWidget` - Current race position (P1, P2...)
 - `LapWidget` - Current lap number
 - `TimeWidget` - Session time remaining
-- `SessionWidget` - Session type display
 - `SpeedoWidget` - Analog speedometer dial
 - `TachoWidget` - Analog tachometer dial
 - `BarsWidget` - Visual telemetry bars (throttle, brake, etc.)
@@ -962,12 +990,15 @@ The adapter layer isolates changes - core HUDs don't need modification for most 
 | Color configuration | `core/color_config.cpp` |
 | Update checker | `core/update_checker.cpp` |
 | Update downloader | `core/update_downloader.cpp` |
+| XInput / Rumble | `core/xinput_reader.cpp` |
+| Rumble profiles manager | `core/rumble_profile_manager.cpp` |
 | Settings UI | `hud/settings/settings_hud.cpp` |
 | Settings layout helpers | `hud/settings/settings_layout.cpp` |
 | Settings tabs | `hud/settings/settings_tab_*.cpp` |
 | Tooltip definitions | `mxbmrp3_data/tooltips.json` |
 | Tooltip manager | `core/tooltip_manager.h` |
 | Settings file | `{save_path}/mxbmrp3/mxbmrp3_settings.ini` |
+| Rumble profiles file | `{save_path}/mxbmrp3/rumble_profiles.json` |
 | Log file | `{save_path}/mxbmrp3/mxbmrp3.log` |
 | Build output (MX Bikes) | `build/MXB-Release/mxbmrp3.dlo` |
 | Build output (GP Bikes) | `build/GPB-Release/gpbmrp3.dlo` |

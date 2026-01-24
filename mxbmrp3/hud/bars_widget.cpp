@@ -1,12 +1,14 @@
 // ============================================================================
 // hud/bars_widget.cpp
-// Bars Widget - displays 6 vertical bars (left to right):
+// Bars Widget - displays up to 8 vertical bars (left to right):
 //   - T: Throttle (green)
 //   - B: Brakes (split: red front | dark red rear)
 //   - C: Clutch (blue)
 //   - R: RPM (gray)
 //   - S: Suspension (split: purple front | dark purple rear)
 //   - F: Fuel (yellow)
+//   - E: Engine temperature (gradient: blue/green/red based on optimal range)
+//   - W: Water temperature (gradient: blue/green/red based on optimal range)
 // ============================================================================
 #include "bars_widget.h"
 #include "../core/plugin_utils.h"
@@ -21,8 +23,8 @@ BarsWidget::BarsWidget() {
     // One-time setup
     DEBUG_INFO("BarsWidget created");
     setDraggable(true);
-    m_quads.reserve(17);   // 1 background + 8 bars (6 positions, 2 split) × 2 quads each (filled + empty)
-    m_strings.reserve(6);  // 6 labels: T, B, C, R, F, S
+    m_quads.reserve(33);   // 1 background + 20 bar quads (6 single + 2 split × 2) × 2 each + 8 max markers + 4 threshold markers
+    m_strings.reserve(8);  // 8 labels: T, B, C, R, S, F, E, W
 
     // Set texture base name for dynamic texture discovery
     setTextureBaseName("bars_widget");
@@ -87,6 +89,8 @@ void BarsWidget::rebuildRenderData() {
     if (m_enabledColumns & COL_RPM) enabledBarCount++;
     if (m_enabledColumns & COL_SUSPENSION) enabledBarCount++;
     if (m_enabledColumns & COL_FUEL) enabledBarCount++;
+    if (m_enabledColumns & COL_ENGINE_TEMP) enabledBarCount++;
+    if (m_enabledColumns & COL_WATER_TEMP) enabledBarCount++;
 
     // Calculate dynamic width based on enabled bars
     float barsWidth = enabledBarCount > 0
@@ -159,8 +163,10 @@ void BarsWidget::rebuildRenderData() {
         if (m_bShowMaxMarkers && m_maxFramesRemaining[0] > 0) {
             addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[0]);
         }
-        addString("T", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                  Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+        if (m_bShowLabels) {
+            addString("T", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
+                      Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+        }
         currentX += barWidth + barSpacing;
     }
 
@@ -180,8 +186,10 @@ void BarsWidget::rebuildRenderData() {
         if (m_bShowMaxMarkers && m_maxFramesRemaining[1] > 0) {
             addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[1]);
         }
-        addString("B", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                  Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+        if (m_bShowLabels) {
+            addString("B", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
+                      Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+        }
         currentX += barWidth + barSpacing;
     }
 
@@ -192,8 +200,10 @@ void BarsWidget::rebuildRenderData() {
         if (m_bShowMaxMarkers && m_maxFramesRemaining[2] > 0) {
             addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[2]);
         }
-        addString("C", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                  Fonts::getNormal(), hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
+        if (m_bShowLabels) {
+            addString("C", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
+                      Fonts::getNormal(), hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
+        }
         currentX += barWidth + barSpacing;
     }
 
@@ -204,8 +214,10 @@ void BarsWidget::rebuildRenderData() {
         if (m_bShowMaxMarkers && m_maxFramesRemaining[3] > 0) {
             addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[3]);
         }
-        addString("R", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                  Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+        if (m_bShowLabels) {
+            addString("R", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
+                      Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+        }
         currentX += barWidth + barSpacing;
     }
 
@@ -219,8 +231,10 @@ void BarsWidget::rebuildRenderData() {
         if (m_bShowMaxMarkers && m_maxFramesRemaining[4] > 0) {
             addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[4]);
         }
-        addString("S", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                  Fonts::getNormal(), hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
+        if (m_bShowLabels) {
+            addString("S", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
+                      Fonts::getNormal(), hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
+        }
         currentX += barWidth + barSpacing;
     }
 
@@ -231,8 +245,107 @@ void BarsWidget::rebuildRenderData() {
         if (m_bShowMaxMarkers && m_maxFramesRemaining[5] > 0) {
             addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[5]);
         }
-        addString("F", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                  Fonts::getNormal(), hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
+        if (m_bShowLabels) {
+            addString("F", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
+                      Fonts::getNormal(), hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
+        }
+        currentX += barWidth + barSpacing;
+    }
+
+    // Bar 6: Engine Temperature (E) - single bar with gradient color (muted when unavailable)
+    if (m_enabledColumns & COL_ENGINE_TEMP) {
+        // Get temperature values and thresholds
+        float engineTemp = bikeTelemetry.engineTemperature;
+        float optTemp = sessionData.engineOptTemperature;
+        float alarmLow = sessionData.engineTempAlarmLow;
+        float alarmHigh = sessionData.engineTempAlarmHigh;
+
+        // Normalize to 0-1 range for bar display
+        // Use alarm range as min/max, with some padding below low and above high
+        float tempMin = alarmLow - 20.0f;  // Show some range below alarm low
+        float tempMax = alarmHigh + 20.0f; // Show some range above alarm high
+        float tempRange = tempMax - tempMin;
+        float engineTempNorm = 0.0f;
+        if (tempRange > 0.0f) {
+            engineTempNorm = (engineTemp - tempMin) / tempRange;
+            engineTempNorm = std::max(0.0f, std::min(1.0f, engineTempNorm));
+        }
+
+        // Calculate color based on temperature relative to thresholds
+        unsigned long engineTempColor = hasFullTelemetry
+            ? calculateTemperatureColor(engineTemp, optTemp, alarmLow, alarmHigh)
+            : mutedColor;
+
+        updateMaxTracking(6, engineTempNorm);
+        addVerticalBar(currentX, contentStartY, barWidth, barHeight, engineTempNorm, engineTempColor);
+
+        // Add threshold markers (always visible) - black lines for alarm thresholds and optimal temp
+        if (tempRange > 0.0f) {
+            float alarmLowNorm = (alarmLow - tempMin) / tempRange;
+            float alarmHighNorm = (alarmHigh - tempMin) / tempRange;
+            float optTempNorm = (optTemp - tempMin) / tempRange;
+            unsigned long blackColor = 0xFF000000;  // ABGR: fully opaque black
+            addThresholdMarker(currentX, contentStartY, barWidth, barHeight, alarmLowNorm, blackColor);
+            addThresholdMarker(currentX, contentStartY, barWidth, barHeight, optTempNorm, blackColor);
+            addThresholdMarker(currentX, contentStartY, barWidth, barHeight, alarmHighNorm, blackColor);
+        }
+
+        if (m_bShowMaxMarkers && m_maxFramesRemaining[6] > 0) {
+            addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[6]);
+        }
+        if (m_bShowLabels) {
+            addString("E", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
+                      Fonts::getNormal(), hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
+        }
+        currentX += barWidth + barSpacing;
+    }
+
+    // Bar 7: Water Temperature (W) - single bar with gradient color (muted when unavailable)
+    if (m_enabledColumns & COL_WATER_TEMP) {
+        // Get temperature values - use engine thresholds as proxy for water
+        // (API doesn't provide separate water temp thresholds)
+        float waterTemp = bikeTelemetry.waterTemperature;
+        float optTemp = sessionData.engineOptTemperature;
+        float alarmLow = sessionData.engineTempAlarmLow;
+        float alarmHigh = sessionData.engineTempAlarmHigh;
+
+        // Normalize to 0-1 range for bar display
+        float tempMin = alarmLow - 20.0f;
+        float tempMax = alarmHigh + 20.0f;
+        float tempRange = tempMax - tempMin;
+        float waterTempNorm = 0.0f;
+        if (tempRange > 0.0f) {
+            waterTempNorm = (waterTemp - tempMin) / tempRange;
+            waterTempNorm = std::max(0.0f, std::min(1.0f, waterTempNorm));
+        }
+
+        // Calculate color based on temperature relative to thresholds
+        unsigned long waterTempColor = hasFullTelemetry
+            ? calculateTemperatureColor(waterTemp, optTemp, alarmLow, alarmHigh)
+            : mutedColor;
+
+        updateMaxTracking(7, waterTempNorm);
+        addVerticalBar(currentX, contentStartY, barWidth, barHeight, waterTempNorm, waterTempColor);
+
+        // Add threshold markers (always visible) - black lines for alarm thresholds and optimal temp
+        if (tempRange > 0.0f) {
+            float alarmLowNorm = (alarmLow - tempMin) / tempRange;
+            float alarmHighNorm = (alarmHigh - tempMin) / tempRange;
+            float optTempNorm = (optTemp - tempMin) / tempRange;
+            unsigned long blackColor = 0xFF000000;  // ABGR: fully opaque black
+            addThresholdMarker(currentX, contentStartY, barWidth, barHeight, alarmLowNorm, blackColor);
+            addThresholdMarker(currentX, contentStartY, barWidth, barHeight, optTempNorm, blackColor);
+            addThresholdMarker(currentX, contentStartY, barWidth, barHeight, alarmHighNorm, blackColor);
+        }
+
+        if (m_bShowMaxMarkers && m_maxFramesRemaining[7] > 0) {
+            addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[7]);
+        }
+        if (m_bShowLabels) {
+            addString("W", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
+                      Fonts::getNormal(), hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
+        }
+        currentX += barWidth + barSpacing;
     }
 }
 
@@ -284,6 +397,22 @@ void BarsWidget::addMaxMarker(float x, float y, float barWidth, float barHeight,
     m_quads.push_back(markerQuad);
 }
 
+void BarsWidget::addThresholdMarker(float x, float y, float barWidth, float barHeight, float thresholdValue, unsigned long color) {
+    // Draw a thin horizontal colored line at the threshold position
+    thresholdValue = std::max(0.0f, std::min(1.0f, thresholdValue));
+
+    float markerHeight = barHeight * 0.02f;  // Thin line (2% of bar height)
+    float markerY = y + barHeight * (1.0f - thresholdValue) - markerHeight * 0.5f;
+
+    SPluginQuad_t markerQuad;
+    float markerX = x;
+    applyOffset(markerX, markerY);
+    setQuadPositions(markerQuad, markerX, markerY, barWidth, markerHeight);
+    markerQuad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
+    markerQuad.m_ulColor = color;
+    m_quads.push_back(markerQuad);
+}
+
 void BarsWidget::addVerticalBar(float x, float y, float barWidth, float barHeight,
                                           float value, unsigned long color) {
     // Clamp value to 0-1 range
@@ -329,7 +458,13 @@ void BarsWidget::resetToDefaults() {
     m_fBackgroundOpacity = 1.0f;  // Full opacity
     m_fScale = 1.0f;
     setPosition(0.858f, 0.8547f);
+#if GAME_HAS_TYRE_TEMP
+    // GP Bikes: include engine temp by default (has reliable temp data)
+    m_enabledColumns = COL_DEFAULT | COL_ENGINE_TEMP;
+#else
     m_enabledColumns = COL_DEFAULT;
+#endif
+    m_bShowLabels = true;  // Labels ON by default
     m_bShowMaxMarkers = false;  // Max markers OFF by default
     m_maxMarkerLingerFrames = 60;  // ~1 second at 60fps
 
@@ -342,4 +477,60 @@ void BarsWidget::resetToDefaults() {
     }
 
     setDataDirty();
+}
+
+unsigned long BarsWidget::calculateTemperatureColor(float temp, float optTemp, float alarmLow, float alarmHigh) const {
+    // Temperature color gradient (similar to RadarHud distance gradient):
+    // - Below alarmLow: Deep blue (too cold)
+    // - alarmLow to optTemp: Blue -> Green gradient (warming up)
+    // - At optTemp: Green (optimal)
+    // - optTemp to alarmHigh: Green -> Yellow -> Red gradient (getting hot)
+    // - Above alarmHigh: Deep red (too hot)
+
+    // Color constants (RGB values)
+    constexpr unsigned char BLUE_R = 0x40, BLUE_G = 0x80, BLUE_B = 0xFF;   // Cold blue
+    constexpr unsigned char GREEN_R = 0x40, GREEN_G = 0xFF, GREEN_B = 0x40; // Optimal green
+    constexpr unsigned char YELLOW_R = 0xFF, YELLOW_G = 0xD0, YELLOW_B = 0x40; // Warning yellow
+    constexpr unsigned char RED_R = 0xFF, RED_G = 0x40, RED_B = 0x40;      // Hot red
+
+    unsigned char r, g, b;
+
+    if (temp <= alarmLow) {
+        // Below alarm low - solid blue (too cold)
+        r = BLUE_R;
+        g = BLUE_G;
+        b = BLUE_B;
+    } else if (temp < optTemp) {
+        // Between alarmLow and optTemp - blue to green gradient
+        float range = optTemp - alarmLow;
+        float t = (range > 0.0f) ? (temp - alarmLow) / range : 1.0f;
+        r = static_cast<unsigned char>(BLUE_R + t * (GREEN_R - BLUE_R));
+        g = static_cast<unsigned char>(BLUE_G + t * (GREEN_G - BLUE_G));
+        b = static_cast<unsigned char>(BLUE_B + t * (GREEN_B - BLUE_B));
+    } else if (temp <= alarmHigh) {
+        // Between optTemp and alarmHigh - green to yellow to red gradient
+        float range = alarmHigh - optTemp;
+        float normalized = (range > 0.0f) ? (temp - optTemp) / range : 0.0f;
+
+        if (normalized < 0.5f) {
+            // Green to yellow (first half)
+            float t = normalized * 2.0f;
+            r = static_cast<unsigned char>(GREEN_R + t * (YELLOW_R - GREEN_R));
+            g = static_cast<unsigned char>(GREEN_G + t * (YELLOW_G - GREEN_G));
+            b = static_cast<unsigned char>(GREEN_B + t * (YELLOW_B - GREEN_B));
+        } else {
+            // Yellow to red (second half)
+            float t = (normalized - 0.5f) * 2.0f;
+            r = static_cast<unsigned char>(YELLOW_R + t * (RED_R - YELLOW_R));
+            g = static_cast<unsigned char>(YELLOW_G + t * (RED_G - YELLOW_G));
+            b = static_cast<unsigned char>(YELLOW_B + t * (RED_B - YELLOW_B));
+        }
+    } else {
+        // Above alarm high - solid red (too hot)
+        r = RED_R;
+        g = RED_G;
+        b = RED_B;
+    }
+
+    return PluginUtils::makeColor(r, g, b);
 }

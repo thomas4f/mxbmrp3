@@ -64,6 +64,7 @@ struct RumbleConfig {
     int controllerIndex;    // Which XInput controller (0-3), or -1 for disabled
     bool additiveBlend;     // true = add effects (clamped), false = max wins
     bool rumbleWhenCrashed; // false = stop all rumble when player is crashed (default)
+    bool usePerBikeEffects; // true = use per-bike effects from JSON, false = use global from INI
 
     // Bumps: suspension compression on impacts/landings
     RumbleEffect suspensionEffect;
@@ -93,21 +94,21 @@ struct RumbleConfig {
     RumbleEffect steerEffect;
 
     // Constructor: RumbleEffect(minInput, maxInput, lightStrength, heavyStrength)
-    RumbleConfig() : enabled(false), controllerIndex(0), additiveBlend(true), rumbleWhenCrashed(false),
-        // Bumps: Both motors, full at 10 m/s (peaks ~14 m/s on big landings)
-        suspensionEffect(0.0f, 10.0f, 0.5f, 0.5f),
-        // Spin: Light motor only, full at 1500% overrun
-        wheelspinEffect(0.0f, 15.0f, 0.2f, 0.0f),
-        // Lockup: Light motor only, 20% strength
-        brakeLockupEffect(0.2f, 1.0f, 0.2f, 0.0f),
+    RumbleConfig() : enabled(false), controllerIndex(0), additiveBlend(true), rumbleWhenCrashed(false), usePerBikeEffects(false),
+        // Bumps: Off by default (tuning range: 0-10 m/s)
+        suspensionEffect(0.0f, 10.0f, 0.0f, 0.0f),
+        // Spin: Light motor at 50% strength
+        wheelspinEffect(0.0f, 15.0f, 0.5f, 0.0f),
+        // Lockup: Light motor at 50% strength
+        brakeLockupEffect(0.2f, 1.0f, 0.5f, 0.0f),
         // Wheelie: Off by default
         wheelieEffect(0.0f, 90.0f, 0.0f, 0.0f),
         // RPM: Off by default
         rpmEffect(2000.0f, 15000.0f, 0.0f, 0.0f),
-        // Slide: Light motor only, 20% strength
-        slideEffect(15.0f, 45.0f, 0.2f, 0.0f),
+        // Slide: Heavy motor at full strength
+        slideEffect(10.0f, 30.0f, 0.0f, 1.0f),
         // Surface: Off by default
-        surfaceEffect(5.0f, 60.0f, 0.0f, 0.0f),
+        surfaceEffect(10.0f, 135.0f, 0.0f, 0.0f),
         // Steer: Off by default
         steerEffect(20.0f, 80.0f, 0.0f, 0.0f) {}
 
@@ -116,13 +117,14 @@ struct RumbleConfig {
         controllerIndex = 0;
         additiveBlend = true;
         rumbleWhenCrashed = false;
-        suspensionEffect = RumbleEffect(0.0f, 10.0f, 0.5f, 0.5f);
-        wheelspinEffect = RumbleEffect(0.0f, 15.0f, 0.2f, 0.0f);
-        brakeLockupEffect = RumbleEffect(0.2f, 1.0f, 0.2f, 0.0f);
+        usePerBikeEffects = false;
+        suspensionEffect = RumbleEffect(0.0f, 10.0f, 0.0f, 0.0f);
+        wheelspinEffect = RumbleEffect(0.0f, 15.0f, 0.5f, 0.0f);
+        brakeLockupEffect = RumbleEffect(0.2f, 1.0f, 0.5f, 0.0f);
         wheelieEffect = RumbleEffect(0.0f, 90.0f, 0.0f, 0.0f);
         rpmEffect = RumbleEffect(2000.0f, 15000.0f, 0.0f, 0.0f);
-        slideEffect = RumbleEffect(15.0f, 45.0f, 0.2f, 0.0f);
-        surfaceEffect = RumbleEffect(5.0f, 60.0f, 0.0f, 0.0f);
+        slideEffect = RumbleEffect(10.0f, 30.0f, 0.0f, 1.0f);
+        surfaceEffect = RumbleEffect(10.0f, 135.0f, 0.0f, 0.0f);
         steerEffect = RumbleEffect(20.0f, 80.0f, 0.0f, 0.0f);
     }
 };
@@ -205,8 +207,15 @@ public:
     void stopVibration();
 
     // Rumble configuration
-    RumbleConfig& getRumbleConfig() { return m_rumbleConfig; }
-    const RumbleConfig& getRumbleConfig() const { return m_rumbleConfig; }
+    // Returns active config - either global (from INI) or per-bike (from JSON) based on mode
+    // Note: Non-const version auto-creates per-bike profile if missing; const version
+    // falls back to global config (can't modify state to create profile)
+    RumbleConfig& getRumbleConfig();
+    const RumbleConfig& getRumbleConfig() const;
+
+    // Get the global rumble config (always from INI, ignores per-bike mode)
+    RumbleConfig& getGlobalRumbleConfig() { return m_rumbleConfig; }
+    const RumbleConfig& getGlobalRumbleConfig() const { return m_rumbleConfig; }
 
     // Get current motor output values (for visualization)
     float getLastHeavyMotor() const { return m_lastLeftMotor; }   // Left = heavy/low-freq
@@ -261,6 +270,10 @@ private:
 
     // Normalize trigger value
     float normalizeTriggerValue(BYTE value) const;
+
+    // Sync global settings (enabled, controllerIndex, etc.) to a per-bike config
+    // These settings are never stored per-bike, so we copy from m_rumbleConfig
+    void syncGlobalSettingsToProfile(RumbleConfig* bikeConfig) const;
 
     static constexpr SHORT STICK_DEADZONE = XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE;
     static constexpr BYTE TRIGGER_THRESHOLD = XINPUT_GAMEPAD_TRIGGER_THRESHOLD;
