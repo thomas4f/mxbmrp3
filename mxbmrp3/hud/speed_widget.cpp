@@ -155,7 +155,7 @@ void SpeedWidget::rebuildRenderData() {
     float currentY = contentStartY;
 
     // Use full opacity for text
-    unsigned long textColor = ColorConfig::getInstance().getPrimary();
+    unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
 
     // Build speed value string and gear string separately
     char speedValueBuffer[64];
@@ -189,7 +189,7 @@ void SpeedWidget::rebuildRenderData() {
     // Add speed value (extra large font - spans 2 lines) - centered
     if (m_enabledRows & ROW_SPEED) {
         addString(speedValueBuffer, centerX, currentY, Justify::CENTER,
-            Fonts::getTitle(), textColor, dim.fontSizeExtraLarge);
+            this->getFont(FontCategory::TITLE), textColor, dim.fontSizeExtraLarge);
         currentY += dim.lineHeightLarge;
     }
 
@@ -197,7 +197,7 @@ void SpeedWidget::rebuildRenderData() {
     if (m_enabledRows & ROW_UNITS) {
         const char* unitsLabel = (m_speedUnit == SpeedUnit::KMH) ? "km/h" : "mph";
         addString(unitsLabel, centerX, currentY, Justify::CENTER,
-            Fonts::getTitle(), textColor, dim.fontSize);
+            this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
         currentY += dim.lineHeightNormal;
     }
 
@@ -234,10 +234,10 @@ void SpeedWidget::rebuildRenderData() {
         // Skip color change if shiftRPM is 0 (some bikes don't report this value)
         bool isViewingPlayer = (pluginData.getDisplayRaceNum() == pluginData.getPlayerRaceNum());
         unsigned long gearColor = (bikeData.isValid && isViewingPlayer && sessionData.shiftRPM > 0 && bikeData.rpm >= sessionData.shiftRPM)
-            ? ColorConfig::getInstance().getNegative()
+            ? this->getColor(ColorSlot::NEGATIVE)
             : textColor;
         addString(gearValueBuffer, centerX, currentY, Justify::CENTER,
-            Fonts::getTitle(), gearColor, dim.fontSizeLarge);
+            this->getFont(FontCategory::TITLE), gearColor, dim.fontSizeLarge);
     }
 
     // Set bounds for drag detection

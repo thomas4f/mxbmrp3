@@ -36,6 +36,8 @@ mxbmrp3/
 │   │   ├── asset_manager.*     # Dynamic asset discovery (fonts, textures, icons)
 │   │   ├── font_config.*       # User-configurable font categories
 │   │   ├── color_config.*      # User-configurable color palette
+│   │   ├── fmx_manager.*       # FMX trick detection and scoring
+│   │   ├── fmx_types.h         # FMX data structures and enums
 │   │   ├── plugin_constants.h  # All named constants
 │   │   └── plugin_utils.*      # Shared helper functions
 │   ├── handlers/               # Event processors (one per API callback type)
@@ -304,6 +306,27 @@ Features:
 - Distance calculated from speed × delta time in telemetry handler
 - Displayed in SpeedoWidget with odometer/tripmeter rows
 
+### 9. FmxManager (`core/fmx_manager.*`)
+
+Manages FMX (Freestyle Motocross) trick detection and scoring:
+- State machine: `IDLE → ACTIVE → GRACE → CHAIN → COMPLETED/FAILED`
+- Dynamic trick classification (re-evaluates type every frame using peaks to prevent downgrades)
+- Committed L/R direction tracking (prevents flip-flopping between direction variants)
+- Chain system with variety-based multiplier (unique tricks add full bonus, repeats diminished)
+- Anti-exploit measures: teleport detection, stuck detection, ground trick debounce
+- Pause compensation (shifts steady_clock time points on resume)
+
+**Data types** are defined in `fmx_types.h`:
+- `TrickType` enum (27 trick types across ground, air, and combination categories)
+- `TrickInstance` - Active or completed trick with rotation, timing, and scoring data
+- `RotationTracker` - Angular velocity integration for reliable rotation accumulation
+- `GroundContactState` - Wheel contact, speed, and slip detection
+- `FmxConfig` - Adjustable detection/scoring thresholds
+
+**Display settings** are split between global and per-profile:
+- Global (on FmxManager): enabled rows, chain display rows, debug logging
+- Per-profile (on FmxHud): position, visibility, scale, opacity
+
 ## The HUD System
 
 ### BaseHud (`hud/base_hud.*`)
@@ -337,6 +360,7 @@ Abstract base class that all HUDs inherit from. Provides:
 **Full HUDs** (complex, highly configurable):
 - `StandingsHud` - Race standings table with columns
 - `LapLogHud` - History of lap times with sector breakdown
+- `LapConsistencyHud` - Lap time consistency analysis with bars and trend lines
 - `IdealLapHud` - Ideal (purple) sector times with gap comparison
 - `MapHud` - 2D track map with rider positions and zoom/range mode
 - `TelemetryHud` - Throttle/brake/suspension graphs
@@ -347,6 +371,7 @@ Abstract base class that all HUDs inherit from. Provides:
 - `TimingHud` - Split time comparison popup (center display)
 - `GapBarHud` - Live gap visualization bar with ghost position marker
 - `SettingsHud` - Interactive settings menu UI
+- `FmxHud` - FMX trick detection display with rotation arcs, chain stack, and scoring
 - `SessionHud` - Session info (type, format, track, server, players, password)
 
 **Widgets** (simple, focused):
@@ -992,6 +1017,8 @@ The adapter layer isolates changes - core HUDs don't need modification for most 
 | Update downloader | `core/update_downloader.cpp` |
 | XInput / Rumble | `core/xinput_reader.cpp` |
 | Rumble profiles manager | `core/rumble_profile_manager.cpp` |
+| FMX trick detection | `core/fmx_manager.cpp` |
+| FMX types | `core/fmx_types.h` |
 | Settings UI | `hud/settings/settings_hud.cpp` |
 | Settings layout helpers | `hud/settings/settings_layout.cpp` |
 | Settings tabs | `hud/settings/settings_tab_*.cpp` |

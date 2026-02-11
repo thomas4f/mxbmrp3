@@ -118,7 +118,7 @@ void TelemetryHud::rebuildRenderData() {
 
     // Title
     addTitleString("Telemetry", contentStartX, currentY, PluginConstants::Justify::LEFT,
-        PluginConstants::Fonts::getTitle(), ColorConfig::getInstance().getPrimary(), dims.fontSizeLarge);
+        this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dims.fontSizeLarge);
     currentY += titleHeight;
 
     // Side-by-side layout: graph on left (36 chars), gap (1 char), legend on right (9 chars)
@@ -149,59 +149,59 @@ void TelemetryHud::rebuildRenderData() {
         // THR (if enabled) - color matches throttle graph
         if (m_enabledElements & ELEM_THROTTLE) {
             addString("THR", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), PluginConstants::SemanticColors::THROTTLE, dims.fontSize);
+                this->getFont(FontCategory::NORMAL), PluginConstants::SemanticColors::THROTTLE, dims.fontSize);
             char buffer[16];
             snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(throttlePercent * 100));
             addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
             legendY += dims.lineHeightNormal;
         }
 
         // FBR (front brake - if enabled, always available) - color matches front brake graph
         if (m_enabledElements & ELEM_FRONT_BRAKE) {
             addString("FBR", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), PluginConstants::SemanticColors::FRONT_BRAKE, dims.fontSize);
+                this->getFont(FontCategory::NORMAL), PluginConstants::SemanticColors::FRONT_BRAKE, dims.fontSize);
             char buffer[16];
             snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(frontBrakePercent * 100));
             addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
             legendY += dims.lineHeightNormal;
         }
 
         // RBR (rear brake - only available when ON_TRACK, not in spectate/replay) - color matches rear brake graph
         if (m_enabledElements & ELEM_REAR_BRAKE) {
-            unsigned long labelColor = hasFullTelemetry ? PluginConstants::SemanticColors::REAR_BRAKE : ColorConfig::getInstance().getMuted();
+            unsigned long labelColor = hasFullTelemetry ? PluginConstants::SemanticColors::REAR_BRAKE : this->getColor(ColorSlot::MUTED);
             addString("RBR", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), labelColor, dims.fontSize);
+                this->getFont(FontCategory::NORMAL), labelColor, dims.fontSize);
             char buffer[16];
             if (hasFullTelemetry) {
                 snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(rearBrakePercent * 100));
                 addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                    PluginConstants::Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                    this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
             } else {
                 char naBuffer[16];
                 snprintf(naBuffer, sizeof(naBuffer), "%5s", Placeholders::NOT_AVAILABLE);
                 addString(naBuffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                    PluginConstants::Fonts::getDigits(), ColorConfig::getInstance().getMuted(), dims.fontSize);
+                    this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dims.fontSize);
             }
             legendY += dims.lineHeightNormal;
         }
 
         // CLU (only available when ON_TRACK, not in spectate/replay) - color matches clutch graph
         if (m_enabledElements & ELEM_CLUTCH) {
-            unsigned long labelColor = hasFullTelemetry ? PluginConstants::SemanticColors::CLUTCH : ColorConfig::getInstance().getMuted();
+            unsigned long labelColor = hasFullTelemetry ? PluginConstants::SemanticColors::CLUTCH : this->getColor(ColorSlot::MUTED);
             addString("CLU", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), labelColor, dims.fontSize);
+                this->getFont(FontCategory::NORMAL), labelColor, dims.fontSize);
             char buffer[16];
             if (hasFullTelemetry) {
                 snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(clutchPercent * 100));
                 addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                    PluginConstants::Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                    this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
             } else {
                 char naBuffer[16];
                 snprintf(naBuffer, sizeof(naBuffer), "%5s", Placeholders::NOT_AVAILABLE);
                 addString(naBuffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                    PluginConstants::Fonts::getDigits(), ColorConfig::getInstance().getMuted(), dims.fontSize);
+                    this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dims.fontSize);
             }
             legendY += dims.lineHeightNormal;
         }
@@ -209,32 +209,32 @@ void TelemetryHud::rebuildRenderData() {
         // RPM (if enabled) - uses fixed gray to match bars widget
         if (m_enabledElements & ELEM_RPM) {
             addString("RPM", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), ColorPalette::GRAY, dims.fontSize);
+                this->getFont(FontCategory::NORMAL), ColorPalette::GRAY, dims.fontSize);
             char buffer[16];
             int displayRpm = std::max(0, bikeTelemetry.rpm);
             snprintf(buffer, sizeof(buffer), "%5d", displayRpm);
             addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getDigits(), ColorPalette::GRAY, dims.fontSize);
+                this->getFont(FontCategory::DIGITS), ColorPalette::GRAY, dims.fontSize);
             legendY += dims.lineHeightNormal;
         }
 
         // FSU (front suspension - only available when ON_TRACK, not in spectate/replay) - color matches front susp graph
         if (m_enabledElements & ELEM_FRONT_SUSP) {
             bool hasSuspData = hasFullTelemetry && bikeTelemetry.frontSuspMaxTravel > 0;
-            unsigned long labelColor = hasSuspData ? PluginConstants::SemanticColors::FRONT_SUSP : ColorConfig::getInstance().getMuted();
+            unsigned long labelColor = hasSuspData ? PluginConstants::SemanticColors::FRONT_SUSP : this->getColor(ColorSlot::MUTED);
             addString("FSU", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), labelColor, dims.fontSize);
+                this->getFont(FontCategory::NORMAL), labelColor, dims.fontSize);
             if (hasSuspData) {
                 float frontSuspPercent = (!history.frontSusp.empty()) ? history.frontSusp.back() : 0.0f;
                 char buffer[16];
                 snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(frontSuspPercent * 100));
                 addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                    PluginConstants::Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                    this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
             } else {
                 char naBuffer[16];
                 snprintf(naBuffer, sizeof(naBuffer), "%5s", Placeholders::NOT_AVAILABLE);
                 addString(naBuffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                    PluginConstants::Fonts::getDigits(), ColorConfig::getInstance().getMuted(), dims.fontSize);
+                    this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dims.fontSize);
             }
             legendY += dims.lineHeightNormal;
         }
@@ -242,20 +242,20 @@ void TelemetryHud::rebuildRenderData() {
         // RSU (rear suspension - only available when ON_TRACK, not in spectate/replay) - color matches rear susp graph
         if (m_enabledElements & ELEM_REAR_SUSP) {
             bool hasSuspData = hasFullTelemetry && bikeTelemetry.rearSuspMaxTravel > 0;
-            unsigned long labelColor = hasSuspData ? PluginConstants::SemanticColors::REAR_SUSP : ColorConfig::getInstance().getMuted();
+            unsigned long labelColor = hasSuspData ? PluginConstants::SemanticColors::REAR_SUSP : this->getColor(ColorSlot::MUTED);
             addString("RSU", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), labelColor, dims.fontSize);
+                this->getFont(FontCategory::NORMAL), labelColor, dims.fontSize);
             if (hasSuspData) {
                 float rearSuspPercent = (!history.rearSusp.empty()) ? history.rearSusp.back() : 0.0f;
                 char buffer[16];
                 snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(rearSuspPercent * 100));
                 addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                    PluginConstants::Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                    this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
             } else {
                 char naBuffer[16];
                 snprintf(naBuffer, sizeof(naBuffer), "%5s", Placeholders::NOT_AVAILABLE);
                 addString(naBuffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                    PluginConstants::Fonts::getDigits(), ColorConfig::getInstance().getMuted(), dims.fontSize);
+                    this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dims.fontSize);
             }
             legendY += dims.lineHeightNormal;
         }
@@ -263,7 +263,7 @@ void TelemetryHud::rebuildRenderData() {
         // GEAR (if enabled - always available) - color matches gear graph
         if (m_enabledElements & ELEM_GEAR) {
             addString("GEA", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), PluginConstants::SemanticColors::GEAR, dims.fontSize);
+                this->getFont(FontCategory::NORMAL), PluginConstants::SemanticColors::GEAR, dims.fontSize);
             char buffer[16];
             if (bikeTelemetry.gear == 0) {
                 snprintf(buffer, sizeof(buffer), "    N");
@@ -271,7 +271,7 @@ void TelemetryHud::rebuildRenderData() {
                 snprintf(buffer, sizeof(buffer), "    %d", bikeTelemetry.gear);
             }
             addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
         }
     }
 }
@@ -282,14 +282,13 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
 
     // Grid lines (0-100% range, drawn first so dots appear on top)
     float gridLineThickness = 0.001f * getScale();  // ~1px at 1080p for subtle grid lines
-    unsigned long gridColor = ColorConfig::getInstance().getMuted();  // Muted gray for subtle grid lines
+    unsigned long gridColor = this->getColor(ColorSlot::MUTED);  // Muted gray for subtle grid lines
 
     // Grid line percentages (defined as constants in header)
     const float gridValues[] = {
-        GRID_LINE_80_PERCENT,
-        GRID_LINE_60_PERCENT,
-        GRID_LINE_40_PERCENT,
-        GRID_LINE_20_PERCENT
+        GRID_LINE_100_PERCENT,
+        GRID_LINE_50_PERCENT,
+        GRID_LINE_0_PERCENT
     };
     for (float gridValue : gridValues) {
         float gridY = y + height - (gridValue * height);

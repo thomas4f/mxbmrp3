@@ -114,6 +114,10 @@ private:
     // HTTP fetch (blocking)
     bool fetchLatestRelease(std::string& outVersion, std::string& outError);
 
+    // Safely close all active HTTP handles (called from both shutdown and worker thread).
+    // The mutex ensures exactly one caller closes the handles; the other gets nulls.
+    void closeHttpHandles();
+
     std::atomic<Status> m_status;
     std::atomic<UpdateMode> m_mode;  // Persisted setting: Off or Notify
     std::atomic<UpdateChannel> m_channel;  // Persisted setting: Stable or Prerelease
@@ -129,6 +133,14 @@ private:
     std::thread m_workerThread;
     std::atomic<bool> m_shutdownRequested;
     std::function<void()> m_completionCallback;
+
+    // HTTP handle tracking for cross-thread cancellation via WinHttpCloseHandle.
+    // All three handles are stored so shutdown can close them explicitly rather than
+    // relying on ambiguous cascade-close behavior when only the session is closed.
+    std::mutex m_httpHandleMutex;
+    void* m_hHttpSession{nullptr};
+    void* m_hHttpConnect{nullptr};
+    void* m_hHttpRequest{nullptr};
     std::atomic<bool> m_debugMode;  // Forces update available for testing
     unsigned long m_lastCheckTimestamp;  // When last check started (for cooldown)
 

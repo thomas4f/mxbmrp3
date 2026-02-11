@@ -512,7 +512,6 @@ void VersionWidget::rebuildRenderData() {
     }
 
     auto dim = getScaledDimensions();
-    ColorConfig& colorConfig = ColorConfig::getInstance();
 
     // Check if we should show update notification
     bool showNotification = m_showingUpdateNotification &&
@@ -553,7 +552,7 @@ void VersionWidget::rebuildRenderData() {
         float row1Y = startY + dim.paddingV;
         float centerX = startX + backgroundWidth / 2.0f;
         addString(displayText, centerX, row1Y, Justify::CENTER,
-                  Fonts::getNormal(), colorConfig.getSecondary(), dim.fontSize);
+                  this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
 
         // Second row: buttons centered
         float row2Y = row1Y + dim.lineHeightNormal;
@@ -577,14 +576,14 @@ void VersionWidget::rebuildRenderData() {
         applyOffset(viewBgX, viewBgY);
         setQuadPositions(viewBgQuad, viewBgX, viewBgY, viewButtonWidth, buttonHeight);
         viewBgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        viewBgQuad.m_ulColor = isViewHovered ? colorConfig.getAccent()
-            : PluginUtils::applyOpacity(colorConfig.getAccent(), 0.5f);
+        viewBgQuad.m_ulColor = isViewHovered ? this->getColor(ColorSlot::ACCENT)
+            : PluginUtils::applyOpacity(this->getColor(ColorSlot::ACCENT), 0.5f);
         m_quads.push_back(viewBgQuad);
 
         // View button text (center-aligned on button)
-        unsigned long viewTextColor = isViewHovered ? colorConfig.getPrimary() : colorConfig.getAccent();
+        unsigned long viewTextColor = isViewHovered ? this->getColor(ColorSlot::PRIMARY) : this->getColor(ColorSlot::ACCENT);
         addString("[View in Settings]", viewBtnX + viewButtonWidth / 2.0f, viewBtnY, Justify::CENTER,
-                  Fonts::getNormal(), viewTextColor, dim.fontSize);
+                  this->getFont(FontCategory::NORMAL), viewTextColor, dim.fontSize);
 
         // ===== [Dismiss] Button (negative color) =====
         float dismissBtnX = viewBtnX + viewButtonWidth + buttonGap;
@@ -604,14 +603,14 @@ void VersionWidget::rebuildRenderData() {
         applyOffset(dismissBgX, dismissBgY);
         setQuadPositions(dismissBgQuad, dismissBgX, dismissBgY, dismissButtonWidth, buttonHeight);
         dismissBgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        dismissBgQuad.m_ulColor = isDismissHovered ? colorConfig.getNegative()
-            : PluginUtils::applyOpacity(colorConfig.getNegative(), 0.5f);
+        dismissBgQuad.m_ulColor = isDismissHovered ? this->getColor(ColorSlot::NEGATIVE)
+            : PluginUtils::applyOpacity(this->getColor(ColorSlot::NEGATIVE), 0.5f);
         m_quads.push_back(dismissBgQuad);
 
         // Dismiss button text (center-aligned on button)
-        unsigned long dismissTextColor = isDismissHovered ? colorConfig.getPrimary() : colorConfig.getNegative();
+        unsigned long dismissTextColor = isDismissHovered ? this->getColor(ColorSlot::PRIMARY) : this->getColor(ColorSlot::NEGATIVE);
         addString("[Dismiss]", dismissBtnX + dismissButtonWidth / 2.0f, dismissBtnY, Justify::CENTER,
-                  Fonts::getNormal(), dismissTextColor, dim.fontSize);
+                  this->getFont(FontCategory::NORMAL), dismissTextColor, dim.fontSize);
 
         // Set bounds for the whole widget
         setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
@@ -645,7 +644,7 @@ void VersionWidget::rebuildRenderData() {
         float contentStartY = startY + dim.paddingV;
 
         addString(displayText, contentStartX, contentStartY, Justify::LEFT,
-                  Fonts::getNormal(), colorConfig.getSecondary(), dim.fontSize);
+                  this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
 
         // Set bounds for drag detection
         setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
@@ -744,10 +743,10 @@ void VersionWidget::renderGame() {
               sizeof(scoreString.m_szString) - 1);
     scoreString.m_afPos[0] = m_gameLeft + 0.01f;
     scoreString.m_afPos[1] = m_gameTop + 0.01f;
-    scoreString.m_iFont = Fonts::getNormal();
+    scoreString.m_iFont = this->getFont(FontCategory::NORMAL);
     scoreString.m_fSize = FontSizes::SMALL;
     scoreString.m_iJustify = Justify::LEFT;
-    scoreString.m_ulColor = ColorConfig::getInstance().getPrimary();
+    scoreString.m_ulColor = this->getColor(ColorSlot::PRIMARY);
     m_strings.push_back(scoreString);
     m_stringSkipShadow.push_back(false);  // Game text should have shadows
 
@@ -765,10 +764,10 @@ void VersionWidget::renderGame() {
                   sizeof(msgString.m_szString) - 1);
         msgString.m_afPos[0] = m_gameLeft + GAME_AREA_WIDTH / 2.0f;
         msgString.m_afPos[1] = m_gameTop + GAME_AREA_HEIGHT - 0.04f;
-        msgString.m_iFont = Fonts::getNormal();
+        msgString.m_iFont = this->getFont(FontCategory::NORMAL);
         msgString.m_fSize = FontSizes::NORMAL;
         msgString.m_iJustify = Justify::CENTER;
-        msgString.m_ulColor = ColorConfig::getInstance().getSecondary();
+        msgString.m_ulColor = this->getColor(ColorSlot::SECONDARY);
         m_strings.push_back(msgString);
         m_stringSkipShadow.push_back(false);  // Game text should have shadows
     }

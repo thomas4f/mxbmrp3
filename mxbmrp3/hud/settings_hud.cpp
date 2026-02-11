@@ -6,6 +6,7 @@
 #include "settings/settings_layout.h"
 #include "telemetry_hud.h"
 #include "rumble_hud.h"
+#include "fmx_hud.h"
 #include "settings_button_widget.h"
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
@@ -58,17 +59,19 @@ static const char* getLabelModeName(int mode) {
     return (mode >= 0 && mode < 4) ? names[mode] : "Unknown";
 }
 
-SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog,
+SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, LapConsistencyHud* lapConsistency,
                          StandingsHud* standings,
                          PerformanceHud* performance,
                          TelemetryHud* telemetry,
-                         TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean
+                         TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean,
+                         FmxHud* fmxHud
 #if GAME_HAS_TYRE_TEMP
                          , TyreTempWidget* tyreTemp
 #endif
                          )
     : m_idealLap(idealLap),
       m_lapLog(lapLog),
+      m_lapConsistency(lapConsistency),
       m_standings(standings),
       m_performance(performance),
       m_telemetry(telemetry),
@@ -93,6 +96,7 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog,
       m_rumble(rumble),
       m_gamepad(gamepad),
       m_lean(lean),
+      m_fmxHud(fmxHud),
 #if GAME_HAS_TYRE_TEMP
       m_tyreTemp(tyreTemp),
 #endif
@@ -524,12 +528,14 @@ void SettingsHud::rebuildRenderData() {
         TAB_RADAR,
         TAB_LAP_LOG,
         TAB_IDEAL_LAP,
+        TAB_LAP_CONSISTENCY,
         TAB_TELEMETRY,
         TAB_RECORDS,
         TAB_PITBOARD,
         TAB_SESSION,
         TAB_TIMING,
         TAB_GAP_BAR,
+        TAB_FMX,
         TAB_PERFORMANCE,
         TAB_WIDGETS
     };
@@ -607,6 +613,7 @@ void SettingsHud::rebuildRenderData() {
             case TAB_PITBOARD:     tabHud = m_pitboard; break;
             case TAB_SESSION:      tabHud = m_session; break;
             case TAB_LAP_LOG:      tabHud = m_lapLog; break;
+            case TAB_LAP_CONSISTENCY: tabHud = m_lapConsistency; break;
             case TAB_IDEAL_LAP: tabHud = m_idealLap; break;
             case TAB_TELEMETRY:    tabHud = m_telemetry; break;
             case TAB_PERFORMANCE:  tabHud = m_performance; break;
@@ -614,7 +621,8 @@ void SettingsHud::rebuildRenderData() {
             case TAB_RADAR:        tabHud = m_radarHud; break;
             case TAB_TIMING:       tabHud = m_timing; break;
             case TAB_GAP_BAR:      tabHud = m_gapBar; break;
-            default:               tabHud = nullptr; break;  // General, Widgets have no single HUD
+            case TAB_FMX:          tabHud = m_fmxHud; break;
+            default:               tabHud = nullptr; break;  // General, Widgets, Rumble have no single HUD
         }
 
         // Determine if this tab's HUD/widgets are enabled
@@ -624,7 +632,7 @@ void SettingsHud::rebuildRenderData() {
         } else if (i == TAB_WIDGETS) {
             isHudEnabled = HudManager::getInstance().areWidgetsEnabled();
         } else if (i == TAB_RUMBLE) {
-            isHudEnabled = XInputReader::getInstance().getRumbleConfig().enabled;
+            isHudEnabled = XInputReader::getInstance().getGlobalRumbleConfig().enabled;
         } else if (i == TAB_UPDATES) {
             isHudEnabled = UpdateChecker::getInstance().isEnabled();
         } else {
@@ -715,9 +723,12 @@ void SettingsHud::rebuildRenderData() {
                            i == TAB_WIDGETS ? "widgets" :
                            i == TAB_RUMBLE ? "rumble" :
                            i == TAB_HOTKEYS ? "hotkeys" :
+                           i == TAB_RADAR ? "radar" :
+                           i == TAB_LAP_CONSISTENCY ? "lap_consistency" :
                            i == TAB_RIDERS ? "riders" :
                            i == TAB_UPDATES ? "updates" :
-                           "radar";
+                           i == TAB_FMX ? "fmx" :
+                           "general";
 
         ClickRegion tabRegion;
         tabRegion.x = currentTabX;
@@ -1064,6 +1075,13 @@ void SettingsHud::rebuildRenderData() {
             currentY = layoutCtx.currentY;
             break;
 
+        case TAB_LAP_CONSISTENCY:
+            // Use extracted tab renderer
+            layoutCtx.currentY = currentY;
+            activeHud = renderTabLapConsistency(layoutCtx);
+            currentY = layoutCtx.currentY;
+            break;
+
         case TAB_IDEAL_LAP:
             // Use extracted tab renderer
             layoutCtx.currentY = currentY;  // Sync context cursor
@@ -1152,6 +1170,13 @@ void SettingsHud::rebuildRenderData() {
             // Use extracted tab renderer
             layoutCtx.currentY = currentY;
             activeHud = renderTabUpdates(layoutCtx);
+            currentY = layoutCtx.currentY;
+            break;
+
+        case TAB_FMX:
+            // Use extracted tab renderer
+            layoutCtx.currentY = currentY;
+            activeHud = renderTabFmx(layoutCtx);
             currentY = layoutCtx.currentY;
             break;
 
@@ -1506,7 +1531,9 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                 case TAB_PITBOARD:   handled = handleClickTabPitboard(region); break;
                 case TAB_SESSION:    handled = handleClickTabSession(region); break;
                 case TAB_LAP_LOG:    handled = handleClickTabLapLog(region); break;
+                case TAB_LAP_CONSISTENCY: handled = handleClickTabLapConsistency(region); break;
                 case TAB_UPDATES:    handled = handleClickTabUpdates(region); break;
+                case TAB_FMX:        handled = handleClickTabFmx(region); break;
                 default: break;
             }
 
@@ -1554,6 +1581,14 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                         }
                         rebuildRenderData();
                         DEBUG_INFO_F("Update checking toggle: %s", newState ? "enabled" : "disabled");
+                    }
+                    break;
+                case ClickRegion::RUMBLE_TOGGLE:
+                    {
+                        RumbleConfig& globalConfig = XInputReader::getInstance().getGlobalRumbleConfig();
+                        globalConfig.enabled = !globalConfig.enabled;
+                        rebuildRenderData();
+                        DEBUG_INFO_F("Rumble master toggle: %s", globalConfig.enabled ? "enabled" : "disabled");
                     }
                     break;
                 case ClickRegion::TITLE_TOGGLE:
@@ -1709,6 +1744,7 @@ void SettingsHud::resetToDefaults() {
     if (m_records) m_records->resetToDefaults();
     if (m_timing) m_timing->resetToDefaults();
     if (m_gapBar) m_gapBar->resetToDefaults();
+    if (m_fmxHud) m_fmxHud->resetToDefaults();
 
     // Reset all widgets to their constructor defaults
     if (m_lap) m_lap->resetToDefaults();
@@ -1819,6 +1855,9 @@ void SettingsHud::resetCurrentTab() {
         case TAB_LAP_LOG:
             if (m_lapLog) m_lapLog->resetToDefaults();
             break;
+        case TAB_LAP_CONSISTENCY:
+            if (m_lapConsistency) m_lapConsistency->resetToDefaults();
+            break;
         case TAB_IDEAL_LAP:
             if (m_idealLap) m_idealLap->resetToDefaults();
             break;
@@ -1872,6 +1911,11 @@ void SettingsHud::resetCurrentTab() {
             // Reset hotkey bindings to defaults
             HotkeyManager::getInstance().resetToDefaults();
             break;
+        case TAB_FMX:
+            if (m_fmxHud) {
+                m_fmxHud->resetToDefaults();
+            }
+            break;
         case TAB_RIDERS:
             // Clear all tracked riders
             TrackedRidersManager::getInstance().clearAll();
@@ -1906,6 +1950,7 @@ void SettingsHud::resetCurrentProfile() {
     if (m_records) m_records->resetToDefaults();
     if (m_timing) m_timing->resetToDefaults();
     if (m_gapBar) m_gapBar->resetToDefaults();
+    if (m_fmxHud) m_fmxHud->resetToDefaults();
 
     // Reset all widgets to their constructor defaults
     if (m_lap) m_lap->resetToDefaults();
@@ -2066,6 +2111,7 @@ const char* SettingsHud::getTabName(int tabIndex) const {
         case TAB_STANDINGS:   return "Standings";
         case TAB_MAP:         return "Map";
         case TAB_LAP_LOG:     return "Lap Log";
+        case TAB_LAP_CONSISTENCY: return "Consistency";
         case TAB_IDEAL_LAP:   return "Ideal Lap";
         case TAB_TELEMETRY:   return "Telemetry";
         case TAB_PERFORMANCE: return "Performance";
@@ -2080,6 +2126,7 @@ const char* SettingsHud::getTabName(int tabIndex) const {
         case TAB_RIDERS:      return "Riders";
         case TAB_UPDATES:     return "Updates";
         case TAB_RADAR:       return "Radar";
+        case TAB_FMX:         return "FMX";
         default:              return "Unknown";
     }
 }

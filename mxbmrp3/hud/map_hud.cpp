@@ -969,7 +969,7 @@ void MapHud::renderStartMarker(const RotationCache& rotation,
     triangle.m_aafPos[3][1] = screenBaseLeftY;
 
     triangle.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-    triangle.m_ulColor = ColorConfig::getInstance().getPrimary();  // White start/finish indicator
+    triangle.m_ulColor = this->getColor(ColorSlot::PRIMARY);  // White start/finish indicator
     m_quads.push_back(triangle);
 }
 
@@ -1046,26 +1046,32 @@ void MapHud::renderRiders(const RotationCache& rotation,
             unsigned long baseColor = trackedConfig->color;
 
             // Apply position-based color modulation (lighten if ahead by laps, darken if behind by laps)
-            const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
-            const StandingsData* riderStanding = pluginData.getStanding(pos.raceNum);
-            int playerLaps = playerStanding ? playerStanding->numLaps : 0;
-            int riderLaps = riderStanding ? riderStanding->numLaps : 0;
-            int lapDiff = riderLaps - playerLaps;
+            // Only in race sessions where lap position matters
+            if (pluginData.isRaceSession()) {
+                const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
+                const StandingsData* riderStanding = pluginData.getStanding(pos.raceNum);
+                int playerLaps = playerStanding ? playerStanding->numLaps : 0;
+                int riderLaps = riderStanding ? riderStanding->numLaps : 0;
+                int lapDiff = riderLaps - playerLaps;
 
-            if (lapDiff >= 1) {
-                // Rider is ahead by laps - lighten color
-                riderColor = PluginUtils::lightenColor(baseColor, 0.4f);
-            } else if (lapDiff <= -1) {
-                // Rider is behind by laps - darken color
-                riderColor = PluginUtils::darkenColor(baseColor, 0.6f);
+                if (lapDiff >= 1) {
+                    // Rider is ahead by laps - lighten color
+                    riderColor = PluginUtils::lightenColor(baseColor, 0.4f);
+                } else if (lapDiff <= -1) {
+                    // Rider is behind by laps - darken color
+                    riderColor = PluginUtils::darkenColor(baseColor, 0.6f);
+                } else {
+                    // Same lap - use base color
+                    riderColor = baseColor;
+                }
             } else {
-                // Same lap - use base color
+                // Non-race session - use base color without modulation
                 riderColor = baseColor;
             }
         } else if (isLocalPlayer) {
             // Player always shows green in relative position mode, otherwise bike brand color
             if (m_riderColorMode == RiderColorMode::RELATIVE_POS) {
-                riderColor = ColorConfig::getInstance().getPositive();  // Green
+                riderColor = this->getColor(ColorSlot::POSITIVE);  // Green
             } else {
                 riderColor = entry->bikeBrandColor;
             }
@@ -1080,15 +1086,15 @@ void MapHud::renderRiders(const RotationCache& rotation,
 
             riderColor = PluginUtils::getRelativePositionColor(
                 playerPosition, riderPosition, playerLaps, riderLaps,
-                ColorConfig::getInstance().getNeutral(),
-                ColorConfig::getInstance().getWarning(),
-                ColorConfig::getInstance().getTertiary());
+                this->getColor(ColorSlot::NEUTRAL),
+                this->getColor(ColorSlot::WARNING),
+                this->getColor(ColorSlot::TERTIARY));
         } else if (m_riderColorMode == RiderColorMode::BRAND) {
             // Brand colors at full opacity
             riderColor = entry->bikeBrandColor;
         } else {
             // Uniform: Others in uniform tertiary color
-            riderColor = ColorConfig::getInstance().getTertiary();
+            riderColor = this->getColor(ColorSlot::TERTIARY);
         }
 
         // Render sprite quad centered on rider position, rotated to match heading
@@ -1226,7 +1232,7 @@ void MapHud::renderRiders(const RotationCache& rotation,
 
             if (labelStr[0] != '\0') {
                 // Use podium colors for position labels (P1/P2/P3)
-                unsigned long labelColor = ColorConfig::getInstance().getPrimary();
+                unsigned long labelColor = this->getColor(ColorSlot::PRIMARY);
                 if (m_labelMode == LabelMode::POSITION || m_labelMode == LabelMode::BOTH) {
                     if (position == Position::FIRST) {
                         labelColor = PodiumColors::GOLD;
@@ -1243,17 +1249,17 @@ void MapHud::renderRiders(const RotationCache& rotation,
 
                 // Render outline at 4 cardinal directions (skip drop shadow - has own outline)
                 addString(labelStr, screenX - outlineOffset, offsetY, Justify::CENTER,
-                         Fonts::getSmall(), outlineColor, labelFontSize, true);
+                         this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
                 addString(labelStr, screenX + outlineOffset, offsetY, Justify::CENTER,
-                         Fonts::getSmall(), outlineColor, labelFontSize, true);
+                         this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
                 addString(labelStr, screenX, offsetY - outlineOffset, Justify::CENTER,
-                         Fonts::getSmall(), outlineColor, labelFontSize, true);
+                         this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
                 addString(labelStr, screenX, offsetY + outlineOffset, Justify::CENTER,
-                         Fonts::getSmall(), outlineColor, labelFontSize, true);
+                         this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
 
                 // Render main text on top
                 addString(labelStr, screenX, offsetY, Justify::CENTER,
-                         Fonts::getSmall(), labelColor, labelFontSize, true);
+                         this->getFont(FontCategory::SMALL), labelColor, labelFontSize, true);
             }
         }
     };
@@ -1416,7 +1422,7 @@ void MapHud::rebuildRenderData() {
     float titleX = x + dim.paddingH;
     float titleY = y + dim.paddingV;
     addTitleString("Map", titleX, titleY, Justify::LEFT,
-                  Fonts::getTitle(), ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
+                  this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
 
     // Calculate clip bounds for track rendering (absolute screen coords)
     // Clip to the map area below the title
@@ -1447,10 +1453,10 @@ void MapHud::rebuildRenderData() {
     // This gives natural "outline on sides only" effect at boundaries
     size_t quadsBeforeTrack = m_quads.size();
     if (m_bShowOutline) {
-        renderTrack(rotation, ColorConfig::getInstance().getPrimary(), OUTLINE_WIDTH_MULTIPLIER,
+        renderTrack(rotation, this->getColor(ColorSlot::PRIMARY), OUTLINE_WIDTH_MULTIPLIER,
                     clipLeft, clipTop, clipRight, clipBottom);  // White outline
     }
-    renderTrack(rotation, ColorConfig::getInstance().getBackground(), 1.0f,
+    renderTrack(rotation, this->getColor(ColorSlot::BACKGROUND), 1.0f,
                 clipLeft, clipTop, clipRight, clipBottom);  // Black fill
     size_t trackQuads = m_quads.size() - quadsBeforeTrack;
 

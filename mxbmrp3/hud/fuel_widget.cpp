@@ -239,9 +239,9 @@ void FuelWidget::rebuildRenderData() {
     float rightX = startX + backgroundWidth - dim.paddingH;
     float currentY = contentStartY;
 
-    unsigned long labelColor = ColorConfig::getInstance().getTertiary();
-    unsigned long valueColor = ColorConfig::getInstance().getSecondary();
-    unsigned long mutedColor = ColorConfig::getInstance().getMuted();
+    unsigned long labelColor = this->getColor(ColorSlot::TERTIARY);
+    unsigned long valueColor = this->getColor(ColorSlot::SECONDARY);
+    unsigned long mutedColor = this->getColor(ColorSlot::MUTED);
 
     // Prepare display values and their colors (muted for placeholders)
     char fuelValueBuffer[16];
@@ -251,7 +251,7 @@ void FuelWidget::rebuildRenderData() {
     unsigned long fuelColor = valueColor;
     unsigned long usedColor = valueColor;
     unsigned long avgColor = valueColor;
-    unsigned long estColor = ColorConfig::getInstance().getPrimary();
+    unsigned long estColor = this->getColor(ColorSlot::PRIMARY);
 
     if (!hasFuelData) {
         // Show N/A when spectating/replay (fuel data structurally unavailable)
@@ -310,9 +310,9 @@ void FuelWidget::rebuildRenderData() {
 
             // Color code estimated laps (negative if < 2 laps, warning if < 4)
             if (estimatedLaps < 2.0f) {
-                estColor = ColorConfig::getInstance().getNegative();
+                estColor = this->getColor(ColorSlot::NEGATIVE);
             } else if (estimatedLaps < 4.0f) {
-                estColor = ColorConfig::getInstance().getWarning();
+                estColor = this->getColor(ColorSlot::WARNING);
             }
         } else {
             // No lap data yet - show dashes
@@ -326,43 +326,43 @@ void FuelWidget::rebuildRenderData() {
     // Title (optional)
     if (m_bShowTitle) {
         addString("Fuel", contentStartX, currentY, Justify::LEFT,
-            Fonts::getTitle(), valueColor, dim.fontSize);
+            this->getFont(FontCategory::TITLE), valueColor, dim.fontSize);
         currentY += titleHeight;
     }
 
     // Row 1: Fuel level
     if (m_enabledRows & ROW_FUEL) {
         addString("Fue", contentStartX, currentY, Justify::LEFT,
-            Fonts::getNormal(), labelColor, dim.fontSize);
+            this->getFont(FontCategory::NORMAL), labelColor, dim.fontSize);
         addString(fuelValueBuffer, rightX, currentY, Justify::RIGHT,
-            Fonts::getDigits(), fuelColor, dim.fontSize);
+            this->getFont(FontCategory::DIGITS), fuelColor, dim.fontSize);
         currentY += dim.lineHeightNormal;
     }
 
     // Row 2: Use (total fuel used this run)
     if (m_enabledRows & ROW_USED) {
         addString("Use", contentStartX, currentY, Justify::LEFT,
-            Fonts::getNormal(), labelColor, dim.fontSize);
+            this->getFont(FontCategory::NORMAL), labelColor, dim.fontSize);
         addString(usedValueBuffer, rightX, currentY, Justify::RIGHT,
-            Fonts::getDigits(), usedColor, dim.fontSize);
+            this->getFont(FontCategory::DIGITS), usedColor, dim.fontSize);
         currentY += dim.lineHeightNormal;
     }
 
     // Row 3: Avg (abbreviated from Avg/Lap)
     if (m_enabledRows & ROW_AVG) {
         addString("Avg", contentStartX, currentY, Justify::LEFT,
-            Fonts::getNormal(), labelColor, dim.fontSize);
+            this->getFont(FontCategory::NORMAL), labelColor, dim.fontSize);
         addString(avgValueBuffer, rightX, currentY, Justify::RIGHT,
-            Fonts::getDigits(), avgColor, dim.fontSize);
+            this->getFont(FontCategory::DIGITS), avgColor, dim.fontSize);
         currentY += dim.lineHeightNormal;
     }
 
     // Row 4: Est (abbreviated from Est Laps)
     if (m_enabledRows & ROW_EST) {
         addString("Est", contentStartX, currentY, Justify::LEFT,
-            Fonts::getNormal(), labelColor, dim.fontSize);
+            this->getFont(FontCategory::NORMAL), labelColor, dim.fontSize);
         addString(lapsValueBuffer, rightX, currentY, Justify::RIGHT,
-            Fonts::getDigits(), estColor, dim.fontSize);
+            this->getFont(FontCategory::DIGITS), estColor, dim.fontSize);
     }
 
     // Set bounds for drag detection

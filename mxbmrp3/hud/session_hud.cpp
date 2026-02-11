@@ -426,8 +426,8 @@ void SessionHud::rebuildRenderData() {
     int iconWeather = m_bShowIcons ? assetMgr.getIconSpriteIndex("temperature-low") : 0;  // Weather/temperature
 
     // Use full opacity for text and icons
-    unsigned long textColor = ColorConfig::getInstance().getPrimary();
-    unsigned long iconColor = ColorConfig::getInstance().getPrimary();  // White icons to match text
+    unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
+    unsigned long iconColor = this->getColor(ColorSlot::PRIMARY);  // White icons to match text
 
     // Helper lambda to add an icon quad with specific sprite
     auto addIconQuad = [&](float x, float y, int spriteIndex) {
@@ -451,7 +451,7 @@ void SessionHud::rebuildRenderData() {
     // "Session" label (optional, controlled by title toggle) - no icon
     if (m_bShowTitle) {
         addString("Session", contentStartX, currentY, Justify::LEFT,
-            Fonts::getTitle(), textColor, dim.fontSize);
+            this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
         currentY += labelHeight;
     }
 
@@ -459,7 +459,7 @@ void SessionHud::rebuildRenderData() {
     if (m_enabledRows & ROW_TYPE) {
         const char* sessionTypeString = sessionString ? sessionString : Placeholders::GENERIC;
         addString(sessionTypeString, contentStartX, currentY, Justify::LEFT,
-            Fonts::getTitle(), textColor, dim.fontSizeExtraLarge);
+            this->getFont(FontCategory::TITLE), textColor, dim.fontSizeExtraLarge);
         currentY += typeHeight;
     }
 
@@ -499,7 +499,7 @@ void SessionHud::rebuildRenderData() {
         }
 
         addString(combinedBuffer, contentStartX + textOffset, currentY, Justify::LEFT,
-            Fonts::getTitle(), textColor, dim.fontSize);
+            this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
         currentY += formatHeight;
     }
 
@@ -508,7 +508,7 @@ void SessionHud::rebuildRenderData() {
         addIconQuad(contentStartX, currentY, iconTrack);
         const char* trackName = sessionData.trackName[0] != '\0' ? sessionData.trackName : Placeholders::GENERIC;
         addString(trackName, contentStartX + textOffset, currentY, Justify::LEFT,
-            Fonts::getTitle(), textColor, dim.fontSize);
+            this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
         currentY += trackHeight;
     }
 
@@ -552,7 +552,7 @@ void SessionHud::rebuildRenderData() {
         }
 
         addString(weatherBuffer, contentStartX + textOffset, currentY, Justify::LEFT,
-            Fonts::getTitle(), textColor, dim.fontSize);
+            this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
         currentY += dim.lineHeightNormal;
     }
 
@@ -562,7 +562,7 @@ void SessionHud::rebuildRenderData() {
         addIconQuad(contentStartX, currentY, iconServer);
         const char* serverText = isOffline ? "Testing" : sessionData.serverName;
         addString(serverText, contentStartX + textOffset, currentY, Justify::LEFT,
-            Fonts::getTitle(), textColor, dim.fontSize);
+            this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
         currentY += serverHeight;
     }
 
@@ -572,7 +572,7 @@ void SessionHud::rebuildRenderData() {
         if (pwText != nullptr) {
             addIconQuad(contentStartX, currentY, iconPassword);
             addString(pwText, contentStartX + textOffset, currentY, Justify::LEFT,
-                Fonts::getTitle(), textColor, dim.fontSize);
+                this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
             currentY += dim.lineHeightNormal;
         }
     }
@@ -584,7 +584,7 @@ void SessionHud::rebuildRenderData() {
         snprintf(playerBuffer, sizeof(playerBuffer), "%d/%d",
             sessionData.serverClientsCount, sessionData.serverMaxClients);
         addString(playerBuffer, contentStartX + textOffset, currentY, Justify::LEFT,
-            Fonts::getTitle(), textColor, dim.fontSize);
+            this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
         currentY += dim.lineHeightNormal;
     }
 #endif

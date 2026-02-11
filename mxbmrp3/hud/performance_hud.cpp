@@ -98,7 +98,7 @@ void PerformanceHud::addStatsRow(float startX, float y, const ScaledDimensions& 
 
     // Current value (with label)
     addString(currentLabel, currentX, y, Justify::LEFT,
-        Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+        this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(LABEL_WIDTH, dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(SMALL_GAP, dims.fontSize);
 
@@ -109,13 +109,13 @@ void PerformanceHud::addStatsRow(float startX, float y, const ScaledDimensions& 
         snprintf(currentBuffer, sizeof(currentBuffer), "%*.2f", DECIMAL_VALUE_WIDTH, currentValue);
     }
     addString(currentBuffer, currentX, y, Justify::LEFT,
-        Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+        this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(currentPrecision == 0 ? INTEGER_VALUE_WIDTH : DECIMAL_VALUE_WIDTH, dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(LARGE_GAP, dims.fontSize);
 
     // Max
     addString("Max", currentX, y, Justify::LEFT,
-        Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+        this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(LABEL_WIDTH, dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(SMALL_GAP, dims.fontSize);
 
@@ -126,13 +126,13 @@ void PerformanceHud::addStatsRow(float startX, float y, const ScaledDimensions& 
         snprintf(maxBuffer, sizeof(maxBuffer), "%*.2f", DECIMAL_VALUE_WIDTH, maxValue);
     }
     addString(maxBuffer, currentX, y, Justify::LEFT,
-        Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+        this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(currentPrecision == 0 ? INTEGER_VALUE_WIDTH : DECIMAL_VALUE_WIDTH, dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(LARGE_GAP, dims.fontSize);
 
     // Avg
     addString("Avg", currentX, y, Justify::LEFT,
-        Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+        this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(LABEL_WIDTH, dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(SMALL_GAP, dims.fontSize);
 
@@ -143,13 +143,13 @@ void PerformanceHud::addStatsRow(float startX, float y, const ScaledDimensions& 
         snprintf(avgBuffer, sizeof(avgBuffer), "%*.2f", DECIMAL_VALUE_WIDTH, avgValue);
     }
     addString(avgBuffer, currentX, y, Justify::LEFT,
-        Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+        this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(currentPrecision == 0 ? INTEGER_VALUE_WIDTH : DECIMAL_VALUE_WIDTH, dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(LARGE_GAP, dims.fontSize);
 
     // Min
     addString("Min", currentX, y, Justify::LEFT,
-        Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+        this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(LABEL_WIDTH, dims.fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(SMALL_GAP, dims.fontSize);
 
@@ -160,7 +160,7 @@ void PerformanceHud::addStatsRow(float startX, float y, const ScaledDimensions& 
         snprintf(minBuffer, sizeof(minBuffer), "%*.2f", DECIMAL_VALUE_WIDTH, minValue);
     }
     addString(minBuffer, currentX, y, Justify::LEFT,
-        Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+        this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
 }
 
 void PerformanceHud::rebuildRenderData() {
@@ -284,7 +284,7 @@ void PerformanceHud::rebuildRenderData() {
 
     // Title
     addTitleString("Performance", contentStartX, currentY, Justify::LEFT,
-        Fonts::getTitle(), ColorConfig::getInstance().getPrimary(), dims.fontSizeLarge);
+        this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dims.fontSizeLarge);
     currentY += titleHeight;
 
     // Side-by-side layout: graph on left (36 chars), gap (1 char), legend on right (9 chars)
@@ -297,19 +297,18 @@ void PerformanceHud::rebuildRenderData() {
     float pointSpacing = graphWidth / (GRAPH_HISTORY_SIZE - 1);
     float lineThickness = 0.002f * getScale();  // Line thickness for graph rendering
     float gridLineThickness = 0.001f * getScale();  // ~1px at 1080p for subtle grid lines
-    unsigned long gridColor = ColorConfig::getInstance().getMuted();  // Muted gray for subtle grid lines
+    unsigned long gridColor = this->getColor(ColorSlot::MUTED);  // Muted gray for subtle grid lines
 
     // FPS Section (graph on left, legend on right)
     float legendY = currentY;  // Track legend Y position separately
     if (m_enabledElements & ELEM_FPS) {
         // FPS Graph - only render if graphs are shown
         if (showGraphs) {
-            // Draw FPS grid lines (0-MAX_FPS_DISPLAY range, evenly spaced at 80%/60%/40%/20%)
+            // Draw FPS grid lines (0-MAX_FPS_DISPLAY range, at 0%/50%/100%)
             const float fpsGridValues[] = {
-                MAX_FPS_DISPLAY * 0.8f,  // 200 FPS (80%)
-                MAX_FPS_DISPLAY * 0.6f,  // 150 FPS (60%)
-                MAX_FPS_DISPLAY * 0.4f,  // 100 FPS (40%)
-                MAX_FPS_DISPLAY * 0.2f   //  50 FPS (20%)
+                MAX_FPS_DISPLAY * 1.0f,   // 250 FPS (100%)
+                MAX_FPS_DISPLAY * 0.5f,   // 125 FPS (50%)
+                MAX_FPS_DISPLAY * 0.0f    //   0 FPS (0%)
             };
             for (float fpsValue : fpsGridValues) {
                 float normalizedValue = fpsValue / MAX_FPS_DISPLAY;
@@ -338,11 +337,11 @@ void PerformanceHud::rebuildRenderData() {
                     // Use color from the first point for consistency
                     unsigned long color;
                     if (fps1 >= 60.0f) {
-                        color = ColorConfig::getInstance().getPositive();  // Green: good performance
+                        color = this->getColor(ColorSlot::POSITIVE);  // Green: good performance
                     } else if (fps1 >= 30.0f) {
-                        color = ColorConfig::getInstance().getWarning();   // Yellow: caution
+                        color = this->getColor(ColorSlot::WARNING);   // Yellow: caution
                     } else {
-                        color = ColorConfig::getInstance().getNegative();  // Red: bad performance
+                        color = this->getColor(ColorSlot::NEGATIVE);  // Red: bad performance
                     }
 
                     addLineSegment(x1, y1, x2, y2, color, lineThickness);
@@ -362,34 +361,34 @@ void PerformanceHud::rebuildRenderData() {
 
             // FPS current value
             addString("FPS", legendStartX, legendY, Justify::LEFT,
-                Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+                this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
             snprintf(buffer, sizeof(buffer), "%4d", (int)metrics.currentFps);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Max
             addString("Max", legendStartX, legendY, Justify::LEFT,
-                Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+                this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
             snprintf(buffer, sizeof(buffer), "%4d", (int)m_fpsMax);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Avg
             addString("Avg", legendStartX, legendY, Justify::LEFT,
-                Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+                this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
             snprintf(buffer, sizeof(buffer), "%4d", (int)m_fpsAvg);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Min
             addString("Min", legendStartX, legendY, Justify::LEFT,
-                Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+                this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
             snprintf(buffer, sizeof(buffer), "%4d", (int)m_fpsMin);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Add gap before CPU section if both are enabled
@@ -407,12 +406,11 @@ void PerformanceHud::rebuildRenderData() {
         // CPU Time Graph - only render if graphs are shown
         // Conservative ceiling: MAX_PLUGIN_TIME_MS gives safe buffer (leaves ~3ms for game at 144fps)
         if (showGraphs) {
-            // Draw Plugin Time grid lines (0-MAX_PLUGIN_TIME_MS range, evenly spaced at 80%/60%/40%/20%)
+            // Draw Plugin Time grid lines (0-MAX_PLUGIN_TIME_MS range, at 0%/50%/100%)
             const float msGridValues[] = {
-                MAX_PLUGIN_TIME_MS * 0.8f,  // 3.2ms (80%)
-                MAX_PLUGIN_TIME_MS * 0.6f,  // 2.4ms (60%)
-                MAX_PLUGIN_TIME_MS * 0.4f,  // 1.6ms (40%)
-                MAX_PLUGIN_TIME_MS * 0.2f   // 0.8ms (20%)
+                MAX_PLUGIN_TIME_MS * 1.0f,   // 4.0ms (100%)
+                MAX_PLUGIN_TIME_MS * 0.5f,   // 2.0ms (50%)
+                MAX_PLUGIN_TIME_MS * 0.0f    // 0.0ms (0%)
             };
             for (float msValue : msGridValues) {
                 float normalizedValue = msValue / MAX_PLUGIN_TIME_MS;
@@ -442,11 +440,11 @@ void PerformanceHud::rebuildRenderData() {
                     // Use color from the first point for consistency
                     unsigned long color;
                     if (pluginTimeMs1 < 2.0f) {
-                        color = ColorConfig::getInstance().getPositive();  // Green: <2ms (safe)
+                        color = this->getColor(ColorSlot::POSITIVE);  // Green: <2ms (safe)
                     } else if (pluginTimeMs1 < 3.0f) {
-                        color = ColorConfig::getInstance().getWarning();   // Yellow: 2-3ms (caution)
+                        color = this->getColor(ColorSlot::WARNING);   // Yellow: 2-3ms (caution)
                     } else {
-                        color = ColorConfig::getInstance().getNegative();  // Red: >3ms (heavy)
+                        color = this->getColor(ColorSlot::NEGATIVE);  // Red: >3ms (heavy)
                     }
 
                     addLineSegment(x1, y1, x2, y2, color, lineThickness);
@@ -466,34 +464,34 @@ void PerformanceHud::rebuildRenderData() {
 
             // CPU current value
             addString("CPU", legendStartX, legendY, Justify::LEFT,
-                Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+                this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
             snprintf(buffer, sizeof(buffer), "%5.2f", metrics.pluginTimeMs);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Max
             addString("Max", legendStartX, legendY, Justify::LEFT,
-                Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+                this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
             snprintf(buffer, sizeof(buffer), "%5.2f", m_pluginTimeMsMax);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Avg
             addString("Avg", legendStartX, legendY, Justify::LEFT,
-                Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+                this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
             snprintf(buffer, sizeof(buffer), "%5.2f", m_pluginTimeMsAvg);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Min
             addString("Min", legendStartX, legendY, Justify::LEFT,
-                Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+                this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
             snprintf(buffer, sizeof(buffer), "%5.2f", m_pluginTimeMsMin);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+                this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
         }
     }
 }

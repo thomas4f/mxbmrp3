@@ -5,8 +5,10 @@
 #pragma once
 
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <sstream>
+#include <iomanip>
 
 class PluginUtils {
 public:
@@ -107,10 +109,34 @@ public:
         return makeColor(r, g, b, a);
     }
 
-    // Format color as hex string (e.g., "0xFFFFFFFF")
+    // Format integer with thousands separators (e.g., 1234567 -> "1,234,567")
+    // Writes into caller-provided buffer. Handles 0 and negative numbers.
+    static void formatScore(int value, char* buffer, size_t bufferSize) {
+        if (bufferSize == 0) return;
+        char raw[32];
+        snprintf(raw, sizeof(raw), "%d", value);
+        const char* digits = raw;
+        char* out = buffer;
+        char* end = buffer + bufferSize - 1;
+        if (*digits == '-') {
+            if (out < end) *out++ = '-';
+            digits++;
+        }
+        int len = static_cast<int>(strlen(digits));
+        for (int i = 0; i < len && out < end; ++i) {
+            if (i > 0 && (len - i) % 3 == 0) {
+                if (out + 1 < end) *out++ = ',';  // Only write comma if room for comma + digit
+                else break;
+            }
+            *out++ = digits[i];
+        }
+        *out = '\0';
+    }
+
+    // Format color as hex string (e.g., "0x00ff0000") - always 8 hex digits
     static std::string formatColorHex(uint32_t color) {
         std::ostringstream oss;
-        oss << "0x" << std::hex << color;
+        oss << "0x" << std::hex << std::setw(8) << std::setfill('0') << color;
         return oss.str();
     }
 

@@ -103,6 +103,8 @@ public:
 #if GAME_HAS_TYRE_TEMP
     class TyreTempWidget& getTyreTempWidget() const { assert(m_pTyreTemp && "HudManager not initialized"); return *m_pTyreTemp; }
 #endif
+    class LapConsistencyHud& getLapConsistencyHud() const { assert(m_pLapConsistency && "HudManager not initialized"); return *m_pLapConsistency; }
+    class FmxHud& getFmxHud() const { assert(m_pFmxHud && "HudManager not initialized"); return *m_pFmxHud; }
     class SettingsHud& getSettingsHud() const { assert(m_pSettingsHud && "HudManager not initialized"); return *m_pSettingsHud; }
 
 private:
@@ -118,6 +120,8 @@ private:
 #if GAME_HAS_TYRE_TEMP
                    m_pTyreTemp(nullptr),
 #endif
+                   m_pLapConsistency(nullptr),
+                   m_pFmxHud(nullptr),
                    m_bAllHudsToggledOff(false), m_bAllWidgetsToggledOff(false) {
     }
     ~HudManager();
@@ -171,6 +175,8 @@ private:
 #if GAME_HAS_TYRE_TEMP
     class TyreTempWidget* m_pTyreTemp;
 #endif
+    class LapConsistencyHud* m_pLapConsistency;
+    class FmxHud* m_pFmxHud;
 
     // Temporary HUD visibility toggle (doesn't modify actual visibility state)
     bool m_bAllHudsToggledOff;

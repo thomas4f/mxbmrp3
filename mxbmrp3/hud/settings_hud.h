@@ -7,6 +7,7 @@
 #include "base_hud.h"
 #include "ideal_lap_hud.h"
 #include "lap_log_hud.h"
+#include "lap_consistency_hud.h"
 #include "standings_hud.h"
 #include "performance_hud.h"
 #include "pitboard_hud.h"
@@ -30,6 +31,7 @@
 #if GAME_HAS_TYRE_TEMP
 #include "tyre_temp_widget.h"
 #endif
+#include "fmx_hud.h"
 #include <variant>
 #include <string>
 #include "map_hud.h"
@@ -47,11 +49,12 @@ struct SettingsLayoutContext;
 
 class SettingsHud : public BaseHud {
 public:
-    SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog,
+    SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, LapConsistencyHud* lapConsistency,
                 StandingsHud* standings,
                 PerformanceHud* performance,
                 TelemetryHud* telemetry,
-                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean
+                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean,
+                FmxHud* fmxHud
 #if GAME_HAS_TYRE_TEMP
                 , TyreTempWidget* tyreTemp
 #endif
@@ -103,6 +106,15 @@ public:
             LAP_LOG_ORDER_UP,          // Cycle display order forward (LapLogHud)
             LAP_LOG_ORDER_DOWN,        // Cycle display order backward (LapLogHud)
             LAP_LOG_GAP_ROW_TOGGLE,    // Toggle gap row display (LapLogHud)
+            // Lap Consistency HUD
+            LAP_CONSISTENCY_DISPLAY_MODE_UP,    // Cycle display mode forward (LapConsistencyHud)
+            LAP_CONSISTENCY_DISPLAY_MODE_DOWN,  // Cycle display mode backward (LapConsistencyHud)
+            LAP_CONSISTENCY_REFERENCE_UP,       // Cycle reference mode forward (LapConsistencyHud)
+            LAP_CONSISTENCY_REFERENCE_DOWN,     // Cycle reference mode backward (LapConsistencyHud)
+            LAP_CONSISTENCY_LAP_COUNT_UP,       // Increase lap count (LapConsistencyHud)
+            LAP_CONSISTENCY_LAP_COUNT_DOWN,     // Decrease lap count (LapConsistencyHud)
+            LAP_CONSISTENCY_TREND_MODE_UP,      // Cycle trend mode forward (LapConsistencyHud)
+            LAP_CONSISTENCY_TREND_MODE_DOWN,    // Cycle trend mode backward (LapConsistencyHud)
             MAP_ROTATION_TOGGLE,       // Toggle map rotation mode (MapHud)
             MAP_OUTLINE_TOGGLE,        // Toggle track outline (MapHud)
             MAP_COLORIZE_UP,           // Cycle rider color mode forward (MapHud)
@@ -303,7 +315,11 @@ public:
             UPDATE_SKIP_VERSION,       // Skip this version (acts as Retry)
             UPDATE_DEBUG_MODE,         // Toggle debug mode for testing
             UPDATE_CHANNEL_UP,         // Cycle update channel forward (Stable -> Pre-release)
-            UPDATE_CHANNEL_DOWN        // Cycle update channel backward (Pre-release -> Stable)
+            UPDATE_CHANNEL_DOWN,       // Cycle update channel backward (Pre-release -> Stable)
+            // FMX HUD
+            FMX_DEBUG_TOGGLE,          // Toggle FMX debug logging
+            FMX_CHAIN_ROWS_UP,         // Increase max chain display rows
+            FMX_CHAIN_ROWS_DOWN        // Decrease max chain display rows
         } type;
 
         // Type-safe variant instead of unsafe union (C++17)
@@ -418,6 +434,7 @@ public:
     // Implemented in separate files under hud/settings/
     static BaseHud* renderTabIdealLap(SettingsLayoutContext& ctx);
     static BaseHud* renderTabLapLog(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabLapConsistency(SettingsLayoutContext& ctx);
     static BaseHud* renderTabTelemetry(SettingsLayoutContext& ctx);
     static BaseHud* renderTabPerformance(SettingsLayoutContext& ctx);
     static BaseHud* renderTabRecords(SettingsLayoutContext& ctx);
@@ -435,6 +452,7 @@ public:
     static BaseHud* renderTabHotkeys(SettingsLayoutContext& ctx);
     static BaseHud* renderTabRiders(SettingsLayoutContext& ctx);
     static BaseHud* renderTabUpdates(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabFmx(SettingsLayoutContext& ctx);
 
     // Static click handler functions (implemented in tab files)
     // Return true if the click was handled, false otherwise
@@ -452,11 +470,14 @@ public:
     bool handleClickTabPitboard(const ClickRegion& region);
     bool handleClickTabSession(const ClickRegion& region);
     bool handleClickTabLapLog(const ClickRegion& region);
+    bool handleClickTabLapConsistency(const ClickRegion& region);
     bool handleClickTabUpdates(const ClickRegion& region);
+    bool handleClickTabFmx(const ClickRegion& region);
 
     // HUD getter methods (for tab rendering functions)
     IdealLapHud* getIdealLapHud() const { return m_idealLap; }
     LapLogHud* getLapLogHud() const { return m_lapLog; }
+    LapConsistencyHud* getLapConsistencyHud() const { return m_lapConsistency; }
     StandingsHud* getStandingsHud() const { return m_standings; }
     PerformanceHud* getPerformanceHud() const { return m_performance; }
     TelemetryHud* getTelemetryHud() const { return m_telemetry; }
@@ -484,6 +505,7 @@ public:
 #if GAME_HAS_TYRE_TEMP
     TyreTempWidget* getTyreTempWidget() const { return m_tyreTemp; }
 #endif
+    FmxHud* getFmxHud() const { return m_fmxHud; }
 
 protected:
     void rebuildLayout() override;
@@ -538,6 +560,7 @@ private:
     // HUD references (non-owning pointers)
     IdealLapHud* m_idealLap;
     LapLogHud* m_lapLog;
+    LapConsistencyHud* m_lapConsistency;
     StandingsHud* m_standings;
     PerformanceHud* m_performance;
     TelemetryHud* m_telemetry;
@@ -565,6 +588,7 @@ private:
 #if GAME_HAS_TYRE_TEMP
     TyreTempWidget* m_tyreTemp;
 #endif
+    FmxHud* m_fmxHud;
 
     // Visibility flag
     bool m_bVisible;
@@ -599,21 +623,23 @@ private:
         TAB_MAP = 2,           // F2
         TAB_RADAR = 3,         // F3
         TAB_LAP_LOG = 4,       // F4
-        TAB_IDEAL_LAP = 5,     // F5
-        TAB_TELEMETRY = 6,     // F6
-        TAB_RECORDS = 7,       // F7 - Lap Records (online)
-        TAB_PITBOARD = 8,
-        TAB_SESSION = 9,       // Session HUD (server info, password)
-        TAB_TIMING = 10,       // Timing HUD (center display)
-        TAB_GAP_BAR = 11,      // Gap Bar HUD (lap timing comparison)
-        TAB_PERFORMANCE = 12,
-        TAB_WIDGETS = 13,
-        TAB_RIDERS = 14,       // Tracked riders configuration
-        TAB_RUMBLE = 15,
-        TAB_APPEARANCE = 16,   // Appearance configuration (fonts, colors)
-        TAB_HOTKEYS = 17,      // Keyboard/controller hotkey bindings
-        TAB_UPDATES = 18,      // Auto-update settings
-        TAB_COUNT = 19
+        TAB_LAP_CONSISTENCY = 5, // F5 - Lap Consistency (chart/stats)
+        TAB_IDEAL_LAP = 6,     // F6
+        TAB_TELEMETRY = 7,     // F7
+        TAB_RECORDS = 8,       // F8 - Lap Records (online)
+        TAB_PITBOARD = 9,
+        TAB_SESSION = 10,      // Session HUD (server info, password)
+        TAB_TIMING = 11,       // Timing HUD (center display)
+        TAB_GAP_BAR = 12,      // Gap Bar HUD (lap timing comparison)
+        TAB_PERFORMANCE = 13,
+        TAB_WIDGETS = 14,
+        TAB_RIDERS = 15,       // Tracked riders configuration
+        TAB_RUMBLE = 16,
+        TAB_APPEARANCE = 17,   // Appearance configuration (fonts, colors)
+        TAB_HOTKEYS = 18,      // Keyboard/controller hotkey bindings
+        TAB_UPDATES = 19,      // Auto-update settings
+        TAB_FMX = 20,          // FMX (Freestyle) trick scoring
+        TAB_COUNT = 21
     };
     int m_activeTab;
 

@@ -132,7 +132,7 @@ void PointerWidget::createPointerQuads(float x, float y) {
     const float shadowOffsetY = 3.0f * scaleY;
 
     // Colors - accent color foreground at 100% opacity, semi-transparent black for shadow
-    const unsigned long accentColor = ColorConfig::getInstance().getAccent();
+    const unsigned long accentColor = this->getColor(ColorSlot::ACCENT);
     const unsigned long fgColor = (accentColor & 0x00FFFFFF) | 0xFF000000;  // Force 100% alpha
     const unsigned long shadowColor = PluginUtils::makeColor(0, 0, 0, 204);  // Black with 80% opacity
 

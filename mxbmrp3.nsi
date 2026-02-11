@@ -28,8 +28,6 @@
   !define OUTPUT_DIR "dist"
 !endif
 
-!define VC_REDIST_URL "https://aka.ms/vc14/vc_redist.x64.exe"
-!define VC_REDIST_EXE_PATH "$TEMP\vc_redist.x64.exe"
 !define REG_UNINSTALL_KEY_PATH "Software\Microsoft\Windows\CurrentVersion\Uninstall"
 
 ; General Settings
@@ -487,63 +485,6 @@ Function LeaveGameSelectionPage
   Abort
 FunctionEnd
 
-; Ensure vc_redist is installed
-Function CheckVCRedistInstalled
-  SetRegView 64
-  StrCpy $1 "0"
-  StrCpy $2 0
-  LoopVCRT:
-    EnumRegKey $3 HKLM64 "SOFTWARE\Microsoft\VisualStudio" $2
-    StrCmp $3 "" done_vcrt
-    ReadRegDWORD $0 HKLM64 "SOFTWARE\Microsoft\VisualStudio\$3\VC\Runtimes\x64" "Installed"
-    ${If} $0 == 1
-      StrCpy $1 "1"
-      Return
-    ${EndIf}
-    IntOp $2 $2 + 1
-    Goto LoopVCRT
-  done_vcrt:
-FunctionEnd
-
-; Offer to install vc_redist
-Function PromptInstallVCRedist
-  Call CheckVCRedistInstalled
-  ${If} $1 == "0"
-    MessageBox MB_YESNO|MB_ICONQUESTION \
-      "Microsoft Visual C++ Redistributable is required but not installed.$\n$\nInstall now? (A restart may be required)" \
-      IDNO skip_redist_install
-    Call DownloadAndInstallVCRedist
-  skip_redist_install:
-  ${EndIf}
-FunctionEnd
-
-; Install vc_redist
-Function DownloadAndInstallVCRedist
-  retry_download:
-    DetailPrint "Downloading vc_redist.x64.exe..."
-    nsisdl::download "${VC_REDIST_URL}" "${VC_REDIST_EXE_PATH}"
-    Pop $0
-    StrCmp $0 "success" +2
-      MessageBox MB_RETRYCANCEL|MB_ICONSTOP \
-        "Failed to download vc_redist. Retry?" IDRETRY retry_download
-
-    DetailPrint "Installing vc_redist..."
-    ExecWait '"${VC_REDIST_EXE_PATH}" /install /quiet /norestart' $1
-    Delete "${VC_REDIST_EXE_PATH}"
-
-    ; Check exit code
-    ${If} $1 == 0
-      DetailPrint "Visual C++ Redistributable installed successfully."
-    ${ElseIf} $1 == 3010
-      DetailPrint "Visual C++ Redistributable installed - restart required."
-      MessageBox MB_OK|MB_ICONINFORMATION \
-        "Visual C++ Redistributable was installed successfully.$\n$\nA system restart is required before ${PLUGIN_NAME} will work."
-    ${Else}
-      MessageBox MB_RETRYCANCEL|MB_ICONSTOP \
-        "vc_redist installer returned exit code $1." IDRETRY retry_download
-    ${EndIf}
-FunctionEnd
-
 ; Install
 Section "Install ${PLUGIN_NAME}" Section_InstallPlugin
   SetAutoClose false
@@ -601,9 +542,6 @@ Section "Install ${PLUGIN_NAME}" Section_InstallPlugin
 
     DetailPrint "GP Bikes installation complete."
   ${EndIf}
-
-  ; VC++ Redistributable check
-  Call PromptInstallVCRedist
 
   ; Write uninstaller to INSTDIR (first selected game's plugins folder)
   WriteUninstaller "$INSTDIR\${PLUGIN_NAME_LC}_uninstall.exe"

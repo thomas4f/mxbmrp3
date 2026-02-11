@@ -325,15 +325,12 @@ void LapLogHud::rebuildRenderData() {
     // Best lap time: use the separately-stored best lap entry if available
     int bestLapTime = (bestLapEntry && bestLapEntry->isComplete) ? bestLapEntry->lapTime : -1;
 
-    // Get color configuration
-    const ColorConfig& colors = ColorConfig::getInstance();
-
     // Check if sectors are enabled
     bool showSectors = (m_enabledColumns & COL_SECTORS) != 0;
 
     // Render title at TOP (if shown)
     addTitleString("Lap Log", contentStartX, currentY, Justify::LEFT,
-        Fonts::getTitle(), colors.getPrimary(), dim.fontSizeLarge);
+        this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
     currentY += titleHeight;
 
     // Render data rows from top to bottom (current lap, best lap, then oldest to newest)
@@ -428,23 +425,23 @@ void LapLogHud::rebuildRenderData() {
             }
 
             // Colors for live timing: use muted color for ticking values, primary for official
-            unsigned long colorLap = colors.getSecondary();
-            unsigned long colorS1 = (officialS1 > 0) ? colors.getPrimary() : colors.getMuted();
-            unsigned long colorS2 = (officialS2 > 0) ? colors.getPrimary() : colors.getMuted();
-            unsigned long colorS3 = colors.getMuted();  // S3 is always in progress or placeholder
+            unsigned long colorLap = this->getColor(ColorSlot::SECONDARY);
+            unsigned long colorS1 = (officialS1 > 0) ? this->getColor(ColorSlot::PRIMARY) : this->getColor(ColorSlot::MUTED);
+            unsigned long colorS2 = (officialS2 > 0) ? this->getColor(ColorSlot::PRIMARY) : this->getColor(ColorSlot::MUTED);
+            unsigned long colorS3 = this->getColor(ColorSlot::MUTED);  // S3 is always in progress or placeholder
 #if GAME_SECTOR_COUNT >= 4
-            unsigned long colorS4 = colors.getMuted();  // S4 is always in progress or placeholder
+            unsigned long colorS4 = this->getColor(ColorSlot::MUTED);  // S4 is always in progress or placeholder
 #endif
-            unsigned long colorTime = colors.getMuted();  // Lap time uses muted color (gap shown separately)
+            unsigned long colorTime = this->getColor(ColorSlot::MUTED);  // Lap time uses muted color (gap shown separately)
 
-            addString(lapStr, m_columns.lap, currentY, Justify::LEFT, Fonts::getNormal(), colorLap, dim.fontSize);
-            addString(showSectors ? s1Str : "", m_columns.s1, currentY, Justify::LEFT, Fonts::getDigits(), colorS1, dim.fontSize);
-            addString(showSectors ? s2Str : "", m_columns.s2, currentY, Justify::LEFT, Fonts::getDigits(), colorS2, dim.fontSize);
-            addString(showSectors ? s3Str : "", m_columns.s3, currentY, Justify::LEFT, Fonts::getDigits(), colorS3, dim.fontSize);
+            addString(lapStr, m_columns.lap, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), colorLap, dim.fontSize);
+            addString(showSectors ? s1Str : "", m_columns.s1, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), colorS1, dim.fontSize);
+            addString(showSectors ? s2Str : "", m_columns.s2, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), colorS2, dim.fontSize);
+            addString(showSectors ? s3Str : "", m_columns.s3, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), colorS3, dim.fontSize);
 #if GAME_SECTOR_COUNT >= 4
-            addString(showSectors ? s4Str : "", m_columns.s4, currentY, Justify::LEFT, Fonts::getDigits(), colorS4, dim.fontSize);
+            addString(showSectors ? s4Str : "", m_columns.s4, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), colorS4, dim.fontSize);
 #endif
-            addString(timeStr, m_columns.time, currentY, Justify::LEFT, Fonts::getDigits(), colorTime, dim.fontSize);
+            addString(timeStr, m_columns.time, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), colorTime, dim.fontSize);
 
             currentY += dim.lineHeightNormal;
             continue;
@@ -453,16 +450,16 @@ void LapLogHud::rebuildRenderData() {
         // Handle gap row (shows live gap to PB, colorized)
         if (displayEntry.historyIndex == -5) {
             char gapStr[32];
-            unsigned long gapColor = colors.getMuted();
+            unsigned long gapColor = this->getColor(ColorSlot::MUTED);
             float gapX = m_columns.time;  // Default position aligned with time column
 
             if (data.hasValidLiveGap()) {
                 int liveGap = data.getLiveGap();
                 PluginUtils::formatTimeDiff(gapStr, sizeof(gapStr), liveGap);
                 if (liveGap > 0) {
-                    gapColor = colors.getNegative();  // Behind PB (red)
+                    gapColor = this->getColor(ColorSlot::NEGATIVE);  // Behind PB (red)
                 } else if (liveGap < 0) {
-                    gapColor = colors.getPositive();  // Ahead of PB (green)
+                    gapColor = this->getColor(ColorSlot::POSITIVE);  // Ahead of PB (green)
                 }
                 // Offset by one char width so +/- sign is outside column and numbers align with lap times
                 gapX -= PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
@@ -472,14 +469,14 @@ void LapLogHud::rebuildRenderData() {
             }
 
             // Gap row: empty columns except for time column showing the gap
-            addString("", m_columns.lap, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
-            addString("", m_columns.s1, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
-            addString("", m_columns.s2, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
-            addString("", m_columns.s3, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
+            addString("", m_columns.lap, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString("", m_columns.s1, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString("", m_columns.s2, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString("", m_columns.s3, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
 #if GAME_SECTOR_COUNT >= 4
-            addString("", m_columns.s4, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
+            addString("", m_columns.s4, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
 #endif
-            addString(gapStr, gapX, currentY, Justify::LEFT, Fonts::getDigits(), gapColor, dim.fontSize);
+            addString(gapStr, gapX, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), gapColor, dim.fontSize);
 
             currentY += dim.lineHeightNormal;
             continue;
@@ -487,14 +484,14 @@ void LapLogHud::rebuildRenderData() {
 
         // Handle placeholder row (shows placeholders in all columns)
         if (displayEntry.historyIndex == -2) {
-            addString(Placeholders::GENERIC, m_columns.lap, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
-            addString(showSectors ? Placeholders::LAP_TIME : "", m_columns.s1, currentY, Justify::LEFT, Fonts::getDigits(), colors.getMuted(), dim.fontSize);
-            addString(showSectors ? Placeholders::LAP_TIME : "", m_columns.s2, currentY, Justify::LEFT, Fonts::getDigits(), colors.getMuted(), dim.fontSize);
-            addString(showSectors ? Placeholders::LAP_TIME : "", m_columns.s3, currentY, Justify::LEFT, Fonts::getDigits(), colors.getMuted(), dim.fontSize);
+            addString(Placeholders::GENERIC, m_columns.lap, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString(showSectors ? Placeholders::LAP_TIME : "", m_columns.s1, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString(showSectors ? Placeholders::LAP_TIME : "", m_columns.s2, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString(showSectors ? Placeholders::LAP_TIME : "", m_columns.s3, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
 #if GAME_SECTOR_COUNT >= 4
-            addString(showSectors ? Placeholders::LAP_TIME : "", m_columns.s4, currentY, Justify::LEFT, Fonts::getDigits(), colors.getMuted(), dim.fontSize);
+            addString(showSectors ? Placeholders::LAP_TIME : "", m_columns.s4, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
 #endif
-            addString(Placeholders::LAP_TIME, m_columns.time, currentY, Justify::LEFT, Fonts::getDigits(), colors.getMuted(), dim.fontSize);
+            addString(Placeholders::LAP_TIME, m_columns.time, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
             currentY += dim.lineHeightNormal;
             continue;
         }
@@ -551,7 +548,7 @@ void LapLogHud::rebuildRenderData() {
 
             // Determine colors
             // Invalid laps (track cuts in race mode) show muted times
-            unsigned long colorLap = colors.getSecondary();  // Lap number always secondary
+            unsigned long colorLap = this->getColor(ColorSlot::SECONDARY);  // Lap number always secondary
             unsigned long colorS1, colorS2, colorS3, colorTime;
 #if GAME_SECTOR_COUNT >= 4
             unsigned long colorS4;
@@ -560,57 +557,57 @@ void LapLogHud::rebuildRenderData() {
             // For invalid laps, show all timing data as muted
             // For valid laps, highlight PBs in green, others in primary
             if (!entry.isValid || entry.sector1 <= 0) {
-                colorS1 = colors.getMuted();
+                colorS1 = this->getColor(ColorSlot::MUTED);
             } else {
-                colorS1 = (entry.sector1 == bestSector1) ? colors.getPositive() : colors.getPrimary();
+                colorS1 = (entry.sector1 == bestSector1) ? this->getColor(ColorSlot::POSITIVE) : this->getColor(ColorSlot::PRIMARY);
             }
 
             if (!entry.isValid || entry.sector2 <= 0) {
-                colorS2 = colors.getMuted();
+                colorS2 = this->getColor(ColorSlot::MUTED);
             } else {
-                colorS2 = (entry.sector2 == bestSector2) ? colors.getPositive() : colors.getPrimary();
+                colorS2 = (entry.sector2 == bestSector2) ? this->getColor(ColorSlot::POSITIVE) : this->getColor(ColorSlot::PRIMARY);
             }
 
             if (!entry.isValid || entry.sector3 <= 0) {
-                colorS3 = colors.getMuted();
+                colorS3 = this->getColor(ColorSlot::MUTED);
             } else {
-                colorS3 = (entry.sector3 == bestSector3) ? colors.getPositive() : colors.getPrimary();
+                colorS3 = (entry.sector3 == bestSector3) ? this->getColor(ColorSlot::POSITIVE) : this->getColor(ColorSlot::PRIMARY);
             }
 
 #if GAME_SECTOR_COUNT >= 4
             if (!entry.isValid || entry.sector4 <= 0) {
-                colorS4 = colors.getMuted();
+                colorS4 = this->getColor(ColorSlot::MUTED);
             } else {
-                colorS4 = (entry.sector4 == bestSector4) ? colors.getPositive() : colors.getPrimary();
+                colorS4 = (entry.sector4 == bestSector4) ? this->getColor(ColorSlot::POSITIVE) : this->getColor(ColorSlot::PRIMARY);
             }
 #endif
 
             bool hasLapTime = (entry.lapTime > 0 && entry.isComplete);
             if (!entry.isValid || !hasLapTime) {
-                colorTime = colors.getMuted();
+                colorTime = this->getColor(ColorSlot::MUTED);
             } else {
-                colorTime = (entry.lapTime == bestLapTime) ? colors.getPositive() : colors.getPrimary();
+                colorTime = (entry.lapTime == bestLapTime) ? this->getColor(ColorSlot::POSITIVE) : this->getColor(ColorSlot::PRIMARY);
             }
 
             // Render lap data row
-            addString(lapStr, m_columns.lap, currentY, Justify::LEFT, Fonts::getNormal(), colorLap, dim.fontSize);
-            addString(showSectors ? s1Str : "", m_columns.s1, currentY, Justify::LEFT, Fonts::getDigits(), colorS1, dim.fontSize);
-            addString(showSectors ? s2Str : "", m_columns.s2, currentY, Justify::LEFT, Fonts::getDigits(), colorS2, dim.fontSize);
-            addString(showSectors ? s3Str : "", m_columns.s3, currentY, Justify::LEFT, Fonts::getDigits(), colorS3, dim.fontSize);
+            addString(lapStr, m_columns.lap, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), colorLap, dim.fontSize);
+            addString(showSectors ? s1Str : "", m_columns.s1, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), colorS1, dim.fontSize);
+            addString(showSectors ? s2Str : "", m_columns.s2, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), colorS2, dim.fontSize);
+            addString(showSectors ? s3Str : "", m_columns.s3, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), colorS3, dim.fontSize);
 #if GAME_SECTOR_COUNT >= 4
-            addString(showSectors ? s4Str : "", m_columns.s4, currentY, Justify::LEFT, Fonts::getDigits(), colorS4, dim.fontSize);
+            addString(showSectors ? s4Str : "", m_columns.s4, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), colorS4, dim.fontSize);
 #endif
-            addString(timeStr, m_columns.time, currentY, Justify::LEFT, Fonts::getDigits(), colorTime, dim.fontSize);
+            addString(timeStr, m_columns.time, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), colorTime, dim.fontSize);
         } else {
             // Placeholder row (entry not found)
-            addString(Placeholders::GENERIC, m_columns.lap, currentY, Justify::LEFT, Fonts::getNormal(), colors.getMuted(), dim.fontSize);
-            addString(showSectors ? Placeholders::LAP_TIME : "", m_columns.s1, currentY, Justify::LEFT, Fonts::getDigits(), colors.getMuted(), dim.fontSize);
-            addString(showSectors ? Placeholders::LAP_TIME : "", m_columns.s2, currentY, Justify::LEFT, Fonts::getDigits(), colors.getMuted(), dim.fontSize);
-            addString(showSectors ? Placeholders::LAP_TIME : "", m_columns.s3, currentY, Justify::LEFT, Fonts::getDigits(), colors.getMuted(), dim.fontSize);
+            addString(Placeholders::GENERIC, m_columns.lap, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString(showSectors ? Placeholders::LAP_TIME : "", m_columns.s1, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString(showSectors ? Placeholders::LAP_TIME : "", m_columns.s2, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString(showSectors ? Placeholders::LAP_TIME : "", m_columns.s3, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
 #if GAME_SECTOR_COUNT >= 4
-            addString(showSectors ? Placeholders::LAP_TIME : "", m_columns.s4, currentY, Justify::LEFT, Fonts::getDigits(), colors.getMuted(), dim.fontSize);
+            addString(showSectors ? Placeholders::LAP_TIME : "", m_columns.s4, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
 #endif
-            addString(Placeholders::LAP_TIME, m_columns.time, currentY, Justify::LEFT, Fonts::getDigits(), colors.getMuted(), dim.fontSize);
+            addString(Placeholders::LAP_TIME, m_columns.time, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
         }
 
         currentY += dim.lineHeightNormal;  // Move down to next row

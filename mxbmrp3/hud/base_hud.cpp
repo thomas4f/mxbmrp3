@@ -7,6 +7,7 @@
 #include "../core/plugin_manager.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
+#include "../core/font_config.h"
 #include "../core/ui_config.h"
 #include "../core/settings_manager.h"
 #include "../core/hud_manager.h"
@@ -372,8 +373,8 @@ void BaseHud::addBackgroundQuad(float x, float y, float width, float height) {
     } else {
         // Use solid color background
         quadEntry.m_iSprite = SpriteIndex::SOLID_COLOR;
-        // Get configured background color and apply opacity
-        unsigned long bgColor = ColorConfig::getInstance().getBackground();
+        // Get configured background color and apply opacity (uses per-HUD override if set)
+        unsigned long bgColor = this->getColor(ColorSlot::BACKGROUND);
         quadEntry.m_ulColor = PluginUtils::applyOpacity(bgColor, m_fBackgroundOpacity);
     }
 
@@ -624,4 +625,88 @@ BaseHud::StyledStringBounds BaseHud::calculateStyledStringBounds() const {
     }
 
     return {minX, minY, maxX, maxY};
+}
+
+// ============================================================================
+// Per-HUD Color/Font Overrides
+// ============================================================================
+
+unsigned long BaseHud::getColor(ColorSlot slot) const {
+    size_t index = static_cast<size_t>(slot);
+    if (index < m_colorOverrides.size() && m_colorOverrides[index].has_value()) {
+        return m_colorOverrides[index].value();
+    }
+    return ColorConfig::getInstance().getColor(slot);
+}
+
+int BaseHud::getFont(FontCategory category) const {
+    size_t index = static_cast<size_t>(category);
+    if (index < m_fontOverrides.size() && m_fontOverrides[index].has_value()) {
+        int fontIndex = m_fontOverrides[index].value().resolvedIndex;
+        if (fontIndex > 0) return fontIndex;
+        // Font not resolved, fall back to global
+    }
+    return FontConfig::getInstance().getFont(category);
+}
+
+void BaseHud::setColorOverride(ColorSlot slot, unsigned long color) {
+    size_t index = static_cast<size_t>(slot);
+    if (index < m_colorOverrides.size()) {
+        m_colorOverrides[index] = color;
+        setDataDirty();
+    }
+}
+
+void BaseHud::clearColorOverride(ColorSlot slot) {
+    size_t index = static_cast<size_t>(slot);
+    if (index < m_colorOverrides.size()) {
+        m_colorOverrides[index].reset();
+        setDataDirty();
+    }
+}
+
+bool BaseHud::hasColorOverride(ColorSlot slot) const {
+    size_t index = static_cast<size_t>(slot);
+    return index < m_colorOverrides.size() && m_colorOverrides[index].has_value();
+}
+
+unsigned long BaseHud::getColorOverrideValue(ColorSlot slot) const {
+    size_t index = static_cast<size_t>(slot);
+    if (index < m_colorOverrides.size() && m_colorOverrides[index].has_value()) {
+        return m_colorOverrides[index].value();
+    }
+    return 0;
+}
+
+void BaseHud::setFontOverride(FontCategory category, const std::string& fontName) {
+    size_t index = static_cast<size_t>(category);
+    if (index < m_fontOverrides.size()) {
+        FontOverride override;
+        override.name = fontName;
+        override.resolvedIndex = AssetManager::getInstance().getFontIndexByName(fontName);
+        m_fontOverrides[index] = std::move(override);
+        setDataDirty();
+    }
+}
+
+void BaseHud::clearFontOverride(FontCategory category) {
+    size_t index = static_cast<size_t>(category);
+    if (index < m_fontOverrides.size()) {
+        m_fontOverrides[index].reset();
+        setDataDirty();
+    }
+}
+
+bool BaseHud::hasFontOverride(FontCategory category) const {
+    size_t index = static_cast<size_t>(category);
+    return index < m_fontOverrides.size() && m_fontOverrides[index].has_value();
+}
+
+const std::string& BaseHud::getFontOverrideName(FontCategory category) const {
+    size_t index = static_cast<size_t>(category);
+    if (index < m_fontOverrides.size() && m_fontOverrides[index].has_value()) {
+        return m_fontOverrides[index].value().name;
+    }
+    static const std::string empty;
+    return empty;
 }

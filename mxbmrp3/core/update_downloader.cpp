@@ -51,9 +51,33 @@ UpdateDownloader::~UpdateDownloader() {
 void UpdateDownloader::shutdown() {
     m_shutdownRequested = true;
     m_cancelRequested = true;
+
+    // Cancel any in-flight HTTP request by closing all WinHTTP handles.
+    // CancelSynchronousIo does NOT work with WinHTTP (it uses internal waits,
+    // not kernel I/O). Closing the handles causes pending WinHTTP calls to fail
+    // immediately. The mutex in closeHttpHandles() prevents double-close with
+    // the worker thread's cleanup.
+    closeHttpHandles();
+
     if (m_workerThread.joinable()) {
         m_workerThread.join();
     }
+}
+
+void UpdateDownloader::closeHttpHandles() {
+    HINTERNET r;
+    HINTERNET c;
+    HINTERNET s;
+    {
+        std::lock_guard<std::mutex> lock(m_httpHandleMutex);
+        r = static_cast<HINTERNET>(m_hHttpRequest);  m_hHttpRequest = nullptr;
+        c = static_cast<HINTERNET>(m_hHttpConnect);   m_hHttpConnect = nullptr;
+        s = static_cast<HINTERNET>(m_hHttpSession);   m_hHttpSession = nullptr;
+    }
+    // Close child handles before parent (WinHTTP documented best practice)
+    if (r) WinHttpCloseHandle(r);
+    if (c) WinHttpCloseHandle(c);
+    if (s) WinHttpCloseHandle(s);
 }
 
 void UpdateDownloader::reset() {
@@ -477,7 +501,7 @@ bool UpdateDownloader::downloadFile(std::vector<char>& outData, std::string& out
              PluginConstants::PLUGIN_VERSION);
     std::wstring userAgent(userAgentA, userAgentA + strlen(userAgentA));
 
-    // Initialize WinHTTP
+    // Initialize WinHTTP - create all handles (non-blocking operations)
     HINTERNET hSession = WinHttpOpen(userAgent.c_str(),
                                      WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
                                      WINHTTP_NO_PROXY_NAME,
@@ -513,25 +537,39 @@ bool UpdateDownloader::downloadFile(std::vector<char>& outData, std::string& out
         return false;
     }
 
-    // Send request
+    // Publish all handles for cross-thread cancellation by shutdown().
+    // Handle creation above is non-blocking, so publishing after all three
+    // are ready means shutdown can always close the complete set.
+    {
+        std::lock_guard<std::mutex> lock(m_httpHandleMutex);
+        m_hHttpSession = hSession;
+        m_hHttpConnect = hConnect;
+        m_hHttpRequest = hRequest;
+    }
+
+    // Re-check shutdown to close the timing window where shutdown() runs
+    // between handle creation and the store above (it would miss them otherwise).
+    if (m_shutdownRequested) {
+        closeHttpHandles();
+        outError = "Shutdown requested";
+        return false;
+    }
+
+    // --- Blocking calls begin (cancellable by shutdown via closeHttpHandles) ---
+
     BOOL bResults = WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS,
                                         0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0);
     if (!bResults) {
         DWORD err = GetLastError();
-        WinHttpCloseHandle(hRequest);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
+        closeHttpHandles();
         outError = "Send failed (error " + std::to_string(err) + ")";
         return false;
     }
 
-    // Receive response
     bResults = WinHttpReceiveResponse(hRequest, NULL);
     if (!bResults) {
         DWORD err = GetLastError();
-        WinHttpCloseHandle(hRequest);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
+        closeHttpHandles();
         outError = "No response (error " + std::to_string(err) + ")";
         return false;
     }
@@ -553,10 +591,8 @@ bool UpdateDownloader::downloadFile(std::vector<char>& outData, std::string& out
             std::vector<wchar_t> locationBuf(locationSize / sizeof(wchar_t) + 1);
             if (WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_LOCATION, WINHTTP_HEADER_NAME_BY_INDEX,
                                    locationBuf.data(), &locationSize, WINHTTP_NO_HEADER_INDEX)) {
-                // Close current handles
-                WinHttpCloseHandle(hRequest);
-                WinHttpCloseHandle(hConnect);
-                WinHttpCloseHandle(hSession);
+                // Close current handles so recursive call can store new ones
+                closeHttpHandles();
 
                 // Convert wide string to narrow using proper Windows API
                 std::wstring wLocation(locationBuf.data());
@@ -584,17 +620,13 @@ bool UpdateDownloader::downloadFile(std::vector<char>& outData, std::string& out
             }
         }
 
-        WinHttpCloseHandle(hRequest);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
+        closeHttpHandles();
         outError = "Failed to follow redirect";
         return false;
     }
 
     if (statusCode != 200) {
-        WinHttpCloseHandle(hRequest);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
+        closeHttpHandles();
         outError = "HTTP " + std::to_string(statusCode);
         return false;
     }
@@ -617,9 +649,7 @@ bool UpdateDownloader::downloadFile(std::vector<char>& outData, std::string& out
 
     do {
         if (m_cancelRequested || m_shutdownRequested) {
-            WinHttpCloseHandle(hRequest);
-            WinHttpCloseHandle(hConnect);
-            WinHttpCloseHandle(hSession);
+            closeHttpHandles();
             outError = "Cancelled";
             return false;
         }
@@ -633,9 +663,7 @@ bool UpdateDownloader::downloadFile(std::vector<char>& outData, std::string& out
 
         // Check size limit
         if (outData.size() + dwSize > MAX_DOWNLOAD_SIZE) {
-            WinHttpCloseHandle(hRequest);
-            WinHttpCloseHandle(hConnect);
-            WinHttpCloseHandle(hSession);
+            closeHttpHandles();
             outError = "Download too large";
             return false;
         }
@@ -648,9 +676,7 @@ bool UpdateDownloader::downloadFile(std::vector<char>& outData, std::string& out
 
     } while (dwSize > 0);
 
-    WinHttpCloseHandle(hRequest);
-    WinHttpCloseHandle(hConnect);
-    WinHttpCloseHandle(hSession);
+    closeHttpHandles();
 
     if (outData.empty()) {
         outError = "No data received";

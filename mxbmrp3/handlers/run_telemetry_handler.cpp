@@ -8,6 +8,7 @@
 #include "../core/plugin_constants.h"
 #include "../core/xinput_reader.h"
 #include "../core/odometer_manager.h"
+#include "../core/fmx_manager.h"
 #include "../diagnostics/logger.h"
 #include <algorithm>
 #include <cmath>
@@ -48,6 +49,11 @@ void RunTelemetryHandler::handleRunTelemetry(Unified::TelemetryData* psTelemetry
 
         // Update roll/lean angle
         PluginData::getInstance().updateRoll(psTelemetryData->roll);
+
+        // Update FMX trick detection (bikes only - assumes 2 wheels, lean angles)
+        if (psTelemetryData->vehicleType == Unified::VehicleType::Bike) {
+            FmxManager::getInstance().updateFromTelemetry(*psTelemetryData);
+        }
 
         // Update engine and water temperatures
         PluginData::getInstance().updateTemperatures(

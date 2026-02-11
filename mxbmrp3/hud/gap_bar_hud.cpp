@@ -558,7 +558,7 @@ void GapBarHud::rebuildRenderData() {
     } else {
         bgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
         bgQuad.m_ulColor = PluginUtils::applyOpacity(
-            ColorConfig::getInstance().getBackground(), m_fBackgroundOpacity);
+            this->getColor(ColorSlot::BACKGROUND), m_fBackgroundOpacity);
     }
     m_quads.push_back(bgQuad);
 
@@ -593,13 +593,13 @@ void GapBarHud::rebuildRenderData() {
                 quadWidth = halfWidth * gapRatio;
                 quadX = centerX - quadWidth;
                 gapQuad.m_ulColor = PluginUtils::applyOpacity(
-                    ColorConfig::getInstance().getNegative(), m_fBackgroundOpacity);
+                    this->getColor(ColorSlot::NEGATIVE), m_fBackgroundOpacity);
             } else {
                 // Ahead (faster) - grow right from center, green
                 quadWidth = halfWidth * (-gapRatio);
                 quadX = centerX;
                 gapQuad.m_ulColor = PluginUtils::applyOpacity(
-                    ColorConfig::getInstance().getPositive(), m_fBackgroundOpacity);
+                    this->getColor(ColorSlot::POSITIVE), m_fBackgroundOpacity);
             }
 
             float qY = startY + paddingV;
@@ -627,8 +627,7 @@ void GapBarHud::rebuildRenderData() {
     float gapTextY = startY + (barHeight - dim.fontSize) / 2.0f;
 
     char gapBuffer[32];
-    const ColorConfig& colors = ColorConfig::getInstance();
-    unsigned long gapColor = colors.getPrimary();
+    unsigned long gapColor = this->getColor(ColorSlot::PRIMARY);
 
     // Only show gaps when we have a PB to compare against (like TimingHud)
     const LapLogEntry* personalBest = PluginData::getInstance().getBestLapEntry();
@@ -638,18 +637,18 @@ void GapBarHud::rebuildRenderData() {
         PluginUtils::formatTimeDiff(gapBuffer, sizeof(gapBuffer), m_frozenGap);
         // Colorize based on gap value: positive = slower (red), negative = faster (green)
         if (m_frozenGap > 0) {
-            gapColor = colors.getNegative();
+            gapColor = this->getColor(ColorSlot::NEGATIVE);
         } else if (m_frozenGap < 0) {
-            gapColor = colors.getPositive();
+            gapColor = this->getColor(ColorSlot::POSITIVE);
         }
     } else if (m_cachedGapValid && personalBest) {
         // Show live gap (full precision, use cached value)
         PluginUtils::formatTimeDiff(gapBuffer, sizeof(gapBuffer), m_cachedGap);
         // Colorize based on gap value: positive = slower (red), negative = faster (green)
         if (m_cachedGap > 0) {
-            gapColor = colors.getNegative();
+            gapColor = this->getColor(ColorSlot::NEGATIVE);
         } else if (m_cachedGap < 0) {
-            gapColor = colors.getPositive();
+            gapColor = this->getColor(ColorSlot::POSITIVE);
         }
     } else {
         // No best lap - show placeholder in primary color
@@ -658,7 +657,7 @@ void GapBarHud::rebuildRenderData() {
 
     // Gap text (monospace font, normal size, centered)
     addString(gapBuffer, gapTextX, gapTextY, Justify::CENTER,
-              Fonts::getDigits(), gapColor, dim.fontSize);
+              this->getFont(FontCategory::DIGITS), gapColor, dim.fontSize);
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + barWidth, startY + barHeight);
@@ -745,7 +744,6 @@ void GapBarHud::updateRiderPositions(int numVehicles, const Unified::TrackPositi
 // ============================================================================
 unsigned long GapBarHud::calculateRiderColor(int riderRaceNum, int displayRaceNum) const {
     const PluginData& pluginData = PluginData::getInstance();
-    const ColorConfig& colors = ColorConfig::getInstance();
 
     // Get lap data for position-based modulation
     const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
@@ -764,12 +762,15 @@ unsigned long GapBarHud::calculateRiderColor(int riderRaceNum, int displayRaceNu
             unsigned long baseColor = trackedConfig->color;
 
             // Apply position-based color modulation (like RadarHud)
-            if (lapDiff >= 1) {
-                // Rider is ahead by laps - lighten color
-                baseColor = PluginUtils::lightenColor(baseColor, 0.4f);
-            } else if (lapDiff <= -1) {
-                // Rider is behind by laps - darken color
-                baseColor = PluginUtils::darkenColor(baseColor, 0.6f);
+            // Only in race sessions where lap position matters
+            if (pluginData.isRaceSession()) {
+                if (lapDiff >= 1) {
+                    // Rider is ahead by laps - lighten color
+                    baseColor = PluginUtils::lightenColor(baseColor, 0.4f);
+                } else if (lapDiff <= -1) {
+                    // Rider is behind by laps - darken color
+                    baseColor = PluginUtils::darkenColor(baseColor, 0.6f);
+                }
             }
 
             return baseColor;
@@ -785,9 +786,9 @@ unsigned long GapBarHud::calculateRiderColor(int riderRaceNum, int displayRaceNu
 
             return PluginUtils::getRelativePositionColor(
                 playerPosition, riderPosition, playerLaps, riderLaps,
-                colors.getNeutral(),    // Same position/lap = neutral
-                colors.getWarning(),    // Ahead = warning (orange)
-                colors.getTertiary());  // Behind = tertiary (gray)
+                this->getColor(ColorSlot::NEUTRAL),    // Same position/lap = neutral
+                this->getColor(ColorSlot::WARNING),    // Ahead = warning (orange)
+                this->getColor(ColorSlot::TERTIARY));  // Behind = tertiary (gray)
         }
 
         case RiderColorMode::BRAND: {
@@ -795,13 +796,13 @@ unsigned long GapBarHud::calculateRiderColor(int riderRaceNum, int displayRaceNu
             if (entry) {
                 return PluginUtils::applyOpacity(entry->bikeBrandColor, 0.75f);
             }
-            return colors.getTertiary();  // Fallback if no entry
+            return this->getColor(ColorSlot::TERTIARY);  // Fallback if no entry
         }
 
         case RiderColorMode::UNIFORM:
         default:
             // Uniform gray for all riders
-            return colors.getTertiary();
+            return this->getColor(ColorSlot::TERTIARY);
     }
 }
 
@@ -855,7 +856,6 @@ void GapBarHud::renderRiderMarkers(float innerX, float innerY, float innerWidth,
                                     const ScaledDimensions& dim) {
     const PluginData& pluginData = PluginData::getInstance();
     int displayRaceNum = pluginData.getDisplayRaceNum();
-    const ColorConfig& colors = ColorConfig::getInstance();
 
     // Get icon sprite index and shape index for rotation check
     const AssetManager& assetMgr = AssetManager::getInstance();
@@ -954,7 +954,7 @@ void GapBarHud::renderRiderMarkers(float innerX, float innerY, float innerWidth,
         float markerX = innerX + (innerWidth * m_currentTrackPos);
 
         // Check if player is tracked - use their configured color and shape (like RadarHud)
-        unsigned long selfColor = colors.getPositive();
+        unsigned long selfColor = this->getColor(ColorSlot::POSITIVE);
         int selfSpriteIndex = spriteIndex;
         int selfShapeIndex = globalShapeIndex;
 
@@ -1018,7 +1018,7 @@ void GapBarHud::renderMarkerLabel(float centerX, float centerY, float iconHalfSi
     }
 
     // Use podium colors for position labels (P1/P2/P3) like MapHud
-    unsigned long labelColor = ColorConfig::getInstance().getPrimary();
+    unsigned long labelColor = this->getColor(ColorSlot::PRIMARY);
     if (m_labelMode == LabelMode::POSITION || m_labelMode == LabelMode::BOTH) {
         if (position == Position::FIRST) {
             labelColor = PodiumColors::GOLD;
@@ -1035,15 +1035,15 @@ void GapBarHud::renderMarkerLabel(float centerX, float centerY, float iconHalfSi
 
     // Render outline at 4 cardinal directions
     addString(labelStr, centerX - outlineOffset, labelY, Justify::CENTER,
-             Fonts::getSmall(), outlineColor, labelFontSize, true);
+             this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
     addString(labelStr, centerX + outlineOffset, labelY, Justify::CENTER,
-             Fonts::getSmall(), outlineColor, labelFontSize, true);
+             this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
     addString(labelStr, centerX, labelY - outlineOffset, Justify::CENTER,
-             Fonts::getSmall(), outlineColor, labelFontSize, true);
+             this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
     addString(labelStr, centerX, labelY + outlineOffset, Justify::CENTER,
-             Fonts::getSmall(), outlineColor, labelFontSize, true);
+             this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
 
     // Render main text on top
     addString(labelStr, centerX, labelY, Justify::CENTER,
-              Fonts::getSmall(), labelColor, labelFontSize, true);
+              this->getFont(FontCategory::SMALL), labelColor, labelFontSize, true);
 }

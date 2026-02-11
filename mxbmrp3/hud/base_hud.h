@@ -7,9 +7,13 @@
 #include <string>
 #include <cmath>
 #include <chrono>
+#include <optional>
+#include <array>
 #include "../game/game_config.h"
 #include "../core/input_manager.h"
 #include "../core/plugin_data.h"
+#include "../core/color_config.h"
+#include "../core/font_config.h"
 
 // Configuration for individual HUD strings with per-string padding and backgrounds
 struct HudStringConfig {
@@ -293,6 +297,27 @@ protected:
         return x >= rectX && x <= rectX + width && y >= rectY && y <= rectY + height;
     }
 
+    // ========================================================================
+    // Per-HUD Color/Font Overrides (ini-only, power user feature)
+    // ========================================================================
+    // If set, these override the global ColorConfig/FontConfig values for this HUD.
+    // Usage: getColor(ColorSlot::PRIMARY) instead of ColorConfig::getInstance().getPrimary()
+    // Usage: getFont(FontCategory::NORMAL) instead of Fonts::getNormal()
+    unsigned long getColor(ColorSlot slot) const;
+    int getFont(FontCategory category) const;
+
+public:
+    // Per-HUD override setters (used by SettingsManager during INI load/save)
+    void setColorOverride(ColorSlot slot, unsigned long color);
+    void clearColorOverride(ColorSlot slot);
+    bool hasColorOverride(ColorSlot slot) const;
+    unsigned long getColorOverrideValue(ColorSlot slot) const;  // Raw override value (for save)
+
+    void setFontOverride(FontCategory category, const std::string& fontName);
+    void clearFontOverride(FontCategory category);
+    bool hasFontOverride(FontCategory category) const;
+    const std::string& getFontOverrideName(FontCategory category) const;  // Raw font name (for save)
+
     std::vector<SPluginQuad_t> m_quads;
     std::vector<SPluginString_t> m_strings;
     std::vector<bool> m_stringSkipShadow;  // Parallel to m_strings: true = skip drop shadow for this string
@@ -325,4 +350,14 @@ private:
     bool m_bDragging;
     float m_fDragStartX, m_fDragStartY;
     float m_fInitialOffsetX, m_fInitialOffsetY;
+
+    // Per-HUD color/font overrides (ini-only, power user feature)
+    // When set, these override the corresponding global ColorConfig/FontConfig values
+    std::array<std::optional<unsigned long>, static_cast<size_t>(ColorSlot::COUNT)> m_colorOverrides;
+
+    struct FontOverride {
+        std::string name;       // Font filename (for INI save/load)
+        int resolvedIndex;      // Cached font index (0 = not resolved or not found)
+    };
+    std::array<std::optional<FontOverride>, static_cast<size_t>(FontCategory::COUNT)> m_fontOverrides;
 };

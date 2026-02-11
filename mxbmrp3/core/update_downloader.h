@@ -132,6 +132,10 @@ private:
     void resetSteps();
     void setStepStatus(Step step, StepStatus status);
 
+    // Safely close all active HTTP handles (called from both shutdown and worker thread).
+    // The mutex ensures exactly one caller closes the handles; the other gets nulls.
+    void closeHttpHandles();
+
     std::atomic<State> m_state;
     std::atomic<bool> m_cancelRequested;
     std::atomic<bool> m_shutdownRequested;
@@ -155,6 +159,14 @@ private:
     mutable std::mutex m_mutex;
     std::thread m_workerThread;
     std::function<void()> m_stateChangeCallback;
+
+    // HTTP handle tracking for cross-thread cancellation via WinHttpCloseHandle.
+    // All three handles are stored so shutdown can close them explicitly rather than
+    // relying on ambiguous cascade-close behavior when only the session is closed.
+    std::mutex m_httpHandleMutex;
+    void* m_hHttpSession{nullptr};
+    void* m_hHttpConnect{nullptr};
+    void* m_hHttpRequest{nullptr};
 
     // Plugin path (cached)
     std::string m_pluginPath;

@@ -94,7 +94,8 @@ void SettingsLayoutContext::addCycleControl(
     BaseHud* targetHud,
     bool enabled,
     bool isOff,
-    const char* tooltipId
+    const char* tooltipId,
+    uint8_t* displayMode
 ) {
     float cw = charWidth();
     ColorConfig& colors = ColorConfig::getInstance();
@@ -119,10 +120,18 @@ void SettingsLayoutContext::addCycleControl(
     if (enabled) {
         parent->addString("<", currentX, currentY, Justify::LEFT,
             Fonts::getNormal(), colors.getAccent(), fontSize);
-        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, currentY, cw * 2, lineHeightNormal,
-            downType, targetHud, 0, false, 0
-        ));
+        if (displayMode) {
+            // Use display mode constructor for DISPLAY_MODE_* types
+            parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+                currentX, currentY, cw * 2, lineHeightNormal,
+                downType, displayMode, targetHud
+            ));
+        } else {
+            parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+                currentX, currentY, cw * 2, lineHeightNormal,
+                downType, targetHud, 0, false, 0
+            ));
+        }
     }
     currentX += cw * 2;  // "< " (spacing preserved even if arrow hidden)
 
@@ -136,10 +145,18 @@ void SettingsLayoutContext::addCycleControl(
     if (enabled) {
         parent->addString(" >", currentX, currentY, Justify::LEFT,
             Fonts::getNormal(), colors.getAccent(), fontSize);
-        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, currentY, cw * 2, lineHeightNormal,
-            upType, targetHud, 0, false, 0
-        ));
+        if (displayMode) {
+            // Use display mode constructor for DISPLAY_MODE_* types
+            parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+                currentX, currentY, cw * 2, lineHeightNormal,
+                upType, displayMode, targetHud
+            ));
+        } else {
+            parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+                currentX, currentY, cw * 2, lineHeightNormal,
+                upType, targetHud, 0, false, 0
+            ));
+        }
     }
 
     currentY += lineHeightNormal;

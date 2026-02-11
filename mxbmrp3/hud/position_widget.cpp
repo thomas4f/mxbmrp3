@@ -147,11 +147,11 @@ void PositionWidget::rebuildRenderData() {
     float currentY = contentStartY;
 
     // Use full opacity for text
-    unsigned long textColor = ColorConfig::getInstance().getPrimary();
+    unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
 
     // Label (optional, controlled by title toggle)
     if (m_bShowTitle) {
-        addString("Position", contentStartX, currentY, Justify::LEFT, Fonts::getTitle(), textColor, dim.fontSize);
+        addString("Position", contentStartX, currentY, Justify::LEFT, this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
         currentY += labelHeight;
     }
 
@@ -165,7 +165,7 @@ void PositionWidget::rebuildRenderData() {
 
     // Add position value (extra large font - spans 2 lines)
     addString(positionValueBuffer, contentStartX, currentY, Justify::LEFT,
-        Fonts::getTitle(), textColor, dim.fontSizeExtraLarge);
+        this->getFont(FontCategory::TITLE), textColor, dim.fontSizeExtraLarge);
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);

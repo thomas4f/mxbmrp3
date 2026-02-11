@@ -109,6 +109,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -133,6 +134,7 @@
       <Optimization>MaxSpeed</Optimization>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -155,6 +157,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -177,6 +180,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -216,6 +220,8 @@
     <ClInclude Include="core\discord_manager.h" />
     <ClInclude Include="core\widget_constants.h" />
     <ClInclude Include="core\xinput_reader.h" />
+    <ClInclude Include="core\fmx_types.h" />
+    <ClInclude Include="core\fmx_manager.h" />
     <ClInclude Include="diagnostics\logger.h" />
     <ClInclude Include="diagnostics\timer.h" />
     <ClInclude Include="handlers\draw_handler.h" />
@@ -239,6 +245,7 @@
     <ClInclude Include="hud\base_hud.h" />
     <ClInclude Include="hud\pointer_widget.h" />
     <ClInclude Include="hud\lap_log_hud.h" />
+    <ClInclude Include="hud\lap_consistency_hud.h" />
     <ClInclude Include="hud\lap_widget.h" />
     <ClInclude Include="hud\map_hud.h" />
     <ClInclude Include="hud\radar_hud.h" />
@@ -265,6 +272,7 @@
     <ClInclude Include="hud\gamepad_widget.h" />
     <ClInclude Include="hud\lean_widget.h" />
     <ClInclude Include="hud\tyre_temp_widget.h" />
+    <ClInclude Include="hud\fmx_hud.h" />
     <ClInclude Include="hud\settings\settings_layout.h" />
     <ClInclude Include="vendor\piboso\mxb_api.h" />
     <ClInclude Include="vendor\piboso\gpb_api.h" />
@@ -308,6 +316,7 @@
     <ClCompile Include="core\update_downloader.cpp" />
     <ClCompile Include="core\discord_manager.cpp" />
     <ClCompile Include="core\xinput_reader.cpp" />
+    <ClCompile Include="core\fmx_manager.cpp" />
     <ClCompile Include="game\memory_reader.cpp" />
     <ClCompile Include="game\connection_detector.cpp" />
     <ClCompile Include="diagnostics\logger.cpp" />
@@ -332,6 +341,7 @@
     <ClCompile Include="hud\base_hud.cpp" />
     <ClCompile Include="hud\pointer_widget.cpp" />
     <ClCompile Include="hud\lap_log_hud.cpp" />
+    <ClCompile Include="hud\lap_consistency_hud.cpp" />
     <ClCompile Include="hud\lap_widget.cpp" />
     <ClCompile Include="hud\map_hud.cpp" />
     <ClCompile Include="hud\radar_hud.cpp" />
@@ -347,6 +357,8 @@
     <ClCompile Include="hud\settings\settings_layout.cpp" />
     <ClCompile Include="hud\settings\settings_tab_ideal_lap.cpp" />
     <ClCompile Include="hud\settings\settings_tab_lap_log.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_lap_consistency.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_fmx.cpp" />
     <ClCompile Include="hud\settings\settings_tab_telemetry.cpp" />
     <ClCompile Include="hud\settings\settings_tab_performance.cpp" />
     <ClCompile Include="hud\settings\settings_tab_records.cpp" />
@@ -378,6 +390,7 @@
     <ClCompile Include="hud\gamepad_widget.cpp" />
     <ClCompile Include="hud\lean_widget.cpp" />
     <ClCompile Include="hud\tyre_temp_widget.cpp" />
+    <ClCompile Include="hud\fmx_hud.cpp" />
     <!-- MX Bikes API - only compiled for MXBikes configurations -->
     <ClCompile Include="vendor\piboso\mxb_api.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='GPB-Debug|x64'">true</ExcludedFromBuild>
@@ -392,6 +405,12 @@
     <ClCompile Include="vendor\miniz\miniz_tdef.c" />
     <ClCompile Include="vendor\miniz\miniz_tinfl.c" />
     <ClCompile Include="vendor\miniz\miniz_zip.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="mxbmrp3.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="resource.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

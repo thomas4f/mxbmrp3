@@ -368,7 +368,7 @@ void LeanWidget::rebuildRenderData() {
 
     // Common values used by multiple elements
     float barWidthRef = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
-    unsigned long textColor = ColorConfig::getInstance().getPrimary();
+    unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
 
     // === Row 1-2: Arc (if enabled) ===
     if (m_enabledRows & ROW_ARC) {
@@ -390,7 +390,7 @@ void LeanWidget::rebuildRenderData() {
         float arcEndRad = ARC_END_ANGLE * DEG_TO_RAD;
 
         // Draw background arc (full gauge range) - same color as BarsWidget backgrounds
-        unsigned long arcBgColor = PluginUtils::applyOpacity(ColorConfig::getInstance().getMuted(), m_fBackgroundOpacity * 0.5f);
+        unsigned long arcBgColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), m_fBackgroundOpacity * 0.5f);
         addArcSegment(centerX, arcCenterY, innerRadius, outerRadius,
                       arcStartRad, arcEndRad, arcBgColor, ARC_SEGMENTS);
 
@@ -420,11 +420,11 @@ void LeanWidget::rebuildRenderData() {
         float markerWidth = 0.02f;
 
         addArcSegment(centerX, arcCenterY, markerInner, markerOuter,
-                      -markerWidth, markerWidth, ColorConfig::getInstance().getPrimary(), 1);
+                      -markerWidth, markerWidth, this->getColor(ColorSlot::PRIMARY), 1);
 
         // Draw lingering max markers on the arc (if enabled)
         if (m_bShowMaxMarkers) {
-            unsigned long maxMarkerColor = ColorConfig::getInstance().getPrimary();
+            unsigned long maxMarkerColor = this->getColor(ColorSlot::PRIMARY);
 
             if (m_maxFramesRemaining[0] > 0 && m_markerValueLeft > 0.5f) {
                 float leanRatio = m_markerValueLeft / MAX_LEAN_ANGLE;
@@ -456,7 +456,7 @@ void LeanWidget::rebuildRenderData() {
             // Position at row 2 (same as FuelWidget "used" row)
             float leanTextY = currentY + dim.lineHeightNormal;
             addString(angleBuffer, centerX, leanTextY, Justify::CENTER,
-                Fonts::getDigits(), textColor, dim.fontSize);
+                this->getFont(FontCategory::DIGITS), textColor, dim.fontSize);
         }
 
         currentY += dim.lineHeightNormal * 2;  // Arc takes 2 rows
@@ -471,7 +471,7 @@ void LeanWidget::rebuildRenderData() {
             snprintf(angleBuffer, sizeof(angleBuffer), "%d", displayAngle);
         }
         addString(angleBuffer, centerX, currentY, Justify::CENTER,
-            Fonts::getDigits(), textColor, dim.fontSize);
+            this->getFont(FontCategory::DIGITS), textColor, dim.fontSize);
         currentY += dim.lineHeightNormal;
     }
 
@@ -491,7 +491,7 @@ void LeanWidget::rebuildRenderData() {
         applyOffset(bgX, bgY);
         setQuadPositions(barBgQuad, bgX, bgY, contentWidth, steerBarHeight);
         barBgQuad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-        barBgQuad.m_ulColor = PluginUtils::applyOpacity(ColorConfig::getInstance().getMuted(), m_fBackgroundOpacity * 0.5f);
+        barBgQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), m_fBackgroundOpacity * 0.5f);
         m_quads.push_back(barBgQuad);
 
         float halfWidth = contentWidth / 2.0f;
@@ -517,7 +517,7 @@ void LeanWidget::rebuildRenderData() {
         // Draw steer max markers (if enabled and steer data available)
         if (m_bShowMaxMarkers && hasSteerData) {
             float steerMaxMarkerWidth = contentWidth * 0.02f;
-            unsigned long steerMaxMarkerColor = ColorConfig::getInstance().getPrimary();
+            unsigned long steerMaxMarkerColor = this->getColor(ColorSlot::PRIMARY);
 
             if (m_steerFramesRemaining[0] > 0 && m_steerMarkerLeft > 0.5f) {
                 float markerRatio = std::min(1.0f, m_steerMarkerLeft / maxSteer);
@@ -553,7 +553,7 @@ void LeanWidget::rebuildRenderData() {
         applyOffset(cmX, cmY);
         setQuadPositions(centerMarkerQuad, cmX, cmY, steerCenterMarkerW, steerCenterMarkerH);
         centerMarkerQuad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-        centerMarkerQuad.m_ulColor = ColorConfig::getInstance().getPrimary();
+        centerMarkerQuad.m_ulColor = this->getColor(ColorSlot::PRIMARY);
         m_quads.push_back(centerMarkerQuad);
 
         currentY += dim.lineHeightNormal;
@@ -566,17 +566,17 @@ void LeanWidget::rebuildRenderData() {
         if (!hasSteerData) {
             // Show N/A when spectating/replay (steer data structurally unavailable)
             snprintf(steerBuffer, sizeof(steerBuffer), "%s", Placeholders::NOT_AVAILABLE);
-            steerTextColor = ColorConfig::getInstance().getMuted();
+            steerTextColor = this->getColor(ColorSlot::MUTED);
         } else if (!bikeData.isValid) {
             snprintf(steerBuffer, sizeof(steerBuffer), "%s", Placeholders::GENERIC);
-            steerTextColor = ColorConfig::getInstance().getMuted();
+            steerTextColor = this->getColor(ColorSlot::MUTED);
         } else {
             float steerAngle = isCrashed ? m_frozenSteer : currentSteer;
             int displaySteer = static_cast<int>(std::abs(steerAngle) + 0.5f);
             snprintf(steerBuffer, sizeof(steerBuffer), "%d", displaySteer);
         }
         addString(steerBuffer, centerX, currentY, Justify::CENTER,
-            Fonts::getDigits(), steerTextColor, dim.fontSize);
+            this->getFont(FontCategory::DIGITS), steerTextColor, dim.fontSize);
         currentY += dim.lineHeightNormal;
     }
 }

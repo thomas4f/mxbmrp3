@@ -98,22 +98,21 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
     const char* lapTimePlaceholder = Placeholders::LAP_TIME;
 
     // Determine text color
-    const ColorConfig& colors = ColorConfig::getInstance();
-    unsigned long textColor = colors.getPrimary();
-    unsigned long mutedColor = colors.getMuted();
+    unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
+    unsigned long mutedColor = this->getColor(ColorSlot::MUTED);
     if (!isPlaceholder && entry.isGapRow) {
         if (entry.isGapInverted) {
             // Inverted positions on track vs classification - use warning color
-            textColor = colors.getWarning();
+            textColor = this->getColor(ColorSlot::WARNING);
         } else {
             // Gap rows: red for rider ahead (you're losing), green for rider behind (you're gaining)
-            textColor = entry.isGapToRiderAhead ? colors.getNegative() : colors.getPositive();
+            textColor = entry.isGapToRiderAhead ? this->getColor(ColorSlot::NEGATIVE) : this->getColor(ColorSlot::POSITIVE);
         }
     } else if (!isPlaceholder && !entry.isGapRow) {
         // Regular riders: use muted for DNS/DSQ/RETIRED
         using namespace PluginConstants::RiderState;
         if (entry.state == DNS || entry.state == DSQ || entry.state == RETIRED) {
-            textColor = colors.getMuted();
+            textColor = this->getColor(ColorSlot::MUTED);
         }
     }
 
@@ -211,12 +210,12 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
             } else if (entry.position == Position::THIRD) {
                 columnColor = PodiumColors::BRONZE;
             } else {
-                columnColor = colors.getSecondary();
+                columnColor = this->getColor(ColorSlot::SECONDARY);
             }
         }
         // Race number and bike columns use tertiary color
         if ((col.columnIndex == COL_IDX_RACENUM || col.columnIndex == COL_IDX_BIKE) && !isPlaceholder && !entry.isGapRow) {
-            columnColor = colors.getTertiary();
+            columnColor = this->getColor(ColorSlot::TERTIARY);
         }
 
         // Use muted color for placeholder values
@@ -227,7 +226,7 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
 
         // Use Digits font for numeric columns (BEST_LAP, OFFICIAL_GAP, LIVE_GAP)
         int font = (col.columnIndex == COL_IDX_BEST_LAP || col.columnIndex == COL_IDX_OFFICIAL_GAP || col.columnIndex == COL_IDX_LIVE_GAP)
-            ? Fonts::getDigits() : Fonts::getNormal();
+            ? this->getFont(FontCategory::DIGITS) : this->getFont(FontCategory::NORMAL);
         addString(text, col.position, currentY, static_cast<int>(col.justify), font, columnColor, dim.fontSize);
     }
 }
@@ -1035,7 +1034,7 @@ void StandingsHud::rebuildRenderData() {
 
     // Title
     addTitleString("Standings", hudDim.contentStartX, currentY, Justify::LEFT,
-        Fonts::getTitle(), ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
+        this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
 
     currentY += hudDim.titleHeight;
 
@@ -1059,7 +1058,7 @@ void StandingsHud::rebuildRenderData() {
 
                 // Apply transparency to bike brand color (or accent color if configured)
                 unsigned long highlightColor = m_bUseAccentForHighlight
-                    ? ColorConfig::getInstance().getAccent()
+                    ? this->getColor(ColorSlot::ACCENT)
                     : entry.bikeBrandColor;
                 highlight.m_ulColor = PluginUtils::applyOpacity(highlightColor, 80.0f / 255.0f);
 
@@ -1076,7 +1075,7 @@ void StandingsHud::rebuildRenderData() {
                 hoverHighlight.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
 
                 // Use accent color with transparency for hover
-                hoverHighlight.m_ulColor = PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(), 60.0f / 255.0f);
+                hoverHighlight.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::ACCENT), 60.0f / 255.0f);
                 m_quads.push_back(hoverHighlight);
             }
         }

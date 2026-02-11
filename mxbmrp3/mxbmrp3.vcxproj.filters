@@ -276,6 +276,9 @@
     <ClInclude Include="hud\lap_log_hud.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
+    <ClInclude Include="hud\lap_consistency_hud.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
     <ClInclude Include="core\xinput_reader.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
@@ -359,6 +362,15 @@
     </ClInclude>
     <ClInclude Include="hud\tacho_widget.h">
       <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\fmx_hud.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="core\fmx_types.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\fmx_manager.h">
+      <Filter>Header Files\core</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -509,6 +521,12 @@
     <ClCompile Include="hud\settings\settings_tab_lap_log.cpp">
       <Filter>Source Files\hud\settings</Filter>
     </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_lap_consistency.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_fmx.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
     <ClCompile Include="hud\settings\settings_tab_telemetry.cpp">
       <Filter>Source Files\hud\settings</Filter>
     </ClCompile>
@@ -561,6 +579,9 @@
       <Filter>Source Files\hud\settings</Filter>
     </ClCompile>
     <ClCompile Include="hud\lap_log_hud.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\lap_consistency_hud.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="core\xinput_reader.cpp">
@@ -650,5 +671,21 @@
     <ClCompile Include="hud\tacho_widget.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
+    <ClCompile Include="hud\fmx_hud.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="core\fmx_manager.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="mxbmrp3.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="resource.h">
+      <Filter>Resource Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

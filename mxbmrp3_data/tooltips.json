@@ -11,6 +11,7 @@
     "map": "Overhead view of the track with real-time rider positions. Supports zoom and display modes.",
     "radar": "Shows nearby riders relative to your position. Useful for close racing awareness.",
     "lap_log": "History of your recent lap times with sector breakdowns. Shows lap-by-lap performance.",
+    "lap_consistency": "Visualizes lap time consistency with bar charts and statistics. Track your improvement over time.",
     "ideal_lap": "Displays your theoretical best lap time calculated from your fastest individual sectors.",
     "telemetry": "Real-time input data including throttle, brake, clutch, RPM, suspension travel, and gear.",
     "performance": "System performance metrics including frame rate and plugin execution time.",
@@ -19,7 +20,8 @@
     "session": "Session information including track, server details, player count, and password display.",
     "timing": "Lap and sector timing display with comparisons to session best and personal records.",
     "gap_bar": "Visual progress bar showing your gap to the rider ahead and behind.",
-    "widgets": "Simple HUD elements showing speed, position, lap count, session time, and other info."
+    "widgets": "Simple HUD elements showing speed, position, lap count, session time, and other info.",
+    "fmx": "Freestyle trick detection with scoring, chain combos, and rotation visualization."
   },
   "controls": {
     "common.visible": "Show or hide this element during gameplay.",
@@ -50,6 +52,19 @@
     "lap_log.order": "Display order. Oldest shows oldest laps at top, Newest shows newest at top.",
     "lap_log.gap_row": "Show live gap to personal best below the current lap time.",
     "lap_log.col_sectors": "Show sector split times (S1, S2, S3).",
+
+    "lap_consistency.style": "Display mode. Graphs shows bar chart, Numbers shows statistics only, Both shows both.",
+    "lap_consistency.reference": "Baseline for comparison. Bars show delta to this reference time.",
+    "lap_consistency.lap_count": "Number of recent laps to include in the chart and statistics.",
+    "lap_consistency.trend_mode": "Trend line overlay. Off=none, Line=connected dots, Average=smoothed 3-lap moving average, Linear=best-fit regression line.",
+    "lap_consistency.stat_ref": "Show reference time row. Displays the baseline time for comparison.",
+    "lap_consistency.stat_best": "Show best lap time from the displayed laps.",
+    "lap_consistency.stat_avg": "Show average lap time across the displayed laps.",
+    "lap_consistency.stat_worst": "Show worst (slowest) lap time from the displayed laps.",
+    "lap_consistency.stat_last": "Show your most recent lap time.",
+    "lap_consistency.stat_stddev": "Show standard deviation (+/-) indicating lap time spread.",
+    "lap_consistency.stat_trend": "Show trend indicator (Faster/Stable/Slower) based on recent laps.",
+    "lap_consistency.stat_cons": "Show consistency score (%). Higher is more consistent.",
 
     "telemetry.display": "Display mode. Graphs shows visual meters, Numbers shows text values, Both shows both.",
     "telemetry.throttle": "Show throttle input percentage.",
@@ -159,7 +174,7 @@
     "appearance.font_normal": "Font used for normal text.",
     "appearance.font_strong": "Font used for emphasized text.",
     "appearance.font_digits": "Font used for numeric values (times, gaps, telemetry).",
-    "appearance.font_marker": "Font used for map and radar markers.",
+    "appearance.font_marker": "Font used for pitboard handwritten text.",
     "appearance.font_small": "Font used for small text and footnotes.",
     "appearance.color_primary": "Primary text color used for important information.",
     "appearance.color_secondary": "Secondary text color for labels and less important text.",
@@ -216,6 +231,13 @@
     "hotkeys.rumble": "Toggle the rumble HUD on/off.",
     "hotkeys.widgets": "Toggle all widgets on/off.",
     "hotkeys.all_huds": "Toggle all HUDs on/off.",
-    "hotkeys.reload": "Reload configuration from disk."
+    "hotkeys.reload": "Reload configuration from disk.",
+
+    "fmx.chain_rows": "Number of tricks shown in the stack. Off hides the stack, 1 shows active trick only, 2+ shows history.",
+    "fmx.row_trick_stats": "Show duration, distance, and peak rotation below the active trick name.",
+    "fmx.row_combo_arc": "Show combo arc with chain multiplier and score breakdown.",
+    "fmx.row_arcs": "Show pitch, yaw, and roll rotation arcs with start and peak markers.",
+    "fmx.debug_logging": "Log trick detection state to the plugin log file at 10fps (developer mode only).",
+    "fmx.row_debug_values": "Show raw rotation values for pitch, yaw, and roll (developer mode only)."
   }
 }

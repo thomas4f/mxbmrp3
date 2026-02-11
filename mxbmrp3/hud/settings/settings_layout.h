@@ -73,6 +73,7 @@ struct SettingsLayoutContext {
     // If enabled is false, no click regions are added and muted color is used
     // If isOff is true, the value is muted (for "Off" state visual consistency)
     // tooltipId is optional - if provided, a row-wide hover region is created
+    // displayMode is optional - if provided, passed to click handler for DISPLAY_MODE_* types
     void addCycleControl(
         const char* label,
         const char* value,
@@ -82,7 +83,8 @@ struct SettingsLayoutContext {
         BaseHud* targetHud,
         bool enabled = true,
         bool isOff = false,
-        const char* tooltipId = nullptr
+        const char* tooltipId = nullptr,
+        uint8_t* displayMode = nullptr
     );
 
     // Add a toggle control with < On/Off > pattern

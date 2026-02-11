@@ -143,7 +143,7 @@ void BarsWidget::rebuildRenderData() {
     }
 
     // Bar colors - use muted gray when data unavailable
-    unsigned long mutedColor = ColorConfig::getInstance().getMuted();
+    unsigned long mutedColor = this->getColor(ColorSlot::MUTED);
     unsigned long throttleColor = SemanticColors::THROTTLE;       // Green (always available)
     unsigned long frontBrakeColor = SemanticColors::FRONT_BRAKE;  // Red (always available)
     unsigned long rearBrakeColor = hasFullTelemetry ? SemanticColors::REAR_BRAKE : mutedColor;
@@ -165,7 +165,7 @@ void BarsWidget::rebuildRenderData() {
         }
         if (m_bShowLabels) {
             addString("T", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                      Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+                      this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
         }
         currentX += barWidth + barSpacing;
     }
@@ -188,7 +188,7 @@ void BarsWidget::rebuildRenderData() {
         }
         if (m_bShowLabels) {
             addString("B", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                      Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+                      this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
         }
         currentX += barWidth + barSpacing;
     }
@@ -202,7 +202,7 @@ void BarsWidget::rebuildRenderData() {
         }
         if (m_bShowLabels) {
             addString("C", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                      Fonts::getNormal(), hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
+                      this->getFont(FontCategory::NORMAL), hasFullTelemetry ? this->getColor(ColorSlot::TERTIARY) : mutedColor, dims.fontSize);
         }
         currentX += barWidth + barSpacing;
     }
@@ -216,7 +216,7 @@ void BarsWidget::rebuildRenderData() {
         }
         if (m_bShowLabels) {
             addString("R", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                      Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+                      this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
         }
         currentX += barWidth + barSpacing;
     }
@@ -233,7 +233,7 @@ void BarsWidget::rebuildRenderData() {
         }
         if (m_bShowLabels) {
             addString("S", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                      Fonts::getNormal(), hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
+                      this->getFont(FontCategory::NORMAL), hasFullTelemetry ? this->getColor(ColorSlot::TERTIARY) : mutedColor, dims.fontSize);
         }
         currentX += barWidth + barSpacing;
     }
@@ -247,7 +247,7 @@ void BarsWidget::rebuildRenderData() {
         }
         if (m_bShowLabels) {
             addString("F", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                      Fonts::getNormal(), hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
+                      this->getFont(FontCategory::NORMAL), hasFullTelemetry ? this->getColor(ColorSlot::TERTIARY) : mutedColor, dims.fontSize);
         }
         currentX += barWidth + barSpacing;
     }
@@ -295,7 +295,7 @@ void BarsWidget::rebuildRenderData() {
         }
         if (m_bShowLabels) {
             addString("E", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                      Fonts::getNormal(), hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
+                      this->getFont(FontCategory::NORMAL), hasFullTelemetry ? this->getColor(ColorSlot::TERTIARY) : mutedColor, dims.fontSize);
         }
         currentX += barWidth + barSpacing;
     }
@@ -343,7 +343,7 @@ void BarsWidget::rebuildRenderData() {
         }
         if (m_bShowLabels) {
             addString("W", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                      Fonts::getNormal(), hasFullTelemetry ? ColorConfig::getInstance().getTertiary() : mutedColor, dims.fontSize);
+                      this->getFont(FontCategory::NORMAL), hasFullTelemetry ? this->getColor(ColorSlot::TERTIARY) : mutedColor, dims.fontSize);
         }
         currentX += barWidth + barSpacing;
     }
@@ -393,7 +393,7 @@ void BarsWidget::addMaxMarker(float x, float y, float barWidth, float barHeight,
     applyOffset(markerX, markerY);
     setQuadPositions(markerQuad, markerX, markerY, barWidth, markerHeight);
     markerQuad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-    markerQuad.m_ulColor = ColorConfig::getInstance().getPrimary();  // White
+    markerQuad.m_ulColor = this->getColor(ColorSlot::PRIMARY);  // White
     m_quads.push_back(markerQuad);
 }
 
@@ -431,7 +431,7 @@ void BarsWidget::addVerticalBar(float x, float y, float barWidth, float barHeigh
         emptyQuad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
 
         // Apply background opacity to empty portion (half opacity)
-        emptyQuad.m_ulColor = PluginUtils::applyOpacity(ColorConfig::getInstance().getMuted(), m_fBackgroundOpacity * 0.5f);
+        emptyQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), m_fBackgroundOpacity * 0.5f);
 
         m_quads.push_back(emptyQuad);
     }

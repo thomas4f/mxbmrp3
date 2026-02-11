@@ -289,7 +289,7 @@ void PitboardHud::rebuildRenderData() {
     // Title row (optional)
     if (m_bShowTitle) {
         addTitleString("Pitboard", centerX, currentY, Justify::CENTER,
-            Fonts::getMarker(), ColorPalette::BLACK, dim.fontSize);
+            this->getFont(FontCategory::MARKER), ColorPalette::BLACK, dim.fontSize);
         currentY += titleHeight;
     }
 
@@ -314,7 +314,7 @@ void PitboardHud::rebuildRenderData() {
         float riderIdPosX = centerX + (backgroundWidth * layout.riderIdX);
         float riderIdPosY = currentY + (backgroundHeight * layout.riderIdY);
         addString(riderIdStr, riderIdPosX, riderIdPosY, Justify::CENTER,
-                  Fonts::getMarker(), ColorPalette::BLACK, dim.fontSize, true);
+                  this->getFont(FontCategory::MARKER), ColorPalette::BLACK, dim.fontSize, true);
     }
     currentY += dim.lineHeightNormal;
 
@@ -325,7 +325,7 @@ void PitboardHud::rebuildRenderData() {
             float sessionPosX = centerX + (backgroundWidth * layout.sessionX);
             float sessionPosY = currentY + (backgroundHeight * layout.sessionY);
             addString(sessionName, sessionPosX, sessionPosY, Justify::CENTER,
-                      Fonts::getMarker(), ColorPalette::BLACK, dim.fontSize, true);
+                      this->getFont(FontCategory::MARKER), ColorPalette::BLACK, dim.fontSize, true);
         }
     }
     currentY += dim.lineHeightNormal;
@@ -342,7 +342,7 @@ void PitboardHud::rebuildRenderData() {
         float posPosX = leftX + (backgroundWidth * layout.positionX);
         float posPosY = plY + (backgroundHeight * layout.positionY);
         addString(positionStr, posPosX, posPosY, Justify::LEFT,
-                  Fonts::getMarker(), ColorPalette::BLACK, dim.fontSizeLarge, true);
+                  this->getFont(FontCategory::MARKER), ColorPalette::BLACK, dim.fontSizeLarge, true);
     }
     if (m_enabledRows & ROW_TIME) {
         char timeStr[24];
@@ -359,7 +359,7 @@ void PitboardHud::rebuildRenderData() {
             float timePosX = centerX + (backgroundWidth * layout.timeX);
             float timePosY = currentY + (backgroundHeight * layout.timeY);
             addString(timeStr, timePosX, timePosY, Justify::CENTER,
-                      Fonts::getMarker(), ColorPalette::BLACK, dim.fontSize, true);
+                      this->getFont(FontCategory::MARKER), ColorPalette::BLACK, dim.fontSize, true);
         }
     }
     if (m_enabledRows & ROW_LAP) {
@@ -386,7 +386,7 @@ void PitboardHud::rebuildRenderData() {
             float lapPosX = rightX + (backgroundWidth * layout.lapX);
             float lapPosY = plY + (backgroundHeight * layout.lapY);
             addString(lapStr, lapPosX, lapPosY, Justify::RIGHT,
-                      Fonts::getMarker(), ColorPalette::BLACK, dim.fontSizeLarge, true);
+                      this->getFont(FontCategory::MARKER), ColorPalette::BLACK, dim.fontSizeLarge, true);
         }
     }
     currentY += dim.lineHeightNormal;
@@ -410,7 +410,7 @@ void PitboardHud::rebuildRenderData() {
             float lastLapPosX = centerX + (backgroundWidth * layout.lastLapX);
             float lastLapPosY = currentY + (backgroundHeight * layout.lastLapY);
             addString(timeStr, lastLapPosX, lastLapPosY, Justify::CENTER,
-                      Fonts::getMarker(), ColorPalette::BLACK, dim.fontSize, true);
+                      this->getFont(FontCategory::MARKER), ColorPalette::BLACK, dim.fontSize, true);
         }
     }
     currentY += dim.lineHeightNormal;
@@ -430,7 +430,7 @@ void PitboardHud::rebuildRenderData() {
             float gapPosX = centerX + (backgroundWidth * layout.gapX);
             float gapPosY = currentY + (backgroundHeight * layout.gapY);
             addString(gapStr, gapPosX, gapPosY, Justify::CENTER,
-                      Fonts::getMarker(), ColorPalette::BLACK, dim.fontSize, true);
+                      this->getFont(FontCategory::MARKER), ColorPalette::BLACK, dim.fontSize, true);
         }
     }
 }

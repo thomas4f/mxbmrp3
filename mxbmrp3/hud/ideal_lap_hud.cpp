@@ -173,7 +173,7 @@ void IdealLapHud::rebuildRenderData() {
 
     // Title row
     addTitleString("Ideal Lap", contentStartX, currentY, Justify::LEFT,
-        Fonts::getTitle(), ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
+        this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
     currentY += titleHeight;
 
     // Recalculate column positions for current scale
@@ -218,15 +218,15 @@ void IdealLapHud::rebuildRenderData() {
         snprintf(paddedLabel, sizeof(paddedLabel), "%5s", label);
 
         // Label in secondary color
-        addString(paddedLabel, m_columns.label, currentY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+        addString(paddedLabel, m_columns.label, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
 
         // Show ideal time or placeholder
         if (idealTimeMs > 0) {
             PluginUtils::formatLapTime(idealTimeMs, timeStr, sizeof(timeStr));
-            addString(timeStr, m_columns.time, currentY, Justify::LEFT, Fonts::getDigits(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+            addString(timeStr, m_columns.time, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::PRIMARY), dim.fontSize);
         } else {
             strcpy_s(timeStr, sizeof(timeStr), Placeholders::LAP_TIME);
-            addString(timeStr, m_columns.time, currentY, Justify::LEFT, Fonts::getDigits(), ColorConfig::getInstance().getMuted(), dim.fontSize);
+            addString(timeStr, m_columns.time, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
         }
 
         // Show gap (current - ideal)
@@ -239,12 +239,12 @@ void IdealLapHud::rebuildRenderData() {
             }
             PluginUtils::formatTimeDiff(diffStr, sizeof(diffStr), diff);
             unsigned long diffColor = (diff <= 0)
-                ? ColorConfig::getInstance().getPositive()   // On pace or faster (green)
-                : ColorConfig::getInstance().getNegative();  // Slower (red)
-            addString(diffStr, m_columns.diff, currentY, Justify::LEFT, Fonts::getDigits(), diffColor, dim.fontSize);
+                ? this->getColor(ColorSlot::POSITIVE)   // On pace or faster (green)
+                : this->getColor(ColorSlot::NEGATIVE);  // Slower (red)
+            addString(diffStr, m_columns.diff, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), diffColor, dim.fontSize);
         } else {
             // No comparison available
-            addString(Placeholders::GENERIC, m_columns.diff, currentY, Justify::LEFT, Fonts::getDigits(), ColorConfig::getInstance().getMuted(), dim.fontSize);
+            addString(Placeholders::GENERIC, m_columns.diff, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
         }
 
         currentY += dim.lineHeightNormal;
@@ -296,15 +296,15 @@ void IdealLapHud::rebuildRenderData() {
         char paddedLabel[8];
 
         snprintf(paddedLabel, sizeof(paddedLabel), "%5s", label);
-        addString(paddedLabel, m_columns.label, currentY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+        addString(paddedLabel, m_columns.label, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
 
         // Show actual lap time
         if (actualLapTime > 0) {
             PluginUtils::formatLapTime(actualLapTime, timeStr, sizeof(timeStr));
-            addString(timeStr, m_columns.time, currentY, Justify::LEFT, Fonts::getDigits(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+            addString(timeStr, m_columns.time, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::PRIMARY), dim.fontSize);
         } else {
             strcpy_s(timeStr, sizeof(timeStr), Placeholders::LAP_TIME);
-            addString(timeStr, m_columns.time, currentY, Justify::LEFT, Fonts::getDigits(), ColorConfig::getInstance().getMuted(), dim.fontSize);
+            addString(timeStr, m_columns.time, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
         }
 
         // Show gap (actual - ideal)
@@ -317,11 +317,11 @@ void IdealLapHud::rebuildRenderData() {
             }
             PluginUtils::formatTimeDiff(diffStr, sizeof(diffStr), diff);
             unsigned long diffColor = (diff <= 0)
-                ? ColorConfig::getInstance().getPositive()   // On pace or faster (green)
-                : ColorConfig::getInstance().getNegative();  // Slower (red)
-            addString(diffStr, m_columns.diff, currentY, Justify::LEFT, Fonts::getDigits(), diffColor, dim.fontSize);
+                ? this->getColor(ColorSlot::POSITIVE)   // On pace or faster (green)
+                : this->getColor(ColorSlot::NEGATIVE);  // Slower (red)
+            addString(diffStr, m_columns.diff, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), diffColor, dim.fontSize);
         } else {
-            addString(Placeholders::GENERIC, m_columns.diff, currentY, Justify::LEFT, Fonts::getDigits(), ColorConfig::getInstance().getMuted(), dim.fontSize);
+            addString(Placeholders::GENERIC, m_columns.diff, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
         }
 
         currentY += dim.lineHeightNormal;
@@ -343,17 +343,17 @@ void IdealLapHud::rebuildRenderData() {
         char timeStr[16];
         char paddedLabel[8];
         snprintf(paddedLabel, sizeof(paddedLabel), "%5s", "Ideal");
-        addString(paddedLabel, m_columns.label, currentY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+        addString(paddedLabel, m_columns.label, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
 
         if (idealLapTime > 0) {
             PluginUtils::formatLapTime(idealLapTime, timeStr, sizeof(timeStr));
-            addString(timeStr, m_columns.time, currentY, Justify::LEFT, Fonts::getDigits(), ColorConfig::getInstance().getPositive(), dim.fontSize);
+            addString(timeStr, m_columns.time, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::POSITIVE), dim.fontSize);
         } else {
             strcpy_s(timeStr, sizeof(timeStr), Placeholders::LAP_TIME);
-            addString(timeStr, m_columns.time, currentY, Justify::LEFT, Fonts::getDigits(), ColorConfig::getInstance().getMuted(), dim.fontSize);
+            addString(timeStr, m_columns.time, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
         }
         // No gap for ideal row
-        addString("", m_columns.diff, currentY, Justify::LEFT, Fonts::getDigits(), ColorConfig::getInstance().getMuted(), dim.fontSize);
+        addString("", m_columns.diff, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
         currentY += dim.lineHeightNormal;
     }
 }

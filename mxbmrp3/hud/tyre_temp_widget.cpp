@@ -120,8 +120,8 @@ void TyreTempWidget::rebuildRenderData() {
     float barHeight = dim.lineHeightNormal * 0.8f;  // 80% of line height
 
     // Colors
-    unsigned long textColor = ColorConfig::getInstance().getPrimary();
-    unsigned long mutedColor = ColorConfig::getInstance().getMuted();
+    unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
+    unsigned long mutedColor = this->getColor(ColorSlot::MUTED);
     unsigned long barBgColor = PluginUtils::applyOpacity(mutedColor, m_fBackgroundOpacity * 0.5f);
 
     // Section labels: L, M, R - placed in top label area (like BarsWidget bottom labels)
@@ -129,7 +129,7 @@ void TyreTempWidget::rebuildRenderData() {
     for (int s = 0; s < NUM_SECTIONS; ++s) {
         float labelX = contentStartX + sectionWidth * s + sectionWidth / 2.0f;
         addString(labels[s], labelX, startY, Justify::CENTER,
-            Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dim.fontSize);
+            this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dim.fontSize);
     }
 
     // Content starts after label area
@@ -190,7 +190,7 @@ void TyreTempWidget::rebuildRenderData() {
                 }
 
                 addString(tempBuffer, tempX, currentY, Justify::CENTER,
-                    Fonts::getDigits(), tempColor, dim.fontSize);
+                    this->getFont(FontCategory::DIGITS), tempColor, dim.fontSize);
             }
 
             currentY += dim.lineHeightNormal;

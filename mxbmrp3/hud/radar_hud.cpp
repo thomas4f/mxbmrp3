@@ -288,7 +288,7 @@ void RadarHud::renderRiderLabel(float radarX, float radarY, int raceNum, int pos
 
     if (labelStr[0] != '\0') {
         // Use podium colors for position labels
-        unsigned long labelColor = ColorConfig::getInstance().getPrimary();
+        unsigned long labelColor = this->getColor(ColorSlot::PRIMARY);
         if (m_labelMode == LabelMode::POSITION || m_labelMode == LabelMode::BOTH) {
             if (position == Position::FIRST) {
                 labelColor = PodiumColors::GOLD;
@@ -308,17 +308,17 @@ void RadarHud::renderRiderLabel(float radarX, float radarY, int raceNum, int pos
 
         // Render outline at 4 cardinal directions (skip drop shadow - has own outline)
         addString(labelStr, screenX - outlineOffset, labelY, Justify::CENTER,
-                 Fonts::getSmall(), outlineColor, labelFontSize, true);
+                 this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
         addString(labelStr, screenX + outlineOffset, labelY, Justify::CENTER,
-                 Fonts::getSmall(), outlineColor, labelFontSize, true);
+                 this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
         addString(labelStr, screenX, labelY - outlineOffset, Justify::CENTER,
-                 Fonts::getSmall(), outlineColor, labelFontSize, true);
+                 this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
         addString(labelStr, screenX, labelY + outlineOffset, Justify::CENTER,
-                 Fonts::getSmall(), outlineColor, labelFontSize, true);
+                 this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
 
         // Render main text on top
         addString(labelStr, screenX, labelY, Justify::CENTER,
-                 Fonts::getSmall(), labelColor, labelFontSize, true);
+                 this->getFont(FontCategory::SMALL), labelColor, labelFontSize, true);
     }
 }
 
@@ -417,9 +417,9 @@ void RadarHud::rebuildRenderData() {
         float titleX = x + dim.paddingH;
         float titleY = y + dim.paddingV;
         unsigned long titleColor = PluginUtils::applyOpacity(
-            ColorConfig::getInstance().getPrimary(), maxRiderOpacity);
+            this->getColor(ColorSlot::PRIMARY), maxRiderOpacity);
         addTitleString("RADAR", titleX, titleY, Justify::LEFT,
-                      Fonts::getSmall(), titleColor, dim.fontSizeLarge);
+                      this->getFont(FontCategory::SMALL), titleColor, dim.fontSizeLarge);
     }
 
     // Calculate radar center position
@@ -675,18 +675,21 @@ void RadarHud::rebuildRenderData() {
             trackedShape = trackedConfig->shapeIndex;
 
             // Apply position-based color modulation (lighten if ahead by laps, darken if behind by laps)
-            const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
-            const StandingsData* riderStanding = pluginData.getStanding(pos.raceNum);
-            int playerLaps = playerStanding ? playerStanding->numLaps : 0;
-            int riderLaps = riderStanding ? riderStanding->numLaps : 0;
-            int lapDiff = riderLaps - playerLaps;
+            // Only in race sessions where lap position matters
+            if (pluginData.isRaceSession()) {
+                const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
+                const StandingsData* riderStanding = pluginData.getStanding(pos.raceNum);
+                int playerLaps = playerStanding ? playerStanding->numLaps : 0;
+                int riderLaps = riderStanding ? riderStanding->numLaps : 0;
+                int lapDiff = riderLaps - playerLaps;
 
-            if (lapDiff >= 1) {
-                // Rider is ahead by laps - lighten color
-                baseColor = PluginUtils::lightenColor(baseColor, 0.4f);
-            } else if (lapDiff <= -1) {
-                // Rider is behind by laps - darken color
-                baseColor = PluginUtils::darkenColor(baseColor, 0.6f);
+                if (lapDiff >= 1) {
+                    // Rider is ahead by laps - lighten color
+                    baseColor = PluginUtils::lightenColor(baseColor, 0.4f);
+                } else if (lapDiff <= -1) {
+                    // Rider is behind by laps - darken color
+                    baseColor = PluginUtils::darkenColor(baseColor, 0.6f);
+                }
             }
 
             riderColor = PluginUtils::applyOpacity(baseColor, trackFadeOpacity);
@@ -701,14 +704,14 @@ void RadarHud::rebuildRenderData() {
 
             unsigned long baseColor = PluginUtils::getRelativePositionColor(
                 playerPosition, riderPosition, playerLaps, riderLaps,
-                ColorConfig::getInstance().getNeutral(),
-                ColorConfig::getInstance().getWarning(),
-                ColorConfig::getInstance().getTertiary());
+                this->getColor(ColorSlot::NEUTRAL),
+                this->getColor(ColorSlot::WARNING),
+                this->getColor(ColorSlot::TERTIARY));
             riderColor = PluginUtils::applyOpacity(baseColor, trackFadeOpacity);
         } else if (m_riderColorMode == RiderColorMode::BRAND) {
             riderColor = PluginUtils::applyOpacity(entry->bikeBrandColor, 0.75f * trackFadeOpacity);
         } else {
-            riderColor = PluginUtils::applyOpacity(ColorConfig::getInstance().getTertiary(), trackFadeOpacity);
+            riderColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::TERTIARY), trackFadeOpacity);
         }
 
         // Render rider sprite with relative heading (pass tracked shape if available)
@@ -902,9 +905,9 @@ void RadarHud::renderProximityArrows(const Unified::TrackPositionData* localPlay
 
             unsigned long baseColor = PluginUtils::getRelativePositionColor(
                 playerPosition, riderPosition, playerLaps, riderLaps,
-                ColorConfig::getInstance().getNeutral(),
-                ColorConfig::getInstance().getWarning(),
-                ColorConfig::getInstance().getTertiary());
+                this->getColor(ColorSlot::NEUTRAL),
+                this->getColor(ColorSlot::WARNING),
+                this->getColor(ColorSlot::TERTIARY));
             arrowColor = PluginUtils::applyOpacity(baseColor, opacity);
         } else {
             // Distance-based coloring: red = close, yellow = mid, green = far

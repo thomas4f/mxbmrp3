@@ -33,6 +33,8 @@
 #include "tracked_riders_manager.h"
 #include "rumble_profile_manager.h"
 #include "odometer_manager.h"
+#include "update_checker.h"
+#include "update_downloader.h"
 #if GAME_HAS_DISCORD
 #include "discord_manager.h"
 #endif
@@ -84,16 +86,20 @@ void PluginManager::initialize(const char* savePath) {
 void PluginManager::shutdown() {
     DEBUG_INFO("PluginManager shutdown");
 
+    // Shutdown network threads first (these may have blocking I/O)
+    UpdateChecker::getInstance().shutdown();
+    UpdateDownloader::getInstance().shutdown();
+
+#if GAME_HAS_DISCORD
+    // Shutdown Discord Rich Presence (clears presence from Discord)
+    DiscordManager::getInstance().shutdown();
+#endif
+
     // Save rumble profiles before shutdown
     RumbleProfileManager::getInstance().save();
 
     // Save odometer data before shutdown
     OdometerManager::getInstance().save();
-
-#if GAME_HAS_DISCORD
-    // Shutdown Discord Rich Presence first (clears presence from Discord)
-    DiscordManager::getInstance().shutdown();
-#endif
 
     // Shutdown HUD manager
     HudManager::getInstance().shutdown();

@@ -509,7 +509,7 @@ void GamepadWidget::addTriggerButton(float centerX, float centerY, float width, 
 
                 SPluginQuad_t fillQuad;
                 fillQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-                fillQuad.m_ulColor = ColorConfig::getInstance().getPrimary();
+                fillQuad.m_ulColor = this->getColor(ColorSlot::PRIMARY);
                 if (isLeft) {
                     fillQuad.m_aafPos[0][0] = outerX0; fillQuad.m_aafPos[0][1] = y0;
                     fillQuad.m_aafPos[1][0] = outerX1; fillQuad.m_aafPos[1][1] = y1;
@@ -615,7 +615,7 @@ void GamepadWidget::addMenuButton(float centerX, float centerY, float width, flo
     if (label) {
         float labelFontSize = dims.fontSize * 0.5f;
         addString(label, centerX, centerY - labelFontSize * 0.4f, Justify::CENTER,
-            Fonts::getSmall(), COLOR_MENUBTN, labelFontSize);
+            this->getFont(FontCategory::SMALL), COLOR_MENUBTN, labelFontSize);
     }
 }
 

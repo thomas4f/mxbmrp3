@@ -116,7 +116,7 @@ void RumbleHud::addVerticalBar(float x, float y, float barWidth, float barHeight
         emptyQuad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
 
         // Apply background opacity to empty portion (half opacity)
-        emptyQuad.m_ulColor = PluginUtils::applyOpacity(ColorConfig::getInstance().getMuted(), m_fBackgroundOpacity * 0.5f);
+        emptyQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), m_fBackgroundOpacity * 0.5f);
 
         m_quads.push_back(emptyQuad);
     }
@@ -180,7 +180,7 @@ void RumbleHud::addMaxMarker(float x, float y, float barWidth, float barHeight, 
     applyOffset(markerX, markerY);
     setQuadPositions(markerQuad, markerX, markerY, barWidth, markerHeight);
     markerQuad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-    markerQuad.m_ulColor = ColorConfig::getInstance().getPrimary();  // White
+    markerQuad.m_ulColor = this->getColor(ColorSlot::PRIMARY);  // White
     m_quads.push_back(markerQuad);
 }
 
@@ -189,8 +189,13 @@ void RumbleHud::rebuildRenderData() {
     clearStrings();
 
     const auto dims = getScaledDimensions();
-    const XInputReader& xinput = PluginData::getInstance().getXInputReader();
+    const PluginData& pluginData = PluginData::getInstance();
+    const XInputReader& xinput = pluginData.getXInputReader();
     const RumbleConfig& config = xinput.getRumbleConfig();
+
+    // Rumble data is only valid when player is on track
+    // During spectate/replay, telemetry isn't received so history would be stale
+    bool isOnTrack = (pluginData.getDrawState() == ViewState::ON_TRACK);
 
     // Calculate dimensions
     float graphWidth = PluginUtils::calculateMonospaceTextWidth(GRAPH_WIDTH_CHARS, dims.fontSize);
@@ -232,7 +237,7 @@ void RumbleHud::rebuildRenderData() {
     // Title
     if (m_bShowTitle) {
         addTitleString("Rumble", contentStartX, currentY, Justify::LEFT,
-            Fonts::getTitle(), ColorConfig::getInstance().getPrimary(), dims.fontSizeLarge);
+            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dims.fontSizeLarge);
         currentY += titleHeight;
     }
 
@@ -252,68 +257,73 @@ void RumbleHud::rebuildRenderData() {
     float graphStartX = contentStartX;
     float graphStartY = currentY;
 
-    // Grid lines (20%, 40%, 60%, 80%)
-    unsigned long gridColor = ColorConfig::getInstance().getMuted();
+    // Grid lines (0%, 50%, 100%)
+    unsigned long gridColor = this->getColor(ColorSlot::MUTED);
     float gridLineThickness = 0.001f * getScale();
 
     const float gridValues[] = {
-        GRID_LINE_80_PERCENT,
-        GRID_LINE_60_PERCENT,
-        GRID_LINE_40_PERCENT,
-        GRID_LINE_20_PERCENT
+        GRID_LINE_100_PERCENT,
+        GRID_LINE_50_PERCENT,
+        GRID_LINE_0_PERCENT
     };
     for (float gridValue : gridValues) {
         float gridY = graphStartY + graphHeight - (gridValue * graphHeight);
         addHorizontalGridLine(graphStartX, gridY, graphWidth, gridColor, gridLineThickness);
     }
 
-    // Draw all graphs overlaid
+    // Draw all graphs overlaid (only when on track - no telemetry data during spectate/replay)
     float lineThickness = 0.002f * getScale();
     size_t maxHistory = XInputReader::MAX_RUMBLE_HISTORY;
 
-    // Effects first (underneath motors)
-    if (config.suspensionEffect.isEnabled()) {
-        addHistoryGraph(xinput.getSuspensionHistory(), bumpsColor,
-                        graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
-    }
-    if (config.wheelspinEffect.isEnabled()) {
-        addHistoryGraph(xinput.getWheelspinHistory(), wheelColor,
-                        graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
-    }
-    if (config.brakeLockupEffect.isEnabled()) {
-        addHistoryGraph(xinput.getLockupHistory(), lockupColor,
-                        graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
-    }
-    if (config.wheelieEffect.isEnabled()) {
-        addHistoryGraph(xinput.getWheelieHistory(), wheelieColor,
-                        graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
-    }
-    if (config.rpmEffect.isEnabled()) {
-        addHistoryGraph(xinput.getRpmHistory(), rpmColor,
-                        graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
-    }
-    if (config.slideEffect.isEnabled()) {
-        addHistoryGraph(xinput.getSlideHistory(), slideColor,
-                        graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
-    }
-    if (config.surfaceEffect.isEnabled()) {
-        addHistoryGraph(xinput.getSurfaceHistory(), terrainColor,
-                        graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
-    }
-    if (config.steerEffect.isEnabled()) {
-        addHistoryGraph(xinput.getSteerHistory(), steerColor,
-                        graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
+    if (isOnTrack) {
+        // Effects first (underneath motors)
+        if (config.suspensionEffect.isEnabled()) {
+            addHistoryGraph(xinput.getSuspensionHistory(), bumpsColor,
+                            graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
+        }
+        if (config.wheelspinEffect.isEnabled()) {
+            addHistoryGraph(xinput.getWheelspinHistory(), wheelColor,
+                            graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
+        }
+        if (config.brakeLockupEffect.isEnabled()) {
+            addHistoryGraph(xinput.getLockupHistory(), lockupColor,
+                            graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
+        }
+        if (config.wheelieEffect.isEnabled()) {
+            addHistoryGraph(xinput.getWheelieHistory(), wheelieColor,
+                            graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
+        }
+        if (config.rpmEffect.isEnabled()) {
+            addHistoryGraph(xinput.getRpmHistory(), rpmColor,
+                            graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
+        }
+        if (config.slideEffect.isEnabled()) {
+            addHistoryGraph(xinput.getSlideHistory(), slideColor,
+                            graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
+        }
+        if (config.surfaceEffect.isEnabled()) {
+            addHistoryGraph(xinput.getSurfaceHistory(), terrainColor,
+                            graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
+        }
+        if (config.steerEffect.isEnabled()) {
+            addHistoryGraph(xinput.getSteerHistory(), steerColor,
+                            graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
+        }
     }
 
     // === MIDDLE: Force Bars (LGT and HVY) ===
     float barsStartX = contentStartX + graphWidth + gapWidth;
     float barsStartY = currentY;
 
-    // Get accumulated motor values from history (history contains correct values even when rumble disabled)
-    const auto& heavyHistory = xinput.getHeavyMotorHistory();
-    const auto& lightHistory = xinput.getLightMotorHistory();
-    float heavyValue = heavyHistory.empty() ? 0.0f : heavyHistory.back();
-    float lightValue = lightHistory.empty() ? 0.0f : lightHistory.back();
+    // Get accumulated motor values from history (only when on track)
+    float heavyValue = 0.0f;
+    float lightValue = 0.0f;
+    if (isOnTrack) {
+        const auto& heavyHistory = xinput.getHeavyMotorHistory();
+        const auto& lightHistory = xinput.getLightMotorHistory();
+        heavyValue = heavyHistory.empty() ? 0.0f : heavyHistory.back();
+        lightValue = lightHistory.empty() ? 0.0f : lightHistory.back();
+    }
 
     // Light motor bar (first) - index 0
     updateMaxTracking(0, lightValue);
@@ -322,7 +332,7 @@ void RumbleHud::rebuildRenderData() {
         addMaxMarker(barsStartX, barsStartY, barWidth, graphHeight, m_markerValues[0]);
     }
     addString("L", barsStartX + barWidth / 2.0f, barsStartY + graphHeight, Justify::CENTER,
-              Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+              this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
 
     // Heavy motor bar (second) - index 1
     float heavyBarX = barsStartX + barWidth + gapWidth;
@@ -332,7 +342,7 @@ void RumbleHud::rebuildRenderData() {
         addMaxMarker(heavyBarX, barsStartY, barWidth, graphHeight, m_markerValues[1]);
     }
     addString("H", heavyBarX + barWidth / 2.0f, barsStartY + graphHeight, Justify::CENTER,
-              Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dims.fontSize);
+              this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
 
     // === RIGHT SIDE: Legend (effects only, motor totals shown in bars) ===
     float legendStartX = heavyBarX + barWidth + gapWidth;
@@ -340,82 +350,82 @@ void RumbleHud::rebuildRenderData() {
     float valueX = legendStartX + PluginUtils::calculateMonospaceTextWidth(4, dims.fontSize);  // After "XXX "
     char buffer[16];
 
-    // Bumps/Suspension effect
+    // Bumps/Suspension effect (show 0% when not on track)
     if (config.suspensionEffect.isEnabled()) {
         addString("BMP", legendStartX, legendY, Justify::LEFT,
-            Fonts::getNormal(), bumpsColor, dims.fontSize);
-        snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(xinput.getLastSuspensionRumble() * 100));
+            this->getFont(FontCategory::NORMAL), bumpsColor, dims.fontSize);
+        snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastSuspensionRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
-            Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
         legendY += dims.lineHeightNormal;
     }
 
     // Spin effect
     if (config.wheelspinEffect.isEnabled()) {
         addString("SPN", legendStartX, legendY, Justify::LEFT,
-            Fonts::getNormal(), wheelColor, dims.fontSize);
-        snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(xinput.getLastWheelspinRumble() * 100));
+            this->getFont(FontCategory::NORMAL), wheelColor, dims.fontSize);
+        snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastWheelspinRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
-            Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
         legendY += dims.lineHeightNormal;
     }
 
     // Brake lockup effect
     if (config.brakeLockupEffect.isEnabled()) {
         addString("LCK", legendStartX, legendY, Justify::LEFT,
-            Fonts::getNormal(), lockupColor, dims.fontSize);
-        snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(xinput.getLastLockupRumble() * 100));
+            this->getFont(FontCategory::NORMAL), lockupColor, dims.fontSize);
+        snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastLockupRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
-            Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
         legendY += dims.lineHeightNormal;
     }
 
     // Wheelie effect
     if (config.wheelieEffect.isEnabled()) {
         addString("WHL", legendStartX, legendY, Justify::LEFT,
-            Fonts::getNormal(), wheelieColor, dims.fontSize);
-        snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(xinput.getLastWheelieRumble() * 100));
+            this->getFont(FontCategory::NORMAL), wheelieColor, dims.fontSize);
+        snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastWheelieRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
-            Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
         legendY += dims.lineHeightNormal;
     }
 
     // RPM effect
     if (config.rpmEffect.isEnabled()) {
         addString("RPM", legendStartX, legendY, Justify::LEFT,
-            Fonts::getNormal(), rpmColor, dims.fontSize);
-        snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(xinput.getLastRpmRumble() * 100));
+            this->getFont(FontCategory::NORMAL), rpmColor, dims.fontSize);
+        snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastRpmRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
-            Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
         legendY += dims.lineHeightNormal;
     }
 
     // Slide effect
     if (config.slideEffect.isEnabled()) {
         addString("SLD", legendStartX, legendY, Justify::LEFT,
-            Fonts::getNormal(), slideColor, dims.fontSize);
-        snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(xinput.getLastSlideRumble() * 100));
+            this->getFont(FontCategory::NORMAL), slideColor, dims.fontSize);
+        snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastSlideRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
-            Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
         legendY += dims.lineHeightNormal;
     }
 
     // Surface effect
     if (config.surfaceEffect.isEnabled()) {
         addString("SRF", legendStartX, legendY, Justify::LEFT,
-            Fonts::getNormal(), terrainColor, dims.fontSize);
-        snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(xinput.getLastSurfaceRumble() * 100));
+            this->getFont(FontCategory::NORMAL), terrainColor, dims.fontSize);
+        snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastSurfaceRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
-            Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
         legendY += dims.lineHeightNormal;
     }
 
     // Steer torque effect
     if (config.steerEffect.isEnabled()) {
         addString("STR", legendStartX, legendY, Justify::LEFT,
-            Fonts::getNormal(), steerColor, dims.fontSize);
-        snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(xinput.getLastSteerRumble() * 100));
+            this->getFont(FontCategory::NORMAL), steerColor, dims.fontSize);
+        snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastSteerRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
-            Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
+            this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
     }
 }

@@ -78,8 +78,15 @@ void DiscordManager::shutdown() {
 
     m_shutdownRequested = true;
 
-    // Wait for connection thread to finish
+    // Cancel any blocking pipe I/O (ReadFile/WriteFile/CreateFileA) on the
+    // connection thread so it can check m_shutdownRequested and exit promptly.
+    // Without this, the thread may block indefinitely on ReadFile while holding
+    // m_pipeMutex, preventing disconnect() from closing the pipe handle.
     if (m_connectionThread.joinable()) {
+        HANDLE hThread = static_cast<HANDLE>(m_connectionThread.native_handle());
+        if (hThread) {
+            CancelSynchronousIo(hThread);
+        }
         m_connectionThread.join();
     }
 

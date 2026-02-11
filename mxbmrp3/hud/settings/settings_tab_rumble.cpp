@@ -92,12 +92,10 @@ bool SettingsHud::handleClickTabRumble(const ClickRegion& region) {
     };
 
     switch (region.type) {
-        // Master settings always use global config (never stored per-bike)
-        case ClickRegion::RUMBLE_TOGGLE:
-            globalConfig.enabled = !globalConfig.enabled;
-            setDataDirty();
-            return true;
+        // Note: RUMBLE_TOGGLE is handled in common handlers (settings_hud.cpp)
+        // so it works regardless of which tab is active
 
+        // Master settings always use global config (never stored per-bike)
         case ClickRegion::RUMBLE_BLEND_TOGGLE:
             globalConfig.additiveBlend = !globalConfig.additiveBlend;
             setDataDirty();
@@ -128,12 +126,8 @@ bool SettingsHud::handleClickTabRumble(const ClickRegion& region) {
             return true;
         }
 
-        case ClickRegion::RUMBLE_HUD_TOGGLE:
-            if (m_rumble) {
-                m_rumble->setVisible(!m_rumble->isVisible());
-                rebuildRenderData();
-            }
-            return true;
+        // Note: RUMBLE_HUD_TOGGLE is handled in common handlers (settings_hud.cpp)
+        // so it works regardless of which tab is active
 
         default:
             break;

@@ -998,12 +998,12 @@ void TimingHud::rebuildRenderData() {
             // Vertical: center the label
             float labelX = labelColumnX + columnWidth / 2.0f;
             addString(labelBuffer, labelX, labelTextY, Justify::CENTER,
-                Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
+                this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
         } else {
             // Horizontal: right-align in column
             float labelX = labelColumnX + columnWidth - dim.paddingH;
             addString(labelBuffer, labelX, labelTextY, Justify::RIGHT,
-                Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
+                this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
         }
     }
 
@@ -1017,7 +1017,7 @@ void TimingHud::rebuildRenderData() {
         }
         float timeX = timeColumnX + columnWidth / 2.0f;
         addString(timeBuffer, timeX, timeTextY, Justify::CENTER,
-            Fonts::getDigits(), ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
+            this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
     }
 
     // Track bottom of primary elements for bounds
@@ -1091,11 +1091,11 @@ void TimingHud::rebuildRenderData() {
 
             unsigned long baseColor;
             if (gapIsFaster) {
-                baseColor = ColorConfig::getInstance().getPositive();
+                baseColor = this->getColor(ColorSlot::POSITIVE);
             } else if (gapIsSlower) {
-                baseColor = ColorConfig::getInstance().getNegative();
+                baseColor = this->getColor(ColorSlot::NEGATIVE);
             } else {
-                baseColor = ColorConfig::getInstance().getBackground();
+                baseColor = this->getColor(ColorSlot::BACKGROUND);
             }
             gapQuad.m_ulColor = PluginUtils::applyOpacity(baseColor, m_fBackgroundOpacity);
             m_quads.push_back(gapQuad);
@@ -1104,29 +1104,29 @@ void TimingHud::rebuildRenderData() {
         // Determine gap text color
         unsigned long gapTextColor;
         if (gapIsFaster) {
-            gapTextColor = ColorConfig::getInstance().getPositive();
+            gapTextColor = this->getColor(ColorSlot::POSITIVE);
         } else if (gapIsSlower) {
-            gapTextColor = ColorConfig::getInstance().getNegative();
+            gapTextColor = this->getColor(ColorSlot::NEGATIVE);
         } else {
-            gapTextColor = ColorConfig::getInstance().getPrimary();
+            gapTextColor = this->getColor(ColorSlot::PRIMARY);
         }
 
         // Add gap value (centered in vertical mode without reference, left-aligned otherwise)
         if (m_layoutVertical && !showRefInGap) {
             float gapX = gapColumnX + columnWidth / 2.0f;
             addString(gapBuffer, gapX, gapTextY, Justify::CENTER,
-                Fonts::getDigits(), gapTextColor, dim.fontSizeLarge);
+                this->getFont(FontCategory::DIGITS), gapTextColor, dim.fontSizeLarge);
         } else {
             float gapX = gapColumnX + dim.paddingH;
             addString(gapBuffer, gapX, gapTextY, Justify::LEFT,
-                Fonts::getDigits(), gapTextColor, dim.fontSizeLarge);
+                this->getFont(FontCategory::DIGITS), gapTextColor, dim.fontSizeLarge);
         }
 
         // Add reference value (right-aligned) in secondary color
         if (hasRefValue) {
             float refX = gapColumnX + columnWidth - dim.paddingH;
             addString(refBuffer, refX, gapTextY, Justify::RIGHT,
-                Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), dim.fontSizeLarge);
+                this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dim.fontSizeLarge);
         }
     }
 
@@ -1235,11 +1235,11 @@ void TimingHud::rebuildRenderData() {
 
                     unsigned long chipBgColor;
                     if (chipIsFaster) {
-                        chipBgColor = ColorConfig::getInstance().getPositive();
+                        chipBgColor = this->getColor(ColorSlot::POSITIVE);
                     } else if (chipIsSlower) {
-                        chipBgColor = ColorConfig::getInstance().getNegative();
+                        chipBgColor = this->getColor(ColorSlot::NEGATIVE);
                     } else {
-                        chipBgColor = ColorConfig::getInstance().getBackground();
+                        chipBgColor = this->getColor(ColorSlot::BACKGROUND);
                     }
                     chipQuad.m_ulColor = PluginUtils::applyOpacity(chipBgColor, m_fBackgroundOpacity);
                     m_quads.push_back(chipQuad);
@@ -1248,17 +1248,17 @@ void TimingHud::rebuildRenderData() {
                 // Add chip text (centered in chip)
                 unsigned long chipTextColor;
                 if (chipIsFaster) {
-                    chipTextColor = ColorConfig::getInstance().getPositive();
+                    chipTextColor = this->getColor(ColorSlot::POSITIVE);
                 } else if (chipIsSlower) {
-                    chipTextColor = ColorConfig::getInstance().getNegative();
+                    chipTextColor = this->getColor(ColorSlot::NEGATIVE);
                 } else {
-                    chipTextColor = ColorConfig::getInstance().getPrimary();
+                    chipTextColor = this->getColor(ColorSlot::PRIMARY);
                 }
 
                 // Add label (left-aligned) in secondary color
                 float labelWidth = PluginUtils::calculateMonospaceTextWidth(2, chipFontSize);  // "PB", "AT", etc.
                 addString(abbrev, chipX + dim.paddingH, chipTextY, Justify::LEFT,
-                    Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), chipFontSize);
+                    this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), chipFontSize);
 
                 // Calculate gap center position (centered between label and reference)
                 float gapAreaLeft = chipX + dim.paddingH + labelWidth;
@@ -1271,12 +1271,12 @@ void TimingHud::rebuildRenderData() {
 
                 // Add gap value in gap color
                 addString(gapValueBuffer, gapCenterX, chipTextY, Justify::CENTER,
-                    Fonts::getDigits(), chipTextColor, chipFontSize);
+                    this->getFont(FontCategory::DIGITS), chipTextColor, chipFontSize);
 
                 // Add reference value (right-aligned) in secondary color
                 if (hasRefValue) {
                     addString(refValueBuffer, chipX + chipWidth - dim.paddingH, chipTextY, Justify::RIGHT,
-                        Fonts::getDigits(), ColorConfig::getInstance().getSecondary(), chipFontSize);
+                        this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), chipFontSize);
                 }
 
                 // Advance position based on layout mode

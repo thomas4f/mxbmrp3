@@ -144,17 +144,17 @@ void SettingsButtonWidget::rebuildRenderData() {
         setQuadPositions(buttonBgQuad, x, y, backgroundWidth, backgroundHeight);
         buttonBgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
         buttonBgQuad.m_ulColor = isHovering
-            ? ColorConfig::getInstance().getAccent()
-            : PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(), 128.0f / 255.0f);
+            ? this->getColor(ColorSlot::ACCENT)
+            : PluginUtils::applyOpacity(this->getColor(ColorSlot::ACCENT), 128.0f / 255.0f);
         m_quads.push_back(buttonBgQuad);
     }
 
     // Use PRIMARY color when hovering, ACCENT when not (accent on accent)
-    unsigned long textColor = isHovering ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getAccent();
+    unsigned long textColor = isHovering ? this->getColor(ColorSlot::PRIMARY) : this->getColor(ColorSlot::ACCENT);
 
     // Add button text
     addString(buttonText, contentStartX, contentStartY, Justify::LEFT,
-        Fonts::getNormal(), textColor, dim.fontSize);
+        this->getFont(FontCategory::NORMAL), textColor, dim.fontSize);
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);

@@ -10,6 +10,7 @@ A customizable, [open-source](https://github.com/thomas4f/mxbmrp3) HUD plugin fo
 - Track specific riders with custom colors and icons across all HUDs
 - Controller rumble feedback with customizable effects (bumps, slide, spin, lockup, wheelie, etc.)
 - Discord Rich Presence integration showing current session and track
+- FMX freestyle trick detection with scoring and chain combos
 - Telemetry visualization and compact info widgets
 - Drag-and-drop positioning with color themes and customizable hotkeys
 - Automatic profile switching for Practice, Qualify, Race, and Spectate sessions
@@ -44,7 +45,6 @@ See [Installation](#installation) for detailed setup instructions.
 
 **Requirements:**
 - MX Bikes **Beta 20 or newer** / GP Bikes **Beta 18 or newer**
-- [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vc14/vc_redist.x64.exe) (the automatic installer will check for this)
 
 ### Automatic Installation
 
@@ -53,7 +53,6 @@ See [Installation](#installation) for detailed setup instructions.
    - Auto-detect your MX Bikes and GP Bikes installations (Steam or standalone)
    - Let you choose which games to install for
    - Install to the correct plugins folder for each game
-   - Check for and offer to install Visual C++ Redistributable if needed
    - Handle upgrades automatically (preserves your settings)
 
 ### Manual Installation
@@ -131,7 +130,7 @@ Auto-switch (disabled by default) automatically changes profiles based on sessio
 
 ## HUDs & Widgets
 
-All HUDs and widgets are configurable via the settings menu, with detailed per-option descriptions.
+All HUDs and widgets are configurable via the settings menu or directly in the [.ini file](#advanced-settings).
 
 ### HUDs
 
@@ -144,8 +143,10 @@ All HUDs and widgets are configurable via the settings menu, with detailed per-o
 | **Gap Bar** | Visual gap-to-PB bar with position markers |
 | **Pitboard** | Pitboard-style lap information display |
 | **Lap Log** | Historical lap times with PB indicators |
+| **Lap Consistency** | Lap time consistency analysis with trend visualization |
 | **Ideal Lap** | Best sector times and theoretical ideal lap |
 | **Records** | Online lap records (CBR or MXB-Ranked) with personal bests (MX Bikes only) |
+| **FMX** | Freestyle trick detection with scoring and chain combos |
 | **Telemetry** | Throttle, brake, suspension graphs |
 | **Performance** | FPS and plugin CPU usage |
 | **Rumble** | Controller rumble effect visualization |
@@ -169,13 +170,30 @@ All HUDs and widgets are configurable via the settings menu, with detailed per-o
 
 ## Advanced Settings
 
-Some power-user settings are only available via manual INI editing. To edit:
+All plugin settings are stored in `mxbmrp3_settings.ini` in your [user data folder](#modding).
 
+**In-game vs INI-only settings:**
+- Most settings are configurable via the in-game settings menu
+- Some power-user options are only accessible by editing the INI file directly
+- INI-only settings are documented with inline comments
+
+**INI structure:**
+- `[HudName]` — Base/default settings for a HUD
+- `[HudName:Practice]`, `[HudName:Race]`, `[HudName:Spectate]` — Profile-specific overrides (only values that differ from base)
+
+**Editing the INI file:**
+
+*With the game closed* (recommended):
+1. Exit the game completely
+2. Edit `mxbmrp3_settings.ini`
+3. Launch the game to apply changes
+
+*Hot reload* (for rapid iteration):
 1. Disable **Auto-Save** in Settings > General
-2. Edit `mxbmrp3_settings.ini` in your [user data folder](#modding)
+2. Edit the INI file while the game is running
 3. Use the **Reload Config** hotkey to apply changes (bind it in Settings > Hotkeys)
 
-The `[Advanced]` section includes options like `mapPixelSpacing` (track rendering density), gauge needle colors (`speedoNeedleColor`, `tachoNeedleColor`), `standingsTopPositions` (always-visible top positions), and drop shadow offsets. Colors use AABBGGRR hex format.
+If Auto-Save is enabled, changes made to the INI while the game is running will be overwritten.
 
 ## Modding
 
@@ -213,7 +231,7 @@ On game startup, the plugin syncs these files to the plugin's data directory (`p
 ## Troubleshooting
 
 **HUD Not Appearing**
-- Check [Installation requirements](#installation) (MX Bikes Beta 20+ / GP Bikes Beta 18+, Visual C++ Redistributable)
+- Check [Installation requirements](#installation) (MX Bikes Beta 20+ / GP Bikes Beta 18+)
 - Verify the DLO file and `mxbmrp3_data/` are in the correct `plugins/` folder. Games have two directories - the **game installation** (contains the game .exe) and **user data** (`Documents\PiBoSo\[Game]\`). Plugins go in the game installation, not Documents.
 - For GP Bikes, ensure you're using `mxbmrp3_gpb.dlo`, not `mxbmrp3.dlo`
 
@@ -223,8 +241,6 @@ On game startup, the plugin syncs these files to the plugin's data directory (`p
 - If you moved or renamed this folder, restore it from the release archive
 
 **Game Fails to Start or Shows Black Screen**
-- Ensure the [Visual C++ Redistributable (x64)](https://aka.ms/vc14/vc_redist.x64.exe) is installed
-- Restart your computer after installing - the runtime may not load until after a reboot
 - Try removing the plugin DLO file temporarily to verify the game starts without it
 
 **Elements Appearing Twice (Ghost/Duplicate)**
@@ -234,7 +250,8 @@ On game startup, the plugin syncs these files to the plugin's data directory (`p
 - Drag elements to reposition them
 - Use settings menu to adjust scale
 
-**Controller Not Working**
+**Controller or Rumble Not Working**
+- Verify the correct controller is selected in Settings > General
 - If you accidentally deleted `xinput64.dli` from the plugins folder, controller input may stop working
 - To restore: verify game files integrity (Steam) or reinstall the game
 

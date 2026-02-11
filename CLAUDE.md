@@ -32,6 +32,7 @@ Game Engine (renders quads/strings)
 - `XInputReader` - Controller state and rumble effects
 - `RumbleProfileManager` - Per-bike rumble profiles stored in JSON
 - `OdometerManager` - Per-bike odometer/trip meter data stored in JSON
+- `FmxManager` - FMX trick detection state machine, scoring, chain system
 - `AssetManager` - Dynamic discovery of fonts, textures, icons from subdirectories
 - `FontConfig` - User-configurable font categories (Title, Normal, Strong, Marker, Small)
 - `ColorConfig` - User-configurable color palette
@@ -181,6 +182,8 @@ When implementing event handlers or debugging timing/lap data:
 - `mxbmrp3/core/xinput_reader.h/.cpp` - Controller input and rumble effects
 - `mxbmrp3/core/rumble_profile_manager.h/.cpp` - Per-bike rumble profiles
 - `mxbmrp3/core/odometer_manager.h/.cpp` - Per-bike odometer and trip meter tracking
+- `mxbmrp3/core/fmx_manager.h/.cpp` - FMX trick detection and scoring
+- `mxbmrp3/core/fmx_types.h` - FMX data structures (TrickType, TrickInstance, RotationTracker, etc.)
 
 **Multi-Game Layer:**
 - `mxbmrp3/game/unified_types.h` - Game-agnostic data structures

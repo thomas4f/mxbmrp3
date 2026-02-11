@@ -40,9 +40,33 @@ UpdateChecker::~UpdateChecker() {
 
 void UpdateChecker::shutdown() {
     m_shutdownRequested = true;
+
+    // Cancel any in-flight HTTP request by closing all WinHTTP handles.
+    // CancelSynchronousIo does NOT work with WinHTTP (it uses internal waits,
+    // not kernel I/O). Closing the handles causes pending WinHTTP calls to fail
+    // immediately. The mutex in closeHttpHandles() prevents double-close with
+    // the worker thread's cleanup.
+    closeHttpHandles();
+
     if (m_workerThread.joinable()) {
         m_workerThread.join();
     }
+}
+
+void UpdateChecker::closeHttpHandles() {
+    HINTERNET r;
+    HINTERNET c;
+    HINTERNET s;
+    {
+        std::lock_guard<std::mutex> lock(m_httpHandleMutex);
+        r = static_cast<HINTERNET>(m_hHttpRequest);  m_hHttpRequest = nullptr;
+        c = static_cast<HINTERNET>(m_hHttpConnect);   m_hHttpConnect = nullptr;
+        s = static_cast<HINTERNET>(m_hHttpSession);   m_hHttpSession = nullptr;
+    }
+    // Close child handles before parent (WinHTTP documented best practice)
+    if (r) WinHttpCloseHandle(r);
+    if (c) WinHttpCloseHandle(c);
+    if (s) WinHttpCloseHandle(s);
 }
 
 void UpdateChecker::checkForUpdates() {
@@ -266,7 +290,7 @@ bool UpdateChecker::fetchLatestRelease(std::string& outVersion, std::string& out
     std::wstring wHost(GITHUB_API_HOST, GITHUB_API_HOST + strlen(GITHUB_API_HOST));
     std::wstring wPath(apiPath.begin(), apiPath.end());
 
-    // Initialize WinHTTP
+    // Initialize WinHTTP - create all handles (non-blocking operations)
     HINTERNET hSession = WinHttpOpen(userAgent.c_str(),
                                      WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
                                      WINHTTP_NO_PROXY_NAME,
@@ -303,23 +327,37 @@ bool UpdateChecker::fetchLatestRelease(std::string& outVersion, std::string& out
     WinHttpAddRequestHeaders(hRequest, L"Accept: application/vnd.github+json",
                              (DWORD)-1, WINHTTP_ADDREQ_FLAG_ADD);
 
-    // Send request
+    // Publish all handles for cross-thread cancellation by shutdown().
+    // Handle creation above is non-blocking, so publishing after all three
+    // are ready means shutdown can always close the complete set.
+    {
+        std::lock_guard<std::mutex> lock(m_httpHandleMutex);
+        m_hHttpSession = hSession;
+        m_hHttpConnect = hConnect;
+        m_hHttpRequest = hRequest;
+    }
+
+    // Re-check shutdown to close the timing window where shutdown() runs
+    // between handle creation and the store above (it would miss them otherwise).
+    if (m_shutdownRequested) {
+        closeHttpHandles();
+        outError = "Shutdown requested";
+        return false;
+    }
+
+    // --- Blocking calls begin (cancellable by shutdown via closeHttpHandles) ---
+
     BOOL bResults = WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS,
                                         0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0);
     if (!bResults) {
-        WinHttpCloseHandle(hRequest);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
+        closeHttpHandles();
         outError = "Send failed";
         return false;
     }
 
-    // Receive response
     bResults = WinHttpReceiveResponse(hRequest, NULL);
     if (!bResults) {
-        WinHttpCloseHandle(hRequest);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
+        closeHttpHandles();
         outError = "No response";
         return false;
     }
@@ -331,9 +369,7 @@ bool UpdateChecker::fetchLatestRelease(std::string& outVersion, std::string& out
                         WINHTTP_HEADER_NAME_BY_INDEX, &statusCode, &statusCodeSize, WINHTTP_NO_HEADER_INDEX);
 
     if (statusCode != 200) {
-        WinHttpCloseHandle(hRequest);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
+        closeHttpHandles();
         outError = "HTTP " + std::to_string(statusCode);
         return false;
     }
@@ -345,6 +381,8 @@ bool UpdateChecker::fetchLatestRelease(std::string& outVersion, std::string& out
     constexpr size_t MAX_RESPONSE_SIZE = 256 * 1024;  // 256KB limit (array of releases)
 
     do {
+        if (m_shutdownRequested) break;
+
         dwSize = 0;
         if (!WinHttpQueryDataAvailable(hRequest, &dwSize)) {
             break;
@@ -354,9 +392,7 @@ bool UpdateChecker::fetchLatestRelease(std::string& outVersion, std::string& out
 
         // Check size limit
         if (responseBody.size() + dwSize > MAX_RESPONSE_SIZE) {
-            WinHttpCloseHandle(hRequest);
-            WinHttpCloseHandle(hConnect);
-            WinHttpCloseHandle(hSession);
+            closeHttpHandles();
             outError = "Response too large";
             return false;
         }
@@ -369,10 +405,7 @@ bool UpdateChecker::fetchLatestRelease(std::string& outVersion, std::string& out
 
     } while (dwSize > 0);
 
-    // Clean up
-    WinHttpCloseHandle(hRequest);
-    WinHttpCloseHandle(hConnect);
-    WinHttpCloseHandle(hSession);
+    closeHttpHandles();
 
     // Parse JSON response (array of releases)
     try {

@@ -192,8 +192,6 @@ void NoticesWidget::rebuildRenderData() {
     float noticeQuadY = TIMING_DIVIDER_Y - rowGap - noticeQuadHeight;
     float noticeY = noticeQuadY + dim.paddingV * 0.5f;
 
-    const ColorConfig& colors = ColorConfig::getInstance();
-
     if (showWrongWay) {
         // Add notice background (red for warning)
         SPluginQuad_t noticeQuad;
@@ -202,12 +200,12 @@ void NoticesWidget::rebuildRenderData() {
         applyOffset(quadX, quadY);
         setQuadPositions(noticeQuad, quadX, quadY, noticeQuadWidth, noticeQuadHeight);
         noticeQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        noticeQuad.m_ulColor = PluginUtils::applyOpacity(colors.getNegative(), m_fBackgroundOpacity);
+        noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::NEGATIVE), m_fBackgroundOpacity);
         m_quads.push_back(noticeQuad);
 
         // Add notice text (red)
         addString("WRONG WAY", CENTER_X, noticeY, Justify::CENTER,
-            Fonts::getTitle(), colors.getNegative(), dim.fontSizeLarge);
+            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::NEGATIVE), dim.fontSizeLarge);
     }
     else if (showBlueFlag) {
         // Build blue flag text with race numbers only (max 2): "#XX #YY"
@@ -235,7 +233,7 @@ void NoticesWidget::rebuildRenderData() {
 
         // Add notice text (blue)
         addString(blueFlagText.c_str(), CENTER_X, noticeY, Justify::CENTER,
-            Fonts::getTitle(), ColorPalette::BLUE, dim.fontSizeLarge);
+            this->getFont(FontCategory::TITLE), ColorPalette::BLUE, dim.fontSizeLarge);
     }
     else if (showFinished) {
         // Add notice background (semantic background color for finished)
@@ -245,12 +243,12 @@ void NoticesWidget::rebuildRenderData() {
         applyOffset(quadX, quadY);
         setQuadPositions(noticeQuad, quadX, quadY, noticeQuadWidth, noticeQuadHeight);
         noticeQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        noticeQuad.m_ulColor = PluginUtils::applyOpacity(colors.getBackground(), m_fBackgroundOpacity);
+        noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::BACKGROUND), m_fBackgroundOpacity);
         m_quads.push_back(noticeQuad);
 
         // Add notice text (white)
         addString("FINISHED", CENTER_X, noticeY, Justify::CENTER,
-            Fonts::getTitle(), colors.getPrimary(), dim.fontSizeLarge);
+            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
     }
     else if (showLastLap) {
         // Add notice background (semantic neutral color for last lap)
@@ -260,12 +258,12 @@ void NoticesWidget::rebuildRenderData() {
         applyOffset(quadX, quadY);
         setQuadPositions(noticeQuad, quadX, quadY, noticeQuadWidth, noticeQuadHeight);
         noticeQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        noticeQuad.m_ulColor = PluginUtils::applyOpacity(colors.getNeutral(), m_fBackgroundOpacity);
+        noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::NEUTRAL), m_fBackgroundOpacity);
         m_quads.push_back(noticeQuad);
 
         // Add notice text (white)
         addString("LAST LAP", CENTER_X, noticeY, Justify::CENTER,
-            Fonts::getTitle(), colors.getPrimary(), dim.fontSizeLarge);
+            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
     }
 
     setBounds(noticeQuadX, noticeQuadY, noticeQuadX + noticeQuadWidth, noticeQuadY + noticeQuadHeight);

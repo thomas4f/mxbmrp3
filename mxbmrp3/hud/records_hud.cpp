@@ -883,7 +883,7 @@ void RecordsHud::rebuildRenderData() {
 
     // === Title Row ===
     addTitleString("Records", contentStartX, currentY, Justify::LEFT,
-                   Fonts::getTitle(), ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
+                   this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
     currentY += titleHeight;
 
     // === Provider / Category / Fetch Row ===
@@ -895,15 +895,15 @@ void RecordsHud::rebuildRenderData() {
     static constexpr int PROVIDER_WIDTH_CHARS = 10;  // Longest: "MXB Ranked"
     float providerFixedWidth = PluginUtils::calculateMonospaceTextWidth(PROVIDER_WIDTH_CHARS, dim.fontSize);
 
-    addString("<", rowX, currentY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+    addString("<", rowX, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::ACCENT), dim.fontSize);
     m_clickRegions.push_back({rowX, currentY, charWidth * 2, dim.lineHeightNormal, ClickRegionType::PROVIDER_LEFT});
     rowX += charWidth * 2;  // "< "
 
     addString(getProviderDisplayName(m_provider), rowX, currentY, Justify::LEFT,
-              Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+              this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::PRIMARY), dim.fontSize);
     rowX += providerFixedWidth;  // Fixed width regardless of actual name length
 
-    addString(" >", rowX, currentY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+    addString(" >", rowX, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::ACCENT), dim.fontSize);
     m_clickRegions.push_back({rowX, currentY, charWidth * 2, dim.lineHeightNormal, ClickRegionType::PROVIDER_RIGHT});
     rowX += charWidth * 4;  // " > " + gap
 
@@ -911,16 +911,16 @@ void RecordsHud::rebuildRenderData() {
     static constexpr int CATEGORY_WIDTH_CHARS = 10;  // Longest: "MX1-2T OEM"
     float categoryFixedWidth = PluginUtils::calculateMonospaceTextWidth(CATEGORY_WIDTH_CHARS, dim.fontSize);
 
-    addString("<", rowX, currentY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+    addString("<", rowX, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::ACCENT), dim.fontSize);
     m_clickRegions.push_back({rowX, currentY, charWidth * 2, dim.lineHeightNormal, ClickRegionType::CATEGORY_LEFT});
     rowX += charWidth * 2;  // "< "
 
     const char* catName = getCurrentCategoryDisplay();
     addString(catName, rowX, currentY, Justify::LEFT,
-              Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+              this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::PRIMARY), dim.fontSize);
     rowX += categoryFixedWidth;  // Fixed width regardless of actual name length
 
-    addString(" >", rowX, currentY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
+    addString(" >", rowX, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::ACCENT), dim.fontSize);
     m_clickRegions.push_back({rowX, currentY, charWidth * 2, dim.lineHeightNormal, ClickRegionType::CATEGORY_RIGHT});
     rowX += charWidth * 4;  // " > " + gap
 
@@ -943,17 +943,17 @@ void RecordsHud::rebuildRenderData() {
 
     unsigned long compareColor;
     if (isButtonDisabled) {
-        compareColor = ColorConfig::getInstance().getMuted();  // Muted when disabled/cooldown
+        compareColor = this->getColor(ColorSlot::MUTED);  // Muted when disabled/cooldown
     } else if (state == FetchState::SUCCESS) {
-        compareColor = ColorConfig::getInstance().getPositive();
+        compareColor = this->getColor(ColorSlot::POSITIVE);
     } else if (state == FetchState::FETCH_ERROR) {
-        compareColor = ColorConfig::getInstance().getNegative();
+        compareColor = this->getColor(ColorSlot::NEGATIVE);
     } else if (state == FetchState::FETCHING) {
         // Always accent during fetch (no hover feedback since button is busy)
-        compareColor = ColorConfig::getInstance().getAccent();
+        compareColor = this->getColor(ColorSlot::ACCENT);
     } else {
         // Use PRIMARY when hovered, ACCENT when not (purple on purple)
-        compareColor = m_fetchButtonHovered ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getAccent();
+        compareColor = m_fetchButtonHovered ? this->getColor(ColorSlot::PRIMARY) : this->getColor(ColorSlot::ACCENT);
     }
 
     float compareWidth = PluginUtils::calculateMonospaceTextWidth(static_cast<int>(strlen("[Compare]")), dim.fontSize);
@@ -972,16 +972,16 @@ void RecordsHud::rebuildRenderData() {
         setQuadPositions(bgQuad, bgX, bgY, compareWidth, dim.lineHeightNormal);
         bgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
         if (isButtonDisabled) {
-            bgQuad.m_ulColor = PluginUtils::applyOpacity(ColorConfig::getInstance().getMuted(), 64.0f / 255.0f);
+            bgQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), 64.0f / 255.0f);
         } else {
             bgQuad.m_ulColor = m_fetchButtonHovered && state != FetchState::FETCHING
-                ? ColorConfig::getInstance().getAccent()
-                : PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(), 128.0f / 255.0f);
+                ? this->getColor(ColorSlot::ACCENT)
+                : PluginUtils::applyOpacity(this->getColor(ColorSlot::ACCENT), 128.0f / 255.0f);
         }
         m_quads.push_back(bgQuad);
     }
 
-    addString(compareLabel, rowX, currentY, Justify::LEFT, Fonts::getNormal(), compareColor, dim.fontSize);
+    addString(compareLabel, rowX, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), compareColor, dim.fontSize);
 
     currentY += dim.lineHeightNormal;
 
@@ -1017,7 +1017,7 @@ void RecordsHud::rebuildRenderData() {
             applyOffset(highlightX, highlightY);
             setQuadPositions(highlight, highlightX, highlightY, backgroundWidth, dim.lineHeightNormal);
             highlight.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-            highlight.m_ulColor = PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(), 80.0f / 255.0f);
+            highlight.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::ACCENT), 80.0f / 255.0f);
             m_quads.push_back(highlight);
         }
 
@@ -1029,8 +1029,8 @@ void RecordsHud::rebuildRenderData() {
             if (position == 1) posColor = PodiumColors::GOLD;
             else if (position == 2) posColor = PodiumColors::SILVER;
             else if (position == 3) posColor = PodiumColors::BRONZE;
-            else posColor = ColorConfig::getInstance().getPrimary();
-            addString(posStr, m_columns.pos, currentY, Justify::LEFT, Fonts::getNormal(), posColor, dim.fontSize);
+            else posColor = this->getColor(ColorSlot::PRIMARY);
+            addString(posStr, m_columns.pos, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), posColor, dim.fontSize);
         }
 
         // Rider (truncate if too long)
@@ -1040,8 +1040,8 @@ void RecordsHud::rebuildRenderData() {
             strncpy_s(riderStr, sizeof(riderStr), rider, maxLen);
             riderStr[maxLen] = '\0';
             // Player row keeps same column alignment (skip position but stay in rider column)
-            addString(riderStr, m_columns.rider, currentY, Justify::LEFT, Fonts::getNormal(),
-                      ColorConfig::getInstance().getPrimary(), dim.fontSize);
+            addString(riderStr, m_columns.rider, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL),
+                      this->getColor(ColorSlot::PRIMARY), dim.fontSize);
         }
 
         // Bike (truncate if too long)
@@ -1050,43 +1050,42 @@ void RecordsHud::rebuildRenderData() {
             size_t maxLen = COL_BIKE_WIDTH - 1;
             strncpy_s(bikeStr, sizeof(bikeStr), bike, maxLen);
             bikeStr[maxLen] = '\0';
-            addString(bikeStr, m_columns.bike, currentY, Justify::LEFT, Fonts::getNormal(),
-                      ColorConfig::getInstance().getSecondary(), dim.fontSize);
+            addString(bikeStr, m_columns.bike, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL),
+                      this->getColor(ColorSlot::SECONDARY), dim.fontSize);
         }
 
         // Sector times (S1, S2, S3, and S4 for 4-sector games - always toggled together)
         if (isColumnEnabled(COL_SECTORS)) {
             char sectorStr[12];
-            const auto& colors = ColorConfig::getInstance();
 
             // S1
             if (sector1 > 0) {
                 PluginUtils::formatSectorTime(sector1, sectorStr, sizeof(sectorStr));
                 addString(sectorStr, m_columns.sector1, currentY, Justify::LEFT,
-                          Fonts::getDigits(), colors.getSecondary(), dim.fontSize);
+                          this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
             } else {
                 addString("---.---", m_columns.sector1, currentY, Justify::LEFT,
-                          Fonts::getDigits(), colors.getMuted(), dim.fontSize);
+                          this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
             }
 
             // S2
             if (sector2 > 0) {
                 PluginUtils::formatSectorTime(sector2, sectorStr, sizeof(sectorStr));
                 addString(sectorStr, m_columns.sector2, currentY, Justify::LEFT,
-                          Fonts::getDigits(), colors.getSecondary(), dim.fontSize);
+                          this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
             } else {
                 addString("---.---", m_columns.sector2, currentY, Justify::LEFT,
-                          Fonts::getDigits(), colors.getMuted(), dim.fontSize);
+                          this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
             }
 
             // S3
             if (sector3 > 0) {
                 PluginUtils::formatSectorTime(sector3, sectorStr, sizeof(sectorStr));
                 addString(sectorStr, m_columns.sector3, currentY, Justify::LEFT,
-                          Fonts::getDigits(), colors.getSecondary(), dim.fontSize);
+                          this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
             } else {
                 addString("---.---", m_columns.sector3, currentY, Justify::LEFT,
-                          Fonts::getDigits(), colors.getMuted(), dim.fontSize);
+                          this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
             }
 
 #if GAME_SECTOR_COUNT >= 4
@@ -1094,10 +1093,10 @@ void RecordsHud::rebuildRenderData() {
             if (sector4 > 0) {
                 PluginUtils::formatSectorTime(sector4, sectorStr, sizeof(sectorStr));
                 addString(sectorStr, m_columns.sector4, currentY, Justify::LEFT,
-                          Fonts::getDigits(), colors.getSecondary(), dim.fontSize);
+                          this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
             } else {
                 addString("---.---", m_columns.sector4, currentY, Justify::LEFT,
-                          Fonts::getDigits(), colors.getMuted(), dim.fontSize);
+                          this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
             }
 #else
             (void)sector4;  // Suppress unused warning for 3-sector games
@@ -1110,17 +1109,17 @@ void RecordsHud::rebuildRenderData() {
             if (laptime > 0) {
                 PluginUtils::formatLapTime(laptime, laptimeStr, sizeof(laptimeStr));
                 addString(laptimeStr, m_columns.laptime, currentY, Justify::LEFT,
-                          Fonts::getDigits(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
+                          this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::PRIMARY), dim.fontSize);
             } else {
                 addString(Placeholders::LAP_TIME, m_columns.laptime, currentY, Justify::LEFT,
-                          Fonts::getDigits(), ColorConfig::getInstance().getMuted(), dim.fontSize);
+                          this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
             }
         }
 
         // Date
         if (isColumnEnabled(COL_DATE)) {
             addString(date && date[0] != '\0' ? date : "---", m_columns.date, currentY,
-                      Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getTertiary(), dim.fontSize);
+                      Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dim.fontSize);
         }
 
         currentY += dim.lineHeightNormal;
@@ -1163,7 +1162,7 @@ void RecordsHud::rebuildRenderData() {
         }
         if (statusMessage) {
             addString(statusMessage, contentStartX, currentY,
-                      Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dim.fontSize);
+                      Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
             currentY += dim.lineHeightNormal;
             rowsRendered++;
         }
@@ -1175,7 +1174,7 @@ void RecordsHud::rebuildRenderData() {
         }
         // Show "no records" message - counts as a row to maintain layout
         addString("No records found for this track/category.", contentStartX, currentY,
-                  Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dim.fontSize);
+                  Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
         currentY += dim.lineHeightNormal;
         rowsRendered++;
     } else {
@@ -1267,7 +1266,7 @@ void RecordsHud::rebuildRenderData() {
         // Show "-" only in position column, empty for others
         if (isColumnEnabled(COL_POS)) {
             addString(Placeholders::GENERIC, m_columns.pos, currentY, Justify::LEFT,
-                      Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dim.fontSize);
+                      this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
         }
         currentY += dim.lineHeightNormal;
         rowsRendered++;
@@ -1282,18 +1281,18 @@ void RecordsHud::rebuildRenderData() {
         // Line 1: "Records provided by <provider>" - use the provider records were fetched from
         const char* prefix = "Records provided by ";
         addString(prefix, contentStartX, currentY,
-                  Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dim.fontSizeSmall);
+                  Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSizeSmall);
 
         float prefixWidth = PluginUtils::calculateMonospaceTextWidth(static_cast<int>(strlen(prefix)), dim.fontSizeSmall);
         const char* providerName = getProviderDisplayName(m_recordsProvider);
         addString(providerName, contentStartX + prefixWidth, currentY,
-                  Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSizeSmall);
+                  Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dim.fontSizeSmall);
 
         currentY += dim.lineHeightSmall;
 
         // Line 2: "Submit by playing on their servers"
         addString("Submit by playing on their servers", contentStartX, currentY,
-                  Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dim.fontSizeSmall);
+                  Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSizeSmall);
     }
 }
 

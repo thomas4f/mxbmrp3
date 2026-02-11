@@ -81,10 +81,10 @@ private:
     static constexpr float GRAPH_HEIGHT_LINES = 6;  // Height in line units
 
     // Graph grid line percentages (0-100% input range)
-    static constexpr float GRID_LINE_80_PERCENT = 0.8f;
-    static constexpr float GRID_LINE_60_PERCENT = 0.6f;
-    static constexpr float GRID_LINE_40_PERCENT = 0.4f;
-    static constexpr float GRID_LINE_20_PERCENT = 0.2f;
+    // 3 lines at 0/50/100% for cleaner visual (bottom/middle/top)
+    static constexpr float GRID_LINE_100_PERCENT = 1.0f;
+    static constexpr float GRID_LINE_50_PERCENT = 0.5f;
+    static constexpr float GRID_LINE_0_PERCENT = 0.0f;
 
     uint32_t m_enabledElements = ELEM_DEFAULT;  // Bitfield of enabled metrics
     uint8_t m_displayMode = DISPLAY_DEFAULT;    // Display mode (graphs/values/both)

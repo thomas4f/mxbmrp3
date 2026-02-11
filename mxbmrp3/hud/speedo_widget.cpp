@@ -201,14 +201,13 @@ void SpeedoWidget::rebuildRenderData() {
     float charWidth = fontSize * FontMetrics::MONOSPACE_CHAR_WIDTH_RATIO;
     float charHeight = LineHeights::SMALL * m_fScale;
 
-    // Colors - semantic colors from user's color scheme
-    const ColorConfig& colors = ColorConfig::getInstance();
-    unsigned long bgNormal = colors.getBackground();
-    unsigned long textNormal = colors.getPrimary();
-
     // Padding - make uniform on all sides (vertical padding comes from lineHeight > fontSize)
     float paddingV = (charHeight - fontSize) / 2.0f;
     float paddingH = paddingV;  // Same padding horizontally
+
+    // Colors - semantic colors from user's color scheme
+    unsigned long bgNormal = this->getColor(ColorSlot::BACKGROUND);
+    unsigned long textNormal = this->getColor(ColorSlot::PRIMARY);
 
     // Helper lambda to add an odometer row - black background, white text, inverted last digit
     auto addOdometerRow = [&](const char* displayText, float rowY) {
@@ -251,13 +250,13 @@ void SpeedoWidget::rebuildRenderData() {
         // skipShadow=true: odometer uses inverted last digit styling, shadows look wrong
         float textStartX = centerX - (textWidth / 2.0f);
         addString(mainDigits, textStartX, rowY, Justify::LEFT,
-                  Fonts::getDigits(), textNormal, fontSize, true);
+                  this->getFont(FontCategory::DIGITS), textNormal, fontSize, true);
 
         // Last digit (black, right-aligned in white quad)
         // skipShadow=true: inverted digit (black on white) should not have shadow
         float lastCharRightX = lastCharX + charWidth;
         addString(lastDigit, lastCharRightX, rowY, Justify::RIGHT,
-                  Fonts::getDigits(), bgNormal, fontSize, true);
+                  this->getFont(FontCategory::DIGITS), bgNormal, fontSize, true);
     };
 
     // Odometer: 6 digits, last digit = 1 km (e.g., "000078" = 78 km)

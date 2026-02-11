@@ -142,7 +142,7 @@ void TimeWidget::rebuildRenderData() {
     PluginUtils::formatTimeMinutesSeconds(sessionTime, timeBuffer, sizeof(timeBuffer));
 
     // Use full opacity for text
-    unsigned long textColor = ColorConfig::getInstance().getPrimary();
+    unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
 
     float startX = 0.0f;
     float startY = 0.0f;
@@ -165,13 +165,13 @@ void TimeWidget::rebuildRenderData() {
 
     // Label (optional, controlled by title toggle)
     if (m_bShowTitle) {
-        addString("Time", contentStartX, currentY, Justify::LEFT, Fonts::getTitle(), textColor, dim.fontSize);
+        addString("Time", contentStartX, currentY, Justify::LEFT, this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
         currentY += labelHeight;
     }
 
     // Time value (extra large font - spans 2 lines)
     addString(timeBuffer, contentStartX, currentY, Justify::LEFT,
-        Fonts::getTitle(), textColor, dim.fontSizeExtraLarge);
+        this->getFont(FontCategory::TITLE), textColor, dim.fontSizeExtraLarge);
     currentY += dim.lineHeightLarge;
 
     // Session type (optional, same size as label)
@@ -179,7 +179,7 @@ void TimeWidget::rebuildRenderData() {
         const char* sessionString = PluginUtils::getSessionString(sessionData.eventType, sessionData.session);
         const char* displayString = sessionString ? sessionString : Placeholders::GENERIC;
         addString(displayString, contentStartX, currentY, Justify::LEFT,
-            Fonts::getTitle(), textColor, dim.fontSize);
+            this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
     }
 
     // Set bounds for drag detection

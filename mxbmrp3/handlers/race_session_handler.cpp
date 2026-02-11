@@ -5,6 +5,7 @@
 #include "race_session_handler.h"
 #include "../core/handler_singleton.h"
 #include "../core/plugin_data.h"
+#include "../core/fmx_manager.h"
 
 DEFINE_HANDLER_SINGLETON(RaceSessionHandler)
 
@@ -26,6 +27,7 @@ void RaceSessionHandler::handleRaceSession(Unified::RaceSessionData* psRaceSessi
     }
 
     // Clear session-specific data when a new session starts
+    FmxManager::getInstance().reset();
     PluginData::getInstance().clearAllIdealLap();
     PluginData::getInstance().clearAllLapLog();
     PluginData::getInstance().clearLiveGapTimingPoints();

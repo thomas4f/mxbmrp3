@@ -47,6 +47,8 @@
 #if GAME_HAS_TYRE_TEMP
 #include "../hud/tyre_temp_widget.h"
 #endif
+#include "../hud/lap_consistency_hud.h"
+#include "../hud/fmx_hud.h"
 #include "hotkey_manager.h"
 #include "tooltip_manager.h"
 #include "color_config.h"
@@ -127,6 +129,16 @@ void HudManager::initialize() {
     m_pRecords->setTextureBaseName("records_hud");
     registerHud(std::move(recordsPtr));
 #endif
+
+    auto lapConsistencyPtr = std::make_unique<LapConsistencyHud>();
+    m_pLapConsistency = lapConsistencyPtr.get();
+    m_pLapConsistency->setTextureBaseName("lap_consistency_hud");
+    registerHud(std::move(lapConsistencyPtr));
+
+    auto fmxPtr = std::make_unique<FmxHud>();
+    m_pFmxHud = fmxPtr.get();
+    m_pFmxHud->setTextureBaseName("fmx_hud");
+    registerHud(std::move(fmxPtr));
 
     // Widgets
     auto lapPtr = std::make_unique<LapWidget>();
@@ -225,8 +237,9 @@ void HudManager::initialize() {
 #else
     RecordsHud* recordsHudPtr = nullptr;
 #endif
-    auto settingsPtr = std::make_unique<SettingsHud>(m_pIdealLap, m_pLapLog, m_pStandings,
-                                                       m_pPerformance, m_pTelemetry, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, recordsHudPtr, m_pFuel, m_pPointer, m_pRumble, m_pGamepad, m_pLean
+    auto settingsPtr = std::make_unique<SettingsHud>(m_pIdealLap, m_pLapLog, m_pLapConsistency, m_pStandings,
+                                                       m_pPerformance, m_pTelemetry, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, recordsHudPtr, m_pFuel, m_pPointer, m_pRumble, m_pGamepad, m_pLean,
+                                                       m_pFmxHud
 #if GAME_HAS_TYRE_TEMP
                                                        , m_pTyreTemp
 #endif
@@ -293,7 +306,11 @@ void HudManager::clear() {
     m_pRadarHud = nullptr;
     m_pSpeed = nullptr;
     m_pSpeedo = nullptr;
+    m_pTacho = nullptr;
     m_pTiming = nullptr;
+    m_pGapBar = nullptr;
+    m_pBars = nullptr;
+    m_pVersion = nullptr;
     m_pNotices = nullptr;
     m_pPitboard = nullptr;
 #if GAME_HAS_RECORDS_PROVIDER
@@ -306,6 +323,8 @@ void HudManager::clear() {
 #if GAME_HAS_TYRE_TEMP
     m_pTyreTemp = nullptr;
 #endif
+    m_pLapConsistency = nullptr;
+    m_pFmxHud = nullptr;
     m_pSettingsHud = nullptr;
     m_pSettingsButton = nullptr;
     m_pPointer = nullptr;

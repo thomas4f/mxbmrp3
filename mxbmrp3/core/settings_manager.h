@@ -58,15 +58,30 @@ private:
 
     std::string getSettingsFilePath(const char* savePath) const;
 
+    // Profile settings cache: profile -> hudName -> key -> value
+    using ProfileCache = std::unordered_map<std::string, HudSettings>;
+
     // Capture HUD state to a specific profile's cache
     void captureToProfile(const HudManager& hudManager, ProfileType profile);
 
     // Apply a specific profile's cached settings to HUDs
     void applyProfile(HudManager& hudManager, ProfileType profile);
 
-    // Profile settings cache: profile -> hudName -> key -> value
-    using ProfileCache = std::unordered_map<std::string, HudSettings>;
+    // Helper: capture all HUD settings to a cache (shared by captureToProfile and captureFactoryDefaults)
+    void captureToCache(const HudManager& hudManager, ProfileCache& cache);
     std::array<ProfileCache, static_cast<size_t>(ProfileType::COUNT)> m_profileCache;
+
+    // HUD defaults cache: hudName -> key -> default value
+    // Used to write sparse INI files (only non-default values per profile)
+    ProfileCache m_hudDefaults;
+    bool m_factoryDefaultsCaptured = false;
+
+    // Track whether settings have been loaded (for assertion in captureFactoryDefaults)
+    bool m_settingsLoaded = false;
+
+    // Capture factory defaults from HudManager (call once at initialization, BEFORE loading settings)
+    // IMPORTANT: Must be called before loadSettings() - asserts if called after
+    void captureFactoryDefaults(const HudManager& hudManager);
 
     // Track if cache has been initialized (vs empty due to fresh install)
     bool m_cacheInitialized = false;

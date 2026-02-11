@@ -31,7 +31,7 @@ BaseHud* SettingsHud::renderTabTelemetry(SettingsLayoutContext& ctx) {
     ctx.addCycleControl("Style", modeText, 10,
         SettingsHud::ClickRegion::DISPLAY_MODE_DOWN,
         SettingsHud::ClickRegion::DISPLAY_MODE_UP,
-        hud, true, false, "telemetry.display");
+        hud, true, false, "telemetry.display", &hud->m_displayMode);
     ctx.addSpacing(0.5f);
 
     // === ELEMENTS SECTION ===

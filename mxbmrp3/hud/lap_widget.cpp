@@ -163,11 +163,11 @@ void LapWidget::rebuildRenderData() {
     float currentY = contentStartY;
 
     // Use full opacity for text
-    unsigned long textColor = ColorConfig::getInstance().getPrimary();
+    unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
 
     // Label (optional, controlled by title toggle)
     if (m_bShowTitle) {
-        addString("Lap", contentStartX, currentY, Justify::LEFT, Fonts::getTitle(), textColor, dim.fontSize);
+        addString("Lap", contentStartX, currentY, Justify::LEFT, this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
         currentY += labelHeight;
     }
 
@@ -190,7 +190,7 @@ void LapWidget::rebuildRenderData() {
 
     // Add lap value (extra large font - spans 2 lines)
     addString(lapValueBuffer, contentStartX, currentY, Justify::LEFT,
-        Fonts::getTitle(), textColor, dim.fontSizeExtraLarge);
+        this->getFont(FontCategory::TITLE), textColor, dim.fontSizeExtraLarge);
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
