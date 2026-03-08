@@ -5,6 +5,7 @@
 #include "event_handler.h"
 #include "../core/handler_singleton.h"
 #include "../core/plugin_data.h"
+#include "../core/stats_manager.h"
 #if GAME_HAS_DISCORD
 #include "../core/discord_manager.h"
 #endif
@@ -38,6 +39,9 @@ void EventHandler::handleEventInit(Unified::VehicleEventData* psEventData) {
         psEventData->engineTempAlarmHigh
     );
 
+    // Set stats context for this track/bike combination
+    StatsManager::getInstance().setCurrentContext(psEventData->trackId, psEventData->vehicleName);
+
     // Check if a RaceAddEntry with unactive=0 already arrived (spectate-first case)
     int pendingRaceNum = PluginData::getInstance().getPendingPlayerRaceNum();
     if (pendingRaceNum >= 0) {
@@ -53,6 +57,9 @@ void EventHandler::handleEventInit(Unified::VehicleEventData* psEventData) {
 
 void EventHandler::handleEventDeinit() {
     // Event logging now handled by PluginManager
+
+    // Clear stats context when event ends
+    StatsManager::getInstance().clearCurrentContext();
 
     // Clear data when event ends
     PluginData::getInstance().clear();

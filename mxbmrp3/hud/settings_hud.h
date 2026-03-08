@@ -16,6 +16,7 @@
 #include "lap_widget.h"
 #include "session_hud.h"
 #include "speed_widget.h"
+#include "gear_widget.h"
 #include "speedo_widget.h"
 #include "tacho_widget.h"
 #include "timing_hud.h"
@@ -45,6 +46,7 @@
 // Forward declarations
 class TelemetryHud;
 class RumbleHud;
+class StatsHud;
 struct SettingsLayoutContext;
 
 class SettingsHud : public BaseHud {
@@ -53,8 +55,9 @@ public:
                 StandingsHud* standings,
                 PerformanceHud* performance,
                 TelemetryHud* telemetry,
-                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean,
-                FmxHud* fmxHud
+                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean,
+                FmxHud* fmxHud,
+                StatsHud* statsHud
 #if GAME_HAS_TYRE_TEMP
                 , TyreTempWidget* tyreTemp
 #endif
@@ -319,7 +322,13 @@ public:
             // FMX HUD
             FMX_DEBUG_TOGGLE,          // Toggle FMX debug logging
             FMX_CHAIN_ROWS_UP,         // Increase max chain display rows
-            FMX_CHAIN_ROWS_DOWN        // Decrease max chain display rows
+            FMX_CHAIN_ROWS_DOWN,       // Decrease max chain display rows
+            // Stats HUD
+            STATS_VISIBILITY_UP,       // Cycle stats visibility mode forward
+            STATS_VISIBILITY_DOWN,     // Cycle stats visibility mode backward
+            STATS_SHOW_LAP_TOGGLE,     // Toggle lap column
+            STATS_SHOW_SESSION_TOGGLE, // Toggle session column
+            STATS_SHOW_ALLTIME_TOGGLE  // Toggle all-time column
         } type;
 
         // Type-safe variant instead of unsafe union (C++17)
@@ -453,6 +462,7 @@ public:
     static BaseHud* renderTabRiders(SettingsLayoutContext& ctx);
     static BaseHud* renderTabUpdates(SettingsLayoutContext& ctx);
     static BaseHud* renderTabFmx(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabStats(SettingsLayoutContext& ctx);
 
     // Static click handler functions (implemented in tab files)
     // Return true if the click was handled, false otherwise
@@ -473,6 +483,7 @@ public:
     bool handleClickTabLapConsistency(const ClickRegion& region);
     bool handleClickTabUpdates(const ClickRegion& region);
     bool handleClickTabFmx(const ClickRegion& region);
+    bool handleClickTabStats(const ClickRegion& region);
 
     // HUD getter methods (for tab rendering functions)
     IdealLapHud* getIdealLapHud() const { return m_idealLap; }
@@ -488,6 +499,7 @@ public:
     MapHud* getMapHud() const { return m_mapHud; }
     RadarHud* getRadarHud() const { return m_radarHud; }
     SpeedWidget* getSpeedWidget() const { return m_speed; }
+    GearWidget* getGearWidget() const { return m_gear; }
     SpeedoWidget* getSpeedoWidget() const { return m_speedo; }
     TachoWidget* getTachoWidget() const { return m_tacho; }
     TimingHud* getTimingHud() const { return m_timing; }
@@ -506,6 +518,7 @@ public:
     TyreTempWidget* getTyreTempWidget() const { return m_tyreTemp; }
 #endif
     FmxHud* getFmxHud() const { return m_fmxHud; }
+    class StatsHud* getStatsHud() const { return m_statsHud; }
 
 protected:
     void rebuildLayout() override;
@@ -571,6 +584,7 @@ private:
     MapHud* m_mapHud;
     RadarHud* m_radarHud;
     SpeedWidget* m_speed;
+    GearWidget* m_gear;
     SpeedoWidget* m_speedo;
     TachoWidget* m_tacho;
     TimingHud* m_timing;
@@ -589,6 +603,7 @@ private:
     TyreTempWidget* m_tyreTemp;
 #endif
     FmxHud* m_fmxHud;
+    StatsHud* m_statsHud;
 
     // Visibility flag
     bool m_bVisible;
@@ -639,7 +654,8 @@ private:
         TAB_HOTKEYS = 18,      // Keyboard/controller hotkey bindings
         TAB_UPDATES = 19,      // Auto-update settings
         TAB_FMX = 20,          // FMX (Freestyle) trick scoring
-        TAB_COUNT = 21
+        TAB_STATS = 21,        // Stats tracking (laps, crashes, PBs)
+        TAB_COUNT = 22
     };
     int m_activeTab;
 
@@ -673,6 +689,9 @@ private:
     bool m_wasUpdateCheckerOnCooldown;
     int m_cachedUpdateCheckerStatus;
     int m_cachedUpdateDownloaderState;
+
+    // Stats tab periodic refresh timer (epoch default triggers immediate first refresh)
+    std::chrono::steady_clock::time_point m_lastStatsRefresh{};
 
     std::vector<ClickRegion> m_clickRegions;
 

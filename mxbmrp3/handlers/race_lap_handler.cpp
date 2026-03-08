@@ -6,7 +6,7 @@
 #include "../core/handler_singleton.h"
 #include "../core/plugin_utils.h"
 #include "../core/plugin_data.h"
-#include "../core/personal_best_manager.h"
+#include "../core/stats_manager.h"
 #include "../core/hud_manager.h"
 #if GAME_HAS_RECORDS_PROVIDER
 #include "../hud/records_hud.h"
@@ -159,24 +159,35 @@ void RaceLapHandler::handleRaceLap(Unified::RaceLapData* psRaceLap) {
 
     data.updateLapLog(raceNum, completedLap);
 
+    // Record lap in unified stats (player only)
+    if (raceNum == data.getPlayerRaceNum()) {
+        bool isFastestLapForStats = (psRaceLap->bestFlag == 2);
+        bool isRace = data.isRaceSession();
+        StatsManager::getInstance().recordLap(lapTime, sector1, sector2, sector3, sector4, isLapValid, isFastestLapForStats, isRace);
+    } else if (psRaceLap->bestFlag == 2 && data.isRaceSession()) {
+        // Another rider set the overall fastest lap — player no longer holds it
+        StatsManager::getInstance().clearPlayerFastestLap();
+    }
+
     // If this was a new best lap, also store it separately for easy access
     // bestFlag: 1 = personal best, 2 = overall best (either way, update our personal best)
     if (psRaceLap->bestFlag > 0) {
-        data.setBestLapEntry(raceNum, completedLap);
-
-        // If this is the overall best lap (bestFlag == 2), store it with splits
-        // for gap comparison at splits (not just lap completion)
-        if (psRaceLap->bestFlag == 2) {
-            data.setOverallBestLap(completedLap);
-        }
-
-        // Check if this is the local player and potentially update all-time PB
-        // Only valid laps from the local player are candidates for all-time PB
+        // Notify session/overall PB for the displayed rider (player or spectated)
+        // Check BEFORE setBestLapEntry overwrites the previous best - we only want to
+        // notify when the rider improves on an existing best, not on their first clean lap
+        // Determine which PB notices to fire. Higher-tier notices suppress lower-tier
+        // ones since they're redundant (all-time PB implies session PB, fastest lap
+        // implies session PB). Only the most significant notice is shown.
+        int displayRaceNum = data.getDisplayRaceNum();
         int playerRaceNum = data.getPlayerRaceNum();
+        bool isDisplayRider = (raceNum == displayRaceNum && isLapValid && data.getBestLapEntry(raceNum) != nullptr);
+        bool isFastestLap = (psRaceLap->bestFlag == 2 && PluginUtils::isConnectionOnline(sessionData.connectionType));
+        bool isAllTimePB = false;
+
+        // All-time PB tracking is player-only (we only store the local player's history)
+        // Check this before firing session/fastest notifications so we can suppress them
         if (raceNum == playerRaceNum && isLapValid) {
-            PersonalBestEntry pbEntry;
-            pbEntry.trackId = sessionData.trackId;
-            pbEntry.bikeName = sessionData.bikeName;
+            StatsPersonalBestData pbEntry;
             pbEntry.lapTime = lapTime;
             pbEntry.sector1 = sector1;
             pbEntry.sector2 = sector2;
@@ -187,15 +198,36 @@ void RaceLapHandler::handleRaceLap(Unified::RaceLapData* psRaceLap) {
             pbEntry.timestamp = std::time(nullptr);
 
             // updatePersonalBest only saves if this beats the existing all-time PB
-            bool newPB = PersonalBestManager::getInstance().updatePersonalBest(pbEntry);
+            isAllTimePB = StatsManager::getInstance().updatePersonalBest(
+                sessionData.trackId, sessionData.bikeName, pbEntry);
+            if (isAllTimePB) {
+                data.notifyAllTimePB();
 #if GAME_HAS_RECORDS_PROVIDER
-            if (newPB) {
                 // Notify RecordsHud to refresh player's position in the leaderboard
                 HudManager::getInstance().getRecordsHud().setDataDirty();
-            }
-#else
-            (void)newPB;  // Suppress unused warning when records provider not available
 #endif
+            }
+        }
+
+        // Fire the highest applicable notice for the display rider, suppressing redundant ones:
+        // - All-time PB supersedes fastest lap and session PB
+        // - Fastest lap supersedes session PB
+        if (isDisplayRider) {
+            if (isAllTimePB) {
+                // All-time PB is the highest tier — skip fastest lap and session PB
+            } else if (isFastestLap) {
+                data.notifyFastestLap();
+            } else {
+                data.notifySessionPB();
+            }
+        }
+
+        data.setBestLapEntry(raceNum, completedLap);
+
+        // If this is the overall best lap (bestFlag == 2), store it with splits
+        // for gap comparison at splits (not just lap completion)
+        if (psRaceLap->bestFlag == 2) {
+            data.setOverallBestLap(completedLap);
         }
     }
 

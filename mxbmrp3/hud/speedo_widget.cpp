@@ -10,7 +10,7 @@
 
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
-#include "../core/odometer_manager.h"
+#include "../core/stats_manager.h"
 #include "../core/color_config.h"
 #include "../core/hud_manager.h"
 
@@ -182,8 +182,9 @@ void SpeedoWidget::rebuildRenderData() {
 
     // Get distances and convert based on unit preference
     // Meters to km: /1000, Meters to miles: /1609.344
-    double odometerMeters = OdometerManager::getInstance().getOdometerForCurrentBike();
-    double tripMeters = OdometerManager::getInstance().getSessionTripDistance();
+    const StatsManager& stats = StatsManager::getInstance();
+    double odometerMeters = stats.getOdometerForCurrentBike();
+    double tripMeters = stats.getSessionTripDistance();
     double odometerDist = useMiles ? (odometerMeters / 1609.344) : (odometerMeters / 1000.0);
     double tripDist = useMiles ? (tripMeters / 1609.344) : (tripMeters / 1000.0);
 

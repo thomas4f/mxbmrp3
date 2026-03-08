@@ -98,13 +98,6 @@
 // ============================================================================
 // These allow compile-time conditional code for game-specific features
 
-// Holeshot timing (MX Bikes only)
-#if defined(GAME_MXBIKES)
-    #define GAME_HAS_HOLESHOT 1
-#else
-    #define GAME_HAS_HOLESHOT 0
-#endif
-
 // Speed trap in RaceLap (all except MX Bikes)
 #if defined(GAME_GPBIKES) || defined(GAME_WRS) || defined(GAME_KRP)
     #define GAME_HAS_RACE_SPEED 1

@@ -31,7 +31,7 @@ Game Engine (renders quads/strings)
 - `InputManager` - Mouse and keyboard input
 - `XInputReader` - Controller state and rumble effects
 - `RumbleProfileManager` - Per-bike rumble profiles stored in JSON
-- `OdometerManager` - Per-bike odometer/trip meter data stored in JSON
+- `StatsManager` - Unified stats, personal bests, odometers in a single JSON file
 - `FmxManager` - FMX trick detection state machine, scoring, chain system
 - `AssetManager` - Dynamic discovery of fonts, textures, icons from subdirectories
 - `FontConfig` - User-configurable font categories (Title, Normal, Strong, Marker, Small)
@@ -117,7 +117,7 @@ Widgets (TimeWidget, PositionWidget, LapWidget, SpeedWidget, SpeedoWidget, Tacho
 - Minimal settings (just position, scale, opacity)
 - Simpler rendering logic
 
-Full HUDs (StandingsHud, LapLogHud, PitboardHud, TimingHud, etc.) have:
+Full HUDs (StandingsHud, LapLogHud, PitboardHud, TimingHud, StatsHud, etc.) have:
 - Complex data visualization
 - Extensive customization (column/row toggles, gap modes, etc.)
 - More configuration options
@@ -181,7 +181,7 @@ When implementing event handlers or debugging timing/lap data:
 - `mxbmrp3/core/tooltip_manager.h` - UI tooltip management (header-only)
 - `mxbmrp3/core/xinput_reader.h/.cpp` - Controller input and rumble effects
 - `mxbmrp3/core/rumble_profile_manager.h/.cpp` - Per-bike rumble profiles
-- `mxbmrp3/core/odometer_manager.h/.cpp` - Per-bike odometer and trip meter tracking
+- `mxbmrp3/core/stats_manager.h/.cpp` - Unified stats, personal bests, odometers
 - `mxbmrp3/core/fmx_manager.h/.cpp` - FMX trick detection and scoring
 - `mxbmrp3/core/fmx_types.h` - FMX data structures (TrickType, TrickInstance, RotationTracker, etc.)
 

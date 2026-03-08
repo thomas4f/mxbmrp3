@@ -6,6 +6,7 @@
 #include "../core/handler_singleton.h"
 #include "../core/plugin_data.h"
 #include "../core/hud_manager.h"
+#include "../core/stats_manager.h"
 #include "draw_handler.h"
 
 DEFINE_HANDLER_SINGLETON(RaceClassificationHandler)
@@ -30,6 +31,19 @@ void RaceClassificationHandler::handleRaceClassification(
     // Batch update all standings AND build classification order in single pass
     // This eliminates the duplicate iteration - both done in one tight loop
     pluginData.batchUpdateStandings(pasRaceClassificationEntry, iNumEntries);
+
+    // Sync penalty time for the player from standings (authoritative source).
+    // RaceCommunication penaltyTime is always 0 (API bug), so we detect
+    // penalty time changes from classification data instead.
+    int playerRaceNum = pluginData.getPlayerRaceNum();
+    for (int i = 0; i < iNumEntries; ++i) {
+        if (pasRaceClassificationEntry[i].raceNum == playerRaceNum &&
+            pasRaceClassificationEntry[i].penalty > 0) {
+            StatsManager::getInstance().updatePenaltyFromStandings(
+                pasRaceClassificationEntry[i].penalty, pluginData.isRaceSession());
+            break;
+        }
+    }
 
     // Detect overtime start for time+laps races (skip if already detected)
     const SessionData& sessionData = pluginData.getSessionData();

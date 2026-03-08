@@ -181,7 +181,7 @@ MemoryReader::SearchResult MemoryReader::searchAndRead(
     // Skip small heap allocations and large buffers (textures, physics, etc.)
     constexpr size_t MIN_REGION_SIZE = 1 * 1024 * 1024;  // 1 MB minimum
     constexpr size_t MAX_REGION_SIZE = 4 * 1024 * 1024;  // 4 MB maximum
-    const size_t minRegionSize = (std::max)(MIN_REGION_SIZE, pattern.size() + readOffset + readSize);
+    const size_t minRegionSize = std::max(MIN_REGION_SIZE, pattern.size() + readOffset + readSize);
 
     // Tracking stats (used for debug logging)
     size_t totalBytesSearched = 0;

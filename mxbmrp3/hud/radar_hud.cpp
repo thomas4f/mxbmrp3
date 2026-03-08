@@ -753,7 +753,7 @@ void RadarHud::setScale(float scale) {
 }
 
 void RadarHud::resetToDefaults() {
-    m_bVisible = true;
+    m_bVisible = false;
     m_bShowTitle = false;  // No title for radar (compact display)
     setTextureVariant(1);  // Use first texture variant by default
     m_fBackgroundOpacity = 0.1f;

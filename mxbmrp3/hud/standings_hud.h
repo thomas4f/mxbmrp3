@@ -35,7 +35,7 @@ public:
         COL_DEBUG       = 1 << 10,  // Debug column (RTG diagnostics)
 
         COL_REQUIRED = 0,      // No required columns
-        COL_DEFAULT  = 0x3AE   // Default columns (excludes Bike, Penalty, and Tracked)
+        COL_DEFAULT  = 0x10E   // Default columns: Pos, RaceNum, Name, Official Gap
     };
 
     // Gap column display modes (for COL_OFFICIAL_GAP and COL_LIVE_GAP)

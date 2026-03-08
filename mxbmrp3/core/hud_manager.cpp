@@ -24,6 +24,7 @@
 #include "../hud/lap_widget.h"
 #include "../hud/session_hud.h"
 #include "../hud/speed_widget.h"
+#include "../hud/gear_widget.h"
 #include "../hud/speedo_widget.h"
 #include "../hud/tacho_widget.h"
 #include "../hud/timing_hud.h"
@@ -49,10 +50,12 @@
 #endif
 #include "../hud/lap_consistency_hud.h"
 #include "../hud/fmx_hud.h"
+#include "../hud/stats_hud.h"
 #include "hotkey_manager.h"
 #include "tooltip_manager.h"
 #include "color_config.h"
 #include <windows.h>
+#include <algorithm>
 #include <memory>
 #include <cstring>
 
@@ -140,6 +143,11 @@ void HudManager::initialize() {
     m_pFmxHud->setTextureBaseName("fmx_hud");
     registerHud(std::move(fmxPtr));
 
+    auto statsPtr = std::make_unique<StatsHud>();
+    m_pStatsHud = statsPtr.get();
+    m_pStatsHud->setTextureBaseName("stats_hud");
+    registerHud(std::move(statsPtr));
+
     // Widgets
     auto lapPtr = std::make_unique<LapWidget>();
     m_pLap = lapPtr.get();
@@ -165,6 +173,11 @@ void HudManager::initialize() {
     m_pSpeed = speedPtr.get();
     m_pSpeed->setTextureBaseName("speed_widget");
     registerHud(std::move(speedPtr));
+
+    auto gearPtr = std::make_unique<GearWidget>();
+    m_pGear = gearPtr.get();
+    m_pGear->setTextureBaseName("gear_widget");
+    registerHud(std::move(gearPtr));
 
     auto speedoPtr = std::make_unique<SpeedoWidget>();
     m_pSpeedo = speedoPtr.get();
@@ -238,8 +251,9 @@ void HudManager::initialize() {
     RecordsHud* recordsHudPtr = nullptr;
 #endif
     auto settingsPtr = std::make_unique<SettingsHud>(m_pIdealLap, m_pLapLog, m_pLapConsistency, m_pStandings,
-                                                       m_pPerformance, m_pTelemetry, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, recordsHudPtr, m_pFuel, m_pPointer, m_pRumble, m_pGamepad, m_pLean,
-                                                       m_pFmxHud
+                                                       m_pPerformance, m_pTelemetry, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pGear, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, recordsHudPtr, m_pFuel, m_pPointer, m_pRumble, m_pGamepad, m_pLean,
+                                                       m_pFmxHud,
+                                                       m_pStatsHud
 #if GAME_HAS_TYRE_TEMP
                                                        , m_pTyreTemp
 #endif
@@ -305,6 +319,7 @@ void HudManager::clear() {
     m_pMapHud = nullptr;
     m_pRadarHud = nullptr;
     m_pSpeed = nullptr;
+    m_pGear = nullptr;
     m_pSpeedo = nullptr;
     m_pTacho = nullptr;
     m_pTiming = nullptr;
@@ -324,6 +339,7 @@ void HudManager::clear() {
     m_pTyreTemp = nullptr;
 #endif
     m_pLapConsistency = nullptr;
+    m_pStatsHud = nullptr;
     m_pFmxHud = nullptr;
     m_pSettingsHud = nullptr;
     m_pSettingsButton = nullptr;
@@ -442,8 +458,11 @@ void HudManager::onDataChanged(DataChangeType changeType) {
                 targetProfile = ProfileType::PRACTICE;
             }
 
-            // If target differs from current, switch profiles
-            if (targetProfile != profileMgr.getActiveProfile()) {
+            // Only switch when the game state resolves to a different profile
+            // bucket than last time. This prevents overriding manual profile
+            // changes when the session type hasn't actually changed.
+            if (targetProfile != profileMgr.getLastAutoSwitchTarget()) {
+                profileMgr.setLastAutoSwitchTarget(targetProfile);
                 SettingsManager::getInstance().switchProfile(*this, targetProfile);
                 // Notify SettingsHud to refresh if visible (shows current profile name)
                 if (m_pSettingsHud) {
@@ -637,8 +656,8 @@ void HudManager::collectRenderData() {
             // Skip rendering widgets if widget toggle is active
             bool isWidget = (hud.get() == m_pLap || hud.get() == m_pPosition ||
                            hud.get() == m_pTime || hud.get() == m_pSession ||
-                           hud.get() == m_pSpeed || hud.get() == m_pSpeedo ||
-                           hud.get() == m_pTacho ||
+                           hud.get() == m_pSpeed || hud.get() == m_pGear ||
+                           hud.get() == m_pSpeedo || hud.get() == m_pTacho ||
                            hud.get() == m_pBars || hud.get() == m_pVersion ||
                            hud.get() == m_pNotices || hud.get() == m_pFuel ||
                            hud.get() == m_pGamepad || hud.get() == m_pLean);
@@ -662,9 +681,10 @@ void HudManager::collectRenderData() {
                     if (!skipShadow) {
                         // Add shadow string first (so it renders behind)
                         SPluginString_t shadowStr = str;
-                        // Offset proportional to font size
-                        shadowStr.m_afPos[0] += str.m_fSize * shadowOffsetXPct;
-                        shadowStr.m_afPos[1] += str.m_fSize * shadowOffsetYPct;
+                        // Offset proportional to font size, capped at EXTRA_LARGE to avoid exaggerated shadows on oversized fonts
+                        float shadowSize = std::min(str.m_fSize, PluginConstants::FontSizes::EXTRA_LARGE);
+                        shadowStr.m_afPos[0] += shadowSize * shadowOffsetXPct;
+                        shadowStr.m_afPos[1] += shadowSize * shadowOffsetYPct;
                         shadowStr.m_ulColor = shadowColor;
                         m_strings.push_back(shadowStr);
                     }
@@ -859,6 +879,26 @@ void HudManager::processKeyboardInput() {
         DEBUG_INFO_F("Hotkey: Rumble %s", m_pRumble->isVisible() ? "shown" : "hidden");
     }
 
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_LAP_CONSISTENCY) && m_pLapConsistency) {
+        m_pLapConsistency->setVisible(!m_pLapConsistency->isVisible());
+        DEBUG_INFO_F("Hotkey: Lap Consistency %s", m_pLapConsistency->isVisible() ? "shown" : "hidden");
+    }
+
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_FMX) && m_pFmxHud) {
+        m_pFmxHud->setVisible(!m_pFmxHud->isVisible());
+        DEBUG_INFO_F("Hotkey: FMX %s", m_pFmxHud->isVisible() ? "shown" : "hidden");
+    }
+
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_STATS) && m_pStatsHud) {
+        m_pStatsHud->setVisible(!m_pStatsHud->isVisible());
+        DEBUG_INFO_F("Hotkey: Stats %s", m_pStatsHud->isVisible() ? "shown" : "hidden");
+    }
+
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_SESSION) && m_pSession) {
+        m_pSession->setVisible(!m_pSession->isVisible());
+        DEBUG_INFO_F("Hotkey: Session %s", m_pSession->isVisible() ? "shown" : "hidden");
+    }
+
     // Reload config from file
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::RELOAD_CONFIG)) {
         SettingsManager& settingsMgr = SettingsManager::getInstance();
@@ -876,10 +916,12 @@ void HudManager::processKeyboardInput() {
     }
 
     // If any visibility toggle happened while settings is open, refresh it
-    // All actions before TOGGLE_SETTINGS are visibility toggles
     if (m_pSettingsHud && m_pSettingsHud->isVisible()) {
-        for (uint8_t i = 0; i < static_cast<uint8_t>(HotkeyAction::TOGGLE_SETTINGS); ++i) {
-            if (hotkeyMgr.wasActionTriggered(static_cast<HotkeyAction>(i))) {
+        for (uint8_t i = 0; i < static_cast<uint8_t>(HotkeyAction::COUNT); ++i) {
+            auto action = static_cast<HotkeyAction>(i);
+            if (action == HotkeyAction::TOGGLE_SETTINGS ||
+                action == HotkeyAction::RELOAD_CONFIG) continue;
+            if (hotkeyMgr.wasActionTriggered(action)) {
                 m_pSettingsHud->setDataDirty();
                 break;
             }

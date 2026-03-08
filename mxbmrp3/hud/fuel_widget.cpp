@@ -4,6 +4,7 @@
 // ============================================================================
 #include "fuel_widget.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cmath>
 #include <numeric>
@@ -101,26 +102,36 @@ void FuelWidget::updateFuelTracking() {
 
     // Check if a new lap was completed
     if (currentLapNum > m_lastTrackedLapNum) {
-        // Calculate fuel used this lap
-        float fuelUsed = m_fuelAtLapStart - bikeData.fuel;
+        // Only record fuel consumption for valid laps (has a positive lap time).
+        // Invalid laps (pit-in without completing, cut track, etc.) have lastLapTime <= 0
+        // and would skew the average with unrealistic fuel consumption values.
+        bool isValidLap = (idealLapData->lastLapTime > 0);
 
-        // Only record if fuel was actually consumed (sanity check)
-        if (fuelUsed > 0.0f && fuelUsed < bikeData.maxFuel) {
-            m_fuelPerLap.push_back(fuelUsed);
-            m_totalLapsRecorded++;
+        if (isValidLap) {
+            // Calculate fuel used this lap
+            float fuelUsed = m_fuelAtLapStart - bikeData.fuel;
 
-            // Keep only the last MAX_FUEL_HISTORY entries
-            if (m_fuelPerLap.size() > MAX_FUEL_HISTORY) {
-                m_fuelPerLap.erase(m_fuelPerLap.begin());
+            // Only record if fuel was actually consumed (sanity check)
+            if (fuelUsed > 0.0f && fuelUsed < bikeData.maxFuel) {
+                m_fuelPerLap.push_back(fuelUsed);
+                m_totalLapsRecorded++;
+
+                // Keep only the last MAX_FUEL_HISTORY entries
+                if (m_fuelPerLap.size() > MAX_FUEL_HISTORY) {
+                    m_fuelPerLap.erase(m_fuelPerLap.begin());
+                }
+
+                DEBUG_INFO_F("FuelWidget: Lap %d consumed %.2fL (avg: %.2fL)",
+                            currentLapNum + 1, fuelUsed,
+                            m_fuelPerLap.empty() ? 0.0f :
+                            std::accumulate(m_fuelPerLap.begin(), m_fuelPerLap.end(), 0.0f) / m_fuelPerLap.size());
             }
-
-            DEBUG_INFO_F("FuelWidget: Lap %d consumed %.2fL (avg: %.2fL)",
-                        currentLapNum + 1, fuelUsed,
-                        m_fuelPerLap.empty() ? 0.0f :
-                        std::accumulate(m_fuelPerLap.begin(), m_fuelPerLap.end(), 0.0f) / m_fuelPerLap.size());
+        } else {
+            DEBUG_INFO_F("FuelWidget: Lap %d skipped (invalid lap, no timing data)", currentLapNum + 1);
         }
 
-        // Record fuel for next lap
+        // Always update lap start reference and lap number, even for invalid laps,
+        // so the next valid lap measures from the correct fuel level
         m_fuelAtLapStart = bikeData.fuel;
         m_lastTrackedLapNum = currentLapNum;
     }
@@ -300,12 +311,12 @@ void FuelWidget::rebuildRenderData() {
             avgFuelPerLap = totalFuel / static_cast<float>(m_fuelPerLap.size() - startIdx);
         }
 
-        if (avgFuelPerLap > 0.0f) {
+        if (avgFuelPerLap > 0.001f) {
             float displayAvg = avgFuelPerLap * unitConversion;
             snprintf(avgValueBuffer, sizeof(avgValueBuffer), "%.1f%s", displayAvg, unitLabel);
 
-            // Estimated laps remaining
-            float estimatedLaps = bikeData.fuel / avgFuelPerLap;
+            // Estimated laps remaining (clamped to 99.9 to avoid triple digits)
+            float estimatedLaps = std::min(bikeData.fuel / avgFuelPerLap, 99.9f);
             snprintf(lapsValueBuffer, sizeof(lapsValueBuffer), "%.1f", estimatedLaps);
 
             // Color code estimated laps (negative if < 2 laps, warning if < 4)
@@ -326,7 +337,7 @@ void FuelWidget::rebuildRenderData() {
     // Title (optional)
     if (m_bShowTitle) {
         addString("Fuel", contentStartX, currentY, Justify::LEFT,
-            this->getFont(FontCategory::TITLE), valueColor, dim.fontSize);
+            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSize);
         currentY += titleHeight;
     }
 
@@ -370,14 +381,14 @@ void FuelWidget::rebuildRenderData() {
 }
 
 void FuelWidget::resetToDefaults() {
-    m_bVisible = true;
+    m_bVisible = false;
     m_bShowTitle = false;  // No title by default
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 1.0f;
     m_fScale = 1.0f;
     m_enabledRows = ROW_DEFAULT;  // Reset row visibility
     // Note: fuelUnit is NOT reset here - it's a global preference, not per-profile
-    setPosition(0.9295f, 0.8547f);
+    setPosition(0.924f, 0.7326f);
     resetFuelTracking();
     setDataDirty();
 }

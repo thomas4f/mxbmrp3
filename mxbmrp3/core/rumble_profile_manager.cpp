@@ -46,8 +46,6 @@ std::string RumbleProfileManager::getFilePath() const {
 }
 
 void RumbleProfileManager::load(const char* savePath) {
-    std::lock_guard<std::mutex> lock(m_mutex);
-
     m_savePath = savePath ? savePath : "";
     m_bikeConfigs.clear();
     m_dirty = false;
@@ -120,18 +118,7 @@ void RumbleProfileManager::load(const char* savePath) {
 }
 
 void RumbleProfileManager::save() {
-    std::lock_guard<std::mutex> lock(m_mutex);
-
-    // Don't save if not dirty or no profiles exist
-    if (!m_dirty && m_bikeConfigs.empty()) {
-        return;
-    }
-
-    // If no profiles, don't create/update file
-    if (m_bikeConfigs.empty()) {
-        m_dirty = false;
-        return;
-    }
+    if (!m_dirty) return;
 
     std::string filePath = getFilePath();
     std::string tempPath = filePath + ".tmp";
@@ -204,36 +191,24 @@ void RumbleProfileManager::save() {
 }
 
 void RumbleProfileManager::setCurrentBike(const std::string& bikeName) {
-    bool needsSave = false;
-
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-
-        if (m_currentBikeName == bikeName) {
-            return;  // No change
-        }
-
-        // Check if we need to save previous bike's profile
-        needsSave = m_dirty && !m_currentBikeName.empty();
-
-        m_currentBikeName = bikeName;
-        DEBUG_INFO_F("[RumbleProfileManager] Current bike set to: %s", bikeName.c_str());
+    if (m_currentBikeName == bikeName) {
+        return;  // No change
     }
 
-    // Save outside the lock to avoid deadlock
-    if (needsSave) {
+    // Save previous bike's profile if dirty
+    if (m_dirty && !m_currentBikeName.empty()) {
         save();
     }
+
+    m_currentBikeName = bikeName;
+    DEBUG_INFO_F("[RumbleProfileManager] Current bike set to: %s", bikeName.c_str());
 }
 
 const std::string& RumbleProfileManager::getCurrentBike() const {
-    std::lock_guard<std::mutex> lock(m_mutex);
     return m_currentBikeName;
 }
 
 RumbleConfig* RumbleProfileManager::getProfileForCurrentBike() {
-    std::lock_guard<std::mutex> lock(m_mutex);
-
     if (m_currentBikeName.empty()) {
         return nullptr;
     }
@@ -247,8 +222,6 @@ RumbleConfig* RumbleProfileManager::getProfileForCurrentBike() {
 }
 
 const RumbleConfig* RumbleProfileManager::getProfileForCurrentBike() const {
-    std::lock_guard<std::mutex> lock(m_mutex);
-
     if (m_currentBikeName.empty()) {
         return nullptr;
     }
@@ -262,8 +235,6 @@ const RumbleConfig* RumbleProfileManager::getProfileForCurrentBike() const {
 }
 
 bool RumbleProfileManager::hasProfileForCurrentBike() const {
-    std::lock_guard<std::mutex> lock(m_mutex);
-
     if (m_currentBikeName.empty()) {
         return false;
     }
@@ -272,8 +243,6 @@ bool RumbleProfileManager::hasProfileForCurrentBike() const {
 }
 
 void RumbleProfileManager::createProfileForCurrentBike(const RumbleConfig& baseConfig) {
-    std::lock_guard<std::mutex> lock(m_mutex);
-
     if (m_currentBikeName.empty()) {
         DEBUG_INFO("[RumbleProfileManager] Cannot create profile: no bike set");
         return;
@@ -287,11 +256,9 @@ void RumbleProfileManager::createProfileForCurrentBike(const RumbleConfig& baseC
 }
 
 void RumbleProfileManager::markDirty() {
-    std::lock_guard<std::mutex> lock(m_mutex);
     m_dirty = true;
 }
 
 bool RumbleProfileManager::isDirty() const {
-    std::lock_guard<std::mutex> lock(m_mutex);
     return m_dirty;
 }

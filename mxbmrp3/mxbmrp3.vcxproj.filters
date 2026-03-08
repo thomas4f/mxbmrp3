@@ -285,13 +285,7 @@
     <ClInclude Include="core\settings_manager.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
-    <ClInclude Include="core\personal_best_manager.h">
-      <Filter>Header Files\core</Filter>
-    </ClInclude>
     <ClInclude Include="core\rumble_profile_manager.h">
-      <Filter>Header Files\core</Filter>
-    </ClInclude>
-    <ClInclude Include="core\odometer_manager.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="core\update_checker.h">
@@ -313,6 +307,9 @@
       <Filter>Header Files\hud</Filter>
     </ClInclude>
     <ClInclude Include="hud\speed_widget.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\gear_widget.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
     <ClInclude Include="hud\timing_hud.h">
@@ -371,6 +368,12 @@
     </ClInclude>
     <ClInclude Include="core\fmx_manager.h">
       <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\stats_manager.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\stats_hud.h">
+      <Filter>Header Files\hud</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -527,6 +530,9 @@
     <ClCompile Include="hud\settings\settings_tab_fmx.cpp">
       <Filter>Source Files\hud\settings</Filter>
     </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_stats.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
     <ClCompile Include="hud\settings\settings_tab_telemetry.cpp">
       <Filter>Source Files\hud\settings</Filter>
     </ClCompile>
@@ -596,13 +602,7 @@
     <ClCompile Include="core\settings_manager.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
-    <ClCompile Include="core\personal_best_manager.cpp">
-      <Filter>Source Files\core</Filter>
-    </ClCompile>
     <ClCompile Include="core\rumble_profile_manager.cpp">
-      <Filter>Source Files\core</Filter>
-    </ClCompile>
-    <ClCompile Include="core\odometer_manager.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="core\update_checker.cpp">
@@ -621,6 +621,9 @@
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\speed_widget.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\gear_widget.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\timing_hud.cpp">
@@ -676,6 +679,12 @@
     </ClCompile>
     <ClCompile Include="core\fmx_manager.cpp">
       <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\stats_manager.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\stats_hud.cpp">
+      <Filter>Source Files\hud</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

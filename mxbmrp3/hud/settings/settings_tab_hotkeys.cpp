@@ -117,7 +117,11 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
             case HotkeyAction::TOGGLE_PITBOARD:    return "hotkeys.pitboard";
             case HotkeyAction::TOGGLE_TIMING:      return "hotkeys.timing";
             case HotkeyAction::TOGGLE_GAP_BAR:     return "hotkeys.gap_bar";
-            case HotkeyAction::TOGGLE_PERFORMANCE: return "hotkeys.performance";
+            case HotkeyAction::TOGGLE_PERFORMANCE:     return "hotkeys.performance";
+            case HotkeyAction::TOGGLE_LAP_CONSISTENCY: return "hotkeys.lap_consistency";
+            case HotkeyAction::TOGGLE_FMX:             return "hotkeys.fmx";
+            case HotkeyAction::TOGGLE_STATS:           return "hotkeys.stats";
+            case HotkeyAction::TOGGLE_SESSION:         return "hotkeys.session";
             case HotkeyAction::TOGGLE_RUMBLE:      return "hotkeys.rumble";
             case HotkeyAction::TOGGLE_WIDGETS:     return "hotkeys.widgets";
             case HotkeyAction::TOGGLE_ALL_HUDS:    return "hotkeys.all_huds";
@@ -267,18 +271,22 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
 
     ctx.currentY += ctx.lineHeightNormal * 0.5f;  // Spacing after settings
 
-    // All HUD toggles
+    // All HUD toggles (order matches left-hand menu)
     addHotkeyRow(HotkeyAction::TOGGLE_STANDINGS);
     addHotkeyRow(HotkeyAction::TOGGLE_MAP);
     addHotkeyRow(HotkeyAction::TOGGLE_RADAR);
     addHotkeyRow(HotkeyAction::TOGGLE_LAP_LOG);
     addHotkeyRow(HotkeyAction::TOGGLE_IDEAL_LAP);
+    addHotkeyRow(HotkeyAction::TOGGLE_LAP_CONSISTENCY);
     addHotkeyRow(HotkeyAction::TOGGLE_TELEMETRY);
     addHotkeyRow(HotkeyAction::TOGGLE_INPUT);
     addHotkeyRow(HotkeyAction::TOGGLE_RECORDS);
     addHotkeyRow(HotkeyAction::TOGGLE_PITBOARD);
+    addHotkeyRow(HotkeyAction::TOGGLE_SESSION);
     addHotkeyRow(HotkeyAction::TOGGLE_TIMING);
     addHotkeyRow(HotkeyAction::TOGGLE_GAP_BAR);
+    addHotkeyRow(HotkeyAction::TOGGLE_FMX);
+    addHotkeyRow(HotkeyAction::TOGGLE_STATS);
     addHotkeyRow(HotkeyAction::TOGGLE_PERFORMANCE);
     addHotkeyRow(HotkeyAction::TOGGLE_RUMBLE);
 

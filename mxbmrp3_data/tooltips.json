@@ -21,7 +21,8 @@
     "timing": "Lap and sector timing display with comparisons to session best and personal records.",
     "gap_bar": "Visual progress bar showing your gap to the rider ahead and behind.",
     "widgets": "Simple HUD elements showing speed, position, lap count, session time, and other info.",
-    "fmx": "Freestyle trick detection with scoring, chain combos, and rotation visualization."
+    "fmx": "Freestyle trick detection with scoring, chain combos, and rotation visualization.",
+    "stats": "Per-track statistics including lap counts, crashes, gear shifts, top speed, and riding time."
   },
   "controls": {
     "common.visible": "Show or hide this element during gameplay.",
@@ -95,7 +96,8 @@
     "session.format": "Show session format (time/laps) and current state.",
     "session.server": "Show server name when online, or 'Testing' when offline.",
     "session.players": "Show current player count and server capacity.",
-    "session.password_mode": "Password row. Off hides it, Hidden shows ****, As Host/Client shows password conditionally.",
+    "session.weather": "Show current weather conditions.",
+    "session.password_mode": "Off hides row, Hidden shows ****. As Host/Client reveals password. Caution: As Client exposes the admin password.",
 
     "records.provider": "Data source for leaderboard records. CBR or MXB Ranked.",
     "records.count": "Number of records to display from the leaderboard.",
@@ -147,6 +149,7 @@
     "gap_bar.range": "Time range displayed on the gap bar in seconds.",
     "gap_bar.width": "Width multiplier for the gap bar.",
     "gap_bar.marker_mode": "Ghost shows your best lap marker. Opponents shows other riders. Both shows all.",
+    "gap_bar.marker_colors": "Rider marker colors. Uniform uses same color, Brand uses bike colors, Position by relative pos.",
     "gap_bar.icon": "Icon shape used for rider markers on the bar.",
     "gap_bar.marker_scale": "Size multiplier for rider markers.",
     "gap_bar.labels": "Labels shown next to markers. Position, race number, or both.",
@@ -154,6 +157,7 @@
     "general.controller": "Select which controller to use for gamepad widget and rumble effects.",
     "general.speed_unit": "Unit for speed display. mph or km/h.",
     "general.fuel_unit": "Unit for fuel display. Liters or Gallons.",
+    "general.temp_unit": "Unit for temperature display. Celsius or Fahrenheit.",
     "general.grid_snap": "When enabled, HUDs snap to a grid when dragging.",
     "general.screen_clamp": "When enabled, HUDs are clamped to stay within screen bounds when dragging.",
     "general.auto_save": "When enabled, settings save automatically. Disable to edit the INI manually and reload.",
@@ -204,7 +208,8 @@
     "widgets.lap": "Shows current lap number and total laps in the session.",
     "widgets.position": "Shows your current race position (P1, P2, etc.).",
     "widgets.time": "Shows elapsed session time or time remaining.",
-    "widgets.speed": "Shows current speed with gear indicator that turns red at shift point.",
+    "widgets.speed": "Shows current ground speed in mph or km/h.",
+    "widgets.gear": "Shows current gear with shift indicator that turns red at shift point.",
     "widgets.speedo": "Analog speedometer gauge showing current speed, with odometer and trip meter.",
     "widgets.tacho": "Tachometer gauge showing engine RPM.",
     "widgets.bars": "Vertical bars showing throttle, brake, clutch, RPM, suspension, and fuel levels.",
@@ -213,6 +218,7 @@
     "widgets.gamepad": "Visual representation of controller button inputs.",
     "widgets.lean": "Shows rider lean angle in degrees with arc gauge.",
     "widgets.pointer": "Mouse pointer for interacting with HUD elements.",
+    "widgets.tyre_temp": "Shows front and rear tyre temperatures.",
     "widgets.version": "Shows plugin version number.",
 
     "hotkeys.settings": "Toggle the settings menu on/off.",
@@ -230,8 +236,17 @@
     "hotkeys.performance": "Toggle the performance HUD on/off.",
     "hotkeys.rumble": "Toggle the rumble HUD on/off.",
     "hotkeys.widgets": "Toggle all widgets on/off.",
+    "hotkeys.fmx": "Toggle the FMX HUD on/off.",
+    "hotkeys.lap_consistency": "Toggle the lap consistency HUD on/off.",
+    "hotkeys.session": "Toggle the session HUD on/off.",
+    "hotkeys.stats": "Toggle the stats HUD on/off.",
     "hotkeys.all_huds": "Toggle all HUDs on/off.",
     "hotkeys.reload": "Reload configuration from disk.",
+
+    "stats.visibility_mode": "When to show. Always displays on track, On Finish appears after crossing the finish line.",
+    "stats.show_lap": "Show last completed lap column with per-lap stats.",
+    "stats.show_session": "Show current session column with accumulated session stats.",
+    "stats.show_alltime": "Show all-time column with lifetime stats for this track and bike.",
 
     "fmx.chain_rows": "Number of tricks shown in the stack. Off hides the stack, 1 shows active trick only, 2+ shows history.",
     "fmx.row_trick_stats": "Show duration, distance, and peak rotation below the active trick name.",

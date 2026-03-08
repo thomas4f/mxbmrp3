@@ -1502,7 +1502,7 @@ void MapHud::resetToDefaults() {
     m_bVisible = true;
     m_bShowTitle = false;
     setTextureVariant(0);  // No texture by default
-    m_fBackgroundOpacity = 0.1f;  // 10% opacity
+    m_fBackgroundOpacity = 0.0f;  // Transparent by default
     m_fScale = 1.0f;
     m_anchorPoint = AnchorPoint::TOP_RIGHT;
     m_fAnchorX = 0.994125f;

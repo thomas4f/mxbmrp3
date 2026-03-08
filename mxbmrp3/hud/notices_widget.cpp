@@ -1,6 +1,6 @@
 // ============================================================================
 // hud/notices_widget.cpp
-// Notices widget - displays wrong way and blue flag warnings
+// Notices widget - displays warnings and PB notifications
 // Shows centered notices above the timing HUD area
 // ============================================================================
 #include "notices_widget.h"
@@ -26,8 +26,13 @@ NoticesWidget::NoticesWidget()
     : m_bIsWrongWay(false)
     , m_sessionStartTime(0)
     , m_lastSessionState(-1)
-    , m_bIsLastLap(false)
-    , m_bIsFinished(false)
+    , m_bShowLastLap(false)
+    , m_bShowFinished(false)
+    , m_bLastLapTriggered(false)
+    , m_bFinishedTriggered(false)
+    , m_bShowSessionPB(false)
+    , m_bShowFastestLap(false)
+    , m_bShowAllTimePB(false)
 {
     // One-time setup
     DEBUG_INFO("NoticesWidget created");
@@ -48,17 +53,30 @@ bool NoticesWidget::handlesDataType(DataChangeType /*dataType*/) const {
     return false;  // We poll PluginData directly in update()
 }
 
+bool NoticesWidget::isTimedNoticeActive(std::chrono::steady_clock::time_point triggerTime) const {
+    auto elapsed = std::chrono::steady_clock::now() - triggerTime;
+    return std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() < static_cast<long long>(m_noticeDurationMs);
+}
+
 void NoticesWidget::update() {
-    // OPTIMIZATION: Skip processing when not visible
-    // Note: This checks current state from PluginData, not events. When made visible,
-    // wrong-way warning will show immediately if player is currently going wrong way.
+    // When invisible, still clean up expired timed notice flags in PluginData.
+    // Without this, flags linger until PluginData::clear() (session end), and toggling
+    // the widget visible could briefly flash a stale notice.
+    // When visible, checkTimedNotice() handles cleanup — no need to run both paths.
     if (!isVisible()) {
+        PluginData& pd = PluginData::getInstance();
+        if (pd.hasNewAllTimePB() && !isTimedNoticeActive(pd.getAllTimePBTime()))
+            pd.clearAllTimePB();
+        if (pd.hasNewFastestLap() && !isTimedNoticeActive(pd.getFastestLapTime()))
+            pd.clearFastestLap();
+        if (pd.hasNewSessionPB() && !isTimedNoticeActive(pd.getSessionPBTime()))
+            pd.clearSessionPB();
         clearDataDirty();
         clearLayoutDirty();
         return;
     }
 
-    const PluginData& pluginData = PluginData::getInstance();
+    PluginData& pluginData = PluginData::getInstance();
 
     // Track session state transitions to detect race start
     const SessionData& sessionData = pluginData.getSessionData();
@@ -93,14 +111,14 @@ void NoticesWidget::update() {
         setDataDirty();
     }
 
-    // Check blue flag status
-    std::vector<int> blueFlagRaceNums = pluginData.getBlueFlagRaceNums();
+    // Check blue flag status (returns cached const ref — no allocation)
+    const auto& blueFlagRaceNums = pluginData.getBlueFlagRaceNums();
     if (blueFlagRaceNums != m_blueFlagRaceNums) {
         m_blueFlagRaceNums = blueFlagRaceNums;
         setDataDirty();
     }
 
-    // Check last lap / finished status
+    // Check last lap / finished status - trigger timed notices on transitions
     bool isLastLap = false;
     bool isFinished = false;
     int displayRaceNum = pluginData.getDisplayRaceNum();
@@ -112,14 +130,55 @@ void NoticesWidget::update() {
         }
     }
 
-    if (isLastLap != m_bIsLastLap) {
-        m_bIsLastLap = isLastLap;
+    // Trigger last lap timed notice on transition to last lap (once per last-lap period)
+    if (isLastLap && !m_bLastLapTriggered) {
+        m_lastLapTriggerTime = std::chrono::steady_clock::now();
+        m_bShowLastLap = true;
+        m_bLastLapTriggered = true;
         setDataDirty();
     }
-    if (isFinished != m_bIsFinished) {
-        m_bIsFinished = isFinished;
+
+    // Trigger finished timed notice on transition to finished (once per race)
+    if (isFinished && !m_bFinishedTriggered) {
+        m_finishedTriggerTime = std::chrono::steady_clock::now();
+        m_bShowFinished = true;
+        m_bFinishedTriggered = true;
         setDataDirty();
     }
+
+    // Expire last lap / finished timed notices
+    if (m_bShowLastLap && !isTimedNoticeActive(m_lastLapTriggerTime)) {
+        m_bShowLastLap = false;
+        setDataDirty();
+    }
+    if (m_bShowFinished && !isTimedNoticeActive(m_finishedTriggerTime)) {
+        m_bShowFinished = false;
+        setDataDirty();
+    }
+
+    // Reset triggered flags when conditions clear (e.g. new race starts)
+    // so the notices can fire again in subsequent races
+    if (!isLastLap && m_bLastLapTriggered) {
+        m_bLastLapTriggered = false;
+    }
+    if (!isFinished && m_bFinishedTriggered) {
+        m_bFinishedTriggered = false;
+    }
+
+    // Check timed notice flags - single check per type, clear expired flags
+    auto checkTimedNotice = [&](bool hasNew, std::chrono::steady_clock::time_point time,
+                                auto clearFn, bool& showFlag) {
+        bool active = hasNew && isTimedNoticeActive(time);
+        if (hasNew && !active) clearFn();
+        if (active != showFlag) { showFlag = active; setDataDirty(); }
+    };
+
+    checkTimedNotice(pluginData.hasNewAllTimePB(), pluginData.getAllTimePBTime(),
+                     [&]() { pluginData.clearAllTimePB(); }, m_bShowAllTimePB);
+    checkTimedNotice(pluginData.hasNewFastestLap(), pluginData.getFastestLapTime(),
+                     [&]() { pluginData.clearFastestLap(); }, m_bShowFastestLap);
+    checkTimedNotice(pluginData.hasNewSessionPB(), pluginData.getSessionPBTime(),
+                     [&]() { pluginData.clearSessionPB(); }, m_bShowSessionPB);
 
     // Handle dirty flags using base class helper
     processDirtyFlags();
@@ -166,14 +225,18 @@ void NoticesWidget::rebuildRenderData() {
     m_quads.clear();
 
     // Check which notices are both active and enabled
-    bool showWrongWay = m_bIsWrongWay && (m_enabledNotices & NOTICE_WRONG_WAY);
-    bool showBlueFlag = !m_blueFlagRaceNums.empty() && (m_enabledNotices & NOTICE_BLUE_FLAG);
-    bool showFinished = m_bIsFinished && (m_enabledNotices & NOTICE_FINISHED);
-    bool showLastLap = m_bIsLastLap && (m_enabledNotices & NOTICE_LAST_LAP);
+    bool showWrongWay  = m_bIsWrongWay && (m_enabledNotices & NOTICE_WRONG_WAY);
+    bool showBlueFlag  = !m_blueFlagRaceNums.empty() && (m_enabledNotices & NOTICE_BLUE_FLAG);
+    bool showAllTimePB = m_bShowAllTimePB && (m_enabledNotices & NOTICE_ALLTIME_PB);
+    bool showFastestLap = m_bShowFastestLap && (m_enabledNotices & NOTICE_FASTEST_LAP);
+    bool showSessionPB = m_bShowSessionPB && (m_enabledNotices & NOTICE_SESSION_PB);
+    bool showFinished  = m_bShowFinished && (m_enabledNotices & NOTICE_FINISHED);
+    bool showLastLap   = m_bShowLastLap && (m_enabledNotices & NOTICE_LAST_LAP);
 
     // Only render if there's something to show
-    // Priority: WRONG WAY > BLUE FLAG > FINISHED > LAST LAP
-    if (!showWrongWay && !showBlueFlag && !showLastLap && !showFinished) {
+    // Priority: WRONG WAY > BLUE FLAG > ALL-TIME PB > FASTEST LAP > SESSION PB > FINISHED > LAST LAP
+    if (!showWrongWay && !showBlueFlag && !showAllTimePB && !showFastestLap &&
+        !showSessionPB && !showLastLap && !showFinished) {
         setBounds(0.0f, 0.0f, 0.0f, 0.0f);
         return;
     }
@@ -235,6 +298,23 @@ void NoticesWidget::rebuildRenderData() {
         addString(blueFlagText.c_str(), CENTER_X, noticeY, Justify::CENTER,
             this->getFont(FontCategory::TITLE), ColorPalette::BLUE, dim.fontSizeLarge);
     }
+    else if (showAllTimePB || showFastestLap || showSessionPB) {
+        // All positive notices share the same rendering (green bg + green text)
+        const char* text = showAllTimePB ? "ALL-TIME PB" :
+                           showFastestLap ? "FASTEST LAP" : "SESSION PB";
+
+        SPluginQuad_t noticeQuad;
+        float quadX = noticeQuadX;
+        float quadY = noticeQuadY;
+        applyOffset(quadX, quadY);
+        setQuadPositions(noticeQuad, quadX, quadY, noticeQuadWidth, noticeQuadHeight);
+        noticeQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+        noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::POSITIVE), m_fBackgroundOpacity);
+        m_quads.push_back(noticeQuad);
+
+        addString(text, CENTER_X, noticeY, Justify::CENTER,
+            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::POSITIVE), dim.fontSizeLarge);
+    }
     else if (showFinished) {
         // Add notice background (semantic background color for finished)
         SPluginQuad_t noticeQuad;
@@ -251,14 +331,14 @@ void NoticesWidget::rebuildRenderData() {
             this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
     }
     else if (showLastLap) {
-        // Add notice background (semantic neutral color for last lap)
+        // Add notice background (white for last lap)
         SPluginQuad_t noticeQuad;
         float quadX = noticeQuadX;
         float quadY = noticeQuadY;
         applyOffset(quadX, quadY);
         setQuadPositions(noticeQuad, quadX, quadY, noticeQuadWidth, noticeQuadHeight);
         noticeQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::NEUTRAL), m_fBackgroundOpacity);
+        noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::BACKGROUND), m_fBackgroundOpacity);
         m_quads.push_back(noticeQuad);
 
         // Add notice text (white)
@@ -270,12 +350,29 @@ void NoticesWidget::rebuildRenderData() {
 }
 
 void NoticesWidget::resetToDefaults() {
-    m_bVisible = false;  // Disabled by default
+    m_bVisible = true;
     m_bShowTitle = false;
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.1f;
     m_fScale = 1.0f;
     setPosition(0.0f, 0.0f);
     m_enabledNotices = NOTICE_DEFAULT;
+    m_noticeDurationMs = DEFAULT_NOTICE_DURATION_MS;
+
+    // Reset notice state
+    m_bIsWrongWay = false;
+    m_blueFlagRaceNums.clear();
+    m_bShowLastLap = false;
+    m_bShowFinished = false;
+    m_bLastLapTriggered = false;
+    m_bFinishedTriggered = false;
+    m_bShowSessionPB = false;
+    m_bShowFastestLap = false;
+    m_bShowAllTimePB = false;
+    m_lastLapTriggerTime = {};
+    m_finishedTriggerTime = {};
+    m_sessionStartTime = 0;
+    m_lastSessionState = -1;
+
     setDataDirty();
 }

@@ -30,6 +30,11 @@ enum class HotkeyAction : uint8_t {
     TOGGLE_ALL_HUDS,         // Hide/show all HUDs
     TOGGLE_SETTINGS,         // Default: ` (tilde)
     RELOAD_CONFIG,           // Reload settings from .ini file
+    // New actions appended here to preserve existing config indices
+    TOGGLE_LAP_CONSISTENCY,
+    TOGGLE_FMX,
+    TOGGLE_STATS,
+    TOGGLE_SESSION,
 
     COUNT  // Must be last
 };
@@ -53,7 +58,11 @@ inline const char* getActionDisplayName(HotkeyAction action) {
         case HotkeyAction::TOGGLE_RUMBLE:       return "Rumble";
         case HotkeyAction::TOGGLE_ALL_HUDS:     return "All Elements";
         case HotkeyAction::TOGGLE_SETTINGS:     return "Settings Menu";
-        case HotkeyAction::RELOAD_CONFIG:       return "Reload Config";
+        case HotkeyAction::RELOAD_CONFIG:          return "Reload Config";
+        case HotkeyAction::TOGGLE_LAP_CONSISTENCY: return "Consistency";
+        case HotkeyAction::TOGGLE_FMX:             return "FMX";
+        case HotkeyAction::TOGGLE_STATS:           return "Stats";
+        case HotkeyAction::TOGGLE_SESSION:         return "Session";
         default: return "Unknown";
     }
 }

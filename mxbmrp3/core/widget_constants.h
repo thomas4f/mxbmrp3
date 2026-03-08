@@ -7,11 +7,10 @@
 namespace WidgetDimensions {
     // Widget dimensions (character widths for monospace text)
     constexpr int STANDARD_WIDTH = 12;       // Standard widget width (lap, position, duration, timing)
-    constexpr int SPEED_WIDTH = 8;           // Speed widget width
+    constexpr int SPEED_WIDTH = 5;           // Speed widget width
+    constexpr int GEAR_WIDTH = 5;            // Gear widget width
+    constexpr int LEAN_WIDTH = 8;            // Lean widget width
     constexpr int SESSION_WIDTH = 46;        // Session widget width
-
-    // Speed widget specific dimensions
-    constexpr int SPEED_GEAR_OFFSET = 11;    // Gear offset in chars from left edge
 
     // TimingHud column widths (per-column character counts)
     constexpr int TIMING_LABEL_WIDTH = 7;    // "Split 1", "Lap 99", "Finish"

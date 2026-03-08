@@ -5,7 +5,7 @@
 #include "lap_consistency_hud.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
-#include "../core/personal_best_manager.h"
+#include "../core/stats_manager.h"
 #include "../core/hud_manager.h"
 #include "../diagnostics/logger.h"
 #if GAME_HAS_RECORDS_PROVIDER
@@ -299,7 +299,7 @@ int LapConsistencyHud::getReferenceTime() const {
         case ReferenceMode::ALLTIME: {
             // All-time personal best (persisted across sessions)
             const SessionData& sessionData = pluginData.getSessionData();
-            const PersonalBestEntry* allTimePB = PersonalBestManager::getInstance()
+            const StatsPersonalBestData* allTimePB = StatsManager::getInstance()
                 .getPersonalBest(sessionData.trackId, sessionData.bikeName);
             if (allTimePB && allTimePB->isValid()) {
                 m_referenceAvailable = true;
@@ -830,7 +830,7 @@ void LapConsistencyHud::resetToDefaults() {
     setTextureVariant(0);
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.0055f, 0.5106f);  // Left side, below ideal lap area
+    setPosition(0.7095f, 0.5439f);
 
     m_displayMode = DISPLAY_DEFAULT;
     m_referenceMode = ReferenceMode::AVERAGE;

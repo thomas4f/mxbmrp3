@@ -15,7 +15,7 @@
 #include <cctype>
 #include <windows.h>
 
-// Subdirectory and file name (matches PersonalBestManager pattern)
+// Subdirectory and file name (matches StatsManager pattern)
 static constexpr const char* TRACKED_SUBDIRECTORY = "mxbmrp3";
 static constexpr const char* TRACKED_FILENAME = "mxbmrp3_tracked_riders.json";
 

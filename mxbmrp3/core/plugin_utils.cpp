@@ -147,6 +147,62 @@ void PluginUtils::formatSectorTime(int sectorTimeMs, char* buffer, size_t buffer
     }
 }
 
+void PluginUtils::formatDuration(int64_t totalMs, char* buffer, size_t bufferSize) {
+    if (bufferSize < 6) {  // Need space for at least "0:00\0"
+        if (bufferSize > 0) buffer[0] = '\0';
+        return;
+    }
+    if (totalMs < 0) totalMs = 0;
+    int totalSeconds = static_cast<int>(totalMs / 1000);
+    int hours = totalSeconds / 3600;
+    int minutes = (totalSeconds % 3600) / 60;
+    int seconds = totalSeconds % 60;
+    if (hours > 0) {
+        snprintf(buffer, bufferSize, "%dh %02dm", hours, minutes);
+    } else {
+        snprintf(buffer, bufferSize, "%d:%02d", minutes, seconds);
+    }
+}
+
+void PluginUtils::formatDistance(double meters, char* buffer, size_t bufferSize) {
+    if (bufferSize < 10) {  // Need space for at least "1,234 km\0"
+        if (bufferSize > 0) buffer[0] = '\0';
+        return;
+    }
+    if (meters <= 0.0) {
+        snprintf(buffer, bufferSize, "0 m");
+        return;
+    }
+    double km = meters / 1000.0;
+    if (km >= 1000.0) {
+        // Use comma-separated thousands for large distances (no decimals)
+        char raw[32];
+        snprintf(raw, sizeof(raw), "%.0f", km);
+        int len = static_cast<int>(strlen(raw));
+        // Insert commas into buffer with bounds checking
+        char* out = buffer;
+        size_t remaining = bufferSize;
+        for (int i = 0; i < len; ++i) {
+            if (i > 0 && (len - i) % 3 == 0) {
+                if (remaining < 2) break;  // Need room for comma + more
+                *out++ = ',';
+                remaining--;
+            }
+            if (remaining < 2) break;  // Need room for char + null
+            *out++ = raw[i];
+            remaining--;
+        }
+        // Append " km" suffix with safe bounds
+        snprintf(out, remaining, " km");
+    } else if (km >= 100.0) {
+        snprintf(buffer, bufferSize, "%.1f km", km);   // 100-999: 1 decimal
+    } else if (km >= 1.0) {
+        snprintf(buffer, bufferSize, "%.2f km", km);   // 1-99: 2 decimals
+    } else {
+        snprintf(buffer, bufferSize, "%d m", static_cast<int>(meters));
+    }
+}
+
 const char* PluginUtils::getEventTypeString(int eventType) {
     namespace Enum = PluginConstants::EventType;
     namespace Str = PluginConstants::DisplayStrings::EventType;

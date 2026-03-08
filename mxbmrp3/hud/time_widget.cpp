@@ -191,7 +191,7 @@ void TimeWidget::resetToDefaults() {
     m_bShowTitle = true;
     m_bShowSessionType = false;  // Hide session type by default
     setTextureVariant(0);  // No texture by default
-    m_fBackgroundOpacity = 0.1f;
+    m_fBackgroundOpacity = 0.0f;
     m_fScale = 1.0f;
     setPosition(0.1925f, 0.0111f);
     setDataDirty();

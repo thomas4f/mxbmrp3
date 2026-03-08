@@ -210,14 +210,6 @@ __declspec(dllexport) void RaceSplit(void* _pData, int _iDataSize)
 }
 
 /* This function is optional */
-__declspec(dllexport) void RaceHoleshot(void* _pData, int _iDataSize)
-{
-	auto* gameData = static_cast<SPluginsRaceHoleshot_t*>(_pData);
-	auto unified = Adapter::toRaceHoleshot(gameData);
-	PluginManager::getInstance().handleRaceHoleshot(&unified);
-}
-
-/* This function is optional */
 __declspec(dllexport) void RaceCommunication(void* _pData, int _iDataSize)
 {
 	auto* gameData = static_cast<SPluginsRaceCommunication_t*>(_pData);

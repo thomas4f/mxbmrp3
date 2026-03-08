@@ -7,7 +7,7 @@
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
 #include "../core/xinput_reader.h"
-#include "../core/odometer_manager.h"
+#include "../core/stats_manager.h"
 #include "../core/fmx_manager.h"
 #include "../diagnostics/logger.h"
 #include <algorithm>
@@ -21,8 +21,12 @@ void RunTelemetryHandler::handleRunTelemetry(Unified::TelemetryData* psTelemetry
         // Update speedometer, gear, RPM, and fuel
         PluginData::getInstance().updateSpeedometer(psTelemetryData->speedometer, psTelemetryData->gear, psTelemetryData->rpm, psTelemetryData->fuel);
 
-        // Update odometer with current speed (distance calculation happens inside)
-        OdometerManager::getInstance().updateDistance(psTelemetryData->speedometer);
+        // Update stats: distance, top speed, crash detection
+        {
+            const TrackPositionData* playerPos = PluginData::getInstance().getPlayerTrackPosition();
+            bool isCrashed = playerPos && playerPos->crashed;
+            StatsManager::getInstance().updateTelemetry(psTelemetryData->speedometer, isCrashed, psTelemetryData->gear);
+        }
 
         // Update input telemetry data (bike-specific uses front/rear brake)
         float frontBrake = psTelemetryData->brake;

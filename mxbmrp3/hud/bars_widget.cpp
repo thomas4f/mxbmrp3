@@ -97,7 +97,8 @@ void BarsWidget::rebuildRenderData() {
         ? (enabledBarCount * barWidth) + ((enabledBarCount - 1) * barSpacing)
         : 0.0f;
     float backgroundWidth = dims.paddingH * 2 + barsWidth;
-    float backgroundHeight = dims.paddingV + barHeight + labelHeight;
+    float titleHeight = m_bShowTitle ? dims.lineHeightNormal : 0.0f;
+    float backgroundHeight = dims.paddingV + titleHeight + barHeight + labelHeight;
 
     setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + backgroundHeight);
 
@@ -106,6 +107,13 @@ void BarsWidget::rebuildRenderData() {
 
     float contentStartX = START_X + dims.paddingH;
     float contentStartY = START_Y + dims.paddingV;
+
+    // Title label (optional)
+    if (m_bShowTitle) {
+        addString("Bars", contentStartX, contentStartY, Justify::LEFT,
+            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dims.fontSize);
+        contentStartY += titleHeight;
+    }
 
     // Get current values - throttle and front brake always available from inputTelemetry
     // (history buffers are only populated when TelemetryHud is visible)
@@ -452,12 +460,12 @@ void BarsWidget::addVerticalBar(float x, float y, float barWidth, float barHeigh
 }
 
 void BarsWidget::resetToDefaults() {
-    m_bVisible = true;
+    m_bVisible = false;
     m_bShowTitle = false;  // No title by default
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 1.0f;  // Full opacity
     m_fScale = 1.0f;
-    setPosition(0.858f, 0.8547f);
+    setPosition(0.924f, 0.5883f);
 #if GAME_HAS_TYRE_TEMP
     // GP Bikes: include engine temp by default (has reliable temp data)
     m_enabledColumns = COL_DEFAULT | COL_ENGINE_TEMP;

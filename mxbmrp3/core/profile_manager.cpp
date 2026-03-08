@@ -12,6 +12,7 @@ ProfileManager& ProfileManager::getInstance() {
 
 ProfileManager::ProfileManager()
     : m_activeProfile(ProfileType::PRACTICE)
+    , m_lastAutoSwitchTarget(ProfileType::COUNT)
     , m_autoSwitchEnabled(false)
 {
     DEBUG_INFO("ProfileManager created");
@@ -34,6 +35,9 @@ void ProfileManager::setActiveProfile(ProfileType profile) {
 void ProfileManager::setAutoSwitchEnabled(bool enabled) {
     if (m_autoSwitchEnabled != enabled) {
         m_autoSwitchEnabled = enabled;
+        if (enabled) {
+            m_lastAutoSwitchTarget = ProfileType::COUNT;  // force re-evaluation
+        }
         DEBUG_INFO_F("Auto-switch %s", enabled ? "enabled" : "disabled");
     }
 }

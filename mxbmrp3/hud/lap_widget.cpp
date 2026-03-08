@@ -200,7 +200,7 @@ void LapWidget::resetToDefaults() {
     m_bVisible = true;
     m_bShowTitle = true;
     setTextureVariant(0);  // No texture by default
-    m_fBackgroundOpacity = 0.1f;
+    m_fBackgroundOpacity = 0.0f;
     m_fScale = 1.0f;
     setPosition(0.099f, 0.0111f);
     setDataDirty();

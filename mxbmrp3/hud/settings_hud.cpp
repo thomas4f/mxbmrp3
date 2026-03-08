@@ -7,6 +7,7 @@
 #include "telemetry_hud.h"
 #include "rumble_hud.h"
 #include "fmx_hud.h"
+#include "stats_hud.h"
 #include "settings_button_widget.h"
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
@@ -63,8 +64,9 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, LapConsistenc
                          StandingsHud* standings,
                          PerformanceHud* performance,
                          TelemetryHud* telemetry,
-                         TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean,
-                         FmxHud* fmxHud
+                         TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean,
+                         FmxHud* fmxHud,
+                         StatsHud* statsHud
 #if GAME_HAS_TYRE_TEMP
                          , TyreTempWidget* tyreTemp
 #endif
@@ -82,6 +84,7 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, LapConsistenc
       m_mapHud(mapHud),
       m_radarHud(radarHud),
       m_speed(speed),
+      m_gear(gear),
       m_speedo(speedo),
       m_tacho(tacho),
       m_timing(timing),
@@ -97,6 +100,7 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, LapConsistenc
       m_gamepad(gamepad),
       m_lean(lean),
       m_fmxHud(fmxHud),
+      m_statsHud(statsHud),
 #if GAME_HAS_TYRE_TEMP
       m_tyreTemp(tyreTemp),
 #endif
@@ -187,6 +191,16 @@ void SettingsHud::update() {
         rebuildRenderData();
         DEBUG_INFO_F("SettingsHud rebuilt after window resize: %dx%d", currentWidth, currentHeight);
         return;  // Skip other processing this frame
+    }
+
+    // Periodic refresh for Stats tab (live session data: distance, time, speed, etc.)
+    if (m_activeTab == TAB_STATS) {
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_lastStatsRefresh).count();
+        if (elapsed >= 1000) {
+            m_lastStatsRefresh = now;
+            setDataDirty();
+        }
     }
 
 #if GAME_HAS_DISCORD
@@ -481,8 +495,8 @@ void SettingsHud::rebuildRenderData() {
 
     float panelWidth = PluginUtils::calculateMonospaceTextWidth(panelWidthChars, dim.fontSize) + dim.paddingH + dim.paddingH;
 
-    // Estimate height - sized to fit Radar tab (most rows: ~22 content + title/close)
-    int estimatedRows = 28;
+    // Estimate height - sized to fit all tabs + content (Stats tab added one more row)
+    int estimatedRows = 29;
     float backgroundHeight = dim.paddingV + dim.lineHeightLarge + dim.lineHeightNormal + (estimatedRows * dim.lineHeightNormal) + dim.paddingV;
 
     // Center the panel horizontally and vertically
@@ -536,6 +550,7 @@ void SettingsHud::rebuildRenderData() {
         TAB_TIMING,
         TAB_GAP_BAR,
         TAB_FMX,
+        TAB_STATS,
         TAB_PERFORMANCE,
         TAB_WIDGETS
     };
@@ -622,6 +637,7 @@ void SettingsHud::rebuildRenderData() {
             case TAB_TIMING:       tabHud = m_timing; break;
             case TAB_GAP_BAR:      tabHud = m_gapBar; break;
             case TAB_FMX:          tabHud = m_fmxHud; break;
+            case TAB_STATS:        tabHud = m_statsHud; break;
             default:               tabHud = nullptr; break;  // General, Widgets, Rumble have no single HUD
         }
 
@@ -728,6 +744,7 @@ void SettingsHud::rebuildRenderData() {
                            i == TAB_RIDERS ? "riders" :
                            i == TAB_UPDATES ? "updates" :
                            i == TAB_FMX ? "fmx" :
+                           i == TAB_STATS ? "stats" :
                            "general";
 
         ClickRegion tabRegion;
@@ -1180,6 +1197,12 @@ void SettingsHud::rebuildRenderData() {
             currentY = layoutCtx.currentY;
             break;
 
+        case TAB_STATS:
+            layoutCtx.currentY = currentY;
+            activeHud = renderTabStats(layoutCtx);
+            currentY = layoutCtx.currentY;
+            break;
+
         default:
             DEBUG_WARN_F("Invalid tab index: %d, defaulting to TAB_STANDINGS", m_activeTab);
             activeHud = m_standings;
@@ -1534,6 +1557,7 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
                 case TAB_LAP_CONSISTENCY: handled = handleClickTabLapConsistency(region); break;
                 case TAB_UPDATES:    handled = handleClickTabUpdates(region); break;
                 case TAB_FMX:        handled = handleClickTabFmx(region); break;
+                case TAB_STATS:      handled = handleClickTabStats(region); break;
                 default: break;
             }
 
@@ -1745,6 +1769,8 @@ void SettingsHud::resetToDefaults() {
     if (m_timing) m_timing->resetToDefaults();
     if (m_gapBar) m_gapBar->resetToDefaults();
     if (m_fmxHud) m_fmxHud->resetToDefaults();
+    if (m_lapConsistency) m_lapConsistency->resetToDefaults();
+    if (m_statsHud) m_statsHud->resetToDefaults();
 
     // Reset all widgets to their constructor defaults
     if (m_lap) m_lap->resetToDefaults();
@@ -1752,6 +1778,7 @@ void SettingsHud::resetToDefaults() {
     if (m_time) m_time->resetToDefaults();
     if (m_session) m_session->resetToDefaults();
     if (m_speed) m_speed->resetToDefaults();
+    if (m_gear) m_gear->resetToDefaults();
     if (m_speedo) m_speedo->resetToDefaults();
     if (m_tacho) m_tacho->resetToDefaults();
     if (m_notices) m_notices->resetToDefaults();
@@ -1793,6 +1820,21 @@ void SettingsHud::resetToDefaults() {
 
     // Reset update checker to default (off)
     UpdateChecker::getInstance().setEnabled(false);
+
+    // Reset UI configuration (grid snap, screen clamp, auto-save, temperature unit)
+    UiConfig::getInstance().resetToDefaults();
+
+    // Reset profile auto-switching
+    ProfileManager::getInstance().setAutoSwitchEnabled(false);
+
+    // Reset controller index
+    XInputReader::getInstance().getRumbleConfig().controllerIndex = 0;
+    XInputReader::getInstance().setControllerIndex(0);
+
+#if GAME_HAS_DISCORD
+    // Reset Discord integration
+    DiscordManager::getInstance().setEnabled(false);
+#endif
 
     // Update settings display
     rebuildRenderData();
@@ -1888,6 +1930,7 @@ void SettingsHud::resetCurrentTab() {
             if (m_position) m_position->resetToDefaults();
             if (m_time) m_time->resetToDefaults();
             if (m_speed) m_speed->resetToDefaults();
+            if (m_gear) m_gear->resetToDefaults();
             if (m_speedo) m_speedo->resetToDefaults();
             if (m_tacho) m_tacho->resetToDefaults();
             if (m_notices) m_notices->resetToDefaults();
@@ -1914,6 +1957,11 @@ void SettingsHud::resetCurrentTab() {
         case TAB_FMX:
             if (m_fmxHud) {
                 m_fmxHud->resetToDefaults();
+            }
+            break;
+        case TAB_STATS:
+            if (m_statsHud) {
+                m_statsHud->resetToDefaults();
             }
             break;
         case TAB_RIDERS:
@@ -1951,6 +1999,8 @@ void SettingsHud::resetCurrentProfile() {
     if (m_timing) m_timing->resetToDefaults();
     if (m_gapBar) m_gapBar->resetToDefaults();
     if (m_fmxHud) m_fmxHud->resetToDefaults();
+    if (m_lapConsistency) m_lapConsistency->resetToDefaults();
+    if (m_statsHud) m_statsHud->resetToDefaults();
 
     // Reset all widgets to their constructor defaults
     if (m_lap) m_lap->resetToDefaults();
@@ -1958,6 +2008,7 @@ void SettingsHud::resetCurrentProfile() {
     if (m_time) m_time->resetToDefaults();
     if (m_session) m_session->resetToDefaults();
     if (m_speed) m_speed->resetToDefaults();
+    if (m_gear) m_gear->resetToDefaults();
     if (m_speedo) m_speedo->resetToDefaults();
     if (m_tacho) m_tacho->resetToDefaults();
     if (m_notices) m_notices->resetToDefaults();
@@ -2127,6 +2178,7 @@ const char* SettingsHud::getTabName(int tabIndex) const {
         case TAB_UPDATES:     return "Updates";
         case TAB_RADAR:       return "Radar";
         case TAB_FMX:         return "FMX";
+        case TAB_STATS:       return "Stats";
         default:              return "Unknown";
     }
 }
@@ -2358,6 +2410,8 @@ const char* SettingsHud::getTooltipIdForRegion(ClickRegion::Type type, int activ
                     return "general.speed_unit";
                 case ClickRegion::FUEL_UNIT_TOGGLE:
                     return "general.fuel_unit";
+                case ClickRegion::TEMP_UNIT_TOGGLE:
+                    return "general.temp_unit";
                 case ClickRegion::GRID_SNAP_TOGGLE:
                     return "general.grid_snap";
                 case ClickRegion::RUMBLE_CONTROLLER_UP:

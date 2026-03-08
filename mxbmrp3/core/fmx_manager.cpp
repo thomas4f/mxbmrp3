@@ -540,7 +540,9 @@ Fmx::TrickType FmxManager::classifyCurrentTrick() const {
     // =========================================================================
     // PRIORITY 3: Partial rotation tricks (30-179°)
     // =========================================================================
-    if (hasAirtime) {
+    // Require minimum airtime before classifying any air trick.
+    // Prevents tiny bumps from triggering false positives.
+    if (hasAirtime && m_activeTrick.duration >= m_config.airCommitTime) {
         // Turn Up/Down: significant yaw rotation with nose pointing up/down in world space
         // Uses peak world-space pitch — once the nose pointed up/down, the trick sticks
         if (absYaw >= TURN_YAW_THRESHOLD) {
@@ -569,8 +571,7 @@ Fmx::TrickType FmxManager::classifyCurrentTrick() const {
 
         // Basic air (significant airtime but minimal rotation)
         // Use getHeightChange() to detect both uphill and downhill jumps
-        if (m_activeTrick.duration >= m_config.airCommitTime &&
-            m_rotationTracker.getHeightChange() >= m_config.airCommitHeight) {
+        if (m_rotationTracker.getHeightChange() >= m_config.airCommitHeight) {
             return TrickType::AIR;
         }
     }

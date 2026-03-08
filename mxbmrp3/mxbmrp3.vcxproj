@@ -212,9 +212,7 @@
     <ClInclude Include="core\plugin_manager.h" />
     <ClInclude Include="core\plugin_utils.h" />
     <ClInclude Include="core\settings_manager.h" />
-    <ClInclude Include="core\personal_best_manager.h" />
     <ClInclude Include="core\rumble_profile_manager.h" />
-    <ClInclude Include="core\odometer_manager.h" />
     <ClInclude Include="core\update_checker.h" />
     <ClInclude Include="core\update_downloader.h" />
     <ClInclude Include="core\discord_manager.h" />
@@ -222,6 +220,7 @@
     <ClInclude Include="core\xinput_reader.h" />
     <ClInclude Include="core\fmx_types.h" />
     <ClInclude Include="core\fmx_manager.h" />
+    <ClInclude Include="core\stats_manager.h" />
     <ClInclude Include="diagnostics\logger.h" />
     <ClInclude Include="diagnostics\timer.h" />
     <ClInclude Include="handlers\draw_handler.h" />
@@ -259,6 +258,7 @@
     <ClInclude Include="hud\settings_button_widget.h" />
     <ClInclude Include="hud\settings_hud.h" />
     <ClInclude Include="hud\speed_widget.h" />
+    <ClInclude Include="hud\gear_widget.h" />
     <ClInclude Include="hud\speedo_widget.h" />
     <ClInclude Include="hud\tacho_widget.h" />
     <ClInclude Include="hud\standings_hud.h" />
@@ -273,6 +273,7 @@
     <ClInclude Include="hud\lean_widget.h" />
     <ClInclude Include="hud\tyre_temp_widget.h" />
     <ClInclude Include="hud\fmx_hud.h" />
+    <ClInclude Include="hud\stats_hud.h" />
     <ClInclude Include="hud\settings\settings_layout.h" />
     <ClInclude Include="vendor\piboso\mxb_api.h" />
     <ClInclude Include="vendor\piboso\gpb_api.h" />
@@ -309,14 +310,13 @@
     <ClCompile Include="core\plugin_manager.cpp" />
     <ClCompile Include="core\plugin_utils.cpp" />
     <ClCompile Include="core\settings_manager.cpp" />
-    <ClCompile Include="core\personal_best_manager.cpp" />
     <ClCompile Include="core\rumble_profile_manager.cpp" />
-    <ClCompile Include="core\odometer_manager.cpp" />
     <ClCompile Include="core\update_checker.cpp" />
     <ClCompile Include="core\update_downloader.cpp" />
     <ClCompile Include="core\discord_manager.cpp" />
     <ClCompile Include="core\xinput_reader.cpp" />
     <ClCompile Include="core\fmx_manager.cpp" />
+    <ClCompile Include="core\stats_manager.cpp" />
     <ClCompile Include="game\memory_reader.cpp" />
     <ClCompile Include="game\connection_detector.cpp" />
     <ClCompile Include="diagnostics\logger.cpp" />
@@ -359,6 +359,7 @@
     <ClCompile Include="hud\settings\settings_tab_lap_log.cpp" />
     <ClCompile Include="hud\settings\settings_tab_lap_consistency.cpp" />
     <ClCompile Include="hud\settings\settings_tab_fmx.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_stats.cpp" />
     <ClCompile Include="hud\settings\settings_tab_telemetry.cpp" />
     <ClCompile Include="hud\settings\settings_tab_performance.cpp" />
     <ClCompile Include="hud\settings\settings_tab_records.cpp" />
@@ -377,6 +378,7 @@
     <ClCompile Include="hud\settings\settings_tab_riders.cpp" />
     <ClCompile Include="hud\settings\settings_tab_updates.cpp" />
     <ClCompile Include="hud\speed_widget.cpp" />
+    <ClCompile Include="hud\gear_widget.cpp" />
     <ClCompile Include="hud\speedo_widget.cpp" />
     <ClCompile Include="hud\tacho_widget.cpp" />
     <ClCompile Include="hud\standings_hud.cpp" />
@@ -391,6 +393,7 @@
     <ClCompile Include="hud\lean_widget.cpp" />
     <ClCompile Include="hud\tyre_temp_widget.cpp" />
     <ClCompile Include="hud\fmx_hud.cpp" />
+    <ClCompile Include="hud\stats_hud.cpp" />
     <!-- MX Bikes API - only compiled for MXBikes configurations -->
     <ClCompile Include="vendor\piboso\mxb_api.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='GPB-Debug|x64'">true</ExcludedFromBuild>

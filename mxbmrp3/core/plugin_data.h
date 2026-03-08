@@ -173,7 +173,7 @@ struct RaceEntryData {
 // Standings data for race classification (current race position)
 struct StandingsData {
     int raceNum;
-    int state;          // 1 = DNS, 2 = retired, 3 = DSQ
+    int state;          // EntryState: 0=Racing, 1=DNS, 2=Unknown, 3=Retired, 4=DSQ
     int bestLap;        // milliseconds
     int bestLapNum;     // best lap index
     int numLaps;        // number of laps completed
@@ -785,7 +785,7 @@ public:
     const TrackPositionData* getPlayerTrackPosition() const;  // Get display rider's track position data for debugging
 
     // Blue flag detection (riders 1+ laps ahead approaching from behind)
-    std::vector<int> getBlueFlagRaceNums() const;  // Returns race numbers of riders to let past
+    const std::vector<int>& getBlueFlagRaceNums() const;  // Returns race numbers of riders to let past
 
     // Overtime tracking for time+laps races
     void setOvertimeStarted(bool started) { m_sessionData.overtimeStarted = started; }
@@ -871,6 +871,25 @@ public:
     int getLiveGap() const { return m_liveGapMs; }
     bool hasValidLiveGap() const { return m_liveGapValid; }
 
+    // ========================================================================
+    // Timed Notice Flags (set by RaceLapHandler, consumed by NoticesWidget)
+    // ========================================================================
+    void notifySessionPB()  { m_newSessionPB = true; m_sessionPBTime = std::chrono::steady_clock::now(); }
+    void notifyFastestLap()  { m_newFastestLap = true; m_fastestLapTime = std::chrono::steady_clock::now(); }
+    void notifyAllTimePB()  { m_newAllTimePB = true; m_allTimePBTime = std::chrono::steady_clock::now(); }
+
+    bool hasNewSessionPB() const  { return m_newSessionPB; }
+    bool hasNewFastestLap() const  { return m_newFastestLap; }
+    bool hasNewAllTimePB() const  { return m_newAllTimePB; }
+
+    std::chrono::steady_clock::time_point getSessionPBTime() const  { return m_sessionPBTime; }
+    std::chrono::steady_clock::time_point getFastestLapTime() const  { return m_fastestLapTime; }
+    std::chrono::steady_clock::time_point getAllTimePBTime() const   { return m_allTimePBTime; }
+
+    void clearSessionPB()  { m_newSessionPB = false; }
+    void clearFastestLap()  { m_newFastestLap = false; }
+    void clearAllTimePB()  { m_newAllTimePB = false; }
+
 private:
     PluginData() : m_currentSessionTime(0), m_playerRaceNum(-1), m_bPlayerRaceNumValid(false),
                    m_bPlayerNotFoundWarned(false), m_bWaitingForPlayerEntry(false),
@@ -908,6 +927,8 @@ private:
     mutable std::unordered_map<int, int> m_positionCache;  // Cached position lookup (race number -> position), rebuilt when classification changes
     mutable bool m_bPositionCacheDirty;  // Flag to rebuild position cache
     std::unordered_map<int, TrackPositionData> m_trackPositions;  // Real-time track positions
+    mutable std::vector<int> m_cachedBlueFlagRaceNums;  // Cached blue flag result (recomputed when dirty)
+    mutable bool m_blueFlagsDirty = true;                // Invalidated when track positions change
     std::unordered_map<int, CurrentLapData> m_riderCurrentLap;  // Current lap split data per rider
     std::unordered_map<int, IdealLapData> m_riderIdealLap;  // Ideal lap sectors per rider
     std::unordered_map<int, std::deque<LapLogEntry>> m_riderLapLog;  // Lap log per rider (newest first, deque for O(1) front insert)
@@ -947,4 +968,17 @@ private:
     // Live gap tracking (published by GapBarHud)
     int m_liveGapMs = 0;                   // Current gap in milliseconds (positive = behind PB, negative = ahead)
     bool m_liveGapValid = false;           // Is the live gap valid?
+
+    // Timed notice flags (set by RaceLapHandler, consumed by NoticesWidget)
+    // Uses steady_clock timestamps so NoticesWidget can show timed notices.
+    // Invariant: the bool flag and time_point are always set together in notify*().
+    // The time_points default to epoch, but that's safe because the bool flag gates
+    // access — isTimedNoticeActive() is only called when the flag is true.
+    bool m_newSessionPB = false;
+    bool m_newFastestLap = false;
+    bool m_newAllTimePB = false;
+    std::chrono::steady_clock::time_point m_sessionPBTime;
+    std::chrono::steady_clock::time_point m_fastestLapTime;
+    std::chrono::steady_clock::time_point m_allTimePBTime;
+
 };

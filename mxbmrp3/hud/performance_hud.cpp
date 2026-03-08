@@ -556,8 +556,29 @@ void PerformanceHud::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.737f, 0.3219f);
+    setPosition(0.6985f, 0.5106f);
     m_enabledElements = ELEM_DEFAULT;
     m_displayMode = DISPLAY_BOTH;  // Show both graphs and values by default
+
+    // Reset history and statistics
+    m_fpsHistory.fill(0.0f);
+    m_pluginTimeHistory.fill(0.0f);
+    m_pluginTimePercentHistory.fill(0.0f);
+    m_historyIndex = 0;
+    m_fpsMin = 0.0f;
+    m_fpsMax = 0.0f;
+    m_fpsAvg = 0.0f;
+    m_pluginTimeMsMin = 0.0f;
+    m_pluginTimeMsMax = 0.0f;
+    m_pluginTimeMsAvg = 0.0f;
+    m_fpsSum = 0.0f;
+    m_pluginTimeSum = 0.0f;
+    m_validFpsCount = 0;
+    m_validPluginTimeCount = 0;
+    m_fpsMinIndex = -1;
+    m_fpsMaxIndex = -1;
+    m_pluginMinIndex = -1;
+    m_pluginMaxIndex = -1;
+
     setDataDirty();
 }

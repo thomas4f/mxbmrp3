@@ -68,18 +68,19 @@ float FmxHud::getContentHeight() const {
         height += dim.lineHeightNormal;  // Separator gap before combo arc section
     }
     if (m_enabledRows & ROW_COMBO_ARC) {
-        // Full circle: diameter + small padding (same radius as LeanWidget arc)
         float comboArcHeight = dim.lineHeightNormal * 2.0f;
         float comboOuterRadius = comboArcHeight * 0.9f;
         height += comboOuterRadius * 2.0f + dim.lineHeightSmall;
     }
     if (m_enabledRows & ROW_ARCS) {
         float scaledArcDiameter = (ARC_RADIUS * 2.0f + ARC_THICKNESS) * m_fScale;
-        height += dim.lineHeightNormal + scaledArcDiameter + dim.lineHeightSmall;  // label + arc + padding
+        height += dim.lineHeightNormal + scaledArcDiameter + dim.lineHeightSmall;
     }
     if (m_enabledRows & ROW_DEBUG_VALUES) height += 3.0f * dim.lineHeightSmall;
 
-    return std::max(dim.lineHeightNormal, height);
+    // Snap total content to whole lineHeightNormal rows so the HUD aligns with others
+    float rows = std::ceil(height / dim.lineHeightNormal);
+    return std::max(dim.lineHeightNormal, rows * dim.lineHeightNormal);
 }
 
 void FmxHud::rebuildRenderData() {
@@ -468,7 +469,7 @@ void FmxHud::rebuildRenderData() {
         // Arc diameter is ~0.076 at scale 1.0 (ARC_RADIUS*2 + ARC_THICKNESS)
         float scaledArcDiameter = (ARC_RADIUS * 2.0f + ARC_THICKNESS) * m_fScale;
         float labelHeight = dim.lineHeightNormal;
-        float arcAreaHeight = labelHeight + scaledArcDiameter + dim.lineHeightSmall;  // label + arc + padding
+        float arcAreaHeight = labelHeight + scaledArcDiameter + dim.lineHeightSmall;
         float arcCenterY = currentY + labelHeight + scaledArcDiameter / 2.0f;
 
         // Scale arc radius with HUD scale
@@ -680,12 +681,17 @@ void FmxHud::resetToDefaults() {
     m_bVisible = false;  // Disabled by default
     m_bShowTitle = true;
     setTextureVariant(0);
-    m_fBackgroundOpacity = 0.85f;
+    m_fBackgroundOpacity = 0.80f;
     m_fScale = 1.0f;
-    setPosition(0.02f, 0.3f);  // Left side of screen
+    setPosition(0.6875f, 0.4773f);
     m_comboArcFill = 0.0f;
     m_comboArcGraceStartFill = -1.0f;
     m_comboArcFailStartFill = -1.0f;
+
+    // Reset display state
+    m_trickStack.clear();
+    m_arcSnapshot = ArcSnapshot{};
+    m_statsSnapshot = StatsSnapshot{};
 
     // Display settings (per-profile, like StandingsHud)
     m_enabledRows = ROW_DEFAULT;

@@ -18,6 +18,7 @@
 #include "../hud/lap_widget.h"
 #include "../hud/session_hud.h"
 #include "../hud/speed_widget.h"
+#include "../hud/gear_widget.h"
 #include "../hud/speedo_widget.h"
 #include "../hud/tacho_widget.h"
 #include "../hud/timing_hud.h"
@@ -41,6 +42,7 @@
 #include "../hud/tyre_temp_widget.h"
 #endif
 #include "../hud/fmx_hud.h"
+#include "../hud/stats_hud.h"
 #include "fmx_manager.h"
 #include "color_config.h"
 #include "font_config.h"
@@ -174,6 +176,14 @@ namespace {
             constexpr const char* SHOW_DEBUG_LOGGING = "showDebugLogging";
         }
 
+        // StatsHud-specific keys
+        namespace Stats {
+            constexpr const char* VISIBILITY_MODE = "visibilityMode";
+            constexpr const char* SHOW_LAP = "showLap";
+            constexpr const char* SHOW_SESSION = "showSession";
+            constexpr const char* SHOW_ALLTIME = "showAllTime";
+        }
+
         // ====================================================================
         // Named keys for bitmask fields (replaces positional bit storage)
         // These are stable identifiers that won't break when options are added
@@ -230,9 +240,7 @@ namespace {
 
         // SpeedWidget rows
         namespace SpeedRows {
-            constexpr const char* SPEED = "row_speed";
             constexpr const char* UNITS = "row_units";
-            constexpr const char* GEAR = "row_gear";
         }
 
         // FuelWidget rows
@@ -294,6 +302,9 @@ namespace {
             constexpr const char* BLUE_FLAG = "notice_blue_flag";
             constexpr const char* LAST_LAP = "notice_last_lap";
             constexpr const char* FINISHED = "notice_finished";
+            constexpr const char* ALLTIME_PB = "notice_alltime_pb";
+            constexpr const char* FASTEST_LAP = "notice_fastest_lap";
+            constexpr const char* SESSION_PB = "notice_session_pb";
         }
 
         // TelemetryHud elements
@@ -352,9 +363,13 @@ namespace {
 
         // SpeedWidget settings
         namespace Speed {
-            constexpr Setting ROW_SPEED = {"row_speed", "Show speed value"};
             constexpr Setting ROW_UNITS = {"row_units", "Show speed units"};
-            constexpr Setting ROW_GEAR = {"row_gear", "Show current gear"};
+        }
+
+        // GearWidget settings
+        namespace Gear {
+            constexpr Setting SHOW_SHIFT_COLOR = {"showShiftColor", "Red gear text at shift RPM"};
+            constexpr Setting SHOW_LIMITER_CIRCLE = {"showLimiterCircle", "Circle indicator at limiter RPM"};
         }
 
         // TimeWidget settings
@@ -418,6 +433,10 @@ namespace {
             constexpr Setting BLUE_FLAG = {"notice_blue_flag", "Show blue flag notice"};
             constexpr Setting LAST_LAP = {"notice_last_lap", "Show last lap notice"};
             constexpr Setting FINISHED = {"notice_finished", "Show finished notice"};
+            constexpr Setting ALLTIME_PB = {"notice_alltime_pb", "Show all-time PB notice"};
+            constexpr Setting FASTEST_LAP = {"notice_fastest_lap", "Show fastest lap notice (online races)"};
+            constexpr Setting SESSION_PB = {"notice_session_pb", "Show session PB notice"};
+            constexpr Setting PB_DURATION = {"pbDurationMs", "Timed notice display duration in milliseconds (PB notices)"};
         }
 
         // StandingsHud settings
@@ -1084,9 +1103,10 @@ namespace {
         } else if (hudName == "TachoWidget") {
             if (key == Tacho::NEEDLE_COLOR.key) return Tacho::NEEDLE_COLOR.description;
         } else if (hudName == "SpeedWidget") {
-            if (key == Speed::ROW_SPEED.key) return Speed::ROW_SPEED.description;
             if (key == Speed::ROW_UNITS.key) return Speed::ROW_UNITS.description;
-            if (key == Speed::ROW_GEAR.key) return Speed::ROW_GEAR.description;
+        } else if (hudName == "GearWidget") {
+            if (key == Gear::SHOW_SHIFT_COLOR.key) return Gear::SHOW_SHIFT_COLOR.description;
+            if (key == Gear::SHOW_LIMITER_CIRCLE.key) return Gear::SHOW_LIMITER_CIRCLE.description;
         } else if (hudName == "TimeWidget") {
             if (key == Time::SHOW_SESSION_TYPE.key) return Time::SHOW_SESSION_TYPE.description;
         } else if (hudName == "RumbleHud") {
@@ -1131,6 +1151,10 @@ namespace {
             if (key == Notices::BLUE_FLAG.key) return Notices::BLUE_FLAG.description;
             if (key == Notices::LAST_LAP.key) return Notices::LAST_LAP.description;
             if (key == Notices::FINISHED.key) return Notices::FINISHED.description;
+            if (key == Notices::ALLTIME_PB.key) return Notices::ALLTIME_PB.description;
+            if (key == Notices::FASTEST_LAP.key) return Notices::FASTEST_LAP.description;
+            if (key == Notices::SESSION_PB.key) return Notices::SESSION_PB.description;
+            if (key == Notices::PB_DURATION.key) return Notices::PB_DURATION.description;
         } else if (hudName == "StandingsHud") {
             if (key == Standings::TOP_POSITIONS.key) return Standings::TOP_POSITIONS.description;
             if (key == Standings::USE_ACCENT_HIGHLIGHT.key) return Standings::USE_ACCENT_HIGHLIGHT.description;
@@ -1296,17 +1320,13 @@ namespace {
     // SpeedWidget: save rows as named keys
     void saveSpeedRows(SettingsManager::HudSettings& settings, uint32_t rows) {
         using namespace Keys::SpeedRows;
-        saveBitAsKey(settings, SPEED, rows, SpeedWidget::ROW_SPEED);
         saveBitAsKey(settings, UNITS, rows, SpeedWidget::ROW_UNITS);
-        saveBitAsKey(settings, GEAR, rows, SpeedWidget::ROW_GEAR);
     }
 
     // SpeedWidget: load rows from named keys
     void loadSpeedRows(const SettingsManager::HudSettings& settings, uint32_t& rows) {
         using namespace Keys::SpeedRows;
-        loadBitFromKey(settings, SPEED, rows, SpeedWidget::ROW_SPEED);
         loadBitFromKey(settings, UNITS, rows, SpeedWidget::ROW_UNITS);
-        loadBitFromKey(settings, GEAR, rows, SpeedWidget::ROW_GEAR);
     }
 
     // FuelWidget: save rows as named keys
@@ -1437,6 +1457,9 @@ namespace {
         saveBitAsKey(settings, BLUE_FLAG, notices, NoticesWidget::NOTICE_BLUE_FLAG);
         saveBitAsKey(settings, LAST_LAP, notices, NoticesWidget::NOTICE_LAST_LAP);
         saveBitAsKey(settings, FINISHED, notices, NoticesWidget::NOTICE_FINISHED);
+        saveBitAsKey(settings, ALLTIME_PB, notices, NoticesWidget::NOTICE_ALLTIME_PB);
+        saveBitAsKey(settings, FASTEST_LAP, notices, NoticesWidget::NOTICE_FASTEST_LAP);
+        saveBitAsKey(settings, SESSION_PB, notices, NoticesWidget::NOTICE_SESSION_PB);
     }
 
     // NoticesWidget: load notices from named keys
@@ -1446,6 +1469,9 @@ namespace {
         loadBitFromKey(settings, BLUE_FLAG, notices, NoticesWidget::NOTICE_BLUE_FLAG);
         loadBitFromKey(settings, LAST_LAP, notices, NoticesWidget::NOTICE_LAST_LAP);
         loadBitFromKey(settings, FINISHED, notices, NoticesWidget::NOTICE_FINISHED);
+        loadBitFromKey(settings, ALLTIME_PB, notices, NoticesWidget::NOTICE_ALLTIME_PB);
+        loadBitFromKey(settings, FASTEST_LAP, notices, NoticesWidget::NOTICE_FASTEST_LAP);
+        loadBitFromKey(settings, SESSION_PB, notices, NoticesWidget::NOTICE_SESSION_PB);
     }
 
     // TelemetryHud: save elements as named keys
@@ -1751,6 +1777,19 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
         cache["FmxHud"] = std::move(settings);
     }
 
+    // Capture StatsHud
+    {
+        using namespace Keys::Stats;
+        HudSettings settings;
+        const auto& hud = hudManager.getStatsHud();
+        captureBaseHudSettings(settings, hud);
+        settings[VISIBILITY_MODE] = std::to_string(static_cast<int>(hud.m_visibilityMode));
+        settings[SHOW_LAP] = hud.m_showLap ? "1" : "0";
+        settings[SHOW_SESSION] = hud.m_showSession ? "1" : "0";
+        settings[SHOW_ALLTIME] = hud.m_showAllTime ? "1" : "0";
+        cache["StatsHud"] = std::move(settings);
+    }
+
     // Capture IdealLapHud (key preserved for backward compatibility)
     {
         HudSettings settings;
@@ -1837,12 +1876,13 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
         cache["BarsWidget"] = std::move(settings);
     }
     captureWidget("VersionWidget", hudManager.getVersionWidget());
-    // NoticesWidget has enabledNotices
+    // NoticesWidget has enabledNotices and PB duration
     {
         HudSettings settings;
         const auto& hud = hudManager.getNoticesWidget();
         captureBaseHudSettings(settings, hud);
         saveNotices(settings, hud.m_enabledNotices);
+        settings[IniOnly::Notices::PB_DURATION.key] = std::to_string(hud.m_noticeDurationMs);
         cache["NoticesWidget"] = std::move(settings);
     }
     captureWidget("SettingsButtonWidget", hudManager.getSettingsButtonWidget());
@@ -1864,6 +1904,16 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
         captureBaseHudSettings(settings, hud);
         saveSpeedRows(settings, hud.m_enabledRows);  // Named keys instead of bitmask
         cache["SpeedWidget"] = std::move(settings);
+    }
+
+    // GearWidget with INI-only settings
+    {
+        HudSettings settings;
+        const auto& hud = hudManager.getGearWidget();
+        captureBaseHudSettings(settings, hud);
+        settings[IniOnly::Gear::SHOW_SHIFT_COLOR.key] = hud.m_bShowShiftColor ? "1" : "0";
+        settings[IniOnly::Gear::SHOW_LIMITER_CIRCLE.key] = hud.m_bShowLimiterCircle ? "1" : "0";
+        cache["GearWidget"] = std::move(settings);
     }
 
     // FuelWidget has enabledRows - fuelUnit is now global (in Preferences section)
@@ -2270,6 +2320,38 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
         }
     }
 
+    // Apply StatsHud
+    {
+        using namespace Keys::Stats;
+        auto it = cache.find("StatsHud");
+        if (it != cache.end()) {
+            auto& hud = hudManager.getStatsHud();
+            applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                if (settings.count(VISIBILITY_MODE)) {
+                    int mode = std::stoi(settings.at(VISIBILITY_MODE));
+                    if (mode >= 0 && mode < static_cast<int>(StatsHud::VisibilityMode::COUNT)) {
+                        hud.m_visibilityMode = static_cast<StatsHud::VisibilityMode>(mode);
+                    }
+                }
+                if (settings.count(SHOW_LAP)) {
+                    hud.m_showLap = settings.at(SHOW_LAP) == "1";
+                }
+                if (settings.count(SHOW_SESSION)) {
+                    hud.m_showSession = settings.at(SHOW_SESSION) == "1";
+                }
+                if (settings.count(SHOW_ALLTIME)) {
+                    hud.m_showAllTime = settings.at(SHOW_ALLTIME) == "1";
+                }
+            } catch (const std::exception& e) {
+                DEBUG_WARN_F("StatsHud: Failed to parse settings: %s", e.what());
+            }
+            hud.setDataDirty();
+        }
+    }
+
     // Apply IdealLapHud
     {
         auto it = cache.find("IdealLapHud");
@@ -2438,7 +2520,7 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
         }
     }
     applyToHud("VersionWidget", hudManager.getVersionWidget());
-    // Apply NoticesWidget with enabledNotices
+    // Apply NoticesWidget with enabledNotices and PB duration
     {
         auto it = cache.find("NoticesWidget");
         if (it != cache.end()) {
@@ -2448,6 +2530,12 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
             const auto& settings = it->second;
             try {
                 loadNotices(settings, hud.m_enabledNotices);
+                if (settings.count(IniOnly::Notices::PB_DURATION.key)) {
+                    int duration = std::stoi(settings.at(IniOnly::Notices::PB_DURATION.key));
+                    if (duration >= NoticesWidget::MIN_NOTICE_DURATION_MS && duration <= NoticesWidget::MAX_NOTICE_DURATION_MS) {
+                        hud.m_noticeDurationMs = duration;
+                    }
+                }
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("NoticesWidget: Failed to parse settings: %s", e.what());
             }
@@ -2490,6 +2578,28 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
                 loadSpeedRows(settings, hud.m_enabledRows);  // Named keys instead of bitmask
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("SpeedWidget: Failed to parse settings: %s", e.what());
+            }
+            hud.setDataDirty();
+        }
+    }
+
+    // Apply GearWidget with INI-only settings
+    {
+        auto it = cache.find("GearWidget");
+        if (it != cache.end()) {
+            auto& hud = hudManager.getGearWidget();
+            applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                if (settings.count(IniOnly::Gear::SHOW_SHIFT_COLOR.key)) {
+                    hud.m_bShowShiftColor = std::stoi(settings.at(IniOnly::Gear::SHOW_SHIFT_COLOR.key)) != 0;
+                }
+                if (settings.count(IniOnly::Gear::SHOW_LIMITER_CIRCLE.key)) {
+                    hud.m_bShowLimiterCircle = std::stoi(settings.at(IniOnly::Gear::SHOW_LIMITER_CIRCLE.key)) != 0;
+                }
+            } catch (const std::exception& e) {
+                DEBUG_WARN_F("GearWidget: Failed to parse settings: %s", e.what());
             }
             hud.setDataDirty();
         }
@@ -3015,10 +3125,10 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     TrackedRidersManager::getInstance().save();
 
     // HUD order for consistent output
-    static const std::array<const char*, 31> hudOrder = {
+    static const std::array<const char*, 33> hudOrder = {
         "StandingsHud", "MapHud", "RadarHud", "PitboardHud", "RecordsHud",
-        "LapLogHud", "LapConsistencyHud", "FmxHud", "IdealLapHud", "TelemetryHud", "PerformanceHud",
-        "LapWidget", "PositionWidget", "TimeWidget", "SessionHud", "SpeedWidget",
+        "LapLogHud", "LapConsistencyHud", "FmxHud", "StatsHud", "IdealLapHud", "TelemetryHud", "PerformanceHud",
+        "LapWidget", "PositionWidget", "TimeWidget", "SessionHud", "SpeedWidget", "GearWidget",
         "SpeedoWidget", "TachoWidget", "TimingHud", "GapBarHud", "BarsWidget", "VersionWidget",
         "NoticesWidget", "FuelWidget", "GamepadWidget", "LeanWidget", "TyreTempWidget", "SettingsButtonWidget", "PointerWidget", "RumbleHud",
         "Global"
@@ -3175,7 +3285,7 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
 
     // Atomic rename: replace original with temp file
     // This ensures we never have a partially written settings file
-    // Use MoveFileExA for atomic replace (consistent with personal_best_manager.cpp)
+    // Use MoveFileExA for atomic replace (consistent with stats_manager.cpp)
     if (!MoveFileExA(tempFilePath.c_str(), filePath.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
         DEBUG_WARN_F("Failed to save settings (error %lu): %s", GetLastError(), filePath.c_str());
         std::remove(tempFilePath.c_str());

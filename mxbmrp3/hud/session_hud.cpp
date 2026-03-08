@@ -603,5 +603,21 @@ void SessionHud::resetToDefaults() {
     m_passwordMode = PasswordDisplayMode::Hidden;  // Default to hidden (Off = row not shown)
     m_bShowIcons = true;  // Icons enabled by default
     setPosition(0.0055f, 0.1332f);
+
+    // Reset cached values to force rebuild on next update
+    m_cachedEventType = -1;
+    m_cachedSession = -1;
+    m_cachedSessionState = -1;
+    m_cachedSessionLength = -1;
+    m_cachedSessionNumLaps = -1;
+    m_cachedConnectionType = -1;
+    m_cachedServerClientsCount = -1;
+    m_cachedServerMaxClients = -1;
+    m_cachedServerName[0] = '\0';
+    m_cachedServerPassword[0] = '\0';
+    m_cachedConditions = -1;
+    m_cachedAirTemperature = -1.0f;
+    m_cachedTrackTemperature = -1.0f;
+
     setDataDirty();
 }

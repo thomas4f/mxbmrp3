@@ -105,8 +105,8 @@ constexpr float TURN_YAW_THRESHOLD = 67.5f;     // Minimum yaw rotation for turn
 // Minimum Progress Threshold
 // Ground tricks need a minimum duration gate (0.5s wheelie, 0.75s burnout)
 // to prevent momentary blips from entering the grace/chain flow.
-// Air tricks don't need this — classification thresholds (≥30° rotation)
-// already guarantee meaningful progress before a trick gets a name.
+// Air tricks use airCommitTime to defer classification, preventing tiny
+// bumps from triggering whips/scrubs when the bike briefly leaves the ground.
 // ============================================================================
 constexpr float MIN_GROUND_TRICK_PROGRESS = 0.25f; // 25% of completion time
 

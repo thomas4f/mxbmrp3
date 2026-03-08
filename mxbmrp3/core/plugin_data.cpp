@@ -6,7 +6,6 @@
 #include "plugin_utils.h"
 #include "xinput_reader.h"
 #include "rumble_profile_manager.h"
-#include "odometer_manager.h"
 #include "hud_manager.h"  // Direct include for notification
 #if GAME_HAS_DISCORD
 #include "discord_manager.h"  // Direct include for Discord presence updates
@@ -42,8 +41,6 @@ void PluginData::setBikeName(const char* bikeName) {
         notifyHudManager(DataChangeType::SessionData);
         // Notify rumble profile manager of bike change
         RumbleProfileManager::getInstance().setCurrentBike(bikeName);
-        // Notify odometer manager of bike change
-        OdometerManager::getInstance().setCurrentBike(bikeName);
     }
 }
 
@@ -273,6 +270,7 @@ void PluginData::removeRaceEntry(int raceNum) {
         m_riderLapLog.erase(raceNum);
         m_riderBestLap.erase(raceNum);
         m_trackPositions.erase(raceNum);
+        m_blueFlagsDirty = true;
 
         // Reset lap timer if we're removing the display rider
         if (raceNum == m_displayLapTimerRaceNum) {
@@ -967,6 +965,7 @@ void PluginData::batchUpdateStandings(Unified::RaceClassificationEntry* entries,
                     entry.gapLaps, entry.penalty, entryPit));
             anyChanged = true;
         }
+
     }
 
     // Capture finish time for each rider when they finish
@@ -1111,6 +1110,9 @@ void PluginData::updateTrackPosition(int raceNum, float trackPos, int numLaps, b
 
     // Store current session time
     m_currentSessionTime = sessionTime;
+
+    // Invalidate blue flag cache (depends on track positions)
+    m_blueFlagsDirty = true;
 }
 
 bool PluginData::isPlayerGoingWrongWay() const {
@@ -1131,24 +1133,29 @@ const TrackPositionData* PluginData::getPlayerTrackPosition() const {
     return nullptr;  // No position data available
 }
 
-std::vector<int> PluginData::getBlueFlagRaceNums() const {
-    std::vector<int> blueFlagRiders;
+const std::vector<int>& PluginData::getBlueFlagRaceNums() const {
+    if (!m_blueFlagsDirty) {
+        return m_cachedBlueFlagRaceNums;
+    }
+
+    m_blueFlagsDirty = false;
+    m_cachedBlueFlagRaceNums.clear();
 
     // Only check for blue flags in race sessions
     if (!isRaceSession()) {
-        return blueFlagRiders;
+        return m_cachedBlueFlagRaceNums;
     }
 
     // Get player's race number and data
     int playerRaceNum = getDisplayRaceNum();
     if (playerRaceNum <= 0) {
-        return blueFlagRiders;  // No player data
+        return m_cachedBlueFlagRaceNums;  // No player data
     }
 
     // Early exit if player is leading - leader can't be blue flagged
     int playerPosition = getPositionForRaceNum(playerRaceNum);
     if (playerPosition == 1) {
-        return blueFlagRiders;
+        return m_cachedBlueFlagRaceNums;
     }
 
     // Get player's position and lap data
@@ -1156,7 +1163,7 @@ std::vector<int> PluginData::getBlueFlagRaceNums() const {
     auto playerStandingIt = m_standings.find(playerRaceNum);
 
     if (playerPosIt == m_trackPositions.end() || playerStandingIt == m_standings.end()) {
-        return blueFlagRiders;  // Missing player data
+        return m_cachedBlueFlagRaceNums;  // Missing player data
     }
 
     const TrackPositionData& playerPos = playerPosIt->second;
@@ -1173,7 +1180,7 @@ std::vector<int> PluginData::getBlueFlagRaceNums() const {
         }
     }
     if (!anyoneAhead) {
-        return blueFlagRiders;
+        return m_cachedBlueFlagRaceNums;
     }
 
     // Distance threshold for "approaching from behind" (6% of track)
@@ -1218,11 +1225,11 @@ std::vector<int> PluginData::getBlueFlagRaceNums() const {
 
         // Check if within approach threshold
         if (distanceBehind <= APPROACH_THRESHOLD) {
-            blueFlagRiders.push_back(otherRaceNum);
+            m_cachedBlueFlagRaceNums.push_back(otherRaceNum);
         }
     }
 
-    return blueFlagRiders;
+    return m_cachedBlueFlagRaceNums;
 }
 
 void PluginData::updateRealTimeGaps() {
@@ -1373,6 +1380,7 @@ void PluginData::clearLiveGapTimingPoints() {
 
     // Clear track positions
     m_trackPositions.clear();
+    m_blueFlagsDirty = true;
 
     // Clear cached official gaps for new session
     m_lastValidOfficialGap.clear();
@@ -1415,6 +1423,7 @@ void PluginData::clear() {
     m_positionCache.clear();
     m_bPositionCacheDirty = true;
     m_trackPositions.clear();
+    m_blueFlagsDirty = true;
     m_riderCurrentLap.clear();
     m_riderIdealLap.clear();
     m_riderLapLog.clear();
@@ -1443,6 +1452,12 @@ void PluginData::clear() {
     m_bPlayerIsRunning = false;
     m_drawState = 0;  // Reset to ON_TRACK
     m_spectatedRaceNum = -1;  // Reset spectated rider
+
+    // Clear PB notification flags
+    m_newSessionPB = false;
+    m_newFastestLap = false;
+    m_newAllTimePB = false;
+
     DEBUG_INFO("Plugin data cleared");
 }
 

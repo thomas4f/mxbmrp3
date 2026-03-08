@@ -29,10 +29,9 @@
 #include "../handlers/track_centerline_handler.h"
 #include "../handlers/race_vehicle_data_handler.h"
 #include "../handlers/spectate_handler.h"
-#include "personal_best_manager.h"
 #include "tracked_riders_manager.h"
 #include "rumble_profile_manager.h"
-#include "odometer_manager.h"
+#include "stats_manager.h"
 #include "update_checker.h"
 #include "update_downloader.h"
 #if GAME_HAS_DISCORD
@@ -84,6 +83,8 @@ void PluginManager::initialize(const char* savePath) {
 }
 
 void PluginManager::shutdown() {
+    if (m_bShutdown) return;
+    m_bShutdown = true;
     DEBUG_INFO("PluginManager shutdown");
 
     // Shutdown network threads first (these may have blocking I/O)
@@ -98,8 +99,10 @@ void PluginManager::shutdown() {
     // Save rumble profiles before shutdown
     RumbleProfileManager::getInstance().save();
 
-    // Save odometer data before shutdown
-    OdometerManager::getInstance().save();
+    // Record race finish if player quit mid-race (ALT-F4, etc.) and save stats
+    StatsManager::getInstance().tryRecordRaceFinish(PluginData::getInstance());
+    StatsManager::getInstance().recordSessionEnd();
+    StatsManager::getInstance().save();
 
     // Shutdown HUD manager
     HudManager::getInstance().shutdown();
@@ -126,17 +129,14 @@ int PluginManager::handleStartup(const char* savePath) {
     // Initialize with savePath (Logger is initialized first and will log startup info)
     initialize(m_savePath);
 
-    // Load personal bests from disk
-    PersonalBestManager::getInstance().load(m_savePath);
-
     // Load tracked riders from disk
     TrackedRidersManager::getInstance().load(m_savePath);
 
     // Load rumble profiles from disk
     RumbleProfileManager::getInstance().load(m_savePath);
 
-    // Load odometer data from disk
-    OdometerManager::getInstance().load(m_savePath);
+    // Load unified stats from disk (includes PB, odometer, and track/bike stats)
+    StatsManager::getInstance().load(m_savePath);
 
     if (savePath != nullptr) {
         DEBUG_INFO_F("Startup called with save path: %s", savePath);
@@ -326,19 +326,18 @@ void PluginManager::handleRaceSplit(Unified::RaceSplitData* psRaceSplit) {
     RaceSplitHandler::getInstance().handleRaceSplit(psRaceSplit);
 }
 
-void PluginManager::handleRaceHoleshot(Unified::RaceHoleshotData* psRaceHoleshot) {
-    ACCUMULATE_CALLBACK_TIME();
-    SCOPED_TIMER_THRESHOLD("Plugin::handleRaceHoleshot", 100);
-    DEBUG_INFO("=== Race Holeshot ===");
-    // TODO: Implement holeshot handling if needed
-}
-
 void PluginManager::handleRaceSpeed(Unified::RaceSpeedData* psRaceSpeed) {
     ACCUMULATE_CALLBACK_TIME();
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceSpeed", 100);
     DEBUG_INFO("=== Race Speed ===");
     // TODO: Implement race speed handling if needed (GP Bikes, WRS, KRP only)
 }
+
+// NOTE: RaceHoleshot callback (MX Bikes API)
+// The API defines SPluginsRaceHoleshot_t and a RaceHoleshot export, but in practice
+// the game never fires this callback. The struct definitions remain in mxb_api.h
+// and unified_types.h as part of the vendor API spec, but we intentionally do not
+// export a RaceHoleshot handler in mxb_api.cpp until the game actually supports it.
 
 void PluginManager::handleRaceCommunication(Unified::RaceCommunicationData* psRaceCommunication) {
     ACCUMULATE_CALLBACK_TIME();

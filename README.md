@@ -10,6 +10,7 @@ A customizable, [open-source](https://github.com/thomas4f/mxbmrp3) HUD plugin fo
 - Track specific riders with custom colors and icons across all HUDs
 - Controller rumble feedback with customizable effects (bumps, slide, spin, lockup, wheelie, etc.)
 - Discord Rich Presence integration showing current session and track
+- Riding stats tracking with per-lap, session, and all-time totals (laps, distance, crashes, top speed, and more)
 - FMX freestyle trick detection with scoring and chain combos
 - Telemetry visualization and compact info widgets
 - Drag-and-drop positioning with color themes and customizable hotkeys
@@ -150,6 +151,7 @@ All HUDs and widgets are configurable via the settings menu or directly in the [
 | **Telemetry** | Throttle, brake, suspension graphs |
 | **Performance** | FPS and plugin CPU usage |
 | **Rumble** | Controller rumble effect visualization |
+| **Stats** | Riding stats with columns for last lap, session, and all-time totals |
 | **Session** | Session info (type, format, track, server, players, password) |
 
 ### Widgets
@@ -223,10 +225,11 @@ On game startup, the plugin syncs these files to the plugin's data directory (`p
 | File | Description |
 |------|-------------|
 | `mxbmrp3_settings.ini` | All HUD settings (positions, visibility, options) |
-| `mxbmrp3_personal_bests.json` | Personal best lap times per track/bike/category |
+| `mxbmrp3_personal_bests.json` | Personal best lap times per track/bike/category (legacy, migrated automatically) |
 | `mxbmrp3_tracked_riders.json` | Tracked riders with colors and icons |
 | `rumble_profiles.json` | Per-bike rumble effect profiles |
-| `odometer.json` | Per-bike odometer and trip meter data |
+| `mxbmrp3_stats.json` | Unified stats, personal bests, and odometer data |
+| `odometer.json` | Per-bike odometer and trip meter data (legacy, migrated automatically) |
 
 ## Troubleshooting
 
@@ -234,6 +237,9 @@ On game startup, the plugin syncs these files to the plugin's data directory (`p
 - Check [Installation requirements](#installation) (MX Bikes Beta 20+ / GP Bikes Beta 18+)
 - Verify the DLO file and `mxbmrp3_data/` are in the correct `plugins/` folder. Games have two directories - the **game installation** (contains the game .exe) and **user data** (`Documents\PiBoSo\[Game]\`). Plugins go in the game installation, not Documents.
 - For GP Bikes, ensure you're using `mxbmrp3_gpb.dlo`, not `mxbmrp3.dlo`
+
+**Installer Detected the Wrong Game Directory**
+- If you have multiple installations (e.g. standalone and Steam), the installer may pick the wrong one. Verify the plugin ended up in the `plugins/` folder next to the game `.exe` you actually launch. If not, run the installer again and select the correct path, or install manually.
 
 **Text or Icons Not Appearing**
 - Ensure `mxbmrp3_data/` folder is in the `plugins/` folder alongside the DLO file

@@ -38,6 +38,12 @@ public:
     // Used by RecordsHud for MXB-Ranked sector times
     static void formatSectorTime(int sectorTimeMs, char* buffer, size_t bufferSize);
 
+    // Format duration as "Xh XXm" for hours, "M:SS" for minutes, "0:00" for zero
+    static void formatDuration(int64_t totalMs, char* buffer, size_t bufferSize);
+
+    // Format distance with appropriate units: "X,XXX km" for >=1000km, "X km" for >=1km, "X m" for <1km
+    static void formatDistance(double meters, char* buffer, size_t bufferSize);
+
     static const char* getEventTypeString(int eventType);
     static const char* getConnectionTypeString(int connectionType);
     static const char* getSessionString(int eventType, int session);

@@ -22,7 +22,7 @@
 #include "../core/settings_manager.h"
 #include "../core/input_manager.h"
 #include "../core/color_config.h"
-#include "../core/personal_best_manager.h"
+#include "../core/stats_manager.h"
 #include "../core/ui_config.h"
 
 // Use WinHTTP for HTTPS support (built into Windows, no external dependencies)
@@ -866,11 +866,6 @@ void RecordsHud::rebuildRenderData() {
     float backgroundWidth = calculateBackgroundWidth(bgWidthChars);
     float backgroundHeight = calculateBackgroundHeight(totalRows - 1);
 
-    // Adjust for footer using smaller line height (2 text rows are small, not normal)
-    if (m_bShowFooter) {
-        backgroundHeight -= 2 * (dim.lineHeightNormal - dim.lineHeightSmall);
-    }
-
     setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + backgroundHeight);
     addBackgroundQuad(START_X, START_Y, backgroundWidth, backgroundHeight);
 
@@ -994,11 +989,11 @@ void RecordsHud::rebuildRenderData() {
 
     // Get player's all-time PB for this track+bike
     const SessionData& session = PluginData::getInstance().getSessionData();
-    const PersonalBestEntry* playerPB = nullptr;
+    const StatsPersonalBestData* playerPB = nullptr;
     int playerPosition = -1;  // -1 = no PB, 0+ = position in records
 
     if (session.trackId[0] != '\0' && session.bikeName[0] != '\0') {
-        playerPB = PersonalBestManager::getInstance().getPersonalBest(session.trackId, session.bikeName);
+        playerPB = StatsManager::getInstance().getPersonalBest(session.trackId, session.bikeName);
         if (playerPB && playerPB->isValid()) {
             playerPosition = findPlayerPositionInRecords(playerPB->lapTime);
         }
@@ -1144,7 +1139,7 @@ void RecordsHud::rebuildRenderData() {
     if (!hasFetched) {
         // Before fetch or error: show player's PB and/or status message
         if (hasPlayerPB) {
-            renderRecordRow(1, playerName, playerPB->bikeName.c_str(), playerPB->lapTime,
+            renderRecordRow(1, playerName, session.bikeName, playerPB->lapTime,
                             playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
         }
         // Show status message (error or prompt to compare) - counts as a row to maintain layout
@@ -1169,7 +1164,7 @@ void RecordsHud::rebuildRenderData() {
     } else if (allRecords.empty()) {
         // Fetched but no records found - show player's PB and/or message
         if (hasPlayerPB) {
-            renderRecordRow(1, playerName, playerPB->bikeName.c_str(), playerPB->lapTime,
+            renderRecordRow(1, playerName, session.bikeName, playerPB->lapTime,
                             playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
         }
         // Show "no records" message - counts as a row to maintain layout
@@ -1190,7 +1185,7 @@ void RecordsHud::rebuildRenderData() {
             for (int i = startIdx; i <= endIdx && i < totalRecords; i++) {
                 // Insert player row before this record if player position matches
                 if (insertPlayer && hasPlayerPB && playerPosition == i) {
-                    renderRecordRow(0, playerName, playerPB->bikeName.c_str(), playerPB->lapTime,
+                    renderRecordRow(0, playerName, session.bikeName, playerPB->lapTime,
                                     playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
                 }
                 // Render the server record
@@ -1200,7 +1195,7 @@ void RecordsHud::rebuildRenderData() {
             }
             // Insert player at end if they're after the last record in range
             if (insertPlayer && hasPlayerPB && playerPosition > endIdx && playerPosition <= endIdx + 1) {
-                renderRecordRow(0, playerName, playerPB->bikeName.c_str(), playerPB->lapTime,
+                renderRecordRow(0, playerName, session.bikeName, playerPB->lapTime,
                                 playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
             }
         };
@@ -1246,7 +1241,7 @@ void RecordsHud::rebuildRenderData() {
             for (int i = contextStart; i <= contextEnd && i < totalRecords; i++) {
                 // Insert player row at correct position
                 if (hasPlayerPB && playerPosition == i) {
-                    renderRecordRow(0, playerName, playerPB->bikeName.c_str(), playerPB->lapTime,
+                    renderRecordRow(0, playerName, session.bikeName, playerPB->lapTime,
                                     playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
                 }
                 const auto& record = allRecords[i];
@@ -1255,7 +1250,7 @@ void RecordsHud::rebuildRenderData() {
             }
             // Insert player at end if they're after the last context record
             if (hasPlayerPB && playerPosition > contextEnd) {
-                renderRecordRow(0, playerName, playerPB->bikeName.c_str(), playerPB->lapTime,
+                renderRecordRow(0, playerName, session.bikeName, playerPB->lapTime,
                                 playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
             }
         }
@@ -1327,7 +1322,7 @@ void RecordsHud::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.737f, 0.333f);
+    setPosition(0.7315f, 0.6105f);
     m_provider = DataProvider::CBR;
     m_recordsProvider = DataProvider::CBR;
     m_categoryIndex = 0;

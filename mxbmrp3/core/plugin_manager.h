@@ -34,7 +34,6 @@ public:
     void handleRaceSessionState(Unified::RaceSessionStateData* psRaceSessionState);
     void handleRaceLap(Unified::RaceLapData* psRaceLap);
     void handleRaceSplit(Unified::RaceSplitData* psRaceSplit);
-    void handleRaceHoleshot(Unified::RaceHoleshotData* psRaceHoleshot);
     void handleRaceSpeed(Unified::RaceSpeedData* psRaceSpeed);
     void handleRaceCommunication(Unified::RaceCommunicationData* psRaceCommunication);
     void handleRaceClassification(Unified::RaceClassificationData* psRaceClassification, Unified::RaceClassificationEntry* pasRaceClassificationEntry, int iNumEntries);
@@ -55,5 +54,6 @@ private:
     PluginManager(const PluginManager&) = delete;
     PluginManager& operator=(const PluginManager&) = delete;
 
+    bool m_bShutdown = false;
     char m_savePath[260];  // MAX_PATH on Windows
 };

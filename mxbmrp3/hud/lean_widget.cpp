@@ -140,13 +140,14 @@ void LeanWidget::rebuildRenderData() {
     float startY = 0.0f;
 
     // Use same width as SpeedWidget
-    float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::SPEED_WIDTH);
-    float contentWidth = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::SPEED_WIDTH, dim.fontSize);
+    float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::LEAN_WIDTH);
+    float contentWidth = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::LEAN_WIDTH, dim.fontSize);
 
     // Calculate dynamic height based on enabled rows
     // Each row is lineHeightNormal (arc takes 2 rows)
     int rowCount = getRowCount();
-    float contentHeight = dim.lineHeightNormal * rowCount;
+    float titleHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
+    float contentHeight = titleHeight + dim.lineHeightNormal * rowCount;
     float backgroundHeight = dim.paddingV + contentHeight + dim.paddingV;
 
     // Add background quad
@@ -163,6 +164,13 @@ void LeanWidget::rebuildRenderData() {
 
     // Track current Y position for row-based layout
     float currentY = contentStartY;
+
+    // Title label (optional)
+    if (m_bShowTitle) {
+        addString("Lean", contentStartX, currentY, Justify::LEFT,
+            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSize);
+        currentY += titleHeight;
+    }
 
     // Check for spectator switch - reset max values when switching viewed rider
     int currentDisplayRaceNum = pluginData.getDisplayRaceNum();
@@ -590,7 +598,7 @@ void LeanWidget::resetToDefaults() {
     m_enabledRows = ROW_DEFAULT;  // All rows enabled
     m_bShowMaxMarkers = true;     // Max markers ON by default for lean/steer
     m_maxMarkerLingerFrames = 60; // ~1 second at 60fps
-    setPosition(0.715f, 0.8547f);  // Left of SpeedWidget
+    setPosition(0.924f, 0.444f);
     m_smoothedLean = 0.0f;
     m_maxLeanLeft = 0.0f;
     m_maxLeanRight = 0.0f;

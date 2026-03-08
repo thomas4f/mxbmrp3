@@ -13,6 +13,7 @@
 #include "../core/input_manager.h"
 #include "../core/color_config.h"
 #include "../core/update_checker.h"
+#include "../core/stats_manager.h"
 #include "../core/settings_manager.h"
 #include "../core/hud_manager.h"
 #include "../core/plugin_manager.h"
@@ -324,6 +325,7 @@ void VersionWidget::updateGame(float deltaTime) {
     // Ball fell below paddle - game over
     if (newY > m_gameTop + GAME_AREA_HEIGHT + 0.02f) {
         m_gameOver = true;
+        StatsManager::getInstance().updateBreakoutHighScore(m_score);
         return;
     }
 
@@ -789,6 +791,23 @@ void VersionWidget::resetToDefaults() {
         InputManager::getInstance().setCursorSuppressed(false);
     }
     m_gameActive = false;
+    m_ballLaunched = false;
+    m_gameOver = false;
+    m_wasVisibleBeforeGame = false;
+    m_ballX = 0.0f;
+    m_ballY = 0.0f;
+    m_ballVelX = 0.0f;
+    m_ballVelY = 0.0f;
+    m_paddleX = 0.0f;
+    m_bricks.fill(true);
+    m_bricksRemaining = TOTAL_BRICKS;
+    m_score = 0;
+    m_level = 1;
+    m_lastUpdateTimeUs = 0;
+
+    // Reset notification state
+    m_showingUpdateNotification = false;
+    m_hoveredButton = NotificationButton::NONE;
 
     setDataDirty();
 }

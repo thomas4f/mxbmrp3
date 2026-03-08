@@ -19,11 +19,9 @@ public:
 
     // Row visibility flags (configurable via INI file)
     enum RowFlags : uint32_t {
-        ROW_SPEED = 1 << 0,  // Speed value (large, 2 lines)
-        ROW_UNITS = 1 << 1,  // Units label (km/h or mph)
-        ROW_GEAR  = 1 << 2,  // Gear indicator
+        ROW_UNITS = 1 << 0,  // Units label (km/h or mph)
 
-        ROW_DEFAULT = 0x07   // All 3 rows enabled (binary: 111)
+        ROW_DEFAULT = 0x01   // Units enabled
     };
 
     SpeedWidget();

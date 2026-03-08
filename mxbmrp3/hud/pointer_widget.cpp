@@ -231,6 +231,7 @@ void PointerWidget::createTriangleQuad(SPluginQuad_t& quad,
 
 void PointerWidget::resetToDefaults() {
     m_bVisible = true;
+    m_bShowTitle = false;
     m_fScale = 1.0f;
     m_fBackgroundOpacity = 1.0f;  // 100% for sprite-based rendering
     setTextureVariant(0);  // Quad-based by default (variant 0 = Off)

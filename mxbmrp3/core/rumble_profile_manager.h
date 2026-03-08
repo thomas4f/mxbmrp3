@@ -7,7 +7,6 @@
 #include "xinput_reader.h"  // For RumbleConfig
 #include <string>
 #include <unordered_map>
-#include <mutex>
 
 class RumbleProfileManager {
 public:
@@ -43,7 +42,6 @@ private:
 
     static constexpr int FILE_VERSION = 1;
 
-    mutable std::mutex m_mutex;
     std::string m_savePath;
     std::string m_currentBikeName;
     bool m_dirty = false;

@@ -59,7 +59,7 @@ public:
         STAT_CONS    = 1 << 7,  // Consistency score (%)
 
         STAT_DEFAULT = STAT_REF | STAT_BEST | STAT_AVG | STAT_WORST | STAT_LAST |
-                       STAT_STDDEV | STAT_CONS,  // Trend disabled by default
+                       STAT_CONS,  // Trend and Std deviation disabled by default
         STAT_COUNT   = 8        // Total number of stat rows
     };
 

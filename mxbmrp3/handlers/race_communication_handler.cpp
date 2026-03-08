@@ -8,6 +8,7 @@
 #include "../core/plugin_utils.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
+#include "../core/stats_manager.h"
 
 using namespace PluginConstants;
 
@@ -71,5 +72,12 @@ void RaceCommunicationHandler::handleRaceCommunication(Unified::RaceCommunicatio
         const char* offenceStr = PluginUtils::getOffenceString(psRaceCommunication->offence);
         DEBUG_INFO_F("Penalty given to rider #%d for %s (penalty amount will be updated by RaceClassification)",
             psRaceCommunication->raceNum, offenceStr);
+
+        // Record penalty count in stats (player only)
+        // NOTE: penaltyTime from this event is always 0 (API bug).
+        // Penalty time is tracked via updatePenaltyFromStandings() in batchUpdateStandings.
+        if (psRaceCommunication->raceNum == pluginData.getPlayerRaceNum()) {
+            StatsManager::getInstance().recordPenalty();
+        }
     }
 }

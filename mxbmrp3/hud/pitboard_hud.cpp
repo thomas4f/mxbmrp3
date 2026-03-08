@@ -436,7 +436,7 @@ void PitboardHud::rebuildRenderData() {
 }
 
 void PitboardHud::resetToDefaults() {
-    m_bVisible = true;
+    m_bVisible = false;
     m_bShowTitle = false;
     setTextureVariant(1);  // Show texture by default
     m_fBackgroundOpacity = 1.0f;  // 100% opacity

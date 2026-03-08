@@ -19,7 +19,7 @@
 #include "../core/plugin_utils.h"
 #include "../core/widget_constants.h"
 #include "../core/color_config.h"
-#include "../core/personal_best_manager.h"
+#include "../core/stats_manager.h"
 #include "../core/hud_manager.h"
 
 using namespace PluginConstants;
@@ -284,7 +284,7 @@ void TimingHud::processTimingUpdates() {
         setDataDirty();
 
         // Cache the updated all-time PB for next lap comparison
-        // This captures the new PB (if set) after race_lap_handler has updated PersonalBestManager
+        // This captures the new PB (if set) after race_lap_handler has updated StatsManager
         cacheAllTimePB();
     }
 }
@@ -584,7 +584,7 @@ void TimingHud::calculateAllGaps(int splitTime, int splitIndex, bool isLapComple
     // === Gap to All-Time PB (persisted across sessions) ===
     {
         // Use cached previous all-time PB values (captured at session start and after each lap)
-        // This allows showing improvement when beating the PB, since PersonalBestManager
+        // This allows showing improvement when beating the PB, since StatsManager
         // may have already been updated with the new time by race_lap_handler
         int previousAllTimeTime = -1;
 
@@ -662,7 +662,7 @@ void TimingHud::resetLiveTimingState() {
 void TimingHud::cacheAllTimePB() {
     const PluginData& pluginData = PluginData::getInstance();
     const SessionData& sessionData = pluginData.getSessionData();
-    const PersonalBestEntry* allTimePB = PersonalBestManager::getInstance()
+    const StatsPersonalBestData* allTimePB = StatsManager::getInstance()
         .getPersonalBest(sessionData.trackId, sessionData.bikeName);
 
     if (allTimePB && allTimePB->isValid()) {
@@ -1194,7 +1194,7 @@ void TimingHud::rebuildRenderData() {
                 bool chipIsSlower = false;
                 bool hasRefValue = false;
 
-                if (secShowInvalid) {
+                if (showGapData && secShowInvalid) {
                     strcpy_s(gapValueBuffer, sizeof(gapValueBuffer), "INV");
                     chipIsSlower = true;
                 } else if (!showGapData || !secGapData || !secGapData->hasGap) {

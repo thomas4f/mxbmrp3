@@ -28,6 +28,12 @@ public:
     bool isAutoSwitchEnabled() const { return m_autoSwitchEnabled; }
     void setAutoSwitchEnabled(bool enabled);
 
+    // Track the last profile that auto-switch resolved from game state.
+    // Auto-switch only triggers when this changes, so manual overrides are respected.
+    // Initialized to COUNT (sentinel = never resolved) so first evaluation always triggers.
+    ProfileType getLastAutoSwitchTarget() const { return m_lastAutoSwitchTarget; }
+    void setLastAutoSwitchTarget(ProfileType profile) { m_lastAutoSwitchTarget = profile; }
+
     // Get profile name for display
     static const char* getProfileName(ProfileType profile);
 
@@ -45,5 +51,6 @@ private:
     ProfileManager& operator=(const ProfileManager&) = delete;
 
     ProfileType m_activeProfile;
+    ProfileType m_lastAutoSwitchTarget;
     bool m_autoSwitchEnabled;
 };

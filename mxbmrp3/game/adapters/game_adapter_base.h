@@ -27,7 +27,6 @@ namespace Adapters {
 //   static constexpr Unified::VehicleType VEHICLE_TYPE;
 //
 // Feature flags (compile-time booleans):
-//   static constexpr bool HAS_HOLESHOT;
 //   static constexpr bool HAS_RACE_SPEED;
 //   static constexpr bool HAS_TRACK_TEMP;
 //   static constexpr bool HAS_SESSION_SERIES;

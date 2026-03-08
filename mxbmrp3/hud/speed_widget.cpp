@@ -11,7 +11,6 @@
 #include "../diagnostics/timer.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
-#include "../core/asset_manager.h"
 
 using namespace PluginConstants;
 
@@ -20,7 +19,7 @@ SpeedWidget::SpeedWidget()
     // One-time setup
     DEBUG_INFO("SpeedWidget created");
     setDraggable(true);
-    m_strings.reserve(4);
+    m_strings.reserve(3);  // Title (optional) + speed value + units
 
     // Set texture base name for dynamic texture discovery
     setTextureBaseName("speed_widget");
@@ -54,9 +53,9 @@ void SpeedWidget::update() {
 
 float SpeedWidget::calculateContentHeight(const ScaledDimensions& dim) const {
     float height = 0.0f;
-    if (m_enabledRows & ROW_SPEED) height += dim.lineHeightLarge;
+    if (m_bShowTitle) height += dim.lineHeightNormal;  // Title label
+    height += dim.lineHeightLarge;  // Speed value always shown
     if (m_enabledRows & ROW_UNITS) height += dim.lineHeightNormal;
-    if (m_enabledRows & ROW_GEAR)  height += dim.lineHeightNormal;
     return height;
 }
 
@@ -85,42 +84,25 @@ void SpeedWidget::rebuildLayout() {
     float contentStartY = startY + dim.paddingV;
     float currentY = contentStartY;
 
-    // Position strings if they exist
-    int stringIndex = 0;
     float centerX = contentStartX + (contentWidth / 2.0f);
 
-    // Speed value (extra large font - spans 2 lines) - centered
-    if (m_enabledRows & ROW_SPEED) {
-        if (positionString(stringIndex, centerX, currentY)) {
-            stringIndex++;
-        }
-        currentY += dim.lineHeightLarge;
-    }
+    int stringIndex = 0;
 
-    // Units label (normal font - 1 line) - centered
-    if (m_enabledRows & ROW_UNITS) {
-        if (positionString(stringIndex, centerX, currentY)) {
-            stringIndex++;
-        }
+    // Title label (optional)
+    if (m_bShowTitle && positionString(stringIndex, centerX, currentY)) {
+        stringIndex++;
         currentY += dim.lineHeightNormal;
     }
 
-    // Gear (large font but normal line height) - centered
-    if (m_enabledRows & ROW_GEAR) {
+    // Speed value (extra large font) - always shown, centered
+    if (positionString(stringIndex, centerX, currentY)) {
+        stringIndex++;
+    }
+    currentY += dim.lineHeightLarge;
+
+    // Units label (normal font - 1 line) - centered
+    if (m_enabledRows & ROW_UNITS) {
         positionString(stringIndex, centerX, currentY);
-
-        // Update gear circle quad position if it exists (quads[0] = background, quads[1] = gear circle if present)
-        if (m_quads.size() > 1) {
-            float circleSize = dim.fontSizeLarge * 1.5f;
-            float circleWidth = circleSize / PluginConstants::UI_ASPECT_RATIO;
-            float circleHeight = circleSize;
-
-            float circleX = centerX - (circleWidth / 2.0f);
-            float circleTopY = currentY + (dim.lineHeightNormal - circleHeight) / 2.0f;
-
-            applyOffset(circleX, circleTopY);
-            setQuadPositions(m_quads[1], circleX, circleTopY, circleWidth, circleHeight);
-        }
     }
 }
 
@@ -131,10 +113,9 @@ void SpeedWidget::rebuildRenderData() {
 
     auto dim = getScaledDimensions();
 
-    // Get bike telemetry data and session data (for shift RPM threshold)
+    // Get bike telemetry data
     const PluginData& pluginData = PluginData::getInstance();
     const BikeTelemetryData& bikeData = pluginData.getBikeTelemetry();
-    const SessionData& sessionData = pluginData.getSessionData();
 
     float startX = 0.0f;
     float startY = 0.0f;
@@ -157,16 +138,12 @@ void SpeedWidget::rebuildRenderData() {
     // Use full opacity for text
     unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
 
-    // Build speed value string and gear string separately
-    char speedValueBuffer[64];
-    char gearValueBuffer[64];
+    // Build speed value string
+    char speedValueBuffer[8];
 
     if (!bikeData.isValid) {
-        // Show placeholder when telemetry data is not available
         snprintf(speedValueBuffer, sizeof(speedValueBuffer), "%s", Placeholders::GENERIC);
-        snprintf(gearValueBuffer, sizeof(gearValueBuffer), "%s", Placeholders::GENERIC);
     } else {
-        // Convert speedometer based on unit setting
         int speed;
         if (m_speedUnit == SpeedUnit::KMH) {
             speed = static_cast<int>(bikeData.speedometer * UnitConversion::MS_TO_KMH + 0.5f);
@@ -174,70 +151,27 @@ void SpeedWidget::rebuildRenderData() {
             speed = static_cast<int>(bikeData.speedometer * UnitConversion::MS_TO_MPH + 0.5f);
         }
         snprintf(speedValueBuffer, sizeof(speedValueBuffer), "%d", speed);
-
-        // Display gear: NEUTRAL = N, 1-6 = gear number
-        if (bikeData.gear == GearValue::NEUTRAL) {
-            snprintf(gearValueBuffer, sizeof(gearValueBuffer), "N");
-        } else {
-            snprintf(gearValueBuffer, sizeof(gearValueBuffer), "%d", bikeData.gear);
-        }
     }
 
-    // Calculate center X for centering elements
     float centerX = contentStartX + (contentWidth / 2.0f);
 
-    // Add speed value (extra large font - spans 2 lines) - centered
-    if (m_enabledRows & ROW_SPEED) {
-        addString(speedValueBuffer, centerX, currentY, Justify::CENTER,
-            this->getFont(FontCategory::TITLE), textColor, dim.fontSizeExtraLarge);
-        currentY += dim.lineHeightLarge;
+    // Title label (optional)
+    if (m_bShowTitle) {
+        addString("Speed", centerX, currentY, Justify::CENTER,
+            this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
+        currentY += dim.lineHeightNormal;
     }
+
+    // Speed value (extra large font) - always shown, centered
+    addString(speedValueBuffer, centerX, currentY, Justify::CENTER,
+        this->getFont(FontCategory::TITLE), textColor, dim.fontSizeExtraLarge);
+    currentY += dim.lineHeightLarge;
 
     // Add units label (normal font) - centered
     if (m_enabledRows & ROW_UNITS) {
         const char* unitsLabel = (m_speedUnit == SpeedUnit::KMH) ? "km/h" : "mph";
         addString(unitsLabel, centerX, currentY, Justify::CENTER,
             this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
-        currentY += dim.lineHeightNormal;
-    }
-
-    // Add gear indicator
-    if (m_enabledRows & ROW_GEAR) {
-        // Add gear circle indicator if limiter RPM is reached (behind gear text)
-        // Only show when viewing player's bike (limiter RPM data only available for player's bike)
-        // Skip if limiterRPM is 0 (some bikes don't report this value)
-        bool isViewingPlayerBike = (pluginData.getDisplayRaceNum() == pluginData.getPlayerRaceNum());
-        bool isLimiterHit = (bikeData.isValid && isViewingPlayerBike && sessionData.limiterRPM > 0 && bikeData.rpm >= sessionData.limiterRPM);
-
-        if (isLimiterHit) {
-            // Calculate gear circle quad position (centered behind gear text)
-            float circleSize = dim.fontSizeLarge * 1.5f;  // Circle slightly larger than gear text
-            float circleWidth = circleSize / PluginConstants::UI_ASPECT_RATIO;
-            float circleHeight = circleSize;
-
-            // Center the circle at the gear text position
-            float circleX = centerX - (circleWidth / 2.0f);
-            float circleTopY = currentY + (dim.lineHeightNormal - circleHeight) / 2.0f;
-
-            // Add gear circle quad (behind the text, so added first)
-            SPluginQuad_t circleQuad;
-            applyOffset(circleX, circleTopY);
-            setQuadPositions(circleQuad, circleX, circleTopY, circleWidth, circleHeight);
-            circleQuad.m_iSprite = AssetManager::getInstance().getSpriteIndex("gear_circle", 1);
-            circleQuad.m_ulColor = ColorPalette::WHITE;  // Includes full alpha by default
-            m_quads.push_back(circleQuad);
-        }
-
-        // Add gear value (large font but normal line height) - centered
-        // Color: negative (red) if recommended shift point is reached, otherwise primary
-        // Gear circle sprite appears at limiter (higher RPM threshold)
-        // Skip color change if shiftRPM is 0 (some bikes don't report this value)
-        bool isViewingPlayer = (pluginData.getDisplayRaceNum() == pluginData.getPlayerRaceNum());
-        unsigned long gearColor = (bikeData.isValid && isViewingPlayer && sessionData.shiftRPM > 0 && bikeData.rpm >= sessionData.shiftRPM)
-            ? this->getColor(ColorSlot::NEGATIVE)
-            : textColor;
-        addString(gearValueBuffer, centerX, currentY, Justify::CENTER,
-            this->getFont(FontCategory::TITLE), gearColor, dim.fontSizeLarge);
     }
 
     // Set bounds for drag detection
@@ -246,12 +180,12 @@ void SpeedWidget::rebuildRenderData() {
 
 void SpeedWidget::resetToDefaults() {
     m_bVisible = true;
-    m_bShowTitle = false;  // No title rendered (widget design doesn't support titles)
+    m_bShowTitle = false;  // Title disabled by default
     setTextureVariant(0);  // No texture by default
-    m_fBackgroundOpacity = 1.0f;  // Full opacity
+    m_fBackgroundOpacity = 0.0f;  // Transparent by default
     m_fScale = 1.0f;
     m_enabledRows = ROW_DEFAULT;  // Reset row visibility
     // Note: speedUnit is NOT reset here - it's a global preference, not per-profile
-    setPosition(0.7865f, 0.8547f);
+    setPosition(0.9405f, 0.8769f);
     setDataDirty();
 }

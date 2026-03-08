@@ -7,7 +7,7 @@
 #include "../core/plugin_data.h"
 #include "../core/input_manager.h"
 #include "../core/hud_manager.h"
-#include "../core/odometer_manager.h"
+#include "../core/stats_manager.h"
 #include "../hud/fuel_widget.h"
 #include "../diagnostics/logger.h"
 
@@ -28,8 +28,8 @@ void RunHandler::handleRunInit(Unified::SessionData* psSessionData) {
     // Reset fuel tracking when entering track (rider may have refueled in pits)
     HudManager::getInstance().getFuelWidget().resetFuelTracking();
 
-    // Reset trip meter when entering track
-    OdometerManager::getInstance().resetSessionTrip();
+    // Start stats session tracking (pass session type so stats only reset on session change, not pit stops)
+    StatsManager::getInstance().recordSessionStart(psSessionData->session);
 }
 
 void RunHandler::handleRunStart() {
@@ -37,6 +37,9 @@ void RunHandler::handleRunStart() {
 
     // Set player running flag (cleared in RunStop/RunDeinit)
     PluginData::getInstance().setPlayerRunning(true);
+
+    // Resume stats session timer (paused in RunStop)
+    StatsManager::getInstance().notifyResume();
 
     // Reset fuel tracking for new run
     HudManager::getInstance().getFuelWidget().resetFuelTracking();
@@ -52,6 +55,9 @@ void RunHandler::handleRunStop() {
 
     // Clear player running flag
     PluginData::getInstance().setPlayerRunning(false);
+
+    // Pause stats session timer (resumed in RunStart)
+    StatsManager::getInstance().notifyPause();
 }
 
 void RunHandler::handleRunDeinit() {
@@ -60,6 +66,10 @@ void RunHandler::handleRunDeinit() {
     // Clear player running flag
     PluginData::getInstance().setPlayerRunning(false);
 
-    // Save odometer data when exiting track (prevents data loss on crash)
-    OdometerManager::getInstance().save();
+    // Record race finish if player actually completed the race
+    StatsManager::getInstance().tryRecordRaceFinish(PluginData::getInstance());
+
+    // End stats session and save
+    StatsManager::getInstance().recordSessionEnd();
+    StatsManager::getInstance().save();
 }

@@ -181,7 +181,7 @@ void ConnectionDetector::readServerCounts(uintptr_t patternMatchAddr) {
 
         // Hex dump first 64 bytes
         std::string hexDump;
-        size_t dumpSize = (std::min)(static_cast<size_t>(64), clientsResult.data.size());
+        size_t dumpSize = std::min(static_cast<size_t>(64), clientsResult.data.size());
         for (size_t i = 0; i < dumpSize; ++i) {
             char buf[4];
             snprintf(buf, sizeof(buf), "%02X ", clientsResult.data[i]);
@@ -192,7 +192,7 @@ void ConnectionDetector::readServerCounts(uintptr_t patternMatchAddr) {
 
         // Log first byte of each entry (up to first 10 entries)
         std::string entryDump = "Entry first bytes: ";
-        for (size_t i = 0; i < (std::min)(static_cast<size_t>(10), MXBikesOffsets::SERVER_CLIENTS_MAX_ENTRIES); ++i) {
+        for (size_t i = 0; i < std::min(static_cast<size_t>(10), MXBikesOffsets::SERVER_CLIENTS_MAX_ENTRIES); ++i) {
             size_t offset = i * MXBikesOffsets::SERVER_CLIENTS_ENTRY_SIZE;
             if (offset < clientsResult.data.size()) {
                 char buf[8];

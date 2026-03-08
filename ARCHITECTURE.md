@@ -33,6 +33,7 @@ mxbmrp3/
 │   │   ├── xinput_reader.*     # XInput controller state and rumble
 │   │   ├── rumble_profile_manager.* # Per-bike rumble profiles (JSON)
 │   │   ├── settings_manager.*  # Save/load configuration (INI file)
+│   │   ├── stats_manager.*     # Unified stats, personal bests, odometers (JSON)
 │   │   ├── asset_manager.*     # Dynamic asset discovery (fonts, textures, icons)
 │   │   ├── font_config.*       # User-configurable font categories
 │   │   ├── color_config.*      # User-configurable color palette
@@ -292,19 +293,36 @@ Features:
 - Auto-creates profile for current bike when enabled
 - Integrates with XInputReader for runtime config access
 
-### 8. OdometerManager (`core/odometer_manager.*`)
+### 8. StatsManager (`core/stats_manager.*`)
 
-Manages per-bike odometer data stored in a JSON file:
-- Tracks total distance traveled per bike (persistent across sessions)
-- Tracks session trip distance (resets when session ends)
-- Automatically loads/saves from `{save_path}/mxbmrp3/odometer.json`
+Unified stats system that tracks per-track/bike stats, global race stats, personal bests, and odometer data in a single JSON file (`{save_path}/mxbmrp3/mxbmrp3_stats.json`).
+
+**Per track+bike stats** (`TrackBikeStats`):
+- Total/valid lap counts, best lap/sector times
+- Top speed, crash count, time on track
+- First/last session timestamps
+
+**Personal bests** (`StatsPersonalBestData`):
+- Fastest lap time with sector breakdown per track+bike combo
+- Metadata: setup name, weather conditions, timestamp
+- Used by TimingHud, LapConsistencyHud, RecordsHud for all-time PB comparisons
+
+**Global stats** (`GlobalStats`):
+- Race count, podium finishes (P1/P2/P3), fastest lap awards, penalty count, Breakout high score
+
+**Per-bike odometers**:
+- Total distance traveled per bike (persistent across sessions)
+- Uses `double` precision for accuracy at high distances (100k+ km)
+- Distance calculated from speed × delta time in telemetry handler
+
+**Session transients** (not persisted):
+- Session lap count, best lap, crash count, top speed, trip distance, duration
 
 Features:
-- Per-bike odometer keyed by bike name string
-- Uses `double` precision to maintain accuracy at high distances (100k+ km)
-- Thread-safe with mutex protection
-- Distance calculated from speed × delta time in telemetry handler
-- Displayed in SpeedoWidget with odometer/tripmeter rows
+- Context-based API: set current track+bike once, then telemetry-rate calls avoid lookups
+- Migrates legacy data from old `mxbmrp3_personal_bests.json` and `odometer.json` files
+- Cached global totals (recomputed on load/clear, updated incrementally)
+- Dirty flag with periodic save (not every telemetry tick)
 
 ### 9. FmxManager (`core/fmx_manager.*`)
 
@@ -373,6 +391,7 @@ Abstract base class that all HUDs inherit from. Provides:
 - `SettingsHud` - Interactive settings menu UI
 - `FmxHud` - FMX trick detection display with rotation arcs, chain stack, and scoring
 - `SessionHud` - Session info (type, format, track, server, players, password)
+- `StatsHud` - Session stats display with configurable columns (last lap, session, all-time)
 
 **Widgets** (simple, focused):
 - `SpeedWidget` - Speed and gear display
@@ -384,9 +403,9 @@ Abstract base class that all HUDs inherit from. Provides:
 - `BarsWidget` - Visual telemetry bars (throttle, brake, etc.)
 - `LeanWidget` - Bike lean/roll angle display with arc gauge and steering bar
 - `FuelWidget` - Fuel calculator with consumption tracking
-- `NoticesWidget` - Race status notices (wrong way, blue flag, last lap, finished)
+- `NoticesWidget` - Race status notices (wrong way, blue flag, PB alerts, last lap, finished)
 - `GamepadWidget` - Controller visualization with button/stick/trigger display
-- `VersionWidget` - Plugin version display
+- `VersionWidget` - Plugin version display (includes hidden Breakout game easter egg; high score persisted via StatsManager)
 - `SettingsButtonWidget` - Settings menu toggle button
 
 ### HUD Lifecycle
@@ -912,7 +931,7 @@ The plugin supports multiple Piboso racing games from a single codebase using co
 
 | Game | Mod ID | Vehicle Type | Splits | Unique Features |
 |------|--------|--------------|--------|-----------------|
-| MX Bikes | `mxbikes` | Bike (2 wheels) | 2 | Holeshot timing, Straight Rhythm |
+| MX Bikes | `mxbikes` | Bike (2 wheels) | 2 | Straight Rhythm |
 | GP Bikes | `gpbikes` | Bike (2 wheels) | 3 | ECU/TC/AW, Tread temps |
 | WRS | `wrs` | Car (4-6 wheels) | 2 | Rolling start, Turbo, Handbrake |
 | KRP | `krp` | Kart (4 wheels) | 2 | Session series, Qualify heats |
@@ -942,8 +961,8 @@ The Visual Studio project uses conditional compilation to include only the relev
 
 **Compile-Time** (`game/game_config.h`):
 ```cpp
-#if GAME_HAS_HOLESHOT
-void handleRaceHoleshot(const Unified::RaceHoleshotData* data);
+#if GAME_HAS_RACE_SPEED
+void handleRaceSpeed(const Unified::RaceSpeedData* data);
 #endif
 ```
 
@@ -955,7 +974,6 @@ if constexpr (Game::Adapter::HAS_RACE_SPEED) {
 ```
 
 Key feature flags:
-- `GAME_HAS_HOLESHOT` - MX Bikes only
 - `GAME_HAS_RACE_SPEED` - All except MX Bikes
 - `GAME_HAS_ECU` - GP Bikes only
 - `GAME_HAS_TRACK_TEMP` - All except MX Bikes
@@ -996,7 +1014,7 @@ The adapter layer isolates changes - core HUDs don't need modification for most 
 - Session type meanings
 - Entry state values (MX Bikes has extra "unknown" state)
 - Split counts in lap data
-- Game-specific events (Holeshot, RaceSpeed)
+- Game-specific events (RaceSpeed)
 
 ## Quick Reference: File Locations
 
@@ -1016,6 +1034,7 @@ The adapter layer isolates changes - core HUDs don't need modification for most 
 | Update checker | `core/update_checker.cpp` |
 | Update downloader | `core/update_downloader.cpp` |
 | XInput / Rumble | `core/xinput_reader.cpp` |
+| Stats manager | `core/stats_manager.cpp` |
 | Rumble profiles manager | `core/rumble_profile_manager.cpp` |
 | FMX trick detection | `core/fmx_manager.cpp` |
 | FMX types | `core/fmx_types.h` |
@@ -1025,6 +1044,7 @@ The adapter layer isolates changes - core HUDs don't need modification for most 
 | Tooltip definitions | `mxbmrp3_data/tooltips.json` |
 | Tooltip manager | `core/tooltip_manager.h` |
 | Settings file | `{save_path}/mxbmrp3/mxbmrp3_settings.ini` |
+| Stats file | `{save_path}/mxbmrp3/mxbmrp3_stats.json` |
 | Rumble profiles file | `{save_path}/mxbmrp3/rumble_profiles.json` |
 | Log file | `{save_path}/mxbmrp3/mxbmrp3.log` |
 | Build output (MX Bikes) | `build/MXB-Release/mxbmrp3.dlo` |

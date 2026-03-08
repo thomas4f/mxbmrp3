@@ -66,9 +66,6 @@ public:
     // Rider position data handling (high-frequency update)
     void updateRiderPositions(int numVehicles, Unified::TrackPositionData* positions);
 
-    // Radar HUD position update (called alongside MapHud)
-    void updateRadarPositions(int numVehicles, Unified::TrackPositionData* positions);
-
     // Get HUD references for settings persistence
     // Note: These assert m_bInitialized - only call after initialize() and before shutdown()
     class IdealLapHud& getIdealLapHud() const { assert(m_pIdealLap && "HudManager not initialized"); return *m_pIdealLap; }
@@ -83,6 +80,7 @@ public:
     class MapHud& getMapHud() const { assert(m_pMapHud && "HudManager not initialized"); return *m_pMapHud; }
     class RadarHud& getRadarHud() const { assert(m_pRadarHud && "HudManager not initialized"); return *m_pRadarHud; }
     class SpeedWidget& getSpeedWidget() const { assert(m_pSpeed && "HudManager not initialized"); return *m_pSpeed; }
+    class GearWidget& getGearWidget() const { assert(m_pGear && "HudManager not initialized"); return *m_pGear; }
     class SpeedoWidget& getSpeedoWidget() const { assert(m_pSpeedo && "HudManager not initialized"); return *m_pSpeedo; }
     class TachoWidget& getTachoWidget() const { assert(m_pTacho && "HudManager not initialized"); return *m_pTacho; }
     class TimingHud& getTimingHud() const { assert(m_pTiming && "HudManager not initialized"); return *m_pTiming; }
@@ -105,6 +103,7 @@ public:
 #endif
     class LapConsistencyHud& getLapConsistencyHud() const { assert(m_pLapConsistency && "HudManager not initialized"); return *m_pLapConsistency; }
     class FmxHud& getFmxHud() const { assert(m_pFmxHud && "HudManager not initialized"); return *m_pFmxHud; }
+    class StatsHud& getStatsHud() const { assert(m_pStatsHud && "HudManager not initialized"); return *m_pStatsHud; }
     class SettingsHud& getSettingsHud() const { assert(m_pSettingsHud && "HudManager not initialized"); return *m_pSettingsHud; }
 
 private:
@@ -112,7 +111,7 @@ private:
                    m_pDraggingHud(nullptr), m_pSettingsHud(nullptr), m_pSettingsButton(nullptr),
                    m_pIdealLap(nullptr), m_pLapLog(nullptr), m_pStandings(nullptr),
                    m_pPerformance(nullptr), m_pTelemetry(nullptr),
-                   m_pTime(nullptr), m_pPosition(nullptr), m_pLap(nullptr), m_pSession(nullptr), m_pMapHud(nullptr), m_pRadarHud(nullptr), m_pSpeed(nullptr), m_pSpeedo(nullptr), m_pTacho(nullptr), m_pTiming(nullptr), m_pGapBar(nullptr), m_pBars(nullptr), m_pVersion(nullptr), m_pNotices(nullptr), m_pPitboard(nullptr),
+                   m_pTime(nullptr), m_pPosition(nullptr), m_pLap(nullptr), m_pSession(nullptr), m_pMapHud(nullptr), m_pRadarHud(nullptr), m_pSpeed(nullptr), m_pGear(nullptr), m_pSpeedo(nullptr), m_pTacho(nullptr), m_pTiming(nullptr), m_pGapBar(nullptr), m_pBars(nullptr), m_pVersion(nullptr), m_pNotices(nullptr), m_pPitboard(nullptr),
 #if GAME_HAS_RECORDS_PROVIDER
                    m_pRecords(nullptr),
 #endif
@@ -121,6 +120,7 @@ private:
                    m_pTyreTemp(nullptr),
 #endif
                    m_pLapConsistency(nullptr),
+                   m_pStatsHud(nullptr),
                    m_pFmxHud(nullptr),
                    m_bAllHudsToggledOff(false), m_bAllWidgetsToggledOff(false) {
     }
@@ -156,6 +156,7 @@ private:
     class MapHud* m_pMapHud;
     class RadarHud* m_pRadarHud;
     class SpeedWidget* m_pSpeed;
+    class GearWidget* m_pGear;
     class SpeedoWidget* m_pSpeedo;
     class TachoWidget* m_pTacho;
     class TimingHud* m_pTiming;
@@ -176,6 +177,7 @@ private:
     class TyreTempWidget* m_pTyreTemp;
 #endif
     class LapConsistencyHud* m_pLapConsistency;
+    class StatsHud* m_pStatsHud;
     class FmxHud* m_pFmxHud;
 
     // Temporary HUD visibility toggle (doesn't modify actual visibility state)

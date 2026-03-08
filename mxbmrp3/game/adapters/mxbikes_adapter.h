@@ -21,7 +21,6 @@ struct Adapter {
     static constexpr Unified::VehicleType VEHICLE_TYPE = Unified::VehicleType::Bike;
 
     // Feature flags
-    static constexpr bool HAS_HOLESHOT = true;
     static constexpr bool HAS_RACE_SPEED = false;
     static constexpr bool HAS_TRACK_TEMP = false;
     static constexpr bool HAS_SESSION_SERIES = false;
@@ -295,20 +294,6 @@ struct Adapter {
         result.lapNum = src->m_iLapNum;
         result.splitIndex = src->m_iSplit;
         result.splitTime = src->m_iSplitTime;
-
-        return result;
-    }
-
-    // ========================================================================
-    // Holeshot Conversion (MX Bikes specific)
-    // ========================================================================
-    static Unified::RaceHoleshotData toRaceHoleshot(const SPluginsRaceHoleshot_t* src) {
-        Unified::RaceHoleshotData result;
-        if (!src) return result;
-
-        result.session = src->m_iSession;
-        result.raceNum = src->m_iRaceNum;
-        result.time = src->m_iTime;
 
         return result;
     }

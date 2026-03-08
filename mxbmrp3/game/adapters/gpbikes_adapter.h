@@ -21,7 +21,6 @@ struct Adapter {
     static constexpr Unified::VehicleType VEHICLE_TYPE = Unified::VehicleType::Bike;
 
     // Feature flags
-    static constexpr bool HAS_HOLESHOT = false;
     static constexpr bool HAS_RACE_SPEED = true;
     static constexpr bool HAS_TRACK_TEMP = true;
     static constexpr bool HAS_SESSION_SERIES = false;
