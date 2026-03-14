@@ -71,12 +71,13 @@ BaseHud* SettingsHud::renderTabStats(SettingsLayoutContext& ctx) {
 
     ctx.addTabTooltip("stats");
 
-    // Standard controls (Visible, Title, Texture, Opacity, Scale)
+    // === APPEARANCE SECTION ===
+    ctx.addSectionHeader("Appearance");
     ctx.addStandardHudControls(hud);
     ctx.addSpacing(0.5f);
 
-    // === DISPLAY MODE SECTION ===
-    ctx.addSectionHeader("Display Mode");
+    // === LAYOUT SECTION ===
+    ctx.addSectionHeader("Layout");
 
     // Visibility mode
     const char* visModeName = StatsHud::getVisibilityModeName(hud->m_visibilityMode);
@@ -98,7 +99,7 @@ BaseHud* SettingsHud::renderTabStats(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::STATS_SHOW_ALLTIME_TOGGLE,
         hud, nullptr, 0, true, "stats.show_alltime");
 
-    ctx.addSpacing(1.0f);
+    ctx.addSpacing(0.5f);
 
     // Colors and fonts
     ColorConfig& colors = ColorConfig::getInstance();

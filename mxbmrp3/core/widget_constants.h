@@ -10,7 +10,7 @@ namespace WidgetDimensions {
     constexpr int SPEED_WIDTH = 5;           // Speed widget width
     constexpr int GEAR_WIDTH = 5;            // Gear widget width
     constexpr int LEAN_WIDTH = 8;            // Lean widget width
-    constexpr int SESSION_WIDTH = 46;        // Session widget width
+    constexpr int SESSION_WIDTH = 43;        // Session widget width
 
     // TimingHud column widths (per-column character counts)
     constexpr int TIMING_LABEL_WIDTH = 7;    // "Split 1", "Lap 99", "Finish"

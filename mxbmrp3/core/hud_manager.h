@@ -98,6 +98,7 @@ public:
     class RumbleHud& getRumbleHud() const { assert(m_pRumble && "HudManager not initialized"); return *m_pRumble; }
     class GamepadWidget& getGamepadWidget() const { assert(m_pGamepad && "HudManager not initialized"); return *m_pGamepad; }
     class LeanWidget& getLeanWidget() const { assert(m_pLean && "HudManager not initialized"); return *m_pLean; }
+    class ClockWidget& getClockWidget() const { assert(m_pClock && "HudManager not initialized"); return *m_pClock; }
 #if GAME_HAS_TYRE_TEMP
     class TyreTempWidget& getTyreTempWidget() const { assert(m_pTyreTemp && "HudManager not initialized"); return *m_pTyreTemp; }
 #endif
@@ -115,7 +116,7 @@ private:
 #if GAME_HAS_RECORDS_PROVIDER
                    m_pRecords(nullptr),
 #endif
-                   m_pFuel(nullptr), m_pPointer(nullptr), m_pRumble(nullptr), m_pGamepad(nullptr), m_pLean(nullptr),
+                   m_pFuel(nullptr), m_pPointer(nullptr), m_pRumble(nullptr), m_pGamepad(nullptr), m_pLean(nullptr), m_pClock(nullptr),
 #if GAME_HAS_TYRE_TEMP
                    m_pTyreTemp(nullptr),
 #endif
@@ -173,6 +174,7 @@ private:
     class RumbleHud* m_pRumble;
     class GamepadWidget* m_pGamepad;
     class LeanWidget* m_pLean;
+    class ClockWidget* m_pClock;
 #if GAME_HAS_TYRE_TEMP
     class TyreTempWidget* m_pTyreTemp;
 #endif

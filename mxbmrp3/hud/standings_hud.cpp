@@ -131,17 +131,16 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
                         // Render tracked rider icon sprite
                         // Use same base size constant as map (0.006f)
                         constexpr float baseConeSize = 0.006f;
-                        float baseHalfSize = baseConeSize * m_fScale;  // Match map exactly
-                        float baseCenterOffset = baseHalfSize;  // Fixed center offset for positioning
-                        float spriteHalfSize = baseHalfSize;  // Visual half size (will be scaled per shape)
+                        float baseHalfSize = baseConeSize * m_fScale;
+                        float spriteHalfSize = baseHalfSize;
 
                         // Convert shapeIndex to sprite index (dynamically assigned)
                         int spriteIndex = AssetManager::getInstance().getFirstIconSpriteIndex() + trackedConfig->shapeIndex - 1;
                         // All icons use uniform baseline scale
 
-                        // Create sprite quad centered vertically on the row
-                        // Use baseCenterOffset for consistent positioning across all shapes
-                        float spriteCenterX = col.position + baseCenterOffset;
+                        // Position icon at 1/4 of column width for more breathing room to the right
+                        float colWidth = PluginUtils::calculateMonospaceTextWidth(COL_TRACKED_WIDTH, dim.fontSize);
+                        float spriteCenterX = col.position + colWidth * 0.25f;
                         float spriteCenterY = currentY + dim.lineHeightNormal * 0.5f;
                         float spriteHalfWidth = spriteHalfSize / UI_ASPECT_RATIO;
 
@@ -593,16 +592,16 @@ void StandingsHud::rebuildLayout() {
         // Same size calculations as in renderRiderRow
         constexpr float baseConeSize = 0.006f;
         float baseHalfSize = baseConeSize * m_fScale;
-        float baseCenterOffset = baseHalfSize;
         float spriteHalfSize = baseHalfSize;
         float spriteHalfWidth = spriteHalfSize / UI_ASPECT_RATIO;
+        float colWidth = PluginUtils::calculateMonospaceTextWidth(COL_TRACKED_WIDTH, dim.fontSize);
 
         for (const auto& iconInfo : m_trackedIconQuads) {
             if (iconInfo.quadIndex >= m_quads.size()) continue;
 
             // Calculate position for this row
             float rowY = hudDim.contentStartY + hudDim.titleHeight + (iconInfo.rowIndex * dim.lineHeightNormal);
-            float spriteCenterX = trackedColPosition + baseCenterOffset;
+            float spriteCenterX = trackedColPosition + colWidth * 0.25f;
             float spriteCenterY = rowY + dim.lineHeightNormal * 0.5f;
 
             float x = spriteCenterX, y = spriteCenterY;
@@ -674,13 +673,17 @@ void StandingsHud::rebuildRenderData() {
     // m_enabledColumns, m_officialGapMode, m_liveGapMode are set when profile is applied
     bool isRace = pluginData.isRaceSession();
 
-    // Apply gap modes - disable columns if mode is OFF
+    // Apply gap modes - gap mode is the sole control for gap column visibility
     uint32_t effectiveColumns = m_enabledColumns;
     if (m_officialGapMode == GapMode::OFF) {
         effectiveColumns &= ~COL_OFFICIAL_GAP;
+    } else {
+        effectiveColumns |= COL_OFFICIAL_GAP;
     }
     if (m_liveGapMode == GapMode::OFF) {
         effectiveColumns &= ~COL_LIVE_GAP;
+    } else {
+        effectiveColumns |= COL_LIVE_GAP;
     }
 
     // Only log when configuration actually changes
@@ -1121,8 +1124,8 @@ void StandingsHud::resetToDefaults() {
     m_fScale = 1.0f;
     setPosition(0.0055f, 0.2997f);
     m_officialGapMode = GapMode::ALL;
-    m_liveGapMode = GapMode::PLAYER;
-    m_gapIndicatorMode = GapIndicatorMode::BOTH;
+    m_liveGapMode = GapMode::OFF;
+    m_gapIndicatorMode = GapIndicatorMode::OFF;
     m_gapReferenceMode = GapReferenceMode::PLAYER;
     m_enabledColumns = COL_DEFAULT;
     m_displayRowCount = DEFAULT_ROW_COUNT;

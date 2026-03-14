@@ -123,8 +123,8 @@ BaseHud* SettingsHud::renderTabLapConsistency(SettingsLayoutContext& ctx) {
     ctx.addStandardHudControls(hud);
     ctx.addSpacing(0.5f);
 
-    // === DISPLAY MODE SECTION (matches PerformanceHud/TelemetryHud) ===
-    ctx.addSectionHeader("Display Mode");
+    // === LAYOUT SECTION ===
+    ctx.addSectionHeader("Layout");
 
     // Style: Graphs / Numbers / Both
     ctx.addCycleControl("Style", getStyleName(hud->m_displayMode), 10,
@@ -154,8 +154,8 @@ BaseHud* SettingsHud::renderTabLapConsistency(SettingsLayoutContext& ctx) {
 
     ctx.addSpacing(0.5f);
 
-    // === STATISTICS SECTION ===
-    ctx.addSectionHeader("Statistics");
+    // === CONTENT SECTION ===
+    ctx.addSectionHeader("Content");
 
     ctx.addToggleControl("Reference", (hud->m_enabledStats & LapConsistencyHud::STAT_REF) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledStats, LapConsistencyHud::STAT_REF, true,

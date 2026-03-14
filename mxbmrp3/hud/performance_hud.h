@@ -24,7 +24,7 @@ public:
         ELEM_FPS = 1 << 0,  // FPS metric
         ELEM_CPU = 1 << 1,  // CPU time metric (plugin execution time)
 
-        ELEM_DEFAULT = 0x3  // All metrics enabled (binary: 11)
+        ELEM_DEFAULT = ELEM_CPU  // CPU usage enabled by default
     };
 
     // Display mode - controls whether to show graphs, numbers, or both
@@ -70,7 +70,7 @@ private:
     static constexpr int GRAPH_WIDTH_CHARS = 33;    // Width for graph display (left side)
     static constexpr int LEGEND_WIDTH_CHARS = 9;    // Width for legend/stats (right side) - fits "Max 12.34"
     static constexpr int BACKGROUND_WIDTH_CHARS = GRAPH_WIDTH_CHARS + 1 + LEGEND_WIDTH_CHARS;  // 33 + 1 gap + 9 = 43
-    static constexpr float GRAPH_HEIGHT_LINES = 4;  // Height in line units (matches legend section height)
+    static constexpr float GRAPH_HEIGHT_LINES = 6;  // Height in line units (matches telemetry HUD height)
 
     // Graph scaling constants
     static constexpr float MAX_FPS_DISPLAY = 250.0f;  // FPS graph ceiling

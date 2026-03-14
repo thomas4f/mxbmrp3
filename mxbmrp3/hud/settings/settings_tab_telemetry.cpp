@@ -18,8 +18,8 @@ BaseHud* SettingsHud::renderTabTelemetry(SettingsLayoutContext& ctx) {
     ctx.addStandardHudControls(hud);
     ctx.addSpacing(0.5f);
 
-    // === DISPLAY MODE SECTION ===
-    ctx.addSectionHeader("Display Mode");
+    // === LAYOUT SECTION ===
+    ctx.addSectionHeader("Layout");
 
     // Display mode cycle control
     const char* modeText = "";
@@ -34,8 +34,8 @@ BaseHud* SettingsHud::renderTabTelemetry(SettingsLayoutContext& ctx) {
         hud, true, false, "telemetry.display", &hud->m_displayMode);
     ctx.addSpacing(0.5f);
 
-    // === ELEMENTS SECTION ===
-    ctx.addSectionHeader("Elements");
+    // === CONTENT SECTION ===
+    ctx.addSectionHeader("Content");
 
     ctx.addToggleControl("Throttle", (hud->m_enabledElements & TelemetryHud::ELEM_THROTTLE) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledElements, TelemetryHud::ELEM_THROTTLE, true,

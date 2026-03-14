@@ -388,7 +388,7 @@ void FuelWidget::resetToDefaults() {
     m_fScale = 1.0f;
     m_enabledRows = ROW_DEFAULT;  // Reset row visibility
     // Note: fuelUnit is NOT reset here - it's a global preference, not per-profile
-    setPosition(0.924f, 0.7326f);
+    setPosition(0.8305f, 0.8769f);
     resetFuelTracking();
     setDataDirty();
 }

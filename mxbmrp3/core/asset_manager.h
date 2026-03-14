@@ -18,6 +18,7 @@ struct TextureAsset {
     std::string baseName;              // e.g., "standings_hud"
     std::vector<int> variants;         // e.g., [1, 2, 3] for _1, _2, _3 files
     int firstSpriteIndex = 0;          // Index of variant 1 in the sprite array
+    std::vector<float> aspectRatios;   // Per-variant pixel aspect ratio (width/height), parallel to variants
 };
 
 // Font asset info
@@ -82,6 +83,10 @@ public:
     // Get available variants for a texture base name
     // Returns empty vector if texture not found
     std::vector<int> getAvailableVariants(const std::string& baseName) const;
+
+    // Get pixel aspect ratio (width/height) for a sprite index
+    // Returns 0.0f if not found (caller should skip aspect ratio correction)
+    float getTextureAspectRatio(int spriteIndex) const;
 
     // Get texture path for registration
     std::string getTexturePath(const std::string& baseName, int variant) const;
@@ -150,6 +155,9 @@ private:
     // Generate display name from filename
     // e.g., "RobotoMono-Regular" -> "Roboto Mono"
     std::string generateDisplayName(const std::string& filename) const;
+
+    // Read TGA header to get pixel dimensions (returns false if file can't be read)
+    static bool readTgaDimensions(const std::string& path, int& width, int& height);
 
     // Asset storage
     std::vector<FontAsset> m_fonts;

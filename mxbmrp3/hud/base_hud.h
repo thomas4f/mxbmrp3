@@ -54,7 +54,7 @@ struct HudStringConfig {
 
 class BaseHud {
 public:
-    // Standard update interval for live timing displays (~165Hz for smooth ticking)
+    // Standard update interval for live timing displays (~167Hz for smooth ticking)
     static constexpr int TICK_UPDATE_INTERVAL_MS = 6;
 
     BaseHud() : m_bDataDirty(true), m_bLayoutDirty(true), m_bDraggable(false), m_bDragging(false),
@@ -96,8 +96,8 @@ public:
         if (opacity < 0.0f) opacity = 0.0f;
         if (opacity > 1.0f) opacity = 1.0f;
 
-        // Round to nearest 10% increment to avoid floating point precision issues
-        opacity = std::round(opacity * 10.0f) / 10.0f;
+        // Round to nearest 1% increment to avoid floating point precision issues
+        opacity = std::round(opacity * 100.0f) / 100.0f;
 
         if (m_fBackgroundOpacity != opacity) {
             m_fBackgroundOpacity = opacity;
@@ -179,8 +179,10 @@ public:
     // Frequent Update Support (for live timing displays)
     // ========================================================================
     // Override needsFrequentUpdates() to return true when HUD should tick at high frequency.
+    // Override getTickIntervalMs() to change the tick rate (default: 6ms / ~167Hz).
     // Call checkFrequentUpdates() in update() to apply the standard ticking logic.
     virtual bool needsFrequentUpdates() const { return false; }
+    virtual int getTickIntervalMs() const { return TICK_UPDATE_INTERVAL_MS; }
 
     // Check if enough time has passed since last tick update; if so, marks data dirty.
     // Returns true if an update was triggered, false otherwise.
@@ -236,6 +238,9 @@ protected:
 
     // Helper to update background quad position during rebuildLayout (reduces duplication)
     void updateBackgroundQuadPosition(float startX, float startY, float width, float height);
+
+    // Expand quad dimensions to match background texture aspect ratio (prevents stretching)
+    void applyTextureAspectCorrection(float& x, float& y, float& width, float& height) const;
 
     // Styled string rendering with per-string padding and backgrounds
     void addStyledString(const HudStringConfig& config);

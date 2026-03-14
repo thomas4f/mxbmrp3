@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cctype>
 #include <sstream>
+#include <fstream>
 
 AssetManager& AssetManager::getInstance() {
     static AssetManager instance;
@@ -207,6 +208,25 @@ void AssetManager::discoverTextures() {
         texture.baseName = baseName;
         texture.variants = variants;
         texture.firstSpriteIndex = spriteIndex;
+
+        // Read TGA dimensions for each variant to compute aspect ratios
+        for (int v : variants) {
+            std::string tgaPath = std::string(DISCOVERY_DIR) + "\\" + TEXTURES_SUBDIR + "\\" + baseName + "_" + std::to_string(v) + ".tga";
+            int texW = 0, texH = 0;
+            if (readTgaDimensions(tgaPath, texW, texH) && texH > 0) {
+                float aspect = static_cast<float>(texW) / static_cast<float>(texH);
+                // Clamp to sane range to guard against malformed TGA headers
+                if (aspect < 0.1f) aspect = 0.1f;
+                if (aspect > 10.0f) aspect = 10.0f;
+                texture.aspectRatios.push_back(aspect);
+                DEBUG_INFO_F("AssetManager: Texture '%s_%d' dimensions %dx%d (aspect %.3f)",
+                    baseName.c_str(), v, texW, texH, aspect);
+            } else {
+                texture.aspectRatios.push_back(0.0f);  // Unknown - skip correction
+                DEBUG_WARN_F("AssetManager: Could not read dimensions for '%s_%d.tga'",
+                    baseName.c_str(), v);
+            }
+        }
 
         m_textureNameToIndex[baseName] = m_textures.size();
         m_textures.push_back(texture);
@@ -423,4 +443,34 @@ std::string AssetManager::getIconDisplayName(int spriteIndex) const {
         return m_icons[arrayIndex].displayName;
     }
     return "";
+}
+
+float AssetManager::getTextureAspectRatio(int spriteIndex) const {
+    if (spriteIndex <= 0) return 0.0f;
+
+    // Find which texture asset this sprite belongs to
+    for (const auto& texture : m_textures) {
+        int offset = spriteIndex - texture.firstSpriteIndex;
+        if (offset >= 0 && offset < static_cast<int>(texture.aspectRatios.size())) {
+            return texture.aspectRatios[offset];
+        }
+    }
+    return 0.0f;
+}
+
+bool AssetManager::readTgaDimensions(const std::string& path, int& width, int& height) {
+    // TGA header: bytes 12-13 = width, bytes 14-15 = height (little-endian uint16)
+    std::ifstream file(path, std::ios::binary);
+    if (!file.is_open()) return false;
+
+    unsigned char header[18];
+    if (!file.read(reinterpret_cast<char*>(header), 18)) return false;
+
+    width = header[12] | (header[13] << 8);
+    height = header[14] | (header[15] << 8);
+
+    // Reject unreasonable dimensions that would produce extreme aspect ratios
+    if (width <= 0 || height <= 0 || width > 16384 || height > 16384) return false;
+
+    return true;
 }

@@ -598,7 +598,7 @@ void LeanWidget::resetToDefaults() {
     m_enabledRows = ROW_DEFAULT;  // All rows enabled
     m_bShowMaxMarkers = true;     // Max markers ON by default for lean/steer
     m_maxMarkerLingerFrames = 60; // ~1 second at 60fps
-    setPosition(0.924f, 0.444f);
+    setPosition(0.7590f, 0.8769f);
     m_smoothedLean = 0.0f;
     m_maxLeanLeft = 0.0f;
     m_maxLeanRight = 0.0f;

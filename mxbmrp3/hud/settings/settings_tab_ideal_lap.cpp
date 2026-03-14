@@ -18,8 +18,8 @@ BaseHud* SettingsHud::renderTabIdealLap(SettingsLayoutContext& ctx) {
     ctx.addStandardHudControls(hud);
     ctx.addSpacing(0.5f);
 
-    // === DATA DISPLAY SECTION ===
-    ctx.addSectionHeader("Data Display");
+    // === CONTENT SECTION ===
+    ctx.addSectionHeader("Content");
 
     // Sector rows (S1, S2, S3)
     bool sectorsOn = (hud->m_enabledRows & IdealLapHud::ROW_SECTORS) != 0;

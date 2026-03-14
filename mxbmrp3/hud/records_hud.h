@@ -160,7 +160,7 @@ private:
     static constexpr int MAX_RECORDS = 50;  // API only returns 50 results
     static constexpr size_t MAX_RESPONSE_SIZE = 256 * 1024;  // 256KB max response to prevent memory exhaustion
     static constexpr int HEADER_ROWS = 3;  // Title + Provider/Category/Compare + empty row (no column headers)
-    static constexpr int FOOTER_ROWS = 3;  // Gap row + 2-line footer note
+    static constexpr int FOOTER_ROWS = 1;  // Gap row only (footer text renders in bottom padding)
 
     // Column width constants (in character counts)
     // Each width = content chars + 1 gap (matches pattern used by other HUDs)
@@ -182,7 +182,7 @@ private:
     DataProvider m_provider;
     int m_categoryIndex;  // Index into m_categoryList (0 = "All")
     uint32_t m_enabledColumns = COL_DEFAULT;  // Bitfield of enabled columns
-    int m_recordsToShow = 3;  // Number of records to display (1-10, default 3)
+    int m_recordsToShow = 3;  // Number of records to display (3-30, default 3)
     char m_lastSessionTrackId[256] = {0};  // Track session trackId to auto-fetch on event start
     char m_lastSessionCategory[64] = {0};  // Track session category to auto-fetch on bike change
     bool m_bAutoFetch = false;  // Auto-fetch records when entering event (default off)

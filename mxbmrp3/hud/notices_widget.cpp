@@ -36,7 +36,7 @@ NoticesWidget::NoticesWidget()
 {
     // One-time setup
     DEBUG_INFO("NoticesWidget created");
-    setDraggable(false);  // Center display shouldn't be draggable
+    setDraggable(true);
     m_quads.reserve(1);
     m_strings.reserve(1);
 
@@ -205,8 +205,11 @@ void NoticesWidget::rebuildLayout() {
     float noticeQuadY = TIMING_DIVIDER_Y - rowGap - noticeQuadHeight;
     float noticeY = noticeQuadY + dim.paddingV * 0.5f;
 
-    // Update notice quad position
-    setQuadPositions(m_quads[0], noticeQuadX, noticeQuadY, noticeQuadWidth, noticeQuadHeight);
+    // Update notice quad position (apply drag offset)
+    float quadX = noticeQuadX;
+    float quadY = noticeQuadY;
+    applyOffset(quadX, quadY);
+    setQuadPositions(m_quads[0], quadX, quadY, noticeQuadWidth, noticeQuadHeight);
 
     // Update notice string position
     if (!m_strings.empty()) {

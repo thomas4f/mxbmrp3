@@ -112,7 +112,7 @@ HUDs pull fresh from PluginData on rebuild - they only cache formatted render da
 This enforces PluginData as single source of truth and prevents synchronization issues.
 
 **Widget vs HUD Distinction**
-Widgets (TimeWidget, PositionWidget, LapWidget, SpeedWidget, SpeedoWidget, TachoWidget, BarsWidget, LeanWidget, NoticesWidget, VersionWidget, SettingsButtonWidget) are simplified HUD components with:
+Widgets (TimeWidget, PositionWidget, LapWidget, SpeedWidget, GearWidget, ClockWidget, SpeedoWidget, TachoWidget, BarsWidget, FuelWidget, LeanWidget, NoticesWidget, GamepadWidget, VersionWidget, SettingsButtonWidget) are simplified HUD components with:
 - Single-purpose display (no configurable columns/rows)
 - Minimal settings (just position, scale, opacity)
 - Simpler rendering logic

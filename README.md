@@ -8,9 +8,9 @@ A customizable, [open-source](https://github.com/thomas4f/mxbmrp3) HUD plugin fo
 - Live race standings, track map, and proximity radar with approach alerts
 - Lap timing with splits, personal bests, gap-to-PB visualization, and online lap records (MX Bikes)
 - Track specific riders with custom colors and icons across all HUDs
-- Controller rumble feedback with customizable effects (bumps, slide, spin, lockup, wheelie, etc.)
+- Controller rumble feedback with customizable effects
 - Discord Rich Presence integration showing current session and track
-- Riding stats tracking with per-lap, session, and all-time totals (laps, distance, crashes, top speed, and more)
+- Riding stats tracking with per-lap, session, and all-time totals
 - FMX freestyle trick detection with scoring and chain combos
 - Telemetry visualization and compact info widgets
 - Drag-and-drop positioning with color themes and customizable hotkeys
@@ -27,7 +27,7 @@ Download and install the plugin to begin customizing your HUD.
 > 1. Install the plugin
 > 2. Launch the game and load a track
 > 3. Right-click drag to reposition elements
-> 4. Press **Tilde** or click **[=]** to customize visibility, scale, opacity, and more
+> 4. Press **Tilde (~)** or click the **[=]** settings button to customize visibility, scale, opacity, and more
 
 See [Installation](#installation) for detailed setup instructions.
 
@@ -161,7 +161,9 @@ All HUDs and widgets are configurable via the settings menu or directly in the [
 | **Lap** | Current lap number |
 | **Position** | Race position |
 | **Time** | Session time/countdown |
-| **Speed** | Speed and gear |
+| **Speed** | Current speed |
+| **Gear** | Current gear |
+| **Clock** | Real-time clock |
 | **Speedo** | Analog speedometer |
 | **Tacho** | Analog tachometer |
 | **Bars** | Telemetry bars (throttle, brake, clutch, RPM, suspension, fuel) |
@@ -225,11 +227,9 @@ On game startup, the plugin syncs these files to the plugin's data directory (`p
 | File | Description |
 |------|-------------|
 | `mxbmrp3_settings.ini` | All HUD settings (positions, visibility, options) |
-| `mxbmrp3_personal_bests.json` | Personal best lap times per track/bike/category (legacy, migrated automatically) |
 | `mxbmrp3_tracked_riders.json` | Tracked riders with colors and icons |
 | `rumble_profiles.json` | Per-bike rumble effect profiles |
 | `mxbmrp3_stats.json` | Unified stats, personal bests, and odometer data |
-| `odometer.json` | Per-bike odometer and trip meter data (legacy, migrated automatically) |
 
 ## Troubleshooting
 

@@ -21,6 +21,7 @@ public:
     void update() override;
     bool handlesDataType(DataChangeType dataType) const override;
     bool needsFrequentUpdates() const override;
+    int getTickIntervalMs() const override;
     void resetToDefaults();
 
     static const char* getVisibilityModeName(VisibilityMode mode);
@@ -62,7 +63,5 @@ private:
     static constexpr int LABEL_WIDTH_CHARS = 8;     // Label reserve (longer labels extend into column space)
     static constexpr int COLUMN_WIDTH_CHARS = 9;    // Each data column (right-aligned, fits "102 km/h" + gap)
     static constexpr int DATA_ROWS = 10;      // Best lap, Laps, Riding time, Distance, Crashes, Gear shifts, Penalties, Pen. time, Top speed, Avg speed
-    static constexpr int64_t STATS_UPDATE_INTERVAL_MS = 1000;  // ~1Hz rebuild for live distance/time
-
-    std::chrono::steady_clock::time_point m_lastStatsUpdate;
+    static constexpr int STATS_TICK_INTERVAL_MS = 1000;  // ~1Hz rebuild for live distance/time
 };

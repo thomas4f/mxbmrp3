@@ -30,6 +30,26 @@ bool SettingsHud::handleClickTabPitboard(const ClickRegion& region) {
             }
             return true;
 
+        case ClickRegion::PITBOARD_GAP_MODE_UP:
+            if (pitboardHud) {
+                int mode = static_cast<int>(pitboardHud->m_gapCompareMode);
+                mode = (mode + 1) % PitboardHud::GAP_COUNT;
+                pitboardHud->m_gapCompareMode = static_cast<uint8_t>(mode);
+                pitboardHud->setDataDirty();
+                rebuildRenderData();
+            }
+            return true;
+
+        case ClickRegion::PITBOARD_GAP_MODE_DOWN:
+            if (pitboardHud) {
+                int mode = static_cast<int>(pitboardHud->m_gapCompareMode);
+                mode = (mode + PitboardHud::GAP_COUNT - 1) % PitboardHud::GAP_COUNT;
+                pitboardHud->m_gapCompareMode = static_cast<uint8_t>(mode);
+                pitboardHud->setDataDirty();
+                rebuildRenderData();
+            }
+            return true;
+
         default:
             return false;
     }
@@ -47,8 +67,8 @@ BaseHud* SettingsHud::renderTabPitboard(SettingsLayoutContext& ctx) {
     ctx.addStandardHudControls(hud, false);  // No title support
     ctx.addSpacing(0.5f);
 
-    // === CONFIGURATION SECTION ===
-    ctx.addSectionHeader("Configuration");
+    // === LAYOUT SECTION ===
+    ctx.addSectionHeader("Layout");
 
     // Display mode control (Always/Pit/Splits)
     const char* displayModeText = "";
@@ -65,8 +85,8 @@ BaseHud* SettingsHud::renderTabPitboard(SettingsLayoutContext& ctx) {
         hud, true, false, "pitboard.show_mode");
     ctx.addSpacing(0.5f);
 
-    // === ROWS SECTION ===
-    ctx.addSectionHeader("Rows");
+    // === CONTENT SECTION ===
+    ctx.addSectionHeader("Content");
 
     ctx.addToggleControl("Rider name", (hud->m_enabledRows & PitboardHud::ROW_RIDER_ID) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, PitboardHud::ROW_RIDER_ID, true,
@@ -86,9 +106,27 @@ BaseHud* SettingsHud::renderTabPitboard(SettingsLayoutContext& ctx) {
     ctx.addToggleControl("Last lap time", (hud->m_enabledRows & PitboardHud::ROW_LAST_LAP) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, PitboardHud::ROW_LAST_LAP, true,
         "pitboard.last_lap");
-    ctx.addToggleControl("Gap to leader", (hud->m_enabledRows & PitboardHud::ROW_GAP) != 0,
+    ctx.addToggleControl("Gap row", (hud->m_enabledRows & PitboardHud::ROW_GAP) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, PitboardHud::ROW_GAP, true,
         "pitboard.gap");
+
+    // Gap compare mode (Auto/Leader/Session PB/Ideal/Alltime PB/Overall/Record)
+    const char* gapModeText = "";
+    switch (hud->m_gapCompareMode) {
+        case PitboardHud::GAP_AUTO:       gapModeText = "Auto"; break;
+        case PitboardHud::GAP_LEADER:     gapModeText = "Leader"; break;
+        case PitboardHud::GAP_SESSION_PB: gapModeText = "Session PB"; break;
+        case PitboardHud::GAP_IDEAL:      gapModeText = "Ideal"; break;
+        case PitboardHud::GAP_ALLTIME_PB: gapModeText = "Alltime PB"; break;
+        case PitboardHud::GAP_OVERALL:    gapModeText = "Overall"; break;
+        case PitboardHud::GAP_RECORD:     gapModeText = "Record"; break;
+        default: gapModeText = "Auto"; break;
+    }
+    bool gapEnabled = (hud->m_enabledRows & PitboardHud::ROW_GAP) != 0;
+    ctx.addCycleControl("Gap compare", gapModeText, 10,
+        SettingsHud::ClickRegion::PITBOARD_GAP_MODE_DOWN,
+        SettingsHud::ClickRegion::PITBOARD_GAP_MODE_UP,
+        hud, gapEnabled, false, "pitboard.gap_compare");
 
     return hud;
 }

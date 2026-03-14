@@ -166,7 +166,7 @@ bool BaseHud::checkFrequentUpdates() {
         now - m_lastTickUpdate
     ).count();
 
-    if (sinceLastTick >= TICK_UPDATE_INTERVAL_MS) {
+    if (sinceLastTick >= getTickIntervalMs()) {
         m_lastTickUpdate = now;
         setDataDirty();
         return true;
@@ -362,15 +362,19 @@ void BaseHud::addBackgroundQuad(float x, float y, float width, float height) {
     SPluginQuad_t quadEntry;
 
     applyOffset(x, y);
-    setQuadPositions(quadEntry, x, y, width, height);
 
     // Check if background texture should be used
     if (m_bShowBackgroundTexture && m_iBackgroundTextureIndex > 0) {
+        applyTextureAspectCorrection(x, y, width, height);
+        setQuadPositions(quadEntry, x, y, width, height);
+
         // Use sprite texture for background
         quadEntry.m_iSprite = m_iBackgroundTextureIndex;
         // White color with opacity to allow texture to show through
         quadEntry.m_ulColor = PluginUtils::applyOpacity(ColorPalette::WHITE, m_fBackgroundOpacity);
     } else {
+        setQuadPositions(quadEntry, x, y, width, height);
+
         // Use solid color background
         quadEntry.m_iSprite = SpriteIndex::SOLID_COLOR;
         // Get configured background color and apply opacity (uses per-HUD override if set)
@@ -492,7 +496,36 @@ void BaseHud::updateBackgroundQuadPosition(float startX, float startY, float wid
         float x = startX;
         float y = startY;
         applyOffset(x, y);
+
+        applyTextureAspectCorrection(x, y, width, height);
+
         setQuadPositions(m_quads[0], x, y, width, height);
+    }
+}
+
+void BaseHud::applyTextureAspectCorrection(float& x, float& y, float& width, float& height) const {
+    using namespace PluginConstants;
+
+    if (!m_bShowBackgroundTexture || m_iBackgroundTextureIndex <= 0) return;
+
+    float textureAspect = AssetManager::getInstance().getTextureAspectRatio(m_iBackgroundTextureIndex);
+    if (textureAspect <= 0.0f) return;
+
+    // Convert content dimensions to pixel-space aspect ratio
+    // In normalized 16:9 coords: pixel_width = w * 16, pixel_height = h * 9
+    // So content pixel aspect = (width * 16) / (height * 9) = width * UI_ASPECT_RATIO / height
+    float contentAspect = (height > 0.0001f) ? (width * UI_ASPECT_RATIO / height) : textureAspect;
+
+    if (contentAspect < textureAspect) {
+        // Content is taller than texture - expand width to match texture aspect
+        float newWidth = height * textureAspect / UI_ASPECT_RATIO;
+        x -= (newWidth - width) * 0.5f;  // Center horizontally
+        width = newWidth;
+    } else if (contentAspect > textureAspect) {
+        // Content is wider than texture - expand height to match texture aspect
+        float newHeight = width * UI_ASPECT_RATIO / textureAspect;
+        y -= (newHeight - height) * 0.5f;  // Center vertically
+        height = newHeight;
     }
 }
 

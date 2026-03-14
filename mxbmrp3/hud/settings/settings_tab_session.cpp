@@ -60,8 +60,8 @@ BaseHud* SettingsHud::renderTabSession(SettingsLayoutContext& ctx) {
     ctx.addStandardHudControls(hud, true);  // With title support
     ctx.addSpacing(0.5f);
 
-    // === CONFIGURATION SECTION ===
-    ctx.addSectionHeader("Configuration");
+    // === LAYOUT SECTION ===
+    ctx.addSectionHeader("Layout");
 
     // Icons toggle
     ctx.addToggleControl("Show icons", hud->m_bShowIcons,
@@ -69,9 +69,9 @@ BaseHud* SettingsHud::renderTabSession(SettingsLayoutContext& ctx) {
         "session.icons");
     ctx.addSpacing(0.5f);
 
-    // === ROWS SECTION ===
+    // === CONTENT SECTION ===
     // Order matches display order: Type, Format, Track, Server, Password, Players
-    ctx.addSectionHeader("Rows");
+    ctx.addSectionHeader("Content");
 
     ctx.addToggleControl("Session type", (hud->m_enabledRows & SessionHud::ROW_TYPE) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, SessionHud::ROW_TYPE, true,

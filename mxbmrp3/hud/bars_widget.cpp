@@ -465,7 +465,7 @@ void BarsWidget::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 1.0f;  // Full opacity
     m_fScale = 1.0f;
-    setPosition(0.924f, 0.5883f);
+    setPosition(0.6875f, 0.8769f);
 #if GAME_HAS_TYRE_TEMP
     // GP Bikes: include engine temp by default (has reliable temp data)
     m_enabledColumns = COL_DEFAULT | COL_ENGINE_TEMP;

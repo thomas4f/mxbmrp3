@@ -263,6 +263,7 @@
     <ClInclude Include="hud\tacho_widget.h" />
     <ClInclude Include="hud\standings_hud.h" />
     <ClInclude Include="hud\telemetry_hud.h" />
+    <ClInclude Include="hud\clock_widget.h" />
     <ClInclude Include="hud\time_widget.h" />
     <ClInclude Include="hud\timing_hud.h" />
     <ClInclude Include="hud\gap_bar_hud.h" />
@@ -383,6 +384,7 @@
     <ClCompile Include="hud\tacho_widget.cpp" />
     <ClCompile Include="hud\standings_hud.cpp" />
     <ClCompile Include="hud\telemetry_hud.cpp" />
+    <ClCompile Include="hud\clock_widget.cpp" />
     <ClCompile Include="hud\time_widget.cpp" />
     <ClCompile Include="hud\timing_hud.cpp" />
     <ClCompile Include="hud\gap_bar_hud.cpp" />

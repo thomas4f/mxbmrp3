@@ -53,7 +53,7 @@ bool SettingsHud::handleClickTabMap(const ClickRegion& region) {
         case ClickRegion::MAP_TRACK_WIDTH_DOWN:
             if (mapHud) {
                 bool increase = (region.type == ClickRegion::MAP_TRACK_WIDTH_UP);
-                float newScale = mapHud->getTrackWidthScale() + (increase ? 0.1f : -0.1f);
+                float newScale = applyAcceleratedStep(mapHud->getTrackWidthScale(), 0.01f, increase);
                 mapHud->setTrackWidthScale(newScale);
                 rebuildRenderData();
             }
@@ -130,7 +130,7 @@ bool SettingsHud::handleClickTabMap(const ClickRegion& region) {
         case ClickRegion::MAP_MARKER_SCALE_DOWN:
             if (mapHud) {
                 bool increase = (region.type == ClickRegion::MAP_MARKER_SCALE_UP);
-                float newScale = mapHud->getMarkerScale() + (increase ? 0.1f : -0.1f);
+                float newScale = applyAcceleratedStep(mapHud->getMarkerScale(), 0.01f, increase);
                 mapHud->setMarkerScale(newScale);
                 rebuildRenderData();
             }
@@ -153,8 +153,8 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
     ctx.addStandardHudControls(hud);
     ctx.addSpacing(0.5f);
 
-    // === VIEW SECTION ===
-    ctx.addSectionHeader("View");
+    // === LAYOUT SECTION ===
+    ctx.addSectionHeader("Layout");
 
     // Range control (Full = no zoom, or zoom distance in meters)
     char rangeValue[16];

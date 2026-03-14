@@ -35,7 +35,7 @@ public:
         COL_DEBUG       = 1 << 10,  // Debug column (RTG diagnostics)
 
         COL_REQUIRED = 0,      // No required columns
-        COL_DEFAULT  = 0x10E   // Default columns: Pos, RaceNum, Name, Official Gap
+        COL_DEFAULT  = 0x10F   // Default columns: Tracked, Pos, RaceNum, Name, Official Gap
     };
 
     // Gap column display modes (for COL_OFFICIAL_GAP and COL_LIVE_GAP)
@@ -249,7 +249,7 @@ private:
     static constexpr float START_Y = 0.0f;
 
     // Column widths: max_length + 1 for spacing, except last column
-    static constexpr int COL_TRACKED_WIDTH = 3;   // Sprite indicator (3 chars width for sprite + padding)
+    static constexpr int COL_TRACKED_WIDTH = 2;   // Sprite indicator (icon + padding)
     static constexpr int COL_POS_WIDTH = 4;
     static constexpr int COL_RACENUM_WIDTH = 5;
     static constexpr int COL_NAME_WIDTH = 4;

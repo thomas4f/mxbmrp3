@@ -1267,14 +1267,13 @@ void RecordsHud::rebuildRenderData() {
         rowsRendered++;
     }
 
-    // === Footer Note ===
+    // === Footer Note (rendered in bottom padding area) ===
     if (m_bShowFooter) {
-        // Skip to footer position (fixed row count ensures consistent height)
-        // +1 for blank row gap before footer
+        // Position in bottom padding: after all content rows + gap row
         currentY = contentStartY + titleHeight + ((HEADER_ROWS - 1 + m_recordsToShow + 1) * dim.lineHeightNormal);
 
-        // Line 1: "Records provided by <provider>" - use the provider records were fetched from
-        const char* prefix = "Records provided by ";
+        // "Submit by playing on <provider> servers" (small font, row height unchanged)
+        const char* prefix = "Submit by playing on ";
         addString(prefix, contentStartX, currentY,
                   Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSizeSmall);
 
@@ -1283,10 +1282,8 @@ void RecordsHud::rebuildRenderData() {
         addString(providerName, contentStartX + prefixWidth, currentY,
                   Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dim.fontSizeSmall);
 
-        currentY += dim.lineHeightSmall;
-
-        // Line 2: "Submit by playing on their servers"
-        addString("Submit by playing on their servers", contentStartX, currentY,
+        float providerWidth = PluginUtils::calculateMonospaceTextWidth(static_cast<int>(strlen(providerName)), dim.fontSizeSmall);
+        addString(" servers", contentStartX + prefixWidth + providerWidth, currentY,
                   Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSizeSmall);
     }
 }
@@ -1322,7 +1319,7 @@ void RecordsHud::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.7315f, 0.6105f);
+    setPosition(0.7315f, 0.5439f);
     m_provider = DataProvider::CBR;
     m_recordsProvider = DataProvider::CBR;
     m_categoryIndex = 0;
@@ -1330,7 +1327,7 @@ void RecordsHud::resetToDefaults() {
     m_lastSessionCategory[0] = '\0';  // Reset so update() will pick up current session category
     m_bAutoFetch = false;  // Auto-fetch disabled by default
     m_enabledColumns = COL_DEFAULT;
-    m_recordsToShow = 4;  // Default to 4 rows
+    m_recordsToShow = 3;  // Default to 3 rows (matches telemetry HUD height)
     m_bShowFooter = true;
     {
         std::lock_guard<std::mutex> lock(m_recordsMutex);

@@ -180,7 +180,7 @@ private:
     static constexpr int MIN_WIDTH_PERCENT = 50;    // 50% minimum
     static constexpr int MAX_WIDTH_PERCENT = 400;   // 400% maximum
     static constexpr int DEFAULT_WIDTH_PERCENT = 100;  // 100% default (matches notices)
-    static constexpr int WIDTH_STEP_PERCENT = 10;   // 10% steps
+    static constexpr int WIDTH_STEP_PERCENT = 1;    // 1% steps
 
     // Best lap timing data
     std::array<BestLapTimingPoint, NUM_TIMING_POINTS> m_bestLapTimingPoints;

@@ -159,8 +159,8 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
     ctx.addStandardHudControls(hud);
     ctx.addSpacing(0.5f);
 
-    // === CONFIGURATION SECTION ===
-    ctx.addSectionHeader("Configuration");
+    // === LAYOUT SECTION ===
+    ctx.addSectionHeader("Layout");
 
     // Row count
     char rowCountValue[8];
@@ -171,8 +171,8 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
         hud, true, false, "standings.rows");
     ctx.addSpacing(0.5f);
 
-    // === COLUMNS SECTION ===
-    ctx.addSectionHeader("Columns");
+    // === CONTENT SECTION ===
+    ctx.addSectionHeader("Content");
 
     // Column toggles - using addToggleControl with tooltips
     ctx.addToggleControl("Tracked rider marker", (hud->m_enabledColumns & StandingsHud::COL_TRACKED) != 0,
@@ -209,8 +209,8 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
 
     ctx.addSpacing(0.5f);
 
-    // === GAPS SECTION ===
-    ctx.addSectionHeader("Gap Display");
+    // === GAPS SECTION (standings-specific) ===
+    ctx.addSectionHeader("Gaps");
 
     // Gap reference mode (first - affects how all gaps are displayed)
     float cw = PluginUtils::calculateMonospaceTextWidth(1, ctx.fontSize);

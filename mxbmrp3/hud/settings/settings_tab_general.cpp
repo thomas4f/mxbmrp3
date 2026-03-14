@@ -90,6 +90,17 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
             return true;
 #endif
 
+        case ClickRegion::DROP_SHADOW_TOGGLE:
+            {
+                UiConfig& uiConfig = UiConfig::getInstance();
+                uiConfig.setDropShadow(!uiConfig.getDropShadow());
+                HudManager::getInstance().markAllHudsDirty();
+                rebuildRenderData();
+            }
+            return true;
+
+        // Note: CLOCK_FORMAT_TOGGLE is in common handlers (works from all tabs)
+
         // Note: PROFILE_CYCLE_UP/DOWN moved to common handlers (work from all tabs)
 
         case ClickRegion::AUTO_SWITCH_TOGGLE:
@@ -225,72 +236,8 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
     // Standard value width for all controls (matches addToggleControl)
     constexpr int VALUE_WIDTH = 10;  // Standard width for vertical alignment
 
-    // === PREFERENCES SECTION ===
-    ctx.addSectionHeader("Preferences");
-
-    // Controller selector (used by both Gamepad Widget and Rumble)
-    // Cycles: Disabled -> 1 -> 2 -> 3 -> 4 -> Disabled
-    {
-        RumbleConfig& rumbleConfig = XInputReader::getInstance().getRumbleConfig();
-        int controllerIdx = rumbleConfig.controllerIndex;
-        bool isDisabled = (controllerIdx < 0);
-        bool isConnected = !isDisabled && XInputReader::isControllerConnected(controllerIdx);
-        std::string controllerName = isDisabled ? "" : XInputReader::getControllerName(controllerIdx);
-
-        // Add tooltip row
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "general.controller"
-        ));
-
-        ctx.parent->addString("Controller", ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
-
-        // Controller uses wider value area for device names
-        // Format: "1: Xbox 360 Controlle" = slot (1) + ": " (2) + name (up to 18) = 21 max
-        constexpr int CONTROLLER_VALUE_WIDTH = 21;
-        float currentX = ctx.controlX;
-        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::RUMBLE_CONTROLLER_DOWN, nullptr
-        ));
-        currentX += cw * 2;
-
-        // Show controller status
-        // Format: "Disabled" or "1: Name..." or "1: Not Connected"
-        char displayStr[32];
-        if (isDisabled) {
-            snprintf(displayStr, sizeof(displayStr), "%-*s", CONTROLLER_VALUE_WIDTH, "Disabled");
-        } else {
-            int slot = controllerIdx + 1;
-            char tempStr[32];
-            if (!controllerName.empty()) {
-                snprintf(tempStr, sizeof(tempStr), "%d: %.18s", slot, controllerName.c_str());
-            } else if (isConnected) {
-                snprintf(tempStr, sizeof(tempStr), "%d: Connected", slot);
-            } else {
-                snprintf(tempStr, sizeof(tempStr), "%d: Not Connected", slot);
-            }
-            snprintf(displayStr, sizeof(displayStr), "%-*s", CONTROLLER_VALUE_WIDTH, tempStr);
-        }
-
-        // Color: muted for disabled, positive for connected, muted for not connected
-        uint32_t textColor = isDisabled ? colorConfig.getMuted() :
-            (isConnected ? colorConfig.getPositive() : colorConfig.getMuted());
-        ctx.parent->addString(displayStr, currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), textColor, ctx.fontSize);
-        currentX += cw * CONTROLLER_VALUE_WIDTH;
-
-        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::RUMBLE_CONTROLLER_UP, nullptr
-        ));
-
-        ctx.currentY += ctx.lineHeightNormal;
-    }
+    // === DISPLAY SECTION ===
+    ctx.addSectionHeader("Display");
 
     // Speed unit toggle
     {
@@ -405,6 +352,117 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
             currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
             SettingsHud::ClickRegion::TEMP_UNIT_TOGGLE, nullptr
+        ));
+
+        ctx.currentY += ctx.lineHeightNormal;
+    }
+
+    // Clock format toggle
+    {
+        ClockWidget* clockWidget = ctx.parent->getClockWidget();
+
+        // Add tooltip row
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "general.clock_format"
+        ));
+
+        ctx.parent->addString("Clock Format", ctx.labelX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
+
+        bool is24h = clockWidget && clockWidget->getFormat24h();
+        float currentX = ctx.controlX;
+
+        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::CLOCK_FORMAT_TOGGLE, clockWidget
+        ));
+        currentX += cw * 2;
+
+        std::string formattedValue = ctx.formatValue(is24h ? "24h" : "12h", VALUE_WIDTH, false);
+        ctx.parent->addString(formattedValue.c_str(), currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getPrimary(), ctx.fontSize);
+        currentX += cw * VALUE_WIDTH;
+
+        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::CLOCK_FORMAT_TOGGLE, clockWidget
+        ));
+
+        ctx.currentY += ctx.lineHeightNormal;
+    }
+
+    // Drop shadow toggle
+    ctx.addToggleControl("Drop Shadow", UiConfig::getInstance().getDropShadow(),
+        SettingsHud::ClickRegion::DROP_SHADOW_TOGGLE, nullptr, nullptr, 0, true,
+        "general.drop_shadow");
+
+    // === PREFERENCES SECTION ===
+    ctx.addSpacing(0.5f);
+    ctx.addSectionHeader("Preferences");
+
+    // Controller selector (used by both Gamepad Widget and Rumble)
+    // Cycles: Disabled -> 1 -> 2 -> 3 -> 4 -> Disabled
+    {
+        RumbleConfig& rumbleConfig = XInputReader::getInstance().getRumbleConfig();
+        int controllerIdx = rumbleConfig.controllerIndex;
+        bool isDisabled = (controllerIdx < 0);
+        bool isConnected = !isDisabled && XInputReader::isControllerConnected(controllerIdx);
+        std::string controllerName = isDisabled ? "" : XInputReader::getControllerName(controllerIdx);
+
+        // Add tooltip row
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "general.controller"
+        ));
+
+        ctx.parent->addString("Controller", ctx.labelX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
+
+        // Controller uses wider value area for device names
+        // Format: "1: Xbox 360 Controlle" = slot (1) + ": " (2) + name (up to 18) = 21 max
+        constexpr int CONTROLLER_VALUE_WIDTH = 21;
+        float currentX = ctx.controlX;
+        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::RUMBLE_CONTROLLER_DOWN, nullptr
+        ));
+        currentX += cw * 2;
+
+        // Show controller status
+        // Format: "Disabled" or "1: Name..." or "1: Not Connected"
+        char displayStr[32];
+        if (isDisabled) {
+            snprintf(displayStr, sizeof(displayStr), "%-*s", CONTROLLER_VALUE_WIDTH, "Disabled");
+        } else {
+            int slot = controllerIdx + 1;
+            char tempStr[32];
+            if (!controllerName.empty()) {
+                snprintf(tempStr, sizeof(tempStr), "%d: %.18s", slot, controllerName.c_str());
+            } else if (isConnected) {
+                snprintf(tempStr, sizeof(tempStr), "%d: Connected", slot);
+            } else {
+                snprintf(tempStr, sizeof(tempStr), "%d: Not Connected", slot);
+            }
+            snprintf(displayStr, sizeof(displayStr), "%-*s", CONTROLLER_VALUE_WIDTH, tempStr);
+        }
+
+        // Color: muted for disabled, positive for connected, muted for not connected
+        uint32_t textColor = isDisabled ? colorConfig.getMuted() :
+            (isConnected ? colorConfig.getPositive() : colorConfig.getMuted());
+        ctx.parent->addString(displayStr, currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), textColor, ctx.fontSize);
+        currentX += cw * CONTROLLER_VALUE_WIDTH;
+
+        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::RUMBLE_CONTROLLER_UP, nullptr
         ));
 
         ctx.currentY += ctx.lineHeightNormal;

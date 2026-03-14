@@ -89,10 +89,9 @@ void TimeWidget::rebuildLayout() {
     // Calculate dimensions using base helper
     float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::STANDARD_WIDTH);
 
-    // Height calculation is widget-specific due to lineHeightLarge value display
+    // Height calculation - consistent with PositionWidget/LapWidget (no extra height for session type)
     float labelHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
-    float sessionTypeHeight = m_bShowSessionType ? dim.lineHeightNormal : 0.0f;
-    float contentHeight = labelHeight + dim.lineHeightLarge + sessionTypeHeight;  // Label (optional) + Time (2 lines) + Session type (optional)
+    float contentHeight = labelHeight + dim.lineHeightLarge;  // Label (optional, 1 line) + Value (2 lines)
     float backgroundHeight = dim.paddingV + contentHeight + dim.paddingV;
 
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
@@ -119,7 +118,7 @@ void TimeWidget::rebuildLayout() {
         currentY += dim.lineHeightLarge;
     }
 
-    // Session type (optional, same size as label)
+    // Session type (optional, embedded in bottom padding)
     if (m_bShowSessionType) {
         positionString(stringIndex, contentStartX, currentY);
     }
@@ -150,10 +149,9 @@ void TimeWidget::rebuildRenderData() {
     // Calculate dimensions using base helper
     float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::STANDARD_WIDTH);
 
-    // Height calculation is widget-specific due to lineHeightLarge value display
+    // Height calculation - consistent with PositionWidget/LapWidget (no extra height for session type)
     float labelHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
-    float sessionTypeHeight = m_bShowSessionType ? dim.lineHeightNormal : 0.0f;
-    float contentHeight = labelHeight + dim.lineHeightLarge + sessionTypeHeight;  // Label (optional) + Time (2 lines) + Session type (optional)
+    float contentHeight = labelHeight + dim.lineHeightLarge;  // Label (optional, 1 line) + Value (2 lines)
     float backgroundHeight = dim.paddingV + contentHeight + dim.paddingV;
 
     // Add background quad
@@ -174,7 +172,7 @@ void TimeWidget::rebuildRenderData() {
         this->getFont(FontCategory::TITLE), textColor, dim.fontSizeExtraLarge);
     currentY += dim.lineHeightLarge;
 
-    // Session type (optional, same size as label)
+    // Session type (optional, embedded in bottom padding)
     if (m_bShowSessionType) {
         const char* sessionString = PluginUtils::getSessionString(sessionData.eventType, sessionData.session);
         const char* displayString = sessionString ? sessionString : Placeholders::GENERIC;

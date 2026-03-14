@@ -29,12 +29,14 @@
 #include "records_hud.h"
 #include "gamepad_widget.h"
 #include "lean_widget.h"
+#include "clock_widget.h"
 #if GAME_HAS_TYRE_TEMP
 #include "tyre_temp_widget.h"
 #endif
 #include "fmx_hud.h"
 #include <variant>
 #include <string>
+#include <cmath>
 #include "map_hud.h"
 #include "radar_hud.h"
 #include "../core/plugin_constants.h"
@@ -57,7 +59,8 @@ public:
                 TelemetryHud* telemetry,
                 TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean,
                 FmxHud* fmxHud,
-                StatsHud* statsHud
+                StatsHud* statsHud,
+                ClockWidget* clock
 #if GAME_HAS_TYRE_TEMP
                 , TyreTempWidget* tyreTemp
 #endif
@@ -163,6 +166,8 @@ public:
             RECORDS_AUTO_FETCH_TOGGLE, // Toggle auto-fetch on event start (RecordsHud)
             PITBOARD_SHOW_MODE_UP,     // Cycle pitboard show mode forward (PitboardHud)
             PITBOARD_SHOW_MODE_DOWN,   // Cycle pitboard show mode backward (PitboardHud)
+            PITBOARD_GAP_MODE_UP,      // Cycle pitboard gap compare mode forward (PitboardHud)
+            PITBOARD_GAP_MODE_DOWN,    // Cycle pitboard gap compare mode backward (PitboardHud)
             SESSION_PASSWORD_MODE_UP,  // Cycle password display mode forward (SessionHud)
             SESSION_PASSWORD_MODE_DOWN,// Cycle password display mode backward (SessionHud)
             SESSION_ICONS_TOGGLE,      // Toggle icons on/off (SessionHud)
@@ -328,7 +333,9 @@ public:
             STATS_VISIBILITY_DOWN,     // Cycle stats visibility mode backward
             STATS_SHOW_LAP_TOGGLE,     // Toggle lap column
             STATS_SHOW_SESSION_TOGGLE, // Toggle session column
-            STATS_SHOW_ALLTIME_TOGGLE  // Toggle all-time column
+            STATS_SHOW_ALLTIME_TOGGLE, // Toggle all-time column
+            // Clock Widget
+            CLOCK_FORMAT_TOGGLE        // Toggle 12h/24h format (ClockWidget)
         } type;
 
         // Type-safe variant instead of unsafe union (C++17)
@@ -514,6 +521,7 @@ public:
     RumbleHud* getRumbleHud() const { return m_rumble; }
     GamepadWidget* getGamepadWidget() const { return m_gamepad; }
     LeanWidget* getLeanWidget() const { return m_lean; }
+    ClockWidget* getClockWidget() const { return m_clock; }
 #if GAME_HAS_TYRE_TEMP
     TyreTempWidget* getTyreTempWidget() const { return m_tyreTemp; }
 #endif
@@ -526,6 +534,7 @@ protected:
 private:
     void rebuildRenderData() override;
     void handleClick(float mouseX, float mouseY);
+    void dispatchRegion(const ClickRegion& region, bool skipSave = false);  // Dispatch a click region directly
     void handleRightClick(float mouseX, float mouseY);  // Right-click for shape cycling
     void resetToDefaults();        // Reset all profiles to defaults
     void resetCurrentTab();        // Reset current tab for current profile
@@ -599,6 +608,7 @@ private:
     RumbleHud* m_rumble;
     GamepadWidget* m_gamepad;
     LeanWidget* m_lean;
+    ClockWidget* m_clock;
 #if GAME_HAS_TYRE_TEMP
     TyreTempWidget* m_tyreTemp;
 #endif
@@ -689,6 +699,34 @@ private:
     bool m_wasUpdateCheckerOnCooldown;
     int m_cachedUpdateCheckerStatus;
     int m_cachedUpdateDownloaderState;
+
+    // Hold-to-repeat acceleration for click regions
+    int m_holdRegionIndex;         // Index of region being held (-1 = none)
+    int m_holdRepeatCount;         // Number of repeats fired so far
+    bool m_holdSavePending;        // True if auto-save needed when hold ends
+    std::chrono::steady_clock::time_point m_holdStartTime{};   // When the button was first pressed
+    std::chrono::steady_clock::time_point m_holdLastRepeat{};  // When the last repeat fired
+
+    // Returns true if a click region type supports hold-to-repeat
+    static bool isRepeatableRegionType(ClickRegion::Type type);
+
+    // Returns step multiplier for hold-to-repeat acceleration:
+    // repeats 0-5: 1x (1%), repeats 6-15: 5x (5%), repeats 16+: 10x (10%)
+    int getHoldStepMultiplier() const {
+        if (m_holdRepeatCount < 6) return 1;
+        if (m_holdRepeatCount < 16) return 5;
+        return 10;
+    }
+
+    // Apply accelerated step to a float value and snap to the nearest step multiple.
+    // Produces clean sequences like: 1,2,3,4,5,10,15,20,25,30,40,50,60...
+    float applyAcceleratedStep(float current, float baseStep, bool increase) const {
+        int mult = getHoldStepMultiplier();
+        float step = baseStep * mult;
+        float raw = current + (increase ? step : -step);
+        // Snap to nearest multiple of step for clean round numbers
+        return std::round(raw / step) * step;
+    }
 
     // Stats tab periodic refresh timer (epoch default triggers immediate first refresh)
     std::chrono::steady_clock::time_point m_lastStatsRefresh{};

@@ -43,16 +43,17 @@ BaseHud* SettingsHud::renderTabWidgets(SettingsLayoutContext& ctx) {
     ctx.addWidgetRow("Position", ctx.parent->getPositionWidget(), true, true, true, true, true, "widgets.position");
     ctx.addWidgetRow("Lap", ctx.parent->getLapWidget(), true, true, true, true, true, "widgets.lap");
     ctx.addWidgetRow("Time", ctx.parent->getTimeWidget(), true, true, true, true, true, "widgets.time");
+    ctx.addWidgetRow("Clock", ctx.parent->getClockWidget(), true, true, true, true, true, "widgets.clock");
     // Note: SessionHud now has its own dedicated tab with row configuration
     ctx.addWidgetRow("Gear", ctx.parent->getGearWidget(), true, true, true, true, true, "widgets.gear");
     ctx.addWidgetRow("Speed", ctx.parent->getSpeedWidget(), true, true, true, true, true, "widgets.speed");
+    ctx.addWidgetRow("Bars", ctx.parent->getBarsWidget(), true, true, true, true, true, "widgets.bars");
+    ctx.addWidgetRow("Lean", ctx.parent->getLeanWidget(), true, true, true, true, true, "widgets.lean");
+    ctx.addWidgetRow("Fuel", ctx.parent->getFuelWidget(), true, true, true, true, true, "widgets.fuel");
     ctx.addWidgetRow("Speedo", ctx.parent->getSpeedoWidget(), false, true, true, true, true, "widgets.speedo");
     ctx.addWidgetRow("Tacho", ctx.parent->getTachoWidget(), false, true, true, true, true, "widgets.tacho");
-    ctx.addWidgetRow("Bars", ctx.parent->getBarsWidget(), true, true, true, true, true, "widgets.bars");
     ctx.addWidgetRow("Notices", ctx.parent->getNoticesWidget(), false, true, true, true, true, "widgets.notices");
-    ctx.addWidgetRow("Fuel", ctx.parent->getFuelWidget(), true, true, true, true, true, "widgets.fuel");
     ctx.addWidgetRow("Gamepad", ctx.parent->getGamepadWidget(), false, true, true, true, true, "widgets.gamepad");
-    ctx.addWidgetRow("Lean", ctx.parent->getLeanWidget(), true, true, true, true, true, "widgets.lean");
 #if GAME_HAS_TYRE_TEMP
     ctx.addWidgetRow("Tyre Temp", ctx.parent->getTyreTempWidget(), false, true, true, true, true, "widgets.tyre_temp");
 #endif

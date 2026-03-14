@@ -16,12 +16,12 @@
 #include <algorithm>
 
 // Helper to adjust rumble effect strengths (used by many click handlers)
-static void adjustEffectStrength(float& value, bool increase) {
-    constexpr float STRENGTH_STEP = 0.10f;
+static void adjustEffectStrength(float& value, bool increase, int stepMultiplier = 1) {
+    float step = 0.01f * stepMultiplier;
     if (increase) {
-        value = std::min(value + STRENGTH_STEP, 1.0f);
+        value = std::round(std::min(value + step, 1.0f) * 100.0f) / 100.0f;
     } else {
-        value = std::max(value - STRENGTH_STEP, 0.0f);
+        value = std::round(std::max(value - step, 0.0f) * 100.0f) / 100.0f;
     }
 }
 
@@ -46,29 +46,30 @@ bool SettingsHud::handleClickTabRumble(const ClickRegion& region) {
         ClickRegion::Type heavyDown, ClickRegion::Type heavyUp,
         ClickRegion::Type minDown, ClickRegion::Type minUp,
         ClickRegion::Type maxDown, ClickRegion::Type maxUp,
-        float minStep = 1.0f, float maxStep = 1.0f) -> bool {
+        float minStep = 1.0f, float maxStep = 1.0f, float maxLimit = 100.0f) -> bool {
+        int sm = getHoldStepMultiplier();
         if (region.type == lightUp) {
-            adjustEffectStrength(effect.lightStrength, true);
+            adjustEffectStrength(effect.lightStrength, true, sm);
             markProfileDirty();
             setDataDirty();
             return true;
         } else if (region.type == lightDown) {
-            adjustEffectStrength(effect.lightStrength, false);
+            adjustEffectStrength(effect.lightStrength, false, sm);
             markProfileDirty();
             setDataDirty();
             return true;
         } else if (region.type == heavyUp) {
-            adjustEffectStrength(effect.heavyStrength, true);
+            adjustEffectStrength(effect.heavyStrength, true, sm);
             markProfileDirty();
             setDataDirty();
             return true;
         } else if (region.type == heavyDown) {
-            adjustEffectStrength(effect.heavyStrength, false);
+            adjustEffectStrength(effect.heavyStrength, false, sm);
             markProfileDirty();
             setDataDirty();
             return true;
         } else if (region.type == minUp) {
-            effect.minInput += minStep;
+            effect.minInput = std::min(effect.minInput + minStep, maxLimit);
             markProfileDirty();
             setDataDirty();
             return true;
@@ -78,7 +79,7 @@ bool SettingsHud::handleClickTabRumble(const ClickRegion& region) {
             setDataDirty();
             return true;
         } else if (region.type == maxUp) {
-            effect.maxInput += maxStep;
+            effect.maxInput = std::min(effect.maxInput + maxStep, maxLimit);
             markProfileDirty();
             setDataDirty();
             return true;
@@ -133,78 +134,83 @@ bool SettingsHud::handleClickTabRumble(const ClickRegion& region) {
             break;
     }
 
-    // Handle suspension effect controls
+    // Handle suspension effect controls (m/s, max 50)
     if (handleEffectControl(config.suspensionEffect,
         ClickRegion::RUMBLE_SUSP_LIGHT_DOWN, ClickRegion::RUMBLE_SUSP_LIGHT_UP,
         ClickRegion::RUMBLE_SUSP_HEAVY_DOWN, ClickRegion::RUMBLE_SUSP_HEAVY_UP,
         ClickRegion::RUMBLE_SUSP_MIN_DOWN, ClickRegion::RUMBLE_SUSP_MIN_UP,
-        ClickRegion::RUMBLE_SUSP_MAX_DOWN, ClickRegion::RUMBLE_SUSP_MAX_UP)) {
+        ClickRegion::RUMBLE_SUSP_MAX_DOWN, ClickRegion::RUMBLE_SUSP_MAX_UP,
+        1.0f, 1.0f, 50.0f)) {
         return true;
     }
 
-    // Handle wheelspin effect controls
+    // Handle wheelspin effect controls (ratio, max 50)
     if (handleEffectControl(config.wheelspinEffect,
         ClickRegion::RUMBLE_WHEEL_LIGHT_DOWN, ClickRegion::RUMBLE_WHEEL_LIGHT_UP,
         ClickRegion::RUMBLE_WHEEL_HEAVY_DOWN, ClickRegion::RUMBLE_WHEEL_HEAVY_UP,
         ClickRegion::RUMBLE_WHEEL_MIN_DOWN, ClickRegion::RUMBLE_WHEEL_MIN_UP,
-        ClickRegion::RUMBLE_WHEEL_MAX_DOWN, ClickRegion::RUMBLE_WHEEL_MAX_UP)) {
+        ClickRegion::RUMBLE_WHEEL_MAX_DOWN, ClickRegion::RUMBLE_WHEEL_MAX_UP,
+        1.0f, 1.0f, 50.0f)) {
         return true;
     }
 
-    // Handle brake lockup effect controls
+    // Handle brake lockup effect controls (ratio 0-1, max 1.0)
     if (handleEffectControl(config.brakeLockupEffect,
         ClickRegion::RUMBLE_LOCKUP_LIGHT_DOWN, ClickRegion::RUMBLE_LOCKUP_LIGHT_UP,
         ClickRegion::RUMBLE_LOCKUP_HEAVY_DOWN, ClickRegion::RUMBLE_LOCKUP_HEAVY_UP,
         ClickRegion::RUMBLE_LOCKUP_MIN_DOWN, ClickRegion::RUMBLE_LOCKUP_MIN_UP,
         ClickRegion::RUMBLE_LOCKUP_MAX_DOWN, ClickRegion::RUMBLE_LOCKUP_MAX_UP,
-        0.05f, 0.05f)) {  // Lockup uses smaller steps (ratio values)
+        0.05f, 0.05f, 1.0f)) {
         return true;
     }
 
-    // Handle wheelie effect controls
+    // Handle wheelie effect controls (degrees, max 90)
     if (handleEffectControl(config.wheelieEffect,
         ClickRegion::RUMBLE_WHEELIE_LIGHT_DOWN, ClickRegion::RUMBLE_WHEELIE_LIGHT_UP,
         ClickRegion::RUMBLE_WHEELIE_HEAVY_DOWN, ClickRegion::RUMBLE_WHEELIE_HEAVY_UP,
         ClickRegion::RUMBLE_WHEELIE_MIN_DOWN, ClickRegion::RUMBLE_WHEELIE_MIN_UP,
-        ClickRegion::RUMBLE_WHEELIE_MAX_DOWN, ClickRegion::RUMBLE_WHEELIE_MAX_UP)) {
+        ClickRegion::RUMBLE_WHEELIE_MAX_DOWN, ClickRegion::RUMBLE_WHEELIE_MAX_UP,
+        1.0f, 1.0f, 90.0f)) {
         return true;
     }
 
-    // Handle RPM effect controls
+    // Handle RPM effect controls (RPM, max 20000)
     if (handleEffectControl(config.rpmEffect,
         ClickRegion::RUMBLE_RPM_LIGHT_DOWN, ClickRegion::RUMBLE_RPM_LIGHT_UP,
         ClickRegion::RUMBLE_RPM_HEAVY_DOWN, ClickRegion::RUMBLE_RPM_HEAVY_UP,
         ClickRegion::RUMBLE_RPM_MIN_DOWN, ClickRegion::RUMBLE_RPM_MIN_UP,
         ClickRegion::RUMBLE_RPM_MAX_DOWN, ClickRegion::RUMBLE_RPM_MAX_UP,
-        100.0f, 100.0f)) {  // RPM uses larger steps
+        100.0f, 100.0f, 20000.0f)) {
         return true;
     }
 
-    // Handle slide effect controls
+    // Handle slide effect controls (degrees, max 90)
     if (handleEffectControl(config.slideEffect,
         ClickRegion::RUMBLE_SLIDE_LIGHT_DOWN, ClickRegion::RUMBLE_SLIDE_LIGHT_UP,
         ClickRegion::RUMBLE_SLIDE_HEAVY_DOWN, ClickRegion::RUMBLE_SLIDE_HEAVY_UP,
         ClickRegion::RUMBLE_SLIDE_MIN_DOWN, ClickRegion::RUMBLE_SLIDE_MIN_UP,
-        ClickRegion::RUMBLE_SLIDE_MAX_DOWN, ClickRegion::RUMBLE_SLIDE_MAX_UP)) {
+        ClickRegion::RUMBLE_SLIDE_MAX_DOWN, ClickRegion::RUMBLE_SLIDE_MAX_UP,
+        1.0f, 1.0f, 90.0f)) {
         return true;
     }
 
-    // Handle surface effect controls
+    // Handle surface effect controls (m/s, max 200 ~720km/h)
     if (handleEffectControl(config.surfaceEffect,
         ClickRegion::RUMBLE_SURFACE_LIGHT_DOWN, ClickRegion::RUMBLE_SURFACE_LIGHT_UP,
         ClickRegion::RUMBLE_SURFACE_HEAVY_DOWN, ClickRegion::RUMBLE_SURFACE_HEAVY_UP,
         ClickRegion::RUMBLE_SURFACE_MIN_DOWN, ClickRegion::RUMBLE_SURFACE_MIN_UP,
         ClickRegion::RUMBLE_SURFACE_MAX_DOWN, ClickRegion::RUMBLE_SURFACE_MAX_UP,
-        1.39f, 1.39f)) {  // Surface uses speed-based steps (5 km/h in m/s)
+        1.39f, 1.39f, 200.0f)) {
         return true;
     }
 
-    // Handle steer effect controls
+    // Handle steer effect controls (Nm, max 200)
     if (handleEffectControl(config.steerEffect,
         ClickRegion::RUMBLE_STEER_LIGHT_DOWN, ClickRegion::RUMBLE_STEER_LIGHT_UP,
         ClickRegion::RUMBLE_STEER_HEAVY_DOWN, ClickRegion::RUMBLE_STEER_HEAVY_UP,
         ClickRegion::RUMBLE_STEER_MIN_DOWN, ClickRegion::RUMBLE_STEER_MIN_UP,
-        ClickRegion::RUMBLE_STEER_MAX_DOWN, ClickRegion::RUMBLE_STEER_MAX_UP)) {
+        ClickRegion::RUMBLE_STEER_MAX_DOWN, ClickRegion::RUMBLE_STEER_MAX_UP,
+        1.0f, 1.0f, 200.0f)) {
         return true;
     }
 
@@ -218,8 +224,10 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
 
     ctx.addTabTooltip("rumble");
 
-    // Add standard HUD controls (Visible, Title, Texture, Opacity, Scale)
+    // === APPEARANCE SECTION ===
+    ctx.addSectionHeader("Appearance");
     ctx.addStandardHudControls(hud);
+    ctx.addSpacing(0.5f);
 
     // Global config for master settings (enabled, blend, crashed, profile mode)
     const RumbleConfig& globalConfig = XInputReader::getInstance().getGlobalRumbleConfig();
@@ -231,7 +239,6 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
     float rowWidth = ctx.panelWidth - (ctx.labelX - ctx.contentAreaStartX);
 
     // === RUMBLE SECTION ===
-    ctx.addSpacing(0.5f);
     ctx.addSectionHeader("Rumble");
 
     // Master rumble enable (always from global config)

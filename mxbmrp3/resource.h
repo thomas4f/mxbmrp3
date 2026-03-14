@@ -8,7 +8,7 @@
 
 #define VER_MAJOR 1
 #define VER_MINOR 16
-#define VER_PATCH 1
+#define VER_PATCH 6
 #define VER_BUILD 0
 
-#define VER_STRING "1.16.1.0"
+#define VER_STRING "1.16.6.0"

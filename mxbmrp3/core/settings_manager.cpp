@@ -14,6 +14,7 @@
 #include "../hud/performance_hud.h"
 #include "../hud/telemetry_hud.h"
 #include "../hud/time_widget.h"
+#include "../hud/clock_widget.h"
 #include "../hud/position_widget.h"
 #include "../hud/lap_widget.h"
 #include "../hud/session_hud.h"
@@ -377,6 +378,12 @@ namespace {
             constexpr Setting SHOW_SESSION_TYPE = {"showSessionType", "Show session type label"};
         }
 
+        // ClockWidget settings
+        namespace Clock {
+            constexpr Setting SHOW_UTC = {"showUtc", "Show UTC time as secondary display"};
+            constexpr Setting UTC_ON_TOP = {"utcOnTop", "Show UTC on top, local on bottom"};
+        }
+
         // RumbleHud settings
         namespace Rumble {
             constexpr Setting SHOW_MAX_MARKERS = {"showMaxMarkers", "Show max value markers"};
@@ -474,6 +481,7 @@ namespace {
             constexpr Setting DROP_SHADOW_OFFSET_X = {"dropShadowOffsetX", "Shadow X offset (normalized)"};
             constexpr Setting DROP_SHADOW_OFFSET_Y = {"dropShadowOffsetY", "Shadow Y offset (normalized)"};
             constexpr Setting DROP_SHADOW_COLOR = {"dropShadowColor", "Shadow color (0xAARRGGBB)"};
+            constexpr Setting HOLD_REPEAT_FAST_MS = {"holdRepeatFastMs", "Hold-to-repeat max speed in ms (10-500, default 50)"};
 #if defined(GAME_MXBIKES)
             // Memory offsets for connection detection (advanced debugging)
             constexpr Setting MEM_LOCAL_SERVER_NAME = {"memLocalServerName", "Memory offset (hex)"};
@@ -744,6 +752,31 @@ namespace {
         if (str == "PIT") return PitboardHud::MODE_PIT;
         if (str == "SPLITS") return PitboardHud::MODE_SPLITS;
         DEBUG_WARN_F("Unknown PitboardDisplayMode '%s', using default", str.c_str());
+        return defaultVal;
+    }
+
+    const char* pitboardGapCompareModeToString(uint8_t mode) {
+        switch (mode) {
+            case PitboardHud::GAP_AUTO:       return "AUTO";
+            case PitboardHud::GAP_LEADER:     return "LEADER";
+            case PitboardHud::GAP_SESSION_PB: return "SESSION_PB";
+            case PitboardHud::GAP_IDEAL:      return "IDEAL";
+            case PitboardHud::GAP_ALLTIME_PB: return "ALLTIME_PB";
+            case PitboardHud::GAP_OVERALL:    return "OVERALL";
+            case PitboardHud::GAP_RECORD:     return "RECORD";
+            default: return "AUTO";
+        }
+    }
+
+    uint8_t stringToPitboardGapCompareMode(const std::string& str, uint8_t defaultVal = PitboardHud::GAP_AUTO) {
+        if (str == "AUTO") return PitboardHud::GAP_AUTO;
+        if (str == "LEADER") return PitboardHud::GAP_LEADER;
+        if (str == "SESSION_PB") return PitboardHud::GAP_SESSION_PB;
+        if (str == "IDEAL") return PitboardHud::GAP_IDEAL;
+        if (str == "ALLTIME_PB") return PitboardHud::GAP_ALLTIME_PB;
+        if (str == "OVERALL") return PitboardHud::GAP_OVERALL;
+        if (str == "RECORD") return PitboardHud::GAP_RECORD;
+        DEBUG_WARN_F("Unknown PitboardGapCompareMode '%s', using default", str.c_str());
         return defaultVal;
     }
 
@@ -1109,6 +1142,9 @@ namespace {
             if (key == Gear::SHOW_LIMITER_CIRCLE.key) return Gear::SHOW_LIMITER_CIRCLE.description;
         } else if (hudName == "TimeWidget") {
             if (key == Time::SHOW_SESSION_TYPE.key) return Time::SHOW_SESSION_TYPE.description;
+        } else if (hudName == "ClockWidget") {
+            if (key == Clock::SHOW_UTC.key) return Clock::SHOW_UTC.description;
+            if (key == Clock::UTC_ON_TOP.key) return Clock::UTC_ON_TOP.description;
         } else if (hudName == "RumbleHud") {
             if (key == Rumble::SHOW_MAX_MARKERS.key) return Rumble::SHOW_MAX_MARKERS.description;
             if (key == Rumble::MAX_MARKER_LINGER_FRAMES.key) return Rumble::MAX_MARKER_LINGER_FRAMES.description;
@@ -1721,6 +1757,7 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
         captureBaseHudSettings(settings, hud);
         savePitboardRows(settings, hud.m_enabledRows);  // Named keys instead of bitmask
         settings["displayMode"] = pitboardDisplayModeToString(hud.m_displayMode);
+        settings["gapCompareMode"] = pitboardGapCompareModeToString(hud.m_gapCompareMode);
         cache["PitboardHud"] = std::move(settings);
     }
 
@@ -1835,6 +1872,15 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
         captureBaseHudSettings(settings, hud);
         settings["showSessionType"] = std::to_string(hud.getShowSessionType() ? 1 : 0);
         cache["TimeWidget"] = std::move(settings);
+    }
+    // ClockWidget with showUtc, utcOnTop (format24h moved to [General])
+    {
+        HudSettings settings;
+        const auto& hud = hudManager.getClockWidget();
+        captureBaseHudSettings(settings, hud);
+        settings["showUtc"] = hud.getShowUtc() ? "1" : "0";
+        settings["utcOnTop"] = hud.getUtcOnTop() ? "1" : "0";
+        cache["ClockWidget"] = std::move(settings);
     }
     // SessionHud with enabledRows, passwordMode, and showIcons
     {
@@ -2182,6 +2228,7 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
             try {
                 loadPitboardRows(settings, hud.m_enabledRows);  // Named keys instead of bitmask
                 if (settings.count("displayMode")) hud.m_displayMode = stringToPitboardDisplayMode(settings.at("displayMode"));
+                if (settings.count("gapCompareMode")) hud.m_gapCompareMode = stringToPitboardGapCompareMode(settings.at("gapCompareMode"));
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("PitboardHud: Failed to parse settings: %s", e.what());
             }
@@ -2422,6 +2469,27 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
                 }
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("TimeWidget: Failed to parse settings: %s", e.what());
+            }
+            hud.setDataDirty();
+        }
+    }
+    // Apply ClockWidget with showUtc, utcOnTop (format24h moved to [General], legacy fallback here)
+    {
+        auto it = cache.find("ClockWidget");
+        if (it != cache.end()) {
+            auto& hud = hudManager.getClockWidget();
+            applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                if (settings.count("showUtc")) {
+                    hud.setShowUtc(std::stoi(settings.at("showUtc")) != 0);
+                }
+                if (settings.count("utcOnTop")) {
+                    hud.setUtcOnTop(std::stoi(settings.at("utcOnTop")) != 0);
+                }
+            } catch (const std::exception& e) {
+                DEBUG_WARN_F("ClockWidget: Failed to parse settings: %s", e.what());
             }
             hud.setDataDirty();
         }
@@ -2979,7 +3047,7 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     file << "gridSnapping=" << (UiConfig::getInstance().getGridSnapping() ? 1 : 0) << "\n";
     file << "screenClamping=" << (UiConfig::getInstance().getScreenClamping() ? 1 : 0) << "\n";
     file << "autoSave=" << (UiConfig::getInstance().getAutoSave() ? 1 : 0) << "\n";
-    file << "dropShadow=" << (ColorConfig::getInstance().getDropShadow() ? 1 : 0) << "\n";
+    file << "dropShadow=" << (UiConfig::getInstance().getDropShadow() ? 1 : 0) << "\n";
     // Save update mode as string (only OFF and NOTIFY are supported)
     const char* updateModeStr = "off";
     switch (UpdateChecker::getInstance().getMode()) {
@@ -2996,6 +3064,7 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     file << "speedUnit=" << speedUnitToString(hudManager.getSpeedWidget().m_speedUnit) << "\n";
     file << "fuelUnit=" << fuelUnitToString(hudManager.getFuelWidget().m_fuelUnit) << "\n";
     file << "tempUnit=" << tempUnitToString(UiConfig::getInstance().getTemperatureUnit()) << "\n";
+    file << "format24h=" << (hudManager.getClockWidget().getFormat24h() ? 1 : 0) << "\n";
 #if GAME_HAS_RECORDS_PROVIDER
     file << "recordsAutoFetch=" << (hudManager.getRecordsHud().m_bAutoFetch ? 1 : 0) << "\n";
     file << "recordsProvider=" << dataProviderToString(hudManager.getRecordsHud().m_provider) << "\n";
@@ -3018,9 +3087,10 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     // Note: leanArcFillColor moved to [LeanWidget]
     // Note: recordsShowFooter moved to [RecordsHud]
     // Note: standingsTopPositions, standingsUseAccentHighlight moved to [StandingsHud]
-    file << IniOnly::Advanced::DROP_SHADOW_OFFSET_X.key << "=" << ColorConfig::getInstance().getDropShadowOffsetX() << " ; " << IniOnly::Advanced::DROP_SHADOW_OFFSET_X.description << "\n";
-    file << IniOnly::Advanced::DROP_SHADOW_OFFSET_Y.key << "=" << ColorConfig::getInstance().getDropShadowOffsetY() << " ; " << IniOnly::Advanced::DROP_SHADOW_OFFSET_Y.description << "\n";
-    file << IniOnly::Advanced::DROP_SHADOW_COLOR.key << "=" << PluginUtils::formatColorHex(ColorConfig::getInstance().getDropShadowColor()) << " ; " << IniOnly::Advanced::DROP_SHADOW_COLOR.description << "\n";
+    file << IniOnly::Advanced::DROP_SHADOW_OFFSET_X.key << "=" << UiConfig::getInstance().getDropShadowOffsetX() << " ; " << IniOnly::Advanced::DROP_SHADOW_OFFSET_X.description << "\n";
+    file << IniOnly::Advanced::DROP_SHADOW_OFFSET_Y.key << "=" << UiConfig::getInstance().getDropShadowOffsetY() << " ; " << IniOnly::Advanced::DROP_SHADOW_OFFSET_Y.description << "\n";
+    file << IniOnly::Advanced::DROP_SHADOW_COLOR.key << "=" << PluginUtils::formatColorHex(UiConfig::getInstance().getDropShadowColor()) << " ; " << IniOnly::Advanced::DROP_SHADOW_COLOR.description << "\n";
+    file << IniOnly::Advanced::HOLD_REPEAT_FAST_MS.key << "=" << UiConfig::getInstance().getHoldRepeatFastMs() << " ; " << IniOnly::Advanced::HOLD_REPEAT_FAST_MS.description << "\n";
 #if defined(GAME_MXBIKES)
     // Memory offsets for connection detection (MX Bikes only)
     const auto& offsetConfig = Memory::ConnectionDetector::getInstance().getOffsetConfig();
@@ -3125,10 +3195,10 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     TrackedRidersManager::getInstance().save();
 
     // HUD order for consistent output
-    static const std::array<const char*, 33> hudOrder = {
+    static const std::array<const char*, 34> hudOrder = {
         "StandingsHud", "MapHud", "RadarHud", "PitboardHud", "RecordsHud",
         "LapLogHud", "LapConsistencyHud", "FmxHud", "StatsHud", "IdealLapHud", "TelemetryHud", "PerformanceHud",
-        "LapWidget", "PositionWidget", "TimeWidget", "SessionHud", "SpeedWidget", "GearWidget",
+        "LapWidget", "PositionWidget", "TimeWidget", "ClockWidget", "SessionHud", "SpeedWidget", "GearWidget",
         "SpeedoWidget", "TachoWidget", "TimingHud", "GapBarHud", "BarsWidget", "VersionWidget",
         "NoticesWidget", "FuelWidget", "GamepadWidget", "LeanWidget", "TyreTempWidget", "SettingsButtonWidget", "PointerWidget", "RumbleHud",
         "Global"
@@ -3407,7 +3477,7 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                 } else if (key == "autoSave") {
                     UiConfig::getInstance().setAutoSave(std::stoi(value) != 0);
                 } else if (key == "dropShadow") {
-                    ColorConfig::getInstance().setDropShadow(std::stoi(value) != 0);
+                    UiConfig::getInstance().setDropShadow(std::stoi(value) != 0);
                 } else if (key == "updateMode") {
                     // Supported modes: off, notify (auto is treated as notify for backward compatibility)
                     if (value == "off") {
@@ -3438,6 +3508,8 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                     hudManager.getFuelWidget().m_fuelUnit = stringToFuelUnit(value);
                 } else if (key == "tempUnit") {
                     UiConfig::getInstance().setTemperatureUnit(stringToTempUnit(value));
+                } else if (key == "format24h") {
+                    hudManager.getClockWidget().setFormat24h(std::stoi(value) != 0);
                 }
 #if GAME_HAS_RECORDS_PROVIDER
                 else if (key == "recordsAutoFetch") {
@@ -3498,11 +3570,13 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                 } else if (key == "standingsUseAccentHighlight") {
                     hudManager.getStandingsHud().m_bUseAccentForHighlight = (std::stoi(value) != 0);
                 } else if (key == "dropShadowOffsetX") {
-                    ColorConfig::getInstance().setDropShadowOffsetX(std::stof(value));
+                    UiConfig::getInstance().setDropShadowOffsetX(std::stof(value));
                 } else if (key == "dropShadowOffsetY") {
-                    ColorConfig::getInstance().setDropShadowOffsetY(std::stof(value));
+                    UiConfig::getInstance().setDropShadowOffsetY(std::stof(value));
                 } else if (key == "dropShadowColor") {
-                    ColorConfig::getInstance().setDropShadowColor(PluginUtils::parseColorHex(value));
+                    UiConfig::getInstance().setDropShadowColor(PluginUtils::parseColorHex(value));
+                } else if (key == "holdRepeatFastMs") {
+                    UiConfig::getInstance().setHoldRepeatFastMs(std::stoi(value));
                 }
 #if defined(GAME_MXBIKES)
                 // Memory offsets for connection detection (MX Bikes only)

@@ -18,7 +18,7 @@ bool SettingsHud::handleClickTabRecords(const ClickRegion& region) {
             return true;
 
         case ClickRegion::RECORDS_COUNT_DOWN:
-            if (m_records && m_records->m_recordsToShow > 4) {
+            if (m_records && m_records->m_recordsToShow > 3) {
                 m_records->m_recordsToShow--;
                 m_records->setDataDirty();
                 setDataDirty();
@@ -75,8 +75,8 @@ BaseHud* SettingsHud::renderTabRecords(SettingsLayoutContext& ctx) {
     ctx.addStandardHudControls(hud);
     ctx.addSpacing(0.5f);
 
-    // === CONFIGURATION SECTION ===
-    ctx.addSectionHeader("Configuration");
+    // === LAYOUT SECTION ===
+    ctx.addSectionHeader("Layout");
 
     // Provider control
     const char* providerName = "Unknown";
@@ -104,9 +104,9 @@ BaseHud* SettingsHud::renderTabRecords(SettingsLayoutContext& ctx) {
         "records.autofetch");
     ctx.addSpacing(0.5f);
 
-    // === COLUMNS SECTION ===
+    // === CONTENT SECTION ===
     // Core columns (Position, Rider, Bike, Lap time) are always shown
-    ctx.addSectionHeader("Optional Columns");
+    ctx.addSectionHeader("Content");
 
     // Sector columns (toggles all 3 sectors together)
     bool sectorsEnabled = (hud->m_enabledColumns & RecordsHud::COL_SECTORS) == RecordsHud::COL_SECTORS;

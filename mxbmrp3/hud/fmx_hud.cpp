@@ -683,7 +683,7 @@ void FmxHud::resetToDefaults() {
     setTextureVariant(0);
     m_fBackgroundOpacity = 0.80f;
     m_fScale = 1.0f;
-    setPosition(0.6875f, 0.4773f);
+    setPosition(0.7315f, 0.5772f);
     m_comboArcFill = 0.0f;
     m_comboArcGraceStartFill = -1.0f;
     m_comboArcFailStartFill = -1.0f;

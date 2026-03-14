@@ -1,7 +1,7 @@
 // ============================================================================
 // hud/pitboard_hud.h
 // Displays pitboard-style information: rider ID, session, position, time, lap,
-// split/lap times, gap to leader
+// split/lap times, gap comparison
 // ============================================================================
 #pragma once
 
@@ -28,7 +28,7 @@ public:
         ROW_TIME        = 1 << 3,  // Session time (e.g., "5m")
         ROW_LAP         = 1 << 4,  // Current lap (e.g., "L2")
         ROW_LAST_LAP    = 1 << 5,  // Last lap time (e.g., "1:21.1")
-        ROW_GAP         = 1 << 6,  // Gap to leader (e.g., "+13.3")
+        ROW_GAP         = 1 << 6,  // Gap row (e.g., "+13.3") - comparison target set by m_gapCompareMode
 
         ROW_REQUIRED = 0,          // No required rows
         ROW_DEFAULT  = 0x7F        // All 7 rows enabled (binary: 1111111)
@@ -49,6 +49,18 @@ public:
         LAP     = 2   // Full lap time
     };
 
+    // Gap comparison mode for ROW_GAP
+    enum GapCompareMode : uint8_t {
+        GAP_AUTO         = 0,  // Auto: leader when racing, session PB when solo
+        GAP_LEADER       = 1,  // Always show gap to leader (original behavior)
+        GAP_SESSION_PB   = 2,  // Gap to session personal best
+        GAP_IDEAL        = 3,  // Gap to ideal lap (sum of best sectors)
+        GAP_ALLTIME_PB   = 4,  // Gap to all-time personal best
+        GAP_OVERALL      = 5,  // Gap to overall best lap (any rider in session)
+        GAP_RECORD       = 6,  // Gap to fastest record from Records HUD
+        GAP_COUNT        = 7   // Number of gap modes
+    };
+
     // Per-texture layout configuration
     // Stored in .ini as [PitboardHud_Layout_N] sections
     // Offsets are fractions of background width/height (0.0 = no offset)
@@ -60,7 +72,7 @@ public:
         float timeX = 0.0f, timeY = 0.0f;            // Row 3 center: Time
         float lapX = 0.0f, lapY = 0.0f;              // Row 3 right: Lap (L2)
         float lastLapX = 0.0f, lastLapY = 0.0f;      // Row 4: Last lap time
-        float gapX = 0.0f, gapY = 0.0f;              // Row 5: Gap to leader
+        float gapX = 0.0f, gapY = 0.0f;              // Row 5: Gap comparison
     };
 
     // Get layout for a specific variant (creates default if not exists)
@@ -101,6 +113,11 @@ private:
     // Check if pitboard should be visible based on display mode
     bool shouldBeVisible() const;
 
+    // Calculate gap for current split/lap based on gap compare mode
+    // Returns gap in ms (positive = slower), sets hasGap to true if valid
+    // effectiveMode is set to the resolved mode (AUTO is replaced with actual mode)
+    int calculateCompareGap(bool& hasGap, GapCompareMode& effectiveMode) const;
+
     // Base position (0,0) - actual position comes from m_fOffsetX/m_fOffsetY
     static constexpr float START_X = 0.0f;
     static constexpr float START_Y = 0.0f;
@@ -117,6 +134,7 @@ private:
 
     uint32_t m_enabledRows = ROW_DEFAULT;  // Bitfield of enabled rows
     uint8_t m_displayMode = MODE_ALWAYS;   // Display mode setting
+    uint8_t m_gapCompareMode = GAP_AUTO;   // Gap comparison target
 
     // Tracking for split-triggered display
     int m_cachedSplit1 = -1;
@@ -130,6 +148,7 @@ private:
     // Current timing display (split or lap time)
     int m_displayedTime = -1;      // The time to display (accumulated split or lap)
     SplitType m_splitType = LAP;   // Type of time being displayed
+    bool m_isInvalidLap = false;   // True when last completed lap was invalid
 
     // Cached session time for real-time updates (like TimeWidget)
     int m_cachedRenderedTime = -1;  // Last rendered session time (in ms)

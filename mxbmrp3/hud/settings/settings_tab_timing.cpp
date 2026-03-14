@@ -185,11 +185,11 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
 
     bool gapEnabled = hud->m_columnEnabled[TimingHud::COL_GAP];
 
-    // === DISPLAY SECTION ===
-    ctx.addSectionHeader("Display");
+    // === LAYOUT SECTION ===
+    ctx.addSectionHeader("Layout");
 
     // Show mode: Splits (only after crossing splits) or Always
-    const char* showValue = (hud->m_displayMode == ColumnMode::ALWAYS) ? "Always" : "Splits";
+    const char* showValue = (hud->m_displayMode == ColumnMode::ALWAYS) ? "Always" : "At Splits";
     ctx.addCycleControl("Show mode", showValue, 10,
         SettingsHud::ClickRegion::TIMING_DISPLAY_MODE_DOWN,
         SettingsHud::ClickRegion::TIMING_DISPLAY_MODE_UP,
@@ -250,7 +250,7 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::TIMING_GAP_PB_TOGGLE, hud, nullptr, 0, !isPrimary(GAP_TO_PB),
         "timing.secondary_pb", isPrimary(GAP_TO_PB) ? "Primary" : nullptr);
 
-    ctx.addToggleControl("Alltime", hud->isSecondaryGapEnabled(GAP_TO_ALLTIME),
+    ctx.addToggleControl("Alltime PB", hud->isSecondaryGapEnabled(GAP_TO_ALLTIME),
         SettingsHud::ClickRegion::TIMING_GAP_ALLTIME_TOGGLE, hud, nullptr, 0, !isPrimary(GAP_TO_ALLTIME),
         "timing.secondary_alltime", isPrimary(GAP_TO_ALLTIME) ? "Primary" : nullptr);
 

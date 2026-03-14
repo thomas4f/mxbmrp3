@@ -13,6 +13,7 @@
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 PluginData& PluginData::getInstance() {
@@ -1050,6 +1051,27 @@ void PluginData::updateTrackPosition(int raceNum, float trackPos, int numLaps, b
 
     if (it != m_trackPositions.end()) {
         TrackPositionData& data = it->second;
+
+        // Detect teleport (reset to track / pit exit) by checking single-frame position jump.
+        // Compute wrapped delta to handle normal start/finish crossing correctly.
+        float rawDelta = trackPos - data.trackPos;
+        if (rawDelta > 0.5f) rawDelta -= 1.0f;   // wrapped backward through S/F
+        if (rawDelta < -0.5f) rawDelta += 1.0f;   // wrapped forward through S/F
+        if (std::abs(rawDelta) > TrackPositionData::TELEPORT_THRESHOLD) {
+            // Large non-wraparound jump = teleport. Reset history to prevent false wrong-way.
+            data.positionHistory.fill(trackPos);
+            data.historyIndex = 1;
+            data.historyCount = 1;
+            data.wrongWay = false;
+            data.trackPos = trackPos;
+            data.numLaps = numLaps;
+            data.sessionTime = sessionTime;
+            data.crashed = crashed;
+
+            m_currentSessionTime = sessionTime;
+            m_blueFlagsDirty = true;
+            return;
+        }
 
         // Add current position to circular buffer
         data.positionHistory[data.historyIndex] = trackPos;

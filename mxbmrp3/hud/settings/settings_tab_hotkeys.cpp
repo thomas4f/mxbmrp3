@@ -279,7 +279,6 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
     addHotkeyRow(HotkeyAction::TOGGLE_IDEAL_LAP);
     addHotkeyRow(HotkeyAction::TOGGLE_LAP_CONSISTENCY);
     addHotkeyRow(HotkeyAction::TOGGLE_TELEMETRY);
-    addHotkeyRow(HotkeyAction::TOGGLE_INPUT);
     addHotkeyRow(HotkeyAction::TOGGLE_RECORDS);
     addHotkeyRow(HotkeyAction::TOGGLE_PITBOARD);
     addHotkeyRow(HotkeyAction::TOGGLE_SESSION);

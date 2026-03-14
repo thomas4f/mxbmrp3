@@ -25,7 +25,7 @@ public:
         ROW_AVG  = 1 << 2,  // Average fuel per lap
         ROW_EST  = 1 << 3,  // Estimated laps remaining
 
-        ROW_DEFAULT = 0x0F  // All 4 rows enabled (binary: 1111)
+        ROW_DEFAULT = 0x0D  // Fuel, Avg, Est enabled (binary: 1101) - Use row INI-only
     };
 
     FuelWidget();

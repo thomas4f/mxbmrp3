@@ -28,7 +28,7 @@ StatsHud::StatsHud() {
 
 bool StatsHud::handlesDataType(DataChangeType dataType) const {
     // No InputTelemetry — StatsHud displays accumulated stats, not raw telemetry.
-    // The 1s timer in update() handles periodic refreshes for live distance/time.
+    // Live distance/time refreshes are handled via checkFrequentUpdates() at ~1Hz.
     return dataType == DataChangeType::LapLog ||
            dataType == DataChangeType::SessionData;
 }
@@ -60,15 +60,7 @@ void StatsHud::update() {
     }
 
     if (isVisible()) {
-        // Throttle rebuilds to ~1Hz for distance/time updates (not the base 6ms tick)
-        if (m_visibilityMode == VisibilityMode::ALWAYS) {
-            auto now = std::chrono::steady_clock::now();
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_lastStatsUpdate).count();
-            if (elapsed >= STATS_UPDATE_INTERVAL_MS) {
-                m_lastStatsUpdate = now;
-                setDataDirty();
-            }
-        }
+        checkFrequentUpdates();
         processDirtyFlags();
     } else {
         clearDataDirty();
@@ -77,7 +69,12 @@ void StatsHud::update() {
 }
 
 bool StatsHud::needsFrequentUpdates() const {
-    return false;  // Uses custom 1s timer in update(), not the base 6ms tick
+    // Only need periodic ticks in ALWAYS mode for live distance/time updates
+    return m_visibilityMode == VisibilityMode::ALWAYS;
+}
+
+int StatsHud::getTickIntervalMs() const {
+    return STATS_TICK_INTERVAL_MS;  // ~1Hz — stats data changes slowly
 }
 
 const char* StatsHud::getVisibilityModeName(VisibilityMode mode) {
@@ -404,6 +401,6 @@ void StatsHud::resetToDefaults() {
     m_showLap = true;
     m_showSession = true;
     m_showAllTime = false;
-    setPosition(0.6765f, 0.444f);
+    setPosition(0.7315f, 0.6105f);
     setDataDirty();
 }

@@ -830,7 +830,7 @@ void LapConsistencyHud::resetToDefaults() {
     setTextureVariant(0);
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.7095f, 0.5439f);
+    setPosition(0.7315f, 0.4773f);
 
     m_displayMode = DISPLAY_DEFAULT;
     m_referenceMode = ReferenceMode::AVERAGE;

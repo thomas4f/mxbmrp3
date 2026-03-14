@@ -6,6 +6,7 @@
 #include "../settings_hud.h"
 #include "../radar_hud.h"
 #include "../../core/asset_manager.h"
+#include <cmath>
 
 // Helper to cycle enum value forward or backward with wrapping
 template<typename T>
@@ -115,13 +116,8 @@ bool SettingsHud::handleClickTabRadar(const ClickRegion& region) {
         case ClickRegion::RADAR_PROXIMITY_SCALE_UP:
         case ClickRegion::RADAR_PROXIMITY_SCALE_DOWN:
             if (radarHud) {
-                float scale = radarHud->getProximityArrowScale();
-                float step = 0.1f;
-                if (region.type == ClickRegion::RADAR_PROXIMITY_SCALE_UP) {
-                    scale += step;
-                } else {
-                    scale -= step;
-                }
+                bool increase = (region.type == ClickRegion::RADAR_PROXIMITY_SCALE_UP);
+                float scale = applyAcceleratedStep(radarHud->getProximityArrowScale(), 0.01f, increase);
                 radarHud->setProximityArrowScale(scale);
                 setDataDirty();
             }
@@ -160,7 +156,7 @@ bool SettingsHud::handleClickTabRadar(const ClickRegion& region) {
         case ClickRegion::RADAR_MARKER_SCALE_DOWN:
             if (radarHud) {
                 bool increase = (region.type == ClickRegion::RADAR_MARKER_SCALE_UP);
-                float newScale = radarHud->getMarkerScale() + (increase ? 0.1f : -0.1f);
+                float newScale = applyAcceleratedStep(radarHud->getMarkerScale(), 0.01f, increase);
                 radarHud->setMarkerScale(newScale);
                 rebuildRenderData();
             }
@@ -206,6 +202,8 @@ BaseHud* SettingsHud::renderTabRadar(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::RADAR_RANGE_DOWN,
         SettingsHud::ClickRegion::RADAR_RANGE_UP,
         hud, true, false, "radar.range");
+
+    ctx.addSpacing(0.5f);
 
     // === RIDER MARKERS SECTION ===
     ctx.addSectionHeader("Rider Markers");

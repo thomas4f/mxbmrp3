@@ -19,7 +19,7 @@ public:
         ROW_STEER_BAR   = 1 << 2,  // Steering bar
         ROW_STEER_VALUE = 1 << 3,  // Steer angle number (below bar)
 
-        ROW_DEFAULT = 0x0F  // All rows enabled (binary: 1111)
+        ROW_DEFAULT = 0x07  // Arc, Lean Value, Steer Bar enabled (binary: 0111)
     };
 
     LeanWidget();

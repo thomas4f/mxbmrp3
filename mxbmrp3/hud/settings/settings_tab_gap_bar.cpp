@@ -6,15 +6,18 @@
 #include "../settings_hud.h"
 #include "../gap_bar_hud.h"
 #include "../../core/asset_manager.h"
+#include <cmath>
 
 // Static member function of SettingsHud - handles click events for GapBar tab
 bool SettingsHud::handleClickTabGapBar(const ClickRegion& region) {
     switch (region.type) {
         case ClickRegion::GAPBAR_FREEZE_UP:
             if (m_gapBar) {
-                m_gapBar->m_freezeDurationMs = std::min(
-                    m_gapBar->m_freezeDurationMs + GapBarHud::FREEZE_STEP_MS,
-                    GapBarHud::MAX_FREEZE_MS);
+                if (m_gapBar->m_freezeDurationMs >= GapBarHud::MAX_FREEZE_MS) {
+                    m_gapBar->m_freezeDurationMs = 0;  // Wrap to Off
+                } else {
+                    m_gapBar->m_freezeDurationMs += GapBarHud::FREEZE_STEP_MS;
+                }
                 m_gapBar->setDataDirty();
                 setDataDirty();
             }
@@ -22,9 +25,11 @@ bool SettingsHud::handleClickTabGapBar(const ClickRegion& region) {
 
         case ClickRegion::GAPBAR_FREEZE_DOWN:
             if (m_gapBar) {
-                m_gapBar->m_freezeDurationMs = std::max(
-                    m_gapBar->m_freezeDurationMs - GapBarHud::FREEZE_STEP_MS,
-                    GapBarHud::MIN_FREEZE_MS);
+                if (m_gapBar->m_freezeDurationMs <= 0) {
+                    m_gapBar->m_freezeDurationMs = GapBarHud::MAX_FREEZE_MS;  // Wrap to 10s
+                } else {
+                    m_gapBar->m_freezeDurationMs -= GapBarHud::FREEZE_STEP_MS;
+                }
                 m_gapBar->setDataDirty();
                 setDataDirty();
             }
@@ -98,21 +103,23 @@ bool SettingsHud::handleClickTabGapBar(const ClickRegion& region) {
 
         case ClickRegion::GAPBAR_WIDTH_UP:
             if (m_gapBar) {
-                m_gapBar->setBarWidth(m_gapBar->m_barWidthPercent + GapBarHud::WIDTH_STEP_PERCENT);
+                int step = GapBarHud::WIDTH_STEP_PERCENT * getHoldStepMultiplier();
+                m_gapBar->setBarWidth(m_gapBar->m_barWidthPercent + step);
                 setDataDirty();
             }
             return true;
 
         case ClickRegion::GAPBAR_WIDTH_DOWN:
             if (m_gapBar) {
-                m_gapBar->setBarWidth(m_gapBar->m_barWidthPercent - GapBarHud::WIDTH_STEP_PERCENT);
+                int step = GapBarHud::WIDTH_STEP_PERCENT * getHoldStepMultiplier();
+                m_gapBar->setBarWidth(m_gapBar->m_barWidthPercent - step);
                 setDataDirty();
             }
             return true;
 
         case ClickRegion::GAPBAR_MARKER_SCALE_UP:
             if (m_gapBar) {
-                float newScale = m_gapBar->m_fMarkerScale + 0.1f;
+                float newScale = applyAcceleratedStep(m_gapBar->m_fMarkerScale, 0.01f, true);
                 if (newScale > GapBarHud::MAX_MARKER_SCALE) newScale = GapBarHud::MAX_MARKER_SCALE;
                 m_gapBar->m_fMarkerScale = newScale;
                 m_gapBar->setDataDirty();
@@ -122,7 +129,7 @@ bool SettingsHud::handleClickTabGapBar(const ClickRegion& region) {
 
         case ClickRegion::GAPBAR_MARKER_SCALE_DOWN:
             if (m_gapBar) {
-                float newScale = m_gapBar->m_fMarkerScale - 0.1f;
+                float newScale = applyAcceleratedStep(m_gapBar->m_fMarkerScale, 0.01f, false);
                 if (newScale < GapBarHud::MIN_MARKER_SCALE) newScale = GapBarHud::MIN_MARKER_SCALE;
                 m_gapBar->m_fMarkerScale = newScale;
                 m_gapBar->setDataDirty();
@@ -172,9 +179,9 @@ BaseHud* SettingsHud::renderTabGapBar(SettingsLayoutContext& ctx) {
     // Add standard HUD controls (Visible, Texture, Opacity, Scale)
     // Note: Gap Bar HUD has no title support
     ctx.addStandardHudControls(hud, false);
+    ctx.addSpacing(0.5f);
 
     // === GAP BAR SECTION ===
-    ctx.addSpacing(0.5f);
     ctx.addSectionHeader("Gap Bar");
 
     // Show Gap Text toggle
@@ -214,9 +221,9 @@ BaseHud* SettingsHud::renderTabGapBar(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::GAPBAR_FREEZE_UP,
         hud, true, gapFreezeIsOff, "gap_bar.freeze");
 
-    // === MARKERS SECTION ===
+    // === RIDER MARKERS SECTION ===
     ctx.addSpacing(0.5f);
-    ctx.addSectionHeader("Markers");
+    ctx.addSectionHeader("Rider Markers");
 
     // Marker mode cycle control (Ghost / Opponents / Both)
     const char* markerModeStr = "";

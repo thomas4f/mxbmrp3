@@ -46,11 +46,13 @@ BaseHud* SettingsHud::renderTabFmx(SettingsLayoutContext& ctx) {
 
     ctx.addTabTooltip("fmx");
 
+    // === APPEARANCE SECTION ===
+    ctx.addSectionHeader("Appearance");
     ctx.addStandardHudControls(hud);
     ctx.addSpacing(0.5f);
 
-    // === DISPLAY ELEMENTS SECTION (per-profile) ===
-    ctx.addSectionHeader("Display Elements");
+    // === CONTENT SECTION ===
+    ctx.addSectionHeader("Content");
 
     // Trick stack: cycle Off, 1, 2, ..., 10
     int trickRows = hud->m_maxChainDisplayRows;

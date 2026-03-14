@@ -49,6 +49,198 @@ EnumT cycleEnum(EnumT current, int enumCount, bool forward) {
     return static_cast<EnumT>(val);
 }
 
+// Hold-to-repeat: determines which click region types support auto-repeat when held
+bool SettingsHud::isRepeatableRegionType(ClickRegion::Type type) {
+    switch (type) {
+        // Value cycling controls (all _UP/_DOWN pairs)
+        case ClickRegion::GAP_MODE_UP:
+        case ClickRegion::GAP_MODE_DOWN:
+        case ClickRegion::GAP_INDICATOR_UP:
+        case ClickRegion::GAP_INDICATOR_DOWN:
+        case ClickRegion::GAP_REFERENCE_UP:
+        case ClickRegion::GAP_REFERENCE_DOWN:
+        case ClickRegion::COPY_TARGET_UP:
+        case ClickRegion::COPY_TARGET_DOWN:
+        case ClickRegion::TEXTURE_VARIANT_UP:
+        case ClickRegion::TEXTURE_VARIANT_DOWN:
+        case ClickRegion::BACKGROUND_OPACITY_UP:
+        case ClickRegion::BACKGROUND_OPACITY_DOWN:
+        case ClickRegion::SCALE_UP:
+        case ClickRegion::SCALE_DOWN:
+        case ClickRegion::ROW_COUNT_UP:
+        case ClickRegion::ROW_COUNT_DOWN:
+        case ClickRegion::LAP_LOG_ROW_COUNT_UP:
+        case ClickRegion::LAP_LOG_ROW_COUNT_DOWN:
+        case ClickRegion::LAP_LOG_ORDER_UP:
+        case ClickRegion::LAP_LOG_ORDER_DOWN:
+        case ClickRegion::LAP_CONSISTENCY_DISPLAY_MODE_UP:
+        case ClickRegion::LAP_CONSISTENCY_DISPLAY_MODE_DOWN:
+        case ClickRegion::LAP_CONSISTENCY_REFERENCE_UP:
+        case ClickRegion::LAP_CONSISTENCY_REFERENCE_DOWN:
+        case ClickRegion::LAP_CONSISTENCY_LAP_COUNT_UP:
+        case ClickRegion::LAP_CONSISTENCY_LAP_COUNT_DOWN:
+        case ClickRegion::LAP_CONSISTENCY_TREND_MODE_UP:
+        case ClickRegion::LAP_CONSISTENCY_TREND_MODE_DOWN:
+        case ClickRegion::MAP_COLORIZE_UP:
+        case ClickRegion::MAP_COLORIZE_DOWN:
+        case ClickRegion::MAP_TRACK_WIDTH_UP:
+        case ClickRegion::MAP_TRACK_WIDTH_DOWN:
+        case ClickRegion::MAP_LABEL_MODE_UP:
+        case ClickRegion::MAP_LABEL_MODE_DOWN:
+        case ClickRegion::MAP_RANGE_UP:
+        case ClickRegion::MAP_RANGE_DOWN:
+        case ClickRegion::MAP_RIDER_SHAPE_UP:
+        case ClickRegion::MAP_RIDER_SHAPE_DOWN:
+        case ClickRegion::MAP_MARKER_SCALE_UP:
+        case ClickRegion::MAP_MARKER_SCALE_DOWN:
+        case ClickRegion::RADAR_RANGE_UP:
+        case ClickRegion::RADAR_RANGE_DOWN:
+        case ClickRegion::RADAR_COLORIZE_UP:
+        case ClickRegion::RADAR_COLORIZE_DOWN:
+        case ClickRegion::RADAR_ALERT_DISTANCE_UP:
+        case ClickRegion::RADAR_ALERT_DISTANCE_DOWN:
+        case ClickRegion::RADAR_LABEL_MODE_UP:
+        case ClickRegion::RADAR_LABEL_MODE_DOWN:
+        case ClickRegion::RADAR_MODE_UP:
+        case ClickRegion::RADAR_MODE_DOWN:
+        case ClickRegion::RADAR_PROXIMITY_ARROWS_UP:
+        case ClickRegion::RADAR_PROXIMITY_ARROWS_DOWN:
+        case ClickRegion::RADAR_PROXIMITY_SHAPE_UP:
+        case ClickRegion::RADAR_PROXIMITY_SHAPE_DOWN:
+        case ClickRegion::RADAR_PROXIMITY_SCALE_UP:
+        case ClickRegion::RADAR_PROXIMITY_SCALE_DOWN:
+        case ClickRegion::RADAR_PROXIMITY_COLOR_UP:
+        case ClickRegion::RADAR_PROXIMITY_COLOR_DOWN:
+        case ClickRegion::RADAR_RIDER_SHAPE_UP:
+        case ClickRegion::RADAR_RIDER_SHAPE_DOWN:
+        case ClickRegion::RADAR_MARKER_SCALE_UP:
+        case ClickRegion::RADAR_MARKER_SCALE_DOWN:
+        case ClickRegion::DISPLAY_MODE_UP:
+        case ClickRegion::DISPLAY_MODE_DOWN:
+        case ClickRegion::RECORDS_COUNT_UP:
+        case ClickRegion::RECORDS_COUNT_DOWN:
+        case ClickRegion::RECORDS_PROVIDER_UP:
+        case ClickRegion::RECORDS_PROVIDER_DOWN:
+        case ClickRegion::PITBOARD_SHOW_MODE_UP:
+        case ClickRegion::PITBOARD_SHOW_MODE_DOWN:
+        case ClickRegion::PITBOARD_GAP_MODE_UP:
+        case ClickRegion::PITBOARD_GAP_MODE_DOWN:
+        case ClickRegion::SESSION_PASSWORD_MODE_UP:
+        case ClickRegion::SESSION_PASSWORD_MODE_DOWN:
+        case ClickRegion::TIMING_GAP_UP:
+        case ClickRegion::TIMING_GAP_DOWN:
+        case ClickRegion::TIMING_DISPLAY_MODE_UP:
+        case ClickRegion::TIMING_DISPLAY_MODE_DOWN:
+        case ClickRegion::TIMING_DURATION_UP:
+        case ClickRegion::TIMING_DURATION_DOWN:
+        case ClickRegion::GAPBAR_FREEZE_UP:
+        case ClickRegion::GAPBAR_FREEZE_DOWN:
+        case ClickRegion::GAPBAR_MARKER_MODE_UP:
+        case ClickRegion::GAPBAR_MARKER_MODE_DOWN:
+        case ClickRegion::GAPBAR_ICON_UP:
+        case ClickRegion::GAPBAR_ICON_DOWN:
+        case ClickRegion::GAPBAR_RANGE_UP:
+        case ClickRegion::GAPBAR_RANGE_DOWN:
+        case ClickRegion::GAPBAR_WIDTH_UP:
+        case ClickRegion::GAPBAR_WIDTH_DOWN:
+        case ClickRegion::GAPBAR_MARKER_SCALE_UP:
+        case ClickRegion::GAPBAR_MARKER_SCALE_DOWN:
+        case ClickRegion::GAPBAR_LABEL_MODE_UP:
+        case ClickRegion::GAPBAR_LABEL_MODE_DOWN:
+        case ClickRegion::GAPBAR_COLOR_MODE_UP:
+        case ClickRegion::GAPBAR_COLOR_MODE_DOWN:
+        case ClickRegion::COLOR_CYCLE_PREV:
+        case ClickRegion::COLOR_CYCLE_NEXT:
+        case ClickRegion::FONT_CATEGORY_PREV:
+        case ClickRegion::FONT_CATEGORY_NEXT:
+        case ClickRegion::PROFILE_CYCLE_DOWN:
+        case ClickRegion::PROFILE_CYCLE_UP:
+        case ClickRegion::RUMBLE_CONTROLLER_UP:
+        case ClickRegion::RUMBLE_CONTROLLER_DOWN:
+        case ClickRegion::RUMBLE_SUSP_LIGHT_DOWN:
+        case ClickRegion::RUMBLE_SUSP_LIGHT_UP:
+        case ClickRegion::RUMBLE_SUSP_HEAVY_DOWN:
+        case ClickRegion::RUMBLE_SUSP_HEAVY_UP:
+        case ClickRegion::RUMBLE_SUSP_MIN_UP:
+        case ClickRegion::RUMBLE_SUSP_MIN_DOWN:
+        case ClickRegion::RUMBLE_SUSP_MAX_UP:
+        case ClickRegion::RUMBLE_SUSP_MAX_DOWN:
+        case ClickRegion::RUMBLE_WHEEL_LIGHT_DOWN:
+        case ClickRegion::RUMBLE_WHEEL_LIGHT_UP:
+        case ClickRegion::RUMBLE_WHEEL_HEAVY_DOWN:
+        case ClickRegion::RUMBLE_WHEEL_HEAVY_UP:
+        case ClickRegion::RUMBLE_WHEEL_MIN_UP:
+        case ClickRegion::RUMBLE_WHEEL_MIN_DOWN:
+        case ClickRegion::RUMBLE_WHEEL_MAX_UP:
+        case ClickRegion::RUMBLE_WHEEL_MAX_DOWN:
+        case ClickRegion::RUMBLE_LOCKUP_LIGHT_DOWN:
+        case ClickRegion::RUMBLE_LOCKUP_LIGHT_UP:
+        case ClickRegion::RUMBLE_LOCKUP_HEAVY_DOWN:
+        case ClickRegion::RUMBLE_LOCKUP_HEAVY_UP:
+        case ClickRegion::RUMBLE_LOCKUP_MIN_UP:
+        case ClickRegion::RUMBLE_LOCKUP_MIN_DOWN:
+        case ClickRegion::RUMBLE_LOCKUP_MAX_UP:
+        case ClickRegion::RUMBLE_LOCKUP_MAX_DOWN:
+        case ClickRegion::RUMBLE_WHEELIE_LIGHT_DOWN:
+        case ClickRegion::RUMBLE_WHEELIE_LIGHT_UP:
+        case ClickRegion::RUMBLE_WHEELIE_HEAVY_DOWN:
+        case ClickRegion::RUMBLE_WHEELIE_HEAVY_UP:
+        case ClickRegion::RUMBLE_WHEELIE_MIN_UP:
+        case ClickRegion::RUMBLE_WHEELIE_MIN_DOWN:
+        case ClickRegion::RUMBLE_WHEELIE_MAX_UP:
+        case ClickRegion::RUMBLE_WHEELIE_MAX_DOWN:
+        case ClickRegion::RUMBLE_RPM_LIGHT_DOWN:
+        case ClickRegion::RUMBLE_RPM_LIGHT_UP:
+        case ClickRegion::RUMBLE_RPM_HEAVY_DOWN:
+        case ClickRegion::RUMBLE_RPM_HEAVY_UP:
+        case ClickRegion::RUMBLE_RPM_MIN_UP:
+        case ClickRegion::RUMBLE_RPM_MIN_DOWN:
+        case ClickRegion::RUMBLE_RPM_MAX_UP:
+        case ClickRegion::RUMBLE_RPM_MAX_DOWN:
+        case ClickRegion::RUMBLE_SLIDE_LIGHT_DOWN:
+        case ClickRegion::RUMBLE_SLIDE_LIGHT_UP:
+        case ClickRegion::RUMBLE_SLIDE_HEAVY_DOWN:
+        case ClickRegion::RUMBLE_SLIDE_HEAVY_UP:
+        case ClickRegion::RUMBLE_SLIDE_MIN_UP:
+        case ClickRegion::RUMBLE_SLIDE_MIN_DOWN:
+        case ClickRegion::RUMBLE_SLIDE_MAX_UP:
+        case ClickRegion::RUMBLE_SLIDE_MAX_DOWN:
+        case ClickRegion::RUMBLE_SURFACE_LIGHT_DOWN:
+        case ClickRegion::RUMBLE_SURFACE_LIGHT_UP:
+        case ClickRegion::RUMBLE_SURFACE_HEAVY_DOWN:
+        case ClickRegion::RUMBLE_SURFACE_HEAVY_UP:
+        case ClickRegion::RUMBLE_SURFACE_MIN_UP:
+        case ClickRegion::RUMBLE_SURFACE_MIN_DOWN:
+        case ClickRegion::RUMBLE_SURFACE_MAX_UP:
+        case ClickRegion::RUMBLE_SURFACE_MAX_DOWN:
+        case ClickRegion::RUMBLE_STEER_LIGHT_DOWN:
+        case ClickRegion::RUMBLE_STEER_LIGHT_UP:
+        case ClickRegion::RUMBLE_STEER_HEAVY_DOWN:
+        case ClickRegion::RUMBLE_STEER_HEAVY_UP:
+        case ClickRegion::RUMBLE_STEER_MIN_UP:
+        case ClickRegion::RUMBLE_STEER_MIN_DOWN:
+        case ClickRegion::RUMBLE_STEER_MAX_UP:
+        case ClickRegion::RUMBLE_STEER_MAX_DOWN:
+        case ClickRegion::UPDATE_CHANNEL_UP:
+        case ClickRegion::UPDATE_CHANNEL_DOWN:
+        case ClickRegion::FMX_CHAIN_ROWS_UP:
+        case ClickRegion::FMX_CHAIN_ROWS_DOWN:
+        case ClickRegion::STATS_VISIBILITY_UP:
+        case ClickRegion::STATS_VISIBILITY_DOWN:
+        case ClickRegion::RIDER_COLOR_PREV:
+        case ClickRegion::RIDER_COLOR_NEXT:
+        case ClickRegion::RIDER_SHAPE_PREV:
+        case ClickRegion::RIDER_SHAPE_NEXT:
+        case ClickRegion::SERVER_PAGE_PREV:
+        case ClickRegion::SERVER_PAGE_NEXT:
+        case ClickRegion::TRACKED_PAGE_PREV:
+        case ClickRegion::TRACKED_PAGE_NEXT:
+            return true;
+        default:
+            return false;
+    }
+}
+
 // Mode name lookup tables for debug output
 static const char* getRiderColorModeName(int mode) {
     static const char* names[] = { "Uniform", "Brand", "Position" };
@@ -66,7 +258,8 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, LapConsistenc
                          TelemetryHud* telemetry,
                          TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean,
                          FmxHud* fmxHud,
-                         StatsHud* statsHud
+                         StatsHud* statsHud,
+                         ClockWidget* clock
 #if GAME_HAS_TYRE_TEMP
                          , TyreTempWidget* tyreTemp
 #endif
@@ -101,6 +294,7 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, LapConsistenc
       m_lean(lean),
       m_fmxHud(fmxHud),
       m_statsHud(statsHud),
+      m_clock(clock),
 #if GAME_HAS_TYRE_TEMP
       m_tyreTemp(tyreTemp),
 #endif
@@ -133,7 +327,10 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, LapConsistenc
       m_trackedRidersPage(0),
       m_wasUpdateCheckerOnCooldown(false),
       m_cachedUpdateCheckerStatus(-1),
-      m_cachedUpdateDownloaderState(-1)
+      m_cachedUpdateDownloaderState(-1),
+      m_holdRegionIndex(-1),
+      m_holdRepeatCount(0),
+      m_holdSavePending(false)
 {
     DEBUG_INFO("SettingsHud created");
     setDraggable(true);
@@ -161,6 +358,8 @@ void SettingsHud::hide() {
     clearStrings();
     m_quads.clear();
     m_clickRegions.clear();
+    m_holdRegionIndex = -1;  // Stop any hold-to-repeat in progress
+    m_holdSavePending = false;
     setBounds(0, 0, 0, 0);  // Clear collision bounds to prevent blocking input
 }
 
@@ -324,10 +523,79 @@ void SettingsHud::update() {
         }
     }
 
-    // Handle mouse input
-    if (input.getLeftButton().isClicked()) {
+    // Handle mouse input (with hold-to-repeat acceleration)
+    const auto& leftButton = input.getLeftButton();
+    if (leftButton.isClicked()) {
         if (cursor.isValid) {
+            m_holdRepeatCount = 0;  // Reset before dispatch so handlers see 0 on initial click
             handleClick(cursor.x, cursor.y);
+
+            // Start tracking hold for repeat acceleration
+            // Find which region was clicked to check if it's repeatable
+            // Must skip TOOLTIP_ROW with continue (not break), matching handleClick behavior
+            for (size_t i = 0; i < m_clickRegions.size(); ++i) {
+                const auto& region = m_clickRegions[i];
+                if (isPointInRect(cursor.x, cursor.y, region.x, region.y, region.width, region.height)) {
+                    if (region.type == ClickRegion::TOOLTIP_ROW) continue;
+                    if (isRepeatableRegionType(region.type)) {
+                        m_holdRegionIndex = static_cast<int>(i);
+                        m_holdRepeatCount = 0;
+                        m_holdStartTime = std::chrono::steady_clock::now();
+                        m_holdLastRepeat = m_holdStartTime;
+                    }
+                    break;
+                }
+            }
+        }
+    } else if (leftButton.isPressed && m_holdRegionIndex >= 0) {
+        // Button still held - check for repeat firing
+        auto now = std::chrono::steady_clock::now();
+        auto holdDurationMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_holdStartTime).count();
+
+        // Initial delay before repeating starts (400ms)
+        constexpr long long HOLD_INITIAL_DELAY_MS = 400;
+        // Repeat interval starts at 200ms and accelerates down to 30ms
+        constexpr long long HOLD_REPEAT_SLOW_MS = 200;
+        const long long HOLD_REPEAT_FAST_MS = UiConfig::getInstance().getHoldRepeatFastMs();
+        // Number of repeats before reaching max speed
+        constexpr int HOLD_ACCEL_REPEATS = 15;
+
+        if (holdDurationMs >= HOLD_INITIAL_DELAY_MS) {
+            // Calculate current repeat interval (linear interpolation from slow to fast)
+            float accelFactor = std::min(static_cast<float>(m_holdRepeatCount) / HOLD_ACCEL_REPEATS, 1.0f);
+            long long repeatIntervalMs = static_cast<long long>(
+                HOLD_REPEAT_SLOW_MS + accelFactor * (HOLD_REPEAT_FAST_MS - HOLD_REPEAT_SLOW_MS));
+
+            auto timeSinceLastRepeat = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_holdLastRepeat).count();
+            if (timeSinceLastRepeat >= repeatIntervalMs) {
+                // Verify cursor is still over the same region
+                if (cursor.isValid && m_holdRegionIndex < static_cast<int>(m_clickRegions.size())) {
+                    const auto& region = m_clickRegions[m_holdRegionIndex];
+                    if (isPointInRect(cursor.x, cursor.y, region.x, region.y, region.width, region.height)) {
+                        // Dispatch the held region directly (skip save - deferred until release)
+                        dispatchRegion(region, /*skipSave=*/true);
+                        m_holdSavePending = true;
+                        m_holdLastRepeat = now;
+                        m_holdRepeatCount++;
+                    } else {
+                        // Cursor moved off the region - stop repeating
+                        m_holdRegionIndex = -1;
+                    }
+                } else {
+                    m_holdRegionIndex = -1;
+                }
+            }
+        }
+    } else if (!leftButton.isPressed) {
+        // Button released - stop hold tracking
+        m_holdRegionIndex = -1;
+    }
+
+    // Deferred auto-save: save once when hold ends (instead of every repeat tick)
+    if (m_holdRegionIndex < 0 && m_holdSavePending) {
+        m_holdSavePending = false;
+        if (UiConfig::getInstance().getAutoSave()) {
+            SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
         }
     }
 
@@ -1537,201 +1805,211 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
             // Skip TOOLTIP_ROW regions - they're hover-only for tooltip display
             if (region.type == ClickRegion::TOOLTIP_ROW) continue;
 
-            // Try tab-specific handlers first (implemented in separate files)
-            bool handled = false;
-            switch (m_activeTab) {
-                case TAB_MAP:        handled = handleClickTabMap(region); break;
-                case TAB_RADAR:      handled = handleClickTabRadar(region); break;
-                case TAB_TIMING:     handled = handleClickTabTiming(region); break;
-                case TAB_GAP_BAR:    handled = handleClickTabGapBar(region); break;
-                case TAB_STANDINGS:  handled = handleClickTabStandings(region); break;
-                case TAB_RUMBLE:     handled = handleClickTabRumble(region); break;
-                case TAB_APPEARANCE: handled = handleClickTabAppearance(region); break;
-                case TAB_GENERAL:    handled = handleClickTabGeneral(region); break;
-                case TAB_HOTKEYS:    handled = handleClickTabHotkeys(region); break;
-                case TAB_RIDERS:     handled = handleClickTabRiders(region); break;
-                case TAB_RECORDS:    handled = handleClickTabRecords(region); break;
-                case TAB_PITBOARD:   handled = handleClickTabPitboard(region); break;
-                case TAB_SESSION:    handled = handleClickTabSession(region); break;
-                case TAB_LAP_LOG:    handled = handleClickTabLapLog(region); break;
-                case TAB_LAP_CONSISTENCY: handled = handleClickTabLapConsistency(region); break;
-                case TAB_UPDATES:    handled = handleClickTabUpdates(region); break;
-                case TAB_FMX:        handled = handleClickTabFmx(region); break;
-                case TAB_STATS:      handled = handleClickTabStats(region); break;
-                default: break;
-            }
-
-            if (handled) {
-                // Tab handler processed the click - save and return (if auto-save enabled)
-                if (UiConfig::getInstance().getAutoSave()) {
-                    SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
-                }
-                return;
-            }
-
-            // Fall through to common handlers for shared controls
-            switch (region.type) {
-                // ============================================
-                // Common handlers (used across multiple tabs)
-                // Tab-specific handlers are in settings_tab_*.cpp files
-                // ============================================
-
-                case ClickRegion::CHECKBOX:
-                    handleCheckboxClick(region);
-                    break;
-
-                case ClickRegion::HUD_TOGGLE:
-                    handleHudToggleClick(region);
-                    break;
-                case ClickRegion::WIDGETS_TOGGLE:
-                    {
-                        HudManager& hudManager = HudManager::getInstance();
-                        hudManager.setWidgetsEnabled(!hudManager.areWidgetsEnabled());
-                        rebuildRenderData();
-                        DEBUG_INFO_F("Widgets master toggle: %s", hudManager.areWidgetsEnabled() ? "enabled" : "disabled");
-                    }
-                    break;
-                case ClickRegion::UPDATE_CHECK_TOGGLE:
-                    {
-                        UpdateChecker& checker = UpdateChecker::getInstance();
-                        bool newState = !checker.isEnabled();
-                        checker.setEnabled(newState);
-                        if (newState && !checker.isChecking()) {
-                            // Trigger an update check when enabled
-                            checker.setCompletionCallback([this]() {
-                                setDataDirty();
-                            });
-                            checker.checkForUpdates();
-                        }
-                        rebuildRenderData();
-                        DEBUG_INFO_F("Update checking toggle: %s", newState ? "enabled" : "disabled");
-                    }
-                    break;
-                case ClickRegion::RUMBLE_TOGGLE:
-                    {
-                        RumbleConfig& globalConfig = XInputReader::getInstance().getGlobalRumbleConfig();
-                        globalConfig.enabled = !globalConfig.enabled;
-                        rebuildRenderData();
-                        DEBUG_INFO_F("Rumble master toggle: %s", globalConfig.enabled ? "enabled" : "disabled");
-                    }
-                    break;
-                case ClickRegion::TITLE_TOGGLE:
-                    handleTitleToggleClick(region);
-                    break;
-                case ClickRegion::TEXTURE_VARIANT_UP:
-                    if (region.targetHud) {
-                        region.targetHud->cycleTextureVariant(true);
-                        rebuildRenderData();
-                    }
-                    break;
-                case ClickRegion::TEXTURE_VARIANT_DOWN:
-                    if (region.targetHud) {
-                        region.targetHud->cycleTextureVariant(false);
-                        rebuildRenderData();
-                    }
-                    break;
-                case ClickRegion::BACKGROUND_OPACITY_UP:
-                    handleOpacityClick(region, true);
-                    break;
-                case ClickRegion::BACKGROUND_OPACITY_DOWN:
-                    handleOpacityClick(region, false);
-                    break;
-                case ClickRegion::SCALE_UP:
-                    handleScaleClick(region, true);
-                    break;
-                case ClickRegion::SCALE_DOWN:
-                    handleScaleClick(region, false);
-                    break;
-                // Note: ROW_COUNT, LAP_LOG_ROW_COUNT, MAP_*, RADAR_* handlers moved to tab files
-
-                case ClickRegion::DISPLAY_MODE_UP:
-                    handleDisplayModeClick(region, true);
-                    break;
-                case ClickRegion::DISPLAY_MODE_DOWN:
-                    handleDisplayModeClick(region, false);
-                    break;
-                // Profile cycle controls are in sidebar, must work from ALL tabs
-                case ClickRegion::PROFILE_CYCLE_UP:
-                    {
-                        ProfileType nextProfile = ProfileManager::getNextProfile(
-                            ProfileManager::getInstance().getActiveProfile());
-                        SettingsManager::getInstance().switchProfile(HudManager::getInstance(), nextProfile);
-                        rebuildRenderData();
-                    }
-                    return;  // Don't save - switchProfile already saves
-                case ClickRegion::PROFILE_CYCLE_DOWN:
-                    {
-                        ProfileType prevProfile = ProfileManager::getPreviousProfile(
-                            ProfileManager::getInstance().getActiveProfile());
-                        SettingsManager::getInstance().switchProfile(HudManager::getInstance(), prevProfile);
-                        rebuildRenderData();
-                    }
-                    return;  // Don't save - switchProfile already saves
-                // Note: Tab-specific handlers moved to settings_tab_*.cpp files:
-                // RECORDS_COUNT, PITBOARD_SHOW_MODE, TIMING_*, GAPBAR_*,
-                // COLOR_CYCLE_*, FONT_CATEGORY_*, SPEED_UNIT, FUEL_UNIT,
-                // GRID_SNAP, UPDATE_CHECK, COPY_*, RESET_*
-                case ClickRegion::RESET_TAB_BUTTON:
-                    {
-                        resetCurrentTab();
-                        DEBUG_INFO_F("Tab %d reset to defaults", m_activeTab);
-                    }
-                    break;
-                case ClickRegion::TAB:
-                    handleTabClick(region);
-                    return;  // Don't save settings, just UI state change
-                case ClickRegion::CLOSE_BUTTON:
-                    handleCloseButtonClick();
-                    return;  // Don't save settings, just close the menu
-                case ClickRegion::SAVE_BUTTON:
-                    // Manual save when auto-save is disabled
-                    SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
-                    DEBUG_INFO("Settings saved manually");
-                    return;  // Already saved
-                // Note: Tab-specific handlers moved to settings_tab_*.cpp files:
-                // RUMBLE_*, HOTKEY_*, RIDER_*, pagination controls
-
-                case ClickRegion::VERSION_CLICK:
-                    {
-                        // If update is available, navigate to Updates tab
-                        if (UpdateChecker::getInstance().getStatus() == UpdateChecker::Status::UPDATE_AVAILABLE) {
-                            m_activeTab = TAB_UPDATES;
-                            rebuildRenderData();
-                            return;  // Don't process easter egg
-                        }
-
-                        // Otherwise, easter egg logic
-                        long long currentTimeUs = DrawHandler::getCurrentTimeUs();
-                        // Reset counter if timeout elapsed
-                        if (m_versionClickCount > 0 && (currentTimeUs - m_lastVersionClickTimeUs) > EASTER_EGG_TIMEOUT_US) {
-                            m_versionClickCount = 0;
-                        }
-                        m_versionClickCount++;
-                        m_lastVersionClickTimeUs = currentTimeUs;
-                        // Check if threshold reached
-                        if (m_versionClickCount >= EASTER_EGG_CLICKS) {
-                            m_versionClickCount = 0;
-                            if (m_version) {
-                                hide();  // Close settings before starting game
-                                m_version->startGame();
-                            }
-                        }
-                    }
-                    break;
-
-                default:
-                    DEBUG_WARN_F("Unknown ClickRegion type: %d", static_cast<int>(region.type));
-                    break;
-            }
-
-            // Save settings after any modification (except TAB, CLOSE_BUTTON, SAVE_BUTTON, DISCARD_BUTTON)
-            // Only save if auto-save is enabled
-            if (UiConfig::getInstance().getAutoSave()) {
-                SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
-            }
-
+            dispatchRegion(region);
             return;  // Only process one click per frame
         }
+    }
+}
+
+void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
+    // Try tab-specific handlers first (implemented in separate files)
+    bool handled = false;
+    switch (m_activeTab) {
+        case TAB_MAP:        handled = handleClickTabMap(region); break;
+        case TAB_RADAR:      handled = handleClickTabRadar(region); break;
+        case TAB_TIMING:     handled = handleClickTabTiming(region); break;
+        case TAB_GAP_BAR:    handled = handleClickTabGapBar(region); break;
+        case TAB_STANDINGS:  handled = handleClickTabStandings(region); break;
+        case TAB_RUMBLE:     handled = handleClickTabRumble(region); break;
+        case TAB_APPEARANCE: handled = handleClickTabAppearance(region); break;
+        case TAB_GENERAL:    handled = handleClickTabGeneral(region); break;
+        case TAB_HOTKEYS:    handled = handleClickTabHotkeys(region); break;
+        case TAB_RIDERS:     handled = handleClickTabRiders(region); break;
+        case TAB_RECORDS:    handled = handleClickTabRecords(region); break;
+        case TAB_PITBOARD:   handled = handleClickTabPitboard(region); break;
+        case TAB_SESSION:    handled = handleClickTabSession(region); break;
+        case TAB_LAP_LOG:    handled = handleClickTabLapLog(region); break;
+        case TAB_LAP_CONSISTENCY: handled = handleClickTabLapConsistency(region); break;
+        case TAB_UPDATES:    handled = handleClickTabUpdates(region); break;
+        case TAB_FMX:        handled = handleClickTabFmx(region); break;
+        case TAB_STATS:      handled = handleClickTabStats(region); break;
+        default: break;
+    }
+
+    if (handled) {
+        // Tab handler processed the click - save if auto-save enabled and not deferred
+        if (!skipSave && UiConfig::getInstance().getAutoSave()) {
+            SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
+        }
+        return;
+    }
+
+    // Fall through to common handlers for shared controls
+    switch (region.type) {
+        // ============================================
+        // Common handlers (used across multiple tabs)
+        // Tab-specific handlers are in settings_tab_*.cpp files
+        // ============================================
+
+        case ClickRegion::CHECKBOX:
+            handleCheckboxClick(region);
+            break;
+
+        case ClickRegion::HUD_TOGGLE:
+            handleHudToggleClick(region);
+            break;
+        case ClickRegion::WIDGETS_TOGGLE:
+            {
+                HudManager& hudManager = HudManager::getInstance();
+                hudManager.setWidgetsEnabled(!hudManager.areWidgetsEnabled());
+                rebuildRenderData();
+                DEBUG_INFO_F("Widgets master toggle: %s", hudManager.areWidgetsEnabled() ? "enabled" : "disabled");
+            }
+            break;
+        case ClickRegion::UPDATE_CHECK_TOGGLE:
+            {
+                UpdateChecker& checker = UpdateChecker::getInstance();
+                bool newState = !checker.isEnabled();
+                checker.setEnabled(newState);
+                if (newState && !checker.isChecking()) {
+                    // Trigger an update check when enabled
+                    checker.setCompletionCallback([this]() {
+                        setDataDirty();
+                    });
+                    checker.checkForUpdates();
+                }
+                rebuildRenderData();
+                DEBUG_INFO_F("Update checking toggle: %s", newState ? "enabled" : "disabled");
+            }
+            break;
+        case ClickRegion::RUMBLE_TOGGLE:
+            {
+                RumbleConfig& globalConfig = XInputReader::getInstance().getGlobalRumbleConfig();
+                globalConfig.enabled = !globalConfig.enabled;
+                rebuildRenderData();
+                DEBUG_INFO_F("Rumble master toggle: %s", globalConfig.enabled ? "enabled" : "disabled");
+            }
+            break;
+        case ClickRegion::TITLE_TOGGLE:
+            handleTitleToggleClick(region);
+            break;
+        case ClickRegion::TEXTURE_VARIANT_UP:
+            if (region.targetHud) {
+                region.targetHud->cycleTextureVariant(true);
+                rebuildRenderData();
+            }
+            break;
+        case ClickRegion::TEXTURE_VARIANT_DOWN:
+            if (region.targetHud) {
+                region.targetHud->cycleTextureVariant(false);
+                rebuildRenderData();
+            }
+            break;
+        case ClickRegion::BACKGROUND_OPACITY_UP:
+            handleOpacityClick(region, true);
+            break;
+        case ClickRegion::BACKGROUND_OPACITY_DOWN:
+            handleOpacityClick(region, false);
+            break;
+        case ClickRegion::SCALE_UP:
+            handleScaleClick(region, true);
+            break;
+        case ClickRegion::SCALE_DOWN:
+            handleScaleClick(region, false);
+            break;
+        // Note: ROW_COUNT, LAP_LOG_ROW_COUNT, MAP_*, RADAR_* handlers moved to tab files
+
+        case ClickRegion::DISPLAY_MODE_UP:
+            handleDisplayModeClick(region, true);
+            break;
+        case ClickRegion::DISPLAY_MODE_DOWN:
+            handleDisplayModeClick(region, false);
+            break;
+        // Profile cycle controls are in sidebar, must work from ALL tabs
+        case ClickRegion::PROFILE_CYCLE_UP:
+            {
+                ProfileType nextProfile = ProfileManager::getNextProfile(
+                    ProfileManager::getInstance().getActiveProfile());
+                SettingsManager::getInstance().switchProfile(HudManager::getInstance(), nextProfile);
+                rebuildRenderData();
+            }
+            return;  // Don't save - switchProfile already saves
+        case ClickRegion::PROFILE_CYCLE_DOWN:
+            {
+                ProfileType prevProfile = ProfileManager::getPreviousProfile(
+                    ProfileManager::getInstance().getActiveProfile());
+                SettingsManager::getInstance().switchProfile(HudManager::getInstance(), prevProfile);
+                rebuildRenderData();
+            }
+            return;  // Don't save - switchProfile already saves
+        // Note: Tab-specific handlers moved to settings_tab_*.cpp files:
+        // RECORDS_COUNT, PITBOARD_SHOW_MODE, TIMING_*, GAPBAR_*,
+        // COLOR_CYCLE_*, FONT_CATEGORY_*, SPEED_UNIT, FUEL_UNIT,
+        // GRID_SNAP, UPDATE_CHECK, COPY_*, RESET_*
+        // Clock widget toggles (used from Widgets tab and General tab)
+        case ClickRegion::CLOCK_FORMAT_TOGGLE:
+            if (m_clock) {
+                m_clock->setFormat24h(!m_clock->getFormat24h());
+                rebuildRenderData();
+            }
+            break;
+        case ClickRegion::RESET_TAB_BUTTON:
+            {
+                resetCurrentTab();
+                DEBUG_INFO_F("Tab %d reset to defaults", m_activeTab);
+            }
+            break;
+        case ClickRegion::TAB:
+            handleTabClick(region);
+            return;  // Don't save settings, just UI state change
+        case ClickRegion::CLOSE_BUTTON:
+            handleCloseButtonClick();
+            return;  // Don't save settings, just close the menu
+        case ClickRegion::SAVE_BUTTON:
+            // Manual save when auto-save is disabled
+            SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
+            DEBUG_INFO("Settings saved manually");
+            return;  // Already saved
+        // Note: Tab-specific handlers moved to settings_tab_*.cpp files:
+        // RUMBLE_*, HOTKEY_*, RIDER_*, pagination controls
+
+        case ClickRegion::VERSION_CLICK:
+            {
+                // If update is available, navigate to Updates tab
+                if (UpdateChecker::getInstance().getStatus() == UpdateChecker::Status::UPDATE_AVAILABLE) {
+                    m_activeTab = TAB_UPDATES;
+                    rebuildRenderData();
+                    return;  // Don't process easter egg
+                }
+
+                // Otherwise, easter egg logic
+                long long currentTimeUs = DrawHandler::getCurrentTimeUs();
+                // Reset counter if timeout elapsed
+                if (m_versionClickCount > 0 && (currentTimeUs - m_lastVersionClickTimeUs) > EASTER_EGG_TIMEOUT_US) {
+                    m_versionClickCount = 0;
+                }
+                m_versionClickCount++;
+                m_lastVersionClickTimeUs = currentTimeUs;
+                // Check if threshold reached
+                if (m_versionClickCount >= EASTER_EGG_CLICKS) {
+                    m_versionClickCount = 0;
+                    if (m_version) {
+                        hide();  // Close settings before starting game
+                        m_version->startGame();
+                    }
+                }
+            }
+            break;
+
+        default:
+            DEBUG_WARN_F("Unknown ClickRegion type: %d", static_cast<int>(region.type));
+            break;
+    }
+
+    // Save settings after any modification (except TAB, CLOSE_BUTTON, SAVE_BUTTON, DISCARD_BUTTON)
+    // Only save if auto-save is enabled and not deferred (during hold-to-repeat)
+    if (!skipSave && UiConfig::getInstance().getAutoSave()) {
+        SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
     }
 }
 
@@ -1787,6 +2065,7 @@ void SettingsHud::resetToDefaults() {
     if (m_fuel) m_fuel->resetToDefaults();
     if (m_gamepad) m_gamepad->resetToDefaults();
     if (m_lean) m_lean->resetToDefaults();
+    if (m_clock) m_clock->resetToDefaults();
 #if GAME_HAS_TYRE_TEMP
     if (m_tyreTemp) m_tyreTemp->resetToDefaults();
 #endif
@@ -1847,15 +2126,26 @@ void SettingsHud::resetCurrentTab() {
     // Reset only the HUD(s) associated with the current tab
     switch (m_activeTab) {
         case TAB_GENERAL:
-            // General tab - reset global preferences
-            XInputReader::getInstance().getRumbleConfig().controllerIndex = 0;
-            XInputReader::getInstance().setControllerIndex(0);
+            // General tab - reset all settings displayed on the General tab
+            // Display section
             if (m_speed) m_speed->setSpeedUnit(SpeedWidget::SpeedUnit::MPH);
             if (m_fuel) m_fuel->setFuelUnit(FuelWidget::FuelUnit::LITERS);
-            UiConfig::getInstance().setGridSnapping(true);  // Reset grid snap
-            UiConfig::getInstance().setScreenClamping(true);  // Reset screen clamp
-            // Reset update checker
-            UpdateChecker::getInstance().setEnabled(false);
+            UiConfig::getInstance().setTemperatureUnit(TemperatureUnit::CELSIUS);
+            if (m_clock) m_clock->setFormat24h(true);
+            UiConfig::getInstance().setDropShadow(true);
+            // Preferences section
+            XInputReader::getInstance().getRumbleConfig().controllerIndex = 0;
+            XInputReader::getInstance().setControllerIndex(0);
+            UiConfig::getInstance().setGridSnapping(true);
+            UiConfig::getInstance().setScreenClamping(false);  // Default is off
+            UiConfig::getInstance().setAutoSave(true);
+#if GAME_HAS_DISCORD
+            DiscordManager::getInstance().setEnabled(false);
+#endif
+            // Profiles section
+            ProfileManager::getInstance().setAutoSwitchEnabled(false);
+            // Mark all HUDs dirty for drop shadow / unit changes
+            HudManager::getInstance().markAllHudsDirty();
             break;
         case TAB_APPEARANCE:
             // Appearance tab - reset font and color configuration
@@ -1939,6 +2229,7 @@ void SettingsHud::resetCurrentTab() {
             if (m_fuel) m_fuel->resetToDefaults();
             if (m_gamepad) m_gamepad->resetToDefaults();
             if (m_lean) m_lean->resetToDefaults();
+            if (m_clock) m_clock->resetToDefaults();
 #if GAME_HAS_TYRE_TEMP
             if (m_tyreTemp) m_tyreTemp->resetToDefaults();
 #endif
@@ -2017,6 +2308,7 @@ void SettingsHud::resetCurrentProfile() {
     if (m_fuel) m_fuel->resetToDefaults();
     if (m_gamepad) m_gamepad->resetToDefaults();
     if (m_lean) m_lean->resetToDefaults();
+    if (m_clock) m_clock->resetToDefaults();
 #if GAME_HAS_TYRE_TEMP
     if (m_tyreTemp) m_tyreTemp->resetToDefaults();
 #endif
@@ -2084,7 +2376,7 @@ void SettingsHud::handleOpacityClick(const ClickRegion& region, bool increase) {
     if (!region.targetHud) return;
 
     float currentOpacity = region.targetHud->getBackgroundOpacity();
-    float newOpacity = std::round((currentOpacity + (increase ? 0.10f : -0.10f)) * 10.0f) / 10.0f;
+    float newOpacity = applyAcceleratedStep(currentOpacity, 0.01f, increase);
     newOpacity = std::max(0.0f, std::min(1.0f, newOpacity));
     region.targetHud->setBackgroundOpacity(newOpacity);
     rebuildRenderData();
@@ -2096,8 +2388,8 @@ void SettingsHud::handleScaleClick(const ClickRegion& region, bool increase) {
     if (!region.targetHud) return;
 
     float currentScale = region.targetHud->getScale();
-    float newScale = std::round((currentScale + (increase ? 0.1f : -0.1f)) * 10.0f) / 10.0f;
-    newScale = std::max(0.5f, std::min(3.0f, newScale));
+    float newScale = applyAcceleratedStep(currentScale, 0.01f, increase);
+    newScale = std::max(0.1f, std::min(3.0f, newScale));
     region.targetHud->setScale(newScale);
     rebuildRenderData();
     DEBUG_INFO_F("HUD scale %s to %.2f", increase ? "increased" : "decreased", newScale);
@@ -2388,6 +2680,9 @@ const char* SettingsHud::getTooltipIdForRegion(ClickRegion::Type type, int activ
                 case ClickRegion::PITBOARD_SHOW_MODE_UP:
                 case ClickRegion::PITBOARD_SHOW_MODE_DOWN:
                     return "pitboard.show_mode";
+                case ClickRegion::PITBOARD_GAP_MODE_UP:
+                case ClickRegion::PITBOARD_GAP_MODE_DOWN:
+                    return "pitboard.gap_compare";
                 default:
                     break;
             }

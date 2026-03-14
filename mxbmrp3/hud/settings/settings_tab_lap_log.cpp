@@ -69,8 +69,8 @@ BaseHud* SettingsHud::renderTabLapLog(SettingsLayoutContext& ctx) {
     ctx.addStandardHudControls(hud);
     ctx.addSpacing(0.5f);
 
-    // === CONFIGURATION SECTION ===
-    ctx.addSectionHeader("Configuration");
+    // === LAYOUT SECTION ===
+    ctx.addSectionHeader("Layout");
 
     // Row count
     char rowCountValue[8];

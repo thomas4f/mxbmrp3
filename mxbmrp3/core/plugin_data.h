@@ -206,6 +206,7 @@ struct TrackPositionData {
     static constexpr int POSITION_HISTORY_SIZE = 30;  // ~1.5 sec at 20Hz update rate
     static constexpr float WRAPAROUND_THRESHOLD = 0.5f;  // Position change > 0.5 indicates wrap through start/finish
     static constexpr float WRONG_WAY_THRESHOLD = -0.001f;  // Must move back 0.1% of track to trigger
+    static constexpr float TELEPORT_THRESHOLD = 0.05f;  // Single-frame jump > 5% of track = teleport (reset/pit exit)
     std::array<float, POSITION_HISTORY_SIZE> positionHistory;
     int historyIndex;     // Current write position in circular buffer
     int historyCount;     // How many positions we've stored (0 to POSITION_HISTORY_SIZE)

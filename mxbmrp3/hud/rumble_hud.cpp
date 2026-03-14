@@ -54,7 +54,7 @@ void RumbleHud::resetToDefaults() {
     m_bShowTitle = true;
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
-    setPosition(0.737f, 0.3663f);
+    setPosition(0.7315f, 0.444f);
     setScale(1.0f);
     m_bShowMaxMarkers = false;  // Max markers OFF by default
     m_maxMarkerLingerFrames = 60;  // ~1 second at 60fps
@@ -204,7 +204,7 @@ void RumbleHud::rebuildRenderData() {
     float backgroundWidth = PluginUtils::calculateMonospaceTextWidth(BACKGROUND_WIDTH_CHARS, dims.fontSize)
         + dims.paddingH + dims.paddingH;
     float graphHeight = GRAPH_HEIGHT_LINES * dims.lineHeightNormal;
-    float labelHeight = dims.lineHeightNormal;  // Height for "H" and "L" labels
+    float barHeight = (GRAPH_HEIGHT_LINES - 1) * dims.lineHeightNormal;  // Bars are 1 line shorter to fit labels
 
     // Calculate legend height (count enabled effects)
     int legendLines = 0;
@@ -218,11 +218,9 @@ void RumbleHud::rebuildRenderData() {
     if (config.steerEffect.isEnabled()) legendLines++;
     float legendHeight = legendLines * dims.lineHeightNormal;
 
-    // Height: title + max(graph height, legend height, bar height + label height)
+    // Height: title + max(graph height, legend height) - matching TelemetryHud/PerformanceHud
     float titleHeight = m_bShowTitle ? dims.lineHeightLarge : 0.0f;
-    float barTotalHeight = graphHeight + labelHeight;  // Bars + labels below
     float contentHeight = graphHeight > legendHeight ? graphHeight : legendHeight;
-    if (barTotalHeight > contentHeight) contentHeight = barTotalHeight;
     float backgroundHeight = dims.paddingV + titleHeight + contentHeight + dims.paddingV;
 
     setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + backgroundHeight);
@@ -327,21 +325,21 @@ void RumbleHud::rebuildRenderData() {
 
     // Light motor bar (first) - index 0
     updateMaxTracking(0, lightValue);
-    addVerticalBar(barsStartX, barsStartY, barWidth, graphHeight, lightValue, lightColor);
+    addVerticalBar(barsStartX, barsStartY, barWidth, barHeight, lightValue, lightColor);
     if (m_bShowMaxMarkers && m_maxFramesRemaining[0] > 0) {
-        addMaxMarker(barsStartX, barsStartY, barWidth, graphHeight, m_markerValues[0]);
+        addMaxMarker(barsStartX, barsStartY, barWidth, barHeight, m_markerValues[0]);
     }
-    addString("L", barsStartX + barWidth / 2.0f, barsStartY + graphHeight, Justify::CENTER,
+    addString("L", barsStartX + barWidth / 2.0f, barsStartY + barHeight, Justify::CENTER,
               this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
 
     // Heavy motor bar (second) - index 1
     float heavyBarX = barsStartX + barWidth + gapWidth;
     updateMaxTracking(1, heavyValue);
-    addVerticalBar(heavyBarX, barsStartY, barWidth, graphHeight, heavyValue, heavyColor);
+    addVerticalBar(heavyBarX, barsStartY, barWidth, barHeight, heavyValue, heavyColor);
     if (m_bShowMaxMarkers && m_maxFramesRemaining[1] > 0) {
-        addMaxMarker(heavyBarX, barsStartY, barWidth, graphHeight, m_markerValues[1]);
+        addMaxMarker(heavyBarX, barsStartY, barWidth, barHeight, m_markerValues[1]);
     }
-    addString("H", heavyBarX + barWidth / 2.0f, barsStartY + graphHeight, Justify::CENTER,
+    addString("H", heavyBarX + barWidth / 2.0f, barsStartY + barHeight, Justify::CENTER,
               this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
 
     // === RIGHT SIDE: Legend (effects only, motor totals shown in bars) ===

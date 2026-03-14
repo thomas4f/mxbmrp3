@@ -45,6 +45,7 @@
 #include "../hud/rumble_hud.h"
 #include "../hud/gamepad_widget.h"
 #include "../hud/lean_widget.h"
+#include "../hud/clock_widget.h"
 #if GAME_HAS_TYRE_TEMP
 #include "../hud/tyre_temp_widget.h"
 #endif
@@ -232,6 +233,11 @@ void HudManager::initialize() {
     m_pLean->setTextureBaseName("lean_widget");
     registerHud(std::move(leanPtr));
 
+    auto clockPtr = std::make_unique<ClockWidget>();
+    m_pClock = clockPtr.get();
+    m_pClock->setTextureBaseName("clock_widget");
+    registerHud(std::move(clockPtr));
+
 #if GAME_HAS_TYRE_TEMP
     auto tyreTempPtr = std::make_unique<TyreTempWidget>();
     m_pTyreTemp = tyreTempPtr.get();
@@ -253,7 +259,8 @@ void HudManager::initialize() {
     auto settingsPtr = std::make_unique<SettingsHud>(m_pIdealLap, m_pLapLog, m_pLapConsistency, m_pStandings,
                                                        m_pPerformance, m_pTelemetry, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pGear, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, recordsHudPtr, m_pFuel, m_pPointer, m_pRumble, m_pGamepad, m_pLean,
                                                        m_pFmxHud,
-                                                       m_pStatsHud
+                                                       m_pStatsHud,
+                                                       m_pClock
 #if GAME_HAS_TYRE_TEMP
                                                        , m_pTyreTemp
 #endif
@@ -335,6 +342,7 @@ void HudManager::clear() {
     m_pRumble = nullptr;
     m_pGamepad = nullptr;
     m_pLean = nullptr;
+    m_pClock = nullptr;
 #if GAME_HAS_TYRE_TEMP
     m_pTyreTemp = nullptr;
 #endif
@@ -596,11 +604,11 @@ void HudManager::updateHuds() {
 void HudManager::collectRenderData() {
 
     // Get drop shadow settings once (avoid repeated singleton calls)
-    const ColorConfig& colorConfig = ColorConfig::getInstance();
-    bool dropShadowEnabled = colorConfig.getDropShadow();
-    float shadowOffsetXPct = colorConfig.getDropShadowOffsetX();
-    float shadowOffsetYPct = colorConfig.getDropShadowOffsetY();
-    unsigned long shadowColor = colorConfig.getDropShadowColor();
+    const UiConfig& uiConfig = UiConfig::getInstance();
+    bool dropShadowEnabled = uiConfig.getDropShadow();
+    float shadowOffsetXPct = uiConfig.getDropShadowOffsetX();
+    float shadowOffsetYPct = uiConfig.getDropShadowOffsetY();
+    unsigned long shadowColor = uiConfig.getDropShadowColor();
 
     // Calculate total capacity needed to minimize allocations
     size_t totalQuads = 0;
@@ -660,7 +668,8 @@ void HudManager::collectRenderData() {
                            hud.get() == m_pSpeedo || hud.get() == m_pTacho ||
                            hud.get() == m_pBars || hud.get() == m_pVersion ||
                            hud.get() == m_pNotices || hud.get() == m_pFuel ||
-                           hud.get() == m_pGamepad || hud.get() == m_pLean);
+                           hud.get() == m_pGamepad || hud.get() == m_pLean ||
+                           hud.get() == m_pClock);
             if (m_bAllWidgetsToggledOff && isWidget && !isVersionGameActive) {
                 continue;
             }
@@ -837,10 +846,7 @@ void HudManager::processKeyboardInput() {
         DEBUG_INFO_F("Hotkey: Telemetry %s", m_pTelemetry->isVisible() ? "shown" : "hidden");
     }
 
-    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_INPUT) && m_pGamepad) {
-        m_pGamepad->setVisible(!m_pGamepad->isVisible());
-        DEBUG_INFO_F("Hotkey: Gamepad %s", m_pGamepad->isVisible() ? "shown" : "hidden");
-    }
+    // TOGGLE_INPUT removed - individual widget toggles not supported (use TOGGLE_WIDGETS)
 
 #if GAME_HAS_RECORDS_PROVIDER
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_RECORDS) && m_pRecords) {
