@@ -63,7 +63,7 @@ public:
         m_fBoundsLeft(0.0f), m_fBoundsTop(0.0f), m_fBoundsRight(0.0f), m_fBoundsBottom(0.0f),
         m_fScale(1.0f), m_bVisible(true), m_bShowTitle(true), m_fBackgroundOpacity(0.85f),
         m_bShowBackgroundTexture(false), m_iBackgroundTextureIndex(0),
-        m_lastTickUpdate() {}
+        m_lastTickUpdate(), m_benchmarkIndex(-1) {}
 
     virtual ~BaseHud() = default;
 
@@ -159,6 +159,10 @@ public:
     float getScale() const { return m_fScale; }
 
     void validatePosition();
+
+    // Benchmark profiling support
+    void setBenchmarkIndex(int index) { m_benchmarkIndex = index; }
+    int getBenchmarkIndex() const { return m_benchmarkIndex; }
 
     void setDataDirty() {
         m_bDataDirty = true;
@@ -346,6 +350,9 @@ public:
 
     // Frequent update timing (for live timing displays)
     std::chrono::steady_clock::time_point m_lastTickUpdate;
+
+    // Benchmark profiling index (registered in BenchmarkMetrics, -1 = not registered)
+    int m_benchmarkIndex;
 
 private:
     bool m_bDataDirty;

@@ -37,6 +37,7 @@
 #include "../hud/records_hud.h"
 #endif
 #include "../hud/rumble_hud.h"
+#include "../hud/benchmark_widget.h"
 #include "../hud/gamepad_widget.h"
 #include "../hud/lean_widget.h"
 #if GAME_HAS_TYRE_TEMP
@@ -306,6 +307,7 @@ namespace {
             constexpr const char* ALLTIME_PB = "notice_alltime_pb";
             constexpr const char* FASTEST_LAP = "notice_fastest_lap";
             constexpr const char* SESSION_PB = "notice_session_pb";
+            constexpr const char* DEFAULT_SETUP = "notice_default_setup";
         }
 
         // TelemetryHud elements
@@ -443,6 +445,7 @@ namespace {
             constexpr Setting ALLTIME_PB = {"notice_alltime_pb", "Show all-time PB notice"};
             constexpr Setting FASTEST_LAP = {"notice_fastest_lap", "Show fastest lap notice (online races)"};
             constexpr Setting SESSION_PB = {"notice_session_pb", "Show session PB notice"};
+            constexpr Setting DEFAULT_SETUP = {"notice_default_setup", "Show warning when using default setup"};
             constexpr Setting PB_DURATION = {"pbDurationMs", "Timed notice display duration in milliseconds (PB notices)"};
         }
 
@@ -1190,6 +1193,7 @@ namespace {
             if (key == Notices::ALLTIME_PB.key) return Notices::ALLTIME_PB.description;
             if (key == Notices::FASTEST_LAP.key) return Notices::FASTEST_LAP.description;
             if (key == Notices::SESSION_PB.key) return Notices::SESSION_PB.description;
+            if (key == Notices::DEFAULT_SETUP.key) return Notices::DEFAULT_SETUP.description;
             if (key == Notices::PB_DURATION.key) return Notices::PB_DURATION.description;
         } else if (hudName == "StandingsHud") {
             if (key == Standings::TOP_POSITIONS.key) return Standings::TOP_POSITIONS.description;
@@ -1496,6 +1500,7 @@ namespace {
         saveBitAsKey(settings, ALLTIME_PB, notices, NoticesWidget::NOTICE_ALLTIME_PB);
         saveBitAsKey(settings, FASTEST_LAP, notices, NoticesWidget::NOTICE_FASTEST_LAP);
         saveBitAsKey(settings, SESSION_PB, notices, NoticesWidget::NOTICE_SESSION_PB);
+        saveBitAsKey(settings, DEFAULT_SETUP, notices, NoticesWidget::NOTICE_DEFAULT_SETUP);
     }
 
     // NoticesWidget: load notices from named keys
@@ -1508,6 +1513,7 @@ namespace {
         loadBitFromKey(settings, ALLTIME_PB, notices, NoticesWidget::NOTICE_ALLTIME_PB);
         loadBitFromKey(settings, FASTEST_LAP, notices, NoticesWidget::NOTICE_FASTEST_LAP);
         loadBitFromKey(settings, SESSION_PB, notices, NoticesWidget::NOTICE_SESSION_PB);
+        loadBitFromKey(settings, DEFAULT_SETUP, notices, NoticesWidget::NOTICE_DEFAULT_SETUP);
     }
 
     // TelemetryHud: save elements as named keys
@@ -1933,6 +1939,10 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
     }
     captureWidget("SettingsButtonWidget", hudManager.getSettingsButtonWidget());
     captureWidget("PointerWidget", hudManager.getPointerWidget());
+    // BenchmarkWidget (developer mode only - may not exist)
+    if (hudManager.getBenchmarkWidget()) {
+        captureWidget("BenchmarkWidget", *hudManager.getBenchmarkWidget());
+    }
     // RumbleHud with showMaxMarkers
     {
         HudSettings settings;
@@ -2612,6 +2622,10 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
     }
     applyToHud("SettingsButtonWidget", hudManager.getSettingsButtonWidget());
     applyToHud("PointerWidget", hudManager.getPointerWidget());
+    // BenchmarkWidget (developer mode only - may not exist)
+    if (hudManager.getBenchmarkWidget()) {
+        applyToHud("BenchmarkWidget", *hudManager.getBenchmarkWidget());
+    }
     // Apply RumbleHud with showMaxMarkers
     {
         auto it = cache.find("RumbleHud");
@@ -3195,12 +3209,13 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     TrackedRidersManager::getInstance().save();
 
     // HUD order for consistent output
-    static const std::array<const char*, 34> hudOrder = {
+    static const std::array<const char*, 35> hudOrder = {
         "StandingsHud", "MapHud", "RadarHud", "PitboardHud", "RecordsHud",
         "LapLogHud", "LapConsistencyHud", "FmxHud", "StatsHud", "IdealLapHud", "TelemetryHud", "PerformanceHud",
         "LapWidget", "PositionWidget", "TimeWidget", "ClockWidget", "SessionHud", "SpeedWidget", "GearWidget",
         "SpeedoWidget", "TachoWidget", "TimingHud", "GapBarHud", "BarsWidget", "VersionWidget",
         "NoticesWidget", "FuelWidget", "GamepadWidget", "LeanWidget", "TyreTempWidget", "SettingsButtonWidget", "PointerWidget", "RumbleHud",
+        "BenchmarkWidget",
         "Global"
     };
 

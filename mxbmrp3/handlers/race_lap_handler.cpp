@@ -98,43 +98,47 @@ void RaceLapHandler::handleRaceLap(Unified::RaceLapData* psRaceLap) {
     int split2 = splitCount >= 2 ? psRaceLap->splits[1] : 0;
     int split3 = splitCount >= 3 ? psRaceLap->splits[2] : 0;
 
-    // Check if timing data is present and consistent (splits monotonically increasing)
-    // For 2-split games: s1 < s2 < lapTime
-    // For 3-split games: s1 < s2 < s3 < lapTime
-    bool hasValidTimingData = (lapTime > 0) && (split1 > 0);
-    if (hasValidTimingData && splitCount >= 2) {
-        hasValidTimingData = (split2 > split1);
-    }
-    if (hasValidTimingData && splitCount >= 3) {
-        hasValidTimingData = (split3 > split2) && (lapTime > split3);
-    } else if (hasValidTimingData) {
-        hasValidTimingData = (lapTime > split2);
-    }
-
-    // Convert accumulated split times to sector times
-    // Only zero out if timing data is actually malformed/missing
-    // For 2-split games (MX Bikes): S1, S2, S3 (final sector)
-    // For 3-split games (GP Bikes): S1, S2, S3, S4 (final sector)
-    int sector1 = hasValidTimingData ? split1 : 0;
-    int sector2 = hasValidTimingData && splitCount >= 2 ? (split2 - split1) : 0;
-    int sector3 = 0;
-    int sector4 = -1;  // Only valid for 4-sector games (GP Bikes)
-    if (hasValidTimingData) {
-        if (splitCount >= 3) {
-            sector3 = split3 - split2;  // Third sector for GP Bikes
-            sector4 = lapTime - split3; // Fourth/final sector for GP Bikes
-        } else if (splitCount >= 2) {
-            sector3 = lapTime - split2;  // Third/final sector for MX Bikes
-        }
-    }
-    lapTime = hasValidTimingData ? lapTime : 0;
-
-    // Determine if lap is valid for session best / PB purposes
+    // Lap validity: a lap is valid if lap time is positive and not flagged invalid by the game.
+    // Broken sector data (e.g., tracks with misplaced split markers) should NOT invalidate the lap.
     // API behavior differs by session type:
     //   - Non-race (practice/warmup): invalid laps have lapTime=0, invalid is always false
     //   - Race: invalid laps have invalid=true but timing data is preserved
-    // A lap is valid only if timing data exists AND invalid flag is not set
-    bool isLapValid = hasValidTimingData && !psRaceLap->invalid;
+    bool isLapValid = (lapTime > 0) && !psRaceLap->invalid;
+
+    // Convert accumulated split times to sector times per-sector.
+    // Each sector is computed independently — a broken sector is zeroed out without
+    // affecting other sectors or lap validity. This handles tracks with misplaced split
+    // markers (e.g., split1 == lapTime, split2 == 0) gracefully.
+    // For 2-split games (MX Bikes): S1, S2, S3 (final sector)
+    // For 3-split games (GP Bikes): S1, S2, S3, S4 (final sector)
+    int sector1 = 0;
+    int sector2 = 0;
+    int sector3 = 0;
+    int sector4 = -1;  // Only valid for 4-sector games (GP Bikes)
+
+    if (lapTime > 0) {
+        // Sector 1: valid if split1 is a proper sub-interval of the lap
+        if (split1 > 0 && split1 < lapTime) {
+            sector1 = split1;
+        }
+
+        if (splitCount >= 3) {
+            // 3-split game (GP Bikes): 4 sectors
+            if (split2 > split1 && split2 < lapTime) {
+                sector2 = split2 - split1;
+            }
+            if (split3 > split2 && split3 < lapTime) {
+                sector3 = split3 - split2;
+                sector4 = lapTime - split3;
+            }
+        } else if (splitCount >= 2) {
+            // 2-split game (MX Bikes): 3 sectors
+            if (split2 > split1 && split2 < lapTime) {
+                sector2 = split2 - split1;
+                sector3 = lapTime - split2;
+            }
+        }
+    }
 
     // Convert to 0-indexed for internal storage (see lap numbering convention above)
     int completedLapNumZeroIndexed = psRaceLap->lapNum - 1;

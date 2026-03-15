@@ -23,8 +23,10 @@ public:
         NOTICE_ALLTIME_PB  = 1 << 4,
         NOTICE_FASTEST_LAP = 1 << 5,
         NOTICE_SESSION_PB  = 1 << 6,
+        NOTICE_DEFAULT_SETUP = 1 << 7,
         NOTICE_DEFAULT     = NOTICE_WRONG_WAY | NOTICE_LAST_LAP | NOTICE_FINISHED
                            | NOTICE_ALLTIME_PB | NOTICE_FASTEST_LAP | NOTICE_SESSION_PB
+                           | NOTICE_DEFAULT_SETUP
     };
 
     // Timed notice display duration bounds (covers PB notices)
@@ -63,6 +65,7 @@ private:
     bool m_bShowSessionPB;                 // Currently showing session PB notice
     bool m_bShowFastestLap;                // Currently showing fastest lap notice
     bool m_bShowAllTimePB;                 // Currently showing all-time PB notice
+    bool m_bShowDefaultSetup;              // Currently showing default setup warning (track entry)
 
     // Trigger timestamps for timed notices
     std::chrono::steady_clock::time_point m_lastLapTriggerTime;

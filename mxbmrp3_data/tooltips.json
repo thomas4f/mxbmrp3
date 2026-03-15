@@ -80,6 +80,7 @@
     "performance.display": "Display mode. Graphs shows visual meters, Numbers shows text values, Both shows both.",
     "performance.fps": "Show frames per second.",
     "performance.cpu": "Show plugin execution time in milliseconds.",
+    "performance.benchmark": "Show benchmark profiler overlay with per-callback and per-HUD timing breakdown. A report is exported to benchmark_report.txt when toggled off.",
 
     "pitboard.show_mode": "When to display. Always shows constantly, Pit shows near pit area, Splits after timing points.",
     "pitboard.rider": "Show rider name row.",

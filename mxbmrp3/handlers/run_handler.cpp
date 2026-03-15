@@ -3,6 +3,7 @@
 // Processes run lifecycle data (run init/deinit/start/stop)
 // ============================================================================
 #include "run_handler.h"
+#include <cstring>
 #include "../core/handler_singleton.h"
 #include "../core/plugin_data.h"
 #include "../core/input_manager.h"
@@ -24,6 +25,12 @@ void RunHandler::handleRunInit(Unified::SessionData* psSessionData) {
     PluginData::getInstance().setAirTemperature(psSessionData->airTemperature);
     PluginData::getInstance().setTrackTemperature(psSessionData->trackTemperature);
     PluginData::getInstance().setSetupFileName(psSessionData->setupFileName);
+
+    // Warn if using default setup (empty or "Default")
+    if (psSessionData->setupFileName[0] == '\0' ||
+        strcmp(psSessionData->setupFileName, "Default") == 0) {
+        PluginData::getInstance().notifyDefaultSetup();
+    }
 
     // Reset fuel tracking when entering track (rider may have refueled in pits)
     HudManager::getInstance().getFuelWidget().resetFuelTracking();

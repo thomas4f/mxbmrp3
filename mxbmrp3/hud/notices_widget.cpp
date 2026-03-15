@@ -33,6 +33,7 @@ NoticesWidget::NoticesWidget()
     , m_bShowSessionPB(false)
     , m_bShowFastestLap(false)
     , m_bShowAllTimePB(false)
+    , m_bShowDefaultSetup(false)
 {
     // One-time setup
     DEBUG_INFO("NoticesWidget created");
@@ -71,6 +72,8 @@ void NoticesWidget::update() {
             pd.clearFastestLap();
         if (pd.hasNewSessionPB() && !isTimedNoticeActive(pd.getSessionPBTime()))
             pd.clearSessionPB();
+        if (pd.hasDefaultSetupNotice() && !isTimedNoticeActive(pd.getDefaultSetupTime()))
+            pd.clearDefaultSetupNotice();
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -180,6 +183,10 @@ void NoticesWidget::update() {
     checkTimedNotice(pluginData.hasNewSessionPB(), pluginData.getSessionPBTime(),
                      [&]() { pluginData.clearSessionPB(); }, m_bShowSessionPB);
 
+    // Check default setup warning (only fires when RunHandler detects default setup)
+    checkTimedNotice(pluginData.hasDefaultSetupNotice(), pluginData.getDefaultSetupTime(),
+                     [&]() { pluginData.clearDefaultSetupNotice(); }, m_bShowDefaultSetup);
+
     // Handle dirty flags using base class helper
     processDirtyFlags();
 }
@@ -235,11 +242,12 @@ void NoticesWidget::rebuildRenderData() {
     bool showSessionPB = m_bShowSessionPB && (m_enabledNotices & NOTICE_SESSION_PB);
     bool showFinished  = m_bShowFinished && (m_enabledNotices & NOTICE_FINISHED);
     bool showLastLap   = m_bShowLastLap && (m_enabledNotices & NOTICE_LAST_LAP);
+    bool showDefaultSetup = m_bShowDefaultSetup && (m_enabledNotices & NOTICE_DEFAULT_SETUP);
 
     // Only render if there's something to show
-    // Priority: WRONG WAY > BLUE FLAG > ALL-TIME PB > FASTEST LAP > SESSION PB > FINISHED > LAST LAP
+    // Priority: WRONG WAY > BLUE FLAG > ALL-TIME PB > FASTEST LAP > SESSION PB > FINISHED > LAST LAP > SETUP NAME
     if (!showWrongWay && !showBlueFlag && !showAllTimePB && !showFastestLap &&
-        !showSessionPB && !showLastLap && !showFinished) {
+        !showSessionPB && !showLastLap && !showFinished && !showDefaultSetup) {
         setBounds(0.0f, 0.0f, 0.0f, 0.0f);
         return;
     }
@@ -348,6 +356,20 @@ void NoticesWidget::rebuildRenderData() {
         addString("LAST LAP", CENTER_X, noticeY, Justify::CENTER,
             this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
     }
+    else if (showDefaultSetup) {
+        // Warn when using default setup (only fires for default/empty setups)
+        SPluginQuad_t noticeQuad;
+        float quadX = noticeQuadX;
+        float quadY = noticeQuadY;
+        applyOffset(quadX, quadY);
+        setQuadPositions(noticeQuad, quadX, quadY, noticeQuadWidth, noticeQuadHeight);
+        noticeQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+        noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::WARNING), m_fBackgroundOpacity);
+        m_quads.push_back(noticeQuad);
+
+        addString("DEFAULT SETUP", CENTER_X, noticeY, Justify::CENTER,
+            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::WARNING), dim.fontSizeLarge);
+    }
 
     setBounds(noticeQuadX, noticeQuadY, noticeQuadX + noticeQuadWidth, noticeQuadY + noticeQuadHeight);
 }
@@ -372,6 +394,7 @@ void NoticesWidget::resetToDefaults() {
     m_bShowSessionPB = false;
     m_bShowFastestLap = false;
     m_bShowAllTimePB = false;
+    m_bShowDefaultSetup = false;
     m_lastLapTriggerTime = {};
     m_finishedTriggerTime = {};
     m_sessionStartTime = 0;

@@ -251,7 +251,7 @@ struct Adapter {
         result.numEntries = src->m_iNumEntries;
         result.group1 = src->m_iGroup1;
         result.group2 = src->m_iGroup2;
-        for (int i = 0; i < 50 && i < src->m_iNumEntries; i++) {
+        for (int i = 0; i < Unified::MAX_RACE_ENTRIES && i < src->m_iNumEntries; i++) {
             result.entries[i] = src->m_aiEntries[i];
             result.grid[i] = src->m_aiGrid[i];
         }

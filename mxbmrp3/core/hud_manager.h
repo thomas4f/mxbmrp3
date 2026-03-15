@@ -105,6 +105,7 @@ public:
     class LapConsistencyHud& getLapConsistencyHud() const { assert(m_pLapConsistency && "HudManager not initialized"); return *m_pLapConsistency; }
     class FmxHud& getFmxHud() const { assert(m_pFmxHud && "HudManager not initialized"); return *m_pFmxHud; }
     class StatsHud& getStatsHud() const { assert(m_pStatsHud && "HudManager not initialized"); return *m_pStatsHud; }
+    class BenchmarkWidget* getBenchmarkWidget() const { return m_pBenchmark; }  // May be null if developer mode is off
     class SettingsHud& getSettingsHud() const { assert(m_pSettingsHud && "HudManager not initialized"); return *m_pSettingsHud; }
 
 private:
@@ -123,6 +124,7 @@ private:
                    m_pLapConsistency(nullptr),
                    m_pStatsHud(nullptr),
                    m_pFmxHud(nullptr),
+                   m_pBenchmark(nullptr),
                    m_bAllHudsToggledOff(false), m_bAllWidgetsToggledOff(false) {
     }
     ~HudManager();
@@ -181,6 +183,7 @@ private:
     class LapConsistencyHud* m_pLapConsistency;
     class StatsHud* m_pStatsHud;
     class FmxHud* m_pFmxHud;
+    class BenchmarkWidget* m_pBenchmark;
 
     // Temporary HUD visibility toggle (doesn't modify actual visibility state)
     bool m_bAllHudsToggledOff;

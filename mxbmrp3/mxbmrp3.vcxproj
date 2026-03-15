@@ -249,6 +249,7 @@
     <ClInclude Include="hud\map_hud.h" />
     <ClInclude Include="hud\radar_hud.h" />
     <ClInclude Include="hud\performance_hud.h" />
+    <ClInclude Include="hud\benchmark_widget.h" />
     <ClInclude Include="hud\pitboard_hud.h" />
     <ClInclude Include="hud\records_hud.h" />
     <ClInclude Include="hud\rumble_hud.h" />
@@ -347,6 +348,7 @@
     <ClCompile Include="hud\map_hud.cpp" />
     <ClCompile Include="hud\radar_hud.cpp" />
     <ClCompile Include="hud\performance_hud.cpp" />
+    <ClCompile Include="hud\benchmark_widget.cpp" />
     <ClCompile Include="hud\pitboard_hud.cpp" />
     <ClCompile Include="hud\records_hud.cpp" />
     <ClCompile Include="hud\rumble_hud.cpp" />

@@ -183,6 +183,13 @@ void DrawHandler::handleDraw(int iState, int* piNumQuads, void** ppQuad, int* pi
     // Update performance metrics for the performance HUD
     updateFrameMetrics(totalFrameTimeUs);
 
+    // Record render data counts for benchmark widget
+    auto& bm = PluginData::getInstance().getBenchmarkMetrics();
+    if (bm.active) {
+        bm.totalQuads = *piNumQuads;
+        bm.totalStrings = *piNumString;
+    }
+
     // Reset accumulator for next frame (must be AFTER updateFrameMetrics!)
     m_accumulatedFrameTimeUs = 0;
 }

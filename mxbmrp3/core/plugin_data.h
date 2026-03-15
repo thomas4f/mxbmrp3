@@ -238,6 +238,98 @@ struct DebugMetrics {
     DebugMetrics() : currentFps(0.0f), pluginTimeMs(0.0f), pluginPercent(0.0f) {}
 };
 
+// Per-callback timing entry for benchmark profiling (developer mode only)
+struct CallbackTimingEntry {
+    char name[24];              // Callback name (e.g., "RunTelemetry", "Draw")
+    long long totalTimeUs;      // Accumulated time this frame (microseconds)
+    long long peakTimeUs;       // Peak single-call time over measurement window
+    int callCount;              // Number of calls this frame
+
+    CallbackTimingEntry() : totalTimeUs(0), peakTimeUs(0), callCount(0) {
+        name[0] = '\0';
+    }
+};
+
+// Per-HUD rebuild timing entry for benchmark profiling
+struct HudTimingEntry {
+    char name[24];              // HUD name (e.g., "Standings", "Map")
+    long long lastRebuildTimeUs; // Duration of last rebuildRenderData() call
+    int rebuildCount;           // Number of rebuilds over measurement window
+
+    HudTimingEntry() : lastRebuildTimeUs(0), rebuildCount(0) {
+        name[0] = '\0';
+    }
+};
+
+// Benchmark metrics for detailed profiling (developer mode only)
+// Collected by DrawHandler, consumed by BenchmarkWidget
+struct BenchmarkMetrics {
+    static constexpr int MAX_CALLBACKS = 32;
+    static constexpr int MAX_HUDS = 32;
+
+    // Per-callback timing (indexed by callback ID)
+    std::array<CallbackTimingEntry, MAX_CALLBACKS> callbacks;
+    int callbackCount = 0;
+
+    // Per-HUD rebuild timing
+    std::array<HudTimingEntry, MAX_HUDS> huds;
+    int hudCount = 0;
+
+    // Aggregate metrics
+    long long collectRenderTimeUs = 0;  // Time spent in collectRenderData()
+    int totalQuads = 0;                 // Total quads rendered this frame
+    int totalStrings = 0;               // Total strings rendered this frame
+
+    // Active flag - when false, timing macros skip per-callback recording
+    bool active = false;
+
+    void reset() {
+        for (int i = 0; i < callbackCount; ++i) {
+            callbacks[i].totalTimeUs = 0;
+            callbacks[i].callCount = 0;
+        }
+        for (int i = 0; i < hudCount; ++i) {
+            huds[i].lastRebuildTimeUs = 0;
+        }
+        collectRenderTimeUs = 0;
+        totalQuads = 0;
+        totalStrings = 0;
+    }
+
+    // Register a callback slot (returns index, -1 if full)
+    int registerCallback(const char* callbackName) {
+        if (callbackCount >= MAX_CALLBACKS) return -1;
+        int idx = callbackCount++;
+        strncpy_s(callbacks[idx].name, sizeof(callbacks[idx].name), callbackName, _TRUNCATE);
+        return idx;
+    }
+
+    // Register a HUD slot (returns index, -1 if full)
+    int registerHud(const char* hudName) {
+        if (hudCount >= MAX_HUDS) return -1;
+        int idx = hudCount++;
+        strncpy_s(huds[idx].name, sizeof(huds[idx].name), hudName, _TRUNCATE);
+        return idx;
+    }
+
+    // Record a callback timing
+    void recordCallback(int index, long long timeUs) {
+        if (index < 0 || index >= callbackCount) return;
+        callbacks[index].totalTimeUs += timeUs;
+        callbacks[index].callCount++;
+        if (timeUs > callbacks[index].peakTimeUs) {
+            callbacks[index].peakTimeUs = timeUs;
+        }
+    }
+
+    // Record a HUD rebuild timing
+    void recordHudRebuild(int index, long long timeUs) {
+        if (index < 0 || index >= hudCount) return;
+        huds[index].lastRebuildTimeUs = timeUs;
+        huds[index].rebuildCount++;
+    }
+};
+
 // Bike telemetry data from physics simulation
 struct BikeTelemetryData {
     float speedometer;  // Ground speed in meters/second
@@ -814,6 +906,8 @@ public:
     // Data accessors for HUD components
     const SessionData& getSessionData() const { return m_sessionData; }
     const DebugMetrics& getDebugMetrics() const { return m_debugMetrics; }
+    BenchmarkMetrics& getBenchmarkMetrics() { return m_benchmarkMetrics; }
+    const BenchmarkMetrics& getBenchmarkMetrics() const { return m_benchmarkMetrics; }
     const BikeTelemetryData& getBikeTelemetry() const { return m_bikeTelemetry; }
     const InputTelemetryData& getInputTelemetry() const { return m_inputTelemetry; }
     const HistoryBuffers& getHistoryBuffers() const { return m_historyBuffers; }
@@ -891,6 +985,12 @@ public:
     void clearFastestLap()  { m_newFastestLap = false; }
     void clearAllTimePB()  { m_newAllTimePB = false; }
 
+    // Default setup warning (set by RunHandler when entering track with default setup)
+    void notifyDefaultSetup()  { m_newDefaultSetup = true; m_defaultSetupTime = std::chrono::steady_clock::now(); }
+    bool hasDefaultSetupNotice() const  { return m_newDefaultSetup; }
+    std::chrono::steady_clock::time_point getDefaultSetupTime() const  { return m_defaultSetupTime; }
+    void clearDefaultSetupNotice()  { m_newDefaultSetup = false; }
+
 private:
     PluginData() : m_currentSessionTime(0), m_playerRaceNum(-1), m_bPlayerRaceNumValid(false),
                    m_bPlayerNotFoundWarned(false), m_bWaitingForPlayerEntry(false),
@@ -918,6 +1018,7 @@ private:
 
     SessionData m_sessionData;
     DebugMetrics m_debugMetrics;
+    BenchmarkMetrics m_benchmarkMetrics;
     BikeTelemetryData m_bikeTelemetry;
     InputTelemetryData m_inputTelemetry;
     HistoryBuffers m_historyBuffers;
@@ -978,8 +1079,10 @@ private:
     bool m_newSessionPB = false;
     bool m_newFastestLap = false;
     bool m_newAllTimePB = false;
+    bool m_newDefaultSetup = false;
     std::chrono::steady_clock::time_point m_sessionPBTime;
     std::chrono::steady_clock::time_point m_fastestLapTime;
     std::chrono::steady_clock::time_point m_allTimePBTime;
+    std::chrono::steady_clock::time_point m_defaultSetupTime;
 
 };

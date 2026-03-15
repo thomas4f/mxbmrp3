@@ -44,12 +44,32 @@
 using namespace PluginConstants;
 
 // RAII helper macro to automatically measure and accumulate callback execution time
-// Usage: Add ACCUMULATE_CALLBACK_TIME() at the start of any plugin callback
-#define ACCUMULATE_CALLBACK_TIME() \
+// Also records per-callback timing for the benchmark widget when active
+// Usage: Add ACCUMULATE_CALLBACK_TIME(name) at the start of any plugin callback
+#define ACCUMULATE_CALLBACK_TIME_NAMED(callbackName) \
+    static int _cbIdx = -1; \
     struct _ScopedCallbackTimer { \
         long long _start; \
-        _ScopedCallbackTimer() : _start(DrawHandler::getCurrentTimeUs()) {} \
-        ~_ScopedCallbackTimer() { DrawHandler::accumulateCallbackTime(DrawHandler::getCurrentTimeUs() - _start); } \
+        int _idx; \
+        _ScopedCallbackTimer(int& idx) : _start(DrawHandler::getCurrentTimeUs()), _idx(idx) { \
+            auto& bm = PluginData::getInstance().getBenchmarkMetrics(); \
+            if (idx < 0 || idx >= bm.callbackCount) { idx = bm.registerCallback(callbackName); } \
+            _idx = idx; \
+        } \
+        ~_ScopedCallbackTimer() { \
+            long long elapsed = DrawHandler::getCurrentTimeUs() - _start; \
+            DrawHandler::accumulateCallbackTime(elapsed); \
+            auto& bm = PluginData::getInstance().getBenchmarkMetrics(); \
+            if (bm.active && _idx >= 0) { bm.recordCallback(_idx, elapsed); } \
+        } \
+    } _cbtimer(_cbIdx)
+
+// Backward-compatible version (no per-callback recording)
+#define ACCUMULATE_CALLBACK_TIME() \
+    struct _ScopedCallbackTimerSimple { \
+        long long _start; \
+        _ScopedCallbackTimerSimple() : _start(DrawHandler::getCurrentTimeUs()) {} \
+        ~_ScopedCallbackTimerSimple() { DrawHandler::accumulateCallbackTime(DrawHandler::getCurrentTimeUs() - _start); } \
     } _cbtimer
 
 PluginManager::PluginManager() {
@@ -157,7 +177,7 @@ void PluginManager::handleShutdown() {
 }
 
 void PluginManager::handleEventInit(Unified::VehicleEventData* psEventData) {
-    ACCUMULATE_CALLBACK_TIME();
+    ACCUMULATE_CALLBACK_TIME_NAMED("EventInit");
     SCOPED_TIMER_THRESHOLD("Plugin::handleEventInit", 100);
     DEBUG_INFO("=== Event Init ===");
 
@@ -165,7 +185,7 @@ void PluginManager::handleEventInit(Unified::VehicleEventData* psEventData) {
 }
 
 void PluginManager::handleEventDeinit() {
-    ACCUMULATE_CALLBACK_TIME();
+    ACCUMULATE_CALLBACK_TIME_NAMED("EventDeinit");
     SCOPED_TIMER_THRESHOLD("Plugin::handleEventDeinit", 100);
     DEBUG_INFO("=== Event Deinit ===");
 
@@ -173,7 +193,7 @@ void PluginManager::handleEventDeinit() {
 }
 
 void PluginManager::handleRunInit(Unified::SessionData* psSessionData) {
-    ACCUMULATE_CALLBACK_TIME();
+    ACCUMULATE_CALLBACK_TIME_NAMED("RunInit");
     SCOPED_TIMER_THRESHOLD("Plugin::handleRunInit", 100);
     DEBUG_INFO("=== Run Init ===");
 
@@ -181,7 +201,7 @@ void PluginManager::handleRunInit(Unified::SessionData* psSessionData) {
 }
 
 void PluginManager::handleRunDeinit() {
-    ACCUMULATE_CALLBACK_TIME();
+    ACCUMULATE_CALLBACK_TIME_NAMED("RunDeinit");
     SCOPED_TIMER_THRESHOLD("Plugin::handleRunDeinit", 100);
     DEBUG_INFO("=== Run Deinit ===");
 
@@ -189,7 +209,7 @@ void PluginManager::handleRunDeinit() {
 }
 
 void PluginManager::handleRunStart() {
-    ACCUMULATE_CALLBACK_TIME();
+    ACCUMULATE_CALLBACK_TIME_NAMED("RunStart");
     SCOPED_TIMER_THRESHOLD("Plugin::handleRunStart", 100);
     DEBUG_INFO("=== Run Start ===");
 
@@ -197,7 +217,7 @@ void PluginManager::handleRunStart() {
 }
 
 void PluginManager::handleRunStop() {
-    ACCUMULATE_CALLBACK_TIME();
+    ACCUMULATE_CALLBACK_TIME_NAMED("RunStop");
     SCOPED_TIMER_THRESHOLD("Plugin::handleRunStop", 100);
     DEBUG_INFO("=== Run Stop ===");
 
@@ -208,7 +228,7 @@ void PluginManager::handleRunStop() {
 }
 
 void PluginManager::handleRunLap(Unified::PlayerLapData* psLapData) {
-    ACCUMULATE_CALLBACK_TIME();
+    ACCUMULATE_CALLBACK_TIME_NAMED("RunLap");
     SCOPED_TIMER_THRESHOLD("Plugin::handleRunLap", 500);
     DEBUG_INFO("=== Run Lap ===");
 
@@ -216,7 +236,7 @@ void PluginManager::handleRunLap(Unified::PlayerLapData* psLapData) {
 }
 
 void PluginManager::handleRunSplit(Unified::PlayerSplitData* psSplitData) {
-    ACCUMULATE_CALLBACK_TIME();
+    ACCUMULATE_CALLBACK_TIME_NAMED("RunSplit");
     SCOPED_TIMER_THRESHOLD("Plugin::handleRunSplit", 500);
     DEBUG_INFO("=== Run Split ===");
 
@@ -224,7 +244,7 @@ void PluginManager::handleRunSplit(Unified::PlayerSplitData* psSplitData) {
 }
 
 void PluginManager::handleRunTelemetry(Unified::TelemetryData* psTelemetryData) {
-    ACCUMULATE_CALLBACK_TIME();
+    ACCUMULATE_CALLBACK_TIME_NAMED("RunTelemetry");
     SCOPED_TIMER_THRESHOLD("Plugin::handleRunTelemetry", 100);
     // Skip logging (high-frequency event - runs at telemetry rate)
 
@@ -248,14 +268,14 @@ int PluginManager::handleDrawInit(int* piNumSprites, char** pszSpriteName, int* 
 }
 
 void PluginManager::handleDraw(int iState, int* piNumQuads, void** ppQuad, int* piNumString, void** ppString) {
-    ACCUMULATE_CALLBACK_TIME();  // Measure this callback's execution time
+    ACCUMULATE_CALLBACK_TIME_NAMED("Draw");
 
     // Delegate to DrawHandler for performance tracking and rendering
     DrawHandler::getInstance().handleDraw(iState, piNumQuads, ppQuad, piNumString, ppString);
 }
 
 void PluginManager::handleTrackCenterline(int iNumSegments, Unified::TrackSegment* pasSegment, void* pRaceData) {
-    ACCUMULATE_CALLBACK_TIME();
+    ACCUMULATE_CALLBACK_TIME_NAMED("TrackCenterline");
     SCOPED_TIMER_THRESHOLD("Plugin::handleTrackCenterline", 100);
     DEBUG_INFO("=== Track Centerline ===");
 
@@ -263,7 +283,7 @@ void PluginManager::handleTrackCenterline(int iNumSegments, Unified::TrackSegmen
 }
 
 void PluginManager::handleRaceEvent(Unified::RaceEventData* psRaceEvent) {
-    ACCUMULATE_CALLBACK_TIME();
+    ACCUMULATE_CALLBACK_TIME_NAMED("RaceEvent");
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceEvent", 100);
     DEBUG_INFO("=== Race Event ===");
 
@@ -271,7 +291,7 @@ void PluginManager::handleRaceEvent(Unified::RaceEventData* psRaceEvent) {
 }
 
 void PluginManager::handleRaceDeinit() {
-    ACCUMULATE_CALLBACK_TIME();
+    ACCUMULATE_CALLBACK_TIME_NAMED("RaceDeinit");
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceDeinit", 100);
     DEBUG_INFO("=== Race Deinit ===");
 
@@ -280,7 +300,7 @@ void PluginManager::handleRaceDeinit() {
 }
 
 void PluginManager::handleRaceAddEntry(Unified::RaceEntryData* psRaceAddEntry) {
-    ACCUMULATE_CALLBACK_TIME();
+    ACCUMULATE_CALLBACK_TIME_NAMED("RaceAddEntry");
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceAddEntry", 500);
     DEBUG_INFO("=== Race Add Entry ===");
 
@@ -288,7 +308,7 @@ void PluginManager::handleRaceAddEntry(Unified::RaceEntryData* psRaceAddEntry) {
 }
 
 void PluginManager::handleRaceRemoveEntry(int raceNum) {
-    ACCUMULATE_CALLBACK_TIME();
+    ACCUMULATE_CALLBACK_TIME_NAMED("RaceRemoveEntry");
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceRemoveEntry", 100);
     DEBUG_INFO("=== Race Remove Entry ===");
 
@@ -296,7 +316,7 @@ void PluginManager::handleRaceRemoveEntry(int raceNum) {
 }
 
 void PluginManager::handleRaceSession(Unified::RaceSessionData* psRaceSession) {
-    ACCUMULATE_CALLBACK_TIME();
+    ACCUMULATE_CALLBACK_TIME_NAMED("RaceSession");
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceSession", 100);
     DEBUG_INFO("=== Race Session ===");
 
@@ -304,7 +324,7 @@ void PluginManager::handleRaceSession(Unified::RaceSessionData* psRaceSession) {
 }
 
 void PluginManager::handleRaceSessionState(Unified::RaceSessionStateData* psRaceSessionState) {
-    ACCUMULATE_CALLBACK_TIME();
+    ACCUMULATE_CALLBACK_TIME_NAMED("RaceSessionState");
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceSessionState", 100);
     DEBUG_INFO("=== Race Session State ===");
 
@@ -312,7 +332,7 @@ void PluginManager::handleRaceSessionState(Unified::RaceSessionStateData* psRace
 }
 
 void PluginManager::handleRaceLap(Unified::RaceLapData* psRaceLap) {
-    ACCUMULATE_CALLBACK_TIME();
+    ACCUMULATE_CALLBACK_TIME_NAMED("RaceLap");
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceLap", 500);
     DEBUG_INFO("=== Race Lap ===");
 
@@ -320,14 +340,14 @@ void PluginManager::handleRaceLap(Unified::RaceLapData* psRaceLap) {
 }
 
 void PluginManager::handleRaceSplit(Unified::RaceSplitData* psRaceSplit) {
-    ACCUMULATE_CALLBACK_TIME();
+    ACCUMULATE_CALLBACK_TIME_NAMED("RaceSplit");
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceSplit", 500);
     DEBUG_INFO("=== Race Split ===");
     RaceSplitHandler::getInstance().handleRaceSplit(psRaceSplit);
 }
 
 void PluginManager::handleRaceSpeed(Unified::RaceSpeedData* psRaceSpeed) {
-    ACCUMULATE_CALLBACK_TIME();
+    ACCUMULATE_CALLBACK_TIME_NAMED("RaceSpeed");
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceSpeed", 100);
     DEBUG_INFO("=== Race Speed ===");
     // TODO: Implement race speed handling if needed (GP Bikes, WRS, KRP only)
@@ -340,7 +360,7 @@ void PluginManager::handleRaceSpeed(Unified::RaceSpeedData* psRaceSpeed) {
 // export a RaceHoleshot handler in mxb_api.cpp until the game actually supports it.
 
 void PluginManager::handleRaceCommunication(Unified::RaceCommunicationData* psRaceCommunication) {
-    ACCUMULATE_CALLBACK_TIME();
+    ACCUMULATE_CALLBACK_TIME_NAMED("RaceComm");
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceCommunication", 500);
     DEBUG_INFO("=== Race Communication ===");
 
@@ -348,7 +368,7 @@ void PluginManager::handleRaceCommunication(Unified::RaceCommunicationData* psRa
 }
 
 void PluginManager::handleRaceClassification(Unified::RaceClassificationData* psRaceClassification, Unified::RaceClassificationEntry* pasRaceClassificationEntry, int iNumEntries) {
-    ACCUMULATE_CALLBACK_TIME();
+    ACCUMULATE_CALLBACK_TIME_NAMED("Classification");
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceClassification", 100);
     // Skip logging (high-frequency event)
 
@@ -360,7 +380,7 @@ void PluginManager::handleRaceClassification(Unified::RaceClassificationData* ps
 }
 
 void PluginManager::handleRaceTrackPosition(int iNumVehicles, Unified::TrackPositionData* pasRaceTrackPosition) {
-    ACCUMULATE_CALLBACK_TIME();
+    ACCUMULATE_CALLBACK_TIME_NAMED("TrackPosition");
     // SCOPED_TIMER_THRESHOLD("Plugin::handleRaceTrackPosition", 500);  // Commented out - too noisy for debugging
     // Skip logging (high-frequency event - runs at vehicle update rate)
 
@@ -369,7 +389,7 @@ void PluginManager::handleRaceTrackPosition(int iNumVehicles, Unified::TrackPosi
 }
 
 void PluginManager::handleRaceVehicleData(Unified::RaceVehicleData* psRaceVehicleData) {
-    ACCUMULATE_CALLBACK_TIME();
+    ACCUMULATE_CALLBACK_TIME_NAMED("RaceVehicleData");
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceVehicleData", 500);
     // Skip logging (high-frequency event)
 

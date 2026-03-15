@@ -52,8 +52,10 @@
 #include "../hud/lap_consistency_hud.h"
 #include "../hud/fmx_hud.h"
 #include "../hud/stats_hud.h"
+#include "../hud/benchmark_widget.h"
 #include "hotkey_manager.h"
 #include "tooltip_manager.h"
+#include "../handlers/draw_handler.h"
 #include "color_config.h"
 #include <windows.h>
 #include <algorithm>
@@ -148,6 +150,15 @@ void HudManager::initialize() {
     m_pStatsHud = statsPtr.get();
     m_pStatsHud->setTextureBaseName("stats_hud");
     registerHud(std::move(statsPtr));
+
+    // Benchmark Widget (always created, but only accessible via settings when developer mode is on)
+    // Note: Must be created unconditionally because isDeveloperMode() returns false here -
+    // settings are loaded later in initialize(). The settings tab gates access at render time.
+    {
+        auto benchmarkPtr = std::make_unique<BenchmarkWidget>();
+        m_pBenchmark = benchmarkPtr.get();
+        registerHud(std::move(benchmarkPtr));
+    }
 
     // Widgets
     auto lapPtr = std::make_unique<LapWidget>();
@@ -276,6 +287,32 @@ void HudManager::initialize() {
     // Register PointerWidget last so it renders on top of everything
     registerHud(std::move(pointerPtr));
 
+    // Register all HUDs for benchmark profiling (developer mode only)
+    if (m_pBenchmark) {
+        auto& bm = PluginData::getInstance().getBenchmarkMetrics();
+        for (auto& hud : m_huds) {
+            if (hud && hud.get() != m_pBenchmark) {
+                const std::string& baseName = hud->getTextureBaseName();
+                const char* name;
+                if (!baseName.empty()) {
+                    name = baseName.c_str();
+                } else if (hud.get() == m_pVersion) {
+                    name = "version_widget";
+                } else if (hud.get() == m_pSettingsHud) {
+                    name = "settings_hud";
+                } else if (hud.get() == m_pSettingsButton) {
+                    name = "settings_button";
+                } else if (hud.get() == m_pPointer) {
+                    name = "pointer_widget";
+                } else {
+                    name = "unknown";
+                }
+                int idx = bm.registerHud(name);
+                hud->setBenchmarkIndex(idx);
+            }
+        }
+    }
+
     // Load settings from disk (must happen after HUD registration)
     SettingsManager::getInstance().loadSettings(*this, PluginManager::getInstance().getSavePath());
 
@@ -349,6 +386,7 @@ void HudManager::clear() {
     m_pLapConsistency = nullptr;
     m_pStatsHud = nullptr;
     m_pFmxHud = nullptr;
+    m_pBenchmark = nullptr;
     m_pSettingsHud = nullptr;
     m_pSettingsButton = nullptr;
     m_pPointer = nullptr;
@@ -521,12 +559,22 @@ void HudManager::draw(int iState, int* piNumQuads, void** ppQuad, int* piNumStri
     // Update hotkey manager (checks for triggered actions)
     HotkeyManager::getInstance().update();
 
+    auto& bm = PluginData::getInstance().getBenchmarkMetrics();
+
     // Update all HUDs (they will only rebuild if marked dirty)
+    // Note: No per-frame callback reset here. Callbacks accumulate across
+    // the entire snapshot interval. BenchmarkWidget::takeSnapshot() resets them.
     updateHuds();
 
     // Collect render data from all HUDs
     // Note: PointerWidget is registered last, so pointer renders on top
-    collectRenderData();
+    if (bm.active) {
+        long long collectStart = DrawHandler::getCurrentTimeUs();
+        collectRenderData();
+        bm.collectRenderTimeUs = DrawHandler::getCurrentTimeUs() - collectStart;
+    } else {
+        collectRenderData();
+    }
 
     // Set output parameters
     *piNumQuads = static_cast<int>(m_quads.size());

@@ -890,6 +890,9 @@ void PluginData::batchUpdateStandings(Unified::RaceClassificationEntry* entries,
     // Batch update all standings AND build classification order in single pass
     // Eliminates duplicate iteration of the same array
 
+    // Clamp to max supported entries (defensive against corrupt API data)
+    if (numEntries > Unified::MAX_RACE_ENTRIES) numEntries = Unified::MAX_RACE_ENTRIES;
+
     bool anyChanged = false;
 
     // Reserve space for classification order (avoid reallocations)
@@ -1480,11 +1483,17 @@ void PluginData::clear() {
     m_newFastestLap = false;
     m_newAllTimePB = false;
 
+    // Reset benchmark metrics (preserves active flag, clears all registrations)
+    bool bmWasActive = m_benchmarkMetrics.active;
+    m_benchmarkMetrics = BenchmarkMetrics{};
+    m_benchmarkMetrics.active = bmWasActive;
+
     DEBUG_INFO("Plugin data cleared");
 }
 
 // Direct call to HudManager and DiscordManager, no callback/observer overhead
 void PluginData::notifyHudManager(DataChangeType changeType) {
+    if (!HudManager::getInstance().isInitialized()) return;
     HudManager::getInstance().onDataChanged(changeType);
 #if GAME_HAS_DISCORD
     DiscordManager::getInstance().onDataChanged(changeType);

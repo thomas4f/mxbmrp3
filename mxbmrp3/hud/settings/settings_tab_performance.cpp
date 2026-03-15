@@ -5,6 +5,9 @@
 #include "settings_layout.h"
 #include "../settings_hud.h"
 #include "../performance_hud.h"
+#include "../benchmark_widget.h"
+#include "../../core/settings_manager.h"
+#include "../../core/hud_manager.h"
 
 // Static member function of SettingsHud - inherits friend access to PerformanceHud
 BaseHud* SettingsHud::renderTabPerformance(SettingsLayoutContext& ctx) {
@@ -43,6 +46,18 @@ BaseHud* SettingsHud::renderTabPerformance(SettingsLayoutContext& ctx) {
     ctx.addToggleControl("CPU usage", (hud->m_enabledElements & PerformanceHud::ELEM_CPU) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledElements, PerformanceHud::ELEM_CPU, true,
         "performance.cpu");
+
+    // === DEVELOPER SECTION (only visible in developer mode) ===
+    if (SettingsManager::getInstance().isDeveloperMode()) {
+        BenchmarkWidget* benchmark = HudManager::getInstance().getBenchmarkWidget();
+        if (benchmark) {
+            ctx.addSpacing(0.5f);
+            ctx.addSectionHeader("Developer");
+            ctx.addToggleControl("Benchmark profiler", benchmark->isVisible(),
+                SettingsHud::ClickRegion::HUD_TOGGLE, benchmark, nullptr, 0, true,
+                "performance.benchmark");
+        }
+    }
 
     return hud;
 }

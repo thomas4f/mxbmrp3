@@ -260,19 +260,28 @@ void PerformanceHud::rebuildRenderData() {
     bool showGraphs = (m_displayMode == DISPLAY_GRAPHS || m_displayMode == DISPLAY_BOTH);
     bool showValues = (m_displayMode == DISPLAY_VALUES || m_displayMode == DISPLAY_BOTH);
 
-    // Calculate legend height (values are shown vertically on the right)
-    // Each metric: label + Max + Avg + Min = 4 lines
-    // Gap between metrics: 1 line
-    int legendLines = 0;
-    bool hasFps = (m_enabledElements & ELEM_FPS) && showValues;
-    bool hasCpu = (m_enabledElements & ELEM_CPU) && showValues;
-    if (hasFps) legendLines += 4;
-    if (hasFps && hasCpu) legendLines += 1;  // Gap between FPS and CPU sections
-    if (hasCpu) legendLines += 4;
-    float legendHeight = legendLines * dims.lineHeightNormal;
+    // Calculate per-section content heights
+    // Each section's height = max(graph height, legend height for that section)
+    // When both FPS and CPU are enabled, sections stack vertically with a gap
+    bool hasFps = (m_enabledElements & ELEM_FPS) != 0;
+    bool hasCpu = (m_enabledElements & ELEM_CPU) != 0;
 
-    // Content height is max of graph height and legend height
-    float contentHeight = showGraphs ? (graphHeight > legendHeight ? graphHeight : legendHeight) : legendHeight;
+    float fpsSectionH = 0.0f;
+    if (hasFps) {
+        float fpsLegendH = showValues ? (4 * dims.lineHeightNormal) : 0.0f;
+        fpsSectionH = showGraphs ? (std::max)(graphHeight, fpsLegendH) : fpsLegendH;
+    }
+
+    float cpuSectionH = 0.0f;
+    if (hasCpu) {
+        float cpuLegendH = showValues ? (4 * dims.lineHeightNormal) : 0.0f;
+        cpuSectionH = showGraphs ? (std::max)(graphHeight, cpuLegendH) : cpuLegendH;
+    }
+
+    // Gap between sections when both are enabled
+    float sectionGap = (hasFps && hasCpu) ? dims.lineHeightNormal : 0.0f;
+
+    float contentHeight = fpsSectionH + sectionGap + cpuSectionH;
     float backgroundHeight = dims.paddingV + titleHeight + contentHeight + dims.paddingV;
 
     setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + backgroundHeight);
@@ -390,15 +399,18 @@ void PerformanceHud::rebuildRenderData() {
             addString(buffer, valueX, legendY, Justify::LEFT,
                 this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
             legendY += dims.lineHeightNormal;
-
-            // Add gap before CPU section if both are enabled
-            if (m_enabledElements & ELEM_CPU) {
-                legendY += dims.lineHeightNormal;
-            }
         }
     }
 
-    // Update currentY to align with legend position for CPU graph
+    // Advance past FPS section: graph may extend below legend text
+    if (hasFps && showGraphs) {
+        float fpsGraphBottom = currentY + graphHeight;
+        if (fpsGraphBottom > legendY) legendY = fpsGraphBottom;
+    }
+    // Gap between FPS and CPU sections
+    if (hasFps && hasCpu) {
+        legendY += dims.lineHeightNormal;
+    }
     currentY = legendY;
 
     // CPU Section (graph on left, legend on right)

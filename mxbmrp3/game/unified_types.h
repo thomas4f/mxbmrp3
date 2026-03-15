@@ -19,6 +19,9 @@
 
 namespace Unified {
 
+// Maximum number of race entries supported by Piboso game APIs
+constexpr int MAX_RACE_ENTRIES = 50;
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -316,8 +319,8 @@ struct RaceSessionData {
     // KRP-specific
     int sessionSeries;
     int numEntries;
-    int entries[50];                // Race numbers
-    int grid[50];                   // Grid positions
+    int entries[MAX_RACE_ENTRIES];   // Race numbers
+    int grid[MAX_RACE_ENTRIES];     // Grid positions
     int group1, group2;             // Qualify heat groups
 
     RaceSessionData() {

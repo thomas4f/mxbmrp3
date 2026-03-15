@@ -13,6 +13,7 @@
 #include "../core/hud_manager.h"
 #include "../core/asset_manager.h"
 #include "../diagnostics/logger.h"
+#include "../handlers/draw_handler.h"
 #include "../diagnostics/timer.h"
 #include <cmath>
 #include <limits>
@@ -226,7 +227,16 @@ bool BaseHud::clampPositionToBounds(float& offsetX, float& offsetY, const Window
 
 void BaseHud::processDirtyFlags() {
     if (isDataDirty()) {
-        rebuildRenderData();
+        // Time the rebuild if benchmark is active and this HUD is registered
+        auto& bm = PluginData::getInstance().getBenchmarkMetrics();
+        if (bm.active && m_benchmarkIndex >= 0) {
+            long long start = DrawHandler::getCurrentTimeUs();
+            rebuildRenderData();
+            long long elapsed = DrawHandler::getCurrentTimeUs() - start;
+            bm.recordHudRebuild(m_benchmarkIndex, elapsed);
+        } else {
+            rebuildRenderData();
+        }
         onAfterDataRebuild();
         clearDataDirty();
         clearLayoutDirty();
