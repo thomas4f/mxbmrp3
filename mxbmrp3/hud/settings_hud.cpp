@@ -53,12 +53,6 @@ EnumT cycleEnum(EnumT current, int enumCount, bool forward) {
 bool SettingsHud::isRepeatableRegionType(ClickRegion::Type type) {
     switch (type) {
         // Value cycling controls (all _UP/_DOWN pairs)
-        case ClickRegion::GAP_MODE_UP:
-        case ClickRegion::GAP_MODE_DOWN:
-        case ClickRegion::GAP_INDICATOR_UP:
-        case ClickRegion::GAP_INDICATOR_DOWN:
-        case ClickRegion::GAP_REFERENCE_UP:
-        case ClickRegion::GAP_REFERENCE_DOWN:
         case ClickRegion::COPY_TARGET_UP:
         case ClickRegion::COPY_TARGET_DOWN:
         case ClickRegion::TEXTURE_VARIANT_UP:
@@ -235,6 +229,8 @@ bool SettingsHud::isRepeatableRegionType(ClickRegion::Type type) {
         case ClickRegion::SERVER_PAGE_NEXT:
         case ClickRegion::TRACKED_PAGE_PREV:
         case ClickRegion::TRACKED_PAGE_NEXT:
+        case ClickRegion::NOTICES_DURATION_UP:
+        case ClickRegion::NOTICES_DURATION_DOWN:
             return true;
         default:
             return false;
@@ -256,7 +252,7 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, LapConsistenc
                          StandingsHud* standings,
                          PerformanceHud* performance,
                          TelemetryHud* telemetry,
-                         TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean,
+                         TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesHud* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean,
                          FmxHud* fmxHud,
                          StatsHud* statsHud,
                          ClockWidget* clock
@@ -817,6 +813,7 @@ void SettingsHud::rebuildRenderData() {
         TAB_SESSION,
         TAB_TIMING,
         TAB_GAP_BAR,
+        TAB_NOTICES,
         TAB_FMX,
         TAB_STATS,
         TAB_PERFORMANCE,
@@ -906,6 +903,7 @@ void SettingsHud::rebuildRenderData() {
             case TAB_GAP_BAR:      tabHud = m_gapBar; break;
             case TAB_FMX:          tabHud = m_fmxHud; break;
             case TAB_STATS:        tabHud = m_statsHud; break;
+            case TAB_NOTICES:      tabHud = m_notices; break;
             default:               tabHud = nullptr; break;  // General, Widgets, Rumble have no single HUD
         }
 
@@ -1430,6 +1428,12 @@ void SettingsHud::rebuildRenderData() {
             currentY = layoutCtx.currentY;
             break;
 
+        case TAB_NOTICES:
+            layoutCtx.currentY = currentY;
+            activeHud = renderTabNotices(layoutCtx);
+            currentY = layoutCtx.currentY;
+            break;
+
         case TAB_RADAR:
             // Use extracted tab renderer
             layoutCtx.currentY = currentY;
@@ -1833,6 +1837,7 @@ void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
         case TAB_UPDATES:    handled = handleClickTabUpdates(region); break;
         case TAB_FMX:        handled = handleClickTabFmx(region); break;
         case TAB_STATS:      handled = handleClickTabStats(region); break;
+        case TAB_NOTICES:    handled = handleClickTabNotices(region); break;
         default: break;
     }
 
@@ -2174,6 +2179,13 @@ void SettingsHud::resetCurrentTab() {
             if (m_bars) m_bars->setDataDirty();
             if (m_version) m_version->setDataDirty();
             if (m_fuel) m_fuel->setDataDirty();
+            if (m_lapConsistency) m_lapConsistency->setDataDirty();
+            if (m_gear) m_gear->setDataDirty();
+            if (m_lean) m_lean->setDataDirty();
+            if (m_clock) m_clock->setDataDirty();
+            if (m_gamepad) m_gamepad->setDataDirty();
+            if (m_fmxHud) m_fmxHud->setDataDirty();
+            if (m_statsHud) m_statsHud->setDataDirty();
             break;
         case TAB_STANDINGS:
             if (m_standings) m_standings->resetToDefaults();
@@ -2214,8 +2226,11 @@ void SettingsHud::resetCurrentTab() {
         case TAB_GAP_BAR:
             if (m_gapBar) m_gapBar->resetToDefaults();
             break;
+        case TAB_NOTICES:
+            if (m_notices) m_notices->resetToDefaults();
+            break;
         case TAB_WIDGETS:
-            // Reset all widgets (SessionHud has its own tab now)
+            // Reset all widgets
             if (m_lap) m_lap->resetToDefaults();
             if (m_position) m_position->resetToDefaults();
             if (m_time) m_time->resetToDefaults();
@@ -2223,7 +2238,6 @@ void SettingsHud::resetCurrentTab() {
             if (m_gear) m_gear->resetToDefaults();
             if (m_speedo) m_speedo->resetToDefaults();
             if (m_tacho) m_tacho->resetToDefaults();
-            if (m_notices) m_notices->resetToDefaults();
             if (m_bars) m_bars->resetToDefaults();
             if (m_version) m_version->resetToDefaults();
             if (m_fuel) m_fuel->resetToDefaults();
@@ -2353,8 +2367,7 @@ void SettingsHud::handleCheckboxClick(const ClickRegion& region) {
     }
 }
 
-// Note: handleGapModeClick, handleGapIndicatorClick, handleGapReferenceClick
-// moved to settings_tab_standings.cpp
+// Note: gap toggle/scope/reference click handlers moved to settings_tab_standings.cpp
 
 void SettingsHud::handleHudToggleClick(const ClickRegion& region) {
     if (!region.targetHud) return;
@@ -2464,6 +2477,7 @@ const char* SettingsHud::getTabName(int tabIndex) const {
         case TAB_TIMING:      return "Timing";
         case TAB_GAP_BAR:     return "Gap Bar";
         case TAB_WIDGETS:     return "Widgets";
+        case TAB_NOTICES:     return "Notices";
         case TAB_RUMBLE:      return "Rumble";
         case TAB_HOTKEYS:     return "Hotkeys";
         case TAB_RIDERS:      return "Riders";
@@ -2513,15 +2527,18 @@ const char* SettingsHud::getTooltipIdForRegion(ClickRegion::Type type, int activ
                 case ClickRegion::ROW_COUNT_UP:
                 case ClickRegion::ROW_COUNT_DOWN:
                     return "standings.rows";
-                case ClickRegion::GAP_MODE_UP:
-                case ClickRegion::GAP_MODE_DOWN:
-                    return "standings.gap_mode";
-                case ClickRegion::GAP_INDICATOR_UP:
-                case ClickRegion::GAP_INDICATOR_DOWN:
-                    return "standings.gap_indicator";
-                case ClickRegion::GAP_REFERENCE_UP:
-                case ClickRegion::GAP_REFERENCE_DOWN:
+                case ClickRegion::GAP_COLUMN_TOGGLE:
+                    return "standings.gap_column";
+                case ClickRegion::GAP_SCOPE_TOGGLE:
+                    return "standings.gap_scope";
+                case ClickRegion::GAP_REFERENCE_TOGGLE:
                     return "standings.gap_reference";
+                case ClickRegion::FILTER_DNS_TOGGLE:
+                    return "standings.filter_dns";
+                case ClickRegion::ANIMATE_POSITIONS_TOGGLE:
+                    return "standings.animate_positions";
+                case ClickRegion::NAME_MODE_TOGGLE:
+                    return "standings.col_name";
                 default:
                     break;
             }
@@ -2721,6 +2738,16 @@ const char* SettingsHud::getTooltipIdForRegion(ClickRegion::Type type, int activ
             switch (type) {
                 case ClickRegion::RUMBLE_TOGGLE:
                     return "rumble.enabled";
+                default:
+                    break;
+            }
+            break;
+
+        case TAB_NOTICES:
+            switch (type) {
+                case ClickRegion::NOTICES_DURATION_UP:
+                case ClickRegion::NOTICES_DURATION_DOWN:
+                    return "notices.duration";
                 default:
                     break;
             }

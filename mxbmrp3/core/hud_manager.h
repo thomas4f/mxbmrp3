@@ -86,7 +86,7 @@ public:
     class TimingHud& getTimingHud() const { assert(m_pTiming && "HudManager not initialized"); return *m_pTiming; }
     class BarsWidget& getBarsWidget() const { assert(m_pBars && "HudManager not initialized"); return *m_pBars; }
     class VersionWidget& getVersionWidget() const { assert(m_pVersion && "HudManager not initialized"); return *m_pVersion; }
-    class NoticesWidget& getNoticesWidget() const { assert(m_pNotices && "HudManager not initialized"); return *m_pNotices; }
+    class NoticesHud& getNoticesHud() const { assert(m_pNotices && "HudManager not initialized"); return *m_pNotices; }
     class SettingsButtonWidget& getSettingsButtonWidget() const { assert(m_pSettingsButton && "HudManager not initialized"); return *m_pSettingsButton; }
     class PitboardHud& getPitboardHud() const { assert(m_pPitboard && "HudManager not initialized"); return *m_pPitboard; }
 #if GAME_HAS_RECORDS_PROVIDER
@@ -166,7 +166,7 @@ private:
     class GapBarHud* m_pGapBar;
     class BarsWidget* m_pBars;
     class VersionWidget* m_pVersion;
-    class NoticesWidget* m_pNotices;
+    class NoticesHud* m_pNotices;
     class PitboardHud* m_pPitboard;
 #if GAME_HAS_RECORDS_PROVIDER
     class RecordsHud* m_pRecords;

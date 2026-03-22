@@ -187,10 +187,10 @@ BaseHud* SettingsHud::renderTabRadar(SettingsLayoutContext& ctx) {
     bool radarModeIsOff = (hud->getRadarMode() == RadarHud::RadarMode::OFF);
     switch (hud->getRadarMode()) {
         case RadarHud::RadarMode::OFF:       radarModeDisplayStr = "Off"; break;
-        case RadarHud::RadarMode::ON:        radarModeDisplayStr = "On"; break;
+        case RadarHud::RadarMode::ON:        radarModeDisplayStr = "Always"; break;
         case RadarHud::RadarMode::AUTO_HIDE: radarModeDisplayStr = "Auto-hide"; break;
     }
-    ctx.addCycleControl("Radar mode", radarModeDisplayStr, 10,
+    ctx.addCycleControl("Show mode", radarModeDisplayStr, 10,
         SettingsHud::ClickRegion::RADAR_MODE_DOWN,
         SettingsHud::ClickRegion::RADAR_MODE_UP,
         hud, true, radarModeIsOff, "radar.mode");
@@ -275,7 +275,7 @@ BaseHud* SettingsHud::renderTabRadar(SettingsLayoutContext& ctx) {
     ctx.addCycleControl("Alert distance", alertValue, 10,
         SettingsHud::ClickRegion::RADAR_ALERT_DISTANCE_DOWN,
         SettingsHud::ClickRegion::RADAR_ALERT_DISTANCE_UP,
-        hud, true, false, "radar.alert_distance");
+        hud, !proxArrowIsOff, false, "radar.alert_distance");
 
     // Proximity arrow color mode control
     const char* proxColorModeStr = "";
@@ -286,14 +286,14 @@ BaseHud* SettingsHud::renderTabRadar(SettingsLayoutContext& ctx) {
     ctx.addCycleControl("Arrow colors", proxColorModeStr, 10,
         SettingsHud::ClickRegion::RADAR_PROXIMITY_COLOR_DOWN,
         SettingsHud::ClickRegion::RADAR_PROXIMITY_COLOR_UP,
-        hud, true, false, "radar.proximity_color");
+        hud, !proxArrowIsOff, false, "radar.proximity_color");
 
     // Proximity arrow shape control
     std::string proxShapeStr = getShapeDisplayName(hud->getProximityArrowShape(), 10);
     ctx.addCycleControl("Arrow icon", proxShapeStr.c_str(), 10,
         SettingsHud::ClickRegion::RADAR_PROXIMITY_SHAPE_DOWN,
         SettingsHud::ClickRegion::RADAR_PROXIMITY_SHAPE_UP,
-        hud, true, false, "radar.proximity_shape");
+        hud, !proxArrowIsOff, false, "radar.proximity_shape");
 
     // Proximity arrow scale control
     char proxScaleValue[16];
@@ -301,7 +301,7 @@ BaseHud* SettingsHud::renderTabRadar(SettingsLayoutContext& ctx) {
     ctx.addCycleControl("Arrow scale", proxScaleValue, 10,
         SettingsHud::ClickRegion::RADAR_PROXIMITY_SCALE_DOWN,
         SettingsHud::ClickRegion::RADAR_PROXIMITY_SCALE_UP,
-        hud, true, false, "radar.proximity_scale");
+        hud, !proxArrowIsOff, false, "radar.proximity_scale");
 
     return hud;
 }

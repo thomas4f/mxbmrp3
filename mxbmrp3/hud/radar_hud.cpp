@@ -694,19 +694,25 @@ void RadarHud::rebuildRenderData() {
 
             riderColor = PluginUtils::applyOpacity(baseColor, trackFadeOpacity);
         } else if (m_riderColorMode == RiderColorMode::RELATIVE_POS) {
-            // Relative position coloring: color based on position/lap relative to player
-            const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
-            const StandingsData* riderStanding = pluginData.getStanding(pos.raceNum);
-            int playerPosition = pluginData.getPositionForRaceNum(displayRaceNum);
-            int riderPosition = pluginData.getPositionForRaceNum(pos.raceNum);
-            int playerLaps = playerStanding ? playerStanding->numLaps : 0;
-            int riderLaps = riderStanding ? riderStanding->numLaps : 0;
+            // Relative position coloring - only meaningful in race sessions
+            unsigned long baseColor;
+            if (pluginData.isRaceSession()) {
+                const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
+                const StandingsData* riderStanding = pluginData.getStanding(pos.raceNum);
+                int playerPosition = pluginData.getLivePositionForRaceNum(displayRaceNum);
+                int riderPosition = pluginData.getLivePositionForRaceNum(pos.raceNum);
+                int playerLaps = playerStanding ? playerStanding->numLaps : 0;
+                int riderLaps = riderStanding ? riderStanding->numLaps : 0;
 
-            unsigned long baseColor = PluginUtils::getRelativePositionColor(
-                playerPosition, riderPosition, playerLaps, riderLaps,
-                this->getColor(ColorSlot::NEUTRAL),
-                this->getColor(ColorSlot::WARNING),
-                this->getColor(ColorSlot::TERTIARY));
+                baseColor = PluginUtils::getRelativePositionColor(
+                    playerPosition, riderPosition, playerLaps, riderLaps,
+                    this->getColor(ColorSlot::NEUTRAL),
+                    this->getColor(ColorSlot::WARNING),
+                    this->getColor(ColorSlot::TERTIARY));
+            } else {
+                // Non-race: positions are meaningless, use uniform color
+                baseColor = this->getColor(ColorSlot::NEUTRAL);
+            }
             riderColor = PluginUtils::applyOpacity(baseColor, trackFadeOpacity);
         } else if (m_riderColorMode == RiderColorMode::BRAND) {
             riderColor = PluginUtils::applyOpacity(entry->bikeBrandColor, 0.75f * trackFadeOpacity);
@@ -719,7 +725,7 @@ void RadarHud::rebuildRenderData() {
                          centerX, centerY, radarRadius, trackedShape);
 
         // Render label with matching fade opacity
-        int position = pluginData.getPositionForRaceNum(pos.raceNum);
+        int position = pluginData.getLivePositionForRaceNum(pos.raceNum);
         renderRiderLabel(radarX, radarY, pos.raceNum, position,
                         centerX, centerY, radarRadius, trackFadeOpacity);
     }
@@ -895,19 +901,25 @@ void RadarHud::renderProximityArrows(const Unified::TrackPositionData* localPlay
         // Calculate color based on color mode
         unsigned long arrowColor;
         if (m_proximityArrowColorMode == ProximityArrowColorMode::POSITION) {
-            // Position-based coloring: same as radar RELATIVE_POS mode
-            int playerPosition = pluginData.getPositionForRaceNum(displayRaceNum);
-            int riderPosition = pluginData.getPositionForRaceNum(pos.raceNum);
-            const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
-            const StandingsData* riderStanding = pluginData.getStanding(pos.raceNum);
-            int playerLaps = playerStanding ? playerStanding->numLaps : 0;
-            int riderLaps = riderStanding ? riderStanding->numLaps : 0;
+            // Position-based coloring - only meaningful in race sessions
+            unsigned long baseColor;
+            if (pluginData.isRaceSession()) {
+                int playerPosition = pluginData.getLivePositionForRaceNum(displayRaceNum);
+                int riderPosition = pluginData.getLivePositionForRaceNum(pos.raceNum);
+                const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
+                const StandingsData* riderStanding = pluginData.getStanding(pos.raceNum);
+                int playerLaps = playerStanding ? playerStanding->numLaps : 0;
+                int riderLaps = riderStanding ? riderStanding->numLaps : 0;
 
-            unsigned long baseColor = PluginUtils::getRelativePositionColor(
-                playerPosition, riderPosition, playerLaps, riderLaps,
-                this->getColor(ColorSlot::NEUTRAL),
-                this->getColor(ColorSlot::WARNING),
-                this->getColor(ColorSlot::TERTIARY));
+                baseColor = PluginUtils::getRelativePositionColor(
+                    playerPosition, riderPosition, playerLaps, riderLaps,
+                    this->getColor(ColorSlot::NEUTRAL),
+                    this->getColor(ColorSlot::WARNING),
+                    this->getColor(ColorSlot::TERTIARY));
+            } else {
+                // Non-race: positions are meaningless, use uniform color
+                baseColor = this->getColor(ColorSlot::NEUTRAL);
+            }
             arrowColor = PluginUtils::applyOpacity(baseColor, opacity);
         } else {
             // Distance-based coloring: red = close, yellow = mid, green = far

@@ -147,6 +147,14 @@ void BaseHud::validatePosition() {
         return;
     }
 
+    // Skip clamping when HUD has zero-size bounds (no content to clamp).
+    // HUDs like TimingHud in SPLITS mode have empty bounds when not frozen,
+    // and clamping against zero bounds corrupts the saved offset (e.g., a
+    // negative offsetY used to position the HUD near the top gets reset to 0).
+    if (m_fBoundsLeft == m_fBoundsRight && m_fBoundsTop == m_fBoundsBottom) {
+        return;
+    }
+
     const WindowBounds& windowBounds = InputManager::getInstance().getWindowBounds();
 
     // Use helper to clamp position to window bounds

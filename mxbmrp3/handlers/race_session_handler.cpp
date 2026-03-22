@@ -31,6 +31,7 @@ void RaceSessionHandler::handleRaceSession(Unified::RaceSessionData* psRaceSessi
     PluginData::getInstance().clearAllIdealLap();
     PluginData::getInstance().clearAllLapLog();
     PluginData::getInstance().clearLiveGapTimingPoints();
+    PluginData::getInstance().clearLivePositionState();
     PluginData::getInstance().resetAllLapTimers();
 
     // Reset race finish tracking (overtime and leader finish time)
@@ -60,9 +61,17 @@ void RaceSessionHandler::handleRaceSessionState(Unified::RaceSessionStateData* p
     // where sessionTime values during countdown could falsely trigger the positive→negative transition
     // Also clear live gap timing points to prevent stale RTG values from pre-start
     // (track position updates during pre-start would otherwise contaminate RTG calculations)
-    if (psRaceSessionState->sessionState == 16) {
+    //
+    // Guard: only reset on initial transition TO state 16, not on re-fires.
+    // The game re-sends state 16 when overtime starts, which would wipe out
+    // accumulated live standings and RTG data mid-race.
+    // IMPORTANT: This check must happen BEFORE setSessionState() below,
+    // since we compare against the cached (old) state to detect the transition.
+    if (psRaceSessionState->sessionState == 16 &&
+        PluginData::getInstance().getSessionData().sessionState != 16) {
         PluginData::getInstance().setLastSessionTime(0);
         PluginData::getInstance().clearLiveGapTimingPoints();
+        PluginData::getInstance().clearLivePositionState();
     }
 
     // Update plugin data store

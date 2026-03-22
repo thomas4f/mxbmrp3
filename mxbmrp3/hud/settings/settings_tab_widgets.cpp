@@ -52,7 +52,6 @@ BaseHud* SettingsHud::renderTabWidgets(SettingsLayoutContext& ctx) {
     ctx.addWidgetRow("Fuel", ctx.parent->getFuelWidget(), true, true, true, true, true, "widgets.fuel");
     ctx.addWidgetRow("Speedo", ctx.parent->getSpeedoWidget(), false, true, true, true, true, "widgets.speedo");
     ctx.addWidgetRow("Tacho", ctx.parent->getTachoWidget(), false, true, true, true, true, "widgets.tacho");
-    ctx.addWidgetRow("Notices", ctx.parent->getNoticesWidget(), false, true, true, true, true, "widgets.notices");
     ctx.addWidgetRow("Gamepad", ctx.parent->getGamepadWidget(), false, true, true, true, true, "widgets.gamepad");
 #if GAME_HAS_TYRE_TEMP
     ctx.addWidgetRow("Tyre Temp", ctx.parent->getTyreTempWidget(), false, true, true, true, true, "widgets.tyre_temp");

@@ -81,7 +81,7 @@ BaseHud* SettingsHud::renderTabStats(SettingsLayoutContext& ctx) {
 
     // Visibility mode
     const char* visModeName = StatsHud::getVisibilityModeName(hud->m_visibilityMode);
-    ctx.addCycleControl("Show", visModeName, 10,
+    ctx.addCycleControl("Show mode", visModeName, 10,
         SettingsHud::ClickRegion::STATS_VISIBILITY_DOWN,
         SettingsHud::ClickRegion::STATS_VISIBILITY_UP,
         hud, true, false, "stats.visibility_mode");

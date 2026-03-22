@@ -1003,6 +1003,15 @@ void PluginData::batchUpdateStandings(Unified::RaceClassificationEntry* entries,
     // Notify once if anything changed
     if (anyChanged) {
         m_bPositionCacheDirty = true;  // Mark position cache dirty when standings change
+        m_bFilteredOrderDirty = true;
+
+        // Don't reset m_liveClassificationOrder here. The live sort in
+        // updateLivePositions() already reads m_classificationOrder each frame
+        // for committed-order tiebreaking and naturally incorporates changes.
+        // Hard-resetting here defeats hysteresis and causes jitter: the official
+        // order resets the committed live order, then the live sort re-proposes
+        // a different order, the hold timer fires, and the cycle repeats.
+
         notifyHudManager(DataChangeType::Standings);
     }
 }
@@ -1023,6 +1032,7 @@ const StandingsData* PluginData::getStanding(int raceNum) const {
 void PluginData::setClassificationOrder(const std::vector<int>& order) {
     m_classificationOrder = order;
     m_bPositionCacheDirty = true;  // Mark position cache dirty when classification changes
+    m_bFilteredOrderDirty = true;
     // Note: We don't notify HudManager here because this is called as part of
     // the standings update, which already triggers a notification
 }
@@ -1047,6 +1057,238 @@ int PluginData::getPositionForRaceNum(int raceNum) const {
         return it->second;
     }
     return -1;  // Not found in standings
+}
+
+void PluginData::setLiveStandingsEnabled(bool enabled) {
+    if (m_liveStandingsEnabled != enabled) {
+        m_liveStandingsEnabled = enabled;
+        clearLivePositionState();
+        m_bFilteredOrderDirty = true;
+        notifyHudManager(DataChangeType::Standings);
+    }
+}
+
+void PluginData::setFilterDnsRiders(bool enabled) {
+    if (m_filterDnsRiders != enabled) {
+        m_filterDnsRiders = enabled;
+        m_bFilteredOrderDirty = true;
+        m_bLivePositionCacheDirty = true;
+        notifyHudManager(DataChangeType::Standings);
+    }
+}
+
+const std::vector<int>& PluginData::getLiveClassificationOrder() const {
+    // Get the base order (live-sorted or official)
+    const auto& baseOrder = (!m_liveStandingsEnabled || m_liveClassificationOrder.empty())
+        ? m_classificationOrder : m_liveClassificationOrder;
+
+    // If DNS filtering is off, return base order directly
+    if (!m_filterDnsRiders) {
+        return baseOrder;
+    }
+
+    // Rebuild filtered cache if dirty
+    if (m_bFilteredOrderDirty) {
+        m_filteredClassificationOrder.clear();
+        m_filteredClassificationOrder.reserve(baseOrder.size());
+        for (int raceNum : baseOrder) {
+            auto it = m_standings.find(raceNum);
+            if (it == m_standings.end() || it->second.state != PluginConstants::RiderState::DNS) {
+                m_filteredClassificationOrder.push_back(raceNum);
+            }
+        }
+        // Also rebuild filtered position cache
+        m_filteredPositionCache.clear();
+        for (size_t i = 0; i < m_filteredClassificationOrder.size(); ++i) {
+            m_filteredPositionCache[m_filteredClassificationOrder[i]] = static_cast<int>(i) + 1;
+        }
+        m_bFilteredOrderDirty = false;
+    }
+
+    return m_filteredClassificationOrder;
+}
+
+int PluginData::getLivePositionForRaceNum(int raceNum) const {
+    // If DNS filtering is on, use filtered cache
+    if (m_filterDnsRiders) {
+        // Ensure filtered order is up to date (rebuilds caches if dirty)
+        getLiveClassificationOrder();
+        auto it = m_filteredPositionCache.find(raceNum);
+        if (it != m_filteredPositionCache.end()) {
+            return it->second;
+        }
+        return -1;  // DNS rider filtered out, or not found
+    }
+
+    // Fall back to official when disabled or no live data
+    if (!m_liveStandingsEnabled || m_liveClassificationOrder.empty()) {
+        return getPositionForRaceNum(raceNum);
+    }
+
+    // Rebuild live cache if dirty
+    if (m_bLivePositionCacheDirty) {
+        m_livePositionCache.clear();
+        for (size_t i = 0; i < m_liveClassificationOrder.size(); ++i) {
+            m_livePositionCache[m_liveClassificationOrder[i]] = static_cast<int>(i) + 1;
+        }
+        m_bLivePositionCacheDirty = false;
+    }
+
+    auto it = m_livePositionCache.find(raceNum);
+    if (it != m_livePositionCache.end()) {
+        return it->second;
+    }
+    return -1;
+}
+
+void PluginData::updateLivePositions() {
+    // Gate: only active in race sessions in progress with classification data
+    if (!m_liveStandingsEnabled || !isRaceSession() || m_classificationOrder.empty()) {
+        return;
+    }
+
+    const SessionData& sd = m_sessionData;
+    if (!(sd.sessionState & PluginConstants::SessionState::IN_PROGRESS)) {
+        return;
+    }
+
+    auto now = std::chrono::steady_clock::now();
+
+    // Reuse member buffers to avoid per-frame heap allocations
+    m_liveSortEntries.clear();
+    m_liveSortFinished.clear();
+
+    for (size_t i = 0; i < m_classificationOrder.size(); ++i) {
+        int raceNum = m_classificationOrder[i];
+        LiveSortEntry e;
+        e.raceNum = raceNum;
+        e.excludeFromSort = false;
+
+        auto standingIt = m_standings.find(raceNum);
+
+        // Skip DNS riders entirely when filtering is enabled
+        if (m_filterDnsRiders && standingIt != m_standings.end() &&
+            standingIt->second.state == PluginConstants::RiderState::DNS) {
+            continue;
+        }
+
+        if (standingIt != m_standings.end()) {
+            if (standingIt->second.finishTime >= 0) {
+                e.excludeFromSort = true;
+            }
+        }
+
+        // Use official standings numLaps (authoritative, never decreases)
+        e.numLaps = standingIt != m_standings.end() ? standingIt->second.numLaps : 0;
+
+        auto posIt = m_trackPositions.find(raceNum);
+        if (posIt != m_trackPositions.end()) {
+            e.trackPos = posIt->second.trackPos;
+            // Detect stale trackPos: standings callback has bumped numLaps but
+            // the track position callback hasn't fired yet. The old high trackPos
+            // combined with the new higher numLaps causes false sort-to-top.
+            if (e.numLaps > posIt->second.numLaps) {
+                e.trackPos = 0.0f;
+            }
+        } else {
+            e.trackPos = 0.0f;
+        }
+
+        if (e.excludeFromSort) {
+            m_liveSortFinished.push_back(e);
+        } else {
+            m_liveSortEntries.push_back(e);
+        }
+    }
+
+    // Get current committed order for hysteresis dead zone
+    const auto& committedOrder = m_liveClassificationOrder.empty()
+        ? m_classificationOrder : m_liveClassificationOrder;
+
+    // Build committed position lookup for dead zone comparator
+    m_liveSortCommittedPosMap.clear();
+    for (size_t i = 0; i < committedOrder.size(); ++i) {
+        m_liveSortCommittedPosMap[committedOrder[i]] = static_cast<int>(i);
+    }
+
+    float minGap = m_liveStandingsMinTrackGap;
+    auto& posMap = m_liveSortCommittedPosMap;
+
+    // Sort active riders by (numLaps DESC, trackPos DESC, committed position ASC for dead zone)
+    std::sort(m_liveSortEntries.begin(), m_liveSortEntries.end(),
+        [&posMap, minGap](const LiveSortEntry& a, const LiveSortEntry& b) {
+            if (a.numLaps != b.numLaps) return a.numLaps > b.numLaps;
+            float gap = a.trackPos - b.trackPos;
+            if (std::abs(gap) > minGap) return gap > 0.0f;
+            // Within dead zone: preserve committed order
+            int posA = 0, posB = 0;
+            auto itA = posMap.find(a.raceNum);
+            auto itB = posMap.find(b.raceNum);
+            if (itA != posMap.end()) posA = itA->second;
+            if (itB != posMap.end()) posB = itB->second;
+            return posA < posB;
+        }
+    );
+
+    // Build proposed order: finished riders first (official order), then active riders (live sorted)
+    m_liveSortProposed.clear();
+    m_liveSortProposed.reserve(m_classificationOrder.size());
+    for (const auto& e : m_liveSortFinished) {
+        m_liveSortProposed.push_back(e.raceNum);
+    }
+    for (const auto& e : m_liveSortEntries) {
+        m_liveSortProposed.push_back(e.raceNum);
+    }
+
+    // Apply hysteresis hold timer
+    if (m_liveClassificationOrder.empty()) {
+        m_liveClassificationOrder = m_liveSortProposed;
+        m_bLivePositionCacheDirty = true;
+        m_bFilteredOrderDirty = true;
+        m_pendingLiveOrder.clear();
+        notifyHudManager(DataChangeType::Standings);
+        DEBUG_INFO_F("[LiveSort] Initial commit (%d riders)", static_cast<int>(m_liveSortProposed.size()));
+    } else if (m_liveSortProposed != m_liveClassificationOrder) {
+        if (m_liveStandingsHoldTimeMs <= 0) {
+            m_liveClassificationOrder = m_liveSortProposed;
+            m_bLivePositionCacheDirty = true;
+            m_bFilteredOrderDirty = true;
+            m_pendingLiveOrder.clear();
+            notifyHudManager(DataChangeType::Standings);
+            DEBUG_INFO_F("[LiveSort] Committed (no hold)");
+        } else if (m_liveSortProposed == m_pendingLiveOrder) {
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_pendingLiveOrderTime);
+            if (elapsed.count() >= m_liveStandingsHoldTimeMs) {
+                m_liveClassificationOrder = m_liveSortProposed;
+                m_bLivePositionCacheDirty = true;
+                m_bFilteredOrderDirty = true;
+                m_pendingLiveOrder.clear();
+                notifyHudManager(DataChangeType::Standings);
+                DEBUG_INFO_F("[LiveSort] Committed (hold expired after %lldms)", elapsed.count());
+            }
+        } else {
+            m_pendingLiveOrder = m_liveSortProposed;
+            m_pendingLiveOrderTime = now;
+        }
+    } else {
+        m_pendingLiveOrder.clear();
+    }
+}
+
+void PluginData::clearLivePositionState() {
+    m_liveClassificationOrder.clear();
+    m_livePositionCache.clear();
+    m_bLivePositionCacheDirty = true;
+    m_filteredClassificationOrder.clear();
+    m_filteredPositionCache.clear();
+    m_bFilteredOrderDirty = true;
+    m_pendingLiveOrder.clear();
+
+    // Clear reusable work buffers between sessions (capacity retained for reuse)
+    m_liveSortEntries.clear();
+    m_liveSortFinished.clear();
+    m_liveSortProposed.clear();
+    m_liveSortCommittedPosMap.clear();
 }
 
 void PluginData::updateTrackPosition(int raceNum, float trackPos, int numLaps, bool crashed, int sessionTime) {
@@ -1447,6 +1689,8 @@ void PluginData::clear() {
     m_classificationOrder.clear();
     m_positionCache.clear();
     m_bPositionCacheDirty = true;
+    m_bFilteredOrderDirty = true;
+    clearLivePositionState();
     m_trackPositions.clear();
     m_blueFlagsDirty = true;
     m_riderCurrentLap.clear();

@@ -392,6 +392,7 @@ Abstract base class that all HUDs inherit from. Provides:
 - `FmxHud` - FMX trick detection display with rotation arcs, chain stack, and scoring
 - `SessionHud` - Session info (type, format, track, server, players, password)
 - `StatsHud` - Session stats display with configurable columns (last lap, session, all-time)
+- `NoticesHud` - Race status notices (wrong way, blue flag, PB alerts, last lap, finished)
 
 **Widgets** (simple, focused):
 - `SpeedWidget` - Speed and gear display
@@ -403,7 +404,6 @@ Abstract base class that all HUDs inherit from. Provides:
 - `BarsWidget` - Visual telemetry bars (throttle, brake, etc.)
 - `LeanWidget` - Bike lean/roll angle display with arc gauge and steering bar
 - `FuelWidget` - Fuel calculator with consumption tracking
-- `NoticesWidget` - Race status notices (wrong way, blue flag, PB alerts, last lap, finished)
 - `GamepadWidget` - Controller visualization with button/stick/trigger display
 - `VersionWidget` - Plugin version display (includes hidden Breakout game easter egg; high score persisted via StatsManager)
 - `SettingsButtonWidget` - Settings menu toggle button
@@ -806,7 +806,7 @@ void TimeWidget::update() {
 Some HUDs do change detection but don't need post-rebuild caching:
 
 ```cpp
-void NoticesWidget::update() {
+void NoticesHud::update() {
     // Change detection - updates member state and marks dirty
     if (wrongWay != m_bIsWrongWay) {
         m_bIsWrongWay = wrongWay;  // State updated BEFORE dirty check
@@ -822,7 +822,7 @@ void NoticesWidget::update() {
 | Pattern | Use When | Examples |
 |---------|----------|----------|
 | `processDirtyFlags()` | HUD relies on DataChangeType notifications | StandingsHud, IdealLapHud, MapHud |
-| Hybrid | Polls data but caches state BEFORE dirty check | NoticesWidget, GapBarHud |
+| Hybrid | Polls data but caches state BEFORE dirty check | NoticesHud, GapBarHud |
 | Self-Detection | Needs to cache "last rendered value" AFTER rebuild | TimeWidget, PositionWidget, LapWidget |
 
 ### Handler Singleton Macro

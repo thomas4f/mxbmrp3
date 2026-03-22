@@ -75,9 +75,9 @@ BaseHud* SettingsHud::renderTabPitboard(SettingsLayoutContext& ctx) {
     if (hud->m_displayMode == PitboardHud::MODE_ALWAYS) {
         displayModeText = "Always";
     } else if (hud->m_displayMode == PitboardHud::MODE_PIT) {
-        displayModeText = "Pit";
+        displayModeText = "At Pit";
     } else if (hud->m_displayMode == PitboardHud::MODE_SPLITS) {
-        displayModeText = "Splits";
+        displayModeText = "At Splits";
     }
     ctx.addCycleControl("Show mode", displayModeText, 10,
         SettingsHud::ClickRegion::PITBOARD_SHOW_MODE_DOWN,

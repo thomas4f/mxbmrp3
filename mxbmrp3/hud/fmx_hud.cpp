@@ -98,8 +98,8 @@ void FmxHud::rebuildRenderData() {
     float startX = 0.0f;
     float startY = 0.0f;
 
-    // Calculate width — match standard HUD width (26 chars, same as IdealLapHud)
-    int charWidth = 26;
+    // Calculate width — match standard HUD width (27 chars, same as IdealLapHud)
+    int charWidth = 27;
     float backgroundWidth = calculateBackgroundWidth(charWidth);
     float contentWidth = PluginUtils::calculateMonospaceTextWidth(charWidth, dim.fontSize);
 
@@ -370,7 +370,7 @@ void FmxHud::rebuildRenderData() {
 
         // Score labels and values — to the right of the arc
         float labelX = scoreX;
-        float labelWidth = PluginUtils::calculateMonospaceTextWidth(6, dim.fontSize);  // "Total " = 6 chars
+        float labelWidth = PluginUtils::calculateMonospaceTextWidth(7, dim.fontSize);  // "Total" (5) + space + gap = 7
         float valueX = labelX + labelWidth;
 
         // Line 1: Current trick score (always visible)
@@ -390,7 +390,7 @@ void FmxHud::rebuildRenderData() {
             }
 
             addString("Score", labelX, scoreLine1Y, Justify::LEFT,
-                this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
+                this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::TERTIARY), dim.fontSize);
             PluginUtils::formatScore(displayTrickScore, trickScoreText, sizeof(trickScoreText));
             addString(trickScoreText, valueX, scoreLine1Y, Justify::LEFT,
                 this->getFont(FontCategory::TITLE), trickScoreColor, dim.fontSize);
@@ -410,7 +410,7 @@ void FmxHud::rebuildRenderData() {
             }
 
             addString("Chain", labelX, scoreLine2Y, Justify::LEFT,
-                this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
+                this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::TERTIARY), dim.fontSize);
             PluginUtils::formatScore(displayChainScore, chainScoreText, sizeof(chainScoreText));
             addString(chainScoreText, valueX, scoreLine2Y, Justify::LEFT,
                 this->getFont(FontCategory::TITLE), chainScoreColor, dim.fontSize);
@@ -421,7 +421,7 @@ void FmxHud::rebuildRenderData() {
             char sessionScoreText[32];
             PluginUtils::formatScore(score.sessionScore, sessionScoreText, sizeof(sessionScoreText));
             addString("Total", labelX, scoreLine3Y, Justify::LEFT,
-                this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
+                this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::TERTIARY), dim.fontSize);
             addString(sessionScoreText, valueX, scoreLine3Y, Justify::LEFT,
                 this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
         }

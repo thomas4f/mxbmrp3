@@ -324,7 +324,7 @@
     <ClInclude Include="hud\gap_bar_hud.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
-    <ClInclude Include="hud\notices_widget.h">
+    <ClInclude Include="hud\notices_hud.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
     <ClInclude Include="handlers\track_centerline_handler.h">
@@ -578,6 +578,9 @@
     <ClCompile Include="hud\settings\settings_tab_widgets.cpp">
       <Filter>Source Files\hud\settings</Filter>
     </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_notices.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
     <ClCompile Include="hud\settings\settings_tab_rumble.cpp">
       <Filter>Source Files\hud\settings</Filter>
     </ClCompile>
@@ -644,7 +647,7 @@
     <ClCompile Include="hud\gap_bar_hud.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
-    <ClCompile Include="hud\notices_widget.cpp">
+    <ClCompile Include="hud\notices_hud.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="handlers\track_centerline_handler.cpp">

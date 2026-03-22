@@ -376,7 +376,7 @@ void LeanWidget::rebuildRenderData() {
 
     // Common values used by multiple elements
     float barWidthRef = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
-    unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
+    unsigned long textColor = this->getColor(ColorSlot::SECONDARY);
 
     // === Row 1-2: Arc (if enabled) ===
     if (m_enabledRows & ROW_ARC) {
@@ -427,8 +427,9 @@ void LeanWidget::rebuildRenderData() {
         float markerOuter = outerRadius + arcThickness * 0.5f;
         float markerWidth = 0.02f;
 
+        unsigned long blackColor = 0xFF000000;  // ABGR: fully opaque black
         addArcSegment(centerX, arcCenterY, markerInner, markerOuter,
-                      -markerWidth, markerWidth, this->getColor(ColorSlot::PRIMARY), 1);
+                      -markerWidth, markerWidth, blackColor, 1);
 
         // Draw lingering max markers on the arc (if enabled)
         if (m_bShowMaxMarkers) {
@@ -561,7 +562,7 @@ void LeanWidget::rebuildRenderData() {
         applyOffset(cmX, cmY);
         setQuadPositions(centerMarkerQuad, cmX, cmY, steerCenterMarkerW, steerCenterMarkerH);
         centerMarkerQuad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-        centerMarkerQuad.m_ulColor = this->getColor(ColorSlot::PRIMARY);
+        centerMarkerQuad.m_ulColor = 0xFF000000;  // ABGR: fully opaque black
         m_quads.push_back(centerMarkerQuad);
 
         currentY += dim.lineHeightNormal;

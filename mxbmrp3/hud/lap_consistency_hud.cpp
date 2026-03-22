@@ -376,8 +376,8 @@ void LapConsistencyHud::renderBars(float x, float y, float width, float height) 
     // Reference line at center (y + height/2)
     float midY = y + height / 2.0f;
 
-    // Draw reference line at center (more prominent - uses secondary color)
-    addHorizontalGridLine(x, midY, width, this->getColor(ColorSlot::SECONDARY), gridLineThickness);
+    // Draw reference line at center
+    addHorizontalGridLine(x, midY, width, gridColor, gridLineThickness);
 
     // Draw grid lines at 0% and 100% (50% covered by reference line above)
     const float gridPositions[] = { 0.0f, 1.0f };

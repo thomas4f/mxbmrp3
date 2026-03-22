@@ -20,7 +20,7 @@ static const char* getStyleName(uint8_t mode) {
 static const char* getReferenceModeName(LapConsistencyHud::ReferenceMode mode) {
     switch (mode) {
         case LapConsistencyHud::ReferenceMode::SESSION_PB: return "Session PB";
-        case LapConsistencyHud::ReferenceMode::ALLTIME:    return "Alltime";
+        case LapConsistencyHud::ReferenceMode::ALLTIME:    return "Alltime PB";
         case LapConsistencyHud::ReferenceMode::IDEAL:      return "Ideal";
         case LapConsistencyHud::ReferenceMode::OVERALL:    return "Overall";
 #if GAME_HAS_RECORDS_PROVIDER

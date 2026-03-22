@@ -75,7 +75,7 @@ BaseHud* SettingsHud::renderTabLapLog(SettingsLayoutContext& ctx) {
     // Row count
     char rowCountValue[8];
     snprintf(rowCountValue, sizeof(rowCountValue), "%d", hud->m_maxDisplayLaps);
-    ctx.addCycleControl("Laps to display", rowCountValue, 10,
+    ctx.addCycleControl("Laps to show", rowCountValue, 10,
         SettingsHud::ClickRegion::LAP_LOG_ROW_COUNT_DOWN,
         SettingsHud::ClickRegion::LAP_LOG_ROW_COUNT_UP,
         hud, true, false, "lap_log.rows");

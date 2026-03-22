@@ -1076,19 +1076,24 @@ void MapHud::renderRiders(const RotationCache& rotation,
                 riderColor = entry->bikeBrandColor;
             }
         } else if (m_riderColorMode == RiderColorMode::RELATIVE_POS) {
-            // Relative position coloring: color based on position/lap relative to player
-            const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
-            const StandingsData* riderStanding = pluginData.getStanding(pos.raceNum);
-            int playerPosition = pluginData.getPositionForRaceNum(displayRaceNum);
-            int riderPosition = pluginData.getPositionForRaceNum(pos.raceNum);
-            int playerLaps = playerStanding ? playerStanding->numLaps : 0;
-            int riderLaps = riderStanding ? riderStanding->numLaps : 0;
+            // Relative position coloring - only meaningful in race sessions
+            if (pluginData.isRaceSession()) {
+                const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
+                const StandingsData* riderStanding = pluginData.getStanding(pos.raceNum);
+                int playerPosition = pluginData.getLivePositionForRaceNum(displayRaceNum);
+                int riderPosition = pluginData.getLivePositionForRaceNum(pos.raceNum);
+                int playerLaps = playerStanding ? playerStanding->numLaps : 0;
+                int riderLaps = riderStanding ? riderStanding->numLaps : 0;
 
-            riderColor = PluginUtils::getRelativePositionColor(
-                playerPosition, riderPosition, playerLaps, riderLaps,
-                this->getColor(ColorSlot::NEUTRAL),
-                this->getColor(ColorSlot::WARNING),
-                this->getColor(ColorSlot::TERTIARY));
+                riderColor = PluginUtils::getRelativePositionColor(
+                    playerPosition, riderPosition, playerLaps, riderLaps,
+                    this->getColor(ColorSlot::NEUTRAL),
+                    this->getColor(ColorSlot::WARNING),
+                    this->getColor(ColorSlot::TERTIARY));
+            } else {
+                // Non-race: positions are meaningless, use uniform color
+                riderColor = this->getColor(ColorSlot::NEUTRAL);
+            }
         } else if (m_riderColorMode == RiderColorMode::BRAND) {
             // Brand colors at full opacity
             riderColor = entry->bikeBrandColor;
@@ -1199,7 +1204,7 @@ void MapHud::renderRiders(const RotationCache& rotation,
             float offsetY = screenY + spriteHalfSize + labelGap;
 
             char labelStr[20];  // Sized for "P100" (5) + "#999" (5) = "P100#999" (9 + null)
-            int position = pluginData.getPositionForRaceNum(pos.raceNum);
+            int position = pluginData.getLivePositionForRaceNum(pos.raceNum);
 
             switch (m_labelMode) {
                 case LabelMode::POSITION:

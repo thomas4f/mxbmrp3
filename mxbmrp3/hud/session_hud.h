@@ -31,7 +31,7 @@ public:
         ROW_WEATHER  = 1 << 5,  // Weather conditions + temperatures (e.g., "Sunny, 24 / 32 C" for air/track)
 
 #if GAME_HAS_SERVER_INFO
-        ROW_DEFAULT = 0x1F      // Type, Track, Format, Server, Players (weather disabled)
+        ROW_DEFAULT = 0x0F      // Type, Track, Format, Server (weather and players disabled)
 #else
         ROW_DEFAULT = 0x07      // Type, Track, Format only (no server info available)
 #endif

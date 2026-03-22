@@ -116,12 +116,11 @@ void SettingsLayoutContext::addCycleControl(
     float currentX = controlX;
     unsigned long valueColor = (enabled && !isOff) ? colors.getPrimary() : colors.getMuted();
 
-    // Left arrow "<" - only show when enabled
+    // Left arrow "<" - always visible, muted when disabled, clickable only when enabled
+    parent->addString("<", currentX, currentY, Justify::LEFT,
+        Fonts::getNormal(), enabled ? colors.getAccent() : colors.getMuted(), fontSize);
     if (enabled) {
-        parent->addString("<", currentX, currentY, Justify::LEFT,
-            Fonts::getNormal(), colors.getAccent(), fontSize);
         if (displayMode) {
-            // Use display mode constructor for DISPLAY_MODE_* types
             parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
                 currentX, currentY, cw * 2, lineHeightNormal,
                 downType, displayMode, targetHud
@@ -133,7 +132,7 @@ void SettingsLayoutContext::addCycleControl(
             ));
         }
     }
-    currentX += cw * 2;  // "< " (spacing preserved even if arrow hidden)
+    currentX += cw * 2;
 
     // Value with fixed width (formatted, left-aligned for consistent positioning)
     std::string formattedValue = formatValue(value, valueWidth, false);  // left-align for consistency
@@ -141,12 +140,11 @@ void SettingsLayoutContext::addCycleControl(
         Fonts::getNormal(), valueColor, fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(valueWidth, fontSize);
 
-    // Right arrow " >" - only show when enabled
+    // Right arrow " >" - always visible, muted when disabled, clickable only when enabled
+    parent->addString(" >", currentX, currentY, Justify::LEFT,
+        Fonts::getNormal(), enabled ? colors.getAccent() : colors.getMuted(), fontSize);
     if (enabled) {
-        parent->addString(" >", currentX, currentY, Justify::LEFT,
-            Fonts::getNormal(), colors.getAccent(), fontSize);
         if (displayMode) {
-            // Use display mode constructor for DISPLAY_MODE_* types
             parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
                 currentX, currentY, cw * 2, lineHeightNormal,
                 upType, displayMode, targetHud
@@ -197,48 +195,105 @@ void SettingsLayoutContext::addToggleControl(
     const char* displayValue = valueOverride ? valueOverride : (isOn ? "On" : "Off");
     std::string formattedValue = formatValue(displayValue, VALUE_WIDTH, false);
 
-    // Left arrow "<" - only show when enabled
+    // Left arrow "<" - always visible, muted when disabled, clickable only when enabled
+    parent->addString("<", currentX, currentY, Justify::LEFT,
+        Fonts::getNormal(), enabled ? colors.getAccent() : colors.getMuted(), fontSize);
     if (enabled) {
-        parent->addString("<", currentX, currentY, Justify::LEFT,
-            Fonts::getNormal(), colors.getAccent(), fontSize);
         if (bitfield != nullptr) {
-            // CHECKBOX type with bitfield
             parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
                 currentX, currentY, cw * 2, lineHeightNormal,
                 toggleType, bitfield, flag, false, targetHud
             ));
         } else {
-            // Simple toggle without bitfield
             parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
                 currentX, currentY, cw * 2, lineHeightNormal,
                 toggleType, targetHud
             ));
         }
     }
-    currentX += cw * 2;  // "< " (spacing preserved even if arrow hidden)
+    currentX += cw * 2;
 
-    // Value with fixed width (centered)
+    // Value with fixed width
     parent->addString(formattedValue.c_str(), currentX, currentY, Justify::LEFT,
         Fonts::getNormal(), valueColor, fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(VALUE_WIDTH, fontSize);
 
-    // Right arrow " >" - only show when enabled
+    // Right arrow " >" - always visible, muted when disabled, clickable only when enabled
+    parent->addString(" >", currentX, currentY, Justify::LEFT,
+        Fonts::getNormal(), enabled ? colors.getAccent() : colors.getMuted(), fontSize);
     if (enabled) {
-        parent->addString(" >", currentX, currentY, Justify::LEFT,
-            Fonts::getNormal(), colors.getAccent(), fontSize);
         if (bitfield != nullptr) {
-            // CHECKBOX type with bitfield
             parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
                 currentX, currentY, cw * 2, lineHeightNormal,
                 toggleType, bitfield, flag, false, targetHud
             ));
         } else {
-            // Simple toggle without bitfield
             parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
                 currentX, currentY, cw * 2, lineHeightNormal,
                 toggleType, targetHud
             ));
         }
+    }
+
+    currentY += lineHeightNormal;
+}
+
+void SettingsLayoutContext::addToggleControl(
+    const char* label,
+    bool isOn,
+    SettingsHud::ClickRegion::Type toggleType,
+    BaseHud* targetHud,
+    bool* boolPtr,
+    bool enabled,
+    const char* tooltipId,
+    const char* valueOverride
+) {
+    float cw = charWidth();
+    ColorConfig& colors = ColorConfig::getInstance();
+
+    // Add row-wide tooltip region if tooltipId is provided
+    if (tooltipId && tooltipId[0] != '\0') {
+        float rowWidth = panelWidth - (labelX - contentAreaStartX);
+        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            labelX, currentY, rowWidth, lineHeightNormal, tooltipId
+        ));
+    }
+
+    // Render label
+    parent->addString(label, labelX, currentY, Justify::LEFT,
+        Fonts::getNormal(), enabled ? colors.getSecondary() : colors.getMuted(), fontSize);
+
+    float currentX = controlX;
+    unsigned long valueColor = (enabled && isOn) ? colors.getPrimary() : colors.getMuted();
+    constexpr int VALUE_WIDTH = 10;
+
+    const char* displayValue = valueOverride ? valueOverride : (isOn ? "On" : "Off");
+    std::string formattedValue = formatValue(displayValue, VALUE_WIDTH, false);
+
+    // Left arrow "<" - always visible, muted when disabled, clickable only when enabled
+    parent->addString("<", currentX, currentY, Justify::LEFT,
+        Fonts::getNormal(), enabled ? colors.getAccent() : colors.getMuted(), fontSize);
+    if (enabled) {
+        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, currentY, cw * 2, lineHeightNormal,
+            toggleType, boolPtr, targetHud
+        ));
+    }
+    currentX += cw * 2;
+
+    // Value
+    parent->addString(formattedValue.c_str(), currentX, currentY, Justify::LEFT,
+        Fonts::getNormal(), valueColor, fontSize);
+    currentX += PluginUtils::calculateMonospaceTextWidth(VALUE_WIDTH, fontSize);
+
+    // Right arrow " >" - always visible, muted when disabled, clickable only when enabled
+    parent->addString(" >", currentX, currentY, Justify::LEFT,
+        Fonts::getNormal(), enabled ? colors.getAccent() : colors.getMuted(), fontSize);
+    if (enabled) {
+        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, currentY, cw * 2, lineHeightNormal,
+            toggleType, boolPtr, targetHud
+        ));
     }
 
     currentY += lineHeightNormal;

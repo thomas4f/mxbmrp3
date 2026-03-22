@@ -218,7 +218,7 @@ void IdealLapHud::rebuildRenderData() {
         snprintf(paddedLabel, sizeof(paddedLabel), "%5s", label);
 
         // Label in secondary color
-        addString(paddedLabel, m_columns.label, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
+        addString(paddedLabel, m_columns.label, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dim.fontSize);
 
         // Show ideal time or placeholder
         if (idealTimeMs > 0) {
@@ -296,7 +296,7 @@ void IdealLapHud::rebuildRenderData() {
         char paddedLabel[8];
 
         snprintf(paddedLabel, sizeof(paddedLabel), "%5s", label);
-        addString(paddedLabel, m_columns.label, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
+        addString(paddedLabel, m_columns.label, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dim.fontSize);
 
         // Show actual lap time
         if (actualLapTime > 0) {
@@ -343,7 +343,7 @@ void IdealLapHud::rebuildRenderData() {
         char timeStr[16];
         char paddedLabel[8];
         snprintf(paddedLabel, sizeof(paddedLabel), "%5s", "Ideal");
-        addString(paddedLabel, m_columns.label, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
+        addString(paddedLabel, m_columns.label, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dim.fontSize);
 
         if (idealLapTime > 0) {
             PluginUtils::formatLapTime(idealLapTime, timeStr, sizeof(timeStr));

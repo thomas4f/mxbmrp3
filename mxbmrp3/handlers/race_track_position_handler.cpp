@@ -46,4 +46,5 @@ void RaceTrackPositionHandler::handleRaceTrackPosition(int iNumVehicles, Unified
     }
 
     pluginData.updateRealTimeGaps();
+    pluginData.updateLivePositions();
 }

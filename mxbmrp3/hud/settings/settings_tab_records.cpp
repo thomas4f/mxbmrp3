@@ -93,7 +93,7 @@ BaseHud* SettingsHud::renderTabRecords(SettingsLayoutContext& ctx) {
     // Rows count control
     char recordsValue[8];
     snprintf(recordsValue, sizeof(recordsValue), "%d", hud->m_recordsToShow);
-    ctx.addCycleControl("Records to display", recordsValue, 10,
+    ctx.addCycleControl("Records to show", recordsValue, 10,
         SettingsHud::ClickRegion::RECORDS_COUNT_DOWN,
         SettingsHud::ClickRegion::RECORDS_COUNT_UP,
         hud, true, false, "records.count");

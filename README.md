@@ -1,6 +1,6 @@
 A customizable, [open-source](https://github.com/thomas4f/mxbmrp3) HUD plugin for MX Bikes and GP Bikes displaying real-time race information and telemetry.
 
-![MXBMRP3 HUD Screenshot](./mxbmrp3.gif)
+![MXBMRP3 HUD Screenshot](./mxbmrp3-v1.18.jpg)
 *Example HUD layouts. All elements are fully customizable.*
 
 ### Features
@@ -153,6 +153,7 @@ All HUDs and widgets are configurable via the settings menu or directly in the [
 | **Rumble** | Controller rumble effect visualization |
 | **Stats** | Riding stats with columns for last lap, session, and all-time totals |
 | **Session** | Session info (type, format, track, server, players, password) |
+| **Notices** | Race status notices (wrong way, blue flag, PB alerts, last lap, finished) |
 
 ### Widgets
 
@@ -169,7 +170,6 @@ All HUDs and widgets are configurable via the settings menu or directly in the [
 | **Bars** | Telemetry bars (throttle, brake, clutch, RPM, suspension, fuel) |
 | **Fuel** | Fuel calculator with consumption tracking |
 | **Lean** | Bike lean angle with arc gauge |
-| **Notices** | Race status notices (wrong way, blue flag, last lap, finished) |
 | **Gamepad** | Controller visualization |
 
 ## Advanced Settings

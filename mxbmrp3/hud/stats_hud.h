@@ -62,6 +62,7 @@ private:
 
     static constexpr int LABEL_WIDTH_CHARS = 8;     // Label reserve (longer labels extend into column space)
     static constexpr int COLUMN_WIDTH_CHARS = 9;    // Each data column (right-aligned, fits "102 km/h" + gap)
+    static constexpr int COLUMN_GAP_CHARS = 1;      // Extra gap between data columns
     static constexpr int DATA_ROWS = 10;      // Best lap, Laps, Riding time, Distance, Crashes, Gear shifts, Penalties, Pen. time, Top speed, Avg speed
     static constexpr int STATS_TICK_INTERVAL_MS = 1000;  // ~1Hz rebuild for live distance/time
 };

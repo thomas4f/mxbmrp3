@@ -307,6 +307,7 @@ void PitboardHud::rebuildRenderData() {
     const StandingsData* standing = (displayRaceNum > 0) ? data.getStanding(displayRaceNum) : nullptr;
     const IdealLapData* idealLapData = data.getIdealLapData();
     const SessionData& sessionData = data.getSessionData();
+    // Intentionally uses official position, not live — pitboard shows data from official event boundaries
     int position = (displayRaceNum > 0) ? data.getPositionForRaceNum(displayRaceNum) : -1;
 
     // Row 1: Rider ID (race number + truncated name) - centered
@@ -468,6 +469,7 @@ int PitboardHud::calculateCompareGap(bool& hasGap, GapCompareMode& effectiveMode
     hasGap = false;
     const PluginData& data = PluginData::getInstance();
     int displayRaceNum = data.getDisplayRaceNum();
+    // Intentionally uses official position — gap comparison needs consistent timing-point data
     int position = (displayRaceNum > 0) ? data.getPositionForRaceNum(displayRaceNum) : -1;
     const StandingsData* standing = (displayRaceNum > 0) ? data.getStanding(displayRaceNum) : nullptr;
 

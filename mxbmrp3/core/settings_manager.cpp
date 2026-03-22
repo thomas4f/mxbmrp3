@@ -26,7 +26,7 @@
 #include "../hud/gap_bar_hud.h"
 #include "../hud/bars_widget.h"
 #include "../hud/version_widget.h"
-#include "../hud/notices_widget.h"
+#include "../hud/notices_hud.h"
 #include "../hud/fuel_widget.h"
 #include "../hud/settings_button_widget.h"
 #include "../hud/pointer_widget.h"
@@ -112,9 +112,8 @@ namespace {
         // StandingsHud-specific keys
         namespace Standings {
             constexpr const char* DISPLAY_ROW_COUNT = "displayRowCount";
-            constexpr const char* OFFICIAL_GAP_MODE = "officialGapMode";
-            constexpr const char* LIVE_GAP_MODE = "liveGapMode";
-            constexpr const char* GAP_INDICATOR_MODE = "gapIndicatorMode";
+            constexpr const char* SHOW_GAP_COLUMN = "showGapColumn";
+            constexpr const char* GAP_SCOPE = "gapScope";
             constexpr const char* GAP_REFERENCE_MODE = "gapReferenceMode";
         }
 
@@ -201,8 +200,7 @@ namespace {
             constexpr const char* STATUS = "col_status";
             constexpr const char* PENALTY = "col_penalty";
             constexpr const char* BEST_LAP = "col_best_lap";
-            constexpr const char* OFFICIAL_GAP = "col_official_gap";
-            constexpr const char* LIVE_GAP = "col_live_gap";
+            constexpr const char* GAP = "col_gap";
             constexpr const char* DEBUG = "col_debug";
         }
 
@@ -298,7 +296,7 @@ namespace {
             constexpr const char* WATER_TEMP = "col_water_temp";
         }
 
-        // NoticesWidget notices
+        // NoticesHud notices
         namespace Notices {
             constexpr const char* WRONG_WAY = "notice_wrong_way";
             constexpr const char* BLUE_FLAG = "notice_blue_flag";
@@ -436,7 +434,7 @@ namespace {
             constexpr Setting ROW_EST = {"row_est", "Show estimated laps remaining"};
         }
 
-        // NoticesWidget settings
+        // NoticesHud settings
         namespace Notices {
             constexpr Setting WRONG_WAY = {"notice_wrong_way", "Show wrong way warning"};
             constexpr Setting BLUE_FLAG = {"notice_blue_flag", "Show blue flag notice"};
@@ -453,6 +451,10 @@ namespace {
         namespace Standings {
             constexpr Setting TOP_POSITIONS = {"topPositions", "Top positions always shown (0-5)"};
             constexpr Setting USE_ACCENT_HIGHLIGHT = {"useAccentHighlight", "Use accent color for player highlight"};
+            constexpr Setting ANIMATE_POSITIONS = {"animatePositions", "Animate position changes (slide rows)"};
+            constexpr Setting ANIMATION_DURATION_MS = {"animationDurationMs", "Position animation duration in ms (50-1000)"};
+            constexpr Setting SLANTED_PLATES = {"slantedPlates", "Slanted edges on race number plates (0 = rectangular)"};
+            constexpr Setting NAME_MODE = {"nameMode", "Rider name display mode (0=Off, 1=Short, 2=Long)"};
         }
 
         // MapHud settings
@@ -485,6 +487,8 @@ namespace {
             constexpr Setting DROP_SHADOW_OFFSET_Y = {"dropShadowOffsetY", "Shadow Y offset (normalized)"};
             constexpr Setting DROP_SHADOW_COLOR = {"dropShadowColor", "Shadow color (0xAARRGGBB)"};
             constexpr Setting HOLD_REPEAT_FAST_MS = {"holdRepeatFastMs", "Hold-to-repeat max speed in ms (10-500, default 50)"};
+            constexpr Setting LIVE_STANDINGS_HOLD_MS = {"liveStandingsHoldMs", "Live standings hysteresis hold time in ms (0-2000, default 300)"};
+            constexpr Setting LIVE_STANDINGS_MIN_GAP = {"liveStandingsMinGap", "Live standings minimum track gap to swap (0.0-0.05, default 0.003)"};
 #if defined(GAME_MXBIKES)
             // Memory offsets for connection detection (advanced debugging)
             constexpr Setting MEM_LOCAL_SERVER_NAME = {"memLocalServerName", "Memory offset (hex)"};
@@ -520,41 +524,19 @@ namespace {
         return defaultVal;
     }
 
-    // StandingsHud::GapMode
-    const char* gapModeToString(StandingsHud::GapMode mode) {
-        switch (mode) {
-            case StandingsHud::GapMode::OFF: return "OFF";
-            case StandingsHud::GapMode::PLAYER: return "PLAYER";
-            case StandingsHud::GapMode::ALL: return "ALL";
-            default: return "OFF";
+    // StandingsHud::GapScope
+    const char* gapScopeToString(StandingsHud::GapScope scope) {
+        switch (scope) {
+            case StandingsHud::GapScope::PLAYER: return "PLAYER";
+            case StandingsHud::GapScope::ALL: return "ALL";
+            default: return "ALL";
         }
     }
 
-    StandingsHud::GapMode stringToGapMode(const std::string& str, StandingsHud::GapMode defaultVal = StandingsHud::GapMode::OFF) {
-        if (str == "OFF") return StandingsHud::GapMode::OFF;
-        if (str == "PLAYER") return StandingsHud::GapMode::PLAYER;
-        if (str == "ALL") return StandingsHud::GapMode::ALL;
-        DEBUG_WARN_F("Unknown GapMode '%s', using default", str.c_str());
-        return defaultVal;
-    }
-
-    // StandingsHud::GapIndicatorMode
-    const char* gapIndicatorModeToString(StandingsHud::GapIndicatorMode mode) {
-        switch (mode) {
-            case StandingsHud::GapIndicatorMode::OFF: return "OFF";
-            case StandingsHud::GapIndicatorMode::OFFICIAL: return "OFFICIAL";
-            case StandingsHud::GapIndicatorMode::LIVE: return "LIVE";
-            case StandingsHud::GapIndicatorMode::BOTH: return "BOTH";
-            default: return "OFF";
-        }
-    }
-
-    StandingsHud::GapIndicatorMode stringToGapIndicatorMode(const std::string& str, StandingsHud::GapIndicatorMode defaultVal = StandingsHud::GapIndicatorMode::OFF) {
-        if (str == "OFF") return StandingsHud::GapIndicatorMode::OFF;
-        if (str == "OFFICIAL") return StandingsHud::GapIndicatorMode::OFFICIAL;
-        if (str == "LIVE") return StandingsHud::GapIndicatorMode::LIVE;
-        if (str == "BOTH") return StandingsHud::GapIndicatorMode::BOTH;
-        DEBUG_WARN_F("Unknown GapIndicatorMode '%s', using default", str.c_str());
+    StandingsHud::GapScope stringToGapScope(const std::string& str, StandingsHud::GapScope defaultVal = StandingsHud::GapScope::ALL) {
+        if (str == "PLAYER") return StandingsHud::GapScope::PLAYER;
+        if (str == "ALL") return StandingsHud::GapScope::ALL;
+        DEBUG_WARN_F("Unknown GapScope '%s', using default", str.c_str());
         return defaultVal;
     }
 
@@ -1185,7 +1167,7 @@ namespace {
             if (key == Fuel::ROW_USED.key) return Fuel::ROW_USED.description;
             if (key == Fuel::ROW_AVG.key) return Fuel::ROW_AVG.description;
             if (key == Fuel::ROW_EST.key) return Fuel::ROW_EST.description;
-        } else if (hudName == "NoticesWidget") {
+        } else if (hudName == "NoticesHud") {
             if (key == Notices::WRONG_WAY.key) return Notices::WRONG_WAY.description;
             if (key == Notices::BLUE_FLAG.key) return Notices::BLUE_FLAG.description;
             if (key == Notices::LAST_LAP.key) return Notices::LAST_LAP.description;
@@ -1198,6 +1180,10 @@ namespace {
         } else if (hudName == "StandingsHud") {
             if (key == Standings::TOP_POSITIONS.key) return Standings::TOP_POSITIONS.description;
             if (key == Standings::USE_ACCENT_HIGHLIGHT.key) return Standings::USE_ACCENT_HIGHLIGHT.description;
+            if (key == Standings::ANIMATE_POSITIONS.key) return Standings::ANIMATE_POSITIONS.description;
+            if (key == Standings::ANIMATION_DURATION_MS.key) return Standings::ANIMATION_DURATION_MS.description;
+            if (key == Standings::SLANTED_PLATES.key) return Standings::SLANTED_PLATES.description;
+            if (key == Standings::NAME_MODE.key) return Standings::NAME_MODE.description;
         } else if (hudName == "MapHud") {
             if (key == Map::PIXEL_SPACING.key) return Map::PIXEL_SPACING.description;
         }
@@ -1265,8 +1251,7 @@ namespace {
         saveBitAsKey(settings, STATUS, cols, StandingsHud::COL_STATUS);
         saveBitAsKey(settings, PENALTY, cols, StandingsHud::COL_PENALTY);
         saveBitAsKey(settings, BEST_LAP, cols, StandingsHud::COL_BEST_LAP);
-        saveBitAsKey(settings, OFFICIAL_GAP, cols, StandingsHud::COL_OFFICIAL_GAP);
-        saveBitAsKey(settings, LIVE_GAP, cols, StandingsHud::COL_LIVE_GAP);
+        saveBitAsKey(settings, GAP, cols, StandingsHud::COL_GAP);
         saveBitAsKey(settings, DEBUG, cols, StandingsHud::COL_DEBUG);
     }
 
@@ -1281,8 +1266,7 @@ namespace {
         loadBitFromKey(settings, STATUS, cols, StandingsHud::COL_STATUS);
         loadBitFromKey(settings, PENALTY, cols, StandingsHud::COL_PENALTY);
         loadBitFromKey(settings, BEST_LAP, cols, StandingsHud::COL_BEST_LAP);
-        loadBitFromKey(settings, OFFICIAL_GAP, cols, StandingsHud::COL_OFFICIAL_GAP);
-        loadBitFromKey(settings, LIVE_GAP, cols, StandingsHud::COL_LIVE_GAP);
+        loadBitFromKey(settings, GAP, cols, StandingsHud::COL_GAP);
         loadBitFromKey(settings, DEBUG, cols, StandingsHud::COL_DEBUG);
     }
 
@@ -1490,30 +1474,30 @@ namespace {
         loadBitFromKey(settings, WATER_TEMP, cols, BarsWidget::COL_WATER_TEMP);
     }
 
-    // NoticesWidget: save notices as named keys
+    // NoticesHud: save notices as named keys
     void saveNotices(SettingsManager::HudSettings& settings, uint32_t notices) {
         using namespace Keys::Notices;
-        saveBitAsKey(settings, WRONG_WAY, notices, NoticesWidget::NOTICE_WRONG_WAY);
-        saveBitAsKey(settings, BLUE_FLAG, notices, NoticesWidget::NOTICE_BLUE_FLAG);
-        saveBitAsKey(settings, LAST_LAP, notices, NoticesWidget::NOTICE_LAST_LAP);
-        saveBitAsKey(settings, FINISHED, notices, NoticesWidget::NOTICE_FINISHED);
-        saveBitAsKey(settings, ALLTIME_PB, notices, NoticesWidget::NOTICE_ALLTIME_PB);
-        saveBitAsKey(settings, FASTEST_LAP, notices, NoticesWidget::NOTICE_FASTEST_LAP);
-        saveBitAsKey(settings, SESSION_PB, notices, NoticesWidget::NOTICE_SESSION_PB);
-        saveBitAsKey(settings, DEFAULT_SETUP, notices, NoticesWidget::NOTICE_DEFAULT_SETUP);
+        saveBitAsKey(settings, WRONG_WAY, notices, NoticesHud::NOTICE_WRONG_WAY);
+        saveBitAsKey(settings, BLUE_FLAG, notices, NoticesHud::NOTICE_BLUE_FLAG);
+        saveBitAsKey(settings, LAST_LAP, notices, NoticesHud::NOTICE_LAST_LAP);
+        saveBitAsKey(settings, FINISHED, notices, NoticesHud::NOTICE_FINISHED);
+        saveBitAsKey(settings, ALLTIME_PB, notices, NoticesHud::NOTICE_ALLTIME_PB);
+        saveBitAsKey(settings, FASTEST_LAP, notices, NoticesHud::NOTICE_FASTEST_LAP);
+        saveBitAsKey(settings, SESSION_PB, notices, NoticesHud::NOTICE_SESSION_PB);
+        saveBitAsKey(settings, DEFAULT_SETUP, notices, NoticesHud::NOTICE_DEFAULT_SETUP);
     }
 
-    // NoticesWidget: load notices from named keys
+    // NoticesHud: load notices from named keys
     void loadNotices(const SettingsManager::HudSettings& settings, uint32_t& notices) {
         using namespace Keys::Notices;
-        loadBitFromKey(settings, WRONG_WAY, notices, NoticesWidget::NOTICE_WRONG_WAY);
-        loadBitFromKey(settings, BLUE_FLAG, notices, NoticesWidget::NOTICE_BLUE_FLAG);
-        loadBitFromKey(settings, LAST_LAP, notices, NoticesWidget::NOTICE_LAST_LAP);
-        loadBitFromKey(settings, FINISHED, notices, NoticesWidget::NOTICE_FINISHED);
-        loadBitFromKey(settings, ALLTIME_PB, notices, NoticesWidget::NOTICE_ALLTIME_PB);
-        loadBitFromKey(settings, FASTEST_LAP, notices, NoticesWidget::NOTICE_FASTEST_LAP);
-        loadBitFromKey(settings, SESSION_PB, notices, NoticesWidget::NOTICE_SESSION_PB);
-        loadBitFromKey(settings, DEFAULT_SETUP, notices, NoticesWidget::NOTICE_DEFAULT_SETUP);
+        loadBitFromKey(settings, WRONG_WAY, notices, NoticesHud::NOTICE_WRONG_WAY);
+        loadBitFromKey(settings, BLUE_FLAG, notices, NoticesHud::NOTICE_BLUE_FLAG);
+        loadBitFromKey(settings, LAST_LAP, notices, NoticesHud::NOTICE_LAST_LAP);
+        loadBitFromKey(settings, FINISHED, notices, NoticesHud::NOTICE_FINISHED);
+        loadBitFromKey(settings, ALLTIME_PB, notices, NoticesHud::NOTICE_ALLTIME_PB);
+        loadBitFromKey(settings, FASTEST_LAP, notices, NoticesHud::NOTICE_FASTEST_LAP);
+        loadBitFromKey(settings, SESSION_PB, notices, NoticesHud::NOTICE_SESSION_PB);
+        loadBitFromKey(settings, DEFAULT_SETUP, notices, NoticesHud::NOTICE_DEFAULT_SETUP);
     }
 
     // TelemetryHud: save elements as named keys
@@ -1705,12 +1689,15 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
         captureBaseHudSettings(settings, hud);
         settings[DISPLAY_ROW_COUNT] = std::to_string(hud.m_displayRowCount);
         saveStandingsColumns(settings, hud.m_enabledColumns);  // Named keys instead of bitmask
-        settings[OFFICIAL_GAP_MODE] = gapModeToString(hud.m_officialGapMode);
-        settings[LIVE_GAP_MODE] = gapModeToString(hud.m_liveGapMode);
-        settings[GAP_INDICATOR_MODE] = gapIndicatorModeToString(hud.m_gapIndicatorMode);
+        settings[SHOW_GAP_COLUMN] = hud.m_showGapColumn ? "1" : "0";
+        settings[GAP_SCOPE] = gapScopeToString(hud.m_gapScope);
         settings[GAP_REFERENCE_MODE] = gapReferenceModeToString(hud.m_gapReferenceMode);
         settings[IniOnly::Standings::TOP_POSITIONS.key] = std::to_string(hud.m_topPositionsCount);
         settings[IniOnly::Standings::USE_ACCENT_HIGHLIGHT.key] = hud.m_bUseAccentForHighlight ? "1" : "0";
+        settings[IniOnly::Standings::ANIMATE_POSITIONS.key] = hud.m_bAnimatePositions ? "1" : "0";
+        settings[IniOnly::Standings::ANIMATION_DURATION_MS.key] = std::to_string(static_cast<int>(hud.m_animationDurationMs));
+        settings[IniOnly::Standings::SLANTED_PLATES.key] = hud.m_bSlantedPlates ? "1" : "0";
+        settings[IniOnly::Standings::NAME_MODE.key] = std::to_string(static_cast<int>(hud.m_nameMode));
         cache["StandingsHud"] = std::move(settings);
     }
 
@@ -1928,14 +1915,14 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
         cache["BarsWidget"] = std::move(settings);
     }
     captureWidget("VersionWidget", hudManager.getVersionWidget());
-    // NoticesWidget has enabledNotices and PB duration
+    // NoticesHud has enabledNotices and PB duration
     {
         HudSettings settings;
-        const auto& hud = hudManager.getNoticesWidget();
+        const auto& hud = hudManager.getNoticesHud();
         captureBaseHudSettings(settings, hud);
         saveNotices(settings, hud.m_enabledNotices);
         settings[IniOnly::Notices::PB_DURATION.key] = std::to_string(hud.m_noticeDurationMs);
-        cache["NoticesWidget"] = std::move(settings);
+        cache["NoticesHud"] = std::move(settings);
     }
     captureWidget("SettingsButtonWidget", hudManager.getSettingsButtonWidget());
     captureWidget("PointerWidget", hudManager.getPointerWidget());
@@ -2124,9 +2111,25 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
             try {
                 if (settings.count(DISPLAY_ROW_COUNT)) hud.m_displayRowCount = validateDisplayRows(std::stoi(settings.at(DISPLAY_ROW_COUNT)));
                 loadStandingsColumns(settings, hud.m_enabledColumns);  // Named keys instead of bitmask
-                if (settings.count(OFFICIAL_GAP_MODE)) hud.m_officialGapMode = stringToGapMode(settings.at(OFFICIAL_GAP_MODE));
-                if (settings.count(LIVE_GAP_MODE)) hud.m_liveGapMode = stringToGapMode(settings.at(LIVE_GAP_MODE));
-                if (settings.count(GAP_INDICATOR_MODE)) hud.m_gapIndicatorMode = stringToGapIndicatorMode(settings.at(GAP_INDICATOR_MODE));
+                if (settings.count(SHOW_GAP_COLUMN)) {
+                    hud.m_showGapColumn = std::stoi(settings.at(SHOW_GAP_COLUMN)) != 0;
+                } else if (settings.count("gapColumnMode")) {
+                    // Migrate from GapColumnMode (OFF = hide, anything else = show)
+                    hud.m_showGapColumn = settings.at("gapColumnMode") != "OFF";
+                } else if (settings.count("officialGapMode") || settings.count("liveGapMode")) {
+                    // Migrate from old officialGapMode/liveGapMode keys
+                    bool hadOfficial = settings.count("officialGapMode") && settings.at("officialGapMode") != "OFF";
+                    bool hadLive = settings.count("liveGapMode") && settings.at("liveGapMode") != "OFF";
+                    hud.m_showGapColumn = hadOfficial || hadLive;
+                }
+                if (settings.count(GAP_SCOPE)) {
+                    hud.m_gapScope = stringToGapScope(settings.at(GAP_SCOPE));
+                } else {
+                    // Migrate from old gap modes: if either was PLAYER, use PLAYER scope
+                    bool officialWasPlayer = settings.count("officialGapMode") && settings.at("officialGapMode") == "PLAYER";
+                    bool liveWasPlayer = settings.count("liveGapMode") && settings.at("liveGapMode") == "PLAYER";
+                    if (officialWasPlayer || liveWasPlayer) hud.m_gapScope = StandingsHud::GapScope::PLAYER;
+                }
                 if (settings.count(GAP_REFERENCE_MODE)) hud.m_gapReferenceMode = stringToGapReferenceMode(settings.at(GAP_REFERENCE_MODE));
                 if (settings.count(IniOnly::Standings::TOP_POSITIONS.key)) {
                     int topPos = std::stoi(settings.at(IniOnly::Standings::TOP_POSITIONS.key));
@@ -2135,6 +2138,26 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
                 }
                 if (settings.count(IniOnly::Standings::USE_ACCENT_HIGHLIGHT.key)) {
                     hud.m_bUseAccentForHighlight = std::stoi(settings.at(IniOnly::Standings::USE_ACCENT_HIGHLIGHT.key)) != 0;
+                }
+                if (settings.count(IniOnly::Standings::ANIMATE_POSITIONS.key)) {
+                    hud.m_bAnimatePositions = std::stoi(settings.at(IniOnly::Standings::ANIMATE_POSITIONS.key)) != 0;
+                }
+                if (settings.count(IniOnly::Standings::ANIMATION_DURATION_MS.key)) {
+                    int durationMs = std::stoi(settings.at(IniOnly::Standings::ANIMATION_DURATION_MS.key));
+                    hud.m_animationDurationMs = static_cast<float>(std::max(50, std::min(1000, durationMs)));
+                }
+                if (settings.count(IniOnly::Standings::SLANTED_PLATES.key)) {
+                    hud.m_bSlantedPlates = std::stoi(settings.at(IniOnly::Standings::SLANTED_PLATES.key)) != 0;
+                }
+                if (settings.count(IniOnly::Standings::NAME_MODE.key)) {
+                    int mode = std::stoi(settings.at(IniOnly::Standings::NAME_MODE.key));
+                    if (mode >= 0 && mode <= 2) {
+                        hud.m_nameMode = static_cast<StandingsHud::NameMode>(mode);
+                    }
+                } else {
+                    // Migrate from old col_name boolean: off -> OFF, on -> SHORT
+                    hud.m_nameMode = (hud.m_enabledColumns & StandingsHud::COL_NAME)
+                        ? StandingsHud::NameMode::SHORT : StandingsHud::NameMode::OFF;
                 }
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("StandingsHud: Failed to parse settings: %s", e.what());
@@ -2598,11 +2621,11 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
         }
     }
     applyToHud("VersionWidget", hudManager.getVersionWidget());
-    // Apply NoticesWidget with enabledNotices and PB duration
+    // Apply NoticesHud with enabledNotices and PB duration
     {
-        auto it = cache.find("NoticesWidget");
+        auto it = cache.find("NoticesHud");
         if (it != cache.end()) {
-            auto& hud = hudManager.getNoticesWidget();
+            auto& hud = hudManager.getNoticesHud();
             applyBaseHudSettings(hud, it->second);
 
             const auto& settings = it->second;
@@ -2610,12 +2633,12 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
                 loadNotices(settings, hud.m_enabledNotices);
                 if (settings.count(IniOnly::Notices::PB_DURATION.key)) {
                     int duration = std::stoi(settings.at(IniOnly::Notices::PB_DURATION.key));
-                    if (duration >= NoticesWidget::MIN_NOTICE_DURATION_MS && duration <= NoticesWidget::MAX_NOTICE_DURATION_MS) {
+                    if (duration >= NoticesHud::MIN_NOTICE_DURATION_MS && duration <= NoticesHud::MAX_NOTICE_DURATION_MS) {
                         hud.m_noticeDurationMs = duration;
                     }
                 }
             } catch (const std::exception& e) {
-                DEBUG_WARN_F("NoticesWidget: Failed to parse settings: %s", e.what());
+                DEBUG_WARN_F("NoticesHud: Failed to parse settings: %s", e.what());
             }
             hud.setDataDirty();
         }
@@ -3086,6 +3109,8 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
 #if GAME_HAS_DISCORD
     file << "discordRichPresence=" << (DiscordManager::getInstance().isEnabled() ? 1 : 0) << "\n";
 #endif
+    file << "liveStandings=" << (PluginData::getInstance().isLiveStandingsEnabled() ? 1 : 0) << "\n";
+    file << "filterDnsRiders=" << (PluginData::getInstance().isFilterDnsRiders() ? 1 : 0) << "\n";
     file << "\n";
 
     // Write Advanced section (power-user settings)
@@ -3105,6 +3130,8 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     file << IniOnly::Advanced::DROP_SHADOW_OFFSET_Y.key << "=" << UiConfig::getInstance().getDropShadowOffsetY() << " ; " << IniOnly::Advanced::DROP_SHADOW_OFFSET_Y.description << "\n";
     file << IniOnly::Advanced::DROP_SHADOW_COLOR.key << "=" << PluginUtils::formatColorHex(UiConfig::getInstance().getDropShadowColor()) << " ; " << IniOnly::Advanced::DROP_SHADOW_COLOR.description << "\n";
     file << IniOnly::Advanced::HOLD_REPEAT_FAST_MS.key << "=" << UiConfig::getInstance().getHoldRepeatFastMs() << " ; " << IniOnly::Advanced::HOLD_REPEAT_FAST_MS.description << "\n";
+    file << IniOnly::Advanced::LIVE_STANDINGS_HOLD_MS.key << "=" << PluginData::getInstance().getLiveStandingsHoldTimeMs() << " ; " << IniOnly::Advanced::LIVE_STANDINGS_HOLD_MS.description << "\n";
+    file << IniOnly::Advanced::LIVE_STANDINGS_MIN_GAP.key << "=" << PluginData::getInstance().getLiveStandingsMinTrackGap() << " ; " << IniOnly::Advanced::LIVE_STANDINGS_MIN_GAP.description << "\n";
 #if defined(GAME_MXBIKES)
     // Memory offsets for connection detection (MX Bikes only)
     const auto& offsetConfig = Memory::ConnectionDetector::getInstance().getOffsetConfig();
@@ -3214,7 +3241,7 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
         "LapLogHud", "LapConsistencyHud", "FmxHud", "StatsHud", "IdealLapHud", "TelemetryHud", "PerformanceHud",
         "LapWidget", "PositionWidget", "TimeWidget", "ClockWidget", "SessionHud", "SpeedWidget", "GearWidget",
         "SpeedoWidget", "TachoWidget", "TimingHud", "GapBarHud", "BarsWidget", "VersionWidget",
-        "NoticesWidget", "FuelWidget", "GamepadWidget", "LeanWidget", "TyreTempWidget", "SettingsButtonWidget", "PointerWidget", "RumbleHud",
+        "NoticesHud", "FuelWidget", "GamepadWidget", "LeanWidget", "TyreTempWidget", "SettingsButtonWidget", "PointerWidget", "RumbleHud",
         "BenchmarkWidget",
         "Global"
     };
@@ -3538,6 +3565,12 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                     DiscordManager::getInstance().setEnabled(std::stoi(value) != 0);
                 }
 #endif
+                else if (key == "liveStandings") {
+                    PluginData::getInstance().setLiveStandingsEnabled(std::stoi(value) != 0);
+                }
+                else if (key == "filterDnsRiders") {
+                    PluginData::getInstance().setFilterDnsRiders(std::stoi(value) != 0);
+                }
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("General: Failed to parse settings: %s", e.what());
             }
@@ -3592,6 +3625,10 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                     UiConfig::getInstance().setDropShadowColor(PluginUtils::parseColorHex(value));
                 } else if (key == "holdRepeatFastMs") {
                     UiConfig::getInstance().setHoldRepeatFastMs(std::stoi(value));
+                } else if (key == "liveStandingsHoldMs") {
+                    PluginData::getInstance().setLiveStandingsHoldTimeMs(std::stoi(value));
+                } else if (key == "liveStandingsMinGap") {
+                    PluginData::getInstance().setLiveStandingsMinTrackGap(std::stof(value));
                 }
 #if defined(GAME_MXBIKES)
                 // Memory offsets for connection detection (MX Bikes only)

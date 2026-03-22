@@ -46,7 +46,7 @@ void PositionWidget::update() {
     // Check if position or total entries changed
     int currentPosition = calculatePlayerPosition();
     const PluginData& pluginData = PluginData::getInstance();
-    int totalEntries = static_cast<int>(pluginData.getClassificationOrder().size());
+    int totalEntries = static_cast<int>(pluginData.getLiveClassificationOrder().size());
 
     if (currentPosition != m_cachedPosition || totalEntries != m_cachedTotalEntries) {
         setDataDirty();
@@ -75,7 +75,7 @@ int PositionWidget::calculatePlayerPosition() const {
     }
 
     // Use centralized position cache (O(1) lookup instead of O(n) linear search)
-    return pluginData.getPositionForRaceNum(displayRaceNum);
+    return pluginData.getLivePositionForRaceNum(displayRaceNum);
 }
 
 void PositionWidget::rebuildLayout() {
@@ -126,7 +126,7 @@ void PositionWidget::rebuildRenderData() {
     // Get position data
     int position = calculatePlayerPosition();
     const PluginData& pluginData = PluginData::getInstance();
-    int totalEntries = static_cast<int>(pluginData.getClassificationOrder().size());
+    int totalEntries = static_cast<int>(pluginData.getLiveClassificationOrder().size());
 
     float startX = 0.0f;
     float startY = 0.0f;

@@ -100,7 +100,8 @@ bool StatsHud::computeLayout(Layout& out) const {
     out.dim = getScaledDimensions();
 
     int rowCount = getRowCount();
-    int widthChars = LABEL_WIDTH_CHARS + out.cols * COLUMN_WIDTH_CHARS;
+    int colGaps = (out.cols > 1) ? (out.cols - 1) * COLUMN_GAP_CHARS : 0;
+    int widthChars = LABEL_WIDTH_CHARS + out.cols * COLUMN_WIDTH_CHARS + colGaps;
     out.backgroundWidth = calculateBackgroundWidth(widthChars);
     out.titleHeight = m_bShowTitle ? out.dim.lineHeightLarge : 0.0f;
     float contentHeight = out.titleHeight + out.dim.lineHeightNormal * rowCount;
@@ -110,9 +111,9 @@ bool StatsHud::computeLayout(Layout& out) const {
     out.contentStartY = out.dim.paddingV;
 
     float rightX = out.backgroundWidth - out.dim.paddingH;
-    float colWidth = PluginUtils::calculateMonospaceTextWidth(COLUMN_WIDTH_CHARS, out.dim.fontSize);
+    float colStride = PluginUtils::calculateMonospaceTextWidth(COLUMN_WIDTH_CHARS + COLUMN_GAP_CHARS, out.dim.fontSize);
     for (int i = 0; i < out.cols; i++) {
-        out.col[out.cols - 1 - i] = rightX - i * colWidth;
+        out.col[out.cols - 1 - i] = rightX - i * colStride;
     }
     return true;
 }

@@ -60,10 +60,16 @@ void AssetManager::syncUserAssets(const char* savePath) {
     }
     userBaseDir += USER_OVERRIDE_DIR;
 
-    // Check if user override directory exists
+    // Create user override directories so users know where to put custom assets.
+    // CreateDirectoryA is idempotent (ignores ERROR_ALREADY_EXISTS).
+    CreateDirectoryA(userBaseDir.c_str(), NULL);
+    CreateDirectoryA((userBaseDir + "\\" + FONTS_SUBDIR).c_str(), NULL);
+    CreateDirectoryA((userBaseDir + "\\" + TEXTURES_SUBDIR).c_str(), NULL);
+    CreateDirectoryA((userBaseDir + "\\" + ICONS_SUBDIR).c_str(), NULL);
+
+    // Check if user override directory has any content to sync
     DWORD attrs = GetFileAttributesA(userBaseDir.c_str());
     if (attrs == INVALID_FILE_ATTRIBUTES || !(attrs & FILE_ATTRIBUTE_DIRECTORY)) {
-        // User override directory doesn't exist - this is normal for most users
         return;
     }
 

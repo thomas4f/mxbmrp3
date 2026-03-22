@@ -103,6 +103,18 @@ struct SettingsLayoutContext {
         const char* valueOverride = nullptr
     );
 
+    // Overload for bool* toggle controls (e.g., GAP_COLUMN_TOGGLE)
+    void addToggleControl(
+        const char* label,
+        bool isOn,
+        SettingsHud::ClickRegion::Type toggleType,
+        BaseHud* targetHud,
+        bool* boolPtr,
+        bool enabled = true,
+        const char* tooltipId = nullptr,
+        const char* valueOverride = nullptr
+    );
+
     // Add standard HUD controls block (Visible, Title, Texture, Opacity, Scale)
     // Returns the Y position where the section started (for right column alignment)
     float addStandardHudControls(BaseHud* hud, bool enableTitle = true);

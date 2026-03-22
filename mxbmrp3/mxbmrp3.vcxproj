@@ -268,7 +268,7 @@
     <ClInclude Include="hud\time_widget.h" />
     <ClInclude Include="hud\timing_hud.h" />
     <ClInclude Include="hud\gap_bar_hud.h" />
-    <ClInclude Include="hud\notices_widget.h" />
+    <ClInclude Include="hud\notices_hud.h" />
     <ClInclude Include="hud\version_widget.h" />
     <ClInclude Include="hud\fuel_widget.h" />
     <ClInclude Include="hud\gamepad_widget.h" />
@@ -374,6 +374,7 @@
     <ClCompile Include="hud\settings\settings_tab_map.cpp" />
     <ClCompile Include="hud\settings\settings_tab_radar.cpp" />
     <ClCompile Include="hud\settings\settings_tab_widgets.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_notices.cpp" />
     <ClCompile Include="hud\settings\settings_tab_rumble.cpp" />
     <ClCompile Include="hud\settings\settings_tab_general.cpp" />
     <ClCompile Include="hud\settings\settings_tab_appearance.cpp" />
@@ -390,7 +391,7 @@
     <ClCompile Include="hud\time_widget.cpp" />
     <ClCompile Include="hud\timing_hud.cpp" />
     <ClCompile Include="hud\gap_bar_hud.cpp" />
-    <ClCompile Include="hud\notices_widget.cpp" />
+    <ClCompile Include="hud\notices_hud.cpp" />
     <ClCompile Include="hud\version_widget.cpp" />
     <ClCompile Include="hud\fuel_widget.cpp" />
     <ClCompile Include="hud\gamepad_widget.cpp" />

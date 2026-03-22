@@ -424,15 +424,22 @@ void LapLogHud::rebuildRenderData() {
                 strcpy_s(timeStr, sizeof(timeStr), Placeholders::LAP_TIME);
             }
 
-            // Colors for live timing: use muted color for ticking values, primary for official
+            // Colors for live timing: primary for official, secondary for ticking values, muted for placeholders
             unsigned long colorLap = this->getColor(ColorSlot::SECONDARY);
-            unsigned long colorS1 = (officialS1 > 0) ? this->getColor(ColorSlot::PRIMARY) : this->getColor(ColorSlot::MUTED);
-            unsigned long colorS2 = (officialS2 > 0) ? this->getColor(ColorSlot::PRIMARY) : this->getColor(ColorSlot::MUTED);
-            unsigned long colorS3 = this->getColor(ColorSlot::MUTED);  // S3 is always in progress or placeholder
+            unsigned long colorS1 = (officialS1 > 0) ? this->getColor(ColorSlot::PRIMARY)
+                : (activeSector == 0 && data.getElapsedSectorTime(0) > 0) ? this->getColor(ColorSlot::SECONDARY)
+                : this->getColor(ColorSlot::MUTED);
+            unsigned long colorS2 = (officialS2 > 0) ? this->getColor(ColorSlot::PRIMARY)
+                : (activeSector == 1 && data.getElapsedSectorTime(1) > 0) ? this->getColor(ColorSlot::SECONDARY)
+                : this->getColor(ColorSlot::MUTED);
+            unsigned long colorS3 = (activeSector == 2 && data.getElapsedSectorTime(2) > 0)
+                ? this->getColor(ColorSlot::SECONDARY) : this->getColor(ColorSlot::MUTED);
 #if GAME_SECTOR_COUNT >= 4
-            unsigned long colorS4 = this->getColor(ColorSlot::MUTED);  // S4 is always in progress or placeholder
+            unsigned long colorS4 = (activeSector == 3 && data.getElapsedSectorTime(3) > 0)
+                ? this->getColor(ColorSlot::SECONDARY) : this->getColor(ColorSlot::MUTED);
 #endif
-            unsigned long colorTime = this->getColor(ColorSlot::MUTED);  // Lap time uses muted color (gap shown separately)
+            unsigned long colorTime = (elapsedLapTime > 0)
+                ? this->getColor(ColorSlot::SECONDARY) : this->getColor(ColorSlot::MUTED);
 
             addString(lapStr, m_columns.lap, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), colorLap, dim.fontSize);
             addString(showSectors ? s1Str : "", m_columns.s1, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), colorS1, dim.fontSize);

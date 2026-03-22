@@ -17,6 +17,8 @@ namespace WidgetDimensions {
     constexpr int TIMING_TIME_WIDTH = 8;     // "1:23.456"
     constexpr int TIMING_GAP_WIDTH = 10;     // "+0:12.526", "INVALID"
     constexpr int TIMING_GAP_WITH_REF_WIDTH = 20;  // "+0:12.526 (0:34.649)"
+    constexpr int TIMING_GAP_WITH_REF_WIDTH_COMPACT = 18;  // Tighter for vertical mode
     constexpr int TIMING_CHIP_WIDTH = 13;    // "AT:+0:12.526" compact chip format
     constexpr int TIMING_CHIP_WITH_REF_WIDTH = 21; // "AT:+0:12.526 (0:34.6)"
+    constexpr int TIMING_CHIP_WITH_REF_WIDTH_COMPACT = 19; // Tighter for vertical mode
 }

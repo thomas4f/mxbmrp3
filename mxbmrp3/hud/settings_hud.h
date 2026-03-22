@@ -23,7 +23,7 @@
 #include "gap_bar_hud.h"
 #include "bars_widget.h"
 #include "version_widget.h"
-#include "notices_widget.h"
+#include "notices_hud.h"
 #include "fuel_widget.h"
 #include "pointer_widget.h"
 #include "records_hud.h"
@@ -57,7 +57,7 @@ public:
                 StandingsHud* standings,
                 PerformanceHud* performance,
                 TelemetryHud* telemetry,
-                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesWidget* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean,
+                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesHud* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean,
                 FmxHud* fmxHud,
                 StatsHud* statsHud,
                 ClockWidget* clock
@@ -83,12 +83,9 @@ public:
         float x, y, width, height;
         enum Type {
             CHECKBOX,                  // Toggle column/row visibility (bitfield)
-            GAP_MODE_UP,               // Cycle gap mode forward (Off/Me/All)
-            GAP_MODE_DOWN,             // Cycle gap mode backward
-            GAP_INDICATOR_UP,          // Cycle gap indicator forward (Off/Official/Live/Both)
-            GAP_INDICATOR_DOWN,        // Cycle gap indicator backward
-            GAP_REFERENCE_UP,          // Cycle gap reference forward (Leader/Player)
-            GAP_REFERENCE_DOWN,        // Cycle gap reference backward
+            GAP_COLUMN_TOGGLE,         // Toggle gap column on/off
+            GAP_SCOPE_TOGGLE,          // Toggle gap scope (Player/All)
+            GAP_REFERENCE_TOGGLE,      // Toggle gap reference (Leader/Player)
             STANDINGS_DEBUG_TOGGLE,    // Unused - debug column is INI-only (col_debug=1)
             RESET_BUTTON,              // Unified reset button (General tab) - action depends on checkbox
             RESET_TAB_BUTTON,          // Reset current tab to defaults (footer)
@@ -335,7 +332,15 @@ public:
             STATS_SHOW_SESSION_TOGGLE, // Toggle session column
             STATS_SHOW_ALLTIME_TOGGLE, // Toggle all-time column
             // Clock Widget
-            CLOCK_FORMAT_TOGGLE        // Toggle 12h/24h format (ClockWidget)
+            CLOCK_FORMAT_TOGGLE,       // Toggle 12h/24h format (ClockWidget)
+            // Notices HUD
+            NOTICES_DURATION_UP,       // Increase notice duration (NoticesHud)
+            NOTICES_DURATION_DOWN,     // Decrease notice duration (NoticesHud)
+            // Global display filters (UI in standings tab)
+            LIVE_STANDINGS_TOGGLE,     // Toggle live position updates (PluginData global)
+            FILTER_DNS_TOGGLE,         // Toggle DNS rider filtering (PluginData global)
+            ANIMATE_POSITIONS_TOGGLE,  // Toggle position animation (StandingsHud)
+            NAME_MODE_TOGGLE           // Cycle rider name mode Off/Short/Long (StandingsHud)
         } type;
 
         // Type-safe variant instead of unsafe union (C++17)
@@ -343,9 +348,7 @@ public:
         using TargetPointer = std::variant<
             std::monostate,                              // Empty state (for types that don't need a pointer)
             uint32_t*,                                   // For CHECKBOX (targetBitfield)
-            StandingsHud::GapMode*,                      // For GAP_MODE_CYCLE
-            StandingsHud::GapIndicatorMode*,             // For GAP_INDICATOR_CYCLE
-            StandingsHud::GapReferenceMode*,             // For GAP_REFERENCE_UP/DOWN
+            bool*,                                       // For GAP_COLUMN_TOGGLE and other bool toggles
             uint8_t*,                                    // For DISPLAY_MODE_UP/DOWN
             ColorSlot,                                   // For COLOR_CYCLE_PREV/NEXT
             FontCategory,                                // For FONT_CATEGORY_PREV/NEXT
@@ -381,25 +384,11 @@ public:
               targetPointer(bitfield), flagBit(_flagBit), isRequired(_isRequired),
               targetHud(_targetHud), tabIndex(0), tooltipId() {}
 
-        // Constructor for GAP_MODE_UP/DOWN regions
+        // Constructor for GAP_COLUMN_TOGGLE regions (bool*)
         ClickRegion(float _x, float _y, float _width, float _height, Type _type,
-                   StandingsHud::GapMode* gapMode, BaseHud* _targetHud)
+                   bool* boolPtr, BaseHud* _targetHud)
             : x(_x), y(_y), width(_width), height(_height), type(_type),
-              targetPointer(gapMode), flagBit(0), isRequired(false),
-              targetHud(_targetHud), tabIndex(0), tooltipId() {}
-
-        // Constructor for GAP_INDICATOR_UP/DOWN regions
-        ClickRegion(float _x, float _y, float _width, float _height, Type _type,
-                   StandingsHud::GapIndicatorMode* gapIndicatorMode, BaseHud* _targetHud)
-            : x(_x), y(_y), width(_width), height(_height), type(_type),
-              targetPointer(gapIndicatorMode), flagBit(0), isRequired(false),
-              targetHud(_targetHud), tabIndex(0), tooltipId() {}
-
-        // Constructor for GAP_REFERENCE_UP/DOWN regions
-        ClickRegion(float _x, float _y, float _width, float _height, Type _type,
-                   StandingsHud::GapReferenceMode* gapReferenceMode, BaseHud* _targetHud)
-            : x(_x), y(_y), width(_width), height(_height), type(_type),
-              targetPointer(gapReferenceMode), flagBit(0), isRequired(false),
+              targetPointer(boolPtr), flagBit(0), isRequired(false),
               targetHud(_targetHud), tabIndex(0), tooltipId() {}
 
         // Constructor for DISPLAY_MODE regions
@@ -462,6 +451,7 @@ public:
     static BaseHud* renderTabMap(SettingsLayoutContext& ctx);
     static BaseHud* renderTabRadar(SettingsLayoutContext& ctx);
     static BaseHud* renderTabWidgets(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabNotices(SettingsLayoutContext& ctx);
     static BaseHud* renderTabRumble(SettingsLayoutContext& ctx);
     static BaseHud* renderTabGeneral(SettingsLayoutContext& ctx);
     static BaseHud* renderTabAppearance(SettingsLayoutContext& ctx);
@@ -491,6 +481,7 @@ public:
     bool handleClickTabUpdates(const ClickRegion& region);
     bool handleClickTabFmx(const ClickRegion& region);
     bool handleClickTabStats(const ClickRegion& region);
+    bool handleClickTabNotices(const ClickRegion& region);
 
     // HUD getter methods (for tab rendering functions)
     IdealLapHud* getIdealLapHud() const { return m_idealLap; }
@@ -513,7 +504,7 @@ public:
     GapBarHud* getGapBarHud() const { return m_gapBar; }
     BarsWidget* getBarsWidget() const { return m_bars; }
     VersionWidget* getVersionWidget() const { return m_version; }
-    NoticesWidget* getNoticesWidget() const { return m_notices; }
+    NoticesHud* getNoticesHud() const { return m_notices; }
     PitboardHud* getPitboardHud() const { return m_pitboard; }
     RecordsHud* getRecordsHud() const { return m_records; }
     FuelWidget* getFuelWidget() const { return m_fuel; }
@@ -600,7 +591,7 @@ private:
     GapBarHud* m_gapBar;
     BarsWidget* m_bars;
     VersionWidget* m_version;
-    NoticesWidget* m_notices;
+    NoticesHud* m_notices;
     PitboardHud* m_pitboard;
     RecordsHud* m_records;
     FuelWidget* m_fuel;
@@ -658,14 +649,15 @@ private:
         TAB_GAP_BAR = 12,      // Gap Bar HUD (lap timing comparison)
         TAB_PERFORMANCE = 13,
         TAB_WIDGETS = 14,
-        TAB_RIDERS = 15,       // Tracked riders configuration
-        TAB_RUMBLE = 16,
-        TAB_APPEARANCE = 17,   // Appearance configuration (fonts, colors)
-        TAB_HOTKEYS = 18,      // Keyboard/controller hotkey bindings
-        TAB_UPDATES = 19,      // Auto-update settings
-        TAB_FMX = 20,          // FMX (Freestyle) trick scoring
-        TAB_STATS = 21,        // Stats tracking (laps, crashes, PBs)
-        TAB_COUNT = 22
+        TAB_NOTICES = 15,      // Notices HUD (warnings, PB notifications)
+        TAB_RIDERS = 16,       // Tracked riders configuration
+        TAB_RUMBLE = 17,
+        TAB_APPEARANCE = 18,   // Appearance configuration (fonts, colors)
+        TAB_HOTKEYS = 19,      // Keyboard/controller hotkey bindings
+        TAB_UPDATES = 20,      // Auto-update settings
+        TAB_FMX = 21,          // FMX (Freestyle) trick scoring
+        TAB_STATS = 22,        // Stats tracking (laps, crashes, PBs)
+        TAB_COUNT = 23
     };
     int m_activeTab;
 

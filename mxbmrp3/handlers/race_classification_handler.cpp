@@ -56,7 +56,7 @@ void RaceClassificationHandler::handleRaceClassification(
             sessionData.lastSessionTime > 0 && psRaceClassification->sessionTime < 0 &&
             pasRaceClassificationEntry && iNumEntries > 0) {
             // Overtime just started! Capture leader's current lap
-            // numLaps is the lap currently being raced (1-indexed), not completed laps
+            // numLaps is the number of completed laps (0 = on first lap, 6 = completed 6 laps)
             const Unified::RaceClassificationEntry& leader = pasRaceClassificationEntry[0];
             int leaderCurrentLap = leader.numLaps;
 

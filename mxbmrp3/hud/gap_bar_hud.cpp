@@ -745,11 +745,12 @@ void GapBarHud::updateRiderPositions(int numVehicles, const Unified::TrackPositi
 unsigned long GapBarHud::calculateRiderColor(int riderRaceNum, int displayRaceNum) const {
     const PluginData& pluginData = PluginData::getInstance();
 
-    // Get lap data for position-based modulation
+    // Get lap data for position-based modulation (only in race sessions)
     const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
     const StandingsData* riderStanding = pluginData.getStanding(riderRaceNum);
-    int playerLaps = playerStanding ? playerStanding->numLaps : 0;
-    int riderLaps = riderStanding ? riderStanding->numLaps : 0;
+    bool isRace = pluginData.isRaceSession();
+    int playerLaps = (isRace && playerStanding) ? playerStanding->numLaps : 0;
+    int riderLaps = (isRace && riderStanding) ? riderStanding->numLaps : 0;
     int lapDiff = riderLaps - playerLaps;
 
     // Check if this is a tracked rider (has custom color - overrides color mode)
@@ -762,15 +763,13 @@ unsigned long GapBarHud::calculateRiderColor(int riderRaceNum, int displayRaceNu
             unsigned long baseColor = trackedConfig->color;
 
             // Apply position-based color modulation (like RadarHud)
-            // Only in race sessions where lap position matters
-            if (pluginData.isRaceSession()) {
-                if (lapDiff >= 1) {
-                    // Rider is ahead by laps - lighten color
-                    baseColor = PluginUtils::lightenColor(baseColor, 0.4f);
-                } else if (lapDiff <= -1) {
-                    // Rider is behind by laps - darken color
-                    baseColor = PluginUtils::darkenColor(baseColor, 0.6f);
-                }
+            // lapDiff is already zeroed in non-race sessions above
+            if (lapDiff >= 1) {
+                // Rider is ahead by laps - lighten color
+                baseColor = PluginUtils::lightenColor(baseColor, 0.4f);
+            } else if (lapDiff <= -1) {
+                // Rider is behind by laps - darken color
+                baseColor = PluginUtils::darkenColor(baseColor, 0.6f);
             }
 
             return baseColor;
@@ -780,15 +779,18 @@ unsigned long GapBarHud::calculateRiderColor(int riderRaceNum, int displayRaceNu
     // Apply color based on selected mode
     switch (m_riderColorMode) {
         case RiderColorMode::RELATIVE_POS: {
-            // Position-based coloring (original behavior)
-            int playerPosition = pluginData.getPositionForRaceNum(displayRaceNum);
-            int riderPosition = pluginData.getPositionForRaceNum(riderRaceNum);
+            // Position-based coloring - only meaningful in race sessions
+            if (!pluginData.isRaceSession()) {
+                return this->getColor(ColorSlot::NEUTRAL);
+            }
+            int playerPosition = pluginData.getLivePositionForRaceNum(displayRaceNum);
+            int riderPosition = pluginData.getLivePositionForRaceNum(riderRaceNum);
 
             return PluginUtils::getRelativePositionColor(
                 playerPosition, riderPosition, playerLaps, riderLaps,
-                this->getColor(ColorSlot::NEUTRAL),    // Same position/lap = neutral
-                this->getColor(ColorSlot::WARNING),    // Ahead = warning (orange)
-                this->getColor(ColorSlot::TERTIARY));  // Behind = tertiary (gray)
+                this->getColor(ColorSlot::NEUTRAL),
+                this->getColor(ColorSlot::WARNING),
+                this->getColor(ColorSlot::TERTIARY));
         }
 
         case RiderColorMode::BRAND: {
@@ -912,7 +914,7 @@ void GapBarHud::renderRiderMarkers(float innerX, float innerY, float innerWidth,
 
             // Render label if enabled
             if (m_labelMode != LabelMode::NONE) {
-                int position = pluginData.getPositionForRaceNum(pos.raceNum);
+                int position = pluginData.getLivePositionForRaceNum(pos.raceNum);
                 renderMarkerLabel(markerX, markerY, iconHalfSize, pos.raceNum, position, dim);
             }
         }
@@ -972,7 +974,7 @@ void GapBarHud::renderRiderMarkers(float innerX, float innerY, float innerWidth,
 
         // Render label for self if enabled
         if (m_labelMode != LabelMode::NONE) {
-            int position = pluginData.getPositionForRaceNum(displayRaceNum);
+            int position = pluginData.getLivePositionForRaceNum(displayRaceNum);
             renderMarkerLabel(markerX, markerY, iconHalfSize, displayRaceNum, position, dim);
         }
     }

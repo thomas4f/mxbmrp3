@@ -30,7 +30,7 @@
 #include "../hud/timing_hud.h"
 #include "../hud/bars_widget.h"
 #include "../hud/version_widget.h"
-#include "../hud/notices_widget.h"
+#include "../hud/notices_hud.h"
 #include "../hud/settings_hud.h"
 #include "../hud/settings_button_widget.h"
 #include "../hud/map_hud.h"
@@ -220,7 +220,7 @@ void HudManager::initialize() {
     m_pVersion = versionPtr.get();
     registerHud(std::move(versionPtr));
 
-    auto noticesPtr = std::make_unique<NoticesWidget>();
+    auto noticesPtr = std::make_unique<NoticesHud>();
     m_pNotices = noticesPtr.get();
     registerHud(std::move(noticesPtr));
 
@@ -715,7 +715,7 @@ void HudManager::collectRenderData() {
                            hud.get() == m_pSpeed || hud.get() == m_pGear ||
                            hud.get() == m_pSpeedo || hud.get() == m_pTacho ||
                            hud.get() == m_pBars || hud.get() == m_pVersion ||
-                           hud.get() == m_pNotices || hud.get() == m_pFuel ||
+                           hud.get() == m_pFuel ||
                            hud.get() == m_pGamepad || hud.get() == m_pLean ||
                            hud.get() == m_pClock);
             if (m_bAllWidgetsToggledOff && isWidget && !isVersionGameActive) {
@@ -951,6 +951,11 @@ void HudManager::processKeyboardInput() {
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_SESSION) && m_pSession) {
         m_pSession->setVisible(!m_pSession->isVisible());
         DEBUG_INFO_F("Hotkey: Session %s", m_pSession->isVisible() ? "shown" : "hidden");
+    }
+
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_NOTICES) && m_pNotices) {
+        m_pNotices->setVisible(!m_pNotices->isVisible());
+        DEBUG_INFO_F("Hotkey: Notices %s", m_pNotices->isVisible() ? "shown" : "hidden");
     }
 
     // Reload config from file

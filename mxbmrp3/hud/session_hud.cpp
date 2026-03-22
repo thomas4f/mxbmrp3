@@ -19,6 +19,8 @@ using namespace PluginConstants;
 namespace {
     // Icon size as a fraction of font size (slightly smaller than text for visual balance)
     constexpr float ICON_SIZE_FACTOR = 0.8f;
+    // Max visible characters before truncating with "..."
+    constexpr int MAX_DISPLAY_CHARS = 25;
 }
 
 SessionHud::SessionHud()
@@ -507,6 +509,11 @@ void SessionHud::rebuildRenderData() {
     if (m_enabledRows & ROW_TRACK) {
         addIconQuad(contentStartX, currentY, iconTrack);
         const char* trackName = sessionData.trackName[0] != '\0' ? sessionData.trackName : Placeholders::GENERIC;
+        char trackBuf[32];
+        if (strlen(trackName) > MAX_DISPLAY_CHARS) {
+            snprintf(trackBuf, sizeof(trackBuf), "%.*s...", MAX_DISPLAY_CHARS, trackName);
+            trackName = trackBuf;
+        }
         addString(trackName, contentStartX + textOffset, currentY, Justify::LEFT,
             this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
         currentY += trackHeight;
@@ -561,6 +568,11 @@ void SessionHud::rebuildRenderData() {
     if ((m_enabledRows & ROW_SERVER) && (isOffline || (isOnline && hasServerName))) {
         addIconQuad(contentStartX, currentY, iconServer);
         const char* serverText = isOffline ? "Testing" : sessionData.serverName;
+        char serverBuf[32];
+        if (strlen(serverText) > MAX_DISPLAY_CHARS) {
+            snprintf(serverBuf, sizeof(serverBuf), "%.*s...", MAX_DISPLAY_CHARS, serverText);
+            serverText = serverBuf;
+        }
         addString(serverText, contentStartX + textOffset, currentY, Justify::LEFT,
             this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
         currentY += serverHeight;

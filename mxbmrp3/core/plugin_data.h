@@ -110,8 +110,9 @@ struct SessionData {
     }
 
     // Race finish detection helpers
-    // For timed+laps races: numLaps is current lap, finishLap set during overtime
-    // For pure lap races: numLaps = completed laps, use sessionNumLaps directly
+    // numLaps = completed laps (0 = on first lap, 5 = completed 5 laps)
+    // For timed+laps races: finishLap set during overtime
+    // For pure lap races: use sessionNumLaps directly
     bool isRiderFinished(int numLaps) const {
         if (sessionLength > 0 && sessionNumLaps > 0) {
             // Timed+laps race
@@ -866,6 +867,28 @@ public:
     // Uses cached map that's only rebuilt when classification changes
     int getPositionForRaceNum(int raceNum) const;
 
+    // Live standings: real-time position reordering between splits (race sessions only)
+    // When enabled, positions update based on track position between official classifications.
+    // When disabled (or outside race sessions), these fall back to official data.
+    void setLiveStandingsEnabled(bool enabled);
+    bool isLiveStandingsEnabled() const { return m_liveStandingsEnabled; }
+    const std::vector<int>& getLiveClassificationOrder() const;
+    int getLivePositionForRaceNum(int raceNum) const;
+    void updateLivePositions();     // Called after updateRealTimeGaps()
+    void clearLivePositionState();  // Clear live sort state on session transitions
+
+    // DNS rider filtering: hide Did Not Start riders from display
+    // When enabled, getLiveClassificationOrder() and getLivePositionForRaceNum()
+    // exclude riders with state == DNS. Official accessors are unaffected.
+    void setFilterDnsRiders(bool enabled);
+    bool isFilterDnsRiders() const { return m_filterDnsRiders; }
+
+    // Live standings tuning (INI-only advanced settings)
+    void setLiveStandingsHoldTimeMs(int ms) { m_liveStandingsHoldTimeMs = std::max(0, std::min(ms, 2000)); }
+    int getLiveStandingsHoldTimeMs() const { return m_liveStandingsHoldTimeMs; }
+    void setLiveStandingsMinTrackGap(float gap) { m_liveStandingsMinTrackGap = std::max(0.0f, std::min(gap, 0.05f)); }
+    float getLiveStandingsMinTrackGap() const { return m_liveStandingsMinTrackGap; }
+
     // Real-time track position management (for time-based gap calculation)
     void setSessionTime(int sessionTime) { m_currentSessionTime = sessionTime; }
     int getSessionTime() const { return m_currentSessionTime; }
@@ -967,7 +990,7 @@ public:
     bool hasValidLiveGap() const { return m_liveGapValid; }
 
     // ========================================================================
-    // Timed Notice Flags (set by RaceLapHandler, consumed by NoticesWidget)
+    // Timed Notice Flags (set by RaceLapHandler, consumed by NoticesHud)
     // ========================================================================
     void notifySessionPB()  { m_newSessionPB = true; m_sessionPBTime = std::chrono::steady_clock::now(); }
     void notifyFastestLap()  { m_newFastestLap = true; m_fastestLapTime = std::chrono::steady_clock::now(); }
@@ -1028,6 +1051,34 @@ private:
     std::vector<int> m_classificationOrder;  // Official race position order from game
     mutable std::unordered_map<int, int> m_positionCache;  // Cached position lookup (race number -> position), rebuilt when classification changes
     mutable bool m_bPositionCacheDirty;  // Flag to rebuild position cache
+
+    // Display filters (global toggles saved in [General])
+    bool m_liveStandingsEnabled = false;         // Live position reordering between splits
+    bool m_filterDnsRiders = false;              // Hide DNS riders from display
+    int m_liveStandingsHoldTimeMs = 300;         // Hysteresis hold time (INI-only [Advanced])
+    float m_liveStandingsMinTrackGap = 0.003f;   // Minimum track gap to consider swap (INI-only [Advanced])
+    std::vector<int> m_liveClassificationOrder;  // Live-sorted order (derived, display-only)
+    mutable std::unordered_map<int, int> m_livePositionCache;  // Cached live position lookup
+    mutable bool m_bLivePositionCacheDirty = true;
+    std::vector<int> m_pendingLiveOrder;         // Proposed order waiting for hysteresis hold
+
+    // DNS-filtered cache (derived from live or official order, rebuilt when dirty)
+    mutable std::vector<int> m_filteredClassificationOrder;
+    mutable std::unordered_map<int, int> m_filteredPositionCache;
+    mutable bool m_bFilteredOrderDirty = true;
+
+    // Reusable buffers for updateLivePositions() to avoid per-frame allocations
+    struct LiveSortEntry {
+        int raceNum;
+        int numLaps;
+        float trackPos;
+        bool excludeFromSort;
+    };
+    std::vector<LiveSortEntry> m_liveSortEntries;   // All entries
+    std::vector<LiveSortEntry> m_liveSortFinished;   // Finished subset
+    std::vector<int> m_liveSortProposed;             // Proposed order
+    std::unordered_map<int, int> m_liveSortCommittedPosMap;  // Committed position lookup
+    std::chrono::steady_clock::time_point m_pendingLiveOrderTime;  // When pending order was first proposed
     std::unordered_map<int, TrackPositionData> m_trackPositions;  // Real-time track positions
     mutable std::vector<int> m_cachedBlueFlagRaceNums;  // Cached blue flag result (recomputed when dirty)
     mutable bool m_blueFlagsDirty = true;                // Invalidated when track positions change
@@ -1071,8 +1122,8 @@ private:
     int m_liveGapMs = 0;                   // Current gap in milliseconds (positive = behind PB, negative = ahead)
     bool m_liveGapValid = false;           // Is the live gap valid?
 
-    // Timed notice flags (set by RaceLapHandler, consumed by NoticesWidget)
-    // Uses steady_clock timestamps so NoticesWidget can show timed notices.
+    // Timed notice flags (set by RaceLapHandler, consumed by NoticesHud)
+    // Uses steady_clock timestamps so NoticesHud can show timed notices.
     // Invariant: the bool flag and time_point are always set together in notify*().
     // The time_points default to epoch, but that's safe because the bool flag gates
     // access — isTimedNoticeActive() is only called when the flag is true.
