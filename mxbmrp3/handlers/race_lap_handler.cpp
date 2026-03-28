@@ -55,6 +55,11 @@ void RaceLapHandler::handleRaceLap(Unified::RaceLapData* psRaceLap) {
         return;
     }
 
+    // Non-race session: any RaceLap after session time expired = rider finished
+    if (sessionData.sessionTimeExpired) {
+        data.setRiderSessionFinished(psRaceLap->raceNum);
+    }
+
     // Log lap completion in context of race finish for lap-based races
     if (sessionData.sessionNumLaps > 0) {
         // lapNum is the lap just COMPLETED (not the lap we're starting)

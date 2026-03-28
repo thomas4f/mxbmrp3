@@ -35,21 +35,26 @@ bool SettingsHud::handleClickTabStandings(const ClickRegion& region) {
             return true;
 
         case ClickRegion::GAP_COLUMN_TOGGLE:
-            {
-                auto* boolPtr = std::get_if<bool*>(&region.targetPointer);
-                if (!boolPtr || !*boolPtr || !region.targetHud) return false;
-                **boolPtr = !**boolPtr;
-                region.targetHud->setDataDirty();
+            // Cycle backward: OFF <- PLAYER <- ADJACENT <- ALL <- OFF
+            if (standingsHud) {
+                switch (standingsHud->m_gapMode) {
+                    case StandingsHud::GapMode::OFF:      standingsHud->m_gapMode = StandingsHud::GapMode::ALL; break;
+                    case StandingsHud::GapMode::PLAYER:   standingsHud->m_gapMode = StandingsHud::GapMode::OFF; break;
+                    case StandingsHud::GapMode::ADJACENT: standingsHud->m_gapMode = StandingsHud::GapMode::PLAYER; break;
+                    case StandingsHud::GapMode::ALL:      standingsHud->m_gapMode = StandingsHud::GapMode::ADJACENT; break;
+                }
+                standingsHud->setDataDirty();
                 rebuildRenderData();
             }
             return true;
-
         case ClickRegion::GAP_SCOPE_TOGGLE:
+            // Cycle forward: OFF -> PLAYER -> ADJACENT -> ALL -> OFF
             if (standingsHud) {
-                if (standingsHud->m_gapScope == StandingsHud::GapScope::PLAYER) {
-                    standingsHud->m_gapScope = StandingsHud::GapScope::ALL;
-                } else {
-                    standingsHud->m_gapScope = StandingsHud::GapScope::PLAYER;
+                switch (standingsHud->m_gapMode) {
+                    case StandingsHud::GapMode::OFF:      standingsHud->m_gapMode = StandingsHud::GapMode::PLAYER; break;
+                    case StandingsHud::GapMode::PLAYER:   standingsHud->m_gapMode = StandingsHud::GapMode::ADJACENT; break;
+                    case StandingsHud::GapMode::ADJACENT: standingsHud->m_gapMode = StandingsHud::GapMode::ALL; break;
+                    case StandingsHud::GapMode::ALL:      standingsHud->m_gapMode = StandingsHud::GapMode::OFF; break;
                 }
                 standingsHud->setDataDirty();
                 rebuildRenderData();
@@ -57,21 +62,51 @@ bool SettingsHud::handleClickTabStandings(const ClickRegion& region) {
             return true;
 
         case ClickRegion::GAP_REFERENCE_TOGGLE:
+            // Cycle forward: Leader → Player → Auto → Leader
             if (standingsHud) {
-                if (standingsHud->m_gapReferenceMode == StandingsHud::GapReferenceMode::LEADER) {
-                    standingsHud->m_gapReferenceMode = StandingsHud::GapReferenceMode::PLAYER;
-                } else {
-                    standingsHud->m_gapReferenceMode = StandingsHud::GapReferenceMode::LEADER;
+                switch (standingsHud->m_gapReferenceMode) {
+                    case StandingsHud::GapReferenceMode::LEADER:
+                        standingsHud->m_gapReferenceMode = StandingsHud::GapReferenceMode::PLAYER;
+                        break;
+                    case StandingsHud::GapReferenceMode::PLAYER:
+                        standingsHud->m_gapReferenceMode = StandingsHud::GapReferenceMode::ALTERNATING;
+                        standingsHud->m_lastGapRefToggle = std::chrono::steady_clock::now();
+                        standingsHud->m_alternatingCurrent = StandingsHud::GapReferenceMode::LEADER;
+                        break;
+                    default:
+                        standingsHud->m_gapReferenceMode = StandingsHud::GapReferenceMode::LEADER;
+                        break;
                 }
                 standingsHud->setDataDirty();
                 rebuildRenderData();
             }
             return true;
 
-        case ClickRegion::LIVE_STANDINGS_TOGGLE:
+        case ClickRegion::GAP_REFERENCE_BACK:
+            // Cycle backward: Leader → Auto → Player → Leader
+            if (standingsHud) {
+                switch (standingsHud->m_gapReferenceMode) {
+                    case StandingsHud::GapReferenceMode::LEADER:
+                        standingsHud->m_gapReferenceMode = StandingsHud::GapReferenceMode::ALTERNATING;
+                        standingsHud->m_lastGapRefToggle = std::chrono::steady_clock::now();
+                        standingsHud->m_alternatingCurrent = StandingsHud::GapReferenceMode::LEADER;
+                        break;
+                    case StandingsHud::GapReferenceMode::ALTERNATING:
+                        standingsHud->m_gapReferenceMode = StandingsHud::GapReferenceMode::PLAYER;
+                        break;
+                    default:
+                        standingsHud->m_gapReferenceMode = StandingsHud::GapReferenceMode::LEADER;
+                        break;
+                }
+                standingsHud->setDataDirty();
+                rebuildRenderData();
+            }
+            return true;
+
+        case ClickRegion::LIVE_GAPS_TOGGLE:
             {
                 PluginData& pd = PluginData::getInstance();
-                pd.setLiveStandingsEnabled(!pd.isLiveStandingsEnabled());
+                pd.setLiveGapsEnabled(!pd.isLiveGapsEnabled());
                 rebuildRenderData();
             }
             return true;
@@ -94,13 +129,26 @@ bool SettingsHud::handleClickTabStandings(const ClickRegion& region) {
             }
             return true;
 
-        case ClickRegion::NAME_MODE_TOGGLE:
+        case ClickRegion::NAME_MODE_UP:
             if (standingsHud) {
                 using NM = StandingsHud::NameMode;
                 switch (standingsHud->m_nameMode) {
                     case NM::OFF:   standingsHud->m_nameMode = NM::SHORT; break;
                     case NM::SHORT: standingsHud->m_nameMode = NM::LONG;  break;
                     case NM::LONG:  standingsHud->m_nameMode = NM::OFF;   break;
+                }
+                standingsHud->setDataDirty();
+                rebuildRenderData();
+            }
+            return true;
+
+        case ClickRegion::NAME_MODE_DOWN:
+            if (standingsHud) {
+                using NM = StandingsHud::NameMode;
+                switch (standingsHud->m_nameMode) {
+                    case NM::OFF:   standingsHud->m_nameMode = NM::LONG;  break;
+                    case NM::SHORT: standingsHud->m_nameMode = NM::OFF;   break;
+                    case NM::LONG:  standingsHud->m_nameMode = NM::SHORT; break;
                 }
                 standingsHud->setDataDirty();
                 rebuildRenderData();
@@ -135,14 +183,30 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::ROW_COUNT_UP,
         hud, true, false, "standings.rows");
 
-    // Live standings toggle (global setting stored in PluginData, not a HUD member)
-    // nullptr for boolPtr is intentional: LIVE_STANDINGS_TOGGLE click handler manages
-    // state directly via PluginData::setLiveStandingsEnabled(), not through the pointer.
-    ctx.addToggleControl("Live position updates",
-        PluginData::getInstance().isLiveStandingsEnabled(),
-        SettingsHud::ClickRegion::LIVE_STANDINGS_TOGGLE, hud,
+    // Gap reference toggle (Leader/Player/Auto) - muted when gap column is off
+    {
+        const bool refRelevant = (hud->m_gapMode != StandingsHud::GapMode::OFF);
+        const char* gapRefValue;
+        switch (hud->m_gapReferenceMode) {
+            case StandingsHud::GapReferenceMode::LEADER:      gapRefValue = "Leader"; break;
+            case StandingsHud::GapReferenceMode::PLAYER:      gapRefValue = "Player"; break;
+            case StandingsHud::GapReferenceMode::ALTERNATING: gapRefValue = "Auto";   break;
+            default:                                          gapRefValue = "Leader"; break;
+        }
+        ctx.addCycleControl("Gap reference", gapRefValue, 10,
+            SettingsHud::ClickRegion::GAP_REFERENCE_BACK,
+            SettingsHud::ClickRegion::GAP_REFERENCE_TOGGLE,
+            hud, refRelevant, false, "standings.gap_reference");
+    }
+
+    // Live gaps toggle (global setting stored in PluginData, not a HUD member)
+    // nullptr for boolPtr is intentional: LIVE_GAPS_TOGGLE click handler manages
+    // state directly via PluginData::setLiveGapsEnabled(), not through the pointer.
+    ctx.addToggleControl("Live gaps",
+        PluginData::getInstance().isLiveGapsEnabled(),
+        SettingsHud::ClickRegion::LIVE_GAPS_TOGGLE, hud,
         static_cast<bool*>(nullptr), true,
-        "standings.live_positions", nullptr);
+        "standings.live_gaps", nullptr);
 
     // Animate position changes
     ctx.addToggleControl("Animate positions",
@@ -164,7 +228,7 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
     ctx.addSectionHeader("Content");
 
     // Column toggles - using addToggleControl with tooltips
-    ctx.addToggleControl("Tracked rider marker", (hud->m_enabledColumns & StandingsHud::COL_TRACKED) != 0,
+    ctx.addToggleControl("Rider status icon", (hud->m_enabledColumns & StandingsHud::COL_TRACKED) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_TRACKED, true,
         "standings.col_tracked");
     ctx.addToggleControl("Position number", (hud->m_enabledColumns & StandingsHud::COL_POS) != 0,
@@ -182,11 +246,11 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
             case StandingsHud::NameMode::LONG:  nameModeValue = "Long"; break;
             default: nameModeValue = "Short"; break;
         }
-        ctx.addToggleControl("Rider name",
-            hud->m_nameMode != StandingsHud::NameMode::OFF,
-            SettingsHud::ClickRegion::NAME_MODE_TOGGLE, hud,
-            static_cast<bool*>(nullptr), true,
-            "standings.col_name", nameModeValue);
+        ctx.addCycleControl("Rider name", nameModeValue, 10,
+            SettingsHud::ClickRegion::NAME_MODE_DOWN,
+            SettingsHud::ClickRegion::NAME_MODE_UP,
+            hud, true, hud->m_nameMode == StandingsHud::NameMode::OFF,
+            "standings.col_name");
     }
     ctx.addToggleControl("Bike model", (hud->m_enabledColumns & StandingsHud::COL_BIKE) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_BIKE, true,
@@ -201,48 +265,21 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_BEST_LAP, true,
         "standings.col_bestlap");
 
-    // Debug column - only visible in developer mode
-    if (SettingsManager::getInstance().isDeveloperMode()) {
-        ctx.addToggleControl("Debug data", (hud->m_enabledColumns & StandingsHud::COL_DEBUG) != 0,
-            SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_DEBUG, true,
-            "standings.col_debug");
+    // Gap mode cycle (Off < > Player < > Adjacent < > All)
+    {
+        const char* gapModeValue = nullptr;
+        bool isOff = (hud->m_gapMode == StandingsHud::GapMode::OFF);
+        switch (hud->m_gapMode) {
+            case StandingsHud::GapMode::OFF:      gapModeValue = "Off"; break;
+            case StandingsHud::GapMode::PLAYER:   gapModeValue = "Player"; break;
+            case StandingsHud::GapMode::ADJACENT: gapModeValue = "Adjacent"; break;
+            case StandingsHud::GapMode::ALL:      gapModeValue = "All"; break;
+        }
+        ctx.addCycleControl("Gap column", gapModeValue, 10,
+            SettingsHud::ClickRegion::GAP_COLUMN_TOGGLE,
+            SettingsHud::ClickRegion::GAP_SCOPE_TOGGLE,
+            hud, true, isOff, "standings.gap_mode");
     }
-
-    ctx.addSpacing(0.5f);
-
-    // === GAPS SECTION ===
-    ctx.addSectionHeader("Gaps");
-
-    const bool gapEnabled = hud->m_showGapColumn;
-
-    // Gap column toggle (on/off - data source auto-selected based on live standings toggle)
-    ctx.addToggleControl("Gap column",
-        hud->m_showGapColumn,
-        SettingsHud::ClickRegion::GAP_COLUMN_TOGGLE, hud,
-        &hud->m_showGapColumn, true,
-        "standings.gap_column", nullptr);
-
-    // Gap scope toggle (Player/All) - muted when gap column is off
-    // nullptr for boolPtr: GAP_SCOPE_TOGGLE handler accesses standingsHud->m_gapScope directly
-    const char* gapScopeValue = (hud->m_gapScope == StandingsHud::GapScope::PLAYER)
-        ? "Player" : "All";
-    // isOn=true because both Player/All are valid active states (neither is "off")
-    ctx.addToggleControl("Show mode",
-        true,
-        SettingsHud::ClickRegion::GAP_SCOPE_TOGGLE, hud,
-        static_cast<bool*>(nullptr), gapEnabled,
-        "standings.gap_scope", gapScopeValue);
-
-    // Gap reference toggle (Leader/Player) - muted when gap column is off
-    // nullptr for boolPtr: GAP_REFERENCE_TOGGLE handler accesses standingsHud->m_gapReferenceMode directly
-    // isOn=true because both Leader/Player are valid active states
-    const char* gapRefValue = (hud->m_gapReferenceMode == StandingsHud::GapReferenceMode::LEADER)
-        ? "Leader" : "Player";
-    ctx.addToggleControl("Reference point",
-        true,
-        SettingsHud::ClickRegion::GAP_REFERENCE_TOGGLE, hud,
-        static_cast<bool*>(nullptr), gapEnabled,
-        "standings.gap_reference", gapRefValue);
 
     return hud;
 }

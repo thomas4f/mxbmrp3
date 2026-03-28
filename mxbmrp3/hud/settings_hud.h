@@ -85,8 +85,8 @@ public:
             CHECKBOX,                  // Toggle column/row visibility (bitfield)
             GAP_COLUMN_TOGGLE,         // Toggle gap column on/off
             GAP_SCOPE_TOGGLE,          // Toggle gap scope (Player/All)
-            GAP_REFERENCE_TOGGLE,      // Toggle gap reference (Leader/Player)
-            STANDINGS_DEBUG_TOGGLE,    // Unused - debug column is INI-only (col_debug=1)
+            GAP_REFERENCE_TOGGLE,      // Cycle gap reference forward (Leader→Player→Auto)
+            GAP_REFERENCE_BACK,        // Cycle gap reference backward (Auto→Player→Leader)
             RESET_BUTTON,              // Unified reset button (General tab) - action depends on checkbox
             RESET_TAB_BUTTON,          // Reset current tab to defaults (footer)
             COPY_TARGET_UP,            // Cycle copy target forward
@@ -220,6 +220,7 @@ public:
             PROFILE_CYCLE_DOWN,        // Cycle to previous profile (Practice/Qualify/Race/Spectate)
             PROFILE_CYCLE_UP,          // Cycle to next profile
             AUTO_SWITCH_TOGGLE,        // Toggle auto-switch for profiles
+            SHORT_TIME_FORMAT_TOGGLE,  // Toggle compact time format
             WIDGETS_TOGGLE,            // Toggle all widgets visibility (master switch)
             TAB,                       // Select tab
             CLOSE_BUTTON,              // Close the settings menu
@@ -337,10 +338,11 @@ public:
             NOTICES_DURATION_UP,       // Increase notice duration (NoticesHud)
             NOTICES_DURATION_DOWN,     // Decrease notice duration (NoticesHud)
             // Global display filters (UI in standings tab)
-            LIVE_STANDINGS_TOGGLE,     // Toggle live position updates (PluginData global)
+            LIVE_GAPS_TOGGLE,          // Toggle live gap display in races (PluginData global)
             FILTER_DNS_TOGGLE,         // Toggle DNS rider filtering (PluginData global)
             ANIMATE_POSITIONS_TOGGLE,  // Toggle position animation (StandingsHud)
-            NAME_MODE_TOGGLE           // Cycle rider name mode Off/Short/Long (StandingsHud)
+            NAME_MODE_UP,              // Cycle rider name mode forward Off->Short->Long (StandingsHud)
+            NAME_MODE_DOWN             // Cycle rider name mode backward Long->Short->Off (StandingsHud)
         } type;
 
         // Type-safe variant instead of unsafe union (C++17)

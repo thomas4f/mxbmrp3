@@ -16,6 +16,17 @@
 
 using namespace PluginConstants;
 
+// Ordinal suffix for position display (1ST, 2ND, 3RD, 4TH, ...)
+static const char* ordinalSuffix(int n) {
+    if (n % 100 >= 11 && n % 100 <= 13) return "TH";
+    switch (n % 10) {
+        case 1: return "ST";
+        case 2: return "ND";
+        case 3: return "RD";
+        default: return "TH";
+    }
+}
+
 // Center display positioning constants (fixed center-screen layout)
 namespace {
     constexpr float CENTER_X = 0.5f;
@@ -27,8 +38,11 @@ NoticesHud::NoticesHud()
     : m_bIsWrongWay(false)
     , m_sessionStartTime(0)
     , m_lastSessionState(-1)
+    , m_bShowOvertime(false)
+    , m_bOvertimeTriggered(false)
     , m_bShowLastLap(false)
     , m_bShowFinished(false)
+    , m_finishedPosition(-1)
     , m_bLastLapTriggered(false)
     , m_bFinishedTriggered(false)
     , m_bShowSessionPB(false)
@@ -115,11 +129,52 @@ void NoticesHud::update() {
         setDataDirty();
     }
 
-    // Check blue flag status (returns cached const ref — no allocation)
-    const auto& blueFlagRaceNums = pluginData.getBlueFlagRaceNums();
-    if (blueFlagRaceNums != m_blueFlagRaceNums) {
-        m_blueFlagRaceNums = blueFlagRaceNums;
+    // Check hazard ahead status (poll cached query, filter by enabled notice types)
+    {
+        bool hazardAhead = false;
+        bool stationaryEnabled = (m_enabledNotices & NOTICE_HAZARD_STATIONARY) != 0;
+        bool wrongWayEnabled = (m_enabledNotices & NOTICE_HAZARD_WRONG_WAY) != 0;
+        if (stationaryEnabled || wrongWayEnabled) {
+            const auto& hazardRaceNums = pluginData.getHazardRaceNums();
+            for (int raceNum : hazardRaceNums) {
+                HazardType type = pluginData.getRiderHazardType(raceNum);
+                if ((stationaryEnabled && type == HazardType::Stationary) ||
+                    (wrongWayEnabled && type == HazardType::WrongWay)) {
+                    hazardAhead = true;
+                    break;
+                }
+            }
+        }
+        if (hazardAhead != m_bIsHazardAhead) {
+            m_bIsHazardAhead = hazardAhead;
+            setDataDirty();
+        }
+    }
+
+    // Check blue flag status
+    bool isBlueFlagged = pluginData.isPlayerBlueFlagged();
+    if (isBlueFlagged != m_bIsBlueFlagged) {
+        m_bIsBlueFlagged = isBlueFlagged;
         setDataDirty();
+    }
+
+    // Check overtime status - trigger timed notice when time+laps race enters overtime
+    {
+        bool overtime = sessionData.overtimeStarted;
+        if (overtime && !m_bOvertimeTriggered) {
+            m_overtimeTriggerTime = std::chrono::steady_clock::now();
+            m_bShowOvertime = true;
+            m_bOvertimeTriggered = true;
+            setDataDirty();
+        }
+        if (m_bShowOvertime && !isTimedNoticeActive(m_overtimeTriggerTime)) {
+            m_bShowOvertime = false;
+            setDataDirty();
+        }
+        // Reset triggered flag when overtime clears (new session)
+        if (!overtime && m_bOvertimeTriggered) {
+            m_bOvertimeTriggered = false;
+        }
     }
 
     // Check last lap / finished status - trigger timed notices on transitions
@@ -128,9 +183,9 @@ void NoticesHud::update() {
     int displayRaceNum = pluginData.getDisplayRaceNum();
     const StandingsData* standing = (displayRaceNum > 0) ? pluginData.getStanding(displayRaceNum) : nullptr;
     if (standing && standing->numLaps >= 0) {
-        isFinished = sessionData.isRiderFinished(standing->numLaps);
+        isFinished = sessionData.isRiderFinished(standing->numLaps, standing->numLapsAtLeaderFinish);
         if (!isFinished) {
-            isLastLap = sessionData.isRiderOnLastLap(standing->numLaps);
+            isLastLap = sessionData.isRiderOnLastLap(standing->numLaps, standing->numLapsAtLeaderFinish);
         }
     }
 
@@ -147,7 +202,17 @@ void NoticesHud::update() {
         m_finishedTriggerTime = std::chrono::steady_clock::now();
         m_bShowFinished = true;
         m_bFinishedTriggered = true;
+        m_finishedPosition = pluginData.getDisplayPositionForRaceNum(displayRaceNum);
         setDataDirty();
+    }
+
+    // While finished notice is showing, track position changes (e.g., penalty applied)
+    if (m_bShowFinished && displayRaceNum > 0) {
+        int currentPos = pluginData.getDisplayPositionForRaceNum(displayRaceNum);
+        if (currentPos != m_finishedPosition) {
+            m_finishedPosition = currentPos;
+            setDataDirty();
+        }
     }
 
     // Expire last lap / finished timed notices
@@ -237,7 +302,9 @@ void NoticesHud::rebuildRenderData() {
 
     // Check which notices are both active and enabled
     bool showWrongWay  = m_bIsWrongWay && (m_enabledNotices & NOTICE_WRONG_WAY);
-    bool showBlueFlag  = !m_blueFlagRaceNums.empty() && (m_enabledNotices & NOTICE_BLUE_FLAG);
+    bool showHazard    = m_bIsHazardAhead && !m_bFinishedTriggered;
+    bool showBlueFlag  = m_bIsBlueFlagged && !m_bFinishedTriggered && (m_enabledNotices & NOTICE_BLUE_FLAG);
+    bool showOvertime  = m_bShowOvertime && (m_enabledNotices & NOTICE_OVERTIME);
     bool showAllTimePB = m_bShowAllTimePB && (m_enabledNotices & NOTICE_ALLTIME_PB);
     bool showFastestLap = m_bShowFastestLap && (m_enabledNotices & NOTICE_FASTEST_LAP);
     bool showSessionPB = m_bShowSessionPB && (m_enabledNotices & NOTICE_SESSION_PB);
@@ -246,8 +313,8 @@ void NoticesHud::rebuildRenderData() {
     bool showDefaultSetup = m_bShowDefaultSetup && (m_enabledNotices & NOTICE_DEFAULT_SETUP);
 
     // Only render if there's something to show
-    // Priority: WRONG WAY > BLUE FLAG > ALL-TIME PB > FASTEST LAP > SESSION PB > FINISHED > LAST LAP > SETUP NAME
-    if (!showWrongWay && !showBlueFlag && !showAllTimePB && !showFastestLap &&
+    // Priority: WRONG WAY > HAZARD AHEAD > BLUE FLAG > OVERTIME > ALL-TIME PB > FASTEST LAP > SESSION PB > FINISHED > LAST LAP > SETUP NAME
+    if (!showWrongWay && !showHazard && !showBlueFlag && !showOvertime && !showAllTimePB && !showFastestLap &&
         !showSessionPB && !showLastLap && !showFinished && !showDefaultSetup) {
         setBounds(0.0f, 0.0f, 0.0f, 0.0f);
         return;
@@ -282,18 +349,21 @@ void NoticesHud::rebuildRenderData() {
         addString("WRONG WAY", CENTER_X, noticeY, Justify::CENTER,
             this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::NEGATIVE), dim.fontSizeLarge);
     }
-    else if (showBlueFlag) {
-        // Build blue flag text with race numbers only (max 2): "#XX #YY"
-        std::string blueFlagText = "";
-        int count = 0;
-        for (int raceNum : m_blueFlagRaceNums) {
-            if (count >= 2) break;  // Max 2 race numbers
-            if (count > 0) blueFlagText += " ";  // Space between numbers
-            blueFlagText += "#";
-            blueFlagText += std::to_string(raceNum);
-            count++;
-        }
+    else if (showHazard) {
+        // Add notice background (yellow/warning for hazard)
+        SPluginQuad_t noticeQuad;
+        float quadX = noticeQuadX;
+        float quadY = noticeQuadY;
+        applyOffset(quadX, quadY);
+        setQuadPositions(noticeQuad, quadX, quadY, noticeQuadWidth, noticeQuadHeight);
+        noticeQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+        noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::WARNING), m_fBackgroundOpacity);
+        m_quads.push_back(noticeQuad);
 
+        addString("HAZARD AHEAD", CENTER_X, noticeY, Justify::CENTER,
+            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::WARNING), dim.fontSizeLarge);
+    }
+    else if (showBlueFlag) {
         // Add notice background (blue for blue flag)
         SPluginQuad_t noticeQuad;
         float quadX = noticeQuadX;
@@ -301,14 +371,25 @@ void NoticesHud::rebuildRenderData() {
         applyOffset(quadX, quadY);
         setQuadPositions(noticeQuad, quadX, quadY, noticeQuadWidth, noticeQuadHeight);
         noticeQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-
-        // Racing blue background for blue flag notice
         noticeQuad.m_ulColor = PluginUtils::applyOpacity(ColorPalette::BLUE, m_fBackgroundOpacity);
         m_quads.push_back(noticeQuad);
 
-        // Add notice text (blue)
-        addString(blueFlagText.c_str(), CENTER_X, noticeY, Justify::CENTER,
+        addString("BLUE FLAG", CENTER_X, noticeY, Justify::CENTER,
             this->getFont(FontCategory::TITLE), ColorPalette::BLUE, dim.fontSizeLarge);
+    }
+    else if (showOvertime) {
+        // Add notice background (neutral for overtime - informational race event)
+        SPluginQuad_t noticeQuad;
+        float quadX = noticeQuadX;
+        float quadY = noticeQuadY;
+        applyOffset(quadX, quadY);
+        setQuadPositions(noticeQuad, quadX, quadY, noticeQuadWidth, noticeQuadHeight);
+        noticeQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+        noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::BACKGROUND), m_fBackgroundOpacity);
+        m_quads.push_back(noticeQuad);
+
+        addString("OVERTIME", CENTER_X, noticeY, Justify::CENTER,
+            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
     }
     else if (showAllTimePB || showFastestLap || showSessionPB) {
         // All positive notices share the same rendering (green bg + green text)
@@ -338,8 +419,14 @@ void NoticesHud::rebuildRenderData() {
         noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::BACKGROUND), m_fBackgroundOpacity);
         m_quads.push_back(noticeQuad);
 
-        // Add notice text (white)
-        addString("FINISHED", CENTER_X, noticeY, Justify::CENTER,
+        // Add notice text with position (e.g., "FINISHED 1ST")
+        char finishedText[32];
+        if (m_finishedPosition > 0) {
+            snprintf(finishedText, sizeof(finishedText), "FINISHED %d%s", m_finishedPosition, ordinalSuffix(m_finishedPosition));
+        } else {
+            snprintf(finishedText, sizeof(finishedText), "FINISHED");
+        }
+        addString(finishedText, CENTER_X, noticeY, Justify::CENTER,
             this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
     }
     else if (showLastLap) {
@@ -387,15 +474,20 @@ void NoticesHud::resetToDefaults() {
 
     // Reset notice state
     m_bIsWrongWay = false;
-    m_blueFlagRaceNums.clear();
+    m_bIsHazardAhead = false;
+    m_bIsBlueFlagged = false;
+    m_bShowOvertime = false;
+    m_bOvertimeTriggered = false;
     m_bShowLastLap = false;
     m_bShowFinished = false;
+    m_finishedPosition = -1;
     m_bLastLapTriggered = false;
     m_bFinishedTriggered = false;
     m_bShowSessionPB = false;
     m_bShowFastestLap = false;
     m_bShowAllTimePB = false;
     m_bShowDefaultSetup = false;
+    m_overtimeTriggerTime = {};
     m_lastLapTriggerTime = {};
     m_finishedTriggerTime = {};
     m_sessionStartTime = 0;

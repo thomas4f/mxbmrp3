@@ -1,7 +1,7 @@
 A customizable, [open-source](https://github.com/thomas4f/mxbmrp3) HUD plugin for MX Bikes and GP Bikes displaying real-time race information and telemetry.
 
-![MXBMRP3 HUD Screenshot](./mxbmrp3-v1.18.jpg)
-*Example HUD layouts. All elements are fully customizable.*
+![MXBMRP3 HUD Screenshot](mxbmrp3-v1.18.jpg)
+*Example HUD layout. All elements are fully customizable.*
 
 ### Features
 
@@ -228,7 +228,7 @@ On game startup, the plugin syncs these files to the plugin's data directory (`p
 |------|-------------|
 | `mxbmrp3_settings.ini` | All HUD settings (positions, visibility, options) |
 | `mxbmrp3_tracked_riders.json` | Tracked riders with colors and icons |
-| `rumble_profiles.json` | Per-bike rumble effect profiles |
+| `mxbmrp3_rumble_profiles.json` | Per-bike rumble effect profiles |
 | `mxbmrp3_stats.json` | Unified stats, personal bests, and odometer data |
 
 ## Troubleshooting

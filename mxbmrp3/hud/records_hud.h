@@ -183,7 +183,7 @@ private:
     int m_categoryIndex;  // Index into m_categoryList (0 = "All")
     uint32_t m_enabledColumns = COL_DEFAULT;  // Bitfield of enabled columns
     int m_recordsToShow = 3;  // Number of records to display (3-30, default 3)
-    char m_lastSessionTrackId[256] = {0};  // Track session trackId to auto-fetch on event start
+    char m_lastSessionTrackName[256] = {0};  // Track session trackName to auto-fetch on event start
     char m_lastSessionCategory[64] = {0};  // Track session category to auto-fetch on bike change
     bool m_bAutoFetch = false;  // Auto-fetch records when entering event (default off)
     bool m_bShowFooter = true;  // Show provider attribution at bottom (configurable via INI)

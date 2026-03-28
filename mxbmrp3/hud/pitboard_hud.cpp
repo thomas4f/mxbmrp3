@@ -378,10 +378,10 @@ void PitboardHud::rebuildRenderData() {
         if (standing && standing->numLaps >= 0) {
             int numLaps = standing->numLaps;
 
-            if (sessionData.isRiderFinished(numLaps)) {
+            if (sessionData.isRiderFinished(numLaps, standing->numLapsAtLeaderFinish)) {
                 strcpy_s(lapStr, sizeof(lapStr), "FIN");
                 showLap = true;
-            } else if (sessionData.isRiderOnLastLap(numLaps)) {
+            } else if (sessionData.isRiderOnLastLap(numLaps, standing->numLapsAtLeaderFinish)) {
                 strcpy_s(lapStr, sizeof(lapStr), "LL");
                 showLap = true;
             } else if (m_displayMode == MODE_PIT && numLaps > 0) {

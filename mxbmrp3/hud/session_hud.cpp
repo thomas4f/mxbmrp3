@@ -612,7 +612,7 @@ void SessionHud::resetToDefaults() {
     m_fBackgroundOpacity = 0.8f;
     m_fScale = 1.0f;
     m_enabledRows = ROW_DEFAULT;  // Reset row visibility
-    m_passwordMode = PasswordDisplayMode::Hidden;  // Default to hidden (Off = row not shown)
+    m_passwordMode = PasswordDisplayMode::Off;  // Default to off (password row not shown)
     m_bShowIcons = true;  // Icons enabled by default
     setPosition(0.0055f, 0.1332f);
 

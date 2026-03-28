@@ -4,6 +4,7 @@
 // ============================================================================
 #include "plugin_utils.h"
 #include "plugin_constants.h"
+#include "plugin_data.h"
 #include <climits>
 #include <cstdio>
 #include <cstring>
@@ -38,9 +39,12 @@ void PluginUtils::formatLapTime(int lapTimeMs, char* buffer, size_t bufferSize) 
         int seconds = (lapTimeMs % MS_PER_MINUTE) / MS_PER_SECOND;
         int ms = lapTimeMs % MS_PER_SECOND;
 
-        // Use M:SS.mmm by default (single-digit minutes is the common case)
-        // Format will naturally expand to MM:SS.mmm for >= 10 minutes
-        snprintf(buffer, bufferSize, "%d:%02d.%03d", minutes, seconds, ms);
+        bool compact = PluginData::getInstance().isShortTimeFormat();
+        if (compact && minutes == 0) {
+            snprintf(buffer, bufferSize, "%d.%03d", seconds, ms);
+        } else {
+            snprintf(buffer, bufferSize, "%d:%02d.%03d", minutes, seconds, ms);
+        }
     }
     else {
         buffer[0] = '\0';
@@ -48,6 +52,11 @@ void PluginUtils::formatLapTime(int lapTimeMs, char* buffer, size_t bufferSize) 
 }
 
 void PluginUtils::formatTimeDiff(char* buffer, size_t bufferSize, int diffMs) {
+    if (PluginData::getInstance().isShortTimeFormat()) {
+        formatGapCompact(buffer, bufferSize, diffMs);
+        return;
+    }
+
     using namespace PluginConstants::TimeConversion;
 
     // Handle sign and protect against INT_MIN overflow
@@ -67,26 +76,6 @@ void PluginUtils::formatTimeDiff(char* buffer, size_t bufferSize, int diffMs) {
     snprintf(buffer, bufferSize, "%c%d:%02d.%03d", sign, minutes, seconds, ms);
 }
 
-void PluginUtils::formatTimeDiffTenths(char* buffer, size_t bufferSize, int diffMs) {
-    using namespace PluginConstants::TimeConversion;
-
-    // Handle sign and protect against INT_MIN overflow
-    char sign = '+';
-    int absDiff = diffMs;
-    if (diffMs < 0) {
-        sign = '-';
-        // Protect against overflow: -INT_MIN would overflow, cap at INT_MAX
-        absDiff = (diffMs == INT_MIN) ? INT_MAX : -diffMs;
-    }
-
-    // Use M:SS.s format (tenths of seconds) for live gaps
-    int minutes = absDiff / MS_PER_MINUTE;
-    int seconds = (absDiff % MS_PER_MINUTE) / MS_PER_SECOND;
-    int tenths = (absDiff % MS_PER_SECOND) / 100;  // Convert ms to tenths
-
-    snprintf(buffer, bufferSize, "%c%d:%02d.%d", sign, minutes, seconds, tenths);
-}
-
 void PluginUtils::formatLapTimeTenths(int lapTimeMs, char* buffer, size_t bufferSize) {
     if (lapTimeMs >= 0) {
         using namespace PluginConstants::TimeConversion;
@@ -94,8 +83,12 @@ void PluginUtils::formatLapTimeTenths(int lapTimeMs, char* buffer, size_t buffer
         int seconds = (lapTimeMs % MS_PER_MINUTE) / MS_PER_SECOND;
         int tenths = (lapTimeMs % MS_PER_SECOND) / 100;  // Convert ms to tenths
 
-        // Use M:SS.s format (tenths of seconds) for pitboard display
-        snprintf(buffer, bufferSize, "%d:%02d.%d", minutes, seconds, tenths);
+        bool compact = PluginData::getInstance().isShortTimeFormat();
+        if (compact && minutes == 0) {
+            snprintf(buffer, bufferSize, "%d.%d", seconds, tenths);
+        } else {
+            snprintf(buffer, bufferSize, "%d:%02d.%d", minutes, seconds, tenths);
+        }
     }
     else {
         buffer[0] = '\0';

@@ -20,6 +20,9 @@ void RaceTrackPositionHandler::handleRaceTrackPosition(int iNumVehicles, Unified
     PluginData& pluginData = PluginData::getInstance();
     int sessionTime = pluginData.getSessionTime();
 
+    // Track which riders are in this batch (for stale gap detection)
+    pluginData.updateActiveTrackPosRiders(iNumVehicles, pasRaceTrackPosition);
+
     // Always update track positions (needed for wrong-way detection in all session types)
     for (int i = 0; i < iNumVehicles; ++i) {
         const Unified::TrackPositionData& pos = pasRaceTrackPosition[i];
@@ -46,5 +49,4 @@ void RaceTrackPositionHandler::handleRaceTrackPosition(int iNumVehicles, Unified
     }
 
     pluginData.updateRealTimeGaps();
-    pluginData.updateLivePositions();
 }

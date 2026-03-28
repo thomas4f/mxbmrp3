@@ -41,7 +41,7 @@ void StatsHud::update() {
         // Use player's race number, not display rider (avoids triggering in spectate mode)
         int playerRaceNum = pd.getPlayerRaceNum();
         const StandingsData* playerStanding = (playerRaceNum >= 0) ? pd.getStanding(playerRaceNum) : nullptr;
-        bool finished = playerStanding && pd.getSessionData().isRiderFinished(playerStanding->numLaps);
+        bool finished = playerStanding && pd.getSessionData().isRiderFinished(playerStanding->numLaps, playerStanding->numLapsAtLeaderFinish);
         bool running = pd.isPlayerRunning();
         if (finished && !m_finishAutoShown) {
             m_finishAutoShown = true;

@@ -20,6 +20,16 @@ using namespace PluginConstants::Math;
 static constexpr const char* DEFAULT_RIDER_ICON = "circle";
 static constexpr const char* DEFAULT_PROXIMITY_ARROW_ICON = "angle-up";
 
+void RadarHud::CachedIcons::ensureInitialized() {
+    if (initialized) return;
+    const AssetManager& assets = AssetManager::getInstance();
+    circleExclamation = assets.getIconSpriteIndex("circle-exclamation");
+    triangleExclamation = assets.getIconSpriteIndex("triangle-exclamation");
+    flag = assets.getIconSpriteIndex("flag");
+    flagCheckered = assets.getIconSpriteIndex("flag-checkered");
+    initialized = true;
+}
+
 // Helper to get shape index from filename (returns 1 if not found)
 static int getShapeIndexByFilename(const char* filename) {
     const auto& assetMgr = AssetManager::getInstance();
@@ -699,8 +709,8 @@ void RadarHud::rebuildRenderData() {
             if (pluginData.isRaceSession()) {
                 const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
                 const StandingsData* riderStanding = pluginData.getStanding(pos.raceNum);
-                int playerPosition = pluginData.getLivePositionForRaceNum(displayRaceNum);
-                int riderPosition = pluginData.getLivePositionForRaceNum(pos.raceNum);
+                int playerPosition = pluginData.getDisplayPositionForRaceNum(displayRaceNum);
+                int riderPosition = pluginData.getDisplayPositionForRaceNum(pos.raceNum);
                 int playerLaps = playerStanding ? playerStanding->numLaps : 0;
                 int riderLaps = riderStanding ? riderStanding->numLaps : 0;
 
@@ -717,7 +727,47 @@ void RadarHud::rebuildRenderData() {
         } else if (m_riderColorMode == RiderColorMode::BRAND) {
             riderColor = PluginUtils::applyOpacity(entry->bikeBrandColor, 0.75f * trackFadeOpacity);
         } else {
-            riderColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::TERTIARY), trackFadeOpacity);
+            riderColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::ACCENT), trackFadeOpacity);
+        }
+
+        // Hazard icon override: circle-exclamation for wrong-way, triangle-exclamation for stationary
+        HazardType hazardType = pluginData.getRiderHazardType(pos.raceNum);
+        if (hazardType != HazardType::None) {
+            m_iconCache.ensureInitialized();
+            int firstIcon = AssetManager::getInstance().getFirstIconSpriteIndex();
+            if (hazardType == HazardType::WrongWay) {
+                if (m_iconCache.circleExclamation > 0) {
+                    trackedShape = m_iconCache.circleExclamation - firstIcon + 1;
+                    riderColor = PluginUtils::applyOpacity(ColorPalette::RED, trackFadeOpacity);
+                }
+            } else {
+                if (m_iconCache.triangleExclamation > 0) {
+                    trackedShape = m_iconCache.triangleExclamation - firstIcon + 1;
+                    riderColor = PluginUtils::applyOpacity(ColorPalette::YELLOW, trackFadeOpacity);
+                }
+            }
+        }
+
+        // Blue flag icon override (lower priority than hazard)
+        if (hazardType == HazardType::None && pluginData.isRiderBlueFlagged(pos.raceNum)) {
+            m_iconCache.ensureInitialized();
+            int firstIcon = AssetManager::getInstance().getFirstIconSpriteIndex();
+            if (m_iconCache.flag > 0) {
+                trackedShape = m_iconCache.flag - firstIcon + 1;
+                riderColor = PluginUtils::applyOpacity(ColorPalette::BLUE, trackFadeOpacity);
+            }
+        }
+        // Checkered flag for finished riders (lower priority than hazard and blue flag)
+        else if (hazardType == HazardType::None) {
+            const StandingsData* standing = pluginData.getStanding(pos.raceNum);
+            if (standing && pluginData.getSessionData().isRiderFinished(standing->numLaps, standing->numLapsAtLeaderFinish)) {
+                m_iconCache.ensureInitialized();
+                int firstIcon = AssetManager::getInstance().getFirstIconSpriteIndex();
+                if (m_iconCache.flagCheckered > 0) {
+                    trackedShape = m_iconCache.flagCheckered - firstIcon + 1;
+                    riderColor = PluginUtils::applyOpacity(ColorPalette::WHITE, trackFadeOpacity);
+                }
+            }
         }
 
         // Render rider sprite with relative heading (pass tracked shape if available)
@@ -725,7 +775,7 @@ void RadarHud::rebuildRenderData() {
                          centerX, centerY, radarRadius, trackedShape);
 
         // Render label with matching fade opacity
-        int position = pluginData.getLivePositionForRaceNum(pos.raceNum);
+        int position = pluginData.getDisplayPositionForRaceNum(pos.raceNum);
         renderRiderLabel(radarX, radarY, pos.raceNum, position,
                         centerX, centerY, radarRadius, trackFadeOpacity);
     }
@@ -904,8 +954,8 @@ void RadarHud::renderProximityArrows(const Unified::TrackPositionData* localPlay
             // Position-based coloring - only meaningful in race sessions
             unsigned long baseColor;
             if (pluginData.isRaceSession()) {
-                int playerPosition = pluginData.getLivePositionForRaceNum(displayRaceNum);
-                int riderPosition = pluginData.getLivePositionForRaceNum(pos.raceNum);
+                int playerPosition = pluginData.getDisplayPositionForRaceNum(displayRaceNum);
+                int riderPosition = pluginData.getDisplayPositionForRaceNum(pos.raceNum);
                 const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
                 const StandingsData* riderStanding = pluginData.getStanding(pos.raceNum);
                 int playerLaps = playerStanding ? playerStanding->numLaps : 0;

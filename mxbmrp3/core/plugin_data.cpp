@@ -146,6 +146,10 @@ void PluginData::setSession(int session) {
 
 void PluginData::setSessionState(int sessionState) {
     if (setValue(m_sessionData.sessionState, sessionState)) {
+        // Record when session transitions to IN_PROGRESS (for hazard grace period)
+        if (sessionState & PluginConstants::SessionState::IN_PROGRESS) {
+            m_hazardGraceStart = std::chrono::steady_clock::now();
+        }
         notifyHudManager(DataChangeType::SessionData);
     }
 }
@@ -364,7 +368,7 @@ int PluginData::getDisplayRaceNum() const {
 bool PluginData::isDisplayRiderFinished() const {
     int displayRaceNum = getDisplayRaceNum();
     const StandingsData* standing = getStanding(displayRaceNum);
-    return standing && m_sessionData.isRiderFinished(standing->numLaps);
+    return standing && m_sessionData.isRiderFinished(standing->numLaps, standing->numLapsAtLeaderFinish);
 }
 
 // ============================================================================
@@ -860,6 +864,14 @@ void PluginData::updateStandings(int raceNum, int state, int bestLap, int bestLa
             it->second.gapLaps != gapLaps || it->second.penalty != penalty ||
             it->second.bestLapNum != bestLapNum || it->second.pit != pit) {
 
+            // Detect pit exit (pit 1→0) and start per-rider hazard grace period
+            if (it->second.pit == 1 && pit == 0) {
+                auto trackIt = m_trackPositions.find(raceNum);
+                if (trackIt != m_trackPositions.end()) {
+                    trackIt->second.pitExitGraceStart = std::chrono::steady_clock::now();
+                }
+            }
+
             it->second.state = state;
             it->second.bestLap = bestLap;
             it->second.bestLapNum = bestLapNum;
@@ -944,6 +956,14 @@ void PluginData::batchUpdateStandings(Unified::RaceClassificationEntry* entries,
                 standing.penalty != entry.penalty ||
                 standing.pit != entryPit) {
 
+                // Detect pit exit (pit 1→0) and start per-rider hazard grace period
+                if (standing.pit == 1 && entryPit == 0) {
+                    auto trackIt = m_trackPositions.find(entry.raceNum);
+                    if (trackIt != m_trackPositions.end()) {
+                        trackIt->second.pitExitGraceStart = std::chrono::steady_clock::now();
+                    }
+                }
+
                 standing.state = entryState;
                 standing.bestLap = entry.bestLap;
                 standing.bestLapNum = entry.bestLapNum;
@@ -985,9 +1005,10 @@ void PluginData::batchUpdateStandings(Unified::RaceClassificationEntry* entries,
     };
 
     // Check each rider for finish
+    bool leaderJustFinished = false;
     for (auto& [raceNum, standing] : m_standings) {
         // Only capture once (when finishTime transitions from -1)
-        if (standing.finishTime < 0 && m_sessionData.isRiderFinished(standing.numLaps)) {
+        if (standing.finishTime < 0 && m_sessionData.isRiderFinished(standing.numLaps, standing.numLapsAtLeaderFinish)) {
             standing.finishTime = calculateElapsedTime();
             DEBUG_INFO_F("[RIDER FINISHED] Rider #%d finished race in %d ms", raceNum, standing.finishTime);
             anyChanged = true;
@@ -995,23 +1016,50 @@ void PluginData::batchUpdateStandings(Unified::RaceClassificationEntry* entries,
             // Also update leader finish time if this is the leader
             if (!m_classificationOrder.empty() && raceNum == m_classificationOrder[0] && m_sessionData.leaderFinishTime < 0) {
                 m_sessionData.leaderFinishTime = standing.finishTime;
+                leaderJustFinished = true;
                 DEBUG_INFO_F("[LEADER FINISHED] Leader #%d finished race in %d ms", raceNum, standing.finishTime);
+            }
+        }
+    }
+
+    // When leader just finished, snapshot each non-finished rider's current numLaps
+    // so they finish on their next line crossing (handles lapped riders in both pure lap and timed+laps races)
+    if (leaderJustFinished) {
+        for (auto& [raceNum, standing] : m_standings) {
+            if (standing.finishTime < 0 && standing.numLapsAtLeaderFinish < 0) {
+                standing.numLapsAtLeaderFinish = standing.numLaps;
+                DEBUG_INFO_F("[LAPPED FINISH SETUP] Rider #%d snapshot numLaps=%d at leader finish", raceNum, standing.numLaps);
+                anyChanged = true;
             }
         }
     }
 
     // Notify once if anything changed
     if (anyChanged) {
-        m_bPositionCacheDirty = true;  // Mark position cache dirty when standings change
+        m_bPositionCacheDirty = true;
         m_bFilteredOrderDirty = true;
+        notifyHudManager(DataChangeType::Standings);
+    }
+}
 
-        // Don't reset m_liveClassificationOrder here. The live sort in
-        // updateLivePositions() already reads m_classificationOrder each frame
-        // for committed-order tiebreaking and naturally incorporates changes.
-        // Hard-resetting here defeats hysteresis and causes jitter: the official
-        // order resets the committed live order, then the live sort re-proposes
-        // a different order, the hold timer fires, and the cycle repeats.
+void PluginData::setRiderSessionFinished(int raceNum) {
+    auto it = m_standings.find(raceNum);
+    if (it != m_standings.end() && !it->second.sessionFinished) {
+        it->second.sessionFinished = true;
+        DEBUG_INFO_F("[SESSION FINISHED] Rider #%d finished non-race session", raceNum);
+        notifyHudManager(DataChangeType::Standings);
+    }
+}
 
+void PluginData::clearSessionFinished() {
+    bool anyChanged = false;
+    for (auto& [raceNum, standing] : m_standings) {
+        if (standing.sessionFinished) {
+            standing.sessionFinished = false;
+            anyChanged = true;
+        }
+    }
+    if (anyChanged) {
         notifyHudManager(DataChangeType::Standings);
     }
 }
@@ -1059,11 +1107,9 @@ int PluginData::getPositionForRaceNum(int raceNum) const {
     return -1;  // Not found in standings
 }
 
-void PluginData::setLiveStandingsEnabled(bool enabled) {
-    if (m_liveStandingsEnabled != enabled) {
-        m_liveStandingsEnabled = enabled;
-        clearLivePositionState();
-        m_bFilteredOrderDirty = true;
+void PluginData::setLiveGapsEnabled(bool enabled) {
+    if (m_liveGapsEnabled != enabled) {
+        m_liveGapsEnabled = enabled;
         notifyHudManager(DataChangeType::Standings);
     }
 }
@@ -1072,26 +1118,21 @@ void PluginData::setFilterDnsRiders(bool enabled) {
     if (m_filterDnsRiders != enabled) {
         m_filterDnsRiders = enabled;
         m_bFilteredOrderDirty = true;
-        m_bLivePositionCacheDirty = true;
         notifyHudManager(DataChangeType::Standings);
     }
 }
 
-const std::vector<int>& PluginData::getLiveClassificationOrder() const {
-    // Get the base order (live-sorted or official)
-    const auto& baseOrder = (!m_liveStandingsEnabled || m_liveClassificationOrder.empty())
-        ? m_classificationOrder : m_liveClassificationOrder;
-
-    // If DNS filtering is off, return base order directly
+const std::vector<int>& PluginData::getDisplayClassificationOrder() const {
+    // If DNS filtering is off, return official order directly
     if (!m_filterDnsRiders) {
-        return baseOrder;
+        return m_classificationOrder;
     }
 
     // Rebuild filtered cache if dirty
     if (m_bFilteredOrderDirty) {
         m_filteredClassificationOrder.clear();
-        m_filteredClassificationOrder.reserve(baseOrder.size());
-        for (int raceNum : baseOrder) {
+        m_filteredClassificationOrder.reserve(m_classificationOrder.size());
+        for (int raceNum : m_classificationOrder) {
             auto it = m_standings.find(raceNum);
             if (it == m_standings.end() || it->second.state != PluginConstants::RiderState::DNS) {
                 m_filteredClassificationOrder.push_back(raceNum);
@@ -1108,11 +1149,11 @@ const std::vector<int>& PluginData::getLiveClassificationOrder() const {
     return m_filteredClassificationOrder;
 }
 
-int PluginData::getLivePositionForRaceNum(int raceNum) const {
+int PluginData::getDisplayPositionForRaceNum(int raceNum) const {
     // If DNS filtering is on, use filtered cache
     if (m_filterDnsRiders) {
         // Ensure filtered order is up to date (rebuilds caches if dirty)
-        getLiveClassificationOrder();
+        getDisplayClassificationOrder();
         auto it = m_filteredPositionCache.find(raceNum);
         if (it != m_filteredPositionCache.end()) {
             return it->second;
@@ -1120,175 +1161,7 @@ int PluginData::getLivePositionForRaceNum(int raceNum) const {
         return -1;  // DNS rider filtered out, or not found
     }
 
-    // Fall back to official when disabled or no live data
-    if (!m_liveStandingsEnabled || m_liveClassificationOrder.empty()) {
-        return getPositionForRaceNum(raceNum);
-    }
-
-    // Rebuild live cache if dirty
-    if (m_bLivePositionCacheDirty) {
-        m_livePositionCache.clear();
-        for (size_t i = 0; i < m_liveClassificationOrder.size(); ++i) {
-            m_livePositionCache[m_liveClassificationOrder[i]] = static_cast<int>(i) + 1;
-        }
-        m_bLivePositionCacheDirty = false;
-    }
-
-    auto it = m_livePositionCache.find(raceNum);
-    if (it != m_livePositionCache.end()) {
-        return it->second;
-    }
-    return -1;
-}
-
-void PluginData::updateLivePositions() {
-    // Gate: only active in race sessions in progress with classification data
-    if (!m_liveStandingsEnabled || !isRaceSession() || m_classificationOrder.empty()) {
-        return;
-    }
-
-    const SessionData& sd = m_sessionData;
-    if (!(sd.sessionState & PluginConstants::SessionState::IN_PROGRESS)) {
-        return;
-    }
-
-    auto now = std::chrono::steady_clock::now();
-
-    // Reuse member buffers to avoid per-frame heap allocations
-    m_liveSortEntries.clear();
-    m_liveSortFinished.clear();
-
-    for (size_t i = 0; i < m_classificationOrder.size(); ++i) {
-        int raceNum = m_classificationOrder[i];
-        LiveSortEntry e;
-        e.raceNum = raceNum;
-        e.excludeFromSort = false;
-
-        auto standingIt = m_standings.find(raceNum);
-
-        // Skip DNS riders entirely when filtering is enabled
-        if (m_filterDnsRiders && standingIt != m_standings.end() &&
-            standingIt->second.state == PluginConstants::RiderState::DNS) {
-            continue;
-        }
-
-        if (standingIt != m_standings.end()) {
-            if (standingIt->second.finishTime >= 0) {
-                e.excludeFromSort = true;
-            }
-        }
-
-        // Use official standings numLaps (authoritative, never decreases)
-        e.numLaps = standingIt != m_standings.end() ? standingIt->second.numLaps : 0;
-
-        auto posIt = m_trackPositions.find(raceNum);
-        if (posIt != m_trackPositions.end()) {
-            e.trackPos = posIt->second.trackPos;
-            // Detect stale trackPos: standings callback has bumped numLaps but
-            // the track position callback hasn't fired yet. The old high trackPos
-            // combined with the new higher numLaps causes false sort-to-top.
-            if (e.numLaps > posIt->second.numLaps) {
-                e.trackPos = 0.0f;
-            }
-        } else {
-            e.trackPos = 0.0f;
-        }
-
-        if (e.excludeFromSort) {
-            m_liveSortFinished.push_back(e);
-        } else {
-            m_liveSortEntries.push_back(e);
-        }
-    }
-
-    // Get current committed order for hysteresis dead zone
-    const auto& committedOrder = m_liveClassificationOrder.empty()
-        ? m_classificationOrder : m_liveClassificationOrder;
-
-    // Build committed position lookup for dead zone comparator
-    m_liveSortCommittedPosMap.clear();
-    for (size_t i = 0; i < committedOrder.size(); ++i) {
-        m_liveSortCommittedPosMap[committedOrder[i]] = static_cast<int>(i);
-    }
-
-    float minGap = m_liveStandingsMinTrackGap;
-    auto& posMap = m_liveSortCommittedPosMap;
-
-    // Sort active riders by (numLaps DESC, trackPos DESC, committed position ASC for dead zone)
-    std::sort(m_liveSortEntries.begin(), m_liveSortEntries.end(),
-        [&posMap, minGap](const LiveSortEntry& a, const LiveSortEntry& b) {
-            if (a.numLaps != b.numLaps) return a.numLaps > b.numLaps;
-            float gap = a.trackPos - b.trackPos;
-            if (std::abs(gap) > minGap) return gap > 0.0f;
-            // Within dead zone: preserve committed order
-            int posA = 0, posB = 0;
-            auto itA = posMap.find(a.raceNum);
-            auto itB = posMap.find(b.raceNum);
-            if (itA != posMap.end()) posA = itA->second;
-            if (itB != posMap.end()) posB = itB->second;
-            return posA < posB;
-        }
-    );
-
-    // Build proposed order: finished riders first (official order), then active riders (live sorted)
-    m_liveSortProposed.clear();
-    m_liveSortProposed.reserve(m_classificationOrder.size());
-    for (const auto& e : m_liveSortFinished) {
-        m_liveSortProposed.push_back(e.raceNum);
-    }
-    for (const auto& e : m_liveSortEntries) {
-        m_liveSortProposed.push_back(e.raceNum);
-    }
-
-    // Apply hysteresis hold timer
-    if (m_liveClassificationOrder.empty()) {
-        m_liveClassificationOrder = m_liveSortProposed;
-        m_bLivePositionCacheDirty = true;
-        m_bFilteredOrderDirty = true;
-        m_pendingLiveOrder.clear();
-        notifyHudManager(DataChangeType::Standings);
-        DEBUG_INFO_F("[LiveSort] Initial commit (%d riders)", static_cast<int>(m_liveSortProposed.size()));
-    } else if (m_liveSortProposed != m_liveClassificationOrder) {
-        if (m_liveStandingsHoldTimeMs <= 0) {
-            m_liveClassificationOrder = m_liveSortProposed;
-            m_bLivePositionCacheDirty = true;
-            m_bFilteredOrderDirty = true;
-            m_pendingLiveOrder.clear();
-            notifyHudManager(DataChangeType::Standings);
-            DEBUG_INFO_F("[LiveSort] Committed (no hold)");
-        } else if (m_liveSortProposed == m_pendingLiveOrder) {
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_pendingLiveOrderTime);
-            if (elapsed.count() >= m_liveStandingsHoldTimeMs) {
-                m_liveClassificationOrder = m_liveSortProposed;
-                m_bLivePositionCacheDirty = true;
-                m_bFilteredOrderDirty = true;
-                m_pendingLiveOrder.clear();
-                notifyHudManager(DataChangeType::Standings);
-                DEBUG_INFO_F("[LiveSort] Committed (hold expired after %lldms)", elapsed.count());
-            }
-        } else {
-            m_pendingLiveOrder = m_liveSortProposed;
-            m_pendingLiveOrderTime = now;
-        }
-    } else {
-        m_pendingLiveOrder.clear();
-    }
-}
-
-void PluginData::clearLivePositionState() {
-    m_liveClassificationOrder.clear();
-    m_livePositionCache.clear();
-    m_bLivePositionCacheDirty = true;
-    m_filteredClassificationOrder.clear();
-    m_filteredPositionCache.clear();
-    m_bFilteredOrderDirty = true;
-    m_pendingLiveOrder.clear();
-
-    // Clear reusable work buffers between sessions (capacity retained for reuse)
-    m_liveSortEntries.clear();
-    m_liveSortFinished.clear();
-    m_liveSortProposed.clear();
-    m_liveSortCommittedPosMap.clear();
+    return getPositionForRaceNum(raceNum);
 }
 
 void PluginData::updateTrackPosition(int raceNum, float trackPos, int numLaps, bool crashed, int sessionTime) {
@@ -1303,52 +1176,136 @@ void PluginData::updateTrackPosition(int raceNum, float trackPos, int numLaps, b
         if (rawDelta > 0.5f) rawDelta -= 1.0f;   // wrapped backward through S/F
         if (rawDelta < -0.5f) rawDelta += 1.0f;   // wrapped forward through S/F
         if (std::abs(rawDelta) > TrackPositionData::TELEPORT_THRESHOLD) {
-            // Large non-wraparound jump = teleport. Reset history to prevent false wrong-way.
-            data.positionHistory.fill(trackPos);
-            data.historyIndex = 1;
-            data.historyCount = 1;
+            // Large non-wraparound jump = teleport. Reset state to prevent false wrong-way.
+            data.previousTrackPos = trackPos;
             data.wrongWay = false;
+            data.wrongWaySince = {};
             data.trackPos = trackPos;
             data.numLaps = numLaps;
             data.sessionTime = sessionTime;
             data.crashed = crashed;
 
+            // Reset hazard state on teleport (clean state reset, no cooldown)
+            data.lastSignificantTrackPos = trackPos;
+            data.stationarySince = {};
+            data.hazardClearedAt = {};
+            data.hazardType = HazardType::None;
+            data.hazardConfirmed = false;
+
             m_currentSessionTime = sessionTime;
             m_blueFlagsDirty = true;
+            m_hazardsDirty = true;
+            m_hazardTypesDirty = true;
             return;
         }
 
-        // Add current position to circular buffer
-        data.positionHistory[data.historyIndex] = trackPos;
-        data.historyIndex = (data.historyIndex + 1) % TrackPositionData::POSITION_HISTORY_SIZE;
-        if (data.historyCount < TrackPositionData::POSITION_HISTORY_SIZE) {
-            data.historyCount++;
+        // Detect wrong-way using per-sample direction + timestamp confirmation.
+        // rawDelta is already wraparound-aware (computed above for teleport check).
+        auto now = std::chrono::steady_clock::now();
+        bool goingBackward = (rawDelta < 0.0f);
+
+        if (goingBackward) {
+            // Start or maintain wrong-way timer
+            if (data.wrongWaySince.time_since_epoch().count() == 0) {
+                data.wrongWaySince = now;
+            }
+        } else {
+            // Moving forward (or stationary) — reset wrong-way timer
+            data.wrongWaySince = {};
         }
 
-        // Detect wrong-way by comparing oldest and newest positions in buffer
-        bool wrongWay = false;
-        if (data.historyCount >= TrackPositionData::POSITION_HISTORY_SIZE) {
-            // Get oldest position in buffer (the one we're about to overwrite)
-            int oldestIndex = data.historyIndex;  // Points to oldest after increment
-            float oldestPos = data.positionHistory[oldestIndex];
-            float newestPos = trackPos;
+        bool wrongWay = (data.wrongWaySince.time_since_epoch().count() != 0) &&
+            (std::chrono::duration_cast<std::chrono::milliseconds>(now - data.wrongWaySince).count() >= m_hazardWrongWayDurationMs);
+        data.previousTrackPos = trackPos;
 
-            // Calculate position change over the time window
-            float posChange = newestPos - oldestPos;
+        // === Hazard detection (stationary) ===
+        // (now already declared above for wrong-way detection)
 
-            // Handle wraparound at start/finish line
-            if (posChange > TrackPositionData::WRAPAROUND_THRESHOLD) {
-                // Wrapped backwards through start line (0.05 -> 0.95) = wrong way
-                wrongWay = true;
-            } else if (posChange < -TrackPositionData::WRAPAROUND_THRESHOLD) {
-                // Wrapped forward through finish line (0.95 -> 0.05) = correct way
-                wrongWay = false;
-            } else if (posChange <= TrackPositionData::WRONG_WAY_THRESHOLD) {
-                // Consistently moving backwards (not wrapping) = wrong way
-                wrongWay = true;
+        // Stationary detection: check if rider has moved significantly
+        float posDelta = std::abs(trackPos - data.lastSignificantTrackPos);
+        posDelta = std::min(posDelta, 1.0f - posDelta);  // Wraparound-aware
+
+        // Convert tolerance from meters to track percentage
+        float trackLength = m_sessionData.trackLength;
+        float tolerancePct = (trackLength > 0.0f)
+            ? (m_hazardStationaryToleranceMeters / trackLength)
+            : 0.003f;  // ~5m on typical 1600m track
+
+        if (posDelta > tolerancePct) {
+            // Significant movement — update reference position, reset stationary timer
+            data.lastSignificantTrackPos = trackPos;
+            data.stationarySince = {};
+        } else if (data.stationarySince.time_since_epoch().count() == 0) {
+            // Just became stationary — start timer
+            data.stationarySince = now;
+        }
+
+        bool isStationary = (data.stationarySince.time_since_epoch().count() != 0) &&
+            (std::chrono::duration_cast<std::chrono::milliseconds>(now - data.stationarySince).count() >= m_hazardStationaryDurationMs);
+        bool isWrongWay = wrongWay;
+
+        // Check if rider should be excluded from hazard detection
+        bool excluded = false;
+        auto standingIt = m_standings.find(raceNum);
+        if (standingIt != m_standings.end()) {
+            excluded = isRiderExcludedFromDetection(standingIt->second);
+        }
+
+        // Hazard type resolution (state transition rules)
+        if (excluded) {
+            // Excluded riders are never hazards
+            data.hazardType = HazardType::None;
+            data.hazardConfirmed = false;
+            data.hazardClearedAt = {};
+        } else if (crashed || isWrongWay || isStationary) {
+            // Determine new type (WrongWay takes priority, crashed treated as Stationary)
+            HazardType newType = isWrongWay ? HazardType::WrongWay : HazardType::Stationary;
+
+            if (data.hazardConfirmed) {
+                // Already confirmed as hazard — immediate type transition, cancel any cooldown
+                data.hazardType = newType;
+                data.hazardClearedAt = {};
             } else {
-                // Moving forward or stationary = correct way
-                wrongWay = false;
+                // Not yet confirmed — apply duration thresholds.
+                // Wrong-way: confirmed via wrongWaySince timer (duration already checked above).
+                // Stationary: confirmed via the stationarySince timer above.
+                if (crashed) {
+                    // Crashed = immediate hazard, no timer needed
+                    data.hazardType = HazardType::Stationary;
+                    data.hazardConfirmed = true;
+                    data.hazardClearedAt = {};
+                } else if (isWrongWay) {
+                    data.hazardType = HazardType::WrongWay;
+                    data.hazardConfirmed = true;
+                    data.hazardClearedAt = {};
+                } else if (isStationary) {
+                    // Stationary confirmed via stationarySince timer
+                    data.hazardType = HazardType::Stationary;
+                    data.hazardConfirmed = true;
+                    data.hazardClearedAt = {};
+                }
+            }
+        } else {
+            // No hazard conditions active
+            if (data.hazardConfirmed) {
+                // If rider is motionless (stationarySince timer running but not yet expired),
+                // hold the existing hazard type — they'll transition to Stationary once
+                // the timer expires, avoiding a gap in icon display.
+                // Note: don't reset hazardClearedAt here — stationarySince oscillates for
+                // moving riders (per-frame delta < tolerance every few frames), so resetting
+                // would prevent the cooldown from ever completing.
+                bool isMotionless = data.stationarySince.time_since_epoch().count() != 0;
+                bool cooldownActive = data.hazardClearedAt.time_since_epoch().count() != 0;
+                if (!isMotionless && !cooldownActive) {
+                    // Moving and no cooldown yet — start cooldown
+                    data.hazardClearedAt = now;
+                } else if (cooldownActive && std::chrono::duration_cast<std::chrono::milliseconds>(now - data.hazardClearedAt).count() >= m_hazardCooldownMs) {
+                    // Cooldown expired — clear hazard
+                    data.hazardType = HazardType::None;
+                    data.hazardConfirmed = false;
+                    data.hazardClearedAt = {};
+                }
+                // Otherwise: still in cooldown, keep hazardType and hazardConfirmed
             }
         }
 
@@ -1365,12 +1322,9 @@ void PluginData::updateTrackPosition(int raceNum, float trackPos, int numLaps, b
         posData.numLaps = numLaps;
         posData.sessionTime = sessionTime;
         posData.crashed = crashed;
-        posData.wrongWay = false;  // Can't detect wrong way until we have history
-
-        // Initialize history with current position
-        posData.positionHistory[0] = trackPos;
-        posData.historyIndex = 1;
-        posData.historyCount = 1;
+        posData.wrongWay = false;
+        posData.previousTrackPos = trackPos;
+        posData.lastSignificantTrackPos = trackPos;  // Initialize hazard reference position
 
         m_trackPositions[raceNum] = posData;
     }
@@ -1378,8 +1332,25 @@ void PluginData::updateTrackPosition(int raceNum, float trackPos, int numLaps, b
     // Store current session time
     m_currentSessionTime = sessionTime;
 
-    // Invalidate blue flag cache (depends on track positions)
+    // Invalidate caches (depend on track positions)
     m_blueFlagsDirty = true;
+    m_hazardsDirty = true;
+    m_hazardTypesDirty = true;
+}
+
+void PluginData::updateActiveTrackPosRiders(int numVehicles, const Unified::TrackPositionData* positions) {
+    m_activeTrackPosRiders.clear();
+    for (int i = 0; i < numVehicles; ++i) {
+        m_activeTrackPosRiders.insert(positions[i].raceNum);
+    }
+}
+
+bool PluginData::isRiderExcludedFromDetection(const StandingsData& standing) const {
+    int state = standing.state;
+    return state == static_cast<int>(Unified::EntryState::DNS) ||
+           state == static_cast<int>(Unified::EntryState::Retired) ||
+           state == static_cast<int>(Unified::EntryState::DSQ) ||
+           standing.pit == 1;
 }
 
 bool PluginData::isPlayerGoingWrongWay() const {
@@ -1400,103 +1371,240 @@ const TrackPositionData* PluginData::getPlayerTrackPosition() const {
     return nullptr;  // No position data available
 }
 
-const std::vector<int>& PluginData::getBlueFlagRaceNums() const {
-    if (!m_blueFlagsDirty) {
-        return m_cachedBlueFlagRaceNums;
-    }
-
+void PluginData::rebuildBlueFlagCaches() const {
     m_blueFlagsDirty = false;
-    m_cachedBlueFlagRaceNums.clear();
+    m_cachedPlayerBlueFlagged = false;
+    m_cachedBlueFlaggedSet.clear();
 
-    // Only check for blue flags in race sessions
     if (!isRaceSession()) {
-        return m_cachedBlueFlagRaceNums;
+        return;
     }
 
-    // Get player's race number and data
+    float trackLength = m_sessionData.trackLength;
+    float awarenessThreshold = (trackLength > 0.0f)
+        ? (m_blueFlagAwarenessDistance / trackLength)
+        : 0.06f;
+
+    // Find top two lap counts for early exit — if the leader hasn't lapped anyone,
+    // the entire O(n^2) loop is skipped (the common case in most races)
+    int maxLaps = 0, secondMaxLaps = 0;
+    for (const auto& [rn, st] : m_standings) {
+        if (st.numLaps > maxLaps) {
+            secondMaxLaps = maxLaps;
+            maxLaps = st.numLaps;
+        } else if (st.numLaps > secondMaxLaps) {
+            secondMaxLaps = st.numLaps;
+        }
+    }
+    if (maxLaps < secondMaxLaps + 1) {
+        // No one is 1+ laps ahead of anyone else — no blue flags possible
+        m_cachedPlayerBlueFlagged = false;
+        return;
+    }
+
+    // Build per-rider blue flag set: for each rider, check if any rider with 1+ more laps
+    // is approaching from behind within awareness distance
+    for (const auto& [riderRaceNum, riderStanding] : m_standings) {
+        if (isRiderExcludedFromDetection(riderStanding)) continue;
+        if (m_sessionData.isRiderFinished(riderStanding.numLaps, riderStanding.numLapsAtLeaderFinish)) continue;
+
+        int riderLaps = riderStanding.numLaps;
+
+        // Skip riders at the leader's lap count (they can't be blue flagged)
+        if (riderLaps >= maxLaps) continue;
+
+        auto riderPosIt = m_trackPositions.find(riderRaceNum);
+        if (riderPosIt == m_trackPositions.end()) continue;
+
+        float riderTrackPos = riderPosIt->second.trackPos;
+
+        for (const auto& [otherRaceNum, otherStanding] : m_standings) {
+            if (otherRaceNum == riderRaceNum) continue;
+            if (otherStanding.numLaps < riderLaps + 1) continue;
+
+            // Skip approaching riders with stale track positions — their trackPos
+            // may be from a previous lap, causing false proximity detection
+            if (!m_activeTrackPosRiders.count(otherRaceNum)) continue;
+
+            auto otherPosIt = m_trackPositions.find(otherRaceNum);
+            if (otherPosIt == m_trackPositions.end()) continue;
+
+            float otherTrackPos = otherPosIt->second.trackPos;
+            float distanceBehind = (otherTrackPos < riderTrackPos)
+                ? (riderTrackPos - otherTrackPos)
+                : ((1.0f - otherTrackPos) + riderTrackPos);
+
+            if (distanceBehind <= awarenessThreshold) {
+                m_cachedBlueFlaggedSet.insert(riderRaceNum);
+                break;
+            }
+        }
+    }
+
+    // Player blue flag is just a lookup into the per-rider set
     int playerRaceNum = getDisplayRaceNum();
-    if (playerRaceNum <= 0) {
-        return m_cachedBlueFlagRaceNums;  // No player data
+    m_cachedPlayerBlueFlagged = m_cachedBlueFlaggedSet.count(playerRaceNum) > 0;
+}
+
+bool PluginData::isPlayerBlueFlagged() const {
+    if (m_blueFlagsDirty) {
+        rebuildBlueFlagCaches();
+    }
+    return m_cachedPlayerBlueFlagged;
+}
+
+bool PluginData::isRiderBlueFlagged(int raceNum) const {
+    if (m_blueFlagsDirty) {
+        rebuildBlueFlagCaches();
+    }
+    return m_cachedBlueFlaggedSet.count(raceNum) > 0;
+}
+
+HazardType PluginData::getRiderHazardType(int raceNum) const {
+    if (m_hazardTypesDirty) {
+        rebuildHazardTypeCaches();
+    }
+    auto it = m_cachedHazardTypes.find(raceNum);
+    return (it != m_cachedHazardTypes.end()) ? it->second : HazardType::None;
+}
+
+void PluginData::rebuildHazardTypeCaches() const {
+    m_hazardTypesDirty = false;
+    m_cachedHazardTypes.clear();
+
+    // Suppress during pre-race grid wait
+    if (isRaceSession() && !(m_sessionData.sessionState & PluginConstants::SessionState::IN_PROGRESS)) {
+        return;
     }
 
-    // Early exit if player is leading - leader can't be blue flagged
-    int playerPosition = getPositionForRaceNum(playerRaceNum);
-    if (playerPosition == 1) {
-        return m_cachedBlueFlagRaceNums;
-    }
-
-    // Get player's position and lap data
-    auto playerPosIt = m_trackPositions.find(playerRaceNum);
-    auto playerStandingIt = m_standings.find(playerRaceNum);
-
-    if (playerPosIt == m_trackPositions.end() || playerStandingIt == m_standings.end()) {
-        return m_cachedBlueFlagRaceNums;  // Missing player data
-    }
-
-    const TrackPositionData& playerPos = playerPosIt->second;
-    const StandingsData& playerStanding = playerStandingIt->second;
-    int playerLaps = playerStanding.numLaps;
-    float playerTrackPos = playerPos.trackPos;
-
-    // Early exit if no one is 1+ lap ahead
-    bool anyoneAhead = false;
-    for (const auto& [raceNum, standing] : m_standings) {
-        if (standing.numLaps >= playerLaps + 1) {
-            anyoneAhead = true;
-            break;
+    // Suppress during grace period after race start
+    if (m_hazardGraceStart.time_since_epoch().count() != 0) {
+        auto graceNow = std::chrono::steady_clock::now();
+        auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(graceNow - m_hazardGraceStart).count();
+        if (elapsedMs < m_hazardGracePeriodMs) {
+            return;
         }
     }
-    if (!anyoneAhead) {
-        return m_cachedBlueFlagRaceNums;
+
+    // Single timestamp for all per-rider hazard checks
+    auto now = std::chrono::steady_clock::now();
+    for (const auto& [raceNum, pos] : m_trackPositions) {
+        HazardType type = computeRiderHazardType(raceNum, now);
+        if (type != HazardType::None) {
+            m_cachedHazardTypes[raceNum] = type;
+        }
+    }
+}
+
+HazardType PluginData::computeRiderHazardType(int raceNum, std::chrono::steady_clock::time_point now) const {
+    // Note: global suppression checks (pre-race, grace period) are handled by
+    // rebuildHazardTypeCaches() — this only checks per-rider conditions.
+
+    auto it = m_trackPositions.find(raceNum);
+    if (it == m_trackPositions.end() || it->second.hazardType == HazardType::None) {
+        return HazardType::None;
     }
 
-    // Distance threshold for "approaching from behind" (6% of track)
-    constexpr float APPROACH_THRESHOLD = 0.06f;
+    // Suppress during per-rider grace period after pit exit
+    if (it->second.pitExitGraceStart.time_since_epoch().count() != 0) {
+        auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - it->second.pitExitGraceStart).count();
+        if (elapsedMs < m_hazardGracePeriodMs) {
+            return HazardType::None;
+        }
+    }
 
-    // Check all other riders in the classification
+    // Re-check exclusion: rider may have retired/DNS/DSQ or entered pits
+    auto standingIt = m_standings.find(raceNum);
+    if (standingIt != m_standings.end()) {
+        if (isRiderExcludedFromDetection(standingIt->second)) {
+            return HazardType::None;
+        }
+        // Finished riders stopped near the finish line are expected, not a hazard.
+        if (it->second.hazardType == HazardType::Stationary &&
+            m_sessionData.isRiderFinished(standingIt->second.numLaps, standingIt->second.numLapsAtLeaderFinish) &&
+            it->second.trackPos < 0.5f) {
+            return HazardType::None;
+        }
+    }
+    return it->second.hazardType;
+}
+
+bool PluginData::isHazardAhead() const {
+    return !getHazardRaceNums().empty();
+}
+
+const std::vector<int>& PluginData::getHazardRaceNums() const {
+    if (!m_hazardsDirty) {
+        return m_cachedHazardRaceNums;
+    }
+
+    m_hazardsDirty = false;
+    m_cachedHazardRaceNums.clear();
+
+    // Suppress during pre-race grid wait (riders stationary on grid is not a hazard)
+    if (isRaceSession() && !(m_sessionData.sessionState & PluginConstants::SessionState::IN_PROGRESS)) {
+        return m_cachedHazardRaceNums;
+    }
+
+    // Get display rider's race number and track position
+    int displayRaceNum = getDisplayRaceNum();
+    if (displayRaceNum <= 0) {
+        return m_cachedHazardRaceNums;
+    }
+
+    auto displayPosIt = m_trackPositions.find(displayRaceNum);
+    if (displayPosIt == m_trackPositions.end()) {
+        return m_cachedHazardRaceNums;
+    }
+
+    float displayTrackPos = displayPosIt->second.trackPos;
+
+    // Grace period: suppress all hazards for m_hazardGracePeriodMs after session enters IN_PROGRESS.
+    // Uses steady_clock (not sessionTime which counts down in timed races).
+    if (m_hazardGraceStart.time_since_epoch().count() != 0) {
+        auto now = std::chrono::steady_clock::now();
+        auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_hazardGraceStart).count();
+        if (elapsedMs < m_hazardGracePeriodMs) {
+            return m_cachedHazardRaceNums;
+        }
+    }
+
+    // Convert awareness distance from meters to track percentage
+    float trackLength = m_sessionData.trackLength;
+    float awarenessThreshold = (trackLength > 0.0f)
+        ? (m_hazardAwarenessDistance / trackLength)
+        : 0.06f;  // Fallback: ~6% of track
+
+    // Check all riders in classification
     for (int otherRaceNum : m_classificationOrder) {
-        if (otherRaceNum == playerRaceNum) {
-            continue;  // Skip the player
+        if (otherRaceNum == displayRaceNum) {
+            continue;  // Never flag the display rider themselves
         }
 
-        // Get other rider's position and lap data
         auto otherPosIt = m_trackPositions.find(otherRaceNum);
-        auto otherStandingIt = m_standings.find(otherRaceNum);
-
-        if (otherPosIt == m_trackPositions.end() || otherStandingIt == m_standings.end()) {
-            continue;  // Missing data for this rider
+        if (otherPosIt == m_trackPositions.end()) {
+            continue;
         }
 
         const TrackPositionData& otherPos = otherPosIt->second;
-        const StandingsData& otherStanding = otherStandingIt->second;
-        int otherLaps = otherStanding.numLaps;
-        float otherTrackPos = otherPos.trackPos;
 
-        // Check if other rider is 1+ laps ahead
-        if (otherLaps < playerLaps + 1) {
-            continue;  // Not lapping the player
+        // Only include confirmed hazards (use getRiderHazardType for exclusion check)
+        if (getRiderHazardType(otherRaceNum) == HazardType::None) {
+            continue;
         }
 
-        // Check if other rider is behind on track (approaching from behind)
-        // We need to account for wraparound at the finish line
-        float distanceBehind;
-
-        if (otherTrackPos < playerTrackPos) {
-            // Other rider is behind on the same lap (direct distance)
-            distanceBehind = playerTrackPos - otherTrackPos;
-        } else {
-            // Other rider is ahead on track but behind in laps
-            // This means they crossed finish line and are approaching from behind
-            distanceBehind = (1.0f - otherTrackPos) + playerTrackPos;
+        // Check if hazard rider is ahead within awareness distance (wraparound-aware)
+        float distanceAhead = otherPos.trackPos - displayTrackPos;
+        if (distanceAhead < 0.0f) {
+            distanceAhead += 1.0f;
         }
 
-        // Check if within approach threshold
-        if (distanceBehind <= APPROACH_THRESHOLD) {
-            m_cachedBlueFlagRaceNums.push_back(otherRaceNum);
+        if (distanceAhead <= awarenessThreshold) {
+            m_cachedHazardRaceNums.push_back(otherRaceNum);
         }
     }
 
-    return m_cachedBlueFlagRaceNums;
+    return m_cachedHazardRaceNums;
 }
 
 void PluginData::updateRealTimeGaps() {
@@ -1557,8 +1665,15 @@ void PluginData::updateRealTimeGaps() {
         StandingsData& standing = standingIt->second;
         int riderLap = standing.numLaps;
 
+        // Skip lapped riders - live gap is meaningless across different laps.
+        // They'll use the API's official gap (gapLaps / gap fields) instead.
+        if (standing.gapLaps > 0) {
+            standing.realTimeGap = 0;
+            continue;
+        }
+
         // If rider finished, freeze their gap by skipping calculation
-        if (m_sessionData.isRiderFinished(riderLap)) {
+        if (m_sessionData.isRiderFinished(riderLap, standing.numLapsAtLeaderFinish)) {
             continue;  // Gap is frozen at last calculated value
         }
 
@@ -1647,6 +1762,7 @@ void PluginData::clearLiveGapTimingPoints() {
 
     // Clear track positions
     m_trackPositions.clear();
+    m_activeTrackPosRiders.clear();
     m_blueFlagsDirty = true;
 
     // Clear cached official gaps for new session
@@ -1689,9 +1805,11 @@ void PluginData::clear() {
     m_classificationOrder.clear();
     m_positionCache.clear();
     m_bPositionCacheDirty = true;
+    m_filteredClassificationOrder.clear();
+    m_filteredPositionCache.clear();
     m_bFilteredOrderDirty = true;
-    clearLivePositionState();
     m_trackPositions.clear();
+    m_activeTrackPosRiders.clear();
     m_blueFlagsDirty = true;
     m_riderCurrentLap.clear();
     m_riderIdealLap.clear();
@@ -1712,6 +1830,13 @@ void PluginData::clear() {
     m_inputTelemetry = InputTelemetryData();
     m_historyBuffers.clear();
 
+    m_hazardGraceStart = {};
+    m_hazardsDirty = true;
+    m_hazardTypesDirty = true;
+    m_cachedHazardRaceNums.clear();
+    m_blueFlagsDirty = true;
+    m_cachedBlueFlaggedSet.clear();
+    m_cachedPlayerBlueFlagged = false;
     m_currentSessionTime = 0;
     m_playerRaceNum = -1;
     m_bPlayerRaceNumValid = false;

@@ -2,6 +2,7 @@
 // core/tooltip_manager.h
 // Manages tooltips for settings UI elements
 // Loads from external JSON file (tooltips.json)
+// Recommended max tooltip length: 120 characters
 // ============================================================================
 #pragma once
 

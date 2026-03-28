@@ -25,6 +25,16 @@ static constexpr float TRACK_WIDTH_BASE_RATIO = 0.036f;  // 3.6% of smaller dime
 // Default icon filename
 static constexpr const char* DEFAULT_RIDER_ICON = "circle-chevron-up";
 
+void MapHud::CachedIcons::ensureInitialized() {
+    if (initialized) return;
+    const AssetManager& assets = AssetManager::getInstance();
+    circleExclamation = assets.getIconSpriteIndex("circle-exclamation");
+    triangleExclamation = assets.getIconSpriteIndex("triangle-exclamation");
+    flag = assets.getIconSpriteIndex("flag");
+    flagCheckered = assets.getIconSpriteIndex("flag-checkered");
+    initialized = true;
+}
+
 // Helper to get shape index from filename (returns 1 if not found)
 static int getShapeIndexByFilename(const char* filename) {
     const auto& assetMgr = AssetManager::getInstance();
@@ -41,7 +51,7 @@ MapHud::MapHud()
       m_fLastPlayerX(0.0f), m_fLastPlayerZ(0.0f),
       m_bShowOutline(true),
       m_riderColorMode(RiderColorMode::RELATIVE_POS),
-      m_labelMode(LabelMode::POSITION),
+      m_labelMode(LabelMode::RACE_NUM),
       m_riderShapeIndex(1),  // Will be set properly via settings or resetToDefaults
       m_anchorPoint(AnchorPoint::TOP_RIGHT),
       m_fAnchorX(0.0f), m_fAnchorY(0.0f),
@@ -1080,8 +1090,8 @@ void MapHud::renderRiders(const RotationCache& rotation,
             if (pluginData.isRaceSession()) {
                 const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
                 const StandingsData* riderStanding = pluginData.getStanding(pos.raceNum);
-                int playerPosition = pluginData.getLivePositionForRaceNum(displayRaceNum);
-                int riderPosition = pluginData.getLivePositionForRaceNum(pos.raceNum);
+                int playerPosition = pluginData.getDisplayPositionForRaceNum(displayRaceNum);
+                int riderPosition = pluginData.getDisplayPositionForRaceNum(pos.raceNum);
                 int playerLaps = playerStanding ? playerStanding->numLaps : 0;
                 int riderLaps = riderStanding ? riderStanding->numLaps : 0;
 
@@ -1098,8 +1108,8 @@ void MapHud::renderRiders(const RotationCache& rotation,
             // Brand colors at full opacity
             riderColor = entry->bikeBrandColor;
         } else {
-            // Uniform: Others in uniform tertiary color
-            riderColor = this->getColor(ColorSlot::TERTIARY);
+            // Uniform: Others in accent color
+            riderColor = this->getColor(ColorSlot::ACCENT);
         }
 
         // Render sprite quad centered on rider position, rotated to match heading
@@ -1125,6 +1135,46 @@ void MapHud::renderRiders(const RotationCache& rotation,
             // Non-tracked rider - use global shape (0=OFF defaults to circle for local player)
             shapeIndex = (m_riderShapeIndex > 0) ? m_riderShapeIndex : getShapeIndexByFilename(DEFAULT_RIDER_ICON);
             spriteIndex = AssetManager::getInstance().getFirstIconSpriteIndex() + shapeIndex - 1;
+        }
+
+        // Hazard icon override: circle-exclamation for wrong-way, triangle-exclamation for stationary
+        HazardType hazardType = pluginData.getRiderHazardType(pos.raceNum);
+        if (hazardType != HazardType::None) {
+            m_iconCache.ensureInitialized();
+            if (hazardType == HazardType::WrongWay) {
+                if (m_iconCache.circleExclamation > 0) {
+                    spriteIndex = m_iconCache.circleExclamation;
+                    riderColor = ColorPalette::RED;
+                }
+            } else {
+                if (m_iconCache.triangleExclamation > 0) {
+                    spriteIndex = m_iconCache.triangleExclamation;
+                    riderColor = ColorPalette::YELLOW;
+                }
+            }
+            shapeIndex = spriteIndex - AssetManager::getInstance().getFirstIconSpriteIndex() + 1;
+        }
+
+        // Blue flag icon override (lower priority than hazard)
+        if (hazardType == HazardType::None && pluginData.isRiderBlueFlagged(pos.raceNum)) {
+            m_iconCache.ensureInitialized();
+            if (m_iconCache.flag > 0) {
+                spriteIndex = m_iconCache.flag;
+                shapeIndex = spriteIndex - AssetManager::getInstance().getFirstIconSpriteIndex() + 1;
+                riderColor = ColorPalette::BLUE;
+            }
+        }
+        // Checkered flag for finished riders (lower priority than hazard and blue flag)
+        else if (hazardType == HazardType::None) {
+            const StandingsData* standing = pluginData.getStanding(pos.raceNum);
+            if (standing && pluginData.getSessionData().isRiderFinished(standing->numLaps, standing->numLapsAtLeaderFinish)) {
+                m_iconCache.ensureInitialized();
+                if (m_iconCache.flagCheckered > 0) {
+                    spriteIndex = m_iconCache.flagCheckered;
+                    shapeIndex = spriteIndex - AssetManager::getInstance().getFirstIconSpriteIndex() + 1;
+                    riderColor = ColorPalette::WHITE;
+                }
+            }
         }
 
         // Calculate rotation only for directional icons
@@ -1204,7 +1254,7 @@ void MapHud::renderRiders(const RotationCache& rotation,
             float offsetY = screenY + spriteHalfSize + labelGap;
 
             char labelStr[20];  // Sized for "P100" (5) + "#999" (5) = "P100#999" (9 + null)
-            int position = pluginData.getLivePositionForRaceNum(pos.raceNum);
+            int position = pluginData.getDisplayPositionForRaceNum(pos.raceNum);
 
             switch (m_labelMode) {
                 case LabelMode::POSITION:
@@ -1515,7 +1565,7 @@ void MapHud::resetToDefaults() {
     m_bRotateToPlayer = false;
     m_bShowOutline = true;  // Enable outline by default
     m_riderColorMode = RiderColorMode::RELATIVE_POS;  // Default to relative position coloring
-    m_labelMode = LabelMode::POSITION;
+    m_labelMode = LabelMode::RACE_NUM;
     m_riderShapeIndex = getShapeIndexByFilename(DEFAULT_RIDER_ICON);
     m_fTrackWidthScale = DEFAULT_TRACK_WIDTH_SCALE;
     m_bZoomEnabled = false;

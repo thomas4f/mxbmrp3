@@ -52,6 +52,8 @@ void RaceClassificationHandler::handleRaceClassification(
         // This is a time+laps race, check if overtime just started
         // Only detect when race is in progress (state 16), not during pre-start (256)
         // Pre-start can have negative sessionTime (countdown) which would falsely trigger this
+        // Note: uses < 0 (strictly negative), not <= 0, because sessionTime == 0 means the clock
+        // just hit zero — overtime hasn't started yet until the next tick goes negative.
         if (psRaceClassification->sessionState == 16 &&
             sessionData.lastSessionTime > 0 && psRaceClassification->sessionTime < 0 &&
             pasRaceClassificationEntry && iNumEntries > 0) {
@@ -70,6 +72,22 @@ void RaceClassificationHandler::handleRaceClassification(
             pluginData.setFinishLap(finishLap);
             pluginData.setOvertimeStarted(true);
         }
+    }
+
+    // Detect session time expiry in non-race sessions (practice/warmup/qualifying)
+    // When sessionTime transitions from positive to <=0, the session duration has elapsed.
+    // Note: uses <= 0 (not < 0) because sessionTime == 0 means "time is up" — the session
+    // has fully elapsed and riders crossing the line should be marked finished immediately.
+    // Individual riders are marked finished as they cross the line (RaceLap).
+    if (!sessionData.sessionTimeExpired && !pluginData.isRaceSession() &&
+        sessionData.sessionLength > 0 &&
+        psRaceClassification->sessionState == 16 &&
+        sessionData.lastSessionTime > 0 && psRaceClassification->sessionTime <= 0) {
+
+        DEBUG_INFO_F("[SESSION TIME EXPIRED] Non-race session time expired (lastSessionTime=%d, sessionTime=%d)",
+            sessionData.lastSessionTime, psRaceClassification->sessionTime);
+
+        pluginData.setSessionTimeExpired(true);
     }
 
     pluginData.setLastSessionTime(psRaceClassification->sessionTime);

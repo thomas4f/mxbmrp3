@@ -43,7 +43,6 @@ void RaceEventHandler::handleRaceEvent(Unified::RaceEventData* psRaceEvent) {
     // Update plugin data store
     // Note: RaceEventData (spectating) doesn't provide trackId, only trackName.
     // Don't touch trackId - preserve any value already set by EventHandler (if user was on track first).
-    // RecordsHud checks if trackId is available and disables Compare button if not.
     PluginData::getInstance().setTrackName(psRaceEvent->trackName);
     PluginData::getInstance().setTrackLength(psRaceEvent->trackLength);
 }

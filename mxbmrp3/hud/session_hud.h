@@ -46,7 +46,7 @@ public:
 
     // Public for settings access
     uint32_t m_enabledRows = ROW_DEFAULT;
-    PasswordDisplayMode m_passwordMode = PasswordDisplayMode::Hidden;  // Off = no password row
+    PasswordDisplayMode m_passwordMode = PasswordDisplayMode::Off;  // Off = no password row
     bool m_bShowIcons = true;  // Show row icons
 
     // Helper to count enabled rows

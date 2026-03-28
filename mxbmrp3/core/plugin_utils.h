@@ -15,19 +15,15 @@ public:
     static void formatTimeMinutesSeconds(int milliseconds, char* buffer, size_t bufferSize);
 
     // Format lap time as "M:SS.mmm" (or "MM:SS.mmm" for times >= 10 minutes)
-    // Used for all time displays: lap times, sectors, splits
+    // Compact mode (global setting): drops leading "0:" for times under 1 minute → "SS.mmm"
     static void formatLapTime(int lapTimeMs, char* buffer, size_t bufferSize);
 
     // Format time difference/gap as "+/-M:SS.mmm" (or "+/-MM:SS.mmm" for >= 10 minutes)
-    // Handles positive, negative, and zero differences
+    // Compact mode (global setting): drops leading "0:" and uses tenths → "+/-SS.s" or "+/-M:SS.s"
     static void formatTimeDiff(char* buffer, size_t bufferSize, int diffMs);
 
-    // Format time difference with tenths of seconds (M:SS.s format) for live gaps
-    // Uses lower precision for cleaner display and reduced visual noise
-    static void formatTimeDiffTenths(char* buffer, size_t bufferSize, int diffMs);
-
     // Format lap time with tenths of seconds (M:SS.s format) for pitboard display
-    // Uses lower precision for cleaner display
+    // Compact mode (global setting): drops leading "0:" for times under 1 minute → "SS.s"
     static void formatLapTimeTenths(int lapTimeMs, char* buffer, size_t bufferSize);
 
     // Format gap as compact string: "+13.3" for <1min, "+1:13.3" for >=1min

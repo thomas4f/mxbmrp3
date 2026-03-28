@@ -229,9 +229,9 @@ std::string RecordsHud::buildRequestUrl() const {
         std::string url = baseUrl + "?limit=" + std::to_string(MAX_RECORDS);
 
         // Add track parameter
-        if (session.trackId[0] != '\0') {
+        if (session.trackName[0] != '\0') {
             url += "&track=";
-            appendUrlEncoded(url, session.trackId);
+            appendUrlEncoded(url, session.trackName);
         }
 
         // Add category parameter if not "All" (index 0)
@@ -721,19 +721,19 @@ void RecordsHud::update() {
     bool shouldAutoFetch = false;
 
     // Clear records when event ends (track becomes empty)
-    if (session.trackId[0] == '\0') {
-        if (!m_records.empty() || m_lastSessionTrackId[0] != '\0') {
+    if (session.trackName[0] == '\0') {
+        if (!m_records.empty() || m_lastSessionTrackName[0] != '\0') {
             std::lock_guard<std::mutex> lock(m_recordsMutex);
             m_records.clear();
             m_fetchState = FetchState::IDLE;
-            m_lastSessionTrackId[0] = '\0';  // Reset tracked track
+            m_lastSessionTrackName[0] = '\0';  // Reset tracked track
             m_lastSessionCategory[0] = '\0';  // Reset tracked category
             setDataDirty();
         }
     } else {
         // Track changed (entered new event) - auto-fetch if enabled
-        if (strcmp(session.trackId, m_lastSessionTrackId) != 0) {
-            strncpy_s(m_lastSessionTrackId, sizeof(m_lastSessionTrackId), session.trackId, sizeof(m_lastSessionTrackId) - 1);
+        if (strcmp(session.trackName, m_lastSessionTrackName) != 0) {
+            strncpy_s(m_lastSessionTrackName, sizeof(m_lastSessionTrackName), session.trackName, sizeof(m_lastSessionTrackName) - 1);
             shouldAutoFetch = true;
         }
     }
@@ -920,12 +920,12 @@ void RecordsHud::rebuildRenderData() {
     rowX += charWidth * 4;  // " > " + gap
 
     // Compare button - all labels same width as [Compare] (9 chars)
-    // Button is disabled when trackId is unavailable (spectating mode) or on cooldown
+    // Button is disabled when trackName is unavailable or on cooldown
     const SessionData& sessionForButton = PluginData::getInstance().getSessionData();
-    bool trackIdAvailable = sessionForButton.trackId[0] != '\0';
+    bool trackAvailable = sessionForButton.trackName[0] != '\0';
     bool isOnCooldown = (GetTickCount() - m_fetchStartTimestamp < FETCH_COOLDOWN_MS);
     FetchState state = m_fetchState.load();
-    bool isButtonDisabled = !trackIdAvailable || (isOnCooldown && state != FetchState::FETCHING);
+    bool isButtonDisabled = !trackAvailable || (isOnCooldown && state != FetchState::FETCHING);
 
     const char* compareLabel = "[Compare]";
     if (state == FetchState::FETCHING) {
@@ -1280,7 +1280,7 @@ void RecordsHud::rebuildRenderData() {
         float prefixWidth = PluginUtils::calculateMonospaceTextWidth(static_cast<int>(strlen(prefix)), dim.fontSizeSmall);
         const char* providerName = getProviderDisplayName(m_recordsProvider);
         addString(providerName, contentStartX + prefixWidth, currentY,
-                  Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dim.fontSizeSmall);
+                  Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dim.fontSizeSmall);
 
         float providerWidth = PluginUtils::calculateMonospaceTextWidth(static_cast<int>(strlen(providerName)), dim.fontSizeSmall);
         addString(" servers", contentStartX + prefixWidth + providerWidth, currentY,
@@ -1323,7 +1323,7 @@ void RecordsHud::resetToDefaults() {
     m_provider = DataProvider::CBR;
     m_recordsProvider = DataProvider::CBR;
     m_categoryIndex = 0;
-    m_lastSessionTrackId[0] = '\0';  // Reset so update() will pick up current session track
+    m_lastSessionTrackName[0] = '\0';  // Reset so update() will pick up current session track
     m_lastSessionCategory[0] = '\0';  // Reset so update() will pick up current session category
     m_bAutoFetch = false;  // Auto-fetch disabled by default
     m_enabledColumns = COL_DEFAULT;

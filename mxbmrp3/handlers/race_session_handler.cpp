@@ -31,7 +31,6 @@ void RaceSessionHandler::handleRaceSession(Unified::RaceSessionData* psRaceSessi
     PluginData::getInstance().clearAllIdealLap();
     PluginData::getInstance().clearAllLapLog();
     PluginData::getInstance().clearLiveGapTimingPoints();
-    PluginData::getInstance().clearLivePositionState();
     PluginData::getInstance().resetAllLapTimers();
 
     // Reset race finish tracking (overtime and leader finish time)
@@ -39,6 +38,8 @@ void RaceSessionHandler::handleRaceSession(Unified::RaceSessionData* psRaceSessi
     PluginData::getInstance().setFinishLap(-1);
     PluginData::getInstance().setLastSessionTime(0);
     PluginData::getInstance().setLeaderFinishTime(-1);
+    PluginData::getInstance().setSessionTimeExpired(false);
+    PluginData::getInstance().clearSessionFinished();
 
     // Update plugin data store
     PluginData::getInstance().setSession(psRaceSession->session);
@@ -64,14 +65,13 @@ void RaceSessionHandler::handleRaceSessionState(Unified::RaceSessionStateData* p
     //
     // Guard: only reset on initial transition TO state 16, not on re-fires.
     // The game re-sends state 16 when overtime starts, which would wipe out
-    // accumulated live standings and RTG data mid-race.
+    // accumulated RTG data mid-race.
     // IMPORTANT: This check must happen BEFORE setSessionState() below,
     // since we compare against the cached (old) state to detect the transition.
     if (psRaceSessionState->sessionState == 16 &&
         PluginData::getInstance().getSessionData().sessionState != 16) {
         PluginData::getInstance().setLastSessionTime(0);
         PluginData::getInstance().clearLiveGapTimingPoints();
-        PluginData::getInstance().clearLivePositionState();
     }
 
     // Update plugin data store

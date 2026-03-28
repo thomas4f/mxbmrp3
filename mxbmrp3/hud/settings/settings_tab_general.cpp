@@ -9,6 +9,7 @@
 #include "../../core/profile_manager.h"
 #include "../../core/settings_manager.h"
 #include "../../core/hud_manager.h"
+#include "../../core/plugin_data.h"
 #include "../../core/xinput_reader.h"
 #include "../../core/color_config.h"
 #include "../../core/ui_config.h"
@@ -89,6 +90,15 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
             }
             return true;
 #endif
+
+        case ClickRegion::SHORT_TIME_FORMAT_TOGGLE:
+            {
+                PluginData& pd = PluginData::getInstance();
+                pd.setShortTimeFormat(!pd.isShortTimeFormat());
+                HudManager::getInstance().markAllHudsDirty();
+                rebuildRenderData();
+            }
+            return true;
 
         case ClickRegion::DROP_SHADOW_TOGGLE:
             {
@@ -238,6 +248,11 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
 
     // === DISPLAY SECTION ===
     ctx.addSectionHeader("Display");
+
+    // Compact time format toggle
+    ctx.addToggleControl("Compact Times", PluginData::getInstance().isShortTimeFormat(),
+        SettingsHud::ClickRegion::SHORT_TIME_FORMAT_TOGGLE, nullptr, nullptr, 0, true,
+        "general.compact_times");
 
     // Speed unit toggle
     {

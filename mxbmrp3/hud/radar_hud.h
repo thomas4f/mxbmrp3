@@ -28,7 +28,7 @@ public:
 
     // Rider color mode - how to color other riders on the radar
     enum class RiderColorMode {
-        UNIFORM = 0,        // Gray for all riders
+        UNIFORM = 0,        // Accent color for all riders
         BRAND = 1,          // Bike brand colors
         RELATIVE_POS = 2    // Color based on position relative to player
     };
@@ -208,4 +208,16 @@ private:
     void renderProximityArrows(const Unified::TrackPositionData* localPlayer,
                                float playerX, float playerZ,
                                float cosYaw, float sinYaw);
+
+    // Cached icon sprite indices (avoid string-based map lookups per rider per frame)
+    struct CachedIcons {
+        int circleExclamation = 0;
+        int triangleExclamation = 0;
+        int flag = 0;
+        int flagCheckered = 0;
+        bool initialized = false;
+
+        void ensureInitialized();
+    };
+    CachedIcons m_iconCache;
 };

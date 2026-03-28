@@ -783,8 +783,8 @@ unsigned long GapBarHud::calculateRiderColor(int riderRaceNum, int displayRaceNu
             if (!pluginData.isRaceSession()) {
                 return this->getColor(ColorSlot::NEUTRAL);
             }
-            int playerPosition = pluginData.getLivePositionForRaceNum(displayRaceNum);
-            int riderPosition = pluginData.getLivePositionForRaceNum(riderRaceNum);
+            int playerPosition = pluginData.getDisplayPositionForRaceNum(displayRaceNum);
+            int riderPosition = pluginData.getDisplayPositionForRaceNum(riderRaceNum);
 
             return PluginUtils::getRelativePositionColor(
                 playerPosition, riderPosition, playerLaps, riderLaps,
@@ -914,7 +914,7 @@ void GapBarHud::renderRiderMarkers(float innerX, float innerY, float innerWidth,
 
             // Render label if enabled
             if (m_labelMode != LabelMode::NONE) {
-                int position = pluginData.getLivePositionForRaceNum(pos.raceNum);
+                int position = pluginData.getDisplayPositionForRaceNum(pos.raceNum);
                 renderMarkerLabel(markerX, markerY, iconHalfSize, pos.raceNum, position, dim);
             }
         }
@@ -974,7 +974,7 @@ void GapBarHud::renderRiderMarkers(float innerX, float innerY, float innerWidth,
 
         // Render label for self if enabled
         if (m_labelMode != LabelMode::NONE) {
-            int position = pluginData.getLivePositionForRaceNum(displayRaceNum);
+            int position = pluginData.getDisplayPositionForRaceNum(displayRaceNum);
             renderMarkerLabel(markerX, markerY, iconHalfSize, displayRaceNum, position, dim);
         }
     }

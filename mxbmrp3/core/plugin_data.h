@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <unordered_map>
+#include <unordered_set>
 #include <map>
 #include <vector>
 #include <array>
@@ -61,11 +62,15 @@ struct SessionData {
     int lastSessionTime;    // Previous sessionTime value for detecting overtime transition
     int leaderFinishTime;   // Leader's total race time in milliseconds (-1 if not finished)
 
+    // Non-race session expiry tracking (practice/warmup/qualifying)
+    bool sessionTimeExpired; // True when sessionTime goes negative in non-race sessions
+
     SessionData() : trackLength(0.0f), eventType(2), connectionType(0), serverClientsCount(0), serverMaxClients(0),
         shiftRPM(13500), limiterRPM(14000), steerLock(30.0f),
         engineOptTemperature(85.0f), engineTempAlarmLow(60.0f), engineTempAlarmHigh(110.0f),
         session(-1), sessionState(-1), sessionLength(-1), sessionNumLaps(-1),
-        conditions(-1), airTemperature(-1.0f), trackTemperature(-1.0f), overtimeStarted(false), finishLap(-1), lastSessionTime(0), leaderFinishTime(-1) {
+        conditions(-1), airTemperature(-1.0f), trackTemperature(-1.0f), overtimeStarted(false), finishLap(-1), lastSessionTime(0), leaderFinishTime(-1),
+        sessionTimeExpired(false) {
         riderName[0] = '\0';
         bikeName[0] = '\0';
         category[0] = '\0';
@@ -107,13 +112,20 @@ struct SessionData {
         finishLap = -1;
         lastSessionTime = 0;
         leaderFinishTime = -1;
+        sessionTimeExpired = false;
     }
 
     // Race finish detection helpers
     // numLaps = completed laps (0 = on first lap, 5 = completed 5 laps)
-    // For timed+laps races: finishLap set during overtime
-    // For pure lap races: use sessionNumLaps directly
-    bool isRiderFinished(int numLaps) const {
+    // numLapsAtLeaderFinish = rider's numLaps when leader finished (-1 if leader hasn't finished)
+    // For timed+laps races: finishLap set during overtime (covers non-lapped riders)
+    // For pure lap races: use sessionNumLaps directly (covers non-lapped riders)
+    // For lapped riders in either type: use numLapsAtLeaderFinish (rider finishes on next line crossing after leader)
+    bool isRiderFinished(int numLaps, int numLapsAtLeaderFinish = -1) const {
+        // Lapped rider finish: leader has finished and rider crossed the line since
+        if (numLapsAtLeaderFinish >= 0 && numLaps > numLapsAtLeaderFinish) {
+            return true;
+        }
         if (sessionLength > 0 && sessionNumLaps > 0) {
             // Timed+laps race
             return finishLap > 0 && numLaps > finishLap;
@@ -123,7 +135,11 @@ struct SessionData {
                (sessionNumLaps > 0 && finishLap <= 0 && numLaps >= sessionNumLaps);
     }
 
-    bool isRiderOnLastLap(int numLaps) const {
+    bool isRiderOnLastLap(int numLaps, int numLapsAtLeaderFinish = -1) const {
+        // Lapped rider: on last lap once leader has finished (next line crossing = finish)
+        if (numLapsAtLeaderFinish >= 0 && numLaps == numLapsAtLeaderFinish) {
+            return true;
+        }
         if (sessionLength > 0 && sessionNumLaps > 0) {
             // Timed+laps race
             return finishLap > 0 && numLaps == finishLap;
@@ -184,16 +200,27 @@ struct StandingsData {
     int penalty;        // penalty time in milliseconds
     int pit;            // 0 = on track, 1 = in pits
     int finishTime;     // total race time in milliseconds (-1 if not finished)
+    int numLapsAtLeaderFinish;  // rider's numLaps when leader finished (-1 = leader hasn't finished)
+    bool sessionFinished;       // true when rider crosses start/finish line after non-race session time expires
 
     StandingsData() : raceNum(-1), state(0), bestLap(-1), bestLapNum(-1),
-        numLaps(0), gap(0), gapLaps(0), realTimeGap(0), penalty(0), pit(0), finishTime(-1) {
+        numLaps(0), gap(0), gapLaps(0), realTimeGap(0), penalty(0), pit(0), finishTime(-1), numLapsAtLeaderFinish(-1),
+        sessionFinished(false) {
     }
 
     StandingsData(int num, int st, int bLap, int bLapNum, int nLaps,
         int g, int gLaps, int pen, int p)
         : raceNum(num), state(st), bestLap(bLap), bestLapNum(bLapNum),
-        numLaps(nLaps), gap(g), gapLaps(gLaps), realTimeGap(0), penalty(pen), pit(p), finishTime(-1) {
+        numLaps(nLaps), gap(g), gapLaps(gLaps), realTimeGap(0), penalty(pen), pit(p), finishTime(-1), numLapsAtLeaderFinish(-1),
+        sessionFinished(false) {
     }
+};
+
+// Hazard type for riders who are stationary or going wrong way on track
+enum class HazardType {
+    None,        // No hazard
+    Stationary,  // Rider is stationary on track
+    WrongWay     // Rider is going the wrong way (higher priority than Stationary)
 };
 
 // Real-time track position data for gap calculation
@@ -203,20 +230,24 @@ struct TrackPositionData {
     int sessionTime;      // Session time in milliseconds when this position was recorded
     bool crashed;
 
-    // Rolling window for wrong-way detection
-    static constexpr int POSITION_HISTORY_SIZE = 30;  // ~1.5 sec at 20Hz update rate
-    static constexpr float WRAPAROUND_THRESHOLD = 0.5f;  // Position change > 0.5 indicates wrap through start/finish
-    static constexpr float WRONG_WAY_THRESHOLD = -0.001f;  // Must move back 0.1% of track to trigger
+    // Wrong-way detection
     static constexpr float TELEPORT_THRESHOLD = 0.05f;  // Single-frame jump > 5% of track = teleport (reset/pit exit)
-    std::array<float, POSITION_HISTORY_SIZE> positionHistory;
-    int historyIndex;     // Current write position in circular buffer
-    int historyCount;     // How many positions we've stored (0 to POSITION_HISTORY_SIZE)
-    bool wrongWay;        // True if rider is going backwards on track
+    float previousTrackPos;   // Previous frame's trackPos for direction detection
+    bool wrongWay;            // True if rider is going backwards on track
+    std::chrono::steady_clock::time_point wrongWaySince;  // When rider started going backward (epoch = inactive)
+
+    // Hazard detection state
+    float lastSignificantTrackPos;  // Track pos when last significant movement detected
+    std::chrono::steady_clock::time_point stationarySince;  // When rider became stationary (epoch = inactive)
+    std::chrono::steady_clock::time_point hazardClearedAt;  // When hazard conditions cleared (for cooldown, epoch = inactive)
+    HazardType hazardType = HazardType::None;
+    bool hazardConfirmed = false;  // True once duration threshold passed (survives type transitions)
+    std::chrono::steady_clock::time_point pitExitGraceStart;  // Per-rider grace after leaving pits
 
     TrackPositionData()
         : trackPos(0.0f), numLaps(0), sessionTime(0), crashed(false)
-        , historyIndex(0), historyCount(0), wrongWay(false) {
-        positionHistory.fill(0.0f);
+        , previousTrackPos(0.0f), wrongWay(false)
+        , lastSignificantTrackPos(0.0f) {
     }
 };
 
@@ -867,32 +898,29 @@ public:
     // Uses cached map that's only rebuilt when classification changes
     int getPositionForRaceNum(int raceNum) const;
 
-    // Live standings: real-time position reordering between splits (race sessions only)
-    // When enabled, positions update based on track position between official classifications.
-    // When disabled (or outside race sessions), these fall back to official data.
-    void setLiveStandingsEnabled(bool enabled);
-    bool isLiveStandingsEnabled() const { return m_liveStandingsEnabled; }
-    const std::vector<int>& getLiveClassificationOrder() const;
-    int getLivePositionForRaceNum(int raceNum) const;
-    void updateLivePositions();     // Called after updateRealTimeGaps()
-    void clearLivePositionState();  // Clear live sort state on session transitions
+    // Display classification: official order with optional DNS filtering
+    const std::vector<int>& getDisplayClassificationOrder() const;
+    int getDisplayPositionForRaceNum(int raceNum) const;
+
+    // Live gaps: show real-time estimated gaps in race sessions (toggle in settings)
+    void setLiveGapsEnabled(bool enabled);
+    bool isLiveGapsEnabled() const { return m_liveGapsEnabled; }
+
+    void setShortTimeFormat(bool enabled) { m_shortTimeFormat = enabled; }
+    bool isShortTimeFormat() const { return m_shortTimeFormat; }
 
     // DNS rider filtering: hide Did Not Start riders from display
-    // When enabled, getLiveClassificationOrder() and getLivePositionForRaceNum()
+    // When enabled, getDisplayClassificationOrder() and getDisplayPositionForRaceNum()
     // exclude riders with state == DNS. Official accessors are unaffected.
     void setFilterDnsRiders(bool enabled);
     bool isFilterDnsRiders() const { return m_filterDnsRiders; }
-
-    // Live standings tuning (INI-only advanced settings)
-    void setLiveStandingsHoldTimeMs(int ms) { m_liveStandingsHoldTimeMs = std::max(0, std::min(ms, 2000)); }
-    int getLiveStandingsHoldTimeMs() const { return m_liveStandingsHoldTimeMs; }
-    void setLiveStandingsMinTrackGap(float gap) { m_liveStandingsMinTrackGap = std::max(0.0f, std::min(gap, 0.05f)); }
-    float getLiveStandingsMinTrackGap() const { return m_liveStandingsMinTrackGap; }
 
     // Real-time track position management (for time-based gap calculation)
     void setSessionTime(int sessionTime) { m_currentSessionTime = sessionTime; }
     int getSessionTime() const { return m_currentSessionTime; }
     void updateTrackPosition(int raceNum, float trackPos, int numLaps, bool crashed, int sessionTime);
+    void updateActiveTrackPosRiders(int numVehicles, const Unified::TrackPositionData* positions);
+    bool hasActiveTrackPos(int raceNum) const { return m_activeTrackPosRiders.count(raceNum) > 0; }
     void updateRealTimeGaps();  // Calculate gaps using time deltas
     void clearLiveGapTimingPoints();  // Clear timing points for new session
 
@@ -901,7 +929,34 @@ public:
     const TrackPositionData* getPlayerTrackPosition() const;  // Get display rider's track position data for debugging
 
     // Blue flag detection (riders 1+ laps ahead approaching from behind)
-    const std::vector<int>& getBlueFlagRaceNums() const;  // Returns race numbers of riders to let past
+    bool isPlayerBlueFlagged() const;  // True if display rider should yield to a lapper
+    bool isRiderBlueFlagged(int raceNum) const;  // True if rider is being lapped and lapper is nearby
+
+    // Blue flag tuning (INI-only advanced setting)
+    void setBlueFlagAwarenessDistance(float meters) { m_blueFlagAwarenessDistance = std::max(10.0f, std::min(meters, 500.0f)); }
+    float getBlueFlagAwarenessDistance() const { return m_blueFlagAwarenessDistance; }
+
+    // Shared exclusion check for hazard/blue flag detection
+    bool isRiderExcludedFromDetection(const StandingsData& standing) const;
+
+    // Hazard detection (stationary or wrong-way riders ahead on track)
+    HazardType getRiderHazardType(int raceNum) const;
+    bool isHazardAhead() const;
+    const std::vector<int>& getHazardRaceNums() const;
+
+    // Hazard tuning (INI-only advanced settings)
+    void setHazardStationaryTolerance(float meters) { m_hazardStationaryToleranceMeters = std::max(1.0f, std::min(meters, 50.0f)); }
+    float getHazardStationaryTolerance() const { return m_hazardStationaryToleranceMeters; }
+    void setHazardStationaryDurationMs(int ms) { m_hazardStationaryDurationMs = std::max(1000, std::min(ms, 30000)); }
+    int getHazardStationaryDurationMs() const { return m_hazardStationaryDurationMs; }
+    void setHazardAwarenessDistance(float meters) { m_hazardAwarenessDistance = std::max(10.0f, std::min(meters, 500.0f)); }
+    float getHazardAwarenessDistance() const { return m_hazardAwarenessDistance; }
+    void setHazardWrongWayDurationMs(int ms) { m_hazardWrongWayDurationMs = std::max(100, std::min(ms, 10000)); }
+    int getHazardWrongWayDurationMs() const { return m_hazardWrongWayDurationMs; }
+    void setHazardCooldownMs(int ms) { m_hazardCooldownMs = std::max(0, std::min(ms, 30000)); }
+    int getHazardCooldownMs() const { return m_hazardCooldownMs; }
+    void setHazardGracePeriodMs(int ms) { m_hazardGracePeriodMs = std::max(0, std::min(ms, 60000)); }
+    int getHazardGracePeriodMs() const { return m_hazardGracePeriodMs; }
 
     // Overtime tracking for time+laps races
     void setOvertimeStarted(bool started) { m_sessionData.overtimeStarted = started; }
@@ -909,6 +964,11 @@ public:
     void setLastSessionTime(int time) { m_sessionData.lastSessionTime = time; }
     void setLeaderFinishTime(int time) { m_sessionData.leaderFinishTime = time; }
     int getLeaderFinishTime() const { return m_sessionData.leaderFinishTime; }
+
+    // Non-race session expiry tracking
+    void setSessionTimeExpired(bool expired) { m_sessionData.sessionTimeExpired = expired; }
+    void setRiderSessionFinished(int raceNum);
+    void clearSessionFinished();
 
     // Player running state (set by RunStart, cleared by RunStop/RunDeinit)
     void setPlayerRunning(bool running) {
@@ -1023,6 +1083,15 @@ private:
     PluginData(const PluginData&) = delete;
     PluginData& operator=(const PluginData&) = delete;
 
+    // Rebuild blue flag caches (player flag + per-rider set)
+    void rebuildBlueFlagCaches() const;
+
+    // Rebuild per-rider hazard type cache (lazy, called on first access when dirty)
+    void rebuildHazardTypeCaches() const;
+
+    // Compute hazard type for a single rider (uncached, used during cache rebuild)
+    HazardType computeRiderHazardType(int raceNum, std::chrono::steady_clock::time_point now) const;
+
     // Update cached player race number by searching race entries
     void updatePlayerRaceNum() const;
 
@@ -1053,35 +1122,34 @@ private:
     mutable bool m_bPositionCacheDirty;  // Flag to rebuild position cache
 
     // Display filters (global toggles saved in [General])
-    bool m_liveStandingsEnabled = false;         // Live position reordering between splits
+    bool m_liveGapsEnabled = false;              // Show real-time gaps in race sessions
+    bool m_shortTimeFormat = false;              // Compact time format: drop leading 0:, tenths for gaps
     bool m_filterDnsRiders = false;              // Hide DNS riders from display
-    int m_liveStandingsHoldTimeMs = 300;         // Hysteresis hold time (INI-only [Advanced])
-    float m_liveStandingsMinTrackGap = 0.003f;   // Minimum track gap to consider swap (INI-only [Advanced])
-    std::vector<int> m_liveClassificationOrder;  // Live-sorted order (derived, display-only)
-    mutable std::unordered_map<int, int> m_livePositionCache;  // Cached live position lookup
-    mutable bool m_bLivePositionCacheDirty = true;
-    std::vector<int> m_pendingLiveOrder;         // Proposed order waiting for hysteresis hold
 
-    // DNS-filtered cache (derived from live or official order, rebuilt when dirty)
+    // DNS-filtered cache (derived from official classification order, rebuilt when dirty)
     mutable std::vector<int> m_filteredClassificationOrder;
     mutable std::unordered_map<int, int> m_filteredPositionCache;
     mutable bool m_bFilteredOrderDirty = true;
 
-    // Reusable buffers for updateLivePositions() to avoid per-frame allocations
-    struct LiveSortEntry {
-        int raceNum;
-        int numLaps;
-        float trackPos;
-        bool excludeFromSort;
-    };
-    std::vector<LiveSortEntry> m_liveSortEntries;   // All entries
-    std::vector<LiveSortEntry> m_liveSortFinished;   // Finished subset
-    std::vector<int> m_liveSortProposed;             // Proposed order
-    std::unordered_map<int, int> m_liveSortCommittedPosMap;  // Committed position lookup
-    std::chrono::steady_clock::time_point m_pendingLiveOrderTime;  // When pending order was first proposed
     std::unordered_map<int, TrackPositionData> m_trackPositions;  // Real-time track positions
-    mutable std::vector<int> m_cachedBlueFlagRaceNums;  // Cached blue flag result (recomputed when dirty)
+    std::unordered_set<int> m_activeTrackPosRiders;  // Riders in the most recent API track position batch
+    mutable bool m_cachedPlayerBlueFlagged = false;        // Cached: is the display rider blue-flagged?
+    mutable std::unordered_set<int> m_cachedBlueFlaggedSet;  // Cached per-rider blue flag lookup (recomputed when dirty)
     mutable bool m_blueFlagsDirty = true;                // Invalidated when track positions change
+    float m_blueFlagAwarenessDistance = 100.0f;          // Blue flag detection range in meters
+
+    // Hazard detection state and configuration
+    mutable std::vector<int> m_cachedHazardRaceNums;     // Cached hazard result (recomputed when dirty)
+    mutable std::unordered_map<int, HazardType> m_cachedHazardTypes;  // Cached per-rider hazard type (recomputed when dirty)
+    mutable bool m_hazardsDirty = true;                  // Invalidated when track positions change
+    mutable bool m_hazardTypesDirty = true;              // Invalidated alongside m_hazardsDirty
+    float m_hazardStationaryToleranceMeters = 5.0f;      // Movement below this = "not moving"
+    int m_hazardStationaryDurationMs = 2000;             // Time stationary before flagged
+    int m_hazardWrongWayDurationMs = 1500;               // Time going backward before flagged
+    float m_hazardAwarenessDistance = 100.0f;            // Meters ahead to check for hazards
+    int m_hazardCooldownMs = 1000;                       // Hysteresis before clearing hazard state
+    int m_hazardGracePeriodMs = 10000;                   // Grace period after race start
+    std::chrono::steady_clock::time_point m_hazardGraceStart;  // When current session entered IN_PROGRESS (epoch = inactive)
     std::unordered_map<int, CurrentLapData> m_riderCurrentLap;  // Current lap split data per rider
     std::unordered_map<int, IdealLapData> m_riderIdealLap;  // Ideal lap sectors per rider
     std::unordered_map<int, std::deque<LapLogEntry>> m_riderLapLog;  // Lap log per rider (newest first, deque for O(1) front insert)

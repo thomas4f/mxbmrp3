@@ -35,6 +35,9 @@ void RaceSplitHandler::handleRaceSplit(Unified::RaceSplitData* psRaceSplit) {
     int splitIndex = psRaceSplit->splitIndex;
     int splitTime = psRaceSplit->splitTime;
 
+    DEBUG_INFO_F("[RACE SPLIT] raceNum=%d, lap=%d, splitIdx=%d, splitTime=%d (%.3fs), session=%d",
+        raceNum, lapNum, splitIndex, splitTime, splitTime / 1000.0f, psRaceSplit->session);
+
     // Validate split index (expected range: 0-2 for split1, split2, finish)
     if (splitIndex < 0 || splitIndex > 2) {
         DEBUG_WARN_F("RaceSplit: Invalid split index %d (expected 0-2), raceNum=%d", splitIndex, raceNum);

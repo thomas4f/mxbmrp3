@@ -50,7 +50,7 @@ bool SettingsHud::handleClickTabRecords(const ClickRegion& region) {
                 m_records->m_bAutoFetch = !m_records->m_bAutoFetch;
                 // If enabling and we're already in an event, fetch immediately
                 if (m_records->m_bAutoFetch &&
-                    m_records->m_lastSessionTrackId[0] != '\0' &&
+                    m_records->m_lastSessionTrackName[0] != '\0' &&
                     m_records->m_fetchState != RecordsHud::FetchState::FETCHING) {
                     m_records->startFetch();
                 }

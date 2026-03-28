@@ -53,7 +53,7 @@ public:
 
     // Rider color mode - how to color other riders on the map
     enum class RiderColorMode {
-        UNIFORM = 0,        // Gray for all riders
+        UNIFORM = 0,        // Accent color for all riders
         BRAND = 1,          // Bike brand colors
         RELATIVE_POS = 2    // Color based on position relative to player
     };
@@ -261,4 +261,16 @@ private:
 
     // Handle click on rider marker to switch spectator target
     void handleClick(float mouseX, float mouseY);
+
+    // Cached icon sprite indices (avoid string-based map lookups per rider per frame)
+    struct CachedIcons {
+        int circleExclamation = 0;
+        int triangleExclamation = 0;
+        int flag = 0;
+        int flagCheckered = 0;
+        bool initialized = false;
+
+        void ensureInitialized();
+    };
+    CachedIcons m_iconCache;
 };

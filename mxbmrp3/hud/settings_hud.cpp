@@ -2102,6 +2102,19 @@ void SettingsHud::resetToDefaults() {
     // Reset advanced settings (power-user options)
     if (m_mapHud) m_mapHud->setPixelSpacing(MapHud::DEFAULT_PIXEL_SPACING);
 
+    // Reset PluginData advanced/INI-only settings to defaults
+    PluginData& pluginData = PluginData::getInstance();
+    pluginData.setLiveGapsEnabled(false);
+    pluginData.setFilterDnsRiders(false);
+    pluginData.setShortTimeFormat(false);
+    pluginData.setHazardStationaryTolerance(5.0f);
+    pluginData.setHazardStationaryDurationMs(2000);
+    pluginData.setHazardWrongWayDurationMs(1500);
+    pluginData.setHazardAwarenessDistance(100.0f);
+    pluginData.setHazardCooldownMs(1000);
+    pluginData.setHazardGracePeriodMs(10000);
+    pluginData.setBlueFlagAwarenessDistance(100.0f);
+
     // Reset update checker to default (off)
     UpdateChecker::getInstance().setEnabled(false);
 
@@ -2334,8 +2347,13 @@ void SettingsHud::resetCurrentProfile() {
     // Reset RumbleHud position only (not RumbleConfig which is global)
     if (m_rumble) m_rumble->resetToDefaults();
 
-    // Note: ColorConfig, RumbleConfig, and UpdateChecker are global settings
-    // They are NOT reset when resetting a single profile
+    // Reset per-profile PluginData settings
+    PluginData::getInstance().setLiveGapsEnabled(false);
+    PluginData::getInstance().setFilterDnsRiders(false);
+
+    // Note: ColorConfig, RumbleConfig, UpdateChecker, and PluginData advanced settings
+    // (hazard params, blue flag distance, live gaps) are global settings.
+    // They are NOT reset when resetting a single profile.
 
     // Update settings display
     rebuildRenderData();
@@ -2528,16 +2546,17 @@ const char* SettingsHud::getTooltipIdForRegion(ClickRegion::Type type, int activ
                 case ClickRegion::ROW_COUNT_DOWN:
                     return "standings.rows";
                 case ClickRegion::GAP_COLUMN_TOGGLE:
-                    return "standings.gap_column";
                 case ClickRegion::GAP_SCOPE_TOGGLE:
-                    return "standings.gap_scope";
+                    return "standings.gap_mode";
                 case ClickRegion::GAP_REFERENCE_TOGGLE:
+                case ClickRegion::GAP_REFERENCE_BACK:
                     return "standings.gap_reference";
                 case ClickRegion::FILTER_DNS_TOGGLE:
                     return "standings.filter_dns";
                 case ClickRegion::ANIMATE_POSITIONS_TOGGLE:
                     return "standings.animate_positions";
-                case ClickRegion::NAME_MODE_TOGGLE:
+                case ClickRegion::NAME_MODE_UP:
+                case ClickRegion::NAME_MODE_DOWN:
                     return "standings.col_name";
                 default:
                     break;

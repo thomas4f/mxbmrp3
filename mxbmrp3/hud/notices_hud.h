@@ -9,24 +9,26 @@
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
-#include <vector>
 #include <chrono>
 
 class NoticesHud : public BaseHud {
 public:
     // Notice visibility flags (bitfield)
     enum NoticeFlags : uint32_t {
-        NOTICE_WRONG_WAY   = 1 << 0,
-        NOTICE_BLUE_FLAG   = 1 << 1,
-        NOTICE_LAST_LAP    = 1 << 2,
-        NOTICE_FINISHED    = 1 << 3,
-        NOTICE_ALLTIME_PB  = 1 << 4,
-        NOTICE_FASTEST_LAP = 1 << 5,
-        NOTICE_SESSION_PB  = 1 << 6,
-        NOTICE_DEFAULT_SETUP = 1 << 7,
+        NOTICE_WRONG_WAY       = 1 << 0,
+        NOTICE_BLUE_FLAG       = 1 << 1,
+        NOTICE_LAST_LAP        = 1 << 2,
+        NOTICE_FINISHED        = 1 << 3,
+        NOTICE_ALLTIME_PB      = 1 << 4,
+        NOTICE_FASTEST_LAP     = 1 << 5,
+        NOTICE_SESSION_PB      = 1 << 6,
+        NOTICE_DEFAULT_SETUP   = 1 << 7,
+        NOTICE_HAZARD_STATIONARY = 1 << 8,
+        NOTICE_HAZARD_WRONG_WAY  = 1 << 9,
+        NOTICE_OVERTIME          = 1 << 10,
         NOTICE_DEFAULT     = NOTICE_WRONG_WAY | NOTICE_LAST_LAP | NOTICE_FINISHED
                            | NOTICE_ALLTIME_PB | NOTICE_FASTEST_LAP | NOTICE_SESSION_PB
-                           | NOTICE_DEFAULT_SETUP
+                           | NOTICE_DEFAULT_SETUP | NOTICE_HAZARD_STATIONARY | NOTICE_HAZARD_WRONG_WAY
     };
 
     // Timed notice display duration bounds (covers PB notices)
@@ -56,12 +58,16 @@ private:
     bool isTimedNoticeActive(std::chrono::steady_clock::time_point triggerTime) const;
 
     // Notice state
-    bool m_bIsWrongWay;                    // Whether player is currently going wrong way
-    std::vector<int> m_blueFlagRaceNums;   // Race numbers of riders to let past (blue flag)
+    bool m_bIsWrongWay = false;            // Whether player is currently going wrong way
+    bool m_bIsHazardAhead = false;         // Whether there's a hazard rider ahead
+    bool m_bIsBlueFlagged = false;         // Whether player should yield (blue flag)
 
     // Timed notice state (transient - timed display)
+    bool m_bShowOvertime;                  // Currently showing overtime notice
+    bool m_bOvertimeTriggered;             // Overtime notice already triggered (resets on new session)
     bool m_bShowLastLap;                   // Currently showing last lap notice
     bool m_bShowFinished;                  // Currently showing finished notice
+    int m_finishedPosition;                // Current display position when finished (updates if penalties change it)
     bool m_bLastLapTriggered;              // Last lap notice already triggered (resets when no longer on last lap)
     bool m_bFinishedTriggered;             // Finished notice already triggered (resets when no longer finished)
     bool m_bShowSessionPB;                 // Currently showing session PB notice
@@ -70,6 +76,7 @@ private:
     bool m_bShowDefaultSetup;              // Currently showing default setup warning (track entry)
 
     // Trigger timestamps for timed notices
+    std::chrono::steady_clock::time_point m_overtimeTriggerTime;
     std::chrono::steady_clock::time_point m_lastLapTriggerTime;
     std::chrono::steady_clock::time_point m_finishedTriggerTime;
 
