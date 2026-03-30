@@ -1258,9 +1258,9 @@ void RecordsHud::rebuildRenderData() {
 
     // === Placeholder rows to fill up to configured size ===
     while (rowsRendered < m_recordsToShow) {
-        // Show "-" only in position column, empty for others
+        // Empty row — background quad defines HUD extent
         if (isColumnEnabled(COL_POS)) {
-            addString(Placeholders::GENERIC, m_columns.pos, currentY, Justify::LEFT,
+            addString("", m_columns.pos, currentY, Justify::LEFT,
                       this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
         }
         currentY += dim.lineHeightNormal;
@@ -1319,7 +1319,7 @@ void RecordsHud::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.7315f, 0.5439f);
+    setPosition(0.7315f, 0.5106f);
     m_provider = DataProvider::CBR;
     m_recordsProvider = DataProvider::CBR;
     m_categoryIndex = 0;

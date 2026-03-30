@@ -231,6 +231,17 @@ bool SettingsHud::isRepeatableRegionType(ClickRegion::Type type) {
         case ClickRegion::TRACKED_PAGE_NEXT:
         case ClickRegion::NOTICES_DURATION_UP:
         case ClickRegion::NOTICES_DURATION_DOWN:
+        case ClickRegion::EVENT_LOG_MODE_UP:
+        case ClickRegion::EVENT_LOG_MODE_DOWN:
+        case ClickRegion::EVENT_LOG_ORDER_UP:
+        case ClickRegion::EVENT_LOG_ORDER_DOWN:
+        case ClickRegion::EVENT_LOG_ROW_COUNT_UP:
+        case ClickRegion::EVENT_LOG_ROW_COUNT_DOWN:
+        case ClickRegion::EVENT_LOG_DURATION_UP:
+        case ClickRegion::EVENT_LOG_DURATION_DOWN:
+        case ClickRegion::EVENT_LOG_TIMESTAMP_UP:
+        case ClickRegion::EVENT_LOG_TIMESTAMP_DOWN:
+        case ClickRegion::EVENT_LOG_ICONS_TOGGLE:
             return true;
         default:
             return false;
@@ -255,6 +266,7 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, LapConsistenc
                          TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesHud* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean,
                          FmxHud* fmxHud,
                          StatsHud* statsHud,
+                         EventLogHud* eventLog,
                          ClockWidget* clock
 #if GAME_HAS_TYRE_TEMP
                          , TyreTempWidget* tyreTemp
@@ -290,6 +302,7 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, LapConsistenc
       m_lean(lean),
       m_fmxHud(fmxHud),
       m_statsHud(statsHud),
+      m_eventLog(eventLog),
       m_clock(clock),
 #if GAME_HAS_TYRE_TEMP
       m_tyreTemp(tyreTemp),
@@ -759,8 +772,8 @@ void SettingsHud::rebuildRenderData() {
 
     float panelWidth = PluginUtils::calculateMonospaceTextWidth(panelWidthChars, dim.fontSize) + dim.paddingH + dim.paddingH;
 
-    // Estimate height - sized to fit all tabs + content (Stats tab added one more row)
-    int estimatedRows = 29;
+    // Estimate height - sized to fit all tabs + content (Event Log tab added one more row)
+    int estimatedRows = 30;
     float backgroundHeight = dim.paddingV + dim.lineHeightLarge + dim.lineHeightNormal + (estimatedRows * dim.lineHeightNormal) + dim.paddingV;
 
     // Center the panel horizontally and vertically
@@ -814,6 +827,7 @@ void SettingsHud::rebuildRenderData() {
         TAB_TIMING,
         TAB_GAP_BAR,
         TAB_NOTICES,
+        TAB_EVENT_LOG,
         TAB_FMX,
         TAB_STATS,
         TAB_PERFORMANCE,
@@ -903,6 +917,7 @@ void SettingsHud::rebuildRenderData() {
             case TAB_GAP_BAR:      tabHud = m_gapBar; break;
             case TAB_FMX:          tabHud = m_fmxHud; break;
             case TAB_STATS:        tabHud = m_statsHud; break;
+            case TAB_EVENT_LOG:    tabHud = m_eventLog; break;
             case TAB_NOTICES:      tabHud = m_notices; break;
             default:               tabHud = nullptr; break;  // General, Widgets, Rumble have no single HUD
         }
@@ -1011,6 +1026,7 @@ void SettingsHud::rebuildRenderData() {
                            i == TAB_UPDATES ? "updates" :
                            i == TAB_FMX ? "fmx" :
                            i == TAB_STATS ? "stats" :
+                           i == TAB_EVENT_LOG ? "event_log" :
                            "general";
 
         ClickRegion tabRegion;
@@ -1475,6 +1491,12 @@ void SettingsHud::rebuildRenderData() {
             currentY = layoutCtx.currentY;
             break;
 
+        case TAB_EVENT_LOG:
+            layoutCtx.currentY = currentY;
+            activeHud = renderTabEventLog(layoutCtx);
+            currentY = layoutCtx.currentY;
+            break;
+
         default:
             DEBUG_WARN_F("Invalid tab index: %d, defaulting to TAB_STANDINGS", m_activeTab);
             activeHud = m_standings;
@@ -1837,6 +1859,7 @@ void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
         case TAB_UPDATES:    handled = handleClickTabUpdates(region); break;
         case TAB_FMX:        handled = handleClickTabFmx(region); break;
         case TAB_STATS:      handled = handleClickTabStats(region); break;
+        case TAB_EVENT_LOG:  handled = handleClickTabEventLog(region); break;
         case TAB_NOTICES:    handled = handleClickTabNotices(region); break;
         default: break;
     }
@@ -2054,6 +2077,7 @@ void SettingsHud::resetToDefaults() {
     if (m_fmxHud) m_fmxHud->resetToDefaults();
     if (m_lapConsistency) m_lapConsistency->resetToDefaults();
     if (m_statsHud) m_statsHud->resetToDefaults();
+    if (m_eventLog) m_eventLog->resetToDefaults();
 
     // Reset all widgets to their constructor defaults
     if (m_lap) m_lap->resetToDefaults();
@@ -2199,6 +2223,7 @@ void SettingsHud::resetCurrentTab() {
             if (m_gamepad) m_gamepad->setDataDirty();
             if (m_fmxHud) m_fmxHud->setDataDirty();
             if (m_statsHud) m_statsHud->setDataDirty();
+            if (m_eventLog) m_eventLog->setDataDirty();
             break;
         case TAB_STANDINGS:
             if (m_standings) m_standings->resetToDefaults();
@@ -2241,6 +2266,9 @@ void SettingsHud::resetCurrentTab() {
             break;
         case TAB_NOTICES:
             if (m_notices) m_notices->resetToDefaults();
+            break;
+        case TAB_EVENT_LOG:
+            if (m_eventLog) m_eventLog->resetToDefaults();
             break;
         case TAB_WIDGETS:
             // Reset all widgets
@@ -2319,6 +2347,7 @@ void SettingsHud::resetCurrentProfile() {
     if (m_fmxHud) m_fmxHud->resetToDefaults();
     if (m_lapConsistency) m_lapConsistency->resetToDefaults();
     if (m_statsHud) m_statsHud->resetToDefaults();
+    if (m_eventLog) m_eventLog->resetToDefaults();
 
     // Reset all widgets to their constructor defaults
     if (m_lap) m_lap->resetToDefaults();
@@ -2503,6 +2532,7 @@ const char* SettingsHud::getTabName(int tabIndex) const {
         case TAB_RADAR:       return "Radar";
         case TAB_FMX:         return "FMX";
         case TAB_STATS:       return "Stats";
+        case TAB_EVENT_LOG:   return "Event Log";
         default:              return "Unknown";
     }
 }

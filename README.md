@@ -6,7 +6,8 @@ A customizable, [open-source](https://github.com/thomas4f/mxbmrp3) HUD plugin fo
 ### Features
 
 - Live race standings, track map, and proximity radar with approach alerts
-- Lap timing with splits, personal bests, gap-to-PB visualization, and online lap records (MX Bikes)
+- Lap timing with splits, personal bests, gap-to-PB visualization, and online lap records
+- Event log with timestamped race events and per-event icons
 - Track specific riders with custom colors and icons across all HUDs
 - Controller rumble feedback with customizable effects
 - Discord Rich Presence integration showing current session and track
@@ -37,6 +38,7 @@ See [Installation](#installation) for detailed setup instructions.
 - [Controls](#controls)
 - [Configuration](#configuration)
 - [HUDs & Widgets](#huds--widgets)
+- [Tips & Tricks](#tips--tricks)
 - [Advanced Settings](#advanced-settings)
 - [Modding](#modding)
 - [Troubleshooting](#troubleshooting)
@@ -89,7 +91,7 @@ See [Installation](#installation) for detailed setup instructions.
 
 ### After Installation
 
-Launch the game - the plugin will load automatically. Some elements are enabled by default and can be repositioned or configured via the settings menu. If nothing appears, see [Troubleshooting](#troubleshooting).
+Launch the game - the plugin loads automatically. Some elements are enabled by default and can be repositioned or configured via the settings menu. See [Tips & Tricks](#tips--tricks) for useful setup ideas. If nothing appears, see [Troubleshooting](#troubleshooting).
 
 ## Controls
 
@@ -154,6 +156,7 @@ All HUDs and widgets are configurable via the settings menu or directly in the [
 | **Stats** | Riding stats with columns for last lap, session, and all-time totals |
 | **Session** | Session info (type, format, track, server, players, password) |
 | **Notices** | Race status notices (wrong way, blue flag, PB alerts, last lap, finished) |
+| **Event Log** | Timestamped feed of race events (session changes, fastest laps, penalties, finishes, pit activity) |
 
 ### Widgets
 
@@ -172,6 +175,30 @@ All HUDs and widgets are configurable via the settings menu or directly in the [
 | **Lean** | Bike lean angle with arc gauge |
 | **Gamepad** | Controller visualization |
 
+## Tips & Tricks
+
+**Enable update notifications** - The plugin doesn't check for updates by default. Go to Settings > Updates and set the update mode to "Notify" to get notified when a new version is available. You can also install updates directly from the settings menu.
+
+**Streaming setup** - Enable the Session HUD (Settings > Session) to show the server name, track, and session type on screen for your viewers. The Pitboard and Gamepad widgets also work well on stream - both have [fully customizable textures](#custom-textures), and the Gamepad widget shows your live controller inputs. Pair with Discord Rich Presence (Settings > General) to show your current session and track in your Discord profile.
+
+**Power-user INI tweaks** - Many additional options are available by editing the [INI file](#advanced-settings) directly. The file is well-commented and easy to work with. Each HUD section also supports per-element color overrides using ABGR hex values. For example:
+```ini
+[StandingsHud]
+classicLayout=1         ; remove number plates and brand color strips
+
+[SpeedWidget]
+color_primary=0xff00ff00 ; green text (ABGR format)
+```
+Use the [Color Override Picker](https://thomas4f.github.io/mxbmrp3/tools/color_override_picker.html) to convert RGB colors to ABGR format. See [Advanced Settings](#advanced-settings) for how to edit and hot-reload the INI file.
+
+**Track records** - The Records HUD fetches online lap records from CBR or MXB-Ranked. Enable "Auto-fetch" in Settings > Records to automatically load records when you enter a track. Records also work while spectating.
+
+**Click-to-spectate** - Left-click on any rider on the Map HUD or Standings HUD to switch the spectate camera to that rider.
+
+**Remove the stock pitboard** - Create an empty file called `pitboard.cfg` in `[Game]\misc\hud\` (create the directories if needed). This removes the default 2D pitboard while keeping the small 3D pitboard in the game world. Delete the file to restore it.
+
+**Show/hide the rider stand icon** - This is a game setting, not a plugin setting. Enable it under Simulation > "Show Rider Stand". To customize the icon or its position, extract `rider.cfg` and `riderstand.tga` from `misc.pkz\misc\helpers\` to `[Game]\misc\helpers\` and edit them there.
+
 ## Advanced Settings
 
 All plugin settings are stored in `mxbmrp3_settings.ini` in your [user data folder](#modding).
@@ -182,8 +209,8 @@ All plugin settings are stored in `mxbmrp3_settings.ini` in your [user data fold
 - INI-only settings are documented with inline comments
 
 **INI structure:**
-- `[HudName]` — Base/default settings for a HUD
-- `[HudName:Practice]`, `[HudName:Race]`, `[HudName:Spectate]` — Profile-specific overrides (only values that differ from base)
+- `[HudName]` - Base/default settings for a HUD
+- `[HudName:Practice]`, `[HudName:Qualify]`, `[HudName:Race]`, `[HudName:Spectate]` - Profile-specific overrides (only values that differ from base)
 
 **Editing the INI file:**
 
@@ -205,7 +232,7 @@ Plugin data and custom assets are stored in `Documents\PiBoSo\[Game]\mxbmrp3\`.
 
 ### Custom Assets
 
-Add custom fonts, textures, and icons by placing files in the appropriate subfolder:
+Add custom fonts, textures, and icons by placing them in the appropriate subfolder:
 
 ```
 mxbmrp3/
@@ -216,11 +243,21 @@ mxbmrp3/
 
 On game startup, the plugin syncs these files to the plugin's data directory (`plugins/mxbmrp3_data/`). User files with the same name as bundled assets will override them. This keeps your customizations separate from the plugin installation, so updates won't overwrite your files. **Restart the game after adding or modifying assets.**
 
-**Textures** use the naming convention `{element_name}_{number}.tga` (e.g., `standings_hud_1.tga`). They're auto-discovered and selectable via the Texture control in each HUD's settings. Source design files (PSD) are available in [`assets/`](assets/).
+### Custom Textures
 
-**Fonts** (`.fnt` files) are auto-discovered and assignable to categories (Title, Normal, Strong, Marker, Small) in Settings > Appearance. To generate fonts, use the `fontgen` utility provided by PiBoSo. See [this forum post](https://forum.piboso.com/index.php?topic=1458.msg20183#msg20183) for details. An example configuration is provided in [`fontgen.cfg`](fontgen.cfg).
+Textures use the naming convention `{element_name}_{number}.tga` (e.g., `standings_hud_1.tga`). They're auto-discovered and selectable via the Texture control in each HUD's settings.
 
-**Icons** (`.tga` files) are discovered alphabetically and available for tracked rider customization.
+**Pitboard** - Drop a custom `.tga` file (e.g., `pitboard_hud_2.tga`) into the `textures\` subfolder. It will be auto-discovered and selectable in Settings > Pitboard > Texture.
+
+**Gamepad** - The Gamepad widget ships with Xbox and PlayStation layouts. To customize them, copy `gamepad_widget_1.tga` (Xbox) or `gamepad_widget_2.tga` (PlayStation) from `plugins\mxbmrp3_data\textures\` to the `textures\` subfolder and edit them. Source design files (PSD) are available in [`assets/`](assets/).
+
+### Custom Fonts
+
+Fonts (`.fnt` files) are auto-discovered and assignable to categories (Title, Normal, Strong, Marker, Small) in Settings > Appearance. To generate fonts, use the `fontgen` utility provided by PiBoSo. See [this forum post](https://forum.piboso.com/index.php?topic=1458.msg20183#msg20183) for details. An example configuration is provided in [`fontgen.cfg`](fontgen.cfg).
+
+### Custom Icons
+
+Icons (`.tga` files) placed in the `icons\` subfolder are discovered alphabetically and available for tracked rider customization in Settings > Riders.
 
 ### Data Files
 
@@ -246,8 +283,8 @@ On game startup, the plugin syncs these files to the plugin's data directory (`p
 - The `mxbmrp3_data/` folder contains fonts, textures, and icons required for rendering
 - If you moved or renamed this folder, restore it from the release archive
 
-**Game Fails to Start or Shows Black Screen**
-- Try removing the plugin DLO file temporarily to verify the game starts without it
+**Gamepad Widget Appears Cut Off**
+- Go to Settings > Widgets tab and click "Reset Widgets" to correct the button positions.
 
 **Elements Appearing Twice (Ghost/Duplicate)**
 - Check for duplicate DLO files - only ONE plugin DLO should exist in your plugins folder
@@ -260,6 +297,10 @@ On game startup, the plugin syncs these files to the plugin's data directory (`p
 - Verify the correct controller is selected in Settings > General
 - If you accidentally deleted `xinput64.dli` from the plugins folder, controller input may stop working
 - To restore: verify game files integrity (Steam) or reinstall the game
+
+**Game Fails to Launch, Crashes, or Shows Black Screen**
+- See the [MX Bikes Troubleshooting Guide](https://gist.github.com/thomas4f/1fd379fafb4ab402b48424ae1c9cf2bd) for general game issues (crashes, mods, plugins, RAM, controllers)
+- If the Windows Event Log shows `mxbmrp3.dlo` as the faulting module, please [open an issue](https://github.com/thomas4f/mxbmrp3/issues)
 
 For bug reports or feature requests, open an issue on [GitHub](https://github.com/thomas4f/mxbmrp3/issues).
 
@@ -290,7 +331,7 @@ Built with C++17, Visual Studio 2022, Piboso Plugin API, and Claude Code.
 
 ### Roadmap
 
-Ideas under consideration (no guarantees): extended telemetry (g-force), event log, HTTP data export for OBS overlays.
+Ideas under consideration (no guarantees): extended telemetry (g-force), HTTP data export for OBS overlays.
 
 ---
 

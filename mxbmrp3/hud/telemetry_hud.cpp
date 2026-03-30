@@ -474,7 +474,7 @@ void TelemetryHud::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.7315f, 0.5106f);
+    setPosition(0.7315f, 0.4773f);
     m_enabledElements = ELEM_DEFAULT;
     m_displayMode = DISPLAY_DEFAULT;
     setDataDirty();

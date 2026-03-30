@@ -36,6 +36,7 @@ enum class HotkeyAction : uint8_t {
     TOGGLE_STATS,
     TOGGLE_SESSION,
     TOGGLE_NOTICES,
+    TOGGLE_EVENT_LOG,
 
     COUNT  // Must be last
 };
@@ -65,6 +66,7 @@ inline const char* getActionDisplayName(HotkeyAction action) {
         case HotkeyAction::TOGGLE_STATS:           return "Stats";
         case HotkeyAction::TOGGLE_SESSION:         return "Session";
         case HotkeyAction::TOGGLE_NOTICES:         return "Notices";
+        case HotkeyAction::TOGGLE_EVENT_LOG:       return "Event Log";
         default: return "Unknown";
     }
 }

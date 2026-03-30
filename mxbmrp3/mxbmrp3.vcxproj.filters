@@ -381,6 +381,12 @@
     <ClInclude Include="hud\stats_hud.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
+    <ClInclude Include="hud\event_log_hud.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="core\event_log_types.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="core\plugin_utils.cpp">
@@ -700,6 +706,12 @@
     </ClCompile>
     <ClCompile Include="hud\stats_hud.cpp">
       <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\event_log_hud.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_event_log.cpp">
+      <Filter>Source Files\hud\settings</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

@@ -27,11 +27,12 @@ namespace ColorPalette {
     constexpr unsigned long CYAN = PluginUtils::makeColor(0, 255, 255);         // #00ffff
     constexpr unsigned long PURPLE = PluginUtils::makeColor(200, 0, 255);       // #c800ff
     constexpr unsigned long PINK = PluginUtils::makeColor(255, 105, 180);       // #ff69b4
+    constexpr unsigned long BROWN = PluginUtils::makeColor(139, 90, 43);        // #8b5a2b
 
     // The full palette for cycling through
-    constexpr std::array<unsigned long, 13> ALL_COLORS = {
+    constexpr std::array<unsigned long, 14> ALL_COLORS = {
         WHITE, LIGHT_GRAY, GRAY, DARK_GRAY, BLACK,
-        RED, GREEN, BLUE, YELLOW, ORANGE, CYAN, PURPLE, PINK
+        RED, GREEN, BLUE, YELLOW, ORANGE, CYAN, PURPLE, PINK, BROWN
     };
 
     // Color names for display in settings UI

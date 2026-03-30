@@ -22,6 +22,7 @@
     "gap_bar": "Visual progress bar showing your gap to the rider ahead and behind.",
     "widgets": "Simple HUD elements showing speed, position, lap count, session time, and other info.",
     "notices": "On-screen notices for race events, personal bests, and setup warnings.",
+    "event_log": "Scrolling feed of notable race events including session changes, fastest laps, penalties, and finishes.",
     "fmx": "Freestyle trick detection with scoring, chain combos, and rotation visualization.",
     "stats": "Per-track statistics including lap counts, crashes, gear shifts, top speed, and riding time."
   },
@@ -265,6 +266,22 @@
     "notices.hazard_stationary": "Show warning when a stationary rider is on the track ahead.",
     "notices.hazard_wrong_way": "Show warning when a rider going the wrong way is on the track ahead.",
     "notices.default_setup": "Show warning when entering the track with the default bike setup.",
-    "notices.duration": "How long timed notices stay on screen. Wrong way, blue flag, and hazard notices last as long as active."
+    "notices.duration": "How long timed notices stay on screen. Wrong way, blue flag, and hazard notices last as long as active.",
+
+    "event_log.icons": "Show small icons next to each event indicating the event type.",
+    "event_log.display_mode": "Off hides the log. On always shows it. Auto-hide shows it briefly when new events arrive.",
+    "event_log.duration": "How long the log stays visible after the last event in auto-hide mode.",
+    "event_log.order": "Oldest shows events chronologically top to bottom. Newest puts latest events at the top.",
+    "event_log.max_events": "Maximum number of event rows to display. The log scrolls when this limit is reached.",
+    "event_log.timestamp": "Session shows the session timer value. Clock shows your local time.",
+    "event_log.session": "Log session lifecycle: started (with format), pre-start, ended, cancelled, complete.",
+    "event_log.fastest_lap": "Log when a rider sets the overall fastest lap of the session.",
+    "event_log.penalties": "Log when a rider receives a penalty, or when a penalty is cleared or changed.",
+    "event_log.rider_out": "Log when a rider retires, is disqualified, or does not start.",
+    "event_log.overtime": "Log when a timed race enters overtime, or when a non-race session timer expires.",
+    "event_log.final_lap": "Log when a rider starts their final lap.",
+    "event_log.finished": "Log when a rider crosses the finish line with their finishing position.",
+    "event_log.pit": "Log when a rider enters or exits the pits. Can be frequent in practice sessions.",
+    "hotkeys.event_log": "Toggle the event log HUD on/off."
   }
 }

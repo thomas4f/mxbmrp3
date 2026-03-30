@@ -276,6 +276,8 @@
     <ClInclude Include="hud\tyre_temp_widget.h" />
     <ClInclude Include="hud\fmx_hud.h" />
     <ClInclude Include="hud\stats_hud.h" />
+    <ClInclude Include="hud\event_log_hud.h" />
+    <ClInclude Include="core\event_log_types.h" />
     <ClInclude Include="hud\settings\settings_layout.h" />
     <ClInclude Include="vendor\piboso\mxb_api.h" />
     <ClInclude Include="vendor\piboso\gpb_api.h" />
@@ -363,6 +365,7 @@
     <ClCompile Include="hud\settings\settings_tab_lap_consistency.cpp" />
     <ClCompile Include="hud\settings\settings_tab_fmx.cpp" />
     <ClCompile Include="hud\settings\settings_tab_stats.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_event_log.cpp" />
     <ClCompile Include="hud\settings\settings_tab_telemetry.cpp" />
     <ClCompile Include="hud\settings\settings_tab_performance.cpp" />
     <ClCompile Include="hud\settings\settings_tab_records.cpp" />
@@ -399,6 +402,7 @@
     <ClCompile Include="hud\tyre_temp_widget.cpp" />
     <ClCompile Include="hud\fmx_hud.cpp" />
     <ClCompile Include="hud\stats_hud.cpp" />
+    <ClCompile Include="hud\event_log_hud.cpp" />
     <!-- MX Bikes API - only compiled for MXBikes configurations -->
     <ClCompile Include="vendor\piboso\mxb_api.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='GPB-Debug|x64'">true</ExcludedFromBuild>

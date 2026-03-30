@@ -89,6 +89,30 @@ void RaceLapHandler::handleRaceLap(Unified::RaceLapData* psRaceLap) {
             sessionData.overtimeStarted ? 1 : 0,
             isLastLap ? "YES" : "NO",
             isFinished ? "YES" : "NO");
+
+        // Event log: white flag — only when the leader starts the final lap
+        if (isLastLap) {
+            int position = data.getPositionForRaceNum(psRaceLap->raceNum);
+            if (position == 1) {
+                char eventMsg[64];
+                snprintf(eventMsg, sizeof(eventMsg), "Final lap");
+                data.addEventLogEntry(EventLogType::FinalLap, eventMsg);
+            }
+        }
+
+        // Event log: rider finished
+        if (isFinished) {
+            const RaceEntryData* entry = data.getRaceEntry(psRaceLap->raceNum);
+            const char* riderLabel = entry ? entry->formattedRaceNum : "???";
+            int position = data.getDisplayPositionForRaceNum(psRaceLap->raceNum);
+            char eventMsg[64];
+            if (position > 0) {
+                snprintf(eventMsg, sizeof(eventMsg), "%s finished P%d", riderLabel, position);
+            } else {
+                snprintf(eventMsg, sizeof(eventMsg), "%s finished the race", riderLabel);
+            }
+            data.addEventLogEntry(EventLogType::RiderFinished, eventMsg);
+        }
     }
 
     int raceNum = psRaceLap->raceNum;
@@ -189,7 +213,8 @@ void RaceLapHandler::handleRaceLap(Unified::RaceLapData* psRaceLap) {
         // implies session PB). Only the most significant notice is shown.
         int displayRaceNum = data.getDisplayRaceNum();
         int playerRaceNum = data.getPlayerRaceNum();
-        bool isDisplayRider = (raceNum == displayRaceNum && isLapValid && data.getBestLapEntry(raceNum) != nullptr);
+        bool hadPreviousBest = (data.getBestLapEntry(raceNum) != nullptr);
+        bool isDisplayRider = (raceNum == displayRaceNum && isLapValid && hadPreviousBest);
         bool isFastestLap = (psRaceLap->bestFlag == 2 && PluginUtils::isConnectionOnline(sessionData.connectionType));
         bool isAllTimePB = false;
 
@@ -237,6 +262,17 @@ void RaceLapHandler::handleRaceLap(Unified::RaceLapData* psRaceLap) {
         // for gap comparison at splits (not just lap completion)
         if (psRaceLap->bestFlag == 2) {
             data.setOverallBestLap(completedLap);
+        }
+
+        // Event log: overall fastest lap only (personal bests are too noisy for a race feed)
+        if (isLapValid && psRaceLap->bestFlag == 2) {
+            const RaceEntryData* entry = data.getRaceEntry(raceNum);
+            const char* riderLabel = entry ? entry->formattedRaceNum : "???";
+            char lapTimeStr[16];
+            PluginUtils::formatLapTime(lapTime, lapTimeStr, sizeof(lapTimeStr));
+            char eventMsg[64];
+            snprintf(eventMsg, sizeof(eventMsg), "%s set fastest lap", riderLabel);
+            data.addEventLogEntry(EventLogType::FastestLap, eventMsg, lapTimeStr);
         }
     }
 

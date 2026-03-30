@@ -21,6 +21,7 @@ namespace ColorPalette {
             case CYAN:       return "Cyan";
             case PURPLE:     return "Purple";
             case PINK:       return "Pink";
+            case BROWN:      return "Brown";
             default:         return "Custom";
         }
     }

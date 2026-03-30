@@ -245,7 +245,6 @@ private:
     // Cached icon sprite indices (avoid string-based map lookups per rider per frame)
     struct CachedIcons {
         int circleExclamation = 0;
-        int triangleExclamation = 0;
         int flag = 0;
         int flagCheckered = 0;
         int wrench = 0;

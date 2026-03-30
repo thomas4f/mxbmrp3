@@ -181,10 +181,20 @@ void NoticesHud::update() {
     bool isLastLap = false;
     bool isFinished = false;
     int displayRaceNum = pluginData.getDisplayRaceNum();
+
+    // Reset triggered and display flags when spectated rider changes
+    if (displayRaceNum != m_lastDisplayRaceNum) {
+        m_bLastLapTriggered = false;
+        m_bFinishedTriggered = false;
+        m_bShowLastLap = false;
+        m_bShowFinished = false;
+        m_lastDisplayRaceNum = displayRaceNum;
+        setDataDirty();
+    }
     const StandingsData* standing = (displayRaceNum > 0) ? pluginData.getStanding(displayRaceNum) : nullptr;
     if (standing && standing->numLaps >= 0) {
         isFinished = sessionData.isRiderFinished(standing->numLaps, standing->numLapsAtLeaderFinish);
-        if (!isFinished) {
+        if (!isFinished && pluginData.isRaceSession()) {
             isLastLap = sessionData.isRiderOnLastLap(standing->numLaps, standing->numLapsAtLeaderFinish);
         }
     }
@@ -490,6 +500,7 @@ void NoticesHud::resetToDefaults() {
     m_overtimeTriggerTime = {};
     m_lastLapTriggerTime = {};
     m_finishedTriggerTime = {};
+    m_lastDisplayRaceNum = -1;
     m_sessionStartTime = 0;
     m_lastSessionState = -1;
 

@@ -24,7 +24,6 @@ void RadarHud::CachedIcons::ensureInitialized() {
     if (initialized) return;
     const AssetManager& assets = AssetManager::getInstance();
     circleExclamation = assets.getIconSpriteIndex("circle-exclamation");
-    triangleExclamation = assets.getIconSpriteIndex("triangle-exclamation");
     flag = assets.getIconSpriteIndex("flag");
     flagCheckered = assets.getIconSpriteIndex("flag-checkered");
     initialized = true;
@@ -332,6 +331,20 @@ void RadarHud::renderRiderLabel(float radarX, float radarY, int raceNum, int pos
     }
 }
 
+ProximityGradient RadarHud::buildProximityGradient() const {
+    auto extractR = [](unsigned long v) { return static_cast<unsigned char>(v & 0xFF); };
+    auto extractG = [](unsigned long v) { return static_cast<unsigned char>((v >> 8) & 0xFF); };
+    auto extractB = [](unsigned long v) { return static_cast<unsigned char>((v >> 16) & 0xFF); };
+    unsigned long c = getColor(ColorSlot::NEGATIVE);
+    unsigned long m = getColor(ColorSlot::NEUTRAL);
+    unsigned long f = getColor(ColorSlot::POSITIVE);
+    return {
+        extractR(c), extractG(c), extractB(c),
+        extractR(m), extractG(m), extractB(m),
+        extractR(f), extractG(f), extractB(f)
+    };
+}
+
 void RadarHud::rebuildRenderData() {
     m_quads.clear();
     clearStrings();
@@ -377,9 +390,12 @@ void RadarHud::rebuildRenderData() {
         sinYaw = std::sin(yawRad);
     }
 
+    // Build proximity gradient once (shared by sector overlay and proximity arrows)
+    const ProximityGradient gradient = buildProximityGradient();
+
     // If radar mode is OFF, skip radar rendering but still render proximity arrows
     if (m_radarMode == RadarMode::OFF) {
-        renderProximityArrows(localPlayer, playerX, playerZ, cosYaw, sinYaw);
+        renderProximityArrows(localPlayer, playerX, playerZ, cosYaw, sinYaw, gradient);
         return;
     }
 
@@ -556,24 +572,17 @@ void RadarHud::rebuildRenderData() {
             // Calculate normalized distance (0 = touching, 1 = at max alert distance)
             normalizedDist = sectionClosestDist[i] / m_fAlertDistance;
 
-            // Calculate color gradient: Red (close) -> Yellow (mid) -> Green (far)
-            constexpr unsigned char RED_R = 0xFF, RED_G = 0x40, RED_B = 0x40;
-            constexpr unsigned char YEL_R = 0xFF, YEL_G = 0xD0, YEL_B = 0x40;
-            constexpr unsigned char GRN_R = 0x40, GRN_G = 0xFF, GRN_B = 0x40;
-
             unsigned char r, g, b;
             if (normalizedDist < 0.5f) {
-                // Red to Yellow (0.0 to 0.5)
                 float t = normalizedDist * 2.0f;
-                r = static_cast<unsigned char>(RED_R + t * (YEL_R - RED_R));
-                g = static_cast<unsigned char>(RED_G + t * (YEL_G - RED_G));
-                b = static_cast<unsigned char>(RED_B + t * (YEL_B - RED_B));
+                r = static_cast<unsigned char>(gradient.closeR + t * (gradient.midR - gradient.closeR));
+                g = static_cast<unsigned char>(gradient.closeG + t * (gradient.midG - gradient.closeG));
+                b = static_cast<unsigned char>(gradient.closeB + t * (gradient.midB - gradient.closeB));
             } else {
-                // Yellow to Green (0.5 to 1.0)
                 float t = (normalizedDist - 0.5f) * 2.0f;
-                r = static_cast<unsigned char>(YEL_R + t * (GRN_R - YEL_R));
-                g = static_cast<unsigned char>(YEL_G + t * (GRN_G - YEL_G));
-                b = static_cast<unsigned char>(YEL_B + t * (GRN_B - YEL_B));
+                r = static_cast<unsigned char>(gradient.midR + t * (gradient.farR - gradient.midR));
+                g = static_cast<unsigned char>(gradient.midG + t * (gradient.farG - gradient.midG));
+                b = static_cast<unsigned char>(gradient.midB + t * (gradient.farB - gradient.midB));
             }
 
             // Intensity affects opacity (closer = more opaque)
@@ -730,7 +739,7 @@ void RadarHud::rebuildRenderData() {
             riderColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::ACCENT), trackFadeOpacity);
         }
 
-        // Hazard icon override: circle-exclamation for wrong-way, triangle-exclamation for stationary
+        // Hazard icon override: circle-exclamation for wrong-way, flag for stationary
         HazardType hazardType = pluginData.getRiderHazardType(pos.raceNum);
         if (hazardType != HazardType::None) {
             m_iconCache.ensureInitialized();
@@ -741,8 +750,8 @@ void RadarHud::rebuildRenderData() {
                     riderColor = PluginUtils::applyOpacity(ColorPalette::RED, trackFadeOpacity);
                 }
             } else {
-                if (m_iconCache.triangleExclamation > 0) {
-                    trackedShape = m_iconCache.triangleExclamation - firstIcon + 1;
+                if (m_iconCache.flag > 0) {
+                    trackedShape = m_iconCache.flag - firstIcon + 1;
                     riderColor = PluginUtils::applyOpacity(ColorPalette::YELLOW, trackFadeOpacity);
                 }
             }
@@ -781,7 +790,7 @@ void RadarHud::rebuildRenderData() {
     }
 
     // Render proximity arrows at screen edges (independent of radar position)
-    renderProximityArrows(localPlayer, playerX, playerZ, cosYaw, sinYaw);
+    renderProximityArrows(localPlayer, playerX, playerZ, cosYaw, sinYaw, gradient);
 }
 
 void RadarHud::setScale(float scale) {
@@ -831,7 +840,8 @@ void RadarHud::resetToDefaults() {
 
 void RadarHud::renderProximityArrows(const Unified::TrackPositionData* localPlayer,
                                       float playerX, float playerZ,
-                                      float cosYaw, float sinYaw) {
+                                      float cosYaw, float sinYaw,
+                                      const ProximityGradient& gradient) {
     if (m_proximityArrowMode == ProximityArrowMode::OFF || !localPlayer) return;
 
     const PluginData& pluginData = PluginData::getInstance();
@@ -972,22 +982,18 @@ void RadarHud::renderProximityArrows(const Unified::TrackPositionData* localPlay
             }
             arrowColor = PluginUtils::applyOpacity(baseColor, opacity);
         } else {
-            // Distance-based coloring: red = close, yellow = mid, green = far
-            constexpr unsigned char RED_R = 0xFF, RED_G = 0x40, RED_B = 0x40;
-            constexpr unsigned char YEL_R = 0xFF, YEL_G = 0xD0, YEL_B = 0x40;
-            constexpr unsigned char GRN_R = 0x40, GRN_G = 0xFF, GRN_B = 0x40;
-
+            // Distance-based coloring using proximity gradient
             unsigned char r, g, b;
             if (normalizedDist < 0.5f) {
                 float t = normalizedDist * 2.0f;
-                r = static_cast<unsigned char>(RED_R + t * (YEL_R - RED_R));
-                g = static_cast<unsigned char>(RED_G + t * (YEL_G - RED_G));
-                b = static_cast<unsigned char>(RED_B + t * (YEL_B - RED_B));
+                r = static_cast<unsigned char>(gradient.closeR + t * (gradient.midR - gradient.closeR));
+                g = static_cast<unsigned char>(gradient.closeG + t * (gradient.midG - gradient.closeG));
+                b = static_cast<unsigned char>(gradient.closeB + t * (gradient.midB - gradient.closeB));
             } else {
                 float t = (normalizedDist - 0.5f) * 2.0f;
-                r = static_cast<unsigned char>(YEL_R + t * (GRN_R - YEL_R));
-                g = static_cast<unsigned char>(YEL_G + t * (GRN_G - YEL_G));
-                b = static_cast<unsigned char>(YEL_B + t * (GRN_B - YEL_B));
+                r = static_cast<unsigned char>(gradient.midR + t * (gradient.farR - gradient.midR));
+                g = static_cast<unsigned char>(gradient.midG + t * (gradient.farG - gradient.midG));
+                b = static_cast<unsigned char>(gradient.midB + t * (gradient.farB - gradient.midB));
             }
             arrowColor = PluginUtils::makeColor(r, g, b, alpha);
         }

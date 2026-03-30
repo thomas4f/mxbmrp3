@@ -49,9 +49,31 @@ void RaceCommunicationHandler::handleRaceCommunication(Unified::RaceCommunicatio
         return;
     }
 
-    // Handle state change (DNS, Retired)
+    // Handle state change (DNS, Retired, DSQ)
     if (psRaceCommunication->commType == Unified::CommunicationType::StateChange) {
         DEBUG_INFO_F("Updating rider #%d state to %d", psRaceCommunication->raceNum, psRaceCommunication->state);
+
+        // Event log: rider state change (log before updateStandings to match handler convention)
+        const RaceEntryData* entry = pluginData.getRaceEntry(psRaceCommunication->raceNum);
+        const char* riderLabel = entry ? entry->formattedRaceNum : "???";
+        char eventMsg[64];
+        switch (psRaceCommunication->state) {
+        case Unified::EntryState::DNS:
+            snprintf(eventMsg, sizeof(eventMsg), "%s did not start", riderLabel);
+            pluginData.addEventLogEntry(EventLogType::RiderDNS, eventMsg);
+            break;
+        case Unified::EntryState::Retired:
+            snprintf(eventMsg, sizeof(eventMsg), "%s retired", riderLabel);
+            pluginData.addEventLogEntry(EventLogType::RiderRetired, eventMsg);
+            break;
+        case Unified::EntryState::DSQ: {
+            snprintf(eventMsg, sizeof(eventMsg), "%s disqualified", riderLabel);
+            pluginData.addEventLogEntry(EventLogType::RiderDSQ, eventMsg);
+            break;
+        }
+        default:
+            break;
+        }
 
         // Update standings with new state (notify immediately for individual state changes)
         pluginData.updateStandings(
@@ -73,11 +95,34 @@ void RaceCommunicationHandler::handleRaceCommunication(Unified::RaceCommunicatio
         DEBUG_INFO_F("Penalty given to rider #%d for %s (penalty amount will be updated by RaceClassification)",
             psRaceCommunication->raceNum, offenceStr);
 
+        // Event log: penalty (offence is always "cutting" in MX Bikes, so just log the event)
+        const RaceEntryData* entry = pluginData.getRaceEntry(psRaceCommunication->raceNum);
+        const char* riderLabel = entry ? entry->formattedRaceNum : "???";
+        char eventMsg[64];
+        snprintf(eventMsg, sizeof(eventMsg), "%s received penalty", riderLabel);
+        pluginData.addEventLogEntry(EventLogType::Penalty, eventMsg);
+
         // Record penalty count in stats (player only)
         // NOTE: penaltyTime from this event is always 0 (API bug).
         // Penalty time is tracked via updatePenaltyFromStandings() in batchUpdateStandings.
         if (psRaceCommunication->raceNum == pluginData.getPlayerRaceNum()) {
             StatsManager::getInstance().recordPenalty();
         }
+    }
+    // Handle penalty clear (GP Bikes, WRS, KRP only)
+    else if (psRaceCommunication->commType == Unified::CommunicationType::PenaltyClear) {
+        const RaceEntryData* entry = pluginData.getRaceEntry(psRaceCommunication->raceNum);
+        const char* riderLabel = entry ? entry->formattedRaceNum : "???";
+        char eventMsg[64];
+        snprintf(eventMsg, sizeof(eventMsg), "%s penalty cleared", riderLabel);
+        pluginData.addEventLogEntry(EventLogType::PenaltyClear, eventMsg);
+    }
+    // Handle penalty change (GP Bikes, WRS, KRP only)
+    else if (psRaceCommunication->commType == Unified::CommunicationType::PenaltyChange) {
+        const RaceEntryData* entry = pluginData.getRaceEntry(psRaceCommunication->raceNum);
+        const char* riderLabel = entry ? entry->formattedRaceNum : "???";
+        char eventMsg[64];
+        snprintf(eventMsg, sizeof(eventMsg), "%s penalty changed", riderLabel);
+        pluginData.addEventLogEntry(EventLogType::PenaltyChange, eventMsg);
     }
 }

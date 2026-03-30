@@ -8,6 +8,14 @@
 #include "../game/unified_types.h"
 #include <vector>
 
+// Proximity gradient colors for sector overlays and distance-mode arrows.
+// Uses NEGATIVE/NEUTRAL/POSITIVE color slots (configurable in Appearance tab and per-HUD INI overrides).
+struct ProximityGradient {
+    unsigned char closeR, closeG, closeB;  // Negative/danger
+    unsigned char midR, midG, midB;        // Neutral/mid
+    unsigned char farR, farG, farB;        // Positive/safe
+};
+
 class RadarHud : public BaseHud {
 public:
     RadarHud();
@@ -207,12 +215,15 @@ private:
     // Helper: Render proximity arrows at screen edges
     void renderProximityArrows(const Unified::TrackPositionData* localPlayer,
                                float playerX, float playerZ,
-                               float cosYaw, float sinYaw);
+                               float cosYaw, float sinYaw,
+                               const ProximityGradient& gradient);
+
+    // Helper: Build proximity gradient from NEGATIVE/NEUTRAL/POSITIVE color slots
+    ProximityGradient buildProximityGradient() const;
 
     // Cached icon sprite indices (avoid string-based map lookups per rider per frame)
     struct CachedIcons {
         int circleExclamation = 0;
-        int triangleExclamation = 0;
         int flag = 0;
         int flagCheckered = 0;
         bool initialized = false;

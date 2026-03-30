@@ -53,8 +53,6 @@ void RaceEntryHandler::handleRaceAddEntry(Unified::RaceEntryData* psRaceAddEntry
 }
 
 void RaceEntryHandler::handleRaceRemoveEntry(int raceNum) {
-    // Event logging now handled by PluginManager
-
     // Remove race entry data
     PluginData::getInstance().removeRaceEntry(raceNum);
 }

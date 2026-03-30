@@ -80,6 +80,9 @@ private:
     std::chrono::steady_clock::time_point m_lastLapTriggerTime;
     std::chrono::steady_clock::time_point m_finishedTriggerTime;
 
+    // Spectate tracking - reset triggered flags when displayed rider changes
+    int m_lastDisplayRaceNum = -1;
+
     // Session tracking for wrong-way grace period
     int m_sessionStartTime;    // Session time when race went to "in progress" state
     int m_lastSessionState;    // Previous session state to detect transitions

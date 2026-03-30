@@ -34,6 +34,7 @@
 #include "tyre_temp_widget.h"
 #endif
 #include "fmx_hud.h"
+#include "event_log_hud.h"
 #include <variant>
 #include <string>
 #include <cmath>
@@ -60,6 +61,7 @@ public:
                 TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesHud* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean,
                 FmxHud* fmxHud,
                 StatsHud* statsHud,
+                EventLogHud* eventLog,
                 ClockWidget* clock
 #if GAME_HAS_TYRE_TEMP
                 , TyreTempWidget* tyreTemp
@@ -334,6 +336,18 @@ public:
             STATS_SHOW_ALLTIME_TOGGLE, // Toggle all-time column
             // Clock Widget
             CLOCK_FORMAT_TOGGLE,       // Toggle 12h/24h format (ClockWidget)
+            // Event Log HUD
+            EVENT_LOG_MODE_UP,         // Cycle display mode forward (EventLogHud)
+            EVENT_LOG_MODE_DOWN,       // Cycle display mode backward (EventLogHud)
+            EVENT_LOG_ORDER_UP,        // Cycle display order forward (EventLogHud)
+            EVENT_LOG_ORDER_DOWN,      // Cycle display order backward (EventLogHud)
+            EVENT_LOG_ROW_COUNT_UP,    // Increase max events to show (EventLogHud)
+            EVENT_LOG_ROW_COUNT_DOWN,  // Decrease max events to show (EventLogHud)
+            EVENT_LOG_DURATION_UP,     // Increase auto-hide duration (EventLogHud)
+            EVENT_LOG_DURATION_DOWN,   // Decrease auto-hide duration (EventLogHud)
+            EVENT_LOG_TIMESTAMP_UP,    // Cycle timestamp mode forward (EventLogHud)
+            EVENT_LOG_TIMESTAMP_DOWN,  // Cycle timestamp mode backward (EventLogHud)
+            EVENT_LOG_ICONS_TOGGLE,    // Toggle event type icons (EventLogHud)
             // Notices HUD
             NOTICES_DURATION_UP,       // Increase notice duration (NoticesHud)
             NOTICES_DURATION_DOWN,     // Decrease notice duration (NoticesHud)
@@ -462,6 +476,7 @@ public:
     static BaseHud* renderTabUpdates(SettingsLayoutContext& ctx);
     static BaseHud* renderTabFmx(SettingsLayoutContext& ctx);
     static BaseHud* renderTabStats(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabEventLog(SettingsLayoutContext& ctx);
 
     // Static click handler functions (implemented in tab files)
     // Return true if the click was handled, false otherwise
@@ -483,6 +498,7 @@ public:
     bool handleClickTabUpdates(const ClickRegion& region);
     bool handleClickTabFmx(const ClickRegion& region);
     bool handleClickTabStats(const ClickRegion& region);
+    bool handleClickTabEventLog(const ClickRegion& region);
     bool handleClickTabNotices(const ClickRegion& region);
 
     // HUD getter methods (for tab rendering functions)
@@ -520,6 +536,7 @@ public:
 #endif
     FmxHud* getFmxHud() const { return m_fmxHud; }
     class StatsHud* getStatsHud() const { return m_statsHud; }
+    EventLogHud* getEventLogHud() const { return m_eventLog; }
 
 protected:
     void rebuildLayout() override;
@@ -607,6 +624,7 @@ private:
 #endif
     FmxHud* m_fmxHud;
     StatsHud* m_statsHud;
+    EventLogHud* m_eventLog;
 
     // Visibility flag
     bool m_bVisible;
@@ -659,7 +677,8 @@ private:
         TAB_UPDATES = 20,      // Auto-update settings
         TAB_FMX = 21,          // FMX (Freestyle) trick scoring
         TAB_STATS = 22,        // Stats tracking (laps, crashes, PBs)
-        TAB_COUNT = 23
+        TAB_EVENT_LOG = 23,    // Event Log (race event feed)
+        TAB_COUNT = 24
     };
     int m_activeTab;
 

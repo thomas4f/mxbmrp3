@@ -3,6 +3,7 @@
 // Manages customizable hotkey bindings for keyboard and controller
 // ============================================================================
 #include "hotkey_manager.h"
+#include "input_manager.h"
 #include "xinput_reader.h"
 #include "../diagnostics/logger.h"
 #include <windows.h>
@@ -66,15 +67,17 @@ void HotkeyManager::update() {
     // Clear triggered actions from last frame
     m_triggeredActions.fill(false);
 
-    // Handle capture mode
-    if (m_captureType != CaptureType::NONE) {
-        updateCapture();
-    } else {
-        // Only check for triggered actions when not capturing
-        checkTriggeredActions();
+    // Only detect hotkey actions when game window is focused
+    if (InputManager::getInstance().isCursorEnabled()) {
+        if (m_captureType != CaptureType::NONE) {
+            updateCapture();
+        } else {
+            checkTriggeredActions();
+        }
     }
 
-    // Update previous key states for next frame
+    // Always update previous input states (even when unfocused) to prevent
+    // false edge triggers when focus returns
     for (int i = 0; i < 256; i++) {
         m_prevKeyStates[i] = (GetAsyncKeyState(i) & 0x8000) != 0;
     }

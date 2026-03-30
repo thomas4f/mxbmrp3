@@ -22,7 +22,6 @@ void StandingsHud::CachedIcons::ensureInitialized() {
     if (initialized) return;
     const AssetManager& assets = AssetManager::getInstance();
     circleExclamation = assets.getIconSpriteIndex("circle-exclamation");
-    triangleExclamation = assets.getIconSpriteIndex("triangle-exclamation");
     flag = assets.getIconSpriteIndex("flag");
     flagCheckered = assets.getIconSpriteIndex("flag-checkered");
     wrench = assets.getIconSpriteIndex("wrench");
@@ -96,7 +95,8 @@ void StandingsHud::formatStatus(DisplayEntry& entry, const SessionData& sessionD
     else if (entry.pit == 1) {
         strcpy_s(entry.formattedStatus, sizeof(entry.formattedStatus), "PIT");
     }
-    else if (sessionData.isRiderOnLastLap(entry.numLaps, entry.numLapsAtLeaderFinish)) {
+    else if (PluginData::getInstance().isRaceSession() &&
+             sessionData.isRiderOnLastLap(entry.numLaps, entry.numLapsAtLeaderFinish)) {
         strcpy_s(entry.formattedStatus, sizeof(entry.formattedStatus), "LL");
     }
     else {
@@ -145,7 +145,7 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
                     if (hazardType == HazardType::WrongWay) {
                         if (m_iconCache.circleExclamation > 0) { spriteIndex = m_iconCache.circleExclamation; spriteColor = ColorPalette::RED; }
                     } else {
-                        if (m_iconCache.triangleExclamation > 0) { spriteIndex = m_iconCache.triangleExclamation; spriteColor = ColorPalette::YELLOW; }
+                        if (m_iconCache.flag > 0) { spriteIndex = m_iconCache.flag; spriteColor = ColorPalette::YELLOW; }
                     }
                 } else if (!isNonParticipant && pluginData.isRiderBlueFlagged(entry.raceNum)) {
                     // Blue flag icon (lower priority than hazard, higher than tracked)
@@ -162,7 +162,7 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
                         // Checkered flag for finished riders (race finish or non-race session finish)
                         m_iconCache.ensureInitialized();
                         if (m_iconCache.flagCheckered > 0) { spriteIndex = m_iconCache.flagCheckered; spriteColor = ColorPalette::WHITE; }
-                    } else if (sd && session.isRiderOnLastLap(sd->numLaps, sd->numLapsAtLeaderFinish)) {
+                    } else if (sd && pluginData.isRaceSession() && session.isRiderOnLastLap(sd->numLaps, sd->numLapsAtLeaderFinish)) {
                         // White flag for riders on last lap
                         m_iconCache.ensureInitialized();
                         if (m_iconCache.flag > 0) { spriteIndex = m_iconCache.flag; spriteColor = ColorPalette::WHITE; }
@@ -354,11 +354,10 @@ void StandingsHud::buildColumnTable() {
         int width;
     };
 
-    // useEmpty: true = show "" for placeholder rows, false = show "-"
-    // Only position column shows "-" for placeholders to indicate HUD size
+    // useEmpty: all placeholder rows render empty strings (HUD background defines extent)
     const ColumnSpec specs[] = {
         {COL_TRACKED, 0, m_columns.tracked, Justify::LEFT, true, COL_TRACKED_WIDTH},
-        {COL_POS, 1, m_columns.pos, Justify::LEFT, false, COL_POS_WIDTH},  // Show "-" for placeholders
+        {COL_POS, 1, m_columns.pos, Justify::LEFT, true, COL_POS_WIDTH},
         {COL_RACENUM, 2, m_columns.raceNum, Justify::LEFT, true, COL_RACENUM_WIDTH},
         {COL_NAME, 3, m_columns.name, Justify::LEFT, true, getNameColumnWidth()},
         {COL_BIKE, 4, m_columns.bike, Justify::LEFT, true, COL_BIKE_WIDTH},
@@ -494,7 +493,7 @@ void StandingsHud::update() {
             if (pluginData.isRiderBlueFlagged(entry.raceNum)) state |= 0x10;
             const StandingsData* standing = pluginData.getStanding(entry.raceNum);
             if (standing && standing->pit == 1) state |= 0x20;
-            if (standing && pluginData.getSessionData().isRiderOnLastLap(standing->numLaps, standing->numLapsAtLeaderFinish)) state |= 0x40;
+            if (standing && pluginData.isRaceSession() && pluginData.getSessionData().isRiderOnLastLap(standing->numLaps, standing->numLapsAtLeaderFinish)) state |= 0x40;
             auto it = m_cachedIconStates.find(entry.raceNum);
             if (it == m_cachedIconStates.end() || it->second != state) {
                 m_cachedIconStates[entry.raceNum] = state;

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RGB to ABGR Converter</title>
+<style>
+  body { font-family: sans-serif; max-width: 400px; margin: 40px auto; padding: 0 20px; }
+  h1 { font-size: 1.1em; margin-bottom: 4px; }
+  p.info { font-size: 0.85em; color: #666; margin-bottom: 24px; }
+  .row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .row label { font-size: 0.85em; width: 42px; text-align: right; }
+  .row input[type="range"] { flex: 1; }
+  .row .val { font-family: monospace; font-size: 0.85em; width: 28px; text-align: right; }
+  .preview {
+    width: 100%; height: 48px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 16px;
+    background-image: linear-gradient(45deg, #ccc 25%, transparent 25%),
+                      linear-gradient(-45deg, #ccc 25%, transparent 25%),
+                      linear-gradient(45deg, transparent 75%, #ccc 75%),
+                      linear-gradient(-45deg, transparent 75%, #ccc 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  }
+  .preview-color { width: 100%; height: 100%; border-radius: 4px; }
+  .result { font-family: monospace; font-size: 0.95em; padding: 10px 14px; background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
+  .result button { font-size: 0.8em; padding: 3px 10px; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<h1>RGB to ABGR Converter</h1>
+<p class="info">Pick a color and alpha, get the ABGR value for your .ini file.</p>
+
+<div class="row"><label>Red</label><input type="range" id="r" min="0" max="255" value="255"><span class="val" id="r-val">255</span></div>
+<div class="row"><label>Green</label><input type="range" id="g" min="0" max="255" value="0"><span class="val" id="g-val">0</span></div>
+<div class="row"><label>Blue</label><input type="range" id="b" min="0" max="255" value="0"><span class="val" id="b-val">0</span></div>
+<div class="row"><label>Alpha</label><input type="range" id="a" min="0" max="255" value="255"><span class="val" id="a-val">255</span></div>
+
+<div class="preview"><div class="preview-color" id="preview"></div></div>
+
+<div class="result">
+  <span id="output">0xff0000ff</span>
+  <button onclick="copy()">Copy</button>
+</div>
+
+<script>
+const sliders = ['r', 'g', 'b', 'a'];
+
+function update() {
+  const r = parseInt(document.getElementById('r').value);
+  const g = parseInt(document.getElementById('g').value);
+  const b = parseInt(document.getElementById('b').value);
+  const a = parseInt(document.getElementById('a').value);
+  for (const s of sliders) document.getElementById(s + '-val').textContent = document.getElementById(s).value;
+  document.getElementById('preview').style.background = `rgba(${r},${g},${b},${a / 255})`;
+  const abgr = ((a & 0xff) << 24 | (b & 0xff) << 16 | (g & 0xff) << 8 | (r & 0xff)) >>> 0;
+  document.getElementById('output').textContent = '0x' + abgr.toString(16).padStart(8, '0');
+}
+
+function copy() {
+  navigator.clipboard.writeText(document.getElementById('output').textContent);
+}
+
+for (const s of sliders) document.getElementById(s).addEventListener('input', update);
+update();
+</script>
+</body>
+</html>

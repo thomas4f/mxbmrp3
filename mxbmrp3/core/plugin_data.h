@@ -17,6 +17,7 @@
 #include "../game/game_config.h"      // For SPluginQuad_t, SPluginString_t (via correct game API)
 #include "../game/unified_types.h"    // For Unified::RaceClassificationEntry
 #include "plugin_constants.h"  // For Placeholders namespace
+#include "event_log_types.h"   // For EventLogEntry, EventLogType
 
 // Forward declarations
 struct XInputData;
@@ -717,7 +718,8 @@ enum class DataChangeType {
     IdealLap,
     LapLog,
     SpectateTarget,  // Spectate target changed (switch to different rider)
-    TrackedRiders    // Tracked riders list or settings changed
+    TrackedRiders,   // Tracked riders list or settings changed
+    EventLog         // New event log entry added
 };
 
 // Helper function to convert DataChangeType to string for debugging
@@ -732,6 +734,7 @@ inline const char* dataChangeTypeToString(DataChangeType type) {
     case DataChangeType::LapLog: return "LapLog";
     case DataChangeType::SpectateTarget: return "SpectateTarget";
     case DataChangeType::TrackedRiders: return "TrackedRiders";
+    case DataChangeType::EventLog: return "EventLog";
     default: return "Unknown";
     }
 }
@@ -1074,6 +1077,12 @@ public:
     std::chrono::steady_clock::time_point getDefaultSetupTime() const  { return m_defaultSetupTime; }
     void clearDefaultSetupNotice()  { m_newDefaultSetup = false; }
 
+    // ========================================================================
+    // Event Log (ring buffer of notable race events)
+    // ========================================================================
+    void addEventLogEntry(EventLogType type, const char* message, const char* detail = nullptr);
+    const std::deque<EventLogEntry>& getEventLog() const { return m_eventLog; }
+
 private:
     PluginData() : m_currentSessionTime(0), m_playerRaceNum(-1), m_bPlayerRaceNumValid(false),
                    m_bPlayerNotFoundWarned(false), m_bWaitingForPlayerEntry(false),
@@ -1204,4 +1213,6 @@ private:
     std::chrono::steady_clock::time_point m_allTimePBTime;
     std::chrono::steady_clock::time_point m_defaultSetupTime;
 
+    // Event log ring buffer
+    std::deque<EventLogEntry> m_eventLog;
 };

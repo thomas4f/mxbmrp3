@@ -491,14 +491,14 @@ void LapLogHud::rebuildRenderData() {
 
         // Handle placeholder row (shows placeholders in all columns)
         if (displayEntry.historyIndex == -2) {
-            addString(Placeholders::GENERIC, m_columns.lap, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
-            addString(showSectors ? Placeholders::LAP_TIME : "", m_columns.s1, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
-            addString(showSectors ? Placeholders::LAP_TIME : "", m_columns.s2, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
-            addString(showSectors ? Placeholders::LAP_TIME : "", m_columns.s3, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString("", m_columns.lap, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString("", m_columns.s1, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString("", m_columns.s2, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString("", m_columns.s3, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
 #if GAME_SECTOR_COUNT >= 4
-            addString(showSectors ? Placeholders::LAP_TIME : "", m_columns.s4, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString("", m_columns.s4, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
 #endif
-            addString(Placeholders::LAP_TIME, m_columns.time, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString("", m_columns.time, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
             currentY += dim.lineHeightNormal;
             continue;
         }
@@ -607,14 +607,14 @@ void LapLogHud::rebuildRenderData() {
             addString(timeStr, m_columns.time, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), colorTime, dim.fontSize);
         } else {
             // Placeholder row (entry not found)
-            addString(Placeholders::GENERIC, m_columns.lap, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
-            addString(showSectors ? Placeholders::LAP_TIME : "", m_columns.s1, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
-            addString(showSectors ? Placeholders::LAP_TIME : "", m_columns.s2, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
-            addString(showSectors ? Placeholders::LAP_TIME : "", m_columns.s3, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString("", m_columns.lap, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString("", m_columns.s1, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString("", m_columns.s2, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString("", m_columns.s3, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
 #if GAME_SECTOR_COUNT >= 4
-            addString(showSectors ? Placeholders::LAP_TIME : "", m_columns.s4, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString("", m_columns.s4, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
 #endif
-            addString(Placeholders::LAP_TIME, m_columns.time, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString("", m_columns.time, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
         }
 
         currentY += dim.lineHeightNormal;  // Move down to next row

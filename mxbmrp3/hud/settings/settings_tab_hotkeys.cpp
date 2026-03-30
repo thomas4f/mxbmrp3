@@ -123,6 +123,7 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
             case HotkeyAction::TOGGLE_STATS:           return "hotkeys.stats";
             case HotkeyAction::TOGGLE_SESSION:         return "hotkeys.session";
             case HotkeyAction::TOGGLE_NOTICES:         return "hotkeys.notices";
+            case HotkeyAction::TOGGLE_EVENT_LOG:       return "hotkeys.event_log";
             case HotkeyAction::TOGGLE_RUMBLE:      return "hotkeys.rumble";
             case HotkeyAction::TOGGLE_WIDGETS:     return "hotkeys.widgets";
             case HotkeyAction::TOGGLE_ALL_HUDS:    return "hotkeys.all_huds";
@@ -288,6 +289,7 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
     addHotkeyRow(HotkeyAction::TOGGLE_GAP_BAR);
     addHotkeyRow(HotkeyAction::TOGGLE_FMX);
     addHotkeyRow(HotkeyAction::TOGGLE_STATS);
+    addHotkeyRow(HotkeyAction::TOGGLE_EVENT_LOG);
     addHotkeyRow(HotkeyAction::TOGGLE_PERFORMANCE);
     addHotkeyRow(HotkeyAction::TOGGLE_RUMBLE);
 

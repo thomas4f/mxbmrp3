@@ -5,9 +5,36 @@
 #include "race_session_handler.h"
 #include "../core/handler_singleton.h"
 #include "../core/plugin_data.h"
+#include "../core/plugin_utils.h"
 #include "../core/fmx_manager.h"
 
 DEFINE_HANDLER_SINGLETON(RaceSessionHandler)
+
+// Log "Session started" event with optional format detail (e.g., "03:00 + 2L")
+static void logSessionStarted(PluginData& data, const char* sessionStr, int sessionLength, int sessionNumLaps) {
+    char eventMsg[64];
+    snprintf(eventMsg, sizeof(eventMsg), "%s started", sessionStr);
+
+    bool hasTime = (sessionLength > 0);
+    bool hasLaps = (sessionNumLaps > 0);
+
+    if (hasTime || hasLaps) {
+        char detail[20];
+        if (hasTime && hasLaps) {
+            char timeBuf[16];
+            PluginUtils::formatTimeMinutesSeconds(sessionLength, timeBuf, sizeof(timeBuf));
+            snprintf(detail, sizeof(detail), "%s + %dL", timeBuf, sessionNumLaps);
+        } else if (hasTime) {
+            PluginUtils::formatTimeMinutesSeconds(sessionLength, detail, sizeof(detail));
+        } else {
+            snprintf(detail, sizeof(detail), "%d %s", sessionNumLaps,
+                     sessionNumLaps == 1 ? "lap" : "laps");
+        }
+        data.addEventLogEntry(EventLogType::SessionStarted, eventMsg, detail);
+    } else {
+        data.addEventLogEntry(EventLogType::SessionStarted, eventMsg);
+    }
+}
 
 void RaceSessionHandler::handleRaceSession(Unified::RaceSessionData* psRaceSession) {
     HANDLER_NULL_CHECK(psRaceSession);
@@ -27,6 +54,8 @@ void RaceSessionHandler::handleRaceSession(Unified::RaceSessionData* psRaceSessi
     }
 
     // Clear session-specific data when a new session starts
+    // Note: event log persists across sessions within a race weekend (practice -> qualifying -> race).
+    // It is only cleared on full event exit via PluginData::clear().
     FmxManager::getInstance().reset();
     PluginData::getInstance().clearAllIdealLap();
     PluginData::getInstance().clearAllLapLog();
@@ -49,6 +78,28 @@ void RaceSessionHandler::handleRaceSession(Unified::RaceSessionData* psRaceSessi
     PluginData::getInstance().setConditions(static_cast<int>(psRaceSession->conditions));
     PluginData::getInstance().setAirTemperature(psRaceSession->airTemperature);
     PluginData::getInstance().setTrackTemperature(psRaceSession->trackTemperature);
+
+    // Event log: log initial session state
+    // Practice/qualifying arrive directly with state=IN_PROGRESS (16), skipping
+    // handleRaceSessionState entirely. Races arrive with PRE_START (256) and later
+    // transition to IN_PROGRESS via handleRaceSessionState.
+    // eventType persists across sessions within a race event (set by handleEventInit or
+    // defaults to Race=2). Safe to use here since RaceSession fires within an active event.
+    const char* sessionStr = PluginUtils::getSessionString(
+        PluginData::getInstance().getSessionData().eventType, psRaceSession->session);
+    if (sessionStr) {
+        auto& data = PluginData::getInstance();
+        int state = psRaceSession->sessionState;
+
+        if (state & PluginConstants::SessionState::IN_PROGRESS) {
+            // Session starts directly in progress (practice/qualifying)
+            logSessionStarted(data, sessionStr, psRaceSession->sessionLength, psRaceSession->sessionNumLaps);
+        } else if (state & PluginConstants::SessionState::PRE_START) {
+            char eventMsg[64];
+            snprintf(eventMsg, sizeof(eventMsg), "%s: Pre-Start", sessionStr);
+            data.addEventLogEntry(EventLogType::SessionPreStart, eventMsg);
+        }
+    }
 }
 
 void RaceSessionHandler::handleRaceSessionState(Unified::RaceSessionStateData* psRaceSessionState) {
@@ -68,10 +119,51 @@ void RaceSessionHandler::handleRaceSessionState(Unified::RaceSessionStateData* p
     // accumulated RTG data mid-race.
     // IMPORTANT: This check must happen BEFORE setSessionState() below,
     // since we compare against the cached (old) state to detect the transition.
-    if (psRaceSessionState->sessionState == 16 &&
-        PluginData::getInstance().getSessionData().sessionState != 16) {
+    if ((psRaceSessionState->sessionState & PluginConstants::SessionState::IN_PROGRESS) &&
+        !(PluginData::getInstance().getSessionData().sessionState & PluginConstants::SessionState::IN_PROGRESS)) {
         PluginData::getInstance().setLastSessionTime(0);
         PluginData::getInstance().clearLiveGapTimingPoints();
+    }
+
+    // Event log: session state changes
+    {
+        auto& data = PluginData::getInstance();
+        int oldState = data.getSessionData().sessionState;
+
+        // Only log meaningful transitions (not re-fires of the same state)
+        if (psRaceSessionState->sessionState != oldState) {
+            const SessionData& sessionData = data.getSessionData();
+            const char* sessionStr = PluginUtils::getSessionString(sessionData.eventType, psRaceSessionState->session);
+            const char* stateStr = PluginUtils::getSessionStateString(psRaceSessionState->sessionState);
+
+            if (sessionStr && stateStr) {
+                // "In Progress" means race/session started (e.g., "Race 1 started (03:00 + 2L)")
+                if (psRaceSessionState->sessionState & PluginConstants::SessionState::IN_PROGRESS) {
+                    logSessionStarted(data, sessionStr, sessionData.sessionLength, sessionData.sessionNumLaps);
+                } else {
+                    // Log other state transitions with natural phrasing
+                    char eventMsg[64];
+                    int state = psRaceSessionState->sessionState;
+                    bool isComplete = (state & PluginConstants::SessionState::RACE_OVER) ||
+                                      (state & PluginConstants::SessionState::FINISHED);
+                    bool isPreStart = (state & PluginConstants::SessionState::PRE_START) ||
+                                      (state & PluginConstants::SessionState::SIGHTING_LAP);
+                    if (state & PluginConstants::SessionState::RACE_OVER) {
+                        snprintf(eventMsg, sizeof(eventMsg), "%s ended", sessionStr);
+                    } else if (state & PluginConstants::SessionState::FINISHED) {
+                        snprintf(eventMsg, sizeof(eventMsg), "%s complete", sessionStr);
+                    } else if (state & PluginConstants::SessionState::CANCELLED) {
+                        snprintf(eventMsg, sizeof(eventMsg), "%s cancelled", sessionStr);
+                    } else {
+                        snprintf(eventMsg, sizeof(eventMsg), "%s: %s", sessionStr, stateStr);
+                    }
+                    EventLogType eventType = isComplete  ? EventLogType::SessionComplete :
+                                             isPreStart  ? EventLogType::SessionPreStart :
+                                                           EventLogType::SessionStateChange;
+                    data.addEventLogEntry(eventType, eventMsg);
+                }
+            }
+        }
     }
 
     // Update plugin data store

@@ -13,7 +13,7 @@ namespace PluginConstants {
     // Plugin identification
     constexpr const char* PLUGIN_NAME = "mxbmrp3";
     constexpr const char* PLUGIN_DISPLAY_NAME = "MXBMRP3";
-    constexpr const char* PLUGIN_VERSION = "1.19.0.0";  // Keep in sync with resource.h (Windows DLL version info)
+    constexpr const char* PLUGIN_VERSION = "1.20.0.0";  // Keep in sync with resource.h (Windows DLL version info)
     constexpr const char* PLUGIN_AUTHOR = "thomas4f";
 
     // GitHub repository for updates (centralized to support repo moves/renames)
@@ -317,7 +317,8 @@ namespace PluginConstants {
 
     // HUD display limits
     namespace HudLimits {
-        constexpr int MAX_LAP_LOG_CAPACITY = 30;  // Maximum laps stored per rider in lap log
+        constexpr int MAX_LAP_LOG_CAPACITY = 30;   // Maximum laps stored per rider in lap log
+        constexpr int MAX_EVENT_LOG_CAPACITY = 100; // Maximum events stored in event log ring buffer
         // Note: HUD-specific limits (MAX_STANDINGS_ENTRIES, FRAME_HISTORY_SIZE, GRAPH_HISTORY_SIZE)
         // have been relocated to their respective HUD/handler files for better code locality
     }

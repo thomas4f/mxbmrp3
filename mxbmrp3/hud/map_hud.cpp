@@ -29,7 +29,6 @@ void MapHud::CachedIcons::ensureInitialized() {
     if (initialized) return;
     const AssetManager& assets = AssetManager::getInstance();
     circleExclamation = assets.getIconSpriteIndex("circle-exclamation");
-    triangleExclamation = assets.getIconSpriteIndex("triangle-exclamation");
     flag = assets.getIconSpriteIndex("flag");
     flagCheckered = assets.getIconSpriteIndex("flag-checkered");
     initialized = true;
@@ -1137,7 +1136,7 @@ void MapHud::renderRiders(const RotationCache& rotation,
             spriteIndex = AssetManager::getInstance().getFirstIconSpriteIndex() + shapeIndex - 1;
         }
 
-        // Hazard icon override: circle-exclamation for wrong-way, triangle-exclamation for stationary
+        // Hazard icon override: circle-exclamation for wrong-way, flag for stationary
         HazardType hazardType = pluginData.getRiderHazardType(pos.raceNum);
         if (hazardType != HazardType::None) {
             m_iconCache.ensureInitialized();
@@ -1147,8 +1146,8 @@ void MapHud::renderRiders(const RotationCache& rotation,
                     riderColor = ColorPalette::RED;
                 }
             } else {
-                if (m_iconCache.triangleExclamation > 0) {
-                    spriteIndex = m_iconCache.triangleExclamation;
+                if (m_iconCache.flag > 0) {
+                    spriteIndex = m_iconCache.flag;
                     riderColor = ColorPalette::YELLOW;
                 }
             }

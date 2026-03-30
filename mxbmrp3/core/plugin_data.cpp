@@ -956,11 +956,23 @@ void PluginData::batchUpdateStandings(Unified::RaceClassificationEntry* entries,
                 standing.penalty != entry.penalty ||
                 standing.pit != entryPit) {
 
-                // Detect pit exit (pit 1→0) and start per-rider hazard grace period
-                if (standing.pit == 1 && entryPit == 0) {
-                    auto trackIt = m_trackPositions.find(entry.raceNum);
-                    if (trackIt != m_trackPositions.end()) {
-                        trackIt->second.pitExitGraceStart = std::chrono::steady_clock::now();
+                // Detect pit transitions and log events
+                if (standing.pit != entryPit) {
+                    const RaceEntryData* raceEntry = getRaceEntry(entry.raceNum);
+                    const char* riderLabel = raceEntry ? raceEntry->formattedRaceNum : "???";
+                    char eventMsg[64];
+                    if (standing.pit == 0 && entryPit == 1) {
+                        // Pit entry (0→1)
+                        snprintf(eventMsg, sizeof(eventMsg), "%s entered pits", riderLabel);
+                        addEventLogEntry(EventLogType::PitEntry, eventMsg);
+                    } else {
+                        // Pit exit (1→0) - start per-rider hazard grace period
+                        snprintf(eventMsg, sizeof(eventMsg), "%s left pits", riderLabel);
+                        addEventLogEntry(EventLogType::PitExit, eventMsg);
+                        auto trackIt = m_trackPositions.find(entry.raceNum);
+                        if (trackIt != m_trackPositions.end()) {
+                            trackIt->second.pitExitGraceStart = std::chrono::steady_clock::now();
+                        }
                     }
                 }
 
@@ -1857,7 +1869,32 @@ void PluginData::clear() {
     m_benchmarkMetrics = BenchmarkMetrics{};
     m_benchmarkMetrics.active = bmWasActive;
 
+    // Clear event log
+    m_eventLog.clear();
+
     DEBUG_INFO("Plugin data cleared");
+}
+
+// ========================================================================
+// Event Log
+// ========================================================================
+void PluginData::addEventLogEntry(EventLogType type, const char* message, const char* detail) {
+    EventLogEntry entry;
+    entry.type = type;
+    entry.sessionTimeMs = m_currentSessionTime;
+    entry.steadyTime = std::chrono::steady_clock::now();
+    entry.systemTime = std::chrono::system_clock::now();
+    strncpy_s(entry.message, sizeof(entry.message), message, _TRUNCATE);
+    if (detail) {
+        strncpy_s(entry.detail, sizeof(entry.detail), detail, _TRUNCATE);
+    }
+
+    m_eventLog.push_back(entry);
+    if (static_cast<int>(m_eventLog.size()) > PluginConstants::HudLimits::MAX_EVENT_LOG_CAPACITY) {
+        m_eventLog.pop_front();
+    }
+
+    notifyHudManager(DataChangeType::EventLog);
 }
 
 // Direct call to HudManager and DiscordManager, no callback/observer overhead

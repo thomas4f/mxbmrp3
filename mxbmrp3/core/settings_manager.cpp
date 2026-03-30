@@ -45,6 +45,7 @@
 #endif
 #include "../hud/fmx_hud.h"
 #include "../hud/stats_hud.h"
+#include "../hud/event_log_hud.h"
 #include "fmx_manager.h"
 #include "color_config.h"
 #include "font_config.h"
@@ -292,6 +293,23 @@ namespace {
             constexpr const char* FUEL = "col_fuel";
             constexpr const char* ENGINE_TEMP = "col_engine_temp";
             constexpr const char* WATER_TEMP = "col_water_temp";
+        }
+
+        // EventLogHud events
+        namespace EventLog {
+            constexpr const char* SESSION_STARTED = "event_session_started";
+            constexpr const char* SESSION_STATE = "event_session_state";
+            constexpr const char* FASTEST_LAP = "event_fastest_lap";
+            constexpr const char* PENALTY = "event_penalty";
+            constexpr const char* PENALTY_CLEAR = "event_penalty_clear";
+            constexpr const char* RIDER_RETIRED = "event_rider_retired";
+            constexpr const char* RIDER_DSQ = "event_rider_dsq";
+            constexpr const char* RIDER_DNS = "event_rider_dns";
+            constexpr const char* OVERTIME = "event_overtime";
+            constexpr const char* FINAL_LAP = "event_final_lap";
+            constexpr const char* RIDER_FINISHED = "event_rider_finished";
+            constexpr const char* PIT_ENTRY = "event_pit_entry";
+            constexpr const char* PIT_EXIT = "event_pit_exit";
         }
 
         // NoticesHud notices
@@ -1487,6 +1505,42 @@ namespace {
         loadBitFromKey(settings, WATER_TEMP, cols, BarsWidget::COL_WATER_TEMP);
     }
 
+    // EventLogHud: save events as named keys
+    void saveEventLogEvents(SettingsManager::HudSettings& settings, uint32_t events) {
+        using namespace Keys::EventLog;
+        saveBitAsKey(settings, SESSION_STARTED, events, EVENT_SESSION_STARTED);
+        saveBitAsKey(settings, SESSION_STATE, events, EVENT_SESSION_STATE);
+        saveBitAsKey(settings, FASTEST_LAP, events, EVENT_FASTEST_LAP);
+        saveBitAsKey(settings, PENALTY, events, EVENT_PENALTY);
+        saveBitAsKey(settings, PENALTY_CLEAR, events, EVENT_PENALTY_CLEAR);
+        saveBitAsKey(settings, RIDER_RETIRED, events, EVENT_RIDER_RETIRED);
+        saveBitAsKey(settings, RIDER_DSQ, events, EVENT_RIDER_DSQ);
+        saveBitAsKey(settings, RIDER_DNS, events, EVENT_RIDER_DNS);
+        saveBitAsKey(settings, OVERTIME, events, EVENT_OVERTIME);
+        saveBitAsKey(settings, FINAL_LAP, events, EVENT_FINAL_LAP);
+        saveBitAsKey(settings, RIDER_FINISHED, events, EVENT_RIDER_FINISHED);
+        saveBitAsKey(settings, PIT_ENTRY, events, EVENT_PIT_ENTRY);
+        saveBitAsKey(settings, PIT_EXIT, events, EVENT_PIT_EXIT);
+    }
+
+    // EventLogHud: load events from named keys
+    void loadEventLogEvents(const SettingsManager::HudSettings& settings, uint32_t& events) {
+        using namespace Keys::EventLog;
+        loadBitFromKey(settings, SESSION_STARTED, events, EVENT_SESSION_STARTED);
+        loadBitFromKey(settings, SESSION_STATE, events, EVENT_SESSION_STATE);
+        loadBitFromKey(settings, FASTEST_LAP, events, EVENT_FASTEST_LAP);
+        loadBitFromKey(settings, PENALTY, events, EVENT_PENALTY);
+        loadBitFromKey(settings, PENALTY_CLEAR, events, EVENT_PENALTY_CLEAR);
+        loadBitFromKey(settings, RIDER_RETIRED, events, EVENT_RIDER_RETIRED);
+        loadBitFromKey(settings, RIDER_DSQ, events, EVENT_RIDER_DSQ);
+        loadBitFromKey(settings, RIDER_DNS, events, EVENT_RIDER_DNS);
+        loadBitFromKey(settings, OVERTIME, events, EVENT_OVERTIME);
+        loadBitFromKey(settings, FINAL_LAP, events, EVENT_FINAL_LAP);
+        loadBitFromKey(settings, RIDER_FINISHED, events, EVENT_RIDER_FINISHED);
+        loadBitFromKey(settings, PIT_ENTRY, events, EVENT_PIT_ENTRY);
+        loadBitFromKey(settings, PIT_EXIT, events, EVENT_PIT_EXIT);
+    }
+
     // NoticesHud: save notices as named keys
     void saveNotices(SettingsManager::HudSettings& settings, uint32_t notices) {
         using namespace Keys::Notices;
@@ -1836,6 +1890,21 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
         settings[SHOW_SESSION] = hud.m_showSession ? "1" : "0";
         settings[SHOW_ALLTIME] = hud.m_showAllTime ? "1" : "0";
         cache["StatsHud"] = std::move(settings);
+    }
+
+    // Capture EventLogHud
+    {
+        HudSettings settings;
+        const auto& hud = hudManager.getEventLogHud();
+        captureBaseHudSettings(settings, hud);
+        settings["displayMode"] = std::to_string(static_cast<int>(hud.m_displayMode));
+        settings["displayOrder"] = std::to_string(static_cast<int>(hud.m_displayOrder));
+        settings["maxDisplayEvents"] = std::to_string(hud.m_maxDisplayEvents);
+        settings["autoHideDurationMs"] = std::to_string(hud.m_autoHideDurationMs);
+        settings["timestampMode"] = std::to_string(static_cast<int>(hud.m_timestampMode));
+        settings["showIcons"] = hud.m_showIcons ? "1" : "0";
+        saveEventLogEvents(settings, hud.m_enabledEvents);
+        cache["EventLogHud"] = std::move(settings);
     }
 
     // Capture IdealLapHud (key preserved for backward compatibility)
@@ -2460,6 +2529,61 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
                 }
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("StatsHud: Failed to parse settings: %s", e.what());
+            }
+            hud.setDataDirty();
+        }
+    }
+
+    // Apply EventLogHud
+    {
+        auto it = cache.find("EventLogHud");
+        if (it != cache.end()) {
+            auto& hud = hudManager.getEventLogHud();
+            applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                loadEventLogEvents(settings, hud.m_enabledEvents);
+                if (settings.count("displayMode")) {
+                    int mode = std::stoi(settings.at("displayMode"));
+                    if (mode >= 0 && mode <= 2) {
+                        hud.m_displayMode = static_cast<EventLogHud::DisplayMode>(mode);
+                    }
+                }
+                if (settings.count("displayOrder")) {
+                    int order = std::stoi(settings.at("displayOrder"));
+                    hud.m_displayOrder = (order == 1)
+                        ? EventLogHud::DisplayOrder::NEWEST_FIRST
+                        : EventLogHud::DisplayOrder::OLDEST_FIRST;
+                }
+                if (settings.count("maxDisplayEvents")) {
+                    int max = std::stoi(settings.at("maxDisplayEvents"));
+                    hud.m_maxDisplayEvents = std::max(EventLogHud::MIN_DISPLAY_EVENTS,
+                                                      std::min(max, EventLogHud::MAX_DISPLAY_EVENTS));
+                }
+                if (settings.count("autoHideDurationMs")) {
+                    int duration = std::stoi(settings.at("autoHideDurationMs"));
+                    if (duration >= EventLogHud::MIN_AUTO_HIDE_MS && duration <= EventLogHud::MAX_AUTO_HIDE_MS) {
+                        hud.m_autoHideDurationMs = duration;
+                    }
+                }
+                if (settings.count("timestampMode")) {
+                    int mode = std::stoi(settings.at("timestampMode"));
+                    if (mode >= 0 && mode <= 2) {
+                        hud.m_timestampMode = static_cast<EventLogHud::TimestampMode>(mode);
+                    }
+                }
+                // Legacy: migrate old useWallClock bool to new timestampMode
+                else if (settings.count("useWallClock")) {
+                    hud.m_timestampMode = (settings.at("useWallClock") == "1")
+                        ? EventLogHud::TimestampMode::CLOCK
+                        : EventLogHud::TimestampMode::SESSION;
+                }
+                if (settings.count("showIcons")) {
+                    hud.m_showIcons = (settings.at("showIcons") == "1");
+                }
+            } catch (const std::exception& e) {
+                DEBUG_WARN_F("EventLogHud: Failed to parse settings: %s", e.what());
             }
             hud.setDataDirty();
         }
@@ -3275,9 +3399,9 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     TrackedRidersManager::getInstance().save();
 
     // HUD order for consistent output
-    static const std::array<const char*, 35> hudOrder = {
+    static const std::array<const char*, 36> hudOrder = {
         "StandingsHud", "MapHud", "RadarHud", "PitboardHud", "RecordsHud",
-        "LapLogHud", "LapConsistencyHud", "FmxHud", "StatsHud", "IdealLapHud", "TelemetryHud", "PerformanceHud",
+        "LapLogHud", "LapConsistencyHud", "FmxHud", "StatsHud", "EventLogHud", "IdealLapHud", "TelemetryHud", "PerformanceHud",
         "LapWidget", "PositionWidget", "TimeWidget", "ClockWidget", "SessionHud", "SpeedWidget", "GearWidget",
         "SpeedoWidget", "TachoWidget", "TimingHud", "GapBarHud", "BarsWidget", "VersionWidget",
         "NoticesHud", "FuelWidget", "GamepadWidget", "LeanWidget", "TyreTempWidget", "SettingsButtonWidget", "PointerWidget", "RumbleHud",

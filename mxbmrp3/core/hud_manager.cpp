@@ -52,6 +52,7 @@
 #include "../hud/lap_consistency_hud.h"
 #include "../hud/fmx_hud.h"
 #include "../hud/stats_hud.h"
+#include "../hud/event_log_hud.h"
 #include "../hud/benchmark_widget.h"
 #include "hotkey_manager.h"
 #include "tooltip_manager.h"
@@ -150,6 +151,10 @@ void HudManager::initialize() {
     m_pStatsHud = statsPtr.get();
     m_pStatsHud->setTextureBaseName("stats_hud");
     registerHud(std::move(statsPtr));
+
+    auto eventLogPtr = std::make_unique<EventLogHud>();
+    m_pEventLog = eventLogPtr.get();
+    registerHud(std::move(eventLogPtr));
 
     // Benchmark Widget (always created, but only accessible via settings when developer mode is on)
     // Note: Must be created unconditionally because isDeveloperMode() returns false here -
@@ -271,6 +276,7 @@ void HudManager::initialize() {
                                                        m_pPerformance, m_pTelemetry, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pGear, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, recordsHudPtr, m_pFuel, m_pPointer, m_pRumble, m_pGamepad, m_pLean,
                                                        m_pFmxHud,
                                                        m_pStatsHud,
+                                                       m_pEventLog,
                                                        m_pClock
 #if GAME_HAS_TYRE_TEMP
                                                        , m_pTyreTemp
@@ -386,6 +392,7 @@ void HudManager::clear() {
     m_pLapConsistency = nullptr;
     m_pStatsHud = nullptr;
     m_pFmxHud = nullptr;
+    m_pEventLog = nullptr;
     m_pBenchmark = nullptr;
     m_pSettingsHud = nullptr;
     m_pSettingsButton = nullptr;
@@ -956,6 +963,11 @@ void HudManager::processKeyboardInput() {
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_NOTICES) && m_pNotices) {
         m_pNotices->setVisible(!m_pNotices->isVisible());
         DEBUG_INFO_F("Hotkey: Notices %s", m_pNotices->isVisible() ? "shown" : "hidden");
+    }
+
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_EVENT_LOG) && m_pEventLog) {
+        m_pEventLog->setVisible(!m_pEventLog->isVisible());
+        DEBUG_INFO_F("Hotkey: Event Log %s", m_pEventLog->isVisible() ? "shown" : "hidden");
     }
 
     // Reload config from file

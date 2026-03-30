@@ -5,6 +5,7 @@
 #include "race_classification_handler.h"
 #include "../core/handler_singleton.h"
 #include "../core/plugin_data.h"
+#include "../core/plugin_utils.h"
 #include "../core/hud_manager.h"
 #include "../core/stats_manager.h"
 #include "draw_handler.h"
@@ -71,6 +72,12 @@ void RaceClassificationHandler::handleRaceClassification(
 
             pluginData.setFinishLap(finishLap);
             pluginData.setOvertimeStarted(true);
+
+            // Event log: overtime started
+            char eventMsg[64];
+            snprintf(eventMsg, sizeof(eventMsg), "Overtime - %d %s remaining",
+                     sessionData.sessionNumLaps, sessionData.sessionNumLaps == 1 ? "lap" : "laps");
+            pluginData.addEventLogEntry(EventLogType::OvertimeStarted, eventMsg);
         }
     }
 
@@ -88,6 +95,12 @@ void RaceClassificationHandler::handleRaceClassification(
             sessionData.lastSessionTime, psRaceClassification->sessionTime);
 
         pluginData.setSessionTimeExpired(true);
+
+        // Event log: session time expired
+        const char* sessionStr = PluginUtils::getSessionString(sessionData.eventType, sessionData.session);
+        char eventMsg[64];
+        snprintf(eventMsg, sizeof(eventMsg), "%s time expired", sessionStr ? sessionStr : "Session");
+        pluginData.addEventLogEntry(EventLogType::SessionTimeExpired, eventMsg);
     }
 
     pluginData.setLastSessionTime(psRaceClassification->sessionTime);
