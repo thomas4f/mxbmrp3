@@ -75,7 +75,7 @@ void RaceClassificationHandler::handleRaceClassification(
 
             // Event log: overtime started
             char eventMsg[64];
-            snprintf(eventMsg, sizeof(eventMsg), "Overtime - %d %s remaining",
+            snprintf(eventMsg, sizeof(eventMsg), "Overtime: %d %s left",
                      sessionData.sessionNumLaps, sessionData.sessionNumLaps == 1 ? "lap" : "laps");
             pluginData.addEventLogEntry(EventLogType::OvertimeStarted, eventMsg);
         }

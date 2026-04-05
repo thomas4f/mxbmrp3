@@ -418,7 +418,7 @@ void SessionHud::rebuildRenderData() {
     AssetManager& assetMgr = AssetManager::getInstance();
 
     // Get specific icons for each row type (only if icons enabled)
-    int iconFormat = m_bShowIcons ? assetMgr.getIconSpriteIndex("stopwatch") : 0;      // Time/format
+    int iconFormat = m_bShowIcons ? assetMgr.getIconSpriteIndex("clock") : 0;      // Time/format
     int iconTrack = m_bShowIcons ? assetMgr.getIconSpriteIndex("location-dot") : 0;    // Track location
 #if GAME_HAS_SERVER_INFO
     int iconServer = m_bShowIcons ? assetMgr.getIconSpriteIndex("server") : 0;         // Server

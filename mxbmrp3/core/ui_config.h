@@ -12,6 +12,12 @@ enum class TemperatureUnit : uint8_t {
     FAHRENHEIT = 1
 };
 
+// Personal best scope (per-bike or per-category)
+enum class PBScope : uint8_t {
+    BIKE = 0,
+    CATEGORY = 1
+};
+
 class UiConfig {
 public:
     static UiConfig& getInstance();
@@ -36,6 +42,10 @@ public:
     int getHoldRepeatFastMs() const { return m_holdRepeatFastMs; }
     void setHoldRepeatFastMs(int ms) { m_holdRepeatFastMs = (ms < 10) ? 10 : (ms > 500) ? 500 : ms; }
 
+    // Personal best scope setting (Bike or Category)
+    PBScope getPBScope() const { return m_pbScope; }
+    void setPBScope(PBScope scope) { m_pbScope = scope; }
+
     // Drop shadow settings (for text rendering)
     bool getDropShadow() const { return m_bDropShadow; }
     void setDropShadow(bool enabled) { m_bDropShadow = enabled; }
@@ -59,6 +69,7 @@ private:
     bool m_bScreenClamping = false;  // Screen clamping disabled by default
     bool m_bAutoSave = true;         // Auto-save enabled by default
     TemperatureUnit m_temperatureUnit = TemperatureUnit::CELSIUS;  // Celsius by default
+    PBScope m_pbScope = PBScope::BIKE;  // Per-bike PB tracking by default
     int m_holdRepeatFastMs = 50;     // Max repeat speed: 50ms (~20/sec)
 
     // Drop shadow settings

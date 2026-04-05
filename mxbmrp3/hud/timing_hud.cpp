@@ -46,7 +46,8 @@ TimingHud::TimingHud()
     , m_cachedSplit3(-1)
     , m_cachedLastCompletedLapNum(-1)
     , m_cachedDisplayRaceNum(-1)
-    , m_cachedSession(-1)
+    , m_cachedSessionGeneration(-1)
+    , m_cachedPBScope(PBScope::BIKE)
     , m_cachedPitState(-1)
     , m_previousAllTimeLap(-1)
     , m_previousAllTimeSector1(-1)
@@ -88,21 +89,25 @@ void TimingHud::update() {
     const PluginData& pluginData = PluginData::getInstance();
     const SessionData& sessionData = pluginData.getSessionData();
 
-    // Detect session changes (new event) and reset state
-    // Check both session type AND if session data was cleared (lastCompletedLapNum reset to -1)
-    int currentSession = sessionData.session;
-    const IdealLapData* idealLapData = pluginData.getIdealLapData();
-    int currentLastCompletedLap = idealLapData ? idealLapData->lastCompletedLapNum : -1;
+    // Detect session changes and reset state
+    // sessionGeneration is incremented on every RaceSession callback (track switch,
+    // bike change, practice→race, etc.), so comparing it reliably catches all transitions.
+    int currentGeneration = sessionData.sessionGeneration;
 
-    bool sessionTypeChanged = (currentSession != m_cachedSession);
-    bool sessionDataCleared = (m_cachedLastCompletedLapNum >= 0 && currentLastCompletedLap < 0);
-
-    if (sessionTypeChanged || sessionDataCleared) {
-        DEBUG_INFO_F("TimingHud: Session reset detected (type changed: %d, data cleared: %d)",
-            sessionTypeChanged, sessionDataCleared);
+    if (currentGeneration != m_cachedSessionGeneration) {
+        DEBUG_INFO_F("TimingHud: New session detected (generation %d -> %d)",
+            m_cachedSessionGeneration, currentGeneration);
         resetLiveTimingState();
-        m_cachedSession = currentSession;
+        m_cachedSessionGeneration = currentGeneration;
         m_cachedPitState = -1;  // Reset pit state cache for new session
+        setDataDirty();
+    }
+
+    // Detect PB scope change (user toggled Bike/Category in settings)
+    PBScope currentPBScope = UiConfig::getInstance().getPBScope();
+    if (currentPBScope != m_cachedPBScope) {
+        cacheAllTimePB();
+        m_cachedPBScope = currentPBScope;
         setDataDirty();
     }
 

@@ -101,24 +101,55 @@ THE SOFTWARE.
 
 ---
 
-## Font Awesome 4
+## cpp-httplib
 
-**Project:** https://fontawesome.com/v4/
-**Author:** Dave Gandy
-**Used for:** Icon graphics (rider markers, UI elements)
+**Project:** https://github.com/yhirose/cpp-httplib
+**Author:** Yuji Hirose
+**Used for:** Embedded HTTP server for web overlay SSE streaming
 
 ```
-Font License (SIL OFL 1.1)
-Applies to all desktop and webfont files in: font-awesome/fonts/
-http://scripts.sil.org/OFL
+MIT License
 
-Code License (MIT)
-Applies to all CSS and LESS files in: font-awesome/css/, font-awesome/less/, font-awesome/scss/
-http://opensource.org/licenses/mit-license.html
+Copyright (c) 2017 yhirose
 
-Documentation License (CC BY 3.0)
-Applies to all other Font Awesome project files
-http://creativecommons.org/licenses/by/3.0/
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+---
+
+## Font Awesome
+
+**Project:** https://fontawesome.com
+**Author:** Fonticons, Inc.
+**Used for:** Icon graphics (in-game rider markers from v4, web overlay SVG icons from v7 Free)
+
+```
+Icons — CC BY 4.0 License
+https://creativecommons.org/licenses/by/4.0/
+
+Fonts — SIL OFL 1.1 License
+https://openfontlicense.org
+
+Code — MIT License
+https://opensource.org/licenses/MIT
+
+Copyright 2024 Fonticons, Inc.
 ```
 
 ---

@@ -52,6 +52,7 @@ public:
 
     static const char* getBikeAbbreviationPtr(const char* bikeName);
     static unsigned long getBikeBrandColor(const char* bikeName);
+    static const char* getBikeBrandName(const char* bikeName);
     static float calculateMonospaceTextWidth(int numChars, float fontSize);
 
     // Match rider names, handling server-forced rating prefixes (e.g., "B1 | Thomas" matches "Thomas")

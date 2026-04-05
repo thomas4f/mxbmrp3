@@ -34,6 +34,9 @@
     <Filter Include="Header Files\vendor\nlohmann">
       <UniqueIdentifier>{2b56498c-4ae7-58c9-c372-efab9bcc498g}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\vendor\httplib">
+      <UniqueIdentifier>{5e89721f-7dh0-8bfc-f6a5-hide2fee721j}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Header Files\vendor\miniz">
       <UniqueIdentifier>{3c67509d-5bf8-69da-d483-fgbc0dcc509h}</UniqueIdentifier>
     </Filter>
@@ -140,6 +143,9 @@
     </ClInclude>
     <ClInclude Include="vendor\nlohmann\json.hpp">
       <Filter>Header Files\vendor\nlohmann</Filter>
+    </ClInclude>
+    <ClInclude Include="vendor\httplib\httplib.h">
+      <Filter>Header Files\vendor\httplib</Filter>
     </ClInclude>
     <ClInclude Include="vendor\miniz\miniz.h">
       <Filter>Header Files\vendor\miniz</Filter>
@@ -301,6 +307,9 @@
       <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="core\discord_manager.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\http_server.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="core\widget_constants.h">
@@ -633,6 +642,9 @@
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="core\discord_manager.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\http_server.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="hud\map_hud.cpp">

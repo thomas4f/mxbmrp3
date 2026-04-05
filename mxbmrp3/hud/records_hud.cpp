@@ -987,17 +987,19 @@ void RecordsHud::rebuildRenderData() {
     // Track how many rows we render so we can fill with placeholders
     int rowsRendered = 0;
 
-    // Get player's all-time PB for this track+bike
+    // Get player's all-time PB for this track+bike (or category, depending on scope)
     const SessionData& session = PluginData::getInstance().getSessionData();
     const StatsPersonalBestData* playerPB = nullptr;
+    std::string pbBikeName;  // Which bike set the PB (may differ from current in Category mode)
     int playerPosition = -1;  // -1 = no PB, 0+ = position in records
 
     if (session.trackId[0] != '\0' && session.bikeName[0] != '\0') {
-        playerPB = StatsManager::getInstance().getPersonalBest(session.trackId, session.bikeName);
+        playerPB = StatsManager::getInstance().getPersonalBest(session.trackId, session.bikeName, &pbBikeName);
         if (playerPB && playerPB->isValid()) {
             playerPosition = findPlayerPositionInRecords(playerPB->lapTime);
         }
     }
+    const char* playerPBBike = pbBikeName.empty() ? session.bikeName : pbBikeName.c_str();
 
     // Lambda to render a single record row
     // isPlayerRow: add highlight background, skip position column
@@ -1139,7 +1141,7 @@ void RecordsHud::rebuildRenderData() {
     if (!hasFetched) {
         // Before fetch or error: show player's PB and/or status message
         if (hasPlayerPB) {
-            renderRecordRow(1, playerName, session.bikeName, playerPB->lapTime,
+            renderRecordRow(1, playerName, playerPBBike, playerPB->lapTime,
                             playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
         }
         // Show status message (error or prompt to compare) - counts as a row to maintain layout
@@ -1164,7 +1166,7 @@ void RecordsHud::rebuildRenderData() {
     } else if (allRecords.empty()) {
         // Fetched but no records found - show player's PB and/or message
         if (hasPlayerPB) {
-            renderRecordRow(1, playerName, session.bikeName, playerPB->lapTime,
+            renderRecordRow(1, playerName, playerPBBike, playerPB->lapTime,
                             playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
         }
         // Show "no records" message - counts as a row to maintain layout
@@ -1185,7 +1187,7 @@ void RecordsHud::rebuildRenderData() {
             for (int i = startIdx; i <= endIdx && i < totalRecords; i++) {
                 // Insert player row before this record if player position matches
                 if (insertPlayer && hasPlayerPB && playerPosition == i) {
-                    renderRecordRow(0, playerName, session.bikeName, playerPB->lapTime,
+                    renderRecordRow(0, playerName, playerPBBike, playerPB->lapTime,
                                     playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
                 }
                 // Render the server record
@@ -1195,7 +1197,7 @@ void RecordsHud::rebuildRenderData() {
             }
             // Insert player at end if they're after the last record in range
             if (insertPlayer && hasPlayerPB && playerPosition > endIdx && playerPosition <= endIdx + 1) {
-                renderRecordRow(0, playerName, session.bikeName, playerPB->lapTime,
+                renderRecordRow(0, playerName, playerPBBike, playerPB->lapTime,
                                 playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
             }
         };
@@ -1241,7 +1243,7 @@ void RecordsHud::rebuildRenderData() {
             for (int i = contextStart; i <= contextEnd && i < totalRecords; i++) {
                 // Insert player row at correct position
                 if (hasPlayerPB && playerPosition == i) {
-                    renderRecordRow(0, playerName, session.bikeName, playerPB->lapTime,
+                    renderRecordRow(0, playerName, playerPBBike, playerPB->lapTime,
                                     playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
                 }
                 const auto& record = allRecords[i];
@@ -1250,7 +1252,7 @@ void RecordsHud::rebuildRenderData() {
             }
             // Insert player at end if they're after the last context record
             if (hasPlayerPB && playerPosition > contextEnd) {
-                renderRecordRow(0, playerName, session.bikeName, playerPB->lapTime,
+                renderRecordRow(0, playerName, playerPBBike, playerPB->lapTime,
                                 playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
             }
         }

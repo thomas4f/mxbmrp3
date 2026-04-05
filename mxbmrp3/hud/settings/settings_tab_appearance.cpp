@@ -9,6 +9,8 @@
 #include "../../core/font_config.h"
 #include "../../core/color_config.h"
 #include "../../core/hud_manager.h"
+#include "../../core/plugin_data.h"
+#include "../../core/ui_config.h"
 
 using namespace PluginConstants;
 
@@ -36,6 +38,24 @@ bool SettingsHud::handleClickTabAppearance(const ClickRegion& region) {
 
                 bool forward = (region.type == ClickRegion::FONT_CATEGORY_NEXT);
                 FontConfig::getInstance().cycleFont(*category, forward);
+                HudManager::getInstance().markAllHudsDirty();
+                rebuildRenderData();
+            }
+            return true;
+
+        case ClickRegion::SHORT_TIME_FORMAT_TOGGLE:
+            {
+                PluginData& pd = PluginData::getInstance();
+                pd.setShortTimeFormat(!pd.isShortTimeFormat());
+                HudManager::getInstance().markAllHudsDirty();
+                rebuildRenderData();
+            }
+            return true;
+
+        case ClickRegion::DROP_SHADOW_TOGGLE:
+            {
+                UiConfig& uiConfig = UiConfig::getInstance();
+                uiConfig.setDropShadow(!uiConfig.getDropShadow());
                 HudManager::getInstance().markAllHudsDirty();
                 rebuildRenderData();
             }
@@ -181,6 +201,28 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
     addColorRow(ColorSlot::NEUTRAL, "appearance.color_neutral");
     addColorRow(ColorSlot::WARNING, "appearance.color_warning");
     addColorRow(ColorSlot::NEGATIVE, "appearance.color_negative");
+
+    // === DISPLAY SECTION ===
+    ctx.addSpacing(0.5f);
+    ctx.addSectionHeader("Display");
+
+    // Compact time format toggle
+    ctx.addToggleControl("Compact Times", PluginData::getInstance().isShortTimeFormat(),
+        SettingsHud::ClickRegion::SHORT_TIME_FORMAT_TOGGLE, nullptr, nullptr, 0, true,
+        "general.compact_times");
+
+    // Drop shadow toggle
+    ctx.addToggleControl("Drop Shadow", UiConfig::getInstance().getDropShadow(),
+        SettingsHud::ClickRegion::DROP_SHADOW_TOGGLE, nullptr, nullptr, 0, true,
+        "general.drop_shadow");
+
+#if GAME_HAS_HTTP_SERVER
+    ctx.addSpacing(1.0f);
+    ctx.parent->addString("These settings also apply to the web overlay.",
+        ctx.labelX, ctx.currentY, Justify::LEFT,
+        Fonts::getNormal(), colorConfig.getMuted(), ctx.fontSize);
+    ctx.currentY += ctx.lineHeightNormal;
+#endif
 
     // No active HUD for appearance settings
     return nullptr;

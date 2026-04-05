@@ -10,6 +10,9 @@
 #if GAME_HAS_DISCORD
 #include "discord_manager.h"  // Direct include for Discord presence updates
 #endif
+#if GAME_HAS_HTTP_SERVER
+#include "http_server.h"  // Direct include for web overlay updates
+#endif
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
 #include <algorithm>
@@ -144,6 +147,11 @@ void PluginData::setSession(int session) {
     }
 }
 
+void PluginData::incrementSessionGeneration() {
+    ++m_sessionData.sessionGeneration;
+    notifyHudManager(DataChangeType::SessionData);
+}
+
 void PluginData::setSessionState(int sessionState) {
     if (setValue(m_sessionData.sessionState, sessionState)) {
         // Record when session transitions to IN_PROGRESS (for hazard grace period)
@@ -194,15 +202,10 @@ void PluginData::addRaceEntry(int raceNum, const char* name, const char* bikeNam
     // Validate input strings (defensive check for public API)
     if (!name || !bikeName) return;
 
-    // Compute bike abbreviation and color once when entry is added
-    const char* bikeAbbr;
-    unsigned long bikeBrandColor;
-    {
-        bikeAbbr = PluginUtils::getBikeAbbreviationPtr(bikeName);
-    }
-    {
-        bikeBrandColor = PluginUtils::getBikeBrandColor(bikeName);
-    }
+    // Compute bike abbreviation, brand name, and color once when entry is added
+    const char* bikeAbbr = PluginUtils::getBikeAbbreviationPtr(bikeName);
+    const char* brandName = PluginUtils::getBikeBrandName(bikeName);
+    unsigned long bikeBrandColor = PluginUtils::getBikeBrandColor(bikeName);
 
     auto it = m_raceEntries.find(raceNum);
 
@@ -223,6 +226,7 @@ void PluginData::addRaceEntry(int raceNum, const char* name, const char* bikeNam
 
             // Update cached abbreviation and color
             it->second.bikeAbbr = bikeAbbr;
+            it->second.brandName = brandName;
             it->second.bikeBrandColor = bikeBrandColor;
 
             // PERFORMANCE: Skip race number formatting - race number never changes for existing entries
@@ -248,7 +252,7 @@ void PluginData::addRaceEntry(int raceNum, const char* name, const char* bikeNam
     }
     else {
         // New entry - pass pre-computed abbreviation and color
-        m_raceEntries.emplace(raceNum, RaceEntryData(raceNum, name, bikeName, bikeAbbr, bikeBrandColor));
+        m_raceEntries.emplace(raceNum, RaceEntryData(raceNum, name, bikeName, bikeAbbr, brandName, bikeBrandColor));
 
         // Player race number is cached directly in RaceAddEntry handler
         // No need to invalidate here - RaceAddEntry will call setPlayerRaceNum() if this is the player
@@ -1004,6 +1008,26 @@ void PluginData::batchUpdateStandings(Unified::RaceClassificationEntry* entries,
 
     }
 
+    // Mark position cache dirty now that classification order is rebuilt,
+    // so any position lookups below use the fresh order
+    m_bPositionCacheDirty = true;
+    m_bFilteredOrderDirty = true;
+
+    // Detect leader change (race sessions only)
+    // Skip when leader has finished (lead changes after checkered flag aren't meaningful)
+    if (!m_classificationOrder.empty() && isRaceSession() && m_sessionData.leaderFinishTime < 0) {
+        int newLeader = m_classificationOrder[0];
+        if (m_lastLeaderRaceNum >= 0 && newLeader != m_lastLeaderRaceNum) {
+            const RaceEntryData* entry = getRaceEntry(newLeader);
+            if (entry) {
+                char eventMsg[64];
+                snprintf(eventMsg, sizeof(eventMsg), "#%d takes the lead", newLeader);
+                addEventLogEntry(EventLogType::LeaderChange, eventMsg);
+            }
+        }
+        m_lastLeaderRaceNum = newLeader;
+    }
+
     // Capture finish time for each rider when they finish
     // Calculate elapsed time based on race type (same formula for all riders)
     auto calculateElapsedTime = [&]() -> int {
@@ -1024,6 +1048,20 @@ void PluginData::batchUpdateStandings(Unified::RaceClassificationEntry* entries,
             standing.finishTime = calculateElapsedTime();
             DEBUG_INFO_F("[RIDER FINISHED] Rider #%d finished race in %d ms", raceNum, standing.finishTime);
             anyChanged = true;
+
+            // Event log: rider finished with position from fresh classification
+            {
+                const RaceEntryData* entry = getRaceEntry(raceNum);
+                const char* riderLabel = entry ? entry->formattedRaceNum : "???";
+                int position = getDisplayPositionForRaceNum(raceNum);
+                char eventMsg[64];
+                if (position > 0) {
+                    snprintf(eventMsg, sizeof(eventMsg), "%s finished P%d", riderLabel, position);
+                } else {
+                    snprintf(eventMsg, sizeof(eventMsg), "%s finished", riderLabel);
+                }
+                addEventLogEntry(EventLogType::RiderFinished, eventMsg);
+            }
 
             // Also update leader finish time if this is the leader
             if (!m_classificationOrder.empty() && raceNum == m_classificationOrder[0] && m_sessionData.leaderFinishTime < 0) {
@@ -1048,8 +1086,7 @@ void PluginData::batchUpdateStandings(Unified::RaceClassificationEntry* entries,
 
     // Notify once if anything changed
     if (anyChanged) {
-        m_bPositionCacheDirty = true;
-        m_bFilteredOrderDirty = true;
+        // Position cache already marked dirty after classification rebuild above
         notifyHudManager(DataChangeType::Standings);
     }
 }
@@ -1815,6 +1852,7 @@ void PluginData::clear() {
     m_raceEntries.clear();
     m_standings.clear();
     m_classificationOrder.clear();
+    m_lastLeaderRaceNum = -1;
     m_positionCache.clear();
     m_bPositionCacheDirty = true;
     m_filteredClassificationOrder.clear();
@@ -1872,6 +1910,9 @@ void PluginData::clear() {
     // Clear event log
     m_eventLog.clear();
 
+    // Notify listeners so HTTP server pushes empty standings/events
+    notifyHudManager(DataChangeType::SessionData);
+
     DEBUG_INFO("Plugin data cleared");
 }
 
@@ -1903,6 +1944,9 @@ void PluginData::notifyHudManager(DataChangeType changeType) {
     HudManager::getInstance().onDataChanged(changeType);
 #if GAME_HAS_DISCORD
     DiscordManager::getInstance().onDataChanged(changeType);
+#endif
+#if GAME_HAS_HTTP_SERVER
+    HttpServer::getInstance().onDataChanged(changeType);
 #endif
 }
 

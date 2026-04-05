@@ -33,7 +33,24 @@ LeanWidget::LeanWidget()
 bool LeanWidget::handlesDataType(DataChangeType dataType) const {
     // Update on telemetry changes (bike data)
     return dataType == DataChangeType::InputTelemetry ||
-           dataType == DataChangeType::SpectateTarget;
+           dataType == DataChangeType::SpectateTarget ||
+           dataType == DataChangeType::SessionData;  // Reset max values on new session
+}
+
+void LeanWidget::resetTracking() {
+    m_maxLeanLeft = 0.0f;
+    m_maxLeanRight = 0.0f;
+    m_markerValueLeft = 0.0f;
+    m_markerValueRight = 0.0f;
+    m_prevLeanLeft = 0.0f;
+    m_prevLeanRight = 0.0f;
+    m_maxFramesRemaining[0] = 0;
+    m_maxFramesRemaining[1] = 0;
+    m_steerMarkerLeft = 0.0f;
+    m_steerMarkerRight = 0.0f;
+    m_steerFramesRemaining[0] = 0;
+    m_steerFramesRemaining[1] = 0;
+    m_smoothedLean = 0.0f;
 }
 
 void LeanWidget::update() {
@@ -43,6 +60,26 @@ void LeanWidget::update() {
         clearLayoutDirty();
         return;
     }
+
+    const PluginData& pluginData = PluginData::getInstance();
+
+    // Detect session change - reset max values on new track/bike/session
+    const SessionData& sessionData = pluginData.getSessionData();
+    int currentGeneration = sessionData.sessionGeneration;
+    if (currentGeneration != m_cachedSessionGeneration) {
+        resetTracking();
+        m_wasCrashed = false;
+        m_cachedSessionGeneration = currentGeneration;
+        setDataDirty();
+    }
+
+    // Detect spectate target change - reset max values when switching viewed rider
+    int currentDisplayRaceNum = pluginData.getDisplayRaceNum();
+    if (m_lastDisplayedRaceNum != -1 && currentDisplayRaceNum != m_lastDisplayedRaceNum) {
+        resetTracking();
+        setDataDirty();
+    }
+    m_lastDisplayedRaceNum = currentDisplayRaceNum;
 
     // Always rebuild - lean angle updates at high frequency (telemetry rate)
     rebuildRenderData();
@@ -172,44 +209,11 @@ void LeanWidget::rebuildRenderData() {
         currentY += titleHeight;
     }
 
-    // Check for spectator switch - reset max values when switching viewed rider
-    int currentDisplayRaceNum = pluginData.getDisplayRaceNum();
-    if (m_lastDisplayedRaceNum != -1 && currentDisplayRaceNum != m_lastDisplayedRaceNum) {
-        // Switched to viewing a different rider - reset all max tracking
-        m_maxLeanLeft = 0.0f;
-        m_maxLeanRight = 0.0f;
-        m_markerValueLeft = 0.0f;
-        m_markerValueRight = 0.0f;
-        m_prevLeanLeft = 0.0f;
-        m_prevLeanRight = 0.0f;
-        m_maxFramesRemaining[0] = 0;
-        m_maxFramesRemaining[1] = 0;
-        m_steerMarkerLeft = 0.0f;
-        m_steerMarkerRight = 0.0f;
-        m_steerFramesRemaining[0] = 0;
-        m_steerFramesRemaining[1] = 0;
-        m_smoothedLean = 0.0f;
-    }
-    m_lastDisplayedRaceNum = currentDisplayRaceNum;
-
     // Check for crash recovery - reset max lean when recovering from crash
     const TrackPositionData* playerPos = pluginData.getPlayerTrackPosition();
     bool isCrashed = playerPos && playerPos->crashed;
     if (m_wasCrashed && !isCrashed) {
-        // Just recovered from crash - reset max lean values and markers
-        m_maxLeanLeft = 0.0f;
-        m_maxLeanRight = 0.0f;
-        m_markerValueLeft = 0.0f;
-        m_markerValueRight = 0.0f;
-        m_prevLeanLeft = 0.0f;
-        m_prevLeanRight = 0.0f;
-        m_maxFramesRemaining[0] = 0;
-        m_maxFramesRemaining[1] = 0;
-        // Reset steer markers too
-        m_steerMarkerLeft = 0.0f;
-        m_steerMarkerRight = 0.0f;
-        m_steerFramesRemaining[0] = 0;
-        m_steerFramesRemaining[1] = 0;
+        resetTracking();
     }
     // Capture steer angle before updating crash state (for freezing)
     // Read steer directly from InputTelemetryData (not history buffer, which is only

@@ -39,6 +39,8 @@ mxbmrp3/
 │   │   ├── color_config.*      # User-configurable color palette
 │   │   ├── fmx_manager.*       # FMX trick detection and scoring
 │   │   ├── fmx_types.h         # FMX data structures and enums
+│   │   ├── http_server.*       # Embedded HTTP server with SSE streaming
+│   │   ├── event_log_types.h   # Event log entry types and filter flags
 │   │   ├── plugin_constants.h  # All named constants
 │   │   └── plugin_utils.*      # Shared helper functions
 │   ├── handlers/               # Event processors (one per API callback type)
@@ -61,6 +63,7 @@ mxbmrp3/
 │   ├── fonts/                  # .fnt files (bitmap fonts)
 │   ├── textures/               # .tga files (HUD backgrounds with variants)
 │   ├── icons/                  # .tga files (rider icons for map/radar)
+│   ├── web/                    # Web overlay (HTML/CSS/JS served by HttpServer)
 │   └── tooltips.json           # UI tooltip definitions
 ├── docs/                       # Documentation
 ├── replay_tool/                # Separate tool for replay analysis
@@ -123,24 +126,25 @@ Here's how data flows through the plugin:
      └─────────────────┘
               │
               │ notifies
-              ▼
-     ┌─────────────────┐
-     │   HudManager    │
-     │                 │
-     │ Owns all HUDs,  │
-     │ marks dirty,    │
-     │ collects output │
-     └─────────────────┘
-              │
-              ▼
-     ┌─────────────────┐
-     │      HUDs       │
-     │                 │
-     │ Build quads &   │
-     │ strings for     │
-     │ rendering       │
-     └─────────────────┘
-              │
+              ├──────────────────────────┐
+              ▼                          ▼
+     ┌─────────────────┐       ┌─────────────────┐
+     │   HudManager    │       │   HttpServer    │
+     │                 │       │                 │
+     │ Owns all HUDs,  │       │ Builds JSON on  │
+     │ marks dirty,    │       │ game thread,    │
+     │ collects output │       │ streams via SSE │
+     └─────────────────┘       └─────────────────┘
+              │                          │
+              ▼                          ▼
+     ┌─────────────────┐       ┌─────────────────┐
+     │      HUDs       │       │  Web Overlay    │
+     │                 │       │  (Browser/OBS)  │
+     │ Build quads &   │       │                 │
+     │ strings for     │       │ Standings tower │
+     │ rendering       │       │ Event log       │
+     └─────────────────┘       │ Focus card      │
+              │                └─────────────────┘
               │ returns render data
               ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -344,6 +348,53 @@ Manages FMX (Freestyle Motocross) trick detection and scoring:
 **Display settings** are split between global and per-profile:
 - Global (on FmxManager): enabled rows, chain display rows, debug logging
 - Per-profile (on FmxHud): position, visibility, scale, opacity
+
+### 10. HttpServer (`core/http_server.*`)
+
+Embedded HTTP server that streams race data to browser-based overlays (OBS browser source):
+
+**Threading model:**
+- JSON snapshot built on the **game thread** in `buildJsonSnapshot()` (PluginData is not thread-safe)
+- Cached string protected by mutex, read by SSE server threads
+- `onDataChanged()` called by PluginData's notification system (same path as HudManager)
+- Per-client sequence tracking prevents multi-client wake races
+
+**SSE streaming (`/api/events`):**
+- Pushes JSON snapshots on data changes (standings, events, session, spectate target)
+- Throttled per-connection (default 250ms) to avoid flooding
+- Comment keepalives detect dead connections
+- Max 3 concurrent SSE connections (prevents thread pool starvation)
+
+**JSON data contract** (raw data, no filtering — web UI filters client-side):
+- `session` - Time, type, state, palette colors, font names, track info
+- `standings[]` - Per-rider: pos, num, name, gap, state, all chips
+- `events[]` - All event log entries with clock/session timestamps and type enum
+
+**Static file serving:**
+- Mounts `plugins/mxbmrp3_data/web/` at `/` — users can freely customize the HTML/CSS/JS
+- Web overlay syncs colors and fonts from in-game settings via CSS custom properties
+
+**Feature gating:**
+- Compile-time: `GAME_HAS_HTTP_SERVER` flag in `game_config.h`
+- Runtime: user toggle in settings (starts/stops server on demand)
+
+### 11. Event Log System (`core/event_log_types.h`, `hud/event_log_hud.*`)
+
+Timestamped feed of race events, used by both the in-game HUD and web overlay:
+
+**Event types** (defined in `event_log_types.h`):
+- Session events: started, state changes, overtime, final lap
+- Rider events: finished, retired, DNS, DSQ, leader change
+- Action events: penalty, penalty clear, pit entry, pit exit, fastest lap
+
+**Filter flags:**
+- Each event type has a bitmask flag (`EVENT_SESSION_STARTED = 1 << 0`, etc.)
+- `EventLogHud::getEnabledEvents()` returns the user's filter selection
+- Used by in-game rendering to filter displayed events (web overlay filters client-side via `CONFIG.events` in `app.js`)
+
+**Storage:**
+- Ring buffer in PluginData (`MAX_EVENT_LOG_CAPACITY = 100`)
+- Each entry: message, detail, type enum, session time, system clock time
 
 ## The HUD System
 
@@ -1038,6 +1089,10 @@ The adapter layer isolates changes - core HUDs don't need modification for most 
 | Rumble profiles manager | `core/rumble_profile_manager.cpp` |
 | FMX trick detection | `core/fmx_manager.cpp` |
 | FMX types | `core/fmx_types.h` |
+| HTTP server | `core/http_server.cpp` |
+| Event log types/flags | `core/event_log_types.h` |
+| Event log HUD | `hud/event_log_hud.cpp` |
+| Web overlay (HTML/CSS/JS) | `mxbmrp3_data/web/` |
 | Settings UI | `hud/settings/settings_hud.cpp` |
 | Settings layout helpers | `hud/settings/settings_layout.cpp` |
 | Settings tabs | `hud/settings/settings_tab_*.cpp` |
@@ -1066,5 +1121,7 @@ The adapter layer isolates changes - core HUDs don't need modification for most 
 | Add new font | Place `.fnt` file in `mxbmrp3_data/fonts/` (auto-discovered) |
 | Add new texture | Place `.tga` file in `mxbmrp3_data/textures/` (auto-discovered) |
 | Add new icon | Place `.tga` file in `mxbmrp3_data/icons/` (auto-discovered, alphabetical order) |
+| Add new event log type | Add enum to `event_log_types.h`, add flag, update `eventLogTypeToFlag()`, add to handlers |
+| Add field to web overlay | Add to `buildJsonSnapshot()` in `http_server.cpp`, consume in `app.js` |
 | Add game-specific feature | Add to `unified_types.h`, update adapters, add feature flag to `game_config.h` |
 | Support new game | Create adapter in `game/adapters/`, add API file in `vendor/piboso/`, update `game_config.h` |

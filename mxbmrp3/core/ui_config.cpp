@@ -18,6 +18,7 @@ void UiConfig::resetToDefaults() {
     m_bScreenClamping = false;
     m_bAutoSave = true;
     m_temperatureUnit = TemperatureUnit::CELSIUS;
+    m_pbScope = PBScope::BIKE;
     m_holdRepeatFastMs = 50;
     m_bDropShadow = true;
     m_fDropShadowOffsetX = 0.03f;

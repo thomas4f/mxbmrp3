@@ -198,7 +198,7 @@ private:
 
     // Cached state for change detection
     int m_cachedDisplayRaceNum;       // Track spectate target changes
-    int m_cachedSession;              // Track session changes
+    int m_cachedSessionGeneration;    // Track session changes (monotonic counter)
     int m_cachedPitState;             // Track pit entry/exit
     int m_cachedLastCompletedLapNum;  // Track lap completions
     int m_cachedSplit1;               // Track split 1 changes

@@ -509,6 +509,10 @@ Section "Install ${PLUGIN_NAME}" Section_InstallPlugin
     SetOutPath "$MXBikesInstallPath\mxbmrp3_data\icons"
     File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\icons\*.tga"
 
+    ; Web overlay files
+    SetOutPath "$MXBikesInstallPath\mxbmrp3_data\web"
+    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\*.*"
+
     ; Data files
     SetOutPath "$MXBikesInstallPath\mxbmrp3_data"
     File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\tooltips.json"
@@ -535,6 +539,10 @@ Section "Install ${PLUGIN_NAME}" Section_InstallPlugin
     ; Icons
     SetOutPath "$GPBikesInstallPath\mxbmrp3_data\icons"
     File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\icons\*.tga"
+
+    ; Web overlay files
+    SetOutPath "$GPBikesInstallPath\mxbmrp3_data\web"
+    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\*.*"
 
     ; Data files
     SetOutPath "$GPBikesInstallPath\mxbmrp3_data"

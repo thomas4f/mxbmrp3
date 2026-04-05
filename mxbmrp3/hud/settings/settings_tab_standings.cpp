@@ -255,12 +255,6 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
     ctx.addToggleControl("Bike model", (hud->m_enabledColumns & StandingsHud::COL_BIKE) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_BIKE, true,
         "standings.col_bike");
-    ctx.addToggleControl("Rider status", (hud->m_enabledColumns & StandingsHud::COL_STATUS) != 0,
-        SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_STATUS, true,
-        "standings.col_status");
-    ctx.addToggleControl("Penalty indicator", (hud->m_enabledColumns & StandingsHud::COL_PENALTY) != 0,
-        SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_PENALTY, true,
-        "standings.col_penalty");
     ctx.addToggleControl("Best lap time", (hud->m_enabledColumns & StandingsHud::COL_BEST_LAP) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_BEST_LAP, true,
         "standings.col_bestlap");
@@ -280,6 +274,10 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
             SettingsHud::ClickRegion::GAP_SCOPE_TOGGLE,
             hud, true, isOff, "standings.gap_mode");
     }
+
+    ctx.addToggleControl("Penalty indicator", (hud->m_enabledColumns & StandingsHud::COL_PENALTY) != 0,
+        SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_PENALTY, true,
+        "standings.col_penalty");
 
     return hud;
 }

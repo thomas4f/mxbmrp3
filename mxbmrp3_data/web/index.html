@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MXBMRP3 Overlay</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="overlay">
+        <!-- Header -->
+        <div id="header">
+            <div id="header-left">
+                <span id="session-time" class="time">--:--</span>
+            </div>
+            <div id="header-right">
+                <span id="session-type"></span>
+                <span id="session-info"></span>
+            </div>
+        </div>
+
+        <!-- Standings -->
+        <div id="standings-container">
+            <div id="standings-header">
+                <span class="col-pos">P</span>
+                <span class="col-num">#</span>
+                <span class="col-name">NAME</span>
+                <span class="col-gap" id="header-gap">GAP</span>
+            </div>
+            <div id="standings-body">
+                <!-- Populated by JavaScript -->
+            </div>
+        </div>
+
+        <!-- Event Log -->
+        <div id="event-log">
+            <!-- Populated by JavaScript -->
+        </div>
+    </div>
+
+    <!-- Rider Focus Card (shown when spectating) -->
+    <div id="focus-card" class="hidden">
+        <div id="focus-ahead" class="focus-row focus-neighbor">
+            <span class="focus-pos"></span>
+            <span class="focus-num-badge"><span class="focus-num"></span><span class="focus-strip"></span></span>
+            <span class="focus-name"></span>
+            <span class="focus-interval"></span>
+        </div>
+        <div id="focus-main" class="focus-row focus-highlight">
+            <span class="focus-pos"></span>
+            <span class="focus-num-badge"><span class="focus-num"></span><span class="focus-strip"></span></span>
+            <div class="focus-rider-info">
+                <span class="focus-name"></span>
+                <span class="focus-bike"></span>
+            </div>
+            <div class="focus-lap-times">
+                <span class="focus-last-lap"></span>
+                <span class="focus-best-lap"></span>
+            </div>
+        </div>
+        <div id="focus-behind" class="focus-row focus-neighbor">
+            <span class="focus-pos"></span>
+            <span class="focus-num-badge"><span class="focus-num"></span><span class="focus-strip"></span></span>
+            <span class="focus-name"></span>
+            <span class="focus-interval"></span>
+        </div>
+    </div>
+
+    <!-- Settings -->
+    <button id="settings-gear" class="settings-gear" aria-label="Settings"></button>
+    <div id="settings-panel" class="settings-panel">
+        <div class="settings-header">
+            <span class="settings-title">Settings</span>
+            <button id="settings-close" class="settings-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="settings-body">
+            <!-- Populated by JS from CONFIG keys -->
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

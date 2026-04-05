@@ -22,6 +22,10 @@ HudManager (singleton - owns all HUD instances)
 Individual HUDs (IdealLap, Standings, Map, etc.)
     ↓ (build render primitives)
 Game Engine (renders quads/strings)
+
+PluginData ──(notifies on data changes)──→ HttpServer
+    ↓ (builds JSON snapshot on game thread)
+SSE stream → Web Overlay (browser/OBS)
 ```
 
 **Key Singletons:**
@@ -36,6 +40,7 @@ Game Engine (renders quads/strings)
 - `AssetManager` - Dynamic discovery of fonts, textures, icons from subdirectories
 - `FontConfig` - User-configurable font categories (Title, Normal, Strong, Marker, Small)
 - `ColorConfig` - User-configurable color palette
+- `HttpServer` - Embedded HTTP server with SSE streaming for web overlays (OBS)
 
 ## Multi-Game Support
 
@@ -161,6 +166,15 @@ When implementing event handlers or debugging timing/lap data:
 - **Example:** When displaying lap numbers, the API uses 0-based indexing internally (`m_iLapNum=0` for first lap) but UI typically shows 1-based (display as "L1")
 - **Tip:** Many timing/position issues come from misunderstanding the API contract - always verify assumptions against the header
 
+### Working with the Web Overlay
+The embedded HTTP server (`core/http_server.cpp`) streams race data to browser-based overlays via Server-Sent Events (SSE):
+- **JSON snapshot** built on the game thread in `buildJsonSnapshot()` (PluginData access is not thread-safe)
+- **Cached string** protected by mutex, read by SSE threads
+- **Data contract**: `session` (time, type, palette, fonts), `standings[]` (per-rider with all chips), `events[]` (all events, unfiltered)
+- **Plugin sends raw data** — event/chip filtering, timestamps, and display settings are controlled client-side via the `CONFIG` block in `app.js`
+- **Web files** served from `plugins/mxbmrp3_data/web/` — users can customize CSS/HTML/JS freely (user overrides synced from Documents folder)
+- **To add a new field**: add to `buildJsonSnapshot()` in the appropriate section, then consume in `app.js`
+
 ### Adding Support for a New Game Feature
 1. Add field to appropriate `Unified::` struct in `game/unified_types.h`
 2. Add conversion in each adapter (`game/adapters/*_adapter.h`)
@@ -184,6 +198,8 @@ When implementing event handlers or debugging timing/lap data:
 - `mxbmrp3/core/stats_manager.h/.cpp` - Unified stats, personal bests, odometers
 - `mxbmrp3/core/fmx_manager.h/.cpp` - FMX trick detection and scoring
 - `mxbmrp3/core/fmx_types.h` - FMX data structures (TrickType, TrickInstance, RotationTracker, etc.)
+- `mxbmrp3/core/http_server.h/.cpp` - Embedded HTTP server with SSE for web overlays
+- `mxbmrp3/core/event_log_types.h` - Event log entry types and filter flags
 
 **Multi-Game Layer:**
 - `mxbmrp3/game/unified_types.h` - Game-agnostic data structures
@@ -200,6 +216,12 @@ When implementing event handlers or debugging timing/lap data:
 - `mxbmrp3/hud/ideal_lap_hud.cpp` - Simple HUD (good starting point)
 - `mxbmrp3/hud/standings_hud.cpp` - Complex HUD (dynamic table)
 - `mxbmrp3/hud/map_hud.cpp` - Advanced (2D rendering, rotation)
+- `mxbmrp3/hud/event_log_hud.h/.cpp` - Event log with configurable event type filters
+
+**Web Overlay:**
+- `mxbmrp3_data/web/index.html` - Overlay HTML structure
+- `mxbmrp3_data/web/style.css` - Overlay theme (CSS variables for full customization)
+- `mxbmrp3_data/web/app.js` - SSE client, rendering, focus card logic
 
 **Settings:**
 - `mxbmrp3/hud/settings_hud.cpp` - Main settings UI class

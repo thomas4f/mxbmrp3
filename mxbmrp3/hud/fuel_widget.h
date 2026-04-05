@@ -56,6 +56,9 @@ private:
     void rebuildRenderData() override;
     void updateFuelTracking();
 
+    // Session change detection
+    int m_cachedSessionGeneration;    // Track session changes (monotonic counter)
+
     // Fuel tracking state
     float m_fuelAtRunStart;           // Fuel level when run started (for total used calculation)
     float m_fuelAtLapStart;           // Fuel level when current lap started

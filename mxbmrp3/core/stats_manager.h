@@ -85,7 +85,8 @@ public:
     // ========================================================================
     // Context (set once per event, avoids lookups at telemetry rate)
     // ========================================================================
-    void setCurrentContext(const std::string& trackId, const std::string& bikeName);
+    void setCurrentContext(const std::string& trackId, const std::string& bikeName,
+                           const std::string& category = "");
     void clearCurrentContext();
 
     // ========================================================================
@@ -94,11 +95,12 @@ public:
     const TrackBikeStats* getTrackBikeStats() const;
     int64_t getCurrentTotalTimeOnTrackMs() const;  // Persisted + live session time
     double getCurrentTotalDistanceM() const;       // Persisted + live session distance
-    const StatsPersonalBestData* getPersonalBest() const;
+    const StatsPersonalBestData* getPersonalBest(std::string* outBikeName = nullptr) const;
     bool updatePersonalBest(const StatsPersonalBestData& entry);
 
     // Query — by explicit track+bike
-    const StatsPersonalBestData* getPersonalBest(const std::string& trackId, const std::string& bikeName) const;
+    const StatsPersonalBestData* getPersonalBest(const std::string& trackId, const std::string& bikeName,
+                                                  std::string* outBikeName = nullptr) const;
     bool updatePersonalBest(const std::string& trackId, const std::string& bikeName,
                             const StatsPersonalBestData& entry);
 
@@ -173,6 +175,11 @@ private:
     const std::string& getFilePath() const;
     void migrateOldFiles();
 
+    // Category-scoped PB lookup (scans all bikes in the same category on a track)
+    const StatsPersonalBestData* getPersonalBestForCategory(const std::string& trackId,
+                                                             const std::string& category,
+                                                             std::string* outBikeName = nullptr) const;
+
     // Cached file path (resolved once in load(), avoids repeated CreateDirectoryA calls)
     mutable std::string m_cachedFilePath;
     mutable bool m_directoryEnsured = false;
@@ -187,6 +194,13 @@ private:
     std::string m_currentTrackId;
     std::string m_currentBikeName;
     std::string m_currentKey;
+    std::string m_currentCategory;
+
+    // Bike-to-category mapping (persisted for category-scoped PB lookups)
+    std::unordered_map<std::string, std::string> m_bikeCategories;
+
+    // Cached category PB (needed because getPersonalBest returns a pointer to synthesized data)
+    mutable StatsPersonalBestData m_cachedCategoryPB;
 
     // Session-only transients (not persisted)
     int m_sessionLaps = 0;              // Valid laps only (matches TrackBikeStats::validLaps semantics)

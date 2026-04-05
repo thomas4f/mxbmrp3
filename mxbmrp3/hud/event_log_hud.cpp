@@ -115,6 +115,7 @@ int EventLogHud::getIconForEvent(EventLogType type) const {
     case EventLogType::SessionTimeExpired:return assets.getIconSpriteIndex("stopwatch");
     case EventLogType::FinalLap:          return assets.getIconSpriteIndex("flag");
     case EventLogType::RiderFinished:     return assets.getIconSpriteIndex("flag-checkered");
+    case EventLogType::LeaderChange:      return assets.getIconSpriteIndex("crown");
     case EventLogType::PitEntry:          return assets.getIconSpriteIndex("wrench");
     case EventLogType::PitExit:           return assets.getIconSpriteIndex("wrench");
     default: return 0;
@@ -126,11 +127,12 @@ unsigned long EventLogHud::getIconColorForEvent(EventLogType type) const {
     switch (type) {
     case EventLogType::SessionStarted:    return getColor(ColorSlot::POSITIVE);
     case EventLogType::SessionPreStart:   return ColorPalette::BROWN;
-    case EventLogType::FastestLap:        return PodiumColors::GOLD;
+    case EventLogType::FastestLap:        return ColorPalette::PINK;
     case EventLogType::Penalty:
     case EventLogType::PenaltyChange:     return getColor(ColorSlot::NEGATIVE);
     case EventLogType::FinalLap:          return ColorPalette::WHITE;
     case EventLogType::RiderFinished:     return ColorPalette::WHITE;
+    case EventLogType::LeaderChange:      return PodiumColors::GOLD;
     case EventLogType::SessionComplete:   return ColorPalette::WHITE;
     case EventLogType::RiderRetired:
     case EventLogType::RiderDNS:          return getColor(ColorSlot::MUTED);

@@ -79,6 +79,10 @@ void RaceSessionHandler::handleRaceSession(Unified::RaceSessionData* psRaceSessi
     PluginData::getInstance().setAirTemperature(psRaceSession->airTemperature);
     PluginData::getInstance().setTrackTemperature(psRaceSession->trackTemperature);
 
+    // Increment session generation so HUDs can reliably detect new sessions
+    // even when session type doesn't change (e.g. Practice→Practice on different track/bike)
+    PluginData::getInstance().incrementSessionGeneration();
+
     // Event log: log initial session state
     // Practice/qualifying arrive directly with state=IN_PROGRESS (16), skipping
     // handleRaceSessionState entirely. Races arrive with PRE_START (256) and later

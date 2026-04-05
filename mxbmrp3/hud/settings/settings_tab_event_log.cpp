@@ -228,6 +228,13 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
         &hud->m_enabledEvents, EVENT_RIDER_FINISHED, true,
         "event_log.finished");
 
+    // Leader change (race only)
+    bool leaderChangeOn = (hud->m_enabledEvents & EVENT_LEADER_CHANGE) != 0;
+    ctx.addToggleControl("Leader change", leaderChangeOn,
+        SettingsHud::ClickRegion::CHECKBOX, hud,
+        &hud->m_enabledEvents, EVENT_LEADER_CHANGE, true,
+        "event_log.leader_change");
+
     // Pit activity: entry + exit
     constexpr uint32_t PIT_GROUP = EVENT_PIT_ENTRY | EVENT_PIT_EXIT;
     bool pitOn = (hud->m_enabledEvents & PIT_GROUP) != 0;

@@ -31,6 +31,7 @@ enum class EventLogType : uint8_t {
     SessionTimeExpired,   // Non-race session timer reached zero (practice/warmup/qualifying)
     FinalLap,             // Rider started final lap
     RiderFinished,        // Rider finished the race
+    LeaderChange,         // Race lead changed to a different rider
 
     // Pit events
     PitEntry,             // Rider entered pits
@@ -50,15 +51,16 @@ enum EventLogFlags : uint32_t {
     EVENT_OVERTIME           = 1 << 8,
     EVENT_FINAL_LAP          = 1 << 9,
     EVENT_RIDER_FINISHED     = 1 << 10,
-    EVENT_PIT_ENTRY          = 1 << 11,
-    EVENT_PIT_EXIT           = 1 << 12,
+    EVENT_LEADER_CHANGE      = 1 << 11,
+    EVENT_PIT_ENTRY          = 1 << 12,
+    EVENT_PIT_EXIT           = 1 << 13,
 
     EVENT_DEFAULT = EVENT_SESSION_STARTED | EVENT_FASTEST_LAP
                   | EVENT_RIDER_RETIRED | EVENT_RIDER_DSQ
                   | EVENT_OVERTIME | EVENT_FINAL_LAP | EVENT_RIDER_FINISHED
-                  | EVENT_SESSION_STATE,
+                  | EVENT_LEADER_CHANGE | EVENT_SESSION_STATE,
 
-    EVENT_ALL = 0x1FFF  // All 13 bits
+    EVENT_ALL = (1 << 14) - 1  // All 14 event type bits
 };
 
 // Map EventLogType to its corresponding flag bit
@@ -79,6 +81,7 @@ inline uint32_t eventLogTypeToFlag(EventLogType type) {
     case EventLogType::SessionTimeExpired:return EVENT_OVERTIME;  // Intentionally shares flag — one "Time expired" toggle
     case EventLogType::FinalLap:          return EVENT_FINAL_LAP;
     case EventLogType::RiderFinished:     return EVENT_RIDER_FINISHED;
+    case EventLogType::LeaderChange:      return EVENT_LEADER_CHANGE;
     case EventLogType::PitEntry:          return EVENT_PIT_ENTRY;
     case EventLogType::PitExit:           return EVENT_PIT_EXIT;
     default: return 0;

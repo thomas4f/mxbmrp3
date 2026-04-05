@@ -39,10 +39,9 @@ StandingsHud::ColumnPositions::ColumnPositions(float contentStartX, float scale,
     PluginUtils::setColumnPosition(enabledColumns, COL_RACENUM, COL_RACENUM_WIDTH, scaledFontSize, current, raceNum);
     PluginUtils::setColumnPosition(enabledColumns, COL_NAME, nameWidth, scaledFontSize, current, name);
     PluginUtils::setColumnPosition(enabledColumns, COL_BIKE, COL_BIKE_WIDTH, scaledFontSize, current, bike);
-    PluginUtils::setColumnPosition(enabledColumns, COL_STATUS, COL_STATUS_WIDTH, scaledFontSize, current, status);
-    PluginUtils::setColumnPosition(enabledColumns, COL_PENALTY, COL_PENALTY_WIDTH, scaledFontSize, current, penalty);
     PluginUtils::setColumnPosition(enabledColumns, COL_BEST_LAP, COL_BEST_LAP_WIDTH, scaledFontSize, current, bestLap);
     PluginUtils::setColumnPosition(enabledColumns, COL_GAP, COL_GAP_WIDTH, scaledFontSize, current, gap);
+    PluginUtils::setColumnPosition(enabledColumns, COL_PENALTY, COL_PENALTY_WIDTH, scaledFontSize, current, penalty);
 }
 
 StandingsHud::DisplayEntry StandingsHud::DisplayEntry::fromRaceEntry(const RaceEntryData& entry, const StandingsData* standings) {
@@ -79,29 +78,6 @@ StandingsHud::DisplayEntry StandingsHud::DisplayEntry::fromRaceEntry(const RaceE
     snprintf(result.formattedRaceNum, sizeof(result.formattedRaceNum), "%d", entry.raceNum);
 
     return result;
-}
-
-void StandingsHud::formatStatus(DisplayEntry& entry, const SessionData& sessionData) const {
-    entry.isFinishedRace = false;
-    const char* stateAbbr = PluginUtils::getRiderStateAbbreviation(entry.state);
-
-    if (stateAbbr[0] != '\0') {
-        strcpy_s(entry.formattedStatus, sizeof(entry.formattedStatus), stateAbbr);
-    }
-    else if (sessionData.isRiderFinished(entry.numLaps, entry.numLapsAtLeaderFinish) || entry.sessionFinished) {
-        strcpy_s(entry.formattedStatus, sizeof(entry.formattedStatus), "FIN");
-        entry.isFinishedRace = true;
-    }
-    else if (entry.pit == 1) {
-        strcpy_s(entry.formattedStatus, sizeof(entry.formattedStatus), "PIT");
-    }
-    else if (PluginData::getInstance().isRaceSession() &&
-             sessionData.isRiderOnLastLap(entry.numLaps, entry.numLapsAtLeaderFinish)) {
-        strcpy_s(entry.formattedStatus, sizeof(entry.formattedStatus), "LL");
-    }
-    else {
-        snprintf(entry.formattedStatus, sizeof(entry.formattedStatus), "L%d", entry.numLaps + 1);
-    }
 }
 
 void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder, float currentY, const ScaledDimensions& dim, int rowIndex) {
@@ -224,7 +200,6 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
                 case COL_IDX_RACENUM:     text = entry.formattedRaceNum; break;
                 case COL_IDX_NAME:        text = entry.name; break;
                 case COL_IDX_BIKE:        text = entry.bikeShortName; break;
-                case COL_IDX_STATUS:      text = entry.formattedStatus; break;
                 case COL_IDX_PENALTY:     text = entry.formattedPenalty; break;
                 case COL_IDX_BEST_LAP:    text = entry.formattedLapTime; break;
                 case COL_IDX_GAP:         text = entry.formattedGap; break;
@@ -251,10 +226,8 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
             columnColor = m_bClassicLayout ? this->getColor(ColorSlot::SECONDARY) : this->getColor(ColorSlot::BACKGROUND);
         } else if (col.columnIndex == COL_IDX_BIKE && !isPlaceholder) {
             columnColor = this->getColor(ColorSlot::SECONDARY);
-        } else if (col.columnIndex == COL_IDX_STATUS && !isPlaceholder && textColor != mutedColor) {
-            columnColor = this->getColor(ColorSlot::SECONDARY);
         } else if (col.columnIndex == COL_IDX_PENALTY && !isPlaceholder && entry.penalty > 0) {
-            columnColor = this->getColor(ColorSlot::NEGATIVE);
+            columnColor = this->getColor(ColorSlot::WARNING);
         }
 
         // Use muted color for placeholder values
@@ -263,9 +236,9 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
             columnColor = mutedColor;
         }
 
-        // Gap column styling based on GapStyle enum
+        // Gap column styling based on GapStyle enum (skip for non-participants, they use muted)
         if (col.columnIndex == COL_IDX_GAP && !isPlaceholder &&
-            strcmp(text, Placeholders::GENERIC) != 0) {
+            textColor != mutedColor && strcmp(text, Placeholders::GENERIC) != 0) {
             if (entry.gapColorOverride != 0) {
                 // Adjacent mode coloring takes priority (green for ahead, red for behind)
                 columnColor = entry.gapColorOverride;
@@ -344,7 +317,7 @@ void StandingsHud::buildColumnTable() {
     m_cachedBackgroundWidth = 0;
 
     // Build table of enabled columns only
-    // Column indices: 0=TRACKED, 1=POS, 2=RACENUM, 3=NAME, 4=BIKE, 5=STATUS, 6=PENALTY, 7=BEST_LAP, 8=GAP, 9=DEBUG
+    // Column indices: 0=TRACKED, 1=POS, 2=RACENUM, 3=NAME, 4=BIKE, 5=BEST_LAP, 6=GAP, 7=PENALTY
     struct ColumnSpec {
         uint32_t flag;
         uint8_t index;
@@ -361,10 +334,9 @@ void StandingsHud::buildColumnTable() {
         {COL_RACENUM, 2, m_columns.raceNum, Justify::LEFT, true, COL_RACENUM_WIDTH},
         {COL_NAME, 3, m_columns.name, Justify::LEFT, true, getNameColumnWidth()},
         {COL_BIKE, 4, m_columns.bike, Justify::LEFT, true, COL_BIKE_WIDTH},
-        {COL_STATUS, 5, m_columns.status, Justify::LEFT, true, COL_STATUS_WIDTH},
-        {COL_PENALTY, 6, m_columns.penalty, Justify::LEFT, true, COL_PENALTY_WIDTH},
-        {COL_BEST_LAP, 7, m_columns.bestLap, Justify::LEFT, true, COL_BEST_LAP_WIDTH},
-        {COL_GAP, 8, m_columns.gap, Justify::LEFT, true, COL_GAP_WIDTH}
+        {COL_BEST_LAP, 5, m_columns.bestLap, Justify::LEFT, true, COL_BEST_LAP_WIDTH},
+        {COL_GAP, 6, m_columns.gap, Justify::LEFT, true, COL_GAP_WIDTH},
+        {COL_PENALTY, 7, m_columns.penalty, Justify::LEFT, true, COL_PENALTY_WIDTH}
     };
 
     for (const auto& spec : specs) {
@@ -846,7 +818,10 @@ void StandingsHud::rebuildRenderData() {
         }
 
         entry.updateFormattedStrings();
-        formatStatus(entry, sessionData);
+
+        // Determine if rider has finished (used for icon display and gap logic)
+        entry.isFinishedRace = (entry.state == RiderState::NORMAL) &&
+            (sessionData.isRiderFinished(entry.numLaps, entry.numLapsAtLeaderFinish) || entry.sessionFinished);
 
         // Format gap column
         // Two-phase approach:
@@ -859,8 +834,14 @@ void StandingsHud::rebuildRenderData() {
                               (effectiveGapRef == GapReferenceMode::PLAYER && isPlayerRow);
 
         if (entry.state != RiderState::NORMAL) {
-            // Non-participants (DNS, retired, DSQ) get no gap
-            entry.formattedGap[0] = '\0';
+            // Non-participants (DNS, retired, DSQ) show status in gap column
+            const char* stateAbbr = PluginUtils::getRiderStateAbbreviation(entry.state);
+            if (stateAbbr[0] != '\0') {
+                strcpy_s(entry.formattedGap, sizeof(entry.formattedGap), stateAbbr);
+                entry.gapStyle = DisplayEntry::GapStyle::LABEL;
+            } else {
+                entry.formattedGap[0] = '\0';
+            }
         }
         else if (isGapReference) {
             // Reference rider (leader or player): show contextual info instead of a gap value
@@ -1143,9 +1124,9 @@ void StandingsHud::rebuildRenderData() {
             float bsLeftX = npX + pg.plateWidth + pg.stripGap;
             setQuadPositions(brandStrip, bsLeftX, npY, pg.brandStripWidth, pg.plateHeight);
             brandStrip.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-            unsigned long stripColor = isMutedRider
-                ? PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), 180.0f / 255.0f)
-                : PluginUtils::applyOpacity(entry.bikeBrandColor, 230.0f / 255.0f);
+            // Brand color always visible; dimmed for non-participants (DNS/RET/DSQ)
+            float stripOpacity = isMutedRider ? 100.0f / 255.0f : 230.0f / 255.0f;
+            unsigned long stripColor = PluginUtils::applyOpacity(entry.bikeBrandColor, stripOpacity);
             brandStrip.m_ulColor = stripColor;
 
             size_t brandStripIdx = m_quads.size();

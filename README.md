@@ -14,6 +14,7 @@ A customizable, [open-source](https://github.com/thomas4f/mxbmrp3) HUD plugin fo
 - Riding stats tracking with per-lap, session, and all-time totals
 - FMX freestyle trick detection with scoring and chain combos
 - Telemetry visualization and compact info widgets
+- Web overlay for OBS/streaming with live standings, event log, and rider focus card
 - Drag-and-drop positioning with color themes and customizable hotkeys
 - Automatic profile switching for Practice, Qualify, Race, and Spectate sessions
 
@@ -38,6 +39,7 @@ See [Installation](#installation) for detailed setup instructions.
 - [Controls](#controls)
 - [Configuration](#configuration)
 - [HUDs & Widgets](#huds--widgets)
+- [Web Overlay](#web-overlay)
 - [Tips & Tricks](#tips--tricks)
 - [Advanced Settings](#advanced-settings)
 - [Modding](#modding)
@@ -80,7 +82,8 @@ See [Installation](#installation) for detailed setup instructions.
        ├── mxbmrp3_data/        ← Add this folder (from release)
        │   ├── fonts/           ← Font files (.fnt)
        │   ├── textures/        ← Texture files (.tga)
-       │   └── icons/           ← Icon files (.tga)
+       │   ├── icons/           ← Icon files (.tga)
+       │   └── web/             ← Web overlay files (HTML/CSS/JS)
        ├── mxbmrp3.dlo          ← Add this (MX Bikes only)
        ├── mxbmrp3_gpb.dlo      ← Add this (GP Bikes only)
        ├── proxy_udp64.dlo      ← Keep (native game file)
@@ -175,11 +178,50 @@ All HUDs and widgets are configurable via the settings menu or directly in the [
 | **Lean** | Bike lean angle with arc gauge |
 | **Gamepad** | Controller visualization |
 
+## Web Overlay
+
+The plugin includes a built-in HTTP server that streams live race data to a browser-based overlay, designed for use as an OBS Browser Source.
+
+### Setup
+
+1. Enable the web server in **Settings > General > Web Server** (the port number is shown when active)
+2. In OBS, add a **Browser Source** with URL `http://localhost:8080`
+3. Set width/height to match your stream resolution (e.g., 1920x1080)
+4. The overlay auto-connects and displays a standings tower, event log, and rider focus card
+
+### Settings Panel
+
+The overlay includes a built-in settings panel for configuring display options without editing files:
+
+- **In OBS**, right-click the Browser Source and select **Interact** to get mouse access
+- **Move your mouse** to reveal a gear icon in the top-right corner, then click to open the panel
+- Configure compact times, tower size, event/chip filters, focus card, font size, and more
+- **Drag the header bar** to reposition the tower
+- All settings are saved to the browser's localStorage and persist across reloads
+
+Colors and fonts sync automatically from your in-game settings.
+
+### What's Displayed
+
+- **Standings tower** — Live positions with rider numbers, names, gaps, brand colors, and status chips (finished, pit, penalty, fastest lap, spectated)
+- **Event log** — Timestamped race events (same events and filters as the in-game Event Log HUD)
+- **Rider focus card** — Appears when spectating, showing the spectated rider with bike info, lap times, and gaps to neighbors
+
+### Customization
+
+The overlay files are plain HTML, CSS, and JS. To customize them, place modified files in `Documents\PiBoSo\[Game]\mxbmrp3\web\` — user files override the bundled versions on startup and are preserved across updates (see [Modding](#modding)).
+
+- `style.css` — Layout variables (spacing, sizing, tower width). Colors are synced from the game.
+- `index.html` — Overlay structure
+- `app.js` — The `CONFIG` block at the top defines defaults for all settings. These are overridden by the settings panel (stored in localStorage).
+
 ## Tips & Tricks
 
 **Enable update notifications** - The plugin doesn't check for updates by default. Go to Settings > Updates and set the update mode to "Notify" to get notified when a new version is available. You can also install updates directly from the settings menu.
 
-**Streaming setup** - Enable the Session HUD (Settings > Session) to show the server name, track, and session type on screen for your viewers. The Pitboard and Gamepad widgets also work well on stream - both have [fully customizable textures](#custom-textures), and the Gamepad widget shows your live controller inputs. Pair with Discord Rich Presence (Settings > General) to show your current session and track in your Discord profile.
+**Streaming setup** - Enable the Session HUD (Settings > Session) to show the server name, track, and session type on screen for your viewers. The Pitboard and Gamepad widgets also work well on stream - both have [fully customizable textures](#custom-textures), and the Gamepad widget shows your live controller inputs. Pair with Discord Rich Presence (Settings > General) to show your current session and track in your Discord profile. For a broadcast-style overlay, see [Web Overlay](#web-overlay) below.
+
+**Web overlay for OBS** - The plugin includes a broadcast-style overlay for streaming. See [Web Overlay](#web-overlay) for setup and configuration.
 
 **Power-user INI tweaks** - Many additional options are available by editing the [INI file](#advanced-settings) directly. The file is well-commented and easy to work with. Each HUD section also supports per-element color overrides using ABGR hex values. For example:
 ```ini
@@ -328,10 +370,6 @@ Built with C++17, Visual Studio 2022, Piboso Plugin API, and Claude Code.
 5. Output:
    - MX Bikes: `build/MXB-Release/mxbmrp3.dlo`
    - GP Bikes: `build/GPB-Release/mxbmrp3_gpb.dlo`
-
-### Roadmap
-
-Ideas under consideration (no guarantees): extended telemetry (g-force), HTTP data export for OBS overlays.
 
 ---
 

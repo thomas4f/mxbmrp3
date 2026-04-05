@@ -24,7 +24,7 @@ GapBarHud::GapBarHud()
     , m_currentLapNum(0)
     , m_observedLapStart(false)
     , m_cachedDisplayRaceNum(-1)
-    , m_cachedSession(-1)
+    , m_cachedSessionGeneration(-1)
     , m_cachedPitState(-1)
     , m_cachedLastCompletedLapNum(-1)
     , m_cachedSplit1(-1)
@@ -89,25 +89,21 @@ void GapBarHud::update() {
         m_cachedPlayerRunning = playerRunning;
     }
 
-    // Detect session changes (new event) and reset state
-    int currentSession = sessionData.session;
-    const IdealLapData* idealLapData = pluginData.getIdealLapData();
-    int currentLastCompletedLap = idealLapData ? idealLapData->lastCompletedLapNum : -1;
+    // Detect session changes (new event/track/bike) and reset state
+    int currentGeneration = sessionData.sessionGeneration;
 
-    bool sessionTypeChanged = (currentSession != m_cachedSession);
-    bool sessionDataCleared = (m_cachedLastCompletedLapNum >= 0 && currentLastCompletedLap < 0);
-
-    if (sessionTypeChanged || sessionDataCleared) {
-        DEBUG_INFO_F("GapBarHud: Session reset detected (type changed: %d, data cleared: %d)",
-            sessionTypeChanged, sessionDataCleared);
+    if (currentGeneration != m_cachedSessionGeneration) {
+        DEBUG_INFO_F("GapBarHud: Session reset detected (generation %d -> %d)",
+            m_cachedSessionGeneration, currentGeneration);
         resetTimingState();
-        m_cachedSession = currentSession;
+        m_cachedSessionGeneration = currentGeneration;
         m_cachedPitState = -1;
         if (isVisible()) setDataDirty();
     }
 
     // Detect spectate target changes and reset state
     int currentDisplayRaceNum = pluginData.getDisplayRaceNum();
+    const IdealLapData* idealLapData = pluginData.getIdealLapData();
     if (currentDisplayRaceNum != m_cachedDisplayRaceNum) {
         DEBUG_INFO_F("GapBarHud: Spectate target changed from %d to %d",
             m_cachedDisplayRaceNum, currentDisplayRaceNum);

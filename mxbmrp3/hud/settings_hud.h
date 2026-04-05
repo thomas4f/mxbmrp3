@@ -210,6 +210,7 @@ public:
             SPEED_UNIT_TOGGLE,         // Toggle speed unit (mph/km/h)
             FUEL_UNIT_TOGGLE,          // Toggle fuel unit (L/gal)
             TEMP_UNIT_TOGGLE,          // Toggle temperature unit (C/F)
+            PB_SCOPE_TOGGLE,           // Toggle personal best scope (Bike/Category)
             GRID_SNAP_TOGGLE,          // Toggle grid snapping for HUD positioning
             SCREEN_CLAMP_TOGGLE,       // Toggle screen clamping for HUD positioning
             DROP_SHADOW_TOGGLE,        // Toggle drop shadow for text rendering
@@ -218,6 +219,9 @@ public:
             SAVE_BUTTON,               // Manual save button (when auto-save is off)
 #if GAME_HAS_DISCORD
             DISCORD_TOGGLE,            // Toggle Discord Rich Presence
+#endif
+#if GAME_HAS_HTTP_SERVER
+            WEB_SERVER_TOGGLE,         // Toggle embedded web server
 #endif
             PROFILE_CYCLE_DOWN,        // Cycle to previous profile (Practice/Qualify/Race/Spectate)
             PROFILE_CYCLE_UP,          // Cycle to next profile

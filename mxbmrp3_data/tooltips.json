@@ -164,6 +164,7 @@
     "general.screen_clamp": "When enabled, HUDs are clamped to stay within screen bounds when dragging.",
     "general.auto_save": "When enabled, settings save automatically. Disable to edit the INI manually and reload.",
     "general.discord": "Display your track, session, and lap progress in Discord's Rich Presence.",
+    "general.web_server": "Web overlay for OBS. Add as Browser Source at the displayed port.",
     "general.auto_switch": "Automatically switch profiles based on session type.",
     "general.copy_profile": "Copy current profile settings to another profile.",
     "general.reset_profile": "Reset current profile to default settings.",
@@ -190,6 +191,7 @@
     "appearance.color_warning": "Caution indicators, low fuel, and proximity alerts.",
     "appearance.color_negative": "Slower times, losses, and critical alerts.",
     "general.drop_shadow": "Add a shadow behind all text for improved readability.",
+    "general.pb_scope": "Bike = PB per bike. Category = PB across all bikes in the same class.",
 
     "rumble.enabled": "Enable or disable controller vibration for all events.",
     "rumble.stack": "When enabled, multiple rumble effects combine. When off, only the strongest effect plays.",
@@ -280,6 +282,7 @@
     "event_log.rider_out": "Log when a rider retires, is disqualified, or does not start.",
     "event_log.overtime": "Log when a timed race enters overtime, or when a non-race session timer expires.",
     "event_log.final_lap": "Log when a rider starts their final lap.",
+    "event_log.leader_change": "Log when a different rider takes the lead position.",
     "event_log.finished": "Log when a rider crosses the finish line with their finishing position.",
     "event_log.pit": "Log when a rider enters or exits the pits. Can be frequent in practice sessions.",
     "hotkeys.event_log": "Toggle the event log HUD on/off."

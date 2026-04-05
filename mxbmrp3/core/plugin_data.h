@@ -49,6 +49,7 @@ struct SessionData {
 
     // Session data
     int session;
+    int sessionGeneration;  // Monotonic counter, incremented on every new session (RaceSession callback)
     int sessionState;
     int sessionLength;      // milliseconds
     int sessionNumLaps;
@@ -69,7 +70,7 @@ struct SessionData {
     SessionData() : trackLength(0.0f), eventType(2), connectionType(0), serverClientsCount(0), serverMaxClients(0),
         shiftRPM(13500), limiterRPM(14000), steerLock(30.0f),
         engineOptTemperature(85.0f), engineTempAlarmLow(60.0f), engineTempAlarmHigh(110.0f),
-        session(-1), sessionState(-1), sessionLength(-1), sessionNumLaps(-1),
+        session(-1), sessionGeneration(0), sessionState(-1), sessionLength(-1), sessionNumLaps(-1),
         conditions(-1), airTemperature(-1.0f), trackTemperature(-1.0f), overtimeStarted(false), finishLap(-1), lastSessionTime(0), leaderFinishTime(-1),
         sessionTimeExpired(false) {
         riderName[0] = '\0';
@@ -102,6 +103,9 @@ struct SessionData {
         engineTempAlarmLow = 60.0f;    // Default fallback value
         engineTempAlarmHigh = 110.0f;  // Default fallback value
         session = -1;
+        // Also bumped by incrementSessionGeneration() in RaceSessionHandler — the double
+        // bump is intentional: clear() catches event exits that bypass RaceSessionHandler
+        ++sessionGeneration;
         sessionState = -1;
         sessionLength = -1;
         sessionNumLaps = -1;
@@ -156,19 +160,20 @@ struct RaceEntryData {
     char name[100];
     char bikeName[100];
     const char* bikeAbbr;        // Cached bike abbreviation (points to static string)
+    const char* brandName;       // Cached brand name (points to static string, e.g. "Honda")
     unsigned long bikeBrandColor; // Cached bike brand color
     char formattedRaceNum[8];    // Pre-formatted race number "#999"
     char truncatedName[4];       // Pre-truncated rider name (max 3 chars)
 
-    RaceEntryData() : raceNum(-1), bikeAbbr(nullptr), bikeBrandColor(0) {
+    RaceEntryData() : raceNum(-1), bikeAbbr(nullptr), brandName(""), bikeBrandColor(0) {
         name[0] = '\0';
         bikeName[0] = '\0';
         formattedRaceNum[0] = '\0';
         truncatedName[0] = '\0';
     }
 
-    RaceEntryData(int num, const char* riderName, const char* bike, const char* abbr, unsigned long brandColor)
-        : raceNum(num), bikeAbbr(abbr), bikeBrandColor(brandColor) {
+    RaceEntryData(int num, const char* riderName, const char* bike, const char* abbr, const char* brand, unsigned long brandColor)
+        : raceNum(num), bikeAbbr(abbr), brandName(brand), bikeBrandColor(brandColor) {
         // Copy name
         strncpy_s(name, sizeof(name), riderName, sizeof(name) - 1);
         name[sizeof(name) - 1] = '\0';
@@ -768,6 +773,7 @@ public:
     void setMaxFuel(float maxFuel);
     void setNumberOfGears(int numberOfGears);
     void setSession(int session);
+    void incrementSessionGeneration();  // Called on every new session (RaceSession callback)
     void setSessionState(int sessionState);
     void setSessionLength(int sessionLength);
     void setSessionNumLaps(int sessionNumLaps);
@@ -1127,6 +1133,7 @@ private:
     std::unordered_map<int, StandingsData> m_standings;
     std::unordered_map<int, int> m_lastValidOfficialGap;  // Cache of last valid official gap per rider (prevents flicker)
     std::vector<int> m_classificationOrder;  // Official race position order from game
+    int m_lastLeaderRaceNum = -1;  // Previous race leader (for leader change detection, race sessions only)
     mutable std::unordered_map<int, int> m_positionCache;  // Cached position lookup (race number -> position), rebuilt when classification changes
     mutable bool m_bPositionCacheDirty;  // Flag to rebuild position cache
 

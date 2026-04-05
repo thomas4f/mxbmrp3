@@ -22,7 +22,8 @@ namespace {
 }
 
 FuelWidget::FuelWidget()
-    : m_fuelAtRunStart(0.0f)
+    : m_cachedSessionGeneration(-1)
+    , m_fuelAtRunStart(0.0f)
     , m_fuelAtLapStart(0.0f)
     , m_lastTrackedLapNum(-1)
     , m_bTrackingActive(false)
@@ -52,6 +53,14 @@ bool FuelWidget::handlesDataType(DataChangeType dataType) const {
 }
 
 void FuelWidget::update() {
+    // Detect session changes (new track/bike/session) and reset fuel tracking
+    const SessionData& sessionData = PluginData::getInstance().getSessionData();
+    int currentGeneration = sessionData.sessionGeneration;
+    if (currentGeneration != m_cachedSessionGeneration) {
+        resetFuelTracking();
+        m_cachedSessionGeneration = currentGeneration;
+    }
+
     // NOTE: Fuel tracking always runs so history accumulates even when hidden.
     // This ensures accurate fuel/lap data is available when widget is enabled.
     updateFuelTracking();

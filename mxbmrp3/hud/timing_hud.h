@@ -8,6 +8,7 @@
 #pragma once
 
 #include "base_hud.h"
+#include "../core/ui_config.h"  // For PBScope enum
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
@@ -211,7 +212,8 @@ private:
     int m_cachedSplit3;              // Accumulated time to split 3 (4-sector games only)
     int m_cachedLastCompletedLapNum; // Last completed lap number (for detection)
     int m_cachedDisplayRaceNum;      // Track spectate target changes
-    int m_cachedSession;             // Track session changes (new event)
+    int m_cachedSessionGeneration;   // Track session changes (monotonic counter from PluginData)
+    PBScope m_cachedPBScope;         // Track PB scope changes (re-cache all-time PB)
     int m_cachedPitState;            // Track pit entry/exit (0 = on track, 1 = in pits)
 
     // Cached all-time PB (for showing improvement when beating PB)

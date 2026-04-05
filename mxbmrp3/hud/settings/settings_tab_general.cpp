@@ -16,6 +16,9 @@
 #if GAME_HAS_DISCORD
 #include "../../core/discord_manager.h"
 #endif
+#if GAME_HAS_HTTP_SERVER
+#include "../../core/http_server.h"
+#endif
 
 using namespace PluginConstants;
 
@@ -91,19 +94,21 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
             return true;
 #endif
 
-        case ClickRegion::SHORT_TIME_FORMAT_TOGGLE:
+#if GAME_HAS_HTTP_SERVER
+        case ClickRegion::WEB_SERVER_TOGGLE:
             {
-                PluginData& pd = PluginData::getInstance();
-                pd.setShortTimeFormat(!pd.isShortTimeFormat());
-                HudManager::getInstance().markAllHudsDirty();
-                rebuildRenderData();
+                bool current = HttpServer::getInstance().isEnabled();
+                HttpServer::getInstance().setEnabled(!current);
+                setDataDirty();
             }
             return true;
+#endif
 
-        case ClickRegion::DROP_SHADOW_TOGGLE:
+        case ClickRegion::PB_SCOPE_TOGGLE:
             {
-                UiConfig& uiConfig = UiConfig::getInstance();
-                uiConfig.setDropShadow(!uiConfig.getDropShadow());
+                auto current = UiConfig::getInstance().getPBScope();
+                UiConfig::getInstance().setPBScope(
+                    current == PBScope::BIKE ? PBScope::CATEGORY : PBScope::BIKE);
                 HudManager::getInstance().markAllHudsDirty();
                 rebuildRenderData();
             }
@@ -248,11 +253,6 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
 
     // === DISPLAY SECTION ===
     ctx.addSectionHeader("Display");
-
-    // Compact time format toggle
-    ctx.addToggleControl("Compact Times", PluginData::getInstance().isShortTimeFormat(),
-        SettingsHud::ClickRegion::SHORT_TIME_FORMAT_TOGGLE, nullptr, nullptr, 0, true,
-        "general.compact_times");
 
     // Speed unit toggle
     {
@@ -410,14 +410,45 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         ctx.currentY += ctx.lineHeightNormal;
     }
 
-    // Drop shadow toggle
-    ctx.addToggleControl("Drop Shadow", UiConfig::getInstance().getDropShadow(),
-        SettingsHud::ClickRegion::DROP_SHADOW_TOGGLE, nullptr, nullptr, 0, true,
-        "general.drop_shadow");
-
     // === PREFERENCES SECTION ===
     ctx.addSpacing(0.5f);
     ctx.addSectionHeader("Preferences");
+
+    // PB scope toggle
+    {
+        // Add tooltip row
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "general.pb_scope"
+        ));
+
+        ctx.parent->addString("PB Scope", ctx.labelX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
+
+        bool isCategory = UiConfig::getInstance().getPBScope() == PBScope::CATEGORY;
+        float currentX = ctx.controlX;
+
+        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::PB_SCOPE_TOGGLE, nullptr
+        ));
+        currentX += cw * 2;
+
+        std::string formattedValue = ctx.formatValue(isCategory ? "Category" : "Bike", VALUE_WIDTH, false);
+        ctx.parent->addString(formattedValue.c_str(), currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getPrimary(), ctx.fontSize);
+        currentX += cw * VALUE_WIDTH;
+
+        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::PB_SCOPE_TOGGLE, nullptr
+        ));
+
+        ctx.currentY += ctx.lineHeightNormal;
+    }
 
     // Controller selector (used by both Gamepad Widget and Rumble)
     // Cycles: Disabled -> 1 -> 2 -> 3 -> 4 -> Disabled
@@ -436,9 +467,8 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         ctx.parent->addString("Controller", ctx.labelX, ctx.currentY, Justify::LEFT,
             Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
 
-        // Controller uses wider value area for device names
-        // Format: "1: Xbox 360 Controlle" = slot (1) + ": " (2) + name (up to 18) = 21 max
-        constexpr int CONTROLLER_VALUE_WIDTH = 21;
+        // Controller uses standard value width (truncates long device names)
+        // Format: "1: Name.." = slot (1) + ": " (2) + name (up to 7) = 10 max
         float currentX = ctx.controlX;
         ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
             Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
@@ -449,21 +479,21 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         currentX += cw * 2;
 
         // Show controller status
-        // Format: "Disabled" or "1: Name..." or "1: Not Connected"
+        // Format: "Disabled" or "1: Name.." or "1: N/C"
         char displayStr[32];
         if (isDisabled) {
-            snprintf(displayStr, sizeof(displayStr), "%-*s", CONTROLLER_VALUE_WIDTH, "Disabled");
+            snprintf(displayStr, sizeof(displayStr), "%-*s", VALUE_WIDTH, "Disabled");
         } else {
             int slot = controllerIdx + 1;
-            char tempStr[32];
+            char tempStr[16];
             if (!controllerName.empty()) {
-                snprintf(tempStr, sizeof(tempStr), "%d: %.18s", slot, controllerName.c_str());
+                snprintf(tempStr, sizeof(tempStr), "%d: %.7s", slot, controllerName.c_str());
             } else if (isConnected) {
-                snprintf(tempStr, sizeof(tempStr), "%d: Connected", slot);
+                snprintf(tempStr, sizeof(tempStr), "%d: OK", slot);
             } else {
-                snprintf(tempStr, sizeof(tempStr), "%d: Not Connected", slot);
+                snprintf(tempStr, sizeof(tempStr), "%d: N/C", slot);
             }
-            snprintf(displayStr, sizeof(displayStr), "%-*s", CONTROLLER_VALUE_WIDTH, tempStr);
+            snprintf(displayStr, sizeof(displayStr), "%-*s", VALUE_WIDTH, tempStr);
         }
 
         // Color: muted for disabled, positive for connected, muted for not connected
@@ -471,7 +501,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
             (isConnected ? colorConfig.getPositive() : colorConfig.getMuted());
         ctx.parent->addString(displayStr, currentX, ctx.currentY, Justify::LEFT,
             Fonts::getNormal(), textColor, ctx.fontSize);
-        currentX += cw * CONTROLLER_VALUE_WIDTH;
+        currentX += cw * VALUE_WIDTH;
 
         ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
             Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
@@ -594,6 +624,12 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         ctx.currentY += ctx.lineHeightNormal;
     }
 
+#if GAME_HAS_DISCORD || GAME_HAS_HTTP_SERVER
+    // === INTEGRATIONS SECTION ===
+    ctx.addSpacing(0.5f);
+    ctx.addSectionHeader("Integrations");
+#endif
+
 #if GAME_HAS_DISCORD
     // Discord Rich Presence toggle
     {
@@ -659,6 +695,59 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
                 SettingsHud::ClickRegion::DISCORD_TOGGLE, nullptr
             ));
         }
+
+        ctx.currentY += ctx.lineHeightNormal;
+    }
+#endif
+
+#if GAME_HAS_HTTP_SERVER
+    // Web Server toggle
+    {
+        // Add tooltip row
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "general.web_server"
+        ));
+
+        ctx.parent->addString("Web Server", ctx.labelX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
+
+        bool serverEnabled = HttpServer::getInstance().isEnabled();
+        bool serverRunning = HttpServer::getInstance().isRunning();
+        float currentX = ctx.controlX;
+
+        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::WEB_SERVER_TOGGLE, nullptr
+        ));
+        currentX += cw * 2;
+
+        // Show status: On (port), Off
+        std::string statusStr;
+        uint32_t statusColor;
+        if (!serverEnabled) {
+            statusStr = "Off";
+            statusColor = colorConfig.getMuted();
+        } else if (serverRunning) {
+            statusStr = "On (" + std::to_string(HttpServer::getInstance().getPort()) + ")";
+            statusColor = colorConfig.getPositive();
+        } else {
+            statusStr = "On";
+            statusColor = colorConfig.getPrimary();
+        }
+
+        std::string formattedValue = ctx.formatValue(statusStr.c_str(), VALUE_WIDTH, false);
+        ctx.parent->addString(formattedValue.c_str(), currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), statusColor, ctx.fontSize);
+        currentX += cw * VALUE_WIDTH;
+
+        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::WEB_SERVER_TOGGLE, nullptr
+        ));
 
         ctx.currentY += ctx.lineHeightNormal;
     }

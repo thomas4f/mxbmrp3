@@ -100,19 +100,8 @@ void RaceLapHandler::handleRaceLap(Unified::RaceLapData* psRaceLap) {
             }
         }
 
-        // Event log: rider finished
-        if (isFinished) {
-            const RaceEntryData* entry = data.getRaceEntry(psRaceLap->raceNum);
-            const char* riderLabel = entry ? entry->formattedRaceNum : "???";
-            int position = data.getDisplayPositionForRaceNum(psRaceLap->raceNum);
-            char eventMsg[64];
-            if (position > 0) {
-                snprintf(eventMsg, sizeof(eventMsg), "%s finished P%d", riderLabel, position);
-            } else {
-                snprintf(eventMsg, sizeof(eventMsg), "%s finished the race", riderLabel);
-            }
-            data.addEventLogEntry(EventLogType::RiderFinished, eventMsg);
-        }
+        // Note: "finished P#" event log entry is created in batchUpdateStandings()
+        // where the classification order is freshly rebuilt, ensuring accurate positions.
     }
 
     int raceNum = psRaceLap->raceNum;
@@ -271,7 +260,7 @@ void RaceLapHandler::handleRaceLap(Unified::RaceLapData* psRaceLap) {
             char lapTimeStr[16];
             PluginUtils::formatLapTime(lapTime, lapTimeStr, sizeof(lapTimeStr));
             char eventMsg[64];
-            snprintf(eventMsg, sizeof(eventMsg), "%s set fastest lap", riderLabel);
+            snprintf(eventMsg, sizeof(eventMsg), "%s fastest lap", riderLabel);
             data.addEventLogEntry(EventLogType::FastestLap, eventMsg, lapTimeStr);
         }
     }

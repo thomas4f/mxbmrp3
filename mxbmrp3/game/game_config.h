@@ -189,6 +189,13 @@
     #define GAME_HAS_DISCORD 0
 #endif
 
+// Embedded HTTP server for web overlay
+#if defined(GAME_MXBIKES) || defined(GAME_GPBIKES)
+    #define GAME_HAS_HTTP_SERVER 1
+#else
+    #define GAME_HAS_HTTP_SERVER 0
+#endif
+
 // Server info (name, password, player count) via memory reading (MX Bikes only)
 #if defined(GAME_MXBIKES)
     #define GAME_HAS_SERVER_INFO 1

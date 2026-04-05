@@ -40,7 +40,7 @@ void EventHandler::handleEventInit(Unified::VehicleEventData* psEventData) {
     );
 
     // Set stats context for this track/bike combination
-    StatsManager::getInstance().setCurrentContext(psEventData->trackId, psEventData->vehicleName);
+    StatsManager::getInstance().setCurrentContext(psEventData->trackId, psEventData->vehicleName, psEventData->category);
 
     // Check if a RaceAddEntry with unactive=0 already arrived (spectate-first case)
     int pendingRaceNum = PluginData::getInstance().getPendingPlayerRaceNum();

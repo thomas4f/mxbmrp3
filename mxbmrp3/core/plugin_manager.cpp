@@ -37,6 +37,9 @@
 #if GAME_HAS_DISCORD
 #include "discord_manager.h"
 #endif
+#if GAME_HAS_HTTP_SERVER
+#include "http_server.h"
+#endif
 #include <cstring>
 #include <vector>
 #include <windows.h>
@@ -99,6 +102,11 @@ void PluginManager::initialize(const char* savePath) {
     DiscordManager::getInstance().initialize();
 #endif
 
+#if GAME_HAS_HTTP_SERVER
+    // Initialize HTTP server (starts if enabled via settings)
+    HttpServer::getInstance().initialize(savePath);
+#endif
+
     DEBUG_INFO("PluginManager initialized");
 }
 
@@ -107,7 +115,10 @@ void PluginManager::shutdown() {
     m_bShutdown = true;
     DEBUG_INFO("PluginManager shutdown");
 
+#if GAME_HAS_HTTP_SERVER
     // Shutdown network threads first (these may have blocking I/O)
+    HttpServer::getInstance().shutdown();
+#endif
     UpdateChecker::getInstance().shutdown();
     UpdateDownloader::getInstance().shutdown();
 

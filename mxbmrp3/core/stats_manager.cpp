@@ -6,6 +6,7 @@
 #include "stats_manager.h"
 #include "plugin_data.h"
 #include "plugin_utils.h"
+#include "ui_config.h"
 #include "../diagnostics/logger.h"
 #include "../vendor/nlohmann/json.hpp"
 
@@ -154,6 +155,15 @@ void StatsManager::load(const char* savePath) {
             }
         }
 
+        // Parse bike-to-category mapping
+        if (j.contains("bikeCategories") && j["bikeCategories"].is_object()) {
+            for (auto& [bikeName, categoryJson] : j["bikeCategories"].items()) {
+                if (categoryJson.is_string()) {
+                    m_bikeCategories[bikeName] = categoryJson.get<std::string>();
+                }
+            }
+        }
+
         DEBUG_INFO_F("[StatsManager] Loaded stats: %zu track/bike combos, %zu bikes, %zu PBs from %s",
                      m_trackBikeStats.size(), m_bikeOdometers.size(), m_personalBests.size(), filePath.c_str());
 
@@ -162,12 +172,14 @@ void StatsManager::load(const char* savePath) {
         m_trackBikeStats.clear();
         m_personalBests.clear();
         m_bikeOdometers.clear();
+        m_bikeCategories.clear();
         m_globalStats = GlobalStats();
     } catch (const std::exception& e) {
         DEBUG_INFO_F("[StatsManager] Error loading stats: %s — starting fresh", e.what());
         m_trackBikeStats.clear();
         m_personalBests.clear();
         m_bikeOdometers.clear();
+        m_bikeCategories.clear();
         m_globalStats = GlobalStats();
     }
 }
@@ -257,6 +269,15 @@ void StatsManager::save() {
         }
 
         j["trackBike"] = trackBike;
+
+        // Bike-to-category mapping
+        if (!m_bikeCategories.empty()) {
+            nlohmann::json bikeCategories = nlohmann::json::object();
+            for (const auto& [bikeName, category] : m_bikeCategories) {
+                bikeCategories[bikeName] = category;
+            }
+            j["bikeCategories"] = bikeCategories;
+        }
 
         // Write to temp file first
         std::ofstream tempFile(tempPath);
@@ -389,10 +410,18 @@ void StatsManager::migrateOldFiles() {
 // Context
 // ============================================================================
 
-void StatsManager::setCurrentContext(const std::string& trackId, const std::string& bikeName) {
+void StatsManager::setCurrentContext(const std::string& trackId, const std::string& bikeName,
+                                      const std::string& category) {
     m_currentTrackId = trackId;
     m_currentBikeName = bikeName;
     m_currentKey = makeKey(trackId, bikeName);
+    m_currentCategory = category;
+
+    // Update bike-to-category mapping (persisted for category-scoped PB lookups)
+    if (!bikeName.empty() && !category.empty()) {
+        m_bikeCategories[bikeName] = category;
+        m_dirty = true;
+    }
 
     // Ensure entries exist for telemetry-rate lookups (avoids operator[] creating entries at 100Hz)
     m_trackBikeStats[m_currentKey];
@@ -408,6 +437,7 @@ void StatsManager::clearCurrentContext() {
     m_currentTrackId.clear();
     m_currentBikeName.clear();
     m_currentKey.clear();
+    m_currentCategory.clear();
     m_lastSessionType = -1;
     m_hasLastOdometerUpdateTime = false;
 }
@@ -755,8 +785,15 @@ double StatsManager::getCurrentTotalDistanceM() const {
     return stats ? stats->totalDistanceM : 0.0;
 }
 
-const StatsPersonalBestData* StatsManager::getPersonalBest() const {
+const StatsPersonalBestData* StatsManager::getPersonalBest(std::string* outBikeName) const {
     if (m_currentKey.empty()) return nullptr;
+
+    // If PB scope is CATEGORY and we have a category, scan all bikes in that category
+    if (UiConfig::getInstance().getPBScope() == PBScope::CATEGORY && !m_currentCategory.empty()) {
+        return getPersonalBestForCategory(m_currentTrackId, m_currentCategory, outBikeName);
+    }
+
+    if (outBikeName) *outBikeName = m_currentBikeName;
     auto it = m_personalBests.find(m_currentKey);
     return it != m_personalBests.end() ? &it->second : nullptr;
 }
@@ -778,10 +815,52 @@ bool StatsManager::updatePersonalBest(const StatsPersonalBestData& entry) {
 
 // Query — by explicit track+bike
 const StatsPersonalBestData* StatsManager::getPersonalBest(const std::string& trackId,
-                                                            const std::string& bikeName) const {
+                                                            const std::string& bikeName,
+                                                            std::string* outBikeName) const {
+    // If PB scope is CATEGORY, look up the bike's category and scan all bikes in it
+    if (UiConfig::getInstance().getPBScope() == PBScope::CATEGORY) {
+        auto catIt = m_bikeCategories.find(bikeName);
+        if (catIt != m_bikeCategories.end() && !catIt->second.empty()) {
+            return getPersonalBestForCategory(trackId, catIt->second, outBikeName);
+        }
+    }
+
+    if (outBikeName) *outBikeName = bikeName;
     std::string key = makeKey(trackId, bikeName);
     auto it = m_personalBests.find(key);
     return it != m_personalBests.end() ? &it->second : nullptr;
+}
+
+const StatsPersonalBestData* StatsManager::getPersonalBestForCategory(
+    const std::string& trackId, const std::string& category, std::string* outBikeName) const {
+    // Scan all personal bests for this track, finding the fastest among bikes in the target category
+    // NOTE: Returns pointer to m_cachedCategoryPB — only valid until the next getPersonalBest() call.
+    // All current callers copy fields immediately, so this is safe.
+    const StatsPersonalBestData* best = nullptr;
+    std::string bestBikeName;
+    std::string prefix = trackId + "|";
+
+    for (const auto& [key, pb] : m_personalBests) {
+        if (!pb.isValid()) continue;
+        if (key.compare(0, prefix.size(), prefix) != 0) continue;
+
+        // Extract bike name from key (format: "trackId|bikeName")
+        std::string bikeName = key.substr(prefix.size());
+        auto catIt = m_bikeCategories.find(bikeName);
+        if (catIt == m_bikeCategories.end() || catIt->second != category) continue;
+
+        if (!best || pb.lapTime < best->lapTime) {
+            best = &pb;
+            bestBikeName = bikeName;
+        }
+    }
+
+    if (best) {
+        m_cachedCategoryPB = *best;
+        if (outBikeName) *outBikeName = bestBikeName;
+        return &m_cachedCategoryPB;
+    }
+    return nullptr;
 }
 
 bool StatsManager::updatePersonalBest(const std::string& trackId, const std::string& bikeName,
@@ -1034,6 +1113,7 @@ void StatsManager::clearAll() {
     m_trackBikeStats.clear();
     m_personalBests.clear();
     m_bikeOdometers.clear();
+    m_bikeCategories.clear();
     m_globalStats = GlobalStats();
     m_globalTotalsDirty = true;
     m_dirty = true;

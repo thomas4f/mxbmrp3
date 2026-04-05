@@ -23,6 +23,9 @@
 #if GAME_HAS_DISCORD
 #include "../core/discord_manager.h"
 #endif
+#if GAME_HAS_HTTP_SERVER
+#include "../core/http_server.h"
+#endif
 #include "../core/tracked_riders_manager.h"
 #include "../core/asset_manager.h"
 #include "../core/font_config.h"
@@ -2157,6 +2160,11 @@ void SettingsHud::resetToDefaults() {
     DiscordManager::getInstance().setEnabled(false);
 #endif
 
+#if GAME_HAS_HTTP_SERVER
+    // Reset web server
+    HttpServer::getInstance().setEnabled(false);
+#endif
+
     // Update settings display
     rebuildRenderData();
 
@@ -2174,8 +2182,8 @@ void SettingsHud::resetCurrentTab() {
             if (m_fuel) m_fuel->setFuelUnit(FuelWidget::FuelUnit::LITERS);
             UiConfig::getInstance().setTemperatureUnit(TemperatureUnit::CELSIUS);
             if (m_clock) m_clock->setFormat24h(true);
-            UiConfig::getInstance().setDropShadow(true);
             // Preferences section
+            UiConfig::getInstance().setPBScope(PBScope::BIKE);
             XInputReader::getInstance().getRumbleConfig().controllerIndex = 0;
             XInputReader::getInstance().setControllerIndex(0);
             UiConfig::getInstance().setGridSnapping(true);
@@ -2184,15 +2192,20 @@ void SettingsHud::resetCurrentTab() {
 #if GAME_HAS_DISCORD
             DiscordManager::getInstance().setEnabled(false);
 #endif
+#if GAME_HAS_HTTP_SERVER
+            HttpServer::getInstance().setEnabled(false);
+#endif
             // Profiles section
             ProfileManager::getInstance().setAutoSwitchEnabled(false);
             // Mark all HUDs dirty for drop shadow / unit changes
             HudManager::getInstance().markAllHudsDirty();
             break;
         case TAB_APPEARANCE:
-            // Appearance tab - reset font and color configuration
+            // Appearance tab - reset font, color, and display configuration
             FontConfig::getInstance().resetToDefaults();
             ColorConfig::getInstance().resetToDefaults();
+            PluginData::getInstance().setShortTimeFormat(false);
+            UiConfig::getInstance().setDropShadow(true);
             // Mark all HUDs dirty so they pick up new colors
             if (m_idealLap) m_idealLap->setDataDirty();
             if (m_lapLog) m_lapLog->setDataDirty();

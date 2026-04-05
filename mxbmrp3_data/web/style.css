@@ -1,0 +1,838 @@
+/* ============================================================================
+ * MXBMRP3 Web Overlay - Default Theme
+ * Designed for use as a browser source in OBS and similar tools.
+ * Transparent background for easy compositing.
+ *
+ * Customize freely - the plugin serves these files from disk.
+ * ============================================================================ */
+
+/* --- Reset & Base --- */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* --- Fonts ---
+ * Each @font-face uses a family name that matches the in-game .fnt filename
+ * so the availableFonts set in app.js can do a direct 1:1 lookup.
+ * The plugin sends font names like "RobotoMono-Regular", "EnterSansman-Italic", etc.
+ */
+@font-face {
+    font-family: 'EnterSansman-Italic';
+    src: url('EnterSansman-Italic.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'RobotoMono-Regular';
+    src: url('RobotoMono-Regular.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'RobotoMono-Bold';
+    src: url('RobotoMono-Bold.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'FuzzyBubbles-Regular';
+    src: url('FuzzyBubbles-Regular.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Tiny5-Regular';
+    src: url('Tiny5-Regular.ttf') format('truetype');
+    font-display: swap;
+}
+
+html {
+    font-size: 28px;  /* Fallback — overridden by CONFIG.fontSize in app.js */
+}
+
+:root {
+    /* ==========================================================
+     * PALETTE - Edit these to re-theme the entire overlay.
+     *
+     * Background colors use 8-digit hex (#RRGGBBAA) so you can
+     * control transparency for OBS compositing. Change the last
+     * two digits to adjust opacity (00=invisible, FF=solid).
+     * ==========================================================*/
+
+    /* Backgrounds — tower is fully opaque so broadcasters can hide
+       the in-game standings behind it. Focus card keeps transparency. */
+    --bg:            #000000;             /* main panel (opaque)   */
+    --bg-header:     #0a0a0a;             /* header bar (opaque)   */
+    --bg-row-even:   #141414;             /* even rows (opaque)    */
+    --bg-row-odd:    #0e0e0e;             /* odd rows (opaque)     */
+    --bg-highlight:  #282828;             /* spectated rider       */
+    --bg-inactive:   #080808;             /* DNS/RET/DSQ           */
+    --border:        #ffffff18;           /* 9%  - subtle dividers */
+
+    /* Focus card backgrounds (semi-transparent for compositing) */
+    --bg-focus:      #000000e0;           /* 88% */
+    --bg-focus-highlight: #0a0a0af2;      /* 95% */
+
+    /* Game palette (--gp-*) is injected by JS from the plugin.
+       These variables map game colors to overlay roles, with
+       static fallbacks matching ColorConfig defaults. */
+
+    /* Text — four-level hierarchy matching in-game HUD usage */
+    --text:          var(--gp-primary, #ffffff);     /* Names, times, main content */
+    --text-sub:      var(--gp-secondary, #bebebe);   /* Gaps, lap info, secondary data */
+    --text-dim:      var(--gp-tertiary, #8c8c8c);    /* Column headers, timestamps, labels */
+    --text-off:      var(--gp-muted, #646464);        /* DNS/RET/DSQ riders, unavailable data */
+
+    /* Rider number badge */
+    --badge-bg:      var(--gp-primary, #ffffff);
+    --badge-bg-off:  var(--gp-muted, #646464);
+    --badge-text:    var(--gp-background, #000000);
+
+    /* Status — matching in-game semantic colors */
+    --green:         var(--gp-positive, #00ff00);    /* Fastest lap, improvements */
+    --amber:         var(--gp-warning, #ffa500);     /* Pit status, caution */
+    --red:           var(--gp-negative, #ff0000);    /* Penalties, RET/DSQ */
+    --accent:          var(--gp-accent, #ff69b4);      /* Camera, interactive */
+
+    /* Position change tints */
+    --tint-promote:  rgba(40, 200, 80, 0.30);
+    --tint-demote:   rgba(200, 50, 50, 0.30);
+
+    /* Fonts (--gf-* injected by JS from plugin, with static fallbacks) */
+    --font:          var(--gf-normal, 'RobotoMono-Regular', monospace);
+    --font-digits:   var(--gf-digits, 'RobotoMono-Regular', monospace);
+    --font-display:  var(--gf-title, 'EnterSansman-Italic', sans-serif);
+
+    /* Font scale (relative to root font-size) */
+    --fs-lg:         1.2rem;              /* Timer                 */
+    --fs:            1rem;                /* Body / standings data */
+    --fs-sm:         0.75rem;             /* Session type, chips   */
+    --fs-xs:         0.65rem;             /* Session info, events  */
+    --fs-2xs:        0.55rem;             /* Timestamps, chip text */
+
+    /* Spacing scale — adjust these 4 values to control overall density.
+       Every padding, margin and gap in the overlay references this scale. */
+    --sp-2xs:        0.05rem;             /* Hairline vertical pads        */
+    --sp-xs:         0.1rem;              /* Tight internal gaps           */
+    --sp-sm:         0.25rem;             /* Small gaps, badge inner pad   */
+    --sp-md:         0.4rem;              /* Standard panel/row padding    */
+
+    /* Layout */
+    --overlay-width: 12.8rem;
+    --focus-width:   20rem;
+    --row-height:    1.4rem;
+    --radius:        var(--sp-sm);
+
+    /* Badge */
+    --badge-w:   1.7rem;
+
+    /* Brand strip & chips */
+    --strip-w:       0.15rem;
+    --chip-size:     0.9rem;
+}
+
+body {
+    font-family: var(--font);
+    font-size: var(--fs);
+    color: var(--text);
+    background: transparent;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* --- Overlay Container --- */
+#overlay {
+    position: absolute;
+    width: var(--overlay-width);
+}
+
+/* Idle state — no active session */
+#overlay.idle {
+    display: none;
+}
+
+/* --- Header --- */
+#header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 2rem;
+    padding: 0 var(--sp-md);
+    background: var(--bg-header);
+    border-bottom: 1px solid var(--border);
+    border-radius: var(--radius) var(--radius) 0 0;
+    cursor: grab;
+}
+#header:active {
+    cursor: grabbing;
+}
+
+#header-right {
+    flex: 1 1 auto;
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 1px;
+}
+
+.time,
+#session-type,
+#session-info {
+    font-family: var(--font-display);
+}
+
+.time {
+    font-size: var(--fs-lg);
+    color: var(--text);
+}
+
+#session-type {
+    font-size: var(--fs-sm);
+    color: var(--text);
+    min-height: 1em;
+}
+
+#session-info {
+    font-size: var(--fs-xs);
+    color: var(--text-sub);
+    min-height: 1em;
+}
+
+/* --- Standings --- */
+#standings-body {
+    position: relative;
+    overflow: visible;
+    background: var(--bg-row-odd);
+    min-height: calc(5 * var(--row-height));
+    transition: min-height 0.3s ease;
+}
+
+/* Column header row */
+#standings-header {
+    display: flex;
+    align-items: center;
+    padding: var(--sp-xs) var(--sp-md);
+    background: var(--bg-header);
+    border-bottom: 1px solid var(--border);
+    color: var(--text-sub);
+    font-size: var(--fs-2xs);
+    text-transform: uppercase;
+    letter-spacing: 0.03rem;
+}
+
+/* Header # column mirrors badge width so text centers over it.
+   margin-right accounts for brand-strip + col-num gap. */
+#standings-header > .col-num {
+    display: inline-block;
+    min-width: var(--badge-w);
+    padding: 0 var(--sp-sm);
+    text-align: center;
+    margin-right: calc(var(--strip-w) * 2 + var(--sp-md));
+}
+
+/* All header columns inherit the same color */
+#standings-header > * {
+    color: inherit;
+}
+
+/* --- Standings row --- */
+.standings-row {
+    display: flex;
+    align-items: center;
+    height: var(--row-height);
+    position: absolute;
+    left: 0;
+    right: 0;
+    transition: transform 0.6s ease;
+}
+
+/* Position change tints */
+.standings-row.promoted {
+    animation: tintGreen 1.5s ease-out forwards;
+}
+.standings-row.demoted {
+    animation: tintRed 1.5s ease-out forwards;
+}
+
+@keyframes tintGreen {
+    0%   { box-shadow: inset 0 0 0 100px var(--tint-promote); }
+    100% { box-shadow: inset 0 0 0 100px transparent; }
+}
+@keyframes tintRed {
+    0%   { box-shadow: inset 0 0 0 100px var(--tint-demote); }
+    100% { box-shadow: inset 0 0 0 100px transparent; }
+}
+
+.row-main {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    padding: 0 var(--sp-md);
+    min-width: 0;
+}
+
+/* Row backgrounds set in JS (absolute positioning breaks nth-child) */
+.standings-row.camera-row {
+    --row-bg: var(--bg-highlight);
+    background: var(--row-bg);
+}
+
+/* --- Inactive riders (DNS/RET/DSQ) --- */
+.standings-row.state-inactive {
+    --row-bg: var(--bg-inactive);
+    background: var(--row-bg);
+    color: var(--text-off);
+}
+
+.standings-row.state-inactive .num-badge {
+    background: var(--badge-bg-off);
+}
+
+.standings-row.state-inactive .brand-strip {
+    opacity: 0.3;
+}
+
+.standings-row.state-inactive .col-gap {
+    color: var(--text-off);
+}
+
+/* --- Chips area --- */
+.row-chips {
+    position: absolute;
+    left: 100%;
+    top: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-sm);
+    padding-left: var(--sp-sm);
+    height: 100%;
+}
+
+.row-chips:empty {
+    display: none;
+}
+
+/* --- Column layout --- */
+.col-pos {
+    flex: 0 0 1.4rem;
+    text-align: right;
+    font-weight: bold;
+    padding-right: var(--sp-sm);
+    color: var(--text-sub);
+}
+
+.col-num {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    margin-right: var(--sp-md);
+}
+
+.num-badge {
+    display: inline-flex;
+    align-items: center;
+    background: var(--badge-bg);
+    color: var(--badge-text);
+    font-weight: bold;
+    font-size: var(--fs-sm);
+    padding: var(--sp-2xs) var(--sp-sm);
+    border-radius: var(--sp-xs);
+    width: var(--badge-w);
+    text-align: center;
+    justify-content: center;
+}
+
+.brand-strip {
+    display: inline-block;
+    width: var(--strip-w);
+    height: 0.8rem;
+    margin-left: var(--strip-w);
+    border-radius: var(--sp-2xs);
+    background: transparent;
+}
+
+/* Shared truncation */
+.col-name,
+.focus-name,
+.focus-bike {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.col-name {
+    flex: 1 1 auto;
+}
+
+.col-gap {
+    flex: 0 0 auto;
+    text-align: right;
+    font-family: var(--font-digits);
+    padding-left: var(--sp-md);
+}
+
+/* --- Gap styles --- */
+.gap-leader {
+    font-family: var(--font);
+    color: var(--text-dim);
+}
+
+.gap-laps {
+    color: var(--text);
+}
+
+/* --- Chips --- */
+.chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--chip-size);
+    height: var(--chip-size);
+    font-size: var(--fs-sm);
+    line-height: 1;
+    border-radius: var(--radius);
+    background: var(--row-bg, transparent);
+}
+
+.chip-wide {
+    width: auto;
+    min-width: var(--chip-size);
+    padding: 0 var(--sp-sm);
+    font-size: var(--fs-2xs);
+    font-weight: bold;
+}
+
+/* Icon chips — use ::before with mask-image for the icon shape,
+   keeping the chip background intact. SVG files loaded from same directory. */
+.chip-icon::before {
+    content: "";
+    display: block;
+    width: 65%;
+    height: 65%;
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+}
+
+.chip-finished::before {
+    -webkit-mask-image: url('flag-checkered.svg');
+    mask-image: url('flag-checkered.svg');
+    background-color: var(--text);
+}
+
+.chip-camera::before {
+    -webkit-mask-image: url('video.svg');
+    mask-image: url('video.svg');
+    background-color: var(--text-dim);
+}
+
+.chip-fastest::before {
+    -webkit-mask-image: url('stopwatch.svg');
+    mask-image: url('stopwatch.svg');
+    background-color: var(--accent);
+}
+
+.chip-pit::before {
+    -webkit-mask-image: url('wrench.svg');
+    mask-image: url('wrench.svg');
+    background-color: var(--text-dim);
+}
+
+.chip-penalty { color: var(--amber); }
+
+/* --- Event Log --- */
+#event-log {
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+    border-radius: 0 0 var(--radius) var(--radius);
+    padding: var(--sp-sm) var(--sp-md);
+    overflow: hidden;
+    transition: min-height 0.3s ease;
+}
+
+.event-entry {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-md);
+    padding: var(--sp-2xs) 0;
+    font-size: var(--fs-xs);
+    color: var(--text-sub);
+    animation: fadeIn 0.3s ease-in;
+}
+
+.event-time {
+    flex: 0 0 auto;
+    font-family: var(--font-digits);
+    color: var(--text-dim);
+    font-size: var(--fs-2xs);
+}
+
+.event-message {
+    flex: 1 1 0;
+    min-width: 0;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.event-detail {
+    flex: 0 0 auto;
+    color: var(--text);
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(calc(-1 * var(--sp-sm))); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* --- Rider Focus Card --- */
+#focus-card {
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%) translateY(var(--sp-md));
+    width: var(--focus-width);
+    background: var(--bg-focus);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    overflow: hidden;
+    opacity: 0;
+    transition: opacity 0.4s ease, transform 0.4s ease;
+    pointer-events: none;
+}
+#focus-card.hidden { display: none; }
+#focus-card.focus-in {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    pointer-events: auto;
+}
+#focus-card.focus-out {
+    opacity: 0;
+    transform: translateX(-50%) translateY(var(--sp-md));
+}
+
+.focus-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-sm);
+    padding: var(--sp-sm) var(--sp-md);
+}
+.focus-neighbor {
+    opacity: 0.6;
+    font-size: var(--fs-sm);
+}
+.focus-highlight {
+    background: var(--bg-focus-highlight);
+}
+
+.focus-pos {
+    flex: 0 0 1.3rem;
+    font-size: var(--fs-2xs);
+    color: var(--text-sub);
+    text-align: right;
+}
+.focus-highlight .focus-pos {
+    color: var(--text);
+    font-weight: 700;
+}
+
+.focus-num-badge {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: stretch;
+    height: 0.8rem;
+    gap: var(--sp-xs);
+}
+.focus-highlight .focus-num-badge {
+    height: 1rem;
+}
+.focus-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--badge-bg);
+    color: var(--badge-text);
+    font-size: var(--fs-2xs);
+    font-weight: 700;
+    width: var(--badge-w);
+    padding: 0 var(--sp-sm);
+    border-radius: var(--sp-xs) 0 0 var(--sp-xs);
+}
+.focus-strip {
+    width: var(--strip-w);
+    border-radius: 0 var(--sp-xs) var(--sp-xs) 0;
+}
+
+.focus-name {
+    flex: 1 1 0;
+    color: var(--text);
+}
+.focus-highlight .focus-name {
+    font-weight: 700;
+}
+
+.focus-interval {
+    flex: 0 0 auto;
+    font-family: var(--font-digits);
+    color: var(--text-sub);
+    text-align: right;
+}
+
+.focus-rider-info {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    overflow: hidden;
+}
+.focus-rider-info .focus-name {
+    flex: none;
+}
+.focus-bike {
+    font-size: var(--fs-2xs);
+    color: var(--text-dim);
+}
+
+.focus-lap-times {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 1px;
+}
+.focus-last-lap,
+.focus-best-lap {
+    font-size: var(--fs-2xs);
+    color: var(--text-dim);
+}
+.focus-lap-value {
+    font-family: var(--font-digits);
+}
+.focus-lap-placeholder {
+    color: var(--text-off);
+}
+
+/* --- Settings Panel --- */
+
+/* Gear button */
+.settings-gear {
+    position: fixed;
+    top: var(--sp-md);
+    right: var(--sp-md);
+    z-index: 1000;
+    width: 2rem;
+    height: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-header);
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+.settings-gear::before {
+    content: "";
+    display: block;
+    width: 60%;
+    height: 60%;
+    -webkit-mask-image: url('gear.svg');
+    mask-image: url('gear.svg');
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    background-color: var(--text-dim);
+}
+.settings-gear.visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+.settings-gear:hover {
+    background: var(--bg-highlight);
+}
+.settings-gear:hover::before {
+    background-color: var(--text);
+}
+
+/* Panel */
+.settings-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    z-index: 1001;
+    width: 16rem;
+    height: 100vh;
+    background: var(--bg-header);
+    border-left: 1px solid var(--border);
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
+    overflow-y: auto;
+    font-size: var(--fs-sm);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+}
+.settings-panel.open {
+    transform: translateX(0);
+}
+
+/* Header, sections, rows */
+.settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--sp-md);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+.settings-title {
+    font-family: var(--font-display);
+    font-size: var(--fs);
+}
+.settings-close {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: var(--fs-lg);
+    cursor: pointer;
+}
+.settings-close:hover { color: var(--text); }
+
+.settings-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: var(--sp-sm) 0;
+}
+
+.settings-section {
+    padding: var(--sp-sm) var(--sp-md) var(--sp-2xs);
+    font-size: var(--fs-2xs);
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04rem;
+    border-top: 1px solid var(--border);
+}
+.settings-section:first-child { border-top: none; }
+
+.settings-note {
+    padding: var(--sp-sm) var(--sp-md);
+    font-size: var(--fs-2xs);
+    color: var(--text-dim);
+    font-style: italic;
+}
+
+.settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--sp-xs) var(--sp-md);
+    min-height: 1.6rem;
+}
+.settings-label {
+    flex: 1 1 auto;
+    color: var(--text-sub);
+    font-size: var(--fs-xs);
+}
+
+/* Toggle switch */
+.settings-toggle {
+    position: relative;
+    width: 2rem;
+    height: 1rem;
+    background: var(--bg-inactive);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    flex-shrink: 0;
+}
+.settings-toggle.on {
+    background: var(--green);
+    border-color: var(--green);
+}
+.settings-toggle::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0.1rem;
+    transform: translateY(-50%);
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 50%;
+    background: var(--text);
+    transition: left 0.2s ease;
+}
+.settings-toggle.on::after {
+    left: calc(100% - 0.8rem);
+}
+
+/* Slider */
+.settings-slider {
+    width: 5rem;
+    accent-color: var(--green);
+    cursor: pointer;
+}
+
+/* Counter (stepper) */
+.settings-counter {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-xs);
+}
+.settings-counter-btn {
+    width: 1.2rem;
+    height: 1.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-row-even);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: var(--fs-sm);
+    cursor: pointer;
+}
+.settings-counter-btn:hover { background: var(--bg-highlight); }
+.settings-counter-val {
+    min-width: 3.2rem;
+    text-align: center;
+    font-family: var(--font-digits);
+    font-size: var(--fs-xs);
+}
+
+/* Small inline button */
+.settings-btn {
+    padding: var(--sp-2xs) var(--sp-sm);
+    background: var(--bg-row-even);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-sub);
+    font-size: var(--fs-xs);
+    cursor: pointer;
+}
+.settings-btn:hover { background: var(--bg-highlight); color: var(--text); }
+
+/* Reset button */
+.settings-reset {
+    display: block;
+    margin: var(--sp-md) auto;
+    padding: var(--sp-xs) var(--sp-md);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-dim);
+    font-size: var(--fs-2xs);
+    cursor: pointer;
+}
+.settings-reset:hover {
+    color: var(--red);
+    border-color: var(--red);
+}

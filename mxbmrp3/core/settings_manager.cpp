@@ -55,6 +55,9 @@
 #if GAME_HAS_DISCORD
 #include "discord_manager.h"
 #endif
+#if GAME_HAS_HTTP_SERVER
+#include "http_server.h"
+#endif
 #include "xinput_reader.h"
 #include "hotkey_manager.h"
 #include "tracked_riders_manager.h"
@@ -197,7 +200,6 @@ namespace {
             constexpr const char* RACENUM = "col_racenum";
             constexpr const char* NAME = "col_name";
             constexpr const char* BIKE = "col_bike";
-            constexpr const char* STATUS = "col_status";
             constexpr const char* PENALTY = "col_penalty";
             constexpr const char* BEST_LAP = "col_best_lap";
             constexpr const char* GAP = "col_gap";
@@ -308,6 +310,7 @@ namespace {
             constexpr const char* OVERTIME = "event_overtime";
             constexpr const char* FINAL_LAP = "event_final_lap";
             constexpr const char* RIDER_FINISHED = "event_rider_finished";
+            constexpr const char* LEADER_CHANGE = "event_leader_change";
             constexpr const char* PIT_ENTRY = "event_pit_entry";
             constexpr const char* PIT_EXIT = "event_pit_exit";
         }
@@ -516,6 +519,9 @@ namespace {
             constexpr Setting HAZARD_COOLDOWN_MS = {"hazardCooldownMs", "Hysteresis before clearing hazard state in ms (default 1000)"};
             constexpr Setting HAZARD_GRACE_PERIOD_MS = {"hazardGracePeriodMs", "Grace period after race start in ms (default 10000)"};
             constexpr Setting BLUE_FLAG_AWARENESS_DISTANCE = {"blueFlagAwarenessDistance", "Blue flag detection range in meters (default 100.0)"};
+            constexpr Setting WEB_SERVER_PORT = {"webServerPort", "Web server port (default 8080)"};
+            constexpr Setting WEB_SERVER_THROTTLE_MS = {"webServerThrottleMs", "Min interval between SSE pushes in ms (default 250)"};
+            constexpr Setting WEB_SERVER_BIND_ADDRESS = {"webServerBindAddress", "Bind address (default 127.0.0.1, use 0.0.0.0 for network access)"};
 #if defined(GAME_MXBIKES)
             // Memory offsets for connection detection (advanced debugging)
             constexpr Setting MEM_LOCAL_SERVER_NAME = {"memLocalServerName", "Memory offset (hex)"};
@@ -879,6 +885,22 @@ namespace {
         if (str == "CELSIUS") return TemperatureUnit::CELSIUS;
         if (str == "FAHRENHEIT") return TemperatureUnit::FAHRENHEIT;
         DEBUG_WARN_F("Unknown TemperatureUnit '%s', using default", str.c_str());
+        return defaultVal;
+    }
+
+    // PBScope
+    const char* pbScopeToString(PBScope scope) {
+        switch (scope) {
+            case PBScope::BIKE: return "BIKE";
+            case PBScope::CATEGORY: return "CATEGORY";
+            default: return "BIKE";
+        }
+    }
+
+    PBScope stringToPBScope(const std::string& str, PBScope defaultVal = PBScope::BIKE) {
+        if (str == "BIKE") return PBScope::BIKE;
+        if (str == "CATEGORY") return PBScope::CATEGORY;
+        DEBUG_WARN_F("Unknown PBScope '%s', using default", str.c_str());
         return defaultVal;
     }
 
@@ -1281,7 +1303,6 @@ namespace {
         saveBitAsKey(settings, RACENUM, cols, StandingsHud::COL_RACENUM);
         saveBitAsKey(settings, NAME, cols, StandingsHud::COL_NAME);
         saveBitAsKey(settings, BIKE, cols, StandingsHud::COL_BIKE);
-        saveBitAsKey(settings, STATUS, cols, StandingsHud::COL_STATUS);
         saveBitAsKey(settings, PENALTY, cols, StandingsHud::COL_PENALTY);
         saveBitAsKey(settings, BEST_LAP, cols, StandingsHud::COL_BEST_LAP);
         saveBitAsKey(settings, GAP, cols, StandingsHud::COL_GAP);
@@ -1295,7 +1316,6 @@ namespace {
         loadBitFromKey(settings, RACENUM, cols, StandingsHud::COL_RACENUM);
         loadBitFromKey(settings, NAME, cols, StandingsHud::COL_NAME);
         loadBitFromKey(settings, BIKE, cols, StandingsHud::COL_BIKE);
-        loadBitFromKey(settings, STATUS, cols, StandingsHud::COL_STATUS);
         loadBitFromKey(settings, PENALTY, cols, StandingsHud::COL_PENALTY);
         loadBitFromKey(settings, BEST_LAP, cols, StandingsHud::COL_BEST_LAP);
         loadBitFromKey(settings, GAP, cols, StandingsHud::COL_GAP);
@@ -1519,6 +1539,7 @@ namespace {
         saveBitAsKey(settings, OVERTIME, events, EVENT_OVERTIME);
         saveBitAsKey(settings, FINAL_LAP, events, EVENT_FINAL_LAP);
         saveBitAsKey(settings, RIDER_FINISHED, events, EVENT_RIDER_FINISHED);
+        saveBitAsKey(settings, LEADER_CHANGE, events, EVENT_LEADER_CHANGE);
         saveBitAsKey(settings, PIT_ENTRY, events, EVENT_PIT_ENTRY);
         saveBitAsKey(settings, PIT_EXIT, events, EVENT_PIT_EXIT);
     }
@@ -1537,6 +1558,7 @@ namespace {
         loadBitFromKey(settings, OVERTIME, events, EVENT_OVERTIME);
         loadBitFromKey(settings, FINAL_LAP, events, EVENT_FINAL_LAP);
         loadBitFromKey(settings, RIDER_FINISHED, events, EVENT_RIDER_FINISHED);
+        loadBitFromKey(settings, LEADER_CHANGE, events, EVENT_LEADER_CHANGE);
         loadBitFromKey(settings, PIT_ENTRY, events, EVENT_PIT_ENTRY);
         loadBitFromKey(settings, PIT_EXIT, events, EVENT_PIT_EXIT);
     }
@@ -3258,6 +3280,7 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     file << "speedUnit=" << speedUnitToString(hudManager.getSpeedWidget().m_speedUnit) << "\n";
     file << "fuelUnit=" << fuelUnitToString(hudManager.getFuelWidget().m_fuelUnit) << "\n";
     file << "tempUnit=" << tempUnitToString(UiConfig::getInstance().getTemperatureUnit()) << "\n";
+    file << "pbScope=" << pbScopeToString(UiConfig::getInstance().getPBScope()) << "\n";
     file << "format24h=" << (hudManager.getClockWidget().getFormat24h() ? 1 : 0) << "\n";
 #if GAME_HAS_RECORDS_PROVIDER
     file << "recordsAutoFetch=" << (hudManager.getRecordsHud().m_bAutoFetch ? 1 : 0) << "\n";
@@ -3269,6 +3292,9 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     file << "liveGaps=" << (PluginData::getInstance().isLiveGapsEnabled() ? 1 : 0) << "\n";
     file << "filterDnsRiders=" << (PluginData::getInstance().isFilterDnsRiders() ? 1 : 0) << "\n";
     file << "shortTimeFormat=" << (PluginData::getInstance().isShortTimeFormat() ? 1 : 0) << "\n";
+#if GAME_HAS_HTTP_SERVER
+    file << "webServer=" << (HttpServer::getInstance().isEnabled() ? 1 : 0) << " ; Web overlay server (port and throttle in [Advanced])\n";
+#endif
     file << "\n";
 
     // Write Advanced section (power-user settings)
@@ -3295,6 +3321,11 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     file << IniOnly::Advanced::HAZARD_COOLDOWN_MS.key << "=" << PluginData::getInstance().getHazardCooldownMs() << " ; " << IniOnly::Advanced::HAZARD_COOLDOWN_MS.description << "\n";
     file << IniOnly::Advanced::HAZARD_GRACE_PERIOD_MS.key << "=" << PluginData::getInstance().getHazardGracePeriodMs() << " ; " << IniOnly::Advanced::HAZARD_GRACE_PERIOD_MS.description << "\n";
     file << IniOnly::Advanced::BLUE_FLAG_AWARENESS_DISTANCE.key << "=" << PluginData::getInstance().getBlueFlagAwarenessDistance() << " ; " << IniOnly::Advanced::BLUE_FLAG_AWARENESS_DISTANCE.description << "\n";
+#if GAME_HAS_HTTP_SERVER
+    file << IniOnly::Advanced::WEB_SERVER_PORT.key << "=" << HttpServer::getInstance().getPort() << " ; " << IniOnly::Advanced::WEB_SERVER_PORT.description << "\n";
+    file << IniOnly::Advanced::WEB_SERVER_THROTTLE_MS.key << "=" << HttpServer::getInstance().getThrottleMs() << " ; " << IniOnly::Advanced::WEB_SERVER_THROTTLE_MS.description << "\n";
+    file << IniOnly::Advanced::WEB_SERVER_BIND_ADDRESS.key << "=" << HttpServer::getInstance().getBindAddress() << " ; " << IniOnly::Advanced::WEB_SERVER_BIND_ADDRESS.description << "\n";
+#endif
 #if defined(GAME_MXBIKES)
     // Memory offsets for connection detection (MX Bikes only)
     const auto& offsetConfig = Memory::ConnectionDetector::getInstance().getOffsetConfig();
@@ -3713,6 +3744,8 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                     hudManager.getFuelWidget().m_fuelUnit = stringToFuelUnit(value);
                 } else if (key == "tempUnit") {
                     UiConfig::getInstance().setTemperatureUnit(stringToTempUnit(value));
+                } else if (key == "pbScope") {
+                    UiConfig::getInstance().setPBScope(stringToPBScope(value));
                 } else if (key == "format24h") {
                     hudManager.getClockWidget().setFormat24h(std::stoi(value) != 0);
                 }
@@ -3737,6 +3770,11 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                 else if (key == "shortTimeFormat") {
                     PluginData::getInstance().setShortTimeFormat(std::stoi(value) != 0);
                 }
+#if GAME_HAS_HTTP_SERVER
+                else if (key == "webServer") {
+                    HttpServer::getInstance().setEnabled(std::stoi(value) != 0);
+                }
+#endif
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("General: Failed to parse settings: %s", e.what());
             }
@@ -3806,6 +3844,15 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                 } else if (key == "blueFlagAwarenessDistance") {
                     PluginData::getInstance().setBlueFlagAwarenessDistance(std::stof(value));
                 }
+#if GAME_HAS_HTTP_SERVER
+                else if (key == "webServerPort") {
+                    HttpServer::getInstance().setPort(std::stoi(value));
+                } else if (key == "webServerThrottleMs") {
+                    HttpServer::getInstance().setThrottleMs(std::stoi(value));
+                } else if (key == "webServerBindAddress") {
+                    HttpServer::getInstance().setBindAddress(value);
+                }
+#endif
 #if defined(GAME_MXBIKES)
                 // Memory offsets for connection detection (MX Bikes only)
                 else if (key == "memLocalServerName") {

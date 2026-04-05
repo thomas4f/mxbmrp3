@@ -28,13 +28,12 @@ public:
         COL_RACENUM     = 1 << 2,   // Race number
         COL_NAME        = 1 << 3,   // Rider name
         COL_BIKE        = 1 << 4,   // Bike name
-        COL_STATUS      = 1 << 5,   // Status (PIT, DNS, etc.)
-        COL_PENALTY     = 1 << 6,   // Penalty seconds
-        COL_BEST_LAP    = 1 << 7,   // Best lap time
-        COL_GAP         = 1 << 8,   // Gap column (auto-selects official or live data)
+        COL_BEST_LAP    = 1 << 5,   // Best lap time
+        COL_GAP         = 1 << 6,   // Gap column (auto-selects official or live data, shows RET/DNS/DSQ for non-participants)
+        COL_PENALTY     = 1 << 7,   // Penalty seconds (last column, rare event)
 
         COL_REQUIRED = 0,      // No required columns
-        COL_DEFAULT  = 0x10F   // Default columns: Tracked, Pos, RaceNum, Name, Gap
+        COL_DEFAULT  = 0x4F    // Default columns: Tracked, Pos, RaceNum, Name, Gap
     };
 
     // Who to show gap data for
@@ -66,10 +65,9 @@ public:
     static constexpr uint8_t COL_IDX_RACENUM     = 2;
     static constexpr uint8_t COL_IDX_NAME        = 3;
     static constexpr uint8_t COL_IDX_BIKE        = 4;
-    static constexpr uint8_t COL_IDX_STATUS      = 5;
-    static constexpr uint8_t COL_IDX_PENALTY     = 6;
-    static constexpr uint8_t COL_IDX_BEST_LAP    = 7;
-    static constexpr uint8_t COL_IDX_GAP         = 8;
+    static constexpr uint8_t COL_IDX_BEST_LAP    = 5;
+    static constexpr uint8_t COL_IDX_GAP         = 6;
+    static constexpr uint8_t COL_IDX_PENALTY     = 7;
 
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;
@@ -130,8 +128,7 @@ private:
 
         char formattedPosition[4];
         char formattedRaceNum[12];  // Sized for "999" (4 bytes) with margin
-        char formattedStatus[10];
-        char formattedGap[16];      // Gap column (official or live, auto-selected)
+        char formattedGap[16];      // Gap column (official or live, auto-selected; shows RET/DNS/DSQ for non-participants)
         char formattedPenalty[8];
         char formattedLapTime[16];
 
@@ -142,7 +139,6 @@ private:
             bikeShortName[0] = '\0';
             formattedPosition[0] = '\0';
             formattedRaceNum[0] = '\0';
-            formattedStatus[0] = '\0';
             formattedGap[0] = '\0';
             formattedPenalty[0] = '\0';
             formattedLapTime[0] = '\0';
@@ -155,9 +151,6 @@ private:
 
     // Rendering helpers (declared after DisplayEntry)
     void renderRiderRow(const DisplayEntry& entry, bool isPlaceholder, float currentY, const ScaledDimensions& dim, int rowIndex);
-
-    // Formatting helpers (declared after DisplayEntry)
-    void formatStatus(DisplayEntry& entry, const SessionData& sessionData) const;
 
     // Add riders from classification[startIdx..endIdx] to m_displayEntries
     // Updates m_cachedPlayerIndex when player found; positionBase is display position (e.g., 1 for P1)
@@ -176,10 +169,9 @@ private:
         float raceNum;
         float name;
         float bike;
-        float status;
-        float penalty;
         float bestLap;
         float gap;
+        float penalty;
 
         ColumnPositions(float contentStartX, float scale, uint32_t enabledColumns, int nameWidth = COL_NAME_WIDTH_SHORT);
     };
@@ -328,7 +320,7 @@ private:
     static constexpr int DEFAULT_ROW_COUNT = 10;  // Shows top 3 + player with 2 before/after symmetrically
     static constexpr int DEFAULT_TOP_POSITIONS = 3;  // Default: always show top 3
     static constexpr int MAX_TOP_POSITIONS = 10;     // Maximum top positions to always show
-    static constexpr int NUM_COLUMNS = 10;
+    static constexpr int NUM_COLUMNS = 9;
     // Base position (0,0) - actual position comes from m_fOffsetX/m_fOffsetY
     static constexpr float START_X = 0.0f;
     static constexpr float START_Y = 0.0f;
@@ -345,12 +337,11 @@ private:
         return COL_NAME_WIDTH_SHORT;
     }
     static constexpr int COL_BIKE_WIDTH = 10;      // Supports longest bike names (9 chars + 1 spacing)
-    static constexpr int COL_STATUS_WIDTH = 4;
     static constexpr int COL_PENALTY_WIDTH = 5;        // Supports +99s format (4 chars + 1 spacing)
     static constexpr int COL_BEST_LAP_WIDTH = 10;      // Supports M:SS.mmm format (9 chars + 1 spacing)
     static constexpr int COL_GAP_WIDTH = 11;           // Supports +M:SS.mmm official or +M:SS.s live (10 chars + 1 spacing)
 
     static constexpr int BACKGROUND_WIDTH_CHARS = COL_TRACKED_WIDTH + COL_POS_WIDTH + COL_RACENUM_WIDTH +
-        COL_NAME_WIDTH_SHORT + COL_BIKE_WIDTH + COL_STATUS_WIDTH + COL_PENALTY_WIDTH +
+        COL_NAME_WIDTH_SHORT + COL_BIKE_WIDTH + COL_PENALTY_WIDTH +
         COL_BEST_LAP_WIDTH + COL_GAP_WIDTH;
 };

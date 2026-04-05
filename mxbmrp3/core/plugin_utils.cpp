@@ -593,6 +593,71 @@ unsigned long PluginUtils::getBikeBrandColor(const char* bikeName) {
     return DEFAULT;
 }
 
+const char* PluginUtils::getBikeBrandName(const char* bikeName) {
+    static const std::unordered_map<std::string_view, const char*> brandMap = {
+        // FACTORY bikes
+        {"FACTORY 125SX", "KTM"}, {"FACTORY 150SX", "KTM"}, {"FACTORY 250SX", "KTM"},
+        {"FACTORY CR125", "Honda"}, {"FACTORY CR144", "Honda"}, {"FACTORY CR250", "Honda"},
+        {"FACTORY CRF250R", "Honda"}, {"FACTORY CRF450R", "Honda"},
+        {"FACTORY FC250", "Husqvarna"}, {"FACTORY FC450", "Husqvarna"},
+        {"FACTORY KX125", "Kawasaki"}, {"FACTORY KX144", "Kawasaki"}, {"FACTORY KX250", "Kawasaki"},
+        {"FACTORY KX250F", "Kawasaki"}, {"FACTORY KX450F", "Kawasaki"},
+        {"FACTORY MC250", "GasGas"}, {"FACTORY MC450", "GasGas"},
+        {"FACTORY RM125", "Suzuki"}, {"FACTORY RM144", "Suzuki"}, {"FACTORY RM250", "Suzuki"},
+        {"FACTORY RMZ250", "Suzuki"}, {"FACTORY RMZ450", "Suzuki"},
+        {"FACTORY TF250", "Triumph"}, {"FACTORY TF450", "Triumph"},
+        {"FACTORY TM250Fi", "TM"}, {"FACTORY TM450Fi", "TM"},
+        {"FACTORY XXF250", "Fantic"}, {"FACTORY XXF450", "Fantic"},
+        {"FACTORY YZ125", "Yamaha"}, {"FACTORY YZ144", "Yamaha"}, {"FACTORY YZ250", "Yamaha"},
+        {"FACTORY YZ250F", "Yamaha"}, {"FACTORY YZ450F", "Yamaha"},
+
+        // MX1OEM
+        {"Honda CR250 1996", "Honda"}, {"Honda CR250 1997", "Honda"},
+        {"Kawasaki KX250 2002", "Kawasaki"}, {"Suzuki RM250 2003", "Suzuki"},
+        {"Fantic XX250 2023", "Fantic"}, {"Honda CRF450R 2023", "Honda"},
+        {"Husqvarna FC 350 2023", "Husqvarna"}, {"Husqvarna FC 450 2023", "Husqvarna"},
+        {"Husqvarna TC 250 2023", "Husqvarna"}, {"Kawasaki KX450 2023", "Kawasaki"},
+        {"KTM 250 SX 2023", "KTM"}, {"KTM 350 SX-F 2023", "KTM"}, {"KTM 450 SX-F 2023", "KTM"},
+        {"Suzuki RM-Z450 2023", "Suzuki"},
+        {"TM MX 144 2023", "TM"}, {"TM MX 250 2023", "TM"}, {"TM MX 300 Fi 2023", "TM"}, {"TM MX 450 Fi 2023", "TM"},
+        {"Yamaha YZ250 2023", "Yamaha"}, {"Yamaha YZ450F 2023", "Yamaha"},
+        {"Beta RX 450 2024", "Beta"},
+        {"GasGas MC 250 2024", "GasGas"}, {"GasGas MC 350F 2024", "GasGas"}, {"GasGas MC 450F 2024", "GasGas"},
+        {"Fantic XXF 450 2025", "Fantic"}, {"Triumph TF 450-X 2025", "Triumph"},
+
+        // MX2OEM
+        {"Honda CR125 1996", "Honda"}, {"Kawasaki KX125 2002", "Kawasaki"}, {"Suzuki RM125 2003", "Suzuki"},
+        {"Fantic XX125 2023", "Fantic"}, {"Honda CRF250R 2023", "Honda"},
+        {"Husqvarna FC 250 2023", "Husqvarna"}, {"Husqvarna TC 125 2023", "Husqvarna"},
+        {"Kawasaki KX250 2023", "Kawasaki"},
+        {"KTM 125 SX 2023", "KTM"}, {"KTM 250 SX-F 2023", "KTM"},
+        {"Suzuki RM-Z250 2023", "Suzuki"},
+        {"TM MX 125 2023", "TM"}, {"TM MX 250 Fi 2023", "TM"},
+        {"Yamaha YZ125 2023", "Yamaha"},
+        {"GasGas MC 125 2024", "GasGas"}, {"GasGas MC 250F 2024", "GasGas"},
+        {"Triumph TF 250-X 2024", "Triumph"}, {"Yamaha YZ250F 2024", "Yamaha"},
+        {"Fantic XXF 250 2025", "Fantic"},
+
+        // MX3OEM
+        {"KTM Black Knight 2021", "KTM"}, {"Beta 300 RX 2022", "Beta"},
+        {"KTM 300 SX 2023", "KTM"}, {"TM MX 300 2023", "TM"}, {"TM MX530Fi 2023", "TM"},
+        {"Service Honda CR500AF", "Honda"},
+
+        // MXEOEM
+        {"Alta Redshift MXR 2018", "Alta"}, {"2023 Stark VARG", "Stark"},
+
+        // MSM bikes
+        {"MSM 450SM", "MSM"}, {"MSM 250XF", "MSM"}, {"MSM 250X", "MSM"},
+        {"MSM 350XF", "MSM"}, {"MSM 450XF", "MSM"}
+    };
+
+    auto it = brandMap.find(bikeName);
+    if (it != brandMap.end()) {
+        return it->second;
+    }
+    return "";
+}
+
 bool PluginUtils::matchRiderName(const char* entryName, const char* playerName, size_t maxEntryLen) {
     if (!entryName || !playerName || entryName[0] == '\0' || playerName[0] == '\0') {
         return false;

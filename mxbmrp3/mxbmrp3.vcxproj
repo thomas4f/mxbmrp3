@@ -216,6 +216,7 @@
     <ClInclude Include="core\update_checker.h" />
     <ClInclude Include="core\update_downloader.h" />
     <ClInclude Include="core\discord_manager.h" />
+    <ClInclude Include="core\http_server.h" />
     <ClInclude Include="core\widget_constants.h" />
     <ClInclude Include="core\xinput_reader.h" />
     <ClInclude Include="core\fmx_types.h" />
@@ -293,6 +294,7 @@
     <ClInclude Include="game\memory_reader.h" />
     <ClInclude Include="game\connection_detector.h" />
     <ClInclude Include="vendor\nlohmann\json.hpp" />
+    <ClInclude Include="vendor\httplib\httplib.h" />
     <ClInclude Include="vendor\miniz\miniz.h" />
     <ClInclude Include="vendor\miniz\miniz_common.h" />
     <ClInclude Include="vendor\miniz\miniz_tdef.h" />
@@ -318,6 +320,7 @@
     <ClCompile Include="core\update_checker.cpp" />
     <ClCompile Include="core\update_downloader.cpp" />
     <ClCompile Include="core\discord_manager.cpp" />
+    <ClCompile Include="core\http_server.cpp" />
     <ClCompile Include="core\xinput_reader.cpp" />
     <ClCompile Include="core\fmx_manager.cpp" />
     <ClCompile Include="core\stats_manager.cpp" />

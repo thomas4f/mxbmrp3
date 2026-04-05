@@ -1,6 +1,6 @@
 // ============================================================================
 // core/asset_manager.h
-// Dynamic asset discovery and management for fonts, textures, and icons
+// Dynamic asset discovery and management for fonts, textures, icons, and web overlay
 // Scans mxbmrp3_data subdirectories at startup to build asset registries
 // ============================================================================
 #pragma once
@@ -130,6 +130,7 @@ public:
     static constexpr const char* FONTS_SUBDIR = "fonts";
     static constexpr const char* TEXTURES_SUBDIR = "textures";
     static constexpr const char* ICONS_SUBDIR = "icons";
+    static constexpr const char* WEB_SUBDIR = "web";
     // User override directory (under savePath, e.g., Documents\PiBoSo\MX Bikes\mxbmrp3\)
     static constexpr const char* USER_OVERRIDE_DIR = "mxbmrp3";
 

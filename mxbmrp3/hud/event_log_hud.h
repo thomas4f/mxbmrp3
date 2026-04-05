@@ -49,6 +49,10 @@ public:
     bool handlesDataType(DataChangeType dataType) const override;
     void resetToDefaults();
 
+    // Query settings
+    uint32_t getEnabledEvents() const { return m_enabledEvents; }
+    int getMaxDisplayEvents() const { return m_maxDisplayEvents; }
+
     // Allow settings system to access private members
     friend class SettingsHud;
     friend class SettingsManager;

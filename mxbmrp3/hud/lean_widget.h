@@ -52,6 +52,7 @@ protected:
 
 private:
     void rebuildRenderData() override;
+    void resetTracking();  // Reset all max lean/steer values and markers
     void addArcSegment(float centerX, float centerY, float innerRadius, float outerRadius,
                        float startAngleRad, float endAngleRad, unsigned long color, int numSegments);
 
@@ -82,7 +83,8 @@ private:
     // Crash recovery detection - reset max lean when recovering from crash
     bool m_wasCrashed = false;
 
-    // Spectator tracking - reset max values when switching viewed rider
+    // Session and spectator tracking - reset max values on change
+    int m_cachedSessionGeneration = -1;
     int m_lastDisplayedRaceNum = -1;
 
     // Frozen values when crashed (display freezes during crash)
