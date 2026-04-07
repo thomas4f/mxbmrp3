@@ -6,18 +6,21 @@
  * Customize freely - the plugin serves these files from disk.
  * ============================================================================ */
 
-/* --- Reset & Base --- */
+/* ============================================================================
+ * RESET & BASE
+ * ============================================================================ */
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
 }
 
-/* --- Fonts ---
+/* ============================================================================
+ * FONTS
  * Each @font-face uses a family name that matches the in-game .fnt filename
  * so the availableFonts set in app.js can do a direct 1:1 lookup.
  * The plugin sends font names like "RobotoMono-Regular", "EnterSansman-Italic", etc.
- */
+ * ============================================================================ */
 @font-face {
     font-family: 'EnterSansman-Italic';
     src: url('EnterSansman-Italic.ttf') format('truetype');
@@ -48,6 +51,10 @@ html {
     font-size: 28px;  /* Fallback — overridden by CONFIG.fontSize in app.js */
 }
 
+/* ============================================================================
+ * THEME VARIABLES
+ * Palette, scale, and size tokens. Edit :root to re-theme the whole overlay.
+ * ============================================================================ */
 :root {
     /* ==========================================================
      * PALETTE - Edit these to re-theme the entire overlay.
@@ -138,7 +145,9 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
-/* --- Overlay Container --- */
+/* ============================================================================
+ * OVERLAY CONTAINER
+ * ============================================================================ */
 #overlay {
     position: absolute;
     width: var(--overlay-width);
@@ -149,7 +158,9 @@ body {
     display: none;
 }
 
-/* --- Header --- */
+/* ============================================================================
+ * HEADER
+ * ============================================================================ */
 #header {
     display: flex;
     align-items: center;
@@ -197,7 +208,9 @@ body {
     min-height: 1em;
 }
 
-/* --- Standings --- */
+/* ============================================================================
+ * STANDINGS
+ * ============================================================================ */
 #standings-body {
     position: relative;
     overflow: visible;
@@ -403,7 +416,9 @@ body {
 }
 
 /* Icon chips — use ::before with mask-image for the icon shape,
-   keeping the chip background intact. SVG files loaded from same directory. */
+   keeping the chip background intact. Per-chip values (icon URL and
+   tint) are set via custom properties below so the shared ::before
+   rule stays DRY. SVG files loaded from same directory. */
 .chip-icon::before {
     content: "";
     display: block;
@@ -415,35 +430,21 @@ body {
     mask-repeat: no-repeat;
     -webkit-mask-position: center;
     mask-position: center;
+    -webkit-mask-image: var(--chip-icon);
+    mask-image: var(--chip-icon);
+    background-color: var(--chip-tint);
 }
 
-.chip-finished::before {
-    -webkit-mask-image: url('flag-checkered.svg');
-    mask-image: url('flag-checkered.svg');
-    background-color: var(--text);
-}
-
-.chip-camera::before {
-    -webkit-mask-image: url('video.svg');
-    mask-image: url('video.svg');
-    background-color: var(--text-dim);
-}
-
-.chip-fastest::before {
-    -webkit-mask-image: url('stopwatch.svg');
-    mask-image: url('stopwatch.svg');
-    background-color: var(--accent);
-}
-
-.chip-pit::before {
-    -webkit-mask-image: url('wrench.svg');
-    mask-image: url('wrench.svg');
-    background-color: var(--text-dim);
-}
+.chip-finished { --chip-icon: url('flag-checkered.svg'); --chip-tint: var(--text); }
+.chip-camera   { --chip-icon: url('video.svg');          --chip-tint: var(--text-dim); }
+.chip-fastest  { --chip-icon: url('stopwatch.svg');      --chip-tint: var(--accent); }
+.chip-pit      { --chip-icon: url('wrench.svg');         --chip-tint: var(--text-dim); }
 
 .chip-penalty { color: var(--amber); }
 
-/* --- Event Log --- */
+/* ============================================================================
+ * EVENT LOG
+ * ============================================================================ */
 #event-log {
     background: var(--bg);
     border-top: 1px solid var(--border);
@@ -487,7 +488,9 @@ body {
     to { opacity: 1; transform: translateY(0); }
 }
 
-/* --- Rider Focus Card --- */
+/* ============================================================================
+ * RIDER FOCUS CARD
+ * ============================================================================ */
 #focus-card {
     position: fixed;
     bottom: 2rem;
@@ -615,7 +618,9 @@ body {
     color: var(--text-off);
 }
 
-/* --- Settings Panel --- */
+/* ============================================================================
+ * SETTINGS PANEL
+ * ============================================================================ */
 
 /* Gear button */
 .settings-gear {

@@ -925,7 +925,8 @@ public:
     bool isFilterDnsRiders() const { return m_filterDnsRiders; }
 
     // Real-time track position management (for time-based gap calculation)
-    void setSessionTime(int sessionTime) { m_currentSessionTime = sessionTime; }
+    // Notifies SessionData on whole-second boundaries (drives 1Hz HUD/SSE refresh).
+    void setSessionTime(int sessionTime);
     int getSessionTime() const { return m_currentSessionTime; }
     void updateTrackPosition(int raceNum, float trackPos, int numLaps, bool crashed, int sessionTime);
     void updateActiveTrackPosRiders(int numVehicles, const Unified::TrackPositionData* positions);

@@ -19,6 +19,8 @@
 #include "../diagnostics/logger.h"
 
 #include <chrono>
+#include <cstring>
+#include <fstream>
 
 using namespace PluginConstants;
 
@@ -239,12 +241,16 @@ std::string HttpServer::buildJsonSnapshot() const {
     std::string out;
     out.reserve(16384);
 
-    // No active session (cleared/menu) — return minimal idle snapshot
+    // No active session (cleared/menu) — return minimal idle snapshot.
+    // Empty type/state signal "in menus" to the client, which supplies its
+    // own label.
     if (session.session == -1) {
         out += "{\"session\":{\"time\":\"--:--\",\"timeMs\":0,\"type\":\"\",\"state\":\"\""
                ",\"numLaps\":0,\"sessionLength\":0,\"isRace\":false"
-               ",\"trackName\":\"\",\"trackLength\":0,\"leaderLap\":-1}"
-               ",\"standings\":[],\"events\":[]}";
+               ",\"trackName\":\"\",\"trackLength\":0,\"leaderLap\":-1"
+               ",\"pluginVersion\":\"";
+        out += PLUGIN_VERSION;
+        out += "\"},\"standings\":[],\"events\":[]}";
         return out;
     }
 
@@ -307,6 +313,11 @@ std::string HttpServer::buildJsonSnapshot() const {
         }
         out += ",\"leaderLap\":";
         appendJsonInt(out, leaderLap);
+
+        // Plugin version (used by the web overlay to show a startup banner)
+        out += ",\"pluginVersion\":\"";
+        out += PLUGIN_VERSION;
+        out += "\"";
 
         // Draw state: 0=on track (riding), 1=spectating, 2=replay
         out += ",\"isSpectating\":";
@@ -569,8 +580,46 @@ void HttpServer::serverThread() {
     // m_server is created by start() on the game thread so that stop()
     // can safely call m_server->stop() without racing on the pointer.
 
+    // GET /sw.js - service worker, with PLUGIN_VERSION substituted into the
+    // cache name so a plugin update automatically invalidates cached overlay
+    // assets in the browser. Registered before the static mount so this
+    // handler takes precedence over the on-disk file. Note: this bypasses
+    // the AssetManager user-override path — sw.js is intentionally not
+    // user-customizable so version substitution always runs against the
+    // bundled copy.
+    m_server->Get("/sw.js", [this](const httplib::Request&, httplib::Response& res) {
+        std::string path = m_webRoot + "/sw.js";
+        std::ifstream f(path, std::ios::binary);
+        if (!f) {
+            res.status = 404;
+            return;
+        }
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        const std::string placeholder = "__PLUGIN_VERSION__";
+        const size_t versionLen = std::strlen(PLUGIN_VERSION);
+        size_t pos = 0;
+        while ((pos = body.find(placeholder, pos)) != std::string::npos) {
+            body.replace(pos, placeholder.size(), PLUGIN_VERSION);
+            pos += versionLen;
+        }
+        // Service workers must be served with a JS MIME type and should not
+        // be cached by the HTTP layer so updates are picked up promptly.
+        res.set_header("Cache-Control", "no-cache");
+        res.set_content(body, "application/javascript; charset=utf-8");
+    });
+
     // Mount static files from web directory
     if (!m_webRoot.empty()) {
+        // Override default mime types to include charset=utf-8 so browsers
+        // don't fall back to Latin-1 and mangle non-ASCII chars (em dashes,
+        // etc.) in our text assets.
+        m_server->set_file_extension_and_mimetype_mapping("html", "text/html; charset=utf-8");
+        m_server->set_file_extension_and_mimetype_mapping("css", "text/css; charset=utf-8");
+        m_server->set_file_extension_and_mimetype_mapping("js", "application/javascript; charset=utf-8");
+        m_server->set_file_extension_and_mimetype_mapping("json", "application/json; charset=utf-8");
+        m_server->set_file_extension_and_mimetype_mapping("svg", "image/svg+xml; charset=utf-8");
+
         auto ret = m_server->set_mount_point("/", m_webRoot);
         if (!ret) {
             DEBUG_INFO_F("HttpServer WARNING: web root not found: %s", m_webRoot.c_str());

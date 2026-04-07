@@ -189,6 +189,8 @@ The plugin includes a built-in HTTP server that streams live race data to a brow
 3. Set width/height to match your stream resolution (e.g., 1920x1080)
 4. The overlay auto-connects and displays a standings tower, event log, and rider focus card
 
+> **Note:** The overlay shell is cached by a service worker after the first successful load, so OBS can render the UI even if MX Bikes (and the plugin's HTTP server) isn't running yet. The very first load still requires the plugin server to be up at least once so the cache can be primed.
+
 ### Settings Panel
 
 The overlay includes a built-in settings panel for configuring display options without editing files:

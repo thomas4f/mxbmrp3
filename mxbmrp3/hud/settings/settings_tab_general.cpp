@@ -723,14 +723,14 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         ));
         currentX += cw * 2;
 
-        // Show status: On (port), Off
+        // Show status: On / Off (port info moves to the note line below)
         std::string statusStr;
         uint32_t statusColor;
         if (!serverEnabled) {
             statusStr = "Off";
             statusColor = colorConfig.getMuted();
         } else if (serverRunning) {
-            statusStr = "On (" + std::to_string(HttpServer::getInstance().getPort()) + ")";
+            statusStr = "On";
             statusColor = colorConfig.getPositive();
         } else {
             statusStr = "On";
@@ -749,6 +749,22 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
             SettingsHud::ClickRegion::WEB_SERVER_TOGGLE, nullptr
         ));
 
+        ctx.currentY += ctx.lineHeightNormal;
+
+        // Helper note below the toggle — explains what to do next.
+        // Match the spacing used by the widgets tab info text.
+        ctx.currentY += ctx.lineHeightNormal * 0.5f;
+        std::string noteStr;
+        if (!serverEnabled) {
+            noteStr = "Enable to serve a live web overlay.";
+        } else if (serverRunning) {
+            noteStr = "Live overlay at http://localhost:"
+                + std::to_string(HttpServer::getInstance().getPort());
+        } else {
+            noteStr = "Starting or port in use";
+        }
+        ctx.parent->addString(noteStr.c_str(), ctx.labelX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getMuted(), ctx.fontSize * 0.9f);
         ctx.currentY += ctx.lineHeightNormal;
     }
 #endif

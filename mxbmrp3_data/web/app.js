@@ -7,6 +7,25 @@
 (function () {
     "use strict";
 
+    // Register the service worker so the overlay shell is cached for offline
+    // use. This lets OBS load the UI even when the plugin HTTP server isn't
+    // running yet (e.g. after a PC restart, before MX Bikes has launched).
+    // Service workers require a secure context — http://localhost qualifies,
+    // but file:// does not, so we skip registration there.
+    if ("serviceWorker" in navigator && location.protocol !== "file:") {
+        window.addEventListener("load", function () {
+            navigator.serviceWorker.register("sw.js").then(function (reg) {
+                console.log("[MXBMRP3] Service worker registered, scope:", reg.scope);
+            }).catch(function (err) {
+                // Overlay still works without offline caching.
+                console.warn("[MXBMRP3] Service worker registration failed:", err);
+            });
+        });
+    } else if (location.protocol === "file:") {
+        console.warn("[MXBMRP3] Offline caching disabled: service workers " +
+                     "require http(s)://. Load via http://localhost:PORT instead.");
+    }
+
     // =========================================================================
     // OVERLAY SETTINGS — edit these to customize the web overlay.
     // Colors and fonts sync automatically from in-game settings.
@@ -223,11 +242,7 @@
     var focusVisible = false;     // Whether card is currently shown
     var focusHideTimer = null;    // Auto-hide timeout
 
-    // Client-side timer interpolation (ticks between server updates)
-    var lastTimeMsFromServer = 0;  // session.timeMs from last update
-    var lastUpdateLocalMs = 0;     // Date.now() when we received it
-    var timerCountsDown = true;    // true for timed sessions, false for lap-only
-    var timerInterval = null;
+    var versionAnnounced = false;  // banner shown once on first connect
 
     // --- Status messages via event log ---
     function clockNow() {
@@ -235,22 +250,38 @@
         var h = d.getHours(), m = d.getMinutes();
         return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m;
     }
-
-    function trimEventLog() {
-        while (eventLog.children.length > CONFIG.maxEvents) {
-            eventLog.removeChild(eventLog.firstChild);
-        }
+    function clockNowFull() {
+        var d = new Date();
+        var h = d.getHours(), m = d.getMinutes(), s = d.getSeconds();
+        return (h < 10 ? "0" : "") + h + ":" +
+               (m < 10 ? "0" : "") + m + ":" +
+               (s < 10 ? "0" : "") + s;
     }
+
+    // Cap status lines so a flaky connection can't accumulate enough of them
+    // to starve real events out of the maxEvents budget.
+    var MAX_STATUS_LINES = 3;
+
+    // Status lines (connection history) are kept in memory so they survive
+    // re-renders and toggling maxEvents to 0 and back. They are rendered
+    // through renderEventLog() like regular events.
+    var statusLines = [];
+    var lastEvents = [];
+    var lastIdle = false;
+    var lastData = null;
 
     // status: "info" (default), "ok", "error"
     function appendStatusLine(message, status) {
-        var div = createEventEntry();
-        div.children[0].textContent = clockNow();
-        div.children[1].textContent = message;
-        if (status === "ok") div.children[1].style.color = "var(--green)";
-        else if (status === "error") div.children[1].style.color = "var(--red)";
-        eventLog.appendChild(div);
-        trimEventLog();
+        statusLines.push({
+            time: clockNow(),
+            sortKey: clockNowFull(),
+            message: message,
+            status: status || "info"
+        });
+        while (statusLines.length > MAX_STATUS_LINES) {
+            statusLines.shift();
+        }
+        renderEventLog(lastEvents);
     }
 
     var RETRY_INTERVAL = 3000; // ms between manual reconnection attempts
@@ -273,7 +304,7 @@
         }
 
         if (!lastError) {
-            appendStatusLine("Connecting to " + CONFIG.host + ":" + CONFIG.port);
+            appendStatusLine("Trying " + CONFIG.host + ":" + CONFIG.port);
         }
 
         // Probe server availability before opening SSE
@@ -283,7 +314,7 @@
         }).catch(function () {
             serverReachable = false;
             overlay.classList.add("disconnected");
-            logError("Failed. Web server enabled?");
+            logError("Failed. Server enabled?");
             retryTimer = setTimeout(connect, RETRY_INTERVAL);
         });
     }
@@ -299,10 +330,8 @@
             isConnected = true;
             lastError = "";
             overlay.classList.remove("disconnected");
-            appendStatusLine("Connected", "ok");
-            if (!timerInterval) {
-                timerInterval = setInterval(tickTimer, 500);
-            }
+            // "Connected" line is appended from render() once we know the
+            // plugin version, so it can be shown in a single combined message.
         };
 
         eventSource.onmessage = function (event) {
@@ -320,11 +349,8 @@
             if (isConnected) {
                 isConnected = false;
                 serverReachable = false;
+                versionAnnounced = false;  // re-announce on next reconnect
                 logError("Connection lost");
-                if (timerInterval) {
-                    clearInterval(timerInterval);
-                    timerInterval = null;
-                }
             } else if (serverReachable) {
                 // Fetch probe succeeded but SSE was rejected (503)
                 logError("Too many connections");
@@ -392,16 +418,6 @@
             return sign + minutes + ":" + (seconds < 10 ? "0" : "") + seconds + "." + mmm;
         }
         return sign + seconds + "." + mmm;
-    }
-
-    function tickTimer() {
-        if (!isConnected || lastUpdateLocalMs === 0) return;
-        var elapsed = Date.now() - lastUpdateLocalMs;
-        // Timed sessions count down, lap-only sessions count up
-        var currentMs = timerCountsDown
-            ? lastTimeMsFromServer - elapsed
-            : lastTimeMsFromServer + elapsed;
-        setText(sessionTime, formatMmSs(currentMs));
     }
 
     // --- Palette sync ---
@@ -486,23 +502,28 @@
     }
 
     // --- Rendering ---
+    // Call with a fresh snapshot from SSE, or with no args to re-render
+    // the cached snapshot (used by applySettings()).
     function render(data) {
-        // Sync timer baseline from server
-        if (data.session && typeof data.session.timeMs === "number") {
-            lastTimeMsFromServer = data.session.timeMs;
-            lastUpdateLocalMs = Date.now();
-            // sessionLength > 0 means timed session (counts down)
-            timerCountsDown = data.session.sessionLength > 0;
-            // No active session — stop interpolation so timer shows --:--
-            if (!data.session.type) lastUpdateLocalMs = 0;
-        }
-
+        if (data) lastData = data;
+        else data = lastData;
+        if (!data) return;
         if (data.session) {
             applyPalette(data.session.palette);
             applyFonts(data.session.fonts);
+
+            // One-time "Connected" banner, with plugin version if available.
+            if (!versionAnnounced) {
+                versionAnnounced = true;
+                var label = data.session.pluginVersion
+                    ? "Connected (v" + data.session.pluginVersion + ")"
+                    : "Connected";
+                appendStatusLine(label, "ok");
+            }
         }
         // Hide overlay when idle (no active session) if configured
         var idle = !data.session || !data.session.type;
+        lastIdle = idle;
         overlay.classList.toggle("idle", idle && CONFIG.hideInMenus);
 
         renderHeader(data.session);
@@ -515,14 +536,19 @@
         if (!session) return;
 
         setText(sessionTime, session.time || "--:--");
-        setText(sessionType, session.type || "");
+        // Empty type = in menus (plugin's idle snapshot); label it client-side.
+        var inMenus = !session.type;
+        setText(sessionType, inMenus ? "Menus" : session.type);
 
         // Info line (below session type, right-aligned):
+        //   Menus:                    "Waiting"
         //   Race (time+lap or timed): "Lap X"
         //   Race (lap-only):          "Lap X/Y"
         //   Non-race:                 state (e.g. "In Progress")
         var info = "";
-        if (session.isRace) {
+        if (inMenus) {
+            info = "Waiting";
+        } else if (session.isRace) {
             if (session.numLaps > 0 && session.sessionLength <= 0 && session.leaderLap >= 0) {
                 // Pure lap race: show Lap X/Y
                 info = "Lap " + Math.min(session.leaderLap + 1, session.numLaps) + "/" + session.numLaps;
@@ -804,54 +830,94 @@
     }
 
     function renderEventLog(events) {
-        if (!events) return;
+        if (events) lastEvents = events;
+        events = lastEvents || [];
 
-        // Empty events array = session ended, clear the log
-        if (events.length === 0) {
-            eventLog.textContent = "";
-            return;
-        }
-
-        // Filter events client-side, then take the last N
+        // Filter events client-side
         var filtered = [];
         for (var i = 0; i < events.length; i++) {
             if (isEventEnabled(events[i].type)) filtered.push(events[i]);
         }
-        var recentEvents = CONFIG.maxEvents > 0 ? filtered.slice(-CONFIG.maxEvents) : [];
-        var entries = eventLog.children;
 
-        while (entries.length > recentEvents.length) {
+        // Combined display list: status lines (oldest first) followed by
+        // events. Status lines are kept in memory in `statusLines` so they
+        // can reappear when maxEvents is raised back from 0 — but they
+        // share the maxEvents budget like any other entry, so maxEvents=0
+        // hides them along with everything else.
+        var combined = [];
+        for (var s = 0; s < statusLines.length; s++) {
+            var sl = statusLines[s];
+            combined.push({
+                isStatus: true,
+                sortKey: sl.sortKey || sl.time,
+                time: sl.time,
+                message: sl.message,
+                status: sl.status
+            });
+        }
+        for (var e = 0; e < filtered.length; e++) {
+            combined.push({
+                isStatus: false,
+                sortKey: filtered[e].clockTime || "",
+                evt: filtered[e]
+            });
+        }
+        // Stable chronological sort so status lines and events interleave
+        // by wall-clock time instead of all statuses appearing first.
+        combined.sort(function (a, b) {
+            if (a.sortKey < b.sortKey) return -1;
+            if (a.sortKey > b.sortKey) return 1;
+            return 0;
+        });
+
+        var max = CONFIG.maxEvents > 0 ? CONFIG.maxEvents : 0;
+        var display = max > 0 ? combined.slice(-max) : [];
+
+        // Sync DOM children count to display length
+        while (eventLog.children.length > display.length) {
             eventLog.removeChild(eventLog.lastChild);
         }
-        while (entries.length < recentEvents.length) {
+        while (eventLog.children.length < display.length) {
             eventLog.appendChild(createEventEntry());
         }
 
         var tsOff = CONFIG.timestampMode === "off";
         var tsSession = CONFIG.timestampMode === "session";
 
-        for (var i = 0; i < recentEvents.length; i++) {
-            var evt = recentEvents[i];
-            var div = entries[i];
+        for (var i = 0; i < display.length; i++) {
+            var item = display[i];
+            var div = eventLog.children[i];
 
-            // Timestamp based on config
-            var ts = "";
-            if (tsSession) ts = (evt.sessionTime || "").substring(0, 5);
-            else if (!tsOff) ts = (evt.clockTime || "").substring(0, 5);
-            setText(div.children[0], ts);
-            div.children[0].style.display = tsOff ? "none" : "";
-            div.children[1].style.color = "";  // Clear any inline color from status lines
-            setText(div.children[1], evt.message || "");
+            if (item.isStatus) {
+                div.dataset.status = "1";
+                setText(div.children[0], item.time);
+                div.children[0].style.display = "";
+                setText(div.children[1], item.message);
+                if (item.status === "ok") div.children[1].style.color = "var(--green)";
+                else if (item.status === "error") div.children[1].style.color = "var(--red)";
+                else div.children[1].style.color = "";
+                if (div.children.length >= 3) div.removeChild(div.children[2]);
+            } else {
+                div.removeAttribute("data-status");
+                var evt = item.evt;
+                var ts = "";
+                if (tsSession) ts = (evt.sessionTime || "").substring(0, 5);
+                else if (!tsOff) ts = (evt.clockTime || "").substring(0, 5);
+                setText(div.children[0], ts);
+                div.children[0].style.display = tsOff ? "none" : "";
+                div.children[1].style.color = "";
+                setText(div.children[1], evt.message || "");
 
-            if (evt.detail) {
-                if (div.children.length < 3) {
-                    var detailSpan = document.createElement("span");
-                    detailSpan.className = "event-detail";
-                    div.appendChild(detailSpan);
+                if (evt.detail) {
+                    if (div.children.length < 3) {
+                        var detailSpan = document.createElement("span");
+                        detailSpan.className = "event-detail";
+                        div.appendChild(detailSpan);
+                    }
+                    setText(div.children[2], evt.detail);
+                } else if (div.children.length >= 3) {
+                    div.removeChild(div.children[2]);
                 }
-                setText(div.children[2], evt.detail);
-            } else if (div.children.length >= 3) {
-                div.removeChild(div.children[2]);
             }
         }
     }
@@ -1036,6 +1102,8 @@
             riderRows[num].children[1].dataset.key = "";
         }
         updatePreviewSizing();
+        if (lastData) render();
+        else renderEventLog();
         saveSettings();
     }
 

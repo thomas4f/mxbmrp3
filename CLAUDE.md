@@ -174,6 +174,7 @@ The embedded HTTP server (`core/http_server.cpp`) streams race data to browser-b
 - **Plugin sends raw data** — event/chip filtering, timestamps, and display settings are controlled client-side via the `CONFIG` block in `app.js`
 - **Web files** served from `plugins/mxbmrp3_data/web/` — users can customize CSS/HTML/JS freely (user overrides synced from Documents folder)
 - **To add a new field**: add to `buildJsonSnapshot()` in the appropriate section, then consume in `app.js`
+- **Service worker / offline cache**: `mxbmrp3_data/web/sw.js` precaches the overlay shell so OBS can render it before the plugin's HTTP server is up. The `PRECACHE_URLS` list is hand-maintained — when adding new CSS/JS/font/icon assets under `mxbmrp3_data/web/`, also add them to `PRECACHE_URLS` in `sw.js`, otherwise they won't be available offline until first online load. Cache name is tied to `PLUGIN_VERSION` (substituted server-side in `http_server.cpp`), so plugin upgrades auto-invalidate the cache.
 
 ### Adding Support for a New Game Feature
 1. Add field to appropriate `Unified::` struct in `game/unified_types.h`

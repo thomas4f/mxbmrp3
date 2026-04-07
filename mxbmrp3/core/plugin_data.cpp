@@ -141,6 +141,17 @@ void PluginData::setNumberOfGears(int numberOfGears) {
     m_bikeTelemetry.numberOfGears = numberOfGears;
 }
 
+void PluginData::setSessionTime(int sessionTime) {
+    // Notify on whole-second boundary so SSE clients (web overlay) get a
+    // fresh snapshot once per second instead of having to interpolate.
+    int prevSec = m_currentSessionTime / 1000;
+    m_currentSessionTime = sessionTime;
+    int curSec = m_currentSessionTime / 1000;
+    if (prevSec != curSec) {
+        notifyHudManager(DataChangeType::SessionData);
+    }
+}
+
 void PluginData::setSession(int session) {
     if (setValue(m_sessionData.session, session)) {
         notifyHudManager(DataChangeType::SessionData);
@@ -1379,7 +1390,7 @@ void PluginData::updateTrackPosition(int raceNum, float trackPos, int numLaps, b
     }
 
     // Store current session time
-    m_currentSessionTime = sessionTime;
+    setSessionTime(sessionTime);
 
     // Invalidate caches (depend on track positions)
     m_blueFlagsDirty = true;
