@@ -290,6 +290,7 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
     addHotkeyRow(HotkeyAction::TOGGLE_FMX);
     addHotkeyRow(HotkeyAction::TOGGLE_STATS);
     addHotkeyRow(HotkeyAction::TOGGLE_EVENT_LOG);
+    addHotkeyRow(HotkeyAction::TOGGLE_HELMET);
     addHotkeyRow(HotkeyAction::TOGGLE_PERFORMANCE);
     addHotkeyRow(HotkeyAction::TOGGLE_RUMBLE);
 

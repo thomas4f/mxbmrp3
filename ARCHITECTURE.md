@@ -4,7 +4,7 @@ This document explains how the MXBMRP3 plugin works, from the ground up. It's de
 
 ## What Is This Project?
 
-MXBMRP3 is a **HUD (Heads-Up Display) plugin** for Piboso racing simulators (MX Bikes, GP Bikes, WRS, KRP). The plugin displays real-time racing information on screen: lap times, standings, speedometer, track map, and more.
+MXBMRP3 is a **HUD (Heads-Up Display) plugin** for PiBoSo racing simulators (MX Bikes, GP Bikes, WRS, KRP). The plugin displays real-time racing information on screen: lap times, standings, speedometer, track map, and more.
 
 The plugin is a Windows DLL (with `.dlo` extension) that each game loads at startup. The game calls our exported functions to send us data and request rendering instructions. A **multi-game translation layer** allows the same core code to work across all supported games.
 
@@ -64,6 +64,7 @@ mxbmrp3/
 │   ├── textures/               # .tga files (HUD backgrounds with variants)
 │   ├── icons/                  # .tga files (rider icons for map/radar)
 │   ├── web/                    # Web overlay (HTML/CSS/JS served by HttpServer)
+│   │   └── logos/              # Logo slideshow PNGs (auto-detected by /api/logos)
 │   └── tooltips.json           # UI tooltip definitions
 ├── docs/                       # Documentation
 ├── replay_tool/                # Separate tool for replay analysis
@@ -157,7 +158,7 @@ Here's how data flows through the plugin:
 
 ### 1. The Plugin API (`vendor/piboso/*_api.*`)
 
-Each Piboso game defines a C API that plugins must implement. The APIs are nearly identical, with game-specific struct variations. Each game has its own API file:
+Each PiBoSo game defines a C API that plugins must implement. The APIs are nearly identical, with game-specific struct variations. Each game has its own API file:
 - `mxb_api.h/.cpp` - MX Bikes
 - `gpb_api.h/.cpp` - GP Bikes
 - `wrs_api.h` / `krp_api.h` - WRS and KRP (headers only, stubs)
@@ -373,6 +374,7 @@ Embedded HTTP server that streams race data to browser-based overlays (OBS brows
 **Static file serving:**
 - Mounts `plugins/mxbmrp3_data/web/` at `/` — users can freely customize the HTML/CSS/JS
 - Web overlay syncs colors and fonts from in-game settings via CSS custom properties
+- `GET /api/logos` — scans `web/logos/` for PNGs, returns sorted JSON array for the logo slideshow
 
 **Feature gating:**
 - Compile-time: `GAME_HAS_HTTP_SERVER` flag in `game_config.h`
@@ -444,6 +446,9 @@ Abstract base class that all HUDs inherit from. Provides:
 - `SessionHud` - Session info (type, format, track, server, players, password)
 - `StatsHud` - Session stats display with configurable columns (last lap, session, all-time)
 - `NoticesHud` - Race status notices (wrong way, blue flag, PB alerts, last lap, finished)
+
+**Overlays** (full-screen, telemetry-driven):
+- `HelmetOverlayHud` - First-person helmet overlay with visor tint, tilt (lean angle) and vibration (suspension). Global settings in `[HelmetOverlay]` INI section. Registered first to draw behind all other HUDs.
 
 **Widgets** (simple, focused):
 - `SpeedWidget` - Speed and gear display
@@ -976,7 +981,7 @@ SCOPED_TIMER_THRESHOLD("MyFunction", 100);  // Logs if > 100us
 
 ## Multi-Game Support
 
-The plugin supports multiple Piboso racing games from a single codebase using compile-time game selection.
+The plugin supports multiple PiBoSo racing games from a single codebase using compile-time game selection.
 
 ### Supported Games
 
@@ -1043,7 +1048,7 @@ struct RaceLapData {
 
 ### Updating Vendor APIs
 
-When Piboso releases a new API version:
+When PiBoSo releases a new API version:
 
 1. **Update the vendor header** (`mxb_api.h`, `gpb_api.h`, etc.)
 2. **Update the adapter** to handle new/changed fields

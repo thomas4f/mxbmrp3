@@ -3,12 +3,13 @@ A customizable, [open-source](https://github.com/thomas4f/mxbmrp3) HUD plugin fo
 ![MXBMRP3 HUD Screenshot](mxbmrp3-v1.18.jpg)
 *Example HUD layout. All elements are fully customizable.*
 
-### Features
+## Features
 
 - Live race standings, track map, and proximity radar with approach alerts
 - Lap timing with splits, personal bests, gap-to-PB visualization, and online lap records
 - Event log with timestamped race events and per-event icons
 - Track specific riders with custom colors and icons across all HUDs
+- First-person helmet overlay with telemetry-driven tilt and vibration
 - Controller rumble feedback with customizable effects
 - Discord Rich Presence integration showing current session and track
 - Riding stats tracking with per-lap, session, and all-time totals
@@ -18,7 +19,7 @@ A customizable, [open-source](https://github.com/thomas4f/mxbmrp3) HUD plugin fo
 - Drag-and-drop positioning with color themes and customizable hotkeys
 - Automatic profile switching for Practice, Qualify, Race, and Spectate sessions
 
-### Get Started
+## Get Started
 
 Download and install the plugin to begin customizing your HUD.
 
@@ -29,7 +30,7 @@ Download and install the plugin to begin customizing your HUD.
 > 1. Install the plugin
 > 2. Launch the game and load a track
 > 3. Right-click drag to reposition elements
-> 4. Press **Tilde (~)** or click the **[=]** settings button to customize visibility, scale, opacity, and more
+> 4. Press **Tilde (~)** (the key below Esc) or click the settings button in the top-right to customize visibility, scale, opacity, and more
 
 See [Installation](#installation) for detailed setup instructions.
 
@@ -99,7 +100,7 @@ Launch the game - the plugin loads automatically. Some elements are enabled by d
 ## Controls
 
 ### Mouse
-- **Move Mouse** - Show cursor and `[=]` settings button (auto-hides after inactivity)
+- **Move Mouse** - Show cursor and settings button (auto-hides after inactivity)
 - **Left Click** - Interact with settings menu and HUD elements
 - **Right Click & Drag** - Reposition elements
 
@@ -107,11 +108,11 @@ Launch the game - the plugin loads automatically. Some elements are enabled by d
 
 Keyboard and controller hotkeys can be customized in Settings > Hotkeys. By default, only the settings menu hotkey is configured:
 
-- **Tilde** (below Esc) - Toggle settings menu
+- **Tilde (~)** - Toggle settings menu
 
 ## Configuration
 
-Use the settings menu (Tilde key or `[=]` settings button) to configure all HUDs and widgets. **Hover over any setting to see its description** - all controls have in-game tooltips explaining their function.
+Use the settings menu (**Tilde** or the settings button in the top-right) to configure all HUDs and widgets. **Hover over any setting to see its description** - all controls have in-game tooltips explaining their function.
 
 The settings menu provides:
 - **General** - Profiles, preferences, grid snapping
@@ -119,6 +120,7 @@ The settings menu provides:
 - **Hotkeys** - Keyboard and controller bindings
 - **Riders** - Track specific riders with custom colors and icons
 - **Rumble** - Controller vibration feedback effects
+- **Helmet** - First-person helmet overlay configuration
 - **Updates** - Check for new versions and install updates in-game
 - **Individual HUD tabs** - Per-element visibility, scale, opacity, and options
 
@@ -160,6 +162,7 @@ All HUDs and widgets are configurable via the settings menu or directly in the [
 | **Session** | Session info (type, format, track, server, players, password) |
 | **Notices** | Race status notices (wrong way, blue flag, PB alerts, last lap, finished) |
 | **Event Log** | Timestamped feed of race events (session changes, fastest laps, penalties, finishes, pit activity) |
+| **Helmet** | First-person helmet overlay with lean-linked tilt, suspension vibration, and visor tint |
 
 ### Widgets
 
@@ -185,7 +188,7 @@ The plugin includes a built-in HTTP server that streams live race data to a brow
 ### Setup
 
 1. Enable the web server in **Settings > General > Web Server** (the port number is shown when active)
-2. In OBS, add a **Browser Source** with URL `http://localhost:8080`
+2. In OBS, add a **Browser Source** with URL `http://localhost:8080` (default port - use the port shown in step 1 if changed)
 3. Set width/height to match your stream resolution (e.g., 1920x1080)
 4. The overlay auto-connects and displays a standings tower, event log, and rider focus card
 
@@ -205,17 +208,18 @@ Colors and fonts sync automatically from your in-game settings.
 
 ### What's Displayed
 
-- **Standings tower** — Live positions with rider numbers, names, gaps, brand colors, and status chips (finished, pit, penalty, fastest lap, spectated)
-- **Event log** — Timestamped race events (same events and filters as the in-game Event Log HUD)
-- **Rider focus card** — Appears when spectating, showing the spectated rider with bike info, lap times, and gaps to neighbors
+- **Logo slideshow** - Sponsor/logo banner above the standings tower. Drop PNG files into `logos/` (see [Modding](#modding)) and they cycle automatically. Toggleable with configurable interval in the settings panel.
+- **Standings tower** - Live positions with rider numbers, names, gaps, brand colors, and status chips (finished, pit, penalty, fastest lap, spectated)
+- **Event log** - Timestamped race events (same events and filters as the in-game Event Log HUD)
+- **Rider focus card** - Appears when spectating, showing the spectated rider with bike info, lap times, and gaps to neighbors
 
 ### Customization
 
-The overlay files are plain HTML, CSS, and JS. To customize them, place modified files in `Documents\PiBoSo\[Game]\mxbmrp3\web\` — user files override the bundled versions on startup and are preserved across updates (see [Modding](#modding)).
+The overlay files are plain HTML, CSS, and JS. To customize them, place modified files in `Documents\PiBoSo\[Game]\mxbmrp3\web\` - user files override the bundled versions on startup and are preserved across updates (see [Modding](#modding)).
 
-- `style.css` — Layout variables (spacing, sizing, tower width). Colors are synced from the game.
-- `index.html` — Overlay structure
-- `app.js` — The `CONFIG` block at the top defines defaults for all settings. These are overridden by the settings panel (stored in localStorage).
+- `style.css` - Layout variables (spacing, sizing, tower width). Colors are synced from the game.
+- `index.html` - Overlay structure
+- `app.js` - The `CONFIG` block at the top defines defaults for all settings. These are overridden by the settings panel (stored in localStorage).
 
 ## Tips & Tricks
 
@@ -282,7 +286,9 @@ Add custom fonts, textures, and icons by placing them in the appropriate subfold
 mxbmrp3/
 ├── fonts/       ← Custom .fnt files
 ├── textures/    ← Custom .tga textures
-└── icons/       ← Custom .tga icons
+├── icons/       ← Custom .tga icons
+└── web/
+    └── logos/   ← Sponsor/logo PNGs for the web overlay slideshow
 ```
 
 On game startup, the plugin syncs these files to the plugin's data directory (`plugins/mxbmrp3_data/`). User files with the same name as bundled assets will override them. This keeps your customizations separate from the plugin installation, so updates won't overwrite your files. **Restart the game after adding or modifying assets.**
@@ -294,6 +300,8 @@ Textures use the naming convention `{element_name}_{number}.tga` (e.g., `standin
 **Pitboard** - Drop a custom `.tga` file (e.g., `pitboard_hud_2.tga`) into the `textures\` subfolder. It will be auto-discovered and selectable in Settings > Pitboard > Texture.
 
 **Gamepad** - The Gamepad widget ships with Xbox and PlayStation layouts. To customize them, copy `gamepad_widget_1.tga` (Xbox) or `gamepad_widget_2.tga` (PlayStation) from `plugins\mxbmrp3_data\textures\` to the `textures\` subfolder and edit them. Source design files (PSD) are available in [`assets/`](assets/).
+
+**Helmet** - The helmet overlay uses two textures: `helmet_upper_1.tga` (visor rim/top) and `helmet_lower_1.tga` (chin bar). Author at screen resolution with transparent visor openings and ~10% bleed on all sides (extra opaque border beyond the visible area) so tilt and vibration don't expose hard edges.
 
 ### Custom Fonts
 
@@ -314,43 +322,48 @@ Icons (`.tga` files) placed in the `icons\` subfolder are discovered alphabetica
 
 ## Troubleshooting
 
-**HUD Not Appearing**
+### HUD Not Appearing
 - Check [Installation requirements](#installation) (MX Bikes Beta 20+ / GP Bikes Beta 18+)
 - Verify the DLO file and `mxbmrp3_data/` are in the correct `plugins/` folder. Games have two directories - the **game installation** (contains the game .exe) and **user data** (`Documents\PiBoSo\[Game]\`). Plugins go in the game installation, not Documents.
 - For GP Bikes, ensure you're using `mxbmrp3_gpb.dlo`, not `mxbmrp3.dlo`
 
-**Installer Detected the Wrong Game Directory**
+### Installer Detected the Wrong Game Directory
 - If you have multiple installations (e.g. standalone and Steam), the installer may pick the wrong one. Verify the plugin ended up in the `plugins/` folder next to the game `.exe` you actually launch. If not, run the installer again and select the correct path, or install manually.
 
-**Text or Icons Not Appearing**
-- Ensure `mxbmrp3_data/` folder is in the `plugins/` folder alongside the DLO file
+### Text or Icons Not Appearing
+- Ensure `mxbmrp3_data/` folder is in the `plugins/` folder alongside the DLO file (see [directory structure](#manual-installation))
 - The `mxbmrp3_data/` folder contains fonts, textures, and icons required for rendering
 - If you moved or renamed this folder, restore it from the release archive
 
-**Gamepad Widget Appears Cut Off**
+### Gamepad Widget Appears Cut Off
 - Go to Settings > Widgets tab and click "Reset Widgets" to correct the button positions.
 
-**Elements Appearing Twice (Ghost/Duplicate)**
-- Check for duplicate DLO files - only ONE plugin DLO should exist in your plugins folder
+### Elements Appearing Twice (Ghost/Duplicate)
+- Check for duplicate MXBMRP3 DLO files - only one `mxbmrp3.dlo` (or `mxbmrp3_gpb.dlo` for GP Bikes) should exist in your plugins folder. Other plugins' DLO files are fine.
 
-**Elements Overlapping**
+### Elements Overlapping
 - Drag elements to reposition them
 - Use settings menu to adjust scale
 
-**Controller or Rumble Not Working**
+### Controller or Rumble Not Working
 - Verify the correct controller is selected in Settings > General
 - If you accidentally deleted `xinput64.dli` from the plugins folder, controller input may stop working
 - To restore: verify game files integrity (Steam) or reinstall the game
 
-**Game Fails to Launch, Crashes, or Shows Black Screen**
-- See the [MX Bikes Troubleshooting Guide](https://gist.github.com/thomas4f/1fd379fafb4ab402b48424ae1c9cf2bd) for general game issues (crashes, mods, plugins, RAM, controllers)
-- If the Windows Event Log shows `mxbmrp3.dlo` as the faulting module, please [open an issue](https://github.com/thomas4f/mxbmrp3/issues)
+### Web Overlay Not Working
+- If the settings show "Error" and "Port ... may be in use", another application is using the same port
+- Change the port in Settings > General > Web Server Port (e.g. to 8081)
+- Remember to update your OBS Browser Source URL to match the new port
 
-For bug reports or feature requests, open an issue on [GitHub](https://github.com/thomas4f/mxbmrp3/issues).
+### Game Fails to Launch, Crashes, or Shows Black Screen
+- See the [MX Bikes Troubleshooting Guide](https://gist.github.com/thomas4f/1fd379fafb4ab402b48424ae1c9cf2bd) for general game issues (crashes, mods, plugins, RAM, controllers)
+- If the Windows Event Log shows `mxbmrp3.dlo` as the faulting module, please report it (see below)
+
+For bug reports or feature requests, open an issue on [GitHub](https://github.com/thomas4f/mxbmrp3/issues) or leave a comment on [MXB-Mods](https://mxb-mods.com/mxbmrp3/).
 
 ## Development
 
-Built with C++17, Visual Studio 2022, Piboso Plugin API, and Claude Code.
+Built with C++17, Visual Studio 2022, PiBoSo Plugin API, and Claude Code.
 
 - [`CLAUDE.md`](CLAUDE.md) - Quick-start guide for developers and AI assistants
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) - Comprehensive technical documentation with diagrams
@@ -372,6 +385,15 @@ Built with C++17, Visual Studio 2022, Piboso Plugin API, and Claude Code.
 5. Output:
    - MX Bikes: `build/MXB-Release/mxbmrp3.dlo`
    - GP Bikes: `build/GPB-Release/mxbmrp3_gpb.dlo`
+
+---
+
+## Acknowledgments
+
+- **Husk** - Gamepad widget source design files
+- **HornetMaX** - [MaxHUD](https://forum.mx-bikes.com/index.php?topic=180.0), which served the MX Bikes community for over a decade
+
+Thanks to everyone in the MX Bikes community who tested, reported bugs, and shared ideas.
 
 ---
 

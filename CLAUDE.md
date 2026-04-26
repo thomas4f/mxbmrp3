@@ -2,7 +2,7 @@
 
 ## Read This First
 
-This is a **racing simulator HUD plugin** for Piboso racing games (MX Bikes, GP Bikes, WRS, KRP). It's a DLL plugin written in C++ using each game's proprietary API, with a shared core that works across all supported games.
+This is a **racing simulator HUD plugin** for PiBoSo racing games (MX Bikes, GP Bikes, WRS, KRP). It's a DLL plugin written in C++ using each game's proprietary API, with a shared core that works across all supported games.
 
 **For deep technical details:** See [`ARCHITECTURE.md`](ARCHITECTURE.md) (comprehensive documentation with mermaid diagrams, component descriptions, dependency graphs, multi-game architecture). This file is a quick-start guide.
 
@@ -44,7 +44,7 @@ SSE stream → Web Overlay (browser/OBS)
 
 ## Multi-Game Support
 
-The plugin supports multiple Piboso games from a single codebase:
+The plugin supports multiple PiBoSo games from a single codebase:
 
 | Game | Config | Output | Status |
 |------|--------|--------|--------|
@@ -76,7 +76,7 @@ The plugin supports multiple Piboso games from a single codebase:
 
 **Build Instructions (Windows only):**
 - **Build**: Open `mxbmrp3.sln` in Visual Studio 2022 (C++17, v143 toolset)
-- **Platform**: x64 only (all Piboso games are 64-bit)
+- **Platform**: x64 only (all PiBoSo games are 64-bit)
 - **Configurations**:
   - `MXB-Debug` / `MXB-Release` → `build/MXB-Release/mxbmrp3.dlo`
   - `GPB-Debug` / `GPB-Release` → `build/GPB-Release/mxbmrp3_gpb.dlo`
@@ -127,6 +127,14 @@ Full HUDs (StandingsHud, LapLogHud, PitboardHud, TimingHud, NoticesHud, StatsHud
 - Extensive customization (column/row toggles, gap modes, etc.)
 - More configuration options
 
+**Helmet Overlay (HelmetOverlayHud)**
+Full-screen immersion overlay — neither a widget nor a typical HUD:
+- Renders textured quads (helmet upper/lower) over the entire viewport
+- Telemetry-driven tilt (lean angle) and vibration (suspension deltas)
+- Registered first in HudManager so it draws behind all other HUDs
+- Global settings (not per-profile) — saved in its own `[HelmetOverlay]` INI section like `[Rumble]`
+- Hidden during spectate/replay/crash; no title, no dragging, no scaling
+
 **Handler-to-API Event Mapping**
 Each handler corresponds to game API callback(s), but receives unified types:
 - Run handlers (RunHandler, RunLapHandler, etc.) = player-only events
@@ -174,6 +182,7 @@ The embedded HTTP server (`core/http_server.cpp`) streams race data to browser-b
 - **Plugin sends raw data** — event/chip filtering, timestamps, and display settings are controlled client-side via the `CONFIG` block in `app.js`
 - **Web files** served from `plugins/mxbmrp3_data/web/` — users can customize CSS/HTML/JS freely (user overrides synced from Documents folder)
 - **To add a new field**: add to `buildJsonSnapshot()` in the appropriate section, then consume in `app.js`
+- **Logo slideshow**: `GET /api/logos` scans `web/logos/` for PNGs and returns a sorted filename list. Users drop PNGs into the `logos/` folder (or the Documents user-override path `mxbmrp3/web/logos/`), no config editing needed. Bundled logos should be added to `PRECACHE_URLS` in `sw.js`.
 - **Service worker / offline cache**: `mxbmrp3_data/web/sw.js` precaches the overlay shell so OBS can render it before the plugin's HTTP server is up. The `PRECACHE_URLS` list is hand-maintained — when adding new CSS/JS/font/icon assets under `mxbmrp3_data/web/`, also add them to `PRECACHE_URLS` in `sw.js`, otherwise they won't be available offline until first online load. Cache name is tied to `PLUGIN_VERSION` (substituted server-side in `http_server.cpp`), so plugin upgrades auto-invalidate the cache.
 
 ### Adding Support for a New Game Feature
@@ -218,6 +227,7 @@ The embedded HTTP server (`core/http_server.cpp`) streams race data to browser-b
 - `mxbmrp3/hud/standings_hud.cpp` - Complex HUD (dynamic table)
 - `mxbmrp3/hud/map_hud.cpp` - Advanced (2D rendering, rotation)
 - `mxbmrp3/hud/event_log_hud.h/.cpp` - Event log with configurable event type filters
+- `mxbmrp3/hud/helmet_overlay_hud.h/.cpp` - Full-screen overlay with telemetry-driven tilt/vibration
 
 **Web Overlay:**
 - `mxbmrp3_data/web/index.html` - Overlay HTML structure

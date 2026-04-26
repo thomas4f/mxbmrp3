@@ -37,6 +37,7 @@
 #include "../hud/records_hud.h"
 #endif
 #include "../hud/rumble_hud.h"
+#include "../hud/helmet_overlay_hud.h"
 #include "../hud/benchmark_widget.h"
 #include "../hud/gamepad_widget.h"
 #include "../hud/lean_widget.h"
@@ -897,7 +898,7 @@ namespace {
         }
     }
 
-    PBScope stringToPBScope(const std::string& str, PBScope defaultVal = PBScope::BIKE) {
+    PBScope stringToPBScope(const std::string& str, PBScope defaultVal = PBScope::CATEGORY) {
         if (str == "BIKE") return PBScope::BIKE;
         if (str == "CATEGORY") return PBScope::CATEGORY;
         DEBUG_WARN_F("Unknown PBScope '%s', using default", str.c_str());
@@ -2049,6 +2050,9 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
         cache["RumbleHud"] = std::move(settings);
     }
 
+    // Note: HelmetOverlayHud is global (not per-profile) — saved/loaded
+    // in its own [HelmetOverlay] section, same pattern as [Rumble].
+
     // SpeedWidget has enabledRows - speedUnit is now global (in Preferences section)
     {
         HudSettings settings;
@@ -2850,6 +2854,8 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
         }
     }
 
+    // Note: HelmetOverlayHud is global — loaded from [HelmetOverlay] section in loadSettings().
+
     // Apply SpeedWidget with enabledRows - speedUnit is now global (in Preferences section)
     {
         auto it = cache.find("SpeedWidget");
@@ -3411,6 +3417,25 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     file << "wheelie_light_strength=" << rumbleConfig.wheelieEffect.lightStrength << "\n";
     file << "wheelie_heavy_strength=" << rumbleConfig.wheelieEffect.heavyStrength << "\n\n";
 
+    // Write HelmetOverlay section (global, not per-profile)
+    {
+        const auto& hud = hudManager.getHelmetOverlayHud();
+        file << "[HelmetOverlay]\n";
+        file << "visible=" << (hud.isVisible() ? 1 : 0) << "\n";
+        file << "helmetEnabled=" << (hud.m_helmetEnabled ? 1 : 0) << "\n";
+        file << "visorMode=" << hud.m_visorMode << "\n";
+        file << "helmetUpperVariant=" << hud.m_helmetUpperVariant << "\n";
+        file << "helmetLowerVariant=" << hud.m_helmetLowerVariant << "\n";
+        file << "helmetUpperOffsetY=" << hud.m_helmetUpperOffsetY << "\n";
+        file << "helmetLowerOffsetY=" << hud.m_helmetLowerOffsetY << "\n";
+        file << "helmetTiltStrength=" << hud.m_helmetTiltStrength << "\n";
+        file << "helmetVibrationStrength=" << hud.m_helmetVibrationStrength << "\n";
+        file << "helmetVibrationSensitivity=" << hud.m_helmetVibrationSensitivity << "\n";
+        file << "helmetZoom=" << hud.m_helmetZoom << "\n";
+        file << "visorTintColor=" << PluginUtils::formatColorHex(hud.m_visorTintColor) << "\n";
+        file << "visorTintOpacity=" << hud.m_visorTintOpacity << "\n\n";
+    }
+
     // Write Hotkeys section
     const HotkeyManager& hotkeyMgr = HotkeyManager::getInstance();
     file << "[Hotkeys]\n";
@@ -3430,6 +3455,7 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     TrackedRidersManager::getInstance().save();
 
     // HUD order for consistent output
+    // Note: HelmetOverlayHud is global (own [HelmetOverlay] section), not in this per-profile list.
     static const std::array<const char*, 36> hudOrder = {
         "StandingsHud", "MapHud", "RadarHud", "PitboardHud", "RecordsHud",
         "LapLogHud", "LapConsistencyHud", "FmxHud", "StatsHud", "EventLogHud", "IdealLapHud", "TelemetryHud", "PerformanceHud",
@@ -4025,6 +4051,43 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                 }
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("Rumble: Failed to parse settings: %s", e.what());
+            }
+            continue;
+        }
+
+        // Handle HelmetOverlay section (global, not per-profile)
+        if (currentHudName == "HelmetOverlay") {
+            auto& hud = hudManager.getHelmetOverlayHud();
+            try {
+                if (key == "visible") {
+                    hud.setVisible(std::stoi(value) != 0);
+                } else if (key == "helmetEnabled") {
+                    hud.m_helmetEnabled = std::stoi(value) != 0;
+                } else if (key == "visorMode") {
+                    hud.m_visorMode = std::clamp(std::stoi(value), 0, HelmetOverlayHud::VISOR_MODE_COUNT - 1);
+                } else if (key == "helmetUpperVariant") {
+                    hud.m_helmetUpperVariant = std::stoi(value);
+                } else if (key == "helmetLowerVariant") {
+                    hud.m_helmetLowerVariant = std::stoi(value);
+                } else if (key == "helmetUpperOffsetY") {
+                    hud.m_helmetUpperOffsetY = std::stof(value);
+                } else if (key == "helmetLowerOffsetY") {
+                    hud.m_helmetLowerOffsetY = std::stof(value);
+                } else if (key == "helmetTiltStrength") {
+                    hud.m_helmetTiltStrength = std::stof(value);
+                } else if (key == "helmetVibrationStrength") {
+                    hud.m_helmetVibrationStrength = std::stof(value);
+                } else if (key == "helmetVibrationSensitivity") {
+                    hud.m_helmetVibrationSensitivity = std::stof(value);
+                } else if (key == "helmetZoom") {
+                    hud.m_helmetZoom = std::stof(value);
+                } else if (key == "visorTintColor") {
+                    hud.m_visorTintColor = PluginUtils::parseColorHex(value);
+                } else if (key == "visorTintOpacity") {
+                    hud.m_visorTintOpacity = std::stof(value);
+                }
+            } catch (const std::exception& e) {
+                DEBUG_WARN_F("HelmetOverlay: Failed to parse setting '%s': %s", key.c_str(), e.what());
             }
             continue;
         }

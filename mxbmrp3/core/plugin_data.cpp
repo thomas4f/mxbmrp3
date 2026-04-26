@@ -881,10 +881,7 @@ void PluginData::updateStandings(int raceNum, int state, int bestLap, int bestLa
 
             // Detect pit exit (pit 1→0) and start per-rider hazard grace period
             if (it->second.pit == 1 && pit == 0) {
-                auto trackIt = m_trackPositions.find(raceNum);
-                if (trackIt != m_trackPositions.end()) {
-                    trackIt->second.pitExitGraceStart = std::chrono::steady_clock::now();
-                }
+                startPitExitGrace(raceNum);
             }
 
             it->second.state = state;
@@ -984,10 +981,7 @@ void PluginData::batchUpdateStandings(Unified::RaceClassificationEntry* entries,
                         // Pit exit (1→0) - start per-rider hazard grace period
                         snprintf(eventMsg, sizeof(eventMsg), "%s left pits", riderLabel);
                         addEventLogEntry(EventLogType::PitExit, eventMsg);
-                        auto trackIt = m_trackPositions.find(entry.raceNum);
-                        if (trackIt != m_trackPositions.end()) {
-                            trackIt->second.pitExitGraceStart = std::chrono::steady_clock::now();
-                        }
+                        startPitExitGrace(entry.raceNum);
                     }
                 }
 
@@ -1244,6 +1238,10 @@ void PluginData::updateTrackPosition(int raceNum, float trackPos, int numLaps, b
             data.numLaps = numLaps;
             data.sessionTime = sessionTime;
             data.crashed = crashed;
+            // Don't count crashes across a teleport — a reset back onto the
+            // track is a crash recovery, not a new crash. Just refresh the
+            // prev-state so the next edge is measured from here.
+            data.prevCrashedState = crashed;
 
             // Reset hazard state on teleport (clean state reset, no cooldown)
             data.lastSignificantTrackPos = trackPos;
@@ -1251,6 +1249,9 @@ void PluginData::updateTrackPosition(int raceNum, float trackPos, int numLaps, b
             data.hazardClearedAt = {};
             data.hazardType = HazardType::None;
             data.hazardConfirmed = false;
+            // Teleport moves the rider away from the pit exit area, so re-arm
+            // the stationary hazard — normal rules apply at the new position.
+            data.movedSincePitExit = true;
 
             m_currentSessionTime = sessionTime;
             m_blueFlagsDirty = true;
@@ -1295,6 +1296,8 @@ void PluginData::updateTrackPosition(int raceNum, float trackPos, int numLaps, b
             // Significant movement — update reference position, reset stationary timer
             data.lastSignificantTrackPos = trackPos;
             data.stationarySince = {};
+            // Rider has now moved since leaving the pits; re-enable stationary hazard detection
+            data.movedSincePitExit = true;
         } else if (data.stationarySince.time_since_epoch().count() == 0) {
             // Just became stationary — start timer
             data.stationarySince = now;
@@ -1369,6 +1372,13 @@ void PluginData::updateTrackPosition(int raceNum, float trackPos, int numLaps, b
             }
         }
 
+        // Rising-edge crash count (not-crashed -> crashed). Mirrors the
+        // StatsManager player-only pattern, but applied per rider.
+        if (crashed && !data.prevCrashedState) {
+            data.sessionCrashCount++;
+        }
+        data.prevCrashedState = crashed;
+
         // Update position data
         data.trackPos = trackPos;
         data.numLaps = numLaps;
@@ -1385,6 +1395,10 @@ void PluginData::updateTrackPosition(int raceNum, float trackPos, int numLaps, b
         posData.wrongWay = false;
         posData.previousTrackPos = trackPos;
         posData.lastSignificantTrackPos = trackPos;  // Initialize hazard reference position
+        // First observation of this rider — seed the edge detector from the
+        // current state so we don't count an already-crashed rider as a new
+        // crash on first sight. (sessionCrashCount defaults to 0 inline.)
+        posData.prevCrashedState = crashed;
 
         m_trackPositions[raceNum] = posData;
     }
@@ -1429,6 +1443,14 @@ const TrackPositionData* PluginData::getPlayerTrackPosition() const {
         return &it->second;
     }
     return nullptr;  // No position data available
+}
+
+int PluginData::getRiderSessionCrashCount(int raceNum) const {
+    auto it = m_trackPositions.find(raceNum);
+    if (it != m_trackPositions.end()) {
+        return it->second.sessionCrashCount;
+    }
+    return 0;  // No observations for this rider yet
 }
 
 void PluginData::rebuildBlueFlagCaches() const {
@@ -1556,6 +1578,15 @@ void PluginData::rebuildHazardTypeCaches() const {
     }
 }
 
+void PluginData::startPitExitGrace(int raceNum) {
+    auto trackIt = m_trackPositions.find(raceNum);
+    if (trackIt == m_trackPositions.end()) {
+        return;
+    }
+    trackIt->second.pitExitGraceStart = std::chrono::steady_clock::now();
+    trackIt->second.movedSincePitExit = false;
+}
+
 HazardType PluginData::computeRiderHazardType(int raceNum, std::chrono::steady_clock::time_point now) const {
     // Note: global suppression checks (pre-race, grace period) are handled by
     // rebuildHazardTypeCaches() — this only checks per-rider conditions.
@@ -1571,6 +1602,14 @@ HazardType PluginData::computeRiderHazardType(int raceNum, std::chrono::steady_c
         if (elapsedMs < m_hazardGracePeriodMs) {
             return HazardType::None;
         }
+    }
+
+    // Suppress Stationary hazard for riders who left the pits but haven't moved yet.
+    // A motionless rider sitting at pit exit can't be blue-flagged or be a real hazard,
+    // so we keep the warning suppressed until they actually roll out. WrongWay is
+    // unaffected (you can't be going the wrong way without moving).
+    if (it->second.hazardType == HazardType::Stationary && !it->second.movedSincePitExit) {
+        return HazardType::None;
     }
 
     // Re-check exclusion: rider may have retired/DNS/DSQ or entered pits
@@ -2053,6 +2092,11 @@ void PluginData::updateRoll(float roll) {
     m_bikeTelemetry.roll = roll;
     // No separate notification - roll updates at same frequency as speedometer
     // which already notifies with InputTelemetry
+}
+
+void PluginData::updatePitch(float pitch) {
+    m_bikeTelemetry.pitch = pitch;
+    // Same as updateRoll — updates at telemetry rate, no separate notification.
 }
 
 void PluginData::updateTemperatures(float engineTemp, float waterTemp) {

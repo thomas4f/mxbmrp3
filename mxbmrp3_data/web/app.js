@@ -77,11 +77,18 @@
         // --- Tower ---
         hideDns: false,          // Hide DNS riders from standings
         maxRiders: 0,            // Max visible standings rows (0 = show all)
+        nameChars: 3,            // Characters shown in the name column (3-30).
+                                 // Drives the overall tower width.
         towerX: 0,               // Tower position X in pixels
         towerY: 0,               // Tower position Y in pixels
 
         // --- Visibility ---
         hideInMenus: false,      // Hide overlay when no session is active
+
+        // --- Logo slideshow ---
+        logoSlideshow: true,     // Show sponsor/logo banner above standings
+        logoInterval: 30,        // Seconds between slides (5-120)
+        logoEnabled: {},         // Per-file toggles: { "file.png": true/false }. Unknown = on.
 
         // --- Focus card ---
         focusCard: true,         // Show/hide the rider focus card
@@ -125,15 +132,22 @@
                 for (var key in merged) {
                     if (merged.hasOwnProperty(key)) CONFIG[key] = merged[key];
                 }
+                // logoEnabled has dynamic keys — deepMerge against {} would
+                // discard them, so load directly from stored.
+                if (stored.logoEnabled && typeof stored.logoEnabled === "object") {
+                    CONFIG.logoEnabled = stored.logoEnabled;
+                }
             }
         } catch (e) { /* corrupted localStorage, use defaults */ }
         // Clamp numeric values to valid ranges
         CONFIG.fontSize = clamp(CONFIG.fontSize, 14, 56);
         CONFIG.maxRiders = clamp(CONFIG.maxRiders, 0, 40);
+        CONFIG.nameChars = clamp(CONFIG.nameChars, 3, 30);
         CONFIG.towerX = Math.max(0, CONFIG.towerX);
         CONFIG.towerY = Math.max(0, CONFIG.towerY);
         CONFIG.maxEvents = clamp(CONFIG.maxEvents, 0, 20);
         CONFIG.focusDuration = clamp(CONFIG.focusDuration, 0, 30000);
+        CONFIG.logoInterval = clamp(CONFIG.logoInterval, 5, 120);
         if (["off", "session", "clock"].indexOf(CONFIG.timestampMode) < 0) {
             CONFIG.timestampMode = "clock";
         }
@@ -145,6 +159,7 @@
             compactTimes: CONFIG.compactTimes,
             hideDns: CONFIG.hideDns,
             maxRiders: CONFIG.maxRiders,
+            nameChars: CONFIG.nameChars,
             towerX: CONFIG.towerX,
             towerY: CONFIG.towerY,
             maxEvents: CONFIG.maxEvents,
@@ -152,6 +167,9 @@
             events: {},
             chips: {},
             hideInMenus: CONFIG.hideInMenus,
+            logoSlideshow: CONFIG.logoSlideshow,
+            logoInterval: CONFIG.logoInterval,
+            logoEnabled: CONFIG.logoEnabled,
             focusCard: CONFIG.focusCard,
             focusDuration: CONFIG.focusDuration
         };
@@ -176,8 +194,9 @@
     var STATE_RETIRED = 3;
     var STATE_DSQ = 4;
 
-    // Apply configured font size
+    // Apply configured font size and name-column width driver
     document.documentElement.style.fontSize = CONFIG.fontSize + "px";
+    document.documentElement.style.setProperty("--name-chars", CONFIG.nameChars);
 
     // --- DOM References ---
     var overlay = document.getElementById("overlay");
@@ -191,6 +210,113 @@
     var focusAhead = document.getElementById("focus-ahead");
     var focusMain = document.getElementById("focus-main");
     var focusBehind = document.getElementById("focus-behind");
+
+    // --- Logo slideshow ---
+    var logoBanner = document.getElementById("logo-banner");
+    var logoTrack = document.getElementById("logo-track");
+    var logoFiles = [];
+    var logoIndex = 0;
+    var logoTimer = null;
+    var logoSnapTimer = null;
+
+    function fetchLogos() {
+        fetch(BASE_URL + "/api/logos", { mode: "cors" }).then(function (r) {
+            return r.json();
+        }).then(function (files) {
+            logoFiles = files || [];
+            buildLogoTrack();
+            buildLogoSettings();
+        }).catch(function () {
+            logoFiles = [];
+            buildLogoTrack();
+            buildLogoSettings();
+        });
+    }
+
+    function getEnabledLogos() {
+        var result = [];
+        for (var i = 0; i < logoFiles.length; i++) {
+            if (CONFIG.logoEnabled[logoFiles[i]] !== false) result.push(logoFiles[i]);
+        }
+        return result;
+    }
+
+    function buildLogoTrack() {
+        logoTrack.style.transition = "none";
+        logoTrack.textContent = "";
+        logoIndex = 0;
+        if (logoTimer) { clearInterval(logoTimer); logoTimer = null; }
+        if (logoSnapTimer) { clearTimeout(logoSnapTimer); logoSnapTimer = null; }
+
+        var enabled = getEnabledLogos();
+        if (!CONFIG.logoSlideshow || enabled.length === 0) {
+            logoBanner.classList.add("hidden");
+            return;
+        }
+
+        logoBanner.classList.remove("hidden");
+        for (var i = 0; i < enabled.length; i++) {
+            var img = document.createElement("img");
+            img.src = "logos/" + enabled[i];
+            img.alt = enabled[i];
+            img.draggable = false;
+            logoTrack.appendChild(img);
+        }
+        if (enabled.length > 1) {
+            var clone = document.createElement("img");
+            clone.src = "logos/" + enabled[0];
+            clone.alt = enabled[0];
+            clone.draggable = false;
+            logoTrack.appendChild(clone);
+        }
+        logoTrack.style.transform = "translateX(0)";
+        void logoTrack.offsetWidth;
+        logoTrack.style.transition = "";
+
+        if (enabled.length > 1) {
+            logoTimer = setInterval(advanceLogo, CONFIG.logoInterval * 1000);
+        }
+    }
+
+    function advanceLogo() {
+        var count = getEnabledLogos().length;
+        if (count <= 1) return;
+        logoIndex++;
+        logoTrack.style.transform = "translateX(-" + (logoIndex * 100) + "%)";
+
+        // After sliding to the clone of the first logo, wait for the
+        // transition to finish then instantly snap back to the real first.
+        if (logoIndex >= count) {
+            logoSnapTimer = setTimeout(function () {
+                logoSnapTimer = null;
+                logoTrack.style.transition = "none";
+                logoIndex = 0;
+                logoTrack.style.transform = "translateX(0)";
+                // Force reflow so the jump is applied before re-enabling transition
+                void logoTrack.offsetWidth;
+                logoTrack.style.transition = "";
+            }, 850); // slightly longer than the 0.8s CSS transition
+        }
+    }
+
+    function buildLogoSettings() {
+        var container = document.getElementById("logo-settings");
+        if (!container) return;
+        container.textContent = "";
+        for (var i = 0; i < logoFiles.length; i++) {
+            (function (file) {
+                var label = file.replace(/\.png$/i, "");
+                var enabled = CONFIG.logoEnabled[file] !== false;
+                addRow(container, label, createToggle(enabled, function (v) {
+                    CONFIG.logoEnabled[file] = v;
+                    buildLogoTrack();
+                    saveSettings();
+                }));
+            })(logoFiles[i]);
+        }
+    }
+
+    fetchLogos();
 
     // --- Tower position & drag ---
     var header = document.getElementById("header");
@@ -332,6 +458,9 @@
             overlay.classList.remove("disconnected");
             // "Connected" line is appended from render() once we know the
             // plugin version, so it can be shown in a single combined message.
+
+            // Refresh logo list (may have failed before server was up)
+            if (logoFiles.length === 0) fetchLogos();
         };
 
         eventSource.onmessage = function (event) {
@@ -718,8 +847,11 @@
                 brandStrip.style.background = brandColor || "transparent";
             }
 
-            // Name
-            setText(cols[2], rider.name || "");
+            // Name — truncate fullName to CONFIG.nameChars characters.
+            // Server-sent `name` is hard-capped at 3 chars, so we use fullName
+            // to allow the user to configure wider name columns client-side.
+            var fullName = rider.fullName || rider.name || "";
+            setText(cols[2], fullName.substring(0, CONFIG.nameChars));
 
             // Gap — format client-side from raw ms values
             var gap;
@@ -1095,6 +1227,7 @@
 
     function applySettings() {
         document.documentElement.style.fontSize = CONFIG.fontSize + "px";
+        document.documentElement.style.setProperty("--name-chars", CONFIG.nameChars);
         eventLogRowHeight = 0; // re-measure after font size change
         if (!CONFIG.focusCard && focusVisible) hideFocusCard();
         // Force chip refresh by clearing cached keys
@@ -1226,40 +1359,15 @@
         var body = panelEl.querySelector(".settings-body");
         body.textContent = "";
 
-        // Info note
-        var note = document.createElement("div");
-        note.className = "settings-note";
-        note.textContent = "Colors and fonts sync from in-game settings.";
-        body.appendChild(note);
-
         // General
         addSection(body, "General");
         addRow(body, "Hide when in Menus", createToggle(CONFIG.hideInMenus, function (v) {
             CONFIG.hideInMenus = v; applySettings();
         }), "Hide the overlay when no session is active.");
-
-        // Times
-        addSection(body, "Times");
-        addRow(body, "Compact", createToggle(CONFIG.compactTimes, function (v) {
-            CONFIG.compactTimes = v; applySettings();
-        }), "Gaps show tenths instead of milliseconds. Lap times drop leading 0: but keep full precision.");
-
-        // Scale
-        addSection(body, "Scale");
         addRow(body, "Font Size", createCounter(14, 56, 2, CONFIG.fontSize,
             function (v) { return v + "px"; },
             function (v) { CONFIG.fontSize = v; applySettings(); }),
             "Root font size in pixels. All elements scale with this value.");
-
-        // Tower
-        addSection(body, "Tower");
-        addRow(body, "Hide DNS", createToggle(CONFIG.hideDns, function (v) {
-            CONFIG.hideDns = v; applySettings();
-        }), "Hide riders who did not start from the standings.");
-        addRow(body, "Max Riders", createCounter(0, 40, 1, CONFIG.maxRiders,
-            function (v) { return v === 0 ? "All" : String(v); },
-            function (v) { CONFIG.maxRiders = v; applySettings(); }),
-            "Maximum riders shown in the standings tower. All = no limit.");
         (function () {
             var btn = document.createElement("button");
             btn.className = "settings-btn";
@@ -1272,9 +1380,67 @@
             });
             addRow(body, "Position", btn, "Drag the header bar to reposition. Click Reset to return to top-left.");
         })();
+        var note = document.createElement("div");
+        note.className = "settings-note";
+        note.textContent = "Colors and fonts sync from in-game settings.";
+        body.appendChild(note);
 
-        // Event Log
-        addSection(body, "Event Log");
+        // Logos
+        addSection(body, "Logos");
+        addRow(body, "Slideshow", createToggle(CONFIG.logoSlideshow, function (v) {
+            CONFIG.logoSlideshow = v; buildLogoTrack(); saveSettings();
+        }), "Show sponsor logos above the standings tower. Drop PNG files into the logos/ folder.");
+        addRow(body, "Interval", createCounter(5, 120, 5, CONFIG.logoInterval,
+            function (v) { return v + "s"; },
+            function (v) {
+                CONFIG.logoInterval = v;
+                buildLogoTrack();
+                saveSettings();
+            }),
+            "Seconds between logo slides.");
+        var logoSettingsContainer = document.createElement("div");
+        logoSettingsContainer.id = "logo-settings";
+        body.appendChild(logoSettingsContainer);
+
+        // Standings
+        addSection(body, "Standings");
+        addRow(body, "Compact Times", createToggle(CONFIG.compactTimes, function (v) {
+            CONFIG.compactTimes = v; applySettings();
+        }), "Gaps show tenths instead of milliseconds. Lap times drop leading 0: but keep full precision.");
+        addRow(body, "Hide DNS", createToggle(CONFIG.hideDns, function (v) {
+            CONFIG.hideDns = v; applySettings();
+        }), "Hide riders who did not start from the standings.");
+        addRow(body, "Max Riders", createCounter(0, 40, 1, CONFIG.maxRiders,
+            function (v) { return v === 0 ? "All" : String(v); },
+            function (v) { CONFIG.maxRiders = v; applySettings(); }),
+            "Maximum riders shown in the standings tower. All = no limit.");
+        addRow(body, "Name Chars", createCounter(3, 30, 1, CONFIG.nameChars,
+            String, function (v) { CONFIG.nameChars = v; applySettings(); }),
+            "Characters shown in the name column. Drives the overall tower width.");
+
+        // Chips
+        addSection(body, "Chips");
+        var chipLabels = {
+            finished: "Finished", pit: "Pit", penalty: "Penalty",
+            fastest: "Fastest", camera: "Camera"
+        };
+        var chipTips = {
+            finished: "Checkered flag icon for riders who finished.",
+            pit: "Wrench icon for riders in the pit.",
+            penalty: "Penalty time badge on the rider row.",
+            fastest: "Stopwatch icon for the fastest lap holder.",
+            camera: "Dot icon for the spectated rider."
+        };
+        for (var ck in CONFIG.chips) {
+            (function (key) {
+                addRow(body, chipLabels[key] || key, createToggle(CONFIG.chips[key], function (v) {
+                    CONFIG.chips[key] = v; applySettings();
+                }), chipTips[key]);
+            })(ck);
+        }
+
+        // Events
+        addSection(body, "Events");
         addRow(body, "Max Entries", createCounter(0, 20, 1, CONFIG.maxEvents,
             String, function (v) { CONFIG.maxEvents = v; applySettings(); }),
             "Maximum visible event log entries.");
@@ -1287,9 +1453,6 @@
                 function (v) { CONFIG.timestampMode = modes[v]; applySettings(); }),
                 "off = hidden, session = elapsed time, clock = wall clock.");
         })();
-
-        // Events
-        addSection(body, "Events");
         var eventLabels = {
             session: "Session", fastestLap: "Fastest Lap", penalty: "Penalty",
             riderOut: "Rider Out", overtime: "Overtime", finalLap: "Final Lap",
@@ -1312,27 +1475,6 @@
                     CONFIG.events[key] = v; applySettings();
                 }), eventTips[key]);
             })(ek);
-        }
-
-        // Chips
-        addSection(body, "Chips");
-        var chipLabels = {
-            finished: "Finished", pit: "Pit", penalty: "Penalty",
-            fastest: "Fastest", camera: "Camera"
-        };
-        var chipTips = {
-            finished: "Checkered flag icon for riders who finished.",
-            pit: "Wrench icon for riders in the pit.",
-            penalty: "Penalty time badge on the rider row.",
-            fastest: "Stopwatch icon for the fastest lap holder.",
-            camera: "Dot icon for the spectated rider."
-        };
-        for (var ck in CONFIG.chips) {
-            (function (key) {
-                addRow(body, chipLabels[key] || key, createToggle(CONFIG.chips[key], function (v) {
-                    CONFIG.chips[key] = v; applySettings();
-                }), chipTips[key]);
-            })(ck);
         }
 
         // Focus Card

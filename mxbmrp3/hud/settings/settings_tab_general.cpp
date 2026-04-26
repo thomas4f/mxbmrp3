@@ -102,6 +102,21 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
                 setDataDirty();
             }
             return true;
+        case ClickRegion::WEB_SERVER_PORT_DOWN:
+        case ClickRegion::WEB_SERVER_PORT_UP:
+            {
+                auto& server = HttpServer::getInstance();
+                int port = server.getPort();
+                int step = getHoldStepMultiplier();
+                port += (region.type == ClickRegion::WEB_SERVER_PORT_UP) ? step : -step;
+                port = std::clamp(port, 1024, 65535);
+                if (port != server.getPort()) {
+                    if (server.isRunning()) server.stop();
+                    server.setPort(port);
+                    setDataDirty();
+                }
+            }
+            return true;
 #endif
 
         case ClickRegion::PB_SCOPE_TOGGLE:
@@ -733,8 +748,8 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
             statusStr = "On";
             statusColor = colorConfig.getPositive();
         } else {
-            statusStr = "On";
-            statusColor = colorConfig.getPrimary();
+            statusStr = "Error";
+            statusColor = colorConfig.getWarning();
         }
 
         std::string formattedValue = ctx.formatValue(statusStr.c_str(), VALUE_WIDTH, false);
@@ -751,8 +766,17 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
 
         ctx.currentY += ctx.lineHeightNormal;
 
-        // Helper note below the toggle — explains what to do next.
-        // Match the spacing used by the widgets tab info text.
+        // Port control
+        {
+            char portBuf[8];
+            snprintf(portBuf, sizeof(portBuf), "%d", HttpServer::getInstance().getPort());
+            ctx.addCycleControl("Web Server Port", portBuf, 10,
+                SettingsHud::ClickRegion::WEB_SERVER_PORT_DOWN,
+                SettingsHud::ClickRegion::WEB_SERVER_PORT_UP,
+                nullptr, true, !serverEnabled, "general.web_port");
+        }
+
+        // Helper note below the controls.
         ctx.currentY += ctx.lineHeightNormal * 0.5f;
         std::string noteStr;
         if (!serverEnabled) {
@@ -761,7 +785,8 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
             noteStr = "Live overlay at http://localhost:"
                 + std::to_string(HttpServer::getInstance().getPort());
         } else {
-            noteStr = "Starting or port in use";
+            noteStr = "Port " + std::to_string(HttpServer::getInstance().getPort())
+                + " may be in use. Try a different port.";
         }
         ctx.parent->addString(noteStr.c_str(), ctx.labelX, ctx.currentY, Justify::LEFT,
             Fonts::getNormal(), colorConfig.getMuted(), ctx.fontSize * 0.9f);

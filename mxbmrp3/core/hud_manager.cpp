@@ -50,6 +50,7 @@
 #include "../hud/tyre_temp_widget.h"
 #endif
 #include "../hud/lap_consistency_hud.h"
+#include "../hud/helmet_overlay_hud.h"
 #include "../hud/fmx_hud.h"
 #include "../hud/stats_hud.h"
 #include "../hud/event_log_hud.h"
@@ -88,8 +89,16 @@ void HudManager::initialize() {
 
     // Register HUDs
     // Capture pointers to HUDs for SettingsHud and settings persistence
-    // Order matches settings tabs for consistency
+    // Note: Registration order = draw order (first registered = drawn first = behind)
     // Note: Texture base names match files in mxbmrp3_data/textures/ (e.g., "standings_hud" for "standings_hud_1.tga")
+
+    // Helmet overlay registered FIRST so it draws behind all other HUDs/widgets.
+    // This way HUD elements (speed, gear, lap, etc.) are always readable on top
+    // of the helmet frame and visor tint, rather than being obscured by them.
+    auto helmetOverlayPtr = std::make_unique<HelmetOverlayHud>();
+    m_pHelmetOverlay = helmetOverlayPtr.get();
+    registerHud(std::move(helmetOverlayPtr));
+
     auto standingsPtr = std::make_unique<StandingsHud>();
     m_pStandings = standingsPtr.get();
     m_pStandings->setTextureBaseName("standings_hud");
@@ -277,7 +286,8 @@ void HudManager::initialize() {
                                                        m_pFmxHud,
                                                        m_pStatsHud,
                                                        m_pEventLog,
-                                                       m_pClock
+                                                       m_pClock,
+                                                       m_pHelmetOverlay
 #if GAME_HAS_TYRE_TEMP
                                                        , m_pTyreTemp
 #endif
@@ -310,6 +320,8 @@ void HudManager::initialize() {
                     name = "settings_button";
                 } else if (hud.get() == m_pPointer) {
                     name = "pointer_widget";
+                } else if (hud.get() == m_pHelmetOverlay) {
+                    name = "helmet_overlay";
                 } else {
                     name = "unknown";
                 }
@@ -390,6 +402,7 @@ void HudManager::clear() {
     m_pTyreTemp = nullptr;
 #endif
     m_pLapConsistency = nullptr;
+    m_pHelmetOverlay = nullptr;
     m_pStatsHud = nullptr;
     m_pFmxHud = nullptr;
     m_pEventLog = nullptr;
@@ -968,6 +981,11 @@ void HudManager::processKeyboardInput() {
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_EVENT_LOG) && m_pEventLog) {
         m_pEventLog->setVisible(!m_pEventLog->isVisible());
         DEBUG_INFO_F("Hotkey: Event Log %s", m_pEventLog->isVisible() ? "shown" : "hidden");
+    }
+
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_HELMET) && m_pHelmetOverlay) {
+        m_pHelmetOverlay->setVisible(!m_pHelmetOverlay->isVisible());
+        DEBUG_INFO_F("Hotkey: Helmet %s", m_pHelmetOverlay->isVisible() ? "shown" : "hidden");
     }
 
     // Reload config from file

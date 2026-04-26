@@ -1136,42 +1136,42 @@ void MapHud::renderRiders(const RotationCache& rotation,
             spriteIndex = AssetManager::getInstance().getFirstIconSpriteIndex() + shapeIndex - 1;
         }
 
-        // Hazard icon override: circle-exclamation for wrong-way, flag for stationary
-        HazardType hazardType = pluginData.getRiderHazardType(pos.raceNum);
-        if (hazardType != HazardType::None) {
-            m_iconCache.ensureInitialized();
-            if (hazardType == HazardType::WrongWay) {
-                if (m_iconCache.circleExclamation > 0) {
-                    spriteIndex = m_iconCache.circleExclamation;
-                    riderColor = ColorPalette::RED;
+        // Hazard/flag icon overrides — skip for the local player so their
+        // own icon and color always stay consistent on the map.
+        if (!isLocalPlayer) {
+            HazardType hazardType = pluginData.getRiderHazardType(pos.raceNum);
+            if (hazardType != HazardType::None) {
+                m_iconCache.ensureInitialized();
+                if (hazardType == HazardType::WrongWay) {
+                    if (m_iconCache.circleExclamation > 0) {
+                        spriteIndex = m_iconCache.circleExclamation;
+                        riderColor = ColorPalette::RED;
+                    }
+                } else {
+                    if (m_iconCache.flag > 0) {
+                        spriteIndex = m_iconCache.flag;
+                        riderColor = ColorPalette::YELLOW;
+                    }
                 }
-            } else {
+                shapeIndex = spriteIndex - AssetManager::getInstance().getFirstIconSpriteIndex() + 1;
+            }
+
+            if (hazardType == HazardType::None && pluginData.isRiderBlueFlagged(pos.raceNum)) {
+                m_iconCache.ensureInitialized();
                 if (m_iconCache.flag > 0) {
                     spriteIndex = m_iconCache.flag;
-                    riderColor = ColorPalette::YELLOW;
-                }
-            }
-            shapeIndex = spriteIndex - AssetManager::getInstance().getFirstIconSpriteIndex() + 1;
-        }
-
-        // Blue flag icon override (lower priority than hazard)
-        if (hazardType == HazardType::None && pluginData.isRiderBlueFlagged(pos.raceNum)) {
-            m_iconCache.ensureInitialized();
-            if (m_iconCache.flag > 0) {
-                spriteIndex = m_iconCache.flag;
-                shapeIndex = spriteIndex - AssetManager::getInstance().getFirstIconSpriteIndex() + 1;
-                riderColor = ColorPalette::BLUE;
-            }
-        }
-        // Checkered flag for finished riders (lower priority than hazard and blue flag)
-        else if (hazardType == HazardType::None) {
-            const StandingsData* standing = pluginData.getStanding(pos.raceNum);
-            if (standing && pluginData.getSessionData().isRiderFinished(standing->numLaps, standing->numLapsAtLeaderFinish)) {
-                m_iconCache.ensureInitialized();
-                if (m_iconCache.flagCheckered > 0) {
-                    spriteIndex = m_iconCache.flagCheckered;
                     shapeIndex = spriteIndex - AssetManager::getInstance().getFirstIconSpriteIndex() + 1;
-                    riderColor = ColorPalette::WHITE;
+                    riderColor = ColorPalette::BLUE;
+                }
+            } else if (hazardType == HazardType::None) {
+                const StandingsData* standing = pluginData.getStanding(pos.raceNum);
+                if (standing && pluginData.getSessionData().isRiderFinished(standing->numLaps, standing->numLapsAtLeaderFinish)) {
+                    m_iconCache.ensureInitialized();
+                    if (m_iconCache.flagCheckered > 0) {
+                        spriteIndex = m_iconCache.flagCheckered;
+                        shapeIndex = spriteIndex - AssetManager::getInstance().getFirstIconSpriteIndex() + 1;
+                        riderColor = ColorPalette::WHITE;
+                    }
                 }
             }
         }

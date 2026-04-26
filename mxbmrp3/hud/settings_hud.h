@@ -50,6 +50,7 @@
 class TelemetryHud;
 class RumbleHud;
 class StatsHud;
+class HelmetOverlayHud;
 struct SettingsLayoutContext;
 
 class SettingsHud : public BaseHud {
@@ -62,7 +63,8 @@ public:
                 FmxHud* fmxHud,
                 StatsHud* statsHud,
                 EventLogHud* eventLog,
-                ClockWidget* clock
+                ClockWidget* clock,
+                HelmetOverlayHud* helmetOverlay
 #if GAME_HAS_TYRE_TEMP
                 , TyreTempWidget* tyreTemp
 #endif
@@ -222,6 +224,8 @@ public:
 #endif
 #if GAME_HAS_HTTP_SERVER
             WEB_SERVER_TOGGLE,         // Toggle embedded web server
+            WEB_SERVER_PORT_DOWN,      // Decrease web server port
+            WEB_SERVER_PORT_UP,        // Increase web server port
 #endif
             PROFILE_CYCLE_DOWN,        // Cycle to previous profile (Practice/Qualify/Race/Spectate)
             PROFILE_CYCLE_UP,          // Cycle to next profile
@@ -302,6 +306,31 @@ public:
             RUMBLE_STEER_MAX_UP,       // Increase steer max input
             RUMBLE_STEER_MAX_DOWN,     // Decrease steer max input
             RUMBLE_HUD_TOGGLE,         // Toggle RumbleHud visibility
+            // Helmet Overlay settings
+            HELMET_OVERLAY_TOGGLE,     // Master toggle: enable helmet overlay
+            HELMET_HELMET_TOGGLE,      // Toggle helmet section on/off
+            HELMET_VISOR_MODE_DOWN,    // Cycle visor mode backward (Off/Visor/Goggles)
+            HELMET_VISOR_MODE_UP,      // Cycle visor mode forward
+            HELMET_UPPER_TEX_DOWN,     // Cycle helmet upper texture variant backward
+            HELMET_UPPER_TEX_UP,       // Cycle helmet upper texture variant forward
+            HELMET_LOWER_TEX_DOWN,     // Cycle helmet lower texture variant backward
+            HELMET_LOWER_TEX_UP,       // Cycle helmet lower texture variant forward
+            HELMET_UPPER_OFFSET_DOWN,  // Decrease upper helmet Y offset
+            HELMET_UPPER_OFFSET_UP,    // Increase upper helmet Y offset
+            HELMET_LOWER_OFFSET_DOWN,  // Decrease lower helmet Y offset
+            HELMET_LOWER_OFFSET_UP,    // Increase lower helmet Y offset
+            HELMET_TILT_DOWN,          // Decrease helmet tilt strength
+            HELMET_TILT_UP,            // Increase helmet tilt strength
+            HELMET_VIBRATION_DOWN,     // Decrease helmet vibration strength
+            HELMET_VIBRATION_UP,       // Increase helmet vibration strength
+            HELMET_VIB_SENS_DOWN,      // Decrease helmet vibration sensitivity
+            HELMET_VIB_SENS_UP,        // Increase helmet vibration sensitivity
+            HELMET_ZOOM_DOWN,          // Decrease helmet zoom
+            HELMET_ZOOM_UP,            // Increase helmet zoom
+            HELMET_VISOR_TINT_COLOR_DOWN,   // Cycle visor tint color backward
+            HELMET_VISOR_TINT_COLOR_UP,     // Cycle visor tint color forward
+            HELMET_VISOR_TINT_OPACITY_DOWN, // Decrease visor tint opacity
+            HELMET_VISOR_TINT_OPACITY_UP,   // Increase visor tint opacity
             // Hotkey settings
             HOTKEY_KEYBOARD_BIND,      // Click to capture keyboard binding
             HOTKEY_CONTROLLER_BIND,    // Click to capture controller binding
@@ -473,6 +502,7 @@ public:
     static BaseHud* renderTabWidgets(SettingsLayoutContext& ctx);
     static BaseHud* renderTabNotices(SettingsLayoutContext& ctx);
     static BaseHud* renderTabRumble(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabHelmet(SettingsLayoutContext& ctx);
     static BaseHud* renderTabGeneral(SettingsLayoutContext& ctx);
     static BaseHud* renderTabAppearance(SettingsLayoutContext& ctx);
     static BaseHud* renderTabHotkeys(SettingsLayoutContext& ctx);
@@ -490,6 +520,7 @@ public:
     bool handleClickTabGapBar(const ClickRegion& region);
     bool handleClickTabStandings(const ClickRegion& region);
     bool handleClickTabRumble(const ClickRegion& region);
+    bool handleClickTabHelmet(const ClickRegion& region);
     bool handleClickTabAppearance(const ClickRegion& region);
     bool handleClickTabGeneral(const ClickRegion& region);
     bool handleClickTabHotkeys(const ClickRegion& region);
@@ -532,6 +563,7 @@ public:
     FuelWidget* getFuelWidget() const { return m_fuel; }
     PointerWidget* getPointerWidget() const { return m_pointer; }
     RumbleHud* getRumbleHud() const { return m_rumble; }
+    HelmetOverlayHud* getHelmetOverlayHud() const { return m_helmetOverlay; }
     GamepadWidget* getGamepadWidget() const { return m_gamepad; }
     LeanWidget* getLeanWidget() const { return m_lean; }
     ClockWidget* getClockWidget() const { return m_clock; }
@@ -620,6 +652,7 @@ private:
     FuelWidget* m_fuel;
     PointerWidget* m_pointer;
     RumbleHud* m_rumble;
+    HelmetOverlayHud* m_helmetOverlay;
     GamepadWidget* m_gamepad;
     LeanWidget* m_lean;
     ClockWidget* m_clock;
@@ -682,7 +715,8 @@ private:
         TAB_FMX = 21,          // FMX (Freestyle) trick scoring
         TAB_STATS = 22,        // Stats tracking (laps, crashes, PBs)
         TAB_EVENT_LOG = 23,    // Event Log (race event feed)
-        TAB_COUNT = 24
+        TAB_HELMET = 24,       // Helmet overlay (immersion)
+        TAB_COUNT = 25
     };
     int m_activeTab;
 

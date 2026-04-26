@@ -103,6 +103,7 @@ public:
     class TyreTempWidget& getTyreTempWidget() const { assert(m_pTyreTemp && "HudManager not initialized"); return *m_pTyreTemp; }
 #endif
     class LapConsistencyHud& getLapConsistencyHud() const { assert(m_pLapConsistency && "HudManager not initialized"); return *m_pLapConsistency; }
+    class HelmetOverlayHud& getHelmetOverlayHud() const { assert(m_pHelmetOverlay && "HudManager not initialized"); return *m_pHelmetOverlay; }
     class FmxHud& getFmxHud() const { assert(m_pFmxHud && "HudManager not initialized"); return *m_pFmxHud; }
     class StatsHud& getStatsHud() const { assert(m_pStatsHud && "HudManager not initialized"); return *m_pStatsHud; }
     class EventLogHud& getEventLogHud() const { assert(m_pEventLog && "HudManager not initialized"); return *m_pEventLog; }
@@ -123,6 +124,7 @@ private:
                    m_pTyreTemp(nullptr),
 #endif
                    m_pLapConsistency(nullptr),
+                   m_pHelmetOverlay(nullptr),
                    m_pStatsHud(nullptr),
                    m_pFmxHud(nullptr),
                    m_pEventLog(nullptr),
@@ -183,6 +185,7 @@ private:
     class TyreTempWidget* m_pTyreTemp;
 #endif
     class LapConsistencyHud* m_pLapConsistency;
+    class HelmetOverlayHud* m_pHelmetOverlay;
     class StatsHud* m_pStatsHud;
     class FmxHud* m_pFmxHud;
     class EventLogHud* m_pEventLog;

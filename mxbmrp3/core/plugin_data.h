@@ -249,6 +249,14 @@ struct TrackPositionData {
     HazardType hazardType = HazardType::None;
     bool hazardConfirmed = false;  // True once duration threshold passed (survives type transitions)
     std::chrono::steady_clock::time_point pitExitGraceStart;  // Per-rider grace after leaving pits
+    bool movedSincePitExit = true;  // False after pit 1→0 until rider moves beyond tolerance; suppresses Stationary hazard for motionless pit-exit riders
+
+    // Session crash counter — rising-edge count of the crashed flag.
+    // Mirrors StatsManager's player-only edge detection, but per-rider so
+    // spectated riders can show a session crash count. Resets with the
+    // m_trackPositions map on new-session transitions.
+    int sessionCrashCount = 0;
+    bool prevCrashedState = false;
 
     TrackPositionData()
         : trackPos(0.0f), numLaps(0), sessionTime(0), crashed(false)
@@ -381,6 +389,7 @@ struct BikeTelemetryData {
     float frontSuspMaxTravel;   // Front suspension maximum travel in meters
     float rearSuspMaxTravel;    // Rear suspension maximum travel in meters
     float roll;         // Lean angle in degrees (negative = left, positive = right)
+    float pitch;        // Pitch angle in degrees (negative = nose up / wheelie, positive = nose down / endo)
     float engineTemperature;    // Engine temperature in Celsius
     float waterTemperature;     // Water/coolant temperature in Celsius
     float treadTemperature[2][3];  // Tyre tread temps [wheel: 0=front,1=rear][section: 0=left,1=mid,2=right] (GP Bikes only)
@@ -389,7 +398,7 @@ struct BikeTelemetryData {
     BikeTelemetryData() : speedometer(0.0f), gear(0), numberOfGears(6), rpm(0), fuel(0.0f), maxFuel(0.0f),
                           frontSuspLength(0.0f), rearSuspLength(0.0f),
                           frontSuspMaxTravel(0.0f), rearSuspMaxTravel(0.0f),
-                          roll(0.0f), engineTemperature(0.0f), waterTemperature(0.0f),
+                          roll(0.0f), pitch(0.0f), engineTemperature(0.0f), waterTemperature(0.0f),
                           treadTemperature{}, isValid(false) {}
 };
 
@@ -934,6 +943,17 @@ public:
     void updateRealTimeGaps();  // Calculate gaps using time deltas
     void clearLiveGapTimingPoints();  // Clear timing points for new session
 
+    // Per-rider session crash counter (rising-edge count from the crashed flag).
+    // Returns 0 for unknown riders, riders we haven't observed yet, or games
+    // that don't report crash state (WRS, KRP). Resets on new session.
+    //
+    // NOTE: For the local player, prefer StatsManager::getSessionCrashes() —
+    // this per-rider counter shadows it (independent rising-edge detector fed
+    // from RaceTrackPosition instead of RunTelemetry) and exists so spectated
+    // riders can show a session crash count. Reading both for the player
+    // would surface two sibling counters tracking the same underlying flag.
+    int getRiderSessionCrashCount(int raceNum) const;
+
     // Wrong-way detection (based on track position changes)
     bool isPlayerGoingWrongWay() const;  // Check if display rider is going wrong way
     const TrackPositionData* getPlayerTrackPosition() const;  // Get display rider's track position data for debugging
@@ -1012,6 +1032,7 @@ public:
     // Bike telemetry update
     void updateSpeedometer(float speedometer, int gear, int rpm, float fuel);
     void updateRoll(float roll);
+    void updatePitch(float pitch);
     void updateTemperatures(float engineTemp, float waterTemp);
     void updateTreadTemperatures(const float temps[2][3]);
     void invalidateSpeedometer();
@@ -1107,6 +1128,11 @@ private:
 
     // Compute hazard type for a single rider (uncached, used during cache rebuild)
     HazardType computeRiderHazardType(int raceNum, std::chrono::steady_clock::time_point now) const;
+
+    // Initialize per-rider hazard state after a pit 1→0 transition
+    // (grace period + movement-tracking flag). No-op if the rider has no
+    // TrackPositionData entry yet.
+    void startPitExitGrace(int raceNum);
 
     // Update cached player race number by searching race entries
     void updatePlayerRaceNum() const;

@@ -69,7 +69,7 @@ private:
     bool m_bScreenClamping = false;  // Screen clamping disabled by default
     bool m_bAutoSave = true;         // Auto-save enabled by default
     TemperatureUnit m_temperatureUnit = TemperatureUnit::CELSIUS;  // Celsius by default
-    PBScope m_pbScope = PBScope::BIKE;  // Per-bike PB tracking by default
+    PBScope m_pbScope = PBScope::CATEGORY;  // Per-category PB tracking by default
     int m_holdRepeatFastMs = 50;     // Max repeat speed: 50ms (~20/sec)
 
     // Drop shadow settings

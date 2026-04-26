@@ -18,9 +18,11 @@
 #include "font_config.h"
 #include "../diagnostics/logger.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <fstream>
+#include <vector>
 
 using namespace PluginConstants;
 
@@ -81,6 +83,10 @@ void HttpServer::start() {
     // Create server on game thread so stop() always has a valid pointer.
     // Route setup and listen() happen on the server thread.
     m_server = std::make_unique<httplib::Server>();
+
+    // Disable SO_REUSEADDR so the server fails to bind if the port is already
+    // taken, rather than silently sharing it with another process.
+    m_server->set_socket_options([](socket_t) {});
 
     m_serverThread = std::thread(&HttpServer::serverThread, this);
 
@@ -631,6 +637,34 @@ void HttpServer::serverThread() {
         {"Access-Control-Allow-Origin", "*"},
         {"Access-Control-Allow-Methods", "GET"},
         {"Access-Control-Allow-Headers", "Content-Type"}
+    });
+
+    // GET /api/logos - list PNG files in the logos/ subdirectory
+    m_server->Get("/api/logos", [this](const httplib::Request&, httplib::Response& res) {
+        std::string logosDir = m_webRoot + "\\logos";
+        std::string searchPath = logosDir + "\\*.png";
+
+        // Collect filenames first so we can sort for consistent order
+        std::vector<std::string> files;
+        WIN32_FIND_DATAA findData;
+        HANDLE hFind = FindFirstFileA(searchPath.c_str(), &findData);
+        if (hFind != INVALID_HANDLE_VALUE) {
+            do {
+                if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                    files.emplace_back(findData.cFileName);
+                }
+            } while (FindNextFileA(hFind, &findData));
+            FindClose(hFind);
+        }
+        std::sort(files.begin(), files.end());
+
+        std::string json = "[";
+        for (size_t i = 0; i < files.size(); ++i) {
+            if (i > 0) json += ',';
+            appendJsonString(json, files[i].c_str());
+        }
+        json += ']';
+        res.set_content(json, "application/json");
     });
 
     // GET /api/state - JSON snapshot (for initial load / polling fallback)

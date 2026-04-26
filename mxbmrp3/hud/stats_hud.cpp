@@ -29,8 +29,11 @@ StatsHud::StatsHud() {
 bool StatsHud::handlesDataType(DataChangeType dataType) const {
     // No InputTelemetry — StatsHud displays accumulated stats, not raw telemetry.
     // Live distance/time refreshes are handled via checkFrequentUpdates() at ~1Hz.
+    // SpectateTarget triggers a rebuild when the display rider changes so the
+    // spectate-mode N/A overrides are applied immediately.
     return dataType == DataChangeType::LapLog ||
-           dataType == DataChangeType::SessionData;
+           dataType == DataChangeType::SessionData ||
+           dataType == DataChangeType::SpectateTarget;
 }
 
 void StatsHud::update() {
@@ -172,9 +175,19 @@ void StatsHud::rebuildRenderData() {
     unsigned long mutedColor = this->getColor(ColorSlot::MUTED);
     unsigned long primaryColor = this->getColor(ColorSlot::PRIMARY);
 
-    // Get stats from StatsManager
+    // Spectator detection: when the display rider isn't the local player,
+    // StatsManager's player-only data doesn't apply. We still surface what we
+    // can from per-rider sources (StandingsData + per-rider crash counter);
+    // the rest falls back to "N/A" muted, matching the TelemetryHud convention.
+    const PluginData& pd = PluginData::getInstance();
+    int playerRaceNum = pd.getPlayerRaceNum();
+    int displayRaceNum = pd.getDisplayRaceNum();
+    const bool isSpectating = (displayRaceNum >= 0 && displayRaceNum != playerRaceNum);
+
+    // Get stats from StatsManager. All-time stats only apply to the local
+    // player, so suppress the source fetch entirely when spectating.
     const StatsManager& stats = StatsManager::getInstance();
-    const TrackBikeStats* tbStats = m_showAllTime ? stats.getTrackBikeStats() : nullptr;
+    const TrackBikeStats* tbStats = (m_showAllTime && !isSpectating) ? stats.getTrackBikeStats() : nullptr;
 
     // Speed unit preference (guard for early construction before HudManager is fully initialized)
     bool useKmh = false;
@@ -301,6 +314,9 @@ void StatsHud::rebuildRenderData() {
     char sPenCntBuf[8], sPenTimeBuf[16], sSpeedBuf[24], sAvgBuf[24];
     unsigned long sBestColor = valueColor, sPenCntColor = valueColor, sPenTimeColor = valueColor;
     unsigned long sSpeedColor = valueColor, sAvgColor = valueColor;
+    // Spectate-mode overrideable colors for the rows that used to hardcode valueColor.
+    unsigned long sLapsColor = valueColor, sTimeColor = valueColor, sDistColor = valueColor;
+    unsigned long sCrashColor = valueColor, sShiftColor = valueColor;
 
     int sessionBestLapMs = m_showSession ? stats.getSessionBestLapMs() : 0;
     if (sessionBestLapMs > 0) {
@@ -342,9 +358,16 @@ void StatsHud::rebuildRenderData() {
 
     // ---- Format all-time values ----
     char aBestBuf[16], aLapsBuf[8], aTimeBuf[16], aDistBuf[32], aCrashBuf[8], aShiftBuf[8];
-    char aPenCntBuf[8], aPenTimeBuf[16], aSpeedBuf[24];
+    char aPenCntBuf[8], aPenTimeBuf[16], aSpeedBuf[24], aAvgBuf[24];
     unsigned long aBestColor = valueColor, aPenCntColor = valueColor, aPenTimeColor = valueColor;
     unsigned long aSpeedColor = valueColor;
+    // Spectate-mode overrideable colors for the rows that used to hardcode valueColor.
+    unsigned long aLapsColor = valueColor, aTimeColor = valueColor, aDistColor = valueColor;
+    unsigned long aCrashColor = valueColor, aShiftColor = valueColor;
+    // Average speed is never tracked all-time (no per-session distance persistence)
+    // even for the player, so it starts as GENERIC muted regardless of mode.
+    snprintf(aAvgBuf, sizeof(aAvgBuf), "%s", Placeholders::GENERIC);
+    unsigned long aAvgColor = mutedColor;
 
     if (tbStats && tbStats->bestLapTimeMs > 0) {
         PluginUtils::formatLapTime(tbStats->bestLapTimeMs, aBestBuf, sizeof(aBestBuf));
@@ -379,17 +402,116 @@ void StatsHud::rebuildRenderData() {
         aSpeedColor = mutedColor;
     }
 
+    // ---- Spectator mode overrides ----
+    // When we're displaying a non-player rider, most of the StatsManager-sourced
+    // values above are meaningless (they belong to the local player). Replace
+    // them with N/A muted, and populate the cells we *can* derive from per-rider
+    // data: best lap, laps, crash count, and penalty time (all from
+    // StandingsData + per-rider crash counter).
+    if (isSpectating) {
+        // Last-lap column: no lap-level data is tracked for other riders.
+        snprintf(lTimeBuf,    sizeof(lTimeBuf),    "%s", Placeholders::NOT_AVAILABLE);
+        snprintf(lDistBuf,    sizeof(lDistBuf),    "%s", Placeholders::NOT_AVAILABLE);
+        snprintf(lCrashBuf,   sizeof(lCrashBuf),   "%s", Placeholders::NOT_AVAILABLE);
+        snprintf(lShiftBuf,   sizeof(lShiftBuf),   "%s", Placeholders::NOT_AVAILABLE);
+        snprintf(lPenCntBuf,  sizeof(lPenCntBuf),  "%s", Placeholders::NOT_AVAILABLE);
+        snprintf(lPenTimeBuf, sizeof(lPenTimeBuf), "%s", Placeholders::NOT_AVAILABLE);
+        snprintf(lSpeedBuf,   sizeof(lSpeedBuf),   "%s", Placeholders::NOT_AVAILABLE);
+        snprintf(lAvgBuf,     sizeof(lAvgBuf),     "%s", Placeholders::NOT_AVAILABLE);
+        hasLast = false;  // propagates mutedColor to the hasLast-gated cells
+        lPenCntColor  = mutedColor;
+        lPenTimeColor = mutedColor;
+        lSpeedColor   = mutedColor;
+        lAvgColor     = mutedColor;
+
+        // Session column: populate from per-rider sources where possible.
+        if (m_showSession) {
+            const StandingsData* spec = pd.getStanding(displayRaceNum);
+
+            // Best lap — from standings
+            if (spec && spec->bestLap > 0) {
+                PluginUtils::formatLapTime(spec->bestLap, sBestBuf, sizeof(sBestBuf));
+                sBestColor = valueColor;
+            } else {
+                snprintf(sBestBuf, sizeof(sBestBuf), "%s", Placeholders::NOT_AVAILABLE);
+                sBestColor = mutedColor;
+            }
+
+            // Laps — from standings
+            if (spec) {
+                snprintf(sLapsBuf, sizeof(sLapsBuf), "%d", spec->numLaps);
+                sLapsColor = valueColor;
+            } else {
+                snprintf(sLapsBuf, sizeof(sLapsBuf), "%s", Placeholders::NOT_AVAILABLE);
+                sLapsColor = mutedColor;
+            }
+
+            // Crashes — from per-rider edge-detection counter
+            snprintf(sCrashBuf, sizeof(sCrashBuf), "%d", pd.getRiderSessionCrashCount(displayRaceNum));
+            sCrashColor = valueColor;
+
+            // Penalty time — from standings
+            if (spec && spec->penalty > 0) {
+                snprintf(sPenTimeBuf, sizeof(sPenTimeBuf), "%ds", static_cast<int>((spec->penalty + 500) / 1000));
+                sPenTimeColor = valueColor;
+            } else {
+                snprintf(sPenTimeBuf, sizeof(sPenTimeBuf), "%s", Placeholders::NOT_AVAILABLE);
+                sPenTimeColor = mutedColor;
+            }
+
+            // Not available per-rider: ride time, distance, shifts,
+            // penalty count (standings only carries cumulative time), top
+            // speed, avg speed.
+            snprintf(sTimeBuf,   sizeof(sTimeBuf),   "%s", Placeholders::NOT_AVAILABLE);
+            sTimeColor = mutedColor;
+            snprintf(sDistBuf,   sizeof(sDistBuf),   "%s", Placeholders::NOT_AVAILABLE);
+            sDistColor = mutedColor;
+            snprintf(sShiftBuf,  sizeof(sShiftBuf),  "%s", Placeholders::NOT_AVAILABLE);
+            sShiftColor = mutedColor;
+            snprintf(sPenCntBuf, sizeof(sPenCntBuf), "%s", Placeholders::NOT_AVAILABLE);
+            sPenCntColor = mutedColor;
+            snprintf(sSpeedBuf,  sizeof(sSpeedBuf),  "%s", Placeholders::NOT_AVAILABLE);
+            sSpeedColor = mutedColor;
+            snprintf(sAvgBuf,    sizeof(sAvgBuf),    "%s", Placeholders::NOT_AVAILABLE);
+            sAvgColor = mutedColor;
+        }
+
+        // All-time column: cross-session stats only exist for the local player.
+        if (m_showAllTime) {
+            snprintf(aBestBuf,    sizeof(aBestBuf),    "%s", Placeholders::NOT_AVAILABLE);
+            aBestColor = mutedColor;
+            snprintf(aLapsBuf,    sizeof(aLapsBuf),    "%s", Placeholders::NOT_AVAILABLE);
+            aLapsColor = mutedColor;
+            snprintf(aTimeBuf,    sizeof(aTimeBuf),    "%s", Placeholders::NOT_AVAILABLE);
+            aTimeColor = mutedColor;
+            snprintf(aDistBuf,    sizeof(aDistBuf),    "%s", Placeholders::NOT_AVAILABLE);
+            aDistColor = mutedColor;
+            snprintf(aCrashBuf,   sizeof(aCrashBuf),   "%s", Placeholders::NOT_AVAILABLE);
+            aCrashColor = mutedColor;
+            snprintf(aShiftBuf,   sizeof(aShiftBuf),   "%s", Placeholders::NOT_AVAILABLE);
+            aShiftColor = mutedColor;
+            snprintf(aPenCntBuf,  sizeof(aPenCntBuf),  "%s", Placeholders::NOT_AVAILABLE);
+            aPenCntColor = mutedColor;
+            snprintf(aPenTimeBuf, sizeof(aPenTimeBuf), "%s", Placeholders::NOT_AVAILABLE);
+            aPenTimeColor = mutedColor;
+            snprintf(aSpeedBuf,   sizeof(aSpeedBuf),   "%s", Placeholders::NOT_AVAILABLE);
+            aSpeedColor = mutedColor;
+            snprintf(aAvgBuf,     sizeof(aAvgBuf),     "%s", Placeholders::NOT_AVAILABLE);
+            aAvgColor = mutedColor;
+        }
+    }
+
     // ---- Emit rows with descriptive labels ----
-    addRow("Best lap",     {Placeholders::GENERIC, mutedColor}, {sBestBuf, sBestColor},  {aBestBuf, aBestColor});
-    addRow("Laps",         {Placeholders::GENERIC, mutedColor}, {sLapsBuf, valueColor},       {aLapsBuf, valueColor});
-    addRow("Ride time",  {lTimeBuf, hasLast ? valueColor : mutedColor}, {sTimeBuf, valueColor}, {aTimeBuf, valueColor});
-    addRow("Distance",     {lDistBuf, hasLast ? valueColor : mutedColor}, {sDistBuf, valueColor}, {aDistBuf, valueColor});
-    addRow("Crashes",      {lCrashBuf, hasLast ? valueColor : mutedColor}, {sCrashBuf, valueColor}, {aCrashBuf, valueColor});
-    addRow("Shifts",       {lShiftBuf, hasLast ? valueColor : mutedColor}, {sShiftBuf, valueColor}, {aShiftBuf, valueColor});
-    addRow("Penalties",    {lPenCntBuf, lPenCntColor},   {sPenCntBuf, sPenCntColor},   {aPenCntBuf, aPenCntColor});
-    addRow("Pen. time",    {lPenTimeBuf, lPenTimeColor}, {sPenTimeBuf, sPenTimeColor}, {aPenTimeBuf, aPenTimeColor});
-    addRow("Top speed",    {lSpeedBuf, lSpeedColor},     {sSpeedBuf, sSpeedColor},     {aSpeedBuf, aSpeedColor});
-    addRow("Avg speed",    {lAvgBuf, lAvgColor},         {sAvgBuf, sAvgColor},         {Placeholders::GENERIC, mutedColor});
+    addRow("Best lap",   {Placeholders::GENERIC, mutedColor},            {sBestBuf,    sBestColor},    {aBestBuf,    aBestColor});
+    addRow("Laps",       {Placeholders::GENERIC, mutedColor},            {sLapsBuf,    sLapsColor},    {aLapsBuf,    aLapsColor});
+    addRow("Ride time",  {lTimeBuf,  hasLast ? valueColor : mutedColor}, {sTimeBuf,    sTimeColor},    {aTimeBuf,    aTimeColor});
+    addRow("Distance",   {lDistBuf,  hasLast ? valueColor : mutedColor}, {sDistBuf,    sDistColor},    {aDistBuf,    aDistColor});
+    addRow("Crashes",    {lCrashBuf, hasLast ? valueColor : mutedColor}, {sCrashBuf,   sCrashColor},   {aCrashBuf,   aCrashColor});
+    addRow("Shifts",     {lShiftBuf, hasLast ? valueColor : mutedColor}, {sShiftBuf,   sShiftColor},   {aShiftBuf,   aShiftColor});
+    addRow("Penalties",  {lPenCntBuf,  lPenCntColor},                    {sPenCntBuf,  sPenCntColor},  {aPenCntBuf,  aPenCntColor});
+    addRow("Pen. time",  {lPenTimeBuf, lPenTimeColor},                   {sPenTimeBuf, sPenTimeColor}, {aPenTimeBuf, aPenTimeColor});
+    addRow("Top speed",  {lSpeedBuf,   lSpeedColor},                     {sSpeedBuf,   sSpeedColor},   {aSpeedBuf,   aSpeedColor});
+    addRow("Avg speed",  {lAvgBuf,     lAvgColor},                       {sAvgBuf,     sAvgColor},     {aAvgBuf,     aAvgColor});
 }
 
 void StatsHud::resetToDefaults() {

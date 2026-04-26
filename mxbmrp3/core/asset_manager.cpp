@@ -67,6 +67,7 @@ void AssetManager::syncUserAssets(const char* savePath) {
     CreateDirectoryA((userBaseDir + "\\" + TEXTURES_SUBDIR).c_str(), NULL);
     CreateDirectoryA((userBaseDir + "\\" + ICONS_SUBDIR).c_str(), NULL);
     CreateDirectoryA((userBaseDir + "\\" + WEB_SUBDIR).c_str(), NULL);
+    CreateDirectoryA((userBaseDir + "\\" + WEB_SUBDIR + "\\logos").c_str(), NULL);
 
     // Check if user override directory has any content to sync
     DWORD attrs = GetFileAttributesA(userBaseDir.c_str());
@@ -89,11 +90,15 @@ void AssetManager::syncUserAssets(const char* savePath) {
     CreateDirectoryA(destIcons.c_str(), NULL);
     CreateDirectoryA(destWeb.c_str(), NULL);
 
+    std::string destWebLogos = destWeb + "\\logos";
+    CreateDirectoryA(destWebLogos.c_str(), NULL);
+
     // Sync each asset type
     syncDirectory(userBaseDir + "\\" + FONTS_SUBDIR, destFonts, "*.fnt");
     syncDirectory(userBaseDir + "\\" + TEXTURES_SUBDIR, destTextures, "*.tga");
     syncDirectory(userBaseDir + "\\" + ICONS_SUBDIR, destIcons, "*.tga");
     syncDirectory(userBaseDir + "\\" + WEB_SUBDIR, destWeb, "*.*");
+    syncDirectory(userBaseDir + "\\" + WEB_SUBDIR + "\\logos", destWebLogos, "*.png");
 }
 
 void AssetManager::syncDirectory(const std::string& sourceDir, const std::string& destDir, const char* extension) {

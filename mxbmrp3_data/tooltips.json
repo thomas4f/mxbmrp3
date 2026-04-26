@@ -24,7 +24,8 @@
     "notices": "On-screen notices for race events, personal bests, and setup warnings.",
     "event_log": "Scrolling feed of notable race events including session changes, fastest laps, penalties, and finishes.",
     "fmx": "Freestyle trick detection with scoring, chain combos, and rotation visualization.",
-    "stats": "Per-track statistics including lap counts, crashes, gear shifts, top speed, and riding time."
+    "stats": "Per-track statistics including lap counts, crashes, gear shifts, top speed, and riding time.",
+    "helmet": "First-person helmet overlay with lean tilt and vibration."
   },
   "controls": {
     "common.visible": "Show or hide this element during gameplay.",
@@ -165,6 +166,7 @@
     "general.auto_save": "When enabled, settings save automatically. Disable to edit the INI manually and reload.",
     "general.discord": "Display your track, session, and lap progress in Discord's Rich Presence.",
     "general.web_server": "Web overlay for OBS. Add as Browser Source at the displayed port.",
+    "general.web_port": "Port for the web server. Change if the default is in use by another application.",
     "general.auto_switch": "Automatically switch profiles based on session type.",
     "general.copy_profile": "Copy current profile settings to another profile.",
     "general.reset_profile": "Reset current profile to default settings.",
@@ -285,6 +287,20 @@
     "event_log.leader_change": "Log when a different rider takes the lead position.",
     "event_log.finished": "Log when a rider crosses the finish line with their finishing position.",
     "event_log.pit": "Log when a rider enters or exits the pits. Can be frequent in practice sessions.",
-    "hotkeys.event_log": "Toggle the event log HUD on/off."
+    "hotkeys.event_log": "Toggle the event log HUD on/off.",
+    "hotkeys.helmet": "Toggle the helmet overlay on/off.",
+
+    "helmet.helmet_enabled": "Enable the helmet overlay.",
+    "helmet.upper_tex": "Upper helmet texture (visor rim and top).",
+    "helmet.lower_tex": "Lower helmet texture (chin bar).",
+    "helmet.upper_offset": "Shift the upper part up or down.",
+    "helmet.lower_offset": "Shift the lower part up or down.",
+    "helmet.tilt": "How much the helmet tilts with lean angle.",
+    "helmet.vibration": "How far the helmet moves when hitting bumps. Negative inverts the direction.",
+    "helmet.vib_sensitivity": "How responsive vibration is to small bumps.",
+    "helmet.zoom": "Scale the helmet. Zoom in to see less frame.",
+    "helmet.visor_mode": "Off = no tint. Visor = tint behind helmet (full-face). Goggles = tint in front (open-face).",
+    "helmet.visor_tint_opacity": "Strength of the tint.",
+    "helmet.visor_tint_color": "Color of the tint."
   }
 }

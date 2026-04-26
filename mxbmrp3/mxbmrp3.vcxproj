@@ -254,6 +254,7 @@
     <ClInclude Include="hud\pitboard_hud.h" />
     <ClInclude Include="hud\records_hud.h" />
     <ClInclude Include="hud\rumble_hud.h" />
+    <ClInclude Include="hud\helmet_overlay_hud.h" />
     <ClInclude Include="hud\position_widget.h" />
     <ClInclude Include="hud\ideal_lap_hud.h" />
     <ClInclude Include="hud\session_hud.h" />
@@ -357,6 +358,7 @@
     <ClCompile Include="hud\pitboard_hud.cpp" />
     <ClCompile Include="hud\records_hud.cpp" />
     <ClCompile Include="hud\rumble_hud.cpp" />
+    <ClCompile Include="hud\helmet_overlay_hud.cpp" />
     <ClCompile Include="hud\position_widget.cpp" />
     <ClCompile Include="hud\ideal_lap_hud.cpp" />
     <ClCompile Include="hud\session_hud.cpp" />
@@ -382,6 +384,7 @@
     <ClCompile Include="hud\settings\settings_tab_widgets.cpp" />
     <ClCompile Include="hud\settings\settings_tab_notices.cpp" />
     <ClCompile Include="hud\settings\settings_tab_rumble.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_helmet.cpp" />
     <ClCompile Include="hud\settings\settings_tab_general.cpp" />
     <ClCompile Include="hud\settings\settings_tab_appearance.cpp" />
     <ClCompile Include="hud\settings\settings_tab_hotkeys.cpp" />

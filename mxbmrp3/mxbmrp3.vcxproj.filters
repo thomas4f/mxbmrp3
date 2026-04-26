@@ -354,6 +354,9 @@
     <ClInclude Include="hud\rumble_hud.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
+    <ClInclude Include="hud\helmet_overlay_hud.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
     <ClInclude Include="hud\version_widget.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
@@ -599,6 +602,9 @@
     <ClCompile Include="hud\settings\settings_tab_rumble.cpp">
       <Filter>Source Files\hud\settings</Filter>
     </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_helmet.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
     <ClCompile Include="hud\settings\settings_tab_general.cpp">
       <Filter>Source Files\hud\settings</Filter>
     </ClCompile>
@@ -684,6 +690,9 @@
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\rumble_hud.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\helmet_overlay_hud.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\version_widget.cpp">

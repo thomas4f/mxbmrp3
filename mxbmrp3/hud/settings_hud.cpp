@@ -6,6 +6,7 @@
 #include "settings/settings_layout.h"
 #include "telemetry_hud.h"
 #include "rumble_hud.h"
+#include "helmet_overlay_hud.h"
 #include "fmx_hud.h"
 #include "stats_hud.h"
 #include "settings_button_widget.h"
@@ -245,6 +246,31 @@ bool SettingsHud::isRepeatableRegionType(ClickRegion::Type type) {
         case ClickRegion::EVENT_LOG_TIMESTAMP_UP:
         case ClickRegion::EVENT_LOG_TIMESTAMP_DOWN:
         case ClickRegion::EVENT_LOG_ICONS_TOGGLE:
+        // Helmet overlay controls
+        case ClickRegion::WEB_SERVER_PORT_DOWN:
+        case ClickRegion::WEB_SERVER_PORT_UP:
+        case ClickRegion::HELMET_UPPER_TEX_DOWN:
+        case ClickRegion::HELMET_UPPER_TEX_UP:
+        case ClickRegion::HELMET_LOWER_TEX_DOWN:
+        case ClickRegion::HELMET_LOWER_TEX_UP:
+        case ClickRegion::HELMET_UPPER_OFFSET_DOWN:
+        case ClickRegion::HELMET_UPPER_OFFSET_UP:
+        case ClickRegion::HELMET_LOWER_OFFSET_DOWN:
+        case ClickRegion::HELMET_LOWER_OFFSET_UP:
+        case ClickRegion::HELMET_TILT_DOWN:
+        case ClickRegion::HELMET_TILT_UP:
+        case ClickRegion::HELMET_VIBRATION_DOWN:
+        case ClickRegion::HELMET_VIBRATION_UP:
+        case ClickRegion::HELMET_VIB_SENS_DOWN:
+        case ClickRegion::HELMET_VIB_SENS_UP:
+        case ClickRegion::HELMET_ZOOM_DOWN:
+        case ClickRegion::HELMET_ZOOM_UP:
+        case ClickRegion::HELMET_VISOR_MODE_DOWN:
+        case ClickRegion::HELMET_VISOR_MODE_UP:
+        case ClickRegion::HELMET_VISOR_TINT_COLOR_DOWN:
+        case ClickRegion::HELMET_VISOR_TINT_COLOR_UP:
+        case ClickRegion::HELMET_VISOR_TINT_OPACITY_DOWN:
+        case ClickRegion::HELMET_VISOR_TINT_OPACITY_UP:
             return true;
         default:
             return false;
@@ -270,7 +296,8 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, LapConsistenc
                          FmxHud* fmxHud,
                          StatsHud* statsHud,
                          EventLogHud* eventLog,
-                         ClockWidget* clock
+                         ClockWidget* clock,
+                         HelmetOverlayHud* helmetOverlay
 #if GAME_HAS_TYRE_TEMP
                          , TyreTempWidget* tyreTemp
 #endif
@@ -301,6 +328,7 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, LapConsistenc
       m_fuel(fuel),
       m_pointer(pointer),
       m_rumble(rumble),
+      m_helmetOverlay(helmetOverlay),
       m_gamepad(gamepad),
       m_lean(lean),
       m_fmxHud(fmxHud),
@@ -599,6 +627,20 @@ void SettingsHud::update() {
             }
         }
     } else if (!leftButton.isPressed) {
+        // Restart web server after port hold-cycle ends (debounced)
+#if GAME_HAS_HTTP_SERVER
+        if (m_holdRegionIndex >= 0) {
+            auto holdType = m_clickRegions[m_holdRegionIndex].type;
+            if (holdType == ClickRegion::WEB_SERVER_PORT_DOWN ||
+                holdType == ClickRegion::WEB_SERVER_PORT_UP) {
+                auto& server = HttpServer::getInstance();
+                if (server.isEnabled() && !server.isRunning()) {
+                    server.start();
+                    setDataDirty();
+                }
+            }
+        }
+#endif
         // Button released - stop hold tracking
         m_holdRegionIndex = -1;
     }
@@ -775,8 +817,8 @@ void SettingsHud::rebuildRenderData() {
 
     float panelWidth = PluginUtils::calculateMonospaceTextWidth(panelWidthChars, dim.fontSize) + dim.paddingH + dim.paddingH;
 
-    // Estimate height - sized to fit all tabs + content (Event Log tab added one more row)
-    int estimatedRows = 30;
+    // Estimate height - sized to fit all tabs + content (Helmet tab added one more row)
+    int estimatedRows = 31;
     float backgroundHeight = dim.paddingV + dim.lineHeightLarge + dim.lineHeightNormal + (estimatedRows * dim.lineHeightNormal) + dim.paddingV;
 
     // Center the panel horizontally and vertically
@@ -814,6 +856,7 @@ void SettingsHud::rebuildRenderData() {
         TAB_HOTKEYS,
         TAB_RIDERS,
         TAB_RUMBLE,
+        TAB_HELMET,
         TAB_UPDATES,
         TAB_SECTION_PROFILE,
         TAB_SECTION_ELEMENTS,
@@ -933,6 +976,8 @@ void SettingsHud::rebuildRenderData() {
             isHudEnabled = HudManager::getInstance().areWidgetsEnabled();
         } else if (i == TAB_RUMBLE) {
             isHudEnabled = XInputReader::getInstance().getGlobalRumbleConfig().enabled;
+        } else if (i == TAB_HELMET) {
+            isHudEnabled = m_helmetOverlay && m_helmetOverlay->isVisible();
         } else if (i == TAB_UPDATES) {
             isHudEnabled = UpdateChecker::getInstance().isEnabled();
         } else {
@@ -976,6 +1021,19 @@ void SettingsHud::rebuildRenderData() {
             m_clickRegions.push_back(ClickRegion(
                 currentTabX, tabStartY, checkboxWidth, dim.lineHeightNormal,
                 ClickRegion::RUMBLE_TOGGLE, nullptr
+            ));
+
+            // Checkbox text
+            const char* checkboxText = isHudEnabled ? "[X]" : "[ ]";
+            addString(checkboxText, currentTabX, tabStartY, Justify::LEFT,
+                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+
+            currentTabX += checkboxWidth;
+        } else if (i == TAB_HELMET) {
+            // Checkbox click region for helmet overlay master toggle
+            m_clickRegions.push_back(ClickRegion(
+                currentTabX, tabStartY, checkboxWidth, dim.lineHeightNormal,
+                ClickRegion::HELMET_OVERLAY_TOGGLE, m_helmetOverlay
             ));
 
             // Checkbox text
@@ -1030,6 +1088,7 @@ void SettingsHud::rebuildRenderData() {
                            i == TAB_FMX ? "fmx" :
                            i == TAB_STATS ? "stats" :
                            i == TAB_EVENT_LOG ? "event_log" :
+                           i == TAB_HELMET ? "helmet" :
                            "general";
 
         ClickRegion tabRegion;
@@ -1467,6 +1526,12 @@ void SettingsHud::rebuildRenderData() {
             currentY = layoutCtx.currentY;
             break;
 
+        case TAB_HELMET:
+            layoutCtx.currentY = currentY;
+            activeHud = renderTabHelmet(layoutCtx);
+            currentY = layoutCtx.currentY;
+            break;
+
         case TAB_RIDERS:
             // Use extracted tab renderer
             layoutCtx.currentY = currentY;
@@ -1850,6 +1915,7 @@ void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
         case TAB_GAP_BAR:    handled = handleClickTabGapBar(region); break;
         case TAB_STANDINGS:  handled = handleClickTabStandings(region); break;
         case TAB_RUMBLE:     handled = handleClickTabRumble(region); break;
+        case TAB_HELMET:     handled = handleClickTabHelmet(region); break;
         case TAB_APPEARANCE: handled = handleClickTabAppearance(region); break;
         case TAB_GENERAL:    handled = handleClickTabGeneral(region); break;
         case TAB_HOTKEYS:    handled = handleClickTabHotkeys(region); break;
@@ -1919,6 +1985,16 @@ void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
                 globalConfig.enabled = !globalConfig.enabled;
                 rebuildRenderData();
                 DEBUG_INFO_F("Rumble master toggle: %s", globalConfig.enabled ? "enabled" : "disabled");
+            }
+            break;
+        case ClickRegion::HELMET_OVERLAY_TOGGLE:
+            if (m_helmetOverlay) {
+                // Visibility gate only — doesn't touch individual enable flags
+                // (same pattern as WIDGETS_TOGGLE)
+                m_helmetOverlay->setVisible(!m_helmetOverlay->isVisible());
+                rebuildRenderData();
+                DEBUG_INFO_F("Helmet overlay master toggle: %s",
+                    m_helmetOverlay->isVisible() ? "visible" : "hidden");
             }
             break;
         case ClickRegion::TITLE_TOGGLE:
@@ -2110,6 +2186,9 @@ void SettingsHud::resetToDefaults() {
     XInputReader::getInstance().getRumbleConfig().resetToDefaults();
     if (m_rumble) m_rumble->resetToDefaults();
 
+    // Reset helmet overlay (global, not per-profile)
+    if (m_helmetOverlay) m_helmetOverlay->resetToDefaults();
+
     // Reset color configuration
     ColorConfig::getInstance().resetToDefaults();
 
@@ -2183,7 +2262,7 @@ void SettingsHud::resetCurrentTab() {
             UiConfig::getInstance().setTemperatureUnit(TemperatureUnit::CELSIUS);
             if (m_clock) m_clock->setFormat24h(true);
             // Preferences section
-            UiConfig::getInstance().setPBScope(PBScope::BIKE);
+            UiConfig::getInstance().setPBScope(PBScope::CATEGORY);
             XInputReader::getInstance().getRumbleConfig().controllerIndex = 0;
             XInputReader::getInstance().setControllerIndex(0);
             UiConfig::getInstance().setGridSnapping(true);
@@ -2309,6 +2388,9 @@ void SettingsHud::resetCurrentTab() {
             XInputReader::getInstance().getRumbleConfig().resetToDefaults();
             if (m_rumble) m_rumble->resetToDefaults();
             break;
+        case TAB_HELMET:
+            if (m_helmetOverlay) m_helmetOverlay->resetToDefaults();
+            break;
         case TAB_HOTKEYS:
             // Reset hotkey bindings to defaults
             HotkeyManager::getInstance().resetToDefaults();
@@ -2388,6 +2470,9 @@ void SettingsHud::resetCurrentProfile() {
 
     // Reset RumbleHud position only (not RumbleConfig which is global)
     if (m_rumble) m_rumble->resetToDefaults();
+
+    // Note: HelmetOverlayHud is global (not per-profile) — only reset via
+    // TAB_HELMET reset button or resetToDefaults (reset all).
 
     // Reset per-profile PluginData settings
     PluginData::getInstance().setLiveGapsEnabled(false);
@@ -2546,6 +2631,7 @@ const char* SettingsHud::getTabName(int tabIndex) const {
         case TAB_FMX:         return "FMX";
         case TAB_STATS:       return "Stats";
         case TAB_EVENT_LOG:   return "Event Log";
+        case TAB_HELMET:      return "Helmet";
         default:              return "Unknown";
     }
 }

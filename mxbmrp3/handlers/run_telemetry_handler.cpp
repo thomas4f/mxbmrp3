@@ -51,8 +51,9 @@ void RunTelemetryHandler::handleRunTelemetry(Unified::TelemetryData* psTelemetry
             );
         }
 
-        // Update roll/lean angle
+        // Update roll/pitch (lean + nose-up/down angle)
         PluginData::getInstance().updateRoll(psTelemetryData->roll);
+        PluginData::getInstance().updatePitch(psTelemetryData->pitch);
 
         // Update FMX trick detection (bikes only - assumes 2 wheels, lean angles)
         if (psTelemetryData->vehicleType == Unified::VehicleType::Bike) {
