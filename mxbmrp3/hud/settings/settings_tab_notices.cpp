@@ -100,7 +100,7 @@ BaseHud* SettingsHud::renderTabNotices(SettingsLayoutContext& ctx) {
         "notices.hazard_wrong_way");
     ctx.addSpacing(0.5f);
 
-    ctx.addSectionHeader("Race events");
+    ctx.addSectionHeader("Race Events");
 
     bool overtimeOn = (hud->m_enabledNotices & NoticesHud::NOTICE_OVERTIME) != 0;
     ctx.addToggleControl("Overtime", overtimeOn,
@@ -121,10 +121,10 @@ BaseHud* SettingsHud::renderTabNotices(SettingsLayoutContext& ctx) {
         "notices.finished");
     ctx.addSpacing(0.5f);
 
-    ctx.addSectionHeader("Personal bests");
+    ctx.addSectionHeader("Personal Bests");
 
     bool allTimePBOn = (hud->m_enabledNotices & NoticesHud::NOTICE_ALLTIME_PB) != 0;
-    ctx.addToggleControl("All-time PB", allTimePBOn,
+    ctx.addToggleControl("Alltime PB", allTimePBOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_ALLTIME_PB, true,
         "notices.alltime_pb");

@@ -354,7 +354,16 @@ struct Adapter {
             case 1: result.penaltyType = Unified::PenaltyType::TimePenalty; break;
             default: result.penaltyType = Unified::PenaltyType::TimePenalty; break;
         }
-        result.penaltyTime = src->m_iTime;
+        // GP Bikes' m_iTime: header claims milliseconds, but PiBoSo's two games
+        // share an API design and MX Bikes was empirically verified to actually
+        // emit seconds. We assume the same applies here.
+        // TODO: verify in-game - trigger a known-duration penalty in GP Bikes
+        // and check the event log displays the correct seconds count.
+        // WARNING: same fragility as MX Bikes - if PiBoSo ever fixes either
+        // game's field to actually emit ms (matching its header), the *1000
+        // here will produce 1000x-too-large penalty times. Re-verify after
+        // every game update.
+        result.penaltyTime = src->m_iTime * 1000;
 
         return result;
     }
@@ -463,32 +472,19 @@ struct Adapter {
     // ========================================================================
     // Session Type Mapping
     // ========================================================================
-    static NormalizedSession normalizeSession(int rawSession, int eventType) {
-        // GP Bikes: 0=waiting, 1=practice, 2=qualify, 3=warmup, 4=race
+    // Map GP Bikes' raw session integer to canonical Unified::Session.
+    // GP Bikes has a shorter session list than MX Bikes (no pre-qualify or
+    // qualify-practice; one race instead of two). Verified in-game:
+    // Practice=1, Qualify=2, Warmup=3, Race=4.
+    static Unified::Session toCanonicalSession(int rawSession, int /*rawEventType*/) {
         switch (rawSession) {
-            case 0: return NormalizedSession::Waiting;
-            case 1: return NormalizedSession::Practice;
-            case 2: return NormalizedSession::Qualify;
-            case 3: return NormalizedSession::Warmup;
-            case 4: return NormalizedSession::Race1;
-            default: return NormalizedSession::Unknown;
+            case 0: return Unified::Session::Waiting;
+            case 1: return Unified::Session::Practice;
+            case 2: return Unified::Session::Qualify;
+            case 3: return Unified::Session::Warmup;
+            case 4: return Unified::Session::Race;
+            default: return Unified::Session::Unknown;
         }
-    }
-
-    static bool isRaceSession(int rawSession, int eventType) {
-        return rawSession == 4;
-    }
-
-    static bool isQualifySession(int rawSession, int eventType) {
-        return rawSession == 2;
-    }
-
-    static bool isPracticeSession(int rawSession, int eventType) {
-        return rawSession == 1 || rawSession == 3;  // Practice or warmup
-    }
-
-    static bool isTimedSession(int rawSession, int eventType) {
-        return !isRaceSession(rawSession, eventType);
     }
 };
 

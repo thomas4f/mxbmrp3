@@ -43,11 +43,6 @@ public:
 private:
     void rebuildRenderData() override;
 
-    // Helper to render stats row (Current/Max/Avg/Min pattern used by FPS and CPU)
-    void addStatsRow(float startX, float y, const ScaledDimensions& dims,
-                     const char* currentLabel, float currentValue, int currentPrecision,
-                     float maxValue, float avgValue, float minValue);
-
     // Calculate dynamic width based on enabled elements
     int getBackgroundWidthChars() const {
         switch (m_displayMode) {
@@ -75,13 +70,6 @@ private:
     // Graph scaling constants
     static constexpr float MAX_FPS_DISPLAY = 250.0f;  // FPS graph ceiling
     static constexpr float MAX_PLUGIN_TIME_MS = 4.0f; // Plugin time graph ceiling (4ms @ 144fps)
-
-    // Layout constants for stats row rendering
-    static constexpr int LABEL_WIDTH = 3;          // Width of stat labels ("FPS", "CPU", "Max", "Avg", "Min")
-    static constexpr int SMALL_GAP = 1;            // Gap between label and value (1 space)
-    static constexpr int LARGE_GAP = 2;            // Gap between stat pairs (2 spaces)
-    static constexpr int INTEGER_VALUE_WIDTH = 3;  // Width for integer values (e.g., "144")
-    static constexpr int DECIMAL_VALUE_WIDTH = 4;  // Width for decimal values (e.g., "1.23")
 
     // Value history for graphing
     std::array<float, GRAPH_HISTORY_SIZE> m_fpsHistory;

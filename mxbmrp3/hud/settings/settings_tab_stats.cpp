@@ -175,7 +175,7 @@ BaseHud* SettingsHud::renderTabStats(SettingsLayoutContext& ctx) {
 
     // Footer
     ctx.addSpacing(0.5f);
-    ctx.parent->addString("Your stats are saved to mxbmrp3_stats.json", ctx.labelX, ctx.currentY,
+    ctx.parent->addString("Your stats are saved to mxbmrp3_stats.json.", ctx.labelX, ctx.currentY,
         PluginConstants::Justify::LEFT, normalFont, mutedColor, ctx.fontSize * 0.9f);
 
     return hud;

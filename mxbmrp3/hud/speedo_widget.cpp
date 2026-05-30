@@ -61,62 +61,6 @@ void SpeedoWidget::rebuildLayout() {
     rebuildRenderData();
 }
 
-void SpeedoWidget::addNeedleQuad(float centerX, float centerY, float angleRad, float needleLength, float needleWidth) {
-    // Create needle as a trapezoid shape (flat tip, wider base)
-    // The needle points from center outward in the direction of angleRad
-    // Uses clockwise vertex order and applyOffset() on each point individually
-
-    // Calculate tip center (pointing outward)
-    float tipCenterX = centerX + std::sin(angleRad) * needleLength / UI_ASPECT_RATIO;
-    float tipCenterY = centerY - std::cos(angleRad) * needleLength;
-
-    // Calculate base center (opposite of tip, small distance from center)
-    float baseLength = needleLength * 0.15f;  // Base extends 15% of needle length behind center
-    float baseCenterX = centerX - std::sin(angleRad) * baseLength / UI_ASPECT_RATIO;
-    float baseCenterY = centerY + std::cos(angleRad) * baseLength;
-
-    // Calculate perpendicular direction for width
-    float perpAngle = angleRad + PI * 0.5f;  // 90 degrees to the right
-
-    // Tip is narrower (30% of base width) - creates flat but tapered look
-    float tipHalfWidth = needleWidth * 0.15f;
-    float baseHalfWidth = needleWidth * 0.5f;
-
-    // Calculate tip left and right points
-    float tipLeftX = tipCenterX + std::sin(perpAngle) * tipHalfWidth / UI_ASPECT_RATIO;
-    float tipLeftY = tipCenterY - std::cos(perpAngle) * tipHalfWidth;
-    float tipRightX = tipCenterX - std::sin(perpAngle) * tipHalfWidth / UI_ASPECT_RATIO;
-    float tipRightY = tipCenterY + std::cos(perpAngle) * tipHalfWidth;
-
-    // Calculate base left and right points
-    float baseLeftX = baseCenterX + std::sin(perpAngle) * baseHalfWidth / UI_ASPECT_RATIO;
-    float baseLeftY = baseCenterY - std::cos(perpAngle) * baseHalfWidth;
-    float baseRightX = baseCenterX - std::sin(perpAngle) * baseHalfWidth / UI_ASPECT_RATIO;
-    float baseRightY = baseCenterY + std::cos(perpAngle) * baseHalfWidth;
-
-    // Apply HUD offset to each point individually (MapHud pattern)
-    applyOffset(tipLeftX, tipLeftY);
-    applyOffset(tipRightX, tipRightY);
-    applyOffset(baseRightX, baseRightY);
-    applyOffset(baseLeftX, baseLeftY);
-
-    // Create quad with clockwise vertex order: tipLeft -> tipRight -> baseRight -> baseLeft
-    // NOTE: Must use clockwise for proper rendering (counter-clockwise gets face-culled)
-    SPluginQuad_t needle;
-    needle.m_aafPos[0][0] = tipLeftX;      // Front left
-    needle.m_aafPos[0][1] = tipLeftY;
-    needle.m_aafPos[1][0] = tipRightX;     // Front right (clockwise)
-    needle.m_aafPos[1][1] = tipRightY;
-    needle.m_aafPos[2][0] = baseRightX;    // Back right
-    needle.m_aafPos[2][1] = baseRightY;
-    needle.m_aafPos[3][0] = baseLeftX;     // Back left (completes trapezoid)
-    needle.m_aafPos[3][1] = baseLeftY;
-
-    needle.m_iSprite = SpriteIndex::SOLID_COLOR;
-    needle.m_ulColor = m_needleColor;
-    m_quads.push_back(needle);
-}
-
 void SpeedoWidget::rebuildRenderData() {
     // Clear render data
     clearStrings();
@@ -278,7 +222,7 @@ void SpeedoWidget::rebuildRenderData() {
     }
 
     // Add needle quad LAST so it renders on top of everything
-    addNeedleQuad(centerX, centerY, angleRad, needleLength, needleWidth);
+    addNeedleQuad(centerX, centerY, angleRad, needleLength, needleWidth, m_needleColor);
 }
 
 void SpeedoWidget::resetToDefaults() {

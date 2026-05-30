@@ -29,7 +29,6 @@
 #endif
 #include "../core/tracked_riders_manager.h"
 #include "../core/asset_manager.h"
-#include "../core/font_config.h"
 #include "../core/ui_config.h"
 #include "../core/plugin_data.h"
 #include "../core/tooltip_manager.h"
@@ -91,6 +90,8 @@ bool SettingsHud::isRepeatableRegionType(ClickRegion::Type type) {
         case ClickRegion::MAP_RIDER_SHAPE_DOWN:
         case ClickRegion::MAP_MARKER_SCALE_UP:
         case ClickRegion::MAP_MARKER_SCALE_DOWN:
+        case ClickRegion::MAP_DETAIL_UP:
+        case ClickRegion::MAP_DETAIL_DOWN:
         case ClickRegion::RADAR_RANGE_UP:
         case ClickRegion::RADAR_RANGE_DOWN:
         case ClickRegion::RADAR_COLORIZE_UP:
@@ -123,8 +124,6 @@ bool SettingsHud::isRepeatableRegionType(ClickRegion::Type type) {
         case ClickRegion::PITBOARD_SHOW_MODE_DOWN:
         case ClickRegion::PITBOARD_GAP_MODE_UP:
         case ClickRegion::PITBOARD_GAP_MODE_DOWN:
-        case ClickRegion::SESSION_PASSWORD_MODE_UP:
-        case ClickRegion::SESSION_PASSWORD_MODE_DOWN:
         case ClickRegion::TIMING_GAP_UP:
         case ClickRegion::TIMING_GAP_DOWN:
         case ClickRegion::TIMING_DISPLAY_MODE_UP:
@@ -246,9 +245,11 @@ bool SettingsHud::isRepeatableRegionType(ClickRegion::Type type) {
         case ClickRegion::EVENT_LOG_TIMESTAMP_UP:
         case ClickRegion::EVENT_LOG_TIMESTAMP_DOWN:
         case ClickRegion::EVENT_LOG_ICONS_TOGGLE:
-        // Helmet overlay controls
+#if GAME_HAS_HTTP_SERVER
         case ClickRegion::WEB_SERVER_PORT_DOWN:
         case ClickRegion::WEB_SERVER_PORT_UP:
+#endif
+        // Helmet overlay controls
         case ClickRegion::HELMET_UPPER_TEX_DOWN:
         case ClickRegion::HELMET_UPPER_TEX_UP:
         case ClickRegion::HELMET_LOWER_TEX_DOWN:
@@ -292,7 +293,7 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, LapConsistenc
                          StandingsHud* standings,
                          PerformanceHud* performance,
                          TelemetryHud* telemetry,
-                         TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesHud* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean,
+                         TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesHud* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean, GForceWidget* gforce,
                          FmxHud* fmxHud,
                          StatsHud* statsHud,
                          EventLogHud* eventLog,
@@ -300,6 +301,9 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, LapConsistenc
                          HelmetOverlayHud* helmetOverlay
 #if GAME_HAS_TYRE_TEMP
                          , TyreTempWidget* tyreTemp
+#endif
+#if GAME_HAS_ECU
+                         , EcuWidget* ecu
 #endif
                          )
     : m_idealLap(idealLap),
@@ -331,12 +335,16 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, LapConsistenc
       m_helmetOverlay(helmetOverlay),
       m_gamepad(gamepad),
       m_lean(lean),
+      m_gforce(gforce),
       m_fmxHud(fmxHud),
       m_statsHud(statsHud),
       m_eventLog(eventLog),
       m_clock(clock),
 #if GAME_HAS_TYRE_TEMP
       m_tyreTemp(tyreTemp),
+#endif
+#if GAME_HAS_ECU
+      m_ecu(ecu),
 #endif
       m_bVisible(false),
       m_copyTargetProfile(-1),  // -1 = no target selected
@@ -749,53 +757,6 @@ void SettingsHud::addClickRegion(ClickRegion::Type type, float x, float y, float
     m_clickRegions.push_back(region);
 }
 
-float SettingsHud::addDisplayModeControl(float x, float& currentY, const ScaledDimensions& dims,
-                                         uint8_t* displayMode, BaseHud* targetHud) {
-    // Renders "Display < Mode >" with cycle control
-    // Returns the final Y position after rendering
-
-    // Determine display mode text
-    const char* displayModeText = "";
-    if (*displayMode == 0) {
-        displayModeText = "Graphs";  // Enum value 0
-    } else if (*displayMode == 1) {
-        displayModeText = "Numbers"; // Enum value 1
-    } else if (*displayMode == 2) {
-        displayModeText = "Both";    // Enum value 2
-    }
-
-    // Render label
-    addString("Display", x, currentY, Justify::LEFT,
-        Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dims.fontSize);
-
-    // Cycle control position
-    float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dims.fontSize);
-    float controlX = x + PluginUtils::calculateMonospaceTextWidth(12, dims.fontSize);  // Align with other controls
-    constexpr int MAX_VALUE_WIDTH = 7;  // "Numbers" is longest
-
-    // Left arrow "<"
-    addString("<", controlX, currentY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dims.fontSize);
-    addClickRegion(ClickRegion::DISPLAY_MODE_DOWN, controlX, currentY, charWidth * 2, dims.lineHeightNormal,
-                   targetHud, nullptr, displayMode, 0, false, 0);
-    controlX += charWidth * 2;
-
-    // Value with fixed width
-    char paddedValue[32];
-    snprintf(paddedValue, sizeof(paddedValue), "%-*s", MAX_VALUE_WIDTH, displayModeText);
-    addString(paddedValue, controlX, currentY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), dims.fontSize);
-    controlX += PluginUtils::calculateMonospaceTextWidth(MAX_VALUE_WIDTH, dims.fontSize);
-
-    // Right arrow " >"
-    addString(" >", controlX, currentY, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dims.fontSize);
-    addClickRegion(ClickRegion::DISPLAY_MODE_UP, controlX, currentY, charWidth * 2, dims.lineHeightNormal,
-                   targetHud, nullptr, displayMode, 0, false, 0);
-
-    // Advance Y position
-    currentY += dims.lineHeightNormal;
-
-    return currentY;
-}
-
 void SettingsHud::rebuildRenderData() {
     if (!m_bVisible) return;
 
@@ -885,6 +846,11 @@ void SettingsHud::rebuildRenderData() {
 
         // Skip Records tab if records provider is not available (e.g., GP Bikes)
         if (i == TAB_RECORDS && !m_records) {
+            continue;
+        }
+
+        // Skip FMX tab if FMX is not available (e.g., Kart Racing Pro)
+        if (i == TAB_FMX && !m_fmxHud) {
             continue;
         }
 
@@ -1823,7 +1789,8 @@ void SettingsHud::rebuildRenderData() {
                     if (UpdateDownloader::getInstance().getState() == UpdateDownloader::State::READY) {
                         snprintf(versionStr, sizeof(versionStr), "%s installed!", latestVersion.c_str());
                     } else {
-                        snprintf(versionStr, sizeof(versionStr), "%s available!", latestVersion.c_str());
+                        // Bracketed so it reads as a clickable button, like [Reset ...] / [Check Now]
+                        snprintf(versionStr, sizeof(versionStr), "[%s available!]", latestVersion.c_str());
                     }
                     versionColor = ColorConfig::getInstance().getPositive();
                     break;
@@ -1835,14 +1802,21 @@ void SettingsHud::rebuildRenderData() {
             }
         }
 
-        // Calculate width for right-alignment
+        // Calculate width for right-alignment. The "[...]" brackets supply the button's visual
+        // padding (like the [Reset ...] button), so the background hugs the bracketed text.
         float versionWidth = PluginUtils::calculateMonospaceTextWidth(static_cast<int>(strlen(versionStr)), dim.fontSize);
-        float buttonPadding = dim.paddingH * 0.5f;
-        float buttonWidth = versionWidth + buttonPadding * 2;
+        float buttonWidth = versionWidth;
         float versionX = rightEdgeX - buttonWidth;
 
-        // Check if update is available and not yet installed
-        bool isUpdateAvailable = (UpdateChecker::getInstance().getStatus() == UpdateChecker::Status::UPDATE_AVAILABLE);
+        // Check if update is available and not yet installed. Gate on isEnabled() too: a
+        // stale m_status (e.g. UPDATE_AVAILABLE from a prior check) survives when updates are
+        // disabled — and the string above already collapses to the plain version in that case.
+        // Without this gate the button branch would still draw the green "available" box/click
+        // region around the plain version string (mixed state). Tying both to isEnabled() keeps
+        // them consistent.
+        bool updatesEnabled = UpdateChecker::getInstance().isEnabled();
+        bool isUpdateAvailable = updatesEnabled &&
+                           (UpdateChecker::getInstance().getStatus() == UpdateChecker::Status::UPDATE_AVAILABLE);
         bool isInstalled = (isUpdateAvailable &&
                            UpdateDownloader::getInstance().getState() == UpdateDownloader::State::READY);
 
@@ -2082,8 +2056,11 @@ void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
 
         case ClickRegion::VERSION_CLICK:
             {
-                // If update is available, navigate to Updates tab
-                if (UpdateChecker::getInstance().getStatus() == UpdateChecker::Status::UPDATE_AVAILABLE) {
+                // If update is available, navigate to Updates tab. Gate on isEnabled() to
+                // match the footer's render gate — a stale UPDATE_AVAILABLE status when
+                // updates are disabled shouldn't hijack the version click (easter egg).
+                if (UpdateChecker::getInstance().isEnabled() &&
+                    UpdateChecker::getInstance().getStatus() == UpdateChecker::Status::UPDATE_AVAILABLE) {
                     m_activeTab = TAB_UPDATES;
                     rebuildRenderData();
                     return;  // Don't process easter egg
@@ -2141,126 +2118,50 @@ void SettingsHud::handleRightClick(float mouseX, float mouseY) {
 }
 
 void SettingsHud::resetToDefaults() {
-    // Reset all HUDs to their constructor defaults
-    if (m_idealLap) m_idealLap->resetToDefaults();
-    if (m_lapLog) m_lapLog->resetToDefaults();
-    if (m_standings) m_standings->resetToDefaults();
-    if (m_performance) m_performance->resetToDefaults();
-    if (m_telemetry) m_telemetry->resetToDefaults();
-    if (m_mapHud) m_mapHud->resetToDefaults();
-    if (m_radarHud) m_radarHud->resetToDefaults();
-    if (m_pitboard) m_pitboard->resetToDefaults();
-    if (m_records) m_records->resetToDefaults();
-    if (m_timing) m_timing->resetToDefaults();
-    if (m_gapBar) m_gapBar->resetToDefaults();
-    if (m_fmxHud) m_fmxHud->resetToDefaults();
-    if (m_lapConsistency) m_lapConsistency->resetToDefaults();
-    if (m_statsHud) m_statsHud->resetToDefaults();
-    if (m_eventLog) m_eventLog->resetToDefaults();
+    // Everything that lives OUTSIDE the per-profile HUD snapshot — colors, fonts, hotkeys,
+    // rumble, helmet overlay, display units, the controller index, and every
+    // [General]/[Advanced] tunable and toggle (hazard params, update checker, web server,
+    // Discord, records provider, drop shadow, etc.) — is restored in one shot from the
+    // factory-default snapshot captured at startup. This replaces a long hand-maintained
+    // list of per-setting resets that used to drift whenever a new global setting was added:
+    // the snapshot reuses the exact same serialization as save/load, so it can't fall out of
+    // sync. (Developer mode is an INI-only power-user flag and is intentionally preserved.)
+    SettingsManager::getInstance().resetGlobalsToFactoryDefaults(HudManager::getInstance());
 
-    // Reset all widgets to their constructor defaults
-    if (m_lap) m_lap->resetToDefaults();
-    if (m_position) m_position->resetToDefaults();
-    if (m_time) m_time->resetToDefaults();
-    if (m_session) m_session->resetToDefaults();
-    if (m_speed) m_speed->resetToDefaults();
-    if (m_gear) m_gear->resetToDefaults();
-    if (m_speedo) m_speedo->resetToDefaults();
-    if (m_tacho) m_tacho->resetToDefaults();
-    if (m_notices) m_notices->resetToDefaults();
-    if (m_bars) m_bars->resetToDefaults();
-    if (m_version) m_version->resetToDefaults();
-    if (m_fuel) m_fuel->resetToDefaults();
-    if (m_gamepad) m_gamepad->resetToDefaults();
-    if (m_lean) m_lean->resetToDefaults();
-    if (m_clock) m_clock->resetToDefaults();
-#if GAME_HAS_TYRE_TEMP
-    if (m_tyreTemp) m_tyreTemp->resetToDefaults();
-#endif
-    if (m_pointer) m_pointer->resetToDefaults();
-
-    // Reset settings button (managed by HudManager)
-    HudManager::getInstance().getSettingsButtonWidget().resetToDefaults();
-
-    // Reset rumble configuration and RumbleHud
-    XInputReader::getInstance().getRumbleConfig().resetToDefaults();
-    if (m_rumble) m_rumble->resetToDefaults();
-
-    // Reset helmet overlay (global, not per-profile)
-    if (m_helmetOverlay) m_helmetOverlay->resetToDefaults();
-
-    // Reset color configuration
-    ColorConfig::getInstance().resetToDefaults();
-
-    // Reset font configuration
-    FontConfig::getInstance().resetToDefaults();
-
-    // Reset hotkey bindings
-    HotkeyManager::getInstance().resetToDefaults();
-
-    // Reset global preferences (speed/fuel units)
-    if (m_speed) m_speed->setSpeedUnit(SpeedWidget::SpeedUnit::MPH);
-    if (m_fuel) m_fuel->setFuelUnit(FuelWidget::FuelUnit::LITERS);
-
-    // Reset master toggles
-    HudManager::getInstance().setWidgetsEnabled(true);
-
-    // Reset advanced settings (power-user options)
-    if (m_mapHud) m_mapHud->setPixelSpacing(MapHud::DEFAULT_PIXEL_SPACING);
-
-    // Reset PluginData advanced/INI-only settings to defaults
-    PluginData& pluginData = PluginData::getInstance();
-    pluginData.setLiveGapsEnabled(false);
-    pluginData.setFilterDnsRiders(false);
-    pluginData.setShortTimeFormat(false);
-    pluginData.setHazardStationaryTolerance(5.0f);
-    pluginData.setHazardStationaryDurationMs(2000);
-    pluginData.setHazardWrongWayDurationMs(1500);
-    pluginData.setHazardAwarenessDistance(100.0f);
-    pluginData.setHazardCooldownMs(1000);
-    pluginData.setHazardGracePeriodMs(10000);
-    pluginData.setBlueFlagAwarenessDistance(100.0f);
-
-    // Reset update checker to default (off)
-    UpdateChecker::getInstance().setEnabled(false);
-
-    // Reset UI configuration (grid snap, screen clamp, auto-save, temperature unit)
-    UiConfig::getInstance().resetToDefaults();
-
-    // Reset profile auto-switching
+    // autoSwitch lives in [Profiles] (session/navigation state, outside the global snapshot),
+    // so reset it explicitly. The active profile itself is intentionally left unchanged.
     ProfileManager::getInstance().setAutoSwitchEnabled(false);
 
-    // Reset controller index
-    XInputReader::getInstance().getRumbleConfig().controllerIndex = 0;
-    XInputReader::getInstance().setControllerIndex(0);
-
-#if GAME_HAS_DISCORD
-    // Reset Discord integration
-    DiscordManager::getInstance().setEnabled(false);
-#endif
-
-#if GAME_HAS_HTTP_SERVER
-    // Reset web server
-    HttpServer::getInstance().setEnabled(false);
-#endif
+    // The widgets master toggle and all per-profile HUD/widget state are restored below by
+    // resetAllToFactoryDefaults() (widgetsEnabled lives in the per-profile "Global" snapshot).
 
     // Update settings display
     rebuildRenderData();
 
-    // Apply reset state to all profiles and save
-    SettingsManager::getInstance().applyToAllProfiles(HudManager::getInstance());
+    // Reset every profile to the pristine factory snapshot and save. This forces even
+    // INI-only overrides that a HUD's resetToDefaults() doesn't touch back to defaults, and
+    // (unlike a plain reload) re-seeds the save baseline so user-edited base-section keys are
+    // replaced with this build's defaults — a full factory reset intentionally discards them.
+    SettingsManager::getInstance().resetAllToFactoryDefaults(HudManager::getInstance());
 }
 
 void SettingsHud::resetCurrentTab() {
+    // Reset the HUD(s) on the current tab to the captured factory-default snapshot.
+    // Routing through SettingsManager (rather than each HUD's resetToDefaults())
+    // guarantees every INI-controllable setting — including INI-only members and
+    // per-HUD color/font overrides — returns to default, and by default it preserves
+    // each HUD's current visibility so a per-tab reset doesn't hide an element the
+    // user is positioning. (The Widgets tab opts out — see its case below — and the
+    // full "Reset all settings" path resets visibility instead.)
+    auto resetHuds = [](const std::vector<std::string>& names, bool keepVisibility = true) {
+        SettingsManager::getInstance().resetHudsToFactoryDefaults(HudManager::getInstance(), names, keepVisibility);
+    };
+
     // Reset only the HUD(s) associated with the current tab
     switch (m_activeTab) {
         case TAB_GENERAL:
-            // General tab - reset all settings displayed on the General tab
-            // Display section
-            if (m_speed) m_speed->setSpeedUnit(SpeedWidget::SpeedUnit::MPH);
-            if (m_fuel) m_fuel->setFuelUnit(FuelWidget::FuelUnit::LITERS);
-            UiConfig::getInstance().setTemperatureUnit(TemperatureUnit::CELSIUS);
-            if (m_clock) m_clock->setFormat24h(true);
+            // General tab - reset all settings displayed on the General tab.
+            // (Display section — units/clock format — moved to the Appearance tab.)
             // Preferences section
             UiConfig::getInstance().setPBScope(PBScope::CATEGORY);
             XInputReader::getInstance().getRumbleConfig().controllerIndex = 0;
@@ -2273,6 +2174,7 @@ void SettingsHud::resetCurrentTab() {
 #endif
 #if GAME_HAS_HTTP_SERVER
             HttpServer::getInstance().setEnabled(false);
+            HttpServer::getInstance().resetPortToDefault();
 #endif
             // Profiles section
             ProfileManager::getInstance().setAutoSwitchEnabled(false);
@@ -2280,11 +2182,13 @@ void SettingsHud::resetCurrentTab() {
             HudManager::getInstance().markAllHudsDirty();
             break;
         case TAB_APPEARANCE:
-            // Appearance tab - reset font, color, and display configuration
-            FontConfig::getInstance().resetToDefaults();
-            ColorConfig::getInstance().resetToDefaults();
-            PluginData::getInstance().setShortTimeFormat(false);
-            UiConfig::getInstance().setDropShadow(true);
+            // Appearance tab - reset display (units/clock format), fonts, and colors. These
+            // map 1:1 to the [Display]/[Fonts]/[Colors] INI sections (no other tab touches
+            // them), so restore them straight from the factory-default snapshot — the same
+            // path the full reset uses — instead of by hand. Adding a new [Display] key no
+            // longer requires updating this tab's reset.
+            SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
+                HudManager::getInstance(), {"Display", "Fonts", "Colors"});
             // Mark all HUDs dirty so they pick up new colors
             if (m_idealLap) m_idealLap->setDataDirty();
             if (m_lapLog) m_lapLog->setDataDirty();
@@ -2318,92 +2222,128 @@ void SettingsHud::resetCurrentTab() {
             if (m_eventLog) m_eventLog->setDataDirty();
             break;
         case TAB_STANDINGS:
-            if (m_standings) m_standings->resetToDefaults();
+            resetHuds({"StandingsHud"});
+            // DNS filter lives in PluginData (the global [General] section), not the
+            // per-HUD snapshot, so resetHuds() can't restore it. Reset it explicitly.
+            // (Live gaps is now a StandingsHud member, restored by resetHuds above.)
+            PluginData::getInstance().setFilterDnsRiders(false);
             break;
         case TAB_MAP:
-            if (m_mapHud) m_mapHud->resetToDefaults();
+            resetHuds({"MapHud"});
             break;
         case TAB_RADAR:
-            if (m_radarHud) m_radarHud->resetToDefaults();
+            resetHuds({"RadarHud"});
             break;
         case TAB_LAP_LOG:
-            if (m_lapLog) m_lapLog->resetToDefaults();
+            resetHuds({"LapLogHud"});
             break;
         case TAB_LAP_CONSISTENCY:
-            if (m_lapConsistency) m_lapConsistency->resetToDefaults();
+            resetHuds({"LapConsistencyHud"});
             break;
         case TAB_IDEAL_LAP:
-            if (m_idealLap) m_idealLap->resetToDefaults();
+            resetHuds({"IdealLapHud"});
             break;
         case TAB_TELEMETRY:
-            if (m_telemetry) m_telemetry->resetToDefaults();
+            resetHuds({"TelemetryHud"});
             break;
         case TAB_RECORDS:
-            if (m_records) m_records->resetToDefaults();
+            resetHuds({"RecordsHud"});
+            // Provider and auto-fetch are saved in the global [General] section, not
+            // the per-HUD snapshot, so resetHuds() can't restore them. Reset them
+            // explicitly to their factory defaults (CBR provider, auto-fetch off).
+            if (m_records) {
+                m_records->m_provider = RecordsHud::DataProvider::CBR;
+                m_records->m_bAutoFetch = false;
+                m_records->setDataDirty();
+            }
             break;
         case TAB_PITBOARD:
-            if (m_pitboard) m_pitboard->resetToDefaults();
+            resetHuds({"PitboardHud"});
             break;
         case TAB_SESSION:
-            if (m_session) m_session->resetToDefaults();
+            resetHuds({"SessionHud"});
             break;
         case TAB_PERFORMANCE:
-            if (m_performance) m_performance->resetToDefaults();
+            resetHuds({"PerformanceHud"});
             break;
         case TAB_TIMING:
-            if (m_timing) m_timing->resetToDefaults();
+            resetHuds({"TimingHud"});
             break;
         case TAB_GAP_BAR:
-            if (m_gapBar) m_gapBar->resetToDefaults();
+            resetHuds({"GapBarHud"});
             break;
         case TAB_NOTICES:
-            if (m_notices) m_notices->resetToDefaults();
+            resetHuds({"NoticesHud"});
             break;
         case TAB_EVENT_LOG:
-            if (m_eventLog) m_eventLog->resetToDefaults();
+            resetHuds({"EventLogHud"});
             break;
-        case TAB_WIDGETS:
-            // Reset all widgets
-            if (m_lap) m_lap->resetToDefaults();
-            if (m_position) m_position->resetToDefaults();
-            if (m_time) m_time->resetToDefaults();
-            if (m_speed) m_speed->resetToDefaults();
-            if (m_gear) m_gear->resetToDefaults();
-            if (m_speedo) m_speedo->resetToDefaults();
-            if (m_tacho) m_tacho->resetToDefaults();
-            if (m_bars) m_bars->resetToDefaults();
-            if (m_version) m_version->resetToDefaults();
-            if (m_fuel) m_fuel->resetToDefaults();
-            if (m_gamepad) m_gamepad->resetToDefaults();
-            if (m_lean) m_lean->resetToDefaults();
-            if (m_clock) m_clock->resetToDefaults();
+        case TAB_WIDGETS: {
+            // Reset all widgets in a single pass
+            std::vector<std::string> widgets = {
+                "LapWidget", "PositionWidget", "TimeWidget", "SpeedWidget", "GearWidget",
+                "SpeedoWidget", "TachoWidget", "BarsWidget", "VersionWidget", "FuelWidget",
+                "GamepadWidget", "LeanWidget", "GForceWidget", "ClockWidget",
+                "PointerWidget", "SettingsButtonWidget"
+            };
 #if GAME_HAS_TYRE_TEMP
-            if (m_tyreTemp) m_tyreTemp->resetToDefaults();
+            widgets.push_back("TyreTempWidget");
 #endif
-            if (m_pointer) m_pointer->resetToDefaults();
-            HudManager::getInstance().getSettingsButtonWidget().resetToDefaults();
+#if GAME_HAS_ECU
+            widgets.push_back("EcuWidget");
+#endif
+            // keepVisibility=false: the Widgets tab exposes a per-widget "Visible"
+            // toggle for every row, so Reset restores those toggles to factory
+            // defaults too (not just position/scale/opacity).
+            resetHuds(widgets, false);
             break;
-        case TAB_RUMBLE:
-            // Reset rumble configuration and RumbleHud to defaults
-            XInputReader::getInstance().getRumbleConfig().resetToDefaults();
-            if (m_rumble) m_rumble->resetToDefaults();
+        }
+        case TAB_RUMBLE: {
+            // Reset rumble configuration from the [Rumble] snapshot (same path as the full
+            // reset) plus the RumbleHud. Preserve the master "enabled" toggle, like every
+            // other per-tab reset leaves its master alone. controllerIndex is configured on
+            // the General tab and isn't part of [Rumble], so the replay never touches it.
+            RumbleConfig& rumbleCfg = XInputReader::getInstance().getGlobalRumbleConfig();
+            bool wasEnabled = rumbleCfg.enabled;
+            SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
+                HudManager::getInstance(), {"Rumble"});
+            rumbleCfg.enabled = wasEnabled;
+            resetHuds({"RumbleHud"});
             break;
+        }
         case TAB_HELMET:
-            if (m_helmetOverlay) m_helmetOverlay->resetToDefaults();
+            // HelmetOverlay maps 1:1 to the [HelmetOverlay] snapshot section. Replay it (same
+            // path as the full reset) while preserving visibility, so a per-tab reset doesn't
+            // hide the overlay the user is positioning.
+            if (m_helmetOverlay) {
+                bool wasVisible = m_helmetOverlay->isVisible();
+                SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
+                    HudManager::getInstance(), {"HelmetOverlay"});
+                m_helmetOverlay->setVisible(wasVisible);
+                m_helmetOverlay->setDataDirty();
+            }
             break;
         case TAB_HOTKEYS:
-            // Reset hotkey bindings to defaults
-            HotkeyManager::getInstance().resetToDefaults();
+            // Hotkey bindings map 1:1 to the [Hotkeys] snapshot section.
+            SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
+                HudManager::getInstance(), {"Hotkeys"});
             break;
+        case TAB_UPDATES: {
+            // Update settings map 1:1 to the [Updates] snapshot section. Replay it (same
+            // path as the full reset), but leave the "Check for Updates" mode (the master
+            // on/off toggle) alone — like a HUD's visibility in the resetHuds() path, the
+            // master state is preserved here; full "Reset all settings" disables it instead.
+            UpdateChecker::UpdateMode mode = UpdateChecker::getInstance().getMode();
+            SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
+                HudManager::getInstance(), {"Updates"});
+            UpdateChecker::getInstance().setMode(mode);
+            break;
+        }
         case TAB_FMX:
-            if (m_fmxHud) {
-                m_fmxHud->resetToDefaults();
-            }
+            resetHuds({"FmxHud"});
             break;
         case TAB_STATS:
-            if (m_statsHud) {
-                m_statsHud->resetToDefaults();
-            }
+            resetHuds({"StatsHud"});
             break;
         case TAB_RIDERS:
             // Clear all tracked riders
@@ -2424,63 +2364,18 @@ void SettingsHud::resetCurrentTab() {
 }
 
 void SettingsHud::resetCurrentProfile() {
-    // Reset only Elements (HUDs and Widgets) for the current profile
-    // Global settings (ColorConfig, Rumble, UpdateChecker) are NOT reset here
+    // Reset only Elements (HUDs and Widgets) for the current profile by re-applying
+    // the factory snapshot to the active profile. Like the per-tab and full-reset
+    // paths, this also clears INI-only members and per-HUD color/font overrides.
+    // HelmetOverlay (global, not in the snapshot) is left untouched here — it's only
+    // reset via the Helmet tab or the full "Reset all settings".
+    SettingsManager::getInstance().resetActiveProfileToFactoryDefaults(HudManager::getInstance());
 
-    // Reset all HUDs to their constructor defaults
-    if (m_idealLap) m_idealLap->resetToDefaults();
-    if (m_lapLog) m_lapLog->resetToDefaults();
-    if (m_standings) m_standings->resetToDefaults();
-    if (m_performance) m_performance->resetToDefaults();
-    if (m_telemetry) m_telemetry->resetToDefaults();
-    if (m_mapHud) m_mapHud->resetToDefaults();
-    if (m_radarHud) m_radarHud->resetToDefaults();
-    if (m_pitboard) m_pitboard->resetToDefaults();
-    if (m_records) m_records->resetToDefaults();
-    if (m_timing) m_timing->resetToDefaults();
-    if (m_gapBar) m_gapBar->resetToDefaults();
-    if (m_fmxHud) m_fmxHud->resetToDefaults();
-    if (m_lapConsistency) m_lapConsistency->resetToDefaults();
-    if (m_statsHud) m_statsHud->resetToDefaults();
-    if (m_eventLog) m_eventLog->resetToDefaults();
-
-    // Reset all widgets to their constructor defaults
-    if (m_lap) m_lap->resetToDefaults();
-    if (m_position) m_position->resetToDefaults();
-    if (m_time) m_time->resetToDefaults();
-    if (m_session) m_session->resetToDefaults();
-    if (m_speed) m_speed->resetToDefaults();
-    if (m_gear) m_gear->resetToDefaults();
-    if (m_speedo) m_speedo->resetToDefaults();
-    if (m_tacho) m_tacho->resetToDefaults();
-    if (m_notices) m_notices->resetToDefaults();
-    if (m_bars) m_bars->resetToDefaults();
-    if (m_version) m_version->resetToDefaults();
-    if (m_fuel) m_fuel->resetToDefaults();
-    if (m_gamepad) m_gamepad->resetToDefaults();
-    if (m_lean) m_lean->resetToDefaults();
-    if (m_clock) m_clock->resetToDefaults();
-#if GAME_HAS_TYRE_TEMP
-    if (m_tyreTemp) m_tyreTemp->resetToDefaults();
-#endif
-    if (m_pointer) m_pointer->resetToDefaults();
-
-    // Reset settings button (managed by HudManager)
-    HudManager::getInstance().getSettingsButtonWidget().resetToDefaults();
-
-    // Reset RumbleHud position only (not RumbleConfig which is global)
-    if (m_rumble) m_rumble->resetToDefaults();
-
-    // Note: HelmetOverlayHud is global (not per-profile) — only reset via
-    // TAB_HELMET reset button or resetToDefaults (reset all).
-
-    // Reset per-profile PluginData settings
-    PluginData::getInstance().setLiveGapsEnabled(false);
+    // DNS filter lives in the global [General] section, not the snapshot, so reset it
+    // explicitly (matches prior behavior). Other global settings (ColorConfig,
+    // RumbleConfig, UpdateChecker, hazard params) are NOT reset. (Live gaps is now a
+    // StandingsHud member, restored by resetActiveProfileToFactoryDefaults above.)
     PluginData::getInstance().setFilterDnsRiders(false);
-
-    // Note: ColorConfig, RumbleConfig, UpdateChecker, and PluginData advanced settings
-    // (hazard params, blue flag distance, live gaps) are global settings.
-    // They are NOT reset when resetting a single profile.
 
     // Update settings display
     rebuildRenderData();
@@ -2682,7 +2577,10 @@ const char* SettingsHud::getTooltipIdForRegion(ClickRegion::Type type, int activ
                     return "standings.gap_reference";
                 case ClickRegion::FILTER_DNS_TOGGLE:
                     return "standings.filter_dns";
-                case ClickRegion::ANIMATE_POSITIONS_TOGGLE:
+                case ClickRegion::HEADERS_TOGGLE:
+                    return "standings.headers";
+                case ClickRegion::ANIMATION_MODE_UP:
+                case ClickRegion::ANIMATION_MODE_DOWN:
                     return "standings.animate_positions";
                 case ClickRegion::NAME_MODE_UP:
                 case ClickRegion::NAME_MODE_DOWN:
@@ -2716,6 +2614,9 @@ const char* SettingsHud::getTooltipIdForRegion(ClickRegion::Type type, int activ
                 case ClickRegion::MAP_MARKER_SCALE_UP:
                 case ClickRegion::MAP_MARKER_SCALE_DOWN:
                     return "map.marker_scale";
+                case ClickRegion::MAP_DETAIL_UP:
+                case ClickRegion::MAP_DETAIL_DOWN:
+                    return "map.detail";
                 default:
                     break;
             }
@@ -2866,12 +2767,6 @@ const char* SettingsHud::getTooltipIdForRegion(ClickRegion::Type type, int activ
 
         case TAB_GENERAL:
             switch (type) {
-                case ClickRegion::SPEED_UNIT_TOGGLE:
-                    return "general.speed_unit";
-                case ClickRegion::FUEL_UNIT_TOGGLE:
-                    return "general.fuel_unit";
-                case ClickRegion::TEMP_UNIT_TOGGLE:
-                    return "general.temp_unit";
                 case ClickRegion::GRID_SNAP_TOGGLE:
                     return "general.grid_snap";
                 case ClickRegion::RUMBLE_CONTROLLER_UP:

@@ -119,71 +119,10 @@ int LapLogHud::getCurrentActiveSector() const {
 }
 
 void LapLogHud::rebuildLayout() {
-    // Fast path - only update positions, don't rebuild strings
-    auto dim = getScaledDimensions();
-
-    int widthChars = getBackgroundWidthChars();
-    float backgroundWidth = PluginUtils::calculateMonospaceTextWidth(widthChars, dim.fontSize)
-        + dim.paddingH + dim.paddingH;
-    // Title (large if shown) + actual data rows (use cached count from rebuildRenderData)
-    float titleHeight = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
-    float backgroundHeight = dim.paddingV + titleHeight + (dim.lineHeightNormal * m_cachedNumDataRows) + dim.paddingV;
-
-    setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + backgroundHeight);
-
-    // Update background quad position (grows downward from START_Y)
-    updateBackgroundQuadPosition(START_X, START_Y, backgroundWidth, backgroundHeight);
-
-    // Update string positions (title at top if shown, data flows downward)
-    float contentStartX = START_X + dim.paddingH;
-    // Start at title position (top of HUD)
-    float currentY = START_Y + dim.paddingV;
-
-    // Recalculate column positions for current scale
-    m_columns = ColumnPositions(contentStartX, m_fScale, m_enabledColumns);
-
-    size_t stringIndex = 0;
-
-    // Title string (always exists, but may be empty if hidden)
-    if (stringIndex < m_strings.size()) {
-        float x = contentStartX;
-        float y = currentY;
-        applyOffset(x, y);
-        m_strings[stringIndex].m_afPos[0] = x;
-        m_strings[stringIndex].m_afPos[1] = y;
-        stringIndex++;
-    }
-    currentY += titleHeight;
-
-    // Handle data rows - process all rows (NUM_COLUMNS columns each)
-    // Use explicit column array for clarity and robustness
-    const float columns[NUM_COLUMNS] = {
-        m_columns.lap,
-        m_columns.s1,
-        m_columns.s2,
-        m_columns.s3,
-        m_columns.time
-    };
-
-    // Calculate expected number of data rows
-    const int expectedRows = m_cachedNumDataRows;
-    const int expectedStrings = expectedRows * NUM_COLUMNS;
-
-    // Process all data rows
-    for (int row = 0; row < expectedRows && stringIndex < m_strings.size(); ++row) {
-        // Process all columns in this row
-        for (int col = 0; col < NUM_COLUMNS && stringIndex < m_strings.size(); ++col) {
-            float x = columns[col];
-            float y = currentY;
-            applyOffset(x, y);
-            m_strings[stringIndex].m_afPos[0] = x;
-            m_strings[stringIndex].m_afPos[1] = y;
-            stringIndex++;
-        }
-
-        // Move down to next row
-        currentY += dim.lineHeightNormal;
-    }
+    // Right-aligned numeric columns and the optional header row make a coordinated
+    // position-only fast path error-prone, so rebuild everything (cheap here; strings
+    // bake their offset in at creation). Matches RecordsHud.
+    rebuildRenderData();
 }
 
 void LapLogHud::rebuildRenderData() {
@@ -294,15 +233,13 @@ void LapLogHud::rebuildRenderData() {
     // Calculate height: m_maxDisplayLaps rows plus gap row if enabled
     int numDataRows = m_maxDisplayLaps + (showGapRow ? 1 : 0);
 
-    // Cache for rebuildLayout to use
-    m_cachedNumDataRows = numDataRows;
-
     int widthChars = getBackgroundWidthChars();
     float backgroundWidth = PluginUtils::calculateMonospaceTextWidth(widthChars, dim.fontSize)
         + dim.paddingH + dim.paddingH;
-    // Title (large if shown) + data rows (normal)
+    // Title (large if shown) + optional header row + data rows (normal)
     float titleHeight = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
-    float backgroundHeight = dim.paddingV + titleHeight + (dim.lineHeightNormal * numDataRows) + dim.paddingV;
+    float headerHeight = m_bShowHeaders ? dim.lineHeightNormal : 0.0f;
+    float backgroundHeight = dim.paddingV + titleHeight + headerHeight + (dim.lineHeightNormal * numDataRows) + dim.paddingV;
 
     setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + backgroundHeight);
     addBackgroundQuad(START_X, START_Y, backgroundWidth, backgroundHeight);
@@ -313,6 +250,20 @@ void LapLogHud::rebuildRenderData() {
 
     // Recalculate column positions for current scale
     m_columns = ColumnPositions(contentStartX, m_fScale, m_enabledColumns);
+
+    // Right-edge anchors for the numeric columns. Times vary in width (compact format
+    // drops the leading "0:" for sub-minute sectors), so right-aligning lines up the
+    // decimals. Each column reserves COL_TIME_WIDTH chars (content + 1 gap); the time
+    // column is the last one (no trailing gap). Content is 9 chars wide either way.
+    float colRightOffset = PluginUtils::calculateMonospaceTextWidth(COL_TIME_WIDTH - 1, dim.fontSize);
+    // Lap numbers reach double digits (L10+), so right-align them too (content is
+    // COL_LAP_WIDTH - 1 chars wide, the rest is the trailing gap).
+    float lapRightX = m_columns.lap + PluginUtils::calculateMonospaceTextWidth(COL_LAP_WIDTH - 1, dim.fontSize);
+    float s1RightX = m_columns.s1 + colRightOffset;
+    float s2RightX = m_columns.s2 + colRightOffset;
+    float s3RightX = m_columns.s3 + colRightOffset;
+    float s4RightX = m_columns.s4 + colRightOffset;
+    float timeRightX = m_columns.time + colRightOffset;
 
     // Get best sector times from cached ideal lap data (performance optimization)
     // Previously recalculated from all laps on every rebuild - now use cached values
@@ -332,6 +283,21 @@ void LapLogHud::rebuildRenderData() {
     addTitleString("Lap Log", contentStartX, currentY, Justify::LEFT,
         this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
     currentY += titleHeight;
+
+    // Optional column-header row (Strong font), numeric columns follow their right-aligned data
+    if (m_bShowHeaders) {
+        unsigned long headerColor = this->getColor(ColorSlot::TERTIARY);
+        int headerFont = this->getFont(FontCategory::STRONG);
+        addLabel("Lap", lapRightX, currentY, Justify::RIGHT, headerFont, headerColor, dim);
+        addLabel(showSectors ? "S1" : "", s1RightX, currentY, Justify::RIGHT, headerFont, headerColor, dim);
+        addLabel(showSectors ? "S2" : "", s2RightX, currentY, Justify::RIGHT, headerFont, headerColor, dim);
+        addLabel(showSectors ? "S3" : "", s3RightX, currentY, Justify::RIGHT, headerFont, headerColor, dim);
+#if GAME_SECTOR_COUNT >= 4
+        addLabel(showSectors ? "S4" : "", s4RightX, currentY, Justify::RIGHT, headerFont, headerColor, dim);
+#endif
+        addLabel("Time", timeRightX, currentY, Justify::RIGHT, headerFont, headerColor, dim);
+        currentY += dim.lineHeightNormal;
+    }
 
     // Render data rows from top to bottom (current lap, best lap, then oldest to newest)
     for (int displayIdx = 0; displayIdx < static_cast<int>(displayList.size()); displayIdx++) {
@@ -425,7 +391,7 @@ void LapLogHud::rebuildRenderData() {
             }
 
             // Colors for live timing: primary for official, secondary for ticking values, muted for placeholders
-            unsigned long colorLap = this->getColor(ColorSlot::SECONDARY);
+            unsigned long colorLap = this->getColor(ColorSlot::TERTIARY);  // Lap number uses the label color
             unsigned long colorS1 = (officialS1 > 0) ? this->getColor(ColorSlot::PRIMARY)
                 : (activeSector == 0 && data.getElapsedSectorTime(0) > 0) ? this->getColor(ColorSlot::SECONDARY)
                 : this->getColor(ColorSlot::MUTED);
@@ -441,14 +407,14 @@ void LapLogHud::rebuildRenderData() {
             unsigned long colorTime = (elapsedLapTime > 0)
                 ? this->getColor(ColorSlot::SECONDARY) : this->getColor(ColorSlot::MUTED);
 
-            addString(lapStr, m_columns.lap, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), colorLap, dim.fontSize);
-            addString(showSectors ? s1Str : "", m_columns.s1, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), colorS1, dim.fontSize);
-            addString(showSectors ? s2Str : "", m_columns.s2, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), colorS2, dim.fontSize);
-            addString(showSectors ? s3Str : "", m_columns.s3, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), colorS3, dim.fontSize);
+            addLabel(lapStr, lapRightX, currentY, Justify::RIGHT, this->getFont(FontCategory::STRONG), colorLap, dim);
+            addString(showSectors ? s1Str : "", s1RightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), colorS1, dim.fontSize);
+            addString(showSectors ? s2Str : "", s2RightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), colorS2, dim.fontSize);
+            addString(showSectors ? s3Str : "", s3RightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), colorS3, dim.fontSize);
 #if GAME_SECTOR_COUNT >= 4
-            addString(showSectors ? s4Str : "", m_columns.s4, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), colorS4, dim.fontSize);
+            addString(showSectors ? s4Str : "", s4RightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), colorS4, dim.fontSize);
 #endif
-            addString(timeStr, m_columns.time, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), colorTime, dim.fontSize);
+            addString(timeStr, timeRightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), colorTime, dim.fontSize);
 
             currentY += dim.lineHeightNormal;
             continue;
@@ -458,7 +424,6 @@ void LapLogHud::rebuildRenderData() {
         if (displayEntry.historyIndex == -5) {
             char gapStr[32];
             unsigned long gapColor = this->getColor(ColorSlot::MUTED);
-            float gapX = m_columns.time;  // Default position aligned with time column
 
             if (data.hasValidLiveGap()) {
                 int liveGap = data.getLiveGap();
@@ -468,37 +433,36 @@ void LapLogHud::rebuildRenderData() {
                 } else if (liveGap < 0) {
                     gapColor = this->getColor(ColorSlot::POSITIVE);  // Ahead of PB (green)
                 }
-                // Offset by one char width so +/- sign is outside column and numbers align with lap times
-                gapX -= PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
             } else {
                 strcpy_s(gapStr, sizeof(gapStr), Placeholders::GENERIC);
-                // No offset for placeholder - align with time column
             }
 
-            // Gap row: empty columns except for time column showing the gap
-            addString("", m_columns.lap, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
-            addString("", m_columns.s1, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
-            addString("", m_columns.s2, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
-            addString("", m_columns.s3, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            // Gap row: empty columns except for the gap, right-aligned with the time column
+            addString("", lapRightX, currentY, Justify::RIGHT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString("", s1RightX, currentY, Justify::RIGHT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString("", s2RightX, currentY, Justify::RIGHT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString("", s3RightX, currentY, Justify::RIGHT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
 #if GAME_SECTOR_COUNT >= 4
-            addString("", m_columns.s4, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString("", s4RightX, currentY, Justify::RIGHT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
 #endif
-            addString(gapStr, gapX, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), gapColor, dim.fontSize);
+            addString(gapStr, timeRightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), gapColor, dim.fontSize);
 
             currentY += dim.lineHeightNormal;
             continue;
         }
 
-        // Handle placeholder row (shows placeholders in all columns)
+        // Handle placeholder row - show muted dash placeholders so empty slots read as
+        // a table awaiting data (filled in as laps complete) rather than blank rows.
         if (displayEntry.historyIndex == -2) {
-            addString("", m_columns.lap, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
-            addString("", m_columns.s1, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
-            addString("", m_columns.s2, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
-            addString("", m_columns.s3, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            unsigned long mutedColor = this->getColor(ColorSlot::MUTED);
+            addLabel(Placeholders::GENERIC, lapRightX, currentY, Justify::RIGHT, this->getFont(FontCategory::STRONG), mutedColor, dim);
+            addString(showSectors ? Placeholders::LAP_TIME : "", s1RightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), mutedColor, dim.fontSize);
+            addString(showSectors ? Placeholders::LAP_TIME : "", s2RightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), mutedColor, dim.fontSize);
+            addString(showSectors ? Placeholders::LAP_TIME : "", s3RightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), mutedColor, dim.fontSize);
 #if GAME_SECTOR_COUNT >= 4
-            addString("", m_columns.s4, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString(showSectors ? Placeholders::LAP_TIME : "", s4RightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), mutedColor, dim.fontSize);
 #endif
-            addString("", m_columns.time, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString(Placeholders::LAP_TIME, timeRightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), mutedColor, dim.fontSize);
             currentY += dim.lineHeightNormal;
             continue;
         }
@@ -555,7 +519,7 @@ void LapLogHud::rebuildRenderData() {
 
             // Determine colors
             // Invalid laps (track cuts in race mode) show muted times
-            unsigned long colorLap = this->getColor(ColorSlot::SECONDARY);  // Lap number always secondary
+            unsigned long colorLap = this->getColor(ColorSlot::TERTIARY);  // Lap number uses the label color
             unsigned long colorS1, colorS2, colorS3, colorTime;
 #if GAME_SECTOR_COUNT >= 4
             unsigned long colorS4;
@@ -597,24 +561,25 @@ void LapLogHud::rebuildRenderData() {
             }
 
             // Render lap data row
-            addString(lapStr, m_columns.lap, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), colorLap, dim.fontSize);
-            addString(showSectors ? s1Str : "", m_columns.s1, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), colorS1, dim.fontSize);
-            addString(showSectors ? s2Str : "", m_columns.s2, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), colorS2, dim.fontSize);
-            addString(showSectors ? s3Str : "", m_columns.s3, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), colorS3, dim.fontSize);
+            addLabel(lapStr, lapRightX, currentY, Justify::RIGHT, this->getFont(FontCategory::STRONG), colorLap, dim);
+            addString(showSectors ? s1Str : "", s1RightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), colorS1, dim.fontSize);
+            addString(showSectors ? s2Str : "", s2RightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), colorS2, dim.fontSize);
+            addString(showSectors ? s3Str : "", s3RightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), colorS3, dim.fontSize);
 #if GAME_SECTOR_COUNT >= 4
-            addString(showSectors ? s4Str : "", m_columns.s4, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), colorS4, dim.fontSize);
+            addString(showSectors ? s4Str : "", s4RightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), colorS4, dim.fontSize);
 #endif
-            addString(timeStr, m_columns.time, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), colorTime, dim.fontSize);
+            addString(timeStr, timeRightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), colorTime, dim.fontSize);
         } else {
-            // Placeholder row (entry not found)
-            addString("", m_columns.lap, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
-            addString("", m_columns.s1, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
-            addString("", m_columns.s2, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
-            addString("", m_columns.s3, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            // Entry not found - show muted dash placeholders (same as the -2 placeholder row)
+            unsigned long mutedColor = this->getColor(ColorSlot::MUTED);
+            addLabel(Placeholders::GENERIC, lapRightX, currentY, Justify::RIGHT, this->getFont(FontCategory::STRONG), mutedColor, dim);
+            addString(showSectors ? Placeholders::LAP_TIME : "", s1RightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), mutedColor, dim.fontSize);
+            addString(showSectors ? Placeholders::LAP_TIME : "", s2RightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), mutedColor, dim.fontSize);
+            addString(showSectors ? Placeholders::LAP_TIME : "", s3RightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), mutedColor, dim.fontSize);
 #if GAME_SECTOR_COUNT >= 4
-            addString("", m_columns.s4, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString(showSectors ? Placeholders::LAP_TIME : "", s4RightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), mutedColor, dim.fontSize);
 #endif
-            addString("", m_columns.time, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
+            addString(Placeholders::LAP_TIME, timeRightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), mutedColor, dim.fontSize);
         }
 
         currentY += dim.lineHeightNormal;  // Move down to next row
@@ -622,7 +587,7 @@ void LapLogHud::rebuildRenderData() {
 }
 
 void LapLogHud::resetToDefaults() {
-    m_bVisible = true;
+    m_bVisible = true;  // Lap log is on by default; users can disable via settings
     m_bShowTitle = true;
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
@@ -632,6 +597,7 @@ void LapLogHud::resetToDefaults() {
     m_maxDisplayLaps = 5;
     m_showLiveTiming = true;
     m_showGapRow = true;
+    m_bShowHeaders = false;
     m_displayOrder = DisplayOrder::OLDEST_FIRST;
     setDataDirty();
 }

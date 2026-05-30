@@ -13,28 +13,6 @@ bool SettingsHud::handleClickTabSession(const ClickRegion& region) {
     if (!sessionHud) sessionHud = m_session;
 
     switch (region.type) {
-        case ClickRegion::SESSION_PASSWORD_MODE_UP:
-            if (sessionHud) {
-                constexpr int numModes = static_cast<int>(PasswordDisplayMode::COUNT);
-                int mode = static_cast<int>(sessionHud->m_passwordMode);
-                mode = (mode + 1) % numModes;
-                sessionHud->m_passwordMode = static_cast<PasswordDisplayMode>(mode);
-                sessionHud->setDataDirty();
-                rebuildRenderData();
-            }
-            return true;
-
-        case ClickRegion::SESSION_PASSWORD_MODE_DOWN:
-            if (sessionHud) {
-                constexpr int numModes = static_cast<int>(PasswordDisplayMode::COUNT);
-                int mode = static_cast<int>(sessionHud->m_passwordMode);
-                mode = (mode + numModes - 1) % numModes;  // Go backward
-                sessionHud->m_passwordMode = static_cast<PasswordDisplayMode>(mode);
-                sessionHud->setDataDirty();
-                rebuildRenderData();
-            }
-            return true;
-
         case ClickRegion::SESSION_ICONS_TOGGLE:
             if (sessionHud) {
                 sessionHud->m_bShowIcons = !sessionHud->m_bShowIcons;
@@ -70,7 +48,7 @@ BaseHud* SettingsHud::renderTabSession(SettingsLayoutContext& ctx) {
     ctx.addSpacing(0.5f);
 
     // === CONTENT SECTION ===
-    // Order matches display order: Type, Format, Track, Server, Password, Players
+    // Order matches display order: Type, Format, Track, Weather, Server
     ctx.addSectionHeader("Content");
 
     ctx.addToggleControl("Session type", (hud->m_enabledRows & SessionHud::ROW_TYPE) != 0,
@@ -85,29 +63,9 @@ BaseHud* SettingsHud::renderTabSession(SettingsLayoutContext& ctx) {
     ctx.addToggleControl("Weather & temp", (hud->m_enabledRows & SessionHud::ROW_WEATHER) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, SessionHud::ROW_WEATHER, true,
         "session.weather");
-#if GAME_HAS_SERVER_INFO
     ctx.addToggleControl("Server name", (hud->m_enabledRows & SessionHud::ROW_SERVER) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, SessionHud::ROW_SERVER, true,
         "session.server");
-
-    // Password mode as a cycle (Off hides the row entirely) - right after server
-    const char* passwordModeText = "";
-    switch (hud->m_passwordMode) {
-        case PasswordDisplayMode::Off:      passwordModeText = "Off"; break;
-        case PasswordDisplayMode::Hidden:   passwordModeText = "Hidden"; break;
-        case PasswordDisplayMode::AsHost:   passwordModeText = "As Host"; break;
-        case PasswordDisplayMode::AsClient: passwordModeText = "As Client"; break;
-    }
-    ctx.addCycleControl("Password", passwordModeText, 10,
-        SettingsHud::ClickRegion::SESSION_PASSWORD_MODE_DOWN,
-        SettingsHud::ClickRegion::SESSION_PASSWORD_MODE_UP,
-        hud, true, hud->m_passwordMode == PasswordDisplayMode::Off,
-        "session.password_mode");
-
-    ctx.addToggleControl("Player count", (hud->m_enabledRows & SessionHud::ROW_PLAYERS) != 0,
-        SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, SessionHud::ROW_PLAYERS, true,
-        "session.players");
-#endif
 
     return hud;
 }

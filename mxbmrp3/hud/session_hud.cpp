@@ -1,6 +1,6 @@
 // ============================================================================
 // hud/session_hud.cpp
-// Session HUD - displays session info (type, track, format, server, players, password)
+// Session HUD - displays session info (type, track, format, server, weather)
 // ============================================================================
 #include "session_hud.h"
 
@@ -29,15 +29,12 @@ SessionHud::SessionHud()
     , m_cachedSessionState(-1)
     , m_cachedSessionLength(-1)
     , m_cachedSessionNumLaps(-1)
-    , m_cachedConnectionType(-1)
-    , m_cachedServerClientsCount(-1)
-    , m_cachedServerMaxClients(-1)
+    , m_cachedServerType(CACHE_UNINITIALIZED)
     , m_cachedConditions(-1)
     , m_cachedAirTemperature(-1.0f)
     , m_cachedTrackTemperature(-1.0f)
 {
     m_cachedServerName[0] = '\0';
-    m_cachedServerPassword[0] = '\0';
     // One-time setup
     DEBUG_INFO("SessionHud created");
     setDraggable(true);
@@ -62,63 +59,8 @@ int SessionHud::getEnabledRowCount() const {
     if (m_enabledRows & ROW_TRACK) count++;
     if (m_enabledRows & ROW_FORMAT) count++;
     if (m_enabledRows & ROW_SERVER) count++;
-    if (m_enabledRows & ROW_PLAYERS) count++;
     if (m_enabledRows & ROW_WEATHER) count++;
-    // Password row controlled by m_passwordMode, not a flag
-    if (m_passwordMode != PasswordDisplayMode::Off) count++;
     return count;
-}
-
-bool SessionHud::shouldShowPassword() const {
-    if (m_passwordMode == PasswordDisplayMode::Off) {
-        return false;
-    }
-
-    const PluginData& pluginData = PluginData::getInstance();
-    const SessionData& sessionData = pluginData.getSessionData();
-    bool isHost = (sessionData.connectionType == 2);    // Host
-    bool isClient = (sessionData.connectionType == 3);  // Client
-
-    // Must be online
-    if (!isHost && !isClient) {
-        return false;
-    }
-
-    // Check if password actually exists
-    if (sessionData.serverPassword[0] == '\0') {
-        return false;
-    }
-
-    return true;
-}
-
-const char* SessionHud::getPasswordDisplayText() const {
-    // Note: Call shouldShowPassword() first to verify password should be displayed.
-    // This function assumes that check has already passed.
-
-    const PluginData& pluginData = PluginData::getInstance();
-    const SessionData& sessionData = pluginData.getSessionData();
-    bool isHost = (sessionData.connectionType == 2);
-    bool isClient = (sessionData.connectionType == 3);
-
-    switch (m_passwordMode) {
-        case PasswordDisplayMode::Off:
-            return nullptr;
-
-        case PasswordDisplayMode::Hidden:
-            return "****";
-
-        case PasswordDisplayMode::AsHost:
-            return isHost ? sessionData.serverPassword : "****";
-
-        case PasswordDisplayMode::AsClient:
-            return isClient ? sessionData.serverPassword : "****";
-
-        case PasswordDisplayMode::COUNT:
-        default:
-            // COUNT should never be set as the mode; fallback to hidden
-            return "****";
-    }
 }
 
 void SessionHud::calculateIconQuadCorners(float x, float y, float fontSize, float corners[4][2]) const {
@@ -144,24 +86,9 @@ float SessionHud::calculateContentHeight(const ScaledDimensions& dim) const {
     float trackHeight = (m_enabledRows & ROW_TRACK) ? dim.lineHeightNormal : 0.0f;
     float weatherHeight = ((m_enabledRows & ROW_WEATHER) && sessionData.conditions >= 0) ? dim.lineHeightNormal : 0.0f;
 
-#if GAME_HAS_SERVER_INFO
-    bool isOnline = (sessionData.connectionType == 2 || sessionData.connectionType == 3);  // Host or Client
-    bool isOffline = (sessionData.connectionType == 1);  // Offline testing
-    // Server row shows when online with server name, OR when offline (shows "Testing")
-    float serverHeight = ((m_enabledRows & ROW_SERVER) && (isOffline || (isOnline && sessionData.serverName[0] != '\0'))) ? dim.lineHeightNormal : 0.0f;
-    float playersHeight = ((m_enabledRows & ROW_PLAYERS) && isOnline && sessionData.serverMaxClients > 0) ? dim.lineHeightNormal : 0.0f;
-    // Password row - only show if online, password exists, and mode isn't Off
-    float passwordHeight = 0.0f;
-    if (shouldShowPassword()) {
-        const char* pwText = getPasswordDisplayText();
-        if (pwText != nullptr) {
-            passwordHeight = dim.lineHeightNormal;
-        }
-    }
-    return labelHeight + typeHeight + formatHeight + trackHeight + weatherHeight + serverHeight + playersHeight + passwordHeight;
-#else
-    return labelHeight + typeHeight + formatHeight + trackHeight + weatherHeight;
-#endif
+    // Server row always reserves space when enabled — text varies (server name / Testing / Unknown).
+    float serverHeight = (m_enabledRows & ROW_SERVER) ? dim.lineHeightNormal : 0.0f;
+    return labelHeight + typeHeight + formatHeight + trackHeight + weatherHeight + serverHeight;
 }
 
 void SessionHud::update() {
@@ -181,16 +108,13 @@ void SessionHud::update() {
     int sessionState = sessionData.sessionState;
     int sessionLength = sessionData.sessionLength;
     int sessionNumLaps = sessionData.sessionNumLaps;
-    int connectionType = sessionData.connectionType;
-    int serverClientsCount = sessionData.serverClientsCount;
-    int serverMaxClients = sessionData.serverMaxClients;
+    int serverType = sessionData.serverType;
 
     // Check if any session data changed
     if (eventType != m_cachedEventType || session != m_cachedSession || sessionState != m_cachedSessionState ||
         sessionLength != m_cachedSessionLength || sessionNumLaps != m_cachedSessionNumLaps ||
-        connectionType != m_cachedConnectionType || serverClientsCount != m_cachedServerClientsCount ||
-        serverMaxClients != m_cachedServerMaxClients || strcmp(sessionData.serverName, m_cachedServerName) != 0 ||
-        strcmp(sessionData.serverPassword, m_cachedServerPassword) != 0 ||
+        serverType != m_cachedServerType ||
+        strcmp(sessionData.serverName, m_cachedServerName) != 0 ||
         sessionData.conditions != m_cachedConditions || sessionData.airTemperature != m_cachedAirTemperature ||
         sessionData.trackTemperature != m_cachedTrackTemperature) {
         setDataDirty();
@@ -204,11 +128,8 @@ void SessionHud::update() {
         m_cachedSessionState = sessionState;
         m_cachedSessionLength = sessionLength;
         m_cachedSessionNumLaps = sessionNumLaps;
-        m_cachedConnectionType = connectionType;
-        m_cachedServerClientsCount = serverClientsCount;
-        m_cachedServerMaxClients = serverMaxClients;
+        m_cachedServerType = serverType;
         strncpy_s(m_cachedServerName, sessionData.serverName, sizeof(m_cachedServerName) - 1);
-        strncpy_s(m_cachedServerPassword, sessionData.serverPassword, sizeof(m_cachedServerPassword) - 1);
         m_cachedConditions = sessionData.conditions;
         m_cachedAirTemperature = sessionData.airTemperature;
         m_cachedTrackTemperature = sessionData.trackTemperature;
@@ -226,12 +147,6 @@ void SessionHud::rebuildLayout() {
     auto dim = getScaledDimensions();
     const PluginData& pluginData = PluginData::getInstance();
     const SessionData& sessionData = pluginData.getSessionData();
-#if GAME_HAS_SERVER_INFO
-    bool isOnline = (sessionData.connectionType == 2 || sessionData.connectionType == 3);  // Host or Client
-    bool isOffline = (sessionData.connectionType == 1);  // Offline testing
-    bool hasServerName = sessionData.serverName[0] != '\0';
-    bool hasPlayerCount = sessionData.serverMaxClients > 0;
-#endif
 
     float startX = 0.0f;
     float startY = 0.0f;
@@ -245,9 +160,7 @@ void SessionHud::rebuildLayout() {
     float typeHeight = (m_enabledRows & ROW_TYPE) ? dim.lineHeightLarge : 0.0f;
     float formatHeight = (m_enabledRows & ROW_FORMAT) ? dim.lineHeightNormal : 0.0f;
     float trackHeight = (m_enabledRows & ROW_TRACK) ? dim.lineHeightNormal : 0.0f;
-#if GAME_HAS_SERVER_INFO
-    float serverHeight = ((m_enabledRows & ROW_SERVER) && (isOffline || (isOnline && hasServerName))) ? dim.lineHeightNormal : 0.0f;
-#endif
+    float serverHeight = (m_enabledRows & ROW_SERVER) ? dim.lineHeightNormal : 0.0f;
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
@@ -329,37 +242,14 @@ void SessionHud::rebuildLayout() {
         currentY += dim.lineHeightNormal;
     }
 
-#if GAME_HAS_SERVER_INFO
-    // Server name or "Testing" (with icon)
-    if ((m_enabledRows & ROW_SERVER) && (isOffline || (isOnline && hasServerName))) {
+    // Server row (with icon) — text varies by state
+    if (m_enabledRows & ROW_SERVER) {
         repositionIconQuad(iconQuadIndex++, contentStartX, currentY);
         if (positionString(stringIndex, contentStartX + textOffset, currentY)) {
             stringIndex++;
         }
         currentY += serverHeight;
     }
-
-    // Password row (right after server, with icon)
-    if (shouldShowPassword()) {
-        const char* pwText = getPasswordDisplayText();
-        if (pwText != nullptr) {
-            repositionIconQuad(iconQuadIndex++, contentStartX, currentY);
-            if (positionString(stringIndex, contentStartX + textOffset, currentY)) {
-                stringIndex++;
-            }
-            currentY += dim.lineHeightNormal;
-        }
-    }
-
-    // Player count (only shown when online with player data, with icon)
-    if ((m_enabledRows & ROW_PLAYERS) && isOnline && hasPlayerCount) {
-        repositionIconQuad(iconQuadIndex++, contentStartX, currentY);
-        if (positionString(stringIndex, contentStartX + textOffset, currentY)) {
-            stringIndex++;
-        }
-        currentY += dim.lineHeightNormal;
-    }
-#endif
 }
 
 void SessionHud::rebuildRenderData() {
@@ -376,12 +266,9 @@ void SessionHud::rebuildRenderData() {
     int eventType = sessionData.eventType;
     int session = sessionData.session;
     int sessionState = sessionData.sessionState;
-#if GAME_HAS_SERVER_INFO
-    bool isOnline = (sessionData.connectionType == 2 || sessionData.connectionType == 3);  // Host or Client
-    bool isOffline = (sessionData.connectionType == 1);  // Offline testing
+    bool isOnline = sessionData.isOnline();
+    bool isOffline = sessionData.isOffline();
     bool hasServerName = sessionData.serverName[0] != '\0';
-    bool hasPlayerCount = sessionData.serverMaxClients > 0;
-#endif
 
     // Get session and state strings
     const char* sessionString = PluginUtils::getSessionString(eventType, session);
@@ -402,9 +289,7 @@ void SessionHud::rebuildRenderData() {
     float typeHeight = (m_enabledRows & ROW_TYPE) ? dim.lineHeightLarge : 0.0f;
     float formatHeight = (m_enabledRows & ROW_FORMAT) ? dim.lineHeightNormal : 0.0f;
     float trackHeight = (m_enabledRows & ROW_TRACK) ? dim.lineHeightNormal : 0.0f;
-#if GAME_HAS_SERVER_INFO
-    float serverHeight = ((m_enabledRows & ROW_SERVER) && (isOffline || (isOnline && hasServerName))) ? dim.lineHeightNormal : 0.0f;
-#endif
+    float serverHeight = (m_enabledRows & ROW_SERVER) ? dim.lineHeightNormal : 0.0f;
 
     float contentStartX = startX + dim.paddingH;
     float contentStartY = startY + dim.paddingV;
@@ -420,11 +305,7 @@ void SessionHud::rebuildRenderData() {
     // Get specific icons for each row type (only if icons enabled)
     int iconFormat = m_bShowIcons ? assetMgr.getIconSpriteIndex("clock") : 0;      // Time/format
     int iconTrack = m_bShowIcons ? assetMgr.getIconSpriteIndex("location-dot") : 0;    // Track location
-#if GAME_HAS_SERVER_INFO
     int iconServer = m_bShowIcons ? assetMgr.getIconSpriteIndex("server") : 0;         // Server
-    int iconPlayers = m_bShowIcons ? assetMgr.getIconSpriteIndex("user-group") : 0;    // Users/players
-    int iconPassword = m_bShowIcons ? assetMgr.getIconSpriteIndex("lock") : 0;         // Password/security
-#endif
     int iconWeather = m_bShowIcons ? assetMgr.getIconSpriteIndex("temperature-low") : 0;  // Weather/temperature
 
     // Use full opacity for text and icons
@@ -563,11 +444,17 @@ void SessionHud::rebuildRenderData() {
         currentY += dim.lineHeightNormal;
     }
 
-#if GAME_HAS_SERVER_INFO
-    // Server name or "Testing" (with icon)
-    if ((m_enabledRows & ROW_SERVER) && (isOffline || (isOnline && hasServerName))) {
+    // Server row: server name (online + name) / "Testing" (offline) / "Unknown" (no info)
+    if (m_enabledRows & ROW_SERVER) {
         addIconQuad(contentStartX, currentY, iconServer);
-        const char* serverText = isOffline ? "Testing" : sessionData.serverName;
+        const char* serverText;
+        if (isOnline && hasServerName) {
+            serverText = sessionData.serverName;
+        } else if (isOffline) {
+            serverText = "Testing";
+        } else {
+            serverText = "Unknown";
+        }
         char serverBuf[32];
         if (strlen(serverText) > MAX_DISPLAY_CHARS) {
             snprintf(serverBuf, sizeof(serverBuf), "%.*s...", MAX_DISPLAY_CHARS, serverText);
@@ -577,29 +464,6 @@ void SessionHud::rebuildRenderData() {
             this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
         currentY += serverHeight;
     }
-
-    // Password row (right after server - only shown when online, password exists, and mode isn't Off)
-    if (shouldShowPassword()) {
-        const char* pwText = getPasswordDisplayText();
-        if (pwText != nullptr) {
-            addIconQuad(contentStartX, currentY, iconPassword);
-            addString(pwText, contentStartX + textOffset, currentY, Justify::LEFT,
-                this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
-            currentY += dim.lineHeightNormal;
-        }
-    }
-
-    // Player count (separate row, only shown when online with player data, with icon)
-    if ((m_enabledRows & ROW_PLAYERS) && isOnline && hasPlayerCount) {
-        addIconQuad(contentStartX, currentY, iconPlayers);
-        char playerBuffer[32];
-        snprintf(playerBuffer, sizeof(playerBuffer), "%d/%d",
-            sessionData.serverClientsCount, sessionData.serverMaxClients);
-        addString(playerBuffer, contentStartX + textOffset, currentY, Justify::LEFT,
-            this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
-        currentY += dim.lineHeightNormal;
-    }
-#endif
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
@@ -612,7 +476,6 @@ void SessionHud::resetToDefaults() {
     m_fBackgroundOpacity = 0.8f;
     m_fScale = 1.0f;
     m_enabledRows = ROW_DEFAULT;  // Reset row visibility
-    m_passwordMode = PasswordDisplayMode::Off;  // Default to off (password row not shown)
     m_bShowIcons = true;  // Icons enabled by default
     setPosition(0.0055f, 0.1332f);
 
@@ -622,11 +485,8 @@ void SessionHud::resetToDefaults() {
     m_cachedSessionState = -1;
     m_cachedSessionLength = -1;
     m_cachedSessionNumLaps = -1;
-    m_cachedConnectionType = -1;
-    m_cachedServerClientsCount = -1;
-    m_cachedServerMaxClients = -1;
+    m_cachedServerType = CACHE_UNINITIALIZED;
     m_cachedServerName[0] = '\0';
-    m_cachedServerPassword[0] = '\0';
     m_cachedConditions = -1;
     m_cachedAirTemperature = -1.0f;
     m_cachedTrackTemperature = -1.0f;

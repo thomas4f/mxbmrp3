@@ -186,6 +186,7 @@ private:
     char m_lastSessionTrackName[256] = {0};  // Track session trackName to auto-fetch on event start
     char m_lastSessionCategory[64] = {0};  // Track session category to auto-fetch on bike change
     bool m_bAutoFetch = false;  // Auto-fetch records when entering event (default off)
+    bool m_bShowHeaders = false;  // Show a column-header row (fills the row HEADER_ROWS already reserves)
     bool m_bShowFooter = true;  // Show provider attribution at bottom (configurable via INI)
 
     // Fetch state
@@ -195,6 +196,15 @@ private:
     std::string m_lastError;
     std::string m_apiNotice;  // Notice from API response
     DataProvider m_recordsProvider;  // Provider that current records were fetched from
+
+    // Fetch inputs snapshotted on the game thread in startFetch() and read by
+    // buildRequestUrl() on the worker thread. buildRequestUrl() runs off the game
+    // thread, so it must not touch PluginData or game-thread-mutated state
+    // (m_provider / m_categoryIndex / m_categoryList) directly — everything it
+    // needs is captured here first, while still on the game thread.
+    DataProvider m_fetchProvider;   // Provider captured at fetch start
+    std::string m_fetchTrackName;   // Track name captured at fetch start
+    std::string m_fetchCategory;    // Resolved category (empty => "All" / no filter)
 
     // UI state
     bool m_fetchButtonHovered;

@@ -289,7 +289,7 @@ std::string UpdateDownloader::getPluginDirectory() const {
     }
 
     // Plugin directory is typically: {game_path}/plugins/
-    // But we need to find where mxbmrp3.dlo is located
+    // But we need to find where our DLO is located
     // The save path is usually: {game_path}/Documents/
     // So plugin path would be: {game_path}/../plugins/ or we use GetModuleFileName
 
@@ -324,121 +324,166 @@ std::string UpdateDownloader::getPluginDirectory() const {
 }
 
 void UpdateDownloader::workerThread() {
-    std::vector<char> zipData;
-    std::string error;
+    // Exception barrier: an uncaught throw in a std::thread calls
+    // std::terminate() and kills the host game process. File I/O, miniz
+    // extraction, and std::string ops below can all throw under disk-full /
+    // access-denied / corrupt-archive conditions.
+    try {
 
-    DEBUG_INFO("UpdateDownloader: Starting download...");
-    // Step::DOWNLOAD already set to IN_PROGRESS in startDownload()
-    notifyStateChange();
+        std::vector<char> zipData;
+        std::string error;
 
-    // Download
-    if (!downloadFile(zipData, error)) {
-        if (m_cancelRequested || m_shutdownRequested) {
-            m_state = State::IDLE;
-            DEBUG_INFO("UpdateDownloader: Cancelled");
-        } else {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            m_errorMessage = error;
-            m_state = State::FAILED;
-            DEBUG_WARN_F("UpdateDownloader: Download failed - %s", error.c_str());
-        }
+        DEBUG_INFO("UpdateDownloader: Starting download...");
+        // Step::DOWNLOAD already set to IN_PROGRESS in startDownload()
         notifyStateChange();
-        return;
-    }
 
-    // Download complete
-    setStepStatus(Step::DOWNLOAD, StepStatus::COMPLETE);
-
-    if (m_cancelRequested || m_shutdownRequested) {
-        m_state = State::IDLE;
-        notifyStateChange();
-        return;
-    }
-
-    // Verify
-    setStepStatus(Step::VERIFY, StepStatus::IN_PROGRESS);
-    m_state = State::VERIFYING;
-    notifyStateChange();
-    DEBUG_INFO("UpdateDownloader: Verifying...");
-
-    // Check file size
-    if (m_expectedSize > 0 && zipData.size() != m_expectedSize) {
-        std::string errorMsg = "Size mismatch: expected " + std::to_string(m_expectedSize) +
-                               ", got " + std::to_string(zipData.size());
-        {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            m_errorMessage = errorMsg;
-            m_state = State::FAILED;
-        }
-        DEBUG_WARN_F("UpdateDownloader: %s", errorMsg.c_str());
-        notifyStateChange();
-        return;
-    }
-
-    if (m_cancelRequested || m_shutdownRequested) {
-        m_state = State::IDLE;
-        notifyStateChange();
-        return;
-    }
-
-    // Verify SHA256 checksum if available
-    std::string expectedHash;
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        expectedHash = m_checksumHash;
-    }
-
-    if (!expectedHash.empty()) {
-        DEBUG_INFO("UpdateDownloader: Verifying SHA256 checksum...");
-
-        std::string actualHash = calculateSHA256(zipData);
-        if (actualHash.empty()) {
-            DEBUG_WARN("UpdateDownloader: SHA256 calculation failed");
-        } else if (actualHash != expectedHash) {
-            {
+        // Download
+        if (!downloadFile(zipData, error)) {
+            if (m_cancelRequested || m_shutdownRequested) {
+                m_state = State::IDLE;
+                DEBUG_INFO("UpdateDownloader: Cancelled");
+            } else {
                 std::lock_guard<std::mutex> lock(m_mutex);
-                m_errorMessage = "SHA256 checksum mismatch";
+                m_errorMessage = error;
                 m_state = State::FAILED;
+                DEBUG_WARN_F("UpdateDownloader: Download failed - %s", error.c_str());
             }
-            DEBUG_WARN_F("UpdateDownloader: SHA256 mismatch! Expected: %s, Got: %s",
-                        expectedHash.c_str(), actualHash.c_str());
             notifyStateChange();
             return;
-        } else {
-            DEBUG_INFO_F("UpdateDownloader: SHA256 verified: %s", actualHash.c_str());
         }
-    }
 
-    // Verify complete
-    setStepStatus(Step::VERIFY, StepStatus::COMPLETE);
+        // Download complete
+        setStepStatus(Step::DOWNLOAD, StepStatus::COMPLETE);
 
-    if (m_cancelRequested || m_shutdownRequested) {
-        m_state = State::IDLE;
+        if (m_cancelRequested || m_shutdownRequested) {
+            m_state = State::IDLE;
+            notifyStateChange();
+            return;
+        }
+
+        // Verify
+        setStepStatus(Step::VERIFY, StepStatus::IN_PROGRESS);
+        m_state = State::VERIFYING;
         notifyStateChange();
-        return;
-    }
+        DEBUG_INFO("UpdateDownloader: Verifying...");
 
-    // Extract and install (backup/extract/install steps are handled in extractAndInstall)
-    m_state = State::EXTRACTING;
-    notifyStateChange();
-    DEBUG_INFO("UpdateDownloader: Processing update...");
+        // Check file size
+        if (m_expectedSize > 0 && zipData.size() != m_expectedSize) {
+            std::string errorMsg = "Size mismatch: expected " + std::to_string(m_expectedSize) +
+                                   ", got " + std::to_string(zipData.size());
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                m_errorMessage = errorMsg;
+                m_state = State::FAILED;
+            }
+            DEBUG_WARN_F("UpdateDownloader: %s", errorMsg.c_str());
+            notifyStateChange();
+            return;
+        }
 
-    if (!extractAndInstall(zipData, error)) {
+        if (m_cancelRequested || m_shutdownRequested) {
+            m_state = State::IDLE;
+            notifyStateChange();
+            return;
+        }
+
+        // Verify SHA256 checksum if available
+        std::string expectedHash;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
-            m_errorMessage = error;
-            m_state = State::FAILED;
+            expectedHash = m_checksumHash;
         }
-        // notifyStateChange acquires mutex, so must be called outside the lock
-        DEBUG_WARN_F("UpdateDownloader: Extract failed - %s", error.c_str());
-        notifyStateChange();
-        return;
-    }
 
-    // Success!
-    m_state = State::READY;
-    DEBUG_INFO("UpdateDownloader: Update ready, restart required");
-    notifyStateChange();
+        if (!expectedHash.empty()) {
+            DEBUG_INFO("UpdateDownloader: Verifying SHA256 checksum...");
+
+            std::string actualHash = calculateSHA256(zipData);
+            if (actualHash.empty()) {
+                DEBUG_WARN("UpdateDownloader: SHA256 calculation failed");
+            } else if (actualHash != expectedHash) {
+                {
+                    std::lock_guard<std::mutex> lock(m_mutex);
+                    m_errorMessage = "SHA256 checksum mismatch";
+                    m_state = State::FAILED;
+                }
+                DEBUG_WARN_F("UpdateDownloader: SHA256 mismatch! Expected: %s, Got: %s",
+                            expectedHash.c_str(), actualHash.c_str());
+                notifyStateChange();
+                return;
+            } else {
+                DEBUG_INFO_F("UpdateDownloader: SHA256 verified: %s", actualHash.c_str());
+            }
+        }
+
+        // Verify complete
+        setStepStatus(Step::VERIFY, StepStatus::COMPLETE);
+
+        if (m_cancelRequested || m_shutdownRequested) {
+            m_state = State::IDLE;
+            notifyStateChange();
+            return;
+        }
+
+        // Extract and install (backup/extract/install steps are handled in extractAndInstall)
+        m_state = State::EXTRACTING;
+        notifyStateChange();
+        DEBUG_INFO("UpdateDownloader: Processing update...");
+
+        if (!extractAndInstall(zipData, error)) {
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                m_errorMessage = error;
+                m_state = State::FAILED;
+            }
+            // notifyStateChange acquires mutex, so must be called outside the lock
+            DEBUG_WARN_F("UpdateDownloader: Extract failed - %s", error.c_str());
+            notifyStateChange();
+            return;
+        }
+
+        // Success!
+        m_state = State::READY;
+        DEBUG_INFO("UpdateDownloader: Update ready, restart required");
+        notifyStateChange();
+
+    } catch (const std::exception& e) {
+        DEBUG_WARN_F("UpdateDownloader thread terminated by exception: %s", e.what());
+        // Set the atomic state first (noexcept). The string assignment below
+        // can itself throw bad_alloc — if the original exception WAS
+        // bad_alloc, allocating a new error string would defeat the catch
+        // and terminate the thread. Wrap the assignment so we degrade to an
+        // empty message rather than crash.
+        //
+        // Acquire the lock once outside the inner try: a second lock_guard in
+        // a nested catch could itself throw std::system_error, which would
+        // propagate out of the thread and call std::terminate.
+        m_state = State::FAILED;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            try {
+                m_errorMessage = e.what();
+            } catch (...) {
+                m_errorMessage.clear();  // noexcept
+            }
+        }
+        // notifyStateChange acquires m_mutex internally, so call it outside the lock
+        notifyStateChange();
+    } catch (...) {
+        DEBUG_WARN("UpdateDownloader thread terminated by unknown exception");
+        // Same restructure as the std::exception& branch above: acquire the
+        // lock once outside the inner try so a second lock_guard in a nested
+        // catch can't throw std::system_error and propagate out of the thread.
+        m_state = State::FAILED;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            try {
+                m_errorMessage = "Unknown error";
+            } catch (...) {
+                m_errorMessage.clear();  // noexcept
+            }
+        }
+        notifyStateChange();
+    }
 }
 
 bool UpdateDownloader::downloadFile(std::vector<char>& outData, std::string& outError, int redirectDepth) {
@@ -1081,7 +1126,7 @@ bool UpdateDownloader::extractAndInstall(const std::vector<char>& zipData, std::
             return false;
         }
 
-        // Backup existing files (moves entire mxbmrp3.dlo and mxbmrp3_data/ to backup)
+        // Backup existing files (moves the game's .dlo and mxbmrp3_data/ to backup)
         if (!backupExistingFiles(pluginDir, backupDir)) {
             mz_zip_reader_end(&zip);
             // DO NOT cleanupBackup here - the DLO might still be in backup if restore failed!

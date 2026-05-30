@@ -65,7 +65,7 @@ struct SettingsLayoutContext {
     // Add a section header (bold, primary color)
     void addSectionHeader(const char* title);
 
-    // Add tab tooltip area from tooltips.json (if available)
+    // Add tab tooltip area (string sourced from TooltipManager)
     // tabId is the lowercase tab name (e.g., "standings", "map")
     void addTabTooltip(const char* tabId);
 
@@ -156,15 +156,6 @@ struct SettingsLayoutContext {
         int labelWidth = 12,
         bool enabled = true,
         bool isOff = false
-    );
-
-    // Add a display mode control (Graphs/Numbers/Both) in the right column
-    // Used by TelemetryHud and PerformanceHud
-    // Returns the Y position after this control
-    float addDisplayModeControl(
-        uint8_t* displayMode,
-        BaseHud* targetHud,
-        float yPos
     );
 
     // Advance cursor by one line

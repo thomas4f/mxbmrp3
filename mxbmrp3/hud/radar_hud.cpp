@@ -736,7 +736,10 @@ void RadarHud::rebuildRenderData() {
         } else if (m_riderColorMode == RiderColorMode::BRAND) {
             riderColor = PluginUtils::applyOpacity(entry->bikeBrandColor, 0.75f * trackFadeOpacity);
         } else {
-            riderColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::ACCENT), trackFadeOpacity);
+            // Uniform: riders use the primary color (matching their name color in the
+            // standings); accent is reserved for the player, who isn't drawn on the radar
+            // but is marked with accent on the Map HUD.
+            riderColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::PRIMARY), trackFadeOpacity);
         }
 
         // Hazard icon override: circle-exclamation for wrong-way, flag for stationary

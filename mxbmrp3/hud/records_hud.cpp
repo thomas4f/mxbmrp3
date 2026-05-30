@@ -84,6 +84,7 @@ RecordsHud::RecordsHud()
     , m_categoryIndex(0)
     , m_fetchState(FetchState::IDLE)
     , m_recordsProvider(DataProvider::CBR)
+    , m_fetchProvider(DataProvider::CBR)
     , m_fetchButtonHovered(false)
     , m_fetchResultTimestamp(0)
     , m_fetchStartTimestamp(0)
@@ -198,30 +199,32 @@ static void appendUrlEncoded(std::string& url, const char* str) {
 }
 
 std::string RecordsHud::buildRequestUrl() const {
-    std::string baseUrl = getProviderBaseUrl(m_provider);
+    // Runs on the worker thread: read only the fetch-time snapshot captured by
+    // startFetch() on the game thread (m_fetchProvider / m_fetchTrackName /
+    // m_fetchCategory), never live PluginData or m_provider/m_categoryIndex/
+    // m_categoryList.
+    std::string baseUrl = getProviderBaseUrl(m_fetchProvider);
     if (baseUrl.empty()) return "";
 
-    const SessionData& session = PluginData::getInstance().getSessionData();
-
-    if (m_provider == DataProvider::MXB_RANKED) {
+    if (m_fetchProvider == DataProvider::MXB_RANKED) {
         // MXB-Ranked uses path-based URL: /trackname or /trackname/category
         // No limit parameter supported
         std::string url = baseUrl;
 
         // Add track name parameter (required)
-        if (session.trackName[0] != '\0') {
+        if (!m_fetchTrackName.empty()) {
             url += "/";
-            appendUrlEncoded(url, session.trackName);
+            appendUrlEncoded(url, m_fetchTrackName.c_str());
         } else {
             return "";  // Track name is required for MXB-Ranked
         }
 
         // Add category parameter (optional - omit for "All")
-        if (m_categoryIndex > 0 && m_categoryIndex < static_cast<int>(m_categoryList.size())) {
+        if (!m_fetchCategory.empty()) {
             url += "/";
-            appendUrlEncoded(url, m_categoryList[m_categoryIndex].c_str());
+            appendUrlEncoded(url, m_fetchCategory.c_str());
         }
-        // If "All" (index 0), omit category to get all categories
+        // If "All", omit category to get all categories
 
         return url;
     } else {
@@ -229,15 +232,15 @@ std::string RecordsHud::buildRequestUrl() const {
         std::string url = baseUrl + "?limit=" + std::to_string(MAX_RECORDS);
 
         // Add track parameter
-        if (session.trackName[0] != '\0') {
+        if (!m_fetchTrackName.empty()) {
             url += "&track=";
-            appendUrlEncoded(url, session.trackName);
+            appendUrlEncoded(url, m_fetchTrackName.c_str());
         }
 
-        // Add category parameter if not "All" (index 0)
-        if (m_categoryIndex > 0 && m_categoryIndex < static_cast<int>(m_categoryList.size())) {
+        // Add category parameter if not "All"
+        if (!m_fetchCategory.empty()) {
             url += "&category=";
-            appendUrlEncoded(url, m_categoryList[m_categoryIndex].c_str());
+            appendUrlEncoded(url, m_fetchCategory.c_str());
         }
 
         return url;
@@ -272,254 +275,307 @@ void RecordsHud::startFetch() {
         m_fetchThread.join();
     }
 
+    // Snapshot every input buildRequestUrl() needs, here on the game thread, before
+    // the worker starts. This is the only place these are read for the fetch, so the
+    // worker never touches PluginData or game-thread-mutated state directly.
+    m_fetchProvider = m_provider;
+    const SessionData& session = PluginData::getInstance().getSessionData();
+    m_fetchTrackName = session.trackName;
+    if (m_categoryIndex > 0 && m_categoryIndex < static_cast<int>(m_categoryList.size())) {
+        m_fetchCategory = m_categoryList[m_categoryIndex];
+    } else {
+        m_fetchCategory.clear();  // index 0 ("All") => no category filter
+    }
+
     // Start new fetch thread
     m_fetchThread = std::thread(&RecordsHud::performFetch, this);
 }
 
 void RecordsHud::performFetch() {
-    DEBUG_INFO("RecordsHud: Starting HTTP fetch");
+    // Exception barrier: an uncaught throw in a std::thread calls
+    // std::terminate() and kills the host game process. The body below does
+    // std::string / std::wstring / std::vector allocations and WinHTTP calls
+    // — any of those can throw under memory pressure or unexpected response
+    // shapes. processFetchResult is internally guarded, but the outer thread
+    // body wasn't.
+    try {
 
-    std::string url = buildRequestUrl();
-    if (url.empty()) {
-        {
-            std::lock_guard<std::mutex> lock(m_recordsMutex);
-            m_lastError = "Invalid URL";
-        }
-        m_fetchState = FetchState::FETCH_ERROR;
-        m_fetchResultTimestamp = GetTickCount();
-        setDataDirty();
-        return;
-    }
+        DEBUG_INFO("RecordsHud: Starting HTTP fetch");
 
-    DEBUG_INFO_F("RecordsHud: Fetching URL: %s", url.c_str());
-
-    // Parse URL to extract host and path
-    std::wstring wHost;
-    std::wstring wPath;
-    INTERNET_PORT port = INTERNET_DEFAULT_HTTPS_PORT;
-    bool useHttps = true;
-
-    // Skip protocol
-    size_t hostStart = url.find("://");
-    if (hostStart != std::string::npos) {
-        std::string protocol = url.substr(0, hostStart);
-        if (protocol == "http") {
-            useHttps = false;
-            port = INTERNET_DEFAULT_HTTP_PORT;
-        }
-        hostStart += 3;
-    } else {
-        hostStart = 0;
-    }
-
-    // Find end of host
-    size_t pathStart = url.find('/', hostStart);
-    std::string host;
-    std::string path;
-    if (pathStart != std::string::npos) {
-        host = url.substr(hostStart, pathStart - hostStart);
-        path = url.substr(pathStart);
-    } else {
-        host = url.substr(hostStart);
-        path = "/";
-    }
-
-    // Convert to wide strings for WinHTTP
-    wHost.assign(host.begin(), host.end());
-    wPath.assign(path.begin(), path.end());
-
-    // Create user agent string
-    char userAgentA[128];
-    snprintf(userAgentA, sizeof(userAgentA), "%s/%s",
-             PluginConstants::PLUGIN_DISPLAY_NAME,
-             PluginConstants::PLUGIN_VERSION);
-    std::wstring userAgent(userAgentA, userAgentA + strlen(userAgentA));
-
-    // Initialize WinHTTP
-    HINTERNET hSession = WinHttpOpen(userAgent.c_str(),
-                                     WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-                                     WINHTTP_NO_PROXY_NAME,
-                                     WINHTTP_NO_PROXY_BYPASS, 0);
-    if (!hSession) {
-        {
-            std::lock_guard<std::mutex> lock(m_recordsMutex);
-            m_lastError = "WinHttpOpen failed";
-        }
-        m_fetchState = FetchState::FETCH_ERROR;
-        m_fetchResultTimestamp = GetTickCount();
-        setDataDirty();
-        DEBUG_WARN("RecordsHud: WinHttpOpen failed");
-        return;
-    }
-
-    // Set timeouts (10 seconds for each operation)
-    WinHttpSetTimeouts(hSession, 10000, 10000, 10000, 10000);
-
-    // Connect to server
-    HINTERNET hConnect = WinHttpConnect(hSession, wHost.c_str(), port, 0);
-    if (!hConnect) {
-        WinHttpCloseHandle(hSession);
-        {
-            std::lock_guard<std::mutex> lock(m_recordsMutex);
-            m_lastError = "Connection failed";
-        }
-        m_fetchState = FetchState::FETCH_ERROR;
-        m_fetchResultTimestamp = GetTickCount();
-        setDataDirty();
-        DEBUG_WARN("RecordsHud: WinHttpConnect failed");
-        return;
-    }
-
-    // Create request
-    DWORD flags = useHttps ? WINHTTP_FLAG_SECURE : 0;
-    HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"GET", wPath.c_str(),
-                                            NULL, WINHTTP_NO_REFERER,
-                                            WINHTTP_DEFAULT_ACCEPT_TYPES, flags);
-    if (!hRequest) {
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
-        {
-            std::lock_guard<std::mutex> lock(m_recordsMutex);
-            m_lastError = "Request failed";
-        }
-        m_fetchState = FetchState::FETCH_ERROR;
-        m_fetchResultTimestamp = GetTickCount();
-        setDataDirty();
-        DEBUG_WARN("RecordsHud: WinHttpOpenRequest failed");
-        return;
-    }
-
-    // Add Accept header
-    WinHttpAddRequestHeaders(hRequest, L"Accept: application/json",
-                             (DWORD)-1, WINHTTP_ADDREQ_FLAG_ADD);
-
-    // Send request
-    BOOL bResults = WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS,
-                                        0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0);
-    if (!bResults) {
-        WinHttpCloseHandle(hRequest);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
-        {
-            std::lock_guard<std::mutex> lock(m_recordsMutex);
-            m_lastError = "Send failed";
-        }
-        m_fetchState = FetchState::FETCH_ERROR;
-        m_fetchResultTimestamp = GetTickCount();
-        setDataDirty();
-        DEBUG_WARN("RecordsHud: WinHttpSendRequest failed");
-        return;
-    }
-
-    // Receive response
-    bResults = WinHttpReceiveResponse(hRequest, NULL);
-    if (!bResults) {
-        WinHttpCloseHandle(hRequest);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
-        {
-            std::lock_guard<std::mutex> lock(m_recordsMutex);
-            m_lastError = "No response";
-        }
-        m_fetchState = FetchState::FETCH_ERROR;
-        m_fetchResultTimestamp = GetTickCount();
-        setDataDirty();
-        DEBUG_WARN("RecordsHud: WinHttpReceiveResponse failed");
-        return;
-    }
-
-    // Check status code
-    DWORD statusCode = 0;
-    DWORD statusCodeSize = sizeof(statusCode);
-    WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-                        WINHTTP_HEADER_NAME_BY_INDEX, &statusCode, &statusCodeSize, WINHTTP_NO_HEADER_INDEX);
-
-    if (statusCode != 200) {
-        WinHttpCloseHandle(hRequest);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
-        {
-            std::lock_guard<std::mutex> lock(m_recordsMutex);
-            m_lastError = "HTTP " + std::to_string(statusCode);
-        }
-        m_fetchState = FetchState::FETCH_ERROR;
-        m_fetchResultTimestamp = GetTickCount();
-        setDataDirty();
-        DEBUG_WARN_F("RecordsHud: HTTP error %d", statusCode);
-        return;
-    }
-
-    // Read response body with size limit
-    std::string responseBody;
-    DWORD dwSize = 0;
-    DWORD dwDownloaded = 0;
-    bool sizeLimitExceeded = false;
-
-    do {
-        dwSize = 0;
-        if (!WinHttpQueryDataAvailable(hRequest, &dwSize)) {
-            break;
-        }
-
-        if (dwSize == 0) break;
-
-        // Check size limit to prevent memory exhaustion
-        if (responseBody.size() + dwSize > MAX_RESPONSE_SIZE) {
-            sizeLimitExceeded = true;
-            DEBUG_WARN_F("RecordsHud: Response size limit exceeded (current=%zu, chunk=%lu, limit=%zu)",
-                         responseBody.size(), dwSize, MAX_RESPONSE_SIZE);
-            break;
-        }
-
-        std::vector<char> buffer(dwSize + 1, 0);
-
-        if (WinHttpReadData(hRequest, buffer.data(), dwSize, &dwDownloaded)) {
-            responseBody.append(buffer.data(), dwDownloaded);
-        }
-
-    } while (dwSize > 0);
-
-    if (sizeLimitExceeded) {
-        WinHttpCloseHandle(hRequest);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
-        {
-            std::lock_guard<std::mutex> lock(m_recordsMutex);
-            m_lastError = "Response too large";
-        }
-        m_fetchState = FetchState::FETCH_ERROR;
-        m_fetchResultTimestamp = GetTickCount();
-        setDataDirty();
-        return;
-    }
-
-    // Clean up
-    WinHttpCloseHandle(hRequest);
-    WinHttpCloseHandle(hConnect);
-    WinHttpCloseHandle(hSession);
-
-    // Process response
-    if (!responseBody.empty()) {
-        if (processFetchResult(responseBody)) {
-            m_fetchState = FetchState::SUCCESS;
-            DEBUG_INFO("RecordsHud: Fetch successful");
-            // Notify TimingHud so it can update RC reference time immediately
-            HudManager::getInstance().getTimingHud().setDataDirty();
-        } else {
+        std::string url = buildRequestUrl();
+        if (url.empty()) {
+            {
+                std::lock_guard<std::mutex> lock(m_recordsMutex);
+                m_lastError = "Invalid URL";
+            }
             m_fetchState = FetchState::FETCH_ERROR;
-            DEBUG_WARN("RecordsHud: Failed to parse response");
+            m_fetchResultTimestamp = GetTickCount();
+            setDataDirty();
+            return;
         }
-    } else {
+
+        DEBUG_INFO_F("RecordsHud: Fetching URL: %s", url.c_str());
+
+        // Parse URL to extract host and path
+        std::wstring wHost;
+        std::wstring wPath;
+        INTERNET_PORT port = INTERNET_DEFAULT_HTTPS_PORT;
+        bool useHttps = true;
+
+        // Skip protocol
+        size_t hostStart = url.find("://");
+        if (hostStart != std::string::npos) {
+            std::string protocol = url.substr(0, hostStart);
+            if (protocol == "http") {
+                useHttps = false;
+                port = INTERNET_DEFAULT_HTTP_PORT;
+            }
+            hostStart += 3;
+        } else {
+            hostStart = 0;
+        }
+
+        // Find end of host
+        size_t pathStart = url.find('/', hostStart);
+        std::string host;
+        std::string path;
+        if (pathStart != std::string::npos) {
+            host = url.substr(hostStart, pathStart - hostStart);
+            path = url.substr(pathStart);
+        } else {
+            host = url.substr(hostStart);
+            path = "/";
+        }
+
+        // Convert to wide strings for WinHTTP
+        wHost.assign(host.begin(), host.end());
+        wPath.assign(path.begin(), path.end());
+
+        // Create user agent string
+        char userAgentA[128];
+        snprintf(userAgentA, sizeof(userAgentA), "%s/%s",
+                 PluginConstants::PLUGIN_DISPLAY_NAME,
+                 PluginConstants::PLUGIN_VERSION);
+        std::wstring userAgent(userAgentA, userAgentA + strlen(userAgentA));
+
+        // Initialize WinHTTP
+        HINTERNET hSession = WinHttpOpen(userAgent.c_str(),
+                                         WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                                         WINHTTP_NO_PROXY_NAME,
+                                         WINHTTP_NO_PROXY_BYPASS, 0);
+        if (!hSession) {
+            {
+                std::lock_guard<std::mutex> lock(m_recordsMutex);
+                m_lastError = "WinHttpOpen failed";
+            }
+            m_fetchState = FetchState::FETCH_ERROR;
+            m_fetchResultTimestamp = GetTickCount();
+            setDataDirty();
+            DEBUG_WARN("RecordsHud: WinHttpOpen failed");
+            return;
+        }
+
+        // Set timeouts (10 seconds for each operation)
+        WinHttpSetTimeouts(hSession, 10000, 10000, 10000, 10000);
+
+        // Connect to server
+        HINTERNET hConnect = WinHttpConnect(hSession, wHost.c_str(), port, 0);
+        if (!hConnect) {
+            WinHttpCloseHandle(hSession);
+            {
+                std::lock_guard<std::mutex> lock(m_recordsMutex);
+                m_lastError = "Connection failed";
+            }
+            m_fetchState = FetchState::FETCH_ERROR;
+            m_fetchResultTimestamp = GetTickCount();
+            setDataDirty();
+            DEBUG_WARN("RecordsHud: WinHttpConnect failed");
+            return;
+        }
+
+        // Create request
+        DWORD flags = useHttps ? WINHTTP_FLAG_SECURE : 0;
+        HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"GET", wPath.c_str(),
+                                                NULL, WINHTTP_NO_REFERER,
+                                                WINHTTP_DEFAULT_ACCEPT_TYPES, flags);
+        if (!hRequest) {
+            WinHttpCloseHandle(hConnect);
+            WinHttpCloseHandle(hSession);
+            {
+                std::lock_guard<std::mutex> lock(m_recordsMutex);
+                m_lastError = "Request failed";
+            }
+            m_fetchState = FetchState::FETCH_ERROR;
+            m_fetchResultTimestamp = GetTickCount();
+            setDataDirty();
+            DEBUG_WARN("RecordsHud: WinHttpOpenRequest failed");
+            return;
+        }
+
+        // Add Accept header
+        WinHttpAddRequestHeaders(hRequest, L"Accept: application/json",
+                                 (DWORD)-1, WINHTTP_ADDREQ_FLAG_ADD);
+
+        // Send request
+        BOOL bResults = WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS,
+                                            0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0);
+        if (!bResults) {
+            WinHttpCloseHandle(hRequest);
+            WinHttpCloseHandle(hConnect);
+            WinHttpCloseHandle(hSession);
+            {
+                std::lock_guard<std::mutex> lock(m_recordsMutex);
+                m_lastError = "Send failed";
+            }
+            m_fetchState = FetchState::FETCH_ERROR;
+            m_fetchResultTimestamp = GetTickCount();
+            setDataDirty();
+            DEBUG_WARN("RecordsHud: WinHttpSendRequest failed");
+            return;
+        }
+
+        // Receive response
+        bResults = WinHttpReceiveResponse(hRequest, NULL);
+        if (!bResults) {
+            WinHttpCloseHandle(hRequest);
+            WinHttpCloseHandle(hConnect);
+            WinHttpCloseHandle(hSession);
+            {
+                std::lock_guard<std::mutex> lock(m_recordsMutex);
+                m_lastError = "No response";
+            }
+            m_fetchState = FetchState::FETCH_ERROR;
+            m_fetchResultTimestamp = GetTickCount();
+            setDataDirty();
+            DEBUG_WARN("RecordsHud: WinHttpReceiveResponse failed");
+            return;
+        }
+
+        // Check status code
+        DWORD statusCode = 0;
+        DWORD statusCodeSize = sizeof(statusCode);
+        WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                            WINHTTP_HEADER_NAME_BY_INDEX, &statusCode, &statusCodeSize, WINHTTP_NO_HEADER_INDEX);
+
+        if (statusCode != 200) {
+            WinHttpCloseHandle(hRequest);
+            WinHttpCloseHandle(hConnect);
+            WinHttpCloseHandle(hSession);
+            {
+                std::lock_guard<std::mutex> lock(m_recordsMutex);
+                m_lastError = "HTTP " + std::to_string(statusCode);
+            }
+            m_fetchState = FetchState::FETCH_ERROR;
+            m_fetchResultTimestamp = GetTickCount();
+            setDataDirty();
+            DEBUG_WARN_F("RecordsHud: HTTP error %d", statusCode);
+            return;
+        }
+
+        // Read response body with size limit
+        std::string responseBody;
+        DWORD dwSize = 0;
+        DWORD dwDownloaded = 0;
+        bool sizeLimitExceeded = false;
+
+        do {
+            dwSize = 0;
+            if (!WinHttpQueryDataAvailable(hRequest, &dwSize)) {
+                break;
+            }
+
+            if (dwSize == 0) break;
+
+            // Check size limit to prevent memory exhaustion
+            if (responseBody.size() + dwSize > MAX_RESPONSE_SIZE) {
+                sizeLimitExceeded = true;
+                DEBUG_WARN_F("RecordsHud: Response size limit exceeded (current=%zu, chunk=%lu, limit=%zu)",
+                             responseBody.size(), dwSize, MAX_RESPONSE_SIZE);
+                break;
+            }
+
+            std::vector<char> buffer(dwSize + 1, 0);
+
+            if (WinHttpReadData(hRequest, buffer.data(), dwSize, &dwDownloaded)) {
+                responseBody.append(buffer.data(), dwDownloaded);
+            }
+
+        } while (dwSize > 0);
+
+        if (sizeLimitExceeded) {
+            WinHttpCloseHandle(hRequest);
+            WinHttpCloseHandle(hConnect);
+            WinHttpCloseHandle(hSession);
+            {
+                std::lock_guard<std::mutex> lock(m_recordsMutex);
+                m_lastError = "Response too large";
+            }
+            m_fetchState = FetchState::FETCH_ERROR;
+            m_fetchResultTimestamp = GetTickCount();
+            setDataDirty();
+            return;
+        }
+
+        // Clean up
+        WinHttpCloseHandle(hRequest);
+        WinHttpCloseHandle(hConnect);
+        WinHttpCloseHandle(hSession);
+
+        // Process response
+        if (!responseBody.empty()) {
+            if (processFetchResult(responseBody)) {
+                m_fetchState = FetchState::SUCCESS;
+                DEBUG_INFO("RecordsHud: Fetch successful");
+                // Notify TimingHud so it can update RC reference time immediately
+                HudManager::getInstance().getTimingHud().setDataDirty();
+            } else {
+                m_fetchState = FetchState::FETCH_ERROR;
+                DEBUG_WARN("RecordsHud: Failed to parse response");
+            }
+        } else {
+            {
+                std::lock_guard<std::mutex> lock(m_recordsMutex);
+                m_lastError = "Empty response";
+            }
+            m_fetchState = FetchState::FETCH_ERROR;
+            DEBUG_WARN("RecordsHud: Empty response");
+        }
+
+        m_fetchResultTimestamp = GetTickCount();
+        setDataDirty();
+
+    } catch (const std::exception& e) {
+        DEBUG_WARN_F("RecordsHud fetch thread terminated by exception: %s", e.what());
+        // Atomic state first (noexcept). The string assignment can itself
+        // throw bad_alloc — if the original throw was bad_alloc, allocating
+        // a new error string defeats the catch. Acquire the lock once
+        // outside the inner try so a second lock_guard in a nested catch
+        // can't throw std::system_error and propagate out of the thread.
+        m_fetchState = FetchState::FETCH_ERROR;
         {
             std::lock_guard<std::mutex> lock(m_recordsMutex);
-            m_lastError = "Empty response";
+            try {
+                m_lastError = e.what();
+            } catch (...) {
+                m_lastError.clear();  // noexcept
+            }
         }
+        m_fetchResultTimestamp = GetTickCount();
+        setDataDirty();
+    } catch (...) {
+        DEBUG_WARN("RecordsHud fetch thread terminated by unknown exception");
         m_fetchState = FetchState::FETCH_ERROR;
-        DEBUG_WARN("RecordsHud: Empty response");
+        {
+            std::lock_guard<std::mutex> lock(m_recordsMutex);
+            try {
+                m_lastError = "Unknown error";
+            } catch (...) {
+                m_lastError.clear();  // noexcept
+            }
+        }
+        m_fetchResultTimestamp = GetTickCount();
+        setDataDirty();
     }
-
-    m_fetchResultTimestamp = GetTickCount();
-    setDataDirty();
 }
 
 bool RecordsHud::processFetchResult(const std::string& response) {
@@ -980,7 +1036,30 @@ void RecordsHud::rebuildRenderData() {
 
     currentY += dim.lineHeightNormal;
 
-    // === Empty row (no column headers) ===
+    // === Column header row (optional) ===
+    // HEADER_ROWS always reserves this row; when headers are off it stays empty.
+    if (m_bShowHeaders) {
+        unsigned long headerColor = this->getColor(ColorSlot::TERTIARY);
+        int headerFont = this->getFont(FontCategory::STRONG);
+        if (isColumnEnabled(COL_POS))
+            addLabel("Pos", m_columns.pos, currentY, Justify::LEFT, headerFont, headerColor, dim);
+        if (isColumnEnabled(COL_RIDER))
+            addLabel("Rider", m_columns.rider, currentY, Justify::LEFT, headerFont, headerColor, dim);
+        if (isColumnEnabled(COL_BIKE))
+            addLabel("Bike", m_columns.bike, currentY, Justify::LEFT, headerFont, headerColor, dim);
+        if (isColumnEnabled(COL_SECTORS)) {
+            addLabel("S1", m_columns.sector1, currentY, Justify::LEFT, headerFont, headerColor, dim);
+            addLabel("S2", m_columns.sector2, currentY, Justify::LEFT, headerFont, headerColor, dim);
+            addLabel("S3", m_columns.sector3, currentY, Justify::LEFT, headerFont, headerColor, dim);
+#if GAME_SECTOR_COUNT >= 4
+            addLabel("S4", m_columns.sector4, currentY, Justify::LEFT, headerFont, headerColor, dim);
+#endif
+        }
+        if (isColumnEnabled(COL_LAPTIME))
+            addLabel("Time", m_columns.laptime, currentY, Justify::LEFT, headerFont, headerColor, dim);
+        if (isColumnEnabled(COL_DATE))
+            addLabel("Date", m_columns.date, currentY, Justify::LEFT, headerFont, headerColor, dim);
+    }
     currentY += dim.lineHeightNormal;
 
     // === Record Rows (with Personal Best integration) ===
@@ -1116,7 +1195,7 @@ void RecordsHud::rebuildRenderData() {
         // Date
         if (isColumnEnabled(COL_DATE)) {
             addString(date && date[0] != '\0' ? date : "---", m_columns.date, currentY,
-                      Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dim.fontSize);
+                      Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
         }
 
         currentY += dim.lineHeightNormal;
@@ -1328,6 +1407,7 @@ void RecordsHud::resetToDefaults() {
     m_lastSessionTrackName[0] = '\0';  // Reset so update() will pick up current session track
     m_lastSessionCategory[0] = '\0';  // Reset so update() will pick up current session category
     m_bAutoFetch = false;  // Auto-fetch disabled by default
+    m_bShowHeaders = false;  // Column headers off by default
     m_enabledColumns = COL_DEFAULT;
     m_recordsToShow = 3;  // Default to 3 rows (matches telemetry HUD height)
     m_bShowFooter = true;

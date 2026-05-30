@@ -38,12 +38,8 @@ bool LeanWidget::handlesDataType(DataChangeType dataType) const {
 }
 
 void LeanWidget::resetTracking() {
-    m_maxLeanLeft = 0.0f;
-    m_maxLeanRight = 0.0f;
     m_markerValueLeft = 0.0f;
     m_markerValueRight = 0.0f;
-    m_prevLeanLeft = 0.0f;
-    m_prevLeanRight = 0.0f;
     m_maxFramesRemaining[0] = 0;
     m_maxFramesRemaining[1] = 0;
     m_steerMarkerLeft = 0.0f;
@@ -56,6 +52,11 @@ void LeanWidget::resetTracking() {
 void LeanWidget::update() {
     // OPTIMIZATION: Skip processing when not visible
     if (!isVisible()) {
+        // While hidden, drop any "was crashed" memory so that becoming visible while
+        // currently crashed re-fires the rising-edge snap. Without this, the sequence
+        // [crash → hide → recover → crash again → show] would miss the second snap
+        // because m_wasCrashed stayed true throughout invisibility.
+        m_wasCrashed = false;
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -221,9 +222,60 @@ void LeanWidget::rebuildRenderData() {
     const InputTelemetryData& inputTelemetry = pluginData.getInputTelemetry();
     float currentSteer = inputTelemetry.steer;
 
-    // Freeze steer value when crash starts
+    // On the first frame of the crash, capture impact-moment state so the rider can
+    // see what was happening at the point of impact:
+    //   - Freeze the steer value (used for display while crashed)
+    //   - Snap the steer and lean max markers to current values *if* no marker is
+    //     currently visible (don't overwrite a still-visible higher peak — that's
+    //     the more informative reading).
     if (isCrashed && !m_wasCrashed) {
         m_frozenSteer = currentSteer;
+
+        // Snap steer max marker on the side matching current steer direction, but only
+        // if no marker is currently being rendered (linger inactive). The render gate
+        // is m_steerFramesRemaining > 0; the steer value alone may be non-zero from a
+        // steady hold without the linger ever arming, so checking the value isn't
+        // enough — we need to check the linger state directly.
+        if (currentSteer > 1.0f && m_steerFramesRemaining[0] == 0) {
+            m_steerMarkerLeft = currentSteer;
+            m_steerFramesRemaining[0] = m_maxMarkerLingerFrames;
+        } else if (currentSteer < -1.0f && m_steerFramesRemaining[1] == 0) {
+            m_steerMarkerRight = std::abs(currentSteer);
+            m_steerFramesRemaining[1] = m_maxMarkerLingerFrames;
+        }
+
+        // Snap lean max marker on the side matching current lean (same gate semantics)
+        if (bikeData.isValid) {
+            float impactLean = bikeData.roll;
+            if (impactLean < -0.5f && m_maxFramesRemaining[0] == 0) {
+                m_markerValueLeft = std::abs(impactLean);
+                m_maxFramesRemaining[0] = m_maxMarkerLingerFrames;
+            } else if (impactLean > 0.5f && m_maxFramesRemaining[1] == 0) {
+                m_markerValueRight = impactLean;
+                m_maxFramesRemaining[1] = m_maxMarkerLingerFrames;
+            }
+        }
+
+        // Collapse to a single marker per gauge so the freeze shows one peak, not two.
+        // Higher linger count == more recently set.
+        if (m_maxFramesRemaining[0] > 0 && m_maxFramesRemaining[1] > 0) {
+            if (m_maxFramesRemaining[0] >= m_maxFramesRemaining[1]) {
+                m_maxFramesRemaining[1] = 0;
+                m_markerValueRight = 0.0f;
+            } else {
+                m_maxFramesRemaining[0] = 0;
+                m_markerValueLeft = 0.0f;
+            }
+        }
+        if (m_steerFramesRemaining[0] > 0 && m_steerFramesRemaining[1] > 0) {
+            if (m_steerFramesRemaining[0] >= m_steerFramesRemaining[1]) {
+                m_steerFramesRemaining[1] = 0;
+                m_steerMarkerRight = 0.0f;
+            } else {
+                m_steerFramesRemaining[0] = 0;
+                m_steerMarkerLeft = 0.0f;
+            }
+        }
     }
     m_wasCrashed = isCrashed;
 
@@ -275,15 +327,9 @@ void LeanWidget::rebuildRenderData() {
             }
         }
     } else {
-        // Countdown timers when crashed
-        if (m_steerFramesRemaining[0] > 0) {
-            m_steerFramesRemaining[0]--;
-            if (m_steerFramesRemaining[0] == 0) m_steerMarkerLeft = 0.0f;
-        }
-        if (m_steerFramesRemaining[1] > 0) {
-            m_steerFramesRemaining[1]--;
-            if (m_steerFramesRemaining[1] == 0) m_steerMarkerRight = 0.0f;
-        }
+        // Freeze steer max-marker linger while crashed so the rider can read the
+        // peak after the bike settles. On crash recovery, resetTracking() wipes
+        // the markers outright (see top of rebuildRenderData).
     }
 
     // Get current lean angle from telemetry
@@ -294,13 +340,10 @@ void LeanWidget::rebuildRenderData() {
         // Only update when not crashed
         currentLean = bikeData.roll;
 
-        // Update maximum lean tracking
+        // Update lean marker tracking
         if (currentLean < 0) {
             // Leaning left (negative)
             float absLean = std::abs(currentLean);
-            if (absLean > m_maxLeanLeft) {
-                m_maxLeanLeft = absLean;
-            }
             // Max marker: show at peak when value starts decreasing, hide when increasing
             if (absLean > m_markerValueLeft + LEAN_THRESHOLD) {
                 // Value exceeds marker - update marker position, hide it
@@ -313,7 +356,6 @@ void LeanWidget::rebuildRenderData() {
                 m_maxFramesRemaining[0]--;
                 if (m_maxFramesRemaining[0] == 0) m_markerValueLeft = 0.0f;
             }
-            m_prevLeanLeft = absLean;
             // Countdown right marker if showing (switched from right to left)
             if (m_maxFramesRemaining[1] > 0) {
                 m_maxFramesRemaining[1]--;
@@ -321,9 +363,6 @@ void LeanWidget::rebuildRenderData() {
             }
         } else if (currentLean > 0) {
             // Leaning right (positive)
-            if (currentLean > m_maxLeanRight) {
-                m_maxLeanRight = currentLean;
-            }
             // Max marker: show at peak when value starts decreasing, hide when increasing
             if (currentLean > m_markerValueRight + LEAN_THRESHOLD) {
                 // Value exceeds marker - update marker position, hide it
@@ -336,7 +375,6 @@ void LeanWidget::rebuildRenderData() {
                 m_maxFramesRemaining[1]--;
                 if (m_maxFramesRemaining[1] == 0) m_markerValueRight = 0.0f;
             }
-            m_prevLeanRight = currentLean;
             // Countdown left marker if showing (switched from left to right)
             if (m_maxFramesRemaining[0] > 0) {
                 m_maxFramesRemaining[0]--;
@@ -358,16 +396,11 @@ void LeanWidget::rebuildRenderData() {
         m_smoothedLean += (currentLean - m_smoothedLean) * LEAN_SMOOTH_FACTOR;
     }
     else if (isCrashed) {
-        // When crashed, m_smoothedLean stays frozen at last value
-        // Countdown timers so markers eventually disappear
-        if (m_maxFramesRemaining[0] > 0) {
-            m_maxFramesRemaining[0]--;
-            if (m_maxFramesRemaining[0] == 0) m_markerValueLeft = 0.0f;
-        }
-        if (m_maxFramesRemaining[1] > 0) {
-            m_maxFramesRemaining[1]--;
-            if (m_maxFramesRemaining[1] == 0) m_markerValueRight = 0.0f;
-        }
+        // When crashed, m_smoothedLean stays frozen at last value (intentional —
+        // tumbling through 180°+ would just thrash the gauge with no useful info).
+        // Lean max-marker linger is also frozen so the rider can read the
+        // pre-crash peak after the bike settles. On crash recovery,
+        // resetTracking() wipes the markers outright.
     }
     else {
         // Data invalid - reset lean to 0 (same as other widgets)
@@ -401,12 +434,22 @@ void LeanWidget::rebuildRenderData() {
         float arcStartRad = ARC_START_ANGLE * DEG_TO_RAD;
         float arcEndRad = ARC_END_ANGLE * DEG_TO_RAD;
 
-        // Draw background arc (full gauge range) - same color as BarsWidget backgrounds
-        unsigned long arcBgColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), m_fBackgroundOpacity * 0.5f);
-        addArcSegment(centerX, arcCenterY, innerRadius, outerRadius,
-                      arcStartRad, arcEndRad, arcBgColor, ARC_SEGMENTS);
+        // Center gap: instead of overlaying a black marker on a continuous arc, the
+        // background and fill arcs are drawn as two halves separated by a real gap
+        // around 0°. Gap half-width matches the old black-marker half-width so the
+        // visual size of the divider stays the same.
+        constexpr float CENTER_GAP_HALF_RAD = 0.02f;
+        float markerWidth = 0.02f;  // still used for max-marker rendering below
 
-        // Draw filled arc from center (0.0f) to current lean angle
+        // Draw background arc (full gauge range, split around center) - same color as BarsWidget backgrounds
+        unsigned long arcBgColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), m_fBackgroundOpacity * 0.5f);
+        int halfSegments = std::max(3, ARC_SEGMENTS / 2);
+        addArcSegment(centerX, arcCenterY, innerRadius, outerRadius,
+                      arcStartRad, -CENTER_GAP_HALF_RAD, arcBgColor, halfSegments);
+        addArcSegment(centerX, arcCenterY, innerRadius, outerRadius,
+                      CENTER_GAP_HALF_RAD, arcEndRad, arcBgColor, halfSegments);
+
+        // Draw filled arc from the gap edge outward to current lean angle
         float displayLean = -m_smoothedLean;
         if (std::abs(displayLean) > 0.5f) {
             float leanRatio = displayLean / MAX_LEAN_ANGLE;
@@ -417,27 +460,22 @@ void LeanWidget::rebuildRenderData() {
 
             int fillSegments = std::max(3, static_cast<int>(std::abs(fillAngleRad / (arcEndRad - arcStartRad)) * ARC_SEGMENTS));
 
-            if (fillAngleRad < 0) {
+            if (fillAngleRad < -CENTER_GAP_HALF_RAD) {
                 addArcSegment(centerX, arcCenterY, innerRadius, outerRadius,
-                              fillAngleRad, 0.0f, m_arcFillColor, fillSegments);
-            } else {
+                              fillAngleRad, -CENTER_GAP_HALF_RAD, m_arcFillColor, fillSegments);
+            } else if (fillAngleRad > CENTER_GAP_HALF_RAD) {
                 addArcSegment(centerX, arcCenterY, innerRadius, outerRadius,
-                              0.0f, fillAngleRad, m_arcFillColor, fillSegments);
+                              CENTER_GAP_HALF_RAD, fillAngleRad, m_arcFillColor, fillSegments);
             }
         }
 
-        // Draw center marker (extends beyond arc)
-        float markerInner = innerRadius - arcThickness * 0.5f;
-        float markerOuter = outerRadius + arcThickness * 0.5f;
-        float markerWidth = 0.02f;
-
-        unsigned long blackColor = 0xFF000000;  // ABGR: fully opaque black
-        addArcSegment(centerX, arcCenterY, markerInner, markerOuter,
-                      -markerWidth, markerWidth, blackColor, 1);
-
         // Draw lingering max markers on the arc (if enabled)
-        if (m_bShowMaxMarkers) {
-            unsigned long maxMarkerColor = this->getColor(ColorSlot::PRIMARY);
+        if (m_bShowMaxMarkers || isCrashed) {
+            // Flat NEGATIVE/red while crashed so the impact peak is easy to spot;
+            // PRIMARY (white) otherwise.
+            unsigned long maxMarkerColor = isCrashed
+                ? this->getColor(ColorSlot::NEGATIVE)
+                : this->getColor(ColorSlot::PRIMARY);
 
             if (m_maxFramesRemaining[0] > 0 && m_markerValueLeft > 0.5f) {
                 float leanRatio = m_markerValueLeft / MAX_LEAN_ANGLE;
@@ -498,25 +536,46 @@ void LeanWidget::rebuildRenderData() {
         float maxSteer = pluginData.getSessionData().steerLock;
         if (maxSteer < 1.0f) maxSteer = MAX_STEER_ANGLE;
 
-        // Draw full-width bar background - same color as BarsWidget backgrounds
-        SPluginQuad_t barBgQuad;
-        float bgX = contentStartX, bgY = steerBarY;
-        applyOffset(bgX, bgY);
-        setQuadPositions(barBgQuad, bgX, bgY, contentWidth, steerBarHeight);
-        barBgQuad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-        barBgQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), m_fBackgroundOpacity * 0.5f);
-        m_quads.push_back(barBgQuad);
-
+        // Real gap at center instead of an overlaid marker. Gap width matches the old
+        // black center-marker width so the visual divider is the same size.
+        const float steerCenterGap = contentWidth * 0.02f;
+        const float steerCenterGapHalf = steerCenterGap * 0.5f;
         float halfWidth = contentWidth / 2.0f;
+        float halfWidthAvail = halfWidth - steerCenterGapHalf;  // effective half-bar (post-gap)
+        unsigned long bgColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), m_fBackgroundOpacity * 0.5f);
 
-        // Draw fill from center outward based on steer direction (only when steer data available)
+        // Left bar background
+        {
+            SPluginQuad_t barBgQuad;
+            float bgX = contentStartX, bgY = steerBarY;
+            applyOffset(bgX, bgY);
+            setQuadPositions(barBgQuad, bgX, bgY, halfWidthAvail, steerBarHeight);
+            barBgQuad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
+            barBgQuad.m_ulColor = bgColor;
+            m_quads.push_back(barBgQuad);
+        }
+        // Right bar background
+        {
+            SPluginQuad_t barBgQuad;
+            float bgX = centerX + steerCenterGapHalf, bgY = steerBarY;
+            applyOffset(bgX, bgY);
+            setQuadPositions(barBgQuad, bgX, bgY, halfWidthAvail, steerBarHeight);
+            barBgQuad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
+            barBgQuad.m_ulColor = bgColor;
+            m_quads.push_back(barBgQuad);
+        }
+
+        // Draw fill from the gap edge outward, based on steer direction (only when steer data available).
+        // Fill width scales against halfWidthAvail so full lock fills the entire available half-bar.
         if (hasSteerData) {
             float steerRatio = steerAngle / maxSteer;
             steerRatio = std::max(-1.0f, std::min(1.0f, steerRatio));
 
             if (std::abs(steerRatio) > 0.01f) {
-                float fillWidth = std::abs(steerRatio) * halfWidth;
-                float fillX = (steerRatio > 0) ? (centerX - fillWidth) : centerX;
+                float fillWidth = std::abs(steerRatio) * halfWidthAvail;
+                float fillX = (steerRatio > 0)
+                    ? ((centerX - steerCenterGapHalf) - fillWidth)  // left fill grows leftward from inner gap edge
+                    : (centerX + steerCenterGapHalf);                // right fill grows rightward from inner gap edge
                 SPluginQuad_t fillQuad;
                 float fX = fillX, fY = steerBarY;
                 applyOffset(fX, fY);
@@ -528,13 +587,15 @@ void LeanWidget::rebuildRenderData() {
         }
 
         // Draw steer max markers (if enabled and steer data available)
-        if (m_bShowMaxMarkers && hasSteerData) {
+        if ((m_bShowMaxMarkers || isCrashed) && hasSteerData) {
             float steerMaxMarkerWidth = contentWidth * 0.02f;
-            unsigned long steerMaxMarkerColor = this->getColor(ColorSlot::PRIMARY);
+            unsigned long steerMaxMarkerColor = isCrashed
+                ? this->getColor(ColorSlot::NEGATIVE)
+                : this->getColor(ColorSlot::PRIMARY);
 
             if (m_steerFramesRemaining[0] > 0 && m_steerMarkerLeft > 0.5f) {
                 float markerRatio = std::min(1.0f, m_steerMarkerLeft / maxSteer);
-                float markerX = centerX - markerRatio * halfWidth - steerMaxMarkerWidth / 2.0f;
+                float markerX = (centerX - steerCenterGapHalf) - markerRatio * halfWidthAvail - steerMaxMarkerWidth / 2.0f;
                 SPluginQuad_t maxMarkerQuad;
                 float mmX = markerX, mmY = steerBarY;
                 applyOffset(mmX, mmY);
@@ -546,7 +607,7 @@ void LeanWidget::rebuildRenderData() {
 
             if (m_steerFramesRemaining[1] > 0 && m_steerMarkerRight > 0.5f) {
                 float markerRatio = std::min(1.0f, m_steerMarkerRight / maxSteer);
-                float markerX = centerX + markerRatio * halfWidth - steerMaxMarkerWidth / 2.0f;
+                float markerX = (centerX + steerCenterGapHalf) + markerRatio * halfWidthAvail - steerMaxMarkerWidth / 2.0f;
                 SPluginQuad_t maxMarkerQuad;
                 float mmX = markerX, mmY = steerBarY;
                 applyOffset(mmX, mmY);
@@ -556,18 +617,6 @@ void LeanWidget::rebuildRenderData() {
                 m_quads.push_back(maxMarkerQuad);
             }
         }
-
-        // Draw center marker (thin, extends beyond bar)
-        float steerCenterMarkerW = contentWidth * 0.02f;
-        float steerCenterMarkerH = steerBarHeight * 1.5f;
-        float steerCenterMarkerY = steerBarY - (steerCenterMarkerH - steerBarHeight) / 2.0f;
-        SPluginQuad_t centerMarkerQuad;
-        float cmX = centerX - steerCenterMarkerW / 2.0f, cmY = steerCenterMarkerY;
-        applyOffset(cmX, cmY);
-        setQuadPositions(centerMarkerQuad, cmX, cmY, steerCenterMarkerW, steerCenterMarkerH);
-        centerMarkerQuad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-        centerMarkerQuad.m_ulColor = 0xFF000000;  // ABGR: fully opaque black
-        m_quads.push_back(centerMarkerQuad);
 
         currentY += dim.lineHeightNormal;
     }
@@ -603,14 +652,10 @@ void LeanWidget::resetToDefaults() {
     m_enabledRows = ROW_DEFAULT;  // All rows enabled
     m_bShowMaxMarkers = true;     // Max markers ON by default for lean/steer
     m_maxMarkerLingerFrames = 60; // ~1 second at 60fps
-    setPosition(0.7590f, 0.8769f);
+    setPosition(0.7425f, 0.8769f);
     m_smoothedLean = 0.0f;
-    m_maxLeanLeft = 0.0f;
-    m_maxLeanRight = 0.0f;
     m_markerValueLeft = 0.0f;
     m_markerValueRight = 0.0f;
-    m_prevLeanLeft = 0.0f;
-    m_prevLeanRight = 0.0f;
     m_maxFramesRemaining[0] = 0;
     m_maxFramesRemaining[1] = 0;
     m_steerMarkerLeft = 0.0f;

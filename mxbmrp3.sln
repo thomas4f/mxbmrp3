@@ -9,14 +9,22 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "recorder", "recorder_plugin
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "replay_tool", "replay_tool\replay_tool.vcxproj", "{F3D8E5A1-7B2C-4D9E-8F1A-6C9B5D8E4A2F}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "build_all", "build_all\build_all.vcxproj", "{E108A19B-1731-499E-8544-7547AEB17301}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		All-Release|x64 = All-Release|x64
+		All-Debug|x64 = All-Debug|x64
 		MXB-Release|x64 = MXB-Release|x64
 		GPB-Release|x64 = GPB-Release|x64
+		KRP-Release|x64 = KRP-Release|x64
 		MXB-Debug|x64 = MXB-Debug|x64
 		GPB-Debug|x64 = GPB-Debug|x64
+		KRP-Debug|x64 = KRP-Debug|x64
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{E80BFFAA-36B5-4DC8-B65B-401965CF40F6}.All-Release|x64.ActiveCfg = MXB-Release|x64
+		{E80BFFAA-36B5-4DC8-B65B-401965CF40F6}.All-Debug|x64.ActiveCfg = MXB-Debug|x64
 		{E80BFFAA-36B5-4DC8-B65B-401965CF40F6}.MXB-Release|x64.ActiveCfg = MXB-Release|x64
 		{E80BFFAA-36B5-4DC8-B65B-401965CF40F6}.MXB-Release|x64.Build.0 = MXB-Release|x64
 		{E80BFFAA-36B5-4DC8-B65B-401965CF40F6}.GPB-Release|x64.ActiveCfg = GPB-Release|x64
@@ -25,6 +33,14 @@ Global
 		{E80BFFAA-36B5-4DC8-B65B-401965CF40F6}.MXB-Debug|x64.Build.0 = MXB-Debug|x64
 		{E80BFFAA-36B5-4DC8-B65B-401965CF40F6}.GPB-Debug|x64.ActiveCfg = GPB-Debug|x64
 		{E80BFFAA-36B5-4DC8-B65B-401965CF40F6}.GPB-Debug|x64.Build.0 = GPB-Debug|x64
+		{E80BFFAA-36B5-4DC8-B65B-401965CF40F6}.KRP-Release|x64.ActiveCfg = KRP-Release|x64
+		{E80BFFAA-36B5-4DC8-B65B-401965CF40F6}.KRP-Release|x64.Build.0 = KRP-Release|x64
+		{E80BFFAA-36B5-4DC8-B65B-401965CF40F6}.KRP-Debug|x64.ActiveCfg = KRP-Debug|x64
+		{E80BFFAA-36B5-4DC8-B65B-401965CF40F6}.KRP-Debug|x64.Build.0 = KRP-Debug|x64
+		{B8C9A4F2-1D6E-4A3B-9F2C-8E7D5A9B6C3D}.All-Release|x64.ActiveCfg = Release|x64
+		{B8C9A4F2-1D6E-4A3B-9F2C-8E7D5A9B6C3D}.All-Release|x64.Build.0 = Release|x64
+		{B8C9A4F2-1D6E-4A3B-9F2C-8E7D5A9B6C3D}.All-Debug|x64.ActiveCfg = Debug|x64
+		{B8C9A4F2-1D6E-4A3B-9F2C-8E7D5A9B6C3D}.All-Debug|x64.Build.0 = Debug|x64
 		{B8C9A4F2-1D6E-4A3B-9F2C-8E7D5A9B6C3D}.MXB-Release|x64.ActiveCfg = Release|x64
 		{B8C9A4F2-1D6E-4A3B-9F2C-8E7D5A9B6C3D}.MXB-Release|x64.Build.0 = Release|x64
 		{B8C9A4F2-1D6E-4A3B-9F2C-8E7D5A9B6C3D}.GPB-Release|x64.ActiveCfg = Release|x64
@@ -33,6 +49,14 @@ Global
 		{B8C9A4F2-1D6E-4A3B-9F2C-8E7D5A9B6C3D}.MXB-Debug|x64.Build.0 = Debug|x64
 		{B8C9A4F2-1D6E-4A3B-9F2C-8E7D5A9B6C3D}.GPB-Debug|x64.ActiveCfg = Debug|x64
 		{B8C9A4F2-1D6E-4A3B-9F2C-8E7D5A9B6C3D}.GPB-Debug|x64.Build.0 = Debug|x64
+		{B8C9A4F2-1D6E-4A3B-9F2C-8E7D5A9B6C3D}.KRP-Release|x64.ActiveCfg = Release|x64
+		{B8C9A4F2-1D6E-4A3B-9F2C-8E7D5A9B6C3D}.KRP-Release|x64.Build.0 = Release|x64
+		{B8C9A4F2-1D6E-4A3B-9F2C-8E7D5A9B6C3D}.KRP-Debug|x64.ActiveCfg = Debug|x64
+		{B8C9A4F2-1D6E-4A3B-9F2C-8E7D5A9B6C3D}.KRP-Debug|x64.Build.0 = Debug|x64
+		{F3D8E5A1-7B2C-4D9E-8F1A-6C9B5D8E4A2F}.All-Release|x64.ActiveCfg = Release|x64
+		{F3D8E5A1-7B2C-4D9E-8F1A-6C9B5D8E4A2F}.All-Release|x64.Build.0 = Release|x64
+		{F3D8E5A1-7B2C-4D9E-8F1A-6C9B5D8E4A2F}.All-Debug|x64.ActiveCfg = Debug|x64
+		{F3D8E5A1-7B2C-4D9E-8F1A-6C9B5D8E4A2F}.All-Debug|x64.Build.0 = Debug|x64
 		{F3D8E5A1-7B2C-4D9E-8F1A-6C9B5D8E4A2F}.MXB-Release|x64.ActiveCfg = Release|x64
 		{F3D8E5A1-7B2C-4D9E-8F1A-6C9B5D8E4A2F}.MXB-Release|x64.Build.0 = Release|x64
 		{F3D8E5A1-7B2C-4D9E-8F1A-6C9B5D8E4A2F}.GPB-Release|x64.ActiveCfg = Release|x64
@@ -41,6 +65,20 @@ Global
 		{F3D8E5A1-7B2C-4D9E-8F1A-6C9B5D8E4A2F}.MXB-Debug|x64.Build.0 = Debug|x64
 		{F3D8E5A1-7B2C-4D9E-8F1A-6C9B5D8E4A2F}.GPB-Debug|x64.ActiveCfg = Debug|x64
 		{F3D8E5A1-7B2C-4D9E-8F1A-6C9B5D8E4A2F}.GPB-Debug|x64.Build.0 = Debug|x64
+		{F3D8E5A1-7B2C-4D9E-8F1A-6C9B5D8E4A2F}.KRP-Release|x64.ActiveCfg = Release|x64
+		{F3D8E5A1-7B2C-4D9E-8F1A-6C9B5D8E4A2F}.KRP-Release|x64.Build.0 = Release|x64
+		{F3D8E5A1-7B2C-4D9E-8F1A-6C9B5D8E4A2F}.KRP-Debug|x64.ActiveCfg = Debug|x64
+		{F3D8E5A1-7B2C-4D9E-8F1A-6C9B5D8E4A2F}.KRP-Debug|x64.Build.0 = Debug|x64
+		{E108A19B-1731-499E-8544-7547AEB17301}.All-Release|x64.ActiveCfg = All-Release|x64
+		{E108A19B-1731-499E-8544-7547AEB17301}.All-Release|x64.Build.0 = All-Release|x64
+		{E108A19B-1731-499E-8544-7547AEB17301}.All-Debug|x64.ActiveCfg = All-Debug|x64
+		{E108A19B-1731-499E-8544-7547AEB17301}.All-Debug|x64.Build.0 = All-Debug|x64
+		{E108A19B-1731-499E-8544-7547AEB17301}.MXB-Release|x64.ActiveCfg = All-Release|x64
+		{E108A19B-1731-499E-8544-7547AEB17301}.GPB-Release|x64.ActiveCfg = All-Release|x64
+		{E108A19B-1731-499E-8544-7547AEB17301}.KRP-Release|x64.ActiveCfg = All-Release|x64
+		{E108A19B-1731-499E-8544-7547AEB17301}.MXB-Debug|x64.ActiveCfg = All-Debug|x64
+		{E108A19B-1731-499E-8544-7547AEB17301}.GPB-Debug|x64.ActiveCfg = All-Debug|x64
+		{E108A19B-1731-499E-8544-7547AEB17301}.KRP-Debug|x64.ActiveCfg = All-Debug|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

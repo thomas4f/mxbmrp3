@@ -28,6 +28,9 @@ extern "C" {
 		char m_szTrackName[100];
 		float m_fTrackLength;											/* centerline length. meters */
 		int m_iType;													/* 1 = testing; 2 = race; 4 = straight rhythm */
+		char m_szServerName[64];
+		int m_iServerType;
+		char m_szGUID[100];
 	} SPluginsBikeEvent_t;
 
 	typedef struct
@@ -194,12 +197,13 @@ extern "C" {
 		int m_iSession;										/* testing: 0 = waiting; 1 = in progress. Race: 0 = waiting; 1 = practice; 2 = pre-qualify; 3 = qualify practice; 4 = qualify; 5 = warmup; 6 = race1; 7 = race2 */
 		int m_iRaceNum;										/* race number */
 		int m_iCommunication;								/* 1 = change state; 2 = penalty */
-		int m_iState;										/* 1 = DNS; 2 = unknown; 3 = retired; 4 = DSQ */
-		int m_iReason;										/* Reason field. 0 = jump start; 1 = too many offences; 2 = director */
+		int m_iState;										/* 1 = DNS; 3 = retired; 4 = DSQ */
+		int m_iReason;										/* Reason for DSQ. 0 = jump start; 1 = too many offences; 2 = director */
 		int m_iOffence;										/* 1 = jump start; 2 = cutting */
 		int m_iLap;											/* lap index */
+		int m_iStart;										/* 1 = before the start line */
 		int m_iType;										/* always 0 = time penalty */
-		int m_iTime;										/* milliseconds. Penalty time */
+		int m_iTime;										/* seconds. Penalty time (header documents ms but the game actually sends seconds; mxbikes_adapter converts) */
 	} SPluginsRaceCommunication_t;
 
 	typedef struct

@@ -185,7 +185,7 @@ void TimeWidget::rebuildRenderData() {
 }
 
 void TimeWidget::resetToDefaults() {
-    m_bVisible = true;
+    m_bVisible = false;  // Standings title now shows session/time info
     m_bShowTitle = true;
     m_bShowSessionType = false;  // Hide session type by default
     setTextureVariant(0);  // No texture by default

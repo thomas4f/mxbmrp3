@@ -17,6 +17,14 @@ void TrackCenterlineHandler::handleTrackCenterline(int iNumSegments, Unified::Tr
         return;
     }
 
+    // pRaceData is a float array of fixed length 4 for the supported games:
+    //   [0] = start/finish line (meters along centerline)
+    //   [1] = split 1
+    //   [2] = split 2
+    //   [3] = holeshot (MX Bikes only; other games may not populate)
+    // Values <= 0 or > track length are treated as "not available".
+    const float* raceData = static_cast<const float*>(pRaceData);
+
     // Forward track centerline data to HudManager for MapHud
-    HudManager::getInstance().updateTrackCenterline(iNumSegments, pasSegment);
+    HudManager::getInstance().updateTrackCenterline(iNumSegments, pasSegment, raceData);
 }

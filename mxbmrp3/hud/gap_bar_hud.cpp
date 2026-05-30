@@ -30,7 +30,6 @@ GapBarHud::GapBarHud()
     , m_cachedSplit1(-1)
     , m_cachedSplit2(-1)
     , m_cachedPlayerRunning(true)
-    , m_bikeBrandColor(ColorPalette::WHITE)
     , m_isFrozen(false)
     , m_frozenGap(0)
     , m_frozenSplitIndex(-1)
@@ -122,12 +121,6 @@ void GapBarHud::update() {
         }
         if (idealLapData) {
             m_cachedLastCompletedLapNum = idealLapData->lastCompletedLapNum;
-        }
-
-        // Get bike brand color for the new target
-        const RaceEntryData* entry = pluginData.getRaceEntry(currentDisplayRaceNum);
-        if (entry) {
-            m_bikeBrandColor = entry->bikeBrandColor;
         }
 
         if (isVisible()) setDataDirty();
@@ -928,6 +921,10 @@ void GapBarHud::renderRiderMarkers(float innerX, float innerY, float innerWidth,
             int ghostSpriteIndex = spriteIndex;
             int ghostShapeIndex = globalShapeIndex;
 
+            // Ghost is a dimmed version of the live self marker: darkened tracked color
+            // when tracked, otherwise a darkened accent (matching the self marker default).
+            ghostColor = PluginUtils::darkenColor(this->getColor(ColorSlot::ACCENT), 0.5f);
+
             const RaceEntryData* selfEntry = pluginData.getRaceEntry(displayRaceNum);
             if (selfEntry) {
                 const TrackedRiderConfig* selfTrackedConfig = TrackedRidersManager::getInstance().getTrackedRider(selfEntry->name);
@@ -935,11 +932,7 @@ void GapBarHud::renderRiderMarkers(float innerX, float innerY, float innerWidth,
                     ghostColor = PluginUtils::darkenColor(selfTrackedConfig->color, 0.5f);
                     ghostSpriteIndex = assetMgr.getFirstIconSpriteIndex() + selfTrackedConfig->shapeIndex - 1;
                     ghostShapeIndex = selfTrackedConfig->shapeIndex;
-                } else {
-                    ghostColor = PluginUtils::darkenColor(m_bikeBrandColor, 0.5f);
                 }
-            } else {
-                ghostColor = PluginUtils::darkenColor(m_bikeBrandColor, 0.5f);
             }
 
             renderMarkerIcon(markerX, markerY, iconSize, ghostSpriteIndex, ghostColor, ghostShapeIndex);
@@ -951,8 +944,9 @@ void GapBarHud::renderRiderMarkers(float innerX, float innerY, float innerWidth,
     if (m_currentTrackPos > 0.001f) {
         float markerX = innerX + (innerWidth * m_currentTrackPos);
 
-        // Check if player is tracked - use their configured color and shape (like RadarHud)
-        unsigned long selfColor = this->getColor(ColorSlot::POSITIVE);
+        // Check if player is tracked - use their configured color and shape (like RadarHud).
+        // Default to the accent slot so the player's own marker matches StandingsHud/MapHud.
+        unsigned long selfColor = this->getColor(ColorSlot::ACCENT);
         int selfSpriteIndex = spriteIndex;
         int selfShapeIndex = globalShapeIndex;
 

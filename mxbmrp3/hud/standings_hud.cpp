@@ -28,7 +28,7 @@ void StandingsHud::CachedIcons::ensureInitialized() {
     initialized = true;
 }
 
-StandingsHud::ColumnPositions::ColumnPositions(float contentStartX, float scale, uint32_t enabledColumns, int nameWidth) {
+StandingsHud::ColumnPositions::ColumnPositions(float contentStartX, float scale, uint32_t enabledColumns, int nameWidth, int raceNumWidth) {
     float scaledFontSize = FontSizes::NORMAL * scale;
     float current = contentStartX;
 
@@ -36,7 +36,7 @@ StandingsHud::ColumnPositions::ColumnPositions(float contentStartX, float scale,
     // All columns (race mode everywhere)
     PluginUtils::setColumnPosition(enabledColumns, COL_TRACKED, COL_TRACKED_WIDTH, scaledFontSize, current, tracked);
     PluginUtils::setColumnPosition(enabledColumns, COL_POS, COL_POS_WIDTH, scaledFontSize, current, pos);
-    PluginUtils::setColumnPosition(enabledColumns, COL_RACENUM, COL_RACENUM_WIDTH, scaledFontSize, current, raceNum);
+    PluginUtils::setColumnPosition(enabledColumns, COL_RACENUM, raceNumWidth, scaledFontSize, current, raceNum);
     PluginUtils::setColumnPosition(enabledColumns, COL_NAME, nameWidth, scaledFontSize, current, name);
     PluginUtils::setColumnPosition(enabledColumns, COL_BIKE, COL_BIKE_WIDTH, scaledFontSize, current, bike);
     PluginUtils::setColumnPosition(enabledColumns, COL_BEST_LAP, COL_BEST_LAP_WIDTH, scaledFontSize, current, bestLap);
@@ -80,6 +80,59 @@ StandingsHud::DisplayEntry StandingsHud::DisplayEntry::fromRaceEntry(const RaceE
     return result;
 }
 
+float StandingsHud::getColumnTextX(uint8_t columnIndex, float columnPosition, float fontSize, bool isPlaceholder, bool gapRightAlign) const {
+    if (isPlaceholder) return columnPosition;
+    float charW = PluginUtils::calculateMonospaceTextWidth(1, fontSize);
+    if (columnIndex == COL_IDX_POS) {
+        // 2-char content field: center (classic) or right edge (modern)
+        return columnPosition + charW * (m_bClassicLayout ? 1.0f : 2.0f);
+    }
+    if (columnIndex == COL_IDX_RACENUM) {
+        // Classic: right edge of 3-char field. Modern: center of 4-char plate.
+        return columnPosition + charW * (m_bClassicLayout ? 3.0f : 2.0f);
+    }
+    if (columnIndex == COL_IDX_GAP && gapRightAlign) {
+        // Gap column right-aligns to the content edge (numeric values and labels alike).
+        return columnPosition + charW * (COL_GAP_WIDTH - 1);
+    }
+    if (columnIndex == COL_IDX_PENALTY) {
+        // Penalty values ("+5s" / "-") right-align to the content edge.
+        return columnPosition + charW * (COL_PENALTY_WIDTH - 1);
+    }
+    return columnPosition;
+}
+
+const char* StandingsHud::getColumnHeaderLabel(uint8_t columnIndex) {
+    switch (columnIndex) {
+        case COL_IDX_POS:      return "P";
+        case COL_IDX_RACENUM:  return "#";
+        case COL_IDX_NAME:     return "Name";
+        case COL_IDX_BIKE:     return "Bike";
+        case COL_IDX_BEST_LAP: return "Best";
+        case COL_IDX_GAP:      return "Gap";
+        case COL_IDX_PENALTY:  return "Pen";
+        default:               return "";
+    }
+}
+
+float StandingsHud::getColumnHeaderTextX(uint8_t columnIndex, float columnPosition, float fontSize, int* outJustify) const {
+    // Headers right-align with the gap column the same way data values do.
+    bool gapRightAlign = (columnIndex == COL_IDX_GAP);
+    float textX = getColumnTextX(columnIndex, columnPosition, fontSize, false, gapRightAlign);
+    if (outJustify) {
+        int justify = Justify::LEFT;
+        if (columnIndex == COL_IDX_POS) {
+            justify = m_bClassicLayout ? Justify::CENTER : Justify::RIGHT;
+        } else if (columnIndex == COL_IDX_RACENUM) {
+            justify = m_bClassicLayout ? Justify::RIGHT : Justify::CENTER;
+        } else if (gapRightAlign || columnIndex == COL_IDX_PENALTY) {
+            justify = Justify::RIGHT;
+        }
+        *outJustify = justify;
+    }
+    return textX;
+}
+
 void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder, float currentY, const ScaledDimensions& dim, int rowIndex) {
 
     const char* placeholder = Placeholders::GENERIC;
@@ -88,11 +141,15 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
     // Determine text color
     unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
     unsigned long mutedColor = this->getColor(ColorSlot::MUTED);
+    // Track non-participant (DNS/DSQ/RETIRED) state by rider state, not by comparing
+    // the resolved color to muted: a palette may set primary==muted, which would make
+    // every rider read as "muted" and suppress the accent/podium/gap styling below.
+    bool isMutedRider = false;
     if (!isPlaceholder) {
-        // Use muted for DNS/DSQ/RETIRED
         using namespace PluginConstants::RiderState;
         if (entry.state == DNS || entry.state == DSQ || entry.state == RETIRED) {
             textColor = this->getColor(ColorSlot::MUTED);
+            isMutedRider = true;
         }
     }
 
@@ -210,7 +267,17 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
         // Use podium colors for position column (P1/P2/P3), secondary for others
         // Skip for non-participants (DNS/DSQ/RET) — they use muted for all columns
         unsigned long columnColor = textColor;
-        if (col.columnIndex == COL_IDX_POS && !isPlaceholder && entry.position > 0 && textColor != mutedColor) {
+
+        // Fallback player/spectated rider marker: tint their NAME with the accent
+        // color. Only used when the full-row highlight is disabled via INI; with
+        // the highlight on (the default) the row background marks the player and
+        // the name stays primary.
+        if (col.columnIndex == COL_IDX_NAME && !isPlaceholder && rowIndex == m_cachedPlayerIndex
+                && !isMutedRider && !m_bPlayerRowHighlight) {
+            columnColor = this->getColor(ColorSlot::ACCENT);
+        }
+
+        if (col.columnIndex == COL_IDX_POS && !isPlaceholder && entry.position > 0 && !isMutedRider) {
             if (entry.position == Position::FIRST) {
                 columnColor = PodiumColors::GOLD;
             } else if (entry.position == Position::SECOND) {
@@ -218,13 +285,20 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
             } else if (entry.position == Position::THIRD) {
                 columnColor = PodiumColors::BRONZE;
             } else {
-                columnColor = this->getColor(ColorSlot::SECONDARY);
+                columnColor = this->getColor(ColorSlot::TERTIARY);
             }
         }
-        // Race number text color: dark on plate background, or secondary in classic layout
+        // Race number text color: dark on plate background (modern), or secondary in
+        // classic. Muted riders (DNS/DSQ/RET) keep the muted color in classic so the
+        // whole row dims; in modern the plate itself is muted, so the number stays
+        // dark-on-plate for contrast.
         if (col.columnIndex == COL_IDX_RACENUM && !isPlaceholder) {
-            columnColor = m_bClassicLayout ? this->getColor(ColorSlot::SECONDARY) : this->getColor(ColorSlot::BACKGROUND);
-        } else if (col.columnIndex == COL_IDX_BIKE && !isPlaceholder) {
+            if (!m_bClassicLayout) {
+                columnColor = this->getColor(ColorSlot::BACKGROUND);
+            } else if (!isMutedRider) {
+                columnColor = this->getColor(ColorSlot::SECONDARY);
+            }
+        } else if (col.columnIndex == COL_IDX_BIKE && !isPlaceholder && !isMutedRider) {
             columnColor = this->getColor(ColorSlot::SECONDARY);
         } else if (col.columnIndex == COL_IDX_PENALTY && !isPlaceholder && entry.penalty > 0) {
             columnColor = this->getColor(ColorSlot::WARNING);
@@ -238,7 +312,7 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
 
         // Gap column styling based on GapStyle enum (skip for non-participants, they use muted)
         if (col.columnIndex == COL_IDX_GAP && !isPlaceholder &&
-            textColor != mutedColor && strcmp(text, Placeholders::GENERIC) != 0) {
+            !isMutedRider && strcmp(text, Placeholders::GENERIC) != 0) {
             if (entry.gapColorOverride != 0) {
                 // Adjacent mode coloring takes priority (green for ahead, red for behind)
                 columnColor = entry.gapColorOverride;
@@ -256,18 +330,22 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
         int font = (col.columnIndex == COL_IDX_BEST_LAP || (col.columnIndex == COL_IDX_GAP && !isTextGapLabel))
             ? this->getFont(FontCategory::DIGITS) : this->getFont(FontCategory::NORMAL);
 
-        // Race number positioning: centered on plate, or left-aligned with # prefix in classic
-        float textX = col.position;
+        // Column alignment differs by layout/content.
+        //   Modern:  position right-aligned,  race number centered on the plate.
+        //   Classic: position centered,       race number right-aligned (no plate).
+        //   Gap:     right-aligned (numeric values and text labels alike).
+        //   Penalty: right-aligned ("+5s" / "-").
+        // X anchor comes from getColumnTextX so the drag fast path stays in sync.
+        bool gapRightAlign = (col.columnIndex == COL_IDX_GAP && !isPlaceholder);
+        float textX = getColumnTextX(col.columnIndex, col.position, dim.fontSize, isPlaceholder, gapRightAlign);
         int justify = static_cast<int>(col.justify);
-        char classicRaceNum[16];
-        if (col.columnIndex == COL_IDX_RACENUM && !isPlaceholder) {
-            if (m_bClassicLayout) {
-                snprintf(classicRaceNum, sizeof(classicRaceNum), "#%s", text);
-                text = classicRaceNum;
-            } else {
-                float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
-                textX = col.position + charWidth * 2.0f;  // Center of 4-char plate
-                justify = Justify::CENTER;
+        if (!isPlaceholder) {
+            if (col.columnIndex == COL_IDX_POS) {
+                justify = m_bClassicLayout ? Justify::CENTER : Justify::RIGHT;
+            } else if (col.columnIndex == COL_IDX_RACENUM) {
+                justify = m_bClassicLayout ? Justify::RIGHT : Justify::CENTER;
+            } else if (gapRightAlign || col.columnIndex == COL_IDX_PENALTY) {
+                justify = Justify::RIGHT;
             }
         }
         bool skipShadow = (col.columnIndex == COL_IDX_RACENUM && !isPlaceholder && !m_bClassicLayout);
@@ -331,7 +409,7 @@ void StandingsHud::buildColumnTable() {
     const ColumnSpec specs[] = {
         {COL_TRACKED, 0, m_columns.tracked, Justify::LEFT, true, COL_TRACKED_WIDTH},
         {COL_POS, 1, m_columns.pos, Justify::LEFT, true, COL_POS_WIDTH},
-        {COL_RACENUM, 2, m_columns.raceNum, Justify::LEFT, true, COL_RACENUM_WIDTH},
+        {COL_RACENUM, 2, m_columns.raceNum, Justify::LEFT, true, getRaceNumColumnWidth()},
         {COL_NAME, 3, m_columns.name, Justify::LEFT, true, getNameColumnWidth()},
         {COL_BIKE, 4, m_columns.bike, Justify::LEFT, true, COL_BIKE_WIDTH},
         {COL_BEST_LAP, 5, m_columns.bestLap, Justify::LEFT, true, COL_BEST_LAP_WIDTH},
@@ -356,12 +434,15 @@ StandingsHud::HudDimensions StandingsHud::calculateHudDimensions(const ScaledDim
 
     result.titleHeight = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
 
+    // Optional column-header row sits between the title and the rider rows.
+    result.headerHeight = m_bShowHeaders ? dim.lineHeightNormal : 0.0f;
+
     // Use provided rowCount or fall back to m_displayRowCount
     int actualRowCount = (rowCount >= 0) ? rowCount : m_displayRowCount;
 
     // Calculate total height (no spacing between rows, consistent with other HUDs)
     float totalRowsHeight = actualRowCount * dim.lineHeightNormal;
-    result.backgroundHeight = dim.paddingV + result.titleHeight + totalRowsHeight + dim.paddingV;
+    result.backgroundHeight = dim.paddingV + result.titleHeight + result.headerHeight + totalRowsHeight + dim.paddingV;
 
     result.contentStartX = START_X + dim.paddingH;
     result.contentStartY = START_Y + dim.paddingV;
@@ -501,7 +582,10 @@ void StandingsHud::update() {
         }
     }
 
-    // Keep updating layout during active animations (smooth per-frame interpolation)
+    // Keep updating layout during active animations (smooth per-frame interpolation).
+    // Slide-highlight quads (COLORED mode) are emitted on the data-change rebuild that
+    // started the animation and then updated per-frame in rebuildLayout, so a cheap
+    // layout update is sufficient regardless of mode.
     if (hasActiveAnimations()) {
         setLayoutDirty();
     }
@@ -525,11 +609,12 @@ void StandingsHud::rebuildLayout() {
     // Update background quad position
     updateBackgroundQuadPosition(START_X, START_Y, hudDim.backgroundWidth, hudDim.backgroundHeight);
 
-    // Update highlight quad position if it exists
+    // Update player row highlight quad position if the optional legacy row
+    // background is enabled. Default behavior (accent-colored name) emits no
+    // quad and skips this entirely.
     if (m_cachedHighlightQuadIndex >= 0 && m_cachedHighlightQuadIndex < static_cast<int>(m_quads.size()) &&
         m_cachedPlayerIndex >= 0 && m_cachedPlayerIndex < rowsToRender) {
-        // Calculate highlight Y position with animation offset
-        float highlightY = hudDim.contentStartY + hudDim.titleHeight + (m_cachedPlayerIndex * dim.lineHeightNormal);
+        float highlightY = hudDim.contentStartY + hudDim.titleHeight + hudDim.headerHeight + (m_cachedPlayerIndex * dim.lineHeightNormal);
         const auto& playerEntry = m_displayEntries[m_cachedPlayerIndex];
         if (!playerEntry.isPlaceholder && playerEntry.raceNum >= 0) {
             highlightY += getAnimatedRowOffset(playerEntry.raceNum, dim.lineHeightNormal);
@@ -537,6 +622,27 @@ void StandingsHud::rebuildLayout() {
         float highlightX = START_X;
         applyOffset(highlightX, highlightY);
         setQuadPositions(m_quads[m_cachedHighlightQuadIndex], highlightX, highlightY, hudDim.backgroundWidth, dim.lineHeightNormal);
+    }
+
+    // Update slide-highlight quads: position tracks the row's animation offset; alpha
+    // fades linearly with animation progress. Finished slides have their alpha set to
+    // zero here and remain in m_quads (invisible) until the next data-change rebuild
+    // drops them — keeping cached indices for other quad lists stable.
+    for (const auto& slide : m_slideHighlightQuads) {
+        if (slide.quadIndex >= m_quads.size() || slide.rowIndex >= rowsToRender) continue;
+
+        float fade = getSlideFade(slide.raceNum);
+
+        float slideY = hudDim.contentStartY + hudDim.titleHeight + hudDim.headerHeight + (slide.rowIndex * dim.lineHeightNormal);
+        slideY += getAnimatedRowOffset(slide.raceNum, dim.lineHeightNormal);
+        float slideX = START_X;
+        applyOffset(slideX, slideY);
+        setQuadPositions(m_quads[slide.quadIndex], slideX, slideY, hudDim.backgroundWidth, dim.lineHeightNormal);
+
+        unsigned long tintColor = slide.promoted
+            ? this->getColor(ColorSlot::POSITIVE)
+            : this->getColor(ColorSlot::NEGATIVE);
+        m_quads[slide.quadIndex].m_ulColor = PluginUtils::applyOpacity(tintColor, ROW_HIGHLIGHT_OPACITY * fade);
     }
 
     // Update tracked icon quad positions
@@ -555,7 +661,7 @@ void StandingsHud::rebuildLayout() {
             if (iconInfo.quadIndex >= m_quads.size()) continue;
 
             // Calculate position for this row with animation offset
-            float rowY = hudDim.contentStartY + hudDim.titleHeight + (iconInfo.rowIndex * dim.lineHeightNormal);
+            float rowY = hudDim.contentStartY + hudDim.titleHeight + hudDim.headerHeight + (iconInfo.rowIndex * dim.lineHeightNormal);
             if (iconInfo.rowIndex < static_cast<int>(m_displayEntries.size())) {
                 const auto& entry = m_displayEntries[iconInfo.rowIndex];
                 if (!entry.isPlaceholder && entry.raceNum >= 0) {
@@ -588,7 +694,7 @@ void StandingsHud::rebuildLayout() {
         for (const auto& plate : m_raceNumPlateQuads) {
             if (plate.numberQuadIndex >= m_quads.size() || plate.brandQuadIndex >= m_quads.size()) continue;
 
-            float rowY = hudDim.contentStartY + hudDim.titleHeight + (plate.rowIndex * dim.lineHeightNormal);
+            float rowY = hudDim.contentStartY + hudDim.titleHeight + hudDim.headerHeight + (plate.rowIndex * dim.lineHeightNormal);
             if (plate.rowIndex < static_cast<int>(m_displayEntries.size())) {
                 const auto& entry = m_displayEntries[plate.rowIndex];
                 if (!entry.isPlaceholder && entry.raceNum >= 0) {
@@ -625,6 +731,23 @@ void StandingsHud::rebuildLayout() {
     }
     currentY += hudDim.titleHeight;
 
+    // Column-header row strings (match the emit order/count in rebuildRenderData)
+    if (m_bShowHeaders) {
+        // Same vertical centering offset as rebuildRenderData (smaller header font)
+        float headerY = currentY + labelRowYOffset(dim);
+        for (const auto& col : m_columnTable) {
+            if (col.columnIndex == COL_IDX_TRACKED) continue;
+            if (stringIndex >= m_strings.size()) break;
+            float x = getColumnHeaderTextX(col.columnIndex, col.position, dim.fontSize, nullptr);
+            float y = headerY;
+            applyOffset(x, y);
+            m_strings[stringIndex].m_afPos[0] = x;
+            m_strings[stringIndex].m_afPos[1] = y;
+            stringIndex++;
+        }
+        currentY += hudDim.headerHeight;
+    }
+
     // Update positions for actual rows being rendered (no spacing, consistent with other HUDs)
     // Use table-driven approach (only loops over enabled columns)
     for (int i = 0; i < rowsToRender; ++i) {
@@ -644,13 +767,11 @@ void StandingsHud::rebuildLayout() {
             if (col.columnIndex == COL_IDX_TRACKED) continue;
 
             if (stringIndex >= m_strings.size()) break;
-            float x = col.position;
-            // Center race number on plate (must match renderRiderRow logic)
-            // Classic layout uses left-aligned #N format, so skip centering
-            if (col.columnIndex == COL_IDX_RACENUM && !isPlaceholder && !m_bClassicLayout) {
-                float charW = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
-                x = col.position + charW * 2.0f;  // Center of 4-char plate
-            }
+            // Same alignment anchor as renderRiderRow (position/race-number columns
+            // shift within their cell, gap column right-aligns); shared helper keeps
+            // the two paths in sync.
+            bool gapRightAlign = (col.columnIndex == COL_IDX_GAP && !isPlaceholder);
+            float x = getColumnTextX(col.columnIndex, col.position, dim.fontSize, isPlaceholder, gapRightAlign);
             float y = currentY + animOffset;
             applyOffset(x, y);
             m_strings[stringIndex].m_afPos[0] = x;
@@ -670,6 +791,7 @@ void StandingsHud::rebuildRenderData() {
     m_cachedHighlightQuadIndex = -1;  // Reset highlight quad tracking
     m_trackedIconQuads.clear();  // Reset icon quad tracking
     m_raceNumPlateQuads.clear(); // Reset race number plate quad tracking
+    m_slideHighlightQuads.clear(); // Reset slide-highlight quad tracking
 
     const PluginData& pluginData = PluginData::getInstance();
     int displayRaceNum = pluginData.getDisplayRaceNum();
@@ -685,7 +807,7 @@ void StandingsHud::rebuildRenderData() {
     bool isRace = pluginData.isRaceSession();
 
     // Determine gap data source: use live gap in race sessions when enabled
-    bool useLiveGap = isRace && pluginData.isLiveGapsEnabled();
+    bool useLiveGap = isRace && m_bLiveGaps;
 
     // Apply gap mode toggle
     uint32_t effectiveColumns = m_enabledColumns;
@@ -849,24 +971,24 @@ void StandingsHud::rebuildRenderData() {
             bool leaderFinished = (leaderFinishTime >= 0);
 
             if (!isRace) {
-                // Non-race: show best lap time (space-prefixed to align with +/- gaps)
+                // Non-race: show best lap time (right-aligned like numeric gaps)
                 if (entry.bestLap > 0) {
                     char tmp[16];
                     PluginUtils::formatLapTime(entry.bestLap, tmp, sizeof(tmp));
-                    snprintf(entry.formattedGap, sizeof(entry.formattedGap), " %s", tmp);
+                    snprintf(entry.formattedGap, sizeof(entry.formattedGap), "%s", tmp);
                 } else {
                     strcpy_s(entry.formattedGap, sizeof(entry.formattedGap), Placeholders::GENERIC);
                 }
             } else if (leaderFinished) {
-                // Race finished: show finish time (space-prefixed to align with +/- gaps)
+                // Race finished: show finish time (right-aligned like numeric gaps)
                 if (effectiveGapRef == GapReferenceMode::LEADER && leaderFinishTime > 0) {
                     char tmp[16];
                     PluginUtils::formatLapTime(leaderFinishTime, tmp, sizeof(tmp));
-                    snprintf(entry.formattedGap, sizeof(entry.formattedGap), " %s", tmp);
+                    snprintf(entry.formattedGap, sizeof(entry.formattedGap), "%s", tmp);
                 } else if (effectiveGapRef == GapReferenceMode::PLAYER && playerStanding && playerStanding->finishTime > 0) {
                     char tmp[16];
                     PluginUtils::formatLapTime(playerStanding->finishTime, tmp, sizeof(tmp));
-                    snprintf(entry.formattedGap, sizeof(entry.formattedGap), " %s", tmp);
+                    snprintf(entry.formattedGap, sizeof(entry.formattedGap), "%s", tmp);
                 } else {
                     entry.gapStyle = DisplayEntry::GapStyle::LABEL;
                     strcpy_s(entry.formattedGap, sizeof(entry.formattedGap),
@@ -912,7 +1034,7 @@ void StandingsHud::rebuildRenderData() {
                     if (entry.bestLap > 0) {
                         char tmp[16];
                         PluginUtils::formatLapTime(entry.bestLap, tmp, sizeof(tmp));
-                        snprintf(entry.formattedGap, sizeof(entry.formattedGap), " %s", tmp);
+                        snprintf(entry.formattedGap, sizeof(entry.formattedGap), "%s", tmp);
                     } else {
                         strcpy_s(entry.formattedGap, sizeof(entry.formattedGap), Placeholders::GENERIC);
                     }
@@ -983,8 +1105,8 @@ void StandingsHud::rebuildRenderData() {
     // Apply name mode: truncate names for SHORT, calculate long width for LONG
     if (m_nameMode == NameMode::SHORT) {
         for (auto& entry : m_displayEntries) {
-            if (!entry.isPlaceholder) {
-                entry.name[3] = '\0';  // Truncate to 3 chars
+            if (!entry.isPlaceholder && static_cast<int>(strlen(entry.name)) > m_shortNameChars) {
+                entry.name[m_shortNameChars] = '\0';  // Truncate to configured char count
             }
         }
     } else if (m_nameMode == NameMode::LONG) {
@@ -1016,7 +1138,7 @@ void StandingsHud::rebuildRenderData() {
     // This ensures m_cachedBackgroundWidth is updated before we create the background quad
     float contentStartX = START_X + dim.paddingH;
     int nameColWidth = getNameColumnWidth();
-    m_columns = ColumnPositions(contentStartX, m_fScale, m_enabledColumns, nameColWidth);
+    m_columns = ColumnPositions(contentStartX, m_fScale, m_enabledColumns, nameColWidth, getRaceNumColumnWidth());
     buildColumnTable();  // Rebuild column table and cache width
 
     // Render all display entries (rider rows + gap rows)
@@ -1031,11 +1153,53 @@ void StandingsHud::rebuildRenderData() {
 
     float currentY = hudDim.contentStartY;
 
-    // Title
-    addTitleString("Standings", hudDim.contentStartX, currentY, Justify::LEFT,
+    // Title: context-aware session info (label + live timer or leader lap x/y)
+    // shown in place of what used to be a static "Standings" caption.
+    const char* sessionLabel = PluginUtils::getSessionString(sessionData.eventType, sessionData.session);
+    if (!sessionLabel) sessionLabel = Placeholders::GENERIC;
+
+    char titleValue[24] = "";
+    if (sessionData.sessionLength > 0) {
+        // Timed (or timed+lap) session: live countdown of remaining time
+        PluginUtils::formatTimeMinutesSeconds(pluginData.getSessionTime(), titleValue, sizeof(titleValue));
+    } else if (sessionData.sessionNumLaps > 0) {
+        // Pure lap race: leader's current lap / total laps
+        int leaderLap = 1;
+        if (!classificationOrder.empty()) {
+            const StandingsData* leaderStanding = pluginData.getStanding(classificationOrder[0]);
+            if (leaderStanding) leaderLap = leaderStanding->numLaps + 1;  // numLaps = completed → 1-based current
+        }
+        if (leaderLap < 1) leaderLap = 1;
+        if (leaderLap > sessionData.sessionNumLaps) leaderLap = sessionData.sessionNumLaps;
+        snprintf(titleValue, sizeof(titleValue), "%d/%d", leaderLap, sessionData.sessionNumLaps);
+    }
+
+    char titleBuf[48];
+    if (titleValue[0] != '\0') {
+        snprintf(titleBuf, sizeof(titleBuf), "%s: %s", sessionLabel, titleValue);
+    } else {
+        snprintf(titleBuf, sizeof(titleBuf), "%s", sessionLabel);
+    }
+    addTitleString(titleBuf, hudDim.contentStartX, currentY, Justify::LEFT,
         this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
 
     currentY += hudDim.titleHeight;
+
+    // Optional column-header row. Emits one string per enabled column (skipping the
+    // status-icon column, which has no label), in the same column-table order the
+    // per-row strings use so the rebuildLayout fast path can reposition them by index.
+    if (m_bShowHeaders) {
+        unsigned long headerColor = this->getColor(ColorSlot::TERTIARY);
+        int headerFont = this->getFont(FontCategory::STRONG);
+        for (const auto& col : m_columnTable) {
+            if (col.columnIndex == COL_IDX_TRACKED) continue;
+            int justify = Justify::LEFT;
+            float textX = getColumnHeaderTextX(col.columnIndex, col.position, dim.fontSize, &justify);
+            addLabel(getColumnHeaderLabel(col.columnIndex), textX, currentY, justify,
+                headerFont, headerColor, dim);
+        }
+        currentY += hudDim.headerHeight;
+    }
 
     // Clear and rebuild click regions for rider selection
     m_riderClickRegions.clear();
@@ -1049,27 +1213,68 @@ void StandingsHud::rebuildRenderData() {
             ? getAnimatedRowOffset(entry.raceNum, dim.lineHeightNormal) : 0.0f;
         float rowY = currentY + animOffset;
 
+        // Colored animation mode: tint row positive/negative while animating.
+        // Skipped on the player row while the row highlight is on (the default), so
+        // the accent/brand background stays unobstructed (no crossfade, no flicker —
+        // slide direction on the player row is conveyed by the row-position change itself).
+        // The quad index is cached so rebuildLayout can update its position + alpha
+        // each frame without forcing a full data rebuild.
+        bool suppressSlideForPlayerRow = (m_bPlayerRowHighlight && i == m_cachedPlayerIndex);
+        if (m_animationMode == AnimationMode::COLORED && !entry.isPlaceholder && entry.raceNum >= 0
+                && !suppressSlideForPlayerRow) {
+            float slideFade = getSlideFade(entry.raceNum);
+            if (slideFade > 0.0f) {
+                auto animIt = m_activeAnimations.find(entry.raceNum);
+                bool promoted = (animIt != m_activeAnimations.end())
+                    && (animIt->second.fromSlot > animIt->second.toSlot);
+                unsigned long tintColor = promoted
+                    ? this->getColor(ColorSlot::POSITIVE)
+                    : this->getColor(ColorSlot::NEGATIVE);
+
+                SPluginQuad_t slide;
+                float slideX = START_X;
+                float slideY = rowY;
+                applyOffset(slideX, slideY);
+                setQuadPositions(slide, slideX, slideY, hudDim.backgroundWidth, dim.lineHeightNormal);
+                slide.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
+                slide.m_ulColor = PluginUtils::applyOpacity(tintColor, ROW_HIGHLIGHT_OPACITY * slideFade);
+                m_slideHighlightQuads.push_back({m_quads.size(), i, entry.raceNum, promoted});
+                m_quads.push_back(slide);
+            }
+        }
+
         // Skip highlights for placeholder rows
         if (!entry.isPlaceholder) {
-            // Highlight player/spectated rider row with bike brand color background
-            if (i == m_cachedPlayerIndex) {
+            // Player/spectated row highlight (full-row background, accent color by
+            // default, bike brand color via INI). On by default; when disabled via
+            // INI the accent-colored name marker in renderRiderRow takes over.
+            if (m_bPlayerRowHighlight && i == m_cachedPlayerIndex) {
                 SPluginQuad_t highlight;
                 float highlightX = START_X;
                 float highlightY = rowY;
-                applyOffset(highlightX, highlightY);  // Apply drag offset
+                applyOffset(highlightX, highlightY);
                 setQuadPositions(highlight, highlightX, highlightY, hudDim.backgroundWidth, dim.lineHeightNormal);
                 highlight.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
 
-                // Apply transparency to bike brand color (or accent color if configured)
-                unsigned long highlightColor = m_bUseAccentForHighlight
-                    ? this->getColor(ColorSlot::ACCENT)
-                    : entry.bikeBrandColor;
-                highlight.m_ulColor = PluginUtils::applyOpacity(highlightColor, 80.0f / 255.0f);
+                unsigned long highlightColor;
+                if (m_bPlayerRowHighlightBrand) {
+                    // Brand mode: use the bike's brand color, but fall back to the
+                    // muted slot when the bike has no real brand mapping (all GPB/KRP
+                    // bikes and brand-less MXB bikes resolve to the neutral gray
+                    // sentinel) so the bar stays theme-aware instead of off-palette gray.
+                    highlightColor = (entry.bikeBrandColor == PluginConstants::BrandColors::DEFAULT)
+                        ? this->getColor(ColorSlot::MUTED)
+                        : entry.bikeBrandColor;
+                } else {
+                    highlightColor = this->getColor(ColorSlot::ACCENT);
+                }
+                highlight.m_ulColor = PluginUtils::applyOpacity(highlightColor, ROW_HIGHLIGHT_OPACITY);
 
-                m_cachedHighlightQuadIndex = static_cast<int>(m_quads.size());  // Track quad index
+                m_cachedHighlightQuadIndex = static_cast<int>(m_quads.size());
                 m_quads.push_back(highlight);
             }
-            // Hover highlight for other riders (spectator mode only)
+            // Hover highlight for other riders (spectator mode only). Uses the muted
+            // slot to stay visually distinct from the player's own accent highlight.
             else if (i == m_hoveredRowIndex && i != m_cachedPlayerIndex) {
                 SPluginQuad_t hoverHighlight;
                 float hoverX = START_X;
@@ -1077,9 +1282,8 @@ void StandingsHud::rebuildRenderData() {
                 applyOffset(hoverX, hoverY);
                 setQuadPositions(hoverHighlight, hoverX, hoverY, hudDim.backgroundWidth, dim.lineHeightNormal);
                 hoverHighlight.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-
-                // Use accent color with transparency for hover
-                hoverHighlight.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::ACCENT), 60.0f / 255.0f);
+                hoverHighlight.m_ulColor = PluginUtils::applyOpacity(
+                    this->getColor(ColorSlot::MUTED), HOVER_HIGHLIGHT_OPACITY);
                 m_quads.push_back(hoverHighlight);
             }
         }
@@ -1137,8 +1341,13 @@ void StandingsHud::rebuildRenderData() {
 
         renderRiderRow(entry, entry.isPlaceholder, rowY, dim, i);
 
-        // Add click region for this rider (skip placeholders)
-        if (!entry.isPlaceholder && entry.raceNum >= 0) {
+        // Add click region for this rider so they can be hover-highlighted and
+        // clicked to spectate — but only for riders actually on track. Anyone who
+        // can't be spectated (DNS/DSQ/retired/unknown, e.g. left the server) or is
+        // sitting in the pits gets no region, so they're neither highlighted on
+        // hover nor clickable. This is the single chokepoint for both behaviors.
+        bool isSpectatable = (entry.state == PluginConstants::RiderState::NORMAL) && (entry.pit != 1);
+        if (!entry.isPlaceholder && entry.raceNum >= 0 && isSpectatable) {
             RiderClickRegion region;
             region.x = START_X;
             region.y = rowY;
@@ -1176,8 +1385,17 @@ float StandingsHud::getAnimatedRowOffset(int raceNum, float lineHeight) const {
     return remaining * lineHeight;
 }
 
+float StandingsHud::getSlideFade(int raceNum) const {
+    auto it = m_activeAnimations.find(raceNum);
+    if (it == m_activeAnimations.end()) return 0.0f;
+    float elapsedMs = std::chrono::duration<float, std::milli>(m_frameTime - it->second.startTime).count();
+    float t = elapsedMs / m_animationDurationMs;
+    if (t >= 1.0f) return 0.0f;
+    return 1.0f - t;
+}
+
 void StandingsHud::updateAnimationState() {
-    if (!m_bAnimatePositions) {
+    if (m_animationMode == AnimationMode::OFF) {
         m_previousPositions.clear();
         m_previousSlots.clear();
         m_activeAnimations.clear();
@@ -1209,8 +1427,17 @@ void StandingsHud::updateAnimationState() {
             auto slotIt = currentSlots.find(raceNum);
             if (slotIt != currentSlots.end()) {
                 int currentSlot = slotIt->second;
+                // Estimate the previous slot from the race-position delta instead of
+                // reading m_previousSlots directly. m_previousSlots tracks the actual
+                // slot occupied last frame, but the visible window can scroll
+                // independently (DNS filter changes, top-N pinning, spectator switch),
+                // and using the raw previous slot would inflate the slide distance
+                // when only the window moved. Posing the delta in race-position space
+                // produces the correct visual move for pure overtakes, and degrades
+                // gracefully when both an overtake and a window shift happen in the
+                // same frame.
                 int posDelta = prevIt->second - currentPos;  // positive = moved up
-                int estimatedPrevSlot = currentSlot - posDelta;
+                int estimatedPrevSlot = currentSlot + posDelta;
                 // Clamp to visible range so animations never start from far off-screen
                 estimatedPrevSlot = std::max(-1, std::min(estimatedPrevSlot, maxSlot + 1));
                 m_activeAnimations[raceNum] = { estimatedPrevSlot, currentSlot, now };
@@ -1253,9 +1480,16 @@ void StandingsHud::resetToDefaults() {
     m_gapReferenceMode = GapReferenceMode::PLAYER;
     m_enabledColumns = COL_DEFAULT;
     m_nameMode = NameMode::SHORT;
+    m_shortNameChars = DEFAULT_SHORT_NAME_CHARS;
     m_displayRowCount = DEFAULT_ROW_COUNT;
-    m_bAnimatePositions = true;
-    m_animationDurationMs = 250.0f;
+    m_topPositionsCount = DEFAULT_TOP_POSITIONS;
+    m_bPlayerRowHighlight = true;
+    m_bPlayerRowHighlightBrand = false;
+    m_bClassicLayout = false;
+    m_animationMode = AnimationMode::BASIC;
+    m_animationDurationMs = 500.0f;
+    m_bShowHeaders = false;
+    m_bLiveGaps = false;
     m_activeAnimations.clear();
     m_previousPositions.clear();
     m_previousSlots.clear();

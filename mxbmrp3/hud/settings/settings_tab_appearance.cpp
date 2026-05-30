@@ -61,6 +61,43 @@ bool SettingsHud::handleClickTabAppearance(const ClickRegion& region) {
             }
             return true;
 
+        // Display section unit toggles (moved here from the General tab).
+        // CLOCK_FORMAT_TOGGLE is handled by the common handlers (works from any tab).
+        case ClickRegion::SPEED_UNIT_TOGGLE:
+            if (m_speed) {
+                auto currentUnit = m_speed->getSpeedUnit();
+                m_speed->setSpeedUnit(currentUnit == SpeedWidget::SpeedUnit::MPH
+                    ? SpeedWidget::SpeedUnit::KMH
+                    : SpeedWidget::SpeedUnit::MPH);
+                setDataDirty();
+            }
+            return true;
+
+        case ClickRegion::FUEL_UNIT_TOGGLE:
+            if (m_fuel) {
+                auto currentUnit = m_fuel->getFuelUnit();
+                m_fuel->setFuelUnit(currentUnit == FuelWidget::FuelUnit::LITERS
+                    ? FuelWidget::FuelUnit::GALLONS
+                    : FuelWidget::FuelUnit::LITERS);
+                setDataDirty();
+            }
+            return true;
+
+        case ClickRegion::TEMP_UNIT_TOGGLE:
+            {
+                auto currentUnit = UiConfig::getInstance().getTemperatureUnit();
+                UiConfig::getInstance().setTemperatureUnit(
+                    currentUnit == TemperatureUnit::CELSIUS
+                        ? TemperatureUnit::FAHRENHEIT
+                        : TemperatureUnit::CELSIUS);
+                // Also update SessionHud since it displays temperature
+                if (m_session) {
+                    m_session->setDataDirty();
+                }
+                setDataDirty();
+            }
+            return true;
+
         default:
             return false;
     }
@@ -73,10 +110,184 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
     FontConfig& fontConfig = FontConfig::getInstance();
     ColorConfig& colorConfig = ColorConfig::getInstance();
     float charWidth = PluginUtils::calculateMonospaceTextWidth(1, ctx.fontSize);
+    const float cw = charWidth;  // alias used by the Display unit/format rows below
     // panelWidth is actually contentAreaWidth (from contentAreaStartX to right edge)
     float rowWidth = ctx.panelWidth - (ctx.labelX - ctx.contentAreaStartX);
+    // Standard value width for the unit/format cycle controls (matches the General tab)
+    constexpr int VALUE_WIDTH = 10;
+
+    // === DISPLAY SECTION ===
+    // Shown first so units/format sit at the top of the Appearance tab.
+    ctx.addSectionHeader("Display");
+
+    // Speed unit toggle
+    {
+        SpeedWidget* speedWidget = ctx.parent->getSpeedWidget();
+
+        // Add tooltip row
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "appearance.speed_unit"
+        ));
+
+        ctx.parent->addString("Speed Unit", ctx.labelX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
+
+        // Display current unit with < > cycle pattern (arrows=accent, value=primary)
+        bool isKmh = speedWidget && speedWidget->getSpeedUnit() == SpeedWidget::SpeedUnit::KMH;
+        float currentX = ctx.controlX;
+
+        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::SPEED_UNIT_TOGGLE, speedWidget
+        ));
+        currentX += cw * 2;
+
+        // Left-align value within VALUE_WIDTH for consistent positioning
+        std::string formattedValue = ctx.formatValue(isKmh ? "km/h" : "mph", VALUE_WIDTH, false);
+        ctx.parent->addString(formattedValue.c_str(), currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getPrimary(), ctx.fontSize);
+        currentX += cw * VALUE_WIDTH;
+
+        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::SPEED_UNIT_TOGGLE, speedWidget
+        ));
+
+        ctx.currentY += ctx.lineHeightNormal;
+    }
+
+    // Fuel unit toggle
+    {
+        FuelWidget* fuelWidget = ctx.parent->getFuelWidget();
+
+        // Add tooltip row
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "appearance.fuel_unit"
+        ));
+
+        ctx.parent->addString("Fuel Unit", ctx.labelX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
+
+        // Display current unit with < > cycle pattern (arrows=accent, value=primary)
+        bool isGallons = fuelWidget && fuelWidget->getFuelUnit() == FuelWidget::FuelUnit::GALLONS;
+        float currentX = ctx.controlX;
+
+        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::FUEL_UNIT_TOGGLE, fuelWidget
+        ));
+        currentX += cw * 2;
+
+        // Left-align value within VALUE_WIDTH for consistent positioning
+        std::string formattedFuel = ctx.formatValue(isGallons ? "gal" : "L", VALUE_WIDTH, false);
+        ctx.parent->addString(formattedFuel.c_str(), currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getPrimary(), ctx.fontSize);
+        currentX += cw * VALUE_WIDTH;
+
+        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::FUEL_UNIT_TOGGLE, fuelWidget
+        ));
+
+        ctx.currentY += ctx.lineHeightNormal;
+    }
+
+    // Temperature unit toggle
+    {
+        // Add tooltip row
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "appearance.temp_unit"
+        ));
+
+        ctx.parent->addString("Temp Unit", ctx.labelX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
+
+        // Display current unit with < > cycle pattern (arrows=accent, value=primary)
+        bool isFahrenheit = UiConfig::getInstance().getTemperatureUnit() == TemperatureUnit::FAHRENHEIT;
+        float currentX = ctx.controlX;
+
+        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::TEMP_UNIT_TOGGLE, nullptr
+        ));
+        currentX += cw * 2;
+
+        // Left-align value within VALUE_WIDTH for consistent positioning
+        std::string formattedTemp = ctx.formatValue(isFahrenheit ? "F" : "C", VALUE_WIDTH, false);
+        ctx.parent->addString(formattedTemp.c_str(), currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getPrimary(), ctx.fontSize);
+        currentX += cw * VALUE_WIDTH;
+
+        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::TEMP_UNIT_TOGGLE, nullptr
+        ));
+
+        ctx.currentY += ctx.lineHeightNormal;
+    }
+
+    // Clock format toggle
+    {
+        ClockWidget* clockWidget = ctx.parent->getClockWidget();
+
+        // Add tooltip row
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "appearance.clock_format"
+        ));
+
+        ctx.parent->addString("Clock Format", ctx.labelX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
+
+        bool is24h = clockWidget && clockWidget->getFormat24h();
+        float currentX = ctx.controlX;
+
+        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::CLOCK_FORMAT_TOGGLE, clockWidget
+        ));
+        currentX += cw * 2;
+
+        std::string formattedValue = ctx.formatValue(is24h ? "24h" : "12h", VALUE_WIDTH, false);
+        ctx.parent->addString(formattedValue.c_str(), currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getPrimary(), ctx.fontSize);
+        currentX += cw * VALUE_WIDTH;
+
+        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::CLOCK_FORMAT_TOGGLE, clockWidget
+        ));
+
+        ctx.currentY += ctx.lineHeightNormal;
+    }
+
+    // Compact time format toggle
+    ctx.addToggleControl("Compact Times", PluginData::getInstance().isShortTimeFormat(),
+        SettingsHud::ClickRegion::SHORT_TIME_FORMAT_TOGGLE, nullptr, nullptr, 0, true,
+        "appearance.compact_times");
+
+    // Drop shadow toggle
+    ctx.addToggleControl("Drop Shadow", UiConfig::getInstance().getDropShadow(),
+        SettingsHud::ClickRegion::DROP_SHADOW_TOGGLE, nullptr, nullptr, 0, true,
+        "appearance.drop_shadow");
 
     // === FONTS SECTION ===
+    ctx.addSpacing(0.5f);
     ctx.addSectionHeader("Fonts");
 
     // Helper lambda to add a font category row with cycle buttons
@@ -201,28 +412,6 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
     addColorRow(ColorSlot::NEUTRAL, "appearance.color_neutral");
     addColorRow(ColorSlot::WARNING, "appearance.color_warning");
     addColorRow(ColorSlot::NEGATIVE, "appearance.color_negative");
-
-    // === DISPLAY SECTION ===
-    ctx.addSpacing(0.5f);
-    ctx.addSectionHeader("Display");
-
-    // Compact time format toggle
-    ctx.addToggleControl("Compact Times", PluginData::getInstance().isShortTimeFormat(),
-        SettingsHud::ClickRegion::SHORT_TIME_FORMAT_TOGGLE, nullptr, nullptr, 0, true,
-        "general.compact_times");
-
-    // Drop shadow toggle
-    ctx.addToggleControl("Drop Shadow", UiConfig::getInstance().getDropShadow(),
-        SettingsHud::ClickRegion::DROP_SHADOW_TOGGLE, nullptr, nullptr, 0, true,
-        "general.drop_shadow");
-
-#if GAME_HAS_HTTP_SERVER
-    ctx.addSpacing(1.0f);
-    ctx.parent->addString("These settings also apply to the web overlay.",
-        ctx.labelX, ctx.currentY, Justify::LEFT,
-        Fonts::getNormal(), colorConfig.getMuted(), ctx.fontSize);
-    ctx.currentY += ctx.lineHeightNormal;
-#endif
 
     // No active HUD for appearance settings
     return nullptr;

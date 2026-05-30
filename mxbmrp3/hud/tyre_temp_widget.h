@@ -8,7 +8,6 @@
 #include "base_hud.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
-#include "../core/widget_constants.h"
 #include "../game/game_config.h"
 
 #if GAME_HAS_TYRE_TEMP
@@ -31,6 +30,9 @@ public:
 
     // Row visibility (configurable via INI)
     uint32_t m_enabledRows = ROW_DEFAULT;
+
+    // Show L/M/R section labels and F/R wheel labels (INI-only, default ON)
+    bool m_bShowLabels = true;
 
     // Temperature thresholds (configurable via INI)
     // Temperatures below coldThreshold are blue (no grip)
@@ -55,14 +57,12 @@ protected:
 private:
     void rebuildRenderData() override;
 
-    // Calculate tyre temperature color based on value relative to thresholds
-    // Returns gradient color: blue (cold) -> green (warm) -> yellow -> red (hot)
-    unsigned long calculateTyreTemperatureColor(float temp) const;
-
     // Layout constants
     static constexpr int NUM_WHEELS = 2;       // Front (0) and Rear (1)
     static constexpr int NUM_SECTIONS = 3;     // Left (0), Middle (1), Right (2)
     static constexpr float LABEL_HEIGHT_LINES = 1.0f; // Height for L/M/R labels
+    static constexpr float BAR_ROW_LINES = 1.5f;      // Per-wheel row height when bars shown (value sits inside the bar)
+    static constexpr float BAR_VMARGIN_LINES = 0.1f;  // Vertical margin above/below each bar within its row
 
     // Temperature thresholds (user-configurable via INI)
     float m_coldThreshold = DEFAULT_COLD_THRESHOLD;

@@ -29,9 +29,13 @@
 #include "records_hud.h"
 #include "gamepad_widget.h"
 #include "lean_widget.h"
+#include "gforce_widget.h"
 #include "clock_widget.h"
 #if GAME_HAS_TYRE_TEMP
 #include "tyre_temp_widget.h"
+#endif
+#if GAME_HAS_ECU
+#include "ecu_widget.h"
 #endif
 #include "fmx_hud.h"
 #include "event_log_hud.h"
@@ -59,7 +63,7 @@ public:
                 StandingsHud* standings,
                 PerformanceHud* performance,
                 TelemetryHud* telemetry,
-                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesHud* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean,
+                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesHud* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean, GForceWidget* gforce,
                 FmxHud* fmxHud,
                 StatsHud* statsHud,
                 EventLogHud* eventLog,
@@ -67,6 +71,9 @@ public:
                 HelmetOverlayHud* helmetOverlay
 #if GAME_HAS_TYRE_TEMP
                 , TyreTempWidget* tyreTemp
+#endif
+#if GAME_HAS_ECU
+                , EcuWidget* ecu
 #endif
                 );
     virtual ~SettingsHud() = default;
@@ -113,6 +120,7 @@ public:
             LAP_LOG_ORDER_UP,          // Cycle display order forward (LapLogHud)
             LAP_LOG_ORDER_DOWN,        // Cycle display order backward (LapLogHud)
             LAP_LOG_GAP_ROW_TOGGLE,    // Toggle gap row display (LapLogHud)
+            LAP_LOG_HEADERS_TOGGLE,    // Toggle column-header row (LapLogHud)
             // Lap Consistency HUD
             LAP_CONSISTENCY_DISPLAY_MODE_UP,    // Cycle display mode forward (LapConsistencyHud)
             LAP_CONSISTENCY_DISPLAY_MODE_DOWN,  // Cycle display mode backward (LapConsistencyHud)
@@ -136,6 +144,8 @@ public:
             MAP_RIDER_SHAPE_DOWN,      // Cycle rider shape backward (MapHud)
             MAP_MARKER_SCALE_UP,       // Increase marker scale (MapHud)
             MAP_MARKER_SCALE_DOWN,     // Decrease marker scale (MapHud)
+            MAP_DETAIL_UP,             // Cycle detail (LOD) forward (MapHud)
+            MAP_DETAIL_DOWN,           // Cycle detail (LOD) backward (MapHud)
             RADAR_RANGE_UP,            // Increase radar range (RadarHud)
             RADAR_RANGE_DOWN,          // Decrease radar range (RadarHud)
             RADAR_COLORIZE_UP,         // Cycle rider color mode forward (RadarHud)
@@ -165,13 +175,12 @@ public:
             RECORDS_PROVIDER_UP,       // Cycle provider forward (RecordsHud)
             RECORDS_PROVIDER_DOWN,     // Cycle provider backward (RecordsHud)
             RECORDS_AUTO_FETCH_TOGGLE, // Toggle auto-fetch on event start (RecordsHud)
+            RECORDS_HEADERS_TOGGLE,    // Toggle column-header row (RecordsHud)
             PITBOARD_SHOW_MODE_UP,     // Cycle pitboard show mode forward (PitboardHud)
             PITBOARD_SHOW_MODE_DOWN,   // Cycle pitboard show mode backward (PitboardHud)
             PITBOARD_GAP_MODE_UP,      // Cycle pitboard gap compare mode forward (PitboardHud)
             PITBOARD_GAP_MODE_DOWN,    // Cycle pitboard gap compare mode backward (PitboardHud)
-            SESSION_PASSWORD_MODE_UP,  // Cycle password display mode forward (SessionHud)
-            SESSION_PASSWORD_MODE_DOWN,// Cycle password display mode backward (SessionHud)
-            SESSION_ICONS_TOGGLE,      // Toggle icons on/off (SessionHud)
+            SESSION_ICONS_TOGGLE,       // Toggle icons on/off (SessionHud)
             TIMING_LABEL_TOGGLE,       // Toggle label column on/off (TimingHud)
             TIMING_TIME_TOGGLE,        // Toggle time column on/off (TimingHud)
             TIMING_GAP_UP,             // Cycle gap (Off/Session PB/Alltime/Ideal/Overall/Record) forward (TimingHud)
@@ -384,12 +393,14 @@ public:
             // Notices HUD
             NOTICES_DURATION_UP,       // Increase notice duration (NoticesHud)
             NOTICES_DURATION_DOWN,     // Decrease notice duration (NoticesHud)
-            // Global display filters (UI in standings tab)
-            LIVE_GAPS_TOGGLE,          // Toggle live gap display in races (PluginData global)
+            // Standings tab toggles
+            LIVE_GAPS_TOGGLE,          // Toggle live gap display in races (StandingsHud per-profile member)
             FILTER_DNS_TOGGLE,         // Toggle DNS rider filtering (PluginData global)
-            ANIMATE_POSITIONS_TOGGLE,  // Toggle position animation (StandingsHud)
+            ANIMATION_MODE_UP,         // Cycle position animation forward Off->Basic->Colored (StandingsHud)
+            ANIMATION_MODE_DOWN,       // Cycle position animation backward Colored->Basic->Off (StandingsHud)
             NAME_MODE_UP,              // Cycle rider name mode forward Off->Short->Long (StandingsHud)
-            NAME_MODE_DOWN             // Cycle rider name mode backward Long->Short->Off (StandingsHud)
+            NAME_MODE_DOWN,            // Cycle rider name mode backward Long->Short->Off (StandingsHud)
+            HEADERS_TOGGLE             // Toggle column-header row in the standings (StandingsHud)
         } type;
 
         // Type-safe variant instead of unsafe union (C++17)
@@ -566,9 +577,13 @@ public:
     HelmetOverlayHud* getHelmetOverlayHud() const { return m_helmetOverlay; }
     GamepadWidget* getGamepadWidget() const { return m_gamepad; }
     LeanWidget* getLeanWidget() const { return m_lean; }
+    GForceWidget* getGForceWidget() const { return m_gforce; }
     ClockWidget* getClockWidget() const { return m_clock; }
 #if GAME_HAS_TYRE_TEMP
     TyreTempWidget* getTyreTempWidget() const { return m_tyreTemp; }
+#endif
+#if GAME_HAS_ECU
+    EcuWidget* getEcuWidget() const { return m_ecu; }
 #endif
     FmxHud* getFmxHud() const { return m_fmxHud; }
     class StatsHud* getStatsHud() const { return m_statsHud; }
@@ -599,8 +614,6 @@ private:
     // Note: Tab-specific handlers inlined into settings_tab_*.cpp files
 
     // Helper methods to reduce code duplication
-    float addDisplayModeControl(float x, float& currentY, const ScaledDimensions& dims,
-                                uint8_t* displayMode, BaseHud* targetHud);
     void addClickRegion(ClickRegion::Type type, float x, float y, float width, float height,
                         BaseHud* targetHud, uint32_t* bitfield = nullptr,
                         uint8_t* displayMode = nullptr, uint32_t flagBit = 0,
@@ -655,9 +668,13 @@ private:
     HelmetOverlayHud* m_helmetOverlay;
     GamepadWidget* m_gamepad;
     LeanWidget* m_lean;
+    GForceWidget* m_gforce;
     ClockWidget* m_clock;
 #if GAME_HAS_TYRE_TEMP
     TyreTempWidget* m_tyreTemp;
+#endif
+#if GAME_HAS_ECU
+    EcuWidget* m_ecu;
 #endif
     FmxHud* m_fmxHud;
     StatsHud* m_statsHud;

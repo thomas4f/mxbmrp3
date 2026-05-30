@@ -34,11 +34,6 @@ public:
     unsigned long getArcFillColor() const { return m_arcFillColor; }
     static constexpr unsigned long DEFAULT_ARC_FILL_COLOR = PluginUtils::makeColor(255, 255, 255);      // White
 
-    // Max lean values (read-only, tracked internally)
-    float getMaxLeanLeft() const { return m_maxLeanLeft; }
-    float getMaxLeanRight() const { return m_maxLeanRight; }
-    void resetMaxLean() { m_maxLeanLeft = 0.0f; m_maxLeanRight = 0.0f; setDataDirty(); }
-
     // Public for settings access
     uint32_t m_enabledRows = ROW_DEFAULT;  // Bitfield of enabled rows (INI-configurable)
     bool m_bShowMaxMarkers = true;         // Show peak value markers (default ON for lean/steer)
@@ -69,16 +64,10 @@ private:
     static constexpr float LEAN_SMOOTH_FACTOR = 0.2f;  // 0.0-1.0: lower = smoother, higher = faster response
     float m_smoothedLean = 0.0f;  // Current smoothed lean value for display
 
-    // Maximum lean angle tracking (left is negative, right is positive)
-    float m_maxLeanLeft = 0.0f;   // Maximum lean angle to the left (stored as positive value)
-    float m_maxLeanRight = 0.0f;  // Maximum lean angle to the right (stored as positive value)
-
     // Max marker tracking - shows when value starts decreasing, hides when increasing
     int m_maxFramesRemaining[2] = {0, 0};
     float m_markerValueLeft = 0.0f;   // Marker position for left
     float m_markerValueRight = 0.0f;  // Marker position for right
-    float m_prevLeanLeft = 0.0f;      // Previous frame's left lean value
-    float m_prevLeanRight = 0.0f;     // Previous frame's right lean value
 
     // Crash recovery detection - reset max lean when recovering from crash
     bool m_wasCrashed = false;

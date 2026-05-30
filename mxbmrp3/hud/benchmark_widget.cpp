@@ -23,8 +23,8 @@ BenchmarkWidget::BenchmarkWidget() {
     DEBUG_INFO("BenchmarkWidget created");
     setDraggable(true);
 
-    // Pre-allocate for typical display (header + ~16 callbacks + separator + ~10 HUDs + footer)
-    m_quads.reserve(4);
+    m_quads.reserve(4);  // background + separators
+    // Pre-allocate strings for typical display (header + ~16 callbacks + separator + ~10 HUDs + footer)
     m_strings.reserve(60);
 
     m_callbackSnapshots.fill({});
@@ -69,7 +69,40 @@ void BenchmarkWidget::setVisible(bool visible) {
         for (int i = 0; i < bm.hudCount; ++i) {
             bm.huds[i].rebuildCount = 0;
         }
+
+        // Start a new full-session FPS / duration window
+        resetSessionStats();
+        m_sessionStart = std::chrono::steady_clock::now();
     }
+}
+
+void BenchmarkWidget::resetSessionStats() {
+    m_haveLastFrameTime = false;
+    m_minFrameTimeUs = 0.0;
+    m_maxFrameTimeUs = 0.0;
+    m_sumFrameTimeUs = 0.0;
+    m_frameSampleCount = 0;
+}
+
+void BenchmarkWidget::sampleFrameTime() {
+    auto now = std::chrono::steady_clock::now();
+    if (m_haveLastFrameTime) {
+        double deltaUs = std::chrono::duration<double, std::micro>(now - m_lastFrameTime).count();
+        // Guard against zero/negative deltas (clock anomalies) — would produce inf FPS.
+        if (deltaUs > 0.0) {
+            if (m_frameSampleCount == 0) {
+                m_minFrameTimeUs = deltaUs;
+                m_maxFrameTimeUs = deltaUs;
+            } else {
+                if (deltaUs < m_minFrameTimeUs) m_minFrameTimeUs = deltaUs;
+                if (deltaUs > m_maxFrameTimeUs) m_maxFrameTimeUs = deltaUs;
+            }
+            m_sumFrameTimeUs += deltaUs;
+            ++m_frameSampleCount;
+        }
+    }
+    m_lastFrameTime = now;
+    m_haveLastFrameTime = true;
 }
 
 void BenchmarkWidget::update() {
@@ -78,6 +111,9 @@ void BenchmarkWidget::update() {
         clearLayoutDirty();
         return;
     }
+
+    // Sample frame interval for full-session FPS stats (min/avg/max)
+    sampleFrameTime();
 
     // Take snapshot at interval to keep display readable
     m_frameCounter++;
@@ -180,14 +216,26 @@ void BenchmarkWidget::rebuildRenderData() {
         this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
     currentY += titleHeight;
 
-    // === CALLBACK SECTION ===
-    addString("CALLBACKS", contentStartX, currentY, Justify::LEFT,
-        this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::ACCENT), dim.fontSize);
-
-    // Right-align column headers
+    // Column right-edge X positions for the value columns (right-aligned). Time columns
+    // are 7 chars, count columns 5 chars, with 2-char gaps. Headers right-align to the
+    // same X as their values, so they line up regardless of header font size.
     float rightEdge = contentStartX + PluginUtils::calculateMonospaceTextWidth(CONTENT_WIDTH_CHARS, dim.fontSize);
-    addString("Total us   Peak us  Calls", rightEdge, currentY, Justify::RIGHT,
-        this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dim.fontSize);
+    float charW = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+    float colCalls = rightEdge;
+    float colPeak  = rightEdge - 7.0f * charW;
+    float colTotal = rightEdge - 16.0f * charW;
+    float colCount = rightEdge;
+    float colLast  = rightEdge - 7.0f * charW;
+    int labelFont = this->getFont(FontCategory::STRONG);
+    int valueFont = this->getFont(FontCategory::DIGITS);
+    unsigned long labelColor = this->getColor(ColorSlot::TERTIARY);
+
+    // === CALLBACK SECTION ===
+    addString("Callbacks", contentStartX, currentY, Justify::LEFT,
+        labelFont, this->getColor(ColorSlot::PRIMARY), dim.fontSize);
+    addLabel("Total us", colTotal, currentY, Justify::RIGHT, labelFont, labelColor, dim);
+    addLabel("Peak us", colPeak, currentY, Justify::RIGHT, labelFont, labelColor, dim);
+    addLabel("Calls", colCalls, currentY, Justify::RIGHT, labelFont, labelColor, dim);
     currentY += dim.lineHeightNormal;
 
     if (activeCallbacks == 0) {
@@ -202,13 +250,6 @@ void BenchmarkWidget::rebuildRenderData() {
             addString(m_callbackSnapshots[i].name, contentStartX, currentY, Justify::LEFT,
                 this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
 
-            // Values (right-aligned)
-            char values[64];
-            snprintf(values, sizeof(values), "%7.0f  %7.0f  %5d",
-                     m_callbackSnapshots[i].totalTimeUs,
-                     m_callbackSnapshots[i].peakTimeUs,
-                     m_callbackSnapshots[i].callCount);
-
             // Color based on peak single-call time vs frame budget (4170us at 240fps)
             // Green < 1000us (< 25%), Yellow < 2500us (< 60%), Red > 2500us
             unsigned long color;
@@ -220,8 +261,13 @@ void BenchmarkWidget::rebuildRenderData() {
                 color = this->getColor(ColorSlot::NEGATIVE);
             }
 
-            addString(values, rightEdge, currentY, Justify::RIGHT,
-                this->getFont(FontCategory::DIGITS), color, dim.fontSize);
+            char buf[16];
+            snprintf(buf, sizeof(buf), "%.0f", m_callbackSnapshots[i].totalTimeUs);
+            addString(buf, colTotal, currentY, Justify::RIGHT, valueFont, color, dim.fontSize);
+            snprintf(buf, sizeof(buf), "%.0f", m_callbackSnapshots[i].peakTimeUs);
+            addString(buf, colPeak, currentY, Justify::RIGHT, valueFont, color, dim.fontSize);
+            snprintf(buf, sizeof(buf), "%d", m_callbackSnapshots[i].callCount);
+            addString(buf, colCalls, currentY, Justify::RIGHT, valueFont, color, dim.fontSize);
             currentY += dim.lineHeightNormal;
         }
     }
@@ -230,11 +276,10 @@ void BenchmarkWidget::rebuildRenderData() {
     currentY += dim.lineHeightNormal;
 
     // === HUD REBUILD SECTION ===
-    addString("HUD REBUILDS", contentStartX, currentY, Justify::LEFT,
-        this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::ACCENT), dim.fontSize);
-
-    addString("Last us  Count", rightEdge, currentY, Justify::RIGHT,
-        this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dim.fontSize);
+    addString("HUD rebuilds", contentStartX, currentY, Justify::LEFT,
+        labelFont, this->getColor(ColorSlot::PRIMARY), dim.fontSize);
+    addLabel("Last us", colLast, currentY, Justify::RIGHT, labelFont, labelColor, dim);
+    addLabel("Count", colCount, currentY, Justify::RIGHT, labelFont, labelColor, dim);
     currentY += dim.lineHeightNormal;
 
     if (activeHuds == 0) {
@@ -249,12 +294,6 @@ void BenchmarkWidget::rebuildRenderData() {
             addString(m_hudSnapshots[i].name, contentStartX, currentY, Justify::LEFT,
                 this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
 
-            // Values
-            char values[48];
-            snprintf(values, sizeof(values), "%7.0f  %5d",
-                     m_hudSnapshots[i].lastRebuildTimeUs,
-                     m_hudSnapshots[i].rebuildsInInterval);
-
             // Color based on rebuild time
             unsigned long color;
             if (m_hudSnapshots[i].lastRebuildTimeUs < 100.0f) {
@@ -265,8 +304,11 @@ void BenchmarkWidget::rebuildRenderData() {
                 color = this->getColor(ColorSlot::NEGATIVE);
             }
 
-            addString(values, rightEdge, currentY, Justify::RIGHT,
-                this->getFont(FontCategory::DIGITS), color, dim.fontSize);
+            char buf[16];
+            snprintf(buf, sizeof(buf), "%.0f", m_hudSnapshots[i].lastRebuildTimeUs);
+            addString(buf, colLast, currentY, Justify::RIGHT, valueFont, color, dim.fontSize);
+            snprintf(buf, sizeof(buf), "%d", m_hudSnapshots[i].rebuildsInInterval);
+            addString(buf, colCount, currentY, Justify::RIGHT, valueFont, color, dim.fontSize);
             currentY += dim.lineHeightNormal;
         }
     }
@@ -329,6 +371,26 @@ bool BenchmarkWidget::exportReport(const char* savePath) const {
     fprintf(f, "Version: %s\n", PluginConstants::PLUGIN_VERSION);
     fprintf(f, "Date: %s\n", timestamp);
     fprintf(f, "Snapshot interval: %d frames\n", SNAPSHOT_INTERVAL_FRAMES);
+
+    // Session duration + FPS (min/avg/max derived from per-frame interval samples).
+    // Guard against m_sessionStart being default-constructed (would happen if
+    // exportReport was somehow called before any setVisible(true)).
+    double durationSec = 0.0;
+    if (m_sessionStart != std::chrono::steady_clock::time_point{}) {
+        durationSec = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - m_sessionStart).count();
+    }
+    fprintf(f, "Duration: %.2f s\n", durationSec);
+    if (m_frameSampleCount > 0 && m_minFrameTimeUs > 0.0 && m_maxFrameTimeUs > 0.0) {
+        double avgFrameTimeUs = m_sumFrameTimeUs / static_cast<double>(m_frameSampleCount);
+        double fpsMax = 1.0e6 / m_minFrameTimeUs;  // shortest frame = highest FPS
+        double fpsMin = 1.0e6 / m_maxFrameTimeUs;  // longest frame = lowest FPS
+        double fpsAvg = (avgFrameTimeUs > 0.0) ? (1.0e6 / avgFrameTimeUs) : 0.0;
+        fprintf(f, "FPS: min %.1f, avg %.1f, max %.1f (%lld frames sampled)\n",
+                fpsMin, fpsAvg, fpsMax, m_frameSampleCount);
+    } else {
+        fprintf(f, "FPS: (no samples)\n");
+    }
     fprintf(f, "\n");
 
     // Callback section
@@ -386,6 +448,9 @@ void BenchmarkWidget::resetToDefaults() {
 
     m_callbackSnapshots.fill({});
     m_hudSnapshots.fill({});
+
+    resetSessionStats();
+    m_sessionStart = std::chrono::steady_clock::time_point{};
 
     setDataDirty();
 }

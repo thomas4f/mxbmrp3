@@ -51,16 +51,22 @@ public:
     // ========================================================================
     // Failure Animation (for HUD display)
     // ========================================================================
-    struct FailureAnimation {
+    // Captures the state of a chain at the moment it ended, either by
+    // successful completion (chain timer expired) or by failure (crash / hard
+    // fail mid-chain). The HUD uses this to linger the chain display for the
+    // animation duration after the chain ends, in green or red depending on
+    // the `success` flag.
+    struct ChainEndAnimation {
         bool active = false;
+        bool success = false;  // true = completed cleanly, false = failed
         std::chrono::steady_clock::time_point startTime;
         float startProgress = 0.0f;
-        float duration = 2.0f;  // Animation duration (matches chain period)
-        Fmx::TrickType failedType = Fmx::TrickType::NONE;
-        std::vector<Fmx::TrickInstance> lostChainTricks;  // Copy of chain that was lost
-        int lostChainScore = 0;
+        float duration = 0.0f;  // Animation duration — set from chainPeriod at populate time
+        Fmx::TrickType finalType = Fmx::TrickType::NONE;
+        std::vector<Fmx::TrickInstance> chainTricks;  // Snapshot of chain at end
+        int chainScore = 0;
     };
-    const FailureAnimation& getFailureAnimation() const { return m_failureAnimation; }
+    const ChainEndAnimation& getChainEndAnimation() const { return m_chainEndAnimation; }
 
     // Calculate chain multiplier accounting for trick variety
     // Unique tricks add full bonus, repeated types add diminishing bonus
@@ -89,7 +95,7 @@ private:
 
     // Classify trick type based on current state (called every frame during ACTIVE)
     // Returns the most appropriate trick type given accumulated metrics
-    Fmx::TrickType classifyCurrentTrick() const;
+    Fmx::TrickType classifyCurrentTrick(const Unified::TelemetryData& telemetry) const;
 
     // Calculate progress for the given trick type
     float calculateProgress(Fmx::TrickType type) const;
@@ -148,13 +154,48 @@ private:
     // all reclassifications (including through non-directional intermediaries like Backflip)
     Fmx::TrickDirection m_committedDirection = Fmx::TrickDirection::NONE;
 
-    // Ground trick debounce (filters micro-lifts from bumps)
+    // Ground trick debounce — gates two transitions:
+    //   1. IDLE→ACTIVE: rider must hold a ground-trick posture for this long
+    //      before a fresh trick is accepted (filters micro-lifts from bumps).
+    //   2. Air→Ground bank: rider must hold a one-wheel landing posture for
+    //      this long after an air trick before banking the air and starting
+    //      a fresh ground trick.
+    // Set to 500ms for symmetry with AIRBORNE_DEBOUNCE_TIME — either domain
+    // requires 500ms of held state to count as real. Trick duration is
+    // backdated to include the debounce window so scoring isn't lost.
     float m_groundPendingTime = 0.0f;
-    static constexpr float GROUND_DEBOUNCE_TIME = 0.1f;  // 100ms
+    float m_airToGroundTime = 0.0f;
+    static constexpr float GROUND_DEBOUNCE_TIME = 0.5f;  // 500ms
+
+    // Airborne debounce — only latch hasBeenAirborne after sustained airtime.
+    // A wheelie is one frame away from "airborne" at all times (front already
+    // off the ground); without this, a single-frame rear-wheel lift from a
+    // bump or terrain seam unlocks the air-trick branches in classification
+    // and the wheelie reclassifies to Whip/Scrub/AIR for the rest of the trick.
+    // Set to 500ms — filters typical curb-hops and bumpy-terrain lift-offs
+    // (those are usually well under 300ms), while still allowing fast flips
+    // and spins on smaller jumps to register since they only need 500ms of
+    // airtime to satisfy the latch.
+    float m_continuousAirborneTime = 0.0f;
+    static constexpr float AIRBORNE_DEBOUNCE_TIME = 0.5f;  // 500ms
+
+    // Coaster wheelie tuning. Promotion is one-way (accumulator only grows) and
+    // scoring is ratio-based to prevent tap-farming the bonus.
+    static constexpr float COASTER_CLUTCH_THRESHOLD = 0.85f;
+    static constexpr float COASTER_PROMOTION_TIME = 0.5f;
+    static constexpr int COASTER_SCORE_BONUS = 10;
 
     // Stuck detection — fail tricks if stationary too long (anti-fence exploit)
     float m_stuckTime = 0.0f;
-    static constexpr float STUCK_THRESHOLD = 0.5f;  // 500ms stationary = stuck
+    static constexpr float STUCK_THRESHOLD = 0.5f;  // 500ms below STUCK_MAX_SPEED = stuck
+    // Deliberately tighter than GroundContactState::isStationary()'s 2.5 m/s
+    // cutoff. The 1.389–2.5 m/s band is a deadband for wheelies: too fast to
+    // upgrade to a pivot, but isStationary() still returns true — without the
+    // tighter gate, a slow wheelie at ~2 m/s would false-fail after 500ms.
+    // Endos escape via the STOPPIE classification, and Stoppie/Burnout/Donut/
+    // Pivot are on the stuck-detection allowlist anyway, so Wheelie/Coaster/
+    // Endo without a stationary cousin are the only types this protects.
+    static constexpr float STUCK_MAX_SPEED = 1.389f;  // ~5 km/h, matches pivotMaxSpeed
 
     // Chain timer pause — pauses chain countdown when a new trick is committed mid-chain,
     // so the chain window isn't consumed while performing the next trick.
@@ -172,6 +213,6 @@ private:
     bool m_bLoggingEnabled = false;
     std::chrono::steady_clock::time_point m_lastLogTime;
 
-    // Failure animation state
-    FailureAnimation m_failureAnimation;
+    // Chain-end animation state (success and failure share this slot)
+    ChainEndAnimation m_chainEndAnimation;
 };

@@ -204,7 +204,7 @@ void RaceLapHandler::handleRaceLap(Unified::RaceLapData* psRaceLap) {
         int playerRaceNum = data.getPlayerRaceNum();
         bool hadPreviousBest = (data.getBestLapEntry(raceNum) != nullptr);
         bool isDisplayRider = (raceNum == displayRaceNum && isLapValid && hadPreviousBest);
-        bool isFastestLap = (psRaceLap->bestFlag == 2 && PluginUtils::isConnectionOnline(sessionData.connectionType));
+        bool isFastestLap = (psRaceLap->bestFlag == 2 && sessionData.isOnline());
         bool isAllTimePB = false;
 
         // All-time PB tracking is player-only (we only store the local player's history)

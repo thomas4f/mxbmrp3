@@ -487,7 +487,7 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
 
     // Info text
     ctx.currentY += ctx.lineHeightNormal * 0.5f;
-    ctx.parent->addString("Select your controller in the General tab", ctx.labelX, ctx.currentY,
+    ctx.parent->addString("Select your controller in the General tab.", ctx.labelX, ctx.currentY,
         PluginConstants::Justify::LEFT, PluginConstants::Fonts::getNormal(),
         colors.getMuted(), ctx.fontSize * 0.9f);
 

@@ -60,15 +60,29 @@ private:
     void disconnect();
     void disconnectInternal();  // Called with m_pipeMutex already held
     bool sendHandshake();
-    bool sendPresenceUpdate();
+    // Outcome of one presence-send attempt. Distinguishes a transient pipe
+    // failure (worth dropping the connection over) from a serialization error
+    // (same input would just throw again - skip and wait for new data).
+    enum class PresenceSendResult {
+        Success,
+        SerializationError,
+        PipeError
+    };
+    PresenceSendResult sendPresenceUpdate();
     bool readResponse();
 
     // Frame handling (Discord IPC protocol)
     bool writeFrame(int opcode, const char* data, size_t length);
     bool readFrame(int& opcode, std::string& data);
 
-    // JSON building helper (uses nlohmann::json)
+    // JSON building helper (uses nlohmann::json).
+    // Reads only from m_snapshot, never PluginData - safe to call from the
+    // connection thread because the snapshot is mutex-protected.
     std::string buildPresenceJson() const;
+
+    // Refresh m_snapshot from PluginData. MUST be called on the game thread
+    // only (PluginData has no internal thread-safety).
+    void updateSnapshot();
 
     // Background connection thread
     void connectionThread();
@@ -98,4 +112,25 @@ private:
 
     // Nonce for Discord IPC messages (mutable for use in const buildPresenceJson)
     mutable std::atomic<int> m_nonce;
+
+    // Game-thread snapshot of the SessionData fields the connection thread
+    // needs. PluginData itself has no thread-safety; reading it directly from
+    // the background thread races against game-thread setters that mutate
+    // fixed-size char arrays like serverName / trackName. The game thread
+    // refreshes this snapshot from onDataChanged(); the connection thread
+    // reads it under m_snapshotMutex from buildPresenceJson().
+    struct SessionSnapshot {
+        char trackName[100]   = {};
+        char serverName[100]  = {};
+        int  session          = -1;
+        int  sessionState     = -1;
+        int  sessionLength    = 0;
+        int  sessionNumLaps   = 0;
+        int  eventType        = 2;   // Default Race (matches SessionData::eventType default)
+        int  serverType       = -1;  // Unknown
+        int  sessionTimeMs    = 0;
+        int  drawState        = 0;   // ON_TRACK
+    };
+    mutable std::mutex m_snapshotMutex;
+    SessionSnapshot m_snapshot;
 };

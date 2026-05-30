@@ -65,15 +65,22 @@ void HelmetOverlayHud::resetToDefaults() {
     m_helmetLowerOffsetY = 0.05f;
     m_helmetTiltStrength = 0.25f;
     m_helmetVibrationStrength = 0.5f;
+#if GAME_HAS_SUSPENSION
     m_helmetVibrationSensitivity = 0.5f;
+#else
+    // Karts: vertical-G deltas are ~10x larger in raw units than suspension
+    // deltas, so a much lower sensitivity gives a comparable bump intensity.
+    m_helmetVibrationSensitivity = 0.05f;
+#endif
     m_helmetZoom = 0.10f;
 
     m_visorTintColor = ColorPalette::RED;
     m_visorTintOpacity = 0.10f;
 
-    m_prevSuspTotal = 0.0f;
+    m_prevVibSource = 0.0f;
     m_smoothedVibration = 0.0f;
-    m_hasSuspBaseline = false;
+    m_hasVibBaseline = false;
+    m_smoothedLongG = 0.0f;
     m_cachedSessionGeneration = -1;
 
     setDataDirty();
@@ -182,9 +189,10 @@ void HelmetOverlayHud::rebuildRenderData() {
     // a helmet in those views, overlay would be confusing.
     const PluginData& pluginData = PluginData::getInstance();
     if (pluginData.getDrawState() != ViewState::ON_TRACK) {
-        m_prevSuspTotal = 0.0f;
+        m_prevVibSource = 0.0f;
         m_smoothedVibration = 0.0f;
-        m_hasSuspBaseline = false;
+        m_hasVibBaseline = false;
+        m_smoothedLongG = 0.0f;
         return;
     }
 
@@ -193,7 +201,8 @@ void HelmetOverlayHud::rebuildRenderData() {
     const TrackPositionData* playerPos = pluginData.getPlayerTrackPosition();
     if (playerPos && playerPos->crashed) {
         m_smoothedVibration = 0.0f;
-        m_hasSuspBaseline = false;
+        m_hasVibBaseline = false;
+        m_smoothedLongG = 0.0f;
         return;
     }
 
@@ -202,12 +211,13 @@ void HelmetOverlayHud::rebuildRenderData() {
     if (sessionGen != m_cachedSessionGeneration) {
         m_cachedSessionGeneration = sessionGen;
         m_smoothedVibration = 0.0f;
-        m_hasSuspBaseline = false;
+        m_hasVibBaseline = false;
+        m_smoothedLongG = 0.0f;
     }
 
     const bool anyHelmetPart = m_helmetEnabled &&
         (m_helmetUpperVariant > 0 || m_helmetLowerVariant > 0);
-    const bool hasTint = m_visorMode != VISOR_OFF && m_visorTintOpacity > 0.001f;
+    const bool hasTint = m_visorMode != VISOR_OFF && helmetStrengthActive(m_visorTintOpacity);
 
     if (!anyHelmetPart && !hasTint) {
         return;
@@ -219,10 +229,13 @@ void HelmetOverlayHud::rebuildRenderData() {
     const BikeTelemetryData& telemetry = pluginData.getBikeTelemetry();
 
     float tiltDeg = 0.0f;
-    if (m_helmetEnabled && telemetry.isValid) {
-        // BikeTelemetryData::roll is in degrees (negative = left lean, positive = right).
+    if (m_helmetEnabled && telemetry.isValid && helmetStrengthActive(m_helmetTiltStrength)) {
+#if GAME_HAS_SUSPENSION
+        // Bikes: BikeTelemetryData::roll is in degrees (negative = left lean, positive = right).
         // Map [-45, +45] deg lean to [-MAX_TILT_DEG, +MAX_TILT_DEG] at full strength.
-        // Invert sign so the helmet tilts INTO the turn (natural head motion).
+        // Negate so the helmet COUNTER-tilts against the bike's roll — i.e. in a
+        // right lean (roll > 0) the on-screen helmet top moves left, modelling
+        // the rider's head trying to stay vertical against the bike's lean.
         const float rollClamped = std::clamp(telemetry.roll, -45.0f, 45.0f);
 
         // Gimbal lock: as pitch approaches ±90° (near-vertical wheelie / endo),
@@ -236,26 +249,51 @@ void HelmetOverlayHud::rebuildRenderData() {
         }
 
         tiltDeg = -rollClamped * (MAX_TILT_DEG / 45.0f) * m_helmetTiltStrength * pitchFade;
+#else
+        // Karts: rigid chassis (roll ≈ 0), so source tilt from lateral G instead.
+        // accelX is chassis-local lateral acceleration (positive = chassis
+        // accelerating right, i.e. kart turning RIGHT; same convention used by
+        // gforce_widget, where it's negated to convert into rider felt-G).
+        // Real drivers brace their head INTO the turn against centripetal load,
+        // so positive accelX tilts the helmet top RIGHT in a right turn. Note
+        // this is the OPPOSITE on-screen direction from the bike branch in the
+        // same turn — bikes counter-tilt against roll, karts brace into G —
+        // and that's correct: different head-stabilisation models for different
+        // vehicles. Map ±1.5g to ±MAX_TILT_DEG at full strength.
+        const float lateralG = std::clamp(telemetry.accelX, -1.5f, 1.5f);
+        tiltDeg = lateralG * (MAX_TILT_DEG / 1.5f) * m_helmetTiltStrength;
+#endif
     }
 
     // ------------------------------------------------------------------------
     // Telemetry -> vibration Y offset (both helmet parts)
     // ------------------------------------------------------------------------
     float vibY = 0.0f;
-    if (m_helmetEnabled && telemetry.isValid && std::fabs(m_helmetVibrationStrength) > 0.001f) {
-        const float suspTotal = telemetry.frontSuspLength + telemetry.rearSuspLength;
+    if (m_helmetEnabled && telemetry.isValid && helmetStrengthActive(m_helmetVibrationStrength)) {
+#if GAME_HAS_SUSPENSION
+        // Bikes: source = combined suspension length. Compression on a bump
+        // shortens the total, so delta = prev - curr gives a POSITIVE spike on
+        // bump (helmet shifts up with positive strength).
+        const float vibSource = telemetry.frontSuspLength + telemetry.rearSuspLength;
+        const float deltaSign = +1.0f;  // prev - curr
+#else
+        // Karts: source = vertical chassis G. The absolute rest value isn't
+        // relevant (the pipeline is delta-based and high-passes any DC offset);
+        // bumps and kerbs spike accelY upward, so delta = curr - prev gives a
+        // POSITIVE spike on bump (same effective direction as the bike branch).
+        const float vibSource = telemetry.accelY;
+        const float deltaSign = -1.0f;  // prev - curr would invert; use curr - prev
+#endif
 
-        if (!m_hasSuspBaseline) {
-            m_prevSuspTotal = suspTotal;
-            m_hasSuspBaseline = true;
+        if (!m_hasVibBaseline) {
+            m_prevVibSource = vibSource;
+            m_hasVibBaseline = true;
             m_lastVibrationTime = std::chrono::steady_clock::now();
         }
 
-        // Signed delta: suspension compresses (bump hit) → suspTotal decreases
-        // → prev > curr → positive delta → with positive strength, helmet shifts up.
-        // Negative strength inverts the direction.
-        const float delta = m_prevSuspTotal - suspTotal;
-        m_prevSuspTotal = suspTotal;
+        // Signed delta in the direction where "bump" → positive.
+        const float delta = deltaSign * (m_prevVibSource - vibSource);
+        m_prevVibSource = vibSource;
 
         // Frame-rate-independent exponential low-pass: weight = exp(-decay * dt).
         // Produces consistent feel across 60fps and 240fps.
@@ -268,13 +306,30 @@ void HelmetOverlayHud::rebuildRenderData() {
 
         const float vibScale = m_helmetVibrationSensitivity * VIB_SCALE_MAX;
         vibY = m_smoothedVibration * vibScale * MAX_VIBRATION_Y * m_helmetVibrationStrength;
+
+#if !GAME_HAS_SUSPENSION
+        // Karts: sustained longitudinal-G shift. Low-pass directly on accelZ
+        // (not a delta) so the offset persists while the brake is held instead
+        // of decaying out. Negative accelZ = braking → positive shift (helmet
+        // dips down on screen, "camera dip" feel). Positive accelZ = throttle
+        // → negative shift (helmet rises). Sensitivity slider is intentionally
+        // NOT applied here — that knob governs bump gain; the long-G scale is
+        // fixed so the two components don't interfere when sensitivity is
+        // dialled up to feel kerbs.
+        const float longWeight = std::exp(-LONG_G_DECAY_RATE * dtClamped);
+        m_smoothedLongG = m_smoothedLongG * longWeight + telemetry.accelZ * (1.0f - longWeight);
+        vibY += -m_smoothedLongG * LONG_G_SCALE * m_helmetVibrationStrength;
+#endif
+
         vibY = std::clamp(vibY, -MAX_VIBRATION_Y, MAX_VIBRATION_Y);
-    } else if (std::fabs(m_smoothedVibration) > 0.0001f) {
+    } else if (std::fabs(m_smoothedVibration) > 0.0001f || std::fabs(m_smoothedLongG) > 0.0001f) {
         // Decay stale vibration state (dt-based for frame-rate independence).
         const auto now = std::chrono::steady_clock::now();
         const float dt = std::chrono::duration<float>(now - m_lastVibrationTime).count();
         m_lastVibrationTime = now;
-        m_smoothedVibration *= std::exp(-VIB_DECAY_RATE * std::min(dt, 0.1f));
+        const float dtClamped = std::min(dt, 0.1f);
+        m_smoothedVibration *= std::exp(-VIB_DECAY_RATE * dtClamped);
+        m_smoothedLongG *= std::exp(-LONG_G_DECAY_RATE * dtClamped);
     }
 
     // Precompute tilt rotation once (shared by all quads this frame).

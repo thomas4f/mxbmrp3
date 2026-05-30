@@ -240,6 +240,16 @@ protected:
     void addHorizontalGridLine(float x, float y, float width, unsigned long color, float thickness);
     static void setQuadPositions(SPluginQuad_t& quad, float x, float y, float width, float height);
 
+    // Add a gauge needle (trapezoid: flat tip, wider base) pointing outward at angleRad.
+    // Shared by SpeedoWidget and TachoWidget.
+    void addNeedleQuad(float centerX, float centerY, float angleRad,
+                       float needleLength, float needleWidth, unsigned long color);
+
+    // Temperature color gradient: blue (cold) -> green (optimal) -> yellow -> red (hot).
+    // Shared by BarsWidget and TyreTempWidget. optTemp is the optimal/midpoint temperature.
+    static unsigned long calculateTemperatureColor(float temp, float optTemp,
+                                                   float alarmLow, float alarmHigh);
+
     // Helper to update background quad position during rebuildLayout (reduces duplication)
     void updateBackgroundQuadPosition(float startX, float startY, float width, float height);
 
@@ -288,6 +298,17 @@ protected:
         }
     };
     ScaledDimensions getScaledDimensions() const;
+
+    // Vertical offset to center Small-size text within a normal-height row band.
+    static float labelRowYOffset(const ScaledDimensions& dim) {
+        return (dim.lineHeightNormal - dim.lineHeightSmall) * 0.5f;
+    }
+    // Render a header/row label: Small font size, vertically centered in the row at rowY.
+    // Keeps labels visually distinct from the full-size data values beside them.
+    void addLabel(const char* text, float x, float rowY, int justify, int fontIndex,
+                  unsigned long color, const ScaledDimensions& dim) {
+        addString(text, x, rowY + labelRowYOffset(dim), justify, fontIndex, color, dim.fontSizeSmall);
+    }
 
     // Helper method to calculate text color with opacity (eliminates duplication in widgets)
     unsigned long getTextColorWithOpacity(uint8_t r = 255, uint8_t g = 255, uint8_t b = 255) const;

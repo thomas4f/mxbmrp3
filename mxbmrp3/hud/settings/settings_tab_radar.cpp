@@ -33,7 +33,7 @@ bool SettingsHud::handleClickTabRadar(const ClickRegion& region) {
                 bool increase = (region.type == ClickRegion::RADAR_RANGE_UP);
                 float newRange = radarHud->getRadarRange() + (increase ? RadarHud::RADAR_RANGE_STEP : -RadarHud::RADAR_RANGE_STEP);
                 radarHud->setRadarRange(newRange);
-                rebuildRenderData();
+                setDataDirty();
             }
             return true;
 
@@ -43,7 +43,7 @@ bool SettingsHud::handleClickTabRadar(const ClickRegion& region) {
                 auto newMode = cycleEnumRadar(radarHud->getRiderColorMode(), 3,
                     region.type == ClickRegion::RADAR_COLORIZE_UP);
                 radarHud->setRiderColorMode(newMode);
-                rebuildRenderData();
+                setDataDirty();
             }
             return true;
 
@@ -80,7 +80,7 @@ bool SettingsHud::handleClickTabRadar(const ClickRegion& region) {
                 bool increase = (region.type == ClickRegion::RADAR_ALERT_DISTANCE_UP);
                 float newDist = radarHud->getAlertDistance() + (increase ? RadarHud::ALERT_DISTANCE_STEP : -RadarHud::ALERT_DISTANCE_STEP);
                 radarHud->setAlertDistance(newDist);
-                rebuildRenderData();
+                setDataDirty();
             }
             return true;
 
@@ -90,7 +90,7 @@ bool SettingsHud::handleClickTabRadar(const ClickRegion& region) {
                 auto newMode = cycleEnumRadar(radarHud->getLabelMode(), 4,
                     region.type == ClickRegion::RADAR_LABEL_MODE_UP);
                 radarHud->setLabelMode(newMode);
-                rebuildRenderData();
+                setDataDirty();
             }
             return true;
 
@@ -109,7 +109,7 @@ bool SettingsHud::handleClickTabRadar(const ClickRegion& region) {
                     if (next < 1) next = iconCount;
                 }
                 radarHud->setProximityArrowShape(next);
-                rebuildRenderData();
+                setDataDirty();
             }
             return true;
 
@@ -148,7 +148,7 @@ bool SettingsHud::handleClickTabRadar(const ClickRegion& region) {
                     if (next < 1) next = iconCount;
                 }
                 radarHud->setRiderShape(next);
-                rebuildRenderData();
+                setDataDirty();
             }
             return true;
 
@@ -158,7 +158,7 @@ bool SettingsHud::handleClickTabRadar(const ClickRegion& region) {
                 bool increase = (region.type == ClickRegion::RADAR_MARKER_SCALE_UP);
                 float newScale = applyAcceleratedStep(radarHud->getMarkerScale(), 0.01f, increase);
                 radarHud->setMarkerScale(newScale);
-                rebuildRenderData();
+                setDataDirty();
             }
             return true;
 

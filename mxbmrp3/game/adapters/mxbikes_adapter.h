@@ -74,6 +74,10 @@ struct Adapter {
         result.suspMaxTravel[1] = src->m_afSuspMaxTravel[1];
         result.steerLock = src->m_fSteerLock;
 
+        // Server info (new in updated API)
+        safeCopy(result.serverName, src->m_szServerName, Unified::NAME_BUFFER_SIZE);
+        result.serverType = src->m_iServerType;
+
         return result;
     }
 
@@ -319,7 +323,14 @@ struct Adapter {
         result.offence = src->m_iOffence;
         result.lap = src->m_iLap;
         result.penaltyType = Unified::PenaltyType::TimePenalty;  // MX Bikes only has time penalties
-        result.penaltyTime = src->m_iTime;
+        // MX Bikes' SPluginsRaceCommunication_t::m_iTime is in SECONDS despite the
+        // header comment claiming milliseconds. Convert to ms here so the unified
+        // type contract (penaltyTime in ms) holds.
+        // WARNING: this *1000 scaling MUST be re-verified after every game update -
+        // if PiBoSo ever fixes the field to actually emit ms (matching its
+        // longstanding header), this multiplication will produce 1000x-too-large
+        // penalty times with no symptom distinguishable from "huge penalty."
+        result.penaltyTime = src->m_iTime * 1000;
 
         return result;
     }
@@ -415,55 +426,35 @@ struct Adapter {
     // ========================================================================
     // Session Type Mapping
     // ========================================================================
-    static NormalizedSession normalizeSession(int rawSession, int eventType) {
-        if (eventType == 4) {  // Straight Rhythm
+    // Map MX Bikes' raw session integer to canonical Unified::Session.
+    // Note: the in-game wire format keeps the historical 0..7 numbering
+    // (Practice=1, PreQualify=2, QualifyPractice=3, Qualify=4, Warmup=5,
+    // Race1=6, Race2=7) even though the API doc has been updated to claim a
+    // shifted 0..6 layout. We trust the wire (verified in-game) over the doc.
+    // Straight Rhythm (eventType==4) reuses indices 2..5 with different meaning.
+    static Unified::Session toCanonicalSession(int rawSession, int rawEventType) {
+        if (rawEventType == 4) {  // Straight Rhythm
             switch (rawSession) {
-                case 0: return NormalizedSession::Waiting;
-                case 1: return NormalizedSession::Practice;
-                case 2: return NormalizedSession::StraightRhythmRound;
-                case 3: return NormalizedSession::StraightRhythmQuarter;
-                case 4: return NormalizedSession::StraightRhythmSemi;
-                case 5: return NormalizedSession::StraightRhythmFinal;
-                default: return NormalizedSession::Unknown;
+                case 0: return Unified::Session::Waiting;
+                case 1: return Unified::Session::Practice;
+                case 2: return Unified::Session::SR_Round;
+                case 3: return Unified::Session::SR_QuarterFinals;
+                case 4: return Unified::Session::SR_SemiFinals;
+                case 5: return Unified::Session::SR_Final;
+                default: return Unified::Session::Unknown;
             }
         }
-
-        // Testing or Race
         switch (rawSession) {
-            case 0: return NormalizedSession::Waiting;
-            case 1: return NormalizedSession::Practice;
-            case 2: return NormalizedSession::PreQualify;
-            case 3: return NormalizedSession::QualifyPractice;
-            case 4: return NormalizedSession::Qualify;
-            case 5: return NormalizedSession::Warmup;
-            case 6: return NormalizedSession::Race1;
-            case 7: return NormalizedSession::Race2;
-            default: return NormalizedSession::Unknown;
+            case 0: return Unified::Session::Waiting;
+            case 1: return Unified::Session::Practice;
+            case 2: return Unified::Session::PreQualify;
+            case 3: return Unified::Session::QualifyPractice;
+            case 4: return Unified::Session::Qualify;
+            case 5: return Unified::Session::Warmup;
+            case 6: return Unified::Session::Race1;
+            case 7: return Unified::Session::Race2;
+            default: return Unified::Session::Unknown;
         }
-    }
-
-    static bool isRaceSession(int rawSession, int eventType) {
-        if (eventType == 4) {  // Straight Rhythm - rounds are "races"
-            return rawSession >= 2 && rawSession <= 5;
-        }
-        return rawSession == 6 || rawSession == 7;  // Race1 or Race2
-    }
-
-    static bool isQualifySession(int rawSession, int eventType) {
-        if (eventType == 4) return false;  // Straight Rhythm has no qualify
-        return rawSession == 4;  // Qualify
-    }
-
-    static bool isPracticeSession(int rawSession, int eventType) {
-        if (eventType == 4) {
-            return rawSession == 1;  // Practice
-        }
-        return rawSession == 1 || rawSession == 2 || rawSession == 3 || rawSession == 5;
-    }
-
-    static bool isTimedSession(int rawSession, int eventType) {
-        // Sessions that count time down (have a session length)
-        return !isRaceSession(rawSession, eventType);
     }
 
     // ========================================================================

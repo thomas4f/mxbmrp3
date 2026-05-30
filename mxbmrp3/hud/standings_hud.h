@@ -33,7 +33,7 @@ public:
         COL_PENALTY     = 1 << 7,   // Penalty seconds (last column, rare event)
 
         COL_REQUIRED = 0,      // No required columns
-        COL_DEFAULT  = 0x4F    // Default columns: Tracked, Pos, RaceNum, Name, Gap
+        COL_DEFAULT  = 0x4F    // Default columns: status icons, Pos, RaceNum, Name, Gap
     };
 
     // Who to show gap data for
@@ -57,6 +57,13 @@ public:
         OFF = 0,     // No rider name column
         SHORT = 1,   // 3-character abbreviated name (default)
         LONG = 2     // Full name (width determined by longest name in list)
+    };
+
+    // Position-change animation mode
+    enum class AnimationMode : uint8_t {
+        OFF = 0,      // No animation, rows snap into place
+        BASIC = 1,    // Slide rows when their race position changes
+        COLORED = 2   // Slide + tint rows positive/negative during the animation
     };
 
     // Column indices (used with ColumnDef::columnIndex to identify columns)
@@ -152,6 +159,19 @@ private:
     // Rendering helpers (declared after DisplayEntry)
     void renderRiderRow(const DisplayEntry& entry, bool isPlaceholder, float currentY, const ScaledDimensions& dim, int rowIndex);
 
+    // X anchor for a column's text, accounting for position/race-number alignment
+    // (centering/right-align differs by layout) and right-aligned numeric gaps.
+    // Shared by renderRiderRow and the drag fast path in rebuildRenderData so the
+    // two never disagree and make columns jump when the HUD is moved.
+    float getColumnTextX(uint8_t columnIndex, float columnPosition, float fontSize, bool isPlaceholder, bool gapRightAlign = false) const;
+
+    // Header label and its X anchor for a column. Mirrors the non-placeholder
+    // alignment used by renderRiderRow so the header sits over its column. When
+    // outJustify is non-null it receives the justify used at string creation
+    // (rebuildLayout passes null since it only repositions existing strings).
+    static const char* getColumnHeaderLabel(uint8_t columnIndex);
+    float getColumnHeaderTextX(uint8_t columnIndex, float columnPosition, float fontSize, int* outJustify) const;
+
     // Add riders from classification[startIdx..endIdx] to m_displayEntries
     // Updates m_cachedPlayerIndex when player found; positionBase is display position (e.g., 1 for P1)
     void addDisplayEntries(int startIdx, int endIdx, int positionBase,
@@ -173,7 +193,7 @@ private:
         float gap;
         float penalty;
 
-        ColumnPositions(float contentStartX, float scale, uint32_t enabledColumns, int nameWidth = COL_NAME_WIDTH_SHORT);
+        ColumnPositions(float contentStartX, float scale, uint32_t enabledColumns, int nameWidth = COL_NAME_WIDTH_SHORT, int raceNumWidth = COL_RACENUM_WIDTH);
     };
 
     // Column descriptor for table-driven rendering
@@ -191,6 +211,7 @@ private:
         float backgroundWidth;
         float backgroundHeight;
         float titleHeight;
+        float headerHeight;       // Height of the optional column-header row between title and rows (0 if disabled)
         float contentStartX;
         float contentStartY;
     };
@@ -220,7 +241,7 @@ private:
     std::vector<ColumnDescriptor> m_columnTable;  // Cached table of enabled columns (only includes enabled ones)
     int m_cachedBackgroundWidth = -1;  // Cached width in chars
     int m_cachedPlayerIndex = -1;  // Cached index of player in m_displayEntries (-1 if not found or beyond m_displayRowCount)
-    int m_cachedHighlightQuadIndex = -1;  // Cached index of highlight quad in m_quads (-1 if no highlight)
+    int m_cachedHighlightQuadIndex = -1;  // Cached index of player row highlight quad in m_quads (-1 if no highlight; only valid when m_bPlayerRowHighlight is on)
     int m_hoveredRowIndex = -1;  // Row index currently hovered by cursor (-1 if none)
 
     // Tracking for icon quads (so we can update positions in rebuildLayout)
@@ -229,6 +250,17 @@ private:
         int rowIndex;      // Which row it belongs to
     };
     std::vector<TrackedIconQuad> m_trackedIconQuads;
+
+    // Tracking for slide-highlight quads (COLORED animation mode).
+    // Cached so rebuildLayout can update position + fade alpha per frame
+    // without forcing a full data rebuild.
+    struct SlideHighlightQuad {
+        size_t quadIndex;       // Index in m_quads
+        int rowIndex;           // Row in m_displayEntries
+        int raceNum;            // Rider this quad belongs to
+        bool promoted;          // true = positive tint, false = negative tint
+    };
+    std::vector<SlideHighlightQuad> m_slideHighlightQuads;
 
     // Cached icon state for displayed riders (detect icon changes without DataChangeType)
     // Each entry encodes: raceNum -> (hazardType | blueFlagged | inPit | lastLap)
@@ -274,9 +306,13 @@ private:
     std::vector<RaceNumPlateQuad> m_raceNumPlateQuads;
     int m_displayRowCount = 10;  // Number of rows to display (configurable 6-50, increment 2)
     int m_topPositionsCount = DEFAULT_TOP_POSITIONS;  // Always show top N positions (global setting, 0-10)
-    bool m_bUseAccentForHighlight = false;  // Advanced: use accent color instead of bike brand color for player highlight
+    bool m_bPlayerRowHighlight = true;        // INI-only: full-row color background on the player/spectated rider's row (set 0 to disable and fall back to the accent-colored name marker)
+    bool m_bPlayerRowHighlightBrand = false;  // INI-only: when m_bPlayerRowHighlight is on, use the bike brand color instead of the default accent color
     bool m_bClassicLayout = false;  // Classic layout: no number plates, no brand strip, primary-colored race numbers
+    bool m_bShowHeaders = false;     // Show a column-header row labeling each enabled column above the rider rows
+    bool m_bLiveGaps = false;        // Show real-time estimated gaps during races (per-profile; was a global toggle)
     NameMode m_nameMode = NameMode::SHORT;  // Rider name display mode (Off/Short/Long)
+    int m_shortNameChars = DEFAULT_SHORT_NAME_CHARS;  // INI-only: visible chars in SHORT name mode (1-31, default 3)
     int m_longNameWidth = 4;  // Cached width for long name mode (determined by longest name)
 
     // ========================================================================
@@ -284,7 +320,7 @@ private:
     // ========================================================================
     // Tracks previous row slot indices by raceNum so we can animate Y transitions
     // when riders change positions in the standings.
-    bool m_bAnimatePositions = true;  // Enable/disable position animation
+    AnimationMode m_animationMode = AnimationMode::BASIC;  // Off / Basic / Colored
 
     // Per-rider animation state: maps raceNum -> animation data
     struct RowAnimation {
@@ -297,7 +333,7 @@ private:
     std::unordered_map<int, int> m_previousSlots;               // raceNum -> last known display slot (visibility check)
     std::chrono::steady_clock::time_point m_frameTime = std::chrono::steady_clock::now();
 
-    float m_animationDurationMs = 250.0f;  // Duration of position slide animation (configurable 50-1000)
+    float m_animationDurationMs = 500.0f;  // Duration of position slide animation (configurable 50-1000)
 
     // Ease-out cubic: fast start, smooth deceleration
     static float easeOutCubic(float t) {
@@ -309,6 +345,11 @@ private:
     // The offset is in units of lineHeightNormal (e.g., -2.0 means 2 rows up)
     float getAnimatedRowOffset(int raceNum, float lineHeight) const;
 
+    // Returns the linear slide-tint fade [1.0 .. 0.0] for the given rider, or 0.0 if
+    // no slide is in progress. Slide tint uses the value directly; the player/hover
+    // highlight cross-fades against it (1.0 - fade) so the row stays visually solid.
+    float getSlideFade(int raceNum) const;
+
     // Start animations for any riders whose position changed, update m_previousPositions
     void updateAnimationState();
 
@@ -319,6 +360,8 @@ private:
     static constexpr int MAX_ROW_COUNT = 50;
     static constexpr int DEFAULT_ROW_COUNT = 10;  // Shows top 3 + player with 2 before/after symmetrically
     static constexpr int DEFAULT_TOP_POSITIONS = 3;  // Default: always show top 3
+    static constexpr float ROW_HIGHLIGHT_OPACITY = 80.0f / 255.0f;  // Alpha for slide-highlight row background tints
+    static constexpr float HOVER_HIGHLIGHT_OPACITY = 60.0f / 255.0f;  // Alpha for spectator-mode hover row background
     static constexpr int MAX_TOP_POSITIONS = 10;     // Maximum top positions to always show
     static constexpr int NUM_COLUMNS = 9;
     // Base position (0,0) - actual position comes from m_fOffsetX/m_fOffsetY
@@ -329,12 +372,19 @@ private:
     static constexpr int COL_TRACKED_WIDTH = 3;   // Sprite indicator (icon + padding)
     static constexpr int COL_POS_WIDTH = 3;       // "50" (2 chars + 1 spacing, no "P" prefix)
     static constexpr int COL_RACENUM_WIDTH = 6;  // plate (4) + gap (0.5) + strip (0.5) + padding
-    static constexpr int COL_NAME_WIDTH_SHORT = 4;  // 3 chars + 1 spacing
+    static constexpr int COL_RACENUM_WIDTH_CLASSIC = 4;  // 3-digit race number + 1 spacing (no plate/strip/#)
+    int getRaceNumColumnWidth() const {
+        return m_bClassicLayout ? COL_RACENUM_WIDTH_CLASSIC : COL_RACENUM_WIDTH;
+    }
+    static constexpr int DEFAULT_SHORT_NAME_CHARS = 3;  // Default visible chars in SHORT name mode
+    static constexpr int MIN_SHORT_NAME_CHARS = 1;
+    static constexpr int MAX_SHORT_NAME_CHARS = 31;  // Capped by name[32] buffer
+    static constexpr int COL_NAME_WIDTH_SHORT = DEFAULT_SHORT_NAME_CHARS + 1;  // default chars + 1 spacing
     static constexpr int MAX_LONG_NAME_CHARS = 24;  // Max visible chars in LONG name mode
     int getNameColumnWidth() const {
         if (m_nameMode == NameMode::OFF) return 0;
         if (m_nameMode == NameMode::LONG) return m_longNameWidth;
-        return COL_NAME_WIDTH_SHORT;
+        return m_shortNameChars + 1;  // chars + 1 spacing
     }
     static constexpr int COL_BIKE_WIDTH = 10;      // Supports longest bike names (9 chars + 1 spacing)
     static constexpr int COL_PENALTY_WIDTH = 5;        // Supports +99s format (4 chars + 1 spacing)

@@ -40,22 +40,36 @@ BaseHud* SettingsHud::renderTabWidgets(SettingsLayoutContext& ctx) {
 
     // Widget rows
     // Parameters: name, hud, enableTitle, enableOpacity, enableScale, enableVisibility, enableBgTexture, tooltipId
+    ctx.addSpacing(0.5f);
+    ctx.addSectionHeader("Timing");
     ctx.addWidgetRow("Position", ctx.parent->getPositionWidget(), true, true, true, true, true, "widgets.position");
     ctx.addWidgetRow("Lap", ctx.parent->getLapWidget(), true, true, true, true, true, "widgets.lap");
     ctx.addWidgetRow("Time", ctx.parent->getTimeWidget(), true, true, true, true, true, "widgets.time");
     ctx.addWidgetRow("Clock", ctx.parent->getClockWidget(), true, true, true, true, true, "widgets.clock");
     // Note: SessionHud now has its own dedicated tab with row configuration
+    ctx.addSpacing(0.5f);
+    ctx.addSectionHeader("Speed & Gear");
     ctx.addWidgetRow("Gear", ctx.parent->getGearWidget(), true, true, true, true, true, "widgets.gear");
     ctx.addWidgetRow("Speed", ctx.parent->getSpeedWidget(), true, true, true, true, true, "widgets.speed");
+    ctx.addSpacing(0.5f);
+    ctx.addSectionHeader("Telemetry");
     ctx.addWidgetRow("Bars", ctx.parent->getBarsWidget(), true, true, true, true, true, "widgets.bars");
     ctx.addWidgetRow("Lean", ctx.parent->getLeanWidget(), true, true, true, true, true, "widgets.lean");
+    ctx.addWidgetRow("G-Force", ctx.parent->getGForceWidget(), true, true, true, true, true, "widgets.gforce");
     ctx.addWidgetRow("Fuel", ctx.parent->getFuelWidget(), true, true, true, true, true, "widgets.fuel");
-    ctx.addWidgetRow("Speedo", ctx.parent->getSpeedoWidget(), false, true, true, true, true, "widgets.speedo");
-    ctx.addWidgetRow("Tacho", ctx.parent->getTachoWidget(), false, true, true, true, true, "widgets.tacho");
-    ctx.addWidgetRow("Gamepad", ctx.parent->getGamepadWidget(), false, true, true, true, true, "widgets.gamepad");
 #if GAME_HAS_TYRE_TEMP
     ctx.addWidgetRow("Tyre Temp", ctx.parent->getTyreTempWidget(), false, true, true, true, true, "widgets.tyre_temp");
 #endif
+#if GAME_HAS_ECU
+    ctx.addWidgetRow("ECU", ctx.parent->getEcuWidget(), false, true, true, true, true, "widgets.ecu");
+#endif
+    ctx.addSpacing(0.5f);
+    ctx.addSectionHeader("Gauges");
+    ctx.addWidgetRow("Speedo", ctx.parent->getSpeedoWidget(), false, true, true, true, true, "widgets.speedo");
+    ctx.addWidgetRow("Tacho", ctx.parent->getTachoWidget(), false, true, true, true, true, "widgets.tacho");
+    ctx.addSpacing(0.5f);
+    ctx.addSectionHeader("Misc");
+    ctx.addWidgetRow("Gamepad", ctx.parent->getGamepadWidget(), false, true, true, true, true, "widgets.gamepad");
     ctx.addWidgetRow("Pointer", ctx.parent->getPointerWidget(), false, false, true, false, true, "widgets.pointer");
     ctx.addWidgetRow("Version", ctx.parent->getVersionWidget(), false, false, false, true, false, "widgets.version");
 

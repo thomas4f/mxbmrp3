@@ -142,6 +142,9 @@ void GearWidget::rebuildRenderData() {
     char gearValueBuffer[8];
     if (!bikeData.isValid) {
         snprintf(gearValueBuffer, sizeof(gearValueBuffer), "%s", Placeholders::GENERIC);
+    } else if (bikeData.numberOfGears <= 1) {
+        // Gearless vehicle (e-bike, direct-drive kart) - "N" would be misleading
+        snprintf(gearValueBuffer, sizeof(gearValueBuffer), "D");
     } else {
         if (bikeData.gear == GearValue::NEUTRAL) {
             snprintf(gearValueBuffer, sizeof(gearValueBuffer), "N");
@@ -172,8 +175,11 @@ void GearWidget::rebuildRenderData() {
         m_quads.push_back(circleQuad);
     }
 
-    // Gear color: red if recommended shift point reached, otherwise primary
-    unsigned long gearColor = (m_bShowShiftColor && bikeData.isValid && isViewingPlayer && sessionData.shiftRPM > 0 && bikeData.rpm >= sessionData.shiftRPM)
+    // Gear color: red if recommended shift point reached, otherwise primary.
+    // Skip shift coloring on gearless vehicles (nothing to shift to).
+    unsigned long gearColor = (m_bShowShiftColor && bikeData.isValid && isViewingPlayer
+                               && bikeData.numberOfGears > 1
+                               && sessionData.shiftRPM > 0 && bikeData.rpm >= sessionData.shiftRPM)
         ? this->getColor(ColorSlot::NEGATIVE)
         : textColor;
     addString(gearValueBuffer, centerX, currentY + gearTextOffsetY, Justify::CENTER,
@@ -190,6 +196,6 @@ void GearWidget::resetToDefaults() {
     m_fScale = 1.0f;
     m_bShowShiftColor = true;
     m_bShowLimiterCircle = true;
-    setPosition(0.9020f, 0.8769f);
+    setPosition(0.8855f, 0.8769f);
     setDataDirty();
 }

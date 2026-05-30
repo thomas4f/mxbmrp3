@@ -41,8 +41,12 @@
 #include "../hud/benchmark_widget.h"
 #include "../hud/gamepad_widget.h"
 #include "../hud/lean_widget.h"
+#include "../hud/gforce_widget.h"
 #if GAME_HAS_TYRE_TEMP
 #include "../hud/tyre_temp_widget.h"
+#endif
+#if GAME_HAS_ECU
+#include "../hud/ecu_widget.h"
 #endif
 #include "../hud/fmx_hud.h"
 #include "../hud/stats_hud.h"
@@ -64,9 +68,6 @@
 #include "tracked_riders_manager.h"
 #include "asset_manager.h"
 #include "../game/game_config.h"
-#if defined(GAME_MXBIKES)
-#include "../game/connection_detector.h"
-#endif
 #include <fstream>
 #include <sstream>
 #include <array>
@@ -119,6 +120,9 @@ namespace {
             constexpr const char* DISPLAY_ROW_COUNT = "displayRowCount";
             constexpr const char* GAP_MODE = "gapMode";
             constexpr const char* GAP_REFERENCE_MODE = "gapReferenceMode";
+            constexpr const char* ANIMATION_MODE = "animationMode";
+            constexpr const char* SHOW_HEADERS = "showHeaders";
+            constexpr const char* LIVE_GAPS = "liveGaps";
         }
 
         // MapHud-specific keys
@@ -179,6 +183,11 @@ namespace {
             constexpr const char* ENABLED_ROWS = "enabledRows";
             constexpr const char* MAX_CHAIN_DISPLAY_ROWS = "maxChainDisplayRows";
             constexpr const char* SHOW_DEBUG_LOGGING = "showDebugLogging";
+            // Prefix for per-trick disable flags (e.g. trickEnabled_Pivot=0).
+            // The suffix comes from Fmx::getTrickIniKey(); L/R variants share
+            // one key (e.g. PivotLeft + PivotRight both serialize as "Pivot").
+            // INI-only, no UI.
+            constexpr const char* TRICK_ENABLED_PREFIX = "trickEnabled_";
         }
 
         // StatsHud-specific keys
@@ -259,14 +268,11 @@ namespace {
             constexpr const char* TRACK = "row_track";
             constexpr const char* FORMAT = "row_format";
             constexpr const char* SERVER = "row_server";
-            constexpr const char* PLAYERS = "row_players";
             constexpr const char* WEATHER = "row_weather";
-            // PASSWORD row removed - now controlled by passwordMode (Off = row hidden)
         }
 
         // SessionHud settings
         namespace Session {
-            constexpr const char* PASSWORD_MODE = "passwordMode";
             constexpr const char* SHOW_ICONS = "showIcons";
         }
 
@@ -283,6 +289,16 @@ namespace {
         namespace TyreTempRows {
             constexpr const char* BARS = "row_bars";
             constexpr const char* VALUES = "row_values";
+        }
+#endif
+
+#if GAME_HAS_ECU
+        // EcuWidget chips
+        namespace EcuRows {
+            constexpr const char* MAP = "row_map";
+            constexpr const char* TC = "row_tc";
+            constexpr const char* EB = "row_eb";
+            constexpr const char* AW = "row_aw";
         }
 #endif
 
@@ -424,6 +440,14 @@ namespace {
             constexpr Setting MAX_MARKER_LINGER_FRAMES = {"maxMarkerLingerFrames", "Frames to show max markers"};
         }
 
+        // GForceWidget settings
+        namespace GForce {
+            constexpr Setting MAX_SCALE = {"maxScale", "Gauge full-scale in g (outer ring)"};
+            constexpr Setting SHOW_MAX_TEXT = {"showMaxText", "Show recorded max-g text inside the ring"};
+            constexpr Setting SHOW_MAX_MARKER = {"showMaxMarker", "Show lingering max-position marker on gauge"};
+            constexpr Setting MAX_MARKER_LINGER_FRAMES = {"maxMarkerLingerFrames", "Frames to show max marker after peak"};
+        }
+
         // BarsWidget settings
         namespace Bars {
             constexpr Setting COL_THROTTLE = {"col_throttle", "Show throttle bar"};
@@ -446,6 +470,18 @@ namespace {
             constexpr Setting HOT_THRESHOLD = {"hotThreshold", "Hot tyre threshold (Celsius)"};
             constexpr Setting ROW_BARS = {"row_bars", "Show temperature bars"};
             constexpr Setting ROW_VALUES = {"row_values", "Show temperature values"};
+            constexpr Setting SHOW_LABELS = {"showLabels", "Show L/M/R and F/R labels"};
+        }
+#endif
+
+#if GAME_HAS_ECU
+        // EcuWidget settings (GP Bikes)
+        namespace Ecu {
+            constexpr Setting ROW_MAP = {"row_map", "Show engine mapping chip"};
+            constexpr Setting ROW_TC = {"row_tc", "Show traction control chip"};
+            constexpr Setting ROW_EB = {"row_eb", "Show engine braking chip"};
+            constexpr Setting ROW_AW = {"row_aw", "Show anti-wheeling chip"};
+            constexpr Setting SHOW_LABELS = {"showLabels", "Show TC/EB/AW labels inside chips"};
         }
 #endif
 
@@ -475,17 +511,13 @@ namespace {
 
         // StandingsHud settings
         namespace Standings {
-            constexpr Setting TOP_POSITIONS = {"topPositions", "Top positions always shown (0-5)"};
-            constexpr Setting USE_ACCENT_HIGHLIGHT = {"useAccentHighlight", "Use accent color for player highlight"};
-            constexpr Setting ANIMATE_POSITIONS = {"animatePositions", "Animate position changes (slide rows)"};
+            constexpr Setting TOP_POSITIONS = {"topPositions", "Top positions always shown (0-10)"};
+            constexpr Setting PLAYER_ROW_HIGHLIGHT = {"playerRowHighlight", "Full-row color background on the player/spectated rider's row (1 = on, default; 0 = off, falls back to accent-colored name marker)"};
+            constexpr Setting PLAYER_ROW_HIGHLIGHT_BRAND = {"playerRowHighlightBrand", "When playerRowHighlight=1, use the bike brand color instead of the default accent color"};
             constexpr Setting ANIMATION_DURATION_MS = {"animationDurationMs", "Position animation duration in ms (50-1000)"};
             constexpr Setting CLASSIC_LAYOUT = {"classicLayout", "Classic layout: no number plates, no brand strip (0 = modern)"};
             constexpr Setting NAME_MODE = {"nameMode", "Rider name display mode (0=Off, 1=Short, 2=Long)"};
-        }
-
-        // MapHud settings
-        namespace Map {
-            constexpr Setting PIXEL_SPACING = {"pixelSpacing", "Track line pixel spacing"};
+            constexpr Setting SHORT_NAME_CHARS = {"shortNameChars", "Visible characters in Short name mode (1-31, default 3)"};
         }
 
 #if GAME_HAS_RECORDS_PROVIDER
@@ -498,6 +530,11 @@ namespace {
         // GamepadWidget settings
         namespace Gamepad {
             constexpr Setting TRIGGER_FILL_MODE = {"triggerFillMode", "0=fade (brightness), 1=fill (bottom-up)"};
+        }
+
+        // MapHud settings
+        namespace Map {
+            constexpr Setting LABEL_ANCHOR = {"labelAnchor", "Rider label position relative to icon (BELOW, ABOVE, LEFT, RIGHT)"};
         }
 
         // LapConsistencyHud settings
@@ -523,15 +560,6 @@ namespace {
             constexpr Setting WEB_SERVER_PORT = {"webServerPort", "Web server port (default 8080)"};
             constexpr Setting WEB_SERVER_THROTTLE_MS = {"webServerThrottleMs", "Min interval between SSE pushes in ms (default 250)"};
             constexpr Setting WEB_SERVER_BIND_ADDRESS = {"webServerBindAddress", "Bind address (default 127.0.0.1, use 0.0.0.0 for network access)"};
-#if defined(GAME_MXBIKES)
-            // Memory offsets for connection detection (advanced debugging)
-            constexpr Setting MEM_LOCAL_SERVER_NAME = {"memLocalServerName", "Memory offset (hex)"};
-            constexpr Setting MEM_LOCAL_SERVER_MAX_CLIENTS = {"memLocalServerMaxClients", "Memory offset (hex)"};
-            constexpr Setting MEM_LOCAL_SERVER_PASSWORD = {"memLocalServerPassword", "Memory offset (hex)"};
-            constexpr Setting MEM_REMOTE_SERVER_SOCKADDR = {"memRemoteServerSockaddr", "Memory offset (hex)"};
-            constexpr Setting MEM_REMOTE_SERVER_PASSWORD = {"memRemoteServerPassword", "Memory offset (hex)"};
-            constexpr Setting MEM_SERVER_CLIENTS_ARRAY = {"memServerClientsArray", "Memory offset (hex)"};
-#endif
         }
     }
 
@@ -596,6 +624,24 @@ namespace {
         return defaultVal;
     }
 
+    // StandingsHud::AnimationMode
+    const char* animationModeToString(StandingsHud::AnimationMode mode) {
+        switch (mode) {
+            case StandingsHud::AnimationMode::OFF:     return "OFF";
+            case StandingsHud::AnimationMode::BASIC:   return "BASIC";
+            case StandingsHud::AnimationMode::COLORED: return "COLORED";
+            default: return "BASIC";
+        }
+    }
+
+    StandingsHud::AnimationMode stringToAnimationMode(const std::string& str, StandingsHud::AnimationMode defaultVal = StandingsHud::AnimationMode::BASIC) {
+        if (str == "OFF") return StandingsHud::AnimationMode::OFF;
+        if (str == "BASIC") return StandingsHud::AnimationMode::BASIC;
+        if (str == "COLORED") return StandingsHud::AnimationMode::COLORED;
+        DEBUG_WARN_F("Unknown AnimationMode '%s', using default", str.c_str());
+        return defaultVal;
+    }
+
     // MapHud::RiderColorMode (also used by RadarHud)
     const char* riderColorModeToString(MapHud::RiderColorMode mode) {
         switch (mode) {
@@ -631,6 +677,44 @@ namespace {
         if (str == "RACE_NUM") return MapHud::LabelMode::RACE_NUM;
         if (str == "BOTH") return MapHud::LabelMode::BOTH;
         DEBUG_WARN_F("Unknown LabelMode '%s', using default", str.c_str());
+        return defaultVal;
+    }
+
+    // MapHud::LabelAnchor (label position relative to the rider icon)
+    const char* labelAnchorToString(MapHud::LabelAnchor anchor) {
+        switch (anchor) {
+            case MapHud::LabelAnchor::BELOW: return "BELOW";
+            case MapHud::LabelAnchor::ABOVE: return "ABOVE";
+            case MapHud::LabelAnchor::LEFT:  return "LEFT";
+            case MapHud::LabelAnchor::RIGHT: return "RIGHT";
+            default: return "BELOW";
+        }
+    }
+
+    MapHud::LabelAnchor stringToLabelAnchor(const std::string& str, MapHud::LabelAnchor defaultVal = MapHud::LabelAnchor::BELOW) {
+        if (str == "BELOW") return MapHud::LabelAnchor::BELOW;
+        if (str == "ABOVE") return MapHud::LabelAnchor::ABOVE;
+        if (str == "LEFT")  return MapHud::LabelAnchor::LEFT;
+        if (str == "RIGHT") return MapHud::LabelAnchor::RIGHT;
+        DEBUG_WARN_F("Unknown LabelAnchor '%s', using default", str.c_str());
+        return defaultVal;
+    }
+
+    // MapHud::Detail (track ribbon LOD)
+    const char* detailToString(MapHud::Detail detail) {
+        switch (detail) {
+            case MapHud::Detail::AUTO: return "AUTO";
+            case MapHud::Detail::HIGH: return "HIGH";
+            case MapHud::Detail::LOW:  return "LOW";
+            default: return "AUTO";
+        }
+    }
+
+    MapHud::Detail stringToDetail(const std::string& str, MapHud::Detail defaultVal = MapHud::Detail::AUTO) {
+        if (str == "AUTO") return MapHud::Detail::AUTO;
+        if (str == "HIGH") return MapHud::Detail::HIGH;
+        if (str == "LOW")  return MapHud::Detail::LOW;
+        DEBUG_WARN_F("Unknown Detail '%s', using default", str.c_str());
         return defaultVal;
     }
 
@@ -1051,6 +1135,15 @@ namespace {
     // Helper to capture base HUD properties to a settings map
     // Set includePosition=false for HUDs that use anchor-based positioning (e.g., MapHud)
     // Color slot key names for per-HUD INI overrides (color_primary, color_secondary, etc.)
+    //
+    // When ColorSlot or FontCategory grows, both the toKey() and parseKey() lookups below
+    // must be updated in lock-step. These static_asserts catch the easy mistake of adding
+    // a new enum value without updating the INI key mappings.
+    static_assert(static_cast<int>(ColorSlot::COUNT) == 10,
+                  "ColorSlot enum changed — update colorSlotToKey() and parseColorKey() below.");
+    static_assert(static_cast<int>(FontCategory::COUNT) == 6,
+                  "FontCategory enum changed — update fontCategoryToKey() and parseFontKey() below.");
+
     const char* colorSlotToKey(ColorSlot slot) {
         switch (slot) {
             case ColorSlot::PRIMARY:    return "color_primary";
@@ -1197,6 +1290,11 @@ namespace {
             if (key == Lean::ROW_STEER_VALUE.key) return Lean::ROW_STEER_VALUE.description;
             if (key == Lean::SHOW_MAX_MARKERS.key) return Lean::SHOW_MAX_MARKERS.description;
             if (key == Lean::MAX_MARKER_LINGER_FRAMES.key) return Lean::MAX_MARKER_LINGER_FRAMES.description;
+        } else if (hudName == "GForceWidget") {
+            if (key == GForce::MAX_SCALE.key) return GForce::MAX_SCALE.description;
+            if (key == GForce::SHOW_MAX_TEXT.key) return GForce::SHOW_MAX_TEXT.description;
+            if (key == GForce::SHOW_MAX_MARKER.key) return GForce::SHOW_MAX_MARKER.description;
+            if (key == GForce::MAX_MARKER_LINGER_FRAMES.key) return GForce::MAX_MARKER_LINGER_FRAMES.description;
         } else if (hudName == "BarsWidget") {
             if (key == Bars::COL_THROTTLE.key) return Bars::COL_THROTTLE.description;
             if (key == Bars::COL_BRAKE.key) return Bars::COL_BRAKE.description;
@@ -1216,6 +1314,16 @@ namespace {
             if (key == TyreTemp::HOT_THRESHOLD.key) return TyreTemp::HOT_THRESHOLD.description;
             if (key == TyreTemp::ROW_BARS.key) return TyreTemp::ROW_BARS.description;
             if (key == TyreTemp::ROW_VALUES.key) return TyreTemp::ROW_VALUES.description;
+            if (key == TyreTemp::SHOW_LABELS.key) return TyreTemp::SHOW_LABELS.description;
+        }
+#endif
+#if GAME_HAS_ECU
+        else if (hudName == "EcuWidget") {
+            if (key == Ecu::ROW_MAP.key) return Ecu::ROW_MAP.description;
+            if (key == Ecu::ROW_TC.key) return Ecu::ROW_TC.description;
+            if (key == Ecu::ROW_EB.key) return Ecu::ROW_EB.description;
+            if (key == Ecu::ROW_AW.key) return Ecu::ROW_AW.description;
+            if (key == Ecu::SHOW_LABELS.key) return Ecu::SHOW_LABELS.description;
         }
 #endif
         else if (hudName == "FuelWidget") {
@@ -1235,13 +1343,12 @@ namespace {
             if (key == Notices::PB_DURATION.key) return Notices::PB_DURATION.description;
         } else if (hudName == "StandingsHud") {
             if (key == Standings::TOP_POSITIONS.key) return Standings::TOP_POSITIONS.description;
-            if (key == Standings::USE_ACCENT_HIGHLIGHT.key) return Standings::USE_ACCENT_HIGHLIGHT.description;
-            if (key == Standings::ANIMATE_POSITIONS.key) return Standings::ANIMATE_POSITIONS.description;
+            if (key == Standings::PLAYER_ROW_HIGHLIGHT.key) return Standings::PLAYER_ROW_HIGHLIGHT.description;
+            if (key == Standings::PLAYER_ROW_HIGHLIGHT_BRAND.key) return Standings::PLAYER_ROW_HIGHLIGHT_BRAND.description;
             if (key == Standings::ANIMATION_DURATION_MS.key) return Standings::ANIMATION_DURATION_MS.description;
             if (key == Standings::CLASSIC_LAYOUT.key) return Standings::CLASSIC_LAYOUT.description;
             if (key == Standings::NAME_MODE.key) return Standings::NAME_MODE.description;
-        } else if (hudName == "MapHud") {
-            if (key == Map::PIXEL_SPACING.key) return Map::PIXEL_SPACING.description;
+            if (key == Standings::SHORT_NAME_CHARS.key) return Standings::SHORT_NAME_CHARS.description;
         }
 #if GAME_HAS_RECORDS_PROVIDER
         else if (hudName == "RecordsHud") {
@@ -1250,7 +1357,19 @@ namespace {
 #endif
         else if (hudName == "GamepadWidget") {
             if (key == Gamepad::TRIGGER_FILL_MODE.key) return Gamepad::TRIGGER_FILL_MODE.description;
-        } else if (hudName == "LapConsistencyHud") {
+        }
+        else if (hudName == "MapHud") {
+            if (key == Map::LABEL_ANCHOR.key) return Map::LABEL_ANCHOR.description;
+        }
+#if GAME_HAS_FMX
+        else if (hudName == "FmxHud") {
+            // Per-trick disable flags share a common prefix; one description covers them all.
+            if (key.rfind(Keys::Fmx::TRICK_ENABLED_PREFIX, 0) == 0) {
+                return "Track this trick (1=enabled, 0=ignore)";
+            }
+        }
+#endif
+        else if (hudName == "LapConsistencyHud") {
             if (key == LapConsistency::CONSISTENCY_SCALE_FACTOR.key) return LapConsistency::CONSISTENCY_SCALE_FACTOR.description;
             if (key == LapConsistency::TREND_THRESHOLD_PERCENT.key) return LapConsistency::TREND_THRESHOLD_PERCENT.description;
         }
@@ -1430,40 +1549,22 @@ namespace {
         saveBitAsKey(settings, TRACK, rows, SessionHud::ROW_TRACK);
         saveBitAsKey(settings, FORMAT, rows, SessionHud::ROW_FORMAT);
         saveBitAsKey(settings, SERVER, rows, SessionHud::ROW_SERVER);
-        saveBitAsKey(settings, PLAYERS, rows, SessionHud::ROW_PLAYERS);
         saveBitAsKey(settings, WEATHER, rows, SessionHud::ROW_WEATHER);
-        // PASSWORD row removed - now controlled by passwordMode (Off = row hidden)
     }
 
     // SessionHud: load rows from named keys
+    // Note: an older "row_players" key (player count row) was dropped in v1.23
+    // along with the memory-reading subsystem. Old INIs containing it are
+    // silently ignored - we never look it up. ROW_WEATHER's bit shifted from
+    // 1<<5 to 1<<4 when ROW_PLAYERS was removed, but persistence is by name
+    // (row_weather) not by mask, so existing profiles are unaffected.
     void loadSessionRows(const SettingsManager::HudSettings& settings, uint32_t& rows) {
         using namespace Keys::SessionRows;
         loadBitFromKey(settings, TYPE, rows, SessionHud::ROW_TYPE);
         loadBitFromKey(settings, TRACK, rows, SessionHud::ROW_TRACK);
         loadBitFromKey(settings, FORMAT, rows, SessionHud::ROW_FORMAT);
         loadBitFromKey(settings, SERVER, rows, SessionHud::ROW_SERVER);
-        loadBitFromKey(settings, PLAYERS, rows, SessionHud::ROW_PLAYERS);
         loadBitFromKey(settings, WEATHER, rows, SessionHud::ROW_WEATHER);
-        // PASSWORD row removed - now controlled by passwordMode (Off = row hidden)
-    }
-
-    // SessionHud: password mode string conversion
-    const char* passwordModeToString(PasswordDisplayMode mode) {
-        switch (mode) {
-            case PasswordDisplayMode::Off:      return "off";
-            case PasswordDisplayMode::Hidden:   return "hidden";
-            case PasswordDisplayMode::AsHost:   return "as_host";
-            case PasswordDisplayMode::AsClient: return "as_client";
-            default:                            return "hidden";
-        }
-    }
-
-    PasswordDisplayMode passwordModeFromString(const std::string& str) {
-        if (str == "off")       return PasswordDisplayMode::Off;
-        if (str == "hidden")    return PasswordDisplayMode::Hidden;
-        if (str == "as_host")   return PasswordDisplayMode::AsHost;
-        if (str == "as_client") return PasswordDisplayMode::AsClient;
-        return PasswordDisplayMode::Hidden;  // Default
     }
 
     // LeanWidget: save rows as named keys
@@ -1497,6 +1598,26 @@ namespace {
         using namespace Keys::TyreTempRows;
         loadBitFromKey(settings, BARS, rows, TyreTempWidget::ROW_BARS);
         loadBitFromKey(settings, VALUES, rows, TyreTempWidget::ROW_VALUES);
+    }
+#endif
+
+#if GAME_HAS_ECU
+    // EcuWidget: save chips as named keys
+    void saveEcuRows(SettingsManager::HudSettings& settings, uint32_t rows) {
+        using namespace Keys::EcuRows;
+        saveBitAsKey(settings, MAP, rows, EcuWidget::ROW_MAP);
+        saveBitAsKey(settings, TC, rows, EcuWidget::ROW_TC);
+        saveBitAsKey(settings, EB, rows, EcuWidget::ROW_EB);
+        saveBitAsKey(settings, AW, rows, EcuWidget::ROW_AW);
+    }
+
+    // EcuWidget: load chips from named keys
+    void loadEcuRows(const SettingsManager::HudSettings& settings, uint32_t& rows) {
+        using namespace Keys::EcuRows;
+        loadBitFromKey(settings, MAP, rows, EcuWidget::ROW_MAP);
+        loadBitFromKey(settings, TC, rows, EcuWidget::ROW_TC);
+        loadBitFromKey(settings, EB, rows, EcuWidget::ROW_EB);
+        loadBitFromKey(settings, AW, rows, EcuWidget::ROW_AW);
     }
 #endif
 
@@ -1686,6 +1807,14 @@ namespace {
         float pendingOffsetX = 0, pendingOffsetY = 0;
         bool hasOffsetX = false, hasOffsetY = false;
 
+        // Each profile's cache is the complete intended state for the HUD (base keys
+        // are merged into every profile on load), so an absent color_/font_ key means
+        // "no override". Track which ones we see and clear the rest below — without
+        // this, a per-HUD override would leak across profile switches and survive a
+        // reset, since these private BaseHud members aren't touched by resetToDefaults().
+        std::array<bool, static_cast<size_t>(ColorSlot::COUNT)> colorSeen{};
+        std::array<bool, static_cast<size_t>(FontCategory::COUNT)> fontSeen{};
+
         for (const auto& [key, value] : settings) {
             try {
                 if (key == VISIBLE) {
@@ -1711,17 +1840,27 @@ namespace {
                     ColorSlot colorSlot = parseColorKey(key);
                     if (colorSlot != ColorSlot::COUNT) {
                         hud.setColorOverride(colorSlot, PluginUtils::parseColorHex(value));
+                        colorSeen[static_cast<size_t>(colorSlot)] = true;
                         continue;
                     }
                     FontCategory fontCategory = parseFontKey(key);
                     if (fontCategory != FontCategory::COUNT) {
                         hud.setFontOverride(fontCategory, value);
+                        fontSeen[static_cast<size_t>(fontCategory)] = true;
                         continue;
                     }
                 }
             } catch (...) {
                 DEBUG_WARN_F("Failed to parse base setting '%s=%s'", key.c_str(), value.c_str());
             }
+        }
+
+        // Clear any override not present in the applied settings (authoritative apply).
+        for (size_t i = 0; i < colorSeen.size(); ++i) {
+            if (!colorSeen[i]) hud.clearColorOverride(static_cast<ColorSlot>(i));
+        }
+        for (size_t i = 0; i < fontSeen.size(); ++i) {
+            if (!fontSeen[i]) hud.clearFontOverride(static_cast<FontCategory>(i));
         }
         // Apply buffered position
         if (hasOffsetX || hasOffsetY) {
@@ -1777,7 +1916,7 @@ void SettingsManager::captureCurrentState(const HudManager& hudManager) {
 void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache& cache) {
     cache.clear();
 
-    // Capture StandingsHud with topPositions and useAccentHighlight
+    // Capture StandingsHud including INI-only player-row-highlight settings
     {
         using namespace Keys::Standings;
         HudSettings settings;
@@ -1787,12 +1926,16 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
         saveStandingsColumns(settings, hud.m_enabledColumns);  // Named keys instead of bitmask
         settings[GAP_MODE] = gapModeToString(hud.m_gapMode);
         settings[GAP_REFERENCE_MODE] = gapReferenceModeToString(hud.m_gapReferenceMode);
+        settings[ANIMATION_MODE] = animationModeToString(hud.m_animationMode);
+        settings[SHOW_HEADERS] = hud.m_bShowHeaders ? "1" : "0";
+        settings[LIVE_GAPS] = hud.m_bLiveGaps ? "1" : "0";
         settings[IniOnly::Standings::TOP_POSITIONS.key] = std::to_string(hud.m_topPositionsCount);
-        settings[IniOnly::Standings::USE_ACCENT_HIGHLIGHT.key] = hud.m_bUseAccentForHighlight ? "1" : "0";
-        settings[IniOnly::Standings::ANIMATE_POSITIONS.key] = hud.m_bAnimatePositions ? "1" : "0";
+        settings[IniOnly::Standings::PLAYER_ROW_HIGHLIGHT.key] = hud.m_bPlayerRowHighlight ? "1" : "0";
+        settings[IniOnly::Standings::PLAYER_ROW_HIGHLIGHT_BRAND.key] = hud.m_bPlayerRowHighlightBrand ? "1" : "0";
         settings[IniOnly::Standings::ANIMATION_DURATION_MS.key] = std::to_string(static_cast<int>(hud.m_animationDurationMs));
         settings[IniOnly::Standings::CLASSIC_LAYOUT.key] = hud.m_bClassicLayout ? "1" : "0";
         settings[IniOnly::Standings::NAME_MODE.key] = std::to_string(static_cast<int>(hud.m_nameMode));
+        settings[IniOnly::Standings::SHORT_NAME_CHARS.key] = std::to_string(hud.m_shortNameChars);
         cache["StandingsHud"] = std::move(settings);
     }
 
@@ -1807,6 +1950,7 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
         settings["riderColorMode"] = riderColorModeToString(hud.getRiderColorMode());
         settings["trackWidthScale"] = std::to_string(hud.getTrackWidthScale());
         settings["labelMode"] = labelModeToString(hud.getLabelMode());
+        settings[IniOnly::Map::LABEL_ANCHOR.key] = labelAnchorToString(hud.getLabelAnchor());
         settings["riderShape"] = shapeIndexToFilename(hud.getRiderShape());
         settings["anchorPoint"] = anchorPointToString(hud.getAnchorPoint());
         settings["anchorX"] = std::to_string(hud.m_fAnchorX);
@@ -1814,8 +1958,7 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
         settings["zoomEnabled"] = std::to_string(hud.getZoomEnabled() ? 1 : 0);
         settings["zoomDistance"] = std::to_string(hud.getZoomDistance());
         settings["markerScale"] = std::to_string(hud.getMarkerScale());
-        // INI-only setting (previously in [Advanced])
-        settings["pixelSpacing"] = std::to_string(hud.getPixelSpacing());
+        settings["detail"] = detailToString(hud.getDetail());
         cache["MapHud"] = std::move(settings);
     }
 
@@ -1857,6 +2000,7 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
         captureBaseHudSettings(settings, hud);
         saveRecordsColumns(settings, hud.m_enabledColumns);  // Named keys instead of bitmask
         settings["recordsToShow"] = std::to_string(hud.m_recordsToShow);
+        settings["showHeaders"] = hud.m_bShowHeaders ? "1" : "0";
         settings[IniOnly::Records::SHOW_FOOTER.key] = hud.m_bShowFooter ? "1" : "0";
         cache["RecordsHud"] = std::move(settings);
     }
@@ -1871,6 +2015,7 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
         settings["maxDisplayLaps"] = std::to_string(hud.m_maxDisplayLaps);
         settings["displayOrder"] = std::to_string(static_cast<int>(hud.m_displayOrder));
         settings["showGapRow"] = hud.m_showGapRow ? "1" : "0";
+        settings["showHeaders"] = hud.m_bShowHeaders ? "1" : "0";
         cache["LapLogHud"] = std::move(settings);
     }
 
@@ -1890,6 +2035,7 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
         cache["LapConsistencyHud"] = std::move(settings);
     }
 
+#if GAME_HAS_FMX
     // Capture FmxHud (all settings per-profile, like StandingsHud)
     {
         using namespace Keys::Fmx;
@@ -1899,8 +2045,22 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
         settings[ENABLED_ROWS] = std::to_string(hud.m_enabledRows);
         settings[MAX_CHAIN_DISPLAY_ROWS] = std::to_string(hud.m_maxChainDisplayRows);
         settings[SHOW_DEBUG_LOGGING] = hud.m_showDebugLogging ? "1" : "0";
+
+        // Per-trick enable flags (INI-only). Skip index 0 (NONE) and the RIGHT
+        // half of L/R pairs — they share a key with the LEFT variant. The
+        // gate in FmxManager indexes by full enum, so apply() mirrors the
+        // value to both indices when reading back.
+        const auto& fmxCfg = FmxManager::getInstance().getConfig();
+        for (int i = 1; i < static_cast<int>(Fmx::TrickType::COUNT); ++i) {
+            auto t = static_cast<Fmx::TrickType>(i);
+            if (Fmx::getTrickDirection(t) == Fmx::TrickDirection::RIGHT) continue;
+            std::string key = std::string(TRICK_ENABLED_PREFIX) + Fmx::getTrickIniKey(t);
+            settings[key] = fmxCfg.tricksEnabled[i] ? "1" : "0";
+        }
+
         cache["FmxHud"] = std::move(settings);
     }
+#endif
 
     // Capture StatsHud
     {
@@ -1985,13 +2145,12 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
         settings["utcOnTop"] = hud.getUtcOnTop() ? "1" : "0";
         cache["ClockWidget"] = std::move(settings);
     }
-    // SessionHud with enabledRows, passwordMode, and showIcons
+    // SessionHud with enabledRows and showIcons
     {
         HudSettings settings;
         const auto& hud = hudManager.getSessionHud();
         captureBaseHudSettings(settings, hud);
         saveSessionRows(settings, hud.m_enabledRows);
-        settings[Keys::Session::PASSWORD_MODE] = passwordModeToString(hud.m_passwordMode);
         settings[Keys::Session::SHOW_ICONS] = std::to_string(hud.m_bShowIcons ? 1 : 0);
         cache["SessionHud"] = std::move(settings);
     }
@@ -2101,6 +2260,18 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
         cache["LeanWidget"] = std::move(settings);
     }
 
+    // GForceWidget with INI-only tuning (maxScale, linger, colors, text/marker toggles)
+    {
+        HudSettings settings;
+        const auto& hud = hudManager.getGForceWidget();
+        captureBaseHudSettings(settings, hud);
+        settings[IniOnly::GForce::MAX_SCALE.key] = std::to_string(hud.m_maxScale);
+        settings[IniOnly::GForce::SHOW_MAX_TEXT.key] = hud.m_bShowMaxText ? "1" : "0";
+        settings[IniOnly::GForce::SHOW_MAX_MARKER.key] = hud.m_bShowMaxMarker ? "1" : "0";
+        settings[IniOnly::GForce::MAX_MARKER_LINGER_FRAMES.key] = std::to_string(hud.m_maxMarkerLingerFrames);
+        cache["GForceWidget"] = std::move(settings);
+    }
+
 #if GAME_HAS_TYRE_TEMP
     // TyreTempWidget with temperature thresholds and row toggles
     {
@@ -2110,7 +2281,20 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
         settings["coldThreshold"] = std::to_string(hud.getColdThreshold());
         settings["hotThreshold"] = std::to_string(hud.getHotThreshold());
         saveTyreTempRows(settings, hud.m_enabledRows);  // Named keys for row toggles
+        settings["showLabels"] = hud.m_bShowLabels ? "1" : "0";  // INI-only
         cache["TyreTempWidget"] = std::move(settings);
+    }
+#endif
+
+#if GAME_HAS_ECU
+    // EcuWidget with per-chip toggles and label toggle
+    {
+        HudSettings settings;
+        const auto& hud = hudManager.getEcuWidget();
+        captureBaseHudSettings(settings, hud);
+        saveEcuRows(settings, hud.m_enabledRows);  // Named keys for chip toggles
+        settings["showLabels"] = hud.m_bShowLabels ? "1" : "0";
+        cache["EcuWidget"] = std::move(settings);
     }
 #endif
 
@@ -2179,6 +2363,28 @@ void SettingsManager::captureFactoryDefaults(const HudManager& hudManager) {
     }
 
     captureToCache(hudManager, m_hudDefaults);
+
+    // Snapshot the pristine per-HUD constructor defaults for the reset paths. m_hudDefaults
+    // is about to accumulate user-edited base-section keys during loadSettings() (the fold at
+    // the [HudName] base-section handler), which is correct for sparse-save round-tripping but
+    // would make "reset to defaults" restore the file's baseline instead of this build's
+    // defaults. Keep an untouched copy so reset means factory, symmetric with m_globalDefaultsIni.
+    m_hudFactoryDefaults = m_hudDefaults;
+
+    // Capture the global (non-per-profile) sections as INI text now, so the reset paths can
+    // replay them later. Reusing writeGlobalSettings() keeps this snapshot in lockstep with
+    // save. INVARIANT: every subsystem must already hold its factory-default state when this
+    // runs. Most do via their constructor, but some establish defaults in an initialize()
+    // instead — notably HotkeyManager::initialize() sets the default key bindings (e.g. the
+    // settings-toggle key). plugin_manager.cpp calls those initialize()s before HudManager's,
+    // which is what triggers loadSettings()/this capture. If init is ever reordered so this
+    // runs first, the snapshot would capture "unset" defaults and reset would wipe those
+    // bindings — so keep subsystem default-init ahead of loadSettings().
+    {
+        std::ostringstream globalDefaults;
+        writeGlobalSettings(globalDefaults, hudManager);
+        m_globalDefaultsIni = globalDefaults.str();
+    }
     m_factoryDefaultsCaptured = true;
     DEBUG_INFO("Captured HUD factory defaults for sparse INI format");
 }
@@ -2212,7 +2418,7 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
         hud.setDataDirty();
     };
 
-    // Apply StandingsHud with topPositions and useAccentHighlight
+    // Apply StandingsHud including INI-only player-row-highlight settings
     {
         using namespace Keys::Standings;
         auto it = cache.find("StandingsHud");
@@ -2264,11 +2470,27 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
                     topPos = std::max(0, std::min(topPos, static_cast<int>(StandingsHud::MAX_TOP_POSITIONS)));
                     hud.m_topPositionsCount = topPos;
                 }
-                if (settings.count(IniOnly::Standings::USE_ACCENT_HIGHLIGHT.key)) {
-                    hud.m_bUseAccentForHighlight = std::stoi(settings.at(IniOnly::Standings::USE_ACCENT_HIGHLIGHT.key)) != 0;
+                if (settings.count(IniOnly::Standings::PLAYER_ROW_HIGHLIGHT.key)) {
+                    hud.m_bPlayerRowHighlight = std::stoi(settings.at(IniOnly::Standings::PLAYER_ROW_HIGHLIGHT.key)) != 0;
                 }
-                if (settings.count(IniOnly::Standings::ANIMATE_POSITIONS.key)) {
-                    hud.m_bAnimatePositions = std::stoi(settings.at(IniOnly::Standings::ANIMATE_POSITIONS.key)) != 0;
+                if (settings.count(IniOnly::Standings::PLAYER_ROW_HIGHLIGHT_BRAND.key)) {
+                    hud.m_bPlayerRowHighlightBrand = std::stoi(settings.at(IniOnly::Standings::PLAYER_ROW_HIGHLIGHT_BRAND.key)) != 0;
+                }
+                if (settings.count(ANIMATION_MODE)) {
+                    hud.m_animationMode = stringToAnimationMode(settings.at(ANIMATION_MODE));
+                } else if (settings.count("animatePositions")) {
+                    // Legacy: animatePositions=0/1 → OFF/BASIC. Read on load only; not
+                    // re-emitted on save, so the key drops out of the INI on first
+                    // re-save (intentional — replaced by animationMode).
+                    hud.m_animationMode = (std::stoi(settings.at("animatePositions")) != 0)
+                        ? StandingsHud::AnimationMode::BASIC
+                        : StandingsHud::AnimationMode::OFF;
+                }
+                if (settings.count(SHOW_HEADERS)) {
+                    hud.m_bShowHeaders = std::stoi(settings.at(SHOW_HEADERS)) != 0;
+                }
+                if (settings.count(LIVE_GAPS)) {
+                    hud.m_bLiveGaps = std::stoi(settings.at(LIVE_GAPS)) != 0;
                 }
                 if (settings.count(IniOnly::Standings::ANIMATION_DURATION_MS.key)) {
                     int durationMs = std::stoi(settings.at(IniOnly::Standings::ANIMATION_DURATION_MS.key));
@@ -2286,6 +2508,11 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
                     // Migrate from old col_name boolean: off -> OFF, on -> SHORT
                     hud.m_nameMode = (hud.m_enabledColumns & StandingsHud::COL_NAME)
                         ? StandingsHud::NameMode::SHORT : StandingsHud::NameMode::OFF;
+                }
+                if (settings.count(IniOnly::Standings::SHORT_NAME_CHARS.key)) {
+                    int chars = std::stoi(settings.at(IniOnly::Standings::SHORT_NAME_CHARS.key));
+                    hud.m_shortNameChars = std::max(StandingsHud::MIN_SHORT_NAME_CHARS,
+                        std::min(chars, StandingsHud::MAX_SHORT_NAME_CHARS));
                 }
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("StandingsHud: Failed to parse settings: %s", e.what());
@@ -2309,12 +2536,12 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
                 if (settings.count("riderColorMode")) hud.setRiderColorMode(stringToRiderColorMode(settings.at("riderColorMode")));
                 if (settings.count("trackWidthScale")) hud.setTrackWidthScale(validateTrackWidthScale(std::stof(settings.at("trackWidthScale"))));
                 if (settings.count("labelMode")) hud.setLabelMode(stringToLabelMode(settings.at("labelMode")));
+                if (settings.count(IniOnly::Map::LABEL_ANCHOR.key)) hud.setLabelAnchor(stringToLabelAnchor(settings.at(IniOnly::Map::LABEL_ANCHOR.key)));
                 if (settings.count("riderShape")) hud.setRiderShape(filenameToShapeIndex(settings.at("riderShape"), 1));
                 if (settings.count("zoomEnabled")) hud.setZoomEnabled(std::stoi(settings.at("zoomEnabled")) != 0);
                 if (settings.count("zoomDistance")) hud.setZoomDistance(validateZoomDistance(std::stof(settings.at("zoomDistance"))));
                 if (settings.count("markerScale")) hud.setMarkerScale(std::stof(settings.at("markerScale")));
-                // INI-only setting (previously in [Advanced])
-                if (settings.count("pixelSpacing")) hud.setPixelSpacing(std::stof(settings.at("pixelSpacing")));
+                if (settings.count("detail")) hud.setDetail(stringToDetail(settings.at("detail")));
 
                 // Anchor-based positioning
                 if (settings.count("anchorPoint")) hud.setAnchorPoint(stringToAnchorPoint(settings.at("anchorPoint")));
@@ -2410,7 +2637,10 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
                 loadRecordsColumns(settings, hud.m_enabledColumns);  // Named keys instead of bitmask
                 if (settings.count("recordsToShow")) {
                     int count = std::stoi(settings.at("recordsToShow"));
-                    if (count >= 4 && count <= 30) hud.m_recordsToShow = count;
+                    if (count >= 3 && count <= 30) hud.m_recordsToShow = count;
+                }
+                if (settings.count("showHeaders")) {
+                    hud.m_bShowHeaders = std::stoi(settings.at("showHeaders")) != 0;
                 }
                 if (settings.count(IniOnly::Records::SHOW_FOOTER.key)) {
                     hud.m_bShowFooter = std::stoi(settings.at(IniOnly::Records::SHOW_FOOTER.key)) != 0;
@@ -2439,6 +2669,7 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
                     hud.m_displayOrder = (order == 1) ? LapLogHud::DisplayOrder::NEWEST_FIRST : LapLogHud::DisplayOrder::OLDEST_FIRST;
                 }
                 if (settings.count("showGapRow")) hud.m_showGapRow = (settings.at("showGapRow") == "1");
+                if (settings.count("showHeaders")) hud.m_bShowHeaders = std::stoi(settings.at("showHeaders")) != 0;
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("LapLogHud: Failed to parse settings: %s", e.what());
             }
@@ -2500,6 +2731,7 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
         }
     }
 
+#if GAME_HAS_FMX
     // Apply FmxHud (all settings per-profile, like StandingsHud)
     {
         using namespace Keys::Fmx;
@@ -2521,12 +2753,37 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
                     hud.m_showDebugLogging = settings.at(SHOW_DEBUG_LOGGING) == "1";
                     FmxManager::getInstance().setLoggingEnabled(hud.m_showDebugLogging);
                 }
+
+                // Per-trick enable flags (INI-only). Always reset the mask to
+                // defaults first so a profile switch is deterministic — without
+                // this, a profile lacking the keys would silently inherit the
+                // previously applied profile's disable state. Skip RIGHT half
+                // of L/R pairs (shared key); mirror the value to both indices.
+                auto& fmxMgr = FmxManager::getInstance();
+                Fmx::FmxConfig fmxCfg = fmxMgr.getConfig();
+                for (auto& b : fmxCfg.tricksEnabled) b = true;
+                for (int i = 1; i < static_cast<int>(Fmx::TrickType::COUNT); ++i) {
+                    auto t = static_cast<Fmx::TrickType>(i);
+                    if (Fmx::getTrickDirection(t) == Fmx::TrickDirection::RIGHT) continue;
+                    std::string key = std::string(TRICK_ENABLED_PREFIX) + Fmx::getTrickIniKey(t);
+                    auto entry = settings.find(key);
+                    if (entry != settings.end()) {
+                        bool enabled = std::stoi(entry->second) != 0;
+                        fmxCfg.tricksEnabled[i] = enabled;
+                        Fmx::TrickType opposite = Fmx::flipTrickDirection(t);
+                        if (opposite != t) {
+                            fmxCfg.tricksEnabled[static_cast<int>(opposite)] = enabled;
+                        }
+                    }
+                }
+                fmxMgr.setConfig(fmxCfg);
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("FmxHud: Failed to parse settings: %s", e.what());
             }
             hud.setDataDirty();
         }
     }
+#endif
 
     // Apply StatsHud
     {
@@ -2710,7 +2967,7 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
             hud.setDataDirty();
         }
     }
-    // Apply SessionHud with enabledRows, passwordMode, and showIcons
+    // Apply SessionHud with enabledRows and showIcons
     // Also check for legacy "SessionWidget" key for backwards compatibility
     {
         auto it = cache.find("SessionHud");
@@ -2724,9 +2981,6 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
             const auto& settings = it->second;
             try {
                 loadSessionRows(settings, hud.m_enabledRows);
-                if (settings.count(Keys::Session::PASSWORD_MODE)) {
-                    hud.m_passwordMode = passwordModeFromString(settings.at(Keys::Session::PASSWORD_MODE));
-                }
                 if (settings.count(Keys::Session::SHOW_ICONS)) {
                     hud.m_bShowIcons = (std::stoi(settings.at(Keys::Session::SHOW_ICONS)) != 0);
                 }
@@ -2948,6 +3202,35 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
         }
     }
 
+    // Apply GForceWidget (INI-only settings)
+    {
+        auto it = cache.find("GForceWidget");
+        if (it != cache.end()) {
+            auto& hud = hudManager.getGForceWidget();
+            applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                if (settings.count(IniOnly::GForce::MAX_SCALE.key)) {
+                    float v = std::stof(settings.at(IniOnly::GForce::MAX_SCALE.key));
+                    if (v > 0.1f) hud.m_maxScale = v;
+                }
+                if (settings.count(IniOnly::GForce::SHOW_MAX_TEXT.key)) {
+                    hud.m_bShowMaxText = std::stoi(settings.at(IniOnly::GForce::SHOW_MAX_TEXT.key)) != 0;
+                }
+                if (settings.count(IniOnly::GForce::SHOW_MAX_MARKER.key)) {
+                    hud.m_bShowMaxMarker = std::stoi(settings.at(IniOnly::GForce::SHOW_MAX_MARKER.key)) != 0;
+                }
+                if (settings.count(IniOnly::GForce::MAX_MARKER_LINGER_FRAMES.key)) {
+                    hud.m_maxMarkerLingerFrames = std::stoi(settings.at(IniOnly::GForce::MAX_MARKER_LINGER_FRAMES.key));
+                }
+            } catch (const std::exception& e) {
+                DEBUG_WARN_F("GForceWidget: Failed to parse settings: %s", e.what());
+            }
+            hud.setDataDirty();
+        }
+    }
+
 #if GAME_HAS_TYRE_TEMP
     // Apply TyreTempWidget with temperature thresholds and row toggles
     {
@@ -2965,8 +3248,33 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
                     hud.setHotThreshold(std::stof(settings.at("hotThreshold")));
                 }
                 loadTyreTempRows(settings, hud.m_enabledRows);  // Named keys for row toggles
+                if (settings.count("showLabels")) {
+                    hud.m_bShowLabels = std::stoi(settings.at("showLabels")) != 0;
+                }
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("TyreTempWidget: Failed to parse settings: %s", e.what());
+            }
+            hud.setDataDirty();
+        }
+    }
+#endif
+
+#if GAME_HAS_ECU
+    // Apply EcuWidget with per-chip toggles and label toggle
+    {
+        auto it = cache.find("EcuWidget");
+        if (it != cache.end()) {
+            auto& hud = hudManager.getEcuWidget();
+            applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                loadEcuRows(settings, hud.m_enabledRows);  // Named keys for chip toggles
+                if (settings.count("showLabels")) {
+                    hud.m_bShowLabels = std::stoi(settings.at("showLabels")) != 0;
+                }
+            } catch (const std::exception& e) {
+                DEBUG_WARN_F("EcuWidget: Failed to parse settings: %s", e.what());
             }
             hud.setDataDirty();
         }
@@ -3204,6 +3512,166 @@ void SettingsManager::applyToAllProfiles(HudManager& hudManager) {
     DEBUG_INFO_F("Applied %s profile settings to all profiles", ProfileManager::getProfileName(activeProfile));
 }
 
+void SettingsManager::resetAllToFactoryDefaults(HudManager& hudManager) {
+    if (!m_factoryDefaultsCaptured) {
+        // Shouldn't happen post-load, but fall back to the legacy behavior rather
+        // than wiping every profile to an empty cache.
+        DEBUG_WARN("resetAllToFactoryDefaults: factory defaults not captured, falling back to applyToAllProfiles");
+        applyToAllProfiles(hudManager);
+        return;
+    }
+
+    // Seed every profile with the pristine factory snapshot (this build's constructor
+    // defaults), not m_hudDefaults — the latter has the file's base-section edits folded in,
+    // which would make a full factory reset preserve stale/old-version defaults. This covers
+    // every INI-controllable per-HUD setting (including INI-only overrides) regardless of
+    // whether an individual HUD's resetToDefaults() happens to reset it.
+    for (auto& cache : m_profileCache) {
+        cache = m_hudFactoryDefaults;
+    }
+    // Re-seed the sparse-save baseline to factory too, so the rewritten base [HudName]
+    // sections reflect this build's defaults and every profile collapses to a minimal diff.
+    // (This is the path that intentionally discards user base-section edits — a full factory
+    // reset is exactly when that's wanted.)
+    m_hudDefaults = m_hudFactoryDefaults;
+    m_cacheInitialized = true;
+
+    // Push the active profile's (now default) settings onto the live HUDs.
+    applyActiveProfile(hudManager);
+
+    // Persist. saveSettings re-captures the (now default) live state into the
+    // active profile and rewrites the file from scratch, so stale per-profile
+    // overrides are dropped (and, unlike before, stale base-section defaults are
+    // replaced with this build's factory defaults).
+    if (!m_savePath.empty()) {
+        saveSettings(hudManager, m_savePath.c_str());
+    }
+
+    DEBUG_INFO("Reset all profiles to factory defaults");
+}
+
+void SettingsManager::resetHudsToFactoryDefaults(HudManager& hudManager, const std::vector<std::string>& hudNames, bool keepVisibility) {
+    if (!m_factoryDefaultsCaptured || !m_cacheInitialized) {
+        return;  // Nothing to restore from yet (shouldn't happen post-load).
+    }
+
+    ProfileType active = ProfileManager::getInstance().getActiveProfile();
+
+    // Sync the active-profile cache with the live HUDs first. applyActiveProfile()
+    // below re-applies the whole cache, so this ensures HUDs we're NOT resetting
+    // keep their current (possibly unsaved) state instead of being reverted.
+    captureToProfile(hudManager, active);
+
+    ProfileCache& cache = m_profileCache[static_cast<size_t>(active)];
+    for (const auto& name : hudNames) {
+        // Source from the pristine factory snapshot, not m_hudDefaults (which has file
+        // base-section edits folded in). A per-tab reset restores only the active profile,
+        // so we deliberately leave m_hudDefaults untouched — other profiles still use it as
+        // their save baseline; the reset values just get written as explicit profile diffs.
+        auto defIt = m_hudFactoryDefaults.find(name);
+        if (defIt == m_hudFactoryDefaults.end()) continue;  // not a per-profile HUD (e.g. HelmetOverlay)
+
+        HudSettings& hudCache = cache[name];
+
+        // For single-HUD tabs, a reset shouldn't hide the element the user is
+        // positioning, so keep its current visibility (full "Reset all settings"
+        // resets visibility instead). The Widgets tab opts out via keepVisibility=
+        // false: its per-widget "Visible" toggles are tab config that Reset should
+        // restore to factory defaults like everything else.
+        std::string keepVisible;
+        if (keepVisibility) {
+            auto visIt = hudCache.find(Keys::Base::VISIBLE);
+            if (visIt != hudCache.end()) keepVisible = visIt->second;
+        }
+
+        hudCache = defIt->second;  // pristine factory defaults (no base-section edits)
+        if (!keepVisible.empty()) hudCache[Keys::Base::VISIBLE] = keepVisible;
+    }
+
+    // Push the updated cache onto the live HUDs. applyBaseHudSettings is authoritative,
+    // so per-profile color/font overrides absent from the defaults are cleared too.
+    applyActiveProfile(hudManager);
+}
+
+void SettingsManager::resetActiveProfileToFactoryDefaults(HudManager& hudManager) {
+    if (!m_factoryDefaultsCaptured || !m_cacheInitialized) {
+        return;  // Nothing to restore from yet (shouldn't happen post-load).
+    }
+
+    ProfileType active = ProfileManager::getInstance().getActiveProfile();
+
+    // Replace the whole active-profile cache with the pristine factory snapshot (this build's
+    // defaults), not m_hudDefaults (file base-section edits folded in). This covers every
+    // per-profile HUD/widget (including INI-only members and color/font overrides) in one shot.
+    // Only the active profile is reset, so m_hudDefaults (the shared save baseline for the
+    // other profiles) is left untouched. Global sections (colors/fonts/hotkeys) and other
+    // profiles aren't in this cache either, so they're left untouched.
+    m_profileCache[static_cast<size_t>(active)] = m_hudFactoryDefaults;
+    applyActiveProfile(hudManager);
+}
+
+void SettingsManager::replayGlobalDefaults(HudManager& hudManager, const std::vector<std::string>* sectionFilter) {
+    if (m_globalDefaultsIni.empty()) {
+        // Snapshot not captured yet (shouldn't happen post-load); nothing to restore.
+        return;
+    }
+
+    // Developer mode is an INI-only power-user flag; no reset path touches it even though it
+    // lives in [Advanced]. Preserve it across the snapshot replay.
+    const bool developerMode = m_developerMode;
+
+    // Replay the captured default INI through the same applier loadSettings() uses, so the
+    // reset path covers every global setting that save/load cover, automatically.
+    std::istringstream stream(m_globalDefaultsIni);
+    std::string line;
+    std::string section;
+    while (std::getline(stream, line)) {
+        size_t start = line.find_first_not_of(" \t\r\n");
+        if (start == std::string::npos) continue;
+        size_t end = line.find_last_not_of(" \t\r\n");
+        line = line.substr(start, end - start + 1);
+        if (line.empty() || line[0] == '#') continue;
+
+        if (line.front() == '[' && line.back() == ']') {
+            section = line.substr(1, line.length() - 2);
+            continue;
+        }
+
+        // Skip lines outside the requested sections (null filter = apply everything).
+        if (sectionFilter &&
+            std::find(sectionFilter->begin(), sectionFilter->end(), section) == sectionFilter->end()) {
+            continue;
+        }
+
+        size_t equals = line.find('=');
+        if (equals == std::string::npos) continue;
+        std::string key = line.substr(0, equals);
+        std::string value = line.substr(equals + 1);
+
+        // Strip inline comments (everything after ';'), matching loadSettings().
+        size_t commentPos = value.find(';');
+        if (commentPos != std::string::npos) {
+            value = value.substr(0, commentPos);
+            size_t valueEnd = value.find_last_not_of(" \t");
+            value = (valueEnd != std::string::npos) ? value.substr(0, valueEnd + 1) : std::string();
+        }
+
+        applyGlobalLine(section, key, value, hudManager);
+    }
+
+    m_developerMode = developerMode;
+}
+
+void SettingsManager::resetGlobalsToFactoryDefaults(HudManager& hudManager) {
+    replayGlobalDefaults(hudManager, nullptr);
+    DEBUG_INFO("Reset global settings to factory defaults");
+}
+
+void SettingsManager::resetGlobalSectionsToFactoryDefaults(HudManager& hudManager, const std::vector<std::string>& sections) {
+    replayGlobalDefaults(hudManager, &sections);
+    DEBUG_INFO_F("Reset %zu global section(s) to factory defaults", sections.size());
+}
+
 void SettingsManager::copyToProfile(HudManager& hudManager, ProfileType targetProfile) {
     ProfileType activeProfile = ProfileManager::getInstance().getActiveProfile();
 
@@ -3227,6 +3695,642 @@ void SettingsManager::copyToProfile(HudManager& hudManager, ProfileType targetPr
     DEBUG_INFO_F("Copied %s profile settings to %s",
         ProfileManager::getProfileName(activeProfile),
         ProfileManager::getProfileName(targetProfile));
+}
+
+void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& hudManager) const {
+    // Write General section (global preferences)
+    out << "[General]\n";
+    out << "gridSnapping=" << (UiConfig::getInstance().getGridSnapping() ? 1 : 0) << "\n";
+    out << "screenClamping=" << (UiConfig::getInstance().getScreenClamping() ? 1 : 0) << "\n";
+    out << "autoSave=" << (UiConfig::getInstance().getAutoSave() ? 1 : 0) << "\n";
+    out << "controller=" << XInputReader::getInstance().getRumbleConfig().controllerIndex << "\n";
+    out << "pbScope=" << pbScopeToString(UiConfig::getInstance().getPBScope()) << "\n";
+#if GAME_HAS_RECORDS_PROVIDER
+    out << "recordsAutoFetch=" << (hudManager.getRecordsHud().m_bAutoFetch ? 1 : 0) << "\n";
+    out << "recordsProvider=" << dataProviderToString(hudManager.getRecordsHud().m_provider) << "\n";
+#endif
+#if GAME_HAS_DISCORD
+    out << "discordRichPresence=" << (DiscordManager::getInstance().isEnabled() ? 1 : 0) << "\n";
+#endif
+    out << "filterDnsRiders=" << (PluginData::getInstance().isFilterDnsRiders() ? 1 : 0) << "\n";
+#if GAME_HAS_HTTP_SERVER
+    out << "webServer=" << (HttpServer::getInstance().isEnabled() ? 1 : 0) << " ; Web overlay server (port and throttle in [Advanced])\n";
+#endif
+    out << "\n";
+
+    // Write Updates section (auto-update settings, owned solely by the Updates tab).
+    // Consolidated here from [General] (updateMode/dismissedVersion) and [Advanced]
+    // (updateChannel/updateDebugMode) so the tab maps 1:1 to one INI section and resets
+    // via section replay. updateChannel is written before dismissedVersion because
+    // setChannel() clears the dismissed version when the channel changes — applying it
+    // first keeps a same-channel dismissal intact on load.
+    {
+        const char* channelStr = (UpdateChecker::getInstance().getChannel() == UpdateChecker::UpdateChannel::PRERELEASE) ? "prerelease" : "stable";
+        const char* updateModeStr = "off";
+        switch (UpdateChecker::getInstance().getMode()) {
+            case UpdateChecker::UpdateMode::OFF: updateModeStr = "off"; break;
+            case UpdateChecker::UpdateMode::NOTIFY: updateModeStr = "notify"; break;
+        }
+        out << "[Updates]\n";
+        out << "updateChannel=" << channelStr << "\n";
+        out << "updateMode=" << updateModeStr << "\n";
+        out << "updateDebugMode=" << (UpdateChecker::getInstance().isDebugMode() ? 1 : 0) << "\n";
+        // Dismissed version (suppresses re-notifying about an update the user dismissed).
+        // Written unconditionally — even when empty — so the factory-defaults snapshot
+        // (captured before load, when it is empty) carries the key, and a full reset
+        // restores it to empty via the normal [Updates] replay. A conditional write would
+        // omit it from the snapshot, leaving a stale dismissal stuck across "Reset all
+        // settings". An empty value loads as a no-op (setDismissedVersion("")).
+        out << "dismissedVersion=" << UpdateChecker::getInstance().getDismissedVersion() << "\n";
+        out << "\n";
+    }
+
+    // Write Advanced section (power-user settings)
+    out << "[Advanced]\n";
+    out << IniOnly::Advanced::DEVELOPER_MODE.key << "=" << (m_developerMode ? 1 : 0) << " ; " << IniOnly::Advanced::DEVELOPER_MODE.description << "\n";
+    // Note: updateChannel/updateMode/updateDebugMode/dismissedVersion moved to [Updates]
+    // Note: mapPixelSpacing moved to [MapHud]
+    // Note: speedoNeedleColor, speedoShowOdometer, speedoShowTripmeter moved to [SpeedoWidget]
+    // Note: tachoNeedleColor moved to [TachoWidget]
+    // Note: leanArcFillColor moved to [LeanWidget]
+    // Note: recordsShowFooter moved to [RecordsHud]
+    // Note: standingsTopPositions, standingsUseAccentHighlight moved to [StandingsHud]
+    out << IniOnly::Advanced::DROP_SHADOW_OFFSET_X.key << "=" << UiConfig::getInstance().getDropShadowOffsetX() << " ; " << IniOnly::Advanced::DROP_SHADOW_OFFSET_X.description << "\n";
+    out << IniOnly::Advanced::DROP_SHADOW_OFFSET_Y.key << "=" << UiConfig::getInstance().getDropShadowOffsetY() << " ; " << IniOnly::Advanced::DROP_SHADOW_OFFSET_Y.description << "\n";
+    out << IniOnly::Advanced::DROP_SHADOW_COLOR.key << "=" << PluginUtils::formatColorHex(UiConfig::getInstance().getDropShadowColor()) << " ; " << IniOnly::Advanced::DROP_SHADOW_COLOR.description << "\n";
+    out << IniOnly::Advanced::HOLD_REPEAT_FAST_MS.key << "=" << UiConfig::getInstance().getHoldRepeatFastMs() << " ; " << IniOnly::Advanced::HOLD_REPEAT_FAST_MS.description << "\n";
+    out << IniOnly::Advanced::HAZARD_STATIONARY_TOLERANCE.key << "=" << PluginData::getInstance().getHazardStationaryTolerance() << " ; " << IniOnly::Advanced::HAZARD_STATIONARY_TOLERANCE.description << "\n";
+    out << IniOnly::Advanced::HAZARD_STATIONARY_DURATION_MS.key << "=" << PluginData::getInstance().getHazardStationaryDurationMs() << " ; " << IniOnly::Advanced::HAZARD_STATIONARY_DURATION_MS.description << "\n";
+    out << IniOnly::Advanced::HAZARD_WRONG_WAY_DURATION_MS.key << "=" << PluginData::getInstance().getHazardWrongWayDurationMs() << " ; " << IniOnly::Advanced::HAZARD_WRONG_WAY_DURATION_MS.description << "\n";
+    out << IniOnly::Advanced::HAZARD_AWARENESS_DISTANCE.key << "=" << PluginData::getInstance().getHazardAwarenessDistance() << " ; " << IniOnly::Advanced::HAZARD_AWARENESS_DISTANCE.description << "\n";
+    out << IniOnly::Advanced::HAZARD_COOLDOWN_MS.key << "=" << PluginData::getInstance().getHazardCooldownMs() << " ; " << IniOnly::Advanced::HAZARD_COOLDOWN_MS.description << "\n";
+    out << IniOnly::Advanced::HAZARD_GRACE_PERIOD_MS.key << "=" << PluginData::getInstance().getHazardGracePeriodMs() << " ; " << IniOnly::Advanced::HAZARD_GRACE_PERIOD_MS.description << "\n";
+    out << IniOnly::Advanced::BLUE_FLAG_AWARENESS_DISTANCE.key << "=" << PluginData::getInstance().getBlueFlagAwarenessDistance() << " ; " << IniOnly::Advanced::BLUE_FLAG_AWARENESS_DISTANCE.description << "\n";
+#if GAME_HAS_HTTP_SERVER
+    out << IniOnly::Advanced::WEB_SERVER_PORT.key << "=" << HttpServer::getInstance().getPort() << " ; " << IniOnly::Advanced::WEB_SERVER_PORT.description << "\n";
+    out << IniOnly::Advanced::WEB_SERVER_THROTTLE_MS.key << "=" << HttpServer::getInstance().getThrottleMs() << " ; " << IniOnly::Advanced::WEB_SERVER_THROTTLE_MS.description << "\n";
+    out << IniOnly::Advanced::WEB_SERVER_BIND_ADDRESS.key << "=" << HttpServer::getInstance().getBindAddress() << " ; " << IniOnly::Advanced::WEB_SERVER_BIND_ADDRESS.description << "\n";
+#endif
+    out << "\n";
+
+    // Write Display section (units, clock format, and display toggles; shown first
+    // on the Appearance tab)
+    out << "[Display]\n";
+    out << "speedUnit=" << speedUnitToString(hudManager.getSpeedWidget().m_speedUnit) << "\n";
+    out << "fuelUnit=" << fuelUnitToString(hudManager.getFuelWidget().m_fuelUnit) << "\n";
+    out << "tempUnit=" << tempUnitToString(UiConfig::getInstance().getTemperatureUnit()) << "\n";
+    out << "format24h=" << (hudManager.getClockWidget().getFormat24h() ? 1 : 0) << "\n";
+    out << "shortTimeFormat=" << (PluginData::getInstance().isShortTimeFormat() ? 1 : 0) << "\n";
+    out << "dropShadow=" << (UiConfig::getInstance().getDropShadow() ? 1 : 0) << "\n\n";
+
+    // Write Colors section
+    const ColorConfig& colorConfig = ColorConfig::getInstance();
+    out << "[Colors]\n";
+    out << "primary=" << PluginUtils::formatColorHex(colorConfig.getPrimary()) << "\n";
+    out << "secondary=" << PluginUtils::formatColorHex(colorConfig.getSecondary()) << "\n";
+    out << "tertiary=" << PluginUtils::formatColorHex(colorConfig.getTertiary()) << "\n";
+    out << "muted=" << PluginUtils::formatColorHex(colorConfig.getMuted()) << "\n";
+    out << "background=" << PluginUtils::formatColorHex(colorConfig.getBackground()) << "\n";
+    out << "positive=" << PluginUtils::formatColorHex(colorConfig.getPositive()) << "\n";
+    out << "warning=" << PluginUtils::formatColorHex(colorConfig.getWarning()) << "\n";
+    out << "neutral=" << PluginUtils::formatColorHex(colorConfig.getNeutral()) << "\n";
+    out << "negative=" << PluginUtils::formatColorHex(colorConfig.getNegative()) << "\n";
+    out << "accent=" << PluginUtils::formatColorHex(colorConfig.getAccent()) << "\n\n";
+
+    // Write Fonts section
+    const FontConfig& fontConfig = FontConfig::getInstance();
+    out << "[Fonts]\n";
+    out << "title=" << fontConfig.getFontName(FontCategory::TITLE) << "\n";
+    out << "normal=" << fontConfig.getFontName(FontCategory::NORMAL) << "\n";
+    out << "strong=" << fontConfig.getFontName(FontCategory::STRONG) << "\n";
+    out << "digits=" << fontConfig.getFontName(FontCategory::DIGITS) << "\n";
+    out << "marker=" << fontConfig.getFontName(FontCategory::MARKER) << "\n";
+    out << "small=" << fontConfig.getFontName(FontCategory::SMALL) << "\n\n";
+
+    // Write Rumble section (effect configuration)
+    // Always save global config to INI (per-bike effects go to JSON)
+    const RumbleConfig& rumbleConfig = XInputReader::getInstance().getGlobalRumbleConfig();
+    out << "[Rumble]\n";
+    out << "enabled=" << (rumbleConfig.enabled ? 1 : 0) << "\n";
+    out << "additive_blend=" << (rumbleConfig.additiveBlend ? 1 : 0) << "\n";
+    out << "rumble_when_crashed=" << (rumbleConfig.rumbleWhenCrashed ? 1 : 0) << "\n";
+    out << "use_per_bike_effects=" << (rumbleConfig.usePerBikeEffects ? 1 : 0) << "\n";
+    // Suspension effect
+    out << "susp_min_input=" << rumbleConfig.suspensionEffect.minInput << "\n";
+    out << "susp_max_input=" << rumbleConfig.suspensionEffect.maxInput << "\n";
+    out << "susp_light_strength=" << rumbleConfig.suspensionEffect.lightStrength << "\n";
+    out << "susp_heavy_strength=" << rumbleConfig.suspensionEffect.heavyStrength << "\n";
+    // Wheelspin effect
+    out << "wheel_min_input=" << rumbleConfig.wheelspinEffect.minInput << "\n";
+    out << "wheel_max_input=" << rumbleConfig.wheelspinEffect.maxInput << "\n";
+    out << "wheel_light_strength=" << rumbleConfig.wheelspinEffect.lightStrength << "\n";
+    out << "wheel_heavy_strength=" << rumbleConfig.wheelspinEffect.heavyStrength << "\n";
+    // Brake lockup effect
+    out << "lockup_min_input=" << rumbleConfig.brakeLockupEffect.minInput << "\n";
+    out << "lockup_max_input=" << rumbleConfig.brakeLockupEffect.maxInput << "\n";
+    out << "lockup_light_strength=" << rumbleConfig.brakeLockupEffect.lightStrength << "\n";
+    out << "lockup_heavy_strength=" << rumbleConfig.brakeLockupEffect.heavyStrength << "\n";
+    // RPM effect
+    out << "rpm_min_input=" << rumbleConfig.rpmEffect.minInput << "\n";
+    out << "rpm_max_input=" << rumbleConfig.rpmEffect.maxInput << "\n";
+    out << "rpm_light_strength=" << rumbleConfig.rpmEffect.lightStrength << "\n";
+    out << "rpm_heavy_strength=" << rumbleConfig.rpmEffect.heavyStrength << "\n";
+    // Slide effect
+    out << "slide_min_input=" << rumbleConfig.slideEffect.minInput << "\n";
+    out << "slide_max_input=" << rumbleConfig.slideEffect.maxInput << "\n";
+    out << "slide_light_strength=" << rumbleConfig.slideEffect.lightStrength << "\n";
+    out << "slide_heavy_strength=" << rumbleConfig.slideEffect.heavyStrength << "\n";
+    // Surface effect
+    out << "surface_min_input=" << rumbleConfig.surfaceEffect.minInput << "\n";
+    out << "surface_max_input=" << rumbleConfig.surfaceEffect.maxInput << "\n";
+    out << "surface_light_strength=" << rumbleConfig.surfaceEffect.lightStrength << "\n";
+    out << "surface_heavy_strength=" << rumbleConfig.surfaceEffect.heavyStrength << "\n";
+    // Steer effect
+    out << "steer_min_input=" << rumbleConfig.steerEffect.minInput << "\n";
+    out << "steer_max_input=" << rumbleConfig.steerEffect.maxInput << "\n";
+    out << "steer_light_strength=" << rumbleConfig.steerEffect.lightStrength << "\n";
+    out << "steer_heavy_strength=" << rumbleConfig.steerEffect.heavyStrength << "\n";
+    // Wheelie effect
+    out << "wheelie_min_input=" << rumbleConfig.wheelieEffect.minInput << "\n";
+    out << "wheelie_max_input=" << rumbleConfig.wheelieEffect.maxInput << "\n";
+    out << "wheelie_light_strength=" << rumbleConfig.wheelieEffect.lightStrength << "\n";
+    out << "wheelie_heavy_strength=" << rumbleConfig.wheelieEffect.heavyStrength << "\n\n";
+
+    // Write HelmetOverlay section (global, not per-profile)
+    {
+        const auto& hud = hudManager.getHelmetOverlayHud();
+        out << "[HelmetOverlay]\n";
+        out << "visible=" << (hud.isVisible() ? 1 : 0) << "\n";
+        out << "helmetEnabled=" << (hud.m_helmetEnabled ? 1 : 0) << "\n";
+        out << "visorMode=" << hud.m_visorMode << "\n";
+        out << "helmetUpperVariant=" << hud.m_helmetUpperVariant << "\n";
+        out << "helmetLowerVariant=" << hud.m_helmetLowerVariant << "\n";
+        out << "helmetUpperOffsetY=" << hud.m_helmetUpperOffsetY << "\n";
+        out << "helmetLowerOffsetY=" << hud.m_helmetLowerOffsetY << "\n";
+        out << "helmetTiltStrength=" << hud.m_helmetTiltStrength << "\n";
+        out << "helmetVibrationStrength=" << hud.m_helmetVibrationStrength << "\n";
+        out << "helmetVibrationSensitivity=" << hud.m_helmetVibrationSensitivity << "\n";
+        out << "helmetZoom=" << hud.m_helmetZoom << "\n";
+        out << "visorTintColor=" << PluginUtils::formatColorHex(hud.m_visorTintColor) << "\n";
+        out << "visorTintOpacity=" << hud.m_visorTintOpacity << "\n\n";
+    }
+
+    // Write Hotkeys section
+    const HotkeyManager& hotkeyMgr = HotkeyManager::getInstance();
+    out << "[Hotkeys]\n";
+    for (int i = 0; i < static_cast<int>(HotkeyAction::COUNT); ++i) {
+        HotkeyAction action = static_cast<HotkeyAction>(i);
+        const HotkeyBinding& binding = hotkeyMgr.getBinding(action);
+
+        // Save keyboard binding
+        out << "action" << i << "_key=" << static_cast<int>(binding.keyboard.keyCode) << "\n";
+        out << "action" << i << "_mod=" << static_cast<int>(binding.keyboard.modifiers) << "\n";
+        // Save controller binding
+        out << "action" << i << "_btn=" << static_cast<int>(binding.controller) << "\n";
+    }
+    out << "\n";
+
+}
+
+bool SettingsManager::applyGlobalLine(const std::string& section, const std::string& key,
+                                      const std::string& value, HudManager& hudManager) {
+    if (section == "General") {
+        try {
+            if (key == "gridSnapping") {
+                UiConfig::getInstance().setGridSnapping(std::stoi(value) != 0);
+            } else if (key == "screenClamping") {
+                UiConfig::getInstance().setScreenClamping(std::stoi(value) != 0);
+            } else if (key == "autoSave") {
+                UiConfig::getInstance().setAutoSave(std::stoi(value) != 0);
+            }
+            // Legacy read-only fallbacks: update settings relocated to [Updates]. Old INIs
+            // still carry them under [General], so read them here to preserve values on
+            // upgrade. Saving writes them only under [Updates], so they migrate on the next
+            // save and these branches stop matching. (checkForUpdates is an even older alias.)
+            else if (key == "updateMode") {
+                // Supported modes: off, notify (auto is treated as notify for backward compatibility)
+                if (value == "off") {
+                    UpdateChecker::getInstance().setMode(UpdateChecker::UpdateMode::OFF);
+                } else if (value == "notify" || value == "auto") {
+                    UpdateChecker::getInstance().setMode(UpdateChecker::UpdateMode::NOTIFY);
+                }
+            } else if (key == "checkForUpdates") {
+                UpdateChecker::getInstance().setEnabled(std::stoi(value) != 0);
+            } else if (key == "updateChannel") {
+                // Load channel before dismissedVersion (setChannel clears dismissedVersion on change)
+                if (value == "prerelease") {
+                    UpdateChecker::getInstance().setChannel(UpdateChecker::UpdateChannel::PRERELEASE);
+                } else {
+                    UpdateChecker::getInstance().setChannel(UpdateChecker::UpdateChannel::STABLE);
+                }
+            } else if (key == "dismissedVersion") {
+                UpdateChecker::getInstance().setDismissedVersion(value);
+            } else if (key == "controller") {
+                int idx = std::stoi(value);
+                XInputReader::getInstance().getRumbleConfig().controllerIndex = idx;
+                XInputReader::getInstance().setControllerIndex(idx);
+            } else if (key == "pbScope") {
+                UiConfig::getInstance().setPBScope(stringToPBScope(value));
+            }
+#if GAME_HAS_RECORDS_PROVIDER
+            else if (key == "recordsAutoFetch") {
+                hudManager.getRecordsHud().m_bAutoFetch = (std::stoi(value) != 0);
+            } else if (key == "recordsProvider") {
+                hudManager.getRecordsHud().m_provider = stringToDataProvider(value);
+            }
+#endif
+#if GAME_HAS_DISCORD
+            else if (key == "discordRichPresence") {
+                DiscordManager::getInstance().setEnabled(std::stoi(value) != 0);
+            }
+#endif
+            else if (key == "filterDnsRiders") {
+                PluginData::getInstance().setFilterDnsRiders(std::stoi(value) != 0);
+            }
+#if GAME_HAS_HTTP_SERVER
+            else if (key == "webServer") {
+                HttpServer::getInstance().setEnabled(std::stoi(value) != 0);
+            }
+#endif
+            // Legacy read-only fallbacks: these six relocated to [Display]. Old INIs
+            // still carry them under [General], so read them here to preserve values
+            // on upgrade. Saving writes them only under [Display], so they migrate on
+            // the next save and these branches stop matching.
+            else if (key == "speedUnit") {
+                hudManager.getSpeedWidget().m_speedUnit = stringToSpeedUnit(value);
+            } else if (key == "fuelUnit") {
+                hudManager.getFuelWidget().m_fuelUnit = stringToFuelUnit(value);
+            } else if (key == "tempUnit") {
+                UiConfig::getInstance().setTemperatureUnit(stringToTempUnit(value));
+            } else if (key == "format24h") {
+                hudManager.getClockWidget().setFormat24h(std::stoi(value) != 0);
+            } else if (key == "shortTimeFormat") {
+                PluginData::getInstance().setShortTimeFormat(std::stoi(value) != 0);
+            } else if (key == "dropShadow") {
+                UiConfig::getInstance().setDropShadow(std::stoi(value) != 0);
+            }
+        } catch (const std::exception& e) {
+            DEBUG_WARN_F("General: Failed to parse settings: %s", e.what());
+        }
+        return true;
+    }
+
+    // Handle Display section (speed/fuel/temp units + clock format; moved here
+    // from [General] — shown first on the Appearance tab)
+    if (section == "Display") {
+        try {
+            if (key == "speedUnit") {
+                hudManager.getSpeedWidget().m_speedUnit = stringToSpeedUnit(value);
+            } else if (key == "fuelUnit") {
+                hudManager.getFuelWidget().m_fuelUnit = stringToFuelUnit(value);
+            } else if (key == "tempUnit") {
+                UiConfig::getInstance().setTemperatureUnit(stringToTempUnit(value));
+            } else if (key == "format24h") {
+                hudManager.getClockWidget().setFormat24h(std::stoi(value) != 0);
+            } else if (key == "shortTimeFormat") {
+                PluginData::getInstance().setShortTimeFormat(std::stoi(value) != 0);
+            } else if (key == "dropShadow") {
+                UiConfig::getInstance().setDropShadow(std::stoi(value) != 0);
+            }
+        } catch (const std::exception& e) {
+            DEBUG_WARN_F("Display: Failed to parse settings: %s", e.what());
+        }
+        return true;
+    }
+
+    // Handle Updates section (auto-update settings; consolidated from [General]/[Advanced])
+    if (section == "Updates") {
+        try {
+            if (key == "updateChannel") {
+                // Apply channel before dismissedVersion: setChannel() clears the dismissed
+                // version when the channel changes, so a same-channel dismissal stays intact.
+                if (value == "prerelease") {
+                    UpdateChecker::getInstance().setChannel(UpdateChecker::UpdateChannel::PRERELEASE);
+                } else {
+                    UpdateChecker::getInstance().setChannel(UpdateChecker::UpdateChannel::STABLE);
+                }
+            } else if (key == "updateMode") {
+                // Supported modes: off, notify (legacy "auto" maps to notify)
+                if (value == "off") {
+                    UpdateChecker::getInstance().setMode(UpdateChecker::UpdateMode::OFF);
+                } else if (value == "notify" || value == "auto") {
+                    UpdateChecker::getInstance().setMode(UpdateChecker::UpdateMode::NOTIFY);
+                }
+            } else if (key == "updateDebugMode") {
+                bool debugMode = (std::stoi(value) != 0);
+                UpdateChecker::getInstance().setDebugMode(debugMode);
+                UpdateDownloader::getInstance().setDebugMode(debugMode);
+            } else if (key == "dismissedVersion") {
+                UpdateChecker::getInstance().setDismissedVersion(value);
+            }
+        } catch (const std::exception& e) {
+            DEBUG_WARN_F("Updates: Failed to parse settings: %s", e.what());
+        }
+        return true;
+    }
+
+    // Handle Advanced section (power-user settings)
+    if (section == "Advanced") {
+        try {
+            if (key == "developerMode") {
+                m_developerMode = (std::stoi(value) != 0);
+            }
+            // Legacy read-only fallbacks: updateChannel/updateDebugMode relocated to [Updates].
+            // Old INIs carry them under [Advanced]; read them so values survive the upgrade,
+            // then they migrate to [Updates] on the next save.
+            else if (key == "updateChannel") {
+                if (value == "prerelease") {
+                    UpdateChecker::getInstance().setChannel(UpdateChecker::UpdateChannel::PRERELEASE);
+                } else {
+                    UpdateChecker::getInstance().setChannel(UpdateChecker::UpdateChannel::STABLE);
+                }
+            } else if (key == "updateDebugMode") {
+                bool debugMode = (std::stoi(value) != 0);
+                UpdateChecker::getInstance().setDebugMode(debugMode);
+                UpdateDownloader::getInstance().setDebugMode(debugMode);
+            // Note: mapPixelSpacing moved to [MapHud]
+            } else if (key == "speedoNeedleColor") {
+                hudManager.getSpeedoWidget().setNeedleColor(PluginUtils::parseColorHex(value));
+            } else if (key == "speedoShowOdometer") {
+                hudManager.getSpeedoWidget().setShowOdometer(std::stoi(value) != 0);
+            } else if (key == "speedoShowTripmeter") {
+                hudManager.getSpeedoWidget().setShowTripmeter(std::stoi(value) != 0);
+            } else if (key == "tachoNeedleColor") {
+                hudManager.getTachoWidget().setNeedleColor(PluginUtils::parseColorHex(value));
+            } else if (key == "leanArcFillColor") {
+                hudManager.getLeanWidget().setArcFillColor(PluginUtils::parseColorHex(value));
+            }
+#if GAME_HAS_RECORDS_PROVIDER
+            else if (key == "recordsShowFooter") {
+                hudManager.getRecordsHud().m_bShowFooter = (std::stoi(value) != 0);
+            }
+#endif
+            else if (key == "standingsTopPositions") {
+                int topPos = std::stoi(value);
+                // Clamp to valid range (0 to MAX_TOP_POSITIONS)
+                topPos = std::max(0, std::min(topPos, static_cast<int>(StandingsHud::MAX_TOP_POSITIONS)));
+                hudManager.getStandingsHud().m_topPositionsCount = topPos;
+            } else if (key == "dropShadowOffsetX") {
+                UiConfig::getInstance().setDropShadowOffsetX(std::stof(value));
+            } else if (key == "dropShadowOffsetY") {
+                UiConfig::getInstance().setDropShadowOffsetY(std::stof(value));
+            } else if (key == "dropShadowColor") {
+                UiConfig::getInstance().setDropShadowColor(PluginUtils::parseColorHex(value));
+            } else if (key == "holdRepeatFastMs") {
+                UiConfig::getInstance().setHoldRepeatFastMs(std::stoi(value));
+            } else if (key == "hazardStationaryTolerance") {
+                PluginData::getInstance().setHazardStationaryTolerance(std::stof(value));
+            } else if (key == "hazardStationaryDurationMs") {
+                PluginData::getInstance().setHazardStationaryDurationMs(std::stoi(value));
+            } else if (key == "hazardWrongWayDurationMs") {
+                PluginData::getInstance().setHazardWrongWayDurationMs(std::stoi(value));
+            } else if (key == "hazardAwarenessDistance") {
+                PluginData::getInstance().setHazardAwarenessDistance(std::stof(value));
+            } else if (key == "hazardCooldownMs") {
+                PluginData::getInstance().setHazardCooldownMs(std::stoi(value));
+            } else if (key == "hazardGracePeriodMs") {
+                PluginData::getInstance().setHazardGracePeriodMs(std::stoi(value));
+            } else if (key == "blueFlagAwarenessDistance") {
+                PluginData::getInstance().setBlueFlagAwarenessDistance(std::stof(value));
+            }
+#if GAME_HAS_HTTP_SERVER
+            else if (key == "webServerPort") {
+                HttpServer::getInstance().setPort(std::stoi(value));
+            } else if (key == "webServerThrottleMs") {
+                HttpServer::getInstance().setThrottleMs(std::stoi(value));
+            } else if (key == "webServerBindAddress") {
+                HttpServer::getInstance().setBindAddress(value);
+            }
+#endif
+        } catch (const std::exception& e) {
+            DEBUG_WARN_F("Advanced: Failed to parse settings: %s", e.what());
+        }
+        return true;
+    }
+
+    // Handle Colors section
+    if (section == "Colors") {
+        ColorConfig& colorConfig = ColorConfig::getInstance();
+        try {
+            if (key == "primary") {
+                colorConfig.setColor(ColorSlot::PRIMARY, PluginUtils::parseColorHex(value));
+            } else if (key == "secondary") {
+                colorConfig.setColor(ColorSlot::SECONDARY, PluginUtils::parseColorHex(value));
+            } else if (key == "tertiary") {
+                colorConfig.setColor(ColorSlot::TERTIARY, PluginUtils::parseColorHex(value));
+            } else if (key == "muted") {
+                colorConfig.setColor(ColorSlot::MUTED, PluginUtils::parseColorHex(value));
+            } else if (key == "background") {
+                colorConfig.setColor(ColorSlot::BACKGROUND, PluginUtils::parseColorHex(value));
+            } else if (key == "positive") {
+                colorConfig.setColor(ColorSlot::POSITIVE, PluginUtils::parseColorHex(value));
+            } else if (key == "warning") {
+                colorConfig.setColor(ColorSlot::WARNING, PluginUtils::parseColorHex(value));
+            } else if (key == "neutral") {
+                colorConfig.setColor(ColorSlot::NEUTRAL, PluginUtils::parseColorHex(value));
+            } else if (key == "negative") {
+                colorConfig.setColor(ColorSlot::NEGATIVE, PluginUtils::parseColorHex(value));
+            } else if (key == "accent") {
+                colorConfig.setColor(ColorSlot::ACCENT, PluginUtils::parseColorHex(value));
+            }
+        } catch (const std::exception& e) {
+            DEBUG_WARN_F("Colors: Failed to parse settings: %s", e.what());
+        }
+        return true;
+    }
+
+    // Handle Fonts section
+    if (section == "Fonts") {
+        FontConfig& fontConfig = FontConfig::getInstance();
+        if (key == "title") {
+            fontConfig.setFont(FontCategory::TITLE, value);
+        } else if (key == "normal") {
+            fontConfig.setFont(FontCategory::NORMAL, value);
+        } else if (key == "strong") {
+            fontConfig.setFont(FontCategory::STRONG, value);
+        } else if (key == "digits") {
+            fontConfig.setFont(FontCategory::DIGITS, value);
+        } else if (key == "marker") {
+            fontConfig.setFont(FontCategory::MARKER, value);
+        } else if (key == "small") {
+            fontConfig.setFont(FontCategory::SMALL, value);
+        }
+        return true;
+    }
+
+    // Handle Rumble section (effect configuration)
+    // Always load into global config (per-bike profiles loaded from JSON)
+    if (section == "Rumble") {
+        RumbleConfig& config = XInputReader::getInstance().getGlobalRumbleConfig();
+        try {
+            if (key == "enabled") {
+                config.enabled = std::stoi(value) != 0;
+            } else if (key == "additive_blend") {
+                config.additiveBlend = std::stoi(value) != 0;
+            } else if (key == "rumble_when_crashed") {
+                config.rumbleWhenCrashed = std::stoi(value) != 0;
+            } else if (key == "use_per_bike_effects" || key == "use_per_bike_profiles") {
+                // Note: use_per_bike_profiles is backward compatible alias
+                config.usePerBikeEffects = std::stoi(value) != 0;
+            } else if (key == "disable_on_crash") {
+                // Backward compatibility: invert the old setting
+                config.rumbleWhenCrashed = std::stoi(value) == 0;
+            }
+            // Suspension effect - new format
+            else if (key == "susp_min_input") {
+                config.suspensionEffect.minInput = std::stof(value);
+            } else if (key == "susp_max_input") {
+                config.suspensionEffect.maxInput = std::stof(value);
+            } else if (key == "susp_light_strength") {
+                config.suspensionEffect.lightStrength = std::stof(value);
+            } else if (key == "susp_heavy_strength") {
+                config.suspensionEffect.heavyStrength = std::stof(value);
+            }
+            // Wheelspin effect
+            else if (key == "wheel_min_input") {
+                config.wheelspinEffect.minInput = std::stof(value);
+            } else if (key == "wheel_max_input") {
+                config.wheelspinEffect.maxInput = std::stof(value);
+            } else if (key == "wheel_light_strength") {
+                config.wheelspinEffect.lightStrength = std::stof(value);
+            } else if (key == "wheel_heavy_strength") {
+                config.wheelspinEffect.heavyStrength = std::stof(value);
+            }
+            // Brake lockup effect
+            else if (key == "lockup_min_input") {
+                config.brakeLockupEffect.minInput = std::stof(value);
+            } else if (key == "lockup_max_input") {
+                config.brakeLockupEffect.maxInput = std::stof(value);
+            } else if (key == "lockup_light_strength") {
+                config.brakeLockupEffect.lightStrength = std::stof(value);
+            } else if (key == "lockup_heavy_strength") {
+                config.brakeLockupEffect.heavyStrength = std::stof(value);
+            }
+            // RPM effect
+            else if (key == "rpm_min_input") {
+                config.rpmEffect.minInput = std::stof(value);
+            } else if (key == "rpm_max_input") {
+                config.rpmEffect.maxInput = std::stof(value);
+            } else if (key == "rpm_light_strength") {
+                config.rpmEffect.lightStrength = std::stof(value);
+            } else if (key == "rpm_heavy_strength") {
+                config.rpmEffect.heavyStrength = std::stof(value);
+            }
+            // Slide effect
+            else if (key == "slide_min_input") {
+                config.slideEffect.minInput = std::stof(value);
+            } else if (key == "slide_max_input") {
+                config.slideEffect.maxInput = std::stof(value);
+            } else if (key == "slide_light_strength") {
+                config.slideEffect.lightStrength = std::stof(value);
+            } else if (key == "slide_heavy_strength") {
+                config.slideEffect.heavyStrength = std::stof(value);
+            }
+            // Surface effect
+            else if (key == "surface_min_input") {
+                config.surfaceEffect.minInput = std::stof(value);
+            } else if (key == "surface_max_input") {
+                config.surfaceEffect.maxInput = std::stof(value);
+            } else if (key == "surface_light_strength") {
+                config.surfaceEffect.lightStrength = std::stof(value);
+            } else if (key == "surface_heavy_strength") {
+                config.surfaceEffect.heavyStrength = std::stof(value);
+            }
+            // Steer effect
+            else if (key == "steer_min_input") {
+                config.steerEffect.minInput = std::stof(value);
+            } else if (key == "steer_max_input") {
+                config.steerEffect.maxInput = std::stof(value);
+            } else if (key == "steer_light_strength") {
+                config.steerEffect.lightStrength = std::stof(value);
+            } else if (key == "steer_heavy_strength") {
+                config.steerEffect.heavyStrength = std::stof(value);
+            }
+            // Wheelie effect
+            else if (key == "wheelie_min_input") {
+                config.wheelieEffect.minInput = std::stof(value);
+            } else if (key == "wheelie_max_input") {
+                config.wheelieEffect.maxInput = std::stof(value);
+            } else if (key == "wheelie_light_strength") {
+                config.wheelieEffect.lightStrength = std::stof(value);
+            } else if (key == "wheelie_heavy_strength") {
+                config.wheelieEffect.heavyStrength = std::stof(value);
+            }
+        } catch (const std::exception& e) {
+            DEBUG_WARN_F("Rumble: Failed to parse settings: %s", e.what());
+        }
+        return true;
+    }
+
+    // Handle HelmetOverlay section (global, not per-profile)
+    if (section == "HelmetOverlay") {
+        auto& hud = hudManager.getHelmetOverlayHud();
+        try {
+            if (key == "visible") {
+                hud.setVisible(std::stoi(value) != 0);
+            } else if (key == "helmetEnabled") {
+                hud.m_helmetEnabled = std::stoi(value) != 0;
+            } else if (key == "visorMode") {
+                hud.m_visorMode = std::clamp(std::stoi(value), 0, HelmetOverlayHud::VISOR_MODE_COUNT - 1);
+            } else if (key == "helmetUpperVariant") {
+                hud.m_helmetUpperVariant = std::stoi(value);
+            } else if (key == "helmetLowerVariant") {
+                hud.m_helmetLowerVariant = std::stoi(value);
+            } else if (key == "helmetUpperOffsetY") {
+                hud.m_helmetUpperOffsetY = std::stof(value);
+            } else if (key == "helmetLowerOffsetY") {
+                hud.m_helmetLowerOffsetY = std::stof(value);
+            } else if (key == "helmetTiltStrength") {
+                hud.m_helmetTiltStrength = std::stof(value);
+            } else if (key == "helmetVibrationStrength") {
+                hud.m_helmetVibrationStrength = std::stof(value);
+            } else if (key == "helmetVibrationSensitivity") {
+                hud.m_helmetVibrationSensitivity = std::stof(value);
+            } else if (key == "helmetZoom") {
+                hud.m_helmetZoom = std::stof(value);
+            } else if (key == "visorTintColor") {
+                hud.m_visorTintColor = PluginUtils::parseColorHex(value);
+            } else if (key == "visorTintOpacity") {
+                hud.m_visorTintOpacity = std::stof(value);
+            }
+        } catch (const std::exception& e) {
+            DEBUG_WARN_F("HelmetOverlay: Failed to parse setting '%s': %s", key.c_str(), e.what());
+        }
+        return true;
+    }
+
+    // Handle Hotkeys section
+    if (section == "Hotkeys") {
+        HotkeyManager& hotkeyMgr = HotkeyManager::getInstance();
+        try {
+            // Parse action index from key name (e.g., "action0_key" -> 0)
+            if (key.length() > 7 && key.substr(0, 6) == "action") {
+                size_t underscorePos = key.find('_', 6);
+                if (underscorePos != std::string::npos) {
+                    int actionIdx = std::stoi(key.substr(6, underscorePos - 6));
+                    if (actionIdx >= 0 && actionIdx < static_cast<int>(HotkeyAction::COUNT)) {
+                        HotkeyAction action = static_cast<HotkeyAction>(actionIdx);
+                        std::string suffix = key.substr(underscorePos + 1);
+
+                        HotkeyBinding binding = hotkeyMgr.getBinding(action);
+                        if (suffix == "key") {
+                            binding.keyboard.keyCode = static_cast<uint8_t>(std::stoi(value));
+                        } else if (suffix == "mod") {
+                            binding.keyboard.modifiers = static_cast<ModifierFlags>(std::stoi(value));
+                        } else if (suffix == "btn") {
+                            binding.controller = static_cast<ControllerButton>(std::stoi(value));
+                        }
+                        hotkeyMgr.setBinding(action, binding);
+                    }
+                }
+            }
+        } catch (const std::exception& e) {
+            DEBUG_WARN_F("Hotkeys: Failed to parse settings: %s", e.what());
+        }
+        return true;
+    }
+
+    return false;
 }
 
 void SettingsManager::saveSettings(const HudManager& hudManager, const char* savePath) {
@@ -3264,204 +4368,21 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     file << "activeProfile=" << static_cast<int>(profileManager.getActiveProfile()) << "\n";
     file << "autoSwitch=" << (profileManager.isAutoSwitchEnabled() ? 1 : 0) << "\n\n";
 
-    // Write General section (global preferences)
-    file << "[General]\n";
-    file << "gridSnapping=" << (UiConfig::getInstance().getGridSnapping() ? 1 : 0) << "\n";
-    file << "screenClamping=" << (UiConfig::getInstance().getScreenClamping() ? 1 : 0) << "\n";
-    file << "autoSave=" << (UiConfig::getInstance().getAutoSave() ? 1 : 0) << "\n";
-    file << "dropShadow=" << (UiConfig::getInstance().getDropShadow() ? 1 : 0) << "\n";
-    // Save update mode as string (only OFF and NOTIFY are supported)
-    const char* updateModeStr = "off";
-    switch (UpdateChecker::getInstance().getMode()) {
-        case UpdateChecker::UpdateMode::OFF: updateModeStr = "off"; break;
-        case UpdateChecker::UpdateMode::NOTIFY: updateModeStr = "notify"; break;
-    }
-    file << "updateMode=" << updateModeStr << "\n";
-    // Save dismissed version (for update notification suppression)
-    std::string dismissedVersion = UpdateChecker::getInstance().getDismissedVersion();
-    if (!dismissedVersion.empty()) {
-        file << "dismissedVersion=" << dismissedVersion << "\n";
-    }
-    file << "controller=" << XInputReader::getInstance().getRumbleConfig().controllerIndex << "\n";
-    file << "speedUnit=" << speedUnitToString(hudManager.getSpeedWidget().m_speedUnit) << "\n";
-    file << "fuelUnit=" << fuelUnitToString(hudManager.getFuelWidget().m_fuelUnit) << "\n";
-    file << "tempUnit=" << tempUnitToString(UiConfig::getInstance().getTemperatureUnit()) << "\n";
-    file << "pbScope=" << pbScopeToString(UiConfig::getInstance().getPBScope()) << "\n";
-    file << "format24h=" << (hudManager.getClockWidget().getFormat24h() ? 1 : 0) << "\n";
-#if GAME_HAS_RECORDS_PROVIDER
-    file << "recordsAutoFetch=" << (hudManager.getRecordsHud().m_bAutoFetch ? 1 : 0) << "\n";
-    file << "recordsProvider=" << dataProviderToString(hudManager.getRecordsHud().m_provider) << "\n";
-#endif
-#if GAME_HAS_DISCORD
-    file << "discordRichPresence=" << (DiscordManager::getInstance().isEnabled() ? 1 : 0) << "\n";
-#endif
-    file << "liveGaps=" << (PluginData::getInstance().isLiveGapsEnabled() ? 1 : 0) << "\n";
-    file << "filterDnsRiders=" << (PluginData::getInstance().isFilterDnsRiders() ? 1 : 0) << "\n";
-    file << "shortTimeFormat=" << (PluginData::getInstance().isShortTimeFormat() ? 1 : 0) << "\n";
-#if GAME_HAS_HTTP_SERVER
-    file << "webServer=" << (HttpServer::getInstance().isEnabled() ? 1 : 0) << " ; Web overlay server (port and throttle in [Advanced])\n";
-#endif
-    file << "\n";
-
-    // Write Advanced section (power-user settings)
-    file << "[Advanced]\n";
-    file << IniOnly::Advanced::DEVELOPER_MODE.key << "=" << (m_developerMode ? 1 : 0) << " ; " << IniOnly::Advanced::DEVELOPER_MODE.description << "\n";
-    // Update channel moved from [General] to [Advanced]
-    const char* channelStr = (UpdateChecker::getInstance().getChannel() == UpdateChecker::UpdateChannel::PRERELEASE) ? "prerelease" : "stable";
-    file << "updateChannel=" << channelStr << "\n";
-    file << "updateDebugMode=" << (UpdateChecker::getInstance().isDebugMode() ? 1 : 0) << "\n";
-    // Note: mapPixelSpacing moved to [MapHud]
-    // Note: speedoNeedleColor, speedoShowOdometer, speedoShowTripmeter moved to [SpeedoWidget]
-    // Note: tachoNeedleColor moved to [TachoWidget]
-    // Note: leanArcFillColor moved to [LeanWidget]
-    // Note: recordsShowFooter moved to [RecordsHud]
-    // Note: standingsTopPositions, standingsUseAccentHighlight moved to [StandingsHud]
-    file << IniOnly::Advanced::DROP_SHADOW_OFFSET_X.key << "=" << UiConfig::getInstance().getDropShadowOffsetX() << " ; " << IniOnly::Advanced::DROP_SHADOW_OFFSET_X.description << "\n";
-    file << IniOnly::Advanced::DROP_SHADOW_OFFSET_Y.key << "=" << UiConfig::getInstance().getDropShadowOffsetY() << " ; " << IniOnly::Advanced::DROP_SHADOW_OFFSET_Y.description << "\n";
-    file << IniOnly::Advanced::DROP_SHADOW_COLOR.key << "=" << PluginUtils::formatColorHex(UiConfig::getInstance().getDropShadowColor()) << " ; " << IniOnly::Advanced::DROP_SHADOW_COLOR.description << "\n";
-    file << IniOnly::Advanced::HOLD_REPEAT_FAST_MS.key << "=" << UiConfig::getInstance().getHoldRepeatFastMs() << " ; " << IniOnly::Advanced::HOLD_REPEAT_FAST_MS.description << "\n";
-    file << IniOnly::Advanced::HAZARD_STATIONARY_TOLERANCE.key << "=" << PluginData::getInstance().getHazardStationaryTolerance() << " ; " << IniOnly::Advanced::HAZARD_STATIONARY_TOLERANCE.description << "\n";
-    file << IniOnly::Advanced::HAZARD_STATIONARY_DURATION_MS.key << "=" << PluginData::getInstance().getHazardStationaryDurationMs() << " ; " << IniOnly::Advanced::HAZARD_STATIONARY_DURATION_MS.description << "\n";
-    file << IniOnly::Advanced::HAZARD_WRONG_WAY_DURATION_MS.key << "=" << PluginData::getInstance().getHazardWrongWayDurationMs() << " ; " << IniOnly::Advanced::HAZARD_WRONG_WAY_DURATION_MS.description << "\n";
-    file << IniOnly::Advanced::HAZARD_AWARENESS_DISTANCE.key << "=" << PluginData::getInstance().getHazardAwarenessDistance() << " ; " << IniOnly::Advanced::HAZARD_AWARENESS_DISTANCE.description << "\n";
-    file << IniOnly::Advanced::HAZARD_COOLDOWN_MS.key << "=" << PluginData::getInstance().getHazardCooldownMs() << " ; " << IniOnly::Advanced::HAZARD_COOLDOWN_MS.description << "\n";
-    file << IniOnly::Advanced::HAZARD_GRACE_PERIOD_MS.key << "=" << PluginData::getInstance().getHazardGracePeriodMs() << " ; " << IniOnly::Advanced::HAZARD_GRACE_PERIOD_MS.description << "\n";
-    file << IniOnly::Advanced::BLUE_FLAG_AWARENESS_DISTANCE.key << "=" << PluginData::getInstance().getBlueFlagAwarenessDistance() << " ; " << IniOnly::Advanced::BLUE_FLAG_AWARENESS_DISTANCE.description << "\n";
-#if GAME_HAS_HTTP_SERVER
-    file << IniOnly::Advanced::WEB_SERVER_PORT.key << "=" << HttpServer::getInstance().getPort() << " ; " << IniOnly::Advanced::WEB_SERVER_PORT.description << "\n";
-    file << IniOnly::Advanced::WEB_SERVER_THROTTLE_MS.key << "=" << HttpServer::getInstance().getThrottleMs() << " ; " << IniOnly::Advanced::WEB_SERVER_THROTTLE_MS.description << "\n";
-    file << IniOnly::Advanced::WEB_SERVER_BIND_ADDRESS.key << "=" << HttpServer::getInstance().getBindAddress() << " ; " << IniOnly::Advanced::WEB_SERVER_BIND_ADDRESS.description << "\n";
-#endif
-#if defined(GAME_MXBIKES)
-    // Memory offsets for connection detection (MX Bikes only)
-    const auto& offsetConfig = Memory::ConnectionDetector::getInstance().getOffsetConfig();
-    file << IniOnly::Advanced::MEM_LOCAL_SERVER_NAME.key << "=" << PluginUtils::formatOffsetHex(offsetConfig.localServerName) << " ; " << IniOnly::Advanced::MEM_LOCAL_SERVER_NAME.description << "\n";
-    file << IniOnly::Advanced::MEM_LOCAL_SERVER_MAX_CLIENTS.key << "=" << PluginUtils::formatOffsetHex(offsetConfig.localServerMaxClients) << " ; " << IniOnly::Advanced::MEM_LOCAL_SERVER_MAX_CLIENTS.description << "\n";
-    file << IniOnly::Advanced::MEM_LOCAL_SERVER_PASSWORD.key << "=" << PluginUtils::formatOffsetHex(offsetConfig.localServerPassword) << " ; " << IniOnly::Advanced::MEM_LOCAL_SERVER_PASSWORD.description << "\n";
-    file << IniOnly::Advanced::MEM_REMOTE_SERVER_SOCKADDR.key << "=" << PluginUtils::formatOffsetHex(offsetConfig.remoteServerSockaddr) << " ; " << IniOnly::Advanced::MEM_REMOTE_SERVER_SOCKADDR.description << "\n";
-    file << IniOnly::Advanced::MEM_REMOTE_SERVER_PASSWORD.key << "=" << PluginUtils::formatOffsetHex(offsetConfig.remoteServerPassword) << " ; " << IniOnly::Advanced::MEM_REMOTE_SERVER_PASSWORD.description << "\n";
-    file << IniOnly::Advanced::MEM_SERVER_CLIENTS_ARRAY.key << "=" << PluginUtils::formatOffsetHex(offsetConfig.serverClientsArray) << " ; " << IniOnly::Advanced::MEM_SERVER_CLIENTS_ARRAY.description << "\n";
-#endif
-    file << "\n";
-
-    // Write Colors section
-    const ColorConfig& colorConfig = ColorConfig::getInstance();
-    file << "[Colors]\n";
-    file << "primary=" << PluginUtils::formatColorHex(colorConfig.getPrimary()) << "\n";
-    file << "secondary=" << PluginUtils::formatColorHex(colorConfig.getSecondary()) << "\n";
-    file << "tertiary=" << PluginUtils::formatColorHex(colorConfig.getTertiary()) << "\n";
-    file << "muted=" << PluginUtils::formatColorHex(colorConfig.getMuted()) << "\n";
-    file << "background=" << PluginUtils::formatColorHex(colorConfig.getBackground()) << "\n";
-    file << "positive=" << PluginUtils::formatColorHex(colorConfig.getPositive()) << "\n";
-    file << "warning=" << PluginUtils::formatColorHex(colorConfig.getWarning()) << "\n";
-    file << "neutral=" << PluginUtils::formatColorHex(colorConfig.getNeutral()) << "\n";
-    file << "negative=" << PluginUtils::formatColorHex(colorConfig.getNegative()) << "\n";
-    file << "accent=" << PluginUtils::formatColorHex(colorConfig.getAccent()) << "\n\n";
-
-    // Write Fonts section
-    const FontConfig& fontConfig = FontConfig::getInstance();
-    file << "[Fonts]\n";
-    file << "title=" << fontConfig.getFontName(FontCategory::TITLE) << "\n";
-    file << "normal=" << fontConfig.getFontName(FontCategory::NORMAL) << "\n";
-    file << "strong=" << fontConfig.getFontName(FontCategory::STRONG) << "\n";
-    file << "digits=" << fontConfig.getFontName(FontCategory::DIGITS) << "\n";
-    file << "marker=" << fontConfig.getFontName(FontCategory::MARKER) << "\n";
-    file << "small=" << fontConfig.getFontName(FontCategory::SMALL) << "\n\n";
-
-    // Write Rumble section (effect configuration)
-    // Always save global config to INI (per-bike effects go to JSON)
-    const RumbleConfig& rumbleConfig = XInputReader::getInstance().getGlobalRumbleConfig();
-    file << "[Rumble]\n";
-    file << "enabled=" << (rumbleConfig.enabled ? 1 : 0) << "\n";
-    file << "additive_blend=" << (rumbleConfig.additiveBlend ? 1 : 0) << "\n";
-    file << "rumble_when_crashed=" << (rumbleConfig.rumbleWhenCrashed ? 1 : 0) << "\n";
-    file << "use_per_bike_effects=" << (rumbleConfig.usePerBikeEffects ? 1 : 0) << "\n";
-    // Suspension effect
-    file << "susp_min_input=" << rumbleConfig.suspensionEffect.minInput << "\n";
-    file << "susp_max_input=" << rumbleConfig.suspensionEffect.maxInput << "\n";
-    file << "susp_light_strength=" << rumbleConfig.suspensionEffect.lightStrength << "\n";
-    file << "susp_heavy_strength=" << rumbleConfig.suspensionEffect.heavyStrength << "\n";
-    // Wheelspin effect
-    file << "wheel_min_input=" << rumbleConfig.wheelspinEffect.minInput << "\n";
-    file << "wheel_max_input=" << rumbleConfig.wheelspinEffect.maxInput << "\n";
-    file << "wheel_light_strength=" << rumbleConfig.wheelspinEffect.lightStrength << "\n";
-    file << "wheel_heavy_strength=" << rumbleConfig.wheelspinEffect.heavyStrength << "\n";
-    // Brake lockup effect
-    file << "lockup_min_input=" << rumbleConfig.brakeLockupEffect.minInput << "\n";
-    file << "lockup_max_input=" << rumbleConfig.brakeLockupEffect.maxInput << "\n";
-    file << "lockup_light_strength=" << rumbleConfig.brakeLockupEffect.lightStrength << "\n";
-    file << "lockup_heavy_strength=" << rumbleConfig.brakeLockupEffect.heavyStrength << "\n";
-    // RPM effect
-    file << "rpm_min_input=" << rumbleConfig.rpmEffect.minInput << "\n";
-    file << "rpm_max_input=" << rumbleConfig.rpmEffect.maxInput << "\n";
-    file << "rpm_light_strength=" << rumbleConfig.rpmEffect.lightStrength << "\n";
-    file << "rpm_heavy_strength=" << rumbleConfig.rpmEffect.heavyStrength << "\n";
-    // Slide effect
-    file << "slide_min_input=" << rumbleConfig.slideEffect.minInput << "\n";
-    file << "slide_max_input=" << rumbleConfig.slideEffect.maxInput << "\n";
-    file << "slide_light_strength=" << rumbleConfig.slideEffect.lightStrength << "\n";
-    file << "slide_heavy_strength=" << rumbleConfig.slideEffect.heavyStrength << "\n";
-    // Surface effect
-    file << "surface_min_input=" << rumbleConfig.surfaceEffect.minInput << "\n";
-    file << "surface_max_input=" << rumbleConfig.surfaceEffect.maxInput << "\n";
-    file << "surface_light_strength=" << rumbleConfig.surfaceEffect.lightStrength << "\n";
-    file << "surface_heavy_strength=" << rumbleConfig.surfaceEffect.heavyStrength << "\n";
-    // Steer effect
-    file << "steer_min_input=" << rumbleConfig.steerEffect.minInput << "\n";
-    file << "steer_max_input=" << rumbleConfig.steerEffect.maxInput << "\n";
-    file << "steer_light_strength=" << rumbleConfig.steerEffect.lightStrength << "\n";
-    file << "steer_heavy_strength=" << rumbleConfig.steerEffect.heavyStrength << "\n";
-    // Wheelie effect
-    file << "wheelie_min_input=" << rumbleConfig.wheelieEffect.minInput << "\n";
-    file << "wheelie_max_input=" << rumbleConfig.wheelieEffect.maxInput << "\n";
-    file << "wheelie_light_strength=" << rumbleConfig.wheelieEffect.lightStrength << "\n";
-    file << "wheelie_heavy_strength=" << rumbleConfig.wheelieEffect.heavyStrength << "\n\n";
-
-    // Write HelmetOverlay section (global, not per-profile)
-    {
-        const auto& hud = hudManager.getHelmetOverlayHud();
-        file << "[HelmetOverlay]\n";
-        file << "visible=" << (hud.isVisible() ? 1 : 0) << "\n";
-        file << "helmetEnabled=" << (hud.m_helmetEnabled ? 1 : 0) << "\n";
-        file << "visorMode=" << hud.m_visorMode << "\n";
-        file << "helmetUpperVariant=" << hud.m_helmetUpperVariant << "\n";
-        file << "helmetLowerVariant=" << hud.m_helmetLowerVariant << "\n";
-        file << "helmetUpperOffsetY=" << hud.m_helmetUpperOffsetY << "\n";
-        file << "helmetLowerOffsetY=" << hud.m_helmetLowerOffsetY << "\n";
-        file << "helmetTiltStrength=" << hud.m_helmetTiltStrength << "\n";
-        file << "helmetVibrationStrength=" << hud.m_helmetVibrationStrength << "\n";
-        file << "helmetVibrationSensitivity=" << hud.m_helmetVibrationSensitivity << "\n";
-        file << "helmetZoom=" << hud.m_helmetZoom << "\n";
-        file << "visorTintColor=" << PluginUtils::formatColorHex(hud.m_visorTintColor) << "\n";
-        file << "visorTintOpacity=" << hud.m_visorTintOpacity << "\n\n";
-    }
-
-    // Write Hotkeys section
-    const HotkeyManager& hotkeyMgr = HotkeyManager::getInstance();
-    file << "[Hotkeys]\n";
-    for (int i = 0; i < static_cast<int>(HotkeyAction::COUNT); ++i) {
-        HotkeyAction action = static_cast<HotkeyAction>(i);
-        const HotkeyBinding& binding = hotkeyMgr.getBinding(action);
-
-        // Save keyboard binding
-        file << "action" << i << "_key=" << static_cast<int>(binding.keyboard.keyCode) << "\n";
-        file << "action" << i << "_mod=" << static_cast<int>(binding.keyboard.modifiers) << "\n";
-        // Save controller binding
-        file << "action" << i << "_btn=" << static_cast<int>(binding.controller) << "\n";
-    }
-    file << "\n";
+    // Write all global (non-per-profile) sections via the shared serializer, keeping the
+    // factory-defaults snapshot (see captureFactoryDefaults) in sync with the saved output.
+    writeGlobalSettings(file, hudManager);
 
     // Save tracked riders to separate JSON file
     TrackedRidersManager::getInstance().save();
 
     // HUD order for consistent output
     // Note: HelmetOverlayHud is global (own [HelmetOverlay] section), not in this per-profile list.
-    static const std::array<const char*, 36> hudOrder = {
+    static const std::array<const char*, 38> hudOrder = {
         "StandingsHud", "MapHud", "RadarHud", "PitboardHud", "RecordsHud",
         "LapLogHud", "LapConsistencyHud", "FmxHud", "StatsHud", "EventLogHud", "IdealLapHud", "TelemetryHud", "PerformanceHud",
         "LapWidget", "PositionWidget", "TimeWidget", "ClockWidget", "SessionHud", "SpeedWidget", "GearWidget",
         "SpeedoWidget", "TachoWidget", "TimingHud", "GapBarHud", "BarsWidget", "VersionWidget",
-        "NoticesHud", "FuelWidget", "GamepadWidget", "LeanWidget", "TyreTempWidget", "SettingsButtonWidget", "PointerWidget", "RumbleHud",
+        "NoticesHud", "FuelWidget", "GamepadWidget", "LeanWidget", "GForceWidget", "TyreTempWidget", "EcuWidget", "SettingsButtonWidget", "PointerWidget", "RumbleHud",
         "BenchmarkWidget",
         "Global"
     };
@@ -3729,397 +4650,9 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
             continue;
         }
 
-        // Handle General section (global preferences)
-        if (currentHudName == "General") {
-            try {
-                if (key == "gridSnapping") {
-                    UiConfig::getInstance().setGridSnapping(std::stoi(value) != 0);
-                } else if (key == "screenClamping") {
-                    UiConfig::getInstance().setScreenClamping(std::stoi(value) != 0);
-                } else if (key == "autoSave") {
-                    UiConfig::getInstance().setAutoSave(std::stoi(value) != 0);
-                } else if (key == "dropShadow") {
-                    UiConfig::getInstance().setDropShadow(std::stoi(value) != 0);
-                } else if (key == "updateMode") {
-                    // Supported modes: off, notify (auto is treated as notify for backward compatibility)
-                    if (value == "off") {
-                        UpdateChecker::getInstance().setMode(UpdateChecker::UpdateMode::OFF);
-                    } else if (value == "notify" || value == "auto") {
-                        // "auto" mapped to NOTIFY for backward compatibility
-                        UpdateChecker::getInstance().setMode(UpdateChecker::UpdateMode::NOTIFY);
-                    }
-                } else if (key == "checkForUpdates") {
-                    // Legacy format: 0 or 1 -> convert to mode
-                    UpdateChecker::getInstance().setEnabled(std::stoi(value) != 0);
-                } else if (key == "updateChannel") {
-                    // Load channel before dismissedVersion (setChannel clears dismissedVersion on change)
-                    if (value == "prerelease") {
-                        UpdateChecker::getInstance().setChannel(UpdateChecker::UpdateChannel::PRERELEASE);
-                    } else {
-                        UpdateChecker::getInstance().setChannel(UpdateChecker::UpdateChannel::STABLE);
-                    }
-                } else if (key == "dismissedVersion") {
-                    UpdateChecker::getInstance().setDismissedVersion(value);
-                } else if (key == "controller") {
-                    int idx = std::stoi(value);
-                    XInputReader::getInstance().getRumbleConfig().controllerIndex = idx;
-                    XInputReader::getInstance().setControllerIndex(idx);
-                } else if (key == "speedUnit") {
-                    hudManager.getSpeedWidget().m_speedUnit = stringToSpeedUnit(value);
-                } else if (key == "fuelUnit") {
-                    hudManager.getFuelWidget().m_fuelUnit = stringToFuelUnit(value);
-                } else if (key == "tempUnit") {
-                    UiConfig::getInstance().setTemperatureUnit(stringToTempUnit(value));
-                } else if (key == "pbScope") {
-                    UiConfig::getInstance().setPBScope(stringToPBScope(value));
-                } else if (key == "format24h") {
-                    hudManager.getClockWidget().setFormat24h(std::stoi(value) != 0);
-                }
-#if GAME_HAS_RECORDS_PROVIDER
-                else if (key == "recordsAutoFetch") {
-                    hudManager.getRecordsHud().m_bAutoFetch = (std::stoi(value) != 0);
-                } else if (key == "recordsProvider") {
-                    hudManager.getRecordsHud().m_provider = stringToDataProvider(value);
-                }
-#endif
-#if GAME_HAS_DISCORD
-                else if (key == "discordRichPresence") {
-                    DiscordManager::getInstance().setEnabled(std::stoi(value) != 0);
-                }
-#endif
-                else if (key == "liveGaps" || key == "liveStandings") {
-                    PluginData::getInstance().setLiveGapsEnabled(std::stoi(value) != 0);
-                }
-                else if (key == "filterDnsRiders") {
-                    PluginData::getInstance().setFilterDnsRiders(std::stoi(value) != 0);
-                }
-                else if (key == "shortTimeFormat") {
-                    PluginData::getInstance().setShortTimeFormat(std::stoi(value) != 0);
-                }
-#if GAME_HAS_HTTP_SERVER
-                else if (key == "webServer") {
-                    HttpServer::getInstance().setEnabled(std::stoi(value) != 0);
-                }
-#endif
-            } catch (const std::exception& e) {
-                DEBUG_WARN_F("General: Failed to parse settings: %s", e.what());
-            }
-            continue;
-        }
-
-        // Handle Advanced section (power-user settings)
-        if (currentHudName == "Advanced") {
-            try {
-                if (key == "developerMode") {
-                    m_developerMode = (std::stoi(value) != 0);
-                } else if (key == "updateChannel") {
-                    // Update channel moved here from [General] in v4
-                    if (value == "prerelease") {
-                        UpdateChecker::getInstance().setChannel(UpdateChecker::UpdateChannel::PRERELEASE);
-                    } else {
-                        UpdateChecker::getInstance().setChannel(UpdateChecker::UpdateChannel::STABLE);
-                    }
-                } else if (key == "updateDebugMode") {
-                    bool debugMode = (std::stoi(value) != 0);
-                    UpdateChecker::getInstance().setDebugMode(debugMode);
-                    UpdateDownloader::getInstance().setDebugMode(debugMode);
-                // Note: mapPixelSpacing moved to [MapHud]
-                } else if (key == "speedoNeedleColor") {
-                    hudManager.getSpeedoWidget().setNeedleColor(PluginUtils::parseColorHex(value));
-                } else if (key == "speedoShowOdometer") {
-                    hudManager.getSpeedoWidget().setShowOdometer(std::stoi(value) != 0);
-                } else if (key == "speedoShowTripmeter") {
-                    hudManager.getSpeedoWidget().setShowTripmeter(std::stoi(value) != 0);
-                } else if (key == "tachoNeedleColor") {
-                    hudManager.getTachoWidget().setNeedleColor(PluginUtils::parseColorHex(value));
-                } else if (key == "leanArcFillColor") {
-                    hudManager.getLeanWidget().setArcFillColor(PluginUtils::parseColorHex(value));
-                }
-#if GAME_HAS_RECORDS_PROVIDER
-                else if (key == "recordsShowFooter") {
-                    hudManager.getRecordsHud().m_bShowFooter = (std::stoi(value) != 0);
-                }
-#endif
-                else if (key == "standingsTopPositions") {
-                    int topPos = std::stoi(value);
-                    // Clamp to valid range (0 to MAX_TOP_POSITIONS)
-                    topPos = std::max(0, std::min(topPos, static_cast<int>(StandingsHud::MAX_TOP_POSITIONS)));
-                    hudManager.getStandingsHud().m_topPositionsCount = topPos;
-                } else if (key == "standingsUseAccentHighlight") {
-                    hudManager.getStandingsHud().m_bUseAccentForHighlight = (std::stoi(value) != 0);
-                } else if (key == "dropShadowOffsetX") {
-                    UiConfig::getInstance().setDropShadowOffsetX(std::stof(value));
-                } else if (key == "dropShadowOffsetY") {
-                    UiConfig::getInstance().setDropShadowOffsetY(std::stof(value));
-                } else if (key == "dropShadowColor") {
-                    UiConfig::getInstance().setDropShadowColor(PluginUtils::parseColorHex(value));
-                } else if (key == "holdRepeatFastMs") {
-                    UiConfig::getInstance().setHoldRepeatFastMs(std::stoi(value));
-                } else if (key == "hazardStationaryTolerance") {
-                    PluginData::getInstance().setHazardStationaryTolerance(std::stof(value));
-                } else if (key == "hazardStationaryDurationMs") {
-                    PluginData::getInstance().setHazardStationaryDurationMs(std::stoi(value));
-                } else if (key == "hazardWrongWayDurationMs") {
-                    PluginData::getInstance().setHazardWrongWayDurationMs(std::stoi(value));
-                } else if (key == "hazardAwarenessDistance") {
-                    PluginData::getInstance().setHazardAwarenessDistance(std::stof(value));
-                } else if (key == "hazardCooldownMs") {
-                    PluginData::getInstance().setHazardCooldownMs(std::stoi(value));
-                } else if (key == "hazardGracePeriodMs") {
-                    PluginData::getInstance().setHazardGracePeriodMs(std::stoi(value));
-                } else if (key == "blueFlagAwarenessDistance") {
-                    PluginData::getInstance().setBlueFlagAwarenessDistance(std::stof(value));
-                }
-#if GAME_HAS_HTTP_SERVER
-                else if (key == "webServerPort") {
-                    HttpServer::getInstance().setPort(std::stoi(value));
-                } else if (key == "webServerThrottleMs") {
-                    HttpServer::getInstance().setThrottleMs(std::stoi(value));
-                } else if (key == "webServerBindAddress") {
-                    HttpServer::getInstance().setBindAddress(value);
-                }
-#endif
-#if defined(GAME_MXBIKES)
-                // Memory offsets for connection detection (MX Bikes only)
-                else if (key == "memLocalServerName") {
-                    Memory::ConnectionDetector::getInstance().getOffsetConfig().localServerName = PluginUtils::parseOffsetHex(value);
-                } else if (key == "memLocalServerMaxClients") {
-                    Memory::ConnectionDetector::getInstance().getOffsetConfig().localServerMaxClients = PluginUtils::parseOffsetHex(value);
-                } else if (key == "memLocalServerPassword") {
-                    Memory::ConnectionDetector::getInstance().getOffsetConfig().localServerPassword = PluginUtils::parseOffsetHex(value);
-                } else if (key == "memRemoteServerSockaddr") {
-                    Memory::ConnectionDetector::getInstance().getOffsetConfig().remoteServerSockaddr = PluginUtils::parseOffsetHex(value);
-                } else if (key == "memRemoteServerPassword") {
-                    Memory::ConnectionDetector::getInstance().getOffsetConfig().remoteServerPassword = PluginUtils::parseOffsetHex(value);
-                } else if (key == "memServerClientsArray") {
-                    Memory::ConnectionDetector::getInstance().getOffsetConfig().serverClientsArray = PluginUtils::parseOffsetHex(value);
-                }
-#endif
-            } catch (const std::exception& e) {
-                DEBUG_WARN_F("Advanced: Failed to parse settings: %s", e.what());
-            }
-            continue;
-        }
-
-        // Handle Colors section
-        if (currentHudName == "Colors") {
-            ColorConfig& colorConfig = ColorConfig::getInstance();
-            try {
-                if (key == "primary") {
-                    colorConfig.setColor(ColorSlot::PRIMARY, PluginUtils::parseColorHex(value));
-                } else if (key == "secondary") {
-                    colorConfig.setColor(ColorSlot::SECONDARY, PluginUtils::parseColorHex(value));
-                } else if (key == "tertiary") {
-                    colorConfig.setColor(ColorSlot::TERTIARY, PluginUtils::parseColorHex(value));
-                } else if (key == "muted") {
-                    colorConfig.setColor(ColorSlot::MUTED, PluginUtils::parseColorHex(value));
-                } else if (key == "background") {
-                    colorConfig.setColor(ColorSlot::BACKGROUND, PluginUtils::parseColorHex(value));
-                } else if (key == "positive") {
-                    colorConfig.setColor(ColorSlot::POSITIVE, PluginUtils::parseColorHex(value));
-                } else if (key == "warning") {
-                    colorConfig.setColor(ColorSlot::WARNING, PluginUtils::parseColorHex(value));
-                } else if (key == "neutral") {
-                    colorConfig.setColor(ColorSlot::NEUTRAL, PluginUtils::parseColorHex(value));
-                } else if (key == "negative") {
-                    colorConfig.setColor(ColorSlot::NEGATIVE, PluginUtils::parseColorHex(value));
-                } else if (key == "accent") {
-                    colorConfig.setColor(ColorSlot::ACCENT, PluginUtils::parseColorHex(value));
-                }
-            } catch (const std::exception& e) {
-                DEBUG_WARN_F("Colors: Failed to parse settings: %s", e.what());
-            }
-            continue;
-        }
-
-        // Handle Fonts section
-        if (currentHudName == "Fonts") {
-            FontConfig& fontConfig = FontConfig::getInstance();
-            if (key == "title") {
-                fontConfig.setFont(FontCategory::TITLE, value);
-            } else if (key == "normal") {
-                fontConfig.setFont(FontCategory::NORMAL, value);
-            } else if (key == "strong") {
-                fontConfig.setFont(FontCategory::STRONG, value);
-            } else if (key == "digits") {
-                fontConfig.setFont(FontCategory::DIGITS, value);
-            } else if (key == "marker") {
-                fontConfig.setFont(FontCategory::MARKER, value);
-            } else if (key == "small") {
-                fontConfig.setFont(FontCategory::SMALL, value);
-            }
-            continue;
-        }
-
-        // Handle Rumble section (effect configuration)
-        // Always load into global config (per-bike profiles loaded from JSON)
-        if (currentHudName == "Rumble") {
-            RumbleConfig& config = XInputReader::getInstance().getGlobalRumbleConfig();
-            try {
-                if (key == "enabled") {
-                    config.enabled = std::stoi(value) != 0;
-                } else if (key == "additive_blend") {
-                    config.additiveBlend = std::stoi(value) != 0;
-                } else if (key == "rumble_when_crashed") {
-                    config.rumbleWhenCrashed = std::stoi(value) != 0;
-                } else if (key == "use_per_bike_effects" || key == "use_per_bike_profiles") {
-                    // Note: use_per_bike_profiles is backward compatible alias
-                    config.usePerBikeEffects = std::stoi(value) != 0;
-                } else if (key == "disable_on_crash") {
-                    // Backward compatibility: invert the old setting
-                    config.rumbleWhenCrashed = std::stoi(value) == 0;
-                }
-                // Suspension effect - new format
-                else if (key == "susp_min_input") {
-                    config.suspensionEffect.minInput = std::stof(value);
-                } else if (key == "susp_max_input") {
-                    config.suspensionEffect.maxInput = std::stof(value);
-                } else if (key == "susp_light_strength") {
-                    config.suspensionEffect.lightStrength = std::stof(value);
-                } else if (key == "susp_heavy_strength") {
-                    config.suspensionEffect.heavyStrength = std::stof(value);
-                }
-                // Wheelspin effect
-                else if (key == "wheel_min_input") {
-                    config.wheelspinEffect.minInput = std::stof(value);
-                } else if (key == "wheel_max_input") {
-                    config.wheelspinEffect.maxInput = std::stof(value);
-                } else if (key == "wheel_light_strength") {
-                    config.wheelspinEffect.lightStrength = std::stof(value);
-                } else if (key == "wheel_heavy_strength") {
-                    config.wheelspinEffect.heavyStrength = std::stof(value);
-                }
-                // Brake lockup effect
-                else if (key == "lockup_min_input") {
-                    config.brakeLockupEffect.minInput = std::stof(value);
-                } else if (key == "lockup_max_input") {
-                    config.brakeLockupEffect.maxInput = std::stof(value);
-                } else if (key == "lockup_light_strength") {
-                    config.brakeLockupEffect.lightStrength = std::stof(value);
-                } else if (key == "lockup_heavy_strength") {
-                    config.brakeLockupEffect.heavyStrength = std::stof(value);
-                }
-                // RPM effect
-                else if (key == "rpm_min_input") {
-                    config.rpmEffect.minInput = std::stof(value);
-                } else if (key == "rpm_max_input") {
-                    config.rpmEffect.maxInput = std::stof(value);
-                } else if (key == "rpm_light_strength") {
-                    config.rpmEffect.lightStrength = std::stof(value);
-                } else if (key == "rpm_heavy_strength") {
-                    config.rpmEffect.heavyStrength = std::stof(value);
-                }
-                // Slide effect
-                else if (key == "slide_min_input") {
-                    config.slideEffect.minInput = std::stof(value);
-                } else if (key == "slide_max_input") {
-                    config.slideEffect.maxInput = std::stof(value);
-                } else if (key == "slide_light_strength") {
-                    config.slideEffect.lightStrength = std::stof(value);
-                } else if (key == "slide_heavy_strength") {
-                    config.slideEffect.heavyStrength = std::stof(value);
-                }
-                // Surface effect
-                else if (key == "surface_min_input") {
-                    config.surfaceEffect.minInput = std::stof(value);
-                } else if (key == "surface_max_input") {
-                    config.surfaceEffect.maxInput = std::stof(value);
-                } else if (key == "surface_light_strength") {
-                    config.surfaceEffect.lightStrength = std::stof(value);
-                } else if (key == "surface_heavy_strength") {
-                    config.surfaceEffect.heavyStrength = std::stof(value);
-                }
-                // Steer effect
-                else if (key == "steer_min_input") {
-                    config.steerEffect.minInput = std::stof(value);
-                } else if (key == "steer_max_input") {
-                    config.steerEffect.maxInput = std::stof(value);
-                } else if (key == "steer_light_strength") {
-                    config.steerEffect.lightStrength = std::stof(value);
-                } else if (key == "steer_heavy_strength") {
-                    config.steerEffect.heavyStrength = std::stof(value);
-                }
-                // Wheelie effect
-                else if (key == "wheelie_min_input") {
-                    config.wheelieEffect.minInput = std::stof(value);
-                } else if (key == "wheelie_max_input") {
-                    config.wheelieEffect.maxInput = std::stof(value);
-                } else if (key == "wheelie_light_strength") {
-                    config.wheelieEffect.lightStrength = std::stof(value);
-                } else if (key == "wheelie_heavy_strength") {
-                    config.wheelieEffect.heavyStrength = std::stof(value);
-                }
-            } catch (const std::exception& e) {
-                DEBUG_WARN_F("Rumble: Failed to parse settings: %s", e.what());
-            }
-            continue;
-        }
-
-        // Handle HelmetOverlay section (global, not per-profile)
-        if (currentHudName == "HelmetOverlay") {
-            auto& hud = hudManager.getHelmetOverlayHud();
-            try {
-                if (key == "visible") {
-                    hud.setVisible(std::stoi(value) != 0);
-                } else if (key == "helmetEnabled") {
-                    hud.m_helmetEnabled = std::stoi(value) != 0;
-                } else if (key == "visorMode") {
-                    hud.m_visorMode = std::clamp(std::stoi(value), 0, HelmetOverlayHud::VISOR_MODE_COUNT - 1);
-                } else if (key == "helmetUpperVariant") {
-                    hud.m_helmetUpperVariant = std::stoi(value);
-                } else if (key == "helmetLowerVariant") {
-                    hud.m_helmetLowerVariant = std::stoi(value);
-                } else if (key == "helmetUpperOffsetY") {
-                    hud.m_helmetUpperOffsetY = std::stof(value);
-                } else if (key == "helmetLowerOffsetY") {
-                    hud.m_helmetLowerOffsetY = std::stof(value);
-                } else if (key == "helmetTiltStrength") {
-                    hud.m_helmetTiltStrength = std::stof(value);
-                } else if (key == "helmetVibrationStrength") {
-                    hud.m_helmetVibrationStrength = std::stof(value);
-                } else if (key == "helmetVibrationSensitivity") {
-                    hud.m_helmetVibrationSensitivity = std::stof(value);
-                } else if (key == "helmetZoom") {
-                    hud.m_helmetZoom = std::stof(value);
-                } else if (key == "visorTintColor") {
-                    hud.m_visorTintColor = PluginUtils::parseColorHex(value);
-                } else if (key == "visorTintOpacity") {
-                    hud.m_visorTintOpacity = std::stof(value);
-                }
-            } catch (const std::exception& e) {
-                DEBUG_WARN_F("HelmetOverlay: Failed to parse setting '%s': %s", key.c_str(), e.what());
-            }
-            continue;
-        }
-
-        // Handle Hotkeys section
-        if (currentHudName == "Hotkeys") {
-            HotkeyManager& hotkeyMgr = HotkeyManager::getInstance();
-            try {
-                // Parse action index from key name (e.g., "action0_key" -> 0)
-                if (key.length() > 7 && key.substr(0, 6) == "action") {
-                    size_t underscorePos = key.find('_', 6);
-                    if (underscorePos != std::string::npos) {
-                        int actionIdx = std::stoi(key.substr(6, underscorePos - 6));
-                        if (actionIdx >= 0 && actionIdx < static_cast<int>(HotkeyAction::COUNT)) {
-                            HotkeyAction action = static_cast<HotkeyAction>(actionIdx);
-                            std::string suffix = key.substr(underscorePos + 1);
-
-                            HotkeyBinding binding = hotkeyMgr.getBinding(action);
-                            if (suffix == "key") {
-                                binding.keyboard.keyCode = static_cast<uint8_t>(std::stoi(value));
-                            } else if (suffix == "mod") {
-                                binding.keyboard.modifiers = static_cast<ModifierFlags>(std::stoi(value));
-                            } else if (suffix == "btn") {
-                                binding.controller = static_cast<ControllerButton>(std::stoi(value));
-                            }
-                            hotkeyMgr.setBinding(action, binding);
-                        }
-                    }
-                }
-            } catch (const std::exception& e) {
-                DEBUG_WARN_F("Hotkeys: Failed to parse settings: %s", e.what());
-            }
+        // Global (non-per-profile) sections share one applier so loadSettings() and
+        // resetGlobalsToFactoryDefaults() cannot drift as new globals are added.
+        if (applyGlobalLine(currentHudName, key, value, hudManager)) {
             continue;
         }
 
@@ -4262,6 +4795,25 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
     }
 
     m_cacheInitialized = true;
+
+    // Drop retired keys so they don't linger in the rewritten file. The
+    // forward-compatible loader preserves unknown keys by design; this prunes
+    // only keys we have explicitly retired (renamed/removed), keeping upgraded
+    // files tidy without touching genuinely-unknown keys.
+    {
+        static const std::pair<const char*, const char*> kRetiredKeys[] = {
+            {"StandingsHud", "useAccentHighlight"},        // 1.22.0.0 -> playerRowHighlightAccent (#175)
+            {"StandingsHud", "playerRowHighlightAccent"},  // -> playerRowHighlightBrand (this branch)
+        };
+        for (const auto& [hudName, key] : kRetiredKeys) {
+            auto defIt = m_hudDefaults.find(hudName);
+            if (defIt != m_hudDefaults.end()) defIt->second.erase(key);
+            for (auto& cache : m_profileCache) {
+                auto hudIt = cache.find(hudName);
+                if (hudIt != cache.end()) hudIt->second.erase(key);
+            }
+        }
+    }
 
     // Apply active profile to HUDs
     applyActiveProfile(hudManager);

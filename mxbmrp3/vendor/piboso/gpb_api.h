@@ -221,7 +221,7 @@ typedef struct
 	int m_iOffence;										/* 1 = jump start; 2 = pitlane speeding; 3 = cutting */
 	int m_iLap;											/* lap index */
 	int m_iType;										/* 0 = ride-though; 1 = time penalty */
-	int m_iTime;										/* milliseconds. Penalty time */
+	int m_iTime;										/* seconds. Penalty time (header documents ms but the game actually sends seconds; gpbikes_adapter converts) */
 } SPluginsGPBRaceCommunication_t;
 
 typedef struct

@@ -16,8 +16,8 @@ mxbmrp3/
 │   ├── vendor/piboso/          # Game API definitions and exports
 │   │   ├── mxb_api.h/.cpp      # MX Bikes API header and DLL exports
 │   │   ├── gpb_api.h/.cpp      # GP Bikes API header and DLL exports
-│   │   ├── wrs_api.h           # WRS API header (stubbed)
-│   │   └── krp_api.h           # KRP API header (stubbed)
+│   │   ├── krp_api.h/.cpp      # Kart Racing Pro API header and DLL exports
+│   │   └── wrs_api.h           # WRS API header (stubbed)
 │   ├── game/                   # Multi-game abstraction layer
 │   │   ├── unified_types.h     # Game-agnostic data structures
 │   │   ├── game_config.h       # Compile-time game selection
@@ -63,9 +63,8 @@ mxbmrp3/
 │   ├── fonts/                  # .fnt files (bitmap fonts)
 │   ├── textures/               # .tga files (HUD backgrounds with variants)
 │   ├── icons/                  # .tga files (rider icons for map/radar)
-│   ├── web/                    # Web overlay (HTML/CSS/JS served by HttpServer)
-│   │   └── logos/              # Logo slideshow PNGs (auto-detected by /api/logos)
-│   └── tooltips.json           # UI tooltip definitions
+│   └── web/                    # Web overlay (HTML/CSS/JS served by HttpServer)
+│       └── logos/              # Logo slideshow PNGs (auto-detected by /api/logos)
 ├── docs/                       # Documentation
 ├── replay_tool/                # Separate tool for replay analysis
 └── mxbmrp3.sln                 # Visual Studio solution
@@ -161,7 +160,8 @@ Here's how data flows through the plugin:
 Each PiBoSo game defines a C API that plugins must implement. The APIs are nearly identical, with game-specific struct variations. Each game has its own API file:
 - `mxb_api.h/.cpp` - MX Bikes
 - `gpb_api.h/.cpp` - GP Bikes
-- `wrs_api.h` / `krp_api.h` - WRS and KRP (headers only, stubs)
+- `krp_api.h/.cpp` - Kart Racing Pro
+- `wrs_api.h` - WRS (header only, stubbed)
 
 Key exported functions (same across all games):
 
@@ -182,6 +182,8 @@ The API uses C structs to pass data. Each game's structs have different field na
 - GP Bikes: `SPluginsGPBBikeData_t`, `SPluginsGPBBikeEvent_t`
 
 **The adapter layer** (`game/adapters/*.h`) converts these game-specific structs to unified types (`Unified::TelemetryData`, `Unified::VehicleEventData`, etc.) that the core plugin uses.
+
+**Exception barrier (`vendor/piboso/api_guard.h`):** Every DLL export wraps its body in `API_GUARD_CATCH("ExportName")`. The host game doesn't support C++ exceptions across the DLL boundary, so any uncaught throw from PluginManager downward would terminate the host process. The macro catches `std::exception` and `...` at the boundary, logs via `DEBUG_WARN_F`, and returns a sensible fallback value. When adding a new export, follow the same pattern.
 
 ### 2. PluginManager (`core/plugin_manager.*`)
 
@@ -398,6 +400,32 @@ Timestamped feed of race events, used by both the in-game HUD and web overlay:
 - Ring buffer in PluginData (`MAX_EVENT_LOG_CAPACITY = 100`)
 - Each entry: message, detail, type enum, session time, system clock time
 
+### 12. CrashHandler (`core/crash_handler.*`)
+
+Top-level Structured Exception Handling (SEH) filter for unhandled hardware faults: access violations, stack overflows, divide-by-zero, illegal instructions. These faults live below the C++ exception system: `catch (...)` doesn't intercept them, so they would otherwise crash the host without leaving any diagnostic context behind. The CrashHandler complements the C++ exception barrier at the DLL boundary by handling the failure modes the C++ machinery can't reach.
+
+**What it does:**
+- Installed via `SetUnhandledExceptionFilter` in `PluginManager::initialize()`, right after `Logger::initialize`
+- On any unhandled SEH fault in the host process, writes a minidump to `<savePath>\mxbmrp3\crashes\mxbmrp3_crash_<date>_<time>_<pid>.dmp`
+- Chains to the previously-installed filter (typically the host's own or the OS default), so MX Bikes' crash dialog / Windows Error Reporting still runs
+- Uninstalled in `PluginManager::shutdown()` so the OS doesn't hold a function pointer into our DLL after unload
+
+**Minidump contents:**
+- `MiniDumpNormal | MiniDumpWithThreadInfo | MiniDumpWithIndirectlyReferencedMemory | MiniDumpWithUnloadedModules`
+- Includes exception record (code, address, context), thread stacks, module list, heap pages locals point into
+- Deliberately excludes full memory (would produce multi-GB dumps)
+
+**Design constraints inside the filter:**
+- The heap may be corrupt at fault time, so the filter uses only stack-allocated buffers and Win32 calls. No `std::string`, no `new`, no `Logger`.
+- `dbghelp.lib` is linked implicitly via `#pragma comment(lib, "dbghelp.lib")` so the DLL is mapped before any crash, not lazily loaded inside the filter.
+- Re-entry guard via `InterlockedExchange(&s_dumping, 1)` prevents infinite recursion if `MiniDumpWriteDump` itself faults. The same guard also serializes concurrent SEH faults across threads.
+- The filter explicitly does NOT call `Logger::warn()`. `Logger::log()` holds a mutex, and `MiniDumpWriteDump` suspends other threads to walk their stacks; if any thread held the log mutex at fault time, the filter would wedge.
+- Transactional install/uninstall: `PluginManager::initialize()` wraps everything after `CrashHandler::install` in `try/catch(...)`. If init throws, the catch uninstalls the filter and rethrows. Otherwise the game would unload the DLL while the OS still held a function pointer into it.
+
+**What it does NOT do:**
+- Prevent crashes. It runs *after* a fault has fired and the process is already going down. It just leaves a `.dmp` behind for debugging.
+- Catch C++ exceptions. That's the API guard's job (`vendor/piboso/api_guard.h`).
+
 ## The HUD System
 
 ### BaseHud (`hud/base_hud.*`)
@@ -455,11 +483,16 @@ Abstract base class that all HUDs inherit from. Provides:
 - `PositionWidget` - Current race position (P1, P2...)
 - `LapWidget` - Current lap number
 - `TimeWidget` - Session time remaining
+- `ClockWidget` - Real-time clock
+- `GearWidget` - Current gear indicator
 - `SpeedoWidget` - Analog speedometer dial
 - `TachoWidget` - Analog tachometer dial
 - `BarsWidget` - Visual telemetry bars (throttle, brake, etc.)
 - `LeanWidget` - Bike lean/roll angle display with arc gauge and steering bar
+- `GForceWidget` - Lateral/longitudinal G-force gauge with peak marker
 - `FuelWidget` - Fuel calculator with consumption tracking
+- `TyreTempWidget` - Front and rear tyre tread temperatures (GP Bikes only)
+- `EcuWidget` - Electronic rider aids: engine map, traction control, engine braking, anti-wheeling (GP Bikes only)
 - `GamepadWidget` - Controller visualization with button/stick/trigger display
 - `VersionWidget` - Plugin version display (includes hidden Breakout game easter egg; high score persisted via StatsManager)
 - `SettingsButtonWidget` - Settings menu toggle button
@@ -617,8 +650,51 @@ offsetY=0.6882
 ```
 
 Settings are saved:
-- On plugin shutdown
+- On plugin shutdown (and on change, when Auto-Save is enabled)
 - File location: `{game_save_path}/mxbmrp3/mxbmrp3_settings.ini`
+
+#### Per-profile vs global sections
+
+Settings fall into two kinds, persisted differently:
+
+- **Per-profile** — each HUD/widget has a base `[HudName]` section (the defaults) plus
+  optional `[HudName:Practice|Qualify|Race|Spectate]` override sections. Saving is **sparse**:
+  a profile section only contains the keys that *differ* from the base. There are four
+  profiles (`ProfileType`: Practice, Qualify, Race, Spectate) that auto-switch with the
+  session type.
+- **Global** (single value, not per-profile) — `[General]`, `[Updates]`, `[Advanced]`,
+  `[Display]`, `[Colors]`, `[Fonts]`, `[Rumble]`, `[HelmetOverlay]`, `[Hotkeys]`. These are
+  owned by singletons (UiConfig, ColorConfig, UpdateChecker, etc.), not by a profile.
+
+#### One serialization, three consumers (save / load / reset)
+
+Both save and load route global sections through a **single pair** of functions, so they can't
+drift as settings are added:
+
+- `writeGlobalSettings(ostream&)` — the sole emitter for every global section. Used by
+  `saveSettings()` *and* by `captureFactoryDefaults()` to snapshot defaults at startup.
+- `applyGlobalLine(section, key, value)` — the sole applier. Used by `loadSettings()` *and*
+  by the reset paths.
+
+**Reset = replay the factory snapshot through the same applier.** At startup (before the
+user's INI is parsed, while every singleton holds its constructor defaults),
+`captureFactoryDefaults()` captures two snapshots:
+
+- `m_globalDefaultsIni` — global sections as INI text. `resetGlobalsToFactoryDefaults()`
+  (full reset) and `resetGlobalSectionsToFactoryDefaults({...})` (per-tab reset for tabs
+  that map 1:1 to a section) replay it via `applyGlobalLine`.
+- `m_hudFactoryDefaults` — pristine per-HUD constructor defaults. The per-HUD reset paths
+  (`resetAllToFactoryDefaults`, `resetHudsToFactoryDefaults`, `resetActiveProfileToFactoryDefaults`)
+  replay *this*, **not** `m_hudDefaults`.
+
+> Why two HUD caches? `m_hudDefaults` is the sparse-save baseline and has the user's
+> hand-edited base `[HudName]` keys *folded in* at load (so they round-trip). That makes it
+> the wrong source for "reset to defaults" — it would restore the file's baseline (or, after a
+> plugin upgrade, an *old* version's default) instead of this build's. `m_hudFactoryDefaults`
+> is captured before any folding, so reset always means this build's defaults. Don't collapse
+> the two. (Migration note: legacy keys are read from their old section as a fallback and
+> migrate to the new section on next save — e.g. update keys `[General]`/`[Advanced]` →
+> `[Updates]`, units `[General]` → `[Display]`.)
 
 ### SettingsHud (`hud/settings_hud.*`)
 
@@ -660,33 +736,11 @@ mxbmrp3/hud/settings/
 
 #### Tooltip System
 
-Tooltips provide contextual help when hovering over controls:
-
-```
-mxbmrp3_data/
-└── tooltips.json    # Tooltip definitions
-```
-
-**tooltips.json structure**:
-```json
-{
-  "version": 1,
-  "tabs": {
-    "standings": {
-      "title": "Standings",
-      "tooltip": "Live race standings showing position, gaps..."
-    }
-  },
-  "controls": {
-    "common.visible": "Show or hide this element during gameplay.",
-    "standings.rows": "Maximum number of rider rows to display.",
-    "map.range": "Zoom level. Full shows entire track..."
-  }
-}
-```
+Tooltips provide contextual help when hovering over controls. Strings are
+compiled into the plugin (no external file).
 
 **TooltipManager** (`core/tooltip_manager.h`) is a header-only singleton that:
-- Loads `tooltips.json` at startup
+- Holds two static `unordered_map<string, const char*>` tables (tabs, controls)
 - Provides `getTabTooltip(tabId)` and `getControlTooltip(controlId)` methods
 - Returns empty string if tooltip not found (graceful fallback)
 
@@ -969,9 +1023,9 @@ SCOPED_TIMER_THRESHOLD("MyFunction", 100);  // Logs if > 100us
 
 2. **0-based vs 1-based indexing** - API uses 0-based lap numbers, UI shows 1-based. Check the API header comments.
 
-3. **No exceptions in callbacks** - The game engine doesn't handle C++ exceptions. Use defensive checks.
+3. **C++ exceptions must not cross the DLL boundary** - The host game terminates if a C++ exception escapes a DLL export. Every export in `vendor/piboso/*_api.cpp` wraps its body in `API_GUARD_CATCH` (see `vendor/piboso/api_guard.h`). When adding a new export, follow the same pattern. Similarly, every `std::thread` body (HttpServer, UpdateChecker, UpdateDownloader, DiscordManager, `RecordsHud::performFetch`) wraps itself in a top-level try/catch, since an uncaught throw in a `std::thread` calls `std::terminate()`. For hardware faults that don't go through the C++ exception system (null deref, OOB, divide-by-zero), the SEH filter in `core/crash_handler.*` writes a minidump for diagnosis but doesn't prevent the crash.
 
-4. **Thread safety** - The plugin runs single-threaded (all callbacks on main thread). No synchronization needed.
+4. **Game thread vs background threads** - All PiBoSo API callbacks (`Draw`, `RunTelemetry`, etc.) run on the game thread. `PluginData`, `HudManager`, `SettingsManager`, and the various other managers are game-thread-only and not thread-safe. Background threads exist for I/O (HttpServer, DiscordManager, UpdateChecker, UpdateDownloader, RecordsHud's fetch thread) and must NOT touch those singletons directly. They consume snapshots built on the game thread instead (see `HttpServer::buildJsonSnapshot`, `DiscordManager::updateSnapshot`). The `Logger` has its own internal mutex and is safe to call from any thread.
 
 5. **Sprite indices are 1-based** - Index 0 means "solid color fill", not "first sprite".
 
@@ -999,9 +1053,9 @@ Each game produces its own DLL:
 | Configuration | Output | Install Location |
 |---------------|--------|------------------|
 | MXB-Release | `mxbmrp3.dlo` | MX Bikes `plugins/` |
-| GPB-Release | `gpbmrp3.dlo` | GP Bikes `plugins/` |
-| (future) | `wrsmrp3.dlo` | WRS `plugins/` |
-| (future) | `krpmrp3.dlo` | KRP `plugins/` |
+| GPB-Release | `mxbmrp3_gpb.dlo` | GP Bikes `plugins/` |
+| KRP-Release | `mxbmrp3_krp.dlo` | Kart Racing Pro `plugins/` |
+| (future) | `mxbmrp3_wrs.dlo` | WRS `plugins/` |
 
 The Visual Studio project uses conditional compilation to include only the relevant API file:
 
@@ -1101,7 +1155,7 @@ The adapter layer isolates changes - core HUDs don't need modification for most 
 | Settings UI | `hud/settings/settings_hud.cpp` |
 | Settings layout helpers | `hud/settings/settings_layout.cpp` |
 | Settings tabs | `hud/settings/settings_tab_*.cpp` |
-| Tooltip definitions | `mxbmrp3_data/tooltips.json` |
+| Tooltip definitions | `core/tooltip_manager.h` (embedded) |
 | Tooltip manager | `core/tooltip_manager.h` |
 | Settings file | `{save_path}/mxbmrp3/mxbmrp3_settings.ini` |
 | Stats file | `{save_path}/mxbmrp3/mxbmrp3_stats.json` |
@@ -1118,9 +1172,10 @@ The adapter layer isolates changes - core HUDs don't need modification for most 
 |------|-------|
 | Add new HUD | Create class, inherit BaseHud, register in HudManager |
 | Add new data type | Add struct to PluginData, add DataChangeType enum |
-| Add new setting | Add field to HUD, save/load in SettingsManager |
+| Add new per-HUD setting | Add field + capture/apply in SettingsManager's per-HUD cache; reset is automatic (snapshot) |
+| Add new global setting | Add to `writeGlobalSettings()` **and** `applyGlobalLine()` (one emit + one apply); reset is automatic |
 | Add settings tab | Create `settings_tab_*.cpp`, add tab enum, register in SettingsHud |
-| Add tooltip | Add entry to `tooltips.json`, pass tooltipId to control helper |
+| Add tooltip | Add entry to the maps in `core/tooltip_manager.h`, pass tooltipId to control helper |
 | Add keyboard shortcut | Handle in HudManager::processKeyboardInput() |
 | Add new handler | Create handler class, route from PluginManager |
 | Add new font | Place `.fnt` file in `mxbmrp3_data/fonts/` (auto-discovered) |

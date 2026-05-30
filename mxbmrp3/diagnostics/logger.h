@@ -7,6 +7,7 @@
 #include <windows.h>
 #include <string>
 #include <fstream>
+#include <mutex>
 #include <cstdio>
 
 class Logger {
@@ -67,6 +68,13 @@ private:
     bool m_initialized;
     std::ofstream m_logFile;
     std::string m_logFilePath;
+
+    // Serializes log() so concurrent calls from the game thread and
+    // background threads (HttpServer, Discord, UpdateChecker, RecordsHud,
+    // UpdateDownloader) don't race on the ofstream's streambuf — which
+    // is UB under the C++ standard and tends to mangle output lines in
+    // practice. Also protects m_lastTimestampMs / m_cachedTimestamp.
+    std::mutex m_mutex;
 
     // Timestamp caching for performance
     int64_t m_lastTimestampMs;

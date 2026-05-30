@@ -668,8 +668,8 @@ void LapConsistencyHud::renderStatistics(float x, float y, float width) {
     // Shows placeholder when waiting for data (e.g., AVERAGE mode but no laps completed yet)
     if (m_enabledStats & STAT_REF) {
         int refTime = getReferenceTime();  // This also updates m_referenceAvailable
-        addString("REF", labelX, lineY, Justify::LEFT, this->getFont(FontCategory::NORMAL),
-                  m_referenceAvailable ? labelColor : this->getColor(ColorSlot::MUTED), dims.fontSize);
+        addLabel("Ref", labelX, lineY, Justify::LEFT, this->getFont(FontCategory::STRONG),
+                  m_referenceAvailable ? labelColor : this->getColor(ColorSlot::MUTED), dims);
         if (refTime > 0) {
             // Have a valid reference time
             formatLapTime(buffer, sizeof(buffer), refTime);
@@ -689,8 +689,8 @@ void LapConsistencyHud::renderStatistics(float x, float y, float width) {
 
     // BEST: Best lap in sample
     if (m_enabledStats & STAT_BEST) {
-        addString("BEST", labelX, lineY, Justify::LEFT, this->getFont(FontCategory::NORMAL),
-                  labelColor, dims.fontSize);
+        addLabel("Best", labelX, lineY, Justify::LEFT, this->getFont(FontCategory::STRONG),
+                  labelColor, dims);
         if (m_stats.bestMs > 0) {
             formatLapTime(buffer, sizeof(buffer), m_stats.bestMs);
             addString(buffer, valueX, lineY, Justify::RIGHT, this->getFont(FontCategory::DIGITS),
@@ -704,8 +704,8 @@ void LapConsistencyHud::renderStatistics(float x, float y, float width) {
 
     // AVG: Average lap time
     if (m_enabledStats & STAT_AVG) {
-        addString("AVG", labelX, lineY, Justify::LEFT, this->getFont(FontCategory::NORMAL),
-                  labelColor, dims.fontSize);
+        addLabel("Avg", labelX, lineY, Justify::LEFT, this->getFont(FontCategory::STRONG),
+                  labelColor, dims);
         if (m_stats.averageMs > 0) {
             formatLapTime(buffer, sizeof(buffer), m_stats.averageMs);
             addString(buffer, valueX, lineY, Justify::RIGHT, this->getFont(FontCategory::DIGITS),
@@ -719,8 +719,8 @@ void LapConsistencyHud::renderStatistics(float x, float y, float width) {
 
     // WORST: Worst lap in sample
     if (m_enabledStats & STAT_WORST) {
-        addString("WORST", labelX, lineY, Justify::LEFT, this->getFont(FontCategory::NORMAL),
-                  labelColor, dims.fontSize);
+        addLabel("Worst", labelX, lineY, Justify::LEFT, this->getFont(FontCategory::STRONG),
+                  labelColor, dims);
         if (m_stats.worstMs > 0) {
             formatLapTime(buffer, sizeof(buffer), m_stats.worstMs);
             addString(buffer, valueX, lineY, Justify::RIGHT, this->getFont(FontCategory::DIGITS),
@@ -734,8 +734,8 @@ void LapConsistencyHud::renderStatistics(float x, float y, float width) {
 
     // LAST: Most recent lap
     if (m_enabledStats & STAT_LAST) {
-        addString("LAST", labelX, lineY, Justify::LEFT, this->getFont(FontCategory::NORMAL),
-                  labelColor, dims.fontSize);
+        addLabel("Last", labelX, lineY, Justify::LEFT, this->getFont(FontCategory::STRONG),
+                  labelColor, dims);
         if (m_stats.lastMs > 0) {
             formatLapTime(buffer, sizeof(buffer), m_stats.lastMs);
             addString(buffer, valueX, lineY, Justify::RIGHT, this->getFont(FontCategory::DIGITS),
@@ -749,8 +749,8 @@ void LapConsistencyHud::renderStatistics(float x, float y, float width) {
 
     // +/-: Standard deviation (consistency metric)
     if (m_enabledStats & STAT_STDDEV) {
-        addString("+/-", labelX, lineY, Justify::LEFT, this->getFont(FontCategory::NORMAL),
-                  labelColor, dims.fontSize);
+        addLabel("+/-", labelX, lineY, Justify::LEFT, this->getFont(FontCategory::STRONG),
+                  labelColor, dims);
         if (m_stats.validLapCount > 1) {
             snprintf(buffer, sizeof(buffer), "%.3fs", m_stats.stdDevMs / 1000.0f);
             addString(buffer, valueX, lineY, Justify::RIGHT, this->getFont(FontCategory::DIGITS),
@@ -764,8 +764,8 @@ void LapConsistencyHud::renderStatistics(float x, float y, float width) {
 
     // TREND: Trend indicator (semantic coloring based on direction)
     if (m_enabledStats & STAT_TREND) {
-        addString("TREND", labelX, lineY, Justify::LEFT, this->getFont(FontCategory::NORMAL),
-                  labelColor, dims.fontSize);
+        addLabel("Trend", labelX, lineY, Justify::LEFT, this->getFont(FontCategory::STRONG),
+                  labelColor, dims);
         if (m_stats.validLapCount >= 4) {
             const char* trendText;
             unsigned long trendColor = valueColor;
@@ -790,8 +790,8 @@ void LapConsistencyHud::renderStatistics(float x, float y, float width) {
 
     // CONS: Consistency score (semantic coloring based on score)
     if (m_enabledStats & STAT_CONS) {
-        addString("CONS", labelX, lineY, Justify::LEFT, this->getFont(FontCategory::NORMAL),
-                  labelColor, dims.fontSize);
+        addLabel("Cons", labelX, lineY, Justify::LEFT, this->getFont(FontCategory::STRONG),
+                  labelColor, dims);
         if (m_stats.validLapCount > 1) {
             snprintf(buffer, sizeof(buffer), "%.0f%%", m_stats.consistencyScore);
             // Semantic coloring: positive for high (80%+), neutral for medium, negative for low (<50%)
@@ -812,16 +812,11 @@ void LapConsistencyHud::renderStatistics(float x, float y, float width) {
 
 void LapConsistencyHud::formatLapTime(char* buffer, size_t bufferSize, int timeMs) {
     if (timeMs <= 0) {
-        snprintf(buffer, bufferSize, "--:--.---");
+        snprintf(buffer, bufferSize, "%s", Placeholders::LAP_TIME);
         return;
     }
-
-    int totalSeconds = timeMs / 1000;
-    int milliseconds = timeMs % 1000;
-    int minutes = totalSeconds / 60;
-    int seconds = totalSeconds % 60;
-
-    snprintf(buffer, bufferSize, "%d:%02d.%03d", minutes, seconds, milliseconds);
+    // Delegate so the compact (short) time setting is honored like the other HUDs.
+    PluginUtils::formatLapTime(timeMs, buffer, bufferSize);
 }
 
 void LapConsistencyHud::resetToDefaults() {

@@ -54,16 +54,14 @@ void RumbleHud::resetToDefaults() {
     m_bShowTitle = true;
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
-    setPosition(0.7315f, 0.444f);
+    setPosition(0.7315f, 0.4107f);
     setScale(1.0f);
     m_bShowMaxMarkers = false;  // Max markers OFF by default
     m_maxMarkerLingerFrames = 60;  // ~1 second at 60fps
 
     // Reset max tracking state
     for (int i = 0; i < 2; ++i) {
-        m_maxValues[i] = 0.0f;
         m_markerValues[i] = 0.0f;
-        m_prevValues[i] = 0.0f;
         m_maxFramesRemaining[i] = 0;
     }
 
@@ -139,11 +137,6 @@ void RumbleHud::addVerticalBar(float x, float y, float barWidth, float barHeight
 void RumbleHud::updateMaxTracking(int barIndex, float currentValue) {
     if (barIndex < 0 || barIndex >= 2) return;
 
-    // Track overall max
-    if (currentValue > m_maxValues[barIndex]) {
-        m_maxValues[barIndex] = currentValue;
-    }
-
     // Max marker: show at peak when value starts decreasing, hide when increasing
     // Use small threshold to avoid jitter from noise
     constexpr float THRESHOLD = 0.02f;
@@ -163,8 +156,6 @@ void RumbleHud::updateMaxTracking(int barIndex, float currentValue) {
             m_markerValues[barIndex] = 0.0f;
         }
     }
-
-    m_prevValues[barIndex] = currentValue;
 }
 
 void RumbleHud::addMaxMarker(float x, float y, float barWidth, float barHeight, float maxValue) {
@@ -269,6 +260,16 @@ void RumbleHud::rebuildRenderData() {
         addHorizontalGridLine(graphStartX, gridY, graphWidth, gridColor, gridLineThickness);
     }
 
+    // Y-axis labels (effect %, matching the grid lines), like the other graph HUDs
+    {
+        float labelX = graphStartX + dims.paddingH * 0.2f;
+        unsigned long axisColor = this->getColor(ColorSlot::TERTIARY);
+        int axisFont = this->getFont(FontCategory::SMALL);
+        addString("100%", labelX, graphStartY, Justify::LEFT, axisFont, axisColor, dims.fontSizeSmall);
+        addString("50%", labelX, graphStartY + graphHeight * 0.5f, Justify::LEFT, axisFont, axisColor, dims.fontSizeSmall);
+        addString("0%", labelX, graphStartY + graphHeight - dims.lineHeightSmall, Justify::LEFT, axisFont, axisColor, dims.fontSizeSmall);
+    }
+
     // Draw all graphs overlaid (only when on track - no telemetry data during spectate/replay)
     float lineThickness = 0.002f * getScale();
     size_t maxHistory = XInputReader::MAX_RUMBLE_HISTORY;
@@ -330,7 +331,7 @@ void RumbleHud::rebuildRenderData() {
         addMaxMarker(barsStartX, barsStartY, barWidth, barHeight, m_markerValues[0]);
     }
     addString("L", barsStartX + barWidth / 2.0f, barsStartY + barHeight, Justify::CENTER,
-              this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
+              this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dims.fontSizeSmall);
 
     // Heavy motor bar (second) - index 1
     float heavyBarX = barsStartX + barWidth + gapWidth;
@@ -340,7 +341,7 @@ void RumbleHud::rebuildRenderData() {
         addMaxMarker(heavyBarX, barsStartY, barWidth, barHeight, m_markerValues[1]);
     }
     addString("H", heavyBarX + barWidth / 2.0f, barsStartY + barHeight, Justify::CENTER,
-              this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
+              this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dims.fontSizeSmall);
 
     // === RIGHT SIDE: Legend (effects only, motor totals shown in bars) ===
     float legendStartX = heavyBarX + barWidth + gapWidth;
@@ -350,8 +351,8 @@ void RumbleHud::rebuildRenderData() {
 
     // Bumps/Suspension effect (show 0% when not on track)
     if (config.suspensionEffect.isEnabled()) {
-        addString("BMP", legendStartX, legendY, Justify::LEFT,
-            this->getFont(FontCategory::NORMAL), bumpsColor, dims.fontSize);
+        addLabel("Bmp", legendStartX, legendY, Justify::LEFT,
+            this->getFont(FontCategory::STRONG), bumpsColor, dims);
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastSuspensionRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
             this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
@@ -360,8 +361,8 @@ void RumbleHud::rebuildRenderData() {
 
     // Spin effect
     if (config.wheelspinEffect.isEnabled()) {
-        addString("SPN", legendStartX, legendY, Justify::LEFT,
-            this->getFont(FontCategory::NORMAL), wheelColor, dims.fontSize);
+        addLabel("Spn", legendStartX, legendY, Justify::LEFT,
+            this->getFont(FontCategory::STRONG), wheelColor, dims);
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastWheelspinRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
             this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
@@ -370,8 +371,8 @@ void RumbleHud::rebuildRenderData() {
 
     // Brake lockup effect
     if (config.brakeLockupEffect.isEnabled()) {
-        addString("LCK", legendStartX, legendY, Justify::LEFT,
-            this->getFont(FontCategory::NORMAL), lockupColor, dims.fontSize);
+        addLabel("Lck", legendStartX, legendY, Justify::LEFT,
+            this->getFont(FontCategory::STRONG), lockupColor, dims);
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastLockupRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
             this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
@@ -380,8 +381,8 @@ void RumbleHud::rebuildRenderData() {
 
     // Wheelie effect
     if (config.wheelieEffect.isEnabled()) {
-        addString("WHL", legendStartX, legendY, Justify::LEFT,
-            this->getFont(FontCategory::NORMAL), wheelieColor, dims.fontSize);
+        addLabel("Whl", legendStartX, legendY, Justify::LEFT,
+            this->getFont(FontCategory::STRONG), wheelieColor, dims);
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastWheelieRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
             this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
@@ -390,8 +391,8 @@ void RumbleHud::rebuildRenderData() {
 
     // RPM effect
     if (config.rpmEffect.isEnabled()) {
-        addString("RPM", legendStartX, legendY, Justify::LEFT,
-            this->getFont(FontCategory::NORMAL), rpmColor, dims.fontSize);
+        addLabel("RPM", legendStartX, legendY, Justify::LEFT,
+            this->getFont(FontCategory::STRONG), rpmColor, dims);
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastRpmRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
             this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
@@ -400,8 +401,8 @@ void RumbleHud::rebuildRenderData() {
 
     // Slide effect
     if (config.slideEffect.isEnabled()) {
-        addString("SLD", legendStartX, legendY, Justify::LEFT,
-            this->getFont(FontCategory::NORMAL), slideColor, dims.fontSize);
+        addLabel("Sld", legendStartX, legendY, Justify::LEFT,
+            this->getFont(FontCategory::STRONG), slideColor, dims);
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastSlideRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
             this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
@@ -410,8 +411,8 @@ void RumbleHud::rebuildRenderData() {
 
     // Surface effect
     if (config.surfaceEffect.isEnabled()) {
-        addString("SRF", legendStartX, legendY, Justify::LEFT,
-            this->getFont(FontCategory::NORMAL), terrainColor, dims.fontSize);
+        addLabel("Srf", legendStartX, legendY, Justify::LEFT,
+            this->getFont(FontCategory::STRONG), terrainColor, dims);
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastSurfaceRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
             this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
@@ -420,8 +421,8 @@ void RumbleHud::rebuildRenderData() {
 
     // Steer torque effect
     if (config.steerEffect.isEnabled()) {
-        addString("STR", legendStartX, legendY, Justify::LEFT,
-            this->getFont(FontCategory::NORMAL), steerColor, dims.fontSize);
+        addLabel("Str", legendStartX, legendY, Justify::LEFT,
+            this->getFont(FontCategory::STRONG), steerColor, dims);
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastSteerRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
             this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);

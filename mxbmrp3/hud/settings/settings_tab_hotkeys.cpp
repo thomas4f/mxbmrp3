@@ -8,6 +8,7 @@
 #include "../../core/plugin_constants.h"
 #include "../../core/hotkey_manager.h"
 #include "../../core/color_config.h"
+#include "../../game/game_config.h"
 
 using namespace PluginConstants;
 
@@ -287,7 +288,9 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
     addHotkeyRow(HotkeyAction::TOGGLE_NOTICES);
     addHotkeyRow(HotkeyAction::TOGGLE_TIMING);
     addHotkeyRow(HotkeyAction::TOGGLE_GAP_BAR);
+#if GAME_HAS_FMX
     addHotkeyRow(HotkeyAction::TOGGLE_FMX);
+#endif
     addHotkeyRow(HotkeyAction::TOGGLE_STATS);
     addHotkeyRow(HotkeyAction::TOGGLE_EVENT_LOG);
     addHotkeyRow(HotkeyAction::TOGGLE_HELMET);
@@ -305,7 +308,7 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
 
     // Info text at bottom
     ctx.currentY += ctx.lineHeightNormal * 0.5f;
-    ctx.parent->addString("Click to rebind, ESC to cancel", actionX, ctx.currentY, Justify::LEFT,
+    ctx.parent->addString("Click to rebind, ESC to cancel.", actionX, ctx.currentY, Justify::LEFT,
         Fonts::getNormal(), colorConfig.getMuted(), ctx.fontSize * 0.9f);
 
     // No active HUD for hotkeys settings

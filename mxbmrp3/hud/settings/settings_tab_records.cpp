@@ -58,6 +58,14 @@ bool SettingsHud::handleClickTabRecords(const ClickRegion& region) {
             }
             return true;
 
+        case ClickRegion::RECORDS_HEADERS_TOGGLE:
+            if (m_records) {
+                m_records->m_bShowHeaders = !m_records->m_bShowHeaders;
+                m_records->setDataDirty();
+                setDataDirty();
+            }
+            return true;
+
         default:
             return false;
     }
@@ -108,6 +116,11 @@ BaseHud* SettingsHud::renderTabRecords(SettingsLayoutContext& ctx) {
     // Core columns (Position, Rider, Bike, Lap time) are always shown
     ctx.addSectionHeader("Content");
 
+    // Column-header row
+    ctx.addToggleControl("Column headers", hud->m_bShowHeaders,
+        SettingsHud::ClickRegion::RECORDS_HEADERS_TOGGLE, hud, nullptr, 0, true,
+        "records.headers");
+
     // Sector columns (toggles all 3 sectors together)
     bool sectorsEnabled = (hud->m_enabledColumns & RecordsHud::COL_SECTORS) == RecordsHud::COL_SECTORS;
     ctx.addToggleControl("Sector times", sectorsEnabled,
@@ -120,7 +133,7 @@ BaseHud* SettingsHud::renderTabRecords(SettingsLayoutContext& ctx) {
 
     // Info text
     ctx.currentY += ctx.lineHeightNormal * 0.5f;
-    ctx.parent->addString("Your records are saved to mxbmrp3_personal_bests.json", ctx.labelX, ctx.currentY,
+    ctx.parent->addString("Your records are saved to mxbmrp3_personal_bests.json.", ctx.labelX, ctx.currentY,
         PluginConstants::Justify::LEFT, PluginConstants::Fonts::getNormal(),
         ColorConfig::getInstance().getMuted(), ctx.fontSize * 0.9f);
 

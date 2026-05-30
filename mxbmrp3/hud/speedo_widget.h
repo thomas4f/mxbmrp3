@@ -34,7 +34,6 @@ protected:
 
 private:
     void rebuildRenderData() override;
-    void addNeedleQuad(float centerX, float centerY, float angleRad, float needleLength, float needleWidth);
 
     // Speedo constants
     static constexpr float MIN_SPEED_KMH = 0.0f;

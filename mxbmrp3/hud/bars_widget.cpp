@@ -19,11 +19,24 @@
 
 using namespace PluginConstants;
 
+namespace {
+    // Padding (in temperature units) added below alarmLow and above alarmHigh
+    // so the bar shows some headroom on both ends of the normalized range.
+    constexpr float TEMP_BAR_PADDING = 20.0f;
+
+    // Threshold for hiding a max/threshold marker — values below this are effectively zero
+    // (avoids rendering a sliver at the bottom of an empty bar).
+    constexpr float MARKER_RENDER_GATE = 0.01f;
+
+    // Marker line height as a fraction of bar height (thin horizontal line).
+    constexpr float MARKER_HEIGHT_RATIO = 0.02f;
+}
+
 BarsWidget::BarsWidget() {
     // One-time setup
     DEBUG_INFO("BarsWidget created");
     setDraggable(true);
-    m_quads.reserve(33);   // 1 background + 20 bar quads (6 single + 2 split × 2) × 2 each + 8 max markers + 4 threshold markers
+    m_quads.reserve(48);   // 1 background + bar quads (single/split × empty+filled) + gap-split temp bars + max markers
     m_strings.reserve(8);  // 8 labels: T, B, C, R, S, F, E, W
 
     // Set texture base name for dynamic texture discovery
@@ -38,6 +51,11 @@ BarsWidget::BarsWidget() {
 void BarsWidget::update() {
     // OPTIMIZATION: Skip processing when not visible
     if (!isVisible()) {
+        // While hidden, drop any "was crashed" memory so that becoming visible while
+        // currently crashed re-fires the rising-edge snap. Without this, the sequence
+        // [crash → hide → recover → crash again → show] would miss the second snap
+        // because m_wasCrashed stayed true throughout invisibility.
+        m_wasCrashed = false;
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -73,6 +91,19 @@ void BarsWidget::rebuildRenderData() {
     // because RunTelemetry() callback only fires when player is on track.
     // During SPECTATE/REPLAY, only limited RaceVehicleData is available (throttle, front brake, RPM, gear).
     bool hasFullTelemetry = (pluginData.getDrawState() == PluginConstants::ViewState::ON_TRACK);
+
+    // When crashed, peak markers freeze (see updateMaxTracking) so the rider can read
+    // the pre-crash peaks after the tumble settles. Markers also render in NEGATIVE
+    // (red) during crash so they pop visually against the bar fills, and on the rising
+    // edge of the crash state any markers that weren't already visible snap to the
+    // current bar value so impact-moment telemetry is captured.
+    const TrackPositionData* playerPos = pluginData.getPlayerTrackPosition();
+    bool isCrashed = playerPos && playerPos->crashed;
+    bool crashJustStarted = isCrashed && !m_wasCrashed;
+    m_wasCrashed = isCrashed;
+    unsigned long maxMarkerColor = isCrashed
+        ? this->getColor(ColorSlot::NEGATIVE)
+        : this->getColor(ColorSlot::PRIMARY);
 
     // Calculate bar dimensions
     float barWidth = PluginUtils::calculateMonospaceTextWidth(BAR_WIDTH_CHARS, dims.fontSize);
@@ -166,14 +197,14 @@ void BarsWidget::rebuildRenderData() {
 
     // Bar 0: Throttle (T) - single bar
     if (m_enabledColumns & COL_THROTTLE) {
-        updateMaxTracking(0, throttleValue);
+        updateMaxTracking(0, throttleValue, isCrashed, crashJustStarted);
         addVerticalBar(currentX, contentStartY, barWidth, barHeight, throttleValue, throttleColor);
-        if (m_bShowMaxMarkers && m_maxFramesRemaining[0] > 0) {
-            addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[0]);
+        if ((m_bShowMaxMarkers || isCrashed) && m_maxFramesRemaining[0] > 0) {
+            addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[0], maxMarkerColor);
         }
         if (m_bShowLabels) {
             addString("T", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                      this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
+                      this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
         }
         currentX += barWidth + barSpacing;
     }
@@ -182,7 +213,7 @@ void BarsWidget::rebuildRenderData() {
     if (m_enabledColumns & COL_BRAKE) {
         // Track max of both brakes (use highest value)
         float maxBrakeValue = std::max(frontBrakeValue, rearBrakeValue);
-        updateMaxTracking(1, maxBrakeValue);
+        updateMaxTracking(1, maxBrakeValue, isCrashed, crashJustStarted);
         if (hasFullTelemetry) {
             // Split bar: front brake (left) | rear brake (right)
             addVerticalBar(currentX, contentStartY, halfBarWidth, barHeight, frontBrakeValue, frontBrakeColor);
@@ -191,40 +222,40 @@ void BarsWidget::rebuildRenderData() {
             // Full width: only front brake available
             addVerticalBar(currentX, contentStartY, barWidth, barHeight, frontBrakeValue, frontBrakeColor);
         }
-        if (m_bShowMaxMarkers && m_maxFramesRemaining[1] > 0) {
-            addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[1]);
+        if ((m_bShowMaxMarkers || isCrashed) && m_maxFramesRemaining[1] > 0) {
+            addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[1], maxMarkerColor);
         }
         if (m_bShowLabels) {
             addString("B", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                      this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
+                      this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
         }
         currentX += barWidth + barSpacing;
     }
 
     // Bar 2: Clutch (C) - single bar (muted when unavailable)
     if (m_enabledColumns & COL_CLUTCH) {
-        updateMaxTracking(2, clutchValue);
+        updateMaxTracking(2, clutchValue, isCrashed, crashJustStarted);
         addVerticalBar(currentX, contentStartY, barWidth, barHeight, clutchValue, clutchColor);
-        if (m_bShowMaxMarkers && m_maxFramesRemaining[2] > 0) {
-            addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[2]);
+        if ((m_bShowMaxMarkers || isCrashed) && m_maxFramesRemaining[2] > 0) {
+            addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[2], maxMarkerColor);
         }
         if (m_bShowLabels) {
             addString("C", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                      this->getFont(FontCategory::NORMAL), hasFullTelemetry ? this->getColor(ColorSlot::TERTIARY) : mutedColor, dims.fontSize);
+                      this->getFont(FontCategory::STRONG), hasFullTelemetry ? this->getColor(ColorSlot::TERTIARY) : mutedColor, dims.fontSize);
         }
         currentX += barWidth + barSpacing;
     }
 
     // Bar 3: RPM (R) - single bar
     if (m_enabledColumns & COL_RPM) {
-        updateMaxTracking(3, rpmValue);
+        updateMaxTracking(3, rpmValue, isCrashed, crashJustStarted);
         addVerticalBar(currentX, contentStartY, barWidth, barHeight, rpmValue, rpmColor);
-        if (m_bShowMaxMarkers && m_maxFramesRemaining[3] > 0) {
-            addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[3]);
+        if ((m_bShowMaxMarkers || isCrashed) && m_maxFramesRemaining[3] > 0) {
+            addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[3], maxMarkerColor);
         }
         if (m_bShowLabels) {
             addString("R", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                      this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
+                      this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
         }
         currentX += barWidth + barSpacing;
     }
@@ -233,136 +264,123 @@ void BarsWidget::rebuildRenderData() {
     if (m_enabledColumns & COL_SUSPENSION) {
         // Track max of both suspension values (use highest)
         float maxSuspValue = std::max(frontSuspValue, rearSuspValue);
-        updateMaxTracking(4, maxSuspValue);
+        updateMaxTracking(4, maxSuspValue, isCrashed, crashJustStarted);
         addVerticalBar(currentX, contentStartY, halfBarWidth, barHeight, frontSuspValue, frontSuspColor);
         addVerticalBar(currentX + halfBarWidth, contentStartY, halfBarWidth, barHeight, rearSuspValue, rearSuspColor);
-        if (m_bShowMaxMarkers && m_maxFramesRemaining[4] > 0) {
-            addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[4]);
+        if ((m_bShowMaxMarkers || isCrashed) && m_maxFramesRemaining[4] > 0) {
+            addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[4], maxMarkerColor);
         }
         if (m_bShowLabels) {
             addString("S", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                      this->getFont(FontCategory::NORMAL), hasFullTelemetry ? this->getColor(ColorSlot::TERTIARY) : mutedColor, dims.fontSize);
+                      this->getFont(FontCategory::STRONG), hasFullTelemetry ? this->getColor(ColorSlot::TERTIARY) : mutedColor, dims.fontSize);
         }
         currentX += barWidth + barSpacing;
     }
 
     // Bar 5: Fuel (F) - single bar (muted when unavailable)
     if (m_enabledColumns & COL_FUEL) {
-        updateMaxTracking(5, fuelValue);
+        updateMaxTracking(5, fuelValue, isCrashed, crashJustStarted);
         addVerticalBar(currentX, contentStartY, barWidth, barHeight, fuelValue, fuelColor);
-        if (m_bShowMaxMarkers && m_maxFramesRemaining[5] > 0) {
-            addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[5]);
+        if ((m_bShowMaxMarkers || isCrashed) && m_maxFramesRemaining[5] > 0) {
+            addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[5], maxMarkerColor);
         }
         if (m_bShowLabels) {
             addString("F", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                      this->getFont(FontCategory::NORMAL), hasFullTelemetry ? this->getColor(ColorSlot::TERTIARY) : mutedColor, dims.fontSize);
+                      this->getFont(FontCategory::STRONG), hasFullTelemetry ? this->getColor(ColorSlot::TERTIARY) : mutedColor, dims.fontSize);
         }
         currentX += barWidth + barSpacing;
     }
 
-    // Bar 6: Engine Temperature (E) - single bar with gradient color (muted when unavailable)
+    // Engine and water temp bars share thresholds (API doesn't expose separate water alarm/optimal values).
+    const float tempOpt = sessionData.engineOptTemperature;
+    const float tempAlarmLow = sessionData.engineTempAlarmLow;
+    const float tempAlarmHigh = sessionData.engineTempAlarmHigh;
+    const float labelY = contentStartY + barHeight;
+
+    // Bar 6: Engine Temperature (E)
     if (m_enabledColumns & COL_ENGINE_TEMP) {
-        // Get temperature values and thresholds
-        float engineTemp = bikeTelemetry.engineTemperature;
-        float optTemp = sessionData.engineOptTemperature;
-        float alarmLow = sessionData.engineTempAlarmLow;
-        float alarmHigh = sessionData.engineTempAlarmHigh;
-
-        // Normalize to 0-1 range for bar display
-        // Use alarm range as min/max, with some padding below low and above high
-        float tempMin = alarmLow - 20.0f;  // Show some range below alarm low
-        float tempMax = alarmHigh + 20.0f; // Show some range above alarm high
-        float tempRange = tempMax - tempMin;
-        float engineTempNorm = 0.0f;
-        if (tempRange > 0.0f) {
-            engineTempNorm = (engineTemp - tempMin) / tempRange;
-            engineTempNorm = std::max(0.0f, std::min(1.0f, engineTempNorm));
-        }
-
-        // Calculate color based on temperature relative to thresholds
-        unsigned long engineTempColor = hasFullTelemetry
-            ? calculateTemperatureColor(engineTemp, optTemp, alarmLow, alarmHigh)
-            : mutedColor;
-
-        updateMaxTracking(6, engineTempNorm);
-        addVerticalBar(currentX, contentStartY, barWidth, barHeight, engineTempNorm, engineTempColor);
-
-        // Add threshold markers (always visible) - black lines for alarm thresholds and optimal temp
-        if (tempRange > 0.0f) {
-            float alarmLowNorm = (alarmLow - tempMin) / tempRange;
-            float alarmHighNorm = (alarmHigh - tempMin) / tempRange;
-            float optTempNorm = (optTemp - tempMin) / tempRange;
-            unsigned long blackColor = 0xFF000000;  // ABGR: fully opaque black
-            addThresholdMarker(currentX, contentStartY, barWidth, barHeight, alarmLowNorm, blackColor);
-            addThresholdMarker(currentX, contentStartY, barWidth, barHeight, optTempNorm, blackColor);
-            addThresholdMarker(currentX, contentStartY, barWidth, barHeight, alarmHighNorm, blackColor);
-        }
-
-        if (m_bShowMaxMarkers && m_maxFramesRemaining[6] > 0) {
-            addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[6]);
-        }
-        if (m_bShowLabels) {
-            addString("E", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                      this->getFont(FontCategory::NORMAL), hasFullTelemetry ? this->getColor(ColorSlot::TERTIARY) : mutedColor, dims.fontSize);
-        }
+        renderTemperatureBar(6, currentX, contentStartY, labelY, barWidth, barHeight,
+                             bikeTelemetry.engineTemperature, tempOpt, tempAlarmLow, tempAlarmHigh,
+                             hasFullTelemetry, isCrashed, crashJustStarted,
+                             maxMarkerColor, mutedColor, "E", dims.fontSize);
         currentX += barWidth + barSpacing;
     }
 
-    // Bar 7: Water Temperature (W) - single bar with gradient color (muted when unavailable)
+    // Bar 7: Water Temperature (W)
     if (m_enabledColumns & COL_WATER_TEMP) {
-        // Get temperature values - use engine thresholds as proxy for water
-        // (API doesn't provide separate water temp thresholds)
-        float waterTemp = bikeTelemetry.waterTemperature;
-        float optTemp = sessionData.engineOptTemperature;
-        float alarmLow = sessionData.engineTempAlarmLow;
-        float alarmHigh = sessionData.engineTempAlarmHigh;
-
-        // Normalize to 0-1 range for bar display
-        float tempMin = alarmLow - 20.0f;
-        float tempMax = alarmHigh + 20.0f;
-        float tempRange = tempMax - tempMin;
-        float waterTempNorm = 0.0f;
-        if (tempRange > 0.0f) {
-            waterTempNorm = (waterTemp - tempMin) / tempRange;
-            waterTempNorm = std::max(0.0f, std::min(1.0f, waterTempNorm));
-        }
-
-        // Calculate color based on temperature relative to thresholds
-        unsigned long waterTempColor = hasFullTelemetry
-            ? calculateTemperatureColor(waterTemp, optTemp, alarmLow, alarmHigh)
-            : mutedColor;
-
-        updateMaxTracking(7, waterTempNorm);
-        addVerticalBar(currentX, contentStartY, barWidth, barHeight, waterTempNorm, waterTempColor);
-
-        // Add threshold markers (always visible) - black lines for alarm thresholds and optimal temp
-        if (tempRange > 0.0f) {
-            float alarmLowNorm = (alarmLow - tempMin) / tempRange;
-            float alarmHighNorm = (alarmHigh - tempMin) / tempRange;
-            float optTempNorm = (optTemp - tempMin) / tempRange;
-            unsigned long blackColor = 0xFF000000;  // ABGR: fully opaque black
-            addThresholdMarker(currentX, contentStartY, barWidth, barHeight, alarmLowNorm, blackColor);
-            addThresholdMarker(currentX, contentStartY, barWidth, barHeight, optTempNorm, blackColor);
-            addThresholdMarker(currentX, contentStartY, barWidth, barHeight, alarmHighNorm, blackColor);
-        }
-
-        if (m_bShowMaxMarkers && m_maxFramesRemaining[7] > 0) {
-            addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[7]);
-        }
-        if (m_bShowLabels) {
-            addString("W", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                      this->getFont(FontCategory::NORMAL), hasFullTelemetry ? this->getColor(ColorSlot::TERTIARY) : mutedColor, dims.fontSize);
-        }
+        renderTemperatureBar(7, currentX, contentStartY, labelY, barWidth, barHeight,
+                             bikeTelemetry.waterTemperature, tempOpt, tempAlarmLow, tempAlarmHigh,
+                             hasFullTelemetry, isCrashed, crashJustStarted,
+                             maxMarkerColor, mutedColor, "W", dims.fontSize);
         currentX += barWidth + barSpacing;
     }
 }
 
-void BarsWidget::updateMaxTracking(int barIndex, float currentValue) {
+void BarsWidget::renderTemperatureBar(int barIndex,
+                                      float x, float y, float labelY,
+                                      float barWidth, float barHeight,
+                                      float temp, float optTemp, float alarmLow, float alarmHigh,
+                                      bool hasFullTelemetry, bool isCrashed, bool crashJustStarted,
+                                      unsigned long maxMarkerColor, unsigned long mutedColor,
+                                      const char* label, float fontSize) {
+    // Normalize temperature to 0-1 using alarm range with padding on both ends.
+    const float tempMin = alarmLow - TEMP_BAR_PADDING;
+    const float tempMax = alarmHigh + TEMP_BAR_PADDING;
+    const float tempRange = tempMax - tempMin;
+    float tempNorm = 0.0f;
+    if (tempRange > 0.0f) {
+        tempNorm = std::max(0.0f, std::min(1.0f, (temp - tempMin) / tempRange));
+    }
+
+    const unsigned long tempColor = hasFullTelemetry
+        ? calculateTemperatureColor(temp, optTemp, alarmLow, alarmHigh)
+        : mutedColor;
+
+    updateMaxTracking(barIndex, tempNorm, isCrashed, crashJustStarted);
+
+    // Thresholds (alarm low, optimal, alarm high) are shown as gaps cut out of the bar
+    // — revealing the panel background — rather than black lines drawn over it. Matches
+    // the gap-based divider style used by the LeanWidget arc/steer gauges.
+    if (tempRange > 0.0f) {
+        const float gaps[3] = {
+            (alarmLow - tempMin) / tempRange,
+            (optTemp - tempMin) / tempRange,
+            (alarmHigh - tempMin) / tempRange
+        };
+        addVerticalBarWithGaps(x, y, barWidth, barHeight, tempNorm, tempColor, gaps, 3);
+    } else {
+        addVerticalBar(x, y, barWidth, barHeight, tempNorm, tempColor);
+    }
+
+    if ((m_bShowMaxMarkers || isCrashed) && m_maxFramesRemaining[barIndex] > 0) {
+        addMaxMarker(x, y, barWidth, barHeight, m_markerValues[barIndex], maxMarkerColor);
+    }
+
+    if (m_bShowLabels) {
+        addString(label, x + barWidth / 2.0f, labelY, Justify::CENTER,
+                  this->getFont(FontCategory::STRONG),
+                  hasFullTelemetry ? this->getColor(ColorSlot::TERTIARY) : mutedColor, fontSize);
+    }
+}
+
+void BarsWidget::updateMaxTracking(int barIndex, float currentValue, bool isCrashed, bool justEnteredCrash) {
     if (barIndex < 0 || barIndex >= NUM_BARS) return;
 
-    // Track overall max
-    if (currentValue > m_maxValues[barIndex]) {
-        m_maxValues[barIndex] = currentValue;
+    // On the first frame of the crash, force the marker to render at the current
+    // value if no marker is currently being drawn (linger inactive). Captures impact-
+    // moment telemetry even when the rider was holding a steady value pre-crash
+    // (which keeps m_markerValues at the held value but never arms the linger; the
+    // render gate is m_maxFramesRemaining > 0). Doesn't touch a still-rendering
+    // higher peak.
+    if (justEnteredCrash && m_maxFramesRemaining[barIndex] == 0 && currentValue >= 0.01f) {
+        m_markerValues[barIndex] = currentValue;
+        m_maxFramesRemaining[barIndex] = m_maxMarkerLingerFrames;
+    }
+
+    // While crashed, freeze marker + linger so the rider can read the pre-crash peak
+    // after the tumble settles.
+    if (isCrashed) {
+        return;
     }
 
     // Max marker: show at peak when value starts decreasing, hide when increasing
@@ -384,33 +402,15 @@ void BarsWidget::updateMaxTracking(int barIndex, float currentValue) {
             m_markerValues[barIndex] = 0.0f;
         }
     }
-
-    m_prevValues[barIndex] = currentValue;
 }
 
-void BarsWidget::addMaxMarker(float x, float y, float barWidth, float barHeight, float maxValue) {
-    // Draw a thin horizontal white line at the max value position
+void BarsWidget::addMaxMarker(float x, float y, float barWidth, float barHeight, float maxValue, unsigned long color) {
+    // Draw a thin horizontal line at the max value position
     maxValue = std::max(0.0f, std::min(1.0f, maxValue));
-    if (maxValue < 0.01f) return;  // Don't draw if max is essentially zero
+    if (maxValue < MARKER_RENDER_GATE) return;  // Don't draw if max is essentially zero
 
-    float markerHeight = barHeight * 0.02f;  // Thin line (2% of bar height)
+    float markerHeight = barHeight * MARKER_HEIGHT_RATIO;
     float markerY = y + barHeight * (1.0f - maxValue) - markerHeight * 0.5f;
-
-    SPluginQuad_t markerQuad;
-    float markerX = x;
-    applyOffset(markerX, markerY);
-    setQuadPositions(markerQuad, markerX, markerY, barWidth, markerHeight);
-    markerQuad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-    markerQuad.m_ulColor = this->getColor(ColorSlot::PRIMARY);  // White
-    m_quads.push_back(markerQuad);
-}
-
-void BarsWidget::addThresholdMarker(float x, float y, float barWidth, float barHeight, float thresholdValue, unsigned long color) {
-    // Draw a thin horizontal colored line at the threshold position
-    thresholdValue = std::max(0.0f, std::min(1.0f, thresholdValue));
-
-    float markerHeight = barHeight * 0.02f;  // Thin line (2% of bar height)
-    float markerY = y + barHeight * (1.0f - thresholdValue) - markerHeight * 0.5f;
 
     SPluginQuad_t markerQuad;
     float markerX = x;
@@ -419,6 +419,55 @@ void BarsWidget::addThresholdMarker(float x, float y, float barWidth, float barH
     markerQuad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
     markerQuad.m_ulColor = color;
     m_quads.push_back(markerQuad);
+}
+
+void BarsWidget::addVerticalBarWithGaps(float x, float y, float barWidth, float barHeight,
+                                        float value, unsigned long color,
+                                        const float* gaps, int gapCount) {
+    value = std::max(0.0f, std::min(1.0f, value));
+
+    // Gap half-height in normalized (0=bottom, 1=top) units; matches the old threshold
+    // marker thickness so the divider stays the same visual size.
+    const float gapHalf = MARKER_HEIGHT_RATIO * 0.5f;
+
+    const unsigned long emptyColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), m_fBackgroundOpacity * 0.5f);
+    const unsigned long filledColor = PluginUtils::applyOpacity(color, 1.0f);
+
+    // Emit one quad spanning the normalized vertical range [v0, v1] (v0 < v1).
+    auto pushQuad = [&](float v0, float v1, unsigned long col) {
+        if (v1 - v0 <= 0.001f) return;
+        SPluginQuad_t quad;
+        float qx = x, qy = y + barHeight * (1.0f - v1);
+        applyOffset(qx, qy);
+        setQuadPositions(quad, qx, qy, barWidth, barHeight * (v1 - v0));
+        quad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
+        quad.m_ulColor = col;
+        m_quads.push_back(quad);
+    };
+
+    // Draw a solid (non-gap) band [v0, v1], split at the fill boundary into filled/empty.
+    auto drawBand = [&](float v0, float v1) {
+        const float fillTop = std::min(v1, value);
+        pushQuad(v0, fillTop, filledColor);
+        const float emptyBot = std::max(v0, value);
+        pushQuad(emptyBot, v1, emptyColor);
+    };
+
+    // Sort gap positions ascending so the bottom-to-top walk skips them in order.
+    float sortedGaps[8];
+    int n = std::min(gapCount, 8);
+    for (int i = 0; i < n; ++i) sortedGaps[i] = std::max(0.0f, std::min(1.0f, gaps[i]));
+    std::sort(sortedGaps, sortedGaps + n);
+
+    // Walk bottom (0) to top (1), drawing solid bands between the gap cut-outs.
+    float cursor = 0.0f;
+    for (int i = 0; i < n; ++i) {
+        const float gLow = std::max(0.0f, sortedGaps[i] - gapHalf);
+        const float gHigh = std::min(1.0f, sortedGaps[i] + gapHalf);
+        if (gLow > cursor) drawBand(cursor, gLow);
+        cursor = std::max(cursor, gHigh);
+    }
+    if (cursor < 1.0f) drawBand(cursor, 1.0f);
 }
 
 void BarsWidget::addVerticalBar(float x, float y, float barWidth, float barHeight,
@@ -465,7 +514,7 @@ void BarsWidget::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 1.0f;  // Full opacity
     m_fScale = 1.0f;
-    setPosition(0.6875f, 0.8769f);
+    setPosition(0.671f, 0.8769f);
 #if GAME_HAS_TYRE_TEMP
     // GP Bikes: include engine temp by default (has reliable temp data)
     m_enabledColumns = COL_DEFAULT | COL_ENGINE_TEMP;
@@ -478,67 +527,10 @@ void BarsWidget::resetToDefaults() {
 
     // Reset max tracking state
     for (int i = 0; i < NUM_BARS; ++i) {
-        m_maxValues[i] = 0.0f;
         m_markerValues[i] = 0.0f;
-        m_prevValues[i] = 0.0f;
         m_maxFramesRemaining[i] = 0;
     }
+    m_wasCrashed = false;
 
     setDataDirty();
-}
-
-unsigned long BarsWidget::calculateTemperatureColor(float temp, float optTemp, float alarmLow, float alarmHigh) const {
-    // Temperature color gradient (similar to RadarHud distance gradient):
-    // - Below alarmLow: Deep blue (too cold)
-    // - alarmLow to optTemp: Blue -> Green gradient (warming up)
-    // - At optTemp: Green (optimal)
-    // - optTemp to alarmHigh: Green -> Yellow -> Red gradient (getting hot)
-    // - Above alarmHigh: Deep red (too hot)
-
-    // Color constants (RGB values)
-    constexpr unsigned char BLUE_R = 0x40, BLUE_G = 0x80, BLUE_B = 0xFF;   // Cold blue
-    constexpr unsigned char GREEN_R = 0x40, GREEN_G = 0xFF, GREEN_B = 0x40; // Optimal green
-    constexpr unsigned char YELLOW_R = 0xFF, YELLOW_G = 0xD0, YELLOW_B = 0x40; // Warning yellow
-    constexpr unsigned char RED_R = 0xFF, RED_G = 0x40, RED_B = 0x40;      // Hot red
-
-    unsigned char r, g, b;
-
-    if (temp <= alarmLow) {
-        // Below alarm low - solid blue (too cold)
-        r = BLUE_R;
-        g = BLUE_G;
-        b = BLUE_B;
-    } else if (temp < optTemp) {
-        // Between alarmLow and optTemp - blue to green gradient
-        float range = optTemp - alarmLow;
-        float t = (range > 0.0f) ? (temp - alarmLow) / range : 1.0f;
-        r = static_cast<unsigned char>(BLUE_R + t * (GREEN_R - BLUE_R));
-        g = static_cast<unsigned char>(BLUE_G + t * (GREEN_G - BLUE_G));
-        b = static_cast<unsigned char>(BLUE_B + t * (GREEN_B - BLUE_B));
-    } else if (temp <= alarmHigh) {
-        // Between optTemp and alarmHigh - green to yellow to red gradient
-        float range = alarmHigh - optTemp;
-        float normalized = (range > 0.0f) ? (temp - optTemp) / range : 0.0f;
-
-        if (normalized < 0.5f) {
-            // Green to yellow (first half)
-            float t = normalized * 2.0f;
-            r = static_cast<unsigned char>(GREEN_R + t * (YELLOW_R - GREEN_R));
-            g = static_cast<unsigned char>(GREEN_G + t * (YELLOW_G - GREEN_G));
-            b = static_cast<unsigned char>(GREEN_B + t * (YELLOW_B - GREEN_B));
-        } else {
-            // Yellow to red (second half)
-            float t = (normalized - 0.5f) * 2.0f;
-            r = static_cast<unsigned char>(YELLOW_R + t * (RED_R - YELLOW_R));
-            g = static_cast<unsigned char>(YELLOW_G + t * (RED_G - YELLOW_G));
-            b = static_cast<unsigned char>(YELLOW_B + t * (RED_B - YELLOW_B));
-        }
-    } else {
-        // Above alarm high - solid red (too hot)
-        r = RED_R;
-        g = RED_G;
-        b = RED_B;
-    }
-
-    return PluginUtils::makeColor(r, g, b);
 }

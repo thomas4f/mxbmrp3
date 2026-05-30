@@ -28,7 +28,6 @@ protected:
 
 private:
     void rebuildRenderData() override;
-    void addNeedleQuad(float centerX, float centerY, float angleRad, float needleLength, float needleWidth);
 
     // Tacho constants
     static constexpr float MIN_RPM = 0.0f;

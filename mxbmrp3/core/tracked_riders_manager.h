@@ -105,4 +105,6 @@ private:
 
     // Flag to track if data has changed since last save/load
     bool m_needsSave;
+
+    static constexpr int FILE_VERSION = 1;  // Bump only for additive changes (new fields read with defaults); a non-additive change (rename/retype/repurpose) requires a deliberate migration step on load.
 };

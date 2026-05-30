@@ -12,10 +12,26 @@
 // helmet layers cover it everywhere except the transparent visor cutout. In
 // Goggles mode it overlays everything like a tinted goggle lens.
 //
-// The upper helmet part is translated vertically by a telemetry-driven
-// "vibration" signal (derived from suspension-length deltas). Both helmet
-// parts are rotated together around a bottom-center pivot based on bike
-// lean angle (BikeTelemetryData::roll) to simulate natural head tilt.
+// Both helmet parts are translated vertically by a telemetry-driven
+// "vibration" signal and rotated together around a bottom-center pivot to
+// simulate natural head tilt. The source telemetry differs by vehicle type:
+//
+//   Bikes (GAME_HAS_SUSPENSION): tilt = lean angle (roll),
+//                                vibration = suspension-length delta.
+//   Karts (no suspension):       tilt = lateral G (rider braces head into
+//                                       the corner against centripetal load),
+//                                vibration = vertical G delta (chassis bumps,
+//                                       kerb strikes) PLUS a slow low-pass on
+//                                       longitudinal G so the helmet dips
+//                                       under sustained braking and rises
+//                                       under throttle (compensating for the
+//                                       lack of a fork-dive signal).
+//
+// The two tilt mappings produce opposite on-screen rotations in the same
+// turn direction, which is the physically correct behaviour: the bike rider's
+// head counter-tilts against the bike's roll to stay closer to vertical (head
+// stabilisation against lean), while the kart driver's head braces INTO the
+// corner against centripetal load. Vibration always pushes UP on bumps.
 //
 // Texture authoring contract: helmet TGAs should be authored at screen size
 // with ~10% bleed on all sides recommended. The overlay translates and
@@ -27,7 +43,17 @@
 // ============================================================================
 #pragma once
 
+#include <cmath>
+
 #include "base_hud.h"
+
+// Strength is "active" when the rounded display percentage is non-zero.
+// Mirrors the UI's "Off" condition (round(strength*100) == 0) so settings
+// display always matches runtime behaviour - a strength labelled "Off" must
+// not produce any visible tilt or vibration.
+inline bool helmetStrengthActive(float strength) {
+    return static_cast<int>(std::round(strength * 100.0f)) != 0;
+}
 
 class HelmetOverlayHud : public BaseHud {
 public:
@@ -50,6 +76,13 @@ public:
     // Vibration signal tuning (see rebuildRenderData for usage)
     static constexpr float VIB_DECAY_RATE = 12.0f;        // Exponential decay rate (per second)
     static constexpr float VIB_SCALE_MAX = 150.0f;        // Max input gain (at 100% sensitivity)
+
+    // Longitudinal-G shift (karts only). Low-pass time constant is slower than
+    // the bump channel so the offset persists while the brake is held instead
+    // of decaying out like a jolt. Scale chosen so ~1.5g braking at full
+    // vibration strength saturates at MAX_VIBRATION_Y.
+    static constexpr float LONG_G_DECAY_RATE = 3.0f;
+    static constexpr float LONG_G_SCALE = 0.05f;
 
     // Texture base names (AssetManager discovery)
     static constexpr const char* TEX_HELMET_UPPER = "helmet_upper";
@@ -80,7 +113,12 @@ public:
     float m_helmetLowerOffsetY = 0.05f;
     float m_helmetTiltStrength = 0.25f;      // -1..1 -> scales to MAX_TILT_DEG (negative = inverted)
     float m_helmetVibrationStrength = 0.5f;  // -1..1 -> amplitude and direction (negative inverts)
+    // Default sensitivity differs per game: see resetToDefaults() for rationale.
+#if GAME_HAS_SUSPENSION
     float m_helmetVibrationSensitivity = 0.5f; // 0..1 -> input gain (scales VIB_SCALE_MAX)
+#else
+    float m_helmetVibrationSensitivity = 0.05f;
+#endif
     float m_helmetZoom = 0.10f;              // -MAX_OVERLAY_ZOOM..+MAX_OVERLAY_ZOOM (0 = 100%)
 
     // Visor tint — full-screen color applied behind the helmet.
@@ -107,10 +145,16 @@ private:
                         float translateY,
                         unsigned long color);
 
-    // Telemetry state for vibration smoothing
-    float m_prevSuspTotal = 0.0f;
+    // Telemetry state for vibration smoothing. The "source" here is whichever
+    // signal feeds the vibration channel for the current game (suspension total
+    // for bikes, vertical G for karts) — same delta-and-smooth pipeline either way.
+    float m_prevVibSource = 0.0f;
     float m_smoothedVibration = 0.0f;
-    bool  m_hasSuspBaseline = false;
+    bool  m_hasVibBaseline = false;
     std::chrono::steady_clock::time_point m_lastVibrationTime{};
     int   m_cachedSessionGeneration = -1;
+
+    // Sustained longitudinal-G shift state (karts only). Separate from the bump
+    // smoother because it's a low-pass on accelZ itself, not a delta.
+    float m_smoothedLongG = 0.0f;
 };

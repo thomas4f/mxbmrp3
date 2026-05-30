@@ -132,8 +132,9 @@ BaseHud* SettingsHud::renderTabLapConsistency(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::LAP_CONSISTENCY_DISPLAY_MODE_UP,
         hud, true, false, "lap_consistency.style");
 
-    // Reference mode
-    ctx.addCycleControl("Reference", getReferenceModeName(hud->m_referenceMode), 10,
+    // Reference mode (which baseline laps are compared against).
+    // Labelled "Compare to" to disambiguate from the "Reference" stat toggle below.
+    ctx.addCycleControl("Compare to", getReferenceModeName(hud->m_referenceMode), 10,
         SettingsHud::ClickRegion::LAP_CONSISTENCY_REFERENCE_DOWN,
         SettingsHud::ClickRegion::LAP_CONSISTENCY_REFERENCE_UP,
         hud, true, false, "lap_consistency.reference");

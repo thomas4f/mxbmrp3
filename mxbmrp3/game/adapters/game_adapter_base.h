@@ -38,34 +38,10 @@ namespace Adapters {
 // ============================================================================
 // Session Type Mapping Interface
 // ============================================================================
-// Each game has different session ID meanings. Adapters provide mappings.
-
-// Normalized session types for cross-game logic
-enum class NormalizedSession {
-    Waiting,
-    Practice,
-    PreQualify,     // MX Bikes only
-    QualifyPractice,// MX Bikes only
-    Qualify,
-    Warmup,
-    Race1,
-    Race2,          // MX Bikes only
-
-    // KRP-specific heat types
-    QualifyHeat,
-    SecondChanceHeat,
-    Prefinal,
-    Final,
-
-    // Special modes
-    StraightRhythmRound,    // MX Bikes
-    StraightRhythmQuarter,
-    StraightRhythmSemi,
-    StraightRhythmFinal,
-    Challenge,              // KRP
-
-    Unknown
-};
+// Each game has different session ID meanings. Adapters expose
+// toCanonicalSession(rawSession, rawEventType) which returns a Unified::Session
+// (see game/unified_types.h). The previous NormalizedSession enum is gone -
+// Unified::Session is now the single canonical session type.
 
 // Session state flags (bitwise) - common across all games
 namespace SessionStateFlags {
@@ -135,10 +111,7 @@ static Unified::RaceVehicleData toRaceVehicleData(const GameVehicleDataStruct* s
 static Unified::TrackSegment toTrackSegment(const GameTrackSegmentStruct* src);
 
 // Session type mapping
-static NormalizedSession normalizeSession(int rawSession, int eventType);
-static bool isRaceSession(int rawSession, int eventType);
-static bool isQualifySession(int rawSession, int eventType);
-static bool isPracticeSession(int rawSession, int eventType);
+static Unified::Session toCanonicalSession(int rawSession, int rawEventType);
 */
 
 // ============================================================================

@@ -13,7 +13,7 @@ namespace PluginConstants {
     // Plugin identification
     constexpr const char* PLUGIN_NAME = "mxbmrp3";
     constexpr const char* PLUGIN_DISPLAY_NAME = "MXBMRP3";
-    constexpr const char* PLUGIN_VERSION = "1.22.0.0";  // Keep in sync with resource.h (Windows DLL version info)
+    constexpr const char* PLUGIN_VERSION = "1.23.10.0";  // Keep in sync with resource.h (Windows DLL version info)
     constexpr const char* PLUGIN_AUTHOR = "thomas4f";
 
     // GitHub repository for updates (centralized to support repo moves/renames)
@@ -278,22 +278,11 @@ namespace PluginConstants {
     }
 
     // Session values (from MXBikes API)
-    namespace Session {
-        constexpr int WAITING = 0;
-        constexpr int PRACTICE = 1;
-        constexpr int PRE_QUALIFY = 2;
-        constexpr int QUALIFY_PRACTICE = 3;
-        constexpr int QUALIFY = 4;
-        constexpr int WARMUP = 5;
-        constexpr int RACE_1 = 6;
-        constexpr int RACE_2 = 7;
-
-        // Straight Rhythm specific
-        constexpr int SR_ROUND = 2;
-        constexpr int SR_QUARTER_FINALS = 3;
-        constexpr int SR_SEMI_FINALS = 4;
-        constexpr int SR_FINAL = 5;
-    }
+    // Note: per-game session ID constants (PRE_QUALIFY=2 etc.) used to live here,
+    // but they leaked MX Bikes' raw numbering into core code and produced wrong
+    // labels / wrong isRaceSession() results on other games. The canonical
+    // session set now lives in Unified::Session (game/unified_types.h);
+    // each adapter exposes Adapter::toCanonicalSession() to convert raw -> canonical.
 
     // Weather conditions (from MXBikes API)
     namespace Conditions {
@@ -375,16 +364,27 @@ namespace PluginConstants {
         namespace Session {
             constexpr const char* WAITING = "Waiting";
             constexpr const char* PRACTICE = "Practice";
+            // Testing event's practice session: "Testing" offline, "Open Practice" online
+            constexpr const char* TESTING = "Testing";
+            constexpr const char* OPEN_PRACTICE = "Open Practice";
             constexpr const char* PRE_QUALIFY = "Pre-Qualify";
             constexpr const char* QUALIFY_PRACTICE = "Qualify Practice";
             constexpr const char* QUALIFY = "Qualify";
             constexpr const char* WARMUP = "Warmup";
             constexpr const char* RACE_1 = "Race 1";
             constexpr const char* RACE_2 = "Race 2";
+            constexpr const char* RACE   = "Race";
             constexpr const char* SR_ROUND = "Round";
             constexpr const char* SR_QUARTER_FINALS = "Quarter-Finals";
             constexpr const char* SR_SEMI_FINALS = "Semi-Finals";
             constexpr const char* SR_FINAL = "Final";
+            // KRP multi-heat race format. The group letter (A/B/C) for heats
+            // lives in RaceSessionData, not in this string — callers that want
+            // "Heat A" should format it themselves.
+            constexpr const char* KRP_QUALIFY_HEAT = "Qualify Heat";
+            constexpr const char* KRP_SECOND_CHANCE_HEAT = "Second Chance";
+            constexpr const char* KRP_PRE_FINAL = "PreFinal";
+            constexpr const char* KRP_FINAL = "Final";
             constexpr const char* UNKNOWN = "Unknown";
         }
 

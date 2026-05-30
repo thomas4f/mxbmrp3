@@ -62,12 +62,12 @@ void RumbleProfileManager::load(const char* savePath) {
         nlohmann::json j;
         file >> j;
 
-        // Check version
+        // Version is informational only — load known fields with defaults so an
+        // older/newer file carries forward rather than being discarded.
         int version = j.value("version", 0);
         if (version != FILE_VERSION) {
-            DEBUG_INFO_F("[RumbleProfileManager] Version mismatch: file=%d, expected=%d. Starting fresh.",
+            DEBUG_INFO_F("[RumbleProfileManager] File version %d differs from expected %d — loading known fields with defaults",
                          version, FILE_VERSION);
-            return;
         }
 
         // Parse profiles

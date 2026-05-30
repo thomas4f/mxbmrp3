@@ -289,11 +289,12 @@ void TrackedRidersManager::load(const char* savePath) {
         nlohmann::json j;
         file >> j;
 
-        // Check version
+        // Version is informational only — load known fields with defaults so an
+        // older/newer file carries forward rather than being discarded.
         int version = j.value("version", 0);
-        if (version != 1) {
-            DEBUG_INFO_F("[TrackedRidersManager] Version mismatch: file=%d, expected=1. Starting fresh.", version);
-            return;
+        if (version != FILE_VERSION) {
+            DEBUG_INFO_F("[TrackedRidersManager] File version %d differs from expected %d — loading known fields with defaults",
+                         version, FILE_VERSION);
         }
 
         // Parse riders array
@@ -361,7 +362,7 @@ void TrackedRidersManager::save() {
 
     try {
         nlohmann::json j;
-        j["version"] = 1;
+        j["version"] = FILE_VERSION;
 
         nlohmann::json riders = nlohmann::json::array();
         for (const auto& [key, config] : m_trackedRiders) {

@@ -36,7 +36,7 @@ enum GapTypeFlags : uint8_t {
     GAP_TO_RECORD  = 1 << 4,  // "Record" - gap to fastest record from RecordsHud provider
 
     GAP_DEFAULT_PRIMARY = GAP_TO_PB,           // Default primary: Session PB
-    GAP_DEFAULT_SECONDARY = GAP_TO_ALLTIME | GAP_TO_IDEAL | GAP_TO_OVERALL  // Default secondaries
+    GAP_DEFAULT_SECONDARY = GAP_TO_ALLTIME     // Default secondary: All-Time PB
 };
 
 // Gap type count (for iteration)
@@ -55,7 +55,7 @@ struct GapTypeInfo {
 
 // Ordered list of gap types for cycling and display
 inline constexpr GapTypeInfo GAP_TYPE_INFO[] = {
-    { GAP_TO_PB,      "Session PB",   "PB" },
+    { GAP_TO_PB,      "Session",      "PB" },
     { GAP_TO_ALLTIME, "Alltime",      "AT" },
     { GAP_TO_IDEAL,   "Ideal",        "ID" },
     { GAP_TO_OVERALL, "Overall",      "OA" },

@@ -1,23 +1,17 @@
-A customizable, [open-source](https://github.com/thomas4f/mxbmrp3) HUD plugin for MX Bikes and GP Bikes displaying real-time race information and telemetry.
+An [open-source](https://github.com/thomas4f/mxbmrp3) plugin for MX Bikes, GP Bikes, and Kart Racing Pro with HUDs, immersion, and streaming/broadcasting features.
 
 ![MXBMRP3 HUD Screenshot](mxbmrp3-v1.18.jpg)
 *Example HUD layout. All elements are fully customizable.*
 
 ## Features
 
-- Live race standings, track map, and proximity radar with approach alerts
-- Lap timing with splits, personal bests, gap-to-PB visualization, and online lap records
-- Event log with timestamped race events and per-event icons
-- Track specific riders with custom colors and icons across all HUDs
-- First-person helmet overlay with telemetry-driven tilt and vibration
-- Controller rumble feedback with customizable effects
-- Discord Rich Presence integration showing current session and track
-- Riding stats tracking with per-lap, session, and all-time totals
-- FMX freestyle trick detection with scoring and chain combos
-- Telemetry visualization and compact info widgets
-- Web overlay for OBS/streaming with live standings, event log, and rider focus card
-- Drag-and-drop positioning with color themes and customizable hotkeys
-- Automatic profile switching for Practice, Qualify, Race, and Spectate sessions
+- Customizable HUD layouts with drag-and-drop positioning, hotkeys, color themes, and auto-switching session profiles
+- Live race information: standings, timing with gap-to-PB visualization, track map, proximity radar, event log, and online lap records
+- Telemetry and lap analysis with splits, personal bests, lap consistency trends, and fuel consumption tracking
+- Streamer-friendly features including a web overlay for OBS, Discord Rich Presence, and live controller visualization
+- First-person helmet overlay with telemetry-driven tilt and suspension vibration, plus configurable controller rumble
+- Rider tracking with custom colors/icons, persistent stats and personal bests across sessions, and FMX freestyle trick scoring
+- Modding support: custom textures, fonts, icons, web overlay theming, and INI-level configuration
 
 ## Get Started
 
@@ -45,18 +39,18 @@ See [Installation](#installation) for detailed setup instructions.
 - [Advanced Settings](#advanced-settings)
 - [Modding](#modding)
 - [Troubleshooting](#troubleshooting)
-- [Development](#development)
+- [Feedback & Issues](#feedback--issues)
 
 ## Installation
 
 **Requirements:**
-- MX Bikes **Beta 20 or newer** / GP Bikes **Beta 18 or newer**
+- MX Bikes **beta21 or newer** / GP Bikes **beta22b or newer** / Kart Racing Pro **Release 14 or newer**
 
 ### Automatic Installation
 
 1. Download the latest installer [`mxbmrp3-Setup.exe`](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3-Setup.exe)
 2. Run the installer - it will:
-   - Auto-detect your MX Bikes and GP Bikes installations (Steam or standalone)
+   - Auto-detect your MX Bikes, GP Bikes, and Kart Racing Pro installations (Steam or standalone)
    - Let you choose which games to install for
    - Install to the correct plugins folder for each game
    - Handle upgrades automatically (preserves your settings)
@@ -65,18 +59,21 @@ See [Installation](#installation) for detailed setup instructions.
 
 1. Download the latest release archive [`mxbmrp3.zip`](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3.zip)
 2. Find your game's plugins folder:
-   - **Steam**: Right-click the game in your library → **Manage** → **Browse local files** → open `plugins`
-   - **Standalone**: Navigate to your game installation folder (e.g., `C:\Games\MX Bikes\` or `C:\Games\GP Bikes\`) → open `plugins`
+   - **Steam**: Right-click the game in your library > **Manage** > **Browse local files** > open `plugins`
+   - **Standalone**: Navigate to your game installation folder (e.g., `C:\Program Files\[Game]\`) > open `plugins`
 3. Extract the plugin files:
-   - Copy `mxbmrp3.dlo` (MX Bikes) or `mxbmrp3_gpb.dlo` (GP Bikes) to the `plugins/` folder
-   - Copy the `mxbmrp3_data/` folder to the `plugins/` folder
+   - Copy the DLO for your game to the `plugins\` folder:
+     - `mxbmrp3.dlo` for MX Bikes
+     - `mxbmrp3_gpb.dlo` for GP Bikes
+     - `mxbmrp3_krp.dlo` for Kart Racing Pro
+   - Copy the `mxbmrp3_data\` folder to the `plugins\` folder
 
    **Do NOT delete the existing game files** (`proxy64.dlo`, `proxy_udp64.dlo`, `xinput64.dli`, or `telemetry64.dlo` for GP Bikes) - these are native game files, not old plugin versions.
 
    Your directory should look like this after installation (files vary slightly by game):
    ```
    [Game]/
-   │   mxbikes.exe / gpbikes.exe
+   │   mxbikes.exe / gpbikes.exe / kart.exe
    │   ...
    │
    └───plugins/
@@ -87,6 +84,7 @@ See [Installation](#installation) for detailed setup instructions.
        │   └── web/             ← Web overlay files (HTML/CSS/JS)
        ├── mxbmrp3.dlo          ← Add this (MX Bikes only)
        ├── mxbmrp3_gpb.dlo      ← Add this (GP Bikes only)
+       ├── mxbmrp3_krp.dlo      ← Add this (Kart Racing Pro only)
        ├── proxy_udp64.dlo      ← Keep (native game file)
        ├── proxy64.dlo          ← Keep (native game file)
        ├── xinput64.dli         ← Keep (native game file)
@@ -95,7 +93,7 @@ See [Installation](#installation) for detailed setup instructions.
 
 ### After Installation
 
-Launch the game - the plugin loads automatically. Some elements are enabled by default and can be repositioned or configured via the settings menu. See [Tips & Tricks](#tips--tricks) for useful setup ideas. If nothing appears, see [Troubleshooting](#troubleshooting).
+Launch the game and load into a track - the plugin only becomes active once you've entered a session (it does not run in the main menus). Some elements are enabled by default and can be repositioned or configured via the settings menu. See [Tips & Tricks](#tips--tricks) for useful setup ideas. If nothing appears, see [Troubleshooting](#troubleshooting).
 
 ## Controls
 
@@ -138,7 +136,7 @@ Auto-switch (disabled by default) automatically changes profiles based on sessio
 
 ## HUDs & Widgets
 
-All HUDs and widgets are configurable via the settings menu or directly in the [.ini file](#advanced-settings).
+All HUDs and widgets are configurable via the settings menu or directly in the [INI file](#advanced-settings).
 
 ### HUDs
 
@@ -147,39 +145,40 @@ All HUDs and widgets are configurable via the settings menu or directly in the [
 | **Standings** | Live race positions with gaps, status, and tracked rider indicators |
 | **Map** | Top-down track map with rider positions (click to spectate) |
 | **Radar** | Proximity radar with approach alerts and distance arrows |
+| **Lap Log** | Historical lap times with PB indicators |
+| **Ideal Lap** | Best sector times and theoretical ideal lap |
+| **Lap Consistency** | Lap time consistency analysis with trend visualization |
+| **Telemetry** | Throttle, brake, suspension graphs |
+| **Records** | Online lap records (CBR or MXB-Ranked) with personal bests (MX Bikes only) |
+| **Pitboard** | Pitboard-style lap information display |
+| **Session** | Session info (type, track, format, server, weather) |
 | **Timing** | Split and lap times with gap comparisons |
 | **Gap Bar** | Visual gap-to-PB bar with position markers |
-| **Pitboard** | Pitboard-style lap information display |
-| **Lap Log** | Historical lap times with PB indicators |
-| **Lap Consistency** | Lap time consistency analysis with trend visualization |
-| **Ideal Lap** | Best sector times and theoretical ideal lap |
-| **Records** | Online lap records (CBR or MXB-Ranked) with personal bests (MX Bikes only) |
-| **FMX** | Freestyle trick detection with scoring and chain combos |
-| **Telemetry** | Throttle, brake, suspension graphs |
-| **Performance** | FPS and plugin CPU usage |
-| **Rumble** | Controller rumble effect visualization |
-| **Stats** | Riding stats with columns for last lap, session, and all-time totals |
-| **Session** | Session info (type, format, track, server, players, password) |
 | **Notices** | Race status notices (wrong way, blue flag, PB alerts, last lap, finished) |
 | **Event Log** | Timestamped feed of race events (session changes, fastest laps, penalties, finishes, pit activity) |
-| **Helmet** | First-person helmet overlay with lean-linked tilt, suspension vibration, and visor tint |
+| **FMX** | Freestyle trick detection with scoring and chain combos (MX Bikes and GP Bikes only) |
+| **Stats** | Riding stats with columns for last lap, session, and all-time totals |
+| **Performance** | FPS and plugin CPU usage |
 
 ### Widgets
 
 | Widget | Description |
 |--------|-------------|
-| **Lap** | Current lap number |
 | **Position** | Race position |
+| **Lap** | Current lap number |
 | **Time** | Session time/countdown |
-| **Speed** | Current speed |
-| **Gear** | Current gear |
 | **Clock** | Real-time clock |
+| **Gear** | Current gear |
+| **Speed** | Current speed |
+| **Bars** | Vertical telemetry bars (throttle, brake, suspension, etc.) |
+| **Lean** | Bike lean angle with arc gauge |
+| **G-Force** | Lateral/longitudinal G-force gauge with peak marker |
+| **Fuel** | Fuel calculator with consumption tracking |
 | **Speedo** | Analog speedometer |
 | **Tacho** | Analog tachometer |
-| **Bars** | Telemetry bars (throttle, brake, clutch, RPM, suspension, fuel) |
-| **Fuel** | Fuel calculator with consumption tracking |
-| **Lean** | Bike lean angle with arc gauge |
 | **Gamepad** | Controller visualization |
+| **Tyre Temp** | Front and rear tyre temperatures (GP Bikes only) |
+| **ECU** | Engine map, traction control, engine braking and anti-wheeling (GP Bikes only) |
 
 ## Web Overlay
 
@@ -187,12 +186,10 @@ The plugin includes a built-in HTTP server that streams live race data to a brow
 
 ### Setup
 
-1. Enable the web server in **Settings > General > Web Server** (the port number is shown when active)
+1. Enable the web server in Settings > General > Web Server (the port number is shown when active)
 2. In OBS, add a **Browser Source** with URL `http://localhost:8080` (default port - use the port shown in step 1 if changed)
 3. Set width/height to match your stream resolution (e.g., 1920x1080)
 4. The overlay auto-connects and displays a standings tower, event log, and rider focus card
-
-> **Note:** The overlay shell is cached by a service worker after the first successful load, so OBS can render the UI even if MX Bikes (and the plugin's HTTP server) isn't running yet. The very first load still requires the plugin server to be up at least once so the cache can be primed.
 
 ### Settings Panel
 
@@ -204,48 +201,36 @@ The overlay includes a built-in settings panel for configuring display options w
 - **Drag the header bar** to reposition the tower
 - All settings are saved to the browser's localStorage and persist across reloads
 
-Colors and fonts sync automatically from your in-game settings.
-
-### What's Displayed
-
-- **Logo slideshow** - Sponsor/logo banner above the standings tower. Drop PNG files into `logos/` (see [Modding](#modding)) and they cycle automatically. Toggleable with configurable interval in the settings panel.
-- **Standings tower** - Live positions with rider numbers, names, gaps, brand colors, and status chips (finished, pit, penalty, fastest lap, spectated)
-- **Event log** - Timestamped race events (same events and filters as the in-game Event Log HUD)
-- **Rider focus card** - Appears when spectating, showing the spectated rider with bike info, lap times, and gaps to neighbors
-
-### Customization
-
-The overlay files are plain HTML, CSS, and JS. To customize them, place modified files in `Documents\PiBoSo\[Game]\mxbmrp3\web\` - user files override the bundled versions on startup and are preserved across updates (see [Modding](#modding)).
-
-- `style.css` - Layout variables (spacing, sizing, tower width). Colors are synced from the game.
-- `index.html` - Overlay structure
-- `app.js` - The `CONFIG` block at the top defines defaults for all settings. These are overridden by the settings panel (stored in localStorage).
+Colors and fonts sync automatically from your in-game settings. To customize the overlay's HTML, CSS, or JS, see [Modding > Web Overlay Files](#web-overlay-files).
 
 ## Tips & Tricks
-
-**Enable update notifications** - The plugin doesn't check for updates by default. Go to Settings > Updates and set the update mode to "Notify" to get notified when a new version is available. You can also install updates directly from the settings menu.
-
-**Streaming setup** - Enable the Session HUD (Settings > Session) to show the server name, track, and session type on screen for your viewers. The Pitboard and Gamepad widgets also work well on stream - both have [fully customizable textures](#custom-textures), and the Gamepad widget shows your live controller inputs. Pair with Discord Rich Presence (Settings > General) to show your current session and track in your Discord profile. For a broadcast-style overlay, see [Web Overlay](#web-overlay) below.
-
-**Web overlay for OBS** - The plugin includes a broadcast-style overlay for streaming. See [Web Overlay](#web-overlay) for setup and configuration.
-
-**Power-user INI tweaks** - Many additional options are available by editing the [INI file](#advanced-settings) directly. The file is well-commented and easy to work with. Each HUD section also supports per-element color overrides using ABGR hex values. For example:
-```ini
-[StandingsHud]
-classicLayout=1         ; remove number plates and brand color strips
-
-[SpeedWidget]
-color_primary=0xff00ff00 ; green text (ABGR format)
-```
-Use the [Color Override Picker](https://thomas4f.github.io/mxbmrp3/tools/color_override_picker.html) to convert RGB colors to ABGR format. See [Advanced Settings](#advanced-settings) for how to edit and hot-reload the INI file.
 
 **Track records** - The Records HUD fetches online lap records from CBR or MXB-Ranked. Enable "Auto-fetch" in Settings > Records to automatically load records when you enter a track. Records also work while spectating.
 
 **Click-to-spectate** - Left-click on any rider on the Map HUD or Standings HUD to switch the spectate camera to that rider.
 
-**Remove the stock pitboard** - Create an empty file called `pitboard.cfg` in `[Game]\misc\hud\` (create the directories if needed). This removes the default 2D pitboard while keeping the small 3D pitboard in the game world. Delete the file to restore it.
+**Streaming setup** - Enable the Session HUD (Settings > Session) to show the server name, track, and session type on screen for your viewers. The Pitboard and Gamepad widgets also work well on stream - both have [fully customizable textures](#custom-textures), and the Gamepad widget shows your live controller inputs. Pair with Discord Rich Presence (Settings > General) to show your current session and track in your Discord profile. For a broadcast-style overlay, see [Web Overlay](#web-overlay) below.
+
+**Web overlay for OBS** - The plugin includes a broadcast-style overlay for streaming. See [Web Overlay](#web-overlay) for setup and configuration.
+
+**Update in-game** - When a new stable release is available, the plugin notifies you on startup and you can install it directly from Settings > Updates - no manual download or reinstall. Don't want the check? Set the update mode to "Off".
+
+**Power-user INI tweaks** - Many additional options are available by editing the [INI file](#advanced-settings) directly. The file is well-commented and organized by HUD section. Each HUD section also supports per-element color and font overrides. Colors use ABGR hex values; fonts use the font filename (without `.fnt`) of any file in the `fonts/` folder. For example:
+```ini
+[StandingsHud]
+classicLayout=1            ; remove number plates and brand color strips
+
+[SpeedWidget]
+color_primary=0xff00ff00   ; green text (ABGR format)
+font_title=RobotoMono-Bold ; Roboto Mono Bold font
+```
+Use the [Color Override Picker](https://thomas4f.github.io/mxbmrp3/tools/color_override_picker.html) to convert RGB colors to ABGR format. See [Advanced Settings](#advanced-settings) for how to edit and hot-reload the INI file.
+
+**Remove the stock pitboard** - This is a game tweak, not a plugin setting. Create an empty file called `pitboard.cfg` in `[Game]\misc\hud\` (create the directories if needed). This removes the default 2D pitboard while keeping the small 3D pitboard in the game world. Delete the file to restore it.
 
 **Show/hide the rider stand icon** - This is a game setting, not a plugin setting. Enable it under Simulation > "Show Rider Stand". To customize the icon or its position, extract `rider.cfg` and `riderstand.tga` from `misc.pkz\misc\helpers\` to `[Game]\misc\helpers\` and edit them there.
+
+**Show/hide the game's native gear indicator** - This is a game setting, not a plugin setting. Toggle it under Simulation > "Show HUD". Disable it if you'd rather use the plugin's GearWidget instead. To customize the graphics or position, extract `gear.tga`, `hud.cfg`, `LCD.fnt`, and `switch.tga` from `misc.pkz\misc\hud\` to `[Game]\misc\hud\` and edit them there.
 
 ## Advanced Settings
 
@@ -276,7 +261,7 @@ If Auto-Save is enabled, changes made to the INI while the game is running will 
 
 ## Modding
 
-Plugin data and custom assets are stored in `Documents\PiBoSo\[Game]\mxbmrp3\`.
+To customize MXBMRP3, place your files in `Documents\PiBoSo\[Game]\mxbmrp3\`. This is separate from the plugin install folder (`plugins\mxbmrp3_data\`), so your customizations are preserved across plugin updates. Do not edit the bundled files in `plugins\mxbmrp3_data\` directly - they will be overwritten on update (with the exception noted for `custom.css` below).
 
 ### Custom Assets
 
@@ -291,7 +276,7 @@ mxbmrp3/
     └── logos/   ← Sponsor/logo PNGs for the web overlay slideshow
 ```
 
-On game startup, the plugin syncs these files to the plugin's data directory (`plugins/mxbmrp3_data/`). User files with the same name as bundled assets will override them. This keeps your customizations separate from the plugin installation, so updates won't overwrite your files. **Restart the game after adding or modifying assets.**
+On game startup, the plugin syncs these files to the plugin's data directory (`plugins\mxbmrp3_data\`). User files with the same name as bundled assets will override them. **Restart the game after adding or modifying assets.**
 
 ### Custom Textures
 
@@ -311,6 +296,15 @@ Fonts (`.fnt` files) are auto-discovered and assignable to categories (Title, No
 
 Icons (`.tga` files) placed in the `icons\` subfolder are discovered alphabetically and available for tracked rider customization in Settings > Riders.
 
+### Web Overlay Files
+
+The overlay files are plain HTML, CSS, and JS. To customize them, place modified files in `Documents\PiBoSo\[Game]\mxbmrp3\web\` - user files override the bundled versions on startup and are preserved across updates.
+
+- `style.css` - Layout variables (spacing, sizing, tower width). Colors are synced from the game.
+- `custom.css` - Optional file you create yourself for style overrides. Loaded after `style.css`, so anything here wins on specificity ties. Use this for small theme tweaks instead of forking the full stylesheet - edits apply on the next browser reload (after the next game restart, since the file is synced from `Documents` on startup). **For live iteration**, you can instead place `custom.css` directly in `plugins\mxbmrp3_data\web\` and edit it there - it's the one web asset not bundled or replaced by the installer/updater, so browser-refresh applies your changes with no game restart. Pick one location; if you keep copies in both, the `Documents` copy overwrites the plugins copy on next game start.
+- `index.html` - Overlay structure
+- `app.js` - The `CONFIG` block at the top defines defaults for all settings. These are overridden by the settings panel (stored in localStorage).
+
 ### Data Files
 
 | File | Description |
@@ -323,23 +317,23 @@ Icons (`.tga` files) placed in the `icons\` subfolder are discovered alphabetica
 ## Troubleshooting
 
 ### HUD Not Appearing
-- Check [Installation requirements](#installation) (MX Bikes Beta 20+ / GP Bikes Beta 18+)
-- Verify the DLO file and `mxbmrp3_data/` are in the correct `plugins/` folder. Games have two directories - the **game installation** (contains the game .exe) and **user data** (`Documents\PiBoSo\[Game]\`). Plugins go in the game installation, not Documents.
-- For GP Bikes, ensure you're using `mxbmrp3_gpb.dlo`, not `mxbmrp3.dlo`
+- Check the [Installation requirements](#installation) for your game's minimum version
+- Verify the DLO file and `mxbmrp3_data\` are in the correct `plugins\` folder. Games have two directories - the **game installation** (contains the game .exe) and **user data** (`Documents\PiBoSo\[Game]\`). Plugins go in the game installation, not Documents.
+- Use the correct DLO for your game: `mxbmrp3.dlo` (MX Bikes), `mxbmrp3_gpb.dlo` (GP Bikes), or `mxbmrp3_krp.dlo` (Kart Racing Pro)
 
 ### Installer Detected the Wrong Game Directory
-- If you have multiple installations (e.g. standalone and Steam), the installer may pick the wrong one. Verify the plugin ended up in the `plugins/` folder next to the game `.exe` you actually launch. If not, run the installer again and select the correct path, or install manually.
+- If you have multiple installations (e.g., standalone and Steam), the installer may pick the wrong one. Verify the plugin ended up in the `plugins\` folder next to the game `.exe` you actually launch. If not, run the installer again and select the correct path, or install manually.
 
 ### Text or Icons Not Appearing
-- Ensure `mxbmrp3_data/` folder is in the `plugins/` folder alongside the DLO file (see [directory structure](#manual-installation))
-- The `mxbmrp3_data/` folder contains fonts, textures, and icons required for rendering
+- Ensure `mxbmrp3_data\` folder is in the `plugins\` folder alongside the DLO file (see [directory structure](#manual-installation))
+- The `mxbmrp3_data\` folder contains fonts, textures, and icons required for rendering
 - If you moved or renamed this folder, restore it from the release archive
 
 ### Gamepad Widget Appears Cut Off
 - Go to Settings > Widgets tab and click "Reset Widgets" to correct the button positions.
 
 ### Elements Appearing Twice (Ghost/Duplicate)
-- Check for duplicate MXBMRP3 DLO files - only one `mxbmrp3.dlo` (or `mxbmrp3_gpb.dlo` for GP Bikes) should exist in your plugins folder. Other plugins' DLO files are fine.
+- Check for duplicate MXBMRP3 DLO files - only one of `mxbmrp3.dlo` (MX Bikes), `mxbmrp3_gpb.dlo` (GP Bikes), or `mxbmrp3_krp.dlo` (Kart Racing Pro) should exist in your plugins folder. Other plugins' DLO files are fine.
 
 ### Elements Overlapping
 - Drag elements to reposition them
@@ -352,14 +346,27 @@ Icons (`.tga` files) placed in the `icons\` subfolder are discovered alphabetica
 
 ### Web Overlay Not Working
 - If the settings show "Error" and "Port ... may be in use", another application is using the same port
-- Change the port in Settings > General > Web Server Port (e.g. to 8081)
+- Change the port in Settings > General > Web Server Port (e.g., to 8081)
 - Remember to update your OBS Browser Source URL to match the new port
 
 ### Game Fails to Launch, Crashes, or Shows Black Screen
 - See the [MX Bikes Troubleshooting Guide](https://gist.github.com/thomas4f/1fd379fafb4ab402b48424ae1c9cf2bd) for general game issues (crashes, mods, plugins, RAM, controllers)
-- If the Windows Event Log shows `mxbmrp3.dlo` as the faulting module, please report it (see below)
+- If the Windows Event Log shows `mxbmrp3.dlo` as the faulting module, see [Feedback & Issues](#feedback--issues)
 
-For bug reports or feature requests, open an issue on [GitHub](https://github.com/thomas4f/mxbmrp3/issues) or leave a comment on [MXB-Mods](https://mxb-mods.com/mxbmrp3/).
+## Feedback & Issues
+
+Bug reports, feature requests, and questions are all welcome. Open an issue on [GitHub](https://github.com/thomas4f/mxbmrp3/issues) or leave a comment on [MXB-Mods](https://mxb-mods.com/mxbmrp3/).
+
+A short description of what you were doing when the issue happened (track, session type, bike, and any reproduction steps) helps a lot.
+
+**For crashes**, please attach both files from `Documents\PiBoSo\[Game]\mxbmrp3\crashes\` — the plugin writes them automatically whenever it catches an unhandled fault:
+
+- `mxbmrp3_crash_<timestamp>_<pid>.dmp` — the minidump (state at the moment of crash)
+- `mxbmrp3_crash_<timestamp>_<pid>.log` — a snapshot of the plugin log captured at crash time
+
+Grab the matching pair (same timestamp/pid) for the crash you want to report. Note that the live `mxbmrp3_log.txt` is overwritten each time the game launches, so the paired `.log` snapshot is the only surviving record once you restart.
+
+---
 
 ## Development
 
@@ -370,33 +377,39 @@ Built with C++17, Visual Studio 2022, PiBoSo Plugin API, and Claude Code.
 
 ### Building from Source
 
-**Requirements:** Visual Studio 2022+, Windows SDK 10.0, Platform Toolset v143
+**Requirements:** the v143 platform toolset (ships with Visual Studio 2022 or the standalone Build Tools for Visual Studio 2022), a Windows 10/11 SDK, and C++17.
 
 1. Clone the repository:
    ```bash
    git clone https://github.com/thomas4f/mxbmrp3.git
    cd mxbmrp3
    ```
-2. Open `mxbmrp3.sln` in Visual Studio 2022
-3. Select configuration:
-   - **MXB-Release** / **MXB-Debug** for MX Bikes
-   - **GPB-Release** / **GPB-Debug** for GP Bikes
-4. Build the solution (Ctrl+Shift+B)
-5. Output:
-   - MX Bikes: `build/MXB-Release/mxbmrp3.dlo`
-   - GP Bikes: `build/GPB-Release/mxbmrp3_gpb.dlo`
+2. Open `mxbmrp3.sln` in Visual Studio (2022 is easiest), pick a configuration (all x64), and build (Ctrl+Shift+B):
 
----
+   | Configuration | Game | Output |
+   | --- | --- | --- |
+   | `All-Release` / `All-Debug` | All three (default) | every `.dlo` below |
+   | `MXB-Release` / `MXB-Debug` | MX Bikes | `build/MXB-Release/mxbmrp3.dlo` |
+   | `GPB-Release` / `GPB-Debug` | GP Bikes | `build/GPB-Release/mxbmrp3_gpb.dlo` |
+   | `KRP-Release` / `KRP-Debug` | Kart Racing Pro | `build/KRP-Release/mxbmrp3_krp.dlo` |
+
+## License
+
+Licensed under the [MIT License](LICENSE). See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for bundled asset attributions.
 
 ## Acknowledgments
 
+- **bh5o** - Pitboard texture
 - **Husk** - Gamepad widget source design files
 - **HornetMaX** - [MaxHUD](https://forum.mx-bikes.com/index.php?topic=180.0), which served the MX Bikes community for over a decade
 
 Thanks to everyone in the MX Bikes community who tested, reported bugs, and shared ideas.
 
----
+## Support
 
-Licensed under the [MIT License](LICENSE). See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for bundled asset attributions.
+MXBMRP3 is free and open-source, and will stay that way. If it's added something to your time in the game and you'd like to chip in toward continued development, you can do so here:
 
-Feedback and contributions are welcome.
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/thomas4f)
+[![GitHub Sponsors](https://img.shields.io/badge/GitHub-Sponsor-EA4AAA?style=for-the-badge&logo=github&logoColor=white)](https://github.com/sponsors/thomas4f)
+
+No perks, no priority, no expectations. Just appreciated.

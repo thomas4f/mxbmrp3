@@ -20,6 +20,10 @@
 !define GPBIKES_STEAM_APPID "848050"
 !define GPBIKES_EXE "gpbikes.exe"
 !define GPBIKES_DLO "mxbmrp3_gpb.dlo"
+
+!define KRP_STEAM_APPID "415600"
+!define KRP_EXE "kart.exe"
+!define KRP_DLO "mxbmrp3_krp.dlo"
 !ifndef PLUGIN_VERSION
   !define PLUGIN_VERSION 1.0.0.0
   ;!error "PLUGIN_VERSION is not defined. Please define it before building."
@@ -41,7 +45,6 @@ OutFile "${OUTPUT_DIR}\${PLUGIN_NAME_LC}-Setup.exe"
 ; Variables
 Var pluginInstallActionChoice
 Var isPluginAlreadyInstalled
-Var existingInstallGame  ; "MXBikes", "GPBikes", or "Both"
 
 ; MX Bikes variables
 Var MXBikesInstallPath
@@ -53,16 +56,24 @@ Var GPBikesInstallPath
 Var isGPBikesPathAutoDetected
 Var isGPBikesSelected
 
+; Kart Racing Pro variables
+Var KRPInstallPath
+Var isKRPPathAutoDetected
+Var isKRPSelected
+
 ; Directory page controls
 Var MXBikesPathCtrl
 Var GPBikesPathCtrl
+Var KRPPathCtrl
 Var MXBikesBrowseBtn
 Var GPBikesBrowseBtn
+Var KRPBrowseBtn
 Var MXBikesCheckbox
 Var GPBikesCheckbox
+Var KRPCheckbox
 
 ; Welcome to MXBMRP3 Setup
-!define MUI_WELCOMEPAGE_TEXT "Setup will guide you through the installation of ${PLUGIN_NAME} for PiBoSo racing games.$\n$\nSupported games:$\n  • MX Bikes$\n  • GP Bikes$\n$\nSetup will try to find your game installations automatically.$\n$\nClick Next to continue."
+!define MUI_WELCOMEPAGE_TEXT "Setup will guide you through the installation of ${PLUGIN_NAME} for PiBoSo racing games.$\n$\nSupported games:$\n  • MX Bikes$\n  • GP Bikes$\n  • Kart Racing Pro$\n$\nSetup will try to find your game installations automatically.$\n$\nClick Next to continue."
 !insertmacro MUI_PAGE_WELCOME
 
 ; Existing MXBMRP3 Installation Detected
@@ -75,7 +86,7 @@ Page Custom ShowGameSelectionPage LeaveGameSelectionPage
 !insertmacro MUI_PAGE_INSTFILES
 
 ; Completing MXBMRP3 Setup
-!define MUI_FINISHPAGE_TEXT "${PLUGIN_NAME} has been installed on your computer.$\n$\nYour settings and data are stored per-game in:$\n  Documents\PiBoSo\<Game>\${PLUGIN_NAME_LC}\$\n$\nClick Finish to close Setup."
+!define MUI_FINISHPAGE_TEXT "${PLUGIN_NAME} has been installed on your computer.$\n$\nYour settings and data are stored per-game in:$\n  Documents\PiBoSo\[Game]\${PLUGIN_NAME_LC}\$\n$\nClick Finish to close Setup."
 !insertmacro MUI_PAGE_FINISH
 
 ; Uninstalling - select what to remove
@@ -85,7 +96,7 @@ UninstPage Custom un.ShowUninstallSelectionPage un.LeaveUninstallSelectionPage
 !insertmacro MUI_UNPAGE_INSTFILES
 
 ; Completing MXBMRP3 Uninstall
-!define MUI_FINISHPAGE_TEXT "${PLUGIN_NAME} has been uninstalled from your computer.$\n$\nTo remove all settings and data, manually delete:$\n  Documents\PiBoSo\<Game>\${PLUGIN_NAME_LC}\$\n$\nClick Finish to close Setup."
+!define MUI_FINISHPAGE_TEXT "${PLUGIN_NAME} has been uninstalled from your computer.$\n$\nTo remove all settings and data, manually delete:$\n  Documents\PiBoSo\[Game]\${PLUGIN_NAME_LC}\$\n$\nClick Finish to close Setup."
 !insertmacro MUI_UNPAGE_FINISH
 
 !insertmacro MUI_LANGUAGE "English"
@@ -106,11 +117,12 @@ Function .onInit
 
   ; Initialize variables
   StrCpy $isPluginAlreadyInstalled "0"
-  StrCpy $existingInstallGame ""
   StrCpy $isMXBikesSelected "0"
   StrCpy $isGPBikesSelected "0"
+  StrCpy $isKRPSelected "0"
   StrCpy $isMXBikesPathAutoDetected "0"
   StrCpy $isGPBikesPathAutoDetected "0"
+  StrCpy $isKRPPathAutoDetected "0"
 
   ; Check for existing MXBMRP3 install in registry
   ReadRegStr $0 HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "UninstallString"
@@ -121,16 +133,11 @@ Function .onInit
       ; Check which games have the plugin installed (paths are full plugins paths)
       ReadRegStr $MXBikesInstallPath HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "MXBikesPath"
       ReadRegStr $GPBikesInstallPath HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "GPBikesPath"
-      ${If} $MXBikesInstallPath != ""
-      ${AndIf} $GPBikesInstallPath != ""
-        StrCpy $existingInstallGame "Both"
-      ${ElseIf} $MXBikesInstallPath != ""
-        StrCpy $existingInstallGame "MXBikes"
-      ${ElseIf} $GPBikesInstallPath != ""
-        StrCpy $existingInstallGame "GPBikes"
-      ${Else}
+      ReadRegStr $KRPInstallPath HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "KRPPath"
+      ${If} $MXBikesInstallPath == ""
+      ${AndIf} $GPBikesInstallPath == ""
+      ${AndIf} $KRPInstallPath == ""
         ; Legacy installation (pre-multi-game) - was MX Bikes only
-        StrCpy $existingInstallGame "MXBikes"
         StrCpy $MXBikesInstallPath "$INSTDIR"
       ${EndIf}
   skip_existing_check:
@@ -150,6 +157,13 @@ Function .onInit
     StrCpy $isGPBikesPathAutoDetected "1"
   ${EndIf}
 
+  ${If} $KRPInstallPath == ""
+    Call DetectKRP
+  ${Else}
+    ; Already have path from registry, mark as detected
+    StrCpy $isKRPPathAutoDetected "1"
+  ${EndIf}
+
   ; Pre-select detected games
   ${If} $isMXBikesPathAutoDetected == "1"
     StrCpy $isMXBikesSelected "1"
@@ -157,12 +171,17 @@ Function .onInit
   ${If} $isGPBikesPathAutoDetected == "1"
     StrCpy $isGPBikesSelected "1"
   ${EndIf}
+  ${If} $isKRPPathAutoDetected == "1"
+    StrCpy $isKRPSelected "1"
+  ${EndIf}
 
   ; Set INSTDIR to first detected game (paths already include \plugins)
   ${If} $MXBikesInstallPath != ""
     StrCpy $INSTDIR "$MXBikesInstallPath"
   ${ElseIf} $GPBikesInstallPath != ""
     StrCpy $INSTDIR "$GPBikesInstallPath"
+  ${ElseIf} $KRPInstallPath != ""
+    StrCpy $INSTDIR "$KRPInstallPath"
   ${Else}
     StrCpy $INSTDIR "$PROGRAMFILES64\MX Bikes\plugins"
   ${EndIf}
@@ -216,6 +235,30 @@ Function DetectGPBikes
   StrCpy $isGPBikesPathAutoDetected "0"
 FunctionEnd
 
+; Detect Kart Racing Pro installation (sets full plugins path)
+Function DetectKRP
+  ; Try Steam registry first
+  ReadRegStr $R0 HKLM64 "Software\Microsoft\Windows\CurrentVersion\Uninstall\Steam App ${KRP_STEAM_APPID}" "InstallLocation"
+  ${If} $R0 != ""
+    IfFileExists "$R0\${KRP_EXE}" 0 krp_try_programfiles
+      StrCpy $KRPInstallPath "$R0\plugins"
+      StrCpy $isKRPPathAutoDetected "1"
+      Return
+  ${EndIf}
+
+  krp_try_programfiles:
+  ; Try Program Files
+  StrCpy $R0 "$PROGRAMFILES64\Kart Racing Pro"
+  IfFileExists "$R0\${KRP_EXE}" 0 krp_not_found
+    StrCpy $KRPInstallPath "$R0\plugins"
+    StrCpy $isKRPPathAutoDetected "1"
+    Return
+
+  krp_not_found:
+  StrCpy $KRPInstallPath ""
+  StrCpy $isKRPPathAutoDetected "0"
+FunctionEnd
+
 ; Existing MXBMRP3 Installation Detected
 Function ShowExistingPluginInstallPage
   ${If} $isPluginAlreadyInstalled == "0"
@@ -230,14 +273,26 @@ Function ShowExistingPluginInstallPage
   !insertmacro MUI_HEADER_TEXT "Existing ${PLUGIN_NAME} Installation Detected" \
       "An existing version was found. Choose how you'd like to proceed."
 
-  ; Build game list text
-  ${If} $existingInstallGame == "Both"
-    StrCpy $R1 "MX Bikes and GP Bikes"
-  ${ElseIf} $existingInstallGame == "MXBikes"
+  ; Build game list text dynamically from installed paths
+  StrCpy $R1 ""
+  ${If} $MXBikesInstallPath != ""
     StrCpy $R1 "MX Bikes"
-  ${ElseIf} $existingInstallGame == "GPBikes"
-    StrCpy $R1 "GP Bikes"
-  ${Else}
+  ${EndIf}
+  ${If} $GPBikesInstallPath != ""
+    ${If} $R1 != ""
+      StrCpy $R1 "$R1, GP Bikes"
+    ${Else}
+      StrCpy $R1 "GP Bikes"
+    ${EndIf}
+  ${EndIf}
+  ${If} $KRPInstallPath != ""
+    ${If} $R1 != ""
+      StrCpy $R1 "$R1, Kart Racing Pro"
+    ${Else}
+      StrCpy $R1 "Kart Racing Pro"
+    ${EndIf}
+  ${EndIf}
+  ${If} $R1 == ""
     StrCpy $R1 "Unknown"
   ${EndIf}
 
@@ -328,8 +383,27 @@ Function ShowGameSelectionPage
   Pop $GPBikesBrowseBtn
   ${NSD_OnClick} $GPBikesBrowseBtn OnGPBikesBrowse
 
+  ; Kart Racing Pro section
+  ${If} $isKRPPathAutoDetected == "1"
+    ${NSD_CreateCheckbox} 0 80u 300u 12u "Kart Racing Pro (Detected)"
+  ${Else}
+    ${NSD_CreateCheckbox} 0 80u 300u 12u "Kart Racing Pro (Not detected)"
+  ${EndIf}
+  Pop $KRPCheckbox
+  ${If} $isKRPSelected == "1"
+    ${NSD_SetState} $KRPCheckbox ${BST_CHECKED}
+  ${EndIf}
+  ${NSD_OnClick} $KRPCheckbox OnKRPCheckboxClick
+
+  ; Kart Racing Pro path
+  ${NSD_CreateText} 16u 96u 230u 12u "$KRPInstallPath"
+  Pop $KRPPathCtrl
+  ${NSD_CreateBrowseButton} 250u 95u 50u 14u "Browse..."
+  Pop $KRPBrowseBtn
+  ${NSD_OnClick} $KRPBrowseBtn OnKRPBrowse
+
   ; Info text
-  ${NSD_CreateLabel} 0 80u 300u 12u "Select at least one game to install."
+  ${NSD_CreateLabel} 0 120u 300u 12u "Select at least one game to install."
   Pop $R2
 
   ; Set initial state
@@ -356,6 +430,14 @@ Function UpdateControlStates
     EnableWindow $GPBikesPathCtrl 0
     EnableWindow $GPBikesBrowseBtn 0
   ${EndIf}
+
+  ${If} $isKRPSelected == "1"
+    EnableWindow $KRPPathCtrl 1
+    EnableWindow $KRPBrowseBtn 1
+  ${Else}
+    EnableWindow $KRPPathCtrl 0
+    EnableWindow $KRPBrowseBtn 0
+  ${EndIf}
 FunctionEnd
 
 Function OnMXBikesCheckboxClick
@@ -370,11 +452,18 @@ Function OnGPBikesCheckboxClick
   Call UpdateControlStates
 FunctionEnd
 
+Function OnKRPCheckboxClick
+  ${NSD_GetState} $KRPCheckbox $isKRPSelected
+  Call UpdateNextButtonState
+  Call UpdateControlStates
+FunctionEnd
+
 ; Enable/disable Next button based on game selection
 Function UpdateNextButtonState
   GetDlgItem $R0 $HWNDPARENT 1  ; 1 = Next/Install button
   ${If} $isMXBikesSelected == "1"
   ${OrIf} $isGPBikesSelected == "1"
+  ${OrIf} $isKRPSelected == "1"
     EnableWindow $R0 1  ; Enable
   ${Else}
     EnableWindow $R0 0  ; Disable
@@ -433,10 +522,37 @@ Function OnGPBikesBrowse
   ${EndIf}
 FunctionEnd
 
+Function OnKRPBrowse
+  ; Get parent folder for browse dialog (strip \plugins if present)
+  ${If} $KRPInstallPath == ""
+    StrCpy $R1 "$PROGRAMFILES64"
+  ${Else}
+    ${GetParent} "$KRPInstallPath" $R1
+  ${EndIf}
+  nsDialogs::SelectFolderDialog "Select Kart Racing Pro installation folder" "$R1"
+  Pop $R0
+  ${If} $R0 != "error"
+    ; Check if selected folder already ends with \plugins
+    ${GetFileName} "$R0" $R1
+    ${If} $R1 == "plugins"
+      StrCpy $KRPInstallPath "$R0"
+    ${Else}
+      StrCpy $KRPInstallPath "$R0\plugins"
+    ${EndIf}
+    ${NSD_SetText} $KRPPathCtrl "$KRPInstallPath"
+    ; Auto-check the checkbox when user browses
+    ${NSD_SetState} $KRPCheckbox ${BST_CHECKED}
+    StrCpy $isKRPSelected "1"
+    Call UpdateNextButtonState
+    Call UpdateControlStates
+  ${EndIf}
+FunctionEnd
+
 Function LeaveGameSelectionPage
   ; Get current text from path controls (these are full plugins paths)
   ${NSD_GetText} $MXBikesPathCtrl $MXBikesInstallPath
   ${NSD_GetText} $GPBikesPathCtrl $GPBikesInstallPath
+  ${NSD_GetText} $KRPPathCtrl $KRPInstallPath
 
   ; Validate MX Bikes path if selected
   ${If} $isMXBikesSelected == "1"
@@ -472,11 +588,30 @@ Function LeaveGameSelectionPage
     ${EndIf}
   ${EndIf}
 
+  ; Validate Kart Racing Pro path if selected
+  ${If} $isKRPSelected == "1"
+    ${If} $KRPInstallPath == ""
+      MessageBox MB_OK|MB_ICONEXCLAMATION "Please specify the Kart Racing Pro plugins folder."
+      Abort
+    ${EndIf}
+    ; Validate path looks correct (folder named "plugins" with game exe in parent)
+    ${GetFileName} "$KRPInstallPath" $R1
+    ${GetParent} "$KRPInstallPath" $R0
+    ${If} $R1 != "plugins"
+    ${OrIfNot} ${FileExists} "$R0\${KRP_EXE}"
+      MessageBox MB_ICONQUESTION|MB_YESNO|MB_DEFBUTTON2 \
+        "This does not appear to be the Kart Racing Pro plugins folder. Continue anyway?" \
+        IDNO abort_validation
+    ${EndIf}
+  ${EndIf}
+
   ; Set INSTDIR for uninstaller (paths already include \plugins)
   ${If} $isMXBikesSelected == "1"
     StrCpy $INSTDIR "$MXBikesInstallPath"
-  ${Else}
+  ${ElseIf} $isGPBikesSelected == "1"
     StrCpy $INSTDIR "$GPBikesInstallPath"
+  ${Else}
+    StrCpy $INSTDIR "$KRPInstallPath"
   ${EndIf}
 
   Return
@@ -517,10 +652,6 @@ Section "Install ${PLUGIN_NAME}" Section_InstallPlugin
     SetOutPath "$MXBikesInstallPath\mxbmrp3_data\web\logos"
     File /nonfatal "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\logos\*.png"
 
-    ; Data files
-    SetOutPath "$MXBikesInstallPath\mxbmrp3_data"
-    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\tooltips.json"
-
     DetailPrint "MX Bikes installation complete."
   ${EndIf}
 
@@ -552,11 +683,38 @@ Section "Install ${PLUGIN_NAME}" Section_InstallPlugin
     SetOutPath "$GPBikesInstallPath\mxbmrp3_data\web\logos"
     File /nonfatal "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\logos\*.png"
 
-    ; Data files
-    SetOutPath "$GPBikesInstallPath\mxbmrp3_data"
-    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\tooltips.json"
-
     DetailPrint "GP Bikes installation complete."
+  ${EndIf}
+
+  ; Install for Kart Racing Pro if selected (paths already include \plugins)
+  ${If} $isKRPSelected == "1"
+    DetailPrint "Installing ${PLUGIN_NAME} for Kart Racing Pro..."
+
+    ; Plugin DLO
+    SetOutPath "$KRPInstallPath"
+    File "${PLUGIN_SOURCE_PATH}\${KRP_DLO}"
+
+    ; Fonts
+    SetOutPath "$KRPInstallPath\mxbmrp3_data\fonts"
+    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\fonts\*.fnt"
+
+    ; Textures
+    SetOutPath "$KRPInstallPath\mxbmrp3_data\textures"
+    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\textures\*.tga"
+
+    ; Icons
+    SetOutPath "$KRPInstallPath\mxbmrp3_data\icons"
+    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\icons\*.tga"
+
+    ; Web overlay files
+    SetOutPath "$KRPInstallPath\mxbmrp3_data\web"
+    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\*.*"
+
+    ; Web overlay logos
+    SetOutPath "$KRPInstallPath\mxbmrp3_data\web\logos"
+    File /nonfatal "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\logos\*.png"
+
+    DetailPrint "Kart Racing Pro installation complete."
   ${EndIf}
 
   ; Write uninstaller to INSTDIR (first selected game's plugins folder)
@@ -570,6 +728,10 @@ Section "Install ${PLUGIN_NAME}" Section_InstallPlugin
   ${If} $isGPBikesSelected == "1"
   ${AndIf} $GPBikesInstallPath != $INSTDIR
     CopyFiles /SILENT "$INSTDIR\${PLUGIN_NAME_LC}_uninstall.exe" "$GPBikesInstallPath\${PLUGIN_NAME_LC}_uninstall.exe"
+  ${EndIf}
+  ${If} $isKRPSelected == "1"
+  ${AndIf} $KRPInstallPath != $INSTDIR
+    CopyFiles /SILENT "$INSTDIR\${PLUGIN_NAME_LC}_uninstall.exe" "$KRPInstallPath\${PLUGIN_NAME_LC}_uninstall.exe"
   ${EndIf}
 
   ; Registry entries
@@ -588,6 +750,9 @@ Section "Install ${PLUGIN_NAME}" Section_InstallPlugin
   ${If} $isGPBikesSelected == "1"
     WriteRegStr HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "GPBikesPath" "$GPBikesInstallPath"
   ${EndIf}
+  ${If} $isKRPSelected == "1"
+    WriteRegStr HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "KRPPath" "$KRPInstallPath"
+  ${EndIf}
 
   DetailPrint "Installation complete."
 SectionEnd
@@ -601,13 +766,16 @@ Function un.onInit
   ; Initialize selection (will be set by page)
   StrCpy $isMXBikesSelected "0"
   StrCpy $isGPBikesSelected "0"
+  StrCpy $isKRPSelected "0"
   ; Read installed paths from registry
   ReadRegStr $MXBikesInstallPath HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "MXBikesPath"
   ReadRegStr $GPBikesInstallPath HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "GPBikesPath"
+  ReadRegStr $KRPInstallPath HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "KRPPath"
 
   ; Handle legacy (pre-multi-game) installations that only have InstallLocation
   ${If} $MXBikesInstallPath == ""
   ${AndIf} $GPBikesInstallPath == ""
+  ${AndIf} $KRPInstallPath == ""
     ReadRegStr $MXBikesInstallPath HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "InstallLocation"
   ${EndIf}
 FunctionEnd
@@ -659,6 +827,23 @@ Function un.ShowUninstallSelectionPage
     IntOp $R9 $R9 + 24
   ${EndIf}
 
+  ; Kart Racing Pro section (only show if installed)
+  ${If} $KRPInstallPath != ""
+    ${NSD_CreateCheckbox} 0 $R9u 300u 12u "Kart Racing Pro"
+    Pop $KRPCheckbox
+    ${NSD_SetState} $KRPCheckbox ${BST_CHECKED}
+    StrCpy $isKRPSelected "1"
+    ${NSD_OnClick} $KRPCheckbox un.OnKRPCheckboxClick
+
+    ; Kart Racing Pro path (read-only display)
+    IntOp $R9 $R9 + 16
+    ${NSD_CreateText} 16u $R9u 284u 12u "$KRPInstallPath"
+    Pop $KRPPathCtrl
+    SendMessage $KRPPathCtrl ${EM_SETREADONLY} 1 0
+
+    IntOp $R9 $R9 + 24
+  ${EndIf}
+
   ; Info text (no extra padding - matches install page)
   ${NSD_CreateLabel} 0 $R9u 300u 12u "Select at least one game to uninstall."
   Pop $R2
@@ -679,11 +864,17 @@ Function un.OnGPBikesCheckboxClick
   Call un.UpdateUninstallButtonState
 FunctionEnd
 
+Function un.OnKRPCheckboxClick
+  ${NSD_GetState} $KRPCheckbox $isKRPSelected
+  Call un.UpdateUninstallButtonState
+FunctionEnd
+
 ; Enable/disable Uninstall button based on game selection
 Function un.UpdateUninstallButtonState
   GetDlgItem $R0 $HWNDPARENT 1  ; 1 = Next/Uninstall button
   ${If} $isMXBikesSelected == "1"
   ${OrIf} $isGPBikesSelected == "1"
+  ${OrIf} $isKRPSelected == "1"
     EnableWindow $R0 1  ; Enable
   ${Else}
     EnableWindow $R0 0  ; Disable
@@ -694,6 +885,7 @@ Function un.LeaveUninstallSelectionPage
   ; Check at least one is selected
   ${If} $isMXBikesSelected != "1"
   ${AndIf} $isGPBikesSelected != "1"
+  ${AndIf} $isKRPSelected != "1"
     MessageBox MB_OK|MB_ICONEXCLAMATION "Please select at least one game to uninstall from."
     Abort
   ${EndIf}
@@ -728,22 +920,38 @@ Section "Uninstall"
     DeleteRegValue HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "GPBikesPath"
   ${EndIf}
 
+  ; Remove from Kart Racing Pro if selected
+  ${If} $isKRPSelected == "1"
+  ${AndIf} $KRPInstallPath != ""
+    DetailPrint "Removing from Kart Racing Pro..."
+    Delete "$KRPInstallPath\${KRP_DLO}"
+    RMDir /r "$KRPInstallPath\mxbmrp3_data"
+    Delete "$KRPInstallPath\${PLUGIN_NAME_LC}_uninstall.exe"
+    ; Clear this path from registry
+    DeleteRegValue HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "KRPPath"
+  ${EndIf}
+
   ; Check if anything remains installed
   ReadRegStr $R0 HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "MXBikesPath"
   ReadRegStr $R1 HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "GPBikesPath"
+  ReadRegStr $R2 HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "KRPPath"
   ${If} $R0 == ""
   ${AndIf} $R1 == ""
+  ${AndIf} $R2 == ""
     ; Nothing left installed, clean up registry entirely
     DeleteRegKey HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}"
     DetailPrint "All installations removed."
   ${Else}
-    ; Update InstallLocation to remaining game
+    ; Update InstallLocation/UninstallString to a remaining game's path
     ${If} $R0 != ""
       WriteRegStr HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "InstallLocation" "$R0"
       WriteRegStr HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "UninstallString" "$R0\${PLUGIN_NAME_LC}_uninstall.exe"
-    ${Else}
+    ${ElseIf} $R1 != ""
       WriteRegStr HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "InstallLocation" "$R1"
       WriteRegStr HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "UninstallString" "$R1\${PLUGIN_NAME_LC}_uninstall.exe"
+    ${Else}
+      WriteRegStr HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "InstallLocation" "$R2"
+      WriteRegStr HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "UninstallString" "$R2\${PLUGIN_NAME_LC}_uninstall.exe"
     ${EndIf}
     DetailPrint "Partial uninstall complete. Some installations remain."
   ${EndIf}

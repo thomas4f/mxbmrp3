@@ -19,6 +19,14 @@ namespace {
     // Widget dimensions
     constexpr int FUEL_WIDGET_WIDTH = 8;  // Width in characters (compact)
     constexpr float FUEL_WIDGET_Y = 0.2776f;  // Base Y position for fuel widget
+
+    // Format a value (+ optional unit) into the compact widget. Once the value
+    // reaches double digits the extra character would push a right-justified
+    // value left into the row label, so drop the decimal at that point.
+    void formatFuelValue(char* buf, size_t bufSize, float value, const char* unit) {
+        const char* fmt = (value >= 10.0f) ? "%.0f%s" : "%.1f%s";
+        snprintf(buf, bufSize, fmt, value, unit);
+    }
 }
 
 FuelWidget::FuelWidget()
@@ -294,12 +302,12 @@ void FuelWidget::rebuildRenderData() {
 
         // Current fuel
         float displayFuel = bikeData.fuel * unitConversion;
-        snprintf(fuelValueBuffer, sizeof(fuelValueBuffer), "%.1f%s", displayFuel, unitLabel);
+        formatFuelValue(fuelValueBuffer, sizeof(fuelValueBuffer), displayFuel, unitLabel);
 
         // Total fuel used this run
         if (m_bTrackingActive && m_fuelAtRunStart > 0.0f) {
             float fuelUsed = (m_fuelAtRunStart - bikeData.fuel) * unitConversion;
-            snprintf(usedValueBuffer, sizeof(usedValueBuffer), "%.1f%s", fuelUsed, unitLabel);
+            formatFuelValue(usedValueBuffer, sizeof(usedValueBuffer), fuelUsed, unitLabel);
         } else {
             snprintf(usedValueBuffer, sizeof(usedValueBuffer), "%s", Placeholders::GENERIC);
             usedColor = mutedColor;
@@ -322,11 +330,11 @@ void FuelWidget::rebuildRenderData() {
 
         if (avgFuelPerLap > 0.001f) {
             float displayAvg = avgFuelPerLap * unitConversion;
-            snprintf(avgValueBuffer, sizeof(avgValueBuffer), "%.1f%s", displayAvg, unitLabel);
+            formatFuelValue(avgValueBuffer, sizeof(avgValueBuffer), displayAvg, unitLabel);
 
             // Estimated laps remaining (clamped to 99.9 to avoid triple digits)
             float estimatedLaps = std::min(bikeData.fuel / avgFuelPerLap, 99.9f);
-            snprintf(lapsValueBuffer, sizeof(lapsValueBuffer), "%.1f", estimatedLaps);
+            formatFuelValue(lapsValueBuffer, sizeof(lapsValueBuffer), estimatedLaps, "");
 
             // Color code estimated laps (negative if < 2 laps, warning if < 4)
             if (estimatedLaps < 2.0f) {
@@ -353,7 +361,7 @@ void FuelWidget::rebuildRenderData() {
     // Row 1: Fuel level
     if (m_enabledRows & ROW_FUEL) {
         addString("Fue", contentStartX, currentY, Justify::LEFT,
-            this->getFont(FontCategory::NORMAL), labelColor, dim.fontSize);
+            this->getFont(FontCategory::STRONG), labelColor, dim.fontSize);
         addString(fuelValueBuffer, rightX, currentY, Justify::RIGHT,
             this->getFont(FontCategory::DIGITS), fuelColor, dim.fontSize);
         currentY += dim.lineHeightNormal;
@@ -362,7 +370,7 @@ void FuelWidget::rebuildRenderData() {
     // Row 2: Use (total fuel used this run)
     if (m_enabledRows & ROW_USED) {
         addString("Use", contentStartX, currentY, Justify::LEFT,
-            this->getFont(FontCategory::NORMAL), labelColor, dim.fontSize);
+            this->getFont(FontCategory::STRONG), labelColor, dim.fontSize);
         addString(usedValueBuffer, rightX, currentY, Justify::RIGHT,
             this->getFont(FontCategory::DIGITS), usedColor, dim.fontSize);
         currentY += dim.lineHeightNormal;
@@ -371,7 +379,7 @@ void FuelWidget::rebuildRenderData() {
     // Row 3: Avg (abbreviated from Avg/Lap)
     if (m_enabledRows & ROW_AVG) {
         addString("Avg", contentStartX, currentY, Justify::LEFT,
-            this->getFont(FontCategory::NORMAL), labelColor, dim.fontSize);
+            this->getFont(FontCategory::STRONG), labelColor, dim.fontSize);
         addString(avgValueBuffer, rightX, currentY, Justify::RIGHT,
             this->getFont(FontCategory::DIGITS), avgColor, dim.fontSize);
         currentY += dim.lineHeightNormal;
@@ -380,7 +388,7 @@ void FuelWidget::rebuildRenderData() {
     // Row 4: Est (abbreviated from Est Laps)
     if (m_enabledRows & ROW_EST) {
         addString("Est", contentStartX, currentY, Justify::LEFT,
-            this->getFont(FontCategory::NORMAL), labelColor, dim.fontSize);
+            this->getFont(FontCategory::STRONG), labelColor, dim.fontSize);
         addString(lapsValueBuffer, rightX, currentY, Justify::RIGHT,
             this->getFont(FontCategory::DIGITS), estColor, dim.fontSize);
     }
@@ -397,7 +405,7 @@ void FuelWidget::resetToDefaults() {
     m_fScale = 1.0f;
     m_enabledRows = ROW_DEFAULT;  // Reset row visibility
     // Note: fuelUnit is NOT reset here - it's a global preference, not per-profile
-    setPosition(0.8305f, 0.8769f);
+    setPosition(0.814f, 0.8769f);
     resetFuelTracking();
     setDataDirty();
 }

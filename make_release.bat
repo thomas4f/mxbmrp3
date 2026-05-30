@@ -9,6 +9,7 @@ REM
 REM Builds all game configurations and packages for release:
 REM   - mxbmrp3.dlo (MX Bikes)
 REM   - mxbmrp3_gpb.dlo (GP Bikes)
+REM   - mxbmrp3_krp.dlo (Kart Racing Pro)
 REM   - mxbmrp3_data/ (shared data)
 REM
 REM Options:
@@ -51,18 +52,14 @@ if exist "%VERSION_DIR%\%RELEASE_NAME%.zip" (
     )
 )
 
-REM 2) Build all game configurations
+REM 2) Build all game configurations via the All-Release meta-config
+REM    (build_all/build_all.vcxproj dispatches to mxbmrp3.vcxproj in parallel
+REM    for MXB-Release, GPB-Release, KRP-Release — single source of truth with
+REM    the Visual Studio dropdown's All-Release option).
 echo.
-echo === Building MXB-Release ===
-msbuild "%SOLUTION%" /p:Configuration=MXB-Release /p:Platform=x64 /m /v:minimal || (
-    echo ERROR: MXB-Release build failed
-    exit /b 1
-)
-
-echo.
-echo === Building GPB-Release ===
-msbuild "%SOLUTION%" /p:Configuration=GPB-Release /p:Platform=x64 /m /v:minimal || (
-    echo ERROR: GPB-Release build failed
+echo === Building All-Release (MXB + GPB + KRP) ===
+msbuild "%SOLUTION%" /p:Configuration=All-Release /p:Platform=x64 /m /v:minimal || (
+    echo ERROR: All-Release build failed
     exit /b 1
 )
 
@@ -89,6 +86,7 @@ echo.
 echo Copying DLO files...
 copy ".\build\MXB-Release\mxbmrp3.dlo" "%STAGING_DIR%\mxbmrp3.dlo" || exit /b %ERRORLEVEL%
 copy ".\build\GPB-Release\mxbmrp3_gpb.dlo" "%STAGING_DIR%\mxbmrp3_gpb.dlo" || exit /b %ERRORLEVEL%
+copy ".\build\KRP-Release\mxbmrp3_krp.dlo" "%STAGING_DIR%\mxbmrp3_krp.dlo" || exit /b %ERRORLEVEL%
 
 REM 8) Copy docs
 copy ".\README.md" "%STAGING_DIR%\" || exit /b %ERRORLEVEL%
@@ -99,34 +97,39 @@ REM 9) Generate release README
 (
 echo # MXBMRP3 v%VERSION%
 echo.
-echo HUD plugin for MX Bikes and GP Bikes
+echo HUD, immersion, and streaming plugin for MX Bikes, GP Bikes, and Kart Racing Pro.
 echo.
-echo ## Automatic Installation ^(Recommended^)
-echo.
-echo Run mxbmrp3-Setup.exe to install the plugin for one or both games.
+echo If you'd rather use the guided installer, download mxbmrp3-Setup.exe
+echo from the GitHub releases page instead.
 echo.
 echo ## Manual Installation
 echo.
-echo Copy the appropriate DLO file and mxbmrp3_data/ folder to [Game]/plugins/
+echo Copy the appropriate DLO file and mxbmrp3_data\ folder to [Game]\plugins\
 echo.
-echo - MX Bikes: mxbmrp3.dlo
-echo - GP Bikes: mxbmrp3_gpb.dlo
+echo - MX Bikes:        mxbmrp3.dlo
+echo - GP Bikes:        mxbmrp3_gpb.dlo
+echo - Kart Racing Pro: mxbmrp3_krp.dlo
 echo.
 echo     [Game]\
 echo     +---plugins\
 echo         +-- mxbmrp3_data\        ^<-- Add this folder
 echo         +-- mxbmrp3.dlo          ^<-- Add this ^(MX Bikes only^)
 echo         +-- mxbmrp3_gpb.dlo      ^<-- Add this ^(GP Bikes only^)
+echo         +-- mxbmrp3_krp.dlo      ^<-- Add this ^(Kart Racing Pro only^)
 echo.
 echo ## Notes
 echo.
 echo - Do NOT delete native game files ^(proxy64.dlo, proxy_udp64.dlo, xinput64.dli,
 echo   or telemetry64.dlo for GP Bikes^)
 echo - Each game needs its own copy of the mxbmrp3_data folder
-echo - Settings are stored separately per game in Documents/PiBoSo/[Game]/mxbmrp3/
+echo - Settings are stored separately per game in Documents\PiBoSo\[Game]\mxbmrp3\
 echo.
-echo For more information, see README.md or visit:
-echo https://github.com/thomas4f/mxbmrp3
+echo ## Links
+echo.
+echo - Documentation:         https://thomas4f.github.io/mxbmrp3
+echo - Community discussion:  https://mxb-mods.com/mxbmrp3
+echo - Source ^& issues:       https://github.com/thomas4f/mxbmrp3
+echo - Support development:   https://ko-fi.com/thomas4f
 ) > "%STAGING_DIR%\README.txt"
 
 REM 10) Zip it up to version directory

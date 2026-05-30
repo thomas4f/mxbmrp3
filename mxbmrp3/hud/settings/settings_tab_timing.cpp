@@ -5,6 +5,8 @@
 #include "settings_layout.h"
 #include "../settings_hud.h"
 #include "../timing_hud.h"
+#include "../../core/color_config.h"
+#include "../../core/plugin_constants.h"
 
 // Static member function of SettingsHud - handles click events for Timing tab
 bool SettingsHud::handleClickTabTiming(const ClickRegion& region) {
@@ -213,10 +215,12 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::TIMING_REFERENCE_TOGGLE, hud, nullptr, 0, true,
         "timing.show_reference");
 
-    // Layout toggle (Horizontal = primary row with secondary chips below, Vertical = columns side by side)
-    ctx.addToggleControl("Vertical layout", hud->m_layoutVertical,
-        SettingsHud::ClickRegion::TIMING_LAYOUT_TOGGLE, hud, nullptr, 0, true,
-        "timing.layout");
+    // Display style: Horizontal (primary side-by-side, chips below) or Vertical (single column)
+    const char* layoutValue = hud->m_layoutVertical ? "Vertical" : "Horizontal";
+    ctx.addCycleControl("Display style", layoutValue, 10,
+        SettingsHud::ClickRegion::TIMING_LAYOUT_TOGGLE,
+        SettingsHud::ClickRegion::TIMING_LAYOUT_TOGGLE,
+        hud, true, false, "timing.layout");
 
     ctx.addSpacing(0.5f);
 
@@ -265,6 +269,13 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
     ctx.addToggleControl("Record", hud->isSecondaryGapEnabled(GAP_TO_RECORD),
         SettingsHud::ClickRegion::TIMING_GAP_RECORD_TOGGLE, hud, nullptr, 0, !isPrimary(GAP_TO_RECORD),
         "timing.secondary_record", isPrimary(GAP_TO_RECORD) ? "Primary" : nullptr);
+
+    // Info text - same style as the other tab hints
+    ColorConfig& colors = ColorConfig::getInstance();
+    ctx.currentY += ctx.lineHeightNormal * 0.5f;
+    ctx.parent->addString("Toggle PB scope (Bike/Category) in the General tab.", ctx.labelX, ctx.currentY,
+        PluginConstants::Justify::LEFT, PluginConstants::Fonts::getNormal(),
+        colors.getMuted(), ctx.fontSize * 0.9f);
 
     return hud;
 }

@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  build_all.vcxproj
+
+  Meta-project that builds all three game variants of mxbmrp3 sequentially
+  from a single solution configuration. Selecting "All-Release" (or "All-Debug")
+  in Visual Studio's configuration dropdown and hitting Build will invoke
+  msbuild on mxbmrp3.vcxproj three times — once per game.
+
+  This project produces no binaries of its own; it just orchestrates the
+  per-game builds. Recorder and replay_tool are built directly by the
+  solution alongside this project (see mxbmrp3.sln mappings).
+-->
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="All-Release|x64">
+      <Configuration>All-Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="All-Debug|x64">
+      <Configuration>All-Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <ProjectGuid>{E108A19B-1731-499E-8544-7547AEB17301}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>build_all</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>build_all</ProjectName>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='All-Release|x64'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <UseDebugLibraries>false</UseDebugLibraries>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='All-Debug|x64'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <UseDebugLibraries>true</UseDebugLibraries>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+  <PropertyGroup>
+    <OutDir>$(SolutionDir)build\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
+  </PropertyGroup>
+
+  <!--
+    Game sub-configurations to forward to. Item batching (%(GameConfig.Identity))
+    in the MSBuild task below causes it to run once per item. With
+    BuildInParallel=true the per-config builds run concurrently; each one writes
+    to its own $(Configuration)-keyed intermediate and output directory, so there
+    are no file-lock collisions between them.
+  -->
+  <ItemGroup Condition="'$(Configuration)'=='All-Release'">
+    <GameConfig Include="MXB-Release" />
+    <GameConfig Include="GPB-Release" />
+    <GameConfig Include="KRP-Release" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(Configuration)'=='All-Debug'">
+    <GameConfig Include="MXB-Debug" />
+    <GameConfig Include="GPB-Debug" />
+    <GameConfig Include="KRP-Debug" />
+  </ItemGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+
+  <!--
+    Override the standard Build/Rebuild/Clean targets after Microsoft.Cpp.targets
+    has been imported, so our forwarding logic wins. Microsoft.Cpp.targets defines
+    these for Utility projects but we want them to dispatch to mxbmrp3.vcxproj
+    instead of doing nothing.
+  -->
+  <Target Name="Build">
+    <Message Importance="high" Text="==== build_all: $(Configuration) -&gt; @(GameConfig) ====" />
+    <MSBuild Projects="$(SolutionDir)mxbmrp3\mxbmrp3.vcxproj"
+             Targets="Build"
+             Properties="Configuration=%(GameConfig.Identity);Platform=x64"
+             BuildInParallel="true" />
+    <Message Importance="high" Text="==== build_all: all game variants built successfully ====" />
+  </Target>
+
+  <Target Name="Rebuild">
+    <Message Importance="high" Text="==== build_all: rebuilding $(Configuration) -&gt; @(GameConfig) ====" />
+    <MSBuild Projects="$(SolutionDir)mxbmrp3\mxbmrp3.vcxproj"
+             Targets="Rebuild"
+             Properties="Configuration=%(GameConfig.Identity);Platform=x64"
+             BuildInParallel="true" />
+  </Target>
+
+  <Target Name="Clean">
+    <Message Importance="high" Text="==== build_all: cleaning $(Configuration) -&gt; @(GameConfig) ====" />
+    <MSBuild Projects="$(SolutionDir)mxbmrp3\mxbmrp3.vcxproj"
+             Targets="Clean"
+             Properties="Configuration=%(GameConfig.Identity);Platform=x64"
+             BuildInParallel="true" />
+  </Target>
+</Project>

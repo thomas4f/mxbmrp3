@@ -83,12 +83,12 @@ private:
     ColumnPositions m_columns;
     uint32_t m_enabledColumns = COL_DEFAULT;  // Bitfield of enabled columns
     int m_maxDisplayLaps = 5;  // Configurable number of laps to display (default: 5)
-    int m_cachedNumDataRows = 5;  // Cached count for rebuildLayout
     DisplayOrder m_displayOrder = DisplayOrder::OLDEST_FIRST;  // Order of lap display
 
     // Live timing support
     bool m_showLiveTiming = true;  // Show current lap in progress with live sectors/timer
     bool m_showGapRow = true;      // Show gap-to-PB row when live timing is active
+    bool m_bShowHeaders = false;   // Show a column-header row labeling each column above the lap rows
 
     // Check if we need frequent updates for ticking timer
     bool needsFrequentUpdates() const override;

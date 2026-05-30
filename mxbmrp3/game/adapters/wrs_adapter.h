@@ -432,32 +432,17 @@ struct Adapter {
     // ========================================================================
     // Session Type Mapping
     // ========================================================================
-    static NormalizedSession normalizeSession(int rawSession, int eventType) {
-        // WRS: 0=waiting, 1=practice, 2=qualify, 3=warmup, 4=race
+    // Stub: WRS support is not finished. Mirrors GP Bikes' shape on the
+    // assumption that the API is similar; revisit when WRS is properly tested.
+    static Unified::Session toCanonicalSession(int rawSession, int /*rawEventType*/) {
         switch (rawSession) {
-            case 0: return NormalizedSession::Waiting;
-            case 1: return NormalizedSession::Practice;
-            case 2: return NormalizedSession::Qualify;
-            case 3: return NormalizedSession::Warmup;
-            case 4: return NormalizedSession::Race1;
-            default: return NormalizedSession::Unknown;
+            case 0: return Unified::Session::Waiting;
+            case 1: return Unified::Session::Practice;
+            case 2: return Unified::Session::Qualify;
+            case 3: return Unified::Session::Warmup;
+            case 4: return Unified::Session::Race;
+            default: return Unified::Session::Unknown;
         }
-    }
-
-    static bool isRaceSession(int rawSession, int eventType) {
-        return rawSession == 4;
-    }
-
-    static bool isQualifySession(int rawSession, int eventType) {
-        return rawSession == 2;
-    }
-
-    static bool isPracticeSession(int rawSession, int eventType) {
-        return rawSession == 1 || rawSession == 3;
-    }
-
-    static bool isTimedSession(int rawSession, int eventType) {
-        return !isRaceSession(rawSession, eventType);
     }
 };
 

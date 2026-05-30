@@ -118,12 +118,12 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::EVENT_LOG_ICONS_TOGGLE, hud,
         nullptr, 0, true, "event_log.icons");
 
-    // Display mode: Off / On / Auto-hide
-    const char* modeStr = "On";
+    // Display mode: Off / Always / Auto-hide (matches RadarHud's "Show mode" wording)
+    const char* modeStr = "Always";
     bool isOff = false;
     switch (hud->m_displayMode) {
     case EventLogHud::DisplayMode::OFF:       modeStr = "Off"; isOff = true; break;
-    case EventLogHud::DisplayMode::ON:        modeStr = "On"; break;
+    case EventLogHud::DisplayMode::ON:        modeStr = "Always"; break;
     case EventLogHud::DisplayMode::AUTO_HIDE: modeStr = "Auto-hide"; break;
     }
     ctx.addCycleControl("Show mode", modeStr, 10,

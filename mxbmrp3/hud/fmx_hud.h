@@ -80,7 +80,7 @@ private:
     // Combo arc animated fill (fills during grace period, retreats during chain)
     float m_comboArcFill = 0.0f;
     float m_comboArcGraceStartFill = -1.0f;  // Fill value when GRACE began (-1 = not in grace)
-    float m_comboArcFailStartFill = -1.0f;   // Fill value when failure began (-1 = not in failure)
+    float m_comboArcEndStartFill = -1.0f;    // Fill value when chain-end animation began (-1 = not in end animation)
 
     // Per-profile display settings (managed by SettingsManager profile system)
     uint32_t m_enabledRows = ROW_DEFAULT;      // Bitmask of ROW_* constants

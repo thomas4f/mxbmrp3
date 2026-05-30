@@ -116,6 +116,19 @@ void Logger::error(const char* message) {
 void Logger::log(const char* level, const char* message) {
     if (!m_initialized) return;
 
+    // Serialize concurrent log() calls from the game thread and the
+    // background threads (HttpServer, Discord, UpdateChecker, RecordsHud,
+    // UpdateDownloader). Without this, simultaneous writes to the
+    // ofstream's streambuf are UB and lines mangle in practice.
+    //
+    // CAUTION: m_mutex is not recursive. Do not call log() (or anything
+    // that may transitively call log()) from inside any code path that
+    // already holds it — e.g. don't route an exception's what() through
+    // a logger that itself logs. Doing so will deadlock the calling
+    // thread. The crash filter in crash_handler.cpp deliberately avoids
+    // Logger for this reason.
+    std::lock_guard<std::mutex> lock(m_mutex);
+
     char timestamp[16];
     getCurrentTimestamp(timestamp, sizeof(timestamp));
 

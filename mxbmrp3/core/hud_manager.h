@@ -61,7 +61,9 @@ public:
     void setWidgetsEnabled(bool enabled) { m_bAllWidgetsToggledOff = !enabled; }
 
     // Track centerline data handling
-    void updateTrackCenterline(int numSegments, Unified::TrackSegment* segments);
+    // raceData: float array [S/F, split1, split2, holeshot] in meters along centerline,
+    // or nullptr if unavailable. Values <= 0 are treated as "not present".
+    void updateTrackCenterline(int numSegments, Unified::TrackSegment* segments, const float* raceData);
 
     // Rider position data handling (high-frequency update)
     void updateRiderPositions(int numVehicles, Unified::TrackPositionData* positions);
@@ -98,13 +100,19 @@ public:
     class RumbleHud& getRumbleHud() const { assert(m_pRumble && "HudManager not initialized"); return *m_pRumble; }
     class GamepadWidget& getGamepadWidget() const { assert(m_pGamepad && "HudManager not initialized"); return *m_pGamepad; }
     class LeanWidget& getLeanWidget() const { assert(m_pLean && "HudManager not initialized"); return *m_pLean; }
+    class GForceWidget& getGForceWidget() const { assert(m_pGforce && "HudManager not initialized"); return *m_pGforce; }
     class ClockWidget& getClockWidget() const { assert(m_pClock && "HudManager not initialized"); return *m_pClock; }
 #if GAME_HAS_TYRE_TEMP
     class TyreTempWidget& getTyreTempWidget() const { assert(m_pTyreTemp && "HudManager not initialized"); return *m_pTyreTemp; }
 #endif
+#if GAME_HAS_ECU
+    class EcuWidget& getEcuWidget() const { assert(m_pEcu && "HudManager not initialized"); return *m_pEcu; }
+#endif
     class LapConsistencyHud& getLapConsistencyHud() const { assert(m_pLapConsistency && "HudManager not initialized"); return *m_pLapConsistency; }
     class HelmetOverlayHud& getHelmetOverlayHud() const { assert(m_pHelmetOverlay && "HudManager not initialized"); return *m_pHelmetOverlay; }
+#if GAME_HAS_FMX
     class FmxHud& getFmxHud() const { assert(m_pFmxHud && "HudManager not initialized"); return *m_pFmxHud; }
+#endif
     class StatsHud& getStatsHud() const { assert(m_pStatsHud && "HudManager not initialized"); return *m_pStatsHud; }
     class EventLogHud& getEventLogHud() const { assert(m_pEventLog && "HudManager not initialized"); return *m_pEventLog; }
     class BenchmarkWidget* getBenchmarkWidget() const { return m_pBenchmark; }  // May be null if developer mode is off
@@ -119,9 +127,12 @@ private:
 #if GAME_HAS_RECORDS_PROVIDER
                    m_pRecords(nullptr),
 #endif
-                   m_pFuel(nullptr), m_pPointer(nullptr), m_pRumble(nullptr), m_pGamepad(nullptr), m_pLean(nullptr), m_pClock(nullptr),
+                   m_pFuel(nullptr), m_pPointer(nullptr), m_pRumble(nullptr), m_pGamepad(nullptr), m_pLean(nullptr), m_pGforce(nullptr), m_pClock(nullptr),
 #if GAME_HAS_TYRE_TEMP
                    m_pTyreTemp(nullptr),
+#endif
+#if GAME_HAS_ECU
+                   m_pEcu(nullptr),
 #endif
                    m_pLapConsistency(nullptr),
                    m_pHelmetOverlay(nullptr),
@@ -180,9 +191,13 @@ private:
     class RumbleHud* m_pRumble;
     class GamepadWidget* m_pGamepad;
     class LeanWidget* m_pLean;
+    class GForceWidget* m_pGforce;
     class ClockWidget* m_pClock;
 #if GAME_HAS_TYRE_TEMP
     class TyreTempWidget* m_pTyreTemp;
+#endif
+#if GAME_HAS_ECU
+    class EcuWidget* m_pEcu;
 #endif
     class LapConsistencyHud* m_pLapConsistency;
     class HelmetOverlayHud* m_pHelmetOverlay;

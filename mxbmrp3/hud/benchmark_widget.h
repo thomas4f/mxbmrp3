@@ -8,6 +8,7 @@
 #include "base_hud.h"
 #include "../core/plugin_constants.h"
 #include <array>
+#include <chrono>
 
 class BenchmarkWidget : public BaseHud {
 public:
@@ -66,6 +67,18 @@ private:
     float m_collectRenderTimeUs = 0.0f;
     int m_totalQuadCount = 0;
     int m_totalStringCount = 0;
+
+    // Benchmark session FPS / duration tracking (full-session, not per-snapshot)
+    std::chrono::steady_clock::time_point m_sessionStart{};
+    std::chrono::steady_clock::time_point m_lastFrameTime{};
+    bool m_haveLastFrameTime = false;
+    double m_minFrameTimeUs = 0.0;
+    double m_maxFrameTimeUs = 0.0;
+    double m_sumFrameTimeUs = 0.0;
+    long long m_frameSampleCount = 0;
+
+    void resetSessionStats();
+    void sampleFrameTime();
 
     void takeSnapshot();
 };

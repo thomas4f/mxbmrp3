@@ -248,3 +248,21 @@ SUSTAINED BY THE USER OR THIRD PARTIES OR A FAILURE OF THE
 SOFTWARE TO OPERATE WITH ANY OTHER PROGRAMS), EVEN IF SUCH HOLDER
 OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
 ```
+
+---
+
+## Audiowide
+
+**Project:** https://fonts.google.com/specimen/Audiowide
+**Designer:** Astigmatic
+**Used for:** UI font
+
+```
+SIL Open Font License, Version 1.1
+
+Copyright (c) 2012, Brian J. Bonislawsky DBA Astigmatic (AOETI)
+(astigma@astigmatic.com), with Reserved Font Names "Audiowide".
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is available with a FAQ at: https://openfontlicense.org
+```

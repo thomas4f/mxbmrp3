@@ -384,7 +384,7 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
 
     // Info text
     ctx.currentY += ctx.lineHeightNormal * 0.5f;
-    ctx.parent->addString("Tracked riders are saved to mxbmrp3_tracked_riders.json", ctx.labelX, ctx.currentY,
+    ctx.parent->addString("Tracked riders are saved to mxbmrp3_tracked_riders.json.", ctx.labelX, ctx.currentY,
         Justify::LEFT, Fonts::getNormal(), colors.getMuted(), ctx.fontSize * 0.9f);
 
     // No active HUD for riders settings

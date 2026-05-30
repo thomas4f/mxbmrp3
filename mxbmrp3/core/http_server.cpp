@@ -260,10 +260,10 @@ std::string HttpServer::buildJsonSnapshot() const {
         return out;
     }
 
-    // Determine session mode once, used by session and standings sections
-    bool isRaceSession = (session.eventType == PluginConstants::EventType::RACE)
-        && (session.session == PluginConstants::Session::RACE_1
-            || session.session == PluginConstants::Session::RACE_2);
+    // Determine session mode once, used by session and standings sections.
+    // Uses the canonical (game-agnostic) race-session check from PluginData;
+    // see Game::Adapter::toCanonicalSession() for the per-game mapping.
+    bool isRaceSession = pd.isRaceSession();
 
     out += "{\"session\":{";
 
@@ -585,179 +585,214 @@ std::string HttpServer::buildJsonSnapshot() const {
 void HttpServer::serverThread() {
     // m_server is created by start() on the game thread so that stop()
     // can safely call m_server->stop() without racing on the pointer.
+    //
+    // Exception barrier: an uncaught throw inside a std::thread calls
+    // std::terminate() and kills the host game process. httplib catches
+    // most exceptions inside request handlers, but the setup code below
+    // (file I/O, mount_point, etc.) and the chunked SSE provider can
+    // still escape, so wrap the whole thread body.
+    try {
 
-    // GET /sw.js - service worker, with PLUGIN_VERSION substituted into the
-    // cache name so a plugin update automatically invalidates cached overlay
-    // assets in the browser. Registered before the static mount so this
-    // handler takes precedence over the on-disk file. Note: this bypasses
-    // the AssetManager user-override path — sw.js is intentionally not
-    // user-customizable so version substitution always runs against the
-    // bundled copy.
-    m_server->Get("/sw.js", [this](const httplib::Request&, httplib::Response& res) {
-        std::string path = m_webRoot + "/sw.js";
-        std::ifstream f(path, std::ios::binary);
-        if (!f) {
-            res.status = 404;
-            return;
-        }
-        std::string body((std::istreambuf_iterator<char>(f)),
-                         std::istreambuf_iterator<char>());
-        const std::string placeholder = "__PLUGIN_VERSION__";
-        const size_t versionLen = std::strlen(PLUGIN_VERSION);
-        size_t pos = 0;
-        while ((pos = body.find(placeholder, pos)) != std::string::npos) {
-            body.replace(pos, placeholder.size(), PLUGIN_VERSION);
-            pos += versionLen;
-        }
-        // Service workers must be served with a JS MIME type and should not
-        // be cached by the HTTP layer so updates are picked up promptly.
-        res.set_header("Cache-Control", "no-cache");
-        res.set_content(body, "application/javascript; charset=utf-8");
-    });
+        // GET /sw.js - service worker, with PLUGIN_VERSION substituted into the
+        // cache name so a plugin update automatically invalidates cached overlay
+        // assets in the browser. Registered before the static mount so this
+        // handler takes precedence over the on-disk file. Note: this bypasses
+        // the AssetManager user-override path — sw.js is intentionally not
+        // user-customizable so version substitution always runs against the
+        // bundled copy.
+        m_server->Get("/sw.js", [this](const httplib::Request&, httplib::Response& res) {
+            std::string path = m_webRoot + "/sw.js";
+            std::ifstream f(path, std::ios::binary);
+            if (!f) {
+                res.status = 404;
+                return;
+            }
+            std::string body((std::istreambuf_iterator<char>(f)),
+                             std::istreambuf_iterator<char>());
+            const std::string placeholder = "__PLUGIN_VERSION__";
+            const size_t versionLen = std::strlen(PLUGIN_VERSION);
+            size_t pos = 0;
+            while ((pos = body.find(placeholder, pos)) != std::string::npos) {
+                body.replace(pos, placeholder.size(), PLUGIN_VERSION);
+                pos += versionLen;
+            }
+            // Service workers must be served with a JS MIME type and should not
+            // be cached by the HTTP layer so updates are picked up promptly.
+            res.set_header("Cache-Control", "no-cache");
+            res.set_content(body, "application/javascript; charset=utf-8");
+        });
 
-    // Mount static files from web directory
-    if (!m_webRoot.empty()) {
-        // Override default mime types to include charset=utf-8 so browsers
-        // don't fall back to Latin-1 and mangle non-ASCII chars (em dashes,
-        // etc.) in our text assets.
-        m_server->set_file_extension_and_mimetype_mapping("html", "text/html; charset=utf-8");
-        m_server->set_file_extension_and_mimetype_mapping("css", "text/css; charset=utf-8");
-        m_server->set_file_extension_and_mimetype_mapping("js", "application/javascript; charset=utf-8");
-        m_server->set_file_extension_and_mimetype_mapping("json", "application/json; charset=utf-8");
-        m_server->set_file_extension_and_mimetype_mapping("svg", "image/svg+xml; charset=utf-8");
+        // GET /custom.css - user style overrides, served with no-cache so edits
+        // show up on the next browser reload without waiting for HTTP cache
+        // expiry. Registered before the static mount so this handler takes
+        // precedence over the default static-file headers. The service worker
+        // also bypasses caching for this path (see sw.js).
+        m_server->Get("/custom.css", [this](const httplib::Request&, httplib::Response& res) {
+            std::string path = m_webRoot + "/custom.css";
+            std::ifstream f(path, std::ios::binary);
+            if (!f) {
+                res.status = 404;
+                return;
+            }
+            std::string body((std::istreambuf_iterator<char>(f)),
+                             std::istreambuf_iterator<char>());
+            res.set_header("Cache-Control", "no-cache");
+            res.set_content(body, "text/css; charset=utf-8");
+        });
 
-        auto ret = m_server->set_mount_point("/", m_webRoot);
-        if (!ret) {
-            DEBUG_INFO_F("HttpServer WARNING: web root not found: %s", m_webRoot.c_str());
-        }
-    }
+        // Mount static files from web directory
+        if (!m_webRoot.empty()) {
+            // Override default mime types to include charset=utf-8 so browsers
+            // don't fall back to Latin-1 and mangle non-ASCII chars (em dashes,
+            // etc.) in our text assets.
+            m_server->set_file_extension_and_mimetype_mapping("html", "text/html; charset=utf-8");
+            m_server->set_file_extension_and_mimetype_mapping("css", "text/css; charset=utf-8");
+            m_server->set_file_extension_and_mimetype_mapping("js", "application/javascript; charset=utf-8");
+            m_server->set_file_extension_and_mimetype_mapping("json", "application/json; charset=utf-8");
+            m_server->set_file_extension_and_mimetype_mapping("svg", "image/svg+xml; charset=utf-8");
 
-    // CORS headers for browser sources
-    m_server->set_default_headers({
-        {"Access-Control-Allow-Origin", "*"},
-        {"Access-Control-Allow-Methods", "GET"},
-        {"Access-Control-Allow-Headers", "Content-Type"}
-    });
-
-    // GET /api/logos - list PNG files in the logos/ subdirectory
-    m_server->Get("/api/logos", [this](const httplib::Request&, httplib::Response& res) {
-        std::string logosDir = m_webRoot + "\\logos";
-        std::string searchPath = logosDir + "\\*.png";
-
-        // Collect filenames first so we can sort for consistent order
-        std::vector<std::string> files;
-        WIN32_FIND_DATAA findData;
-        HANDLE hFind = FindFirstFileA(searchPath.c_str(), &findData);
-        if (hFind != INVALID_HANDLE_VALUE) {
-            do {
-                if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-                    files.emplace_back(findData.cFileName);
-                }
-            } while (FindNextFileA(hFind, &findData));
-            FindClose(hFind);
-        }
-        std::sort(files.begin(), files.end());
-
-        std::string json = "[";
-        for (size_t i = 0; i < files.size(); ++i) {
-            if (i > 0) json += ',';
-            appendJsonString(json, files[i].c_str());
-        }
-        json += ']';
-        res.set_content(json, "application/json");
-    });
-
-    // GET /api/state - JSON snapshot (for initial load / polling fallback)
-    m_server->Get("/api/state", [this](const httplib::Request&, httplib::Response& res) {
-        std::lock_guard<std::mutex> lock(m_dataMutex);
-        res.set_content(m_cachedJson, "application/json");
-    });
-
-    // GET /api/events - SSE stream (push on data change)
-    m_server->Get("/api/events", [this](const httplib::Request&, httplib::Response& res) {
-        // Reject if too many SSE connections (avoid starving the thread pool)
-        if (m_sseConnections.load() >= MAX_SSE_CONNECTIONS) {
-            res.status = 503;
-            res.set_content("{\"error\":\"Too many connections\"}", "application/json");
-            return;
+            auto ret = m_server->set_mount_point("/", m_webRoot);
+            if (!ret) {
+                DEBUG_INFO_F("HttpServer WARNING: web root not found: %s", m_webRoot.c_str());
+            }
         }
 
-        res.set_header("Cache-Control", "no-cache");
-        res.set_header("Connection", "keep-alive");
-        res.set_header("X-Accel-Buffering", "no");
+        // CORS headers for browser sources
+        m_server->set_default_headers({
+            {"Access-Control-Allow-Origin", "*"},
+            {"Access-Control-Allow-Methods", "GET"},
+            {"Access-Control-Allow-Headers", "Content-Type"}
+        });
 
-        res.set_chunked_content_provider(
-            "text/event-stream",
-            // Content provider - called by httplib to generate SSE data
-            [this](size_t /*offset*/, httplib::DataSink& sink) -> bool {
-                ++m_sseConnections;
+        // GET /api/logos - list PNG files in the logos/ subdirectory
+        m_server->Get("/api/logos", [this](const httplib::Request&, httplib::Response& res) {
+            std::string logosDir = m_webRoot + "\\logos";
+            std::string searchPath = logosDir + "\\*.png";
 
-                // Per-client sequence tracking — each client independently
-                // detects new data by comparing against the global sequence.
-                // This avoids the race where m_dataChanged=false starved
-                // the second client when two wake from the same notify.
-                uint64_t clientSeq = 0;
-
-                // Send initial snapshot immediately
-                {
-                    std::lock_guard<std::mutex> lock(m_dataMutex);
-                    clientSeq = m_sseSequence;
-                    std::string sseMsg = "id: " + std::to_string(clientSeq)
-                        + "\ndata: " + m_cachedJson + "\n\n";
-                    if (!sink.write(sseMsg.data(), sseMsg.size())) {
-                        return false;
+            // Collect filenames first so we can sort for consistent order
+            std::vector<std::string> files;
+            WIN32_FIND_DATAA findData;
+            HANDLE hFind = FindFirstFileA(searchPath.c_str(), &findData);
+            if (hFind != INVALID_HANDLE_VALUE) {
+                do {
+                    if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                        files.emplace_back(findData.cFileName);
                     }
-                }
+                } while (FindNextFileA(hFind, &findData));
+                FindClose(hFind);
+            }
+            std::sort(files.begin(), files.end());
 
-                int throttleMs = m_throttleMs.load();
+            std::string json = "[";
+            for (size_t i = 0; i < files.size(); ++i) {
+                if (i > 0) json += ',';
+                appendJsonString(json, files[i].c_str());
+            }
+            json += ']';
+            res.set_content(json, "application/json");
+        });
 
-                // Loop: wait for data changes, then push updates.
-                // Sends an SSE keepalive on each timeout to detect dead connections.
-                while (!m_shutdownRequested) {
-                    std::string sseMsg;
+        // GET /api/state - JSON snapshot (for initial load / polling fallback)
+        m_server->Get("/api/state", [this](const httplib::Request&, httplib::Response& res) {
+            std::lock_guard<std::mutex> lock(m_dataMutex);
+            res.set_content(m_cachedJson, "application/json");
+        });
+
+        // GET /api/events - SSE stream (push on data change)
+        m_server->Get("/api/events", [this](const httplib::Request&, httplib::Response& res) {
+            // Reject if too many SSE connections (avoid starving the thread pool)
+            if (m_sseConnections.load() >= MAX_SSE_CONNECTIONS) {
+                res.status = 503;
+                res.set_content("{\"error\":\"Too many connections\"}", "application/json");
+                return;
+            }
+
+            res.set_header("Cache-Control", "no-cache");
+            res.set_header("Connection", "keep-alive");
+            res.set_header("X-Accel-Buffering", "no");
+
+            res.set_chunked_content_provider(
+                "text/event-stream",
+                // Content provider - called by httplib to generate SSE data
+                [this](size_t /*offset*/, httplib::DataSink& sink) -> bool {
+                    ++m_sseConnections;
+
+                    // Per-client sequence tracking — each client independently
+                    // detects new data by comparing against the global sequence.
+                    // This avoids the race where m_dataChanged=false starved
+                    // the second client when two wake from the same notify.
+                    uint64_t clientSeq = 0;
+
+                    // Send initial snapshot immediately
                     {
-                        std::unique_lock<std::mutex> lock(m_dataMutex);
-                        m_dataCondition.wait_for(lock,
-                            std::chrono::milliseconds(throttleMs),
-                            [this, clientSeq] {
-                                return m_sseSequence > clientSeq || m_shutdownRequested.load();
-                            });
-
-                        if (m_shutdownRequested) return false;
-
-                        if (m_sseSequence > clientSeq) {
-                            clientSeq = m_sseSequence;
-                            sseMsg = "id: " + std::to_string(clientSeq)
-                                + "\ndata: " + m_cachedJson + "\n\n";
-                        }
-                    }
-
-                    if (!sseMsg.empty()) {
+                        std::lock_guard<std::mutex> lock(m_dataMutex);
+                        clientSeq = m_sseSequence;
+                        std::string sseMsg = "id: " + std::to_string(clientSeq)
+                            + "\ndata: " + m_cachedJson + "\n\n";
                         if (!sink.write(sseMsg.data(), sseMsg.size())) {
                             return false;
                         }
-                    } else {
-                        // SSE comment keepalive — ignored by EventSource,
-                        // but a failed write detects dead connections
-                        if (!sink.write(":keepalive\n\n", 12)) {
-                            return false;
+                    }
+
+                    int throttleMs = m_throttleMs.load();
+
+                    // Loop: wait for data changes, then push updates.
+                    // Sends an SSE keepalive on each timeout to detect dead connections.
+                    while (!m_shutdownRequested) {
+                        std::string sseMsg;
+                        {
+                            std::unique_lock<std::mutex> lock(m_dataMutex);
+                            m_dataCondition.wait_for(lock,
+                                std::chrono::milliseconds(throttleMs),
+                                [this, clientSeq] {
+                                    return m_sseSequence > clientSeq || m_shutdownRequested.load();
+                                });
+
+                            if (m_shutdownRequested) return false;
+
+                            if (m_sseSequence > clientSeq) {
+                                clientSeq = m_sseSequence;
+                                sseMsg = "id: " + std::to_string(clientSeq)
+                                    + "\ndata: " + m_cachedJson + "\n\n";
+                            }
+                        }
+
+                        if (!sseMsg.empty()) {
+                            if (!sink.write(sseMsg.data(), sseMsg.size())) {
+                                return false;
+                            }
+                        } else {
+                            // SSE comment keepalive — ignored by EventSource,
+                            // but a failed write detects dead connections
+                            if (!sink.write(":keepalive\n\n", 12)) {
+                                return false;
+                            }
                         }
                     }
+
+                    return false;  // Shutdown requested
+                },
+                // Resource releaser - called when content provider returns (any exit path)
+                [this](bool /*success*/) {
+                    --m_sseConnections;
                 }
+            );
+        });
 
-                return false;  // Shutdown requested
-            },
-            // Resource releaser - called when content provider returns (any exit path)
-            [this](bool /*success*/) {
-                --m_sseConnections;
-            }
-        );
-    });
+        // Bind and listen (localhost only by default for security).
+        // Use 0.0.0.0 to allow connections from other machines on the network.
+        // start() calls wait_until_ready() + is_running() to detect success/failure.
+        int port = m_port.load();
+        std::string bindAddr = getBindAddress();
+        m_server->listen(bindAddr.c_str(), port);
 
-    // Bind and listen (localhost only by default for security).
-    // Use 0.0.0.0 to allow connections from other machines on the network.
-    // start() calls wait_until_ready() + is_running() to detect success/failure.
-    int port = m_port.load();
-    std::string bindAddr = getBindAddress();
-    m_server->listen(bindAddr.c_str(), port);
+    } catch (const std::exception& e) {
+        DEBUG_WARN_F("HttpServer thread terminated by exception: %s", e.what());
+        // No thread is alive to serve requests anymore — clear the flag so
+        // onDataChanged stops building snapshots that nobody will read.
+        m_running = false;
+    } catch (...) {
+        DEBUG_WARN("HttpServer thread terminated by unknown exception");
+        m_running = false;
+    }
 }

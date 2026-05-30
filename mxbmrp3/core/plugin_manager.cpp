@@ -40,6 +40,7 @@
 #if GAME_HAS_HTTP_SERVER
 #include "http_server.h"
 #endif
+#include "crash_handler.h"
 #include <cstring>
 #include <vector>
 #include <windows.h>
@@ -88,6 +89,21 @@ void PluginManager::initialize(const char* savePath) {
     // Initialize logger first (so we can log everything else)
     Logger::getInstance().initialize(savePath);
 
+    // Install crash handler immediately after the logger so any unhandled
+    // hardware fault (AV, stack overflow, divide-by-zero) writes a
+    // minidump before the host dies. This doesn't prevent crashes — it
+    // just gives us a .dmp to debug from.
+    CrashHandler::install(savePath);
+
+    // From here on we hold a process-wide unhandled-exception filter
+    // pointing into this DLL. If init throws and the game unloads us
+    // (Startup returns -1), that filter would be left dangling in
+    // unmapped memory — and the next host-side fault anywhere in the
+    // process would jump to garbage, which is exactly the failure mode
+    // this PR is meant to prevent. Catch + uninstall + rethrow so init
+    // is transactional w.r.t. the SEH filter.
+    try {
+
     // Discover assets (syncs user overrides, then scans plugin data directory)
     // Must happen before HudManager::initialize() which sets up resources
     AssetManager::getInstance().discoverAssets(savePath);
@@ -108,6 +124,38 @@ void PluginManager::initialize(const char* savePath) {
 #endif
 
     DEBUG_INFO("PluginManager initialized");
+
+    } catch (...) {
+        // Roll back anything that may have spawned background threads
+        // before the throw. The C++ exception barrier at the DLL boundary
+        // (API_GUARD_CATCH in Startup) returns -1 on rethrow, which makes
+        // the game unload our DLL. If Discord's connection thread or
+        // HttpServer's listen thread is still alive at that point, it
+        // outlives the DLL's mapped memory and faults the next time it
+        // executes an instruction. Both shutdown() methods early-exit
+        // cleanly if their thread wasn't spawned yet.
+        //
+        // INVARIANT: this list must cover every background thread spawned
+        // during initialize() above. Currently HttpServer + DiscordManager.
+        // UpdateChecker/UpdateDownloader/RecordsHud start their threads
+        // later via user action, so they're not relevant here. If you add
+        // another initialize() call that spawns a thread, add its
+        // shutdown() here.
+        //
+        // Each rollback step runs in its own try/catch so a throw from one
+        // shutdown() doesn't skip the rest. Leaving a thread alive past
+        // DLL unload (the game does that on our -1 return) crashes the host
+        // when the thread next executes any instruction — much worse than
+        // a swallowed shutdown exception.
+#if GAME_HAS_HTTP_SERVER
+        try { HttpServer::getInstance().shutdown(); } catch (...) {}
+#endif
+#if GAME_HAS_DISCORD
+        try { DiscordManager::getInstance().shutdown(); } catch (...) {}
+#endif
+        try { CrashHandler::uninstall(); } catch (...) {}
+        throw;
+    }
 }
 
 void PluginManager::shutdown() {
@@ -143,6 +191,11 @@ void PluginManager::shutdown() {
 
     // Clear plugin data store
     PluginData::getInstance().clear();
+
+    // Restore the previous unhandled exception filter — if our DLL is
+    // about to unload, leaving a dangling filter pointing into freed
+    // memory would itself become a crash bomb.
+    CrashHandler::uninstall();
 
     // Shutdown logger last (so we can log everything else)
     Logger::getInstance().shutdown();

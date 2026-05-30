@@ -45,9 +45,13 @@
 #include "../hud/rumble_hud.h"
 #include "../hud/gamepad_widget.h"
 #include "../hud/lean_widget.h"
+#include "../hud/gforce_widget.h"
 #include "../hud/clock_widget.h"
 #if GAME_HAS_TYRE_TEMP
 #include "../hud/tyre_temp_widget.h"
+#endif
+#if GAME_HAS_ECU
+#include "../hud/ecu_widget.h"
 #endif
 #include "../hud/lap_consistency_hud.h"
 #include "../hud/helmet_overlay_hud.h"
@@ -56,7 +60,6 @@
 #include "../hud/event_log_hud.h"
 #include "../hud/benchmark_widget.h"
 #include "hotkey_manager.h"
-#include "tooltip_manager.h"
 #include "../handlers/draw_handler.h"
 #include "color_config.h"
 #include <windows.h>
@@ -151,10 +154,12 @@ void HudManager::initialize() {
     m_pLapConsistency->setTextureBaseName("lap_consistency_hud");
     registerHud(std::move(lapConsistencyPtr));
 
+#if GAME_HAS_FMX
     auto fmxPtr = std::make_unique<FmxHud>();
     m_pFmxHud = fmxPtr.get();
     m_pFmxHud->setTextureBaseName("fmx_hud");
     registerHud(std::move(fmxPtr));
+#endif
 
     auto statsPtr = std::make_unique<StatsHud>();
     m_pStatsHud = statsPtr.get();
@@ -258,6 +263,11 @@ void HudManager::initialize() {
     m_pLean->setTextureBaseName("lean_widget");
     registerHud(std::move(leanPtr));
 
+    auto gforcePtr = std::make_unique<GForceWidget>();
+    m_pGforce = gforcePtr.get();
+    m_pGforce->setTextureBaseName("gforce_widget");
+    registerHud(std::move(gforcePtr));
+
     auto clockPtr = std::make_unique<ClockWidget>();
     m_pClock = clockPtr.get();
     m_pClock->setTextureBaseName("clock_widget");
@@ -268,6 +278,13 @@ void HudManager::initialize() {
     m_pTyreTemp = tyreTempPtr.get();
     m_pTyreTemp->setTextureBaseName("tyre_temp_widget");
     registerHud(std::move(tyreTempPtr));
+#endif
+
+#if GAME_HAS_ECU
+    auto ecuPtr = std::make_unique<EcuWidget>();
+    m_pEcu = ecuPtr.get();
+    m_pEcu->setTextureBaseName("ecu_widget");
+    registerHud(std::move(ecuPtr));
 #endif
 
     // Create PointerWidget early so it can be passed to SettingsHud
@@ -282,7 +299,7 @@ void HudManager::initialize() {
     RecordsHud* recordsHudPtr = nullptr;
 #endif
     auto settingsPtr = std::make_unique<SettingsHud>(m_pIdealLap, m_pLapLog, m_pLapConsistency, m_pStandings,
-                                                       m_pPerformance, m_pTelemetry, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pGear, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, recordsHudPtr, m_pFuel, m_pPointer, m_pRumble, m_pGamepad, m_pLean,
+                                                       m_pPerformance, m_pTelemetry, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pGear, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, recordsHudPtr, m_pFuel, m_pPointer, m_pRumble, m_pGamepad, m_pLean, m_pGforce,
                                                        m_pFmxHud,
                                                        m_pStatsHud,
                                                        m_pEventLog,
@@ -290,6 +307,9 @@ void HudManager::initialize() {
                                                        m_pHelmetOverlay
 #if GAME_HAS_TYRE_TEMP
                                                        , m_pTyreTemp
+#endif
+#if GAME_HAS_ECU
+                                                       , m_pEcu
 #endif
                                                        );
     m_pSettingsHud = settingsPtr.get();
@@ -333,9 +353,6 @@ void HudManager::initialize() {
 
     // Load settings from disk (must happen after HUD registration)
     SettingsManager::getInstance().loadSettings(*this, PluginManager::getInstance().getSavePath());
-
-    // Load UI descriptions for settings panel
-    TooltipManager::getInstance().load();
 
     // NOTE: Individual HUD scaling is available via setScale() method.
     // For grid-aligned edges, use scales where (WIDTH_CHARS × scale) = integer:
@@ -397,9 +414,13 @@ void HudManager::clear() {
     m_pRumble = nullptr;
     m_pGamepad = nullptr;
     m_pLean = nullptr;
+    m_pGforce = nullptr;
     m_pClock = nullptr;
 #if GAME_HAS_TYRE_TEMP
     m_pTyreTemp = nullptr;
+#endif
+#if GAME_HAS_ECU
+    m_pEcu = nullptr;
 #endif
     m_pLapConsistency = nullptr;
     m_pHelmetOverlay = nullptr;
@@ -737,6 +758,7 @@ void HudManager::collectRenderData() {
                            hud.get() == m_pBars || hud.get() == m_pVersion ||
                            hud.get() == m_pFuel ||
                            hud.get() == m_pGamepad || hud.get() == m_pLean ||
+                           hud.get() == m_pGforce ||
                            hud.get() == m_pClock);
             if (m_bAllWidgetsToggledOff && isWidget && !isVersionGameActive) {
                 continue;
@@ -995,8 +1017,6 @@ void HudManager::processKeyboardInput() {
         if (!savePath.empty()) {
             DEBUG_INFO("Hotkey: Reloading config from file");
             settingsMgr.loadSettings(*this, savePath.c_str());
-            // Reload UI descriptions (hot-reload support)
-            TooltipManager::getInstance().reload();
             // Mark HUDs with per-texture layouts dirty to force rebuild
             if (m_pGamepad) m_pGamepad->setDataDirty();
             if (m_pPitboard) m_pPitboard->setDataDirty();
@@ -1034,14 +1054,14 @@ bool HudManager::isTelemetryHistoryNeeded() const {
 }
 
 
-void HudManager::updateTrackCenterline(int numSegments, Unified::TrackSegment* segments) {
+void HudManager::updateTrackCenterline(int numSegments, Unified::TrackSegment* segments, const float* raceData) {
     if (!m_bInitialized || !m_pMapHud) {
         DEBUG_WARN("HudManager: Cannot update track centerline - not initialized or MapHud not available");
         return;
     }
 
     DEBUG_INFO_F("HudManager: Updating track centerline with %d segments", numSegments);
-    m_pMapHud->updateTrackData(numSegments, segments);
+    m_pMapHud->updateTrackData(numSegments, segments, raceData);
 }
 
 void HudManager::updateRiderPositions(int numVehicles, Unified::TrackPositionData* positions) {

@@ -54,17 +54,29 @@ private:
                         float value, unsigned long color);
 
     // Helper to add a horizontal max marker line
-    void addMaxMarker(float x, float y, float barWidth, float barHeight, float maxValue);
+    void addMaxMarker(float x, float y, float barWidth, float barHeight, float maxValue, unsigned long color);
 
-    // Helper to add a horizontal threshold marker line (for temperature alarm limits)
-    void addThresholdMarker(float x, float y, float barWidth, float barHeight, float thresholdValue, unsigned long color);
+    // Helper to add a vertical bar with gaps cut out at the given normalized positions
+    // (0=bottom, 1=top). Used for temperature alarm-limit/optimal dividers.
+    void addVerticalBarWithGaps(float x, float y, float barWidth, float barHeight,
+                                float value, unsigned long color,
+                                const float* gaps, int gapCount);
 
-    // Update max tracking for a bar (returns true if max was updated)
-    void updateMaxTracking(int barIndex, float currentValue);
+    // Render a complete temperature bar (normalize → color → bar with threshold gaps → peak marker → label).
+    // Shared between engine (E) and water (W) bars, which differ only in source value, label, and bar index.
+    void renderTemperatureBar(int barIndex,
+                              float x, float y, float labelY,
+                              float barWidth, float barHeight,
+                              float temp, float optTemp, float alarmLow, float alarmHigh,
+                              bool hasFullTelemetry, bool isCrashed, bool crashJustStarted,
+                              unsigned long maxMarkerColor, unsigned long mutedColor,
+                              const char* label, float fontSize);
 
-    // Calculate temperature color based on value relative to optimal/alarm thresholds
-    // Returns gradient color: blue (cold) -> green (optimal) -> yellow -> red (hot)
-    unsigned long calculateTemperatureColor(float temp, float optTemp, float alarmLow, float alarmHigh) const;
+    // Update max tracking for a bar. When isCrashed is true, the linger countdown
+    // is frozen so the rider can read the pre-crash peak after the tumble settles.
+    // On the first frame of crash (justEnteredCrash), the marker snaps to the current
+    // value if no marker is currently visible — captures impact-moment telemetry.
+    void updateMaxTracking(int barIndex, float currentValue, bool isCrashed, bool justEnteredCrash);
 
     // Base position (0,0) - actual position comes from m_fOffsetX/m_fOffsetY
     static constexpr float START_X = 0.0f;
@@ -81,10 +93,9 @@ private:
 
     // Max marker tracking for each bar (index matches bar order: T, B, C, R, S, F, E, W)
     // Markers show when value starts decreasing, hide when increasing
-    float m_maxValues[NUM_BARS] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};       // Overall max (for reference)
     float m_markerValues[NUM_BARS] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};    // Current marker position
-    float m_prevValues[NUM_BARS] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};      // Previous frame values
     int m_maxFramesRemaining[NUM_BARS] = {0, 0, 0, 0, 0, 0, 0, 0};
+    bool m_wasCrashed = false;  // Tracks crash transitions for impact-moment marker snap
 
     // Settings (configurable via INI)
     uint32_t m_enabledColumns = COL_DEFAULT;  // Bitfield of enabled bars

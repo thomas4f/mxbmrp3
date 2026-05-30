@@ -87,8 +87,8 @@ void StatsManager::load(const char* savePath) {
         file >> j;
 
         int version = j.value("version", 0);
-        if (version > FILE_VERSION) {
-            DEBUG_INFO_F("[StatsManager] File version %d is newer than expected %d — loading with defaults for unknown fields",
+        if (version != FILE_VERSION) {
+            DEBUG_INFO_F("[StatsManager] File version %d differs from expected %d — loading known fields with defaults",
                          version, FILE_VERSION);
         }
 
@@ -618,11 +618,8 @@ void StatsManager::recordSessionStart(int sessionType) {
     m_sessionStartTime = std::chrono::steady_clock::now();
     m_totalPausedMs = 0;
 
-    // Only reset penalty baseline and race finish tracking on actual session changes.
-    // Resetting on pit re-entry would cause updatePenaltyFromStandings() to re-add
-    // the full penalty total as a delta, and lose the race finish guard.
+    // Only reset race finish tracking on actual session changes.
     if (sessionChanged) {
-        m_lastKnownStandingsPenaltyMs = 0;
         m_raceFinishRecorded = false;
         m_playerHasFastestLapInRace = false;
     }
@@ -724,37 +721,26 @@ void StatsManager::clearPlayerFastestLap() {
     m_playerHasFastestLapInRace = false;
 }
 
-void StatsManager::recordPenalty() {
+void StatsManager::recordPenalty(int penaltyTimeMs, bool isRace) {
     m_sessionPenaltyCount++;
     m_curLapPenaltyCount++;
 
-    // Track+bike penalty count (time is handled by updatePenaltyFromStandings)
+    if (penaltyTimeMs > 0) {
+        m_sessionPenaltyTimeMs += penaltyTimeMs;
+        m_curLapPenaltyTimeMs += penaltyTimeMs;
+    }
+
     if (!m_currentKey.empty()) {
         m_trackBikeStats[m_currentKey].penaltyCount++;
-        m_globalTotalsDirty = true;
-        m_dirty = true;
-    }
-}
-
-void StatsManager::updatePenaltyFromStandings(int64_t currentTotalPenaltyMs, bool isRace) {
-    // Detect delta from last known standings penalty total
-    int64_t delta = currentTotalPenaltyMs - m_lastKnownStandingsPenaltyMs;
-    if (delta <= 0) return;
-
-    m_lastKnownStandingsPenaltyMs = currentTotalPenaltyMs;
-
-    // Apply delta to all accumulators
-    m_sessionPenaltyTimeMs += delta;
-    m_curLapPenaltyTimeMs += delta;
-
-    if (!m_currentKey.empty()) {
-        m_trackBikeStats[m_currentKey].penaltyTimeMs += delta;
+        if (penaltyTimeMs > 0) {
+            m_trackBikeStats[m_currentKey].penaltyTimeMs += penaltyTimeMs;
+        }
         m_globalTotalsDirty = true;
         m_dirty = true;
     }
 
-    if (isRace) {
-        m_globalStats.penaltyTimeMs += delta;
+    if (isRace && penaltyTimeMs > 0) {
+        m_globalStats.penaltyTimeMs += penaltyTimeMs;
     }
 }
 
@@ -1076,7 +1062,6 @@ bool StatsManager::clearEntry(const std::string& trackId, const std::string& bik
         m_sessionTopSpeedMs = 0.0f;
         m_sessionPenaltyCount = 0;
         m_sessionPenaltyTimeMs = 0;
-        m_lastKnownStandingsPenaltyMs = 0;
         m_sessionTripDistance = 0.0;
 
         // Reset per-lap transients
@@ -1126,7 +1111,6 @@ void StatsManager::clearAll() {
     m_sessionTopSpeedMs = 0.0f;
     m_sessionPenaltyCount = 0;
     m_sessionPenaltyTimeMs = 0;
-    m_lastKnownStandingsPenaltyMs = 0;
     m_sessionTripDistance = 0.0;
 
     // Reset per-lap transients

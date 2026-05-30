@@ -5,6 +5,7 @@
 #include "event_handler.h"
 #include "../core/handler_singleton.h"
 #include "../core/plugin_data.h"
+#include "../core/plugin_utils.h"
 #include "../core/stats_manager.h"
 #if GAME_HAS_DISCORD
 #include "../core/discord_manager.h"
@@ -38,6 +39,20 @@ void EventHandler::handleEventInit(Unified::VehicleEventData* psEventData) {
         psEventData->engineTempAlarmLow,
         psEventData->engineTempAlarmHigh
     );
+
+#if defined(GAME_MXBIKES)
+    // Server info comes from the MX Bikes API.
+    // serverType: 0 = offline/testing, 1 = online race, 2 = online practice day.
+    // Anything > 0 is treated as online by SessionData::isOnline().
+    PluginData::getInstance().setServerType(psEventData->serverType);
+    PluginData::getInstance().setServerName(psEventData->serverName);
+
+    DEBUG_INFO_F("EventInit: eventType=%d (%s), serverType=%d, server='%s'",
+        static_cast<int>(psEventData->eventType),
+        PluginUtils::getEventTypeString(static_cast<int>(psEventData->eventType)),
+        psEventData->serverType,
+        psEventData->serverName);
+#endif
 
     // Set stats context for this track/bike combination
     StatsManager::getInstance().setCurrentContext(psEventData->trackId, psEventData->vehicleName, psEventData->category);

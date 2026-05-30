@@ -75,8 +75,7 @@ public:
     void notifyResume();
     void tryRecordRaceFinish(const class PluginData& pd);
     void clearPlayerFastestLap();   // Called when another rider sets a faster lap
-    void recordPenalty();
-    void updatePenaltyFromStandings(int64_t currentTotalPenaltyMs, bool isRace);
+    void recordPenalty(int penaltyTimeMs, bool isRace);
 
     // Combined per-frame telemetry update — handles distance, top speed, crash and gear shift detection.
     // isCrashed uses edge detection (only counts transitions).
@@ -210,7 +209,6 @@ private:
     float m_sessionTopSpeedMs = 0.0f;
     int m_sessionPenaltyCount = 0;
     int64_t m_sessionPenaltyTimeMs = 0;
-    int64_t m_lastKnownStandingsPenaltyMs = 0;  // Tracks standings penalty total for delta detection
     double m_sessionTripDistance = 0.0;
     int64_t m_cachedSessionDurationMs = 0;  // Cached at session end for HUD display
     std::chrono::steady_clock::time_point m_sessionStartTime;
@@ -265,5 +263,5 @@ private:
     std::string m_savePath;
     bool m_dirty = false;
 
-    static constexpr int FILE_VERSION = 1;
+    static constexpr int FILE_VERSION = 1;  // Bump only for additive changes (new fields read with defaults); a non-additive change (rename/retype/repurpose) requires a deliberate migration step on load.
 };

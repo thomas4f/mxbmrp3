@@ -22,6 +22,11 @@
  * The plugin sends font names like "RobotoMono-Regular", "EnterSansman-Italic", etc.
  * ============================================================================ */
 @font-face {
+    font-family: 'Audiowide-Regular';
+    src: url('Audiowide-Regular.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
     font-family: 'EnterSansman-Italic';
     src: url('EnterSansman-Italic.ttf') format('truetype');
     font-display: swap;
@@ -828,13 +833,6 @@ body {
 }
 .settings-toggle.on::after {
     left: calc(100% - 0.8rem);
-}
-
-/* Slider */
-.settings-slider {
-    width: 5rem;
-    accent-color: var(--green);
-    cursor: pointer;
 }
 
 /* Counter (stepper) */

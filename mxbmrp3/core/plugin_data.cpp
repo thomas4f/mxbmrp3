@@ -78,32 +78,14 @@ void PluginData::setEventType(int eventType) {
     }
 }
 
-void PluginData::setConnectionType(int connectionType) {
-    if (setValue(m_sessionData.connectionType, connectionType)) {
+void PluginData::setServerType(int serverType) {
+    if (setValue(m_sessionData.serverType, serverType)) {
         notifyHudManager(DataChangeType::SessionData);
     }
 }
 
 void PluginData::setServerName(const char* serverName) {
     if (setStringValue(m_sessionData.serverName, sizeof(m_sessionData.serverName), serverName)) {
-        notifyHudManager(DataChangeType::SessionData);
-    }
-}
-
-void PluginData::setServerPassword(const char* serverPassword) {
-    if (setStringValue(m_sessionData.serverPassword, sizeof(m_sessionData.serverPassword), serverPassword)) {
-        notifyHudManager(DataChangeType::SessionData);
-    }
-}
-
-void PluginData::setServerClientsCount(int count) {
-    if (setValue(m_sessionData.serverClientsCount, count)) {
-        notifyHudManager(DataChangeType::SessionData);
-    }
-}
-
-void PluginData::setServerMaxClients(int max) {
-    if (setValue(m_sessionData.serverMaxClients, max)) {
         notifyHudManager(DataChangeType::SessionData);
     }
 }
@@ -1161,13 +1143,6 @@ int PluginData::getPositionForRaceNum(int raceNum) const {
     return -1;  // Not found in standings
 }
 
-void PluginData::setLiveGapsEnabled(bool enabled) {
-    if (m_liveGapsEnabled != enabled) {
-        m_liveGapsEnabled = enabled;
-        notifyHudManager(DataChangeType::Standings);
-    }
-}
-
 void PluginData::setFilterDnsRiders(bool enabled) {
     if (m_filterDnsRiders != enabled) {
         m_filterDnsRiders = enabled;
@@ -2099,6 +2074,14 @@ void PluginData::updatePitch(float pitch) {
     // Same as updateRoll — updates at telemetry rate, no separate notification.
 }
 
+void PluginData::updateAcceleration(float accelX, float accelY, float accelZ) {
+    m_bikeTelemetry.accelX = accelX;
+    m_bikeTelemetry.accelY = accelY;
+    m_bikeTelemetry.accelZ = accelZ;
+    // No separate notification - acceleration updates at same frequency as roll/pitch
+    // which are bundled with the InputTelemetry notification from updateSpeedometer().
+}
+
 void PluginData::updateTemperatures(float engineTemp, float waterTemp) {
     m_bikeTelemetry.engineTemperature = engineTemp;
     m_bikeTelemetry.waterTemperature = waterTemp;
@@ -2112,6 +2095,20 @@ void PluginData::updateTreadTemperatures(const float temps[2][3]) {
         }
     }
     // No separate notification - temperatures update at same frequency as other telemetry
+}
+
+void PluginData::updateEcuData(int ecuMode, const char* engineMapping, int tractionControl, int engineBraking, int antiWheeling, int ecuState) {
+    m_bikeTelemetry.ecuMode = ecuMode;
+    if (engineMapping) {
+        strncpy_s(m_bikeTelemetry.engineMapping, sizeof(m_bikeTelemetry.engineMapping), engineMapping, _TRUNCATE);
+    } else {
+        m_bikeTelemetry.engineMapping[0] = '\0';
+    }
+    m_bikeTelemetry.tractionControl = tractionControl;
+    m_bikeTelemetry.engineBraking = engineBraking;
+    m_bikeTelemetry.antiWheeling = antiWheeling;
+    m_bikeTelemetry.ecuState = ecuState;
+    // No separate notification - ECU values update at same frequency as other telemetry
 }
 
 void PluginData::updateSuspensionMaxTravel(float frontMaxTravel, float rearMaxTravel) {
@@ -2225,36 +2222,27 @@ void PluginData::updateXInputData(const XInputData& xinputData) {
 }
 
 bool PluginData::isRaceSession() const {
-    using namespace PluginConstants::Session;
-    using namespace PluginConstants::EventType;
-
-    int eventType = m_sessionData.eventType;
-    int session = m_sessionData.session;
-
-    // Straight Rhythm events use different session values
-    // WARMUP (5) conflicts with SR_FINAL (5), so check event type first
-    if (eventType == STRAIGHT_RHYTHM) {
-        // Straight Rhythm race sessions
-        return (session == SR_ROUND || session == SR_QUARTER_FINALS ||
-                session == SR_SEMI_FINALS || session == SR_FINAL);
-    } else {
-        // Regular race sessions (not practice, qualify, or warmup)
-        return (session == RACE_1 || session == RACE_2);
-    }
+    // Convert game-specific raw session integer to canonical via the active
+    // game's adapter, then check for race-style sessions in one place.
+    Unified::Session canonical = Game::Adapter::toCanonicalSession(
+        m_sessionData.session, m_sessionData.eventType);
+    return canonical == Unified::Session::Race ||
+           canonical == Unified::Session::Race1 ||
+           canonical == Unified::Session::Race2 ||
+           canonical == Unified::Session::SR_Round ||
+           canonical == Unified::Session::SR_QuarterFinals ||
+           canonical == Unified::Session::SR_SemiFinals ||
+           canonical == Unified::Session::SR_Final ||
+           canonical == Unified::Session::KRP_QualifyHeat ||
+           canonical == Unified::Session::KRP_SecondChanceHeat ||
+           canonical == Unified::Session::KRP_PreFinal ||
+           canonical == Unified::Session::KRP_Final;
 }
 
 bool PluginData::isQualifySession() const {
-    using namespace PluginConstants::Session;
-    using namespace PluginConstants::EventType;
-
-    int eventType = m_sessionData.eventType;
-    int session = m_sessionData.session;
-
-    // Straight Rhythm doesn't have qualifying sessions
-    if (eventType == STRAIGHT_RHYTHM) {
-        return false;
-    }
-
-    // Regular qualifying sessions
-    return (session == PRE_QUALIFY || session == QUALIFY_PRACTICE || session == QUALIFY);
+    Unified::Session canonical = Game::Adapter::toCanonicalSession(
+        m_sessionData.session, m_sessionData.eventType);
+    return canonical == Unified::Session::PreQualify ||
+           canonical == Unified::Session::QualifyPractice ||
+           canonical == Unified::Session::Qualify;
 }

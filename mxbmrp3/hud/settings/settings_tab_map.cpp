@@ -136,6 +136,16 @@ bool SettingsHud::handleClickTabMap(const ClickRegion& region) {
             }
             return true;
 
+        case ClickRegion::MAP_DETAIL_UP:
+        case ClickRegion::MAP_DETAIL_DOWN:
+            if (mapHud) {
+                auto newDetail = cycleEnum(mapHud->getDetail(), MapHud::DETAIL_COUNT,
+                    region.type == ClickRegion::MAP_DETAIL_UP);
+                mapHud->setDetail(newDetail);
+                rebuildRenderData();
+            }
+            return true;
+
         default:
             return false;
     }
@@ -189,6 +199,18 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::MAP_TRACK_WIDTH_DOWN,
         SettingsHud::ClickRegion::MAP_TRACK_WIDTH_UP,
         hud, true, false, "map.track_width");
+
+    // Detail (LOD) — controls ribbon subdivision density
+    const char* detailStr = "Auto";
+    switch (hud->getDetail()) {
+        case MapHud::Detail::AUTO: detailStr = "Auto"; break;
+        case MapHud::Detail::HIGH: detailStr = "High"; break;
+        case MapHud::Detail::LOW:  detailStr = "Low"; break;
+    }
+    ctx.addCycleControl("Detail", detailStr, 10,
+        SettingsHud::ClickRegion::MAP_DETAIL_DOWN,
+        SettingsHud::ClickRegion::MAP_DETAIL_UP,
+        hud, true, false, "map.detail");
     ctx.addSpacing(0.5f);
 
     // === RIDER MARKERS SECTION ===
@@ -239,6 +261,13 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::MAP_LABEL_MODE_DOWN,
         SettingsHud::ClickRegion::MAP_LABEL_MODE_UP,
         hud, true, labelIsOff, "map.labels");
+
+    // Performance tip (mirrors the "More options" footer style on the Widgets tab)
+    ctx.currentY += ctx.lineHeightNormal * 0.5f;
+    ctx.parent->addString("Tip: disable track outline to improve FPS.",
+        ctx.labelX, ctx.currentY,
+        PluginConstants::Justify::LEFT, PluginConstants::Fonts::getNormal(),
+        ColorConfig::getInstance().getMuted(), ctx.fontSize * 0.9f);
 
     return hud;
 }

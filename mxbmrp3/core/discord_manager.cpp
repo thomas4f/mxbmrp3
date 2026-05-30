@@ -6,24 +6,19 @@
 #include "plugin_data.h"
 #include "plugin_utils.h"
 #include "../game/game_config.h"
-#if defined(GAME_MXBIKES)
-#include "../game/connection_detector.h"
-#endif
 #include "../diagnostics/logger.h"
 #include "../vendor/nlohmann/json.hpp"
 #include <windows.h>
 #include <cstdio>
 #include <cstring>
 
-// Discord Application IDs per game
-#if defined(GAME_MXBIKES)
+// Discord Application IDs per game.
+// TODO: Register separate Discord applications for GP Bikes, WRS, and KRP so each
+// game gets its own icon/name in Rich Presence. Until then, all non-MXB builds
+// reuse the MXB application ID intentionally — it still works, the icon is just
+// branded as MX Bikes.
+#if defined(GAME_MXBIKES) || defined(GAME_GPBIKES) || defined(GAME_WRS) || defined(GAME_KRP)
     static constexpr const char* DISCORD_APPLICATION_ID = "1124352181441679441";
-#elif defined(GAME_GPBIKES)
-    static constexpr const char* DISCORD_APPLICATION_ID = "1124352181441679441";  // TODO: Create separate GP Bikes app
-#elif defined(GAME_WRS)
-    static constexpr const char* DISCORD_APPLICATION_ID = "1124352181441679441";  // TODO: Create WRS app
-#elif defined(GAME_KRP)
-    static constexpr const char* DISCORD_APPLICATION_ID = "1124352181441679441";  // TODO: Create KRP app
 #endif
 
 // Discord IPC opcodes
@@ -69,6 +64,12 @@ void DiscordManager::initialize() {
     DEBUG_INFO("DiscordManager: Initializing");
     m_shutdownRequested = false;
 
+    // Prime the snapshot from the game thread before the connection thread
+    // starts. Without this, if Discord finishes its handshake before any
+    // onDataChanged fires, the first presence frame would render the default
+    // (empty) snapshot as "In Menus" even when a session is already active.
+    updateSnapshot();
+
     // Start background connection thread
     m_connectionThread = std::thread(&DiscordManager::connectionThread, this);
 }
@@ -94,67 +95,91 @@ void DiscordManager::shutdown() {
 }
 
 void DiscordManager::connectionThread() {
-    while (!m_shutdownRequested) {
-        if (m_enabled && m_state != State::CONNECTED) {
-            // Attempt connection
-            auto now = std::chrono::steady_clock::now();
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                now - m_lastConnectionAttempt
-            ).count();
+    // Exception barrier: an uncaught throw in a std::thread calls
+    // std::terminate() and kills the host game process. sendPresenceUpdate()
+    // already catches JSON serialization errors internally, but other code
+    // here (mutex / chrono / future Discord protocol changes) shouldn't be
+    // able to crash the game either.
+    try {
 
-            if (elapsed >= RECONNECT_INTERVAL_MS || m_state == State::DISCONNECTED) {
-                m_lastConnectionAttempt = now;
-                m_state = State::CONNECTING;
+        while (!m_shutdownRequested) {
+            if (m_enabled && m_state != State::CONNECTED) {
+                // Attempt connection
+                auto now = std::chrono::steady_clock::now();
+                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now - m_lastConnectionAttempt
+                ).count();
 
-                if (connect()) {
-                    DEBUG_INFO("DiscordManager: Connected to Discord");
-                    m_state = State::CONNECTED;
-                    m_presenceUpdateNeeded = true;  // Send initial presence
-                    m_lastPresenceRefresh = std::chrono::steady_clock::now();
-                } else {
-                    m_state = State::FAILED;
+                if (elapsed >= RECONNECT_INTERVAL_MS || m_state == State::DISCONNECTED) {
+                    m_lastConnectionAttempt = now;
+                    m_state = State::CONNECTING;
+
+                    if (connect()) {
+                        DEBUG_INFO("DiscordManager: Connected to Discord");
+                        m_state = State::CONNECTED;
+                        m_presenceUpdateNeeded = true;  // Send initial presence
+                        m_lastPresenceRefresh = std::chrono::steady_clock::now();
+                    } else {
+                        m_state = State::FAILED;
+                    }
+                }
+            } else if (!m_enabled && m_state != State::DISCONNECTED) {
+                // User disabled - disconnect
+                disconnect();
+            }
+
+            // Periodic presence refresh to detect disconnection and keep presence alive
+            if (m_state == State::CONNECTED) {
+                auto now = std::chrono::steady_clock::now();
+                auto refreshElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now - m_lastPresenceRefresh
+                ).count();
+
+                if (refreshElapsed >= PRESENCE_REFRESH_INTERVAL_MS) {
+                    m_presenceUpdateNeeded = true;
+                    m_lastPresenceRefresh = now;
                 }
             }
-        } else if (!m_enabled && m_state != State::DISCONNECTED) {
-            // User disabled - disconnect
-            disconnect();
-        }
 
-        // Periodic presence refresh to detect disconnection and keep presence alive
-        if (m_state == State::CONNECTED) {
-            auto now = std::chrono::steady_clock::now();
-            auto refreshElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                now - m_lastPresenceRefresh
-            ).count();
+            // Check for presence update
+            if (m_state == State::CONNECTED && m_presenceUpdateNeeded) {
+                auto now = std::chrono::steady_clock::now();
+                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now - m_lastUpdateTime
+                ).count();
 
-            if (refreshElapsed >= PRESENCE_REFRESH_INTERVAL_MS) {
-                m_presenceUpdateNeeded = true;
-                m_lastPresenceRefresh = now;
-            }
-        }
-
-        // Check for presence update
-        if (m_state == State::CONNECTED && m_presenceUpdateNeeded) {
-            auto now = std::chrono::steady_clock::now();
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                now - m_lastUpdateTime
-            ).count();
-
-            if (elapsed >= MIN_UPDATE_INTERVAL_MS) {
-                std::lock_guard<std::mutex> lock(m_pipeMutex);
-                if (sendPresenceUpdate()) {
-                    m_lastUpdateTime = now;
-                    m_presenceUpdateNeeded = false;
-                } else {
-                    // Connection lost - use internal version since we already hold the mutex
-                    DEBUG_WARN("DiscordManager: Failed to send presence, disconnecting");
-                    disconnectInternal();
+                if (elapsed >= MIN_UPDATE_INTERVAL_MS) {
+                    std::lock_guard<std::mutex> lock(m_pipeMutex);
+                    PresenceSendResult result = sendPresenceUpdate();
+                    if (result == PresenceSendResult::Success) {
+                        m_lastUpdateTime = now;
+                        m_presenceUpdateNeeded = false;
+                    } else if (result == PresenceSendResult::PipeError) {
+                        // Connection lost - use internal version since we already hold the mutex
+                        DEBUG_WARN("DiscordManager: Failed to send presence, disconnecting");
+                        disconnectInternal();
+                    } else {
+                        // SerializationError: same input would just throw again, so don't
+                        // hammer Discord with retries and don't drop a healthy connection.
+                        // Wait for the next data change to dirty the snapshot before retrying.
+                        m_lastUpdateTime = now;
+                        m_presenceUpdateNeeded = false;
+                    }
                 }
             }
+
+            // Sleep to avoid busy-waiting
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
 
-        // Sleep to avoid busy-waiting
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    } catch (const std::exception& e) {
+        DEBUG_WARN_F("DiscordManager thread terminated by exception: %s", e.what());
+        // No thread is alive to send presence anymore — reflect that in
+        // state so onDataChanged stops queuing snapshot updates.
+        m_state = State::DISCONNECTED;
+    } catch (...) {
+        DEBUG_WARN("DiscordManager thread terminated by unknown exception");
+        m_state = State::DISCONNECTED;
     }
 }
 
@@ -227,25 +252,28 @@ bool DiscordManager::sendHandshake() {
     return writeFrame(DiscordOpcode::HANDSHAKE, payload, strlen(payload));
 }
 
-bool DiscordManager::sendPresenceUpdate() {
-#if defined(GAME_MXBIKES)
-    // Refresh server client counts before building presence (lightweight operation)
-    // Note: Memory reading is MX Bikes-specific due to hardcoded offsets
-    auto& detector = Memory::ConnectionDetector::getInstance();
-    detector.refreshClientCounts();
-
-    // Update PluginData with refreshed counts
-    PluginData::getInstance().setServerClientsCount(detector.getServerClientsCount());
-    PluginData::getInstance().setServerMaxClients(detector.getServerMaxClients());
-#endif
-
-    std::string json = buildPresenceJson();
+DiscordManager::PresenceSendResult DiscordManager::sendPresenceUpdate() {
+    // nlohmann::json::dump() validates UTF-8 by default and throws
+    // json::type_error if it sees invalid bytes. An uncaught throw here would
+    // escape the connection thread and trigger CRT terminate() (the
+    // "Runtime requested termination" dialog). Catch defensively so a single
+    // bad serialization can't kill the whole game process.
+    std::string json;
+    try {
+        json = buildPresenceJson();
+    } catch (const std::exception& e) {
+        DEBUG_WARN_F("DiscordManager: buildPresenceJson failed: %s", e.what());
+        return PresenceSendResult::SerializationError;
+    } catch (...) {
+        DEBUG_WARN("DiscordManager: buildPresenceJson failed (unknown exception)");
+        return PresenceSendResult::SerializationError;
+    }
     DEBUG_INFO_F("DiscordManager: Sending presence: %.500s%s",
                  json.c_str(), json.length() > 500 ? "..." : "");
 
     if (!writeFrame(DiscordOpcode::FRAME, json.c_str(), json.length())) {
         DEBUG_WARN("DiscordManager: Failed to write presence frame");
-        return false;
+        return PresenceSendResult::PipeError;
     }
 
 #ifdef _DEBUG
@@ -258,7 +286,7 @@ bool DiscordManager::sendPresenceUpdate() {
     }
 #endif
 
-    return true;
+    return PresenceSendResult::Success;
 }
 
 bool DiscordManager::readResponse() {
@@ -343,8 +371,15 @@ bool DiscordManager::readFrame(int& opcode, std::string& data) {
 std::string DiscordManager::buildPresenceJson() const {
     using json = nlohmann::json;
 
-    const PluginData& pd = PluginData::getInstance();
-    const SessionData& session = pd.getSessionData();
+    // Snapshot all fields under the lock, then build JSON without holding it.
+    // The snapshot is the authoritative source - never read PluginData directly
+    // from this thread (it has no thread-safety, and the game thread can mutate
+    // session.serverName / session.trackName etc. mid-read).
+    SessionSnapshot session;
+    {
+        std::lock_guard<std::mutex> lock(m_snapshotMutex);
+        session = m_snapshot;
+    }
 
     // Build activity details based on session state
     std::string details;
@@ -354,7 +389,7 @@ std::string DiscordManager::buildPresenceJson() const {
 
     // Determine session type
     bool hasTrack = session.trackName[0] != '\0';
-    int drawState = pd.getDrawState();  // 0=ON_TRACK, 1=SPECTATE, 2=REPLAY
+    int drawState = session.drawState;  // 0=ON_TRACK, 1=SPECTATE, 2=REPLAY
 
     // Check if we're in menus (no event loaded)
     // Layout: Details (line 1) = track + session info, State (line 2) = server name
@@ -423,10 +458,13 @@ std::string DiscordManager::buildPresenceJson() const {
             }
         }
 
-        // Online/Offline differentiation
-        // connectionType: 0=Unknown, 1=Offline, 2=Host, 3=Client
-        bool isOnline = (session.connectionType == 2 || session.connectionType == 3);
         bool hasServerName = session.serverName[0] != '\0';
+
+        // Mirrors SessionData::isOnline() / isOffline() helpers (which we can't
+        // call here because the snapshot stores a plain int instead of a
+        // SessionData reference).
+        bool isOnline  = (session.serverType > 0);
+        bool isOffline = (session.serverType == 0);
 
         if (isOnline && hasServerName) {
             // Online: state line shows server name (truncated to fit display)
@@ -436,7 +474,7 @@ std::string DiscordManager::buildPresenceJson() const {
             if (state.length() > MAX_SERVER_NAME_DISPLAY) {
                 state = state.substr(0, MAX_SERVER_NAME_DISPLAY - 3) + "...";
             }
-        } else if (session.connectionType == 1 && session.eventType == 1) {
+        } else if (isOffline && session.eventType == 1) {
             // Offline Testing: show "Testing" on state line (no party info)
             state = "Testing";
         }
@@ -451,7 +489,7 @@ std::string DiscordManager::buildPresenceJson() const {
     // - Timed sessions (sessionLength > 0): countdown using "end" timestamp
     // - Lap-based sessions: countup using "start" timestamp
     bool usesCountdown = (session.sessionLength > 0);
-    int sessionTimeMs = pd.getSessionTime();
+    int sessionTimeMs = session.sessionTimeMs;
 
     // Build the SET_ACTIVITY command using nlohmann::json
     json activity;
@@ -483,27 +521,6 @@ std::string DiscordManager::buildPresenceJson() const {
     activity["assets"]["large_image"] = largeImageKey;
     activity["assets"]["large_text"] = largeImageText;
 
-    // Party info (shows player count when online)
-    // connectionType: 0=Unknown, 1=Offline, 2=Host, 3=Client
-    bool isOnline = (session.connectionType == 2 || session.connectionType == 3);
-    if (isOnline && session.serverMaxClients > 0) {
-        // Use server name hash as party ID for consistent grouping
-        std::string partyId = "mxb_";
-        if (session.serverName[0] != '\0') {
-            // Simple hash of server name
-            unsigned int hash = 0;
-            for (const char* p = session.serverName; *p; ++p) {
-                hash = hash * 31 + static_cast<unsigned char>(*p);
-            }
-            partyId += std::to_string(hash);
-        } else {
-            partyId += "unknown";
-        }
-
-        activity["party"]["id"] = partyId;
-        activity["party"]["size"] = { session.serverClientsCount, session.serverMaxClients };
-    }
-
     // Build the full command
     json command;
     command["cmd"] = "SET_ACTIVITY";
@@ -529,12 +546,41 @@ void DiscordManager::onDataChanged(DataChangeType changeType) {
         case DataChangeType::SessionData:
         case DataChangeType::Standings:
         case DataChangeType::SpectateTarget:
+            // Refresh the snapshot on the game thread so the connection
+            // thread can build presence JSON without racing against
+            // PluginData mutations (no internal locking there).
+            updateSnapshot();
             m_presenceUpdateNeeded = true;
             break;
         default:
             // Ignore high-frequency updates like telemetry
             break;
     }
+}
+
+void DiscordManager::updateSnapshot() {
+    // Read PluginData on the calling (game) thread, then publish a copy
+    // under m_snapshotMutex. The connection thread reads only the snapshot.
+    const PluginData& pd = PluginData::getInstance();
+    const SessionData& session = pd.getSessionData();
+
+    SessionSnapshot next;
+    // strncpy_s with explicit null termination, mirrors PluginData::setStringValue.
+    strncpy_s(next.trackName,  sizeof(next.trackName),  session.trackName,  sizeof(next.trackName)  - 1);
+    next.trackName[sizeof(next.trackName) - 1]   = '\0';
+    strncpy_s(next.serverName, sizeof(next.serverName), session.serverName, sizeof(next.serverName) - 1);
+    next.serverName[sizeof(next.serverName) - 1] = '\0';
+    next.session        = session.session;
+    next.sessionState   = session.sessionState;
+    next.sessionLength  = session.sessionLength;
+    next.sessionNumLaps = session.sessionNumLaps;
+    next.eventType      = session.eventType;
+    next.serverType     = session.serverType;
+    next.sessionTimeMs  = pd.getSessionTime();
+    next.drawState      = pd.getDrawState();
+
+    std::lock_guard<std::mutex> lock(m_snapshotMutex);
+    m_snapshot = next;
 }
 
 void DiscordManager::onEventEnd() {
@@ -554,6 +600,10 @@ void DiscordManager::setEnabled(bool enabled) {
         // (happens when Discord was disabled at startup)
         if (!m_connectionThread.joinable()) {
             m_shutdownRequested = false;
+            // Prime snapshot here too (game thread) for the same reason as
+            // initialize(): the first presence frame after enabling needs a
+            // current snapshot, not the default one.
+            updateSnapshot();
             m_connectionThread = std::thread(&DiscordManager::connectionThread, this);
             DEBUG_INFO("DiscordManager: Started connection thread (was disabled at startup)");
         }

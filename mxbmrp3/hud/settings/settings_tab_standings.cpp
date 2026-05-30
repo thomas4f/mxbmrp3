@@ -7,6 +7,8 @@
 #include "../standings_hud.h"
 #include "../../core/settings_manager.h"
 #include "../../core/plugin_data.h"
+#include "../../core/color_config.h"
+#include "../../core/plugin_constants.h"
 
 // Static member function of SettingsHud - handles click events for Standings tab
 bool SettingsHud::handleClickTabStandings(const ClickRegion& region) {
@@ -104,9 +106,9 @@ bool SettingsHud::handleClickTabStandings(const ClickRegion& region) {
             return true;
 
         case ClickRegion::LIVE_GAPS_TOGGLE:
-            {
-                PluginData& pd = PluginData::getInstance();
-                pd.setLiveGapsEnabled(!pd.isLiveGapsEnabled());
+            if (standingsHud) {
+                standingsHud->m_bLiveGaps = !standingsHud->m_bLiveGaps;
+                standingsHud->setDataDirty();
                 rebuildRenderData();
             }
             return true;
@@ -119,12 +121,44 @@ bool SettingsHud::handleClickTabStandings(const ClickRegion& region) {
             }
             return true;
 
-        case ClickRegion::ANIMATE_POSITIONS_TOGGLE:
-            {
-                auto* boolPtr = std::get_if<bool*>(&region.targetPointer);
-                if (!boolPtr || !*boolPtr || !region.targetHud) return false;
-                **boolPtr = !**boolPtr;
-                region.targetHud->setDataDirty();
+        case ClickRegion::HEADERS_TOGGLE:
+            if (standingsHud) {
+                standingsHud->m_bShowHeaders = !standingsHud->m_bShowHeaders;
+                standingsHud->setDataDirty();
+                rebuildRenderData();
+            }
+            return true;
+
+        case ClickRegion::ANIMATION_MODE_UP:
+            if (standingsHud) {
+                using AM = StandingsHud::AnimationMode;
+                switch (standingsHud->m_animationMode) {
+                    case AM::OFF:     standingsHud->m_animationMode = AM::BASIC;   break;
+                    case AM::BASIC:   standingsHud->m_animationMode = AM::COLORED; break;
+                    case AM::COLORED: standingsHud->m_animationMode = AM::OFF;     break;
+                }
+                // Stop any in-flight animations immediately when transitioning to OFF;
+                // otherwise rows would keep sliding until the cleanup timer drains.
+                if (standingsHud->m_animationMode == AM::OFF) {
+                    standingsHud->m_activeAnimations.clear();
+                }
+                standingsHud->setDataDirty();
+                rebuildRenderData();
+            }
+            return true;
+
+        case ClickRegion::ANIMATION_MODE_DOWN:
+            if (standingsHud) {
+                using AM = StandingsHud::AnimationMode;
+                switch (standingsHud->m_animationMode) {
+                    case AM::OFF:     standingsHud->m_animationMode = AM::COLORED; break;
+                    case AM::BASIC:   standingsHud->m_animationMode = AM::OFF;     break;
+                    case AM::COLORED: standingsHud->m_animationMode = AM::BASIC;   break;
+                }
+                if (standingsHud->m_animationMode == AM::OFF) {
+                    standingsHud->m_activeAnimations.clear();
+                }
+                standingsHud->setDataDirty();
                 rebuildRenderData();
             }
             return true;
@@ -199,21 +233,29 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
             hud, refRelevant, false, "standings.gap_reference");
     }
 
-    // Live gaps toggle (global setting stored in PluginData, not a HUD member)
-    // nullptr for boolPtr is intentional: LIVE_GAPS_TOGGLE click handler manages
-    // state directly via PluginData::setLiveGapsEnabled(), not through the pointer.
+    // Live gaps toggle (per-profile StandingsHud member). nullptr boolPtr matches
+    // the Column-headers toggle: the LIVE_GAPS_TOGGLE click handler flips the member.
     ctx.addToggleControl("Live gaps",
-        PluginData::getInstance().isLiveGapsEnabled(),
+        hud->m_bLiveGaps,
         SettingsHud::ClickRegion::LIVE_GAPS_TOGGLE, hud,
         static_cast<bool*>(nullptr), true,
         "standings.live_gaps", nullptr);
 
-    // Animate position changes
-    ctx.addToggleControl("Animate positions",
-        hud->m_bAnimatePositions,
-        SettingsHud::ClickRegion::ANIMATE_POSITIONS_TOGGLE, hud,
-        &hud->m_bAnimatePositions, true,
-        "standings.animate_positions", nullptr);
+    // Animate position changes (Off / Basic / Colored)
+    {
+        const char* animModeValue;
+        switch (hud->m_animationMode) {
+            case StandingsHud::AnimationMode::OFF:     animModeValue = "Off";     break;
+            case StandingsHud::AnimationMode::BASIC:   animModeValue = "Basic";   break;
+            case StandingsHud::AnimationMode::COLORED: animModeValue = "Colored"; break;
+            default: animModeValue = "Basic"; break;
+        }
+        ctx.addCycleControl("Animate positions", animModeValue, 10,
+            SettingsHud::ClickRegion::ANIMATION_MODE_DOWN,
+            SettingsHud::ClickRegion::ANIMATION_MODE_UP,
+            hud, true, hud->m_animationMode == StandingsHud::AnimationMode::OFF,
+            "standings.animate_positions");
+    }
 
     // DNS filter toggle (global setting stored in PluginData)
     // nullptr for boolPtr: FILTER_DNS_TOGGLE click handler manages state directly.
@@ -226,6 +268,14 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
 
     // === CONTENT SECTION ===
     ctx.addSectionHeader("Content");
+
+    // Column-header row labeling each enabled column.
+    // nullptr boolPtr: HEADERS_TOGGLE handler flips hud->m_bShowHeaders directly.
+    ctx.addToggleControl("Column headers",
+        hud->m_bShowHeaders,
+        SettingsHud::ClickRegion::HEADERS_TOGGLE, hud,
+        static_cast<bool*>(nullptr), true,
+        "standings.headers", nullptr);
 
     // Column toggles - using addToggleControl with tooltips
     ctx.addToggleControl("Rider status icon", (hud->m_enabledColumns & StandingsHud::COL_TRACKED) != 0,
@@ -278,6 +328,13 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
     ctx.addToggleControl("Penalty indicator", (hud->m_enabledColumns & StandingsHud::COL_PENALTY) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_PENALTY, true,
         "standings.col_penalty");
+
+    // Info text - same style as the rumble tab's "Select your controller in the General tab" hint
+    ColorConfig& colors = ColorConfig::getInstance();
+    ctx.currentY += ctx.lineHeightNormal * 0.5f;
+    ctx.parent->addString("Toggle compact times in the Appearance tab.", ctx.labelX, ctx.currentY,
+        PluginConstants::Justify::LEFT, PluginConstants::Fonts::getNormal(),
+        colors.getMuted(), ctx.fontSize * 0.9f);
 
     return hud;
 }

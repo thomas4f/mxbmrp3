@@ -6,6 +6,7 @@
 
 #include "base_hud.h"
 #include "../game/unified_types.h"
+#include <array>
 #include <vector>
 
 class MapHud : public BaseHud {
@@ -28,7 +29,9 @@ public:
     bool handleMouseInput(bool allowInput = true) override;
 
     // Update track centerline data
-    void updateTrackData(int numSegments, const Unified::TrackSegment* segments);
+    // raceData: float array [S/F, split1, split2, holeshot] in meters along centerline,
+    // or nullptr if unavailable.
+    void updateTrackData(int numSegments, const Unified::TrackSegment* segments, const float* raceData);
 
     // Update rider positions (called frequently - must be fast)
     void updateRiderPositions(int numVehicles, const Unified::TrackPositionData* positions);
@@ -86,6 +89,22 @@ public:
     }
     LabelMode getLabelMode() const { return m_labelMode; }
 
+    // Where the rider label sits relative to the icon (INI-only, no UI)
+    enum class LabelAnchor {
+        BELOW = 0,   // Centered under the icon (default)
+        ABOVE = 1,   // Centered over the icon
+        LEFT = 2,    // Left of the icon, right-aligned
+        RIGHT = 3    // Right of the icon, left-aligned
+    };
+
+    void setLabelAnchor(LabelAnchor anchor) {
+        if (m_labelAnchor != anchor) {
+            m_labelAnchor = anchor;
+            setDataDirty();
+        }
+    }
+    LabelAnchor getLabelAnchor() const { return m_labelAnchor; }
+
     // Rider shape index (0=OFF, 1-N=icons from AssetManager)
     void setRiderShape(int shapeIndex);
     int getRiderShape() const { return m_riderShapeIndex; }
@@ -119,10 +138,21 @@ public:
     static constexpr float MIN_MARKER_SCALE = 0.5f;          // Min 50%
     static constexpr float MAX_MARKER_SCALE = 3.0f;          // Max 300%
 
-    // Pixel spacing constants (track rendering density)
-    static constexpr float DEFAULT_PIXEL_SPACING = 2.0f;     // Default 2 meters between quads
-    static constexpr float MIN_PIXEL_SPACING = 0.5f;         // Min 0.5m (very dense, high GPU)
-    static constexpr float MAX_PIXEL_SPACING = 8.0f;         // Max 8m (sparse, low GPU)
+    // Track detail (LOD) - controls ribbon subdivision density
+    enum class Detail {
+        AUTO = 0,    // Adaptive: subdivision scales with on-screen size (default)
+        HIGH,        // Fixed 1.0m — predictable dense rendering regardless of zoom
+        LOW          // Fixed 4.0m — predictable sparse rendering for low-end hardware
+    };
+    static constexpr int DETAIL_COUNT = 3;
+
+    void setDetail(Detail detail) {
+        if (m_detail != detail) {
+            m_detail = detail;
+            setDataDirty();
+        }
+    }
+    Detail getDetail() const { return m_detail; }
 
     // Zoom mode - follow player showing limited track distance
     void setZoomEnabled(bool enabled) {
@@ -139,10 +169,6 @@ public:
     // Marker scale - independently scale rider icons and labels
     void setMarkerScale(float scale);
     float getMarkerScale() const { return m_fMarkerScale; }
-
-    // Pixel spacing - track rendering density (lower = more quads, higher GPU usage)
-    void setPixelSpacing(float spacing);
-    float getPixelSpacing() const { return m_fPixelSpacing; }
 
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;
@@ -163,6 +189,19 @@ private:
     // Track segment storage
     std::vector<Unified::TrackSegment> m_trackSegments;
 
+    // Race marker layout (fixed size for the supported games)
+    static constexpr int RACE_MARKER_COUNT = 4;
+    enum RaceMarkerSlot { MARKER_SF = 0, MARKER_SPLIT_1 = 1, MARKER_SPLIT_2 = 2, MARKER_HOLESHOT = 3 };
+
+    // Resolved world position for a single race marker, computed once on track update
+    struct RaceMarker {
+        bool valid = false;     // false if input was missing or out of range
+        float worldX = 0.0f;
+        float worldY = 0.0f;
+        float angleDeg = 0.0f;  // tangent angle at this point (heading along track)
+    };
+    std::array<RaceMarker, RACE_MARKER_COUNT> m_raceMarkers{};
+
     // Rider position storage (updated frequently)
     std::vector<Unified::TrackPositionData> m_riderPositions;
 
@@ -172,7 +211,6 @@ private:
     // Map rendering configuration
     static constexpr float MAP_HEIGHT = 0.33f;  // Map height as fraction of screen (0.33 = 33%)
     static constexpr float MAP_PADDING = 0.01f;  // Padding from screen edge
-    static constexpr float PIXEL_SPACING = 2.0f;  // Distance between pixels in world meters (smaller = denser)
 
     // Configurable track line width scale (percentage multiplier)
     float m_fTrackWidthScale;
@@ -204,6 +242,9 @@ private:
     // Rider label display mode
     LabelMode m_labelMode;
 
+    // Where the rider label sits relative to the icon
+    LabelAnchor m_labelAnchor;
+
     // Rider shape index (0=OFF, 1-N=icons from AssetManager)
     int m_riderShapeIndex;
 
@@ -219,8 +260,8 @@ private:
     // Marker scale (independent of HUD scale)
     float m_fMarkerScale;        // Scale factor for rider icons and labels
 
-    // Pixel spacing (track rendering density)
-    float m_fPixelSpacing;       // Distance in meters between track quads
+    // Track detail (LOD)
+    Detail m_detail;
 
     // Calculate track bounds from segments
     void calculateTrackBounds();
@@ -254,6 +295,14 @@ private:
     // Render start marker (takes pre-calculated rotation cache and clip bounds)
     void renderStartMarker(const RotationCache& rotation,
                           float clipLeft, float clipTop, float clipRight, float clipBottom);
+
+    // Render split + holeshot direction-arrow triangles (takes pre-calculated rotation cache and clip bounds)
+    void renderRaceMarkers(const RotationCache& rotation,
+                           float clipLeft, float clipTop, float clipRight, float clipBottom);
+
+    // Walk segments to compute world XY + tangent angle at the given distance along
+    // the centerline. Returns false if distance is out of range or track empty.
+    bool centerlinePositionAt(float meters, float& outX, float& outY, float& outAngleDeg) const;
 
     // Render rider positions as strings (takes pre-calculated rotation cache and clip bounds)
     void renderRiders(const RotationCache& rotation,

@@ -21,8 +21,10 @@ public:
         DISPLAY_DEFAULT = DISPLAY_BOTH
     };
 
-    // Reference mode determines what lap times are compared against
-    // Names and order match TimingHud for consistency
+    // Reference mode determines what lap times are compared against.
+    // NOTE: this is a distinct type from TimingHud's GapTypeFlags (a bitfield);
+    // the values/order here are independent and intentionally do NOT match it.
+    // Persisted as an int in the INI, so don't renumber existing values.
     enum class ReferenceMode : uint8_t {
         SESSION_PB = 0,     // Compare against personal best lap this session
         ALLTIME = 1,        // Compare against all-time personal best (persisted)

@@ -190,15 +190,24 @@
 #endif
 
 // Embedded HTTP server for web overlay
-#if defined(GAME_MXBIKES) || defined(GAME_GPBIKES)
+#if defined(GAME_MXBIKES) || defined(GAME_GPBIKES) || defined(GAME_KRP)
     #define GAME_HAS_HTTP_SERVER 1
 #else
     #define GAME_HAS_HTTP_SERVER 0
 #endif
 
-// Server info (name, password, player count) via memory reading (MX Bikes only)
-#if defined(GAME_MXBIKES)
-    #define GAME_HAS_SERVER_INFO 1
+// FMX trick detection and scoring (motorbike games only - doesn't apply to karts)
+#if defined(GAME_MXBIKES) || defined(GAME_GPBIKES)
+    #define GAME_HAS_FMX 1
 #else
-    #define GAME_HAS_SERVER_INFO 0
+    #define GAME_HAS_FMX 0
+#endif
+
+// Vehicle has suspension (bikes only). Karts have a rigid chassis, so the
+// helmet overlay sources its tilt/vibration signals from chassis-local
+// acceleration instead of suspension length / lean angle.
+#if defined(GAME_MXBIKES) || defined(GAME_GPBIKES)
+    #define GAME_HAS_SUSPENSION 1
+#else
+    #define GAME_HAS_SUSPENSION 0
 #endif

@@ -26,6 +26,7 @@ var PRECACHE_URLS = [
     "stopwatch.svg",
     "video.svg",
     "wrench.svg",
+    "Audiowide-Regular.ttf",
     "EnterSansman-Italic.ttf",
     "FuzzyBubbles-Regular.ttf",
     "RobotoMono-Bold.ttf",
@@ -82,6 +83,12 @@ self.addEventListener("fetch", function (event) {
     // Never cache live data endpoints — let them fail naturally so the client
     // can retry/reconnect when the server comes back up.
     if (url.pathname.indexOf("/api/") === 0) {
+        return;
+    }
+
+    // Bypass cache for user style overrides so edits show up on reload without
+    // waiting for a plugin version bump to invalidate the cache.
+    if (url.pathname.endsWith("/custom.css")) {
         return;
     }
 

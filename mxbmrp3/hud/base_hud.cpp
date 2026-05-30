@@ -471,6 +471,122 @@ void BaseHud::addLineSegment(float x1, float y1, float x2, float y2, unsigned lo
     m_quads.push_back(quadEntry);
 }
 
+void BaseHud::addNeedleQuad(float centerX, float centerY, float angleRad,
+                            float needleLength, float needleWidth, unsigned long color) {
+    using namespace PluginConstants;
+
+    // Create needle as a trapezoid shape (flat tip, wider base)
+    // The needle points from center outward in the direction of angleRad
+    // Uses clockwise vertex order and applyOffset() on each point individually
+
+    // Calculate tip center (pointing outward)
+    float tipCenterX = centerX + std::sin(angleRad) * needleLength / UI_ASPECT_RATIO;
+    float tipCenterY = centerY - std::cos(angleRad) * needleLength;
+
+    // Calculate base center (opposite of tip, small distance from center)
+    float baseLength = needleLength * 0.15f;  // Base extends 15% of needle length behind center
+    float baseCenterX = centerX - std::sin(angleRad) * baseLength / UI_ASPECT_RATIO;
+    float baseCenterY = centerY + std::cos(angleRad) * baseLength;
+
+    // Calculate perpendicular direction for width
+    float perpAngle = angleRad + Math::PI * 0.5f;  // 90 degrees to the right
+
+    // Tip is narrower (30% of base width) - creates flat but tapered look
+    float tipHalfWidth = needleWidth * 0.15f;
+    float baseHalfWidth = needleWidth * 0.5f;
+
+    // Calculate tip left and right points
+    float tipLeftX = tipCenterX + std::sin(perpAngle) * tipHalfWidth / UI_ASPECT_RATIO;
+    float tipLeftY = tipCenterY - std::cos(perpAngle) * tipHalfWidth;
+    float tipRightX = tipCenterX - std::sin(perpAngle) * tipHalfWidth / UI_ASPECT_RATIO;
+    float tipRightY = tipCenterY + std::cos(perpAngle) * tipHalfWidth;
+
+    // Calculate base left and right points
+    float baseLeftX = baseCenterX + std::sin(perpAngle) * baseHalfWidth / UI_ASPECT_RATIO;
+    float baseLeftY = baseCenterY - std::cos(perpAngle) * baseHalfWidth;
+    float baseRightX = baseCenterX - std::sin(perpAngle) * baseHalfWidth / UI_ASPECT_RATIO;
+    float baseRightY = baseCenterY + std::cos(perpAngle) * baseHalfWidth;
+
+    // Apply HUD offset to each point individually (MapHud pattern)
+    applyOffset(tipLeftX, tipLeftY);
+    applyOffset(tipRightX, tipRightY);
+    applyOffset(baseRightX, baseRightY);
+    applyOffset(baseLeftX, baseLeftY);
+
+    // Create quad with clockwise vertex order: tipLeft -> tipRight -> baseRight -> baseLeft
+    // NOTE: Must use clockwise for proper rendering (counter-clockwise gets face-culled)
+    SPluginQuad_t needle;
+    needle.m_aafPos[0][0] = tipLeftX;      // Front left
+    needle.m_aafPos[0][1] = tipLeftY;
+    needle.m_aafPos[1][0] = tipRightX;     // Front right (clockwise)
+    needle.m_aafPos[1][1] = tipRightY;
+    needle.m_aafPos[2][0] = baseRightX;    // Back right
+    needle.m_aafPos[2][1] = baseRightY;
+    needle.m_aafPos[3][0] = baseLeftX;     // Back left (completes trapezoid)
+    needle.m_aafPos[3][1] = baseLeftY;
+
+    needle.m_iSprite = SpriteIndex::SOLID_COLOR;
+    needle.m_ulColor = color;
+    m_quads.push_back(needle);
+}
+
+unsigned long BaseHud::calculateTemperatureColor(float temp, float optTemp,
+                                                 float alarmLow, float alarmHigh) {
+    // Temperature color gradient:
+    // - Below alarmLow: Deep blue (too cold)
+    // - alarmLow to optTemp: Blue -> Green gradient (warming up)
+    // - At optTemp: Green (optimal)
+    // - optTemp to alarmHigh: Green -> Yellow -> Red gradient (getting hot)
+    // - Above alarmHigh: Deep red (too hot)
+
+    // Color constants (RGB values)
+    constexpr unsigned char BLUE_R = 0x40, BLUE_G = 0x80, BLUE_B = 0xFF;   // Cold blue
+    constexpr unsigned char GREEN_R = 0x40, GREEN_G = 0xFF, GREEN_B = 0x40; // Optimal green
+    constexpr unsigned char YELLOW_R = 0xFF, YELLOW_G = 0xD0, YELLOW_B = 0x40; // Warning yellow
+    constexpr unsigned char RED_R = 0xFF, RED_G = 0x40, RED_B = 0x40;      // Hot red
+
+    unsigned char r, g, b;
+
+    if (temp <= alarmLow) {
+        // Below alarm low - solid blue (too cold)
+        r = BLUE_R;
+        g = BLUE_G;
+        b = BLUE_B;
+    } else if (temp < optTemp) {
+        // Between alarmLow and optTemp - blue to green gradient
+        float range = optTemp - alarmLow;
+        float t = (range > 0.0f) ? (temp - alarmLow) / range : 1.0f;
+        r = static_cast<unsigned char>(BLUE_R + t * (GREEN_R - BLUE_R));
+        g = static_cast<unsigned char>(BLUE_G + t * (GREEN_G - BLUE_G));
+        b = static_cast<unsigned char>(BLUE_B + t * (GREEN_B - BLUE_B));
+    } else if (temp <= alarmHigh) {
+        // Between optTemp and alarmHigh - green to yellow to red gradient
+        float range = alarmHigh - optTemp;
+        float normalized = (range > 0.0f) ? (temp - optTemp) / range : 0.0f;
+
+        if (normalized < 0.5f) {
+            // Green to yellow (first half)
+            float t = normalized * 2.0f;
+            r = static_cast<unsigned char>(GREEN_R + t * (YELLOW_R - GREEN_R));
+            g = static_cast<unsigned char>(GREEN_G + t * (YELLOW_G - GREEN_G));
+            b = static_cast<unsigned char>(GREEN_B + t * (YELLOW_B - GREEN_B));
+        } else {
+            // Yellow to red (second half)
+            float t = (normalized - 0.5f) * 2.0f;
+            r = static_cast<unsigned char>(YELLOW_R + t * (RED_R - YELLOW_R));
+            g = static_cast<unsigned char>(YELLOW_G + t * (RED_G - YELLOW_G));
+            b = static_cast<unsigned char>(YELLOW_B + t * (RED_B - YELLOW_B));
+        }
+    } else {
+        // Above alarm high - solid red (too hot)
+        r = RED_R;
+        g = RED_G;
+        b = RED_B;
+    }
+
+    return PluginUtils::makeColor(r, g, b);
+}
+
 void BaseHud::addHorizontalGridLine(float x, float y, float width, unsigned long color, float thickness) {
     using namespace PluginConstants;
 

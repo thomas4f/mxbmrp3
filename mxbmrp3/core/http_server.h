@@ -41,10 +41,13 @@ public:
     // Port and throttle changes take effect on next server restart.
     void setPort(int port);
     int getPort() const { return m_port; }
+    void resetPortToDefault() { m_port = DEFAULT_PORT; }
     void setThrottleMs(int ms);
     int getThrottleMs() const { return m_throttleMs; }
+    void resetThrottleToDefault() { setThrottleMs(DEFAULT_THROTTLE_MS); }
     void setBindAddress(const std::string& addr);
     std::string getBindAddress() const;
+    void resetBindAddressToDefault() { setBindAddress(DEFAULT_BIND_ADDRESS); }
 
     // Status
     bool isRunning() const { return m_running; }

@@ -205,9 +205,6 @@ private:
     int m_cachedSplit2;               // Track split 2 changes
     bool m_cachedPlayerRunning;       // Track pause state for anchor pause/resume
 
-    // Player bike brand color (for best lap marker)
-    unsigned long m_bikeBrandColor;
-
     // Freeze state for official split/lap times
     bool m_isFrozen;                  // Currently showing official time (frozen)?
     std::chrono::steady_clock::time_point m_frozenAt;  // When freeze started

@@ -52,6 +52,14 @@ bool SettingsHud::handleClickTabLapLog(const ClickRegion& region) {
             }
             return true;
 
+        case ClickRegion::LAP_LOG_HEADERS_TOGGLE:
+            if (lapLogHud) {
+                lapLogHud->m_bShowHeaders = !lapLogHud->m_bShowHeaders;
+                lapLogHud->setDataDirty();
+                setDataDirty();
+            }
+            return true;
+
         default:
             return false;
     }
@@ -87,6 +95,11 @@ BaseHud* SettingsHud::renderTabLapLog(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::LAP_LOG_ORDER_DOWN,
         SettingsHud::ClickRegion::LAP_LOG_ORDER_UP,
         hud, true, false, "lap_log.order");
+
+    // Column headers toggle
+    ctx.addToggleControl("Column headers", hud->m_bShowHeaders,
+        SettingsHud::ClickRegion::LAP_LOG_HEADERS_TOGGLE, hud, nullptr, 0, true,
+        "lap_log.headers");
 
     // Sector times toggle
     bool sectorsOn = (hud->m_enabledColumns & LapLogHud::COL_SECTORS) != 0;

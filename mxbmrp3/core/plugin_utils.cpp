@@ -5,6 +5,7 @@
 #include "plugin_utils.h"
 #include "plugin_constants.h"
 #include "plugin_data.h"
+#include "../game/game_config.h"
 #include <climits>
 #include <cstdio>
 #include <cstring>
@@ -52,11 +53,6 @@ void PluginUtils::formatLapTime(int lapTimeMs, char* buffer, size_t bufferSize) 
 }
 
 void PluginUtils::formatTimeDiff(char* buffer, size_t bufferSize, int diffMs) {
-    if (PluginData::getInstance().isShortTimeFormat()) {
-        formatGapCompact(buffer, bufferSize, diffMs);
-        return;
-    }
-
     using namespace PluginConstants::TimeConversion;
 
     // Handle sign and protect against INT_MIN overflow
@@ -68,12 +64,18 @@ void PluginUtils::formatTimeDiff(char* buffer, size_t bufferSize, int diffMs) {
         absDiff = (diffMs == INT_MIN) ? INT_MAX : -diffMs;
     }
 
-    // Always use M:SS.mmm format (consistent with formatLapTime)
     int minutes = absDiff / MS_PER_MINUTE;
     int seconds = (absDiff % MS_PER_MINUTE) / MS_PER_SECOND;
     int ms = absDiff % MS_PER_SECOND;
 
-    snprintf(buffer, bufferSize, "%c%d:%02d.%03d", sign, minutes, seconds, ms);
+    // Always millisecond precision (matching the game UI and formatLapTime).
+    // Short time format only drops the leading "0:" for sub-minute gaps;
+    // full format always shows the minutes field.
+    if (PluginData::getInstance().isShortTimeFormat() && minutes == 0) {
+        snprintf(buffer, bufferSize, "%c%d.%03d", sign, seconds, ms);
+    } else {
+        snprintf(buffer, bufferSize, "%c%d:%02d.%03d", sign, minutes, seconds, ms);
+    }
 }
 
 void PluginUtils::formatLapTimeTenths(int lapTimeMs, char* buffer, size_t bufferSize) {
@@ -208,53 +210,43 @@ const char* PluginUtils::getEventTypeString(int eventType) {
     }
 }
 
-const char* PluginUtils::getConnectionTypeString(int connectionType) {
-    // Values match Memory::ConnectionType enum (0=Unknown, 1=Offline, 2=Host, 3=Client)
-    switch (connectionType) {
-    case 1: return "Offline";
-    case 2: return "Host";
-    case 3: return "Client";
-    default: return "Unknown";
-    }
-}
-
 const char* PluginUtils::getSessionString(int eventType, int session) {
-    namespace EventEnum = PluginConstants::EventType;
-    namespace SessionEnum = PluginConstants::Session;
     namespace Str = PluginConstants::DisplayStrings::Session;
 
-    if (eventType == EventEnum::TESTING) { // Testing / Open Practice
-        switch (session) {
-        case SessionEnum::WAITING: return Str::WAITING;
-        case SessionEnum::PRACTICE: return Str::PRACTICE;
-        default: return Str::UNKNOWN;
-        }
+    // Convert raw (game-specific) session integer to canonical Unified::Session
+    // via the active game's adapter, then look up the display string.
+    Unified::Session canonical = Game::Adapter::toCanonicalSession(session, eventType);
+
+    // A Testing event's only session canonicalizes to Practice, but a Race weekend
+    // also has a Practice session — so key off the event type. In a Testing event the
+    // practice session is labeled "Testing" (offline) or "Open Practice" (online),
+    // distinct from a race weekend's plain "Practice".
+    if (canonical == Unified::Session::Practice &&
+        eventType == PluginConstants::EventType::TESTING) {
+        return PluginData::getInstance().getSessionData().isOnline()
+            ? Str::OPEN_PRACTICE : Str::TESTING;
     }
-    else if (eventType == EventEnum::RACE) { // Race
-        switch (session) {
-        case SessionEnum::WAITING: return Str::WAITING;
-        case SessionEnum::PRACTICE: return Str::PRACTICE;
-        case SessionEnum::PRE_QUALIFY: return Str::PRE_QUALIFY;
-        case SessionEnum::QUALIFY_PRACTICE: return Str::QUALIFY_PRACTICE;
-        case SessionEnum::QUALIFY: return Str::QUALIFY;
-        case SessionEnum::WARMUP: return Str::WARMUP;
-        case SessionEnum::RACE_1: return Str::RACE_1;
-        case SessionEnum::RACE_2: return Str::RACE_2;
-        default: return Str::UNKNOWN;
-        }
+
+    switch (canonical) {
+        case Unified::Session::Waiting:          return Str::WAITING;
+        case Unified::Session::Practice:         return Str::PRACTICE;
+        case Unified::Session::PreQualify:       return Str::PRE_QUALIFY;
+        case Unified::Session::QualifyPractice:  return Str::QUALIFY_PRACTICE;
+        case Unified::Session::Qualify:          return Str::QUALIFY;
+        case Unified::Session::Warmup:           return Str::WARMUP;
+        case Unified::Session::Race1:            return Str::RACE_1;
+        case Unified::Session::Race2:            return Str::RACE_2;
+        case Unified::Session::Race:             return Str::RACE;
+        case Unified::Session::SR_Round:         return Str::SR_ROUND;
+        case Unified::Session::SR_QuarterFinals: return Str::SR_QUARTER_FINALS;
+        case Unified::Session::SR_SemiFinals:    return Str::SR_SEMI_FINALS;
+        case Unified::Session::SR_Final:         return Str::SR_FINAL;
+        case Unified::Session::KRP_QualifyHeat:      return Str::KRP_QUALIFY_HEAT;
+        case Unified::Session::KRP_SecondChanceHeat: return Str::KRP_SECOND_CHANCE_HEAT;
+        case Unified::Session::KRP_PreFinal:         return Str::KRP_PRE_FINAL;
+        case Unified::Session::KRP_Final:            return Str::KRP_FINAL;
+        default:                                 return Str::UNKNOWN;
     }
-    else if (eventType == EventEnum::STRAIGHT_RHYTHM) { // Straight Rhythm
-        switch (session) {
-        case SessionEnum::WAITING: return Str::WAITING;
-        case SessionEnum::PRACTICE: return Str::PRACTICE;
-        case SessionEnum::SR_ROUND: return Str::SR_ROUND;
-        case SessionEnum::SR_QUARTER_FINALS: return Str::SR_QUARTER_FINALS;
-        case SessionEnum::SR_SEMI_FINALS: return Str::SR_SEMI_FINALS;
-        case SessionEnum::SR_FINAL: return Str::SR_FINAL;
-        default: return Str::UNKNOWN;
-        }
-    }
-    return Str::UNKNOWN;
 }
 
 const char* PluginUtils::getSessionStateString(int sessionState) {

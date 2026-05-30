@@ -102,8 +102,8 @@ void NoticesHud::update() {
     int currentSessionTime = pluginData.getSessionTime();
     bool isRaceSession = pluginData.isRaceSession();
 
-    // Detect transition to "in progress" state (16) for race sessions to start grace period
-    if (isRaceSession && currentSessionState == 16 && m_lastSessionState != 16) {
+    // Detect transition to "in progress" state for race sessions to start grace period
+    if (isRaceSession && currentSessionState == SessionState::IN_PROGRESS && m_lastSessionState != SessionState::IN_PROGRESS) {
         // Race session just transitioned to "in progress" - store start time
         m_sessionStartTime = currentSessionTime;
         DEBUG_INFO_F("NoticesHud: Race started (in progress), sessionTime=%d ms", currentSessionTime);
@@ -115,7 +115,7 @@ void NoticesHud::update() {
     if (pluginData.isPlayerGoingWrongWay()) {
         // Player is going wrong way - check if we're within grace period (race sessions only)
         bool inGracePeriod = false;
-        if (isRaceSession && currentSessionState == 16) {  // Only apply grace period for race sessions when "in progress"
+        if (isRaceSession && currentSessionState == SessionState::IN_PROGRESS) {  // Only apply grace period for race sessions when "in progress"
             int elapsedTime = std::abs(currentSessionTime - m_sessionStartTime);
             inGracePeriod = (elapsedTime < WRONG_WAY_GRACE_PERIOD_MS);
         }

@@ -86,6 +86,8 @@ typedef struct
 
 /******************************************************************************
 structures and functions to draw
+Note: Draw types (SPluginQuad_t, SPluginString_t) are identical across all
+Piboso games per the official SDK. This is intentional - do not rename.
 ******************************************************************************/
 
 typedef struct
@@ -93,7 +95,7 @@ typedef struct
 	float m_aafPos[4][2];			/* 0,0 -> top left. 1,1 -> bottom right. counter-clockwise */
 	int m_iSprite;					/* 1 based index in SpriteName buffer. 0 = fill with m_ulColor */
 	unsigned long m_ulColor;		/* ABGR */
-} SPluginsKRPQuad_t;
+} SPluginQuad_t;
 
 typedef struct
 {
@@ -103,7 +105,7 @@ typedef struct
 	float m_fSize;
 	int m_iJustify;					/* 0 = left; 1 = center; 2 = right */
 	unsigned long m_ulColor;		/* ABGR */
-} SPluginsKRPString_t;
+} SPluginString_t;
 
 /******************************************************************************
 structures and functions to receive the track center line
@@ -270,5 +272,100 @@ typedef struct
 	int m_iRaceNum;
 	char m_szName[100];
 } SPluginsKRPSpectateVehicle_t;
+
+/******************************************************************************
+function declarations
+******************************************************************************/
+
+__declspec(dllexport) char* GetModID();
+__declspec(dllexport) int GetModDataVersion();
+__declspec(dllexport) int GetInterfaceVersion();
+
+/* called when software is started */
+__declspec(dllexport) int Startup(char* _szSavePath);
+
+/* called when software is closed */
+__declspec(dllexport) void Shutdown();
+
+/* called when event is initialized. This function is optional */
+__declspec(dllexport) void EventInit(void* _pData, int _iDataSize);
+
+/* called when event is closed. This function is optional */
+__declspec(dllexport) void EventDeinit();
+
+/* called when kart goes to track. This function is optional */
+__declspec(dllexport) void RunInit(void* _pData, int _iDataSize);
+
+/* called when kart leaves the track. This function is optional */
+__declspec(dllexport) void RunDeinit();
+
+/* called when simulation is started / resumed. This function is optional */
+__declspec(dllexport) void RunStart();
+
+/* called when simulation is paused. This function is optional */
+__declspec(dllexport) void RunStop();
+
+/* called when a new lap is recorded. This function is optional */
+__declspec(dllexport) void RunLap(void* _pData, int _iDataSize);
+
+/* called when a split is crossed. This function is optional */
+__declspec(dllexport) void RunSplit(void* _pData, int _iDataSize);
+
+/* _fTime is the ontrack time, in seconds. _fPos is the position on centerline, from 0 to 1. This function is optional */
+__declspec(dllexport) void RunTelemetry(void* _pData, int _iDataSize, float _fTime, float _fPos);
+
+/* called when software is started. This function is optional */
+__declspec(dllexport) int DrawInit(int* _piNumSprites, char** _pszSpriteName, int* _piNumFonts, char** _pszFontName);
+
+/* This function is optional */
+__declspec(dllexport) void Draw(int _iState, int* _piNumQuads, void** _ppQuad, int* _piNumString, void** _ppString);
+
+/* KRP-specific: _pfRaceData is typed as float* (other Piboso games use void*) */
+__declspec(dllexport) void TrackCenterline(int _iNumSegments, SPluginsKRPTrackSegment_t* _pasSegment, float* _pfRaceData);
+
+/* called when event is initialized or a replay is loaded. This function is optional */
+__declspec(dllexport) void RaceEvent(void* _pData, int _iDataSize);
+
+/* called when event is closed. This function is optional */
+__declspec(dllexport) void RaceDeinit();
+
+/* This function is optional */
+__declspec(dllexport) void RaceAddEntry(void* _pData, int _iDataSize);
+
+/* This function is optional */
+__declspec(dllexport) void RaceRemoveEntry(void* _pData, int _iDataSize);
+
+/* This function is optional */
+__declspec(dllexport) void RaceSession(void* _pData, int _iDataSize);
+
+/* This function is optional */
+__declspec(dllexport) void RaceSessionState(void* _pData, int _iDataSize);
+
+/* This function is optional */
+__declspec(dllexport) void RaceLap(void* _pData, int _iDataSize);
+
+/* This function is optional */
+__declspec(dllexport) void RaceSplit(void* _pData, int _iDataSize);
+
+/* KRP-specific: called when speed trap is crossed. This function is optional */
+__declspec(dllexport) void RaceSpeed(void* _pData, int _iDataSize);
+
+/* This function is optional */
+__declspec(dllexport) void RaceCommunication(void* _pData, int _iDataSize);
+
+/* The number of elements of _pArray if given by m_iNumEntries in _pData. This function is optional */
+__declspec(dllexport) void RaceClassification(void* _pData, int _iDataSize, void* _pArray, int _iElemSize);
+
+/* This function is optional */
+__declspec(dllexport) void RaceTrackPosition(int _iNumVehicles, void* _pArray, int _iElemSize);
+
+/* This function is optional */
+__declspec(dllexport) void RaceVehicleData(void* _pData, int _iDataSize);
+
+/* Return 1 if _piSelect is set, from 0 to _iNumVehicles - 1 */
+__declspec(dllexport) int SpectateVehicles(int _iNumVehicles, void* _pVehicleData, int _iCurSelection, int* _piSelect);
+
+/* Return 1 if _piSelect is set, from 0 to _iNumCameras - 1 */
+__declspec(dllexport) int SpectateCameras(int _iNumCameras, void* _pCameraData, int _iCurSelection, int* _piSelect);
 
 } // extern "C"

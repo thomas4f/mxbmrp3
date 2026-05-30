@@ -40,7 +40,7 @@ private:
 
     std::string getFilePath() const;
 
-    static constexpr int FILE_VERSION = 1;
+    static constexpr int FILE_VERSION = 1;  // Bump only for additive changes (new fields read with defaults); a non-additive change (rename/retype/repurpose) requires a deliberate migration step on load.
 
     std::string m_savePath;
     std::string m_currentBikeName;

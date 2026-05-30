@@ -26,14 +26,17 @@ using namespace PluginConstants;
 
 // Positioning constants
 namespace {
-    // Horizontal mode: fixed center-screen layout
+    // Both layouts center horizontally on screen (around CENTER_X) so toggling layout doesn't jump
     constexpr float CENTER_X = 0.5f;
-    constexpr float TIMING_DIVIDER_Y = 0.1665f;
-    constexpr float DIVIDER_GAP = 0.005f;
-
-    // Vertical mode: origin-based layout (like all other HUDs) for proper grid snapping
     constexpr float START_X = 0.0f;
     constexpr float START_Y = 0.0f;
+
+    // Default vertical position. The layout is origin-based at the top of the draw area, so with a
+    // zero offset the HUD sits flush against the top edge. Earlier releases anchored the horizontal
+    // row's box top near y=0.1715 (the old TIMING_DIVIDER_Y 0.1665 + DIVIDER_GAP 0.005), so default
+    // the offset to land the box top there instead. The box top sits 0.5*paddingV (0.0111 at scale 1)
+    // below the content origin, hence 0.1715 - 0.0111. Saved user positions override this.
+    constexpr float DEFAULT_POSITION_Y = 0.1604f;
 }
 
 TimingHud::TimingHud()
@@ -727,19 +730,28 @@ void TimingHud::rebuildRenderData() {
 
     auto dim = getScaledDimensions();
 
+    // Both layouts center the HUD on CENTER_X. Quantize that centering anchor to the horizontal grid
+    // when grid snapping is on: the drag offset is snapped too, so left edge = snapped anchor + snapped
+    // offset stays on the shared grid lattice and the HUD lines up with other HUDs (while still reading
+    // as centered). With snapping off, leave it exactly centered for free placement.
+    auto snapCenteringToGrid = [](float x) -> float {
+        return UiConfig::getInstance().getGridSnapping()
+            ? PluginConstants::HudGrid::SNAP_TO_GRID_X(x)
+            : x;
+    };
+
     // Check if reference should be shown in gap column (applies to both primary and secondary)
     bool showRefInGap = m_showReference;
 
     // Per-column dimensions based on content character counts
     float labelTextWidth = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::TIMING_LABEL_WIDTH, dim.fontSizeLarge);
     float timeTextWidth = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::TIMING_TIME_WIDTH, dim.fontSizeLarge);
+    // Primary gap is laid out like a featured chip (type label + gap + ref), so size it
+    // with the chip widths rather than the bare-gap widths.
     int gapChars = showRefInGap
-        ? (m_layoutVertical ? WidgetDimensions::TIMING_GAP_WITH_REF_WIDTH_COMPACT : WidgetDimensions::TIMING_GAP_WITH_REF_WIDTH)
-        : WidgetDimensions::TIMING_GAP_WIDTH;
+        ? (m_layoutVertical ? WidgetDimensions::TIMING_CHIP_WITH_REF_WIDTH_COMPACT : WidgetDimensions::TIMING_CHIP_WITH_REF_WIDTH)
+        : WidgetDimensions::TIMING_CHIP_WIDTH;
     float gapTextWidth = PluginUtils::calculateMonospaceTextWidth(gapChars, dim.fontSizeLarge);
-
-    // Use smaller vertical padding for compact widget appearance
-    float compactPaddingV = dim.paddingV * 0.35f;
 
     // Calculate individual quad widths
     float labelQuadWidth = dim.paddingH + labelTextWidth + dim.paddingH;
@@ -752,19 +764,27 @@ void TimingHud::rebuildRenderData() {
     // Gap between columns (half char width for tighter spacing)
     float charGap = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSizeLarge) * 0.5f;
 
-    // Quad height: in vertical mode use lineHeightLarge to match row step, otherwise use compact padding
-    float quadHeight = m_layoutVertical ? dim.lineHeightLarge : (compactPaddingV + dim.fontSizeLarge + compactPaddingV);
+    // Width reserved for the gap/delta column, always at the large (primary-row) size so the
+    // primary row, the secondary chips, and the vertical time value all right-align the
+    // reference to the same X regardless of their own font size.
+    float deltaColW = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::TIMING_GAP_WIDTH, dim.fontSizeLarge);
+
+    // Primary rows mirror a HUD title: the large font (fontSizeLarge) in a lineHeightLarge band, in
+    // both layouts. lineHeightLarge is exactly 2x lineHeightNormal, so the row tops land on the shared
+    // half-line grid — a stacked vertical timing HUD lines up with a neighbouring HUD's title and rows,
+    // and the secondary chips (normal font, lineHeightNormal) tuck in below on the same grid.
+    float quadHeight = dim.lineHeightLarge;
 
     // Layout depends on mode: horizontal (side by side) or vertical (stacked)
-    // Vertical mode uses origin-based positioning (like all other HUDs) for proper grid snapping
-    float quadY = m_layoutVertical ? START_Y : (TIMING_DIVIDER_Y + DIVIDER_GAP);
-    float verticalGap = charGap * UI_ASPECT_RATIO;  // Gap between rows in vertical mode
+    // Both layouts share the same Y origin and center horizontally on screen, so the HUD stays put
+    // (centered) when switching between vertical and horizontal instead of jumping.
+    float quadY = START_Y;
 
     // Column positions - calculated differently based on layout mode
     float labelColumnX, timeColumnX, gapColumnX;
     float labelRowY, timeRowY, gapRowY;  // Y positions for vertical mode
     float leftX, rightX;
-    float vertBgLeftX = 0.0f, vertBgWidth = 0.0f, vertCenterX = 0.0f;  // Full HUD bounds for vertical mode
+    float vertBgLeftX = 0.0f, vertBgWidth = 0.0f;  // Full HUD bounds for vertical mode
 
     if (m_layoutVertical) {
         // Vertical layout: origin-based positioning (like LapLogHud/StandingsHud)
@@ -772,16 +792,17 @@ void TimingHud::rebuildRenderData() {
         labelColumnX = timeColumnX = gapColumnX = START_X;
 
         // Stack only enabled rows vertically (no gaps for disabled elements)
-        // Use lineHeightLarge for primary rows (larger font), secondaries use lineHeightNormal
+        // Primary rows step by the large band (quadHeight); secondaries use lineHeightNormal
         // Start content after paddingV from top (like LapLogHud/StandingsHud)
         float currentY = START_Y + dim.paddingV;
-        float rowStep = dim.lineHeightLarge;
+        float rowStep = quadHeight;
 
+        // Label and time each get their own row (time row carries its own "Time" label)
         if (shouldShowColumn(COL_LABEL)) {
             labelRowY = currentY;
             currentY += rowStep;
         } else {
-            labelRowY = START_Y;  // Won't be used, but initialize
+            labelRowY = START_Y;
         }
 
         if (shouldShowColumn(COL_TIME)) {
@@ -801,35 +822,28 @@ void TimingHud::rebuildRenderData() {
         leftX = START_X;
         rightX = START_X + columnWidth;
     } else {
-        // Horizontal layout: columns side by side
-        // TIME column is centered, LABEL to left, GAP to right
-        timeColumnX = CENTER_X - columnWidth / 2.0f;
-        labelColumnX = timeColumnX - charGap - columnWidth;
-        gapColumnX = timeColumnX + columnWidth + charGap;
+        // Horizontal layout: only the VISIBLE columns are packed side by side (order: label, time,
+        // gap), centered as a group — so hiding a column closes the gap rather than leaving a hole.
+        float groupWidth = (visibleCount > 0)
+            ? (visibleCount * columnWidth + (visibleCount - 1) * charGap)
+            : columnWidth;
+        float groupLeft = snapCenteringToGrid(CENTER_X - groupWidth / 2.0f);  // centered on screen, grid-aligned
 
-        // All on same row
-        labelRowY = timeRowY = gapRowY = quadY;
+        // Fallbacks (used only for a hidden column, never rendered)
+        labelColumnX = timeColumnX = gapColumnX = groupLeft;
+        float x = groupLeft;
+        if (shouldShowColumn(COL_LABEL)) { labelColumnX = x; x += columnWidth + charGap; }
+        if (shouldShowColumn(COL_TIME))  { timeColumnX = x;  x += columnWidth + charGap; }
+        if (shouldShowColumn(COL_GAP))   { gapColumnX = x;   x += columnWidth + charGap; }
 
-        // Set leftX/rightX based on actual visible columns
-        if (shouldShowColumn(COL_LABEL)) {
-            leftX = labelColumnX;
-        } else if (shouldShowColumn(COL_TIME)) {
-            leftX = timeColumnX;
-        } else if (shouldShowColumn(COL_GAP)) {
-            leftX = gapColumnX;
-        } else {
-            leftX = timeColumnX;  // Fallback
-        }
+        // All on the same row, inset by paddingV from the HUD's top edge so the primary text lines up
+        // with a neighbouring HUD's title (which also sits paddingV below its top edge, e.g. LapLog).
+        // The per-column boxes extend up to the HUD top (see the background quads below), so this
+        // paddingV becomes internal top padding above the text — matching a LapLog title's box.
+        labelRowY = timeRowY = gapRowY = quadY + dim.paddingV;
 
-        if (shouldShowColumn(COL_GAP)) {
-            rightX = gapColumnX + columnWidth;
-        } else if (shouldShowColumn(COL_TIME)) {
-            rightX = timeColumnX + columnWidth;
-        } else if (shouldShowColumn(COL_LABEL)) {
-            rightX = labelColumnX + columnWidth;
-        } else {
-            rightX = timeColumnX + columnWidth;  // Fallback
-        }
+        leftX = groupLeft;
+        rightX = groupLeft + groupWidth;
     }
 
     // Prepare content for each column
@@ -951,6 +965,112 @@ void TimingHud::rebuildRenderData() {
     bool showGapData = m_isFrozen;
     bool showInvalid = m_officialData.isInvalid;
 
+    // Resolve the gap/reference text and state for one gap type. The primary row and the secondary
+    // chips share this exact logic (only the "invalid" abbreviation differs), so it lives here once.
+    struct GapColumnText {
+        char gap[16] = "";
+        char ref[16] = "";
+        bool hasRef = false;
+        bool refIsPlaceholder = false;
+        bool isFaster = false;
+        bool isSlower = false;
+    };
+    auto buildGapColumn = [&](GapTypeFlags type) -> GapColumnText {
+        GapColumnText out;
+        const GapData* gapData = getGapDataForType(type);
+        if (showGapData && showInvalid && typeUsesInvalid(type)) {
+            strcpy_s(out.gap, sizeof(out.gap), "INVALID");
+            out.isSlower = true;
+            // The lap is invalid, but the reference you're measured against still stands, so keep
+            // showing it (falling back to the pre-split reference if the gap has no stored refTime).
+            if (showRefInGap) {
+                int ref = (gapData && gapData->refTime > 0) ? gapData->refTime : getPreSplitRefTime(type);
+                if (ref > 0) {
+                    PluginUtils::formatLapTime(ref, out.ref, sizeof(out.ref));
+                    out.hasRef = true;
+                }
+            }
+        } else if (!showGapData || !gapData || !gapData->hasGap) {
+            int preSplitRef = getPreSplitRefTime(type);
+            bool refAvailable = (preSplitRef > 0);
+            // Only the Record source can be genuinely unavailable (provider hasn't fetched, or no
+            // record for this track) -> "N/A". PB/Alltime/Ideal/Overall will be set soon -> "-".
+            const char* missing = (type == GAP_TO_RECORD) ? Placeholders::NOT_AVAILABLE : Placeholders::GENERIC;
+            strcpy_s(out.gap, sizeof(out.gap), refAvailable ? Placeholders::GENERIC : missing);
+            if (showRefInGap) {
+                if (refAvailable) {
+                    PluginUtils::formatLapTime(preSplitRef, out.ref, sizeof(out.ref));
+                } else {
+                    strcpy_s(out.ref, sizeof(out.ref), missing);
+                    out.refIsPlaceholder = true;
+                }
+                out.hasRef = true;
+            }
+        } else {
+            PluginUtils::formatTimeDiff(out.gap, sizeof(out.gap), gapData->gap);
+            if (showRefInGap && gapData->refTime > 0) {
+                PluginUtils::formatLapTime(gapData->refTime, out.ref, sizeof(out.ref));
+                out.hasRef = true;
+            }
+            out.isFaster = gapData->isFaster;
+            out.isSlower = gapData->isSlower;
+        }
+        return out;
+    };
+
+    // Faster/slower/neutral colors, shared by the primary gap row and the chips. The colored
+    // background strip uses the HUD background for neutral; the text uses muted for neutral.
+    auto gapBgColor = [&](bool isFaster, bool isSlower) -> unsigned long {
+        return this->getColor(isFaster ? ColorSlot::POSITIVE : isSlower ? ColorSlot::NEGATIVE : ColorSlot::BACKGROUND);
+    };
+    auto gapTextColor = [&](bool isFaster, bool isSlower) -> unsigned long {
+        return this->getColor(isFaster ? ColorSlot::POSITIVE : isSlower ? ColorSlot::NEGATIVE : ColorSlot::MUTED);
+    };
+
+    // Emit a colored background strip (SOLID_COLOR sprite, opacity applied) behind a gap value.
+    auto addGapQuad = [&](float x, float y, float w, float h, unsigned long baseColor) {
+        SPluginQuad_t quad;
+        applyOffset(x, y);
+        setQuadPositions(quad, x, y, w, h);
+        quad.m_iSprite = SpriteIndex::SOLID_COLOR;
+        quad.m_ulColor = PluginUtils::applyOpacity(baseColor, m_fBackgroundOpacity);
+        m_quads.push_back(quad);
+    };
+
+    // One gap row = colored strip (when faster/slower, or always in horizontal) + left type label +
+    // right-aligned reference and gap values. The primary gap row and each secondary chip are the
+    // same layout at different sizes, so both render through here.
+    struct GapRowStyle {
+        float textY;          // top of the row text
+        float quadX, quadY;   // top-left of the colored strip
+        float quadW, quadH;   // size of the colored strip
+        float labelX;         // left edge for the type label
+        float rightEdge;      // right edge for the gap value (reference sits deltaColW+charGap to its left)
+        float valueFontSize;  // font size for the reference + gap values
+        bool  largeLabel;     // true: label at fontSizeLarge (primary row); false: small label (chip)
+        const char* label;    // type label text
+    };
+    auto renderGapRow = [&](const GapColumnText& g, const GapRowStyle& s) {
+        // Vertical neutral rows sit on the single HUD background; everything else gets a strip.
+        if (!m_layoutVertical || g.isFaster || g.isSlower) {
+            addGapQuad(s.quadX, s.quadY, s.quadW, s.quadH, gapBgColor(g.isFaster, g.isSlower));
+        }
+        if (s.largeLabel) {
+            addString(s.label, s.labelX, s.textY, Justify::LEFT,
+                this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dim.fontSizeLarge);
+        } else {
+            addLabel(s.label, s.labelX, s.textY, Justify::LEFT,
+                this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dim);
+        }
+        if (g.hasRef) {
+            unsigned long refColor = g.refIsPlaceholder ? this->getColor(ColorSlot::MUTED) : this->getColor(ColorSlot::SECONDARY);
+            addString(g.ref, s.rightEdge - deltaColW - charGap, s.textY, Justify::RIGHT,
+                this->getFont(FontCategory::DIGITS), refColor, s.valueFontSize);
+        }
+        addString(g.gap, s.rightEdge, s.textY, Justify::RIGHT,
+            this->getFont(FontCategory::DIGITS), gapTextColor(g.isFaster, g.isSlower), s.valueFontSize);
+    };
+
     // === RENDER PRIMARY ROW COLUMNS ===
     // All columns use uniform width for consistent alignment
 
@@ -963,83 +1083,86 @@ void TimingHud::rebuildRenderData() {
         if (shouldShowColumn(COL_TIME)) primaryRowCount++;
         if (shouldShowColumn(COL_GAP)) primaryRowCount++;
 
-        // Count secondary gaps
-        bool primaryGapVisible = shouldShowColumn(COL_GAP);
-        int secondaryCount = getEnabledSecondaryGapCount(primaryGapVisible);
-        bool showSecondaries = (m_displayMode == ColumnMode::ALWAYS) ||
-                               (m_displayMode == ColumnMode::SPLITS && m_isFrozen);
+        // secondaryCount / showSecondaries computed once at the top of rebuildRenderData
 
         // Calculate heights
-        float primaryHeight = primaryRowCount * dim.lineHeightLarge;
+        float primaryHeight = primaryRowCount * quadHeight;
         float secondaryHeight = (secondaryCount > 0 && showSecondaries) ? (secondaryCount * dim.lineHeightNormal) : 0.0f;
         float totalContentHeight = primaryHeight + secondaryHeight;
         float backgroundHeight = dim.paddingV + totalContentHeight + dim.paddingV;
 
-        // Calculate width — vertical mode always uses compact chip widths
-        int chipChars = m_showReference
-            ? WidgetDimensions::TIMING_CHIP_WITH_REF_WIDTH_COMPACT
-            : WidgetDimensions::TIMING_CHIP_WIDTH;
-        float chipTextWidth = PluginUtils::calculateMonospaceTextWidth(chipChars, dim.fontSize);
-        float actualChipWidth = dim.paddingH + chipTextWidth + dim.paddingH;
-        // Only use columnWidth for chips when primary columns are visible
-        float chipWidth = (primaryRowCount > 0) ? std::max(columnWidth, actualChipWidth) : actualChipWidth;
-        float contentWidth = (secondaryCount > 0 && showSecondaries) ? std::max(columnWidth, chipWidth) : columnWidth;
-        // contentWidth already includes paddingH on each side (from columnWidth/chipWidth), no extra padding needed
-        // Origin-based: background starts at START_X
-        float bgLeftX = START_X;
-        float backgroundWidth = contentWidth;
-        if (primaryRowCount == 0 && secondaryCount > 0 && showSecondaries) {
-            contentWidth = chipWidth;
-            backgroundWidth = contentWidth;
-            // Also update labelColumnX for chip positioning
-            labelColumnX = timeColumnX = gapColumnX = START_X;
-        }
-        // Update leftX/rightX to match actual background bounds
+        // Match the standard HUD widths so the timing HUD lines up with the rest of the UI:
+        // references off -> 27 chars (FMX / IdealLap / Stats), on -> 43 (Event Log / Lap Log).
+        // The fixed width also gives room to spell the gap labels out.
+        float backgroundWidth = calculateBackgroundWidth(m_showReference ? 43 : 27);
+        // Center the HUD horizontally on screen (around CENTER_X), like horizontal mode, so toggling
+        // layout keeps it centered instead of flying off. Content + chips anchor to this left edge.
+        // When grid snapping is on, quantize the centering anchor to the grid so the (also snapped)
+        // drag offset keeps the left edge on the shared lattice — lets it line up with other HUDs
+        // while staying centered. See horizontal mode for the matching treatment.
+        float bgLeftX = snapCenteringToGrid(CENTER_X - backgroundWidth / 2.0f);
+        labelColumnX = timeColumnX = gapColumnX = bgLeftX;
         leftX = bgLeftX;
         rightX = bgLeftX + backgroundWidth;
 
         // Add single background quad for entire vertical HUD
         addBackgroundQuad(bgLeftX, quadY, backgroundWidth, backgroundHeight);
 
-        // Store full HUD bounds for edge-to-edge highlights and text centering
+        // Store full HUD bounds for edge-to-edge highlights and text alignment
         vertBgLeftX = bgLeftX;
         vertBgWidth = backgroundWidth;
-        vertCenterX = bgLeftX + backgroundWidth / 2.0f;
     }
+
+    // Horizontal per-column boxes hug the text itself (fontSizeLarge) with equal padding above and
+    // below, rather than wrapping the full lineHeightLarge band (whose dead space sat under the text
+    // and made the box look bottom-heavy). Half the normal vertical padding keeps the box compact.
+    // The text stays at rowY (quadY + paddingV) so it still lines up with a neighbour HUD's title.
+    const float boxPadV = dim.paddingV * 0.5f;
+    const float primaryBoxHeight = dim.fontSizeLarge + 2.0f * boxPadV;
 
     // Add LABEL column if visible
     if (shouldShowColumn(COL_LABEL)) {
-        // In vertical mode, text aligns with row; in horizontal mode, use compact padding
-        float labelTextY = m_layoutVertical ? labelRowY : (labelRowY + compactPaddingV);
+        // Text top-aligned at the row top in both modes (matches a title / the chips / other HUDs)
+        float labelTextY = labelRowY;
         // In vertical mode, skip per-row background (using single HUD background above)
         if (!m_layoutVertical) {
-            addBackgroundQuad(labelColumnX, labelRowY, columnWidth, quadHeight);
+            addBackgroundQuad(labelColumnX, labelRowY - boxPadV, columnWidth, primaryBoxHeight);
         }
-        if (m_layoutVertical) {
-            // Vertical: center the label within full HUD width
-            float labelX = vertCenterX;
-            addString(labelBuffer, labelX, labelTextY, Justify::CENTER,
-                this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
-        } else {
-            // Horizontal: right-align in column
-            float labelX = labelColumnX + columnWidth - dim.paddingH;
-            addString(labelBuffer, labelX, labelTextY, Justify::RIGHT,
-                this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
-        }
+        // Label is left-aligned in both modes (the row's identifier), rendered at the large title size
+        float labelX = (m_layoutVertical ? vertBgLeftX : labelColumnX) + dim.paddingH;
+        addString(labelBuffer, labelX, labelTextY, Justify::LEFT,
+            this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dim.fontSizeLarge);
     }
 
-    // Add TIME column if visible (always centered)
+    // Add TIME column if visible
     if (shouldShowColumn(COL_TIME)) {
-        // In vertical mode, text aligns with row; in horizontal mode, use compact padding
-        float timeTextY = m_layoutVertical ? timeRowY : (timeRowY + compactPaddingV);
+        // Text top-aligned at the row top in both modes
+        float timeTextY = timeRowY;
         // In vertical mode, skip per-row background (using single HUD background above)
         if (!m_layoutVertical) {
-            addBackgroundQuad(timeColumnX, timeRowY, columnWidth, quadHeight);
+            addBackgroundQuad(timeColumnX, timeRowY - boxPadV, columnWidth, primaryBoxHeight);
         }
-        float timeX = m_layoutVertical ? vertCenterX : (timeColumnX + columnWidth / 2.0f);
+
         unsigned long timeColor = timePlaceholder ? this->getColor(ColorSlot::MUTED) : this->getColor(ColorSlot::PRIMARY);
-        addString(timeBuffer, timeX, timeTextY, Justify::CENTER,
-            this->getFont(FontCategory::DIGITS), timeColor, dim.fontSizeLarge);
+
+        if (m_layoutVertical) {
+            // Vertical: left-aligned "Time" label so the row reads label + value, like the gap rows/chips.
+            float timeLabelX = vertBgLeftX + dim.paddingH;
+            addString("Time", timeLabelX, timeTextY, Justify::LEFT,
+                this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dim.fontSizeLarge);
+
+            // Value right-aligned over the reference column (left of the gap/delta column) so your time
+            // stacks above the reference times; with no references it uses the content right edge.
+            float contentRight = vertBgLeftX + vertBgWidth - dim.paddingH;
+            float timeX = showRefInGap ? (contentRight - deltaColW - charGap) : contentRight;
+            addString(timeBuffer, timeX, timeTextY, Justify::RIGHT,
+                this->getFont(FontCategory::DIGITS), timeColor, dim.fontSizeLarge);
+        } else {
+            // Horizontal: no "Time" label — just the lap time, centered in the cell.
+            float timeX = timeColumnX + columnWidth / 2.0f;
+            addString(timeBuffer, timeX, timeTextY, Justify::CENTER,
+                this->getFont(FontCategory::DIGITS), timeColor, dim.fontSizeLarge);
+        }
     }
 
     // Track bottom of primary elements for bounds
@@ -1056,127 +1179,50 @@ void TimingHud::rebuildRenderData() {
             // No primary columns visible - chips start after top padding
             bottomY = quadY + dim.paddingV;
         }
+    } else if (shouldShowColumn(COL_LABEL) || shouldShowColumn(COL_TIME) || shouldShowColumn(COL_GAP)) {
+        // Bottom of the compact primary box (its top is rowY - boxPadV, height primaryBoxHeight).
+        bottomY = (quadY + dim.paddingV - boxPadV) + primaryBoxHeight;
     } else {
-        bottomY = quadY + quadHeight;
+        // No primary columns visible - don't reserve the primary row height (matches the
+        // vertical branch); chips start from the top padding instead of below an empty box.
+        bottomY = quadY + dim.paddingV;
     }
 
     // Show primary gap when gap column is visible
     if (shouldShowColumn(COL_GAP)) {
+        GapColumnText primary = buildGapColumn(m_primaryGapType);
 
-        char gapBuffer[16];
-        char refBuffer[16];
-        bool gapIsFaster = false;
-        bool gapIsSlower = false;
-        bool hasRefValue = false;
-        bool refIsPlaceholder = false;
-
-        const GapData* primaryGap = getGapDataForType(m_primaryGapType);
-        bool primaryShowInvalid = showInvalid && typeUsesInvalid(m_primaryGapType);
-
-        if (showGapData && primaryShowInvalid) {
-            strcpy_s(gapBuffer, sizeof(gapBuffer), "INVALID");
-            gapIsSlower = true;
-        } else if (!showGapData || !primaryGap || !primaryGap->hasGap) {
-            strcpy_s(gapBuffer, sizeof(gapBuffer), Placeholders::GENERIC);
-            if (showRefInGap) {
-                // For AT and RC, try to show actual reference time before splits
-                int preSplitRef = getPreSplitRefTime(m_primaryGapType);
-                if (preSplitRef > 0) {
-                    PluginUtils::formatLapTime(preSplitRef, refBuffer, sizeof(refBuffer));
-                } else {
-                    strcpy_s(refBuffer, sizeof(refBuffer), Placeholders::LAP_TIME);
-                    refIsPlaceholder = true;
-                }
-                hasRefValue = true;
-            }
-        } else {
-            PluginUtils::formatTimeDiff(gapBuffer, sizeof(gapBuffer), primaryGap->gap);
-            if (showRefInGap && primaryGap->refTime > 0) {
-                PluginUtils::formatLapTime(primaryGap->refTime, refBuffer, sizeof(refBuffer));
-                hasRefValue = true;
-            }
-            gapIsFaster = primaryGap->isFaster;
-            gapIsSlower = primaryGap->isSlower;
-        }
-
-        // In vertical mode, text aligns with row; in horizontal mode, use compact padding
-        float gapTextY = m_layoutVertical ? gapRowY : (gapRowY + compactPaddingV);
-
-        // Create colored background quad for primary gap
-        // In vertical mode, only add quad when colored (faster/slower) - neutral uses HUD background
-        bool needsGapQuad = !m_layoutVertical || gapIsFaster || gapIsSlower;
-        if (needsGapQuad) {
-            SPluginQuad_t gapQuad;
-            // In vertical mode, span full HUD width (edge-to-edge like StandingsHud/RecordsHud)
-            float gapQuadX = m_layoutVertical ? vertBgLeftX : gapColumnX;
-            float gapQuadW = m_layoutVertical ? vertBgWidth : columnWidth;
-            float gapQuadY = gapRowY;
-            applyOffset(gapQuadX, gapQuadY);
-            setQuadPositions(gapQuad, gapQuadX, gapQuadY, gapQuadW, quadHeight);
-            gapQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-
-            unsigned long baseColor;
-            if (gapIsFaster) {
-                baseColor = this->getColor(ColorSlot::POSITIVE);
-            } else if (gapIsSlower) {
-                baseColor = this->getColor(ColorSlot::NEGATIVE);
-            } else {
-                baseColor = this->getColor(ColorSlot::BACKGROUND);
-            }
-            gapQuad.m_ulColor = PluginUtils::applyOpacity(baseColor, m_fBackgroundOpacity);
-            m_quads.push_back(gapQuad);
-        }
-
-        // Determine gap text color (use MUTED for placeholders, like IdealLapHud)
-        unsigned long gapTextColor;
-        if (gapIsFaster) {
-            gapTextColor = this->getColor(ColorSlot::POSITIVE);
-        } else if (gapIsSlower) {
-            gapTextColor = this->getColor(ColorSlot::NEGATIVE);
-        } else {
-            gapTextColor = this->getColor(ColorSlot::MUTED);
-        }
-
-        // Add gap value (centered in vertical mode without reference, left-aligned otherwise)
-        if (m_layoutVertical && !showRefInGap) {
-            float gapX = vertCenterX;
-            addString(gapBuffer, gapX, gapTextY, Justify::CENTER,
-                this->getFont(FontCategory::DIGITS), gapTextColor, dim.fontSizeLarge);
-        } else {
-            float gapX = (m_layoutVertical ? vertBgLeftX : gapColumnX) + dim.paddingH;
-            addString(gapBuffer, gapX, gapTextY, Justify::LEFT,
-                this->getFont(FontCategory::DIGITS), gapTextColor, dim.fontSizeLarge);
-        }
-
-        // Add reference value (right-aligned) — muted for placeholders, secondary for actual values
-        if (hasRefValue) {
-            unsigned long refColor = refIsPlaceholder ? this->getColor(ColorSlot::MUTED) : this->getColor(ColorSlot::SECONDARY);
-            float refX = (m_layoutVertical ? (vertBgLeftX + vertBgWidth) : (gapColumnX + columnWidth)) - dim.paddingH;
-            addString(refBuffer, refX, gapTextY, Justify::RIGHT,
-                this->getFont(FontCategory::DIGITS), refColor, dim.fontSizeLarge);
-        }
+        // Primary gap is rendered like a featured chip: type label (left), then reference and gap
+        // values right-aligned. Type label is spelled out in vertical (room there), abbreviated in
+        // horizontal (narrow cell). The colored strip hugs the text in horizontal (like the label/time
+        // boxes) and fills the band inside the single HUD background in vertical.
+        GapRowStyle style;
+        style.textY = gapRowY;
+        style.quadX = m_layoutVertical ? vertBgLeftX : gapColumnX;
+        style.quadW = m_layoutVertical ? vertBgWidth : columnWidth;
+        style.quadY = m_layoutVertical ? gapRowY : (gapRowY - boxPadV);
+        style.quadH = m_layoutVertical ? quadHeight : primaryBoxHeight;
+        style.labelX = (m_layoutVertical ? vertBgLeftX : gapColumnX) + dim.paddingH;
+        style.rightEdge = (m_layoutVertical ? (vertBgLeftX + vertBgWidth) : (gapColumnX + columnWidth)) - dim.paddingH;
+        style.valueFontSize = dim.fontSizeLarge;
+        style.largeLabel = true;
+        style.label = m_layoutVertical ? getGapTypeName(m_primaryGapType) : getGapTypeAbbrev(m_primaryGapType);
+        renderGapRow(primary, style);
     }
 
     // === RENDER SECONDARY GAPS AS CHIPS ===
     // Secondary gaps shown as chips (horizontal below primary, or vertical beside primary)
     // Note: Secondaries are independent of primary gap column visibility
     {
+        // secondaryCount / showSecondaries computed once at the top of rebuildRenderData
         bool primaryGapVisible = shouldShowColumn(COL_GAP);
-        int secondaryCount = getEnabledSecondaryGapCount(primaryGapVisible);
-
-        // Secondaries also respect display mode (SPLITS only during freeze, ALWAYS shows always)
-        bool showSecondaries = (m_displayMode == ColumnMode::ALWAYS) ||
-                               (m_displayMode == ColumnMode::SPLITS && m_isFrozen);
 
         if (secondaryCount > 0 && showSecondaries) {
-            // Chip dimensions (smaller than primary, using compact vertical padding)
+            // Chips are the secondary (normal-font) rows. Both layouts put them on the lineHeightNormal
+            // grid band, directly below the primary rows — matching vertical, the chips' own rhythm and
+            // every other HUD, so the whole timing HUD stays on the shared grid.
             float chipFontSize = dim.fontSize;
-            float chipCompactPaddingV = dim.paddingV * 0.35f;
-            // In vertical mode, use lineHeightNormal for quad height to match row step
-            float chipQuadHeight = m_layoutVertical ? dim.lineHeightNormal : (chipCompactPaddingV + chipFontSize + chipCompactPaddingV);
-
-            // Vertical gap uses same base as horizontal charGap, adjusted for aspect ratio
-            float verticalGap = charGap * UI_ASPECT_RATIO;
+            float chipQuadHeight = dim.lineHeightNormal;
 
             // Calculate chip width based on reference setting
             int chipChars = showRefInGap
@@ -1184,8 +1230,11 @@ void TimingHud::rebuildRenderData() {
                 : WidgetDimensions::TIMING_CHIP_WIDTH;
             float chipTextWidth = PluginUtils::calculateMonospaceTextWidth(chipChars, chipFontSize);
             float actualChipWidth = dim.paddingH + chipTextWidth + dim.paddingH;
-            // Only use columnWidth for chips when primary columns are visible
-            float chipWidth = (visibleCount > 0) ? std::max(columnWidth, actualChipWidth) : actualChipWidth;
+            // Always floor chip width at columnWidth: the chip reference is reserved at the
+            // primary's (large) font size, so the box must stay wide enough to host it even
+            // when no primary columns are visible. Dropping to actualChipWidth there pushed
+            // the right-aligned reference left into the label.
+            float chipWidth = std::max(columnWidth, actualChipWidth);
 
             // Position chips based on layout mode
             float chipStartX, chipStartY;
@@ -1195,9 +1244,11 @@ void TimingHud::rebuildRenderData() {
                 chipStartX = labelColumnX;  // Same X as primary content column
                 chipStartY = bottomY;  // Continue directly below last primary element (no gap)
             } else {
-                // Horizontal layout: chips in a row below primary, aligned to leftmost visible column
+                // Horizontal layout: chips in a row below the primary row, aligned to the leftmost
+                // visible column. The vertical gap below the primary boxes matches the horizontal gap
+                // between them (charGap), so the spacing reads consistently in both directions.
                 chipStartX = leftX;
-                chipStartY = quadY + quadHeight + verticalGap;
+                chipStartY = bottomY + charGap;
             }
 
             float chipX = chipStartX;
@@ -1212,110 +1263,24 @@ void TimingHud::rebuildRenderData() {
                 // Skip disabled secondary gaps
                 if (!(m_secondaryGapTypes & secType)) continue;
 
-                const GapData* secGapData = getGapDataForType(secType);
-                bool secShowInvalid = showInvalid && typeUsesInvalid(secType);
+                GapColumnText chip = buildGapColumn(secType);
 
-                // Format chip: label (left) + gap (center-left) + reference (center-right)
-                const char* abbrev = getGapTypeAbbrev(secType);
-                char gapValueBuffer[16];
-                char refValueBuffer[16];
-                bool chipIsFaster = false;
-                bool chipIsSlower = false;
-                bool hasRefValue = false;
-                bool chipRefIsPlaceholder = false;
-
-                if (showGapData && secShowInvalid) {
-                    strcpy_s(gapValueBuffer, sizeof(gapValueBuffer), "INV");
-                    chipIsSlower = true;
-                } else if (!showGapData || !secGapData || !secGapData->hasGap) {
-                    strcpy_s(gapValueBuffer, sizeof(gapValueBuffer), Placeholders::GENERIC);
-                    if (showRefInGap) {
-                        // For AT and RC, try to show actual reference time before splits
-                        int preSplitRef = getPreSplitRefTime(secType);
-                        if (preSplitRef > 0) {
-                            PluginUtils::formatLapTime(preSplitRef, refValueBuffer, sizeof(refValueBuffer));
-                        } else {
-                            strcpy_s(refValueBuffer, sizeof(refValueBuffer), Placeholders::LAP_TIME);
-                            chipRefIsPlaceholder = true;
-                        }
-                        hasRefValue = true;
-                    }
-                } else {
-                    PluginUtils::formatTimeDiff(gapValueBuffer, sizeof(gapValueBuffer), secGapData->gap);
-                    if (showRefInGap && secGapData->refTime > 0) {
-                        PluginUtils::formatLapTime(secGapData->refTime, refValueBuffer, sizeof(refValueBuffer));
-                        hasRefValue = true;
-                    }
-                    chipIsFaster = secGapData->isFaster;
-                    chipIsSlower = secGapData->isSlower;
-                }
-
-                // In vertical mode, text aligns with row; in horizontal mode, use compact padding
-                float chipTextY = m_layoutVertical ? chipY : (chipY + chipCompactPaddingV);
-
-                // Create colored background quad for chip
-                // In vertical mode, only add quad when colored (faster/slower) - neutral uses HUD background
-                bool needsChipQuad = !m_layoutVertical || chipIsFaster || chipIsSlower;
-                if (needsChipQuad) {
-                    SPluginQuad_t chipQuad;
-                    // In vertical mode, span full HUD width (edge-to-edge like StandingsHud/RecordsHud)
-                    float chipQuadX = m_layoutVertical ? vertBgLeftX : chipX;
-                    float chipQuadW = m_layoutVertical ? vertBgWidth : chipWidth;
-                    float chipQuadY = chipY;
-                    applyOffset(chipQuadX, chipQuadY);
-                    setQuadPositions(chipQuad, chipQuadX, chipQuadY, chipQuadW, chipQuadHeight);
-                    chipQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-
-                    unsigned long chipBgColor;
-                    if (chipIsFaster) {
-                        chipBgColor = this->getColor(ColorSlot::POSITIVE);
-                    } else if (chipIsSlower) {
-                        chipBgColor = this->getColor(ColorSlot::NEGATIVE);
-                    } else {
-                        chipBgColor = this->getColor(ColorSlot::BACKGROUND);
-                    }
-                    chipQuad.m_ulColor = PluginUtils::applyOpacity(chipBgColor, m_fBackgroundOpacity);
-                    m_quads.push_back(chipQuad);
-                }
-
-                // Add chip text (use MUTED for placeholders, like IdealLapHud)
-                unsigned long chipTextColor;
-                if (chipIsFaster) {
-                    chipTextColor = this->getColor(ColorSlot::POSITIVE);
-                } else if (chipIsSlower) {
-                    chipTextColor = this->getColor(ColorSlot::NEGATIVE);
-                } else {
-                    chipTextColor = this->getColor(ColorSlot::MUTED);
-                }
-
-                // Add label (left-aligned) - tertiary when data present, muted for placeholders
-                bool chipIsPlaceholder = !chipIsFaster && !chipIsSlower;
-                unsigned long chipLabelColor = chipIsPlaceholder
-                    ? this->getColor(ColorSlot::MUTED)
-                    : this->getColor(ColorSlot::TERTIARY);
-                float labelWidth = PluginUtils::calculateMonospaceTextWidth(2, chipFontSize);  // "PB", "AT", etc.
-                addString(abbrev, chipX + dim.paddingH, chipTextY, Justify::LEFT,
-                    this->getFont(FontCategory::NORMAL), chipLabelColor, chipFontSize);
-
-                // Calculate gap center position (centered between label and reference)
-                float gapAreaLeft = chipX + dim.paddingH + labelWidth;
-                float gapAreaRight = chipX + chipWidth - dim.paddingH;
-                if (showRefInGap) {
-                    float refWidth = PluginUtils::calculateMonospaceTextWidth(8, chipFontSize);  // LAP_TIME width
-                    gapAreaRight -= refWidth;
-                }
-                float gapCenterX = (gapAreaLeft + gapAreaRight) / 2.0f;
-
-                // Add gap value in gap color
-                addString(gapValueBuffer, gapCenterX, chipTextY, Justify::CENTER,
-                    this->getFont(FontCategory::DIGITS), chipTextColor, chipFontSize);
-
-                // Add reference value (right-aligned) — muted for placeholders, secondary for actual values
-                if (hasRefValue) {
-                    unsigned long chipRefColor = chipRefIsPlaceholder ? this->getColor(ColorSlot::MUTED) : this->getColor(ColorSlot::SECONDARY);
-                    addString(refValueBuffer, chipX + chipWidth - dim.paddingH, chipTextY, Justify::RIGHT,
-                        this->getFont(FontCategory::DIGITS), chipRefColor, chipFontSize);
-                }
+                // A chip is the same gap row as the primary, at the normal font with a small label.
+                // The colored strip sits at chipY (no box padding); the label is spelled out in both
+                // modes (room in the normal-font box). In vertical the chip spans the full HUD width,
+                // so right-align to the HUD edge (same as the primary) not the chip's narrower box.
+                GapRowStyle style;
+                style.textY = chipY;
+                style.quadX = m_layoutVertical ? vertBgLeftX : chipX;
+                style.quadW = m_layoutVertical ? vertBgWidth : chipWidth;
+                style.quadY = chipY;
+                style.quadH = chipQuadHeight;
+                style.labelX = chipX + dim.paddingH;
+                style.rightEdge = (m_layoutVertical ? (vertBgLeftX + vertBgWidth) : (chipX + chipWidth)) - dim.paddingH;
+                style.valueFontSize = chipFontSize;
+                style.largeLabel = false;
+                style.label = getGapTypeName(secType);
+                renderGapRow(chip, style);
 
                 // Advance position based on layout mode
                 if (m_layoutVertical) {
@@ -1342,13 +1307,10 @@ void TimingHud::rebuildRenderData() {
         }
     }
 
-    // Set bounds (leftX/rightX already calculated from fixed column positions)
-    // For vertical mode, include paddingV at the bottom for consistent padding around all sides
-    if (m_layoutVertical) {
-        setBounds(leftX, quadY, rightX, bottomY + dim.paddingV);
-    } else {
-        setBounds(leftX, quadY, rightX, bottomY);
-    }
+    // Set bounds (leftX/rightX already calculated from fixed column positions). Both modes carry
+    // paddingV top (baked into the row positions) and bottom, so the HUD has symmetric padding like
+    // LapLog and lines up when placed against other HUDs.
+    setBounds(leftX, quadY, rightX, bottomY + dim.paddingV);
 }
 
 void TimingHud::resetToDefaults() {
@@ -1357,20 +1319,20 @@ void TimingHud::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.1f;
     m_fScale = 1.0f;
-    setPosition(0.0f, 0.0f);
+    setPosition(0.0f, DEFAULT_POSITION_Y);
 
     // Reset display mode and column visibility
     m_displayMode = ColumnMode::ALWAYS;  // Always show by default
-    m_columnEnabled[COL_LABEL] = true;
+    m_columnEnabled[COL_LABEL] = false;  // Label off by default
     m_columnEnabled[COL_TIME] = true;
-    m_columnEnabled[COL_GAP] = true;
+    m_columnEnabled[COL_GAP] = false;    // Primary gap off by default
     m_showReference = false;  // Reference off by default
 
     m_displayDurationMs = DEFAULT_DURATION_MS;  // 5 seconds freeze
 
     // Primary gap shown large, secondary gaps as chips below
     m_primaryGapType = GAP_DEFAULT_PRIMARY;      // Session PB
-    m_secondaryGapTypes = GAP_DEFAULT_SECONDARY; // Alltime, Ideal, Overall as chips
+    m_secondaryGapTypes = GAP_DEFAULT_SECONDARY; // All-Time PB as a chip
     m_layoutVertical = false;                    // Horizontal layout by default
 
     // Reset live timing state

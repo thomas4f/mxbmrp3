@@ -8,6 +8,7 @@
 #include "../core/plugin_constants.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
+#include "../core/ui_config.h"
 #include "../core/asset_manager.h"
 #include "../core/tracked_riders_manager.h"
 #include "../diagnostics/logger.h"
@@ -21,6 +22,12 @@ using namespace PluginConstants::Math;
 // Track width is calculated as a percentage of the smaller track dimension
 // This ensures consistent visual appearance across different track sizes
 static constexpr float TRACK_WIDTH_BASE_RATIO = 0.036f;  // 3.6% of smaller dimension
+
+// Track outline width as a multiplier of the fill width (1.4 = 40% wider).
+// Also used to size race-data marker triangles (S/F, splits, holeshot) so
+// their base spans the outline edges, not the fill edges - much more visible
+// against the white outline.
+static constexpr float OUTLINE_WIDTH_MULTIPLIER = 1.4f;
 
 // Default icon filename
 static constexpr const char* DEFAULT_RIDER_ICON = "circle-chevron-up";
@@ -51,13 +58,14 @@ MapHud::MapHud()
       m_bShowOutline(true),
       m_riderColorMode(RiderColorMode::RELATIVE_POS),
       m_labelMode(LabelMode::RACE_NUM),
+      m_labelAnchor(LabelAnchor::BELOW),
       m_riderShapeIndex(1),  // Will be set properly via settings or resetToDefaults
       m_anchorPoint(AnchorPoint::TOP_RIGHT),
       m_fAnchorX(0.0f), m_fAnchorY(0.0f),
       m_bZoomEnabled(false),
       m_fZoomDistance(DEFAULT_ZOOM_DISTANCE),
       m_fMarkerScale(DEFAULT_MARKER_SCALE),
-      m_fPixelSpacing(DEFAULT_PIXEL_SPACING) {
+      m_detail(Detail::AUTO) {
 
     // One-time setup
     DEBUG_INFO("MapHud created");
@@ -157,17 +165,6 @@ void MapHud::setMarkerScale(float scale) {
 
     if (m_fMarkerScale != scale) {
         m_fMarkerScale = scale;
-        setDataDirty();
-    }
-}
-
-void MapHud::setPixelSpacing(float spacing) {
-    // Clamp to valid range
-    if (spacing < MIN_PIXEL_SPACING) spacing = MIN_PIXEL_SPACING;
-    if (spacing > MAX_PIXEL_SPACING) spacing = MAX_PIXEL_SPACING;
-
-    if (m_fPixelSpacing != spacing) {
-        m_fPixelSpacing = spacing;
         setDataDirty();
     }
 }
@@ -284,7 +281,7 @@ void MapHud::updatePositionFromAnchor() {
     }
 }
 
-void MapHud::updateTrackData(int numSegments, const Unified::TrackSegment* segments) {
+void MapHud::updateTrackData(int numSegments, const Unified::TrackSegment* segments, const float* raceData) {
     if (numSegments <= 0 || segments == nullptr) {
         DEBUG_WARN("MapHud: Invalid track data");
         return;
@@ -304,8 +301,121 @@ void MapHud::updateTrackData(int numSegments, const Unified::TrackSegment* segme
     // Calculate track bounds and scale
     calculateTrackBounds();
 
+    // Resolve race markers (start/finish, splits, holeshot) to world coordinates.
+    // Each entry is meters along the centerline; <=0 means "not present".
+    for (auto& marker : m_raceMarkers) {
+        marker.valid = false;
+    }
+    if (raceData) {
+        // The TrackCenterline API documents raceData as a float array but does
+        // NOT specify its length. We trust the active game to deliver at least
+        // RACE_MARKER_COUNT entries (verified empirically for current game
+        // builds); older builds emitting a shorter array would be UB on the
+        // unchecked indices below. Forwarding nullptr from the per-game export
+        // is how to opt out (e.g. gpb_api.cpp does this until PiBoSo fixes
+        // GP Bikes' raceData).
+        for (int i = 0; i < RACE_MARKER_COUNT; ++i) {
+            float meters = raceData[i];
+            if (meters > 0.0f && centerlinePositionAt(meters,
+                                                     m_raceMarkers[i].worldX,
+                                                     m_raceMarkers[i].worldY,
+                                                     m_raceMarkers[i].angleDeg)) {
+                m_raceMarkers[i].valid = true;
+            }
+        }
+        // Log only the markers we actually validated, so we don't print
+        // uninitialized memory if the upstream array is shorter than expected.
+        DEBUG_INFO_F("MapHud: Race markers - S/F=%s split1=%s split2=%s holeshot=%s",
+                     m_raceMarkers[MARKER_SF].valid       ? "set" : "n/a",
+                     m_raceMarkers[MARKER_SPLIT_1].valid  ? "set" : "n/a",
+                     m_raceMarkers[MARKER_SPLIT_2].valid  ? "set" : "n/a",
+                     m_raceMarkers[MARKER_HOLESHOT].valid ? "set" : "n/a");
+    }
+
     // Trigger rebuild
     setDataDirty();
+}
+
+bool MapHud::centerlinePositionAt(float meters, float& outX, float& outY, float& outAngleDeg) const {
+    if (m_trackSegments.empty() || meters < 0.0f) {
+        return false;
+    }
+
+    float accumulated = 0.0f;
+    float currentX = m_trackSegments[0].startX;
+    float currentY = m_trackSegments[0].startY;
+    float currentAngle = m_trackSegments[0].angle;  // degrees, 0 = north
+
+    for (const auto& segment : m_trackSegments) {
+        float segLen = segment.length;
+        if (accumulated + segLen >= meters) {
+            // Target lies within this segment
+            float offset = meters - accumulated;
+
+            if (segment.type == TrackSegmentType::STRAIGHT) {
+                float angleRad = currentAngle * DEG_TO_RAD;
+                outX = currentX + std::sin(angleRad) * offset;
+                outY = currentY + std::cos(angleRad) * offset;
+                outAngleDeg = currentAngle;
+            } else {
+                // Curve: rotate by (offset / |radius|) radians; sign of radius selects direction
+                float absRadius = std::abs(segment.radius);
+                if (absRadius < 0.01f) {
+                    return false;
+                }
+                float angleChange = offset / absRadius;  // radians
+                if (segment.radius < 0) angleChange = -angleChange;
+
+                // Step from segment start to target (matches stepping convention used
+                // elsewhere in this file - cheap and avoids sign-convention bugs).
+                // Approximation: ~1m steps within a curve. Sub-1m segments
+                // collapse to a single straight-line step, which is intentional
+                // and visually indistinguishable at typical map zoom levels.
+                int numSteps = std::max(1, static_cast<int>(offset));
+                float stepLen = offset / numSteps;
+                float stepAngle = angleChange / numSteps;
+                float x = currentX, y = currentY, a = currentAngle;
+                for (int i = 0; i < numSteps; ++i) {
+                    float aRad = a * DEG_TO_RAD;
+                    x += std::sin(aRad) * stepLen;
+                    y += std::cos(aRad) * stepLen;
+                    a += stepAngle * RAD_TO_DEG;
+                }
+                outX = x;
+                outY = y;
+                outAngleDeg = a;
+            }
+            return true;
+        }
+
+        // Advance to end of this segment
+        if (segment.type == TrackSegmentType::STRAIGHT) {
+            float angleRad = currentAngle * DEG_TO_RAD;
+            currentX += std::sin(angleRad) * segLen;
+            currentY += std::cos(angleRad) * segLen;
+        } else {
+            float absRadius = std::abs(segment.radius);
+            if (absRadius < 0.01f) {
+                accumulated += segLen;
+                continue;
+            }
+            float angleChange = segLen / absRadius;
+            if (segment.radius < 0) angleChange = -angleChange;
+            int numSteps = std::max(1, static_cast<int>(segLen));
+            float stepLen = segLen / numSteps;
+            float stepAngle = angleChange / numSteps;
+            for (int i = 0; i < numSteps; ++i) {
+                float aRad = currentAngle * DEG_TO_RAD;
+                currentX += std::sin(aRad) * stepLen;
+                currentY += std::cos(aRad) * stepLen;
+                currentAngle += stepAngle * RAD_TO_DEG;
+            }
+        }
+        accumulated += segLen;
+    }
+
+    // meters past end of track
+    return false;
 }
 
 void MapHud::updateRiderPositions(int numVehicles, const Unified::TrackPositionData* positions) {
@@ -371,8 +481,12 @@ void MapHud::calculateTrackBounds() {
                 totalAngleChange = -totalAngleChange;
             }
 
-            // Sample points along the curve for accurate bounds
-            int numSamples = std::max(3, static_cast<int>(arcLength / m_fPixelSpacing));
+            // Sample points along the curve for accurate bounds.
+            // Use a fixed 2m sampling step here - bounds don't need to track LOD
+            // (they're computed once at track-load and must not depend on a
+            // setting that can change later).
+            constexpr float BOUNDS_SAMPLE_STEP_METERS = 2.0f;
+            int numSamples = std::max(3, static_cast<int>(arcLength / BOUNDS_SAMPLE_STEP_METERS));
             float stepLength = arcLength / numSamples;
             float stepAngle = totalAngleChange / numSamples;
 
@@ -647,12 +761,33 @@ void MapHud::renderTrack(const RotationCache& rotation, unsigned long trackColor
     float cullMinY = m_minY - cullMargin;
     float cullMaxY = m_maxY + cullMargin;
 
-    // Adaptive spacing for zoom mode - finer detail at closer zoom
-    // At 50m: MIN_PIXEL_SPACING, at 500m: use configured m_fPixelSpacing
-    float adaptiveSpacing = m_fPixelSpacing;  // Use configured spacing
-    if (m_bZoomEnabled) {
-        adaptiveSpacing = std::max(MIN_PIXEL_SPACING, m_fPixelSpacing * (m_fZoomDistance / MAX_ZOOM_DISTANCE));
+    // Resolve LOD to ribbon subdivision spacing (meters per quad).
+    // AUTO: adaptive — targets ~3-4 px between quads at typical 1080p viewport.
+    //       m_fTrackScale converts world meters to normalized screen units
+    //       and is already zoom-aware (overridden in zoom mode), so this
+    //       gives correct density across zoom levels without extra fudge.
+    // Fixed presets: predictable density in meters. Zoom mode reduces the
+    //       configured spacing proportionally so close zoom stays smooth.
+    const bool autoLod = (m_detail == Detail::AUTO);
+    float lodSpacing;
+    if (autoLod) {
+        // Set conservatively so detail at close zoom and high-DPI displays
+        // still looks clean; raise carefully if quad count becomes a problem
+        // on a new track.
+        constexpr float AUTO_TARGET_NORM_STEP = 0.002f;
+        lodSpacing = AUTO_TARGET_NORM_STEP / std::max(m_fTrackScale, 1e-6f);
+        // Clamp so degenerate scales don't produce extreme values.
+        lodSpacing = std::clamp(lodSpacing, 0.5f, 32.0f);
+    } else {
+        // AUTO is handled above; only fixed presets reach this branch.
+        lodSpacing = (m_detail == Detail::HIGH) ? 1.0f : 4.0f;
+        if (m_bZoomEnabled) {
+            lodSpacing = std::max(0.5f, lodSpacing * (m_fZoomDistance / MAX_ZOOM_DISTANCE));
+        }
     }
+    // Subdivision floor: AUTO allows tiny segments to collapse to 1 quad
+    // (they're sub-pixel anyway). Fixed presets keep min=3 for consistency.
+    const int curveMinSteps = autoLod ? 1 : 3;
 
     // Lambda to check if a point is within culling bounds
     auto isPointInBounds = [&](float x, float y) -> bool {
@@ -809,8 +944,8 @@ void MapHud::renderTrack(const RotationCache& rotation, unsigned long trackColor
                 // Otherwise use 1 quad (optimal for non-zoomed rendering)
                 int numSteps = 1;
                 if (m_bZoomEnabled) {
-                    // Subdivide using adaptive spacing (finer at closer zoom)
-                    numSteps = std::max(1, static_cast<int>(segment.length / adaptiveSpacing));
+                    // Subdivide using LOD spacing (finer at closer zoom)
+                    numSteps = std::max(1, static_cast<int>(segment.length / lodSpacing));
                 }
 
                 for (int i = 0; i <= numSteps; ++i) {
@@ -842,10 +977,9 @@ void MapHud::renderTrack(const RotationCache& rotation, unsigned long trackColor
                 totalAngleChange = -totalAngleChange;  // Left turn = negative angle change
             }
 
-            // Calculate number of steps needed based on arc length
-            // Use adaptive spacing when zoom enabled (finer at closer zoom)
-            float curveSpacing = m_bZoomEnabled ? adaptiveSpacing : m_fPixelSpacing;
-            int numSteps = std::max(3, static_cast<int>(arcLength / curveSpacing));
+            // Calculate number of steps needed based on arc length.
+            // AUTO collapses sub-pixel curves to 1 quad; fixed presets keep min=3.
+            int numSteps = std::max(curveMinSteps, static_cast<int>(arcLength / lodSpacing));
             float stepLength = arcLength / numSteps;
             float stepAngle = totalAngleChange / numSteps;
 
@@ -904,9 +1038,19 @@ void MapHud::renderStartMarker(const RotationCache& rotation,
     float baseWidthMeters = std::min(trackWidth, trackHeight) * TRACK_WIDTH_BASE_RATIO;
     float effectiveWidthMeters = std::clamp(baseWidthMeters * m_fTrackWidthScale, 1.0f, 30.0f);
 
-    // Get start position
-    float startX = m_trackSegments[0].startX;
-    float startY = m_trackSegments[0].startY;
+    // Get start position. Prefer the actual S/F line from raceData (resolved on
+    // track update); fall back to segment[0] (the data start) if unavailable
+    // (older game build, or N/A in raceData).
+    float startX, startY, startAngle;
+    if (m_raceMarkers[MARKER_SF].valid) {
+        startX = m_raceMarkers[MARKER_SF].worldX;
+        startY = m_raceMarkers[MARKER_SF].worldY;
+        startAngle = m_raceMarkers[MARKER_SF].angleDeg;
+    } else {
+        startX = m_trackSegments[0].startX;
+        startY = m_trackSegments[0].startY;
+        startAngle = m_trackSegments[0].angle;
+    }
 
     // Cull if start marker is outside current bounds (with margin for marker size)
     float cullMargin = effectiveWidthMeters;
@@ -919,19 +1063,18 @@ void MapHud::renderStartMarker(const RotationCache& rotation,
     auto dim = getScaledDimensions();
     float titleOffset = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
 
-    // Draw white triangle quad at track start pointing in direction
-    float startAngle = m_trackSegments[0].angle;
-
-    // Triangle dimensions: width = track width, length = 0.5× track width
-    // Triangle point is along track direction
+    // Draw triangle quad at track start pointing in direction.
+    // Base spans the outline-edge width (wider than the track fill) for visibility,
+    // and the tip is scaled the same way so the triangle keeps its proportions.
     float forwardAngleRad = startAngle * DEG_TO_RAD;
-    float pointX = startX + std::sin(forwardAngleRad) * (effectiveWidthMeters * 0.5f);
-    float pointY = startY + std::cos(forwardAngleRad) * (effectiveWidthMeters * 0.5f);
+    float baseHalfWidth = effectiveWidthMeters * 0.5f * OUTLINE_WIDTH_MULTIPLIER;
+    float pointLength   = effectiveWidthMeters * 0.5f * OUTLINE_WIDTH_MULTIPLIER;
+    float pointX = startX + std::sin(forwardAngleRad) * pointLength;
+    float pointY = startY + std::cos(forwardAngleRad) * pointLength;
 
-    // Base endpoints (perpendicular to track at start, total width = track width)
+    // Base endpoints (perpendicular to track at start)
     float perpAngle = startAngle + 90.0f;
     float perpAngleRad = perpAngle * DEG_TO_RAD;
-    float baseHalfWidth = effectiveWidthMeters * 0.5f;
 
     float baseLeftX = startX + std::sin(perpAngleRad) * baseHalfWidth;
     float baseLeftY = startY + std::cos(perpAngleRad) * baseHalfWidth;
@@ -980,6 +1123,92 @@ void MapHud::renderStartMarker(const RotationCache& rotation,
     triangle.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
     triangle.m_ulColor = this->getColor(ColorSlot::PRIMARY);  // White start/finish indicator
     m_quads.push_back(triangle);
+}
+
+void MapHud::renderRaceMarkers(const RotationCache& rotation,
+                               float clipLeft, float clipTop, float clipRight, float clipBottom) {
+    if (!m_bHasTrackData || m_trackSegments.empty()) {
+        return;
+    }
+
+    // Effective track width (matches renderTrack and renderStartMarker)
+    float trackWidth = m_maxX - m_minX;
+    float trackHeight = m_maxY - m_minY;
+    float baseWidthMeters = std::min(trackWidth, trackHeight) * TRACK_WIDTH_BASE_RATIO;
+    float effectiveWidthMeters = std::clamp(baseWidthMeters * m_fTrackWidthScale, 1.0f, 30.0f);
+
+    // Triangle dimensions (matches renderStartMarker). Base spans the outline-edge
+    // width and the tip is scaled the same way, so the arrow stays proportional
+    // and visibly wider than the track fill. Base sits at the marker position;
+    // the point extends forward in travel direction.
+    float baseHalfWidth = effectiveWidthMeters * 0.5f * OUTLINE_WIDTH_MULTIPLIER;
+    float pointLength   = effectiveWidthMeters * 0.5f * OUTLINE_WIDTH_MULTIPLIER;
+
+    auto dim = getScaledDimensions();
+    float titleOffset = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
+    float cullMargin = effectiveWidthMeters;
+
+    auto isPointInClip = [&](float x, float y) -> bool {
+        return x >= clipLeft && x <= clipRight && y >= clipTop && y <= clipBottom;
+    };
+
+    auto drawMarker = [&](const RaceMarker& marker, unsigned long color) {
+        if (!marker.valid) return;
+
+        // Cull if marker is outside current bounds
+        if (marker.worldX < m_minX - cullMargin || marker.worldX > m_maxX + cullMargin ||
+            marker.worldY < m_minY - cullMargin || marker.worldY > m_maxY + cullMargin) {
+            return;
+        }
+
+        // Triangle vertices (same construction as renderStartMarker):
+        // base sits at the marker position, point extends forward along travel.
+        float fwdRad = marker.angleDeg * DEG_TO_RAD;
+        float perpRad = (marker.angleDeg + 90.0f) * DEG_TO_RAD;
+
+        float pointX = marker.worldX + std::sin(fwdRad) * pointLength;
+        float pointY = marker.worldY + std::cos(fwdRad) * pointLength;
+        float baseLeftX  = marker.worldX + std::sin(perpRad) * baseHalfWidth;
+        float baseLeftY  = marker.worldY + std::cos(perpRad) * baseHalfWidth;
+        float baseRightX = marker.worldX - std::sin(perpRad) * baseHalfWidth;
+        float baseRightY = marker.worldY - std::cos(perpRad) * baseHalfWidth;
+
+        // Convert to screen coordinates
+        float sPointX, sPointY, sLeftX, sLeftY, sRightX, sRightY;
+        worldToScreen(pointX, pointY, sPointX, sPointY, rotation);
+        worldToScreen(baseLeftX, baseLeftY, sLeftX, sLeftY, rotation);
+        worldToScreen(baseRightX, baseRightY, sRightX, sRightY, rotation);
+        sPointY += titleOffset;
+        sLeftY  += titleOffset;
+        sRightY += titleOffset;
+        applyOffset(sPointX, sPointY);
+        applyOffset(sLeftX,  sLeftY);
+        applyOffset(sRightX, sRightY);
+
+        // Skip if any vertex outside clip bounds (clean cutoff, no distortion)
+        if (!isPointInClip(sPointX, sPointY) ||
+            !isPointInClip(sLeftX, sLeftY) ||
+            !isPointInClip(sRightX, sRightY)) {
+            return;
+        }
+
+        // Triangle as a quad with one duplicated vertex (matches renderStartMarker)
+        SPluginQuad_t triangle;
+        triangle.m_aafPos[0][0] = sPointX;   triangle.m_aafPos[0][1] = sPointY;
+        triangle.m_aafPos[1][0] = sRightX;   triangle.m_aafPos[1][1] = sRightY;
+        triangle.m_aafPos[2][0] = sLeftX;    triangle.m_aafPos[2][1] = sLeftY;
+        triangle.m_aafPos[3][0] = sLeftX;    triangle.m_aafPos[3][1] = sLeftY;
+        triangle.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
+        triangle.m_ulColor = color;
+        m_quads.push_back(triangle);
+    };
+
+    unsigned long splitColor = this->getColor(ColorSlot::POSITIVE);   // green for splits
+    unsigned long holeshotColor = this->getColor(ColorSlot::ACCENT);  // accent for holeshot
+
+    drawMarker(m_raceMarkers[MARKER_SPLIT_1], splitColor);
+    drawMarker(m_raceMarkers[MARKER_SPLIT_2], splitColor);
+    drawMarker(m_raceMarkers[MARKER_HOLESHOT], holeshotColor);
 }
 
 void MapHud::renderRiders(const RotationCache& rotation,
@@ -1078,11 +1307,12 @@ void MapHud::renderRiders(const RotationCache& rotation,
                 riderColor = baseColor;
             }
         } else if (isLocalPlayer) {
-            // Player always shows green in relative position mode, otherwise bike brand color
-            if (m_riderColorMode == RiderColorMode::RELATIVE_POS) {
-                riderColor = this->getColor(ColorSlot::POSITIVE);  // Green
-            } else {
+            // Accent is reserved for the player in every mode except Brand, where all
+            // riders (player included) show their bike brand color.
+            if (m_riderColorMode == RiderColorMode::BRAND) {
                 riderColor = entry->bikeBrandColor;
+            } else {
+                riderColor = this->getColor(ColorSlot::ACCENT);
             }
         } else if (m_riderColorMode == RiderColorMode::RELATIVE_POS) {
             // Relative position coloring - only meaningful in race sessions
@@ -1107,8 +1337,9 @@ void MapHud::renderRiders(const RotationCache& rotation,
             // Brand colors at full opacity
             riderColor = entry->bikeBrandColor;
         } else {
-            // Uniform: Others in accent color
-            riderColor = this->getColor(ColorSlot::ACCENT);
+            // Uniform: other riders use the primary color (matching their name color in
+            // the standings); accent is reserved for the player.
+            riderColor = this->getColor(ColorSlot::PRIMARY);
         }
 
         // Render sprite quad centered on rider position, rotated to match heading
@@ -1246,11 +1477,38 @@ void MapHud::renderRiders(const RotationCache& rotation,
             // Scale font size by marker scale
             float labelFontSize = dim.fontSizeSmall * m_fMarkerScale;
 
-            // Position label just below the icon:
+            // Position label relative to the icon based on the configured anchor.
             // - spriteHalfSize is the icon's half-height (already includes m_fMarkerScale)
-            // - Add a small gap proportional to icon size (20% of icon half-size)
+            // - spriteHalfWidth converts that to screen X (icons are aspect-corrected)
+            // - labelGap is a small spacing proportional to icon size (20% of half-size)
+            // String position is the text's top edge; Justify controls the X anchor.
             float labelGap = spriteHalfSize * 0.2f;
-            float offsetY = screenY + spriteHalfSize + labelGap;
+            float spriteHalfWidth = spriteHalfSize / UI_ASPECT_RATIO;
+            float labelX = screenX;
+            float labelY;
+            int labelJustify = Justify::CENTER;
+            // Side anchors center vertically on the icon. The string Y is the line-box
+            // top, and the glyph sits below it by the font's leading, so 0.625 (not 0.5)
+            // of the em size lands the visible text on the centerline (empirical).
+            switch (m_labelAnchor) {
+                case LabelAnchor::ABOVE:
+                    labelY = screenY - spriteHalfSize - labelGap - labelFontSize;
+                    break;
+                case LabelAnchor::LEFT:
+                    labelX = screenX - spriteHalfWidth - labelGap;
+                    labelY = screenY - labelFontSize * 0.625f;
+                    labelJustify = Justify::RIGHT;
+                    break;
+                case LabelAnchor::RIGHT:
+                    labelX = screenX + spriteHalfWidth + labelGap;
+                    labelY = screenY - labelFontSize * 0.625f;
+                    labelJustify = Justify::LEFT;
+                    break;
+                case LabelAnchor::BELOW:
+                default:
+                    labelY = screenY + spriteHalfSize + labelGap;
+                    break;
+            }
 
             char labelStr[20];  // Sized for "P100" (5) + "#999" (5) = "P100#999" (9 + null)
             int position = pluginData.getDisplayPositionForRaceNum(pos.raceNum);
@@ -1297,22 +1555,26 @@ void MapHud::renderRiders(const RotationCache& rotation,
                     }
                 }
 
-                // Create text outline by rendering dark text at offsets first
-                float outlineOffset = labelFontSize * 0.05f;  // Small offset for outline
-                unsigned long outlineColor = 0xFF000000;  // Black with full opacity
+                // Text outline (our readability effect for labels over the map). It
+                // serves the same purpose as the global drop shadow, so honor that
+                // toggle: render the outline only when drop shadow is enabled.
+                if (UiConfig::getInstance().getDropShadow()) {
+                    float outlineOffset = labelFontSize * 0.05f;  // Small offset for outline
+                    unsigned long outlineColor = 0xFF000000;  // Black with full opacity
 
-                // Render outline at 4 cardinal directions (skip drop shadow - has own outline)
-                addString(labelStr, screenX - outlineOffset, offsetY, Justify::CENTER,
-                         this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
-                addString(labelStr, screenX + outlineOffset, offsetY, Justify::CENTER,
-                         this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
-                addString(labelStr, screenX, offsetY - outlineOffset, Justify::CENTER,
-                         this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
-                addString(labelStr, screenX, offsetY + outlineOffset, Justify::CENTER,
-                         this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
+                    // Render outline at 4 cardinal directions (skip drop shadow - this IS the outline)
+                    addString(labelStr, labelX - outlineOffset, labelY, labelJustify,
+                             this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
+                    addString(labelStr, labelX + outlineOffset, labelY, labelJustify,
+                             this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
+                    addString(labelStr, labelX, labelY - outlineOffset, labelJustify,
+                             this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
+                    addString(labelStr, labelX, labelY + outlineOffset, labelJustify,
+                             this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
+                }
 
                 // Render main text on top
-                addString(labelStr, screenX, offsetY, Justify::CENTER,
+                addString(labelStr, labelX, labelY, labelJustify,
                          this->getFont(FontCategory::SMALL), labelColor, labelFontSize, true);
             }
         }
@@ -1481,7 +1743,7 @@ void MapHud::rebuildRenderData() {
     // Calculate clip bounds for track rendering (absolute screen coords)
     // Clip to the map area below the title
     // Inset by half outline width since we clip on centerline but edges extend beyond
-    constexpr float OUTLINE_WIDTH_MULTIPLIER = 1.4f;
+    // OUTLINE_WIDTH_MULTIPLIER is defined at file scope (also reused by marker triangles).
     // Calculate effective track width for clipping (same ratio as renderTrack)
     float clipTrackWidth = m_maxX - m_minX;
     float clipTrackHeight = m_maxY - m_minY;
@@ -1513,6 +1775,10 @@ void MapHud::rebuildRenderData() {
     renderTrack(rotation, this->getColor(ColorSlot::BACKGROUND), 1.0f,
                 clipLeft, clipTop, clipRight, clipBottom);  // Black fill
     size_t trackQuads = m_quads.size() - quadsBeforeTrack;
+
+    // Render split/holeshot direction-arrow triangles on top of track (below the
+    // S/F triangle so the white arrow still draws on top if it visually overlaps).
+    renderRaceMarkers(rotation, clipLeft, clipTop, clipRight, clipBottom);
 
     // Render start marker on top of track
     renderStartMarker(rotation, clipLeft, clipTop, clipRight, clipBottom);
@@ -1565,12 +1831,13 @@ void MapHud::resetToDefaults() {
     m_bShowOutline = true;  // Enable outline by default
     m_riderColorMode = RiderColorMode::RELATIVE_POS;  // Default to relative position coloring
     m_labelMode = LabelMode::RACE_NUM;
+    m_labelAnchor = LabelAnchor::BELOW;
     m_riderShapeIndex = getShapeIndexByFilename(DEFAULT_RIDER_ICON);
     m_fTrackWidthScale = DEFAULT_TRACK_WIDTH_SCALE;
     m_bZoomEnabled = false;
     m_fZoomDistance = DEFAULT_ZOOM_DISTANCE;
     m_fMarkerScale = DEFAULT_MARKER_SCALE;
-    m_fPixelSpacing = DEFAULT_PIXEL_SPACING;
+    m_detail = Detail::AUTO;
     // Reset bounds to trigger "first rebuild" behavior in rebuildRenderData
     // This ensures position is recalculated from anchor values
     setBounds(0.0f, 0.0f, 0.0f, 0.0f);

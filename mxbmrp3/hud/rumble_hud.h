@@ -55,9 +55,7 @@ private:
 
     // Max marker tracking for motor bars (0 = light, 1 = heavy)
     // Markers show when value starts decreasing, hide when increasing
-    float m_maxValues[2] = {0.0f, 0.0f};          // Overall max (for reference)
     float m_markerValues[2] = {0.0f, 0.0f};       // Current marker position
-    float m_prevValues[2] = {0.0f, 0.0f};         // Previous frame values
     int m_maxFramesRemaining[2] = {0, 0};
 
     // Helper to add max marker line

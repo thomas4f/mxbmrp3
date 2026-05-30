@@ -66,7 +66,10 @@ enum class WeatherCondition {
 enum class EntryState {
     Racing = 0,     // Normal racing
     DNS = 1,        // Did not start
-    Unknown = 2,    // Unknown state (MX Bikes specific)
+    // Retained for wire compatibility - the MX Bikes API doc dropped "2 = unknown"
+    // but older game builds may still emit 2. Keeping the slot prevents a
+    // silently-misinterpreted byte if an older build sends it.
+    Unknown = 2,    // Unknown state (MX Bikes specific, doc-dropped)
     Retired = 3,    // Retired from session (MX Bikes: 3, others: 2)
     DSQ = 4         // Disqualified (MX Bikes: 4, others: 3)
 };
@@ -85,6 +88,41 @@ enum class PenaltyType {
     TimePenalty = 0,    // MX Bikes only has time penalties
     DriveThrough = 1,   // GP Bikes, WRS (ride-through/drive-through)
     PositionPenalty = 2 // WRS, KRP
+};
+
+// Canonical session types across all games. Each game's adapter maps its
+// raw session integer to one of these values, so plugin core code never
+// has to deal with game-specific session numbering. Straight Rhythm rounds
+// use distinct values (100+) to avoid colliding with regular session ints
+// in places that don't have eventType in scope.
+enum class Session : int {
+    Unknown          = -1,
+    Waiting          = 0,
+    Practice         = 1,
+    PreQualify       = 2,    // MX Bikes only
+    QualifyPractice  = 3,    // MX Bikes only (still emitted despite doc removal)
+    Qualify          = 4,
+    Warmup           = 5,
+    Race1            = 6,    // MX Bikes only (multi-heat events)
+    Race2            = 7,    // MX Bikes only
+    Race             = 8,    // Games with a single race (GP Bikes, WRS, KRP)
+
+    // Straight Rhythm (MX Bikes only). Distinct numbering so consumers can
+    // identify race-style sessions without consulting eventType.
+    SR_Round         = 100,
+    SR_QuarterFinals = 101,
+    SR_SemiFinals    = 102,
+    SR_Final         = 103,
+
+    // KRP multi-heat race format (regular event type only - Challenge events
+    // still use Session::Race for their single race). The four stages run in
+    // order: qualify heats (with A/B/C groups), then optional second chance
+    // for non-qualifiers, then PreFinal, then Final. All four are race-style
+    // sessions for the purposes of isRaceSession() and PB tracking.
+    KRP_QualifyHeat       = 200,
+    KRP_SecondChanceHeat  = 201,
+    KRP_PreFinal          = 202,
+    KRP_Final             = 203
 };
 
 // ============================================================================
@@ -123,10 +161,19 @@ struct VehicleEventData {
     int engineCooling;                      // 0=air, 1=water
     char dashType[NAME_BUFFER_SIZE];
 
+    // Server info (MX Bikes only). For other games these stay at their defaults
+    // (empty name, serverType = -1) since their adapters never write them.
+    char serverName[NAME_BUFFER_SIZE];      // Empty when offline/testing/unknown
+    // serverType: -1 = unknown (default; also injected by mxb_api.cpp when an
+    // older MX Bikes build sends a struct truncated before m_iServerType).
+    //  0 = offline/testing, 1 = online race, 2 = online practice day.
+    int serverType;
+
     VehicleEventData() {
         memset(this, 0, sizeof(*this));
         vehicleType = VehicleType::Bike;
         eventType = EventType::Unknown;
+        serverType = -1;
     }
 };
 

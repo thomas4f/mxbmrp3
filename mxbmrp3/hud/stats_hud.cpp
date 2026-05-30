@@ -140,14 +140,15 @@ void StatsHud::rebuildLayout() {
 
     // Column headers — on the title's second row
     float headerY = currentY + lay.dim.lineHeightNormal;
+    float labelOffset = labelRowYOffset(lay.dim);  // Headers/row labels render at Small size, centered
     for (int i = 0; i < lay.cols; i++) {
-        positionString(stringIndex++, lay.col[i], headerY);
+        positionString(stringIndex++, lay.col[i], headerY + labelOffset);
     }
     currentY += lay.titleHeight;
 
     // Data rows: label + value per column
     for (int row = 0; row < DATA_ROWS; row++) {
-        positionString(stringIndex++, lay.contentStartX, currentY);
+        positionString(stringIndex++, lay.contentStartX, currentY + labelOffset);
         for (int i = 0; i < lay.cols; i++) {
             positionString(stringIndex++, lay.col[i], currentY);
         }
@@ -212,8 +213,8 @@ void StatsHud::rebuildRenderData() {
     // Column headers — on the title's second row
     float headerY = currentY + lay.dim.lineHeightNormal;
     for (int i = 0; i < lay.cols; i++) {
-        addString(headerNames[i], lay.col[i], headerY, Justify::RIGHT,
-            this->getFont(FontCategory::NORMAL), labelColor, lay.dim.fontSize);
+        addLabel(headerNames[i], lay.col[i], headerY, Justify::RIGHT,
+            this->getFont(FontCategory::STRONG), labelColor, lay.dim);
     }
     currentY += lay.titleHeight;
 
@@ -221,8 +222,8 @@ void StatsHud::rebuildRenderData() {
     struct ColValue { const char* text; unsigned long color; };
 
     auto addRow = [&](const char* label, ColValue lap, ColValue session, ColValue allTime) {
-        addString(label, lay.contentStartX, currentY, Justify::LEFT,
-            this->getFont(FontCategory::NORMAL), labelColor, lay.dim.fontSize);
+        addLabel(label, lay.contentStartX, currentY, Justify::LEFT,
+            this->getFont(FontCategory::STRONG), labelColor, lay.dim);
 
         int ci = 0;
         if (m_showLap) {

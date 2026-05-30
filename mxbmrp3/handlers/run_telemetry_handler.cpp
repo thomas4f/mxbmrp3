@@ -55,10 +55,19 @@ void RunTelemetryHandler::handleRunTelemetry(Unified::TelemetryData* psTelemetry
         PluginData::getInstance().updateRoll(psTelemetryData->roll);
         PluginData::getInstance().updatePitch(psTelemetryData->pitch);
 
+        // Update G-forces (chassis-local, already in g units, averaged over 10ms by the engine)
+        PluginData::getInstance().updateAcceleration(
+            psTelemetryData->accelX,
+            psTelemetryData->accelY,
+            psTelemetryData->accelZ
+        );
+
+#if GAME_HAS_FMX
         // Update FMX trick detection (bikes only - assumes 2 wheels, lean angles)
         if (psTelemetryData->vehicleType == Unified::VehicleType::Bike) {
             FmxManager::getInstance().updateFromTelemetry(*psTelemetryData);
         }
+#endif
 
         // Update engine and water temperatures
         PluginData::getInstance().updateTemperatures(
@@ -70,6 +79,20 @@ void RunTelemetryHandler::handleRunTelemetry(Unified::TelemetryData* psTelemetry
         if (psTelemetryData->vehicleType == Unified::VehicleType::Bike) {
             PluginData::getInstance().updateTreadTemperatures(psTelemetryData->bike.treadTemperature);
         }
+
+#if GAME_HAS_ECU
+        // Update ECU / electronic rider aids (GP Bikes bike-specific)
+        if (psTelemetryData->vehicleType == Unified::VehicleType::Bike) {
+            PluginData::getInstance().updateEcuData(
+                psTelemetryData->bike.ecuMode,
+                psTelemetryData->bike.engineMapping,
+                psTelemetryData->bike.tractionControl,
+                psTelemetryData->bike.engineBraking,
+                psTelemetryData->bike.antiWheeling,
+                psTelemetryData->bike.ecuState
+            );
+        }
+#endif
 
         // Controller rumble based on suspension and wheel slip (bike-specific)
         float suspensionVelocity = 0.0f;

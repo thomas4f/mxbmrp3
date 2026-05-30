@@ -23,22 +23,16 @@ void RaceCommunicationHandler::handleRaceCommunication(Unified::RaceCommunicatio
     // ============================================================================
     // RaceCommunication API Event Types
     // ============================================================================
-    // This handler processes two types of events:
-    //
-    // 1. State Changes (communicationType == 1):
+    // 1. State Changes (commType == StateChange):
     //    - DNS (state=1), Retired (state=3), DSQ (state=4)
     //    - Updates rider state in standings immediately
     //
-    // 2. Penalties (communicationType == CommunicationType::PENALTY):
+    // 2. Penalties (commType == Penalty):
     //    - offence indicates type: 1=jump start, 2=cutting
-    //    - penaltyTime is ALWAYS 0 (API bug - do not use)
-    //    - Logged for debugging only
-    //    - Actual penalty totals come from RaceClassification event
+    //    - penaltyTime is the penalty amount in milliseconds
     //
-    // NOTE: We do not read penalty amounts from this event because:
-    //   - penaltyTime field is broken (always 0)
-    //   - RaceClassification provides accurate penalty totals
-    //   - Reading undocumented fields would require unsafe pointer arithmetic
+    // 3/4. Penalty Clear / Change (GP Bikes, WRS, KRP only):
+    //    - Logged to event log; penalty totals refresh from RaceClassification
     // ============================================================================
 
     auto& pluginData = PluginData::getInstance();
@@ -51,7 +45,15 @@ void RaceCommunicationHandler::handleRaceCommunication(Unified::RaceCommunicatio
 
     // Handle state change (DNS, Retired, DSQ)
     if (psRaceCommunication->commType == Unified::CommunicationType::StateChange) {
-        DEBUG_INFO_F("Updating rider #%d state to %d", psRaceCommunication->raceNum, psRaceCommunication->state);
+        const char* stateStr = "Unknown";
+        switch (psRaceCommunication->state) {
+            case Unified::EntryState::DNS:     stateStr = "DNS"; break;
+            case Unified::EntryState::Retired: stateStr = "Retired"; break;
+            case Unified::EntryState::DSQ:     stateStr = "DSQ"; break;
+            default: break;
+        }
+        DEBUG_INFO_F("Updating rider #%d state to %d (%s)",
+            psRaceCommunication->raceNum, static_cast<int>(psRaceCommunication->state), stateStr);
 
         // Event log: rider state change (log before updateStandings to match handler convention)
         const RaceEntryData* entry = pluginData.getRaceEntry(psRaceCommunication->raceNum);
@@ -89,24 +91,44 @@ void RaceCommunicationHandler::handleRaceCommunication(Unified::RaceCommunicatio
             true  // Notify immediately
         );
     }
-    // Handle penalty - just log it (RaceClassification already provides total penalties)
+    // Handle penalty - record amount and log to event log
     else if (psRaceCommunication->commType == Unified::CommunicationType::Penalty) {
         const char* offenceStr = PluginUtils::getOffenceString(psRaceCommunication->offence);
-        DEBUG_INFO_F("Penalty given to rider #%d for %s (penalty amount will be updated by RaceClassification)",
-            psRaceCommunication->raceNum, offenceStr);
+        int penaltyMs = psRaceCommunication->penaltyTime;
+        DEBUG_INFO_F("Penalty given to rider #%d for %s (%dms)",
+            psRaceCommunication->raceNum, offenceStr, penaltyMs);
 
-        // Event log: penalty (offence is always "cutting" in MX Bikes, so just log the event)
+        // Regression detector: time penalties used to ship with penaltyTime==0
+        // (the API bug we worked around). If a TimePenalty event arrives with
+        // a zero amount on a current build, that's a signal the API may have
+        // regressed. Warn once per process to flag it without spamming.
+        if (psRaceCommunication->penaltyType == Unified::PenaltyType::TimePenalty &&
+            penaltyMs == 0) {
+            static bool s_zeroPenaltyWarned = false;
+            if (!s_zeroPenaltyWarned) {
+                s_zeroPenaltyWarned = true;
+                DEBUG_WARN("RaceCommunication: TimePenalty event with penaltyTime=0 - "
+                           "API may have regressed (was historically always 0). "
+                           "This warning fires once per process.");
+            }
+        }
+
+        // Event log: e.g., "#4 5s penalty (Cutting)" or "#4 penalty (Cutting)" when no time
         const RaceEntryData* entry = pluginData.getRaceEntry(psRaceCommunication->raceNum);
         const char* riderLabel = entry ? entry->formattedRaceNum : "???";
         char eventMsg[64];
-        snprintf(eventMsg, sizeof(eventMsg), "%s received penalty", riderLabel);
+        if (penaltyMs > 0) {
+            int penaltySeconds = (penaltyMs + 500) / 1000;  // Round to nearest second
+            snprintf(eventMsg, sizeof(eventMsg), "%s %ds penalty (%s)",
+                     riderLabel, penaltySeconds, offenceStr);
+        } else {
+            snprintf(eventMsg, sizeof(eventMsg), "%s penalty (%s)", riderLabel, offenceStr);
+        }
         pluginData.addEventLogEntry(EventLogType::Penalty, eventMsg);
 
-        // Record penalty count in stats (player only)
-        // NOTE: penaltyTime from this event is always 0 (API bug).
-        // Penalty time is tracked via updatePenaltyFromStandings() in batchUpdateStandings.
+        // Record penalty in stats (player only) - count + time in one call
         if (psRaceCommunication->raceNum == pluginData.getPlayerRaceNum()) {
-            StatsManager::getInstance().recordPenalty();
+            StatsManager::getInstance().recordPenalty(penaltyMs, pluginData.isRaceSession());
         }
     }
     // Handle penalty clear (GP Bikes, WRS, KRP only)

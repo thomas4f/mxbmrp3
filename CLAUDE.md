@@ -50,8 +50,8 @@ The plugin supports multiple PiBoSo games from a single codebase:
 |------|--------|--------|--------|
 | MX Bikes | `MXB-Release` | `mxbmrp3.dlo` | ✅ Full support |
 | GP Bikes | `GPB-Release` | `mxbmrp3_gpb.dlo` | ✅ Core features |
+| Kart Racing Pro | `KRP-Release` | `mxbmrp3_krp.dlo` | ✅ Core features (no FMX) |
 | WRS | - | `wrsmrp3.dlo` | ⏳ Stubbed |
-| KRP | - | `krpmrp3.dlo` | ⏳ Stubbed |
 
 **Translation Layer:**
 - `game/unified_types.h` - Game-agnostic data structures (`Unified::` namespace)
@@ -78,8 +78,10 @@ The plugin supports multiple PiBoSo games from a single codebase:
 - **Build**: Open `mxbmrp3.sln` in Visual Studio 2022 (C++17, v143 toolset)
 - **Platform**: x64 only (all PiBoSo games are 64-bit)
 - **Configurations**:
+  - `All-Release` / `All-Debug` → builds MXB + GPB + KRP sequentially via the `build_all` meta-project (default in the dropdown)
   - `MXB-Debug` / `MXB-Release` → `build/MXB-Release/mxbmrp3.dlo`
   - `GPB-Debug` / `GPB-Release` → `build/GPB-Release/mxbmrp3_gpb.dlo`
+  - `KRP-Debug` / `KRP-Release` → `build/KRP-Release/mxbmrp3_krp.dlo`
 - **Deploy**: Copy `.dlo` to game's `plugins/` folder
 - **Debug**: Use Debug configuration (enables DEBUG_INFO macros automatically)
 
@@ -94,6 +96,8 @@ The plugin must run efficiently at **240fps** (4.17ms frame budget). Many compet
 - Add exception handling for file I/O
 - Use `DEBUG_INFO_F()` for logging (not `printf`)
 - Check for existing patterns before adding new code
+- Wrap new DLL exports in `API_GUARD_CATCH("ExportName")` (see `vendor/piboso/api_guard.h`); uncaught exceptions across the boundary crash the host game
+- Wrap new `std::thread` function bodies in a top-level try/catch; uncaught throws in threads call `std::terminate()`
 
 ### DON'T:
 - Throw exceptions in core code (game engine doesn't support them)
@@ -116,8 +120,15 @@ These are configuration data, not encapsulated state. SettingsHud needs direct a
 HUDs pull fresh from PluginData on rebuild - they only cache formatted render data (`m_displayEntries`, `m_quads`, `m_strings`).
 This enforces PluginData as single source of truth and prevents synchronization issues.
 
+**Settings reset reuses save/load serialization (don't add a third list)**
+"Reset to defaults" replays a startup snapshot through the *same* applier `loadSettings()` uses, never a hand-maintained list of per-setting resets. Two snapshots back this, and they are intentionally separate:
+- `m_globalDefaultsIni` — global sections (`writeGlobalSettings`/`applyGlobalLine`).
+- `m_hudFactoryDefaults` — pristine per-HUD constructor defaults, captured *before* `loadSettings()` folds user base-section keys into `m_hudDefaults`.
+
+`m_hudDefaults` (sparse-save baseline, with base-section edits folded in) is **not** a clean factory snapshot — don't "simplify" reset by pointing it at `m_hudDefaults` or by merging the two caches; that reintroduces stale-default-on-reset bugs (e.g. an upgraded HUD default not taking effect). A new setting gets reset coverage for free as long as it's wired into save/load. See ARCHITECTURE.md "Settings & Persistence".
+
 **Widget vs HUD Distinction**
-Widgets (TimeWidget, PositionWidget, LapWidget, SpeedWidget, GearWidget, ClockWidget, SpeedoWidget, TachoWidget, BarsWidget, FuelWidget, LeanWidget, GamepadWidget, VersionWidget, SettingsButtonWidget) are simplified HUD components with:
+Widgets (TimeWidget, PositionWidget, LapWidget, SpeedWidget, GearWidget, ClockWidget, SpeedoWidget, TachoWidget, BarsWidget, FuelWidget, LeanWidget, GForceWidget, TyreTempWidget, EcuWidget, GamepadWidget, VersionWidget, SettingsButtonWidget) are simplified HUD components with:
 - Single-purpose display (no configurable columns/rows)
 - Minimal settings (just position, scale, opacity)
 - Simpler rendering logic
@@ -144,6 +155,9 @@ Each handler corresponds to game API callback(s), but receives unified types:
 **No unit tests**
 Requires game engine to run. Manual testing in-game is current workflow.
 
+**Logger has an internal mutex**
+`Logger::log()` is called from the game thread and from at least five background threads (HttpServer, UpdateChecker, UpdateDownloader, DiscordManager, RecordsHud). The mutex serializes concurrent writes so log lines don't interleave. Don't remove it. The SEH crash filter deliberately doesn't call Logger to avoid deadlocking on this mutex.
+
 ## Common Tasks
 
 ### Adding a New HUD
@@ -155,7 +169,7 @@ Requires game engine to run. Manual testing in-game is current workflow.
 3. Implement `rebuildRenderData()` - builds vectors of quads/strings
 4. Register in `HudManager` constructor (add pointer, getter, initialize in `initialize()`, null in `clear()`)
 5. Add tab in `SettingsHud` for configuration
-6. Add save/load in `SettingsManager`
+6. Add save/load in `SettingsManager` (per-HUD capture/apply, or — for a global single-value setting — one line in `writeGlobalSettings()` and one branch in `applyGlobalLine()`). Reset is then automatic via the factory snapshots; no separate reset code needed.
 
 ### Debugging Rendering Issues
 - Check if HUD is visible: `hud->isVisible()`
@@ -181,6 +195,7 @@ The embedded HTTP server (`core/http_server.cpp`) streams race data to browser-b
 - **Data contract**: `session` (time, type, palette, fonts), `standings[]` (per-rider with all chips), `events[]` (all events, unfiltered)
 - **Plugin sends raw data** — event/chip filtering, timestamps, and display settings are controlled client-side via the `CONFIG` block in `app.js`
 - **Web files** served from `plugins/mxbmrp3_data/web/` — users can customize CSS/HTML/JS freely (user overrides synced from Documents folder)
+- **Lightweight style overrides**: users who only want to tweak the theme can create `Documents\PiBoSo\[Game]\mxbmrp3\web\custom.css` (synced into the served folder on game start) instead of forking `style.css`. `index.html` already links `custom.css`; the plugin doesn't ship a stub, so the link 404s harmlessly when no override exists. It's loaded after `style.css`, served with `Cache-Control: no-cache`, and excluded from the SW precache + fetch handler so edits show up on the next browser reload.
 - **To add a new field**: add to `buildJsonSnapshot()` in the appropriate section, then consume in `app.js`
 - **Logo slideshow**: `GET /api/logos` scans `web/logos/` for PNGs and returns a sorted filename list. Users drop PNGs into the `logos/` folder (or the Documents user-override path `mxbmrp3/web/logos/`), no config editing needed. Bundled logos should be added to `PRECACHE_URLS` in `sw.js`.
 - **Service worker / offline cache**: `mxbmrp3_data/web/sw.js` precaches the overlay shell so OBS can render it before the plugin's HTTP server is up. The `PRECACHE_URLS` list is hand-maintained — when adding new CSS/JS/font/icon assets under `mxbmrp3_data/web/`, also add them to `PRECACHE_URLS` in `sw.js`, otherwise they won't be available offline until first online load. Cache name is tied to `PLUGIN_VERSION` (substituted server-side in `http_server.cpp`), so plugin upgrades auto-invalidate the cache.
@@ -190,6 +205,29 @@ The embedded HTTP server (`core/http_server.cpp`) streams race data to browser-b
 2. Add conversion in each adapter (`game/adapters/*_adapter.h`)
 3. Add feature flag to `game/game_config.h` if game-specific
 4. Update handlers/HUDs to use the new field
+
+### Disabling a Feature Per-Game
+
+When an entire feature (HUD, manager, integration) doesn't apply to one or more games — e.g. FMX freestyle tricks on karts, Discord Rich Presence on non-MXB, the records provider on non-MXB:
+
+1. **Add a `GAME_HAS_X` flag** to `game/game_config.h`. Examples already in the file: `GAME_HAS_DISCORD`, `GAME_HAS_HTTP_SERVER`, `GAME_HAS_FMX`, `GAME_HAS_RECORDS_PROVIDER`. Pattern:
+   ```cpp
+   #if defined(GAME_MXBIKES) || defined(GAME_GPBIKES)
+       #define GAME_HAS_FMX 1
+   #else
+       #define GAME_HAS_FMX 0
+   #endif
+   ```
+2. **Gate the HUD registration** in `HudManager::initialize()`. Leave the member pointer as `nullptr`; existing null-checks downstream (`if (m_pFmxHud)`) will fall through silently.
+3. **Gate the settings tab** in `SettingsHud` — prefer the runtime null-check pattern used for `TAB_RECORDS` (`if (i == TAB_FMX && !m_fmxHud) continue;`) over a `#if` block. Cleaner and reuses the nullptr you set up in step 2.
+4. **Gate the hotkey row** in `settings_tab_hotkeys.cpp`. The hotkey *action* itself can stay in the enum (the handler in `HudManager::processHotkeys` is already null-safe), but the row should be hidden so users don't see a binding that does nothing.
+5. **Gate handler entry points** that feed the disabled manager (`run_telemetry_handler.cpp`, `race_session_handler.cpp`, etc.). Skip the singleton calls entirely so the binary doesn't pull them in.
+6. **Gate `SettingsManager` save/load** if the disabled HUD has its own profile section. Crucial when `HudManager::getXxxHud()` returns a `Hud&` with `assert(m_pXxxHud)` — calling it with a null member crashes in debug and null-derefs in release.
+7. **Gate the installer (`mxbmrp3.nsi`)** if the feature has supporting data files (e.g. `web/` for HTTP server) so they don't ship to a build that can't use them.
+
+If a `.cpp` file's `GAME_HAS_X` reference is in a file that doesn't transitively include `game_config.h`, add `#include "../../game/game_config.h"` (path from the file). The handlers' `plugin_data.h` already pulls it in; `hud_manager.h` pulls it in; isolated tab files like `settings_tab_hotkeys.cpp` may need the explicit include.
+
+Reference implementations to copy from: FMX (commit `deba67f`), Discord (`GAME_HAS_DISCORD`), Records provider (`GAME_HAS_RECORDS_PROVIDER`).
 
 ## Files You'll Likely Need
 
@@ -210,6 +248,8 @@ The embedded HTTP server (`core/http_server.cpp`) streams race data to browser-b
 - `mxbmrp3/core/fmx_types.h` - FMX data structures (TrickType, TrickInstance, RotationTracker, etc.)
 - `mxbmrp3/core/http_server.h/.cpp` - Embedded HTTP server with SSE for web overlays
 - `mxbmrp3/core/event_log_types.h` - Event log entry types and filter flags
+- `mxbmrp3/core/crash_handler.h/.cpp` - SEH minidump filter; writes `.dmp` to `<savePath>\mxbmrp3\crashes\` on unhandled hardware faults
+- `tools/mdmp_analyze.py` - Standalone minidump triage (no Windows debugger needed): prints the exception code/faulting address, maps the faulting RIP to its module, and does a heuristic live-stack scan to attribute a crash to the plugin vs the game vs a GPU/system DLL. Run `python3 tools/mdmp_analyze.py <file.dmp>`. Symbol-less, so it gives module+offset, not function names — pair with the matching `.pdb` for deeper analysis.
 
 **Multi-Game Layer:**
 - `mxbmrp3/game/unified_types.h` - Game-agnostic data structures
@@ -218,6 +258,7 @@ The embedded HTTP server (`core/http_server.cpp`) streams race data to browser-b
 - `mxbmrp3/game/adapters/gpbikes_adapter.h` - GP Bikes type conversion
 - `mxbmrp3/vendor/piboso/mxb_api.cpp` - MX Bikes DLL exports
 - `mxbmrp3/vendor/piboso/gpb_api.cpp` - GP Bikes DLL exports
+- `mxbmrp3/vendor/piboso/api_guard.h` - `API_GUARD_CATCH` macro that wraps every DLL export
 
 **HUD Base:**
 - `mxbmrp3/hud/base_hud.h/.cpp` - Base class for all HUDs
@@ -258,8 +299,13 @@ The embedded HTTP server (`core/http_server.cpp`) streams race data to browser-b
 - **Critical:** Branch must start with `claude/` and end with matching session ID, otherwise push will fail with 403
 
 ### Version Management
-- **No git tags** - Version is hardcoded in `mxbmrp3/core/plugin_constants.h`
-- Update `PLUGIN_VERSION` constant when releasing
+- **No git tags** - Version is hardcoded in two places that must stay in sync:
+  - `mxbmrp3/core/plugin_constants.h` (the `PLUGIN_VERSION` string used at runtime)
+  - `mxbmrp3/resource.h` (the `VER_MAJOR/MINOR/PATCH/BUILD` macros and `VER_STRING` consumed by the Windows DLL version info via `mxbmrp3.rc`)
+- Update both when releasing
+
+### Peer Reviews
+- **Update `main` first:** Before peer reviewing a branch, fetch and bring local `main` up to date with `origin/main`. Diff and review the branch against the current `main` so feedback reflects the latest base, not a stale one.
 
 ### Development Style
 - **Iterative refinement:** Expect many small commits for UI tweaks, alignment fixes, etc.

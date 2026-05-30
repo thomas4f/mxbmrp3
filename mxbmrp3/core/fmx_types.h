@@ -18,6 +18,7 @@ enum class TrickType {
 
     // Ground tricks (require wheel contact)
     WHEELIE,            // Pitch back + rear wheel contact + movement
+    COASTER_WHEELIE,    // Wheelie with clutch pulled in (one-way upgrade from WHEELIE)
     ENDO,               // Pitch forward + front wheel contact + movement
     STOPPIE,            // Pitch forward + front wheel contact + nearly stopped
     BURNOUT,            // Rear wheel spin + stationary
@@ -58,11 +59,62 @@ enum class TrickType {
     COUNT
 };
 
+// Stable identifier for INI keys / persistence. Returns a PascalCase token
+// with no spaces, safe to use in INI file keys. Must stay stable across
+// releases — changing a name will silently reset users' per-trick enable
+// flags to default.
+//
+// L/R variants intentionally share one key (e.g. PIVOT_LEFT and PIVOT_RIGHT
+// both return "Pivot"), so users can't end up with asymmetric L/R enable
+// state that would interact badly with the direction-commit logic in
+// updateTrickDetection. COASTER_WHEELIE keeps its own key — it's a clutch-
+// based promotion of WHEELIE, not a direction variant.
+//
+// Tripwire: bump this assert when adding a new TrickType, and add the matching
+// case below. Without it, new tricks fall through to "Unknown" and silently
+// share a single INI flag.
+static_assert(static_cast<int>(TrickType::COUNT) == 28,
+              "TrickType enum grew — extend getTrickIniKey() before bumping COUNT");
+inline const char* getTrickIniKey(TrickType type) {
+    switch (type) {
+        case TrickType::NONE:              return "None";
+        case TrickType::WHEELIE:           return "Wheelie";
+        case TrickType::COASTER_WHEELIE:   return "CoasterWheelie";
+        case TrickType::ENDO:              return "Endo";
+        case TrickType::STOPPIE:           return "Stoppie";
+        case TrickType::BURNOUT:           return "Burnout";
+        case TrickType::DONUT:             return "Donut";
+        case TrickType::DRIFT_LEFT:
+        case TrickType::DRIFT_RIGHT:       return "Drift";
+        case TrickType::PIVOT_LEFT:
+        case TrickType::PIVOT_RIGHT:       return "Pivot";
+        case TrickType::AIR:               return "Air";
+        case TrickType::BACKFLIP:          return "Backflip";
+        case TrickType::FRONTFLIP:         return "Frontflip";
+        case TrickType::BARREL_ROLL_LEFT:
+        case TrickType::BARREL_ROLL_RIGHT: return "BarrelRoll";
+        case TrickType::SCRUB_LEFT:
+        case TrickType::SCRUB_RIGHT:       return "Scrub";
+        case TrickType::WHIP_LEFT:
+        case TrickType::WHIP_RIGHT:        return "Whip";
+        case TrickType::SPIN_LEFT:
+        case TrickType::SPIN_RIGHT:        return "Spin";
+        case TrickType::TURN_UP_LEFT:
+        case TrickType::TURN_UP_RIGHT:     return "TurnUp";
+        case TrickType::TURN_DOWN_LEFT:
+        case TrickType::TURN_DOWN_RIGHT:   return "TurnDown";
+        case TrickType::FLAT_360_LEFT:
+        case TrickType::FLAT_360_RIGHT:    return "Flat360";
+        default:                           return "Unknown";
+    }
+}
+
 // Get display name for trick type
 inline const char* getTrickName(TrickType type) {
     switch (type) {
         case TrickType::NONE:              return "None";
         case TrickType::WHEELIE:           return "Wheelie";
+        case TrickType::COASTER_WHEELIE:   return "Coaster Wheelie";
         case TrickType::ENDO:              return "Endo";
         case TrickType::STOPPIE:           return "Stoppie";
         case TrickType::BURNOUT:           return "Burnout";
@@ -149,6 +201,7 @@ inline RotationAxis getPrimaryAxis(TrickType type) {
     switch (type) {
         // Pitch-based
         case TrickType::WHEELIE:
+        case TrickType::COASTER_WHEELIE:
         case TrickType::ENDO:
         case TrickType::STOPPIE:
         case TrickType::BACKFLIP:
@@ -187,6 +240,7 @@ inline RotationAxis getPrimaryAxis(TrickType type) {
 // Get base trick type, stripping L/R direction variants
 inline TrickType getBaseTrickType(TrickType type) {
     switch (type) {
+        case TrickType::COASTER_WHEELIE:     return TrickType::WHEELIE;
         case TrickType::DRIFT_RIGHT:         return TrickType::DRIFT_LEFT;
         case TrickType::PIVOT_RIGHT:         return TrickType::PIVOT_LEFT;
         case TrickType::BARREL_ROLL_RIGHT:   return TrickType::BARREL_ROLL_LEFT;
@@ -273,6 +327,7 @@ inline float getMinProgress(TrickType type) {
 inline int getTrickBaseScore(TrickType type) {
     switch (type) {
         case TrickType::WHEELIE:           return 10;
+        case TrickType::COASTER_WHEELIE:   return 10;
         case TrickType::ENDO:              return 15;
         case TrickType::STOPPIE:           return 20;
         case TrickType::BURNOUT:           return 5;
@@ -371,6 +426,18 @@ struct TrickInstance {
     // Distance traveled (horizontal, accumulated frame-by-frame)
     float distance = 0.0f;        // meters
 
+    // Cumulative seconds where clutch input was above the coaster threshold.
+    // Used by wheelie classification (promote to Coaster Wheelie at 0.5s) and
+    // scoring (coaster bonus is proportional to clutchHeldTime / duration).
+    float clutchHeldTime = 0.0f;
+
+    // Set once the rider releases the clutch after committing to a coaster
+    // (clutchHeldTime has reached the promotion threshold). Permanently
+    // downgrades the trick back to Wheelie — a coaster must hold the clutch
+    // continuously from commit until the wheelie ends. Releases before
+    // commit are not punished; the rider can still earn a coaster.
+    bool coasterInvalidated = false;
+
     TrickInstance() = default;
 };
 
@@ -423,13 +490,6 @@ struct RotationTracker {
     float yawVelocity = 0.0f;
     float rollVelocity = 0.0f;
 
-    // Tracking state (for TRACKING → COMMITTED transition)
-    std::chrono::steady_clock::time_point trackingStartTime;
-    float trackingStartHeight = 0.0f;   // Y position when tracking started
-    float trackingMaxHeight = 0.0f;     // Max height reached during tracking
-    float trackingMinHeight = 0.0f;     // Min height reached during tracking (for downhill jumps)
-    float trackingDuration = 0.0f;      // Seconds since tracking started
-
     // Reset accumulated rotation (start tracking new trick)
     void resetAccumulation() {
         accumulatedPitch = 0.0f;
@@ -443,40 +503,9 @@ struct RotationTracker {
     }
 
     // Start tracking (wheel lifted)
-    void startTracking(float height) {
+    void startTracking() {
         hasPreviousFrame = false;
         resetAccumulation();
-        trackingStartTime = std::chrono::steady_clock::now();
-        trackingStartHeight = height;
-        trackingMaxHeight = height;
-        trackingMinHeight = height;
-        trackingDuration = 0.0f;
-    }
-
-    // Update tracking duration and height range
-    void updateTracking(float currentHeight) {
-        auto now = std::chrono::steady_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            now - trackingStartTime).count();
-        trackingDuration = elapsed / 1000.0f;
-        if (currentHeight > trackingMaxHeight) {
-            trackingMaxHeight = currentHeight;
-        }
-        if (currentHeight < trackingMinHeight) {
-            trackingMinHeight = currentHeight;
-        }
-    }
-
-    // Get height gained since tracking started (upward only)
-    float getHeightGained() const {
-        return trackingMaxHeight - trackingStartHeight;
-    }
-
-    // Get maximum height change in either direction (for downhill jumps)
-    float getHeightChange() const {
-        float upward = trackingMaxHeight - trackingStartHeight;
-        float downward = trackingStartHeight - trackingMinHeight;
-        return std::max(upward, downward);
     }
 
     // Reset everything (new session)
@@ -486,11 +515,6 @@ struct RotationTracker {
         startPitch = startYaw = startRoll = 0.0f;
         currentPitch = currentYaw = currentRoll = 0.0f;
         pitchVelocity = yawVelocity = rollVelocity = 0.0f;
-        trackingStartTime = {};
-        trackingStartHeight = 0.0f;
-        trackingMaxHeight = 0.0f;
-        trackingMinHeight = 0.0f;
-        trackingDuration = 0.0f;
     }
 };
 
@@ -590,20 +614,26 @@ struct FmxConfig {
     float scrubMaxAngle = 90.0f;                // max degrees before it becomes barrel roll
     float whipMaxAngle = 90.0f;                 // max degrees before it becomes spin
 
-    // Ground trick thresholds
-    float wheelieAngleThreshold = 25.0f;        // pitch degrees for wheelie
+    // Ground trick thresholds. Pitch degrees the bike must reach to qualify
+    // as a wheelie/endo. classifyCurrentTrick uses this as the entry gate;
+    // shouldEndTrick uses half this value as the exit threshold (hysteresis:
+    // enter at full angle, exit at half). Mellow/cruisy wheelies that stay
+    // below this entry angle won't classify, so the value is a balance
+    // between catching real wheelies and rejecting tiny front-pops.
+    float wheelieAngleThreshold = 15.0f;        // pitch degrees for wheelie
     float endoAngleThreshold = -15.0f;          // pitch degrees for endo (negative = forward)
     float burnoutSlipThreshold = 5.0f;          // rear wheel speed difference (m/s)
     float driftSlipAngleThreshold = 30.0f;      // degrees of lateral slip angle for drift (0=straight, 90=sideways)
     float donutYawThreshold = 45.0f;            // degrees of yaw rotation to upgrade burnout to donut
     float flat360MinRoll = 80.0f;               // degrees of roll to upgrade flip to flat 360 (80-180 window)
     float pivotMinYaw = 67.5f;                  // degrees of yaw to upgrade wheelie/endo to pivot
-    float pivotMaxSpeed = 3.0f;                 // m/s max vehicle speed for pivot (prevents false positives on curved wheelies)
+    float pivotMaxSpeed = 1.389f;               // m/s max vehicle speed for pivot (~5 km/h, prevents false positives on curved wheelies)
     float pivotCompletionAngle = 180.0f;        // degrees of yaw for 100% pivot progress
 
-    // Air trick commit thresholds (both must be met for AIR trick classification)
+    // Air trick commit threshold — minimum trick duration before air-trick
+    // classification is allowed. Pairs with the airborne-time debounce in
+    // FmxManager (which gates hasBeenAirborne on sustained airtime).
     float airCommitTime = 0.3f;                 // seconds of trick duration before committing to AIR
-    float airCommitHeight = 0.5f;               // meters height gained before committing to air trick
 
     // Grace periods
     float landingGracePeriod = 0.75f;           // seconds after landing before confirming trick (check for crash)
@@ -614,6 +644,20 @@ struct FmxConfig {
     float distanceBonusRate = 0.01f;            // +1% score per meter of horizontal distance
     float chainBonusPerTrick = 0.5f;            // chain: +50% per additional trick (2=x1.5, 3=x2.0, 5=x3.0)
     float repetitionPenalty = 0.5f;              // repeated trick: halve score per prior same-type in chain (THPS-style)
+
+    // Per-trick enable mask. Lets users opt out of tracking specific tricks via
+    // INI (e.g. disable PivotLeft/PivotRight if they keep accidentally
+    // triggering pivots on slow wheelies). When a trick is disabled, the
+    // classification result is suppressed at the consumer in
+    // FmxManager::updateTrickDetection — the active trick keeps its current
+    // type instead of reclassifying, and a fresh trick that would only ever
+    // classify to disabled types sits typeless until it ends.
+    // Indexed by static_cast<int>(TrickType). Index 0 (NONE) is unused.
+    bool tricksEnabled[static_cast<int>(TrickType::COUNT)];
+
+    FmxConfig() {
+        for (auto& b : tricksEnabled) b = true;
+    }
 };
 
 } // namespace Fmx

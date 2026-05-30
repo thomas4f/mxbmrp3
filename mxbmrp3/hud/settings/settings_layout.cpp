@@ -15,6 +15,10 @@ using namespace PluginConstants;
 // ASCII ellipsis for truncation (game font doesn't support UTF-8)
 static const char* ELLIPSIS = "...";
 
+// Standard width (in characters) of a control's value field. Value strings longer
+// than this are truncated by formatValue(), so keep cycle/toggle value text within it.
+static constexpr int STANDARD_VALUE_WIDTH = 10;
+
 SettingsLayoutContext::SettingsLayoutContext(
     SettingsHud* _parent,
     const BaseHud::ScaledDimensions& dim,
@@ -189,7 +193,7 @@ void SettingsLayoutContext::addToggleControl(
 
     float currentX = controlX;
     unsigned long valueColor = (enabled && isOn) ? colors.getPrimary() : colors.getMuted();
-    constexpr int VALUE_WIDTH = 10;  // Standard width for all controls (matches addCycleControl)
+    constexpr int VALUE_WIDTH = STANDARD_VALUE_WIDTH;
 
     // Use override value if provided, otherwise show On/Off
     const char* displayValue = valueOverride ? valueOverride : (isOn ? "On" : "Off");
@@ -265,7 +269,7 @@ void SettingsLayoutContext::addToggleControl(
 
     float currentX = controlX;
     unsigned long valueColor = (enabled && isOn) ? colors.getPrimary() : colors.getMuted();
-    constexpr int VALUE_WIDTH = 10;
+    constexpr int VALUE_WIDTH = STANDARD_VALUE_WIDTH;
 
     const char* displayValue = valueOverride ? valueOverride : (isOn ? "On" : "Off");
     std::string formattedValue = formatValue(displayValue, VALUE_WIDTH, false);
@@ -319,7 +323,7 @@ float SettingsLayoutContext::addStandardHudControls(BaseHud* hud, bool enableTit
         float toggleX = controlX;
         float cw = charWidth();
         unsigned long valueColor = isVisible ? colors.getPrimary() : colors.getMuted();
-        constexpr int VALUE_WIDTH = 10;  // Standard width for all controls
+        constexpr int VALUE_WIDTH = STANDARD_VALUE_WIDTH;
 
         parent->addString("<", toggleX, currentY, Justify::LEFT,
             Fonts::getNormal(), colors.getAccent(), fontSize);
@@ -355,7 +359,7 @@ float SettingsLayoutContext::addStandardHudControls(BaseHud* hud, bool enableTit
         float toggleX = controlX;
         float cw = charWidth();
         unsigned long valueColor = (enableTitle && showTitle) ? colors.getPrimary() : colors.getMuted();
-        constexpr int VALUE_WIDTH = 10;  // Standard width for all controls
+        constexpr int VALUE_WIDTH = STANDARD_VALUE_WIDTH;
 
         if (enableTitle) {
             parent->addString("<", toggleX, currentY, Justify::LEFT,
@@ -401,7 +405,7 @@ float SettingsLayoutContext::addStandardHudControls(BaseHud* hud, bool enableTit
     {
         float toggleX = controlX;
         float cw = charWidth();
-        constexpr int VALUE_WIDTH = 10;  // Standard width for all controls
+        constexpr int VALUE_WIDTH = STANDARD_VALUE_WIDTH;
 
         if (hasTextures) {
             parent->addString("<", toggleX, currentY, Justify::LEFT,
@@ -442,7 +446,7 @@ float SettingsLayoutContext::addStandardHudControls(BaseHud* hud, bool enableTit
     {
         float toggleX = controlX;
         float cw = charWidth();
-        constexpr int VALUE_WIDTH = 10;  // Standard width for all controls
+        constexpr int VALUE_WIDTH = STANDARD_VALUE_WIDTH;
 
         parent->addString("<", toggleX, currentY, Justify::LEFT,
             Fonts::getNormal(), colors.getAccent(), fontSize);
@@ -479,7 +483,7 @@ float SettingsLayoutContext::addStandardHudControls(BaseHud* hud, bool enableTit
     {
         float toggleX = controlX;
         float cw = charWidth();
-        constexpr int VALUE_WIDTH = 10;  // Standard width for all controls
+        constexpr int VALUE_WIDTH = STANDARD_VALUE_WIDTH;
 
         parent->addString("<", toggleX, currentY, Justify::LEFT,
             Fonts::getNormal(), colors.getAccent(), fontSize);
@@ -670,58 +674,6 @@ float SettingsLayoutContext::addRightColumnCycleControl(
             upType, targetHud, 0, false, 0
         ));
     }
-
-    return yPos + lineHeightNormal;
-}
-
-float SettingsLayoutContext::addDisplayModeControl(
-    uint8_t* displayMode,
-    BaseHud* targetHud,
-    float yPos
-) {
-    ColorConfig& colors = ColorConfig::getInstance();
-
-    // Determine display mode text
-    const char* displayModeText = "";
-    if (*displayMode == 0) {
-        displayModeText = "Graphs";
-    } else if (*displayMode == 1) {
-        displayModeText = "Numbers";
-    } else if (*displayMode == 2) {
-        displayModeText = "Both";
-    }
-
-    // Render label
-    parent->addString("Display", rightColumnX, yPos, Justify::LEFT,
-        Fonts::getNormal(), colors.getSecondary(), fontSize);
-
-    // Cycle control position
-    float cw = charWidth();
-    float toggleX = rightColumnX + PluginUtils::calculateMonospaceTextWidth(12, fontSize);
-    constexpr int MAX_VALUE_WIDTH = 10;  // Standard width for all controls
-
-    // Left arrow "<"
-    parent->addString("<", toggleX, yPos, Justify::LEFT,
-        Fonts::getNormal(), colors.getAccent(), fontSize);
-    parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-        toggleX, yPos, cw * 2, lineHeightNormal,
-        SettingsHud::ClickRegion::DISPLAY_MODE_DOWN, displayMode, targetHud
-    ));
-    toggleX += cw * 2;
-
-    // Value with fixed width (left-aligned for consistent positioning)
-    std::string formattedValue = formatValue(displayModeText, MAX_VALUE_WIDTH, false);
-    parent->addString(formattedValue.c_str(), toggleX, yPos, Justify::LEFT,
-        Fonts::getNormal(), colors.getPrimary(), fontSize);
-    toggleX += PluginUtils::calculateMonospaceTextWidth(MAX_VALUE_WIDTH, fontSize);
-
-    // Right arrow " >"
-    parent->addString(" >", toggleX, yPos, Justify::LEFT,
-        Fonts::getNormal(), colors.getAccent(), fontSize);
-    parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-        toggleX, yPos, cw * 2, lineHeightNormal,
-        SettingsHud::ClickRegion::DISPLAY_MODE_UP, displayMode, targetHud
-    ));
 
     return yPos + lineHeightNormal;
 }

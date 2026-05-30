@@ -131,7 +131,7 @@ void FmxHud::rebuildRenderData() {
 
     // === Rows: Trick Stack (shows chain of tricks) — above the combo arc ===
     if (isTrickStackEnabled()) {
-        const auto& failAnimStack = fmx.getFailureAnimation();
+        const auto& endAnimStack = fmx.getChainEndAnimation();
 
         // Build list of tricks to display (oldest first, newest at bottom)
         m_trickStack.clear();
@@ -144,14 +144,16 @@ void FmxHud::rebuildRenderData() {
             m_trickStack.push_back(entry);
         };
 
-        // Check if failure animation is active
-        if (failAnimStack.active) {
-            // Show entire lost chain in red
-            unsigned long failColor = this->getColor(ColorSlot::NEGATIVE);
+        // Check if chain-end animation is active (success or failure)
+        if (endAnimStack.active) {
+            // Linger the ended chain — green if completed, red if failed
+            unsigned long endColor = endAnimStack.success
+                ? this->getColor(ColorSlot::POSITIVE)
+                : this->getColor(ColorSlot::NEGATIVE);
 
-            for (size_t i = 0; i < failAnimStack.lostChainTricks.size(); ++i) {
-                const auto& lostTrick = failAnimStack.lostChainTricks[i];
-                pushTrick(lostTrick.type, lostTrick.multiplier, failColor);
+            for (size_t i = 0; i < endAnimStack.chainTricks.size(); ++i) {
+                const auto& endedTrick = endAnimStack.chainTricks[i];
+                pushTrick(endedTrick.type, endedTrick.multiplier, endColor);
             }
         } else {
             // Normal display logic
@@ -246,7 +248,7 @@ void FmxHud::rebuildRenderData() {
             }
             m_statsSnapshot.hasData = true;
         } else if (trick.state == Fmx::TrickState::IDLE && score.chainCount == 0 &&
-                   !fmx.getFailureAnimation().active) {
+                   !fmx.getChainEndAnimation().active) {
             m_statsSnapshot = StatsSnapshot();
         }
 
@@ -289,24 +291,26 @@ void FmxHud::rebuildRenderData() {
         // Fill arc
         unsigned long comboFillColor = this->getColor(ColorSlot::NEUTRAL);
 
-        const auto& failAnim = fmx.getFailureAnimation();
+        const auto& endAnim = fmx.getChainEndAnimation();
         bool inChain = trick.state == Fmx::TrickState::CHAIN ||
                        (trick.state == Fmx::TrickState::ACTIVE && score.chainCount > 0);
 
-        if (failAnim.active) {
-            if (m_comboArcFailStartFill < 0.0f) {
-                m_comboArcFailStartFill = m_comboArcFill;
+        if (endAnim.active) {
+            if (m_comboArcEndStartFill < 0.0f) {
+                m_comboArcEndStartFill = m_comboArcFill;
             }
             m_comboArcGraceStartFill = -1.0f;
 
             auto now = std::chrono::steady_clock::now();
-            float elapsed = std::chrono::duration<float>(now - failAnim.startTime).count();
-            float animProgress = std::min(1.0f, elapsed / failAnim.duration);
-            m_comboArcFill = m_comboArcFailStartFill * (1.0f - animProgress);
+            float elapsed = std::chrono::duration<float>(now - endAnim.startTime).count();
+            float animProgress = std::min(1.0f, elapsed / endAnim.duration);
+            m_comboArcFill = m_comboArcEndStartFill * (1.0f - animProgress);
 
-            comboFillColor = this->getColor(ColorSlot::NEGATIVE);
+            comboFillColor = endAnim.success
+                ? this->getColor(ColorSlot::POSITIVE)
+                : this->getColor(ColorSlot::NEGATIVE);
         } else if (trick.state == Fmx::TrickState::GRACE) {
-            m_comboArcFailStartFill = -1.0f;
+            m_comboArcEndStartFill = -1.0f;
 
             if (m_comboArcGraceStartFill < 0.0f) {
                 m_comboArcGraceStartFill = m_comboArcFill;
@@ -320,7 +324,7 @@ void FmxHud::rebuildRenderData() {
             comboFillColor = this->getColor(ColorSlot::WARNING);
         } else {
             m_comboArcGraceStartFill = -1.0f;
-            m_comboArcFailStartFill = -1.0f;
+            m_comboArcEndStartFill = -1.0f;
 
             if (inChain) {
                 float chainProgress = std::min(1.0f, score.chainElapsed / fmx.getConfig().chainPeriod);
@@ -338,7 +342,7 @@ void FmxHud::rebuildRenderData() {
         }
 
         // Center text — chain multiplier (title font, always visible)
-        const auto& failAnimArc = fmx.getFailureAnimation();
+        const auto& endAnimArc = fmx.getChainEndAnimation();
         bool hasCommittedTrick =
             (trick.state == Fmx::TrickState::ACTIVE || trick.state == Fmx::TrickState::GRACE) &&
             trick.type != Fmx::TrickType::NONE &&
@@ -379,10 +383,12 @@ void FmxHud::rebuildRenderData() {
             int displayTrickScore = 0;
             unsigned long trickScoreColor = textColor;
 
-            if (failAnimArc.active && !failAnimArc.lostChainTricks.empty()) {
-                // Show the failed trick's score in red
-                displayTrickScore = failAnimArc.lostChainTricks.back().finalScore;
-                trickScoreColor = this->getColor(ColorSlot::NEGATIVE);
+            if (endAnimArc.active && !endAnimArc.chainTricks.empty()) {
+                // Linger the final trick's score — green on completion, red on failure
+                displayTrickScore = endAnimArc.chainTricks.back().finalScore;
+                trickScoreColor = endAnimArc.success
+                    ? this->getColor(ColorSlot::POSITIVE)
+                    : this->getColor(ColorSlot::NEGATIVE);
             } else if (hasCommittedTrick && trick.finalScore > 0) {
                 displayTrickScore = trick.finalScore;
                 // Orange throughout ACTIVE+GRACE — only safe once banked into chain
@@ -402,9 +408,11 @@ void FmxHud::rebuildRenderData() {
             int displayChainScore = score.chainScore;
             unsigned long chainScoreColor = textColor;
 
-            if (failAnimArc.active) {
-                displayChainScore = failAnimArc.lostChainScore;
-                chainScoreColor = this->getColor(ColorSlot::NEGATIVE);
+            if (endAnimArc.active) {
+                displayChainScore = endAnimArc.chainScore;
+                chainScoreColor = endAnimArc.success
+                    ? this->getColor(ColorSlot::POSITIVE)
+                    : this->getColor(ColorSlot::NEGATIVE);
             } else if (displayChainScore > 0) {
                 chainScoreColor = this->getColor(ColorSlot::NEUTRAL);
             }
@@ -439,8 +447,16 @@ void FmxHud::rebuildRenderData() {
         bool freshUnclassified = trick.state == Fmx::TrickState::ACTIVE &&
                                  trick.type == Fmx::TrickType::NONE &&
                                  !m_arcSnapshot.hasData;
+        // Airborne override: keep arcs live during a real flight even before
+        // classification fires. With the 1s airborne debounce, a fresh
+        // airborne trick stays type=NONE for up to a second; without this
+        // override the arcs would freeze at the takeoff snapshot for the
+        // whole flight. Chain transitions happen on the ground so this
+        // doesn't reintroduce the brief-NONE-flicker the freeze guards against.
+        bool airborneActive = trick.state == Fmx::TrickState::ACTIVE &&
+                              trick.isCurrentlyAirborne;
 
-        if (hasClassifiedTrick || freshUnclassified) {
+        if (hasClassifiedTrick || freshUnclassified || airborneActive) {
             // Live data from rotation tracker
             m_arcSnapshot.startPitch = rotation.startPitch;
             m_arcSnapshot.startYaw = rotation.startYaw;
@@ -456,7 +472,7 @@ void FmxHud::rebuildRenderData() {
             m_arcSnapshot.currentRoll = rotation.currentRoll;
             m_arcSnapshot.hasData = true;
         } else if (trick.state == Fmx::TrickState::IDLE && score.chainCount == 0 &&
-                   !fmx.getFailureAnimation().active) {
+                   !fmx.getChainEndAnimation().active) {
             // Truly idle — show live start markers tracking current bike orientation
             // so they don't jump from 12 o'clock to takeoff angle on launch
             m_arcSnapshot = ArcSnapshot();
@@ -641,19 +657,38 @@ void FmxHud::addRotationArc(float centerX, float centerY, float radius, float th
     // Convert angles to radians
     float startRad = startAngle * DEG_TO_RAD;
 
-    // Fill arc from start angle to end angle (start + accumulated)
+    // Fill arc — split into laps so the second rotation reads as visually
+    // distinct instead of refilling the same color on top of itself. Lap 1
+    // draws in the base fill color; lap 2 draws a darkened overlay only
+    // where accumulated rotation has crossed past 360°, so the player can see
+    // at a glance whether they're on their first or second turn. Darken
+    // (rather than lighten) reads as "stacking" — the mental model is
+    // layered rotation, not a bonus highlight.
     if (std::abs(accumulatedAngle) > 1.0f) {
-        float maxRad = ARC_MAX_FILL_ROTATIONS * 2.0f * PI;
-        float clampedEndRad = startRad + std::max(-maxRad, std::min(maxRad, accumulatedAngle * DEG_TO_RAD));
-        int fillSegments = std::max(ARC_MIN_FILL_SEGMENTS,
-            static_cast<int>(std::abs(accumulatedAngle) / 360.0f * ARC_SEGMENTS));
+        float absAccum = std::abs(accumulatedAngle);
+        float dir = accumulatedAngle > 0 ? 1.0f : -1.0f;
 
-        if (accumulatedAngle > 0) {
+        // Lap 1: base color, capped at 360°
+        float lap1Deg = std::min(360.0f, absAccum);
+        float lap1EndRad = startRad + dir * lap1Deg * DEG_TO_RAD;
+        int lap1Segments = std::max(ARC_MIN_FILL_SEGMENTS,
+            static_cast<int>(lap1Deg / 360.0f * ARC_SEGMENTS));
+        addArcSegment(centerX, centerY, innerRadius, outerRadius,
+                      std::min(startRad, lap1EndRad), std::max(startRad, lap1EndRad),
+                      fillColor, lap1Segments);
+
+        // Lap 2: lightened overlay for the portion past 360°, capped to keep
+        // total fill within ARC_MAX_FILL_ROTATIONS.
+        if (absAccum > 360.0f) {
+            float lap2MaxDeg = (ARC_MAX_FILL_ROTATIONS - 1.0f) * 360.0f;
+            float lap2Deg = std::min(lap2MaxDeg, absAccum - 360.0f);
+            float lap2EndRad = startRad + dir * lap2Deg * DEG_TO_RAD;
+            int lap2Segments = std::max(ARC_MIN_FILL_SEGMENTS,
+                static_cast<int>(lap2Deg / 360.0f * ARC_SEGMENTS));
+            unsigned long lap2Color = PluginUtils::darkenColor(fillColor, 0.6f);
             addArcSegment(centerX, centerY, innerRadius, outerRadius,
-                          startRad, clampedEndRad, fillColor, fillSegments);
-        } else {
-            addArcSegment(centerX, centerY, innerRadius, outerRadius,
-                          clampedEndRad, startRad, fillColor, fillSegments);
+                          std::min(startRad, lap2EndRad), std::max(startRad, lap2EndRad),
+                          lap2Color, lap2Segments);
         }
     }
 
@@ -686,7 +721,7 @@ void FmxHud::resetToDefaults() {
     setPosition(0.7315f, 0.5772f);
     m_comboArcFill = 0.0f;
     m_comboArcGraceStartFill = -1.0f;
-    m_comboArcFailStartFill = -1.0f;
+    m_comboArcEndStartFill = -1.0f;
 
     // Reset display state
     m_trickStack.clear();

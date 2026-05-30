@@ -34,12 +34,13 @@ void FmxManager::reset() {
     m_groundState = Fmx::GroundContactState();
     m_prevGroundState = Fmx::GroundContactState();
     m_chainTricks.clear();
-    m_failureAnimation.active = false;
-    m_failureAnimation.startProgress = 0.0f;
-    m_failureAnimation.duration = 2.0f;
-    m_failureAnimation.failedType = Fmx::TrickType::NONE;
-    m_failureAnimation.lostChainTricks.clear();
-    m_failureAnimation.lostChainScore = 0;
+    m_chainEndAnimation.active = false;
+    m_chainEndAnimation.success = false;
+    m_chainEndAnimation.startProgress = 0.0f;
+    m_chainEndAnimation.duration = 0.0f;
+    m_chainEndAnimation.finalType = Fmx::TrickType::NONE;
+    m_chainEndAnimation.chainTricks.clear();
+    m_chainEndAnimation.chainScore = 0;
     m_committedDirection = Fmx::TrickDirection::NONE;
     m_chainTimerPaused = false;
     m_chainPausedElapsed = 0.0f;
@@ -47,6 +48,8 @@ void FmxManager::reset() {
     m_bHasPrevPosition = false;
     m_sessionTime = 0.0f;
     m_groundPendingTime = 0.0f;
+    m_airToGroundTime = 0.0f;
+    m_continuousAirborneTime = 0.0f;
     m_stuckTime = 0.0f;
     DEBUG_INFO("FmxManager: Reset");
 }
@@ -84,8 +87,7 @@ void FmxManager::updateFromTelemetry(const Unified::TelemetryData& telemetry) {
             m_activeTrick.startTime += pauseDuration;
             m_activeTrick.graceStartTime += pauseDuration;
             m_score.chainStartTime += pauseDuration;
-            m_rotationTracker.trackingStartTime += pauseDuration;
-            m_failureAnimation.startTime += pauseDuration;
+            m_chainEndAnimation.startTime += pauseDuration;
             m_lastLogTime += pauseDuration;
             m_rotationTracker.hasPreviousFrame = false;  // Don't accumulate rotation across pause
         }
@@ -140,12 +142,12 @@ void FmxManager::updateFromTelemetry(const Unified::TelemetryData& telemetry) {
         logFrame(telemetry);
     }
 
-    // Update failure animation (auto-deactivate after duration)
-    if (m_failureAnimation.active) {
-        auto elapsed = std::chrono::duration<float>(now - m_failureAnimation.startTime).count();
-        if (elapsed >= m_failureAnimation.duration) {
-            m_failureAnimation.active = false;
-            m_failureAnimation.lostChainTricks.clear();
+    // Update chain-end animation (auto-deactivate after duration)
+    if (m_chainEndAnimation.active) {
+        auto elapsed = std::chrono::duration<float>(now - m_chainEndAnimation.startTime).count();
+        if (elapsed >= m_chainEndAnimation.duration) {
+            m_chainEndAnimation.active = false;
+            m_chainEndAnimation.chainTricks.clear();
         }
     }
 
@@ -210,10 +212,6 @@ void FmxManager::updateRotation(const Unified::TelemetryData& telemetry, float d
     bool shouldTrackRotation = !m_groundState.frontWheelContact || !m_groundState.rearWheelContact;
 
     if (!shouldTrackRotation) {
-        // Still update tracking duration/height for grounded ACTIVE tricks (burnout, drift, etc.)
-        if (m_activeTrick.state == Fmx::TrickState::ACTIVE) {
-            m_rotationTracker.updateTracking(telemetry.posY);
-        }
         m_rotationTracker.hasPreviousFrame = false;
         return;
     }
@@ -236,7 +234,6 @@ void FmxManager::updateRotation(const Unified::TelemetryData& telemetry, float d
         }
     }
 
-    m_rotationTracker.updateTracking(telemetry.posY);
     m_rotationTracker.hasPreviousFrame = true;
 }
 
@@ -273,30 +270,87 @@ void FmxManager::updateTrickDetection(const Unified::TelemetryData& telemetry, f
             // Update timing
             m_activeTrick.duration += dt;
 
-            // Update airborne tracking
+            // Accumulate clutch-engagement time — drives coaster wheelie
+            // promotion and the ratio-based score bonus. Once the rider has
+            // committed to a coaster (clutch held past the promotion time),
+            // any later release invalidates it — a Coaster Wheelie must be
+            // held continuously until the wheelie ends (front wheel touches
+            // down). Releases before promotion are fine; the rider hasn't
+            // committed yet and can still earn the coaster on this trick.
+            if (telemetry.clutch > COASTER_CLUTCH_THRESHOLD) {
+                m_activeTrick.clutchHeldTime += dt;
+            } else if (m_activeTrick.clutchHeldTime >= COASTER_PROMOTION_TIME) {
+                m_activeTrick.coasterInvalidated = true;
+            }
+
+            // Update airborne tracking with debounce. hasBeenAirborne is
+            // sticky for the rest of the trick, so it must only latch on
+            // *sustained* airtime — a 1-frame rear-wheel lift from a bump
+            // or terrain seam would otherwise unlock the air-trick branches
+            // in classifyCurrentTrick and reclassify a wheelie to Whip/AIR.
             bool airborne = m_groundState.isAirborne();
-            bool wasAirborne = m_prevGroundState.isAirborne();
             m_activeTrick.isCurrentlyAirborne = airborne;
+
+            bool justConfirmedAirborne = false;
             if (airborne) {
-                m_activeTrick.hasBeenAirborne = true;
+                m_continuousAirborneTime += dt;
+                if (!m_activeTrick.hasBeenAirborne &&
+                    m_continuousAirborneTime >= AIRBORNE_DEBOUNCE_TIME) {
+                    m_activeTrick.hasBeenAirborne = true;
+                    justConfirmedAirborne = true;
+                }
+            } else {
+                m_continuousAirborneTime = 0.0f;
             }
 
             // =========================================================
             // DOMAIN TRANSITION: Ground → Air
-            // If we were doing a good ground trick and just went airborne,
-            // bank the ground trick and start fresh for the air portion
+            // Once sustained airborne is confirmed, if we were doing a good
+            // ground trick, bank it and start fresh for the air portion.
+            // Gating on the debounced latch (instead of the raw transition
+            // frame) means micro-bumps don't trigger spurious banks either.
             // =========================================================
-            bool groundToAir = !wasAirborne && airborne;
-            if (groundToAir && m_activeTrick.type != Fmx::TrickType::NONE) {
+            if (justConfirmedAirborne && m_activeTrick.type != Fmx::TrickType::NONE) {
                 bool isGroundTrick = !Fmx::isAirTrick(m_activeTrick.type);
                 if (isGroundTrick && m_activeTrick.progress >= Fmx::MIN_GROUND_TRICK_PROGRESS) {
-                    // Ground trick was good enough - bank it and start fresh
                     FMX_LOG("FMX: Ground->Air bank %s prog=%.0f%%",
                         Fmx::getTrickName(m_activeTrick.type),
                         m_activeTrick.progress * 100.0f);
                     bankAndContinue(telemetry);
                     break;  // Exit this frame, continue with fresh trick next frame
                 }
+            }
+
+            // =========================================================
+            // DOMAIN TRANSITION: Air → Ground
+            // When an active air trick lands into a committed one-wheel
+            // posture (wheelie or endo pitch threshold met) and the rider
+            // holds it past GROUND_DEBOUNCE_TIME, bank the air and start a
+            // fresh trick that can classify as the new ground trick. Mirror
+            // of the Ground→Air bank above. Brief rebounds and clumsy
+            // touchdowns don't trigger the bank because the debounce gates
+            // it on sustained held posture. Pitch gates ensure spurious
+            // landings (nose near level) don't qualify either.
+            // =========================================================
+            if (Fmx::isAirTrick(m_activeTrick.type)) {
+                bool inWheelieLanding = m_groundState.isWheeliePosition() &&
+                                        telemetry.pitch <= -m_config.wheelieAngleThreshold;
+                bool inEndoLanding = m_groundState.isEndoPosition() &&
+                                     telemetry.pitch >= -m_config.endoAngleThreshold;
+                if (inWheelieLanding || inEndoLanding) {
+                    m_airToGroundTime += dt;
+                    if (m_airToGroundTime >= GROUND_DEBOUNCE_TIME) {
+                        FMX_LOG("FMX: Air->Ground bank %s prog=%.0f%%",
+                            Fmx::getTrickName(m_activeTrick.type),
+                            m_activeTrick.progress * 100.0f);
+                        bankAndContinue(telemetry);
+                        break;
+                    }
+                } else {
+                    m_airToGroundTime = 0.0f;
+                }
+            } else {
+                m_airToGroundTime = 0.0f;
             }
 
             // Update rotation in active trick
@@ -318,7 +372,20 @@ void FmxManager::updateTrickDetection(const Unified::TelemetryData& telemetry, f
             }
 
             // DYNAMIC CLASSIFICATION: Determine trick type based on current state
-            Fmx::TrickType newType = classifyCurrentTrick();
+            Fmx::TrickType rawType = classifyCurrentTrick(telemetry);
+            Fmx::TrickType newType = rawType;
+            // Honor per-trick disable flags from INI: treat a disabled trick
+            // as if nothing classified this frame. The active trick keeps its
+            // current type (which may be NONE) and the direction-commit logic
+            // below is skipped — so e.g. disabling PivotLeft/Right means a
+            // wheelie that yaws past pivotMinYaw simply stays a Wheelie
+            // instead of upgrading. rawType is preserved for downstream
+            // consumers (e.g. stuck detection) that need to know what would
+            // have classified.
+            if (newType != Fmx::TrickType::NONE &&
+                !m_config.tricksEnabled[static_cast<int>(newType)]) {
+                newType = Fmx::TrickType::NONE;
+            }
             if (newType != m_activeTrick.type && newType != Fmx::TrickType::NONE) {
                 // Apply committed L/R direction. Once the player commits to a direction
                 // (e.g., Left on Scrub L), ALL subsequent reclassifications keep it —
@@ -335,12 +402,26 @@ void FmxManager::updateTrickDetection(const Unified::TelemetryData& telemetry, f
                 }
 
                 if (newType != m_activeTrick.type) {
-                    if (m_activeTrick.type != Fmx::TrickType::NONE) {
+                    bool firstClassify = (m_activeTrick.type == Fmx::TrickType::NONE);
+                    if (!firstClassify) {
                         FMX_LOG("FMX: Reclassify %s -> %s",
                             Fmx::getTrickName(m_activeTrick.type), Fmx::getTrickName(newType));
                     }
                     m_activeTrick.type = newType;
                     m_activeTrick.baseScore = Fmx::getTrickBaseScore(newType);
+                    if (firstClassify) {
+                        // Backdate to the moment of classification so pre-classify
+                        // hover time isn't credited to the trick. Otherwise a rider
+                        // who holds the front up at sub-threshold pitch for 5
+                        // seconds then briefly crosses threshold for one frame
+                        // would bank a wheelie scored for the full 5s. Rotation,
+                        // clutch time, and peak metrics are intentionally not
+                        // reset — those reflect real measurements that may have
+                        // enabled the classification (e.g. an in-air flip that
+                        // classified on reaching 270° pitch).
+                        m_activeTrick.duration = 0.0f;
+                        m_activeTrick.distance = 0.0f;
+                    }
                 }
             }
 
@@ -391,19 +472,28 @@ void FmxManager::updateTrickDetection(const Unified::TelemetryData& telemetry, f
 
             // Stuck detection — fail trick if stationary too long
             // Runs AFTER reclassification so Endo→Stoppie transition happens first
-            // Stoppie/Burnout/Donut are legitimately stationary, skip them
+            // Stoppie/Burnout/Donut are legitimately stationary, skip them.
+            // Also skip if rawType (pre-gate classification) was a stationary
+            // trick — otherwise disabling pivots via tricksEnabled would kill
+            // any slow wheelie that crossed into pivot territory after 500ms,
+            // and disabling burnout/donut/stoppie would kill those outright.
+            // Speed gate is STUCK_MAX_SPEED (1.389 m/s), tighter than
+            // isStationary() (2.5 m/s) — see comment on STUCK_MAX_SPEED.
             {
-                bool isStationaryTrick =
-                    m_activeTrick.type == Fmx::TrickType::STOPPIE ||
-                    m_activeTrick.type == Fmx::TrickType::BURNOUT ||
-                    m_activeTrick.type == Fmx::TrickType::DONUT ||
-                    m_activeTrick.type == Fmx::TrickType::PIVOT_LEFT ||
-                    m_activeTrick.type == Fmx::TrickType::PIVOT_RIGHT;
+                auto isStationaryType = [](Fmx::TrickType t) {
+                    return t == Fmx::TrickType::STOPPIE ||
+                           t == Fmx::TrickType::BURNOUT ||
+                           t == Fmx::TrickType::DONUT ||
+                           t == Fmx::TrickType::PIVOT_LEFT ||
+                           t == Fmx::TrickType::PIVOT_RIGHT;
+                };
+                bool isStationaryTrick = isStationaryType(m_activeTrick.type) ||
+                                         isStationaryType(rawType);
 
-                if (!isStationaryTrick && m_groundState.isStationary()) {
+                if (!isStationaryTrick && m_groundState.vehicleSpeed < STUCK_MAX_SPEED) {
                     m_stuckTime += dt;
                     if (m_stuckTime >= STUCK_THRESHOLD) {
-                        FMX_LOG("FMX: Stuck detected (stationary %.1fs) - failing trick", m_stuckTime);
+                        FMX_LOG("FMX: Stuck detected (low-speed %.1fs) - failing trick", m_stuckTime);
                         failTrick(true);
                         break;
                     }
@@ -481,7 +571,7 @@ void FmxManager::updateTrickDetection(const Unified::TelemetryData& telemetry, f
 // recovers for landing. Once you've rotated enough, the trick sticks.
 // Direction (L/R) still uses current accumulated values (sign).
 // ============================================================================
-Fmx::TrickType FmxManager::classifyCurrentTrick() const {
+Fmx::TrickType FmxManager::classifyCurrentTrick(const Unified::TelemetryData& telemetry) const {
     float absPitch = std::abs(m_rotationTracker.peakPitch);
     float absYaw = std::abs(m_rotationTracker.peakYaw);
     float absRoll = std::abs(m_rotationTracker.peakRoll);
@@ -495,7 +585,14 @@ Fmx::TrickType FmxManager::classifyCurrentTrick() const {
     bool airborne = m_groundState.isAirborne();
     bool wheeliePos = m_groundState.isWheeliePosition();
     bool endoPos = m_groundState.isEndoPosition();
-    bool hasAirtime = m_activeTrick.hasBeenAirborne || airborne;
+    // Gate air-trick branches on the debounced latch only. Reading the raw
+    // per-frame airborne flag here would briefly flip hasAirtime true during
+    // a sub-debounce bump on a long wheelie, reclassify the wheelie to
+    // AIR/Whip for a frame or two, then revert on landing — a visible title
+    // flicker. Real air tricks (flips at 270°+, whip/scrub gated by
+    // airCommitTime at 0.3s) take far longer than the airborne debounce
+    // anyway, so they don't lose anything by waiting for the latch.
+    bool hasAirtime = m_activeTrick.hasBeenAirborne;
 
     // =========================================================================
     // PRIORITY 1: Multi-axis rotation tricks (highest skill)
@@ -540,9 +637,18 @@ Fmx::TrickType FmxManager::classifyCurrentTrick() const {
     // =========================================================================
     // PRIORITY 3: Partial rotation tricks (30-179°)
     // =========================================================================
-    // Require minimum airtime before classifying any air trick.
-    // Prevents tiny bumps from triggering false positives.
-    if (hasAirtime && m_activeTrick.duration >= m_config.airCommitTime) {
+    // Require the rider to be CURRENTLY airborne in addition to having latched
+    // hasAirtime and reaching airCommitTime. Without the airborne gate, a
+    // ground trick that briefly went airborne (e.g. a wheelie that triggered
+    // the ground→air bank, or a wheelie past its bank threshold that caught
+    // a real lift-off) leaves hasAirtime true for the lifetime of the trick;
+    // once duration crosses airCommitTime, Whip/Scrub/AIR fires even though
+    // the rider has long since landed and is clearly continuing the ground
+    // trick. The airborne gate keeps the air-trick fallbacks scoped to the
+    // window when the rider is actually in the air. Priority 1/2 (full
+    // rotations 270°+) intentionally don't get this gate — once a real flip
+    // or spin is committed, the title should stick through landing.
+    if (airborne && hasAirtime && m_activeTrick.duration >= m_config.airCommitTime) {
         // Turn Up/Down: significant yaw rotation with nose pointing up/down in world space
         // Uses peak world-space pitch — once the nose pointed up/down, the trick sticks
         if (absYaw >= TURN_YAW_THRESHOLD) {
@@ -569,16 +675,30 @@ Fmx::TrickType FmxManager::classifyCurrentTrick() const {
                 ? TrickType::SCRUB_LEFT : TrickType::SCRUB_RIGHT;
         }
 
-        // Basic air (significant airtime but minimal rotation)
-        // Use getHeightChange() to detect both uphill and downhill jumps
-        if (m_rotationTracker.getHeightChange() >= m_config.airCommitHeight) {
-            return TrickType::AIR;
-        }
+        // Basic air (significant airtime, no rotation crossed any threshold).
+        // hasBeenAirborne is debounced upstream, so reaching this point
+        // already means the rider was genuinely airborne long enough to
+        // count. Duration/distance scoring downstream handles the "how big
+        // was the air" question; no separate height gate is needed here.
+        return TrickType::AIR;
     }
 
     // =========================================================================
     // PRIORITY 4: Ground tricks
     // =========================================================================
+    // Once a trick is classified as an air trick, don't allow it to demote
+    // back to a ground trick. The symmetric mirror of the Priority-3 airborne
+    // gate above: that gate prevents promoting ground tricks to air tricks
+    // unless actually airborne; this gate prevents demoting air tricks to
+    // ground tricks when the landing posture happens to match one (e.g. a
+    // nose-down Air landing momentarily satisfying endoPos+pitch, or a
+    // rear-first landing momentarily satisfying wheeliePos+pitch). Returning
+    // NONE leaves the existing air trick type intact via the reclassify
+    // guard; shouldEndTrick's "landed after airborne with both wheels down"
+    // path ends the trick correctly.
+    if (Fmx::isAirTrick(m_activeTrick.type)) {
+        return TrickType::NONE;
+    }
 
     // Donut: burnout + yaw rotation
     if (isBurnoutActive() && absYaw >= m_config.donutYawThreshold) {
@@ -604,18 +724,39 @@ Fmx::TrickType FmxManager::classifyCurrentTrick() const {
             ? TrickType::PIVOT_RIGHT : TrickType::PIVOT_LEFT;
     }
 
-    // Stoppie: endo position + stationary (nearly stopped)
-    if (endoPos && m_groundState.isStationary()) {
+    // Balance tricks (Wheelie/Endo/Stoppie) require BOTH the right wheel-contact
+    // state AND the bike pitched past the entry threshold. Wheel state alone
+    // isn't enough: a momentary front-pop where the nose only lifts 10° still
+    // satisfies wheeliePos and would otherwise classify as WHEELIE, then bank
+    // for the trick's accumulated duration even though the rider never really
+    // wheelied. The pitch gate is the entry mirror of the exit threshold used
+    // in shouldEndTrick (hysteresis: enter at full angle, exit at half).
+    //
+    // Note: endoAngleThreshold is stored as a negative number (-15°) by
+    // convention; -endoAngleThreshold gives the positive "nose-down" entry
+    // angle the bike needs to reach.
+
+    // Stoppie: endo position + stationary + nose past entry threshold
+    if (endoPos && telemetry.pitch >= -m_config.endoAngleThreshold &&
+        m_groundState.isStationary()) {
         return TrickType::STOPPIE;
     }
 
-    // Endo: front wheel only + moving
-    if (endoPos) {
+    // Endo: front wheel only + moving + nose past entry threshold
+    if (endoPos && telemetry.pitch >= -m_config.endoAngleThreshold) {
         return TrickType::ENDO;
     }
 
-    // Wheelie: rear wheel only
-    if (wheeliePos) {
+    // Wheelie: rear wheel only + nose past entry threshold. Promotes to
+    // Coaster Wheelie once the rider has held the clutch for 0.5s cumulative
+    // during this trick. Releasing the clutch invalidates the coaster for the
+    // remainder of this trick — the type downgrades back to Wheelie and the
+    // coaster score bonus is dropped.
+    if (wheeliePos && telemetry.pitch <= -m_config.wheelieAngleThreshold) {
+        if (!m_activeTrick.coasterInvalidated &&
+            m_activeTrick.clutchHeldTime >= COASTER_PROMOTION_TIME) {
+            return TrickType::COASTER_WHEELIE;
+        }
         return TrickType::WHEELIE;
     }
 
@@ -667,6 +808,7 @@ float FmxManager::calculateProgress(Fmx::TrickType type) const {
             break;
 
         case Fmx::TrickType::WHEELIE:
+        case Fmx::TrickType::COASTER_WHEELIE:
         case Fmx::TrickType::ENDO:
         case Fmx::TrickType::STOPPIE:
             progress = m_activeTrick.duration / Fmx::BALANCE_TRICK_FULL_DURATION;
@@ -710,7 +852,12 @@ bool FmxManager::isBurnoutActive() const {
 }
 
 bool FmxManager::isDriftActive() const {
-    return !m_groundState.isStationary() && m_groundState.rearWheelContact &&
+    // Require both wheels grounded. Swerving the bike on its rear wheel
+    // during a wheelie yaws it faster than its velocity vector rotates,
+    // producing an apparent lateral slip angle that would otherwise be
+    // read as a drift. A genuine drift is a corner with both wheels planted.
+    return !m_groundState.isStationary() &&
+           m_groundState.frontWheelContact && m_groundState.rearWheelContact &&
            m_groundState.lateralSlipAngle > m_config.driftSlipAngleThreshold;
 }
 
@@ -746,9 +893,21 @@ bool FmxManager::shouldEndTrick(const Unified::TelemetryData& telemetry) const {
         }
     }
 
+    // Unclassified tricks: end the moment conditions no longer warrant a trick.
+    // The classifier returns NONE while the rider is in a position that
+    // satisfies shouldStartTrick (e.g. front wheel off) but hasn't crossed any
+    // classification threshold yet (e.g. pitch hasn't reached wheelie angle).
+    // Without this gate, the trick would sit in ACTIVE/NONE indefinitely, and
+    // a late one-frame classification (e.g. a brief tilt past threshold) would
+    // bank the trick's whole accumulated duration as that trick.
+    if (type == Fmx::TrickType::NONE && !shouldStartTrick()) {
+        return true;
+    }
+
     // Ground trick specific end conditions
     switch (type) {
         case Fmx::TrickType::WHEELIE:
+        case Fmx::TrickType::COASTER_WHEELIE:
             // End when front wheel touches or nose drops
             // Pitch is negative during wheelie (nose up), so end when it rises above half the entry threshold
             if (m_groundState.frontWheelContact) return true;
@@ -801,7 +960,9 @@ void FmxManager::initializeNewTrick(const Unified::TelemetryData& telemetry) {
     m_activeTrick.startPitch = telemetry.pitch;
     m_activeTrick.startYaw = telemetry.yaw;
     m_activeTrick.startRoll = telemetry.roll;
-    m_rotationTracker.startTracking(telemetry.posY);
+    m_continuousAirborneTime = 0.0f;
+    m_airToGroundTime = 0.0f;
+    m_rotationTracker.startTracking();
     m_rotationTracker.startPitch = telemetry.pitch;
     m_rotationTracker.startYaw = telemetry.yaw;
     m_rotationTracker.startRoll = telemetry.roll;
@@ -841,7 +1002,13 @@ void FmxManager::addTrickToChain() {
 }
 
 void FmxManager::enterChainState() {
+    bool firstInChain = (m_score.chainCount == 0);
+
     addTrickToChain();
+
+    if (firstInChain) {
+        FMX_LOG("FMX: ============= CHAIN START =============");
+    }
 
     FMX_LOG("FMX: CHAIN %s +%d (chain: %d tricks %d pts)",
         Fmx::getTrickName(m_activeTrick.type),
@@ -875,12 +1042,29 @@ void FmxManager::completeTrick() {
 
     FMX_LOG("FMX: COMPLETED %d tricks +%d pts (x%.1f chain) (session: %d)",
         totalTricks, totalScore, chainMultiplier, m_score.sessionScore);
+    FMX_LOG("FMX: ============== CHAIN END ==============");
 
     // Note: individual trick callbacks already fired via addTrickToChain()
 
-    // Reset chain and trick state
+    // Start chain-end animation (success) — copy chain before clearing so the
+    // HUD can linger the completed chain in green for the animation duration,
+    // mirroring the red linger that already happens on failure.
+    m_chainEndAnimation.active = true;
+    m_chainEndAnimation.success = true;
+    m_chainEndAnimation.startTime = std::chrono::steady_clock::now();
+    m_chainEndAnimation.startProgress = m_activeTrick.progress;
+    m_chainEndAnimation.duration = m_config.chainPeriod;
+    m_chainEndAnimation.finalType = m_chainTricks.empty()
+        ? Fmx::TrickType::NONE
+        : m_chainTricks.back().type;
+    m_chainEndAnimation.chainScore = m_score.chainScore;
+    m_chainEndAnimation.chainTricks = std::move(m_chainTricks);
+
+    // Reset chain and trick state (re-reserve after move left m_chainTricks
+    // in unspecified state, matches failTrick's reset behavior).
     m_score.clearChain();
     m_chainTricks.clear();
+    m_chainTricks.reserve(8);
     m_activeTrick = Fmx::TrickInstance();
 }
 
@@ -892,34 +1076,43 @@ void FmxManager::failTrick(bool crashed) {
     m_activeTrick.endTime = std::chrono::steady_clock::now();
     m_score.currentTrickScore = 0;
 
-    // Check if trick reached minimum threshold (was "committed")
-    bool wasCommitted = m_activeTrick.progress >= Fmx::getMinProgress(m_activeTrick.type);
+    // Check if trick reached minimum threshold (was "committed"). A trick that
+    // never classified (type=NONE) is never committed regardless of its
+    // accumulated progress — the default progress formula for NONE is
+    // (duration / 1.0s) so an unclassified trick alive > 250ms would otherwise
+    // be falsely treated as committed and kill the chain on failure.
+    bool wasCommitted = m_activeTrick.type != Fmx::TrickType::NONE &&
+                        m_activeTrick.progress >= Fmx::getMinProgress(m_activeTrick.type);
 
     // A crash always kills the chain, even if the current trick wasn't committed
     if (wasCommitted || (crashed && m_score.chainCount > 0)) {
         // Trick was committed - lose the chain
         m_score.tricksFailed++;
 
-        // Start failure animation - copy chain before clearing
-        m_failureAnimation.active = true;
-        m_failureAnimation.startTime = std::chrono::steady_clock::now();
-        m_failureAnimation.startProgress = m_activeTrick.progress;
-        m_failureAnimation.duration = m_config.chainPeriod;  // Match chain cooldown
-        m_failureAnimation.failedType = m_activeTrick.type;
-        m_failureAnimation.lostChainScore = m_score.chainScore;
+        // Start chain-end animation (failure) — copy chain before clearing
+        m_chainEndAnimation.active = true;
+        m_chainEndAnimation.success = false;
+        m_chainEndAnimation.startTime = std::chrono::steady_clock::now();
+        m_chainEndAnimation.startProgress = m_activeTrick.progress;
+        m_chainEndAnimation.duration = m_config.chainPeriod;  // Match chain cooldown
+        m_chainEndAnimation.finalType = m_activeTrick.type;
+        m_chainEndAnimation.chainScore = m_score.chainScore;
 
         // Move chain tricks (m_chainTricks is about to be cleared anyway)
-        m_failureAnimation.lostChainTricks = std::move(m_chainTricks);
+        m_chainEndAnimation.chainTricks = std::move(m_chainTricks);
         // Only add active trick if it's not already in the chain
         // (CHAIN state = trick was already added by addTrickToChain, avoid double-counting)
         if (m_activeTrick.type != Fmx::TrickType::NONE && !wasInChain) {
-            m_failureAnimation.lostChainTricks.push_back(m_activeTrick);
+            m_chainEndAnimation.chainTricks.push_back(m_activeTrick);
         }
 
         FMX_LOG("FMX: FAILED %s (lost chain: %d tricks %d pts)",
             Fmx::getTrickName(m_activeTrick.type),
             m_score.chainCount,
             m_score.chainScore);
+        if (m_score.chainCount > 0) {
+            FMX_LOG("FMX: ============= CHAIN BROKEN ============");
+        }
 
         // Reset chain (re-reserve after move left m_chainTricks in unspecified state)
         m_score.clearChain();
@@ -952,7 +1145,13 @@ void FmxManager::failTrick(bool crashed) {
 void FmxManager::bankAndContinue(const Unified::TelemetryData& telemetry) {
     // Bank the current trick and immediately start a new one
     // Used when transitioning domains (ground → air) with a good trick
+    bool firstInChain = (m_score.chainCount == 0);
+
     addTrickToChain();
+
+    if (firstInChain) {
+        FMX_LOG("FMX: ============= CHAIN START =============");
+    }
 
     FMX_LOG("FMX: Bank %s +%d (chain: %d tricks %d pts)",
         Fmx::getTrickName(m_activeTrick.type),
@@ -963,7 +1162,16 @@ void FmxManager::bankAndContinue(const Unified::TelemetryData& telemetry) {
     // Start fresh trick immediately (stay in ACTIVE)
     initializeNewTrick(telemetry);
 
-    // Set initial airborne state for the new trick
+    // Set initial airborne state for the new trick. hasBeenAirborne is set
+    // directly (bypassing the AIRBORNE_DEBOUNCE_TIME accumulator) because the
+    // caller has already confirmed sustained airborne — bankAndContinue is
+    // only invoked from updateTrickDetection right after justConfirmedAirborne
+    // fires, which itself only fires after the debounce timer crossed its
+    // threshold. So by the time we get here, the rider has already been
+    // airborne for the full debounce duration and the new trick is a
+    // continuation of confirmed flight, not a fresh airborne event that needs
+    // re-debouncing. Don't add a new caller path without re-evaluating this
+    // invariant.
     bool airborne = m_groundState.isAirborne();
     m_activeTrick.isCurrentlyAirborne = airborne;
     m_activeTrick.hasBeenAirborne = airborne;
@@ -994,6 +1202,22 @@ int FmxManager::calculateTrickScore(const Fmx::TrickInstance& trick) const {
 
     int score = static_cast<int>(trick.baseScore * rotationScale);
 
+    // Coaster bonus: scaled by clutch-engagement ratio so brief taps can't farm
+    // the bonus on a long wheelie. Added BEFORE the duration/distance multiplier
+    // below intentionally — a sustained coaster wheelie should compound both
+    // the bonus and the duration scaling.
+    // Design intent: COASTER_WHEELIE's base score in getTrickBaseScore() is the
+    // same as WHEELIE's (10), and this bonus is what differentiates the two —
+    // a perfect coaster (ratio=1.0) scores ~2× a regular wheelie of equivalent
+    // duration. If you want to change relative coaster value, tune
+    // COASTER_SCORE_BONUS rather than the COASTER_WHEELIE base score.
+    if (trick.type == Fmx::TrickType::COASTER_WHEELIE) {
+        float ratio = (trick.duration > 0.0f)
+            ? std::min(1.0f, trick.clutchHeldTime / trick.duration)
+            : 0.0f;
+        score += static_cast<int>(COASTER_SCORE_BONUS * ratio);
+    }
+
     if (Fmx::isAirTrick(trick.type)) {
         // Air tricks: bonus for duration + distance
         // Duration: 1s=x1.25, 2s=x1.5, 4s=x2.0
@@ -1007,6 +1231,7 @@ int FmxManager::calculateTrickScore(const Fmx::TrickInstance& trick) const {
         // Distance: rewards covering ground (100m wheelie at speed > 100m wheelie crawling)
         // Stationary tricks (burnout, stoppie, donut) naturally get 0 distance bonus
         float fullDuration = (trick.type == Fmx::TrickType::WHEELIE ||
+                              trick.type == Fmx::TrickType::COASTER_WHEELIE ||
                               trick.type == Fmx::TrickType::ENDO ||
                               trick.type == Fmx::TrickType::STOPPIE)
             ? Fmx::BALANCE_TRICK_FULL_DURATION : Fmx::GROUND_TRICK_FULL_DURATION;

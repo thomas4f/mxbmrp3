@@ -1,8 +1,6 @@
 // ============================================================================
 // game/adapters/krp_adapter.h
 // Kart Racing Pro game adapter - converts KRP API structs to unified types
-// STATUS: STUB - awaiting krp_api.h/cpp implementation. Adapter structure is
-// prepared but conversion functions are not validated against actual KRP API.
 // ============================================================================
 #pragma once
 
@@ -425,6 +423,19 @@ struct Adapter {
     }
 
     // ========================================================================
+    // Spectate Vehicle Conversion
+    // ========================================================================
+    static Unified::SpectateVehicle toSpectateVehicle(const SPluginsKRPSpectateVehicle_t* src) {
+        Unified::SpectateVehicle result;
+        if (!src) return result;
+
+        result.raceNum = src->m_iRaceNum;
+        safeCopy(result.name, src->m_szName, Unified::NAME_BUFFER_SIZE);
+
+        return result;
+    }
+
+    // ========================================================================
     // Track Segment Conversion
     // ========================================================================
     static Unified::TrackSegment toTrackSegment(const SPluginsKRPTrackSegment_t* src) {
@@ -445,52 +456,29 @@ struct Adapter {
     // ========================================================================
     // Session Type Mapping
     // ========================================================================
-    static NormalizedSession normalizeSession(int rawSession, int eventType) {
-        if (eventType == 4) {  // Challenge mode
+    // KRP race events run a multi-stage format (heats -> second chance ->
+    // PreFinal -> Final). Each stage is its own raw session in the API.
+    // Challenge events are simpler (waiting / practice / race only).
+    static Unified::Session toCanonicalSession(int rawSession, int rawEventType) {
+        if (rawEventType == 4) {  // Challenge
             switch (rawSession) {
-                case 0: return NormalizedSession::Waiting;
-                case 1: return NormalizedSession::Practice;
-                case 2: return NormalizedSession::Challenge;
-                default: return NormalizedSession::Unknown;
+                case 0: return Unified::Session::Waiting;
+                case 1: return Unified::Session::Practice;
+                case 2: return Unified::Session::Race;
+                default: return Unified::Session::Unknown;
             }
         }
-
-        // Race or Testing
         switch (rawSession) {
-            case 0: return NormalizedSession::Waiting;
-            case 1: return NormalizedSession::Practice;
-            case 2: return NormalizedSession::Qualify;
-            case 3: return NormalizedSession::Warmup;
-            case 4: return NormalizedSession::QualifyHeat;
-            case 5: return NormalizedSession::SecondChanceHeat;
-            case 6: return NormalizedSession::Prefinal;
-            case 7: return NormalizedSession::Final;
-            default: return NormalizedSession::Unknown;
+            case 0: return Unified::Session::Waiting;
+            case 1: return Unified::Session::Practice;
+            case 2: return Unified::Session::Qualify;
+            case 3: return Unified::Session::Warmup;
+            case 4: return Unified::Session::KRP_QualifyHeat;
+            case 5: return Unified::Session::KRP_SecondChanceHeat;
+            case 6: return Unified::Session::KRP_PreFinal;
+            case 7: return Unified::Session::KRP_Final;
+            default: return Unified::Session::Unknown;
         }
-    }
-
-    static bool isRaceSession(int rawSession, int eventType) {
-        if (eventType == 4) {  // Challenge
-            return rawSession == 2;
-        }
-        // Heats, prefinal, final are all race sessions
-        return rawSession >= 4 && rawSession <= 7;
-    }
-
-    static bool isQualifySession(int rawSession, int eventType) {
-        if (eventType == 4) return false;
-        return rawSession == 2;  // Qualify
-    }
-
-    static bool isPracticeSession(int rawSession, int eventType) {
-        if (eventType == 4) {
-            return rawSession == 1;
-        }
-        return rawSession == 1 || rawSession == 3;  // Practice or warmup
-    }
-
-    static bool isTimedSession(int rawSession, int eventType) {
-        return !isRaceSession(rawSession, eventType);
     }
 };
 

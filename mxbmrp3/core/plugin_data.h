@@ -33,11 +33,17 @@ struct SessionData {
     char trackName[100];    // Full track name (e.g., "Club MX")
     float trackLength;      // meters
     int eventType;
-    int connectionType;     // 0=Unknown, 1=Offline, 2=Host, 3=Client (see Memory::ConnectionType)
-    char serverName[100];   // Server name (only set when connectionType is Host or Client)
-    char serverPassword[64]; // Server password (only set when connectionType is Host or Client)
-    int serverClientsCount; // Current number of players on server (including self)
-    int serverMaxClients;   // Maximum players allowed on server
+    // Raw server type from the MX Bikes API (m_iServerType).
+    // -1 = unknown (pre-EventInit, or non-MX-Bikes game)
+    //  0 = offline / testing
+    //  1 = online race server
+    //  2 = online practice-day server
+    int serverType;
+    char serverName[100];   // Server name (only set when online)
+
+    bool isServerKnown() const { return serverType >= 0; }
+    bool isOnline() const { return serverType > 0; }
+    bool isOffline() const { return serverType == 0; }
 
     // Bike setup data
     int shiftRPM;           // RPM threshold for shift warning (recommended shift point)
@@ -67,7 +73,7 @@ struct SessionData {
     // Non-race session expiry tracking (practice/warmup/qualifying)
     bool sessionTimeExpired; // True when sessionTime goes negative in non-race sessions
 
-    SessionData() : trackLength(0.0f), eventType(2), connectionType(0), serverClientsCount(0), serverMaxClients(0),
+    SessionData() : trackLength(0.0f), eventType(2), serverType(-1),
         shiftRPM(13500), limiterRPM(14000), steerLock(30.0f),
         engineOptTemperature(85.0f), engineTempAlarmLow(60.0f), engineTempAlarmHigh(110.0f),
         session(-1), sessionGeneration(0), sessionState(-1), sessionLength(-1), sessionNumLaps(-1),
@@ -79,7 +85,6 @@ struct SessionData {
         trackId[0] = '\0';
         trackName[0] = '\0';
         serverName[0] = '\0';
-        serverPassword[0] = '\0';
         setupFileName[0] = '\0';
     }
 
@@ -91,11 +96,8 @@ struct SessionData {
         trackName[0] = '\0';
         trackLength = 0.0f;
         eventType = 2;  // Default to Race (Testing events are offline-only)
-        connectionType = 0;  // Unknown
+        serverType = -1;  // Unknown
         serverName[0] = '\0';
-        serverPassword[0] = '\0';
-        serverClientsCount = 0;
-        serverMaxClients = 0;
         shiftRPM = 13500;  // Default fallback value
         limiterRPM = 14000;  // Default fallback value
         steerLock = 30.0f;  // Default fallback value
@@ -390,16 +392,31 @@ struct BikeTelemetryData {
     float rearSuspMaxTravel;    // Rear suspension maximum travel in meters
     float roll;         // Lean angle in degrees (negative = left, positive = right)
     float pitch;        // Pitch angle in degrees (negative = nose up / wheelie, positive = nose down / endo)
+    float accelX;       // Lateral G-force (chassis-local; positive = right)
+    float accelY;       // Vertical G-force (chassis-local; positive = up, ~1g at rest)
+    float accelZ;       // Longitudinal G-force (chassis-local; positive = forward / throttle, negative = brake)
     float engineTemperature;    // Engine temperature in Celsius
     float waterTemperature;     // Water/coolant temperature in Celsius
     float treadTemperature[2][3];  // Tyre tread temps [wheel: 0=front,1=rear][section: 0=left,1=mid,2=right] (GP Bikes only)
+    // ECU / electronic rider aids (GP Bikes only)
+    int ecuMode;                // Page the rider is adjusting: 0=engine map, 1=TC, 2=engine brake
+    char engineMapping[4];      // Engine mapping label (e.g. "1", "STD")
+    int tractionControl;        // Traction control level
+    int engineBraking;          // Engine braking level
+    int antiWheeling;           // Anti-wheeling level
+    int ecuState;               // Bitfield of active intervention: 1=TC, 2=EB, 4=AW
     bool isValid;       // True if telemetry data is currently available
 
     BikeTelemetryData() : speedometer(0.0f), gear(0), numberOfGears(6), rpm(0), fuel(0.0f), maxFuel(0.0f),
                           frontSuspLength(0.0f), rearSuspLength(0.0f),
                           frontSuspMaxTravel(0.0f), rearSuspMaxTravel(0.0f),
-                          roll(0.0f), pitch(0.0f), engineTemperature(0.0f), waterTemperature(0.0f),
-                          treadTemperature{}, isValid(false) {}
+                          roll(0.0f), pitch(0.0f),
+                          accelX(0.0f), accelY(0.0f), accelZ(0.0f),
+                          engineTemperature(0.0f), waterTemperature(0.0f),
+                          treadTemperature{},
+                          ecuMode(0), engineMapping{}, tractionControl(0),
+                          engineBraking(0), antiWheeling(0), ecuState(0),
+                          isValid(false) {}
 };
 
 // Input telemetry data from controller/bike inputs
@@ -765,16 +782,9 @@ public:
     void setTrackName(const char* trackName);
     void setTrackLength(float trackLength);
     void setEventType(int eventType);
-    void setConnectionType(int connectionType);
-    int getConnectionType() const { return m_sessionData.connectionType; }
+    void setServerType(int serverType);
     void setServerName(const char* serverName);
     const char* getServerName() const { return m_sessionData.serverName; }
-    void setServerPassword(const char* serverPassword);
-    const char* getServerPassword() const { return m_sessionData.serverPassword; }
-    void setServerClientsCount(int count);
-    int getServerClientsCount() const { return m_sessionData.serverClientsCount; }
-    void setServerMaxClients(int max);
-    int getServerMaxClients() const { return m_sessionData.serverMaxClients; }
     void setShiftRPM(int shiftRPM);
     void setLimiterRPM(int limiterRPM);
     void setSteerLock(float steerLock);
@@ -920,10 +930,6 @@ public:
     const std::vector<int>& getDisplayClassificationOrder() const;
     int getDisplayPositionForRaceNum(int raceNum) const;
 
-    // Live gaps: show real-time estimated gaps in race sessions (toggle in settings)
-    void setLiveGapsEnabled(bool enabled);
-    bool isLiveGapsEnabled() const { return m_liveGapsEnabled; }
-
     void setShortTimeFormat(bool enabled) { m_shortTimeFormat = enabled; }
     bool isShortTimeFormat() const { return m_shortTimeFormat; }
 
@@ -1033,8 +1039,10 @@ public:
     void updateSpeedometer(float speedometer, int gear, int rpm, float fuel);
     void updateRoll(float roll);
     void updatePitch(float pitch);
+    void updateAcceleration(float accelX, float accelY, float accelZ);
     void updateTemperatures(float engineTemp, float waterTemp);
     void updateTreadTemperatures(const float temps[2][3]);
+    void updateEcuData(int ecuMode, const char* engineMapping, int tractionControl, int engineBraking, int antiWheeling, int ecuState);
     void invalidateSpeedometer();
 
     // Suspension update
@@ -1165,8 +1173,7 @@ private:
     mutable bool m_bPositionCacheDirty;  // Flag to rebuild position cache
 
     // Display filters (global toggles saved in [General])
-    bool m_liveGapsEnabled = false;              // Show real-time gaps in race sessions
-    bool m_shortTimeFormat = false;              // Compact time format: drop leading 0:, tenths for gaps
+    bool m_shortTimeFormat = true;               // Compact time format: drop leading 0: for sub-minute times (keeps ms precision)
     bool m_filterDnsRiders = false;              // Hide DNS riders from display
 
     // DNS-filtered cache (derived from official classification order, rebuilt when dirty)

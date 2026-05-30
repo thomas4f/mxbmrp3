@@ -609,6 +609,7 @@
     // so we can use them directly as CSS font-family values.
     // This set tracks which fonts have web versions bundled.
     var availableFonts = {
+        "Audiowide-Regular": true,
         "EnterSansman-Italic": true,
         "RobotoMono-Regular": true,
         "RobotoMono-Bold": true,
@@ -847,9 +848,9 @@
                 brandStrip.style.background = brandColor || "transparent";
             }
 
-            // Name — truncate fullName to CONFIG.nameChars characters.
-            // Server-sent `name` is hard-capped at 3 chars, so we use fullName
-            // to allow the user to configure wider name columns client-side.
+            // Name — truncate fullName to CONFIG.nameChars characters client-side.
+            // (rider.name is a pre-truncated fallback at the in-game standings width;
+            // using fullName lets the user configure wider name columns in the overlay.)
             var fullName = rider.fullName || rider.name || "";
             setText(cols[2], fullName.substring(0, CONFIG.nameChars));
 
@@ -1313,15 +1314,6 @@
         el.addEventListener("click", function () {
             onChange(el.classList.toggle("on"));
         });
-        return el;
-    }
-
-    function createSlider(min, max, step, value, onChange) {
-        var el = document.createElement("input");
-        el.type = "range";
-        el.className = "settings-slider";
-        el.min = min; el.max = max; el.step = step; el.value = value;
-        el.addEventListener("input", function () { onChange(parseFloat(el.value)); });
         return el;
     }
 

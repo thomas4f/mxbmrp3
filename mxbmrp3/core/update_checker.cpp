@@ -24,7 +24,7 @@ UpdateChecker& UpdateChecker::getInstance() {
 
 UpdateChecker::UpdateChecker()
     : m_status(Status::IDLE)
-    , m_mode(UpdateMode::OFF)  // Off by default
+    , m_mode(UpdateMode::NOTIFY)  // Notify by default (stable channel); notify-only, never auto-installs
     , m_channel(UpdateChannel::STABLE)  // Stable by default
     , m_downloadSize(0)
     , m_latestIsPrerelease(false)
@@ -168,55 +168,69 @@ void UpdateChecker::setCompletionCallback(std::function<void()> callback) {
 }
 
 void UpdateChecker::workerThread() {
-    std::string latestVersion;
-    std::string error;
+    // Exception barrier: an uncaught throw in a std::thread calls
+    // std::terminate() and kills the host game process. fetchLatestRelease
+    // and the JSON parser have internal try/catch, but the surrounding
+    // std::string / std::function copies and mutex ops can still throw.
+    try {
 
-    if (m_shutdownRequested) {
-        return;
-    }
+        std::string latestVersion;
+        std::string error;
 
-    bool success = fetchLatestRelease(latestVersion, error);
-
-    if (m_shutdownRequested) {
-        return;
-    }
-
-    if (success) {
-        {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            m_latestVersion = latestVersion;
+        if (m_shutdownRequested) {
+            return;
         }
 
-        // Compare versions (debug mode forces update available)
-        // Log both versions for easier debugging regardless of result
-        int cmp = compareVersions(latestVersion, PluginConstants::PLUGIN_VERSION);
-        DEBUG_INFO_F("UpdateChecker: Version comparison - Latest: %s, Current: %s, Result: %d",
-                    latestVersion.c_str(), PluginConstants::PLUGIN_VERSION, cmp);
+        bool success = fetchLatestRelease(latestVersion, error);
 
-        if (cmp > 0 || m_debugMode) {
-            m_status = Status::UPDATE_AVAILABLE;
-            if (m_debugMode && cmp <= 0) {
-                DEBUG_INFO_F("UpdateChecker: DEBUG MODE - Forcing update available");
+        if (m_shutdownRequested) {
+            return;
+        }
+
+        if (success) {
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                m_latestVersion = latestVersion;
+            }
+
+            // Compare versions (debug mode forces update available)
+            // Log both versions for easier debugging regardless of result
+            int cmp = compareVersions(latestVersion, PluginConstants::PLUGIN_VERSION);
+            DEBUG_INFO_F("UpdateChecker: Version comparison - Latest: %s, Current: %s, Result: %d",
+                        latestVersion.c_str(), PluginConstants::PLUGIN_VERSION, cmp);
+
+            if (cmp > 0 || m_debugMode) {
+                m_status = Status::UPDATE_AVAILABLE;
+                if (m_debugMode && cmp <= 0) {
+                    DEBUG_INFO_F("UpdateChecker: DEBUG MODE - Forcing update available");
+                } else {
+                    DEBUG_INFO_F("UpdateChecker: Update available!");
+                }
             } else {
-                DEBUG_INFO_F("UpdateChecker: Update available!");
+                m_status = Status::UP_TO_DATE;
+                DEBUG_INFO_F("UpdateChecker: Up to date");
             }
         } else {
-            m_status = Status::UP_TO_DATE;
-            DEBUG_INFO_F("UpdateChecker: Up to date");
+            m_status = Status::CHECK_FAILED;
+            DEBUG_WARN_F("UpdateChecker: Check failed - %s", error.c_str());
         }
-    } else {
-        m_status = Status::CHECK_FAILED;
-        DEBUG_WARN_F("UpdateChecker: Check failed - %s", error.c_str());
-    }
 
-    // Call completion callback if set
-    std::function<void()> callback;
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        callback = m_completionCallback;
-    }
-    if (callback) {
-        callback();
+        // Call completion callback if set
+        std::function<void()> callback;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            callback = m_completionCallback;
+        }
+        if (callback) {
+            callback();
+        }
+
+    } catch (const std::exception& e) {
+        DEBUG_WARN_F("UpdateChecker thread terminated by exception: %s", e.what());
+        m_status = Status::CHECK_FAILED;
+    } catch (...) {
+        DEBUG_WARN("UpdateChecker thread terminated by unknown exception");
+        m_status = Status::CHECK_FAILED;
     }
 }
 

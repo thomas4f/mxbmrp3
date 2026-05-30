@@ -27,9 +27,10 @@ TyreTempWidget::TyreTempWidget() {
     m_quads.reserve(13);
 
     // Reserve space for strings:
-    // - 6 L/M/R labels (3 per wheel x 2 wheels) - actually just 3, shared between both
+    // - 3 L/M/R section labels (shared across both wheels)
+    // - 2 F/R wheel labels (one per row, in the left padding)
     // - 6 temperature values
-    m_strings.reserve(9);
+    m_strings.reserve(11);
 
     // Set texture base name for dynamic texture discovery
     setTextureBaseName("tyre_temp_widget");
@@ -75,34 +76,30 @@ void TyreTempWidget::rebuildRenderData() {
     const BikeTelemetryData& bikeData = pluginData.getBikeTelemetry();
 
     // Tyre temp data is only available when player is on track
-    bool hasData = (pluginData.getDrawState() == ViewState::ON_TRACK) && bikeData.isValid;
+    bool onTrack = (pluginData.getDrawState() == ViewState::ON_TRACK);
+    bool hasData = onTrack && bikeData.isValid;
 
     float startX = 0.0f;
     float startY = 0.0f;
 
-    // Widget width: match BarsWidget with 7 bars (7*1 + 6*0.4 = 9.4 chars)
-    // Use 9 chars base + extra via padding adjustment
-    constexpr int WIDGET_WIDTH_CHARS = 9;
-    // Add 0.4 char extra width to match BarsWidget's 9.4 char content
-    float extraWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize) * 0.4f;
-    float backgroundWidth = calculateBackgroundWidth(WIDGET_WIDTH_CHARS) + extraWidth;
-    float contentWidth = PluginUtils::calculateMonospaceTextWidth(WIDGET_WIDTH_CHARS, dim.fontSize) + extraWidth;
+    // Widget width: match BarsWidget's 6-bar GP Bikes default (6*1 + 5*0.4 = 8 chars)
+    constexpr int WIDGET_WIDTH_CHARS = 8;
+    float backgroundWidth = calculateBackgroundWidth(WIDGET_WIDTH_CHARS);
+    float contentWidth = PluginUtils::calculateMonospaceTextWidth(WIDGET_WIDTH_CHARS, dim.fontSize);
 
-    // Calculate height (mirroring BarsWidget pattern):
-    // - labelHeight at top (L/M/R labels in top padding area)
-    // - content rows based on enabled rows (bars and/or values for each wheel)
-    // - paddingV at bottom
-    float labelHeight = LABEL_HEIGHT_LINES * dim.lineHeightNormal;
+    bool showBars = (m_enabledRows & ROW_BARS) != 0;
+    bool showValues = (m_enabledRows & ROW_VALUES) != 0;
 
-    // Count content rows based on enabled row types
-    // Each wheel (front/rear) can have bars and/or values
-    int rowsPerWheel = 0;
-    if (m_enabledRows & ROW_BARS) rowsPerWheel++;
-    if (m_enabledRows & ROW_VALUES) rowsPerWheel++;
-    int numContentRows = rowsPerWheel * NUM_WHEELS;  // 2 wheels
-
-    float contentHeight = dim.lineHeightNormal * numContentRows;
-    float backgroundHeight = labelHeight + contentHeight + dim.paddingV;
+    // Height layout (matches BarsWidget):
+    // - paddingV at top
+    // - one row per wheel; when bars are shown the row is BAR_ROW_LINES tall so
+    //   the temperature value sits centered inside the taller colored bar
+    // - labelHeight at bottom (L/M/R column labels); collapses when labels are hidden
+    float labelHeight = m_bShowLabels ? (LABEL_HEIGHT_LINES * dim.lineHeightNormal) : 0.0f;
+    float wheelRowLines = showBars ? BAR_ROW_LINES : (showValues ? 1.0f : 0.0f);
+    float wheelRowHeight = wheelRowLines * dim.lineHeightNormal;
+    float contentHeight = wheelRowHeight * NUM_WHEELS;
+    float backgroundHeight = dim.paddingV + contentHeight + labelHeight;
 
     // Add background quad
     addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
@@ -112,39 +109,58 @@ void TyreTempWidget::rebuildRenderData() {
 
     float contentStartX = startX + dim.paddingH;
 
-    // Calculate bar dimensions
-    // Each section takes 1/3 of the width, with small gaps
-    float sectionWidth = contentWidth / 3.0f;
-    float barWidth = sectionWidth * 0.8f;  // 80% of section for bar, 20% for spacing
-    float barSpacing = (sectionWidth - barWidth) / 2.0f;
-    float barHeight = dim.lineHeightNormal * 0.8f;  // 80% of line height
+    // Bar geometry: the three section bars hug each other (no horizontal gap)
+    // and split the content width evenly, so each wheel reads as one continuous
+    // L/M/R tread strip. ~2.67-char bars still hold a centered 3-digit value at
+    // the small font.
+    float barSpacing = 0.0f;
+    float barWidth = contentWidth / NUM_SECTIONS;
+    float barsStartX = contentStartX;
+    float barVMargin = BAR_VMARGIN_LINES * dim.lineHeightNormal;
+    float barHeight = wheelRowHeight - 2.0f * barVMargin;
+
+    // Per-bar center X (shared by the bar quad, the L/M/R label, and the value)
+    float barCenterX[NUM_SECTIONS];
+    for (int s = 0; s < NUM_SECTIONS; ++s) {
+        barCenterX[s] = barsStartX + s * (barWidth + barSpacing) + barWidth * 0.5f;
+    }
 
     // Colors
     unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
     unsigned long mutedColor = this->getColor(ColorSlot::MUTED);
     unsigned long barBgColor = PluginUtils::applyOpacity(mutedColor, m_fBackgroundOpacity * 0.5f);
 
-    // Section labels: L, M, R - placed in top label area (like BarsWidget bottom labels)
-    const char* labels[NUM_SECTIONS] = {"L", "M", "R"};
-    for (int s = 0; s < NUM_SECTIONS; ++s) {
-        float labelX = contentStartX + sectionWidth * s + sectionWidth / 2.0f;
-        addString(labels[s], labelX, startY, Justify::CENTER,
-            this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dim.fontSize);
-    }
+    // Wheel labels: F, R - embedded in the left padding, one per wheel row
+    const char* wheelLabels[NUM_WHEELS] = {"F", "R"};
 
-    // Content starts after label area
-    float currentY = startY + labelHeight;
+    // Content starts after the top padding; L/M/R labels go at the bottom (BarsWidget-style)
+    float currentY = startY + dim.paddingV;
 
-    // Draw both wheels (0 = front, 1 = rear)
+    // Draw both wheels (0 = front, 1 = rear). Each wheel is one row; the value
+    // is drawn centered inside the colored bar rather than on a separate row.
     for (int wheel = 0; wheel < NUM_WHEELS; ++wheel) {
-        // Draw bars for each section (if enabled)
-        if (m_enabledRows & ROW_BARS) {
-            // Center bars vertically in their row
-            float barY = currentY + (dim.lineHeightNormal - barHeight) / 2.0f;
+        float barY = currentY + barVMargin;
+        // Use the small font (same as Map HUD labels): at 8-char content width a
+        // section column is only ~2.67 chars, so a 3-digit value at the normal
+        // font would overrun the bar and collide with the adjacent column. The
+        // small font keeps 3 digits within the column whether bars are shown or
+        // not. Vertically centered within the row/bar.
+        float valueFontSize = dim.fontSizeSmall;
+        float textY = currentY + (wheelRowHeight - valueFontSize) * 0.5f;
 
-            for (int section = 0; section < NUM_SECTIONS; ++section) {
-                float barX = contentStartX + sectionWidth * section + barSpacing;
+        // Wheel label (F/R) centered in the left padding and in the row
+        if (m_bShowLabels && (showBars || showValues)) {
+            float wheelLabelX = startX + dim.paddingH * 0.5f;
+            float wheelLabelY = currentY + (wheelRowHeight - dim.fontSize) * 0.5f;
+            addString(wheelLabels[wheel], wheelLabelX, wheelLabelY, Justify::CENTER,
+                this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dim.fontSize);
+        }
 
+        for (int section = 0; section < NUM_SECTIONS; ++section) {
+            float barX = barCenterX[section] - barWidth * 0.5f;
+
+            // Colored bar (if enabled)
+            if (showBars) {
                 // Background bar (always visible)
                 SPluginQuad_t bgQuad;
                 float bgX = barX, bgY = barY;
@@ -154,10 +170,11 @@ void TyreTempWidget::rebuildRenderData() {
                 bgQuad.m_ulColor = barBgColor;
                 m_quads.push_back(bgQuad);
 
-                // Colored bar (only when data available)
+                // Colored fill (only when data available)
                 if (hasData) {
                     float temp = bikeData.treadTemperature[wheel][section];
-                    unsigned long barColor = calculateTyreTemperatureColor(temp);
+                    float midpoint = (m_coldThreshold + m_hotThreshold) / 2.0f;
+                    unsigned long barColor = calculateTemperatureColor(temp, midpoint, m_coldThreshold, m_hotThreshold);
 
                     SPluginQuad_t fillQuad;
                     float fillX = barX, fillY = barY;
@@ -169,19 +186,18 @@ void TyreTempWidget::rebuildRenderData() {
                 }
             }
 
-            currentY += dim.lineHeightNormal;
-        }
-
-        // Temperature values row (if enabled)
-        if (m_enabledRows & ROW_VALUES) {
-            for (int section = 0; section < NUM_SECTIONS; ++section) {
-                float tempX = contentStartX + sectionWidth * section + sectionWidth / 2.0f;
+            // Temperature value (if enabled) - centered in the bar
+            if (showValues) {
+                float tempX = barCenterX[section];
 
                 char tempBuffer[8];
                 unsigned long tempColor = textColor;
 
                 if (!hasData) {
-                    snprintf(tempBuffer, sizeof(tempBuffer), "%s", Placeholders::GENERIC);
+                    // Spectating/replay: data is structurally unavailable (N/A).
+                    // On track but invalid: simple missing data (-). Matches FuelWidget.
+                    const char* placeholder = onTrack ? Placeholders::GENERIC : Placeholders::NOT_AVAILABLE;
+                    snprintf(tempBuffer, sizeof(tempBuffer), "%s", placeholder);
                     tempColor = mutedColor;
                 } else {
                     float temp = bikeData.treadTemperature[wheel][section];
@@ -189,83 +205,37 @@ void TyreTempWidget::rebuildRenderData() {
                     snprintf(tempBuffer, sizeof(tempBuffer), "%d", displayTemp);
                 }
 
-                addString(tempBuffer, tempX, currentY, Justify::CENTER,
-                    this->getFont(FontCategory::DIGITS), tempColor, dim.fontSize);
+                addString(tempBuffer, tempX, textY, Justify::CENTER,
+                    this->getFont(FontCategory::DIGITS), tempColor, valueFontSize);
             }
-
-            currentY += dim.lineHeightNormal;
         }
-    }
-}
 
-unsigned long TyreTempWidget::calculateTyreTemperatureColor(float temp) const {
-    // Temperature color gradient:
-    // - Below coldThreshold: Blue (too cold, no grip)
-    // - coldThreshold to midpoint: Blue -> Green gradient (warming up)
-    // - midpoint to hotThreshold: Green -> Yellow -> Red gradient (getting hot)
-    // - Above hotThreshold: Red (overheating, degradation)
-
-    // Color constants (RGB values)
-    constexpr unsigned char BLUE_R = 0x40, BLUE_G = 0x80, BLUE_B = 0xFF;   // Cold blue
-    constexpr unsigned char GREEN_R = 0x40, GREEN_G = 0xFF, GREEN_B = 0x40; // Optimal green
-    constexpr unsigned char YELLOW_R = 0xFF, YELLOW_G = 0xD0, YELLOW_B = 0x40; // Warning yellow
-    constexpr unsigned char RED_R = 0xFF, RED_G = 0x40, RED_B = 0x40;      // Hot red
-
-    // Calculate midpoint (optimal temperature range)
-    float midpoint = (m_coldThreshold + m_hotThreshold) / 2.0f;
-
-    unsigned char r, g, b;
-
-    if (temp <= m_coldThreshold) {
-        // Below cold threshold - solid blue (too cold)
-        r = BLUE_R;
-        g = BLUE_G;
-        b = BLUE_B;
-    } else if (temp < midpoint) {
-        // Between coldThreshold and midpoint - blue to green gradient
-        float range = midpoint - m_coldThreshold;
-        float t = (range > 0.0f) ? (temp - m_coldThreshold) / range : 1.0f;
-        r = static_cast<unsigned char>(BLUE_R + t * (GREEN_R - BLUE_R));
-        g = static_cast<unsigned char>(BLUE_G + t * (GREEN_G - BLUE_G));
-        b = static_cast<unsigned char>(BLUE_B + t * (GREEN_B - BLUE_B));
-    } else if (temp <= m_hotThreshold) {
-        // Between midpoint and hotThreshold - green to yellow to red gradient
-        float range = m_hotThreshold - midpoint;
-        float normalized = (range > 0.0f) ? (temp - midpoint) / range : 0.0f;
-
-        if (normalized < 0.5f) {
-            // Green to yellow (first half)
-            float t = normalized * 2.0f;
-            r = static_cast<unsigned char>(GREEN_R + t * (YELLOW_R - GREEN_R));
-            g = static_cast<unsigned char>(GREEN_G + t * (YELLOW_G - GREEN_G));
-            b = static_cast<unsigned char>(GREEN_B + t * (YELLOW_B - GREEN_B));
-        } else {
-            // Yellow to red (second half)
-            float t = (normalized - 0.5f) * 2.0f;
-            r = static_cast<unsigned char>(YELLOW_R + t * (RED_R - YELLOW_R));
-            g = static_cast<unsigned char>(YELLOW_G + t * (RED_G - YELLOW_G));
-            b = static_cast<unsigned char>(YELLOW_B + t * (RED_B - YELLOW_B));
-        }
-    } else {
-        // Above hot threshold - solid red (overheating)
-        r = RED_R;
-        g = RED_G;
-        b = RED_B;
+        currentY += wheelRowHeight;
     }
 
-    return PluginUtils::makeColor(r, g, b);
+    // Section labels: L, M, R - centered under each column in the bottom label
+    // strip, matching BarsWidget's bottom-aligned bar labels.
+    if (m_bShowLabels) {
+        const char* labels[NUM_SECTIONS] = {"L", "M", "R"};
+        float labelY = startY + dim.paddingV + contentHeight;
+        for (int s = 0; s < NUM_SECTIONS; ++s) {
+            addString(labels[s], barCenterX[s], labelY, Justify::CENTER,
+                this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dim.fontSize);
+        }
+    }
 }
 
 void TyreTempWidget::resetToDefaults() {
-    m_bVisible = true;  // Visible by default in GP Bikes
+    m_bVisible = false;  // Hidden by default; opt-in via the Widgets tab
     m_bShowTitle = false;  // No title for gauge widgets
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 1.0f;  // Full opacity (100%)
     m_fScale = 1.0f;
-    setPosition(0.65f, 0.85f);  // Default position (can be adjusted)
+    setPosition(0.528f, 0.8769f);
     m_coldThreshold = DEFAULT_COLD_THRESHOLD;
     m_hotThreshold = DEFAULT_HOT_THRESHOLD;
     m_enabledRows = ROW_DEFAULT;  // Show both bars and values by default
+    m_bShowLabels = true;  // Labels ON by default (INI-only toggle)
     setDataDirty();
 }
 

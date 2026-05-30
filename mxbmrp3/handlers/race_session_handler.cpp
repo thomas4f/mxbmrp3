@@ -39,8 +39,10 @@ static void logSessionStarted(PluginData& data, const char* sessionStr, int sess
 void RaceSessionHandler::handleRaceSession(Unified::RaceSessionData* psRaceSession) {
     HANDLER_NULL_CHECK(psRaceSession);
 
-    DEBUG_INFO_F("RaceSession changed: session=%d, state=%d, length=%d, numLaps=%d",
-        psRaceSession->session, psRaceSession->sessionState,
+    int eventType = PluginData::getInstance().getSessionData().eventType;
+    DEBUG_INFO_F("RaceSession changed: session=%d (%s), state=0x%X (%s), length=%d, numLaps=%d",
+        psRaceSession->session, PluginUtils::getSessionString(eventType, psRaceSession->session),
+        psRaceSession->sessionState, PluginUtils::getSessionStateString(psRaceSession->sessionState),
         psRaceSession->sessionLength, psRaceSession->sessionNumLaps);
 
     // Log race format interpretation for debugging
@@ -56,7 +58,9 @@ void RaceSessionHandler::handleRaceSession(Unified::RaceSessionData* psRaceSessi
     // Clear session-specific data when a new session starts
     // Note: event log persists across sessions within a race weekend (practice -> qualifying -> race).
     // It is only cleared on full event exit via PluginData::clear().
+#if GAME_HAS_FMX
     FmxManager::getInstance().reset();
+#endif
     PluginData::getInstance().clearAllIdealLap();
     PluginData::getInstance().clearAllLapLog();
     PluginData::getInstance().clearLiveGapTimingPoints();
@@ -109,8 +113,10 @@ void RaceSessionHandler::handleRaceSession(Unified::RaceSessionData* psRaceSessi
 void RaceSessionHandler::handleRaceSessionState(Unified::RaceSessionStateData* psRaceSessionState) {
     HANDLER_NULL_CHECK(psRaceSessionState);
 
-    DEBUG_INFO_F("RaceSessionState changed: session=%d, state=%d",
-        psRaceSessionState->session, psRaceSessionState->sessionState);
+    int eventType = PluginData::getInstance().getSessionData().eventType;
+    DEBUG_INFO_F("RaceSessionState changed: session=%d (%s), state=0x%X (%s)",
+        psRaceSessionState->session, PluginUtils::getSessionString(eventType, psRaceSessionState->session),
+        psRaceSessionState->sessionState, PluginUtils::getSessionStateString(psRaceSessionState->sessionState));
 
     // When race transitions to "in progress" (state 16), reset timing state
     // This prevents false overtime detection when transitioning from pre-start (256)

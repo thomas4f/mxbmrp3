@@ -148,8 +148,8 @@ void TelemetryHud::rebuildRenderData() {
 
         // THR (if enabled) - color matches throttle graph
         if (m_enabledElements & ELEM_THROTTLE) {
-            addString("THR", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                this->getFont(FontCategory::NORMAL), PluginConstants::SemanticColors::THROTTLE, dims.fontSize);
+            addLabel("Thr", legendStartX, legendY, PluginConstants::Justify::LEFT,
+                this->getFont(FontCategory::STRONG), PluginConstants::SemanticColors::THROTTLE, dims);
             char buffer[16];
             snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(throttlePercent * 100));
             addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
@@ -159,8 +159,8 @@ void TelemetryHud::rebuildRenderData() {
 
         // FBR (front brake - if enabled, always available) - color matches front brake graph
         if (m_enabledElements & ELEM_FRONT_BRAKE) {
-            addString("FBR", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                this->getFont(FontCategory::NORMAL), PluginConstants::SemanticColors::FRONT_BRAKE, dims.fontSize);
+            addLabel("Fbr", legendStartX, legendY, PluginConstants::Justify::LEFT,
+                this->getFont(FontCategory::STRONG), PluginConstants::SemanticColors::FRONT_BRAKE, dims);
             char buffer[16];
             snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(frontBrakePercent * 100));
             addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
@@ -171,8 +171,8 @@ void TelemetryHud::rebuildRenderData() {
         // RBR (rear brake - only available when ON_TRACK, not in spectate/replay) - color matches rear brake graph
         if (m_enabledElements & ELEM_REAR_BRAKE) {
             unsigned long labelColor = hasFullTelemetry ? PluginConstants::SemanticColors::REAR_BRAKE : this->getColor(ColorSlot::MUTED);
-            addString("RBR", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                this->getFont(FontCategory::NORMAL), labelColor, dims.fontSize);
+            addLabel("Rbr", legendStartX, legendY, PluginConstants::Justify::LEFT,
+                this->getFont(FontCategory::STRONG), labelColor, dims);
             char buffer[16];
             if (hasFullTelemetry) {
                 snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(rearBrakePercent * 100));
@@ -190,8 +190,8 @@ void TelemetryHud::rebuildRenderData() {
         // CLU (only available when ON_TRACK, not in spectate/replay) - color matches clutch graph
         if (m_enabledElements & ELEM_CLUTCH) {
             unsigned long labelColor = hasFullTelemetry ? PluginConstants::SemanticColors::CLUTCH : this->getColor(ColorSlot::MUTED);
-            addString("CLU", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                this->getFont(FontCategory::NORMAL), labelColor, dims.fontSize);
+            addLabel("Clu", legendStartX, legendY, PluginConstants::Justify::LEFT,
+                this->getFont(FontCategory::STRONG), labelColor, dims);
             char buffer[16];
             if (hasFullTelemetry) {
                 snprintf(buffer, sizeof(buffer), "%4d%%", static_cast<int>(clutchPercent * 100));
@@ -206,15 +206,15 @@ void TelemetryHud::rebuildRenderData() {
             legendY += dims.lineHeightNormal;
         }
 
-        // RPM (if enabled) - uses fixed gray to match bars widget
+        // RPM (if enabled) - label uses fixed gray to match bars widget; value matches other rows
         if (m_enabledElements & ELEM_RPM) {
-            addString("RPM", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                this->getFont(FontCategory::NORMAL), ColorPalette::GRAY, dims.fontSize);
+            addLabel("RPM", legendStartX, legendY, PluginConstants::Justify::LEFT,
+                this->getFont(FontCategory::STRONG), ColorPalette::GRAY, dims);
             char buffer[16];
             int displayRpm = std::max(0, bikeTelemetry.rpm);
             snprintf(buffer, sizeof(buffer), "%5d", displayRpm);
             addString(buffer, valueX, legendY, PluginConstants::Justify::LEFT,
-                this->getFont(FontCategory::DIGITS), ColorPalette::GRAY, dims.fontSize);
+                this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
             legendY += dims.lineHeightNormal;
         }
 
@@ -222,8 +222,8 @@ void TelemetryHud::rebuildRenderData() {
         if (m_enabledElements & ELEM_FRONT_SUSP) {
             bool hasSuspData = hasFullTelemetry && bikeTelemetry.frontSuspMaxTravel > 0;
             unsigned long labelColor = hasSuspData ? PluginConstants::SemanticColors::FRONT_SUSP : this->getColor(ColorSlot::MUTED);
-            addString("FSU", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                this->getFont(FontCategory::NORMAL), labelColor, dims.fontSize);
+            addLabel("Fsu", legendStartX, legendY, PluginConstants::Justify::LEFT,
+                this->getFont(FontCategory::STRONG), labelColor, dims);
             if (hasSuspData) {
                 float frontSuspPercent = (!history.frontSusp.empty()) ? history.frontSusp.back() : 0.0f;
                 char buffer[16];
@@ -243,8 +243,8 @@ void TelemetryHud::rebuildRenderData() {
         if (m_enabledElements & ELEM_REAR_SUSP) {
             bool hasSuspData = hasFullTelemetry && bikeTelemetry.rearSuspMaxTravel > 0;
             unsigned long labelColor = hasSuspData ? PluginConstants::SemanticColors::REAR_SUSP : this->getColor(ColorSlot::MUTED);
-            addString("RSU", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                this->getFont(FontCategory::NORMAL), labelColor, dims.fontSize);
+            addLabel("Rsu", legendStartX, legendY, PluginConstants::Justify::LEFT,
+                this->getFont(FontCategory::STRONG), labelColor, dims);
             if (hasSuspData) {
                 float rearSuspPercent = (!history.rearSusp.empty()) ? history.rearSusp.back() : 0.0f;
                 char buffer[16];
@@ -262,8 +262,8 @@ void TelemetryHud::rebuildRenderData() {
 
         // GEAR (if enabled - always available) - color matches gear graph
         if (m_enabledElements & ELEM_GEAR) {
-            addString("GEA", legendStartX, legendY, PluginConstants::Justify::LEFT,
-                this->getFont(FontCategory::NORMAL), PluginConstants::SemanticColors::GEAR, dims.fontSize);
+            addLabel("Gea", legendStartX, legendY, PluginConstants::Justify::LEFT,
+                this->getFont(FontCategory::STRONG), PluginConstants::SemanticColors::GEAR, dims);
             char buffer[16];
             if (bikeTelemetry.gear == 0) {
                 snprintf(buffer, sizeof(buffer), "    N");
@@ -293,6 +293,16 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
     for (float gridValue : gridValues) {
         float gridY = y + height - (gridValue * height);
         addHorizontalGridLine(x, gridY, width, gridColor, gridLineThickness);
+    }
+
+    // Y-axis labels (input %, matching the grid lines), like LapConsistencyHud
+    {
+        float labelX = x + dims.paddingH * 0.2f;
+        unsigned long labelColor = this->getColor(ColorSlot::TERTIARY);
+        int labelFont = this->getFont(FontCategory::SMALL);
+        addString("100%", labelX, y, PluginConstants::Justify::LEFT, labelFont, labelColor, dims.fontSizeSmall);
+        addString("50%", labelX, y + height * 0.5f, PluginConstants::Justify::LEFT, labelFont, labelColor, dims.fontSizeSmall);
+        addString("0%", labelX, y + height - dims.lineHeightSmall, PluginConstants::Justify::LEFT, labelFont, labelColor, dims.fontSizeSmall);
     }
 
     // Draw input histories as line graphs (only enabled inputs)
