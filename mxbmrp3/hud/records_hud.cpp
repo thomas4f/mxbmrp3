@@ -115,6 +115,14 @@ RecordsHud::RecordsHud()
 
 RecordsHud::~RecordsHud() {
     // Wait for any ongoing fetch to complete
+    joinFetchThread();
+}
+
+void RecordsHud::joinFetchThread() {
+    // Called by HudManager::clear() BEFORE the cached HUD pointers are
+    // nulled: the fetch thread calls getTimingHud() on completion, so it
+    // must be gone before m_pTiming is reset (and before TimingHud is
+    // destroyed). Also called from the destructor as a safety net.
     if (m_fetchThread.joinable()) {
         m_fetchThread.join();
     }
@@ -583,16 +591,19 @@ bool RecordsHud::processFetchResult(const std::string& response) {
         nlohmann::json j = nlohmann::json::parse(response);
 
         // Lock for all member variable writes
+        // Use m_fetchProvider (snapshotted on the game thread in startFetch),
+        // never the live m_provider - the user can cycle providers mid-fetch
+        // and the response must be parsed with the schema it was requested with.
         std::lock_guard<std::mutex> lock(m_recordsMutex);
         m_records.clear();
-        m_recordsProvider = m_provider;  // Track which provider these records came from
+        m_recordsProvider = m_fetchProvider;  // Track which provider these records came from
 
         // Determine which format we're parsing based on provider
         // CBR: { "notice": "...", "records": [...] }
         // MXB-Ranked: [...]
         const nlohmann::json* recordsArray = nullptr;
 
-        if (m_provider == DataProvider::MXB_RANKED) {
+        if (m_fetchProvider == DataProvider::MXB_RANKED) {
             // MXB-Ranked returns a direct array
             if (j.is_array()) {
                 recordsArray = &j;
@@ -615,7 +626,7 @@ bool RecordsHud::processFetchResult(const std::string& response) {
                 RecordEntry entry;
                 entry.position = position++;
 
-                if (m_provider == DataProvider::MXB_RANKED) {
+                if (m_fetchProvider == DataProvider::MXB_RANKED) {
                     // MXB-Ranked format: name, bike, lapTime (seconds), sector1-3 (seconds), createDateTimeUtc
                     if (record.contains("name") && record["name"].is_string()) {
                         std::string name = record["name"].get<std::string>();
@@ -681,7 +692,7 @@ bool RecordsHud::processFetchResult(const std::string& response) {
             }
 
             DEBUG_INFO_F("RecordsHud: Parsed %zu records from %s",
-                         m_records.size(), getProviderDisplayName(m_provider));
+                         m_records.size(), getProviderDisplayName(m_fetchProvider));
         }
 
         return true;
@@ -749,19 +760,19 @@ void RecordsHud::cycleCategory(int direction) {
     m_categoryIndex = (m_categoryIndex + direction + count) % count;
 }
 
-int RecordsHud::findPlayerPositionInRecords(int playerPBTime) const {
+int RecordsHud::findPlayerPositionInRecords(const std::vector<RecordEntry>& records, int playerPBTime) const {
     if (playerPBTime <= 0) return -1;  // No valid PB
-    if (m_records.empty()) return 0;   // Faster than all (no records to compare)
+    if (records.empty()) return 0;     // Faster than all (no records to compare)
 
     // Find where player's PB would rank
-    for (size_t i = 0; i < m_records.size(); i++) {
-        if (playerPBTime < m_records[i].laptime) {
+    for (size_t i = 0; i < records.size(); i++) {
+        if (playerPBTime < records[i].laptime) {
             return static_cast<int>(i);  // Player is faster, would be at this position
         }
     }
 
     // Player is slower than all records
-    return static_cast<int>(m_records.size());
+    return static_cast<int>(records.size());
 }
 
 // ============================================================================
@@ -777,9 +788,10 @@ void RecordsHud::update() {
     bool shouldAutoFetch = false;
 
     // Clear records when event ends (track becomes empty)
+    // Lock before reading m_records - the fetch thread may be reallocating it
     if (session.trackName[0] == '\0') {
+        std::lock_guard<std::mutex> lock(m_recordsMutex);
         if (!m_records.empty() || m_lastSessionTrackName[0] != '\0') {
-            std::lock_guard<std::mutex> lock(m_recordsMutex);
             m_records.clear();
             m_fetchState = FetchState::IDLE;
             m_lastSessionTrackName[0] = '\0';  // Reset tracked track
@@ -887,10 +899,12 @@ void RecordsHud::rebuildRenderData() {
     // Copy ALL records for pagination (minimize mutex hold time)
     std::vector<RecordEntry> allRecords;
     std::string lastError;
+    DataProvider recordsProvider;
     {
         std::lock_guard<std::mutex> lock(m_recordsMutex);
         allRecords = m_records;  // Copy all for proper pagination
         lastError = m_lastError;
+        recordsProvider = m_recordsProvider;  // Written by the fetch worker under this lock
     }
     int totalRecords = static_cast<int>(allRecords.size());
     int footerRows = m_bShowFooter ? FOOTER_ROWS : 0;
@@ -1075,7 +1089,7 @@ void RecordsHud::rebuildRenderData() {
     if (session.trackId[0] != '\0' && session.bikeName[0] != '\0') {
         playerPB = StatsManager::getInstance().getPersonalBest(session.trackId, session.bikeName, &pbBikeName);
         if (playerPB && playerPB->isValid()) {
-            playerPosition = findPlayerPositionInRecords(playerPB->lapTime);
+            playerPosition = findPlayerPositionInRecords(allRecords, playerPB->lapTime);
         }
     }
     const char* playerPBBike = pbBikeName.empty() ? session.bikeName : pbBikeName.c_str();
@@ -1109,24 +1123,18 @@ void RecordsHud::rebuildRenderData() {
             addString(posStr, m_columns.pos, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), posColor, dim.fontSize);
         }
 
-        // Rider (truncate if too long)
+        // Rider (truncate if too long; shared ellipsis truncation)
         if (isColumnEnabled(COL_RIDER)) {
-            char riderStr[16];
-            size_t maxLen = COL_RIDER_WIDTH - 1;
-            strncpy_s(riderStr, sizeof(riderStr), rider, maxLen);
-            riderStr[maxLen] = '\0';
+            std::string riderStr = PluginUtils::fitText(rider, COL_RIDER_WIDTH - 1);
             // Player row keeps same column alignment (skip position but stay in rider column)
-            addString(riderStr, m_columns.rider, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL),
+            addString(riderStr.c_str(), m_columns.rider, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL),
                       this->getColor(ColorSlot::PRIMARY), dim.fontSize);
         }
 
-        // Bike (truncate if too long)
+        // Bike (truncate if too long; shared ellipsis truncation)
         if (isColumnEnabled(COL_BIKE)) {
-            char bikeStr[20];
-            size_t maxLen = COL_BIKE_WIDTH - 1;
-            strncpy_s(bikeStr, sizeof(bikeStr), bike, maxLen);
-            bikeStr[maxLen] = '\0';
-            addString(bikeStr, m_columns.bike, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL),
+            std::string bikeStr = PluginUtils::fitText(bike, COL_BIKE_WIDTH - 1);
+            addString(bikeStr.c_str(), m_columns.bike, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL),
                       this->getColor(ColorSlot::SECONDARY), dim.fontSize);
         }
 
@@ -1359,7 +1367,7 @@ void RecordsHud::rebuildRenderData() {
                   Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSizeSmall);
 
         float prefixWidth = PluginUtils::calculateMonospaceTextWidth(static_cast<int>(strlen(prefix)), dim.fontSizeSmall);
-        const char* providerName = getProviderDisplayName(m_recordsProvider);
+        const char* providerName = getProviderDisplayName(recordsProvider);
         addString(providerName, contentStartX + prefixWidth, currentY,
                   Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dim.fontSizeSmall);
 
@@ -1400,9 +1408,8 @@ void RecordsHud::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.7315f, 0.5106f);
+    setPosition(0.7315f, 0.4773f);
     m_provider = DataProvider::CBR;
-    m_recordsProvider = DataProvider::CBR;
     m_categoryIndex = 0;
     m_lastSessionTrackName[0] = '\0';  // Reset so update() will pick up current session track
     m_lastSessionCategory[0] = '\0';  // Reset so update() will pick up current session category
@@ -1414,6 +1421,7 @@ void RecordsHud::resetToDefaults() {
     {
         std::lock_guard<std::mutex> lock(m_recordsMutex);
         m_records.clear();
+        m_recordsProvider = DataProvider::CBR;  // Shared with the fetch worker - write under the lock
     }
     m_fetchState = FetchState::IDLE;
     setDataDirty();

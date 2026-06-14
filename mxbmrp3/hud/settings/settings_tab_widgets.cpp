@@ -39,7 +39,7 @@ BaseHud* SettingsHud::renderTabWidgets(SettingsLayoutContext& ctx) {
     ctx.currentY += ctx.lineHeightNormal;
 
     // Widget rows
-    // Parameters: name, hud, enableTitle, enableOpacity, enableScale, enableVisibility, enableBgTexture, tooltipId
+    // Parameters: name, hud, enableVisibility, enableTitle, enableBgTexture, enableOpacity, enableScale, tooltipId
     ctx.addSpacing(0.5f);
     ctx.addSectionHeader("Timing");
     ctx.addWidgetRow("Position", ctx.parent->getPositionWidget(), true, true, true, true, true, "widgets.position");
@@ -58,20 +58,21 @@ BaseHud* SettingsHud::renderTabWidgets(SettingsLayoutContext& ctx) {
     ctx.addWidgetRow("G-Force", ctx.parent->getGForceWidget(), true, true, true, true, true, "widgets.gforce");
     ctx.addWidgetRow("Fuel", ctx.parent->getFuelWidget(), true, true, true, true, true, "widgets.fuel");
 #if GAME_HAS_TYRE_TEMP
-    ctx.addWidgetRow("Tyre Temp", ctx.parent->getTyreTempWidget(), false, true, true, true, true, "widgets.tyre_temp");
+    ctx.addWidgetRow("Tyre Temp", ctx.parent->getTyreTempWidget(), true, false, true, true, true, "widgets.tyre_temp");
 #endif
 #if GAME_HAS_ECU
-    ctx.addWidgetRow("ECU", ctx.parent->getEcuWidget(), false, true, true, true, true, "widgets.ecu");
+    ctx.addWidgetRow("ECU", ctx.parent->getEcuWidget(), true, false, true, true, true, "widgets.ecu");
 #endif
     ctx.addSpacing(0.5f);
     ctx.addSectionHeader("Gauges");
-    ctx.addWidgetRow("Speedo", ctx.parent->getSpeedoWidget(), false, true, true, true, true, "widgets.speedo");
-    ctx.addWidgetRow("Tacho", ctx.parent->getTachoWidget(), false, true, true, true, true, "widgets.tacho");
+    ctx.addWidgetRow("Speedo", ctx.parent->getSpeedoWidget(), true, false, true, true, true, "widgets.speedo");
+    ctx.addWidgetRow("Tacho", ctx.parent->getTachoWidget(), true, false, true, true, true, "widgets.tacho");
     ctx.addSpacing(0.5f);
     ctx.addSectionHeader("Misc");
-    ctx.addWidgetRow("Gamepad", ctx.parent->getGamepadWidget(), false, true, true, true, true, "widgets.gamepad");
+    ctx.addWidgetRow("Gamepad", ctx.parent->getGamepadWidget(), true, false, true, true, true, "widgets.gamepad");
     ctx.addWidgetRow("Pointer", ctx.parent->getPointerWidget(), false, false, true, false, true, "widgets.pointer");
-    ctx.addWidgetRow("Version", ctx.parent->getVersionWidget(), false, false, false, true, false, "widgets.version");
+    ctx.addWidgetRow("Settings", ctx.parent->getSettingsButtonWidget(), true, false, true, true, true, "widgets.settings_button");
+    ctx.addWidgetRow("Version", ctx.parent->getVersionWidget(), true, false, true, true, true, "widgets.version");
 
     // Info text
     ctx.currentY += ctx.lineHeightNormal * 0.5f;

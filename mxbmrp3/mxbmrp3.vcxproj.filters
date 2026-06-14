@@ -40,6 +40,9 @@
     <Filter Include="Header Files\vendor\miniz">
       <UniqueIdentifier>{3c67509d-5bf8-69da-d483-fgbc0dcc509h}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\vendor\steam">
+      <UniqueIdentifier>{4d7860ae-6c09-7aeb-e594-0acd1edd610i}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Source Files\vendor\miniz">
       <UniqueIdentifier>{4d78610e-6cg9-7aeb-e594-ghcd1edd610i}</UniqueIdentifier>
     </Filter>
@@ -143,6 +146,9 @@
     </ClInclude>
     <ClInclude Include="vendor\nlohmann\json.hpp">
       <Filter>Header Files\vendor\nlohmann</Filter>
+    </ClInclude>
+    <ClInclude Include="vendor\steam\steam_api_minimal.h">
+      <Filter>Header Files\vendor\steam</Filter>
     </ClInclude>
     <ClInclude Include="vendor\httplib\httplib.h">
       <Filter>Header Files\vendor\httplib</Filter>
@@ -288,6 +294,9 @@
     <ClInclude Include="hud\lap_log_hud.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
+    <ClInclude Include="hud\friends_hud.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
     <ClInclude Include="hud\lap_consistency_hud.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
@@ -307,6 +316,9 @@
       <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="core\discord_manager.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\steam_friends_manager.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="core\http_server.h">
@@ -566,6 +578,9 @@
     <ClCompile Include="hud\settings\settings_tab_lap_log.cpp">
       <Filter>Source Files\hud\settings</Filter>
     </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_friends.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
     <ClCompile Include="hud\settings\settings_tab_lap_consistency.cpp">
       <Filter>Source Files\hud\settings</Filter>
     </ClCompile>
@@ -635,6 +650,9 @@
     <ClCompile Include="hud\lap_log_hud.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
+    <ClCompile Include="hud\friends_hud.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
     <ClCompile Include="hud\lap_consistency_hud.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
@@ -654,6 +672,9 @@
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="core\discord_manager.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\steam_friends_manager.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="core\http_server.cpp">

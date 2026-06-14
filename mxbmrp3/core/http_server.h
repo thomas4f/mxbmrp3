@@ -10,6 +10,7 @@
 #include <mutex>
 #include <atomic>
 #include <thread>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 
@@ -33,6 +34,13 @@ public:
     // Called on the game thread - builds JSON snapshot here (thread-safe)
     // so server threads only read an immutable cached string.
     void onDataChanged(DataChangeType changeType);
+
+    // Broadcaster override: force a bottom-slot overlay panel to slide in now.
+    // The command rides the JSON snapshot (edge-triggered on the client via a
+    // monotonic seq), and pressing it forces an immediate snapshot push.
+    // Called on the game thread (from the hotkey dispatch).
+    enum class OverlayPanel : int { NONE = 0, LAST_LAP, FASTEST_LAP, DOWN_ORDER, BATTLE };
+    void forceOverlayPanel(OverlayPanel panel);
 
     // Settings
     void setEnabled(bool enabled);
@@ -87,9 +95,32 @@ private:
     uint64_t m_sseSequence;                 // Incrementing SSE event ID (per-client tracking)
     std::string m_cachedJson;
 
+    // Broadcaster panel-force command, emitted in every snapshot as
+    // "overlayCmd":{panel,seq}. m_forcedSeq increments per keypress; the client
+    // acts only when it changes (edge-triggered). Atomic: written on the game
+    // thread by forceOverlayPanel(), read in the const buildJsonSnapshot().
+    std::atomic<int> m_forcedPanel{static_cast<int>(OverlayPanel::NONE)};
+    std::atomic<uint64_t> m_forcedSeq{0};
+    static const char* overlayPanelName(int panel);
+
     // SSE connection tracking
     std::atomic<int> m_sseConnections{0};
     static constexpr int MAX_SSE_CONNECTIONS = 3;  // Reserve 1 thread for REST
+
+    // Client-activity gate for snapshot builds: while nobody is consuming the
+    // JSON (no SSE client connected, no /api/state poll in the last few
+    // seconds), onDataChanged() skips the build and marks the cache stale.
+    static int64_t steadyNowMs() {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+    bool hasActiveClients() const {
+        return m_sseConnections.load() > 0 ||
+               (steadyNowMs() - m_lastStatePollMs.load()) < STATE_POLL_ACTIVE_MS;
+    }
+    std::atomic<int64_t> m_lastStatePollMs{INT64_MIN / 2};  // Server threads write, game thread reads
+    bool m_snapshotStale = false;                           // Game thread only
+    static constexpr int64_t STATE_POLL_ACTIVE_MS = 5000;
 
     // Default settings
     static constexpr const char* DEFAULT_BIND_ADDRESS = "127.0.0.1";

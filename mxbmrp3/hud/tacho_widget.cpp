@@ -110,8 +110,11 @@ void TachoWidget::rebuildRenderData() {
     float needleLength = dialHeight * 0.42f;  // Needle extends 42% of dial height from center
     float needleWidth = dialHeight * 0.025f;  // Needle width is 2.5% of dial height
 
-    // Add needle quad (centered on dial, rotated based on RPM)
-    addNeedleQuad(centerX, centerY, angleRad, needleLength, needleWidth, m_needleColor);
+    // Add needle quad (centered on dial, rotated based on RPM).
+    // Needle fades with the dial: the whole gauge responds to the background-opacity
+    // slider as one, rather than leaving a solid needle floating over a faded dial.
+    addNeedleQuad(centerX, centerY, angleRad, needleLength, needleWidth,
+                  PluginUtils::applyOpacity(m_needleColor, m_fBackgroundOpacity));
 }
 
 void TachoWidget::resetToDefaults() {

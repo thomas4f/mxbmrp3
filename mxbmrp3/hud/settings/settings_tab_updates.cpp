@@ -487,8 +487,9 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
         ctx.currentY += ctx.lineHeightNormal;
 
     } else {
-        // IDLE - not checked yet
-        ctx.addSpacing(0.5f);
+        // IDLE - not checked yet. No leading spacing: the status line sits
+        // directly under "Current:" to match the CHECKING / UP_TO_DATE /
+        // CHECK_FAILED states (they render with no gap too).
         if (!checker.isEnabled()) {
             ctx.parent->addString("Enable auto-check or click Check Now.", ctx.labelX, ctx.currentY, Justify::LEFT,
                 Fonts::getNormal(), colorConfig.getMuted(), ctx.fontSize);

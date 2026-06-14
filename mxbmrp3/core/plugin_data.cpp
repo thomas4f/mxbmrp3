@@ -10,6 +10,9 @@
 #if GAME_HAS_DISCORD
 #include "discord_manager.h"  // Direct include for Discord presence updates
 #endif
+#if GAME_HAS_STEAM_FRIENDS
+#include "steam_friends_manager.h"  // Steam friends rich-presence integration
+#endif
 #if GAME_HAS_HTTP_SERVER
 #include "http_server.h"  // Direct include for web overlay updates
 #endif
@@ -266,12 +269,21 @@ void PluginData::removeRaceEntry(int raceNum) {
             m_bPlayerRaceNumValid = false;
         }
 
-        // Clean up all per-rider data structures to prevent memory leaks
+        // Clean up ALL per-rider data structures. Beyond the memory (trivial),
+        // this matters for raceNum reuse: a new rider joining mid-event with a
+        // departed rider's number must not inherit stale standings, gap cache,
+        // or position-gain reference points.
         m_riderCurrentLap.erase(raceNum);
         m_riderIdealLap.erase(raceNum);
         m_riderLapLog.erase(raceNum);
         m_riderBestLap.erase(raceNum);
         m_trackPositions.erase(raceNum);
+        m_standings.erase(raceNum);
+        m_lastValidOfficialGap.erase(raceNum);
+        m_raceStartPositions.erase(raceNum);
+        m_lastSfPositions.erase(raceNum);
+        m_lastSplitPositions.erase(raceNum);
+        m_cachedHazardTypes.erase(raceNum);
         m_blueFlagsDirty = true;
 
         // Reset lap timer if we're removing the display rider
@@ -1100,17 +1112,35 @@ void PluginData::clearSessionFinished() {
     }
 }
 
-void PluginData::clearStandings() {
-    if (!m_standings.empty()) {
-        m_standings.clear();
-        DEBUG_INFO("Standings data cleared");
-        notifyHudManager(DataChangeType::Standings);
-    }
-}
-
 const StandingsData* PluginData::getStanding(int raceNum) const {
     auto it = m_standings.find(raceNum);
     return (it != m_standings.end()) ? &it->second : nullptr;
+}
+
+int PluginData::getLeaderLapsToGo() const {
+    const SessionData& s = m_sessionData;
+    // Only meaningful for a time+lap race that has entered overtime.
+    if (!(s.sessionLength > 0 && s.sessionNumLaps > 0 && s.overtimeStarted && s.finishLap > 0)) {
+        return -1;
+    }
+    if (m_classificationOrder.empty()) return -1;
+    const StandingsData* leader = getStanding(m_classificationOrder[0]);
+    if (!leader) return -1;
+
+    // finishLap is the lap a rider must EXCEED to finish; the leader is on the
+    // final lap once they've completed finishLap laps (matches the FinalLap event
+    // in race_lap_handler). Reuse the canonical finish check so the "checkered"
+    // threshold stays single-sourced; the "N to go" count still needs finishLap.
+    if (s.isRiderFinished(leader->numLaps)) return 0;     // checkered
+    int toGo = s.finishLap - leader->numLaps + 1;         // 1 == final lap
+
+    // The clock expires partway through a lap, so the leader must still finish the
+    // lap that was in progress before the bonus laps begin (that lap makes toGo ==
+    // sessionNumLaps + 1). Hold at the normal clock (00:00, since the timer is at/
+    // below zero) during that lap instead of showing "N+1 TO GO"; the leader-relative
+    // countdown only starts once they cross S/F into the bonus laps (toGo == N).
+    if (toGo > s.sessionNumLaps) return -1;
+    return toGo < 1 ? 1 : toGo;
 }
 
 void PluginData::setClassificationOrder(const std::vector<int>& order) {
@@ -1141,6 +1171,32 @@ int PluginData::getPositionForRaceNum(int raceNum) const {
         return it->second;
     }
     return -1;  // Not found in standings
+}
+
+void PluginData::snapshotRaceStartPositions() {
+    // Capture the official starting order so the standings HUD / web overlay can show
+    // how many positions each rider has gained or lost since the race went green.
+    // Positions mirror getPositionForRaceNum() (1-based index into classification order).
+    m_raceStartPositions.clear();
+
+    // Defensive secondary check. The primary protection for mid-race joins lives in the
+    // caller: a joining spectator gets RaceSession already IN_PROGRESS (which sets the
+    // cached state), so the green-flag transition in handleRaceSessionState self-skips and
+    // this is never called. This guard only matters if the snapshot site is somehow reached
+    // when the race is already underway — if any rider has a completed lap, leave the
+    // snapshot empty so the column shows its placeholder instead of a mid-race order.
+    // (Note: it does NOT catch a join during lap 1, when numLaps is still 0 for everyone;
+    // that case is covered by the cached-state gating in the caller, not here.)
+    for (const auto& entry : m_standings) {
+        if (entry.second.numLaps > 0) {
+            return;
+        }
+    }
+
+    m_raceStartPositions.reserve(m_classificationOrder.size());
+    for (size_t i = 0; i < m_classificationOrder.size(); ++i) {
+        m_raceStartPositions[m_classificationOrder[i]] = static_cast<int>(i) + 1;
+    }
 }
 
 void PluginData::setFilterDnsRiders(bool enabled) {
@@ -1821,9 +1877,24 @@ void PluginData::updateRealTimeGaps() {
         }
     }
 
-    // Only notify if something actually changed
+    // Only notify if something actually changed - and coalesce to at most one
+    // Standings notification per GAP_NOTIFY_INTERVAL_MS (see the member
+    // comment: the per-rider threshold is defeated by leader-timing
+    // quantization on full grids, which otherwise dirties every table HUD on
+    // every callback during close racing). A skipped notify is carried in
+    // m_gapNotifyPending and flushed by a later call, so the final change is
+    // never lost while callbacks keep arriving; once they stop, the session
+    // transition events notify Standings consumers anyway.
     if (anyUpdated) {
-        notifyHudManager(DataChangeType::Standings);
+        m_gapNotifyPending = true;
+    }
+    if (m_gapNotifyPending) {
+        auto now = std::chrono::steady_clock::now();
+        if (now - m_lastGapNotify >= std::chrono::milliseconds(m_gapNotifyIntervalMs)) {
+            m_lastGapNotify = now;
+            m_gapNotifyPending = false;
+            notifyHudManager(DataChangeType::Standings);
+        }
     }
 }
 
@@ -1891,6 +1962,14 @@ void PluginData::clear() {
     m_riderLapLog.clear();
     m_riderBestLap.clear();
     clearOverallBestLap();
+
+    // Position-reference maps (race-start snapshot, "Since S/F" / "Since split"
+    // rolling references). Erased per-rider in removeRaceEntry() and reset at
+    // every new session in handleRaceSession(); also reset here so a full event
+    // exit can't leave a reused race number inheriting a departed rider's state.
+    m_raceStartPositions.clear();
+    m_lastSfPositions.clear();
+    m_lastSplitPositions.clear();
 
     // Reset single lap timer
     m_displayLapTimer.reset();
@@ -1969,6 +2048,9 @@ void PluginData::notifyHudManager(DataChangeType changeType) {
     HudManager::getInstance().onDataChanged(changeType);
 #if GAME_HAS_DISCORD
     DiscordManager::getInstance().onDataChanged(changeType);
+#endif
+#if GAME_HAS_STEAM_FRIENDS
+    SteamFriendsManager::getInstance().onDataChanged(changeType);
 #endif
 #if GAME_HAS_HTTP_SERVER
     HttpServer::getInstance().onDataChanged(changeType);

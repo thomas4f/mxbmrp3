@@ -185,6 +185,8 @@ The API uses C structs to pass data. Each game's structs have different field na
 
 **Exception barrier (`vendor/piboso/api_guard.h`):** Every DLL export wraps its body in `API_GUARD_CATCH("ExportName")`. The host game doesn't support C++ exceptions across the DLL boundary, so any uncaught throw from PluginManager downward would terminate the host process. The macro catches `std::exception` and `...` at the boundary, logs via `DEBUG_WARN_F`, and returns a sensible fallback value. When adding a new export, follow the same pattern.
 
+**Boundary validation (version skew):** PiBoSo has reshaped plugin structs between game versions before — the `EventInit`/`RaceCommunication` defensive copies exist for exactly that — so the array-style callbacks don't trust the game's framing. `RaceClassification`/`RaceTrackPosition`/`SpectateVehicles` reject a mismatch between the game-supplied `_iElemSize` and the compiled `sizeof` (warn-**once**, then return — the feature fails safe instead of indexing with the wrong stride, which misreads every entry past index 0 and runs off the real array), null-check `_pData`/`_pArray` when counts are positive, guard the defensive-copy `memcpy` against a null `_pData`, and `std::clamp` entry counts to `0..MAX_RACE_ENTRIES` (clamping negatives too, not just capping from above). Applied identically across MXB/GPB/KRP. The symptom of skew is empty standings/map plus a single "element size N != expected M" log line. New array-style callbacks must follow the same pattern.
+
 ### 2. PluginManager (`core/plugin_manager.*`)
 
 The central coordinator. It:
@@ -224,6 +226,9 @@ Key data structures:
 - `StandingsData` - Position, gap, best lap for each rider
 - `BikeTelemetryData` - Speed, RPM, gear, fuel
 - `IdealLapData` - Best sector/lap times per rider
+- `m_raceStartPositions` - Per-rider starting grid position (`raceNum → position`), snapshotted when a race goes green; drives the positions-gained/lost column. Cleared on each new session.
+
+**Per-rider map lifecycle.** PluginData holds many maps keyed by raceNum (`m_standings`, `m_riderLapLog`, `m_lastValidOfficialGap`, `m_raceStartPositions`, `m_lastSfPositions`, `m_lastSplitPositions`, `m_cachedHazardTypes`, …). Every such map must be **erased in `removeRaceEntry()`** (per-rider teardown) **and reset in `clear()`** (session/event teardown). The memory is trivial; the real hazard is **raceNum reuse** — the game can hand a departed rider's number to a new joiner mid-event, who would otherwise transiently inherit the old rider's standings entry, gap cache, and position-gain reference points until the next classification overwrote them. A batch of six maps was found reset in `clear()` but not erased in `removeRaceEntry()`, so adding a new per-rider map means wiring up *both* sites.
 
 ```cpp
 // Example: Handler stores data, HUD reads it
@@ -300,6 +305,11 @@ Features:
 - Auto-creates profile for current bike when enabled
 - Integrates with XInputReader for runtime config access
 
+**XInputReader (`core/xinput_reader.*`) — send policy & connection cost.** XInputReader runs every telemetry tick (~100Hz) on the game thread, so its two Win32 call sites are tuned against real hardware behavior rather than the spec:
+
+- *Empty-slot cost.* `XInputGetState` on a **disconnected** slot triggers device enumeration and can cost milliseconds on degraded driver/wrapper/Bluetooth stacks. The 4-slot connection scan (which only feeds the settings-UI controller list) is throttled to once per second, and the selected slot backs off to one poll per `DISCONNECTED_POLL_INTERVAL_MS` (500ms) while unplugged — so an idle, controller-less session isn't paying 4–5 slow syscalls per tick. Switching controller index resets the backoff so a new selection polls immediately. Don't reintroduce per-tick empty-slot polling.
+- *Rumble send policy (`setVibration`).* Empirically derived from field reports; do **not** "simplify" back to value-dedup. Two opposing hardware facts shape it: (1) controllers **decay** rumble without a continuous feed — a constant nonzero value sent once stops buzzing after a moment, so the "XInput state persists until changed" assumption is false in practice; (2) Bluetooth pads **choke** on sustained 100Hz `XInputSetState` traffic — each call is a radio transaction, the queue backs up, and FPS progressively collapses over a few laps (recovering instantly on USB). So: nonzero values are re-sent every `send_interval_ms` (INI `[Rumble]`, default 16ms ≈ 60Hz) **even when unchanged** — the keepalive the motors need, at a rate the BT link sustains; an all-zero (idle) state is sent once then silenced — no traffic from a resting pad; and a transition to zero **bypasses** the rate cap so a final `stopVibration()` before telemetry halts can never be swallowed (which would leave the motors running). Values are quantized to 8 bits (the BT protocol's per-motor resolution) so jitter doesn't defeat the idle check.
+
 ### 8. StatsManager (`core/stats_manager.*`)
 
 Unified stats system that tracks per-track/bike stats, global race stats, personal bests, and odometer data in a single JSON file (`{save_path}/mxbmrp3/mxbmrp3_stats.json`).
@@ -330,6 +340,8 @@ Features:
 - Migrates legacy data from old `mxbmrp3_personal_bests.json` and `odometer.json` files
 - Cached global totals (recomputed on load/clear, updated incrementally)
 - Dirty flag with periodic save (not every telemetry tick)
+
+**Non-finite hardening.** The persisted floats (per-bike odometer, `totalDistanceM`, `topSpeedMs`) are integrated from `speed × dt` and gated by `>=`/`>` movement/record comparisons. Those comparisons reject NaN but **not `+Inf`**, so a single non-finite speed sample from a physics glitch would integrate into the odometer and top speed — *persisted* state that never recovers without hand-editing the JSON. `updateTelemetry` sanitizes the sample at the top (`!std::isfinite` → treated as `0`, so crash/gear edge detection still runs that tick), and the three floats are clamped through `finiteOrZero()` (a file-static helper in `stats_manager.cpp`) on load so an already-corrupted file **heals** instead of re-adopting the bad value. Any new persisted float needs the same guard at both write and load.
 
 ### 9. FmxManager (`core/fmx_manager.*`)
 
@@ -369,14 +381,17 @@ Embedded HTTP server that streams race data to browser-based overlays (OBS brows
 - Max 3 concurrent SSE connections (prevents thread pool starvation)
 
 **JSON data contract** (raw data, no filtering — web UI filters client-side):
-- `session` - Time, type, state, palette colors, font names, track info
-- `standings[]` - Per-rider: pos, num, name, gap, state, all chips
+- `session` - Type, state, palette colors, font names, track info, plus `time`: the MM:SS countdown, or — once a **time+lap** race's clock expires — a leader-relative overtime label (`N TO GO` / `FINAL LAP` / `CHECKERED`). The label is single-sourced by `PluginData::getLeaderLapsToGo()` (uses the same thresholds as `isRiderFinished`/the FinalLap event) + `PluginUtils::formatSessionClock()`, which also feed the in-game StandingsHud title and TimeWidget so all three read identically.
+- `standings[]` - Per-rider: pos, num, name, gap, state, `lastLapMs`/`bestLapMs`, all chips, per-reference positions-gained/lost deltas (`posDeltaStart` vs race start, `posDeltaSf` vs last S/F, `posDeltaSplit` vs last split — each present only during races, once its reference exists), and `plateColor` (the rider's tracked-rider plate color, emitted only when tracked). The overlay chooses what to show client-side.
 - `events[]` - All event log entries with clock/session timestamps and type enum
 
 **Static file serving:**
 - Mounts `plugins/mxbmrp3_data/web/` at `/` — users can freely customize the HTML/CSS/JS
-- Web overlay syncs colors and fonts from in-game settings via CSS custom properties
+- Web overlay syncs colors and fonts from in-game settings via CSS custom properties (`--gp-*`); the look is otherwise driven by `:root` tokens in `style.css` (palette/fonts/sizes/spacing/animation), overridable via `custom.css` (see `custom-sample.css`)
 - `GET /api/logos` — scans `web/logos/` for PNGs, returns sorted JSON array for the logo slideshow
+- The overlay's standings tower has a shared **bottom slot** cycling several broadcast panels (fastest-last-lap, fastest-laps, down-the-order, battle) via a `createSlotPanel` controller in `app.js` (mutually exclusive, client-side); append `?demo` to the overlay URL to replay a synthetic race with no plugin connection
+
+**Zero-client gating (game-thread cost):** `onDataChanged()` builds the full JSON snapshot (tens of KB of string work) on the game thread. `Standings` changes fire from every `RaceTrackPosition` callback, so on a full grid with OBS closed that was many wasted builds per second. The build is gated on **client activity** — `hasActiveClients()`, i.e. a live SSE connection or an `/api/state` poll within the last 5s; while inactive the cache is just marked stale, and the first notification after a client appears rebuilds it (one telemetry tick in-session). The gate is **split by change-type frequency**, and the split is load-bearing: high-frequency types (`Standings`, `EventLog`) are gated, but the **rare transition types** (`SessionData`, `RaceEntries`, `SpectateTarget`) **always** rebuild, client or not. Why: the plugin receives **no callbacks at all while the player sits in menus** (the game stops calling it), so every quiet period is *entered* via a rare-type change — if that snapshot were skipped, a client connecting later would be served a stale in-session snapshot with no rebuild opportunity ever arriving. Don't move the rare types behind the gate, and keep this no-callbacks-in-menus constraint in mind for anything that tries to defer work "to the next game-thread tick."
 
 **Feature gating:**
 - Compile-time: `GAME_HAS_HTTP_SERVER` flag in `game_config.h`
@@ -457,7 +472,7 @@ Abstract base class that all HUDs inherit from. Provides:
 ### Two Types of Display Components
 
 **Full HUDs** (complex, highly configurable):
-- `StandingsHud` - Race standings table with columns
+- `StandingsHud` - Race standings table with columns (incl. optional positions-gained/lost column, races only)
 - `LapLogHud` - History of lap times with sector breakdown
 - `LapConsistencyHud` - Lap time consistency analysis with bars and trend lines
 - `IdealLapHud` - Ideal (purple) sector times with gap comparison
@@ -471,9 +486,9 @@ Abstract base class that all HUDs inherit from. Provides:
 - `GapBarHud` - Live gap visualization bar with ghost position marker
 - `SettingsHud` - Interactive settings menu UI
 - `FmxHud` - FMX trick detection display with rotation arcs, chain stack, and scoring
-- `SessionHud` - Session info (type, format, track, server, players, password)
+- `SessionHud` - Session info (server name as the headline, format & state, track, weather)
 - `StatsHud` - Session stats display with configurable columns (last lap, session, all-time)
-- `NoticesHud` - Race status notices (wrong way, blue flag, PB alerts, last lap, finished)
+- `NoticesHud` - Race status notices (wrong way, blue flag, PB alerts, final lap, finished)
 
 **Overlays** (full-screen, telemetry-driven):
 - `HelmetOverlayHud` - First-person helmet overlay with visor tint, tilt (lean angle) and vibration (suspension). Global settings in `[HelmetOverlay]` INI section. Registered first to draw behind all other HUDs.
@@ -606,6 +621,10 @@ struct SPluginString_t {
 };
 ```
 
+**Font format & text encoding.** The game's `.fnt` bitmap fonts are a **byte-indexed 256-glyph table** built from CP1252 (see `fontgen.cfg`: `code_page = 1252`, glyphs 32–255). The renderer indexes by raw byte, so it cannot render UTF-8 — multi-byte rider names garble regardless of any truncation logic, which makes UTF-8-safe truncation *in-game* moot. The web overlay is the only UTF-8-aware renderer and handles names client-side. `m_szString` is `char[100]`, so in-game strings are also length-bounded by the struct.
+
+**Header/label convention.** Table column headers and axis labels go through `BaseHud::addLabel()` — the STRONG font at the *Small* size, vertically centered in the row via `labelRowYOffset()` — rather than a hand-rolled `addString` at data-font size. FriendsHud (column headers) and FmxHud (rotation-arc Pitch/Yaw/Roll labels) both deviated and were brought in line; new HUDs should use the helper.
+
 ### Coordinate System
 
 - Normalized: `(0, 0)` = top-left, `(1, 1)` = bottom-right
@@ -652,6 +671,8 @@ offsetY=0.6882
 Settings are saved:
 - On plugin shutdown (and on change, when Auto-Save is enabled)
 - File location: `{game_save_path}/mxbmrp3/mxbmrp3_settings.ini`
+
+**Parse robustness.** Hand-editing the INI is a supported workflow (`auto_save` off, then the RELOAD_CONFIG hotkey), so **every** value-parsing site in `loadSettings()` must be exception-guarded — a single naked `std::stoul`/`std::stof` on a typo'd value throws out of the loader and aborts the parse mid-file, leaving the plugin half-configured for the session. The one offender found was the v4 base-section color path calling `parseColorHex` (a bare `std::stoul`) without a `try/catch`. `parseColorHex` itself stays a thin wrapper, so the guard belongs at each call site, wrapping the whole section's branch.
 
 #### Per-profile vs global sections
 
@@ -871,6 +892,12 @@ Instead of rebuilding every frame:
 
 This is crucial for performance since `Draw()` is called every frame.
 
+**Gate on the flags, not the frame.** A HUD must rebuild only when `isDataDirty()`/`isLayoutDirty()` is set, never unconditionally per frame (unless the rebuild is trivially cheap). TelemetryHud was re-tessellating ~1600 line segments (each with a `sqrt`) every frame at 240fps for data that only changes at the 100Hz telemetry rate, so more than half the rebuilds produced identical output. (Becoming visible sets data-dirty via `BaseHud::setVisible`, so the first rebuild is unaffected.) The same proportionality applies to input polling: `HotkeyManager` refreshes only the *bound* keys each frame, doing the full 256-key `GetAsyncKeyState` sweep only while capturing a new binding.
+
+**The visibility/dirty flags are atomic.** `m_bVisible`, `m_bDataDirty`, and `m_bLayoutDirty` are `std::atomic<bool>` — and `setDataDirty()` writes *both* dirty flags. Background workers legitimately mark HUDs dirty: the RecordsHud fetch thread flags itself and TimingHud on completion, and the update-checker/downloader callbacks reach `VersionWidget::showUpdateNotification` (`m_bVisible` + the atomic `m_showingUpdateNotification`) and `SettingsHud::setDataDirty`. The reads happen every frame on the game thread; plain bools made that a data race (benign on x86-64 but UB). Keep any flag written cross-thread atomic.
+
+**Second-level render caches key on their inputs.** Where a rebuild is dominated by sub-geometry that *doesn't* change every rebuild, cache it keyed on everything that affects its output. MapHud's `renderTrack()` does this: every `RaceTrackPosition` marks the map dirty, but with rotation/zoom off the track ribbon is bit-identical between rebuilds, so its two tessellation passes are cached in `m_ribbonQuads` keyed by `TrackRibbonKey` (rotation, render bounds, scales, HUD offset, clip rect, LOD, zoom params, title row, the two colors — every input baked into the emitted quads). **Any new input to the ribbon output must be added to the key**, or the cache serves stale geometry. In rotate-to-player/zoom-follow modes the key changes every rebuild by design, so it's a transparent pass-through there.
+
 #### Standard Pattern (Most HUDs)
 
 Use `processDirtyFlags()` for HUDs that rely on `DataChangeType` notifications:
@@ -973,6 +1000,10 @@ void HudManager::onDataChanged(DataChangeType changeType) {
 }
 ```
 
+**The `Standings` firehose.** `DataChangeType::Standings` is the highest-frequency notification: `updateRealTimeGaps()` runs on every `RaceTrackPosition` callback, and the per-rider `GAP_UPDATE_THRESHOLD_MS` (100ms) filter is structurally defeated on full grids — leader timing is quantized to 100 points per lap, so a gap steps by ~lapTime/100 (well above the threshold) whenever *any* rider crosses a quantization boundary, which on a 30+ grid is nearly every callback. Left unchecked, that rebuilt every table HUD (Standings/Timing/Pitboard/Friends) every frame during close racing. So the notification is **time-coalesced** to at most one per `gapNotifyIntervalMs` (default 100ms): a skipped notify is carried in `m_gapNotifyPending` and flushed by a later call, so the final change is never dropped. MapHud/RadarHud are unaffected — they rebuild from their own `updateRiderPositions` path.
+
+**New consumers must respect the firehose.** Any new `onDataChanged` consumer beyond the HUDs sits on this hot path and must be trivially cheap *or* short-circuit before any string/alloc work, gated on whether its output is even consumed: `HttpServer` gates the snapshot build on `hasActiveClients()` (see HttpServer above), and `SteamFriendsManager::updateLocalPresence` fingerprints its raw inputs in a POD `PresenceInputs` compare and returns before building ~10 strings when nothing changed (session time bucketed per second, the finest granularity the self-row clock displays).
+
 ## Constants & Configuration
 
 All magic numbers live in `plugin_constants.h`:
@@ -993,6 +1024,11 @@ namespace PluginConstants {
     }
 }
 ```
+
+**INI-only tuning knobs.** A few power-user settings have no in-game control and are edited directly in the INI (documented inline, clamped on load, reset covered by the global-snapshot replay). Two were added for the performance work:
+
+- `[Rumble] send_interval_ms` (4–200, default 16) — the continuous-rumble-feed cadence cap. Lower = more responsive; higher = less Bluetooth traffic on degraded stacks. Global (on XInputReader), never per-bike, since send cadence is a transport property, not an effect preference.
+- `[Advanced] gapNotifyIntervalMs` (0–1000, default 100) — live-gap HUD refresh coalescing (see *Data Change Notifications*). `0` restores notify-on-every-change for anyone who prefers per-frame gap updates over frame budget.
 
 ## Debugging
 
@@ -1025,7 +1061,7 @@ SCOPED_TIMER_THRESHOLD("MyFunction", 100);  // Logs if > 100us
 
 3. **C++ exceptions must not cross the DLL boundary** - The host game terminates if a C++ exception escapes a DLL export. Every export in `vendor/piboso/*_api.cpp` wraps its body in `API_GUARD_CATCH` (see `vendor/piboso/api_guard.h`). When adding a new export, follow the same pattern. Similarly, every `std::thread` body (HttpServer, UpdateChecker, UpdateDownloader, DiscordManager, `RecordsHud::performFetch`) wraps itself in a top-level try/catch, since an uncaught throw in a `std::thread` calls `std::terminate()`. For hardware faults that don't go through the C++ exception system (null deref, OOB, divide-by-zero), the SEH filter in `core/crash_handler.*` writes a minidump for diagnosis but doesn't prevent the crash.
 
-4. **Game thread vs background threads** - All PiBoSo API callbacks (`Draw`, `RunTelemetry`, etc.) run on the game thread. `PluginData`, `HudManager`, `SettingsManager`, and the various other managers are game-thread-only and not thread-safe. Background threads exist for I/O (HttpServer, DiscordManager, UpdateChecker, UpdateDownloader, RecordsHud's fetch thread) and must NOT touch those singletons directly. They consume snapshots built on the game thread instead (see `HttpServer::buildJsonSnapshot`, `DiscordManager::updateSnapshot`). The `Logger` has its own internal mutex and is safe to call from any thread.
+4. **Game thread vs background threads** - All PiBoSo API callbacks (`Draw`, `RunTelemetry`, etc.) run on the game thread. `PluginData`, `HudManager`, `SettingsManager`, and the various other managers are game-thread-only and not thread-safe. Background threads exist for I/O (HttpServer, DiscordManager, UpdateChecker, UpdateDownloader, RecordsHud's fetch thread) and must NOT touch those singletons directly. They consume snapshots built on the game thread instead (see `HttpServer::buildJsonSnapshot`, `DiscordManager::updateSnapshot`). The `Logger` has its own internal mutex and is safe to call from any thread. Two corollaries for any HUD that grows a worker thread: **(a) a mutex-guarded member is guarded at *every* access site, including private helpers** that look like they're already inside locked code — the crash-grade bug was `RecordsHud::findPlayerPositionInRecords()` iterating the live `m_records` vector unlocked while the fetch thread cleared and reallocated it under `m_recordsMutex`; the fix copies under the lock and passes the snapshot into the helper. **(b) Snapshot game-thread inputs at task start, and join before teardown** — the fetch worker branches on `m_fetchProvider`/`m_fetchTrackName` captured in `startFetch()` (not the live values the game thread mutates when cycling providers, which would parse the response with the wrong schema), and `HudManager::clear()` joins the fetch thread *before* nulling cached HUD pointers, because the worker calls `getTimingHud().setDataDirty()` on completion and would otherwise dereference a null `m_pTiming` on game exit mid-fetch.
 
 5. **Sprite indices are 1-based** - Index 0 means "solid color fill", not "first sprite".
 

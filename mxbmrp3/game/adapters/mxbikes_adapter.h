@@ -74,8 +74,12 @@ struct Adapter {
         result.suspMaxTravel[1] = src->m_afSuspMaxTravel[1];
         result.steerLock = src->m_fSteerLock;
 
-        // Server info (new in updated API)
-        safeCopy(result.serverName, src->m_szServerName, Unified::NAME_BUFFER_SIZE);
+        // Server info (new in updated API). Limit by the SOURCE field size
+        // (64), not NAME_BUFFER_SIZE (100): an unterminated m_szServerName
+        // must not be read past its own bounds (the over-read stayed inside
+        // the caller's zeroed defensive copy, but could append bytes of the
+        // following fields to the displayed name).
+        safeCopy(result.serverName, src->m_szServerName, sizeof(src->m_szServerName));
         result.serverType = src->m_iServerType;
 
         return result;

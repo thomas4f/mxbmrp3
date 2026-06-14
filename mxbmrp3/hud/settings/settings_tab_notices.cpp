@@ -109,7 +109,7 @@ BaseHud* SettingsHud::renderTabNotices(SettingsLayoutContext& ctx) {
         "notices.overtime");
 
     bool lastLapOn = (hud->m_enabledNotices & NoticesHud::NOTICE_LAST_LAP) != 0;
-    ctx.addToggleControl("Last lap", lastLapOn,
+    ctx.addToggleControl("Final lap", lastLapOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_LAST_LAP, true,
         "notices.last_lap");

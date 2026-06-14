@@ -40,8 +40,13 @@ XInputReader::XInputReader()
     : m_controllerIndex(0)
     , m_lastConnectedState{false, false, false, false}
     , m_connectionStateChanged(false)
+    , m_lastConnectionScan(std::chrono::steady_clock::now())
     , m_lastLeftMotor(0.0f)
     , m_lastRightMotor(0.0f)
+    , m_lastSentLeftMotor(0)
+    , m_lastSentRightMotor(0)
+    , m_hasSentVibration(false)
+    , m_lastVibrationSend(std::chrono::steady_clock::now())
     , m_lastSuspensionRumble(0.0f)
     , m_lastWheelspinRumble(0.0f)
     , m_lastLockupRumble(0.0f)
@@ -49,6 +54,10 @@ XInputReader::XInputReader()
     , m_lastSlideRumble(0.0f)
     , m_lastSurfaceRumble(0.0f)
     , m_lastSteerRumble(0.0f)
+    , m_lastRevLimiterRumble(0.0f)
+    , m_lastPitLimiterRumble(0.0f)
+    , m_lastSuspensionRumbleRear(0.0f)
+    , m_lastLockupRumbleRear(0.0f)
     , m_lastWheelieRumble(0.0f)
 {
     // Initialize connection state
@@ -62,6 +71,14 @@ void XInputReader::update() {
     // When disabled (-1), don't poll XInput at all
     if (m_controllerIndex < 0) {
         m_data = XInputData();  // Reset to default (disconnected) state
+    } else if (!m_data.isConnected &&
+               std::chrono::steady_clock::now() - m_lastFailedMainPoll <
+                   std::chrono::milliseconds(DISCONNECTED_POLL_INTERVAL_MS)) {
+        // Back off while the selected slot is disconnected: XInputGetState on
+        // an empty slot is the slow path (device enumeration, ms-class on bad
+        // stacks) and this runs per telemetry tick. Reconnect detection is
+        // delayed by at most DISCONNECTED_POLL_INTERVAL_MS. m_data is already
+        // the default disconnected state - nothing to update.
     } else {
         XINPUT_STATE state;
         ZeroMemory(&state, sizeof(XINPUT_STATE));
@@ -112,16 +129,26 @@ void XInputReader::update() {
 
             // Reset all values to default
             m_data = XInputData();
+
+            // Start/extend the disconnected-poll backoff window
+            m_lastFailedMainPoll = std::chrono::steady_clock::now();
         }
     }
 
-    // Check if any controller connection state changed
-    for (int i = 0; i < 4; i++) {
-        bool connected = isControllerConnected(i);
-        if (connected != m_lastConnectedState[i]) {
-            m_connectionStateChanged = true;
-            m_lastConnectedState[i] = connected;
-            DEBUG_INFO_F("XInputReader: Controller %d %s", i + 1, connected ? "connected" : "disconnected");
+    // Check if any controller connection state changed.
+    // Throttled to once per second: XInputGetState on a disconnected slot is
+    // very slow (device enumeration), and this runs per telemetry tick on the
+    // game thread. The result only feeds the settings UI controller list.
+    auto now = std::chrono::steady_clock::now();
+    if (now - m_lastConnectionScan >= std::chrono::seconds(1)) {
+        m_lastConnectionScan = now;
+        for (int i = 0; i < 4; i++) {
+            bool connected = isControllerConnected(i);
+            if (connected != m_lastConnectedState[i]) {
+                m_connectionStateChanged = true;
+                m_lastConnectedState[i] = connected;
+                DEBUG_INFO_F("XInputReader: Controller %d %s", i + 1, connected ? "connected" : "disconnected");
+            }
         }
     }
 }
@@ -130,6 +157,13 @@ void XInputReader::setControllerIndex(int index) {
     int oldIndex = m_controllerIndex;
     // XInput supports controllers 0-3, or -1 for disabled
     m_controllerIndex = std::max(-1, std::min(3, index));
+
+    // Force the next setVibration() to actually send - the new controller's
+    // motor state is unknown, so the dedup cache must not suppress it
+    m_hasSentVibration = false;
+
+    // Poll the newly selected slot immediately (skip the disconnected backoff)
+    m_lastFailedMainPoll = std::chrono::steady_clock::time_point{};
 
     // When disabling or switching controllers, stop vibration on old controller
     if (oldIndex >= 0 && oldIndex != m_controllerIndex) {
@@ -288,13 +322,51 @@ void XInputReader::setVibration(float leftMotor, float rightMotor) {
     leftMotor = std::max(0.0f, std::min(1.0f, leftMotor));
     rightMotor = std::max(0.0f, std::min(1.0f, rightMotor));
 
-    // Track values for visualization
+    // Track values for visualization (full precision - the rumble graph
+    // should show the computed signal, not the quantized output)
     m_lastLeftMotor = leftMotor;
     m_lastRightMotor = rightMotor;
 
+    // Quantize to 8-bit steps - the motors can't render finer differences
+    // (the Xbox BT rumble protocol is 8-bit per motor anyway), and it gives
+    // a crisp definition of "motors off" for the idle check below
+    uint8_t left8 = static_cast<uint8_t>(leftMotor * 255.0f + 0.5f);
+    uint8_t right8 = static_cast<uint8_t>(rightMotor * 255.0f + 0.5f);
+
+    // Send policy, shaped by two constraints:
+    //  - Bluetooth: XInputSetState is a radio transaction; sustained 100Hz
+    //    traffic can back up the BT stack until every call blocks
+    //    (progressive FPS collapse). So: cap the send rate, and go fully
+    //    silent while the motors are off.
+    //  - Keepalive: controllers decay rumble without a continuous feed (a
+    //    constant nonzero value sent once stops rumbling after a moment), so
+    //    nonzero values are RE-SENT every interval even when unchanged -
+    //    never deduped.
+    // Transitions to (0,0) bypass the rate cap: a stop that lands inside the
+    // cap window could otherwise be swallowed, and if telemetry then halts
+    // (run deinit) the motors would be left running.
+    bool isZero = (left8 == 0 && right8 == 0);
+    bool lastWasZero = (m_lastSentLeftMotor == 0 && m_lastSentRightMotor == 0);
+    auto now = std::chrono::steady_clock::now();
+    if (m_hasSentVibration) {
+        if (isZero && lastWasZero) {
+            return;  // Idle: stay silent, "off" needs no keepalive
+        }
+        if (!isZero &&
+            now - m_lastVibrationSend < std::chrono::milliseconds(m_rumbleSendIntervalMs)) {
+            return;  // Live feed: capped cadence
+        }
+    }
+
+    m_hasSentVibration = true;
+    m_lastSentLeftMotor = left8;
+    m_lastSentRightMotor = right8;
+    m_lastVibrationSend = now;
+
     XINPUT_VIBRATION vibration = {};
-    vibration.wLeftMotorSpeed = static_cast<WORD>(leftMotor * 65535.0f);
-    vibration.wRightMotorSpeed = static_cast<WORD>(rightMotor * 65535.0f);
+    // 257 maps the 8-bit range back onto the full WORD range (255 -> 65535)
+    vibration.wLeftMotorSpeed = static_cast<WORD>(left8 * 257);
+    vibration.wRightMotorSpeed = static_cast<WORD>(right8 * 257);
 
     XInputSetState(m_controllerIndex, &vibration);
 }
@@ -342,7 +414,7 @@ const RumbleConfig& XInputReader::getRumbleConfig() const {
     return m_rumbleConfig;  // Global config from INI
 }
 
-void XInputReader::updateRumbleFromTelemetry(float suspensionVelocity, float wheelOverrun, float wheelUnderrun, float rpm, float slideAngle, float surfaceSpeed, float steerTorque, float wheelieIntensity, bool isAirborne, bool suppressOutput) {
+void XInputReader::updateRumbleFromTelemetry(float suspVelFront, float suspVelRear, float wheelOverrun, float underrunFront, float underrunRear, float rpm, float slideAngle, float surfaceSpeed, float steerTorque, float wheelieIntensity, float revLimiterPct, float pitLimiterActive, bool isAirborne, bool suppressOutput) {
     // If controller is disabled, don't process rumble at all
     if (m_controllerIndex < 0) {
         return;
@@ -355,14 +427,24 @@ void XInputReader::updateRumbleFromTelemetry(float suspensionVelocity, float whe
     // m_last*Rumble stores the max motor contribution for visualization
 
     // Get input values (used for both normalized calculation and motor-specific)
-    float suspInput = std::abs(suspensionVelocity);
+    // Bumps/Lockup carry separate front/rear inputs. When their effect isn't split
+    // we collapse to the max (matching the legacy single-input behavior); when split
+    // each wheel drives its own effect, so keep the per-wheel inputs too.
+    float suspFrontInput = std::abs(suspVelFront);
+    float suspRearInput = std::abs(suspVelRear);
+    float suspInput = std::abs(std::max(suspVelFront, suspVelRear));
     float spinInput = std::max(0.0f, wheelOverrun);
-    float lockInput = std::max(0.0f, wheelUnderrun);
+    float lockFrontInput = std::max(0.0f, underrunFront);
+    float lockRearInput = std::max(0.0f, underrunRear);
+    float lockInput = std::max(lockFrontInput, lockRearInput);
     float wheelieInput = wheelieIntensity;
     float rpmInput = rpm;
     float slideInput = slideAngle;
     float surfaceInput = surfaceSpeed;
     float steerInput = std::abs(steerTorque);
+    // Rev/pit limiter are engine/state effects (not ground-dependent), active even airborne.
+    float revLimiterInput = std::max(0.0f, revLimiterPct);
+    float pitLimiterInput = std::max(0.0f, pitLimiterActive);
 
     // Debug logging for raw input values (uncomment ONE #define at top of file)
 #if defined(DEBUG_RUMBLE_INPUT_SUSPENSION) || defined(DEBUG_RUMBLE_INPUT_WHEELSPIN) || \
@@ -418,8 +500,10 @@ void XInputReader::updateRumbleFromTelemetry(float suspensionVelocity, float whe
     // Ground-based effects are suppressed when airborne
     if (isAirborne) {
         m_lastSuspensionRumble = 0.0f;
+        m_lastSuspensionRumbleRear = 0.0f;
         m_lastWheelspinRumble = 0.0f;
         m_lastLockupRumble = 0.0f;
+        m_lastLockupRumbleRear = 0.0f;
         m_lastSlideRumble = 0.0f;
         m_lastSurfaceRumble = 0.0f;
         m_lastSteerRumble = 0.0f;
@@ -434,14 +518,39 @@ void XInputReader::updateRumbleFromTelemetry(float suspensionVelocity, float whe
             float norm = eff.calculateNormalized(input);
             return norm * std::max(eff.lightStrength, eff.heavyStrength);
         };
-        m_lastSuspensionRumble = maxContrib(config.suspensionEffect, suspInput);
+        // Bumps/Lockup: when split, keep front and rear separate so the graph can draw two
+        // traces (front in m_last*Rumble, rear in m_last*RumbleRear); when linked, the single
+        // value is the combined contribution and the rear trace is unused.
+        if (config.suspensionSplit) {
+            m_lastSuspensionRumble = maxContrib(config.suspensionEffectFront, suspFrontInput);
+            m_lastSuspensionRumbleRear = maxContrib(config.suspensionEffectRear, suspRearInput);
+        } else {
+            m_lastSuspensionRumble = maxContrib(config.suspensionEffect, suspInput);
+            m_lastSuspensionRumbleRear = 0.0f;
+        }
         m_lastWheelspinRumble = maxContrib(config.wheelspinEffect, spinInput);
-        m_lastLockupRumble = maxContrib(config.brakeLockupEffect, lockInput);
+        if (config.brakeLockupSplit) {
+            m_lastLockupRumble = maxContrib(config.brakeLockupEffectFront, lockFrontInput);
+            m_lastLockupRumbleRear = maxContrib(config.brakeLockupEffectRear, lockRearInput);
+        } else {
+            m_lastLockupRumble = maxContrib(config.brakeLockupEffect, lockInput);
+            m_lastLockupRumbleRear = 0.0f;
+        }
         m_lastWheelieRumble = maxContrib(config.wheelieEffect, wheelieInput);
         m_lastRpmRumble = maxContrib(config.rpmEffect, rpmInput);
         m_lastSlideRumble = maxContrib(config.slideEffect, slideInput);
         m_lastSurfaceRumble = maxContrib(config.surfaceEffect, surfaceInput);
         m_lastSteerRumble = maxContrib(config.steerEffect, steerInput);
+    }
+
+    // Rev/pit limiter visualization - engine/state effects, active regardless of airborne
+    {
+        auto maxContrib = [](const RumbleEffect& eff, float input) {
+            float norm = eff.calculateNormalized(input);
+            return norm * std::max(eff.lightStrength, eff.heavyStrength);
+        };
+        m_lastRevLimiterRumble = maxContrib(config.revLimiterEffect, revLimiterInput);
+        m_lastPitLimiterRumble = maxContrib(config.pitLimiterEffect, pitLimiterInput);
     }
 
     // Combine effects - each effect contributes independently to each motor
@@ -462,17 +571,31 @@ void XInputReader::updateRumbleFromTelemetry(float suspensionVelocity, float whe
 
     // Calculate actual motor contributions (0 when airborne for ground effects)
     if (!isAirborne) {
-        // Suspension effect
-        blend(heavyMotor, config.suspensionEffect.calculateHeavy(suspInput));
-        blend(lightMotor, config.suspensionEffect.calculateLight(suspInput));
+        // Suspension effect (front/rear blended independently when split)
+        if (config.suspensionSplit) {
+            blend(heavyMotor, config.suspensionEffectFront.calculateHeavy(suspFrontInput));
+            blend(lightMotor, config.suspensionEffectFront.calculateLight(suspFrontInput));
+            blend(heavyMotor, config.suspensionEffectRear.calculateHeavy(suspRearInput));
+            blend(lightMotor, config.suspensionEffectRear.calculateLight(suspRearInput));
+        } else {
+            blend(heavyMotor, config.suspensionEffect.calculateHeavy(suspInput));
+            blend(lightMotor, config.suspensionEffect.calculateLight(suspInput));
+        }
 
         // Wheelspin effect
         blend(heavyMotor, config.wheelspinEffect.calculateHeavy(spinInput));
         blend(lightMotor, config.wheelspinEffect.calculateLight(spinInput));
 
-        // Brake lockup effect
-        blend(heavyMotor, config.brakeLockupEffect.calculateHeavy(lockInput));
-        blend(lightMotor, config.brakeLockupEffect.calculateLight(lockInput));
+        // Brake lockup effect (front/rear blended independently when split)
+        if (config.brakeLockupSplit) {
+            blend(heavyMotor, config.brakeLockupEffectFront.calculateHeavy(lockFrontInput));
+            blend(lightMotor, config.brakeLockupEffectFront.calculateLight(lockFrontInput));
+            blend(heavyMotor, config.brakeLockupEffectRear.calculateHeavy(lockRearInput));
+            blend(lightMotor, config.brakeLockupEffectRear.calculateLight(lockRearInput));
+        } else {
+            blend(heavyMotor, config.brakeLockupEffect.calculateHeavy(lockInput));
+            blend(lightMotor, config.brakeLockupEffect.calculateLight(lockInput));
+        }
 
         // Wheelie effect
         blend(heavyMotor, config.wheelieEffect.calculateHeavy(wheelieInput));
@@ -500,6 +623,12 @@ void XInputReader::updateRumbleFromTelemetry(float suspensionVelocity, float whe
         blend(lightMotor, rpmNorm * config.rpmEffect.lightStrength);
     }
 
+    // Rev/pit limiter - engine/state effects, applied regardless of airborne
+    blend(heavyMotor, config.revLimiterEffect.calculateHeavy(revLimiterInput));
+    blend(lightMotor, config.revLimiterEffect.calculateLight(revLimiterInput));
+    blend(heavyMotor, config.pitLimiterEffect.calculateHeavy(pitLimiterInput));
+    blend(lightMotor, config.pitLimiterEffect.calculateLight(pitLimiterInput));
+
     // Clamp to valid range (important for additive mode)
     heavyMotor = std::min(1.0f, heavyMotor);
     lightMotor = std::min(1.0f, lightMotor);
@@ -508,13 +637,17 @@ void XInputReader::updateRumbleFromTelemetry(float suspensionVelocity, float whe
     pushToHistory(m_heavyMotorHistory, heavyMotor);
     pushToHistory(m_lightMotorHistory, lightMotor);
     pushToHistory(m_suspensionHistory, m_lastSuspensionRumble);
+    pushToHistory(m_suspensionRearHistory, m_lastSuspensionRumbleRear);
     pushToHistory(m_wheelspinHistory, m_lastWheelspinRumble);
     pushToHistory(m_lockupHistory, m_lastLockupRumble);
+    pushToHistory(m_lockupRearHistory, m_lastLockupRumbleRear);
     pushToHistory(m_wheelieHistory, m_lastWheelieRumble);
     pushToHistory(m_rpmHistory, m_lastRpmRumble);
     pushToHistory(m_slideHistory, m_lastSlideRumble);
     pushToHistory(m_surfaceHistory, m_lastSurfaceRumble);
     pushToHistory(m_steerHistory, m_lastSteerRumble);
+    pushToHistory(m_revLimiterHistory, m_lastRevLimiterRumble);
+    pushToHistory(m_pitLimiterHistory, m_lastPitLimiterRumble);
 
     // Send to controller (unless suppressed or disabled)
     // Graph still updates even when output is suppressed

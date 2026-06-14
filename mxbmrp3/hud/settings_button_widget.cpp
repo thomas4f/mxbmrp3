@@ -43,6 +43,11 @@ void SettingsButtonWidget::update() {
 }
 
 bool SettingsButtonWidget::isClicked() const {
+    // Hidden by the user (settings opened via hotkey) - don't intercept clicks
+    if (!m_bVisible) {
+        return false;
+    }
+
     const InputManager& input = InputManager::getInstance();
 
     // Button is only clickable if cursor is visible
@@ -162,9 +167,13 @@ void SettingsButtonWidget::rebuildRenderData() {
 
 void SettingsButtonWidget::resetToDefaults() {
     m_bVisible = true;
-    m_bShowTitle = true;
+    m_bShowTitle = false;  // Hardcoded off (like the cursor) - title makes no sense for a button
     setTextureVariant(0);  // No texture by default
-    m_fBackgroundOpacity = 0.1f;  // Match TimingHud opacity
+    // The accent "chip" + glyph always render, so 0% background would be misleading
+    // (the button never fully vanishes via opacity - use the Visible toggle for that).
+    // Floor the slider at 10% so it can't reach a deceptive 0%.
+    m_fMinBackgroundOpacity = 0.1f;
+    m_fBackgroundOpacity = 0.1f;  // Match TimingHud opacity (and the slider floor)
     m_fScale = 1.0f;
     setPosition(0.957f, 0.0111f);
     setDataDirty();

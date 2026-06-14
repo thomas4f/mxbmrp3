@@ -54,7 +54,7 @@ void RumbleHud::resetToDefaults() {
     m_bShowTitle = true;
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
-    setPosition(0.7315f, 0.4107f);
+    setPosition(0.7315f, 0.3774f);
     setScale(1.0f);
     m_bShowMaxMarkers = false;  // Max markers OFF by default
     m_maxMarkerLingerFrames = 60;  // ~1 second at 60fps
@@ -113,8 +113,9 @@ void RumbleHud::addVerticalBar(float x, float y, float barWidth, float barHeight
         setQuadPositions(emptyQuad, emptyX, emptyY, barWidth, emptyHeight);
         emptyQuad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
 
-        // Apply background opacity to empty portion (half opacity)
-        emptyQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), m_fBackgroundOpacity * 0.5f);
+        // Fixed 50% — the empty bar is part of the gauge readout, not the panel backdrop,
+        // so it doesn't follow the background-opacity slider (matches BarsWidget).
+        emptyQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), 0.5f);
 
         m_quads.push_back(emptyQuad);
     }
@@ -184,6 +185,16 @@ void RumbleHud::rebuildRenderData() {
     const XInputReader& xinput = pluginData.getXInputReader();
     const RumbleConfig& config = xinput.getRumbleConfig();
 
+    // Split-aware enablement for Bumps/Lockup: the primary (front/combined) trace uses the
+    // front effect when split, the combined effect otherwise; the rear trace only exists
+    // when split. These drive the legend count, graph traces and legend entries.
+    const bool bumpsPrimaryOn = config.suspensionSplit ? config.suspensionEffectFront.isEnabled()
+                                                       : config.suspensionEffect.isEnabled();
+    const bool bumpsRearOn = config.suspensionSplit && config.suspensionEffectRear.isEnabled();
+    const bool lockupPrimaryOn = config.brakeLockupSplit ? config.brakeLockupEffectFront.isEnabled()
+                                                         : config.brakeLockupEffect.isEnabled();
+    const bool lockupRearOn = config.brakeLockupSplit && config.brakeLockupEffectRear.isEnabled();
+
     // Rumble data is only valid when player is on track
     // During spectate/replay, telemetry isn't received so history would be stale
     bool isOnTrack = (pluginData.getDrawState() == ViewState::ON_TRACK);
@@ -199,14 +210,16 @@ void RumbleHud::rebuildRenderData() {
 
     // Calculate legend height (count enabled effects)
     int legendLines = 0;
-    if (config.suspensionEffect.isEnabled()) legendLines++;
+    if (bumpsPrimaryOn || bumpsRearOn) legendLines++;
     if (config.wheelspinEffect.isEnabled()) legendLines++;
-    if (config.brakeLockupEffect.isEnabled()) legendLines++;
+    if (lockupPrimaryOn || lockupRearOn) legendLines++;
     if (config.wheelieEffect.isEnabled()) legendLines++;
     if (config.rpmEffect.isEnabled()) legendLines++;
     if (config.slideEffect.isEnabled()) legendLines++;
     if (config.surfaceEffect.isEnabled()) legendLines++;
     if (config.steerEffect.isEnabled()) legendLines++;
+    if (config.revLimiterEffect.isEnabled()) legendLines++;
+    if (config.pitLimiterEffect.isEnabled()) legendLines++;
     float legendHeight = legendLines * dims.lineHeightNormal;
 
     // Height: title + max(graph height, legend height) - matching TelemetryHud/PerformanceHud
@@ -233,14 +246,18 @@ void RumbleHud::rebuildRenderData() {
     // Colors for motors and effects
     unsigned long heavyColor = PluginUtils::makeColor(255, 100, 100, 230);  // Red-ish for heavy motor
     unsigned long lightColor = PluginUtils::makeColor(100, 200, 255, 230);  // Blue-ish for light motor
-    unsigned long bumpsColor = SemanticColors::FRONT_SUSP;    // Purple for bumps/suspension
+    unsigned long bumpsColor = SemanticColors::FRONT_SUSP;    // Purple for bumps/suspension (front)
+    unsigned long bumpsRearColor = SemanticColors::REAR_SUSP; // Rear suspension when split
     unsigned long wheelColor = SemanticColors::THROTTLE;      // Green
-    unsigned long lockupColor = SemanticColors::FRONT_BRAKE;  // Red
+    unsigned long lockupColor = SemanticColors::FRONT_BRAKE;  // Red for lockup (front)
+    unsigned long lockupRearColor = SemanticColors::REAR_BRAKE; // Rear lockup when split
     unsigned long wheelieColor = PluginUtils::makeColor(50, 220, 220, 230); // Cyan for wheelie
     unsigned long rpmColor = ColorPalette::GRAY;              // Gray
     unsigned long slideColor = PluginUtils::makeColor(255, 200, 50, 230);   // Orange/yellow for lateral slide
     unsigned long terrainColor = PluginUtils::makeColor(139, 90, 43, 230); // Brown for terrain/surface
     unsigned long steerColor = PluginUtils::makeColor(180, 100, 220, 230);  // Purple-ish for steer torque
+    unsigned long revLimColor = PluginUtils::makeColor(255, 230, 60, 230);   // Bright yellow for rev limiter
+    unsigned long pitLimColor = PluginUtils::makeColor(120, 160, 255, 230);  // Blue for pit limiter
 
     // === LEFT SIDE: Graph ===
     float graphStartX = contentStartX;
@@ -276,16 +293,26 @@ void RumbleHud::rebuildRenderData() {
 
     if (isOnTrack) {
         // Effects first (underneath motors)
-        if (config.suspensionEffect.isEnabled()) {
+        if (bumpsPrimaryOn) {
             addHistoryGraph(xinput.getSuspensionHistory(), bumpsColor,
+                            graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
+        }
+        // Rear suspension trace (only when split) in the rear-wheel color
+        if (bumpsRearOn) {
+            addHistoryGraph(xinput.getSuspensionRearHistory(), bumpsRearColor,
                             graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
         }
         if (config.wheelspinEffect.isEnabled()) {
             addHistoryGraph(xinput.getWheelspinHistory(), wheelColor,
                             graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
         }
-        if (config.brakeLockupEffect.isEnabled()) {
+        if (lockupPrimaryOn) {
             addHistoryGraph(xinput.getLockupHistory(), lockupColor,
+                            graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
+        }
+        // Rear lockup trace (only when split) in the rear-wheel color
+        if (lockupRearOn) {
+            addHistoryGraph(xinput.getLockupRearHistory(), lockupRearColor,
                             graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
         }
         if (config.wheelieEffect.isEnabled()) {
@@ -306,6 +333,14 @@ void RumbleHud::rebuildRenderData() {
         }
         if (config.steerEffect.isEnabled()) {
             addHistoryGraph(xinput.getSteerHistory(), steerColor,
+                            graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
+        }
+        if (config.revLimiterEffect.isEnabled()) {
+            addHistoryGraph(xinput.getRevLimiterHistory(), revLimColor,
+                            graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
+        }
+        if (config.pitLimiterEffect.isEnabled()) {
+            addHistoryGraph(xinput.getPitLimiterHistory(), pitLimColor,
                             graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
         }
     }
@@ -350,10 +385,12 @@ void RumbleHud::rebuildRenderData() {
     char buffer[16];
 
     // Bumps/Suspension effect (show 0% when not on track)
-    if (config.suspensionEffect.isEnabled()) {
+    if (bumpsPrimaryOn || bumpsRearOn) {
         addLabel("Bmp", legendStartX, legendY, Justify::LEFT,
             this->getFont(FontCategory::STRONG), bumpsColor, dims);
-        snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastSuspensionRumble() * 100) : 0);
+        // Overall intensity = stronger of front/rear (rear is 0 when not split)
+        float suspVal = std::max(xinput.getLastSuspensionRumble(), xinput.getLastSuspensionRumbleRear());
+        snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(suspVal * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
             this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
         legendY += dims.lineHeightNormal;
@@ -370,10 +407,12 @@ void RumbleHud::rebuildRenderData() {
     }
 
     // Brake lockup effect
-    if (config.brakeLockupEffect.isEnabled()) {
+    if (lockupPrimaryOn || lockupRearOn) {
         addLabel("Lck", legendStartX, legendY, Justify::LEFT,
             this->getFont(FontCategory::STRONG), lockupColor, dims);
-        snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastLockupRumble() * 100) : 0);
+        // Overall intensity = stronger of front/rear (rear is 0 when not split)
+        float lockVal = std::max(xinput.getLastLockupRumble(), xinput.getLastLockupRumbleRear());
+        snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(lockVal * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
             this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
         legendY += dims.lineHeightNormal;
@@ -424,6 +463,26 @@ void RumbleHud::rebuildRenderData() {
         addLabel("Str", legendStartX, legendY, Justify::LEFT,
             this->getFont(FontCategory::STRONG), steerColor, dims);
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastSteerRumble() * 100) : 0);
+        addString(buffer, valueX, legendY, Justify::LEFT,
+            this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
+        legendY += dims.lineHeightNormal;
+    }
+
+    // Rev limiter effect
+    if (config.revLimiterEffect.isEnabled()) {
+        addLabel("Rev", legendStartX, legendY, Justify::LEFT,
+            this->getFont(FontCategory::STRONG), revLimColor, dims);
+        snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastRevLimiterRumble() * 100) : 0);
+        addString(buffer, valueX, legendY, Justify::LEFT,
+            this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
+        legendY += dims.lineHeightNormal;
+    }
+
+    // Pit limiter effect
+    if (config.pitLimiterEffect.isEnabled()) {
+        addLabel("Pit", legendStartX, legendY, Justify::LEFT,
+            this->getFont(FontCategory::STRONG), pitLimColor, dims);
+        snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastPitLimiterRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
             this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
     }

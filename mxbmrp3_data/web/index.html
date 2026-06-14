@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MXBMRP3 Overlay</title>
     <link rel="stylesheet" href="style.css">
+    <!-- Your overrides (loads last, wins). Copy custom-sample.css to custom.css
+         to get started; absent by default, so this 404s harmlessly. -->
     <link rel="stylesheet" href="custom.css">
 </head>
 <body>
@@ -30,13 +32,53 @@
         <!-- Standings -->
         <div id="standings-container">
             <div id="standings-header">
-                <span class="col-pos">P</span>
-                <span class="col-num">#</span>
-                <span class="col-name">NAME</span>
-                <span class="col-gap" id="header-gap">GAP</span>
+                <span id="header-title">Behind Leader</span>
+                <span id="header-gap">Gap</span>
             </div>
             <div id="standings-body">
                 <!-- Populated by JavaScript -->
+            </div>
+            <!-- Fastest Last Lap Times — races only. Slides up over the bottom
+                 rows of the tower on an interval, then slides back down. -->
+            <div id="fastlap-panel" class="hidden">
+                <div class="fastlap-inner">
+                    <div class="fastlap-title">Fastest Last Lap Times</div>
+                    <div id="fastlap-list">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+            <!-- Fastest Laps — races. Leaderboard of each rider's best lap of
+                 the session (rank 1 = overall fastest lap). -->
+            <div id="bestlap-panel" class="hidden">
+                <div class="bestlap-inner">
+                    <div class="bestlap-title">Fastest Laps</div>
+                    <div id="bestlap-list">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+            <!-- Down the Order — races/sessions with a compact tower. Pages
+                 through the riders hidden below the Max Riders cutoff. -->
+            <div id="tail-panel" class="hidden">
+                <div class="tail-inner">
+                    <div class="tail-title">Down the Order</div>
+                    <div class="tail-viewport">
+                        <div class="tail-track">
+                            <!-- Pages populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Battle — races. Highlights a cluster of riders running close
+                 together (e.g. "Battle for 4th"). -->
+            <div id="battle-panel" class="hidden">
+                <div class="battle-inner">
+                    <div class="battle-title">Battle</div>
+                    <div id="battle-list">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
             </div>
         </div>
 

@@ -681,11 +681,11 @@ float SettingsLayoutContext::addRightColumnCycleControl(
 void SettingsLayoutContext::addWidgetRow(
     const char* name,
     BaseHud* hud,
+    bool enableVisibility,
     bool enableTitle,
+    bool enableBgTexture,
     bool enableOpacity,
     bool enableScale,
-    bool enableVisibility,
-    bool enableBgTexture,
     const char* tooltipId
 ) {
     float cw = charWidth();
@@ -779,8 +779,9 @@ void SettingsLayoutContext::addWidgetRow(
     // Visibility toggle (shows actual value, grayed out when disabled)
     addInlineToggle(visX, hud->isVisible(), SettingsHud::ClickRegion::HUD_TOGGLE, enableVisibility);
 
-    // Title toggle (shows actual value, grayed out when disabled)
-    addInlineToggle(titleX, hud->getShowTitle(), SettingsHud::ClickRegion::TITLE_TOGGLE, enableTitle);
+    // Title toggle - when disabled the widget never renders a title, so show the
+    // effective state (Off) rather than echoing a possibly-stale persisted value
+    addInlineToggle(titleX, enableTitle && hud->getShowTitle(), SettingsHud::ClickRegion::TITLE_TOGGLE, enableTitle);
 
     // BG Texture variant cycle (disabled if no textures available)
     bool hasTextures = !hud->getAvailableTextureVariants().empty();

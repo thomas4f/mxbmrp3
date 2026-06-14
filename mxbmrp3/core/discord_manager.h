@@ -96,9 +96,11 @@ private:
     // Named pipe handle
     void* m_pipe;  // HANDLE, but we avoid windows.h in header
 
-    // Timing
-    std::chrono::steady_clock::time_point m_lastUpdateTime;
-    std::chrono::steady_clock::time_point m_lastConnectionAttempt;
+    // Timing. The first two are atomic: the game thread resets them
+    // (onEventEnd / setEnabled) while the connection thread reads and writes
+    // them. m_lastPresenceRefresh is connection-thread only.
+    std::atomic<std::chrono::steady_clock::time_point> m_lastUpdateTime;
+    std::atomic<std::chrono::steady_clock::time_point> m_lastConnectionAttempt;
     std::chrono::steady_clock::time_point m_lastPresenceRefresh;
 
     // Update throttling
@@ -129,6 +131,7 @@ private:
         int  eventType        = 2;   // Default Race (matches SessionData::eventType default)
         int  serverType       = -1;  // Unknown
         int  sessionTimeMs    = 0;
+        long long sessionEndUnix = 0;  // absolute countdown end (wall-clock secs); 0 = none
         int  drawState        = 0;   // ON_TRACK
     };
     mutable std::mutex m_snapshotMutex;

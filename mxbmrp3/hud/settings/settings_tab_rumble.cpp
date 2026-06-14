@@ -12,6 +12,7 @@
 #include "../../core/plugin_manager.h"
 #include "../../core/hud_manager.h"
 #include "../../core/ui_config.h"
+#include "../../game/game_config.h"
 #include <cmath>
 #include <algorithm>
 
@@ -127,6 +128,32 @@ bool SettingsHud::handleClickTabRumble(const ClickRegion& region) {
             return true;
         }
 
+        // Front/rear split toggles (effect property, so per-bike-aware like the effects).
+        // Combined and front/rear are stored independently. The first time an effect is
+        // split, the front/rear inherit the combined value as their starting point; after
+        // that they keep whatever the user tuned them to and are never reseeded.
+        case ClickRegion::RUMBLE_SUSP_SPLIT_TOGGLE:
+            config.suspensionSplit = !config.suspensionSplit;
+            if (config.suspensionSplit && !config.suspensionSplitInitialized) {
+                config.suspensionEffectFront = config.suspensionEffect;
+                config.suspensionEffectRear = config.suspensionEffect;
+                config.suspensionSplitInitialized = true;
+            }
+            markProfileDirty();
+            setDataDirty();
+            return true;
+
+        case ClickRegion::RUMBLE_LOCKUP_SPLIT_TOGGLE:
+            config.brakeLockupSplit = !config.brakeLockupSplit;
+            if (config.brakeLockupSplit && !config.brakeLockupSplitInitialized) {
+                config.brakeLockupEffectFront = config.brakeLockupEffect;
+                config.brakeLockupEffectRear = config.brakeLockupEffect;
+                config.brakeLockupSplitInitialized = true;
+            }
+            markProfileDirty();
+            setDataDirty();
+            return true;
+
         // Note: RUMBLE_HUD_TOGGLE is handled in common handlers (settings_hud.cpp)
         // so it works regardless of which tab is active
 
@@ -141,6 +168,28 @@ bool SettingsHud::handleClickTabRumble(const ClickRegion& region) {
         ClickRegion::RUMBLE_SUSP_MIN_DOWN, ClickRegion::RUMBLE_SUSP_MIN_UP,
         ClickRegion::RUMBLE_SUSP_MAX_DOWN, ClickRegion::RUMBLE_SUSP_MAX_UP,
         1.0f, 1.0f, 50.0f)) {
+        return true;
+    }
+
+    // Handle suspension FRONT controls (used only when split)
+    if (handleEffectControl(config.suspensionEffectFront,
+        ClickRegion::RUMBLE_SUSP_FRONT_LIGHT_DOWN, ClickRegion::RUMBLE_SUSP_FRONT_LIGHT_UP,
+        ClickRegion::RUMBLE_SUSP_FRONT_HEAVY_DOWN, ClickRegion::RUMBLE_SUSP_FRONT_HEAVY_UP,
+        ClickRegion::RUMBLE_SUSP_FRONT_MIN_DOWN, ClickRegion::RUMBLE_SUSP_FRONT_MIN_UP,
+        ClickRegion::RUMBLE_SUSP_FRONT_MAX_DOWN, ClickRegion::RUMBLE_SUSP_FRONT_MAX_UP,
+        1.0f, 1.0f, 50.0f)) {
+        config.suspensionSplitInitialized = true;  // user has set the split values; don't reseed
+        return true;
+    }
+
+    // Handle suspension REAR controls (used only when split)
+    if (handleEffectControl(config.suspensionEffectRear,
+        ClickRegion::RUMBLE_SUSP_REAR_LIGHT_DOWN, ClickRegion::RUMBLE_SUSP_REAR_LIGHT_UP,
+        ClickRegion::RUMBLE_SUSP_REAR_HEAVY_DOWN, ClickRegion::RUMBLE_SUSP_REAR_HEAVY_UP,
+        ClickRegion::RUMBLE_SUSP_REAR_MIN_DOWN, ClickRegion::RUMBLE_SUSP_REAR_MIN_UP,
+        ClickRegion::RUMBLE_SUSP_REAR_MAX_DOWN, ClickRegion::RUMBLE_SUSP_REAR_MAX_UP,
+        1.0f, 1.0f, 50.0f)) {
+        config.suspensionSplitInitialized = true;
         return true;
     }
 
@@ -161,6 +210,28 @@ bool SettingsHud::handleClickTabRumble(const ClickRegion& region) {
         ClickRegion::RUMBLE_LOCKUP_MIN_DOWN, ClickRegion::RUMBLE_LOCKUP_MIN_UP,
         ClickRegion::RUMBLE_LOCKUP_MAX_DOWN, ClickRegion::RUMBLE_LOCKUP_MAX_UP,
         0.05f, 0.05f, 1.0f)) {
+        return true;
+    }
+
+    // Handle brake lockup FRONT controls (used only when split)
+    if (handleEffectControl(config.brakeLockupEffectFront,
+        ClickRegion::RUMBLE_LOCKUP_FRONT_LIGHT_DOWN, ClickRegion::RUMBLE_LOCKUP_FRONT_LIGHT_UP,
+        ClickRegion::RUMBLE_LOCKUP_FRONT_HEAVY_DOWN, ClickRegion::RUMBLE_LOCKUP_FRONT_HEAVY_UP,
+        ClickRegion::RUMBLE_LOCKUP_FRONT_MIN_DOWN, ClickRegion::RUMBLE_LOCKUP_FRONT_MIN_UP,
+        ClickRegion::RUMBLE_LOCKUP_FRONT_MAX_DOWN, ClickRegion::RUMBLE_LOCKUP_FRONT_MAX_UP,
+        0.05f, 0.05f, 1.0f)) {
+        config.brakeLockupSplitInitialized = true;  // user has set the split values; don't reseed
+        return true;
+    }
+
+    // Handle brake lockup REAR controls (used only when split)
+    if (handleEffectControl(config.brakeLockupEffectRear,
+        ClickRegion::RUMBLE_LOCKUP_REAR_LIGHT_DOWN, ClickRegion::RUMBLE_LOCKUP_REAR_LIGHT_UP,
+        ClickRegion::RUMBLE_LOCKUP_REAR_HEAVY_DOWN, ClickRegion::RUMBLE_LOCKUP_REAR_HEAVY_UP,
+        ClickRegion::RUMBLE_LOCKUP_REAR_MIN_DOWN, ClickRegion::RUMBLE_LOCKUP_REAR_MIN_UP,
+        ClickRegion::RUMBLE_LOCKUP_REAR_MAX_DOWN, ClickRegion::RUMBLE_LOCKUP_REAR_MAX_UP,
+        0.05f, 0.05f, 1.0f)) {
+        config.brakeLockupSplitInitialized = true;
         return true;
     }
 
@@ -214,6 +285,26 @@ bool SettingsHud::handleClickTabRumble(const ClickRegion& region) {
         return true;
     }
 
+    // Handle rev limiter controls (percent of limiter RPM, 1% steps, allow buffer past 100)
+    if (handleEffectControl(config.revLimiterEffect,
+        ClickRegion::RUMBLE_REVLIM_LIGHT_DOWN, ClickRegion::RUMBLE_REVLIM_LIGHT_UP,
+        ClickRegion::RUMBLE_REVLIM_HEAVY_DOWN, ClickRegion::RUMBLE_REVLIM_HEAVY_UP,
+        ClickRegion::RUMBLE_REVLIM_MIN_DOWN, ClickRegion::RUMBLE_REVLIM_MIN_UP,
+        ClickRegion::RUMBLE_REVLIM_MAX_DOWN, ClickRegion::RUMBLE_REVLIM_MAX_UP,
+        1.0f, 1.0f, 110.0f)) {
+        return true;
+    }
+
+    // Handle pit limiter controls (binary input; min/max barely matter, Light/Heavy do)
+    if (handleEffectControl(config.pitLimiterEffect,
+        ClickRegion::RUMBLE_PITLIM_LIGHT_DOWN, ClickRegion::RUMBLE_PITLIM_LIGHT_UP,
+        ClickRegion::RUMBLE_PITLIM_HEAVY_DOWN, ClickRegion::RUMBLE_PITLIM_HEAVY_UP,
+        ClickRegion::RUMBLE_PITLIM_MIN_DOWN, ClickRegion::RUMBLE_PITLIM_MIN_UP,
+        ClickRegion::RUMBLE_PITLIM_MAX_DOWN, ClickRegion::RUMBLE_PITLIM_MAX_UP,
+        0.05f, 0.05f, 1.0f)) {
+        return true;
+    }
+
     return false;
 }
 
@@ -263,8 +354,13 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
     ctx.addSpacing(0.5f);
     ctx.addSectionHeader("Effects");
 
-    // Table header - columns: Effect | Light | Heavy | Min | Max
-    float effectX = ctx.labelX;
+    // Table header - columns: [gutter] Effect | Light | Heavy | Min | Max
+    // The gutter holds the [+]/[-] split disclosure on splittable effects (Bumps, Lockup).
+    // We shift the whole table right rather than adding a column on the right edge, which
+    // would overflow the panel.
+    float markerX = ctx.labelX;
+    float gutterW = PluginUtils::calculateMonospaceTextWidth(4, ctx.fontSize);
+    float effectX = ctx.labelX + gutterW;
     float lightX = effectX + PluginUtils::calculateMonospaceTextWidth(8, ctx.fontSize);
     float heavyX = lightX + PluginUtils::calculateMonospaceTextWidth(9, ctx.fontSize);
     float minX = heavyX + PluginUtils::calculateMonospaceTextWidth(9, ctx.fontSize);
@@ -435,12 +531,48 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
         ctx.currentY += ctx.lineHeightNormal;
     };
 
+    // Draw the [+]/[-] split disclosure in the gutter (with a click region) on a splittable row.
+    auto drawSplitMarker = [&](bool split, SettingsHud::ClickRegion::Type toggleType) {
+        ctx.parent->addString(split ? "[-]" : "[+]", markerX, ctx.currentY, PluginConstants::Justify::LEFT,
+            PluginConstants::Fonts::getNormal(), colors.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            markerX, ctx.currentY, gutterW, ctx.lineHeightNormal, toggleType, nullptr));
+    };
+
+    // Draw a bare effect-name row (the parent header above the Front/Rear rows when split).
+    auto drawEffectHeader = [&](const char* name, const char* tooltipId) {
+        if (tooltipId && tooltipId[0] != '\0') {
+            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+                ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, tooltipId));
+        }
+        ctx.parent->addString(name, effectX, ctx.currentY, PluginConstants::Justify::LEFT,
+            PluginConstants::Fonts::getNormal(), colors.getPrimary(), ctx.fontSize);
+        ctx.currentY += ctx.lineHeightNormal;
+    };
+
     // Effect rows
-    addRumbleRow("Bumps", rumbleConfig.suspensionEffect,
-        SettingsHud::ClickRegion::RUMBLE_SUSP_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_LIGHT_UP,
-        SettingsHud::ClickRegion::RUMBLE_SUSP_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_HEAVY_UP,
-        SettingsHud::ClickRegion::RUMBLE_SUSP_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_MIN_UP,
-        SettingsHud::ClickRegion::RUMBLE_SUSP_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_MAX_UP, true, "m/s", 1.0f, "rumble.bumps");
+    // Bumps (front/rear splittable). The marker shares the row with the single linked
+    // row, or with the "Bumps" header above the Front/Rear rows when expanded.
+    drawSplitMarker(rumbleConfig.suspensionSplit, SettingsHud::ClickRegion::RUMBLE_SUSP_SPLIT_TOGGLE);
+    if (rumbleConfig.suspensionSplit) {
+        drawEffectHeader("Bumps", "rumble.bumps");
+        addRumbleRow("- Front", rumbleConfig.suspensionEffectFront,
+            SettingsHud::ClickRegion::RUMBLE_SUSP_FRONT_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_FRONT_LIGHT_UP,
+            SettingsHud::ClickRegion::RUMBLE_SUSP_FRONT_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_FRONT_HEAVY_UP,
+            SettingsHud::ClickRegion::RUMBLE_SUSP_FRONT_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_FRONT_MIN_UP,
+            SettingsHud::ClickRegion::RUMBLE_SUSP_FRONT_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_FRONT_MAX_UP, true, "m/s", 1.0f, "rumble.bumps");
+        addRumbleRow("- Rear", rumbleConfig.suspensionEffectRear,
+            SettingsHud::ClickRegion::RUMBLE_SUSP_REAR_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_REAR_LIGHT_UP,
+            SettingsHud::ClickRegion::RUMBLE_SUSP_REAR_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_REAR_HEAVY_UP,
+            SettingsHud::ClickRegion::RUMBLE_SUSP_REAR_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_REAR_MIN_UP,
+            SettingsHud::ClickRegion::RUMBLE_SUSP_REAR_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_REAR_MAX_UP, true, "m/s", 1.0f, "rumble.bumps");
+    } else {
+        addRumbleRow("Bumps", rumbleConfig.suspensionEffect,
+            SettingsHud::ClickRegion::RUMBLE_SUSP_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_LIGHT_UP,
+            SettingsHud::ClickRegion::RUMBLE_SUSP_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_HEAVY_UP,
+            SettingsHud::ClickRegion::RUMBLE_SUSP_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_MIN_UP,
+            SettingsHud::ClickRegion::RUMBLE_SUSP_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_MAX_UP, true, "m/s", 1.0f, "rumble.bumps");
+    }
     addRumbleRow("Slide", rumbleConfig.slideEffect,
         SettingsHud::ClickRegion::RUMBLE_SLIDE_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_SLIDE_LIGHT_UP,
         SettingsHud::ClickRegion::RUMBLE_SLIDE_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_SLIDE_HEAVY_UP,
@@ -451,11 +583,27 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::RUMBLE_WHEEL_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_WHEEL_HEAVY_UP,
         SettingsHud::ClickRegion::RUMBLE_WHEEL_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_WHEEL_MIN_UP,
         SettingsHud::ClickRegion::RUMBLE_WHEEL_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_WHEEL_MAX_UP, true, "x", 1.0f, "rumble.spin");
-    addRumbleRow("Lockup", rumbleConfig.brakeLockupEffect,
-        SettingsHud::ClickRegion::RUMBLE_LOCKUP_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_LIGHT_UP,
-        SettingsHud::ClickRegion::RUMBLE_LOCKUP_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_HEAVY_UP,
-        SettingsHud::ClickRegion::RUMBLE_LOCKUP_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_MIN_UP,
-        SettingsHud::ClickRegion::RUMBLE_LOCKUP_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_MAX_UP, false, "ratio", 1.0f, "rumble.lockup");
+    // Lockup (front/rear splittable)
+    drawSplitMarker(rumbleConfig.brakeLockupSplit, SettingsHud::ClickRegion::RUMBLE_LOCKUP_SPLIT_TOGGLE);
+    if (rumbleConfig.brakeLockupSplit) {
+        drawEffectHeader("Lockup", "rumble.lockup");
+        addRumbleRow("- Front", rumbleConfig.brakeLockupEffectFront,
+            SettingsHud::ClickRegion::RUMBLE_LOCKUP_FRONT_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_FRONT_LIGHT_UP,
+            SettingsHud::ClickRegion::RUMBLE_LOCKUP_FRONT_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_FRONT_HEAVY_UP,
+            SettingsHud::ClickRegion::RUMBLE_LOCKUP_FRONT_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_FRONT_MIN_UP,
+            SettingsHud::ClickRegion::RUMBLE_LOCKUP_FRONT_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_FRONT_MAX_UP, false, "ratio", 1.0f, "rumble.lockup");
+        addRumbleRow("- Rear", rumbleConfig.brakeLockupEffectRear,
+            SettingsHud::ClickRegion::RUMBLE_LOCKUP_REAR_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_REAR_LIGHT_UP,
+            SettingsHud::ClickRegion::RUMBLE_LOCKUP_REAR_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_REAR_HEAVY_UP,
+            SettingsHud::ClickRegion::RUMBLE_LOCKUP_REAR_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_REAR_MIN_UP,
+            SettingsHud::ClickRegion::RUMBLE_LOCKUP_REAR_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_REAR_MAX_UP, false, "ratio", 1.0f, "rumble.lockup");
+    } else {
+        addRumbleRow("Lockup", rumbleConfig.brakeLockupEffect,
+            SettingsHud::ClickRegion::RUMBLE_LOCKUP_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_LIGHT_UP,
+            SettingsHud::ClickRegion::RUMBLE_LOCKUP_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_HEAVY_UP,
+            SettingsHud::ClickRegion::RUMBLE_LOCKUP_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_MIN_UP,
+            SettingsHud::ClickRegion::RUMBLE_LOCKUP_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_MAX_UP, false, "ratio", 1.0f, "rumble.lockup");
+    }
     addRumbleRow("Wheelie", rumbleConfig.wheelieEffect,
         SettingsHud::ClickRegion::RUMBLE_WHEELIE_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_WHEELIE_LIGHT_UP,
         SettingsHud::ClickRegion::RUMBLE_WHEELIE_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_WHEELIE_HEAVY_UP,
@@ -471,6 +619,22 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::RUMBLE_RPM_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_RPM_HEAVY_UP,
         SettingsHud::ClickRegion::RUMBLE_RPM_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_RPM_MIN_UP,
         SettingsHud::ClickRegion::RUMBLE_RPM_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_RPM_MAX_UP, true, "rpm", 1.0f, "rumble.rpm");
+
+    // Rev Limiter: Min/Max are a percentage of the bike's real limiter RPM (auto per-bike)
+    addRumbleRow("Rev Lim", rumbleConfig.revLimiterEffect,
+        SettingsHud::ClickRegion::RUMBLE_REVLIM_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_REVLIM_LIGHT_UP,
+        SettingsHud::ClickRegion::RUMBLE_REVLIM_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_REVLIM_HEAVY_UP,
+        SettingsHud::ClickRegion::RUMBLE_REVLIM_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_REVLIM_MIN_UP,
+        SettingsHud::ClickRegion::RUMBLE_REVLIM_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_REVLIM_MAX_UP, true, "%", 1.0f, "rumble.revlimiter");
+
+#if GAME_HAS_PIT_LIMITER
+    // Pit Limiter: binary effect; Light/Heavy set intensity (only games that report it)
+    addRumbleRow("Pit Lim", rumbleConfig.pitLimiterEffect,
+        SettingsHud::ClickRegion::RUMBLE_PITLIM_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_PITLIM_LIGHT_UP,
+        SettingsHud::ClickRegion::RUMBLE_PITLIM_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_PITLIM_HEAVY_UP,
+        SettingsHud::ClickRegion::RUMBLE_PITLIM_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_PITLIM_MIN_UP,
+        SettingsHud::ClickRegion::RUMBLE_PITLIM_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_PITLIM_MAX_UP, false, "", 1.0f, "rumble.pitlimiter");
+#endif
 
     // Surface uses user's speed unit preference
     {

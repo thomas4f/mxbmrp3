@@ -61,8 +61,9 @@ private:
     // Click detection for game input (ball launch / exit)
     bool m_wasLeftPressed = false;
 
-    // Update notification state
-    bool m_showingUpdateNotification = false;  // True when auto-enabled for update notification
+    // Update notification state. Atomic: showUpdateNotification() runs on the
+    // UpdateChecker worker thread while the game thread reads it every frame.
+    std::atomic<bool> m_showingUpdateNotification = false;  // True when auto-enabled for update notification
 
     // Notification button state
     enum class NotificationButton { NONE, VIEW, DISMISS };

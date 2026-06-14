@@ -92,14 +92,27 @@ void RumbleProfileManager::load(const char* savePath) {
                     };
 
                     parseEffect("suspension", config.suspensionEffect);
+                    parseEffect("suspensionFront", config.suspensionEffectFront);
+                    parseEffect("suspensionRear", config.suspensionEffectRear);
                     parseEffect("wheelspin", config.wheelspinEffect);
                     parseEffect("brakeLockup", config.brakeLockupEffect);
+                    parseEffect("brakeLockupFront", config.brakeLockupEffectFront);
+                    parseEffect("brakeLockupRear", config.brakeLockupEffectRear);
                     parseEffect("wheelie", config.wheelieEffect);
                     parseEffect("rpm", config.rpmEffect);
                     parseEffect("slide", config.slideEffect);
                     parseEffect("surface", config.surfaceEffect);
                     parseEffect("steer", config.steerEffect);
+                    parseEffect("revLimiter", config.revLimiterEffect);
+                    parseEffect("pitLimiter", config.pitLimiterEffect);
                 }
+
+                // Front/rear split flags (default off so older profiles stay linked).
+                // Combined/front/rear are independent, so no mirroring is needed.
+                config.suspensionSplit = profileJson.value("suspensionSplit", false);
+                config.brakeLockupSplit = profileJson.value("brakeLockupSplit", false);
+                config.suspensionSplitInitialized = profileJson.value("suspensionSplitInitialized", false);
+                config.brakeLockupSplitInitialized = profileJson.value("brakeLockupSplitInitialized", false);
 
                 m_bikeConfigs[bikeName] = config;
             }
@@ -144,15 +157,25 @@ void RumbleProfileManager::save() {
 
             nlohmann::json effects;
             effects["suspension"] = serializeEffect(config.suspensionEffect);
+            effects["suspensionFront"] = serializeEffect(config.suspensionEffectFront);
+            effects["suspensionRear"] = serializeEffect(config.suspensionEffectRear);
             effects["wheelspin"] = serializeEffect(config.wheelspinEffect);
             effects["brakeLockup"] = serializeEffect(config.brakeLockupEffect);
+            effects["brakeLockupFront"] = serializeEffect(config.brakeLockupEffectFront);
+            effects["brakeLockupRear"] = serializeEffect(config.brakeLockupEffectRear);
             effects["wheelie"] = serializeEffect(config.wheelieEffect);
             effects["rpm"] = serializeEffect(config.rpmEffect);
             effects["slide"] = serializeEffect(config.slideEffect);
             effects["surface"] = serializeEffect(config.surfaceEffect);
             effects["steer"] = serializeEffect(config.steerEffect);
+            effects["revLimiter"] = serializeEffect(config.revLimiterEffect);
+            effects["pitLimiter"] = serializeEffect(config.pitLimiterEffect);
 
             profileJson["effects"] = effects;
+            profileJson["suspensionSplit"] = config.suspensionSplit;
+            profileJson["brakeLockupSplit"] = config.brakeLockupSplit;
+            profileJson["suspensionSplitInitialized"] = config.suspensionSplitInitialized;
+            profileJson["brakeLockupSplitInitialized"] = config.brakeLockupSplitInitialized;
             profiles[bikeName] = profileJson;
         }
         j["profiles"] = profiles;

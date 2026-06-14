@@ -13,14 +13,11 @@ using namespace PluginConstants;
 
 TimeWidget::TimeWidget()
     : m_cachedRenderedTime(-1)
-    , m_cachedEventType(-1)
-    , m_cachedSession(-1)
-    , m_bShowSessionType(false)
 {
     // One-time setup
     DEBUG_INFO("TimeWidget created");
     setDraggable(true);
-    m_strings.reserve(3);  // label (optional), time, session type (optional)
+    m_strings.reserve(2);  // label (optional), time
 
     // Set texture base name for dynamic texture discovery
     setTextureBaseName("time_widget");
@@ -47,7 +44,6 @@ void TimeWidget::update() {
     // Check if time changed enough to update display
     // Only rebuild when seconds change, not every millisecond
     const PluginData& pluginData = PluginData::getInstance();
-    const SessionData& sessionData = pluginData.getSessionData();
     int currentTime = pluginData.getSessionTime();
     int currentSeconds = currentTime / TimeConversion::MS_PER_SECOND;
     int lastSeconds = m_cachedRenderedTime / TimeConversion::MS_PER_SECOND;
@@ -56,19 +52,10 @@ void TimeWidget::update() {
         setDataDirty();
     }
 
-    // Check if session type changed (for session type display)
-    if (m_bShowSessionType) {
-        if (sessionData.eventType != m_cachedEventType || sessionData.session != m_cachedSession) {
-            setDataDirty();
-        }
-    }
-
     // Check data dirty first (takes precedence)
     if (isDataDirty()) {
         rebuildRenderData();
         m_cachedRenderedTime = currentTime;
-        m_cachedEventType = sessionData.eventType;
-        m_cachedSession = sessionData.session;
         clearDataDirty();
         clearLayoutDirty();
     }
@@ -113,15 +100,7 @@ void TimeWidget::rebuildLayout() {
     }
 
     // Time value (extra large font - spans 2 lines)
-    if (positionString(stringIndex, contentStartX, currentY)) {
-        stringIndex++;
-        currentY += dim.lineHeightLarge;
-    }
-
-    // Session type (optional, embedded in bottom padding)
-    if (m_bShowSessionType) {
-        positionString(stringIndex, contentStartX, currentY);
-    }
+    positionString(stringIndex, contentStartX, currentY);
 }
 
 void TimeWidget::rebuildRenderData() {
@@ -133,12 +112,13 @@ void TimeWidget::rebuildRenderData() {
 
     // Get session data
     const PluginData& pluginData = PluginData::getInstance();
-    const SessionData& sessionData = pluginData.getSessionData();
     int sessionTime = pluginData.getSessionTime();
 
-    // Format the time
+    // Format the time — MM:SS countdown, or the time+lap overtime label
+    // ("N TO GO" / "FINAL LAP" / "CHECKERED").
     char timeBuffer[16];
-    PluginUtils::formatTimeMinutesSeconds(sessionTime, timeBuffer, sizeof(timeBuffer));
+    PluginUtils::formatSessionClock(pluginData.getLeaderLapsToGo(), sessionTime,
+        timeBuffer, sizeof(timeBuffer));
 
     // Use full opacity for text
     unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
@@ -172,14 +152,6 @@ void TimeWidget::rebuildRenderData() {
         this->getFont(FontCategory::TITLE), textColor, dim.fontSizeExtraLarge);
     currentY += dim.lineHeightLarge;
 
-    // Session type (optional, embedded in bottom padding)
-    if (m_bShowSessionType) {
-        const char* sessionString = PluginUtils::getSessionString(sessionData.eventType, sessionData.session);
-        const char* displayString = sessionString ? sessionString : Placeholders::GENERIC;
-        addString(displayString, contentStartX, currentY, Justify::LEFT,
-            this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
-    }
-
     // Set bounds for drag detection
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
 }
@@ -187,7 +159,6 @@ void TimeWidget::rebuildRenderData() {
 void TimeWidget::resetToDefaults() {
     m_bVisible = false;  // Standings title now shows session/time info
     m_bShowTitle = true;
-    m_bShowSessionType = false;  // Hide session type by default
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.0f;
     m_fScale = 1.0f;

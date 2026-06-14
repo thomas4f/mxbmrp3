@@ -128,7 +128,10 @@ void TyreTempWidget::rebuildRenderData() {
     // Colors
     unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
     unsigned long mutedColor = this->getColor(ColorSlot::MUTED);
-    unsigned long barBgColor = PluginUtils::applyOpacity(mutedColor, m_fBackgroundOpacity * 0.5f);
+    // Fixed 50% — the bar background is part of the gauge readout, not the panel backdrop,
+    // so it stays legible regardless of the background-opacity slider (only addBackgroundQuad
+    // follows that). Matches BarsWidget / GForceWidget.
+    unsigned long barBgColor = PluginUtils::applyOpacity(mutedColor, 0.5f);
 
     // Wheel labels: F, R - embedded in the left padding, one per wheel row
     const char* wheelLabels[NUM_WHEELS] = {"F", "R"};

@@ -52,6 +52,12 @@ void RaceSplitHandler::handleRaceSplit(Unified::RaceSplitData* psRaceSplit) {
     // This allows HUDs to show continuously ticking time from last split
     data.setLapTimerAnchor(raceNum, splitTime, lapNum, splitIndex);
 
+    // Snapshot this rider's position as the rolling split reference for the standings
+    // positions-gained column (races only; self-heals on mid-race joins).
+    if (data.isRaceSession()) {
+        data.recordSplitReference(raceNum);
+    }
+
     // Note: Lap log is NOT updated here - it only updates on RaceLap events
     // This keeps lap log simple and consistent with historical lap data
 }

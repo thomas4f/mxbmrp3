@@ -19,6 +19,7 @@
 #include "../hud/telemetry_hud.h"
 #include "../hud/ideal_lap_hud.h"
 #include "../hud/lap_log_hud.h"
+#include "../hud/friends_hud.h"
 #include "../hud/time_widget.h"
 #include "../hud/position_widget.h"
 #include "../hud/lap_widget.h"
@@ -60,6 +61,9 @@
 #include "../hud/event_log_hud.h"
 #include "../hud/benchmark_widget.h"
 #include "hotkey_manager.h"
+#if GAME_HAS_HTTP_SERVER
+#include "http_server.h"
+#endif
 #include "../handlers/draw_handler.h"
 #include "color_config.h"
 #include <windows.h>
@@ -121,6 +125,13 @@ void HudManager::initialize() {
     m_pLapLog = lapLogPtr.get();
     m_pLapLog->setTextureBaseName("lap_log_hud");
     registerHud(std::move(lapLogPtr));
+
+#if GAME_HAS_STEAM_FRIENDS
+    auto friendsPtr = std::make_unique<FriendsHud>();
+    m_pFriends = friendsPtr.get();
+    m_pFriends->setTextureBaseName("friends_hud");
+    registerHud(std::move(friendsPtr));
+#endif
 
     auto idealLapPtr = std::make_unique<IdealLapHud>();
     m_pIdealLap = idealLapPtr.get();
@@ -298,13 +309,20 @@ void HudManager::initialize() {
 #else
     RecordsHud* recordsHudPtr = nullptr;
 #endif
-    auto settingsPtr = std::make_unique<SettingsHud>(m_pIdealLap, m_pLapLog, m_pLapConsistency, m_pStandings,
+    // Create the settings button up front so SettingsHud can reference it for the
+    // Widgets tab (visibility/opacity/scale/texture). It is registered later so it
+    // keeps its existing draw order (above SettingsHud, below the pointer).
+    auto settingsButtonPtr = std::make_unique<SettingsButtonWidget>();
+    m_pSettingsButton = settingsButtonPtr.get();
+
+    auto settingsPtr = std::make_unique<SettingsHud>(m_pIdealLap, m_pLapLog, m_pFriends, m_pLapConsistency, m_pStandings,
                                                        m_pPerformance, m_pTelemetry, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pGear, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, recordsHudPtr, m_pFuel, m_pPointer, m_pRumble, m_pGamepad, m_pLean, m_pGforce,
                                                        m_pFmxHud,
                                                        m_pStatsHud,
                                                        m_pEventLog,
                                                        m_pClock,
-                                                       m_pHelmetOverlay
+                                                       m_pHelmetOverlay,
+                                                       m_pSettingsButton
 #if GAME_HAS_TYRE_TEMP
                                                        , m_pTyreTemp
 #endif
@@ -316,8 +334,7 @@ void HudManager::initialize() {
     registerHud(std::move(settingsPtr));
 
     // Register SettingsButtonWidget - draggable button to toggle settings
-    auto settingsButtonPtr = std::make_unique<SettingsButtonWidget>();
-    m_pSettingsButton = settingsButtonPtr.get();
+    // (created earlier so SettingsHud could reference it; registered here for draw order)
     registerHud(std::move(settingsButtonPtr));
 
     // Register PointerWidget last so it renders on top of everything
@@ -384,10 +401,20 @@ void HudManager::shutdown() {
 }
 
 void HudManager::clear() {
+#if GAME_HAS_RECORDS_PROVIDER
+    // Join the records fetch thread BEFORE nulling the cached HUD pointers:
+    // the worker calls getTimingHud().setDataDirty() on completion, which
+    // would deref a null m_pTiming if it fired inside the window below.
+    if (m_pRecords) {
+        m_pRecords->joinFetchThread();
+    }
+#endif
+
     // Reset cached HUD pointers BEFORE destroying the objects
     // This prevents any dangling pointer window (defensive programming)
     m_pIdealLap = nullptr;
     m_pLapLog = nullptr;
+    m_pFriends = nullptr;
     m_pStandings = nullptr;
     m_pPerformance = nullptr;
     m_pTelemetry = nullptr;
@@ -750,9 +777,12 @@ void HudManager::collectRenderData() {
                 continue;
             }
 
-            // Skip rendering widgets if widget toggle is active
+            // Skip rendering widgets if widget toggle is active.
+            // SessionHud is intentionally NOT in this list: it started as a widget but was
+            // upgraded to a full HUD (its own settings tab + row config), so it's decoupled
+            // from the widgets master toggle and only hides via its own visibility/hotkey.
             bool isWidget = (hud.get() == m_pLap || hud.get() == m_pPosition ||
-                           hud.get() == m_pTime || hud.get() == m_pSession ||
+                           hud.get() == m_pTime ||
                            hud.get() == m_pSpeed || hud.get() == m_pGear ||
                            hud.get() == m_pSpeedo || hud.get() == m_pTacho ||
                            hud.get() == m_pBars || hud.get() == m_pVersion ||
@@ -1009,6 +1039,30 @@ void HudManager::processKeyboardInput() {
         m_pHelmetOverlay->setVisible(!m_pHelmetOverlay->isVisible());
         DEBUG_INFO_F("Hotkey: Helmet %s", m_pHelmetOverlay->isVisible() ? "shown" : "hidden");
     }
+
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_FRIENDS) && m_pFriends) {
+        m_pFriends->setVisible(!m_pFriends->isVisible());
+        DEBUG_INFO_F("Hotkey: Friends %s", m_pFriends->isVisible() ? "shown" : "hidden");
+    }
+
+#if GAME_HAS_HTTP_SERVER
+    // Web overlay broadcaster controls: force a bottom-slot panel to slide in now.
+    {
+        using OP = HttpServer::OverlayPanel;
+        struct { HotkeyAction action; OP panel; const char* name; } kOverlayForces[] = {
+            { HotkeyAction::OVERLAY_FORCE_LAST_LAP,    OP::LAST_LAP,    "fastest-last-lap" },
+            { HotkeyAction::OVERLAY_FORCE_FASTEST_LAP, OP::FASTEST_LAP, "session-best" },
+            { HotkeyAction::OVERLAY_FORCE_DOWN_ORDER,  OP::DOWN_ORDER,  "down-the-order" },
+            { HotkeyAction::OVERLAY_FORCE_BATTLE,      OP::BATTLE,      "battle" },
+        };
+        for (const auto& f : kOverlayForces) {
+            if (hotkeyMgr.wasActionTriggered(f.action)) {
+                HttpServer::getInstance().forceOverlayPanel(f.panel);
+                DEBUG_INFO_F("Hotkey: Overlay force %s", f.name);
+            }
+        }
+    }
+#endif
 
     // Reload config from file
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::RELOAD_CONFIG)) {

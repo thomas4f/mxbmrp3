@@ -70,7 +70,7 @@ __declspec(dllexport) void EventInit(void* _pData, int _iDataSize)
 		size_t copySize = _iDataSize > 0
 			? std::min(static_cast<size_t>(_iDataSize), sizeof(safeData))
 			: 0;
-		if (copySize > 0) {
+		if (_pData && copySize > 0) {
 			memcpy(&safeData, _pData, copySize);
 		}
 
@@ -251,6 +251,7 @@ __declspec(dllexport) void RaceRemoveEntry(void* _pData, int _iDataSize)
 {
 	try {
 		auto* gameData = static_cast<SPluginsRaceRemoveEntry_t*>(_pData);
+		if (!gameData) return;
 		PluginManager::getInstance().handleRaceRemoveEntry(gameData->m_iRaceNum);
 	} API_GUARD_CATCH("RaceRemoveEntry")
 }
@@ -313,7 +314,7 @@ __declspec(dllexport) void RaceCommunication(void* _pData, int _iDataSize)
 		size_t copySize = _iDataSize > 0
 			? std::min(static_cast<size_t>(_iDataSize), sizeof(safeData))
 			: 0;
-		if (copySize > 0) {
+		if (_pData && copySize > 0) {
 			memcpy(&safeData, _pData, copySize);
 		}
 
@@ -328,8 +329,29 @@ __declspec(dllexport) void RaceClassification(void* _pData, int _iDataSize, void
 	try {
 		auto* gameData = static_cast<SPluginsRaceClassification_t*>(_pData);
 		auto* gameEntries = static_cast<SPluginsRaceClassificationEntry_t*>(_pArray);
+		if (!gameData) return;
+
+		// Reject element-size mismatch: if a game update reshapes the entry
+		// struct, indexing gameEntries with the compiled stride would misread
+		// every entry past index 0 and run off the end of the real array.
+		// (Same version-skew hazard EventInit/RaceCommunication guard against.)
+		if (_iElemSize != static_cast<int>(sizeof(SPluginsRaceClassificationEntry_t))) {
+			static bool s_warnedElemSize = false;
+			if (!s_warnedElemSize) {
+				s_warnedElemSize = true;
+				DEBUG_WARN_F("RaceClassification: element size %d != expected %zu, ignoring (game/plugin version mismatch?)",
+					_iElemSize, sizeof(SPluginsRaceClassificationEntry_t));
+			}
+			return;
+		}
 
 		auto unified = Adapter::toRaceClassification(gameData);
+
+		// Clamp at the boundary so a corrupt count can't drive an OOB read of
+		// the game's array (downstream clamps to MAX_RACE_ENTRIES anyway).
+		int numEntries = std::clamp(gameData->m_iNumEntries, 0, Unified::MAX_RACE_ENTRIES);
+		if (numEntries > 0 && !gameEntries) return;
+		unified.numEntries = numEntries;
 
 		// Static buffer pattern: Avoid heap allocations in high-frequency callbacks.
 		// These callbacks fire every frame at 240fps+ so per-call allocations would
@@ -338,12 +360,12 @@ __declspec(dllexport) void RaceClassification(void* _pData, int _iDataSize, void
 		// threads (HttpServer SSE, UpdateChecker, etc.) — those don't touch this buffer.
 		static std::vector<Unified::RaceClassificationEntry> unifiedEntries;
 		unifiedEntries.clear();
-		unifiedEntries.reserve(gameData->m_iNumEntries);
-		for (int i = 0; i < gameData->m_iNumEntries; ++i) {
+		unifiedEntries.reserve(numEntries > 0 ? numEntries : 0);
+		for (int i = 0; i < numEntries; ++i) {
 			unifiedEntries.push_back(Adapter::toRaceClassificationEntry(&gameEntries[i]));
 		}
 
-		PluginManager::getInstance().handleRaceClassification(&unified, unifiedEntries.data(), gameData->m_iNumEntries);
+		PluginManager::getInstance().handleRaceClassification(&unified, unifiedEntries.data(), numEntries);
 	} API_GUARD_CATCH("RaceClassification")
 }
 
@@ -353,15 +375,30 @@ __declspec(dllexport) void RaceTrackPosition(int _iNumVehicles, void* _pArray, i
 	try {
 		auto* gameData = static_cast<SPluginsRaceTrackPosition_t*>(_pArray);
 
+		// Reject element-size mismatch (see RaceClassification): wrong stride
+		// would misread every vehicle past index 0 and overrun the array.
+		if (_iElemSize != static_cast<int>(sizeof(SPluginsRaceTrackPosition_t))) {
+			static bool s_warnedElemSize = false;
+			if (!s_warnedElemSize) {
+				s_warnedElemSize = true;
+				DEBUG_WARN_F("RaceTrackPosition: element size %d != expected %zu, ignoring (game/plugin version mismatch?)",
+					_iElemSize, sizeof(SPluginsRaceTrackPosition_t));
+			}
+			return;
+		}
+
+		int numVehicles = std::clamp(_iNumVehicles, 0, Unified::MAX_RACE_ENTRIES);
+		if (numVehicles > 0 && !gameData) return;
+
 		// Convert entries array - use static buffer to avoid per-call allocations
 		static std::vector<Unified::TrackPositionData> unified;
 		unified.clear();
-		unified.reserve(_iNumVehicles);
-		for (int i = 0; i < _iNumVehicles; ++i) {
+		unified.reserve(numVehicles > 0 ? numVehicles : 0);
+		for (int i = 0; i < numVehicles; ++i) {
 			unified.push_back(Adapter::toTrackPosition(&gameData[i]));
 		}
 
-		PluginManager::getInstance().handleRaceTrackPosition(_iNumVehicles, unified.data());
+		PluginManager::getInstance().handleRaceTrackPosition(numVehicles, unified.data());
 	} API_GUARD_CATCH("RaceTrackPosition")
 }
 
@@ -380,11 +417,12 @@ __declspec(dllexport) int SpectateVehicles(int _iNumVehicles, void* _pVehicleDat
 {
 	try {
 		auto* gameData = static_cast<SPluginsSpectateVehicle_t*>(_pVehicleData);
+		if (_iNumVehicles > 0 && !gameData) return 0;
 
 		// Convert entries array - use static buffer to avoid per-call allocations
 		static std::vector<Unified::SpectateVehicle> unified;
 		unified.clear();
-		unified.reserve(_iNumVehicles);
+		unified.reserve(_iNumVehicles > 0 ? _iNumVehicles : 0);
 		for (int i = 0; i < _iNumVehicles; ++i) {
 			unified.push_back(Adapter::toSpectateVehicle(&gameData[i]));
 		}

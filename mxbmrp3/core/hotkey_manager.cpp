@@ -8,6 +8,31 @@
 #include "../diagnostics/logger.h"
 #include <windows.h>
 
+namespace {
+// Pack the pressed buttons of an XInputData into an XINPUT_GAMEPAD button mask.
+// Returns 0 when disconnected. Shared by the prev-state tracking, the binding
+// baseline, and the click test so the three stay in lockstep.
+uint16_t controllerButtonMask(const XInputData& x) {
+    if (!x.isConnected) return 0;
+    uint16_t m = 0;
+    if (x.dpadUp)        m |= XINPUT_GAMEPAD_DPAD_UP;
+    if (x.dpadDown)      m |= XINPUT_GAMEPAD_DPAD_DOWN;
+    if (x.dpadLeft)      m |= XINPUT_GAMEPAD_DPAD_LEFT;
+    if (x.dpadRight)     m |= XINPUT_GAMEPAD_DPAD_RIGHT;
+    if (x.buttonStart)   m |= XINPUT_GAMEPAD_START;
+    if (x.buttonBack)    m |= XINPUT_GAMEPAD_BACK;
+    if (x.leftThumb)     m |= XINPUT_GAMEPAD_LEFT_THUMB;
+    if (x.rightThumb)    m |= XINPUT_GAMEPAD_RIGHT_THUMB;
+    if (x.leftShoulder)  m |= XINPUT_GAMEPAD_LEFT_SHOULDER;
+    if (x.rightShoulder) m |= XINPUT_GAMEPAD_RIGHT_SHOULDER;
+    if (x.buttonA)       m |= XINPUT_GAMEPAD_A;
+    if (x.buttonB)       m |= XINPUT_GAMEPAD_B;
+    if (x.buttonX)       m |= XINPUT_GAMEPAD_X;
+    if (x.buttonY)       m |= XINPUT_GAMEPAD_Y;
+    return m;
+}
+}  // namespace
+
 HotkeyManager& HotkeyManager::getInstance() {
     static HotkeyManager instance;
     return instance;
@@ -69,6 +94,19 @@ void HotkeyManager::update() {
 
     // Only detect hotkey actions when game window is focused
     if (InputManager::getInstance().isCursorEnabled()) {
+        // The controller cache (XInputReader::m_data) is otherwise refreshed only
+        // by RunTelemetry, which ticks while riding but NOT while spectating or in
+        // menus. Hotkeys are processed here on the Draw path, which runs in all
+        // those contexts, so refresh the controller here too whenever controller
+        // input matters - a capture in progress, or any controller binding to
+        // test. Without it, controller binding AND triggering only worked on
+        // track. Cheap: the disconnected backoff and 1s connection scan are
+        // timestamp-gated, so a connected-slot read is the only per-call work,
+        // and it's skipped entirely when no controller binding exists.
+        if (m_captureType == CaptureType::CONTROLLER || hasAnyControllerBinding()) {
+            XInputReader::getInstance().update();
+        }
+
         if (m_captureType != CaptureType::NONE) {
             updateCapture();
         } else {
@@ -77,32 +115,25 @@ void HotkeyManager::update() {
     }
 
     // Always update previous input states (even when unfocused) to prevent
-    // false edge triggers when focus returns
-    for (int i = 0; i < 256; i++) {
-        m_prevKeyStates[i] = (GetAsyncKeyState(i) & 0x8000) != 0;
+    // false edge triggers when focus returns.
+    // Full 256-key refresh only while capturing a new binding (any key can
+    // be captured); otherwise only the bound keys need edge tracking -
+    // 256 GetAsyncKeyState syscalls per frame are measurable at 240fps.
+    if (m_captureType != CaptureType::NONE) {
+        for (int i = 0; i < 256; i++) {
+            m_prevKeyStates[i] = (GetAsyncKeyState(i) & 0x8000) != 0;
+        }
+    } else {
+        for (const auto& binding : m_bindings) {
+            if (binding.hasKeyboard()) {
+                uint8_t vk = binding.keyboard.keyCode;
+                m_prevKeyStates[vk] = (GetAsyncKeyState(vk) & 0x8000) != 0;
+            }
+        }
     }
 
-    // Update previous controller button state
-    const XInputData& xinput = XInputReader::getInstance().getData();
-    if (xinput.isConnected) {
-        m_prevControllerButtons = 0;
-        if (xinput.dpadUp) m_prevControllerButtons |= XINPUT_GAMEPAD_DPAD_UP;
-        if (xinput.dpadDown) m_prevControllerButtons |= XINPUT_GAMEPAD_DPAD_DOWN;
-        if (xinput.dpadLeft) m_prevControllerButtons |= XINPUT_GAMEPAD_DPAD_LEFT;
-        if (xinput.dpadRight) m_prevControllerButtons |= XINPUT_GAMEPAD_DPAD_RIGHT;
-        if (xinput.buttonStart) m_prevControllerButtons |= XINPUT_GAMEPAD_START;
-        if (xinput.buttonBack) m_prevControllerButtons |= XINPUT_GAMEPAD_BACK;
-        if (xinput.leftThumb) m_prevControllerButtons |= XINPUT_GAMEPAD_LEFT_THUMB;
-        if (xinput.rightThumb) m_prevControllerButtons |= XINPUT_GAMEPAD_RIGHT_THUMB;
-        if (xinput.leftShoulder) m_prevControllerButtons |= XINPUT_GAMEPAD_LEFT_SHOULDER;
-        if (xinput.rightShoulder) m_prevControllerButtons |= XINPUT_GAMEPAD_RIGHT_SHOULDER;
-        if (xinput.buttonA) m_prevControllerButtons |= XINPUT_GAMEPAD_A;
-        if (xinput.buttonB) m_prevControllerButtons |= XINPUT_GAMEPAD_B;
-        if (xinput.buttonX) m_prevControllerButtons |= XINPUT_GAMEPAD_X;
-        if (xinput.buttonY) m_prevControllerButtons |= XINPUT_GAMEPAD_Y;
-    } else {
-        m_prevControllerButtons = 0;
-    }
+    // Update previous controller button state (for next frame's edge detection)
+    m_prevControllerButtons = controllerButtonMask(XInputReader::getInstance().getData());
 }
 
 const HotkeyBinding& HotkeyManager::getBinding(HotkeyAction action) const {
@@ -137,6 +168,21 @@ void HotkeyManager::startCapture(HotkeyAction action, CaptureType type) {
     m_captureAction = action;
     m_captureType = type;
     m_captureCompleted = false;
+
+    // Refresh ALL key states: outside capture mode only bound keys are
+    // tracked, so unbound entries are stale and a currently-held key would
+    // otherwise register as a false immediate "click"
+    for (int i = 0; i < 256; i++) {
+        m_prevKeyStates[i] = (GetAsyncKeyState(i) & 0x8000) != 0;
+    }
+
+    // Same baseline for the controller: poll once now (menus don't tick
+    // RunTelemetry) and seed the prev-button mask so a button already held when
+    // capture starts isn't taken as an immediate press.
+    if (type == CaptureType::CONTROLLER) {
+        XInputReader::getInstance().update();
+        m_prevControllerButtons = controllerButtonMask(XInputReader::getInstance().getData());
+    }
     DEBUG_INFO_F("HotkeyManager: Started %s capture for action %d",
                  type == CaptureType::KEYBOARD ? "keyboard" : "controller",
                  static_cast<int>(action));
@@ -287,6 +333,13 @@ bool HotkeyManager::isKeyClicked(uint8_t vkCode) const {
     return isPressed && !wasPressed;
 }
 
+bool HotkeyManager::hasAnyControllerBinding() const {
+    for (const auto& b : m_bindings) {
+        if (b.hasController()) return true;
+    }
+    return false;
+}
+
 bool HotkeyManager::isControllerButtonClicked(ControllerButton button) const {
     const XInputData& xinput = XInputReader::getInstance().getData();
     if (!xinput.isConnected) return false;
@@ -294,22 +347,7 @@ bool HotkeyManager::isControllerButtonClicked(ControllerButton button) const {
     uint16_t buttonMask = static_cast<uint16_t>(button);
     if (buttonMask == 0) return false;
 
-    // Build current button state
-    uint16_t currentButtons = 0;
-    if (xinput.dpadUp) currentButtons |= XINPUT_GAMEPAD_DPAD_UP;
-    if (xinput.dpadDown) currentButtons |= XINPUT_GAMEPAD_DPAD_DOWN;
-    if (xinput.dpadLeft) currentButtons |= XINPUT_GAMEPAD_DPAD_LEFT;
-    if (xinput.dpadRight) currentButtons |= XINPUT_GAMEPAD_DPAD_RIGHT;
-    if (xinput.buttonStart) currentButtons |= XINPUT_GAMEPAD_START;
-    if (xinput.buttonBack) currentButtons |= XINPUT_GAMEPAD_BACK;
-    if (xinput.leftThumb) currentButtons |= XINPUT_GAMEPAD_LEFT_THUMB;
-    if (xinput.rightThumb) currentButtons |= XINPUT_GAMEPAD_RIGHT_THUMB;
-    if (xinput.leftShoulder) currentButtons |= XINPUT_GAMEPAD_LEFT_SHOULDER;
-    if (xinput.rightShoulder) currentButtons |= XINPUT_GAMEPAD_RIGHT_SHOULDER;
-    if (xinput.buttonA) currentButtons |= XINPUT_GAMEPAD_A;
-    if (xinput.buttonB) currentButtons |= XINPUT_GAMEPAD_B;
-    if (xinput.buttonX) currentButtons |= XINPUT_GAMEPAD_X;
-    if (xinput.buttonY) currentButtons |= XINPUT_GAMEPAD_Y;
+    uint16_t currentButtons = controllerButtonMask(xinput);
 
     bool isPressed = (currentButtons & buttonMask) != 0;
     bool wasPressed = (m_prevControllerButtons & buttonMask) != 0;

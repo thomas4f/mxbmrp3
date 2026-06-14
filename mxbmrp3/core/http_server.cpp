@@ -16,6 +16,7 @@
 #include "plugin_utils.h"
 #include "color_config.h"
 #include "font_config.h"
+#include "tracked_riders_manager.h"
 #include "../diagnostics/logger.h"
 
 #include <algorithm>
@@ -79,6 +80,7 @@ void HttpServer::start() {
         m_sseSequence = 0;
         m_cachedJson = buildJsonSnapshot();
     }
+    m_snapshotStale = false;
 
     // Create server on game thread so stop() always has a valid pointer.
     // Route setup and listen() happen on the server thread.
@@ -168,22 +170,89 @@ std::string HttpServer::getBindAddress() const {
 void HttpServer::onDataChanged(DataChangeType changeType) {
     if (!m_running) return;
 
-    // Only push updates for data types relevant to standings/event log
+    // Only push updates for data types relevant to standings/event log.
+    // The relevant types split into two classes:
+    //  - frequent: Standings fires many times per second on a full grid,
+    //    EventLog on every race event. These are the expensive firehose and
+    //    are skipped (cache marked stale) while no overlay is consuming.
+    //  - rare: SessionData / RaceEntries / SpectateTarget are transition
+    //    events. They ALWAYS rebuild, client or not: a transition (e.g. the
+    //    EventDeinit -> "in menus" change) may be the LAST notification for
+    //    minutes - the plugin gets NO callbacks while the player sits in
+    //    menus - so skipping one would leave a later-connecting client
+    //    serving a stale snapshot with no rebuild opportunity ever arriving.
+    bool relevant;
+    bool frequent = false;
     switch (changeType) {
-    case DataChangeType::SessionData:
-    case DataChangeType::RaceEntries:
     case DataChangeType::Standings:
     case DataChangeType::EventLog:
+        relevant = true;
+        frequent = true;
+        break;
+    case DataChangeType::SessionData:
+    case DataChangeType::RaceEntries:
     case DataChangeType::SpectateTarget:
+        relevant = true;
         break;
     default:
-        return;  // Ignore telemetry, input, debug metrics, etc.
+        relevant = false;  // Telemetry, input, debug metrics, etc.
+        break;
     }
+
+    // While inactive (no SSE client, no recent /api/state poll), frequent
+    // changes only mark the cache stale. Once a client appears, the next
+    // notification of ANY type rebuilds - telemetry fires every tick
+    // in-session, so the catch-up window after connect is tiny. Stale state
+    // cannot survive into a quiet period: the transition out of the session
+    // is a rare-type change, which rebuilds unconditionally.
+    if (relevant) {
+        if (frequent && !hasActiveClients()) {
+            m_snapshotStale = true;
+            return;
+        }
+    } else {
+        if (!m_snapshotStale || !hasActiveClients()) {
+            return;  // Irrelevant change and nothing to catch up on
+        }
+    }
+    m_snapshotStale = false;
 
     // Build JSON snapshot on the game thread where PluginData access is safe.
     // Server threads only read the cached string under the mutex.
     std::string snapshot = buildJsonSnapshot();
 
+    {
+        std::lock_guard<std::mutex> lock(m_dataMutex);
+        m_cachedJson = std::move(snapshot);
+        ++m_sseSequence;
+    }
+    m_dataCondition.notify_all();
+}
+
+// Maps the panel enum to the overlay's createSlotPanel name (app.js). NONE is
+// the empty string (the client's seq starts at 0 and never fires for it).
+const char* HttpServer::overlayPanelName(int panel) {
+    switch (static_cast<OverlayPanel>(panel)) {
+    // Strings are the app.js createSlotPanel names (NOT the enumerator names).
+    case OverlayPanel::LAST_LAP:    return "fastlap";
+    case OverlayPanel::FASTEST_LAP: return "bestlap";
+    case OverlayPanel::DOWN_ORDER:  return "tail";
+    case OverlayPanel::BATTLE:      return "battle";
+    default:                    return "";
+    }
+}
+
+void HttpServer::forceOverlayPanel(OverlayPanel panel) {
+    if (!m_running) return;
+
+    // Record the command and bump the sequence so the client treats this as a
+    // discrete new press (edge-triggered), then push immediately. A broadcaster
+    // keypress always sends, regardless of the frequent/rare change gating.
+    m_forcedPanel.store(static_cast<int>(panel));
+    m_forcedSeq.fetch_add(1);
+
+    // Built on the game thread (the caller), where PluginData access is safe.
+    std::string snapshot = buildJsonSnapshot();
     {
         std::lock_guard<std::mutex> lock(m_dataMutex);
         m_cachedJson = std::move(snapshot);
@@ -210,14 +279,25 @@ static void appendJsonString(std::string& out, const char* str) {
         case '\n': out += "\\n";  break;
         case '\r': out += "\\r";  break;
         case '\t': out += "\\t";  break;
-        default:
-            if (static_cast<unsigned char>(*p) < 0x20) {
+        default: {
+            unsigned char c = static_cast<unsigned char>(*p);
+            if (c < 0x20) {
                 char esc[8];
-                snprintf(esc, sizeof(esc), "\\u%04x", static_cast<unsigned char>(*p));
+                snprintf(esc, sizeof(esc), "\\u%04x", c);
                 out += esc;
+            } else if (c < 0x80) {
+                out += static_cast<char>(c);
             } else {
-                out += *p;
+                // The game supplies names / track strings in a single-byte Western codepage
+                // (Latin-1 / CP-1252), so a lone high byte like 0xFC ('ü') is invalid UTF-8
+                // and renders as � in the browser (in-game it's fine via the CP-1252 font).
+                // Promote it to 2-byte UTF-8 as a Latin-1 code point: always valid UTF-8, and
+                // correct for the 0xA0-0xFF accent/umlaut range that covers Western names.
+                out += static_cast<char>(0xC0 | (c >> 6));
+                out += static_cast<char>(0x80 | (c & 0x3F));
             }
+            break;
+        }
         }
     }
     out += '"';
@@ -265,18 +345,33 @@ std::string HttpServer::buildJsonSnapshot() const {
     // see Game::Adapter::toCanonicalSession() for the per-game mapping.
     bool isRaceSession = pd.isRaceSession();
 
-    out += "{\"session\":{";
+    // Compact time format mirrored from the in-game HUD so the overlay tracks it
+    // ("configure once in-game"). Safe to read here without locking: this snapshot is
+    // built on the game thread — the same thread that mutates the setting. The ± column's
+    // reference is NOT inherited: the overlay picks it client-side from the per-reference
+    // deltas emitted per rider below, so it works even when the in-game column is off.
+    bool compactTimes = pd.isShortTimeFormat();
+
+    out += "{";
+
+    // --- Broadcaster panel-force command (edge-triggered on the client by seq) ---
+    out += "\"overlayCmd\":{\"panel\":";
+    appendJsonString(out, overlayPanelName(m_forcedPanel.load()));
+    out += ",\"seq\":";
+    appendJsonInt(out, static_cast<int>(m_forcedSeq.load()));
+    out += "},";
+
+    out += "\"session\":{";
 
     // --- Session info ---
     {
-        // Session time (formatted as MM:SS) - always show the actual value
+        // Session clock: MM:SS countdown, or the time+lap overtime label
+        // ("N TO GO" / "FINAL LAP" / "CHECKERED") so the web header matches the
+        // in-game StandingsHud / TimeWidget. The overlay renders this string
+        // directly, so the label needs no client-side logic.
         int sessionTime = pd.getSessionTime();
         char timeBuf[16];
-        if (sessionTime > 0) {
-            PluginUtils::formatTimeMinutesSeconds(sessionTime, timeBuf, sizeof(timeBuf));
-        } else {
-            snprintf(timeBuf, sizeof(timeBuf), "00:00");
-        }
+        PluginUtils::formatSessionClock(pd.getLeaderLapsToGo(), sessionTime, timeBuf, sizeof(timeBuf));
         out += "\"time\":";
         appendJsonString(out, timeBuf);
 
@@ -298,6 +393,13 @@ std::string HttpServer::buildJsonSnapshot() const {
 
         out += ",\"sessionLength\":";
         appendJsonInt(out, session.sessionLength);
+
+        // Session format string ("8:00 + 6L" / "6L" / "8:00") - shared helper, so
+        // the web header reads identically to in-game / Discord / Steam.
+        char fmtBuf[32];
+        PluginUtils::formatSessionFormat(session.sessionLength, session.sessionNumLaps, fmtBuf, sizeof(fmtBuf));
+        out += ",\"format\":";
+        appendJsonString(out, fmtBuf);
 
         out += ",\"isRace\":";
         out += isRaceSession ? "true" : "false";
@@ -371,6 +473,11 @@ std::string HttpServer::buildJsonSnapshot() const {
             out += ','; appendFont("digits", FontCategory::DIGITS);
         }
         out += '}';
+
+        // Compact time format mirrored from the in-game HUD (see top of buildJsonSnapshot).
+        // The overlay applies this instead of its own control, so users configure once.
+        out += ",\"compactTimes\":";
+        out += compactTimes ? "true" : "false";
     }
 
     out += "},\"standings\":[";
@@ -415,6 +522,48 @@ std::string HttpServer::buildJsonSnapshot() const {
             if (entryIt->second.brandName && entryIt->second.brandName[0] != '\0') {
                 out += ",\"brand\":";
                 appendJsonString(out, entryIt->second.brandName);
+            }
+
+            // Tracked-rider plate color as CSS hex (emitted only when the rider is
+            // tracked). Lets the overlay tint the number badge to match the in-game
+            // plate — e.g. a red points-leader plate.
+            const TrackedRiderConfig* trackedConfig =
+                TrackedRidersManager::getInstance().getTrackedRider(entryIt->second.name);
+            if (trackedConfig && trackedConfig->color != 0) {
+                unsigned long pc = trackedConfig->color;
+                char plateBuf[8];
+                snprintf(plateBuf, sizeof(plateBuf), "#%02x%02x%02x",
+                    pc & 0xFF, (pc >> 8) & 0xFF, (pc >> 16) & 0xFF);
+                out += ",\"plateColor\":";
+                appendJsonString(out, plateBuf);
+            }
+
+            // Positions gained/lost vs each reference, so the overlay can show whichever it
+            // likes (race start / last S/F / last split) entirely client-side, independent
+            // of the in-game column's on/off and mode. Each field is omitted when its
+            // reference doesn't exist yet (non-race, or before the rider's first lap/split).
+            // "Start" falls back to the last-S/F reference for mid-race joiners who never
+            // saw the grid. All use official positions (getPositionForRaceNum) for a stable
+            // delta — deliberately NOT the local `position` counter above, which diverges
+            // when riders are skipped via `continue`.
+            int curPos = pd.getPositionForRaceNum(raceNum);
+            if (curPos > 0) {
+                int startRef = pd.getRaceStartPosition(raceNum);
+                if (startRef <= 0) startRef = pd.getSfReferencePosition(raceNum);
+                if (startRef > 0) {
+                    out += ",\"posDeltaStart\":";
+                    appendJsonInt(out, startRef - curPos);
+                }
+                int sfRef = pd.getSfReferencePosition(raceNum);
+                if (sfRef > 0) {
+                    out += ",\"posDeltaSf\":";
+                    appendJsonInt(out, sfRef - curPos);
+                }
+                int splitRef = pd.getSplitReferencePosition(raceNum);
+                if (splitRef > 0) {
+                    out += ",\"posDeltaSplit\":";
+                    appendJsonInt(out, splitRef - curPos);
+                }
             }
 
             if (standingIt != standings.end()) {
@@ -694,6 +843,10 @@ void HttpServer::serverThread() {
 
         // GET /api/state - JSON snapshot (for initial load / polling fallback)
         m_server->Get("/api/state", [this](const httplib::Request&, httplib::Response& res) {
+            // Record the poll so the game thread keeps the snapshot fresh
+            // (see hasActiveClients) - the first response after an idle
+            // period may be stale until the next data change rebuilds it
+            m_lastStatePollMs.store(steadyNowMs());
             std::lock_guard<std::mutex> lock(m_dataMutex);
             res.set_content(m_cachedJson, "application/json");
         });

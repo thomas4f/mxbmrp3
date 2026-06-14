@@ -107,7 +107,7 @@ void DiscordManager::connectionThread() {
                 // Attempt connection
                 auto now = std::chrono::steady_clock::now();
                 auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    now - m_lastConnectionAttempt
+                    now - m_lastConnectionAttempt.load()
                 ).count();
 
                 if (elapsed >= RECONNECT_INTERVAL_MS || m_state == State::DISCONNECTED) {
@@ -145,7 +145,7 @@ void DiscordManager::connectionThread() {
             if (m_state == State::CONNECTED && m_presenceUpdateNeeded) {
                 auto now = std::chrono::steady_clock::now();
                 auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    now - m_lastUpdateTime
+                    now - m_lastUpdateTime.load()
                 ).count();
 
                 if (elapsed >= MIN_UPDATE_INTERVAL_MS) {
@@ -268,8 +268,12 @@ DiscordManager::PresenceSendResult DiscordManager::sendPresenceUpdate() {
         DEBUG_WARN("DiscordManager: buildPresenceJson failed (unknown exception)");
         return PresenceSendResult::SerializationError;
     }
+#ifdef _DEBUG
+    // Debug-only: the full presence frame is verbose; Release doesn't need the
+    // raw JSON on every (throttled) send.
     DEBUG_INFO_F("DiscordManager: Sending presence: %.500s%s",
                  json.c_str(), json.length() > 500 ? "..." : "");
+#endif
 
     if (!writeFrame(DiscordOpcode::FRAME, json.c_str(), json.length())) {
         DEBUG_WARN("DiscordManager: Failed to write presence frame");
@@ -401,82 +405,59 @@ std::string DiscordManager::buildPresenceJson() const {
         details = session.trackName;
         state = "Watching Replay";
     } else {
-        // In event (riding or spectating) - show full session info
-        details = session.trackName;
-
-        // Build session string (e.g., "Race 1", "Qualify", "Practice")
-        // Check for valid session data (session=-1 and sessionState=-1 are uninitialized defaults)
-        bool hasValidSession = (session.session >= 0);
-        bool hasValidState = (session.sessionState >= 0);
-
+        // In event. Top line (details) = where you are: the server name (online),
+        // or the solo session type (offline, e.g. "Testing"). Bottom line (state) =
+        // the session detail, without repeating whatever is on the top line.
+        const bool hasValidSession = (session.session >= 0);
+        const bool hasValidState   = (session.sessionState >= 0);
         const char* sessionStr = hasValidSession ?
             PluginUtils::getSessionString(session.eventType, session.session) : nullptr;
         const char* stateStr = hasValidState ?
             PluginUtils::getSessionStateString(session.sessionState) : nullptr;
 
-        // Build session format string (time/laps)
-        bool hasTime = (session.sessionLength > 0);
-        bool hasLaps = (session.sessionNumLaps > 0);
-        std::string formatStr;
+        char formatBuf[32];
+        PluginUtils::formatSessionFormat(session.sessionLength, session.sessionNumLaps, formatBuf, sizeof(formatBuf));
+        const std::string formatStr = formatBuf;
 
-        if (hasTime || hasLaps) {
-            char formatBuf[32];
-            if (hasTime && hasLaps) {
-                int mins = session.sessionLength / 60000;
-                int secs = (session.sessionLength / 1000) % 60;
-                snprintf(formatBuf, sizeof(formatBuf), "%d:%02d + %dL", mins, secs, session.sessionNumLaps);
-            } else if (hasTime) {
-                int mins = session.sessionLength / 60000;
-                int secs = (session.sessionLength / 1000) % 60;
-                snprintf(formatBuf, sizeof(formatBuf), "%d:%02d", mins, secs);
-            } else {
-                snprintf(formatBuf, sizeof(formatBuf), "%d Laps", session.sessionNumLaps);
-            }
-            formatStr = formatBuf;
+        // Show a server label as the top line whenever this isn't a known-offline
+        // session (serverType != 0, so it also covers GP Bikes / KRP which leave
+        // serverType at -1). Known-offline puts the solo session type on top instead.
+        const bool topIsServer = (session.serverType != 0);
+
+        // Bottom: "Track [ \xC2\xB7 Session ] (Format), State". The session name is included
+        // only when the top line is the server label, so it isn't shown twice.
+        std::string bottom = session.trackName;
+        if (topIsServer && sessionStr) {
+            bottom += " \xC2\xB7 ";
+            bottom += sessionStr;
+        }
+        if (!formatStr.empty()) {
+            bottom += " (" + formatStr + ")";
+        }
+        if (stateStr && (!sessionStr || strcmp(sessionStr, stateStr) != 0)) {
+            bottom += ", ";
+            bottom += stateStr;
         }
 
-        // Build details line: "Track · Session (Format, State)"
-        // Format: session type first, then format and state in parentheses
-        if (sessionStr) {
-            details += " \xC2\xB7 ";
-            details += sessionStr;
-
-            // Build parenthetical info: (Format, State)
-            std::string parenInfo;
-            if (!formatStr.empty()) {
-                parenInfo = formatStr;
-            }
-            // Add state if different from session name (avoid "Waiting (Waiting)")
-            if (stateStr && strcmp(sessionStr, stateStr) != 0) {
-                if (!parenInfo.empty()) {
-                    parenInfo += ", ";
-                }
-                parenInfo += stateStr;
-            }
-            if (!parenInfo.empty()) {
-                details += " (" + parenInfo + ")";
-            }
+        // Top: shared server label (name / "Unknown") when there's a server slot,
+        // else the solo session type. See PluginUtils::serverLabel - keeps Discord,
+        // the SessionHud server row and Steam presence identical.
+        std::string top;
+        if (topIsServer) {
+            top = PluginUtils::serverLabel(session.serverType, session.serverName);
+            // Shared UTF-8-aware truncation: avoids splitting a multibyte name
+            // mid-code-point (Discord validates UTF-8). Ellipsis folded into budget.
+            constexpr int MAX_SERVER_NAME_DISPLAY = 40;
+            top = PluginUtils::fitText(top, MAX_SERVER_NAME_DISPLAY);
+        } else if (sessionStr) {
+            top = sessionStr;
         }
 
-        bool hasServerName = session.serverName[0] != '\0';
-
-        // Mirrors SessionData::isOnline() / isOffline() helpers (which we can't
-        // call here because the snapshot stores a plain int instead of a
-        // SessionData reference).
-        bool isOnline  = (session.serverType > 0);
-        bool isOffline = (session.serverType == 0);
-
-        if (isOnline && hasServerName) {
-            // Online: state line shows server name (truncated to fit display)
-            // Discord displays ~40 chars before truncating visually
-            constexpr size_t MAX_SERVER_NAME_DISPLAY = 40;
-            state = session.serverName;
-            if (state.length() > MAX_SERVER_NAME_DISPLAY) {
-                state = state.substr(0, MAX_SERVER_NAME_DISPLAY - 3) + "...";
-            }
-        } else if (isOffline && session.eventType == 1) {
-            // Offline Testing: show "Testing" on state line (no party info)
-            state = "Testing";
+        if (!top.empty()) {
+            details = top;     // top line
+            state   = bottom;  // bottom line
+        } else {
+            details = bottom;  // no distinct location - just the detail
         }
     }
 
@@ -504,17 +485,19 @@ std::string DiscordManager::buildPresenceJson() const {
         activity["state"] = state;
     }
 
-    // Timestamps - only when in an active session (hasTrack)
-    // Use game's session time for accurate countdown/countup
+    // Timestamps - only in an active session.
     if (hasTrack) {
-        if (usesCountdown && sessionTimeMs > 0) {
-            // Timed session with time remaining: show countdown
-            activity["timestamps"]["end"] = nowUnix + (sessionTimeMs / 1000);
-        } else if (!usesCountdown && sessionTimeMs >= 0) {
+        if (usesCountdown) {
+            // Live countdown to the absolute end captured on the game thread. Once
+            // real time has passed it, drop the timer entirely (no count-up past
+            // 00:00) - robust even if the snapshot is stale.
+            if (session.sessionEndUnix > nowUnix) {
+                activity["timestamps"]["end"] = session.sessionEndUnix;
+            }
+        } else if (sessionTimeMs >= 0) {
             // Lap-based session: show elapsed time (countup)
             activity["timestamps"]["start"] = nowUnix - (sessionTimeMs / 1000);
         }
-        // If timed session with sessionTimeMs <= 0, we're in overtime - no timer shown
     }
 
     // Assets (images)
@@ -577,6 +560,16 @@ void DiscordManager::updateSnapshot() {
     next.eventType      = session.eventType;
     next.serverType     = session.serverType;
     next.sessionTimeMs  = pd.getSessionTime();
+    // Absolute countdown end (wall-clock) captured here, so the Discord thread can
+    // drop the timer once real time passes it - robust even if this snapshot then
+    // goes stale (overtime can stop producing data-change updates).
+    if (session.sessionLength > 0 && next.sessionTimeMs > 0) {
+        const long long sysNowSec = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        next.sessionEndUnix = sysNowSec + next.sessionTimeMs / 1000;
+    } else {
+        next.sessionEndUnix = 0;
+    }
     next.drawState      = pd.getDrawState();
 
     std::lock_guard<std::mutex> lock(m_snapshotMutex);

@@ -1,0 +1,142 @@
+/* ============================================================================
+ * MXBMRP3 Web Overlay — custom.css SAMPLE
+ *
+ * This is a REFERENCE file. It is NOT loaded by the overlay. To use it:
+ *   1. Copy it to "custom.css" (in this web/ folder, or in your Documents
+ *      override at: Documents\PiBoSo\<Game>\mxbmrp3\web\custom.css).
+ *   2. Uncomment / edit the bits you want.
+ *   3. Reload the overlay (or the browser source in OBS).
+ *
+ * index.html already links custom.css after style.css, so anything you put in
+ * custom.css overrides the defaults. Everything below is commented out, so
+ * copying this file verbatim changes nothing — uncomment to taste.
+ *
+ * ── HOW OVERRIDING WORKS ────────────────────────────────────────────────────
+ * The overlay's theme lives in the :root block of style.css as variables.
+ * Re-declare a variable in :root here to change it everywhere it's used.
+ *
+ *   • Sizes, spacing, layout, animations  → override DIRECTLY (examples below).
+ *   • COLORS and FONTS                     → these SYNC from your in-game
+ *     settings at runtime (the plugin sets them as inline styles), which beat a
+ *     normal stylesheet rule. To win, add !important. Or just set the colors/
+ *     fonts in-game and skip overriding them here.
+ *   • --name-chars and the root font size are driven by the overlay's own
+ *     Settings panel — change them there, not here.
+ * ============================================================================ */
+
+
+/* ── ANIMATIONS ──────────────────────────────────────────────────────────────
+ * Durations + easing for every transition in the overlay. The slide/focus/logo
+ * durations are also read by app.js, so retuning them here stays in sync. */
+/*
+:root {
+    --ease:       ease;       (try: ease-in-out, linear, cubic-bezier(.2,.8,.2,1))
+    --anim-fast:  0.3s;       reflows, event fade-in, settings UI
+    --anim-base:  0.6s;       standings row reorder + tail carousel paging
+    --anim-slide: 1s;         bottom-slot panel gate (fastlap / laps / tail / battle)
+    --anim-tint:  1.5s;       position gained/lost row tint
+    --anim-logo:  0.8s;       logo slideshow
+    --anim-focus: 0.4s;       rider focus card
+}
+*/
+
+/* Recipe: turn ALL motion off (instant, no slides/fades). */
+/*
+:root {
+    --anim-fast: 0s; --anim-base: 0s; --anim-slide: 0s;
+    --anim-tint: 0s; --anim-logo: 0s; --anim-focus: 0s;
+}
+*/
+
+
+/* ── SIZES & SPACING ─────────────────────────────────────────────────────────
+ * The 4 spacing tokens drive every padding/margin/gap; the size tokens are
+ * rem-based, so they scale with the Settings panel's Font Size.
+ * Note: --col-gap-w and --badge-w AUTO-FIT the synced font (app.js measures
+ * them). You normally never touch them — but you CAN re-declare them here to
+ * pin a fixed width, and a direct value wins over the auto-fit (no !important). */
+/*
+:root {
+    --row-height: 1.4rem;     height of each standings / panel row
+    --col-pos-w:  2.4ch;      position column (fits 2 digits; ch scales with the font)
+    --col-gap-w:  10ch;       gap column — set to pin a fixed width (else auto-fit)
+    --badge-w:    calc(3ch + 2 * var(--sp-sm));  number-plate width — set to pin (else auto-fit)
+    --strip-w:    0.15rem;    brand colour strip width
+    --chip-size:  0.9rem;     status chip size
+    --focus-width: 20rem;     rider focus card width
+    --radius:     0.25rem;    corner rounding
+
+    --fs-lg: 1.2rem;  --fs: 1rem;  --fs-sm: 0.75rem;  --fs-xs: 0.65rem;  --fs-2xs: 0.55rem;
+
+    --sp-2xs: 0.05rem; --sp-xs: 0.1rem; --sp-sm: 0.25rem; --sp-md: 0.4rem;
+}
+*/
+
+/* Recipe: tighter, denser tower. */
+/*
+:root {
+    --row-height: 1.2rem;
+    --sp-sm: 0.18rem;
+    --sp-md: 0.3rem;
+}
+*/
+
+
+/* ── COLOURS ─────────────────────────────────────────────────────────────────
+ * NOTE: these sync from in-game settings, so override with !important to win
+ * (or change them in-game instead). Backgrounds take #RRGGBBAA — the last two
+ * hex digits are opacity (00 = transparent … ff = solid) for OBS compositing. */
+/*
+:root {
+    --bg:            #000000 !important;   main panel
+    --bg-header:     #0a0a0a !important;   header / title bars
+    --bg-row-even:   #141414 !important;
+    --bg-row-odd:    #0e0e0e !important;
+    --bg-highlight:  #282828 !important;   spectated rider row
+    --border:        #ffffff18 !important; subtle dividers
+
+    --text:     #ffffff !important;   names, times
+    --text-sub: #bebebe !important;   gaps, headers, lap info
+    --accent:   #ff69b4 !important;   camera / fastest-lap chip
+    --green:    #00ff00 !important;   --amber: #ffa500 !important; --red: #ff0000 !important;
+}
+*/
+
+/* Recipe: light "TV bug" theme (dark text on a translucent white tower). */
+/*
+:root {
+    --bg:           #f2f2f2ee !important;
+    --bg-header:    #e6e6e6ff !important;
+    --bg-row-even:  #fafafaee !important;
+    --bg-row-odd:   #f0f0f0ee !important;
+    --bg-highlight: #ffe9a8ff !important;
+    --border:       #00000018 !important;
+    --text:         #111111 !important;
+    --text-sub:     #444444 !important;
+    --badge-bg:     #111111 !important;
+    --badge-text:   #ffffff !important;
+}
+*/
+
+
+/* ── FONTS ───────────────────────────────────────────────────────────────────
+ * Also game-synced → use !important. Bundled families: 'Audiowide-Regular',
+ * 'EnterSansman-Italic', 'RobotoMono-Regular', 'RobotoMono-Bold',
+ * 'FuzzyBubbles-Regular', 'Tiny5-Regular'. For a font of your own, add an
+ * @font-face here (drop the file in this folder) and reference it. */
+/*
+:root {
+    --font:         'RobotoMono-Regular', monospace !important;   body / data
+    --font-digits:  'RobotoMono-Regular', monospace !important;   times / numbers
+    --font-display: 'EnterSansman-Italic', sans-serif !important; titles / headers
+}
+*/
+
+
+/* ── ARBITRARY TWEAKS ────────────────────────────────────────────────────────
+ * Beyond the variables, you can target any element. Inspect the overlay in your
+ * browser's devtools to find class names (e.g. .standings-row, .board-row,
+ * .battle-title, #event-log). Example: hide the logo banner entirely. */
+/*
+#logo-banner { display: none !important; }
+*/

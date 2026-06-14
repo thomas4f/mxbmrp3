@@ -123,13 +123,15 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
     float gridLineHeight = ctx.lineHeightNormal;
     float gridCharWidth = charWidth;
 
-    // Grid layout constants - 3 columns with pagination
+    // Grid layout constants - 3 columns with pagination.
+    // Row counts fill the panel height (sized to the tallest tab, Rumble): the ~8 rows of
+    // slack over the old 6+12 are split evenly between the two sections (+4 each).
     constexpr int SERVER_PLAYERS_PER_ROW = 3;
-    constexpr int SERVER_PLAYERS_ROWS = 6;
-    constexpr int SERVER_PLAYERS_PER_PAGE = SERVER_PLAYERS_PER_ROW * SERVER_PLAYERS_ROWS;  // 18 per page
+    constexpr int SERVER_PLAYERS_ROWS = 10;
+    constexpr int SERVER_PLAYERS_PER_PAGE = SERVER_PLAYERS_PER_ROW * SERVER_PLAYERS_ROWS;  // 30 per page
     constexpr int TRACKED_PER_ROW = 3;
-    constexpr int TRACKED_ROWS = 12;
-    constexpr int TRACKED_PER_PAGE = TRACKED_PER_ROW * TRACKED_ROWS;  // 36 per page
+    constexpr int TRACKED_ROWS = 16;
+    constexpr int TRACKED_PER_PAGE = TRACKED_PER_ROW * TRACKED_ROWS;  // 48 per page
 
     // Calculate available content width (same method as version number)
     float rightEdgeX = ctx.contentAreaStartX + ctx.panelWidth - ctx.paddingH - ctx.paddingH;
@@ -269,7 +271,7 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
     // =====================================================
     ctx.parent->addString("Tracked Riders", ctx.labelX, ctx.currentY, Justify::LEFT,
         Fonts::getStrong(), colors.getPrimary(), ctx.fontSize);
-    ctx.parent->addString("(L-click: color, R-click: icon)", ctx.labelX + charWidth * 16, ctx.currentY, Justify::LEFT,
+    ctx.parent->addString("(L-click: color/plate, R-click: icon)", ctx.labelX + charWidth * 16, ctx.currentY, Justify::LEFT,
         Fonts::getNormal(), colors.getMuted(), ctx.fontSize * 0.9f);
     ctx.currentY += ctx.lineHeightNormal;
 

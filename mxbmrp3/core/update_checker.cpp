@@ -51,6 +51,15 @@ void UpdateChecker::shutdown() {
     if (m_workerThread.joinable()) {
         m_workerThread.join();
     }
+
+    // Drop the completion callback: it captures HUD pointers (VersionWidget,
+    // SettingsHud) that dangle once HudManager shuts down after us. The
+    // worker is joined, so nothing can fire it now - and a future late
+    // checkForUpdates() must not call into destroyed HUDs.
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_completionCallback = nullptr;
+    }
 }
 
 void UpdateChecker::closeHttpHandles() {

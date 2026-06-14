@@ -24,7 +24,7 @@ void EventLogHud::resetToDefaults() {
     setTextureVariant(0);
     m_fBackgroundOpacity = 0.80f;
     m_fScale = 1.0f;
-    setPosition(0.7315f, 0.5439f);  // Right column, before FMX in the stack
+    setPosition(0.7315f, 0.5106f);  // Right column, before Friends in the stack
     m_displayMode = DisplayMode::ON;
     m_displayOrder = DisplayOrder::OLDEST_FIRST;
     m_enabledEvents = EVENT_DEFAULT;

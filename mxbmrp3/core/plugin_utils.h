@@ -14,6 +14,18 @@ class PluginUtils {
 public:
     static void formatTimeMinutesSeconds(int milliseconds, char* buffer, size_t bufferSize);
 
+    // Session clock text: the MM:SS countdown normally, or a time+lap race's
+    // overtime label when lapsToGo >= 0 (see PluginData::getLeaderLapsToGo):
+    // ">1" -> "N TO GO", 1 -> "FINAL LAP", 0 -> "CHECKERED". Used by the
+    // StandingsHud title, the TimeWidget and the web JSON so all three match.
+    static void formatSessionClock(int lapsToGo, int sessionTimeMs, char* buffer, size_t bufferSize);
+
+    // Session length/format string: "8:00" (time only), "6L" (laps only),
+    // "8:00 + 6L" (both), or "" (neither). Single source shared by Discord, the
+    // Steam status, the SessionHud and (via the broadcast key) the Friends HUD,
+    // so the format never drifts between them.
+    static void formatSessionFormat(int sessionLengthMs, int numLaps, char* buffer, size_t bufferSize);
+
     // Format lap time as "M:SS.mmm" (or "MM:SS.mmm" for times >= 10 minutes)
     // Compact mode (global setting): drops leading "0:" for times under 1 minute → "SS.mmm"
     static void formatLapTime(int lapTimeMs, char* buffer, size_t bufferSize);
@@ -42,6 +54,11 @@ public:
 
     static const char* getEventTypeString(int eventType);
     static const char* getSessionString(int eventType, int session);
+    // Server "where you are" label shared by the SessionHud server row, Discord and
+    // Steam presence: the reported name; "Testing" for a known-offline/solo session
+    // (serverType == 0); "Unknown" otherwise (online with no name, or GP Bikes / KRP
+    // which leave serverType at -1). Uses DisplayStrings::ServerLabel.
+    static const char* serverLabel(int serverType, const char* serverName);
     static const char* getSessionStateString(int sessionState);
     static const char* getRiderStateAbbreviation(int riderState);
     static const char* getConditionsString(int conditions);
@@ -60,6 +77,30 @@ public:
     // maxEntryLen: maximum length for entry name comparison (handles game truncation)
     // Returns true if names match (exact or with prefix stripped)
     static bool matchRiderName(const char* entryName, const char* playerName, size_t maxEntryLen);
+
+    // Sanitize an untrusted string for safe display/logging - e.g. a friend's
+    // Steam rich presence, which is fully attacker-controlled (a forked/spoofed
+    // plugin can publish arbitrary bytes). Strips C0 control characters and DEL
+    // (kills newline/log-injection and renderer-breaking bytes) and clamps to
+    // maxChars code points, appending "..." if truncated. Multibyte UTF-8 is
+    // preserved (so international names survive) and truncation lands on a code
+    // point boundary. NOTE: this does not guarantee *valid* UTF-8 output, so a
+    // caller that forwards the result into a UTF-8-validating sink (e.g. the
+    // web overlay JSON via nlohmann) must still guard that boundary.
+    static std::string sanitizeUntrusted(const char* s, size_t maxChars = 256);
+
+    // Truncate a display string to maxChars visible code points, appending "..."
+    // when cut (the ellipsis is folded *into* the budget, so for maxChars > 3 the
+    // result never exceeds maxChars cells; for maxChars 1-3 a cut string is just
+    // "..." (3 cells), as no caller passes a budget that small). UTF-8 aware:
+    // counts code points and lands the cut on a char boundary. The shared
+    // truncation used by the table HUDs (Records, Friends, Session, Standings) and
+    // Discord presence so rider/server/track/bike names clip identically. Returns
+    // empty for maxChars <= 0. NOTE: like sanitizeUntrusted, this does not
+    // guarantee *valid* UTF-8 output (a cut can't split a code point, but a
+    // malformed input byte passes through), so a caller forwarding into a
+    // UTF-8-validating sink must still guard that boundary.
+    static std::string fitText(const std::string& s, int maxChars);
 
     // Column position helper - used by standings and lap log HUDs
     // Sets target column position if flag is enabled, or -1.0 if disabled
@@ -83,6 +124,20 @@ public:
         uint8_t b = (baseColor >> 16) & 0xFF;
         uint8_t a = static_cast<uint8_t>(opacity * 255.0f);
         return makeColor(r, g, b, a);
+    }
+
+    // True when a color is dark enough that light text reads better on it than
+    // dark text (BT.601 luma, integer math). Used to flip a label to white over a
+    // custom fill — e.g. a red or blue tracked number plate. Uses the standard YIQ
+    // midpoint threshold (128): saturated/dark fills (red, blue, dark green, purple)
+    // get white text, while light fills (yellow, orange, cyan, light greys) keep
+    // their default dark text. Mirrored by isColorDark() in the web overlay's app.js.
+    static constexpr bool isColorDark(unsigned long color) {
+        uint8_t r = color & 0xFF;
+        uint8_t g = (color >> 8) & 0xFF;
+        uint8_t b = (color >> 16) & 0xFF;
+        unsigned int luma = (299u * r + 587u * g + 114u * b) / 1000u;
+        return luma < 128u;
     }
 
     // Lighten a color by blending toward white

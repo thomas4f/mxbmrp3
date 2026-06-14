@@ -72,6 +72,7 @@ public:
     // Note: These assert m_bInitialized - only call after initialize() and before shutdown()
     class IdealLapHud& getIdealLapHud() const { assert(m_pIdealLap && "HudManager not initialized"); return *m_pIdealLap; }
     class LapLogHud& getLapLogHud() const { assert(m_pLapLog && "HudManager not initialized"); return *m_pLapLog; }
+    class FriendsHud& getFriendsHud() const { assert(m_pFriends && "HudManager not initialized"); return *m_pFriends; }
     class StandingsHud& getStandingsHud() const { assert(m_pStandings && "HudManager not initialized"); return *m_pStandings; }
     class PerformanceHud& getPerformanceHud() const { assert(m_pPerformance && "HudManager not initialized"); return *m_pPerformance; }
     class TelemetryHud& getTelemetryHud() const { assert(m_pTelemetry && "HudManager not initialized"); return *m_pTelemetry; }
@@ -121,7 +122,7 @@ public:
 private:
     HudManager() : m_bInitialized(false), m_bResourcesInitialized(false),
                    m_pDraggingHud(nullptr), m_pSettingsHud(nullptr), m_pSettingsButton(nullptr),
-                   m_pIdealLap(nullptr), m_pLapLog(nullptr), m_pStandings(nullptr),
+                   m_pIdealLap(nullptr), m_pLapLog(nullptr), m_pFriends(nullptr), m_pStandings(nullptr),
                    m_pPerformance(nullptr), m_pTelemetry(nullptr),
                    m_pTime(nullptr), m_pPosition(nullptr), m_pLap(nullptr), m_pSession(nullptr), m_pMapHud(nullptr), m_pRadarHud(nullptr), m_pSpeed(nullptr), m_pGear(nullptr), m_pSpeedo(nullptr), m_pTacho(nullptr), m_pTiming(nullptr), m_pGapBar(nullptr), m_pBars(nullptr), m_pVersion(nullptr), m_pNotices(nullptr), m_pPitboard(nullptr),
 #if GAME_HAS_RECORDS_PROVIDER
@@ -164,6 +165,7 @@ private:
     class SettingsButtonWidget* m_pSettingsButton;
     class IdealLapHud* m_pIdealLap;
     class LapLogHud* m_pLapLog;
+    class FriendsHud* m_pFriends;
     class StandingsHud* m_pStandings;
     class PerformanceHud* m_pPerformance;
     class TelemetryHud* m_pTelemetry;

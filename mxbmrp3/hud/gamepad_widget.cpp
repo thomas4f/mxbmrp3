@@ -283,6 +283,9 @@ void GamepadWidget::addStick(float centerX, float centerY, float stickX, float s
         setQuadPositions(markerQuad, currentX - markerWidth / 2, currentY - markerHeight / 2,
                        markerWidth, markerHeight);
     }
+    // Fade with the background-opacity slider so the inputs dim together with the texture,
+    // applied after the press-state color so L3/R3 still reads through the fade.
+    markerQuad.m_ulColor = PluginUtils::applyOpacity(markerQuad.m_ulColor, m_fBackgroundOpacity);
     m_quads.push_back(markerQuad);
 }
 
@@ -329,6 +332,8 @@ void GamepadWidget::addFaceButton(float centerX, float centerY, float size, bool
         buttonQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
         buttonQuad.m_ulColor = isPressed ? COLOR_DPAD : COLOR_INACTIVE;
     }
+    // Fade with the background-opacity slider (after press-state color so the press still reads).
+    buttonQuad.m_ulColor = PluginUtils::applyOpacity(buttonQuad.m_ulColor, m_fBackgroundOpacity);
     setQuadPositions(buttonQuad, ox - buttonWidth / 2, oy - buttonHeight / 2, buttonWidth, buttonHeight);
     m_quads.push_back(buttonQuad);
 }
@@ -355,6 +360,8 @@ void GamepadWidget::addDpadButton(float centerX, float centerY, float width, flo
         buttonQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
         buttonQuad.m_ulColor = isPressed ? COLOR_DPAD : COLOR_INACTIVE;
     }
+    // Fade with the background-opacity slider (after press-state color so the press still reads).
+    buttonQuad.m_ulColor = PluginUtils::applyOpacity(buttonQuad.m_ulColor, m_fBackgroundOpacity);
 
     // Calculate half dimensions
     float hw = width / 2.0f;
@@ -491,7 +498,7 @@ void GamepadWidget::addTriggerButton(float centerX, float centerY, float width, 
 
             SPluginQuad_t bgQuad;
             bgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-            bgQuad.m_ulColor = COLOR_INACTIVE;
+            bgQuad.m_ulColor = PluginUtils::applyOpacity(COLOR_INACTIVE, m_fBackgroundOpacity);
             if (isLeft) {
                 bgQuad.m_aafPos[0][0] = outerX0; bgQuad.m_aafPos[0][1] = y0;
                 bgQuad.m_aafPos[1][0] = outerX1; bgQuad.m_aafPos[1][1] = y1;
@@ -531,7 +538,8 @@ void GamepadWidget::addTriggerButton(float centerX, float centerY, float width, 
 
                 SPluginQuad_t fillQuad;
                 fillQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-                fillQuad.m_ulColor = this->getColor(ColorSlot::PRIMARY);
+                // Fill height already encodes the trigger % (press amount); fade its alpha only.
+                fillQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::PRIMARY), m_fBackgroundOpacity);
                 if (isLeft) {
                     fillQuad.m_aafPos[0][0] = outerX0; fillQuad.m_aafPos[0][1] = y0;
                     fillQuad.m_aafPos[1][0] = outerX1; fillQuad.m_aafPos[1][1] = y1;
@@ -565,6 +573,9 @@ void GamepadWidget::addTriggerButton(float centerX, float centerY, float width, 
             buttonQuad.m_ulColor = value > 0.5f ? COLOR_TRIGGER : COLOR_INACTIVE;
         }
 
+        // Fade with the background-opacity slider. Applied after the brightness ramp /
+        // press color so the trigger % (encoded as brightness) still reads through the fade.
+        buttonQuad.m_ulColor = PluginUtils::applyOpacity(buttonQuad.m_ulColor, m_fBackgroundOpacity);
         setQuadPositions(buttonQuad, ox - hw, oy - hh, width, height);
         m_quads.push_back(buttonQuad);
     }
@@ -594,6 +605,8 @@ void GamepadWidget::addBumperButton(float centerX, float centerY, float width, f
         buttonQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
         buttonQuad.m_ulColor = isPressed ? COLOR_BUMPER : COLOR_INACTIVE;
     }
+    // Fade with the background-opacity slider (after press-state color so the press still reads).
+    buttonQuad.m_ulColor = PluginUtils::applyOpacity(buttonQuad.m_ulColor, m_fBackgroundOpacity);
 
     float hw = width / 2.0f;
     float hh = height / 2.0f;
@@ -630,14 +643,17 @@ void GamepadWidget::addMenuButton(float centerX, float centerY, float width, flo
         buttonQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
         buttonQuad.m_ulColor = isPressed ? COLOR_MENUBTN : COLOR_INACTIVE;
     }
+    // Fade with the background-opacity slider (after press-state color so the press still reads).
+    buttonQuad.m_ulColor = PluginUtils::applyOpacity(buttonQuad.m_ulColor, m_fBackgroundOpacity);
     setQuadPositions(buttonQuad, ox - width / 2, oy - height / 2, width, height);
     m_quads.push_back(buttonQuad);
 
-    // Add label text
+    // Add label text (fades with the button)
     if (label) {
         float labelFontSize = dims.fontSize * 0.5f;
         addString(label, centerX, centerY - labelFontSize * 0.4f, Justify::CENTER,
-            this->getFont(FontCategory::SMALL), COLOR_MENUBTN, labelFontSize);
+            this->getFont(FontCategory::SMALL),
+            PluginUtils::applyOpacity(COLOR_MENUBTN, m_fBackgroundOpacity), labelFontSize);
     }
 }
 

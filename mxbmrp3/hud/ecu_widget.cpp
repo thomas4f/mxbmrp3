@@ -149,7 +149,9 @@ void EcuWidget::rebuildRenderData() {
             chipColor = active ? PluginUtils::lightenColor(base, ACTIVE_LIGHTEN)
                                : PluginUtils::darkenColor(base, IDLE_DARKEN);
         }
-        chipColor = PluginUtils::applyOpacity(chipColor, m_fBackgroundOpacity);
+        // Chips are the parameter readout, not the panel backdrop — they keep their own
+        // alpha so they stay visible regardless of the background-opacity slider (only
+        // addBackgroundQuad follows that).
 
         SPluginQuad_t chipQuad;
         float cx = chipX, cy = chipY;
@@ -169,7 +171,7 @@ void EcuWidget::rebuildRenderData() {
             applyOffset(ux, uy);
             setQuadPositions(underlineQuad, ux, uy, chipWidth, underlineThickness);
             underlineQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-            underlineQuad.m_ulColor = PluginUtils::applyOpacity(textColor, m_fBackgroundOpacity);
+            underlineQuad.m_ulColor = textColor;  // part of the readout, not the backdrop — see chip quad above
             m_quads.push_back(underlineQuad);
         }
 

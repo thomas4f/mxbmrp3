@@ -305,6 +305,7 @@
     <ClInclude Include="core\update_checker.h" />
     <ClInclude Include="core\update_downloader.h" />
     <ClInclude Include="core\discord_manager.h" />
+    <ClInclude Include="core\steam_friends_manager.h" />
     <ClInclude Include="core\http_server.h" />
     <ClInclude Include="core\widget_constants.h" />
     <ClInclude Include="core\xinput_reader.h" />
@@ -334,6 +335,7 @@
     <ClInclude Include="hud\base_hud.h" />
     <ClInclude Include="hud\pointer_widget.h" />
     <ClInclude Include="hud\lap_log_hud.h" />
+    <ClInclude Include="hud\friends_hud.h" />
     <ClInclude Include="hud\lap_consistency_hud.h" />
     <ClInclude Include="hud\lap_widget.h" />
     <ClInclude Include="hud\map_hud.h" />
@@ -385,6 +387,7 @@
     <ClInclude Include="game\adapters\wrs_adapter.h" />
     <ClInclude Include="game\adapters\krp_adapter.h" />
     <ClInclude Include="vendor\nlohmann\json.hpp" />
+    <ClInclude Include="vendor\steam\steam_api_minimal.h" />
     <ClInclude Include="vendor\httplib\httplib.h" />
     <ClInclude Include="vendor\miniz\miniz.h" />
     <ClInclude Include="vendor\miniz\miniz_common.h" />
@@ -412,6 +415,7 @@
     <ClCompile Include="core\update_checker.cpp" />
     <ClCompile Include="core\update_downloader.cpp" />
     <ClCompile Include="core\discord_manager.cpp" />
+    <ClCompile Include="core\steam_friends_manager.cpp" />
     <ClCompile Include="core\http_server.cpp" />
     <ClCompile Include="core\xinput_reader.cpp" />
     <ClCompile Include="core\fmx_manager.cpp" />
@@ -438,6 +442,7 @@
     <ClCompile Include="hud\base_hud.cpp" />
     <ClCompile Include="hud\pointer_widget.cpp" />
     <ClCompile Include="hud\lap_log_hud.cpp" />
+    <ClCompile Include="hud\friends_hud.cpp" />
     <ClCompile Include="hud\lap_consistency_hud.cpp" />
     <ClCompile Include="hud\lap_widget.cpp" />
     <ClCompile Include="hud\map_hud.cpp" />
@@ -456,6 +461,7 @@
     <ClCompile Include="hud\settings\settings_layout.cpp" />
     <ClCompile Include="hud\settings\settings_tab_ideal_lap.cpp" />
     <ClCompile Include="hud\settings\settings_tab_lap_log.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_friends.cpp" />
     <ClCompile Include="hud\settings\settings_tab_lap_consistency.cpp" />
     <ClCompile Include="hud\settings\settings_tab_fmx.cpp" />
     <ClCompile Include="hud\settings\settings_tab_stats.cpp" />

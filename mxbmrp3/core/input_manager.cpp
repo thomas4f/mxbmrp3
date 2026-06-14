@@ -6,6 +6,7 @@
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
 #include "../core/hud_manager.h"
+#include "../core/ui_config.h"
 #include "../hud/version_widget.h"
 #include <windows.h>
 
@@ -392,11 +393,20 @@ void InputManager::updateCursorVisibility() {
         return;
     }
 
-    // Check if mouse has moved
+    // Check if mouse has moved. m_fLastMouseX/Y is only updated when movement is
+    // registered, so while the cursor is hidden this delta is the total travel from
+    // where the mouse came to rest - i.e. it naturally accumulates small movements.
     float deltaX = m_cursorPosition.x - m_fLastMouseX;
     float deltaY = m_cursorPosition.y - m_fLastMouseY;
     float distanceSq = deltaX * deltaX + deltaY * deltaY;
-    bool hasMoved = distanceSq > (MOVEMENT_THRESHOLD * MOVEMENT_THRESHOLD);
+
+    // While visible, keep using the small floor so the cursor stays responsive.
+    // While hidden, require the larger (INI-configurable) activation threshold so a
+    // tiny bump doesn't instantly pop the cursor + settings button into view.
+    float threshold = m_bShouldShowCursor
+        ? MOVEMENT_THRESHOLD
+        : UiConfig::getInstance().getCursorActivationThreshold();
+    bool hasMoved = distanceSq > (threshold * threshold);
 
     // Check if either mouse button was clicked (extends cursor visibility)
     bool hasClicked = m_leftButton.isClicked() || m_rightButton.isClicked();

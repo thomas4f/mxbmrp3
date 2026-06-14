@@ -48,24 +48,21 @@ BaseHud* SettingsHud::renderTabSession(SettingsLayoutContext& ctx) {
     ctx.addSpacing(0.5f);
 
     // === CONTENT SECTION ===
-    // Order matches display order: Type, Format, Track, Weather, Server
+    // Order matches display order: Server (headline), Track, Format, Weather
     ctx.addSectionHeader("Content");
 
-    ctx.addToggleControl("Session type", (hud->m_enabledRows & SessionHud::ROW_TYPE) != 0,
-        SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, SessionHud::ROW_TYPE, true,
-        "session.type");
-    ctx.addToggleControl("Format & state", (hud->m_enabledRows & SessionHud::ROW_FORMAT) != 0,
-        SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, SessionHud::ROW_FORMAT, true,
-        "session.format");
-    ctx.addToggleControl("Track name", (hud->m_enabledRows & SessionHud::ROW_TRACK) != 0,
-        SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, SessionHud::ROW_TRACK, true,
-        "session.track");
-    ctx.addToggleControl("Weather & temp", (hud->m_enabledRows & SessionHud::ROW_WEATHER) != 0,
-        SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, SessionHud::ROW_WEATHER, true,
-        "session.weather");
     ctx.addToggleControl("Server name", (hud->m_enabledRows & SessionHud::ROW_SERVER) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, SessionHud::ROW_SERVER, true,
         "session.server");
+    ctx.addToggleControl("Track name", (hud->m_enabledRows & SessionHud::ROW_TRACK) != 0,
+        SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, SessionHud::ROW_TRACK, true,
+        "session.track");
+    ctx.addToggleControl("Format & state", (hud->m_enabledRows & SessionHud::ROW_FORMAT) != 0,
+        SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, SessionHud::ROW_FORMAT, true,
+        "session.format");
+    ctx.addToggleControl("Weather & temp", (hud->m_enabledRows & SessionHud::ROW_WEATHER) != 0,
+        SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, SessionHud::ROW_WEATHER, true,
+        "session.weather");
 
     return hud;
 }

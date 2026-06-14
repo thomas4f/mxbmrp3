@@ -13,7 +13,15 @@
 #include <fstream>
 #include <cstdio>
 #include <algorithm>
+#include <cmath>
 #include <windows.h>
+
+// Clamp persisted floating-point values on load: a non-finite value in the
+// file (corruption, or written by a pre-isfinite-guard build) must not be
+// re-adopted into live state.
+static double finiteOrZero(double v) {
+    return std::isfinite(v) ? v : 0.0;
+}
 
 static constexpr const char* STATS_SUBDIRECTORY = "mxbmrp3";
 static constexpr const char* STATS_FILENAME = "mxbmrp3_stats.json";
@@ -108,7 +116,7 @@ void StatsManager::load(const char* savePath) {
         if (j.contains("bikes") && j["bikes"].is_object()) {
             for (auto& [bikeName, bikeJson] : j["bikes"].items()) {
                 if (bikeJson.is_object()) {
-                    m_bikeOdometers[bikeName] = (std::max)(bikeJson.value("odometer", 0.0), 0.0);
+                    m_bikeOdometers[bikeName] = (std::max)(finiteOrZero(bikeJson.value("odometer", 0.0)), 0.0);
                 }
             }
         }
@@ -126,12 +134,12 @@ void StatsManager::load(const char* savePath) {
                 stats.bestSector3Ms = (std::max)(tbJson.value("bestSector3Ms", -1), -1);
                 stats.bestSector4Ms = (std::max)(tbJson.value("bestSector4Ms", -1), -1);
                 stats.totalTimeOnTrackMs = (std::max)(tbJson.value("totalTimeOnTrackMs", static_cast<int64_t>(0)), static_cast<int64_t>(0));
-                stats.totalDistanceM = (std::max)(tbJson.value("totalDistanceM", 0.0), 0.0);
+                stats.totalDistanceM = (std::max)(finiteOrZero(tbJson.value("totalDistanceM", 0.0)), 0.0);
                 stats.crashCount = (std::max)(tbJson.value("crashCount", 0), 0);
                 stats.gearShiftCount = (std::max)(tbJson.value("gearShiftCount", 0), 0);
                 stats.penaltyCount = (std::max)(tbJson.value("penaltyCount", 0), 0);
                 stats.penaltyTimeMs = (std::max)(tbJson.value("penaltyTimeMs", static_cast<int64_t>(0)), static_cast<int64_t>(0));
-                stats.topSpeedMs = (std::max)(tbJson.value("topSpeedMs", 0.0f), 0.0f);
+                stats.topSpeedMs = static_cast<float>((std::max)(finiteOrZero(tbJson.value("topSpeedMs", 0.0)), 0.0));
                 stats.firstSessionTimestamp = tbJson.value("firstSession", static_cast<std::time_t>(0));
                 stats.lastSessionTimestamp = tbJson.value("lastSession", static_cast<std::time_t>(0));
                 m_trackBikeStats[key] = stats;
@@ -516,6 +524,14 @@ void StatsManager::recordLap(int lapTime, int sector1, int sector2, int sector3,
 }
 
 void StatsManager::updateTelemetry(float speedMs, bool isCrashed, int currentGear) {
+    // Sanitize the speed sample: NaN is rejected by the comparisons below
+    // anyway, but +Inf passes them and would poison the odometer / top-speed
+    // values, which are PERSISTED - one bad physics sample would corrupt the
+    // stats file with no recovery path.
+    if (!std::isfinite(speedMs)) {
+        speedMs = 0.0f;
+    }
+
     // Single lookup for the entire method — setCurrentContext() guarantees entry exists
     TrackBikeStats* stats = nullptr;
     if (!m_currentKey.empty()) {

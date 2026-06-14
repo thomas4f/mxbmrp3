@@ -62,6 +62,15 @@ void UpdateDownloader::shutdown() {
     if (m_workerThread.joinable()) {
         m_workerThread.join();
     }
+
+    // Drop the state-change callback: it captures a SettingsHud pointer that
+    // dangles once HudManager shuts down after us. The worker is joined, so
+    // nothing can fire it now - and a future late download must not call
+    // into destroyed HUDs.
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_stateChangeCallback = nullptr;
+    }
 }
 
 void UpdateDownloader::closeHttpHandles() {

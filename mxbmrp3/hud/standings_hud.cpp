@@ -25,6 +25,7 @@ void StandingsHud::CachedIcons::ensureInitialized() {
     flag = assets.getIconSpriteIndex("flag");
     flagCheckered = assets.getIconSpriteIndex("flag-checkered");
     wrench = assets.getIconSpriteIndex("wrench");
+    caretUp = assets.getIconSpriteIndex("caret-up");
     initialized = true;
 }
 
@@ -36,6 +37,7 @@ StandingsHud::ColumnPositions::ColumnPositions(float contentStartX, float scale,
     // All columns (race mode everywhere)
     PluginUtils::setColumnPosition(enabledColumns, COL_TRACKED, COL_TRACKED_WIDTH, scaledFontSize, current, tracked);
     PluginUtils::setColumnPosition(enabledColumns, COL_POS, COL_POS_WIDTH, scaledFontSize, current, pos);
+    PluginUtils::setColumnPosition(enabledColumns, COL_POSGAIN, COL_POSGAIN_WIDTH, scaledFontSize, current, posGain);
     PluginUtils::setColumnPosition(enabledColumns, COL_RACENUM, raceNumWidth, scaledFontSize, current, raceNum);
     PluginUtils::setColumnPosition(enabledColumns, COL_NAME, nameWidth, scaledFontSize, current, name);
     PluginUtils::setColumnPosition(enabledColumns, COL_BIKE, COL_BIKE_WIDTH, scaledFontSize, current, bike);
@@ -74,6 +76,13 @@ StandingsHud::DisplayEntry StandingsHud::DisplayEntry::fromRaceEntry(const RaceE
     // Copy pre-computed bike brand color
     result.bikeBrandColor = entry.bikeBrandColor;
 
+    // Cache the tracked-rider color (0 when not tracked). Looked up by name, the
+    // same way the tracked-column icon resolves it. Used to tint the number plate
+    // so broadcasters can show e.g. a red points-leader plate.
+    const TrackedRiderConfig* trackedConfig =
+        TrackedRidersManager::getInstance().getTrackedRider(entry.name);
+    result.trackedColor = trackedConfig ? trackedConfig->color : 0;
+
     // Format race number without # prefix (standings uses number plate quads instead)
     snprintf(result.formattedRaceNum, sizeof(result.formattedRaceNum), "%d", entry.raceNum);
 
@@ -84,12 +93,25 @@ float StandingsHud::getColumnTextX(uint8_t columnIndex, float columnPosition, fl
     if (isPlaceholder) return columnPosition;
     float charW = PluginUtils::calculateMonospaceTextWidth(1, fontSize);
     if (columnIndex == COL_IDX_POS) {
-        // 2-char content field: center (classic) or right edge (modern)
+        // 2-char content field: center (classic) or right edge (modern). A rank is a
+        // number, so it right-aligns in the modern layout to stack place values.
         return columnPosition + charW * (m_bClassicLayout ? 1.0f : 2.0f);
     }
     if (columnIndex == COL_IDX_RACENUM) {
         // Classic: right edge of 3-char field. Modern: center of 4-char plate.
         return columnPosition + charW * (m_bClassicLayout ? 3.0f : 2.0f);
+    }
+    if (columnIndex == COL_IDX_POSGAIN) {
+        // Caret + count render as a left-aligned group: the caret sits ~0.9 char in (see
+        // renderRiderRow) and the count is left-aligned at ~1.5 char, just right of it. So
+        // every row's carets and number left-edges line up, and a 2-digit count ends near
+        // ~3.5 char — clear of the 4-char column edge and the # plate beyond it.
+        return columnPosition + charW * 1.5f;
+    }
+    if (columnIndex == COL_IDX_BEST_LAP) {
+        // Lap times right-align to the content edge so the fractional seconds line up
+        // regardless of minute presence (sub-minute vs M:SS.mmm laps), like the gap column.
+        return columnPosition + charW * (COL_BEST_LAP_WIDTH - 1);
     }
     if (columnIndex == COL_IDX_GAP && gapRightAlign) {
         // Gap column right-aligns to the content edge (numeric values and labels alike).
@@ -105,6 +127,7 @@ float StandingsHud::getColumnTextX(uint8_t columnIndex, float columnPosition, fl
 const char* StandingsHud::getColumnHeaderLabel(uint8_t columnIndex) {
     switch (columnIndex) {
         case COL_IDX_POS:      return "P";
+        case COL_IDX_POSGAIN:  return "+/-";
         case COL_IDX_RACENUM:  return "#";
         case COL_IDX_NAME:     return "Name";
         case COL_IDX_BIKE:     return "Bike";
@@ -123,9 +146,11 @@ float StandingsHud::getColumnHeaderTextX(uint8_t columnIndex, float columnPositi
         int justify = Justify::LEFT;
         if (columnIndex == COL_IDX_POS) {
             justify = m_bClassicLayout ? Justify::CENTER : Justify::RIGHT;
+        } else if (columnIndex == COL_IDX_POSGAIN) {
+            justify = Justify::CENTER;
         } else if (columnIndex == COL_IDX_RACENUM) {
             justify = m_bClassicLayout ? Justify::RIGHT : Justify::CENTER;
-        } else if (gapRightAlign || columnIndex == COL_IDX_PENALTY) {
+        } else if (gapRightAlign || columnIndex == COL_IDX_PENALTY || columnIndex == COL_IDX_BEST_LAP) {
             justify = Justify::RIGHT;
         }
         *outJustify = justify;
@@ -246,6 +271,43 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
             continue;  // Skip text rendering for tracked column
         }
 
+        // Positions-gained/lost column emits a caret sprite (up = gained, flipped down =
+        // lost) alongside the count text. The count is rendered by the normal text path
+        // below, so this only adds the sprite and falls through (no 'continue').
+        if (col.columnIndex == COL_IDX_POSGAIN && !isPlaceholder && !isMutedRider &&
+                entry.hasPosDelta && entry.posDelta != 0) {
+            m_iconCache.ensureInitialized();
+            if (m_iconCache.caretUp > 0) {
+                bool down = (entry.posDelta < 0);
+                // Smaller than the status-flag icons (0.006f): caret-up.tga is a solid
+                // filled triangle, so it reads chunkier than a flag at the same size.
+                constexpr float baseConeSize = 0.0045f;
+                float spriteHalfSize = baseConeSize * m_fScale;
+                float spriteHalfWidth = spriteHalfSize / UI_ASPECT_RATIO;
+                float charW = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+                float spriteCenterX = col.position + charW * 0.9f;
+                float spriteCenterY = currentY + dim.lineHeightNormal * 0.5f;
+
+                SPluginQuad_t sprite;
+                float x = spriteCenterX, y = spriteCenterY;
+                applyOffset(x, y);
+                // Down = 180° rotation of the up caret (negate both axes), NOT a vertical
+                // flip: a flip reverses the vertex winding and the engine back-face-culls
+                // non-CCW quads, so the sprite would never draw.
+                float sx = down ? -spriteHalfWidth : spriteHalfWidth;
+                float sy = down ? -spriteHalfSize  : spriteHalfSize;
+                sprite.m_aafPos[0][0] = x - sx; sprite.m_aafPos[0][1] = y - sy;  // Top-left
+                sprite.m_aafPos[1][0] = x - sx; sprite.m_aafPos[1][1] = y + sy;  // Bottom-left
+                sprite.m_aafPos[2][0] = x + sx; sprite.m_aafPos[2][1] = y + sy;  // Bottom-right
+                sprite.m_aafPos[3][0] = x + sx; sprite.m_aafPos[3][1] = y - sy;  // Top-right
+                sprite.m_iSprite = m_iconCache.caretUp;
+                sprite.m_ulColor = (entry.posDelta > 0) ? this->getColor(ColorSlot::POSITIVE)
+                                                        : this->getColor(ColorSlot::NEGATIVE);
+                m_posGainIconQuads.push_back({m_quads.size(), rowIndex, down});
+                m_quads.push_back(sprite);
+            }
+        }
+
         const char* text;
 
         if (isPlaceholder) {
@@ -254,6 +316,7 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
             // Select data field based on column index (TRACKED handled above as sprite)
             switch (col.columnIndex) {
                 case COL_IDX_POS:         text = entry.formattedPosition; break;
+                case COL_IDX_POSGAIN:     text = isMutedRider ? placeholder : entry.formattedPosDelta; break;
                 case COL_IDX_RACENUM:     text = entry.formattedRaceNum; break;
                 case COL_IDX_NAME:        text = entry.name; break;
                 case COL_IDX_BIKE:        text = entry.bikeShortName; break;
@@ -295,6 +358,14 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
         if (col.columnIndex == COL_IDX_RACENUM && !isPlaceholder) {
             if (!m_bClassicLayout) {
                 columnColor = this->getColor(ColorSlot::BACKGROUND);
+                // White number on a dark custom plate (e.g. black) so it stays
+                // legible. The tracked colour now drives the plate whenever the
+                // rider isn't muted (it beats the podium plates), so flip the
+                // number to light whenever that tracked plate is dark.
+                bool plateUsesTracked = !isMutedRider && entry.trackedColor != 0;
+                if (plateUsesTracked && PluginUtils::isColorDark(entry.trackedColor)) {
+                    columnColor = this->getColor(ColorSlot::PRIMARY);
+                }
             } else if (!isMutedRider) {
                 columnColor = this->getColor(ColorSlot::SECONDARY);
             }
@@ -302,6 +373,11 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
             columnColor = this->getColor(ColorSlot::SECONDARY);
         } else if (col.columnIndex == COL_IDX_PENALTY && !isPlaceholder && entry.penalty > 0) {
             columnColor = this->getColor(ColorSlot::WARNING);
+        } else if (col.columnIndex == COL_IDX_POSGAIN && !isPlaceholder && !isMutedRider && entry.hasPosDelta) {
+            // Gained = positive color, lost = negative. Held (delta 0) renders the generic
+            // placeholder "-" and is muted by the placeholder branch below.
+            if (entry.posDelta > 0)      columnColor = this->getColor(ColorSlot::POSITIVE);
+            else if (entry.posDelta < 0) columnColor = this->getColor(ColorSlot::NEGATIVE);
         }
 
         // Use muted color for placeholder values
@@ -333,6 +409,8 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
         // Column alignment differs by layout/content.
         //   Modern:  position right-aligned,  race number centered on the plate.
         //   Classic: position centered,       race number right-aligned (no plate).
+        //   PosGain: caret+count group centered (see getColumnTextX).
+        //   Best:    right-aligned (lap times line up by fractional seconds).
         //   Gap:     right-aligned (numeric values and text labels alike).
         //   Penalty: right-aligned ("+5s" / "-").
         // X anchor comes from getColumnTextX so the drag fast path stays in sync.
@@ -344,7 +422,7 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
                 justify = m_bClassicLayout ? Justify::CENTER : Justify::RIGHT;
             } else if (col.columnIndex == COL_IDX_RACENUM) {
                 justify = m_bClassicLayout ? Justify::RIGHT : Justify::CENTER;
-            } else if (gapRightAlign || col.columnIndex == COL_IDX_PENALTY) {
+            } else if (gapRightAlign || col.columnIndex == COL_IDX_PENALTY || col.columnIndex == COL_IDX_BEST_LAP) {
                 justify = Justify::RIGHT;
             }
         }
@@ -361,6 +439,18 @@ void StandingsHud::DisplayEntry::updateFormattedStrings() {
     }
     else {
         strcpy_s(formattedPosition, sizeof(formattedPosition), Placeholders::GENERIC);
+    }
+
+    // Positions gained/lost: caret shows direction, so the count is the absolute value.
+    // No change (held position) or no reference yet → leave the cell blank rather than a
+    // placeholder; only actual gains/losses get a caret + count. (Muted DNS/DSQ riders
+    // still render the generic placeholder via the isMutedRider branch in renderRiderRow.)
+    // Blank is an empty string the column still emits via addString("") — see addString's
+    // contract; it must stay one string per column for the drag fast-path index sync.
+    if (hasPosDelta && posDelta != 0) {
+        snprintf(formattedPosDelta, sizeof(formattedPosDelta), "%d", posDelta < 0 ? -posDelta : posDelta);
+    } else {
+        formattedPosDelta[0] = '\0';
     }
 }
 
@@ -385,6 +475,34 @@ void StandingsHud::addDisplayEntries(int startIdx, int endIdx, int positionBase,
 
             DisplayEntry displayEntry = DisplayEntry::fromRaceEntry(*entry, standing);
             displayEntry.position = positionBase + (i - startIdx);
+
+            // Positions gained/lost, measured against the reference for the selected mode.
+            // Both ends use the official classification position so the delta is independent
+            // of DNS-filter display toggles. References only exist during a race, so this is
+            // empty in non-race sessions. RACE_START silently falls back to the last-S/F
+            // reference when we joined mid-race (no grid snapshot), so a joiner still sees
+            // useful per-lap movement instead of a blank column.
+            int refPos = -1;
+            switch (m_posGainMode) {
+                case PosGainMode::RACE_START:
+                    refPos = pd.getRaceStartPosition(raceNum);
+                    if (refPos <= 0) refPos = pd.getSfReferencePosition(raceNum);
+                    break;
+                case PosGainMode::LAST_SF:
+                    refPos = pd.getSfReferencePosition(raceNum);
+                    break;
+                case PosGainMode::LAST_SPLIT:
+                    refPos = pd.getSplitReferencePosition(raceNum);
+                    break;
+                default:
+                    break;  // OFF: column not shown
+            }
+            int curPos = pluginData.getPositionForRaceNum(raceNum);
+            if (refPos > 0 && curPos > 0) {
+                displayEntry.posDelta = refPos - curPos;
+                displayEntry.hasPosDelta = true;
+            }
+
             m_displayEntries.push_back(displayEntry);
         }
     }
@@ -394,8 +512,8 @@ void StandingsHud::buildColumnTable() {
     m_columnTable.clear();
     m_cachedBackgroundWidth = 0;
 
-    // Build table of enabled columns only
-    // Column indices: 0=TRACKED, 1=POS, 2=RACENUM, 3=NAME, 4=BIKE, 5=BEST_LAP, 6=GAP, 7=PENALTY
+    // Build table of enabled columns only (POSGAIN sits between POS and RACENUM in layout)
+    // Column indices: 0=TRACKED, 1=POS, 8=POSGAIN, 2=RACENUM, 3=NAME, 4=BIKE, 5=BEST_LAP, 6=GAP, 7=PENALTY
     struct ColumnSpec {
         uint32_t flag;
         uint8_t index;
@@ -407,14 +525,15 @@ void StandingsHud::buildColumnTable() {
 
     // useEmpty: all placeholder rows render empty strings (HUD background defines extent)
     const ColumnSpec specs[] = {
-        {COL_TRACKED, 0, m_columns.tracked, Justify::LEFT, true, COL_TRACKED_WIDTH},
-        {COL_POS, 1, m_columns.pos, Justify::LEFT, true, COL_POS_WIDTH},
-        {COL_RACENUM, 2, m_columns.raceNum, Justify::LEFT, true, getRaceNumColumnWidth()},
-        {COL_NAME, 3, m_columns.name, Justify::LEFT, true, getNameColumnWidth()},
-        {COL_BIKE, 4, m_columns.bike, Justify::LEFT, true, COL_BIKE_WIDTH},
-        {COL_BEST_LAP, 5, m_columns.bestLap, Justify::LEFT, true, COL_BEST_LAP_WIDTH},
-        {COL_GAP, 6, m_columns.gap, Justify::LEFT, true, COL_GAP_WIDTH},
-        {COL_PENALTY, 7, m_columns.penalty, Justify::LEFT, true, COL_PENALTY_WIDTH}
+        {COL_TRACKED, COL_IDX_TRACKED, m_columns.tracked, Justify::LEFT, true, COL_TRACKED_WIDTH},
+        {COL_POS, COL_IDX_POS, m_columns.pos, Justify::LEFT, true, COL_POS_WIDTH},
+        {COL_POSGAIN, COL_IDX_POSGAIN, m_columns.posGain, Justify::LEFT, true, COL_POSGAIN_WIDTH},
+        {COL_RACENUM, COL_IDX_RACENUM, m_columns.raceNum, Justify::LEFT, true, getRaceNumColumnWidth()},
+        {COL_NAME, COL_IDX_NAME, m_columns.name, Justify::LEFT, true, getNameColumnWidth()},
+        {COL_BIKE, COL_IDX_BIKE, m_columns.bike, Justify::LEFT, true, COL_BIKE_WIDTH},
+        {COL_BEST_LAP, COL_IDX_BEST_LAP, m_columns.bestLap, Justify::LEFT, true, COL_BEST_LAP_WIDTH},
+        {COL_GAP, COL_IDX_GAP, m_columns.gap, Justify::LEFT, true, COL_GAP_WIDTH},
+        {COL_PENALTY, COL_IDX_PENALTY, m_columns.penalty, Justify::LEFT, true, COL_PENALTY_WIDTH}
     };
 
     for (const auto& spec : specs) {
@@ -432,7 +551,12 @@ StandingsHud::HudDimensions StandingsHud::calculateHudDimensions(const ScaledDim
     result.backgroundWidth = PluginUtils::calculateMonospaceTextWidth(widthChars, dim.fontSize)
         + dim.paddingH + dim.paddingH;
 
-    result.titleHeight = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
+    // The title block holds the plain session label (large) and, optionally, a
+    // session-info row (normal) below it. Folding the info-row height into
+    // titleHeight keeps every downstream "titleHeight + headerHeight" quad offset
+    // correct without touching those sites.
+    result.titleHeight = (m_bShowTitle ? dim.lineHeightLarge : 0.0f)
+        + (m_bShowSessionInfo ? dim.lineHeightNormal : 0.0f);
 
     // Optional column-header row sits between the title and the rider rows.
     result.headerHeight = m_bShowHeaders ? dim.lineHeightNormal : 0.0f;
@@ -687,6 +811,40 @@ void StandingsHud::rebuildLayout() {
         }
     }
 
+    // Update positions-gained/lost caret quad positions (mirror renderRiderRow geometry)
+    if (!m_posGainIconQuads.empty()) {
+        constexpr float baseConeSize = 0.0045f;  // keep in sync with renderRiderRow
+        float spriteHalfSize = baseConeSize * m_fScale;
+        float spriteHalfWidth = spriteHalfSize / UI_ASPECT_RATIO;
+        float charW = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+
+        for (const auto& iconInfo : m_posGainIconQuads) {
+            if (iconInfo.quadIndex >= m_quads.size()) continue;
+
+            float rowY = hudDim.contentStartY + hudDim.titleHeight + hudDim.headerHeight + (iconInfo.rowIndex * dim.lineHeightNormal);
+            if (iconInfo.rowIndex < static_cast<int>(m_displayEntries.size())) {
+                const auto& entry = m_displayEntries[iconInfo.rowIndex];
+                if (!entry.isPlaceholder && entry.raceNum >= 0) {
+                    rowY += getAnimatedRowOffset(entry.raceNum, dim.lineHeightNormal);
+                }
+            }
+            float spriteCenterX = m_columns.posGain + charW * 0.9f;
+            float spriteCenterY = rowY + dim.lineHeightNormal * 0.5f;
+
+            float x = spriteCenterX, y = spriteCenterY;
+            applyOffset(x, y);
+            // Down = 180° rotation (negate both axes) to keep CCW winding; see renderRiderRow.
+            float sx = iconInfo.down ? -spriteHalfWidth : spriteHalfWidth;
+            float sy = iconInfo.down ? -spriteHalfSize  : spriteHalfSize;
+
+            SPluginQuad_t& sprite = m_quads[iconInfo.quadIndex];
+            sprite.m_aafPos[0][0] = x - sx; sprite.m_aafPos[0][1] = y - sy;  // Top-left
+            sprite.m_aafPos[1][0] = x - sx; sprite.m_aafPos[1][1] = y + sy;  // Bottom-left
+            sprite.m_aafPos[2][0] = x + sx; sprite.m_aafPos[2][1] = y + sy;  // Bottom-right
+            sprite.m_aafPos[3][0] = x + sx; sprite.m_aafPos[3][1] = y - sy;  // Top-right
+        }
+    }
+
     // Update race number plate quad positions
     if (!m_raceNumPlateQuads.empty()) {
         PlateGeometry pg(dim.fontSize, dim.lineHeightNormal);
@@ -720,7 +878,7 @@ void StandingsHud::rebuildLayout() {
     float currentY = hudDim.contentStartY;
     size_t stringIndex = 0;
 
-    // Title string (always exists, but may be empty if hidden)
+    // Title string (index 0, always exists, but may be empty if hidden)
     if (stringIndex < m_strings.size()) {
         float x = hudDim.contentStartX;
         float y = currentY;
@@ -729,7 +887,18 @@ void StandingsHud::rebuildLayout() {
         m_strings[stringIndex].m_afPos[1] = y;
         stringIndex++;
     }
-    currentY += hudDim.titleHeight;
+    if (m_bShowTitle) currentY += dim.lineHeightLarge;
+
+    // Session-info string (index 1, always exists, but may be empty if disabled)
+    if (stringIndex < m_strings.size()) {
+        float x = hudDim.contentStartX;
+        float y = currentY;
+        applyOffset(x, y);
+        m_strings[stringIndex].m_afPos[0] = x;
+        m_strings[stringIndex].m_afPos[1] = y;
+        stringIndex++;
+    }
+    if (m_bShowSessionInfo) currentY += dim.lineHeightNormal;
 
     // Column-header row strings (match the emit order/count in rebuildRenderData)
     if (m_bShowHeaders) {
@@ -790,6 +959,7 @@ void StandingsHud::rebuildRenderData() {
     m_displayEntries.clear();
     m_cachedHighlightQuadIndex = -1;  // Reset highlight quad tracking
     m_trackedIconQuads.clear();  // Reset icon quad tracking
+    m_posGainIconQuads.clear();  // Reset positions-gained/lost caret quad tracking
     m_raceNumPlateQuads.clear(); // Reset race number plate quad tracking
     m_slideHighlightQuads.clear(); // Reset slide-highlight quad tracking
 
@@ -822,6 +992,13 @@ void StandingsHud::rebuildRenderData() {
         effectiveColumns &= ~COL_NAME;
     } else {
         effectiveColumns |= COL_NAME;
+    }
+
+    // Apply positions-gained mode: OFF removes the column, any reference mode enables it
+    if (m_posGainMode == PosGainMode::OFF) {
+        effectiveColumns &= ~COL_POSGAIN;
+    } else {
+        effectiveColumns |= COL_POSGAIN;
     }
 
     // Only log when configuration actually changes
@@ -1110,19 +1287,13 @@ void StandingsHud::rebuildRenderData() {
             }
         }
     } else if (m_nameMode == NameMode::LONG) {
-        // Find longest name to determine column width
-        int maxLen = 3;  // Minimum 3 chars
-        for (const auto& entry : m_displayEntries) {
-            if (!entry.isPlaceholder) {
-                int len = static_cast<int>(strlen(entry.name));
-                if (len > maxLen) maxLen = len;
-            }
-        }
-        m_longNameWidth = std::min(maxLen, MAX_LONG_NAME_CHARS) + 1;  // +1 for column spacing
-        // Truncate names that exceed the column width cap
+        // Static column width (m_longNameChars); names beyond it get the shared
+        // ellipsis truncation. No longest-name scan, so the table doesn't reflow
+        // as riders join/leave. SHORT mode above stays a deliberate hard cut.
         for (auto& entry : m_displayEntries) {
-            if (!entry.isPlaceholder && strlen(entry.name) > MAX_LONG_NAME_CHARS) {
-                entry.name[MAX_LONG_NAME_CHARS] = '\0';
+            if (!entry.isPlaceholder && static_cast<int>(strlen(entry.name)) > m_longNameChars) {
+                std::string fitted = PluginUtils::fitText(entry.name, m_longNameChars);
+                strncpy_s(entry.name, sizeof(entry.name), fitted.c_str(), _TRUNCATE);
             }
         }
     }
@@ -1153,37 +1324,56 @@ void StandingsHud::rebuildRenderData() {
 
     float currentY = hudDim.contentStartY;
 
-    // Title: context-aware session info (label + live timer or leader lap x/y)
-    // shown in place of what used to be a static "Standings" caption.
-    const char* sessionLabel = PluginUtils::getSessionString(sessionData.eventType, sessionData.session);
-    if (!sessionLabel) sessionLabel = Placeholders::GENERIC;
-
-    char titleValue[24] = "";
-    if (sessionData.sessionLength > 0) {
-        // Timed (or timed+lap) session: live countdown of remaining time
-        PluginUtils::formatTimeMinutesSeconds(pluginData.getSessionTime(), titleValue, sizeof(titleValue));
-    } else if (sessionData.sessionNumLaps > 0) {
-        // Pure lap race: leader's current lap / total laps
-        int leaderLap = 1;
-        if (!classificationOrder.empty()) {
-            const StandingsData* leaderStanding = pluginData.getStanding(classificationOrder[0]);
-            if (leaderStanding) leaderLap = leaderStanding->numLaps + 1;  // numLaps = completed → 1-based current
-        }
-        if (leaderLap < 1) leaderLap = 1;
-        if (leaderLap > sessionData.sessionNumLaps) leaderLap = sessionData.sessionNumLaps;
-        snprintf(titleValue, sizeof(titleValue), "%d/%d", leaderLap, sessionData.sessionNumLaps);
-    }
-
-    char titleBuf[48];
-    if (titleValue[0] != '\0') {
-        snprintf(titleBuf, sizeof(titleBuf), "%s: %s", sessionLabel, titleValue);
-    } else {
-        snprintf(titleBuf, sizeof(titleBuf), "%s", sessionLabel);
-    }
-    addTitleString(titleBuf, hudDim.contentStartX, currentY, Justify::LEFT,
+    // Title: static "Standings" caption in the standard title style, toggled by
+    // the shared title control. addTitleString keeps string index 0 stable
+    // (emits an empty string when the title is hidden).
+    addTitleString("Standings", hudDim.contentStartX, currentY, Justify::LEFT,
         this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
+    if (m_bShowTitle) currentY += dim.lineHeightLarge;
 
-    currentY += hudDim.titleHeight;
+    // Session-info row: context-aware "<session>: <clock / leader lap / overtime>"
+    // on a single line below the title (e.g. "Race 2: FINAL LAP"). The overtime
+    // label ("N TO GO" / "FINAL LAP" / "CHECKERED") replaces the frozen 00:00 once
+    // a time+lap clock expires. Always emitted (empty when disabled) so string
+    // index 1 stays stable for the rebuildLayout fast path.
+    char sessionInfoBuf[48] = "";
+    if (m_bShowSessionInfo) {
+        const char* sessionLabel = PluginUtils::getSessionString(sessionData.eventType, sessionData.session);
+        if (!sessionLabel) sessionLabel = Placeholders::GENERIC;
+
+        char value[24] = "";
+        if (sessionData.sessionLength > 0) {
+            // Timed (or timed+lap) session: live countdown, or the overtime label.
+            PluginUtils::formatSessionClock(pluginData.getLeaderLapsToGo(),
+                pluginData.getSessionTime(), value, sizeof(value));
+        } else if (sessionData.sessionNumLaps > 0) {
+            // Pure lap race: leader's current lap / total laps, or "CHECKERED" once
+            // the leader crosses the line on the final lap. Reuse isRiderFinished so
+            // the threshold matches the FinalLap/finished logic, and so laps-only
+            // races read consistently with the time+lap overtime label once the
+            // flag falls.
+            const StandingsData* leaderStanding = classificationOrder.empty()
+                ? nullptr : pluginData.getStanding(classificationOrder[0]);
+            if (leaderStanding && sessionData.isRiderFinished(leaderStanding->numLaps,
+                    leaderStanding->numLapsAtLeaderFinish)) {
+                strcpy_s(value, sizeof(value), "CHECKERED");
+            } else {
+                int leaderLap = leaderStanding ? leaderStanding->numLaps + 1 : 1;  // numLaps = completed → 1-based current
+                if (leaderLap < 1) leaderLap = 1;
+                if (leaderLap > sessionData.sessionNumLaps) leaderLap = sessionData.sessionNumLaps;
+                snprintf(value, sizeof(value), "Lap %d/%d", leaderLap, sessionData.sessionNumLaps);
+            }
+        }
+
+        if (value[0] != '\0') {
+            snprintf(sessionInfoBuf, sizeof(sessionInfoBuf), "%s: %s", sessionLabel, value);
+        } else {
+            snprintf(sessionInfoBuf, sizeof(sessionInfoBuf), "%s", sessionLabel);
+        }
+    }
+    addString(sessionInfoBuf, hudDim.contentStartX, currentY, Justify::LEFT,
+        this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSize);
+    if (m_bShowSessionInfo) currentY += dim.lineHeightNormal;
 
     // Optional column-header row. Emits one string per enabled column (skipping the
     // status-icon column, which has no label), in the same column-table order the
@@ -1308,6 +1498,11 @@ void StandingsHud::rebuildRenderData() {
             unsigned long basePlateColor;
             if (isMutedRider) {
                 basePlateColor = this->getColor(ColorSlot::MUTED);
+            } else if (entry.trackedColor != 0) {
+                // Tracked riders keep their custom plate colour (e.g. a red
+                // points-leader plate) even when finishing on the podium; only the
+                // muted (DNS/RET/DSQ) state takes precedence over it.
+                basePlateColor = entry.trackedColor;
             } else if (entry.isFinishedRace && entry.position == 1) {
                 basePlateColor = PluginConstants::PodiumColors::GOLD;
             } else if (entry.isFinishedRace && entry.position == 2) {
@@ -1315,7 +1510,8 @@ void StandingsHud::rebuildRenderData() {
             } else if (entry.isFinishedRace && entry.position == 3) {
                 basePlateColor = PluginConstants::PodiumColors::BRONZE;
             } else {
-                basePlateColor = this->getColor(ColorSlot::PRIMARY);
+                // Default plate: secondary colour (dark number stays legible on it).
+                basePlateColor = this->getColor(ColorSlot::SECONDARY);
             }
             unsigned long plateColor = PluginUtils::applyOpacity(basePlateColor, 230.0f / 255.0f);
             numPlate.m_ulColor = plateColor;
@@ -1478,9 +1674,11 @@ void StandingsHud::resetToDefaults() {
     setPosition(0.0055f, 0.2997f);
     m_gapMode = GapMode::ALL;
     m_gapReferenceMode = GapReferenceMode::PLAYER;
+    m_posGainMode = PosGainMode::OFF;
     m_enabledColumns = COL_DEFAULT;
     m_nameMode = NameMode::SHORT;
     m_shortNameChars = DEFAULT_SHORT_NAME_CHARS;
+    m_longNameChars = DEFAULT_LONG_NAME_CHARS;
     m_displayRowCount = DEFAULT_ROW_COUNT;
     m_topPositionsCount = DEFAULT_TOP_POSITIONS;
     m_bPlayerRowHighlight = true;
@@ -1489,6 +1687,7 @@ void StandingsHud::resetToDefaults() {
     m_animationMode = AnimationMode::BASIC;
     m_animationDurationMs = 500.0f;
     m_bShowHeaders = false;
+    m_bShowSessionInfo = true;
     m_bLiveGaps = false;
     m_activeAnimations.clear();
     m_previousPositions.clear();

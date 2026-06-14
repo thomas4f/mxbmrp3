@@ -13,7 +13,7 @@ namespace PluginConstants {
     // Plugin identification
     constexpr const char* PLUGIN_NAME = "mxbmrp3";
     constexpr const char* PLUGIN_DISPLAY_NAME = "MXBMRP3";
-    constexpr const char* PLUGIN_VERSION = "1.23.10.0";  // Keep in sync with resource.h (Windows DLL version info)
+    constexpr const char* PLUGIN_VERSION = "1.24.0.0";  // Keep in sync with resource.h (Windows DLL version info)
     constexpr const char* PLUGIN_AUTHOR = "thomas4f";
 
     // GitHub repository for updates (centralized to support repo moves/renames)
@@ -386,6 +386,19 @@ namespace PluginConstants {
             constexpr const char* KRP_PRE_FINAL = "PreFinal";
             constexpr const char* KRP_FINAL = "Final";
             constexpr const char* UNKNOWN = "Unknown";
+        }
+
+        // "Where you are" labels shown in place of a server name across the
+        // SessionHud server row, Discord Rich Presence and Steam presence. Same
+        // text on every game (no per-game variant). Domain-scoped literals like the
+        // rest of this file - "Testing"/"Unknown" recurring per namespace is the
+        // intended convention (each owns its own display string; none cross-ref).
+        // Solo/offline reads "Testing"; an online session with no name (older MX
+        // Bikes build, or GP Bikes / KRP which don't report the server) reads
+        // "Unknown".
+        namespace ServerLabel {
+            constexpr const char* TESTING = "Testing";  // solo / offline
+            constexpr const char* UNKNOWN = "Unknown";  // name unavailable / not reported
         }
 
         // Session state display strings (corresponds to SessionState bitflags)

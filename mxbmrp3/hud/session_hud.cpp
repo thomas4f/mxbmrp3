@@ -1,6 +1,6 @@
 // ============================================================================
 // hud/session_hud.cpp
-// Session HUD - displays session info (type, track, format, server, weather)
+// Session HUD - displays session info (server, track, format, weather)
 // ============================================================================
 #include "session_hud.h"
 
@@ -24,9 +24,7 @@ namespace {
 }
 
 SessionHud::SessionHud()
-    : m_cachedEventType(-1)
-    , m_cachedSession(-1)
-    , m_cachedSessionState(-1)
+    : m_cachedSessionState(-1)
     , m_cachedSessionLength(-1)
     , m_cachedSessionNumLaps(-1)
     , m_cachedServerType(CACHE_UNINITIALIZED)
@@ -53,16 +51,6 @@ bool SessionHud::handlesDataType(DataChangeType dataType) const {
     return dataType == DataChangeType::SessionData;
 }
 
-int SessionHud::getEnabledRowCount() const {
-    int count = 0;
-    if (m_enabledRows & ROW_TYPE) count++;
-    if (m_enabledRows & ROW_TRACK) count++;
-    if (m_enabledRows & ROW_FORMAT) count++;
-    if (m_enabledRows & ROW_SERVER) count++;
-    if (m_enabledRows & ROW_WEATHER) count++;
-    return count;
-}
-
 void SessionHud::calculateIconQuadCorners(float x, float y, float fontSize, float corners[4][2]) const {
     float iconSize = fontSize * ICON_SIZE_FACTOR;
     float halfSize = iconSize / 2.0f;
@@ -81,14 +69,14 @@ float SessionHud::calculateContentHeight(const ScaledDimensions& dim) const {
     const SessionData& sessionData = pluginData.getSessionData();
 
     float labelHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
-    float typeHeight = (m_enabledRows & ROW_TYPE) ? dim.lineHeightLarge : 0.0f;
+    // Server is the headline row (promoted from the bottom in place of the removed
+    // session-type row): large line height, like the type row used to have.
+    float serverHeight = (m_enabledRows & ROW_SERVER) ? dim.lineHeightLarge : 0.0f;
     float formatHeight = (m_enabledRows & ROW_FORMAT) ? dim.lineHeightNormal : 0.0f;
     float trackHeight = (m_enabledRows & ROW_TRACK) ? dim.lineHeightNormal : 0.0f;
     float weatherHeight = ((m_enabledRows & ROW_WEATHER) && sessionData.conditions >= 0) ? dim.lineHeightNormal : 0.0f;
 
-    // Server row always reserves space when enabled — text varies (server name / Testing / Unknown).
-    float serverHeight = (m_enabledRows & ROW_SERVER) ? dim.lineHeightNormal : 0.0f;
-    return labelHeight + typeHeight + formatHeight + trackHeight + weatherHeight + serverHeight;
+    return labelHeight + serverHeight + formatHeight + trackHeight + weatherHeight;
 }
 
 void SessionHud::update() {
@@ -103,15 +91,14 @@ void SessionHud::update() {
     const PluginData& pluginData = PluginData::getInstance();
     const SessionData& sessionData = pluginData.getSessionData();
 
-    int eventType = sessionData.eventType;
-    int session = sessionData.session;
     int sessionState = sessionData.sessionState;
     int sessionLength = sessionData.sessionLength;
     int sessionNumLaps = sessionData.sessionNumLaps;
     int serverType = sessionData.serverType;
 
-    // Check if any session data changed
-    if (eventType != m_cachedEventType || session != m_cachedSession || sessionState != m_cachedSessionState ||
+    // Check if any session data changed (session type/index no longer rendered here
+    // — it moved to the StandingsHud title — so it's not part of the dirty check).
+    if (sessionState != m_cachedSessionState ||
         sessionLength != m_cachedSessionLength || sessionNumLaps != m_cachedSessionNumLaps ||
         serverType != m_cachedServerType ||
         strcmp(sessionData.serverName, m_cachedServerName) != 0 ||
@@ -123,8 +110,6 @@ void SessionHud::update() {
     // Check data dirty first (takes precedence)
     if (isDataDirty()) {
         rebuildRenderData();
-        m_cachedEventType = eventType;
-        m_cachedSession = session;
         m_cachedSessionState = sessionState;
         m_cachedSessionLength = sessionLength;
         m_cachedSessionNumLaps = sessionNumLaps;
@@ -155,12 +140,12 @@ void SessionHud::rebuildLayout() {
     float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::SESSION_WIDTH);
     float backgroundHeight = dim.paddingV + calculateContentHeight(dim) + dim.paddingV;
 
-    // Individual row heights for positioning
+    // Individual row heights for positioning (must match rebuildRenderData — the
+    // server row is the extra-large headline at the top).
     float labelHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
-    float typeHeight = (m_enabledRows & ROW_TYPE) ? dim.lineHeightLarge : 0.0f;
+    float serverHeight = (m_enabledRows & ROW_SERVER) ? dim.lineHeightLarge : 0.0f;
     float formatHeight = (m_enabledRows & ROW_FORMAT) ? dim.lineHeightNormal : 0.0f;
     float trackHeight = (m_enabledRows & ROW_TRACK) ? dim.lineHeightNormal : 0.0f;
-    float serverHeight = (m_enabledRows & ROW_SERVER) ? dim.lineHeightNormal : 0.0f;
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
@@ -172,11 +157,12 @@ void SessionHud::rebuildLayout() {
     float contentStartY = startY + dim.paddingV;
     float currentY = contentStartY;
 
-    // Icon setup (must match rebuildRenderData)
-    float iconSize = dim.fontSize * ICON_SIZE_FACTOR;
-    float iconWidth = iconSize / UI_ASPECT_RATIO;  // Actual width after aspect ratio correction
+    // Icon setup (must match rebuildRenderData). The server headline has no icon;
+    // the remaining rows use a normal-size icon and indent.
     float iconTextGap = dim.paddingH * 0.3f;  // Small gap between icon and text
-    float textOffset = m_bShowIcons ? (iconWidth + iconTextGap) : 0.0f;
+    float textOffset = m_bShowIcons
+        ? (dim.fontSize * ICON_SIZE_FACTOR) / UI_ASPECT_RATIO + iconTextGap
+        : 0.0f;
 
     // Helper lambda to reposition an icon quad (indices 1+ are icons, 0 is background)
     auto repositionIconQuad = [&](size_t quadIndex, float x, float y) {
@@ -207,12 +193,22 @@ void SessionHud::rebuildLayout() {
         currentY += labelHeight;
     }
 
-    // Session type (extra large font) - no icon
-    if (m_enabledRows & ROW_TYPE) {
+    // Server headline (extra-large font, no icon)
+    if (m_enabledRows & ROW_SERVER) {
         if (positionString(stringIndex, contentStartX, currentY)) {
             stringIndex++;
         }
-        currentY += typeHeight;
+        currentY += serverHeight;
+    }
+
+    // Track name (normal font with icon) - directly under the server headline.
+    // NOTE: order must match rebuildRenderData() (strings/icons positioned by index).
+    if (m_enabledRows & ROW_TRACK) {
+        repositionIconQuad(iconQuadIndex++, contentStartX, currentY);
+        if (positionString(stringIndex, contentStartX + textOffset, currentY)) {
+            stringIndex++;
+        }
+        currentY += trackHeight;
     }
 
     // Format + Session state (normal font with icon)
@@ -224,15 +220,6 @@ void SessionHud::rebuildLayout() {
         currentY += formatHeight;
     }
 
-    // Track name (normal font with icon)
-    if (m_enabledRows & ROW_TRACK) {
-        repositionIconQuad(iconQuadIndex++, contentStartX, currentY);
-        if (positionString(stringIndex, contentStartX + textOffset, currentY)) {
-            stringIndex++;
-        }
-        currentY += trackHeight;
-    }
-
     // Weather row (conditions + temperature, with icon) - after track
     if ((m_enabledRows & ROW_WEATHER) && sessionData.conditions >= 0) {
         repositionIconQuad(iconQuadIndex++, contentStartX, currentY);
@@ -240,15 +227,6 @@ void SessionHud::rebuildLayout() {
             stringIndex++;
         }
         currentY += dim.lineHeightNormal;
-    }
-
-    // Server row (with icon) — text varies by state
-    if (m_enabledRows & ROW_SERVER) {
-        repositionIconQuad(iconQuadIndex++, contentStartX, currentY);
-        if (positionString(stringIndex, contentStartX + textOffset, currentY)) {
-            stringIndex++;
-        }
-        currentY += serverHeight;
     }
 }
 
@@ -263,15 +241,10 @@ void SessionHud::rebuildRenderData() {
     const PluginData& pluginData = PluginData::getInstance();
     const SessionData& sessionData = pluginData.getSessionData();
 
-    int eventType = sessionData.eventType;
-    int session = sessionData.session;
     int sessionState = sessionData.sessionState;
     bool isOnline = sessionData.isOnline();
-    bool isOffline = sessionData.isOffline();
-    bool hasServerName = sessionData.serverName[0] != '\0';
 
-    // Get session and state strings
-    const char* sessionString = PluginUtils::getSessionString(eventType, session);
+    // Session state string (the session type now lives in the StandingsHud title)
     const char* stateString = PluginUtils::getSessionStateString(sessionState);
 
     float startX = 0.0f;
@@ -284,35 +257,37 @@ void SessionHud::rebuildRenderData() {
     // Add background quad
     addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
 
-    // Individual row heights for positioning
+    // Individual row heights for positioning. The server row is the headline now
+    // (promoted to the top in place of the removed session-type row), so it uses
+    // the large line height / extra-large font the type row used to.
     float labelHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
-    float typeHeight = (m_enabledRows & ROW_TYPE) ? dim.lineHeightLarge : 0.0f;
+    float serverHeight = (m_enabledRows & ROW_SERVER) ? dim.lineHeightLarge : 0.0f;
     float formatHeight = (m_enabledRows & ROW_FORMAT) ? dim.lineHeightNormal : 0.0f;
     float trackHeight = (m_enabledRows & ROW_TRACK) ? dim.lineHeightNormal : 0.0f;
-    float serverHeight = (m_enabledRows & ROW_SERVER) ? dim.lineHeightNormal : 0.0f;
 
     float contentStartX = startX + dim.paddingH;
     float contentStartY = startY + dim.paddingV;
     float currentY = contentStartY;
 
-    // Icon setup
-    float iconSize = dim.fontSize * ICON_SIZE_FACTOR;
-    float iconWidth = iconSize / UI_ASPECT_RATIO;  // Actual width after aspect ratio correction
+    // Icon setup. All icon rows use the normal font size; the server headline has
+    // no icon (flush-left). textOffset is the text indent past the icon (0 when
+    // icons are off).
     float iconTextGap = dim.paddingH * 0.3f;  // Small gap between icon and text
-    float textOffset = m_bShowIcons ? (iconWidth + iconTextGap) : 0.0f;
+    float textOffset = m_bShowIcons
+        ? (dim.fontSize * ICON_SIZE_FACTOR) / UI_ASPECT_RATIO + iconTextGap
+        : 0.0f;
     AssetManager& assetMgr = AssetManager::getInstance();
 
     // Get specific icons for each row type (only if icons enabled)
     int iconFormat = m_bShowIcons ? assetMgr.getIconSpriteIndex("clock") : 0;      // Time/format
     int iconTrack = m_bShowIcons ? assetMgr.getIconSpriteIndex("location-dot") : 0;    // Track location
-    int iconServer = m_bShowIcons ? assetMgr.getIconSpriteIndex("server") : 0;         // Server
     int iconWeather = m_bShowIcons ? assetMgr.getIconSpriteIndex("temperature-low") : 0;  // Weather/temperature
 
     // Use full opacity for text and icons
     unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
     unsigned long iconColor = this->getColor(ColorSlot::PRIMARY);  // White icons to match text
 
-    // Helper lambda to add an icon quad with specific sprite
+    // Helper lambda to add an icon quad with a specific sprite (normal font size)
     auto addIconQuad = [&](float x, float y, int spriteIndex) {
         if (!m_bShowIcons) return;  // Skip if icons disabled
         if (spriteIndex <= 0) return;
@@ -338,66 +313,71 @@ void SessionHud::rebuildRenderData() {
         currentY += labelHeight;
     }
 
-    // Session type (extra large font - e.g., "PRACTICE", "RACE 2") - no icon
-    if (m_enabledRows & ROW_TYPE) {
-        const char* sessionTypeString = sessionString ? sessionString : Placeholders::GENERIC;
-        addString(sessionTypeString, contentStartX, currentY, Justify::LEFT,
+    // Server row: headline at the top (server name online / "Testing" offline /
+    // "Unknown"). Extra-large font, no icon (flush-left) — replaces the old
+    // session-type row.
+    if (m_enabledRows & ROW_SERVER) {
+        // Shared label: name / "Testing" (solo) / "Unknown" - see PluginUtils::serverLabel.
+        const char* serverText = PluginUtils::serverLabel(sessionData.serverType, sessionData.serverName);
+        // Extra-large chars are ~2x normal width, so the usual MAX_DISPLAY_CHARS
+        // would overflow the fixed-width background. Truncate to what fits the
+        // content area at this font size.
+        float contentWidth = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::SESSION_WIDTH, dim.fontSize);
+        float headlineCharW = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSizeExtraLarge);
+        int maxHeadlineChars = (headlineCharW > 0.0f)
+            ? static_cast<int>(contentWidth / headlineCharW)
+            : MAX_DISPLAY_CHARS;
+        if (maxHeadlineChars < 4) maxHeadlineChars = 4;
+        // Shared ellipsis truncation (ellipsis folded into the budget).
+        std::string serverFit = PluginUtils::fitText(serverText, maxHeadlineChars);
+        addString(serverFit.c_str(), contentStartX, currentY, Justify::LEFT,
             this->getFont(FontCategory::TITLE), textColor, dim.fontSizeExtraLarge);
-        currentY += typeHeight;
+        currentY += serverHeight;
     }
 
-    // Format + Session state (combined on one line, with icon)
+    // Track name (normal font with icon) - directly under the server headline,
+    // mirroring Discord's "server then track-led detail" layout.
+    if (m_enabledRows & ROW_TRACK) {
+        addIconQuad(contentStartX, currentY, iconTrack);
+        const char* trackName = sessionData.trackName[0] != '\0' ? sessionData.trackName : Placeholders::GENERIC;
+        // Shared ellipsis truncation (ellipsis folded into the budget).
+        std::string trackFit = PluginUtils::fitText(trackName, MAX_DISPLAY_CHARS);
+        addString(trackFit.c_str(), contentStartX + textOffset, currentY, Justify::LEFT,
+            this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
+        currentY += trackHeight;
+    }
+
+    // Session + Format + State on one line: "Session (Format), State" - matches the
+    // Steam status / Friends Info / Discord detail line. The session name is added
+    // only when online; offline it's already the server-row headline ("Testing").
     if (m_enabledRows & ROW_FORMAT) {
         addIconQuad(contentStartX, currentY, iconFormat);
-        bool hasTime = (sessionData.sessionLength > 0);
-        bool hasLaps = (sessionData.sessionNumLaps > 0);
         const char* sessionStateString = stateString ? stateString : Placeholders::GENERIC;
 
+        const char* sessionStr = (isOnline && sessionData.session >= 0)
+            ? PluginUtils::getSessionString(sessionData.eventType, sessionData.session) : nullptr;
+
+        // Shared helper: "8:00 + 2L" / "8:00" / "2L" / "" (now "8:00" not "08:00").
+        char formatBuffer[64];
+        PluginUtils::formatSessionFormat(sessionData.sessionLength, sessionData.sessionNumLaps, formatBuffer, sizeof(formatBuffer));
+
+        // Head = "Session (Format)" (any piece optional).
+        char head[96];
+        head[0] = '\0';
+        if (sessionStr && formatBuffer[0] != '\0')  snprintf(head, sizeof(head), "%s (%s)", sessionStr, formatBuffer);
+        else if (sessionStr)                        snprintf(head, sizeof(head), "%s", sessionStr);
+        else if (formatBuffer[0] != '\0')           snprintf(head, sizeof(head), "(%s)", formatBuffer);
+
+        // Append ", State" (skip if it duplicates the session name).
+        const bool showState = (!sessionStr || strcmp(sessionStr, sessionStateString) != 0);
         char combinedBuffer[128];
-
-        if (hasTime || hasLaps) {
-            char formatBuffer[64];
-            char timeBuffer[16];
-
-            if (hasTime && hasLaps) {
-                // Time + Laps format (e.g., "10:00 + 2L")
-                PluginUtils::formatTimeMinutesSeconds(sessionData.sessionLength, timeBuffer, sizeof(timeBuffer));
-                snprintf(formatBuffer, sizeof(formatBuffer), "%s + %dL", timeBuffer, sessionData.sessionNumLaps);
-            }
-            else if (hasTime) {
-                // Time only (e.g., "10:00")
-                PluginUtils::formatTimeMinutesSeconds(sessionData.sessionLength, formatBuffer, sizeof(formatBuffer));
-            }
-            else {
-                // Laps only (e.g., "2L")
-                snprintf(formatBuffer, sizeof(formatBuffer), "%dL", sessionData.sessionNumLaps);
-            }
-
-            // Combine format and state with comma separator
-            snprintf(combinedBuffer, sizeof(combinedBuffer), "%s, %s", formatBuffer, sessionStateString);
-        }
-        else {
-            // No format data, just show state
-            snprintf(combinedBuffer, sizeof(combinedBuffer), "%s", sessionStateString);
-        }
+        if (head[0] != '\0' && showState)  snprintf(combinedBuffer, sizeof(combinedBuffer), "%s, %s", head, sessionStateString);
+        else if (head[0] != '\0')          snprintf(combinedBuffer, sizeof(combinedBuffer), "%s", head);
+        else                               snprintf(combinedBuffer, sizeof(combinedBuffer), "%s", sessionStateString);
 
         addString(combinedBuffer, contentStartX + textOffset, currentY, Justify::LEFT,
             this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
         currentY += formatHeight;
-    }
-
-    // Track name (normal font with icon)
-    if (m_enabledRows & ROW_TRACK) {
-        addIconQuad(contentStartX, currentY, iconTrack);
-        const char* trackName = sessionData.trackName[0] != '\0' ? sessionData.trackName : Placeholders::GENERIC;
-        char trackBuf[32];
-        if (strlen(trackName) > MAX_DISPLAY_CHARS) {
-            snprintf(trackBuf, sizeof(trackBuf), "%.*s...", MAX_DISPLAY_CHARS, trackName);
-            trackName = trackBuf;
-        }
-        addString(trackName, contentStartX + textOffset, currentY, Justify::LEFT,
-            this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
-        currentY += trackHeight;
     }
 
     // Weather row (conditions + temperatures, with icon) - after track
@@ -444,27 +424,6 @@ void SessionHud::rebuildRenderData() {
         currentY += dim.lineHeightNormal;
     }
 
-    // Server row: server name (online + name) / "Testing" (offline) / "Unknown" (no info)
-    if (m_enabledRows & ROW_SERVER) {
-        addIconQuad(contentStartX, currentY, iconServer);
-        const char* serverText;
-        if (isOnline && hasServerName) {
-            serverText = sessionData.serverName;
-        } else if (isOffline) {
-            serverText = "Testing";
-        } else {
-            serverText = "Unknown";
-        }
-        char serverBuf[32];
-        if (strlen(serverText) > MAX_DISPLAY_CHARS) {
-            snprintf(serverBuf, sizeof(serverBuf), "%.*s...", MAX_DISPLAY_CHARS, serverText);
-            serverText = serverBuf;
-        }
-        addString(serverText, contentStartX + textOffset, currentY, Justify::LEFT,
-            this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
-        currentY += serverHeight;
-    }
-
     // Set bounds for drag detection
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
 }
@@ -480,8 +439,6 @@ void SessionHud::resetToDefaults() {
     setPosition(0.0055f, 0.1332f);
 
     // Reset cached values to force rebuild on next update
-    m_cachedEventType = -1;
-    m_cachedSession = -1;
     m_cachedSessionState = -1;
     m_cachedSessionLength = -1;
     m_cachedSessionNumLaps = -1;

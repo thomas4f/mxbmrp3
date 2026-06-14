@@ -12,6 +12,24 @@
 #include <string_view>
 #include <unordered_map>
 
+void PluginUtils::formatSessionFormat(int sessionLengthMs, int numLaps, char* buffer, size_t bufferSize) {
+    if (bufferSize < 1) return;
+    const bool hasTime = sessionLengthMs > 0;
+    const bool hasLaps = numLaps > 0;
+    if (hasTime) {
+        // "8:00" (no leading zero on minutes), matching the established Discord/
+        // Steam style - not formatTimeMinutesSeconds, which zero-pads to "08:00".
+        const int mins = sessionLengthMs / 60000;
+        const int secs = (sessionLengthMs / 1000) % 60;
+        if (hasLaps) snprintf(buffer, bufferSize, "%d:%02d + %dL", mins, secs, numLaps);
+        else         snprintf(buffer, bufferSize, "%d:%02d", mins, secs);
+    } else if (hasLaps) {
+        snprintf(buffer, bufferSize, "%dL", numLaps);
+    } else {
+        buffer[0] = '\0';
+    }
+}
+
 void PluginUtils::formatTimeMinutesSeconds(int milliseconds, char* buffer, size_t bufferSize) {
     // Validate buffer exists and has space for at least null terminator
     if (bufferSize < 1) return;
@@ -31,6 +49,24 @@ void PluginUtils::formatTimeMinutesSeconds(int milliseconds, char* buffer, size_
     int seconds = (milliseconds % MS_PER_MINUTE) / MS_PER_SECOND;
 
     snprintf(buffer, bufferSize, "%02d:%02d", minutes, seconds);
+}
+
+void PluginUtils::formatSessionClock(int lapsToGo, int sessionTimeMs, char* buffer, size_t bufferSize) {
+    if (bufferSize < 1) return;
+    // Not in overtime → the normal MM:SS countdown.
+    if (lapsToGo < 0) {
+        formatTimeMinutesSeconds(sessionTimeMs, buffer, bufferSize);
+        return;
+    }
+    // Overtime: leader-relative final-laps label (shared by the in-game session
+    // clock and the web overlay so they always read identically).
+    if (lapsToGo == 0) {
+        strcpy_s(buffer, bufferSize, "CHECKERED");
+    } else if (lapsToGo == 1) {
+        strcpy_s(buffer, bufferSize, "FINAL LAP");
+    } else {
+        snprintf(buffer, bufferSize, "%d TO GO", lapsToGo);
+    }
 }
 
 void PluginUtils::formatLapTime(int lapTimeMs, char* buffer, size_t bufferSize) {
@@ -208,6 +244,12 @@ const char* PluginUtils::getEventTypeString(int eventType) {
     case Enum::STRAIGHT_RHYTHM: return Str::STRAIGHT_RHYTHM;
     default: return Str::UNKNOWN;
     }
+}
+
+const char* PluginUtils::serverLabel(int serverType, const char* serverName) {
+    namespace SL = PluginConstants::DisplayStrings::ServerLabel;
+    if (serverType == 0) return SL::TESTING;  // known-offline / solo
+    return (serverName && serverName[0] != '\0') ? serverName : SL::UNKNOWN;
 }
 
 const char* PluginUtils::getSessionString(int eventType, int session) {
@@ -693,4 +735,65 @@ bool PluginUtils::matchRiderName(const char* entryName, const char* playerName, 
     }
 
     return false;
+}
+
+std::string PluginUtils::sanitizeUntrusted(const char* s, size_t maxChars) {
+    std::string out;
+    if (!s) {
+        return out;
+    }
+
+    size_t chars = 0;
+    for (const unsigned char* p = reinterpret_cast<const unsigned char*>(s); *p; ++p) {
+        const unsigned char c = *p;
+
+        // Strip C0 control characters (newline/tab/etc. - log injection and
+        // layout breakers) and DEL. We intentionally keep bytes >= 0x80 so
+        // multibyte UTF-8 (e.g. accented names) survives, matching how the game
+        // already renders rider names.
+        if (c < 0x20 || c == 0x7F) {
+            continue;
+        }
+
+        // Count code points by ignoring UTF-8 continuation bytes (10xxxxxx), so
+        // the clamp measures visible characters and lands on a char boundary.
+        const bool isContinuation = (c & 0xC0) == 0x80;
+        if (!isContinuation) {
+            if (chars >= maxChars) {
+                out += "...";
+                break;
+            }
+            ++chars;
+        }
+        out += static_cast<char>(c);
+    }
+
+    return out;
+}
+
+std::string PluginUtils::fitText(const std::string& s, int maxChars) {
+    if (maxChars <= 0) return std::string();
+
+    // Count visible code points (skip UTF-8 continuation bytes 10xxxxxx).
+    int cps = 0;
+    for (unsigned char c : s) if ((c & 0xC0) != 0x80) ++cps;
+    if (cps <= maxChars) return s;
+
+    // Reserve 3 cells for the ellipsis so the result stays within budget.
+    const int keep = (maxChars > 3) ? (maxChars - 3) : 0;
+    std::string out;
+    int seen = 0;
+    for (size_t i = 0; i < s.size();) {
+        const unsigned char c = static_cast<unsigned char>(s[i]);
+        if ((c & 0xC0) == 0x80) { ++i; continue; }  // stray continuation byte
+        if (seen >= keep) break;
+        out += static_cast<char>(c);
+        ++i; ++seen;
+        // Carry the trailing continuation bytes of this code point.
+        while (i < s.size() && (static_cast<unsigned char>(s[i]) & 0xC0) == 0x80) {
+            out += s[i]; ++i;
+        }
+    }
+    out += "...";
+    return out;
 }

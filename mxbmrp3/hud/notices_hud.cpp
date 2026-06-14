@@ -451,7 +451,7 @@ void NoticesHud::rebuildRenderData() {
         m_quads.push_back(noticeQuad);
 
         // Add notice text (white)
-        addString("LAST LAP", CENTER_X, noticeY, Justify::CENTER,
+        addString("FINAL LAP", CENTER_X, noticeY, Justify::CENTER,
             this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
     }
     else if (showDefaultSetup) {

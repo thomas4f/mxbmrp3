@@ -150,9 +150,11 @@ void SpeedoWidget::rebuildRenderData() {
     float paddingV = (charHeight - fontSize) / 2.0f;
     float paddingH = paddingV;  // Same padding horizontally
 
-    // Colors - semantic colors from user's color scheme
-    unsigned long bgNormal = this->getColor(ColorSlot::BACKGROUND);
-    unsigned long textNormal = this->getColor(ColorSlot::PRIMARY);
+    // Colors - semantic colors from user's color scheme.
+    // Faded by the background-opacity slider so the odometer/tripmeter readout fades
+    // together with the dial and needle (the whole gauge responds as one).
+    unsigned long bgNormal = PluginUtils::applyOpacity(this->getColor(ColorSlot::BACKGROUND), m_fBackgroundOpacity);
+    unsigned long textNormal = PluginUtils::applyOpacity(this->getColor(ColorSlot::PRIMARY), m_fBackgroundOpacity);
 
     // Helper lambda to add an odometer row - black background, white text, inverted last digit
     auto addOdometerRow = [&](const char* displayText, float rowY) {
@@ -221,8 +223,11 @@ void SpeedoWidget::rebuildRenderData() {
         addOdometerRow(tripDisplay, tripY);
     }
 
-    // Add needle quad LAST so it renders on top of everything
-    addNeedleQuad(centerX, centerY, angleRad, needleLength, needleWidth, m_needleColor);
+    // Add needle quad LAST so it renders on top of everything.
+    // Needle fades with the dial so the whole gauge responds to the background-opacity
+    // slider as one (matches the faded odometer above).
+    addNeedleQuad(centerX, centerY, angleRad, needleLength, needleWidth,
+                  PluginUtils::applyOpacity(m_needleColor, m_fBackgroundOpacity));
 }
 
 void SpeedoWidget::resetToDefaults() {

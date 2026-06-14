@@ -914,7 +914,6 @@ public:
     void updateStandings(int raceNum, int state, int bestLap, int bestLapNum,
         int numLaps, int gap, int gapLaps, int penalty, int pit, bool notify);
     void batchUpdateStandings(Unified::RaceClassificationEntry* entries, int numEntries);
-    void clearStandings();
     const std::unordered_map<int, StandingsData>& getStandings() const { return m_standings; }  // Collection (never null)
     const StandingsData* getStanding(int raceNum) const;  // Per-rider (nullable)
 
@@ -930,6 +929,50 @@ public:
     const std::vector<int>& getDisplayClassificationOrder() const;
     int getDisplayPositionForRaceNum(int raceNum) const;
 
+    // Race-start grid snapshot (positions gained/lost since the race went green).
+    // Captured on the PRE_START -> IN_PROGRESS transition in handleRaceSessionState.
+    // Mid-race joins arrive already IN_PROGRESS via handleRaceSession, so that transition
+    // self-skips and no snapshot is taken (the column shows its placeholder). A completed-lap
+    // check inside the function is a secondary guard. Cleared on every new session; empty
+    // outside of race sessions, so getRaceStartPosition() returns -1 and consumers render nothing.
+    void snapshotRaceStartPositions();
+    void clearRaceStartPositions() { m_raceStartPositions.clear(); }
+    // Official starting position for a rider (1-based), or -1 if no snapshot exists.
+    int getRaceStartPosition(int raceNum) const {
+        auto it = m_raceStartPositions.find(raceNum);
+        return (it != m_raceStartPositions.end()) ? it->second : -1;
+    }
+
+    // Rolling positions-gained references (for the standings "Since S/F" / "Since split"
+    // modes). Captured per rider as they cross the start/finish line (recordSfReference)
+    // or any split (recordSplitReference). The S/F line is itself a split boundary, so a
+    // lap crossing advances both references. Unlike the race-start snapshot these need no
+    // grid order and self-heal on mid-race joins: each rider gains a reference on their
+    // next crossing, so the column populates within a lap of joining.
+    void recordSfReference(int raceNum) {
+        int pos = getPositionForRaceNum(raceNum);
+        if (pos > 0) {
+            m_lastSfPositions[raceNum] = pos;
+            m_lastSplitPositions[raceNum] = pos;
+        }
+    }
+    void recordSplitReference(int raceNum) {
+        int pos = getPositionForRaceNum(raceNum);
+        if (pos > 0) m_lastSplitPositions[raceNum] = pos;
+    }
+    int getSfReferencePosition(int raceNum) const {
+        auto it = m_lastSfPositions.find(raceNum);
+        return (it != m_lastSfPositions.end()) ? it->second : -1;
+    }
+    int getSplitReferencePosition(int raceNum) const {
+        auto it = m_lastSplitPositions.find(raceNum);
+        return (it != m_lastSplitPositions.end()) ? it->second : -1;
+    }
+    void clearPositionReferences() {
+        m_lastSfPositions.clear();
+        m_lastSplitPositions.clear();
+    }
+
     void setShortTimeFormat(bool enabled) { m_shortTimeFormat = enabled; }
     bool isShortTimeFormat() const { return m_shortTimeFormat; }
 
@@ -943,6 +986,18 @@ public:
     // Notifies SessionData on whole-second boundaries (drives 1Hz HUD/SSE refresh).
     void setSessionTime(int sessionTime);
     int getSessionTime() const { return m_currentSessionTime; }
+
+    // Leader's laps-to-go once a time+lap race enters overtime (the timed clock
+    // has expired and the field is running the bonus laps). Drives the session
+    // clock's "N TO GO / FINAL LAP / CHECKERED" label (see PluginUtils::
+    // formatSessionClock), leader-relative like a real white-flag board.
+    //   -1 = not in overtime, or still finishing the lap that was in progress when
+    //        the clock expired (bonus laps not started yet) — show the normal clock,
+    //        which reads 00:00 once the timer is at/below zero
+    //    0 = leader has finished (checkered)
+    //    1 = leader is on the final lap
+    //   >1 = full laps remaining until the leader's final lap
+    int getLeaderLapsToGo() const;
     void updateTrackPosition(int raceNum, float trackPos, int numLaps, bool crashed, int sessionTime);
     void updateActiveTrackPosRiders(int numVehicles, const Unified::TrackPositionData* positions);
     bool hasActiveTrackPos(int raceNum) const { return m_activeTrackPosRiders.count(raceNum) > 0; }
@@ -993,6 +1048,12 @@ public:
     int getHazardCooldownMs() const { return m_hazardCooldownMs; }
     void setHazardGracePeriodMs(int ms) { m_hazardGracePeriodMs = std::max(0, std::min(ms, 60000)); }
     int getHazardGracePeriodMs() const { return m_hazardGracePeriodMs; }
+
+    // Live-gap HUD refresh coalescing (INI-only setting: [Advanced]
+    // gapNotifyIntervalMs). 0 = notify on every change (pre-coalescing
+    // behavior: table HUDs may rebuild every frame during close racing).
+    void setGapNotifyIntervalMs(int ms) { m_gapNotifyIntervalMs = std::max(0, std::min(ms, 1000)); }
+    int getGapNotifyIntervalMs() const { return m_gapNotifyIntervalMs; }
 
     // Overtime tracking for time+laps races
     void setOvertimeStarted(bool started) { m_sessionData.overtimeStarted = started; }
@@ -1171,6 +1232,9 @@ private:
     int m_lastLeaderRaceNum = -1;  // Previous race leader (for leader change detection, race sessions only)
     mutable std::unordered_map<int, int> m_positionCache;  // Cached position lookup (race number -> position), rebuilt when classification changes
     mutable bool m_bPositionCacheDirty;  // Flag to rebuild position cache
+    std::unordered_map<int, int> m_raceStartPositions;  // raceNum -> official starting position (1-based), snapshotted at race green flag
+    std::unordered_map<int, int> m_lastSfPositions;     // raceNum -> position at last start/finish crossing (rolling, "Since S/F" mode)
+    std::unordered_map<int, int> m_lastSplitPositions;  // raceNum -> position at last split crossing (rolling, "Since split" mode)
 
     // Display filters (global toggles saved in [General])
     bool m_shortTimeFormat = true;               // Compact time format: drop leading 0: for sub-minute times (keeps ms precision)
@@ -1218,6 +1282,17 @@ private:
     static constexpr size_t NUM_TIMING_POINTS = 100;
     static constexpr size_t MAX_LAPS_TO_KEEP = 20;  // Keep up to 20 laps of timing data
     static constexpr int GAP_UPDATE_THRESHOLD_MS = 100;  // Minimum gap change (in ms) to trigger cache update (prevents flicker from small oscillations)
+    // Time-coalescing for the Standings notification out of updateRealTimeGaps.
+    // The per-rider threshold alone doesn't throttle on full grids: leader
+    // timing is quantized to 1% of a lap, so gaps step by ~lapTime/100 when a
+    // rider crosses a quantization boundary, and with 30+ riders that happens
+    // on nearly every RaceTrackPosition callback. m_gapNotifyPending carries a
+    // skipped notify so the last change always flushes on a later call.
+    // Interval is INI-tunable via setGapNotifyIntervalMs (default 100ms).
+    static constexpr int DEFAULT_GAP_NOTIFY_INTERVAL_MS = 100;
+    int m_gapNotifyIntervalMs = DEFAULT_GAP_NOTIFY_INTERVAL_MS;
+    std::chrono::steady_clock::time_point m_lastGapNotify{};
+    bool m_gapNotifyPending = false;
     std::map<int, std::array<LeaderTimingPoint, NUM_TIMING_POINTS>> m_leaderTimingPoints;
     int m_currentSessionTime;  // Most recent session time in milliseconds
 

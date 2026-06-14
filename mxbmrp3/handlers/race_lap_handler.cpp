@@ -55,8 +55,20 @@ void RaceLapHandler::handleRaceLap(Unified::RaceLapData* psRaceLap) {
         return;
     }
 
-    // Non-race session: any RaceLap after session time expired = rider finished
-    if (sessionData.sessionTimeExpired) {
+    // Snapshot this rider's position as the rolling start/finish reference for the standings
+    // positions-gained column (also advances the split reference, since S/F is a split
+    // boundary). Races only; self-heals on mid-race joins. See PluginData::recordSfReference.
+    if (data.isRaceSession()) {
+        data.recordSfReference(psRaceLap->raceNum);
+    }
+
+    // Pure-timed non-race session (no lap target): a rider finishes their current lap
+    // the next time they cross S/F after the timer expires. Timed+laps sessions run
+    // extra laps after the clock, so their finish is detected via the lap-based
+    // finishLap path (isRiderFinished) instead — marking finished here would fly the
+    // checkered flag a lap or two early (sessionFinished feeds StandingsHud only;
+    // every other consumer already uses isRiderFinished).
+    if (sessionData.sessionTimeExpired && sessionData.sessionNumLaps <= 0) {
         data.setRiderSessionFinished(psRaceLap->raceNum);
     }
 

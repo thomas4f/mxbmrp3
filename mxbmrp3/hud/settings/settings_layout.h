@@ -170,16 +170,17 @@ struct SettingsLayoutContext {
     static std::string formatValue(const char* value, int maxWidth, bool center = false);
 
     // Add a widget row for the Widgets tab table
-    // Layout: Name | Visible | Title | Texture | Opacity | Scale
+    // The enable* parameters follow the visual column order:
+    //   Name | Visible | Title | Texture | Opacity | Scale
     // tooltipId is optional - if provided, a row-wide hover region is created
     void addWidgetRow(
         const char* name,
         BaseHud* hud,
+        bool enableVisibility = true,
         bool enableTitle = true,
+        bool enableBgTexture = true,
         bool enableOpacity = true,
         bool enableScale = true,
-        bool enableVisibility = true,
-        bool enableBgTexture = true,
         const char* tooltipId = nullptr
     );
 

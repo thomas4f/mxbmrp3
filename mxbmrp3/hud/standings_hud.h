@@ -31,9 +31,10 @@ public:
         COL_BEST_LAP    = 1 << 5,   // Best lap time
         COL_GAP         = 1 << 6,   // Gap column (auto-selects official or live data, shows RET/DNS/DSQ for non-participants)
         COL_PENALTY     = 1 << 7,   // Penalty seconds (last column, rare event)
+        COL_POSGAIN     = 1 << 8,   // Positions gained/lost since race start (caret + count, races only)
 
         COL_REQUIRED = 0,      // No required columns
-        COL_DEFAULT  = 0x4F    // Default columns: status icons, Pos, RaceNum, Name, Gap
+        COL_DEFAULT  = 0x4F    // Default columns: status icons, Pos, RaceNum, Name, Gap (POSGAIN off by default)
     };
 
     // Who to show gap data for
@@ -66,6 +67,15 @@ public:
         COLORED = 2   // Slide + tint rows positive/negative during the animation
     };
 
+    // Positions gained/lost reference (what the +/- delta is measured against).
+    // Mirrors GapMode/NameMode: a single multi-state control with OFF folded in.
+    enum class PosGainMode : uint8_t {
+        OFF = 0,         // Column hidden
+        RACE_START = 1,  // Delta vs grid position at race start (falls back to LAST_SF on mid-race join)
+        LAST_SF = 2,     // Delta vs position at the rider's last start/finish crossing (resets each lap)
+        LAST_SPLIT = 3   // Delta vs position at the rider's last split crossing (resets each split)
+    };
+
     // Column indices (used with ColumnDef::columnIndex to identify columns)
     static constexpr uint8_t COL_IDX_TRACKED     = 0;
     static constexpr uint8_t COL_IDX_POS         = 1;
@@ -75,6 +85,7 @@ public:
     static constexpr uint8_t COL_IDX_BEST_LAP    = 5;
     static constexpr uint8_t COL_IDX_GAP         = 6;
     static constexpr uint8_t COL_IDX_PENALTY     = 7;
+    static constexpr uint8_t COL_IDX_POSGAIN     = 8;
 
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;
@@ -110,6 +121,7 @@ private:
         char name[32];  // Rider name (short=3 chars, long=up to 31 chars)
         char bikeShortName[16];
         unsigned long bikeBrandColor;
+        unsigned long trackedColor;  // Tracked-rider color (0 = not tracked); tints the number plate
         int officialGap;
         int gapLaps;
         int realTimeGap;
@@ -119,6 +131,8 @@ private:
         int numLaps;
         int bestLap;
         int numLapsAtLeaderFinish;
+        int posDelta;        // Positions gained (+) / lost (-) since race start; valid only when hasPosDelta
+        bool hasPosDelta;    // True when a race-start snapshot exists for this rider
 
         bool isFinishedRace;
         bool sessionFinished;   // Crossed start/finish line after non-race session time expired
@@ -138,9 +152,11 @@ private:
         char formattedGap[16];      // Gap column (official or live, auto-selected; shows RET/DNS/DSQ for non-participants)
         char formattedPenalty[8];
         char formattedLapTime[16];
+        char formattedPosDelta[8];  // Positions gained/lost: abs count (caret shows direction); empty string when held or no reference
 
-        DisplayEntry() : position(0), raceNum(-1), bikeBrandColor(0),
+        DisplayEntry() : position(0), raceNum(-1), bikeBrandColor(0), trackedColor(0),
             officialGap(0), gapLaps(0), realTimeGap(0), penalty(0), state(0), pit(0), numLaps(0), bestLap(-1), numLapsAtLeaderFinish(-1),
+            posDelta(0), hasPosDelta(false),
             isFinishedRace(false), sessionFinished(false), hasBestLap(false), isPlaceholder(false), gapStyle(GapStyle::OFFICIAL), gapColorOverride(0) {
             name[0] = '\0';
             bikeShortName[0] = '\0';
@@ -149,6 +165,7 @@ private:
             formattedGap[0] = '\0';
             formattedPenalty[0] = '\0';
             formattedLapTime[0] = '\0';
+            formattedPosDelta[0] = '\0';
         }
 
         static DisplayEntry fromRaceEntry(const RaceEntryData& entry, const StandingsData* standings);
@@ -186,6 +203,7 @@ private:
     struct ColumnPositions {
         float tracked;
         float pos;
+        float posGain;
         float raceNum;
         float name;
         float bike;
@@ -226,6 +244,7 @@ private:
     // Gap display settings
     GapMode m_gapMode = GapMode::ALL;
     GapReferenceMode m_gapReferenceMode = GapReferenceMode::PLAYER;
+    PosGainMode m_posGainMode = PosGainMode::OFF;  // Positions-gained column mode + reference (off by default)
 
     // Alternating mode state (only used when m_gapReferenceMode == ALTERNATING)
     static constexpr int DEFAULT_ALTERNATING_INTERVAL_MS = 5000;
@@ -272,11 +291,22 @@ private:
         int flag = 0;
         int flagCheckered = 0;
         int wrench = 0;
+        int caretUp = 0;          // Positions-gained/lost indicator (rotated 180° for losses)
         bool initialized = false;
 
         void ensureInitialized();
     };
     CachedIcons m_iconCache;
+
+    // Tracking for positions-gained/lost caret quads (so rebuildLayout can reposition
+    // them on drag/scale without a full data rebuild). 'down' records orientation
+    // (caret-up sprite rotated 180° to point down for lost positions).
+    struct PosGainIconQuad {
+        size_t quadIndex;  // Index in m_quads
+        int rowIndex;      // Which row it belongs to
+        bool down;         // true = flipped (lost positions), false = upright (gained)
+    };
+    std::vector<PosGainIconQuad> m_posGainIconQuads;
 
     // Computed plate dimensions (shared between rebuildRenderData and rebuildLayout)
     struct PlateGeometry {
@@ -310,10 +340,11 @@ private:
     bool m_bPlayerRowHighlightBrand = false;  // INI-only: when m_bPlayerRowHighlight is on, use the bike brand color instead of the default accent color
     bool m_bClassicLayout = false;  // Classic layout: no number plates, no brand strip, primary-colored race numbers
     bool m_bShowHeaders = false;     // Show a column-header row labeling each enabled column above the rider rows
+    bool m_bShowSessionInfo = true;  // Show a session-info row ("<session>: <clock / leader lap / overtime>") below the title
     bool m_bLiveGaps = false;        // Show real-time estimated gaps during races (per-profile; was a global toggle)
     NameMode m_nameMode = NameMode::SHORT;  // Rider name display mode (Off/Short/Long)
     int m_shortNameChars = DEFAULT_SHORT_NAME_CHARS;  // INI-only: visible chars in SHORT name mode (1-31, default 3)
-    int m_longNameWidth = 4;  // Cached width for long name mode (determined by longest name)
+    int m_longNameChars = DEFAULT_LONG_NAME_CHARS;  // INI-only: static visible chars in LONG name mode (4-24, default 16)
 
     // ========================================================================
     // Position Animation
@@ -371,6 +402,7 @@ private:
     // Column widths: max_length + 1 for spacing, except last column
     static constexpr int COL_TRACKED_WIDTH = 3;   // Sprite indicator (icon + padding)
     static constexpr int COL_POS_WIDTH = 3;       // "50" (2 chars + 1 spacing, no "P" prefix)
+    static constexpr int COL_POSGAIN_WIDTH = 4;   // caret + up to 2-digit count + spacing
     static constexpr int COL_RACENUM_WIDTH = 6;  // plate (4) + gap (0.5) + strip (0.5) + padding
     static constexpr int COL_RACENUM_WIDTH_CLASSIC = 4;  // 3-digit race number + 1 spacing (no plate/strip/#)
     int getRaceNumColumnWidth() const {
@@ -380,10 +412,12 @@ private:
     static constexpr int MIN_SHORT_NAME_CHARS = 1;
     static constexpr int MAX_SHORT_NAME_CHARS = 31;  // Capped by name[32] buffer
     static constexpr int COL_NAME_WIDTH_SHORT = DEFAULT_SHORT_NAME_CHARS + 1;  // default chars + 1 spacing
-    static constexpr int MAX_LONG_NAME_CHARS = 24;  // Max visible chars in LONG name mode
+    static constexpr int DEFAULT_LONG_NAME_CHARS = 16;  // Default visible chars in LONG name mode
+    static constexpr int MIN_LONG_NAME_CHARS = 4;
+    static constexpr int MAX_LONG_NAME_CHARS = 24;  // Max visible chars in LONG name mode (capped by layout)
     int getNameColumnWidth() const {
         if (m_nameMode == NameMode::OFF) return 0;
-        if (m_nameMode == NameMode::LONG) return m_longNameWidth;
+        if (m_nameMode == NameMode::LONG) return m_longNameChars + 1;  // static width + 1 spacing
         return m_shortNameChars + 1;  // chars + 1 spacing
     }
     static constexpr int COL_BIKE_WIDTH = 10;      // Supports longest bike names (9 chars + 1 spacing)

@@ -6,6 +6,8 @@
 
 #include <windows.h>
 #include <Xinput.h>
+#include <chrono>
+#include <cstdint>
 #include <deque>
 #include <string>
 #include <vector>
@@ -66,14 +68,25 @@ struct RumbleConfig {
     bool rumbleWhenCrashed; // false = stop all rumble when player is crashed (default)
     bool usePerBikeEffects; // true = use per-bike effects from JSON, false = use global from INI
 
-    // Bumps: suspension compression on impacts/landings
-    RumbleEffect suspensionEffect;
+    // Bumps: suspension compression on impacts/landings.
+    // The combined/front/rear effects are stored independently: combined is used when
+    // linked, front+rear when split. Each persists separately so a split tune survives
+    // toggling link<->split.
+    RumbleEffect suspensionEffect;       // combined (used when not split)
+    RumbleEffect suspensionEffectFront;  // front wheel (used when split)
+    RumbleEffect suspensionEffectRear;   // rear wheel (used when split)
+    bool suspensionSplit;                // tune front/rear suspension independently
+    bool suspensionSplitInitialized;     // front/rear seeded from combined once; never reseeded after
 
     // Spin: rear wheel overrun (traction feedback)
     RumbleEffect wheelspinEffect;
 
-    // Brake Lockup: wheel underrun
-    RumbleEffect brakeLockupEffect;
+    // Brake Lockup: wheel underrun (combined/front/rear stored independently, like Bumps)
+    RumbleEffect brakeLockupEffect;      // combined (used when not split)
+    RumbleEffect brakeLockupEffectFront; // front wheel (used when split)
+    RumbleEffect brakeLockupEffectRear;  // rear wheel (used when split)
+    bool brakeLockupSplit;               // tune front/rear lockup independently
+    bool brakeLockupSplitInitialized;    // front/rear seeded from combined once; never reseeded after
 
     // Wheelie: feedback when front wheel lifts off ground
     // Input is pitch angle in degrees (0 = level, 90 = vertical)
@@ -93,14 +106,31 @@ struct RumbleConfig {
     // Input is absolute steer torque in Nm
     RumbleEffect steerEffect;
 
+    // Rev Limiter: vibration as RPM approaches the bike's limiter.
+    // Input is RPM as a percentage of the bike's real limiterRPM (auto per-bike), throttle-gated.
+    RumbleEffect revLimiterEffect;
+
+    // Pit Limiter: vibration while the pit-lane speed limiter is active (GP Bikes).
+    // Input is binary (1 = active). Light/Heavy set the intensity.
+    RumbleEffect pitLimiterEffect;
+
     // Constructor: RumbleEffect(minInput, maxInput, lightStrength, heavyStrength)
     RumbleConfig() : enabled(false), controllerIndex(0), additiveBlend(true), rumbleWhenCrashed(false), usePerBikeEffects(false),
-        // Bumps: Off by default (tuning range: 0-10 m/s)
+        // Bumps: Off by default (tuning range: 0-10 m/s). Front/rear default to the
+        // same factory values as combined, so a split starts from the defaults.
         suspensionEffect(0.0f, 10.0f, 0.0f, 0.0f),
+        suspensionEffectFront(0.0f, 10.0f, 0.0f, 0.0f),
+        suspensionEffectRear(0.0f, 10.0f, 0.0f, 0.0f),
+        suspensionSplit(false),
+        suspensionSplitInitialized(false),
         // Spin: Light motor at 50% strength
         wheelspinEffect(0.0f, 15.0f, 0.5f, 0.0f),
-        // Lockup: Light motor at 50% strength
+        // Lockup: Light motor at 50% strength (front/rear default to the same)
         brakeLockupEffect(0.2f, 1.0f, 0.5f, 0.0f),
+        brakeLockupEffectFront(0.2f, 1.0f, 0.5f, 0.0f),
+        brakeLockupEffectRear(0.2f, 1.0f, 0.5f, 0.0f),
+        brakeLockupSplit(false),
+        brakeLockupSplitInitialized(false),
         // Wheelie: Off by default
         wheelieEffect(0.0f, 90.0f, 0.0f, 0.0f),
         // RPM: Off by default
@@ -110,7 +140,11 @@ struct RumbleConfig {
         // Surface: Off by default
         surfaceEffect(10.0f, 135.0f, 0.0f, 0.0f),
         // Steer: Off by default
-        steerEffect(20.0f, 80.0f, 0.0f, 0.0f) {}
+        steerEffect(20.0f, 80.0f, 0.0f, 0.0f),
+        // Rev Limiter: Off by default (range 93%-100% of the limiter RPM)
+        revLimiterEffect(93.0f, 100.0f, 0.0f, 0.0f),
+        // Pit Limiter: Off by default (binary input 0/1)
+        pitLimiterEffect(0.0f, 1.0f, 0.0f, 0.0f) {}
 
     void resetToDefaults() {
         enabled = false;
@@ -119,13 +153,23 @@ struct RumbleConfig {
         rumbleWhenCrashed = false;
         usePerBikeEffects = false;
         suspensionEffect = RumbleEffect(0.0f, 10.0f, 0.0f, 0.0f);
+        suspensionEffectFront = RumbleEffect(0.0f, 10.0f, 0.0f, 0.0f);
+        suspensionEffectRear = RumbleEffect(0.0f, 10.0f, 0.0f, 0.0f);
+        suspensionSplit = false;
+        suspensionSplitInitialized = false;
         wheelspinEffect = RumbleEffect(0.0f, 15.0f, 0.5f, 0.0f);
         brakeLockupEffect = RumbleEffect(0.2f, 1.0f, 0.5f, 0.0f);
+        brakeLockupEffectFront = RumbleEffect(0.2f, 1.0f, 0.5f, 0.0f);
+        brakeLockupEffectRear = RumbleEffect(0.2f, 1.0f, 0.5f, 0.0f);
+        brakeLockupSplit = false;
+        brakeLockupSplitInitialized = false;
         wheelieEffect = RumbleEffect(0.0f, 90.0f, 0.0f, 0.0f);
         rpmEffect = RumbleEffect(2000.0f, 15000.0f, 0.0f, 0.0f);
         slideEffect = RumbleEffect(10.0f, 30.0f, 0.0f, 1.0f);
         surfaceEffect = RumbleEffect(10.0f, 135.0f, 0.0f, 0.0f);
         steerEffect = RumbleEffect(20.0f, 80.0f, 0.0f, 0.0f);
+        revLimiterEffect = RumbleEffect(93.0f, 100.0f, 0.0f, 0.0f);
+        pitLimiterEffect = RumbleEffect(0.0f, 1.0f, 0.0f, 0.0f);
     }
 };
 
@@ -217,6 +261,14 @@ public:
     RumbleConfig& getGlobalRumbleConfig() { return m_rumbleConfig; }
     const RumbleConfig& getGlobalRumbleConfig() const { return m_rumbleConfig; }
 
+    // Rumble send-rate cap (INI-only setting: [Rumble] send_interval_ms).
+    // Lower = more responsive feed, higher = less Bluetooth traffic.
+    void setRumbleSendIntervalMs(int ms) {
+        m_rumbleSendIntervalMs = std::max(MIN_RUMBLE_SEND_INTERVAL_MS,
+                                          std::min(ms, MAX_RUMBLE_SEND_INTERVAL_MS));
+    }
+    int getRumbleSendIntervalMs() const { return m_rumbleSendIntervalMs; }
+
     // Get current motor output values (for visualization)
     float getLastHeavyMotor() const { return m_lastLeftMotor; }   // Left = heavy/low-freq
     float getLastLightMotor() const { return m_lastRightMotor; }  // Right = light/high-freq
@@ -230,6 +282,12 @@ public:
     float getLastSlideRumble() const { return m_lastSlideRumble; }
     float getLastSurfaceRumble() const { return m_lastSurfaceRumble; }
     float getLastSteerRumble() const { return m_lastSteerRumble; }
+    float getLastRevLimiterRumble() const { return m_lastRevLimiterRumble; }
+    float getLastPitLimiterRumble() const { return m_lastPitLimiterRumble; }
+    // Rear-wheel contributions for Bumps/Lockup when split (the front/combined value is in
+    // getLastSuspensionRumble/getLastLockupRumble); 0 when the effect isn't split.
+    float getLastSuspensionRumbleRear() const { return m_lastSuspensionRumbleRear; }
+    float getLastLockupRumbleRear() const { return m_lastLockupRumbleRear; }
 
     // History buffer size for graph visualization (matches MAX_TELEMETRY_HISTORY)
     static constexpr size_t MAX_RUMBLE_HISTORY = 200;
@@ -245,19 +303,27 @@ public:
     const std::deque<float>& getSlideHistory() const { return m_slideHistory; }
     const std::deque<float>& getSurfaceHistory() const { return m_surfaceHistory; }
     const std::deque<float>& getSteerHistory() const { return m_steerHistory; }
+    const std::deque<float>& getRevLimiterHistory() const { return m_revLimiterHistory; }
+    const std::deque<float>& getPitLimiterHistory() const { return m_pitLimiterHistory; }
+    const std::deque<float>& getSuspensionRearHistory() const { return m_suspensionRearHistory; }
+    const std::deque<float>& getLockupRearHistory() const { return m_lockupRearHistory; }
 
     // Process telemetry and apply rumble effects
-    // suspensionVelocity: max of front/rear compression velocity (m/s, positive = compression)
+    // suspVelFront/suspVelRear: front/rear suspension compression velocity (m/s, positive = compression).
+    //   When the Bumps effect isn't split, the engine collapses these to their max (legacy behavior).
     // wheelOverrun: rear wheel overrun ratio (wheelSpeed - vehicleSpeed) / vehicleSpeed (positive = wheelspin)
-    // wheelUnderrun: max of front/rear underrun ratio (vehicleSpeed - wheelSpeed) / vehicleSpeed (positive = lockup)
+    // underrunFront/underrunRear: front/rear underrun ratio (vehicleSpeed - wheelSpeed) / vehicleSpeed (positive = lockup).
+    //   When the Lockup effect isn't split, the engine collapses these to their max (legacy behavior).
     // rpm: engine RPM (raw value, typically 0-15000)
     // slideAngle: lateral slip angle in degrees (0 = no slip, 90 = full sideways)
     // surfaceSpeed: speed in m/s when on rough surface (0 = on track or not moving)
     // steerTorque: absolute handlebar torque in Nm (higher = more resistance)
     // wheelieIntensity: pitch angle in degrees when doing a wheelie (0 = not doing wheelie, >0 = wheelie angle)
+    // revLimiterPct: RPM as a percentage of the bike's limiter RPM, throttle-gated (0 when off-throttle)
+    // pitLimiterActive: 1.0 while the pit-lane speed limiter is active, 0.0 otherwise
     // isAirborne: true when both wheels are off the ground (suppresses ground effects)
     // suppressOutput: true to calculate forces for graph but not send to controller (e.g., when crashed)
-    void updateRumbleFromTelemetry(float suspensionVelocity, float wheelOverrun, float wheelUnderrun, float rpm, float slideAngle, float surfaceSpeed, float steerTorque, float wheelieIntensity, bool isAirborne, bool suppressOutput = false);
+    void updateRumbleFromTelemetry(float suspVelFront, float suspVelRear, float wheelOverrun, float underrunFront, float underrunRear, float rpm, float slideAngle, float surfaceSpeed, float steerTorque, float wheelieIntensity, float revLimiterPct, float pitLimiterActive, bool isAirborne, bool suppressOutput = false);
 
 private:
     XInputReader();
@@ -282,12 +348,34 @@ private:
     int m_controllerIndex;
 
     // Connection state tracking for change detection
+    // The all-slot scan is throttled: XInputGetState on a disconnected slot
+    // is notoriously slow (can be ms-class), and update() runs per telemetry
+    // tick on the game thread. The scan only feeds the settings UI.
     bool m_lastConnectedState[4];
     bool m_connectionStateChanged;
+    std::chrono::steady_clock::time_point m_lastConnectionScan;
+
+    // Backoff for polling the SELECTED slot while it is disconnected (same
+    // slow-path concern as the scan above). Epoch default = poll immediately.
+    std::chrono::steady_clock::time_point m_lastFailedMainPoll;
+    static constexpr int DISCONNECTED_POLL_INTERVAL_MS = 500;
 
     // Vibration state tracking to avoid redundant API calls
     float m_lastLeftMotor;
     float m_lastRightMotor;
+
+    // Motor speeds last sent via XInputSetState (8-bit quantized). Nonzero
+    // rumble is a continuous capped-rate feed (controllers decay rumble
+    // without refreshes); only the all-zero idle state is deduped so an idle
+    // pad generates no Bluetooth traffic. See setVibration().
+    uint8_t m_lastSentLeftMotor;
+    uint8_t m_lastSentRightMotor;
+    bool m_hasSentVibration;
+    std::chrono::steady_clock::time_point m_lastVibrationSend;
+    int m_rumbleSendIntervalMs = DEFAULT_RUMBLE_SEND_INTERVAL_MS;
+    static constexpr int DEFAULT_RUMBLE_SEND_INTERVAL_MS = 10;  // 100Hz live feed (matches the telemetry tick)
+    static constexpr int MIN_RUMBLE_SEND_INTERVAL_MS = 4;       // ~250Hz (effectively uncapped)
+    static constexpr int MAX_RUMBLE_SEND_INTERVAL_MS = 200;     // 5Hz floor
 
     // Individual effect values (for visualization)
     float m_lastSuspensionRumble;
@@ -298,6 +386,10 @@ private:
     float m_lastSlideRumble;
     float m_lastSurfaceRumble;
     float m_lastSteerRumble;
+    float m_lastRevLimiterRumble;
+    float m_lastPitLimiterRumble;
+    float m_lastSuspensionRumbleRear;
+    float m_lastLockupRumbleRear;
 
     // History buffers for graph visualization
     std::deque<float> m_heavyMotorHistory;
@@ -310,6 +402,10 @@ private:
     std::deque<float> m_slideHistory;
     std::deque<float> m_surfaceHistory;
     std::deque<float> m_steerHistory;
+    std::deque<float> m_revLimiterHistory;
+    std::deque<float> m_pitLimiterHistory;
+    std::deque<float> m_suspensionRearHistory;
+    std::deque<float> m_lockupRearHistory;
 
     // Helper to push value to history buffer with size limit
     void pushToHistory(std::deque<float>& buffer, float value) {

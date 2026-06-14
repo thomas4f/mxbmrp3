@@ -1,0 +1,10 @@
+# Python dependencies for tools/mdmp_analyze.py (minidump triage).
+#
+# This project is a Windows-only Visual Studio C++ plugin; Python is only used
+# for the standalone crash-dump analyzer. The analyzer runs fine WITHOUT these
+# (it degrades gracefully), so treat them as optional quality-of-life:
+#   - capstone: disassembles the faulting instruction (e.g. "mov edx,[rcx]")
+#               instead of printing only raw bytes.
+#
+# Install:  python3 -m pip install -r tools/requirements.txt
+capstone>=5.0

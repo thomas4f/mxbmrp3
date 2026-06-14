@@ -42,6 +42,15 @@ public:
     int getHoldRepeatFastMs() const { return m_holdRepeatFastMs; }
     void setHoldRepeatFastMs(int ms) { m_holdRepeatFastMs = (ms < 10) ? 10 : (ms > 500) ? 500 : ms; }
 
+    // Cursor activation threshold (INI-only): how far the mouse must move from rest
+    // before the cursor + settings button appear. Normalized UI units (0-1 across the
+    // screen). Larger = ignores small bumps. Clamped to a tiny non-zero floor so the
+    // cursor can never become impossible to summon.
+    float getCursorActivationThreshold() const { return m_fCursorActivationThreshold; }
+    void setCursorActivationThreshold(float threshold) {
+        m_fCursorActivationThreshold = (threshold < 0.0001f) ? 0.0001f : (threshold > 0.5f) ? 0.5f : threshold;
+    }
+
     // Personal best scope setting (Bike or Category)
     PBScope getPBScope() const { return m_pbScope; }
     void setPBScope(PBScope scope) { m_pbScope = scope; }
@@ -71,6 +80,7 @@ private:
     TemperatureUnit m_temperatureUnit = TemperatureUnit::CELSIUS;  // Celsius by default
     PBScope m_pbScope = PBScope::CATEGORY;  // Per-category PB tracking by default
     int m_holdRepeatFastMs = 50;     // Max repeat speed: 50ms (~20/sec)
+    float m_fCursorActivationThreshold = 0.015f;  // Mouse travel from rest before cursor appears (~29px horiz on 1080p)
 
     // Drop shadow settings
     bool m_bDropShadow = true;                       // Drop shadow enabled by default

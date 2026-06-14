@@ -9,6 +9,7 @@
 #include "../diagnostics/logger.h"
 #include "../hud/ideal_lap_hud.h"
 #include "../hud/lap_log_hud.h"
+#include "../hud/friends_hud.h"
 #include "../hud/lap_consistency_hud.h"
 #include "../hud/standings_hud.h"
 #include "../hud/performance_hud.h"
@@ -59,6 +60,9 @@
 #include "update_downloader.h"
 #if GAME_HAS_DISCORD
 #include "discord_manager.h"
+#endif
+#if GAME_HAS_STEAM_FRIENDS
+#include "steam_friends_manager.h"
 #endif
 #if GAME_HAS_HTTP_SERVER
 #include "http_server.h"
@@ -119,9 +123,11 @@ namespace {
         namespace Standings {
             constexpr const char* DISPLAY_ROW_COUNT = "displayRowCount";
             constexpr const char* GAP_MODE = "gapMode";
+            constexpr const char* POSGAIN_MODE = "posGainMode";
             constexpr const char* GAP_REFERENCE_MODE = "gapReferenceMode";
             constexpr const char* ANIMATION_MODE = "animationMode";
             constexpr const char* SHOW_HEADERS = "showHeaders";
+            constexpr const char* SHOW_SESSION_INFO = "showSessionInfo";
             constexpr const char* LIVE_GAPS = "liveGaps";
         }
 
@@ -207,6 +213,7 @@ namespace {
         namespace StandingsCols {
             constexpr const char* TRACKED = "col_tracked";
             constexpr const char* POS = "col_pos";
+            constexpr const char* POSGAIN = "col_posgain";
             constexpr const char* RACENUM = "col_racenum";
             constexpr const char* NAME = "col_name";
             constexpr const char* BIKE = "col_bike";
@@ -262,9 +269,8 @@ namespace {
             constexpr const char* EST = "row_est";
         }
 
-        // SessionHud rows
+        // SessionHud rows (row_type retired — session type now shows in the StandingsHud)
         namespace SessionRows {
-            constexpr const char* TYPE = "row_type";
             constexpr const char* TRACK = "row_track";
             constexpr const char* FORMAT = "row_format";
             constexpr const char* SERVER = "row_server";
@@ -412,11 +418,6 @@ namespace {
             constexpr Setting SHOW_LIMITER_CIRCLE = {"showLimiterCircle", "Circle indicator at limiter RPM"};
         }
 
-        // TimeWidget settings
-        namespace Time {
-            constexpr Setting SHOW_SESSION_TYPE = {"showSessionType", "Show session type label"};
-        }
-
         // ClockWidget settings
         namespace Clock {
             constexpr Setting SHOW_UTC = {"showUtc", "Show UTC time as secondary display"};
@@ -497,7 +498,7 @@ namespace {
         namespace Notices {
             constexpr Setting WRONG_WAY = {"notice_wrong_way", "Show wrong way warning"};
             constexpr Setting BLUE_FLAG = {"notice_blue_flag", "Show blue flag notice"};
-            constexpr Setting LAST_LAP = {"notice_last_lap", "Show last lap notice"};
+            constexpr Setting LAST_LAP = {"notice_last_lap", "Show final lap notice"};
             constexpr Setting FINISHED = {"notice_finished", "Show finished notice"};
             constexpr Setting ALLTIME_PB = {"notice_alltime_pb", "Show all-time PB notice"};
             constexpr Setting FASTEST_LAP = {"notice_fastest_lap", "Show fastest lap notice (online races)"};
@@ -518,6 +519,7 @@ namespace {
             constexpr Setting CLASSIC_LAYOUT = {"classicLayout", "Classic layout: no number plates, no brand strip (0 = modern)"};
             constexpr Setting NAME_MODE = {"nameMode", "Rider name display mode (0=Off, 1=Short, 2=Long)"};
             constexpr Setting SHORT_NAME_CHARS = {"shortNameChars", "Visible characters in Short name mode (1-31, default 3)"};
+            constexpr Setting LONG_NAME_CHARS = {"longNameChars", "Static column width in Long name mode; longer names truncate with ellipsis (4-24, default 16)"};
         }
 
 #if GAME_HAS_RECORDS_PROVIDER
@@ -550,6 +552,7 @@ namespace {
             constexpr Setting DROP_SHADOW_OFFSET_Y = {"dropShadowOffsetY", "Shadow Y offset (normalized)"};
             constexpr Setting DROP_SHADOW_COLOR = {"dropShadowColor", "Shadow color (0xAARRGGBB)"};
             constexpr Setting HOLD_REPEAT_FAST_MS = {"holdRepeatFastMs", "Hold-to-repeat max speed in ms (10-500, default 50)"};
+            constexpr Setting CURSOR_ACTIVATION_THRESHOLD = {"cursorActivationThreshold", "Mouse travel from rest before cursor/settings button appear, normalized 0-1 (0.001=~2px, raise to ignore bigger bumps, lower for more responsive, default 0.015)"};
             constexpr Setting HAZARD_STATIONARY_TOLERANCE = {"hazardStationaryTolerance", "Movement below this in meters = not moving (default 5.0)"};
             constexpr Setting HAZARD_STATIONARY_DURATION_MS = {"hazardStationaryDurationMs", "Time stationary before flagged in ms (default 2000)"};
             constexpr Setting HAZARD_WRONG_WAY_DURATION_MS = {"hazardWrongWayDurationMs", "Time going backward before flagged in ms (default 1500)"};
@@ -557,6 +560,7 @@ namespace {
             constexpr Setting HAZARD_COOLDOWN_MS = {"hazardCooldownMs", "Hysteresis before clearing hazard state in ms (default 1000)"};
             constexpr Setting HAZARD_GRACE_PERIOD_MS = {"hazardGracePeriodMs", "Grace period after race start in ms (default 10000)"};
             constexpr Setting BLUE_FLAG_AWARENESS_DISTANCE = {"blueFlagAwarenessDistance", "Blue flag detection range in meters (default 100.0)"};
+            constexpr Setting GAP_NOTIFY_INTERVAL_MS = {"gapNotifyIntervalMs", "Min interval between live-gap HUD refreshes in ms; 0=refresh on every change (0-1000, default 100)"};
             constexpr Setting WEB_SERVER_PORT = {"webServerPort", "Web server port (default 8080)"};
             constexpr Setting WEB_SERVER_THROTTLE_MS = {"webServerThrottleMs", "Min interval between SSE pushes in ms (default 250)"};
             constexpr Setting WEB_SERVER_BIND_ADDRESS = {"webServerBindAddress", "Bind address (default 127.0.0.1, use 0.0.0.0 for network access)"};
@@ -603,6 +607,26 @@ namespace {
         if (str == "ADJACENT") return StandingsHud::GapMode::ADJACENT;
         if (str == "ALL") return StandingsHud::GapMode::ALL;
         DEBUG_WARN_F("Unknown GapMode '%s', using default", str.c_str());
+        return defaultVal;
+    }
+
+    // StandingsHud::PosGainMode
+    const char* posGainModeToString(StandingsHud::PosGainMode mode) {
+        switch (mode) {
+            case StandingsHud::PosGainMode::OFF: return "OFF";
+            case StandingsHud::PosGainMode::RACE_START: return "RACE_START";
+            case StandingsHud::PosGainMode::LAST_SF: return "LAST_SF";
+            case StandingsHud::PosGainMode::LAST_SPLIT: return "LAST_SPLIT";
+            default: return "OFF";
+        }
+    }
+
+    StandingsHud::PosGainMode stringToPosGainMode(const std::string& str, StandingsHud::PosGainMode defaultVal = StandingsHud::PosGainMode::OFF) {
+        if (str == "OFF") return StandingsHud::PosGainMode::OFF;
+        if (str == "RACE_START") return StandingsHud::PosGainMode::RACE_START;
+        if (str == "LAST_SF") return StandingsHud::PosGainMode::LAST_SF;
+        if (str == "LAST_SPLIT") return StandingsHud::PosGainMode::LAST_SPLIT;
+        DEBUG_WARN_F("Unknown PosGainMode '%s', using default", str.c_str());
         return defaultVal;
     }
 
@@ -1274,8 +1298,6 @@ namespace {
         } else if (hudName == "GearWidget") {
             if (key == Gear::SHOW_SHIFT_COLOR.key) return Gear::SHOW_SHIFT_COLOR.description;
             if (key == Gear::SHOW_LIMITER_CIRCLE.key) return Gear::SHOW_LIMITER_CIRCLE.description;
-        } else if (hudName == "TimeWidget") {
-            if (key == Time::SHOW_SESSION_TYPE.key) return Time::SHOW_SESSION_TYPE.description;
         } else if (hudName == "ClockWidget") {
             if (key == Clock::SHOW_UTC.key) return Clock::SHOW_UTC.description;
             if (key == Clock::UTC_ON_TOP.key) return Clock::UTC_ON_TOP.description;
@@ -1420,6 +1442,9 @@ namespace {
         using namespace Keys::StandingsCols;
         saveBitAsKey(settings, TRACKED, cols, StandingsHud::COL_TRACKED);
         saveBitAsKey(settings, POS, cols, StandingsHud::COL_POS);
+        // COL_POSGAIN visibility is driven entirely by posGainMode now; the bit is never
+        // user-toggled, so we don't write col_posgain (avoids an inconsistent INI). It's
+        // still read in loadStandingsColumns purely to migrate pre-mode configs.
         saveBitAsKey(settings, RACENUM, cols, StandingsHud::COL_RACENUM);
         saveBitAsKey(settings, NAME, cols, StandingsHud::COL_NAME);
         saveBitAsKey(settings, BIKE, cols, StandingsHud::COL_BIKE);
@@ -1433,6 +1458,7 @@ namespace {
         using namespace Keys::StandingsCols;
         loadBitFromKey(settings, TRACKED, cols, StandingsHud::COL_TRACKED);
         loadBitFromKey(settings, POS, cols, StandingsHud::COL_POS);
+        loadBitFromKey(settings, POSGAIN, cols, StandingsHud::COL_POSGAIN);  // migration-only (see saveStandingsColumns); posGainMode is the source of truth
         loadBitFromKey(settings, RACENUM, cols, StandingsHud::COL_RACENUM);
         loadBitFromKey(settings, NAME, cols, StandingsHud::COL_NAME);
         loadBitFromKey(settings, BIKE, cols, StandingsHud::COL_BIKE);
@@ -1545,7 +1571,6 @@ namespace {
     // SessionHud: save rows as named keys
     void saveSessionRows(SettingsManager::HudSettings& settings, uint32_t rows) {
         using namespace Keys::SessionRows;
-        saveBitAsKey(settings, TYPE, rows, SessionHud::ROW_TYPE);
         saveBitAsKey(settings, TRACK, rows, SessionHud::ROW_TRACK);
         saveBitAsKey(settings, FORMAT, rows, SessionHud::ROW_FORMAT);
         saveBitAsKey(settings, SERVER, rows, SessionHud::ROW_SERVER);
@@ -1560,7 +1585,6 @@ namespace {
     // (row_weather) not by mask, so existing profiles are unaffected.
     void loadSessionRows(const SettingsManager::HudSettings& settings, uint32_t& rows) {
         using namespace Keys::SessionRows;
-        loadBitFromKey(settings, TYPE, rows, SessionHud::ROW_TYPE);
         loadBitFromKey(settings, TRACK, rows, SessionHud::ROW_TRACK);
         loadBitFromKey(settings, FORMAT, rows, SessionHud::ROW_FORMAT);
         loadBitFromKey(settings, SERVER, rows, SessionHud::ROW_SERVER);
@@ -1925,9 +1949,11 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
         settings[DISPLAY_ROW_COUNT] = std::to_string(hud.m_displayRowCount);
         saveStandingsColumns(settings, hud.m_enabledColumns);  // Named keys instead of bitmask
         settings[GAP_MODE] = gapModeToString(hud.m_gapMode);
+        settings[POSGAIN_MODE] = posGainModeToString(hud.m_posGainMode);
         settings[GAP_REFERENCE_MODE] = gapReferenceModeToString(hud.m_gapReferenceMode);
         settings[ANIMATION_MODE] = animationModeToString(hud.m_animationMode);
         settings[SHOW_HEADERS] = hud.m_bShowHeaders ? "1" : "0";
+        settings[SHOW_SESSION_INFO] = hud.m_bShowSessionInfo ? "1" : "0";
         settings[LIVE_GAPS] = hud.m_bLiveGaps ? "1" : "0";
         settings[IniOnly::Standings::TOP_POSITIONS.key] = std::to_string(hud.m_topPositionsCount);
         settings[IniOnly::Standings::PLAYER_ROW_HIGHLIGHT.key] = hud.m_bPlayerRowHighlight ? "1" : "0";
@@ -1936,6 +1962,7 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
         settings[IniOnly::Standings::CLASSIC_LAYOUT.key] = hud.m_bClassicLayout ? "1" : "0";
         settings[IniOnly::Standings::NAME_MODE.key] = std::to_string(static_cast<int>(hud.m_nameMode));
         settings[IniOnly::Standings::SHORT_NAME_CHARS.key] = std::to_string(hud.m_shortNameChars);
+        settings[IniOnly::Standings::LONG_NAME_CHARS.key] = std::to_string(hud.m_longNameChars);
         cache["StandingsHud"] = std::move(settings);
     }
 
@@ -2018,6 +2045,24 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
         settings["showHeaders"] = hud.m_bShowHeaders ? "1" : "0";
         cache["LapLogHud"] = std::move(settings);
     }
+
+#if GAME_HAS_STEAM_FRIENDS
+    {
+        HudSettings settings;
+        const auto& hud = hudManager.getFriendsHud();
+        captureBaseHudSettings(settings, hud);
+        saveBitAsKey(settings, "col_server", hud.m_enabledColumns, FriendsHud::COL_SERVER);
+        saveBitAsKey(settings, "col_track",  hud.m_enabledColumns, FriendsHud::COL_TRACK);
+        saveBitAsKey(settings, "col_info",   hud.m_enabledColumns, FriendsHud::COL_INFO);
+        saveBitAsKey(settings, "col_timer",  hud.m_enabledColumns, FriendsHud::COL_TIMER);
+        settings["maxDisplayRows"] = std::to_string(hud.m_maxDisplayRows);
+        settings["showHeaders"] = hud.m_bShowHeaders ? "1" : "0";
+        settings["showMode"] = std::to_string(static_cast<int>(hud.m_showMode));
+        settings["onJoinDurationMs"] = std::to_string(hud.m_onJoinDurationMs);  // INI-only
+        settings["showSelf"] = hud.m_showSelf ? "1" : "0";
+        cache["FriendsHud"] = std::move(settings);
+    }
+#endif
 
     // Capture LapConsistencyHud
     {
@@ -2128,14 +2173,7 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
 
     captureWidget("LapWidget", hudManager.getLapWidget());
     captureWidget("PositionWidget", hudManager.getPositionWidget());
-    // TimeWidget has showSessionType setting
-    {
-        HudSettings settings;
-        const auto& hud = hudManager.getTimeWidget();
-        captureBaseHudSettings(settings, hud);
-        settings["showSessionType"] = std::to_string(hud.getShowSessionType() ? 1 : 0);
-        cache["TimeWidget"] = std::move(settings);
-    }
+    captureWidget("TimeWidget", hudManager.getTimeWidget());
     // ClockWidget with showUtc, utcOnTop (format24h moved to [General])
     {
         HudSettings settings;
@@ -2430,6 +2468,15 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
             try {
                 if (settings.count(DISPLAY_ROW_COUNT)) hud.m_displayRowCount = validateDisplayRows(std::stoi(settings.at(DISPLAY_ROW_COUNT)));
                 loadStandingsColumns(settings, hud.m_enabledColumns);  // Named keys instead of bitmask
+                // Positions-gained mode. Migrate from the old col_posgain bit (a plain on/off
+                // that meant "since race start") when the new key is absent.
+                if (settings.count(POSGAIN_MODE)) {
+                    hud.m_posGainMode = stringToPosGainMode(settings.at(POSGAIN_MODE));
+                } else {
+                    hud.m_posGainMode = (hud.m_enabledColumns & StandingsHud::COL_POSGAIN)
+                        ? StandingsHud::PosGainMode::RACE_START
+                        : StandingsHud::PosGainMode::OFF;
+                }
                 if (settings.count(GAP_MODE)) {
                     hud.m_gapMode = stringToGapMode(settings.at(GAP_MODE));
                 } else if (settings.count("showGapColumn")) {
@@ -2489,6 +2536,9 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
                 if (settings.count(SHOW_HEADERS)) {
                     hud.m_bShowHeaders = std::stoi(settings.at(SHOW_HEADERS)) != 0;
                 }
+                if (settings.count(SHOW_SESSION_INFO)) {
+                    hud.m_bShowSessionInfo = std::stoi(settings.at(SHOW_SESSION_INFO)) != 0;
+                }
                 if (settings.count(LIVE_GAPS)) {
                     hud.m_bLiveGaps = std::stoi(settings.at(LIVE_GAPS)) != 0;
                 }
@@ -2513,6 +2563,11 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
                     int chars = std::stoi(settings.at(IniOnly::Standings::SHORT_NAME_CHARS.key));
                     hud.m_shortNameChars = std::max(StandingsHud::MIN_SHORT_NAME_CHARS,
                         std::min(chars, StandingsHud::MAX_SHORT_NAME_CHARS));
+                }
+                if (settings.count(IniOnly::Standings::LONG_NAME_CHARS.key)) {
+                    int chars = std::stoi(settings.at(IniOnly::Standings::LONG_NAME_CHARS.key));
+                    hud.m_longNameChars = std::max(StandingsHud::MIN_LONG_NAME_CHARS,
+                        std::min(chars, StandingsHud::MAX_LONG_NAME_CHARS));
                 }
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("StandingsHud: Failed to parse settings: %s", e.what());
@@ -2676,6 +2731,44 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
             hud.setDataDirty();
         }
     }
+
+#if GAME_HAS_STEAM_FRIENDS
+    // Apply FriendsHud
+    {
+        auto it = cache.find("FriendsHud");
+        if (it != cache.end()) {
+            auto& hud = hudManager.getFriendsHud();
+            applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                loadBitFromKey(settings, "col_server", hud.m_enabledColumns, FriendsHud::COL_SERVER);
+                loadBitFromKey(settings, "col_track",  hud.m_enabledColumns, FriendsHud::COL_TRACK);
+                loadBitFromKey(settings, "col_info",   hud.m_enabledColumns, FriendsHud::COL_INFO);
+                loadBitFromKey(settings, "col_timer",  hud.m_enabledColumns, FriendsHud::COL_TIMER);
+                if (settings.count("maxDisplayRows")) {
+                    int r = std::stoi(settings.at("maxDisplayRows"));
+                    hud.m_maxDisplayRows = std::max(FriendsHud::MIN_DISPLAY_ROWS, std::min(FriendsHud::MAX_DISPLAY_ROWS, r));
+                }
+                if (settings.count("showHeaders")) hud.m_bShowHeaders = std::stoi(settings.at("showHeaders")) != 0;
+                if (settings.count("showMode")) {
+                    int sm = std::stoi(settings.at("showMode"));
+                    if (sm >= 0 && sm < static_cast<int>(FriendsHud::ShowMode::COUNT)) {
+                        hud.m_showMode = static_cast<FriendsHud::ShowMode>(sm);
+                    }
+                }
+                if (settings.count("onJoinDurationMs")) {
+                    int ms = std::stoi(settings.at("onJoinDurationMs"));
+                    hud.m_onJoinDurationMs = std::max(1000, std::min(120000, ms));  // 1s..2min
+                }
+                if (settings.count("showSelf")) hud.m_showSelf = std::stoi(settings.at("showSelf")) != 0;
+            } catch (const std::exception& e) {
+                DEBUG_WARN_F("FriendsHud: Failed to parse settings: %s", e.what());
+            }
+            hud.setDataDirty();
+        }
+    }
+#endif
 
     // Apply LapConsistencyHud
     {
@@ -2928,24 +3021,7 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
     // Apply simple widgets
     applyToHud("LapWidget", hudManager.getLapWidget());
     applyToHud("PositionWidget", hudManager.getPositionWidget());
-    // Apply TimeWidget with showSessionType setting
-    {
-        auto it = cache.find("TimeWidget");
-        if (it != cache.end()) {
-            auto& hud = hudManager.getTimeWidget();
-            applyBaseHudSettings(hud, it->second);
-
-            const auto& settings = it->second;
-            try {
-                if (settings.count("showSessionType")) {
-                    hud.setShowSessionType(std::stoi(settings.at("showSessionType")) != 0);
-                }
-            } catch (const std::exception& e) {
-                DEBUG_WARN_F("TimeWidget: Failed to parse settings: %s", e.what());
-            }
-            hud.setDataDirty();
-        }
-    }
+    applyToHud("TimeWidget", hudManager.getTimeWidget());
     // Apply ClockWidget with showUtc, utcOnTop (format24h moved to [General], legacy fallback here)
     {
         auto it = cache.find("ClockWidget");
@@ -3700,8 +3776,6 @@ void SettingsManager::copyToProfile(HudManager& hudManager, ProfileType targetPr
 void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& hudManager) const {
     // Write General section (global preferences)
     out << "[General]\n";
-    out << "gridSnapping=" << (UiConfig::getInstance().getGridSnapping() ? 1 : 0) << "\n";
-    out << "screenClamping=" << (UiConfig::getInstance().getScreenClamping() ? 1 : 0) << "\n";
     out << "autoSave=" << (UiConfig::getInstance().getAutoSave() ? 1 : 0) << "\n";
     out << "controller=" << XInputReader::getInstance().getRumbleConfig().controllerIndex << "\n";
     out << "pbScope=" << pbScopeToString(UiConfig::getInstance().getPBScope()) << "\n";
@@ -3711,6 +3785,9 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
 #endif
 #if GAME_HAS_DISCORD
     out << "discordRichPresence=" << (DiscordManager::getInstance().isEnabled() ? 1 : 0) << "\n";
+#endif
+#if GAME_HAS_STEAM_FRIENDS
+    out << "steamFriends=" << (SteamFriendsManager::getInstance().isEnabled() ? 1 : 0) << "\n";
 #endif
     out << "filterDnsRiders=" << (PluginData::getInstance().isFilterDnsRiders() ? 1 : 0) << "\n";
 #if GAME_HAS_HTTP_SERVER
@@ -3759,6 +3836,7 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
     out << IniOnly::Advanced::DROP_SHADOW_OFFSET_Y.key << "=" << UiConfig::getInstance().getDropShadowOffsetY() << " ; " << IniOnly::Advanced::DROP_SHADOW_OFFSET_Y.description << "\n";
     out << IniOnly::Advanced::DROP_SHADOW_COLOR.key << "=" << PluginUtils::formatColorHex(UiConfig::getInstance().getDropShadowColor()) << " ; " << IniOnly::Advanced::DROP_SHADOW_COLOR.description << "\n";
     out << IniOnly::Advanced::HOLD_REPEAT_FAST_MS.key << "=" << UiConfig::getInstance().getHoldRepeatFastMs() << " ; " << IniOnly::Advanced::HOLD_REPEAT_FAST_MS.description << "\n";
+    out << IniOnly::Advanced::CURSOR_ACTIVATION_THRESHOLD.key << "=" << UiConfig::getInstance().getCursorActivationThreshold() << " ; " << IniOnly::Advanced::CURSOR_ACTIVATION_THRESHOLD.description << "\n";
     out << IniOnly::Advanced::HAZARD_STATIONARY_TOLERANCE.key << "=" << PluginData::getInstance().getHazardStationaryTolerance() << " ; " << IniOnly::Advanced::HAZARD_STATIONARY_TOLERANCE.description << "\n";
     out << IniOnly::Advanced::HAZARD_STATIONARY_DURATION_MS.key << "=" << PluginData::getInstance().getHazardStationaryDurationMs() << " ; " << IniOnly::Advanced::HAZARD_STATIONARY_DURATION_MS.description << "\n";
     out << IniOnly::Advanced::HAZARD_WRONG_WAY_DURATION_MS.key << "=" << PluginData::getInstance().getHazardWrongWayDurationMs() << " ; " << IniOnly::Advanced::HAZARD_WRONG_WAY_DURATION_MS.description << "\n";
@@ -3766,6 +3844,7 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
     out << IniOnly::Advanced::HAZARD_COOLDOWN_MS.key << "=" << PluginData::getInstance().getHazardCooldownMs() << " ; " << IniOnly::Advanced::HAZARD_COOLDOWN_MS.description << "\n";
     out << IniOnly::Advanced::HAZARD_GRACE_PERIOD_MS.key << "=" << PluginData::getInstance().getHazardGracePeriodMs() << " ; " << IniOnly::Advanced::HAZARD_GRACE_PERIOD_MS.description << "\n";
     out << IniOnly::Advanced::BLUE_FLAG_AWARENESS_DISTANCE.key << "=" << PluginData::getInstance().getBlueFlagAwarenessDistance() << " ; " << IniOnly::Advanced::BLUE_FLAG_AWARENESS_DISTANCE.description << "\n";
+    out << IniOnly::Advanced::GAP_NOTIFY_INTERVAL_MS.key << "=" << PluginData::getInstance().getGapNotifyIntervalMs() << " ; " << IniOnly::Advanced::GAP_NOTIFY_INTERVAL_MS.description << "\n";
 #if GAME_HAS_HTTP_SERVER
     out << IniOnly::Advanced::WEB_SERVER_PORT.key << "=" << HttpServer::getInstance().getPort() << " ; " << IniOnly::Advanced::WEB_SERVER_PORT.description << "\n";
     out << IniOnly::Advanced::WEB_SERVER_THROTTLE_MS.key << "=" << HttpServer::getInstance().getThrottleMs() << " ; " << IniOnly::Advanced::WEB_SERVER_THROTTLE_MS.description << "\n";
@@ -3781,7 +3860,9 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
     out << "tempUnit=" << tempUnitToString(UiConfig::getInstance().getTemperatureUnit()) << "\n";
     out << "format24h=" << (hudManager.getClockWidget().getFormat24h() ? 1 : 0) << "\n";
     out << "shortTimeFormat=" << (PluginData::getInstance().isShortTimeFormat() ? 1 : 0) << "\n";
-    out << "dropShadow=" << (UiConfig::getInstance().getDropShadow() ? 1 : 0) << "\n\n";
+    out << "dropShadow=" << (UiConfig::getInstance().getDropShadow() ? 1 : 0) << "\n";
+    out << "gridSnapping=" << (UiConfig::getInstance().getGridSnapping() ? 1 : 0) << "\n";
+    out << "screenClamping=" << (UiConfig::getInstance().getScreenClamping() ? 1 : 0) << "\n\n";
 
     // Write Colors section
     const ColorConfig& colorConfig = ColorConfig::getInstance();
@@ -3815,21 +3896,43 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
     out << "additive_blend=" << (rumbleConfig.additiveBlend ? 1 : 0) << "\n";
     out << "rumble_when_crashed=" << (rumbleConfig.rumbleWhenCrashed ? 1 : 0) << "\n";
     out << "use_per_bike_effects=" << (rumbleConfig.usePerBikeEffects ? 1 : 0) << "\n";
-    // Suspension effect
+    out << "send_interval_ms=" << XInputReader::getInstance().getRumbleSendIntervalMs()
+        << " ; Min ms between rumble updates; raise to reduce Bluetooth traffic (4-200, default 10)\n";
+    // Suspension effect (with optional front/rear split)
     out << "susp_min_input=" << rumbleConfig.suspensionEffect.minInput << "\n";
     out << "susp_max_input=" << rumbleConfig.suspensionEffect.maxInput << "\n";
     out << "susp_light_strength=" << rumbleConfig.suspensionEffect.lightStrength << "\n";
     out << "susp_heavy_strength=" << rumbleConfig.suspensionEffect.heavyStrength << "\n";
+    out << "susp_split=" << (rumbleConfig.suspensionSplit ? 1 : 0) << "\n";
+    out << "susp_split_init=" << (rumbleConfig.suspensionSplitInitialized ? 1 : 0) << "\n";
+    out << "susp_front_min_input=" << rumbleConfig.suspensionEffectFront.minInput << "\n";
+    out << "susp_front_max_input=" << rumbleConfig.suspensionEffectFront.maxInput << "\n";
+    out << "susp_front_light_strength=" << rumbleConfig.suspensionEffectFront.lightStrength << "\n";
+    out << "susp_front_heavy_strength=" << rumbleConfig.suspensionEffectFront.heavyStrength << "\n";
+    out << "susp_rear_min_input=" << rumbleConfig.suspensionEffectRear.minInput << "\n";
+    out << "susp_rear_max_input=" << rumbleConfig.suspensionEffectRear.maxInput << "\n";
+    out << "susp_rear_light_strength=" << rumbleConfig.suspensionEffectRear.lightStrength << "\n";
+    out << "susp_rear_heavy_strength=" << rumbleConfig.suspensionEffectRear.heavyStrength << "\n";
     // Wheelspin effect
     out << "wheel_min_input=" << rumbleConfig.wheelspinEffect.minInput << "\n";
     out << "wheel_max_input=" << rumbleConfig.wheelspinEffect.maxInput << "\n";
     out << "wheel_light_strength=" << rumbleConfig.wheelspinEffect.lightStrength << "\n";
     out << "wheel_heavy_strength=" << rumbleConfig.wheelspinEffect.heavyStrength << "\n";
-    // Brake lockup effect
+    // Brake lockup effect (with optional front/rear split)
     out << "lockup_min_input=" << rumbleConfig.brakeLockupEffect.minInput << "\n";
     out << "lockup_max_input=" << rumbleConfig.brakeLockupEffect.maxInput << "\n";
     out << "lockup_light_strength=" << rumbleConfig.brakeLockupEffect.lightStrength << "\n";
     out << "lockup_heavy_strength=" << rumbleConfig.brakeLockupEffect.heavyStrength << "\n";
+    out << "lockup_split=" << (rumbleConfig.brakeLockupSplit ? 1 : 0) << "\n";
+    out << "lockup_split_init=" << (rumbleConfig.brakeLockupSplitInitialized ? 1 : 0) << "\n";
+    out << "lockup_front_min_input=" << rumbleConfig.brakeLockupEffectFront.minInput << "\n";
+    out << "lockup_front_max_input=" << rumbleConfig.brakeLockupEffectFront.maxInput << "\n";
+    out << "lockup_front_light_strength=" << rumbleConfig.brakeLockupEffectFront.lightStrength << "\n";
+    out << "lockup_front_heavy_strength=" << rumbleConfig.brakeLockupEffectFront.heavyStrength << "\n";
+    out << "lockup_rear_min_input=" << rumbleConfig.brakeLockupEffectRear.minInput << "\n";
+    out << "lockup_rear_max_input=" << rumbleConfig.brakeLockupEffectRear.maxInput << "\n";
+    out << "lockup_rear_light_strength=" << rumbleConfig.brakeLockupEffectRear.lightStrength << "\n";
+    out << "lockup_rear_heavy_strength=" << rumbleConfig.brakeLockupEffectRear.heavyStrength << "\n";
     // RPM effect
     out << "rpm_min_input=" << rumbleConfig.rpmEffect.minInput << "\n";
     out << "rpm_max_input=" << rumbleConfig.rpmEffect.maxInput << "\n";
@@ -3854,7 +3957,17 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
     out << "wheelie_min_input=" << rumbleConfig.wheelieEffect.minInput << "\n";
     out << "wheelie_max_input=" << rumbleConfig.wheelieEffect.maxInput << "\n";
     out << "wheelie_light_strength=" << rumbleConfig.wheelieEffect.lightStrength << "\n";
-    out << "wheelie_heavy_strength=" << rumbleConfig.wheelieEffect.heavyStrength << "\n\n";
+    out << "wheelie_heavy_strength=" << rumbleConfig.wheelieEffect.heavyStrength << "\n";
+    // Rev limiter effect (Min/Max are percent of the bike's limiter RPM)
+    out << "revlim_min_input=" << rumbleConfig.revLimiterEffect.minInput << "\n";
+    out << "revlim_max_input=" << rumbleConfig.revLimiterEffect.maxInput << "\n";
+    out << "revlim_light_strength=" << rumbleConfig.revLimiterEffect.lightStrength << "\n";
+    out << "revlim_heavy_strength=" << rumbleConfig.revLimiterEffect.heavyStrength << "\n";
+    // Pit limiter effect (binary input)
+    out << "pitlim_min_input=" << rumbleConfig.pitLimiterEffect.minInput << "\n";
+    out << "pitlim_max_input=" << rumbleConfig.pitLimiterEffect.maxInput << "\n";
+    out << "pitlim_light_strength=" << rumbleConfig.pitLimiterEffect.lightStrength << "\n";
+    out << "pitlim_heavy_strength=" << rumbleConfig.pitLimiterEffect.heavyStrength << "\n\n";
 
     // Write HelmetOverlay section (global, not per-profile)
     {
@@ -3875,18 +3988,22 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
         out << "visorTintOpacity=" << hud.m_visorTintOpacity << "\n\n";
     }
 
-    // Write Hotkeys section
+    // Write Hotkeys section. Keys are named per action (e.g. standings_key) so
+    // the file is self-documenting; values are numeric codes: _key = Windows
+    // virtual-key code, _mod = modifier bitmask (1=Ctrl, 2=Shift, 4=Alt),
+    // _btn = controller button. 0 means unbound. Actions with no row in the
+    // settings UI (e.g. rumble/helmet/performance) are still written here and
+    // can be bound by hand-editing.
     const HotkeyManager& hotkeyMgr = HotkeyManager::getInstance();
     out << "[Hotkeys]\n";
     for (int i = 0; i < static_cast<int>(HotkeyAction::COUNT); ++i) {
         HotkeyAction action = static_cast<HotkeyAction>(i);
         const HotkeyBinding& binding = hotkeyMgr.getBinding(action);
+        const char* name = getActionConfigName(action);
 
-        // Save keyboard binding
-        out << "action" << i << "_key=" << static_cast<int>(binding.keyboard.keyCode) << "\n";
-        out << "action" << i << "_mod=" << static_cast<int>(binding.keyboard.modifiers) << "\n";
-        // Save controller binding
-        out << "action" << i << "_btn=" << static_cast<int>(binding.controller) << "\n";
+        out << name << "_key=" << static_cast<int>(binding.keyboard.keyCode) << "\n";
+        out << name << "_mod=" << static_cast<int>(binding.keyboard.modifiers) << "\n";
+        out << name << "_btn=" << static_cast<int>(binding.controller) << "\n";
     }
     out << "\n";
 
@@ -3896,11 +4013,7 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                                       const std::string& value, HudManager& hudManager) {
     if (section == "General") {
         try {
-            if (key == "gridSnapping") {
-                UiConfig::getInstance().setGridSnapping(std::stoi(value) != 0);
-            } else if (key == "screenClamping") {
-                UiConfig::getInstance().setScreenClamping(std::stoi(value) != 0);
-            } else if (key == "autoSave") {
+            if (key == "autoSave") {
                 UiConfig::getInstance().setAutoSave(std::stoi(value) != 0);
             }
             // Legacy read-only fallbacks: update settings relocated to [Updates]. Old INIs
@@ -3944,6 +4057,11 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                 DiscordManager::getInstance().setEnabled(std::stoi(value) != 0);
             }
 #endif
+#if GAME_HAS_STEAM_FRIENDS
+            else if (key == "steamFriends") {
+                SteamFriendsManager::getInstance().setEnabled(std::stoi(value) != 0);
+            }
+#endif
             else if (key == "filterDnsRiders") {
                 PluginData::getInstance().setFilterDnsRiders(std::stoi(value) != 0);
             }
@@ -3952,7 +4070,7 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                 HttpServer::getInstance().setEnabled(std::stoi(value) != 0);
             }
 #endif
-            // Legacy read-only fallbacks: these six relocated to [Display]. Old INIs
+            // Legacy read-only fallbacks: these eight relocated to [Display]. Old INIs
             // still carry them under [General], so read them here to preserve values
             // on upgrade. Saving writes them only under [Display], so they migrate on
             // the next save and these branches stop matching.
@@ -3968,6 +4086,10 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                 PluginData::getInstance().setShortTimeFormat(std::stoi(value) != 0);
             } else if (key == "dropShadow") {
                 UiConfig::getInstance().setDropShadow(std::stoi(value) != 0);
+            } else if (key == "gridSnapping") {
+                UiConfig::getInstance().setGridSnapping(std::stoi(value) != 0);
+            } else if (key == "screenClamping") {
+                UiConfig::getInstance().setScreenClamping(std::stoi(value) != 0);
             }
         } catch (const std::exception& e) {
             DEBUG_WARN_F("General: Failed to parse settings: %s", e.what());
@@ -3991,6 +4113,10 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                 PluginData::getInstance().setShortTimeFormat(std::stoi(value) != 0);
             } else if (key == "dropShadow") {
                 UiConfig::getInstance().setDropShadow(std::stoi(value) != 0);
+            } else if (key == "gridSnapping") {
+                UiConfig::getInstance().setGridSnapping(std::stoi(value) != 0);
+            } else if (key == "screenClamping") {
+                UiConfig::getInstance().setScreenClamping(std::stoi(value) != 0);
             }
         } catch (const std::exception& e) {
             DEBUG_WARN_F("Display: Failed to parse settings: %s", e.what());
@@ -4078,6 +4204,8 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                 UiConfig::getInstance().setDropShadowColor(PluginUtils::parseColorHex(value));
             } else if (key == "holdRepeatFastMs") {
                 UiConfig::getInstance().setHoldRepeatFastMs(std::stoi(value));
+            } else if (key == "cursorActivationThreshold") {
+                UiConfig::getInstance().setCursorActivationThreshold(std::stof(value));
             } else if (key == "hazardStationaryTolerance") {
                 PluginData::getInstance().setHazardStationaryTolerance(std::stof(value));
             } else if (key == "hazardStationaryDurationMs") {
@@ -4092,6 +4220,8 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                 PluginData::getInstance().setHazardGracePeriodMs(std::stoi(value));
             } else if (key == "blueFlagAwarenessDistance") {
                 PluginData::getInstance().setBlueFlagAwarenessDistance(std::stof(value));
+            } else if (key == "gapNotifyIntervalMs") {
+                PluginData::getInstance().setGapNotifyIntervalMs(std::stoi(value));
             }
 #if GAME_HAS_HTTP_SERVER
             else if (key == "webServerPort") {
@@ -4172,6 +4302,9 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
             } else if (key == "use_per_bike_effects" || key == "use_per_bike_profiles") {
                 // Note: use_per_bike_profiles is backward compatible alias
                 config.usePerBikeEffects = std::stoi(value) != 0;
+            } else if (key == "send_interval_ms") {
+                // Global (never per-bike): lives on XInputReader, not RumbleConfig
+                XInputReader::getInstance().setRumbleSendIntervalMs(std::stoi(value));
             } else if (key == "disable_on_crash") {
                 // Backward compatibility: invert the old setting
                 config.rumbleWhenCrashed = std::stoi(value) == 0;
@@ -4185,6 +4318,26 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                 config.suspensionEffect.lightStrength = std::stof(value);
             } else if (key == "susp_heavy_strength") {
                 config.suspensionEffect.heavyStrength = std::stof(value);
+            } else if (key == "susp_split") {
+                config.suspensionSplit = std::stoi(value) != 0;
+            } else if (key == "susp_split_init") {
+                config.suspensionSplitInitialized = std::stoi(value) != 0;
+            } else if (key == "susp_front_min_input") {
+                config.suspensionEffectFront.minInput = std::stof(value);
+            } else if (key == "susp_front_max_input") {
+                config.suspensionEffectFront.maxInput = std::stof(value);
+            } else if (key == "susp_front_light_strength") {
+                config.suspensionEffectFront.lightStrength = std::stof(value);
+            } else if (key == "susp_front_heavy_strength") {
+                config.suspensionEffectFront.heavyStrength = std::stof(value);
+            } else if (key == "susp_rear_min_input") {
+                config.suspensionEffectRear.minInput = std::stof(value);
+            } else if (key == "susp_rear_max_input") {
+                config.suspensionEffectRear.maxInput = std::stof(value);
+            } else if (key == "susp_rear_light_strength") {
+                config.suspensionEffectRear.lightStrength = std::stof(value);
+            } else if (key == "susp_rear_heavy_strength") {
+                config.suspensionEffectRear.heavyStrength = std::stof(value);
             }
             // Wheelspin effect
             else if (key == "wheel_min_input") {
@@ -4205,6 +4358,26 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                 config.brakeLockupEffect.lightStrength = std::stof(value);
             } else if (key == "lockup_heavy_strength") {
                 config.brakeLockupEffect.heavyStrength = std::stof(value);
+            } else if (key == "lockup_split") {
+                config.brakeLockupSplit = std::stoi(value) != 0;
+            } else if (key == "lockup_split_init") {
+                config.brakeLockupSplitInitialized = std::stoi(value) != 0;
+            } else if (key == "lockup_front_min_input") {
+                config.brakeLockupEffectFront.minInput = std::stof(value);
+            } else if (key == "lockup_front_max_input") {
+                config.brakeLockupEffectFront.maxInput = std::stof(value);
+            } else if (key == "lockup_front_light_strength") {
+                config.brakeLockupEffectFront.lightStrength = std::stof(value);
+            } else if (key == "lockup_front_heavy_strength") {
+                config.brakeLockupEffectFront.heavyStrength = std::stof(value);
+            } else if (key == "lockup_rear_min_input") {
+                config.brakeLockupEffectRear.minInput = std::stof(value);
+            } else if (key == "lockup_rear_max_input") {
+                config.brakeLockupEffectRear.maxInput = std::stof(value);
+            } else if (key == "lockup_rear_light_strength") {
+                config.brakeLockupEffectRear.lightStrength = std::stof(value);
+            } else if (key == "lockup_rear_heavy_strength") {
+                config.brakeLockupEffectRear.heavyStrength = std::stof(value);
             }
             // RPM effect
             else if (key == "rpm_min_input") {
@@ -4256,6 +4429,26 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
             } else if (key == "wheelie_heavy_strength") {
                 config.wheelieEffect.heavyStrength = std::stof(value);
             }
+            // Rev limiter effect
+            else if (key == "revlim_min_input") {
+                config.revLimiterEffect.minInput = std::stof(value);
+            } else if (key == "revlim_max_input") {
+                config.revLimiterEffect.maxInput = std::stof(value);
+            } else if (key == "revlim_light_strength") {
+                config.revLimiterEffect.lightStrength = std::stof(value);
+            } else if (key == "revlim_heavy_strength") {
+                config.revLimiterEffect.heavyStrength = std::stof(value);
+            }
+            // Pit limiter effect
+            else if (key == "pitlim_min_input") {
+                config.pitLimiterEffect.minInput = std::stof(value);
+            } else if (key == "pitlim_max_input") {
+                config.pitLimiterEffect.maxInput = std::stof(value);
+            } else if (key == "pitlim_light_strength") {
+                config.pitLimiterEffect.lightStrength = std::stof(value);
+            } else if (key == "pitlim_heavy_strength") {
+                config.pitLimiterEffect.heavyStrength = std::stof(value);
+            }
         } catch (const std::exception& e) {
             DEBUG_WARN_F("Rumble: Failed to parse settings: %s", e.what());
         }
@@ -4303,26 +4496,42 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
     if (section == "Hotkeys") {
         HotkeyManager& hotkeyMgr = HotkeyManager::getInstance();
         try {
-            // Parse action index from key name (e.g., "action0_key" -> 0)
-            if (key.length() > 7 && key.substr(0, 6) == "action") {
-                size_t underscorePos = key.find('_', 6);
-                if (underscorePos != std::string::npos) {
-                    int actionIdx = std::stoi(key.substr(6, underscorePos - 6));
-                    if (actionIdx >= 0 && actionIdx < static_cast<int>(HotkeyAction::COUNT)) {
-                        HotkeyAction action = static_cast<HotkeyAction>(actionIdx);
-                        std::string suffix = key.substr(underscorePos + 1);
+            // Split at the LAST underscore: <name>_<suffix> (suffix = key/mod/btn).
+            // Names can contain underscores (e.g. "lap_log", "overlay_last_lap").
+            size_t lastUnderscore = key.rfind('_');
+            if (lastUnderscore == std::string::npos) return true;
+            std::string name = key.substr(0, lastUnderscore);
+            std::string suffix = key.substr(lastUnderscore + 1);
 
-                        HotkeyBinding binding = hotkeyMgr.getBinding(action);
-                        if (suffix == "key") {
-                            binding.keyboard.keyCode = static_cast<uint8_t>(std::stoi(value));
-                        } else if (suffix == "mod") {
-                            binding.keyboard.modifiers = static_cast<ModifierFlags>(std::stoi(value));
-                        } else if (suffix == "btn") {
-                            binding.controller = static_cast<ControllerButton>(std::stoi(value));
-                        }
-                        hotkeyMgr.setBinding(action, binding);
+            // Resolve the action. New keys are name-based ("standings_key"); the
+            // old index-based form ("action0_key") is still accepted so existing
+            // configs migrate automatically - read here, written back in the new
+            // form on the next save.
+            HotkeyAction action = HotkeyAction::COUNT;
+            if (name.length() > 6 && name.substr(0, 6) == "action") {
+                int idx = std::stoi(name.substr(6));
+                if (idx >= 0 && idx < static_cast<int>(HotkeyAction::COUNT)) {
+                    action = static_cast<HotkeyAction>(idx);
+                }
+            } else {
+                for (int i = 0; i < static_cast<int>(HotkeyAction::COUNT); ++i) {
+                    if (name == getActionConfigName(static_cast<HotkeyAction>(i))) {
+                        action = static_cast<HotkeyAction>(i);
+                        break;
                     }
                 }
+            }
+
+            if (action != HotkeyAction::COUNT) {
+                HotkeyBinding binding = hotkeyMgr.getBinding(action);
+                if (suffix == "key") {
+                    binding.keyboard.keyCode = static_cast<uint8_t>(std::stoi(value));
+                } else if (suffix == "mod") {
+                    binding.keyboard.modifiers = static_cast<ModifierFlags>(std::stoi(value));
+                } else if (suffix == "btn") {
+                    binding.controller = static_cast<ControllerButton>(std::stoi(value));
+                }
+                hotkeyMgr.setBinding(action, binding);
             }
         } catch (const std::exception& e) {
             DEBUG_WARN_F("Hotkeys: Failed to parse settings: %s", e.what());
@@ -4377,9 +4586,11 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
 
     // HUD order for consistent output
     // Note: HelmetOverlayHud is global (own [HelmetOverlay] section), not in this per-profile list.
-    static const std::array<const char*, 38> hudOrder = {
+    // Game-gated HUDs (FmxHud, RecordsHud, FriendsHud) are listed unconditionally;
+    // they're skipped below when absent from m_hudDefaults on builds without them.
+    static const std::array<const char*, 39> hudOrder = {
         "StandingsHud", "MapHud", "RadarHud", "PitboardHud", "RecordsHud",
-        "LapLogHud", "LapConsistencyHud", "FmxHud", "StatsHud", "EventLogHud", "IdealLapHud", "TelemetryHud", "PerformanceHud",
+        "LapLogHud", "LapConsistencyHud", "FmxHud", "StatsHud", "EventLogHud", "FriendsHud", "IdealLapHud", "TelemetryHud", "PerformanceHud",
         "LapWidget", "PositionWidget", "TimeWidget", "ClockWidget", "SessionHud", "SpeedWidget", "GearWidget",
         "SpeedoWidget", "TachoWidget", "TimingHud", "GapBarHud", "BarsWidget", "VersionWidget",
         "NoticesHud", "FuelWidget", "GamepadWidget", "LeanWidget", "GForceWidget", "TyreTempWidget", "EcuWidget", "SettingsButtonWidget", "PointerWidget", "RumbleHud",
@@ -4749,7 +4960,14 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                 // (without this, user-added base keys like color_primary would migrate to profile sections)
                 // Normalize color values to canonical format so string diffs work after captureToProfile
                 if (key.rfind("color_", 0) == 0) {
-                    m_hudDefaults[currentHudName][key] = PluginUtils::formatColorHex(PluginUtils::parseColorHex(value));
+                    try {
+                        m_hudDefaults[currentHudName][key] = PluginUtils::formatColorHex(PluginUtils::parseColorHex(value));
+                    } catch (const std::exception&) {
+                        // Malformed hand-edited color value - keep the raw string
+                        // rather than aborting the whole loadSettings() parse
+                        DEBUG_WARN_F("Invalid color value '%s' for [%s] %s", value.c_str(), currentHudName.c_str(), key.c_str());
+                        m_hudDefaults[currentHudName][key] = value;
+                    }
                 } else {
                     m_hudDefaults[currentHudName][key] = value;
                 }

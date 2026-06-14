@@ -39,9 +39,13 @@ void TelemetryHud::update() {
         return;
     }
 
-    // Always rebuild - scrolling graph needs continuous updates every frame
-    // History data arrives at 100Hz physics rate, but graph renders at display rate (~60Hz)
-    rebuildRenderData();
+    // Rebuild only when new telemetry arrived (data dirty fires per
+    // InputTelemetry change, ~100Hz) or layout changed. The graph output is
+    // identical between telemetry ticks, so rebuilding every render frame
+    // (e.g. 240fps) wasted >50% of the ~1600 line-segment builds.
+    if (isDataDirty() || isLayoutDirty()) {
+        rebuildRenderData();
+    }
     clearDataDirty();
     clearLayoutDirty();
 }
@@ -484,7 +488,7 @@ void TelemetryHud::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.7315f, 0.4773f);
+    setPosition(0.7315f, 0.4440f);
     m_enabledElements = ELEM_DEFAULT;
     m_displayMode = DISPLAY_DEFAULT;
     setDataDirty();

@@ -71,7 +71,8 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
     // Column layout - wider fields for better readability
     float actionX = ctx.labelX;
     float keyboardX = actionX + charWidth * 14;  // After action name
-    float controllerX = keyboardX + charWidth * 22;  // After keyboard binding (wider)
+    float controllerX = keyboardX + charWidth * 21;  // After keyboard binding (wider);
+                                                     // 21 (not 22) keeps the clear "x" inside the row highlight
 
     // Field widths (characters inside brackets)
     constexpr int kbFieldWidth = 16;   // Fits "Ctrl+Shift+F12"
@@ -88,6 +89,7 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
     // Store layout info for hover detection in update()
     ctx.parent->m_hotkeyContentStartY = ctx.currentY;
     ctx.parent->m_hotkeyRowHeight = ctx.lineHeightNormal;
+    ctx.parent->m_hotkeyRowTops.clear();  // Refilled per row below (handles the spacer gaps)
     ctx.parent->m_hotkeyKeyboardX = keyboardX;
     ctx.parent->m_hotkeyControllerX = controllerX;
     ctx.parent->m_hotkeyFieldCharWidth = charWidth;
@@ -125,6 +127,12 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
             case HotkeyAction::TOGGLE_SESSION:         return "hotkeys.session";
             case HotkeyAction::TOGGLE_NOTICES:         return "hotkeys.notices";
             case HotkeyAction::TOGGLE_EVENT_LOG:       return "hotkeys.event_log";
+            case HotkeyAction::TOGGLE_HELMET:          return "hotkeys.helmet";
+            case HotkeyAction::TOGGLE_FRIENDS:         return "hotkeys.friends";
+            case HotkeyAction::OVERLAY_FORCE_LAST_LAP:    return "hotkeys.overlay_last_lap";
+            case HotkeyAction::OVERLAY_FORCE_FASTEST_LAP: return "hotkeys.overlay_fastest_lap";
+            case HotkeyAction::OVERLAY_FORCE_DOWN_ORDER:  return "hotkeys.overlay_down_order";
+            case HotkeyAction::OVERLAY_FORCE_BATTLE:      return "hotkeys.overlay_battle";
             case HotkeyAction::TOGGLE_RUMBLE:      return "hotkeys.rumble";
             case HotkeyAction::TOGGLE_WIDGETS:     return "hotkeys.widgets";
             case HotkeyAction::TOGGLE_ALL_HUDS:    return "hotkeys.all_huds";
@@ -133,9 +141,30 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
         }
     };
 
+    // Draw a bracketed binding field with the brackets pinned to the monospace
+    // grid (a fixed columnX and close-bracket x), independent of the active font's
+    // glyph advance - so the keyboard/controller columns stay aligned regardless
+    // of the chosen Normal font. The binding text is truncated to the field width
+    // and drawn between the fixed brackets. The matching click region still spans
+    // the full field (unchanged at each call site below).
+    auto drawField = [&](float columnX, int fieldWidth, const char* text, unsigned long color) {
+        ctx.parent->addString("[", columnX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), color, ctx.fontSize);
+        char inner[48];
+        snprintf(inner, sizeof(inner), "%.*s", fieldWidth, text);  // truncate to fieldWidth chars
+        ctx.parent->addString(inner, columnX + charWidth, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), color, ctx.fontSize);
+        ctx.parent->addString("]", columnX + charWidth * (fieldWidth + 1), ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), color, ctx.fontSize);
+    };
+
     // Helper to add a hotkey row
     auto addHotkeyRow = [&](HotkeyAction action) {
         const HotkeyBinding& binding = hotkeyMgr.getBinding(action);
+
+        // Record this row's top Y so hover detection maps cursor->row exactly,
+        // regardless of the half-row spacers inserted between groups.
+        ctx.parent->m_hotkeyRowTops.push_back(ctx.currentY);
 
         // Add row-wide tooltip region
         const char* tooltipId = getTooltipId(action);
@@ -159,29 +188,22 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
         if (isCapturingKeyboard) {
             // Show capture prompt with real-time modifier feedback (accent color)
             ModifierFlags currentMods = hotkeyMgr.getCurrentModifiers();
-            char capturePrompt[40];
             std::string modPrefix;
             if (hasModifier(currentMods, ModifierFlags::CTRL)) modPrefix += "Ctrl+";
             if (hasModifier(currentMods, ModifierFlags::SHIFT)) modPrefix += "Shift+";
             if (hasModifier(currentMods, ModifierFlags::ALT)) modPrefix += "Alt+";
 
+            char prompt[40];
             if (modPrefix.empty()) {
-                snprintf(capturePrompt, sizeof(capturePrompt), "[%-*s]", kbFieldWidth, "Press Key...");
+                snprintf(prompt, sizeof(prompt), "Press Key...");
             } else {
-                char inner[32];
-                snprintf(inner, sizeof(inner), "%s...", modPrefix.c_str());
-                snprintf(capturePrompt, sizeof(capturePrompt), "[%-*s]", kbFieldWidth, inner);
+                snprintf(prompt, sizeof(prompt), "%s...", modPrefix.c_str());
             }
-            ctx.parent->addString(capturePrompt, kbX, ctx.currentY, Justify::LEFT,
-                Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+            drawField(kbX, kbFieldWidth, prompt, colorConfig.getAccent());
         } else {
-            // Show current binding with brackets
+            // Show current binding
             char keyStr[32];
             formatKeyBinding(binding.keyboard, keyStr, sizeof(keyStr));
-
-            // Format as clickable: [binding] - wider field, truncate if too long
-            char displayStr[48];
-            snprintf(displayStr, sizeof(displayStr), "[%-*.*s]", kbFieldWidth, kbFieldWidth, keyStr);
 
             // Determine color: hovered > bound > unbound
             bool isKbHovered = (ctx.parent->m_hoveredHotkeyRow == currentRowIndex &&
@@ -194,8 +216,7 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
             } else {
                 keyColor = colorConfig.getMuted();
             }
-            ctx.parent->addString(displayStr, kbX, ctx.currentY, Justify::LEFT,
-                Fonts::getNormal(), keyColor, ctx.fontSize);
+            drawField(kbX, kbFieldWidth, keyStr, keyColor);
 
             // Click region for keyboard binding (covers full field)
             ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
@@ -221,17 +242,10 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
 
         if (isCapturingController) {
             // Show capture prompt (accent color)
-            char capturePrompt[32];
-            snprintf(capturePrompt, sizeof(capturePrompt), "[%-*s]", ctrlFieldWidth, "Press Btn...");
-            ctx.parent->addString(capturePrompt, ctrlX, ctx.currentY, Justify::LEFT,
-                Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+            drawField(ctrlX, ctrlFieldWidth, "Press Btn...", colorConfig.getAccent());
         } else {
             // Show current binding
             const char* btnName = getControllerButtonName(binding.controller);
-
-            // Format as clickable: [binding] - wider field, truncate if too long
-            char displayStr[32];
-            snprintf(displayStr, sizeof(displayStr), "[%-*.*s]", ctrlFieldWidth, ctrlFieldWidth, btnName);
 
             // Determine color: hovered > bound > unbound
             bool isCtrlHovered = (ctx.parent->m_hoveredHotkeyRow == currentRowIndex &&
@@ -244,8 +258,7 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
             } else {
                 btnColor = colorConfig.getMuted();
             }
-            ctx.parent->addString(displayStr, ctrlX, ctx.currentY, Justify::LEFT,
-                Fonts::getNormal(), btnColor, ctx.fontSize);
+            drawField(ctrlX, ctrlFieldWidth, btnName, btnColor);
 
             // Click region for controller binding (covers full field)
             ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
@@ -269,12 +282,14 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
         ++currentRowIndex;
     };
 
-    // Settings Menu first
+    // Settings Menu pinned at the top (the master toggle for this menu).
     addHotkeyRow(HotkeyAction::TOGGLE_SETTINGS);
 
-    ctx.currentY += ctx.lineHeightNormal * 0.5f;  // Spacing after settings
-
-    // All HUD toggles (order matches left-hand menu)
+    // NOTE: Rumble, Helmet, Performance, Timing and Notices have no row here to
+    // keep the tab within the panel; they remain bindable by hand-editing the
+    // [Hotkeys] section of the INI (rumble_key=, timing_key=, notices_key=, ...).
+    ctx.addSpacing(0.5f);
+    ctx.addSectionHeader("HUDs");
     addHotkeyRow(HotkeyAction::TOGGLE_STANDINGS);
     addHotkeyRow(HotkeyAction::TOGGLE_MAP);
     addHotkeyRow(HotkeyAction::TOGGLE_RADAR);
@@ -285,26 +300,31 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
     addHotkeyRow(HotkeyAction::TOGGLE_RECORDS);
     addHotkeyRow(HotkeyAction::TOGGLE_PITBOARD);
     addHotkeyRow(HotkeyAction::TOGGLE_SESSION);
-    addHotkeyRow(HotkeyAction::TOGGLE_NOTICES);
-    addHotkeyRow(HotkeyAction::TOGGLE_TIMING);
     addHotkeyRow(HotkeyAction::TOGGLE_GAP_BAR);
+    addHotkeyRow(HotkeyAction::TOGGLE_EVENT_LOG);
+#if GAME_HAS_STEAM_FRIENDS
+    if (ctx.parent->m_friends) addHotkeyRow(HotkeyAction::TOGGLE_FRIENDS);
+#endif
 #if GAME_HAS_FMX
     addHotkeyRow(HotkeyAction::TOGGLE_FMX);
 #endif
     addHotkeyRow(HotkeyAction::TOGGLE_STATS);
-    addHotkeyRow(HotkeyAction::TOGGLE_EVENT_LOG);
-    addHotkeyRow(HotkeyAction::TOGGLE_HELMET);
-    addHotkeyRow(HotkeyAction::TOGGLE_PERFORMANCE);
-    addHotkeyRow(HotkeyAction::TOGGLE_RUMBLE);
 
-    ctx.currentY += ctx.lineHeightNormal * 0.5f;  // Spacing before All Widgets
-
+    ctx.addSpacing(0.5f);
+    ctx.addSectionHeader("Other");
     addHotkeyRow(HotkeyAction::TOGGLE_WIDGETS);
     addHotkeyRow(HotkeyAction::TOGGLE_ALL_HUDS);
-
-    ctx.currentY += ctx.lineHeightNormal * 0.5f;  // Spacing before utility actions
-
     addHotkeyRow(HotkeyAction::RELOAD_CONFIG);
+
+#if GAME_HAS_HTTP_SERVER
+    // Web overlay broadcaster controls: force a bottom-slot panel to slide in now.
+    ctx.addSpacing(0.5f);
+    ctx.addSectionHeader("Web Overlay");
+    addHotkeyRow(HotkeyAction::OVERLAY_FORCE_LAST_LAP);
+    addHotkeyRow(HotkeyAction::OVERLAY_FORCE_FASTEST_LAP);
+    addHotkeyRow(HotkeyAction::OVERLAY_FORCE_BATTLE);
+    addHotkeyRow(HotkeyAction::OVERLAY_FORCE_DOWN_ORDER);
+#endif
 
     // Info text at bottom
     ctx.currentY += ctx.lineHeightNormal * 0.5f;

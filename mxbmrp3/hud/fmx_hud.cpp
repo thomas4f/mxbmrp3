@@ -11,6 +11,7 @@
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
+#include "../core/plugin_data.h"
 #include "../core/fmx_manager.h"
 
 using namespace PluginConstants;
@@ -456,6 +457,14 @@ void FmxHud::rebuildRenderData() {
         bool airborneActive = trick.state == Fmx::TrickState::ACTIVE &&
                               trick.isCurrentlyAirborne;
 
+        // Crash state: while the rider is crashed, freeze the arc snapshot and turn
+        // the markers red, holding both for the entire crashed state (until recovery)
+        // — matching the bars/g-force widgets. Without the !isCrashed guard on the
+        // IDLE branch below, the failure animation's timer would expire mid-crash and
+        // reset the arcs to live tracking while the rider is still down.
+        const TrackPositionData* playerPos = PluginData::getInstance().getPlayerTrackPosition();
+        bool isCrashed = playerPos && playerPos->crashed;
+
         if (hasClassifiedTrick || freshUnclassified || airborneActive) {
             // Live data from rotation tracker
             m_arcSnapshot.startPitch = rotation.startPitch;
@@ -472,9 +481,10 @@ void FmxHud::rebuildRenderData() {
             m_arcSnapshot.currentRoll = rotation.currentRoll;
             m_arcSnapshot.hasData = true;
         } else if (trick.state == Fmx::TrickState::IDLE && score.chainCount == 0 &&
-                   !fmx.getChainEndAnimation().active) {
-            // Truly idle — show live start markers tracking current bike orientation
-            // so they don't jump from 12 o'clock to takeoff angle on launch
+                   !fmx.getChainEndAnimation().active && !isCrashed) {
+            // Truly idle (and recovered) — show live start markers tracking current
+            // bike orientation so they don't jump from 12 o'clock to takeoff angle on
+            // launch. While still crashed we keep the snapshot frozen (see above).
             m_arcSnapshot = ArcSnapshot();
             m_arcSnapshot.startPitch = rotation.currentPitch;
             m_arcSnapshot.startYaw = rotation.currentYaw;
@@ -500,7 +510,12 @@ void FmxHud::rebuildRenderData() {
 
         // Arc colors — standard pitch/yaw/roll coloring (red/green/blue)
         unsigned long arcBg = PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), 0.5f);
-        unsigned long arcMarker = this->getColor(ColorSlot::PRIMARY);
+        // Markers freeze during grace/chain/bounce; on a crash they also turn red
+        // (NEGATIVE) and hold until recovery (see the crash-freeze note above),
+        // matching the bars/g-force widgets' crash convention.
+        unsigned long arcMarker = isCrashed
+            ? this->getColor(ColorSlot::NEGATIVE)
+            : this->getColor(ColorSlot::PRIMARY);
         unsigned long pitchFill = ColorPalette::RED;
         unsigned long yawFill = ColorPalette::GREEN;
         unsigned long rollFill = ColorPalette::BLUE;
@@ -518,11 +533,13 @@ void FmxHud::rebuildRenderData() {
             m_arcSnapshot.startRoll, m_arcSnapshot.accumulatedRoll, m_arcSnapshot.peakRoll,
             arcBg, rollFill, arcMarker);
 
-        // Labels above arcs — full axis names, colored to match fill
+        // Labels above arcs — full axis names, colored to match fill.
+        // addLabel: Small font size, row-centered (the label convention used
+        // by the table headers in StandingsHud/FriendsHud/etc.)
         float labelY = currentY;
-        addString("Pitch", arc1X, labelY, Justify::CENTER, this->getFont(FontCategory::DIGITS), pitchFill, dim.fontSize);
-        addString("Yaw", arc2X, labelY, Justify::CENTER, this->getFont(FontCategory::DIGITS), yawFill, dim.fontSize);
-        addString("Roll", arc3X, labelY, Justify::CENTER, this->getFont(FontCategory::DIGITS), rollFill, dim.fontSize);
+        addLabel("Pitch", arc1X, labelY, Justify::CENTER, this->getFont(FontCategory::STRONG), pitchFill, dim);
+        addLabel("Yaw", arc2X, labelY, Justify::CENTER, this->getFont(FontCategory::STRONG), yawFill, dim);
+        addLabel("Roll", arc3X, labelY, Justify::CENTER, this->getFont(FontCategory::STRONG), rollFill, dim);
 
         // Arc center text — 2 rows: start angle (muted), peak rotation (primary)
         // Both rows use fontSize (normal), so use lineHeightNormal for row advance.

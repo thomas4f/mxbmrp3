@@ -297,6 +297,7 @@ void MapHud::updateTrackData(int numSegments, const Unified::TrackSegment* segme
     }
 
     m_bHasTrackData = true;
+    m_ribbonCacheValid = false;  // Cached ribbon quads belong to the old track
 
     // Calculate track bounds and scale
     calculateTrackBounds();
@@ -1768,12 +1769,52 @@ void MapHud::rebuildRenderData() {
     // Both use same clip bounds - outline clips first (wider), track extends to edge
     // This gives natural "outline on sides only" effect at boundaries
     size_t quadsBeforeTrack = m_quads.size();
-    if (m_bShowOutline) {
-        renderTrack(rotation, this->getColor(ColorSlot::PRIMARY), OUTLINE_WIDTH_MULTIPLIER,
-                    clipLeft, clipTop, clipRight, clipBottom);  // White outline
+    unsigned long outlineColor = this->getColor(ColorSlot::PRIMARY);
+    unsigned long fillColor = this->getColor(ColorSlot::BACKGROUND);
+
+    // Build the ribbon-cache key from the values renderTrack actually sees
+    // (captured here, AFTER the zoom overrides and offset adjustment above).
+    // See TrackRibbonKey in the header for the caching rationale.
+    TrackRibbonKey ribbonKey;
+    ribbonKey.angle = rotation.angle;
+    ribbonKey.minX = m_minX;
+    ribbonKey.maxX = m_maxX;
+    ribbonKey.minY = m_minY;
+    ribbonKey.maxY = m_maxY;
+    ribbonKey.trackScale = m_fTrackScale;
+    ribbonKey.baseMapWidth = m_fBaseMapWidth;
+    ribbonKey.baseMapHeight = m_fBaseMapHeight;
+    ribbonKey.scale = m_fScale;
+    ribbonKey.offsetX = m_fOffsetX;
+    ribbonKey.offsetY = m_fOffsetY;
+    ribbonKey.clipLeft = clipLeft;
+    ribbonKey.clipTop = clipTop;
+    ribbonKey.clipRight = clipRight;
+    ribbonKey.clipBottom = clipBottom;
+    ribbonKey.trackWidthScale = m_fTrackWidthScale;
+    ribbonKey.zoomDistance = m_fZoomDistance;
+    ribbonKey.detail = static_cast<int>(m_detail);
+    ribbonKey.zoomEnabled = m_bZoomEnabled;
+    ribbonKey.showOutline = m_bShowOutline;
+    ribbonKey.showTitle = m_bShowTitle;
+    ribbonKey.outlineColor = outlineColor;
+    ribbonKey.fillColor = fillColor;
+
+    if (m_ribbonCacheValid && ribbonKey == m_ribbonKey) {
+        // Same view, same style: only the rider dots changed - reuse the
+        // tessellated ribbon instead of re-sampling the whole centerline
+        m_quads.insert(m_quads.end(), m_ribbonQuads.begin(), m_ribbonQuads.end());
+    } else {
+        if (m_bShowOutline) {
+            renderTrack(rotation, outlineColor, OUTLINE_WIDTH_MULTIPLIER,
+                        clipLeft, clipTop, clipRight, clipBottom);  // White outline
+        }
+        renderTrack(rotation, fillColor, 1.0f,
+                    clipLeft, clipTop, clipRight, clipBottom);  // Black fill
+        m_ribbonQuads.assign(m_quads.begin() + quadsBeforeTrack, m_quads.end());
+        m_ribbonKey = ribbonKey;
+        m_ribbonCacheValid = true;
     }
-    renderTrack(rotation, this->getColor(ColorSlot::BACKGROUND), 1.0f,
-                clipLeft, clipTop, clipRight, clipBottom);  // Black fill
     size_t trackQuads = m_quads.size() - quadsBeforeTrack;
 
     // Render split/holeshot direction-arrow triangles on top of track (below the

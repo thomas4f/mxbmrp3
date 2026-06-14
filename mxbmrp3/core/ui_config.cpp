@@ -20,6 +20,7 @@ void UiConfig::resetToDefaults() {
     m_temperatureUnit = TemperatureUnit::CELSIUS;
     m_pbScope = PBScope::CATEGORY;
     m_holdRepeatFastMs = 50;
+    m_fCursorActivationThreshold = 0.015f;
     m_bDropShadow = true;
     m_fDropShadowOffsetX = 0.03f;
     m_fDropShadowOffsetY = 0.04f;

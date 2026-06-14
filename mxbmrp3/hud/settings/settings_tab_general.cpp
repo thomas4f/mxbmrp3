@@ -16,6 +16,9 @@
 #if GAME_HAS_DISCORD
 #include "../../core/discord_manager.h"
 #endif
+#if GAME_HAS_STEAM_FRIENDS
+#include "../../core/steam_friends_manager.h"
+#endif
 #if GAME_HAS_HTTP_SERVER
 #include "../../core/http_server.h"
 #endif
@@ -25,22 +28,6 @@ using namespace PluginConstants;
 // Member function of SettingsHud - handles click events for General tab
 bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
     switch (region.type) {
-        case ClickRegion::GRID_SNAP_TOGGLE:
-            {
-                bool current = UiConfig::getInstance().getGridSnapping();
-                UiConfig::getInstance().setGridSnapping(!current);
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::SCREEN_CLAMP_TOGGLE:
-            {
-                bool current = UiConfig::getInstance().getScreenClamping();
-                UiConfig::getInstance().setScreenClamping(!current);
-                setDataDirty();
-            }
-            return true;
-
         case ClickRegion::AUTOSAVE_TOGGLE:
             {
                 bool current = UiConfig::getInstance().getAutoSave();
@@ -48,6 +35,16 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
                 setDataDirty();
             }
             return true;
+
+#if GAME_HAS_STEAM_FRIENDS
+        case ClickRegion::STEAM_FRIENDS_TOGGLE:
+            {
+                bool current = SteamFriendsManager::getInstance().isEnabled();
+                SteamFriendsManager::getInstance().setEnabled(!current);
+                setDataDirty();
+            }
+            return true;
+#endif
 
 #if GAME_HAS_DISCORD
         case ClickRegion::DISCORD_TOGGLE:
@@ -335,121 +332,91 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         ctx.currentY += ctx.lineHeightNormal;
     }
 
-    // Grid snap toggle
-    {
-        // Add tooltip row
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "general.grid_snap"
-        ));
-
-        ctx.parent->addString("Grid Snap", ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
-
-        // Display current state with < > cycle pattern (arrows=accent, value=primary)
-        bool gridSnapEnabled = UiConfig::getInstance().getGridSnapping();
-        float currentX = ctx.controlX;
-
-        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::GRID_SNAP_TOGGLE, nullptr
-        ));
-        currentX += cw * 2;
-
-        std::string formattedSnap = ctx.formatValue(gridSnapEnabled ? "On" : "Off", VALUE_WIDTH, false);
-        ctx.parent->addString(formattedSnap.c_str(), currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), gridSnapEnabled ? colorConfig.getPrimary() : colorConfig.getMuted(), ctx.fontSize);
-        currentX += cw * VALUE_WIDTH;
-
-        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::GRID_SNAP_TOGGLE, nullptr
-        ));
-
-        ctx.currentY += ctx.lineHeightNormal;
-    }
-
-    // Screen clamp toggle
-    {
-        // Add tooltip row
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "general.screen_clamp"
-        ));
-
-        ctx.parent->addString("Screen Clamp", ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
-
-        // Display current state with < > cycle pattern (arrows=accent, value=primary)
-        bool screenClampEnabled = UiConfig::getInstance().getScreenClamping();
-        float currentX = ctx.controlX;
-
-        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::SCREEN_CLAMP_TOGGLE, nullptr
-        ));
-        currentX += cw * 2;
-
-        std::string formattedClamp = ctx.formatValue(screenClampEnabled ? "On" : "Off", VALUE_WIDTH, false);
-        ctx.parent->addString(formattedClamp.c_str(), currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), screenClampEnabled ? colorConfig.getPrimary() : colorConfig.getMuted(), ctx.fontSize);
-        currentX += cw * VALUE_WIDTH;
-
-        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::SCREEN_CLAMP_TOGGLE, nullptr
-        ));
-
-        ctx.currentY += ctx.lineHeightNormal;
-    }
-
     // Auto-save toggle
-    {
-        // Add tooltip row
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "general.auto_save"
-        ));
+    ctx.addToggleControl("Auto-Save", UiConfig::getInstance().getAutoSave(),
+        SettingsHud::ClickRegion::AUTOSAVE_TOGGLE, nullptr, nullptr, 0, true,
+        "general.auto_save");
 
-        ctx.parent->addString("Auto-Save", ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
-
-        // Display current state with < > cycle pattern (arrows=accent, value=primary)
-        bool autoSaveEnabled = UiConfig::getInstance().getAutoSave();
-        float currentX = ctx.controlX;
-
-        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::AUTOSAVE_TOGGLE, nullptr
-        ));
-        currentX += cw * 2;
-
-        std::string formattedAutoSave = ctx.formatValue(autoSaveEnabled ? "On" : "Off", VALUE_WIDTH, false);
-        ctx.parent->addString(formattedAutoSave.c_str(), currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), autoSaveEnabled ? colorConfig.getPrimary() : colorConfig.getMuted(), ctx.fontSize);
-        currentX += cw * VALUE_WIDTH;
-
-        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::AUTOSAVE_TOGGLE, nullptr
-        ));
-
-        ctx.currentY += ctx.lineHeightNormal;
-    }
-
-#if GAME_HAS_DISCORD || GAME_HAS_HTTP_SERVER
+#if GAME_HAS_STEAM_FRIENDS || GAME_HAS_DISCORD || GAME_HAS_HTTP_SERVER
     // === INTEGRATIONS SECTION ===
     ctx.addSpacing(0.5f);
     ctx.addSectionHeader("Integrations");
+#endif
+
+#if GAME_HAS_STEAM_FRIENDS
+    // Steam Friends toggle (broadcast presence + read friends in-game)
+    {
+        // The standalone (non-Steam) build of the game doesn't load
+        // steam_api64.dll, so the feature can't work. Show the control but
+        // disabled (greyed, non-interactive) rather than hiding it, so players
+        // can see the feature exists and what's needed to use it.
+        const bool steamAvailable = SteamFriendsManager::isSteamRuntimeAvailable();
+
+        // Add tooltip row (kept even when disabled so hover still explains it)
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "general.steam_friends"
+        ));
+
+        ctx.parent->addString("Steam", ctx.labelX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), steamAvailable ? colorConfig.getSecondary() : colorConfig.getMuted(), ctx.fontSize);
+
+        float currentX = ctx.controlX;
+
+        if (!steamAvailable) {
+            // Disabled: muted arrows + "N/A", no click regions.
+            ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
+                Fonts::getNormal(), colorConfig.getMuted(), ctx.fontSize);
+            currentX += cw * 2;
+
+            std::string formattedSteam = ctx.formatValue("N/A", VALUE_WIDTH, false);
+            ctx.parent->addString(formattedSteam.c_str(), currentX, ctx.currentY, Justify::LEFT,
+                Fonts::getNormal(), colorConfig.getMuted(), ctx.fontSize);
+            currentX += cw * VALUE_WIDTH;
+
+            ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
+                Fonts::getNormal(), colorConfig.getMuted(), ctx.fontSize);
+        } else {
+            bool steamEnabled = SteamFriendsManager::getInstance().isEnabled();
+            SteamFriendsManager::Status steamStatus = SteamFriendsManager::getInstance().getStatus();
+
+            ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
+                Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+                currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+                SettingsHud::ClickRegion::STEAM_FRIENDS_TOGGLE, nullptr
+            ));
+            currentX += cw * 2;
+
+            // Off when disabled; On (green) when enabled and hooked; On (muted)
+            // when enabled but not yet hooked (Steam present but not ready).
+            const char* statusText;
+            uint32_t statusColor;
+            if (!steamEnabled) {
+                statusText = "Off";
+                statusColor = colorConfig.getMuted();
+            } else if (steamStatus == SteamFriendsManager::Status::CONNECTED) {
+                statusText = "On";
+                statusColor = colorConfig.getPositive();
+            } else {
+                statusText = "On";
+                statusColor = colorConfig.getMuted();
+            }
+
+            std::string formattedSteam = ctx.formatValue(statusText, VALUE_WIDTH, false);
+            ctx.parent->addString(formattedSteam.c_str(), currentX, ctx.currentY, Justify::LEFT,
+                Fonts::getNormal(), statusColor, ctx.fontSize);
+            currentX += cw * VALUE_WIDTH;
+
+            ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
+                Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+                currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+                SettingsHud::ClickRegion::STEAM_FRIENDS_TOGGLE, nullptr
+            ));
+        }
+
+        ctx.currentY += ctx.lineHeightNormal;
+    }
 #endif
 
 #if GAME_HAS_DISCORD
@@ -779,8 +746,9 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
 
     // Help & Community footer - muted hints under a shared header (matches the note style
     // used on other tabs). The overlay can't open a browser, so these are read-and-type
-    // addresses. Half-line gap before the header to match the other sections on this tab.
-    ctx.addSpacing(0.5f);
+    // addresses. The tab has ~5 rows of slack above the Close button, so float the footer
+    // most of the way down (leaving a ~1-row margin, like the Hotkeys tab's bottom note).
+    ctx.addSpacing(3.5f);
     ctx.addSectionHeader("Help & Community");
     // Labels padded so the URLs line up vertically in the monospace Normal font.
     ctx.parent->addString("Documentation & guides:  thomas4f.github.io/mxbmrp3",

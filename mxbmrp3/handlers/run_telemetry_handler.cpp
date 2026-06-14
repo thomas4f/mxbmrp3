@@ -95,12 +95,14 @@ void RunTelemetryHandler::handleRunTelemetry(Unified::TelemetryData* psTelemetry
 #endif
 
         // Controller rumble based on suspension and wheel slip (bike-specific)
-        float suspensionVelocity = 0.0f;
+        // Front/rear are kept separate so the Bumps effect can be split; the engine
+        // collapses them to max when the effect isn't split.
+        float suspVelFront = 0.0f;
+        float suspVelRear = 0.0f;
         if (psTelemetryData->vehicleType == Unified::VehicleType::Bike) {
-            // Suspension velocity: negative = compression, we want max compression rate
-            float frontSuspVel = -psTelemetryData->bike.suspVelocity[0];  // Negate so compression is positive
-            float rearSuspVel = -psTelemetryData->bike.suspVelocity[1];
-            suspensionVelocity = std::max(frontSuspVel, rearSuspVel);
+            // Suspension velocity: negative = compression, we negate so compression is positive
+            suspVelFront = -psTelemetryData->bike.suspVelocity[0];
+            suspVelRear = -psTelemetryData->bike.suspVelocity[1];
         }
 
         // Check wheel contact (wheelMaterial: 0 = not in contact)
@@ -113,7 +115,10 @@ void RunTelemetryHandler::handleRunTelemetry(Unified::TelemetryData* psTelemetry
         float rearWheelSpeed = psTelemetryData->wheelSpeed[1];
 
         float wheelOverrun = 0.0f;
-        float wheelUnderrun = 0.0f;
+        // Front/rear underrun kept separate so the Lockup effect can be split; the
+        // engine collapses them to max when the effect isn't split.
+        float frontUnderrun = 0.0f;
+        float rearUnderrun = 0.0f;
 
         // Use minimum 1 m/s for ratio denominator to allow burnout detection at low speeds
         // while preventing division by zero
@@ -130,15 +135,12 @@ void RunTelemetryHandler::handleRunTelemetry(Unified::TelemetryData* psTelemetry
         // Also requires positive wheel speed - when rolling backwards, wheel speed is negative
         // but speedometer shows positive (absolute) speed, causing false lockup detection
         if (vehicleSpeed > 1.0f) {
-            float frontUnderrun = 0.0f;
-            float rearUnderrun = 0.0f;
             if (frontWheelContact && frontWheelSpeed >= 0.0f && frontWheelSpeed < vehicleSpeed) {
                 frontUnderrun = (vehicleSpeed - frontWheelSpeed) / vehicleSpeed;
             }
             if (rearWheelContact && rearWheelSpeed >= 0.0f && rearWheelSpeed < vehicleSpeed) {
                 rearUnderrun = (vehicleSpeed - rearWheelSpeed) / vehicleSpeed;
             }
-            wheelUnderrun = std::max(frontUnderrun, rearUnderrun);
         }
 
         // Get RPM for engine vibration effect
@@ -193,6 +195,20 @@ void RunTelemetryHandler::handleRunTelemetry(Unified::TelemetryData* psTelemetry
             wheelieIntensity = std::abs(psTelemetryData->pitch);
         }
 
+        // Rev limiter: RPM as a percentage of the bike's real limiter RPM (auto per-bike).
+        // Throttle-gated so engine-braking / downshift blips near redline don't false-fire.
+        float revLimiterPct = 0.0f;
+        int limiterRPM = PluginData::getInstance().getSessionData().limiterRPM;
+        if (limiterRPM > 0 && psTelemetryData->throttle > 0.1f) {
+            revLimiterPct = 100.0f * rpm / static_cast<float>(limiterRPM);
+        }
+
+        // Pit limiter: binary flag (GP Bikes reports it; 0 on games that don't)
+        float pitLimiterActive = 0.0f;
+        if (psTelemetryData->vehicleType == Unified::VehicleType::Bike && psTelemetryData->bike.pitLimiter) {
+            pitLimiterActive = 1.0f;
+        }
+
         // Check if player is crashed and rumble should be suppressed (but still update graph)
         bool suppressRumble = false;
         const RumbleConfig& rumbleConfig = XInputReader::getInstance().getRumbleConfig();
@@ -203,7 +219,7 @@ void RunTelemetryHandler::handleRunTelemetry(Unified::TelemetryData* psTelemetry
             }
         }
 
-        XInputReader::getInstance().updateRumbleFromTelemetry(suspensionVelocity, wheelOverrun, wheelUnderrun, rpm, lateralG, surfaceSpeed, steerTorque, wheelieIntensity, isAirborne, suppressRumble);
+        XInputReader::getInstance().updateRumbleFromTelemetry(suspVelFront, suspVelRear, wheelOverrun, frontUnderrun, rearUnderrun, rpm, lateralG, surfaceSpeed, steerTorque, wheelieIntensity, revLimiterPct, pitLimiterActive, isAirborne, suppressRumble);
     } else {
         // No telemetry data available (e.g., spectating retired rider, menu, etc.)
         PluginData::getInstance().invalidateSpeedometer();

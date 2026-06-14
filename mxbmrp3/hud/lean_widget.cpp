@@ -441,8 +441,10 @@ void LeanWidget::rebuildRenderData() {
         constexpr float CENTER_GAP_HALF_RAD = 0.02f;
         float markerWidth = 0.02f;  // still used for max-marker rendering below
 
-        // Draw background arc (full gauge range, split around center) - same color as BarsWidget backgrounds
-        unsigned long arcBgColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), m_fBackgroundOpacity * 0.5f);
+        // Draw background arc (full gauge range, split around center) - same color as BarsWidget backgrounds.
+        // Fixed 50% opacity: the arc is part of the gauge readout, so it stays legible regardless of the
+        // background-opacity slider (only addBackgroundQuad follows that). Matches the GForceWidget ring.
+        unsigned long arcBgColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), 0.5f);
         int halfSegments = std::max(3, ARC_SEGMENTS / 2);
         addArcSegment(centerX, arcCenterY, innerRadius, outerRadius,
                       arcStartRad, -CENTER_GAP_HALF_RAD, arcBgColor, halfSegments);
@@ -542,7 +544,9 @@ void LeanWidget::rebuildRenderData() {
         const float steerCenterGapHalf = steerCenterGap * 0.5f;
         float halfWidth = contentWidth / 2.0f;
         float halfWidthAvail = halfWidth - steerCenterGapHalf;  // effective half-bar (post-gap)
-        unsigned long bgColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), m_fBackgroundOpacity * 0.5f);
+        // Fixed 50% — steer-bar background is part of the gauge, not the panel backdrop, so it
+        // doesn't follow the background-opacity slider (matches the arc background above).
+        unsigned long bgColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), 0.5f);
 
         // Left bar background
         {

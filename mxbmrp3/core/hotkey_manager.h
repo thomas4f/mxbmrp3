@@ -76,6 +76,7 @@ private:
     bool isKeyPressed(uint8_t vkCode) const;
     bool isKeyClicked(uint8_t vkCode) const;
     bool isControllerButtonClicked(ControllerButton button) const;
+    bool hasAnyControllerBinding() const;  // gates the Draw-path controller poll
 
     // Bindings for all actions
     std::array<HotkeyBinding, static_cast<size_t>(HotkeyAction::COUNT)> m_bindings;

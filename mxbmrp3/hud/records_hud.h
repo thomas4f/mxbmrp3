@@ -113,6 +113,11 @@ public:
     bool handlesDataType(DataChangeType dataType) const override;
     void resetToDefaults();
 
+    // Join the background fetch thread if running. Must be called before
+    // HudManager nulls its cached HUD pointers (the worker touches TimingHud
+    // on completion). Safe to call multiple times.
+    void joinFetchThread();
+
     // Get the fastest record lap time (for TimingHud gap comparison)
     // Returns -1 if no records available
     int getFastestRecordLapTime() const;
@@ -152,7 +157,9 @@ private:
     // Personal best integration
     // Returns the position the player's PB would have in the records list (1-based)
     // Returns -1 if no PB exists, 0 if faster than all records
-    int findPlayerPositionInRecords(int playerPBTime) const;
+    // Takes a snapshot of the records (copied under m_recordsMutex by the caller)
+    // because the live m_records may be mutated by the fetch thread.
+    int findPlayerPositionInRecords(const std::vector<RecordEntry>& records, int playerPBTime) const;
 
     // Base position (0,0) - actual position comes from m_fOffsetX/m_fOffsetY
     static constexpr float START_X = 0.0f;
@@ -210,7 +217,9 @@ private:
     bool m_fetchButtonHovered;
     static constexpr unsigned long FETCH_RESULT_DISPLAY_MS = 3000;  // Show success/error for 3 seconds
     static constexpr unsigned long FETCH_COOLDOWN_MS = 5000;  // Minimum time between fetches (prevent spam)
-    unsigned long m_fetchResultTimestamp;  // When fetch completed (for display timeout, from GetTickCount)
-    unsigned long m_fetchStartTimestamp;   // When fetch started (for cooldown)
+    // Atomic: written by the fetch worker, read by the game thread (display
+    // timeout / cooldown checks). Plain loads/stores only.
+    std::atomic<unsigned long> m_fetchResultTimestamp;  // When fetch completed (for display timeout, from GetTickCount)
+    std::atomic<unsigned long> m_fetchStartTimestamp;   // When fetch started (for cooldown)
     bool m_wasOnCooldown;                  // Track cooldown state for refresh trigger
 };

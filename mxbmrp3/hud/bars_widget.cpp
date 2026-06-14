@@ -430,7 +430,10 @@ void BarsWidget::addVerticalBarWithGaps(float x, float y, float barWidth, float 
     // marker thickness so the divider stays the same visual size.
     const float gapHalf = MARKER_HEIGHT_RATIO * 0.5f;
 
-    const unsigned long emptyColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), m_fBackgroundOpacity * 0.5f);
+    // Bar background is part of the gauge readout, not the panel backdrop — keep it at a
+    // fixed 50% so it stays legible regardless of the widget's background-opacity slider
+    // (only addBackgroundQuad responds to that). Matches the GForceWidget ring.
+    const unsigned long emptyColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), 0.5f);
     const unsigned long filledColor = PluginUtils::applyOpacity(color, 1.0f);
 
     // Emit one quad spanning the normalized vertical range [v0, v1] (v0 < v1).
@@ -487,8 +490,9 @@ void BarsWidget::addVerticalBar(float x, float y, float barWidth, float barHeigh
         setQuadPositions(emptyQuad, emptyX, emptyY, barWidth, emptyHeight);
         emptyQuad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
 
-        // Apply background opacity to empty portion (half opacity)
-        emptyQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), m_fBackgroundOpacity * 0.5f);
+        // Fixed 50% — the empty bar is part of the gauge, not the panel backdrop, so it
+        // doesn't follow the background-opacity slider (see addVerticalBarWithGaps).
+        emptyQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), 0.5f);
 
         m_quads.push_back(emptyQuad);
     }

@@ -24,6 +24,9 @@
 #if GAME_HAS_DISCORD
 #include "../core/discord_manager.h"
 #endif
+#if GAME_HAS_STEAM_FRIENDS
+#include "../core/steam_friends_manager.h"
+#endif
 #if GAME_HAS_HTTP_SERVER
 #include "../core/http_server.h"
 #endif
@@ -68,6 +71,10 @@ bool SettingsHud::isRepeatableRegionType(ClickRegion::Type type) {
         case ClickRegion::ROW_COUNT_DOWN:
         case ClickRegion::LAP_LOG_ROW_COUNT_UP:
         case ClickRegion::LAP_LOG_ROW_COUNT_DOWN:
+        case ClickRegion::FRIENDS_ROW_COUNT_UP:
+        case ClickRegion::FRIENDS_ROW_COUNT_DOWN:
+        case ClickRegion::FRIENDS_SHOW_MODE_UP:
+        case ClickRegion::FRIENDS_SHOW_MODE_DOWN:
         case ClickRegion::LAP_LOG_ORDER_UP:
         case ClickRegion::LAP_LOG_ORDER_DOWN:
         case ClickRegion::LAP_CONSISTENCY_DISPLAY_MODE_UP:
@@ -162,6 +169,22 @@ bool SettingsHud::isRepeatableRegionType(ClickRegion::Type type) {
         case ClickRegion::RUMBLE_SUSP_MIN_DOWN:
         case ClickRegion::RUMBLE_SUSP_MAX_UP:
         case ClickRegion::RUMBLE_SUSP_MAX_DOWN:
+        case ClickRegion::RUMBLE_SUSP_FRONT_LIGHT_DOWN:
+        case ClickRegion::RUMBLE_SUSP_FRONT_LIGHT_UP:
+        case ClickRegion::RUMBLE_SUSP_FRONT_HEAVY_DOWN:
+        case ClickRegion::RUMBLE_SUSP_FRONT_HEAVY_UP:
+        case ClickRegion::RUMBLE_SUSP_FRONT_MIN_UP:
+        case ClickRegion::RUMBLE_SUSP_FRONT_MIN_DOWN:
+        case ClickRegion::RUMBLE_SUSP_FRONT_MAX_UP:
+        case ClickRegion::RUMBLE_SUSP_FRONT_MAX_DOWN:
+        case ClickRegion::RUMBLE_SUSP_REAR_LIGHT_DOWN:
+        case ClickRegion::RUMBLE_SUSP_REAR_LIGHT_UP:
+        case ClickRegion::RUMBLE_SUSP_REAR_HEAVY_DOWN:
+        case ClickRegion::RUMBLE_SUSP_REAR_HEAVY_UP:
+        case ClickRegion::RUMBLE_SUSP_REAR_MIN_UP:
+        case ClickRegion::RUMBLE_SUSP_REAR_MIN_DOWN:
+        case ClickRegion::RUMBLE_SUSP_REAR_MAX_UP:
+        case ClickRegion::RUMBLE_SUSP_REAR_MAX_DOWN:
         case ClickRegion::RUMBLE_WHEEL_LIGHT_DOWN:
         case ClickRegion::RUMBLE_WHEEL_LIGHT_UP:
         case ClickRegion::RUMBLE_WHEEL_HEAVY_DOWN:
@@ -178,6 +201,22 @@ bool SettingsHud::isRepeatableRegionType(ClickRegion::Type type) {
         case ClickRegion::RUMBLE_LOCKUP_MIN_DOWN:
         case ClickRegion::RUMBLE_LOCKUP_MAX_UP:
         case ClickRegion::RUMBLE_LOCKUP_MAX_DOWN:
+        case ClickRegion::RUMBLE_LOCKUP_FRONT_LIGHT_DOWN:
+        case ClickRegion::RUMBLE_LOCKUP_FRONT_LIGHT_UP:
+        case ClickRegion::RUMBLE_LOCKUP_FRONT_HEAVY_DOWN:
+        case ClickRegion::RUMBLE_LOCKUP_FRONT_HEAVY_UP:
+        case ClickRegion::RUMBLE_LOCKUP_FRONT_MIN_UP:
+        case ClickRegion::RUMBLE_LOCKUP_FRONT_MIN_DOWN:
+        case ClickRegion::RUMBLE_LOCKUP_FRONT_MAX_UP:
+        case ClickRegion::RUMBLE_LOCKUP_FRONT_MAX_DOWN:
+        case ClickRegion::RUMBLE_LOCKUP_REAR_LIGHT_DOWN:
+        case ClickRegion::RUMBLE_LOCKUP_REAR_LIGHT_UP:
+        case ClickRegion::RUMBLE_LOCKUP_REAR_HEAVY_DOWN:
+        case ClickRegion::RUMBLE_LOCKUP_REAR_HEAVY_UP:
+        case ClickRegion::RUMBLE_LOCKUP_REAR_MIN_UP:
+        case ClickRegion::RUMBLE_LOCKUP_REAR_MIN_DOWN:
+        case ClickRegion::RUMBLE_LOCKUP_REAR_MAX_UP:
+        case ClickRegion::RUMBLE_LOCKUP_REAR_MAX_DOWN:
         case ClickRegion::RUMBLE_WHEELIE_LIGHT_DOWN:
         case ClickRegion::RUMBLE_WHEELIE_LIGHT_UP:
         case ClickRegion::RUMBLE_WHEELIE_HEAVY_DOWN:
@@ -194,6 +233,22 @@ bool SettingsHud::isRepeatableRegionType(ClickRegion::Type type) {
         case ClickRegion::RUMBLE_RPM_MIN_DOWN:
         case ClickRegion::RUMBLE_RPM_MAX_UP:
         case ClickRegion::RUMBLE_RPM_MAX_DOWN:
+        case ClickRegion::RUMBLE_REVLIM_LIGHT_DOWN:
+        case ClickRegion::RUMBLE_REVLIM_LIGHT_UP:
+        case ClickRegion::RUMBLE_REVLIM_HEAVY_DOWN:
+        case ClickRegion::RUMBLE_REVLIM_HEAVY_UP:
+        case ClickRegion::RUMBLE_REVLIM_MIN_UP:
+        case ClickRegion::RUMBLE_REVLIM_MIN_DOWN:
+        case ClickRegion::RUMBLE_REVLIM_MAX_UP:
+        case ClickRegion::RUMBLE_REVLIM_MAX_DOWN:
+        case ClickRegion::RUMBLE_PITLIM_LIGHT_DOWN:
+        case ClickRegion::RUMBLE_PITLIM_LIGHT_UP:
+        case ClickRegion::RUMBLE_PITLIM_HEAVY_DOWN:
+        case ClickRegion::RUMBLE_PITLIM_HEAVY_UP:
+        case ClickRegion::RUMBLE_PITLIM_MIN_UP:
+        case ClickRegion::RUMBLE_PITLIM_MIN_DOWN:
+        case ClickRegion::RUMBLE_PITLIM_MAX_UP:
+        case ClickRegion::RUMBLE_PITLIM_MAX_DOWN:
         case ClickRegion::RUMBLE_SLIDE_LIGHT_DOWN:
         case ClickRegion::RUMBLE_SLIDE_LIGHT_UP:
         case ClickRegion::RUMBLE_SLIDE_HEAVY_DOWN:
@@ -289,7 +344,7 @@ static const char* getLabelModeName(int mode) {
     return (mode >= 0 && mode < 4) ? names[mode] : "Unknown";
 }
 
-SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, LapConsistencyHud* lapConsistency,
+SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, FriendsHud* friends, LapConsistencyHud* lapConsistency,
                          StandingsHud* standings,
                          PerformanceHud* performance,
                          TelemetryHud* telemetry,
@@ -298,7 +353,8 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, LapConsistenc
                          StatsHud* statsHud,
                          EventLogHud* eventLog,
                          ClockWidget* clock,
-                         HelmetOverlayHud* helmetOverlay
+                         HelmetOverlayHud* helmetOverlay,
+                         SettingsButtonWidget* settingsButton
 #if GAME_HAS_TYRE_TEMP
                          , TyreTempWidget* tyreTemp
 #endif
@@ -308,6 +364,7 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, LapConsistenc
                          )
     : m_idealLap(idealLap),
       m_lapLog(lapLog),
+      m_friends(friends),
       m_lapConsistency(lapConsistency),
       m_standings(standings),
       m_performance(performance),
@@ -331,6 +388,7 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, LapConsistenc
       m_records(records),
       m_fuel(fuel),
       m_pointer(pointer),
+      m_settingsButton(settingsButton),
       m_rumble(rumble),
       m_helmetOverlay(helmetOverlay),
       m_gamepad(gamepad),
@@ -386,7 +444,7 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, LapConsistenc
     // Pre-allocate vectors
     m_quads.reserve(1);
     m_strings.reserve(60);  // Less text now with tabs
-    m_clickRegions.reserve(60);  // Sized for largest tab (TAB_RIDERS has ~56 regions)
+    m_clickRegions.reserve(90);  // Sized for largest tab (TAB_RIDERS: 30 server + 48 tracked cells + pagination)
 
     // Start hidden
     hide();
@@ -504,22 +562,16 @@ void SettingsHud::update() {
             float controllerX = m_hotkeyControllerX + m_fOffsetX;
 
             if (cursor.y >= contentStartY) {
-                // Calculate which row the mouse is over
-                float relativeY = cursor.y - contentStartY;
-
-                // Row 0 is Settings Menu
-                if (relativeY < m_hotkeyRowHeight) {
-                    newHoveredRow = 0;
-                } else {
-                    // After row 0, there's a 0.5 row gap, then rows 1+
-                    float afterFirstRow = relativeY - m_hotkeyRowHeight;
-                    float gapHeight = m_hotkeyRowHeight * 0.5f;
-
-                    if (afterFirstRow >= gapHeight) {
-                        float afterGap = afterFirstRow - gapHeight;
-                        newHoveredRow = 1 + static_cast<int>(afterGap / m_hotkeyRowHeight);
+                // Find which row the cursor is over using the recorded per-row tops.
+                // This handles the half-row spacers between groups exactly (a purely
+                // geometric reconstruction drifts past every gap), and leaves
+                // newHoveredRow at -1 while the cursor is in a gap.
+                for (size_t r = 0; r < m_hotkeyRowTops.size(); ++r) {
+                    float rowTop = m_hotkeyRowTops[r] + m_fOffsetY;
+                    if (cursor.y >= rowTop && cursor.y < rowTop + m_hotkeyRowHeight) {
+                        newHoveredRow = static_cast<int>(r);
+                        break;
                     }
-                    // During gap, newHoveredRow stays -1
                 }
 
                 // Check which column the cursor is in (only if on a valid row)
@@ -778,8 +830,9 @@ void SettingsHud::rebuildRenderData() {
 
     float panelWidth = PluginUtils::calculateMonospaceTextWidth(panelWidthChars, dim.fontSize) + dim.paddingH + dim.paddingH;
 
-    // Estimate height - sized to fit all tabs + content (Helmet tab added one more row)
-    int estimatedRows = 31;
+    // Estimate height - sized to fit all tabs + content (Friends tab added one more row;
+    // the Rumble tab's expanded front/rear splits and Rev/Pit Limiter rows are the tallest case)
+    int estimatedRows = 33;
     float backgroundHeight = dim.paddingV + dim.lineHeightLarge + dim.lineHeightNormal + (estimatedRows * dim.lineHeightNormal) + dim.paddingV;
 
     // Center the panel horizontally and vertically
@@ -835,6 +888,7 @@ void SettingsHud::rebuildRenderData() {
         TAB_GAP_BAR,
         TAB_NOTICES,
         TAB_EVENT_LOG,
+        TAB_FRIENDS,
         TAB_FMX,
         TAB_STATS,
         TAB_PERFORMANCE,
@@ -851,6 +905,11 @@ void SettingsHud::rebuildRenderData() {
 
         // Skip FMX tab if FMX is not available (e.g., Kart Racing Pro)
         if (i == TAB_FMX && !m_fmxHud) {
+            continue;
+        }
+
+        // Skip Friends tab if the Friends HUD isn't registered (non-Steam build)
+        if (i == TAB_FRIENDS && !m_friends) {
             continue;
         }
 
@@ -919,6 +978,7 @@ void SettingsHud::rebuildRenderData() {
             case TAB_PITBOARD:     tabHud = m_pitboard; break;
             case TAB_SESSION:      tabHud = m_session; break;
             case TAB_LAP_LOG:      tabHud = m_lapLog; break;
+            case TAB_FRIENDS:      tabHud = m_friends; break;
             case TAB_LAP_CONSISTENCY: tabHud = m_lapConsistency; break;
             case TAB_IDEAL_LAP: tabHud = m_idealLap; break;
             case TAB_TELEMETRY:    tabHud = m_telemetry; break;
@@ -1036,6 +1096,7 @@ void SettingsHud::rebuildRenderData() {
                            i == TAB_STANDINGS ? "standings" :
                            i == TAB_MAP ? "map" :
                            i == TAB_LAP_LOG ? "lap_log" :
+                           i == TAB_FRIENDS ? "friends" :
                            i == TAB_IDEAL_LAP ? "ideal_lap" :
                            i == TAB_TELEMETRY ? "telemetry" :
                            i == TAB_PERFORMANCE ? "performance" :
@@ -1264,52 +1325,6 @@ void SettingsHud::rebuildRenderData() {
         return sectionStartY;
     };
 
-    // Widget table row - displays widget settings in columnar format
-    // Layout: Name | Visible | Title | BG Tex | Opacity | Scale
-    auto addWidgetRow = [&](const char* name, BaseHud* hud, bool enableTitle = true, bool enableOpacity = true, bool enableScale = true, bool enableVisibility = true, bool enableBgTexture = true) {
-        // Column positions (spacing for table layout with toggle controls)
-        float nameX = leftColumnX;
-        float visX = nameX + PluginUtils::calculateMonospaceTextWidth(10, dim.fontSize);   // After name
-        float titleX = visX + PluginUtils::calculateMonospaceTextWidth(8, dim.fontSize);   // After Vis toggle (< On >)
-        float bgTexX = titleX + PluginUtils::calculateMonospaceTextWidth(8, dim.fontSize); // After Title toggle
-        float opacityX = bgTexX + PluginUtils::calculateMonospaceTextWidth(8, dim.fontSize); // After BG Tex toggle
-        float scaleX = opacityX + PluginUtils::calculateMonospaceTextWidth(9, dim.fontSize); // After Opacity cycle
-
-        // Widget name
-        addString(name, nameX, currentY, Justify::LEFT,
-            Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
-
-        // Visibility toggle (shows actual value, grayed out when disabled)
-        addToggleControl(visX, currentY, hud->isVisible(), ClickRegion::HUD_TOGGLE, hud, nullptr, 0, enableVisibility);
-
-        // Title toggle (shows actual value, grayed out when disabled)
-        addToggleControl(titleX, currentY, hud->getShowTitle(), ClickRegion::TITLE_TOGGLE, hud, nullptr, 0, enableTitle);
-
-        // BG Texture variant cycle (disabled if no textures available)
-        bool hasTextures = !hud->getAvailableTextureVariants().empty();
-        char texValue[8];
-        int texVariant = hud->getTextureVariant();
-        snprintf(texValue, sizeof(texValue), (!hasTextures || texVariant == 0) ? "Off" : "%d", texVariant);
-        addCycleControl(bgTexX, currentY, texValue, 3,
-            ClickRegion::TEXTURE_VARIANT_DOWN, ClickRegion::TEXTURE_VARIANT_UP, hud, enableBgTexture && hasTextures);
-
-        // BG Opacity (shows muted value without arrows when disabled)
-        char opacityValue[16];
-        int opacityPercent = static_cast<int>(std::round(hud->getBackgroundOpacity() * 100.0f));
-        snprintf(opacityValue, sizeof(opacityValue), "%d%%", opacityPercent);
-        addCycleControl(opacityX, currentY, opacityValue, 4,
-            ClickRegion::BACKGROUND_OPACITY_DOWN, ClickRegion::BACKGROUND_OPACITY_UP, hud, enableOpacity);
-
-        // Scale (shows muted value without arrows when disabled)
-        char scaleValue[16];
-        int scalePercent = static_cast<int>(std::round(hud->getScale() * 100.0f));
-        snprintf(scaleValue, sizeof(scaleValue), "%d%%", scalePercent);
-        addCycleControl(scaleX, currentY, scaleValue, 4,
-            ClickRegion::SCALE_DOWN, ClickRegion::SCALE_UP, hud, enableScale);
-
-        currentY += dim.lineHeightNormal;
-    };
-
     // Data toggle control - displays "Label: < On/Off >" format
     // labelWidth should accommodate the longest label in the group for alignment
     auto addDataToggle = [&](const char* label, uint32_t* bitfield, uint32_t flag, bool isRequired, BaseHud* hud, float yPos, int labelWidth = 12) {
@@ -1399,6 +1414,12 @@ void SettingsHud::rebuildRenderData() {
             // Use extracted tab renderer
             layoutCtx.currentY = currentY;
             activeHud = renderTabLapLog(layoutCtx);
+            currentY = layoutCtx.currentY;
+            break;
+
+        case TAB_FRIENDS:
+            layoutCtx.currentY = currentY;
+            activeHud = renderTabFriends(layoutCtx);
             currentY = layoutCtx.currentY;
             break;
 
@@ -1898,6 +1919,7 @@ void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
         case TAB_PITBOARD:   handled = handleClickTabPitboard(region); break;
         case TAB_SESSION:    handled = handleClickTabSession(region); break;
         case TAB_LAP_LOG:    handled = handleClickTabLapLog(region); break;
+        case TAB_FRIENDS:    handled = handleClickTabFriends(region); break;
         case TAB_LAP_CONSISTENCY: handled = handleClickTabLapConsistency(region); break;
         case TAB_UPDATES:    handled = handleClickTabUpdates(region); break;
         case TAB_FMX:        handled = handleClickTabFmx(region); break;
@@ -2161,14 +2183,16 @@ void SettingsHud::resetCurrentTab() {
     switch (m_activeTab) {
         case TAB_GENERAL:
             // General tab - reset all settings displayed on the General tab.
-            // (Display section — units/clock format — moved to the Appearance tab.)
+            // (Display section — units/clock format, grid snap, screen clamp — moved to
+            // the Appearance tab; reset there via the [Display] factory snapshot.)
             // Preferences section
             UiConfig::getInstance().setPBScope(PBScope::CATEGORY);
             XInputReader::getInstance().getRumbleConfig().controllerIndex = 0;
             XInputReader::getInstance().setControllerIndex(0);
-            UiConfig::getInstance().setGridSnapping(true);
-            UiConfig::getInstance().setScreenClamping(false);  // Default is off
             UiConfig::getInstance().setAutoSave(true);
+#if GAME_HAS_STEAM_FRIENDS
+            SteamFriendsManager::getInstance().setEnabled(true);  // default on, unlike Discord/HTTP
+#endif
 #if GAME_HAS_DISCORD
             DiscordManager::getInstance().setEnabled(false);
 #endif
@@ -2236,6 +2260,9 @@ void SettingsHud::resetCurrentTab() {
             break;
         case TAB_LAP_LOG:
             resetHuds({"LapLogHud"});
+            break;
+        case TAB_FRIENDS:
+            resetHuds({"FriendsHud"});
             break;
         case TAB_LAP_CONSISTENCY:
             resetHuds({"LapConsistencyHud"});
@@ -2507,6 +2534,7 @@ const char* SettingsHud::getTabName(int tabIndex) const {
         case TAB_STANDINGS:   return "Standings";
         case TAB_MAP:         return "Map";
         case TAB_LAP_LOG:     return "Lap Log";
+        case TAB_FRIENDS:     return "Friends";
         case TAB_LAP_CONSISTENCY: return "Consistency";
         case TAB_IDEAL_LAP:   return "Ideal Lap";
         case TAB_TELEMETRY:   return "Telemetry";
@@ -2665,6 +2693,23 @@ const char* SettingsHud::getTooltipIdForRegion(ClickRegion::Type type, int activ
             }
             break;
 
+        case TAB_FRIENDS:
+            switch (type) {
+                case ClickRegion::FRIENDS_ROW_COUNT_UP:
+                case ClickRegion::FRIENDS_ROW_COUNT_DOWN:
+                    return "friends.rows";
+                case ClickRegion::FRIENDS_HEADERS_TOGGLE:
+                    return "friends.headers";
+                case ClickRegion::FRIENDS_SHOW_MODE_UP:
+                case ClickRegion::FRIENDS_SHOW_MODE_DOWN:
+                    return "friends.showmode";
+                case ClickRegion::FRIENDS_SELF_TOGGLE:
+                    return "friends.self";
+                default:
+                    break;
+            }
+            break;
+
         case TAB_TIMING:
             switch (type) {
                 case ClickRegion::TIMING_LABEL_TOGGLE:
@@ -2767,8 +2812,6 @@ const char* SettingsHud::getTooltipIdForRegion(ClickRegion::Type type, int activ
 
         case TAB_GENERAL:
             switch (type) {
-                case ClickRegion::GRID_SNAP_TOGGLE:
-                    return "general.grid_snap";
                 case ClickRegion::RUMBLE_CONTROLLER_UP:
                 case ClickRegion::RUMBLE_CONTROLLER_DOWN:
                     return "general.controller";
@@ -2781,6 +2824,9 @@ const char* SettingsHud::getTooltipIdForRegion(ClickRegion::Type type, int activ
             switch (type) {
                 case ClickRegion::RUMBLE_TOGGLE:
                     return "rumble.enabled";
+                case ClickRegion::RUMBLE_SUSP_SPLIT_TOGGLE:
+                case ClickRegion::RUMBLE_LOCKUP_SPLIT_TOGGLE:
+                    return "rumble.split";
                 default:
                     break;
             }

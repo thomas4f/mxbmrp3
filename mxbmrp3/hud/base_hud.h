@@ -9,6 +9,7 @@
 #include <chrono>
 #include <optional>
 #include <array>
+#include <atomic>
 #include "../game/game_config.h"
 #include "../core/input_manager.h"
 #include "../core/plugin_data.h"
@@ -92,8 +93,9 @@ public:
     bool getShowTitle() const { return m_bShowTitle; }
 
     void setBackgroundOpacity(float opacity) {
-        // Clamp opacity to valid range [0.0, 1.0]
-        if (opacity < 0.0f) opacity = 0.0f;
+        // Clamp opacity to valid range [min, 1.0] - min is 0 for most HUDs, but some
+        // (e.g. the settings button) floor it so the slider can't reach a misleading 0%
+        if (opacity < m_fMinBackgroundOpacity) opacity = m_fMinBackgroundOpacity;
         if (opacity > 1.0f) opacity = 1.0f;
 
         // Round to nearest 1% increment to avoid floating point precision issues
@@ -236,6 +238,9 @@ protected:
                         unsigned long color, float fontSize);
     void addBackgroundQuad(float x, float y, float width, float height);
     void addDot(float x, float y, unsigned long color, float size);
+    // Centered, aspect-corrected icon sprite (like addDot, but textured). size is
+    // the height in normalized units; the sprite is tinted by color.
+    void addIcon(float x, float y, int spriteIndex, unsigned long color, float size);
     void addLineSegment(float x1, float y1, float x2, float y2, unsigned long color, float thickness);
     void addHorizontalGridLine(float x, float y, float width, unsigned long color, float thickness);
     static void setQuadPositions(SPluginQuad_t& quad, float x, float y, float width, float height);
@@ -355,9 +360,14 @@ public:
     float m_fScale;
 
     // Visibility and display options (protected so derived classes can access)
-    bool m_bVisible;
+    // Atomic because background workers legitimately poke these (RecordsHud's
+    // fetch thread marks HUDs dirty on completion; update-checker callbacks
+    // call VersionWidget::showUpdateNotification) while the game thread reads
+    // them every frame. All access is plain load/store - no RMW needed.
+    std::atomic<bool> m_bVisible;
     bool m_bShowTitle;
     float m_fBackgroundOpacity;  // 0.0 (fully transparent) to 1.0 (fully opaque)
+    float m_fMinBackgroundOpacity = 0.0f;  // Lower bound for the opacity slider (most HUDs allow full transparency; raised for widgets that always render foreground content, e.g. the settings button)
     bool m_bShowBackgroundTexture;  // If true and texture exists, render sprite background
     int m_iBackgroundTextureIndex;  // 1-based sprite index (0 = no texture)
 
@@ -376,8 +386,11 @@ public:
     int m_benchmarkIndex;
 
 private:
-    bool m_bDataDirty;
-    bool m_bLayoutDirty;
+    // Atomic for the same cross-thread reason as m_bVisible (see comment
+    // there). Note setDataDirty() writes BOTH flags, so the background
+    // callers that mark HUDs dirty reach m_bLayoutDirty too.
+    std::atomic<bool> m_bDataDirty;
+    std::atomic<bool> m_bLayoutDirty;
 
     bool m_bDraggable;
     bool m_bDragging;

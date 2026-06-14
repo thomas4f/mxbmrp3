@@ -90,15 +90,21 @@ void Logger::shutdown() {
 
     info("Logger shutting down...");
 
-    if (m_logFile.is_open()) {
-        m_logFile.close();
+    // Close the stream and clear the flag under the same mutex log() writes
+    // with. Today this is redundant (PluginManager joins every background
+    // thread before shutting the logger down last), but a future thread that
+    // logs past this point would otherwise race the close.
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (m_logFile.is_open()) {
+            m_logFile.close();
+        }
+        m_initialized = false;
     }
 
 #ifdef _DEBUG
     shutdownConsole();
 #endif
-
-    m_initialized = false;
 }
 
 void Logger::info(const char* message) {

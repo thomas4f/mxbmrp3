@@ -7,7 +7,12 @@
 #include <cstdint>
 #include <chrono>
 
-// Types of events that can be logged
+// Types of events that can be logged.
+// APPEND-ONLY: the HTTP server emits the raw integer value of this enum as the
+// event "type" (see http_server.cpp), and the web overlay's EVENT_TYPE_MAP
+// (mxbmrp3_data/web/app.js) indexes that value POSITIONALLY to pick its filter
+// key. Inserting a value mid-list silently shifts every later event to the wrong
+// filter/label in the overlay. Add new types at the end and update EVENT_TYPE_MAP.
 enum class EventLogType : uint8_t {
     // Session lifecycle
     SessionStarted,       // Session went to green / in-progress

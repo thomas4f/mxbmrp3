@@ -3,7 +3,11 @@
  * Designed for use as a browser source in OBS and similar tools.
  * Transparent background for easy compositing.
  *
- * Customize freely - the plugin serves these files from disk.
+ * Customize freely - the plugin serves these files from disk. Most of the look
+ * is driven by the variables in the :root block below (colours, fonts, sizes,
+ * spacing, animations). To re-skin without editing this file, copy
+ * "custom-sample.css" to "custom.css" and override there — it loads last and
+ * wins. See that file for the how-to and ready-made recipes.
  * ============================================================================ */
 
 /* ============================================================================
@@ -94,7 +98,7 @@ html {
     --text-off:      var(--gp-muted, #646464);        /* DNS/RET/DSQ riders, unavailable data */
 
     /* Rider number badge */
-    --badge-bg:      var(--gp-primary, #ffffff);
+    --badge-bg:      var(--gp-secondary, #bebebe);
     --badge-bg-off:  var(--gp-muted, #646464);
     --badge-text:    var(--gp-background, #000000);
 
@@ -129,19 +133,55 @@ html {
 
     /* Layout */
     /* Tower width is driven by the name column character count (--name-chars).
-       Overridden live by app.js from CONFIG.nameChars (default 3, range 3-30).
+       Overridden live by app.js from CONFIG.nameChars (default 10, range 3-30).
        Overall overlay width = N * 1ch + fixed chrome (pos + num + gap + padding). */
-    --name-chars:    3;
+    --name-chars:    10;
+    /* Width of the optional positions-gained (±) column. Sized to fit 3 chars at the
+       data-row digit size (caret + 2-digit delta, e.g. "▴12") and the "+/-" header,
+       both centered with a little margin. Collapsed to 0 on #overlay.hide-posdelta so
+       the tower reflows when the column is hidden. Kept in sync with the .col-posdelta
+       flex-basis below. */
+    --posdelta-w:    2rem;
     --focus-width:   20rem;
     --row-height:    1.4rem;
+    /* Numeric column widths.
+       --col-pos-w is a plain `ch` token (advance of "0" in the column's own
+       font) so it scales with whatever font the palette syncs in — a wide face
+       (Audiowide) gets a wide column, a narrow mono one a tight column, no dead
+       space and no JS. Sized for 2 position digits.
+       --col-gap-w and --badge-w AUTO-FIT: app.js measures the exact rendered
+       worst-case width per font (measureGapWidth / measureBadgeWidth) and writes
+       it to the *-measured vars below, which these fall back to. A `ch` value
+       can't be tight for those two — time strings/plates mix wide and narrow
+       glyphs — so measuring is the only way to kill the slack while staying safe
+       in a monospace font. To PIN a fixed width instead of auto-fitting, just
+       re-declare --col-gap-w / --badge-w in custom.css (no !important needed):
+       a direct value wins over the var() fallback and the measurement is ignored. */
+    --col-pos-w:     2.4ch;              /* position / rank column (tower, boards, tail) */
+    --col-gap-w:     var(--col-gap-w-measured, 10ch);     /* gap / best-time column (auto-fit; 10ch fallback) */
+    --battle-headline-w: 4rem;           /* battle card headline width = sub-row right reserve */
     --radius:        var(--sp-sm);
 
-    /* Badge */
-    --badge-w:   1.7rem;
+    /* Badge — number plate, up to 3 digits. Auto-fits (see the column note
+       above); the ch fallback resolves against the badge's own (fs-sm) font and
+       +2*sp-sm covers its border-box padding. */
+    --badge-w:   var(--badge-w-measured, calc(3ch + 2 * var(--sp-sm)));
 
     /* Brand strip & chips */
     --strip-w:       0.15rem;
     --chip-size:     0.9rem;
+
+    /* Animation — durations + easing for every transition/animation in the
+       overlay. Lower a value to speed things up, set to 0s to disable. The
+       slide/focus/logo durations are also read by app.js so the JS teardown
+       timers stay in sync, so these are safe to retune from custom.css. */
+    --ease:          ease;
+    --anim-fast:     0.3s;   /* reflows (min-height), event fade-in, settings UI */
+    --anim-base:     0.6s;   /* standings row reorder + tail carousel paging      */
+    --anim-slide:    1s;     /* bottom-slot panel gate (fastlap/laps/tail/battle) */
+    --anim-tint:     1.5s;   /* position gained/lost row tint                     */
+    --anim-logo:     0.8s;   /* logo slideshow slide                              */
+    --anim-focus:    0.4s;   /* rider focus card                                  */
 }
 
 body {
@@ -158,10 +198,21 @@ body {
  * ============================================================================ */
 #overlay {
     position: absolute;
-    /* Width scales with the name column: N characters + fixed chrome.
-       Fixed chrome = row padding (0.8rem) + col-pos (1.4rem)
-       + col-num (2.4rem: badge + brand strip + margin) + col-gap (6rem). */
-    width: calc(var(--name-chars) * 1ch + 10.6rem);
+    /* Width scales with the name column plus fixed chrome. The pos, gap and
+       badge columns are tokens (--col-pos-w / --col-gap-w / --badge-w) shared
+       with the boards/tail, so a wider synced font grows the tower with them.
+       The remaining 1.5rem constant is the rest of col-num (strip 0.3 + col-num
+       margin 0.4) plus row padding (0.8). --col-gap-w / --badge-w auto-fit to the
+       measured px width (same value the columns use), so this formula matches the
+       row exactly — the gap column reaches the right edge with no surplus pooling
+       after it. The ± column (--posdelta-w) collapses to 0 when hidden. */
+    width: calc(var(--name-chars) * 1ch + var(--col-pos-w) + var(--col-gap-w) + var(--badge-w) + 1.5rem + var(--posdelta-w));
+}
+
+/* ± column hidden (non-race session or disabled): drop its reserved width so the
+   tower shrinks to match the visible columns instead of leaving a gap / overflowing. */
+#overlay.hide-posdelta {
+    --posdelta-w: 0rem;
 }
 
 /* Idle state — no active session */
@@ -241,7 +292,7 @@ body {
 #logo-track {
     display: flex;
     height: 100%;
-    transition: transform 0.8s ease;
+    transition: transform var(--anim-logo) var(--ease);
 }
 
 #logo-track img {
@@ -255,50 +306,39 @@ body {
 /* ============================================================================
  * STANDINGS
  * ============================================================================ */
+/* Positioning context for the fastest-last-lap panel, which is anchored to the
+   bottom of the standings area (just above the event log) and slides up. */
+#standings-container {
+    position: relative;
+}
+
 #standings-body {
     position: relative;
     overflow: visible;
     background: var(--bg-row-odd);
     min-height: calc(5 * var(--row-height));
-    transition: min-height 0.3s ease;
+    transition: min-height var(--anim-fast) var(--ease);
 }
 
-/* Column header row */
+/* Column header bar — a single title strap styled like the fastest-last-lap
+   panel header rather than per-column labels. renderHeader() in app.js sets the
+   labels per session: race = "Behind Leader" (left) / "Gap" (right), non-race =
+   "Lap Times" (left, right cleared). The data rows keep their own column widths. */
 #standings-header {
     display: flex;
     align-items: center;
-    padding: var(--sp-xs) var(--sp-md);
+    justify-content: space-between;
+    /* Full row-height (like the data rows and the fastlap/tail/battle panel
+       titles) so the strap isn't tighter than the entries it heads. */
+    height: var(--row-height);
+    padding: 0 var(--sp-md);
     background: var(--bg-header);
     border-bottom: 1px solid var(--border);
     color: var(--text-sub);
-    font-size: var(--fs-2xs);
+    font-family: var(--font-display);
+    font-size: var(--fs-xs);
     text-transform: uppercase;
     letter-spacing: 0.03rem;
-}
-
-/* Header # column mirrors badge width so text centers over it.
-   margin-right accounts for brand-strip + col-num gap. */
-#standings-header > .col-num {
-    display: inline-block;
-    min-width: var(--badge-w);
-    padding: 0 var(--sp-sm);
-    text-align: center;
-    margin-right: calc(var(--strip-w) * 2 + var(--sp-md));
-}
-
-/* All header columns inherit the same color */
-#standings-header > * {
-    color: inherit;
-}
-
-/* Let the header "NAME" label overflow its 3ch box — the header font
-   (--fs-2xs) is small enough that "NAME" still fits within 3 body-font
-   characters pixel-wise, so bleeding into col-gap's left padding is safe.
-   FRAGILE: this depends on --fs-2xs staying meaningfully smaller than --fs.
-   If the header font size is bumped close to the body font size, "NAME"
-   will collide with "GAP" — either shrink the label or re-enable clipping. */
-#standings-header > .col-name {
-    overflow: visible;
 }
 
 /* --- Standings row --- */
@@ -309,15 +349,15 @@ body {
     position: absolute;
     left: 0;
     right: 0;
-    transition: transform 0.6s ease;
+    transition: transform var(--anim-base) var(--ease);
 }
 
 /* Position change tints */
 .standings-row.promoted {
-    animation: tintGreen 1.5s ease-out forwards;
+    animation: tintGreen var(--anim-tint) ease-out forwards;
 }
 .standings-row.demoted {
-    animation: tintRed 1.5s ease-out forwards;
+    animation: tintRed var(--anim-tint) ease-out forwards;
 }
 
 @keyframes tintGreen {
@@ -373,6 +413,12 @@ body {
     gap: var(--sp-sm);
     padding-left: var(--sp-sm);
     height: 100%;
+    transition: opacity var(--anim-fast) var(--ease);
+}
+/* Covered by a bottom-slot panel: fade out instead of popping (toggled in JS). */
+.row-chips.chips-covered {
+    opacity: 0;
+    pointer-events: none;
 }
 
 .row-chips:empty {
@@ -381,12 +427,27 @@ body {
 
 /* --- Column layout --- */
 .col-pos {
-    flex: 0 0 1.4rem;
+    flex: 0 0 var(--col-pos-w);
     text-align: right;
     font-weight: bold;
     padding-right: var(--sp-sm);
     color: var(--text-sub);
 }
+
+/* Positions gained/lost since race start (caret + count). Shown only during races
+   (app.js toggles .hide-posdelta on the overlay for non-race sessions / when disabled). */
+.col-posdelta {
+    flex: 0 0 var(--posdelta-w);
+    text-align: center;  /* caret+count centered in the slot, like the # column */
+    font-family: var(--font-digits);
+    font-size: var(--fs-sm);
+    font-weight: bold;
+    padding-right: var(--sp-sm);
+}
+.col-posdelta.up   { color: var(--green); }
+.col-posdelta.down { color: var(--red); }
+.col-posdelta.held { color: var(--text-dim); }
+.hide-posdelta .col-posdelta { display: none; }
 
 .col-num {
     flex: 0 0 auto;
@@ -418,12 +479,13 @@ body {
     background: transparent;
 }
 
-/* Shared truncation */
+/* Shared truncation — clip (hard cut), no ellipsis, consistent across the
+   overlay (names are pre-truncated to the name column in JS anyway). */
 .col-name,
 .focus-name,
 .focus-bike {
     overflow: hidden;
-    text-overflow: ellipsis;
+    text-overflow: clip;
     white-space: nowrap;
 }
 
@@ -434,7 +496,7 @@ body {
 .col-gap {
     /* Fixed width so the tower width is solely controlled by --name-chars.
        Wide enough for "+1:23.456" (the longest non-compact gap string). */
-    flex: 0 0 6rem;
+    flex: 0 0 var(--col-gap-w);
     text-align: right;
     font-family: var(--font-digits);
     padding-left: var(--sp-md);
@@ -507,7 +569,7 @@ body {
     border-radius: 0 0 var(--radius) var(--radius);
     padding: var(--sp-sm) var(--sp-md);
     overflow: hidden;
-    transition: min-height 0.3s ease;
+    transition: min-height var(--anim-fast) var(--ease);
 }
 
 .event-entry {
@@ -517,7 +579,7 @@ body {
     padding: var(--sp-2xs) 0;
     font-size: var(--fs-xs);
     color: var(--text-sub);
-    animation: fadeIn 0.3s ease-in;
+    animation: fadeIn var(--anim-fast) ease-in;
 }
 
 .event-time {
@@ -545,6 +607,306 @@ body {
 }
 
 /* ============================================================================
+ * LAP-TIME BOARDS (FASTEST LAST LAP + FASTEST LAPS)
+ * Two race-only panels that share the same bottom-slot gate and row styling,
+ * differing only in data + title: fastest-last-lap (by most recent lap) and
+ * fastest-laps (by session best). The outer panel is a fixed clipping window
+ * pinned at the standings/event-log boundary; the inner content slides up into
+ * it from the bottom (portcullis-style) so it never extends into the event log
+ * or out from behind the tower. app.js drives the show/hide on a timer.
+ * ============================================================================ */
+#fastlap-panel,
+#bestlap-panel {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;                 /* pinned to the standings/event-log boundary */
+    overflow: hidden;          /* clipping window — content slides within it */
+    pointer-events: none;
+}
+#fastlap-panel.hidden,
+#bestlap-panel.hidden { display: none; }
+
+/* Content slides up/down inside the fixed window. translateY(100%) parks it just
+   below the window (fully clipped); translateY(0) brings it fully into view. */
+.fastlap-inner,
+.bestlap-inner {
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+    transform: translateY(100%);
+    transition: transform var(--anim-slide) var(--ease);
+}
+#fastlap-panel.fastlap-in .fastlap-inner,
+#bestlap-panel.bestlap-in .bestlap-inner { transform: translateY(0); }
+#fastlap-panel.fastlap-out .fastlap-inner,
+#bestlap-panel.bestlap-out .bestlap-inner { transform: translateY(100%); }
+
+.fastlap-title,
+.bestlap-title {
+    /* Height is set to the measured row height by app.js (with box-sizing:
+       border-box) so the panel is an exact whole number of rows tall; the rem
+       value here is just a pre-render fallback. */
+    display: flex;
+    align-items: center;
+    height: var(--row-height);
+    padding: 0 var(--sp-md);
+    font-family: var(--font-display);
+    font-size: var(--fs-xs);
+    color: var(--text-sub);
+    text-transform: uppercase;
+    letter-spacing: 0.03rem;
+    background: var(--bg-header);
+    border-bottom: 1px solid var(--border);
+}
+
+/* Shared board rows (rank / name / time) for both lap-time panels. */
+.board-row {
+    display: flex;
+    align-items: center;
+    height: var(--row-height);
+    padding: 0 var(--sp-md);
+}
+.board-row:nth-child(even) { background: var(--bg-row-even); }
+.board-row:nth-child(odd)  { background: var(--bg-row-odd); }
+
+.board-rank {
+    flex: 0 0 var(--col-pos-w);
+    text-align: right;
+    padding-right: var(--sp-sm);
+    font-weight: bold;
+    color: var(--text-sub);
+}
+.board-name {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: clip;
+    white-space: nowrap;
+    color: var(--text);
+}
+.board-time {
+    flex: 0 0 auto;
+    font-family: var(--font-digits);
+    color: var(--text);
+    text-align: right;
+    padding-left: var(--sp-md);
+}
+/* "No data" placeholder (forced board/battle with nothing to show yet):
+   flush-left, muted. The lap board hides its rank cell so the name is flush;
+   the battle list's placeholder is a bare row. */
+.board-row.board-empty .board-rank { display: none; }
+.board-row.board-empty .board-name { color: var(--text-off); }
+#battle-list .board-empty {
+    display: flex;
+    align-items: center;
+    padding: 0 var(--sp-md);
+    color: var(--text-off);
+}
+
+/* ============================================================================
+ * DOWN THE ORDER (TAIL) PANEL
+ * Shares the bottom slot with the fastest-last-lap panel: same bottom-up gate
+ * (an inner that slides within a pinned clip window). Inside, a horizontal
+ * track pages through the riders hidden below the Max Riders cutoff — each page
+ * slides out to the left as the next slides in from the right. app.js builds the
+ * pages and drives the timing; row/title heights are set to the measured row
+ * height so the panel is an exact whole number of rows tall.
+ * ============================================================================ */
+#tail-panel {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;          /* clip window — content slides within it */
+    pointer-events: none;
+}
+#tail-panel.hidden { display: none; }
+
+.tail-inner {
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+    transform: translateY(100%);
+    transition: transform var(--anim-slide) var(--ease);
+}
+#tail-panel.tail-in .tail-inner  { transform: translateY(0); }
+#tail-panel.tail-out .tail-inner { transform: translateY(100%); }
+
+.tail-title {
+    display: flex;
+    align-items: center;
+    height: var(--row-height);  /* exact px set by app.js */
+    padding: 0 var(--sp-md);
+    font-family: var(--font-display);
+    font-size: var(--fs-xs);
+    color: var(--text-sub);
+    text-transform: uppercase;
+    letter-spacing: 0.03rem;
+    background: var(--bg-header);
+    border-bottom: 1px solid var(--border);
+}
+
+.tail-viewport {
+    overflow: hidden;           /* clips the off-screen pages */
+}
+.tail-track {
+    display: flex;
+    transition: transform var(--anim-base) var(--ease);
+}
+.tail-page {
+    flex: 0 0 100%;             /* one tower-width page per slot */
+}
+
+/* Tail rows mirror the tower's .row-main columns so widths/styling match and
+   they respect .hide-posdelta — but they sit in normal flow (not absolute).
+   Heights are set to the measured row height by app.js. */
+.tail-row {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: var(--row-height);  /* exact px set by app.js */
+    padding: 0 var(--sp-md);
+    min-width: 0;
+}
+.tail-row:nth-child(even) { background: var(--bg-row-even); }
+.tail-row:nth-child(odd)  { background: var(--bg-row-odd); }
+.tail-row.tail-row-empty { visibility: hidden; }
+.tail-row.state-inactive {
+    background: var(--bg-inactive);
+    color: var(--text-off);
+}
+.tail-row.state-inactive .num-badge { background: var(--badge-bg-off); }
+.tail-row.state-inactive .brand-strip { opacity: 0.3; }
+.tail-row.state-inactive .col-gap { color: var(--text-off); }
+
+/* ============================================================================
+ * BATTLE PANEL
+ * Shares the bottom slot (same bottom-up gate as the fastlap/tail panels).
+ * Highlights a cluster of riders running close together. Each rider is a card:
+ * a main line (ordinal + plate + name + interval to the front) plus optional
+ * detail sub-rows (bike / last lap / fastest lap). app.js builds the cards.
+ * ============================================================================ */
+#battle-panel {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;          /* clip window — content slides within it */
+    pointer-events: none;
+}
+#battle-panel.hidden { display: none; }
+
+.battle-inner {
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+    transform: translateY(100%);
+    transition: transform var(--anim-slide) var(--ease);
+}
+#battle-panel.battle-in .battle-inner  { transform: translateY(0); }
+#battle-panel.battle-out .battle-inner { transform: translateY(100%); }
+
+.battle-title {
+    display: flex;
+    align-items: center;
+    height: var(--row-height);  /* exact px set by app.js */
+    padding: 0 var(--sp-md);
+    font-family: var(--font-display);
+    font-size: var(--fs-xs);
+    color: var(--text-sub);
+    text-transform: uppercase;
+    letter-spacing: 0.03rem;
+    background: var(--bg-header);
+    border-bottom: 1px solid var(--border);
+}
+
+/* One card per battling rider: a body column (main line + sub-rows) plus a
+   large right-hand headline. The card is brand-tinted (gradient + accent bar set
+   inline by app.js). Heights set by app.js so cards stay row-grid aligned. */
+.battle-card {
+    position: relative;   /* anchors the headline overlay */
+    background-color: var(--bg-row-odd);
+}
+/* Divider between riders. Inset shadow (not a border) so it adds no height and
+   the cards stay aligned to the row grid. */
+.battle-card + .battle-card {
+    box-shadow: inset 0 1px 0 var(--border);
+}
+.battle-body {
+    min-width: 0;   /* full-width flow column: sub-rows, then the name row */
+}
+/* Headline (position / interval) floats in the upper area on the right, above
+   the full-width name row, so the name strip can span the whole tower width. */
+.battle-value {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: var(--row-height);   /* clear the bottom name row */
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    max-width: var(--battle-headline-w);
+    padding: 0 var(--sp-md);
+    font-family: var(--font-display);   /* same face as the session timer */
+    font-size: var(--fs-lg);     /* headline position / interval — deliberately large */
+    font-weight: bold;
+    color: var(--text);
+    pointer-events: none;
+}
+
+.battle-main {
+    display: flex;
+    align-items: center;
+    height: var(--row-height);   /* exact px set by app.js */
+    padding: 0 var(--sp-md);
+    min-width: 0;
+    /* whole-row brand highlight colour is set inline by app.js */
+}
+.battle-pos {
+    /* Match the tower's leading columns (position + the optional +/- column) so
+       the number plate (and the name after it) line up horizontally with the
+       tower — and track the +/- column on/off. */
+    flex: 0 0 calc(var(--col-pos-w) + var(--posdelta-w));
+    text-align: left;
+    padding-right: var(--sp-sm);
+    font-weight: bold;
+    color: var(--text-sub);
+}
+.battle-name {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: clip;   /* full name; just clip whatever overflows */
+    white-space: nowrap;
+    color: var(--text);
+}
+
+/* Detail sub-rows: dim, indented under the name, label left / value right. */
+.battle-sub {
+    display: flex;
+    align-items: center;
+    height: var(--row-height);   /* exact px set by app.js */
+    /* indent past the ordinal + plate so values line up under the name; reserve
+       space on the right so values clear the floating headline. */
+    padding: 0 var(--battle-headline-w) 0 calc(var(--col-pos-w) + var(--posdelta-w) + var(--badge-w) + var(--strip-w) * 2 + var(--sp-md) * 2);
+    font-size: var(--fs-xs);
+    color: var(--text-dim);
+}
+.battle-sub-label {
+    flex: 0 1 auto;   /* sit next to the value, not stretched across the row */
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: clip;
+    white-space: nowrap;
+}
+.battle-sub-val {
+    flex: 0 0 auto;
+    padding-left: var(--sp-sm);   /* small gap, like the focus card */
+    color: var(--text-sub);
+}
+.battle-sub-time {
+    font-family: var(--font-digits);
+}
+
+/* ============================================================================
  * RIDER FOCUS CARD
  * ============================================================================ */
 #focus-card {
@@ -558,7 +920,7 @@ body {
     border: 1px solid var(--border);
     overflow: hidden;
     opacity: 0;
-    transition: opacity 0.4s ease, transform 0.4s ease;
+    transition: opacity var(--anim-focus) var(--ease), transform var(--anim-focus) var(--ease);
     pointer-events: none;
 }
 #focus-card.hidden { display: none; }
@@ -694,7 +1056,7 @@ body {
     border-radius: 50%;
     cursor: pointer;
     opacity: 0;
-    transition: opacity 0.3s ease;
+    transition: opacity var(--anim-fast) var(--ease);
     pointer-events: none;
 }
 .settings-gear::before {
@@ -734,7 +1096,7 @@ body {
     background: var(--bg-header);
     border-left: 1px solid var(--border);
     transform: translateX(100%);
-    transition: transform 0.3s ease;
+    transition: transform var(--anim-fast) var(--ease);
     overflow-y: auto;
     font-size: var(--fs-sm);
     color: var(--text);
@@ -889,4 +1251,41 @@ body {
 .settings-reset:hover {
     color: var(--red);
     border-color: var(--red);
+}
+
+/* ============================================================================
+ * MOBILE — fill the viewport width
+ * On phone-sized touch screens, drop the fixed corner-widget placement and let
+ * the tower span the full width. app.js scales the root font-size so the tower's
+ * computed width equals the viewport (everything is proportional to font-size);
+ * here we just put it in normal flow at the top-left and allow the page to
+ * scroll vertically for the rest of the content. Names already truncate to the
+ * name-column width (substring in JS + text-overflow: clip), so a wide name
+ * setting is hard-cut at the column edge instead of overflowing.
+ *
+ * Gated on pointer: coarse so OBS/desktop browser sources (pointer: fine) are
+ * never affected. Tune the breakpoint / disable via custom.css if desired.
+ * ============================================================================ */
+@media (pointer: coarse) and (max-width: 820px) {
+    html, body {
+        width: 100%;
+        overflow-x: hidden;       /* clip any sub-pixel rounding from the fit */
+        overflow-y: auto;         /* scroll for content below the fold        */
+    }
+    #overlay {
+        position: static;         /* flow from top-left; ignore towerX/towerY */
+    }
+    /* Dragging the tower is meaningless when it's pinned full-width. */
+    #header { cursor: default; }
+    /* The focus card is a fixed, broadcast-width (20rem) element outside #overlay
+       that overflows a phone screen, so suppress it here even if a user enabled
+       it in settings. Unaffected on desktop/OBS (pointer: fine). */
+    #focus-card { display: none !important; }
+    /* The gear is revealed by a screen touch and auto-hides (handled in app.js,
+       since mousemove never fires on touch), mirroring the desktop mouse reveal —
+       so it isn't pinned permanently over the top-right of the full-width tower. */
+    /* Status chips hang off the right of each row (left: 100%), which is off-screen
+       once the tower fills the full width. Hide them explicitly so they can't push
+       horizontal overflow. */
+    .row-chips { display: none !important; }
 }

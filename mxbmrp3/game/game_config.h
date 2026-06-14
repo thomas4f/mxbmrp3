@@ -126,6 +126,13 @@
     #define GAME_HAS_ECU 0
 #endif
 
+// Pit-lane speed limiter (GP Bikes only — MX Bikes/KRP don't report it)
+#if defined(GAME_GPBIKES)
+    #define GAME_HAS_PIT_LIMITER 1
+#else
+    #define GAME_HAS_PIT_LIMITER 0
+#endif
+
 // Tyre temperature data (GP Bikes only)
 #if defined(GAME_GPBIKES)
     #define GAME_HAS_TYRE_TEMP 1
@@ -187,6 +194,19 @@
     #define GAME_HAS_DISCORD 1
 #else
     #define GAME_HAS_DISCORD 0
+#endif
+
+// Steam friends (read friends' rich presence for the Friends HUD). NOT a
+// per-game feature: every supported PiBoSo game ships on Steam and loads
+// steam_api64.dll, which we hook rather than initializing Steam ourselves.
+// The standalone (non-Steam) build of a game doesn't load steam_api64.dll -
+// that's a runtime distinction (SteamFriendsManager::isSteamRuntimeAvailable),
+// not a compile-time one (the same .dlo serves both), so the control shows
+// disabled there rather than being compiled out.
+#if defined(GAME_MXBIKES) || defined(GAME_GPBIKES) || defined(GAME_KRP)
+    #define GAME_HAS_STEAM_FRIENDS 1
+#else
+    #define GAME_HAS_STEAM_FRIENDS 0
 #endif
 
 // Embedded HTTP server for web overlay

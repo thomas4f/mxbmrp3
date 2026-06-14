@@ -7,6 +7,7 @@
 #include "base_hud.h"
 #include "ideal_lap_hud.h"
 #include "lap_log_hud.h"
+#include "friends_hud.h"
 #include "lap_consistency_hud.h"
 #include "standings_hud.h"
 #include "performance_hud.h"
@@ -26,6 +27,7 @@
 #include "notices_hud.h"
 #include "fuel_widget.h"
 #include "pointer_widget.h"
+#include "settings_button_widget.h"
 #include "records_hud.h"
 #include "gamepad_widget.h"
 #include "lean_widget.h"
@@ -59,7 +61,7 @@ struct SettingsLayoutContext;
 
 class SettingsHud : public BaseHud {
 public:
-    SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, LapConsistencyHud* lapConsistency,
+    SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, FriendsHud* friends, LapConsistencyHud* lapConsistency,
                 StandingsHud* standings,
                 PerformanceHud* performance,
                 TelemetryHud* telemetry,
@@ -68,7 +70,8 @@ public:
                 StatsHud* statsHud,
                 EventLogHud* eventLog,
                 ClockWidget* clock,
-                HelmetOverlayHud* helmetOverlay
+                HelmetOverlayHud* helmetOverlay,
+                SettingsButtonWidget* settingsButton
 #if GAME_HAS_TYRE_TEMP
                 , TyreTempWidget* tyreTemp
 #endif
@@ -121,6 +124,12 @@ public:
             LAP_LOG_ORDER_DOWN,        // Cycle display order backward (LapLogHud)
             LAP_LOG_GAP_ROW_TOGGLE,    // Toggle gap row display (LapLogHud)
             LAP_LOG_HEADERS_TOGGLE,    // Toggle column-header row (LapLogHud)
+            FRIENDS_ROW_COUNT_UP,      // Increase max friend rows (FriendsHud)
+            FRIENDS_ROW_COUNT_DOWN,    // Decrease max friend rows (FriendsHud)
+            FRIENDS_HEADERS_TOGGLE,    // Toggle column-header row (FriendsHud)
+            FRIENDS_SHOW_MODE_UP,      // Cycle show mode (FriendsHud)
+            FRIENDS_SHOW_MODE_DOWN,    // Cycle show mode (FriendsHud)
+            FRIENDS_SELF_TOGGLE,       // Toggle show-myself row (FriendsHud)
             // Lap Consistency HUD
             LAP_CONSISTENCY_DISPLAY_MODE_UP,    // Cycle display mode forward (LapConsistencyHud)
             LAP_CONSISTENCY_DISPLAY_MODE_DOWN,  // Cycle display mode backward (LapConsistencyHud)
@@ -228,6 +237,9 @@ public:
             UPDATE_CHECK_TOGGLE,       // Toggle automatic update checking
             AUTOSAVE_TOGGLE,           // Toggle auto-save for settings
             SAVE_BUTTON,               // Manual save button (when auto-save is off)
+#if GAME_HAS_STEAM_FRIENDS
+            STEAM_FRIENDS_TOGGLE,      // Toggle Steam friends integration
+#endif
 #if GAME_HAS_DISCORD
             DISCORD_TOGGLE,            // Toggle Discord Rich Presence
 #endif
@@ -258,6 +270,23 @@ public:
             RUMBLE_SUSP_MIN_DOWN,      // Decrease suspension min input
             RUMBLE_SUSP_MAX_UP,        // Increase suspension max input
             RUMBLE_SUSP_MAX_DOWN,      // Decrease suspension max input
+            RUMBLE_SUSP_SPLIT_TOGGLE,  // Toggle front/rear split for Bumps
+            RUMBLE_SUSP_FRONT_LIGHT_DOWN,  // Front: decrease suspension light motor strength
+            RUMBLE_SUSP_FRONT_LIGHT_UP,    // Front: increase suspension light motor strength
+            RUMBLE_SUSP_FRONT_HEAVY_DOWN,  // Front: decrease suspension heavy motor strength
+            RUMBLE_SUSP_FRONT_HEAVY_UP,    // Front: increase suspension heavy motor strength
+            RUMBLE_SUSP_FRONT_MIN_UP,      // Front: increase suspension min input
+            RUMBLE_SUSP_FRONT_MIN_DOWN,    // Front: decrease suspension min input
+            RUMBLE_SUSP_FRONT_MAX_UP,      // Front: increase suspension max input
+            RUMBLE_SUSP_FRONT_MAX_DOWN,    // Front: decrease suspension max input
+            RUMBLE_SUSP_REAR_LIGHT_DOWN,  // Rear: decrease suspension light motor strength
+            RUMBLE_SUSP_REAR_LIGHT_UP,    // Rear: increase suspension light motor strength
+            RUMBLE_SUSP_REAR_HEAVY_DOWN,  // Rear: decrease suspension heavy motor strength
+            RUMBLE_SUSP_REAR_HEAVY_UP,    // Rear: increase suspension heavy motor strength
+            RUMBLE_SUSP_REAR_MIN_UP,      // Rear: increase suspension min input
+            RUMBLE_SUSP_REAR_MIN_DOWN,    // Rear: decrease suspension min input
+            RUMBLE_SUSP_REAR_MAX_UP,      // Rear: increase suspension max input
+            RUMBLE_SUSP_REAR_MAX_DOWN,    // Rear: decrease suspension max input
             RUMBLE_WHEEL_LIGHT_DOWN,   // Decrease spin light motor strength
             RUMBLE_WHEEL_LIGHT_UP,     // Increase spin light motor strength
             RUMBLE_WHEEL_HEAVY_DOWN,   // Decrease spin heavy motor strength
@@ -274,6 +303,23 @@ public:
             RUMBLE_LOCKUP_MIN_DOWN,    // Decrease brake lockup min input
             RUMBLE_LOCKUP_MAX_UP,      // Increase brake lockup max input
             RUMBLE_LOCKUP_MAX_DOWN,    // Decrease brake lockup max input
+            RUMBLE_LOCKUP_SPLIT_TOGGLE,  // Toggle front/rear split for Lockup
+            RUMBLE_LOCKUP_FRONT_LIGHT_DOWN,  // Front: decrease brake lockup light motor strength
+            RUMBLE_LOCKUP_FRONT_LIGHT_UP,    // Front: increase brake lockup light motor strength
+            RUMBLE_LOCKUP_FRONT_HEAVY_DOWN,  // Front: decrease brake lockup heavy motor strength
+            RUMBLE_LOCKUP_FRONT_HEAVY_UP,    // Front: increase brake lockup heavy motor strength
+            RUMBLE_LOCKUP_FRONT_MIN_UP,      // Front: increase brake lockup min input
+            RUMBLE_LOCKUP_FRONT_MIN_DOWN,    // Front: decrease brake lockup min input
+            RUMBLE_LOCKUP_FRONT_MAX_UP,      // Front: increase brake lockup max input
+            RUMBLE_LOCKUP_FRONT_MAX_DOWN,    // Front: decrease brake lockup max input
+            RUMBLE_LOCKUP_REAR_LIGHT_DOWN,  // Rear: decrease brake lockup light motor strength
+            RUMBLE_LOCKUP_REAR_LIGHT_UP,    // Rear: increase brake lockup light motor strength
+            RUMBLE_LOCKUP_REAR_HEAVY_DOWN,  // Rear: decrease brake lockup heavy motor strength
+            RUMBLE_LOCKUP_REAR_HEAVY_UP,    // Rear: increase brake lockup heavy motor strength
+            RUMBLE_LOCKUP_REAR_MIN_UP,      // Rear: increase brake lockup min input
+            RUMBLE_LOCKUP_REAR_MIN_DOWN,    // Rear: decrease brake lockup min input
+            RUMBLE_LOCKUP_REAR_MAX_UP,      // Rear: increase brake lockup max input
+            RUMBLE_LOCKUP_REAR_MAX_DOWN,    // Rear: decrease brake lockup max input
             RUMBLE_WHEELIE_LIGHT_DOWN, // Decrease wheelie light motor strength
             RUMBLE_WHEELIE_LIGHT_UP,   // Increase wheelie light motor strength
             RUMBLE_WHEELIE_HEAVY_DOWN, // Decrease wheelie heavy motor strength
@@ -314,6 +360,22 @@ public:
             RUMBLE_STEER_MIN_DOWN,     // Decrease steer min input
             RUMBLE_STEER_MAX_UP,       // Increase steer max input
             RUMBLE_STEER_MAX_DOWN,     // Decrease steer max input
+            RUMBLE_REVLIM_LIGHT_DOWN,  // Decrease rev limiter light motor strength
+            RUMBLE_REVLIM_LIGHT_UP,    // Increase rev limiter light motor strength
+            RUMBLE_REVLIM_HEAVY_DOWN,  // Decrease rev limiter heavy motor strength
+            RUMBLE_REVLIM_HEAVY_UP,    // Increase rev limiter heavy motor strength
+            RUMBLE_REVLIM_MIN_UP,      // Increase rev limiter min input
+            RUMBLE_REVLIM_MIN_DOWN,    // Decrease rev limiter min input
+            RUMBLE_REVLIM_MAX_UP,      // Increase rev limiter max input
+            RUMBLE_REVLIM_MAX_DOWN,    // Decrease rev limiter max input
+            RUMBLE_PITLIM_LIGHT_DOWN,  // Decrease pit limiter light motor strength
+            RUMBLE_PITLIM_LIGHT_UP,    // Increase pit limiter light motor strength
+            RUMBLE_PITLIM_HEAVY_DOWN,  // Decrease pit limiter heavy motor strength
+            RUMBLE_PITLIM_HEAVY_UP,    // Increase pit limiter heavy motor strength
+            RUMBLE_PITLIM_MIN_UP,      // Increase pit limiter min input
+            RUMBLE_PITLIM_MIN_DOWN,    // Decrease pit limiter min input
+            RUMBLE_PITLIM_MAX_UP,      // Increase pit limiter max input
+            RUMBLE_PITLIM_MAX_DOWN,    // Decrease pit limiter max input
             RUMBLE_HUD_TOGGLE,         // Toggle RumbleHud visibility
             // Helmet Overlay settings
             HELMET_OVERLAY_TOGGLE,     // Master toggle: enable helmet overlay
@@ -400,7 +462,10 @@ public:
             ANIMATION_MODE_DOWN,       // Cycle position animation backward Colored->Basic->Off (StandingsHud)
             NAME_MODE_UP,              // Cycle rider name mode forward Off->Short->Long (StandingsHud)
             NAME_MODE_DOWN,            // Cycle rider name mode backward Long->Short->Off (StandingsHud)
-            HEADERS_TOGGLE             // Toggle column-header row in the standings (StandingsHud)
+            POSGAIN_MODE_UP,           // Cycle positions-gained reference forward Off->Start->S/F->Split (StandingsHud)
+            POSGAIN_MODE_DOWN,         // Cycle positions-gained reference backward Split->S/F->Start->Off (StandingsHud)
+            HEADERS_TOGGLE,            // Toggle column-header row in the standings (StandingsHud)
+            SESSION_INFO_TOGGLE        // Toggle session-info row (clock/laps/overtime) in the standings (StandingsHud)
         } type;
 
         // Type-safe variant instead of unsafe union (C++17)
@@ -515,6 +580,7 @@ public:
     static BaseHud* renderTabRumble(SettingsLayoutContext& ctx);
     static BaseHud* renderTabHelmet(SettingsLayoutContext& ctx);
     static BaseHud* renderTabGeneral(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabFriends(SettingsLayoutContext& ctx);
     static BaseHud* renderTabAppearance(SettingsLayoutContext& ctx);
     static BaseHud* renderTabHotkeys(SettingsLayoutContext& ctx);
     static BaseHud* renderTabRiders(SettingsLayoutContext& ctx);
@@ -534,6 +600,7 @@ public:
     bool handleClickTabHelmet(const ClickRegion& region);
     bool handleClickTabAppearance(const ClickRegion& region);
     bool handleClickTabGeneral(const ClickRegion& region);
+    bool handleClickTabFriends(const ClickRegion& region);
     bool handleClickTabHotkeys(const ClickRegion& region);
     bool handleClickTabRiders(const ClickRegion& region);
     bool handleClickTabRecords(const ClickRegion& region);
@@ -550,6 +617,7 @@ public:
     // HUD getter methods (for tab rendering functions)
     IdealLapHud* getIdealLapHud() const { return m_idealLap; }
     LapLogHud* getLapLogHud() const { return m_lapLog; }
+    FriendsHud* getFriendsHud() const { return m_friends; }
     LapConsistencyHud* getLapConsistencyHud() const { return m_lapConsistency; }
     StandingsHud* getStandingsHud() const { return m_standings; }
     PerformanceHud* getPerformanceHud() const { return m_performance; }
@@ -573,6 +641,7 @@ public:
     RecordsHud* getRecordsHud() const { return m_records; }
     FuelWidget* getFuelWidget() const { return m_fuel; }
     PointerWidget* getPointerWidget() const { return m_pointer; }
+    SettingsButtonWidget* getSettingsButtonWidget() const { return m_settingsButton; }
     RumbleHud* getRumbleHud() const { return m_rumble; }
     HelmetOverlayHud* getHelmetOverlayHud() const { return m_helmetOverlay; }
     GamepadWidget* getGamepadWidget() const { return m_gamepad; }
@@ -641,6 +710,7 @@ private:
     // HUD references (non-owning pointers)
     IdealLapHud* m_idealLap;
     LapLogHud* m_lapLog;
+    FriendsHud* m_friends;
     LapConsistencyHud* m_lapConsistency;
     StandingsHud* m_standings;
     PerformanceHud* m_performance;
@@ -664,6 +734,7 @@ private:
     RecordsHud* m_records;
     FuelWidget* m_fuel;
     PointerWidget* m_pointer;
+    SettingsButtonWidget* m_settingsButton;
     RumbleHud* m_rumble;
     HelmetOverlayHud* m_helmetOverlay;
     GamepadWidget* m_gamepad;
@@ -733,7 +804,8 @@ private:
         TAB_STATS = 22,        // Stats tracking (laps, crashes, PBs)
         TAB_EVENT_LOG = 23,    // Event Log (race event feed)
         TAB_HELMET = 24,       // Helmet overlay (immersion)
-        TAB_COUNT = 25
+        TAB_FRIENDS = 25,      // Friends (Steam friends in-game)
+        TAB_COUNT = 26
     };
     int m_activeTab;
 
@@ -744,6 +816,8 @@ private:
     HotkeyColumn m_hoveredHotkeyColumn;  // Which column is hovered
     float m_hotkeyContentStartY;  // Y position where hotkey rows start (set during rebuild)
     float m_hotkeyRowHeight;      // Row height for hotkey tab (set during rebuild)
+    std::vector<float> m_hotkeyRowTops;  // Top Y of each rendered hotkey row (set during rebuild);
+                                         // indexed to match the hover row index, accounts for spacer gaps
     float m_hotkeyKeyboardX;      // X position of keyboard column (set during rebuild)
     float m_hotkeyControllerX;    // X position of controller column (set during rebuild)
     float m_hotkeyFieldCharWidth; // Character width for field calculations (set during rebuild)

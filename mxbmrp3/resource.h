@@ -7,8 +7,8 @@
 #pragma once
 
 #define VER_MAJOR 1
-#define VER_MINOR 23
-#define VER_PATCH 10
+#define VER_MINOR 24
+#define VER_PATCH 0
 #define VER_BUILD 0
 
-#define VER_STRING "1.23.10.0"
+#define VER_STRING "1.24.0.0"

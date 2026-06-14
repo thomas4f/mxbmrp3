@@ -38,6 +38,17 @@ enum class HotkeyAction : uint8_t {
     TOGGLE_NOTICES,
     TOGGLE_EVENT_LOG,
     TOGGLE_HELMET,
+    TOGGLE_FRIENDS,
+    // Web overlay broadcaster controls: force a bottom-slot panel to slide in
+    // immediately (momentary - the normal rotation resumes after). HTTP-server
+    // builds only; rows/dispatch are gated on GAME_HAS_HTTP_SERVER, but the
+    // enumerators stay unconditional to preserve config indices across games.
+    // Names match the UI labels; the app.js panel strings ("fastlap"/"bestlap"/
+    // "battle"/"tail") live only in HttpServer::overlayPanelName().
+    OVERLAY_FORCE_LAST_LAP,      // -> "fastlap" panel (fastest last lap)
+    OVERLAY_FORCE_FASTEST_LAP,   // -> "bestlap" panel (session best)
+    OVERLAY_FORCE_DOWN_ORDER,    // -> "tail" panel (backmarkers)
+    OVERLAY_FORCE_BATTLE,        // -> "battle" panel (closest battle, else "No data")
 
     COUNT  // Must be last
 };
@@ -69,7 +80,51 @@ inline const char* getActionDisplayName(HotkeyAction action) {
         case HotkeyAction::TOGGLE_NOTICES:         return "Notices";
         case HotkeyAction::TOGGLE_EVENT_LOG:       return "Event Log";
         case HotkeyAction::TOGGLE_HELMET:          return "Helmet";
+        case HotkeyAction::TOGGLE_FRIENDS:         return "Friends";
+        case HotkeyAction::OVERLAY_FORCE_LAST_LAP:    return "Last Lap";
+        case HotkeyAction::OVERLAY_FORCE_FASTEST_LAP: return "Fastest Lap";
+        case HotkeyAction::OVERLAY_FORCE_DOWN_ORDER:  return "Down Order";
+        case HotkeyAction::OVERLAY_FORCE_BATTLE:      return "Battle";
         default: return "Unknown";
+    }
+}
+
+// Stable snake_case name used as the INI key prefix (e.g. "standings" ->
+// standings_key / standings_mod / standings_btn). Name-based keys are
+// self-documenting and survive enum reordering. NEVER rename an existing one
+// without a migration path - it silently drops that action's saved binding.
+inline const char* getActionConfigName(HotkeyAction action) {
+    switch (action) {
+        case HotkeyAction::TOGGLE_STANDINGS:       return "standings";
+        case HotkeyAction::TOGGLE_MAP:             return "map";
+        case HotkeyAction::TOGGLE_RADAR:           return "radar";
+        case HotkeyAction::TOGGLE_LAP_LOG:         return "lap_log";
+        case HotkeyAction::TOGGLE_IDEAL_LAP:       return "ideal_lap";
+        case HotkeyAction::TOGGLE_TELEMETRY:       return "telemetry";
+        case HotkeyAction::TOGGLE_INPUT:           return "input";
+        case HotkeyAction::TOGGLE_RECORDS:         return "records";
+        case HotkeyAction::TOGGLE_WIDGETS:         return "all_widgets";
+        case HotkeyAction::TOGGLE_PITBOARD:        return "pitboard";
+        case HotkeyAction::TOGGLE_TIMING:          return "timing";
+        case HotkeyAction::TOGGLE_GAP_BAR:         return "gap_bar";
+        case HotkeyAction::TOGGLE_PERFORMANCE:     return "performance";
+        case HotkeyAction::TOGGLE_RUMBLE:          return "rumble";
+        case HotkeyAction::TOGGLE_ALL_HUDS:        return "all_elements";
+        case HotkeyAction::TOGGLE_SETTINGS:        return "settings_menu";
+        case HotkeyAction::RELOAD_CONFIG:          return "reload_config";
+        case HotkeyAction::TOGGLE_LAP_CONSISTENCY: return "consistency";
+        case HotkeyAction::TOGGLE_FMX:             return "fmx";
+        case HotkeyAction::TOGGLE_STATS:           return "stats";
+        case HotkeyAction::TOGGLE_SESSION:         return "session";
+        case HotkeyAction::TOGGLE_NOTICES:         return "notices";
+        case HotkeyAction::TOGGLE_EVENT_LOG:       return "event_log";
+        case HotkeyAction::TOGGLE_HELMET:          return "helmet";
+        case HotkeyAction::TOGGLE_FRIENDS:         return "friends";
+        case HotkeyAction::OVERLAY_FORCE_LAST_LAP:    return "overlay_last_lap";
+        case HotkeyAction::OVERLAY_FORCE_FASTEST_LAP: return "overlay_fastest_lap";
+        case HotkeyAction::OVERLAY_FORCE_DOWN_ORDER:  return "overlay_down_order";
+        case HotkeyAction::OVERLAY_FORCE_BATTLE:      return "overlay_battle";
+        default: return "unknown";
     }
 }
 

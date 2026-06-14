@@ -23,9 +23,9 @@ public:
     bool m_bShowMaxText = true;            // Show recorded max-g text inside the ring
     bool m_bShowMaxMarker = true;          // Show lingering max-position marker on gauge
     int m_maxMarkerLingerFrames = 60;      // Frames to keep the max marker visible after dot moves
-    float m_maxScale = 5.0f;               // Full-scale of the ring in g (INI-tunable; bumped to 5
-                                           // so MX landings/hard hits visibly saturate to red rather
-                                           // than pegging on a tiny 2g ring)
+    float m_maxScale = 20.0f;              // Full-scale of the ring in g (INI-tunable; set to 20
+                                           // so only the biggest MX landings/hard hits saturate to red,
+                                           // keeping everyday riding in the green/yellow range)
 
 protected:
     void rebuildLayout() override;

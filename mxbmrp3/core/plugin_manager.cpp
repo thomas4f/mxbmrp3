@@ -37,6 +37,9 @@
 #if GAME_HAS_DISCORD
 #include "discord_manager.h"
 #endif
+#if GAME_HAS_STEAM_FRIENDS
+#include "steam_friends_manager.h"
+#endif
 #if GAME_HAS_HTTP_SERVER
 #include "http_server.h"
 #endif
@@ -118,6 +121,12 @@ void PluginManager::initialize(const char* savePath) {
     DiscordManager::getInstance().initialize();
 #endif
 
+#if GAME_HAS_STEAM_FRIENDS
+    // Experimental Steam friends probe (game thread only, no background thread).
+    // Hooks the game's already-loaded steam_api64.dll; safe no-op if absent.
+    SteamFriendsManager::getInstance().initialize();
+#endif
+
 #if GAME_HAS_HTTP_SERVER
     // Initialize HTTP server (starts if enabled via settings)
     HttpServer::getInstance().initialize(savePath);
@@ -153,6 +162,11 @@ void PluginManager::initialize(const char* savePath) {
 #if GAME_HAS_DISCORD
         try { DiscordManager::getInstance().shutdown(); } catch (...) {}
 #endif
+#if GAME_HAS_STEAM_FRIENDS
+        // No background thread, but initialize() may have published presence -
+        // clear it so a failed init doesn't leave stale rich presence in Steam.
+        try { SteamFriendsManager::getInstance().shutdown(); } catch (...) {}
+#endif
         try { CrashHandler::uninstall(); } catch (...) {}
         throw;
     }
@@ -173,6 +187,11 @@ void PluginManager::shutdown() {
 #if GAME_HAS_DISCORD
     // Shutdown Discord Rich Presence (clears presence from Discord)
     DiscordManager::getInstance().shutdown();
+#endif
+
+#if GAME_HAS_STEAM_FRIENDS
+    // Clear our Steam rich presence
+    SteamFriendsManager::getInstance().shutdown();
 #endif
 
     // Save rumble profiles before shutdown

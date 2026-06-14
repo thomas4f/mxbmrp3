@@ -73,6 +73,8 @@ void RaceSessionHandler::handleRaceSession(Unified::RaceSessionData* psRaceSessi
     PluginData::getInstance().setLeaderFinishTime(-1);
     PluginData::getInstance().setSessionTimeExpired(false);
     PluginData::getInstance().clearSessionFinished();
+    PluginData::getInstance().clearRaceStartPositions();
+    PluginData::getInstance().clearPositionReferences();
 
     // Update plugin data store
     PluginData::getInstance().setSession(psRaceSession->session);
@@ -133,6 +135,14 @@ void RaceSessionHandler::handleRaceSessionState(Unified::RaceSessionStateData* p
         !(PluginData::getInstance().getSessionData().sessionState & PluginConstants::SessionState::IN_PROGRESS)) {
         PluginData::getInstance().setLastSessionTime(0);
         PluginData::getInstance().clearLiveGapTimingPoints();
+
+        // Race just went green: snapshot the starting grid so the standings HUD can
+        // show positions gained/lost. Only races reach this transition (practice/qualify
+        // arrive already IN_PROGRESS via handleRaceSession); the guard is belt-and-braces.
+        // A restart re-enters PRE_START then IN_PROGRESS, so this re-snapshots the new grid.
+        if (PluginData::getInstance().isRaceSession()) {
+            PluginData::getInstance().snapshotRaceStartPositions();
+        }
     }
 
     // Event log: session state changes

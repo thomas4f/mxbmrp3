@@ -331,8 +331,23 @@ void GForceWidget::rebuildRenderData() {
         m_markerMagnitude = 0.0f;
     }
 
-    // Single background ring (FMX combo-arc style: MUTED at 50% opacity, full 360°)
-    unsigned long arcBgColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), 0.5f);
+    // Single background ring (FMX combo-arc style, full 360°). Tinted green→yellow→red by
+    // the *lingering peak* magnitude (m_markerMagnitude), not the instantaneous value:
+    // real impacts are often a sub-frame spike the live value sheds before you can read it,
+    // so the live magnitude leaves the ring green almost all the time. The peak tracks up
+    // instantly (responsive on the way up), then holds at the peak for the marker linger
+    // window (~1s) before resuming — long enough to register an impact. Because the peak
+    // marker is frozen while crashed, the ring also freezes at the impact color until
+    // recovery, mirroring the max-marker freeze. Idle (0 g) reads green, full-scale (at
+    // m_maxScale) reads red. When there's no live data (spectate/replay/invalid) it stays
+    // muted gray so an empty ring reads as "no data" rather than a misleading green "0 g".
+    // Fixed 50% opacity keeps it behind the dot and unaffected by the background-opacity slider.
+    unsigned long arcBgColor;
+    if (dotLive) {
+        arcBgColor = PluginUtils::applyOpacity(getMagnitudeColor(m_markerMagnitude), 0.5f);
+    } else {
+        arcBgColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), 0.5f);
+    }
     addArcSegment(arcCenterX, arcCenterY, innerRadius, outerRadius,
                   0.0f, 2.0f * PI, arcBgColor, RING_SEGMENTS);
 
@@ -424,7 +439,7 @@ void GForceWidget::resetToDefaults() {
     m_bShowMaxText = true;
     m_bShowMaxMarker = true;
     m_maxMarkerLingerFrames = 60;
-    m_maxScale = 5.0f;
+    m_maxScale = 20.0f;
     setPosition(0.5995f, 0.8769f);
     resetTracking();
     m_wasCrashed = false;

@@ -129,6 +129,14 @@ bool SettingsHud::handleClickTabStandings(const ClickRegion& region) {
             }
             return true;
 
+        case ClickRegion::SESSION_INFO_TOGGLE:
+            if (standingsHud) {
+                standingsHud->m_bShowSessionInfo = !standingsHud->m_bShowSessionInfo;
+                standingsHud->setDataDirty();
+                rebuildRenderData();
+            }
+            return true;
+
         case ClickRegion::ANIMATION_MODE_UP:
             if (standingsHud) {
                 using AM = StandingsHud::AnimationMode;
@@ -183,6 +191,38 @@ bool SettingsHud::handleClickTabStandings(const ClickRegion& region) {
                     case NM::OFF:   standingsHud->m_nameMode = NM::LONG;  break;
                     case NM::SHORT: standingsHud->m_nameMode = NM::OFF;   break;
                     case NM::LONG:  standingsHud->m_nameMode = NM::SHORT; break;
+                }
+                standingsHud->setDataDirty();
+                rebuildRenderData();
+            }
+            return true;
+
+        case ClickRegion::POSGAIN_MODE_UP:
+            // Cycle forward: Off -> Sector -> Lap -> Race -> Off. The widest-scope
+            // reference (Race, which falls back to the last S/F) sits last, since it's
+            // the broadest fallback of the chain.
+            if (standingsHud) {
+                using PM = StandingsHud::PosGainMode;
+                switch (standingsHud->m_posGainMode) {
+                    case PM::OFF:        standingsHud->m_posGainMode = PM::LAST_SPLIT; break;
+                    case PM::LAST_SPLIT: standingsHud->m_posGainMode = PM::LAST_SF;    break;
+                    case PM::LAST_SF:    standingsHud->m_posGainMode = PM::RACE_START; break;
+                    case PM::RACE_START: standingsHud->m_posGainMode = PM::OFF;        break;
+                }
+                standingsHud->setDataDirty();
+                rebuildRenderData();
+            }
+            return true;
+
+        case ClickRegion::POSGAIN_MODE_DOWN:
+            // Cycle backward: Off -> Race -> Lap -> Sector -> Off
+            if (standingsHud) {
+                using PM = StandingsHud::PosGainMode;
+                switch (standingsHud->m_posGainMode) {
+                    case PM::OFF:        standingsHud->m_posGainMode = PM::RACE_START; break;
+                    case PM::RACE_START: standingsHud->m_posGainMode = PM::LAST_SF;    break;
+                    case PM::LAST_SF:    standingsHud->m_posGainMode = PM::LAST_SPLIT; break;
+                    case PM::LAST_SPLIT: standingsHud->m_posGainMode = PM::OFF;        break;
                 }
                 standingsHud->setDataDirty();
                 rebuildRenderData();
@@ -269,6 +309,14 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
     // === CONTENT SECTION ===
     ctx.addSectionHeader("Content");
 
+    // Session-info row (live clock / leader laps / overtime label) below the title.
+    // nullptr boolPtr: SESSION_INFO_TOGGLE handler flips hud->m_bShowSessionInfo directly.
+    ctx.addToggleControl("Session info",
+        hud->m_bShowSessionInfo,
+        SettingsHud::ClickRegion::SESSION_INFO_TOGGLE, hud,
+        static_cast<bool*>(nullptr), true,
+        "standings.session_info", nullptr);
+
     // Column-header row labeling each enabled column.
     // nullptr boolPtr: HEADERS_TOGGLE handler flips hud->m_bShowHeaders directly.
     ctx.addToggleControl("Column headers",
@@ -284,6 +332,25 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
     ctx.addToggleControl("Position number", (hud->m_enabledColumns & StandingsHud::COL_POS) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_POS, true,
         "standings.col_pos");
+    // Positions gained/lost mode cycle (Off < > Sector < > Lap < > Race). Labels name the
+    // scope the delta covers: RACE_START = the whole race, LAST_SF = the current lap,
+    // LAST_SPLIT = the current sector. Bare nouns keep them parallel and within
+    // STANDARD_VALUE_WIDTH (10 chars), so formatValue() never ellipsizes them.
+    {
+        const char* posGainValue;
+        switch (hud->m_posGainMode) {
+            case StandingsHud::PosGainMode::RACE_START: posGainValue = "Race";   break;
+            case StandingsHud::PosGainMode::LAST_SF:    posGainValue = "Lap";    break;
+            case StandingsHud::PosGainMode::LAST_SPLIT: posGainValue = "Sector"; break;
+            case StandingsHud::PosGainMode::OFF:
+            default:                                    posGainValue = "Off";    break;
+        }
+        ctx.addCycleControl("Positions gained/lost", posGainValue, 10,
+            SettingsHud::ClickRegion::POSGAIN_MODE_DOWN,
+            SettingsHud::ClickRegion::POSGAIN_MODE_UP,
+            hud, true, hud->m_posGainMode == StandingsHud::PosGainMode::OFF,
+            "standings.col_posgain");
+    }
     ctx.addToggleControl("Race number", (hud->m_enabledColumns & StandingsHud::COL_RACENUM) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_RACENUM, true,
         "standings.col_racenum");

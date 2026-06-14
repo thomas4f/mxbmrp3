@@ -1,8 +1,14 @@
 // ============================================================================
 // core/tooltip_manager.h
 // Manages tooltips for settings UI elements.
-// Strings are compiled into the plugin (no external file). Recommended max
-// tooltip length: 120 characters.
+// Strings are compiled into the plugin (no external file).
+//
+// LENGTH LIMIT: tooltips render as at most 2 word-wrapped lines (~60 chars each)
+// in the settings panel; anything beyond ~120 characters is hard-truncated with
+// "..." (see renderWrappedText in settings_hud.cpp, MAX_LINES=2). Keep every
+// description <= ~120 chars - prefer ~100 to leave wrap margin. Measuring stick:
+// "rumble.bumps" (~94 chars) fills the box without truncating - treat that as the
+// comfortable ceiling.
 // ============================================================================
 #pragma once
 
@@ -50,6 +56,7 @@ private:
             {"map", "Overhead view of the track with real-time rider positions. Supports zoom and display modes."},
             {"radar", "Shows nearby riders relative to your position. Useful for close racing awareness."},
             {"lap_log", "History of your recent lap times with sector breakdowns. Shows lap-by-lap performance."},
+            {"friends", "Steam friends in the same game: where they are, badged when on your server and track."},
             {"lap_consistency", "Visualizes lap time consistency with bar charts and statistics. Track your improvement over time."},
             {"ideal_lap", "Displays your theoretical best lap time calculated from your fastest individual sectors."},
             {"telemetry", "Real-time input data including throttle, brake, clutch, RPM, suspension travel, and gear."},
@@ -61,7 +68,7 @@ private:
             {"gap_bar", "Visual progress bar showing your gap to the rider ahead and behind."},
             {"widgets", "Simple HUD elements showing speed, position, lap count, session time, and other info."},
             {"notices", "On-screen notices for race events, personal bests, and setup warnings."},
-            {"event_log", "Scrolling feed of notable race events including session changes, fastest laps, penalties, and finishes."},
+            {"event_log", "Scrolling feed of race events: session changes, fastest laps, penalties, and finishes."},
             {"fmx", "Freestyle trick detection with scoring, chain combos, and rotation visualization."},
             {"stats", "Per-track statistics including lap counts, crashes, gear shifts, top speed, and riding time."},
             {"helmet", "First-person helmet overlay with lean tilt and vibration."},
@@ -78,20 +85,22 @@ private:
             {"common.scale", "Size multiplier. Affects all text and graphics in this HUD."},
 
             {"standings.live_gaps", "Show real-time estimated gaps during races. When off, gaps only update at split points."},
-            {"standings.animate_positions", "Animate position changes. Off: disabled; Basic: slide rows; Colored: slide plus green/red tint by direction."},
+            {"standings.animate_positions", "Animate position changes. Off: none; Basic: slide rows; Colored: slide + green/red tint."},
             {"standings.filter_dns", "Hide riders who did not start (DNS) from standings, position counts, and other displays."},
+            {"standings.session_info", "Show a session-info row below the title (session, time remaining, leader's lap, or overtime label)."},
             {"standings.headers", "Show a header row labeling each enabled column above the rider rows."},
             {"standings.rows", "Maximum rider rows to show. More rows use more screen space."},
             {"standings.col_tracked", "Show status icons: hazard warnings, blue flags, checkered flags, and tracked rider markers."},
             {"standings.col_pos", "Show position number column."},
+            {"standings.col_posgain", "Show positions gained or lost since the race start (caret up/down with a count). Race sessions only."},
             {"standings.col_racenum", "Show race number column."},
             {"standings.col_name", "Rider name display. Off hides the column, Short shows 3-letter abbreviation, Long shows full name."},
             {"standings.col_bike", "Show bike model column."},
             {"standings.col_status", "Show session status indicator (PIT, DNS, DSQ, lap count, FIN)."},
             {"standings.col_penalty", "Show penalty indicator when riders have active penalties."},
             {"standings.col_bestlap", "Show best lap time column."},
-            {"standings.gap_mode", "Off hides the column. Player shows your gap, Adjacent shows gaps to riders ahead/behind, All for everyone."},
-            {"standings.gap_reference", "Gap reference point. Leader shows gaps to P1, Player shows gaps relative to you, Auto alternates between the two."},
+            {"standings.gap_mode", "Off hides column. Player: your gap; Adjacent: riders ahead/behind; All: everyone."},
+            {"standings.gap_reference", "Gap reference: Leader shows gaps to P1, Player relative to you, Auto alternates the two."},
 
             {"ideal_lap.sectors", "Show your fastest individual sector times (S1, S2, S3)."},
             {"ideal_lap.laps", "Show your last lap, best lap, and calculated ideal lap times."},
@@ -101,6 +110,15 @@ private:
             {"lap_log.gap_row", "Show live gap to personal best below the current lap time."},
             {"lap_log.headers", "Show a header row labeling each column above the lap rows."},
             {"lap_log.col_sectors", "Show sector split times (S1, S2, S3)."},
+
+            {"friends.rows", "Maximum number of friend rows to show."},
+            {"friends.headers", "Show a header row labeling each enabled column."},
+            {"friends.showmode", "When to show: Always; Friends (one is in-game); or On Join (briefly). Visible = master on/off."},
+            {"friends.self", "Add your own presence as a top row (labeled You) to confirm what you're broadcasting."},
+            {"friends.col_server", "The friend's server name (blank when offline)."},
+            {"friends.col_track", "The friend's current track."},
+            {"friends.col_info", "Session, format and state (e.g. Race 2, In Progress), or In Menus / Unknown between sessions."},
+            {"friends.col_timer", "The friend's session clock: MM:SS, or N TO GO / FINAL LAP / CHECKERED. A coarse snapshot, not live."},
 
             {"lap_consistency.style", "Display mode. Graphs shows bar chart, Numbers shows statistics only, Both shows both."},
             {"lap_consistency.reference", "Baseline for comparison. Bars show delta to this reference time."},
@@ -128,9 +146,9 @@ private:
             {"performance.display", "Display mode. Graphs shows visual meters, Numbers shows text values, Both shows both."},
             {"performance.fps", "Show frames per second."},
             {"performance.cpu", "Show plugin execution time in milliseconds."},
-            {"performance.benchmark", "Show profiler overlay with per-callback and per-HUD timing. Exports timestamped report when toggled off."},
+            {"performance.benchmark", "Profiler overlay with per-callback and per-HUD timing. Exports a report when toggled off."},
 
-            {"pitboard.show_mode", "When to show. Always shows constantly, At Pit shows near pit area, At Splits shows after timing points."},
+            {"pitboard.show_mode", "When to show. Always: constantly; At Pit: near pit area; At Splits: after timing points."},
             {"pitboard.rider", "Show rider name row."},
             {"pitboard.session", "Show session information row."},
             {"pitboard.position", "Show race position row."},
@@ -138,16 +156,13 @@ private:
             {"pitboard.lap", "Show lap number row."},
             {"pitboard.last_lap", "Show last lap time row."},
             {"pitboard.gap", "Show gap comparison row. Displays time difference based on gap compare mode."},
-            {"pitboard.gap_compare", "Auto uses leader in races, session PB when solo. Overall compares to any rider's best, Record to Records HUD."},
+            {"pitboard.gap_compare", "Auto: leader in races, session PB solo. Overall: any rider's best. Record: from Records HUD."},
 
             {"session.icons", "Show icons next to each row. Off displays text only."},
-            {"session.type", "Show session type (Practice, Qualifying, Race, etc.)."},
             {"session.track", "Show current track name."},
             {"session.format", "Show session format (time/laps) and current state."},
-            {"session.server", "Show server name when online, or 'Testing' when offline."},
-            {"session.players", "Show current player count and server capacity."},
+            {"session.server", "Show the server name (online) / 'Testing' (offline) as the headline row."},
             {"session.weather", "Show current weather conditions."},
-            {"session.password_mode", "Off hides row, Hidden shows ****. As Host/Client reveals password. Caution: As Client exposes the admin password."},
 
             {"records.provider", "Data source for leaderboard records. CBR or MXB Ranked."},
             {"records.count", "Number of records to show from the leaderboard."},
@@ -208,9 +223,10 @@ private:
             {"appearance.fuel_unit", "Unit for fuel display. Liters or Gallons."},
             {"appearance.temp_unit", "Unit for temperature display. Celsius or Fahrenheit."},
             {"appearance.clock_format", "Clock time format. 24h uses 00:00-23:59, 12h uses 1:00-12:59 AM/PM."},
-            {"general.grid_snap", "When enabled, HUDs snap to a grid when dragging."},
-            {"general.screen_clamp", "When enabled, HUDs are clamped to stay within screen bounds when dragging."},
+            {"appearance.grid_snap", "When enabled, HUDs snap to a grid when dragging."},
+            {"appearance.screen_clamp", "When enabled, HUDs are clamped to stay within screen bounds when dragging."},
             {"general.auto_save", "When enabled, settings save automatically. Disable to edit the INI manually and reload."},
+            {"general.steam_friends", "Broadcast your status and see friends running the plugin. Needs the Steam build; on by default."},
             {"general.discord", "Display your track, session, and lap progress in Discord's Rich Presence."},
             {"general.web_server", "Web overlay for OBS. Add as Browser Source at the displayed port."},
             {"general.web_port", "Port for the web server. Change if the default is in use by another application."},
@@ -254,6 +270,9 @@ private:
             {"rumble.steer", "Vibration from steering forces. Min/Max set the steering torque range in Newton-meters."},
             {"rumble.rpm", "Vibration synchronized with engine RPM. Min/Max set the RPM range."},
             {"rumble.surface", "Vibration from rough terrain. Min/Max set the vehicle speed range when off-track."},
+            {"rumble.revlimiter", "Vibration near the rev limiter. Min/Max set the range as % of limiter RPM. Muted off-throttle."},
+            {"rumble.pitlimiter", "Vibration while the pit-lane speed limiter is active. Light/Heavy set the intensity."},
+            {"rumble.split", "Tune front/rear wheels separately. They start from the combined value, then stay independent."},
 
             {"widgets.lap", "Shows current lap number and total laps in the session."},
             {"widgets.position", "Shows your current race position (P1, P2, etc.)."},
@@ -270,8 +289,9 @@ private:
             {"widgets.gforce", "G-G diagram plotting lateral vs longitudinal G-force with a peak marker."},
             {"widgets.pointer", "Mouse pointer for interacting with HUD elements."},
             {"widgets.tyre_temp", "Shows front and rear tyre temperatures."},
-            {"widgets.ecu", "Shows ECU rider aids (engine map, traction control, engine braking, anti-wheeling). Chips brighten when an aid intervenes."},
+            {"widgets.ecu", "Shows ECU aids: map, traction, engine braking, anti-wheeling. Chips brighten on intervention."},
             {"widgets.version", "Shows plugin version number."},
+            {"widgets.settings_button", "Opens the settings menu. Hide it if you prefer to use a hotkey."},
 
             {"hotkeys.settings", "Toggle the settings menu on/off."},
             {"hotkeys.standings", "Toggle the standings HUD on/off."},
@@ -297,13 +317,18 @@ private:
             {"hotkeys.reload", "Reload configuration from disk."},
             {"hotkeys.event_log", "Toggle the event log HUD on/off."},
             {"hotkeys.helmet", "Toggle the helmet overlay on/off."},
+            {"hotkeys.friends", "Toggle the friends HUD on/off."},
+            {"hotkeys.overlay_last_lap", "Web overlay: force the fastest-last-lap board to slide in now (momentary; normal rotation resumes after)."},
+            {"hotkeys.overlay_fastest_lap", "Web overlay: force the session-best lap board to slide in now (momentary; normal rotation resumes after)."},
+            {"hotkeys.overlay_down_order", "Web overlay: force the down-the-order (backmarkers) carousel to slide in now (momentary; normal rotation resumes after)."},
+            {"hotkeys.overlay_battle", "Web overlay: force the closest battle to slide in now (momentary; shows 'No data' if no battle is active)."},
 
             {"stats.visibility_mode", "When to show. Always displays on track, On Finish appears after crossing the finish line."},
             {"stats.show_lap", "Show last completed lap column with per-lap stats."},
             {"stats.show_session", "Show current session column with accumulated session stats."},
             {"stats.show_alltime", "Show all-time column with lifetime stats for this track and bike."},
 
-            {"fmx.chain_rows", "Number of tricks shown in the stack. Off hides the stack, 1 shows active trick only, 2+ shows history."},
+            {"fmx.chain_rows", "Tricks shown in the stack. Off hides it, 1 shows the active trick, 2+ shows history."},
             {"fmx.row_trick_stats", "Show duration, distance, and peak rotation below the active trick name."},
             {"fmx.row_combo_arc", "Show combo arc with chain multiplier and score breakdown."},
             {"fmx.row_arcs", "Show pitch, yaw, and roll rotation arcs with start and peak markers."},
@@ -311,17 +336,17 @@ private:
             {"fmx.row_debug_values", "Show raw rotation values for pitch, yaw, and roll (developer mode only)."},
 
             {"notices.wrong_way", "Show warning when riding in the wrong direction."},
-            {"notices.blue_flag", "Show notice when a faster rider is approaching to pass."},
+            {"notices.blue_flag", "Show notice when a faster rider is approaching to pass. Race sessions only."},
             {"notices.overtime", "Show notice when the session timer expires in a time+laps race and extra laps begin."},
             {"notices.last_lap", "Show notice when starting the final lap of a race."},
-            {"notices.finished", "Show finishing position when crossing the line (e.g. FINISHED 1ST). Updates if penalties change it."},
+            {"notices.finished", "Show finishing position when crossing the line (e.g. FINISHED 1ST). Updates with penalties."},
             {"notices.alltime_pb", "Show notice when setting an all-time personal best lap."},
             {"notices.fastest_lap", "Show notice when setting the fastest lap in an online race."},
             {"notices.session_pb", "Show notice when setting a session personal best lap."},
             {"notices.hazard_stationary", "Show warning when a stationary rider is on the track ahead."},
             {"notices.hazard_wrong_way", "Show warning when a rider going the wrong way is on the track ahead."},
             {"notices.default_setup", "Show warning when entering the track with the default bike setup."},
-            {"notices.duration", "How long timed notices stay on screen. Wrong way, blue flag, and hazard notices last as long as active."},
+            {"notices.duration", "How long timed notices stay up. Wrong-way, blue-flag and hazard notices last while active."},
 
             {"event_log.icons", "Show small icons next to each event indicating the event type."},
             {"event_log.display_mode", "Off hides the log. On always shows it. Auto-hide shows it briefly when new events arrive."},
@@ -334,8 +359,8 @@ private:
             {"event_log.penalties", "Log when a rider receives a penalty, or when a penalty is cleared or changed."},
             {"event_log.rider_out", "Log when a rider retires, is disqualified, or does not start."},
             {"event_log.overtime", "Log when a timed race enters overtime, or when a non-race session timer expires."},
-            {"event_log.final_lap", "Log when a rider starts their final lap."},
-            {"event_log.leader_change", "Log when a different rider takes the lead position."},
+            {"event_log.final_lap", "Log when a rider starts their final lap. Race sessions only."},
+            {"event_log.leader_change", "Log when a different rider takes the lead position. Race sessions only."},
             {"event_log.finished", "Log when a rider crosses the finish line with their finishing position."},
             {"event_log.pit", "Log when a rider enters or exits the pits. Can be frequent in practice sessions."},
 

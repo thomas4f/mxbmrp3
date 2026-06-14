@@ -344,6 +344,12 @@ std::vector<int> BaseHud::getAvailableTextureVariants() const {
 // Shared HUD Rendering Helpers (eliminates duplication across HUDs)
 // ============================================================================
 
+// Emits one render string. IMPORTANT: this always pushes an entry, even when `text` is
+// empty — it never skips. Index-coordinated layout fast paths (e.g. StandingsHud /
+// IdealLapHud / StatsHud rebuildLayout) reposition strings by index and assume a stable
+// per-row string count/order across rebuilds. Callers therefore pass "" for a blank cell
+// rather than skipping the call; don't "optimize" empties away here or the indices desync
+// and rows scramble on drag/scale.
 void BaseHud::addString(const char* text, float x, float y, int justify, int fontIndex,
                         unsigned long color, float fontSize, bool skipShadow) {
     SPluginString_t stringEntry;
@@ -426,6 +432,33 @@ void BaseHud::addDot(float x, float y, unsigned long color, float size) {
     quadEntry.m_aafPos[3][1] = y - halfSizeY;
 
     quadEntry.m_iSprite = SpriteIndex::SOLID_COLOR;
+    quadEntry.m_ulColor = color;
+
+    m_quads.push_back(quadEntry);
+}
+
+void BaseHud::addIcon(float x, float y, int spriteIndex, unsigned long color, float size) {
+    using namespace PluginConstants;
+
+    SPluginQuad_t quadEntry;
+
+    // Apply offset before setting quad positions
+    applyOffset(x, y);
+
+    // Centered square, aspect-corrected so the icon stays round (not stretched).
+    float halfSizeX = (size * 0.5f) / UI_ASPECT_RATIO;
+    float halfSizeY = size * 0.5f;
+
+    quadEntry.m_aafPos[0][0] = x - halfSizeX;  // Top-left
+    quadEntry.m_aafPos[0][1] = y - halfSizeY;
+    quadEntry.m_aafPos[1][0] = x - halfSizeX;  // Bottom-left
+    quadEntry.m_aafPos[1][1] = y + halfSizeY;
+    quadEntry.m_aafPos[2][0] = x + halfSizeX;  // Bottom-right
+    quadEntry.m_aafPos[2][1] = y + halfSizeY;
+    quadEntry.m_aafPos[3][0] = x + halfSizeX;  // Top-right
+    quadEntry.m_aafPos[3][1] = y - halfSizeY;
+
+    quadEntry.m_iSprite = spriteIndex;
     quadEntry.m_ulColor = color;
 
     m_quads.push_back(quadEntry);

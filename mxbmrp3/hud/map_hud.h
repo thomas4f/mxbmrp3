@@ -263,6 +263,56 @@ private:
     // Track detail (LOD)
     Detail m_detail;
 
+    // Cached track-ribbon quads (outline + fill passes of renderTrack).
+    // The ribbon re-tessellates the whole centerline with per-sample trig on
+    // every rebuild, but its inputs only change when the VIEW changes - with
+    // rotation/zoom off they are identical across the rider-position rebuilds
+    // that dominate (every RaceTrackPosition callback), so the previous quads
+    // are reused. In rotate-to-player / zoom mode the key changes every
+    // rebuild and this degrades to a pass-through (no benefit, no harm).
+    // The key must cover EVERY input that affects the emitted quads: the
+    // view transform (worldToScreen + applyOffset + title offset), the clip
+    // rect, ribbon width/LOD, and the two colors. Track data changes
+    // invalidate explicitly via m_ribbonCacheValid in updateTrackData().
+    struct TrackRibbonKey {
+        float angle = 0.0f;                                  // Rotation
+        float minX = 0.0f, maxX = 0.0f, minY = 0.0f, maxY = 0.0f;  // Render bounds (zoom-overridden)
+        float trackScale = 0.0f, baseMapWidth = 0.0f, baseMapHeight = 0.0f;
+        float scale = 0.0f;                                  // m_fScale (also drives title offset height)
+        float offsetX = 0.0f, offsetY = 0.0f;                // Effective HUD offset (zoom-adjusted)
+        float clipLeft = 0.0f, clipTop = 0.0f, clipRight = 0.0f, clipBottom = 0.0f;
+        float trackWidthScale = 0.0f;
+        float zoomDistance = 0.0f;
+        int detail = -1;
+        bool zoomEnabled = false;
+        bool showOutline = false;
+        bool showTitle = false;
+        unsigned long outlineColor = 0;
+        unsigned long fillColor = 0;
+
+        bool operator==(const TrackRibbonKey& o) const {
+            return angle == o.angle
+                && minX == o.minX && maxX == o.maxX && minY == o.minY && maxY == o.maxY
+                && trackScale == o.trackScale
+                && baseMapWidth == o.baseMapWidth && baseMapHeight == o.baseMapHeight
+                && scale == o.scale
+                && offsetX == o.offsetX && offsetY == o.offsetY
+                && clipLeft == o.clipLeft && clipTop == o.clipTop
+                && clipRight == o.clipRight && clipBottom == o.clipBottom
+                && trackWidthScale == o.trackWidthScale
+                && zoomDistance == o.zoomDistance
+                && detail == o.detail
+                && zoomEnabled == o.zoomEnabled
+                && showOutline == o.showOutline
+                && showTitle == o.showTitle
+                && outlineColor == o.outlineColor
+                && fillColor == o.fillColor;
+        }
+    };
+    TrackRibbonKey m_ribbonKey;
+    std::vector<SPluginQuad_t> m_ribbonQuads;
+    bool m_ribbonCacheValid = false;
+
     // Calculate track bounds from segments
     void calculateTrackBounds();
 
