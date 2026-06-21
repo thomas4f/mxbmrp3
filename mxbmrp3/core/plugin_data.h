@@ -1062,10 +1062,19 @@ public:
     void setLeaderFinishTime(int time) { m_sessionData.leaderFinishTime = time; }
     int getLeaderFinishTime() const { return m_sessionData.leaderFinishTime; }
 
+    // Leader-change ("takes the lead") detection state. Must be reset per session:
+    // m_lastLeaderRaceNum survives across sessions (only cleared in clear()), so without
+    // this the first classification of a new session compares the new grid leader against
+    // the previous session's leader and emits a spurious "takes the lead" event.
+    void resetLeaderChangeTracking() { m_lastLeaderRaceNum = -1; }
+
     // Non-race session expiry tracking
     void setSessionTimeExpired(bool expired) { m_sessionData.sessionTimeExpired = expired; }
     void setRiderSessionFinished(int raceNum);
-    void clearSessionFinished();
+    // Resets ALL per-rider finish state (sessionFinished, finishTime, numLapsAtLeaderFinish)
+    // for a new session. m_standings survives across sessions, so these must be cleared
+    // explicitly or finish detection no-ops in later sessions (see definition).
+    void resetStandingsFinishState();
 
     // Player running state (set by RunStart, cleared by RunStop/RunDeinit)
     void setPlayerRunning(bool running) {
@@ -1173,6 +1182,84 @@ public:
     bool hasDefaultSetupNotice() const  { return m_newDefaultSetup; }
     std::chrono::steady_clock::time_point getDefaultSetupTime() const  { return m_defaultSetupTime; }
     void clearDefaultSetupNotice()  { m_newDefaultSetup = false; }
+
+    // ========================================================================
+    // Segment Timer (training tool: time custom track sections). The player drops
+    // a chain of boundary points (Add hotkey); segments are the open arcs between
+    // consecutive points (N points = N-1 segments, no auto-close), each timed live
+    // as you drive through it (split-style). Player-only, fed from RunTelemetry each
+    // tick. In-memory only - never persisted.
+    // ========================================================================
+    enum class SegmentNoticeKind : uint8_t { None, Added, Removed, Cleared };
+
+    struct SegmentTimerData {
+        // Upper bound on boundary points (a training aid - far more than anyone
+        // needs; keeps the per-tick crossing scan and the "Segment N" labels sane).
+        static constexpr int MAX_POINTS = 20;
+
+        // Boundary points in the order added (trackPos 0-1). The points are dividers
+        // and segments are the open arcs between consecutive points: N points (N>=2)
+        // make N-1 segments, segment i spanning points[i] -> points[i+1]. The chain
+        // is NOT auto-closed - to time the stretch back to start, drop a point on the
+        // start/finish line.
+        std::vector<float> points;
+
+        // Per-segment session best (parallel, size = segmentCount()).
+        std::vector<float> bests;     // best time per segment (seconds)
+        std::vector<char>  hasBest;   // 1 if bests[i] is valid (char, not vector<bool>)
+
+        // Live run state. Timed off a real wall clock (steady_clock), not the
+        // telemetry on-track time which stops advancing when stationary.
+        int runningSeg = -1;          // index of the segment currently being timed (-1 = none)
+        std::chrono::steady_clock::time_point runStart;  // interpolated wall time of the run start
+
+        // Last completed segment (for the split-style freeze display)
+        int lastSeg = -1;             // index of the last completed segment
+        float lastTime = 0.0f;        // its time (seconds)
+        bool lastHasDelta = false;    // there was a prior best for that segment
+        float lastDelta = 0.0f;       // lastTime - its previous best (negative = faster)
+        bool lastIsBest = false;      // this completion set a new best for that segment
+        unsigned int completionCounter = 0;  // bumped on each completion (drives the display freeze)
+
+        // Number of timed segments. The points are open dividers (no wrap), so N
+        // points (N>=2) make N-1 serial segments: segment i spans points[i] ->
+        // points[i+1].
+        int segmentCount() const { return points.size() >= 2 ? static_cast<int>(points.size()) - 1 : 0; }
+
+        // Circular distance (0-1 lap) at/under which a closing point counts as "back
+        // on the first point". A closing add within this of points[0] is snapped
+        // exactly onto it so the loop tiles with no sliver (see addSegmentPoint).
+        static constexpr float CLOSE_EPS = 0.02f;  // ~2% of the lap
+
+        // True once the chain is closed: the last point has come back onto the first
+        // (needs >=3 points). A closed loop already tiles the lap, so adding more
+        // points is blocked (a further point would overlap the closing segment).
+        bool isClosed() const {
+            if (points.size() < 3) return false;
+            float d = points.front() - points.back();
+            if (d < 0.0f) d = -d;
+            if (d > 0.5f) d = 1.0f - d;  // circular distance on the 0-1 lap
+            return d <= CLOSE_EPS;       // back on the first point
+        }
+    };
+
+    // Official split positions (centerline 0-1), set from the track centerline handler.
+    // Used to snap newly-placed segment boundaries onto a nearby real split.
+    void setSplitPositions(const std::vector<float>& positions) { m_splitPositions = positions; }
+
+    // Hotkeys: drop a boundary point at the player's current position / remove the last point.
+    void addSegmentPoint();
+    void removeSegmentPoint();
+    // Feed the player's centerline position (0-1) each telemetry tick.
+    void updateSegmentTimer(float trackPos);
+    const SegmentTimerData& getSegmentTimer() const { return m_segment; }
+    void resetSegmentTimer();
+
+    // Segment notice (transient, consumed by NoticesHud like the other timed notices)
+    bool hasSegmentNotice() const  { return m_segmentNotice != SegmentNoticeKind::None; }
+    SegmentNoticeKind getSegmentNoticeKind() const  { return m_segmentNotice; }
+    std::chrono::steady_clock::time_point getSegmentNoticeTime() const  { return m_segmentNoticeTime; }
+    void clearSegmentNotice()  { m_segmentNotice = SegmentNoticeKind::None; }
 
     // ========================================================================
     // Event Log (ring buffer of notable race events)
@@ -1328,6 +1415,15 @@ private:
     std::chrono::steady_clock::time_point m_fastestLapTime;
     std::chrono::steady_clock::time_point m_allTimePBTime;
     std::chrono::steady_clock::time_point m_defaultSetupTime;
+
+    // Segment timer (training tool - see public API above)
+    SegmentTimerData m_segment;
+    bool m_segmentHasPrev = false;          // Have a previous telemetry sample for crossing detection
+    float m_segmentPrevPos = 0.0f;          // Previous tick trackPos (0-1)
+    std::chrono::steady_clock::time_point m_segmentPrevWall;  // Wall time of previous tick (for interpolation)
+    SegmentNoticeKind m_segmentNotice = SegmentNoticeKind::None;
+    std::chrono::steady_clock::time_point m_segmentNoticeTime;
+    std::vector<float> m_splitPositions;    // official split positions (0-1) for snap-to-split
 
     // Event log ring buffer
     std::deque<EventLogEntry> m_eventLog;

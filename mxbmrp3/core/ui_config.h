@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cmath>
 
 // Temperature unit options (used by SessionHud weather display)
 enum class TemperatureUnit : uint8_t {
@@ -55,6 +56,23 @@ public:
     PBScope getPBScope() const { return m_pbScope; }
     void setPBScope(PBScope scope) { m_pbScope = scope; }
 
+    // Segment timer: snap a new boundary point to a nearby official split (INI-only).
+    // On by default; threshold is in normalized trackPos units (0-1 across the lap).
+    bool getSnapSegmentsToSplits() const { return m_bSnapSegmentsToSplits; }
+    void setSnapSegmentsToSplits(bool enabled) { m_bSnapSegmentsToSplits = enabled; }
+    float getSegmentSnapThreshold() const { return m_fSegmentSnapThreshold; }
+    void setSegmentSnapThreshold(float threshold) {
+        // Reject non-finite (NaN/Inf) from a hand-edited INI before the clamp - NaN slips
+        // past both comparisons and would store NaN, silently disabling snapping.
+        if (!std::isfinite(threshold)) { m_fSegmentSnapThreshold = 0.02f; return; }
+        m_fSegmentSnapThreshold = (threshold < 0.0f) ? 0.0f : (threshold > 0.25f) ? 0.25f : threshold;
+    }
+
+    // HUD title icons: draw each HUD's identity icon to the left of its title text.
+    // The same icon is used by the settings panel tab list. On by default.
+    bool getTitleIcons() const { return m_bTitleIcons; }
+    void setTitleIcons(bool enabled) { m_bTitleIcons = enabled; }
+
     // Drop shadow settings (for text rendering)
     bool getDropShadow() const { return m_bDropShadow; }
     void setDropShadow(bool enabled) { m_bDropShadow = enabled; }
@@ -79,8 +97,11 @@ private:
     bool m_bAutoSave = true;         // Auto-save enabled by default
     TemperatureUnit m_temperatureUnit = TemperatureUnit::CELSIUS;  // Celsius by default
     PBScope m_pbScope = PBScope::CATEGORY;  // Per-category PB tracking by default
+    bool m_bSnapSegmentsToSplits = true;    // Snap segment boundaries to nearby splits by default
+    float m_fSegmentSnapThreshold = 0.02f;  // Snap distance: 2% of the lap
     int m_holdRepeatFastMs = 50;     // Max repeat speed: 50ms (~20/sec)
     float m_fCursorActivationThreshold = 0.015f;  // Mouse travel from rest before cursor appears (~29px horiz on 1080p)
+    bool m_bTitleIcons = true;       // HUD title identity icons enabled by default
 
     // Drop shadow settings
     bool m_bDropShadow = true;                       // Drop shadow enabled by default

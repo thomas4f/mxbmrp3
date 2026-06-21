@@ -49,6 +49,8 @@ enum class HotkeyAction : uint8_t {
     OVERLAY_FORCE_FASTEST_LAP,   // -> "bestlap" panel (session best)
     OVERLAY_FORCE_DOWN_ORDER,    // -> "tail" panel (backmarkers)
     OVERLAY_FORCE_BATTLE,        // -> "battle" panel (closest battle, else "No data")
+    SEGMENT_ADD,                 // Segment timer: drop a boundary point at the current position
+    SEGMENT_REMOVE,              // Segment timer: remove the last boundary point
 
     COUNT  // Must be last
 };
@@ -85,6 +87,8 @@ inline const char* getActionDisplayName(HotkeyAction action) {
         case HotkeyAction::OVERLAY_FORCE_FASTEST_LAP: return "Fastest Lap";
         case HotkeyAction::OVERLAY_FORCE_DOWN_ORDER:  return "Down Order";
         case HotkeyAction::OVERLAY_FORCE_BATTLE:      return "Battle";
+        case HotkeyAction::SEGMENT_ADD:               return "Segment Add";
+        case HotkeyAction::SEGMENT_REMOVE:            return "Segment Remove";
         default: return "Unknown";
     }
 }
@@ -124,6 +128,8 @@ inline const char* getActionConfigName(HotkeyAction action) {
         case HotkeyAction::OVERLAY_FORCE_FASTEST_LAP: return "overlay_fastest_lap";
         case HotkeyAction::OVERLAY_FORCE_DOWN_ORDER:  return "overlay_down_order";
         case HotkeyAction::OVERLAY_FORCE_BATTLE:      return "overlay_battle";
+        case HotkeyAction::SEGMENT_ADD:               return "segment_add";
+        case HotkeyAction::SEGMENT_REMOVE:            return "segment_remove";
         default: return "unknown";
     }
 }

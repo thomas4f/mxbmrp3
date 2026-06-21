@@ -8,6 +8,8 @@
 #include "../core/input_manager.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
+#include "../core/ui_config.h"
+#include "../core/asset_manager.h"
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
 
@@ -69,37 +71,6 @@ bool SettingsButtonWidget::isClicked() const {
     return isPointInBounds(cursor.x, cursor.y);
 }
 
-void SettingsButtonWidget::rebuildLayout() {
-    // Fast path - only update positions
-    auto dim = getScaledDimensions();
-
-    float startX = 0.0f;  // Base position (upper left)
-    float startY = 0.0f;
-
-    // Calculate dimensions
-    float backgroundWidth = dim.paddingH +
-                           PluginUtils::calculateMonospaceTextWidth(BUTTON_WIDTH_CHARS, dim.fontSize) +
-                           dim.paddingH;
-    float backgroundHeight = dim.paddingV + dim.lineHeightNormal + dim.paddingV;
-
-    setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
-
-    // Update background quad position (applies offset internally)
-    updateBackgroundQuadPosition(startX, startY, backgroundWidth, backgroundHeight);
-
-    float contentStartX = startX + dim.paddingH;
-    float contentStartY = startY + dim.paddingV;
-
-    // Position button text
-    if (!m_strings.empty()) {
-        float x = contentStartX;
-        float y = contentStartY;
-        applyOffset(x, y);
-        m_strings[0].m_afPos[0] = x;
-        m_strings[0].m_afPos[1] = y;
-    }
-}
-
 void SettingsButtonWidget::rebuildRenderData() {
     // Clear render data
     clearStrings();
@@ -157,9 +128,23 @@ void SettingsButtonWidget::rebuildRenderData() {
     // Use PRIMARY color when hovering, ACCENT when not (accent on accent)
     unsigned long textColor = isHovering ? this->getColor(ColorSlot::PRIMARY) : this->getColor(ColorSlot::ACCENT);
 
-    // Add button text
-    addString(buttonText, contentStartX, contentStartY, Justify::LEFT,
-        this->getFont(FontCategory::NORMAL), textColor, dim.fontSize);
+    // Button content: when UI icons are enabled, a flat "menu" icon while closed and a
+    // flat "close" icon while open; otherwise the legacy "[=]"/"[x]" text. The flat icons
+    // get the (togglable) drop shadow via the title-icon path, so they read like the text
+    // they replace. addIcon centers on the point and applies the offset itself.
+    int iconSprite = UiConfig::getInstance().getTitleIcons()
+        ? AssetManager::getInstance().getIconSpriteIndex(settingsVisible ? "hud-close" : "hud-menu")
+        : 0;
+    m_titleIconQuadIndex = -1;   // reset each rebuild; set below so the icon is shadowed
+    m_titleStringIndex = -1;
+    if (iconSprite > 0) {
+        m_titleIconQuadIndex = static_cast<int>(m_quads.size());
+        addIcon(startX + backgroundWidth * 0.5f, startY + backgroundHeight * 0.5f,
+            iconSprite, textColor, dim.fontSize);
+    } else {
+        addString(buttonText, contentStartX, contentStartY, Justify::LEFT,
+            this->getFont(FontCategory::NORMAL), textColor, dim.fontSize);
+    }
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);

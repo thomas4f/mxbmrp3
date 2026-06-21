@@ -47,6 +47,7 @@
 #include "../hud/gamepad_widget.h"
 #include "../hud/lean_widget.h"
 #include "../hud/gforce_widget.h"
+#include "../hud/compass_widget.h"
 #include "../hud/clock_widget.h"
 #if GAME_HAS_TYRE_TEMP
 #include "../hud/tyre_temp_widget.h"
@@ -279,6 +280,11 @@ void HudManager::initialize() {
     m_pGforce->setTextureBaseName("gforce_widget");
     registerHud(std::move(gforcePtr));
 
+    auto compassPtr = std::make_unique<CompassWidget>();
+    m_pCompass = compassPtr.get();
+    m_pCompass->setTextureBaseName("compass_widget");
+    registerHud(std::move(compassPtr));
+
     auto clockPtr = std::make_unique<ClockWidget>();
     m_pClock = clockPtr.get();
     m_pClock->setTextureBaseName("clock_widget");
@@ -316,7 +322,7 @@ void HudManager::initialize() {
     m_pSettingsButton = settingsButtonPtr.get();
 
     auto settingsPtr = std::make_unique<SettingsHud>(m_pIdealLap, m_pLapLog, m_pFriends, m_pLapConsistency, m_pStandings,
-                                                       m_pPerformance, m_pTelemetry, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pGear, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, recordsHudPtr, m_pFuel, m_pPointer, m_pRumble, m_pGamepad, m_pLean, m_pGforce,
+                                                       m_pPerformance, m_pTelemetry, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pGear, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, recordsHudPtr, m_pFuel, m_pPointer, m_pRumble, m_pGamepad, m_pLean, m_pGforce, m_pCompass,
                                                        m_pFmxHud,
                                                        m_pStatsHud,
                                                        m_pEventLog,
@@ -442,6 +448,7 @@ void HudManager::clear() {
     m_pGamepad = nullptr;
     m_pLean = nullptr;
     m_pGforce = nullptr;
+    m_pCompass = nullptr;
     m_pClock = nullptr;
 #if GAME_HAS_TYRE_TEMP
     m_pTyreTemp = nullptr;
@@ -745,6 +752,10 @@ void HudManager::collectRenderData() {
     if (dropShadowEnabled) {
         totalStrings *= 2;
     }
+    // Note: this intentionally ignores two minor over-counts of shadow copies - the
+    // one shadow quad per shadowed title icon, and strings when a per-HUD dropShadow=1
+    // override is on while the global is off. Both are bounded and only cost at most one
+    // extra realloc (capacity never shrinks), not worth a pre-pass over every HUD.
 
     // Ensure vectors have sufficient capacity - grow if needed but never shrink
     if (m_quads.capacity() < totalQuads) {
@@ -788,7 +799,7 @@ void HudManager::collectRenderData() {
                            hud.get() == m_pBars || hud.get() == m_pVersion ||
                            hud.get() == m_pFuel ||
                            hud.get() == m_pGamepad || hud.get() == m_pLean ||
-                           hud.get() == m_pGforce ||
+                           hud.get() == m_pGforce || hud.get() == m_pCompass ||
                            hud.get() == m_pClock);
             if (m_bAllWidgetsToggledOff && isWidget && !isVersionGameActive) {
                 continue;
@@ -798,11 +809,53 @@ void HudManager::collectRenderData() {
             const auto& hudStrings = hud->getStrings();
             const auto& skipShadowFlags = hud->getStringSkipShadow();
 
-            // Use insert with iterators for efficient bulk copy of quads
-            m_quads.insert(m_quads.end(), hudQuads.begin(), hudQuads.end());
+            // Per-HUD drop shadow: the global setting unless this HUD has an ini-only override.
+            bool hudShadow = hud->getEffectiveDropShadow(dropShadowEnabled);
+
+            // Quads: bulk copy normally, but drop-shadow the title icon (the per-HUD
+            // identity icon to the left of the title) so it matches the title text.
+            // Only the title icon is shadowed - in-body/widget icons (settings tabs,
+            // the gear, gamepad glyphs, map/radar markers) keep their own outlines and
+            // would look wrong with an added shadow.
+            int titleIconIdx = hud->m_titleIconQuadIndex;
+            // Mirror the title string's own shadow decision so the icon and the title
+            // text beside it always agree (today the title string never opts out, but
+            // this keeps them in lockstep if addTitleString ever gains a skip flag).
+            int titleStrIdx = hud->m_titleStringIndex;
+            bool titleStrSkips = titleStrIdx >= 0 &&
+                                 titleStrIdx < static_cast<int>(skipShadowFlags.size()) &&
+                                 skipShadowFlags[titleStrIdx];
+            bool shadowTitleIcon = hudShadow && !titleStrSkips && titleIconIdx >= 0 &&
+                                   titleIconIdx < static_cast<int>(hudQuads.size());
+            if (shadowTitleIcon) {
+                // Bulk-copy the quads before the icon, then a tinted/offset shadow copy
+                // (renders behind), then the icon and everything after it - two bulk
+                // inserts + one push_back instead of N per-quad copies in this hot path.
+                m_quads.insert(m_quads.end(), hudQuads.begin(), hudQuads.begin() + titleIconIdx);
+
+                // Shadow copy. Offset is proportional to the icon's height and capped at
+                // EXTRA_LARGE, matching the string formula.
+                const auto& iconQuad = hudQuads[titleIconIdx];
+                SPluginQuad_t shadowQuad = iconQuad;
+                float iconHeight = iconQuad.m_aafPos[1][1] - iconQuad.m_aafPos[0][1];
+                float shadowSize = std::min(iconHeight, PluginConstants::FontSizes::EXTRA_LARGE);
+                float dx = shadowSize * shadowOffsetXPct;
+                float dy = shadowSize * shadowOffsetYPct;
+                for (int c = 0; c < 4; ++c) {
+                    shadowQuad.m_aafPos[c][0] += dx;
+                    shadowQuad.m_aafPos[c][1] += dy;
+                }
+                shadowQuad.m_ulColor = shadowColor;
+                m_quads.push_back(shadowQuad);
+
+                m_quads.insert(m_quads.end(), hudQuads.begin() + titleIconIdx, hudQuads.end());
+            } else {
+                // No drop shadow - use efficient bulk copy
+                m_quads.insert(m_quads.end(), hudQuads.begin(), hudQuads.end());
+            }
 
             // For strings: if drop shadow enabled, add shadow before each non-skipped string
-            if (dropShadowEnabled) {
+            if (hudShadow) {
                 for (size_t i = 0; i < hudStrings.size(); ++i) {
                     const auto& str = hudStrings[i];
                     bool skipShadow = (i < skipShadowFlags.size()) ? skipShadowFlags[i] : false;
@@ -1045,6 +1098,21 @@ void HudManager::processKeyboardInput() {
         DEBUG_INFO_F("Hotkey: Friends %s", m_pFriends->isVisible() ? "shown" : "hidden");
     }
 
+    // Custom segment timer: Add drops a boundary point at the current position,
+    // Remove deletes the last one. PluginData owns the state and emits the notice.
+    // Nudge the map so the boundary markers appear/clear immediately (it only
+    // rebuilds on dirty; changing the points otherwise wouldn't trigger it).
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::SEGMENT_ADD)) {
+        PluginData::getInstance().addSegmentPoint();
+        if (m_pMapHud) m_pMapHud->setDataDirty();
+        DEBUG_INFO("Hotkey: Segment point added");
+    }
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::SEGMENT_REMOVE)) {
+        PluginData::getInstance().removeSegmentPoint();
+        if (m_pMapHud) m_pMapHud->setDataDirty();
+        DEBUG_INFO("Hotkey: Segment point removed");
+    }
+
 #if GAME_HAS_HTTP_SERVER
     // Web overlay broadcaster controls: force a bottom-slot panel to slide in now.
     {
@@ -1137,6 +1205,11 @@ void HudManager::updateRiderPositions(int numVehicles, Unified::TrackPositionDat
     // Update GapBarHud (for flat map mode)
     if (m_pGapBar) {
         m_pGapBar->updateRiderPositions(numVehicles, positions);
+    }
+
+    // Update CompassWidget (heading from the displayed rider's yaw)
+    if (m_pCompass) {
+        m_pCompass->updateRiderPositions(numVehicles, positions);
     }
 
     // Update centralized lap timer and HUDs with track position for S/F detection

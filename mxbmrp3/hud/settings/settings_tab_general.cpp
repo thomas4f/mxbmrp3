@@ -626,7 +626,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
                 : (ctx.parent->m_hoveredRegionIndex == static_cast<int>(regionIndex))
                     ? colorConfig.getPrimary()
                     : colorConfig.getAccent();
-            ctx.parent->addString("[Copy]", buttonCenterX, ctx.currentY, Justify::CENTER,
+            ctx.parent->addString("Copy", buttonCenterX, ctx.currentY, Justify::CENTER,
                 Fonts::getNormal(), textColor, ctx.fontSize);
 
             ctx.currentY += ctx.lineHeightNormal;
@@ -737,7 +737,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
                 : (ctx.parent->m_hoveredRegionIndex == static_cast<int>(regionIndex))
                     ? colorConfig.getPrimary()
                     : colorConfig.getAccent();
-            ctx.parent->addString("[Reset]", buttonCenterX, ctx.currentY, Justify::CENTER,
+            ctx.parent->addString("Reset", buttonCenterX, ctx.currentY, Justify::CENTER,
                 Fonts::getNormal(), textColor, ctx.fontSize);
 
             ctx.currentY += ctx.lineHeightNormal;

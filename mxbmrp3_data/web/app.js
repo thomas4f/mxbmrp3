@@ -151,6 +151,8 @@
         battleDuration: 15000,   // Max time a battle holds the slot in ms (1000-30000)
         battleGap: 2.5,          // Max interval (s) between two riders to count
                                  // as battling (0.5-5.0)
+        battleTopN: 10,          // Only show battles whose leading rider is within
+                                 // the top N positions (e.g. 10 = 1st-10th) (1-40)
         // Per-rider detail sub-rows in the battle card (each adds a line).
         battleBike: true,        // Show the rider's bike
         battleLastLap: true,     // Show the rider's last lap
@@ -240,6 +242,7 @@
         CONFIG.battleInterval = clamp(CONFIG.battleInterval, 10, 300);
         CONFIG.battleDuration = clamp(CONFIG.battleDuration, 1000, 30000);
         CONFIG.battleGap = clamp(CONFIG.battleGap, 0.5, 5.0);
+        CONFIG.battleTopN = clamp(CONFIG.battleTopN, 1, 40);
         CONFIG.logoInterval = clamp(CONFIG.logoInterval, 5, 120);
         if (["off", "session", "clock"].indexOf(CONFIG.timestampMode) < 0) {
             CONFIG.timestampMode = "clock";
@@ -284,6 +287,7 @@
             battleInterval: CONFIG.battleInterval,
             battleDuration: CONFIG.battleDuration,
             battleGap: CONFIG.battleGap,
+            battleTopN: CONFIG.battleTopN,
             battleBike: CONFIG.battleBike,
             battleLastLap: CONFIG.battleLastLap,
             battleFastLap: CONFIG.battleFastLap
@@ -2202,7 +2206,9 @@
             if (b > a) battles.push(active.slice(a, b + 1));
             a = b + 1;
         }
-        return battles;
+        // Restrict to battles whose leading rider is within the top-N positions
+        // (e.g. battleTopN=10 keeps "Battle for 10th" but drops backmarker scraps).
+        return battles.filter(function (g) { return g[0].pos <= CONFIG.battleTopN; });
     }
 
     // Small element helper for the battle card.
@@ -2670,6 +2676,10 @@
             function (v) { return v.toFixed(1) + "s"; },
             function (v) { CONFIG.battleGap = v; applySettings(); }),
             "Max gap between two riders for them to count as battling.");
+        addRow(body, "Top N", createCounter(1, 40, 1, CONFIG.battleTopN,
+            function (v) { return String(v); },
+            function (v) { CONFIG.battleTopN = v; applySettings(); }),
+            "Only show battles whose leading rider is within this many positions, e.g. 10 = battles from 1st to 10th. Backmarker scraps below the cutoff are ignored.");
         addRow(body, "Bike", createToggle(CONFIG.battleBike, function (v) {
             CONFIG.battleBike = v; applySettings();
         }), "Add a sub-row showing each battling rider's bike.");

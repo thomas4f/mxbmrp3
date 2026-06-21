@@ -29,6 +29,26 @@ static constexpr float TRACK_WIDTH_BASE_RATIO = 0.036f;  // 3.6% of smaller dime
 // against the white outline.
 static constexpr float OUTLINE_WIDTH_MULTIPLIER = 1.4f;
 
+// Advance (x, y, headingDeg) by `dist` meters along a circular arc of signed
+// radius (the heading convention is move = sin/cos of heading, turn rate =
+// 1/radius). This is the *exact* arc position - independent of how finely the
+// curve is subdivided - so the rendered ribbon (renderTrack) and the marker
+// positions that index into it (centerlinePositionAt) agree exactly. Reduces to a
+// straight line as |radius| grows. Previously both used forward-Euler stepping
+// with different step counts, so markers drifted off the ribbon through curves.
+static void advanceAlongArc(float& x, float& y, float& headingDeg, float radius, float dist) {
+    float h0 = headingDeg * DEG_TO_RAD;
+    if (std::abs(radius) < 0.01f) {  // effectively straight
+        x += std::sin(h0) * dist;
+        y += std::cos(h0) * dist;
+        return;
+    }
+    float theta = dist / radius;  // signed turn (radians)
+    x += radius * (std::cos(h0) - std::cos(h0 + theta));
+    y += radius * (std::sin(h0 + theta) - std::sin(h0));
+    headingDeg += theta * RAD_TO_DEG;
+}
+
 // Default icon filename
 static constexpr const char* DEFAULT_RIDER_ICON = "circle-chevron-up";
 
@@ -307,6 +327,7 @@ void MapHud::updateTrackData(int numSegments, const Unified::TrackSegment* segme
     for (auto& marker : m_raceMarkers) {
         marker.valid = false;
     }
+    m_sfMeters = (raceData && raceData[0] > 0.0f) ? raceData[0] : -1.0f;
     if (raceData) {
         // The TrackCenterline API documents raceData as a float array but does
         // NOT specify its length. We trust the active game to deliver at least
@@ -353,65 +374,18 @@ bool MapHud::centerlinePositionAt(float meters, float& outX, float& outY, float&
             // Target lies within this segment
             float offset = meters - accumulated;
 
-            if (segment.type == TrackSegmentType::STRAIGHT) {
-                float angleRad = currentAngle * DEG_TO_RAD;
-                outX = currentX + std::sin(angleRad) * offset;
-                outY = currentY + std::cos(angleRad) * offset;
-                outAngleDeg = currentAngle;
-            } else {
-                // Curve: rotate by (offset / |radius|) radians; sign of radius selects direction
-                float absRadius = std::abs(segment.radius);
-                if (absRadius < 0.01f) {
-                    return false;
-                }
-                float angleChange = offset / absRadius;  // radians
-                if (segment.radius < 0) angleChange = -angleChange;
-
-                // Step from segment start to target (matches stepping convention used
-                // elsewhere in this file - cheap and avoids sign-convention bugs).
-                // Approximation: ~1m steps within a curve. Sub-1m segments
-                // collapse to a single straight-line step, which is intentional
-                // and visually indistinguishable at typical map zoom levels.
-                int numSteps = std::max(1, static_cast<int>(offset));
-                float stepLen = offset / numSteps;
-                float stepAngle = angleChange / numSteps;
-                float x = currentX, y = currentY, a = currentAngle;
-                for (int i = 0; i < numSteps; ++i) {
-                    float aRad = a * DEG_TO_RAD;
-                    x += std::sin(aRad) * stepLen;
-                    y += std::cos(aRad) * stepLen;
-                    a += stepAngle * RAD_TO_DEG;
-                }
-                outX = x;
-                outY = y;
-                outAngleDeg = a;
-            }
+            // Exact position/heading at the target offset (straight or arc).
+            outX = currentX;
+            outY = currentY;
+            outAngleDeg = currentAngle;
+            float radius = (segment.type == TrackSegmentType::STRAIGHT) ? 0.0f : segment.radius;
+            advanceAlongArc(outX, outY, outAngleDeg, radius, offset);
             return true;
         }
 
-        // Advance to end of this segment
-        if (segment.type == TrackSegmentType::STRAIGHT) {
-            float angleRad = currentAngle * DEG_TO_RAD;
-            currentX += std::sin(angleRad) * segLen;
-            currentY += std::cos(angleRad) * segLen;
-        } else {
-            float absRadius = std::abs(segment.radius);
-            if (absRadius < 0.01f) {
-                accumulated += segLen;
-                continue;
-            }
-            float angleChange = segLen / absRadius;
-            if (segment.radius < 0) angleChange = -angleChange;
-            int numSteps = std::max(1, static_cast<int>(segLen));
-            float stepLen = segLen / numSteps;
-            float stepAngle = angleChange / numSteps;
-            for (int i = 0; i < numSteps; ++i) {
-                float aRad = currentAngle * DEG_TO_RAD;
-                currentX += std::sin(aRad) * stepLen;
-                currentY += std::cos(aRad) * stepLen;
-                currentAngle += stepAngle * RAD_TO_DEG;
-            }
-        }
+        // Advance to end of this segment (exact, straight or arc)
+        float radius = (segment.type == TrackSegmentType::STRAIGHT) ? 0.0f : segment.radius;
+        advanceAlongArc(currentX, currentY, currentAngle, radius, segLen);
         accumulated += segLen;
     }
 
@@ -476,30 +450,17 @@ void MapHud::calculateTrackBounds() {
                 continue;
             }
 
-            // Total angle change through the curve
-            float totalAngleChange = arcLength / absRadius;
-            if (segRadius < 0) {
-                totalAngleChange = -totalAngleChange;
-            }
-
-            // Sample points along the curve for accurate bounds.
-            // Use a fixed 2m sampling step here - bounds don't need to track LOD
-            // (they're computed once at track-load and must not depend on a
-            // setting that can change later).
+            // Sample points along the curve for accurate bounds, using the exact arc
+            // geometry (same as the ribbon/markers). Fixed 2m sampling step - bounds
+            // don't need to track LOD (computed once at track-load and must not
+            // depend on a setting that can change later).
             constexpr float BOUNDS_SAMPLE_STEP_METERS = 2.0f;
             int numSamples = std::max(3, static_cast<int>(arcLength / BOUNDS_SAMPLE_STEP_METERS));
             float stepLength = arcLength / numSamples;
-            float stepAngle = totalAngleChange / numSamples;
-
-            float tempX = currentX;
-            float tempY = currentY;
-            float tempAngle = currentAngle;
 
             for (int i = 1; i <= numSamples; ++i) {
-                float tempAngleRad = tempAngle * DEG_TO_RAD;
-                tempX += std::sin(tempAngleRad) * stepLength;
-                tempY += std::cos(tempAngleRad) * stepLength;
-                tempAngle += stepAngle * RAD_TO_DEG;
+                float tempX = currentX, tempY = currentY, tempAngle = currentAngle;
+                advanceAlongArc(tempX, tempY, tempAngle, segRadius, stepLength * i);
 
                 m_minX = std::min(m_minX, tempX);
                 m_maxX = std::max(m_maxX, tempX);
@@ -507,10 +468,8 @@ void MapHud::calculateTrackBounds() {
                 m_maxY = std::max(m_maxY, tempY);
             }
 
-            // Update current position and angle
-            currentX = tempX;
-            currentY = tempY;
-            currentAngle = tempAngle;
+            // Advance current position and angle to the end of the curve (exact).
+            advanceAlongArc(currentX, currentY, currentAngle, segRadius, arcLength);
         }
 
         // Update bounds with end position
@@ -967,36 +926,29 @@ void MapHud::renderTrack(const RotationCache& rotation, unsigned long trackColor
             currentX += dx;
             currentY += dy;
         } else {
-            // Curved segment - stepping approach with changing perpendicular direction
+            // Curved segment - subdivide into quads for smoothness, but place each
+            // point with the exact arc geometry (advanceAlongArc) so the ribbon and
+            // the marker positions (centerlinePositionAt) agree regardless of how
+            // finely either subdivides.
             float segRadius = segment.radius;  // Keep sign (positive = right turn, negative = left turn)
             float arcLength = segment.length;
-            float absRadius = std::abs(segRadius);
 
-            // Total angle change through the curve (in radians)
-            float totalAngleChange = arcLength / absRadius;
-            if (segRadius < 0) {
-                totalAngleChange = -totalAngleChange;  // Left turn = negative angle change
-            }
-
-            // Calculate number of steps needed based on arc length.
+            // Subdivision count is purely visual; positions are exact either way.
             // AUTO collapses sub-pixel curves to 1 quad; fixed presets keep min=3.
             int numSteps = std::max(curveMinSteps, static_cast<int>(arcLength / lodSpacing));
             float stepLength = arcLength / numSteps;
-            float stepAngle = totalAngleChange / numSteps;
-
-            // Track position and angle as we step through curve
-            float tempX = startX;
-            float tempY = startY;
-            float tempAngle = currentAngle;
 
             for (int i = 0; i <= numSteps; ++i) {
+                // Exact position/heading this far along the arc from the segment start.
+                float tempX = startX, tempY = startY, tempAngle = currentAngle;
+                advanceAlongArc(tempX, tempY, tempAngle, segRadius, stepLength * i);
+
                 // Only render points that are in bounds
                 bool pointInBounds = isPointInBounds(tempX, tempY);
 
                 if (segmentInBounds || pointInBounds) {
                     // Calculate perpendicular direction for ribbon edges at current point
-                    float perpAngle = tempAngle + 90.0f;
-                    float perpAngleRad = perpAngle * DEG_TO_RAD;
+                    float perpAngleRad = (tempAngle + 90.0f) * DEG_TO_RAD;
 
                     // Calculate left and right edge points perpendicular to current heading
                     float leftX = tempX + std::sin(perpAngleRad) * halfWidth;
@@ -1009,20 +961,10 @@ void MapHud::renderTrack(const RotationCache& rotation, unsigned long trackColor
                     // Reset ribbon if we're leaving bounds
                     hasPrevPoint = false;
                 }
-
-                // Step forward (except after last point)
-                if (i < numSteps) {
-                    float tempAngleRad = tempAngle * DEG_TO_RAD;
-                    tempX += std::sin(tempAngleRad) * stepLength;
-                    tempY += std::cos(tempAngleRad) * stepLength;
-                    tempAngle += stepAngle * RAD_TO_DEG;
-                }
             }
 
-            // Update current position to end of curve (tempX/tempY/tempAngle already at final position)
-            currentX = tempX;
-            currentY = tempY;
-            currentAngle = tempAngle;
+            // Advance current position/heading to the end of the curve (exact).
+            advanceAlongArc(currentX, currentY, currentAngle, segRadius, arcLength);
         }
     }
 }
@@ -1126,11 +1068,10 @@ void MapHud::renderStartMarker(const RotationCache& rotation,
     m_quads.push_back(triangle);
 }
 
-void MapHud::renderRaceMarkers(const RotationCache& rotation,
-                               float clipLeft, float clipTop, float clipRight, float clipBottom) {
-    if (!m_bHasTrackData || m_trackSegments.empty()) {
-        return;
-    }
+void MapHud::drawDirectionMarker(const RaceMarker& marker, unsigned long color,
+                                 const RotationCache& rotation,
+                                 float clipLeft, float clipTop, float clipRight, float clipBottom) {
+    if (!marker.valid) return;
 
     // Effective track width (matches renderTrack and renderStartMarker)
     float trackWidth = m_maxX - m_minX;
@@ -1138,78 +1079,113 @@ void MapHud::renderRaceMarkers(const RotationCache& rotation,
     float baseWidthMeters = std::min(trackWidth, trackHeight) * TRACK_WIDTH_BASE_RATIO;
     float effectiveWidthMeters = std::clamp(baseWidthMeters * m_fTrackWidthScale, 1.0f, 30.0f);
 
-    // Triangle dimensions (matches renderStartMarker). Base spans the outline-edge
-    // width and the tip is scaled the same way, so the arrow stays proportional
-    // and visibly wider than the track fill. Base sits at the marker position;
-    // the point extends forward in travel direction.
+    // Triangle dimensions (matches renderStartMarker). Base sits at the marker
+    // position; the point extends forward in travel direction.
     float baseHalfWidth = effectiveWidthMeters * 0.5f * OUTLINE_WIDTH_MULTIPLIER;
     float pointLength   = effectiveWidthMeters * 0.5f * OUTLINE_WIDTH_MULTIPLIER;
+    float cullMargin = effectiveWidthMeters;
 
     auto dim = getScaledDimensions();
     float titleOffset = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
-    float cullMargin = effectiveWidthMeters;
 
+    // Cull if marker is outside current bounds
+    if (marker.worldX < m_minX - cullMargin || marker.worldX > m_maxX + cullMargin ||
+        marker.worldY < m_minY - cullMargin || marker.worldY > m_maxY + cullMargin) {
+        return;
+    }
+
+    // Triangle vertices: base sits at the marker position, point extends forward.
+    float fwdRad = marker.angleDeg * DEG_TO_RAD;
+    float perpRad = (marker.angleDeg + 90.0f) * DEG_TO_RAD;
+
+    float pointX = marker.worldX + std::sin(fwdRad) * pointLength;
+    float pointY = marker.worldY + std::cos(fwdRad) * pointLength;
+    float baseLeftX  = marker.worldX + std::sin(perpRad) * baseHalfWidth;
+    float baseLeftY  = marker.worldY + std::cos(perpRad) * baseHalfWidth;
+    float baseRightX = marker.worldX - std::sin(perpRad) * baseHalfWidth;
+    float baseRightY = marker.worldY - std::cos(perpRad) * baseHalfWidth;
+
+    // Convert to screen coordinates
+    float sPointX, sPointY, sLeftX, sLeftY, sRightX, sRightY;
+    worldToScreen(pointX, pointY, sPointX, sPointY, rotation);
+    worldToScreen(baseLeftX, baseLeftY, sLeftX, sLeftY, rotation);
+    worldToScreen(baseRightX, baseRightY, sRightX, sRightY, rotation);
+    sPointY += titleOffset;
+    sLeftY  += titleOffset;
+    sRightY += titleOffset;
+    applyOffset(sPointX, sPointY);
+    applyOffset(sLeftX,  sLeftY);
+    applyOffset(sRightX, sRightY);
+
+    // Skip if any vertex outside clip bounds (clean cutoff, no distortion)
     auto isPointInClip = [&](float x, float y) -> bool {
         return x >= clipLeft && x <= clipRight && y >= clipTop && y <= clipBottom;
     };
+    if (!isPointInClip(sPointX, sPointY) ||
+        !isPointInClip(sLeftX, sLeftY) ||
+        !isPointInClip(sRightX, sRightY)) {
+        return;
+    }
 
-    auto drawMarker = [&](const RaceMarker& marker, unsigned long color) {
-        if (!marker.valid) return;
+    // Triangle as a quad with one duplicated vertex (matches renderStartMarker)
+    SPluginQuad_t triangle;
+    triangle.m_aafPos[0][0] = sPointX;   triangle.m_aafPos[0][1] = sPointY;
+    triangle.m_aafPos[1][0] = sRightX;   triangle.m_aafPos[1][1] = sRightY;
+    triangle.m_aafPos[2][0] = sLeftX;    triangle.m_aafPos[2][1] = sLeftY;
+    triangle.m_aafPos[3][0] = sLeftX;    triangle.m_aafPos[3][1] = sLeftY;
+    triangle.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
+    triangle.m_ulColor = color;
+    m_quads.push_back(triangle);
+}
 
-        // Cull if marker is outside current bounds
-        if (marker.worldX < m_minX - cullMargin || marker.worldX > m_maxX + cullMargin ||
-            marker.worldY < m_minY - cullMargin || marker.worldY > m_maxY + cullMargin) {
-            return;
-        }
-
-        // Triangle vertices (same construction as renderStartMarker):
-        // base sits at the marker position, point extends forward along travel.
-        float fwdRad = marker.angleDeg * DEG_TO_RAD;
-        float perpRad = (marker.angleDeg + 90.0f) * DEG_TO_RAD;
-
-        float pointX = marker.worldX + std::sin(fwdRad) * pointLength;
-        float pointY = marker.worldY + std::cos(fwdRad) * pointLength;
-        float baseLeftX  = marker.worldX + std::sin(perpRad) * baseHalfWidth;
-        float baseLeftY  = marker.worldY + std::cos(perpRad) * baseHalfWidth;
-        float baseRightX = marker.worldX - std::sin(perpRad) * baseHalfWidth;
-        float baseRightY = marker.worldY - std::cos(perpRad) * baseHalfWidth;
-
-        // Convert to screen coordinates
-        float sPointX, sPointY, sLeftX, sLeftY, sRightX, sRightY;
-        worldToScreen(pointX, pointY, sPointX, sPointY, rotation);
-        worldToScreen(baseLeftX, baseLeftY, sLeftX, sLeftY, rotation);
-        worldToScreen(baseRightX, baseRightY, sRightX, sRightY, rotation);
-        sPointY += titleOffset;
-        sLeftY  += titleOffset;
-        sRightY += titleOffset;
-        applyOffset(sPointX, sPointY);
-        applyOffset(sLeftX,  sLeftY);
-        applyOffset(sRightX, sRightY);
-
-        // Skip if any vertex outside clip bounds (clean cutoff, no distortion)
-        if (!isPointInClip(sPointX, sPointY) ||
-            !isPointInClip(sLeftX, sLeftY) ||
-            !isPointInClip(sRightX, sRightY)) {
-            return;
-        }
-
-        // Triangle as a quad with one duplicated vertex (matches renderStartMarker)
-        SPluginQuad_t triangle;
-        triangle.m_aafPos[0][0] = sPointX;   triangle.m_aafPos[0][1] = sPointY;
-        triangle.m_aafPos[1][0] = sRightX;   triangle.m_aafPos[1][1] = sRightY;
-        triangle.m_aafPos[2][0] = sLeftX;    triangle.m_aafPos[2][1] = sLeftY;
-        triangle.m_aafPos[3][0] = sLeftX;    triangle.m_aafPos[3][1] = sLeftY;
-        triangle.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-        triangle.m_ulColor = color;
-        m_quads.push_back(triangle);
-    };
+void MapHud::renderRaceMarkers(const RotationCache& rotation,
+                               float clipLeft, float clipTop, float clipRight, float clipBottom) {
+    if (!m_bHasTrackData || m_trackSegments.empty()) {
+        return;
+    }
 
     unsigned long splitColor = this->getColor(ColorSlot::POSITIVE);   // green for splits
-    unsigned long holeshotColor = this->getColor(ColorSlot::ACCENT);  // accent for holeshot
+    unsigned long holeshotColor = this->getColor(ColorSlot::NEUTRAL);  // yellow for holeshot
+                                                                       // (accent is reserved for
+                                                                       // the player's own segments)
 
-    drawMarker(m_raceMarkers[MARKER_SPLIT_1], splitColor);
-    drawMarker(m_raceMarkers[MARKER_SPLIT_2], splitColor);
-    drawMarker(m_raceMarkers[MARKER_HOLESHOT], holeshotColor);
+    drawDirectionMarker(m_raceMarkers[MARKER_SPLIT_1], splitColor, rotation, clipLeft, clipTop, clipRight, clipBottom);
+    drawDirectionMarker(m_raceMarkers[MARKER_SPLIT_2], splitColor, rotation, clipLeft, clipTop, clipRight, clipBottom);
+    drawDirectionMarker(m_raceMarkers[MARKER_HOLESHOT], holeshotColor, rotation, clipLeft, clipTop, clipRight, clipBottom);
+}
+
+void MapHud::renderSegmentMarkers(const RotationCache& rotation,
+                                  float clipLeft, float clipTop, float clipRight, float clipBottom) {
+    if (!m_bHasTrackData || m_trackSegments.empty()) {
+        return;
+    }
+
+    // Custom segment-timer boundary points (training tool). Unlike the fixed race
+    // markers, these are placed live via hotkey, so resolve them at render time.
+    // Each point's trackPos (0-1) is S/F-relative (0 at start/finish), but
+    // centerlinePositionAt measures meters from the centerline's data start. Map
+    // back by adding the S/F offset (raceData[0]) and wrapping: meters =
+    // (pos*totalLength + sfMeters) mod totalLength.
+    const PluginData::SegmentTimerData& seg = PluginData::getInstance().getSegmentTimer();
+    if (seg.points.empty()) {
+        return;
+    }
+
+    float totalLength = 0.0f;
+    for (const auto& s : m_trackSegments) totalLength += s.length;
+    if (totalLength <= 0.0f) return;
+
+    float sfOffset = (m_sfMeters > 0.0f) ? m_sfMeters : 0.0f;
+    unsigned long segColor = this->getColor(ColorSlot::ACCENT);  // accent = the player's own segments
+    for (float pos : seg.points) {
+        float meters = std::fmod(pos * totalLength + sfOffset, totalLength);
+        if (meters < 0.0f) meters += totalLength;
+        RaceMarker m;
+        if (centerlinePositionAt(meters, m.worldX, m.worldY, m.angleDeg)) {
+            m.valid = true;
+            drawDirectionMarker(m, segColor, rotation, clipLeft, clipTop, clipRight, clipBottom);
+        }
+    }
 }
 
 void MapHud::renderRiders(const RotationCache& rotation,
@@ -1826,6 +1802,9 @@ void MapHud::rebuildRenderData() {
 
     // Render rider positions on top of track
     renderRiders(rotation, clipLeft, clipTop, clipRight, clipBottom);
+
+    // Render the custom segment-timer lines last so they sit on top of all markers/riders
+    renderSegmentMarkers(rotation, clipLeft, clipTop, clipRight, clipBottom);
 
     // Log quad count once for performance analysis
     static bool quadCountLogged = false;

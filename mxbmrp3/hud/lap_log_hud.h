@@ -16,6 +16,7 @@ public:
 
     void update() override;
     bool handlesDataType(DataChangeType dataType) const override;
+    const char* getIconName() const override { return "hud-laplog"; }
     void resetToDefaults();
 
     // Column flags for optional columns (lap and time are always shown)

@@ -367,6 +367,7 @@
     <ClInclude Include="hud\gamepad_widget.h" />
     <ClInclude Include="hud\lean_widget.h" />
     <ClInclude Include="hud\gforce_widget.h" />
+    <ClInclude Include="hud\compass_widget.h" />
     <ClInclude Include="hud\tyre_temp_widget.h" />
     <ClInclude Include="hud\ecu_widget.h" />
     <ClInclude Include="hud\fmx_hud.h" />
@@ -501,6 +502,7 @@
     <ClCompile Include="hud\gamepad_widget.cpp" />
     <ClCompile Include="hud\lean_widget.cpp" />
     <ClCompile Include="hud\gforce_widget.cpp" />
+    <ClCompile Include="hud\compass_widget.cpp" />
     <ClCompile Include="hud\tyre_temp_widget.cpp" />
     <ClCompile Include="hud\ecu_widget.cpp" />
     <ClCompile Include="hud\fmx_hud.cpp" />

@@ -26,9 +26,11 @@ public:
         NOTICE_HAZARD_STATIONARY = 1 << 8,
         NOTICE_HAZARD_WRONG_WAY  = 1 << 9,
         NOTICE_OVERTIME          = 1 << 10,
+        NOTICE_SEGMENT           = 1 << 11,
         NOTICE_DEFAULT     = NOTICE_WRONG_WAY | NOTICE_LAST_LAP | NOTICE_FINISHED
                            | NOTICE_ALLTIME_PB | NOTICE_FASTEST_LAP | NOTICE_SESSION_PB
                            | NOTICE_DEFAULT_SETUP | NOTICE_HAZARD_STATIONARY | NOTICE_HAZARD_WRONG_WAY
+                           | NOTICE_SEGMENT
     };
 
     // Timed notice display duration bounds (covers PB notices)
@@ -42,6 +44,7 @@ public:
 
     void update() override;
     bool handlesDataType(DataChangeType dataType) const override;
+    const char* getIconName() const override { return "hud-notices"; }
     void resetToDefaults();
 
     // Allow settings system to access private members
@@ -74,6 +77,8 @@ private:
     bool m_bShowFastestLap;                // Currently showing fastest lap notice
     bool m_bShowAllTimePB;                 // Currently showing all-time PB notice
     bool m_bShowDefaultSetup;              // Currently showing default setup warning (track entry)
+    bool m_bShowSegment;                   // Currently showing a segment-timer action notice
+    PluginData::SegmentNoticeKind m_segmentNoticeKind = PluginData::SegmentNoticeKind::None;  // Which segment action to show
 
     // Trigger timestamps for timed notices
     std::chrono::steady_clock::time_point m_overtimeTriggerTime;

@@ -375,6 +375,9 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
     ctx.addToggleControl("Best lap time", (hud->m_enabledColumns & StandingsHud::COL_BEST_LAP) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_BEST_LAP, true,
         "standings.col_bestlap");
+    ctx.addToggleControl("Last lap time", (hud->m_enabledColumns & StandingsHud::COL_LAST_LAP) != 0,
+        SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_LAST_LAP, true,
+        "standings.col_lastlap");
 
     // Gap mode cycle (Off < > Player < > Adjacent < > All)
     {

@@ -42,6 +42,7 @@ StandingsHud::ColumnPositions::ColumnPositions(float contentStartX, float scale,
     PluginUtils::setColumnPosition(enabledColumns, COL_NAME, nameWidth, scaledFontSize, current, name);
     PluginUtils::setColumnPosition(enabledColumns, COL_BIKE, COL_BIKE_WIDTH, scaledFontSize, current, bike);
     PluginUtils::setColumnPosition(enabledColumns, COL_BEST_LAP, COL_BEST_LAP_WIDTH, scaledFontSize, current, bestLap);
+    PluginUtils::setColumnPosition(enabledColumns, COL_LAST_LAP, COL_LAST_LAP_WIDTH, scaledFontSize, current, lastLap);
     PluginUtils::setColumnPosition(enabledColumns, COL_GAP, COL_GAP_WIDTH, scaledFontSize, current, gap);
     PluginUtils::setColumnPosition(enabledColumns, COL_PENALTY, COL_PENALTY_WIDTH, scaledFontSize, current, penalty);
 }
@@ -113,6 +114,10 @@ float StandingsHud::getColumnTextX(uint8_t columnIndex, float columnPosition, fl
         // regardless of minute presence (sub-minute vs M:SS.mmm laps), like the gap column.
         return columnPosition + charW * (COL_BEST_LAP_WIDTH - 1);
     }
+    if (columnIndex == COL_IDX_LAST_LAP) {
+        // Same right-alignment as the best-lap column (identical M:SS.mmm format).
+        return columnPosition + charW * (COL_LAST_LAP_WIDTH - 1);
+    }
     if (columnIndex == COL_IDX_GAP && gapRightAlign) {
         // Gap column right-aligns to the content edge (numeric values and labels alike).
         return columnPosition + charW * (COL_GAP_WIDTH - 1);
@@ -132,6 +137,7 @@ const char* StandingsHud::getColumnHeaderLabel(uint8_t columnIndex) {
         case COL_IDX_NAME:     return "Name";
         case COL_IDX_BIKE:     return "Bike";
         case COL_IDX_BEST_LAP: return "Best";
+        case COL_IDX_LAST_LAP: return "Last";
         case COL_IDX_GAP:      return "Gap";
         case COL_IDX_PENALTY:  return "Pen";
         default:               return "";
@@ -150,7 +156,8 @@ float StandingsHud::getColumnHeaderTextX(uint8_t columnIndex, float columnPositi
             justify = Justify::CENTER;
         } else if (columnIndex == COL_IDX_RACENUM) {
             justify = m_bClassicLayout ? Justify::RIGHT : Justify::CENTER;
-        } else if (gapRightAlign || columnIndex == COL_IDX_PENALTY || columnIndex == COL_IDX_BEST_LAP) {
+        } else if (gapRightAlign || columnIndex == COL_IDX_PENALTY || columnIndex == COL_IDX_BEST_LAP
+                   || columnIndex == COL_IDX_LAST_LAP) {
             justify = Justify::RIGHT;
         }
         *outJustify = justify;
@@ -322,6 +329,7 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
                 case COL_IDX_BIKE:        text = entry.bikeShortName; break;
                 case COL_IDX_PENALTY:     text = entry.formattedPenalty; break;
                 case COL_IDX_BEST_LAP:    text = entry.formattedLapTime; break;
+                case COL_IDX_LAST_LAP:    text = entry.formattedLastLap; break;
                 case COL_IDX_GAP:         text = entry.formattedGap; break;
                 default: text = ""; break;
             }
@@ -401,9 +409,17 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
             }
         }
 
-        // Use Digits font for numeric columns (BEST_LAP, GAP), except text gap labels use normal font
+        // Last-lap column: hidden faster/slower coding vs the player's last lap (INI-only,
+        // m_bLastLapColorCode). The override is only set for real times on non-player rows,
+        // so a 0 override leaves the default/muted color untouched.
+        if (col.columnIndex == COL_IDX_LAST_LAP && !isPlaceholder && !isMutedRider &&
+            entry.lastLapColorOverride != 0) {
+            columnColor = entry.lastLapColorOverride;
+        }
+
+        // Use Digits font for numeric columns (BEST_LAP, LAST_LAP, GAP), except text gap labels use normal font
         bool isTextGapLabel = (col.columnIndex == COL_IDX_GAP && !isPlaceholder && entry.gapStyle == DisplayEntry::GapStyle::LABEL && text[0] != '\0' && !isdigit(static_cast<unsigned char>(text[0])));
-        int font = (col.columnIndex == COL_IDX_BEST_LAP || (col.columnIndex == COL_IDX_GAP && !isTextGapLabel))
+        int font = (col.columnIndex == COL_IDX_BEST_LAP || col.columnIndex == COL_IDX_LAST_LAP || (col.columnIndex == COL_IDX_GAP && !isTextGapLabel))
             ? this->getFont(FontCategory::DIGITS) : this->getFont(FontCategory::NORMAL);
 
         // Column alignment differs by layout/content.
@@ -422,7 +438,8 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
                 justify = m_bClassicLayout ? Justify::CENTER : Justify::RIGHT;
             } else if (col.columnIndex == COL_IDX_RACENUM) {
                 justify = m_bClassicLayout ? Justify::RIGHT : Justify::CENTER;
-            } else if (gapRightAlign || col.columnIndex == COL_IDX_PENALTY || col.columnIndex == COL_IDX_BEST_LAP) {
+            } else if (gapRightAlign || col.columnIndex == COL_IDX_PENALTY || col.columnIndex == COL_IDX_BEST_LAP
+                       || col.columnIndex == COL_IDX_LAST_LAP) {
                 justify = Justify::RIGHT;
             }
         }
@@ -433,6 +450,7 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
 
 void StandingsHud::DisplayEntry::updateFormattedStrings() {
     hasBestLap = (bestLap > 0);
+    hasLastLap = (lastLap > 0);
 
     if (position > 0) {
         snprintf(formattedPosition, sizeof(formattedPosition), "%d", position);
@@ -476,6 +494,16 @@ void StandingsHud::addDisplayEntries(int startIdx, int endIdx, int positionBase,
             DisplayEntry displayEntry = DisplayEntry::fromRaceEntry(*entry, standing);
             displayEntry.position = positionBase + (i - startIdx);
 
+            // Last lap from the per-rider lap log (newest entry). The game's classification
+            // doesn't expose last lap (only best), so it comes from the lap log we build from
+            // RaceLap events. Cuts are included on purpose (this column is for race awareness):
+            // race-invalid laps keep their real time and are shown; practice-invalid laps come
+            // through as 0 and simply render no time.
+            const std::deque<LapLogEntry>* riderLog = pluginData.getLapLog(raceNum);
+            if (riderLog && !riderLog->empty()) {
+                displayEntry.lastLap = (*riderLog)[0].lapTime;
+            }
+
             // Positions gained/lost, measured against the reference for the selected mode.
             // Both ends use the official classification position so the delta is independent
             // of DNS-filter display toggles. References only exist during a race, so this is
@@ -513,7 +541,7 @@ void StandingsHud::buildColumnTable() {
     m_cachedBackgroundWidth = 0;
 
     // Build table of enabled columns only (POSGAIN sits between POS and RACENUM in layout)
-    // Column indices: 0=TRACKED, 1=POS, 8=POSGAIN, 2=RACENUM, 3=NAME, 4=BIKE, 5=BEST_LAP, 6=GAP, 7=PENALTY
+    // Column indices: 0=TRACKED, 1=POS, 8=POSGAIN, 2=RACENUM, 3=NAME, 4=BIKE, 5=BEST_LAP, 9=LAST_LAP, 6=GAP, 7=PENALTY
     struct ColumnSpec {
         uint32_t flag;
         uint8_t index;
@@ -532,6 +560,7 @@ void StandingsHud::buildColumnTable() {
         {COL_NAME, COL_IDX_NAME, m_columns.name, Justify::LEFT, true, getNameColumnWidth()},
         {COL_BIKE, COL_IDX_BIKE, m_columns.bike, Justify::LEFT, true, COL_BIKE_WIDTH},
         {COL_BEST_LAP, COL_IDX_BEST_LAP, m_columns.bestLap, Justify::LEFT, true, COL_BEST_LAP_WIDTH},
+        {COL_LAST_LAP, COL_IDX_LAST_LAP, m_columns.lastLap, Justify::LEFT, true, COL_LAST_LAP_WIDTH},
         {COL_GAP, COL_IDX_GAP, m_columns.gap, Justify::LEFT, true, COL_GAP_WIDTH},
         {COL_PENALTY, COL_IDX_PENALTY, m_columns.penalty, Justify::LEFT, true, COL_PENALTY_WIDTH}
     };
@@ -1267,6 +1296,32 @@ void StandingsHud::rebuildRenderData() {
         }
         else {
             strcpy_s(entry.formattedLapTime, sizeof(entry.formattedLapTime), Placeholders::LAP_TIME);
+        }
+
+        // Format last lap time (cuts included; 0/none -> placeholder)
+        if (entry.hasLastLap) {
+            PluginUtils::formatLapTime(entry.lastLap, entry.formattedLastLap, sizeof(entry.formattedLastLap));
+        }
+        else {
+            strcpy_s(entry.formattedLastLap, sizeof(entry.formattedLastLap), Placeholders::LAP_TIME);
+        }
+
+        // Hidden INI faster/slower coding vs the LOCAL rider's last lap (the display
+        // target - your own bike, or the rider you're spectating). Uses the semantic
+        // POSITIVE/NEGATIVE palette slots (default green/red, but follows the user's
+        // theme), not literal colors. Default off (m_bLastLapColorCode). Skip the local
+        // rider's own row and any row without a comparable time; leave the override at 0
+        // so the default color applies.
+        entry.lastLapColorOverride = 0;
+        if (m_bLastLapColorCode && entry.hasLastLap &&
+            m_cachedPlayerIndex >= 0 && m_cachedPlayerIndex < static_cast<int>(m_displayEntries.size()) &&
+            static_cast<int>(entryIdx) != m_cachedPlayerIndex) {
+            int playerLastLap = m_displayEntries[m_cachedPlayerIndex].lastLap;
+            if (playerLastLap > 0 && entry.lastLap != playerLastLap) {
+                entry.lastLapColorOverride = (entry.lastLap > playerLastLap)
+                    ? this->getColor(ColorSlot::POSITIVE)   // slower than you → POSITIVE slot
+                    : this->getColor(ColorSlot::NEGATIVE);  // faster than you → NEGATIVE slot
+            }
         }
 
         // Format penalty as whole seconds (e.g., "+5s" for 5 second penalty)

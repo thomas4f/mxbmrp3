@@ -251,6 +251,10 @@ void BaseHud::processDirtyFlags() {
     }
     else if (isLayoutDirty()) {
         rebuildLayout();
+        // Keep the title icon glued to the (possibly repositioned) title string.
+        // Idempotent, so it's a no-op when the fast path already placed it or didn't
+        // move the title at all.
+        positionTitleIcon();
         clearLayoutDirty();
     }
 }
@@ -371,12 +375,92 @@ void BaseHud::addString(const char* text, float x, float y, int justify, int fon
 
 void BaseHud::addTitleString(const char* text, float x, float y, int justify, int fontIndex,
                              unsigned long color, float fontSize) {
+    // Reset per-rebuild title-icon tracking; re-established below when an icon is emitted.
+    m_titleStringIndex = -1;
+    m_titleIconQuadIndex = -1;
+
     // Always add a string to keep indices consistent, but use empty string if title is hidden
     if (!m_bShowTitle) {
         addString("", x, y, justify, fontIndex, color, fontSize);
-    } else {
-        addString(text, x, y, justify, fontIndex, color, fontSize);
+        return;
     }
+
+    // Optional HUD identity icon to the left of the title text. Only for left-justified
+    // titles (the standard for every HUD) so centered/right layouts are left undisturbed.
+    // Falls back to plain text when the global setting is off or no icon is assigned.
+    int spriteIndex = (UiConfig::getInstance().getTitleIcons() && justify == PluginConstants::Justify::LEFT)
+        ? AssetManager::getInstance().getIconSpriteIndex(getIconName()) : 0;
+
+    if (spriteIndex <= 0) {
+        addString(text, x, y, justify, fontIndex, color, fontSize);
+        return;
+    }
+
+    // Emit the icon quad (position fixed up by finalizeTitleIcon) then the un-advanced
+    // title string, and record their indices so the layout fast path can keep them in
+    // sync during drag/scale.
+    // Icons fill their glyph box more than text fills the em, so draw the icon a bit
+    // smaller than the title font (~12px at 1080p) while still centring it on the full
+    // title-font height (see finalizeTitleIcon).
+    constexpr float TITLE_ICON_SCALE = 0.63f;
+    m_titleFontSize = fontSize;
+    m_titleIconSize = fontSize * TITLE_ICON_SCALE;
+    m_titleIconQuadIndex = static_cast<int>(m_quads.size());
+    addIcon(x, y, spriteIndex, color, m_titleIconSize);  // placeholder position (corners reset below)
+    m_titleStringIndex = static_cast<int>(m_strings.size());
+    addString(text, x, y, justify, fontIndex, color, fontSize);  // un-advanced
+
+    // Place the icon and advance the title text using the offset-applied position that
+    // addString just stored (so the result matches the layout fast path exactly).
+    finalizeTitleIcon(m_strings[m_titleStringIndex].m_afPos[0], m_strings[m_titleStringIndex].m_afPos[1]);
+}
+
+// Places the title icon quad with its left edge at (baseX) and centered on the title glyph,
+// then advances the title text right past the icon. baseX/baseY are the offset-applied,
+// un-advanced title position. No-op when there is no title icon.
+void BaseHud::finalizeTitleIcon(float baseX, float baseY) {
+    if (m_titleIconQuadIndex < 0 || m_titleStringIndex < 0) return;
+    if (m_titleIconQuadIndex >= static_cast<int>(m_quads.size())) return;
+    if (m_titleStringIndex >= static_cast<int>(m_strings.size())) return;
+
+    float size = m_titleIconSize;
+    float halfX = (size * 0.5f) / PluginConstants::UI_ASPECT_RATIO;
+    float halfY = size * 0.5f;
+    // Icon left edge at baseX; vertically centered on the full title-font height (not
+    // the icon's own height) so a smaller icon still sits centred on the title text.
+    float cx = baseX + halfX;
+    float cy = baseY + m_titleFontSize * 0.5f;
+
+    SPluginQuad_t& q = m_quads[m_titleIconQuadIndex];
+    q.m_aafPos[0][0] = cx - halfX; q.m_aafPos[0][1] = cy - halfY;  // top-left
+    q.m_aafPos[1][0] = cx - halfX; q.m_aafPos[1][1] = cy + halfY;  // bottom-left
+    q.m_aafPos[2][0] = cx + halfX; q.m_aafPos[2][1] = cy + halfY;  // bottom-right
+    q.m_aafPos[3][0] = cx + halfX; q.m_aafPos[3][1] = cy - halfY;  // top-right
+
+    // Advance the title text past the icon plus a small gap.
+    float advance = size / PluginConstants::UI_ASPECT_RATIO + size * 0.35f;
+    m_strings[m_titleStringIndex].m_afPos[0] = baseX + advance;
+}
+
+// Re-derives the title icon position from the title string's current position. Safe to call
+// after any rebuild and idempotent: it places the icon only when the title is NOT already
+// advanced past it. This means a full rebuild (which self-places via addTitleString) and a
+// layout fast path that *doesn't* reposition the title (e.g. an early-returning rebuildLayout
+// on an empty HUD) are both left untouched, while a fast path that DID move the title to its
+// un-advanced base gets the icon + advance re-applied.
+void BaseHud::positionTitleIcon() {
+    if (m_titleIconQuadIndex < 0 || m_titleStringIndex < 0) return;
+    if (m_titleIconQuadIndex >= static_cast<int>(m_quads.size())) return;
+    if (m_titleStringIndex >= static_cast<int>(m_strings.size())) return;
+
+    float advance = m_titleIconSize / PluginConstants::UI_ASPECT_RATIO + m_titleIconSize * 0.35f;
+    float titleX = m_strings[m_titleStringIndex].m_afPos[0];
+    float iconLeft = m_quads[m_titleIconQuadIndex].m_aafPos[0][0];
+    // Invariant when correctly placed: icon's left edge sits one advance left of the title.
+    if (std::fabs(iconLeft - (titleX - advance)) < 1.0e-5f) return;
+
+    // Title is at a fresh un-advanced base; place the icon there and advance the title.
+    finalizeTitleIcon(titleX, m_strings[m_titleStringIndex].m_afPos[1]);
 }
 
 void BaseHud::addBackgroundQuad(float x, float y, float width, float height) {

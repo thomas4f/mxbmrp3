@@ -23,6 +23,7 @@ public:
 
     void update() override;
     bool handlesDataType(DataChangeType dataType) const override;
+    const char* getIconName() const override { return "hud-map"; }
     void resetToDefaults();
 
     // Override mouse input to update anchor when dragging ends
@@ -202,6 +203,11 @@ private:
     };
     std::array<RaceMarker, RACE_MARKER_COUNT> m_raceMarkers{};
 
+    // Start/finish position in centerline meters (raceData[0]); -1 if not provided.
+    // Used to map a segment boundary's S/F-relative trackPos back to centerline
+    // meters for rendering (the player's trackPos is 0 at S/F, not at meters 0).
+    float m_sfMeters = -1.0f;
+
     // Rider position storage (updated frequently)
     std::vector<Unified::TrackPositionData> m_riderPositions;
 
@@ -349,6 +355,17 @@ private:
     // Render split + holeshot direction-arrow triangles (takes pre-calculated rotation cache and clip bounds)
     void renderRaceMarkers(const RotationCache& rotation,
                            float clipLeft, float clipTop, float clipRight, float clipBottom);
+
+    // Render the custom segment-timer start/end lines (resolved live from trackPos).
+    // Drawn last so these dynamic markers sit on top of the fixed markers and riders.
+    void renderSegmentMarkers(const RotationCache& rotation,
+                              float clipLeft, float clipTop, float clipRight, float clipBottom);
+
+    // Draw a single direction-arrow triangle marker at a resolved world position.
+    // Shared by renderRaceMarkers and renderSegmentMarkers.
+    void drawDirectionMarker(const RaceMarker& marker, unsigned long color,
+                             const RotationCache& rotation,
+                             float clipLeft, float clipTop, float clipRight, float clipBottom);
 
     // Walk segments to compute world XY + tangent angle at the given distance along
     // the centerline. Returns false if distance is out of range or track empty.

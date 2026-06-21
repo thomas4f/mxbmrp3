@@ -99,6 +99,7 @@ private:
             {"standings.col_status", "Show session status indicator (PIT, DNS, DSQ, lap count, FIN)."},
             {"standings.col_penalty", "Show penalty indicator when riders have active penalties."},
             {"standings.col_bestlap", "Show best lap time column."},
+            {"standings.col_lastlap", "Show last lap time column (each rider's most recent lap, cuts included)."},
             {"standings.gap_mode", "Off hides column. Player: your gap; Adjacent: riders ahead/behind; All: everyone."},
             {"standings.gap_reference", "Gap reference: Leader shows gaps to P1, Player relative to you, Auto alternates the two."},
 
@@ -183,6 +184,7 @@ private:
             {"timing.secondary_ideal", "Show ideal lap (sum of best sectors) as secondary chip. Disabled when set as primary."},
             {"timing.secondary_overall", "Show overall best (any rider) as secondary chip. Disabled when set as primary."},
             {"timing.secondary_record", "Show fastest record from Records HUD as secondary chip. Disabled when set as primary."},
+            {"timing.secondary_lastlap", "Show gap to your previous lap as secondary chip. Disabled when set as primary."},
 
             {"map.range", "Zoom level. Full shows entire track, or select a specific range in meters."},
             {"map.rotation", "When On, the map rotates so your heading is always up. When Off, the map stays fixed to track."},
@@ -235,6 +237,7 @@ private:
             {"general.reset_profile", "Reset current profile to default settings."},
             {"general.reset_all", "Reset all profiles and settings to defaults."},
             {"appearance.drop_shadow", "Add a shadow behind all text for improved readability."},
+            {"appearance.hud_icons", "Show identity icons in the UI: beside HUD titles, on the settings tabs, and on the settings button."},
             {"general.pb_scope", "Bike = PB per bike. Category = PB across all bikes in the same class."},
 
             {"updates.check_enabled", "Check for updates when the game starts."},
@@ -287,6 +290,7 @@ private:
             {"widgets.clock", "Shows current local time. Supports 12h/24h format and optional UTC display."},
             {"widgets.lean", "Shows rider lean angle in degrees with arc gauge."},
             {"widgets.gforce", "G-G diagram plotting lateral vs longitudinal G-force with a peak marker."},
+            {"widgets.compass", "Compass dial showing the bike's heading with N/E/S/W labels (classic needle or modern rotating-card style)."},
             {"widgets.pointer", "Mouse pointer for interacting with HUD elements."},
             {"widgets.tyre_temp", "Shows front and rear tyre temperatures."},
             {"widgets.ecu", "Shows ECU aids: map, traction, engine braking, anti-wheeling. Chips brighten on intervention."},
@@ -312,6 +316,8 @@ private:
             {"hotkeys.lap_consistency", "Toggle the lap consistency HUD on/off."},
             {"hotkeys.session", "Toggle the session HUD on/off."},
             {"hotkeys.notices", "Toggle the notices HUD on/off."},
+            {"hotkeys.segment_add", "Drop a segment boundary: 2 points time a section, close the loop for a full lap."},
+            {"hotkeys.segment_remove", "Remove the last segment boundary. With none left, the Timing HUD shows normal split/lap timing."},
             {"hotkeys.stats", "Toggle the stats HUD on/off."},
             {"hotkeys.all_huds", "Toggle all HUDs on/off."},
             {"hotkeys.reload", "Reload configuration from disk."},
@@ -340,6 +346,7 @@ private:
             {"notices.overtime", "Show notice when the session timer expires in a time+laps race and extra laps begin."},
             {"notices.last_lap", "Show notice when starting the final lap of a race."},
             {"notices.finished", "Show finishing position when crossing the line (e.g. FINISHED 1ST). Updates with penalties."},
+            {"notices.segment", "Show segment timer action notices when you add or remove a boundary point."},
             {"notices.alltime_pb", "Show notice when setting an all-time personal best lap."},
             {"notices.fastest_lap", "Show notice when setting the fastest lap in an online race."},
             {"notices.session_pb", "Show notice when setting a session personal best lap."},

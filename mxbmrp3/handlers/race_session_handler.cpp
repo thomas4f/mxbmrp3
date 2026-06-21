@@ -72,7 +72,8 @@ void RaceSessionHandler::handleRaceSession(Unified::RaceSessionData* psRaceSessi
     PluginData::getInstance().setLastSessionTime(0);
     PluginData::getInstance().setLeaderFinishTime(-1);
     PluginData::getInstance().setSessionTimeExpired(false);
-    PluginData::getInstance().clearSessionFinished();
+    PluginData::getInstance().resetStandingsFinishState();
+    PluginData::getInstance().resetLeaderChangeTracking();
     PluginData::getInstance().clearRaceStartPositions();
     PluginData::getInstance().clearPositionReferences();
 

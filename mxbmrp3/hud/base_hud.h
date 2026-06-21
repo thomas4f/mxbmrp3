@@ -92,6 +92,12 @@ public:
     }
     bool getShowTitle() const { return m_bShowTitle; }
 
+    // HUD identity icon: the name of an icon asset (from mxbmrp3_data/icons/, without
+    // the .tga extension) used to represent this HUD. Drawn to the left of the title
+    // (when the global "HUD Icons" setting is on) and as the settings-panel tab toggle.
+    // Return "" (the default) to opt out — callers fall back to text rendering.
+    virtual const char* getIconName() const { return ""; }
+
     void setBackgroundOpacity(float opacity) {
         // Clamp opacity to valid range [min, 1.0] - min is 0 for most HUDs, but some
         // (e.g. the settings button) floor it so the slider can't reach a misleading 0%
@@ -232,8 +238,10 @@ protected:
     void addString(const char* text, float x, float y, int justify, int fontIndex,
                    unsigned long color, float fontSize, bool skipShadow = false);
 
-    // Clear strings and associated shadow flags (use instead of m_strings.clear())
-    void clearStrings() { m_strings.clear(); m_stringSkipShadow.clear(); }
+    // Clear strings and associated shadow flags (use instead of m_strings.clear()).
+    // Also invalidates the title-icon/string indices so a rebuild path that clears
+    // strings without re-emitting the title can't leave them pointing at a stale quad.
+    void clearStrings() { m_strings.clear(); m_stringSkipShadow.clear(); m_titleStringIndex = -1; m_titleIconQuadIndex = -1; }
     void addTitleString(const char* text, float x, float y, int justify, int fontIndex,
                         unsigned long color, float fontSize);
     void addBackgroundQuad(float x, float y, float width, float height);
@@ -326,6 +334,13 @@ protected:
     // Returns true if string was positioned, false if stringIndex >= m_strings.size()
     bool positionString(size_t stringIndex, float x, float y);
 
+    // Title icon helpers. finalizeTitleIcon() places the icon quad to the left of the
+    // (un-advanced) title at base and shifts the title text right past it; positionTitleIcon()
+    // re-derives that from the title string's current position after a layout-only rebuild.
+    // Both are no-ops when there is no title icon.
+    void finalizeTitleIcon(float baseX, float baseY);
+    void positionTitleIcon();
+
     // Helper for click detection - checks if point (x,y) is inside rectangle
     // Shared by StandingsHud, RecordsHud, MapHud for click region testing
     static bool isPointInRect(float x, float y, float rectX, float rectY, float width, float height) {
@@ -353,11 +368,28 @@ public:
     bool hasFontOverride(FontCategory category) const;
     const std::string& getFontOverrideName(FontCategory category) const;  // Raw font name (for save)
 
+    // Per-HUD drop-shadow override (ini-only). Empty = inherit the global [Display] dropShadow;
+    // set = force on/off for this HUD only (gates both text and icon-sprite shadows).
+    void setDropShadowOverride(bool enabled) { m_dropShadowOverride = enabled; setDataDirty(); }
+    void clearDropShadowOverride() { m_dropShadowOverride.reset(); setDataDirty(); }
+    bool hasDropShadowOverride() const { return m_dropShadowOverride.has_value(); }
+    bool getDropShadowOverrideValue() const { return m_dropShadowOverride.value_or(false); }  // raw value (for save)
+    // Effective drop-shadow flag given the global default (override wins when present).
+    bool getEffectiveDropShadow(bool globalDefault) const { return m_dropShadowOverride.value_or(globalDefault); }
+
     std::vector<SPluginQuad_t> m_quads;
     std::vector<SPluginString_t> m_strings;
     std::vector<bool> m_stringSkipShadow;  // Parallel to m_strings: true = skip drop shadow for this string
     std::vector<HudStringConfig> m_styledStringConfigs;  // Storage for styled string configurations
     float m_fScale;
+
+    // Title icon tracking (set by addTitleString). The icon is a quad whose position is
+    // derived from the title string, so the layout fast path (rebuildLayout) can keep it
+    // in sync during drag/scale without each HUD knowing about it. -1 = no title icon.
+    int m_titleStringIndex = -1;       // index into m_strings of the title text
+    int m_titleIconQuadIndex = -1;     // index into m_quads of the title icon
+    float m_titleIconSize = 0.0f;      // icon draw height (a fraction of the title font)
+    float m_titleFontSize = 0.0f;      // title font size; icon is vertically centred on this
 
     // Visibility and display options (protected so derived classes can access)
     // Atomic because background workers legitimately poke these (RecordsHud's
@@ -406,4 +438,7 @@ private:
         int resolvedIndex;      // Cached font index (0 = not resolved or not found)
     };
     std::array<std::optional<FontOverride>, static_cast<size_t>(FontCategory::COUNT)> m_fontOverrides;
+
+    // Per-HUD drop-shadow override (ini-only). Empty = inherit the global setting.
+    std::optional<bool> m_dropShadowOverride;
 };

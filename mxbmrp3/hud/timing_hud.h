@@ -34,6 +34,7 @@ enum GapTypeFlags : uint8_t {
     GAP_TO_OVERALL = 1 << 2,  // "Server Best" - gap to best lap by anyone in session
     GAP_TO_ALLTIME = 1 << 3,  // "All-Time PB" - gap to all-time personal best (persisted)
     GAP_TO_RECORD  = 1 << 4,  // "Record" - gap to fastest record from RecordsHud provider
+    GAP_TO_LASTLAP = 1 << 5,  // "Last Lap" - gap to the previously completed lap
 
     GAP_DEFAULT_PRIMARY = GAP_TO_PB,           // Default primary: Session PB
     GAP_DEFAULT_SECONDARY = GAP_TO_ALLTIME     // Default secondary: All-Time PB
@@ -41,9 +42,9 @@ enum GapTypeFlags : uint8_t {
 
 // Gap type count (for iteration)
 #if GAME_HAS_RECORDS_PROVIDER
-inline constexpr int GAP_TYPE_COUNT = 5;
+inline constexpr int GAP_TYPE_COUNT = 6;
 #else
-inline constexpr int GAP_TYPE_COUNT = 4;  // No Record gap type without records provider
+inline constexpr int GAP_TYPE_COUNT = 5;  // No Record gap type without records provider
 #endif
 
 // Gap type names and abbreviations for UI
@@ -59,6 +60,7 @@ inline constexpr GapTypeInfo GAP_TYPE_INFO[] = {
     { GAP_TO_ALLTIME, "Alltime",      "AT" },
     { GAP_TO_IDEAL,   "Ideal",        "ID" },
     { GAP_TO_OVERALL, "Overall",      "OA" },
+    { GAP_TO_LASTLAP, "Last Lap",     "LL" },
 #if GAME_HAS_RECORDS_PROVIDER
     { GAP_TO_RECORD,  "Record",       "RC" }
 #endif
@@ -108,6 +110,7 @@ struct OfficialTimingData {
     GapData gapToOverall;     // "Overall" - gap to overall best lap by anyone in session
     GapData gapToAllTime;     // "All-Time PB" - gap to all-time personal best
     GapData gapToRecord;      // "Record" - gap to fastest record from provider
+    GapData gapToLastLap;     // "Last Lap" - gap to the previously completed lap
 
     OfficialTimingData()
         : time(0), lapNum(0), splitIndex(-1), isInvalid(false) {}
@@ -122,6 +125,7 @@ struct OfficialTimingData {
         gapToOverall.reset();
         gapToAllTime.reset();
         gapToRecord.reset();
+        gapToLastLap.reset();
     }
 
     // Legacy accessors for backwards compatibility
@@ -138,6 +142,7 @@ public:
 
     void update() override;
     bool handlesDataType(DataChangeType dataType) const override;
+    const char* getIconName() const override { return "hud-timing"; }
     void resetToDefaults();
 
     // Column indices
@@ -215,6 +220,11 @@ private:
     int m_cachedSessionGeneration;   // Track session changes (monotonic counter from PluginData)
     PBScope m_cachedPBScope;         // Track PB scope changes (re-cache all-time PB)
     int m_cachedPitState;            // Track pit entry/exit (0 = on track, 1 = in pits)
+    long long m_cachedSegmentSig = -1;  // Track segment-timer state changes (segment mode line)
+    // Segment split-style freeze: hold a completed segment's time on screen briefly.
+    unsigned int m_segCachedCompletion = 0;  // last segment completionCounter seen
+    bool m_segFrozen = false;                // currently holding a completed segment
+    std::chrono::time_point<std::chrono::steady_clock> m_segFrozenAt;  // when the hold started
 
     // Cached all-time PB (for showing improvement when beating PB)
     int m_previousAllTimeLap;        // Previous all-time PB lap time

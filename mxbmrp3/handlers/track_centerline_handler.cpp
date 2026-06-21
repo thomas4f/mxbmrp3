@@ -5,7 +5,10 @@
 #include "track_centerline_handler.h"
 #include "../core/handler_singleton.h"
 #include "../core/hud_manager.h"
+#include "../core/plugin_data.h"
 #include "../diagnostics/logger.h"
+#include <vector>
+#include <cmath>
 
 DEFINE_HANDLER_SINGLETON(TrackCenterlineHandler)
 
@@ -27,4 +30,28 @@ void TrackCenterlineHandler::handleTrackCenterline(int iNumSegments, Unified::Tr
 
     // Forward track centerline data to HudManager for MapHud
     HudManager::getInstance().updateTrackCenterline(iNumSegments, pasSegment, raceData);
+
+    // Publish the official split positions to PluginData so the segment timer can
+    // snap a new boundary onto a nearby split. raceData gives meters along the
+    // centerline (measured from the centerline's data start), but the player's
+    // trackPos is 0 at start/finish (raceData[0] meters in). Convert each split to
+    // the same S/F-relative 0-1 frame the player's trackPos uses, so snapping and
+    // crossing compare like for like. Use S/F, split 1, split 2 (indices 0-2).
+    std::vector<float> splitPositions;
+    if (raceData) {
+        float totalLength = 0.0f;
+        for (int i = 0; i < iNumSegments; ++i) totalLength += pasSegment[i].length;
+        float sfMeters = raceData[0];  // start/finish, centerline meters
+        if (totalLength > 0.0f && sfMeters > 0.0f) {
+            for (int i = 0; i < 3; ++i) {
+                float meters = raceData[i];
+                if (meters > 0.0f && meters <= totalLength) {
+                    float tp = (meters - sfMeters) / totalLength;
+                    tp -= std::floor(tp);  // wrap into [0,1)
+                    splitPositions.push_back(tp);
+                }
+            }
+        }
+    }
+    PluginData::getInstance().setSplitPositions(splitPositions);
 }

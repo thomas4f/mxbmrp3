@@ -989,7 +989,7 @@ void RecordsHud::rebuildRenderData() {
     m_clickRegions.push_back({rowX, currentY, charWidth * 2, dim.lineHeightNormal, ClickRegionType::CATEGORY_RIGHT});
     rowX += charWidth * 4;  // " > " + gap
 
-    // Compare button - all labels same width as [Compare] (9 chars)
+    // Compare button - fixed width (widest label "Compare" + 1ch padding each side); label centered
     // Button is disabled when trackName is unavailable or on cooldown
     const SessionData& sessionForButton = PluginData::getInstance().getSessionData();
     bool trackAvailable = sessionForButton.trackName[0] != '\0';
@@ -997,13 +997,13 @@ void RecordsHud::rebuildRenderData() {
     FetchState state = m_fetchState.load();
     bool isButtonDisabled = !trackAvailable || (isOnCooldown && state != FetchState::FETCHING);
 
-    const char* compareLabel = "[Compare]";
+    const char* compareLabel = "Compare";
     if (state == FetchState::FETCHING) {
-        compareLabel = "[  ...  ]";
+        compareLabel = "...";
     } else if (state == FetchState::SUCCESS) {
-        compareLabel = "[   OK  ]";
+        compareLabel = "OK";
     } else if (state == FetchState::FETCH_ERROR) {
-        compareLabel = "[ Error ]";
+        compareLabel = "Error";
     }
 
     unsigned long compareColor;
@@ -1021,7 +1021,7 @@ void RecordsHud::rebuildRenderData() {
         compareColor = m_fetchButtonHovered ? this->getColor(ColorSlot::PRIMARY) : this->getColor(ColorSlot::ACCENT);
     }
 
-    float compareWidth = PluginUtils::calculateMonospaceTextWidth(static_cast<int>(strlen("[Compare]")), dim.fontSize);
+    float compareWidth = PluginUtils::calculateMonospaceTextWidth(static_cast<int>(strlen("Compare")) + 2, dim.fontSize);
 
     // Only add click region if button is enabled
     if (!isButtonDisabled) {
@@ -1046,7 +1046,7 @@ void RecordsHud::rebuildRenderData() {
         m_quads.push_back(bgQuad);
     }
 
-    addString(compareLabel, rowX, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), compareColor, dim.fontSize);
+    addString(compareLabel, rowX + compareWidth / 2.0f, currentY, Justify::CENTER, this->getFont(FontCategory::NORMAL), compareColor, dim.fontSize);
 
     currentY += dim.lineHeightNormal;
 

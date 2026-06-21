@@ -40,6 +40,19 @@ static int getMaxShapeIndex() {
     return static_cast<int>(AssetManager::getInstance().getIconCount());
 }
 
+// HUD identity icons ("hud-*") are reserved for HUD titles/tabs and excluded from
+// tracked-rider assignment so the rider shape picker only cycles "real" marker
+// glyphs. The identity check and the eligible-step both live in AssetManager (shared
+// with the map/radar/gap-bar shape pickers); these thin wrappers keep the call sites
+// below readable. Tracked riders always have a shape, so allowOff=false.
+static bool isHudIdentityShape(int shapeIndex) {
+    return AssetManager::getInstance().isHudIdentityShape(shapeIndex);
+}
+
+static int stepEligibleShape(int shape, bool forward, int /*maxShape*/) {
+    return AssetManager::getInstance().stepShapeIndexSkippingHud(shape, forward, false);
+}
+
 bool TrackedRidersManager::shouldRotate(int shapeIndex) {
     // Get the icon filename and check for directional patterns
     const auto& assetMgr = AssetManager::getInstance();
@@ -112,7 +125,7 @@ bool TrackedRidersManager::addTrackedRider(const std::string& name, unsigned lon
 
     // Clamp shape index to valid range
     int maxShape = getMaxShapeIndex();
-    if (shapeIndex < 1 || shapeIndex > maxShape) {
+    if (shapeIndex < 1 || shapeIndex > maxShape || isHudIdentityShape(shapeIndex)) {
         shapeIndex = getDefaultShapeIndex();
     }
 
@@ -180,10 +193,11 @@ void TrackedRidersManager::setTrackedRiderShape(const std::string& name, int sha
     std::string normalizedName = normalizeName(name);
     auto it = m_trackedRiders.find(normalizedName);
     if (it != m_trackedRiders.end()) {
-        // Wrap around to valid range
+        // Wrap around to valid range, then skip HUD identity icons.
         int maxShape = getMaxShapeIndex();
         if (shapeIndex < 1) shapeIndex = maxShape;
         else if (shapeIndex > maxShape) shapeIndex = 1;
+        if (isHudIdentityShape(shapeIndex)) shapeIndex = stepEligibleShape(shapeIndex, true, maxShape);
         it->second.shapeIndex = shapeIndex;
         m_bDirty = true;
         m_needsSave = true;
@@ -223,15 +237,7 @@ void TrackedRidersManager::cycleTrackedRiderShape(const std::string& name, bool 
     auto it = m_trackedRiders.find(normalizedName);
     if (it != m_trackedRiders.end()) {
         int maxShape = getMaxShapeIndex();
-        int shape = it->second.shapeIndex;
-        if (forward) {
-            shape++;
-            if (shape > maxShape) shape = 1;
-        } else {
-            shape--;
-            if (shape < 1) shape = maxShape;
-        }
-        it->second.shapeIndex = shape;
+        it->second.shapeIndex = stepEligibleShape(it->second.shapeIndex, forward, maxShape);
         m_bDirty = true;
         m_needsSave = true;
         PluginData::getInstance().notifyTrackedRidersChanged();

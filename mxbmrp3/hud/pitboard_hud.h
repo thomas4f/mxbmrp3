@@ -18,6 +18,7 @@ public:
 
     void update() override;
     bool handlesDataType(DataChangeType dataType) const override;
+    const char* getIconName() const override { return "hud-pitboard"; }
     void resetToDefaults();
 
     // Row flags - each bit represents a row that can be toggled

@@ -158,7 +158,7 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
         bool isChecking = checkerForButton.isChecking();
         bool isOnCooldown = checkerForButton.isOnCooldown() && !isChecking;
         bool isDisabled = isChecking || isOnCooldown;  // Disabled while checking or on cooldown
-        const char* buttonText = isChecking ? "[   ...   ]" : "[Check Now]";  // Both 11 chars
+        const char* buttonText = isChecking ? "   ...   " : "Check Now";   // both 9 chars (button is 11 wide -> 1ch padding)
         float buttonWidth = cw * 11;  // Fixed width for consistent centering
         float buttonHeight = ctx.lineHeightNormal;
 
@@ -383,7 +383,7 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
 
             // Text: accent on accent when not hovered
             unsigned long textColor = isHovered ? colorConfig.getPrimary() : colorConfig.getAccent();
-            ctx.parent->addString("[Retry]", buttonCenterX, ctx.currentY, Justify::CENTER,
+            ctx.parent->addString("Retry", buttonCenterX, ctx.currentY, Justify::CENTER,
                 Fonts::getNormal(), textColor, ctx.fontSize);
             ctx.currentY += ctx.lineHeightNormal;
         }
@@ -466,7 +466,7 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
 
             // Text: accent on accent when not hovered
             unsigned long textColor = isHovered ? colorConfig.getPrimary() : colorConfig.getAccent();
-            ctx.parent->addString("[Install Update]", buttonCenterX, ctx.currentY, Justify::CENTER,
+            ctx.parent->addString("Install Update", buttonCenterX, ctx.currentY, Justify::CENTER,
                 Fonts::getNormal(), textColor, ctx.fontSize);
             ctx.currentY += ctx.lineHeightNormal;
         }

@@ -144,26 +144,26 @@ Auto-switch (disabled by default) automatically changes profiles based on sessio
 
 ### HUDs
 
-| HUD | Description |
-|-----|-------------|
-| **Standings** | Live race positions with gaps, status, and tracked rider indicators |
-| **Map** | Top-down track map with rider positions (click to spectate) |
-| **Radar** | Proximity radar with approach alerts and distance arrows |
-| **Lap Log** | Historical lap times with PB indicators |
-| **Ideal Lap** | Best sector times and theoretical ideal lap |
-| **Lap Consistency** | Lap time consistency analysis with trend visualization |
-| **Telemetry** | Throttle, brake, suspension graphs |
-| **Records** | Online lap records (CBR or MXB-Ranked) with personal bests (MX Bikes only) |
-| **Friends** | Steam friends in the same game, including their server/track and who has joined your session |
-| **Pitboard** | Pitboard-style lap information display |
-| **Session** | Session info (type, track, format, server, weather) |
-| **Timing** | Split and lap times with gap comparisons |
-| **Gap Bar** | Visual gap-to-PB bar with position markers |
-| **Notices** | Race status notices (wrong way, blue flag, PB alerts, last lap, finished) |
-| **Event Log** | Timestamped feed of race events (session changes, fastest laps, penalties, finishes, pit activity) |
-| **FMX** | Freestyle trick detection with scoring and chain combos (MX Bikes and GP Bikes only) |
-| **Stats** | Riding stats with columns for last lap, session, and all-time totals |
-| **Performance** | FPS and plugin CPU usage |
+| Icon | HUD | Description |
+|:----:|-----|-------------|
+| <img src="assets/icons/hud-standings.svg" width="20" height="20" alt=""> | **Standings** | Live race positions with gaps, status, and tracked rider indicators |
+| <img src="assets/icons/hud-map.svg" width="20" height="20" alt=""> | **Map** | Top-down track map with rider positions (click to spectate) |
+| <img src="assets/icons/hud-radar.svg" width="20" height="20" alt=""> | **Radar** | Proximity radar with approach alerts and distance arrows |
+| <img src="assets/icons/hud-laplog.svg" width="20" height="20" alt=""> | **Lap Log** | Historical lap times with PB indicators |
+| <img src="assets/icons/hud-ideallap.svg" width="20" height="20" alt=""> | **Ideal Lap** | Best sector times and theoretical ideal lap |
+| <img src="assets/icons/hud-lapconsistency.svg" width="20" height="20" alt=""> | **Lap Consistency** | Lap time consistency analysis with trend visualization |
+| <img src="assets/icons/hud-telemetry.svg" width="20" height="20" alt=""> | **Telemetry** | Throttle, brake, suspension graphs |
+| <img src="assets/icons/hud-records.svg" width="20" height="20" alt=""> | **Records** | Online lap records (CBR or MXB-Ranked) with personal bests (MX Bikes only) |
+| <img src="assets/icons/hud-friends.svg" width="20" height="20" alt=""> | **Friends** | Steam friends in the same game, including their server/track and who has joined your session |
+| <img src="assets/icons/hud-pitboard.svg" width="20" height="20" alt=""> | **Pitboard** | Pitboard-style lap information display |
+| <img src="assets/icons/hud-session.svg" width="20" height="20" alt=""> | **Session** | Session info (type, track, format, server, weather) |
+| <img src="assets/icons/hud-timing.svg" width="20" height="20" alt=""> | **Timing** | Split and lap times with gap comparisons |
+| <img src="assets/icons/hud-gapbar.svg" width="20" height="20" alt=""> | **Gap Bar** | Visual gap-to-PB bar with position markers |
+| <img src="assets/icons/hud-notices.svg" width="20" height="20" alt=""> | **Notices** | Race status notices (wrong way, blue flag, PB alerts, last lap, finished) |
+| <img src="assets/icons/hud-eventlog.svg" width="20" height="20" alt=""> | **Event Log** | Timestamped feed of race events (session changes, fastest laps, penalties, finishes, pit activity) |
+| <img src="assets/icons/hud-fmx.svg" width="20" height="20" alt=""> | **FMX** | Freestyle trick detection with scoring and chain combos (MX Bikes and GP Bikes only) |
+| <img src="assets/icons/hud-stats.svg" width="20" height="20" alt=""> | **Stats** | Riding stats with columns for last lap, session, and all-time totals |
+| <img src="assets/icons/hud-performance.svg" width="20" height="20" alt=""> | **Performance** | FPS and plugin CPU usage |
 
 ### Widgets
 
@@ -181,6 +181,7 @@ Auto-switch (disabled by default) automatically changes profiles based on sessio
 | **Fuel** | Fuel calculator with consumption tracking |
 | **Speedo** | Analog speedometer |
 | **Tacho** | Analog tachometer |
+| **Compass** | Heading dial (classic needle or modern rotating card) |
 | **Gamepad** | Controller visualization |
 | **Tyre Temp** | Front and rear tyre temperatures (GP Bikes only) |
 | **ECU** | Engine map, traction control, engine braking and anti-wheeling (GP Bikes only) |

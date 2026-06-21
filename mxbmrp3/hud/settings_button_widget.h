@@ -22,9 +22,6 @@ public:
     // Check if the button is being clicked
     bool isClicked() const;
 
-protected:
-    void rebuildLayout() override;
-
 private:
     void rebuildRenderData() override;
 

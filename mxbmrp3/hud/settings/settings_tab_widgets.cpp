@@ -67,6 +67,7 @@ BaseHud* SettingsHud::renderTabWidgets(SettingsLayoutContext& ctx) {
     ctx.addSectionHeader("Gauges");
     ctx.addWidgetRow("Speedo", ctx.parent->getSpeedoWidget(), true, false, true, true, true, "widgets.speedo");
     ctx.addWidgetRow("Tacho", ctx.parent->getTachoWidget(), true, false, true, true, true, "widgets.tacho");
+    ctx.addWidgetRow("Compass", ctx.parent->getCompassWidget(), true, false, true, true, true, "widgets.compass");
     ctx.addSpacing(0.5f);
     ctx.addSectionHeader("Misc");
     ctx.addWidgetRow("Gamepad", ctx.parent->getGamepadWidget(), true, false, true, true, true, "widgets.gamepad");

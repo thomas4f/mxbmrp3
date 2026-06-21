@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <cmath>
 #include <string>
+#include <chrono>
 
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
@@ -161,6 +162,40 @@ void TimingHud::update() {
     // Check if we need frequent updates for ticking timer (uses BaseHud helper)
     checkFrequentUpdates();
 
+    // Segment-timer state changes (points added/removed, run start, chain index) must
+    // refresh the line even when no official timing event fires. Live ticking while a
+    // segment runs is covered by needsFrequentUpdates above; this catches transitions.
+    {
+        const PluginData::SegmentTimerData& seg = pluginData.getSegmentTimer();
+        long long sig = static_cast<long long>(seg.points.size())
+                      | (static_cast<long long>(seg.runningSeg + 1) << 16)
+                      | (static_cast<long long>(seg.completionCounter) << 32);
+        if (sig != m_cachedSegmentSig) {
+            m_cachedSegmentSig = sig;
+            setDataDirty();
+        }
+
+        // A new segment completion starts the split-style freeze (hold its time on
+        // screen for the display duration). With duration 0, no freeze - just live.
+        if (seg.completionCounter != m_segCachedCompletion) {
+            m_segCachedCompletion = seg.completionCounter;
+            if (m_displayDurationMs > 0 && seg.lastSeg >= 0) {
+                m_segFrozen = true;
+                m_segFrozenAt = std::chrono::steady_clock::now();
+            }
+            setDataDirty();
+        }
+        if (m_segFrozen) {
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - m_segFrozenAt).count();
+            if (elapsed >= m_displayDurationMs) {
+                m_segFrozen = false;
+                setDataDirty();
+            }
+        }
+        if (seg.segmentCount() < 1) m_segFrozen = false;  // no segments -> nothing to hold
+    }
+
     // Handle dirty flags using base class helper
     processDirtyFlags();
 }
@@ -279,6 +314,7 @@ void TimingHud::processTimingUpdates() {
             m_officialData.gapToOverall.reset();
             m_officialData.gapToAllTime.reset();
             m_officialData.gapToRecord.reset();
+            m_officialData.gapToLastLap.reset();
         }
 
         // Reset split caches for next lap
@@ -325,8 +361,11 @@ bool TimingHud::shouldShowColumn(Column col) const {
         case ColumnMode::OFF:
             return false;
 
-        case ColumnMode::SPLITS:
+        case ColumnMode::SPLITS: {
+            // In segment mode the line is shown continuously (like ALWAYS), not just on freeze.
+            if (PluginData::getInstance().getSegmentTimer().segmentCount() >= 1) return true;
             return m_isFrozen;  // Only during freeze
+        }
 
         case ColumnMode::ALWAYS:
             return true;  // Always visible
@@ -336,6 +375,9 @@ bool TimingHud::shouldShowColumn(Column col) const {
 }
 
 bool TimingHud::needsFrequentUpdates() const {
+    // Segment mode: a running segment ticks live regardless of display mode / official timer state.
+    if (PluginData::getInstance().getSegmentTimer().runningSeg >= 0) return true;
+
     // Need frequent updates when time column is visible (ALWAYS mode), not frozen, and timer is valid
     if (m_isFrozen) return false;
     if (m_displayMode != ColumnMode::ALWAYS || !m_columnEnabled[COL_TIME]) return false;
@@ -648,6 +690,50 @@ void TimingHud::calculateAllGaps(int splitTime, int splitIndex, bool isLapComple
         m_officialData.gapToRecord.set(gap, recordTime);
     }
 #endif
+
+    // === Gap to Last Lap (the most recent VALID completed lap before the one measured) ===
+    {
+        // Skip invalid laps, for consistency with the other references (PB/Ideal/etc.),
+        // which all use valid data. The lap log (newest-first) stores both valid and
+        // invalid laps; the handler folds both cases into isValid (race-invalid laps
+        // keep real times but isValid=false; practice-invalid laps come through as
+        // lapTime=0 -> isValid=false), so a single isValid check covers both. At lap
+        // completion the just-run lap is entry [0], so start the scan at [1] to find the
+        // genuine previous lap. Compare accumulated split times the same way the other
+        // references do (S1, S1+S2, S1+S2+S3, full lap).
+        int lastLapRef = -1;
+        const std::deque<LapLogEntry>* lapLog = pluginData.getLapLog();
+        if (lapLog) {
+            size_t startIdx = isLapComplete ? 1 : 0;
+            for (size_t i = startIdx; i < lapLog->size(); ++i) {
+                const LapLogEntry& ref = (*lapLog)[i];
+                if (!ref.isValid) continue;  // skip invalid laps; keep scanning back
+                // First valid lap = "the last lap". Use its relevant time; if that
+                // particular split isn't available (broken markers), leave no gap
+                // rather than reaching past it to an older lap.
+                if (isLapComplete) {
+                    lastLapRef = ref.lapTime;
+                } else if (splitIndex == 0) {
+                    lastLapRef = ref.sector1;
+                } else if (splitIndex == 1) {
+                    if (ref.sector1 > 0 && ref.sector2 > 0) {
+                        lastLapRef = ref.sector1 + ref.sector2;
+                    }
+                }
+#if GAME_SECTOR_COUNT >= 4
+                else if (splitIndex == 2) {
+                    if (ref.sector1 > 0 && ref.sector2 > 0 && ref.sector3 > 0) {
+                        lastLapRef = ref.sector1 + ref.sector2 + ref.sector3;
+                    }
+                }
+#endif
+                break;
+            }
+        }
+
+        int gap = calculateGap(splitTime, lastLapRef);
+        m_officialData.gapToLastLap.set(gap, lastLapRef);
+    }
 }
 
 int TimingHud::getVisibleColumnCount() const {
@@ -715,13 +801,37 @@ void TimingHud::rebuildRenderData() {
 
     const PluginData& pluginData = PluginData::getInstance();
 
+    // Segment mode: when at least one segment is armed (two boundary points), this
+    // timing line shows the segment - label "Segment N", the live/finished segment
+    // time, and the delta to that segment's session best - instead of the official
+    // split/lap. The official-timing machinery still runs in update(); we only swap
+    // what's rendered. The shown segment is a just-completed one held during the
+    // split-style freeze, otherwise the one currently being driven.
+    const PluginData::SegmentTimerData& seg = pluginData.getSegmentTimer();
+    bool segmentMode = seg.segmentCount() >= 1;
+    int segShownIndex = -1;
+    bool segShowFrozen = false;
+    if (segmentMode) {
+        if (m_segFrozen && seg.lastSeg >= 0 && seg.lastSeg < seg.segmentCount()) {
+            segShownIndex = seg.lastSeg;
+            segShowFrozen = true;
+        } else if (seg.runningSeg >= 0 && seg.runningSeg < seg.segmentCount()) {
+            segShownIndex = seg.runningSeg;
+        }
+    }
+    int segRefBestMs = (segShownIndex >= 0 && seg.hasBest[segShownIndex])
+        ? static_cast<int>(seg.bests[segShownIndex] * 1000.0f + 0.5f) : -1;
+    GapData segGap;  // delta-to-segment-best, used only in segment mode
+
     // Check if any columns or secondary gaps should be visible
     int visibleCount = getVisibleColumnCount();
     int secondaryCount = getEnabledSecondaryGapCount(shouldShowColumn(COL_GAP));
 
-    // Secondaries also respect display mode
-    bool showSecondaries = (m_displayMode == ColumnMode::ALWAYS) ||
-                           (m_displayMode == ColumnMode::SPLITS && m_isFrozen);
+    // Secondaries also respect display mode - and are suppressed entirely in segment mode
+    // (a custom segment has only its own best, no ideal/overall/record references).
+    bool showSecondaries = !segmentMode &&
+                           ((m_displayMode == ColumnMode::ALWAYS) ||
+                            (m_displayMode == ColumnMode::SPLITS && m_isFrozen));
 
     if (visibleCount == 0 && (secondaryCount == 0 || !showSecondaries)) {
         setBounds(0.0f, 0.0f, 0.0f, 0.0f);
@@ -919,8 +1029,46 @@ void TimingHud::rebuildRenderData() {
         }
     }
 
+    // === SEGMENT MODE OVERRIDE ===
+    // Replace label/time with the shown segment's, and stage its delta-to-best gap.
+    if (segmentMode) {
+        if (segShownIndex >= 0) {
+            snprintf(labelBuffer, sizeof(labelBuffer), "Segment %d", segShownIndex + 1);
+        } else {
+            strcpy_s(labelBuffer, sizeof(labelBuffer), "Segment");
+        }
+
+        if (segShowFrozen) {
+            // Hold the just-completed segment's time + delta-to-its-best.
+            PluginUtils::formatLapTime(static_cast<int>(seg.lastTime * 1000.0f + 0.5f),
+                                       timeBuffer, sizeof(timeBuffer));
+            timePlaceholder = false;
+            if (seg.lastHasDelta) {
+                int deltaMs = static_cast<int>(seg.lastDelta * 1000.0f +
+                                               (seg.lastDelta < 0.0f ? -0.5f : 0.5f));
+                segGap.set(deltaMs, segRefBestMs);
+            } else {
+                segGap.reset();
+            }
+        } else if (seg.runningSeg >= 0) {
+            // Live count-up off the wall clock (ticks even when stationary).
+            long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - seg.runStart).count();
+            PluginUtils::formatLapTime(static_cast<int>(ms), timeBuffer, sizeof(timeBuffer));
+            timePlaceholder = false;
+            segGap.reset();
+        } else {
+            // Armed but not currently in a segment (between runs / before the first point).
+            strcpy_s(timeBuffer, sizeof(timeBuffer), Placeholders::LAP_TIME);
+            timePlaceholder = true;
+            segGap.reset();
+        }
+    }
+
     // === HELPER LAMBDAS ===
     auto getGapDataForType = [&](GapTypeFlags type) -> const GapData* {
+        // Segment mode only has the primary row, fed by the staged segment delta.
+        if (segmentMode) return (type == m_primaryGapType) ? &segGap : nullptr;
         switch (type) {
             case GAP_TO_PB: return &m_officialData.gapToPB;
             case GAP_TO_ALLTIME: return &m_officialData.gapToAllTime;
@@ -929,6 +1077,7 @@ void TimingHud::rebuildRenderData() {
 #if GAME_HAS_RECORDS_PROVIDER
             case GAP_TO_RECORD: return &m_officialData.gapToRecord;
 #endif
+            case GAP_TO_LASTLAP: return &m_officialData.gapToLastLap;
             default: return nullptr;
         }
     };
@@ -940,6 +1089,8 @@ void TimingHud::rebuildRenderData() {
     // Get lap-level reference time for a gap type before any splits are crossed
     // This allows showing reference times immediately when available
     auto getPreSplitRefTime = [&](GapTypeFlags type) -> int {
+        // Segment mode: the only reference/target is the shown segment's session best.
+        if (segmentMode) return segRefBestMs;
         if (type == GAP_TO_PB) {
             const LapLogEntry* personalBest = pluginData.getBestLapEntry();
             return (personalBest && personalBest->lapTime > 0) ? personalBest->lapTime : -1;
@@ -958,12 +1109,26 @@ void TimingHud::rebuildRenderData() {
         else if (type == GAP_TO_OVERALL) {
             return getOverallBestLapTime();  // Scan standings for best lap
         }
+        else if (type == GAP_TO_LASTLAP) {
+            // Before any split is crossed, the current lap is compared against the most
+            // recent VALID completed lap (skip invalid ones, matching calculateAllGaps).
+            const std::deque<LapLogEntry>* lapLog = pluginData.getLapLog();
+            if (lapLog) {
+                for (size_t i = 0; i < lapLog->size(); ++i) {
+                    if (!(*lapLog)[i].isValid) continue;
+                    return (*lapLog)[i].lapTime > 0 ? (*lapLog)[i].lapTime : -1;
+                }
+            }
+            return -1;
+        }
         return -1;
     };
 
     // Determine if we should show gaps or placeholders
-    bool showGapData = m_isFrozen;
-    bool showInvalid = m_officialData.isInvalid;
+    // Segment mode shows the delta only during the freeze of a completed segment that
+    // had a prior best to compare against.
+    bool showGapData = segmentMode ? (segShowFrozen && seg.lastHasDelta) : m_isFrozen;
+    bool showInvalid = !segmentMode && m_officialData.isInvalid;
 
     // Resolve the gap/reference text and state for one gap type. The primary row and the secondary
     // chips share this exact logic (only the "invalid" abbreviation differs), so it lives here once.
@@ -1206,7 +1371,8 @@ void TimingHud::rebuildRenderData() {
         style.rightEdge = (m_layoutVertical ? (vertBgLeftX + vertBgWidth) : (gapColumnX + columnWidth)) - dim.paddingH;
         style.valueFontSize = dim.fontSizeLarge;
         style.largeLabel = true;
-        style.label = m_layoutVertical ? getGapTypeName(m_primaryGapType) : getGapTypeAbbrev(m_primaryGapType);
+        style.label = segmentMode ? "Best"
+                    : (m_layoutVertical ? getGapTypeName(m_primaryGapType) : getGapTypeAbbrev(m_primaryGapType));
         renderGapRow(primary, style);
     }
 

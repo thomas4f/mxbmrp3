@@ -452,6 +452,28 @@ std::string AssetManager::getIconFilename(int spriteIndex) const {
     return "";
 }
 
+bool AssetManager::isHudIdentityShape(int shapeIndex) const {
+    if (shapeIndex < 1) return false;  // 0 = Off/default, never a HUD identity icon
+    int spriteIndex = m_firstIconSpriteIndex + shapeIndex - 1;
+    return getIconFilename(spriteIndex).rfind("hud-", 0) == 0;
+}
+
+int AssetManager::stepShapeIndexSkippingHud(int shapeIndex, bool forward, bool allowOff) const {
+    int count = static_cast<int>(m_icons.size());
+    if (count < 1) return shapeIndex;
+    // Range is [lo..count]; lo is 0 when an Off/default slot is allowed, else 1.
+    // Walk at most (count+1) steps so we always terminate even if every icon were
+    // somehow a HUD identity icon.
+    int lo = allowOff ? 0 : 1;
+    int shape = shapeIndex;
+    for (int i = 0; i <= count; ++i) {
+        if (forward) { if (++shape > count) shape = lo; }
+        else         { if (--shape < lo)    shape = count; }
+        if (!isHudIdentityShape(shape)) return shape;  // 0 always passes
+    }
+    return shapeIndex;
+}
+
 std::string AssetManager::getIconDisplayName(int spriteIndex) const {
     int arrayIndex = spriteIndex - m_firstIconSpriteIndex;
     if (arrayIndex >= 0 && arrayIndex < static_cast<int>(m_icons.size())) {

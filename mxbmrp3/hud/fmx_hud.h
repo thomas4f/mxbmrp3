@@ -19,6 +19,7 @@ public:
 
     void update() override;
     bool handlesDataType(DataChangeType dataType) const override;
+    const char* getIconName() const override { return "hud-fmx"; }
 
     // Settings reset (all per-profile: position, visibility, scale, opacity, display elements)
     void resetToDefaults();

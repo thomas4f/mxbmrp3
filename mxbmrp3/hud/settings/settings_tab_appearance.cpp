@@ -61,6 +61,15 @@ bool SettingsHud::handleClickTabAppearance(const ClickRegion& region) {
             }
             return true;
 
+        case ClickRegion::TITLE_ICONS_TOGGLE:
+            {
+                UiConfig& uiConfig = UiConfig::getInstance();
+                uiConfig.setTitleIcons(!uiConfig.getTitleIcons());
+                HudManager::getInstance().markAllHudsDirty();
+                rebuildRenderData();
+            }
+            return true;
+
         // Display section unit toggles (moved here from the General tab).
         // CLOCK_FORMAT_TOGGLE is handled by the common handlers (works from any tab).
         case ClickRegion::SPEED_UNIT_TOGGLE:
@@ -301,6 +310,11 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
     ctx.addToggleControl("Drop Shadow", UiConfig::getInstance().getDropShadow(),
         SettingsHud::ClickRegion::DROP_SHADOW_TOGGLE, nullptr, nullptr, 0, true,
         "appearance.drop_shadow");
+
+    // UI icons toggle (HUD title icons, settings tab/section icons, settings button)
+    ctx.addToggleControl("UI Icons", UiConfig::getInstance().getTitleIcons(),
+        SettingsHud::ClickRegion::TITLE_ICONS_TOGGLE, nullptr, nullptr, 0, true,
+        "appearance.hud_icons");
 
     // HUD placement toggles (moved here from the General tab; persisted under [Display])
     ctx.addToggleControl("Grid Snap", UiConfig::getInstance().getGridSnapping(),

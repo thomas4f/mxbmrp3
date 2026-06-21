@@ -121,6 +121,15 @@ BaseHud* SettingsHud::renderTabNotices(SettingsLayoutContext& ctx) {
         "notices.finished");
     ctx.addSpacing(0.5f);
 
+    ctx.addSectionHeader("Training");
+
+    bool segmentOn = (hud->m_enabledNotices & NoticesHud::NOTICE_SEGMENT) != 0;
+    ctx.addToggleControl("Segment", segmentOn,
+        SettingsHud::ClickRegion::CHECKBOX, hud,
+        &hud->m_enabledNotices, NoticesHud::NOTICE_SEGMENT, true,
+        "notices.segment");
+    ctx.addSpacing(0.5f);
+
     ctx.addSectionHeader("Personal Bests");
 
     bool allTimePBOn = (hud->m_enabledNotices & NoticesHud::NOTICE_ALLTIME_PB) != 0;

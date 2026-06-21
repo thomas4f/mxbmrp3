@@ -43,6 +43,7 @@
 #include "../hud/gamepad_widget.h"
 #include "../hud/lean_widget.h"
 #include "../hud/gforce_widget.h"
+#include "../hud/compass_widget.h"
 #if GAME_HAS_TYRE_TEMP
 #include "../hud/tyre_temp_widget.h"
 #endif
@@ -219,6 +220,7 @@ namespace {
             constexpr const char* BIKE = "col_bike";
             constexpr const char* PENALTY = "col_penalty";
             constexpr const char* BEST_LAP = "col_best_lap";
+            constexpr const char* LAST_LAP = "col_last_lap";
             constexpr const char* GAP = "col_gap";
         }
 
@@ -351,6 +353,7 @@ namespace {
             constexpr const char* OVERTIME = "notice_overtime";
             constexpr const char* HAZARD_STATIONARY = "notice_hazard_stationary";
             constexpr const char* HAZARD_WRONG_WAY = "notice_hazard_wrong_way";
+            constexpr const char* SEGMENT = "notice_segment";
         }
 
         // TelemetryHud elements
@@ -378,6 +381,7 @@ namespace {
             constexpr const char* TO_OVERALL = "gap_to_overall";
             constexpr const char* TO_ALLTIME = "gap_to_alltime";
             constexpr const char* TO_RECORD = "gap_to_record";
+            constexpr const char* TO_LASTLAP = "gap_to_lastlap";
         }
 
     }
@@ -449,6 +453,11 @@ namespace {
             constexpr Setting MAX_MARKER_LINGER_FRAMES = {"maxMarkerLingerFrames", "Frames to show max marker after peak"};
         }
 
+        // CompassWidget settings
+        namespace Compass {
+            constexpr Setting STYLE = {"style", "Dial style: classic (fixed ring, red/white needle) or modern (rotating card with centered heading)"};
+        }
+
         // BarsWidget settings
         namespace Bars {
             constexpr Setting COL_THROTTLE = {"col_throttle", "Show throttle bar"};
@@ -508,6 +517,7 @@ namespace {
             constexpr Setting PB_DURATION = {"pbDurationMs", "Timed notice display duration in milliseconds (PB notices)"};
             constexpr Setting HAZARD_STATIONARY = {"notice_hazard_stationary", "Show hazard notice for stationary riders ahead"};
             constexpr Setting HAZARD_WRONG_WAY = {"notice_hazard_wrong_way", "Show hazard notice for wrong-way riders ahead"};
+            constexpr Setting SEGMENT = {"notice_segment", "Show segment timer action notices (start/end set, cleared)"};
         }
 
         // StandingsHud settings
@@ -515,6 +525,7 @@ namespace {
             constexpr Setting TOP_POSITIONS = {"topPositions", "Top positions always shown (0-10)"};
             constexpr Setting PLAYER_ROW_HIGHLIGHT = {"playerRowHighlight", "Full-row color background on the player/spectated rider's row (1 = on, default; 0 = off, falls back to accent-colored name marker)"};
             constexpr Setting PLAYER_ROW_HIGHLIGHT_BRAND = {"playerRowHighlightBrand", "When playerRowHighlight=1, use the bike brand color instead of the default accent color"};
+            constexpr Setting LAST_LAP_COLOR = {"lastLapColorCode", "Color the Last Lap column vs your last lap (1 = on; default 0). Green = slower than you, red = faster"};
             constexpr Setting ANIMATION_DURATION_MS = {"animationDurationMs", "Position animation duration in ms (50-1000)"};
             constexpr Setting CLASSIC_LAYOUT = {"classicLayout", "Classic layout: no number plates, no brand strip (0 = modern)"};
             constexpr Setting NAME_MODE = {"nameMode", "Rider name display mode (0=Off, 1=Short, 2=Long)"};
@@ -553,6 +564,8 @@ namespace {
             constexpr Setting DROP_SHADOW_COLOR = {"dropShadowColor", "Shadow color (0xAARRGGBB)"};
             constexpr Setting HOLD_REPEAT_FAST_MS = {"holdRepeatFastMs", "Hold-to-repeat max speed in ms (10-500, default 50)"};
             constexpr Setting CURSOR_ACTIVATION_THRESHOLD = {"cursorActivationThreshold", "Mouse travel from rest before cursor/settings button appear, normalized 0-1 (0.001=~2px, raise to ignore bigger bumps, lower for more responsive, default 0.015)"};
+            constexpr Setting SEGMENT_SNAP_TO_SPLITS = {"segmentSnapToSplits", "Snap a new segment boundary onto a nearby official split (1=on default, 0=off)"};
+            constexpr Setting SEGMENT_SNAP_THRESHOLD = {"segmentSnapThreshold", "Max distance to snap a segment boundary to a split, normalized 0-1 (default 0.02 = 2% of the lap)"};
             constexpr Setting HAZARD_STATIONARY_TOLERANCE = {"hazardStationaryTolerance", "Movement below this in meters = not moving (default 5.0)"};
             constexpr Setting HAZARD_STATIONARY_DURATION_MS = {"hazardStationaryDurationMs", "Time stationary before flagged in ms (default 2000)"};
             constexpr Setting HAZARD_WRONG_WAY_DURATION_MS = {"hazardWrongWayDurationMs", "Time going backward before flagged in ms (default 1500)"};
@@ -965,6 +978,22 @@ namespace {
         return defaultVal;
     }
 
+    // CompassWidget::Style
+    const char* compassStyleToString(CompassWidget::Style style) {
+        switch (style) {
+            case CompassWidget::Style::Classic: return "classic";
+            case CompassWidget::Style::Modern:  return "modern";
+            default: return "classic";
+        }
+    }
+
+    CompassWidget::Style stringToCompassStyle(const std::string& str, CompassWidget::Style defaultVal = CompassWidget::Style::Classic) {
+        if (str == "classic") return CompassWidget::Style::Classic;
+        if (str == "modern") return CompassWidget::Style::Modern;
+        DEBUG_WARN_F("Unknown Compass style '%s', using default", str.c_str());
+        return defaultVal;
+    }
+
     // FuelWidget::FuelUnit
     const char* fuelUnitToString(FuelWidget::FuelUnit unit) {
         switch (unit) {
@@ -1257,6 +1286,11 @@ namespace {
                 }
             }
         }
+
+        // Capture per-HUD drop-shadow override (only if set)
+        if (hud.hasDropShadowOverride()) {
+            settings["dropShadow"] = hud.getDropShadowOverrideValue() ? "1" : "0";
+        }
     }
 
     // Helper to write base HUD properties to file
@@ -1317,6 +1351,8 @@ namespace {
             if (key == GForce::SHOW_MAX_TEXT.key) return GForce::SHOW_MAX_TEXT.description;
             if (key == GForce::SHOW_MAX_MARKER.key) return GForce::SHOW_MAX_MARKER.description;
             if (key == GForce::MAX_MARKER_LINGER_FRAMES.key) return GForce::MAX_MARKER_LINGER_FRAMES.description;
+        } else if (hudName == "CompassWidget") {
+            if (key == Compass::STYLE.key) return Compass::STYLE.description;
         } else if (hudName == "BarsWidget") {
             if (key == Bars::COL_THROTTLE.key) return Bars::COL_THROTTLE.description;
             if (key == Bars::COL_BRAKE.key) return Bars::COL_BRAKE.description;
@@ -1362,6 +1398,7 @@ namespace {
             if (key == Notices::FASTEST_LAP.key) return Notices::FASTEST_LAP.description;
             if (key == Notices::SESSION_PB.key) return Notices::SESSION_PB.description;
             if (key == Notices::DEFAULT_SETUP.key) return Notices::DEFAULT_SETUP.description;
+            if (key == Notices::SEGMENT.key) return Notices::SEGMENT.description;
             if (key == Notices::PB_DURATION.key) return Notices::PB_DURATION.description;
         } else if (hudName == "StandingsHud") {
             if (key == Standings::TOP_POSITIONS.key) return Standings::TOP_POSITIONS.description;
@@ -1400,6 +1437,7 @@ namespace {
         // keys starting with "color_" or "font_" can be matched first if ever added)
         if (key.length() > 6 && key.substr(0, 6) == "color_") return "Per-HUD color override (hex ABGR, e.g. 0xff00ff00)";
         if (key.length() > 5 && key.substr(0, 5) == "font_") return "Per-HUD font override (font filename without extension)";
+        if (key == "dropShadow") return "Per-HUD drop shadow override (0=off, 1=on; absent=inherit global)";
 
         return nullptr;
     }
@@ -1450,6 +1488,7 @@ namespace {
         saveBitAsKey(settings, BIKE, cols, StandingsHud::COL_BIKE);
         saveBitAsKey(settings, PENALTY, cols, StandingsHud::COL_PENALTY);
         saveBitAsKey(settings, BEST_LAP, cols, StandingsHud::COL_BEST_LAP);
+        saveBitAsKey(settings, LAST_LAP, cols, StandingsHud::COL_LAST_LAP);
         saveBitAsKey(settings, GAP, cols, StandingsHud::COL_GAP);
     }
 
@@ -1464,6 +1503,7 @@ namespace {
         loadBitFromKey(settings, BIKE, cols, StandingsHud::COL_BIKE);
         loadBitFromKey(settings, PENALTY, cols, StandingsHud::COL_PENALTY);
         loadBitFromKey(settings, BEST_LAP, cols, StandingsHud::COL_BEST_LAP);
+        loadBitFromKey(settings, LAST_LAP, cols, StandingsHud::COL_LAST_LAP);
         loadBitFromKey(settings, GAP, cols, StandingsHud::COL_GAP);
     }
 
@@ -1723,6 +1763,7 @@ namespace {
         saveBitAsKey(settings, OVERTIME, notices, NoticesHud::NOTICE_OVERTIME);
         saveBitAsKey(settings, HAZARD_STATIONARY, notices, NoticesHud::NOTICE_HAZARD_STATIONARY);
         saveBitAsKey(settings, HAZARD_WRONG_WAY, notices, NoticesHud::NOTICE_HAZARD_WRONG_WAY);
+        saveBitAsKey(settings, SEGMENT, notices, NoticesHud::NOTICE_SEGMENT);
     }
 
     // NoticesHud: load notices from named keys
@@ -1739,6 +1780,7 @@ namespace {
         loadBitFromKey(settings, OVERTIME, notices, NoticesHud::NOTICE_OVERTIME);
         loadBitFromKey(settings, HAZARD_STATIONARY, notices, NoticesHud::NOTICE_HAZARD_STATIONARY);
         loadBitFromKey(settings, HAZARD_WRONG_WAY, notices, NoticesHud::NOTICE_HAZARD_WRONG_WAY);
+        loadBitFromKey(settings, SEGMENT, notices, NoticesHud::NOTICE_SEGMENT);
     }
 
     // TelemetryHud: save elements as named keys
@@ -1789,6 +1831,7 @@ namespace {
             case GAP_TO_IDEAL: return "IDEAL";
             case GAP_TO_OVERALL: return "OVERALL";
             case GAP_TO_RECORD: return "RECORD";
+            case GAP_TO_LASTLAP: return "LAST_LAP";
             default: return "SESSION_PB";
         }
     }
@@ -1799,6 +1842,7 @@ namespace {
         if (str == "IDEAL") return GAP_TO_IDEAL;
         if (str == "OVERALL") return GAP_TO_OVERALL;
         if (str == "RECORD") return GAP_TO_RECORD;
+        if (str == "LAST_LAP") return GAP_TO_LASTLAP;
         return GAP_TO_PB;  // Default
     }
 
@@ -1810,6 +1854,7 @@ namespace {
         saveBitAsKey(settings, TO_OVERALL, gaps, GAP_TO_OVERALL);
         saveBitAsKey(settings, TO_ALLTIME, gaps, GAP_TO_ALLTIME);
         saveBitAsKey(settings, TO_RECORD, gaps, GAP_TO_RECORD);
+        saveBitAsKey(settings, TO_LASTLAP, gaps, GAP_TO_LASTLAP);
     }
 
     // TimingHud: load secondary gap types from named keys
@@ -1821,6 +1866,7 @@ namespace {
         loadBitFromKey(settings, TO_OVERALL, gaps32, GAP_TO_OVERALL);
         loadBitFromKey(settings, TO_ALLTIME, gaps32, GAP_TO_ALLTIME);
         loadBitFromKey(settings, TO_RECORD, gaps32, GAP_TO_RECORD);
+        loadBitFromKey(settings, TO_LASTLAP, gaps32, GAP_TO_LASTLAP);
         gaps = static_cast<uint8_t>(gaps32);
     }
 
@@ -1838,6 +1884,7 @@ namespace {
         // reset, since these private BaseHud members aren't touched by resetToDefaults().
         std::array<bool, static_cast<size_t>(ColorSlot::COUNT)> colorSeen{};
         std::array<bool, static_cast<size_t>(FontCategory::COUNT)> fontSeen{};
+        bool dropShadowSeen = false;
 
         for (const auto& [key, value] : settings) {
             try {
@@ -1873,6 +1920,11 @@ namespace {
                         fontSeen[static_cast<size_t>(fontCategory)] = true;
                         continue;
                     }
+                    if (key == "dropShadow") {
+                        hud.setDropShadowOverride(std::stoi(value) != 0);
+                        dropShadowSeen = true;
+                        continue;
+                    }
                 }
             } catch (...) {
                 DEBUG_WARN_F("Failed to parse base setting '%s=%s'", key.c_str(), value.c_str());
@@ -1886,6 +1938,7 @@ namespace {
         for (size_t i = 0; i < fontSeen.size(); ++i) {
             if (!fontSeen[i]) hud.clearFontOverride(static_cast<FontCategory>(i));
         }
+        if (!dropShadowSeen) hud.clearDropShadowOverride();
         // Apply buffered position
         if (hasOffsetX || hasOffsetY) {
             float finalX = hasOffsetX ? pendingOffsetX : hud.getOffsetX();
@@ -1958,6 +2011,7 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
         settings[IniOnly::Standings::TOP_POSITIONS.key] = std::to_string(hud.m_topPositionsCount);
         settings[IniOnly::Standings::PLAYER_ROW_HIGHLIGHT.key] = hud.m_bPlayerRowHighlight ? "1" : "0";
         settings[IniOnly::Standings::PLAYER_ROW_HIGHLIGHT_BRAND.key] = hud.m_bPlayerRowHighlightBrand ? "1" : "0";
+        settings[IniOnly::Standings::LAST_LAP_COLOR.key] = hud.m_bLastLapColorCode ? "1" : "0";
         settings[IniOnly::Standings::ANIMATION_DURATION_MS.key] = std::to_string(static_cast<int>(hud.m_animationDurationMs));
         settings[IniOnly::Standings::CLASSIC_LAYOUT.key] = hud.m_bClassicLayout ? "1" : "0";
         settings[IniOnly::Standings::NAME_MODE.key] = std::to_string(static_cast<int>(hud.m_nameMode));
@@ -2310,6 +2364,15 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
         cache["GForceWidget"] = std::move(settings);
     }
 
+    // CompassWidget with INI-only options (dial style)
+    {
+        HudSettings settings;
+        const auto& hud = hudManager.getCompassWidget();
+        captureBaseHudSettings(settings, hud);
+        settings[IniOnly::Compass::STYLE.key] = compassStyleToString(hud.m_style);
+        cache["CompassWidget"] = std::move(settings);
+    }
+
 #if GAME_HAS_TYRE_TEMP
     // TyreTempWidget with temperature thresholds and row toggles
     {
@@ -2360,7 +2423,9 @@ void SettingsManager::captureToCache(const HudManager& hudManager, ProfileCache&
         captureBaseHudSettings(settings, hud);
         settings["freezeDuration"] = std::to_string(hud.m_freezeDurationMs);
         settings["markerMode"] = std::to_string(static_cast<int>(hud.m_markerMode));
-        settings["riderIconIndex"] = std::to_string(hud.m_riderIconIndex);
+        // Persist by filename (not positional index) so the choice survives icon-set
+        // reordering, matching map/radar. 0 = "use default icon" serializes as "Off".
+        settings["riderIcon"] = shapeIndexToFilename(hud.m_riderIconIndex);
         settings["showGapText"] = hud.m_showGapText ? "1" : "0";
         settings["showGapBar"] = hud.m_showGapBar ? "1" : "0";
         settings["gapRange"] = std::to_string(hud.m_gapRangeMs);
@@ -2522,6 +2587,9 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
                 }
                 if (settings.count(IniOnly::Standings::PLAYER_ROW_HIGHLIGHT_BRAND.key)) {
                     hud.m_bPlayerRowHighlightBrand = std::stoi(settings.at(IniOnly::Standings::PLAYER_ROW_HIGHLIGHT_BRAND.key)) != 0;
+                }
+                if (settings.count(IniOnly::Standings::LAST_LAP_COLOR.key)) {
+                    hud.m_bLastLapColorCode = std::stoi(settings.at(IniOnly::Standings::LAST_LAP_COLOR.key)) != 0;
                 }
                 if (settings.count(ANIMATION_MODE)) {
                     hud.m_animationMode = stringToAnimationMode(settings.at(ANIMATION_MODE));
@@ -3307,6 +3375,25 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
         }
     }
 
+    // Apply CompassWidget (INI-only settings)
+    {
+        auto it = cache.find("CompassWidget");
+        if (it != cache.end()) {
+            auto& hud = hudManager.getCompassWidget();
+            applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                if (settings.count(IniOnly::Compass::STYLE.key)) {
+                    hud.m_style = stringToCompassStyle(settings.at(IniOnly::Compass::STYLE.key), hud.m_style);
+                }
+            } catch (const std::exception& e) {
+                DEBUG_WARN_F("CompassWidget: Failed to parse settings: %s", e.what());
+            }
+            hud.setDataDirty();
+        }
+    }
+
 #if GAME_HAS_TYRE_TEMP
     // Apply TyreTempWidget with temperature thresholds and row toggles
     {
@@ -3456,13 +3543,9 @@ void SettingsManager::applyProfile(HudManager& hudManager, ProfileType profile) 
                     // Old behavior: markers on = ghost mode, off = still ghost mode (markers always shown now)
                     hud.m_markerMode = GapBarHud::MarkerMode::GHOST;
                 }
-                // Rider icon index
-                if (settings.count("riderIconIndex")) {
-                    int iconIdx = std::stoi(settings.at("riderIconIndex"));
-                    int maxIcon = static_cast<int>(AssetManager::getInstance().getIconCount());
-                    if (iconIdx >= 0 && iconIdx <= maxIcon) {
-                        hud.m_riderIconIndex = iconIdx;
-                    }
+                // Rider icon (name-based; 0/"Off" = use default icon)
+                if (settings.count("riderIcon")) {
+                    hud.m_riderIconIndex = filenameToShapeIndex(settings.at("riderIcon"), 0);
                 }
                 // Show gap text toggle
                 if (settings.count("showGapText")) {
@@ -3837,6 +3920,8 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
     out << IniOnly::Advanced::DROP_SHADOW_COLOR.key << "=" << PluginUtils::formatColorHex(UiConfig::getInstance().getDropShadowColor()) << " ; " << IniOnly::Advanced::DROP_SHADOW_COLOR.description << "\n";
     out << IniOnly::Advanced::HOLD_REPEAT_FAST_MS.key << "=" << UiConfig::getInstance().getHoldRepeatFastMs() << " ; " << IniOnly::Advanced::HOLD_REPEAT_FAST_MS.description << "\n";
     out << IniOnly::Advanced::CURSOR_ACTIVATION_THRESHOLD.key << "=" << UiConfig::getInstance().getCursorActivationThreshold() << " ; " << IniOnly::Advanced::CURSOR_ACTIVATION_THRESHOLD.description << "\n";
+    out << IniOnly::Advanced::SEGMENT_SNAP_TO_SPLITS.key << "=" << (UiConfig::getInstance().getSnapSegmentsToSplits() ? 1 : 0) << " ; " << IniOnly::Advanced::SEGMENT_SNAP_TO_SPLITS.description << "\n";
+    out << IniOnly::Advanced::SEGMENT_SNAP_THRESHOLD.key << "=" << UiConfig::getInstance().getSegmentSnapThreshold() << " ; " << IniOnly::Advanced::SEGMENT_SNAP_THRESHOLD.description << "\n";
     out << IniOnly::Advanced::HAZARD_STATIONARY_TOLERANCE.key << "=" << PluginData::getInstance().getHazardStationaryTolerance() << " ; " << IniOnly::Advanced::HAZARD_STATIONARY_TOLERANCE.description << "\n";
     out << IniOnly::Advanced::HAZARD_STATIONARY_DURATION_MS.key << "=" << PluginData::getInstance().getHazardStationaryDurationMs() << " ; " << IniOnly::Advanced::HAZARD_STATIONARY_DURATION_MS.description << "\n";
     out << IniOnly::Advanced::HAZARD_WRONG_WAY_DURATION_MS.key << "=" << PluginData::getInstance().getHazardWrongWayDurationMs() << " ; " << IniOnly::Advanced::HAZARD_WRONG_WAY_DURATION_MS.description << "\n";
@@ -3861,6 +3946,7 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
     out << "format24h=" << (hudManager.getClockWidget().getFormat24h() ? 1 : 0) << "\n";
     out << "shortTimeFormat=" << (PluginData::getInstance().isShortTimeFormat() ? 1 : 0) << "\n";
     out << "dropShadow=" << (UiConfig::getInstance().getDropShadow() ? 1 : 0) << "\n";
+    out << "titleIcons=" << (UiConfig::getInstance().getTitleIcons() ? 1 : 0) << "\n";
     out << "gridSnapping=" << (UiConfig::getInstance().getGridSnapping() ? 1 : 0) << "\n";
     out << "screenClamping=" << (UiConfig::getInstance().getScreenClamping() ? 1 : 0) << "\n\n";
 
@@ -4113,6 +4199,8 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                 PluginData::getInstance().setShortTimeFormat(std::stoi(value) != 0);
             } else if (key == "dropShadow") {
                 UiConfig::getInstance().setDropShadow(std::stoi(value) != 0);
+            } else if (key == "titleIcons") {
+                UiConfig::getInstance().setTitleIcons(std::stoi(value) != 0);
             } else if (key == "gridSnapping") {
                 UiConfig::getInstance().setGridSnapping(std::stoi(value) != 0);
             } else if (key == "screenClamping") {
@@ -4206,6 +4294,10 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                 UiConfig::getInstance().setHoldRepeatFastMs(std::stoi(value));
             } else if (key == "cursorActivationThreshold") {
                 UiConfig::getInstance().setCursorActivationThreshold(std::stof(value));
+            } else if (key == "segmentSnapToSplits") {
+                UiConfig::getInstance().setSnapSegmentsToSplits(std::stoi(value) != 0);
+            } else if (key == "segmentSnapThreshold") {
+                UiConfig::getInstance().setSegmentSnapThreshold(std::stof(value));
             } else if (key == "hazardStationaryTolerance") {
                 PluginData::getInstance().setHazardStationaryTolerance(std::stof(value));
             } else if (key == "hazardStationaryDurationMs") {
@@ -4588,12 +4680,12 @@ void SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     // Note: HelmetOverlayHud is global (own [HelmetOverlay] section), not in this per-profile list.
     // Game-gated HUDs (FmxHud, RecordsHud, FriendsHud) are listed unconditionally;
     // they're skipped below when absent from m_hudDefaults on builds without them.
-    static const std::array<const char*, 39> hudOrder = {
+    static const std::array<const char*, 40> hudOrder = {
         "StandingsHud", "MapHud", "RadarHud", "PitboardHud", "RecordsHud",
         "LapLogHud", "LapConsistencyHud", "FmxHud", "StatsHud", "EventLogHud", "FriendsHud", "IdealLapHud", "TelemetryHud", "PerformanceHud",
         "LapWidget", "PositionWidget", "TimeWidget", "ClockWidget", "SessionHud", "SpeedWidget", "GearWidget",
         "SpeedoWidget", "TachoWidget", "TimingHud", "GapBarHud", "BarsWidget", "VersionWidget",
-        "NoticesHud", "FuelWidget", "GamepadWidget", "LeanWidget", "GForceWidget", "TyreTempWidget", "EcuWidget", "SettingsButtonWidget", "PointerWidget", "RumbleHud",
+        "NoticesHud", "FuelWidget", "GamepadWidget", "LeanWidget", "GForceWidget", "CompassWidget", "TyreTempWidget", "EcuWidget", "SettingsButtonWidget", "PointerWidget", "RumbleHud",
         "BenchmarkWidget",
         "Global"
     };

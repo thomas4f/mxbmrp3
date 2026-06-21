@@ -1,10 +1,22 @@
-# Python dependencies for tools/mdmp_analyze.py (minidump triage).
+# Python dependencies for the standalone tools in this directory.
 #
 # This project is a Windows-only Visual Studio C++ plugin; Python is only used
-# for the standalone crash-dump analyzer. The analyzer runs fine WITHOUT these
-# (it degrades gracefully), so treat them as optional quality-of-life:
+# for these helper tools. Install all:  python3 -m pip install -r tools/requirements.txt
+#
+# tools/mdmp_analyze.py (minidump triage) - runs fine WITHOUT its dep (degrades):
 #   - capstone: disassembles the faulting instruction (e.g. "mov edx,[rcx]")
 #               instead of printing only raw bytes.
-#
-# Install:  python3 -m pip install -r tools/requirements.txt
 capstone>=5.0
+
+# tools/icon_gen.py (SVG -> TGA icon generator):
+#   - Pillow:   REQUIRED for image processing.
+#   - cairosvg: the ONLY SVG renderer icon_gen.py uses. The version is pinned
+#               EXACTLY because the .tga output is byte-deterministic only for a
+#               fixed renderer version (edge anti-aliasing differs between
+#               releases). 2.9.0 is the version that produced the current
+#               byte-identical mxbmrp3_data/icons/*.tga; do not bump it without
+#               regenerating (and reviewing) the whole set. (rsvg-convert/system
+#               librsvg is deliberately unsupported - not pip-pinnable. See
+#               assets/icons/README.md.)
+Pillow>=10.0
+cairosvg==2.9.0

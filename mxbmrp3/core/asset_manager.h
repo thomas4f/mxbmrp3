@@ -119,6 +119,18 @@ public:
     // Get first icon sprite index (for calculating offsets)
     int getFirstIconSpriteIndex() const { return m_firstIconSpriteIndex; }
 
+    // True if the 1-based shape index maps to a HUD identity icon (filename starts
+    // with "hud-"). These are reserved for HUD titles/tabs and should be skipped by
+    // rider/marker shape pickers so they only cycle "real" marker glyphs.
+    bool isHudIdentityShape(int shapeIndex) const;
+
+    // Step a shape index by +/-1 with wrap, skipping HUD identity icons. With
+    // allowOff (the default) the range is [0..getIconCount()] where 0 is the
+    // "Off"/default slot (always eligible); otherwise the range is [1..count] with
+    // no off slot (radar shapes). Returns the nearest eligible index (or the input
+    // unchanged if somehow none are eligible).
+    int stepShapeIndexSkippingHud(int shapeIndex, bool forward, bool allowOff = true) const;
+
     // ========================================================================
     // Path Configuration
     // ========================================================================

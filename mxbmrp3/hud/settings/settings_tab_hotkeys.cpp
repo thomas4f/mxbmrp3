@@ -133,6 +133,8 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
             case HotkeyAction::OVERLAY_FORCE_FASTEST_LAP: return "hotkeys.overlay_fastest_lap";
             case HotkeyAction::OVERLAY_FORCE_DOWN_ORDER:  return "hotkeys.overlay_down_order";
             case HotkeyAction::OVERLAY_FORCE_BATTLE:      return "hotkeys.overlay_battle";
+            case HotkeyAction::SEGMENT_ADD:               return "hotkeys.segment_add";
+            case HotkeyAction::SEGMENT_REMOVE:            return "hotkeys.segment_remove";
             case HotkeyAction::TOGGLE_RUMBLE:      return "hotkeys.rumble";
             case HotkeyAction::TOGGLE_WIDGETS:     return "hotkeys.widgets";
             case HotkeyAction::TOGGLE_ALL_HUDS:    return "hotkeys.all_huds";
@@ -285,9 +287,10 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
     // Settings Menu pinned at the top (the master toggle for this menu).
     addHotkeyRow(HotkeyAction::TOGGLE_SETTINGS);
 
-    // NOTE: Rumble, Helmet, Performance, Timing and Notices have no row here to
-    // keep the tab within the panel; they remain bindable by hand-editing the
-    // [Hotkeys] section of the INI (rumble_key=, timing_key=, notices_key=, ...).
+    // NOTE: Several actions have no row here to keep the tab within the panel;
+    // they remain bindable by hand-editing the [Hotkeys] section of the INI
+    // (rumble_key=, timing_key=, notices_key=, stats_key=, friends_key=,
+    // event_log_key=, fmx_key=, helmet_key=, performance_key=, ...).
     ctx.addSpacing(0.5f);
     ctx.addSectionHeader("HUDs");
     addHotkeyRow(HotkeyAction::TOGGLE_STANDINGS);
@@ -301,14 +304,11 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
     addHotkeyRow(HotkeyAction::TOGGLE_PITBOARD);
     addHotkeyRow(HotkeyAction::TOGGLE_SESSION);
     addHotkeyRow(HotkeyAction::TOGGLE_GAP_BAR);
-    addHotkeyRow(HotkeyAction::TOGGLE_EVENT_LOG);
-#if GAME_HAS_STEAM_FRIENDS
-    if (ctx.parent->m_friends) addHotkeyRow(HotkeyAction::TOGGLE_FRIENDS);
-#endif
-#if GAME_HAS_FMX
-    addHotkeyRow(HotkeyAction::TOGGLE_FMX);
-#endif
-    addHotkeyRow(HotkeyAction::TOGGLE_STATS);
+
+    ctx.addSpacing(0.5f);
+    ctx.addSectionHeader("Segments");
+    addHotkeyRow(HotkeyAction::SEGMENT_ADD);
+    addHotkeyRow(HotkeyAction::SEGMENT_REMOVE);
 
     ctx.addSpacing(0.5f);
     ctx.addSectionHeader("Other");

@@ -160,6 +160,13 @@ bool SettingsHud::handleClickTabTiming(const ClickRegion& region) {
             }
             return true;
 
+        case ClickRegion::TIMING_GAP_LASTLAP_TOGGLE:
+            if (m_timing) {
+                m_timing->setSecondaryGapType(GAP_TO_LASTLAP, !m_timing->isSecondaryGapEnabled(GAP_TO_LASTLAP));
+                setDataDirty();
+            }
+            return true;
+
         default:
             return false;
     }
@@ -266,6 +273,10 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::TIMING_GAP_OVERALL_TOGGLE, hud, nullptr, 0, !isPrimary(GAP_TO_OVERALL),
         "timing.secondary_overall", isPrimary(GAP_TO_OVERALL) ? "Primary" : nullptr);
 
+    ctx.addToggleControl("Last Lap", hud->isSecondaryGapEnabled(GAP_TO_LASTLAP),
+        SettingsHud::ClickRegion::TIMING_GAP_LASTLAP_TOGGLE, hud, nullptr, 0, !isPrimary(GAP_TO_LASTLAP),
+        "timing.secondary_lastlap", isPrimary(GAP_TO_LASTLAP) ? "Primary" : nullptr);
+
     ctx.addToggleControl("Record", hud->isSecondaryGapEnabled(GAP_TO_RECORD),
         SettingsHud::ClickRegion::TIMING_GAP_RECORD_TOGGLE, hud, nullptr, 0, !isPrimary(GAP_TO_RECORD),
         "timing.secondary_record", isPrimary(GAP_TO_RECORD) ? "Primary" : nullptr);
@@ -274,6 +285,10 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
     ColorConfig& colors = ColorConfig::getInstance();
     ctx.currentY += ctx.lineHeightNormal * 0.5f;
     ctx.parent->addString("Toggle PB scope (Bike/Category) in the General tab.", ctx.labelX, ctx.currentY,
+        PluginConstants::Justify::LEFT, PluginConstants::Fonts::getNormal(),
+        colors.getMuted(), ctx.fontSize * 0.9f);
+    ctx.currentY += ctx.lineHeightNormal;
+    ctx.parent->addString("Bind Segment Add/Remove (Hotkeys tab) for sections.", ctx.labelX, ctx.currentY,
         PluginConstants::Justify::LEFT, PluginConstants::Fonts::getNormal(),
         colors.getMuted(), ctx.fontSize * 0.9f);
 

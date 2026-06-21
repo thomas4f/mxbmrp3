@@ -98,17 +98,9 @@ bool SettingsHud::handleClickTabRadar(const ClickRegion& region) {
         case ClickRegion::RADAR_PROXIMITY_SHAPE_DOWN:
             if (radarHud) {
                 bool forward = (region.type == ClickRegion::RADAR_PROXIMITY_SHAPE_UP);
-                int iconCount = static_cast<int>(AssetManager::getInstance().getIconCount());
-                int current = radarHud->getProximityArrowShape();
-                int next;
-                if (forward) {
-                    next = current + 1;
-                    if (next > iconCount) next = 1;
-                } else {
-                    next = current - 1;
-                    if (next < 1) next = iconCount;
-                }
-                radarHud->setProximityArrowShape(next);
+                // [1..count], no Off slot; skips HUD identity icons.
+                radarHud->setProximityArrowShape(AssetManager::getInstance()
+                    .stepShapeIndexSkippingHud(radarHud->getProximityArrowShape(), forward, false));
                 setDataDirty();
             }
             return true;
@@ -137,17 +129,9 @@ bool SettingsHud::handleClickTabRadar(const ClickRegion& region) {
         case ClickRegion::RADAR_RIDER_SHAPE_DOWN:
             if (radarHud) {
                 bool forward = (region.type == ClickRegion::RADAR_RIDER_SHAPE_UP);
-                int iconCount = static_cast<int>(AssetManager::getInstance().getIconCount());
-                int current = radarHud->getRiderShape();
-                int next;
-                if (forward) {
-                    next = current + 1;
-                    if (next > iconCount) next = 1;
-                } else {
-                    next = current - 1;
-                    if (next < 1) next = iconCount;
-                }
-                radarHud->setRiderShape(next);
+                // [1..count], no Off slot; skips HUD identity icons.
+                radarHud->setRiderShape(AssetManager::getInstance()
+                    .stepShapeIndexSkippingHud(radarHud->getRiderShape(), forward, false));
                 setDataDirty();
             }
             return true;

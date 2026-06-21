@@ -384,6 +384,9 @@
     <ClInclude Include="hud\gforce_widget.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
+    <ClInclude Include="hud\compass_widget.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
     <ClInclude Include="hud\tyre_temp_widget.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
@@ -735,6 +738,9 @@
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\gforce_widget.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\compass_widget.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\tyre_temp_widget.cpp">

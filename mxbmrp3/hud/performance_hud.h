@@ -16,6 +16,7 @@ public:
 
     void update() override;
     bool handlesDataType(DataChangeType dataType) const override;
+    const char* getIconName() const override { return "hud-performance"; }
     void setVisible(bool visible) override;
     void resetToDefaults();
 

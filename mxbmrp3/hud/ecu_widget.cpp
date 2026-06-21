@@ -208,7 +208,8 @@ void EcuWidget::resetToDefaults() {
     setTextureVariant(0);    // No texture by default
     m_fBackgroundOpacity = 1.0f;
     m_fScale = 1.0f;
-    setPosition(0.4565f, 0.8769f);
+    // GP-only widget: sits left of the Tyre Temp widget in the bottom gauge row (pitch 0.0715).
+    setPosition(0.385f, 0.8769f);
     m_enabledRows = ROW_DEFAULT;
     m_bShowLabels = true;    // Labels ON by default (INI/settings toggle)
     setDataDirty();

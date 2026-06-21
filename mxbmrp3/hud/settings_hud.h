@@ -32,6 +32,7 @@
 #include "gamepad_widget.h"
 #include "lean_widget.h"
 #include "gforce_widget.h"
+#include "compass_widget.h"
 #include "clock_widget.h"
 #if GAME_HAS_TYRE_TEMP
 #include "tyre_temp_widget.h"
@@ -65,7 +66,7 @@ public:
                 StandingsHud* standings,
                 PerformanceHud* performance,
                 TelemetryHud* telemetry,
-                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesHud* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean, GForceWidget* gforce,
+                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesHud* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean, GForceWidget* gforce, CompassWidget* compass,
                 FmxHud* fmxHud,
                 StatsHud* statsHud,
                 EventLogHud* eventLog,
@@ -205,6 +206,7 @@ public:
             TIMING_GAP_OVERALL_TOGGLE, // Toggle "Server Best" as secondary chip (TimingHud)
             TIMING_GAP_ALLTIME_TOGGLE, // Toggle "All-Time PB" as secondary chip (TimingHud)
             TIMING_GAP_RECORD_TOGGLE,  // Toggle "Record" as secondary chip (TimingHud)
+            TIMING_GAP_LASTLAP_TOGGLE, // Toggle "Last Lap" as secondary chip (TimingHud)
             GAPBAR_FREEZE_UP,          // Increase freeze duration (GapBarHud)
             GAPBAR_FREEZE_DOWN,        // Decrease freeze duration (GapBarHud)
             GAPBAR_MARKER_MODE_UP,     // Cycle marker mode forward (Ghost/Opponents/Both)
@@ -234,6 +236,7 @@ public:
             GRID_SNAP_TOGGLE,          // Toggle grid snapping for HUD positioning
             SCREEN_CLAMP_TOGGLE,       // Toggle screen clamping for HUD positioning
             DROP_SHADOW_TOGGLE,        // Toggle drop shadow for text rendering
+            TITLE_ICONS_TOGGLE,        // Toggle HUD title identity icons
             UPDATE_CHECK_TOGGLE,       // Toggle automatic update checking
             AUTOSAVE_TOGGLE,           // Toggle auto-save for settings
             SAVE_BUTTON,               // Manual save button (when auto-save is off)
@@ -647,6 +650,7 @@ public:
     GamepadWidget* getGamepadWidget() const { return m_gamepad; }
     LeanWidget* getLeanWidget() const { return m_lean; }
     GForceWidget* getGForceWidget() const { return m_gforce; }
+    CompassWidget* getCompassWidget() const { return m_compass; }
     ClockWidget* getClockWidget() const { return m_clock; }
 #if GAME_HAS_TYRE_TEMP
     TyreTempWidget* getTyreTempWidget() const { return m_tyreTemp; }
@@ -740,6 +744,7 @@ private:
     GamepadWidget* m_gamepad;
     LeanWidget* m_lean;
     GForceWidget* m_gforce;
+    CompassWidget* m_compass;
     ClockWidget* m_clock;
 #if GAME_HAS_TYRE_TEMP
     TyreTempWidget* m_tyreTemp;
@@ -848,6 +853,15 @@ private:
     bool m_holdSavePending;        // True if auto-save needed when hold ends
     std::chrono::steady_clock::time_point m_holdStartTime{};   // When the button was first pressed
     std::chrono::steady_clock::time_point m_holdLastRepeat{};  // When the last repeat fired
+
+    // Click-on-release for non-repeatable buttons/toggles: a press arms the region, the
+    // action fires on release only if the cursor is still over it (so a press can be
+    // aborted by sliding off). Repeatable steppers still fire on press + hold-repeat.
+    bool m_leftPressArmed = false;
+    float m_pressX = 0.0f;
+    float m_pressY = 0.0f;
+    // Index of the clickable region at (x,y), skipping TOOLTIP_ROW; -1 if none.
+    int findClickRegionAt(float x, float y) const;
 
     // Returns true if a click region type supports hold-to-repeat
     static bool isRepeatableRegionType(ClickRegion::Type type);

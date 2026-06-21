@@ -19,8 +19,11 @@ void UiConfig::resetToDefaults() {
     m_bAutoSave = true;
     m_temperatureUnit = TemperatureUnit::CELSIUS;
     m_pbScope = PBScope::CATEGORY;
+    m_bSnapSegmentsToSplits = true;
+    m_fSegmentSnapThreshold = 0.02f;
     m_holdRepeatFastMs = 50;
     m_fCursorActivationThreshold = 0.015f;
+    m_bTitleIcons = true;
     m_bDropShadow = true;
     m_fDropShadowOffsetX = 0.03f;
     m_fDropShadowOffsetY = 0.04f;

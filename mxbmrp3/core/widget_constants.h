@@ -11,6 +11,7 @@ namespace WidgetDimensions {
     constexpr int GEAR_WIDTH = 8;            // Gear widget width (matches Lean/GForce/Fuel)
     constexpr int LEAN_WIDTH = 8;            // Lean widget width
     constexpr int GFORCE_WIDTH = 8;          // G-force widget width (matches Lean/Fuel)
+    constexpr int COMPASS_WIDTH = 8;         // Compass widget width (matches Lean/GForce/Fuel)
     constexpr int SESSION_WIDTH = 43;        // Session widget width
 
     // TimingHud column widths (per-column character counts)

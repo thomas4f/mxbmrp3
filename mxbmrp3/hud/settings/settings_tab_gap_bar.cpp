@@ -51,15 +51,9 @@ bool SettingsHud::handleClickTabGapBar(const ClickRegion& region) {
         case ClickRegion::GAPBAR_ICON_DOWN:
             if (m_gapBar) {
                 bool forward = (region.type == ClickRegion::GAPBAR_ICON_UP);
-                int iconCount = static_cast<int>(AssetManager::getInstance().getIconCount());
-                int current = m_gapBar->m_riderIconIndex;
-                int next;
-                if (forward) {
-                    next = (current + 1) % (iconCount + 1);  // +1 for "Off" option
-                } else {
-                    next = (current + iconCount) % (iconCount + 1);
-                }
-                m_gapBar->m_riderIconIndex = next;
+                // [0..count] with 0 = default icon; skips HUD identity icons.
+                m_gapBar->m_riderIconIndex = AssetManager::getInstance()
+                    .stepShapeIndexSkippingHud(m_gapBar->m_riderIconIndex, forward);
                 m_gapBar->setDataDirty();
                 setDataDirty();
             }

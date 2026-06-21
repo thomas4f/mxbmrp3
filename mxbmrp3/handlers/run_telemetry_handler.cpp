@@ -21,6 +21,10 @@ void RunTelemetryHandler::handleRunTelemetry(Unified::TelemetryData* psTelemetry
         // Update speedometer, gear, RPM, and fuel
         PluginData::getInstance().updateSpeedometer(psTelemetryData->speedometer, psTelemetryData->gear, psTelemetryData->rpm, psTelemetryData->fuel);
 
+        // Feed the custom segment timer (player-only training tool) the player's
+        // centerline position; crossing detection + a wall clock do the timing.
+        PluginData::getInstance().updateSegmentTimer(psTelemetryData->trackPos);
+
         // Update stats: distance, top speed, crash detection
         {
             const TrackPositionData* playerPos = PluginData::getInstance().getPlayerTrackPosition();

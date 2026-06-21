@@ -49,6 +49,7 @@ NoticesHud::NoticesHud()
     , m_bShowFastestLap(false)
     , m_bShowAllTimePB(false)
     , m_bShowDefaultSetup(false)
+    , m_bShowSegment(false)
 {
     // One-time setup
     DEBUG_INFO("NoticesHud created");
@@ -89,6 +90,8 @@ void NoticesHud::update() {
             pd.clearSessionPB();
         if (pd.hasDefaultSetupNotice() && !isTimedNoticeActive(pd.getDefaultSetupTime()))
             pd.clearDefaultSetupNotice();
+        if (pd.hasSegmentNotice() && !isTimedNoticeActive(pd.getSegmentNoticeTime()))
+            pd.clearSegmentNotice();
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -263,6 +266,22 @@ void NoticesHud::update() {
     checkTimedNotice(pluginData.hasDefaultSetupNotice(), pluginData.getDefaultSetupTime(),
                      [&]() { pluginData.clearDefaultSetupNotice(); }, m_bShowDefaultSetup);
 
+    // Segment timer action notice (start set / end set / cleared) - carries a kind,
+    // so it can't use the checkTimedNotice helper directly. Re-render on kind change
+    // too (not just show/hide), so a second press replaces the notice immediately
+    // instead of queueing behind the one still on screen.
+    {
+        bool active = pluginData.hasSegmentNotice() && isTimedNoticeActive(pluginData.getSegmentNoticeTime());
+        if (pluginData.hasSegmentNotice() && !active) pluginData.clearSegmentNotice();
+        PluginData::SegmentNoticeKind kind = active ? pluginData.getSegmentNoticeKind()
+                                                    : PluginData::SegmentNoticeKind::None;
+        if (active != m_bShowSegment || kind != m_segmentNoticeKind) {
+            m_bShowSegment = active;
+            m_segmentNoticeKind = kind;
+            setDataDirty();
+        }
+    }
+
     // Handle dirty flags using base class helper
     processDirtyFlags();
 }
@@ -321,11 +340,12 @@ void NoticesHud::rebuildRenderData() {
     bool showFinished  = m_bShowFinished && (m_enabledNotices & NOTICE_FINISHED);
     bool showLastLap   = m_bShowLastLap && (m_enabledNotices & NOTICE_LAST_LAP);
     bool showDefaultSetup = m_bShowDefaultSetup && (m_enabledNotices & NOTICE_DEFAULT_SETUP);
+    bool showSegment   = m_bShowSegment && (m_enabledNotices & NOTICE_SEGMENT);
 
     // Only render if there's something to show
-    // Priority: WRONG WAY > HAZARD AHEAD > BLUE FLAG > OVERTIME > ALL-TIME PB > FASTEST LAP > SESSION PB > FINISHED > LAST LAP > SETUP NAME
+    // Priority: WRONG WAY > HAZARD AHEAD > BLUE FLAG > OVERTIME > ALL-TIME PB > FASTEST LAP > SESSION PB > SEGMENT > FINISHED > LAST LAP > SETUP NAME
     if (!showWrongWay && !showHazard && !showBlueFlag && !showOvertime && !showAllTimePB && !showFastestLap &&
-        !showSessionPB && !showLastLap && !showFinished && !showDefaultSetup) {
+        !showSessionPB && !showSegment && !showLastLap && !showFinished && !showDefaultSetup) {
         setBounds(0.0f, 0.0f, 0.0f, 0.0f);
         return;
     }
@@ -418,6 +438,32 @@ void NoticesHud::rebuildRenderData() {
         addString(text, CENTER_X, noticeY, Justify::CENTER,
             this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::POSITIVE), dim.fontSizeLarge);
     }
+    else if (showSegment) {
+        // Segment-timer action feedback. Adding a point = positive (green); removing
+        // or clearing = neutral background.
+        bool isAdd = (m_segmentNoticeKind == PluginData::SegmentNoticeKind::Added);
+        ColorSlot slot = isAdd ? ColorSlot::POSITIVE : ColorSlot::PRIMARY;
+
+        const char* text = "SEGMENT";
+        switch (m_segmentNoticeKind) {
+            case PluginData::SegmentNoticeKind::Added:   text = "SEG ADDED";   break;
+            case PluginData::SegmentNoticeKind::Removed: text = "SEG REMOVED"; break;
+            case PluginData::SegmentNoticeKind::Cleared: text = "SEG CLEARED"; break;
+            default: break;
+        }
+
+        SPluginQuad_t noticeQuad;
+        float quadX = noticeQuadX;
+        float quadY = noticeQuadY;
+        applyOffset(quadX, quadY);
+        setQuadPositions(noticeQuad, quadX, quadY, noticeQuadWidth, noticeQuadHeight);
+        noticeQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+        noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(isAdd ? ColorSlot::POSITIVE : ColorSlot::BACKGROUND), m_fBackgroundOpacity);
+        m_quads.push_back(noticeQuad);
+
+        addString(text, CENTER_X, noticeY, Justify::CENTER,
+            this->getFont(FontCategory::TITLE), this->getColor(slot), dim.fontSizeLarge);
+    }
     else if (showFinished) {
         // Add notice background (semantic background color for finished)
         SPluginQuad_t noticeQuad;
@@ -497,6 +543,8 @@ void NoticesHud::resetToDefaults() {
     m_bShowFastestLap = false;
     m_bShowAllTimePB = false;
     m_bShowDefaultSetup = false;
+    m_bShowSegment = false;
+    m_segmentNoticeKind = PluginData::SegmentNoticeKind::None;
     m_overtimeTriggerTime = {};
     m_lastLapTriggerTime = {};
     m_finishedTriggerTime = {};

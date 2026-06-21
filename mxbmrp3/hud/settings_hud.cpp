@@ -348,7 +348,7 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, FriendsHud* f
                          StandingsHud* standings,
                          PerformanceHud* performance,
                          TelemetryHud* telemetry,
-                         TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesHud* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean, GForceWidget* gforce,
+                         TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesHud* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean, GForceWidget* gforce, CompassWidget* compass,
                          FmxHud* fmxHud,
                          StatsHud* statsHud,
                          EventLogHud* eventLog,
@@ -394,6 +394,7 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, FriendsHud* f
       m_gamepad(gamepad),
       m_lean(lean),
       m_gforce(gforce),
+      m_compass(compass),
       m_fmxHud(fmxHud),
       m_statsHud(statsHud),
       m_eventLog(eventLog),
@@ -623,27 +624,28 @@ void SettingsHud::update() {
         }
     }
 
-    // Handle mouse input (with hold-to-repeat acceleration)
+    // Handle mouse input. Repeatable steppers (+/-) fire on press and then hold-repeat;
+    // every other button/toggle fires on RELEASE, so the user can press and slide off to
+    // abort. (See findClickRegionAt + m_leftPressArmed.)
     const auto& leftButton = input.getLeftButton();
     if (leftButton.isClicked()) {
+        m_leftPressArmed = false;
         if (cursor.isValid) {
-            m_holdRepeatCount = 0;  // Reset before dispatch so handlers see 0 on initial click
-            handleClick(cursor.x, cursor.y);
-
-            // Start tracking hold for repeat acceleration
-            // Find which region was clicked to check if it's repeatable
-            // Must skip TOOLTIP_ROW with continue (not break), matching handleClick behavior
-            for (size_t i = 0; i < m_clickRegions.size(); ++i) {
-                const auto& region = m_clickRegions[i];
-                if (isPointInRect(cursor.x, cursor.y, region.x, region.y, region.width, region.height)) {
-                    if (region.type == ClickRegion::TOOLTIP_ROW) continue;
-                    if (isRepeatableRegionType(region.type)) {
-                        m_holdRegionIndex = static_cast<int>(i);
-                        m_holdRepeatCount = 0;
-                        m_holdStartTime = std::chrono::steady_clock::now();
-                        m_holdLastRepeat = m_holdStartTime;
-                    }
-                    break;
+            int idx = findClickRegionAt(cursor.x, cursor.y);
+            if (idx >= 0) {
+                if (isRepeatableRegionType(m_clickRegions[idx].type)) {
+                    // Stepper: fire immediately and start hold-to-repeat tracking.
+                    m_holdRepeatCount = 0;  // handlers see 0 on the initial click
+                    handleClick(cursor.x, cursor.y);
+                    m_holdRegionIndex = idx;
+                    m_holdRepeatCount = 0;
+                    m_holdStartTime = std::chrono::steady_clock::now();
+                    m_holdLastRepeat = m_holdStartTime;
+                } else {
+                    // Button/toggle: arm now, dispatch on release if still over this region.
+                    m_leftPressArmed = true;
+                    m_pressX = cursor.x;
+                    m_pressY = cursor.y;
                 }
             }
         }
@@ -686,7 +688,18 @@ void SettingsHud::update() {
                 }
             }
         }
-    } else if (!leftButton.isPressed) {
+    } else if (leftButton.isReleased()) {
+        // Fire an armed button/toggle only if released over the SAME region it was pressed
+        // on (so sliding off before releasing aborts the action).
+        if (m_leftPressArmed && cursor.isValid) {
+            int relIdx = findClickRegionAt(cursor.x, cursor.y);
+            if (relIdx >= 0 && relIdx == findClickRegionAt(m_pressX, m_pressY)) {
+                m_holdRepeatCount = 0;
+                handleClick(cursor.x, cursor.y);
+            }
+        }
+        m_leftPressArmed = false;
+
         // Restart web server after port hold-cycle ends (debounced)
 #if GAME_HAS_HTTP_SERVER
         if (m_holdRegionIndex >= 0) {
@@ -859,6 +872,54 @@ void SettingsHud::rebuildRenderData() {
 
     float checkboxWidth = PluginUtils::calculateMonospaceTextWidth(4, dim.fontSize);  // "[X] " or "    "
 
+    // Shared dim level for "inactive" tab icons (disabled toggles + non-toggle section
+    // tabs) so they read as equally subdued; enabled toggles stay at full opacity.
+    constexpr float INACTIVE_ICON_OPACITY = 0.5f;
+
+    // Draws an identity icon in a tab's checkbox cell at the given colour. Returns false
+    // if no icon is assigned/available (caller can fall back to text). Icons render a bit
+    // smaller than the row font (they fill their glyph box more than text fills the em) and
+    // nudged up ~2px (at 1080p, scaled) so they sit optically centred on the row.
+    auto drawTabIcon = [&](float x, float y, const char* iconName, unsigned long color) -> bool {
+        // Same global switch that drives the title-bar icons gates the tab icons.
+        int spriteIndex = (UiConfig::getInstance().getTitleIcons() && iconName && iconName[0])
+            ? AssetManager::getInstance().getIconSpriteIndex(iconName) : 0;
+        if (spriteIndex <= 0) return false;
+        constexpr float TAB_ICON_SCALE = 0.63f;
+        float cellW = checkboxWidth * 0.25f;
+        float iconCenterY = y + dim.lineHeightNormal * 0.5f - (2.0f / 1080.0f) * dim.scale;
+        addIcon(x + cellW * 1.5f, iconCenterY, spriteIndex, color, dim.fontSize * TAB_ICON_SCALE);
+        return true;
+    };
+
+    // Draws a tab's enable/disable toggle in semantic colours: POSITIVE when enabled,
+    // NEGATIVE when disabled (a disabled icon lightens 10% on hover as an affordance).
+    // Falls back to the legacy "[x]"/"[ ]" text when no icon is available.
+    // Call right after pushing the tab's toggle ClickRegion so the hover check targets it.
+    auto drawTabToggle = [&](float x, float y, const char* iconName, bool enabled) {
+        ColorConfig& cc = ColorConfig::getInstance();
+        // Full-opacity semantic base: POSITIVE (enabled) / NEGATIVE (disabled).
+        unsigned long base = enabled ? cc.getPositive() : cc.getNegative();
+        bool hovered = (m_hoveredRegionIndex >= 0 &&
+                        m_hoveredRegionIndex == static_cast<int>(m_clickRegions.size()) - 1);
+        unsigned long iconColor;
+        if (hovered) {
+            // Clear affordance in BOTH states: full opacity + a strong lighten, so a
+            // disabled icon jumps from dimmed to bright and an enabled one brightens.
+            // (lightenColor keeps alpha, so build from the full-opacity base.)
+            iconColor = PluginUtils::lightenColor(base, 0.25f);
+        } else {
+            // Enabled pops at full; disabled is dimmed to the muted section level so it
+            // doesn't scream.
+            iconColor = enabled ? base : PluginUtils::applyOpacity(base, INACTIVE_ICON_OPACITY);
+        }
+        if (!drawTabIcon(x, y, iconName, iconColor)) {
+            // Text fallback (no icon assigned, or asset missing on this build)
+            addString(enabled ? "[x]" : "[ ]", x, y, Justify::LEFT,
+                Fonts::getNormal(), iconColor, dim.fontSize);
+        }
+    };
+
     // Define visual tab order with section markers
     static constexpr int TAB_SECTION_GLOBAL = -1;
     static constexpr int TAB_SECTION_PROFILE = -2;
@@ -1023,10 +1084,8 @@ void SettingsHud::rebuildRenderData() {
                 ClickRegion::HUD_TOGGLE, tabHud
             ));
 
-            // Checkbox text
-            const char* checkboxText = isHudEnabled ? "[X]" : "[ ]";
-            addString(checkboxText, currentTabX, tabStartY, Justify::LEFT,
-                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+            // Identity icon (or text fallback) for the individual HUD
+            drawTabToggle(currentTabX, tabStartY, tabHud->getIconName(), isHudEnabled);
 
             currentTabX += checkboxWidth;
         } else if (i == TAB_WIDGETS) {
@@ -1036,10 +1095,7 @@ void SettingsHud::rebuildRenderData() {
                 ClickRegion::WIDGETS_TOGGLE, nullptr
             ));
 
-            // Checkbox text
-            const char* checkboxText = isHudEnabled ? "[X]" : "[ ]";
-            addString(checkboxText, currentTabX, tabStartY, Justify::LEFT,
-                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+            drawTabToggle(currentTabX, tabStartY, "hud-widgets", isHudEnabled);
 
             currentTabX += checkboxWidth;
         } else if (i == TAB_RUMBLE) {
@@ -1049,10 +1105,7 @@ void SettingsHud::rebuildRenderData() {
                 ClickRegion::RUMBLE_TOGGLE, nullptr
             ));
 
-            // Checkbox text
-            const char* checkboxText = isHudEnabled ? "[X]" : "[ ]";
-            addString(checkboxText, currentTabX, tabStartY, Justify::LEFT,
-                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+            drawTabToggle(currentTabX, tabStartY, "hud-rumble", isHudEnabled);
 
             currentTabX += checkboxWidth;
         } else if (i == TAB_HELMET) {
@@ -1062,10 +1115,12 @@ void SettingsHud::rebuildRenderData() {
                 ClickRegion::HELMET_OVERLAY_TOGGLE, m_helmetOverlay
             ));
 
-            // Checkbox text
-            const char* checkboxText = isHudEnabled ? "[X]" : "[ ]";
-            addString(checkboxText, currentTabX, tabStartY, Justify::LEFT,
-                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+            // Helmet icon is game-specific (the helmet shape differs per game).
+#if defined(GAME_MXBIKES)
+            drawTabToggle(currentTabX, tabStartY, "hud-helmet-mx", isHudEnabled);
+#else
+            drawTabToggle(currentTabX, tabStartY, "hud-helmet", isHudEnabled);
+#endif
 
             currentTabX += checkboxWidth;
         } else if (i == TAB_UPDATES) {
@@ -1075,14 +1130,19 @@ void SettingsHud::rebuildRenderData() {
                 ClickRegion::UPDATE_CHECK_TOGGLE, nullptr
             ));
 
-            // Checkbox text
-            const char* checkboxText = isHudEnabled ? "[X]" : "[ ]";
-            addString(checkboxText, currentTabX, tabStartY, Justify::LEFT,
-                Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
+            drawTabToggle(currentTabX, tabStartY, "hud-updates", isHudEnabled);
 
             currentTabX += checkboxWidth;
         } else {
-            // No checkbox for General tab - just add spacing
+            // Non-toggleable section tabs: an ACCENT identity icon (no on/off state, so
+            // it's distinct from the positive/negative toggle icons and matches the tab
+            // label's colour family rather than looking disabled).
+            const char* sectionIcon =
+                i == TAB_GENERAL    ? "hud-general" :
+                i == TAB_APPEARANCE ? "hud-appearance" :
+                i == TAB_HOTKEYS    ? "hud-hotkeys" :
+                i == TAB_RIDERS     ? "hud-riders" : "";
+            drawTabIcon(currentTabX, tabStartY, sectionIcon, ColorConfig::getInstance().getAccent());
             currentTabX += checkboxWidth;
         }
 
@@ -1684,7 +1744,7 @@ void SettingsHud::rebuildRenderData() {
         unsigned long saveTextColor = (m_hoveredRegionIndex == static_cast<int>(saveRegionIndex))
             ? ColorConfig::getInstance().getPrimary()
             : ColorConfig::getInstance().getPositive();
-        addString("[Save]", saveButtonX + saveButtonWidth / 2.0f, buttonRowY, Justify::CENTER,
+        addString("Save", saveButtonX + saveButtonWidth / 2.0f, buttonRowY, Justify::CENTER,
             Fonts::getNormal(), saveTextColor, dim.fontSize);
 
         // [Close] button
@@ -1708,7 +1768,7 @@ void SettingsHud::rebuildRenderData() {
         unsigned long closeTextColor = (m_hoveredRegionIndex == static_cast<int>(closeRegionIndex))
             ? ColorConfig::getInstance().getPrimary()
             : ColorConfig::getInstance().getAccent();
-        addString("[Close]", closeButtonX + closeButtonWidth / 2.0f, buttonRowY, Justify::CENTER,
+        addString("Close", closeButtonX + closeButtonWidth / 2.0f, buttonRowY, Justify::CENTER,
             Fonts::getNormal(), closeTextColor, dim.fontSize);
     } else {
         // Auto-save is on - just show [Close] button centered
@@ -1736,16 +1796,16 @@ void SettingsHud::rebuildRenderData() {
         unsigned long closeTextColor = (m_hoveredRegionIndex == static_cast<int>(closeRegionIndex))
             ? ColorConfig::getInstance().getPrimary()
             : ColorConfig::getInstance().getAccent();
-        addString("[Close]", buttonAreaCenterX, buttonRowY, Justify::CENTER,
+        addString("Close", buttonAreaCenterX, buttonRowY, Justify::CENTER,
             Fonts::getNormal(), closeTextColor, dim.fontSize);
     }
 
     // [Reset <TabName>] button - bottom left corner
     float resetTabButtonY = buttonRowY;
     char resetTabButtonText[32];
-    snprintf(resetTabButtonText, sizeof(resetTabButtonText), "[Reset %s]", getTabName(m_activeTab));
+    snprintf(resetTabButtonText, sizeof(resetTabButtonText), "Reset %s", getTabName(m_activeTab));
     int resetTabButtonChars = static_cast<int>(strlen(resetTabButtonText));
-    float resetTabButtonWidth = PluginUtils::calculateMonospaceTextWidth(resetTabButtonChars, dim.fontSize);
+    float resetTabButtonWidth = PluginUtils::calculateMonospaceTextWidth(resetTabButtonChars + 2, dim.fontSize);  // +1 char padding each side
     float resetTabButtonX = contentStartX;
 
     // Add click region first for hover check
@@ -1885,6 +1945,17 @@ void SettingsHud::rebuildRenderData() {
                 Fonts::getNormal(), versionColor, dim.fontSize);
         }
     }
+}
+
+int SettingsHud::findClickRegionAt(float x, float y) const {
+    for (size_t i = 0; i < m_clickRegions.size(); ++i) {
+        const auto& region = m_clickRegions[i];
+        if (region.type == ClickRegion::TOOLTIP_ROW) continue;  // hover-only
+        if (isPointInRect(x, y, region.x, region.y, region.width, region.height)) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
 }
 
 void SettingsHud::handleClick(float mouseX, float mouseY) {
@@ -2157,14 +2228,16 @@ void SettingsHud::resetToDefaults() {
     // The widgets master toggle and all per-profile HUD/widget state are restored below by
     // resetAllToFactoryDefaults() (widgetsEnabled lives in the per-profile "Global" snapshot).
 
-    // Update settings display
-    rebuildRenderData();
-
     // Reset every profile to the pristine factory snapshot and save. This forces even
     // INI-only overrides that a HUD's resetToDefaults() doesn't touch back to defaults, and
     // (unlike a plain reload) re-seeds the save baseline so user-edited base-section keys are
     // replaced with this build's defaults — a full factory reset intentionally discards them.
     SettingsManager::getInstance().resetAllToFactoryDefaults(HudManager::getInstance());
+
+    // Rebuild AFTER all state is reset — globals AND the per-profile HUD/widget visibility
+    // above — so the tab toggle icons reflect the reverted enabled/disabled state
+    // immediately instead of only after the next mouse-move (hover) rebuild.
+    rebuildRenderData();
 }
 
 void SettingsHud::resetCurrentTab() {
@@ -2310,7 +2383,7 @@ void SettingsHud::resetCurrentTab() {
             std::vector<std::string> widgets = {
                 "LapWidget", "PositionWidget", "TimeWidget", "SpeedWidget", "GearWidget",
                 "SpeedoWidget", "TachoWidget", "BarsWidget", "VersionWidget", "FuelWidget",
-                "GamepadWidget", "LeanWidget", "GForceWidget", "ClockWidget",
+                "GamepadWidget", "LeanWidget", "GForceWidget", "CompassWidget", "ClockWidget",
                 "PointerWidget", "SettingsButtonWidget"
             };
 #if GAME_HAS_TYRE_TEMP
@@ -2739,6 +2812,8 @@ const char* SettingsHud::getTooltipIdForRegion(ClickRegion::Type type, int activ
                     return "timing.secondary_alltime";
                 case ClickRegion::TIMING_GAP_RECORD_TOGGLE:
                     return "timing.secondary_record";
+                case ClickRegion::TIMING_GAP_LASTLAP_TOGGLE:
+                    return "timing.secondary_lastlap";
                 default:
                     break;
             }

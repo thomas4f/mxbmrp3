@@ -31,6 +31,7 @@ public:
 
     void update() override;
     bool handlesDataType(DataChangeType dataType) const override;
+    const char* getIconName() const override { return "hud-friends"; }
     void resetToDefaults();
 
     // Optional columns (Name + the same-server badge are always shown).

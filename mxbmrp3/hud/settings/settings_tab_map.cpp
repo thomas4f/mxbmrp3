@@ -113,15 +113,9 @@ bool SettingsHud::handleClickTabMap(const ClickRegion& region) {
         case ClickRegion::MAP_RIDER_SHAPE_DOWN:
             if (mapHud) {
                 bool forward = (region.type == ClickRegion::MAP_RIDER_SHAPE_UP);
-                int iconCount = static_cast<int>(AssetManager::getInstance().getIconCount());
-                int current = mapHud->getRiderShape();
-                int next;
-                if (forward) {
-                    next = (current + 1) % (iconCount + 1);
-                } else {
-                    next = (current - 1 + iconCount + 1) % (iconCount + 1);
-                }
-                mapHud->setRiderShape(next);
+                // [0..count] with 0 = Off; skips HUD identity icons.
+                mapHud->setRiderShape(AssetManager::getInstance()
+                    .stepShapeIndexSkippingHud(mapHud->getRiderShape(), forward));
                 rebuildRenderData();
             }
             return true;

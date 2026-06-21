@@ -19,6 +19,7 @@ public:
 
     void update() override;
     bool handlesDataType(DataChangeType dataType) const override;
+    const char* getIconName() const override { return "hud-standings"; }
     void resetToDefaults();
 
     // Column flags - each bit represents a column that can be toggled
@@ -32,9 +33,10 @@ public:
         COL_GAP         = 1 << 6,   // Gap column (auto-selects official or live data, shows RET/DNS/DSQ for non-participants)
         COL_PENALTY     = 1 << 7,   // Penalty seconds (last column, rare event)
         COL_POSGAIN     = 1 << 8,   // Positions gained/lost since race start (caret + count, races only)
+        COL_LAST_LAP    = 1 << 9,   // Last lap time (each rider's most recent lap, cuts included)
 
         COL_REQUIRED = 0,      // No required columns
-        COL_DEFAULT  = 0x4F    // Default columns: status icons, Pos, RaceNum, Name, Gap (POSGAIN off by default)
+        COL_DEFAULT  = 0x4F    // Default columns: status icons, Pos, RaceNum, Name, Gap (POSGAIN + LAST_LAP off by default)
     };
 
     // Who to show gap data for
@@ -86,6 +88,7 @@ public:
     static constexpr uint8_t COL_IDX_GAP         = 6;
     static constexpr uint8_t COL_IDX_PENALTY     = 7;
     static constexpr uint8_t COL_IDX_POSGAIN     = 8;
+    static constexpr uint8_t COL_IDX_LAST_LAP    = 9;
 
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;
@@ -130,6 +133,7 @@ private:
         int pit;
         int numLaps;
         int bestLap;
+        int lastLap;         // Most recent completed lap time in ms (-1 if none); cuts included
         int numLapsAtLeaderFinish;
         int posDelta;        // Positions gained (+) / lost (-) since race start; valid only when hasPosDelta
         bool hasPosDelta;    // True when a race-start snapshot exists for this rider
@@ -137,7 +141,9 @@ private:
         bool isFinishedRace;
         bool sessionFinished;   // Crossed start/finish line after non-race session time expired
         bool hasBestLap;
+        bool hasLastLap;
         bool isPlaceholder;  // Empty row to show configured HUD size
+        unsigned long lastLapColorOverride;  // Non-zero = override last-lap column color (hidden INI faster/slower coding)
 
         enum class GapStyle : uint8_t {
             OFFICIAL,   // Primary color (default)
@@ -152,12 +158,13 @@ private:
         char formattedGap[16];      // Gap column (official or live, auto-selected; shows RET/DNS/DSQ for non-participants)
         char formattedPenalty[8];
         char formattedLapTime[16];
+        char formattedLastLap[16];
         char formattedPosDelta[8];  // Positions gained/lost: abs count (caret shows direction); empty string when held or no reference
 
         DisplayEntry() : position(0), raceNum(-1), bikeBrandColor(0), trackedColor(0),
-            officialGap(0), gapLaps(0), realTimeGap(0), penalty(0), state(0), pit(0), numLaps(0), bestLap(-1), numLapsAtLeaderFinish(-1),
+            officialGap(0), gapLaps(0), realTimeGap(0), penalty(0), state(0), pit(0), numLaps(0), bestLap(-1), lastLap(-1), numLapsAtLeaderFinish(-1),
             posDelta(0), hasPosDelta(false),
-            isFinishedRace(false), sessionFinished(false), hasBestLap(false), isPlaceholder(false), gapStyle(GapStyle::OFFICIAL), gapColorOverride(0) {
+            isFinishedRace(false), sessionFinished(false), hasBestLap(false), hasLastLap(false), isPlaceholder(false), lastLapColorOverride(0), gapStyle(GapStyle::OFFICIAL), gapColorOverride(0) {
             name[0] = '\0';
             bikeShortName[0] = '\0';
             formattedPosition[0] = '\0';
@@ -165,6 +172,7 @@ private:
             formattedGap[0] = '\0';
             formattedPenalty[0] = '\0';
             formattedLapTime[0] = '\0';
+            formattedLastLap[0] = '\0';
             formattedPosDelta[0] = '\0';
         }
 
@@ -208,6 +216,7 @@ private:
         float name;
         float bike;
         float bestLap;
+        float lastLap;
         float gap;
         float penalty;
 
@@ -338,6 +347,7 @@ private:
     int m_topPositionsCount = DEFAULT_TOP_POSITIONS;  // Always show top N positions (global setting, 0-10)
     bool m_bPlayerRowHighlight = true;        // INI-only: full-row color background on the player/spectated rider's row (set 0 to disable and fall back to the accent-colored name marker)
     bool m_bPlayerRowHighlightBrand = false;  // INI-only: when m_bPlayerRowHighlight is on, use the bike brand color instead of the default accent color
+    bool m_bLastLapColorCode = false;         // INI-only: color the Last Lap column vs the player's last lap (green = slower than you, red = faster). Off by default to keep the HUD uncluttered.
     bool m_bClassicLayout = false;  // Classic layout: no number plates, no brand strip, primary-colored race numbers
     bool m_bShowHeaders = false;     // Show a column-header row labeling each enabled column above the rider rows
     bool m_bShowSessionInfo = true;  // Show a session-info row ("<session>: <clock / leader lap / overtime>") below the title
@@ -423,9 +433,6 @@ private:
     static constexpr int COL_BIKE_WIDTH = 10;      // Supports longest bike names (9 chars + 1 spacing)
     static constexpr int COL_PENALTY_WIDTH = 5;        // Supports +99s format (4 chars + 1 spacing)
     static constexpr int COL_BEST_LAP_WIDTH = 10;      // Supports M:SS.mmm format (9 chars + 1 spacing)
+    static constexpr int COL_LAST_LAP_WIDTH = 10;      // Same format as best lap (M:SS.mmm + spacing)
     static constexpr int COL_GAP_WIDTH = 11;           // Supports +M:SS.mmm official or +M:SS.s live (10 chars + 1 spacing)
-
-    static constexpr int BACKGROUND_WIDTH_CHARS = COL_TRACKED_WIDTH + COL_POS_WIDTH + COL_RACENUM_WIDTH +
-        COL_NAME_WIDTH_SHORT + COL_BIKE_WIDTH + COL_PENALTY_WIDTH +
-        COL_BEST_LAP_WIDTH + COL_GAP_WIDTH;
 };

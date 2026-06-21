@@ -74,6 +74,7 @@ public:
 
     void update() override;
     bool handlesDataType(DataChangeType dataType) const override;
+    const char* getIconName() const override { return "hud-lapconsistency"; }
     void resetToDefaults();
 
     // Allow SettingsHud and SettingsManager to access private members
