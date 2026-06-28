@@ -14,21 +14,9 @@ bool SettingsHud::handleClickTabNotices(const ClickRegion& region) {
             // Cycle notice duration: 1s -> 2s -> ... -> 30s -> 1s (wraps)
             if (m_notices) {
                 bool forward = (region.type == ClickRegion::NOTICES_DURATION_UP);
-                int& duration = m_notices->m_noticeDurationMs;
-
-                if (forward) {
-                    if (duration >= NoticesHud::MAX_NOTICE_DURATION_MS) {
-                        duration = NoticesHud::MIN_NOTICE_DURATION_MS;  // Wrap to 1s
-                    } else {
-                        duration += NoticesHud::DURATION_STEP_MS;
-                    }
-                } else {
-                    if (duration <= NoticesHud::MIN_NOTICE_DURATION_MS) {
-                        duration = NoticesHud::MAX_NOTICE_DURATION_MS;  // Wrap to 30s
-                    } else {
-                        duration -= NoticesHud::DURATION_STEP_MS;
-                    }
-                }
+                m_notices->m_noticeDurationMs = applyAcceleratedWrap(
+                    m_notices->m_noticeDurationMs, NoticesHud::DURATION_STEP_MS,
+                    NoticesHud::MIN_NOTICE_DURATION_MS, NoticesHud::MAX_NOTICE_DURATION_MS, forward);
                 m_notices->setDataDirty();
                 setDataDirty();
             }
@@ -64,7 +52,7 @@ BaseHud* SettingsHud::renderTabNotices(SettingsLayoutContext& ctx) {
     ctx.addSpacing(0.5f);
 
     // === CONTENT SECTION ===
-    ctx.addSectionHeader("Warnings");
+    ctx.addSectionHeader("Warnings & Hazards");
 
     bool wrongWayOn = (hud->m_enabledNotices & NoticesHud::NOTICE_WRONG_WAY) != 0;
     ctx.addToggleControl("Wrong way", wrongWayOn,
@@ -78,14 +66,17 @@ BaseHud* SettingsHud::renderTabNotices(SettingsLayoutContext& ctx) {
         &hud->m_enabledNotices, NoticesHud::NOTICE_BLUE_FLAG, true,
         "notices.blue_flag");
 
+    bool lapperAheadOn = (hud->m_enabledNotices & NoticesHud::NOTICE_LAPPING) != 0;
+    ctx.addToggleControl("Lapper ahead", lapperAheadOn,
+        SettingsHud::ClickRegion::CHECKBOX, hud,
+        &hud->m_enabledNotices, NoticesHud::NOTICE_LAPPING, true,
+        "notices.lapping");
+
     bool defaultSetupOn = (hud->m_enabledNotices & NoticesHud::NOTICE_DEFAULT_SETUP) != 0;
     ctx.addToggleControl("Default setup", defaultSetupOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_DEFAULT_SETUP, true,
         "notices.default_setup");
-    ctx.addSpacing(0.5f);
-
-    ctx.addSectionHeader("Hazards");
 
     bool hazardStationaryOn = (hud->m_enabledNotices & NoticesHud::NOTICE_HAZARD_STATIONARY) != 0;
     ctx.addToggleControl("Stationary rider", hazardStationaryOn,
@@ -119,15 +110,6 @@ BaseHud* SettingsHud::renderTabNotices(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_FINISHED, true,
         "notices.finished");
-    ctx.addSpacing(0.5f);
-
-    ctx.addSectionHeader("Training");
-
-    bool segmentOn = (hud->m_enabledNotices & NoticesHud::NOTICE_SEGMENT) != 0;
-    ctx.addToggleControl("Segment", segmentOn,
-        SettingsHud::ClickRegion::CHECKBOX, hud,
-        &hud->m_enabledNotices, NoticesHud::NOTICE_SEGMENT, true,
-        "notices.segment");
     ctx.addSpacing(0.5f);
 
     ctx.addSectionHeader("Personal Bests");

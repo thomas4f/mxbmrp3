@@ -41,6 +41,7 @@ See [Installation](#installation) for detailed setup instructions, or [Configura
 - [Advanced Settings](#advanced-settings)
 - [Modding](#modding)
 - [Troubleshooting](#troubleshooting)
+- [Privacy](#privacy)
 - [Feedback & Issues](#feedback--issues)
 - [Uninstallation](#uninstallation)
 
@@ -119,7 +120,7 @@ Use the settings menu (**Tilde** or the settings button in the top-right) to con
 
 The settings menu provides global settings that apply to all profiles, followed by per-element tabs for the individual HUDs and widgets:
 
-- **General** - Profiles, preferences, web overlay, and Discord/Steam presence
+- **General** - Profiles, preferences, web overlay, Discord/Steam presence, and anonymous usage analytics (opt-out)
 - **Appearance** - Display units/format, font categories, color theme, and HUD placement (grid snap, screen clamp)
 - **Hotkeys** - Keyboard and controller bindings
 - **Riders** - Track specific riders with custom colors and icons
@@ -317,6 +318,7 @@ The overlay files are plain HTML, CSS, and JS. To customize them, place modified
 | `mxbmrp3_tracked_riders.json` | Tracked riders with colors and icons |
 | `mxbmrp3_rumble_profiles.json` | Per-bike rumble effect profiles |
 | `mxbmrp3_stats.json` | Unified stats, personal bests, and odometer data |
+| `mxbmrp3_analytics.json` | Anonymous random install ID for usage analytics (see [Privacy](#privacy)) |
 
 ## Troubleshooting
 
@@ -374,13 +376,34 @@ The fix is a code-signing certificate - a paid yearly cost. Signing removes the 
 - See the [MX Bikes Troubleshooting Guide](https://gist.github.com/thomas4f/1fd379fafb4ab402b48424ae1c9cf2bd) for general game issues (crashes, mods, plugins, RAM, controllers)
 - If the Windows Event Log shows `mxbmrp3.dlo` as the faulting module, see [Feedback & Issues](#feedback--issues)
 
+## Privacy
+
+The plugin sends a small anonymous usage ping per game launch, so the developer can gauge how many people actively use it. It is **on by default** and you can **opt out anytime** in **Settings > General > Integrations** (the "Analytics" toggle).
+
+What it sends:
+
+| Data | Details |
+|------|---------|
+| Install ID | A random UUID made on your machine (stored in `mxbmrp3_analytics.json`), not tied to your name, account, hardware, or IP. Delete the file to reset it. |
+| Version & game | The plugin version and game, and whether this launch is a fresh install or an upgrade |
+| Enabled features | HUDs, widgets, web overlay, Discord, Steam, rumble, update channel, and so on, as anonymous on/off flags |
+| Environment | Operating system (Windows), language, and whether it's the Steam or standalone build |
+| Usage counters | How many times this install has launched, and how many days since it was first installed |
+| Link clicks | Which in-plugin link you click (docs, community, or support/donate) - nothing else |
+
+What it does **not** send: no names, no in-game/online activity, no telemetry, no lap times, no server or rider data, nothing identifying. The pings are fire-and-forget and never affect performance.
+
+Analytics are processed by two privacy-first, open-source services: [Aptabase](https://aptabase.com) handles the detailed events above, and [GoatCounter](https://www.goatcounter.com) receives a single per-launch hit (the plugin/game/version via the page path, plus the same anonymous install ID so it can count unique installs rather than raw launches) used purely as an aggregate headcount. Both are covered by the one Analytics toggle.
+
 ## Feedback & Issues
 
 Bug reports, feature requests, and questions are all welcome. Open an issue on [GitHub](https://github.com/thomas4f/mxbmrp3/issues) or leave a comment on [MXB-Mods](https://mxb-mods.com/mxbmrp3/).
 
 A short description of what you were doing when the issue happened (track, session type, bike, and any reproduction steps) helps a lot.
 
-**For crashes**, please attach both files from `Documents\PiBoSo\[Game]\mxbmrp3\crashes\` - the plugin writes them automatically whenever it catches an unhandled fault:
+**For crashes**, please attach both files from `Documents\PiBoSo\[Game]\mxbmrp3\crashes\` - the plugin writes them automatically whenever it catches an unhandled fault. (These are almost always faults in the game engine itself, not plugin bugs: the plugin's crash handler is process-global, so it catches any unhandled fault in the game process and writes the dump - which is why it can capture crashes that have nothing to do with the plugin.)
+
+Before reporting, check [**Known MX Bikes Crashes**](crash_analysis/KNOWN_GAME_CRASHES.md) — it lists game-engine crashes the plugin's crash handler has caught, with Event Viewer fault offsets you can match against yours. If your crash is listed, it's a known game bug with no plugin fix possible.
 
 - `mxbmrp3_crash_<timestamp>_<pid>.dmp` - the minidump (state at the moment of crash)
 - `mxbmrp3_crash_<timestamp>_<pid>.log` - a snapshot of the plugin log captured at crash time

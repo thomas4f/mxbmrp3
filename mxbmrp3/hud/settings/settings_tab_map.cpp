@@ -72,38 +72,24 @@ bool SettingsHud::handleClickTabMap(const ClickRegion& region) {
         case ClickRegion::MAP_RANGE_UP:
         case ClickRegion::MAP_RANGE_DOWN:
             if (mapHud) {
-                // Discrete range values: Full (index -1), then 50, 100, 200, 500
-                static constexpr float RANGE_VALUES[] = { 50.0f, 100.0f, 200.0f, 500.0f };
-                static constexpr int NUM_VALUES = sizeof(RANGE_VALUES) / sizeof(RANGE_VALUES[0]);
+                // Continuous range with hold-acceleration (10m base step), clamped to
+                // [MIN_ZOOM_DISTANCE, MAX_ZOOM_DISTANCE]. "Full" (zoom off) sits just
+                // below the minimum: stepping down past it disables zoom, stepping up
+                // from it re-enables at the minimum distance.
                 bool increase = (region.type == ClickRegion::MAP_RANGE_UP);
-
-                // Find current index (-1 = Full, 0-3 = zoom values)
-                int currentIndex = -1;
-                if (mapHud->getZoomEnabled()) {
-                    float currentDist = mapHud->getZoomDistance();
-                    for (int i = 0; i < NUM_VALUES; ++i) {
-                        if (std::abs(currentDist - RANGE_VALUES[i]) < 0.5f) {
-                            currentIndex = i;
-                            break;
-                        }
+                if (!mapHud->getZoomEnabled()) {
+                    // From "Full": only UP does anything — enable at the minimum.
+                    if (increase) {
+                        mapHud->setZoomEnabled(true);
+                        mapHud->setZoomDistance(MapHud::MIN_ZOOM_DISTANCE);
                     }
-                    if (currentIndex == -1) currentIndex = 0;
-                }
-
-                // Calculate new index with wrapping
-                int newIndex;
-                if (increase) {
-                    newIndex = (currentIndex + 1 + 1) % (NUM_VALUES + 1) - 1;
                 } else {
-                    newIndex = (currentIndex + NUM_VALUES + 1) % (NUM_VALUES + 1) - 1;
-                }
-
-                // Apply new value
-                if (newIndex == -1) {
-                    mapHud->setZoomEnabled(false);
-                } else {
-                    mapHud->setZoomEnabled(true);
-                    mapHud->setZoomDistance(RANGE_VALUES[newIndex]);
+                    float newDist = applyAcceleratedStep(mapHud->getZoomDistance(), 10.0f, increase);
+                    if (!increase && newDist < MapHud::MIN_ZOOM_DISTANCE) {
+                        mapHud->setZoomEnabled(false);  // step below the minimum → Full
+                    } else {
+                        mapHud->setZoomDistance(newDist);  // setZoomDistance clamps the top
+                    }
                 }
                 rebuildRenderData();
             }

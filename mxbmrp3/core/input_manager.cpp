@@ -393,6 +393,31 @@ void InputManager::updateCursorVisibility() {
         return;
     }
 
+    // Menu-only cursor: movement no longer summons the cursor; it appears only
+    // while the settings menu is open (handled by the early-out above). For
+    // controller users whose stick registers as mouse movement, this stops the
+    // cursor popping in every time they steer.
+    if (UiConfig::getInstance().getMenuOnlyCursor()) {
+        // Capture the rest position first, so toggling the mode off later doesn't
+        // count accumulated travel as one big jump.
+        m_fLastMouseX = m_cursorPosition.x;
+        m_fLastMouseY = m_cursorPosition.y;
+
+        m_framesSinceLastMovement = 0;
+        m_bShouldShowCursor = false;
+
+        // The pointer is hidden, so it must also be non-interactive: an invisible
+        // cursor that can still hover/click/drag HUD elements makes no sense.
+        // Mark the cursor invalid — the contract every HUD checks before acting on
+        // hover/click/drag — and release the buttons as a backstop. Scoped to this
+        // branch only; normal-mode auto-hide (where any real interaction is preceded
+        // by movement that reveals the cursor) is untouched.
+        m_cursorPosition.isValid = false;
+        m_leftButton.isPressed = false;
+        m_rightButton.isPressed = false;
+        return;
+    }
+
     // Check if mouse has moved. m_fLastMouseX/Y is only updated when movement is
     // registered, so while the cursor is hidden this delta is the total travel from
     // where the mouse came to rest - i.e. it naturally accumulates small movements.

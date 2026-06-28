@@ -2774,14 +2774,15 @@
     updatePreviewSizing();
 
     // --- Demo mode ---
-    // Append "?demo" (or "#demo") to the URL to replay a synthetic race instead
+    // Append "?demo" (or "#demo") to the URL to replay a synthetic session instead
     // of connecting to the plugin. Feeds the same snapshots into render() that
     // the SSE stream would, so every feature (standings, gaps, position tints,
     // events, focus card, fastest-last-lap panel) can be previewed without the
-    // game running. Nothing here touches the live code path.
+    // game running. Runs a warmup (lap-times view, no +/- column) and then the
+    // race, looping. Nothing here touches the live code path.
     function startDemo() {
         demoActive = true;                 // suppress persistence of scaled timings
-        appendStatusLine("Demo mode — replaying a sample race", "ok");
+        appendStatusLine("Demo mode — replaying a sample warmup + race", "ok");
         versionAnnounced = true;           // suppress the "Connected" banner
         overlay.classList.remove("disconnected");
 
@@ -2805,6 +2806,7 @@
 
         var TICK_MS = 250;                 // render cadence (real ms)
         var SPEED = 8;                     // virtual ms elapsed per real ms
+        var WARMUP_LEN = 8 * 60000;        // 8-minute warmup, then the race (virtual)
         var SESSION_LEN = 12 * 60000;      // 12-minute timed race (virtual)
 
         // Give one rider a tracked-rider plate (the #1 points leader) so the demo
@@ -2850,8 +2852,11 @@
             while (sim.events.length > 12) sim.events.shift();
         }
 
+        // resetSim() starts the WARMUP phase; startRace() transitions to the race;
+        // a finished race loops back to resetSim() after a short hold.
         function resetSim() {
             sim = {
+                phase: "warmup",
                 T: 0, events: [], leaderNum: -1,
                 bestOverall: 0, bestOverallNum: -1,
                 specIndex: 0, specMs: 0, finished: false, finishLap: -1,
@@ -2866,12 +2871,26 @@
                     };
                 })
             };
-            // Grid order = baseline pace (fastest starts up front).
-            var grid = sim.riders.slice().sort(function (a, b) { return a.pace - b.pace; });
+            pushEvent(0, "Warmup started", "", 0);
+        }
+
+        // Warmup -> race: grid by warmup best lap (riders with no lap go to the back),
+        // then reset per-session lap data and restart the clock for the timed race.
+        function startRace() {
+            var grid = sim.riders.slice().sort(function (a, b) {
+                return (a.bestLapMs || Infinity) - (b.bestLapMs || Infinity);
+            });
             for (var i = 0; i < grid.length; i++) {
                 grid[i].gridPos = i + 1;
                 grid[i].posAtSf = grid[i].posAtSplit = i + 1;  // seed +/- references to the grid
+                grid[i].dist = 0; grid[i].laps = 0;
+                grid[i].lastLapMs = 0; grid[i].bestLapMs = 0;
+                grid[i].prevSector = 0; grid[i].crossedSf = false;
             }
+            sim.phase = "race";
+            sim.T = 0; sim.leaderNum = -1;
+            sim.bestOverall = 0; sim.bestOverallNum = -1;
+            sim.finished = false; sim.finishLap = -1;
             pushEvent(0, "Race started", "", 0);
         }
 
@@ -2885,6 +2904,7 @@
             sim.T += dT;
             var T = sim.T;
 
+            // Advance every rider + record lap / best-lap times (shared by both phases).
             for (var i = 0; i < sim.riders.length; i++) {
                 var r = sim.riders[i];
                 var p = effPace(r, T);
@@ -2904,7 +2924,61 @@
                 }
             }
 
-            // Classification: most distance covered leads.
+            // Rotate the spectated rider every ~12s so the focus card cycles (both phases).
+            sim.specMs += TICK_MS;
+            if (sim.specMs >= 12000) {
+                sim.specMs = 0;
+                sim.specIndex = (sim.specIndex + 1) % Math.min(6, sim.riders.length);
+            }
+
+            if (sim.phase === "warmup") tickWarmup(T);
+            else tickRace(T);
+        }
+
+        // WARMUP: classify by best lap (no-lap riders last), show the lap-time column
+        // and no +/- column (render() hides it for non-race sessions).
+        function tickWarmup(T) {
+            var order = sim.riders.slice().sort(function (a, b) {
+                return (a.bestLapMs || Infinity) - (b.bestLapMs || Infinity);
+            });
+            var specNum = order[Math.min(sim.specIndex, order.length - 1)].num;
+
+            var standings = [];
+            for (var k = 0; k < order.length; k++) {
+                var rr = order[k];
+                var chips = [];
+                if (sim.bestOverallNum === rr.num && rr.bestLapMs > 0) chips.push("fastest");
+                if (rr.num === specNum) chips.push("camera");
+                standings.push({
+                    pos: k + 1, num: rr.num, name: rr.fullName, fullName: rr.fullName,
+                    bike: rr.bike, brand: rr.brand, brandColor: rr.color,
+                    plateColor: (rr.num === DEMO_TRACKED_NUM ? DEMO_TRACKED_PLATE : undefined),
+                    gap: "", gapMs: 0, gapLaps: 0,
+                    state: 0, numLaps: rr.laps, inPit: false, penalty: 0,
+                    bestLapMs: rr.bestLapMs, lastLapMs: rr.lastLapMs, finished: false,
+                    posDeltaStart: 0, posDeltaSf: 0, posDeltaSplit: 0,
+                    chips: chips
+                });
+            }
+
+            var remaining = Math.max(0, WARMUP_LEN - T);
+            render({
+                session: {
+                    time: formatMmSs(remaining), timeMs: remaining,
+                    type: "Warmup", state: "In Progress", format: formatMmSs(WARMUP_LEN),
+                    numLaps: 0, sessionLength: WARMUP_LEN, isRace: false,
+                    isSpectating: true, trackName: "Demo National", trackLength: 1600,
+                    leaderLap: 0, compactTimes: true, pluginVersion: "demo"
+                },
+                standings: standings,
+                events: sim.events.slice()
+            });
+
+            if (remaining <= 0) startRace();
+        }
+
+        // RACE: classify by distance, gap-to-leader column, +/- snapshots, overtime.
+        function tickRace(T) {
             var order = sim.riders.slice().sort(function (a, b) { return b.dist - a.dist; });
             var leader = order[0];
             if (sim.leaderNum !== -1 && leader.num !== sim.leaderNum) {
@@ -2912,17 +2986,11 @@
             }
             sim.leaderNum = leader.num;
 
-            // Rotate the spectated rider every ~12s so the focus card cycles.
-            sim.specMs += TICK_MS;
-            if (sim.specMs >= 12000) {
-                sim.specMs = 0;
-                sim.specIndex = (sim.specIndex + 1) % Math.min(6, order.length);
-            }
             var specNum = order[Math.min(sim.specIndex, order.length - 1)].num;
 
             // Update +/- reference snapshots now that classification (order) is known:
             // the Lap reference snaps each rider's position at the S/F line, the Sector
-            // reference at each sector change (3 sectors/lap). Race uses the grid.
+            // reference at each sector change (3 sectors/lap).
             var DEMO_SECTORS = 3;
             for (var oi = 0; oi < order.length; oi++) {
                 var od = order[oi];
@@ -2983,7 +3051,7 @@
                 events: sim.events.slice()
             });
 
-            // Once the leader takes the checkered, hold it briefly then restart.
+            // Once the leader takes the checkered, hold it briefly then loop to warmup.
             if (remaining <= 0 && sim.finishLap >= 0 && leader.laps > sim.finishLap && !sim.finished) {
                 sim.finished = true;
                 setTimeout(resetSim, 6000);

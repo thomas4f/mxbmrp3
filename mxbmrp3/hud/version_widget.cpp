@@ -7,6 +7,8 @@
 #include <cstdio>
 #include <cstring>
 #include <cmath>
+#include <shellapi.h>
+#pragma comment(lib, "shell32.lib")
 
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
@@ -17,10 +19,15 @@
 #include "../core/settings_manager.h"
 #include "../core/hud_manager.h"
 #include "../core/plugin_manager.h"
+#if GAME_HAS_ANALYTICS
+#include "../core/analytics_manager.h"
+#endif
 #include "settings_hud.h"
 #include "../handlers/draw_handler.h"
 
 using namespace PluginConstants;
+
+static constexpr const char* KOFI_URL = "https://ko-fi.com/thomas4f";
 
 // Brick colors by row (from top: red, orange, yellow, green)
 namespace BrickColors {
@@ -171,6 +178,53 @@ void VersionWidget::handleClickDetection() {
             }
         }
         return;  // Don't process game input while notification is showing
+    }
+
+    // Handle donation nudge button hover and clicks (not during game)
+    if (m_showingDonationNudge && !m_gameActive) {
+        const CursorPosition& cursor = input.getCursorPosition();
+
+        NotificationButton oldHover = m_hoveredButton;
+        m_hoveredButton = NotificationButton::NONE;
+
+        if (cursor.isValid) {
+            float kofiLeft = m_viewButtonLeft + m_fOffsetX;
+            float kofiTop = m_viewButtonTop + m_fOffsetY;
+            if (cursor.x >= kofiLeft && cursor.x <= kofiLeft + m_viewButtonWidth &&
+                cursor.y >= kofiTop && cursor.y <= kofiTop + m_viewButtonHeight) {
+                m_hoveredButton = NotificationButton::KOFI;
+            }
+
+            float dismissLeft = m_dismissButtonLeft + m_fOffsetX;
+            float dismissTop = m_dismissButtonTop + m_fOffsetY;
+            if (cursor.x >= dismissLeft && cursor.x <= dismissLeft + m_dismissButtonWidth &&
+                cursor.y >= dismissTop && cursor.y <= dismissTop + m_dismissButtonHeight) {
+                m_hoveredButton = NotificationButton::NUDGE_DISMISS;
+            }
+        }
+
+        if (m_hoveredButton != oldHover) {
+            setDataDirty();
+        }
+
+        if (isLeftClick) {
+            if (m_hoveredButton == NotificationButton::KOFI) {
+#if GAME_HAS_ANALYTICS
+                AnalyticsManager::getInstance().trackEvent("link_clicked", {{"target", "donate"}, {"source", "update_nudge"}});
+#endif
+                ShellExecuteA(nullptr, "open", KOFI_URL, nullptr, nullptr, SW_SHOWNORMAL);
+            }
+            // Both buttons dismiss the nudge
+            if (m_hoveredButton == NotificationButton::KOFI ||
+                m_hoveredButton == NotificationButton::NUDGE_DISMISS) {
+                m_showingDonationNudge = false;
+                m_bVisible = false;
+                m_hoveredButton = NotificationButton::NONE;
+                setDataDirty();
+                return;
+            }
+        }
+        return;  // Don't process game input while nudge is showing
     }
 
     // Only handle left clicks when game is active (for ball launch / exit)
@@ -435,6 +489,13 @@ void VersionWidget::showUpdateNotification() {
     setDataDirty();
 }
 
+void VersionWidget::showDonationNudge() {
+    if (m_showingDonationNudge || m_showingUpdateNotification) return;
+    m_showingDonationNudge = true;
+    m_bVisible = true;
+    setDataDirty();
+}
+
 void VersionWidget::rebuildLayout() {
     if (m_gameActive) {
         // Game handles its own layout
@@ -473,6 +534,20 @@ void VersionWidget::rebuildLayout() {
         backgroundWidth = contentPaddingH + contentWidth + contentPaddingH;
         // Two rows: text + buttons
         backgroundHeight = contentPaddingV + dim.lineHeightNormal + dim.lineHeightNormal + contentPaddingV;
+    } else if (m_showingDonationNudge) {
+        contentPaddingH = dim.paddingH;
+        contentPaddingV = dim.paddingV;
+
+        // "MXBMRP3 updated successfully!" (29 chars)
+        const float nudgeTextWidth = PluginUtils::calculateMonospaceTextWidth(29, dim.fontSize);
+        const float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+        const float buttonGap = charWidth * 1.0f;
+        const float kofiButtonWidth = charWidth * KOFI_BUTTON_CHARS;
+        const float nudgeDismissButtonWidth = charWidth * NUDGE_DISMISS_BUTTON_CHARS;
+        const float buttonRowWidth = kofiButtonWidth + buttonGap + nudgeDismissButtonWidth;
+        const float contentWidth = std::fmax(nudgeTextWidth, buttonRowWidth);
+        backgroundWidth = contentPaddingH + contentWidth + contentPaddingH;
+        backgroundHeight = contentPaddingV + dim.lineHeightNormal + dim.lineHeightNormal + contentPaddingV;
     } else {
         // Normal mode uses full padding for consistency
         contentPaddingH = dim.paddingH;
@@ -495,8 +570,8 @@ void VersionWidget::rebuildLayout() {
     // Update background quad position
     updateBackgroundQuadPosition(startX, startY, backgroundWidth, backgroundHeight);
 
-    // Position first string (only used in normal mode, notification rebuilds all strings)
-    if (!showNotification) {
+    // Position first string (only used in normal mode; notification/nudge rebuilds all strings)
+    if (!showNotification && !m_showingDonationNudge) {
         float contentStartX = startX + contentPaddingH;
         float contentStartY = startY + contentPaddingV;
         positionString(0, contentStartX, contentStartY);
@@ -560,7 +635,7 @@ void VersionWidget::rebuildRenderData() {
         float row2Y = row1Y + dim.lineHeightNormal;
         float buttonsStartX = centerX - buttonRowWidth / 2.0f;
 
-        // ===== [View in Settings] Button (accent color) =====
+        // ===== View in Settings Button (accent color) =====
         float viewBtnX = buttonsStartX;
         float viewBtnY = row2Y;
 
@@ -584,10 +659,10 @@ void VersionWidget::rebuildRenderData() {
 
         // View button text (center-aligned on button)
         unsigned long viewTextColor = isViewHovered ? this->getColor(ColorSlot::PRIMARY) : this->getColor(ColorSlot::ACCENT);
-        addString("[View in Settings]", viewBtnX + viewButtonWidth / 2.0f, viewBtnY, Justify::CENTER,
+        addString("View in Settings", viewBtnX + viewButtonWidth / 2.0f, viewBtnY, Justify::CENTER,
                   this->getFont(FontCategory::NORMAL), viewTextColor, dim.fontSize);
 
-        // ===== [Dismiss] Button (negative color) =====
+        // ===== Dismiss Button (negative color) =====
         float dismissBtnX = viewBtnX + viewButtonWidth + buttonGap;
         float dismissBtnY = row2Y;
 
@@ -611,10 +686,85 @@ void VersionWidget::rebuildRenderData() {
 
         // Dismiss button text (center-aligned on button)
         unsigned long dismissTextColor = isDismissHovered ? this->getColor(ColorSlot::PRIMARY) : this->getColor(ColorSlot::NEGATIVE);
-        addString("[Dismiss]", dismissBtnX + dismissButtonWidth / 2.0f, dismissBtnY, Justify::CENTER,
+        addString("Dismiss", dismissBtnX + dismissButtonWidth / 2.0f, dismissBtnY, Justify::CENTER,
                   this->getFont(FontCategory::NORMAL), dismissTextColor, dim.fontSize);
 
         // Set bounds for the whole widget
+        setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
+
+    } else if (m_showingDonationNudge) {
+        // ===== DONATION NUDGE: shown once after a successful auto-update install =====
+        const char* nudgeText = "MXBMRP3 updated successfully!";
+        const int nudgeTextLen = static_cast<int>(strlen(nudgeText));
+        const float nudgeTextWidth = PluginUtils::calculateMonospaceTextWidth(nudgeTextLen, dim.fontSize);
+
+        const float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+        const float buttonGap = charWidth * 1.0f;
+        const float kofiButtonWidth = charWidth * KOFI_BUTTON_CHARS;
+        const float nudgeDismissButtonWidth = charWidth * NUDGE_DISMISS_BUTTON_CHARS;
+        const float buttonHeight = dim.lineHeightNormal;
+        const float buttonRowWidth = kofiButtonWidth + buttonGap + nudgeDismissButtonWidth;
+        const float contentWidth = std::fmax(nudgeTextWidth, buttonRowWidth);
+        const float backgroundWidth = dim.paddingH + contentWidth + dim.paddingH;
+        const float backgroundHeight = dim.paddingV + dim.lineHeightNormal + dim.lineHeightNormal + dim.paddingV;
+
+        float startX = -backgroundWidth / 2.0f;
+        float startY = 0.01f;
+
+        addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
+
+        float row1Y = startY + dim.paddingV;
+        float centerX = startX + backgroundWidth / 2.0f;
+        addString(nudgeText, centerX, row1Y, Justify::CENTER,
+                  this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
+
+        float row2Y = row1Y + dim.lineHeightNormal;
+        float buttonsStartX = centerX - buttonRowWidth / 2.0f;
+
+        // Ko-fi button (accent color)
+        float kofiBtnX = buttonsStartX;
+        float kofiBtnY = row2Y;
+        m_viewButtonLeft = kofiBtnX;
+        m_viewButtonTop = kofiBtnY;
+        m_viewButtonWidth = kofiButtonWidth;
+        m_viewButtonHeight = buttonHeight;
+
+        bool isKofiHovered = (m_hoveredButton == NotificationButton::KOFI);
+        SPluginQuad_t kofiBgQuad;
+        float kofiBgX = kofiBtnX, kofiBgY = kofiBtnY;
+        applyOffset(kofiBgX, kofiBgY);
+        setQuadPositions(kofiBgQuad, kofiBgX, kofiBgY, kofiButtonWidth, buttonHeight);
+        kofiBgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+        kofiBgQuad.m_ulColor = isKofiHovered ? this->getColor(ColorSlot::ACCENT)
+            : PluginUtils::applyOpacity(this->getColor(ColorSlot::ACCENT), 0.5f);
+        m_quads.push_back(kofiBgQuad);
+
+        unsigned long kofiTextColor = isKofiHovered ? this->getColor(ColorSlot::PRIMARY) : this->getColor(ColorSlot::ACCENT);
+        addString("Support thomas4f", kofiBtnX + kofiButtonWidth / 2.0f, kofiBtnY, Justify::CENTER,
+                  this->getFont(FontCategory::NORMAL), kofiTextColor, dim.fontSize);
+
+        // Dismiss button (muted)
+        float nudgeDismissBtnX = kofiBtnX + kofiButtonWidth + buttonGap;
+        float nudgeDismissBtnY = row2Y;
+        m_dismissButtonLeft = nudgeDismissBtnX;
+        m_dismissButtonTop = nudgeDismissBtnY;
+        m_dismissButtonWidth = nudgeDismissButtonWidth;
+        m_dismissButtonHeight = buttonHeight;
+
+        bool isNudgeDismissHovered = (m_hoveredButton == NotificationButton::NUDGE_DISMISS);
+        SPluginQuad_t nudgeDismissBgQuad;
+        float nudgeDismissBgX = nudgeDismissBtnX, nudgeDismissBgY = nudgeDismissBtnY;
+        applyOffset(nudgeDismissBgX, nudgeDismissBgY);
+        setQuadPositions(nudgeDismissBgQuad, nudgeDismissBgX, nudgeDismissBgY, nudgeDismissButtonWidth, buttonHeight);
+        nudgeDismissBgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+        nudgeDismissBgQuad.m_ulColor = isNudgeDismissHovered ? this->getColor(ColorSlot::NEGATIVE)
+            : PluginUtils::applyOpacity(this->getColor(ColorSlot::NEGATIVE), 0.5f);
+        m_quads.push_back(nudgeDismissBgQuad);
+
+        unsigned long nudgeDismissTextColor = isNudgeDismissHovered ? this->getColor(ColorSlot::PRIMARY) : this->getColor(ColorSlot::NEGATIVE);
+        addString("Dismiss", nudgeDismissBtnX + nudgeDismissButtonWidth / 2.0f, nudgeDismissBtnY, Justify::CENTER,
+                  this->getFont(FontCategory::NORMAL), nudgeDismissTextColor, dim.fontSize);
+
         setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
 
     } else {
@@ -807,6 +957,7 @@ void VersionWidget::resetToDefaults() {
 
     // Reset notification state
     m_showingUpdateNotification = false;
+    m_showingDonationNudge = false;
     m_hoveredButton = NotificationButton::NONE;
 
     setDataDirty();

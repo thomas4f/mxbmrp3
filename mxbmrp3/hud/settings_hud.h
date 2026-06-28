@@ -235,6 +235,7 @@ public:
             PB_SCOPE_TOGGLE,           // Toggle personal best scope (Bike/Category)
             GRID_SNAP_TOGGLE,          // Toggle grid snapping for HUD positioning
             SCREEN_CLAMP_TOGGLE,       // Toggle screen clamping for HUD positioning
+            MENU_ONLY_CURSOR_TOGGLE,   // Toggle menu-only cursor (controller-as-mouse fix)
             DROP_SHADOW_TOGGLE,        // Toggle drop shadow for text rendering
             TITLE_ICONS_TOGGLE,        // Toggle HUD title identity icons
             UPDATE_CHECK_TOGGLE,       // Toggle automatic update checking
@@ -245,6 +246,9 @@ public:
 #endif
 #if GAME_HAS_DISCORD
             DISCORD_TOGGLE,            // Toggle Discord Rich Presence
+#endif
+#if GAME_HAS_ANALYTICS
+            ANALYTICS_TOGGLE,          // Toggle anonymous usage analytics
 #endif
 #if GAME_HAS_HTTP_SERVER
             WEB_SERVER_TOGGLE,         // Toggle embedded web server
@@ -468,7 +472,11 @@ public:
             POSGAIN_MODE_UP,           // Cycle positions-gained reference forward Off->Start->S/F->Split (StandingsHud)
             POSGAIN_MODE_DOWN,         // Cycle positions-gained reference backward Split->S/F->Start->Off (StandingsHud)
             HEADERS_TOGGLE,            // Toggle column-header row in the standings (StandingsHud)
-            SESSION_INFO_TOGGLE        // Toggle session-info row (clock/laps/overtime) in the standings (StandingsHud)
+            SESSION_INFO_TOGGLE,       // Toggle session-info row (clock/laps/overtime) in the standings (StandingsHud)
+            // Help & Community links (General tab footer)
+            OPEN_LINK_DOCS,            // Open documentation site
+            OPEN_LINK_COMMUNITY,       // Open community forum
+            OPEN_LINK_KOFI             // Open Ko-fi donation page
         } type;
 
         // Type-safe variant instead of unsafe union (C++17)
@@ -882,6 +890,34 @@ private:
         float raw = current + (increase ? step : -step);
         // Snap to nearest multiple of step for clean round numbers
         return std::round(raw / step) * step;
+    }
+
+    // Step a wrapping integer cycle (durations, etc.) with hold-acceleration.
+    // The hold multiplier accelerates the step, but the result is clamped to
+    // [lo, hi] so a fast hold can't overshoot a bound; pressing again while
+    // already sitting on a bound wraps to the far end (preserving the cycle feel).
+    int applyAcceleratedWrap(int current, int baseStep, int lo, int hi, bool increase) const {
+        int step = baseStep * getHoldStepMultiplier();
+        if (increase) {
+            if (current >= hi) return lo;                 // at top -> wrap to bottom
+            int next = current + step;
+            return next > hi ? hi : next;                 // accelerate, clamp at top
+        } else {
+            if (current <= lo) return hi;                 // at bottom -> wrap to top
+            int next = current - step;
+            return next < lo ? lo : next;                 // accelerate, clamp at bottom
+        }
+    }
+
+    // Step a clamped integer count control (rows, events, ...) with hold-acceleration.
+    // The integer analog of applyAcceleratedStep, but it simply clamps to [lo, hi]
+    // with no wrap and no grid snapping (every integer in range is a valid count).
+    int applyAcceleratedClamp(int current, int baseStep, int lo, int hi, bool increase) const {
+        int step = baseStep * getHoldStepMultiplier();
+        int next = current + (increase ? step : -step);
+        if (next < lo) next = lo;
+        if (next > hi) next = hi;
+        return next;
     }
 
     // Stats tab periodic refresh timer (epoch default triggers immediate first refresh)

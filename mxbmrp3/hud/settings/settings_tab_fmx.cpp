@@ -23,13 +23,13 @@ bool SettingsHud::handleClickTabFmx(const ClickRegion& region) {
             return true;
 
         case ClickRegion::FMX_CHAIN_ROWS_UP:
-            hud->m_maxChainDisplayRows = std::min(10, hud->m_maxChainDisplayRows + 1);
+            hud->m_maxChainDisplayRows = applyAcceleratedClamp(hud->m_maxChainDisplayRows, 1, 0, 10, true);
             hud->setDataDirty();
             setDataDirty();
             return true;
 
         case ClickRegion::FMX_CHAIN_ROWS_DOWN:
-            hud->m_maxChainDisplayRows = std::max(0, hud->m_maxChainDisplayRows - 1);
+            hud->m_maxChainDisplayRows = applyAcceleratedClamp(hud->m_maxChainDisplayRows, 1, 0, 10, false);
             hud->setDataDirty();
             setDataDirty();
             return true;

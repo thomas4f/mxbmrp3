@@ -268,12 +268,25 @@ DiscordManager::PresenceSendResult DiscordManager::sendPresenceUpdate() {
         DEBUG_WARN("DiscordManager: buildPresenceJson failed (unknown exception)");
         return PresenceSendResult::SerializationError;
     }
+    // Log the first send of each session in all builds (a breadcrumb that presence is
+    // being published), but keep the throttled repeats Debug-only so Release isn't
+    // spammed with the verbose frame. Mirrors SteamFriendsManager's first-write-per-session
+    // logging.
+    int gen;
+    {
+        std::lock_guard<std::mutex> lock(m_snapshotMutex);
+        gen = m_snapshot.sessionGeneration;
+    }
 #ifdef _DEBUG
-    // Debug-only: the full presence frame is verbose; Release doesn't need the
-    // raw JSON on every (throttled) send.
-    DEBUG_INFO_F("DiscordManager: Sending presence: %.500s%s",
-                 json.c_str(), json.length() > 500 ? "..." : "");
+    const bool logThisSend = true;
+#else
+    const bool logThisSend = (gen != m_lastLoggedSessionGen);
 #endif
+    m_lastLoggedSessionGen = gen;
+    if (logThisSend) {
+        DEBUG_INFO_F("DiscordManager: Sending presence: %.500s%s",
+                     json.c_str(), json.length() > 500 ? "..." : "");
+    }
 
     if (!writeFrame(DiscordOpcode::FRAME, json.c_str(), json.length())) {
         DEBUG_WARN("DiscordManager: Failed to write presence frame");
@@ -571,6 +584,7 @@ void DiscordManager::updateSnapshot() {
         next.sessionEndUnix = 0;
     }
     next.drawState      = pd.getDrawState();
+    next.sessionGeneration = session.sessionGeneration;
 
     std::lock_guard<std::mutex> lock(m_snapshotMutex);
     m_snapshot = next;

@@ -832,29 +832,36 @@ void RecordsHud::update() {
         return;
     }
 
-    // Handle mouse input for click regions
+    // Handle mouse input for click regions — only when the cursor is usable.
+    // Gating on isValid mirrors StandingsHud/MapHud and means a hidden cursor
+    // (e.g. Menu-Only Cursor) can't hover or click the fetch button.
     const auto& inputManager = InputManager::getInstance();
-    const auto& cursor = inputManager.getCursorPosition();
-    float mouseX = cursor.x;
-    float mouseY = cursor.y;
-
-    // Check for fetch button hover (click regions store base positions, add offset for hit testing)
+    const CursorPosition& cursor = inputManager.getCursorPosition();
     bool wasHovered = m_fetchButtonHovered;
     m_fetchButtonHovered = false;
-    for (const auto& region : m_clickRegions) {
-        if (region.type == ClickRegionType::FETCH_BUTTON) {
-            m_fetchButtonHovered = isPointInRect(mouseX, mouseY,
-                region.x + m_fOffsetX, region.y + m_fOffsetY, region.width, region.height);
-            break;
+
+    if (cursor.isValid) {
+        float mouseX = cursor.x;
+        float mouseY = cursor.y;
+
+        // Check for fetch button hover (click regions store base positions, add offset for hit testing)
+        for (const auto& region : m_clickRegions) {
+            if (region.type == ClickRegionType::FETCH_BUTTON) {
+                m_fetchButtonHovered = isPointInRect(mouseX, mouseY,
+                    region.x + m_fOffsetX, region.y + m_fOffsetY, region.width, region.height);
+                break;
+            }
+        }
+
+        // Handle clicks
+        if (inputManager.getLeftButton().isClicked() && isPointInBounds(mouseX, mouseY)) {
+            handleClick(mouseX, mouseY);
         }
     }
+    // Repaint on any hover transition, including losing hover when the cursor
+    // goes away (m_fetchButtonHovered was reset to false above).
     if (wasHovered != m_fetchButtonHovered) {
         setDataDirty();
-    }
-
-    // Handle clicks
-    if (inputManager.getLeftButton().isClicked() && isPointInBounds(mouseX, mouseY)) {
-        handleClick(mouseX, mouseY);
     }
 
     // Check if fetch result display should timeout

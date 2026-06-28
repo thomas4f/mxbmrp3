@@ -27,6 +27,9 @@ public:
     void showUpdateNotification();
     bool isShowingUpdateNotification() const { return m_showingUpdateNotification; }
 
+    // Donation nudge - shown once after a successful auto-update install
+    void showDonationNudge();
+
     // Allow SettingsManager to access private members
     friend class SettingsManager;
 
@@ -55,8 +58,10 @@ private:
     static constexpr float GAME_AREA_HEIGHT = 0.35f;
 
     // Notification button constants (char counts for width calculation)
-    static constexpr int VIEW_BUTTON_CHARS = 18;     // "[View in Settings]"
-    static constexpr int DISMISS_BUTTON_CHARS = 9;   // "[Dismiss]"
+    static constexpr int VIEW_BUTTON_CHARS = 18;     // "View in Settings" (16) + 1-char padding each side
+    static constexpr int DISMISS_BUTTON_CHARS = 9;   // "Dismiss" (7) + 1-char padding each side
+    static constexpr int KOFI_BUTTON_CHARS = 18;     // "Support thomas4f" (16) + 1-char padding each side
+    static constexpr int NUDGE_DISMISS_BUTTON_CHARS = 9;  // "Dismiss" (7) + 1-char padding each side
 
     // Click detection for game input (ball launch / exit)
     bool m_wasLeftPressed = false;
@@ -65,8 +70,11 @@ private:
     // UpdateChecker worker thread while the game thread reads it every frame.
     std::atomic<bool> m_showingUpdateNotification = false;  // True when auto-enabled for update notification
 
+    // Donation nudge state (shown once after a successful auto-update install)
+    bool m_showingDonationNudge = false;
+
     // Notification button state
-    enum class NotificationButton { NONE, VIEW, DISMISS };
+    enum class NotificationButton { NONE, VIEW, DISMISS, KOFI, NUDGE_DISMISS };
     NotificationButton m_hoveredButton = NotificationButton::NONE;
 
     // Button bounds (screen coordinates, before offset applied)

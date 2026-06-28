@@ -87,6 +87,15 @@ public:
     void setDebugMode(bool enabled) { m_debugMode = enabled; }
     bool isDebugMode() const { return m_debugMode; }
 
+    // Donation nudge: show "updated successfully" + Ko-fi button after auto-install (default on)
+    void setDonationNudgeEnabled(bool enabled) { m_donationNudgeEnabled = enabled; }
+    bool isDonationNudgeEnabled() const { return m_donationNudgeEnabled; }
+
+    // Check for and clear the donation nudge sentinel written after a successful install.
+    // Returns true once (deletes the file), false on every subsequent call.
+    // Call on startup after cleanupOldFiles().
+    bool checkAndClearDonationNudge();
+
     // Cleanup old .dlo files from previous updates (call on startup)
     void cleanupOldFiles();
 
@@ -173,4 +182,7 @@ private:
 
     // Debug mode: extract to test subdirectory
     std::atomic<bool> m_debugMode;
+
+    // Donation nudge enable flag (INI: [Updates] donationNudge)
+    bool m_donationNudgeEnabled = true;
 };

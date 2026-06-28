@@ -278,6 +278,11 @@ bool UpdateChecker::parseVersion(const std::string& version, int& major, int& mi
     return true;
 }
 
+bool UpdateChecker::isValidVersion(const std::string& v) {
+    int major, minor, patch, build;
+    return parseVersion(v, major, minor, patch, build);
+}
+
 int UpdateChecker::compareVersions(const std::string& a, const std::string& b) {
     int aMajor, aMinor, aPatch, aBuild;
     int bMajor, bMinor, bPatch, bBuild;

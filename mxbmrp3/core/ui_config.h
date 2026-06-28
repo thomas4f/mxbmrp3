@@ -31,6 +31,14 @@ public:
     bool getScreenClamping() const { return m_bScreenClamping; }
     void setScreenClamping(bool enabled) { m_bScreenClamping = enabled; }
 
+    // Menu-only cursor: when enabled, the mouse cursor + settings button only
+    // appear while the settings menu is open (toggled via the TOGGLE_SETTINGS
+    // hotkey). Movement no longer summons the cursor. Intended for controller
+    // users whose analog stick registers as mouse movement, which would
+    // otherwise pop the cursor in every time they steer.
+    bool getMenuOnlyCursor() const { return m_bMenuOnlyCursor; }
+    void setMenuOnlyCursor(bool enabled) { m_bMenuOnlyCursor = enabled; }
+
     // Auto-save setting (automatically save settings on every change)
     bool getAutoSave() const { return m_bAutoSave; }
     void setAutoSave(bool enabled) { m_bAutoSave = enabled; }
@@ -94,6 +102,7 @@ private:
 
     bool m_bGridSnapping = true;    // Grid snapping enabled by default
     bool m_bScreenClamping = false;  // Screen clamping disabled by default
+    bool m_bMenuOnlyCursor = false;  // Cursor follows mouse movement by default
     bool m_bAutoSave = true;         // Auto-save enabled by default
     TemperatureUnit m_temperatureUnit = TemperatureUnit::CELSIUS;  // Celsius by default
     PBScope m_pbScope = PBScope::CATEGORY;  // Per-category PB tracking by default

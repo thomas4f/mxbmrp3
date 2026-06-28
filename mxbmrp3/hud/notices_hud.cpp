@@ -161,6 +161,13 @@ void NoticesHud::update() {
         setDataDirty();
     }
 
+    // Check lapping status (mirror of blue flag — player closing on a backmarker ahead)
+    bool isLapping = pluginData.isPlayerLapping();
+    if (isLapping != m_bIsLapping) {
+        m_bIsLapping = isLapping;
+        setDataDirty();
+    }
+
     // Check overtime status - trigger timed notice when time+laps race enters overtime
     {
         bool overtime = sessionData.overtimeStarted;
@@ -333,6 +340,7 @@ void NoticesHud::rebuildRenderData() {
     bool showWrongWay  = m_bIsWrongWay && (m_enabledNotices & NOTICE_WRONG_WAY);
     bool showHazard    = m_bIsHazardAhead && !m_bFinishedTriggered;
     bool showBlueFlag  = m_bIsBlueFlagged && !m_bFinishedTriggered && (m_enabledNotices & NOTICE_BLUE_FLAG);
+    bool showLapping   = m_bIsLapping && !m_bFinishedTriggered && !showBlueFlag && (m_enabledNotices & NOTICE_LAPPING);
     bool showOvertime  = m_bShowOvertime && (m_enabledNotices & NOTICE_OVERTIME);
     bool showAllTimePB = m_bShowAllTimePB && (m_enabledNotices & NOTICE_ALLTIME_PB);
     bool showFastestLap = m_bShowFastestLap && (m_enabledNotices & NOTICE_FASTEST_LAP);
@@ -340,11 +348,11 @@ void NoticesHud::rebuildRenderData() {
     bool showFinished  = m_bShowFinished && (m_enabledNotices & NOTICE_FINISHED);
     bool showLastLap   = m_bShowLastLap && (m_enabledNotices & NOTICE_LAST_LAP);
     bool showDefaultSetup = m_bShowDefaultSetup && (m_enabledNotices & NOTICE_DEFAULT_SETUP);
-    bool showSegment   = m_bShowSegment && (m_enabledNotices & NOTICE_SEGMENT);
+    bool showSegment   = m_bShowSegment;  // always on -- self-gated by the segment hotkey action
 
     // Only render if there's something to show
-    // Priority: WRONG WAY > HAZARD AHEAD > BLUE FLAG > OVERTIME > ALL-TIME PB > FASTEST LAP > SESSION PB > SEGMENT > FINISHED > LAST LAP > SETUP NAME
-    if (!showWrongWay && !showHazard && !showBlueFlag && !showOvertime && !showAllTimePB && !showFastestLap &&
+    // Priority: WRONG WAY > HAZARD AHEAD > BLUE FLAG > LAPPER AHEAD > OVERTIME > ALL-TIME PB > FASTEST LAP > SESSION PB > SEGMENT > FINISHED > LAST LAP > SETUP NAME
+    if (!showWrongWay && !showHazard && !showBlueFlag && !showLapping && !showOvertime && !showAllTimePB && !showFastestLap &&
         !showSessionPB && !showSegment && !showLastLap && !showFinished && !showDefaultSetup) {
         setBounds(0.0f, 0.0f, 0.0f, 0.0f);
         return;
@@ -406,6 +414,21 @@ void NoticesHud::rebuildRenderData() {
 
         addString("BLUE FLAG", CENTER_X, noticeY, Justify::CENTER,
             this->getFont(FontCategory::TITLE), ColorPalette::BLUE, dim.fontSizeLarge);
+    }
+    else if (showLapping) {
+        // Add notice background (neutral/yellow — informational caution; distinct from
+        // the orange WARNING that hazards use)
+        SPluginQuad_t noticeQuad;
+        float quadX = noticeQuadX;
+        float quadY = noticeQuadY;
+        applyOffset(quadX, quadY);
+        setQuadPositions(noticeQuad, quadX, quadY, noticeQuadWidth, noticeQuadHeight);
+        noticeQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+        noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::NEUTRAL), m_fBackgroundOpacity);
+        m_quads.push_back(noticeQuad);
+
+        addString("LAPPER AHEAD", CENTER_X, noticeY, Justify::CENTER,
+            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::NEUTRAL), dim.fontSizeLarge);
     }
     else if (showOvertime) {
         // Add notice background (neutral for overtime - informational race event)

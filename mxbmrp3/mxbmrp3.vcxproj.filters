@@ -318,6 +318,9 @@
     <ClInclude Include="core\discord_manager.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
+    <ClInclude Include="core\analytics_manager.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
     <ClInclude Include="core\steam_friends_manager.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
@@ -675,6 +678,9 @@
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="core\discord_manager.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\analytics_manager.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="core\steam_friends_manager.cpp">

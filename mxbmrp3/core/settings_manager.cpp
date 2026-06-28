@@ -68,6 +68,9 @@
 #if GAME_HAS_HTTP_SERVER
 #include "http_server.h"
 #endif
+#if GAME_HAS_ANALYTICS
+#include "analytics_manager.h"
+#endif
 #include "xinput_reader.h"
 #include "hotkey_manager.h"
 #include "tracked_riders_manager.h"
@@ -353,7 +356,6 @@ namespace {
             constexpr const char* OVERTIME = "notice_overtime";
             constexpr const char* HAZARD_STATIONARY = "notice_hazard_stationary";
             constexpr const char* HAZARD_WRONG_WAY = "notice_hazard_wrong_way";
-            constexpr const char* SEGMENT = "notice_segment";
         }
 
         // TelemetryHud elements
@@ -517,7 +519,6 @@ namespace {
             constexpr Setting PB_DURATION = {"pbDurationMs", "Timed notice display duration in milliseconds (PB notices)"};
             constexpr Setting HAZARD_STATIONARY = {"notice_hazard_stationary", "Show hazard notice for stationary riders ahead"};
             constexpr Setting HAZARD_WRONG_WAY = {"notice_hazard_wrong_way", "Show hazard notice for wrong-way riders ahead"};
-            constexpr Setting SEGMENT = {"notice_segment", "Show segment timer action notices (start/end set, cleared)"};
         }
 
         // StandingsHud settings
@@ -1398,7 +1399,6 @@ namespace {
             if (key == Notices::FASTEST_LAP.key) return Notices::FASTEST_LAP.description;
             if (key == Notices::SESSION_PB.key) return Notices::SESSION_PB.description;
             if (key == Notices::DEFAULT_SETUP.key) return Notices::DEFAULT_SETUP.description;
-            if (key == Notices::SEGMENT.key) return Notices::SEGMENT.description;
             if (key == Notices::PB_DURATION.key) return Notices::PB_DURATION.description;
         } else if (hudName == "StandingsHud") {
             if (key == Standings::TOP_POSITIONS.key) return Standings::TOP_POSITIONS.description;
@@ -1763,7 +1763,6 @@ namespace {
         saveBitAsKey(settings, OVERTIME, notices, NoticesHud::NOTICE_OVERTIME);
         saveBitAsKey(settings, HAZARD_STATIONARY, notices, NoticesHud::NOTICE_HAZARD_STATIONARY);
         saveBitAsKey(settings, HAZARD_WRONG_WAY, notices, NoticesHud::NOTICE_HAZARD_WRONG_WAY);
-        saveBitAsKey(settings, SEGMENT, notices, NoticesHud::NOTICE_SEGMENT);
     }
 
     // NoticesHud: load notices from named keys
@@ -1780,7 +1779,6 @@ namespace {
         loadBitFromKey(settings, OVERTIME, notices, NoticesHud::NOTICE_OVERTIME);
         loadBitFromKey(settings, HAZARD_STATIONARY, notices, NoticesHud::NOTICE_HAZARD_STATIONARY);
         loadBitFromKey(settings, HAZARD_WRONG_WAY, notices, NoticesHud::NOTICE_HAZARD_WRONG_WAY);
-        loadBitFromKey(settings, SEGMENT, notices, NoticesHud::NOTICE_SEGMENT);
     }
 
     // TelemetryHud: save elements as named keys
@@ -3856,6 +3854,51 @@ void SettingsManager::copyToProfile(HudManager& hudManager, ProfileType targetPr
         ProfileManager::getProfileName(targetProfile));
 }
 
+namespace {
+// "StandingsHud" -> "hud_standings", "TyreTempWidget" -> "widget_tyre_temp".
+// Strips the class suffix, prefixes by kind, and converts PascalCase to
+// snake_case. The result is a STABLE analytics key, so don't change this
+// transform once shipped or historical per-feature data fragments.
+std::string sectionToFlagKey(const std::string& section) {
+    auto endsWith = [](const std::string& s, const std::string& suf) {
+        return s.size() >= suf.size() &&
+               s.compare(s.size() - suf.size(), suf.size(), suf) == 0;
+    };
+    std::string prefix, core;
+    if (endsWith(section, "Widget")) { prefix = "widget_"; core = section.substr(0, section.size() - 6); }
+    else if (endsWith(section, "Hud")) { prefix = "hud_"; core = section.substr(0, section.size() - 3); }
+    else { return ""; }  // not a HUD/widget (e.g. the "Global" pseudo-entry) — skip
+
+    std::string out;
+    for (size_t i = 0; i < core.size(); ++i) {
+        char c = core[i];
+        if (c >= 'A' && c <= 'Z') {
+            if (i > 0) out += '_';
+            out += static_cast<char>(c - 'A' + 'a');
+        } else {
+            out += c;
+        }
+    }
+    return prefix + out;
+}
+}  // namespace
+
+void SettingsManager::getHudWidgetFlags(const HudManager& hudManager,
+                                        std::vector<std::pair<std::string, int>>& outFlags) {
+    // Reuse the canonical capture so this never needs its own HUD list to drift.
+    ProfileCache cache;
+    captureToCache(hudManager, cache);
+
+    for (const auto& entry : cache) {
+        std::string key = sectionToFlagKey(entry.first);
+        if (key.empty()) continue;  // skip non-HUD/widget entries (e.g. "Global")
+        auto it = entry.second.find("visible");
+        const int on = (it != entry.second.end() && it->second == "1") ? 1 : 0;
+        outFlags.emplace_back(std::move(key), on);
+    }
+    std::sort(outFlags.begin(), outFlags.end());
+}
+
 void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& hudManager) const {
     // Write General section (global preferences)
     out << "[General]\n";
@@ -3871,6 +3914,9 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
 #endif
 #if GAME_HAS_STEAM_FRIENDS
     out << "steamFriends=" << (SteamFriendsManager::getInstance().isEnabled() ? 1 : 0) << "\n";
+#endif
+#if GAME_HAS_ANALYTICS
+    out << "analytics=" << (AnalyticsManager::getInstance().isEnabled() ? 1 : 0) << " ; Anonymous usage stats (opt-out)\n";
 #endif
     out << "filterDnsRiders=" << (PluginData::getInstance().isFilterDnsRiders() ? 1 : 0) << "\n";
 #if GAME_HAS_HTTP_SERVER
@@ -3902,6 +3948,7 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
         // omit it from the snapshot, leaving a stale dismissal stuck across "Reset all
         // settings". An empty value loads as a no-op (setDismissedVersion("")).
         out << "dismissedVersion=" << UpdateChecker::getInstance().getDismissedVersion() << "\n";
+        out << "donationNudge=" << (UpdateDownloader::getInstance().isDonationNudgeEnabled() ? 1 : 0) << "\n";
         out << "\n";
     }
 
@@ -3948,7 +3995,8 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
     out << "dropShadow=" << (UiConfig::getInstance().getDropShadow() ? 1 : 0) << "\n";
     out << "titleIcons=" << (UiConfig::getInstance().getTitleIcons() ? 1 : 0) << "\n";
     out << "gridSnapping=" << (UiConfig::getInstance().getGridSnapping() ? 1 : 0) << "\n";
-    out << "screenClamping=" << (UiConfig::getInstance().getScreenClamping() ? 1 : 0) << "\n\n";
+    out << "screenClamping=" << (UiConfig::getInstance().getScreenClamping() ? 1 : 0) << "\n";
+    out << "menuOnlyCursor=" << (UiConfig::getInstance().getMenuOnlyCursor() ? 1 : 0) << "\n\n";
 
     // Write Colors section
     const ColorConfig& colorConfig = ColorConfig::getInstance();
@@ -4148,6 +4196,11 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                 SteamFriendsManager::getInstance().setEnabled(std::stoi(value) != 0);
             }
 #endif
+#if GAME_HAS_ANALYTICS
+            else if (key == "analytics") {
+                AnalyticsManager::getInstance().setEnabled(std::stoi(value) != 0);
+            }
+#endif
             else if (key == "filterDnsRiders") {
                 PluginData::getInstance().setFilterDnsRiders(std::stoi(value) != 0);
             }
@@ -4205,6 +4258,8 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                 UiConfig::getInstance().setGridSnapping(std::stoi(value) != 0);
             } else if (key == "screenClamping") {
                 UiConfig::getInstance().setScreenClamping(std::stoi(value) != 0);
+            } else if (key == "menuOnlyCursor") {
+                UiConfig::getInstance().setMenuOnlyCursor(std::stoi(value) != 0);
             }
         } catch (const std::exception& e) {
             DEBUG_WARN_F("Display: Failed to parse settings: %s", e.what());
@@ -4236,6 +4291,8 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                 UpdateDownloader::getInstance().setDebugMode(debugMode);
             } else if (key == "dismissedVersion") {
                 UpdateChecker::getInstance().setDismissedVersion(value);
+            } else if (key == "donationNudge") {
+                UpdateDownloader::getInstance().setDonationNudgeEnabled(std::stoi(value) != 0);
             }
         } catch (const std::exception& e) {
             DEBUG_WARN_F("Updates: Failed to parse settings: %s", e.what());
@@ -5130,6 +5187,15 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
 
     // Cleanup any leftover files from previous updates
     UpdateDownloader::getInstance().cleanupOldFiles();
+
+    // Show donation nudge if this is the first load after a successful auto-install.
+    // Always consume the sentinel (clear it) even when the nudge is disabled, so a
+    // disabled user doesn't leave the pending file lingering on disk; gate only the
+    // showing on the enabled flag.
+    bool nudgePending = UpdateDownloader::getInstance().checkAndClearDonationNudge();
+    if (nudgePending && UpdateDownloader::getInstance().isDonationNudgeEnabled()) {
+        hudManager.getVersionWidget().showDonationNudge();
+    }
 
     // Trigger update check on startup if enabled
     if (UpdateChecker::getInstance().isEnabled()) {

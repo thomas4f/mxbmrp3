@@ -557,13 +557,24 @@ void SteamFriendsManager::updateLocalPresence() {
     sehSetRichPresence(m_fnSetRichPresence, m_friends, "format",  fmt.c_str());
     sehSetRichPresence(m_fnSetRichPresence, m_friends, "progress", progress.c_str());
 
-    DEBUG_INFO_F("SteamFriendsManager: wrote presence status='%s' track='%s' server='%s' session='%s' state='%s' progress='%s'",
-                 status.c_str(),
-                 track.empty()      ? "(none)" : track.c_str(),
-                 server.empty()     ? "(none)" : server.c_str(),
-                 sessionStr.empty() ? "(none)" : sessionStr.c_str(),
-                 stateStr.empty()   ? "(none)" : stateStr.c_str(),
-                 progress.empty()   ? "(none)" : progress.c_str());
+    // Log the first write of each session in all builds (a useful field breadcrumb
+    // that presence is being published), but keep the every-~10s repeats the session
+    // clock drives Debug-only so Release stays quiet.
+#ifdef _DEBUG
+    const bool logThisWrite = true;
+#else
+    const bool logThisWrite = (session.sessionGeneration != m_lastLoggedSessionGen);
+#endif
+    m_lastLoggedSessionGen = session.sessionGeneration;
+    if (logThisWrite) {
+        DEBUG_INFO_F("SteamFriendsManager: wrote presence status='%s' track='%s' server='%s' session='%s' state='%s' progress='%s'",
+                     status.c_str(),
+                     track.empty()      ? "(none)" : track.c_str(),
+                     server.empty()     ? "(none)" : server.c_str(),
+                     sessionStr.empty() ? "(none)" : sessionStr.c_str(),
+                     stateStr.empty()   ? "(none)" : stateStr.c_str(),
+                     progress.empty()   ? "(none)" : progress.c_str());
+    }
 }
 
 // ============================================================================

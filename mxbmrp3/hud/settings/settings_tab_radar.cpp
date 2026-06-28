@@ -30,8 +30,9 @@ bool SettingsHud::handleClickTabRadar(const ClickRegion& region) {
         case ClickRegion::RADAR_RANGE_UP:
         case ClickRegion::RADAR_RANGE_DOWN:
             if (radarHud) {
+                // Accelerated 10m step (matches the map's zoom range); setter clamps.
                 bool increase = (region.type == ClickRegion::RADAR_RANGE_UP);
-                float newRange = radarHud->getRadarRange() + (increase ? RadarHud::RADAR_RANGE_STEP : -RadarHud::RADAR_RANGE_STEP);
+                float newRange = applyAcceleratedStep(radarHud->getRadarRange(), RadarHud::RADAR_RANGE_STEP, increase);
                 radarHud->setRadarRange(newRange);
                 setDataDirty();
             }
@@ -77,8 +78,9 @@ bool SettingsHud::handleClickTabRadar(const ClickRegion& region) {
         case ClickRegion::RADAR_ALERT_DISTANCE_UP:
         case ClickRegion::RADAR_ALERT_DISTANCE_DOWN:
             if (radarHud) {
+                // Accelerated 10m step (matches the map's zoom range); setter clamps.
                 bool increase = (region.type == ClickRegion::RADAR_ALERT_DISTANCE_UP);
-                float newDist = radarHud->getAlertDistance() + (increase ? RadarHud::ALERT_DISTANCE_STEP : -RadarHud::ALERT_DISTANCE_STEP);
+                float newDist = applyAcceleratedStep(radarHud->getAlertDistance(), RadarHud::ALERT_DISTANCE_STEP, increase);
                 radarHud->setAlertDistance(newDist);
                 setDataDirty();
             }

@@ -16,6 +16,7 @@ UiConfig::UiConfig() {
 void UiConfig::resetToDefaults() {
     m_bGridSnapping = true;
     m_bScreenClamping = false;
+    m_bMenuOnlyCursor = false;
     m_bAutoSave = true;
     m_temperatureUnit = TemperatureUnit::CELSIUS;
     m_pbScope = PBScope::CATEGORY;

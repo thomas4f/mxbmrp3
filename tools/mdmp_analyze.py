@@ -12,10 +12,22 @@
 # with the matching .pdb (and ideally a full dump, `procdump -ma -e <exe>`)
 # when you need the actual function / locals.
 #
+# It also reads the host EXE build fingerprint (PE TimeDateStamp) from the dump's
+# module record -- independent of any log -- and, if a
+# known-crash registry (known_game_crashes.json) is found, matches the faulting
+# instruction bytes against it (build-independent) and prints a [KNOWN CRASH]
+# section. The registry is auto-discovered next to the dump, next to this script,
+# or in CWD; override with --known <file.json> or $MDMP_KNOWN.
+#
 # Usage:
 #   python3 tools/mdmp_analyze.py <file.dmp> [<file2.dmp> ...]
 #   python3 tools/mdmp_analyze.py --compare <a.dmp> <b.dmp>
-import struct, sys, hashlib, datetime
+#   python3 tools/mdmp_analyze.py --known <registry.json> <file.dmp> ...
+import struct, sys, hashlib, datetime, json, os
+
+# Optional path to a known-crash registry (JSON). Set by --known; otherwise
+# print_report() searches the dump's directory, this script's dir, and CWD.
+KNOWN_PATH = None
 
 try:
     import capstone
@@ -102,17 +114,26 @@ def parse_dump(path):
 
     # --- Modules ---
     modules = []  # (base, size, name)
+    module_meta = {}  # name -> {timedatestamp, fileversion}
     if 4 in streams:
         _, rva = streams[4][0]
         n = struct.unpack_from("<I", data, rva)[0]
         off = rva + 4
         for i in range(n):
             base, size = struct.unpack_from("<QI", data, off)
+            tds = struct.unpack_from("<I", data, off + 16)[0]  # MINIDUMP_MODULE.TimeDateStamp
             name_rva = struct.unpack_from("<I", data, off + 20)[0]
-            modules.append((base, size, mdstring(name_rva)))
+            # VS_FIXEDFILEINFO starts at off+24; valid only if dwSignature==0xFEEF04BD
+            vsig, _vstruc, fvMS, fvLS = struct.unpack_from("<IIII", data, off + 24)
+            name = mdstring(name_rva)
+            modules.append((base, size, name))
+            fileversion = (f"{fvMS >> 16}.{fvMS & 0xffff}.{fvLS >> 16}.{fvLS & 0xffff}"
+                           if vsig == 0xFEEF04BD else None)
+            module_meta[name] = {"timedatestamp": tds, "fileversion": fileversion}
             off += 108
     modules.sort()
     d["modules"] = modules
+    d["module_meta"] = module_meta
 
     def mod_for(addr):
         for base, size, name in modules:
@@ -317,6 +338,120 @@ def classify(d):
     return out
 
 
+def _registry_candidates(dump_path):
+    """Search order for the known-crash registry: --known (KNOWN_PATH), $MDMP_KNOWN,
+    the dump's own directory, this script's dir, the sibling crash_analysis/, then CWD."""
+    candidates = []
+    if KNOWN_PATH:
+        candidates.append(KNOWN_PATH)
+    if os.environ.get("MDMP_KNOWN"):
+        candidates.append(os.environ["MDMP_KNOWN"])
+    dump_dir = os.path.dirname(os.path.abspath(dump_path)) if dump_path else None
+    if dump_dir:
+        candidates.append(os.path.join(dump_dir, "known_game_crashes.json"))
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates += [
+        os.path.join(here, "known_game_crashes.json"),
+        os.path.join(here, "..", "crash_analysis", "known_game_crashes.json"),
+        os.path.join("crash_analysis", "known_game_crashes.json"),
+        "known_game_crashes.json",
+    ]
+    # Fallback to the pre-rename filename so an old local copy still resolves.
+    if dump_dir:
+        candidates.append(os.path.join(dump_dir, "known_crashes.json"))
+    candidates += [
+        os.path.join(here, "..", "crash_analysis", "known_crashes.json"),
+        os.path.join("crash_analysis", "known_crashes.json"),
+        "known_crashes.json",
+    ]
+    return candidates
+
+
+def load_known_registry(dump_path):
+    """Find and parse the known-crash registry. Returns the parsed dict or None.
+    Never raises -- a missing/bad registry just disables matching."""
+    for path in _registry_candidates(dump_path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            continue
+    return None
+
+
+def find_registry_path(dump_path):
+    """On-disk path of the known-crash registry (first existing candidate), or None.
+    Used by --record to write the file back to the same place it was read from."""
+    for path in _registry_candidates(dump_path):
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def host_exe(d):
+    """(full name, meta) of the host .exe module, or (None, None). 'modules' is
+    sorted by base address, so this is the first/lowest-base .exe."""
+    for _, _, name in d["modules"]:
+        if name.lower().endswith(".exe"):
+            return name, d.get("module_meta", {}).get(name)
+    return None, None
+
+
+def host_exe_tds(d):
+    """Host exe PE TimeDateStamp as '0x%08X', or None if unavailable."""
+    _, m = host_exe(d)
+    return f"0x{m['timedatestamp']:08X}" if m else None
+
+
+def _is_hex_build(k):
+    try:
+        int(k, 16)
+        return True
+    except (ValueError, TypeError):
+        return False
+
+
+def match_known(d, registry):
+    """Match this dump against the registry by faulting instruction bytes (build-
+    independent) + AV kind. Returns (entry, build_status_string) or (None, None)."""
+    if not registry or not d.get("code"):
+        return None, None
+    fault_hex = d["code"].hex()
+    av = d.get("av_rw")
+    tds_key = host_exe_tds(d)  # e.g. "0x6A21833D"
+    faultmod = (d["mod_for"](d["fault_rip"]) or "") if d.get("fault_rip") else ""
+    for entry in registry.get("crashes", []):
+        mb = entry.get("match", {})
+        want = (mb.get("bytes") or "").lower()
+        # '?' is a wildcard nibble -- lets a pattern skip call/jump rel32 bytes
+        # that change between game builds while the surrounding opcodes don't.
+        if not want or len(want) > len(fault_hex) or not all(
+                p == "?" or p == c for p, c in zip(want, fault_hex)):
+            continue
+        if mb.get("av") and av and mb["av"].upper() != av.upper():
+            continue
+        if mb.get("module") and not faultmod.lower().startswith(mb["module"].lower()):
+            continue
+        builds = entry.get("builds", {})
+        hex_builds = {k.upper(): v for k, v in builds.items() if _is_hex_build(k)}
+        if not hex_builds:
+            # Module-stable crash (e.g. CRT): offset is the same on every game build.
+            off = next(iter(builds.values()), "?")
+            where = mb.get("module") or "a fixed module"
+            status = (f"build-independent -- faults in {where} at {off} "
+                      f"(offset stable across game builds)")
+        elif tds_key and tds_key.upper() in hex_builds:
+            status = f"build {tds_key} is catalogued -> fault offset {hex_builds[tds_key.upper()]}"
+        elif tds_key:
+            known = ", ".join(f"{k}={v}" for k, v in builds.items()) or "(none yet)"
+            status = (f"build {tds_key} NOT yet catalogued -- matched by instruction bytes "
+                      f"(build-independent); known builds: {known}")
+        else:
+            status = "host build unknown; matched by instruction bytes"
+        return entry, status
+    return None, None
+
+
 def print_report(d):
     p = d["path"].split("/")[-1]
     print(f"\n==================== {p} ====================")
@@ -340,6 +475,15 @@ def print_report(d):
                 gpus.add(v.split(" (")[0])
     if gpus:
         print(f"gpu: {', '.join(sorted(gpus))}")
+
+    # Host EXE build fingerprint. The faulting module's offsets are only valid
+    # for a specific game build, so surface the build so two dumps can be told
+    # apart (e.g. a fault offset that "moved" is really just a different build).
+    exe_full, m = host_exe(d)
+    if exe_full and m:
+        ver = f"  FileVersion={m['fileversion']}" if m["fileversion"] else ""
+        print(f"build: {exe_full.split(chr(92))[-1]}  "
+              f"TimeDateStamp=0x{m['timedatestamp']:08X}{ver}")
 
     if d["exc_code"] is not None:
         name = EXC_NAMES.get(d["exc_code"], "UNKNOWN")
@@ -380,6 +524,22 @@ def print_report(d):
     else:
         print("  no specific signature matched -- this is not a recognized pattern, so don't assume")
         print("  a prior diagnosis. Inspect the registers, faulting instruction, and live stack by hand.")
+
+    # Known-crash registry match (build-independent: matches on instruction bytes)
+    registry = load_known_registry(d.get("path"))
+    if registry is not None:
+        entry, status = match_known(d, registry)
+        if entry:
+            print(f"\n[KNOWN CRASH] {entry.get('name', entry.get('id'))}")
+            if entry.get("summary"):
+                print(f"  {entry['summary']}")
+            if entry.get("trigger"):
+                print(f"  trigger: {entry['trigger']}")
+            print(f"  workaround: {entry['workaround'] if entry.get('workaround') else 'none known'}")
+            print(f"  {status}")
+        else:
+            print("\n[KNOWN CRASH] no registry match -- possibly a NEW signature; "
+                  "analyse by hand and consider adding it to known_game_crashes.json")
 
     # Stack scan
     live_frames = []  # ordered (sp, val, mod) for sp >= RSP -- includes residue
@@ -483,18 +643,134 @@ def compare(a, b):
             va = f"0x{va:08X}" if va is not None else None
             vb = f"0x{vb:08X}" if vb is not None else None
         print(f"  {lab:22s} {mark}  A={va}  B={vb}")
+
+    # Game build (host .exe TimeDateStamp): two dumps with the same fault offset
+    # but different builds are NOT directly comparable -- offsets shift per build.
+    ta, tb = host_exe_tds(da), host_exe_tds(db)
+    bmark = "==" if ta == tb else "!="
+    print(f"  {'game build (exe TDS)':22s} {bmark}  A={ta}  B={tb}")
+    if ta != tb:
+        print("    (different game builds -- a moved fault offset across these is expected)")
+
     print(f"\n  => {'SAME crash signature (same bug)' if same else 'DIFFERENT crashes'}")
 
 
+# ---- per-crash provenance ('samples' in the signature registry) ----
+# 'samples' records the source files behind a CATALOGUED crash, stored inside that
+# crash's entry. It answers "which .dmp/.log files do I keep for this bug?".
+def make_sample(d, path, note=""):
+    """Provenance record for one dump, to append to a crash entry's 'samples'.
+    Idempotency is by sha256. 'source' is the file's basename -- in the normal
+    workflow that's the real crash filename (mxbmrp3_crash_<date>_<pid>.dmp), whose
+    date+pid suffix also names the paired .log. 'note' is a free-text field (never
+    auto-filled) for things like a video link; set it via --record --note."""
+    rip = d.get("fault_rip")
+    fault = (d["mod_for"](rip) or "?") if rip else "?"
+    return {
+        "source": os.path.basename(path),
+        "sha256": d.get("sha256", "?"),
+        "captured": fmt_time(d["header_time"]) if d.get("header_time") else "?",
+        "build": host_exe_tds(d) or "?",
+        "fault": fault,
+        "note": note or "",
+    }
+
+
+def record_sample(reg_path, d, dump_path, note=None):
+    """Append this dump's provenance to the matching crash's 'samples' list and write
+    the registry back. Records ONLY dumps that match a catalogued crash -- the
+    catalogue tracks understood crashes, so a non-match is reported and skipped rather
+    than inventing an entry. Idempotent by sha256: a dump already on file is not
+    duplicated, but a supplied --note still updates that existing sample's note (so you
+    can attach a video link after the fact). Returns a status string."""
+    src = os.path.basename(dump_path)
+    try:
+        with open(reg_path, "r", encoding="utf-8") as f:
+            reg = json.load(f)
+    except Exception as e:
+        return f"ERROR: cannot read registry {reg_path}: {e}"
+    entry, _ = match_known(d, reg)
+    if not entry:
+        return ("NOT RECORDED -- no known-crash match. The catalogue only tracks "
+                "understood crashes; add a crash entry for this signature first, then "
+                "re-run with --record.")
+    samples = entry.setdefault("samples", [])
+    sha = d.get("sha256", "")
+
+    def write_back():
+        with open(reg_path, "w", encoding="utf-8") as f:
+            json.dump(reg, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+
+    for s in samples:
+        if s.get("sha256") == sha:
+            if note is not None and note != s.get("note", ""):
+                old = s.get("note", "")
+                s["note"] = note
+                try:
+                    write_back()
+                except Exception as e:
+                    return f"ERROR: cannot write registry {reg_path}: {e}"
+                what = "set" if not old else "updated"
+                return (f"already on file under '{entry['id']}' as '{s.get('source')}' "
+                        f"-- note {what}")
+            return (f"already on file under '{entry['id']}' as '{s.get('source')}' "
+                    f"(sha256 {sha[:16]}…) -- no change")
+    samples.append(make_sample(d, dump_path, note or ""))
+    try:
+        write_back()
+    except Exception as e:
+        return f"ERROR: cannot write registry {reg_path}: {e}"
+    tail = " (with note)" if note else ""
+    return (f"recorded '{src}' under '{entry['id']}'{tail} "
+            f"({len(samples)} sample(s) on file)")
+
+
 def main(argv):
+    global KNOWN_PATH
+    # Optional: --known <registry.json> overrides registry auto-discovery.
+    if "--known" in argv:
+        i = argv.index("--known")
+        try:
+            KNOWN_PATH = argv[i + 1]
+            del argv[i:i + 2]
+        except IndexError:
+            print("usage: mdmp_analyze.py --known <registry.json> <file.dmp> ...")
+            return
     if argv and argv[0] == "--compare":
         if len(argv) != 3:
             print("usage: mdmp_analyze.py --compare <a.dmp> <b.dmp>")
             return
         compare(argv[1], argv[2])
         return
+    # --record: append each dump's provenance to the matching crash's 'samples' list
+    # in known_game_crashes.json (matched crashes only; non-matches are reported, not added).
+    # --note "<text>": free-text note (e.g. a video link) attached to the sample(s)
+    # recorded this run -- also updates the note on a dump that's already on file.
+    record = "--record" in argv
+    note = None
+    if "--note" in argv:
+        i = argv.index("--note")
+        try:
+            note = argv[i + 1]
+            del argv[i:i + 2]
+        except IndexError:
+            print("usage: mdmp_analyze.py --record --note \"<text>\" <file.dmp> ...")
+            return
+    if "--record" in argv:
+        argv.remove("--record")
+    if note is not None and not record:
+        print("note: --note has no effect without --record (ignored)")
+        note = None
     for p in argv:
-        print_report(parse_dump(p))
+        d = parse_dump(p)
+        print_report(d)
+        if record:
+            reg_path = find_registry_path(p)
+            if not reg_path:
+                print("\n[RECORD] no known_game_crashes.json found -- cannot record")
+            else:
+                print(f"\n[RECORD] {record_sample(reg_path, d, p, note)}")
 
 
 if __name__ == "__main__":

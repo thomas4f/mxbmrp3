@@ -22,6 +22,12 @@
 #if GAME_HAS_HTTP_SERVER
 #include "../../core/http_server.h"
 #endif
+#if GAME_HAS_ANALYTICS
+#include "../../core/analytics_manager.h"
+#endif
+#include <shellapi.h>
+#pragma comment(lib, "shell32.lib")
+#include <cstring>  // strlen (link URL width)
 
 using namespace PluginConstants;
 
@@ -32,6 +38,30 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
             {
                 bool current = UiConfig::getInstance().getAutoSave();
                 UiConfig::getInstance().setAutoSave(!current);
+                setDataDirty();
+            }
+            return true;
+
+        case ClickRegion::MENU_ONLY_CURSOR_TOGGLE:
+            {
+                bool current = UiConfig::getInstance().getMenuOnlyCursor();
+                UiConfig::getInstance().setMenuOnlyCursor(!current);
+                setDataDirty();
+            }
+            return true;
+
+        case ClickRegion::GRID_SNAP_TOGGLE:
+            {
+                bool current = UiConfig::getInstance().getGridSnapping();
+                UiConfig::getInstance().setGridSnapping(!current);
+                setDataDirty();
+            }
+            return true;
+
+        case ClickRegion::SCREEN_CLAMP_TOGGLE:
+            {
+                bool current = UiConfig::getInstance().getScreenClamping();
+                UiConfig::getInstance().setScreenClamping(!current);
                 setDataDirty();
             }
             return true;
@@ -51,6 +81,18 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
             {
                 bool current = DiscordManager::getInstance().isEnabled();
                 DiscordManager::getInstance().setEnabled(!current);
+                setDataDirty();
+            }
+            return true;
+#endif
+
+#if GAME_HAS_ANALYTICS
+        case ClickRegion::ANALYTICS_TOGGLE:
+            {
+                // Toggle persists for next launch; the beacon only fires once at
+                // startup, so flipping it mid-session changes future runs only.
+                bool current = AnalyticsManager::getInstance().isEnabled();
+                AnalyticsManager::getInstance().setEnabled(!current);
                 setDataDirty();
             }
             return true;
@@ -212,6 +254,27 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
             }
             return true;
 
+        case ClickRegion::OPEN_LINK_DOCS:
+#if GAME_HAS_ANALYTICS
+            AnalyticsManager::getInstance().trackEvent("link_clicked", {{"target", "docs"}, {"source", "settings"}});
+#endif
+            ShellExecuteA(nullptr, "open", "https://thomas4f.github.io/mxbmrp3", nullptr, nullptr, SW_SHOWNORMAL);
+            return true;
+
+        case ClickRegion::OPEN_LINK_COMMUNITY:
+#if GAME_HAS_ANALYTICS
+            AnalyticsManager::getInstance().trackEvent("link_clicked", {{"target", "community"}, {"source", "settings"}});
+#endif
+            ShellExecuteA(nullptr, "open", "https://mxb-mods.com/mxbmrp3", nullptr, nullptr, SW_SHOWNORMAL);
+            return true;
+
+        case ClickRegion::OPEN_LINK_KOFI:
+#if GAME_HAS_ANALYTICS
+            AnalyticsManager::getInstance().trackEvent("link_clicked", {{"target", "donate"}, {"source", "settings"}});
+#endif
+            ShellExecuteA(nullptr, "open", "https://ko-fi.com/thomas4f", nullptr, nullptr, SW_SHOWNORMAL);
+            return true;
+
         default:
             return false;
     }
@@ -337,7 +400,21 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::AUTOSAVE_TOGGLE, nullptr, nullptr, 0, true,
         "general.auto_save");
 
-#if GAME_HAS_STEAM_FRIENDS || GAME_HAS_DISCORD || GAME_HAS_HTTP_SERVER
+    // Menu-only cursor (controller-as-mouse fix). When on, the cursor + settings
+    // button only appear while the settings menu is open (TOGGLE_SETTINGS hotkey).
+    ctx.addToggleControl("Menu-Only Cursor", UiConfig::getInstance().getMenuOnlyCursor(),
+        SettingsHud::ClickRegion::MENU_ONLY_CURSOR_TOGGLE, nullptr, nullptr, 0, true,
+        "general.menu_only_cursor");
+
+    // HUD placement toggles (moved here from the Appearance tab; persisted under [Display])
+    ctx.addToggleControl("Grid Snap", UiConfig::getInstance().getGridSnapping(),
+        SettingsHud::ClickRegion::GRID_SNAP_TOGGLE, nullptr, nullptr, 0, true,
+        "general.grid_snap");
+    ctx.addToggleControl("Screen Clamp", UiConfig::getInstance().getScreenClamping(),
+        SettingsHud::ClickRegion::SCREEN_CLAMP_TOGGLE, nullptr, nullptr, 0, true,
+        "general.screen_clamp");
+
+#if GAME_HAS_STEAM_FRIENDS || GAME_HAS_DISCORD || GAME_HAS_HTTP_SERVER || GAME_HAS_ANALYTICS
     // === INTEGRATIONS SECTION ===
     ctx.addSpacing(0.5f);
     ctx.addSectionHeader("Integrations");
@@ -484,6 +561,47 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
                 SettingsHud::ClickRegion::DISCORD_TOGGLE, nullptr
             ));
         }
+
+        ctx.currentY += ctx.lineHeightNormal;
+    }
+#endif
+
+#if GAME_HAS_ANALYTICS
+    // Anonymous usage analytics toggle (opt-out). Simple On/Off; no connection
+    // state — the beacon is a single fire-and-forget send at startup.
+    {
+        // Add tooltip row
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "general.analytics"
+        ));
+
+        ctx.parent->addString("Analytics", ctx.labelX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
+
+        bool analyticsEnabled = AnalyticsManager::getInstance().isEnabled();
+        float currentX = ctx.controlX;
+
+        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::ANALYTICS_TOGGLE, nullptr
+        ));
+        currentX += cw * 2;
+
+        const char* statusText = analyticsEnabled ? "On" : "Off";
+        uint32_t statusColor = analyticsEnabled ? colorConfig.getPositive() : colorConfig.getMuted();
+        std::string formattedAnalytics = ctx.formatValue(statusText, VALUE_WIDTH, false);
+        ctx.parent->addString(formattedAnalytics.c_str(), currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), statusColor, ctx.fontSize);
+        currentX += cw * VALUE_WIDTH;
+
+        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::ANALYTICS_TOGGLE, nullptr
+        ));
 
         ctx.currentY += ctx.lineHeightNormal;
     }
@@ -744,29 +862,43 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         }
     }
 
-    // Help & Community footer - muted hints under a shared header (matches the note style
-    // used on other tabs). The overlay can't open a browser, so these are read-and-type
-    // addresses. The tab has ~5 rows of slack above the Close button, so float the footer
-    // most of the way down (leaving a ~1-row margin, like the Hotkeys tab's bottom note).
-    ctx.addSpacing(3.5f);
+    // Help & Community footer — clickable links that open the browser via ShellExecute.
+    ctx.addSpacing(0.5f);
     ctx.addSectionHeader("Help & Community");
-    // Labels padded so the URLs line up vertically in the monospace Normal font.
-    ctx.parent->addString("Documentation & guides:  thomas4f.github.io/mxbmrp3",
-        ctx.labelX, ctx.currentY, Justify::LEFT,
-        Fonts::getNormal(), colorConfig.getMuted(), ctx.fontSize * 0.9f);
-    ctx.currentY += ctx.lineHeightNormal;
-    ctx.parent->addString("Community discussion:    mxb-mods.com/mxbmrp3",
-        ctx.labelX, ctx.currentY, Justify::LEFT,
-        Fonts::getNormal(), colorConfig.getMuted(), ctx.fontSize * 0.9f);
-    ctx.currentY += ctx.lineHeightNormal;
-    ctx.parent->addString("Source & issues:         github.com/thomas4f/mxbmrp3",
-        ctx.labelX, ctx.currentY, Justify::LEFT,
-        Fonts::getNormal(), colorConfig.getMuted(), ctx.fontSize * 0.9f);
-    ctx.currentY += ctx.lineHeightNormal;
-    ctx.parent->addString("Support development:     ko-fi.com/thomas4f",
-        ctx.labelX, ctx.currentY, Justify::LEFT,
-        Fonts::getNormal(), colorConfig.getMuted(), ctx.fontSize * 0.9f);
-    ctx.currentY += ctx.lineHeightNormal;
+
+    // Each row: fixed-width muted label + the URL (the only clickable/hoverable part).
+    // Prefixes are padded to 18 chars so the URLs align vertically with a gap.
+    struct LinkRow {
+        const char* prefix;  // 18-char padded label (≥1-char gap before the URL)
+        const char* url;     // full URL including scheme
+        SettingsHud::ClickRegion::Type regionType;
+    };
+    static const LinkRow links[] = {
+        { "Docs & guides:    ", "https://thomas4f.github.io/mxbmrp3", SettingsHud::ClickRegion::OPEN_LINK_DOCS      },
+        { "Discussion:       ", "https://mxb-mods.com/mxbmrp3",       SettingsHud::ClickRegion::OPEN_LINK_COMMUNITY },
+        { "Support thomas4f: ", "https://ko-fi.com/thomas4f",          SettingsHud::ClickRegion::OPEN_LINK_KOFI      },
+    };
+    float linkFontSize = ctx.fontSize * 0.9f;
+    float prefixWidth = PluginUtils::calculateMonospaceTextWidth(18, linkFontSize);
+    for (const auto& link : links) {
+        // Click/hover region covers only the URL text (not the muted label), so only
+        // the link lights up and only clicking the link opens the browser.
+        float urlX = ctx.labelX + prefixWidth;
+        float urlWidth = PluginUtils::calculateMonospaceTextWidth(
+            static_cast<int>(strlen(link.url)), linkFontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            urlX, ctx.currentY, urlWidth, ctx.lineHeightNormal,
+            link.regionType, nullptr
+        ));
+        bool hovered = (ctx.parent->m_hoveredRegionIndex >= 0 &&
+                        ctx.parent->m_hoveredRegionIndex == static_cast<int>(ctx.parent->m_clickRegions.size()) - 1);
+        ctx.parent->addString(link.prefix, ctx.labelX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getMuted(), linkFontSize);
+        uint32_t urlColor = hovered ? PluginUtils::lightenColor(colorConfig.getAccent(), 0.25f) : colorConfig.getAccent();
+        ctx.parent->addString(link.url, urlX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), urlColor, linkFontSize);
+        ctx.currentY += ctx.lineHeightNormal;
+    }
 
     // No active HUD for general settings
     return nullptr;

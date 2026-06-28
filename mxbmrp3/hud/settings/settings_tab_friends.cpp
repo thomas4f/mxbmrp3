@@ -14,7 +14,9 @@ bool SettingsHud::handleClickTabFriends(const ClickRegion& region) {
     switch (region.type) {
         case ClickRegion::FRIENDS_ROW_COUNT_UP:
             if (hud) {
-                hud->m_maxDisplayRows = std::min(hud->m_maxDisplayRows + 1, FriendsHud::MAX_DISPLAY_ROWS);
+                hud->m_maxDisplayRows = applyAcceleratedClamp(
+                    hud->m_maxDisplayRows, 1,
+                    FriendsHud::MIN_DISPLAY_ROWS, FriendsHud::MAX_DISPLAY_ROWS, true);
                 hud->setDataDirty();
                 setDataDirty();
             }
@@ -22,7 +24,9 @@ bool SettingsHud::handleClickTabFriends(const ClickRegion& region) {
 
         case ClickRegion::FRIENDS_ROW_COUNT_DOWN:
             if (hud) {
-                hud->m_maxDisplayRows = std::max(hud->m_maxDisplayRows - 1, FriendsHud::MIN_DISPLAY_ROWS);
+                hud->m_maxDisplayRows = applyAcceleratedClamp(
+                    hud->m_maxDisplayRows, 1,
+                    FriendsHud::MIN_DISPLAY_ROWS, FriendsHud::MAX_DISPLAY_ROWS, false);
                 hud->setDataDirty();
                 setDataDirty();
             }

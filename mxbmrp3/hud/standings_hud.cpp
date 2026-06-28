@@ -1402,16 +1402,25 @@ void StandingsHud::rebuildRenderData() {
             PluginUtils::formatSessionClock(pluginData.getLeaderLapsToGo(),
                 pluginData.getSessionTime(), value, sizeof(value));
         } else if (sessionData.sessionNumLaps > 0) {
-            // Pure lap race: leader's current lap / total laps, or "CHECKERED" once
-            // the leader crosses the line on the final lap. Reuse isRiderFinished so
-            // the threshold matches the FinalLap/finished logic, and so laps-only
-            // races read consistently with the time+lap overtime label once the
-            // flag falls.
+            // Pure lap race: "CHECKERED" once the leader crosses the line on the final
+            // lap; the session clock (a count-up elapsed timer for lap races) before the
+            // race goes green; otherwise the leader's current lap / total laps. Reuse
+            // isRiderFinished so the threshold matches the FinalLap/finished logic, and
+            // so laps-only races read consistently with the time+lap overtime label.
             const StandingsData* leaderStanding = classificationOrder.empty()
                 ? nullptr : pluginData.getStanding(classificationOrder[0]);
-            if (leaderStanding && sessionData.isRiderFinished(leaderStanding->numLaps,
-                    leaderStanding->numLapsAtLeaderFinish)) {
+            bool leaderFinished = leaderStanding && sessionData.isRiderFinished(
+                leaderStanding->numLaps, leaderStanding->numLapsAtLeaderFinish);
+            bool raceInProgress = (sessionData.sessionState & SessionState::IN_PROGRESS) != 0;
+            if (leaderFinished) {
+                // Checked first so the post-race state (also "not in progress") keeps the
+                // checkered label instead of falling back to the pre-race timer below.
                 strcpy_s(value, sizeof(value), "CHECKERED");
+            } else if (!raceInProgress) {
+                // Pre-race (not yet green): show the session clock like timed races do,
+                // instead of a static "Lap 1/N" before anyone has turned a lap.
+                PluginUtils::formatSessionClock(pluginData.getLeaderLapsToGo(),
+                    pluginData.getSessionTime(), value, sizeof(value));
             } else {
                 int leaderLap = leaderStanding ? leaderStanding->numLaps + 1 : 1;  // numLaps = completed → 1-based current
                 if (leaderLap < 1) leaderLap = 1;

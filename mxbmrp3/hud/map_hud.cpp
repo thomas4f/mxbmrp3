@@ -1800,11 +1800,14 @@ void MapHud::rebuildRenderData() {
     // Render start marker on top of track
     renderStartMarker(rotation, clipLeft, clipTop, clipRight, clipBottom);
 
-    // Render rider positions on top of track
-    renderRiders(rotation, clipLeft, clipTop, clipRight, clipBottom);
-
-    // Render the custom segment-timer lines last so they sit on top of all markers/riders
+    // Render the custom segment-timer lines above the track and race markers but below
+    // riders, so rider icons remain the most visible elements on the map.
     renderSegmentMarkers(rotation, clipLeft, clipTop, clipRight, clipBottom);
+
+    // Render rider positions last, on top of the track and all markers; within
+    // renderRiders the local player is drawn last of all so the player's own icon is
+    // the most visible element.
+    renderRiders(rotation, clipLeft, clipTop, clipRight, clipBottom);
 
     // Log quad count once for performance analysis
     static bool quadCountLogged = false;

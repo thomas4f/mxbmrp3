@@ -90,6 +90,14 @@ public:
     // Apply cached settings for active profile to HUDs
     void applyActiveProfile(HudManager& hudManager);
 
+    // Emit one analytics flag per HUD/widget: key "hud_<name>" / "widget_<name>"
+    // (the class suffix stripped and PascalCase -> snake_case), value 1 if
+    // currently visible else 0. Derived from the canonical settings capture, so
+    // a newly added HUD/widget appears automatically with no separate list to
+    // maintain. Sorted by key. Used by AnalyticsManager for feature-usage stats.
+    void getHudWidgetFlags(const HudManager& hudManager,
+                           std::vector<std::pair<std::string, int>>& outFlags);
+
     // Store the save path for later use (set during loadSettings)
     const std::string& getSavePath() const { return m_savePath; }
 

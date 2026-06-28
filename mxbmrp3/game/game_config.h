@@ -216,6 +216,14 @@
     #define GAME_HAS_HTTP_SERVER 0
 #endif
 
+// Anonymous usage analytics (privacy-friendly install/active-user counting via
+// Aptabase). Game-agnostic; enabled for the shipping targets. WRS is stubbed.
+#if defined(GAME_MXBIKES) || defined(GAME_GPBIKES) || defined(GAME_KRP)
+    #define GAME_HAS_ANALYTICS 1
+#else
+    #define GAME_HAS_ANALYTICS 0
+#endif
+
 // FMX trick detection and scoring (motorbike games only - doesn't apply to karts)
 #if defined(GAME_MXBIKES) || defined(GAME_GPBIKES)
     #define GAME_HAS_FMX 1

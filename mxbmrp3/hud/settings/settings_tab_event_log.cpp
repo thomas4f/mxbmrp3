@@ -36,17 +36,17 @@ bool SettingsHud::handleClickTabEventLog(const ClickRegion& region) {
         }
 
         case ClickRegion::EVENT_LOG_ROW_COUNT_UP:
-            m_eventLog->m_maxDisplayEvents = std::min(
-                m_eventLog->m_maxDisplayEvents + 1,
-                EventLogHud::MAX_DISPLAY_EVENTS);
+            m_eventLog->m_maxDisplayEvents = applyAcceleratedClamp(
+                m_eventLog->m_maxDisplayEvents, 1,
+                EventLogHud::MIN_DISPLAY_EVENTS, EventLogHud::MAX_DISPLAY_EVENTS, true);
             m_eventLog->setDataDirty();
             setDataDirty();
             return true;
 
         case ClickRegion::EVENT_LOG_ROW_COUNT_DOWN:
-            m_eventLog->m_maxDisplayEvents = std::max(
-                m_eventLog->m_maxDisplayEvents - 1,
-                EventLogHud::MIN_DISPLAY_EVENTS);
+            m_eventLog->m_maxDisplayEvents = applyAcceleratedClamp(
+                m_eventLog->m_maxDisplayEvents, 1,
+                EventLogHud::MIN_DISPLAY_EVENTS, EventLogHud::MAX_DISPLAY_EVENTS, false);
             m_eventLog->setDataDirty();
             setDataDirty();
             return true;
@@ -54,20 +54,9 @@ bool SettingsHud::handleClickTabEventLog(const ClickRegion& region) {
         case ClickRegion::EVENT_LOG_DURATION_UP:
         case ClickRegion::EVENT_LOG_DURATION_DOWN: {
             bool forward = (region.type == ClickRegion::EVENT_LOG_DURATION_UP);
-            int& duration = m_eventLog->m_autoHideDurationMs;
-            if (forward) {
-                if (duration >= EventLogHud::MAX_AUTO_HIDE_MS) {
-                    duration = EventLogHud::MIN_AUTO_HIDE_MS;
-                } else {
-                    duration += EventLogHud::AUTO_HIDE_STEP_MS;
-                }
-            } else {
-                if (duration <= EventLogHud::MIN_AUTO_HIDE_MS) {
-                    duration = EventLogHud::MAX_AUTO_HIDE_MS;
-                } else {
-                    duration -= EventLogHud::AUTO_HIDE_STEP_MS;
-                }
-            }
+            m_eventLog->m_autoHideDurationMs = applyAcceleratedWrap(
+                m_eventLog->m_autoHideDurationMs, EventLogHud::AUTO_HIDE_STEP_MS,
+                EventLogHud::MIN_AUTO_HIDE_MS, EventLogHud::MAX_AUTO_HIDE_MS, forward);
             m_eventLog->setDataDirty();
             setDataDirty();
             return true;

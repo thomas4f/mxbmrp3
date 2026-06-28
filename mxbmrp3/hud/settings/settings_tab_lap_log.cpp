@@ -14,9 +14,9 @@ bool SettingsHud::handleClickTabLapLog(const ClickRegion& region) {
     switch (region.type) {
         case ClickRegion::LAP_LOG_ROW_COUNT_UP:
             if (lapLogHud) {
-                lapLogHud->m_maxDisplayLaps = std::min(
-                    lapLogHud->m_maxDisplayLaps + 1,
-                    LapLogHud::MAX_DISPLAY_LAPS);
+                lapLogHud->m_maxDisplayLaps = applyAcceleratedClamp(
+                    lapLogHud->m_maxDisplayLaps, 1,
+                    LapLogHud::MIN_DISPLAY_LAPS, LapLogHud::MAX_DISPLAY_LAPS, true);
                 lapLogHud->setDataDirty();
                 setDataDirty();
             }
@@ -24,9 +24,9 @@ bool SettingsHud::handleClickTabLapLog(const ClickRegion& region) {
 
         case ClickRegion::LAP_LOG_ROW_COUNT_DOWN:
             if (lapLogHud) {
-                lapLogHud->m_maxDisplayLaps = std::max(
-                    lapLogHud->m_maxDisplayLaps - 1,
-                    LapLogHud::MIN_DISPLAY_LAPS);
+                lapLogHud->m_maxDisplayLaps = applyAcceleratedClamp(
+                    lapLogHud->m_maxDisplayLaps, 1,
+                    LapLogHud::MIN_DISPLAY_LAPS, LapLogHud::MAX_DISPLAY_LAPS, false);
                 lapLogHud->setDataDirty();
                 setDataDirty();
             }

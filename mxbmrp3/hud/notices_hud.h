@@ -26,11 +26,12 @@ public:
         NOTICE_HAZARD_STATIONARY = 1 << 8,
         NOTICE_HAZARD_WRONG_WAY  = 1 << 9,
         NOTICE_OVERTIME          = 1 << 10,
-        NOTICE_SEGMENT           = 1 << 11,
+        // bit 11 was NOTICE_SEGMENT (removed; segment-timer feedback is always on)
+        NOTICE_LAPPING           = 1 << 12,
         NOTICE_DEFAULT     = NOTICE_WRONG_WAY | NOTICE_LAST_LAP | NOTICE_FINISHED
                            | NOTICE_ALLTIME_PB | NOTICE_FASTEST_LAP | NOTICE_SESSION_PB
                            | NOTICE_DEFAULT_SETUP | NOTICE_HAZARD_STATIONARY | NOTICE_HAZARD_WRONG_WAY
-                           | NOTICE_SEGMENT
+                           | NOTICE_LAPPING
     };
 
     // Timed notice display duration bounds (covers PB notices)
@@ -64,6 +65,7 @@ private:
     bool m_bIsWrongWay = false;            // Whether player is currently going wrong way
     bool m_bIsHazardAhead = false;         // Whether there's a hazard rider ahead
     bool m_bIsBlueFlagged = false;         // Whether player should yield (blue flag)
+    bool m_bIsLapping = false;             // Whether player is closing on a backmarker ahead (mirror of blue flag)
 
     // Timed notice state (transient - timed display)
     bool m_bShowOvertime;                  // Currently showing overtime notice

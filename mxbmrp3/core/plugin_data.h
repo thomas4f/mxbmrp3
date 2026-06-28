@@ -1022,6 +1022,7 @@ public:
     // Blue flag detection (riders 1+ laps ahead approaching from behind)
     bool isPlayerBlueFlagged() const;  // True if display rider should yield to a lapper
     bool isRiderBlueFlagged(int raceNum) const;  // True if rider is being lapped and lapper is nearby
+    bool isPlayerLapping() const;      // True if display rider is closing on a backmarker ahead (mirror of blue flag)
 
     // Blue flag tuning (INI-only advanced setting)
     void setBlueFlagAwarenessDistance(float meters) { m_blueFlagAwarenessDistance = std::max(10.0f, std::min(meters, 500.0f)); }
@@ -1335,6 +1336,7 @@ private:
     std::unordered_map<int, TrackPositionData> m_trackPositions;  // Real-time track positions
     std::unordered_set<int> m_activeTrackPosRiders;  // Riders in the most recent API track position batch
     mutable bool m_cachedPlayerBlueFlagged = false;        // Cached: is the display rider blue-flagged?
+    mutable bool m_cachedPlayerLapping = false;            // Cached: is the display rider lapping a backmarker ahead?
     mutable std::unordered_set<int> m_cachedBlueFlaggedSet;  // Cached per-rider blue flag lookup (recomputed when dirty)
     mutable bool m_blueFlagsDirty = true;                // Invalidated when track positions change
     float m_blueFlagAwarenessDistance = 100.0f;          // Blue flag detection range in meters

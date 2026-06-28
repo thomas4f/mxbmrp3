@@ -96,6 +96,15 @@ public:
     void setDebugMode(bool enabled) { m_debugMode = enabled; }
     bool isDebugMode() const { return m_debugMode; }
 
+    // Compare two version strings, returns: -1 (a < b), 0 (a == b), 1 (a > b).
+    // Strips leading "v"/"V", tolerates 3-vs-4 components and "-suffix".
+    // NOTE: returns 0 when EITHER string fails to parse, so callers that must
+    // distinguish "equal" from "unparseable" should pre-check with isValidVersion().
+    static int compareVersions(const std::string& a, const std::string& b);
+
+    // True if the string parses as a version (same normalization as compareVersions).
+    static bool isValidVersion(const std::string& v);
+
 private:
     UpdateChecker();
     ~UpdateChecker();
@@ -107,9 +116,6 @@ private:
 
     // Parse version string to comparable integers (e.g., "1.6.6.0" -> {1,6,6,0})
     static bool parseVersion(const std::string& version, int& major, int& minor, int& patch, int& build);
-
-    // Compare two versions, returns: -1 (a < b), 0 (a == b), 1 (a > b)
-    static int compareVersions(const std::string& a, const std::string& b);
 
     // HTTP fetch (blocking)
     bool fetchLatestRelease(std::string& outVersion, std::string& outError);

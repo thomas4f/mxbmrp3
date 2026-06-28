@@ -403,7 +403,7 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
             std::istringstream stream(releaseNotes);
             std::string line;
             int lineCount = 0;
-            constexpr int MAX_LINES = 9;
+            constexpr int MAX_LINES = 13;
             bool hasMoreLines = false;
 
             while (std::getline(stream, line)) {

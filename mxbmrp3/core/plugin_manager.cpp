@@ -43,6 +43,9 @@
 #if GAME_HAS_HTTP_SERVER
 #include "http_server.h"
 #endif
+#if GAME_HAS_ANALYTICS
+#include "analytics_manager.h"
+#endif
 #include "crash_handler.h"
 #include <cstring>
 #include <vector>
@@ -132,6 +135,13 @@ void PluginManager::initialize(const char* savePath) {
     HttpServer::getInstance().initialize(savePath);
 #endif
 
+#if GAME_HAS_ANALYTICS
+    // Fire the anonymous usage beacon (background thread, fire-and-forget).
+    // Must run AFTER settings load (HudManager::initialize) so the enabled flag
+    // and HUD visibility reflect the user's config.
+    AnalyticsManager::getInstance().initialize(savePath);
+#endif
+
     DEBUG_INFO("PluginManager initialized");
 
     } catch (...) {
@@ -145,7 +155,9 @@ void PluginManager::initialize(const char* savePath) {
         // cleanly if their thread wasn't spawned yet.
         //
         // INVARIANT: this list must cover every background thread spawned
-        // during initialize() above. Currently HttpServer + DiscordManager.
+        // during initialize() above. Currently HttpServer + DiscordManager
+        // + AnalyticsManager (its beacon + custom-event-worker threads, both
+        // joined by AnalyticsManager::shutdown()).
         // UpdateChecker/UpdateDownloader/RecordsHud start their threads
         // later via user action, so they're not relevant here. If you add
         // another initialize() call that spawns a thread, add its
@@ -156,6 +168,9 @@ void PluginManager::initialize(const char* savePath) {
         // DLL unload (the game does that on our -1 return) crashes the host
         // when the thread next executes any instruction — much worse than
         // a swallowed shutdown exception.
+#if GAME_HAS_ANALYTICS
+        try { AnalyticsManager::getInstance().shutdown(); } catch (...) {}
+#endif
 #if GAME_HAS_HTTP_SERVER
         try { HttpServer::getInstance().shutdown(); } catch (...) {}
 #endif
@@ -177,6 +192,10 @@ void PluginManager::shutdown() {
     m_bShutdown = true;
     DEBUG_INFO("PluginManager shutdown");
 
+#if GAME_HAS_ANALYTICS
+    // Join the one-shot usage beacon thread (cancels any in-flight POST).
+    AnalyticsManager::getInstance().shutdown();
+#endif
 #if GAME_HAS_HTTP_SERVER
     // Shutdown network threads first (these may have blocking I/O)
     HttpServer::getInstance().shutdown();

@@ -1870,8 +1870,9 @@ void SettingsHud::rebuildRenderData() {
                     if (UpdateDownloader::getInstance().getState() == UpdateDownloader::State::READY) {
                         snprintf(versionStr, sizeof(versionStr), "%s installed!", latestVersion.c_str());
                     } else {
-                        // Bracketed so it reads as a clickable button, like [Reset ...] / [Check Now]
-                        snprintf(versionStr, sizeof(versionStr), "[%s available!]", latestVersion.c_str());
+                        // Drawn as a clickable green button below (like Reset / Check Now);
+                        // the box + padding convey "button", no brackets needed.
+                        snprintf(versionStr, sizeof(versionStr), "%s available!", latestVersion.c_str());
                     }
                     versionColor = ColorConfig::getInstance().getPositive();
                     break;
@@ -1883,10 +1884,11 @@ void SettingsHud::rebuildRenderData() {
             }
         }
 
-        // Calculate width for right-alignment. The "[...]" brackets supply the button's visual
-        // padding (like the [Reset ...] button), so the background hugs the bracketed text.
+        // versionWidth is the bare text width — used by the plain-text path below for
+        // right-alignment. The clickable "available!" button adds +1 char of padding on
+        // each side so its green box doesn't hug the text (matching the Reset button).
         float versionWidth = PluginUtils::calculateMonospaceTextWidth(static_cast<int>(strlen(versionStr)), dim.fontSize);
-        float buttonWidth = versionWidth;
+        float buttonWidth = PluginUtils::calculateMonospaceTextWidth(static_cast<int>(strlen(versionStr)) + 2, dim.fontSize);
         float versionX = rightEdgeX - buttonWidth;
 
         // Check if update is available and not yet installed. Gate on isEnabled() too: a

@@ -366,3 +366,12 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# Crash dumps, logs, and uploaded archives are per-investigation and never
+# committed -- they live only on throwaway analysis branches. Keep only the
+# catalogue (crash_analysis/known_game_crashes.json + KNOWN_GAME_CRASHES.md).
+# Global *.dmp is safe (no legitimate .dmp in this repo); zips are scoped to
+# crash_analysis/ so legitimate zip assets elsewhere aren't silently ignored.
+*.dmp
+crash_analysis/*.dmp
+crash_analysis/*.log
+crash_analysis/*.zip

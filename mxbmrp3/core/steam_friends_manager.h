@@ -144,6 +144,7 @@ private:
 
     // Throttling / change detection
     std::string m_lastLocalStatus;                          // skip redundant writes
+    int m_lastLoggedSessionGen = -1;                        // session gen of last logged write (first-write-per-session Release log)
 
     // Raw-input fingerprint for updateLocalPresence: Standings notifies fire
     // many times per second on a full grid, and the presence build allocates

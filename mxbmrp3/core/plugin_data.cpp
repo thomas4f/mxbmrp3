@@ -1499,6 +1499,7 @@ int PluginData::getRiderSessionCrashCount(int raceNum) const {
 void PluginData::rebuildBlueFlagCaches() const {
     m_blueFlagsDirty = false;
     m_cachedPlayerBlueFlagged = false;
+    m_cachedPlayerLapping = false;
     m_cachedBlueFlaggedSet.clear();
 
     if (!isRaceSession()) {
@@ -1510,21 +1511,45 @@ void PluginData::rebuildBlueFlagCaches() const {
         ? (m_blueFlagAwarenessDistance / trackLength)
         : 0.06f;
 
-    // Find top two lap counts for early exit — if the leader hasn't lapped anyone,
-    // the entire O(n^2) loop is skipped (the common case in most races)
-    int maxLaps = 0, secondMaxLaps = 0;
+    // Find the lap-count spread for early exit — if every rider shares the same lap
+    // count, nobody is a lap down and the whole O(n^2) loop can be skipped (the common
+    // case in most races). Track min vs max (not the second-highest): a tie at the front
+    // must not mask a backmarker further down, e.g. laps [10, 10, 8] still has a lapping.
+    int maxLaps = 0;
+    int minLaps = 0;
+    bool anyRider = false;
     for (const auto& [rn, st] : m_standings) {
-        if (st.numLaps > maxLaps) {
-            secondMaxLaps = maxLaps;
-            maxLaps = st.numLaps;
-        } else if (st.numLaps > secondMaxLaps) {
-            secondMaxLaps = st.numLaps;
+        if (!anyRider) {
+            maxLaps = minLaps = st.numLaps;
+            anyRider = true;
+        } else {
+            if (st.numLaps > maxLaps) maxLaps = st.numLaps;
+            if (st.numLaps < minLaps) minLaps = st.numLaps;
         }
     }
-    if (maxLaps < secondMaxLaps + 1) {
-        // No one is 1+ laps ahead of anyone else — no blue flags possible
+    if (!anyRider || maxLaps <= minLaps) {
+        // Everyone on the same lap — no blue flags (or lappings) possible
         m_cachedPlayerBlueFlagged = false;
+        m_cachedPlayerLapping = false;
         return;
+    }
+
+    // Snapshot the display rider's race state once, so the loop below can also detect the
+    // mirror case (player closing on a backmarker ahead) without a second pass.
+    int playerRaceNum = getDisplayRaceNum();
+    int playerLaps = -1;
+    float playerTrackPos = 0.0f;
+    bool playerActive = false;
+    {
+        auto stIt = m_standings.find(playerRaceNum);
+        auto posIt = m_trackPositions.find(playerRaceNum);
+        if (stIt != m_standings.end() && posIt != m_trackPositions.end()
+            && m_activeTrackPosRiders.count(playerRaceNum)
+            && !isRiderExcludedFromDetection(stIt->second)) {
+            playerLaps = stIt->second.numLaps;
+            playerTrackPos = posIt->second.trackPos;
+            playerActive = true;
+        }
     }
 
     // Build per-rider blue flag set: for each rider, check if any rider with 1+ more laps
@@ -1542,6 +1567,18 @@ void PluginData::rebuildBlueFlagCaches() const {
         if (riderPosIt == m_trackPositions.end()) continue;
 
         float riderTrackPos = riderPosIt->second.trackPos;
+
+        // Mirror case: is the display rider the lapper closing on this backmarker from behind?
+        // (Same proximity test as below, but with the player fixed as the approaching rider.)
+        if (playerActive && !m_cachedPlayerLapping
+            && playerRaceNum != riderRaceNum && playerLaps > riderLaps) {
+            float playerDistanceBehind = (playerTrackPos < riderTrackPos)
+                ? (riderTrackPos - playerTrackPos)
+                : ((1.0f - playerTrackPos) + riderTrackPos);
+            if (playerDistanceBehind <= awarenessThreshold) {
+                m_cachedPlayerLapping = true;
+            }
+        }
 
         for (const auto& [otherRaceNum, otherStanding] : m_standings) {
             if (otherRaceNum == riderRaceNum) continue;
@@ -1567,7 +1604,6 @@ void PluginData::rebuildBlueFlagCaches() const {
     }
 
     // Player blue flag is just a lookup into the per-rider set
-    int playerRaceNum = getDisplayRaceNum();
     m_cachedPlayerBlueFlagged = m_cachedBlueFlaggedSet.count(playerRaceNum) > 0;
 }
 
@@ -1583,6 +1619,13 @@ bool PluginData::isRiderBlueFlagged(int raceNum) const {
         rebuildBlueFlagCaches();
     }
     return m_cachedBlueFlaggedSet.count(raceNum) > 0;
+}
+
+bool PluginData::isPlayerLapping() const {
+    if (m_blueFlagsDirty) {
+        rebuildBlueFlagCaches();
+    }
+    return m_cachedPlayerLapping;
 }
 
 HazardType PluginData::getRiderHazardType(int raceNum) const {

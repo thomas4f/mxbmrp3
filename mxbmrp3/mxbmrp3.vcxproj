@@ -305,6 +305,7 @@
     <ClInclude Include="core\update_checker.h" />
     <ClInclude Include="core\update_downloader.h" />
     <ClInclude Include="core\discord_manager.h" />
+    <ClInclude Include="core\analytics_manager.h" />
     <ClInclude Include="core\steam_friends_manager.h" />
     <ClInclude Include="core\http_server.h" />
     <ClInclude Include="core\widget_constants.h" />
@@ -416,6 +417,7 @@
     <ClCompile Include="core\update_checker.cpp" />
     <ClCompile Include="core\update_downloader.cpp" />
     <ClCompile Include="core\discord_manager.cpp" />
+    <ClCompile Include="core\analytics_manager.cpp" />
     <ClCompile Include="core\steam_friends_manager.cpp" />
     <ClCompile Include="core\http_server.cpp" />
     <ClCompile Include="core\xinput_reader.cpp" />

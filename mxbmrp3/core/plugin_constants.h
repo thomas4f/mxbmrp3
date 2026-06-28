@@ -13,12 +13,38 @@ namespace PluginConstants {
     // Plugin identification
     constexpr const char* PLUGIN_NAME = "mxbmrp3";
     constexpr const char* PLUGIN_DISPLAY_NAME = "MXBMRP3";
-    constexpr const char* PLUGIN_VERSION = "1.25.0.0";  // Keep in sync with resource.h (Windows DLL version info)
+    constexpr const char* PLUGIN_VERSION = "1.26.0.0";  // Keep in sync with resource.h (Windows DLL version info)
     constexpr const char* PLUGIN_AUTHOR = "thomas4f";
 
     // GitHub repository for updates (centralized to support repo moves/renames)
     constexpr const char* GITHUB_REPO_OWNER = "thomas4f";
     constexpr const char* GITHUB_REPO_NAME = "mxbmrp3";
+
+    // Anonymous usage analytics (Aptabase). Privacy-friendly, opt-out (toggle in
+    // Settings > General > Integrations). A single "app_started" beacon is sent
+    // per launch carrying only a random install UUID + plugin/game version and
+    // enabled-feature flags — no personal data. Paste your real Aptabase App Key
+    // (e.g. "A-US-1234567890") below to enable; while it equals the placeholder,
+    // no network request is ever made.
+    constexpr const char* ANALYTICS_APP_KEY_PLACEHOLDER = "A-US-0000000000";
+    constexpr const char* ANALYTICS_APP_KEY = "A-EU-1207691663";
+
+    // GoatCounter (privacy-first, page-path analytics) runs alongside Aptabase as
+    // an uncapped headcount + version backstop: one hit per launch, ~100k/month
+    // soft quota, so the active-user count survives even if Aptabase's 20k/month
+    // cap is reached. The code is your goatcounter.com site subdomain (e.g.
+    // "mxbmrp3" -> mxbmrp3.goatcounter.com). Public like the Aptabase key; while
+    // it equals the placeholder, no hit is sent.
+    constexpr const char* GOATCOUNTER_CODE_PLACEHOLDER = "your-code";
+    constexpr const char* GOATCOUNTER_CODE = "mxbmrp3";
+
+    // GoatCounter API token ("Count" permission) for the backend /api/v0/count
+    // endpoint. The public /count pixel bot-filters non-browser senders, so the
+    // authenticated API is the supported way to send from an app. Like the
+    // Aptabase key this ships in the binary; a leaked count-only token can only
+    // inject pageviews into the GoatCounter site (rotate it there if abused).
+    constexpr const char* GOATCOUNTER_TOKEN_PLACEHOLDER = "your-token";
+    constexpr const char* GOATCOUNTER_TOKEN = "dj7azjouf8dwlsnv19f545217zdcxich11znl8z8n2o03kqj";
 
     // MXBikes API constants
     constexpr const char* MOD_ID = "mxbikes";

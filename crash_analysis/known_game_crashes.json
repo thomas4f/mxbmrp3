@@ -1,0 +1,62 @@
+{
+  "_comment": "SOURCE OF TRUTH for GAME crashes -- faults in mxbikes.exe (or a module it calls, such as the VC++ runtime) that the plugin's crash handler captured. These are NOT mxbmrp3 plugin bugs: the plugin installs a process-global SEH filter that catches ANY unhandled fault in the game process and writes the dump, which is the only reason this game-crash catalogue lives in the plugin's repo. (Filename is historical; the generated, player-facing view is KNOWN_GAME_CRASHES.md.) KNOWN_GAME_CRASHES.md is GENERATED from this file by tools/gen_known_crashes.py -- edit here, then regenerate. mdmp_analyze.py matches a dump's faulting instruction bytes (build-independent) + AV kind against 'match'. In 'match.bytes', '?' is a wildcard nibble -- use it to skip call/jump rel32 displacement bytes that change between game builds. Optional 'match.module' constrains the match to a faulting module (e.g. msvcr90.dll). 'builds' maps host-exe PE TimeDateStamp -> per-build fault offset (for a module-stable crash like the CRT, the key is the module name). Per-crash fields: id, first_seen, last_seen, name, match{bytes,av,module?}, observed, when (plain player-facing situation), trigger? (reproduction), summary (mechanism), workaround, builds, samples? (provenance of the source dumps behind this crash). Add a new crash as a new entry; record the same crash on a new build by adding a 'builds' key. 'samples' is an OPTIONAL list of {source (dump filename -- its <date>_<pid> suffix also names the paired .log), sha256, captured, build, fault, note} so you know which .dmp/.log files to keep for a given bug; it is internal provenance and is NOT emitted into the player-facing KNOWN_GAME_CRASHES.md. Maintain it with 'tools/mdmp_analyze.py --record <file.dmp>', which appends the dump to the matching crash's samples (idempotent by sha256) and records ONLY dumps that match a catalogued crash -- an unmatched dump is reported, not added, so the catalogue stays limited to understood crashes. 'note' is free-text and never auto-filled (e.g. a video link or session context); attach/update it with '--record --note \"<text>\" <file.dmp>' (a --note on a dump already on file updates that sample's note).",
+  "_build_versions_note": "OPTIONAL human-filled map of exe TimeDateStamp -> MX Bikes version (e.g. 'beta21e'). The compile DATE is derived automatically from the TimeDateStamp; only the marketing version needs filling, and only if known/confirmed (read the PE TimeDateStamp of a known install). One version name can map to MULTIPLE TimeDateStamps (PiBoSo sometimes silently re-releases a beta), so version:build is 1-to-many; the TimeDateStamp stays the precise key.",
+  "module": "mxbikes.exe",
+  "build_versions": {
+    "0x6A21833D": "beta21e"
+  },
+  "crashes": [
+    {
+      "id": "collision-table-index-float-truncation",
+      "first_seen": "2026-05-30",
+      "last_seen": "2026-06-26",
+      "name": "Physics contact blow-up (bad table index)",
+      "match": {
+        "bytes": "410fbf0c41488d0416498bd6490fafd0",
+        "av": "READ"
+      },
+      "observed": "Read AV at mxbikes.exe+0x1f1923 on the instruction 'movsx ecx, word ptr [r9 + rax*2]'. rax holds a garbage index (e.g. 0xfffffbff00000000 / 0xffffffff80000000), so r9 + rax*2 lands in non-canonical/unmapped space (e.g. 0xfffff7fe1e516040, 0xffffffff4c82c040) and faults. The register file is saturated with 0x80000000 / 0xffffffff80000000 / 0xfffffbff80000000 values -- the x86 'integer indefinite' result of converting an out-of-range float (NaN/Inf/too-large) to int via cvttss2si/cvttsd2si. The live call stack is entirely game code (mxbikes.exe, opengl32.dll, Steam's gameoverlayrenderer64.dll, ntdll); no live mxbmrp3.dlo frames -- the plugin frames present are stale stack residue. Seen across multiple machines (AMD/Win10 19045 and NVIDIA/Win11 26200) in both offline Testing and online races, so it is machine- and mode-independent. Multiple byte-identical dumps confirm a single bug. Three independent plugin-free reproductions (2026-06-25, mxbmrp3 not loaded) share Windows' WER crash bucket 476b4d91bd8489e64f48be43729ec2cc (LegacyBucketId 2254260810394026700) -- the OS's own fingerprint classifies them as one crash, so future occurrences can be matched from Event Viewer / Reliability Monitor without a dump. The third of the three WER sessions loaded only stock plugins (xinput64.dli, proxy64.dlo) + the OBS capture hook with no content mods -- confirming the crash reproduces on 100% stock bikes. Also confirmed on an older build (0x6A0B2A72, 2026-05-30) at offset +0x1f0be3 -- matched by the build-independent instruction-byte signature despite the moved offset, so the bug predates beta21e.",
+      "when": "During riding -- both hard impacts with a solid object (e.g. a fence) AND ordinary ground/terrain contact with nothing hit (video-confirmed riding up a hill, no collision). Hitting an object is NOT required.",
+      "trigger": "Originally seen ramming a fixed solid object, but ALSO confirmed with no object impact at all -- a rider simply going up a hill (video-confirmed). The common factor is a physics contact blow-up, not a literal object collision. Reproduction is state-sensitive: some sessions go many minutes without it, while a fresh game restart can make it fire within seconds -- consistent with accumulated physics/contact state rather than one deterministic input. NOT track-specific: confirmed across many tracks (Forest Raceway, Lakewood, Rancho, BeachWick, Into the Wild), online and offline. The bikes involved are OEM-brand 250F machines (e.g. Husqvarna FC 250, Yamaha YZ250F), likely from content mods such as the MX OEM Bike Pack v0.19.1, so modded content was a possible common factor; CONFIRMED to reproduce on 100%-stock bikes (a third plugin-free WER on 2026-06-25, AMD/Win10, no mods loaded), so the fault is in the engine regardless of content.",
+      "summary": "During a physics contact event -- a hard object impact, but also ordinary terrain/ground contact such as riding up a hill or landing -- the game produces an out-of-range float (NaN/infinity/huge penetration or velocity), which is truncated to the integer-indefinite value 0x80000000 and then used to index a 16-bit lookup table (likely a collision/spatial table). The wild index reads off into unmapped memory and faults. CONFIRMED independent of the mxbmrp3 plugin: a Windows Error Reporting record on 2026-06-25 shows the identical fault (mxbikes.exe+0x1f1923, 0xC0000005, build 0x6A21833D) on a machine where mxbmrp3 was NOT loaded -- the module list had only stock plugins (xinput64.dli, proxy64.dlo) and the OBS capture hook. (That particular plugin-free session had the MX OEM Bike Pack v0.19.1 loaded; however, a third plugin-free WER on 2026-06-25 with no content mods confirms the crash also reproduces on 100%-stock bikes -- see trigger.) Corroborated by dump analysis: the fault is in mxbikes.exe's own code (no live mxbmrp3.dlo frames), the bad index is a float->int overflow computed in game registers (rax = rdi + sext(r10d)*r8, r10d=0x80000000), the indexed table is a game-internal 16-bit LUT in game heap (not plugin memory, and no type/shape match to any plugin buffer), and a source audit found the plugin has no write path into game memory. The plugin's crash handler merely captured the earlier dumps; it is a bystander.",
+      "workaround": "",
+      "builds": {
+        "0x6A21833D": "+0x1f1923"
+      },
+      "samples": [
+        {
+          "source": "mxbmrp3_crash_20260623_191525_11124.dmp",
+          "sha256": "6a0bf7430d2e85ef2d719bb93199602a1a5bacee015bc3254bb3fe1397da6d77",
+          "captured": "2026-06-23 18:15:25 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x1f1923",
+          "note": "online, Forest Raceway, Race 2; video-confirmed rider going uphill with NO object impact (NVIDIA/Win11) -- this is the evidence the crash is not collision-specific. Video: https://drive.google.com/file/d/1xT8iyKcSSn8yWJlF3By__tyVR95ureJ9/view?usp=drive_link (clip: Mx Bikes 2026.06.23 - 19.01.11.01 - Trim.mp4)"
+        },
+        {
+          "source": "mxbmrp3_crash_20260625_111905_2096.dmp",
+          "sha256": "f9e344894f26dd1c42d2e08aeb7d2911a019b8fa7be6cc2601b165e248fe4c38",
+          "captured": "2026-06-25 09:19:05 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x1f1923",
+          "note": "offline Testing, Forest Raceway; no video. Deliberately reproduced by riding into a fence -- 2nd of two such repros (later session; see pid 25628). AMD/Win10."
+        },
+        {
+          "source": "mxbmrp3_crash_20260625_105338_25628.dmp",
+          "sha256": "5484a79bc13edeca54945d9988ae648694d5b735818f0d7e223a23e9c33e642f",
+          "captured": "2026-06-25 08:53:38 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x1f1923",
+          "note": "offline Testing, Forest Raceway; no video. Deliberately reproduced by riding into a fence -- 1st of two such repros (earlier session; see pid 2096). AMD/Win10."
+        },
+        {
+          "source": "Report.wer (WER, ReportId f85ab88d-98c9-4653-be92-adfe24f8e585)",
+          "sha256": "37930ace25830ab0c12e20eee575ed2a6d579ff7cbe442f1e172c0dae87a6892",
+          "captured": "2026-06-25 20:34:00 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x1f1923",
+          "note": "PLUGIN-FREE repro -- mxbmrp3 NOT loaded; module list has only stock PiBoSo plugins (xinput64.dli, proxy64.dlo) + the OBS capture hook (graphics-hook64.dll). AMD/Win10 19045. Windows WER (no .dmp, since the plugin's handler wasn't present), bucket 476b4d91bd8489e64f48be43729ec2cc / LegacyBucketId 2254260810394026700 -- the direct evidence the crash is plugin-independent. Video-confirmed: https://drive.google.com/file/d/1NieP0O3TUDRXc_2W_Hb9kA4-m7l_EWnI/view?usp=drive_link"
+        }
+      ]
+    }
+  ]
+}

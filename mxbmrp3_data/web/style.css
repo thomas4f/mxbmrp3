@@ -202,11 +202,12 @@ body {
        badge columns are tokens (--col-pos-w / --col-gap-w / --badge-w) shared
        with the boards/tail, so a wider synced font grows the tower with them.
        The remaining 1.5rem constant is the rest of col-num (strip 0.3 + col-num
-       margin 0.4) plus row padding (0.8). --col-gap-w / --badge-w auto-fit to the
+       margin 0.4) plus row padding (0.8), plus the col-num left margin (0.4, the
+       gap before the plate). --col-gap-w / --badge-w auto-fit to the
        measured px width (same value the columns use), so this formula matches the
        row exactly — the gap column reaches the right edge with no surplus pooling
        after it. The ± column (--posdelta-w) collapses to 0 when hidden. */
-    width: calc(var(--name-chars) * 1ch + var(--col-pos-w) + var(--col-gap-w) + var(--badge-w) + 1.5rem + var(--posdelta-w));
+    width: calc(var(--name-chars) * 1ch + var(--col-pos-w) + var(--col-gap-w) + var(--badge-w) + 1.5rem + var(--sp-md) + var(--posdelta-w));
 }
 
 /* ± column hidden (non-race session or disabled): drop its reserved width so the
@@ -453,6 +454,12 @@ body {
     flex: 0 0 auto;
     display: flex;
     align-items: center;
+    /* Gap before the plate so the position number doesn't hug it — especially in
+       non-race sessions where the ± column collapses and the plate would otherwise
+       sit right against the position. Applied to every .col-num (tower, tail/boards,
+       battle) so they stay column-aligned; the tower-width and battle-sub indent
+       calcs below account for it. */
+    margin-left: var(--sp-md);
     margin-right: var(--sp-md);
 }
 
@@ -885,8 +892,10 @@ body {
     align-items: center;
     height: var(--row-height);   /* exact px set by app.js */
     /* indent past the ordinal + plate so values line up under the name; reserve
-       space on the right so values clear the floating headline. */
-    padding: 0 var(--battle-headline-w) 0 calc(var(--col-pos-w) + var(--posdelta-w) + var(--badge-w) + var(--strip-w) * 2 + var(--sp-md) * 2);
+       space on the right so values clear the floating headline. The sp-md*3 is the
+       battle-main left pad + col-num left margin + col-num right margin (the col-num
+       margins are the gaps around the plate). */
+    padding: 0 var(--battle-headline-w) 0 calc(var(--col-pos-w) + var(--posdelta-w) + var(--badge-w) + var(--strip-w) * 2 + var(--sp-md) * 3);
     font-size: var(--fs-xs);
     color: var(--text-dim);
 }

@@ -13,11 +13,9 @@ bool SettingsHud::handleClickTabGapBar(const ClickRegion& region) {
     switch (region.type) {
         case ClickRegion::GAPBAR_FREEZE_UP:
             if (m_gapBar) {
-                if (m_gapBar->m_freezeDurationMs >= GapBarHud::MAX_FREEZE_MS) {
-                    m_gapBar->m_freezeDurationMs = 0;  // Wrap to Off
-                } else {
-                    m_gapBar->m_freezeDurationMs += GapBarHud::FREEZE_STEP_MS;
-                }
+                m_gapBar->m_freezeDurationMs = applyAcceleratedWrap(
+                    m_gapBar->m_freezeDurationMs, GapBarHud::FREEZE_STEP_MS,
+                    GapBarHud::MIN_FREEZE_MS, GapBarHud::MAX_FREEZE_MS, true);
                 m_gapBar->setDataDirty();
                 setDataDirty();
             }
@@ -25,11 +23,9 @@ bool SettingsHud::handleClickTabGapBar(const ClickRegion& region) {
 
         case ClickRegion::GAPBAR_FREEZE_DOWN:
             if (m_gapBar) {
-                if (m_gapBar->m_freezeDurationMs <= 0) {
-                    m_gapBar->m_freezeDurationMs = GapBarHud::MAX_FREEZE_MS;  // Wrap to 10s
-                } else {
-                    m_gapBar->m_freezeDurationMs -= GapBarHud::FREEZE_STEP_MS;
-                }
+                m_gapBar->m_freezeDurationMs = applyAcceleratedWrap(
+                    m_gapBar->m_freezeDurationMs, GapBarHud::FREEZE_STEP_MS,
+                    GapBarHud::MIN_FREEZE_MS, GapBarHud::MAX_FREEZE_MS, false);
                 m_gapBar->setDataDirty();
                 setDataDirty();
             }

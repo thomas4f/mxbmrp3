@@ -133,7 +133,9 @@ private:
         int  sessionTimeMs    = 0;
         long long sessionEndUnix = 0;  // absolute countdown end (wall-clock secs); 0 = none
         int  drawState        = 0;   // ON_TRACK
+        int  sessionGeneration = 0;  // new-session counter (first-send-per-session Release log)
     };
     mutable std::mutex m_snapshotMutex;
     SessionSnapshot m_snapshot;
+    int m_lastLoggedSessionGen = -1;  // connection-thread only: session gen of last logged send
 };

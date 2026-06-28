@@ -89,21 +89,9 @@ bool SettingsHud::handleClickTabTiming(const ClickRegion& region) {
             // Cycle freeze duration: Off -> 1s -> 2s -> ... -> 10s -> Off
             if (m_timing) {
                 bool forward = (region.type == ClickRegion::TIMING_DURATION_UP);
-                int& duration = m_timing->m_displayDurationMs;
-
-                if (forward) {
-                    if (duration >= TimingHud::MAX_DURATION_MS) {
-                        duration = 0;  // Wrap to Off
-                    } else {
-                        duration += TimingHud::DURATION_STEP_MS;
-                    }
-                } else {
-                    if (duration <= 0) {
-                        duration = TimingHud::MAX_DURATION_MS;  // Wrap to 10s
-                    } else {
-                        duration -= TimingHud::DURATION_STEP_MS;
-                    }
-                }
+                m_timing->m_displayDurationMs = applyAcceleratedWrap(
+                    m_timing->m_displayDurationMs, TimingHud::DURATION_STEP_MS,
+                    TimingHud::MIN_DURATION_MS, TimingHud::MAX_DURATION_MS, forward);
                 m_timing->setDataDirty();
                 setDataDirty();
             }

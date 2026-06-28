@@ -5,6 +5,7 @@
 #include "update_downloader.h"
 #include "plugin_constants.h"
 #include "plugin_manager.h"
+#include "update_checker.h"
 #include "../game/game_config.h"
 #include "../diagnostics/logger.h"
 
@@ -290,6 +291,42 @@ void UpdateDownloader::cleanupOldFiles() {
     }
 }
 
+bool UpdateDownloader::checkAndClearDonationNudge() {
+    try {
+        const char* savePath = PluginManager::getInstance().getSavePath();
+        if (!savePath || strlen(savePath) == 0) return false;
+        std::string nudgePath = std::string(savePath) + "\\mxbmrp3\\donation_nudge_pending";
+
+        // Read the version the installer wrote, then delete the sentinel regardless.
+        std::string installedVersion;
+        HANDLE h = CreateFileA(nudgePath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                               OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (h == INVALID_HANDLE_VALUE) return false;
+        char buf[64] = {};
+        DWORD read = 0;
+        ReadFile(h, buf, sizeof(buf) - 1, &read, nullptr);
+        CloseHandle(h);
+        installedVersion = std::string(buf, read);
+        DeleteFileA(nudgePath.c_str());
+
+        // Only show the nudge if the running DLL matches the installed version.
+        // Use compareVersions (strips "v" prefix, tolerates 3-vs-4 components) rather
+        // than == because getLatestVersion() returns the raw tag ("v1.25.0.0") while
+        // PLUGIN_VERSION has no prefix ("1.25.0.0").
+        // isValidVersion guards the corrupt-sentinel case: compareVersions returns 0
+        // for "equal" AND for "unparseable", so a garbled (non-empty) sentinel would
+        // otherwise alias to a match and fire a spurious nudge.
+        if (UpdateChecker::isValidVersion(installedVersion) &&
+            UpdateChecker::compareVersions(installedVersion, PluginConstants::PLUGIN_VERSION) == 0) {
+            DEBUG_INFO_F("UpdateDownloader: Donation nudge confirmed for v%s", PluginConstants::PLUGIN_VERSION);
+            return true;
+        }
+        DEBUG_INFO_F("UpdateDownloader: Donation nudge skipped (sentinel v%s, running v%s)",
+                     installedVersion.c_str(), PluginConstants::PLUGIN_VERSION);
+    } catch (...) {}
+    return false;
+}
+
 std::string UpdateDownloader::getPluginDirectory() const {
     // Get save path from PluginManager and construct plugin directory
     const char* savePath = PluginManager::getInstance().getSavePath();
@@ -453,6 +490,24 @@ void UpdateDownloader::workerThread() {
         // Success!
         m_state = State::READY;
         DEBUG_INFO("UpdateDownloader: Update ready, restart required");
+
+        // Write sentinel containing the installed version so the next launch
+        // can confirm the new DLL is actually running before showing the nudge.
+        try {
+            const char* savePath = PluginManager::getInstance().getSavePath();
+            std::string version = UpdateChecker::getInstance().getLatestVersion();
+            if (savePath && strlen(savePath) > 0 && !version.empty()) {
+                std::string nudgePath = std::string(savePath) + "\\mxbmrp3\\donation_nudge_pending";
+                HANDLE h = CreateFileA(nudgePath.c_str(), GENERIC_WRITE, 0, nullptr,
+                                       CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+                if (h != INVALID_HANDLE_VALUE) {
+                    DWORD written = 0;
+                    WriteFile(h, version.c_str(), static_cast<DWORD>(version.size()), &written, nullptr);
+                    CloseHandle(h);
+                }
+            }
+        } catch (...) {}
+
         notifyStateChange();
 
     } catch (const std::exception& e) {

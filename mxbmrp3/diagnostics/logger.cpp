@@ -4,6 +4,7 @@
 // ============================================================================
 #include "logger.h"
 #include <chrono>
+#include <cstring>
 #include <ctime>
 #include <iostream>
 #include "../core/plugin_constants.h"
@@ -77,6 +78,33 @@ void Logger::initialize(const char* savePath) {
     info(banner);
     info("========================================");
     info("Logger initialized");
+
+    // Host executable build fingerprint. The PiBoSo games ship no VERSIONINFO
+    // resource, so there is no FileVersion to read; instead we pull the PE
+    // TimeDateStamp straight from the loaded image headers. This is the same
+    // value the Windows Application event log reports as the faulting image's
+    // "time stamp" (e.g. 0x6a21833d), so it's the one field that ties a bare
+    // crash report (no minidump) back to a specific game build. Game-relative
+    // crash offsets are only valid for a given build, so recording it lets a
+    // crash log self-identify which build produced it.
+    {
+        char exeName[MAX_PATH] = { 0 };
+        GetModuleFileNameA(nullptr, exeName, MAX_PATH);
+        const char* baseName = strrchr(exeName, '\\');
+        baseName = baseName ? baseName + 1 : exeName;
+
+        HMODULE hHost = GetModuleHandleW(nullptr);
+        const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(hHost);
+        if (hHost && dos->e_magic == IMAGE_DOS_SIGNATURE) {
+            const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(
+                reinterpret_cast<const BYTE*>(hHost) + dos->e_lfanew);
+            if (nt->Signature == IMAGE_NT_SIGNATURE) {
+                info("Host build: %s TimeDateStamp=0x%08X",
+                     baseName[0] ? baseName : "(unknown)",
+                     nt->FileHeader.TimeDateStamp);
+            }
+        }
+    }
 
     if (m_logFile.is_open()) {
         info("Log file: %s", m_logFilePath.c_str());

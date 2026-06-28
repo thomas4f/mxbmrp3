@@ -107,22 +107,6 @@ bool SettingsHud::handleClickTabAppearance(const ClickRegion& region) {
             }
             return true;
 
-        case ClickRegion::GRID_SNAP_TOGGLE:
-            {
-                bool current = UiConfig::getInstance().getGridSnapping();
-                UiConfig::getInstance().setGridSnapping(!current);
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::SCREEN_CLAMP_TOGGLE:
-            {
-                bool current = UiConfig::getInstance().getScreenClamping();
-                UiConfig::getInstance().setScreenClamping(!current);
-                setDataDirty();
-            }
-            return true;
-
         default:
             return false;
     }
@@ -316,13 +300,8 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::TITLE_ICONS_TOGGLE, nullptr, nullptr, 0, true,
         "appearance.hud_icons");
 
-    // HUD placement toggles (moved here from the General tab; persisted under [Display])
-    ctx.addToggleControl("Grid Snap", UiConfig::getInstance().getGridSnapping(),
-        SettingsHud::ClickRegion::GRID_SNAP_TOGGLE, nullptr, nullptr, 0, true,
-        "appearance.grid_snap");
-    ctx.addToggleControl("Screen Clamp", UiConfig::getInstance().getScreenClamping(),
-        SettingsHud::ClickRegion::SCREEN_CLAMP_TOGGLE, nullptr, nullptr, 0, true,
-        "appearance.screen_clamp");
+    // (Grid Snap / Screen Clamp placement toggles live on the General tab's
+    // Behavior section; still persisted under [Display].)
 
     // === FONTS SECTION ===
     ctx.addSpacing(0.5f);
