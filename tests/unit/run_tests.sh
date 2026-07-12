@@ -30,6 +30,7 @@ SOURCES=("${HERE}/test_plugin_utils.cpp"
          "${HERE}/test_director_airtime.cpp"
          "${HERE}/test_session_charts_math.cpp"
          "${HERE}/test_tooltip_length.cpp"
+         "${HERE}/test_update_asset_select.cpp"
          "${HERE}/test_ui_config.cpp"
          "${ROOT}/mxbmrp3/core/ui_config.cpp")
 

@@ -486,33 +486,40 @@ bool UpdateChecker::fetchLatestRelease(std::string& outVersion, std::string& out
             releaseNotes = j["body"].get<std::string>();
         }
 
-        // Extract asset info (find first .zip file)
+        // Extract asset info. The release attaches several assets (installer,
+        // release zip, SBOM, debug-symbols zip); pick the plugin archive via
+        // selectAssetIndex rather than a naive "first .zip" (which grabbed the
+        // symbols bundle and made the install abort — see selectAssetIndex).
         std::string downloadUrl;
         std::string assetName;
         size_t downloadSize = 0;
         std::string checksumHash;
 
         if (j.contains("assets") && j["assets"].is_array()) {
-            for (const auto& asset : j["assets"]) {
-                if (asset.contains("name") && asset["name"].is_string()) {
-                    std::string name = asset["name"].get<std::string>();
-                    // Look for .zip file
-                    if (name.size() >= 4 && name.substr(name.size() - 4) == ".zip") {
-                        assetName = name;
-                        if (asset.contains("browser_download_url") && asset["browser_download_url"].is_string()) {
-                            downloadUrl = asset["browser_download_url"].get<std::string>();
-                        }
-                        if (asset.contains("size") && asset["size"].is_number()) {
-                            downloadSize = asset["size"].get<size_t>();
-                        }
-                        // Extract SHA256 from digest field (format: "sha256:abc123...")
-                        if (asset.contains("digest") && asset["digest"].is_string()) {
-                            std::string digest = asset["digest"].get<std::string>();
-                            if (digest.substr(0, 7) == "sha256:") {
-                                checksumHash = digest.substr(7);
-                            }
-                        }
-                        break;  // Use first .zip found
+            const auto& assets = j["assets"];
+            std::vector<std::string> names;
+            names.reserve(assets.size());
+            for (const auto& asset : assets) {
+                names.push_back(asset.contains("name") && asset["name"].is_string()
+                                    ? asset["name"].get<std::string>()
+                                    : std::string());
+            }
+
+            const int idx = selectAssetIndex(names);
+            if (idx >= 0) {
+                const auto& asset = assets[idx];
+                assetName = names[idx];
+                if (asset.contains("browser_download_url") && asset["browser_download_url"].is_string()) {
+                    downloadUrl = asset["browser_download_url"].get<std::string>();
+                }
+                if (asset.contains("size") && asset["size"].is_number()) {
+                    downloadSize = asset["size"].get<size_t>();
+                }
+                // Extract SHA256 from digest field (format: "sha256:abc123...")
+                if (asset.contains("digest") && asset["digest"].is_string()) {
+                    std::string digest = asset["digest"].get<std::string>();
+                    if (digest.substr(0, 7) == "sha256:") {
+                        checksumHash = digest.substr(7);
                     }
                 }
             }

@@ -12,7 +12,7 @@
 
 #define VER_MAJOR 1
 #define VER_MINOR 27
-#define VER_PATCH 3
+#define VER_PATCH 4
 
 // Generated per build (git-ignored); defines VER_BUILD_AUTO = git commit count.
 // The StampVersion target writes it before ClCompile/ResourceCompile, so it always

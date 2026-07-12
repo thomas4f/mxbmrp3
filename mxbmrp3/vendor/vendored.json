@@ -26,15 +26,15 @@
     {
       "name": "miniz",
       "repo": "richgel999/miniz",
-      "version": "3.0.2",
+      "version": "3.1.2",
       "path": "mxbmrp3/vendor/miniz",
       "shipped": true,
-      "note": "The MZ_VERSION macro in the header reads 11.0.2 (internal ABI version); upstream release tags are 3.x."
+      "note": "The MZ_VERSION macro in the header reads 11.3.2 (internal ABI version); upstream release tags are 3.x. miniz_export.h is a hand-authored static-linking stub (empty MINIZ_EXPORT), not upstream's CMake-generated header, so it is intentionally left untouched across bumps."
     },
     {
       "name": "doctest",
       "repo": "doctest/doctest",
-      "version": "2.5.2",
+      "version": "2.5.3",
       "path": "tests/integration/harness/doctest.h",
       "shipped": false
     }

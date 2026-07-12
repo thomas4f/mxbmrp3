@@ -9,6 +9,8 @@
 #include <mutex>
 #include <atomic>
 #include <functional>
+#include <vector>
+#include <cctype>
 
 class UpdateChecker {
 public:
@@ -104,6 +106,41 @@ public:
 
     // True if the string parses as a version (same normalization as compareVersions).
     static bool isValidVersion(const std::string& v);
+
+    // Choose which release asset to download, given the asset filenames (in the
+    // order GitHub returns them). Returns the index of the plugin archive, or -1
+    // if none is suitable. Prefers the canonical "mxbmrp3.zip"; otherwise the
+    // first .zip that is NOT the debug-symbols bundle (a "*symbols*.zip" contains
+    // only .pdb/.map and no .dlo, so installing it aborts with "Release not for
+    // this game"). Inline + static so it is unit-testable without pulling in the
+    // Windows/WinHTTP-heavy update_checker.cpp.
+    static int selectAssetIndex(const std::vector<std::string>& assetNames) {
+        auto endsWithZip = [](const std::string& n) {
+            return n.size() >= 4 && n.compare(n.size() - 4, 4, ".zip") == 0;
+        };
+        auto isSymbolsBundle = [](const std::string& n) {
+            // Case-insensitive substring match on "symbols" (the asset is
+            // "mxbmrp3-symbols-vX.Y.Z.B.zip"); that bundle holds only .pdb/.map.
+            std::string lower = n;
+            for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            return lower.find("symbols") != std::string::npos;
+        };
+
+        // Prefer the canonical release archive by exact name.
+        for (size_t i = 0; i < assetNames.size(); ++i) {
+            if (assetNames[i] == "mxbmrp3.zip") return static_cast<int>(i);
+        }
+        // Otherwise the first .zip that isn't the debug-symbols bundle. GitHub
+        // can return the symbols zip BEFORE the release zip (it sorts earlier),
+        // so a naive "first .zip" picks the wrong asset — the regression this
+        // guards.
+        for (size_t i = 0; i < assetNames.size(); ++i) {
+            if (endsWithZip(assetNames[i]) && !isSymbolsBundle(assetNames[i])) {
+                return static_cast<int>(i);
+            }
+        }
+        return -1;
+    }
 
 private:
     UpdateChecker();

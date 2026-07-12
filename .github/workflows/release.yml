@@ -239,12 +239,17 @@ jobs:
             |------|-----|
             | `mxbmrp3-Setup.exe` | Guided installer (recommended) |
             | `mxbmrp3.zip` | Manual install |
-            | `mxbmrp3-symbols-v${{ steps.ver.outputs.version }}.zip` | Debug symbols — crash triage only, not needed to run the plugin |
             | `mxbmrp3.cdx.json` | CycloneDX SBOM — third-party components inside the DLL |
 
             ✅ Built from `${{ github.sha }}` with the full test suite passing — [run log](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
+          # Debug symbols are deliberately NOT attached to the public Release — they
+          # ship only as the "mxbmrp3-symbols-*" workflow artifact (see the upload
+          # step above) for crash triage. Attaching the symbols .zip here put a
+          # SECOND .zip on the release, and the in-plugin auto-updater's asset
+          # selector picked it (it sorts before mxbmrp3.zip), so every client's
+          # update aborted with "Release not for this game". Keep this list free of
+          # any .zip other than mxbmrp3.zip.
           files: |
             ${{ steps.pkg.outputs.outdir }}/mxbmrp3-Setup.exe
             ${{ steps.pkg.outputs.outdir }}/mxbmrp3.zip
             ${{ steps.pkg.outputs.outdir }}/mxbmrp3.cdx.json
-            ${{ steps.pkg.outputs.outdir }}/mxbmrp3-symbols-v${{ steps.ver.outputs.version }}.zip
