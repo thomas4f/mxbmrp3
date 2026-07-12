@@ -6,11 +6,13 @@
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
 #include "asset_manager.h"
+#include "companion_window.h"
 #include "input_manager.h"
 #include "xinput_reader.h"
 #include "plugin_data.h"
 #include "plugin_manager.h"
 #include "settings_manager.h"
+#include "director_manager.h"
 #include "profile_manager.h"
 #include "ui_config.h"
 #include "../hud/base_hud.h"
@@ -44,6 +46,7 @@
 #include "../hud/gap_bar_hud.h"
 #include "../hud/pointer_widget.h"
 #include "../hud/rumble_hud.h"
+#include "../hud/director_widget.h"
 #include "../hud/gamepad_widget.h"
 #include "../hud/lean_widget.h"
 #include "../hud/gforce_widget.h"
@@ -55,7 +58,7 @@
 #if GAME_HAS_ECU
 #include "../hud/ecu_widget.h"
 #endif
-#include "../hud/lap_consistency_hud.h"
+#include "../hud/session_charts_hud.h"
 #include "../hud/helmet_overlay_hud.h"
 #include "../hud/fmx_hud.h"
 #include "../hud/stats_hud.h"
@@ -78,7 +81,30 @@ HudManager& HudManager::getInstance() {
 }
 
 HudManager::~HudManager() {
-    shutdown();
+    // A Meyers singleton's destructor only runs during static (DLL-detach) teardown.
+    // At that point the singletons this teardown reaches — SettingsManager (the
+    // settings auto-save), UiConfig, PluginManager — may ALREADY be destroyed:
+    // statics are torn down in reverse construction order, and SettingsManager is
+    // constructed lazily from inside HudManager::initialize(), so it is constructed
+    // AFTER us and therefore destroyed BEFORE us. Running the auto-save from here
+    // then walks a freed container and faults the host on exit — observed as an
+    // access violation in SettingsManager::serializeSettings() -> m_hudDefaults.find()
+    // reading a freed unordered_map bucket array, when the game unloaded the DLL
+    // WITHOUT calling the Shutdown() export.
+    //
+    // The real teardown + auto-save runs from Shutdown() -> PluginManager::shutdown()
+    // -> HudManager::shutdown() while every singleton is still alive; leave-track
+    // flushIfDirty() already persists in-session edits. If Shutdown() was never called
+    // the process is exiting anyway, so skipping this last auto-save is the correct
+    // trade-off versus crashing the host.
+    //
+    // NOTE: shutdownInternal() still emits DEBUG_INFO here, which reaches the Logger
+    // singleton — but Logger is the ONE cross-singleton reach that is safe during
+    // static teardown: it is constructed first (PluginManager::initialize() inits it
+    // before anything touches HudManager), so it is destroyed LAST and is guaranteed
+    // alive in every other singleton's destructor. Unlike SettingsManager/CompanionWindow
+    // (constructed later, torn down first), Logger cannot be a use-after-free here.
+    shutdownInternal(/*allowSave=*/false);
 }
 
 void HudManager::initialize() {
@@ -161,10 +187,10 @@ void HudManager::initialize() {
     registerHud(std::move(recordsPtr));
 #endif
 
-    auto lapConsistencyPtr = std::make_unique<LapConsistencyHud>();
-    m_pLapConsistency = lapConsistencyPtr.get();
-    m_pLapConsistency->setTextureBaseName("lap_consistency_hud");
-    registerHud(std::move(lapConsistencyPtr));
+    auto sessionChartsPtr = std::make_unique<SessionChartsHud>();
+    m_pSessionCharts = sessionChartsPtr.get();
+    m_pSessionCharts->setTextureBaseName("session_charts_hud");
+    registerHud(std::move(sessionChartsPtr));
 
 #if GAME_HAS_FMX
     auto fmxPtr = std::make_unique<FmxHud>();
@@ -265,6 +291,10 @@ void HudManager::initialize() {
     m_pRumble->setTextureBaseName("rumble_hud");
     registerHud(std::move(rumblePtr));
 
+    auto directorWidgetPtr = std::make_unique<DirectorWidget>();
+    m_pDirector = directorWidgetPtr.get();
+    registerHud(std::move(directorWidgetPtr));
+
     auto gamepadPtr = std::make_unique<GamepadWidget>();
     m_pGamepad = gamepadPtr.get();
     m_pGamepad->setTextureBaseName("gamepad_widget");
@@ -321,7 +351,7 @@ void HudManager::initialize() {
     auto settingsButtonPtr = std::make_unique<SettingsButtonWidget>();
     m_pSettingsButton = settingsButtonPtr.get();
 
-    auto settingsPtr = std::make_unique<SettingsHud>(m_pIdealLap, m_pLapLog, m_pFriends, m_pLapConsistency, m_pStandings,
+    auto settingsPtr = std::make_unique<SettingsHud>(m_pIdealLap, m_pLapLog, m_pFriends, m_pSessionCharts, m_pStandings,
                                                        m_pPerformance, m_pTelemetry, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pGear, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, recordsHudPtr, m_pFuel, m_pPointer, m_pRumble, m_pGamepad, m_pLean, m_pGforce, m_pCompass,
                                                        m_pFmxHud,
                                                        m_pStatsHud,
@@ -390,23 +420,49 @@ void HudManager::initialize() {
 }
 
 void HudManager::shutdown() {
+    // Orchestrated path (game's Shutdown() export): every singleton is still alive,
+    // so the settings auto-save is safe.
+    shutdownInternal(/*allowSave=*/true);
+}
+
+void HudManager::shutdownInternal(bool allowSave) {
     if (!m_bInitialized) return;
 
     DEBUG_INFO("HudManager shutting down");
 
-    // Save settings before clearing HUDs (if auto-save enabled)
-    if (UiConfig::getInstance().getAutoSave()) {
+    // Save settings before clearing HUDs (if auto-save enabled). Only on the
+    // orchestrated Shutdown() path — NEVER from the destructor, where the
+    // SettingsManager singleton this reaches may already be torn down (see the
+    // note in ~HudManager). The `allowSave &&` short-circuit also avoids touching
+    // the UiConfig / PluginManager singletons on the destructor path.
+    if (allowSave && UiConfig::getInstance().getAutoSave()) {
         SettingsManager::getInstance().saveSettings(*this, PluginManager::getInstance().getSavePath());
     }
 
-    clear();
+    // allowSave doubles as "this is the orchestrated path, every singleton alive":
+    // on the destructor path clear() must not reach the CompanionWindow singleton.
+    clear(/*allowCrossSingleton=*/allowSave);
 
     m_bInitialized = false;
     m_bResourcesInitialized = false;
     DEBUG_INFO("HudManager shutdown complete");
 }
 
-void HudManager::clear() {
+void HudManager::clear(bool allowCrossSingleton) {
+    // Join the companion window thread before tearing anything down — it snapshots
+    // primitives under its own lock and touches no HUD state, so this is safe first.
+    //
+    // Skip this on the static-teardown (destructor) path: CompanionWindow is a
+    // separate Meyers singleton that may already be destroyed (reverse construction
+    // order), so reaching it via getInstance() would touch freed storage — the same
+    // fiasco the settings auto-save hit. We don't NEED to stop it here anyway:
+    // ~CompanionWindow() joins its own window thread self-containedly when that
+    // singleton is torn down. On the orchestrated Shutdown() path everything is
+    // alive, so we still stop it here (deterministic, joins before we continue).
+    if (allowCrossSingleton) {
+        CompanionWindow::getInstance().stop();
+    }
+
 #if GAME_HAS_RECORDS_PROVIDER
     // Join the records fetch thread BEFORE nulling the cached HUD pointers:
     // the worker calls getTimingHud().setDataDirty() on completion, which
@@ -445,6 +501,7 @@ void HudManager::clear() {
 #endif
     m_pFuel = nullptr;
     m_pRumble = nullptr;
+    m_pDirector = nullptr;
     m_pGamepad = nullptr;
     m_pLean = nullptr;
     m_pGforce = nullptr;
@@ -456,7 +513,7 @@ void HudManager::clear() {
 #if GAME_HAS_ECU
     m_pEcu = nullptr;
 #endif
-    m_pLapConsistency = nullptr;
+    m_pSessionCharts = nullptr;
     m_pHelmetOverlay = nullptr;
     m_pStatsHud = nullptr;
     m_pFmxHud = nullptr;
@@ -549,6 +606,22 @@ void HudManager::registerHud(std::unique_ptr<BaseHud> hud) {
     }
 }
 
+#if defined(MXBMRP3_TEST_BUILD)
+void HudManager::testSetAllHudsVisible(bool visible) {
+    for (auto& hud : m_huds) {
+        if (!hud) continue;
+        BaseHud* p = hud.get();
+        // Skip UI chrome and dev overlays — they aren't user "features" and
+        // force-showing the settings menu/pointer would distort the profile.
+        if (p == m_pSettingsHud || p == m_pSettingsButton ||
+            p == m_pPointer || p == m_pBenchmark) {
+            continue;
+        }
+        p->setVisible(visible);
+    }
+}
+#endif
+
 void HudManager::onDataChanged(DataChangeType changeType) {
 
     // Called when PluginData notifies that data has changed
@@ -558,6 +631,10 @@ void HudManager::onDataChanged(DataChangeType changeType) {
             hud->setDataDirty();
         }
     }
+
+    // Feed the auto-director. It gates internally (disabled / not spectating a race /
+    // coalesced), so this is cheap on the frequent Standings change path.
+    DirectorManager::getInstance().onDataChanged(static_cast<int>(changeType));
 
     // Check for auto profile switching when session or view state changes
     if (changeType == DataChangeType::SessionData || changeType == DataChangeType::SpectateTarget) {
@@ -628,6 +705,24 @@ void HudManager::draw(int iState, int* piNumQuads, void** ppQuad, int* piNumStri
         return;
     }
 
+    // "Entered the track" detection: the game calls Draw continuously while we're on
+    // track / spectating, and stops in menus / loading. A long gap since the previous
+    // Draw (or the very first Draw) means drawing just resumed, so flash the corner
+    // status buttons into view - they otherwise auto-hide with the idle cursor, and this
+    // helps users find them without moving the mouse. Time-based so it's FPS-independent.
+    {
+        auto now = std::chrono::steady_clock::now();
+        bool firstDraw = (m_lastDrawTime.time_since_epoch().count() == 0);
+        bool resumed = !firstDraw &&
+            std::chrono::duration_cast<std::chrono::milliseconds>(now - m_lastDrawTime).count()
+                > PluginConstants::ENTER_TRACK_GAP_MS;
+        if (firstDraw || resumed) {
+            if (m_pSettingsButton) m_pSettingsButton->reveal(PluginConstants::WIDGET_REVEAL_MS);
+            if (m_pDirector) m_pDirector->reveal(PluginConstants::WIDGET_REVEAL_MS);
+        }
+        m_lastDrawTime = now;
+    }
+
     // Update input data once per frame at the beginning
     InputManager::getInstance().updateFrame();
 
@@ -651,23 +746,86 @@ void HudManager::draw(int iState, int* piNumQuads, void** ppQuad, int* piNumStri
         collectRenderData();
     }
 
-    // Set output parameters
-    *piNumQuads = static_cast<int>(m_quads.size());
-    *ppQuad = m_quads.empty() ? nullptr : m_quads.data();
+    // Route this frame to the game and/or the standalone companion window per the
+    // display target. The companion always gets the full frame; the in-game HUD is
+    // suppressed in COMPANION mode — except while the settings menu is open, so the
+    // user can always reopen settings (via the settings hotkey) and switch back.
+    DisplayTarget target = UiConfig::getInstance().getDisplayTarget();
 
-    *piNumString = static_cast<int>(m_strings.size());
-    *ppString = m_strings.empty() ? nullptr : m_strings.data();
+    // Feed the companion window whenever it's open (target drives whether it's open;
+    // a test hook can also open it directly).
+    CompanionWindow& companion = CompanionWindow::getInstance();
+    // If the user closed the window with its X button, fall back to In-game so the
+    // HUD reappears in the game (COMPANION mode otherwise suppresses it, leaving no
+    // HUD anywhere) and persist it so it stays In-game next launch.
+    if (companion.consumeUserClosed() && target != DisplayTarget::IN_GAME) {
+        UiConfig::getInstance().setDisplayTarget(DisplayTarget::IN_GAME);
+        SettingsManager::getInstance().markDirty();
+        target = DisplayTarget::IN_GAME;
+    }
+    if (companion.isEnabled()) {
+        // The companion gets its OWN frame (per-HUD companion on/off + position),
+        // built by collectRenderData when the window is open.
+        companion.submit(m_companionQuads, m_companionStrings, m_fontNames, m_spriteNames,
+                         AssetManager::getInstance().getFirstIconSpriteIndex());
+    }
+
+    // COMPANION mode suppresses the in-game HUD — EXCEPT while the settings menu is
+    // showing IN-GAME, so the user can always reopen settings and switch back. The
+    // menu renders only on the active surface (see collectSurface), so gate on the
+    // menu being on the GAME surface; otherwise opening settings on the companion
+    // would flash the game HUDs onto the in-game screen with no menu on them.
+    bool activeCompanion =
+        InputManager::getInstance().getActiveSurface() == InputManager::Surface::Companion;
+    bool settingsOnGame = m_pSettingsHud && m_pSettingsHud->isVisible() && !activeCompanion;
+    if (target == DisplayTarget::COMPANION && !settingsOnGame) {
+        *piNumQuads = 0; *ppQuad = nullptr;
+        *piNumString = 0; *ppString = nullptr;
+    } else {
+        *piNumQuads = static_cast<int>(m_quads.size());
+        *ppQuad = m_quads.empty() ? nullptr : m_quads.data();
+        *piNumString = static_cast<int>(m_strings.size());
+        *ppString = m_strings.empty() ? nullptr : m_strings.data();
+    }
 }
 
 void HudManager::updateHuds() {
+    // When focus moves between the game and companion windows, refresh the settings
+    // menu so its per-HUD checkboxes reflect the now-active surface's instance.
+    bool activeCompanion = InputManager::getInstance().getActiveSurface() == InputManager::Surface::Companion;
+    if (activeCompanion != m_lastActiveCompanion) {
+        m_lastActiveCompanion = activeCompanion;
+        if (m_pSettingsHud && m_pSettingsHud->isVisible()) m_pSettingsHud->setDataDirty();
+    }
+
     // Handle settings button click for SettingsHud toggle
     handleSettingsButton();
+
+    // Handle director status-button click (pause/resume auto-direction)
+    handleDirectorButton();
+
+    // Per-frame director manual-control poll (gamepad takeover + auto-resume). Runs
+    // here, not only on data callbacks, so it works in lulls / solo / replays. Gates
+    // internally (disabled / not spectating / throttled).
+    DirectorManager::getInstance().pollManualControl();
+    // Per-frame pacing pump so the min/max-shot cadence is enforced on wall-clock time
+    // even when timing-data callbacks go quiet (stable formation) - otherwise the
+    // current shot overruns the max-shot cap. Coalesced to ~3x/sec inside evaluate().
+    DirectorManager::getInstance().pollPacing();
 
     // Handle keyboard shortcuts for HUD toggles
     processKeyboardInput();
 
     // Only allow one HUD to be dragged at a time
     // Process HUDs in reverse order (last registered = top layer, gets priority)
+
+    // Drag targets the surface the user is on: on the companion, a HUD sits at its
+    // companion offset and uses its companion visibility, so the pick test and the
+    // draggable gate must both use those — otherwise a HUD moved on the companion can
+    // only be re-grabbed at its GAME position (and one hidden in-game but shown on the
+    // companion can't be grabbed at all).
+    bool dragCompanion =
+        InputManager::getInstance().getActiveSurface() == InputManager::Surface::Companion;
 
     // Use cached dragging HUD if valid, otherwise find new target
     BaseHud* inputTarget = nullptr;
@@ -691,12 +849,16 @@ void HudManager::updateHuds() {
             if (cursor.isValid) {
                 for (auto it = m_huds.rbegin(); it != m_huds.rend(); ++it) {
                     auto& hud = *it;
-                    if (hud && hud->isDraggable() && hud->isVisible()) {
-                        // Check bounds directly to avoid calling handleMouseInput twice
-                        if (hud->isPointInBounds(cursor.x, cursor.y)) {
-                            inputTarget = hud.get();
-                            break;
-                        }
+                    if (!hud || !hud->isDraggable()) continue;
+                    bool visibleHere = dragCompanion ? hud->getCompanionVisible() : hud->isVisible();
+                    if (!visibleHere) continue;
+                    // Hit-test at THIS surface's offset (companion HUDs sit at their
+                    // companion position). Avoids calling handleMouseInput twice.
+                    float offX = dragCompanion ? hud->getCompanionOffsetX() : hud->getOffsetX();
+                    float offY = dragCompanion ? hud->getCompanionOffsetY() : hud->getOffsetY();
+                    if (hud->isPointInBoundsAt(cursor.x, cursor.y, offX, offY)) {
+                        inputTarget = hud.get();
+                        break;
                     }
                 }
             }
@@ -709,7 +871,10 @@ void HudManager::updateHuds() {
             // Allow mouse input only for the target HUD (and only if visible)
             bool allowInput = (hud.get() == inputTarget);
 
-            if (hud->isDraggable() && hud->isVisible()) {
+            // Keep a HUD that's already mid-drag flowing even if the active surface
+            // momentarily flips (cursor slips off the window), so the drag isn't cut.
+            bool visibleHere = dragCompanion ? hud->getCompanionVisible() : hud->isVisible();
+            if (hud->isDraggable() && (visibleHere || hud->isDragging())) {
                 hud->handleMouseInput(allowInput);
 
                 // Cache the HUD if it just started dragging
@@ -725,6 +890,28 @@ void HudManager::updateHuds() {
 }
 
 void HudManager::collectRenderData() {
+    // Game surface: byte-identical to before. Then, only when the companion window
+    // is open, build its frame from each HUD's companion instance (own on/off +
+    // position; mirrors the game until diverged).
+    collectSurface(m_quads, m_strings, /*companion=*/false);
+    if (CompanionWindow::getInstance().isEnabled()) {
+        // Decouple from the start: the first frame the companion is on, snapshot each
+        // HUD's game state into its companion instance so the two are independent
+        // immediately, rather than the companion mirroring the game until the user
+        // edits each HUD. No-op once a HUD is already configured.
+        for (auto& hud : m_huds)
+            if (hud) hud->snapshotCompanionFromGame();
+        collectSurface(m_companionQuads, m_companionStrings, /*companion=*/true);
+    }
+}
+
+// Build one surface's frame. companion=false reproduces the original game frame
+// exactly; companion=true filters by each HUD's companion visibility and, after
+// copying a HUD's primitives (reusing all the shadow logic), translates that HUD's
+// appended range by its (companion - game) offset delta.
+void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
+                                std::vector<SPluginString_t>& outStrings,
+                                bool companion) {
 
     // Get drop shadow settings once (avoid repeated singleton calls)
     const UiConfig& uiConfig = UiConfig::getInstance();
@@ -748,6 +935,11 @@ void HudManager::collectRenderData() {
     totalQuads += 2;     // Pointer quad + settings button background quad
     totalStrings += 1;   // Settings button text
 
+    // Grid overlay (debug, INI-only) appends the snap lattice on top — reserve for it too.
+    if (UiConfig::getInstance().getGridOverlay()) {
+        totalQuads += gridOverlayQuadCount();
+    }
+
     // If drop shadow is enabled, we may need up to 2x the strings
     if (dropShadowEnabled) {
         totalStrings *= 2;
@@ -758,26 +950,46 @@ void HudManager::collectRenderData() {
     // extra realloc (capacity never shrinks), not worth a pre-pass over every HUD.
 
     // Ensure vectors have sufficient capacity - grow if needed but never shrink
-    if (m_quads.capacity() < totalQuads) {
+    if (outQuads.capacity() < totalQuads) {
         size_t newCapacity = totalQuads * CAPACITY_GROWTH_FACTOR;
-        m_quads.reserve(newCapacity);
+        outQuads.reserve(newCapacity);
         DEBUG_INFO_F("HudManager quads capacity increased to %zu", newCapacity);
     }
 
-    if (m_strings.capacity() < totalStrings) {
+    if (outStrings.capacity() < totalStrings) {
         size_t newCapacity = totalStrings * CAPACITY_GROWTH_FACTOR;
-        m_strings.reserve(newCapacity);
+        outStrings.reserve(newCapacity);
         DEBUG_INFO_F("HudManager strings capacity increased to %zu", newCapacity);
     }
 
     // Clear existing data but keep allocated memory
-    m_quads.resize(0);
-    m_strings.resize(0);
+    outQuads.resize(0);
+    outStrings.resize(0);
+
+    // The interactive chrome — the mouse pointer and the OPEN settings menu — belongs
+    // to the surface the user is actually on, not both. Otherwise the companion
+    // mirrors the game's pointer/menu and the user sees a cursor and a settings menu
+    // in both windows. The settings BUTTON stays on every surface so settings can be
+    // opened from either window. In single-window mode the active surface is Game, so
+    // this leaves the game frame unchanged.
+    bool activeCompanion =
+        InputManager::getInstance().getActiveSurface() == InputManager::Surface::Companion;
+    bool surfaceIsActive = (companion == activeCompanion);
 
     // Collect from all visible HUDs using efficient vector operations
     // Settings and settings button are always rendered (even when toggle key pressed)
     for (const auto& hud : m_huds) {
-        if (hud && hud->isVisible()) {
+        // Guard the deref: m_huds provably holds no nulls (registerHud filters
+        // them), but this file is written defensively, so don't dereference before
+        // the null check. visible is false for a null hud, so the body is safe.
+        bool visible = hud && (companion ? hud->getCompanionVisible() : hud->isVisible());
+        if (visible) {
+            // Where this HUD's primitives start, so we can translate them to the
+            // companion position afterward (delta is 0 for the game / a mirrored HUD).
+            size_t quadStart = outQuads.size();
+            size_t stringStart = outStrings.size();
+            float deltaX = companion ? (hud->getCompanionOffsetX() - hud->getOffsetX()) : 0.0f;
+            float deltaY = companion ? (hud->getCompanionOffsetY() - hud->getOffsetY()) : 0.0f;
             // Check if version widget's easter egg game is active (bypasses all toggles)
             bool isVersionGameActive = (hud.get() == m_pVersion && m_pVersion && m_pVersion->isGameActive());
 
@@ -785,6 +997,13 @@ void HudManager::collectRenderData() {
             bool isSettingsHud = (hud.get() == m_pSettingsHud || hud.get() == m_pSettingsButton);
             bool isPointer = (hud.get() == m_pPointer);
             if (m_bAllHudsToggledOff && !isSettingsHud && !isPointer && !isVersionGameActive) {
+                continue;
+            }
+
+            // Pointer and the open settings MENU render only on the active surface
+            // (the settings BUTTON stays on both — it's how you open settings there).
+            bool isMenu = (hud.get() == m_pSettingsHud);
+            if ((isPointer || isMenu) && !surfaceIsActive) {
                 continue;
             }
 
@@ -831,7 +1050,7 @@ void HudManager::collectRenderData() {
                 // Bulk-copy the quads before the icon, then a tinted/offset shadow copy
                 // (renders behind), then the icon and everything after it - two bulk
                 // inserts + one push_back instead of N per-quad copies in this hot path.
-                m_quads.insert(m_quads.end(), hudQuads.begin(), hudQuads.begin() + titleIconIdx);
+                outQuads.insert(outQuads.end(), hudQuads.begin(), hudQuads.begin() + titleIconIdx);
 
                 // Shadow copy. Offset is proportional to the icon's height and capped at
                 // EXTRA_LARGE, matching the string formula.
@@ -846,12 +1065,12 @@ void HudManager::collectRenderData() {
                     shadowQuad.m_aafPos[c][1] += dy;
                 }
                 shadowQuad.m_ulColor = shadowColor;
-                m_quads.push_back(shadowQuad);
+                outQuads.push_back(shadowQuad);
 
-                m_quads.insert(m_quads.end(), hudQuads.begin() + titleIconIdx, hudQuads.end());
+                outQuads.insert(outQuads.end(), hudQuads.begin() + titleIconIdx, hudQuads.end());
             } else {
                 // No drop shadow - use efficient bulk copy
-                m_quads.insert(m_quads.end(), hudQuads.begin(), hudQuads.end());
+                outQuads.insert(outQuads.end(), hudQuads.begin(), hudQuads.end());
             }
 
             // For strings: if drop shadow enabled, add shadow before each non-skipped string
@@ -868,17 +1087,84 @@ void HudManager::collectRenderData() {
                         shadowStr.m_afPos[0] += shadowSize * shadowOffsetXPct;
                         shadowStr.m_afPos[1] += shadowSize * shadowOffsetYPct;
                         shadowStr.m_ulColor = shadowColor;
-                        m_strings.push_back(shadowStr);
+                        outStrings.push_back(shadowStr);
                     }
 
                     // Add original string
-                    m_strings.push_back(str);
+                    outStrings.push_back(str);
                 }
             } else {
                 // No drop shadow - use efficient bulk copy
-                m_strings.insert(m_strings.end(), hudStrings.begin(), hudStrings.end());
+                outStrings.insert(outStrings.end(), hudStrings.begin(), hudStrings.end());
+            }
+
+            // Companion surface: shift this HUD's just-appended primitives to its
+            // companion position (delta is 0 for the game, or a mirrored HUD).
+            if (deltaX != 0.0f || deltaY != 0.0f) {
+                for (size_t k = quadStart; k < outQuads.size(); ++k)
+                    for (int c = 0; c < 4; ++c) { outQuads[k].m_aafPos[c][0] += deltaX; outQuads[k].m_aafPos[c][1] += deltaY; }
+                for (size_t k = stringStart; k < outStrings.size(); ++k) {
+                    outStrings[k].m_afPos[0] += deltaX; outStrings[k].m_afPos[1] += deltaY;
+                }
             }
         }
+    }
+
+    // Debug: draw the snap grid ON TOP of everything (INI-only, off by default), so HUD
+    // edges can be checked against the lattice they snap to. Same on both surfaces.
+    if (UiConfig::getInstance().getGridOverlay()) {
+        appendGridOverlay(outQuads);
+    }
+}
+
+// Grid line spacing = the snap lattice (HudGrid). Vertical lines every GRID_SIZE_HORIZONTAL
+// across X, horizontal lines every GRID_SIZE_VERTICAL across Y, in normalized [0,1] screen
+// space — exactly the grid SNAP_TO_GRID_X/Y quantize to. Kept in one place so the count
+// helper and the drawer can't drift.
+namespace {
+    constexpr float GRID_CELL_W = PluginConstants::HudGrid::GRID_SIZE_HORIZONTAL;  // 0.0055
+    constexpr float GRID_CELL_H = PluginConstants::HudGrid::GRID_SIZE_VERTICAL;    // ~0.011734
+    // Line thicknesses in normalized units (~1px minor / ~2px major at 1080p).
+    constexpr float GRID_MINOR_W = 0.00055f, GRID_MAJOR_W = 0.00110f;  // vertical-line width
+    constexpr float GRID_MINOR_H = 0.00095f, GRID_MAJOR_H = 0.00190f;  // horizontal-line height
+    inline int gridLineCount(float cell) { return static_cast<int>(1.0f / cell) + 1; }
+}
+
+size_t HudManager::gridOverlayQuadCount() {
+    return static_cast<size_t>(gridLineCount(GRID_CELL_W) + gridLineCount(GRID_CELL_H));
+}
+
+void HudManager::appendGridOverlay(std::vector<SPluginQuad_t>& outQuads) const {
+    const UiConfig& ui = UiConfig::getInstance();
+    const int majorEvery = ui.getGridOverlayMajorEvery();  // clamped >= 1 in the setter
+    const unsigned long minorColor = ui.getGridOverlayColor();
+    const unsigned long majorColor = ui.getGridOverlayMajorColor();
+
+    // Append one solid-color rectangle (x,y = top-left, positive w/h).
+    auto pushLine = [&outQuads](float x, float y, float w, float h, unsigned long color) {
+        SPluginQuad_t q;
+        q.m_aafPos[0][0] = x;      q.m_aafPos[0][1] = y;
+        q.m_aafPos[1][0] = x;      q.m_aafPos[1][1] = y + h;
+        q.m_aafPos[2][0] = x + w;  q.m_aafPos[2][1] = y + h;
+        q.m_aafPos[3][0] = x + w;  q.m_aafPos[3][1] = y;
+        q.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
+        q.m_ulColor = color;
+        outQuads.push_back(q);
+    };
+
+    // Vertical lines (index 0 at x=0). Centered on the grid line so major lines don't shift it.
+    const int vCount = gridLineCount(GRID_CELL_W);
+    for (int i = 0; i < vCount; ++i) {
+        const bool major = (i % majorEvery) == 0;
+        const float w = major ? GRID_MAJOR_W : GRID_MINOR_W;
+        pushLine(i * GRID_CELL_W - w * 0.5f, 0.0f, w, 1.0f, major ? majorColor : minorColor);
+    }
+    // Horizontal lines (index 0 at y=0).
+    const int hCount = gridLineCount(GRID_CELL_H);
+    for (int j = 0; j < hCount; ++j) {
+        const bool major = (j % majorEvery) == 0;
+        const float h = major ? GRID_MAJOR_H : GRID_MINOR_H;
+        pushLine(0.0f, j * GRID_CELL_H - h * 0.5f, 1.0f, h, major ? majorColor : minorColor);
     }
 }
 
@@ -925,6 +1211,25 @@ void HudManager::setupDefaultResources() {
 
     DEBUG_INFO_F("Default HUD resources configured: %zu sprites, %zu fonts",
         m_spriteNames.size(), m_fontNames.size());
+}
+
+void HudManager::handleDirectorButton() {
+    if (!m_pDirector) return;
+    if (m_pDirector->isClicked()) {
+        // Click = turn the director on / off (the icon is a true on/off switch, matching
+        // its off/auto/manual/paused tint). Pause/hold stays on the Director Hold hotkey.
+        DirectorManager& dir = DirectorManager::getInstance();
+        dir.toggleEnabled();
+        DEBUG_INFO_F("Director: %s (status button)", dir.isEnabled() ? "enabled" : "disabled");
+        // Enabled is a persisted MODE (unlike transient HUD-visibility toggles), so save
+        // the choice - matching the settings-tab toggle's auto-save (respect the setting).
+        persistDirectorEnabled();
+    }
+}
+
+void HudManager::persistDirectorEnabled() {
+    // Mark settings dirty; the write is deferred to a leave-track transition / Save button.
+    SettingsManager::getInstance().markDirty();
 }
 
 void HudManager::handleSettingsButton() {
@@ -1058,9 +1363,9 @@ void HudManager::processKeyboardInput() {
         DEBUG_INFO_F("Hotkey: Rumble %s", m_pRumble->isVisible() ? "shown" : "hidden");
     }
 
-    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_LAP_CONSISTENCY) && m_pLapConsistency) {
-        m_pLapConsistency->setVisible(!m_pLapConsistency->isVisible());
-        DEBUG_INFO_F("Hotkey: Lap Consistency %s", m_pLapConsistency->isVisible() ? "shown" : "hidden");
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_SESSION_CHARTS) && m_pSessionCharts) {
+        m_pSessionCharts->setVisible(!m_pSessionCharts->isVisible());
+        DEBUG_INFO_F("Hotkey: Session Charts %s", m_pSessionCharts->isVisible() ? "shown" : "hidden");
     }
 
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_FMX) && m_pFmxHud) {
@@ -1098,6 +1403,16 @@ void HudManager::processKeyboardInput() {
         DEBUG_INFO_F("Hotkey: Friends %s", m_pFriends->isVisible() ? "shown" : "hidden");
     }
 
+    // Auto-director (spectate broadcast tool): toggle on/off, and hold current shot.
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::DIRECTOR_TOGGLE)) {
+        DirectorManager::getInstance().toggleEnabled();
+        if (m_pSettingsHud) m_pSettingsHud->setDataDirty();  // refresh the tab checkbox if open
+        persistDirectorEnabled();  // enabled is a persisted mode (see handleDirectorButton)
+    }
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::DIRECTOR_LOCK)) {
+        DirectorManager::getInstance().toggleLock();  // transient - not persisted
+    }
+
     // Custom segment timer: Add drops a boundary point at the current position,
     // Remove deletes the last one. PluginData owns the state and emits the notice.
     // Nudge the map so the boundary markers appear/clear immediately (it only
@@ -1121,7 +1436,8 @@ void HudManager::processKeyboardInput() {
             { HotkeyAction::OVERLAY_FORCE_LAST_LAP,    OP::LAST_LAP,    "fastest-last-lap" },
             { HotkeyAction::OVERLAY_FORCE_FASTEST_LAP, OP::FASTEST_LAP, "session-best" },
             { HotkeyAction::OVERLAY_FORCE_DOWN_ORDER,  OP::DOWN_ORDER,  "down-the-order" },
-            { HotkeyAction::OVERLAY_FORCE_BATTLE,      OP::BATTLE,      "battle" },
+            { HotkeyAction::OVERLAY_FORCE_SECTORS,     OP::SECTORS,     "best-sectors" },
+            { HotkeyAction::OVERLAY_FORCE_CHARTS,      OP::CHARTS,      "session-charts" },
         };
         for (const auto& f : kOverlayForces) {
             if (hotkeyMgr.wasActionTriggered(f.action)) {

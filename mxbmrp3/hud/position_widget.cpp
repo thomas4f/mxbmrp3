@@ -37,7 +37,7 @@ bool PositionWidget::handlesDataType(DataChangeType dataType) const {
 
 void PositionWidget::update() {
     // OPTIMIZATION: Skip processing when not visible
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -177,6 +177,6 @@ void PositionWidget::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.0f;
     m_fScale = 1.0f;
-    setPosition(0.0055f, 0.0111f);
+    setPosition(0.0055f, 0.01173f);
     setDataDirty();
 }

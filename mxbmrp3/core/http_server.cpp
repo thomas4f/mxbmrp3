@@ -17,12 +17,14 @@
 #include "color_config.h"
 #include "font_config.h"
 #include "tracked_riders_manager.h"
+#include "director_manager.h"
 #include "../diagnostics/logger.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <fstream>
+#include <utility>
 #include <vector>
 
 using namespace PluginConstants;
@@ -229,15 +231,16 @@ void HttpServer::onDataChanged(DataChangeType changeType) {
     m_dataCondition.notify_all();
 }
 
-// Maps the panel enum to the overlay's createSlotPanel name (app.js). NONE is
+// Maps the panel enum to the overlay's createSlotPanel name (overlay-panels.js). NONE is
 // the empty string (the client's seq starts at 0 and never fires for it).
 const char* HttpServer::overlayPanelName(int panel) {
     switch (static_cast<OverlayPanel>(panel)) {
-    // Strings are the app.js createSlotPanel names (NOT the enumerator names).
+    // Strings are the overlay-panels.js createSlotPanel names (NOT the enumerator names).
     case OverlayPanel::LAST_LAP:    return "fastlap";
     case OverlayPanel::FASTEST_LAP: return "bestlap";
     case OverlayPanel::DOWN_ORDER:  return "tail";
-    case OverlayPanel::BATTLE:      return "battle";
+    case OverlayPanel::SECTORS:     return "sectors";
+    case OverlayPanel::CHARTS:      return "charts";
     default:                    return "";
     }
 }
@@ -309,6 +312,12 @@ static void appendJsonInt(std::string& out, int val) {
     out += buf;
 }
 
+static void appendJsonInt64(std::string& out, long long val) {
+    char buf[24];
+    snprintf(buf, sizeof(buf), "%lld", val);
+    out += buf;
+}
+
 static void appendJsonFloat(std::string& out, float val) {
     char buf[32];
     snprintf(buf, sizeof(buf), "%.2f", val);
@@ -360,6 +369,156 @@ std::string HttpServer::buildJsonSnapshot() const {
     out += ",\"seq\":";
     appendJsonInt(out, static_cast<int>(m_forcedSeq.load()));
     out += "},";
+
+    // --- Director advisory: what the auto-director is currently doing, so the overlay
+    // can highlight the followed rider / battle pair to match the broadcast feed.
+    // subject/with are -1 unless actively directing (suppressed while paused, on a
+    // manual camera, held, or disabled) so the overlay never marks a stale rider. ---
+    {
+        DirectorManager& dir = DirectorManager::getInstance();
+        bool active = dir.isActivelyDirecting();
+        out += "\"director\":{\"on\":";
+        out += dir.isEnabled() ? "true" : "false";
+        out += ",\"active\":";
+        out += active ? "true" : "false";
+        out += ",\"subject\":";
+        appendJsonInt(out, active ? dir.getCurrentSubject() : -1);
+        out += ",\"with\":";
+        appendJsonInt(out, active ? dir.getCurrentPartner() : -1);
+        out += ",\"shot\":";
+        appendJsonString(out, dir.getCurrentShotType());
+        out += ",\"paceSplit\":";
+        appendJsonInt(out, active ? dir.getCurrentPaceSplit() : -1);
+        out += ",\"gained\":";
+        appendJsonInt(out, active ? dir.getCurrentOvertakeGained() : -1);
+        out += ",\"lost\":";
+        appendJsonInt(out, active ? dir.getCurrentDropLost() : -1);
+        out += ",\"camera\":";
+        appendJsonString(out, DirectorManager::cameraRoleName(dir.getCurrentCameraRole()));
+        out += "},";
+    }
+
+    // --- Battles: the single battle definition (PluginData::getBattleGroups), driven
+    // by the Director's battle-gap / max-position settings, so the in-game director and
+    // the overlay's battle panel agree. Emitted as groups of race numbers (front-first);
+    // the overlay hydrates them from standings[] and renders the panel. ---
+    {
+        DirectorManager& dir = DirectorManager::getInstance();
+        auto groups = pd.getBattleGroups(dir.getBattleGapMs(), dir.getBattleMaxPos());
+        out += "\"battles\":[";
+        for (size_t gi = 0; gi < groups.size(); ++gi) {
+            if (gi) out += ",";
+            out += "[";
+            for (size_t ri = 0; ri < groups[gi].size(); ++ri) {
+                if (ri) out += ",";
+                appendJsonInt(out, groups[gi][ri]);
+            }
+            out += "]";
+        }
+        out += "],";
+    }
+
+    // --- Best sectors: per sector, a ranked list of the fastest riders (by each rider's
+    // best time in that sector, from IdealLapData). "Who's fast where" content for the
+    // overlay's best-sectors carousel, which pages one sector at a time. Emitted in ALL
+    // session types so a caster can force the board on the hotkey at any time; the client
+    // only *auto-shows* it in non-race sessions (in a race the bottom slot auto-belongs to
+    // position battles), but a manual force bypasses that.
+    // Shape: [{s, riders:[{num, ms}, ...]}]; the client hydrates riders from standings[]
+    // by num. Sector 4 only appears on 4-sector games (GP Bikes). ---
+    {
+        out += "\"sectors\":[";
+        {
+            constexpr int kTopN = 8;   // ranked riders shown per sector
+            std::vector<std::pair<int,int>> bySec[4];  // (ms, raceNum) per sector
+            for (const auto& kv : standings) {
+                const IdealLapData* il = pd.getIdealLapData(kv.second.raceNum);
+                if (!il) continue;
+                const int sec[4] = { il->bestSector1, il->bestSector2, il->bestSector3, il->bestSector4 };
+                for (int i = 0; i < 4; ++i) {
+                    if (sec[i] > 0) bySec[i].push_back({ sec[i], kv.second.raceNum });
+                }
+            }
+            bool firstSec = true;
+            for (int i = 0; i < 4; ++i) {
+                if (bySec[i].empty()) continue;
+                std::sort(bySec[i].begin(), bySec[i].end());  // ascending by ms (fastest first)
+                if (!firstSec) out += ",";
+                firstSec = false;
+                out += "{\"s\":";
+                appendJsonInt(out, i + 1);
+                out += ",\"riders\":[";
+                int n = 0;
+                for (const auto& r : bySec[i]) {
+                    if (n >= kTopN) break;
+                    if (n) out += ",";
+                    out += "{\"num\":";
+                    appendJsonInt(out, r.second);
+                    out += ",\"ms\":";
+                    appendJsonInt(out, r.first);
+                    out += "}";
+                    ++n;
+                }
+                out += "]}";
+            }
+        }
+        out += "],";
+    }
+
+    // --- Per-rider lap series: the raw data the overlay's session-charts carousel
+    // derives all four charts from (lap chart / race trace / gap / pace), mirroring
+    // the in-game SessionChartsHud (session_charts_math.h) which reads the same
+    // PluginData lap log. Shape: [{num, t:[ms,...], v:[1/0,...]?}] in classification
+    // order, oldest-first, completed positive laps only. `v` (per-lap validity) is
+    // omitted when every lap is valid (the common case) — the client defaults to
+    // all-valid. Riders with no completed lap are skipped. Kept raw (no derivation)
+    // so the plugin stays lean and the derivation/theming lives client-side, like
+    // the sectors board. ---
+    {
+        out += "\"laps\":[";
+        bool firstLapRider = true;
+        for (int raceNum : classificationOrder) {
+            const std::deque<LapLogEntry>* log = pd.getLapLog(raceNum);
+            if (!log) continue;
+            // Deque is newest-first; walk it oldest-first, keeping completed positive
+            // laps (invalid laps included — their time still elapsed, so cumulative /
+            // position / gap must count them; validity is recorded in parallel so the
+            // client's pace/best-lap views can exclude them). Matches collectField().
+            std::vector<int> t;
+            std::vector<char> v;
+            bool anyInvalid = false;
+            t.reserve(log->size());
+            v.reserve(log->size());
+            for (auto it = log->rbegin(); it != log->rend(); ++it) {
+                if (it->isComplete && it->lapTime > 0) {
+                    t.push_back(it->lapTime);
+                    v.push_back(it->isValid ? 1 : 0);
+                    if (!it->isValid) anyInvalid = true;
+                }
+            }
+            if (t.empty()) continue;
+            if (!firstLapRider) out += ',';
+            firstLapRider = false;
+            out += "{\"num\":";
+            appendJsonInt(out, raceNum);
+            out += ",\"t\":[";
+            for (size_t i = 0; i < t.size(); ++i) {
+                if (i) out += ',';
+                appendJsonInt(out, t[i]);
+            }
+            out += "]";
+            if (anyInvalid) {
+                out += ",\"v\":[";
+                for (size_t i = 0; i < v.size(); ++i) {
+                    if (i) out += ',';
+                    out += v[i] ? '1' : '0';
+                }
+                out += "]";
+            }
+            out += "}";
+        }
+        out += "],";
+    }
 
     out += "\"session\":{";
 
@@ -471,6 +630,9 @@ std::string HttpServer::buildJsonSnapshot() const {
             out += ','; appendFont("normal", FontCategory::NORMAL);
             out += ','; appendFont("strong", FontCategory::STRONG);
             out += ','; appendFont("digits", FontCategory::DIGITS);
+            // Small labels (default Tiny5-Regular) — the session-charts SVG axis labels
+            // and #num line tags use this, matching the in-game charts HUD's SMALL font.
+            out += ','; appendFont("small", FontCategory::SMALL);
         }
         out += '}';
 
@@ -600,6 +762,25 @@ std::string HttpServer::buildJsonSnapshot() const {
                 out += ",\"gapLaps\":";
                 appendJsonInt(out, s.gapLaps);
 
+                // Live (real-time) gap: leader-relative ms (0 for the leader), plus
+                // whether that value is trustworthy right NOW. Validity = it's the
+                // leader (its 0 is valid data), OR the rider is in the current
+                // ~10-closest track-position batch with a computed same-lap gap and
+                // isn't lapped/finished. A rider that dropped out of the batch has a
+                // stale realTimeGap, so liveGapValid is false and the client falls
+                // back to the official split. Race sessions only. (This is a pure
+                // DATA-validity flag — deliberately includes the leader, unlike the
+                // in-game per-row display predicate which shows the leader as
+                // "Leader"; the two answer different questions.)
+                out += ",\"liveGapMs\":";
+                appendJsonInt(out, s.realTimeGap);
+                bool liveGapValid = isRaceSession &&
+                    (position == 1 ||
+                     (pd.hasActiveTrackPos(s.raceNum) && s.realTimeGap > 0 && s.gapLaps == 0 &&
+                      !pd.getSessionData().isRiderFinished(s.numLaps, s.numLapsAtLeaderFinish)));
+                out += ",\"liveGapValid\":";
+                out += liveGapValid ? "true" : "false";
+
                 // State info
                 out += ",\"state\":";
                 appendJsonInt(out, static_cast<int>(s.state));
@@ -638,6 +819,21 @@ std::string HttpServer::buildJsonSnapshot() const {
                     appendJsonString(out, lastBuf);
                     out += ",\"lastLapMs\":";
                     appendJsonInt(out, idealLap->lastLapTime);
+                }
+
+                // Ideal lap (sum of best individual sectors) for the battle/focus cards.
+                // Only emitted once every sector has a time (getIdealLapTime() returns -1
+                // otherwise), so the overlay shows a placeholder until it's real.
+                if (idealLap) {
+                    int idealMs = idealLap->getIdealLapTime();
+                    if (idealMs > 0) {
+                        char idealBuf[16];
+                        PluginUtils::formatLapTime(idealMs, idealBuf, sizeof(idealBuf));
+                        out += ",\"idealLap\":";
+                        appendJsonString(out, idealBuf);
+                        out += ",\"idealLapMs\":";
+                        appendJsonInt(out, idealMs);
+                    }
                 }
 
                 // Finish detection
@@ -712,6 +908,12 @@ std::string HttpServer::buildJsonSnapshot() const {
             snprintf(clockBuf, sizeof(clockBuf), "%02d:%02d:%02d", tmBuf.tm_hour, tmBuf.tm_min, tmBuf.tm_sec);
             out += ",\"clockTime\":";
             appendJsonString(out, clockBuf);
+
+            // Monotonic epoch-ms key for chronological sorting on the client. clockTime
+            // (HH:MM:SS) sorts lexically and inverts across midnight; clockMs doesn't.
+            out += ",\"clockMs\":";
+            appendJsonInt64(out, std::chrono::duration_cast<std::chrono::milliseconds>(
+                entry.systemTime.time_since_epoch()).count());
 
             // Format session time
             char sessionTimeBuf[16];
@@ -853,8 +1055,14 @@ void HttpServer::serverThread() {
 
         // GET /api/events - SSE stream (push on data change)
         m_server->Get("/api/events", [this](const httplib::Request&, httplib::Response& res) {
-            // Reject if too many SSE connections (avoid starving the thread pool)
-            if (m_sseConnections.load() >= MAX_SSE_CONNECTIONS) {
+            // Reject if too many SSE connections (avoid starving the thread pool).
+            // Reserve the slot atomically: a plain load()-then-increment lets N
+            // concurrent requests all pass the check before any of them increments.
+            // fetch_add returns the prior value; if we're already at the cap, roll
+            // back the speculative reservation and reject. The matching decrement is
+            // the content provider's resource releaser (runs on any exit path).
+            if (m_sseConnections.fetch_add(1) >= MAX_SSE_CONNECTIONS) {
+                --m_sseConnections;
                 res.status = 503;
                 res.set_content("{\"error\":\"Too many connections\"}", "application/json");
                 return;
@@ -868,7 +1076,8 @@ void HttpServer::serverThread() {
                 "text/event-stream",
                 // Content provider - called by httplib to generate SSE data
                 [this](size_t /*offset*/, httplib::DataSink& sink) -> bool {
-                    ++m_sseConnections;
+                    // Slot already reserved atomically in the GET handler above;
+                    // the resource releaser below balances it with a decrement.
 
                     // Per-client sequence tracking — each client independently
                     // detects new data by comparing against the global sequence.
@@ -944,8 +1153,12 @@ void HttpServer::serverThread() {
         // No thread is alive to serve requests anymore — clear the flag so
         // onDataChanged stops building snapshots that nobody will read.
         m_running = false;
+        // If we threw *before* listen() bound the port, is_running_ was never set;
+        // decommission() unblocks start()'s wait_until_ready() so it doesn't spin forever.
+        if (m_server) m_server->decommission();
     } catch (...) {
         DEBUG_WARN("HttpServer thread terminated by unknown exception");
         m_running = false;
+        if (m_server) m_server->decommission();
     }
 }

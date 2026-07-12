@@ -17,21 +17,30 @@ var CACHE_NAME = "mxbmrp3-overlay-__PLUGIN_VERSION__";
 var PRECACHE_URLS = [
     "./",
     "index.html",
-    "app.js",
+    "js/overlay-config.js",
+    "js/overlay-shell.js",
+    "js/overlay-connection.js",
+    "js/overlay-util.js",
+    "js/overlay-render.js",
+    "js/overlay-focus.js",
+    "js/overlay-slots.js",
+    "js/overlay-panels.js",
+    "js/overlay-charts.js",
+    "js/overlay-settings.js",
+    "js/overlay-demo.js",
     "style.css",
     "logos/mxb-mods-logo.png",
     "logos/mxbikes-logo.png",
-    "flag-checkered.svg",
-    "gear.svg",
-    "stopwatch.svg",
-    "video.svg",
-    "wrench.svg",
-    "Audiowide-Regular.ttf",
-    "EnterSansman-Italic.ttf",
-    "FuzzyBubbles-Regular.ttf",
-    "RobotoMono-Bold.ttf",
-    "RobotoMono-Regular.ttf",
-    "Tiny5-Regular.ttf"
+    "icons/flag-checkered.svg",
+    "icons/gear.svg",
+    "icons/stopwatch.svg",
+    "icons/wrench.svg",
+    "fonts/Audiowide-Regular.ttf",
+    "fonts/EnterSansman-Italic.ttf",
+    "fonts/FuzzyBubbles-Regular.ttf",
+    "fonts/RobotoMono-Bold.ttf",
+    "fonts/RobotoMono-Regular.ttf",
+    "fonts/Tiny5-Regular.ttf"
 ];
 
 console.log("[MXBMRP3 SW]", CACHE_NAME, "loaded");
@@ -51,7 +60,7 @@ self.addEventListener("install", function (event) {
             // skipWaiting + clients.claim activates a new SW mid-session.
             // For an OBS browser source the tab persists for hours and the
             // user only updates the plugin while the game is closed, so the
-            // theoretical "old app.js with new cached index.html" mismatch
+            // theoretical "old overlay scripts with new cached index.html" mismatch
             // is not observable in practice — and on the next reload
             // everything is consistent.
             return self.skipWaiting();
@@ -60,14 +69,29 @@ self.addEventListener("install", function (event) {
 });
 
 self.addEventListener("activate", function (event) {
-    console.log("[MXBMRP3 SW] activate");
+    console.log("[MXBMRP3 SW] activate", CACHE_NAME);
     event.waitUntil(
         caches.keys().then(function (keys) {
+            // Our own overlay caches from an OLDER plugin version: a version bump changes
+            // CACHE_NAME (it embeds __PLUGIN_VERSION__), so these are stale and get purged.
+            var stale = keys.filter(function (key) {
+                return key !== CACHE_NAME && key.indexOf("mxbmrp3-overlay-") === 0;
+            });
             return Promise.all(keys.map(function (key) {
-                if (key !== CACHE_NAME) {
-                    return caches.delete(key);
-                }
-            }));
+                return key === CACHE_NAME ? null : caches.delete(key);
+            })).then(function () {
+                if (!stale.length) return;   // first install / nothing to purge — stay quiet
+                // Report the version-driven cache reset in the SW console, AND forward it to
+                // every open overlay so it also lands in the PAGE console (where a caster is
+                // more likely to be looking). See the message handler in overlay-config.js.
+                console.log("[MXBMRP3 SW] plugin version changed — cleared old cache:",
+                    stale.join(", "), "-> now", CACHE_NAME);
+                return self.clients.matchAll({ includeUncontrolled: true }).then(function (clients) {
+                    clients.forEach(function (client) {
+                        client.postMessage({ type: "mxbmrp3-cache-updated", cache: CACHE_NAME, cleared: stale });
+                    });
+                });
+            });
         }).then(function () {
             return self.clients.claim();
         })

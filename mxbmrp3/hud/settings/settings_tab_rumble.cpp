@@ -119,11 +119,8 @@ bool SettingsHud::handleClickTabRumble(const ClickRegion& region) {
                 RumbleProfileManager::getInstance().save();
             }
 
-            // Save settings to INI to persist the mode change (if auto-save enabled)
-            if (UiConfig::getInstance().getAutoSave()) {
-                SettingsManager::getInstance().saveSettings(HudManager::getInstance(),
-                    PluginManager::getInstance().getSavePath());
-            }
+            // Mark settings dirty to persist the mode change (deferred to leave-track / Save).
+            SettingsManager::getInstance().markDirty();
             setDataDirty();
             return true;
         }

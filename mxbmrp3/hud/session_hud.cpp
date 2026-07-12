@@ -28,6 +28,7 @@ SessionHud::SessionHud()
     , m_cachedSessionLength(-1)
     , m_cachedSessionNumLaps(-1)
     , m_cachedServerType(CACHE_UNINITIALIZED)
+    , m_cachedMultiRider(false)
     , m_cachedConditions(-1)
     , m_cachedAirTemperature(-1.0f)
     , m_cachedTrackTemperature(-1.0f)
@@ -81,7 +82,7 @@ float SessionHud::calculateContentHeight(const ScaledDimensions& dim) const {
 
 void SessionHud::update() {
     // OPTIMIZATION: Skip processing when not visible
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -95,12 +96,16 @@ void SessionHud::update() {
     int sessionLength = sessionData.sessionLength;
     int sessionNumLaps = sessionData.sessionNumLaps;
     int serverType = sessionData.serverType;
+    // The server label reads ">1 rider" (via serverLabel's riderCount) to show "Online"
+    // when serverType is unknown (GP Bikes / KRP), so a rider joining/leaving must
+    // invalidate this fingerprint - only the 1<->>1 boundary matters, so a bool suffices.
+    bool multiRider = pluginData.getRaceEntries().size() > 1;
 
     // Check if any session data changed (session type/index no longer rendered here
     // — it moved to the StandingsHud title — so it's not part of the dirty check).
     if (sessionState != m_cachedSessionState ||
         sessionLength != m_cachedSessionLength || sessionNumLaps != m_cachedSessionNumLaps ||
-        serverType != m_cachedServerType ||
+        serverType != m_cachedServerType || multiRider != m_cachedMultiRider ||
         strcmp(sessionData.serverName, m_cachedServerName) != 0 ||
         sessionData.conditions != m_cachedConditions || sessionData.airTemperature != m_cachedAirTemperature ||
         sessionData.trackTemperature != m_cachedTrackTemperature) {
@@ -114,6 +119,7 @@ void SessionHud::update() {
         m_cachedSessionLength = sessionLength;
         m_cachedSessionNumLaps = sessionNumLaps;
         m_cachedServerType = serverType;
+        m_cachedMultiRider = multiRider;
         strncpy_s(m_cachedServerName, sessionData.serverName, sizeof(m_cachedServerName) - 1);
         m_cachedConditions = sessionData.conditions;
         m_cachedAirTemperature = sessionData.airTemperature;
@@ -317,8 +323,11 @@ void SessionHud::rebuildRenderData() {
     // "Unknown"). Extra-large font, no icon (flush-left) — replaces the old
     // session-type row.
     if (m_enabledRows & ROW_SERVER) {
-        // Shared label: name / "Testing" (solo) / "Unknown" - see PluginUtils::serverLabel.
-        const char* serverText = PluginUtils::serverLabel(sessionData.serverType, sessionData.serverName);
+        // Shared label: name / "Testing" (solo) / "Online" / "Unknown" - see
+        // PluginUtils::serverLabel. Rider count lets it read GP Bikes / KRP (no
+        // serverType in their API) as "Online" once a real opponent is present.
+        const char* serverText = PluginUtils::serverLabel(sessionData.serverType, sessionData.serverName,
+            static_cast<int>(pluginData.getRaceEntries().size()));
         // Extra-large chars are ~2x normal width, so the usual MAX_DISPLAY_CHARS
         // would overflow the fixed-width background. Truncate to what fits the
         // content area at this font size.
@@ -436,13 +445,14 @@ void SessionHud::resetToDefaults() {
     m_fScale = 1.0f;
     m_enabledRows = ROW_DEFAULT;  // Reset row visibility
     m_bShowIcons = true;  // Icons enabled by default
-    setPosition(0.0055f, 0.1332f);
+    setPosition(0.0055f, 0.12907f);
 
     // Reset cached values to force rebuild on next update
     m_cachedSessionState = -1;
     m_cachedSessionLength = -1;
     m_cachedSessionNumLaps = -1;
     m_cachedServerType = CACHE_UNINITIALIZED;
+    m_cachedMultiRider = false;
     m_cachedServerName[0] = '\0';
     m_cachedConditions = -1;
     m_cachedAirTemperature = -1.0f;

@@ -22,6 +22,13 @@ namespace Unified {
 // Maximum number of race entries supported by Piboso game APIs
 constexpr int MAX_RACE_ENTRIES = 50;
 
+// Sanity ceiling on the track centerline segment count. The TrackCenterline
+// callback passes a count with no array-size field, so a garbage/version-skewed
+// count would otherwise drive an unbounded out-of-bounds read (crashing the host
+// game). Real tracks have at most a few thousand segments; this is a generous
+// bound well above any real track, used to reject implausible counts.
+constexpr int MAX_TRACK_SEGMENTS = 100000;
+
 // ============================================================================
 // Constants
 // ============================================================================

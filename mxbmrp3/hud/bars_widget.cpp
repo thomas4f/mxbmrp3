@@ -50,7 +50,7 @@ BarsWidget::BarsWidget() {
 
 void BarsWidget::update() {
     // OPTIMIZATION: Skip processing when not visible
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         // While hidden, drop any "was crashed" memory so that becoming visible while
         // currently crashed re-fires the rising-edge snap. Without this, the sequence
         // [crash → hide → recover → crash again → show] would miss the second snap
@@ -518,7 +518,7 @@ void BarsWidget::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 1.0f;  // Full opacity
     m_fScale = 1.0f;
-    setPosition(0.671f, 0.8769f);
+    setPosition(0.671f, 0.86828f);
 #if GAME_HAS_TYRE_TEMP
     // GP Bikes: include engine temp by default (has reliable temp data)
     m_enabledColumns = COL_DEFAULT | COL_ENGINE_TEMP;

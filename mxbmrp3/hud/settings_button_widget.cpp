@@ -16,7 +16,6 @@
 using namespace PluginConstants;
 
 SettingsButtonWidget::SettingsButtonWidget()
-    : m_bCachedSettingsVisible(false)
 {
     // One-time setup
     DEBUG_INFO("SettingsButtonWidget created");
@@ -67,8 +66,9 @@ bool SettingsButtonWidget::isClicked() const {
         return false;
     }
 
-    // Check if click is within button bounds
-    return isPointInBounds(cursor.x, cursor.y);
+    // Check if click is within button bounds — on the surface the cursor is on
+    // (the button may sit at its companion position on the companion window).
+    return isPointInActiveBounds(cursor.x, cursor.y);
 }
 
 void SettingsButtonWidget::rebuildRenderData() {
@@ -76,9 +76,10 @@ void SettingsButtonWidget::rebuildRenderData() {
     clearStrings();
     m_quads.clear();
 
-    // Don't render button when cursor is hidden (auto-hide after timeout)
+    // Don't render button when cursor is hidden (auto-hide after timeout), unless it's
+    // briefly revealed (entering the track) so users can find it without moving the mouse.
     const InputManager& input = InputManager::getInstance();
-    if (!input.shouldShowCursor()) {
+    if (!input.shouldShowCursor() && !isRevealed()) {
         setBounds(0.0f, 0.0f, 0.0f, 0.0f);  // Clear bounds
         return;
     }
@@ -88,14 +89,25 @@ void SettingsButtonWidget::rebuildRenderData() {
     float startX = 0.0f;  // Base position (upper left)
     float startY = 0.0f;
 
-    // Calculate dimensions
-    float backgroundWidth = dim.paddingH +
-                           PluginUtils::calculateMonospaceTextWidth(BUTTON_WIDTH_CHARS, dim.fontSize) +
-                           dim.paddingH;
-    float backgroundHeight = dim.paddingV + dim.lineHeightNormal + dim.paddingV;
+    // PIXEL-SQUARE grid-aligned box, sized so a 2x2 block fills one square gauge widget
+    // (e.g. the compass = 12 x 10 grid cells): each button is HALF that, 6 x 5 cells. On
+    // the current grid 6*gridH == 5*gridV in pixels, so the box is a true pixel-square;
+    // whole cells in both axes keep every edge on a grid line, so four buttons snap
+    // perfectly inside a gauge widget and any pair tiles flush. Cells scale with m_fScale
+    // (default 1.0). Identical to DirectorWidget's camera button.
+    const float gridH = HudGrid::GRID_SIZE_HORIZONTAL;
+    const float gridV = HudGrid::GRID_SIZE_VERTICAL;
+    int hCells = static_cast<int>(6.0f * m_fScale + 0.5f); if (hCells < 1) hCells = 1;
+    int vCells = static_cast<int>(5.0f * m_fScale + 0.5f); if (vCells < 1) vCells = 1;
+    float backgroundWidth = hCells * gridH;
+    float backgroundHeight = vCells * gridV;
+    // Menu/close glyph at the SAME size as a HUD title/identity icon. HUD titles draw at
+    // the LARGE font, so the identity icon is fontSizeLarge * 0.63 (~20px at 1080p) - use
+    // that exact size (not fontSize * 0.63, which is smaller) for a consistent glyph.
+    float iconSize = dim.fontSizeLarge * TITLE_ICON_SCALE;
 
-    float contentStartX = startX + dim.paddingH;
-    float contentStartY = startY + dim.paddingV;
+    // Vertically center the "[=]"/"[x]" text fallback (icons off) in the box.
+    float contentStartY = startY + (backgroundHeight - dim.fontSize) * 0.5f;
 
     // Determine button text based on whether settings menu is visible
     bool settingsVisible = HudManager::getInstance().isSettingsVisible();
@@ -106,22 +118,24 @@ void SettingsButtonWidget::rebuildRenderData() {
     bool isHovering = false;
     const CursorPosition& cursor = input.getCursorPosition();
     if (cursor.isValid) {
-        isHovering = isPointInBounds(cursor.x, cursor.y);
+        isHovering = isPointInActiveBounds(cursor.x, cursor.y);
     }
 
     // Add HUD background
     addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
 
-    // Add button-style background (accent with opacity, full on hover)
+    // Add button-style background (accent with opacity, full on hover). Holds its normal
+    // weight at/above 10% opacity (unchanged), then fades with the slider below 10% so the
+    // whole box can vanish at 0% - the glyph below stays fully opaque.
     {
         SPluginQuad_t buttonBgQuad;
         float x = startX, y = startY;
         applyOffset(x, y);
         setQuadPositions(buttonBgQuad, x, y, backgroundWidth, backgroundHeight);
         buttonBgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        buttonBgQuad.m_ulColor = isHovering
-            ? this->getColor(ColorSlot::ACCENT)
-            : PluginUtils::applyOpacity(this->getColor(ColorSlot::ACCENT), 128.0f / 255.0f);
+        const float chipScale = (m_fBackgroundOpacity < 0.1f) ? (m_fBackgroundOpacity / 0.1f) : 1.0f;
+        const float chipAlpha = (isHovering ? 1.0f : 128.0f / 255.0f) * chipScale;
+        buttonBgQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::ACCENT), chipAlpha);
         m_quads.push_back(buttonBgQuad);
     }
 
@@ -140,9 +154,9 @@ void SettingsButtonWidget::rebuildRenderData() {
     if (iconSprite > 0) {
         m_titleIconQuadIndex = static_cast<int>(m_quads.size());
         addIcon(startX + backgroundWidth * 0.5f, startY + backgroundHeight * 0.5f,
-            iconSprite, textColor, dim.fontSize);
+            iconSprite, textColor, iconSize);
     } else {
-        addString(buttonText, contentStartX, contentStartY, Justify::LEFT,
+        addString(buttonText, startX + backgroundWidth * 0.5f, contentStartY, Justify::CENTER,
             this->getFont(FontCategory::NORMAL), textColor, dim.fontSize);
     }
 
@@ -154,12 +168,18 @@ void SettingsButtonWidget::resetToDefaults() {
     m_bVisible = true;
     m_bShowTitle = false;  // Hardcoded off (like the cursor) - title makes no sense for a button
     setTextureVariant(0);  // No texture by default
-    // The accent "chip" + glyph always render, so 0% background would be misleading
-    // (the button never fully vanishes via opacity - use the Visible toggle for that).
-    // Floor the slider at 10% so it can't reach a deceptive 0%.
-    m_fMinBackgroundOpacity = 0.1f;
-    m_fBackgroundOpacity = 0.1f;  // Match TimingHud opacity (and the slider floor)
+    // The accent "chip" now scales with the opacity slider (see rebuildRenderData),
+    // so 0% fades the whole box away leaving just the opaque glyph - a valid look, so
+    // the slider floors at 0%.
+    m_fMinBackgroundOpacity = 0.0f;
+    m_fBackgroundOpacity = 0.1f;  // Match TimingHud opacity (default; slider reaches 0)
+    // 100% scale -> a pixel-square 6x5 grid-cell button (6*gridH x 5*gridV ~= 0.033 x
+    // 0.0587, ~63x63 px; a 2x2 block = one square gauge widget). Default position is
+    // grid-aligned (x = 174 cells, y = 1 cell) with the right edge near the corner
+    // (~0.990). The camera button is the same box and defaults flush to its left, so out
+    // of the box the pair is a clean grid-aligned row; both are draggable and, with grid
+    // snapping on, tile flush beside/below any widget.
     m_fScale = 1.0f;
-    setPosition(0.957f, 0.0111f);
+    setPosition(0.9570f, 0.01173f);
     setDataDirty();
 }

@@ -29,13 +29,15 @@ TimeWidget::TimeWidget()
 }
 
 bool TimeWidget::handlesDataType(DataChangeType dataType) const {
-    return dataType == DataChangeType::SessionData ||
-           dataType == DataChangeType::Standings;
+    // Only SessionData (session length/type/format). The per-second clock tick is
+    // driven by update() polling getSessionTime(), and the widget no longer reads
+    // leader laps-to-go, so it doesn't need the high-frequency Standings notifies.
+    return dataType == DataChangeType::SessionData;
 }
 
 void TimeWidget::update() {
     // OPTIMIZATION: Skip processing when not visible
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -114,11 +116,12 @@ void TimeWidget::rebuildRenderData() {
     const PluginData& pluginData = PluginData::getInstance();
     int sessionTime = pluginData.getSessionTime();
 
-    // Format the time — MM:SS countdown, or the time+lap overtime label
-    // ("N TO GO" / "FINAL LAP" / "CHECKERED").
+    // Plain MM:SS countdown only (freezes at "00:00" when a timed clock expires).
+    // Deliberately NOT the shared formatSessionClock() overtime labels ("N TO GO" /
+    // "FINAL LAP" / "CHECKERED") - this widget shows just the time; the StandingsHud
+    // title and web overlay still carry the leader-relative overtime label.
     char timeBuffer[16];
-    PluginUtils::formatSessionClock(pluginData.getLeaderLapsToGo(), sessionTime,
-        timeBuffer, sizeof(timeBuffer));
+    PluginUtils::formatTimeMinutesSeconds(sessionTime, timeBuffer, sizeof(timeBuffer));
 
     // Use full opacity for text
     unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
@@ -162,6 +165,6 @@ void TimeWidget::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.0f;
     m_fScale = 1.0f;
-    setPosition(0.1925f, 0.0111f);
+    setPosition(0.1925f, 0.01173f);
     setDataDirty();
 }

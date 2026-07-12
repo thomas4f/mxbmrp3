@@ -1,0 +1,5 @@
+# build output
+mxbmrp3_fontgen
+
+# stale pre-rename artifact (build.sh now outputs mxbmrp3_fontgen)
+fntgen

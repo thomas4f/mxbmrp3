@@ -3,12 +3,14 @@
 // Manages per-bike rumble profiles stored in JSON
 // ============================================================================
 #include "rumble_profile_manager.h"
+#include "atomic_file_writer.h"
 #include "plugin_utils.h"
 #include "../diagnostics/logger.h"
 #include "../vendor/nlohmann/json.hpp"
 
 #include <fstream>
 #include <cstdio>
+#include <cmath>
 #include <windows.h>
 
 // Subdirectory and file name (matches SettingsManager pattern)
@@ -73,6 +75,9 @@ void RumbleProfileManager::load(const char* savePath) {
         // Parse profiles
         if (j.contains("profiles") && j["profiles"].is_object()) {
             for (auto& [bikeName, profileJson] : j["profiles"].items()) {
+              // Isolate each profile: a single malformed entry must not discard the
+              // rest (the outer catch clears m_bikeConfigs entirely).
+              try {
                 RumbleConfig config;
                 // Note: enabled, additiveBlend, rumbleWhenCrashed are NOT stored per-bike
                 // They always come from global config in INI
@@ -81,13 +86,24 @@ void RumbleProfileManager::load(const char* savePath) {
                 if (profileJson.contains("effects") && profileJson["effects"].is_object()) {
                     auto& effects = profileJson["effects"];
 
-                    auto parseEffect = [&effects](const char* name, RumbleEffect& effect) {
+                    // Read defensively: only accept finite numbers, keeping the current
+                    // default otherwise. A null/non-number field (e.g. a NaN previously
+                    // serialized as `null`) would throw in e.value(...) and abort the whole
+                    // load, discarding every bike's tune.
+                    auto readFinite = [](const nlohmann::json& obj, const char* key, float current) {
+                        if (obj.contains(key) && obj[key].is_number()) {
+                            float v = obj[key].get<float>();
+                            if (std::isfinite(v)) return v;
+                        }
+                        return current;
+                    };
+                    auto parseEffect = [&effects, &readFinite](const char* name, RumbleEffect& effect) {
                         if (effects.contains(name) && effects[name].is_object()) {
                             auto& e = effects[name];
-                            effect.minInput = e.value("minInput", effect.minInput);
-                            effect.maxInput = e.value("maxInput", effect.maxInput);
-                            effect.lightStrength = e.value("lightStrength", effect.lightStrength);
-                            effect.heavyStrength = e.value("heavyStrength", effect.heavyStrength);
+                            effect.minInput = readFinite(e, "minInput", effect.minInput);
+                            effect.maxInput = readFinite(e, "maxInput", effect.maxInput);
+                            effect.lightStrength = readFinite(e, "lightStrength", effect.lightStrength);
+                            effect.heavyStrength = readFinite(e, "heavyStrength", effect.heavyStrength);
                         }
                     };
 
@@ -115,6 +131,10 @@ void RumbleProfileManager::load(const char* savePath) {
                 config.brakeLockupSplitInitialized = profileJson.value("brakeLockupSplitInitialized", false);
 
                 m_bikeConfigs[bikeName] = config;
+              } catch (const std::exception& e) {
+                DEBUG_INFO_F("[RumbleProfileManager] Skipping malformed profile '%s': %s",
+                             bikeName.c_str(), e.what());
+              }
             }
         }
 
@@ -134,7 +154,6 @@ void RumbleProfileManager::save() {
     if (!m_dirty) return;
 
     std::string filePath = getFilePath();
-    std::string tempPath = filePath + ".tmp";
 
     try {
         nlohmann::json j;
@@ -147,11 +166,15 @@ void RumbleProfileManager::save() {
             // They always come from global config in INI
 
             auto serializeEffect = [](const RumbleEffect& effect) {
+                // isfinite-guard: nlohmann serializes NaN/Inf as JSON `null`, which then
+                // throws on the next load (null -> float) and wipes EVERY bike's profile.
+                // Persist 0 (effect off) for a non-finite value instead.
+                auto fin = [](float v) { return std::isfinite(v) ? v : 0.0f; };
                 nlohmann::json e;
-                e["minInput"] = effect.minInput;
-                e["maxInput"] = effect.maxInput;
-                e["lightStrength"] = effect.lightStrength;
-                e["heavyStrength"] = effect.heavyStrength;
+                e["minInput"] = fin(effect.minInput);
+                e["maxInput"] = fin(effect.maxInput);
+                e["lightStrength"] = fin(effect.lightStrength);
+                e["heavyStrength"] = fin(effect.heavyStrength);
                 return e;
             };
 
@@ -180,36 +203,20 @@ void RumbleProfileManager::save() {
         }
         j["profiles"] = profiles;
 
-        // Write to temp file first
-        std::ofstream tempFile(tempPath);
-        if (!tempFile.is_open()) {
-            DEBUG_INFO_F("[RumbleProfileManager] Failed to open temp file for writing: %s", tempPath.c_str());
-            return;
+        // Write via the shared atomic writer (temp file + MoveFileExA replace). Synchronous:
+        // rumble profiles are saved on discrete edits / bike switches, not the per-frame
+        // path — so keep immediate durability while sharing the one atomic-write helper.
+        // Only clear the dirty flag on a successful write.
+        if (AtomicFileWriter::writeFileAtomic(filePath, j.dump(2))) {
+            m_dirty = false;
+            DEBUG_INFO_F("[RumbleProfileManager] Saved %zu rumble profiles to %s",
+                         m_bikeConfigs.size(), filePath.c_str());
+        } else {
+            DEBUG_WARN_F("[RumbleProfileManager] Failed to save rumble profiles to %s", filePath.c_str());
         }
-
-        tempFile << j.dump(2);  // Pretty print with 2-space indent
-        tempFile.close();
-
-        if (tempFile.fail()) {
-            DEBUG_INFO_F("[RumbleProfileManager] Failed to write temp file: %s", tempPath.c_str());
-            std::remove(tempPath.c_str());
-            return;
-        }
-
-        // Atomic rename using Windows API (handles existing file automatically)
-        if (!MoveFileExA(tempPath.c_str(), filePath.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-            DEBUG_WARN_F("[RumbleProfileManager] Failed to save file (error %lu): %s", GetLastError(), filePath.c_str());
-            std::remove(tempPath.c_str());
-            return;
-        }
-
-        m_dirty = false;
-        DEBUG_INFO_F("[RumbleProfileManager] Saved %zu rumble profiles to %s",
-                     m_bikeConfigs.size(), filePath.c_str());
 
     } catch (const std::exception& e) {
         DEBUG_INFO_F("[RumbleProfileManager] Error saving rumble profiles: %s", e.what());
-        std::remove(tempPath.c_str());
     }
 }
 

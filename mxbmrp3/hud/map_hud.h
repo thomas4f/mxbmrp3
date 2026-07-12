@@ -55,6 +55,17 @@ public:
     }
     bool getShowOutline() const { return m_bShowOutline; }
 
+    // Track markers toggle - show S/F, sector/split markers and segment-timer lines.
+    // Off leaves just the track ribbon and rider markers. Not part of the ribbon cache
+    // (these draw after renderTrack), so it does not belong in TrackRibbonKey.
+    void setShowTrackMarkers(bool show) {
+        if (m_bShowTrackMarkers != show) {
+            m_bShowTrackMarkers = show;
+            setDataDirty();
+        }
+    }
+    bool getShowTrackMarkers() const { return m_bShowTrackMarkers; }
+
     // Rider color mode - how to color other riders on the map
     enum class RiderColorMode {
         UNIFORM = 0,        // Accent color for all riders
@@ -241,6 +252,7 @@ private:
 
     // Track outline
     bool m_bShowOutline;  // Show white outline around black track for visual clarity
+    bool m_bShowTrackMarkers;  // Show S/F, sector markers and segment-timer lines
 
     // Rider colorization
     RiderColorMode m_riderColorMode;  // How to color other riders on the map
@@ -319,6 +331,41 @@ private:
     std::vector<SPluginQuad_t> m_ribbonQuads;
     bool m_ribbonCacheValid = false;
 
+    // World-space ribbon centerline cache: one sample point per ribbon vertex along
+    // the WHOLE track (center position + unit perpendicular), in world meters. This
+    // is the output of the expensive part of renderTrack() — the per-sample arc
+    // walk (advanceAlongArc) and perpendicular trig — and it is INDEPENDENT of the
+    // view transform (rotation angle, zoom pan, HUD offset, track colors), which are
+    // applied per-frame in worldToScreen()/applyOffset(). It is also independent of
+    // the track WIDTH scale (half-width is applied per-frame to the unit perp) and
+    // of the render bounds (zoom pans m_minX..m_maxX every frame, but the world
+    // geometry is unchanged). So it survives the per-frame rebuilds that
+    // rotate-to-player and zoom trigger — exactly the case the screen-quad cache
+    // (TrackRibbonKey) can't help, because there the view transform changes every
+    // frame. renderTrack() transforms these cached points to screen instead of
+    // re-tessellating. The cache rebuilds only when the GENERATING inputs change:
+    // the LOD subdivision (m_detail + resolved lodSpacing) and whether straights are
+    // subdivided (m_bZoomEnabled). Track data changes invalidate it explicitly via
+    // m_worldRibbonValid in updateTrackData(). NOTE (maintenance invariant): if you
+    // make the emitted world points depend on a NEW input, add it to WorldRibbonKey
+    // — miss it and the ribbon serves stale geometry in rotate/zoom.
+    struct WorldRibbonPoint { float cx, cy, upx, upy; };  // center + UNIT perpendicular
+    struct WorldRibbonKey {
+        int detail = -1;
+        bool zoomEnabled = false;
+        float lodSpacing = 0.0f;
+        bool operator==(const WorldRibbonKey& o) const {
+            return detail == o.detail && zoomEnabled == o.zoomEnabled && lodSpacing == o.lodSpacing;
+        }
+    };
+    std::vector<WorldRibbonPoint> m_worldRibbon;
+    WorldRibbonKey m_worldRibbonKey;
+    bool m_worldRibbonValid = false;
+    // (Re)build m_worldRibbon for the current track/LOD if its key changed. Called
+    // from renderTrack (twice per rebuild, for the outline+fill passes — the second
+    // call is a cheap key-check hit).
+    void ensureWorldRibbon(float lodSpacing, int curveMinSteps);
+
     // Calculate track bounds from segments
     void calculateTrackBounds();
 
@@ -389,3 +436,14 @@ private:
     };
     CachedIcons m_iconCache;
 };
+
+#if defined(MXBMRP3_TEST_BUILD)
+// Perf profiling (test builds only): read + reset the accumulated per-phase
+// MapHud::rebuildRenderData() time (microseconds), rebuild count, and ribbon-cache
+// hit/miss counts since the last read. Lets the headless map perf driver attribute
+// the map's per-frame cost to layout/bounds vs ribbon vs markers vs riders, and
+// see when the ribbon cache is defeated (miss-rate spike).
+void mapHudReadProfile(double& boundsUs, double& ribbonUs, double& markersUs,
+                       double& ridersUs, long long& count,
+                       long long& ribbonHits, long long& ribbonMiss);
+#endif

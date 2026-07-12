@@ -56,9 +56,12 @@ public:
     static const char* getSessionString(int eventType, int session);
     // Server "where you are" label shared by the SessionHud server row, Discord and
     // Steam presence: the reported name; "Testing" for a known-offline/solo session
-    // (serverType == 0); "Unknown" otherwise (online with no name, or GP Bikes / KRP
-    // which leave serverType at -1). Uses DisplayStrings::ServerLabel.
-    static const char* serverLabel(int serverType, const char* serverName);
+    // (serverType == 0). When serverType is unknown (< 0: GP Bikes / KRP don't expose
+    // it, MX Bikes leaves it so while spectating), it's "Online" if the session has
+    // >1 rider (these games have no AI, so multiple riders means real opponents) and
+    // "Unknown" otherwise. riderCount defaults to 0 (-> "Unknown") for callers that
+    // don't have it. Uses DisplayStrings::ServerLabel.
+    static const char* serverLabel(int serverType, const char* serverName, int riderCount = 0);
     static const char* getSessionStateString(int sessionState);
     static const char* getRiderStateAbbreviation(int riderState);
     static const char* getConditionsString(int conditions);
@@ -131,7 +134,7 @@ public:
     // custom fill — e.g. a red or blue tracked number plate. Uses the standard YIQ
     // midpoint threshold (128): saturated/dark fills (red, blue, dark green, purple)
     // get white text, while light fills (yellow, orange, cyan, light greys) keep
-    // their default dark text. Mirrored by isColorDark() in the web overlay's app.js.
+    // their default dark text. Mirrored by isColorDark() in the web overlay's overlay-util.js.
     static constexpr bool isColorDark(unsigned long color) {
         uint8_t r = color & 0xFF;
         uint8_t g = (color >> 8) & 0xFF;
@@ -197,9 +200,16 @@ public:
         return oss.str();
     }
 
-    // Parse color from hex string (e.g., "0xFFFFFFFF" or "4294967295")
-    static uint32_t parseColorHex(const std::string& value) {
-        return static_cast<uint32_t>(std::stoul(value, nullptr, 0));
+    // Parse color from hex string (e.g., "0xFFFFFFFF" or "4294967295").
+    // Never throws: on a malformed value returns `fallback` so a single bad INI entry
+    // can't abort a whole settings load. The guard lives here rather than at each call
+    // site so a future unguarded caller is safe too.
+    static uint32_t parseColorHex(const std::string& value, uint32_t fallback = 0) {
+        try {
+            return static_cast<uint32_t>(std::stoul(value, nullptr, 0));
+        } catch (...) {
+            return fallback;
+        }
     }
 
     // Get color for a rider based on their position relative to player

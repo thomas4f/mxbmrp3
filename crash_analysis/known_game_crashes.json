@@ -9,14 +9,14 @@
     {
       "id": "collision-table-index-float-truncation",
       "first_seen": "2026-05-30",
-      "last_seen": "2026-06-26",
+      "last_seen": "2026-07-02",
       "name": "Physics contact blow-up (bad table index)",
       "match": {
         "bytes": "410fbf0c41488d0416498bd6490fafd0",
         "av": "READ"
       },
       "observed": "Read AV at mxbikes.exe+0x1f1923 on the instruction 'movsx ecx, word ptr [r9 + rax*2]'. rax holds a garbage index (e.g. 0xfffffbff00000000 / 0xffffffff80000000), so r9 + rax*2 lands in non-canonical/unmapped space (e.g. 0xfffff7fe1e516040, 0xffffffff4c82c040) and faults. The register file is saturated with 0x80000000 / 0xffffffff80000000 / 0xfffffbff80000000 values -- the x86 'integer indefinite' result of converting an out-of-range float (NaN/Inf/too-large) to int via cvttss2si/cvttsd2si. The live call stack is entirely game code (mxbikes.exe, opengl32.dll, Steam's gameoverlayrenderer64.dll, ntdll); no live mxbmrp3.dlo frames -- the plugin frames present are stale stack residue. Seen across multiple machines (AMD/Win10 19045 and NVIDIA/Win11 26200) in both offline Testing and online races, so it is machine- and mode-independent. Multiple byte-identical dumps confirm a single bug. Three independent plugin-free reproductions (2026-06-25, mxbmrp3 not loaded) share Windows' WER crash bucket 476b4d91bd8489e64f48be43729ec2cc (LegacyBucketId 2254260810394026700) -- the OS's own fingerprint classifies them as one crash, so future occurrences can be matched from Event Viewer / Reliability Monitor without a dump. The third of the three WER sessions loaded only stock plugins (xinput64.dli, proxy64.dlo) + the OBS capture hook with no content mods -- confirming the crash reproduces on 100% stock bikes. Also confirmed on an older build (0x6A0B2A72, 2026-05-30) at offset +0x1f0be3 -- matched by the build-independent instruction-byte signature despite the moved offset, so the bug predates beta21e.",
-      "when": "During riding -- both hard impacts with a solid object (e.g. a fence) AND ordinary ground/terrain contact with nothing hit (video-confirmed riding up a hill, no collision). Hitting an object is NOT required.",
+      "when": "While riding. Fires on a physics contact -- anything from a hard hit into something solid (e.g. a fence) to ordinary ground contact like landing or riding up a hill. You do not have to hit anything.",
       "trigger": "Originally seen ramming a fixed solid object, but ALSO confirmed with no object impact at all -- a rider simply going up a hill (video-confirmed). The common factor is a physics contact blow-up, not a literal object collision. Reproduction is state-sensitive: some sessions go many minutes without it, while a fresh game restart can make it fire within seconds -- consistent with accumulated physics/contact state rather than one deterministic input. NOT track-specific: confirmed across many tracks (Forest Raceway, Lakewood, Rancho, BeachWick, Into the Wild), online and offline. The bikes involved are OEM-brand 250F machines (e.g. Husqvarna FC 250, Yamaha YZ250F), likely from content mods such as the MX OEM Bike Pack v0.19.1, so modded content was a possible common factor; CONFIRMED to reproduce on 100%-stock bikes (a third plugin-free WER on 2026-06-25, AMD/Win10, no mods loaded), so the fault is in the engine regardless of content.",
       "summary": "During a physics contact event -- a hard object impact, but also ordinary terrain/ground contact such as riding up a hill or landing -- the game produces an out-of-range float (NaN/infinity/huge penetration or velocity), which is truncated to the integer-indefinite value 0x80000000 and then used to index a 16-bit lookup table (likely a collision/spatial table). The wild index reads off into unmapped memory and faults. CONFIRMED independent of the mxbmrp3 plugin: a Windows Error Reporting record on 2026-06-25 shows the identical fault (mxbikes.exe+0x1f1923, 0xC0000005, build 0x6A21833D) on a machine where mxbmrp3 was NOT loaded -- the module list had only stock plugins (xinput64.dli, proxy64.dlo) and the OBS capture hook. (That particular plugin-free session had the MX OEM Bike Pack v0.19.1 loaded; however, a third plugin-free WER on 2026-06-25 with no content mods confirms the crash also reproduces on 100%-stock bikes -- see trigger.) Corroborated by dump analysis: the fault is in mxbikes.exe's own code (no live mxbmrp3.dlo frames), the bad index is a float->int overflow computed in game registers (rax = rdi + sext(r10d)*r8, r10d=0x80000000), the indexed table is a game-internal 16-bit LUT in game heap (not plugin memory, and no type/shape match to any plugin buffer), and a source audit found the plugin has no write path into game memory. The plugin's crash handler merely captured the earlier dumps; it is a bystander.",
       "workaround": "",
@@ -55,6 +55,466 @@
           "build": "0x6A21833D",
           "fault": "mxbikes.exe+0x1f1923",
           "note": "PLUGIN-FREE repro -- mxbmrp3 NOT loaded; module list has only stock PiBoSo plugins (xinput64.dli, proxy64.dlo) + the OBS capture hook (graphics-hook64.dll). AMD/Win10 19045. Windows WER (no .dmp, since the plugin's handler wasn't present), bucket 476b4d91bd8489e64f48be43729ec2cc / LegacyBucketId 2254260810394026700 -- the direct evidence the crash is plugin-independent. Video-confirmed: https://drive.google.com/file/d/1NieP0O3TUDRXc_2W_Hb9kA4-m7l_EWnI/view?usp=drive_link"
+        },
+        {
+          "source": "mxbmrp3_crash_20260616_011804_13868.dmp",
+          "sha256": "b97ec754e914249a6afdc565a015575f8ed3954fde55eaea18cf59f9a8637a68",
+          "captured": "2026-06-16 08:18:06 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x1f1923",
+          "note": ""
+        },
+        {
+          "source": "mxbmrp3_crash_20260617_202103_2372.dmp",
+          "sha256": "dc92a3f0cd7ae37618502c62c8203f17f9e611fd777b9f8bc3d2ad3a8b502f47",
+          "captured": "2026-06-18 03:21:04 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x1f1923",
+          "note": ""
+        },
+        {
+          "source": "mxbmrp3_crash_20260617_213243_15048.dmp",
+          "sha256": "7fadbe9695d22f2ed550fbc4e561a8688f663273c6a58c11355b45edd1aec6e7",
+          "captured": "2026-06-18 04:32:43 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x1f1923",
+          "note": ""
+        },
+        {
+          "source": "mxbmrp3_crash_20260626_212906_10932.dmp",
+          "sha256": "b57a9c695e9f74c9fa7c0922e5b9a3cad9e67a3f2a17dd847a4c0c84ff82d24c",
+          "captured": "2026-06-27 04:29:07 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x1f1923",
+          "note": ""
+        },
+        {
+          "source": "mxbmrp3_crash_20260619_225400_8872.dmp",
+          "sha256": "db627f57850f279954ad4d9124ed49e90296651c6718b9891dfb74f87c0716bf",
+          "captured": "2026-06-20 05:54:01 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x1f1923",
+          "note": "online, 2026 ARLMX RD03 LAKEWOOD Pro, Race 2 (30:00 + 2L), MXOR 250 ProAm, full grid (~22 riders) -- crashed mid-race during the contact event. AMD/Win10. Video-confirmed: https://drive.google.com/file/d/1QXvI6iRrpc4iTkKc-OpNfZk8ancTL1Hn/view?usp=sharing (clip: MX Bikes - 2026-06-19 10-58-38 PM.mp4)"
+        },
+        {
+          "source": "mxbmrp3_crash_20260620_124747_12272.dmp",
+          "sha256": "53f46c1310bbad78e4667d38a2ebfc866ce31ec997c93af22b0190e4edc94dd7",
+          "captured": "2026-06-20 11:47:48 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x1f1923",
+          "note": "online, CBRSERVERS.COM '26 | OPEN | Club | LOW SAFETY RATING', MXB Club Race 2 (Pre-Start -> Run Start) -- mid-session contact blow-up. NVIDIA/Win11 26200. Plugin v1.24.0.0."
+        },
+        {
+          "source": "mxbmrp3_crash_20260611_170901_21108.dmp",
+          "sha256": "1bbb12b88a5274a4ac2651d75071693655184723d5e044d039fa324f0733aa05",
+          "captured": "2026-06-11 22:09:01 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x1f1923",
+          "note": "online race (lap/split traffic). NVIDIA/Win11 26200. Plugin v1.23.10.0."
+        },
+        {
+          "source": "mxbmrp3_crash_20260616_212102_18084.dmp",
+          "sha256": "64fbe277ad3ac109eb5b14ff42663e9ad2e81d6c24a85b9373f74bec612c7aa7",
+          "captured": "2026-06-17 02:21:02 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x1f1923",
+          "note": "online, 'HFR 250 OPEN MX RD 2 MOTOS', 2026 ARLMX RD02 RANCHO CO Pro Race 2 In Progress. NVIDIA/Win11 26200. Plugin v1.24.0.0."
+        },
+        {
+          "source": "mxbmrp3_crash_20260619_213552_25480.dmp",
+          "sha256": "d67428577fc0dcb453e2850e9ff2f8682690d834a859a7835498d3816a9b2bea",
+          "captured": "2026-06-20 02:35:52 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x1f1923",
+          "note": "online, 'Moto Culture Co. Factory', 2026 ARLMX RD03 LAKEWOOD Pro Warmup In Progress. NVIDIA/Win11 26200. Plugin v1.24.0.0."
+        },
+        {
+          "source": "mxbmrp3_crash_20260620_235224_23348.dmp",
+          "sha256": "3c8c14f8403bed160c7851900a33aa4d74319f516769a66e22c4fc1200a8f0e6",
+          "captured": "2026-06-21 04:52:25 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x1f1923",
+          "note": "online, 'Moto Culture Co. Factory', 2026 ARLMX RD03 LAKEWOOD Pro Race 2 In Progress. NVIDIA/Win11 26200. Plugin v1.24.0.0."
+        },
+        {
+          "source": "mxbmrp3_crash_20260626_162204_10016.dmp",
+          "sha256": "0ee5d310003999059708371ef1e94ff6f75fd1ad9419637fa3b8723bcf0e3192",
+          "captured": "2026-06-26 21:22:04 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x1f1923",
+          "note": "online, 'phr', 2026 ARLMX RD04 MT MORRIS Pro Race 2 In Progress. NVIDIA/Win11 26200. Plugin v1.25.0.0."
+        },
+        {
+          "source": "mxbmrp3_crash_20260629_204331_11664.dmp",
+          "sha256": "51a6c1cea2b85bb0da7c70c0f41aaa17ed6d0090d361f90d947b21ceedc9281c",
+          "captured": "2026-06-29 19:43:31 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x1f1923",
+          "note": "XXFWilson23 (Windows user 'konno' -- misfiled in another player's folder in the source archive). online, CBRSERVERS.COM '2 | MX2 OEM', Forest Raceway Race 2 (Pre-Start). NVIDIA/Win11 26200. Plugin v1.26.0.0 (CURRENT build)."
+        },
+        {
+          "source": "mxbmrp3_crash_20260619_152303_24632.dmp",
+          "sha256": "9d74fced5c7daedbadb2296a7cb1cb69bc6a13d7d0b3bbad6e51105698c92d9f",
+          "captured": "2026-06-19 19:23:03 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x1f1923",
+          "note": "User tyler; online Race, ARLMX EU 450 Quali 3; plugin v1.24.0.0."
+        },
+        {
+          "source": "mxbmrp3_crash_20260619_202445_11680.dmp",
+          "sha256": "05bbb53b88a14cc0b55a47828d841db102f23d8a57e9e92e2829ba6e758834af",
+          "captured": "2026-06-20 00:24:45 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x1f1923",
+          "note": "User tyler; Testing on MikeClayt's Dedi; plugin v1.24.0.0."
+        },
+        {
+          "source": "mxbmrp3_crash_20260627_173944_28248.dmp",
+          "sha256": "cba67939d4f1d1e4139b484ba27072f7619528e843da5aa7bcda2d600d344980",
+          "captured": "2026-06-27 21:39:44 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x1f1923",
+          "note": "User tyler; online Race, CBRSERVERS ARL MX PRO Rotation; plugin v1.25.0.0."
+        },
+        {
+          "source": "mxbmrp3_crash_20260630_224309_27400.dmp",
+          "sha256": "b0ac1b0fd9d3877c056ce50047cfa4b1c58ca7bb8bed9fea031a722b162d2f3e",
+          "captured": "2026-07-01 02:43:09 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x1f1923",
+          "note": "User tyler; online Race, CBRSERVERS ARL RED BUD Prep; plugin v1.26.0.0."
+        },
+        {
+          "source": "mxbmrp3_crash_20260701_234840_3276.dmp",
+          "sha256": "2ab93b9f5a17ce5176db30ea927679032b56feb6c3f7dd1329680a31894b393f",
+          "captured": "2026-07-02 03:48:41 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x1f1923",
+          "note": "User tyler; online Race, CBRSERVERS ARL MX PRO Rotation; plugin v1.26.0.0."
+        },
+        {
+          "source": "mxbmrp3_crash_20260702_010747_644.dmp",
+          "sha256": "22fb7823e824bac4776b8f583bc3f4ed581190848e28a8c1bb3840e4583f34bf",
+          "captured": "2026-07-02 05:07:47 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x1f1923",
+          "note": "User tyler; online Race, CBRSERVERS ARL RED BUD Prep; mid-race ('crash_mid_race'); plugin v1.26.0.0."
+        }
+      ]
+    },
+    {
+      "id": "event-teardown-null-deref",
+      "first_seen": "2026-06-12",
+      "last_seen": "2026-06-30",
+      "name": "Session teardown null dereference (leaving a session / connecting)",
+      "match": {
+        "bytes": "488b4910e8????????488b0cdfe8",
+        "av": "READ"
+      },
+      "observed": "Read AV at mxbikes.exe+0x11d753 on the instruction 'mov rcx, qword ptr [rcx + 0x10]' with rcx = 0, so it reads address 0x10 (near-null + struct field offset 0x10). The register file is ordinary small game values (rax = a stack address ~0x71ed68 / 0x4ff378, rdi = a game data pointer ~0x7ff6_xxxx_b380, rbx/rdx/r13 small counters) -- NOT the 0x80000000 'integer-indefinite' saturation pattern of the physics-contact crash, so this is a distinct bug despite both being read-AVs in mxbikes.exe. The faulting code is a pointer-chase: 'mov rcx,[rcx+0x10]; call ...; mov rcx,[rdi+rbx*8]; call ...' -- it walks a null object/handle during teardown and dereferences field +0x10. The live call stack is entirely game + crash-handler code (mxbikes.exe, ntdll, dbgcore/dbghelp from the dump writer, KERNELBASE); the only mxbmrp3.dlo frames present are stale stack residue (the analyzer flags every one '(dead/residue)'), so the plugin is a bystander whose SEH filter merely captured the dump. Captured six times across THREE machines: AMD/Win10 19045 (two players incl. the dev), NVIDIA/Win11 26200 (lxntrip), spanning plugin v1.23.10 -> v1.26.3.7, build 0x6A21833D -- all the same double-Deinit pattern, so the crash is machine- and plugin-version-independent. Five were offline-idle; the sixth (2026-06-30, dev's own) fired on the second Event Deinit moments after leaving a test event and attempting to join a server reported FULL -- the first sample tied to a server-JOIN transition rather than pure idle.",
+      "when": "Not while riding. When leaving a session, connecting to a server, or sitting idle between sessions -- it strikes during the game's teardown back to the menus, so it looks like a 'crashed while doing nothing / between races' crash.",
+      "trigger": "Fires on a game session/event teardown while the player is idle, not on any on-track action. Captured twice offline (Testing/Practice: 2019 MXGP of Czech Republic on 2026-06-14; E-Town Raceway Park on 2026-06-25). The pattern in both logs is: run stops -> first Event/Race Deinit -> a spell idle in menus -> a SECOND Event/Race Deinit on which the game crashes (no Event Init in between, so it is a teardown, not a fresh load). The 2026-06-25 log also shows the game doing full teardown->reload cycles on its own ('Event Deinit' -> 'Race Session changed' -> 'Event Init'), i.e. it tears a session down and re-initialises a new one. The same client-side teardown path is driven both by leaving/reloading a session AND by attempting to connect to a server, so the crash is not limited to offline idle. PARTIALLY CORROBORATED on 2026-06-30 (dev's own dump): the player left an offline test event (Event Deinit -> 'In Menus'), then ~10s later -- while attempting to join a server reported FULL -- the game fired a SECOND Event Deinit and crashed on it. That is the first capture tying this crash to a server-JOIN attempt rather than pure offline idle. Caveats: the join was to a full server (so it likely failed/aborted), and the plugin log records the test-event leave and the 2nd deinit but NOT the connect itself (the plugin gets no callback for a join that never reaches Event Init), so 'the join attempt caused it' vs 'coincidental menu idle' can't be fully separated from one sample. The original online-server-session-end/reload case (server flips an 'In Progress' session) remains the still-unconfirmed variant.",
+      "summary": "While the player is idle between sessions (not riding), the game dereferences a null object pointer during a session/event teardown -- 'mov rcx,[rcx+0x10]' with rcx=0 reads address 0x10 and faults. It is the game's own teardown path: the plugin's Event/Race Deinit callbacks have already run to completion (their log lines are written before the fault) and the fault is in mxbikes.exe with no live plugin frames, so it is a game-internal object-lifetime/ordering bug, not a plugin fault. Distinct from the physics-contact blow-up (+0x1f1923): different offset, different instruction, near-null deref instead of an integer-indefinite (0x80000000) table index, and it happens between sessions while idle rather than during a contact event. Most captures are offline-idle, but the crash is in the generic teardown code that leaving a session, a server session-end/reload, AND a server-join attempt all drive -- one 2026-06-30 capture fired right after a server-join attempt (full server) -- so it explains both the 'random crash while doing nothing / between sessions' reports and crashes around connecting to servers. The plugin's crash handler captured the dumps as a bystander.",
+      "workaround": "",
+      "builds": {
+        "0x6A21833D": "+0x11d753"
+      },
+      "samples": [
+        {
+          "source": "mxbmrp3_crash_20260614_160120_7420.dmp",
+          "sha256": "f550fb10e2b696abc939d11ba780e174f0be7afdba3ffd864414a41a28248add",
+          "captured": "2026-06-14 23:01:21 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x11d753",
+          "note": "offline Testing, 2019 MXGP of Czech Republic; no video. Crash on final Event Deinit (exiting the event back to menu). AMD/Win10 19045."
+        },
+        {
+          "source": "mxbmrp3_crash_20260625_170851_7896.dmp",
+          "sha256": "b03207e159ca71ac8ae83ceae402da5b2ae9bdf93c565a224736177ffd7c343c",
+          "captured": "2026-06-26 00:08:51 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x11d753",
+          "note": "offline Testing, E-Town Raceway Park; no video. Crash on final Event Deinit (exiting the event back to menu). AMD/Win10 19045."
+        },
+        {
+          "source": "mxbmrp3_crash_20260612_211443_28400.dmp",
+          "sha256": "48817d3daa99adeeaabf90954ce133827dff3d54b495174b7c427b145f610393",
+          "captured": "2026-06-13 02:14:43 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x11d753",
+          "note": "offline Testing; double Event/Race Deinit while idle (~87s gap), crash on the 2nd. Earlier in session had an online 'Dawg House' Race event. NVIDIA/Win11 26200. Plugin v1.23.10.0. Earliest teardown sample on file."
+        },
+        {
+          "source": "mxbmrp3_crash_20260615_185611_1776.dmp",
+          "sha256": "3d1ab4b2f827debcaaba429826c3e4dea0ab10a13915ac1db46e97d19467839e",
+          "captured": "2026-06-15 23:56:12 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x11d753",
+          "note": "offline Testing, 2026 ARLMX RD02 RANCHO CO Pro (Waiting); double Event/Race Deinit while idle (~43s), crash on the 2nd -> 'In Menus'. NVIDIA/Win11 26200. Plugin v1.24.0.0."
+        },
+        {
+          "source": "mxbmrp3_crash_20260619_222924_25928.dmp",
+          "sha256": "37e396ce8ad9ec3b161bf6f8f4037114427f162c235101e4c85a67ab47d6fd2f",
+          "captured": "2026-06-20 03:29:25 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x11d753",
+          "note": "offline Testing, 2026 ARLMX RD03 LAKEWOOD Pro (Waiting); double Event/Race Deinit while idle (~24s), crash on the 2nd -> 'In Menus'. NVIDIA/Win11 26200. Plugin v1.24.0.0."
+        },
+        {
+          "source": "f828fc81-mxbmrp3_crash_20260630_203525_24504.dmp",
+          "sha256": "b0b6ac0a66c85e1990c8df5057209f19ca716cdc4c10b2f6db1c30b798996b33",
+          "captured": "2026-06-30 18:35:25 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x11d753",
+          "note": "Developer's own repro (Thomas, AMD/Win10 19045, plugin v1.26.3.7). Sequence in the paired log: started an offline Testing event (!TimingTestTrack) -> left it (Event Deinit -> 'In Menus' at 20:35:15) -> ~10s idle while attempting to join a server reported as FULL -> crash on a SECOND Event Deinit at 20:35:25 (no Event Init between). First teardown sample tied to a server-JOIN attempt rather than pure offline idle; the plugin log records the test-event leave and the 2nd deinit but not the connect itself (no server name/Event Init). Third machine (AMD/Win10) for this crash."
+        }
+      ]
+    },
+    {
+      "id": "render-vertexbuffer-write-av",
+      "first_seen": "2026-06-10",
+      "last_seen": "2026-06-29",
+      "name": "OpenGL render buffer write (vertex-fill overrun)",
+      "match": {
+        "bytes": "418942d0418b41084883c210418942d4",
+        "av": "WRITE"
+      },
+      "observed": "Write AV at mxbikes.exe+0x24085c on 'mov dword ptr [r10 - 0x30], eax', where r10 is a running write cursor into a buffer. The faulting address varies wildly across the three samples (0x30dd0010, 0xe6ff1750, 0x233913d0) -- a runaway/garbage cursor, not a fixed null -- while R12 = 0xfa1 (4001) is IDENTICAL in all three, i.e. a deterministic code path filling ~4001 elements (so this is repeatable game logic, not random memory corruption). The nearest-RSP frames are all mxbikes.exe in one render/vertex-fill cluster (+0x2409a9, +0x240b23, +0x24b620, +0x240e15, +0x24e597 ... +0x266781), calling down through msvcr90 (memcpy), opengl32.dll and into nvoglv64.dll (NVIDIA's OpenGL driver). RESHADE: all three samples are from one machine (XXFWilson23) running ReShade as an OpenGL injector -- a proxy opengl32.dll in the MX Bikes folder plus a reshade-shaders tree; TWO opengl32.dll modules are loaded (ReShade's proxy + the real System32 one) and BOTH appear on the crash stack. The plugin's HUD Draw callback is also live on this stack (it renders every frame on the game thread), unlike the +0x1f1923/+0x11d753 crashes where plugin frames are stale residue -- but the fault instruction is in mxbikes.exe. All three NVIDIA / Win11 26200, plugin v1.23.10 -> v1.26.0.",
+      "when": "While the game is rendering during a session (warmup or race). Not tied to an impact, a particular track, or the menus.",
+      "trigger": "Not pinned to a single deterministic input; all three captures are online, mid-session, while rendering. KEY CORRELATION: every sample is from the one player who runs ReShade, whose opengl32 injector sits directly in this render path -- and there is NO render-crash sample from a non-ReShade machine. So ReShade is the leading suspect (a GL-hook incompatibility on the game's ~4001-element vertex path), though causation is unproven and the fault still lands in the game's own code. Single machine so far (XXFWilson23 / Windows user 'konno'), so an NVIDIA-driver- or ReShade-specific factor is plausible and not yet corroborated by a second player. (Provenance: dumps 11180/11664 were misfiled into another player's folder in the source archive; the in-log username 'konno' confirms they are XXFWilson23's.)",
+      "summary": "The game's OpenGL render code (a +0x240xxx vertex/command-buffer fill loop handling ~4001 elements, run under opengl32/nvoglv64) writes through a cursor r10 that has run off its buffer, faulting at a wildly varying address. LEADING SUSPECT: ReShade. Every captured instance is from a single machine running ReShade as an opengl32 injector (proxy + real opengl32 both loaded, both on the crash stack), and no non-ReShade machine has produced this crash -- so removing/disabling ReShade is the prime workaround to test. Causation is unproven: the fault instruction is in mxbikes.exe's own code and the plugin's HUD Draw is also on the stack (it renders every frame), so neither ReShade nor the plugin is definitively the cause from the dump alone. ReShade is NOT implicated in the other catalogued crashes: the physics crash (+0x1f1923) reproduced ReShade-free and is a physics (not render) fault, and the teardown crash (+0x11d753) was hit on a machine with no ReShade at all -- those players simply happen to run ReShade too. To confirm: re-test with ReShade removed (and, separately, with mxbmrp3 not loaded). All samples NVIDIA, one machine.",
+      "workaround": "Suspected ReShade-related: every captured instance is on a machine running ReShade as an OpenGL injector (a proxy opengl32.dll in the MX Bikes folder), which sits directly in this render path. Remove or disable ReShade (delete/rename that opengl32.dll) and re-test -- unconfirmed, but the strongest lead. Also worth trying: a clean GPU-driver reinstall (DDU + a different NVIDIA driver version) and disabling overlays (Steam / Discord / GeForce Experience).",
+      "builds": {
+        "0x6A21833D": "+0x24085c"
+      },
+      "samples": [
+        {
+          "source": "mxbmrp3_crash_20260610_200857_27024.dmp",
+          "sha256": "edee8562ece6f17934299fb562a48e9121cc260384d90f5b0af971d1d8ff4db3",
+          "captured": "2026-06-10 19:08:57 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x24085c",
+          "note": "online, CBRSERVERS.COM '17 | OPEN OEM | Farm 14', Farm14 Warmup In Progress, active grid (lap/split traffic) -- crashed mid-session while rendering. NVIDIA/Win11 26200. Plugin v1.23.10.0."
+        },
+        {
+          "source": "mxbmrp3_crash_20260614_101638_16228.dmp",
+          "sha256": "90d4ba13c83c75e98b55a28a5f7b9c321ea679de733c0d275a562446952ac985",
+          "captured": "2026-06-14 09:16:38 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x24085c",
+          "note": "online, active race session (lap/split traffic); crashed mid-session while rendering. NVIDIA/Win11 26200. Plugin v1.23.10.0."
+        },
+        {
+          "source": "mxbmrp3_crash_20260629_181630_11180.dmp",
+          "sha256": "50479b35b77ee06bf207368f290874ca88b786843e5e3fdc6d05422bd29db48f",
+          "captured": "2026-06-29 17:16:31 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x24085c",
+          "note": "XXFWilson23 (Windows user 'konno' -- misfiled in another player's folder in the source archive). online, CBRSERVERS.COM '3 | MX1 OEM | Stock Track Rotation 3', MXB Test Track Warmup In Progress with riders streaming in (Race Add Entry burst right before fault); log ends mid-warmup with no return-to-menu. NVIDIA/Win11 26200. Plugin v1.26.0.0 (CURRENT build) -- confirms crash still occurs on latest plugin. This dump IS the one behind XXFWilson23's Event Viewer record (pid 0x2BAC=11180, start 16:18:17 UTC) that was verbally described as a 'main menu' crash -- but the log shows it was in-session."
+        }
+      ]
+    },
+    {
+      "id": "session-end-oob-index-read",
+      "first_seen": "2026-06-20",
+      "last_seen": "2026-06-20",
+      "name": "Out-of-range array index read at session end",
+      "match": {
+        "bytes": "448b04908b83d4040000ffc84183c004",
+        "av": "READ"
+      },
+      "observed": "Read AV at mxbikes.exe+0x1fed9e on the instruction 'mov r8d, dword ptr [rax + rdx*4]'. rax=0x27d94ab70 is a plausible base pointer and rdx=0x3aec0280 (~985 million) is a wild positive index, so rax + rdx*4 = 0x36944b570 lands in unmapped memory and faults. This is an out-of-bounds 32-bit array read driven by a huge POSITIVE index -- distinct from the +0x1f1923 collision crash, whose index is the 0x80000000 'integer-indefinite' float->int saturation value, not a large count, and whose register file is saturated with 0x80000000 values (this one's is not). The live call stack is entirely mxbikes.exe + msvcr90.dll (CRT); there are 0 live mxbmrp3.dlo frames (only 6 stale residue), so the plugin is a bystander. NVIDIA / Windows 11 26200, plugin v1.24.0.0.",
+      "when": "At the end of an online session, as the race finishes and the game returns you to the menus.",
+      "trigger": "One sample only (XXFWilson23, online CBRSERVERS.COM '2 | MX2 OEM', Forest Raceway Race 2 ending). Fires in game code as the session ends; the ~985M index suggests an array length/count that went bad during teardown. SINGLE SAMPLE -- the mechanism is inferred from one dump and is not yet corroborated by a second.",
+      "summary": "As an online race session ends, the game indexes a 32-bit array with a roughly 985-million-element index and reads off the end into unmapped memory. The fault is in mxbikes.exe's own code with the plugin a bystander (no live plugin frames -- it is not on the crashing stack at all). Catalogued by its build-independent instruction-byte signature so further occurrences can be matched even if the offset moves on a new game build. Single sample so far.",
+      "workaround": "",
+      "builds": {
+        "0x6A21833D": "+0x1fed9e"
+      },
+      "samples": [
+        {
+          "source": "mxbmrp3_crash_20260620_123503_7384.dmp",
+          "sha256": "d61c01e8d971875445c0ee272bea130972e6301eecdd81c5f6b5a59359256351",
+          "captured": "2026-06-20 11:35:04 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x1fed9e",
+          "note": "online, CBRSERVERS.COM '2 | MX2 OEM', Forest Raceway Race 2; race hit CHECKERED then session torn down (Run Deinit -> Event/Race Deinit -> 'In Menus') -- crash landed at/just after teardown. rdx index ~985M. NVIDIA/Win11 26200. Plugin v1.24.0.0."
+        }
+      ]
+    },
+    {
+      "id": "session-end-network-null-deref",
+      "first_seen": "2026-06-23",
+      "last_seen": "2026-06-23",
+      "name": "Null dereference in network / session-end code",
+      "match": {
+        "bytes": "443959b40f84????????0f28c70f28cf",
+        "av": "READ"
+      },
+      "observed": "Read AV at mxbikes.exe+0x3b940 on the instruction 'cmp dword ptr [rcx - 0x4c], r11d' with rcx=0x4c, so it reads address 0x0 -- a near-null dereference (the object pointer was null and the code touched field -0x4c). Almost the entire GP register file is zero (rax/rdx/rbp/rsi/rdi = 0). The live call stack runs through mxbikes.exe AND mswsock.dll (Windows Sockets) frames -- i.e. the game's networking path. There are 0 live mxbmrp3.dlo frames (6 stale residue), so the plugin is a bystander. Distinct from the +0x11d753 teardown null-deref: different offset/instruction and a networking (mswsock) stack rather than the generic object-pointer-chase. NVIDIA / Windows 11 26200, plugin v1.25.0.0. The je rel32 displacement in the signature is wildcarded so it still matches if the branch target shifts on a new build.",
+      "when": "At the end of an online race, as the results come in and the game tears the session down.",
+      "trigger": "One sample only (XXFWilson23, online race finishing). The mswsock.dll frames place the fault in network / session-end handling -- plausibly the client tearing down the server connection at race end and dereferencing an object that has already been cleared. SINGLE SAMPLE -- not yet corroborated.",
+      "summary": "At the end of an online race the game dereferences a null object pointer (reads field at null - 0x4c) in code that has Windows Sockets (mswsock) on the stack -- i.e. its network / session-end teardown path. The fault is in mxbikes.exe with the plugin a bystander (not on the crashing stack). Likely a game-internal object-lifetime/ordering bug on the connection-teardown path, related in timing to the +0x11d753 idle-teardown null-deref but a different code path (networking) and a different fault site. Catalogued by instruction-byte signature for future matching. Single sample so far.",
+      "workaround": "",
+      "builds": {
+        "0x6A21833D": "+0x3b940"
+      },
+      "samples": [
+        {
+          "source": "mxbmrp3_crash_20260623_181618_3276.dmp",
+          "sha256": "21f0f242bc3cee907e2e1c2e56836387826b0f7b39f0e2227c6cf42ced08154d",
+          "captured": "2026-06-23 17:16:18 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x3b940",
+          "note": "online race finishing (burst of Race Lap/Communication = results), then Event/Race Deinit -> 'In Menus' -- crash at session end. Null read (rcx=0x4c), mswsock on stack. NVIDIA/Win11 26200. Plugin v1.25.0.0."
+        }
+      ]
+    },
+    {
+      "id": "track-load-bad-string-scan",
+      "first_seen": "2026-05-31",
+      "last_seen": "2026-06-02",
+      "name": "Offline track-load crash (bad string in per-profile data)",
+      "match": {
+        "bytes": "443811740848ffc1413bc275f12bcb89",
+        "av": "READ",
+        "module": "msvcr90.dll"
+      },
+      "observed": "Read AV inside msvcr90.dll+0x36ede on 'cmp byte ptr [rcx], r10b' with r10b=0 -- a byte-by-byte string/terminator scan (strlen/strnlen-style CRT loop; Rax=0x7ffffffe = an effectively unbounded max length, so it scans until it hits unmapped memory). rcx is a garbage pointer (0xffffff8d3d964874, non-canonical, in one sample; 0x09552d70, unmapped, in the other), i.e. the game passed a bad string pointer into the CRT scan. The CRT is only the leaf: the analyzer walks it back to the same game caller on both builds (mxbikes.exe+0x325840 / +0x326840 -- the ~0x1000 delta is just the build shift), so the culprit is a game-side parser and the plugin is a pure bystander (all frames are game + CRT). Both samples are offline Testing (serverType=0) and crash at TRACK LOAD -- uptime 83s / 119s, right after Event Init, before riding. msvcr90.dll is a fixed module, so the offset +0x36ede is the same on every game build (build-independent).",
+      "when": "During track load -- while the track is loading, before you get on track. (Both captures so far were offline Testing, but that may just be where it happened to be seen.)",
+      "trigger": "Fires at track/session load, offline, in a game-side parser that reads a string field out of loaded per-profile data whose layout doesn't match -- so the pointer is garbage and the CRT scan walks into unmapped memory. Leading suspects are the auto-loaded, per-profile, stateful blobs: TRACK DEFORMATION (profiles\\[name]\\tracks\\) and TRAINERS/GHOSTS (profiles\\[name]\\trainers\\), which explains why it is intermittent and why clearing the crashing track's data helps. Amplified by a cross-build data mismatch: per-profile data written by one game build can be misparsed by another (both catalogued samples are the same user's, across builds 0x6A0CD104 and 0x6A1CB6FA). NOT isolated to one specific file from the dump alone -- a corrupt setup or track file could produce the same string-scan-on-garbage; deformation/trainers are the best-fit candidates.",
+      "summary": "At track load (offline), a game-side parser reads a string field from loaded per-profile data, ends up with a bad pointer, and calls a CRT string scan (msvcr90.dll+0x36ede, strlen-style) on it -- which walks off into unmapped memory and faults. The bad input is malformed/stale per-profile data; the CRT and the plugin are both bystanders. Distinct from the other catalogued crashes: a LOAD-time crash in the CRT (build-independent offset), not an in-session game-code fault. The workaround (remove the crashing track's trainer/ghost file) removes the malformed input and is the first evidence-backed workaround in this catalogue. Known PiBoSo-side as the offline '0x36ede' crash (suspected trainer / track-deformation related), pending a patch.",
+      "workaround": "For the track that crashed, rename or move just its trainer/ghost file in Documents\\PiBoSo\\MX Bikes\\profiles\\[your profile]\\trainers\\ (named after the track), then re-test; keep it as a backup to restore after a patch. Only PiBoSo can fully fix the underlying parser.",
+      "builds": {
+        "msvcr90.dll": "+0x36ede"
+      },
+      "samples": [
+        {
+          "source": "mxbmrp3_crash_20260531_154740_17616.dmp",
+          "sha256": "0f207d4428e1f4e7b53e8282805d36d33532057e239da0ad747af8f4c2bf4367",
+          "captured": "2026-05-31 13:47:40 UTC",
+          "build": "0x6A0CD104",
+          "fault": "msvcr90.dll+0x36ede",
+          "note": "Dev's own, offline Testing, track JS7_Compound_MX (KTM 350 SX-F 2023). Crash ~46s after Event Init, at track load, before riding. Build 0x6A0CD104, plugin v1.23.10.0. strlen-scan on garbage pointer (non-canonical 0xffffff8d...)."
+        },
+        {
+          "source": "mxbmrp3_crash_20260602_085834_20060.dmp",
+          "sha256": "370128b8666bdfd013ececf11889dd38776ac562304fd38149fc19e2006a37e5",
+          "captured": "2026-06-02 06:58:34 UTC",
+          "build": "0x6A1CB6FA",
+          "fault": "msvcr90.dll+0x36ede",
+          "note": "Dev's own, offline Testing, track 2025_ARLMX_RD01_PALA (Husqvarna FC 250 2023). Crash ~32s after a track reload (2nd Event Init), at load, before riding. Build 0x6A1CB6FA, plugin v1.23.11.0. strlen-scan on garbage pointer (unmapped 0x09552d70)."
+        }
+      ]
+    },
+    {
+      "id": "stack-pointer-truncation-aslr",
+      "first_seen": "2026-06-06",
+      "last_seen": "2026-07-01",
+      "name": "64-bit pointer truncated to 32-bit (stack above 4 GB)",
+      "match": {
+        "bytes": "8b11b8080000004533c93bd08915????",
+        "av": "READ"
+      },
+      "observed": "Read AV at mxbikes.exe+0x2a42f0 on 'mov edx, dword ptr [rcx]'. The analyzer's truncation classifier confirms the mechanism: the fault address 0x64bfd130 equals the LOW 32 bits of Rdx=0x000000d364bfd130, and the full 64-bit address 0x000000d364bfd130 is mapped (it holds real data) -- so memory was fine; a 64-bit pointer was truncated to 32 bits (Rcx=0x0000000064bfd130 = Rdx with the high dword zeroed, i.e. a 'mov ecx,edx'-style narrowing) and then dereferenced. Rsp=0x000000d364bfce38 -- the stack is loaded ABOVE the 4 GB line this run, so truncating a stack pointer drops the 0x000000d3 high part and lands in unmapped low memory. Live call stack is all mxbikes.exe; 0 live mxbmrp3.dlo frames (8 stale residue), so the plugin is a bystander. Two samples on two independent machines/players (NVIDIA/Win10 19045 and NVIDIA/Win11 26200), both current build 0x6A21833D, both crashing ~112s in -- so it is not machine-specific.",
+      "when": "Seemingly at random, and only on some launches -- it depends where Windows happens to place the game's stack in memory that run (ASLR), not on anything you do. Tends to hit early in a session.",
+      "trigger": "A 64-bit pointer is truncated to 32 bits in game code; it only faults when Windows' ASLR places the stack above the 4 GB boundary that run, so it is intermittent per launch -- the same build will run fine most times and crash on the runs where the stack lands high. Not tied to any player action, track, or mode. Two samples so far on two different machines/players (both current build 0x6A21833D, both offline Testing).",
+      "summary": "Game code narrows a 64-bit pointer to 32 bits (e.g. a 'mov ecx,edx' where a full 64-bit move was needed) and dereferences it. On most launches the stack lives below 4 GB so the top 32 bits are zero and truncation is harmless; on the launches where ASLR places the stack above 4 GB, truncation drops the high dword and the pointer lands in unmapped low memory -> read AV. Faults in mxbikes.exe with the plugin a bystander. Because it is gated on ASLR placement, it is inherently intermittent -- and it has a real workaround: force the stack low by disabling High-entropy ASLR for mxbikes.exe (see workaround). Only PiBoSo can fix the truncation itself.",
+      "workaround": "Force the game's stack to load below 4 GB via Windows Exploit Protection: Windows Security -> App & browser control -> Exploit protection settings -> Program settings -> add mxbikes.exe -> set 'High-entropy ASLR' to Override + Off. That keeps the truncated pointer valid so it stops faulting. Only PiBoSo can fix the underlying truncation.",
+      "builds": {
+        "0x6A21833D": "+0x2a42f0"
+      },
+      "samples": [
+        {
+          "source": "bad7af66-mxbmrp3_crash_20260606_182354_3008.dmp",
+          "sha256": "797e596ea6b3a061bd16db8eb773eb732c32e9f337fdddf0cf0ab3806ad1db2f",
+          "captured": "2026-06-07 05:23:54 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x2a42f0",
+          "note": "NVIDIA/Win10 19045, current build 0x6A21833D (uploaded without paired log). Truncation confirmed: fault addr 0x64bfd130 = low 32 bits of Rdx=0x000000d364bfd130 (full address mapped); stack Rsp=0xd3... is above 4 GB. ~114s uptime."
+        },
+        {
+          "source": "2d7210c5-mxbmrp3_crash_20260701_035125_4340.dmp",
+          "sha256": "b1a7779676a1fee4cb7c943525bb1d1d98196192a67dcfcbe32bdb3f826f458b",
+          "captured": "2026-07-01 09:51:26 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x2a42f0",
+          "note": "NVIDIA/Win11 26200 (28 CPUs), plugin v1.26.0.0, player Quxlitiez. Offline Testing, Forest Raceway; crashed ~111s uptime during the first lap. Truncation confirmed: fault 0x3b0fd2b0 = low 32 bits of Rdx=0x000000f13b0fd2b0 (mapped); stack above 4 GB. Second independent machine/player for this crash."
+        }
+      ]
+    },
+    {
+      "id": "session-teardown-stale-pointer-input",
+      "first_seen": "2026-06-24",
+      "last_seen": "2026-06-24",
+      "name": "Session-teardown crash via input/message pump (stale pointer)",
+      "match": {
+        "bytes": "41397429207e774c8b05????????6690",
+        "av": "READ"
+      },
+      "observed": "Read AV at mxbikes.exe+0x45b0 on 'cmp dword ptr [r9 + rbp + 0x20], esi' with Rbp = 0xffffe3b7bcf4aa80 -- a wild, non-canonical base pointer (and R10 = 0x7ec0f8fcfefef0fe carries freed-memory-style fill bytes), so the code dereferences a garbage base and faults. The live stack runs through user32.dll and dinput8.dll (the window-message / DirectInput poll path) into mxbikes.exe; 0 live mxbmrp3.dlo frames, so the plugin is a bystander. Timing is the key clue: the paired log shows THREE '=== Race Deinit ===' in the ~50s before the fault (and ~99 min uptime), with the crash 16s after the last one -- i.e. it fired at session teardown / while idle after leaving a race, NOT while riding. Single sample: user 'tyler', NVIDIA/Win11 26200, current build 0x6A21833D.",
+      "when": "Not while riding -- when leaving or ending a session, during the game's teardown back to the menus. Looks like a 'crashed after the race / between sessions' crash.",
+      "trigger": "One sample. Same multiple-Deinit-while-idle teardown scenario as the +0x11d753 crash, but a DIFFERENT fault site (different instruction/offset, and a wild pointer rather than a clean null). Most likely a use-after-free: while idle after a Deinit, the window-message / input-poll loop (user32 + dinput8 on the stack) touches an object that has already been torn down. Distinct signature from +0x11d753 -- probably the same game teardown object-lifetime family, catalogued separately pending a second sample. Inferred from one dump + a scan-based stack; low-to-moderate confidence on the exact mechanism, solid on the teardown timing (from the log).",
+      "summary": "While leaving/ending a session (teardown, idle after the race), the game dereferences a stale/garbage pointer in its window-message/input path and faults. Game-internal object-lifetime bug during teardown; the plugin is a bystander. Related to the +0x11d753 teardown null-deref -- same 'multiple Race Deinit while idle' scenario -- but a different crash site (wild pointer vs null, different offset), so it is a separate signature, not the same bug. Single sample so far.",
+      "workaround": "",
+      "builds": {
+        "0x6A21833D": "+0x45b0"
+      },
+      "samples": [
+        {
+          "source": "mxbmrp3_crash_20260624_195500_12724.dmp",
+          "sha256": "fa6a26fbe74449c538375cba33af45a4d0cbb7ed6a937ed9ab2ffaaa6203a8e2",
+          "captured": "2026-06-24 23:55:00 UTC",
+          "build": "0x6A21833D",
+          "fault": "mxbikes.exe+0x45b0",
+          "note": "User tyler, NVIDIA/Win11 26200, plugin v1.25.0.0. Online race (CBRSERVERS) but crashed at TEARDOWN: 3x Race Deinit in the ~50s before, ~99min uptime, crash 16s after last Deinit. Wild rbp via user32/dinput8 message-pump path -- same teardown scenario as +0x11d753, different fault site."
+        }
+      ]
+    },
+    {
+      "id": "obs-capture-hook-crash",
+      "first_seen": "2026-06-23",
+      "last_seen": "2026-06-23",
+      "name": "OBS game-capture hook crash",
+      "third_party": "OBS",
+      "identify_by": "OBS's `graphics-hook64.dll` on the crash stack",
+      "match": {
+        "bytes": "ff40244c8b7f184c8d67104c897de749",
+        "av": "WRITE",
+        "module": "ntdll.dll"
+      },
+      "observed": "Write AV at ntdll.dll+0xb9d3 on 'inc dword ptr [rax + 0x24]' with rax=0 -> a near-null write. NOT MX Bikes' code: the analyzer's nearest non-system caller is graphics-hook64.dll (OBS's game-capture hook), and the live stack runs dxgi.dll + d3d11.dll -> graphics-hook64.dll -> ntdll. MX Bikes is OpenGL, so the DXGI/D3D11 frames are OBS capturing the GL SwapBuffers via DXGI. Three byte-identical dumps within ~2 min, one machine (user 'tyler', NVIDIA/Win11 26200), online. The ntdll offset +0xb9d3 is Windows-version-specific and is NOT a stable match key -- IDENTIFY THIS CRASH BY graphics-hook64.dll being on the crash stack (the analyzer surfaces it), not by the offset. Web-corroborated OBS bug: obsproject/obs-studio #9168 (graphics-hook crashes OpenGL apps whose SwapBuffers goes through DXGI; near-null ntdll write), #11403 (VSync), #11003 (scene switch).",
+      "when": "Only when recording/streaming with OBS 'Game Capture'. Fires during a session; unrelated to riding. If you don't run OBS game capture you will not see this one.",
+      "trigger": "OBS's graphics-hook injecting into MX Bikes' OpenGL present path and mishandling it (it captures GL SwapBuffers via a DXGI/D3D11 shared texture). Aggravated by toggling/hiding-and-showing the Game Capture source, switching scenes, or running with VSync. An OBS defect, not an MX Bikes or mxbmrp3 bug -- the plugin's process-global crash handler merely captured it.",
+      "summary": "THIRD-PARTY / OBS. OBS's game-capture hook (graphics-hook64.dll) crashes while capturing MX Bikes' OpenGL output through DXGI, ending in a near-null write in ntdll. Documented here because MX Bikes players who stream/record WILL hit it and it shows up in the plugin's crash folder -- but it is not a game or plugin bug. Identify it by graphics-hook64.dll on the crash stack, not by the ntdll offset (which varies by Windows version). Known OBS issue -- see refs in 'observed'.",
+      "workaround": "This is OBS, not MX Bikes or the plugin. Update OBS; switch its capture from 'Game Capture' to 'Window Capture' or 'Display Capture'; don't hide/show (toggle) the Game Capture source mid-session; and try disabling VSync. See OBS issues #9168 / #11403 / #11003.",
+      "builds": {
+        "ntdll.dll": "+0xb9d3"
+      },
+      "samples": [
+        {
+          "source": "mxbmrp3_crash_20260623_135625_11832.dmp",
+          "sha256": "ce5d386f8d16169222deb56a69fd40d9db8935341f903ae24fde8407f0181bcc",
+          "captured": "2026-06-23 17:56:25 UTC",
+          "build": "0x6A21833D",
+          "fault": "ntdll.dll+0xb9d3",
+          "note": "OBS game-capture hook crash (graphics-hook64 -> dxgi/d3d11 -> ntdll null write). User tyler, NVIDIA/Win11 26200, plugin v1.25.0.0, online (MikeClayt's Dedi). One of 3 byte-identical within ~2 min. Web-confirmed OBS bug (obs-studio #9168). Identify by graphics-hook64.dll on the stack, not the ntdll offset."
+        },
+        {
+          "source": "mxbmrp3_crash_20260623_135755_4328.dmp",
+          "sha256": "e1a3983d6c39f9402b92d4dbf38d5cab0bb62dec21f9a4b78acda2994dca1259",
+          "captured": "2026-06-23 17:57:56 UTC",
+          "build": "0x6A21833D",
+          "fault": "ntdll.dll+0xb9d3",
+          "note": "OBS game-capture hook crash (graphics-hook64 -> dxgi/d3d11 -> ntdll null write). User tyler, NVIDIA/Win11 26200, plugin v1.25.0.0, online (MikeClayt's Dedi). One of 3 byte-identical within ~2 min. Web-confirmed OBS bug (obs-studio #9168). Identify by graphics-hook64.dll on the stack, not the ntdll offset."
+        },
+        {
+          "source": "mxbmrp3_crash_20260623_135837_27276.dmp",
+          "sha256": "6772c66a4ad4e82212e2a8344638c415b2a3cb480e43f37f7b98e0b2d0c713ec",
+          "captured": "2026-06-23 17:58:37 UTC",
+          "build": "0x6A21833D",
+          "fault": "ntdll.dll+0xb9d3",
+          "note": "OBS game-capture hook crash (graphics-hook64 -> dxgi/d3d11 -> ntdll null write). User tyler, NVIDIA/Win11 26200, plugin v1.25.0.0, online (MikeClayt's Dedi). One of 3 byte-identical within ~2 min. Web-confirmed OBS bug (obs-studio #9168). Identify by graphics-hook64.dll on the stack, not the ntdll offset."
         }
       ]
     }

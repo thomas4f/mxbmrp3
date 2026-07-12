@@ -7,6 +7,7 @@
 #include "../core/plugin_constants.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
+#include "../core/ui_config.h"
 #include "../core/asset_manager.h"
 #include "../core/tracked_riders_manager.h"
 #include "../diagnostics/logger.h"
@@ -66,7 +67,7 @@ RadarHud::RadarHud()
 
 void RadarHud::update() {
     // OPTIMIZATION: Skip processing when not visible
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -310,20 +311,25 @@ void RadarHud::renderRiderLabel(float radarX, float radarY, int raceNum, int pos
 
         // Apply opacity to colors to match sprite fading
         labelColor = PluginUtils::applyOpacity(labelColor, opacity);
-        unsigned long outlineColor = PluginUtils::applyOpacity(0x000000, opacity);  // Black with matching opacity
 
-        // Create text outline by rendering dark text at offsets first
-        float outlineOffset = labelFontSize * 0.05f;  // Small offset for outline
+        // Text outline (readability effect for the number/position labels). It serves
+        // the same purpose as the global drop shadow, so honor that toggle: render the
+        // outline only when drop shadow is enabled (matches MapHud). Rider ICONS are
+        // separate sprite quads with their own baked outlines and never take the shadow.
+        if (UiConfig::getInstance().getDropShadow()) {
+            unsigned long outlineColor = PluginUtils::applyOpacity(0x000000, opacity);  // Black with matching opacity
+            float outlineOffset = labelFontSize * 0.05f;  // Small offset for outline
 
-        // Render outline at 4 cardinal directions (skip drop shadow - has own outline)
-        addString(labelStr, screenX - outlineOffset, labelY, Justify::CENTER,
-                 this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
-        addString(labelStr, screenX + outlineOffset, labelY, Justify::CENTER,
-                 this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
-        addString(labelStr, screenX, labelY - outlineOffset, Justify::CENTER,
-                 this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
-        addString(labelStr, screenX, labelY + outlineOffset, Justify::CENTER,
-                 this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
+            // Render outline at 4 cardinal directions (skip drop shadow - this IS the outline)
+            addString(labelStr, screenX - outlineOffset, labelY, Justify::CENTER,
+                     this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
+            addString(labelStr, screenX + outlineOffset, labelY, Justify::CENTER,
+                     this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
+            addString(labelStr, screenX, labelY - outlineOffset, Justify::CENTER,
+                     this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
+            addString(labelStr, screenX, labelY + outlineOffset, Justify::CENTER,
+                     this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
+        }
 
         // Render main text on top
         addString(labelStr, screenX, labelY, Justify::CENTER,
@@ -837,7 +843,7 @@ void RadarHud::resetToDefaults() {
     m_fProximityArrowScale = DEFAULT_PROXIMITY_ARROW_SCALE;
     m_proximityArrowColorMode = ProximityArrowColorMode::DISTANCE;
     m_fMarkerScale = DEFAULT_MARKER_SCALE;
-    setPosition(0.43275f, 0.0111f);  // Horizontally centered at scale 1.0
+    setPosition(0.43275f, 0.01173f);  // Horizontally centered at scale 1.0
     setDataDirty();
 }
 

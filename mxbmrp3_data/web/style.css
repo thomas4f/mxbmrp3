@@ -27,32 +27,32 @@
  * ============================================================================ */
 @font-face {
     font-family: 'Audiowide-Regular';
-    src: url('Audiowide-Regular.ttf') format('truetype');
+    src: url('fonts/Audiowide-Regular.ttf') format('truetype');
     font-display: swap;
 }
 @font-face {
     font-family: 'EnterSansman-Italic';
-    src: url('EnterSansman-Italic.ttf') format('truetype');
+    src: url('fonts/EnterSansman-Italic.ttf') format('truetype');
     font-display: swap;
 }
 @font-face {
     font-family: 'RobotoMono-Regular';
-    src: url('RobotoMono-Regular.ttf') format('truetype');
+    src: url('fonts/RobotoMono-Regular.ttf') format('truetype');
     font-display: swap;
 }
 @font-face {
     font-family: 'RobotoMono-Bold';
-    src: url('RobotoMono-Bold.ttf') format('truetype');
+    src: url('fonts/RobotoMono-Bold.ttf') format('truetype');
     font-display: swap;
 }
 @font-face {
     font-family: 'FuzzyBubbles-Regular';
-    src: url('FuzzyBubbles-Regular.ttf') format('truetype');
+    src: url('fonts/FuzzyBubbles-Regular.ttf') format('truetype');
     font-display: swap;
 }
 @font-face {
     font-family: 'Tiny5-Regular';
-    src: url('Tiny5-Regular.ttf') format('truetype');
+    src: url('fonts/Tiny5-Regular.ttf') format('truetype');
     font-display: swap;
 }
 
@@ -83,9 +83,8 @@ html {
     --bg-inactive:   #080808;             /* DNS/RET/DSQ           */
     --border:        #ffffff18;           /* 9%  - subtle dividers */
 
-    /* Focus card backgrounds (semi-transparent for compositing) */
+    /* Focus card background (semi-transparent for compositing) */
     --bg-focus:      #000000e0;           /* 88% */
-    --bg-focus-highlight: #0a0a0af2;      /* 95% */
 
     /* Game palette (--gp-*) is injected by JS from the plugin.
        These variables map game colors to overlay roles, with
@@ -116,6 +115,7 @@ html {
     --font:          var(--gf-normal, 'RobotoMono-Regular', monospace);
     --font-digits:   var(--gf-digits, 'RobotoMono-Regular', monospace);
     --font-display:  var(--gf-title, 'EnterSansman-Italic', sans-serif);
+    --font-small:    var(--gf-small, 'Tiny5-Regular', monospace);  /* small labels (charts axis/tags) */
 
     /* Font scale (relative to root font-size) */
     --fs-lg:         1.2rem;              /* Timer                 */
@@ -142,7 +142,6 @@ html {
        the tower reflows when the column is hidden. Kept in sync with the .col-posdelta
        flex-basis below. */
     --posdelta-w:    2rem;
-    --focus-width:   20rem;
     --row-height:    1.4rem;
     /* Numeric column widths.
        --col-pos-w is a plain `ch` token (advance of "0" in the column's own
@@ -166,6 +165,15 @@ html {
        above); the ch fallback resolves against the badge's own (fs-sm) font and
        +2*sp-sm covers its border-box padding. */
     --badge-w:   var(--badge-w-measured, calc(3ch + 2 * var(--sp-sm)));
+
+    /* Tower width WITHOUT the ± column (name column + the other fixed chrome). Shared by
+       #overlay and the focus card; each ADDS var(--posdelta-w) in its own width calc so
+       that term resolves against THAT element's --posdelta-w (0 when hidden / on the focus
+       card). The ± term can't live in this token: a var() inside a custom property is
+       substituted at the DECLARING element (here :root, where --posdelta-w is always 2rem),
+       so folding it in here would freeze the ± reserve and defeat the hide-posdelta
+       collapse. (Same rule as --col-gap-w-measured; see app.js.) */
+    --tower-width-base: calc(var(--name-chars) * 1ch + var(--col-pos-w) + var(--col-gap-w) + var(--badge-w) + 1.5rem + var(--sp-md));
 
     /* Brand strip & chips */
     --strip-w:       0.15rem;
@@ -206,8 +214,9 @@ body {
        gap before the plate). --col-gap-w / --badge-w auto-fit to the
        measured px width (same value the columns use), so this formula matches the
        row exactly — the gap column reaches the right edge with no surplus pooling
-       after it. The ± column (--posdelta-w) collapses to 0 when hidden. */
-    width: calc(var(--name-chars) * 1ch + var(--col-pos-w) + var(--col-gap-w) + var(--badge-w) + 1.5rem + var(--sp-md) + var(--posdelta-w));
+       after it. The ± column (--posdelta-w) collapses to 0 when hidden — the +var here
+       resolves against #overlay's own --posdelta-w, so hide-posdelta shrinks the tower. */
+    width: calc(var(--tower-width-base) + var(--posdelta-w));
 }
 
 /* ± column hidden (non-race session or disabled): drop its reserved width so the
@@ -379,10 +388,30 @@ body {
     min-width: 0;
 }
 
-/* Row backgrounds set in JS (absolute positioning breaks nth-child) */
+/* --- Followed rider: the on-screen / spectated rider (the auto-director's subject
+   when it's driving, else whoever you're spectating). A left accent bar (no layout
+   shift) plus the tinted highlight background — the single "who's on camera" marker.
+   --accent is the synced game accent colour (camera/interactive role). Row backgrounds
+   are set in JS (absolute positioning breaks nth-child).
+
+   The bar is a ::before pseudo-element, NOT box-shadow: the promoted/demoted position-
+   change flash animates the row's box-shadow (and holds it `forwards`), so sharing that
+   property would let a position change permanently clobber the bar. A separate layer is
+   immune to that. --- */
 .standings-row.camera-row {
     --row-bg: var(--bg-highlight);
     background: var(--row-bg);
+}
+.standings-row.camera-row::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--accent);
+    z-index: 2;              /* above the row bg + the position-change flash */
+    pointer-events: none;
 }
 
 /* --- Inactive riders (DNS/RET/DSQ) --- */
@@ -496,6 +525,11 @@ body {
     white-space: nowrap;
 }
 
+/* Bike name (focus card) — bold. */
+.focus-bike {
+    font-weight: bold;
+}
+
 .col-name {
     flex: 0 0 calc(var(--name-chars) * 1ch);
 }
@@ -560,10 +594,9 @@ body {
     background-color: var(--chip-tint);
 }
 
-.chip-finished { --chip-icon: url('flag-checkered.svg'); --chip-tint: var(--text); }
-.chip-camera   { --chip-icon: url('video.svg');          --chip-tint: var(--text-dim); }
-.chip-fastest  { --chip-icon: url('stopwatch.svg');      --chip-tint: var(--accent); }
-.chip-pit      { --chip-icon: url('wrench.svg');         --chip-tint: var(--text-dim); }
+.chip-finished { --chip-icon: url('icons/flag-checkered.svg'); --chip-tint: var(--text); }
+.chip-fastest  { --chip-icon: url('icons/stopwatch.svg');      --chip-tint: var(--accent); }
+.chip-pit      { --chip-icon: url('icons/wrench.svg');         --chip-tint: var(--text-dim); }
 
 .chip-penalty { color: var(--amber); }
 
@@ -623,7 +656,9 @@ body {
  * or out from behind the tower. app.js drives the show/hide on a timer.
  * ============================================================================ */
 #fastlap-panel,
-#bestlap-panel {
+#bestlap-panel,
+#sectors-panel,
+#charts-panel {
     position: absolute;
     left: 0;
     right: 0;
@@ -632,24 +667,34 @@ body {
     pointer-events: none;
 }
 #fastlap-panel.hidden,
-#bestlap-panel.hidden { display: none; }
+#bestlap-panel.hidden,
+#charts-panel.hidden,
+#sectors-panel.hidden { display: none; }
 
 /* Content slides up/down inside the fixed window. translateY(100%) parks it just
    below the window (fully clipped); translateY(0) brings it fully into view. */
 .fastlap-inner,
-.bestlap-inner {
+.bestlap-inner,
+.charts-inner,
+.sectors-inner {
     background: var(--bg);
     border-top: 1px solid var(--border);
     transform: translateY(100%);
     transition: transform var(--anim-slide) var(--ease);
 }
 #fastlap-panel.fastlap-in .fastlap-inner,
-#bestlap-panel.bestlap-in .bestlap-inner { transform: translateY(0); }
+#bestlap-panel.bestlap-in .bestlap-inner,
+#charts-panel.charts-in .charts-inner,
+#sectors-panel.sectors-in .sectors-inner { transform: translateY(0); }
 #fastlap-panel.fastlap-out .fastlap-inner,
-#bestlap-panel.bestlap-out .bestlap-inner { transform: translateY(100%); }
+#bestlap-panel.bestlap-out .bestlap-inner,
+#charts-panel.charts-out .charts-inner,
+#sectors-panel.sectors-out .sectors-inner { transform: translateY(100%); }
 
 .fastlap-title,
-.bestlap-title {
+.bestlap-title,
+.charts-title,
+.sectors-title {
     /* Height is set to the measured row height by app.js (with box-sizing:
        border-box) so the panel is an exact whole number of rows tall; the rem
        value here is just a pre-render fallback. */
@@ -665,6 +710,58 @@ body {
     background: var(--bg-header);
     border-bottom: 1px solid var(--border);
 }
+
+/* Best-sectors carousel: a horizontal track that pages one sector at a time (each a
+   ranked mini-board of the fastest riders in that sector), mirroring the down-the-order
+   carousel — each page slides out to the left as the next slides in from the right. */
+.sectors-viewport {
+    overflow: hidden;           /* clips the off-screen sector pages */
+}
+.sectors-track {
+    display: flex;
+    transition: transform var(--anim-base) var(--ease);
+}
+.sectors-page {
+    flex: 0 0 100%;             /* one tower-width page per sector */
+}
+/* Each page's title is its first row (built by app.js), so the header slides in
+   with its board instead of swapping in place. */
+.sectors-page > .sectors-title { width: 100%; box-sizing: border-box; }
+
+/* Session-charts carousel: a horizontal track that pages one chart at a time (each an
+   inline SVG line chart), mirroring the best-sectors carousel — each page slides out to
+   the left as the next slides in from the right. The viewport height is set by app.js to
+   an exact whole number of measured rows (like the boards) so the panel lands on a row
+   boundary. */
+.charts-viewport {
+    overflow: hidden;           /* clips the off-screen chart pages */
+}
+.charts-track {
+    display: flex;
+    transition: transform var(--anim-base) var(--ease);
+}
+.charts-page {
+    flex: 0 0 100%;             /* one tower-width page per chart */
+    box-sizing: border-box;
+}
+/* Each page's title is its first row (built by app.js), so the header slides in
+   with its chart instead of swapping in place. */
+.charts-page > .charts-title { width: 100%; box-sizing: border-box; }
+/* The SVG fills the rest of its page (explicit px height set by app.js so the
+   viewBox stays 1:1); strokes/labels are coloured inline per-rider by app.js.
+   vector-effect keeps line/grid widths crisp regardless of the viewBox scale. */
+.charts-svg {
+    display: block;
+    width: 100%;
+}
+.charts-svg .chart-line { fill: none; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.charts-svg .chart-grid { stroke: var(--border); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.charts-svg .chart-zero { stroke: var(--text-sub); stroke-width: 1; stroke-dasharray: 4 4; vector-effect: non-scaling-stroke; }
+.charts-svg .chart-axis { fill: var(--text-sub); font-family: var(--font-small); }
+.charts-svg .chart-tag  { font-family: var(--font-small); }
+/* Padding rows that keep every sector page the same height (fewer riders than the
+   configured count). Reuses the shared .board-row layout below. */
+.board-row.board-row-empty { visibility: hidden; }
 
 /* Shared board rows (rank / name / time) for both lap-time panels. */
 .board-row {
@@ -753,14 +850,14 @@ body {
 }
 
 .tail-viewport {
-    overflow: hidden;           /* clips the off-screen pages */
+    overflow: hidden;           /* clips the rows scrolled off the top/bottom */
 }
+/* Single vertical column of ALL tail riders; scrolls with translateY inside the
+   clipped viewport (slide up -> pause -> scroll down -> pause -> scroll up -> pause).
+   The scroll duration is set inline per phase by app.js. */
 .tail-track {
-    display: flex;
     transition: transform var(--anim-base) var(--ease);
-}
-.tail-page {
-    flex: 0 0 100%;             /* one tower-width page per slot */
+    will-change: transform;
 }
 
 /* Tail rows mirror the tower's .row-main columns so widths/styling match and
@@ -811,6 +908,19 @@ body {
 #battle-panel.battle-in .battle-inner  { transform: translateY(0); }
 #battle-panel.battle-out .battle-inner { transform: translateY(100%); }
 
+/* Battle→battle cut. A cut to a DIFFERENT battle is a full panel change like every other
+   slot panel — the whole #battle-panel slides DOWN and out (revealing the tower behind it),
+   then a fresh one slides UP with the new battle (see #battle-panel + app.js restart()). So
+   there is only ever ONE .battle-track (one header) — no in-place two-card reel. #battle-list
+   is the clip window; its height animates only for a same-battle membership change (a rider
+   joining/leaving grows/shrinks the box smoothly instead of the bottom-anchored edge jumping),
+   pinned in px by app.js — auto->auto in-place data updates don't transition. */
+#battle-list {
+    position: relative;
+    overflow: hidden;
+    transition: height var(--anim-base) var(--ease);
+}
+
 .battle-title {
     display: flex;
     align-items: center;
@@ -859,6 +969,14 @@ body {
     pointer-events: none;
 }
 
+/* A real-time (live) interval — slightly de-emphasised from the static split so a
+   caster can tell at a glance it's a moving value. Overriding a color synced from
+   the palette needs !important (see the theming note in CLAUDE.md). */
+.battle-value.live {
+    font-style: italic;
+    color: var(--gp-secondary) !important;
+}
+
 .battle-main {
     display: flex;
     align-items: center;
@@ -868,14 +986,22 @@ body {
     /* whole-row brand highlight colour is set inline by app.js */
 }
 .battle-pos {
-    /* Match the tower's leading columns (position + the optional +/- column) so
-       the number plate (and the name after it) line up horizontally with the
-       tower — and track the +/- column on/off. */
-    flex: 0 0 calc(var(--col-pos-w) + var(--posdelta-w));
-    text-align: left;
+    /* Exactly the tower's .col-pos: same width and RIGHT alignment, so the position
+       number sits where the tower's does. The optional +/- column follows as a
+       .battle-posdelta spacer (below), so the plate and name line up with the tower in
+       both +/- states. */
+    flex: 0 0 var(--col-pos-w);
+    text-align: right;
     padding-right: var(--sp-sm);
     font-weight: bold;
     color: var(--text-sub);
+}
+/* Empty spacer mirroring the tower's .col-posdelta column so the plate/name align
+   whether the +/- column is shown or hidden. Collapses to 0 automatically when
+   --posdelta-w is 0 (non-race / disabled inside #overlay, and always in the focus
+   card, which has no +/- column). No padding, so 0 width is truly 0. */
+.battle-posdelta {
+    flex: 0 0 var(--posdelta-w);
 }
 .battle-name {
     flex: 1 1 0;
@@ -911,6 +1037,10 @@ body {
     padding-left: var(--sp-sm);   /* small gap, like the focus card */
     color: var(--text-sub);
 }
+/* Bike name (battle card) — bold, matching the focus card. */
+.battle-sub-bike {
+    font-weight: bold;
+}
 .battle-sub-time {
     font-family: var(--font-digits);
 }
@@ -923,7 +1053,12 @@ body {
     bottom: 2rem;
     left: 50%;
     transform: translateX(-50%) translateY(var(--sp-md));
-    width: var(--focus-width);
+    /* No ± column here, so zero its reserve. --posdelta-w: 0 applies to BOTH the width
+       calc below (the +var resolves against THIS element's 0) and the identity row inside,
+       so the card is exactly a tower row minus the ± column - not a fixed 20rem, and no
+       empty right gutter. Same calc as #overlay, resolved with the local --posdelta-w. */
+    --posdelta-w: 0rem;
+    width: calc(var(--tower-width-base) + var(--posdelta-w));
     background: var(--bg-focus);
     border-radius: var(--radius);
     border: 1px solid var(--border);
@@ -943,106 +1078,52 @@ body {
     transform: translateX(-50%) translateY(var(--sp-md));
 }
 
-.focus-row {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-sm);
-    padding: var(--sp-sm) var(--sp-md);
-}
-.focus-neighbor {
-    opacity: 0.6;
-    font-size: var(--fs-sm);
-}
-.focus-highlight {
-    background: var(--bg-focus-highlight);
-}
-
-.focus-pos {
-    flex: 0 0 1.3rem;
-    font-size: var(--fs-2xs);
-    color: var(--text-sub);
-    text-align: right;
-}
-.focus-highlight .focus-pos {
+/* Director story caption: a plain lower-third across the top of the card. The
+   text is a single neutral colour (--text) — no per-story tint and no coloured
+   strip (the background stays the card's own dark fill), with a neutral hairline
+   divider below. The class rule wins over the UA [hidden] rule, so the explicit
+   [hidden] guard is needed. */
+.focus-banner {
+    padding: var(--sp-xs) var(--sp-md);
     color: var(--text);
+    font-family: var(--font-display);
+    font-size: var(--fs-xs);
     font-weight: 700;
+    letter-spacing: 0.06rem;
+    line-height: 1.7;
+    text-align: center;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
 }
+.focus-banner[hidden] { display: none; }
 
-.focus-num-badge {
-    flex: 0 0 auto;
-    display: inline-flex;
-    align-items: stretch;
-    height: 0.8rem;
-    gap: var(--sp-xs);
+/* Body mirrors a single battle card by reusing the battle/tower classes
+   (.battle-sub / .battle-main / .col-num / .num-badge / .brand-strip /
+   .battle-name), so the plate, name and detail rows are identical to the rest of
+   the overlay. The big .battle-value headline is reused (.focus-value) for the
+   position, floating on the middle-right over the detail rows, so the detail rows
+   keep the headline width reserve on the right. The ± reserve is zeroed (no ±
+   column to align to); the brand gradient and identity-row tint are applied inline
+   by app.js, like buildBattle(). */
+.focus-body {
+    --posdelta-w: 0rem;        /* no ± column to reserve space for */
+    position: relative;        /* anchors the .focus-value position headline */
 }
-.focus-highlight .focus-num-badge {
-    height: 1rem;
-}
-.focus-num {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--badge-bg);
-    color: var(--badge-text);
-    font-size: var(--fs-2xs);
-    font-weight: 700;
-    width: var(--badge-w);
-    padding: 0 var(--sp-sm);
-    border-radius: var(--sp-xs) 0 0 var(--sp-xs);
-}
-.focus-strip {
-    width: var(--strip-w);
-    border-radius: 0 var(--sp-xs) var(--sp-xs) 0;
-}
-
-.focus-name {
-    flex: 1 1 0;
-    color: var(--text);
-}
-.focus-highlight .focus-name {
-    font-weight: 700;
-}
-
-.focus-interval {
-    flex: 0 0 auto;
-    font-family: var(--font-digits);
-    color: var(--text-sub);
-    text-align: right;
-}
-
-.focus-rider-info {
-    flex: 1 1 0;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    overflow: hidden;
-}
-.focus-rider-info .focus-name {
-    flex: none;
-}
-.focus-bike {
-    font-size: var(--fs-2xs);
-    color: var(--text-dim);
-}
-
-.focus-lap-times {
-    flex: 0 0 auto;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 1px;
-}
-.focus-last-lap,
-.focus-best-lap {
-    font-size: var(--fs-2xs);
-    color: var(--text-dim);
-}
-.focus-lap-value {
-    font-family: var(--font-digits);
-}
-.focus-lap-placeholder {
-    color: var(--text-off);
+.focus-body .battle-sub {
+    /* Indent the detail rows to sit exactly under the rider's name. The nominal
+       token formula (shared .battle-sub) assumes each identity-row column renders
+       at its token width, but they don't: the ordinal ("1ST" / "10TH") overflows
+       --col-pos-w and the plate widens with digit count, so the formula lands the
+       text ~30px left of the name. app.js measures the name's real left edge and
+       sets --focus-sub-indent; the calc() below is only the first-paint fallback.
+       padding-right reserves the headline width so the detail values clear the
+       floating position headline (same as the base .battle-sub). */
+    padding-right: var(--battle-headline-w);
+    /* First-paint fallback (JS overrides with the measured name left edge). The identity
+       row now leads with the plate (position moved to the right), so the fallback is just
+       the plate width + margins — no leading position/± columns. */
+    padding-left: var(--focus-sub-indent,
+        calc(var(--badge-w) + var(--strip-w) * 2 + var(--sp-md) * 3));
 }
 
 /* ============================================================================
@@ -1073,8 +1154,8 @@ body {
     display: block;
     width: 60%;
     height: 60%;
-    -webkit-mask-image: url('gear.svg');
-    mask-image: url('gear.svg');
+    -webkit-mask-image: url('icons/gear.svg');
+    mask-image: url('icons/gear.svg');
     -webkit-mask-size: contain;
     mask-size: contain;
     -webkit-mask-repeat: no-repeat;

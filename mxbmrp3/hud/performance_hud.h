@@ -65,8 +65,10 @@ private:
     static constexpr int GRAPH_HISTORY_SIZE = 120;  // Number of data points in performance graphs
     static constexpr int GRAPH_WIDTH_CHARS = 33;    // Width for graph display (left side)
     static constexpr int LEGEND_WIDTH_CHARS = 9;    // Width for legend/stats (right side) - fits "Max 12.34"
-    static constexpr int BACKGROUND_WIDTH_CHARS = GRAPH_WIDTH_CHARS + 1 + LEGEND_WIDTH_CHARS;  // 33 + 1 gap + 9 = 43
-    static constexpr float GRAPH_HEIGHT_LINES = 6;  // Height in line units (matches telemetry HUD height)
+    // One section fills 10 rows so a single-section HUD is title(2) + subheading(1)
+    // + 10 + padding(2) = 15 rows, matching the StandingsHud default height. (Two
+    // sections stack taller, like the Session Charts HUD.)
+    static constexpr float GRAPH_HEIGHT_LINES = 10; // Height in line units
 
     // Graph scaling constants
     static constexpr float MAX_FPS_DISPLAY = 250.0f;  // FPS graph ceiling

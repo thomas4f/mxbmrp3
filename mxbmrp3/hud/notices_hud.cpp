@@ -13,6 +13,8 @@
 #include "../core/plugin_utils.h"
 #include "../core/widget_constants.h"
 #include "../core/color_config.h"
+#include "../core/ui_config.h"
+#include "notice_priority.h"
 
 using namespace PluginConstants;
 
@@ -30,14 +32,33 @@ static const char* ordinalSuffix(int n) {
 // Center display positioning constants (fixed center-screen layout)
 namespace {
     constexpr float CENTER_X = 0.5f;
-    constexpr float TIMING_DIVIDER_Y = 0.1665f;
-    constexpr int NOTICE_WIDTH_CHARS = 14;  // Wider than STANDARD_WIDTH to fit "DEFAULT SETUP"
+    // Center-top stack (one grid snap between each), top to bottom: GapBar (first row) ->
+    // Notices -> Timing HUD (which grows DOWN, so it sits last and never overlaps anything
+    // below). The notice grows UP with its BOTTOM one row-gap below this divider. All three
+    // boxes are lineHeightLarge tall (4 cells), so the whole stack lands on the grid.
+    // Derivation (cell = 0.0117335, box height = 0.046934):
+    //   GapBar top 0.011734 + GapBar height 0.046934 + 1 cell -> notice top   = 0.070402
+    //   notice top + noticeQuadHeight (0.046934) + rowGap (1 cell) -> divider  = 0.129069
+    //   notice bottom (0.117336) + 1 cell -> Timing top (timing_hud.cpp)       = 0.129069
+    // Stable regardless of the Timing HUD's height (it's below and grows away).
+    constexpr float TIMING_DIVIDER_Y = 0.129069f;
+    // Shared with the Timing HUD so the two centered top-stack panels are the same width.
+    constexpr int NOTICE_WIDTH_CHARS = WidgetDimensions::CENTER_STACK_WIDTH_CHARS;
+
+    // Match TimingHud's centering exactly: when grid snapping is on, quantize the centering
+    // anchor to the horizontal grid so the notice's left edge lands on the same lattice as the
+    // Timing panel below it. Both panels are the same width, so same anchor + same snap => same
+    // left edge. Without this, two equal-width panels drift up to half a grid cell apart and
+    // read as misaligned even though their widths match.
+    inline float snapCenteringX(float x) {
+        return UiConfig::getInstance().getGridSnapping()
+            ? PluginConstants::HudGrid::SNAP_TO_GRID_X(x)
+            : x;
+    }
 }
 
 NoticesHud::NoticesHud()
     : m_bIsWrongWay(false)
-    , m_sessionStartTime(0)
-    , m_lastSessionState(-1)
     , m_bShowOvertime(false)
     , m_bOvertimeTriggered(false)
     , m_bShowLastLap(false)
@@ -75,12 +96,25 @@ bool NoticesHud::isTimedNoticeActive(std::chrono::steady_clock::time_point trigg
     return std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() < static_cast<long long>(m_noticeDurationMs);
 }
 
+NoticesHud::StatusTier NoticesHud::computeStatusTier() const {
+    // Reads the member flags update() has already refreshed (wrong-way grace, hazard
+    // poll, blue-flag, lapping, overtime timer). The render ladder gives blue flag
+    // precedence over lapper, so lapper is suppressed when blue flag shows.
+    StatusTier s;
+    s.wrongWay = m_bIsWrongWay && (m_enabledNotices & NOTICE_WRONG_WAY);
+    s.hazard   = m_bIsHazardAhead && !m_bFinishedTriggered;
+    s.blueFlag = m_bIsBlueFlagged && !m_bFinishedTriggered && (m_enabledNotices & NOTICE_BLUE_FLAG);
+    s.lapping  = m_bIsLapping && !m_bFinishedTriggered && !s.blueFlag && (m_enabledNotices & NOTICE_LAPPING);
+    s.overtime = m_bShowOvertime && (m_enabledNotices & NOTICE_OVERTIME);
+    return s;
+}
+
 void NoticesHud::update() {
     // When invisible, still clean up expired timed notice flags in PluginData.
     // Without this, flags linger until PluginData::clear() (session end), and toggling
     // the widget visible could briefly flash a stale notice.
     // When visible, checkTimedNotice() handles cleanup — no need to run both paths.
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         PluginData& pd = PluginData::getInstance();
         if (pd.hasNewAllTimePB() && !isTimedNoticeActive(pd.getAllTimePBTime()))
             pd.clearAllTimePB();
@@ -98,34 +132,15 @@ void NoticesHud::update() {
     }
 
     PluginData& pluginData = PluginData::getInstance();
-
-    // Track session state transitions to detect race start
     const SessionData& sessionData = pluginData.getSessionData();
-    int currentSessionState = sessionData.sessionState;
-    int currentSessionTime = pluginData.getSessionTime();
-    bool isRaceSession = pluginData.isRaceSession();
 
-    // Detect transition to "in progress" state for race sessions to start grace period
-    if (isRaceSession && currentSessionState == SessionState::IN_PROGRESS && m_lastSessionState != SessionState::IN_PROGRESS) {
-        // Race session just transitioned to "in progress" - store start time
-        m_sessionStartTime = currentSessionTime;
-        DEBUG_INFO_F("NoticesHud: Race started (in progress), sessionTime=%d ms", currentSessionTime);
-    }
-    m_lastSessionState = currentSessionState;
-
-    // Check wrong-way status with grace period (only for race sessions)
-    bool wrongWay = false;
-    if (pluginData.isPlayerGoingWrongWay()) {
-        // Player is going wrong way - check if we're within grace period (race sessions only)
-        bool inGracePeriod = false;
-        if (isRaceSession && currentSessionState == SessionState::IN_PROGRESS) {  // Only apply grace period for race sessions when "in progress"
-            int elapsedTime = std::abs(currentSessionTime - m_sessionStartTime);
-            inGracePeriod = (elapsedTime < WRONG_WAY_GRACE_PERIOD_MS);
-        }
-
-        // Only set wrong way if not in grace period
-        wrongWay = !inGracePeriod;
-    }
+    // Wrong-way notice, suppressed during a standing (grid) start until the rider clears the first
+    // split. The grid launch (facing sideways/backward on the grid, then the run to S/F) routinely
+    // trips wrong-way; the grid-start grace is sector-based (see PluginData::isInGridStartGrace),
+    // so it covers races AND grid qualifying and adapts to the variable gate hold, with no fixed
+    // duration or sessionTime math. Pit starts never enter this grace, so their behaviour is
+    // unchanged (wrong-way shows as before).
+    bool wrongWay = pluginData.isPlayerGoingWrongWay() && !pluginData.isInGridStartGrace();
 
     if (wrongWay != m_bIsWrongWay) {
         m_bIsWrongWay = wrongWay;
@@ -254,32 +269,63 @@ void NoticesHud::update() {
         m_bFinishedTriggered = false;
     }
 
-    // Check timed notice flags - single check per type, clear expired flags
-    auto checkTimedNotice = [&](bool hasNew, std::chrono::steady_clock::time_point time,
-                                auto clearFn, bool& showFlag) {
-        bool active = hasNew && isTimedNoticeActive(time);
-        if (hasNew && !active) clearFn();
-        if (active != showFlag) { showFlag = active; setDataDirty(); }
+    // Higher-priority *status* notices that legitimately co-occur with a PB/setup/
+    // segment on the same lap. While one of these is on screen, a consumable notice
+    // masked behind it must not run down its display timer and get cleared unseen.
+    // computeStatusTier() is the shared source with rebuildRenderData()'s render ladder,
+    // so the mask predicate and the display precedence can't drift. (Overtime is timed
+    // but still outranks the PB tier, so it masks too.)
+    const bool statusMasking = computeStatusTier().anyShowing();
+
+    auto nowMs = [] {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::steady_clock::now().time_since_epoch()).count();
+    }();
+    auto toMs = [](std::chrono::steady_clock::time_point tp) {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch()).count();
+    };
+    const long long durationMs = static_cast<long long>(m_noticeDurationMs);
+
+    // Check timed notice flags - single check per type. The window is measured from
+    // when the notice became unmasked (see notice_priority.h), so a masked notice is
+    // held rather than consumed. A disabled notice is never held (it can't be seen
+    // anyway) so it drains normally.
+    auto checkTimedNotice = [&](bool hasNew, bool enabled, std::chrono::steady_clock::time_point triggerTime,
+                                long long& unmaskAnchor, auto clearFn, bool& showFlag) {
+        NoticePriority::TimerOut r = NoticePriority::stepTimer(
+            { hasNew, statusMasking && enabled, toMs(triggerTime), unmaskAnchor }, nowMs, durationMs);
+        unmaskAnchor = r.unmaskAtMs;
+        if (r.consume) clearFn();
+        if (r.show != showFlag) { showFlag = r.show; setDataDirty(); }
     };
 
-    checkTimedNotice(pluginData.hasNewAllTimePB(), pluginData.getAllTimePBTime(),
+    checkTimedNotice(pluginData.hasNewAllTimePB(), (m_enabledNotices & NOTICE_ALLTIME_PB) != 0,
+                     pluginData.getAllTimePBTime(), m_allTimePBUnmaskMs,
                      [&]() { pluginData.clearAllTimePB(); }, m_bShowAllTimePB);
-    checkTimedNotice(pluginData.hasNewFastestLap(), pluginData.getFastestLapTime(),
+    checkTimedNotice(pluginData.hasNewFastestLap(), (m_enabledNotices & NOTICE_FASTEST_LAP) != 0,
+                     pluginData.getFastestLapTime(), m_fastestLapUnmaskMs,
                      [&]() { pluginData.clearFastestLap(); }, m_bShowFastestLap);
-    checkTimedNotice(pluginData.hasNewSessionPB(), pluginData.getSessionPBTime(),
+    checkTimedNotice(pluginData.hasNewSessionPB(), (m_enabledNotices & NOTICE_SESSION_PB) != 0,
+                     pluginData.getSessionPBTime(), m_sessionPBUnmaskMs,
                      [&]() { pluginData.clearSessionPB(); }, m_bShowSessionPB);
 
     // Check default setup warning (only fires when RunHandler detects default setup)
-    checkTimedNotice(pluginData.hasDefaultSetupNotice(), pluginData.getDefaultSetupTime(),
+    checkTimedNotice(pluginData.hasDefaultSetupNotice(), (m_enabledNotices & NOTICE_DEFAULT_SETUP) != 0,
+                     pluginData.getDefaultSetupTime(), m_defaultSetupUnmaskMs,
                      [&]() { pluginData.clearDefaultSetupNotice(); }, m_bShowDefaultSetup);
 
     // Segment timer action notice (start set / end set / cleared) - carries a kind,
     // so it can't use the checkTimedNotice helper directly. Re-render on kind change
     // too (not just show/hide), so a second press replaces the notice immediately
-    // instead of queueing behind the one still on screen.
+    // instead of queueing behind the one still on screen. (Always-enabled, so it is
+    // held while a status notice masks it, same as the PB tier.)
     {
-        bool active = pluginData.hasSegmentNotice() && isTimedNoticeActive(pluginData.getSegmentNoticeTime());
-        if (pluginData.hasSegmentNotice() && !active) pluginData.clearSegmentNotice();
+        NoticePriority::TimerOut r = NoticePriority::stepTimer(
+            { pluginData.hasSegmentNotice(), statusMasking, toMs(pluginData.getSegmentNoticeTime()), m_segmentUnmaskMs },
+            nowMs, durationMs);
+        m_segmentUnmaskMs = r.unmaskAtMs;
+        if (r.consume) pluginData.clearSegmentNotice();
+        bool active = r.show;
         PluginData::SegmentNoticeKind kind = active ? pluginData.getSegmentNoticeKind()
                                                     : PluginData::SegmentNoticeKind::None;
         if (active != m_bShowSegment || kind != m_segmentNoticeKind) {
@@ -305,14 +351,17 @@ void NoticesHud::rebuildLayout() {
     // Notice dimensions (uses own scale - independent of TimingHud)
     float noticeTextWidth = PluginUtils::calculateMonospaceTextWidth(NOTICE_WIDTH_CHARS, dim.fontSizeLarge);
     float noticeQuadWidth = dim.paddingH + noticeTextWidth + dim.paddingH;
-    float noticeQuadHeight = dim.paddingV + dim.fontSizeLarge;
+    // Height = lineHeightLarge (the large-font title band, exactly 2x lineHeightNormal =
+    // 4 snap-grid cells) so this box lines up on the shared grid with the Timing/Gap Bar
+    // rows. (The old paddingV + fontSizeLarge was ~4.56 cells - off-grid.)
+    float noticeQuadHeight = dim.lineHeightLarge;
 
     // Position notice with bottom edge at divider line (grows up)
     // Use original gap formula (half line height) for proper spacing
     float rowGap = dim.lineHeightNormal / 2.0f;
-    float noticeQuadX = CENTER_X - noticeQuadWidth / 2.0f;
+    float noticeQuadX = snapCenteringX(CENTER_X - noticeQuadWidth / 2.0f);
     float noticeQuadY = TIMING_DIVIDER_Y - rowGap - noticeQuadHeight;
-    float noticeY = noticeQuadY + dim.paddingV * 0.5f;
+    float noticeY = noticeQuadY + (noticeQuadHeight - dim.fontSizeLarge) * 0.5f;
 
     // Update notice quad position (apply drag offset)
     float quadX = noticeQuadX;
@@ -322,7 +371,7 @@ void NoticesHud::rebuildLayout() {
 
     // Update notice string position
     if (!m_strings.empty()) {
-        float noticeX = CENTER_X;
+        float noticeX = noticeQuadX + noticeQuadWidth / 2.0f;
         applyOffset(noticeX, noticeY);
         m_strings[0].m_afPos[0] = noticeX;
         m_strings[0].m_afPos[1] = noticeY;
@@ -337,11 +386,14 @@ void NoticesHud::rebuildRenderData() {
     m_quads.clear();
 
     // Check which notices are both active and enabled
-    bool showWrongWay  = m_bIsWrongWay && (m_enabledNotices & NOTICE_WRONG_WAY);
-    bool showHazard    = m_bIsHazardAhead && !m_bFinishedTriggered;
-    bool showBlueFlag  = m_bIsBlueFlagged && !m_bFinishedTriggered && (m_enabledNotices & NOTICE_BLUE_FLAG);
-    bool showLapping   = m_bIsLapping && !m_bFinishedTriggered && !showBlueFlag && (m_enabledNotices & NOTICE_LAPPING);
-    bool showOvertime  = m_bShowOvertime && (m_enabledNotices & NOTICE_OVERTIME);
+    // Status tier (wrong way / hazard / blue flag / lapper / overtime) — shared with
+    // update()'s masking predicate via computeStatusTier() so the two stay in lockstep.
+    const StatusTier status = computeStatusTier();
+    bool showWrongWay  = status.wrongWay;
+    bool showHazard    = status.hazard;
+    bool showBlueFlag  = status.blueFlag;
+    bool showLapping   = status.lapping;
+    bool showOvertime  = status.overtime;
     bool showAllTimePB = m_bShowAllTimePB && (m_enabledNotices & NOTICE_ALLTIME_PB);
     bool showFastestLap = m_bShowFastestLap && (m_enabledNotices & NOTICE_FASTEST_LAP);
     bool showSessionPB = m_bShowSessionPB && (m_enabledNotices & NOTICE_SESSION_PB);
@@ -363,14 +415,20 @@ void NoticesHud::rebuildRenderData() {
     // Notice dimensions (uses own scale - independent of TimingHud)
     float noticeTextWidth = PluginUtils::calculateMonospaceTextWidth(NOTICE_WIDTH_CHARS, dim.fontSizeLarge);
     float noticeQuadWidth = dim.paddingH + noticeTextWidth + dim.paddingH;
-    float noticeQuadHeight = dim.paddingV + dim.fontSizeLarge;
+    // Height = lineHeightLarge (the large-font title band, exactly 2x lineHeightNormal =
+    // 4 snap-grid cells) so this box lines up on the shared grid with the Timing/Gap Bar
+    // rows. (The old paddingV + fontSizeLarge was ~4.56 cells - off-grid.)
+    float noticeQuadHeight = dim.lineHeightLarge;
 
     // Position notice with bottom edge at divider line (grows up)
     // Use original gap formula (half line height) for proper spacing
     float rowGap = dim.lineHeightNormal / 2.0f;
-    float noticeQuadX = CENTER_X - noticeQuadWidth / 2.0f;
+    float noticeQuadX = snapCenteringX(CENTER_X - noticeQuadWidth / 2.0f);
     float noticeQuadY = TIMING_DIVIDER_Y - rowGap - noticeQuadHeight;
-    float noticeY = noticeQuadY + dim.paddingV * 0.5f;
+    float noticeY = noticeQuadY + (noticeQuadHeight - dim.fontSizeLarge) * 0.5f;
+    // Center text on the (snapped) box center, not raw CENTER_X, so the label stays centered
+    // inside the box after the box left edge is grid-snapped (matches TimingHud).
+    float noticeCenterX = noticeQuadX + noticeQuadWidth / 2.0f;
 
     if (showWrongWay) {
         // Add notice background (red for warning)
@@ -384,7 +442,7 @@ void NoticesHud::rebuildRenderData() {
         m_quads.push_back(noticeQuad);
 
         // Add notice text (red)
-        addString("WRONG WAY", CENTER_X, noticeY, Justify::CENTER,
+        addString("WRONG WAY", noticeCenterX, noticeY, Justify::CENTER,
             this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::NEGATIVE), dim.fontSizeLarge);
     }
     else if (showHazard) {
@@ -398,7 +456,7 @@ void NoticesHud::rebuildRenderData() {
         noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::WARNING), m_fBackgroundOpacity);
         m_quads.push_back(noticeQuad);
 
-        addString("HAZARD AHEAD", CENTER_X, noticeY, Justify::CENTER,
+        addString("HAZARD AHEAD", noticeCenterX, noticeY, Justify::CENTER,
             this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::WARNING), dim.fontSizeLarge);
     }
     else if (showBlueFlag) {
@@ -412,7 +470,7 @@ void NoticesHud::rebuildRenderData() {
         noticeQuad.m_ulColor = PluginUtils::applyOpacity(ColorPalette::BLUE, m_fBackgroundOpacity);
         m_quads.push_back(noticeQuad);
 
-        addString("BLUE FLAG", CENTER_X, noticeY, Justify::CENTER,
+        addString("BLUE FLAG", noticeCenterX, noticeY, Justify::CENTER,
             this->getFont(FontCategory::TITLE), ColorPalette::BLUE, dim.fontSizeLarge);
     }
     else if (showLapping) {
@@ -427,7 +485,7 @@ void NoticesHud::rebuildRenderData() {
         noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::NEUTRAL), m_fBackgroundOpacity);
         m_quads.push_back(noticeQuad);
 
-        addString("LAPPER AHEAD", CENTER_X, noticeY, Justify::CENTER,
+        addString("LAPPER AHEAD", noticeCenterX, noticeY, Justify::CENTER,
             this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::NEUTRAL), dim.fontSizeLarge);
     }
     else if (showOvertime) {
@@ -441,7 +499,7 @@ void NoticesHud::rebuildRenderData() {
         noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::BACKGROUND), m_fBackgroundOpacity);
         m_quads.push_back(noticeQuad);
 
-        addString("OVERTIME", CENTER_X, noticeY, Justify::CENTER,
+        addString("OVERTIME", noticeCenterX, noticeY, Justify::CENTER,
             this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
     }
     else if (showAllTimePB || showFastestLap || showSessionPB) {
@@ -458,7 +516,7 @@ void NoticesHud::rebuildRenderData() {
         noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::POSITIVE), m_fBackgroundOpacity);
         m_quads.push_back(noticeQuad);
 
-        addString(text, CENTER_X, noticeY, Justify::CENTER,
+        addString(text, noticeCenterX, noticeY, Justify::CENTER,
             this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::POSITIVE), dim.fontSizeLarge);
     }
     else if (showSegment) {
@@ -484,7 +542,7 @@ void NoticesHud::rebuildRenderData() {
         noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(isAdd ? ColorSlot::POSITIVE : ColorSlot::BACKGROUND), m_fBackgroundOpacity);
         m_quads.push_back(noticeQuad);
 
-        addString(text, CENTER_X, noticeY, Justify::CENTER,
+        addString(text, noticeCenterX, noticeY, Justify::CENTER,
             this->getFont(FontCategory::TITLE), this->getColor(slot), dim.fontSizeLarge);
     }
     else if (showFinished) {
@@ -505,7 +563,7 @@ void NoticesHud::rebuildRenderData() {
         } else {
             snprintf(finishedText, sizeof(finishedText), "FINISHED");
         }
-        addString(finishedText, CENTER_X, noticeY, Justify::CENTER,
+        addString(finishedText, noticeCenterX, noticeY, Justify::CENTER,
             this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
     }
     else if (showLastLap) {
@@ -520,7 +578,7 @@ void NoticesHud::rebuildRenderData() {
         m_quads.push_back(noticeQuad);
 
         // Add notice text (white)
-        addString("FINAL LAP", CENTER_X, noticeY, Justify::CENTER,
+        addString("FINAL LAP", noticeCenterX, noticeY, Justify::CENTER,
             this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
     }
     else if (showDefaultSetup) {
@@ -534,7 +592,7 @@ void NoticesHud::rebuildRenderData() {
         noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::WARNING), m_fBackgroundOpacity);
         m_quads.push_back(noticeQuad);
 
-        addString("DEFAULT SETUP", CENTER_X, noticeY, Justify::CENTER,
+        addString("DEFAULT SETUP", noticeCenterX, noticeY, Justify::CENTER,
             this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::WARNING), dim.fontSizeLarge);
     }
 
@@ -571,9 +629,12 @@ void NoticesHud::resetToDefaults() {
     m_overtimeTriggerTime = {};
     m_lastLapTriggerTime = {};
     m_finishedTriggerTime = {};
+    m_allTimePBUnmaskMs = 0;
+    m_fastestLapUnmaskMs = 0;
+    m_sessionPBUnmaskMs = 0;
+    m_defaultSetupUnmaskMs = 0;
+    m_segmentUnmaskMs = 0;
     m_lastDisplayRaceNum = -1;
-    m_sessionStartTime = 0;
-    m_lastSessionState = -1;
 
     setDataDirty();
 }

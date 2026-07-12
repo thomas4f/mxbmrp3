@@ -9,6 +9,14 @@
 // The C++ exception barrier at the DLL boundary already catches throw-based
 // failures; this complements it for the hardware-fault class of bugs that
 // C++ try/catch cannot intercept.
+//
+// Alongside the dump, the filter writes a tiny savePath\\mxbmrp3\\pending_crash.json
+// marker (faulting module+offset, exception code, plugin version + game build at
+// crash time, and time) that AnalyticsManager reads on the NEXT launch to report the
+// crash (opt-in analytics only). The versions are pinned at crash time because the
+// report is sent on a later launch that may be a different build. This is written
+// AFTER the dump with stack buffers + Win32 file I/O only - no network from the
+// filter - so it never jeopardizes the load-bearing .dmp.
 // ============================================================================
 #pragma once
 

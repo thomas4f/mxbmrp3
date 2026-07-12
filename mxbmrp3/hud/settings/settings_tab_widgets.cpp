@@ -71,7 +71,10 @@ BaseHud* SettingsHud::renderTabWidgets(SettingsLayoutContext& ctx) {
     ctx.addSpacing(0.5f);
     ctx.addSectionHeader("Misc");
     ctx.addWidgetRow("Gamepad", ctx.parent->getGamepadWidget(), true, false, true, true, true, "widgets.gamepad");
-    ctx.addWidgetRow("Pointer", ctx.parent->getPointerWidget(), false, false, true, false, true, "widgets.pointer");
+    // Pointer: the visibility toggle drives the menu-only-cursor mode (On = shown while
+    // racing, Off = only in the settings menu). It can't toggle the widget's real
+    // visibility because the pointer must stay drawable to appear in the menu.
+    ctx.addWidgetRow("Pointer", ctx.parent->getPointerWidget(), false, false, true, false, true, "widgets.pointer", /*menuOnlyPointerRow=*/true);
     ctx.addWidgetRow("Settings", ctx.parent->getSettingsButtonWidget(), true, false, true, true, true, "widgets.settings_button");
     ctx.addWidgetRow("Version", ctx.parent->getVersionWidget(), true, false, true, true, true, "widgets.version");
 

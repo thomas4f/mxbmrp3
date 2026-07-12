@@ -1,0 +1,12 @@
+{
+  "name": "mxbmrp3-tests/web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Headless browser tests for the MXBMRP3 web overlay (Playwright).",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1"
+  }
+}

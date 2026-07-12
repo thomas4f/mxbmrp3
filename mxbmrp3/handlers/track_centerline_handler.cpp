@@ -13,9 +13,13 @@
 DEFINE_HANDLER_SINGLETON(TrackCenterlineHandler)
 
 void TrackCenterlineHandler::handleTrackCenterline(int iNumSegments, Unified::TrackSegment* pasSegment, void* pRaceData) {
-    // Safety: Validate track centerline data before processing
-    // Null pointer or invalid segment count could cause crash in MapHud rendering
-    if (!pasSegment || iNumSegments <= 0) {
+    // Safety: Validate track centerline data before processing. A null pointer,
+    // non-positive count, or an implausibly large count (garbage / game-plugin
+    // struct skew) would drive an out-of-bounds read of the unsized segment array
+    // below and in MapHud, crashing the host game. Reject rather than process --
+    // an implausible count means the whole array is untrustworthy. Mirrors the
+    // count clamp on the other array-style callbacks (see RaceTrackPosition).
+    if (!pasSegment || iNumSegments <= 0 || iNumSegments > Unified::MAX_TRACK_SEGMENTS) {
         DEBUG_WARN_F("Invalid track centerline data (segments=%d, ptr=%p)", iNumSegments, static_cast<void*>(pasSegment));
         return;
     }

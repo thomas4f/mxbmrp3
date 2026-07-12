@@ -189,8 +189,25 @@
     #define GAME_HAS_RECORDS_PROVIDER 0
 #endif
 
-// Discord Rich Presence (MX Bikes only - requires separate Discord app per game)
+// Callback-tape recorder (writes the raw PiBoSo callback stream to a .tape for
+// headless replay in the test harness). MX Bikes only: the tape format is the
+// MX Bikes SPlugins* struct layout and the integration harness (tape.h) replays
+// MX Bikes tapes. Off by default at runtime; a developer opts in via the hidden
+// [Recorder] enabled=1 INI key (no HUD, no hotkey). Ships in the DLL but dormant.
 #if defined(GAME_MXBIKES)
+    #define GAME_HAS_RECORDER 1
+#else
+    #define GAME_HAS_RECORDER 0
+#endif
+
+// Discord Rich Presence (MX Bikes only - requires separate Discord app per game)
+// MXBMRP3_TEST_BUILD: the headless cross-platform (mingw/Wine) test build turns
+// off the Windows-only integrations that don't cross-compile cleanly and don't
+// touch the data pipeline under test — Discord IPC (win32 thread-handle cast) and
+// Aptabase analytics. Steam friends stays on: its SEH FFI wrappers are made
+// portable in-source, and its runtime hook is inert when steam_api64.dll is
+// absent (as under Wine). Never defined by any shipping (MSVC) configuration.
+#if defined(GAME_MXBIKES) && !defined(MXBMRP3_TEST_BUILD)
     #define GAME_HAS_DISCORD 1
 #else
     #define GAME_HAS_DISCORD 0
@@ -218,7 +235,7 @@
 
 // Anonymous usage analytics (privacy-friendly install/active-user counting via
 // Aptabase). Game-agnostic; enabled for the shipping targets. WRS is stubbed.
-#if defined(GAME_MXBIKES) || defined(GAME_GPBIKES) || defined(GAME_KRP)
+#if (defined(GAME_MXBIKES) || defined(GAME_GPBIKES) || defined(GAME_KRP)) && !defined(MXBMRP3_TEST_BUILD)
     #define GAME_HAS_ANALYTICS 1
 #else
     #define GAME_HAS_ANALYTICS 0

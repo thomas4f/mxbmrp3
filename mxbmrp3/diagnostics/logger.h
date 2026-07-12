@@ -8,6 +8,7 @@
 #include <string>
 #include <fstream>
 #include <mutex>
+#include <atomic>
 #include <cstdio>
 
 class Logger {
@@ -65,7 +66,9 @@ private:
         log(level, buffer);
     }
 
-    bool m_initialized;
+    // Atomic: written under m_logMutex in initialize()/shutdown() but read lock-free
+    // at the top of log() (called from the game thread and background threads).
+    std::atomic<bool> m_initialized;
     std::ofstream m_logFile;
     std::string m_logFilePath;
 

@@ -79,6 +79,7 @@ void RaceSessionHandler::handleRaceSession(Unified::RaceSessionData* psRaceSessi
 
     // Update plugin data store
     PluginData::getInstance().setSession(psRaceSession->session);
+    PluginData::getInstance().setSessionSeries(psRaceSession->sessionSeries);  // KRP heat index (0 on other games)
     PluginData::getInstance().setSessionState(psRaceSession->sessionState);
     PluginData::getInstance().setSessionLength(psRaceSession->sessionLength);
     PluginData::getInstance().setSessionNumLaps(psRaceSession->sessionNumLaps);
@@ -137,6 +138,17 @@ void RaceSessionHandler::handleRaceSessionState(Unified::RaceSessionStateData* p
         PluginData::getInstance().setLastSessionTime(0);
         PluginData::getInstance().clearLiveGapTimingPoints();
 
+        // Standing (grid) start: this RaceSessionState flip is NOT the race start. After it the
+        // race sits in a VARIABLE gate hold (the classification reports state=Complete/0x20), then
+        // the gate DROPS - the classification flips to IN_PROGRESS and the race clock starts. So
+        // arm the gate-drop watcher here (the classification handler anchors the lap timer when the
+        // classification flips to racing) instead of anchoring now, which would count the whole
+        // gate hold as dead lap time ("timer started too soon"). Only standing starts reach this
+        // transition (races + grid qualifying pass through PRE_START); pit-start sessions arrive
+        // already IN_PROGRESS via handleRaceSession and never get here, so their per-lap-from-S/F
+        // timing is unchanged. Not gated on isRaceSession() because grid qualifying needs it too.
+        PluginData::getInstance().armGateDropDetect();
+
         // Race just went green: snapshot the starting grid so the standings HUD can
         // show positions gained/lost. Only races reach this transition (practice/qualify
         // arrive already IN_PROGRESS via handleRaceSession); the guard is belt-and-braces.
@@ -191,5 +203,6 @@ void RaceSessionHandler::handleRaceSessionState(Unified::RaceSessionStateData* p
     // Note: Do NOT update sessionLength here - it changes during the race to countdown/other values
     // We keep the initial sessionLength from RaceSession for race format display
     PluginData::getInstance().setSession(psRaceSessionState->session);
+    PluginData::getInstance().setSessionSeries(psRaceSessionState->sessionSeries);  // KRP heat index (0 on other games)
     PluginData::getInstance().setSessionState(psRaceSessionState->sessionState);
 }

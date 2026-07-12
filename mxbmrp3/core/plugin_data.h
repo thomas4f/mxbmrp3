@@ -55,6 +55,7 @@ struct SessionData {
 
     // Session data
     int session;
+    int sessionSeries;      // KRP heat index within a session (0 on other games); distinguishes heats that share the same `session` id
     int sessionGeneration;  // Monotonic counter, incremented on every new session (RaceSession callback)
     int sessionState;
     int sessionLength;      // milliseconds
@@ -76,7 +77,7 @@ struct SessionData {
     SessionData() : trackLength(0.0f), eventType(2), serverType(-1),
         shiftRPM(13500), limiterRPM(14000), steerLock(30.0f),
         engineOptTemperature(85.0f), engineTempAlarmLow(60.0f), engineTempAlarmHigh(110.0f),
-        session(-1), sessionGeneration(0), sessionState(-1), sessionLength(-1), sessionNumLaps(-1),
+        session(-1), sessionSeries(0), sessionGeneration(0), sessionState(-1), sessionLength(-1), sessionNumLaps(-1),
         conditions(-1), airTemperature(-1.0f), trackTemperature(-1.0f), overtimeStarted(false), finishLap(-1), lastSessionTime(0), leaderFinishTime(-1),
         sessionTimeExpired(false) {
         riderName[0] = '\0';
@@ -105,6 +106,7 @@ struct SessionData {
         engineTempAlarmLow = 60.0f;    // Default fallback value
         engineTempAlarmHigh = 110.0f;  // Default fallback value
         session = -1;
+        sessionSeries = 0;
         // Also bumped by incrementSessionGeneration() in RaceSessionHandler — the double
         // bump is intentional: clear() catches event exits that bypass RaceSessionHandler
         ++sessionGeneration;
@@ -646,6 +648,13 @@ struct LapTimer {
     int lastSplit1Time;           // Accumulated time at S1 (for sector 2 calculation)
     int lastSplit2Time;           // Accumulated time at S2 (for sector 3 calculation)
 
+    // Grid (standing) start grace: the anchor was set at the green flag so the live time
+    // spans the grid->S/F run and matches the official splits (accumulated from the start).
+    // While set, an intermediate S/F crossing must NOT reset the anchor to 0 (that would drop
+    // the grid->S/F time and make the timer "jump" when the first official split arrives).
+    // Cleared when the first lap completes (resetLapTimerForNewLap) or on any reset.
+    bool anchoredFromRaceStart;
+
     // Threshold for S/F line detection (position jump > 0.5 = S/F crossing)
     static constexpr float WRAP_THRESHOLD = 0.5f;
 
@@ -653,7 +662,8 @@ struct LapTimer {
         : anchorAccumulatedTime(0), anchorValid(false), isPaused(false)
         , lastTrackPos(0.0f), lastLapNum(0), trackMonitorInitialized(false)
         , currentLapNum(0), currentSector(0)
-        , lastSplit1Time(-1), lastSplit2Time(-1) {}
+        , lastSplit1Time(-1), lastSplit2Time(-1)
+        , anchoredFromRaceStart(false) {}
 
     void reset() {
         anchorAccumulatedTime = 0;
@@ -666,6 +676,7 @@ struct LapTimer {
         currentSector = 0;
         lastSplit1Time = -1;
         lastSplit2Time = -1;
+        anchoredFromRaceStart = false;
     }
 
     void setAnchor(int accumulatedTime) {
@@ -673,6 +684,20 @@ struct LapTimer {
         anchorAccumulatedTime = accumulatedTime;
         anchorValid = true;
         isPaused = false;  // Clear pause state when setting new anchor
+    }
+
+    // Drop the anchor without touching track monitoring, so getElapsedLapTime() returns the
+    // placeholder (-1) until the next S/F crossing re-anchors it. Used on pit exit: the
+    // in-progress lap is dead, so the live timer should read like a fresh track entry rather
+    // than keep ticking. Keeping trackMonitorInitialized means the next S/F crossing is still
+    // detected (updateLapTimerTrackPosition re-anchors on !anchorValid).
+    void invalidateAnchor() {
+        anchorValid = false;
+        isPaused = false;
+        // The grid-start anchor is abandoned once the lap is dropped (e.g. the rider pitted on
+        // lap 1), so end the grace: the next S/F crossing must re-anchor normally rather than be
+        // skipped (which would leave the timer stuck on the placeholder until the lap completes).
+        anchoredFromRaceStart = false;
     }
 
     // Pause/resume support - adjusts anchor to exclude pause duration
@@ -741,6 +766,11 @@ struct LapTimer {
 
 // Data change notification types
 enum class DataChangeType {
+    // NOTE: this fires on real session transitions AND ~once per second during a
+    // session — setSessionTime() emits it on every whole-second boundary (the SSE
+    // overlay clock heartbeat). It is NOT a clean "new session" edge. A consumer that
+    // must act only on a genuine session change should gate on
+    // SessionData::sessionGeneration, not on this notification (see DirectorManager).
     SessionData,
     RaceEntries,
     Standings,
@@ -792,6 +822,7 @@ public:
     void setMaxFuel(float maxFuel);
     void setNumberOfGears(int numberOfGears);
     void setSession(int session);
+    void setSessionSeries(int sessionSeries) { m_sessionData.sessionSeries = sessionSeries; }  // KRP heat index (0 elsewhere)
     void incrementSessionGeneration();  // Called on every new session (RaceSession callback)
     void setSessionState(int sessionState);
     void setSessionLength(int sessionLength);
@@ -824,6 +855,7 @@ public:
     void setDrawState(int state);  // Set current draw state (ON_TRACK/SPECTATE/REPLAY)
     void setSpectatedRaceNum(int raceNum);  // Set which rider is being spectated
     int getDrawState() const { return m_drawState; }  // Get current draw state
+    int getSpectatedRaceNum() const { return m_spectatedRaceNum; }  // Rider being spectated (-1 if none)
     int getDisplayRaceNum() const;  // Get race number to display (player when on track, spectated rider otherwise)
 
     // ========================================================================
@@ -883,6 +915,15 @@ public:
     // Called by handlers when splits are received
     void setLapTimerAnchor(int raceNum, int accumulatedTime, int lapNum, int sectorIndex);
 
+    // Anchor the display rider's lap timer at the green flag of a standing (grid) start, so the
+    // live time counts from the race start THROUGH the grid->S/F run and matches the official
+    // splits (which accumulate from the start). Without this the timer would only anchor at the
+    // first S/F crossing and then jump forward by the grid->S/F time when the first official
+    // split arrives. Sets the grid-start grace so the first S/F crossing doesn't reset it.
+    // No-op for a non-display rider. Called on the PRE_START->IN_PROGRESS transition (races and
+    // grid qualifying); pit-start sessions never reach that transition.
+    void startLapTimerAtRaceStart(int raceNum);
+
     // Reset timer on new lap (called when lap completes)
     void resetLapTimerForNewLap(int raceNum, int lapNum);
 
@@ -890,12 +931,45 @@ public:
     void resetLapTimer(int raceNum);
     void resetAllLapTimers();
 
+    // Gate-drop detection for the standing (grid) start lap-timer anchor, driven by the
+    // RaceClassification's own sessionState. The PRE_START->IN_PROGRESS RaceSessionState flip is
+    // NOT the race start: through the (variable) gate hold that follows, the CLASSIFICATION stream
+    // reports state=Complete(0x20); the moment the gate actually DROPS it flips to IN_PROGRESS
+    // (0x10). That discrete flip is the true race start (it coincides with the race clock starting)
+    // and, unlike a clock-magnitude test, works for pure-lap races too.
+    //
+    // armGateDropDetect() is called on the RaceSessionState PRE_START->IN_PROGRESS transition (only
+    // grid starts reach it; pit starts arrive already IN_PROGRESS via handleRaceSession).
+    // detectGateDrop(clsState) is called per classification and returns true ONCE, on the first
+    // classification that reports IN_PROGRESS *after* the gate hold was observed (a non-racing
+    // classification state). If racing is reported immediately with no hold (no grid gate), it
+    // never fires and the timer falls back to anchoring at the first S/F crossing, as before.
+    void armGateDropDetect() { m_awaitingGateDrop = true; m_gateDropSawHold = false; }
+    bool detectGateDrop(int classificationState) {
+        if (!m_awaitingGateDrop) return false;
+        const bool nowRacing = (classificationState & PluginConstants::SessionState::IN_PROGRESS) != 0;
+        if (!nowRacing) { m_gateDropSawHold = true; return false; }  // gate hold in progress
+        if (m_gateDropSawHold) { m_awaitingGateDrop = false; return true; }  // held -> racing = gate drop
+        // Racing with no observed hold: not a distinguishable grid drop. Disarm so the watch
+        // (and the grid-start grace that keys on it) can't stick for the whole session.
+        m_awaitingGateDrop = false;
+        return false;
+    }
+
+    // Invalidate the anchor (live time -> placeholder until next S/F) without losing track
+    // monitoring. Called on the display rider's pit exit. No-op if raceNum isn't the tracked rider.
+    void invalidateLapTimerAnchor(int raceNum);
+
     // Get elapsed times (returns -1 if no valid anchor or different rider)
     int getElapsedLapTime(int raceNum) const;
     int getElapsedSectorTime(int raceNum, int sectorIndex) const;  // sectorIndex: 0=S1, 1=S2, 2=S3
 
     // Check if timer has valid anchor
     bool isLapTimerValid(int raceNum) const;
+
+    // Test-only: whether the display rider's timer is in the grid-start grace window (anchored
+    // at the green flag, first lap not yet complete). Exposed for the grid-start regression.
+    bool isLapTimerAnchoredFromRaceStart() const { return m_displayLapTimer.anchoredFromRaceStart; }
 
     // Get current lap number being timed
     int getLapTimerCurrentLap(int raceNum) const;
@@ -924,6 +998,17 @@ public:
     // Position lookup - efficiently find a rider's position by race number (1-based, or -1 if not found)
     // Uses cached map that's only rebuilt when classification changes
     int getPositionForRaceNum(int raceNum) const;
+
+    // Battle groups: the single battle definition shared by the auto-director (which
+    // rider to follow) and the web overlay (which "Battle for Nth" cards to show), so
+    // the detection logic lives in one place. Racing, on-track riders ordered by
+    // position; adjacent same-lap riders whose interval (from the official split gap -
+    // stable, unlike realTimeGap which flickers with the active-track-pos batch) is
+    // > 0 and <= gapThresholdMs are greedily chained into a group (front rider first).
+    // maxLeaderPos > 0 drops groups
+    // whose front rider is beyond that position (0 = no limit). Returns groups of race
+    // numbers; only groups of 2+ riders are returned.
+    std::vector<std::vector<int>> getBattleGroups(int gapThresholdMs, int maxLeaderPos) const;
 
     // Display classification: official order with optional DNS filtering
     const std::vector<int>& getDisplayClassificationOrder() const;
@@ -1019,10 +1104,28 @@ public:
     bool isPlayerGoingWrongWay() const;  // Check if display rider is going wrong way
     const TrackPositionData* getPlayerTrackPosition() const;  // Get display rider's track position data for debugging
 
+    // Standing (grid) start grace: true from the green-flag state flip, through the (variable)
+    // gate hold and the launch, until the DISPLAY rider crosses the first split. Reused to
+    // suppress the launch-shuffle false positives that a grid start produces - the player's
+    // wrong-way notice and the "hazard ahead" grid crowd - uniformly for races AND grid
+    // qualifying, with no fixed grace duration. It spans two phases of the gate-drop machinery:
+    // awaiting the gate drop (the grid hold), then the lap timer sitting on its race-start anchor
+    // while still in sector 0 (before S1). False on pit starts (never armed, never anchored from
+    // race start) and from S1 onward, so their behaviour is unchanged.
+    bool isInGridStartGrace() const {
+        return m_awaitingGateDrop ||
+               (m_displayLapTimer.anchoredFromRaceStart && m_displayLapTimer.currentSector == 0);
+    }
+
     // Blue flag detection (riders 1+ laps ahead approaching from behind)
     bool isPlayerBlueFlagged() const;  // True if display rider should yield to a lapper
     bool isRiderBlueFlagged(int raceNum) const;  // True if rider is being lapped and lapper is nearby
     bool isPlayerLapping() const;      // True if display rider is closing on a backmarker ahead (mirror of blue flag)
+    // The lapper side of the same detection: is this rider (1+ laps up) closing on a
+    // backmarker just ahead, and if so which one (-1 = not lapping). Lets the director
+    // follow a front-runner carving through traffic.
+    bool isRiderLapping(int raceNum) const;
+    int getRiderLappingTarget(int raceNum) const;
 
     // Blue flag tuning (INI-only advanced setting)
     void setBlueFlagAwarenessDistance(float meters) { m_blueFlagAwarenessDistance = std::max(10.0f, std::min(meters, 500.0f)); }
@@ -1265,7 +1368,7 @@ public:
     // ========================================================================
     // Event Log (ring buffer of notable race events)
     // ========================================================================
-    void addEventLogEntry(EventLogType type, const char* message, const char* detail = nullptr);
+    void addEventLogEntry(EventLogType type, const char* message, const char* detail = nullptr, int iconColorSlot = -1);
     const std::deque<EventLogEntry>& getEventLog() const { return m_eventLog; }
 
 private:
@@ -1338,6 +1441,7 @@ private:
     mutable bool m_cachedPlayerBlueFlagged = false;        // Cached: is the display rider blue-flagged?
     mutable bool m_cachedPlayerLapping = false;            // Cached: is the display rider lapping a backmarker ahead?
     mutable std::unordered_set<int> m_cachedBlueFlaggedSet;  // Cached per-rider blue flag lookup (recomputed when dirty)
+    mutable std::unordered_map<int, int> m_cachedLapperToLapped;  // Cached: lapper raceNum -> the backmarker it's catching
     mutable bool m_blueFlagsDirty = true;                // Invalidated when track positions change
     float m_blueFlagAwarenessDistance = 100.0f;          // Blue flag detection range in meters
 
@@ -1351,8 +1455,8 @@ private:
     int m_hazardWrongWayDurationMs = 1500;               // Time going backward before flagged
     float m_hazardAwarenessDistance = 100.0f;            // Meters ahead to check for hazards
     int m_hazardCooldownMs = 1000;                       // Hysteresis before clearing hazard state
-    int m_hazardGracePeriodMs = 10000;                   // Grace period after race start
-    std::chrono::steady_clock::time_point m_hazardGraceStart;  // When current session entered IN_PROGRESS (epoch = inactive)
+    int m_hazardGracePeriodMs = 10000;                   // Per-rider pit-exit hazard grace (the
+                                                         // grid-start grace is now sector-based, see isInGridStartGrace)
     std::unordered_map<int, CurrentLapData> m_riderCurrentLap;  // Current lap split data per rider
     std::unordered_map<int, IdealLapData> m_riderIdealLap;  // Ideal lap sectors per rider
     std::unordered_map<int, std::deque<LapLogEntry>> m_riderLapLog;  // Lap log per rider (newest first, deque for O(1) front insert)
@@ -1364,6 +1468,11 @@ private:
     // Resets when spectate target changes - no need to track all riders
     LapTimer m_displayLapTimer;
     int m_displayLapTimerRaceNum = -1;  // Which rider the timer is currently tracking
+
+    // Gate-drop detection (see armGateDropDetect / detectGateDrop). Watches the classification
+    // sessionState flip from the gate hold (non-racing) to IN_PROGRESS on a grid start.
+    bool m_awaitingGateDrop = false;
+    bool m_gateDropSawHold = false;
 
     // Leader timing points for time-based gap calculation
     // Stores when leader crossed each 1% position, indexed by lap number

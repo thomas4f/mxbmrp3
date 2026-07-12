@@ -37,7 +37,7 @@ bool TachoWidget::handlesDataType(DataChangeType dataType) const {
 
 void TachoWidget::update() {
     // OPTIMIZATION: Skip processing when not visible
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -123,7 +123,7 @@ void TachoWidget::resetToDefaults() {
     setTextureVariant(1);  // Show dial texture by default
     m_fBackgroundOpacity = 1.0f;  // 100% opacity
     m_fScale = 1.0f;  // 100% default scale
-    setPosition(0.616f, 0.8436f);
+    setPosition(0.616f, 0.83308f);
     m_smoothedRpm = 0.0f;
     m_needleColor = DEFAULT_NEEDLE_COLOR;
     setDataDirty();

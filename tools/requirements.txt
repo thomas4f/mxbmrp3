@@ -6,7 +6,7 @@
 # tools/mdmp_analyze.py (minidump triage) - runs fine WITHOUT its dep (degrades):
 #   - capstone: disassembles the faulting instruction (e.g. "mov edx,[rcx]")
 #               instead of printing only raw bytes.
-capstone>=5.0
+capstone>=5.0.9
 
 # tools/icon_gen.py (SVG -> TGA icon generator):
 #   - Pillow:   REQUIRED for image processing.
@@ -18,5 +18,5 @@ capstone>=5.0
 #               regenerating (and reviewing) the whole set. (rsvg-convert/system
 #               librsvg is deliberately unsupported - not pip-pinnable. See
 #               assets/icons/README.md.)
-Pillow>=10.0
+Pillow>=12.3.0
 cairosvg==2.9.0

@@ -106,39 +106,39 @@
   <!-- Output Directories: MXBikes -->
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='MXB-Debug|x64'">
     <OutDir>$(SolutionDir)build\$(Configuration)\</OutDir>
-    <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
+    <IntDir>$(SolutionDir)build\obj\mxbmrp3\$(Configuration)\</IntDir>
     <TargetName>mxbmrp3</TargetName>
     <TargetExt>.dlo</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='MXB-Release|x64'">
     <OutDir>$(SolutionDir)build\$(Configuration)\</OutDir>
-    <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
+    <IntDir>$(SolutionDir)build\obj\mxbmrp3\$(Configuration)\</IntDir>
     <TargetName>mxbmrp3</TargetName>
     <TargetExt>.dlo</TargetExt>
   </PropertyGroup>
   <!-- Output Directories: GPBikes -->
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='GPB-Debug|x64'">
     <OutDir>$(SolutionDir)build\$(Configuration)\</OutDir>
-    <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
+    <IntDir>$(SolutionDir)build\obj\mxbmrp3\$(Configuration)\</IntDir>
     <TargetName>mxbmrp3_gpb</TargetName>
     <TargetExt>.dlo</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='GPB-Release|x64'">
     <OutDir>$(SolutionDir)build\$(Configuration)\</OutDir>
-    <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
+    <IntDir>$(SolutionDir)build\obj\mxbmrp3\$(Configuration)\</IntDir>
     <TargetName>mxbmrp3_gpb</TargetName>
     <TargetExt>.dlo</TargetExt>
   </PropertyGroup>
   <!-- Output Directories: KRP -->
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='KRP-Debug|x64'">
     <OutDir>$(SolutionDir)build\$(Configuration)\</OutDir>
-    <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
+    <IntDir>$(SolutionDir)build\obj\mxbmrp3\$(Configuration)\</IntDir>
     <TargetName>mxbmrp3_krp</TargetName>
     <TargetExt>.dlo</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='KRP-Release|x64'">
     <OutDir>$(SolutionDir)build\$(Configuration)\</OutDir>
-    <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
+    <IntDir>$(SolutionDir)build\obj\mxbmrp3\$(Configuration)\</IntDir>
     <TargetName>mxbmrp3_krp</TargetName>
     <TargetExt>.dlo</TargetExt>
   </PropertyGroup>
@@ -183,6 +183,11 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <!-- Emit a linker .map (build\<Config>\mxbmrp3*.map) so a crash-dashboard
+           "mxbmrp3.dlo+0xNNNN" offset can be resolved to a symbol even without the
+           .pdb. Output-only: does not affect the generated binary. Archived by the
+           release workflow / make_release.bat alongside the .pdb. -->
+      <GenerateMapFile>true</GenerateMapFile>
       <AdditionalDependencies>xinput.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
@@ -229,6 +234,11 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <!-- Emit a linker .map (build\<Config>\mxbmrp3*.map) so a crash-dashboard
+           "mxbmrp3.dlo+0xNNNN" offset can be resolved to a symbol even without the
+           .pdb. Output-only: does not affect the generated binary. Archived by the
+           release workflow / make_release.bat alongside the .pdb. -->
+      <GenerateMapFile>true</GenerateMapFile>
       <AdditionalDependencies>xinput.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
@@ -275,6 +285,11 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <!-- Emit a linker .map (build\<Config>\mxbmrp3*.map) so a crash-dashboard
+           "mxbmrp3.dlo+0xNNNN" offset can be resolved to a symbol even without the
+           .pdb. Output-only: does not affect the generated binary. Archived by the
+           release workflow / make_release.bat alongside the .pdb. -->
+      <GenerateMapFile>true</GenerateMapFile>
       <AdditionalDependencies>xinput.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
@@ -282,16 +297,36 @@
       <Message>Copy $(TargetName).dlo to KRP_PLUGIN_PATH (if set)</Message>
     </PostBuildEvent>
   </ItemDefinitionGroup>
+  <!-- Analytics keys injected from build-environment variables (consumed in
+       core/plugin_constants.h). Applies to every configuration. Each define is added
+       ONLY when its env var is set, so a plain developer build (vars unset) omits them
+       and the code falls back to its placeholder (analytics disabled). Set
+       APTABASE_KEY / GOATCOUNTER_TOKEN in the build environment for an official
+       release (GOATCOUNTER_CODE is optional — it's public and hardcoded to "mxbmrp3"
+       in plugin_constants.h; set it only to override the site code). Keys are
+       alphanumeric/hyphen, so they pass through /D as-is. -->
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PreprocessorDefinitions Condition="'$(APTABASE_KEY)'!=''">MXBMRP3_APTABASE_KEY=$(APTABASE_KEY);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(GOATCOUNTER_CODE)'!=''">MXBMRP3_GOATCOUNTER_CODE=$(GOATCOUNTER_CODE);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(GOATCOUNTER_TOKEN)'!=''">MXBMRP3_GOATCOUNTER_TOKEN=$(GOATCOUNTER_TOKEN);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="core\asset_manager.h" />
     <ClInclude Include="core\color_config.h" />
+    <ClInclude Include="core\companion_window.h" />
+    <ClInclude Include="core\hud_sw_renderer.h" />
     <ClInclude Include="core\crash_handler.h" />
+    <ClInclude Include="core\event_recorder.h" />
+    <ClInclude Include="core\performance_timer.h" />
     <ClInclude Include="core\tooltip_manager.h" />
     <ClInclude Include="core\ui_config.h" />
     <ClInclude Include="core\font_config.h" />
     <ClInclude Include="core\handler_singleton.h" />
     <ClInclude Include="core\hotkey_config.h" />
     <ClInclude Include="core\hotkey_manager.h" />
+    <ClInclude Include="core\atomic_file_writer.h" />
     <ClInclude Include="core\hud_manager.h" />
     <ClInclude Include="core\tracked_riders_manager.h" />
     <ClInclude Include="core\input_manager.h" />
@@ -301,17 +336,24 @@
     <ClInclude Include="core\plugin_manager.h" />
     <ClInclude Include="core\plugin_utils.h" />
     <ClInclude Include="core\settings_manager.h" />
+    <ClInclude Include="core\settings_keys.h" />
+    <ClInclude Include="core\settings_serde.h" />
+    <ClInclude Include="core\settings_hud_registry.h" />
+    <ClInclude Include="core\settings_hud_registry_decls.inc" />
     <ClInclude Include="core\rumble_profile_manager.h" />
     <ClInclude Include="core\update_checker.h" />
     <ClInclude Include="core\update_downloader.h" />
     <ClInclude Include="core\discord_manager.h" />
     <ClInclude Include="core\analytics_manager.h" />
+    <ClInclude Include="core\analytics_remote_config.h" />
+    <ClInclude Include="core\analytics_endpoint.h" />
     <ClInclude Include="core\steam_friends_manager.h" />
     <ClInclude Include="core\http_server.h" />
     <ClInclude Include="core\widget_constants.h" />
     <ClInclude Include="core\xinput_reader.h" />
     <ClInclude Include="core\fmx_types.h" />
     <ClInclude Include="core\fmx_manager.h" />
+    <ClInclude Include="core\director_manager.h" />
     <ClInclude Include="core\stats_manager.h" />
     <ClInclude Include="diagnostics\logger.h" />
     <ClInclude Include="diagnostics\timer.h" />
@@ -337,15 +379,18 @@
     <ClInclude Include="hud\pointer_widget.h" />
     <ClInclude Include="hud\lap_log_hud.h" />
     <ClInclude Include="hud\friends_hud.h" />
-    <ClInclude Include="hud\lap_consistency_hud.h" />
+    <ClInclude Include="hud\session_charts_hud.h" />
+    <ClInclude Include="hud\session_charts_math.h" />
     <ClInclude Include="hud\lap_widget.h" />
     <ClInclude Include="hud\map_hud.h" />
+    <ClInclude Include="hud\map_hud_internal.h" />
     <ClInclude Include="hud\radar_hud.h" />
     <ClInclude Include="hud\performance_hud.h" />
     <ClInclude Include="hud\benchmark_widget.h" />
     <ClInclude Include="hud\pitboard_hud.h" />
     <ClInclude Include="hud\records_hud.h" />
     <ClInclude Include="hud\rumble_hud.h" />
+    <ClInclude Include="hud\director_widget.h" />
     <ClInclude Include="hud\helmet_overlay_hud.h" />
     <ClInclude Include="hud\position_widget.h" />
     <ClInclude Include="hud\ideal_lap_hud.h" />
@@ -362,6 +407,7 @@
     <ClInclude Include="hud\time_widget.h" />
     <ClInclude Include="hud\timing_hud.h" />
     <ClInclude Include="hud\gap_bar_hud.h" />
+    <ClInclude Include="hud\notice_priority.h" />
     <ClInclude Include="hud\notices_hud.h" />
     <ClInclude Include="hud\version_widget.h" />
     <ClInclude Include="hud\fuel_widget.h" />
@@ -400,19 +446,32 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="core\asset_manager.cpp" />
+    <ClCompile Include="core\companion_window.cpp" />
+    <ClCompile Include="core\hud_sw_renderer.cpp" />
+    <ClCompile Include="core\plugin_version.cpp" />
     <ClCompile Include="core\color_config.cpp" />
     <ClCompile Include="core\crash_handler.cpp" />
+    <ClCompile Include="core\event_recorder.cpp" />
     <ClCompile Include="core\font_config.cpp" />
     <ClCompile Include="core\ui_config.cpp" />
     <ClCompile Include="core\hotkey_manager.cpp" />
+    <ClCompile Include="core\atomic_file_writer.cpp" />
     <ClCompile Include="core\hud_manager.cpp" />
     <ClCompile Include="core\tracked_riders_manager.cpp" />
     <ClCompile Include="core\input_manager.cpp" />
     <ClCompile Include="core\profile_manager.cpp" />
     <ClCompile Include="core\plugin_data.cpp" />
+    <ClCompile Include="core\plugin_data_lap_timer.cpp" />
+    <ClCompile Include="core\plugin_data_standings.cpp" />
+    <ClCompile Include="core\plugin_data_segment_timer.cpp" />
+    <ClCompile Include="core\plugin_data_telemetry.cpp" />
     <ClCompile Include="core\plugin_manager.cpp" />
     <ClCompile Include="core\plugin_utils.cpp" />
     <ClCompile Include="core\settings_manager.cpp" />
+    <ClCompile Include="core\settings_manager_global.cpp" />
+    <ClCompile Include="core\settings_hud_profiles.cpp" />
+    <ClCompile Include="core\settings_hud_registry.cpp" />
+    <ClCompile Include="core\settings_hud_registry_widgets.cpp" />
     <ClCompile Include="core\rumble_profile_manager.cpp" />
     <ClCompile Include="core\update_checker.cpp" />
     <ClCompile Include="core\update_downloader.cpp" />
@@ -422,6 +481,7 @@
     <ClCompile Include="core\http_server.cpp" />
     <ClCompile Include="core\xinput_reader.cpp" />
     <ClCompile Include="core\fmx_manager.cpp" />
+    <ClCompile Include="core\director_manager.cpp" />
     <ClCompile Include="core\stats_manager.cpp" />
     <ClCompile Include="diagnostics\logger.cpp" />
     <ClCompile Include="handlers\draw_handler.cpp" />
@@ -446,26 +506,31 @@
     <ClCompile Include="hud\pointer_widget.cpp" />
     <ClCompile Include="hud\lap_log_hud.cpp" />
     <ClCompile Include="hud\friends_hud.cpp" />
-    <ClCompile Include="hud\lap_consistency_hud.cpp" />
+    <ClCompile Include="hud\session_charts_hud.cpp" />
     <ClCompile Include="hud\lap_widget.cpp" />
     <ClCompile Include="hud\map_hud.cpp" />
+    <ClCompile Include="hud\map_hud_geometry.cpp" />
+    <ClCompile Include="hud\map_hud_track.cpp" />
+    <ClCompile Include="hud\map_hud_riders.cpp" />
     <ClCompile Include="hud\radar_hud.cpp" />
     <ClCompile Include="hud\performance_hud.cpp" />
     <ClCompile Include="hud\benchmark_widget.cpp" />
     <ClCompile Include="hud\pitboard_hud.cpp" />
     <ClCompile Include="hud\records_hud.cpp" />
     <ClCompile Include="hud\rumble_hud.cpp" />
+    <ClCompile Include="hud\director_widget.cpp" />
     <ClCompile Include="hud\helmet_overlay_hud.cpp" />
     <ClCompile Include="hud\position_widget.cpp" />
     <ClCompile Include="hud\ideal_lap_hud.cpp" />
     <ClCompile Include="hud\session_hud.cpp" />
     <ClCompile Include="hud\settings_button_widget.cpp" />
     <ClCompile Include="hud\settings_hud.cpp" />
+    <ClCompile Include="hud\settings_hud_input.cpp" />
     <ClCompile Include="hud\settings\settings_layout.cpp" />
     <ClCompile Include="hud\settings\settings_tab_ideal_lap.cpp" />
     <ClCompile Include="hud\settings\settings_tab_lap_log.cpp" />
     <ClCompile Include="hud\settings\settings_tab_friends.cpp" />
-    <ClCompile Include="hud\settings\settings_tab_lap_consistency.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_session_charts.cpp" />
     <ClCompile Include="hud\settings\settings_tab_fmx.cpp" />
     <ClCompile Include="hud\settings\settings_tab_stats.cpp" />
     <ClCompile Include="hud\settings\settings_tab_event_log.cpp" />
@@ -483,6 +548,7 @@
     <ClCompile Include="hud\settings\settings_tab_notices.cpp" />
     <ClCompile Include="hud\settings\settings_tab_rumble.cpp" />
     <ClCompile Include="hud\settings\settings_tab_helmet.cpp" />
+    <ClCompile Include="hud\settings\settings_tab_director.cpp" />
     <ClCompile Include="hud\settings\settings_tab_general.cpp" />
     <ClCompile Include="hud\settings\settings_tab_appearance.cpp" />
     <ClCompile Include="hud\settings\settings_tab_hotkeys.cpp" />
@@ -493,6 +559,8 @@
     <ClCompile Include="hud\speedo_widget.cpp" />
     <ClCompile Include="hud\tacho_widget.cpp" />
     <ClCompile Include="hud\standings_hud.cpp" />
+    <ClCompile Include="hud\standings_hud_render.cpp" />
+    <ClCompile Include="hud\standings_hud_animation.cpp" />
     <ClCompile Include="hud\telemetry_hud.cpp" />
     <ClCompile Include="hud\clock_widget.cpp" />
     <ClCompile Include="hud\time_widget.cpp" />
@@ -545,4 +613,22 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
+  <!-- Auto-stamp the 4th version component (BUILD) from the git commit count into a
+       git-ignored generated header (version_build.g.h), before every compile. So
+       MAJOR/MINOR/PATCH stay manual in resource.h and the build number is never edited
+       by hand. WriteOnlyWhenDifferent avoids needless rebuilds when the count is
+       unchanged; a git failure falls back to 0 so the build always succeeds. -->
+  <Target Name="StampVersion" BeforeTargets="ClCompile;ResourceCompile">
+    <Exec Command="git -C &quot;$(MSBuildProjectDirectory)&quot; rev-list --count HEAD"
+          ConsoleToMSBuild="true" ContinueOnError="true" StandardOutputImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="GitCommitCount" />
+    </Exec>
+    <PropertyGroup>
+      <VerBuildAuto Condition="'$(GitCommitCount)' != ''">$(GitCommitCount.Trim())</VerBuildAuto>
+      <VerBuildAuto Condition="'$(GitCommitCount)' == ''">0</VerBuildAuto>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(MSBuildProjectDirectory)\version_build.g.h"
+                      Lines="#pragma once;#define VER_BUILD_AUTO $(VerBuildAuto)"
+                      Overwrite="true" WriteOnlyWhenDifferent="true" />
+  </Target>
 </Project>

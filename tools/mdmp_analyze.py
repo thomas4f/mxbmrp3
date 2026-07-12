@@ -24,6 +24,7 @@
 #   python3 tools/mdmp_analyze.py --compare <a.dmp> <b.dmp>
 #   python3 tools/mdmp_analyze.py --known <registry.json> <file.dmp> ...
 import struct, sys, hashlib, datetime, json, os
+from collections import Counter
 
 # Optional path to a known-crash registry (JSON). Set by --known; otherwise
 # print_report() searches the dump's directory, this script's dir, and CWD.
@@ -68,6 +69,7 @@ INJECTOR_HINTS = {
     "overlay": "generic overlay",
     "fraps": "Fraps capture",
     "obs": "OBS capture hook",
+    "graphics-hook": "OBS game-capture hook (graphics-hook64.dll -- known to crash OpenGL games via DXGI; see OBS #9168)",
     "nahimic": "Nahimic audio (known to inject/crash games)",
     "sonar": "SteelSeries Sonar audio",
     "easyanticheat": "EasyAntiCheat",
@@ -589,6 +591,34 @@ def print_report(d):
         print("\n[THIRD-PARTY / NON-SYSTEM MODULES]")
         for name, tag in extra_mods:
             print(f"    {name}{tag}")
+
+    # API-proxy / wrapper injectors (ReShade, ENB, SpecialK, dgVoodoo, ...). A core
+    # graphics/input/system DLL loaded from the GAME folder (or anywhere outside
+    # \Windows\) instead of System32 is a proxy-DLL injection: Windows' DLL search
+    # order loads the app-dir copy first, and that copy chain-loads the real one. For
+    # an OpenGL game like MX Bikes, ReShade ships as opengl32.dll in the game dir, so
+    # the same basename ends up loaded TWICE (proxy + real System32). The generic
+    # third-party scan above intentionally skips game-folder modules (so it MISSES
+    # these), hence this dedicated pass -- it matters because such a wrapper sits
+    # directly in the render/input path and is a prime suspect for a fault there.
+    PROXY_DLLS = {"opengl32", "dxgi", "d3d8", "d3d9", "d3d10", "d3d11", "d3d12",
+                  "ddraw", "dinput8", "dsound", "winmm", "version", "wininet"}
+    name_counts = Counter(name.split("\\")[-1].lower() for _, _, name in d["modules"])
+    proxies = []
+    for base, size, name in d["modules"]:
+        sn = name.split("\\")[-1]
+        stem = sn.lower().rsplit(".", 1)[0]
+        if stem in PROXY_DLLS and "\\windows\\" not in name.lower():
+            why = "loaded from outside System32 (game-folder proxy DLL)"
+            if name_counts[sn.lower()] > 1:
+                why += " + DUPLICATE basename also loaded (classic ReShade/ENB proxy chain)"
+            proxies.append((name, why))
+    if proxies:
+        print("\n[API-PROXY / WRAPPER INJECTORS]  (ReShade / ENB / SpecialK etc. -- hook the render/input API)")
+        for name, why in proxies:
+            print(f"    {name}\n        <- {why}")
+        print("    A wrapper here sits in the API path; if it is on the crash stack, treat it as a")
+        print("    prime suspect for a render/input fault and re-test with it removed.")
 
     # Verdict
     print("\n[VERDICT]")

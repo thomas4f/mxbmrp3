@@ -68,6 +68,9 @@ void AssetManager::syncUserAssets(const char* savePath) {
     CreateDirectoryA((userBaseDir + "\\" + ICONS_SUBDIR).c_str(), NULL);
     CreateDirectoryA((userBaseDir + "\\" + WEB_SUBDIR).c_str(), NULL);
     CreateDirectoryA((userBaseDir + "\\" + WEB_SUBDIR + "\\logos").c_str(), NULL);
+    CreateDirectoryA((userBaseDir + "\\" + WEB_SUBDIR + "\\js").c_str(), NULL);
+    CreateDirectoryA((userBaseDir + "\\" + WEB_SUBDIR + "\\fonts").c_str(), NULL);
+    CreateDirectoryA((userBaseDir + "\\" + WEB_SUBDIR + "\\icons").c_str(), NULL);
 
     // Check if user override directory has any content to sync
     DWORD attrs = GetFileAttributesA(userBaseDir.c_str());
@@ -91,14 +94,25 @@ void AssetManager::syncUserAssets(const char* savePath) {
     CreateDirectoryA(destWeb.c_str(), NULL);
 
     std::string destWebLogos = destWeb + "\\logos";
+    std::string destWebJs = destWeb + "\\js";
+    std::string destWebFonts = destWeb + "\\fonts";
+    std::string destWebIcons = destWeb + "\\icons";
     CreateDirectoryA(destWebLogos.c_str(), NULL);
+    CreateDirectoryA(destWebJs.c_str(), NULL);
+    CreateDirectoryA(destWebFonts.c_str(), NULL);
+    CreateDirectoryA(destWebIcons.c_str(), NULL);
 
-    // Sync each asset type
+    // Sync each asset type. The web overlay is organized into subfolders
+    // (js/ fonts/ icons/), so each is synced individually — the top-level "*.*"
+    // pass covers root files (index.html, style.css, custom.css, sw.js).
     syncDirectory(userBaseDir + "\\" + FONTS_SUBDIR, destFonts, "*.fnt");
     syncDirectory(userBaseDir + "\\" + TEXTURES_SUBDIR, destTextures, "*.tga");
     syncDirectory(userBaseDir + "\\" + ICONS_SUBDIR, destIcons, "*.tga");
     syncDirectory(userBaseDir + "\\" + WEB_SUBDIR, destWeb, "*.*");
     syncDirectory(userBaseDir + "\\" + WEB_SUBDIR + "\\logos", destWebLogos, "*.png");
+    syncDirectory(userBaseDir + "\\" + WEB_SUBDIR + "\\js", destWebJs, "*.js");
+    syncDirectory(userBaseDir + "\\" + WEB_SUBDIR + "\\fonts", destWebFonts, "*.ttf");
+    syncDirectory(userBaseDir + "\\" + WEB_SUBDIR + "\\icons", destWebIcons, "*.svg");
 }
 
 void AssetManager::syncDirectory(const std::string& sourceDir, const std::string& destDir, const char* extension) {

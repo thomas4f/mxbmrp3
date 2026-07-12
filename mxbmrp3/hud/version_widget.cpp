@@ -117,7 +117,10 @@ void VersionWidget::handleClickDetection() {
 
     // Handle notification button hover and clicks (not during game)
     if (m_showingUpdateNotification && !m_gameActive) {
-        const CursorPosition& cursor = input.getCursorPosition();
+        // Shift into build space so the View/Dismiss buttons line up when the widget is
+        // dragged to a different spot on the companion (no-op in-game).
+        CursorPosition cursor = input.getCursorPosition();
+        mapCursorToHudSpace(cursor.x, cursor.y);
 
         // Track which button is hovered (need to apply offset for comparison)
         NotificationButton oldHover = m_hoveredButton;
@@ -171,9 +174,8 @@ void VersionWidget::handleClickDetection() {
                 m_bVisible = false;
                 m_hoveredButton = NotificationButton::NONE;
 
-                // Save settings to persist the dismissed version
-                SettingsManager::getInstance().saveSettings(HudManager::getInstance(),
-                    PluginManager::getInstance().getSavePath());
+                // Mark dirty to persist the dismissed version (deferred to leave-track / Save).
+                SettingsManager::getInstance().markDirty();
                 return;
             }
         }
@@ -182,7 +184,8 @@ void VersionWidget::handleClickDetection() {
 
     // Handle donation nudge button hover and clicks (not during game)
     if (m_showingDonationNudge && !m_gameActive) {
-        const CursorPosition& cursor = input.getCursorPosition();
+        CursorPosition cursor = input.getCursorPosition();
+        mapCursorToHudSpace(cursor.x, cursor.y);
 
         NotificationButton oldHover = m_hoveredButton;
         m_hoveredButton = NotificationButton::NONE;
@@ -891,8 +894,7 @@ void VersionWidget::renderGame() {
     snprintf(scoreText, sizeof(scoreText), "L%d  SCORE: %d", m_level, m_score);
 
     SPluginString_t scoreString;
-    strncpy_s(scoreString.m_szString, sizeof(scoreString.m_szString), scoreText,
-              sizeof(scoreString.m_szString) - 1);
+    strncpy_s(scoreString.m_szString, sizeof(scoreString.m_szString), scoreText, _TRUNCATE);
     scoreString.m_afPos[0] = m_gameLeft + 0.01f;
     scoreString.m_afPos[1] = m_gameTop + 0.01f;
     scoreString.m_iFont = this->getFont(FontCategory::NORMAL);
@@ -934,7 +936,7 @@ void VersionWidget::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 1.0f;  // Full opacity
     m_fScale = 1.0f;
-    setPosition(0.5f, 0.01f);  // Top center (0.5 is screen center)
+    setPosition(0.5f, 0.01173f);  // Top center (0.5 is screen center)
 
     // Reset game state and restore cursor if game was active
     if (m_gameActive) {

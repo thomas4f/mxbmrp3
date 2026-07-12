@@ -85,7 +85,7 @@ int LapLogHud::getBackgroundWidthChars() const {
 
 void LapLogHud::update() {
     // OPTIMIZATION: Skip processing when not visible
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -101,7 +101,7 @@ void LapLogHud::update() {
 bool LapLogHud::needsFrequentUpdates() const {
     // Need frequent updates when live timing is enabled and timer is valid
     if (!m_showLiveTiming) return false;
-    if (!m_bVisible) return false;
+    if (!isVisibleAnySurface()) return false;   // tick for live timing if shown on either surface
 
     const PluginData& data = PluginData::getInstance();
     if (!data.isLapTimerValid()) return false;
@@ -587,12 +587,12 @@ void LapLogHud::rebuildRenderData() {
 }
 
 void LapLogHud::resetToDefaults() {
-    m_bVisible = true;  // Lap log is on by default; users can disable via settings
+    m_bVisible = false;  // Lap log is off by default; users can enable via settings
     m_bShowTitle = true;
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.0055f, 0.7659f);
+    setPosition(0.0055f, 0.75094f);
     m_enabledColumns = COL_DEFAULT;
     m_maxDisplayLaps = 5;
     m_showLiveTiming = true;

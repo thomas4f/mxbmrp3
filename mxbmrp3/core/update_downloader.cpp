@@ -3,6 +3,7 @@
 // Downloads and installs plugin updates
 // ============================================================================
 #include "update_downloader.h"
+#include "atomic_file_writer.h"
 #include "plugin_constants.h"
 #include "plugin_manager.h"
 #include "update_checker.h"
@@ -498,13 +499,8 @@ void UpdateDownloader::workerThread() {
             std::string version = UpdateChecker::getInstance().getLatestVersion();
             if (savePath && strlen(savePath) > 0 && !version.empty()) {
                 std::string nudgePath = std::string(savePath) + "\\mxbmrp3\\donation_nudge_pending";
-                HANDLE h = CreateFileA(nudgePath.c_str(), GENERIC_WRITE, 0, nullptr,
-                                       CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-                if (h != INVALID_HANDLE_VALUE) {
-                    DWORD written = 0;
-                    WriteFile(h, version.c_str(), static_cast<DWORD>(version.size()), &written, nullptr);
-                    CloseHandle(h);
-                }
+                // Route through the shared atomic writer, like every other persisted file.
+                AtomicFileWriter::writeFileAtomic(nudgePath, version);
             }
         } catch (...) {}
 
@@ -912,6 +908,33 @@ static bool deleteDirectoryRecursive(const std::string& dir) {
     return true;
 }
 
+namespace {
+// MoveFileA with bounded retry + escalating backoff. A loaded DLL can itself be
+// renamed on Windows, so a move failure here is a TRANSIENT external lock — an
+// AV scanner mid-scan or a second handle — surfacing as ERROR_SHARING_VIOLATION /
+// ERROR_ACCESS_DENIED / ERROR_LOCK_VIOLATION. The original code aborted the whole
+// update on the first such failure; retry a few times (~1.5s total) so a brief
+// lock doesn't lose the user their install. Non-transient errors fail fast.
+bool moveFileWithRetry(const std::string& src, const std::string& dst) {
+    constexpr int kMaxAttempts = 6;
+    DWORD delayMs = 50;
+    for (int attempt = 1; ; ++attempt) {
+        if (MoveFileA(src.c_str(), dst.c_str())) return true;
+        const DWORD err = GetLastError();
+        const bool transient = (err == ERROR_SHARING_VIOLATION ||
+                                err == ERROR_ACCESS_DENIED ||
+                                err == ERROR_LOCK_VIOLATION);
+        if (attempt >= kMaxAttempts || !transient) {
+            DEBUG_WARN_F("UpdateDownloader: MoveFile '%s' -> '%s' failed (error %lu, attempt %d/%d)",
+                         src.c_str(), dst.c_str(), err, attempt, kMaxAttempts);
+            return false;
+        }
+        Sleep(delayMs);
+        delayMs *= 2;
+    }
+}
+}  // namespace
+
 bool UpdateDownloader::backupExistingFiles(const std::string& pluginDir, const std::string& backupDir) {
     // Move the entire plugin installation to backup:
     // Windows allows moving loaded DLLs, so we can move even the running plugin!
@@ -922,7 +945,7 @@ bool UpdateDownloader::backupExistingFiles(const std::string& pluginDir, const s
     std::string dloDst = backupDir + GAME_DLO_NAME;
     DWORD attrs = GetFileAttributesA(dloSrc.c_str());
     if (attrs != INVALID_FILE_ATTRIBUTES) {
-        if (!MoveFileA(dloSrc.c_str(), dloDst.c_str())) {
+        if (!moveFileWithRetry(dloSrc, dloDst)) {
             DEBUG_WARN_F("UpdateDownloader: Failed to move %s to backup (error %lu)", GAME_DLO_NAME, GetLastError());
             return false;
         }
@@ -934,10 +957,10 @@ bool UpdateDownloader::backupExistingFiles(const std::string& pluginDir, const s
     std::string dataDst = backupDir + "mxbmrp3_data";
     attrs = GetFileAttributesA(dataSrc.c_str());
     if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
-        if (!MoveFileA(dataSrc.c_str(), dataDst.c_str())) {
+        if (!moveFileWithRetry(dataSrc, dataDst)) {
             DEBUG_WARN_F("UpdateDownloader: Failed to move mxbmrp3_data/ to backup (error %lu)", GetLastError());
             // Try to restore the .dlo we already moved
-            if (MoveFileA(dloDst.c_str(), dloSrc.c_str())) {
+            if (moveFileWithRetry(dloDst, dloSrc)) {
                 DEBUG_INFO_F("UpdateDownloader: Restored %s after failed data backup", GAME_DLO_NAME);
             } else {
                 DEBUG_WARN_F("UpdateDownloader: CRITICAL - Failed to restore %s (error %lu) - DO NOT delete backup!",
@@ -965,17 +988,22 @@ bool UpdateDownloader::restoreFromBackup(const std::string& pluginDir, const std
     std::string dataDir = pluginDir + "mxbmrp3_data";
     deleteDirectoryRecursive(dataDir + "\\");
 
-    // Move the .dlo file back from backup
+    // Move the .dlo file back from backup. This is the critical one — if it
+    // fails the install is left without a plugin, so its result drives the return
+    // value (callers/logs can tell a clean rollback from a broken one).
+    bool restoredOk = true;
     std::string dloSrc = backupDir + GAME_DLO_NAME;
     std::string dloDst = pluginDir + GAME_DLO_NAME;
     DWORD attrs = GetFileAttributesA(dloSrc.c_str());
     if (attrs != INVALID_FILE_ATTRIBUTES) {
         // Delete any partial .dlo that might have been extracted
         DeleteFileA(dloDst.c_str());
-        if (MoveFileA(dloSrc.c_str(), dloDst.c_str())) {
+        if (moveFileWithRetry(dloSrc, dloDst)) {
             DEBUG_INFO_F("UpdateDownloader: Restored %s", GAME_DLO_NAME);
         } else {
-            DEBUG_WARN_F("UpdateDownloader: Failed to restore %s (error %lu)", GAME_DLO_NAME, GetLastError());
+            DEBUG_WARN_F("UpdateDownloader: CRITICAL - Failed to restore %s (error %lu) - backup kept",
+                         GAME_DLO_NAME, GetLastError());
+            restoredOk = false;
         }
     }
 
@@ -984,15 +1012,16 @@ bool UpdateDownloader::restoreFromBackup(const std::string& pluginDir, const std
     std::string dataDst = pluginDir + "mxbmrp3_data";
     attrs = GetFileAttributesA(dataSrc.c_str());
     if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
-        if (MoveFileA(dataSrc.c_str(), dataDst.c_str())) {
+        if (moveFileWithRetry(dataSrc, dataDst)) {
             DEBUG_INFO("UpdateDownloader: Restored mxbmrp3_data/ directory");
         } else {
             DEBUG_WARN_F("UpdateDownloader: Failed to restore mxbmrp3_data/ (error %lu)", GetLastError());
+            restoredOk = false;
         }
     }
 
     DEBUG_INFO("UpdateDownloader: Restore complete");
-    return true;
+    return restoredOk;
 }
 
 void UpdateDownloader::cleanupBackup(const std::string& backupDir) {
@@ -1284,8 +1313,13 @@ bool UpdateDownloader::extractAndInstall(const std::vector<char>& zipData, std::
     // Handle extraction failure
     if (extractionFailed) {
         DEBUG_WARN_F("UpdateDownloader: Extraction failed: %s", extractError.c_str());
-        if (!m_debugMode) {
-            restoreFromBackup(pluginDir, backupDir, extractedFiles);
+        if (!m_debugMode && !restoreFromBackup(pluginDir, backupDir, extractedFiles)) {
+            // Rollback couldn't put the original .dlo back — the install is broken
+            // and the backup is the only copy. Surface it so the user knows to
+            // recover from mxbmrp3_update_backup\ rather than assuming a clean revert.
+            DEBUG_WARN("UpdateDownloader: CRITICAL - rollback incomplete; backup retained for manual recovery");
+            outError = extractError + " (rollback incomplete - recover from mxbmrp3_update_backup)";
+            return false;
         }
         // In debug mode, leave files in test dir - cleanup causes crashes
         outError = extractError;
@@ -1301,7 +1335,11 @@ bool UpdateDownloader::extractAndInstall(const std::vector<char>& zipData, std::
     // Verify all extracted files (skip in debug mode)
     if (!m_debugMode && !verifyExtractedFiles(pluginDir, expectedFiles)) {
         DEBUG_WARN("UpdateDownloader: Verification failed, restoring backup");
-        restoreFromBackup(pluginDir, backupDir, extractedFiles);
+        if (!restoreFromBackup(pluginDir, backupDir, extractedFiles)) {
+            DEBUG_WARN("UpdateDownloader: CRITICAL - rollback incomplete; backup retained for manual recovery");
+            outError = "File verification failed (rollback incomplete - recover from mxbmrp3_update_backup)";
+            return false;
+        }
         outError = "File verification failed";
         return false;
     }

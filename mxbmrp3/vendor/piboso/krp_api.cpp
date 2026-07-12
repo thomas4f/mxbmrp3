@@ -412,15 +412,19 @@ __declspec(dllexport) int SpectateVehicles(int _iNumVehicles, void* _pVehicleDat
 		auto* gameData = static_cast<SPluginsKRPSpectateVehicle_t*>(_pVehicleData);
 		if (_iNumVehicles > 0 && !gameData) return 0;
 
+		// Clamp count: PiBoSo can hand us an unbounded/garbage count and there's no
+		// _iElemSize here to sanity-check against, so the clamp is the only defense.
+		int numVehicles = std::clamp(_iNumVehicles, 0, Unified::MAX_RACE_ENTRIES);
+
 		// Convert entries array - use static buffer to avoid per-call allocations
 		static std::vector<Unified::SpectateVehicle> unified;
 		unified.clear();
-		unified.reserve(_iNumVehicles > 0 ? _iNumVehicles : 0);
-		for (int i = 0; i < _iNumVehicles; ++i) {
+		unified.reserve(numVehicles);
+		for (int i = 0; i < numVehicles; ++i) {
 			unified.push_back(Adapter::toSpectateVehicle(&gameData[i]));
 		}
 
-		return PluginManager::getInstance().handleSpectateVehicles(_iNumVehicles, unified.data(), _iCurSelection, _piSelect);
+		return PluginManager::getInstance().handleSpectateVehicles(numVehicles, unified.data(), _iCurSelection, _piSelect);
 	} API_GUARD_CATCH("SpectateVehicles")
 	return 0;
 }

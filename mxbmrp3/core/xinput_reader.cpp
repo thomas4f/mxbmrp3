@@ -22,12 +22,18 @@
 // #define DEBUG_RUMBLE_INPUT_SURFACE
 // #define DEBUG_RUMBLE_INPUT_STEER
 
-// C++/WinRT for Windows.Gaming.Input (Windows 10+)
+// C++/WinRT for Windows.Gaming.Input (Windows 10+). MSVC-only: used solely to
+// resolve friendly controller hardware names; mingw ships neither the WinRT
+// headers nor windowsapp.lib. On non-MSVC the name cache stays empty and the
+// code already renders "(unknown name)" — real XInput state (via <xinput.h>,
+// which mingw does ship) is unaffected. See MXBMRP3_TEST_BUILD in game_config.h.
+#ifdef _MSC_VER
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Gaming.Input.h>
 
 #pragma comment(lib, "windowsapp.lib")
+#endif
 
 using namespace PluginConstants;
 
@@ -223,6 +229,7 @@ std::string XInputReader::getControllerName(int index) {
         }
         s_cacheInitialized = true;
 
+#ifdef _MSC_VER
         try {
             // Use RawGameController to get hardware names (Windows 10+)
             // Note: Xbox One controllers report as "Xbox 360 Controller for Windows"
@@ -263,6 +270,7 @@ std::string XInputReader::getControllerName(int index) {
         } catch (...) {
             // WinRT not available or error - cache remains empty
         }
+#endif  // _MSC_VER (WinRT controller-name lookup; no-op on mingw)
     }
 
     return s_cachedNames[index];

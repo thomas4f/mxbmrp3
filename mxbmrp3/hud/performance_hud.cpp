@@ -76,7 +76,7 @@ void PerformanceHud::setVisible(bool visible) {
 void PerformanceHud::update() {
     // OPTIMIZATION: Skip expensive graph rebuild when not visible
     // History is cleared in setVisible() when becoming visible, so graph starts fresh.
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -207,7 +207,11 @@ void PerformanceHud::rebuildRenderData() {
     // Gap between sections when both are enabled
     float sectionGap = (hasFps && hasCpu) ? dims.lineHeightNormal : 0.0f;
 
-    float contentHeight = fpsSectionH + sectionGap + cpuSectionH;
+    // Each enabled section gets a subheading row above it (like the Session Charts HUD).
+    float subHeadH = dims.lineHeightNormal;
+    float contentHeight = (hasFps ? subHeadH + fpsSectionH : 0.0f)
+                        + sectionGap
+                        + (hasCpu ? subHeadH + cpuSectionH : 0.0f);
     float backgroundHeight = dims.paddingV + titleHeight + contentHeight + dims.paddingV;
 
     setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + backgroundHeight);
@@ -235,7 +239,7 @@ void PerformanceHud::rebuildRenderData() {
     unsigned long gridColor = this->getColor(ColorSlot::MUTED);  // Muted gray for subtle grid lines
 
     // Draws the 100%/50%/0% axis value labels down the left edge of a graph
-    // spanning [topY, topY + graphHeight], matching LapConsistencyHud's style.
+    // spanning [topY, topY + graphHeight], matching the other graph HUDs' style.
     auto addGraphAxisLabels = [&](float topY, const char* topLabel, const char* midLabel, const char* botLabel) {
         float lx = contentStartX + dims.paddingH * 0.2f;
         unsigned long c = this->getColor(ColorSlot::TERTIARY);
@@ -245,7 +249,12 @@ void PerformanceHud::rebuildRenderData() {
         addString(botLabel, lx, topY + graphHeight - dims.lineHeightSmall, Justify::LEFT, f, c, dims.fontSizeSmall);
     };
 
-    // FPS Section (graph on left, legend on right)
+    // FPS Section: subheading, then graph on left + legend on right
+    if (hasFps) {
+        addString("Frame Rate", contentStartX, currentY, Justify::LEFT,
+            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dims.fontSize);
+        currentY += subHeadH;
+    }
     float legendY = currentY;  // Track legend Y position separately
     if (m_enabledElements & ELEM_FPS) {
         // FPS Graph - only render if graphs are shown
@@ -356,7 +365,13 @@ void PerformanceHud::rebuildRenderData() {
     }
     currentY = legendY;
 
-    // CPU Section (graph on left, legend on right)
+    // CPU Section: subheading, then graph on left + legend on right
+    if (hasCpu) {
+        addString("CPU Time", contentStartX, currentY, Justify::LEFT,
+            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dims.fontSize);
+        currentY += subHeadH;
+        legendY = currentY;
+    }
     if (m_enabledElements & ELEM_CPU) {
         // CPU Time Graph - only render if graphs are shown
         // Conservative ceiling: MAX_PLUGIN_TIME_MS gives safe buffer (leaves ~3ms for game at 144fps)
@@ -517,7 +532,7 @@ void PerformanceHud::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.7315f, 0.6438f);
+    setPosition(0.7315f, 0.65708f);
     m_enabledElements = ELEM_DEFAULT;
     m_displayMode = DISPLAY_BOTH;  // Show both graphs and values by default
 

@@ -60,7 +60,6 @@ private:
     // NOTE: HUD grows DOWNWARD as laps are completed
     static constexpr float START_X = 0.0f;
     static constexpr float START_Y = 0.0f;
-    static constexpr int BACKGROUND_WIDTH_CHARS = 43;  // Max: "L99 44:44.444 44:44.444 44:44.444 44:44.444"
     static constexpr int NUM_COLUMNS = 5;  // Number of columns per row (lap, s1, s2, s3, time)
 
     // Column width constants (in character counts)

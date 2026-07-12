@@ -6,6 +6,7 @@
 #include "steam_friends_manager.h"
 #include "plugin_data.h"
 #include "plugin_utils.h"
+#include "seh_compat.h"
 #include "../diagnostics/logger.h"
 #include "../vendor/steam/steam_api_minimal.h"
 
@@ -23,58 +24,62 @@
 // SEH-protected call wrappers.
 //
 // Calling into steam_api64.dll through resolved function pointers can fault if
-// Steam isn't in the state we assume (e.g. interface not ready). SEH (__try/
-// __except) cannot share a function with C++ objects that need unwinding, so
+// Steam isn't in the state we assume (e.g. interface not ready). SEH cannot
+// share a function with C++ objects that need unwinding (MSVC C2712), so
 // every risky call lives in its own POD-returning helper here. Strings
 // returned by Steam point into its internal buffers and are only valid until
 // the next call on that interface - callers copy them into std::string
 // immediately.
+//
+// SEH is MSVC-only; on the headless cross-platform test build (mingw/GCC) the
+// SEH_TRY/SEH_EXCEPT_ALL wrappers run the call unguarded — safe because that
+// build has no steam_api64.dll to fault into. See core/seh_compat.h.
 // ============================================================================
 namespace {
 
 void* sehAccessor(void* fn) {
-    __try { return reinterpret_cast<void*(S_CALLTYPE*)()>(fn)(); }
-    __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+    SEH_TRY { return reinterpret_cast<void*(S_CALLTYPE*)()>(fn)(); }
+    SEH_EXCEPT_ALL { return nullptr; }
 }
 
 HSteamUser sehGetHSteamUser(void* fn) {
-    __try { return reinterpret_cast<SteamAPI_GetHSteamUser_FnPtr>(fn)(); }
-    __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+    SEH_TRY { return reinterpret_cast<SteamAPI_GetHSteamUser_FnPtr>(fn)(); }
+    SEH_EXCEPT_ALL { return 0; }
 }
 
 HSteamPipe sehGetHSteamPipe(void* fn) {
-    __try { return reinterpret_cast<SteamAPI_GetHSteamPipe_FnPtr>(fn)(); }
-    __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+    SEH_TRY { return reinterpret_cast<SteamAPI_GetHSteamPipe_FnPtr>(fn)(); }
+    SEH_EXCEPT_ALL { return 0; }
 }
 
 void* sehFindInterface(void* fn, HSteamUser user, const char* version) {
-    __try { return reinterpret_cast<SteamInternal_FindOrCreateUserInterface_FnPtr>(fn)(user, version); }
-    __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+    SEH_TRY { return reinterpret_cast<SteamInternal_FindOrCreateUserInterface_FnPtr>(fn)(user, version); }
+    SEH_EXCEPT_ALL { return nullptr; }
 }
 
 void* sehClientGetFriends(void* fn, void* client, HSteamUser user, HSteamPipe pipe, const char* version) {
-    __try { return reinterpret_cast<ISteamClient_GetFriends_FnPtr>(fn)(client, user, pipe, version); }
-    __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+    SEH_TRY { return reinterpret_cast<ISteamClient_GetFriends_FnPtr>(fn)(client, user, pipe, version); }
+    SEH_EXCEPT_ALL { return nullptr; }
 }
 
 void* sehClientGetUtils(void* fn, void* client, HSteamPipe pipe, const char* version) {
-    __try { return reinterpret_cast<ISteamClient_GetUtils_FnPtr>(fn)(client, pipe, version); }
-    __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+    SEH_TRY { return reinterpret_cast<ISteamClient_GetUtils_FnPtr>(fn)(client, pipe, version); }
+    SEH_EXCEPT_ALL { return nullptr; }
 }
 
 uint32_t sehGetAppID(void* fn, void* self) {
-    __try { return reinterpret_cast<ISteamUtils_GetAppID_FnPtr>(fn)(self); }
-    __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+    SEH_TRY { return reinterpret_cast<ISteamUtils_GetAppID_FnPtr>(fn)(self); }
+    SEH_EXCEPT_ALL { return 0; }
 }
 
 int sehGetFriendCount(void* fn, void* self, int flags) {
-    __try { return reinterpret_cast<ISteamFriends_GetFriendCount_FnPtr>(fn)(self, flags); }
-    __except (EXCEPTION_EXECUTE_HANDLER) { return -1; }
+    SEH_TRY { return reinterpret_cast<ISteamFriends_GetFriendCount_FnPtr>(fn)(self, flags); }
+    SEH_EXCEPT_ALL { return -1; }
 }
 
 uint64_t sehGetFriendByIndex(void* fn, void* self, int i, int flags) {
-    __try { return reinterpret_cast<ISteamFriends_GetFriendByIndex_FnPtr>(fn)(self, i, flags); }
-    __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+    SEH_TRY { return reinterpret_cast<ISteamFriends_GetFriendByIndex_FnPtr>(fn)(self, i, flags); }
+    SEH_EXCEPT_ALL { return 0; }
 }
 
 const char* sehGetPersonaName(void* fn, void* self, uint64_t id) {
@@ -82,38 +87,38 @@ const char* sehGetPersonaName(void* fn, void* self, uint64_t id) {
     // required-exports check in hookSteamApi(). The SEH guard would catch the
     // null call too, but don't rely on a deliberate AV.
     if (!fn) return nullptr;
-    __try { return reinterpret_cast<ISteamFriends_GetFriendPersonaName_FnPtr>(fn)(self, id); }
-    __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+    SEH_TRY { return reinterpret_cast<ISteamFriends_GetFriendPersonaName_FnPtr>(fn)(self, id); }
+    SEH_EXCEPT_ALL { return nullptr; }
 }
 
 bool sehGetGamePlayed(void* fn, void* self, uint64_t id, FriendGameInfo_t* out) {
-    __try { return reinterpret_cast<ISteamFriends_GetFriendGamePlayed_FnPtr>(fn)(self, id, out); }
-    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+    SEH_TRY { return reinterpret_cast<ISteamFriends_GetFriendGamePlayed_FnPtr>(fn)(self, id, out); }
+    SEH_EXCEPT_ALL { return false; }
 }
 
 const char* sehGetRichPresence(void* fn, void* self, uint64_t id, const char* key) {
-    __try { return reinterpret_cast<ISteamFriends_GetFriendRichPresence_FnPtr>(fn)(self, id, key); }
-    __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+    SEH_TRY { return reinterpret_cast<ISteamFriends_GetFriendRichPresence_FnPtr>(fn)(self, id, key); }
+    SEH_EXCEPT_ALL { return nullptr; }
 }
 
 int sehGetRPKeyCount(void* fn, void* self, uint64_t id) {
-    __try { return reinterpret_cast<ISteamFriends_GetFriendRichPresenceKeyCount_FnPtr>(fn)(self, id); }
-    __except (EXCEPTION_EXECUTE_HANDLER) { return -1; }
+    SEH_TRY { return reinterpret_cast<ISteamFriends_GetFriendRichPresenceKeyCount_FnPtr>(fn)(self, id); }
+    SEH_EXCEPT_ALL { return -1; }
 }
 
 const char* sehGetRPKeyByIndex(void* fn, void* self, uint64_t id, int i) {
-    __try { return reinterpret_cast<ISteamFriends_GetFriendRichPresenceKeyByIndex_FnPtr>(fn)(self, id, i); }
-    __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+    SEH_TRY { return reinterpret_cast<ISteamFriends_GetFriendRichPresenceKeyByIndex_FnPtr>(fn)(self, id, i); }
+    SEH_EXCEPT_ALL { return nullptr; }
 }
 
 bool sehSetRichPresence(void* fn, void* self, const char* key, const char* value) {
-    __try { return reinterpret_cast<ISteamFriends_SetRichPresence_FnPtr>(fn)(self, key, value); }
-    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+    SEH_TRY { return reinterpret_cast<ISteamFriends_SetRichPresence_FnPtr>(fn)(self, key, value); }
+    SEH_EXCEPT_ALL { return false; }
 }
 
 void sehClearRichPresence(void* fn, void* self) {
-    __try { reinterpret_cast<ISteamFriends_ClearRichPresence_FnPtr>(fn)(self); }
-    __except (EXCEPTION_EXECUTE_HANDLER) {}
+    SEH_TRY { reinterpret_cast<ISteamFriends_ClearRichPresence_FnPtr>(fn)(self); }
+    SEH_EXCEPT_ALL {}
 }
 
 // Copy a Steam-owned string immediately (may be null / invalidated by next call)
@@ -441,6 +446,10 @@ void SteamFriendsManager::updateLocalPresence() {
     inputs.sessionLength = session.sessionLength;
     inputs.sessionNumLaps = session.sessionNumLaps;
     inputs.online = session.isOnline();
+    // >1 rider flips the unknown-serverType label to "Online" (GP Bikes / KRP), so a
+    // rider joining/leaving must invalidate the fingerprint or the label would stick.
+    const int riderCount = static_cast<int>(pd.getRaceEntries().size());
+    inputs.multiRider = (riderCount > 1);
     inputs.lapsToGo = pd.getLeaderLapsToGo();
     inputs.timeSeconds = pd.getSessionTime() / 1000;
     if (m_hasPresenceInputs && inputs == m_lastPresenceInputs) {
@@ -480,11 +489,14 @@ void SteamFriendsManager::updateLocalPresence() {
             PluginUtils::formatSessionFormat(session.sessionLength, session.sessionNumLaps, fb, sizeof(fb));
             fmt = fb;
 
-            // Server slot label (name / "Testing" solo / "Unknown") shared with the
-            // SessionHud server row - see PluginUtils::serverLabel. Feeds the
+            // Server slot label (name / "Testing" solo / "Online" / "Unknown") shared
+            // with the SessionHud server row - see PluginUtils::serverLabel. Feeds the
             // published "server" key, the native Steam string, and our "Show myself"
             // row (m_self.server below); the Friends HUD shows it in the Server column.
-            server = PluginUtils::serverLabel(session.serverType, session.serverName);
+            // Rider count resolves GP Bikes / KRP (no serverType in their API) to
+            // "Online" once a real opponent is present. Each client publishes its own
+            // resolved label, so a friend reading side just displays what was sent.
+            server = PluginUtils::serverLabel(session.serverType, session.serverName, riderCount);
 
             // Session clock snapshot for the Friends HUD "Timing" column - the
             // exact value the web overlay's `time` field shows (MM:SS, or the

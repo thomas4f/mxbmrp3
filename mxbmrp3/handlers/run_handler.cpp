@@ -9,6 +9,7 @@
 #include "../core/input_manager.h"
 #include "../core/hud_manager.h"
 #include "../core/stats_manager.h"
+#include "../core/settings_manager.h"
 #include "../hud/fuel_widget.h"
 #include "../diagnostics/logger.h"
 
@@ -65,6 +66,13 @@ void RunHandler::handleRunStop() {
 
     // Pause stats session timer (resumed in RunStart)
     StatsManager::getInstance().notifyPause();
+
+    // Leaving the track for the pits: persist deferred settings + stats now. This is where the
+    // ~2ms settings serialize lands — a frame hitch here is invisible, and we NEVER write while
+    // the player is actively riding. Both are no-ops if nothing changed. (RunDeinit repeats this
+    // for a direct exit that skips the pit stop.)
+    SettingsManager::getInstance().flushIfDirty(HudManager::getInstance());
+    StatsManager::getInstance().save();
 }
 
 void RunHandler::handleRunDeinit() {
@@ -79,4 +87,7 @@ void RunHandler::handleRunDeinit() {
     // End stats session and save
     StatsManager::getInstance().recordSessionEnd();
     StatsManager::getInstance().save();
+
+    // Exiting the run: flush any deferred settings changes (no-op if nothing changed).
+    SettingsManager::getInstance().flushIfDirty(HudManager::getInstance());
 }

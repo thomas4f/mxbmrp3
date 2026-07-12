@@ -161,8 +161,10 @@ private:
     static constexpr int NUM_TIMING_POINTS = 1000;
 
     // Bar dimensions
-    // Width: STANDARD_WIDTH (12 chars) in fontSizeLarge + paddingH on each side
-    // Height: paddingV + fontSizeLarge (matches notices widget)
+    // Width: base (100%) is 2x the Notices/Timing box width, scaled by m_barWidthPercent, so
+    //        50% (the default) matches those panels and higher values run wider
+    // Height: lineHeightLarge (the large-font title band = 4 snap-grid cells) - shared with
+    //         the Notices and Timing rows so all three line up on the grid
     static constexpr float BAR_PADDING_V_SCALE = 0.25f;  // Inner vertical padding for markers
 
     // Freeze duration limits (matches TimingHud)
@@ -177,11 +179,11 @@ private:
     static constexpr int DEFAULT_RANGE_MS = 2000;   // 2 seconds default
     static constexpr int RANGE_STEP_MS = 1000;      // 1 second steps
 
-    // Bar width limits (percentage of base width which matches notices widget)
-    static constexpr int MIN_WIDTH_PERCENT = 50;    // 50% minimum
-    static constexpr int MAX_WIDTH_PERCENT = 400;   // 400% maximum
-    static constexpr int DEFAULT_WIDTH_PERCENT = 100;  // 100% default (matches notices)
-    static constexpr int WIDTH_STEP_PERCENT = 1;    // 1% steps
+    // Bar width as a percentage of the base width (base = 2x the Notices/Timing box width)
+    static constexpr int MIN_WIDTH_PERCENT = 50;      // 50% = same width as Notices/Timing
+    static constexpr int MAX_WIDTH_PERCENT = 400;     // 400% maximum
+    static constexpr int DEFAULT_WIDTH_PERCENT = 50;  // default: match the Notices/Timing width
+    static constexpr int WIDTH_STEP_PERCENT = 1;      // 1% steps
 
     // Best lap timing data
     std::array<BestLapTimingPoint, NUM_TIMING_POINTS> m_bestLapTimingPoints;

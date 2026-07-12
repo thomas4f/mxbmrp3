@@ -24,7 +24,7 @@ void EventLogHud::resetToDefaults() {
     setTextureVariant(0);
     m_fBackgroundOpacity = 0.80f;
     m_fScale = 1.0f;
-    setPosition(0.7315f, 0.5106f);  // Right column, before Friends in the stack
+    setPosition(0.7315f, 0.51627f);  // Right column, before Friends in the stack
     m_displayMode = DisplayMode::ON;
     m_displayOrder = DisplayOrder::OLDEST_FIRST;
     m_enabledEvents = EVENT_DEFAULT;
@@ -42,7 +42,7 @@ bool EventLogHud::handlesDataType(DataChangeType dataType) const {
 }
 
 void EventLogHud::update() {
-    if (!isVisible() || m_displayMode == DisplayMode::OFF) {
+    if (!isVisibleAnySurface() || m_displayMode == DisplayMode::OFF) {
         if (!m_quads.empty() || !m_strings.empty()) {
             m_quads.clear();
             clearStrings();
@@ -96,28 +96,46 @@ void EventLogHud::update() {
     processDirtyFlags();
 }
 
+void EventLogHud::CachedIcons::ensureInitialized() {
+    if (initialized) return;
+    const AssetManager& assets = AssetManager::getInstance();
+    flag          = assets.getIconSpriteIndex("flag");
+    flagCheckered = assets.getIconSpriteIndex("flag-checkered");
+    hourglassHalf = assets.getIconSpriteIndex("hourglass-half");
+    stopwatch     = assets.getIconSpriteIndex("stopwatch");
+    exclamation   = assets.getIconSpriteIndex("exclamation");
+    circleXmark   = assets.getIconSpriteIndex("circle-xmark");
+    xmark         = assets.getIconSpriteIndex("xmark");
+    ban           = assets.getIconSpriteIndex("ban");
+    crown         = assets.getIconSpriteIndex("crown");
+    wrench        = assets.getIconSpriteIndex("wrench");
+    video         = assets.getIconSpriteIndex("video");
+    initialized = true;
+}
+
 int EventLogHud::getIconForEvent(EventLogType type) const {
     if (!m_showIcons) return 0;
-    const AssetManager& assets = AssetManager::getInstance();
+    m_iconCache.ensureInitialized();
     switch (type) {
-    case EventLogType::SessionStarted:    return assets.getIconSpriteIndex("flag");
-    case EventLogType::SessionStateChange:return assets.getIconSpriteIndex("flag");
-    case EventLogType::SessionComplete:   return assets.getIconSpriteIndex("flag-checkered");
-    case EventLogType::SessionPreStart:   return assets.getIconSpriteIndex("hourglass-half");
-    case EventLogType::FastestLap:        return assets.getIconSpriteIndex("stopwatch");
-    case EventLogType::Penalty:           return assets.getIconSpriteIndex("exclamation");
-    case EventLogType::PenaltyClear:      return assets.getIconSpriteIndex("circle-xmark");
-    case EventLogType::PenaltyChange:     return assets.getIconSpriteIndex("exclamation");
-    case EventLogType::RiderRetired:      return assets.getIconSpriteIndex("xmark");
-    case EventLogType::RiderDSQ:          return assets.getIconSpriteIndex("ban");
-    case EventLogType::RiderDNS:          return assets.getIconSpriteIndex("xmark");
-    case EventLogType::OvertimeStarted:   return assets.getIconSpriteIndex("stopwatch");
-    case EventLogType::SessionTimeExpired:return assets.getIconSpriteIndex("stopwatch");
-    case EventLogType::FinalLap:          return assets.getIconSpriteIndex("flag");
-    case EventLogType::RiderFinished:     return assets.getIconSpriteIndex("flag-checkered");
-    case EventLogType::LeaderChange:      return assets.getIconSpriteIndex("crown");
-    case EventLogType::PitEntry:          return assets.getIconSpriteIndex("wrench");
-    case EventLogType::PitExit:           return assets.getIconSpriteIndex("wrench");
+    case EventLogType::SessionStarted:    return m_iconCache.flag;
+    case EventLogType::SessionStateChange:return m_iconCache.flag;
+    case EventLogType::SessionComplete:   return m_iconCache.flagCheckered;
+    case EventLogType::SessionPreStart:   return m_iconCache.hourglassHalf;
+    case EventLogType::FastestLap:        return m_iconCache.stopwatch;
+    case EventLogType::Penalty:           return m_iconCache.exclamation;
+    case EventLogType::PenaltyClear:      return m_iconCache.circleXmark;
+    case EventLogType::PenaltyChange:     return m_iconCache.exclamation;
+    case EventLogType::RiderRetired:      return m_iconCache.xmark;
+    case EventLogType::RiderDSQ:          return m_iconCache.ban;
+    case EventLogType::RiderDNS:          return m_iconCache.xmark;
+    case EventLogType::OvertimeStarted:   return m_iconCache.stopwatch;
+    case EventLogType::SessionTimeExpired:return m_iconCache.stopwatch;
+    case EventLogType::FinalLap:          return m_iconCache.flag;
+    case EventLogType::RiderFinished:     return m_iconCache.flagCheckered;
+    case EventLogType::LeaderChange:      return m_iconCache.crown;
+    case EventLogType::PitEntry:          return m_iconCache.wrench;
+    case EventLogType::PitExit:           return m_iconCache.wrench;
+    case EventLogType::Director:           return m_iconCache.video;
     default: return 0;
     }
 }
@@ -139,6 +157,7 @@ unsigned long EventLogHud::getIconColorForEvent(EventLogType type) const {
     case EventLogType::RiderDSQ:          return getColor(ColorSlot::NEGATIVE);
     case EventLogType::PitEntry:
     case EventLogType::PitExit:           return ColorPalette::GRAY;
+    case EventLogType::Director:           return ColorPalette::GRAY;
     default:                              return getColor(ColorSlot::PRIMARY);
     }
 }
@@ -255,7 +274,11 @@ void EventLogHud::rebuildRenderData() {
             quad.m_aafPos[2][0] = ox + iconHalfWidth; quad.m_aafPos[2][1] = oy + iconHalfSize;
             quad.m_aafPos[3][0] = ox + iconHalfWidth; quad.m_aafPos[3][1] = oy - iconHalfSize;
             quad.m_iSprite = spriteIndex;
-            quad.m_ulColor = getIconColorForEvent(entry->type);
+            // A per-entry ColorSlot override (e.g. director state-transition entries tinted
+            // with the director button's state colors) wins over the per-type default.
+            quad.m_ulColor = (entry->iconColorSlot >= 0)
+                ? getColor(static_cast<ColorSlot>(entry->iconColorSlot))
+                : getIconColorForEvent(entry->type);
             m_iconQuads.push_back({m_quads.size(), currentRow});
             m_quads.push_back(quad);
         }
@@ -266,6 +289,8 @@ void EventLogHud::rebuildRenderData() {
             if (m_timestampMode == TimestampMode::CLOCK) {
                 auto time_t = std::chrono::system_clock::to_time_t(entry->systemTime);
                 struct tm localTime;
+                // localtime_s writes localTime (output param); cppcheck can't model that.
+                // cppcheck-suppress uninitvar
                 localtime_s(&localTime, &time_t);
                 snprintf(timestamp, sizeof(timestamp), "%02d:%02d:%02d",
                          localTime.tm_hour, localTime.tm_min, localTime.tm_sec);

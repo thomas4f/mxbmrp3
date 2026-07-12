@@ -14,6 +14,8 @@
 #include "../core/color_config.h"
 #include "../core/asset_manager.h"
 #include "../core/tracked_riders_manager.h"
+#include "../core/widget_constants.h"
+#include "../core/ui_config.h"
 
 using namespace PluginConstants;
 
@@ -97,7 +99,7 @@ void GapBarHud::update() {
         resetTimingState();
         m_cachedSessionGeneration = currentGeneration;
         m_cachedPitState = -1;
-        if (isVisible()) setDataDirty();
+        if (isVisibleAnySurface()) setDataDirty();
     }
 
     // Detect spectate target changes and reset state
@@ -123,7 +125,7 @@ void GapBarHud::update() {
             m_cachedLastCompletedLapNum = idealLapData->lastCompletedLapNum;
         }
 
-        if (isVisible()) setDataDirty();
+        if (isVisibleAnySurface()) setDataDirty();
     }
 
     // Detect pit entry/exit and reset anchor (but keep best lap data)
@@ -137,7 +139,7 @@ void GapBarHud::update() {
             m_anchor.reset();
             m_trackMonitor.reset();
             m_currentLapTimingPoints.fill(BestLapTimingPoint());
-            if (isVisible()) setDataDirty();
+            if (isVisibleAnySurface()) setDataDirty();
         }
         m_cachedPitState = currentPitState;
     }
@@ -206,7 +208,7 @@ void GapBarHud::update() {
         m_cachedSplit2 = -1;
 
         m_cachedLastCompletedLapNum = idealLapData->lastCompletedLapNum;
-        if (isVisible()) setDataDirty();
+        if (isVisibleAnySurface()) setDataDirty();
     }
 
     // Rate-limited updates for smooth animation
@@ -230,11 +232,11 @@ void GapBarHud::update() {
             PluginData::getInstance().setLiveGap(0, false);
         }
 
-        if (isVisible()) setDataDirty();
+        if (isVisibleAnySurface()) setDataDirty();
     }
 
     // OPTIMIZATION: Only process dirty flags and rebuild when visible
-    if (isVisible()) {
+    if (isVisibleAnySurface()) {
         processDirtyFlags();
     } else {
         clearDataDirty();
@@ -517,13 +519,22 @@ void GapBarHud::rebuildRenderData() {
     // Get scaled dimensions
     auto dim = getScaledDimensions();
 
-    // Calculate bar width to match Performance/Telemetry HUD full width (43 chars = 33 graph + 1 gap + 9 legend)
-    // Use dim.fontSize (not fontSizeLarge) to match those HUDs exactly
-    constexpr int BACKGROUND_WIDTH_CHARS = 43;
-    float textWidth = PluginUtils::calculateMonospaceTextWidth(BACKGROUND_WIDTH_CHARS, dim.fontSize);
-    float baseBarWidth = dim.paddingH + textWidth + dim.paddingH;
+    // Base (100%) width is exactly TWICE the Notices/Timing box width (CENTER_STACK_WIDTH_CHARS
+    // at the large font + paddingH each side). So the default is comfortably wider than those
+    // panels - the gap bar's intended exception - while the 50% width setting makes it EXACTLY
+    // match them (same width; combined with the grid-snapped centering below, the same edges).
+    // (Previously 43 chars at the normal font to match the Performance/Telemetry HUD; that
+    // alignment is traded for matching the center-top stack.)
+    float centerStackWidth = dim.paddingH
+        + PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::CENTER_STACK_WIDTH_CHARS, dim.fontSizeLarge)
+        + dim.paddingH;
+    float baseBarWidth = 2.0f * centerStackWidth;
     float barWidth = baseBarWidth * (static_cast<float>(m_barWidthPercent) / 100.0f);
-    float barHeight = dim.paddingV + dim.fontSizeLarge;
+    // Height = lineHeightLarge (large-font title band = 2x lineHeightNormal = 4 snap-grid
+    // cells) so the bar lines up on the shared grid with the Notices/Timing rows. Inner
+    // content (gap fill, markers, gap text) is positioned relative to barHeight below, so it
+    // re-centers automatically. (Was paddingV + fontSizeLarge, ~4.56 cells - off-grid.)
+    float barHeight = dim.lineHeightLarge;
 
     // Use minimal HUD padding (scaled for aspect ratio)
     float paddingH = dim.gridH(1) * HudSpacing::BG_PADDING_H_SCALE;  // 0.5 char widths
@@ -532,6 +543,16 @@ void GapBarHud::rebuildRenderData() {
     // Starting position - X is centered (offset from bar center), Y is top-aligned
     float startX = -barWidth / 2.0f;
     float startY = 0.0f;
+
+    // Snap the bar's left edge to the horizontal grid when snapping is on, matching Notices/
+    // Timing (0.5 itself is not on the grid). The bar is drawn from startX and then shifted by
+    // the HUD offset (its center), so fold the snap delta of the resulting left edge into startX
+    // - this shifts the whole bar (background, markers, gap text, bounds) as a unit, so at a
+    // matching width its edges land on the same lattice as the panels below it.
+    if (UiConfig::getInstance().getGridSnapping()) {
+        float leftEdge = m_fOffsetX + startX;
+        startX += HudGrid::SNAP_TO_GRID_X(leftEdge) - leftEdge;
+    }
 
     // ==== BACKGROUND QUAD ====
     SPluginQuad_t bgQuad;
@@ -692,7 +713,12 @@ void GapBarHud::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.1f;
     m_fScale = 1.0f;
-    setPosition(0.5f, 0.043f);
+    // First row of the center-top stack (GapBar -> Notices -> Timing, one grid snap between
+    // each): the GapBar sits at the top, one snap down from the screen edge (aligns with the
+    // settings/camera buttons' row at y=0.011734). The Notices HUD defaults one snap below it,
+    // and the Timing HUD (which grows DOWN) one snap below the notice. See notices_hud.cpp
+    // TIMING_DIVIDER_Y and timing_hud.cpp for the matching defaults.
+    setPosition(0.5f, 0.011734f);
 
     // Settings
     m_freezeDurationMs = DEFAULT_FREEZE_MS;
@@ -722,7 +748,7 @@ void GapBarHud::updateRiderPositions(int numVehicles, const Unified::TrackPositi
     // Only store if we're showing opponents
     if (m_markerMode == MarkerMode::OPPONENTS || m_markerMode == MarkerMode::GHOST_OPPONENTS) {
         m_riderPositions.assign(positions, positions + numVehicles);
-        if (isVisible()) {
+        if (isVisibleAnySurface()) {
             setDataDirty();
         }
     }

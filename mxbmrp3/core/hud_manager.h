@@ -8,6 +8,7 @@
 #include <string>
 #include <memory>
 #include <cassert>
+#include <chrono>
 #include "../game/game_config.h"
 #include "../game/unified_types.h"
 #include "../hud/base_hud.h"
@@ -21,13 +22,20 @@ public:
 
     void initialize();
     void shutdown();
-    void clear();
+    // allowCrossSingleton=false on the static-teardown (destructor) path, where the
+    // CompanionWindow singleton this would reach may already be destroyed. See the .cpp.
+    void clear(bool allowCrossSingleton = true);
 
     // Resource management - called from plugin manager
     int initializeResources(int* piNumSprites, char** pszSpriteName, int* piNumFonts, char** pszFontName);
 
     // Called from plugin manager during draw operations
     void draw(int iState, int* piNumQuads, void** ppQuad, int* piNumString, void** ppString);
+
+    // Read-only access to the last-collected surface frames, for test introspection
+    // of the game vs companion render routing (see collectSurface / core/test_hooks.cpp).
+    const std::vector<SPluginQuad_t>& getGameQuads() const { return m_quads; }
+    const std::vector<SPluginQuad_t>& getCompanionQuads() const { return m_companionQuads; }
 
     // HUD registration
     void registerHud(std::unique_ptr<BaseHud> hud);
@@ -99,6 +107,7 @@ public:
     class GapBarHud& getGapBarHud() const { assert(m_pGapBar && "HudManager not initialized"); return *m_pGapBar; }
     class PointerWidget& getPointerWidget() const { assert(m_pPointer && "HudManager not initialized"); return *m_pPointer; }
     class RumbleHud& getRumbleHud() const { assert(m_pRumble && "HudManager not initialized"); return *m_pRumble; }
+    class DirectorWidget* getDirectorWidget() const { return m_pDirector; }  // nullable; callers null-check
     class GamepadWidget& getGamepadWidget() const { assert(m_pGamepad && "HudManager not initialized"); return *m_pGamepad; }
     class LeanWidget& getLeanWidget() const { assert(m_pLean && "HudManager not initialized"); return *m_pLean; }
     class GForceWidget& getGForceWidget() const { assert(m_pGforce && "HudManager not initialized"); return *m_pGforce; }
@@ -110,7 +119,7 @@ public:
 #if GAME_HAS_ECU
     class EcuWidget& getEcuWidget() const { assert(m_pEcu && "HudManager not initialized"); return *m_pEcu; }
 #endif
-    class LapConsistencyHud& getLapConsistencyHud() const { assert(m_pLapConsistency && "HudManager not initialized"); return *m_pLapConsistency; }
+    class SessionChartsHud& getSessionChartsHud() const { assert(m_pSessionCharts && "HudManager not initialized"); return *m_pSessionCharts; }
     class HelmetOverlayHud& getHelmetOverlayHud() const { assert(m_pHelmetOverlay && "HudManager not initialized"); return *m_pHelmetOverlay; }
 #if GAME_HAS_FMX
     class FmxHud& getFmxHud() const { assert(m_pFmxHud && "HudManager not initialized"); return *m_pFmxHud; }
@@ -119,6 +128,14 @@ public:
     class EventLogHud& getEventLogHud() const { assert(m_pEventLog && "HudManager not initialized"); return *m_pEventLog; }
     class BenchmarkWidget* getBenchmarkWidget() const { return m_pBenchmark; }  // May be null if developer mode is off
     class SettingsHud& getSettingsHud() const { assert(m_pSettingsHud && "HudManager not initialized"); return *m_pSettingsHud; }
+
+#if defined(MXBMRP3_TEST_BUILD)
+    // Force every registered HUD/widget visible (or hidden), skipping UI chrome
+    // (settings menu, settings button, pointer, benchmark). Used by the headless
+    // benchmark driver to profile the plugin with everything enabled; not part of
+    // any in-game flow, so it's compiled out of every shipping DLL.
+    void testSetAllHudsVisible(bool visible);
+#endif
 
 private:
     HudManager() : m_bInitialized(false), m_bResourcesInitialized(false),
@@ -129,14 +146,14 @@ private:
 #if GAME_HAS_RECORDS_PROVIDER
                    m_pRecords(nullptr),
 #endif
-                   m_pFuel(nullptr), m_pPointer(nullptr), m_pRumble(nullptr), m_pGamepad(nullptr), m_pLean(nullptr), m_pGforce(nullptr), m_pCompass(nullptr), m_pClock(nullptr),
+                   m_pFuel(nullptr), m_pPointer(nullptr), m_pRumble(nullptr), m_pDirector(nullptr), m_pGamepad(nullptr), m_pLean(nullptr), m_pGforce(nullptr), m_pCompass(nullptr), m_pClock(nullptr),
 #if GAME_HAS_TYRE_TEMP
                    m_pTyreTemp(nullptr),
 #endif
 #if GAME_HAS_ECU
                    m_pEcu(nullptr),
 #endif
-                   m_pLapConsistency(nullptr),
+                   m_pSessionCharts(nullptr),
                    m_pHelmetOverlay(nullptr),
                    m_pStatsHud(nullptr),
                    m_pFmxHud(nullptr),
@@ -148,11 +165,29 @@ private:
     HudManager(const HudManager&) = delete;
     HudManager& operator=(const HudManager&) = delete;
 
+    // Shared teardown. allowSave gates the cross-singleton settings auto-save:
+    // true on the orchestrated Shutdown() path (every singleton still alive),
+    // false from ~HudManager() during static teardown (SettingsManager may be
+    // gone). See the definitions in hud_manager.cpp.
+    void shutdownInternal(bool allowSave);
+
     void updateHuds();
     void processKeyboardInput();
     void collectRenderData();
+    // Build one surface's frame into the given vectors. companion=false reproduces
+    // the game frame exactly; companion=true uses each HUD's companion instance
+    // (on/off + position). See collectRenderData.
+    void collectSurface(std::vector<SPluginQuad_t>& outQuads,
+                        std::vector<SPluginString_t>& outStrings, bool companion);
+    // Debug/alignment aid (INI-only, off by default): append the HUD snap-grid lattice
+    // as thin quads on top of the frame. Every Nth line uses the "major" color/thickness.
+    void appendGridOverlay(std::vector<SPluginQuad_t>& outQuads) const;
+    // Number of grid quads appendGridOverlay would add (for capacity reservation).
+    static size_t gridOverlayQuadCount();
     void setupDefaultResources();
     void handleSettingsButton();
+    void handleDirectorButton();
+    void persistDirectorEnabled();  // save the director on/off mode (auto-save-gated)
 
     bool m_bInitialized;
     bool m_bResourcesInitialized;
@@ -160,6 +195,11 @@ private:
 
     // Cache pointer to currently dragging HUD (eliminates search loop every frame)
     BaseHud* m_pDraggingHud;
+
+    // Timestamp of the previous Draw call. A long gap means the game stopped drawing us
+    // (menu / loading); when it resumes we treat it as "entered the track" and flash the
+    // corner status buttons into view. Default-constructed to the clock epoch.
+    std::chrono::steady_clock::time_point m_lastDrawTime;
 
     // Pointers to HUDs (for settings persistence and button clicks)
     class SettingsHud* m_pSettingsHud;
@@ -192,6 +232,7 @@ private:
     class FuelWidget* m_pFuel;
     class PointerWidget* m_pPointer;
     class RumbleHud* m_pRumble;
+    class DirectorWidget* m_pDirector;
     class GamepadWidget* m_pGamepad;
     class LeanWidget* m_pLean;
     class GForceWidget* m_pGforce;
@@ -203,7 +244,7 @@ private:
 #if GAME_HAS_ECU
     class EcuWidget* m_pEcu;
 #endif
-    class LapConsistencyHud* m_pLapConsistency;
+    class SessionChartsHud* m_pSessionCharts;
     class HelmetOverlayHud* m_pHelmetOverlay;
     class StatsHud* m_pStatsHud;
     class FmxHud* m_pFmxHud;
@@ -213,10 +254,14 @@ private:
     // Temporary HUD visibility toggle (doesn't modify actual visibility state)
     bool m_bAllHudsToggledOff;
     bool m_bAllWidgetsToggledOff;
+    bool m_lastActiveCompanion = false;  // track focus surface to refresh settings on change
 
     // Collected render data from all HUDs
     std::vector<SPluginQuad_t> m_quads;
     std::vector<SPluginString_t> m_strings;
+    // Companion-surface frame (built only while the companion window is open).
+    std::vector<SPluginQuad_t> m_companionQuads;
+    std::vector<SPluginString_t> m_companionStrings;
 
     // Resource management - dynamically sized based on discovered assets
     std::vector<std::string> m_spriteNames;

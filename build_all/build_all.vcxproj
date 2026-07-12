@@ -8,8 +8,8 @@
   msbuild on mxbmrp3.vcxproj three times — once per game.
 
   This project produces no binaries of its own; it just orchestrates the
-  per-game builds. Recorder and replay_tool are built directly by the
-  solution alongside this project (see mxbmrp3.sln mappings).
+  per-game builds. The dev tools (mxbmrp3_replay, mxbmrp3_fontgen) are built
+  directly by the solution alongside this project (see mxbmrp3.sln mappings).
 -->
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">

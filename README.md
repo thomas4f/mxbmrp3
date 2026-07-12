@@ -1,15 +1,15 @@
 An [open-source](https://github.com/thomas4f/mxbmrp3) plugin for MX Bikes, GP Bikes, and Kart Racing Pro with customizable on-screen displays, immersion features, social tools, and streaming/broadcasting overlays.
 
-![MXBMRP3 HUD Screenshot](mxbmrp3-v1.18.jpg)
-*Example HUD layout. All elements are fully customizable - see [Tips & Tricks](#tips--tricks) for setup ideas.*
+![MXBMRP3 HUD Screenshot](assets/mxbmrp3.jpg)
+*Default HUD layout. All elements are fully customizable - see [Tips & Tricks](#tips--tricks) for setup ideas.*
 
 ## Features
 
 - Customizable HUD layouts with drag-and-drop positioning, hotkeys, color themes, and auto-switching profiles
 - Live race information covering standings, timing, gap-to-PB bar, track map, radar, event log, and online records
-- Telemetry and lap analysis with splits, personal bests, lap consistency trends, and fuel consumption tracking
+- Telemetry and lap analysis with splits, personal bests, race-progression charts, and fuel consumption tracking
 - Social features including Steam friends, Discord Rich Presence, and rider tracking with custom colors/icons
-- Broadcasting features including a web overlay for OBS with broadcast panels and live controller visualization
+- Broadcasting features with auto-director, OBS overlay, controller visualization, and companion window
 - First-person helmet overlay with telemetry-driven tilt and vibration, plus configurable controller rumble
 - Persistent stats and personal bests across sessions, plus FMX freestyle trick scoring
 - Modding support for custom textures, fonts, icons, web overlay theming, and INI-level configuration
@@ -116,18 +116,24 @@ Keyboard and controller hotkeys can be customized in Settings > Hotkeys. By defa
 
 The plugin is active in-game only - it comes alive once you've loaded into a track and does nothing in the main menus, so all configuration happens on track.
 
-Use the settings menu (**Tilde** or the settings button in the top-right) to configure all HUDs and widgets. **Hover over any setting to see its description** - all controls have in-game tooltips explaining their function. All settings are automatically saved between sessions.
+Use the settings menu (**Tilde** or the settings button in the top-right) to configure all HUDs and widgets. **Hover over any setting to see its description** - all controls have in-game tooltips explaining their function.
+
+With **Auto-Save** on (the default), your changes are saved automatically when you **leave the track** - returning to the pits or exiting the session. Nothing is written to disk while you're riding, so configuring HUDs never causes a stutter. You can also save at any time with the **Save** button at the bottom of the settings menu: it lights up whenever you have unsaved changes and reads "Saved" (greyed out) once everything is written. (If the game crashes mid-session, changes since you last left the track or clicked Save are lost - the same as any other unsaved in-game state.)
 
 The settings menu provides global settings that apply to all profiles, followed by per-element tabs for the individual HUDs and widgets:
 
-- **General** - Profiles, preferences, web overlay, Discord/Steam presence, and anonymous usage analytics (opt-out)
-- **Appearance** - Display units/format, font categories, color theme, and HUD placement (grid snap, screen clamp)
-- **Hotkeys** - Keyboard and controller bindings
-- **Riders** - Track specific riders with custom colors and icons
-- **Rumble** - Controller vibration feedback effects
-- **Helmet** - First-person helmet overlay configuration
-- **Updates** - Check for new versions and install updates in-game
-- **Individual [HUD](#huds) and [Widget](#widgets) tabs** - Per-element visibility, scale, opacity, and options
+| Icon | Tab | Description |
+|:----:|-----|-------------|
+| <img src="assets/icons/hud-general.svg" width="20" height="20" alt=""> | **General** | Profiles, preferences, web overlay, presence integrations, usage analytics ([see privacy](#privacy)) |
+| <img src="assets/icons/hud-appearance.svg" width="20" height="20" alt=""> | **Appearance** | Display units/format, fonts, color theme, and HUD placement (grid snap, clamp) |
+| <img src="assets/icons/hud-hotkeys.svg" width="20" height="20" alt=""> | **Hotkeys** | Keyboard and controller bindings |
+| <img src="assets/icons/hud-riders.svg" width="20" height="20" alt=""> | **Riders** | Track specific riders with custom colors and icons |
+| <img src="assets/icons/hud-rumble.svg" width="20" height="20" alt=""> | **Rumble** | Controller vibration feedback effects |
+| <img src="assets/icons/hud-helmet-mx.svg" width="20" height="20" alt=""> | **Helmet** | First-person helmet overlay configuration |
+| <img src="assets/icons/hud-video.svg" width="20" height="20" alt=""> | **Director** | Auto-director for spectating and replays - automatically follows the most interesting rider |
+| <img src="assets/icons/hud-updates.svg" width="20" height="20" alt=""> | **Updates** | Check for new versions and install updates in-game |
+
+Plus a tab for each individual [HUD](#huds) and [Widget](#widgets), for per-element visibility, scale, opacity, and options.
 
 ### Profiles
 
@@ -152,16 +158,16 @@ Auto-switch (disabled by default) automatically changes profiles based on sessio
 | <img src="assets/icons/hud-radar.svg" width="20" height="20" alt=""> | **Radar** | Proximity radar with approach alerts and distance arrows |
 | <img src="assets/icons/hud-laplog.svg" width="20" height="20" alt=""> | **Lap Log** | Historical lap times with PB indicators |
 | <img src="assets/icons/hud-ideallap.svg" width="20" height="20" alt=""> | **Ideal Lap** | Best sector times and theoretical ideal lap |
-| <img src="assets/icons/hud-lapconsistency.svg" width="20" height="20" alt=""> | **Lap Consistency** | Lap time consistency analysis with trend visualization |
+| <img src="assets/icons/hud-sessioncharts.svg" width="20" height="20" alt=""> | **Charts** | Session-progression charts: position, race trace, gap to leader, pace |
 | <img src="assets/icons/hud-telemetry.svg" width="20" height="20" alt=""> | **Telemetry** | Throttle, brake, suspension graphs |
 | <img src="assets/icons/hud-records.svg" width="20" height="20" alt=""> | **Records** | Online lap records (CBR or MXB-Ranked) with personal bests (MX Bikes only) |
-| <img src="assets/icons/hud-friends.svg" width="20" height="20" alt=""> | **Friends** | Steam friends in the same game, including their server/track and who has joined your session |
+| <img src="assets/icons/hud-friends.svg" width="20" height="20" alt=""> | **Friends** | Steam friends in-game: their server/track and who's joined your session |
 | <img src="assets/icons/hud-pitboard.svg" width="20" height="20" alt=""> | **Pitboard** | Pitboard-style lap information display |
 | <img src="assets/icons/hud-session.svg" width="20" height="20" alt=""> | **Session** | Session info (type, track, format, server, weather) |
 | <img src="assets/icons/hud-timing.svg" width="20" height="20" alt=""> | **Timing** | Split and lap times with gap comparisons |
 | <img src="assets/icons/hud-gapbar.svg" width="20" height="20" alt=""> | **Gap Bar** | Visual gap-to-PB bar with position markers |
 | <img src="assets/icons/hud-notices.svg" width="20" height="20" alt=""> | **Notices** | Race status notices (wrong way, blue flag, PB alerts, last lap, finished) |
-| <img src="assets/icons/hud-eventlog.svg" width="20" height="20" alt=""> | **Event Log** | Timestamped feed of race events (session changes, fastest laps, penalties, finishes, pit activity) |
+| <img src="assets/icons/hud-eventlog.svg" width="20" height="20" alt=""> | **Event Log** | Timestamped feed of race events (laps, penalties, finishes, pit activity) |
 | <img src="assets/icons/hud-fmx.svg" width="20" height="20" alt=""> | **FMX** | Freestyle trick detection with scoring and chain combos (MX Bikes and GP Bikes only) |
 | <img src="assets/icons/hud-stats.svg" width="20" height="20" alt=""> | **Stats** | Riding stats with columns for last lap, session, and all-time totals |
 | <img src="assets/icons/hud-performance.svg" width="20" height="20" alt=""> | **Performance** | FPS and plugin CPU usage |
@@ -214,9 +220,13 @@ Colors and fonts sync automatically from your in-game settings. To customize the
 
 **Track records** - The Records HUD fetches online lap records from CBR or MXB-Ranked. Enable "Auto-fetch" in Settings > Records to automatically load records when you enter a track. Records also work while spectating.
 
+**Auto-director (spectating & replays)** - Enable the **Director** (Settings > Director, or click its camera-icon status button) and it automatically cuts the spectate camera to the most interesting rider or battle, broadcast-style, so you don't have to switch riders by hand. It works while spectating live **and in replays** - a great way to re-watch or record a session and let it direct the action for you. It's off by default (so it never overrides your manual camera unasked), and it also drives the [Web Overlay](#web-overlay)'s battle panel.
+
 **Click-to-spectate** - Left-click on any rider on the Map HUD or Standings HUD to switch the spectate camera to that rider.
 
 **Streaming setup** - Enable the Session HUD (Settings > Session) to show the server name, track, and session format on screen for your viewers. The Pitboard and Gamepad widgets also work well on stream - both have [fully customizable textures](#custom-textures), and the Gamepad widget shows your live controller inputs. Pair with Discord Rich Presence (Settings > General) to show your current session and track in your Discord profile. For a broadcast-style overlay, see [Web Overlay](#web-overlay).
+
+**Second-monitor HUD (Companion window)** - Set **Settings > Appearance > HUD Display** to **Companion** (or **Both**) to open a standalone window you can drag and maximize on a second monitor - handy for keeping race data off your main game view while playing, streaming, or spectating. Each HUD keeps its own on/off state and position on the companion window (drag or toggle it while your mouse is over that window), so you can run a minimal in-game layout and a full dashboard on the second screen at once. It's local and needs no browser or OBS - for a streamable browser source instead, see [Web Overlay](#web-overlay).
 
 **See where friends are racing** - Enable **Steam Friends** (Settings > General) to broadcast your session to friends and populate the Friends HUD: which of your Steam friends are in-game, the server and track they're on, and who's joined your session.
 
@@ -262,7 +272,7 @@ All plugin settings are stored in `mxbmrp3_settings.ini` in your [user data fold
 2. Edit the INI file while the game is running
 3. Use the **Reload Config** hotkey to apply changes (bind it in Settings > Hotkeys)
 
-If Auto-Save is enabled, changes made to the INI while the game is running will be overwritten.
+If Auto-Save is enabled, your in-game state is written back when you leave the track, overwriting any manual edits you made to the INI during that session - so disable Auto-Save first for hot reload.
 
 ## Modding
 
@@ -308,7 +318,7 @@ The overlay files are plain HTML, CSS, and JS. To customize them, place modified
 - `style.css` - The `:root` block holds the theme tokens: colors, fonts, sizes, spacing, and animation timings. Colors and fonts sync from the game (to override those in `custom.css`, add `!important`); sizes, spacing, and animations can be set directly.
 - `custom.css` - Optional file you create yourself for style overrides. **Copy the bundled `custom-sample.css` to `custom.css` to start** - it's a commented reference with ready-made recipes (light theme, compact, no-motion, fonts). Loaded after `style.css`, so anything here wins on specificity ties. Tip: append `?demo` to the overlay URL in a browser to preview your theme against a synthetic race without launching the game. Use this for small theme tweaks instead of forking the full stylesheet - edits apply on the next browser reload (after the next game restart, since the file is synced from `Documents` on startup). **For live iteration**, you can instead place `custom.css` directly in `[Game]\plugins\mxbmrp3_data\web\` and edit it there - it's the one web asset not bundled or replaced by the installer/updater, so browser-refresh applies your changes with no game restart. Pick one location; if you keep copies in both, the `Documents` copy overwrites the plugins copy on next game start.
 - `index.html` - Overlay structure
-- `app.js` - The `CONFIG` block at the top defines defaults for all settings. These are overridden by the settings panel (stored in localStorage).
+- `overlay-config.js` - The `CONFIG` block at the top defines defaults for all settings. These are overridden by the settings panel (stored in localStorage).
 
 ### Data Files
 
@@ -378,7 +388,7 @@ The fix is a code-signing certificate - a paid yearly cost. Signing removes the 
 
 ## Privacy
 
-The plugin sends a small anonymous usage ping per game launch, so the developer can gauge how many people actively use it. It is **on by default** and you can **opt out anytime** in **Settings > General > Integrations** (the "Analytics" toggle).
+The plugin sends a small anonymous usage ping per game launch, so the developer can gauge how many people actively use it. It is **on by default** and you can **opt out anytime** in **Settings > General > Integrations** (the "Analytics" toggle). Turning it off sends one final anonymous opt-out ping, then nothing more.
 
 What it sends:
 
@@ -387,13 +397,17 @@ What it sends:
 | Install ID | A random UUID made on your machine (stored in `mxbmrp3_analytics.json`), not tied to your name, account, hardware, or IP. Delete the file to reset it. |
 | Version & game | The plugin version and game, and whether this launch is a fresh install or an upgrade |
 | Enabled features | HUDs, widgets, web overlay, Discord, Steam, rumble, update channel, and so on, as anonymous on/off flags |
-| Environment | Operating system (Windows), language, and whether it's the Steam or standalone build |
+| Environment | Operating system and version/build (e.g. Windows 11 22631, or Wine/Proton on Linux), language, and whether it's the Steam or standalone build |
 | Usage counters | How many times this install has launched, and how many days since it was first installed |
+| Session length | How long a play session lasted (start to clean exit), so the developer can gauge typical usage |
+| Crashes | If the game crashed last session, the faulting module and offset (e.g. `mxbikes.exe+0x1f1923`), the exception code, and the plugin version + game build at crash time - enough to bucket crashes, **not** the memory dump. Reported on the next launch |
 | Link clicks | Which in-plugin link you click (docs, community, or support/donate) - nothing else |
 
-What it does **not** send: no names, no in-game/online activity, no telemetry, no lap times, no server or rider data, nothing identifying. The pings are fire-and-forget and never affect performance.
+What it does **not** send: no names, no in-game/online activity, no telemetry, no lap times, no server or rider data, and **no crash dump or log** (those stay on your machine) - nothing identifying. The pings are fire-and-forget and never affect performance.
 
 Analytics are processed by two privacy-first, open-source services: [Aptabase](https://aptabase.com) handles the detailed events above, and [GoatCounter](https://www.goatcounter.com) receives a single per-launch hit (the plugin/game/version via the page path, plus the same anonymous install ID so it can count unique installs rather than raw launches) used purely as an aggregate headcount. Both are covered by the one Analytics toggle.
+
+When analytics is on, the plugin also fetches a small public config file from this repository to decide how much of the above to send. This is a cost control for the developer (the events service bills per event): it can only ever **reduce** what's sent below what's described here - never add anything - and if the file is missing or unreachable it defaults to the full set. In the leanest setting only the anonymous launch ping (and a crash report, if any) is sent. Turning the Analytics toggle off stops this fetch too.
 
 ## Feedback & Issues
 
@@ -437,28 +451,14 @@ Documents\PiBoSo\[Game]\mxbmrp3\
 
 ## Development
 
-Built with C++17, Visual Studio 2022, PiBoSo Plugin API, and Claude Code.
+Built with C++17, Visual Studio 2022, the PiBoSo Plugin API, and Claude Code.
 
-- [`CLAUDE.md`](CLAUDE.md) - Quick-start guide for developers and AI assistants
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) - Comprehensive technical documentation with diagrams
+- **[`DEVELOPMENT.md`](DEVELOPMENT.md)** - building (Windows shipping build + Linux cross-build) and running the test suites
+- [`TESTING.md`](TESTING.md) - the layered test suite (unit / integration / specialized) and how to add a test
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) - comprehensive technical documentation with diagrams
+- [`CLAUDE.md`](CLAUDE.md) - quick-start context for developers and AI assistants
 
-### Building from Source
-
-**Requirements:** the v143 platform toolset (ships with Visual Studio 2022 or the standalone Build Tools for Visual Studio 2022), a Windows 10/11 SDK, and C++17.
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/thomas4f/mxbmrp3.git
-   cd mxbmrp3
-   ```
-2. Open `mxbmrp3.sln` in Visual Studio (2022 is easiest), pick a configuration (all x64), and build (Ctrl+Shift+B):
-
-   | Configuration | Game | Output |
-   | --- | --- | --- |
-   | `All-Release` / `All-Debug` | All three (default) | every `.dlo` below |
-   | `MXB-Release` / `MXB-Debug` | MX Bikes | `build/MXB-Release/mxbmrp3.dlo` |
-   | `GPB-Release` / `GPB-Debug` | GP Bikes | `build/GPB-Release/mxbmrp3_gpb.dlo` |
-   | `KRP-Release` / `KRP-Debug` | Kart Racing Pro | `build/KRP-Release/mxbmrp3_krp.dlo` |
+Quick start: clone, open `mxbmrp3.sln` in Visual Studio 2022 (x64), and build. The full configuration table, the Linux cross-build, and the unit/integration tests are documented in [`DEVELOPMENT.md`](DEVELOPMENT.md).
 
 ## License
 

@@ -8,6 +8,7 @@
 // ============================================================================
 #include "crash_handler.h"
 #include "../diagnostics/logger.h"
+#include "plugin_constants.h"   // PLUGIN_VERSION (constant-initialized extern into .rdata, crash-safe)
 
 #include <windows.h>
 #include <dbghelp.h>
@@ -144,6 +145,103 @@ LONG WINAPI crashFilter(EXCEPTION_POINTERS* info) {
     if (wSrc > 0 && wSrc < static_cast<int>(sizeof(logSrc)) &&
         wDst > 0 && wDst < static_cast<int>(sizeof(logDst))) {
         CopyFileA(logSrc, logDst, FALSE);
+    }
+
+    // Analytics breadcrumb (crash-safe): resolve the faulting module + offset and
+    // write a tiny marker file that the plugin reads on its NEXT launch to report
+    // the crash (fault location + when) to analytics. Written AFTER the dump so
+    // nothing here can jeopardize the load-bearing .dmp, and — like the CopyFileA
+    // above — it uses only stack buffers and Win32 calls (no heap, no Logger, no
+    // network). Best-effort: any failure is silent. The plugin deletes the marker
+    // once it has reported it.
+    if (info && info->ExceptionRecord) {
+        void* faultAddr = info->ExceptionRecord->ExceptionAddress;
+        DWORD code = info->ExceptionRecord->ExceptionCode;
+
+        // Module basename + offset from the fault address. GetModuleHandleExA with
+        // FROM_ADDRESS|UNCHANGED_REFCOUNT resolves the owning module without loading
+        // anything or bumping a refcount - safe from inside the filter.
+        char modName[64] = "unknown";
+        unsigned long long offset = 0;
+        HMODULE hMod = nullptr;
+        if (GetModuleHandleExA(
+                GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                static_cast<LPCSTR>(faultAddr), &hMod) && hMod) {
+            char modPath[MAX_PATH];
+            DWORD n = GetModuleFileNameA(hMod, modPath, sizeof(modPath));
+            if (n > 0 && n < sizeof(modPath)) {
+                const char* base = modPath;
+                for (const char* p = modPath; *p; ++p)
+                    if (*p == '\\' || *p == '/') base = p + 1;
+                strncpy_s(modName, sizeof(modName), base, _TRUNCATE);
+            }
+            offset = static_cast<unsigned long long>(
+                reinterpret_cast<ULONG_PTR>(faultAddr) - reinterpret_cast<ULONG_PTR>(hMod));
+        }
+
+        // MX Bikes build fingerprint: the host executable's PE link timestamp. An
+        // mxbikes.exe+offset fault is only interpretable against a specific game build
+        // (offsets shift between betas), so capture which build crashed. Reading the
+        // in-memory PE header (module base -> e_lfanew -> NT headers) needs no disk I/O
+        // and is safe here. 0 if it can't be read.
+        unsigned long gameBuild = 0;
+        if (HMODULE exe = GetModuleHandleA(nullptr)) {
+            PIMAGE_DOS_HEADER dos = reinterpret_cast<PIMAGE_DOS_HEADER>(exe);
+            if (dos->e_magic == IMAGE_DOS_SIGNATURE) {
+                PIMAGE_NT_HEADERS nt = reinterpret_cast<PIMAGE_NT_HEADERS>(
+                    reinterpret_cast<BYTE*>(exe) + dos->e_lfanew);
+                if (nt->Signature == IMAGE_NT_SIGNATURE) {
+                    gameBuild = nt->FileHeader.TimeDateStamp;
+                }
+            }
+        }
+
+        // Host process basename. The beacon otherwise only carries the game_build
+        // timestamp, so a crash in a dev-tool host (e.g. mxbmrp3_replay.exe running the
+        // DLL) is indistinguishable from a real in-game crash on the dashboard.
+        // Stack buffers + a cheap module query only; safe from inside the filter.
+        char hostExe[64] = "";
+        if (HMODULE exe = GetModuleHandleA(nullptr)) {
+            char exePath[MAX_PATH];
+            DWORD n = GetModuleFileNameA(exe, exePath, sizeof(exePath));
+            if (n > 0 && n < sizeof(exePath)) {
+                const char* base = exePath;
+                for (const char* p = exePath; *p; ++p)
+                    if (*p == '\\' || *p == '/') base = p + 1;
+                strncpy_s(hostExe, sizeof(hostExe), base, _TRUNCATE);
+            }
+        }
+
+        // Crash time in Unix seconds (matches the analytics epoch clock).
+        FILETIME ft;
+        GetSystemTimeAsFileTime(&ft);
+        ULARGE_INTEGER u;
+        u.LowPart = ft.dwLowDateTime;
+        u.HighPart = ft.dwHighDateTime;
+        unsigned long long epoch = (u.QuadPart - 116444736000000000ULL) / 10000000ULL;
+
+        char marker[MAX_PATH];
+        int wM = snprintf(marker, sizeof(marker), "%s\\mxbmrp3\\pending_crash.json", root);
+        if (wM > 0 && wM < static_cast<int>(sizeof(marker))) {
+            // Also pin the plugin version and game build AT CRASH TIME - the report is
+            // sent on the next launch, which may be a different (upgraded) version.
+            char bodyBuf[384];
+            int wB = snprintf(bodyBuf, sizeof(bodyBuf),
+                "{\"fault\":\"%s+0x%llx\",\"code\":\"0x%08lX\",\"plugin\":\"%s\","
+                "\"game_build\":\"0x%08lX\",\"host\":\"%s\",\"time\":%llu}",
+                modName, offset, static_cast<unsigned long>(code),
+                PluginConstants::PLUGIN_VERSION, gameBuild, hostExe, epoch);
+            if (wB > 0 && wB < static_cast<int>(sizeof(bodyBuf))) {
+                HANDLE hMarker = CreateFileA(marker, GENERIC_WRITE, 0, nullptr,
+                                             CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+                if (hMarker != INVALID_HANDLE_VALUE) {
+                    DWORD wrote = 0;
+                    WriteFile(hMarker, bodyBuf, static_cast<DWORD>(wB), &wrote, nullptr);
+                    CloseHandle(hMarker);
+                }
+            }
+        }
     }
 
     // Deliberately don't log here: Logger::log() now takes a mutex, and

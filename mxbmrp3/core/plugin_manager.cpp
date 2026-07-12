@@ -46,6 +46,9 @@
 #if GAME_HAS_ANALYTICS
 #include "analytics_manager.h"
 #endif
+#if GAME_HAS_RECORDER
+#include "event_recorder.h"
+#endif
 #include "crash_handler.h"
 #include <cstring>
 #include <vector>
@@ -117,7 +120,14 @@ void PluginManager::initialize(const char* savePath) {
     // Initialize components
     InputManager::getInstance().initialize();
     HotkeyManager::getInstance().initialize();
-    HudManager::getInstance().initialize();
+    HudManager::getInstance().initialize();   // loads settings (sets the [Recorder] enabled flag)
+
+#if GAME_HAS_RECORDER
+    // Hidden dev tool: if [Recorder] enabled=1, open a fresh session tape now —
+    // before any EventInit/telemetry/race callbacks arrive — and record Startup.
+    // No-op (and zero cost) when disabled, which is the default.
+    EventRecorder::getInstance().beginSessionRecording(savePath);
+#endif
 
 #if GAME_HAS_DISCORD
     // Initialize Discord Rich Presence (runs in background thread)
@@ -192,6 +202,14 @@ void PluginManager::shutdown() {
     m_bShutdown = true;
     DEBUG_INFO("PluginManager shutdown");
 
+#if GAME_HAS_RECORDER
+    // Finalize the callback tape on the clean shutdown path (records the Shutdown
+    // event and updates the header). Self-contained (own FILE* only). If the game
+    // exits without calling Shutdown(), ~EventRecorder still finalizes the tape.
+    EventRecorder::getInstance().recordShutdown();
+    EventRecorder::getInstance().stopRecording();
+#endif
+
 #if GAME_HAS_ANALYTICS
     // Join the one-shot usage beacon thread (cancels any in-flight POST).
     AnalyticsManager::getInstance().shutdown();
@@ -221,7 +239,8 @@ void PluginManager::shutdown() {
     StatsManager::getInstance().recordSessionEnd();
     StatsManager::getInstance().save();
 
-    // Shutdown HUD manager
+    // Shutdown HUD manager (its own settings save on the way out is synchronous) — the
+    // backstop that persists any deferred settings changes not yet flushed on leave-track.
     HudManager::getInstance().shutdown();
 
     // Shutdown input manager
@@ -457,9 +476,10 @@ void PluginManager::handleRaceSpeed(Unified::RaceSpeedData* psRaceSpeed) {
 
 // NOTE: RaceHoleshot callback (MX Bikes API)
 // The API defines SPluginsRaceHoleshot_t and a RaceHoleshot export, but in practice
-// the game never fires this callback. The struct definitions remain in mxb_api.h
-// and unified_types.h as part of the vendor API spec, but we intentionally do not
-// export a RaceHoleshot handler in mxb_api.cpp until the game actually supports it.
+// the game never fires this callback. The plugin takes NO gameplay action on it, so
+// there is no handleRaceHoleshot here. mxb_api.cpp DOES export RaceHoleshot, but only
+// to RECORD it (so a captured tape stays complete if PiBoSo ever starts firing it);
+// if real holeshot handling is ever added, it goes in that export next to the tap.
 
 void PluginManager::handleRaceCommunication(Unified::RaceCommunicationData* psRaceCommunication) {
     ACCUMULATE_CALLBACK_TIME_NAMED("RaceComm");

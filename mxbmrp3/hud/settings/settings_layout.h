@@ -181,7 +181,12 @@ struct SettingsLayoutContext {
         bool enableBgTexture = true,
         bool enableOpacity = true,
         bool enableScale = true,
-        const char* tooltipId = nullptr
+        const char* tooltipId = nullptr,
+        // Pointer row only: the visibility column can't toggle the widget's real
+        // m_bVisible (the pointer must stay drawable so it can still appear in the
+        // settings menu), so it toggles the menu-only-cursor mode instead. On = the
+        // pointer is summoned by mouse movement during play; Off = menu-only.
+        bool menuOnlyPointerRow = false
     );
 
 private:

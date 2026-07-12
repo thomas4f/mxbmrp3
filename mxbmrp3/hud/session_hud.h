@@ -55,6 +55,7 @@ private:
     int m_cachedSessionLength;
     int m_cachedSessionNumLaps;
     int m_cachedServerType;
+    bool m_cachedMultiRider;   // >1 rider last render (drives the "Online" server label)
     char m_cachedServerName[100];
     int m_cachedConditions;
     float m_cachedAirTemperature;

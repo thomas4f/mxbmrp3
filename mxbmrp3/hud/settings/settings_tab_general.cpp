@@ -42,14 +42,6 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
             }
             return true;
 
-        case ClickRegion::MENU_ONLY_CURSOR_TOGGLE:
-            {
-                bool current = UiConfig::getInstance().getMenuOnlyCursor();
-                UiConfig::getInstance().setMenuOnlyCursor(!current);
-                setDataDirty();
-            }
-            return true;
-
         case ClickRegion::GRID_SNAP_TOGGLE:
             {
                 bool current = UiConfig::getInstance().getGridSnapping();
@@ -92,6 +84,12 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
                 // Toggle persists for next launch; the beacon only fires once at
                 // startup, so flipping it mid-session changes future runs only.
                 bool current = AnalyticsManager::getInstance().isEnabled();
+                // When opting OUT, send the event BEFORE flipping the flag off:
+                // trackEvent() no-ops once m_enabled is false, so a post-disable
+                // call would be silently dropped and we'd never learn opt-outs.
+                if (current) {
+                    AnalyticsManager::getInstance().trackEvent("analytics_disabled");
+                }
                 AnalyticsManager::getInstance().setEnabled(!current);
                 setDataDirty();
             }
@@ -400,11 +398,9 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::AUTOSAVE_TOGGLE, nullptr, nullptr, 0, true,
         "general.auto_save");
 
-    // Menu-only cursor (controller-as-mouse fix). When on, the cursor + settings
-    // button only appear while the settings menu is open (TOGGLE_SETTINGS hotkey).
-    ctx.addToggleControl("Menu-Only Cursor", UiConfig::getInstance().getMenuOnlyCursor(),
-        SettingsHud::ClickRegion::MENU_ONLY_CURSOR_TOGGLE, nullptr, nullptr, 0, true,
-        "general.menu_only_cursor");
+    // Note: the menu-only-cursor toggle moved to the Pointer row on the Widgets tab
+    // (rendered as the pointer's On/Off, since it controls whether the pointer shows
+    // during play). Still persisted under [Display] as menuOnlyCursor.
 
     // HUD placement toggles (moved here from the Appearance tab; persisted under [Display])
     ctx.addToggleControl("Grid Snap", UiConfig::getInstance().getGridSnapping(),

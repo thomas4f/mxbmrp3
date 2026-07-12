@@ -15,8 +15,19 @@
 using namespace PluginConstants;
 
 namespace {
-    constexpr float GEAR_FONT_SIZE_EXTRA = 0.01944f;  // Extra size added to gear font beyond row height
-    constexpr float GEAR_TEXT_OFFSET_Y   = -0.00741f;  // Vertical nudge for gear text alignment
+    // The gear number is drawn in the TITLE font, sized to fill the two-line gearRowHeight.
+    // GEAR_FONT_SIZE_EXTRA + GEAR_TEXT_OFFSET_Y were tuned (057f491) for the old bitmap
+    // fonts, whose digits inked ~60% of the cell. The later font normalization (074e22a)
+    // rebuilt every .fnt to a consistent, smaller digit — measured ~45.9% of the cell for
+    // EnterSansman, and nudged lower in the cell — so at the same requested size the gear
+    // digit renders 0.459/0.600 = 0.77x as tall (and sits a little low). GEAR_NUMBER_FONT_SCALE
+    // restores the digit HEIGHT (0.600/0.459 = 1.306) and the deeper GEAR_TEXT_OFFSET_Y
+    // re-centers it (the scale pushes the ink centre down ~0.175*fontSize). This scales only
+    // the number + limiter circle; the widget background is sized from gearRowHeight, so it
+    // is unchanged. Tune GEAR_NUMBER_FONT_SCALE to taste (1.35 also reads well).
+    constexpr float GEAR_NUMBER_FONT_SCALE = 1.3f;     // Restore pre-normalization digit height
+    constexpr float GEAR_FONT_SIZE_EXTRA = 0.01944f;   // Extra size added to gear font beyond row height
+    constexpr float GEAR_TEXT_OFFSET_Y   = -0.02312f;  // Vertical nudge (re-centers the taller digit)
 }
 
 GearWidget::GearWidget()
@@ -38,7 +49,7 @@ bool GearWidget::handlesDataType(DataChangeType dataType) const {
 }
 
 void GearWidget::update() {
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -53,7 +64,7 @@ void GearWidget::update() {
 void GearWidget::rebuildLayout() {
     auto dim = getScaledDimensions();
     float gearRowHeight = dim.lineHeightLarge + dim.lineHeightNormal;  // Match SpeedWidget content height (value + units)
-    float gearFontSize = gearRowHeight + GEAR_FONT_SIZE_EXTRA;
+    float gearFontSize = (gearRowHeight + GEAR_FONT_SIZE_EXTRA) * GEAR_NUMBER_FONT_SCALE;
     float gearTextOffsetY = GEAR_TEXT_OFFSET_Y;
 
     float startX = 0.0f;
@@ -105,7 +116,7 @@ void GearWidget::rebuildRenderData() {
 
     auto dim = getScaledDimensions();
     float gearRowHeight = dim.lineHeightLarge + dim.lineHeightNormal;  // Match SpeedWidget content height (value + units)
-    float gearFontSize = gearRowHeight + GEAR_FONT_SIZE_EXTRA;
+    float gearFontSize = (gearRowHeight + GEAR_FONT_SIZE_EXTRA) * GEAR_NUMBER_FONT_SCALE;
     float gearTextOffsetY = GEAR_TEXT_OFFSET_Y;
 
     const PluginData& pluginData = PluginData::getInstance();
@@ -196,6 +207,6 @@ void GearWidget::resetToDefaults() {
     m_fScale = 1.0f;
     m_bShowShiftColor = true;
     m_bShowLimiterCircle = true;
-    setPosition(0.8855f, 0.8769f);
+    setPosition(0.8855f, 0.86828f);
     setDataDirty();
 }

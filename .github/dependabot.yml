@@ -1,0 +1,33 @@
+# Dependabot keeps our dependencies current and opens PRs for updates.
+# The GitHub Actions ecosystem is the important one here — it would have flagged
+# the actions/upload-artifact Node 20 deprecation on its own. npm covers the
+# Playwright web-overlay tests; pip covers the crash-dump analysis tooling.
+version: 2
+updates:
+  # GitHub Actions used by the workflows in .github/workflows/
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      # One grouped PR for all action bumps instead of one per action.
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"
+
+  # Playwright web-overlay tests (tests/web/package.json)
+  - package-ecosystem: npm
+    directory: "/tests/web"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "test"
+
+  # Minidump analysis tooling (tools/requirements.txt: capstone)
+  - package-ecosystem: pip
+    directory: "/tools"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "tools"

@@ -227,7 +227,16 @@ public:
     void update();
 
     // Get current controller data
-    const XInputData& getData() const { return m_data; }
+    const XInputData& getData() const {
+#ifdef MXBMRP3_TEST_BUILD
+        if (m_testForced) return m_testData;   // preview/tests can force a fake controller
+#endif
+        return m_data;
+    }
+#ifdef MXBMRP3_TEST_BUILD
+    void testForceData(const XInputData& d) { m_testData = d; m_testForced = true; }
+    void testClearForcedData() { m_testForced = false; }
+#endif
 
     // Set which controller to read (0-3)
     void setControllerIndex(int index);
@@ -345,6 +354,10 @@ private:
     static constexpr BYTE TRIGGER_THRESHOLD = XINPUT_GAMEPAD_TRIGGER_THRESHOLD;
 
     XInputData m_data;
+#ifdef MXBMRP3_TEST_BUILD
+    bool m_testForced = false;
+    XInputData m_testData;
+#endif
     int m_controllerIndex;
 
     // Connection state tracking for change detection

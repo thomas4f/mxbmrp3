@@ -20,6 +20,8 @@
 #include "../core/profile_manager.h"
 #include "../core/update_checker.h"
 #include "../core/update_downloader.h"
+#include "../core/director_manager.h"
+#include "director_widget.h"
 #include "../core/hotkey_manager.h"
 #if GAME_HAS_DISCORD
 #include "../core/discord_manager.h"
@@ -41,6 +43,13 @@
 #include <cmath>
 
 using namespace PluginConstants;
+
+// Mark settings dirty after a settings-panel edit. Unconditional (not gated on auto-save) so
+// the Save button reflects unsaved changes even in manual mode; the write itself is deferred
+// (see SettingsManager::markDirty) so it never spikes a gameplay frame.
+void SettingsHud::markSettingsDirty() {
+    SettingsManager::getInstance().markDirty();
+}
 
 // Helper template to cycle enum values forward or backward with wrap-around
 // EnumT must be an enum class with sequential values starting from 0
@@ -77,14 +86,12 @@ bool SettingsHud::isRepeatableRegionType(ClickRegion::Type type) {
         case ClickRegion::FRIENDS_SHOW_MODE_DOWN:
         case ClickRegion::LAP_LOG_ORDER_UP:
         case ClickRegion::LAP_LOG_ORDER_DOWN:
-        case ClickRegion::LAP_CONSISTENCY_DISPLAY_MODE_UP:
-        case ClickRegion::LAP_CONSISTENCY_DISPLAY_MODE_DOWN:
-        case ClickRegion::LAP_CONSISTENCY_REFERENCE_UP:
-        case ClickRegion::LAP_CONSISTENCY_REFERENCE_DOWN:
-        case ClickRegion::LAP_CONSISTENCY_LAP_COUNT_UP:
-        case ClickRegion::LAP_CONSISTENCY_LAP_COUNT_DOWN:
-        case ClickRegion::LAP_CONSISTENCY_TREND_MODE_UP:
-        case ClickRegion::LAP_CONSISTENCY_TREND_MODE_DOWN:
+        case ClickRegion::SESSION_CHARTS_COLOR_MODE_UP:
+        case ClickRegion::SESSION_CHARTS_COLOR_MODE_DOWN:
+        case ClickRegion::SESSION_CHARTS_TOP_COUNT_UP:
+        case ClickRegion::SESSION_CHARTS_TOP_COUNT_DOWN:
+        case ClickRegion::SESSION_CHARTS_ROW_COUNT_UP:
+        case ClickRegion::SESSION_CHARTS_ROW_COUNT_DOWN:
         case ClickRegion::MAP_COLORIZE_UP:
         case ClickRegion::MAP_COLORIZE_DOWN:
         case ClickRegion::MAP_TRACK_WIDTH_UP:
@@ -131,8 +138,6 @@ bool SettingsHud::isRepeatableRegionType(ClickRegion::Type type) {
         case ClickRegion::PITBOARD_SHOW_MODE_DOWN:
         case ClickRegion::PITBOARD_GAP_MODE_UP:
         case ClickRegion::PITBOARD_GAP_MODE_DOWN:
-        case ClickRegion::TIMING_GAP_UP:
-        case ClickRegion::TIMING_GAP_DOWN:
         case ClickRegion::TIMING_DISPLAY_MODE_UP:
         case ClickRegion::TIMING_DISPLAY_MODE_DOWN:
         case ClickRegion::TIMING_DURATION_UP:
@@ -327,6 +332,25 @@ bool SettingsHud::isRepeatableRegionType(ClickRegion::Type type) {
         case ClickRegion::HELMET_VISOR_TINT_COLOR_UP:
         case ClickRegion::HELMET_VISOR_TINT_OPACITY_DOWN:
         case ClickRegion::HELMET_VISOR_TINT_OPACITY_UP:
+        // Director tab steppers + cycle controls (consistent with the other tabs).
+        case ClickRegion::DIRECTOR_MINSHOT_UP:
+        case ClickRegion::DIRECTOR_MINSHOT_DOWN:
+        case ClickRegion::DIRECTOR_MAXSHOT_UP:
+        case ClickRegion::DIRECTOR_MAXSHOT_DOWN:
+        case ClickRegion::DIRECTOR_BATTLEGAP_UP:
+        case ClickRegion::DIRECTOR_BATTLEGAP_DOWN:
+        case ClickRegion::DIRECTOR_BATTLEMAXPOS_UP:
+        case ClickRegion::DIRECTOR_BATTLEMAXPOS_DOWN:
+        case ClickRegion::DIRECTOR_RESUME_UP:
+        case ClickRegion::DIRECTOR_RESUME_DOWN:
+        case ClickRegion::DIRECTOR_VARIETY_UP:
+        case ClickRegion::DIRECTOR_VARIETY_DOWN:
+        case ClickRegion::DIRECTOR_HOLD_UP:
+        case ClickRegion::DIRECTOR_HOLD_DOWN:
+        case ClickRegion::DIRECTOR_CAM_FENDER_UP:
+        case ClickRegion::DIRECTOR_CAM_FENDER_DOWN:
+        case ClickRegion::DIRECTOR_CAM_HELMET_UP:
+        case ClickRegion::DIRECTOR_CAM_HELMET_DOWN:
             return true;
         default:
             return false;
@@ -344,7 +368,7 @@ static const char* getLabelModeName(int mode) {
     return (mode >= 0 && mode < 4) ? names[mode] : "Unknown";
 }
 
-SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, FriendsHud* friends, LapConsistencyHud* lapConsistency,
+SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, FriendsHud* friends, SessionChartsHud* sessionCharts,
                          StandingsHud* standings,
                          PerformanceHud* performance,
                          TelemetryHud* telemetry,
@@ -365,7 +389,7 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, FriendsHud* f
     : m_idealLap(idealLap),
       m_lapLog(lapLog),
       m_friends(friends),
-      m_lapConsistency(lapConsistency),
+      m_sessionCharts(sessionCharts),
       m_standings(standings),
       m_performance(performance),
       m_telemetry(telemetry),
@@ -485,6 +509,14 @@ void SettingsHud::update() {
         clearDataDirty();
     }
 
+    // Refresh the Save button when the unsaved-changes state flips (a HUD dragged while the
+    // panel is open, an auto-save/leave-track flush clearing it), so it lights up / greys out.
+    bool dirtyNow = SettingsManager::getInstance().isDirty();
+    if (dirtyNow != m_lastSettingsDirty) {
+        m_lastSettingsDirty = dirtyNow;
+        rebuildRenderData();
+    }
+
     // Check for window resize (need to rebuild click regions with new coordinates)
     const InputManager& input = InputManager::getInstance();
     int currentWidth = input.getWindowWidth();
@@ -523,8 +555,11 @@ void SettingsHud::update() {
     }
 #endif
 
-    // Track hover state for button backgrounds
-    const CursorPosition& cursor = input.getCursorPosition();
+    // Track hover state for button backgrounds. Copy the cursor and shift it into this
+    // HUD's build space, so the click/hover regions line up when the menu is dragged to
+    // a different spot on the companion surface (no-op in-game / when not diverged).
+    CursorPosition cursor = input.getCursorPosition();
+    mapCursorToHudSpace(cursor.x, cursor.y);
     if (cursor.isValid) {
         int newHoveredIndex = -1;
         for (size_t i = 0; i < m_clickRegions.size(); ++i) {
@@ -718,12 +753,10 @@ void SettingsHud::update() {
         m_holdRegionIndex = -1;
     }
 
-    // Deferred auto-save: save once when hold ends (instead of every repeat tick)
+    // Deferred auto-save: mark dirty once when hold ends (instead of every repeat tick)
     if (m_holdRegionIndex < 0 && m_holdSavePending) {
         m_holdSavePending = false;
-        if (UiConfig::getInstance().getAutoSave()) {
-            SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
-        }
+        markSettingsDirty();
     }
 
     // Handle right-click for shape cycling (TAB_RIDERS only)
@@ -749,10 +782,8 @@ void SettingsHud::update() {
     // Check if capture completed (must be outside isCapturing block - capture ends same frame)
     if (hotkeyMgr.wasCaptureCompleted()) {
         rebuildRenderData();
-        // Save settings after binding change (if auto-save enabled)
-        if (UiConfig::getInstance().getAutoSave()) {
-            SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
-        }
+        // Mark dirty after a binding change (persisted on leave-track).
+        markSettingsDirty();
     }
 
     // Check for Updates tab state changes (status, downloader state, cooldown)
@@ -932,6 +963,7 @@ void SettingsHud::rebuildRenderData() {
         TAB_RIDERS,
         TAB_RUMBLE,
         TAB_HELMET,
+        TAB_DIRECTOR,
         TAB_UPDATES,
         TAB_SECTION_PROFILE,
         TAB_SECTION_ELEMENTS,
@@ -940,7 +972,7 @@ void SettingsHud::rebuildRenderData() {
         TAB_RADAR,
         TAB_LAP_LOG,
         TAB_IDEAL_LAP,
-        TAB_LAP_CONSISTENCY,
+        TAB_SESSION_CHARTS,
         TAB_TELEMETRY,
         TAB_RECORDS,
         TAB_PITBOARD,
@@ -959,18 +991,10 @@ void SettingsHud::rebuildRenderData() {
     for (size_t orderIdx = 0; orderIdx < sizeof(tabDisplayOrder)/sizeof(tabDisplayOrder[0]); orderIdx++) {
         int i = tabDisplayOrder[orderIdx];
 
-        // Skip Records tab if records provider is not available (e.g., GP Bikes)
-        if (i == TAB_RECORDS && !m_records) {
-            continue;
-        }
-
-        // Skip FMX tab if FMX is not available (e.g., Kart Racing Pro)
-        if (i == TAB_FMX && !m_fmxHud) {
-            continue;
-        }
-
-        // Skip Friends tab if the Friends HUD isn't registered (non-Steam build)
-        if (i == TAB_FRIENDS && !m_friends) {
+        // Skip game-gated tabs whose backing HUD isn't registered on this build (Records on
+        // GP Bikes, FMX on karts, Friends on non-Steam). Section headers are negative ids and
+        // fall through to their own handling below. Single source of truth: isTabAvailable().
+        if (i >= 0 && !isTabAvailable(i)) {
             continue;
         }
 
@@ -1040,7 +1064,7 @@ void SettingsHud::rebuildRenderData() {
             case TAB_SESSION:      tabHud = m_session; break;
             case TAB_LAP_LOG:      tabHud = m_lapLog; break;
             case TAB_FRIENDS:      tabHud = m_friends; break;
-            case TAB_LAP_CONSISTENCY: tabHud = m_lapConsistency; break;
+            case TAB_SESSION_CHARTS: tabHud = m_sessionCharts; break;
             case TAB_IDEAL_LAP: tabHud = m_idealLap; break;
             case TAB_TELEMETRY:    tabHud = m_telemetry; break;
             case TAB_PERFORMANCE:  tabHud = m_performance; break;
@@ -1055,10 +1079,13 @@ void SettingsHud::rebuildRenderData() {
             default:               tabHud = nullptr; break;  // General, Widgets, Rumble have no single HUD
         }
 
-        // Determine if this tab's HUD/widgets are enabled
+        // Determine if this tab's HUD/widgets are enabled. Per-HUD checkboxes show
+        // the focused surface's on/off (companion vs game); the manager/global
+        // toggles (widgets/rumble/helmet/updates/director) are shared, not decoupled.
+        bool companionSurface = InputManager::getInstance().getActiveSurface() == InputManager::Surface::Companion;
         bool isHudEnabled;
         if (tabHud) {
-            isHudEnabled = tabHud->isVisible();
+            isHudEnabled = companionSurface ? tabHud->getCompanionVisible() : tabHud->isVisible();
         } else if (i == TAB_WIDGETS) {
             isHudEnabled = HudManager::getInstance().areWidgetsEnabled();
         } else if (i == TAB_RUMBLE) {
@@ -1067,6 +1094,8 @@ void SettingsHud::rebuildRenderData() {
             isHudEnabled = m_helmetOverlay && m_helmetOverlay->isVisible();
         } else if (i == TAB_UPDATES) {
             isHudEnabled = UpdateChecker::getInstance().isEnabled();
+        } else if (i == TAB_DIRECTOR) {
+            isHudEnabled = DirectorManager::getInstance().isEnabled();
         } else {
             isHudEnabled = true;  // General is always "enabled"
         }
@@ -1133,6 +1162,16 @@ void SettingsHud::rebuildRenderData() {
             drawTabToggle(currentTabX, tabStartY, "hud-updates", isHudEnabled);
 
             currentTabX += checkboxWidth;
+        } else if (i == TAB_DIRECTOR) {
+            // Checkbox click region for the auto-director master toggle
+            m_clickRegions.push_back(ClickRegion(
+                currentTabX, tabStartY, checkboxWidth, dim.lineHeightNormal,
+                ClickRegion::DIRECTOR_ENABLE_TOGGLE, nullptr
+            ));
+
+            drawTabToggle(currentTabX, tabStartY, "video", isHudEnabled);
+
+            currentTabX += checkboxWidth;
         } else {
             // Non-toggleable section tabs: an ACCENT identity icon (no on/off state, so
             // it's distinct from the positive/negative toggle icons and matches the tab
@@ -1169,13 +1208,14 @@ void SettingsHud::rebuildRenderData() {
                            i == TAB_RUMBLE ? "rumble" :
                            i == TAB_HOTKEYS ? "hotkeys" :
                            i == TAB_RADAR ? "radar" :
-                           i == TAB_LAP_CONSISTENCY ? "lap_consistency" :
+                           i == TAB_SESSION_CHARTS ? "session_charts" :
                            i == TAB_RIDERS ? "riders" :
                            i == TAB_UPDATES ? "updates" :
                            i == TAB_FMX ? "fmx" :
                            i == TAB_STATS ? "stats" :
                            i == TAB_EVENT_LOG ? "event_log" :
                            i == TAB_HELMET ? "helmet" :
+                           i == TAB_DIRECTOR ? "director" :
                            "general";
 
         ClickRegion tabRegion;
@@ -1192,12 +1232,22 @@ void SettingsHud::rebuildRenderData() {
         tabRegion.tooltipId = tabId;  // Show tab description on hover
         m_clickRegions.push_back(tabRegion);
 
+        // The hover/active highlight leads the label by one char — matching the
+        // row-highlight and button convention (which pad the highlight ~1 char around
+        // the label) instead of sitting flush against the text — WITHOUT moving the
+        // text: the label stays at currentTabX and the highlight starts one char to its
+        // left, keeping its right edge. The 1-char lead lands in the gap between the
+        // tab's identity icon and its label, so it doesn't overlap the icon.
+        float labelPad = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+        float highlightX = currentTabX - labelPad;
+        float highlightWidth = tabLabelWidth + labelPad;
+
         // Active tab background
         if (isActive) {
             SPluginQuad_t bgQuad;
-            float bgX = currentTabX, bgY = tabStartY;
+            float bgX = highlightX, bgY = tabStartY;
             applyOffset(bgX, bgY);
-            setQuadPositions(bgQuad, bgX, bgY, tabLabelWidth, dim.lineHeightNormal);
+            setQuadPositions(bgQuad, bgX, bgY, highlightWidth, dim.lineHeightNormal);
             bgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
             bgQuad.m_ulColor = PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(), 128.0f / 255.0f);
             m_quads.push_back(bgQuad);
@@ -1205,14 +1255,15 @@ void SettingsHud::rebuildRenderData() {
         // Hover background for inactive tabs
         else if (m_hoveredRegionIndex >= 0 && static_cast<size_t>(m_hoveredRegionIndex) == tabRegionIndex) {
             SPluginQuad_t hoverQuad;
-            float hoverX = currentTabX, hoverY = tabStartY;
+            float hoverX = highlightX, hoverY = tabStartY;
             applyOffset(hoverX, hoverY);
-            setQuadPositions(hoverQuad, hoverX, hoverY, tabLabelWidth, dim.lineHeightNormal);
+            setQuadPositions(hoverQuad, hoverX, hoverY, highlightWidth, dim.lineHeightNormal);
             hoverQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
             hoverQuad.m_ulColor = PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(), 60.0f / 255.0f);
             m_quads.push_back(hoverQuad);
         }
 
+        // Label stays at its original position (the highlight leads it, above).
         addString(getTabName(i), currentTabX, tabStartY, Justify::LEFT, Fonts::getNormal(), tabColor, dim.fontSize);
 
         tabStartY += dim.lineHeightNormal;
@@ -1220,7 +1271,8 @@ void SettingsHud::rebuildRenderData() {
 
     // Content area starts to the right of the tabs
     float contentAreaStartX = contentStartX + tabWidth + PluginUtils::calculateMonospaceTextWidth(2, dim.fontSize);  // 2-char gap after tabs
-    currentY = currentY;  // Content starts at same Y as tabs
+    // Content starts at the same Y as the tabs — currentY is already there (the tab
+    // loop advances a separate cursor), so nothing to set here.
 
     // Helper lambdas for controls
     // NOTE: These lambdas are intentionally NOT extracted to member functions.
@@ -1483,10 +1535,10 @@ void SettingsHud::rebuildRenderData() {
             currentY = layoutCtx.currentY;
             break;
 
-        case TAB_LAP_CONSISTENCY:
+        case TAB_SESSION_CHARTS:
             // Use extracted tab renderer
             layoutCtx.currentY = currentY;
-            activeHud = renderTabLapConsistency(layoutCtx);
+            activeHud = renderTabSessionCharts(layoutCtx);
             currentY = layoutCtx.currentY;
             break;
 
@@ -1579,6 +1631,12 @@ void SettingsHud::rebuildRenderData() {
             currentY = layoutCtx.currentY;
             break;
 
+        case TAB_DIRECTOR:
+            layoutCtx.currentY = currentY;
+            activeHud = renderTabDirector(layoutCtx);
+            currentY = layoutCtx.currentY;
+            break;
+
         case TAB_RIDERS:
             // Use extracted tab renderer
             layoutCtx.currentY = currentY;
@@ -1624,11 +1682,16 @@ void SettingsHud::rebuildRenderData() {
     if (m_hoveredRegionIndex >= 0 && m_hoveredRegionIndex < static_cast<int>(m_clickRegions.size())) {
         const ClickRegion& hoveredRegion = m_clickRegions[m_hoveredRegionIndex];
         if (hoveredRegion.type == ClickRegion::TOOLTIP_ROW) {
-            // Draw highlight behind the hovered row (same opacity as tab hover)
+            // Draw highlight behind the hovered row (same opacity as tab hover). The
+            // row region starts at the label text (labelX); extend the highlight one
+            // char to the left so it has the same padding as the menu buttons (whose
+            // background insets the text by a char). The right edge already reaches the
+            // content edge, so only the left needs padding.
             SPluginQuad_t hoverQuad;
-            float hoverX = hoveredRegion.x, hoverY = hoveredRegion.y;
+            float charPad = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+            float hoverX = hoveredRegion.x - charPad, hoverY = hoveredRegion.y;
             applyOffset(hoverX, hoverY);
-            setQuadPositions(hoverQuad, hoverX, hoverY, hoveredRegion.width, hoveredRegion.height);
+            setQuadPositions(hoverQuad, hoverX, hoverY, hoveredRegion.width + charPad, hoveredRegion.height);
             hoverQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
             hoverQuad.m_ulColor = PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(), 60.0f / 255.0f);
             m_quads.push_back(hoverQuad);
@@ -1670,7 +1733,8 @@ void SettingsHud::rebuildRenderData() {
                 // If this is the last line and there's more text, add ellipsis
                 if (lineCount == MAX_LINES - 1 && lineStart < text.length()) {
                     if (wrappedLine.length() > 3) {
-                        wrappedLine = wrappedLine.substr(0, wrappedLine.length() - 3) + "...";
+                        wrappedLine.resize(wrappedLine.length() - 3);
+                        wrappedLine += "...";
                     }
                 }
             }
@@ -1709,22 +1773,27 @@ void SettingsHud::rebuildRenderData() {
         }
     }
 
-    // Bottom button row - shows [Save] [Close] when auto-save is off, or just [Close] when on
+    // Bottom button row - always [Save/Saved] [Close]. The Save button reflects unsaved changes:
+    // lit + clickable ("Save") when there are pending changes, grayed-out ("Saved") when
+    // everything is persisted. It lets the player save manually without leaving the track,
+    // regardless of the Auto-Save setting (which only controls the automatic leave-track flush).
     float buttonRowY = startY + backgroundHeight - dim.paddingV - dim.lineHeightNormal;
     float buttonAreaCenterX = contentStartX + (panelWidth - dim.paddingH - dim.paddingH) / 2.0f;
-    bool autoSaveEnabled = UiConfig::getInstance().getAutoSave();
     float cw = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+    bool settingsDirty = SettingsManager::getInstance().isDirty();
 
-    if (!autoSaveEnabled) {
-        // Show [Save] [Close] buttons with gap
-        float saveButtonWidth = PluginUtils::calculateMonospaceTextWidth(6, dim.fontSize);      // [Save]
-        float closeButtonWidth = PluginUtils::calculateMonospaceTextWidth(7, dim.fontSize);     // [Close]
-        float buttonGap = cw;  // 1 character gap between buttons
-        float totalWidth = saveButtonWidth + buttonGap + closeButtonWidth;
-        float startButtonX = buttonAreaCenterX - totalWidth / 2.0f;
+    // Size both buttons for the widest label they can show (Saved / Close = 5 chars + padding),
+    // so the row layout is stable whether the Save button reads "Save" or "Saved".
+    float saveButtonWidth = PluginUtils::calculateMonospaceTextWidth(7, dim.fontSize);
+    float closeButtonWidth = PluginUtils::calculateMonospaceTextWidth(7, dim.fontSize);
+    float buttonGap = cw;  // 1 character gap between buttons
+    float totalWidth = saveButtonWidth + buttonGap + closeButtonWidth;
+    float startButtonX = buttonAreaCenterX - totalWidth / 2.0f;
 
-        // [Save] button
-        float saveButtonX = startButtonX;
+    // [Save] / [Saved] button
+    float saveButtonX = startButtonX;
+    if (settingsDirty) {
+        // Unsaved changes: lit and clickable.
         size_t saveRegionIndex = m_clickRegions.size();
         m_clickRegions.push_back(ClickRegion(
             saveButtonX, buttonRowY, saveButtonWidth, dim.lineHeightNormal,
@@ -1746,59 +1815,44 @@ void SettingsHud::rebuildRenderData() {
             : ColorConfig::getInstance().getPositive();
         addString("Save", saveButtonX + saveButtonWidth / 2.0f, buttonRowY, Justify::CENTER,
             Fonts::getNormal(), saveTextColor, dim.fontSize);
-
-        // [Close] button
-        float closeButtonX = saveButtonX + saveButtonWidth + buttonGap;
-        size_t closeRegionIndex = m_clickRegions.size();
-        m_clickRegions.push_back(ClickRegion(
-            closeButtonX, buttonRowY, closeButtonWidth, dim.lineHeightNormal,
-            ClickRegion::CLOSE_BUTTON, nullptr, 0, false, 0
-        ));
-        {
-            SPluginQuad_t bgQuad;
-            float bgX = closeButtonX, bgY = buttonRowY;
-            applyOffset(bgX, bgY);
-            setQuadPositions(bgQuad, bgX, bgY, closeButtonWidth, dim.lineHeightNormal);
-            bgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-            bgQuad.m_ulColor = (m_hoveredRegionIndex == static_cast<int>(closeRegionIndex))
-                ? ColorConfig::getInstance().getAccent()
-                : PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(), 128.0f / 255.0f);
-            m_quads.push_back(bgQuad);
-        }
-        unsigned long closeTextColor = (m_hoveredRegionIndex == static_cast<int>(closeRegionIndex))
-            ? ColorConfig::getInstance().getPrimary()
-            : ColorConfig::getInstance().getAccent();
-        addString("Close", closeButtonX + closeButtonWidth / 2.0f, buttonRowY, Justify::CENTER,
-            Fonts::getNormal(), closeTextColor, dim.fontSize);
     } else {
-        // Auto-save is on - just show [Close] button centered
-        float closeButtonWidth = PluginUtils::calculateMonospaceTextWidth(7, dim.fontSize);
-        float closeButtonX = buttonAreaCenterX - closeButtonWidth / 2.0f;
-
-        size_t closeRegionIndex = m_clickRegions.size();
-        m_clickRegions.push_back(ClickRegion(
-            closeButtonX, buttonRowY, closeButtonWidth, dim.lineHeightNormal,
-            ClickRegion::CLOSE_BUTTON, nullptr, 0, false, 0
-        ));
-
+        // Nothing to save: grayed out, not clickable (no click region -> no hover/click).
         {
             SPluginQuad_t bgQuad;
-            float bgX = closeButtonX, bgY = buttonRowY;
+            float bgX = saveButtonX, bgY = buttonRowY;
             applyOffset(bgX, bgY);
-            setQuadPositions(bgQuad, bgX, bgY, closeButtonWidth, dim.lineHeightNormal);
+            setQuadPositions(bgQuad, bgX, bgY, saveButtonWidth, dim.lineHeightNormal);
             bgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-            bgQuad.m_ulColor = (m_hoveredRegionIndex == static_cast<int>(closeRegionIndex))
-                ? ColorConfig::getInstance().getAccent()
-                : PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(), 128.0f / 255.0f);
+            bgQuad.m_ulColor = PluginUtils::applyOpacity(ColorConfig::getInstance().getMuted(), 64.0f / 255.0f);
             m_quads.push_back(bgQuad);
         }
-
-        unsigned long closeTextColor = (m_hoveredRegionIndex == static_cast<int>(closeRegionIndex))
-            ? ColorConfig::getInstance().getPrimary()
-            : ColorConfig::getInstance().getAccent();
-        addString("Close", buttonAreaCenterX, buttonRowY, Justify::CENTER,
-            Fonts::getNormal(), closeTextColor, dim.fontSize);
+        addString("Saved", saveButtonX + saveButtonWidth / 2.0f, buttonRowY, Justify::CENTER,
+            Fonts::getNormal(), ColorConfig::getInstance().getMuted(), dim.fontSize);
     }
+
+    // [Close] button
+    float closeButtonX = saveButtonX + saveButtonWidth + buttonGap;
+    size_t closeRegionIndex = m_clickRegions.size();
+    m_clickRegions.push_back(ClickRegion(
+        closeButtonX, buttonRowY, closeButtonWidth, dim.lineHeightNormal,
+        ClickRegion::CLOSE_BUTTON, nullptr, 0, false, 0
+    ));
+    {
+        SPluginQuad_t bgQuad;
+        float bgX = closeButtonX, bgY = buttonRowY;
+        applyOffset(bgX, bgY);
+        setQuadPositions(bgQuad, bgX, bgY, closeButtonWidth, dim.lineHeightNormal);
+        bgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
+        bgQuad.m_ulColor = (m_hoveredRegionIndex == static_cast<int>(closeRegionIndex))
+            ? ColorConfig::getInstance().getAccent()
+            : PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(), 128.0f / 255.0f);
+        m_quads.push_back(bgQuad);
+    }
+    unsigned long closeTextColor = (m_hoveredRegionIndex == static_cast<int>(closeRegionIndex))
+        ? ColorConfig::getInstance().getPrimary()
+        : ColorConfig::getInstance().getAccent();
+    addString("Close", closeButtonX + closeButtonWidth / 2.0f, buttonRowY, Justify::CENTER,
+        Fonts::getNormal(), closeTextColor, dim.fontSize);
 
     // [Reset <TabName>] button - bottom left corner
     float resetTabButtonY = buttonRowY;
@@ -1949,659 +2003,6 @@ void SettingsHud::rebuildRenderData() {
     }
 }
 
-int SettingsHud::findClickRegionAt(float x, float y) const {
-    for (size_t i = 0; i < m_clickRegions.size(); ++i) {
-        const auto& region = m_clickRegions[i];
-        if (region.type == ClickRegion::TOOLTIP_ROW) continue;  // hover-only
-        if (isPointInRect(x, y, region.x, region.y, region.width, region.height)) {
-            return static_cast<int>(i);
-        }
-    }
-    return -1;
-}
-
-void SettingsHud::handleClick(float mouseX, float mouseY) {
-    // Check each clickable region
-    for (const auto& region : m_clickRegions) {
-        if (isPointInRect(mouseX, mouseY, region.x, region.y, region.width, region.height)) {
-            // Skip TOOLTIP_ROW regions - they're hover-only for tooltip display
-            if (region.type == ClickRegion::TOOLTIP_ROW) continue;
-
-            dispatchRegion(region);
-            return;  // Only process one click per frame
-        }
-    }
-}
-
-void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
-    // Try tab-specific handlers first (implemented in separate files)
-    bool handled = false;
-    switch (m_activeTab) {
-        case TAB_MAP:        handled = handleClickTabMap(region); break;
-        case TAB_RADAR:      handled = handleClickTabRadar(region); break;
-        case TAB_TIMING:     handled = handleClickTabTiming(region); break;
-        case TAB_GAP_BAR:    handled = handleClickTabGapBar(region); break;
-        case TAB_STANDINGS:  handled = handleClickTabStandings(region); break;
-        case TAB_RUMBLE:     handled = handleClickTabRumble(region); break;
-        case TAB_HELMET:     handled = handleClickTabHelmet(region); break;
-        case TAB_APPEARANCE: handled = handleClickTabAppearance(region); break;
-        case TAB_GENERAL:    handled = handleClickTabGeneral(region); break;
-        case TAB_HOTKEYS:    handled = handleClickTabHotkeys(region); break;
-        case TAB_RIDERS:     handled = handleClickTabRiders(region); break;
-        case TAB_RECORDS:    handled = handleClickTabRecords(region); break;
-        case TAB_PITBOARD:   handled = handleClickTabPitboard(region); break;
-        case TAB_SESSION:    handled = handleClickTabSession(region); break;
-        case TAB_LAP_LOG:    handled = handleClickTabLapLog(region); break;
-        case TAB_FRIENDS:    handled = handleClickTabFriends(region); break;
-        case TAB_LAP_CONSISTENCY: handled = handleClickTabLapConsistency(region); break;
-        case TAB_UPDATES:    handled = handleClickTabUpdates(region); break;
-        case TAB_FMX:        handled = handleClickTabFmx(region); break;
-        case TAB_STATS:      handled = handleClickTabStats(region); break;
-        case TAB_EVENT_LOG:  handled = handleClickTabEventLog(region); break;
-        case TAB_NOTICES:    handled = handleClickTabNotices(region); break;
-        default: break;
-    }
-
-    if (handled) {
-        // Tab handler processed the click - save if auto-save enabled and not deferred
-        if (!skipSave && UiConfig::getInstance().getAutoSave()) {
-            SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
-        }
-        return;
-    }
-
-    // Fall through to common handlers for shared controls
-    switch (region.type) {
-        // ============================================
-        // Common handlers (used across multiple tabs)
-        // Tab-specific handlers are in settings_tab_*.cpp files
-        // ============================================
-
-        case ClickRegion::CHECKBOX:
-            handleCheckboxClick(region);
-            break;
-
-        case ClickRegion::HUD_TOGGLE:
-            handleHudToggleClick(region);
-            break;
-        case ClickRegion::WIDGETS_TOGGLE:
-            {
-                HudManager& hudManager = HudManager::getInstance();
-                hudManager.setWidgetsEnabled(!hudManager.areWidgetsEnabled());
-                rebuildRenderData();
-                DEBUG_INFO_F("Widgets master toggle: %s", hudManager.areWidgetsEnabled() ? "enabled" : "disabled");
-            }
-            break;
-        case ClickRegion::UPDATE_CHECK_TOGGLE:
-            {
-                UpdateChecker& checker = UpdateChecker::getInstance();
-                bool newState = !checker.isEnabled();
-                checker.setEnabled(newState);
-                if (newState && !checker.isChecking()) {
-                    // Trigger an update check when enabled
-                    checker.setCompletionCallback([this]() {
-                        setDataDirty();
-                    });
-                    checker.checkForUpdates();
-                }
-                rebuildRenderData();
-                DEBUG_INFO_F("Update checking toggle: %s", newState ? "enabled" : "disabled");
-            }
-            break;
-        case ClickRegion::RUMBLE_TOGGLE:
-            {
-                RumbleConfig& globalConfig = XInputReader::getInstance().getGlobalRumbleConfig();
-                globalConfig.enabled = !globalConfig.enabled;
-                rebuildRenderData();
-                DEBUG_INFO_F("Rumble master toggle: %s", globalConfig.enabled ? "enabled" : "disabled");
-            }
-            break;
-        case ClickRegion::HELMET_OVERLAY_TOGGLE:
-            if (m_helmetOverlay) {
-                // Visibility gate only — doesn't touch individual enable flags
-                // (same pattern as WIDGETS_TOGGLE)
-                m_helmetOverlay->setVisible(!m_helmetOverlay->isVisible());
-                rebuildRenderData();
-                DEBUG_INFO_F("Helmet overlay master toggle: %s",
-                    m_helmetOverlay->isVisible() ? "visible" : "hidden");
-            }
-            break;
-        case ClickRegion::TITLE_TOGGLE:
-            handleTitleToggleClick(region);
-            break;
-        case ClickRegion::TEXTURE_VARIANT_UP:
-            if (region.targetHud) {
-                region.targetHud->cycleTextureVariant(true);
-                rebuildRenderData();
-            }
-            break;
-        case ClickRegion::TEXTURE_VARIANT_DOWN:
-            if (region.targetHud) {
-                region.targetHud->cycleTextureVariant(false);
-                rebuildRenderData();
-            }
-            break;
-        case ClickRegion::BACKGROUND_OPACITY_UP:
-            handleOpacityClick(region, true);
-            break;
-        case ClickRegion::BACKGROUND_OPACITY_DOWN:
-            handleOpacityClick(region, false);
-            break;
-        case ClickRegion::SCALE_UP:
-            handleScaleClick(region, true);
-            break;
-        case ClickRegion::SCALE_DOWN:
-            handleScaleClick(region, false);
-            break;
-        // Note: ROW_COUNT, LAP_LOG_ROW_COUNT, MAP_*, RADAR_* handlers moved to tab files
-
-        case ClickRegion::DISPLAY_MODE_UP:
-            handleDisplayModeClick(region, true);
-            break;
-        case ClickRegion::DISPLAY_MODE_DOWN:
-            handleDisplayModeClick(region, false);
-            break;
-        // Profile cycle controls are in sidebar, must work from ALL tabs
-        case ClickRegion::PROFILE_CYCLE_UP:
-            {
-                ProfileType nextProfile = ProfileManager::getNextProfile(
-                    ProfileManager::getInstance().getActiveProfile());
-                SettingsManager::getInstance().switchProfile(HudManager::getInstance(), nextProfile);
-                rebuildRenderData();
-            }
-            return;  // Don't save - switchProfile already saves
-        case ClickRegion::PROFILE_CYCLE_DOWN:
-            {
-                ProfileType prevProfile = ProfileManager::getPreviousProfile(
-                    ProfileManager::getInstance().getActiveProfile());
-                SettingsManager::getInstance().switchProfile(HudManager::getInstance(), prevProfile);
-                rebuildRenderData();
-            }
-            return;  // Don't save - switchProfile already saves
-        // Note: Tab-specific handlers moved to settings_tab_*.cpp files:
-        // RECORDS_COUNT, PITBOARD_SHOW_MODE, TIMING_*, GAPBAR_*,
-        // COLOR_CYCLE_*, FONT_CATEGORY_*, SPEED_UNIT, FUEL_UNIT,
-        // GRID_SNAP, UPDATE_CHECK, COPY_*, RESET_*
-        // Clock widget toggles (used from Widgets tab and General tab)
-        case ClickRegion::CLOCK_FORMAT_TOGGLE:
-            if (m_clock) {
-                m_clock->setFormat24h(!m_clock->getFormat24h());
-                rebuildRenderData();
-            }
-            break;
-        case ClickRegion::RESET_TAB_BUTTON:
-            {
-                resetCurrentTab();
-                DEBUG_INFO_F("Tab %d reset to defaults", m_activeTab);
-            }
-            break;
-        case ClickRegion::TAB:
-            handleTabClick(region);
-            return;  // Don't save settings, just UI state change
-        case ClickRegion::CLOSE_BUTTON:
-            handleCloseButtonClick();
-            return;  // Don't save settings, just close the menu
-        case ClickRegion::SAVE_BUTTON:
-            // Manual save when auto-save is disabled
-            SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
-            DEBUG_INFO("Settings saved manually");
-            return;  // Already saved
-        // Note: Tab-specific handlers moved to settings_tab_*.cpp files:
-        // RUMBLE_*, HOTKEY_*, RIDER_*, pagination controls
-
-        case ClickRegion::VERSION_CLICK:
-            {
-                // If update is available, navigate to Updates tab. Gate on isEnabled() to
-                // match the footer's render gate — a stale UPDATE_AVAILABLE status when
-                // updates are disabled shouldn't hijack the version click (easter egg).
-                if (UpdateChecker::getInstance().isEnabled() &&
-                    UpdateChecker::getInstance().getStatus() == UpdateChecker::Status::UPDATE_AVAILABLE) {
-                    m_activeTab = TAB_UPDATES;
-                    rebuildRenderData();
-                    return;  // Don't process easter egg
-                }
-
-                // Otherwise, easter egg logic
-                long long currentTimeUs = DrawHandler::getCurrentTimeUs();
-                // Reset counter if timeout elapsed
-                if (m_versionClickCount > 0 && (currentTimeUs - m_lastVersionClickTimeUs) > EASTER_EGG_TIMEOUT_US) {
-                    m_versionClickCount = 0;
-                }
-                m_versionClickCount++;
-                m_lastVersionClickTimeUs = currentTimeUs;
-                // Check if threshold reached
-                if (m_versionClickCount >= EASTER_EGG_CLICKS) {
-                    m_versionClickCount = 0;
-                    if (m_version) {
-                        hide();  // Close settings before starting game
-                        m_version->startGame();
-                    }
-                }
-            }
-            break;
-
-        default:
-            DEBUG_WARN_F("Unknown ClickRegion type: %d", static_cast<int>(region.type));
-            break;
-    }
-
-    // Save settings after any modification (except TAB, CLOSE_BUTTON, SAVE_BUTTON, DISCARD_BUTTON)
-    // Only save if auto-save is enabled and not deferred (during hold-to-repeat)
-    if (!skipSave && UiConfig::getInstance().getAutoSave()) {
-        SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
-    }
-}
-
-void SettingsHud::handleRightClick(float mouseX, float mouseY) {
-    // Right-click handling for TAB_RIDERS - cycles shape on icon
-    for (const auto& region : m_clickRegions) {
-        if (isPointInRect(mouseX, mouseY, region.x, region.y, region.width, region.height)) {
-            // On right-click, treat RIDER_COLOR_NEXT as shape cycle
-            if (region.type == ClickRegion::RIDER_COLOR_NEXT) {
-                auto* namePtr = std::get_if<std::string>(&region.targetPointer);
-                if (namePtr) {
-                    TrackedRidersManager::getInstance().cycleTrackedRiderShape(*namePtr, true);
-                    rebuildRenderData();
-                    if (UiConfig::getInstance().getAutoSave()) {
-                        SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
-                    }
-                }
-                return;
-            }
-        }
-    }
-}
-
-void SettingsHud::resetToDefaults() {
-    // Everything that lives OUTSIDE the per-profile HUD snapshot — colors, fonts, hotkeys,
-    // rumble, helmet overlay, display units, the controller index, and every
-    // [General]/[Advanced] tunable and toggle (hazard params, update checker, web server,
-    // Discord, records provider, drop shadow, etc.) — is restored in one shot from the
-    // factory-default snapshot captured at startup. This replaces a long hand-maintained
-    // list of per-setting resets that used to drift whenever a new global setting was added:
-    // the snapshot reuses the exact same serialization as save/load, so it can't fall out of
-    // sync. (Developer mode is an INI-only power-user flag and is intentionally preserved.)
-    SettingsManager::getInstance().resetGlobalsToFactoryDefaults(HudManager::getInstance());
-
-    // autoSwitch lives in [Profiles] (session/navigation state, outside the global snapshot),
-    // so reset it explicitly. The active profile itself is intentionally left unchanged.
-    ProfileManager::getInstance().setAutoSwitchEnabled(false);
-
-    // The widgets master toggle and all per-profile HUD/widget state are restored below by
-    // resetAllToFactoryDefaults() (widgetsEnabled lives in the per-profile "Global" snapshot).
-
-    // Reset every profile to the pristine factory snapshot and save. This forces even
-    // INI-only overrides that a HUD's resetToDefaults() doesn't touch back to defaults, and
-    // (unlike a plain reload) re-seeds the save baseline so user-edited base-section keys are
-    // replaced with this build's defaults — a full factory reset intentionally discards them.
-    SettingsManager::getInstance().resetAllToFactoryDefaults(HudManager::getInstance());
-
-    // Rebuild AFTER all state is reset — globals AND the per-profile HUD/widget visibility
-    // above — so the tab toggle icons reflect the reverted enabled/disabled state
-    // immediately instead of only after the next mouse-move (hover) rebuild.
-    rebuildRenderData();
-}
-
-void SettingsHud::resetCurrentTab() {
-    // Reset the HUD(s) on the current tab to the captured factory-default snapshot.
-    // Routing through SettingsManager (rather than each HUD's resetToDefaults())
-    // guarantees every INI-controllable setting — including INI-only members and
-    // per-HUD color/font overrides — returns to default, and by default it preserves
-    // each HUD's current visibility so a per-tab reset doesn't hide an element the
-    // user is positioning. (The Widgets tab opts out — see its case below — and the
-    // full "Reset all settings" path resets visibility instead.)
-    auto resetHuds = [](const std::vector<std::string>& names, bool keepVisibility = true) {
-        SettingsManager::getInstance().resetHudsToFactoryDefaults(HudManager::getInstance(), names, keepVisibility);
-    };
-
-    // Reset only the HUD(s) associated with the current tab
-    switch (m_activeTab) {
-        case TAB_GENERAL:
-            // General tab - reset all settings displayed on the General tab.
-            // (Display section — units/clock format, grid snap, screen clamp — moved to
-            // the Appearance tab; reset there via the [Display] factory snapshot.)
-            // Preferences section
-            UiConfig::getInstance().setPBScope(PBScope::CATEGORY);
-            XInputReader::getInstance().getRumbleConfig().controllerIndex = 0;
-            XInputReader::getInstance().setControllerIndex(0);
-            UiConfig::getInstance().setAutoSave(true);
-#if GAME_HAS_STEAM_FRIENDS
-            SteamFriendsManager::getInstance().setEnabled(true);  // default on, unlike Discord/HTTP
-#endif
-#if GAME_HAS_DISCORD
-            DiscordManager::getInstance().setEnabled(false);
-#endif
-#if GAME_HAS_HTTP_SERVER
-            HttpServer::getInstance().setEnabled(false);
-            HttpServer::getInstance().resetPortToDefault();
-#endif
-            // Profiles section
-            ProfileManager::getInstance().setAutoSwitchEnabled(false);
-            // Mark all HUDs dirty for drop shadow / unit changes
-            HudManager::getInstance().markAllHudsDirty();
-            break;
-        case TAB_APPEARANCE:
-            // Appearance tab - reset display (units/clock format), fonts, and colors. These
-            // map 1:1 to the [Display]/[Fonts]/[Colors] INI sections (no other tab touches
-            // them), so restore them straight from the factory-default snapshot — the same
-            // path the full reset uses — instead of by hand. Adding a new [Display] key no
-            // longer requires updating this tab's reset.
-            SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
-                HudManager::getInstance(), {"Display", "Fonts", "Colors"});
-            // Mark all HUDs dirty so they pick up new colors
-            if (m_idealLap) m_idealLap->setDataDirty();
-            if (m_lapLog) m_lapLog->setDataDirty();
-            if (m_standings) m_standings->setDataDirty();
-            if (m_performance) m_performance->setDataDirty();
-            if (m_telemetry) m_telemetry->setDataDirty();
-            if (m_mapHud) m_mapHud->setDataDirty();
-            if (m_radarHud) m_radarHud->setDataDirty();
-            if (m_pitboard) m_pitboard->setDataDirty();
-            if (m_records) m_records->setDataDirty();
-            if (m_timing) m_timing->setDataDirty();
-            if (m_gapBar) m_gapBar->setDataDirty();
-            if (m_lap) m_lap->setDataDirty();
-            if (m_position) m_position->setDataDirty();
-            if (m_time) m_time->setDataDirty();
-            if (m_session) m_session->setDataDirty();
-            if (m_speed) m_speed->setDataDirty();
-            if (m_speedo) m_speedo->setDataDirty();
-            if (m_tacho) m_tacho->setDataDirty();
-            if (m_notices) m_notices->setDataDirty();
-            if (m_bars) m_bars->setDataDirty();
-            if (m_version) m_version->setDataDirty();
-            if (m_fuel) m_fuel->setDataDirty();
-            if (m_lapConsistency) m_lapConsistency->setDataDirty();
-            if (m_gear) m_gear->setDataDirty();
-            if (m_lean) m_lean->setDataDirty();
-            if (m_clock) m_clock->setDataDirty();
-            if (m_gamepad) m_gamepad->setDataDirty();
-            if (m_fmxHud) m_fmxHud->setDataDirty();
-            if (m_statsHud) m_statsHud->setDataDirty();
-            if (m_eventLog) m_eventLog->setDataDirty();
-            break;
-        case TAB_STANDINGS:
-            resetHuds({"StandingsHud"});
-            // DNS filter lives in PluginData (the global [General] section), not the
-            // per-HUD snapshot, so resetHuds() can't restore it. Reset it explicitly.
-            // (Live gaps is now a StandingsHud member, restored by resetHuds above.)
-            PluginData::getInstance().setFilterDnsRiders(false);
-            break;
-        case TAB_MAP:
-            resetHuds({"MapHud"});
-            break;
-        case TAB_RADAR:
-            resetHuds({"RadarHud"});
-            break;
-        case TAB_LAP_LOG:
-            resetHuds({"LapLogHud"});
-            break;
-        case TAB_FRIENDS:
-            resetHuds({"FriendsHud"});
-            break;
-        case TAB_LAP_CONSISTENCY:
-            resetHuds({"LapConsistencyHud"});
-            break;
-        case TAB_IDEAL_LAP:
-            resetHuds({"IdealLapHud"});
-            break;
-        case TAB_TELEMETRY:
-            resetHuds({"TelemetryHud"});
-            break;
-        case TAB_RECORDS:
-            resetHuds({"RecordsHud"});
-            // Provider and auto-fetch are saved in the global [General] section, not
-            // the per-HUD snapshot, so resetHuds() can't restore them. Reset them
-            // explicitly to their factory defaults (CBR provider, auto-fetch off).
-            if (m_records) {
-                m_records->m_provider = RecordsHud::DataProvider::CBR;
-                m_records->m_bAutoFetch = false;
-                m_records->setDataDirty();
-            }
-            break;
-        case TAB_PITBOARD:
-            resetHuds({"PitboardHud"});
-            break;
-        case TAB_SESSION:
-            resetHuds({"SessionHud"});
-            break;
-        case TAB_PERFORMANCE:
-            resetHuds({"PerformanceHud"});
-            break;
-        case TAB_TIMING:
-            resetHuds({"TimingHud"});
-            break;
-        case TAB_GAP_BAR:
-            resetHuds({"GapBarHud"});
-            break;
-        case TAB_NOTICES:
-            resetHuds({"NoticesHud"});
-            break;
-        case TAB_EVENT_LOG:
-            resetHuds({"EventLogHud"});
-            break;
-        case TAB_WIDGETS: {
-            // Reset all widgets in a single pass
-            std::vector<std::string> widgets = {
-                "LapWidget", "PositionWidget", "TimeWidget", "SpeedWidget", "GearWidget",
-                "SpeedoWidget", "TachoWidget", "BarsWidget", "VersionWidget", "FuelWidget",
-                "GamepadWidget", "LeanWidget", "GForceWidget", "CompassWidget", "ClockWidget",
-                "PointerWidget", "SettingsButtonWidget"
-            };
-#if GAME_HAS_TYRE_TEMP
-            widgets.push_back("TyreTempWidget");
-#endif
-#if GAME_HAS_ECU
-            widgets.push_back("EcuWidget");
-#endif
-            // keepVisibility=false: the Widgets tab exposes a per-widget "Visible"
-            // toggle for every row, so Reset restores those toggles to factory
-            // defaults too (not just position/scale/opacity).
-            resetHuds(widgets, false);
-            break;
-        }
-        case TAB_RUMBLE: {
-            // Reset rumble configuration from the [Rumble] snapshot (same path as the full
-            // reset) plus the RumbleHud. Preserve the master "enabled" toggle, like every
-            // other per-tab reset leaves its master alone. controllerIndex is configured on
-            // the General tab and isn't part of [Rumble], so the replay never touches it.
-            RumbleConfig& rumbleCfg = XInputReader::getInstance().getGlobalRumbleConfig();
-            bool wasEnabled = rumbleCfg.enabled;
-            SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
-                HudManager::getInstance(), {"Rumble"});
-            rumbleCfg.enabled = wasEnabled;
-            resetHuds({"RumbleHud"});
-            break;
-        }
-        case TAB_HELMET:
-            // HelmetOverlay maps 1:1 to the [HelmetOverlay] snapshot section. Replay it (same
-            // path as the full reset) while preserving visibility, so a per-tab reset doesn't
-            // hide the overlay the user is positioning.
-            if (m_helmetOverlay) {
-                bool wasVisible = m_helmetOverlay->isVisible();
-                SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
-                    HudManager::getInstance(), {"HelmetOverlay"});
-                m_helmetOverlay->setVisible(wasVisible);
-                m_helmetOverlay->setDataDirty();
-            }
-            break;
-        case TAB_HOTKEYS:
-            // Hotkey bindings map 1:1 to the [Hotkeys] snapshot section.
-            SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
-                HudManager::getInstance(), {"Hotkeys"});
-            break;
-        case TAB_UPDATES: {
-            // Update settings map 1:1 to the [Updates] snapshot section. Replay it (same
-            // path as the full reset), but leave the "Check for Updates" mode (the master
-            // on/off toggle) alone — like a HUD's visibility in the resetHuds() path, the
-            // master state is preserved here; full "Reset all settings" disables it instead.
-            UpdateChecker::UpdateMode mode = UpdateChecker::getInstance().getMode();
-            SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
-                HudManager::getInstance(), {"Updates"});
-            UpdateChecker::getInstance().setMode(mode);
-            break;
-        }
-        case TAB_FMX:
-            resetHuds({"FmxHud"});
-            break;
-        case TAB_STATS:
-            resetHuds({"StatsHud"});
-            break;
-        case TAB_RIDERS:
-            // Clear all tracked riders
-            TrackedRidersManager::getInstance().clearAll();
-            break;
-        default:
-            DEBUG_WARN_F("Unknown tab index for reset: %d", m_activeTab);
-            break;
-    }
-
-    // Update settings display
-    rebuildRenderData();
-
-    // Save settings after reset (if auto-save enabled)
-    if (UiConfig::getInstance().getAutoSave()) {
-        SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
-    }
-}
-
-void SettingsHud::resetCurrentProfile() {
-    // Reset only Elements (HUDs and Widgets) for the current profile by re-applying
-    // the factory snapshot to the active profile. Like the per-tab and full-reset
-    // paths, this also clears INI-only members and per-HUD color/font overrides.
-    // HelmetOverlay (global, not in the snapshot) is left untouched here — it's only
-    // reset via the Helmet tab or the full "Reset all settings".
-    SettingsManager::getInstance().resetActiveProfileToFactoryDefaults(HudManager::getInstance());
-
-    // DNS filter lives in the global [General] section, not the snapshot, so reset it
-    // explicitly (matches prior behavior). Other global settings (ColorConfig,
-    // RumbleConfig, UpdateChecker, hazard params) are NOT reset. (Live gaps is now a
-    // StandingsHud member, restored by resetActiveProfileToFactoryDefaults above.)
-    PluginData::getInstance().setFilterDnsRiders(false);
-
-    // Update settings display
-    rebuildRenderData();
-
-    // Save settings for current profile only (if auto-save enabled)
-    if (UiConfig::getInstance().getAutoSave()) {
-        SettingsManager::getInstance().saveSettings(HudManager::getInstance(), PluginManager::getInstance().getSavePath());
-    }
-}
-
-void SettingsHud::handleCheckboxClick(const ClickRegion& region) {
-    if (!region.isRequired) {
-        auto* bitfield = std::get_if<uint32_t*>(&region.targetPointer);
-        if (bitfield && *bitfield && region.targetHud) {
-            uint32_t oldValue = **bitfield;
-            // For multi-bit flags (like COL_SECTORS), use set/clear instead of XOR
-            // If all bits are set, clear them; otherwise set all
-            if ((oldValue & region.flagBit) == region.flagBit) {
-                **bitfield &= ~region.flagBit;  // Clear all flag bits
-            } else {
-                **bitfield |= region.flagBit;   // Set all flag bits
-            }
-            uint32_t newValue = **bitfield;
-            region.targetHud->setDataDirty();
-            rebuildRenderData();
-            DEBUG_INFO_F("Data checkbox toggled: bit 0x%X, bitfield 0x%X -> 0x%X",
-                region.flagBit, oldValue, newValue);
-        }
-    }
-}
-
-// Note: gap toggle/scope/reference click handlers moved to settings_tab_standings.cpp
-
-void SettingsHud::handleHudToggleClick(const ClickRegion& region) {
-    if (!region.targetHud) return;
-
-    region.targetHud->setVisible(!region.targetHud->isVisible());
-    rebuildRenderData();
-    DEBUG_INFO_F("HUD visibility toggled: %s", region.targetHud->isVisible() ? "visible" : "hidden");
-}
-
-void SettingsHud::handleTitleToggleClick(const ClickRegion& region) {
-    if (!region.targetHud) return;
-
-    region.targetHud->setShowTitle(!region.targetHud->getShowTitle());
-    rebuildRenderData();
-    DEBUG_INFO_F("HUD title toggled: %s", region.targetHud->getShowTitle() ? "shown" : "hidden");
-}
-
-void SettingsHud::handleOpacityClick(const ClickRegion& region, bool increase) {
-    if (!region.targetHud) return;
-
-    float currentOpacity = region.targetHud->getBackgroundOpacity();
-    float newOpacity = applyAcceleratedStep(currentOpacity, 0.01f, increase);
-    newOpacity = std::max(0.0f, std::min(1.0f, newOpacity));
-    region.targetHud->setBackgroundOpacity(newOpacity);
-    rebuildRenderData();
-    DEBUG_INFO_F("HUD background opacity %s to %d%%",
-        increase ? "increased" : "decreased", static_cast<int>(std::round(newOpacity * 100.0f)));
-}
-
-void SettingsHud::handleScaleClick(const ClickRegion& region, bool increase) {
-    if (!region.targetHud) return;
-
-    float currentScale = region.targetHud->getScale();
-    float newScale = applyAcceleratedStep(currentScale, 0.01f, increase);
-    newScale = std::max(0.1f, std::min(3.0f, newScale));
-    region.targetHud->setScale(newScale);
-    rebuildRenderData();
-    DEBUG_INFO_F("HUD scale %s to %.2f", increase ? "increased" : "decreased", newScale);
-}
-
-// Note: handleRowCountClick, handleLapLogRowCountClick, handleMap*, handleRadar*
-// moved to respective tab files (settings_tab_standings.cpp, settings_tab_lap_log.cpp,
-// settings_tab_map.cpp, settings_tab_radar.cpp)
-
-void SettingsHud::handleDisplayModeClick(const ClickRegion& region, bool increase) {
-    auto* displayMode = std::get_if<uint8_t*>(&region.targetPointer);
-    if (!displayMode || !*displayMode || !region.targetHud) return;
-
-    // DisplayMode enum values are the same for PerformanceHud and TelemetryHud (0=Graphs, 1=Values, 2=Both)
-    uint8_t currentMode = **displayMode;
-    uint8_t newMode;
-
-    if (increase) {
-        // Cycle forward: GRAPHS(0) -> VALUES(1) -> BOTH(2) -> GRAPHS(0)
-        switch (currentMode) {
-            case 0: newMode = 1; break;  // GRAPHS -> VALUES
-            case 1: newMode = 2; break;  // VALUES -> BOTH
-            case 2: newMode = 0; break;  // BOTH -> GRAPHS
-            default: newMode = 2; break; // Default to BOTH
-        }
-    } else {
-        // Cycle backward: GRAPHS(0) -> BOTH(2) -> VALUES(1) -> GRAPHS(0)
-        switch (currentMode) {
-            case 0: newMode = 2; break;  // GRAPHS -> BOTH
-            case 1: newMode = 0; break;  // VALUES -> GRAPHS
-            case 2: newMode = 1; break;  // BOTH -> VALUES
-            default: newMode = 2; break; // Default to BOTH
-        }
-    }
-
-    **displayMode = newMode;
-    region.targetHud->setDataDirty();
-    rebuildRenderData();
-
-    const char* modeNames[] = {"Graphs", "Numbers", "Both"};
-    DEBUG_INFO_F("Display mode changed to %s", modeNames[newMode]);
-}
-
-// Note: handlePitboardShowModeClick moved to settings_tab_pitboard.cpp
-// Note: handleColorCycleClick moved to settings_tab_appearance.cpp
-
-void SettingsHud::handleTabClick(const ClickRegion& region) {
-    m_activeTab = region.tabIndex;
-    rebuildRenderData();
-    DEBUG_INFO_F("Switched to tab %d", m_activeTab);
-}
-
-void SettingsHud::handleCloseButtonClick() {
-    hide();
-    DEBUG_INFO("Settings menu closed via close button");
-}
-
 const char* SettingsHud::getTabName(int tabIndex) const {
     switch (tabIndex) {
         case TAB_GENERAL:     return "General";
@@ -2610,7 +2011,7 @@ const char* SettingsHud::getTabName(int tabIndex) const {
         case TAB_MAP:         return "Map";
         case TAB_LAP_LOG:     return "Lap Log";
         case TAB_FRIENDS:     return "Friends";
-        case TAB_LAP_CONSISTENCY: return "Consistency";
+        case TAB_SESSION_CHARTS: return "Charts";
         case TAB_IDEAL_LAP:   return "Ideal Lap";
         case TAB_TELEMETRY:   return "Telemetry";
         case TAB_PERFORMANCE: return "Performance";
@@ -2630,8 +2031,37 @@ const char* SettingsHud::getTabName(int tabIndex) const {
         case TAB_STATS:       return "Stats";
         case TAB_EVENT_LOG:   return "Event Log";
         case TAB_HELMET:      return "Helmet";
+        case TAB_DIRECTOR:    return "Director";
         default:              return "Unknown";
     }
+}
+
+bool SettingsHud::isTabAvailable(int tabId) const {
+    if (tabId < 0 || tabId >= TAB_COUNT) return false;
+    // Game-gated tabs: selectable only when their backing HUD is registered on this build
+    // (mirrors the skips in the tab-list render loop - keep the two in lockstep).
+    if (tabId == TAB_RECORDS && !m_records) return false;
+    if (tabId == TAB_FMX && !m_fmxHud) return false;
+    if (tabId == TAB_FRIENDS && !m_friends) return false;
+    return true;
+}
+
+const char* SettingsHud::getActiveTabName() const {
+    return getTabName(m_activeTab);
+}
+
+void SettingsHud::setActiveTabByName(const char* name) {
+    if (!name || !name[0]) return;
+    for (int t = 0; t < TAB_COUNT; ++t) {
+        if (std::strcmp(getTabName(t), name) == 0) {
+            // Ignore a tab that isn't available on this build (e.g. a saved "FMX" loaded on
+            // karts) - keep the constructor default rather than landing on an empty tab.
+            if (isTabAvailable(t)) m_activeTab = t;
+            return;
+        }
+    }
+    // Unknown / renamed tab: keep the default. (getTabName never returns "Unknown" for a
+    // real id, so a stored "Unknown" also falls through harmlessly.)
 }
 
 bool SettingsHud::isPointInRect(float x, float y, float rectX, float rectY, float width, float height) const {
@@ -2787,35 +2217,26 @@ const char* SettingsHud::getTooltipIdForRegion(ClickRegion::Type type, int activ
 
         case TAB_TIMING:
             switch (type) {
-                case ClickRegion::TIMING_LABEL_TOGGLE:
-                    return "timing.label";
                 case ClickRegion::TIMING_TIME_TOGGLE:
                     return "timing.time";
-                case ClickRegion::TIMING_GAP_UP:
-                case ClickRegion::TIMING_GAP_DOWN:
-                    return "timing.gap";
                 case ClickRegion::TIMING_DISPLAY_MODE_UP:
                 case ClickRegion::TIMING_DISPLAY_MODE_DOWN:
                     return "timing.show";
                 case ClickRegion::TIMING_DURATION_UP:
                 case ClickRegion::TIMING_DURATION_DOWN:
                     return "timing.freeze";
-                case ClickRegion::TIMING_REFERENCE_TOGGLE:
-                    return "timing.show_reference";
-                case ClickRegion::TIMING_LAYOUT_TOGGLE:
-                    return "timing.layout";
                 case ClickRegion::TIMING_GAP_PB_TOGGLE:
-                    return "timing.secondary_pb";
+                    return "timing.gap_pb";
                 case ClickRegion::TIMING_GAP_IDEAL_TOGGLE:
-                    return "timing.secondary_ideal";
+                    return "timing.gap_ideal";
                 case ClickRegion::TIMING_GAP_OVERALL_TOGGLE:
-                    return "timing.secondary_overall";
+                    return "timing.gap_overall";
                 case ClickRegion::TIMING_GAP_ALLTIME_TOGGLE:
-                    return "timing.secondary_alltime";
+                    return "timing.gap_alltime";
                 case ClickRegion::TIMING_GAP_RECORD_TOGGLE:
-                    return "timing.secondary_record";
+                    return "timing.gap_record";
                 case ClickRegion::TIMING_GAP_LASTLAP_TOGGLE:
-                    return "timing.secondary_lastlap";
+                    return "timing.gap_lastlap";
                 default:
                     break;
             }

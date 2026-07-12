@@ -36,7 +36,7 @@ bool FmxHud::handlesDataType(DataChangeType dataType) const {
 
 void FmxHud::update() {
     // OPTIMIZATION: Skip processing when not visible
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -60,6 +60,7 @@ float FmxHud::getContentHeight() const {
     if (m_bShowTitle) height += dim.lineHeightLarge;
 
     if (isTrickStackEnabled()) {
+        height += dim.lineHeightNormal;  // "Trick Stack" subheading row
         // Past trick rows use normal line height; last (active) row uses proportional advance
         float activeTrickAdvance = dim.fontSizeLarge + (dim.lineHeightLarge - dim.fontSizeExtraLarge);
         height += (m_maxChainDisplayRows - 1) * dim.lineHeightNormal + activeTrickAdvance;
@@ -132,6 +133,11 @@ void FmxHud::rebuildRenderData() {
 
     // === Rows: Trick Stack (shows chain of tricks) — above the combo arc ===
     if (isTrickStackEnabled()) {
+        // Section subheading (matches Performance / Session Charts section headers).
+        addString("Trick Stack", contentStartX, currentY, Justify::LEFT,
+            this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
+        currentY += dim.lineHeightNormal;
+
         const auto& endAnimStack = fmx.getChainEndAnimation();
 
         // Build list of tricks to display (oldest first, newest at bottom)
@@ -735,7 +741,7 @@ void FmxHud::resetToDefaults() {
     setTextureVariant(0);
     m_fBackgroundOpacity = 0.80f;
     m_fScale = 1.0f;
-    setPosition(0.7315f, 0.5772f);
+    setPosition(0.7315f, 0.58667f);
     m_comboArcFill = 0.0f;
     m_comboArcGraceStartFill = -1.0f;
     m_comboArcEndStartFill = -1.0f;

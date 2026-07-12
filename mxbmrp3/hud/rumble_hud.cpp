@@ -32,7 +32,7 @@ RumbleHud::RumbleHud() {
 void RumbleHud::update() {
     // OPTIMIZATION: Skip processing when not visible
     // Note: Rumble feedback itself runs via XInputReader regardless of HUD visibility
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -54,7 +54,7 @@ void RumbleHud::resetToDefaults() {
     m_bShowTitle = true;
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
-    setPosition(0.7315f, 0.3774f);
+    setPosition(0.7315f, 0.37547f);
     setScale(1.0f);
     m_bShowMaxMarkers = false;  // Max markers OFF by default
     m_maxMarkerLingerFrames = 60;  // ~1 second at 60fps

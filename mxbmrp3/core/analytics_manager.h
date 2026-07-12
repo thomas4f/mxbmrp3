@@ -18,6 +18,7 @@
 #include <mutex>
 #include <deque>
 #include <map>
+#include <vector>
 #include <condition_variable>
 
 class AnalyticsManager {
@@ -44,6 +45,24 @@ public:
     // not configured, or before app_started has been sent this launch.
     void trackEvent(const std::string& eventName,
                     const std::map<std::string, std::string>& props = {});
+
+#if defined(MXBMRP3_TEST_BUILD)
+    // --- Dry-run capture seam (headless wiring tests; never in a shipping DLL). ---
+    // The manager's only real effect is a network POST the harness can't observe, so
+    // these drive the payload build + the sampling gate WITHOUT any network or threads:
+    // testPrime() fakes just enough identity/session/host state that the gates pass and
+    // buildEventBody() works, and turns on capture mode (which makes the real senders a
+    // no-op, so a test build can never phone home). The event-build paths still push their
+    // JSON onto m_eventQueue exactly as in production; testDrainPending() reads it back.
+    void testPrime();                          // fake identity/session/host + capture mode on
+    void testSetFullLaunch(bool full);         // simulate the remote-sampling decision
+    std::string testBuildAppStarted();         // buildEventBody() output (always-sent tier)
+    void testQueueSessionEnd();                // run queueSessionEnd() (gated on full launch)
+    void testQueueCustom(const std::string& name);  // run trackEvent() (gated on full launch)
+    void testSeedAndReportCrash(const std::string& markerPath,
+                                const std::string& fault, const std::string& code);  // never gated
+    std::vector<std::string> testDrainPending();    // pop + return the queued event bodies
+#endif
 
 private:
     AnalyticsManager();
@@ -74,6 +93,24 @@ private:
     std::string buildCustomEventBody(const std::string& eventName,
                                      const std::map<std::string, std::string>& props) const;
 
+    // Build a one-event body carrying a NUMERIC duration_seconds (so Aptabase can
+    // sum/avg playtime - buildCustomEventBody only sends string props) plus any extra
+    // string props (crash fault/code, crash-time plugin/game versions). Used for the
+    // session_end and crash events.
+    std::string buildSessionEventBody(const std::string& eventName, long long durationSec,
+                                      const std::map<std::string, std::string>& extraProps) const;
+
+    // If the crash handler left a pending_crash.json marker from a previous launch,
+    // queue a "crash" event (fault module+offset, code, recovered duration) under
+    // this session and delete the marker. No-op if there's no marker. Called from
+    // initialize() only when Aptabase is active this launch.
+    void sendPendingCrashReport();
+
+    // Queue the session_end event (with this session's duration) at shutdown so a
+    // clean exit's length is tracked. Crashed sessions are covered by the crash
+    // event's duration instead (no session_end is sent).
+    void queueSessionEnd();
+
     // Background drain loop for trackEvent(): POSTs queued custom events to
     // Aptabase under the session, exits when shutdown is requested and the
     // queue is empty.
@@ -96,6 +133,18 @@ private:
     // background thread as the Aptabase beacon. No-op if not configured.
     void sendGoatCounterHit();
 
+    // Fetch + apply the remote sampling config (developer cost lever; runs on the
+    // background beacon thread, once per launch, before the Aptabase POST). Reads
+    // aptabase_full_sample ∈ [0,1] from the public config file and rolls once to set
+    // m_fullLaunch — whether this launch sends session_end + custom on top of the
+    // always-sent app_started (+ crash). Fail-open to full (m_fullLaunch stays true) on
+    // any fetch/parse failure. See analytics_remote_config.h.
+    void applyRemoteSampling();
+
+    // WinHTTP GET the remote config file into `out`. Returns true on HTTP 200 with a
+    // body. Short timeout; publishes handles like the beacon so shutdown can cancel it.
+    bool fetchRemoteConfig(std::string& out);
+
     // Build the GoatCounter /api/v0/count JSON body (one launch hit).
     std::string buildGoatCounterBody() const;
 
@@ -104,6 +153,12 @@ private:
 
     std::atomic<bool> m_enabled;          // opt-out flag (default true)
     std::atomic<bool> m_shutdownRequested;
+    // Whether THIS launch sends the full event set (session_end + custom) on top of the
+    // always-sent app_started (+ crash). Set once by applyRemoteSampling() on the
+    // background thread; read by queueSessionEnd()/trackEvent() on the game thread — hence
+    // atomic. Defaults true (full): a fast quit before the config fetch completes, or any
+    // fetch failure, keeps the consented full behavior (fail-open).
+    std::atomic<bool> m_fullLaunch{true};
     std::string m_installId;              // anonymous random UUID (game thread)
     std::string m_prevVersion;            // plugin version from the previous launch ("" = new install)
     std::string m_versionStatus;          // "new" | "update" | "same"
@@ -114,6 +169,10 @@ private:
     std::wstring m_gcHost;                // GoatCounter host (<code>.goatcounter.com)
     std::string m_gcBody;                 // GoatCounter /api/v0/count JSON body
     std::string m_sessionId;             // per-launch session id
+    std::string m_osVersion;             // real OS/Wine version (registry-derived, shim-proof)
+    unsigned long long m_sessionStartUnix = 0;  // this launch's start (epoch seconds)
+    unsigned long long m_prevSessionStart = 0;  // previous launch's start (crash-duration recovery)
+    std::string m_pendingCrashPath;      // <savePath>\mxbmrp3\pending_crash.json (crash marker)
 
     std::thread m_thread;
 

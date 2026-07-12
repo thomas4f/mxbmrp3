@@ -130,6 +130,7 @@ private:
         int  sessionNumLaps   = 0;
         int  eventType        = 2;   // Default Race (matches SessionData::eventType default)
         int  serverType       = -1;  // Unknown
+        int  riderCount       = 0;   // session rider count; >1 => online when serverType is unknown
         int  sessionTimeMs    = 0;
         long long sessionEndUnix = 0;  // absolute countdown end (wall-clock secs); 0 = none
         int  drawState        = 0;   // ON_TRACK

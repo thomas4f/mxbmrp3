@@ -209,6 +209,8 @@ void Logger::getCurrentTimestamp(char* buffer, size_t bufferSize) {
         auto ms = nowMs % 1000;
 
         struct tm timeinfo;
+        // localtime_s writes timeinfo (output param); cppcheck can't model that.
+        // cppcheck-suppress uninitvar
         localtime_s(&timeinfo, &time_t);
 
         snprintf(m_cachedTimestamp, sizeof(m_cachedTimestamp), "%02d:%02d:%02d.%03d",
@@ -225,7 +227,7 @@ void Logger::getCurrentTimestamp(char* buffer, size_t bufferSize) {
 void Logger::initializeConsole() {
     if (m_consoleInitialized) return;
 
-    // Check if a console already exists (e.g., when loaded by replay_tool)
+    // Check if a console already exists (e.g., when loaded by mxbmrp3_replay)
     HWND consoleWindow = GetConsoleWindow();
     bool consoleAlreadyExists = (consoleWindow != NULL);
 

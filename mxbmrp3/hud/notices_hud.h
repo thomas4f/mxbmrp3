@@ -61,6 +61,18 @@ private:
     // Check if a timed notice is still within its display duration
     bool isTimedNoticeActive(std::chrono::steady_clock::time_point triggerTime) const;
 
+    // The status-tier notice visibility (wrong way / hazard / blue flag / lapper /
+    // overtime) — the notices that outrank and therefore MASK the consumable
+    // PB/setup/segment tier. This is the SINGLE SOURCE shared by update() (which
+    // freezes a masked consumable notice's display timer, per notice_priority.h) and
+    // rebuildRenderData() (which renders the ladder). Keeping one computation is what
+    // stops the mask predicate and the render precedence from silently drifting apart.
+    struct StatusTier {
+        bool wrongWay = false, hazard = false, blueFlag = false, lapping = false, overtime = false;
+        bool anyShowing() const { return wrongWay || hazard || blueFlag || lapping || overtime; }
+    };
+    StatusTier computeStatusTier() const;
+
     // Notice state
     bool m_bIsWrongWay = false;            // Whether player is currently going wrong way
     bool m_bIsHazardAhead = false;         // Whether there's a hazard rider ahead
@@ -87,15 +99,18 @@ private:
     std::chrono::steady_clock::time_point m_lastLapTriggerTime;
     std::chrono::steady_clock::time_point m_finishedTriggerTime;
 
+    // Unmask anchors (ms since steady_clock epoch, 0 = none) for the consumable
+    // notices — when each last became unmasked. Their display window is measured
+    // from here so one masked behind a higher-priority status notice is held, not
+    // consumed unseen. See notice_priority.h.
+    long long m_allTimePBUnmaskMs = 0;
+    long long m_fastestLapUnmaskMs = 0;
+    long long m_sessionPBUnmaskMs = 0;
+    long long m_defaultSetupUnmaskMs = 0;
+    long long m_segmentUnmaskMs = 0;
+
     // Spectate tracking - reset triggered flags when displayed rider changes
     int m_lastDisplayRaceNum = -1;
-
-    // Session tracking for wrong-way grace period
-    int m_sessionStartTime;    // Session time when race went to "in progress" state
-    int m_lastSessionState;    // Previous session state to detect transitions
-
-    // Wrong way grace period (10 seconds after race start)
-    static constexpr int WRONG_WAY_GRACE_PERIOD_MS = 10000;
 
     // Settings
     uint32_t m_enabledNotices = NOTICE_DEFAULT;          // Bitfield of enabled notices

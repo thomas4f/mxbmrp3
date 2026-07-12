@@ -163,6 +163,7 @@ private:
         int sessionLength = -1;
         int sessionNumLaps = -1;
         bool online = false;
+        bool multiRider = false;   // session has >1 rider -> "Online" when serverType is unknown
         int lapsToGo = -1;
         int timeSeconds = -1;
 
@@ -170,7 +171,7 @@ private:
             return drawState == o.drawState && eventType == o.eventType
                 && session == o.session && sessionState == o.sessionState
                 && sessionLength == o.sessionLength && sessionNumLaps == o.sessionNumLaps
-                && online == o.online && lapsToGo == o.lapsToGo
+                && online == o.online && multiRider == o.multiRider && lapsToGo == o.lapsToGo
                 && timeSeconds == o.timeSeconds
                 && strcmp(trackName, o.trackName) == 0
                 && strcmp(serverName, o.serverName) == 0;

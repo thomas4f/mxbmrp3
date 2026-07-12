@@ -22,6 +22,14 @@ class HttpServer {
 public:
     static HttpServer& getInstance();
 
+#if defined(MXBMRP3_TEST_BUILD)
+    // Test-only: build the /api/state snapshot directly on the game thread,
+    // bypassing the server socket AND the change-gating/caching, so plugin-logic
+    // tests can observe computed state without starting a server or fighting the
+    // rebuild gate. Absent from shipping builds; see core/test_hooks.cpp.
+    std::string testSnapshot() const { return buildJsonSnapshot(); }
+#endif
+
     // Lifecycle (called by PluginManager)
     void initialize(const char* savePath);
     void shutdown();
@@ -39,7 +47,7 @@ public:
     // The command rides the JSON snapshot (edge-triggered on the client via a
     // monotonic seq), and pressing it forces an immediate snapshot push.
     // Called on the game thread (from the hotkey dispatch).
-    enum class OverlayPanel : int { NONE = 0, LAST_LAP, FASTEST_LAP, DOWN_ORDER, BATTLE };
+    enum class OverlayPanel : int { NONE = 0, LAST_LAP, FASTEST_LAP, DOWN_ORDER, SECTORS, CHARTS };
     void forceOverlayPanel(OverlayPanel panel);
 
     // Settings

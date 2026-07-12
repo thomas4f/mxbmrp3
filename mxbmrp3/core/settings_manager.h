@@ -5,6 +5,7 @@
 // ============================================================================
 #pragma once
 
+#include "../game/game_config.h"   // GAME_HAS_* — gates the per-HUD registry decls (.inc)
 #include "profile_manager.h"
 #include <array>
 #include <string>
@@ -16,6 +17,14 @@
 // Forward declarations
 class HudManager;
 
+// The per-HUD serializer registry (settings_hud_registry.h). Forward-declared here
+// so hudSectionRegistry() can be a friend of SettingsManager, letting it reference
+// the private static cap_*/app_* members below.
+namespace Settings {
+    struct HudSectionSerializer;
+    const std::vector<HudSectionSerializer>& hudSectionRegistry();
+}
+
 class SettingsManager {
 public:
     static SettingsManager& getInstance();
@@ -23,11 +32,39 @@ public:
     // Type alias for HUD settings (key -> value map)
     using HudSettings = std::map<std::string, std::string>;
 
+    // Profile settings cache: hudName -> (key -> value). Public so the per-HUD
+    // serializer registry (settings_hud_registry) can carry capture/apply function
+    // pointers over it. Populated per profile in m_profileCache.
+    using ProfileCache = std::unordered_map<std::string, HudSettings>;
+
     // Load settings from disk (call during plugin initialization)
     void loadSettings(HudManager& hudManager, const char* savePath);
 
-    // Save settings to disk (call when settings change)
+    // Save settings to disk synchronously (temp-file + atomic replace on the calling
+    // thread). Use for the paths that must be durable before returning: explicit Save,
+    // Reset-to-defaults, and plugin shutdown. Also clears the dirty flag.
     void saveSettings(const HudManager& hudManager, const char* savePath);
+
+    // Mark settings as changed WITHOUT writing to disk. The frequent auto-save path — a HUD
+    // drag/scale, a toggle, a hotkey binding — calls this. Serializing settings costs a couple
+    // of milliseconds (capture every HUD + build the whole INI), which is a visible frame spike
+    // if done while the player is on track. So the write is DEFERRED: the live change is applied
+    // immediately (visible), only the persistence waits. flushIfDirty() writes it later, at a
+    // moment when a hitch doesn't matter — leaving the track (pit/exit) or shutdown. If the game
+    // crashes on track, unsaved edits are lost, which is acceptable for HUD settings (the game's
+    // own unsaved state would be lost too).
+    void markDirty() { m_settingsDirty = true; }
+
+    // True if settings changed since the last save (unsaved changes pending). Drives the
+    // settings-panel Save button: lit + clickable when dirty, grayed "Saved" when clean.
+    bool isDirty() const { return m_settingsDirty; }
+
+    // Auto-flush on the track->off-track transitions (RunStop = pits, RunDeinit = exit): if
+    // Auto-Save is ON and settings are dirty, serialize + write them now (synchronous, atomic)
+    // where a frame hitch is invisible — never during active riding. No-op if Auto-Save is off
+    // (manual mode: the user persists via the Save button) or nothing changed. Uses the stored
+    // save path from loadSettings().
+    void flushIfDirty(const HudManager& hudManager);
 
     // Profile switching - captures current HUD state to old profile, applies new profile
     // Returns true if profile actually changed
@@ -43,6 +80,15 @@ public:
     // so a user's hand-edited base [HudName] keys are replaced by this build's defaults (a
     // full factory reset intentionally discards them, matching the global reset).
     void resetAllToFactoryDefaults(HudManager& hudManager);
+
+#if defined(MXBMRP3_TEST_BUILD)
+    // Test/benchmark only: crank the cost-driving settings of the heavy HUDs to
+    // their maximum (all columns/rows/events, max row counts, long names) so the
+    // headless benchmark driver can profile the plugin's WORST-CASE per-frame
+    // rebuild cost, not just default settings. Not part of any in-game flow;
+    // compiled out of every shipping DLL.
+    void testMaxAllHudSettings(HudManager& hudManager);
+#endif
 
     // Reset the named HUDs (active profile only) to the factory-default snapshot.
     // Covers every INI-controllable setting — including per-HUD color/font overrides
@@ -105,16 +151,35 @@ public:
     bool isDeveloperMode() const { return m_developerMode; }
     void setDeveloperMode(bool enabled) { m_developerMode = enabled; }
 
+#if defined(MXBMRP3_TEST_BUILD)
+    // Test-only: the section names captureToCache() produces for the current live
+    // HUDs (sorted). Used by settings_sections_test to assert that every captured
+    // section is actually serialized — i.e. the capture list and the serialize
+    // order list (serializeSettings) cannot silently diverge, which is exactly the
+    // "third hardcoded list" trap that dropped FriendsHud. Never compiled into a
+    // shipping DLL (gated on MXBMRP3_TEST_BUILD, like test_hooks.cpp).
+    std::vector<std::string> testCapturedSectionNames(const HudManager& hudManager);
+#endif
+
 private:
     SettingsManager() = default;
     ~SettingsManager() = default;
     SettingsManager(const SettingsManager&) = delete;
     SettingsManager& operator=(const SettingsManager&) = delete;
 
-    std::string getSettingsFilePath(const char* savePath) const;
+    // The registry accessor builds its table from the per-HUD cap_*/app_* members
+    // below; as a friend it can take their addresses even though they are private.
+    friend const std::vector<Settings::HudSectionSerializer>& Settings::hudSectionRegistry();
 
-    // Profile settings cache: profile -> hudName -> key -> value
-    using ProfileCache = std::unordered_map<std::string, HudSettings>;
+    // Per-HUD capture/apply serializers (defined in settings_hud_registry.cpp).
+    // Static MEMBERS of SettingsManager so they inherit its `friend`-ship with the
+    // HUD classes (they read/write private HUD members), while the registry table
+    // in settings_hud_registry.cpp iterates them for capture, apply, and serialize.
+    // Each name is registered exactly once (one table row), so a HUD can never be
+    // captured/applied without also being serialized (the FriendsHud trap).
+#include "settings_hud_registry_decls.inc"
+
+    std::string getSettingsFilePath(const char* savePath) const;
 
     // Capture HUD state to a specific profile's cache
     void captureToProfile(const HudManager& hudManager, ProfileType profile);
@@ -130,6 +195,20 @@ private:
     // of truth shared by saveSettings() (writes the file) and captureFactoryDefaults()
     // (captures the startup snapshot into m_globalDefaultsIni).
     void writeGlobalSettings(std::ostream& out, const HudManager& hudManager) const;
+
+    // Capture live state to the active profile, then serialize the full settings file to a
+    // string. The single serialization path shared by saveSettings() (sync write) and
+    // flushIfDirty(). Sets m_savePath as a side effect (like the old saveSettings).
+    std::string serializeSettings(const HudManager& hudManager, const char* savePath);
+
+    // Build one HUD/widget's serialized block: its base [Section] plus the sparse per-profile
+    // [Section:Profile] overrides. Returns "" for a section absent from m_hudDefaults (a
+    // game-gated HUD not in this build). Reads only cached state, so it is const.
+    std::string buildHudSection(const char* hudName) const;
+
+    // Build the GamepadWidget / PitboardHud per-variant layout blocks (read live from the widgets).
+    std::string buildGamepadLayouts(const HudManager& hudManager) const;
+    std::string buildPitboardLayouts(const HudManager& hudManager) const;
 
     // Apply one parsed key/value belonging to a global section to the live singletons.
     // Returns true if the section was a recognized global section (so the caller stops
@@ -182,4 +261,9 @@ private:
 
     // Developer mode flag (shows debug options in UI)
     bool m_developerMode = false;
+
+    // Set by markDirty() when a HUD setting changes; cleared by saveSettings()/flushIfDirty()
+    // once written. The write itself is deferred to a track->off-track transition so it never
+    // spikes a gameplay frame (see markDirty).
+    bool m_settingsDirty = false;
 };

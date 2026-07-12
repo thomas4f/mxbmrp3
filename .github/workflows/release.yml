@@ -1,0 +1,250 @@
+# ============================================================================
+# Release build (Windows / MSVC).  *** validate with a dry run before first real use ***
+#
+# Automates make_release.bat on a GitHub-hosted Windows runner (windows-latest
+# ships Visual Studio 2022 with the v143 C++ toolset): builds all three games and
+# packages the zip + NSIS installer + debug symbols.
+#
+# Every path runs the full test matrix first (the `tests` job below calls ci.yml),
+# and build-release `needs` it — so a Release can NEVER be cut from a commit whose
+# tests are red. The existence of a release IS the "tests passed" signal.
+#
+# TWO MODES — one entry point, the button (there is NO tag-push trigger; the tag is
+# an OUTPUT of releasing, not a precondition, so it can never drift from resource.h):
+#   • DRY RUN  — "Run workflow" (workflow_dispatch) with "Create draft release"
+#                OFF. Runs tests, builds, packages, uploads the zip + installer +
+#                symbols as workflow ARTIFACTS. No Release, no tag. Validate here.
+#   • RELEASE  — "Run workflow" with "Create draft release" ON. Same as above PLUS
+#                it auto-creates the vX.Y.Z tag (derived from resource.h) at the
+#                dispatched commit and opens a DRAFT Release with every asset
+#                attached. You review and hit Publish.
+#
+# BEFORE THE FIRST RUN:
+#   1. Analytics keys — a Release (NDEBUG) build hard-errors without them. Add repo
+#      Secrets APTABASE_KEY / GOATCOUNTER_TOKEN (Settings > Secrets and variables >
+#      Actions). A keyless build is not wired. (GOATCOUNTER_CODE is NOT a secret —
+#      the site code is public and hardcoded in plugin_constants.h; it's only an
+#      optional override, not required.)
+#   2. Code signing (the "unknown publisher" warning) is NOT handled here — add a
+#      signing step once you have a certificate.
+# ============================================================================
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Create a DRAFT GitHub Release (auto-tags vX.Y.Z from resource.h). Off = dry run (artifacts only)."
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # needed to create the tag + GitHub Release
+
+jobs:
+  # Pre-release gate: the full test matrix (unit + Wine integration + web overlay)
+  # on this exact commit, via the reusable tests workflow. build-release needs it,
+  # so nothing ships from a red commit.
+  tests:
+    uses: ./.github/workflows/ci.yml
+    with:
+      full: true
+
+  build-release:
+    needs: tests
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      # The two secret keys the vcxproj injects at build time. Unset = keyless build,
+      # which a Release config rejects unless MXBMRP3_ALLOW_NO_ANALYTICS is defined
+      # (see the build step). The GoatCounter *code* is public and hardcoded in
+      # plugin_constants.h, so it is NOT a secret here.
+      APTABASE_KEY: ${{ secrets.APTABASE_KEY }}
+      GOATCOUNTER_TOKEN: ${{ secrets.GOATCOUNTER_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history: the version's 4th component is `git rev-list --count
+          # HEAD` (matches the DLL FILEVERSION stamp). A shallow clone would
+          # count 1. Tags too, for reference.
+          fetch-depth: 0
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v3
+
+      # mxbmrp3.nsi uses `Target AMD64-Unicode` to emit a 64-bit installer — a
+      # directive only the negrutiu NSIS fork (https://github.com/negrutiu/nsis)
+      # supports. The official NSIS that `choco install nsis` provides rejects it
+      # (and choco didn't put makensis on PATH either), which is why the previous
+      # run failed with "makensis is not recognized". Use the fork's first-party
+      # installer action: it installs the negrutiu distro and registers makensis on
+      # PATH. The default x86 compiler still builds the AMD64 target (the 64-bit
+      # output is selected by the script directive, not the compiler arch), and it
+      # replaces the runner's preinstalled NSIS. Version pinned for reproducibility.
+      - name: Install NSIS (negrutiu 64-bit fork)
+        uses: negrutiu/nsis-install@v3
+        with:
+          distro: negrutiu
+          version: v3.12.7487.317
+
+      - name: Derive version (resource.h + commit count)
+        id: ver
+        shell: pwsh
+        run: |
+          $h = Get-Content mxbmrp3\resource.h -Raw
+          $maj = [regex]::Match($h, '(?m)^#define\s+VER_MAJOR\s+(\d+)').Groups[1].Value
+          $min = [regex]::Match($h, '(?m)^#define\s+VER_MINOR\s+(\d+)').Groups[1].Value
+          $pat = [regex]::Match($h, '(?m)^#define\s+VER_PATCH\s+(\d+)').Groups[1].Value
+          $bld = (git rev-list --count HEAD).Trim()
+          if (-not $maj) { Write-Error "could not read VER_MAJOR/MINOR/PATCH"; exit 1 }
+          $version = "$maj.$min.$pat.$bld"
+          $tag = "v$maj.$min.$pat"
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "tag=$tag"         | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Release version: $version  (tag $tag)"
+          # Release ("Create draft release" ON): the tag is auto-created from resource.h.
+          # The auto-updater reads a vX.Y.Z tag as build 0, so reusing an X.Y.Z a user
+          # already runs (their build is nonzero) would never reach them. Fail fast if the
+          # tag already exists — bump VER_* in resource.h first. (A dry run skips this.)
+          if ("${{ inputs.release }}" -eq "true") {
+            git fetch --tags --quiet origin 2>$null
+            if (git tag -l $tag) {
+              Write-Error "Tag $tag already exists. Bump VER_MAJOR/MINOR/PATCH in mxbmrp3\resource.h before cutting a release (a reused vX.Y.Z won't reach users on that version)."
+              exit 1
+            }
+          }
+
+      - name: Build All-Release (MXB + GPB + KRP)
+        shell: pwsh
+        run: |
+          # A Release (NDEBUG) build hard-errors unless the analytics keys are present.
+          # They come from the two env vars above (APTABASE_KEY / GOATCOUNTER_TOKEN),
+          # which the vcxproj injects as defines — so set those two as repo Actions
+          # Secrets before running this (a keyless build is not wired). The GoatCounter
+          # site code is public and hardcoded in plugin_constants.h, so it's not needed here.
+          msbuild mxbmrp3.sln /p:Configuration=All-Release /p:Platform=x64 /m /v:minimal
+
+      - name: Stage + package (zip)
+        id: pkg
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.ver.outputs.version }}"
+          $out = "dist\mxbmrp3-v$ver"
+          $stage = "dist\staging"
+          New-Item -ItemType Directory -Force -Path $out, "$stage\mxbmrp3_data" | Out-Null
+          Copy-Item -Recurse -Force mxbmrp3_data\* "$stage\mxbmrp3_data\"
+          Copy-Item build\MXB-Release\mxbmrp3.dlo      "$stage\mxbmrp3.dlo"
+          Copy-Item build\GPB-Release\mxbmrp3_gpb.dlo  "$stage\mxbmrp3_gpb.dlo"
+          Copy-Item build\KRP-Release\mxbmrp3_krp.dlo  "$stage\mxbmrp3_krp.dlo"
+          Copy-Item README.md, LICENSE, THIRD_PARTY_LICENSES.md $stage\
+          # Render the manual-install guide from the shared template (same file
+          # make_release.bat uses) so the CI zip and a local zip are identical.
+          (Get-Content packaging\release_readme.txt) -replace '__VERSION__', $ver | Set-Content "$stage\README.txt"
+          # Package with 7-Zip at max Deflate (-mx=9) rather than Compress-Archive's
+          # Optimal — a smaller archive that is still a standard Deflate .zip Windows
+          # Explorer can double-click-extract (matches make_release.bat's tool/level, so
+          # the CI and local zips stay identical). A stronger method (solid LZMA, like the
+          # installer) would need 7-Zip/WinRAR to open, so it's intentionally not used here.
+          $outAbs = (Resolve-Path $out).Path
+          Push-Location $stage
+          & 7z a -tzip -mx=9 "$outAbs\mxbmrp3.zip" "*" | Out-Null
+          $rc = $LASTEXITCODE
+          Pop-Location
+          if ($rc -ne 0) { Write-Error "7z zip packaging failed (exit $rc)"; exit $rc }
+          "outdir=$out" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Build NSIS installer
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.ver.outputs.version }}"
+          # NSIS resolves File/OutFile relative to the .nsi's own dir (packaging\),
+          # not CWD — so pass ABSOLUTE paths for the staging source and output dir.
+          $out   = (Resolve-Path "${{ steps.pkg.outputs.outdir }}").Path
+          $stage = (Resolve-Path "dist\staging").Path
+          makensis "-DPLUGIN_VERSION=$ver" "-DOUTPUT_DIR=$out" "-DPLUGIN_SOURCE_PATH=$stage" packaging\mxbmrp3.nsi
+
+      # Archive the debug symbols (.pdb) + linker maps (.map) for all three games.
+      # A crash reported by the analytics dashboard is just "mxbmrp3.dlo+0xNNNN" — an
+      # RVA that only resolves to a function against the SYMBOLS FOR THAT EXACT BUILD.
+      # Without this, the .pdb lives only on the build machine and the next rebuild
+      # overwrites it, so a month-old crash offset becomes unresolvable. Zipped
+      # because .pdb files are large; kept as a separate artifact so it never ships
+      # inside the installer/zip that users download.
+      - name: Package debug symbols (pdb + map)
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.ver.outputs.version }}"
+          $out = "${{ steps.pkg.outputs.outdir }}"
+          $syms = Get-ChildItem -Path build\MXB-Release, build\GPB-Release, build\KRP-Release `
+                    -Include *.pdb, *.map -Recurse -ErrorAction SilentlyContinue
+          if (-not $syms) { Write-Error "no symbol files (.pdb/.map) found to archive"; exit 1 }
+          Compress-Archive -Path $syms.FullName -DestinationPath "$out\mxbmrp3-symbols-v$ver.zip" -Force
+          Write-Host "Symbols archived:"
+          $syms | ForEach-Object { Write-Host ("  {0,-24} {1,6:N1} MB" -f $_.Name, ($_.Length/1MB)) }
+
+      # CycloneDX SBOM of the third-party code inside the DLL, generated from
+      # mxbmrp3/vendor/vendored.json (GitHub's dep graph can't see vendored C++).
+      # Shipped libs are scope=required, test-only (doctest) scope=optional.
+      - name: Generate SBOM (CycloneDX)
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.ver.outputs.version }}"
+          $out = "${{ steps.pkg.outputs.outdir }}"
+          python tools\gen_sbom.py --version $ver --out "$out\mxbmrp3.cdx.json"
+
+      # Always publish the zip + installer as downloadable workflow artifacts. This is
+      # what makes a manual (workflow_dispatch) run on a branch a real DRY RUN: it
+      # validates the whole MSVC build + NSIS packaging and hands you the files to
+      # inspect / test-install, without creating a Release or a tag.
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: mxbmrp3-v${{ steps.ver.outputs.version }}
+          path: |
+            ${{ steps.pkg.outputs.outdir }}/mxbmrp3-Setup.exe
+            ${{ steps.pkg.outputs.outdir }}/mxbmrp3.zip
+            ${{ steps.pkg.outputs.outdir }}/mxbmrp3.cdx.json
+          if-no-files-found: error
+
+      # Symbols as a SEPARATE artifact (not attached to the public Release): keep them
+      # for triage without pushing large .pdb files at end users. Retained 90 days.
+      - name: Upload debug symbols
+        uses: actions/upload-artifact@v7
+        with:
+          name: mxbmrp3-symbols-v${{ steps.ver.outputs.version }}
+          path: ${{ steps.pkg.outputs.outdir }}/mxbmrp3-symbols-v${{ steps.ver.outputs.version }}.zip
+          if-no-files-found: error
+
+      # Cut a DRAFT Release when the button was run with "Create draft release" ON.
+      # A plain dry-run dispatch stops at the artifacts above. action-gh-release
+      # creates the vX.Y.Z tag (from resource.h) at this commit, since a Release must
+      # be tag-backed — so the tag is a byproduct of releasing, never a manual step.
+      # draft:true means it waits for you to Publish; the body states the tests passed
+      # and lists every asset, and fail_on_unmatched_files means the job errors rather
+      # than shipping a release missing a file.
+      - name: Create draft GitHub Release
+        if: inputs.release
+        uses: softprops/action-gh-release@v3
+        with:
+          name: MXBMRP3 ${{ steps.ver.outputs.tag }}
+          tag_name: ${{ steps.ver.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          draft: true          # opens as a draft so you review before publishing
+          fail_on_unmatched_files: true
+          body: |
+            ### Downloads
+
+            | File | For |
+            |------|-----|
+            | `mxbmrp3-Setup.exe` | Guided installer (recommended) |
+            | `mxbmrp3.zip` | Manual install |
+            | `mxbmrp3-symbols-v${{ steps.ver.outputs.version }}.zip` | Debug symbols — crash triage only, not needed to run the plugin |
+            | `mxbmrp3.cdx.json` | CycloneDX SBOM — third-party components inside the DLL |
+
+            ✅ Built from `${{ github.sha }}` with the full test suite passing — [run log](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
+          files: |
+            ${{ steps.pkg.outputs.outdir }}/mxbmrp3-Setup.exe
+            ${{ steps.pkg.outputs.outdir }}/mxbmrp3.zip
+            ${{ steps.pkg.outputs.outdir }}/mxbmrp3.cdx.json
+            ${{ steps.pkg.outputs.outdir }}/mxbmrp3-symbols-v${{ steps.ver.outputs.version }}.zip

@@ -1,0 +1,74 @@
+# ============================================================================
+# Vendored-dependency freshness check.
+#
+# Dependabot only understands package-manager manifests, so the C/C++ libraries
+# we vendor as copied source (miniz, cpp-httplib, nlohmann/json, doctest) are
+# invisible to it — no update PRs, and no security alerts. This job reads
+# mxbmrp3/vendor/vendored.json, compares each library's pinned version against
+# its upstream latest release, and opens (or updates / closes) a single tracking
+# issue. It's a nudge to review + re-vendor, not an auto-bump.
+# ============================================================================
+name: vendored-deps
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"     # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      MANIFEST: mxbmrp3/vendor/vendored.json
+      LABEL: vendored-deps
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Compare vendored versions with upstream releases
+        run: |
+          set -euo pipefail
+          : > behind.md
+          while IFS=$'\t' read -r name repo cur; do
+            if [ -z "$repo" ] || [ "$repo" = "null" ]; then continue; fi
+            latest=$(gh api "repos/$repo/releases/latest" --jq '.tag_name' 2>/dev/null | sed 's/^[vV]//') || latest=""
+            if [ -z "$latest" ]; then
+              echo "note: no published release for $repo — skipping"
+              continue
+            fi
+            curn=$(printf '%s' "$cur" | sed 's/^[vV]//')
+            newest=$(printf '%s\n%s\n' "$curn" "$latest" | sort -V | tail -1)
+            if [ "$curn" != "$latest" ] && [ "$newest" = "$latest" ]; then
+              echo "BEHIND: $name $curn -> $latest"
+              printf -- '- **%s** (`%s`): vendored `%s`, latest `%s` — https://github.com/%s/releases/latest\n' \
+                "$name" "$repo" "$curn" "$latest" "$repo" >> behind.md
+            else
+              echo "ok: $name $curn (upstream latest $latest)"
+            fi
+          done < <(jq -r '.deps[] | [.name, (.repo // ""), .version] | @tsv' "$MANIFEST")
+
+      - name: Open, update, or close the tracking issue
+        run: |
+          set -euo pipefail
+          gh label create "$LABEL" --color BFD4F2 --description "Vendored C/C++ dep behind upstream" --force >/dev/null 2>&1 || true
+          existing=$(gh issue list --label "$LABEL" --state open --json number --jq '.[0].number // empty')
+          if [ -s behind.md ]; then
+            body=$(printf '%s\n\n%s\n\n_Bump the file(s) at the library'\''s `path` in `%s`, then update its `version`._\n' \
+              "These vendored C/C++ dependencies are behind their upstream latest release:" "$(cat behind.md)" "$MANIFEST")
+            if [ -n "$existing" ]; then
+              gh issue edit "$existing" --body "$body"
+              echo "updated tracking issue #$existing"
+            else
+              gh issue create --title "Vendored dependencies are behind upstream" --label "$LABEL" --body "$body"
+            fi
+          elif [ -n "$existing" ]; then
+            gh issue close "$existing" --comment "All vendored dependencies are up to date. Closing automatically."
+            echo "closed tracking issue #$existing"
+          else
+            echo "all vendored dependencies up to date"
+          fi

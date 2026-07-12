@@ -40,9 +40,9 @@
 #
 # image files are treated as binary by default.
 ###############################################################################
-#*.jpg   binary
-#*.png   binary
-#*.gif   binary
+*.jpg   binary
+*.png   binary
+*.gif   binary
 
 ###############################################################################
 # diff behavior for common document formats
@@ -61,3 +61,21 @@
 #*.PDF   diff=astextplain
 #*.rtf   diff=astextplain
 #*.RTF   diff=astextplain
+
+###############################################################################
+# GitHub Linguist — vendored third-party code
+#
+# Exclude libraries we bundle but did not author from the repo's language
+# statistics, and collapse them by default in PR/commit diffs. Purely a GitHub
+# presentation setting (no effect on the build). Our own code — including the
+# piboso *_api.cpp DLL exports and api_guard.h — is deliberately NOT marked, so
+# it still counts.
+###############################################################################
+mxbmrp3/vendor/nlohmann/**            linguist-vendored
+mxbmrp3/vendor/httplib/**             linguist-vendored
+mxbmrp3/vendor/miniz/**               linguist-vendored
+mxbmrp3/vendor/steam/**               linguist-vendored
+tests/integration/harness/doctest.h  linguist-vendored
+# PiBoSo game-API struct headers are the games' third-party API surface; the
+# *_api.cpp exports next to them are our implementation and stay counted.
+mxbmrp3/vendor/piboso/*_api.h         linguist-vendored

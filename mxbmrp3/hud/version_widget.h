@@ -25,7 +25,6 @@ public:
 
     // Update notification mode - auto-enables widget when update is available
     void showUpdateNotification();
-    bool isShowingUpdateNotification() const { return m_showingUpdateNotification; }
 
     // Donation nudge - shown once after a successful auto-update install
     void showDonationNudge();

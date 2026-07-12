@@ -74,7 +74,7 @@ void FuelWidget::update() {
     updateFuelTracking();
 
     // OPTIMIZATION: Only rebuild render data when visible
-    if (isVisible()) {
+    if (isVisibleAnySurface()) {
         rebuildRenderData();
     }
     clearDataDirty();
@@ -405,7 +405,7 @@ void FuelWidget::resetToDefaults() {
     m_fScale = 1.0f;
     m_enabledRows = ROW_DEFAULT;  // Reset row visibility
     // Note: fuelUnit is NOT reset here - it's a global preference, not per-profile
-    setPosition(0.814f, 0.8769f);
+    setPosition(0.814f, 0.86828f);
     resetFuelTracking();
     setDataDirty();
 }

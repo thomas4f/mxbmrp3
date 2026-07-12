@@ -57,7 +57,7 @@ int IdealLapHud::getEnabledRowCount() const {
 
 void IdealLapHud::update() {
     // OPTIMIZATION: Skip processing when not visible
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -371,7 +371,7 @@ void IdealLapHud::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.2695f, 0.7659f);
+    setPosition(0.2695f, 0.75094f);
     m_enabledRows = ROW_DEFAULT;
     setDataDirty();
 }

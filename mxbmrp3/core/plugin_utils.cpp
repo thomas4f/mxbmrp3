@@ -246,10 +246,17 @@ const char* PluginUtils::getEventTypeString(int eventType) {
     }
 }
 
-const char* PluginUtils::serverLabel(int serverType, const char* serverName) {
+const char* PluginUtils::serverLabel(int serverType, const char* serverName, int riderCount) {
     namespace SL = PluginConstants::DisplayStrings::ServerLabel;
-    if (serverType == 0) return SL::TESTING;  // known-offline / solo
-    return (serverName && serverName[0] != '\0') ? serverName : SL::UNKNOWN;
+    if (serverType == 0) return SL::TESTING;                          // MX Bikes: known offline / solo
+    if (serverName && serverName[0] != '\0') return serverName;      // named server (MX Bikes online)
+    if (serverType > 0) return SL::UNKNOWN;                          // online but nameless (rare/anomalous)
+    // serverType < 0: the game's API didn't report it (GP Bikes / KRP don't expose
+    // serverType yet; MX Bikes leaves it unknown while spectating). These games have
+    // no AI, so >1 rider in the session means real opponents -> online. Without a
+    // server name that's the most we can say ("Online"); a lone session stays
+    // "Unknown" until they join a race.
+    return (riderCount > 1) ? SL::ONLINE : SL::UNKNOWN;
 }
 
 const char* PluginUtils::getSessionString(int eventType, int session) {

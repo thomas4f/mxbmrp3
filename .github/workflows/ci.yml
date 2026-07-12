@@ -1,0 +1,251 @@
+# ============================================================================
+# CI (Linux). The shipping plugin is built with MSVC (mxbmrp3.sln) and is NOT
+# built here. These jobs guard the platform-independent logic on Linux:
+#
+#   unit-tests        — pure-logic unit tests (color math, formatting, parsing);
+#                       just a C++17 compiler. Runs on every push.
+#   web-overlay       — drive the web overlay's ?demo mode in headless Chromium
+#                       (Playwright) and assert the rendered DOM. Node only, no
+#                       Wine. Gated to PRs / main / manual.
+#   cross-build-smoke — cross-compile the whole plugin to a Windows DLL with
+#                       mingw-w64 and run the headless test suite under Wine:
+#                       the doctest integration tests (tests/integration/tests/ — smoke
+#                       lifecycle, race standings/gaps/DSQ, multi-session logic,
+#                       auto-director battles, reset scope, version ordering),
+#                       then the specialized modalities (settings persistence,
+#                       config/callback fuzzing, CPU perf baseline, and the NSIS
+#                       installer mechanics — makensis-built Setup.exe driven
+#                       headless under Wine). Each drives the real callbacks and
+#                       asserts the plugin's own /api/state JSON (or, for the
+#                       installer, the on-disk + registry outcomes). Catches
+#                       portability breakage AND logic regressions in the real
+#                       init/adapter/PluginData/HUD/HTTP pipeline, no game or
+#                       Windows needed. See tests/integration/ and TESTING.md.
+# ============================================================================
+name: tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:        # allow running the full suite on a branch on demand
+  workflow_call:            # let release.yml run this as a pre-release gate
+    inputs:
+      full:
+        description: "Force every job to run (used by the release gate)."
+        type: boolean
+        default: false
+
+# Cancel an in-progress run when a newer commit is pushed to the same ref, so
+# rapid iterative pushes don't pile up runs. (Each ref keeps only its latest.)
+# When run as the release gate (inputs.full), key by run_id instead so an
+# unrelated push to the same ref can't cancel the release's test run.
+concurrency:
+  group: ci-${{ inputs.full && github.run_id || github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: these jobs only check out and run tests — no writes. (When
+# release.yml calls this workflow as its gate, that job keeps read-only too; the
+# release job scopes its own contents:write separately.)
+permissions:
+  contents: read
+
+jobs:
+  # Fast feedback: pure logic, seconds, just a compiler. Runs in parallel with
+  # the heavier Wine job below so a logic break surfaces almost immediately.
+  unit-tests:
+    name: Pure-logic unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Compiler version
+        run: g++ --version
+
+      - name: Build & run tests
+        run: ./tests/unit/run_tests.sh
+
+      # The portable .fnt font generator must keep reproducing the shipped
+      # bitmap fonts (structure/metrics/atlas) — regression guard for the tool.
+      - name: Font generator (mxbmrp3_fontgen) regression
+        run: ./tools/mxbmrp3_fontgen/test.sh
+
+  web-overlay:
+    name: Web overlay (Playwright)
+    # Browser download + run (~1-2 min billable). Gate it like the Wine job:
+    # PRs, main, and manual dispatch. Feature-branch pushes skip it; the overlay
+    # is covered at PR time.
+    if: >-
+      inputs.full ||
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch' ||
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: tests/web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: tests/web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Cache the downloaded Chromium across runs, keyed on the pinned Playwright
+      # version (which determines the browser revision).
+      - name: Cache Playwright browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('tests/web/package-lock.json') }}
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run overlay tests
+        run: npm test
+
+  cross-build-smoke:
+    name: Cross-compile (mingw) + run under Wine
+    # The heavy job (~4-8 min of billable minutes) is metered on a private repo,
+    # so run it only where it earns its cost: pull requests, main, and manual
+    # dispatch. Feature-branch pushes get the fast unit job above for quick
+    # feedback; the full Wine matrix (which covers the web overlay's JSON
+    # contract too) gates the PR before merge. Public-repo Actions are free, so
+    # if this suite ever moves to the public mirror, drop this guard.
+    if: >-
+      inputs.full ||
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch' ||
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install mingw-w64 + Wine
+        run: |
+          sudo apt-get update -qq
+          # Everything here is 64-bit: the plugin cross-builds to an x86_64 DLL, the
+          # test harnesses are x86_64, and the NSIS installer is amd64. So we install
+          # 64-bit Wine ONLY — no i386 architecture, no wine32:i386. Beyond slimming the
+          # install (libwine:i386 alone is a ~100 MB download every run), dropping the
+          # 32-bit side is a correctness fix: with wine32 present, Debian's /usr/bin/wine
+          # wrapper prefers the 32-bit loader, whose reg.exe reads the WOW6432Node-
+          # redirected view and can't see the amd64 installer's 64-bit registry keys —
+          # which silently broke the installer test's HKLM assertions.
+          # `wine` provides the /usr/bin/wine launcher; `wine64` alone (Ubuntu's
+          # 9.0 repack) ships only libwine, no launcher — which is why the Wine
+          # test job had been silently failing at "wine not found".
+          sudo apt-get install -y --no-install-recommends \
+            gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 ccache wine wine64 nsis
+          # std::thread/std::mutex require the posix threading variant.
+          sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
+          sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
+          # Fail loudly HERE if the launcher still isn't on PATH, rather than
+          # letting every downstream test skip with "wine not found".
+          if ! command -v wine >/dev/null; then
+            for c in /usr/lib/wine/wine64 /usr/lib/x86_64-linux-gnu/wine/wine64; do
+              [ -x "$c" ] && { sudo ln -sf "$c" /usr/bin/wine; break; }
+            done
+          fi
+          wine --version
+
+      # Persist ccache across runs so the 117-TU cross-build is near-instant when
+      # unchanged (the Makefile wraps the compiler in ccache). Content-hashed, so
+      # the sha-keyed save + prefix restore-key is the standard pattern.
+      - name: Cache ccache
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ runner.os }}-
+
+      - name: Cross-compile plugin -> Windows DLL
+        run: ./tests/integration/build.sh
+
+      # The build above (and the whole Wine suite) compiles ONLY the MX Bikes config,
+      # where every GAME_HAS_* feature is on. Syntax-check the shared sources under the
+      # GP Bikes / Kart Racing Pro defines too, so a compile error that only appears when
+      # a feature macro is OFF fails here instead of in a manual MSVC release build (e.g.
+      # a GAME_HAS_*-gated include whose type is used unconditionally).
+      - name: Syntax-check GPB/KRP game configs
+        run: ./tests/integration/check_game_configs.sh
+
+      # Every doctest integration test in tests/integration/tests/ (smoke lifecycle,
+      # race standings/gaps/DSQ, multi-session business logic, auto-director
+      # battle detection, Reset All scope, update-checker version ordering). Each
+      # loads the DLL under Wine, drives the real callbacks / test hooks, and
+      # asserts the plugin's own /api/state JSON or re-saved settings.ini. One
+      # runner, one step; failures gate on exit code.
+      - name: Integration tests (doctest + Wine)
+        run: ./tests/integration/run_tests.sh
+
+      - name: Settings persistence round-trip (user changes must survive restart)
+        run: ./tests/integration/run_persist_test.sh
+
+      - name: Fuzz config files (malformed settings/JSON must not crash)
+        run: ./tests/integration/run_fuzz.sh
+
+      - name: Fuzz DLL-boundary callbacks (adversarial sizes/counts must not crash)
+        run: ./tests/integration/run_fuzz_callbacks.sh
+
+      - name: CPU performance baseline (report + gross-regression gate)
+        run: ./tests/integration/run_perf.sh
+
+      # Build the NSIS installer and drive Setup.exe + uninstaller headless under
+      # Wine, asserting the install/uninstall/registry/data-wipe mechanics. Uses
+      # makensis (nsis) + wine; independent of the plugin DLL build above.
+      - name: Installer mechanics (makensis + Wine)
+        run: ./tests/integration/run_installer_test.sh
+
+  # Static analysis (cppcheck). Report-only: it annotates findings and writes them
+  # to the run summary but does NOT fail the build (continue-on-error), because
+  # cppcheck versions drift between runner images. The committed baseline is clean,
+  # so any annotation here is a new finding worth a look. To make it blocking later,
+  # drop continue-on-error. Gated like the other heavy jobs; vendored code excluded.
+  cppcheck:
+    name: Static analysis (cppcheck, report-only)
+    if: >-
+      inputs.full ||
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch' ||
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install cppcheck
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends cppcheck
+
+      - name: Run cppcheck (warning severity, MXB config, vendor excluded)
+        run: |
+          cppcheck --version
+          # --platform=win64 gives correct type sizes; --max-configs=1 + a fixed
+          # config avoids the combinatorial #ifdef explosion; vendored libs skipped.
+          cppcheck --quiet --enable=warning --inline-suppr --std=c++17 --language=c++ \
+            --platform=win64 --max-configs=1 -DGAME_MXBIKES=1 -D_WIN32=1 \
+            -I mxbmrp3 -i mxbmrp3/vendor \
+            --suppress=missingInclude --suppress=missingIncludeSystem \
+            --suppressions-list=.cppcheck-suppressions \
+            --template='{file}:{line}: {severity}: {message} [{id}]' \
+            -j"$(nproc)" mxbmrp3 2> cppcheck.txt || true
+          if [ -s cppcheck.txt ]; then
+            { echo "## cppcheck findings (report-only)"; echo; echo '```'; cat cppcheck.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::cppcheck reported $(wc -l < cppcheck.txt) finding(s) — see the job summary"
+            cat cppcheck.txt
+          else
+            echo "cppcheck: no findings" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi

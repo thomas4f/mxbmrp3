@@ -46,7 +46,7 @@ void GForceWidget::resetTracking() {
 }
 
 void GForceWidget::update() {
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         // While hidden, drop any "was crashed" memory so that becoming visible while
         // currently crashed re-fires the rising-edge snap. Without this, the sequence
         // [crash → hide → recover → crash again → show] would miss the second snap
@@ -440,7 +440,7 @@ void GForceWidget::resetToDefaults() {
     m_bShowMaxMarker = true;
     m_maxMarkerLingerFrames = 60;
     m_maxScale = 20.0f;
-    setPosition(0.5995f, 0.8769f);
+    setPosition(0.5995f, 0.86828f);
     resetTracking();
     m_wasCrashed = false;
     m_lastDisplayedRaceNum = -1;

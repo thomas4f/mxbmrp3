@@ -30,7 +30,7 @@ HelmetOverlayHud::HelmetOverlayHud() {
 
 void HelmetOverlayHud::update() {
     // Always rebuild when visible: tilt + vibration follow telemetry every frame.
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;

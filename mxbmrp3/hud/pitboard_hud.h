@@ -86,9 +86,6 @@ public:
         return (it != m_layouts.end()) ? &it->second : nullptr;
     }
 
-    // Check if layout exists (for save optimization)
-    bool hasLayout(int variant) const { return m_layouts.find(variant) != m_layouts.end(); }
-
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;
     friend class SettingsManager;
@@ -122,7 +119,6 @@ private:
     // Base position (0,0) - actual position comes from m_fOffsetX/m_fOffsetY
     static constexpr float START_X = 0.0f;
     static constexpr float START_Y = 0.0f;
-    static constexpr int BACKGROUND_WIDTH_CHARS = 14;  // Optimized for max content width
     static constexpr int MAX_ROW_COUNT = 5;            // Fixed row count for consistent background size
     static constexpr float LEFT_ALIGN_OFFSET = 0.175f;  // Position column (adjusted for 1920x1080)
     static constexpr float RIGHT_ALIGN_OFFSET = 0.825f; // Lap column (adjusted for 1920x1080)

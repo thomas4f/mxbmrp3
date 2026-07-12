@@ -32,7 +32,7 @@ GamepadWidget::GamepadWidget() {
 
 void GamepadWidget::update() {
     // OPTIMIZATION: Skip processing when not visible
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -55,20 +55,31 @@ void GamepadWidget::rebuildRenderData() {
     const auto dims = getScaledDimensions();
     const XInputData& xinput = XInputReader::getInstance().getData();
 
+    // Pin the gamepad's INTERIOR to fontSize, not the global LineHeights::NORMAL. The
+    // controller frame (backgroundWidth/Height) is fontSize-derived, but NORMAL (and the
+    // equal Padding::HUD_VERTICAL) is tuned to the snap grid and was bumped in #256
+    // (0.0222 -> ~0.0235) — which grew the rows and stick widths relative to the frame
+    // and pushed the buttons out of the bottom/right. 1.11 is the ratio NORMAL /
+    // FontSizes::NORMAL had when this layout was authored (0.0222 / 0.0200, cbbd1a2);
+    // using it reproduces that known-good geometry at every scale and locks the interior
+    // to the frame regardless of future grid retuning.
+    const float lineH = dims.fontSize * 1.11f;   // interior line height (formerly dims.lineHeightNormal)
+    const float padV  = lineH;                    // vertical padding (HUD_VERTICAL == NORMAL when authored)
+
     // Calculate dimensions
     float backgroundWidth = PluginUtils::calculateMonospaceTextWidth(BACKGROUND_WIDTH_CHARS, dims.fontSize)
         + dims.paddingH + dims.paddingH;
-    float stickHeight = STICK_HEIGHT_LINES * dims.lineHeightNormal;
+    float stickHeight = STICK_HEIGHT_LINES * lineH;
 
     const auto& layout = getCurrentLayout();
 
     // Layout: triggers/bumpers row + sticks row + buttons row (face/dpad/menu)
     // Content proportions unchanged - extra texture padding handled via background aspect ratio
-    float triggersHeight = dims.lineHeightNormal * 1.2f;
+    float triggersHeight = lineH * 1.2f;
     // Background height from current layout's texture aspect ratio
     // Multiply by UI_ASPECT_RATIO to convert from texture pixels to screen coordinates
     float backgroundHeight = backgroundWidth * (layout.backgroundHeight / layout.backgroundWidth) * UI_ASPECT_RATIO;
-    float stickWidthForLayout = STICK_HEIGHT_LINES * dims.lineHeightNormal / UI_ASPECT_RATIO;
+    float stickWidthForLayout = STICK_HEIGHT_LINES * lineH / UI_ASPECT_RATIO;
 
     setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + backgroundHeight);
 
@@ -91,9 +102,9 @@ void GamepadWidget::rebuildRenderData() {
         int ctrlNum = XInputReader::getInstance().getControllerIndex() + 1; // 0-based to 1-based
         char titleBuf[64];
         snprintf(titleBuf, sizeof(titleBuf), "Controller %d Not Connected", ctrlNum);
-        addString(titleBuf, centerX, centerY - dims.lineHeightNormal * 0.5f,
+        addString(titleBuf, centerX, centerY - lineH * 0.5f,
                   Justify::CENTER, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::NEGATIVE), dims.fontSize);
-        addString("Check MXBMRP3 Settings > General", centerX, centerY + dims.lineHeightNormal * 0.5f,
+        addString("Check MXBMRP3 Settings > General", centerX, centerY + lineH * 0.5f,
                   Justify::CENTER, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dims.fontSize * 0.8f);
         return;
     }
@@ -102,7 +113,7 @@ void GamepadWidget::rebuildRenderData() {
     addBackgroundQuad(START_X, START_Y, backgroundWidth, backgroundHeight);
 
     float contentStartX = START_X + dims.paddingH;
-    float contentStartY = START_Y + dims.paddingV;
+    float contentStartY = START_Y + padV;
     float currentY = contentStartY;
     float contentWidth = backgroundWidth - dims.paddingH * 2;
     float scale = getScale();
@@ -181,13 +192,13 @@ void GamepadWidget::rebuildRenderData() {
     // ========================================================================
     // ROW 3: D-Pad, Menu Buttons, Face Buttons
     // ========================================================================
-    float buttonRowY = currentY + dims.lineHeightNormal * 0.15f;
+    float buttonRowY = currentY + lineH * 0.15f;
 
     // D-Pad (left side, aligned with left stick) - with offset
     float dpadOffsetX = layout.dpadX * scale;
     float dpadOffsetY = layout.dpadY * scale;
     float dpadCenterX = contentStartX + stickWidthForLayout / 2 + dpadOffsetX;
-    float dpadCenterY = buttonRowY + dims.lineHeightNormal * 0.9f + dpadOffsetY;
+    float dpadCenterY = buttonRowY + lineH * 0.9f + dpadOffsetY;
 
     float dpadBtnWidth = backgroundWidth * (layout.dpadWidth / layout.backgroundWidth);
     float dpadBtnHeight = dpadBtnWidth * (layout.dpadHeight / layout.dpadWidth) * UI_ASPECT_RATIO;
@@ -212,23 +223,23 @@ void GamepadWidget::rebuildRenderData() {
     float menuBtnWidth = backgroundWidth * (layout.menuButtonWidth / layout.backgroundWidth);
     float menuBtnHeight = menuBtnWidth * (layout.menuButtonHeight / layout.menuButtonWidth) * UI_ASPECT_RATIO;
     float menuCenterX = contentStartX + contentWidth / 2 + menuOffsetX;
-    float menuCenterY = buttonRowY + dims.lineHeightNormal * 0.7f + menuBtnHeight / 2 + menuOffsetY;
+    float menuCenterY = buttonRowY + lineH * 0.7f + menuBtnHeight / 2 + menuOffsetY;
     float menuSpacing = menuBtnWidth * layout.menuButtonSpacing;
 
     // Back (select)
     addMenuButton(menuCenterX - menuSpacing - menuBtnWidth / 2, menuCenterY,
-                  menuBtnWidth, menuBtnHeight, xinput.buttonBack, nullptr);
+                  menuBtnWidth, menuBtnHeight, xinput.buttonBack);
 
     // Start
     addMenuButton(menuCenterX + menuSpacing + menuBtnWidth / 2, menuCenterY,
-                  menuBtnWidth, menuBtnHeight, xinput.buttonStart, nullptr);
+                  menuBtnWidth, menuBtnHeight, xinput.buttonStart);
 
     // Face buttons (right side, aligned with right stick) - diamond layout - with offset
     float faceOffsetX = layout.faceButtonsX * scale;
     float faceOffsetY = layout.faceButtonsY * scale;
     float faceButtonSize = backgroundWidth * (layout.faceButtonSize / layout.backgroundWidth) * UI_ASPECT_RATIO;
     float faceCenterX = contentStartX + stickWidthForLayout + stickSpacing + stickWidthForLayout / 2 + faceOffsetX;
-    float faceCenterY = buttonRowY + dims.lineHeightNormal * 0.9f + faceOffsetY;
+    float faceCenterY = buttonRowY + lineH * 0.9f + faceOffsetY;
     float faceSpacing = faceButtonSize * layout.faceButtonSpacing;
 
     // Top (Y / Triangle)
@@ -616,9 +627,7 @@ void GamepadWidget::addBumperButton(float centerX, float centerY, float width, f
 }
 
 void GamepadWidget::addMenuButton(float centerX, float centerY, float width, float height,
-                                   bool isPressed, const char* label) {
-    const auto dims = getScaledDimensions();
-
+                                   bool isPressed) {
     float ox = centerX, oy = centerY;
     applyOffset(ox, oy);
 
@@ -647,14 +656,6 @@ void GamepadWidget::addMenuButton(float centerX, float centerY, float width, flo
     buttonQuad.m_ulColor = PluginUtils::applyOpacity(buttonQuad.m_ulColor, m_fBackgroundOpacity);
     setQuadPositions(buttonQuad, ox - width / 2, oy - height / 2, width, height);
     m_quads.push_back(buttonQuad);
-
-    // Add label text (fades with the button)
-    if (label) {
-        float labelFontSize = dims.fontSize * 0.5f;
-        addString(label, centerX, centerY - labelFontSize * 0.4f, Justify::CENTER,
-            this->getFont(FontCategory::SMALL),
-            PluginUtils::applyOpacity(COLOR_MENUBTN, m_fBackgroundOpacity), labelFontSize);
-    }
 }
 
 void GamepadWidget::resetToDefaults() {
@@ -663,7 +664,7 @@ void GamepadWidget::resetToDefaults() {
     setTextureVariant(1);  // Default to texture variant 1
     m_fBackgroundOpacity = 1.0f;  // 100% opacity
     m_fScale = 1.0f;
-    setPosition(0.374f, 0.74137f);
+    setPosition(0.374f, 0.72748f);
     // Reset layouts to defaults
     initDefaultLayouts();
     setDataDirty();

@@ -10,7 +10,7 @@
 // Types of events that can be logged.
 // APPEND-ONLY: the HTTP server emits the raw integer value of this enum as the
 // event "type" (see http_server.cpp), and the web overlay's EVENT_TYPE_MAP
-// (mxbmrp3_data/web/app.js) indexes that value POSITIONALLY to pick its filter
+// (mxbmrp3_data/web/js/overlay-render.js) indexes that value POSITIONALLY to pick its filter
 // key. Inserting a value mid-list silently shifts every later event to the wrong
 // filter/label in the overlay. Add new types at the end and update EVENT_TYPE_MAP.
 enum class EventLogType : uint8_t {
@@ -41,6 +41,9 @@ enum class EventLogType : uint8_t {
     // Pit events
     PitEntry,             // Rider entered pits
     PitExit,              // Rider left pits
+
+    // Broadcast
+    Director,             // Auto-director decision/state change (cut, lock, manual, enable)
 };
 
 // Bitfield flags for enabling/disabling event types in settings
@@ -59,13 +62,16 @@ enum EventLogFlags : uint32_t {
     EVENT_LEADER_CHANGE      = 1 << 11,
     EVENT_PIT_ENTRY          = 1 << 12,
     EVENT_PIT_EXIT           = 1 << 13,
+    EVENT_DIRECTOR           = 1 << 14,
 
     EVENT_DEFAULT = EVENT_SESSION_STARTED | EVENT_FASTEST_LAP
                   | EVENT_RIDER_RETIRED | EVENT_RIDER_DSQ
                   | EVENT_OVERTIME | EVENT_FINAL_LAP | EVENT_RIDER_FINISHED
                   | EVENT_LEADER_CHANGE | EVENT_SESSION_STATE,
+                  // Note: EVENT_DIRECTOR is intentionally NOT in the defaults — it is an
+                  // opt-in broadcaster tool (director cuts are frequent), enabled per-session.
 
-    EVENT_ALL = (1 << 14) - 1  // All 14 event type bits
+    EVENT_ALL = (1 << 15) - 1  // All 15 event type bits
 };
 
 // Map EventLogType to its corresponding flag bit
@@ -89,6 +95,7 @@ inline uint32_t eventLogTypeToFlag(EventLogType type) {
     case EventLogType::LeaderChange:      return EVENT_LEADER_CHANGE;
     case EventLogType::PitEntry:          return EVENT_PIT_ENTRY;
     case EventLogType::PitExit:           return EVENT_PIT_EXIT;
+    case EventLogType::Director:           return EVENT_DIRECTOR;
     default: return 0;
     }
 }
@@ -101,6 +108,13 @@ struct EventLogEntry {
     std::chrono::system_clock::time_point systemTime;  // Wall clock time for display formatting
     char message[64];                   // Event text (e.g., "#42 set fastest lap")
     char detail[20];                    // Optional detail in PRIMARY color (e.g., "1:48.231", "03:00 + 2L")
+
+    // Optional icon-color override: a ColorSlot value (stored as int) that replaces the
+    // per-type default in EventLogHud::getIconColorForEvent(). -1 = use the type default.
+    // Used to tint specific director state-transition entries (lock / enabled / manual / ...)
+    // with the director button's state colors; see DirectorManager::logDirectorEvent().
+    // In-game only: the web overlay picks colors client-side and ignores this.
+    int iconColorSlot = -1;
 
     EventLogEntry()
         : type(EventLogType::SessionStarted), sessionTimeMs(0) {

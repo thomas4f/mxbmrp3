@@ -1,0 +1,143 @@
+# ============================================================================
+# Publish the current default-branch tree to the release repo as ONE commit.
+#
+# Creates a single commit whose tree IS this branch's tree, parented on the
+# target's main (`git commit-tree`), then fast-forwards the target by that one
+# commit — the whole tree in one squash, with no half-applied working-tree
+# copy. .gitignored files (build output, the stamped version_build.g.h) are
+# not in the tree, so they are never included.
+#
+# TWO MODES (dry-run by default, like release.yml):
+#   • DRY RUN — "Run workflow" with "Push" OFF: fetch the target's main and
+#               print `git diff --stat` of exactly what would change. Pushes
+#               nothing. Verify here first.
+#   • PUSH    — "Run workflow" with "Push" ON: same preview, then create the
+#               squashed commit and push it to the target's main.
+#
+# SETUP: add a fine-grained PAT with `contents: write` on the target repo as
+# the secret PUBLIC_REPO_TOKEN. See DEVELOPMENT.md -> Releases for the full flow.
+# ============================================================================
+name: mirror
+
+on:
+  workflow_dispatch:
+    inputs:
+      push:
+        description: "Push the squashed tree to public/main. Off = dry run (print the diff only)."
+        type: boolean
+        default: false
+
+# Read-only against THIS repo; the push to the public repo authenticates with
+# PUBLIC_REPO_TOKEN, not the workflow's GITHUB_TOKEN.
+permissions:
+  contents: read
+
+# Serialize mirror runs. Two overlapping pushes would race (the loser is
+# rejected as non-ff — safe, but noisy); queue instead of cancelling so an
+# in-flight push to public is never interrupted mid-operation.
+concurrency:
+  group: mirror
+  cancel-in-progress: false
+
+env:
+  PUBLIC_REPO: thomas4f/mxbmrp3
+  PUBLIC_BRANCH: main
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Guard: this ONLY ever publishes the default branch. workflow_dispatch
+      # can be launched from any ref (the "Use workflow from" dropdown), and a
+      # ticked run squashes that ref's tree onto the target's main — a different
+      # repo, so the blast radius is larger than an in-repo tag. Fail loudly
+      # (red X + message) rather than skip silently, so it's obvious why nothing
+      # was published. Compare against THIS repo's own default branch
+      # (ref-independent), not the target branch name — they happen to both be
+      # `main`, but they're distinct concepts (this repo's default vs the target).
+      - name: Guard - must run from the default branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [ "${{ github.ref_name }}" != "$DEFAULT_BRANCH" ]; then
+            echo "::error::mirror must be dispatched from the default branch ('$DEFAULT_BRANCH', got '${{ github.ref_name }}'). It publishes the default branch to public/${PUBLIC_BRANCH}; running it from another ref would push that ref's tree to public."
+            exit 1
+          fi
+
+      - name: Checkout the default branch
+        uses: actions/checkout@v7
+        with:
+          # Only the tree of the tip commit is published, but a full checkout is
+          # harmless and keeps `git` operations (diff, rev-parse) unrestricted.
+          fetch-depth: 1
+          # Don't let checkout persist the workflow's GITHUB_TOKEN as a global
+          # `http.https://github.com/.extraheader` Authorization header — it
+          # overrides the PAT embedded in the `public` remote URL below, so the
+          # push would authenticate as github-actions[bot] (no access to the
+          # target repo) and be rejected with 403. The `public` remote carries
+          # its own token in its URL, and nothing here needs the bot creds, so
+          # dropping the persisted header is safe.
+          persist-credentials: false
+
+      - name: Derive version (resource.h)
+        id: ver
+        run: |
+          h=mxbmrp3/resource.h
+          maj=$(grep -oP '^\s*#define\s+VER_MAJOR\s+\K[0-9]+' "$h")
+          min=$(grep -oP '^\s*#define\s+VER_MINOR\s+\K[0-9]+' "$h")
+          pat=$(grep -oP '^\s*#define\s+VER_PATCH\s+\K[0-9]+' "$h")
+          if [ -z "$maj" ] || [ -z "$min" ] || [ -z "$pat" ]; then
+            echo "::error::could not read VER_MAJOR/MINOR/PATCH from $h"; exit 1
+          fi
+          echo "version=$maj.$min.$pat" >> "$GITHUB_OUTPUT"
+          echo "Mirroring as: Release v$maj.$min.$pat"
+
+      - name: Add public remote + fetch its main
+        env:
+          TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::secret PUBLIC_REPO_TOKEN is not set (needs a PAT with contents:write on $PUBLIC_REPO)"; exit 1
+          fi
+          # The token is a masked secret, so it is redacted from the logs.
+          git remote add public "https://x-access-token:${TOKEN}@github.com/${PUBLIC_REPO}.git"
+          git fetch public "$PUBLIC_BRANCH"
+
+      - name: Preview changes (tree vs public/main)
+        run: |
+          echo "## Mirror preview: v${{ steps.ver.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          if git diff --quiet "public/${PUBLIC_BRANCH}" HEAD; then
+            echo "This tree and public/${PUBLIC_BRANCH} already have identical trees — nothing to mirror."
+            echo "_Trees are identical — nothing to mirror._" >> "$GITHUB_STEP_SUMMARY"
+            echo "identical=true" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          echo "identical=false" >> "$GITHUB_ENV"
+          echo "Files that would change on public/${PUBLIC_BRANCH}:"
+          git --no-pager diff --stat "public/${PUBLIC_BRANCH}" HEAD | tee /tmp/mirror_diff.txt
+          { echo '```'; cat /tmp/mirror_diff.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Push squashed commit to public
+        if: ${{ inputs.push && env.identical != 'true' }}
+        env:
+          ACTOR: ${{ github.actor }}
+        run: |
+          # One commit whose tree = HEAD's tree, parented on public/main.
+          # No working-tree mutation, so the squash can never be half-applied.
+          git config user.name  "$ACTOR"
+          git config user.email "${ACTOR}@users.noreply.github.com"
+          TREE=$(git rev-parse "HEAD^{tree}")
+          PARENT=$(git rev-parse "public/${PUBLIC_BRANCH}")
+          COMMIT=$(git commit-tree "$TREE" -p "$PARENT" -m "Release v${{ steps.ver.outputs.version }}")
+          echo "Created squashed commit $COMMIT (tree $TREE on top of $PARENT)"
+          # Parented on public/main, so this is always a fast-forward. If someone
+          # pushed to public between fetch and now it will be rejected — re-run.
+          git push public "${COMMIT}:refs/heads/${PUBLIC_BRANCH}"
+          echo "Pushed Release v${{ steps.ver.outputs.version }} to ${PUBLIC_REPO}@${PUBLIC_BRANCH}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dry-run notice
+        if: ${{ !inputs.push }}
+        run: |
+          echo "DRY RUN — nothing pushed. Re-run with 'Push to public' ticked to mirror."
+          echo "_Dry run — nothing pushed. Re-run with **Push to public** ticked to mirror._" >> "$GITHUB_STEP_SUMMARY"

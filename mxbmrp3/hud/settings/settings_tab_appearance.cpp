@@ -11,6 +11,7 @@
 #include "../../core/hud_manager.h"
 #include "../../core/plugin_data.h"
 #include "../../core/ui_config.h"
+#include "../../core/companion_window.h"
 
 using namespace PluginConstants;
 
@@ -65,6 +66,22 @@ bool SettingsHud::handleClickTabAppearance(const ClickRegion& region) {
             {
                 UiConfig& uiConfig = UiConfig::getInstance();
                 uiConfig.setTitleIcons(!uiConfig.getTitleIcons());
+                HudManager::getInstance().markAllHudsDirty();
+                rebuildRenderData();
+            }
+            return true;
+
+        case ClickRegion::DISPLAY_TARGET_TOGGLE:
+            {
+                // Cycle In-game -> Companion -> Both -> In-game, opening/closing the
+                // companion window to match. In-game suppression is applied live in
+                // HudManager::draw based on the target.
+                DisplayTarget cur = UiConfig::getInstance().getDisplayTarget();
+                DisplayTarget next = (cur == DisplayTarget::IN_GAME)   ? DisplayTarget::COMPANION
+                                   : (cur == DisplayTarget::COMPANION) ? DisplayTarget::BOTH
+                                                                       : DisplayTarget::IN_GAME;
+                UiConfig::getInstance().setDisplayTarget(next);
+                CompanionWindow::getInstance().setEnabled(next != DisplayTarget::IN_GAME);
                 HudManager::getInstance().markAllHudsDirty();
                 rebuildRenderData();
             }
@@ -128,6 +145,43 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
     // === DISPLAY SECTION ===
     // Shown first so units/format sit at the top of the Appearance tab.
     ctx.addSectionHeader("Display");
+
+    // HUD display target: In-game / Companion (standalone window) / Both. First
+    // control in the tab. A < value > cycler with friendly labels; opens/closes the
+    // companion window on change.
+    {
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "appearance.display_target"));
+
+        ctx.parent->addString("HUD Display", ctx.labelX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
+
+        DisplayTarget target = UiConfig::getInstance().getDisplayTarget();
+        const char* valueLabel = (target == DisplayTarget::COMPANION) ? "Companion"
+                               : (target == DisplayTarget::BOTH)      ? "Both"
+                                                                      : "In-game";
+        float currentX = ctx.controlX;
+
+        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::DISPLAY_TARGET_TOGGLE, nullptr));
+        currentX += cw * 2;
+
+        std::string formattedValue = ctx.formatValue(valueLabel, VALUE_WIDTH, false);
+        ctx.parent->addString(formattedValue.c_str(), currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getPrimary(), ctx.fontSize);
+        currentX += cw * VALUE_WIDTH;
+
+        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
+            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::DISPLAY_TARGET_TOGGLE, nullptr));
+
+        ctx.currentY += ctx.lineHeightNormal;
+    }
 
     // Speed unit toggle
     {

@@ -62,7 +62,7 @@ void StatsHud::update() {
         }
     }
 
-    if (isVisible()) {
+    if (isVisibleAnySurface()) {
         checkFrequentUpdates();
         processDirtyFlags();
     } else {
@@ -93,7 +93,7 @@ int StatsHud::getColumnCount() const {
 }
 
 int StatsHud::getRowCount() const {
-    return DATA_ROWS;  // Column headers share the title row
+    return DATA_ROWS + 1;  // a dedicated column-header row (below the title) + the data rows
 }
 
 bool StatsHud::computeLayout(Layout& out) const {
@@ -137,14 +137,14 @@ void StatsHud::rebuildLayout() {
     // Title
     positionString(stringIndex, lay.contentStartX, currentY);
     stringIndex++;
+    currentY += lay.titleHeight;
 
-    // Column headers — on the title's second row
-    float headerY = currentY + lay.dim.lineHeightNormal;
+    // Column headers — their own row below the title (like StandingsHud)
     float labelOffset = labelRowYOffset(lay.dim);  // Headers/row labels render at Small size, centered
     for (int i = 0; i < lay.cols; i++) {
-        positionString(stringIndex++, lay.col[i], headerY + labelOffset);
+        positionString(stringIndex++, lay.col[i], currentY + labelOffset);
     }
-    currentY += lay.titleHeight;
+    currentY += lay.dim.lineHeightNormal;
 
     // Data rows: label + value per column
     for (int row = 0; row < DATA_ROWS; row++) {
@@ -209,14 +209,14 @@ void StatsHud::rebuildRenderData() {
     // Title
     addTitleString("Stats", lay.contentStartX, currentY, Justify::LEFT,
         this->getFont(FontCategory::TITLE), primaryColor, lay.dim.fontSizeLarge);
+    currentY += lay.titleHeight;
 
-    // Column headers — on the title's second row
-    float headerY = currentY + lay.dim.lineHeightNormal;
+    // Column headers — their own row below the title (like StandingsHud)
     for (int i = 0; i < lay.cols; i++) {
-        addLabel(headerNames[i], lay.col[i], headerY, Justify::RIGHT,
+        addLabel(headerNames[i], lay.col[i], currentY, Justify::RIGHT,
             this->getFont(FontCategory::STRONG), labelColor, lay.dim);
     }
-    currentY += lay.titleHeight;
+    currentY += lay.dim.lineHeightNormal;
 
     // Helper: add a row with label + one value per enabled column
     struct ColValue { const char* text; unsigned long color; };
@@ -525,6 +525,6 @@ void StatsHud::resetToDefaults() {
     m_showLap = true;
     m_showSession = true;
     m_showAllTime = false;
-    setPosition(0.7315f, 0.6105f);
+    setPosition(0.7315f, 0.62188f);
     setDataDirty();
 }

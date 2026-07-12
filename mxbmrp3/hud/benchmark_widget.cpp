@@ -10,7 +10,10 @@
 #include <string>
 #include <ctime>
 
+#include <windows.h>  // CreateDirectoryA
+
 #include "../diagnostics/logger.h"
+#include "../core/atomic_file_writer.h"
 #include "../core/plugin_utils.h"
 #include "../core/plugin_data.h"
 #include "../core/color_config.h"
@@ -106,7 +109,7 @@ void BenchmarkWidget::sampleFrameTime() {
 }
 
 void BenchmarkWidget::update() {
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -343,16 +346,25 @@ void BenchmarkWidget::rebuildRenderData() {
 bool BenchmarkWidget::exportReport(const char* savePath) const {
     if (!savePath || savePath[0] == '\0') return false;
 
-    // Build directory path: savePath/mxbmrp3/ (matches settings and stats convention)
+    // Build directory path: savePath/mxbmrp3/benchmarks/ — reports get their own subfolder
+    // so they don't clutter the plugin config root (which holds settings/stats/log).
     std::string dir = std::string(savePath);
     if (!dir.empty() && dir.back() != '/' && dir.back() != '\\') {
         dir += '\\';
     }
     dir += "mxbmrp3";
+    // Ensure the parent (usually already there via logger/settings) and the benchmarks
+    // subfolder exist. CreateDirectoryA is idempotent (ignores ERROR_ALREADY_EXISTS) and
+    // AtomicFileWriter won't create parents on its own.
+    CreateDirectoryA(dir.c_str(), nullptr);
+    dir += "\\benchmarks";
+    CreateDirectoryA(dir.c_str(), nullptr);
 
-    // Build file path with timestamp: savePath/mxbmrp3/benchmark_YYYYMMDD_HHMMSS.txt
+    // Build file path with timestamp: savePath/mxbmrp3/benchmarks/benchmark_YYYYMMDD_HHMMSS.txt
     time_t now = time(nullptr);
     struct tm timeInfo;
+    // localtime_s writes timeInfo (output param); cppcheck can't model that.
+    // cppcheck-suppress uninitvar
     localtime_s(&timeInfo, &now);
     char timestamp[64];
     strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", &timeInfo);
@@ -360,17 +372,16 @@ bool BenchmarkWidget::exportReport(const char* savePath) const {
     strftime(fileTimestamp, sizeof(fileTimestamp), "%Y%m%d_%H%M%S", &timeInfo);
     std::string filePath = dir + "\\benchmark_" + fileTimestamp + ".txt";
 
-    FILE* f = nullptr;
-    fopen_s(&f, filePath.c_str(), "w");
-    if (!f) {
-        DEBUG_WARN_F("BenchmarkWidget: Failed to open %s for writing", filePath.c_str());
-        return false;
-    }
+    // Build the whole report into a string, then hand it to the shared atomic writer (temp
+    // file + MoveFileExA replace) — the same path every persisted file uses. snprintf per line
+    // preserves the exact column formatting the old fprintf calls produced.
+    std::string out;
+    char line[256];
 
-    fprintf(f, "MXBMRP3 Benchmark Report\n");
-    fprintf(f, "Version: %s\n", PluginConstants::PLUGIN_VERSION);
-    fprintf(f, "Date: %s\n", timestamp);
-    fprintf(f, "Snapshot interval: %d frames\n", SNAPSHOT_INTERVAL_FRAMES);
+    out += "MXBMRP3 Benchmark Report\n";
+    snprintf(line, sizeof(line), "Version: %s\n", PluginConstants::PLUGIN_VERSION); out += line;
+    snprintf(line, sizeof(line), "Date: %s\n", timestamp); out += line;
+    snprintf(line, sizeof(line), "Snapshot interval: %d frames\n", SNAPSHOT_INTERVAL_FRAMES); out += line;
 
     // Session duration + FPS (min/avg/max derived from per-frame interval samples).
     // Guard against m_sessionStart being default-constructed (would happen if
@@ -380,52 +391,55 @@ bool BenchmarkWidget::exportReport(const char* savePath) const {
         durationSec = std::chrono::duration<double>(
             std::chrono::steady_clock::now() - m_sessionStart).count();
     }
-    fprintf(f, "Duration: %.2f s\n", durationSec);
+    snprintf(line, sizeof(line), "Duration: %.2f s\n", durationSec); out += line;
     if (m_frameSampleCount > 0 && m_minFrameTimeUs > 0.0 && m_maxFrameTimeUs > 0.0) {
         double avgFrameTimeUs = m_sumFrameTimeUs / static_cast<double>(m_frameSampleCount);
         double fpsMax = 1.0e6 / m_minFrameTimeUs;  // shortest frame = highest FPS
         double fpsMin = 1.0e6 / m_maxFrameTimeUs;  // longest frame = lowest FPS
         double fpsAvg = (avgFrameTimeUs > 0.0) ? (1.0e6 / avgFrameTimeUs) : 0.0;
-        fprintf(f, "FPS: min %.1f, avg %.1f, max %.1f (%lld frames sampled)\n",
-                fpsMin, fpsAvg, fpsMax, m_frameSampleCount);
+        snprintf(line, sizeof(line), "FPS: min %.1f, avg %.1f, max %.1f (%lld frames sampled)\n",
+                fpsMin, fpsAvg, fpsMax, m_frameSampleCount); out += line;
     } else {
-        fprintf(f, "FPS: (no samples)\n");
+        out += "FPS: (no samples)\n";
     }
-    fprintf(f, "\n");
+    out += "\n";
 
     // Callback section
-    fprintf(f, "=== CALLBACKS ===\n");
-    fprintf(f, "%-24s %10s %10s %8s\n", "Name", "Total us", "Peak us", "Calls");
-    fprintf(f, "%-24s %10s %10s %8s\n", "------------------------", "----------", "----------", "--------");
+    out += "=== CALLBACKS ===\n";
+    snprintf(line, sizeof(line), "%-24s %10s %10s %8s\n", "Name", "Total us", "Peak us", "Calls"); out += line;
+    snprintf(line, sizeof(line), "%-24s %10s %10s %8s\n", "------------------------", "----------", "----------", "--------"); out += line;
     for (int i = 0; i < m_snapshotCount; ++i) {
-        fprintf(f, "%-24s %10.0f %10.0f %8d\n",
+        snprintf(line, sizeof(line), "%-24s %10.0f %10.0f %8d\n",
                 m_callbackSnapshots[i].name,
                 m_callbackSnapshots[i].totalTimeUs,
                 m_callbackSnapshots[i].peakTimeUs,
-                m_callbackSnapshots[i].callCount);
+                m_callbackSnapshots[i].callCount); out += line;
     }
-    fprintf(f, "\n");
+    out += "\n";
 
     // HUD rebuilds section
-    fprintf(f, "=== HUD REBUILDS ===\n");
-    fprintf(f, "%-24s %10s %8s\n", "Name", "Last us", "Count");
-    fprintf(f, "%-24s %10s %8s\n", "------------------------", "----------", "--------");
+    out += "=== HUD REBUILDS ===\n";
+    snprintf(line, sizeof(line), "%-24s %10s %8s\n", "Name", "Last us", "Count"); out += line;
+    snprintf(line, sizeof(line), "%-24s %10s %8s\n", "------------------------", "----------", "--------"); out += line;
     for (int i = 0; i < m_hudSnapshotCount; ++i) {
-        fprintf(f, "%-24s %10.0f %8d\n",
+        snprintf(line, sizeof(line), "%-24s %10.0f %8d\n",
                 m_hudSnapshots[i].name,
                 m_hudSnapshots[i].lastRebuildTimeUs,
-                m_hudSnapshots[i].rebuildsInInterval);
+                m_hudSnapshots[i].rebuildsInInterval); out += line;
     }
-    fprintf(f, "\n");
+    out += "\n";
 
     // Aggregate
-    fprintf(f, "=== AGGREGATE ===\n");
-    fprintf(f, "Total callback time: %.0f us (%.2f ms)\n", m_totalCallbackTimeUs, m_totalCallbackTimeUs / 1000.0f);
-    fprintf(f, "Collect render time: %.0f us\n", m_collectRenderTimeUs);
-    fprintf(f, "Total quads: %d\n", m_totalQuadCount);
-    fprintf(f, "Total strings: %d\n", m_totalStringCount);
+    out += "=== AGGREGATE ===\n";
+    snprintf(line, sizeof(line), "Total callback time: %.0f us (%.2f ms)\n", m_totalCallbackTimeUs, m_totalCallbackTimeUs / 1000.0f); out += line;
+    snprintf(line, sizeof(line), "Collect render time: %.0f us\n", m_collectRenderTimeUs); out += line;
+    snprintf(line, sizeof(line), "Total quads: %d\n", m_totalQuadCount); out += line;
+    snprintf(line, sizeof(line), "Total strings: %d\n", m_totalStringCount); out += line;
 
-    fclose(f);
+    if (!AtomicFileWriter::writeFileAtomic(filePath, out)) {
+        DEBUG_WARN_F("BenchmarkWidget: Failed to write %s", filePath.c_str());
+        return false;
+    }
     DEBUG_INFO_F("BenchmarkWidget: Report exported to %s", filePath.c_str());
     return true;
 }
@@ -436,7 +450,7 @@ void BenchmarkWidget::resetToDefaults() {
     setTextureVariant(0);
     m_fBackgroundOpacity = 0.90f;
     m_fScale = 1.0f;
-    setPosition(0.01f, 0.3f);  // Left side of screen
+    setPosition(0.01f, 0.30507f);  // Left side of screen
 
     m_frameCounter = 0;
     m_snapshotCount = 0;

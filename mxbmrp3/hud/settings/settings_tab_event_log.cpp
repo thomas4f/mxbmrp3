@@ -232,5 +232,13 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
         &hud->m_enabledEvents, PIT_GROUP, true,
         "event_log.pit");
 
+    // Director cuts: the auto-director's shot decisions (broadcast transparency). Opt-in —
+    // frequent, so off unless a broadcaster wants to see the director's logic in the feed.
+    bool directorOn = (hud->m_enabledEvents & EVENT_DIRECTOR) != 0;
+    ctx.addToggleControl("Director", directorOn,
+        SettingsHud::ClickRegion::CHECKBOX, hud,
+        &hud->m_enabledEvents, EVENT_DIRECTOR, true,
+        "event_log.director");
+
     return hud;
 }

@@ -8,7 +8,7 @@
 #include "ideal_lap_hud.h"
 #include "lap_log_hud.h"
 #include "friends_hud.h"
-#include "lap_consistency_hud.h"
+#include "session_charts_hud.h"
 #include "standings_hud.h"
 #include "performance_hud.h"
 #include "pitboard_hud.h"
@@ -62,7 +62,7 @@ struct SettingsLayoutContext;
 
 class SettingsHud : public BaseHud {
 public:
-    SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, FriendsHud* friends, LapConsistencyHud* lapConsistency,
+    SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, FriendsHud* friends, SessionChartsHud* sessionCharts,
                 StandingsHud* standings,
                 PerformanceHud* performance,
                 TelemetryHud* telemetry,
@@ -93,6 +93,14 @@ public:
     // Open settings panel directly to Updates tab
     void showUpdatesTab();
 
+    // Persisted active-tab restore. The last-focused tab is saved to the INI
+    // ([Profiles] activeTab) and restored on load, so reopening the settings menu lands on
+    // the tab the player left it on. Stored by NAME (not index) so it survives tab
+    // reordering and is ignored cleanly when the stored tab doesn't exist on this game
+    // build (e.g. FMX on karts) - see setActiveTabByName / isTabAvailable.
+    const char* getActiveTabName() const;       // display name of the current tab (for save)
+    void setActiveTabByName(const char* name);  // restore by name (no-op if unknown/unavailable)
+
     // Clickable regions for checkboxes, buttons, and scale controls (public for SettingsLayoutContext)
     struct ClickRegion {
         float x, y, width, height;
@@ -119,6 +127,8 @@ public:
             SCALE_DOWN,                // Decrease scale
             ROW_COUNT_UP,              // Increase row count (StandingsHud)
             ROW_COUNT_DOWN,            // Decrease row count (StandingsHud)
+            STANDINGS_TOP_COUNT_UP,    // Increase pinned top-N positions (StandingsHud)
+            STANDINGS_TOP_COUNT_DOWN,  // Decrease pinned top-N positions (StandingsHud)
             LAP_LOG_ROW_COUNT_UP,      // Increase lap log row count (LapLogHud)
             LAP_LOG_ROW_COUNT_DOWN,    // Decrease lap log row count (LapLogHud)
             LAP_LOG_ORDER_UP,          // Cycle display order forward (LapLogHud)
@@ -131,17 +141,16 @@ public:
             FRIENDS_SHOW_MODE_UP,      // Cycle show mode (FriendsHud)
             FRIENDS_SHOW_MODE_DOWN,    // Cycle show mode (FriendsHud)
             FRIENDS_SELF_TOGGLE,       // Toggle show-myself row (FriendsHud)
-            // Lap Consistency HUD
-            LAP_CONSISTENCY_DISPLAY_MODE_UP,    // Cycle display mode forward (LapConsistencyHud)
-            LAP_CONSISTENCY_DISPLAY_MODE_DOWN,  // Cycle display mode backward (LapConsistencyHud)
-            LAP_CONSISTENCY_REFERENCE_UP,       // Cycle reference mode forward (LapConsistencyHud)
-            LAP_CONSISTENCY_REFERENCE_DOWN,     // Cycle reference mode backward (LapConsistencyHud)
-            LAP_CONSISTENCY_LAP_COUNT_UP,       // Increase lap count (LapConsistencyHud)
-            LAP_CONSISTENCY_LAP_COUNT_DOWN,     // Decrease lap count (LapConsistencyHud)
-            LAP_CONSISTENCY_TREND_MODE_UP,      // Cycle trend mode forward (LapConsistencyHud)
-            LAP_CONSISTENCY_TREND_MODE_DOWN,    // Cycle trend mode backward (LapConsistencyHud)
+            // Session Charts HUD
+            SESSION_CHARTS_COLOR_MODE_UP,          // Cycle rider color mode forward (SessionChartsHud)
+            SESSION_CHARTS_COLOR_MODE_DOWN,        // Cycle rider color mode backward (SessionChartsHud)
+            SESSION_CHARTS_TOP_COUNT_UP,           // Increase pinned top-N count (SessionChartsHud)
+            SESSION_CHARTS_TOP_COUNT_DOWN,         // Decrease pinned top-N count (SessionChartsHud)
+            SESSION_CHARTS_ROW_COUNT_UP,           // Increase rider line count (SessionChartsHud)
+            SESSION_CHARTS_ROW_COUNT_DOWN,         // Decrease rider line count (SessionChartsHud)
             MAP_ROTATION_TOGGLE,       // Toggle map rotation mode (MapHud)
             MAP_OUTLINE_TOGGLE,        // Toggle track outline (MapHud)
+            MAP_MARKERS_TOGGLE,        // Toggle S/F, sector markers and segment lines (MapHud)
             MAP_COLORIZE_UP,           // Cycle rider color mode forward (MapHud)
             MAP_COLORIZE_DOWN,         // Cycle rider color mode backward (MapHud)
             MAP_TRACK_WIDTH_UP,        // Increase track line width (MapHud)
@@ -191,22 +200,17 @@ public:
             PITBOARD_GAP_MODE_UP,      // Cycle pitboard gap compare mode forward (PitboardHud)
             PITBOARD_GAP_MODE_DOWN,    // Cycle pitboard gap compare mode backward (PitboardHud)
             SESSION_ICONS_TOGGLE,       // Toggle icons on/off (SessionHud)
-            TIMING_LABEL_TOGGLE,       // Toggle label column on/off (TimingHud)
-            TIMING_TIME_TOGGLE,        // Toggle time column on/off (TimingHud)
-            TIMING_GAP_UP,             // Cycle gap (Off/Session PB/Alltime/Ideal/Overall/Record) forward (TimingHud)
-            TIMING_GAP_DOWN,           // Cycle gap backward (TimingHud)
+            TIMING_TIME_TOGGLE,        // Toggle the big time row on/off (TimingHud)
             TIMING_DISPLAY_MODE_UP,    // Cycle show mode (Splits/Always) forward (TimingHud)
             TIMING_DISPLAY_MODE_DOWN,  // Cycle show mode backward (TimingHud)
             TIMING_DURATION_UP,        // Increase freeze duration (TimingHud)
             TIMING_DURATION_DOWN,      // Decrease freeze duration (TimingHud)
-            TIMING_REFERENCE_TOGGLE,   // Toggle reference time display on/off (TimingHud)
-            TIMING_LAYOUT_TOGGLE,      // Toggle layout mode (Horizontal/Vertical) (TimingHud)
-            TIMING_GAP_PB_TOGGLE,      // Toggle "Session PB" as secondary (TimingHud)
-            TIMING_GAP_IDEAL_TOGGLE,   // Toggle "Ideal" as secondary chip (TimingHud)
-            TIMING_GAP_OVERALL_TOGGLE, // Toggle "Server Best" as secondary chip (TimingHud)
-            TIMING_GAP_ALLTIME_TOGGLE, // Toggle "All-Time PB" as secondary chip (TimingHud)
-            TIMING_GAP_RECORD_TOGGLE,  // Toggle "Record" as secondary chip (TimingHud)
-            TIMING_GAP_LASTLAP_TOGGLE, // Toggle "Last Lap" as secondary chip (TimingHud)
+            TIMING_GAP_PB_TOGGLE,      // Toggle "Session PB" comparison row (TimingHud)
+            TIMING_GAP_IDEAL_TOGGLE,   // Toggle "Ideal" comparison row (TimingHud)
+            TIMING_GAP_OVERALL_TOGGLE, // Toggle "Overall" comparison row (TimingHud)
+            TIMING_GAP_ALLTIME_TOGGLE, // Toggle "All-Time PB" comparison row (TimingHud)
+            TIMING_GAP_RECORD_TOGGLE,  // Toggle "Record" comparison row (TimingHud)
+            TIMING_GAP_LASTLAP_TOGGLE, // Toggle "Last Lap" comparison row (TimingHud)
             GAPBAR_FREEZE_UP,          // Increase freeze duration (GapBarHud)
             GAPBAR_FREEZE_DOWN,        // Decrease freeze duration (GapBarHud)
             GAPBAR_MARKER_MODE_UP,     // Cycle marker mode forward (Ghost/Opponents/Both)
@@ -233,6 +237,7 @@ public:
             FUEL_UNIT_TOGGLE,          // Toggle fuel unit (L/gal)
             TEMP_UNIT_TOGGLE,          // Toggle temperature unit (C/F)
             PB_SCOPE_TOGGLE,           // Toggle personal best scope (Bike/Category)
+            DISPLAY_TARGET_TOGGLE,     // Cycle HUD display: In-game / Companion / Both
             GRID_SNAP_TOGGLE,          // Toggle grid snapping for HUD positioning
             SCREEN_CLAMP_TOGGLE,       // Toggle screen clamping for HUD positioning
             MENU_ONLY_CURSOR_TOGGLE,   // Toggle menu-only cursor (controller-as-mouse fix)
@@ -435,6 +440,38 @@ public:
             UPDATE_DEBUG_MODE,         // Toggle debug mode for testing
             UPDATE_CHANNEL_UP,         // Cycle update channel forward (Stable -> Pre-release)
             UPDATE_CHANNEL_DOWN,       // Cycle update channel backward (Pre-release -> Stable)
+            // Director (auto-director, spectate broadcast tool)
+            DIRECTOR_ENABLE_TOGGLE,    // Master enable for the auto-director
+            DIRECTOR_MINSHOT_UP,       // Increase minimum shot length
+            DIRECTOR_MINSHOT_DOWN,     // Decrease minimum shot length
+            DIRECTOR_MAXSHOT_UP,       // Increase maximum shot length
+            DIRECTOR_MAXSHOT_DOWN,     // Decrease maximum shot length
+            DIRECTOR_BATTLEGAP_UP,     // Increase battle gap threshold
+            DIRECTOR_BATTLEGAP_DOWN,   // Decrease battle gap threshold
+            DIRECTOR_BATTLEMAXPOS_UP,  // Increase battle max-position cutoff
+            DIRECTOR_BATTLEMAXPOS_DOWN,// Decrease battle max-position cutoff
+            DIRECTOR_RESUME_UP,        // Increase manual-resume timeout
+            DIRECTOR_RESUME_DOWN,      // Decrease manual-resume timeout
+            DIRECTOR_GAMEPAD_TAKEOVER, // Toggle stick-push gamepad takeover
+            DIRECTOR_CAM_FENDER_UP,    // Cycle Fender cam: Off > Front > Rear > Both
+            DIRECTOR_CAM_FENDER_DOWN,  // Cycle Fender cam (reverse)
+            DIRECTOR_CAM_HELMET_UP,    // Cycle Helmet cam: Off > Helmet 1 > Helmet 2 > Both
+            DIRECTOR_CAM_HELMET_DOWN,  // Cycle Helmet cam (reverse)
+            // (Forks is an INI-only tunable - no click region.)
+            DIRECTOR_FOLLOW_BATTLES,   // Toggle following on-track battles
+            DIRECTOR_FOLLOW_INCIDENTS, // Toggle crash/incident interrupts
+            DIRECTOR_FOLLOW_FASTEST,   // Toggle fastest-lap celebration cuts
+            DIRECTOR_FOLLOW_PACE,      // Toggle non-race hot-lap (fastest-sector) cuts
+            DIRECTOR_FINISH_LOCK,      // Toggle final-lap finish lock
+            DIRECTOR_CATCH_OVERTAKES,  // Toggle on-track overtake rewards
+            DIRECTOR_FOLLOW_LAPPERS,   // Toggle following a front-runner lapping backmarkers
+            DIRECTOR_FOLLOW_DROPS,     // Toggle following a rider tumbling down the order
+            DIRECTOR_VARIETY_UP,       // Increase variety cadence (more solo before an onboard)
+            DIRECTOR_VARIETY_DOWN,     // Decrease variety cadence
+            DIRECTOR_HOLD_UP,          // Increase the shared story hold
+            DIRECTOR_HOLD_DOWN,        // Decrease the shared story hold
+            // (Incident hold cap is an INI-only tunable now - no click region.)
+            DIRECTOR_HUD_VISIBLE,      // Toggle the on-screen director status button
             // FMX HUD
             FMX_DEBUG_TOGGLE,          // Toggle FMX debug logging
             FMX_CHAIN_ROWS_UP,         // Increase max chain display rows
@@ -575,7 +612,7 @@ public:
     // Implemented in separate files under hud/settings/
     static BaseHud* renderTabIdealLap(SettingsLayoutContext& ctx);
     static BaseHud* renderTabLapLog(SettingsLayoutContext& ctx);
-    static BaseHud* renderTabLapConsistency(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabSessionCharts(SettingsLayoutContext& ctx);
     static BaseHud* renderTabTelemetry(SettingsLayoutContext& ctx);
     static BaseHud* renderTabPerformance(SettingsLayoutContext& ctx);
     static BaseHud* renderTabRecords(SettingsLayoutContext& ctx);
@@ -599,6 +636,7 @@ public:
     static BaseHud* renderTabFmx(SettingsLayoutContext& ctx);
     static BaseHud* renderTabStats(SettingsLayoutContext& ctx);
     static BaseHud* renderTabEventLog(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabDirector(SettingsLayoutContext& ctx);
 
     // Static click handler functions (implemented in tab files)
     // Return true if the click was handled, false otherwise
@@ -618,7 +656,7 @@ public:
     bool handleClickTabPitboard(const ClickRegion& region);
     bool handleClickTabSession(const ClickRegion& region);
     bool handleClickTabLapLog(const ClickRegion& region);
-    bool handleClickTabLapConsistency(const ClickRegion& region);
+    bool handleClickTabSessionCharts(const ClickRegion& region);
     bool handleClickTabUpdates(const ClickRegion& region);
     bool handleClickTabFmx(const ClickRegion& region);
     bool handleClickTabStats(const ClickRegion& region);
@@ -629,7 +667,7 @@ public:
     IdealLapHud* getIdealLapHud() const { return m_idealLap; }
     LapLogHud* getLapLogHud() const { return m_lapLog; }
     FriendsHud* getFriendsHud() const { return m_friends; }
-    LapConsistencyHud* getLapConsistencyHud() const { return m_lapConsistency; }
+    SessionChartsHud* getSessionChartsHud() const { return m_sessionCharts; }
     StandingsHud* getStandingsHud() const { return m_standings; }
     PerformanceHud* getPerformanceHud() const { return m_performance; }
     TelemetryHud* getTelemetryHud() const { return m_telemetry; }
@@ -692,6 +730,10 @@ private:
     void handleTabClick(const ClickRegion& region);
     void handleCloseButtonClick();
     const char* getTabName(int tabIndex) const;  // Get display name for a tab
+    // Whether a tab is selectable on this build: a real tab id (0..TAB_COUNT-1) whose
+    // game-gated backing HUD is registered. Single source of truth for the tab-list skips
+    // and the persisted-tab restore validation, so they can't drift.
+    bool isTabAvailable(int tabId) const;
     // Note: Tab-specific handlers inlined into settings_tab_*.cpp files
 
     // Helper methods to reduce code duplication
@@ -723,7 +765,7 @@ private:
     IdealLapHud* m_idealLap;
     LapLogHud* m_lapLog;
     FriendsHud* m_friends;
-    LapConsistencyHud* m_lapConsistency;
+    SessionChartsHud* m_sessionCharts;
     StandingsHud* m_standings;
     PerformanceHud* m_performance;
     TelemetryHud* m_telemetry;
@@ -797,7 +839,7 @@ private:
         TAB_MAP = 2,           // F2
         TAB_RADAR = 3,         // F3
         TAB_LAP_LOG = 4,       // F4
-        TAB_LAP_CONSISTENCY = 5, // F5 - Lap Consistency (chart/stats)
+        TAB_SESSION_CHARTS = 5,   // F5 - Session Charts (position/trace/gap/pace)
         TAB_IDEAL_LAP = 6,     // F6
         TAB_TELEMETRY = 7,     // F7
         TAB_RECORDS = 8,       // F8 - Lap Records (online)
@@ -818,9 +860,19 @@ private:
         TAB_EVENT_LOG = 23,    // Event Log (race event feed)
         TAB_HELMET = 24,       // Helmet overlay (immersion)
         TAB_FRIENDS = 25,      // Friends (Steam friends in-game)
-        TAB_COUNT = 26
+        TAB_DIRECTOR = 26,     // Auto-director (spectate broadcast tool)
+        TAB_COUNT = 27
     };
     int m_activeTab;
+
+    // Mark settings dirty after a settings-panel edit (always — independent of auto-save, so
+    // the Save button reflects unsaved changes in manual mode too). The write is deferred to a
+    // leave-track transition (auto-save) or the Save button, so it never spikes a gameplay frame.
+    void markSettingsDirty();
+
+    // Last-seen SettingsManager dirty state, so update() can rebuild the Save button the frame
+    // the unsaved-changes state flips (e.g. a HUD dragged while the panel is open).
+    bool m_lastSettingsDirty = false;
 
     // Hover tracking for button backgrounds
     int m_hoveredRegionIndex;  // -1 = none hovered

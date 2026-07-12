@@ -64,9 +64,6 @@ public:
         return (it != m_layouts.end()) ? &it->second : nullptr;
     }
 
-    // Check if layout exists (for save optimization)
-    bool hasLayout(int variant) const { return m_layouts.find(variant) != m_layouts.end(); }
-
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;
     friend class SettingsManager;
@@ -98,7 +95,7 @@ private:
 
     // Helper to add a menu button with sprite texture (Back/Start)
     void addMenuButton(float centerX, float centerY, float width, float height,
-                       bool isPressed, const char* label);
+                       bool isPressed);
 
     // Layout constants
     static constexpr float START_X = 0.0f;

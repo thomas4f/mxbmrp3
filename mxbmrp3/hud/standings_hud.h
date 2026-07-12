@@ -291,7 +291,7 @@ private:
     std::vector<SlideHighlightQuad> m_slideHighlightQuads;
 
     // Cached icon state for displayed riders (detect icon changes without DataChangeType)
-    // Each entry encodes: raceNum -> (hazardType | blueFlagged | inPit | lastLap)
+    // Each entry encodes: raceNum -> (hazardType | blueFlagged | inPit | lastLap | directorLock)
     std::unordered_map<int, uint8_t> m_cachedIconStates;
 
     // Cached icon sprite indices (avoid string-based map lookups per rider per frame)
@@ -301,6 +301,7 @@ private:
         int flagCheckered = 0;
         int wrench = 0;
         int caretUp = 0;          // Positions-gained/lost indicator (rotated 180° for losses)
+        int lock = 0;             // Director hold/lock indicator (rider pinned by the director)
         bool initialized = false;
 
         void ensureInitialized();
@@ -436,3 +437,15 @@ private:
     static constexpr int COL_LAST_LAP_WIDTH = 10;      // Same format as best lap (M:SS.mmm + spacing)
     static constexpr int COL_GAP_WIDTH = 11;           // Supports +M:SS.mmm official or +M:SS.s live (10 chars + 1 spacing)
 };
+
+#if defined(MXBMRP3_TEST_BUILD)
+// Perf profiling (test builds only): read + reset the accumulated per-phase
+// StandingsHud::rebuildRenderData() time (microseconds) and rebuild count.
+void standingsReadProfile(double& setupUs, double& formatUs, double& nameAnimUs,
+                          double& layoutUs, double& renderUs, long long& count);
+// Sub-phase of `render`: microseconds spent resolving the TRACKED-column status
+// icon per rider (hazard / director-lock / blue-flag / pit / finished / last-lap /
+// tracked lookups). Accumulated in standings_hud_render.cpp; read + reset here.
+extern double g_standingsTrackedUs;
+double standingsReadTrackedUs();
+#endif

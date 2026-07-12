@@ -3,6 +3,7 @@
 // Manages tracked riders - riders the user wants to highlight in HUDs
 // ============================================================================
 #include "tracked_riders_manager.h"
+#include "atomic_file_writer.h"
 #include "plugin_data.h"
 #include "asset_manager.h"
 #include "../diagnostics/logger.h"
@@ -364,7 +365,6 @@ void TrackedRidersManager::save() {
     }
 
     std::string filePath = getFilePath();
-    std::string tempPath = filePath + ".tmp";
 
     try {
         nlohmann::json j;
@@ -390,35 +390,19 @@ void TrackedRidersManager::save() {
         }
         j["riders"] = riders;
 
-        // Write to temp file first
-        std::ofstream tempFile(tempPath);
-        if (!tempFile.is_open()) {
-            DEBUG_INFO_F("[TrackedRidersManager] Failed to open temp file for writing: %s", tempPath.c_str());
-            return;
+        // Write via the shared atomic writer (temp file + MoveFileExA replace). Synchronous:
+        // tracked riders are saved on discrete user edits, not the per-frame path, and the
+        // file is read back right after — so keep immediate durability while sharing the one
+        // atomic-write helper. Only clear the dirty flag on a successful write.
+        if (AtomicFileWriter::writeFileAtomic(filePath, j.dump(2))) {
+            m_needsSave = false;
+            DEBUG_INFO_F("[TrackedRidersManager] Saved %zu tracked riders to %s",
+                         m_trackedRiders.size(), filePath.c_str());
+        } else {
+            DEBUG_WARN_F("[TrackedRidersManager] Failed to save tracked riders to %s", filePath.c_str());
         }
-
-        tempFile << j.dump(2);  // Pretty print with 2-space indent
-        tempFile.close();
-
-        if (tempFile.fail()) {
-            DEBUG_INFO_F("[TrackedRidersManager] Failed to write temp file: %s", tempPath.c_str());
-            std::remove(tempPath.c_str());
-            return;
-        }
-
-        // Atomic rename
-        if (!MoveFileExA(tempPath.c_str(), filePath.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-            DEBUG_WARN_F("[TrackedRidersManager] Failed to save file (error %lu): %s", GetLastError(), filePath.c_str());
-            std::remove(tempPath.c_str());
-            return;
-        }
-
-        m_needsSave = false;  // Reset flag after successful save
-        DEBUG_INFO_F("[TrackedRidersManager] Saved %zu tracked riders to %s",
-                     m_trackedRiders.size(), filePath.c_str());
 
     } catch (const std::exception& e) {
         DEBUG_INFO_F("[TrackedRidersManager] Error saving tracked riders: %s", e.what());
-        std::remove(tempPath.c_str());
     }
 }

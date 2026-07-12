@@ -11,61 +11,9 @@
 // Static member function of SettingsHud - handles click events for Timing tab
 bool SettingsHud::handleClickTabTiming(const ClickRegion& region) {
     switch (region.type) {
-        case ClickRegion::TIMING_LABEL_TOGGLE:
-            if (m_timing) {
-                m_timing->m_columnEnabled[TimingHud::COL_LABEL] = !m_timing->m_columnEnabled[TimingHud::COL_LABEL];
-                m_timing->setDataDirty();
-                setDataDirty();
-            }
-            return true;
-
         case ClickRegion::TIMING_TIME_TOGGLE:
             if (m_timing) {
-                m_timing->m_columnEnabled[TimingHud::COL_TIME] = !m_timing->m_columnEnabled[TimingHud::COL_TIME];
-                m_timing->setDataDirty();
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::TIMING_GAP_UP:
-        case ClickRegion::TIMING_GAP_DOWN:
-            if (m_timing) {
-                bool forward = (region.type == ClickRegion::TIMING_GAP_UP);
-                bool& gapEnabled = m_timing->m_columnEnabled[TimingHud::COL_GAP];
-
-                if (!gapEnabled) {
-                    // Off -> enable with first/last gap type
-                    gapEnabled = true;
-                    m_timing->m_primaryGapType = forward ? GAP_TYPE_INFO[0].flag : GAP_TYPE_INFO[GAP_TYPE_COUNT - 1].flag;
-                } else {
-                    // Find current gap type index
-                    int currentIdx = -1;
-                    for (int i = 0; i < GAP_TYPE_COUNT; i++) {
-                        if (GAP_TYPE_INFO[i].flag == m_timing->m_primaryGapType) {
-                            currentIdx = i;
-                            break;
-                        }
-                    }
-
-                    if (forward) {
-                        if (currentIdx >= GAP_TYPE_COUNT - 1) {
-                            // Last type -> Off
-                            gapEnabled = false;
-                        } else {
-                            // Next type
-                            m_timing->m_primaryGapType = GAP_TYPE_INFO[currentIdx + 1].flag;
-                        }
-                    } else {
-                        if (currentIdx <= 0) {
-                            // First type -> Off
-                            gapEnabled = false;
-                        } else {
-                            // Previous type
-                            m_timing->m_primaryGapType = GAP_TYPE_INFO[currentIdx - 1].flag;
-                        }
-                    }
-                }
-                m_timing->setDataDirty();
+                m_timing->setTimeEnabled(!m_timing->isTimeEnabled());
                 setDataDirty();
             }
             return true;
@@ -74,11 +22,8 @@ bool SettingsHud::handleClickTabTiming(const ClickRegion& region) {
         case ClickRegion::TIMING_DISPLAY_MODE_DOWN:
             // Toggle between Splits and Always
             if (m_timing) {
-                if (m_timing->m_displayMode == ColumnMode::SPLITS) {
-                    m_timing->m_displayMode = ColumnMode::ALWAYS;
-                } else {
-                    m_timing->m_displayMode = ColumnMode::SPLITS;
-                }
+                m_timing->m_displayMode = (m_timing->m_displayMode == ColumnMode::SPLITS)
+                    ? ColumnMode::ALWAYS : ColumnMode::SPLITS;
                 m_timing->setDataDirty();
                 setDataDirty();
             }
@@ -97,62 +42,24 @@ bool SettingsHud::handleClickTabTiming(const ClickRegion& region) {
             }
             return true;
 
-        case ClickRegion::TIMING_REFERENCE_TOGGLE:
-            if (m_timing) {
-                m_timing->m_showReference = !m_timing->m_showReference;
-                m_timing->setDataDirty();
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::TIMING_LAYOUT_TOGGLE:
-            if (m_timing) {
-                m_timing->m_layoutVertical = !m_timing->m_layoutVertical;
-                m_timing->setDataDirty();
-                setDataDirty();
-            }
-            return true;
-
+        // Comparison rows (one per gap type) — merged the old primary/secondary into a flat set.
         case ClickRegion::TIMING_GAP_PB_TOGGLE:
-            if (m_timing) {
-                m_timing->setSecondaryGapType(GAP_TO_PB, !m_timing->isSecondaryGapEnabled(GAP_TO_PB));
-                setDataDirty();
-            }
+            if (m_timing) { m_timing->setComparisonEnabled(GAP_TO_PB, !m_timing->isComparisonEnabled(GAP_TO_PB)); setDataDirty(); }
             return true;
-
-        case ClickRegion::TIMING_GAP_IDEAL_TOGGLE:
-            if (m_timing) {
-                m_timing->setSecondaryGapType(GAP_TO_IDEAL, !m_timing->isSecondaryGapEnabled(GAP_TO_IDEAL));
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::TIMING_GAP_OVERALL_TOGGLE:
-            if (m_timing) {
-                m_timing->setSecondaryGapType(GAP_TO_OVERALL, !m_timing->isSecondaryGapEnabled(GAP_TO_OVERALL));
-                setDataDirty();
-            }
-            return true;
-
         case ClickRegion::TIMING_GAP_ALLTIME_TOGGLE:
-            if (m_timing) {
-                m_timing->setSecondaryGapType(GAP_TO_ALLTIME, !m_timing->isSecondaryGapEnabled(GAP_TO_ALLTIME));
-                setDataDirty();
-            }
+            if (m_timing) { m_timing->setComparisonEnabled(GAP_TO_ALLTIME, !m_timing->isComparisonEnabled(GAP_TO_ALLTIME)); setDataDirty(); }
             return true;
-
-        case ClickRegion::TIMING_GAP_RECORD_TOGGLE:
-            if (m_timing) {
-                m_timing->setSecondaryGapType(GAP_TO_RECORD, !m_timing->isSecondaryGapEnabled(GAP_TO_RECORD));
-                setDataDirty();
-            }
+        case ClickRegion::TIMING_GAP_IDEAL_TOGGLE:
+            if (m_timing) { m_timing->setComparisonEnabled(GAP_TO_IDEAL, !m_timing->isComparisonEnabled(GAP_TO_IDEAL)); setDataDirty(); }
             return true;
-
+        case ClickRegion::TIMING_GAP_OVERALL_TOGGLE:
+            if (m_timing) { m_timing->setComparisonEnabled(GAP_TO_OVERALL, !m_timing->isComparisonEnabled(GAP_TO_OVERALL)); setDataDirty(); }
+            return true;
         case ClickRegion::TIMING_GAP_LASTLAP_TOGGLE:
-            if (m_timing) {
-                m_timing->setSecondaryGapType(GAP_TO_LASTLAP, !m_timing->isSecondaryGapEnabled(GAP_TO_LASTLAP));
-                setDataDirty();
-            }
+            if (m_timing) { m_timing->setComparisonEnabled(GAP_TO_LASTLAP, !m_timing->isComparisonEnabled(GAP_TO_LASTLAP)); setDataDirty(); }
+            return true;
+        case ClickRegion::TIMING_GAP_RECORD_TOGGLE:
+            if (m_timing) { m_timing->setComparisonEnabled(GAP_TO_RECORD, !m_timing->isComparisonEnabled(GAP_TO_RECORD)); setDataDirty(); }
             return true;
 
         default:
@@ -172,16 +79,6 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
     ctx.addStandardHudControls(hud, false);  // No title support (center display)
     ctx.addSpacing(0.5f);
 
-    // Helper to get gap display text (Off or gap type name)
-    auto getGapText = [&]() -> const char* {
-        if (!hud->m_columnEnabled[TimingHud::COL_GAP]) {
-            return "Off";
-        }
-        return TimingHud::getGapTypeName(hud->getPrimaryGapType());
-    };
-
-    bool gapEnabled = hud->m_columnEnabled[TimingHud::COL_GAP];
-
     // === LAYOUT SECTION ===
     ctx.addSectionHeader("Layout");
 
@@ -192,7 +89,7 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::TIMING_DISPLAY_MODE_UP,
         hud, true, false, "timing.show");
 
-    // Freeze duration: how long to freeze gap values after crossing a split
+    // Freeze duration: how long to hold official times / gaps after crossing a split
     char freezeValue[16];
     bool freezeIsOff = (hud->m_displayDurationMs == 0);
     if (freezeIsOff) {
@@ -205,69 +102,29 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::TIMING_DURATION_UP,
         hud, true, freezeIsOff, "timing.freeze");
 
-    // Show reference toggle (applies to both primary and secondary gaps)
-    ctx.addToggleControl("Show reference", hud->m_showReference,
-        SettingsHud::ClickRegion::TIMING_REFERENCE_TOGGLE, hud, nullptr, 0, true,
-        "timing.show_reference");
-
-    // Display style: Horizontal (primary side-by-side, chips below) or Vertical (single column)
-    const char* layoutValue = hud->m_layoutVertical ? "Vertical" : "Horizontal";
-    ctx.addCycleControl("Display style", layoutValue, 10,
-        SettingsHud::ClickRegion::TIMING_LAYOUT_TOGGLE,
-        SettingsHud::ClickRegion::TIMING_LAYOUT_TOGGLE,
-        hud, true, false, "timing.layout");
-
-    ctx.addSpacing(0.5f);
-
-    // === PRIMARY ROW SECTION ===
-    ctx.addSectionHeader("Primary Row");
-
-    ctx.addToggleControl("Label", hud->m_columnEnabled[TimingHud::COL_LABEL],
-        SettingsHud::ClickRegion::TIMING_LABEL_TOGGLE, hud, nullptr, 0, true,
-        "timing.label");
-
-    ctx.addToggleControl("Time", hud->m_columnEnabled[TimingHud::COL_TIME],
+    // Big time row toggle
+    ctx.addToggleControl("Time", hud->isTimeEnabled(),
         SettingsHud::ClickRegion::TIMING_TIME_TOGGLE, hud, nullptr, 0, true,
         "timing.time");
 
-    // Gap control: Off or gap type (merges toggle + comparison)
-    ctx.addCycleControl("Gap", getGapText(), 10,
-        SettingsHud::ClickRegion::TIMING_GAP_DOWN,
-        SettingsHud::ClickRegion::TIMING_GAP_UP,
-        hud, true, !gapEnabled, "timing.gap");
-
     ctx.addSpacing(0.5f);
 
-    // === SECONDARY ROW SECTION ===
-    ctx.addSectionHeader("Secondary Row");
+    // === COMPARISONS SECTION ===
+    // Each enabled comparison is one row (name + value). No primary/secondary distinction.
+    ctx.addSectionHeader("Comparisons");
 
-    // Helper to check if a gap type is the primary (only when primary gap is visible)
-    auto isPrimary = [&](GapTypeFlags type) { return gapEnabled && hud->getPrimaryGapType() == type; };
-
-    // Secondary gap type toggles (shows "Primary" when matching primary gap type)
-    ctx.addToggleControl("Session PB", hud->isSecondaryGapEnabled(GAP_TO_PB),
-        SettingsHud::ClickRegion::TIMING_GAP_PB_TOGGLE, hud, nullptr, 0, !isPrimary(GAP_TO_PB),
-        "timing.secondary_pb", isPrimary(GAP_TO_PB) ? "Primary" : nullptr);
-
-    ctx.addToggleControl("Alltime PB", hud->isSecondaryGapEnabled(GAP_TO_ALLTIME),
-        SettingsHud::ClickRegion::TIMING_GAP_ALLTIME_TOGGLE, hud, nullptr, 0, !isPrimary(GAP_TO_ALLTIME),
-        "timing.secondary_alltime", isPrimary(GAP_TO_ALLTIME) ? "Primary" : nullptr);
-
-    ctx.addToggleControl("Ideal", hud->isSecondaryGapEnabled(GAP_TO_IDEAL),
-        SettingsHud::ClickRegion::TIMING_GAP_IDEAL_TOGGLE, hud, nullptr, 0, !isPrimary(GAP_TO_IDEAL),
-        "timing.secondary_ideal", isPrimary(GAP_TO_IDEAL) ? "Primary" : nullptr);
-
-    ctx.addToggleControl("Overall", hud->isSecondaryGapEnabled(GAP_TO_OVERALL),
-        SettingsHud::ClickRegion::TIMING_GAP_OVERALL_TOGGLE, hud, nullptr, 0, !isPrimary(GAP_TO_OVERALL),
-        "timing.secondary_overall", isPrimary(GAP_TO_OVERALL) ? "Primary" : nullptr);
-
-    ctx.addToggleControl("Last Lap", hud->isSecondaryGapEnabled(GAP_TO_LASTLAP),
-        SettingsHud::ClickRegion::TIMING_GAP_LASTLAP_TOGGLE, hud, nullptr, 0, !isPrimary(GAP_TO_LASTLAP),
-        "timing.secondary_lastlap", isPrimary(GAP_TO_LASTLAP) ? "Primary" : nullptr);
-
-    ctx.addToggleControl("Record", hud->isSecondaryGapEnabled(GAP_TO_RECORD),
-        SettingsHud::ClickRegion::TIMING_GAP_RECORD_TOGGLE, hud, nullptr, 0, !isPrimary(GAP_TO_RECORD),
-        "timing.secondary_record", isPrimary(GAP_TO_RECORD) ? "Primary" : nullptr);
+    ctx.addToggleControl("Session PB", hud->isComparisonEnabled(GAP_TO_PB),
+        SettingsHud::ClickRegion::TIMING_GAP_PB_TOGGLE, hud, nullptr, 0, true, "timing.gap_pb");
+    ctx.addToggleControl("Alltime PB", hud->isComparisonEnabled(GAP_TO_ALLTIME),
+        SettingsHud::ClickRegion::TIMING_GAP_ALLTIME_TOGGLE, hud, nullptr, 0, true, "timing.gap_alltime");
+    ctx.addToggleControl("Ideal", hud->isComparisonEnabled(GAP_TO_IDEAL),
+        SettingsHud::ClickRegion::TIMING_GAP_IDEAL_TOGGLE, hud, nullptr, 0, true, "timing.gap_ideal");
+    ctx.addToggleControl("Overall", hud->isComparisonEnabled(GAP_TO_OVERALL),
+        SettingsHud::ClickRegion::TIMING_GAP_OVERALL_TOGGLE, hud, nullptr, 0, true, "timing.gap_overall");
+    ctx.addToggleControl("Last Lap", hud->isComparisonEnabled(GAP_TO_LASTLAP),
+        SettingsHud::ClickRegion::TIMING_GAP_LASTLAP_TOGGLE, hud, nullptr, 0, true, "timing.gap_lastlap");
+    ctx.addToggleControl("Record", hud->isComparisonEnabled(GAP_TO_RECORD),
+        SettingsHud::ClickRegion::TIMING_GAP_RECORD_TOGGLE, hud, nullptr, 0, true, "timing.gap_record");
 
     // Info text - same style as the other tab hints
     ColorConfig& colors = ColorConfig::getInstance();

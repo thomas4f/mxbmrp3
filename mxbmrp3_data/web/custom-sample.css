@@ -54,7 +54,10 @@
  * rem-based, so they scale with the Settings panel's Font Size.
  * Note: --col-gap-w and --badge-w AUTO-FIT the synced font (app.js measures
  * them). You normally never touch them — but you CAN re-declare them here to
- * pin a fixed width, and a direct value wins over the auto-fit (no !important). */
+ * pin a fixed width, and a direct value wins over the auto-fit (no !important).
+ * The rider focus card has no width token — it auto-tracks the standings table
+ * width (--tower-width-base + the ± reserve). Override #focus-card { width } if
+ * you must pin it. */
 /*
 :root {
     --row-height: 1.4rem;     height of each standings / panel row
@@ -63,7 +66,6 @@
     --badge-w:    calc(3ch + 2 * var(--sp-sm));  number-plate width — set to pin (else auto-fit)
     --strip-w:    0.15rem;    brand colour strip width
     --chip-size:  0.9rem;     status chip size
-    --focus-width: 20rem;     rider focus card width
     --radius:     0.25rem;    corner rounding
 
     --fs-lg: 1.2rem;  --fs: 1rem;  --fs-sm: 0.75rem;  --fs-xs: 0.65rem;  --fs-2xs: 0.55rem;

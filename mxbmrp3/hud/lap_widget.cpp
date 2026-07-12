@@ -41,7 +41,7 @@ bool LapWidget::handlesDataType(DataChangeType dataType) const {
 
 void LapWidget::update() {
     // OPTIMIZATION: Skip processing when not visible
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -202,6 +202,6 @@ void LapWidget::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.0f;
     m_fScale = 1.0f;
-    setPosition(0.099f, 0.0111f);
+    setPosition(0.099f, 0.01173f);
     setDataDirty();
 }

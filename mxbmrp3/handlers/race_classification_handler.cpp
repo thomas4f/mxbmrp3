@@ -28,6 +28,16 @@ void RaceClassificationHandler::handleRaceClassification(
     pluginData.setSessionTime(currentTime);
     pluginData.setSessionState(psRaceClassification->sessionState);
 
+    // Gate drop: on a grid start the classification sessionState flips from the gate hold
+    // (Complete/0x20) to IN_PROGRESS when the gate actually drops and the race is underway. THIS is
+    // the standing-start's true t0, so anchor the display rider's lap timer here (not at the earlier
+    // RaceSessionState IN_PROGRESS flip). The live time then counts from the real start through the
+    // grid->S/F run and matches the official splits, with no jump when the first split arrives.
+    // Fires at most once per start (self-disarms); no-op for pit starts (never armed).
+    if (pluginData.detectGateDrop(psRaceClassification->sessionState)) {
+        pluginData.startLapTimerAtRaceStart(pluginData.getDisplayRaceNum());
+    }
+
     // Batch update all standings AND build classification order in single pass
     // This eliminates the duplicate iteration - both done in one tight loop
     pluginData.batchUpdateStandings(pasRaceClassificationEntry, iNumEntries);

@@ -42,7 +42,7 @@ bool SpeedoWidget::handlesDataType(DataChangeType dataType) const {
 
 void SpeedoWidget::update() {
     // OPTIMIZATION: Skip processing when not visible
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -236,7 +236,7 @@ void SpeedoWidget::resetToDefaults() {
     setTextureVariant(1);  // Show dial texture by default
     m_fBackgroundOpacity = 1.0f;  // 100% opacity
     m_fScale = 1.5f;  // 150% default scale
-    setPosition(0.6875f, 0.7659f);
+    setPosition(0.6875f, 0.75094f);
     m_smoothedSpeed = 0.0f;
     m_needleColor = DEFAULT_NEEDLE_COLOR;
     m_showOdometer = true;   // Odometer ON by default

@@ -1,0 +1,42 @@
+{
+  "_comment": "Third-party code vendored as COPIED SOURCE (not a package manager), so Dependabot cannot see or update it. The .github/workflows/vendored-deps.yml job checks each 'repo' latest release against 'version' weekly and opens a tracking issue when behind. To update: replace the file(s) at 'path' from upstream, then bump 'version' here. steam_api_minimal.h is a hand-authored minimal subset of the Steamworks SDK headers and is intentionally NOT tracked here.",
+  "deps": [
+    {
+      "name": "nlohmann/json",
+      "repo": "nlohmann/json",
+      "version": "3.12.0",
+      "path": "mxbmrp3/vendor/nlohmann/json.hpp",
+      "shipped": true
+    },
+    {
+      "name": "stb_truetype",
+      "repo": "nothings/stb",
+      "version": "1.26",
+      "path": "mxbmrp3/vendor/stb/stb_truetype.h",
+      "shipped": false,
+      "note": "Single-header TrueType rasterizer used ONLY by the dev tool tools/mxbmrp3_fontgen to rasterize .ttf into PiBoSo .fnt atlases — not compiled into the shipped plugin. stb has no release tags; version is the header's own 'v' comment."
+    },
+    {
+      "name": "cpp-httplib",
+      "repo": "yhirose/cpp-httplib",
+      "version": "0.49.0",
+      "path": "mxbmrp3/vendor/httplib/httplib.h",
+      "shipped": true
+    },
+    {
+      "name": "miniz",
+      "repo": "richgel999/miniz",
+      "version": "3.0.2",
+      "path": "mxbmrp3/vendor/miniz",
+      "shipped": true,
+      "note": "The MZ_VERSION macro in the header reads 11.0.2 (internal ABI version); upstream release tags are 3.x."
+    },
+    {
+      "name": "doctest",
+      "repo": "doctest/doctest",
+      "version": "2.5.2",
+      "path": "tests/integration/harness/doctest.h",
+      "shipped": false
+    }
+  ]
+}

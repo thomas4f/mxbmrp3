@@ -113,12 +113,16 @@ def offset_str(c, build, default_module):
 
 def crash_row(c, build, default_module):
     wa = c["workaround"] if c.get("workaround") else "-"
-    return (f"| {offset_str(c, build, default_module)} | **{c['name']}** "
-            f"| {when_cell(c)} | {wa} |")
+    # A third-party crash (e.g. an injected overlay/capture hook) faults in a
+    # system DLL whose offset is machine/Windows-specific -- so it is identified
+    # by the culprit MODULE on the stack, not a fault offset. `identify_by` holds
+    # that human signal and replaces the offset cell.
+    first = c.get("identify_by") or offset_str(c, build, default_module)
+    return f"| {first} | **{c['name']}** | {when_cell(c)} | {wa} |"
 
 
-def table(rows):
-    return ["| Fault offset | Crash | When | Workaround |", "|---|---|---|---|"] + rows + [""]
+def table(rows, first_col="Fault offset"):
+    return [f"| {first_col} | Crash | When | Workaround |", "|---|---|---|---|"] + rows + [""]
 
 
 def main():
@@ -128,16 +132,22 @@ def main():
     crashes = reg.get("crashes", [])
     versions = reg.get("build_versions", {})  # optional, human-filled: TDS -> "beta21e"
 
+    # Split MX Bikes' own crashes from third-party ones (injected overlays/hooks
+    # that fault in a system DLL and are identified by the culprit module, not an
+    # offset). Third-party crashes get their own section, keyed by 'identify_by'.
+    game = [c for c in crashes if not c.get("third_party")]
+    third_party = [c for c in crashes if c.get("third_party")]
+
     # All game builds present (hex TimeDateStamp keys), newest first.
     build_val = {}
-    for c in crashes:
+    for c in game:
         for k in c.get("builds", {}):
             v = parse_tds(k)
             if v is not None:
                 build_val[k] = v
     builds_sorted = sorted(build_val, key=lambda k: build_val[k], reverse=True)
     latest = builds_sorted[0] if builds_sorted else None
-    modstable = [c for c in crashes
+    modstable = [c for c in game
                  if not any(parse_tds(k) is not None for k in c.get("builds", {}))]
     as_of = max((c.get("last_seen") for c in crashes if c.get("last_seen")), default=None)
 
@@ -158,12 +168,23 @@ def main():
         out.append(build_heading(b, versions, b == latest))
         out.append("")
         out += table([crash_row(c, b, default_module)
-                      for c in crashes if b in c.get("builds", {})])
+                      for c in game if b in c.get("builds", {})])
 
     if modstable:
         out.append("### Build-independent (faults in a shared component, same offset on every build)")
         out.append("")
         out += table([crash_row(c, None, default_module) for c in modstable])
+
+    if third_party:
+        out.append("## Not MX Bikes — third-party software")
+        out.append("")
+        out.append("*These faults are captured by the plugin's crash handler but are **not** MX Bikes "
+                   "or plugin bugs — they come from other software injected into the game. Identify "
+                   "them by the module on the crash stack; the exact fault offset is machine/Windows-"
+                   "specific, so don't match on it.*")
+        out.append("")
+        out += table([crash_row(c, None, default_module) for c in third_party],
+                     first_col="Identify by")
 
     out.append(FOOTER)
 

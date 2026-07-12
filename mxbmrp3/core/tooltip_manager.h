@@ -14,6 +14,8 @@
 
 #include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 class TooltipManager {
 public:
@@ -34,6 +36,15 @@ public:
         const auto& m = controls();
         auto it = m.find(controlId);
         return (it != m.end()) ? it->second : "";
+    }
+
+    // Enumerate every tooltip (tab + control) as {id, text}. For tests/tooling —
+    // e.g. the unit test that enforces the LENGTH LIMIT documented above.
+    static std::vector<std::pair<std::string, std::string>> allTooltips() {
+        std::vector<std::pair<std::string, std::string>> out;
+        for (const auto& kv : tabs())     out.emplace_back(kv.first, kv.second);
+        for (const auto& kv : controls()) out.emplace_back(kv.first, kv.second);
+        return out;
     }
 
 private:
@@ -57,7 +68,7 @@ private:
             {"radar", "Shows nearby riders relative to your position. Useful for close racing awareness."},
             {"lap_log", "History of your recent lap times with sector breakdowns. Shows lap-by-lap performance."},
             {"friends", "Steam friends in the same game: where they are, badged when on your server and track."},
-            {"lap_consistency", "Visualizes lap time consistency with bar charts and statistics. Track your improvement over time."},
+            {"session_charts", "Progression charts: running order, race trace, gap to leader, and pace."},
             {"ideal_lap", "Displays your theoretical best lap time calculated from your fastest individual sectors."},
             {"telemetry", "Real-time input data including throttle, brake, clutch, RPM, suspension travel, and gear."},
             {"performance", "System performance metrics including frame rate and plugin execution time."},
@@ -72,6 +83,7 @@ private:
             {"fmx", "Freestyle trick detection with scoring, chain combos, and rotation visualization."},
             {"stats", "Per-track statistics including lap counts, crashes, gear shifts, top speed, and riding time."},
             {"helmet", "First-person helmet overlay with lean tilt and vibration."},
+            {"director", "Auto-director for spectating: follows the most interesting rider - battles, passes, hot laps."},
         };
         return m;
     }
@@ -90,6 +102,7 @@ private:
             {"standings.session_info", "Show a session-info row below the title (session, time remaining, leader's lap, or overtime label)."},
             {"standings.headers", "Show a header row labeling each enabled column above the rider rows."},
             {"standings.rows", "Maximum rider rows to show. More rows use more screen space."},
+            {"standings.top_positions", "Always show the top N leaders, even when rows center on you (0 = off)."},
             {"standings.col_tracked", "Show status icons: hazard warnings, blue flags, checkered flags, and tracked rider markers."},
             {"standings.col_pos", "Show position number column."},
             {"standings.col_posgain", "Show positions gained or lost since the race start (caret up/down with a count). Race sessions only."},
@@ -121,18 +134,19 @@ private:
             {"friends.col_info", "Session, format and state (e.g. Race 2, In Progress), or In Menus / Unknown between sessions."},
             {"friends.col_timer", "The friend's session clock: MM:SS, or N TO GO / FINAL LAP / CHECKERED. A coarse snapshot, not live."},
 
-            {"lap_consistency.style", "Display mode. Graphs shows bar chart, Numbers shows statistics only, Both shows both."},
-            {"lap_consistency.reference", "Baseline for comparison. Bars show delta to this reference time."},
-            {"lap_consistency.lap_count", "Number of recent laps to include in the chart and statistics."},
-            {"lap_consistency.trend_mode", "Trend line overlay. Off=none, Line=connected dots, Average=3-lap moving avg, Linear=regression."},
-            {"lap_consistency.stat_ref", "Show reference time row. Displays the baseline time for comparison."},
-            {"lap_consistency.stat_best", "Show best lap time from the displayed laps."},
-            {"lap_consistency.stat_avg", "Show average lap time across the displayed laps."},
-            {"lap_consistency.stat_worst", "Show worst (slowest) lap time from the displayed laps."},
-            {"lap_consistency.stat_last", "Show your most recent lap time."},
-            {"lap_consistency.stat_stddev", "Show standard deviation (+/-) indicating lap time spread."},
-            {"lap_consistency.stat_trend", "Show trend indicator (Faster/Stable/Slower) based on recent laps."},
-            {"lap_consistency.stat_cons", "Show consistency score (%). Higher is more consistent."},
+            {"session_charts.chart_lap", "Lap chart: running order over the laps, one row per rider. Shows overtakes."},
+            {"session_charts.chart_trace", "Race trace: cumulative time vs a fixed reference pace. Race only."},
+            {"session_charts.chart_gap", "Gap chart: seconds behind the leader (best lap in practice/qual)."},
+            {"session_charts.chart_pace", "Pace chart: each rider's lap time per lap. Any session."},
+            {"session_charts.colors", "Rider line colours: a hue per position, or bike brand colour."},
+            {"session_charts.top_n", "Always show the top N leaders, even when rows center on you (0 = off)."},
+            {"session_charts.rows", "Total rider lines shown: the top-N plus a window centered on you."},
+            {"session_charts.grid", "Show horizontal grid lines behind the chart."},
+            {"session_charts.axis_labels", "Show axis labels: values on the left, lap numbers on the bottom."},
+            {"session_charts.legend", "Label each line with the rider's race number at its end."},
+            {"session_charts.zero_line", "Show the dashed reference line (the trace's reference pace)."},
+            {"session_charts.dots", "Draw a dot at each lap's point along every line."},
+            {"session_charts.filter_outliers", "Pace chart: hide the opening lap, invalid laps, and slow outliers."},
 
             {"telemetry.display", "Display mode. Graphs shows visual meters, Numbers shows text values, Both shows both."},
             {"telemetry.throttle", "Show throttle input percentage."},
@@ -172,23 +186,20 @@ private:
             {"records.col_date", "Show date when the record was set."},
             {"records.headers", "Show a header row labeling each column above the records."},
 
-            {"timing.label", "Show the label column (Split 1, Split 2, Lap)."},
-            {"timing.time", "Show the time column with split/lap times."},
-            {"timing.gap", "Gap comparison for primary row. Off hides the gap column, or select a comparison type."},
+            {"timing.time", "Show the big time row at the top (current/frozen split or lap time)."},
             {"timing.show", "At Splits shows timing only after crossing a split point. Always shows timing constantly."},
-            {"timing.freeze", "How long to display gap values after crossing a split. Off shows no gaps."},
-            {"timing.show_reference", "Show reference times next to gaps."},
-            {"timing.layout", "Vertical stacks elements in one column. Horizontal puts primary side-by-side, chips below."},
-            {"timing.secondary_pb", "Show session personal best as secondary chip. Disabled when set as primary."},
-            {"timing.secondary_alltime", "Show all-time personal best as secondary chip. Disabled when set as primary."},
-            {"timing.secondary_ideal", "Show ideal lap (sum of best sectors) as secondary chip. Disabled when set as primary."},
-            {"timing.secondary_overall", "Show overall best (any rider) as secondary chip. Disabled when set as primary."},
-            {"timing.secondary_record", "Show fastest record from Records HUD as secondary chip. Disabled when set as primary."},
-            {"timing.secondary_lastlap", "Show gap to your previous lap as secondary chip. Disabled when set as primary."},
+            {"timing.freeze", "How long to hold the split/lap time and its gaps after crossing a split. Off shows no gaps."},
+            {"timing.gap_pb", "Add a comparison row against your session personal best."},
+            {"timing.gap_alltime", "Add a comparison row against your all-time personal best."},
+            {"timing.gap_ideal", "Add a comparison row against your ideal lap (sum of best sectors)."},
+            {"timing.gap_overall", "Add a comparison row against the best lap by anyone this session."},
+            {"timing.gap_record", "Add a comparison row against the fastest record from the Records HUD."},
+            {"timing.gap_lastlap", "Add a comparison row against your previous lap."},
 
             {"map.range", "Zoom level. Full shows entire track, or select a specific range in meters."},
             {"map.rotation", "When On, the map rotates so your heading is always up. When Off, the map stays fixed to track."},
             {"map.outline", "Show the track outline. Helps orientation; disable for more FPS on long tracks."},
+            {"map.markers", "Show S/F, sector markers and segment lines. Off leaves just the track and riders."},
             {"map.track_width", "Thickness of the track outline line."},
             {"map.detail", "Ribbon detail. Auto adapts to map size; High/Low force a fixed density."},
             {"map.colorize", "Rider marker colors. Uniform uses same color, Brand uses bike colors, Position by relative pos."},
@@ -227,11 +238,10 @@ private:
             {"appearance.clock_format", "Clock time format. 24h uses 00:00-23:59, 12h uses 1:00-12:59 AM/PM."},
             {"general.grid_snap", "When enabled, HUDs snap to a grid when dragging."},
             {"general.screen_clamp", "When enabled, HUDs are clamped to stay within screen bounds when dragging."},
-            {"general.menu_only_cursor", "Cursor shows only in the menu; reopen via Toggle Settings hotkey. For controllers seen as a mouse."},
-            {"general.auto_save", "When enabled, settings save automatically. Disable to edit the INI manually and reload."},
+            {"general.auto_save", "Auto-saves on leaving the track (never while riding); use Save anytime. Disable to edit the INI."},
             {"general.steam_friends", "Broadcast your status and see friends running the plugin. Needs the Steam build; on by default."},
             {"general.discord", "Display your track, session, and lap progress in Discord's Rich Presence."},
-            {"general.analytics", "Send an anonymous usage ping at startup (random ID, no personal data) so the dev can count users. On by default."},
+            {"general.analytics", "Send an anonymous usage ping at startup (random ID, no personal data). On by default."},
             {"general.web_server", "Web overlay for OBS. Add as Browser Source at the displayed port."},
             {"general.web_port", "Port for the web server. Change if the default is in use by another application."},
             {"general.auto_switch", "Automatically switch profiles based on session type."},
@@ -240,6 +250,7 @@ private:
             {"general.reset_all", "Reset all profiles and settings to defaults."},
             {"appearance.drop_shadow", "Add a shadow behind all text for improved readability."},
             {"appearance.hud_icons", "Show identity icons in the UI: beside HUD titles, on the settings tabs, and on the settings button."},
+            {"appearance.display_target", "Where the HUD draws: In-game, a Companion window you can drag to a second monitor, or Both."},
             {"general.pb_scope", "Bike = PB per bike. Category = PB across all bikes in the same class."},
 
             {"updates.check_enabled", "Check for updates when the game starts."},
@@ -292,8 +303,8 @@ private:
             {"widgets.clock", "Shows current local time. Supports 12h/24h format and optional UTC display."},
             {"widgets.lean", "Shows rider lean angle in degrees with arc gauge."},
             {"widgets.gforce", "G-G diagram plotting lateral vs longitudinal G-force with a peak marker."},
-            {"widgets.compass", "Compass dial showing the bike's heading with N/E/S/W labels (classic needle or modern rotating-card style)."},
-            {"widgets.pointer", "Mouse pointer for interacting with HUD elements."},
+            {"widgets.compass", "Bike heading dial with N/E/S/W labels (classic needle or modern rotating-card style)."},
+            {"widgets.pointer", "On = shown while racing; Off = only in the settings menu (helps controllers seen as a mouse)."},
             {"widgets.tyre_temp", "Shows front and rear tyre temperatures."},
             {"widgets.ecu", "Shows ECU aids: map, traction, engine braking, anti-wheeling. Chips brighten on intervention."},
             {"widgets.version", "Shows plugin version number."},
@@ -315,7 +326,7 @@ private:
             {"hotkeys.rumble", "Toggle the rumble HUD on/off."},
             {"hotkeys.widgets", "Toggle all widgets on/off."},
             {"hotkeys.fmx", "Toggle the FMX HUD on/off."},
-            {"hotkeys.lap_consistency", "Toggle the lap consistency HUD on/off."},
+            {"hotkeys.session_charts", "Toggle the Charts HUD on/off."},
             {"hotkeys.session", "Toggle the session HUD on/off."},
             {"hotkeys.notices", "Toggle the notices HUD on/off."},
             {"hotkeys.segment_add", "Drop a segment boundary: 2 points time a section, close the loop for a full lap."},
@@ -325,11 +336,14 @@ private:
             {"hotkeys.reload", "Reload configuration from disk."},
             {"hotkeys.event_log", "Toggle the event log HUD on/off."},
             {"hotkeys.helmet", "Toggle the helmet overlay on/off."},
+            {"hotkeys.director_toggle", "Toggle the auto-director on/off."},
+            {"hotkeys.director_lock", "Lock the director onto the current rider so it won't cut away. Press again to release."},
             {"hotkeys.friends", "Toggle the friends HUD on/off."},
-            {"hotkeys.overlay_last_lap", "Web overlay: force the fastest-last-lap board to slide in now (momentary; normal rotation resumes after)."},
-            {"hotkeys.overlay_fastest_lap", "Web overlay: force the session-best lap board to slide in now (momentary; normal rotation resumes after)."},
-            {"hotkeys.overlay_down_order", "Web overlay: force the down-the-order (backmarkers) carousel to slide in now (momentary; normal rotation resumes after)."},
-            {"hotkeys.overlay_battle", "Web overlay: force the closest battle to slide in now (momentary; shows 'No data' if no battle is active)."},
+            {"hotkeys.overlay_last_lap", "Web overlay: force the fastest-last-lap board in now (momentary)."},
+            {"hotkeys.overlay_fastest_lap", "Web overlay: force the session-best lap board in now (momentary)."},
+            {"hotkeys.overlay_down_order", "Web overlay: force the down-the-order (backmarkers) rundown in now (momentary)."},
+            {"hotkeys.overlay_sectors", "Web overlay: force the best-sectors carousel in now, one sector per page (momentary)."},
+            {"hotkeys.overlay_charts", "Web overlay: force the session-charts carousel in now, one chart per page (momentary)."},
 
             {"stats.visibility_mode", "When to show. Always displays on track, On Finish appears after crossing the finish line."},
             {"stats.show_lap", "Show last completed lap column with per-lap stats."},
@@ -372,6 +386,7 @@ private:
             {"event_log.leader_change", "Log when a different rider takes the lead position. Race sessions only."},
             {"event_log.finished", "Log when a rider crosses the finish line with their finishing position."},
             {"event_log.pit", "Log when a rider enters or exits the pits. Can be frequent in practice sessions."},
+            {"event_log.director", "Show the auto-director's shot decisions and state changes in the log. A broadcaster aid; frequent, so off by default."},
 
             {"helmet.helmet_enabled", "Enable the helmet overlay."},
             {"helmet.upper_tex", "Upper helmet texture (visor rim and top)."},
@@ -385,6 +400,26 @@ private:
             {"helmet.visor_mode", "Off = no tint. Visor = tint behind helmet (full-face). Goggles = tint in front (open-face)."},
             {"helmet.visor_tint_opacity", "Strength of the tint."},
             {"helmet.visor_tint_color", "Color of the tint."},
+            {"director.enabled", "Enable the auto-director. Acts only while spectating or watching a replay."},
+            {"director.min_shot", "Shortest time on a shot before cutting away - the main pace dial. Raise it to slow cuts down."},
+            {"director.max_shot", "Longest time on one rider before the director cuts away, so nobody stays on camera too long."},
+            {"director.battle_gap", "How close (seconds) two riders must be to count as a battle. Used by camera and overlay."},
+            {"director.battle_max_pos", "Ignore battles/incidents/overtakes past this position. Off = no limit. Gates the overlay."},
+            {"director.resume_after", "After manual control, auto-resume once the controller is idle this long. Off = stay paused."},
+            {"director.gamepad_takeover", "Push a stick to grab Free-Roam and pause the director. Auto-resumes when the stick goes idle."},
+            {"director.follow_battles", "Let close battles steer the camera. Off holds the leader/solo baseline."},
+            {"director.follow_incidents", "Cut to a rider the instant they crash (or go off / stall). Highest priority."},
+            {"director.follow_fastest", "Briefly flash to a rider who just set the overall fastest lap of the race."},
+            {"director.follow_pace", "Cut to a rider setting a session-best sector - a hot lap forming. Practice/quali only."},
+            {"director.finish_lock", "On the leader's final lap, lock onto the front so the win is never missed."},
+            {"director.catch_overtakes", "Cut to a rider who just completed an on-track pass. Multi-place moves score higher."},
+            {"director.follow_lappers", "Follow a front-runner lapping backmarkers (a lap up in traffic). Below a real battle."},
+            {"director.follow_drops", "Follow a rider tumbling down the order - losing several places fast. Below a real battle."},
+            {"director.variety_every", "How often to dip into an onboard camera: every Nth cut. Lower = more; Off = always trackside."},
+            {"director.hold", "How long to hold a story shot (crash / fastest lap) before cutting back."},
+            {"director.cam_fender", "Fender onboards to allow: Off, Front (rider ahead), Rear (a chaser), or Both."},
+            {"director.cam_helmet", "Helmet views to allow: Off, Helmet 1 (POV), Helmet 2 (side), or Both. All forward-facing."},
+            {"director.hud_visible", "Show the camera button - its tint shows the director's state; click to toggle, drag to move."},
         };
         return m;
     }

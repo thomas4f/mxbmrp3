@@ -84,6 +84,25 @@ public:
     }
     bool isVisible() const { return m_bVisible; }
 
+    // True if this HUD is shown on ANY active surface — the game, or the companion
+    // window when it's open. HUD update()s early-out on "not visible" to skip the
+    // expensive rebuild; they must use THIS (not isVisible()) so a HUD enabled only
+    // on the companion still rebuilds and doesn't render stale. Equals isVisible()
+    // when the companion is disabled, so single-window behavior is unchanged.
+    bool isVisibleAnySurface() const;
+
+    // Temporary "show even if the mouse is idle" reveal, used by the corner status
+    // buttons (settings / director) so they can flash into view on an event (entering
+    // the track, toggling a mode) without waiting for cursor movement. A no-op for HUDs
+    // that don't consult isRevealed() in their render gate. Time-based (not frame-based)
+    // so the duration is FPS-independent.
+    void reveal(int ms) {
+        m_revealUntil = std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
+    }
+    bool isRevealed() const {
+        return std::chrono::steady_clock::now() < m_revealUntil;
+    }
+
     void setShowTitle(bool showTitle) {
         if (m_bShowTitle != showTitle) {
             m_bShowTitle = showTitle;
@@ -157,6 +176,63 @@ public:
     float getOffsetX() const { return m_fOffsetX; }
     float getOffsetY() const { return m_fOffsetY; }
 
+    // --- Companion-surface instance (decoupled on/off + position) ---------------
+    // The companion window is a second HUD surface. Each HUD keeps an independent
+    // visibility + position for it. While m_bCompanionConfigured is false the companion
+    // values MIRROR the game (the accessors fall back to the game value) — the state for
+    // a user who never opens the companion window, which keeps their save sparse. But
+    // OPENING the window snapshots the current game layout into EVERY HUD's companion
+    // instance: HudManager calls snapshotCompanionFromGame() on the first companion frame
+    // (the "decoupled from the start" behavior, so the companion stops tracking the game
+    // once opened). From then on each HUD's companion values are configured and persist —
+    // so a user who has ever opened the companion saves the four companion* keys for all
+    // HUDs (intended; the sparse-save property is for single-window users only). A later
+    // setCompanion*() edit also snapshots-on-first-write as a fallback. Only the on/off +
+    // position decouple; everything else (colors/size/columns) is shared.
+    bool isCompanionConfigured() const { return m_bCompanionConfigured; }
+    bool getCompanionVisible() const { return m_bCompanionConfigured ? m_bCompanionVisible.load() : m_bVisible.load(); }
+    float getCompanionOffsetX() const { return m_bCompanionConfigured ? m_fCompanionOffsetX : m_fOffsetX; }
+    float getCompanionOffsetY() const { return m_bCompanionConfigured ? m_fCompanionOffsetY : m_fOffsetY; }
+    void setCompanionVisible(bool visible) { ensureCompanionConfigured(); m_bCompanionVisible.store(visible); }
+    void setCompanionPosition(float x, float y) { ensureCompanionConfigured(); m_fCompanionOffsetX = x; m_fCompanionOffsetY = y; }
+    // Settings load applies the persisted companion instance verbatim (configured).
+    void applyCompanionState(bool visible, float x, float y) {
+        m_bCompanionConfigured = true;
+        m_bCompanionVisible.store(visible);
+        m_fCompanionOffsetX = x; m_fCompanionOffsetY = y;
+    }
+    void clearCompanionState() { m_bCompanionConfigured = false; }
+
+    // Snapshot the game state into the companion instance now, so the companion is
+    // independent from the moment it's enabled instead of mirroring until the first
+    // edit (the "decoupled from the start" behavior). No-op once configured.
+    void snapshotCompanionFromGame() { ensureCompanionConfigured(); }
+
+    // Hit-test at the surface the user is currently on: a companion HUD sits at its
+    // companion offset, so an interactive widget (settings/director button, drag)
+    // must test there, not at the game offset. Mirrors to the game offset until the
+    // companion instance diverges.
+    bool isPointInActiveBounds(float x, float y) const {
+        bool companion =
+            InputManager::getInstance().getActiveSurface() == InputManager::Surface::Companion;
+        return isPointInBoundsAt(x, y, companion ? getCompanionOffsetX() : getOffsetX(),
+                                       companion ? getCompanionOffsetY() : getOffsetY());
+    }
+
+    // A HUD builds its quads AND its interactive click/hover regions at the GAME
+    // offset; on the companion the RENDER is translated by (companion - game) but the
+    // regions are not. So an interactive HUD (settings menu, records/standings/map
+    // click targets) must shift a companion cursor BACK by that delta before testing
+    // it against its own regions — otherwise the hit-boxes sit where the HUD is drawn
+    // in-game, not where it's drawn on the companion. No-op on the game surface or a
+    // HUD still mirroring the game.
+    void mapCursorToHudSpace(float& x, float& y) const {
+        if (InputManager::getInstance().getActiveSurface() == InputManager::Surface::Companion) {
+            x -= (getCompanionOffsetX() - getOffsetX());
+            y -= (getCompanionOffsetY() - getOffsetY());
+        }
+    }
+
     virtual void setScale(float scale) {
         if (scale <= 0.0f) scale = 0.1f;
         if (m_fScale != scale) {
@@ -203,6 +279,9 @@ public:
 
     virtual bool handleMouseInput(bool allowInput = true);
     bool isPointInBounds(float x, float y) const;
+    // Hit test against the bounds translated by an explicit offset (used for
+    // dragging on the companion surface, where the HUD sits at its companion offset).
+    bool isPointInBoundsAt(float x, float y, float offX, float offY) const;
 
 protected:
     bool clampPositionToBounds(float& offsetX, float& offsetY, const WindowBounds& windowBounds) const;
@@ -411,8 +490,26 @@ public:
     float m_fOffsetX, m_fOffsetY;
     float m_fBoundsLeft, m_fBoundsTop, m_fBoundsRight, m_fBoundsBottom;
 
+    // Companion-surface instance (see the accessors above). Independent on/off +
+    // position, mirroring the game while m_bCompanionConfigured is false.
+    bool m_bCompanionConfigured = false;
+    std::atomic<bool> m_bCompanionVisible{ true };
+    float m_fCompanionOffsetX = 0.0f, m_fCompanionOffsetY = 0.0f;
+    // Snapshot the current game state into the companion instance on first divergence.
+    void ensureCompanionConfigured() {
+        if (!m_bCompanionConfigured) {
+            m_bCompanionVisible.store(m_bVisible.load());
+            m_fCompanionOffsetX = m_fOffsetX; m_fCompanionOffsetY = m_fOffsetY;
+            m_bCompanionConfigured = true;
+        }
+    }
+
     // Frequent update timing (for live timing displays)
     std::chrono::steady_clock::time_point m_lastTickUpdate;
+
+    // Temporary reveal window (see reveal()/isRevealed()). Default-constructed to the
+    // clock epoch, so isRevealed() is false until the first reveal().
+    std::chrono::steady_clock::time_point m_revealUntil;
 
     // Benchmark profiling index (registered in BenchmarkMetrics, -1 = not registered)
     int m_benchmarkIndex;
@@ -426,6 +523,7 @@ private:
 
     bool m_bDraggable;
     bool m_bDragging;
+    bool m_bDragCompanion = false;   // the surface this drag edits (companion vs game)
     float m_fDragStartX, m_fDragStartY;
     float m_fInitialOffsetX, m_fInitialOffsetY;
 

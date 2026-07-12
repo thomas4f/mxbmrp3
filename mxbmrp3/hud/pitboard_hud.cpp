@@ -126,7 +126,7 @@ bool PitboardHud::shouldBeVisible() const {
 void PitboardHud::update() {
     // OPTIMIZATION: Skip all processing when HUD is disabled by user
     // Note: isVisible() checks m_bVisible (user setting), not shouldBeVisible() (dynamic visibility)
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -597,7 +597,7 @@ void PitboardHud::resetToDefaults() {
     setTextureVariant(1);  // Show texture by default
     m_fBackgroundOpacity = 1.0f;  // 100% opacity
     m_fScale = 1.0f;  // 100% default scale
-    setPosition(0.0055f, 0.1332f);
+    setPosition(0.0055f, 0.12907f);
     m_enabledRows = ROW_DEFAULT;
     m_displayMode = MODE_SPLITS;  // Show at splits by default
     m_gapCompareMode = GAP_AUTO;  // Auto: leader when racing, session PB when solo

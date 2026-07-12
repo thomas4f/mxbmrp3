@@ -38,7 +38,7 @@ bool FriendsHud::handlesDataType(DataChangeType dataType) const {
 }
 
 void FriendsHud::update() {
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -338,7 +338,7 @@ void FriendsHud::resetToDefaults() {
     setTextureVariant(0);
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.7315f, 0.5439f);  // right-column tower, in settings order (after Event Log, before FMX)
+    setPosition(0.7315f, 0.55147f);  // right-column tower, in settings order (after Event Log, before FMX)
     m_enabledColumns = COL_DEFAULT;
     m_maxDisplayRows = 8;
     m_bShowHeaders = true;

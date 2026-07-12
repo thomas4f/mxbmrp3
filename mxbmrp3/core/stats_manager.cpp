@@ -4,6 +4,7 @@
 // personal bests, and odometer data in a single JSON file
 // ============================================================================
 #include "stats_manager.h"
+#include "atomic_file_writer.h"
 #include "plugin_data.h"
 #include "plugin_utils.h"
 #include "ui_config.h"
@@ -209,7 +210,6 @@ void StatsManager::save() {
     if (!m_dirty) return;
 
     std::string filePath = getFilePath();
-    std::string tempPath = filePath + ".tmp";
 
     try {
         nlohmann::json j;
@@ -287,35 +287,20 @@ void StatsManager::save() {
             j["bikeCategories"] = bikeCategories;
         }
 
-        // Write to temp file first
-        std::ofstream tempFile(tempPath);
-        if (!tempFile.is_open()) {
-            DEBUG_INFO_F("[StatsManager] Failed to open temp file for writing: %s", tempPath.c_str());
-            return;
+        // Write via the shared atomic writer (temp file + MoveFileExA replace). Synchronous:
+        // stats are saved on discrete, infrequent events (lap completion, session end,
+        // shutdown), not the per-frame path, and callers/tests read the file right after —
+        // so this keeps immediate durability while sharing the one atomic-write helper. Only
+        // clear m_dirty on success, so a failed write is retried on the next save().
+        if (AtomicFileWriter::writeFileAtomic(filePath, j.dump(2))) {
+            m_dirty = false;
+            DEBUG_INFO_F("[StatsManager] Saved stats to %s", filePath.c_str());
+        } else {
+            DEBUG_WARN_F("[StatsManager] Failed to save stats to %s", filePath.c_str());
         }
-
-        tempFile << j.dump(2);
-        tempFile.close();
-
-        if (tempFile.fail()) {
-            DEBUG_INFO_F("[StatsManager] Failed to write temp file: %s", tempPath.c_str());
-            std::remove(tempPath.c_str());
-            return;
-        }
-
-        // Atomic rename
-        if (!MoveFileExA(tempPath.c_str(), filePath.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-            DEBUG_WARN_F("[StatsManager] Failed to save file (error %lu): %s", GetLastError(), filePath.c_str());
-            std::remove(tempPath.c_str());
-            return;
-        }
-
-        m_dirty = false;
-        DEBUG_INFO_F("[StatsManager] Saved stats to %s", filePath.c_str());
 
     } catch (const std::exception& e) {
         DEBUG_INFO_F("[StatsManager] Error saving stats: %s", e.what());
-        std::remove(tempPath.c_str());
     }
 }
 
@@ -389,7 +374,9 @@ void StatsManager::migrateOldFiles() {
             if (j.contains("odometers") && j["odometers"].is_object()) {
                 for (auto& [bikeName, distanceJson] : j["odometers"].items()) {
                     if (distanceJson.is_number()) {
-                        m_bikeOdometers[bikeName] = distanceJson.get<double>();
+                        // Same sanitization as the normal load path: reject NaN/Inf and
+                        // negatives so a corrupt legacy file can't import a poisoned odometer.
+                        m_bikeOdometers[bikeName] = (std::max)(finiteOrZero(distanceJson.get<double>()), 0.0);
                     }
                 }
                 DEBUG_INFO_F("[StatsManager] Imported odometer data for %zu bikes", m_bikeOdometers.size());
@@ -757,6 +744,7 @@ void StatsManager::recordPenalty(int penaltyTimeMs, bool isRace) {
 
     if (isRace && penaltyTimeMs > 0) {
         m_globalStats.penaltyTimeMs += penaltyTimeMs;
+        m_dirty = true;  // persisted stat (global["penaltyTimeMs"]); mutated even when m_currentKey is empty
     }
 }
 
@@ -810,8 +798,8 @@ bool StatsManager::updatePersonalBest(const StatsPersonalBestData& entry) {
     }
 
     m_personalBests[m_currentKey] = entry;
-    m_dirty = true;
-    save();  // PBs are rare and high-value — persist immediately
+    m_dirty = true;   // deferred: persisted on leave-track (RunStop/RunDeinit). A PB is set at
+                      // lap completion (start/finish) — on track — and we never write on track.
     return true;
 }
 
@@ -875,8 +863,7 @@ bool StatsManager::updatePersonalBest(const std::string& trackId, const std::str
         return false;
     }
     m_personalBests[key] = entry;
-    m_dirty = true;
-    save();  // PBs are rare and high-value — persist immediately
+    m_dirty = true;   // deferred: persisted on leave-track (RunStop/RunDeinit) — never on track.
     return true;
 }
 

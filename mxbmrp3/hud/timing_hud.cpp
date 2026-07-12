@@ -11,9 +11,11 @@
 #include "../game/game_config.h"
 
 #include <cstdio>
+#include <cstring>    // std::strlen
 #include <cmath>
 #include <string>
 #include <chrono>
+#include <algorithm>  // std::max
 
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
@@ -32,19 +34,19 @@ namespace {
     constexpr float START_X = 0.0f;
     constexpr float START_Y = 0.0f;
 
-    // Default vertical position. The layout is origin-based at the top of the draw area, so with a
-    // zero offset the HUD sits flush against the top edge. Earlier releases anchored the horizontal
-    // row's box top near y=0.1715 (the old TIMING_DIVIDER_Y 0.1665 + DIVIDER_GAP 0.005), so default
-    // the offset to land the box top there instead. The box top sits 0.5*paddingV (0.0111 at scale 1)
-    // below the content origin, hence 0.1715 - 0.0111. Saved user positions override this.
-    constexpr float DEFAULT_POSITION_Y = 0.1604f;
+    // Default vertical position: LAST in the center-top stack (GapBar -> Notices -> Timing, one
+    // grid snap between each). The Timing HUD grows DOWN, so placing it at the bottom means it
+    // never overlaps the notice/gapbar above no matter how many comparison rows are enabled.
+    //   notice bottom (0.117336) + 1 vertical cell (0.011734) = 0.129069 (== notices divider).
+    // All three boxes are now lineHeightLarge tall (4 cells), so the whole stack lands on the
+    // grid: box tops at cells 1/6/11, box bottoms at cells 5/10.
+    constexpr float DEFAULT_POSITION_Y = 0.129069f;
 }
 
 TimingHud::TimingHud()
     : m_displayDurationMs(DEFAULT_DURATION_MS)
-    , m_primaryGapType(GAP_DEFAULT_PRIMARY)
-    , m_secondaryGapTypes(GAP_DEFAULT_SECONDARY)
-    , m_layoutVertical(false)
+    , m_showTime(true)
+    , m_enabledComparisons(GAP_DEFAULT_ENABLED)
     , m_cachedSplit1(-1)
     , m_cachedSplit2(-1)
     , m_cachedSplit3(-1)
@@ -62,8 +64,8 @@ TimingHud::TimingHud()
     // One-time setup
     DEBUG_INFO("TimingHud created");
     setDraggable(true);
-    m_quads.reserve(6);    // Background quads (label + time + up to 3 gap rows)
-    m_strings.reserve(6);  // Label + time + up to 3 gap strings
+    m_quads.reserve(1);    // Single background quad (values carry colour via text, no strips)
+    m_strings.reserve(8);  // Time + (name + value) per comparison row
 
     // Set texture base name for dynamic texture discovery
     setTextureBaseName("timing_hud");
@@ -84,7 +86,7 @@ bool TimingHud::handlesDataType(DataChangeType dataType) const {
 void TimingHud::update() {
     // OPTIMIZATION: Skip all processing when not visible
     // State tracking (splits, gaps) is only meaningful when displaying
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -149,6 +151,24 @@ void TimingHud::update() {
             DEBUG_INFO_F("TimingHud: Pit state changed from %d to %d", m_cachedPitState, currentPitState);
             // Just trigger a redraw - centralized timer handles anchor reset automatically
             setDataDirty();
+        }
+        // A lap during which the rider was in the pits is not a genuine timed lap: the live
+        // timer is dropped on pit exit and re-anchored at the next S/F crossing (that S/F
+        // crossing is where this lap "completes"). Remember it so the pit out-lap's completion
+        // doesn't flash INVALID - there's no timing to invalidate. Cleared when the lap
+        // completes (processTimingUpdates) or on a session/spectate reset.
+        //
+        // Only latch while a timed lap is actually underway (the lap timer is anchored). At the
+        // START of a practice/qualify session the rider sits in the garage/pit (pit==1) BEFORE
+        // ever crossing S/F, so there is no lap to interrupt yet - the out-lap from the garage
+        // produces no lap-completion event, so nothing here would consume the flag, and it would
+        // wrongly carry the pre-lap garage sit into the FIRST genuine flying lap and suppress its
+        // freeze (the reported "first lap didn't freeze" bug). A real mid-lap pit keeps the
+        // anchor valid until pit EXIT, so it still latches here. (In spectate/replay the anchor
+        // is the only gate; on track isLapTimerValid also requires the sim to be running, which
+        // it is while riding through the pits.)
+        if (currentPitState == 1 && pluginData.isLapTimerValid()) {
+            m_lapInterruptedByPit = true;
         }
         m_cachedPitState = currentPitState;
     }
@@ -298,11 +318,19 @@ void TimingHud::processTimingUpdates() {
             }
         }
 
+        // A lap that passed through the pits isn't a genuine timed lap: the live timer was
+        // reset on pit exit and re-anchors at this very S/F crossing. There's no timing to
+        // invalidate, so don't freeze on it or flash INVALID - just let the freshly started
+        // lap tick. (A lap invalidated by cuts, with the timer running throughout, still
+        // freezes and shows INVALID.) Consume the flag: the fresh lap starts clean.
+        bool pitLap = m_lapInterruptedByPit;
+        m_lapInterruptedByPit = false;
+
         // Update official data cache
         m_officialData.time = lapTime;
         m_officialData.splitIndex = -1;  // Indicates lap complete
         m_officialData.lapNum = completedLapNum;
-        m_officialData.isInvalid = !isValid;
+        m_officialData.isInvalid = !isValid && !pitLap;
 
         // Calculate gaps for all enabled types (only if valid lap)
         if (isValid && lapTime > 0) {
@@ -322,14 +350,16 @@ void TimingHud::processTimingUpdates() {
         m_cachedSplit2 = -1;
         m_cachedSplit3 = -1;
 
-        // Freeze display (if freeze is enabled)
-        if (m_displayDurationMs > 0) {
+        // Freeze display (if freeze is enabled). Skip the freeze entirely for a pit-interrupted
+        // lap - there's nothing meaningful to hold, so the live timer keeps counting the new lap.
+        if (m_displayDurationMs > 0 && !pitLap) {
             m_isFrozen = true;
             m_frozenAt = std::chrono::steady_clock::now();
         }
 
         m_cachedLastCompletedLapNum = idealLapData->lastCompletedLapNum;
-        DEBUG_INFO_F("TimingHud: Lap %d completed, time=%d ms, valid=%d", completedLapNum, lapTime, isValid);
+        DEBUG_INFO_F("TimingHud: Lap %d completed, time=%d ms, valid=%d, pitLap=%d",
+            completedLapNum, lapTime, isValid, pitLap ? 1 : 0);
         setDataDirty();
 
         // Cache the updated all-time PB for next lap comparison
@@ -352,35 +382,33 @@ void TimingHud::checkFreezeExpiration() {
     }
 }
 
-bool TimingHud::shouldShowColumn(Column col) const {
-    // Check if column is enabled
-    if (!m_columnEnabled[col]) return false;
-
-    // Check display mode
+bool TimingHud::contentVisible() const {
     switch (m_displayMode) {
         case ColumnMode::OFF:
             return false;
-
-        case ColumnMode::SPLITS: {
-            // In segment mode the line is shown continuously (like ALWAYS), not just on freeze.
+        case ColumnMode::SPLITS:
+            // In segment mode the panel shows continuously (like ALWAYS), not just on freeze.
             if (PluginData::getInstance().getSegmentTimer().segmentCount() >= 1) return true;
-            return m_isFrozen;  // Only during freeze
-        }
-
+            return m_isFrozen;  // Only during the split/lap freeze
         case ColumnMode::ALWAYS:
-            return true;  // Always visible
+            return true;
     }
-
     return false;
+}
+
+bool TimingHud::showingInvalid() const {
+    // In segment mode the official split/lap machinery is swapped out, so INVALID never shows.
+    if (PluginData::getInstance().getSegmentTimer().segmentCount() >= 1) return false;
+    return m_isFrozen && m_officialData.isInvalid;
 }
 
 bool TimingHud::needsFrequentUpdates() const {
     // Segment mode: a running segment ticks live regardless of display mode / official timer state.
     if (PluginData::getInstance().getSegmentTimer().runningSeg >= 0) return true;
 
-    // Need frequent updates when time column is visible (ALWAYS mode), not frozen, and timer is valid
+    // Need frequent updates when the ticking time is shown (ALWAYS mode), not frozen, timer valid.
     if (m_isFrozen) return false;
-    if (m_displayMode != ColumnMode::ALWAYS || !m_columnEnabled[COL_TIME]) return false;
+    if (m_displayMode != ColumnMode::ALWAYS || !m_showTime) return false;
 
     const PluginData& data = PluginData::getInstance();
     if (!data.isLapTimerValid()) return false;
@@ -396,74 +424,13 @@ int TimingHud::calculateGap(int currentTime, int referenceTime) const {
     return currentTime - referenceTime;
 }
 
-void TimingHud::setPrimaryGapType(GapTypeFlags type) {
-    if (m_primaryGapType != type) {
-        m_primaryGapType = type;
-        // Don't modify secondaries - user intent preserved, filtered at display time
-        setDataDirty();
-    }
-}
-
-void TimingHud::cyclePrimaryGapType(bool forward) {
-    // Find current index
-    int currentIndex = -1;
-    for (int i = 0; i < GAP_TYPE_COUNT; i++) {
-        if (GAP_TYPE_INFO[i].flag == m_primaryGapType) {
-            currentIndex = i;
-            break;
-        }
-    }
-
-    // Cycle to next/previous
-    if (forward) {
-        currentIndex = (currentIndex + 1) % GAP_TYPE_COUNT;
-    } else {
-        currentIndex = (currentIndex + GAP_TYPE_COUNT - 1) % GAP_TYPE_COUNT;
-    }
-
-    setPrimaryGapType(GAP_TYPE_INFO[currentIndex].flag);
-}
-
-void TimingHud::setSecondaryGapType(GapTypeFlags flag, bool enabled) {
-    // Store user intent - filtering happens at display time
+void TimingHud::setComparisonEnabled(GapTypeFlags flag, bool enabled) {
     if (enabled) {
-        m_secondaryGapTypes |= flag;
+        m_enabledComparisons |= flag;
     } else {
-        m_secondaryGapTypes &= ~flag;
+        m_enabledComparisons &= ~flag;
     }
     setDataDirty();
-}
-
-int TimingHud::getEnabledSecondaryGapCount(bool skipPrimaryType) const {
-    int count = 0;
-    for (int i = 0; i < GAP_TYPE_COUNT; i++) {
-        GapTypeFlags flag = GAP_TYPE_INFO[i].flag;
-        // Skip primary gap type only when requested (when primary gap column is visible)
-        if (skipPrimaryType && flag == m_primaryGapType) continue;
-        if (m_secondaryGapTypes & flag) {
-            count++;
-        }
-    }
-    return count;
-}
-
-const GapTypeInfo* TimingHud::getGapTypeInfo(GapTypeFlags flag) {
-    for (int i = 0; i < GAP_TYPE_COUNT; i++) {
-        if (GAP_TYPE_INFO[i].flag == flag) {
-            return &GAP_TYPE_INFO[i];
-        }
-    }
-    return nullptr;
-}
-
-const char* TimingHud::getGapTypeName(GapTypeFlags flag) {
-    const GapTypeInfo* info = getGapTypeInfo(flag);
-    return info ? info->name : "Unknown";
-}
-
-const char* TimingHud::getGapTypeAbbrev(GapTypeFlags flag) {
-    const GapTypeInfo* info = getGapTypeInfo(flag);
-    return info ? info->abbrev : "??";
 }
 
 int TimingHud::getOverallBestLapTime() const {
@@ -736,14 +703,6 @@ void TimingHud::calculateAllGaps(int splitTime, int splitIndex, bool isLapComple
     }
 }
 
-int TimingHud::getVisibleColumnCount() const {
-    int count = 0;
-    for (int i = 0; i < COL_COUNT; i++) {
-        if (shouldShowColumn(static_cast<Column>(i))) count++;
-    }
-    return count;
-}
-
 void TimingHud::resetLiveTimingState() {
     // Note: Anchor and track monitor are now managed centrally by PluginData
     // Reset local display state only
@@ -753,6 +712,7 @@ void TimingHud::resetLiveTimingState() {
     m_cachedSplit2 = -1;
     m_cachedSplit3 = -1;
     m_cachedLastCompletedLapNum = -1;
+    m_lapInterruptedByPit = false;
 
     // Cache current all-time PB for comparison when beating it
     cacheAllTimePB();
@@ -789,6 +749,125 @@ void TimingHud::cacheAllTimePB() {
     }
 }
 
+// Which split boundary the rider is currently driving toward, from the lap timer's sector
+// (track-position driven, so it is correct from the first flying lap — unlike the discrete
+// CurrentLapData splits, which aren't populated until the first split of a fresh lap is
+// crossed). currentSector: 0=before S1, 1=before S2, …, (GAME_SECTOR_COUNT-1)=before the
+// finish; the last one (and a stopped/finished timer) maps to -1 (=> full lap).
+int TimingHud::currentTargetSplit() const {
+    const PluginData& pluginData = PluginData::getInstance();
+    if (pluginData.isLapTimerValid() && !pluginData.isDisplayRiderFinished()) {
+        int sec = pluginData.getLapTimerCurrentSector();
+        if (sec >= 0 && sec < GAME_SECTOR_COUNT - 1) return sec;
+    }
+    return -1;
+}
+
+// Whole-lap reference (target) time for a gap type (segment-agnostic; the render path handles
+// segment mode before calling). -1 when unavailable.
+int TimingHud::fullLapReferenceMs(GapTypeFlags type) const {
+    const PluginData& pluginData = PluginData::getInstance();
+    if (type == GAP_TO_PB) {
+        const LapLogEntry* personalBest = pluginData.getBestLapEntry();
+        return (personalBest && personalBest->lapTime > 0) ? personalBest->lapTime : -1;
+    } else if (type == GAP_TO_ALLTIME) {
+        return m_previousAllTimeLap;  // Cached at session start
+    } else if (type == GAP_TO_IDEAL) {
+        const IdealLapData* idealLapData = pluginData.getIdealLapData();
+        return idealLapData ? idealLapData->getIdealLapTime() : -1;
+    }
+#if GAME_HAS_RECORDS_PROVIDER
+    else if (type == GAP_TO_RECORD) {
+        return HudManager::getInstance().getRecordsHud().getFastestRecordLapTime();
+    }
+#endif
+    else if (type == GAP_TO_OVERALL) {
+        return getOverallBestLapTime();  // Scan standings for best lap
+    }
+    else if (type == GAP_TO_LASTLAP) {
+        // Compare against the most recent VALID completed lap (skip invalid ones).
+        const std::deque<LapLogEntry>* lapLog = pluginData.getLapLog();
+        if (lapLog) {
+            for (size_t i = 0; i < lapLog->size(); ++i) {
+                if (!(*lapLog)[i].isValid) continue;
+                return (*lapLog)[i].lapTime > 0 ? (*lapLog)[i].lapTime : -1;
+            }
+        }
+        return -1;
+    }
+    return -1;
+}
+
+// Cumulative reference (target) time up to and including targetSplit (0 = S1, 1 = S1+S2,
+// 2 = S1+S2+S3 on 4-sector, -1 = full lap), so the ticking clock can be read against the
+// sector being driven. Segment-agnostic. -1 when the reference lacks the needed sectors.
+int TimingHud::cumulativeReferenceMs(GapTypeFlags type, int targetSplit) const {
+    if (targetSplit < 0) return fullLapReferenceMs(type);
+    const PluginData& pluginData = PluginData::getInstance();
+
+    // All-Time PB keeps its cumulative points pre-summed (cacheAllTimePB()).
+    if (type == GAP_TO_ALLTIME) {
+        if (targetSplit == 0) return m_previousAllTimeSector1;
+        if (targetSplit == 1) return m_previousAllTimeS1PlusS2;
+#if GAME_SECTOR_COUNT >= 4
+        if (targetSplit == 2) return m_previousAllTimeS1PlusS2PlusS3;
+#endif
+        return m_previousAllTimeLap;
+    }
+
+    // Everything else exposes per-sector reference times; sum the first (targetSplit+1).
+    int s1 = -1, s2 = -1, s3 = -1;
+    switch (type) {
+        case GAP_TO_PB: {
+            const LapLogEntry* pb = pluginData.getBestLapEntry();
+            if (pb) { s1 = pb->sector1; s2 = pb->sector2; s3 = pb->sector3; }
+            break;
+        }
+        case GAP_TO_IDEAL: {
+            const IdealLapData* il = pluginData.getIdealLapData();
+            if (il) { s1 = il->bestSector1; s2 = il->bestSector2; s3 = il->bestSector3; }
+            break;
+        }
+        case GAP_TO_OVERALL: {
+            const LapLogEntry* ob = pluginData.getOverallBestLap();
+            if (ob) { s1 = ob->sector1; s2 = ob->sector2; s3 = ob->sector3; }
+            break;
+        }
+#if GAME_HAS_RECORDS_PROVIDER
+        case GAP_TO_RECORD: {
+            const RecordsHud& recordsHud = HudManager::getInstance().getRecordsHud();
+            int r1 = 0, r2 = 0, r3 = 0, r4 = 0;
+            if (recordsHud.getFastestRecordSectors(r1, r2, r3, r4)) { s1 = r1; s2 = r2; s3 = r3; }
+            break;
+        }
+#endif
+        case GAP_TO_LASTLAP: {
+            const std::deque<LapLogEntry>* lapLog = pluginData.getLapLog();
+            if (lapLog) {
+                for (size_t i = 0; i < lapLog->size(); ++i) {
+                    if (!(*lapLog)[i].isValid) continue;  // most recent VALID lap
+                    s1 = (*lapLog)[i].sector1; s2 = (*lapLog)[i].sector2; s3 = (*lapLog)[i].sector3;
+                    break;
+                }
+            }
+            break;
+        }
+        default: break;
+    }
+
+    if (s1 <= 0) return -1;
+    int sum = s1;
+    if (targetSplit >= 1) { if (s2 <= 0) return -1; sum += s2; }
+#if GAME_SECTOR_COUNT >= 4
+    if (targetSplit >= 2) { if (s3 <= 0) return -1; sum += s3; }
+#endif
+    return sum;
+}
+
+int TimingHud::passiveReferenceMs(GapTypeFlags type) const {
+    return cumulativeReferenceMs(type, currentTargetSplit());
+}
+
 void TimingHud::rebuildLayout() {
     // Layout changes require full rebuild since columns are dynamic
     rebuildRenderData();
@@ -823,192 +902,29 @@ void TimingHud::rebuildRenderData() {
         ? static_cast<int>(seg.bests[segShownIndex] * 1000.0f + 0.5f) : -1;
     GapData segGap;  // delta-to-segment-best, used only in segment mode
 
-    // Check if any columns or secondary gaps should be visible
-    int visibleCount = getVisibleColumnCount();
-    int secondaryCount = getEnabledSecondaryGapCount(shouldShowColumn(COL_GAP));
-
-    // Secondaries also respect display mode - and are suppressed entirely in segment mode
-    // (a custom segment has only its own best, no ideal/overall/record references).
-    bool showSecondaries = !segmentMode &&
-                           ((m_displayMode == ColumnMode::ALWAYS) ||
-                            (m_displayMode == ColumnMode::SPLITS && m_isFrozen));
-
-    if (visibleCount == 0 && (secondaryCount == 0 || !showSecondaries)) {
+    // Nothing to show right now (Off, or At-Splits between freezes) -> collapse to zero size.
+    if (!contentVisible()) {
         setBounds(0.0f, 0.0f, 0.0f, 0.0f);
         return;
     }
 
-    auto dim = getScaledDimensions();
-
-    // Both layouts center the HUD on CENTER_X. Quantize that centering anchor to the horizontal grid
-    // when grid snapping is on: the drag offset is snapped too, so left edge = snapped anchor + snapped
-    // offset stays on the shared grid lattice and the HUD lines up with other HUDs (while still reading
-    // as centered). With snapping off, leave it exactly centered for free placement.
-    auto snapCenteringToGrid = [](float x) -> float {
-        return UiConfig::getInstance().getGridSnapping()
-            ? PluginConstants::HudGrid::SNAP_TO_GRID_X(x)
-            : x;
-    };
-
-    // Check if reference should be shown in gap column (applies to both primary and secondary)
-    bool showRefInGap = m_showReference;
-
-    // Per-column dimensions based on content character counts
-    float labelTextWidth = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::TIMING_LABEL_WIDTH, dim.fontSizeLarge);
-    float timeTextWidth = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::TIMING_TIME_WIDTH, dim.fontSizeLarge);
-    // Primary gap is laid out like a featured chip (type label + gap + ref), so size it
-    // with the chip widths rather than the bare-gap widths.
-    int gapChars = showRefInGap
-        ? (m_layoutVertical ? WidgetDimensions::TIMING_CHIP_WITH_REF_WIDTH_COMPACT : WidgetDimensions::TIMING_CHIP_WITH_REF_WIDTH)
-        : WidgetDimensions::TIMING_CHIP_WIDTH;
-    float gapTextWidth = PluginUtils::calculateMonospaceTextWidth(gapChars, dim.fontSizeLarge);
-
-    // Calculate individual quad widths
-    float labelQuadWidth = dim.paddingH + labelTextWidth + dim.paddingH;
-    float timeQuadWidth = dim.paddingH + timeTextWidth + dim.paddingH;
-    float gapQuadWidth = dim.paddingH + gapTextWidth + dim.paddingH;
-
-    // Use uniform column width (widest of all columns) for consistent alignment
-    float columnWidth = std::max({labelQuadWidth, timeQuadWidth, gapQuadWidth});
-
-    // Gap between columns (half char width for tighter spacing)
-    float charGap = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSizeLarge) * 0.5f;
-
-    // Width reserved for the gap/delta column, always at the large (primary-row) size so the
-    // primary row, the secondary chips, and the vertical time value all right-align the
-    // reference to the same X regardless of their own font size.
-    float deltaColW = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::TIMING_GAP_WIDTH, dim.fontSizeLarge);
-
-    // Primary rows mirror a HUD title: the large font (fontSizeLarge) in a lineHeightLarge band, in
-    // both layouts. lineHeightLarge is exactly 2x lineHeightNormal, so the row tops land on the shared
-    // half-line grid — a stacked vertical timing HUD lines up with a neighbouring HUD's title and rows,
-    // and the secondary chips (normal font, lineHeightNormal) tuck in below on the same grid.
-    float quadHeight = dim.lineHeightLarge;
-
-    // Layout depends on mode: horizontal (side by side) or vertical (stacked)
-    // Both layouts share the same Y origin and center horizontally on screen, so the HUD stays put
-    // (centered) when switching between vertical and horizontal instead of jumping.
-    float quadY = START_Y;
-
-    // Column positions - calculated differently based on layout mode
-    float labelColumnX, timeColumnX, gapColumnX;
-    float labelRowY, timeRowY, gapRowY;  // Y positions for vertical mode
-    float leftX, rightX;
-    float vertBgLeftX = 0.0f, vertBgWidth = 0.0f;  // Full HUD bounds for vertical mode
-
-    if (m_layoutVertical) {
-        // Vertical layout: origin-based positioning (like LapLogHud/StandingsHud)
-        // Column starts at START_X; offset handles screen placement
-        labelColumnX = timeColumnX = gapColumnX = START_X;
-
-        // Stack only enabled rows vertically (no gaps for disabled elements)
-        // Primary rows step by the large band (quadHeight); secondaries use lineHeightNormal
-        // Start content after paddingV from top (like LapLogHud/StandingsHud)
-        float currentY = START_Y + dim.paddingV;
-        float rowStep = quadHeight;
-
-        // Label and time each get their own row (time row carries its own "Time" label)
-        if (shouldShowColumn(COL_LABEL)) {
-            labelRowY = currentY;
-            currentY += rowStep;
-        } else {
-            labelRowY = START_Y;
-        }
-
-        if (shouldShowColumn(COL_TIME)) {
-            timeRowY = currentY;
-            currentY += rowStep;
-        } else {
-            timeRowY = START_Y;
-        }
-
-        if (shouldShowColumn(COL_GAP)) {
-            gapRowY = currentY;
-        } else {
-            gapRowY = START_Y;
-        }
-
-        // columnWidth already includes paddingH on each side, so no extra padding needed
-        leftX = START_X;
-        rightX = START_X + columnWidth;
-    } else {
-        // Horizontal layout: only the VISIBLE columns are packed side by side (order: label, time,
-        // gap), centered as a group — so hiding a column closes the gap rather than leaving a hole.
-        float groupWidth = (visibleCount > 0)
-            ? (visibleCount * columnWidth + (visibleCount - 1) * charGap)
-            : columnWidth;
-        float groupLeft = snapCenteringToGrid(CENTER_X - groupWidth / 2.0f);  // centered on screen, grid-aligned
-
-        // Fallbacks (used only for a hidden column, never rendered)
-        labelColumnX = timeColumnX = gapColumnX = groupLeft;
-        float x = groupLeft;
-        if (shouldShowColumn(COL_LABEL)) { labelColumnX = x; x += columnWidth + charGap; }
-        if (shouldShowColumn(COL_TIME))  { timeColumnX = x;  x += columnWidth + charGap; }
-        if (shouldShowColumn(COL_GAP))   { gapColumnX = x;   x += columnWidth + charGap; }
-
-        // All on the same row, inset by paddingV from the HUD's top edge so the primary text lines up
-        // with a neighbouring HUD's title (which also sits paddingV below its top edge, e.g. LapLog).
-        // The per-column boxes extend up to the HUD top (see the background quads below), so this
-        // paddingV becomes internal top padding above the text — matching a LapLog title's box.
-        labelRowY = timeRowY = gapRowY = quadY + dim.paddingV;
-
-        leftX = groupLeft;
-        rightX = groupLeft + groupWidth;
-    }
-
-    // Prepare content for each column
-    char labelBuffer[16];
-    char timeBuffer[32];
-
-    // Check if display rider has finished the race
+    // Rider finished -> hold the total race time.
     bool riderFinished = pluginData.isDisplayRiderFinished();
     int riderFinishTime = -1;
     if (riderFinished) {
-        int displayRaceNum = pluginData.getDisplayRaceNum();
-        const StandingsData* standing = pluginData.getStanding(displayRaceNum);
-        if (standing) {
-            riderFinishTime = standing->finishTime;
-        }
+        const StandingsData* standing = pluginData.getStanding(pluginData.getDisplayRaceNum());
+        if (standing) riderFinishTime = standing->finishTime;
     }
 
-    // === LABEL COLUMN CONTENT ===
-    if (m_isFrozen) {
-        // Show official label
-        if (m_officialData.splitIndex == 0) {
-            strcpy_s(labelBuffer, sizeof(labelBuffer), "Split 1");
-        } else if (m_officialData.splitIndex == 1) {
-            strcpy_s(labelBuffer, sizeof(labelBuffer), "Split 2");
-        }
-#if GAME_SECTOR_COUNT >= 4
-        else if (m_officialData.splitIndex == 2) {
-            strcpy_s(labelBuffer, sizeof(labelBuffer), "Split 3");
-        }
-#endif
-        else {
-            // Lap complete
-            if (m_officialData.lapNum >= 0) {
-                snprintf(labelBuffer, sizeof(labelBuffer), "Lap %d", m_officialData.lapNum + 1);
-            } else {
-                strcpy_s(labelBuffer, sizeof(labelBuffer), "Lap -");
-            }
-        }
-    } else if (riderFinished && riderFinishTime > 0) {
-        // Rider finished - show "Finish" label
-        strcpy_s(labelBuffer, sizeof(labelBuffer), "Finish");
-    } else {
-        // Ticking - show current lap (or placeholder if no timing context yet)
-        if (pluginData.isLapTimerValid()) {
-            int currentLapNum = pluginData.getLapTimerCurrentLap();
-            snprintf(labelBuffer, sizeof(labelBuffer), "Lap %d", currentLapNum + 1);
-        } else {
-            strcpy_s(labelBuffer, sizeof(labelBuffer), "Lap -");
-        }
-    }
-
-    // === TIME COLUMN CONTENT ===
+    // === TIME CONTENT ===
+    // Invalid lap -> "INVALID" in the time cell (comparisons just fall back to their reference).
+    // Otherwise: frozen official split/lap time -> finish time -> live elapsed time -> placeholder.
+    char timeBuffer[32];
     bool timePlaceholder = false;
-    if (m_isFrozen) {
-        // Show official time
+    bool timeInvalid = showingInvalid();  // (segmentMode already excluded inside)
+    if (timeInvalid) {
+        strcpy_s(timeBuffer, sizeof(timeBuffer), "INVALID");
+    } else if (m_isFrozen) {
         if (m_officialData.time > 0) {
             PluginUtils::formatLapTime(m_officialData.time, timeBuffer, sizeof(timeBuffer));
         } else {
@@ -1016,10 +932,8 @@ void TimingHud::rebuildRenderData() {
             timePlaceholder = true;
         }
     } else if (riderFinished && riderFinishTime > 0) {
-        // Rider finished - show total race time
         PluginUtils::formatLapTime(riderFinishTime, timeBuffer, sizeof(timeBuffer));
     } else {
-        // Get elapsed time from centralized timer
         int elapsed = pluginData.getElapsedLapTime();
         if (elapsed >= 0) {
             PluginUtils::formatLapTime(elapsed, timeBuffer, sizeof(timeBuffer));
@@ -1030,16 +944,10 @@ void TimingHud::rebuildRenderData() {
     }
 
     // === SEGMENT MODE OVERRIDE ===
-    // Replace label/time with the shown segment's, and stage its delta-to-best gap.
+    // Swap the time for the shown segment's, and stage its delta-to-best (rendered below as the
+    // single "Best" comparison row).
     if (segmentMode) {
-        if (segShownIndex >= 0) {
-            snprintf(labelBuffer, sizeof(labelBuffer), "Segment %d", segShownIndex + 1);
-        } else {
-            strcpy_s(labelBuffer, sizeof(labelBuffer), "Segment");
-        }
-
         if (segShowFrozen) {
-            // Hold the just-completed segment's time + delta-to-its-best.
             PluginUtils::formatLapTime(static_cast<int>(seg.lastTime * 1000.0f + 0.5f),
                                        timeBuffer, sizeof(timeBuffer));
             timePlaceholder = false;
@@ -1051,24 +959,20 @@ void TimingHud::rebuildRenderData() {
                 segGap.reset();
             }
         } else if (seg.runningSeg >= 0) {
-            // Live count-up off the wall clock (ticks even when stationary).
             long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - seg.runStart).count();
             PluginUtils::formatLapTime(static_cast<int>(ms), timeBuffer, sizeof(timeBuffer));
             timePlaceholder = false;
             segGap.reset();
         } else {
-            // Armed but not currently in a segment (between runs / before the first point).
             strcpy_s(timeBuffer, sizeof(timeBuffer), Placeholders::LAP_TIME);
             timePlaceholder = true;
             segGap.reset();
         }
     }
 
-    // === HELPER LAMBDAS ===
+    // === COMPARISON VALUE RESOLUTION (normal, non-segment rows) ===
     auto getGapDataForType = [&](GapTypeFlags type) -> const GapData* {
-        // Segment mode only has the primary row, fed by the staged segment delta.
-        if (segmentMode) return (type == m_primaryGapType) ? &segGap : nullptr;
         switch (type) {
             case GAP_TO_PB: return &m_officialData.gapToPB;
             case GAP_TO_ALLTIME: return &m_officialData.gapToAllTime;
@@ -1081,425 +985,177 @@ void TimingHud::rebuildRenderData() {
             default: return nullptr;
         }
     };
-
-    auto typeUsesInvalid = [](GapTypeFlags type) -> bool {
-        return type == GAP_TO_PB || type == GAP_TO_ALLTIME;
-    };
-
-    // Get lap-level reference time for a gap type before any splits are crossed
-    // This allows showing reference times immediately when available
-    auto getPreSplitRefTime = [&](GapTypeFlags type) -> int {
-        // Segment mode: the only reference/target is the shown segment's session best.
-        if (segmentMode) return segRefBestMs;
-        if (type == GAP_TO_PB) {
-            const LapLogEntry* personalBest = pluginData.getBestLapEntry();
-            return (personalBest && personalBest->lapTime > 0) ? personalBest->lapTime : -1;
-        } else if (type == GAP_TO_ALLTIME) {
-            return m_previousAllTimeLap;  // Cached at session start
-        } else if (type == GAP_TO_IDEAL) {
-            const IdealLapData* idealLapData = pluginData.getIdealLapData();
-            return idealLapData ? idealLapData->getIdealLapTime() : -1;
-        }
-#if GAME_HAS_RECORDS_PROVIDER
-        else if (type == GAP_TO_RECORD) {
-            const RecordsHud& recordsHud = HudManager::getInstance().getRecordsHud();
-            return recordsHud.getFastestRecordLapTime();
-        }
-#endif
-        else if (type == GAP_TO_OVERALL) {
-            return getOverallBestLapTime();  // Scan standings for best lap
-        }
-        else if (type == GAP_TO_LASTLAP) {
-            // Before any split is crossed, the current lap is compared against the most
-            // recent VALID completed lap (skip invalid ones, matching calculateAllGaps).
-            const std::deque<LapLogEntry>* lapLog = pluginData.getLapLog();
-            if (lapLog) {
-                for (size_t i = 0; i < lapLog->size(); ++i) {
-                    if (!(*lapLog)[i].isValid) continue;
-                    return (*lapLog)[i].lapTime > 0 ? (*lapLog)[i].lapTime : -1;
-                }
-            }
-            return -1;
-        }
-        return -1;
-    };
-
-    // Determine if we should show gaps or placeholders
-    // Segment mode shows the delta only during the freeze of a completed segment that
-    // had a prior best to compare against.
+    // The split boundary the rider is driving toward, so the passive reference tracks the sector.
+    int targetSplit = segmentMode ? -1 : currentTargetSplit();
+    // Show the +/- delta while frozen on a split/lap; otherwise the progressive reference time.
+    // (An invalid lap clears the gaps, so those cells just fall back to their reference — the
+    // "INVALID" flag is shown once, in the time cell.)
     bool showGapData = segmentMode ? (segShowFrozen && seg.lastHasDelta) : m_isFrozen;
-    bool showInvalid = !segmentMode && m_officialData.isInvalid;
 
-    // Resolve the gap/reference text and state for one gap type. The primary row and the secondary
-    // chips share this exact logic (only the "invalid" abbreviation differs), so it lives here once.
-    struct GapColumnText {
-        char gap[16] = "";
-        char ref[16] = "";
-        bool hasRef = false;
-        bool refIsPlaceholder = false;
+    // One rendered comparison value: the +/- delta (active), the target time (passive), or a
+    // "-"/"N/A" placeholder. isFaster/isSlower drive the semantic text colour.
+    struct RowValue {
+        char value[16] = "";
         bool isFaster = false;
         bool isSlower = false;
+        bool isReference = false;   // a target time (neutral) vs a delta (green/red) / placeholder (muted)
     };
-    auto buildGapColumn = [&](GapTypeFlags type) -> GapColumnText {
-        GapColumnText out;
+    auto buildComparison = [&](GapTypeFlags type) -> RowValue {
+        RowValue out;
         const GapData* gapData = getGapDataForType(type);
-        if (showGapData && showInvalid && typeUsesInvalid(type)) {
-            strcpy_s(out.gap, sizeof(out.gap), "INVALID");
-            out.isSlower = true;
-            // The lap is invalid, but the reference you're measured against still stands, so keep
-            // showing it (falling back to the pre-split reference if the gap has no stored refTime).
-            if (showRefInGap) {
-                int ref = (gapData && gapData->refTime > 0) ? gapData->refTime : getPreSplitRefTime(type);
-                if (ref > 0) {
-                    PluginUtils::formatLapTime(ref, out.ref, sizeof(out.ref));
-                    out.hasRef = true;
-                }
-            }
-        } else if (!showGapData || !gapData || !gapData->hasGap) {
-            int preSplitRef = getPreSplitRefTime(type);
-            bool refAvailable = (preSplitRef > 0);
-            // Only the Record source can be genuinely unavailable (provider hasn't fetched, or no
-            // record for this track) -> "N/A". PB/Alltime/Ideal/Overall will be set soon -> "-".
-            const char* missing = (type == GAP_TO_RECORD) ? Placeholders::NOT_AVAILABLE : Placeholders::GENERIC;
-            strcpy_s(out.gap, sizeof(out.gap), refAvailable ? Placeholders::GENERIC : missing);
-            if (showRefInGap) {
-                if (refAvailable) {
-                    PluginUtils::formatLapTime(preSplitRef, out.ref, sizeof(out.ref));
-                } else {
-                    strcpy_s(out.ref, sizeof(out.ref), missing);
-                    out.refIsPlaceholder = true;
-                }
-                out.hasRef = true;
-            }
-        } else {
-            PluginUtils::formatTimeDiff(out.gap, sizeof(out.gap), gapData->gap);
-            if (showRefInGap && gapData->refTime > 0) {
-                PluginUtils::formatLapTime(gapData->refTime, out.ref, sizeof(out.ref));
-                out.hasRef = true;
-            }
+        if (showGapData && gapData && gapData->hasGap) {
+            PluginUtils::formatTimeDiff(out.value, sizeof(out.value), gapData->gap);
             out.isFaster = gapData->isFaster;
             out.isSlower = gapData->isSlower;
+        } else {
+            int refTime = cumulativeReferenceMs(type, targetSplit);
+            if (refTime > 0) {
+                PluginUtils::formatLapTime(refTime, out.value, sizeof(out.value));
+                out.isReference = true;
+            } else {
+                const char* missing = (type == GAP_TO_RECORD) ? Placeholders::NOT_AVAILABLE : Placeholders::GENERIC;
+                strcpy_s(out.value, sizeof(out.value), missing);
+            }
         }
         return out;
     };
-
-    // Faster/slower/neutral colors, shared by the primary gap row and the chips. The colored
-    // background strip uses the HUD background for neutral; the text uses muted for neutral.
-    auto gapBgColor = [&](bool isFaster, bool isSlower) -> unsigned long {
-        return this->getColor(isFaster ? ColorSlot::POSITIVE : isSlower ? ColorSlot::NEGATIVE : ColorSlot::BACKGROUND);
-    };
-    auto gapTextColor = [&](bool isFaster, bool isSlower) -> unsigned long {
-        return this->getColor(isFaster ? ColorSlot::POSITIVE : isSlower ? ColorSlot::NEGATIVE : ColorSlot::MUTED);
+    auto valueColor = [&](const RowValue& g) -> unsigned long {
+        if (g.isFaster) return this->getColor(ColorSlot::POSITIVE);
+        if (g.isSlower) return this->getColor(ColorSlot::NEGATIVE);
+        if (g.isReference) return this->getColor(ColorSlot::SECONDARY);
+        return this->getColor(ColorSlot::MUTED);
     };
 
-    // Emit a colored background strip (SOLID_COLOR sprite, opacity applied) behind a gap value.
-    auto addGapQuad = [&](float x, float y, float w, float h, unsigned long baseColor) {
-        SPluginQuad_t quad;
-        applyOffset(x, y);
-        setQuadPositions(quad, x, y, w, h);
-        quad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        quad.m_ulColor = PluginUtils::applyOpacity(baseColor, m_fBackgroundOpacity);
-        m_quads.push_back(quad);
-    };
-
-    // One gap row = colored strip (when faster/slower, or always in horizontal) + left type label +
-    // right-aligned reference and gap values. The primary gap row and each secondary chip are the
-    // same layout at different sizes, so both render through here.
-    struct GapRowStyle {
-        float textY;          // top of the row text
-        float quadX, quadY;   // top-left of the colored strip
-        float quadW, quadH;   // size of the colored strip
-        float labelX;         // left edge for the type label
-        float rightEdge;      // right edge for the gap value (reference sits deltaColW+charGap to its left)
-        float valueFontSize;  // font size for the reference + gap values
-        bool  largeLabel;     // true: label at fontSizeLarge (primary row); false: small label (chip)
-        const char* label;    // type label text
-    };
-    auto renderGapRow = [&](const GapColumnText& g, const GapRowStyle& s) {
-        // Vertical neutral rows sit on the single HUD background; everything else gets a strip.
-        if (!m_layoutVertical || g.isFaster || g.isSlower) {
-            addGapQuad(s.quadX, s.quadY, s.quadW, s.quadH, gapBgColor(g.isFaster, g.isSlower));
-        }
-        if (s.largeLabel) {
-            addString(s.label, s.labelX, s.textY, Justify::LEFT,
-                this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dim.fontSizeLarge);
+    // === BUILD THE ROW LIST (name + value) ===
+    struct Row { const char* name; RowValue val; };
+    Row rows[GAP_TYPE_COUNT + 1];   // +1 for the segment "Best" row
+    int rowCount = 0;
+    if (segmentMode) {
+        // A custom segment has only its own session best, shown as a single "Best" row.
+        RowValue segRow;
+        if (showGapData && segGap.hasGap) {
+            PluginUtils::formatTimeDiff(segRow.value, sizeof(segRow.value), segGap.gap);
+            segRow.isFaster = segGap.isFaster;
+            segRow.isSlower = segGap.isSlower;
+        } else if (segRefBestMs > 0) {
+            PluginUtils::formatLapTime(segRefBestMs, segRow.value, sizeof(segRow.value));
+            segRow.isReference = true;
         } else {
-            addLabel(s.label, s.labelX, s.textY, Justify::LEFT,
-                this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dim);
+            strcpy_s(segRow.value, sizeof(segRow.value), Placeholders::GENERIC);
         }
-        if (g.hasRef) {
-            unsigned long refColor = g.refIsPlaceholder ? this->getColor(ColorSlot::MUTED) : this->getColor(ColorSlot::SECONDARY);
-            addString(g.ref, s.rightEdge - deltaColW - charGap, s.textY, Justify::RIGHT,
-                this->getFont(FontCategory::DIGITS), refColor, s.valueFontSize);
-        }
-        addString(g.gap, s.rightEdge, s.textY, Justify::RIGHT,
-            this->getFont(FontCategory::DIGITS), gapTextColor(g.isFaster, g.isSlower), s.valueFontSize);
-    };
-
-    // === RENDER PRIMARY ROW COLUMNS ===
-    // All columns use uniform width for consistent alignment
-
-    // For vertical mode, add a single background quad covering the entire HUD area (like LapLogHud)
-    // This must be done before individual colored quads so they render on top
-    if (m_layoutVertical) {
-        // Pre-calculate total height for vertical layout
-        int primaryRowCount = 0;
-        if (shouldShowColumn(COL_LABEL)) primaryRowCount++;
-        if (shouldShowColumn(COL_TIME)) primaryRowCount++;
-        if (shouldShowColumn(COL_GAP)) primaryRowCount++;
-
-        // secondaryCount / showSecondaries computed once at the top of rebuildRenderData
-
-        // Calculate heights
-        float primaryHeight = primaryRowCount * quadHeight;
-        float secondaryHeight = (secondaryCount > 0 && showSecondaries) ? (secondaryCount * dim.lineHeightNormal) : 0.0f;
-        float totalContentHeight = primaryHeight + secondaryHeight;
-        float backgroundHeight = dim.paddingV + totalContentHeight + dim.paddingV;
-
-        // Match the standard HUD widths so the timing HUD lines up with the rest of the UI:
-        // references off -> 27 chars (FMX / IdealLap / Stats), on -> 43 (Event Log / Lap Log).
-        // The fixed width also gives room to spell the gap labels out.
-        float backgroundWidth = calculateBackgroundWidth(m_showReference ? 43 : 27);
-        // Center the HUD horizontally on screen (around CENTER_X), like horizontal mode, so toggling
-        // layout keeps it centered instead of flying off. Content + chips anchor to this left edge.
-        // When grid snapping is on, quantize the centering anchor to the grid so the (also snapped)
-        // drag offset keeps the left edge on the shared lattice — lets it line up with other HUDs
-        // while staying centered. See horizontal mode for the matching treatment.
-        float bgLeftX = snapCenteringToGrid(CENTER_X - backgroundWidth / 2.0f);
-        labelColumnX = timeColumnX = gapColumnX = bgLeftX;
-        leftX = bgLeftX;
-        rightX = bgLeftX + backgroundWidth;
-
-        // Add single background quad for entire vertical HUD
-        addBackgroundQuad(bgLeftX, quadY, backgroundWidth, backgroundHeight);
-
-        // Store full HUD bounds for edge-to-edge highlights and text alignment
-        vertBgLeftX = bgLeftX;
-        vertBgWidth = backgroundWidth;
-    }
-
-    // Horizontal per-column boxes hug the text itself (fontSizeLarge) with equal padding above and
-    // below, rather than wrapping the full lineHeightLarge band (whose dead space sat under the text
-    // and made the box look bottom-heavy). Half the normal vertical padding keeps the box compact.
-    // The text stays at rowY (quadY + paddingV) so it still lines up with a neighbour HUD's title.
-    const float boxPadV = dim.paddingV * 0.5f;
-    const float primaryBoxHeight = dim.fontSizeLarge + 2.0f * boxPadV;
-
-    // Add LABEL column if visible
-    if (shouldShowColumn(COL_LABEL)) {
-        // Text top-aligned at the row top in both modes (matches a title / the chips / other HUDs)
-        float labelTextY = labelRowY;
-        // In vertical mode, skip per-row background (using single HUD background above)
-        if (!m_layoutVertical) {
-            addBackgroundQuad(labelColumnX, labelRowY - boxPadV, columnWidth, primaryBoxHeight);
-        }
-        // Label is left-aligned in both modes (the row's identifier), rendered at the large title size
-        float labelX = (m_layoutVertical ? vertBgLeftX : labelColumnX) + dim.paddingH;
-        addString(labelBuffer, labelX, labelTextY, Justify::LEFT,
-            this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dim.fontSizeLarge);
-    }
-
-    // Add TIME column if visible
-    if (shouldShowColumn(COL_TIME)) {
-        // Text top-aligned at the row top in both modes
-        float timeTextY = timeRowY;
-        // In vertical mode, skip per-row background (using single HUD background above)
-        if (!m_layoutVertical) {
-            addBackgroundQuad(timeColumnX, timeRowY - boxPadV, columnWidth, primaryBoxHeight);
-        }
-
-        unsigned long timeColor = timePlaceholder ? this->getColor(ColorSlot::MUTED) : this->getColor(ColorSlot::PRIMARY);
-
-        if (m_layoutVertical) {
-            // Vertical: left-aligned "Time" label so the row reads label + value, like the gap rows/chips.
-            float timeLabelX = vertBgLeftX + dim.paddingH;
-            addString("Time", timeLabelX, timeTextY, Justify::LEFT,
-                this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dim.fontSizeLarge);
-
-            // Value right-aligned over the reference column (left of the gap/delta column) so your time
-            // stacks above the reference times; with no references it uses the content right edge.
-            float contentRight = vertBgLeftX + vertBgWidth - dim.paddingH;
-            float timeX = showRefInGap ? (contentRight - deltaColW - charGap) : contentRight;
-            addString(timeBuffer, timeX, timeTextY, Justify::RIGHT,
-                this->getFont(FontCategory::DIGITS), timeColor, dim.fontSizeLarge);
-        } else {
-            // Horizontal: no "Time" label — just the lap time, centered in the cell.
-            float timeX = timeColumnX + columnWidth / 2.0f;
-            addString(timeBuffer, timeX, timeTextY, Justify::CENTER,
-                this->getFont(FontCategory::DIGITS), timeColor, dim.fontSizeLarge);
-        }
-    }
-
-    // Track bottom of primary elements for bounds
-    float bottomY;
-    if (m_layoutVertical) {
-        // In vertical mode, bottom depends on which elements are visible
-        if (shouldShowColumn(COL_GAP)) {
-            bottomY = gapRowY + quadHeight;
-        } else if (shouldShowColumn(COL_TIME)) {
-            bottomY = timeRowY + quadHeight;
-        } else if (shouldShowColumn(COL_LABEL)) {
-            bottomY = labelRowY + quadHeight;
-        } else {
-            // No primary columns visible - chips start after top padding
-            bottomY = quadY + dim.paddingV;
-        }
-    } else if (shouldShowColumn(COL_LABEL) || shouldShowColumn(COL_TIME) || shouldShowColumn(COL_GAP)) {
-        // Bottom of the compact primary box (its top is rowY - boxPadV, height primaryBoxHeight).
-        bottomY = (quadY + dim.paddingV - boxPadV) + primaryBoxHeight;
+        rows[rowCount++] = { "Best", segRow };
     } else {
-        // No primary columns visible - don't reserve the primary row height (matches the
-        // vertical branch); chips start from the top padding instead of below an empty box.
-        bottomY = quadY + dim.paddingV;
-    }
-
-    // Show primary gap when gap column is visible
-    if (shouldShowColumn(COL_GAP)) {
-        GapColumnText primary = buildGapColumn(m_primaryGapType);
-
-        // Primary gap is rendered like a featured chip: type label (left), then reference and gap
-        // values right-aligned. Type label is spelled out in vertical (room there), abbreviated in
-        // horizontal (narrow cell). The colored strip hugs the text in horizontal (like the label/time
-        // boxes) and fills the band inside the single HUD background in vertical.
-        GapRowStyle style;
-        style.textY = gapRowY;
-        style.quadX = m_layoutVertical ? vertBgLeftX : gapColumnX;
-        style.quadW = m_layoutVertical ? vertBgWidth : columnWidth;
-        style.quadY = m_layoutVertical ? gapRowY : (gapRowY - boxPadV);
-        style.quadH = m_layoutVertical ? quadHeight : primaryBoxHeight;
-        style.labelX = (m_layoutVertical ? vertBgLeftX : gapColumnX) + dim.paddingH;
-        style.rightEdge = (m_layoutVertical ? (vertBgLeftX + vertBgWidth) : (gapColumnX + columnWidth)) - dim.paddingH;
-        style.valueFontSize = dim.fontSizeLarge;
-        style.largeLabel = true;
-        style.label = segmentMode ? "Best"
-                    : (m_layoutVertical ? getGapTypeName(m_primaryGapType) : getGapTypeAbbrev(m_primaryGapType));
-        renderGapRow(primary, style);
-    }
-
-    // === RENDER SECONDARY GAPS AS CHIPS ===
-    // Secondary gaps shown as chips (horizontal below primary, or vertical beside primary)
-    // Note: Secondaries are independent of primary gap column visibility
-    {
-        // secondaryCount / showSecondaries computed once at the top of rebuildRenderData
-        bool primaryGapVisible = shouldShowColumn(COL_GAP);
-
-        if (secondaryCount > 0 && showSecondaries) {
-            // Chips are the secondary (normal-font) rows. Both layouts put them on the lineHeightNormal
-            // grid band, directly below the primary rows — matching vertical, the chips' own rhythm and
-            // every other HUD, so the whole timing HUD stays on the shared grid.
-            float chipFontSize = dim.fontSize;
-            float chipQuadHeight = dim.lineHeightNormal;
-
-            // Calculate chip width based on reference setting
-            int chipChars = showRefInGap
-                ? (m_layoutVertical ? WidgetDimensions::TIMING_CHIP_WITH_REF_WIDTH_COMPACT : WidgetDimensions::TIMING_CHIP_WITH_REF_WIDTH)
-                : WidgetDimensions::TIMING_CHIP_WIDTH;
-            float chipTextWidth = PluginUtils::calculateMonospaceTextWidth(chipChars, chipFontSize);
-            float actualChipWidth = dim.paddingH + chipTextWidth + dim.paddingH;
-            // Always floor chip width at columnWidth: the chip reference is reserved at the
-            // primary's (large) font size, so the box must stay wide enough to host it even
-            // when no primary columns are visible. Dropping to actualChipWidth there pushed
-            // the right-aligned reference left into the label.
-            float chipWidth = std::max(columnWidth, actualChipWidth);
-
-            // Position chips based on layout mode
-            float chipStartX, chipStartY;
-            if (m_layoutVertical) {
-                // Vertical layout: chips continue below primary elements in same column
-                // Use primaryColumnX (content area), not leftX (which includes padding)
-                chipStartX = labelColumnX;  // Same X as primary content column
-                chipStartY = bottomY;  // Continue directly below last primary element (no gap)
-            } else {
-                // Horizontal layout: chips in a row below the primary row, aligned to the leftmost
-                // visible column. The vertical gap below the primary boxes matches the horizontal gap
-                // between them (charGap), so the spacing reads consistently in both directions.
-                chipStartX = leftX;
-                chipStartY = bottomY + charGap;
-            }
-
-            float chipX = chipStartX;
-            float chipY = chipStartY;
-
-            // Render each enabled secondary gap type as a chip
-            for (int i = 0; i < GAP_TYPE_COUNT; i++) {
-                GapTypeFlags secType = GAP_TYPE_INFO[i].flag;
-
-                // Skip primary gap type from secondaries only when primary gap is visible
-                if (primaryGapVisible && secType == m_primaryGapType) continue;
-                // Skip disabled secondary gaps
-                if (!(m_secondaryGapTypes & secType)) continue;
-
-                GapColumnText chip = buildGapColumn(secType);
-
-                // A chip is the same gap row as the primary, at the normal font with a small label.
-                // The colored strip sits at chipY (no box padding); the label is spelled out in both
-                // modes (room in the normal-font box). In vertical the chip spans the full HUD width,
-                // so right-align to the HUD edge (same as the primary) not the chip's narrower box.
-                GapRowStyle style;
-                style.textY = chipY;
-                style.quadX = m_layoutVertical ? vertBgLeftX : chipX;
-                style.quadW = m_layoutVertical ? vertBgWidth : chipWidth;
-                style.quadY = chipY;
-                style.quadH = chipQuadHeight;
-                style.labelX = chipX + dim.paddingH;
-                style.rightEdge = (m_layoutVertical ? (vertBgLeftX + vertBgWidth) : (chipX + chipWidth)) - dim.paddingH;
-                style.valueFontSize = chipFontSize;
-                style.largeLabel = false;
-                style.label = getGapTypeName(secType);
-                renderGapRow(chip, style);
-
-                // Advance position based on layout mode
-                if (m_layoutVertical) {
-                    // Vertical: move down for next chip (use lineHeightNormal to match other HUDs)
-                    chipY += dim.lineHeightNormal;
-                } else {
-                    // Horizontal: move right for next chip
-                    chipX += chipWidth + charGap;
-                }
-            }
-
-            // Update bounds based on layout mode
-            if (m_layoutVertical) {
-                // Vertical: chips are below primary, extend down and possibly widen
-                // chipWidth already includes internal padding
-                rightX = std::max(rightX, chipStartX + chipWidth);
-                bottomY = chipY;  // chipY is at the position of the next chip (not yet placed)
-            } else {
-                // Horizontal: extend down and possibly right (chips start at leftX)
-                bottomY = chipStartY + chipQuadHeight;
-                float chipsRowWidth = secondaryCount * chipWidth + (secondaryCount - 1) * charGap;
-                rightX = std::max(rightX, chipStartX + chipsRowWidth);
-            }
+        for (int i = 0; i < GAP_TYPE_COUNT; i++) {
+            GapTypeFlags flag = GAP_TYPE_INFO[i].flag;
+            if (!(m_enabledComparisons & flag)) continue;
+            rows[rowCount++] = { GAP_TYPE_INFO[i].name, buildComparison(flag) };
         }
     }
 
-    // Set bounds (leftX/rightX already calculated from fixed column positions). Both modes carry
-    // paddingV top (baked into the row positions) and bottom, so the HUD has symmetric padding like
-    // LapLog and lines up when placed against other HUDs.
-    setBounds(leftX, quadY, rightX, bottomY + dim.paddingV);
+    if (!m_showTime && rowCount == 0) {
+        setBounds(0.0f, 0.0f, 0.0f, 0.0f);
+        return;
+    }
+
+    // === LAYOUT: a centered vertical stack (big time on top, comparison rows below) ===
+    auto dim = getScaledDimensions();
+
+    // Center the panel on CENTER_X, quantizing the anchor to the grid when snapping is on (so the
+    // snapped drag offset keeps the left edge on the shared lattice — like the other centered HUDs).
+    auto snapCenteringToGrid = [](float x) -> float {
+        return UiConfig::getInstance().getGridSnapping()
+            ? PluginConstants::HudGrid::SNAP_TO_GRID_X(x)
+            : x;
+    };
+
+    // Fixed width, matching the NoticesHud (CENTER_STACK_WIDTH_CHARS at the large font + padding),
+    // so the two centered top-stack panels line up. Comfortably fits the time and any comparison
+    // row (name + value), and a fixed width keeps the panel from jittering as a value flips
+    // between a delta and a reference time.
+    float innerW = PluginUtils::calculateMonospaceTextWidth(
+        WidgetDimensions::CENTER_STACK_WIDTH_CHARS, dim.fontSizeLarge);
+    float backgroundWidth = dim.paddingH + innerW + dim.paddingH;
+
+    float bgLeftX = snapCenteringToGrid(CENTER_X - backgroundWidth / 2.0f);
+
+    // Height is a stack of grid-aligned bands: the time row is one lineHeightLarge band (4 snap
+    // cells, glyph centered), each comparison row a lineHeightNormal band (2 cells, content
+    // centered). No outer padding, so a time-only panel is exactly lineHeightLarge tall —
+    // identical to the Notices and Gap Bar boxes — and the whole center-top stack lands on the
+    // vertical grid (see TIMING_DIVIDER_Y in notices_hud.cpp).
+    float backgroundHeight = (m_showTime ? dim.lineHeightLarge : 0.0f)
+                           + rowCount * dim.lineHeightNormal;
+
+    addBackgroundQuad(bgLeftX, START_Y, backgroundWidth, backgroundHeight);
+
+    // Text inset is HALF the width padding (1 grid cell instead of 2), so the horizontal gap
+    // from the box edge to the edge-aligned label/value matches the vertical gap of the LARGE
+    // glyph in its band — roughly uniform padding all round. The box WIDTH still budgets the
+    // full HUD_HORIZONTAL each side above (it stays locked to the Notices / center-stack width),
+    // so this only shifts the left/right-aligned text one grid cell outward each side; both
+    // insets remain on the snap grid (backgroundWidth is a whole number of cells). The centered
+    // time is unaffected. (Notices needs no equivalent — its text is center-justified.)
+    const float textInsetH = dim.paddingH * 0.5f;
+    const float leftTextX  = bgLeftX + textInsetH;
+    const float rightTextX = bgLeftX + backgroundWidth - textInsetH;
+    const float centerX    = bgLeftX + backgroundWidth / 2.0f;
+
+    float y = START_Y;
+
+    // Big time row: the large glyph centered in its lineHeightLarge band, using the same
+    // centering formula as the Notices/Gap Bar boxes so the time value sits at an identical
+    // vertical position within its band. Red on an invalid lap, muted for a placeholder, else
+    // primary.
+    if (m_showTime) {
+        unsigned long timeColor = timeInvalid   ? this->getColor(ColorSlot::NEGATIVE)
+                                : timePlaceholder ? this->getColor(ColorSlot::MUTED)
+                                                  : this->getColor(ColorSlot::PRIMARY);
+        float timeY = y + (dim.lineHeightLarge - dim.fontSizeLarge) * 0.5f;
+        addString(timeBuffer, centerX, timeY, Justify::CENTER,
+            this->getFont(FontCategory::DIGITS), timeColor, dim.fontSizeLarge);
+        y += dim.lineHeightLarge;
+    }
+
+    // Comparison rows: name (left) + value (right), each vertically centered in its
+    // lineHeightNormal band. The name is a row label — STRONG font at the Small size,
+    // row-centered — via addLabel(), matching the other HUDs' labels (and the old secondary
+    // chips); the value is the data font (DIGITS) at the normal size, centered in the band the
+    // same way. Only the VALUE carries the semantic colour (green faster / red slower / neutral
+    // reference); no colored background strips.
+    float valueRowOffset = (dim.lineHeightNormal - dim.fontSize) * 0.5f;
+    for (int i = 0; i < rowCount; i++) {
+        const Row& r = rows[i];
+        addLabel(r.name, leftTextX, y, Justify::LEFT,
+            this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dim);
+        addString(r.val.value, rightTextX, y + valueRowOffset, Justify::RIGHT,
+            this->getFont(FontCategory::DIGITS), valueColor(r.val), dim.fontSize);
+        y += dim.lineHeightNormal;
+    }
+
+    setBounds(bgLeftX, START_Y, bgLeftX + backgroundWidth, START_Y + backgroundHeight);
 }
 
+
 void TimingHud::resetToDefaults() {
-    m_bVisible = false;  // Off by default
+    // On by default (changed from off in v1.27.1). UPGRADE NOTE: under sparse-save,
+    // a user who explicitly disabled Timing while OFF was the default saved no
+    // `visible` key (it matched the default), so on upgrade they are indistinguishable
+    // from "never touched" and Timing re-appears. This is inherent to any default
+    // flip with sparse persistence — call it out in the release notes.
+    m_bVisible = true;
     m_bShowTitle = false;
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.1f;
     m_fScale = 1.0f;
     setPosition(0.0f, DEFAULT_POSITION_Y);
 
-    // Reset display mode and column visibility
-    m_displayMode = ColumnMode::ALWAYS;  // Always show by default
-    m_columnEnabled[COL_LABEL] = false;  // Label off by default
-    m_columnEnabled[COL_TIME] = true;
-    m_columnEnabled[COL_GAP] = false;    // Primary gap off by default
-    m_showReference = false;  // Reference off by default
+    // Show mode: Always show by default (content shows continuously, references passive)
+    m_displayMode = ColumnMode::ALWAYS;
+    m_showTime = true;                           // big time row on by default
+    m_displayDurationMs = DEFAULT_DURATION_MS;   // 5 seconds freeze
 
-    m_displayDurationMs = DEFAULT_DURATION_MS;  // 5 seconds freeze
-
-    // Primary gap shown large, secondary gaps as chips below
-    m_primaryGapType = GAP_DEFAULT_PRIMARY;      // Session PB
-    m_secondaryGapTypes = GAP_DEFAULT_SECONDARY; // All-Time PB as a chip
-    m_layoutVertical = false;                    // Horizontal layout by default
+    // Comparison rows: Session PB + All-Time PB by default
+    m_enabledComparisons = GAP_DEFAULT_ENABLED;
 
     // Reset live timing state
     resetLiveTimingState();

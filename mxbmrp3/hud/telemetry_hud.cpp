@@ -33,7 +33,7 @@ TelemetryHud::TelemetryHud() {
 void TelemetryHud::update() {
     // OPTIMIZATION: Skip expensive graph rebuild when not visible
     // History is cleared in setVisible() when becoming visible, so graph starts fresh.
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -299,7 +299,7 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
         addHorizontalGridLine(x, gridY, width, gridColor, gridLineThickness);
     }
 
-    // Y-axis labels (input %, matching the grid lines), like LapConsistencyHud
+    // Y-axis labels (input %, matching the grid lines)
     {
         float labelX = x + dims.paddingH * 0.2f;
         unsigned long labelColor = this->getColor(ColorSlot::TERTIARY);
@@ -488,7 +488,7 @@ void TelemetryHud::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.7315f, 0.4440f);
+    setPosition(0.7315f, 0.44587f);
     m_enabledElements = ELEM_DEFAULT;
     m_displayMode = DISPLAY_DEFAULT;
     setDataDirty();

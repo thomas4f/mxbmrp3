@@ -25,6 +25,10 @@ void UiConfig::resetToDefaults() {
     m_holdRepeatFastMs = 50;
     m_fCursorActivationThreshold = 0.015f;
     m_bTitleIcons = true;
+    m_bGridOverlay = false;
+    m_gridOverlayMajorEvery = 10;
+    m_ulGridOverlayColor = 0x22FFFFFF;
+    m_ulGridOverlayMajorColor = 0x9933CCFF;
     m_bDropShadow = true;
     m_fDropShadowOffsetX = 0.03f;
     m_fDropShadowOffsetY = 0.04f;

@@ -29,17 +29,6 @@ void RaceLapHandler::handleRaceLap(Unified::RaceLapData* psRaceLap) {
     // - New lap setup (lines ~158, ~162): lapNum is the new lap starting
     // =========================================================================
 
-    // Debug logging: log all RaceLap data
-    // DEBUG_INFO_F("RaceLap: session=%d, raceNum=%d, lapNum=%d, invalid=%d, lapTime=%d, split[0]=%d, split[1]=%d, best=%d",
-    //              psRaceLap->session,
-    //              psRaceLap->raceNum,
-    //              psRaceLap->lapNum,
-    //              psRaceLap->invalid ? 1 : 0,
-    //              psRaceLap->lapTime,
-    //              psRaceLap->splits[0],
-    //              psRaceLap->splits[1],
-    //              psRaceLap->bestFlag);
-
     // RaceLap events fire for ALL riders (includes spectated players)
     // Process lap data for all riders to support spectate mode
     PluginData& data = PluginData::getInstance();
@@ -47,11 +36,15 @@ void RaceLapHandler::handleRaceLap(Unified::RaceLapData* psRaceLap) {
 
     // Filter out historical lap events from previous sessions
     // When joining mid-race, the game sends RaceLap events from earlier sessions
-    // which would pollute our lap log with stale data
+    // which would pollute our lap log with stale data.
+    // KRP multi-heat formats reuse the same `session` id across heats and only differ
+    // by `sessionSeries` (0 on other games), so compare both — otherwise a mid-heat
+    // join replays the previous heat's laps into the current heat's log.
     int currentSession = sessionData.session;
-    if (psRaceLap->session != currentSession) {
-        DEBUG_INFO_F("RaceLap: Ignoring event from session %d (current session is %d)",
-                     psRaceLap->session, currentSession);
+    int currentSeries = sessionData.sessionSeries;
+    if (psRaceLap->session != currentSession || psRaceLap->sessionSeries != currentSeries) {
+        DEBUG_INFO_F("RaceLap: Ignoring event from session %d/series %d (current is %d/%d)",
+                     psRaceLap->session, psRaceLap->sessionSeries, currentSession, currentSeries);
         return;
     }
 
@@ -192,6 +185,14 @@ void RaceLapHandler::handleRaceLap(Unified::RaceLapData* psRaceLap) {
     );
 
     data.updateLapLog(raceNum, completedLap);
+
+    // Machine-parseable per-lap record for EVERY rider (release too, via
+    // DEBUG_INFO_F) so the whole race can be reconstructed from the log file —
+    // the Session Charts HUD's offline twin (cf. the director cut log). Stable,
+    // greppable format: "[LAP DATA] num=.. lap=.. time=.. valid=.. s=[..]".
+    DEBUG_INFO_F("[LAP DATA] num=%d lap=%d time=%d valid=%d s=[%d,%d,%d,%d]",
+        raceNum, completedLapNumZeroIndexed + 1, lapTime, isLapValid ? 1 : 0,
+        sector1, sector2, sector3, sector4);
 
     // Record lap in unified stats (player only)
     if (raceNum == data.getPlayerRaceNum()) {

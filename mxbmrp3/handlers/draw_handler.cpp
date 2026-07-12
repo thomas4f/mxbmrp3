@@ -165,21 +165,6 @@ void DrawHandler::handleDraw(int iState, int* piNumQuads, void** ppQuad, int* pi
     // Total plugin time is the accumulated time from all callbacks this frame
     long long totalFrameTimeUs = m_accumulatedFrameTimeUs;
 
-    // Calculate overhead percentage for logging (estimate based on recent FPS)
-    // Note: This is a rough estimate; updateFrameMetrics() does the precise calculation
-    long long now = getCurrentTimeUs();
-    static long long lastFrameTime = 0;
-    float estimatedFPS = 60.0f;  // Default
-    if (lastFrameTime > 0) {
-        long long frameInterval = now - lastFrameTime;
-        if (frameInterval > 0) {
-            estimatedFPS = 1000000.0f / frameInterval;
-            if (estimatedFPS < MIN_FPS_CLAMP) estimatedFPS = MIN_FPS_CLAMP;
-            if (estimatedFPS > MAX_FPS_CLAMP) estimatedFPS = MAX_FPS_CLAMP;
-        }
-    }
-    lastFrameTime = now;
-
     // Update performance metrics for the performance HUD
     updateFrameMetrics(totalFrameTimeUs);
 

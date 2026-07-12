@@ -375,3 +375,7 @@ FodyWeavers.xsd
 crash_analysis/*.dmp
 crash_analysis/*.log
 crash_analysis/*.zip
+
+# Auto-generated build-number header (stamped from git commit count by the
+# StampVersion target in mxbmrp3.vcxproj; see resource.h).
+mxbmrp3/version_build.g.h

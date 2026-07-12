@@ -31,7 +31,7 @@ enum class HotkeyAction : uint8_t {
     TOGGLE_SETTINGS,         // Default: ` (tilde)
     RELOAD_CONFIG,           // Reload settings from .ini file
     // New actions appended here to preserve existing config indices
-    TOGGLE_LAP_CONSISTENCY,
+    TOGGLE_SESSION_CHARTS,
     TOGGLE_FMX,
     TOGGLE_STATS,
     TOGGLE_SESSION,
@@ -43,14 +43,19 @@ enum class HotkeyAction : uint8_t {
     // immediately (momentary - the normal rotation resumes after). HTTP-server
     // builds only; rows/dispatch are gated on GAME_HAS_HTTP_SERVER, but the
     // enumerators stay unconditional to preserve config indices across games.
-    // Names match the UI labels; the app.js panel strings ("fastlap"/"bestlap"/
-    // "battle"/"tail") live only in HttpServer::overlayPanelName().
+    // Names match the UI labels; the overlay-panels.js panel strings ("fastlap"/"bestlap"/
+    // "tail"/"sectors") live only in HttpServer::overlayPanelName(). The battle
+    // panel has no force hotkey - it's always synced to the director, so the
+    // caster can't choose when it shows (it follows the camera automatically).
     OVERLAY_FORCE_LAST_LAP,      // -> "fastlap" panel (fastest last lap)
     OVERLAY_FORCE_FASTEST_LAP,   // -> "bestlap" panel (session best)
     OVERLAY_FORCE_DOWN_ORDER,    // -> "tail" panel (backmarkers)
-    OVERLAY_FORCE_BATTLE,        // -> "battle" panel (closest battle, else "No data")
+    OVERLAY_FORCE_SECTORS,       // -> "sectors" panel (best-sectors carousel)
+    OVERLAY_FORCE_CHARTS,        // -> "charts" panel (session-charts carousel)
     SEGMENT_ADD,                 // Segment timer: drop a boundary point at the current position
     SEGMENT_REMOVE,              // Segment timer: remove the last boundary point
+    DIRECTOR_TOGGLE,             // Auto-director: enable/disable
+    DIRECTOR_LOCK,               // Auto-director: lock onto the current rider (pin subject)
 
     COUNT  // Must be last
 };
@@ -75,7 +80,7 @@ inline const char* getActionDisplayName(HotkeyAction action) {
         case HotkeyAction::TOGGLE_ALL_HUDS:     return "All Elements";
         case HotkeyAction::TOGGLE_SETTINGS:     return "Settings Menu";
         case HotkeyAction::RELOAD_CONFIG:          return "Reload Config";
-        case HotkeyAction::TOGGLE_LAP_CONSISTENCY: return "Consistency";
+        case HotkeyAction::TOGGLE_SESSION_CHARTS:     return "Charts";
         case HotkeyAction::TOGGLE_FMX:             return "FMX";
         case HotkeyAction::TOGGLE_STATS:           return "Stats";
         case HotkeyAction::TOGGLE_SESSION:         return "Session";
@@ -86,9 +91,12 @@ inline const char* getActionDisplayName(HotkeyAction action) {
         case HotkeyAction::OVERLAY_FORCE_LAST_LAP:    return "Last Lap";
         case HotkeyAction::OVERLAY_FORCE_FASTEST_LAP: return "Fastest Lap";
         case HotkeyAction::OVERLAY_FORCE_DOWN_ORDER:  return "Down Order";
-        case HotkeyAction::OVERLAY_FORCE_BATTLE:      return "Battle";
+        case HotkeyAction::OVERLAY_FORCE_SECTORS:     return "Sectors";
+        case HotkeyAction::OVERLAY_FORCE_CHARTS:      return "Charts";
         case HotkeyAction::SEGMENT_ADD:               return "Segment Add";
         case HotkeyAction::SEGMENT_REMOVE:            return "Segment Remove";
+        case HotkeyAction::DIRECTOR_TOGGLE:           return "Director";
+        case HotkeyAction::DIRECTOR_LOCK:             return "Director Lock";
         default: return "Unknown";
     }
 }
@@ -116,7 +124,7 @@ inline const char* getActionConfigName(HotkeyAction action) {
         case HotkeyAction::TOGGLE_ALL_HUDS:        return "all_elements";
         case HotkeyAction::TOGGLE_SETTINGS:        return "settings_menu";
         case HotkeyAction::RELOAD_CONFIG:          return "reload_config";
-        case HotkeyAction::TOGGLE_LAP_CONSISTENCY: return "consistency";
+        case HotkeyAction::TOGGLE_SESSION_CHARTS:     return "session_charts";
         case HotkeyAction::TOGGLE_FMX:             return "fmx";
         case HotkeyAction::TOGGLE_STATS:           return "stats";
         case HotkeyAction::TOGGLE_SESSION:         return "session";
@@ -127,9 +135,12 @@ inline const char* getActionConfigName(HotkeyAction action) {
         case HotkeyAction::OVERLAY_FORCE_LAST_LAP:    return "overlay_last_lap";
         case HotkeyAction::OVERLAY_FORCE_FASTEST_LAP: return "overlay_fastest_lap";
         case HotkeyAction::OVERLAY_FORCE_DOWN_ORDER:  return "overlay_down_order";
-        case HotkeyAction::OVERLAY_FORCE_BATTLE:      return "overlay_battle";
+        case HotkeyAction::OVERLAY_FORCE_SECTORS:     return "overlay_sectors";
+        case HotkeyAction::OVERLAY_FORCE_CHARTS:      return "overlay_charts";
         case HotkeyAction::SEGMENT_ADD:               return "segment_add";
         case HotkeyAction::SEGMENT_REMOVE:            return "segment_remove";
+        case HotkeyAction::DIRECTOR_TOGGLE:           return "director_toggle";
+        case HotkeyAction::DIRECTOR_LOCK:             return "director_lock";
         default: return "unknown";
     }
 }

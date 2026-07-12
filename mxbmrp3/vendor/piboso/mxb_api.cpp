@@ -12,6 +12,7 @@
 #include "api_guard.h"
 #include "../../core/plugin_manager.h"
 #include "../../core/plugin_constants.h"
+#include "../../core/event_recorder.h"   // in-plugin callback-tape recorder (GAME_HAS_RECORDER)
 #include "../../diagnostics/logger.h"
 #include "../../game/adapters/mxbikes_adapter.h"
 
@@ -83,6 +84,8 @@ __declspec(dllexport) void EventInit(void* _pData, int _iDataSize)
 			safeData.m_iServerType = -1;
 		}
 
+		EventRecorder::getInstance().recordEventInit(&safeData);
+
 		auto unified = Adapter::toVehicleEvent(&safeData);
 		PluginManager::getInstance().handleEventInit(&unified);
 	} API_GUARD_CATCH("EventInit")
@@ -92,6 +95,7 @@ __declspec(dllexport) void EventInit(void* _pData, int _iDataSize)
 __declspec(dllexport) void EventDeinit()
 {
 	try {
+		EventRecorder::getInstance().recordEventDeinit();
 		PluginManager::getInstance().handleEventDeinit();
 	} API_GUARD_CATCH("EventDeinit")
 }
@@ -101,6 +105,7 @@ __declspec(dllexport) void RunInit(void* _pData, int _iDataSize)
 {
 	try {
 		auto* gameData = static_cast<SPluginsBikeSession_t*>(_pData);
+		EventRecorder::getInstance().recordRunInit(gameData);
 		auto unified = Adapter::toSessionData(gameData);
 		PluginManager::getInstance().handleRunInit(&unified);
 	} API_GUARD_CATCH("RunInit")
@@ -110,6 +115,7 @@ __declspec(dllexport) void RunInit(void* _pData, int _iDataSize)
 __declspec(dllexport) void RunDeinit()
 {
 	try {
+		EventRecorder::getInstance().recordRunDeinit();
 		PluginManager::getInstance().handleRunDeinit();
 	} API_GUARD_CATCH("RunDeinit")
 }
@@ -118,6 +124,7 @@ __declspec(dllexport) void RunDeinit()
 __declspec(dllexport) void RunStart()
 {
 	try {
+		EventRecorder::getInstance().recordRunStart();
 		PluginManager::getInstance().handleRunStart();
 	} API_GUARD_CATCH("RunStart")
 }
@@ -126,6 +133,7 @@ __declspec(dllexport) void RunStart()
 __declspec(dllexport) void RunStop()
 {
 	try {
+		EventRecorder::getInstance().recordRunStop();
 		PluginManager::getInstance().handleRunStop();
 	} API_GUARD_CATCH("RunStop")
 }
@@ -135,6 +143,7 @@ __declspec(dllexport) void RunLap(void* _pData, int _iDataSize)
 {
 	try {
 		auto* gameData = static_cast<SPluginsBikeLap_t*>(_pData);
+		EventRecorder::getInstance().recordRunLap(gameData);
 		auto unified = Adapter::toPlayerLap(gameData);
 		PluginManager::getInstance().handleRunLap(&unified);
 	} API_GUARD_CATCH("RunLap")
@@ -145,6 +154,7 @@ __declspec(dllexport) void RunSplit(void* _pData, int _iDataSize)
 {
 	try {
 		auto* gameData = static_cast<SPluginsBikeSplit_t*>(_pData);
+		EventRecorder::getInstance().recordRunSplit(gameData);
 		auto unified = Adapter::toPlayerSplit(gameData);
 		PluginManager::getInstance().handleRunSplit(&unified);
 	} API_GUARD_CATCH("RunSplit")
@@ -155,6 +165,7 @@ __declspec(dllexport) void RunTelemetry(void* _pData, int _iDataSize, float _fTi
 {
 	try {
 		auto* gameData = static_cast<SPluginsBikeData_t*>(_pData);
+		EventRecorder::getInstance().recordRunTelemetry(gameData, _fTime, _fPos);
 		auto unified = Adapter::toTelemetry(gameData, _fTime, _fPos);
 		PluginManager::getInstance().handleRunTelemetry(&unified);
 	} API_GUARD_CATCH("RunTelemetry")
@@ -175,7 +186,11 @@ __declspec(dllexport) int DrawInit(int* _piNumSprites, char** _pszSpriteName, in
 	if (_piNumSprites) *_piNumSprites = 0;
 	if (_piNumFonts)   *_piNumFonts   = 0;
 	try {
-		return PluginManager::getInstance().handleDrawInit(_piNumSprites, _pszSpriteName, _piNumFonts, _pszFontName);
+		int result = PluginManager::getInstance().handleDrawInit(_piNumSprites, _pszSpriteName, _piNumFonts, _pszFontName);
+		EventRecorder::getInstance().recordDrawInit(
+			_piNumSprites ? *_piNumSprites : 0, _pszSpriteName,
+			_piNumFonts ? *_piNumFonts : 0, _pszFontName, result);
+		return result;
 	} API_GUARD_CATCH("DrawInit")
 	return 0;
 }
@@ -199,6 +214,7 @@ __declspec(dllexport) void Draw(int _iState, int* _piNumQuads, void** _ppQuad, i
 	if (_piNumString) *_piNumString = 0;
 	if (_ppString)    *_ppString    = nullptr;
 	try {
+		EventRecorder::getInstance().recordDraw();
 		PluginManager::getInstance().handleDraw(_iState, _piNumQuads, _ppQuad, _piNumString, _ppString);
 	} API_GUARD_CATCH("Draw")
 }
@@ -213,6 +229,7 @@ __declspec(dllexport) void TrackCenterline(int _iNumSegments, SPluginsTrackSegme
 		// TrackSegment has identical layout to SPluginsTrackSegment_t, safe to reinterpret
 		static_assert(sizeof(Unified::TrackSegment) == sizeof(SPluginsTrackSegment_t),
 			"TrackSegment layout mismatch - update Unified::TrackSegment to match game struct");
+		EventRecorder::getInstance().recordTrackCenterline(_iNumSegments, _pasSegment, _pRaceData);
 		auto* unified = reinterpret_cast<Unified::TrackSegment*>(_pasSegment);
 		PluginManager::getInstance().handleTrackCenterline(_iNumSegments, unified, _pRaceData);
 	} API_GUARD_CATCH("TrackCenterline")
@@ -223,6 +240,7 @@ __declspec(dllexport) void RaceEvent(void* _pData, int _iDataSize)
 {
 	try {
 		auto* gameData = static_cast<SPluginsRaceEvent_t*>(_pData);
+		EventRecorder::getInstance().recordRaceEvent(gameData);
 		auto unified = Adapter::toRaceEvent(gameData);
 		PluginManager::getInstance().handleRaceEvent(&unified);
 	} API_GUARD_CATCH("RaceEvent")
@@ -232,6 +250,7 @@ __declspec(dllexport) void RaceEvent(void* _pData, int _iDataSize)
 __declspec(dllexport) void RaceDeinit()
 {
 	try {
+		EventRecorder::getInstance().recordRaceDeinit();
 		PluginManager::getInstance().handleRaceDeinit();
 	} API_GUARD_CATCH("RaceDeinit")
 }
@@ -241,6 +260,7 @@ __declspec(dllexport) void RaceAddEntry(void* _pData, int _iDataSize)
 {
 	try {
 		auto* gameData = static_cast<SPluginsRaceAddEntry_t*>(_pData);
+		EventRecorder::getInstance().recordRaceAddEntry(gameData);
 		auto unified = Adapter::toRaceEntry(gameData);
 		PluginManager::getInstance().handleRaceAddEntry(&unified);
 	} API_GUARD_CATCH("RaceAddEntry")
@@ -252,6 +272,7 @@ __declspec(dllexport) void RaceRemoveEntry(void* _pData, int _iDataSize)
 	try {
 		auto* gameData = static_cast<SPluginsRaceRemoveEntry_t*>(_pData);
 		if (!gameData) return;
+		EventRecorder::getInstance().recordRaceRemoveEntry(gameData);
 		PluginManager::getInstance().handleRaceRemoveEntry(gameData->m_iRaceNum);
 	} API_GUARD_CATCH("RaceRemoveEntry")
 }
@@ -261,6 +282,7 @@ __declspec(dllexport) void RaceSession(void* _pData, int _iDataSize)
 {
 	try {
 		auto* gameData = static_cast<SPluginsRaceSession_t*>(_pData);
+		EventRecorder::getInstance().recordRaceSession(gameData);
 		auto unified = Adapter::toRaceSession(gameData);
 		PluginManager::getInstance().handleRaceSession(&unified);
 	} API_GUARD_CATCH("RaceSession")
@@ -271,6 +293,7 @@ __declspec(dllexport) void RaceSessionState(void* _pData, int _iDataSize)
 {
 	try {
 		auto* gameData = static_cast<SPluginsRaceSessionState_t*>(_pData);
+		EventRecorder::getInstance().recordRaceSessionState(gameData);
 		auto unified = Adapter::toRaceSessionState(gameData);
 		PluginManager::getInstance().handleRaceSessionState(&unified);
 	} API_GUARD_CATCH("RaceSessionState")
@@ -281,6 +304,7 @@ __declspec(dllexport) void RaceLap(void* _pData, int _iDataSize)
 {
 	try {
 		auto* gameData = static_cast<SPluginsRaceLap_t*>(_pData);
+		EventRecorder::getInstance().recordRaceLap(gameData);
 		auto unified = Adapter::toRaceLap(gameData);
 		PluginManager::getInstance().handleRaceLap(&unified);
 	} API_GUARD_CATCH("RaceLap")
@@ -291,9 +315,33 @@ __declspec(dllexport) void RaceSplit(void* _pData, int _iDataSize)
 {
 	try {
 		auto* gameData = static_cast<SPluginsRaceSplit_t*>(_pData);
+		EventRecorder::getInstance().recordRaceSplit(gameData);
 		auto unified = Adapter::toRaceSplit(gameData);
 		PluginManager::getInstance().handleRaceSplit(&unified);
 	} API_GUARD_CATCH("RaceSplit")
+}
+
+/*
+This function is optional. The game does not currently fire RaceHoleshot (see the
+note in plugin_manager.cpp) and the plugin takes NO gameplay action on it — but we
+export + record it so a captured tape stays complete if PiBoSo ever starts sending
+it, and so replay can feed it back. If holeshot handling is ever added, it goes here
+alongside the recorder tap.
+*/
+__declspec(dllexport) void RaceHoleshot(void* _pData, int _iDataSize)
+{
+	try {
+		// Version-skew-safe copy into a zero-initialized local (see EventInit): never
+		// over-read if a future build sends a shorter/longer struct.
+		SPluginsRaceHoleshot_t safeData{};
+		size_t copySize = _iDataSize > 0
+			? std::min(static_cast<size_t>(_iDataSize), sizeof(safeData))
+			: 0;
+		if (_pData && copySize > 0) {
+			memcpy(&safeData, _pData, copySize);
+			EventRecorder::getInstance().recordRaceHoleshot(&safeData);
+		}
+	} API_GUARD_CATCH("RaceHoleshot")
 }
 
 /* This function is optional */
@@ -318,6 +366,7 @@ __declspec(dllexport) void RaceCommunication(void* _pData, int _iDataSize)
 			memcpy(&safeData, _pData, copySize);
 		}
 
+		EventRecorder::getInstance().recordRaceCommunication(&safeData, _iDataSize);
 		auto unified = Adapter::toRaceCommunication(&safeData);
 		PluginManager::getInstance().handleRaceCommunication(&unified);
 	} API_GUARD_CATCH("RaceCommunication")
@@ -351,6 +400,7 @@ __declspec(dllexport) void RaceClassification(void* _pData, int _iDataSize, void
 		// the game's array (downstream clamps to MAX_RACE_ENTRIES anyway).
 		int numEntries = std::clamp(gameData->m_iNumEntries, 0, Unified::MAX_RACE_ENTRIES);
 		if (numEntries > 0 && !gameEntries) return;
+		EventRecorder::getInstance().recordRaceClassification(gameData, gameEntries, numEntries);
 		unified.numEntries = numEntries;
 
 		// Static buffer pattern: Avoid heap allocations in high-frequency callbacks.
@@ -390,6 +440,8 @@ __declspec(dllexport) void RaceTrackPosition(int _iNumVehicles, void* _pArray, i
 		int numVehicles = std::clamp(_iNumVehicles, 0, Unified::MAX_RACE_ENTRIES);
 		if (numVehicles > 0 && !gameData) return;
 
+		EventRecorder::getInstance().recordRaceTrackPosition(gameData, numVehicles);
+
 		// Convert entries array - use static buffer to avoid per-call allocations
 		static std::vector<Unified::TrackPositionData> unified;
 		unified.clear();
@@ -407,6 +459,7 @@ __declspec(dllexport) void RaceVehicleData(void* _pData, int _iDataSize)
 {
 	try {
 		auto* gameData = static_cast<SPluginsRaceVehicleData_t*>(_pData);
+		EventRecorder::getInstance().recordRaceVehicleData(gameData);
 		auto unified = Adapter::toRaceVehicleData(gameData);
 		PluginManager::getInstance().handleRaceVehicleData(&unified);
 	} API_GUARD_CATCH("RaceVehicleData")
@@ -419,15 +472,19 @@ __declspec(dllexport) int SpectateVehicles(int _iNumVehicles, void* _pVehicleDat
 		auto* gameData = static_cast<SPluginsSpectateVehicle_t*>(_pVehicleData);
 		if (_iNumVehicles > 0 && !gameData) return 0;
 
+		// Clamp count: PiBoSo can hand us an unbounded/garbage count and there's no
+		// _iElemSize here to sanity-check against, so the clamp is the only defense.
+		int numVehicles = std::clamp(_iNumVehicles, 0, Unified::MAX_RACE_ENTRIES);
+
 		// Convert entries array - use static buffer to avoid per-call allocations
 		static std::vector<Unified::SpectateVehicle> unified;
 		unified.clear();
-		unified.reserve(_iNumVehicles > 0 ? _iNumVehicles : 0);
-		for (int i = 0; i < _iNumVehicles; ++i) {
+		unified.reserve(numVehicles);
+		for (int i = 0; i < numVehicles; ++i) {
 			unified.push_back(Adapter::toSpectateVehicle(&gameData[i]));
 		}
 
-		return PluginManager::getInstance().handleSpectateVehicles(_iNumVehicles, unified.data(), _iCurSelection, _piSelect);
+		return PluginManager::getInstance().handleSpectateVehicles(numVehicles, unified.data(), _iCurSelection, _piSelect);
 	} API_GUARD_CATCH("SpectateVehicles")
 	return 0;
 }

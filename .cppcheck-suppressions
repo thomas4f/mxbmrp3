@@ -1,0 +1,39 @@
+# cppcheck suppressions for the report-only CI static-analysis job.
+# One-off false positives are suppressed inline at the source with
+# `// cppcheck-suppress <id>`; this file holds the project-wide, intentional
+# patterns so the report stays signal-rich. Keep it small — prefer fixing a
+# finding or an inline suppression over adding a blanket entry here.
+
+# Vendored third-party code (cpp-httplib, nlohmann/json, miniz, ...). The CI's
+# `-i mxbmrp3/vendor` only drops vendor files from the CHECK LIST — a vendor header
+# still gets analysed when OUR code #includes it (e.g. http_server.cpp -> httplib.h),
+# so findings inside it leak into the report. We don't patch vendored code (it's a
+# drop-in from upstream, tracked in vendored.json), so scope it out by path too. (Seen:
+# httplib.h ChunkedDecoder::line_buf `uninitMemberVar` — a std::string member that
+# self-initialises; a false positive anyway.)
+*:mxbmrp3/vendor/*
+
+# Widgets/HUDs call the virtual rebuildRenderData() from their own constructor by
+# design. The call resolves to the leaf class being constructed (which is exactly
+# the intent), so the "dynamic binding is not used" gotcha does not apply here.
+virtualCallInConstructor
+
+# HUD subclasses intentionally redeclare a few members/accessors that also exist
+# on BaseHud (public configuration data the settings UI touches directly — a
+# documented design decision, see CLAUDE.md "Public member variables on HUDs").
+duplInheritedMember
+
+# Several render paths initialise two locals (e.g. currentColor/peakColor,
+# textColor/iconColor) to the same value on purpose; they diverge conditionally
+# below. Not a copy-paste bug.
+duplicateAssignExpression
+
+# steam_friends_manager wraps every Steamworks call in SEH_TRY/SEH_EXCEPT_ALL
+# (__try/__except) with a return in both branches. cppcheck can't see through the
+# SEH macros and thinks a path falls off the end.
+missingReturn:mxbmrp3/core/steam_friends_manager.cpp
+
+# http_server prints 32-bit ids/hashes with %x; the args are `unsigned long`,
+# which is 32-bit on the Windows (LLP64) target, so %x is correct there. cppcheck
+# flags it as a type mismatch regardless of platform.
+invalidPrintfArgType_uint:mxbmrp3/core/http_server.cpp

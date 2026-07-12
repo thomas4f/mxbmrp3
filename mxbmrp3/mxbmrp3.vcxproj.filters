@@ -90,10 +90,22 @@
     <ClInclude Include="core\crash_handler.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
+    <ClInclude Include="core\event_recorder.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\performance_timer.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
     <ClInclude Include="core\tooltip_manager.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="core\asset_manager.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\companion_window.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\hud_sw_renderer.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="core\font_config.h">
@@ -234,6 +246,9 @@
     <ClInclude Include="core\hotkey_manager.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
+    <ClInclude Include="core\atomic_file_writer.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
     <ClInclude Include="core\tracked_riders_manager.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
@@ -297,13 +312,28 @@
     <ClInclude Include="hud\friends_hud.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
-    <ClInclude Include="hud\lap_consistency_hud.h">
+    <ClInclude Include="hud\session_charts_hud.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\session_charts_math.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
     <ClInclude Include="core\xinput_reader.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="core\settings_manager.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\settings_keys.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\settings_serde.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\settings_hud_registry.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\settings_hud_registry_decls.inc">
       <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="core\rumble_profile_manager.h">
@@ -321,6 +351,12 @@
     <ClInclude Include="core\analytics_manager.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
+    <ClInclude Include="core\analytics_remote_config.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\analytics_endpoint.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
     <ClInclude Include="core\steam_friends_manager.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
@@ -331,6 +367,9 @@
       <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="hud\map_hud.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\map_hud_internal.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
     <ClInclude Include="hud\radar_hud.h">
@@ -346,6 +385,9 @@
       <Filter>Header Files\hud</Filter>
     </ClInclude>
     <ClInclude Include="hud\gap_bar_hud.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\notice_priority.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
     <ClInclude Include="hud\notices_hud.h">
@@ -367,6 +409,9 @@
       <Filter>Header Files\hud</Filter>
     </ClInclude>
     <ClInclude Include="hud\rumble_hud.h">
+      <Filter>Header Files\hud</Filter>
+    </ClInclude>
+    <ClInclude Include="hud\director_widget.h">
       <Filter>Header Files\hud</Filter>
     </ClInclude>
     <ClInclude Include="hud\helmet_overlay_hud.h">
@@ -411,6 +456,9 @@
     <ClInclude Include="core\fmx_manager.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
+    <ClInclude Include="core\director_manager.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
     <ClInclude Include="core\stats_manager.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
@@ -434,7 +482,19 @@
     <ClCompile Include="core\crash_handler.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
+    <ClCompile Include="core\event_recorder.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
     <ClCompile Include="core\asset_manager.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\companion_window.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\hud_sw_renderer.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\plugin_version.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="core\font_config.cpp">
@@ -485,6 +545,9 @@
     <ClCompile Include="core\hotkey_manager.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
+    <ClCompile Include="core\atomic_file_writer.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
     <ClCompile Include="core\tracked_riders_manager.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
@@ -501,6 +564,18 @@
       <Filter>Source Files\handlers</Filter>
     </ClCompile>
     <ClCompile Include="core\plugin_data.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\plugin_data_lap_timer.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\plugin_data_standings.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\plugin_data_segment_timer.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\plugin_data_telemetry.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="hud\pointer_widget.cpp">
@@ -539,6 +614,12 @@
     <ClCompile Include="hud\standings_hud.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
+    <ClCompile Include="hud\standings_hud_render.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\standings_hud_animation.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
     <ClCompile Include="hud\clock_widget.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
@@ -575,6 +656,9 @@
     <ClCompile Include="hud\settings_hud.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
+    <ClCompile Include="hud\settings_hud_input.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
     <ClCompile Include="hud\settings\settings_layout.cpp">
       <Filter>Source Files\hud\settings</Filter>
     </ClCompile>
@@ -587,7 +671,7 @@
     <ClCompile Include="hud\settings\settings_tab_friends.cpp">
       <Filter>Source Files\hud\settings</Filter>
     </ClCompile>
-    <ClCompile Include="hud\settings\settings_tab_lap_consistency.cpp">
+    <ClCompile Include="hud\settings\settings_tab_session_charts.cpp">
       <Filter>Source Files\hud\settings</Filter>
     </ClCompile>
     <ClCompile Include="hud\settings\settings_tab_fmx.cpp">
@@ -638,6 +722,9 @@
     <ClCompile Include="hud\settings\settings_tab_helmet.cpp">
       <Filter>Source Files\hud\settings</Filter>
     </ClCompile>
+    <ClCompile Include="hud\settings\settings_tab_director.cpp">
+      <Filter>Source Files\hud\settings</Filter>
+    </ClCompile>
     <ClCompile Include="hud\settings\settings_tab_general.cpp">
       <Filter>Source Files\hud\settings</Filter>
     </ClCompile>
@@ -659,13 +746,25 @@
     <ClCompile Include="hud\friends_hud.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
-    <ClCompile Include="hud\lap_consistency_hud.cpp">
+    <ClCompile Include="hud\session_charts_hud.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="core\xinput_reader.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="core\settings_manager.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\settings_manager_global.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\settings_hud_profiles.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\settings_hud_registry.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\settings_hud_registry_widgets.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="core\rumble_profile_manager.cpp">
@@ -690,6 +789,15 @@
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="hud\map_hud.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\map_hud_geometry.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\map_hud_track.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\map_hud_riders.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\radar_hud.cpp">
@@ -726,6 +834,9 @@
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\rumble_hud.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\director_widget.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\helmet_overlay_hud.cpp">
@@ -765,6 +876,9 @@
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="core\fmx_manager.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\director_manager.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="core\stats_manager.cpp">

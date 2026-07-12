@@ -12,6 +12,7 @@
 #include "../core/settings_manager.h"
 #include "../core/hud_manager.h"
 #include "../core/asset_manager.h"
+#include "../core/companion_window.h"
 #include "../diagnostics/logger.h"
 #include "../handlers/draw_handler.h"
 #include "../diagnostics/timer.h"
@@ -50,16 +51,24 @@ bool BaseHud::handleMouseInput(bool allowInput) {
     const MouseButton& rightButton = input.getRightButton();
     const CursorPosition& cursor = input.getCursorPosition();
 
+    // A drag edits the FOCUSED surface's position: dragging in the companion window
+    // moves the companion instance, in the game window the game instance. The HUD
+    // sits at that surface's offset, so hit-test and initial offset use it too.
+    bool companion = input.getActiveSurface() == InputManager::Surface::Companion;
+    float effOffX = companion ? getCompanionOffsetX() : m_fOffsetX;
+    float effOffY = companion ? getCompanionOffsetY() : m_fOffsetY;
+
     // Start dragging on RMB click within bounds
     if (rightButton.isClicked() && cursor.isValid && !m_bDragging) {
-        if (isPointInBounds(cursor.x, cursor.y)) {
+        if (isPointInBoundsAt(cursor.x, cursor.y, effOffX, effOffY)) {
             m_bDragging = true;
+            m_bDragCompanion = companion;
             m_fDragStartX = cursor.x;
             m_fDragStartY = cursor.y;
-            m_fInitialOffsetX = m_fOffsetX;
-            m_fInitialOffsetY = m_fOffsetY;
-            DEBUG_INFO_F("Started dragging HUD (RMB) at cursor position: (%.3f, %.3f)",
-                cursor.x, cursor.y);
+            m_fInitialOffsetX = effOffX;
+            m_fInitialOffsetY = effOffY;
+            DEBUG_INFO_F("Started dragging HUD (RMB) on %s surface at cursor: (%.3f, %.3f)",
+                companion ? "companion" : "game", cursor.x, cursor.y);
         }
     }
 
@@ -110,8 +119,15 @@ bool BaseHud::handleMouseInput(bool allowInput) {
             }
         }
 
-        // Update position if changed
-        if (m_fOffsetX != newOffsetX || m_fOffsetY != newOffsetY) {
+        // Commit to the surface this drag started on. The companion frame is
+        // re-translated from the HUD's live position every collect, so updating the
+        // companion offset moves it without a HUD rebuild; the game path keeps its
+        // existing layout-dirty behavior.
+        if (m_bDragCompanion) {
+            if (getCompanionOffsetX() != newOffsetX || getCompanionOffsetY() != newOffsetY) {
+                setCompanionPosition(newOffsetX, newOffsetY);
+            }
+        } else if (m_fOffsetX != newOffsetX || m_fOffsetY != newOffsetY) {
             m_fOffsetX = newOffsetX;
             m_fOffsetY = newOffsetY;
             setLayoutDirty();  // Only layout dirty, not data
@@ -121,14 +137,15 @@ bool BaseHud::handleMouseInput(bool allowInput) {
     // Stop dragging on RMB release
     if (m_bDragging && rightButton.isReleased()) {
         m_bDragging = false;
-        DEBUG_INFO_F("Stopped dragging HUD at position offset: (%.3f, %.3f)",
-            m_fOffsetX, m_fOffsetY);
+        DEBUG_INFO_F("Stopped dragging HUD on %s surface at offset: (%.3f, %.3f)",
+            m_bDragCompanion ? "companion" : "game",
+            m_bDragCompanion ? getCompanionOffsetX() : m_fOffsetX,
+            m_bDragCompanion ? getCompanionOffsetY() : m_fOffsetY);
 
-        // Save settings after dragging ends (if auto-save enabled)
-        if (UiConfig::getInstance().getAutoSave()) {
-            SettingsManager::getInstance().saveSettings(HudManager::getInstance(),
-                                                         PluginManager::getInstance().getSavePath());
-        }
+        // Mark settings dirty after a drag. The write is DEFERRED to a leave-track transition
+        // (pit/exit) or the Save button, so it never spikes a gameplay frame; the moved position
+        // is already applied live. Unconditional so the Save button tracks changes in manual mode.
+        SettingsManager::getInstance().markDirty();
     }
 
     // Return true if we're currently dragging (tells HudManager to stop processing other HUDs)
@@ -192,12 +209,20 @@ void BaseHud::setBounds(float left, float top, float right, float bottom) {
 }
 
 bool BaseHud::isPointInBounds(float x, float y) const {
-    // Apply current offset to bounds for hit testing
-    float boundsLeft = m_fBoundsLeft + m_fOffsetX;
-    float boundsTop = m_fBoundsTop + m_fOffsetY;
-    float boundsRight = m_fBoundsRight + m_fOffsetX;
-    float boundsBottom = m_fBoundsBottom + m_fOffsetY;
+    return isPointInBoundsAt(x, y, m_fOffsetX, m_fOffsetY);
+}
 
+bool BaseHud::isVisibleAnySurface() const {
+    if (m_bVisible.load()) return true;
+    // The companion is a second surface: a HUD enabled only there must still update.
+    return CompanionWindow::getInstance().isEnabled() && getCompanionVisible();
+}
+
+bool BaseHud::isPointInBoundsAt(float x, float y, float offX, float offY) const {
+    float boundsLeft = m_fBoundsLeft + offX;
+    float boundsTop = m_fBoundsTop + offY;
+    float boundsRight = m_fBoundsRight + offX;
+    float boundsBottom = m_fBoundsBottom + offY;
     return (x >= boundsLeft && x <= boundsRight && y >= boundsTop && y <= boundsBottom);
 }
 
@@ -402,9 +427,8 @@ void BaseHud::addTitleString(const char* text, float x, float y, int justify, in
     // Icons fill their glyph box more than text fills the em, so draw the icon a bit
     // smaller than the title font (~12px at 1080p) while still centring it on the full
     // title-font height (see finalizeTitleIcon).
-    constexpr float TITLE_ICON_SCALE = 0.63f;
     m_titleFontSize = fontSize;
-    m_titleIconSize = fontSize * TITLE_ICON_SCALE;
+    m_titleIconSize = fontSize * PluginConstants::TITLE_ICON_SCALE;
     m_titleIconQuadIndex = static_cast<int>(m_quads.size());
     addIcon(x, y, spriteIndex, color, m_titleIconSize);  // placeholder position (corners reset below)
     m_titleStringIndex = static_cast<int>(m_strings.size());

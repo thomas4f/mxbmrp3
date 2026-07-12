@@ -736,9 +736,9 @@ void RecordsHud::handleClick(float mouseX, float mouseY) {
                     break;
             }
             setDataDirty();
-            if (saveSettings && UiConfig::getInstance().getAutoSave()) {
-                SettingsManager::getInstance().saveSettings(HudManager::getInstance(),
-                    PluginManager::getInstance().getSavePath());
+            if (saveSettings) {
+                // Deferred: persisted on leave-track / Save button, never mid-ride.
+                SettingsManager::getInstance().markDirty();
             }
             break;
         }
@@ -826,7 +826,7 @@ void RecordsHud::update() {
     }
 
     // Skip UI processing when not visible
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -836,7 +836,10 @@ void RecordsHud::update() {
     // Gating on isValid mirrors StandingsHud/MapHud and means a hidden cursor
     // (e.g. Menu-Only Cursor) can't hover or click the fetch button.
     const auto& inputManager = InputManager::getInstance();
-    const CursorPosition& cursor = inputManager.getCursorPosition();
+    // Shift the cursor into this HUD's build space so the fetch button lines up when
+    // the HUD is dragged to a different spot on the companion (no-op in-game).
+    CursorPosition cursor = inputManager.getCursorPosition();
+    mapCursorToHudSpace(cursor.x, cursor.y);
     bool wasHovered = m_fetchButtonHovered;
     m_fetchButtonHovered = false;
 
@@ -1415,7 +1418,7 @@ void RecordsHud::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.7315f, 0.4773f);
+    setPosition(0.7315f, 0.48107f);
     m_provider = DataProvider::CBR;
     m_categoryIndex = 0;
     m_lastSessionTrackName[0] = '\0';  // Reset so update() will pick up current session track
@@ -1423,7 +1426,7 @@ void RecordsHud::resetToDefaults() {
     m_bAutoFetch = false;  // Auto-fetch disabled by default
     m_bShowHeaders = false;  // Column headers off by default
     m_enabledColumns = COL_DEFAULT;
-    m_recordsToShow = 3;  // Default to 3 rows (matches telemetry HUD height)
+    m_recordsToShow = 8;  // Default to 8 rows (title 2 + 2 header + 8 + 1 footer + pad 2 = 15, matches StandingsHud)
     m_bShowFooter = true;
     {
         std::lock_guard<std::mutex> lock(m_recordsMutex);

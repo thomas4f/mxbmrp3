@@ -58,6 +58,34 @@
                     </div>
                 </div>
             </div>
+            <!-- Best Sectors — non-races only. Who owns the fastest time in each
+                 sector (S1/S2/S3…) across the session. Slides up like the lap boards. -->
+            <div id="sectors-panel" class="hidden">
+                <div class="sectors-inner">
+                    <div class="sectors-viewport">
+                        <div class="sectors-track">
+                            <!-- Per-sector pages (each carries its own .sectors-title as
+                                 its first row) populated by JavaScript, so the header
+                                 slides in with its board. -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Session Charts — a carousel of race-progression line charts (lap
+                 chart / race trace / gap / pace), one chart per page, each drawn as
+                 an inline SVG. Slides up like the sectors board; auto-shows when the
+                 leader finishes (races) and is forceable via hotkey. -->
+            <div id="charts-panel" class="hidden">
+                <div class="charts-inner">
+                    <div class="charts-viewport">
+                        <div class="charts-track">
+                            <!-- Per-chart SVG pages (each carries its own .charts-title as
+                                 its first row) populated by JavaScript, so the header
+                                 slides in with its chart. -->
+                        </div>
+                    </div>
+                </div>
+            </div>
             <!-- Down the Order — races/sessions with a compact tower. Pages
                  through the riders hidden below the Max Riders cutoff. -->
             <div id="tail-panel" class="hidden">
@@ -74,7 +102,9 @@
                  together (e.g. "Battle for 4th"). -->
             <div id="battle-panel" class="hidden">
                 <div class="battle-inner">
-                    <div class="battle-title">Battle</div>
+                    <!-- #battle-list holds one .battle-track per battle; each track's
+                         first child is its own .battle-title, so the headline slides
+                         with its rows on a battle→battle cut (built by JavaScript). -->
                     <div id="battle-list">
                         <!-- Populated by JavaScript -->
                     </div>
@@ -88,31 +118,38 @@
         </div>
     </div>
 
-    <!-- Rider Focus Card (shown when spectating) -->
+    <!-- Rider Focus Card (shown when spectating). Single rider styled like a
+         battle card; suppressed entirely for battle shots (the battle cards
+         already cover those). -->
     <div id="focus-card" class="hidden">
-        <div id="focus-ahead" class="focus-row focus-neighbor">
-            <span class="focus-pos"></span>
-            <span class="focus-num-badge"><span class="focus-num"></span><span class="focus-strip"></span></span>
-            <span class="focus-name"></span>
-            <span class="focus-interval"></span>
-        </div>
-        <div id="focus-main" class="focus-row focus-highlight">
-            <span class="focus-pos"></span>
-            <span class="focus-num-badge"><span class="focus-num"></span><span class="focus-strip"></span></span>
-            <div class="focus-rider-info">
-                <span class="focus-name"></span>
-                <span class="focus-bike"></span>
+        <!-- Director story caption (e.g. "FASTEST LAP"); hidden when no story. -->
+        <div class="focus-banner" hidden></div>
+        <!-- Body mirrors a single battle card: it reuses the battle/tower classes
+             verbatim (.battle-sub / .battle-main / .col-num / .num-badge /
+             .brand-strip) so the plate, name and rows match the rest of the
+             overlay exactly. The .focus-* classes are JS hooks. The .battle-card
+             class is not used (the focus card keeps its own translucent background
+             for compositing over gameplay), but the big .battle-value headline IS
+             reused (.focus-value) so the position shows large on the middle-right,
+             exactly like a battle card; the brand gradient is applied inline by
+             the overlay (overlay-focus.js). -->
+        <div class="focus-body">
+            <!-- Dim detail rows: bike, last lap, best lap, ideal lap. Each row is
+                 toggled on/off by the overlay (overlay-focus.js) (like the battle card); Ideal is off by
+                 default. The .focus-row-* class is the per-row JS toggle hook. -->
+            <div class="battle-sub focus-row-bike"><span class="battle-sub-label focus-bike"></span></div>
+            <div class="battle-sub focus-row-last"><span class="battle-sub-label">Last</span><span class="battle-sub-val battle-sub-time focus-last-lap"></span></div>
+            <div class="battle-sub focus-row-best"><span class="battle-sub-label">Best</span><span class="battle-sub-val battle-sub-time focus-best-lap"></span></div>
+            <div class="battle-sub focus-row-ideal"><span class="battle-sub-label">Ideal</span><span class="battle-sub-val battle-sub-time focus-ideal"></span></div>
+            <!-- Brand-tinted identity strip: plate + name (position shows in the
+                 headline on the right, not here). -->
+            <div class="battle-main focus-ident">
+                <span class="col-num"><span class="num-badge focus-num"></span><span class="brand-strip focus-strip"></span></span>
+                <span class="battle-name focus-name"></span>
             </div>
-            <div class="focus-lap-times">
-                <span class="focus-last-lap"></span>
-                <span class="focus-best-lap"></span>
-            </div>
-        </div>
-        <div id="focus-behind" class="focus-row focus-neighbor">
-            <span class="focus-pos"></span>
-            <span class="focus-num-badge"><span class="focus-num"></span><span class="focus-strip"></span></span>
-            <span class="focus-name"></span>
-            <span class="focus-interval"></span>
+            <!-- Large position ordinal on the middle-right, floating over the detail
+                 rows above the name strip — same headline as a battle card. -->
+            <div class="battle-value focus-value"></div>
         </div>
     </div>
 
@@ -128,6 +165,19 @@
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <!-- Overlay client, split from the former monolithic app.js into focused
+         files. These are ordered CLASSIC scripts that share one global scope,
+         so load order matters — keep it in sync with PRECACHE_URLS in sw.js. -->
+    <script src="js/overlay-config.js"></script>
+    <script src="js/overlay-shell.js"></script>
+    <script src="js/overlay-connection.js"></script>
+    <script src="js/overlay-util.js"></script>
+    <script src="js/overlay-render.js"></script>
+    <script src="js/overlay-focus.js"></script>
+    <script src="js/overlay-slots.js"></script>
+    <script src="js/overlay-panels.js"></script>
+    <script src="js/overlay-charts.js"></script>
+    <script src="js/overlay-settings.js"></script>
+    <script src="js/overlay-demo.js"></script>
 </body>
 </html>

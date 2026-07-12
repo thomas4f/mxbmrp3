@@ -1,9 +1,15 @@
 // ============================================================================
 // hud/timing_hud.h
-// Timing HUD - displays accumulated split and lap times as they happen
-// Shows accumulated times and gaps (default position: center of screen)
-// Supports real-time elapsed timer with per-column visibility modes
-// Example: S1: 30.00s, S2: 60.00s (accumulated), Lap: 90.00s
+// Timing HUD - a centered, stacked timing panel (default position: center of screen):
+//
+//   |            1:23.456            |   <- current/frozen time (large, centered)
+//   | Session          +0:12.526    |   <- one row per chosen comparison: name (left),
+//   | Alltime           1:22.100    |      value (right) = the live +/- gap while frozen
+//   | Ideal             1:21.800    |      on a split/lap, else the (progressive) target time
+//
+// The player picks which comparison rows to show; the big time can be toggled. The freeze,
+// progressive-reference and segment-timer BEHAVIOUR is unchanged — only the layout is this
+// single vertical stack (no horizontal mode, no label row, no primary/secondary split).
 // ============================================================================
 #pragma once
 
@@ -24,8 +30,7 @@ enum class ColumnMode : uint8_t {
 };
 
 // ============================================================================
-// Gap type flags - which gap comparisons to show
-// Primary gap is shown large, secondary gaps shown as compact chips
+// Gap type flags - which comparison rows to show (each enabled flag = one row)
 // ============================================================================
 enum GapTypeFlags : uint8_t {
     GAP_NONE       = 0,       // No gap comparison
@@ -36,8 +41,8 @@ enum GapTypeFlags : uint8_t {
     GAP_TO_RECORD  = 1 << 4,  // "Record" - gap to fastest record from RecordsHud provider
     GAP_TO_LASTLAP = 1 << 5,  // "Last Lap" - gap to the previously completed lap
 
-    GAP_DEFAULT_PRIMARY = GAP_TO_PB,           // Default primary: Session PB
-    GAP_DEFAULT_SECONDARY = GAP_TO_ALLTIME     // Default secondary: All-Time PB
+    // Default comparison rows: Session PB + All-Time PB.
+    GAP_DEFAULT_ENABLED = GAP_TO_PB | GAP_TO_ALLTIME
 };
 
 // Gap type count (for iteration)
@@ -47,22 +52,21 @@ inline constexpr int GAP_TYPE_COUNT = 6;
 inline constexpr int GAP_TYPE_COUNT = 5;  // No Record gap type without records provider
 #endif
 
-// Gap type names and abbreviations for UI
+// Gap type names for UI
 struct GapTypeInfo {
     GapTypeFlags flag;
     const char* name;       // Full name for settings UI
-    const char* abbrev;     // 2-char abbreviation for chips
 };
 
 // Ordered list of gap types for cycling and display
 inline constexpr GapTypeInfo GAP_TYPE_INFO[] = {
-    { GAP_TO_PB,      "Session",      "PB" },
-    { GAP_TO_ALLTIME, "Alltime",      "AT" },
-    { GAP_TO_IDEAL,   "Ideal",        "ID" },
-    { GAP_TO_OVERALL, "Overall",      "OA" },
-    { GAP_TO_LASTLAP, "Last Lap",     "LL" },
+    { GAP_TO_PB,      "Session"  },
+    { GAP_TO_ALLTIME, "Alltime"  },
+    { GAP_TO_IDEAL,   "Ideal"    },
+    { GAP_TO_OVERALL, "Overall"  },
+    { GAP_TO_LASTLAP, "Last Lap" },
 #if GAME_HAS_RECORDS_PROVIDER
-    { GAP_TO_RECORD,  "Record",       "RC" }
+    { GAP_TO_RECORD,  "Record"   }
 #endif
 };
 
@@ -127,12 +131,6 @@ struct OfficialTimingData {
         gapToRecord.reset();
         gapToLastLap.reset();
     }
-
-    // Legacy accessors for backwards compatibility
-    int gap() const { return gapToPB.gap; }
-    bool hasGap() const { return gapToPB.hasGap; }
-    bool isFaster() const { return gapToPB.isFaster; }
-    bool isSlower() const { return gapToPB.isSlower; }
 };
 
 class TimingHud : public BaseHud {
@@ -145,35 +143,48 @@ public:
     const char* getIconName() const override { return "hud-timing"; }
     void resetToDefaults();
 
-    // Column indices
-    enum Column : int {
-        COL_LABEL = 0,
-        COL_TIME = 1,
-        COL_GAP = 2,
-        COL_COUNT = 3
-    };
+    // The big time row (top). Toggleable; the comparison rows stand on their own.
+    bool isTimeEnabled() const { return m_showTime; }
+    void setTimeEnabled(bool on) { m_showTime = on; setDataDirty(); }
 
-    // Getters for settings UI
-    ColumnMode getDisplayMode() const { return m_displayMode; }
-    bool isColumnEnabled(Column col) const { return m_columnEnabled[col]; }
-    bool isReferenceEnabled() const { return m_showReference; }
-    int getDisplayDuration() const { return m_displayDurationMs; }
+    // Comparison rows: each enabled gap type is one row (name + value). No primary/secondary.
+    bool isComparisonEnabled(GapTypeFlags flag) const { return (m_enabledComparisons & flag) != 0; }
+    void setComparisonEnabled(GapTypeFlags flag, bool enabled);
 
-    // Primary gap (shown large in main row)
-    GapTypeFlags getPrimaryGapType() const { return m_primaryGapType; }
-    void setPrimaryGapType(GapTypeFlags type);
-    void cyclePrimaryGapType(bool forward);
+    // Passive-reference selection, exposed for headless tests/tools (the rendered chip text
+    // isn't in /api/state). All segment-agnostic — segment mode has its own single reference.
+    //  - currentTargetSplit(): the split boundary the rider is driving toward (0=S1, 1=S2, …;
+    //    -1 = timer idle / heading to the finish => full lap).
+    //  - cumulativeReferenceMs(type, split): the cumulative target time for that split.
+    //  - passiveReferenceMs(type): what the chip shows now = cumulativeReferenceMs(type,
+    //    currentTargetSplit()).
+    int currentTargetSplit() const;
+    int cumulativeReferenceMs(GapTypeFlags type, int targetSplit) const;
+    int passiveReferenceMs(GapTypeFlags type) const;
 
-    // Secondary gaps (shown as compact horizontal chips below primary)
-    uint8_t getSecondaryGapTypes() const { return m_secondaryGapTypes; }
-    bool isSecondaryGapEnabled(GapTypeFlags flag) const { return (m_secondaryGapTypes & flag) != 0; }
-    void setSecondaryGapType(GapTypeFlags flag, bool enabled);
-    int getEnabledSecondaryGapCount(bool skipPrimaryType = true) const;
+    // Whether the time cell currently renders "INVALID" - frozen on a lap flagged invalid,
+    // outside segment mode. Single source of truth for the render path and the test hook
+    // (the rendered text isn't in /api/state). A lap interrupted by a pit stop is NOT flagged
+    // invalid (see processTimingUpdates), so this is only true for a genuinely timed lap.
+    bool showingInvalid() const;
 
-    // Helper to get gap type info
-    static const GapTypeInfo* getGapTypeInfo(GapTypeFlags flag);
-    static const char* getGapTypeName(GapTypeFlags flag);
-    static const char* getGapTypeAbbrev(GapTypeFlags flag);
+    // Whether the panel is currently holding a frozen official split/lap time (the display
+    // "freeze" that follows a split/lap event for displayDuration). Test-only accessor: the
+    // freeze state isn't in /api/state, and it's the signal for the "a completed lap must
+    // freeze" regression (see MXBMRP3_Test_TimingFrozen).
+    bool isFrozen() const { return m_isFrozen; }
+
+    // Test-only: the rendered panel HEIGHT and the scaled dimensions the grid-band geometry
+    // test asserts against. The panel is a stack of grid-aligned bands — one lineHeightLarge
+    // band for the time row plus one lineHeightNormal band per comparison row, no outer padding
+    // (height == (showTime ? lineHeightLarge : 0) + rows*lineHeightNormal) — see
+    // rebuildRenderData() and tests/integration/tests/timing_reference_test.cpp.
+    struct TestGeometry { float height, paddingV, fontLarge, fontNormal, lineLarge, lineNormal; };
+    TestGeometry testGeometry() const {
+        ScaledDimensions d = getScaledDimensions();
+        return { m_fBoundsBottom - m_fBoundsTop, d.paddingV, d.fontSizeLarge,
+                 d.fontSize, d.lineHeightLarge, d.lineHeightNormal };
+    }
 
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;
@@ -188,9 +199,10 @@ private:
     void rebuildRenderData() override;
     void processTimingUpdates();
     void checkFreezeExpiration();
-    bool shouldShowColumn(Column col) const;
+    // Whether the panel's content is showing now: Always -> yes; At-Splits -> only during the
+    // freeze after a split/lap (or continuously in segment mode); Off -> never.
+    bool contentVisible() const;
     int calculateGap(int currentTime, int referenceTime) const;
-    int getVisibleColumnCount() const;
     void resetLiveTimingState();
 
     // Gap calculation helpers
@@ -198,18 +210,16 @@ private:
     void calculateAllGaps(int splitTime, int splitIndex, bool isLapComplete);
     void cacheAllTimePB();     // Cache current all-time PB for showing improvement
 
+    // Whole-lap target for a gap type (segment-agnostic); helper for cumulativeReferenceMs.
+    int fullLapReferenceMs(GapTypeFlags type) const;
+
     // Display mode (Off/Splits/Always) controls when HUD content is shown
     ColumnMode m_displayMode;
 
-    // Column visibility (simple on/off)
-    bool m_columnEnabled[COL_COUNT];
-    bool m_showReference;            // Show reference time in gap column
-
     // Configuration
     int m_displayDurationMs;         // How long to freeze on official times (in milliseconds)
-    GapTypeFlags m_primaryGapType;   // Primary gap comparison (shown large)
-    uint8_t m_secondaryGapTypes;     // Bitfield of secondary gap comparisons (as chips)
-    bool m_layoutVertical;           // True = vertical columns, False = horizontal rows
+    bool m_showTime;                 // Show the big centered time row at the top
+    uint8_t m_enabledComparisons;    // Bitfield of comparison rows to show (GapTypeFlags)
 
     // Cached data to detect changes (accumulated times from CurrentLapData)
     int m_cachedSplit1;              // Accumulated time to split 1
@@ -220,6 +230,8 @@ private:
     int m_cachedSessionGeneration;   // Track session changes (monotonic counter from PluginData)
     PBScope m_cachedPBScope;         // Track PB scope changes (re-cache all-time PB)
     int m_cachedPitState;            // Track pit entry/exit (0 = on track, 1 = in pits)
+    bool m_lapInterruptedByPit = false;  // The in-progress lap passed through the pits -> its
+                                         // completion isn't a genuine timed lap (suppress INVALID)
     long long m_cachedSegmentSig = -1;  // Track segment-timer state changes (segment mode line)
     // Segment split-style freeze: hold a completed segment's time on screen briefly.
     unsigned int m_segCachedCompletion = 0;  // last segment completionCounter seen

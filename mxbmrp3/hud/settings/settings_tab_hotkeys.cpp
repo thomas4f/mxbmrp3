@@ -70,7 +70,7 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
 
     // Column layout - wider fields for better readability
     float actionX = ctx.labelX;
-    float keyboardX = actionX + charWidth * 14;  // After action name
+    float keyboardX = actionX + charWidth * 15;  // After action name (longest label "Segment Remove" is 14 chars; +1 keeps a gap before the "[" column)
     float controllerX = keyboardX + charWidth * 21;  // After keyboard binding (wider);
                                                      // 21 (not 22) keeps the clear "x" inside the row highlight
 
@@ -121,7 +121,7 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
             case HotkeyAction::TOGGLE_TIMING:      return "hotkeys.timing";
             case HotkeyAction::TOGGLE_GAP_BAR:     return "hotkeys.gap_bar";
             case HotkeyAction::TOGGLE_PERFORMANCE:     return "hotkeys.performance";
-            case HotkeyAction::TOGGLE_LAP_CONSISTENCY: return "hotkeys.lap_consistency";
+            case HotkeyAction::TOGGLE_SESSION_CHARTS:     return "hotkeys.session_charts";
             case HotkeyAction::TOGGLE_FMX:             return "hotkeys.fmx";
             case HotkeyAction::TOGGLE_STATS:           return "hotkeys.stats";
             case HotkeyAction::TOGGLE_SESSION:         return "hotkeys.session";
@@ -132,9 +132,12 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
             case HotkeyAction::OVERLAY_FORCE_LAST_LAP:    return "hotkeys.overlay_last_lap";
             case HotkeyAction::OVERLAY_FORCE_FASTEST_LAP: return "hotkeys.overlay_fastest_lap";
             case HotkeyAction::OVERLAY_FORCE_DOWN_ORDER:  return "hotkeys.overlay_down_order";
-            case HotkeyAction::OVERLAY_FORCE_BATTLE:      return "hotkeys.overlay_battle";
+            case HotkeyAction::OVERLAY_FORCE_SECTORS:     return "hotkeys.overlay_sectors";
+            case HotkeyAction::OVERLAY_FORCE_CHARTS:      return "hotkeys.overlay_charts";
             case HotkeyAction::SEGMENT_ADD:               return "hotkeys.segment_add";
             case HotkeyAction::SEGMENT_REMOVE:            return "hotkeys.segment_remove";
+            case HotkeyAction::DIRECTOR_TOGGLE:           return "hotkeys.director_toggle";
+            case HotkeyAction::DIRECTOR_LOCK:             return "hotkeys.director_lock";
             case HotkeyAction::TOGGLE_RUMBLE:      return "hotkeys.rumble";
             case HotkeyAction::TOGGLE_WIDGETS:     return "hotkeys.widgets";
             case HotkeyAction::TOGGLE_ALL_HUDS:    return "hotkeys.all_huds";
@@ -290,7 +293,8 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
     // NOTE: Several actions have no row here to keep the tab within the panel;
     // they remain bindable by hand-editing the [Hotkeys] section of the INI
     // (rumble_key=, timing_key=, notices_key=, stats_key=, friends_key=,
-    // event_log_key=, fmx_key=, helmet_key=, performance_key=, ...).
+    // event_log_key=, fmx_key=, helmet_key=, performance_key=, session_key=, ...).
+
     ctx.addSpacing(0.5f);
     ctx.addSectionHeader("HUDs");
     addHotkeyRow(HotkeyAction::TOGGLE_STANDINGS);
@@ -298,12 +302,26 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
     addHotkeyRow(HotkeyAction::TOGGLE_RADAR);
     addHotkeyRow(HotkeyAction::TOGGLE_LAP_LOG);
     addHotkeyRow(HotkeyAction::TOGGLE_IDEAL_LAP);
-    addHotkeyRow(HotkeyAction::TOGGLE_LAP_CONSISTENCY);
+    addHotkeyRow(HotkeyAction::TOGGLE_SESSION_CHARTS);
     addHotkeyRow(HotkeyAction::TOGGLE_TELEMETRY);
     addHotkeyRow(HotkeyAction::TOGGLE_RECORDS);
-    addHotkeyRow(HotkeyAction::TOGGLE_PITBOARD);
-    addHotkeyRow(HotkeyAction::TOGGLE_SESSION);
-    addHotkeyRow(HotkeyAction::TOGGLE_GAP_BAR);
+    // Pitboard and Gap Bar are intentionally omitted from the GUI to save space;
+    // their INI keys (pitboard_key / gap_bar_key) still bind if hand-edited, like
+    // the Session toggle. The enumerators + config names live in hotkey_config.h.
+
+    // Broadcast: the casting tools - auto-director + web-overlay panel forces.
+    ctx.addSpacing(0.5f);
+    ctx.addSectionHeader("Broadcast");
+    addHotkeyRow(HotkeyAction::DIRECTOR_TOGGLE);
+    addHotkeyRow(HotkeyAction::DIRECTOR_LOCK);
+#if GAME_HAS_HTTP_SERVER
+    // Web overlay broadcaster controls: force a bottom-slot panel to slide in now.
+    addHotkeyRow(HotkeyAction::OVERLAY_FORCE_LAST_LAP);
+    addHotkeyRow(HotkeyAction::OVERLAY_FORCE_FASTEST_LAP);
+    addHotkeyRow(HotkeyAction::OVERLAY_FORCE_SECTORS);
+    addHotkeyRow(HotkeyAction::OVERLAY_FORCE_CHARTS);
+    addHotkeyRow(HotkeyAction::OVERLAY_FORCE_DOWN_ORDER);
+#endif
 
     ctx.addSpacing(0.5f);
     ctx.addSectionHeader("Segments");
@@ -315,16 +333,6 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
     addHotkeyRow(HotkeyAction::TOGGLE_WIDGETS);
     addHotkeyRow(HotkeyAction::TOGGLE_ALL_HUDS);
     addHotkeyRow(HotkeyAction::RELOAD_CONFIG);
-
-#if GAME_HAS_HTTP_SERVER
-    // Web overlay broadcaster controls: force a bottom-slot panel to slide in now.
-    ctx.addSpacing(0.5f);
-    ctx.addSectionHeader("Web Overlay");
-    addHotkeyRow(HotkeyAction::OVERLAY_FORCE_LAST_LAP);
-    addHotkeyRow(HotkeyAction::OVERLAY_FORCE_FASTEST_LAP);
-    addHotkeyRow(HotkeyAction::OVERLAY_FORCE_BATTLE);
-    addHotkeyRow(HotkeyAction::OVERLAY_FORCE_DOWN_ORDER);
-#endif
 
     // Info text at bottom
     ctx.currentY += ctx.lineHeightNormal * 0.5f;

@@ -32,7 +32,7 @@ bool ClockWidget::handlesDataType(DataChangeType /*dataType*/) const {
 }
 
 void ClockWidget::update() {
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -220,6 +220,6 @@ void ClockWidget::resetToDefaults() {
     setTextureVariant(0);
     m_fBackgroundOpacity = 0.0f;
     m_fScale = 1.0f;
-    setPosition(0.2860f, 0.0111f);
+    setPosition(0.2860f, 0.01173f);
     setDataDirty();
 }

@@ -452,12 +452,13 @@ std::string DiscordManager::buildPresenceJson() const {
             bottom += stateStr;
         }
 
-        // Top: shared server label (name / "Unknown") when there's a server slot,
-        // else the solo session type. See PluginUtils::serverLabel - keeps Discord,
-        // the SessionHud server row and Steam presence identical.
+        // Top: shared server label (name / "Online" / "Unknown") when there's a server
+        // slot, else the solo session type. See PluginUtils::serverLabel - keeps Discord,
+        // the SessionHud server row and Steam presence identical. Rider count resolves
+        // an unknown serverType with >1 rider to "Online" (GP Bikes / KRP; MXB spectate).
         std::string top;
         if (topIsServer) {
-            top = PluginUtils::serverLabel(session.serverType, session.serverName);
+            top = PluginUtils::serverLabel(session.serverType, session.serverName, session.riderCount);
             // Shared UTF-8-aware truncation: avoids splitting a multibyte name
             // mid-code-point (Discord validates UTF-8). Ellipsis folded into budget.
             constexpr int MAX_SERVER_NAME_DISPLAY = 40;
@@ -572,6 +573,7 @@ void DiscordManager::updateSnapshot() {
     next.sessionNumLaps = session.sessionNumLaps;
     next.eventType      = session.eventType;
     next.serverType     = session.serverType;
+    next.riderCount     = static_cast<int>(pd.getRaceEntries().size());
     next.sessionTimeMs  = pd.getSessionTime();
     // Absolute countdown end (wall-clock) captured here, so the Discord thread can
     // drop the timer once real time passes it - robust even if this snapshot then

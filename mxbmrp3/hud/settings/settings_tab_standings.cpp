@@ -31,6 +31,31 @@ bool SettingsHud::handleClickTabStandings(const ClickRegion& region) {
                 int newRowCount = standingsHud->m_displayRowCount - 2;
                 if (newRowCount < StandingsHud::MIN_ROW_COUNT) newRowCount = StandingsHud::MIN_ROW_COUNT;
                 standingsHud->m_displayRowCount = newRowCount;
+                // Keep the pinned top-N no larger than the total rows shown.
+                if (standingsHud->m_topPositionsCount > newRowCount)
+                    standingsHud->m_topPositionsCount = newRowCount;
+                standingsHud->setDataDirty();
+                rebuildRenderData();
+            }
+            return true;
+
+        case ClickRegion::STANDINGS_TOP_COUNT_UP:
+            if (standingsHud) {
+                int maxTop = StandingsHud::MAX_TOP_POSITIONS;
+                if (standingsHud->m_displayRowCount < maxTop) maxTop = standingsHud->m_displayRowCount;
+                int newTop = standingsHud->m_topPositionsCount + 1;
+                if (newTop > maxTop) newTop = maxTop;
+                standingsHud->m_topPositionsCount = newTop;
+                standingsHud->setDataDirty();
+                rebuildRenderData();
+            }
+            return true;
+
+        case ClickRegion::STANDINGS_TOP_COUNT_DOWN:
+            if (standingsHud) {
+                int newTop = standingsHud->m_topPositionsCount - 1;
+                if (newTop < 0) newTop = 0;
+                standingsHud->m_topPositionsCount = newTop;
                 standingsHud->setDataDirty();
                 rebuildRenderData();
             }
@@ -256,6 +281,15 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::ROW_COUNT_DOWN,
         SettingsHud::ClickRegion::ROW_COUNT_UP,
         hud, true, false, "standings.rows");
+
+    // Top positions always pinned (0..min(10, rows)) — the leaders stay on screen
+    // even when the window is centered on the player. (Same feature as the Charts HUD.)
+    char topPosValue[8];
+    snprintf(topPosValue, sizeof(topPosValue), "%d", hud->m_topPositionsCount);
+    ctx.addCycleControl("Top positions", topPosValue, 10,
+        SettingsHud::ClickRegion::STANDINGS_TOP_COUNT_DOWN,
+        SettingsHud::ClickRegion::STANDINGS_TOP_COUNT_UP,
+        hud, true, false, "standings.top_positions");
 
     // Gap reference toggle (Leader/Player/Auto) - muted when gap column is off
     {

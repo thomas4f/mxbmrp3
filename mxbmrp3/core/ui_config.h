@@ -19,6 +19,15 @@ enum class PBScope : uint8_t {
     CATEGORY = 1
 };
 
+// Where the HUD is drawn: in the game, in the standalone companion window, or both.
+// Companion = window only (the in-game HUD is hidden, except while the settings menu
+// is open so you can always change this back).
+enum class DisplayTarget : uint8_t {
+    IN_GAME = 0,
+    COMPANION = 1,
+    BOTH = 2
+};
+
 class UiConfig {
 public:
     static UiConfig& getInstance();
@@ -64,6 +73,9 @@ public:
     PBScope getPBScope() const { return m_pbScope; }
     void setPBScope(PBScope scope) { m_pbScope = scope; }
 
+    DisplayTarget getDisplayTarget() const { return m_displayTarget; }
+    void setDisplayTarget(DisplayTarget target) { m_displayTarget = target; }
+
     // Segment timer: snap a new boundary point to a nearby official split (INI-only).
     // On by default; threshold is in normalized trackPos units (0-1 across the lap).
     bool getSnapSegmentsToSplits() const { return m_bSnapSegmentsToSplits; }
@@ -80,6 +92,19 @@ public:
     // The same icon is used by the settings panel tab list. On by default.
     bool getTitleIcons() const { return m_bTitleIcons; }
     void setTitleIcons(bool enabled) { m_bTitleIcons = enabled; }
+
+    // Grid overlay (INI-only, debug/alignment aid): draw the HUD snap grid across the
+    // whole screen so you can see where each HUD's edges land. Off by default. Every
+    // Nth line (majorEvery, default 10) is drawn thicker in the "major" color; the rest
+    // in the "minor" color. Colors are 0xAARRGGBB (same format as dropShadowColor).
+    bool getGridOverlay() const { return m_bGridOverlay; }
+    void setGridOverlay(bool enabled) { m_bGridOverlay = enabled; }
+    int getGridOverlayMajorEvery() const { return m_gridOverlayMajorEvery; }
+    void setGridOverlayMajorEvery(int every) { m_gridOverlayMajorEvery = (every < 1) ? 1 : (every > 1000) ? 1000 : every; }
+    unsigned long getGridOverlayColor() const { return m_ulGridOverlayColor; }
+    void setGridOverlayColor(unsigned long color) { m_ulGridOverlayColor = color; }
+    unsigned long getGridOverlayMajorColor() const { return m_ulGridOverlayMajorColor; }
+    void setGridOverlayMajorColor(unsigned long color) { m_ulGridOverlayMajorColor = color; }
 
     // Drop shadow settings (for text rendering)
     bool getDropShadow() const { return m_bDropShadow; }
@@ -106,11 +131,18 @@ private:
     bool m_bAutoSave = true;         // Auto-save enabled by default
     TemperatureUnit m_temperatureUnit = TemperatureUnit::CELSIUS;  // Celsius by default
     PBScope m_pbScope = PBScope::CATEGORY;  // Per-category PB tracking by default
+    DisplayTarget m_displayTarget = DisplayTarget::IN_GAME;  // HUD in the game by default
     bool m_bSnapSegmentsToSplits = true;    // Snap segment boundaries to nearby splits by default
     float m_fSegmentSnapThreshold = 0.02f;  // Snap distance: 2% of the lap
     int m_holdRepeatFastMs = 50;     // Max repeat speed: 50ms (~20/sec)
     float m_fCursorActivationThreshold = 0.015f;  // Mouse travel from rest before cursor appears (~29px horiz on 1080p)
     bool m_bTitleIcons = true;       // HUD title identity icons enabled by default
+
+    // Grid overlay (INI-only debug aid)
+    bool m_bGridOverlay = false;                       // Off by default
+    int m_gridOverlayMajorEvery = 10;                  // Emphasize every 10th line
+    unsigned long m_ulGridOverlayColor = 0x22FFFFFF;   // Minor lines (subtle white)
+    unsigned long m_ulGridOverlayMajorColor = 0x9933CCFF;  // Major lines (light blue)
 
     // Drop shadow settings
     bool m_bDropShadow = true;                       // Drop shadow enabled by default

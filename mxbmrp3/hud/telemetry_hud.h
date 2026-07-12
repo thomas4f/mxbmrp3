@@ -78,7 +78,6 @@ private:
 
     static constexpr int GRAPH_WIDTH_CHARS = 33;    // Width for graph display (left side)
     static constexpr int LEGEND_WIDTH_CHARS = 9;    // Width for legend/values (right side) - fits "RPM 12345"
-    static constexpr int BACKGROUND_WIDTH_CHARS = GRAPH_WIDTH_CHARS + 1 + LEGEND_WIDTH_CHARS;  // 33 + 1 gap + 9 = 43
     static constexpr float GRAPH_HEIGHT_LINES = 6;  // Height in line units
 
     // Graph grid line percentages (0-100% input range)

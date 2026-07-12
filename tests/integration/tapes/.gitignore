@@ -1,0 +1,7 @@
+# Full master captures live here but are NOT committed — they're large (a session
+# is ~10 MB) and one-shot. Keep them archived (your recording zip, a release
+# asset, cloud) and slim small per-test fixtures out of them with ../slim_tape.py,
+# committing those to ../tests/fixtures/. See README.md.
+*
+!.gitignore
+!README.md

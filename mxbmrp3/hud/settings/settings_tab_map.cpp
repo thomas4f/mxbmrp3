@@ -39,6 +39,13 @@ bool SettingsHud::handleClickTabMap(const ClickRegion& region) {
             }
             return true;
 
+        case ClickRegion::MAP_MARKERS_TOGGLE:
+            if (mapHud) {
+                mapHud->setShowTrackMarkers(!mapHud->getShowTrackMarkers());
+                rebuildRenderData();
+            }
+            return true;
+
         case ClickRegion::MAP_COLORIZE_UP:
         case ClickRegion::MAP_COLORIZE_DOWN:
             if (mapHud) {
@@ -171,6 +178,11 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
     ctx.addToggleControl("Show track outline", hud->getShowOutline(),
         SettingsHud::ClickRegion::MAP_OUTLINE_TOGGLE, hud, nullptr, 0, true,
         "map.outline");
+
+    // Track markers toggle (S/F, sector markers, segment lines)
+    ctx.addToggleControl("Show markers", hud->getShowTrackMarkers(),
+        SettingsHud::ClickRegion::MAP_MARKERS_TOGGLE, hud, nullptr, 0, true,
+        "map.markers");
 
     // Track line width scale
     char trackWidthValue[16];

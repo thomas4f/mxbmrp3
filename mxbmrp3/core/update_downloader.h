@@ -99,6 +99,19 @@ public:
     // Cleanup old .dlo files from previous updates (call on startup)
     void cleanupOldFiles();
 
+#if defined(MXBMRP3_TEST_BUILD)
+    // Test-only: run the extract/install pipeline (backup → extract → verify →
+    // rollback-on-failure) against a chosen directory with an in-memory ZIP,
+    // bypassing the network download. Uses the real, non-debug path so the backup
+    // and locked-file handling are exercised. Returns extractAndInstall()'s result.
+    bool testExtractAndInstall(const std::string& destDir,
+                               const std::vector<char>& zipBytes, std::string& err) {
+        setDebugMode(false);
+        { std::lock_guard<std::mutex> lock(m_mutex); m_pluginPath = destDir; }
+        return extractAndInstall(zipBytes, err);
+    }
+#endif
+
 private:
     UpdateDownloader();
     ~UpdateDownloader();

@@ -136,7 +136,11 @@ struct Adapter {
         result.onTrackTime = time;
         result.crashed = 0;  // KRP doesn't have crash state
 
-        result.steer = src->m_fInputSteer;
+        // KRP reports steer in degrees with "negative = left"; MXB (which the lean
+        // widget's steer bar is built around) uses "negative = right". Negate so the
+        // bar renders on the correct side. Units stay degrees — the widget scales
+        // against steerLock/MAX_STEER_ANGLE, so -1..1 would collapse the bar to center.
+        result.steer = -src->m_fInputSteer;
         result.brake = src->m_fInputBrake;
 
         result.engineTemperature = src->m_fCylinderHeadTemperature;

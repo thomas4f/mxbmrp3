@@ -56,7 +56,22 @@ struct WindowBounds {
 
 class InputManager {
 public:
+    // Which of our windows currently has focus and receives cursor input. The
+    // companion window is a second interactive surface; input maps to whichever
+    // of our windows is foreground so the user can drag/click in either one.
+    enum class Surface { Game, Companion };
+
     static InputManager& getInstance();
+
+    // The surface (game window vs companion window) the cursor is currently
+    // mapped into — i.e. the one the user is interacting with this frame.
+    Surface getActiveSurface() const { return m_activeSurface; }
+#ifdef MXBMRP3_TEST_BUILD
+    // Pin the active surface for headless preview/tests of surface-scoped rendering
+    // (the companion window never takes focus, so it's never the foreground-derived
+    // active surface under Wine). -1 clears the override.
+    void testForceActiveSurface(int companion) { m_testForceSurface = companion; }
+#endif
 
     void initialize();
     void shutdown();
@@ -102,7 +117,8 @@ private:
         m_bShouldShowCursor(false), m_bWasCursorVisible(false), m_bCursorSuppressed(false),
         m_fLastMouseX(0.0f), m_fLastMouseY(0.0f),
         m_framesSinceLastMovement(0), m_framesSinceFocusLost(0),
-        m_windowWidth(0), m_windowHeight(0) {}
+        m_windowWidth(0), m_windowHeight(0),
+        m_activeWindow(nullptr), m_activeSurface(Surface::Game) {}
     ~InputManager() { shutdown(); }
     InputManager(const InputManager&) = delete;
     InputManager& operator=(const InputManager&) = delete;
@@ -115,10 +131,22 @@ private:
     void updateCursorVisibility();  // New: tracks mouse movement and auto-hide
     void refreshWindowInformation();
 
+    // The active surface follows the MOUSE, not keyboard focus: HUD editing is
+    // mouse-driven, and the game often keeps foreground while the cursor is over
+    // the companion window (e.g. a second monitor). Returns the root window under
+    // the cursor when it belongs to our process, else `fallback` (the foreground
+    // window, already known to be ours).
+    HWND surfaceWindowUnderCursor(HWND fallback) const;
+
     HWND m_gameWindow;
     DWORD m_processId;  // Cached process ID (never changes)
     int m_windowWidth;
     int m_windowHeight;
+    HWND m_activeWindow;       // Foreground window the cursor maps into (game or companion)
+    Surface m_activeSurface;   // Which surface m_activeWindow represents
+#ifdef MXBMRP3_TEST_BUILD
+    int m_testForceSurface = -1;   // -1 = off, 0 = force Game, 1 = force Companion
+#endif
 
     // Frame state
     bool m_bInitialized;

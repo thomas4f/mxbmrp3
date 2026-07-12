@@ -7,6 +7,7 @@
 #include "../diagnostics/timer.h"
 #include "../core/hud_manager.h"
 #include "../core/ui_config.h"
+#include "../core/companion_window.h"
 #include "../hud/version_widget.h"
 #include <windows.h>
 
@@ -165,9 +166,30 @@ void InputManager::updateCursorEnabled() {
         m_framesSinceFocusLost = 0;
         m_bCursorEnabled = true;
 
-        // Only update cached game window if this is the actual game window
-        // (skip console windows, small dialogs, etc.)
-        if (m_gameWindow != foreground) {
+        // Which of our surfaces is the user on? Follow the MOUSE (the window under
+        // the cursor), not keyboard focus: HUD editing is mouse-driven and the game
+        // commonly keeps foreground while the cursor is over the companion window on
+        // a second monitor. The cursor maps into this window, so drag/click/pointer
+        // all target it. Falls back to the foreground window when the cursor isn't
+        // over one of our windows (between monitors / over another app).
+        //
+        // Single-window fast path: with the companion closed there is only ONE surface,
+        // so skip the per-frame WindowFromPoint hit-test entirely — the game window is
+        // always the active surface. (The companion is the only thing a second surface
+        // can be; no need to probe when it can't exist.)
+        HWND surfaceWin = foreground;
+        bool isCompanion = false;
+        if (CompanionWindow::getInstance().isEnabled()) {
+            surfaceWin = surfaceWindowUnderCursor(foreground);
+            isCompanion = CompanionWindow::isCompanionHwnd(surfaceWin);
+        }
+        m_activeWindow = surfaceWin;
+        m_activeSurface = isCompanion ? Surface::Companion : Surface::Game;
+
+        // Only update the cached GAME window if the actual game window is foreground —
+        // never the companion (separate surface), and skip the console/small dialogs.
+        bool foregroundIsCompanion = CompanionWindow::isCompanionHwnd(foreground);
+        if (!foregroundIsCompanion && m_gameWindow != foreground) {
             // Skip console window (debug builds)
             HWND consoleWindow = GetConsoleWindow();
             if (foreground == consoleWindow) {
@@ -191,21 +213,60 @@ void InputManager::updateCursorEnabled() {
         }
     }
     else {
-        // Foreground window is not ours - debounce before disabling
-        // This prevents flicker during alt-tab transitions
-        m_framesSinceFocusLost++;
-        if (m_framesSinceFocusLost >= FOCUS_DEBOUNCE_FRAMES) {
-            if (m_bCursorEnabled) {
-                DEBUG_INFO_F("Cursor disabled: foreign window focused (HWND=%p, PID=%lu, ours=%lu)",
-                             static_cast<void*>(foreground), foregroundPid, m_processId);
+        // Foreground window belongs to another process. The companion window is a
+        // separate, deliberately never-activated surface (WS_EX_NOACTIVATE), so it can
+        // never be the foreground window itself — yet it should stay usable whenever the
+        // cursor is over it, regardless of who holds focus. That covers the game running
+        // on one monitor with the companion on another, AND running an off-game replay
+        // from a console (the console window belongs to cmd/conhost, not us, so it would
+        // otherwise disable all input). Input follows the window under the cursor.
+        HWND companionUnderCursor = CompanionWindow::getInstance().isEnabled()
+            ? surfaceWindowUnderCursor(nullptr) : nullptr;
+        if (companionUnderCursor && CompanionWindow::isCompanionHwnd(companionUnderCursor)) {
+            m_framesSinceFocusLost = 0;
+            m_bCursorEnabled = true;
+            m_activeWindow = companionUnderCursor;
+            m_activeSurface = Surface::Companion;
+        } else {
+            // Not over the companion - debounce before disabling (prevents alt-tab flicker).
+            m_framesSinceFocusLost++;
+            if (m_framesSinceFocusLost >= FOCUS_DEBOUNCE_FRAMES) {
+                if (m_bCursorEnabled) {
+                    DEBUG_INFO_F("Cursor disabled: foreign window focused (HWND=%p, PID=%lu, ours=%lu)",
+                                 static_cast<void*>(foreground), foregroundPid, m_processId);
+                }
+                m_bCursorEnabled = false;
             }
-            m_bCursorEnabled = false;
         }
     }
+
+#ifdef MXBMRP3_TEST_BUILD
+    if (m_testForceSurface >= 0)
+        m_activeSurface = m_testForceSurface ? Surface::Companion : Surface::Game;
+#endif
+}
+
+HWND InputManager::surfaceWindowUnderCursor(HWND fallback) const {
+    POINT p;
+    if (GetCursorPos(&p)) {
+        HWND w = WindowFromPoint(p);
+        if (w) {
+            w = GetAncestor(w, GA_ROOT);   // resolve child controls to their top-level window
+            DWORD pid = 0;
+            GetWindowThreadProcessId(w, &pid);
+            if (pid == m_processId) return w;   // cursor is over one of our windows
+        }
+    }
+    // Cursor isn't over a window of ours (e.g. between monitors, or over another app
+    // while we still hold focus): keep the foreground window, which is already ours.
+    return fallback;
 }
 
 void InputManager::updateCursorPosition() {
-    if (!m_gameWindow) {
+    // Map into whichever of our windows the cursor is over (game or companion). Fall
+    // back to the cached game window if we somehow have no active window yet.
+    HWND target = (m_activeWindow && IsWindow(m_activeWindow)) ? m_activeWindow : m_gameWindow;
+    if (!target) {
         m_cursorPosition.isValid = false;
         return;
     }
@@ -219,7 +280,7 @@ void InputManager::updateCursorPosition() {
 
     // Convert to client coordinates
     POINT clientPos = screenPos;
-    if (!ScreenToClient(m_gameWindow, &clientPos)) {
+    if (!ScreenToClient(target, &clientPos)) {
         // ScreenToClient failed - window might be invalid, refresh window info
         DEBUG_INFO("ScreenToClient failed - refreshing window information");
         refreshWindowInformation();
@@ -227,36 +288,44 @@ void InputManager::updateCursorPosition() {
         return;
     }
 
-    // Validate window dimensions (should have been set by refreshWindowInformation)
-    if (m_windowWidth <= 0 || m_windowHeight <= 0) {
+    // Normalize against the ACTIVE window's own client size — the game and companion
+    // windows can differ. The cached m_windowWidth/Height track the game window, so
+    // use them on the game path and query the companion window directly otherwise.
+    int winW = m_windowWidth, winH = m_windowHeight;
+    if (target != m_gameWindow) {
+        RECT rc;
+        if (!GetClientRect(target, &rc)) { m_cursorPosition.isValid = false; return; }
+        winW = rc.right - rc.left; winH = rc.bottom - rc.top;
+    }
+    if (winW <= 0 || winH <= 0) {
         m_cursorPosition.isValid = false;
         return;
     }
 
     // Calculate UI area dimensions and convert cursor to normalized UI coordinates
-    float windowAspect = static_cast<float>(m_windowWidth) / static_cast<float>(m_windowHeight);
+    float windowAspect = static_cast<float>(winW) / static_cast<float>(winH);
     int uiWidth, uiHeight, uiOffsetX, uiOffsetY;
 
     if (windowAspect > ASPECT_RATIO) {
         // Pillarboxed (black bars on sides) - ultrawide/superwide displays
-        uiHeight = m_windowHeight;
-        uiWidth = static_cast<int>(m_windowHeight * ASPECT_RATIO);
-        uiOffsetX = (m_windowWidth - uiWidth) / 2;
+        uiHeight = winH;
+        uiWidth = static_cast<int>(winH * ASPECT_RATIO);
+        uiOffsetX = (winW - uiWidth) / 2;
         uiOffsetY = 0;
     }
     else {
         // Letterboxed (black bars on top/bottom) - narrow displays
-        uiWidth = m_windowWidth;
-        uiHeight = static_cast<int>(m_windowWidth / ASPECT_RATIO);
+        uiWidth = winW;
+        uiHeight = static_cast<int>(winW / ASPECT_RATIO);
         uiOffsetX = 0;
-        uiOffsetY = (m_windowHeight - uiHeight) / 2;
+        uiOffsetY = (winH - uiHeight) / 2;
     }
 
     // Safety: Validate calculated UI dimensions to prevent division by zero
     // Integer truncation could result in zero dimensions with very small window sizes
     if (uiWidth <= 0 || uiHeight <= 0) {
         DEBUG_WARN_F("Invalid UI dimensions (%d x %d) calculated from window (%d x %d), cannot update cursor",
-                     uiWidth, uiHeight, m_windowWidth, m_windowHeight);
+                     uiWidth, uiHeight, winW, winH);
         m_cursorPosition.isValid = false;
         return;
     }

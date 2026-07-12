@@ -51,7 +51,7 @@ void LeanWidget::resetTracking() {
 
 void LeanWidget::update() {
     // OPTIMIZATION: Skip processing when not visible
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         // While hidden, drop any "was crashed" memory so that becoming visible while
         // currently crashed re-fires the rising-edge snap. Without this, the sequence
         // [crash → hide → recover → crash again → show] would miss the second snap
@@ -656,7 +656,7 @@ void LeanWidget::resetToDefaults() {
     m_enabledRows = ROW_DEFAULT;  // All rows enabled
     m_bShowMaxMarkers = true;     // Max markers ON by default for lean/steer
     m_maxMarkerLingerFrames = 60; // ~1 second at 60fps
-    setPosition(0.7425f, 0.8769f);
+    setPosition(0.7425f, 0.86828f);
     m_smoothedLean = 0.0f;
     m_markerValueLeft = 0.0f;
     m_markerValueRight = 0.0f;

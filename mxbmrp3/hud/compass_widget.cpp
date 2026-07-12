@@ -83,7 +83,7 @@ void CompassWidget::updateRiderPositions(int numVehicles, const Unified::TrackPo
 }
 
 void CompassWidget::update() {
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -335,7 +335,7 @@ void CompassWidget::resetToDefaults() {
     // Bottom gauge row (evenly spaced, pitch 0.0715, same y). G-Force is the leftmost
     // all-game gauge at 0.5995 (Bars/Lean/Fuel sit to its right); the compass takes the
     // next free slot to G-Force's left.
-    setPosition(0.528f, 0.8769f);
+    setPosition(0.528f, 0.86828f);
     m_targetYaw = 0.0f;
     m_smoothedYaw = 0.0f;
     m_hasHeading = false;

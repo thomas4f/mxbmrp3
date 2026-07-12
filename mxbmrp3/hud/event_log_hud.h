@@ -50,9 +50,13 @@ public:
     const char* getIconName() const override { return "hud-eventlog"; }
     void resetToDefaults();
 
-    // Query settings
-    uint32_t getEnabledEvents() const { return m_enabledEvents; }
-    int getMaxDisplayEvents() const { return m_maxDisplayEvents; }
+    // Enable/disable a single event type's display-filter bit (used by test hooks; the
+    // settings UI edits m_enabledEvents directly via its friend access).
+    void setEventTypeEnabled(EventLogType type, bool on) {
+        uint32_t flag = eventLogTypeToFlag(type);
+        if (on) m_enabledEvents |= flag; else m_enabledEvents &= ~flag;
+        setDataDirty();
+    }
 
     // Allow settings system to access private members
     friend class SettingsHud;
@@ -106,4 +110,24 @@ private:
 
     // Cached state for layout optimization
     int m_cachedNumDataRows = 0;
+
+    // Cached icon sprite indices (avoid string-based AssetManager map lookups per
+    // row per rebuild; resolved once, lazily, via ensureInitialized()).
+    struct CachedIcons {
+        int flag = 0;
+        int flagCheckered = 0;
+        int hourglassHalf = 0;
+        int stopwatch = 0;
+        int exclamation = 0;
+        int circleXmark = 0;
+        int xmark = 0;
+        int ban = 0;
+        int crown = 0;
+        int wrench = 0;
+        int video = 0;
+        bool initialized = false;
+
+        void ensureInitialized();
+    };
+    mutable CachedIcons m_iconCache;
 };

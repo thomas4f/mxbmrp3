@@ -417,7 +417,8 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
 
                 // Truncate long lines
                 if (line.size() > 45) {
-                    line = line.substr(0, 42) + "...";
+                    line.resize(42);
+                    line += "...";
                 }
 
                 ctx.parent->addString(line.c_str(), ctx.labelX, ctx.currentY, Justify::LEFT,

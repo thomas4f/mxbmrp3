@@ -13,43 +13,109 @@ namespace PluginConstants {
     // Plugin identification
     constexpr const char* PLUGIN_NAME = "mxbmrp3";
     constexpr const char* PLUGIN_DISPLAY_NAME = "MXBMRP3";
-    constexpr const char* PLUGIN_VERSION = "1.26.0.0";  // Keep in sync with resource.h (Windows DLL version info)
+    // Defined in plugin_version.cpp from resource.h's VER_STRING (VER_MAJOR.MINOR.PATCH
+    // + the auto-stamped build number), so the runtime version and the DLL FILEVERSION
+    // can never drift. Declared here as an extern — NOT a constexpr including resource.h —
+    // so the per-build version bump recompiles only plugin_version.cpp, not every TU that
+    // includes this header (resource.h is deliberately kept out of the wide include graph).
+    extern const char* const PLUGIN_VERSION;
     constexpr const char* PLUGIN_AUTHOR = "thomas4f";
 
     // GitHub repository for updates (centralized to support repo moves/renames)
     constexpr const char* GITHUB_REPO_OWNER = "thomas4f";
     constexpr const char* GITHUB_REPO_NAME = "mxbmrp3";
 
+    // --- Analytics: two secret keys injected at BUILD time + one PUBLIC site code ---
+    // APTABASE_KEY and GOATCOUNTER_TOKEN come from environment variables read by
+    // mxbmrp3.vcxproj at build time (-> the MXBMRP3_* preprocessor defines used here).
+    // With an env var unset the matching define is absent and the constant falls back
+    // to its placeholder, so a plain developer build sends nothing. Set those two (as
+    // repo Actions Secrets) only for an official release. The GoatCounter *code* is
+    // public (it's the site subdomain, in every hit's URL), so it's hardcoded below
+    // rather than injected. Rotate the GoatCounter token if it was ever committed.
+    #define MXBMRP3_STRINGIFY2(x) #x
+    #define MXBMRP3_STRINGIFY(x) MXBMRP3_STRINGIFY2(x)
+
     // Anonymous usage analytics (Aptabase). Privacy-friendly, opt-out (toggle in
     // Settings > General > Integrations). A single "app_started" beacon is sent
     // per launch carrying only a random install UUID + plugin/game version and
-    // enabled-feature flags — no personal data. Paste your real Aptabase App Key
-    // (e.g. "A-US-1234567890") below to enable; while it equals the placeholder,
-    // no network request is ever made.
+    // enabled-feature flags — no personal data. While the key equals the
+    // placeholder, no network request is ever made.
     constexpr const char* ANALYTICS_APP_KEY_PLACEHOLDER = "A-US-0000000000";
-    constexpr const char* ANALYTICS_APP_KEY = "A-EU-1207691663";
+#ifdef MXBMRP3_APTABASE_KEY
+    constexpr const char* ANALYTICS_APP_KEY = MXBMRP3_STRINGIFY(MXBMRP3_APTABASE_KEY);
+#else
+    constexpr const char* ANALYTICS_APP_KEY = ANALYTICS_APP_KEY_PLACEHOLDER;
+#endif
 
     // GoatCounter (privacy-first, page-path analytics) runs alongside Aptabase as
     // an uncapped headcount + version backstop: one hit per launch, ~100k/month
     // soft quota, so the active-user count survives even if Aptabase's 20k/month
-    // cap is reached. The code is your goatcounter.com site subdomain (e.g.
-    // "mxbmrp3" -> mxbmrp3.goatcounter.com). Public like the Aptabase key; while
-    // it equals the placeholder, no hit is sent.
-    constexpr const char* GOATCOUNTER_CODE_PLACEHOLDER = "your-code";
+    // cap is reached. The code is the goatcounter.com site subdomain
+    // (mxbmrp3 -> mxbmrp3.goatcounter.com). Unlike the token this is PUBLIC — it
+    // rides in every hit's URL — so it's hardcoded, not injected. GOATCOUNTER_TOKEN
+    // alone gates whether a hit is actually sent (a placeholder token = no hit), so a
+    // dev build still sends nothing. (The #ifdef stays so a build can still override
+    // the site code via env var if ever needed.)
+    constexpr const char* GOATCOUNTER_CODE_PLACEHOLDER = "your-code";  // kept for the enabled-check
+#ifdef MXBMRP3_GOATCOUNTER_CODE
+    constexpr const char* GOATCOUNTER_CODE = MXBMRP3_STRINGIFY(MXBMRP3_GOATCOUNTER_CODE);
+#else
     constexpr const char* GOATCOUNTER_CODE = "mxbmrp3";
+#endif
 
     // GoatCounter API token ("Count" permission) for the backend /api/v0/count
     // endpoint. The public /count pixel bot-filters non-browser senders, so the
-    // authenticated API is the supported way to send from an app. Like the
-    // Aptabase key this ships in the binary; a leaked count-only token can only
-    // inject pageviews into the GoatCounter site (rotate it there if abused).
+    // authenticated API is the supported way to send from an app. A leaked
+    // count-only token can only inject pageviews into the GoatCounter site.
     constexpr const char* GOATCOUNTER_TOKEN_PLACEHOLDER = "your-token";
-    constexpr const char* GOATCOUNTER_TOKEN = "dj7azjouf8dwlsnv19f545217zdcxich11znl8z8n2o03kqj";
+#ifdef MXBMRP3_GOATCOUNTER_TOKEN
+    constexpr const char* GOATCOUNTER_TOKEN = MXBMRP3_STRINGIFY(MXBMRP3_GOATCOUNTER_TOKEN);
+#else
+    constexpr const char* GOATCOUNTER_TOKEN = GOATCOUNTER_TOKEN_PLACEHOLDER;
+#endif
+
+    #undef MXBMRP3_STRINGIFY
+    #undef MXBMRP3_STRINGIFY2
+
+    // Remote analytics sampling config (public, unauthenticated). Aptabase bills per
+    // event, so this is the developer's cost lever: the client fetches this small JSON
+    // file (ONLY if analytics is enabled) and reads `aptabase_full_sample` ∈ [0,1] — the
+    // fraction of launches that send the FULL set (session_end + custom) on top of the
+    // always-sent app_started (+ crash). It lets the volume be dialed down WITHOUT a
+    // release. Reduce-only + fail-open to full (see analytics_remote_config.h). Hosted at
+    // the default branch root of the PUBLIC release repo, so only repo write-access can
+    // flip it and it's fetchable without auth. Path built from the repo constants above.
+    // NOTE: confirm the branch matches the public repo's default (main vs master).
+    constexpr const char* ANALYTICS_CONFIG_HOST = "raw.githubusercontent.com";
+    constexpr const char* ANALYTICS_CONFIG_BRANCH = "main";
+    constexpr const char* ANALYTICS_CONFIG_FILE = "analytics_config.json";
+
+    // Build guard: a RELEASE build (NDEBUG) must have the two secret analytics keys
+    // injected, so an official .dlo can never be shipped with analytics silently
+    // disabled because someone forgot to set the env vars. (GOATCOUNTER_CODE is not
+    // checked — it's hardcoded/public above.) Debug/dev builds are exempt (they build
+    // fine with placeholders and send nothing). To intentionally build a keyless
+    // Release, define MXBMRP3_ALLOW_NO_ANALYTICS.
+#if defined(NDEBUG) && !defined(MXBMRP3_ALLOW_NO_ANALYTICS)
+  #if !defined(MXBMRP3_APTABASE_KEY) || !defined(MXBMRP3_GOATCOUNTER_TOKEN)
+    #error "Release build is missing analytics keys. Set the APTABASE_KEY and GOATCOUNTER_TOKEN environment variables (see mxbmrp3.vcxproj), or define MXBMRP3_ALLOW_NO_ANALYTICS to build a keyless release on purpose. (GOATCOUNTER_CODE is hardcoded — it's public.)"
+  #endif
+#endif
 
     // MXBikes API constants
     constexpr const char* MOD_ID = "mxbikes";
     constexpr int MOD_DATA_VERSION = 8;
     constexpr int INTERFACE_VERSION = 9;
+
+    // How long the corner status buttons (settings / director) flash into view on an
+    // event (entering the track, toggling a mode) before returning to their normal
+    // mouse-idle auto-hide. Milliseconds.
+    constexpr int WIDGET_REVEAL_MS = 4000;
+    // A gap between Draw calls longer than this means the game stopped drawing us
+    // (menu / loading / alt-tab); when drawing resumes we treat it as "entered the
+    // track" and reveal the corner buttons. Milliseconds.
+    constexpr int ENTER_TRACK_GAP_MS = 1000;
 
     // Telemetry settings
     constexpr int TELEMETRY_RATE_100HZ = 0;
@@ -60,6 +126,11 @@ namespace PluginConstants {
 
     // All HUD elements are positioned in normalized 16:9 space
     constexpr float UI_ASPECT_RATIO = 16.0f / 9.0f;
+
+    // Icon glyphs fill their box more than text fills the em, so HUD title/identity
+    // icons are drawn a bit smaller than the title font (~0.63x). Single source of truth
+    // shared by BaseHud's title icons and the settings/camera button glyphs so they match.
+    constexpr float TITLE_ICON_SCALE = 0.63f;
 
     // Font metrics for RobotoMono (monospace font)
     namespace FontMetrics {
@@ -97,13 +168,26 @@ namespace PluginConstants {
         constexpr float EXTRA_LARGE = 0.0400f;
     }
 
-    // Standard line heights
+    // Standard line heights.
+    // NORMAL is the base; the rest are fixed MULTIPLES of it (not literals) so that a
+    // change to NORMAL scales them together and preserves every widget's relationship to
+    // the snap grid (GRID_SIZE_VERTICAL = 0.5 * NORMAL, so NORMAL = 2 cells and LARGE =
+    // 4 cells). If these were literals, a NORMAL bump would knock LARGE off the grid and
+    // break vertical snap alignment for the big-value widgets (Time/Position/Lap/Speed/
+    // Gear) - which is exactly what happened when NORMAL was first bumped.
     namespace LineHeights {
-        constexpr float EXTRA_SMALL = 0.0139f;          // 0.625x normal line height
-        constexpr float SMALL = 0.0167f;                // 0.75x normal line height
-        constexpr float NORMAL = 0.0222f;               // 1x line height
-        constexpr float LARGE = 0.0444f;                // 2x normal line height
-        constexpr float EXTRA_LARGE = 0.0444f;          // 2x normal line height (same as LARGE, for 0.04 font)
+        // 1x line height. Bumped from 0.0222 so the 8-char x 3-row gauge widgets
+        // (G-force / Lean / Fuel) render PIXEL-SQUARE at 16:9: their height is
+        // 5 x NORMAL and their width is 12 x CHAR_WIDTH, so NORMAL = 12 * CHAR_WIDTH *
+        // (16/9) / 5 makes height == width in pixels (~127x127 at 1080p). Cascades to
+        // HUD_VERTICAL (padding), GRID_SIZE_VERTICAL (snap grid) and the multiples below,
+        // so normal-height rows across the UI get ~5.7% taller. Widths are unchanged, so
+        // non-gauge widgets just get taller (still rectangular).
+        constexpr float NORMAL = 0.023467f;             // 1x line height (12 * CHAR_WIDTH * 16/9 / 5)
+        constexpr float EXTRA_SMALL = 0.625f * NORMAL;  // 0.625x normal line height
+        constexpr float SMALL = 0.75f * NORMAL;         // 0.75x normal line height
+        constexpr float LARGE = 2.0f * NORMAL;          // 2x normal line height
+        constexpr float EXTRA_LARGE = 2.0f * NORMAL;    // 2x normal line height (same as LARGE, for 0.04 font)
     }
 
     // HUD positioning grid for consistent alignment
@@ -332,7 +416,11 @@ namespace PluginConstants {
 
     // HUD display limits
     namespace HudLimits {
-        constexpr int MAX_LAP_LOG_CAPACITY = 30;   // Maximum laps stored per rider in lap log
+        constexpr int MAX_LAP_LOG_CAPACITY = 30;   // Max laps the Lap Log HUD displays per rider
+        // Storage cap for the per-rider lap history in PluginData. Larger than the
+        // Lap Log HUD's display cap so the Session Charts HUD can plot a full race,
+        // not just the most recent laps. ~100 laps x 50 riders x ~28 B is trivial.
+        constexpr int MAX_LAP_LOG_STORAGE = 100;
         constexpr int MAX_EVENT_LOG_CAPACITY = 100; // Maximum events stored in event log ring buffer
         // Note: HUD-specific limits (MAX_STANDINGS_ENTRIES, FRAME_HISTORY_SIZE, GRAPH_HISTORY_SIZE)
         // have been relocated to their respective HUD/handler files for better code locality
@@ -425,6 +513,7 @@ namespace PluginConstants {
         namespace ServerLabel {
             constexpr const char* TESTING = "Testing";  // solo / offline
             constexpr const char* UNKNOWN = "Unknown";  // name unavailable / not reported
+            constexpr const char* ONLINE  = "Online";   // known online but unnamed (GP Bikes / KRP: no serverType in API, inferred from >1 rider)
         }
 
         // Session state display strings (corresponds to SessionState bitflags)

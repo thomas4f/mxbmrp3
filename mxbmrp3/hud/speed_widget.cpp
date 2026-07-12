@@ -38,7 +38,7 @@ bool SpeedWidget::handlesDataType(DataChangeType dataType) const {
 
 void SpeedWidget::update() {
     // OPTIMIZATION: Skip processing when not visible
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -186,6 +186,6 @@ void SpeedWidget::resetToDefaults() {
     m_fScale = 1.0f;
     m_enabledRows = ROW_DEFAULT;  // Reset row visibility
     // Note: speedUnit is NOT reset here - it's a global preference, not per-profile
-    setPosition(0.924f, 0.8769f);
+    setPosition(0.924f, 0.86828f);
     setDataDirty();
 }

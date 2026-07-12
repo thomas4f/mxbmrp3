@@ -25,11 +25,7 @@ public:
 private:
     void rebuildRenderData() override;
 
-    // Cached state to detect changes
-    bool m_bCachedSettingsVisible;
-
     // Display constants
-    static constexpr int BUTTON_WIDTH_CHARS = 3;  // "[=]" or "[x]"
     static constexpr const char* TEXT_CLOSED = "[=]";
     static constexpr const char* TEXT_OPEN = "[x]";
 };

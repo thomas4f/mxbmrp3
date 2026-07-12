@@ -8,7 +8,9 @@
 #include "../../core/plugin_constants.h"
 #include "../../core/color_config.h"
 #include "../../core/font_config.h"
+#include "../../core/ui_config.h"
 #include "../../core/asset_manager.h"
+#include "../../core/input_manager.h"
 
 using namespace PluginConstants;
 
@@ -54,9 +56,14 @@ float SettingsLayoutContext::charWidth() const {
 std::string SettingsLayoutContext::formatValue(const char* value, int maxWidth, bool center) {
     std::string result(value);
 
-    // Truncate with ellipsis if too long
+    // Truncate with ellipsis if too long. Reserve 3 cells for the ellipsis so the
+    // result stays within maxWidth (substr(0, maxWidth-1) + "..." would be maxWidth+2
+    // chars, overflowing the field under the cycle-control '>' arrow). Mirrors
+    // PluginUtils::fitText().
     if (static_cast<int>(result.length()) > maxWidth) {
-        result = result.substr(0, maxWidth - 1) + ELLIPSIS;
+        int keep = (maxWidth > 3) ? (maxWidth - 3) : 0;
+        result.resize(keep);
+        result += ELLIPSIS;
     }
 
     // Left-pad for centering if requested
@@ -686,7 +693,8 @@ void SettingsLayoutContext::addWidgetRow(
     bool enableBgTexture,
     bool enableOpacity,
     bool enableScale,
-    const char* tooltipId
+    const char* tooltipId,
+    bool menuOnlyPointerRow
 ) {
     float cw = charWidth();
     ColorConfig& colors = ColorConfig::getInstance();
@@ -776,8 +784,24 @@ void SettingsLayoutContext::addWidgetRow(
         }
     };
 
-    // Visibility toggle (shows actual value, grayed out when disabled)
-    addInlineToggle(visX, hud->isVisible(), SettingsHud::ClickRegion::HUD_TOGGLE, enableVisibility);
+    // Visibility toggle (shows actual value, grayed out when disabled). The pointer
+    // row is special: its toggle drives the menu-only-cursor mode, not the widget's
+    // real visibility (On = pointer summoned by mouse movement during play; Off =
+    // menu-only). The pointer's m_bVisible must stay true so it can still draw in the
+    // settings menu, so it can't be the toggle target.
+    if (menuOnlyPointerRow) {
+        bool pointerOn = !UiConfig::getInstance().getMenuOnlyCursor();
+        addInlineToggle(visX, pointerOn, SettingsHud::ClickRegion::MENU_ONLY_CURSOR_TOGGLE, true);
+    } else {
+        // Show the ACTIVE surface's visibility, like the per-HUD tabs: on the companion
+        // window the toggle already edits the companion instance (HUD_TOGGLE routes by
+        // active surface), so the displayed On/Off must read it too — otherwise a widget
+        // enabled only on the companion still shows the game's state.
+        bool companionSurface =
+            InputManager::getInstance().getActiveSurface() == InputManager::Surface::Companion;
+        bool visOn = companionSurface ? hud->getCompanionVisible() : hud->isVisible();
+        addInlineToggle(visX, visOn, SettingsHud::ClickRegion::HUD_TOGGLE, enableVisibility);
+    }
 
     // Title toggle - when disabled the widget never renders a title, so show the
     // effective state (Off) rather than echoing a possibly-stale persisted value

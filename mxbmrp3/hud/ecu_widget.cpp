@@ -48,7 +48,7 @@ bool EcuWidget::handlesDataType(DataChangeType dataType) const {
 
 void EcuWidget::update() {
     // OPTIMIZATION: Skip processing when not visible
-    if (!isVisible()) {
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -209,7 +209,7 @@ void EcuWidget::resetToDefaults() {
     m_fBackgroundOpacity = 1.0f;
     m_fScale = 1.0f;
     // GP-only widget: sits left of the Tyre Temp widget in the bottom gauge row (pitch 0.0715).
-    setPosition(0.385f, 0.8769f);
+    setPosition(0.385f, 0.86828f);
     m_enabledRows = ROW_DEFAULT;
     m_bShowLabels = true;    // Labels ON by default (INI/settings toggle)
     setDataDirty();
