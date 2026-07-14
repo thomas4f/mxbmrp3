@@ -29,8 +29,20 @@ public:
     // Resource management - called from plugin manager
     int initializeResources(int* piNumSprites, char** pszSpriteName, int* piNumFonts, char** pszFontName);
 
-    // Called from plugin manager during draw operations
+    // Called from plugin manager during draw operations (synchronous / game-thread mode)
     void draw(int iState, int* piNumQuads, void** ppQuad, int* piNumString, void** ppString);
+
+    // Run the full per-frame update + collect for the given draw state, leaving the
+    // built in-game frame in m_quads/m_strings and the companion frame submitted. This
+    // is the shared body of draw(); the experimental plugin worker thread calls it
+    // directly (off the game thread) and then reads gameFrameQuads()/inGameFrameSuppressed()
+    // to publish a triple-buffered copy. See core/plugin_thread.{h,cpp}.
+    void produceFrame(int iState);
+    // After produceFrame(): the in-game frame, and whether the display target
+    // (COMPANION mode) means the game should be handed an empty frame this pass.
+    const std::vector<SPluginQuad_t>& gameFrameQuads() const { return m_quads; }
+    const std::vector<SPluginString_t>& gameFrameStrings() const { return m_strings; }
+    bool inGameFrameSuppressed() const { return m_bSuppressInGame; }
 
     // Read-only access to the last-collected surface frames, for test introspection
     // of the game vs companion render routing (see collectSurface / core/test_hooks.cpp).
@@ -135,6 +147,12 @@ public:
     // benchmark driver to profile the plugin with everything enabled; not part of
     // any in-game flow, so it's compiled out of every shipping DLL.
     void testSetAllHudsVisible(bool visible);
+
+    // Inject an artificial per-frame stall into produceFrame() (ms), standing in for a
+    // slow component like the Map HUD's ribbon tessellation. Used to demonstrate that
+    // such a stall blocks the game's Draw in sync mode but not in plugin-thread mode.
+    // 0 disables. Compiled out of every shipping DLL.
+    static void testSetProduceDelayMs(int ms);
 #endif
 
 private:
@@ -254,6 +272,9 @@ private:
     // Temporary HUD visibility toggle (doesn't modify actual visibility state)
     bool m_bAllHudsToggledOff;
     bool m_bAllWidgetsToggledOff;
+    // Set by produceFrame(): true when the display target (COMPANION) means the game
+    // gets an empty frame this pass. Read by draw() and by the plugin worker thread.
+    bool m_bSuppressInGame = false;
     bool m_lastActiveCompanion = false;  // track focus surface to refresh settings on change
 
     // Collected render data from all HUDs

@@ -100,9 +100,9 @@ void HotkeyManager::update() {
         // those contexts, so refresh the controller here too whenever controller
         // input matters - a capture in progress, or any controller binding to
         // test. Without it, controller binding AND triggering only worked on
-        // track. Cheap: the disconnected backoff and 1s connection scan are
-        // timestamp-gated, so a connected-slot read is the only per-call work,
-        // and it's skipped entirely when no controller binding exists.
+        // track. Cheap: update() no longer issues any XInput call - it just copies
+        // the snapshot the XInput I/O thread already published (a short mutexed
+        // struct copy) - and it's skipped entirely when no controller binding exists.
         if (m_captureType == CaptureType::CONTROLLER || hasAnyControllerBinding()) {
             XInputReader::getInstance().update();
         }

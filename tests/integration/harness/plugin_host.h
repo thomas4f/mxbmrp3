@@ -58,6 +58,17 @@ public:
         m_draw      = sym<PFN_Draw>("Draw");
         m_startHttp = sym<void(*)()>("MXBMRP3_Test_StartHttp");
         m_snapshot  = sym<const char*(*)()>("MXBMRP3_Test_Snapshot");
+        m_ptEnable  = sym<void(*)()>("MXBMRP3_Test_PluginThreadEnable");
+        m_ptEnabled = sym<int(*)()>("MXBMRP3_Test_PluginThreadEnabled");
+        m_ptFlush   = sym<void(*)()>("MXBMRP3_Test_PluginThreadFlush");
+        m_ptStop    = sym<void(*)()>("MXBMRP3_Test_PluginThreadStop");
+        m_setProduceDelay = sym<void(*)(int)>("MXBMRP3_Test_SetProduceDelayMs");
+        m_getDebugMetrics = sym<void(*)(float*,float*,float*)>("MXBMRP3_Test_GetDebugMetrics");
+        m_setPtFlag = sym<void(*)(int)>("MXBMRP3_Test_SetPluginThreadFlag");
+        m_xiStopIo = sym<void(*)()>("MXBMRP3_Test_XInputStopIo");
+        m_xiSetIndex = sym<void(*)(int)>("MXBMRP3_Test_XInputSetIndex");
+        m_xiVibrate = sym<void(*)(float,float)>("MXBMRP3_Test_XInputVibrate");
+        m_xiConsume = sym<int(*)(int*,int*,int*)>("MXBMRP3_Test_XInputConsumePending");
         m_startRec  = sym<int(*)(const char*)>("MXBMRP3_Test_StartRecording");
         m_stopRec   = sym<void(*)()>("MXBMRP3_Test_StopRecording");
         m_resetAll  = sym<void(*)()>("MXBMRP3_Test_ResetAll");
@@ -612,6 +623,40 @@ public:
     // (Re)load settings from savePath into live state (reads <savePath>mxbmrp3\...ini).
     void loadSettings(const char* savePath) { if (m_loadSettings) m_loadSettings(savePath); }
 
+    // --- experimental plugin worker thread -----------------------------------
+    // Turn on the off-thread callback/render path (see core/plugin_thread.*),
+    // check it, block until the worker has drained all queued callbacks, or stop it.
+    // A threaded-mode test drives callbacks as usual, then flush()es before reading
+    // snapshot() so the assertion sees fully-applied state.
+    void pluginThreadEnable() { if (m_ptEnable) m_ptEnable(); }
+    bool pluginThreadEnabled() { return m_ptEnabled && m_ptEnabled() != 0; }
+    void pluginThreadFlush() { if (m_ptFlush) m_ptFlush(); }
+    void pluginThreadStop() { if (m_ptStop) m_ptStop(); }
+    // Flip ONLY the [Advanced] flag, as a live INI reload would; the next draw()'s
+    // reconcileEnabled() starts/stops the worker to match (the RELOAD_CONFIG path).
+    void setPluginThreadFlag(bool on) { if (m_setPtFlag) m_setPtFlag(on ? 1 : 0); }
+
+    // XInput I/O-thread test seam: stop the worker, then drive/inspect the rumble
+    // command setVibration posts (proves the send policy survives off-threading).
+    void xinputStopIo() { if (m_xiStopIo) m_xiStopIo(); }
+    void xinputSetIndex(int idx) { if (m_xiSetIndex) m_xiSetIndex(idx); }
+    void xinputVibrate(float l, float r) { if (m_xiVibrate) m_xiVibrate(l, r); }
+    struct RumblePost { bool posted = false; int left8 = 0, right8 = 0, idx = 0; };
+    RumblePost xinputConsumePending() {
+        RumblePost p;
+        if (m_xiConsume) p.posted = m_xiConsume(&p.left8, &p.right8, &p.idx) != 0;
+        return p;
+    }
+    // Inject an artificial per-frame render-build stall (ms), simulating a slow HUD.
+    void setProduceDelayMs(int ms) { if (m_setProduceDelay) m_setProduceDelay(ms); }
+    // Read the live PerformanceHud metrics (fps / plugin ms / plugin %).
+    struct DebugMetrics { float fps = 0, pluginMs = 0, pct = 0; };
+    DebugMetrics debugMetrics() {
+        DebugMetrics d;
+        if (m_getDebugMetrics) m_getDebugMetrics(&d.fps, &d.pluginMs, &d.pct);
+        return d;
+    }
+
     // --- reading the plugin's own state --------------------------------------
     // Preferred for plugin-logic tests: build the snapshot directly (no HTTP
     // server, no socket, no rebuild-gating). Isolates the plugin from the
@@ -729,6 +774,17 @@ private:
     PFN_Draw     m_draw = nullptr;
     void        (*m_startHttp)() = nullptr;
     const char* (*m_snapshot)() = nullptr;
+    void        (*m_ptEnable)() = nullptr;
+    int         (*m_ptEnabled)() = nullptr;
+    void        (*m_ptFlush)() = nullptr;
+    void        (*m_ptStop)() = nullptr;
+    void        (*m_setProduceDelay)(int) = nullptr;
+    void        (*m_getDebugMetrics)(float*,float*,float*) = nullptr;
+    void        (*m_setPtFlag)(int) = nullptr;
+    void        (*m_xiStopIo)() = nullptr;
+    void        (*m_xiSetIndex)(int) = nullptr;
+    void        (*m_xiVibrate)(float,float) = nullptr;
+    int         (*m_xiConsume)(int*,int*,int*) = nullptr;
     int         (*m_startRec)(const char*) = nullptr;
     void        (*m_stopRec)() = nullptr;
     void        (*m_resetAll)() = nullptr;

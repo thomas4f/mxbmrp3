@@ -318,6 +318,7 @@
     <ClInclude Include="core\companion_window.h" />
     <ClInclude Include="core\hud_sw_renderer.h" />
     <ClInclude Include="core\crash_handler.h" />
+    <ClInclude Include="core\crash_stack_format.h" />
     <ClInclude Include="core\event_recorder.h" />
     <ClInclude Include="core\performance_timer.h" />
     <ClInclude Include="core\tooltip_manager.h" />
@@ -334,6 +335,8 @@
     <ClInclude Include="core\plugin_constants.h" />
     <ClInclude Include="core\plugin_data.h" />
     <ClInclude Include="core\plugin_manager.h" />
+    <ClInclude Include="core\plugin_thread.h" />
+    <ClInclude Include="core\render_frame_buffer.h" />
     <ClInclude Include="core\plugin_utils.h" />
     <ClInclude Include="core\settings_manager.h" />
     <ClInclude Include="core\settings_keys.h" />
@@ -466,6 +469,7 @@
     <ClCompile Include="core\plugin_data_segment_timer.cpp" />
     <ClCompile Include="core\plugin_data_telemetry.cpp" />
     <ClCompile Include="core\plugin_manager.cpp" />
+    <ClCompile Include="core\plugin_thread.cpp" />
     <ClCompile Include="core\plugin_utils.cpp" />
     <ClCompile Include="core\settings_manager.cpp" />
     <ClCompile Include="core\settings_manager_global.cpp" />

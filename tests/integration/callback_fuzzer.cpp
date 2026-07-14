@@ -87,7 +87,12 @@ int main(int argc, char** argv) {
     auto SpecCam  = (PFN_Spectate)   sym("SpectateCameras");
     auto TrackCen = (PFN_TrackCenter)sym("TrackCenterline");
 
-    char savePath[] = "Z:\\tmp\\mxbfuzz\\";
+    // savePath: optional argv[3] (default = the Wine harness's Z: mapping). The
+    // MSVC/ASan job on real Windows passes a native temp dir instead, since Z:\
+    // is a Wine-only drive. The plugin degrades gracefully on an unwritable path,
+    // but a valid one keeps its file I/O out of the fuzz signal.
+    char savePathDefault[] = "Z:\\tmp\\mxbfuzz\\";
+    char* savePath = (argc > 3) ? argv[3] : savePathDefault;
     Startup(savePath);
 
     // A scratch buffer of random bytes, sized to comfortably hold every bounded

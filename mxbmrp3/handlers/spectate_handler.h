@@ -5,6 +5,7 @@
 #pragma once
 
 #include "../game/unified_types.h"
+#include <atomic>
 
 class SpectateHandler {
 public:
@@ -46,7 +47,7 @@ public:
     // True while the broadcaster is hand-flying the camera (Orbit / Free /
     // Free-Roam). The auto-director pauses entirely in this state so it doesn't
     // yank a manual shot. Detected from the live SpectateCameras selection.
-    bool isManualCameraActive() const { return m_manualCameraActive; }
+    bool isManualCameraActive() const { return m_manualCameraActive.load(std::memory_order_relaxed); }
 
     // Clear the per-session camera tracking so the next SpectateCameras callback
     // re-resolves the manual flag from scratch (never trusts a stale value from a
@@ -63,9 +64,15 @@ private:
     SpectateHandler(const SpectateHandler&) = delete;
     SpectateHandler& operator=(const SpectateHandler&) = delete;
 
-    int m_requestedSpectateRaceNum = -1;  // Requested race number to spectate (-1 = none)
-    int m_requestedCameraRole = -1;       // Requested CameraRole as int (-1 = none)
-    int m_lastCameraSelection = -999;     // Last seen SpectateCameras curSelection
-    int m_lastCameraCount = -1;           // Last seen SpectateCameras count (re-resolve on session/track change)
-    bool m_manualCameraActive = false;    // Broadcaster is on a manual camera (Orbit/Free/Free-Roam)
+    // All five are atomic because SpectateVehicles/SpectateCameras answer the game
+    // SYNCHRONOUSLY on the GAME thread (they can't be queued) while the values are also
+    // written on the plugin-worker thread in threaded mode: the director /
+    // click-to-spectate set m_requested* via request*(), and session/director changes
+    // call resetCameraTracking(); isManualCameraActive() is read by the director. In
+    // legacy mode everything is the game thread and these are just plain int/bool loads.
+    std::atomic<int> m_requestedSpectateRaceNum{ -1 };  // Requested race number to spectate (-1 = none)
+    std::atomic<int> m_requestedCameraRole{ -1 };       // Requested CameraRole as int (-1 = none)
+    std::atomic<int> m_lastCameraSelection{ -999 };     // Last seen SpectateCameras curSelection
+    std::atomic<int> m_lastCameraCount{ -1 };           // Last seen SpectateCameras count (re-resolve on session/track change)
+    std::atomic<bool> m_manualCameraActive{ false };    // Broadcaster is on a manual camera (Orbit/Free/Free-Roam)
 };

@@ -70,7 +70,14 @@ TEST_CASE("analytics wiring: app_started always built; sampling gates session_en
     int nCrash = host.analyticsDrainPending(crash);
     CHECK(nCrash == 1);
     CHECK(has(crash, "\"eventName\":\"crash\""));
-    CHECK(has(crash, "mxbikes.exe+0x2a42f0"));   // the fault carried through
+    CHECK(has(crash, "mxbikes.exe+0x2a42f0"));   // the fault (leaf) carried through
+    // The faulting-stack backtrace round-trips marker -> event as a space-delimited
+    // "module+0xoffset ..." string prop (2.12.0). The leaf appears first; a deeper
+    // frame confirms the whole list survived, not just the fault field.
+    CHECK(has(crash, "\"stack\":"));
+    CHECK(has(crash, "mxbmrp3.dlo+0xeaab4"));
+    // Access-violation sub-type also rides along (2.13.0).
+    CHECK(has(crash, "\"av_type\":\"read\""));
 
     host.shutdown();
 }

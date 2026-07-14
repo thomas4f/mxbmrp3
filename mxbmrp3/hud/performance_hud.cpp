@@ -7,6 +7,7 @@
 #include "../core/plugin_utils.h"
 #include "../core/plugin_constants.h"
 #include "../core/plugin_data.h"
+#include "../core/plugin_thread.h"
 #include "../core/color_config.h"
 #include <cstring>
 #include <cstdio>
@@ -221,8 +222,12 @@ void PerformanceHud::rebuildRenderData() {
     float contentStartY = START_Y + dims.paddingV;
     float currentY = contentStartY;
 
-    // Title
-    addTitleString("Performance", contentStartX, currentY, Justify::LEFT,
+    // Title. In plugin-thread mode the CPU figure is the WORKER's build time, not the
+    // game-thread cost (which is ~0) — flag it so a >100% frame-budget reading reads as
+    // "off-thread build exceeds a frame", not "the game is stalled".
+    const char* title = PluginThread::getInstance().enabled()
+        ? "Performance (threaded)" : "Performance";
+    addTitleString(title, contentStartX, currentY, Justify::LEFT,
         this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dims.fontSizeLarge);
     currentY += titleHeight;
 

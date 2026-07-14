@@ -21,18 +21,47 @@
 #                       portability breakage AND logic regressions in the real
 #                       init/adapter/PluginData/HUD/HTTP pipeline, no game or
 #                       Windows needed. See tests/integration/ and TESTING.md.
+#
+# WHERE THESE RUN (metered private repo + free public mirror):
+#   • PUBLIC mirror (thomas4f/mxbmrp3): Actions are FREE, so every job runs
+#     AUTOMATICALLY on push/PR there — that's where continuous testing happens.
+#     The mirror.yml squash (workflows included) is what lands commits on public.
+#   • This PRIVATE repo: nothing runs automatically. A push/PR still creates a
+#     workflow run, but every job's `if:` gate SKIPS it (a skipped job allocates
+#     no runner → zero billable minutes). Trigger the suite by hand via
+#     "Run workflow" (workflow_dispatch) when you want to check before mirroring.
+#   • RELEASE gate (release.yml → workflow_call): always runs — a release is
+#     deliberate and must be validated.
+#   • The Windows MSVC ASan job needs its own opt-in (asan_msvc) in the private/
+#     manual path — nothing is free in the metered private repo (Linux draws the
+#     monthly quota at 1x), and a Windows runner burns it at a 2x multiplier, so it
+#     is gated the tightest; it runs free in public like everything else.
+# The shared gate below is repeated per job (Actions has no workflow-level `if`).
 # ============================================================================
 name: tests
 
 on:
+  # Only `main` (not every branch): in the public mirror the mirror.yml squash lands
+  # on main, which is what should auto-run there; in the private repo a feature-branch
+  # push then creates NO run at all (it would only skip via the gates anyway), which
+  # keeps the Actions tab clean. Manual `Run workflow` still works from any branch.
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:        # allow running the full suite on a branch on demand
+    inputs:
+      asan_msvc:
+        description: "Also run the Windows MSVC AddressSanitizer job (spends Windows minutes)."
+        type: boolean
+        default: false
   workflow_call:            # let release.yml run this as a pre-release gate
     inputs:
       full:
         description: "Force every job to run (used by the release gate)."
+        type: boolean
+        default: false
+      asan_msvc:
+        description: "Run the Windows MSVC AddressSanitizer job. Off by default so it never auto-spends Windows minutes."
         type: boolean
         default: false
 
@@ -55,6 +84,12 @@ jobs:
   # the heavier Wine job below so a logic break surfaces almost immediately.
   unit-tests:
     name: Pure-logic unit tests
+    # Shared gate: auto in the free public mirror; manual/release-gate only in the
+    # metered private repo (skipped here on a plain push/PR → zero minutes).
+    if: >-
+      github.event.repository.private == false ||
+      github.event_name == 'workflow_dispatch' ||
+      inputs.full
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -71,16 +106,43 @@ jobs:
       - name: Font generator (mxbmrp3_fontgen) regression
         run: ./tools/mxbmrp3_fontgen/test.sh
 
+  # Native AddressSanitizer + UBSan over the plugin's portable memory surface
+  # (fixed buffers, the leader-timing index clamp, the crash-site container
+  # types). Fast (seconds, just libasan), so it gates every push alongside the
+  # unit tests — a heap/stack overflow in that surface faults here instead of
+  # shipping. The faithful full-callback ASan pass is the MSVC path (Windows);
+  # see tests/asan/README.md. Distinct job so an ASan report is legible on its own.
+  memory-safety:
+    name: Memory safety (ASan/UBSan)
+    if: >-
+      github.event.repository.private == false ||
+      github.event_name == 'workflow_dispatch' ||
+      inputs.full
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      # The whole portable-logic unit suite, rebuilt under ASan+UBSan — covers
+      # everything those tests already exercise (sanitizeUntrusted, fitText,
+      # formatting/parsing, session-charts math, config parsing, …), not just the
+      # targeted harness below.
+      - name: Unit suite under ASan/UBSan
+        run: ASAN=1 ./tests/unit/run_tests.sh
+
+      # Targeted harness for the fixed-buffer / index surface behind the two
+      # shipped heap-corruption crashes (RaceEntryData buffers, the leader-timing
+      # index clamp, the crash-site container types).
+      - name: Targeted memory-safety harness
+        run: ./tests/asan/run.sh
+
   web-overlay:
     name: Web overlay (Playwright)
-    # Browser download + run (~1-2 min billable). Gate it like the Wine job:
-    # PRs, main, and manual dispatch. Feature-branch pushes skip it; the overlay
-    # is covered at PR time.
+    # Shared gate: auto in the free public mirror; manual/release-gate only in private.
     if: >-
-      inputs.full ||
-      github.event_name == 'pull_request' ||
+      github.event.repository.private == false ||
       github.event_name == 'workflow_dispatch' ||
-      github.ref == 'refs/heads/main'
+      inputs.full
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -114,17 +176,13 @@ jobs:
 
   cross-build-smoke:
     name: Cross-compile (mingw) + run under Wine
-    # The heavy job (~4-8 min of billable minutes) is metered on a private repo,
-    # so run it only where it earns its cost: pull requests, main, and manual
-    # dispatch. Feature-branch pushes get the fast unit job above for quick
-    # feedback; the full Wine matrix (which covers the web overlay's JSON
-    # contract too) gates the PR before merge. Public-repo Actions are free, so
-    # if this suite ever moves to the public mirror, drop this guard.
+    # The heavy job (~4-8 min). Shared gate: it runs automatically (free) in the
+    # public mirror, and only on manual dispatch / the release gate in the metered
+    # private repo — never on a plain private push/PR.
     if: >-
-      inputs.full ||
-      github.event_name == 'pull_request' ||
+      github.event.repository.private == false ||
       github.event_name == 'workflow_dispatch' ||
-      github.ref == 'refs/heads/main'
+      inputs.full
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -209,6 +267,75 @@ jobs:
       - name: Installer mechanics (makensis + Wine)
         run: ./tests/integration/run_installer_test.sh
 
+  # Faithful memory-safety pass: the REAL shipping DLL under MSVC AddressSanitizer,
+  # driven through the real DLL-boundary callbacks by callback_fuzzer. Unlike the
+  # native memory-safety job (portable surface only), this instruments the whole
+  # plugin — the live PluginData / StatsManager / HUD / HttpServer pipeline the two
+  # shipped heap-corruption crashes live in — so an out-of-bounds write or
+  # use-after-free anywhere the fuzzer reaches faults AT the write, with the stack.
+  # Windows-only (MSVC ASan); heavy, so gated like the other build jobs. Uses the
+  # MXB-Debug config, which is exempt from the Release analytics-key requirement, so
+  # no secrets are needed. See tests/asan/README.md.
+  memory-safety-msvc:
+    name: Memory safety (MSVC ASan, real DLL)
+    # Auto in the free public mirror (Windows Actions are free there too); in the
+    # metered private repo it's OPT-IN only — a Windows runner carries a 2x minute
+    # multiplier, so it never runs on a plain push/PR/dispatch there unless you tick
+    # "Also run the Windows MSVC AddressSanitizer job" on Run workflow. The native
+    # Linux memory-safety job covers the portable surface without it.
+    if: >-
+      github.event.repository.private == false ||
+      inputs.asan_msvc
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      # Full x64 developer environment (cl, msbuild, and — critically — the ASan
+      # runtime clang_rt.asan_dynamic-x86_64.dll on PATH so the instrumented DLL +
+      # fuzzer load it). Persists to later steps via GITHUB_ENV/GITHUB_PATH.
+      - name: Set up MSVC x64 dev environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      # Build the MX Bikes DLL with /fsanitize=address. EnableASAN is the documented
+      # MSBuild switch; BasicRuntimeChecks=Default drops the Debug config's /RTC
+      # (incompatible with ASan) and LinkIncremental=false satisfies ASan's linker
+      # requirement — set explicitly so the build doesn't depend on the toolset
+      # auto-stripping them.
+      - name: Build MX Bikes DLL with AddressSanitizer (MXB-Debug)
+        shell: pwsh
+        run: >-
+          msbuild mxbmrp3.sln
+          /p:Configuration=MXB-Debug /p:Platform=x64
+          /p:EnableASAN=true /p:BasicRuntimeChecks=Default /p:LinkIncremental=false
+          /m /v:minimal
+
+      # /MTd matches the MXB-Debug DLL's static debug CRT so both modules agree on
+      # the ASan runtime flavor. If this ever fails at DLL load with an ASan-runtime
+      # error, switch both DLL and fuzzer to the dynamic /MDd runtime (see
+      # tests/asan/README.md's ASan-runtime note).
+      - name: Build boundary fuzzer with AddressSanitizer
+        shell: pwsh
+        run: cl /nologo /std:c++17 /MTd /EHsc /Zi /fsanitize=address tests\integration\callback_fuzzer.cpp /Fe:callback_fuzzer.exe
+
+      # Drive the real callbacks against the ASan DLL. A native temp savepath (arg 3)
+      # replaces the fuzzer's Wine-only Z:\ default. Exit code is the fuzzer's:
+      # ASan aborts non-zero on any violation, failing the job with the culprit stack.
+      - name: Run boundary fuzzer under ASan
+        shell: pwsh
+        env:
+          ASAN_OPTIONS: abort_on_error=1:halt_on_error=1:print_stats=1
+        run: |
+          $save = Join-Path $env:RUNNER_TEMP "mxbfuzz\"
+          New-Item -ItemType Directory -Force -Path $save | Out-Null
+          $dll = "build\MXB-Debug\mxbmrp3.dlo"
+          if (-not (Test-Path $dll)) { Write-Error "ASan DLL not found at $dll"; exit 1 }
+          .\callback_fuzzer.exe $dll 1000000 $save
+          if ($LASTEXITCODE -ne 0) { Write-Error "ASan caught a memory violation (exit $LASTEXITCODE) — see the stacks above"; exit $LASTEXITCODE }
+          Write-Host "MSVC ASan boundary fuzz: survived clean."
+
   # Static analysis (cppcheck). Report-only: it annotates findings and writes them
   # to the run summary but does NOT fail the build (continue-on-error), because
   # cppcheck versions drift between runner images. The committed baseline is clean,
@@ -216,11 +343,11 @@ jobs:
   # drop continue-on-error. Gated like the other heavy jobs; vendored code excluded.
   cppcheck:
     name: Static analysis (cppcheck, report-only)
+    # Shared gate: auto in the free public mirror; manual/release-gate only in private.
     if: >-
-      inputs.full ||
-      github.event_name == 'pull_request' ||
+      github.event.repository.private == false ||
       github.event_name == 'workflow_dispatch' ||
-      github.ref == 'refs/heads/main'
+      inputs.full
     runs-on: ubuntu-latest
     timeout-minutes: 15
     continue-on-error: true

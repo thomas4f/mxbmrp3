@@ -90,6 +90,9 @@
     <ClInclude Include="core\crash_handler.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
+    <ClInclude Include="core\crash_stack_format.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
     <ClInclude Include="core\event_recorder.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
@@ -118,6 +121,12 @@
       <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="core\plugin_manager.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\plugin_thread.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\render_frame_buffer.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="vendor\piboso\mxb_api.h">
@@ -504,6 +513,9 @@
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="core\plugin_manager.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\plugin_thread.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="vendor\piboso\mxb_api.cpp">

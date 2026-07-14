@@ -6,10 +6,13 @@
 
 #include <windows.h>
 #include <Xinput.h>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <deque>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 // Forward declare WinRT types to avoid pulling headers into every translation unit
@@ -223,7 +226,20 @@ class XInputReader {
 public:
     static XInputReader& getInstance();
 
-    // Update controller state (call once per frame)
+    // Start / stop the dedicated XInput I/O thread. That thread owns EVERY
+    // XInputGetState/XInputSetState on the hot path, so a slow/degraded controller
+    // driver (a Bluetooth XInputSetState is a radio transaction; polling a dead slot
+    // is device enumeration — both ms-class on a bad stack) can never stall whichever
+    // thread drives telemetry/hotkeys (the game thread in legacy mode, the plugin
+    // worker in threaded mode). The caller keeps the rumble policy + effect math and
+    // only posts target motor values / reads a published input snapshot. Started in
+    // PluginManager::initialize (after settings load), stopped in shutdown AFTER the
+    // plugin worker is joined. Idempotent. See core/plugin_thread.h for the sibling.
+    void startIoThread();
+    void stopIoThread();
+
+    // Update controller state (call once per frame). Now cheap: copies the latest
+    // snapshot the I/O thread published — issues no XInput call itself.
     void update();
 
     // Get current controller data
@@ -236,6 +252,17 @@ public:
 #ifdef MXBMRP3_TEST_BUILD
     void testForceData(const XInputData& d) { m_testData = d; m_testForced = true; }
     void testClearForcedData() { m_testForced = false; }
+    // Drain the rumble command setVibration's policy posted (what the I/O thread would
+    // execute), so a headless test can assert the send policy + 8-bit quantization are
+    // preserved after moving the actual XInputSetState off-thread. Stop the I/O thread
+    // first (testStopIoForTest) so it doesn't drain the command out from under the test.
+    bool testConsumePendingRumble(int& left8, int& right8, int& idx) {
+        std::lock_guard<std::mutex> lk(m_ioMutex);
+        if (!m_pendingRumble) return false;
+        left8 = m_pendingLeft8; right8 = m_pendingRight8; idx = m_pendingIndex;
+        m_pendingRumble = false;
+        return true;
+    }
 #endif
 
     // Set which controller to read (0-3)
@@ -336,9 +363,16 @@ public:
 
 private:
     XInputReader();
-    ~XInputReader() = default;
+    ~XInputReader();
     XInputReader(const XInputReader&) = delete;
     XInputReader& operator=(const XInputReader&) = delete;
+
+    // I/O-thread body: owns the selected-slot poll (+ disconnected backoff), the
+    // 1 Hz all-slot connection scan, and the rumble send (executing whatever
+    // setVibration's policy posted). Never holds m_ioMutex across an XInput call.
+    void ioThreadMain();
+    // Map a raw XINPUT_STATE into our XInputData (shared by the I/O poll).
+    void fillFromState(const XINPUT_STATE& state, XInputData& out) const;
 
     // Normalize stick values with deadzone
     float normalizeStickValue(SHORT value, SHORT deadzone) const;
@@ -353,25 +387,50 @@ private:
     static constexpr SHORT STICK_DEADZONE = XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE;
     static constexpr BYTE TRIGGER_THRESHOLD = XINPUT_GAMEPAD_TRIGGER_THRESHOLD;
 
+    // m_data is the snapshot the caller reads via getData(); update() refreshes it
+    // from m_dataPublished (which the I/O thread writes). Touched only on the caller
+    // thread, so getData() can keep returning a reference.
     XInputData m_data;
 #ifdef MXBMRP3_TEST_BUILD
     bool m_testForced = false;
     XInputData m_testData;
 #endif
-    int m_controllerIndex;
+    // Selected slot (0-3, or -1 = disabled). Atomic: written by the caller
+    // (setControllerIndex), read by the I/O thread every loop.
+    std::atomic<int> m_controllerIndex{ 0 };
 
-    // Connection state tracking for change detection
-    // The all-slot scan is throttled: XInputGetState on a disconnected slot
-    // is notoriously slow (can be ms-class), and update() runs per telemetry
-    // tick on the game thread. The scan only feeds the settings UI.
+    // ---- XInput I/O thread ----------------------------------------------------
+    std::thread m_ioThread;
+    std::atomic<bool> m_ioRun{ false };
+    // Set true when the I/O thread has left its loop. The DESTRUCTOR spins on this
+    // (not join()) then detaches: the destructor runs during static teardown under the
+    // Windows loader lock, and a thread's OS-level exit also needs that lock, so a
+    // join() there would deadlock. Spinning on an app-level flag needs no loader lock.
+    std::atomic<bool> m_ioFinished{ false };
+    mutable std::mutex m_ioMutex;                 // guards the two handoff buffers below
+    XInputData m_dataPublished;                   // I/O thread writes, update() reads
+    // Pending rumble command posted by setVibration (policy runs on the caller; the
+    // I/O thread just executes the last posted 8-bit motor pair).
+    bool m_pendingRumble = false;
+    uint8_t m_pendingLeft8 = 0;
+    uint8_t m_pendingRight8 = 0;
+    int m_pendingIndex = 0;
+    // Set by setControllerIndex so the I/O thread skips the disconnected backoff and
+    // polls the freshly-selected slot immediately.
+    std::atomic<bool> m_pollImmediately{ false };
+
+    // Connection state tracking for change detection (I/O-thread-owned now). The
+    // all-slot scan is throttled to 1 Hz: XInputGetState on a disconnected slot is
+    // notoriously slow (device enumeration). The result only feeds the settings UI.
     bool m_lastConnectedState[4];
-    bool m_connectionStateChanged;
+    std::atomic<bool> m_connectionStateChanged{ false };
     std::chrono::steady_clock::time_point m_lastConnectionScan;
 
-    // Backoff for polling the SELECTED slot while it is disconnected (same
-    // slow-path concern as the scan above). Epoch default = poll immediately.
-    std::chrono::steady_clock::time_point m_lastFailedMainPoll;
+    // Backoff for polling the SELECTED slot while it is disconnected (I/O-thread-owned).
     static constexpr int DISCONNECTED_POLL_INTERVAL_MS = 500;
+    // I/O thread loop period. Bounds input freshness + rumble keepalive cadence; the
+    // rumble send RATE is still capped by the caller's send-interval policy.
+    static constexpr int IO_LOOP_INTERVAL_MS = 5;
 
     // Vibration state tracking to avoid redundant API calls
     float m_lastLeftMotor;

@@ -29,7 +29,7 @@ PiBoSo plugin API. Under Wine it runs the real lifecycle: all managers
 initialize, settings load/save round-trips, HUDs rebuild render primitives, and
 the HTTP overlay server starts on :8080. Feature parity with the shipping build
 **except** Discord Rich Presence and Aptabase analytics (see below). All of it is
-wired into CI (`.github/workflows/ci.yml`).
+wired into CI (`.github/workflows/tests.yml`).
 
 ## Requirements
 

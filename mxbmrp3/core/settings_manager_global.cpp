@@ -231,6 +231,7 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
     out << IniOnly::Advanced::HAZARD_GRACE_PERIOD_MS.key << "=" << PluginData::getInstance().getHazardGracePeriodMs() << " ; " << IniOnly::Advanced::HAZARD_GRACE_PERIOD_MS.description << "\n";
     out << IniOnly::Advanced::BLUE_FLAG_AWARENESS_DISTANCE.key << "=" << PluginData::getInstance().getBlueFlagAwarenessDistance() << " ; " << IniOnly::Advanced::BLUE_FLAG_AWARENESS_DISTANCE.description << "\n";
     out << IniOnly::Advanced::GAP_NOTIFY_INTERVAL_MS.key << "=" << PluginData::getInstance().getGapNotifyIntervalMs() << " ; " << IniOnly::Advanced::GAP_NOTIFY_INTERVAL_MS.description << "\n";
+    out << IniOnly::Advanced::PLUGIN_THREAD.key << "=" << (UiConfig::getInstance().getPluginThread() ? 1 : 0) << " ; " << IniOnly::Advanced::PLUGIN_THREAD.description << "\n";
 #if GAME_HAS_HTTP_SERVER
     out << IniOnly::Advanced::WEB_SERVER_PORT.key << "=" << HttpServer::getInstance().getPort() << " ; " << IniOnly::Advanced::WEB_SERVER_PORT.description << "\n";
     out << IniOnly::Advanced::WEB_SERVER_THROTTLE_MS.key << "=" << HttpServer::getInstance().getThrottleMs() << " ; " << IniOnly::Advanced::WEB_SERVER_THROTTLE_MS.description << "\n";
@@ -717,6 +718,8 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                 PluginData::getInstance().setBlueFlagAwarenessDistance(parseFiniteFloat(value));
             } else if (key == "gapNotifyIntervalMs") {
                 PluginData::getInstance().setGapNotifyIntervalMs(std::stoi(value));
+            } else if (key == "pluginThread") {
+                UiConfig::getInstance().setPluginThread(std::stoi(value) != 0);
             }
 #if GAME_HAS_HTTP_SERVER
             else if (key == "webServerPort") {

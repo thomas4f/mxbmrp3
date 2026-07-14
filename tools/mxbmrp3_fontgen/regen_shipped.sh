@@ -35,7 +35,6 @@ char_start = 32
 char_end = 255
 bitmap_x = 512
 bitmap_y = 512
-spacing = 4
 normalize = 1
 filename = ${WEB}/${file}.ttf
 EOF

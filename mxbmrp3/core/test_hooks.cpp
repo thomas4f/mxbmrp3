@@ -31,7 +31,9 @@
 #include "input_manager.h"
 #include "analytics_manager.h"
 #include "plugin_manager.h"
+#include "plugin_thread.h"
 #include "plugin_data.h"
+#include "xinput_reader.h"
 #include "profile_manager.h"
 #include "director_manager.h"
 #include "update_checker.h"
@@ -671,6 +673,68 @@ __declspec(dllexport) long long MXBMRP3_Test_StandingsProfile(
 // per rider since last read (the target of option-1 status caching).
 __declspec(dllexport) double MXBMRP3_Test_StandingsTrackedUs() {
     return standingsReadTrackedUs();
+}
+
+// Experimental plugin worker thread: turn it on AFTER Startup (the flag is normally
+// read once at init) and start the worker, so a test can drive callbacks through the
+// off-thread offload path. Flush() blocks until the worker has drained everything
+// queued so far, so the test can then read a deterministic snapshot(). See
+// core/plugin_thread.{h,cpp} and tests/integration/tests/plugin_thread_test.cpp.
+__declspec(dllexport) void MXBMRP3_Test_PluginThreadEnable() {
+    UiConfig::getInstance().setPluginThread(true);
+    PluginThread::getInstance().start();
+}
+__declspec(dllexport) int MXBMRP3_Test_PluginThreadEnabled() {
+    return PluginThread::getInstance().enabled() ? 1 : 0;
+}
+// Set ONLY the [Advanced] flag (as a live INI reload would) without starting/stopping
+// the worker — so a test can exercise the game-thread reconcileEnabled() switch that a
+// RELOAD_CONFIG hotkey triggers, by then driving a draw().
+__declspec(dllexport) void MXBMRP3_Test_SetPluginThreadFlag(int on) {
+    UiConfig::getInstance().setPluginThread(on != 0);
+}
+__declspec(dllexport) void MXBMRP3_Test_PluginThreadFlush() {
+    PluginThread::getInstance().flush();
+}
+__declspec(dllexport) void MXBMRP3_Test_PluginThreadStop() {
+    // Clear the flag too, so the game-thread reconcileEnabled() (in handleDraw) doesn't
+    // immediately restart the worker on the next draw.
+    UiConfig::getInstance().setPluginThread(false);
+    PluginThread::getInstance().stop();
+}
+// Inject an artificial per-frame stall into the render build (produceFrame), to
+// demonstrate the game-thread isolation: this cost is paid inside Draw in sync mode
+// but on the worker in plugin-thread mode.
+__declspec(dllexport) void MXBMRP3_Test_SetProduceDelayMs(int ms) {
+    HudManager::testSetProduceDelayMs(ms);
+}
+// XInput I/O thread: stop it so a test can inspect the rumble command setVibration
+// posts without the worker draining it; drive index/vibration; read the pending post.
+// Proves the send policy + quantization survive moving XInputSetState off-thread.
+__declspec(dllexport) void MXBMRP3_Test_XInputStopIo() {
+    XInputReader::getInstance().stopIoThread();
+}
+__declspec(dllexport) void MXBMRP3_Test_XInputSetIndex(int idx) {
+    XInputReader::getInstance().setControllerIndex(idx);
+}
+__declspec(dllexport) void MXBMRP3_Test_XInputVibrate(float left, float right) {
+    XInputReader::getInstance().setVibration(left, right);
+}
+__declspec(dllexport) int MXBMRP3_Test_XInputConsumePending(int* left8, int* right8, int* idx) {
+    int a = 0, b = 0, c = 0;
+    bool has = XInputReader::getInstance().testConsumePendingRumble(a, b, c);
+    if (left8) *left8 = a;
+    if (right8) *right8 = b;
+    if (idx) *idx = c;
+    return has ? 1 : 0;
+}
+// Read the live PerformanceHud metrics (fps / plugin ms / plugin %), to assert they
+// stay live in plugin-thread mode (the worker publishes them, not DrawHandler).
+__declspec(dllexport) void MXBMRP3_Test_GetDebugMetrics(float* fps, float* pluginMs, float* pct) {
+    const auto& m = PluginData::getInstance().getDebugMetrics();
+    if (fps) *fps = m.currentFps;
+    if (pluginMs) *pluginMs = m.pluginTimeMs;
+    if (pct) *pct = m.pluginPercent;
 }
 
 #if GAME_HAS_RECORDER

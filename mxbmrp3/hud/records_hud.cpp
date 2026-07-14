@@ -1371,18 +1371,17 @@ void RecordsHud::rebuildRenderData() {
         // Position in bottom padding: after all content rows + gap row
         currentY = contentStartY + titleHeight + ((HEADER_ROWS - 1 + m_recordsToShow + 1) * dim.lineHeightNormal);
 
-        // "Submit by playing on <provider> servers" (small font, row height unchanged)
-        const char* prefix = "Submit by playing on ";
-        addString(prefix, contentStartX, currentY,
-                  Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSizeSmall);
-
-        float prefixWidth = PluginUtils::calculateMonospaceTextWidth(static_cast<int>(strlen(prefix)), dim.fontSizeSmall);
-        const char* providerName = getProviderDisplayName(recordsProvider);
-        addString(providerName, contentStartX + prefixWidth, currentY,
-                  Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::TERTIARY), dim.fontSizeSmall);
-
-        float providerWidth = PluginUtils::calculateMonospaceTextWidth(static_cast<int>(strlen(providerName)), dim.fontSizeSmall);
-        addString(" servers", contentStartX + prefixWidth + providerWidth, currentY,
+        // "Submit by playing on <provider> servers" (small font, row height unchanged).
+        // Rendered as ONE string so it can't misalign: the provider used to be a
+        // separately-positioned, differently-colored segment placed by the monospace
+        // width estimate, which broke with a proportional NORMAL font (gap after "on",
+        // suffix jammed into the provider name). A single left-justified string spaces
+        // correctly in any font (the whole line is muted; the provider is no longer
+        // color-highlighted).
+        char footer[128];
+        snprintf(footer, sizeof(footer), "Submit by playing on %s servers",
+                 getProviderDisplayName(recordsProvider));
+        addString(footer, contentStartX, currentY,
                   Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSizeSmall);
     }
 }

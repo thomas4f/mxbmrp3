@@ -24,7 +24,7 @@ header** `core/plugin_utils.h` directly and assert its behavior.
 ```
 
 Exit code is non-zero if the build or any assertion fails. CI runs the same
-script on every push/PR via `.github/workflows/ci.yml`.
+script on every push/PR via `.github/workflows/tests.yml`.
 
 ## What's covered
 

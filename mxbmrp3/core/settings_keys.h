@@ -506,6 +506,7 @@ namespace Settings {
             constexpr Setting HAZARD_GRACE_PERIOD_MS = {"hazardGracePeriodMs", "Grace period after race start in ms (default 10000)"};
             constexpr Setting BLUE_FLAG_AWARENESS_DISTANCE = {"blueFlagAwarenessDistance", "Blue flag detection range in meters (default 100.0)"};
             constexpr Setting GAP_NOTIFY_INTERVAL_MS = {"gapNotifyIntervalMs", "Min interval between live-gap HUD refreshes in ms; 0=refresh on every change (0-1000, default 100)"};
+            constexpr Setting PLUGIN_THREAD = {"pluginThread", "EXPERIMENTAL: run the plugin's callbacks + HUD render build on its own thread so hiccups never stall the game frame (1=on, 0=off default). Read once at startup"};
             constexpr Setting WEB_SERVER_PORT = {"webServerPort", "Web server port (default 8080)"};
             constexpr Setting WEB_SERVER_THROTTLE_MS = {"webServerThrottleMs", "Min interval between SSE pushes in ms (default 250)"};
             constexpr Setting WEB_SERVER_BIND_ADDRESS = {"webServerBindAddress", "Bind address (default 127.0.0.1, use 0.0.0.0 for network access)"};

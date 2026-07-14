@@ -18,6 +18,35 @@ std::string baseName(const std::string& path) {
     if (dot != std::string::npos) n.resize(dot);
     return n;
 }
+
+// Force the process's one-time GDI subsystem init to complete on the CALLER
+// thread before the render thread is spawned. The render loop's first paint does
+// GetDC -> CreateCompatibleDC -> CreateCompatibleBitmap (device-caps lookup); the
+// very first such call in a process triggers a lazy, one-time GDI init. If the
+// game/main thread and this new render thread both hit that first-init
+// concurrently, Wine's win32u serializes it behind a pthread_once + internal
+// mutex whose lock ordering can deadlock (both threads wedge inside
+// NtGdiOpenDCW/CreateCompatibleBitmap) — an intermittent hang seen only under
+// Wine (headless CI), where GDI is a userspace lazy-init. Real Windows GDI is
+// thread-safe with no such bootstrap, so this is harmless there and belt-and-
+// suspenders. Running the same primitive sequence once, single-threaded, before
+// the thread exists makes the render thread's later GDI a no-op re-entry.
+void warmUpGdiOnce() {
+    static bool done = false;
+    if (done) return;
+    done = true;
+    HDC screen = GetDC(nullptr);
+    if (!screen) return;
+    HDC mem = CreateCompatibleDC(screen);
+    HBITMAP bmp = CreateCompatibleBitmap(screen, 1, 1);
+    if (mem && bmp) {
+        HGDIOBJ old = SelectObject(mem, bmp);
+        SelectObject(mem, old);
+    }
+    if (bmp) DeleteObject(bmp);
+    if (mem) DeleteDC(mem);
+    ReleaseDC(nullptr, screen);
+}
 }  // namespace
 
 CompanionWindow& CompanionWindow::getInstance() {
@@ -53,6 +82,10 @@ void CompanionWindow::setEnabled(bool enabled) {
     // before starting a new one — assigning over a joinable std::thread terminates.
     if (m_thread.joinable() && m_thread.get_id() != std::this_thread::get_id())
         m_thread.join();
+    // Complete the one-time GDI init on this (caller) thread before the render
+    // thread exists, so the two can't race Wine's win32u GDI bootstrap. See
+    // warmUpGdiOnce().
+    warmUpGdiOnce();
     m_run.store(true);
     m_thread = std::thread([this] {
         try { threadMain(); }

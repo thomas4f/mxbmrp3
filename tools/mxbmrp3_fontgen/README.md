@@ -70,7 +70,7 @@ filename    = RobotoMono-Regular.ttf     # source .ttf/.otf (path relative to cw
 code_page   = 1252                        # 1252 (CP1252) or anything else = Latin-1
 char_start  = 32                          # first byte (0..255)
 char_end    = 255                         # last byte
-spacing     = 4                           # px gap between glyphs in the atlas
+spacing     = 20                          # px gap between glyphs in the atlas (mip-safe; normalised default)
 bitmap_x    = 512                         # atlas width
 bitmap_y    = 512                         # atlas height
 cell_height = 135                         # NEW: cell height in px (omit = auto-fit)
@@ -91,6 +91,7 @@ width, and vertical position** in-game:
 | `cell_height` | 135 | high-resolution cell — same on-screen size across fonts, but crisp when a HUD scales text up (high-DPI, large widgets); atlas auto-grows to 2048² |
 | `mono_advance` | 0.489 | RobotoMono's digit-advance/cell = the plugin's monospace column, so numbers fit the plate the same in every font |
 | `center` | on | centre the cap/digit band (fixes off-centre bakes like Tiny5) |
+| `spacing` | 20 | mip-safe inter-glyph gap. The games render the atlas with mipmaps; at the small sizes most HUD text is drawn (~20-40px, far below the 135px cell) the mip chain box-averages neighbouring cells together, so too small a gap makes the next glyph bleed across as a faint bar hugging the edge (the "green bar to the right of the K"). 20px keeps the neighbour out of the mip footprint; padding changes only atlas packing, not glyph widths/advances (on-screen layout is unchanged) |
 
 Any field you set explicitly wins, so `normalize = 1` with `center = 0` (or a
 custom `voffset` / `cell_height`) keeps your manual tweak. The shipped fonts

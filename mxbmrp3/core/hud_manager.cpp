@@ -74,6 +74,20 @@
 #include <algorithm>
 #include <memory>
 #include <cstring>
+#if defined(MXBMRP3_TEST_BUILD)
+#include <atomic>
+#endif
+
+#if defined(MXBMRP3_TEST_BUILD)
+// Test-only: an artificial per-frame stall injected into produceFrame() to stand in
+// for a genuinely slow component (e.g. a heavy Map HUD ribbon re-tessellation). Lets
+// a headless test prove that such a stall blocks the game's Draw in synchronous mode
+// but NOT in plugin-thread mode. Zero by default; never compiled into a shipping DLL.
+namespace { std::atomic<int> s_testProduceDelayMs{ 0 }; }
+void HudManager::testSetProduceDelayMs(int ms) {
+    s_testProduceDelayMs.store(ms < 0 ? 0 : ms, std::memory_order_relaxed);
+}
+#endif
 
 HudManager& HudManager::getInstance() {
     static HudManager instance;
@@ -705,6 +719,45 @@ void HudManager::draw(int iState, int* piNumQuads, void** ppQuad, int* piNumStri
         return;
     }
 
+    // Build this frame (shared with the plugin worker thread — see produceFrame).
+    produceFrame(iState);
+
+    // Hand the built in-game frame to the game, honoring the display-target gate that
+    // produceFrame() resolved (COMPANION mode ⇒ empty game frame).
+    if (m_bSuppressInGame) {
+        *piNumQuads = 0; *ppQuad = nullptr;
+        *piNumString = 0; *ppString = nullptr;
+    } else {
+        *piNumQuads = static_cast<int>(m_quads.size());
+        *ppQuad = m_quads.empty() ? nullptr : m_quads.data();
+        *piNumString = static_cast<int>(m_strings.size());
+        *ppString = m_strings.empty() ? nullptr : m_strings.data();
+    }
+}
+
+void HudManager::produceFrame(int iState) {
+    if (!m_bInitialized) {
+        m_bSuppressInGame = false;
+        m_quads.clear();
+        m_strings.clear();
+        return;
+    }
+
+    // Track draw state for spectate-mode support. Done here (not in DrawHandler) so it
+    // runs on whichever thread owns the render build — the game thread in sync mode,
+    // the worker thread in plugin-thread mode — and never races PluginData.
+    PluginData::getInstance().setDrawState(iState);
+
+#if defined(MXBMRP3_TEST_BUILD)
+    // Simulated slow-component stall (see s_testProduceDelayMs). This is the exact
+    // cost that, in sync mode, is paid ON the game thread inside Draw — and in
+    // plugin-thread mode is paid on the worker instead, so Draw never feels it.
+    {
+        int delayMs = s_testProduceDelayMs.load(std::memory_order_relaxed);
+        if (delayMs > 0) Sleep(static_cast<DWORD>(delayMs));
+    }
+#endif
+
     // "Entered the track" detection: the game calls Draw continuously while we're on
     // track / spectating, and stops in menus / loading. A long gap since the previous
     // Draw (or the very first Draw) means drawing just resumed, so flash the corner
@@ -778,15 +831,7 @@ void HudManager::draw(int iState, int* piNumQuads, void** ppQuad, int* piNumStri
     bool activeCompanion =
         InputManager::getInstance().getActiveSurface() == InputManager::Surface::Companion;
     bool settingsOnGame = m_pSettingsHud && m_pSettingsHud->isVisible() && !activeCompanion;
-    if (target == DisplayTarget::COMPANION && !settingsOnGame) {
-        *piNumQuads = 0; *ppQuad = nullptr;
-        *piNumString = 0; *ppString = nullptr;
-    } else {
-        *piNumQuads = static_cast<int>(m_quads.size());
-        *ppQuad = m_quads.empty() ? nullptr : m_quads.data();
-        *piNumString = static_cast<int>(m_strings.size());
-        *ppString = m_strings.empty() ? nullptr : m_strings.data();
-    }
+    m_bSuppressInGame = (target == DisplayTarget::COMPANION && !settingsOnGame);
 }
 
 void HudManager::updateHuds() {

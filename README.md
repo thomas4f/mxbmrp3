@@ -16,16 +16,13 @@ An [open-source](https://github.com/thomas4f/mxbmrp3) plugin for MX Bikes, GP Bi
 
 ## Get Started
 
-Download and install the plugin to begin customizing your HUD.
-
 [![Download Installer](https://img.shields.io/badge/Download-Installer-green?style=for-the-badge)](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3-Setup.exe)
 [![Download ZIP Archive](https://img.shields.io/badge/Download-ZIP_Archive-blue?style=for-the-badge)](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3.zip)
 
 > **Quick Start**
-> 1. Download the installer above, run it, and follow the on-screen steps\
->    Windows may show several "unknown publisher" warnings - [why & how to proceed](#windows-warns-me-when-downloading-or-installing).
+> 1. Download the installer above, run it, and follow the on-screen steps. Windows may show several "unknown publisher" warnings - [why & how to proceed](#windows-warns-me-when-downloading-or-installing).
 > 2. Launch the game and load a track
-> 3. Move the mouse to bring up the pointer, then right-click drag to reposition elements
+> 3. Move the mouse to bring up the pointer, then right-click and drag to reposition elements
 > 4. Press **Tilde (~)** or click the settings button to toggle elements, adjust opacity, and more
 
 See [Installation](#installation) for detailed setup instructions, or [Configuration](#configuration) to fine-tune everything.
@@ -44,6 +41,10 @@ See [Installation](#installation) for detailed setup instructions, or [Configura
 - [Privacy](#privacy)
 - [Feedback & Issues](#feedback--issues)
 - [Uninstallation](#uninstallation)
+- [Development](#development)
+- [License](#license)
+- [Acknowledgments](#acknowledgments)
+- [Support](#support)
 
 ## Installation
 
@@ -114,11 +115,11 @@ Keyboard and controller hotkeys can be customized in Settings > Hotkeys. By defa
 
 ## Configuration
 
-The plugin is active in-game only - it comes alive once you've loaded into a track and does nothing in the main menus, so all configuration happens on track.
+The plugin is active in-game only - it does nothing in the main menus, so all configuration happens on track.
 
-Use the settings menu (**Tilde** or the settings button in the top-right) to configure all HUDs and widgets. **Hover over any setting to see its description** - all controls have in-game tooltips explaining their function.
+Use the settings menu (**Tilde** or the settings button in the top-right) to configure all HUDs and widgets. Hover over any setting to see its description - all controls have in-game tooltips explaining their function.
 
-With **Auto-Save** on (the default), your changes are saved automatically when you **leave the track** - returning to the pits or exiting the session. Nothing is written to disk while you're riding, so configuring HUDs never causes a stutter. You can also save at any time with the **Save** button at the bottom of the settings menu: it lights up whenever you have unsaved changes and reads "Saved" (greyed out) once everything is written. (If the game crashes mid-session, changes since you last left the track or clicked Save are lost - the same as any other unsaved in-game state.)
+With **Auto-Save** on (the default), changes are saved automatically when you leave the track, so configuring HUDs never causes a stutter. You can also save at any time with the **Save** button at the bottom of the settings menu, which lights up whenever you have unsaved changes.
 
 The settings menu provides global settings that apply to all profiles, followed by per-element tabs for the individual HUDs and widgets:
 
@@ -218,19 +219,29 @@ Colors and fonts sync automatically from your in-game settings. To customize the
 
 ## Tips & Tricks
 
-**Track records** - The Records HUD fetches online lap records from CBR or MXB-Ranked. Enable "Auto-fetch" in Settings > Records to automatically load records when you enter a track. Records also work while spectating.
+### Track records
+The Records HUD fetches online lap records from CBR or MXB-Ranked. Enable "Auto-fetch" in Settings > Records to automatically load records when you enter a track. Records also work while spectating.
 
-**Auto-director (spectating & replays)** - Enable the **Director** (Settings > Director, or click its camera-icon status button) and it automatically cuts the spectate camera to the most interesting rider or battle, broadcast-style, so you don't have to switch riders by hand. It works while spectating live **and in replays** - a great way to re-watch or record a session and let it direct the action for you. It's off by default (so it never overrides your manual camera unasked), and it also drives the [Web Overlay](#web-overlay)'s battle panel.
+### Custom segment timing (training tool)
+Bind the **Segment Add** and **Segment Remove** hotkeys (Settings > Hotkeys, unbound by default) to drop timing points on the track as you ride. Drop two and the Timing HUD times the section between them - live, with a delta to your best for it - so you can drill a single corner or rhythm section without completing a full lap. Remove the points to return to normal split/lap timing.
 
-**Click-to-spectate** - Left-click on any rider on the Map HUD or Standings HUD to switch the spectate camera to that rider.
+### Auto-director (spectating & replays)
+Enable the **Director** (Settings > Director, or click its camera-icon status button) and it automatically cuts the spectate camera to the most interesting rider or battle, broadcast-style, so you don't have to switch riders by hand. It works while spectating live and in replays - a great way to re-watch or record a session and let it direct the action for you. It's off by default (so it never overrides your manual camera unasked), and it also drives the [Web Overlay](#web-overlay)'s battle panel.
 
-**Streaming setup** - Enable the Session HUD (Settings > Session) to show the server name, track, and session format on screen for your viewers. The Pitboard and Gamepad widgets also work well on stream - both have [fully customizable textures](#custom-textures), and the Gamepad widget shows your live controller inputs. Pair with Discord Rich Presence (Settings > General) to show your current session and track in your Discord profile. For a broadcast-style overlay, see [Web Overlay](#web-overlay).
+### Click-to-spectate
+Left-click on any rider on the Map HUD or Standings HUD to switch the spectate camera to that rider.
 
-**Second-monitor HUD (Companion window)** - Set **Settings > Appearance > HUD Display** to **Companion** (or **Both**) to open a standalone window you can drag and maximize on a second monitor - handy for keeping race data off your main game view while playing, streaming, or spectating. Each HUD keeps its own on/off state and position on the companion window (drag or toggle it while your mouse is over that window), so you can run a minimal in-game layout and a full dashboard on the second screen at once. It's local and needs no browser or OBS - for a streamable browser source instead, see [Web Overlay](#web-overlay).
+### Streaming setup
+Enable the Session HUD (Settings > Session) to show the server name, track, and session format on screen for your viewers. The Pitboard and Gamepad widgets also work well on stream - both have [fully customizable textures](#custom-textures), and the Gamepad widget shows your live controller inputs. Pair with Discord Rich Presence (Settings > General) to show your current session and track in your Discord profile. For a broadcast-style overlay, see [Web Overlay](#web-overlay).
 
-**See where friends are racing** - Enable **Steam Friends** (Settings > General) to broadcast your session to friends and populate the Friends HUD: which of your Steam friends are in-game, the server and track they're on, and who's joined your session.
+### Second-monitor HUD (Companion window)
+Set **Settings > Appearance > HUD Display** to **Companion** (or **Both**) to open a standalone window you can drag and maximize on a second monitor. Each HUD keeps its own on/off state and position there (drag or toggle it while your mouse is over that window), so you can run a minimal in-game layout and a full dashboard on the second screen at once. It needs no browser or OBS - for a streamable browser source instead, see [Web Overlay](#web-overlay).
 
-**Power-user INI tweaks** - Many additional options are available by editing the [INI file](#advanced-settings) directly. The file is well-commented and organized by HUD section. Each HUD section also supports per-element color and font overrides. Colors use ABGR hex values; fonts use the font filename (without `.fnt`) of any file in the `fonts/` folder. For example:
+### See where friends are racing
+Enable **Steam Friends** (Settings > General) to broadcast your session to friends and populate the Friends HUD: which of your Steam friends are in-game, the server and track they're on, and who's joined your session.
+
+### Power-user INI tweaks
+Many additional options are available by editing the [INI file](#advanced-settings) directly. The file is well-commented and organized by HUD section. Each HUD section also supports per-element color and font overrides. Colors use ABGR hex values; fonts use the font filename (without `.fnt`) of any file in the `fonts/` folder. For example:
 ```ini
 [StandingsHud]
 classicLayout=1            ; remove number plates and brand color strips
@@ -241,11 +252,19 @@ font_title=RobotoMono-Bold ; Roboto Mono Bold font
 ```
 Use the [Color Override Picker](https://thomas4f.github.io/mxbmrp3/tools/color_override_picker.html) to convert RGB colors to ABGR format. See [Advanced Settings](#advanced-settings) for how to edit and hot-reload the INI file.
 
-**Remove the stock pitboard** - This is a game tweak, not a plugin setting. Create an empty file called `pitboard.cfg` in `[Game]\misc\hud\` (create the directories if needed). This removes the default 2D pitboard while keeping the small 3D pitboard in the game world. Delete the file to restore it.
+### Experimental: run the plugin on its own thread
+By default the plugin does its work during the game's frame. Set `pluginThread=1` in the `[Advanced]` section of the [INI file](#advanced-settings) to move the plugin's HUD building and event handling onto a separate thread, so a heavy HUD rebuild can't cost you frames. It's **off by default and experimental** - try it if you're chasing the smoothest possible frame times. Toggle it live with the **Reload Config** hotkey.
 
-**Show/hide the rider stand icon** - This is a game setting, not a plugin setting. Enable it under Simulation > "Show Rider Stand". To customize the icon or its position, extract `rider.cfg` and `riderstand.tga` from `misc.pkz\misc\helpers\` to `[Game]\misc\helpers\` and edit them there.
+The next three are game settings, not plugin settings - listed here because they pair well with the plugin's HUDs:
 
-**Show/hide the game's native gear indicator** - This is a game setting, not a plugin setting. Toggle it under Simulation > "Show HUD". Disable it if you'd rather use the plugin's GearWidget instead. To customize the graphics or position, extract `gear.tga`, `hud.cfg`, `LCD.fnt`, and `switch.tga` from `misc.pkz\misc\hud\` to `[Game]\misc\hud\` and edit them there.
+### Remove the stock pitboard
+Create an empty file called `pitboard.cfg` in `[Game]\misc\hud\` (create the directories if needed). This removes the default 2D pitboard while keeping the small 3D pitboard in the game world. Delete the file to restore it.
+
+### Show/hide the rider stand icon
+Enable it under Simulation > "Show Rider Stand". To customize the icon or its position, extract `rider.cfg` and `riderstand.tga` from `misc.pkz\misc\helpers\` to `[Game]\misc\helpers\` and edit them there.
+
+### Show/hide the game's native gear indicator
+Toggle it under Simulation > "Show HUD". Disable it if you'd rather use the plugin's GearWidget instead. To customize the graphics or position, extract `gear.tga`, `hud.cfg`, `LCD.fnt`, and `switch.tga` from `misc.pkz\misc\hud\` to `[Game]\misc\hud\` and edit them there.
 
 ## Advanced Settings
 
@@ -295,9 +314,7 @@ On game startup, the plugin syncs these files to the plugin's data directory (`[
 
 ### Custom Textures
 
-Textures use the naming convention `{element_name}_{number}.tga` (e.g., `standings_hud_1.tga`). They're auto-discovered and selectable via the Texture control in each HUD's settings.
-
-**Pitboard** - Drop a custom `.tga` file (e.g., `pitboard_hud_2.tga`) into the `textures\` subfolder. It will be auto-discovered and selectable in Settings > Pitboard > Texture.
+Textures use the naming convention `{element_name}_{number}.tga` (e.g., `pitboard_hud_2.tga`). Drop them into the `textures\` subfolder and they're auto-discovered and selectable via the Texture control in each HUD's settings.
 
 **Gamepad** - The Gamepad widget ships with Xbox and PlayStation layouts. To customize them, copy `gamepad_widget_1.tga` (Xbox) or `gamepad_widget_2.tga` (PlayStation) from `[Game]\plugins\mxbmrp3_data\textures\` to the `textures\` subfolder and edit them. Source design files (PSD) are available in [`assets/`](assets/).
 
@@ -316,7 +333,7 @@ Icons (`.tga` files) placed in the `icons\` subfolder are discovered alphabetica
 The overlay files are plain HTML, CSS, and JS. To customize them, place modified files in `Documents\PiBoSo\[Game]\mxbmrp3\web\` - user files override the bundled versions on startup and are preserved across updates.
 
 - `style.css` - The `:root` block holds the theme tokens: colors, fonts, sizes, spacing, and animation timings. Colors and fonts sync from the game (to override those in `custom.css`, add `!important`); sizes, spacing, and animations can be set directly.
-- `custom.css` - Optional file you create yourself for style overrides. **Copy the bundled `custom-sample.css` to `custom.css` to start** - it's a commented reference with ready-made recipes (light theme, compact, no-motion, fonts). Loaded after `style.css`, so anything here wins on specificity ties. Tip: append `?demo` to the overlay URL in a browser to preview your theme against a synthetic race without launching the game. Use this for small theme tweaks instead of forking the full stylesheet - edits apply on the next browser reload (after the next game restart, since the file is synced from `Documents` on startup). **For live iteration**, you can instead place `custom.css` directly in `[Game]\plugins\mxbmrp3_data\web\` and edit it there - it's the one web asset not bundled or replaced by the installer/updater, so browser-refresh applies your changes with no game restart. Pick one location; if you keep copies in both, the `Documents` copy overwrites the plugins copy on next game start.
+- `custom.css` - Optional file you create yourself for style overrides. Copy the bundled `custom-sample.css` to `custom.css` to start - it's a commented reference with ready-made recipes (light theme, compact, no-motion, fonts). Loaded after `style.css`, so its rules take precedence. Use it for small theme tweaks instead of forking the full stylesheet. Tip: append `?demo` to the overlay URL to preview your theme against a synthetic race without launching the game.
 - `index.html` - Overlay structure
 - `overlay-config.js` - The `CONFIG` block at the top defines defaults for all settings. These are overridden by the settings panel (stored in localStorage).
 
@@ -333,7 +350,7 @@ The overlay files are plain HTML, CSS, and JS. To customize them, place modified
 ## Troubleshooting
 
 ### Windows Warns Me When Downloading or Installing
-The installer isn't code-signed yet, so Windows may show one or more "unknown publisher" / "not commonly downloaded" warnings. These are **reputation** warnings, not malware detections - the download is safe. Depending on your browser you may see up to three, in this order:
+The installer isn't code-signed yet, so Windows may show one or more "unknown publisher" / "not commonly downloaded" warnings. These are reputation warnings about the unsigned installer and its low download count, not a malware detection. Depending on your browser you may see up to three, in this order:
 
 - **Downloading (browser):** "isn't commonly downloaded." In Microsoft Edge: open Downloads, click the `...` next to the file, then **Keep** > **Show more** > **Keep anyway** (Chrome is similar).
 - **Running the installer (Windows SmartScreen):** a blue **"Windows protected your PC"** box - click **More info** > **Run anyway**.
@@ -341,7 +358,7 @@ The installer isn't code-signed yet, so Windows may show one or more "unknown pu
 
 Installing manually from the [ZIP archive](#manual-installation) avoids most of these, since there's no installer to run. If you'd like to check the download anyway, you can scan it on [VirusTotal](https://www.virustotal.com/).
 
-The fix is a code-signing certificate - a paid yearly cost. Signing removes the "unknown publisher" label on the install prompt immediately, and the download/SmartScreen warnings clear as the signed installer builds reputation. It's not in place yet, so the steps above are all that's needed. (A certificate is one of the things [donations](#support) would go toward.)
+The long-term fix is a code-signing certificate (a paid yearly cost, and one of the things [donations](#support) would go toward). Until that's in place, the steps above are all that's needed.
 
 ### Make Sure You're on the Latest Version
 - Many issues are already fixed in a newer release, so update before troubleshooting further
@@ -351,7 +368,7 @@ The fix is a code-signing certificate - a paid yearly cost. Signing removes the 
 
 ### HUD Not Appearing
 - Check the [Installation requirements](#installation) for your game's minimum version
-- Verify the DLO file and `mxbmrp3_data\` are in the correct `plugins\` folder. Games have two directories - the **game installation** (contains the game .exe) and **user data** (`Documents\PiBoSo\[Game]\`). Plugins go in the game installation, not Documents.
+- Verify the DLO file and `mxbmrp3_data\` are in the correct `plugins\` folder. Games have two directories - the game installation (contains the game .exe) and user data (`Documents\PiBoSo\[Game]\`). Plugins go in the game installation, not Documents.
 - Use the correct DLO for your game: `mxbmrp3.dlo` (MX Bikes), `mxbmrp3_gpb.dlo` (GP Bikes), or `mxbmrp3_krp.dlo` (Kart Racing Pro)
 
 ### Installer Detected the Wrong Game Directory
@@ -388,7 +405,7 @@ The fix is a code-signing certificate - a paid yearly cost. Signing removes the 
 
 ## Privacy
 
-The plugin sends a small anonymous usage ping per game launch, so the developer can gauge how many people actively use it. It is **on by default** and you can **opt out anytime** in **Settings > General > Integrations** (the "Analytics" toggle). Turning it off sends one final anonymous opt-out ping, then nothing more.
+The plugin sends a small anonymous usage ping per game launch, so the developer can gauge how many people actively use it. It is on by default and you can opt out anytime in **Settings > General > Integrations** (the "Analytics" toggle). Turning it off sends one final anonymous opt-out ping, then nothing more.
 
 What it sends:
 
@@ -400,14 +417,14 @@ What it sends:
 | Environment | Operating system and version/build (e.g. Windows 11 22631, or Wine/Proton on Linux), language, and whether it's the Steam or standalone build |
 | Usage counters | How many times this install has launched, and how many days since it was first installed |
 | Session length | How long a play session lasted (start to clean exit), so the developer can gauge typical usage |
-| Crashes | If the game crashed last session, the faulting module and offset (e.g. `mxbikes.exe+0x1f1923`), the exception code, and the plugin version + game build at crash time - enough to bucket crashes, **not** the memory dump. Reported on the next launch |
+| Crashes | If the game crashed last session: which module faulted and where, the error code and access type (read/write/execute), the plugin and game versions at the time, and a short backtrace of the faulting call stack (the top several module-and-offset frames, so a plugin fault can be told apart from a bystander to a game or driver crash) - enough to group similar crashes, but never the memory dump or its contents. Reported on the next launch |
 | Link clicks | Which in-plugin link you click (docs, community, or support/donate) - nothing else |
 
-What it does **not** send: no names, no in-game/online activity, no telemetry, no lap times, no server or rider data, and **no crash dump or log** (those stay on your machine) - nothing identifying. The pings are fire-and-forget and never affect performance.
+What it does not send: no names, no in-game/online activity, no telemetry, no lap times, no server or rider data, and no crash dump or log (those stay on your machine) - nothing identifying. The pings are fire-and-forget and never affect performance.
 
-Analytics are processed by two privacy-first, open-source services: [Aptabase](https://aptabase.com) handles the detailed events above, and [GoatCounter](https://www.goatcounter.com) receives a single per-launch hit (the plugin/game/version via the page path, plus the same anonymous install ID so it can count unique installs rather than raw launches) used purely as an aggregate headcount. Both are covered by the one Analytics toggle.
+Analytics are processed by two open-source services: [Aptabase](https://aptabase.com) handles the detailed events above, and [GoatCounter](https://www.goatcounter.com) receives a single per-launch hit as an aggregate headcount. Both are covered by the one Analytics toggle.
 
-When analytics is on, the plugin also fetches a small public config file from this repository to decide how much of the above to send. This is a cost control for the developer (the events service bills per event): it can only ever **reduce** what's sent below what's described here - never add anything - and if the file is missing or unreachable it defaults to the full set. In the leanest setting only the anonymous launch ping (and a crash report, if any) is sent. Turning the Analytics toggle off stops this fetch too.
+When analytics is on, the plugin may also fetch a small config file from this repository that can only ever reduce what's sent, never add to it. Turning the Analytics toggle off stops this too.
 
 ## Feedback & Issues
 
@@ -415,14 +432,14 @@ Bug reports, feature requests, and questions are all welcome. Open an issue on [
 
 A short description of what you were doing when the issue happened (track, session type, bike, and any reproduction steps) helps a lot.
 
-**For crashes**, please attach both files from `Documents\PiBoSo\[Game]\mxbmrp3\crashes\` - the plugin writes them automatically whenever it catches an unhandled fault. (These are almost always faults in the game engine itself, not plugin bugs: the plugin's crash handler is process-global, so it catches any unhandled fault in the game process and writes the dump - which is why it can capture crashes that have nothing to do with the plugin.)
+**For crashes**, please attach both files from `Documents\PiBoSo\[Game]\mxbmrp3\crashes\` - the plugin writes them automatically whenever it catches an unhandled fault. (The plugin catches any crash in the game, so these are usually faults in the game itself, not plugin bugs.)
 
 Before reporting, check [**Known MX Bikes Crashes**](crash_analysis/KNOWN_GAME_CRASHES.md) — it lists game-engine crashes the plugin's crash handler has caught, with Event Viewer fault offsets you can match against yours. If your crash is listed, it's a known game bug with no plugin fix possible.
 
 - `mxbmrp3_crash_<timestamp>_<pid>.dmp` - the minidump (state at the moment of crash)
 - `mxbmrp3_crash_<timestamp>_<pid>.log` - a snapshot of the plugin log captured at crash time
 
-Grab the matching pair (same timestamp/pid) for the crash you want to report. Note that the live `mxbmrp3_log.txt` is overwritten each time the game launches, so the paired `.log` snapshot is the only surviving record once you restart.
+Grab the matching pair (same timestamp/pid) for the crash you want to report.
 
 ## Uninstallation
 
@@ -455,7 +472,7 @@ Built with C++17, Visual Studio 2022, the PiBoSo Plugin API, and Claude Code.
 
 - **[`DEVELOPMENT.md`](DEVELOPMENT.md)** - building (Windows shipping build + Linux cross-build) and running the test suites
 - [`TESTING.md`](TESTING.md) - the layered test suite (unit / integration / specialized) and how to add a test
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) - comprehensive technical documentation with diagrams
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) - full technical documentation with diagrams
 - [`CLAUDE.md`](CLAUDE.md) - quick-start context for developers and AI assistants
 
 Quick start: clone, open `mxbmrp3.sln` in Visual Studio 2022 (x64), and build. The full configuration table, the Linux cross-build, and the unit/integration tests are documented in [`DEVELOPMENT.md`](DEVELOPMENT.md).

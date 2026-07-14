@@ -4,6 +4,7 @@
 // ============================================================================
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <cmath>
 
@@ -106,6 +107,17 @@ public:
     unsigned long getGridOverlayMajorColor() const { return m_ulGridOverlayMajorColor; }
     void setGridOverlayMajorColor(unsigned long color) { m_ulGridOverlayMajorColor = color; }
 
+    // Plugin worker thread (INI-only, experimental, off by default). When on, the
+    // plugin runs all game-state callbacks + the HUD render build on its OWN thread,
+    // so a slow HUD rebuild or a blocking hiccup can NEVER stall the game's frame:
+    // the game's Draw only hands over a pre-built, triple-buffered frame and returns.
+    // See core/plugin_thread.{h,cpp}. Can be toggled live via the RELOAD_CONFIG hotkey:
+    // PluginThread::reconcileEnabled() (game thread) starts/stops the worker to match.
+    // Atomic because a RELOAD_CONFIG processed in threaded mode runs on the WORKER thread
+    // (it writes this) while the game-thread reconcile reads it.
+    bool getPluginThread() const { return m_bPluginThread.load(std::memory_order_relaxed); }
+    void setPluginThread(bool enabled) { m_bPluginThread.store(enabled, std::memory_order_relaxed); }
+
     // Drop shadow settings (for text rendering)
     bool getDropShadow() const { return m_bDropShadow; }
     void setDropShadow(bool enabled) { m_bDropShadow = enabled; }
@@ -137,6 +149,7 @@ private:
     int m_holdRepeatFastMs = 50;     // Max repeat speed: 50ms (~20/sec)
     float m_fCursorActivationThreshold = 0.015f;  // Mouse travel from rest before cursor appears (~29px horiz on 1080p)
     bool m_bTitleIcons = true;       // HUD title identity icons enabled by default
+    std::atomic<bool> m_bPluginThread{ false };  // Experimental plugin worker thread (INI-only, off by default; live-toggle via reconcileEnabled)
 
     // Grid overlay (INI-only debug aid)
     bool m_bGridOverlay = false;                       // Off by default

@@ -49,7 +49,7 @@ runs at up to 240fps — see [`ARCHITECTURE.md`](ARCHITECTURE.md) and
 
 **Full guide: [`TESTING.md`](TESTING.md)** — the four layers, the harness, the
 testing philosophy, and how to add a test. Everything runs on any Linux host and
-in CI (`.github/workflows/ci.yml`) on every push, no game and no Windows. The
+in CI (`.github/workflows/tests.yml`) on every push, no game and no Windows. The
 essentials:
 
 ```bash
@@ -102,7 +102,7 @@ first run.
 The `release` workflow ([`.github/workflows/release.yml`](.github/workflows/release.yml))
 builds all three games with MSVC on a Windows runner and packages the zip + NSIS
 installer + debug symbols + [SBOM](SECURITY.md). It runs the **full test suite
-first** (via the reusable `ci.yml`) and `build-release needs: tests`, so nothing
+first** (via the reusable `tests.yml`) and `build-release needs: tests`, so nothing
 ships from a red commit.
 
 - **Cut a release (recommended)**: Actions → **release** → **Run workflow**, tick

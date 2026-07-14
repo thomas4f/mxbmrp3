@@ -77,6 +77,7 @@ struct Config {
     double monoAdvance = 0.0;             // >0: size so digit-advance/cellH == this
     bool normalize = false;               // apply the standard normalisation defaults
     bool centerSet = false;               // whether `center` was set explicitly
+    bool spacingSet = false;              // whether `spacing` was set explicitly
 };
 
 // The plugin's reference: the normalised cell height (px) and RobotoMono's digit
@@ -93,11 +94,26 @@ struct Config {
 constexpr int   kRefCellHeight = 135;
 constexpr double kRefMonoAdvance = 0.489;
 
+// Inter-glyph padding (px) between packed cells in the atlas. The games render
+// the .fnt through a MIPMAPPED texture stage, so the driver box-averages the
+// whole atlas down its mip chain. Most in-game text is drawn far smaller than the
+// 135px reference cell (~20-40px), i.e. minified onto mip levels 2-3 where one
+// mip texel already spans several atlas pixels — so if the gap between a glyph's
+// ink and its neighbour's is too small, the neighbour bleeds across it and shows
+// as a faint bar hugging the glyph edge (the "green bar to the right of the K"
+// artifact, most visible on isolated bright text like the updater's green "OK").
+// fontgen's stock 4px gap (~3% of the cell) bled badly; 20px pushes the neighbour
+// out of the mip footprint across the practical text-size range. Padding changes
+// only the atlas packing — glyph widths/advances (and thus on-screen layout) are
+// untouched — and the atlas still fits well within its 2048² cap.
+constexpr int kRefSpacing = 20;
+
 // Apply normalisation defaults to any field the user didn't set explicitly.
 void applyNormalizeDefaults(Config& c) {
     if (c.cellHeight <= 0) c.cellHeight = kRefCellHeight;
     if (c.monoAdvance <= 0.0) c.monoAdvance = kRefMonoAdvance;
     if (!c.centerSet) c.center = true;
+    if (!c.spacingSet) c.spacing = kRefSpacing;
 }
 
 std::string trim(const std::string& s) {
@@ -122,7 +138,7 @@ bool parseConfig(const std::string& path, Config& c) {
         else if (kl == "filename") c.filename = v;
         else if (kl == "char_start") c.charStart = std::stoi(v);
         else if (kl == "char_end") c.charEnd = std::stoi(v);
-        else if (kl == "spacing") c.spacing = std::stoi(v);
+        else if (kl == "spacing") { c.spacing = std::stoi(v); c.spacingSet = true; }
         else if (kl == "bitmap_x") c.bitmapX = std::stoi(v);
         else if (kl == "bitmap_y") c.bitmapY = std::stoi(v);
         else if (kl == "code_page") c.cp1252 = (std::stoi(v) == 1252);

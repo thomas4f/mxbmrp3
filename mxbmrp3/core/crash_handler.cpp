@@ -9,6 +9,7 @@
 #include "crash_handler.h"
 #include "../diagnostics/logger.h"
 #include "plugin_constants.h"   // PLUGIN_VERSION (constant-initialized extern into .rdata, crash-safe)
+#include "crash_stack_format.h" // pure backtrace string formatting (no Win32)
 
 #include <windows.h>
 #include <dbghelp.h>
@@ -31,6 +32,102 @@ bool s_installed = false;
 // Re-entry guard: if MiniDumpWriteDump itself faults we don't want infinite
 // recursion. InterlockedExchange gives us an atomic test-and-set.
 volatile LONG s_dumping = 0;
+
+// Resolve a code address to its owning module's basename + offset. Fills `mod`
+// (>= 1 byte) with the basename, or "unknown" if the address isn't in a loaded
+// module, and *offset with (addr - moduleBase). GetModuleHandleExA with
+// FROM_ADDRESS|UNCHANGED_REFCOUNT resolves without loading anything or bumping a
+// refcount — safe from inside the filter (no heap, no disk). Shared by the leaf
+// fault resolver and the per-frame backtrace walk.
+//
+// When the address is in NO loaded module, `mod` stays "unknown" and `*offset`
+// carries the RAW address (not 0). That case is diagnostically important — an
+// execute access violation whose faulting IP is in no module means control flow
+// jumped through a null/corrupt function pointer or into freed/JIT memory (the
+// injector-at-launch fingerprint behind the "unknown+0x0" cluster). Reporting the
+// real address distinguishes a literal null call (0x0) from a wild jump, and gives
+// unresolved backtrace frames (e.g. an injected thunk) their address instead of 0.
+void resolveModuleOffset(void* addr, char* mod, size_t modSize,
+                         unsigned long long* offset) {
+    if (modSize) strncpy_s(mod, modSize, "unknown", _TRUNCATE);
+    *offset = reinterpret_cast<unsigned long long>(addr);  // raw addr unless resolved below
+    HMODULE hMod = nullptr;
+    if (GetModuleHandleExA(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+            GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            static_cast<LPCSTR>(addr), &hMod) && hMod) {
+        char modPath[MAX_PATH];
+        DWORD n = GetModuleFileNameA(hMod, modPath, sizeof(modPath));
+        if (n > 0 && n < sizeof(modPath)) {
+            const char* base = modPath;
+            for (const char* p = modPath; *p; ++p)
+                if (*p == '\\' || *p == '/') base = p + 1;
+            strncpy_s(mod, modSize, base, _TRUNCATE);
+        }
+        *offset = static_cast<unsigned long long>(
+            reinterpret_cast<ULONG_PTR>(addr) - reinterpret_cast<ULONG_PTR>(hMod));
+    }
+}
+
+#ifdef _MSC_VER
+// Walk the FAULTING thread's stack (from the exception CONTEXT) and record the
+// top N frames as (module, offset). Uses RtlVirtualUnwind + RtlLookupFunctionEntry
+// — NOT StackWalk64/dbghelp: dbghelp needs SymInitialize (which allocates and
+// takes a global lock) and could hang or fault the filter on the corrupt heap
+// that is the whole premise here, losing the analytics beacon. RtlVirtualUnwind
+// unwinds x64 straight from each module's .pdata/.xdata: no heap, no lock, no
+// symbols. The walk reads stack memory that may be corrupt, so the whole loop is
+// wrapped in __try/__except — a fault just ends the walk with what we have.
+// x64/MSVC only; the mingw test build gets the stub below.
+//
+// Optimization is disabled for this one function: mixing SEH (__try/__except)
+// with whole-program optimization (/GL + /LTCG) can trip an MSVC internal
+// compiler error (C1001) during code generation. This runs only on the crash
+// path (once per crash), so there is nothing to gain from optimizing it and no
+// reason to risk the ICE. noinline keeps the SEH frame self-contained.
+#pragma optimize("", off)
+__declspec(noinline)
+int captureBacktrace(CONTEXT* ctxIn, CrashStack::Frame* frames, int maxFrames) {
+    if (!ctxIn || !frames || maxFrames <= 0) return 0;
+    CONTEXT ctx = *ctxIn;   // full copy — RtlVirtualUnwind mutates nonvolatile regs
+    int count = 0;
+    __try {
+        for (int i = 0; i < maxFrames && ctx.Rip; ++i) {
+            resolveModuleOffset(reinterpret_cast<void*>(ctx.Rip),
+                                frames[count].module, sizeof(frames[count].module),
+                                &frames[count].offset);
+            ++count;
+
+            DWORD64 imageBase = 0;
+            PRUNTIME_FUNCTION fn = RtlLookupFunctionEntry(ctx.Rip, &imageBase, nullptr);
+            ULONG64 rspBefore = ctx.Rsp;
+            if (fn) {
+                PVOID handlerData = nullptr;
+                ULONG64 establisherFrame = 0;
+                RtlVirtualUnwind(UNW_FLAG_NHANDLER, imageBase, ctx.Rip, fn,
+                                 &ctx, &handlerData, &establisherFrame, nullptr);
+            } else {
+                // Leaf function (no unwind data): return address sits at [Rsp].
+                if (ctx.Rsp == 0) break;
+                ctx.Rip = *reinterpret_cast<ULONG64*>(ctx.Rsp);
+                ctx.Rsp += sizeof(ULONG64);
+            }
+            // The stack must unwind toward higher addresses. If it doesn't move
+            // up, the chain is corrupt or looping — stop rather than spin.
+            if (ctx.Rsp <= rspBefore) break;
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        // A frame walk faulted (corrupt stack) — return what we captured so far.
+    }
+    return count;
+}
+#pragma optimize("", on)
+#else
+// mingw cross-build (tests/integration): no MSVC SEH __try, so no in-filter walk.
+// The pure formatter is still exercised by the Linux unit tests; the real walk is
+// confirmed by the first MSVC-built crash, like the ASan job.
+int captureBacktrace(CONTEXT*, CrashStack::Frame*, int) { return 0; }
+#endif
 
 LONG WINAPI crashFilter(EXCEPTION_POINTERS* info) {
     // Prevent re-entry. If we're already mid-dump (e.g., MiniDumpWriteDump
@@ -158,26 +255,21 @@ LONG WINAPI crashFilter(EXCEPTION_POINTERS* info) {
         void* faultAddr = info->ExceptionRecord->ExceptionAddress;
         DWORD code = info->ExceptionRecord->ExceptionCode;
 
-        // Module basename + offset from the fault address. GetModuleHandleExA with
-        // FROM_ADDRESS|UNCHANGED_REFCOUNT resolves the owning module without loading
-        // anything or bumping a refcount - safe from inside the filter.
-        char modName[64] = "unknown";
+        // Module basename + offset of the faulting instruction (the leaf). Shared
+        // resolver — same logic the per-frame backtrace below uses.
+        char modName[CrashStack::MODULE_NAME_SIZE] = "unknown";
         unsigned long long offset = 0;
-        HMODULE hMod = nullptr;
-        if (GetModuleHandleExA(
-                GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                static_cast<LPCSTR>(faultAddr), &hMod) && hMod) {
-            char modPath[MAX_PATH];
-            DWORD n = GetModuleFileNameA(hMod, modPath, sizeof(modPath));
-            if (n > 0 && n < sizeof(modPath)) {
-                const char* base = modPath;
-                for (const char* p = modPath; *p; ++p)
-                    if (*p == '\\' || *p == '/') base = p + 1;
-                strncpy_s(modName, sizeof(modName), base, _TRUNCATE);
-            }
-            offset = static_cast<unsigned long long>(
-                reinterpret_cast<ULONG_PTR>(faultAddr) - reinterpret_cast<ULONG_PTR>(hMod));
+        resolveModuleOffset(faultAddr, modName, sizeof(modName), &offset);
+
+        // Access-violation sub-type (read/write/execute) from ExceptionInformation[0].
+        // Meaningful only for access violations; "" otherwise (field omitted). Fixed
+        // Windows ABI, no maintenance. "execute" fingerprints a jump into non-code —
+        // the tell for the "unknown+..." injector-at-launch cluster.
+        const char* avType = "";
+        if (code == EXCEPTION_ACCESS_VIOLATION &&
+            info->ExceptionRecord->NumberParameters >= 1) {
+            avType = CrashStack::avTypeName(
+                static_cast<unsigned long long>(info->ExceptionRecord->ExceptionInformation[0]));
         }
 
         // MX Bikes build fingerprint: the host executable's PE link timestamp. An
@@ -221,17 +313,47 @@ LONG WINAPI crashFilter(EXCEPTION_POINTERS* info) {
         u.HighPart = ft.dwHighDateTime;
         unsigned long long epoch = (u.QuadPart - 116444736000000000ULL) / 10000000ULL;
 
+        // Faulting-stack backtrace (top frames as module+0xoffset). A crash in our
+        // container-walk code (StatsManager::save, std::_Tree::_Erase_tree) reports
+        // only its leaf offset today, so we can't tell a same-stack culprit
+        // (re-entrancy / a bad pointer we passed in) from a bystander walking memory
+        // some already-returned code corrupted. The backtrace settles that: it names
+        // the callers between the leaf and our code (e.g. which teardown path called
+        // clear()). Plain space-delimited and bounded to MAX_STACK_CHARS (whole frames
+        // only) so the analytics sink stores it verbatim without truncating mid-frame;
+        // "" if the walk found nothing.
+        char stackStr[CrashStack::MAX_STACK_CHARS + 1];
+        stackStr[0] = '\0';
+        if (info->ContextRecord) {
+            CrashStack::Frame frames[CrashStack::MAX_FRAMES];
+            int nf = captureBacktrace(info->ContextRecord, frames, CrashStack::MAX_FRAMES);
+            CrashStack::formatFrameList(stackStr, sizeof(stackStr), frames, nf);
+        }
+
         char marker[MAX_PATH];
         int wM = snprintf(marker, sizeof(marker), "%s\\mxbmrp3\\pending_crash.json", root);
         if (wM > 0 && wM < static_cast<int>(sizeof(marker))) {
             // Also pin the plugin version and game build AT CRASH TIME - the report is
             // sent on the next launch, which may be a different (upgraded) version.
-            char bodyBuf[384];
+            // The optional av_type / stack fields are pre-rendered as JSON fragments
+            // (",key":"value", or empty) so the body is ONE snprintf regardless of which
+            // are present. Both hold only safe chars (literals / module basenames + hex +
+            // spaces, no quotes or backslashes), so they embed inside JSON verbatim.
+            char avFrag[32];
+            avFrag[0] = '\0';
+            if (avType[0])
+                snprintf(avFrag, sizeof(avFrag), ",\"av_type\":\"%s\"", avType);
+            char stackFrag[CrashStack::MAX_STACK_CHARS + 16];
+            stackFrag[0] = '\0';
+            if (stackStr[0])
+                snprintf(stackFrag, sizeof(stackFrag), ",\"stack\":\"%s\"", stackStr);
+
+            char bodyBuf[768];
             int wB = snprintf(bodyBuf, sizeof(bodyBuf),
                 "{\"fault\":\"%s+0x%llx\",\"code\":\"0x%08lX\",\"plugin\":\"%s\","
-                "\"game_build\":\"0x%08lX\",\"host\":\"%s\",\"time\":%llu}",
+                "\"game_build\":\"0x%08lX\",\"host\":\"%s\",\"time\":%llu%s%s}",
                 modName, offset, static_cast<unsigned long>(code),
-                PluginConstants::PLUGIN_VERSION, gameBuild, hostExe, epoch);
+                PluginConstants::PLUGIN_VERSION, gameBuild, hostExe, epoch, avFrag, stackFrag);
             if (wB > 0 && wB < static_cast<int>(sizeof(bodyBuf))) {
                 HANDLE hMarker = CreateFileA(marker, GENERIC_WRITE, 0, nullptr,
                                              CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);

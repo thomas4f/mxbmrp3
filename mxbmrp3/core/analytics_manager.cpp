@@ -74,7 +74,17 @@ constexpr const char* ANALYTICS_FILENAME = "mxbmrp3_analytics.json";
 //          always sent. Lets Aptabase volume be dialed down without a release (cost lever).
 // 2.11.0 = added feat_companion (standalone companion HUD window adoption flag;
 //          COMPANION or BOTH display target counts as enabled) to app_started.
-constexpr const char* ANALYTICS_SDK_VERSION = "mxbmrp3-analytics@2.11.0";
+// 2.12.0 = crash event also carries stack: a faulting-thread backtrace, plain
+//          space-delimited "module+0xoffset ..." (whole frames, bounded to the
+//          sink's ~180-char string-prop cap), so a plugin-module fault can be told
+//          apart as a same-stack culprit vs a bystander to heap corruption. Absent
+//          when the walk found nothing / on non-MSVC builds.
+// 2.13.0 = crash event carries av_type (read/write/execute for access violations),
+//          and an unresolved fault now reports its REAL address (unknown+0x<addr>)
+//          instead of unknown+0x0 — together these pin the "jumped to bad code"
+//          (execute AV into no module) injector-at-launch cluster. av_type absent
+//          for non-access-violation exceptions.
+constexpr const char* ANALYTICS_SDK_VERSION = "mxbmrp3-analytics@2.13.0";
 
 // Build a UUID-v4 string from 16 cryptographically-random bytes. This is the
 // ONLY identifier we ever send — it is random (not derived from hardware or
@@ -573,7 +583,7 @@ void AnalyticsManager::sendPendingCrashReport() {
         return;  // no crash since the last launch
     }
 
-    std::string fault, code, pluginVer, gameBuild, host;
+    std::string fault, code, pluginVer, gameBuild, host, stack, avType;
     unsigned long long crashTime = 0;
     try {
         std::ifstream in(m_pendingCrashPath);
@@ -586,6 +596,14 @@ void AnalyticsManager::sendPendingCrashReport() {
             gameBuild = j.value("game_build", "");    // host exe PE timestamp (game build)
             host = j.value("host", "");               // host exe basename (game vs dev tool)
             crashTime = j.value("time", 0ULL);
+            // Faulting-stack backtrace: a plain space-delimited "module+0xoffset ..."
+            // string (bounded by the crash handler to the sink's per-value length cap).
+            // Forwarded verbatim as a string prop; the dashboard/tooling splits on
+            // spaces. Absent on older markers or when the walk found nothing.
+            stack = j.value("stack", "");
+            // Access-violation sub-type (read/write/execute). Absent on older markers
+            // or for non-access-violation exceptions.
+            avType = j.value("av_type", "");
         }
     } catch (const std::exception& e) {
         DEBUG_WARN_F("AnalyticsManager: unreadable crash marker: %s", e.what());
@@ -605,7 +623,7 @@ void AnalyticsManager::sendPendingCrashReport() {
             std::map<std::string, std::string> props = {
                 {"fault", fault}, {"code", code},
                 {"crash_plugin_version", pluginVer}, {"game_build", gameBuild},
-                {"host", host},
+                {"host", host}, {"stack", stack}, {"av_type", avType},
             };
             std::string body = buildSessionEventBody("crash", duration, props);
             {
@@ -1170,6 +1188,12 @@ void AnalyticsManager::testSeedAndReportCrash(const std::string& markerPath,
         j["fault"] = fault; j["code"] = code;
         j["plugin"] = "9.9.9"; j["game_build"] = "test"; j["host"] = "test.exe";
         j["time"] = static_cast<unsigned long long>(epochSecondsNow());
+        // Backtrace as the real crash handler writes it: a plain space-delimited
+        // "module+0xoffset ..." string (leaf first). Lets the wiring test prove the
+        // stack survives the marker -> event round-trip.
+        j["stack"] = fault + " mxbmrp3.dlo+0xeaab4 ntdll.dll+0x1234";
+        // Access-violation sub-type, as the crash handler writes it for a 0xC0000005.
+        j["av_type"] = "read";
         out << j.dump();
     } catch (...) { /* no marker → sendPendingCrashReport() no-ops */ }
     sendPendingCrashReport();

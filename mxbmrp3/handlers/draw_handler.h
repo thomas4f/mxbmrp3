@@ -17,6 +17,10 @@ public:
     // Performance tracking utilities (called by ACCUMULATE_CALLBACK_TIME macro)
     static long long getCurrentTimeUs();
     static void accumulateCallbackTime(long long timeUs);
+    // Return the accumulated callback time and reset it to zero. Used by the plugin
+    // worker thread to fold the event-callback cost into its per-build plugin-time
+    // metric (in sync mode DrawHandler::handleDraw consumes it instead).
+    static long long consumeAccumulatedCallbackTime();
 
 private:
     DrawHandler();

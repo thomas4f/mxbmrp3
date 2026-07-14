@@ -81,6 +81,12 @@ void DrawHandler::accumulateCallbackTime(long long timeUs) {
     getInstance().m_accumulatedFrameTimeUs += timeUs;
 }
 
+long long DrawHandler::consumeAccumulatedCallbackTime() {
+    long long v = getInstance().m_accumulatedFrameTimeUs;
+    getInstance().m_accumulatedFrameTimeUs = 0;
+    return v;
+}
+
 void DrawHandler::updateFrameMetrics(long long totalFrameTimeUs) {
     // Get current time for FPS calculation
     long long currentTimeUs = getCurrentTimeUs();
@@ -150,8 +156,8 @@ void DrawHandler::handleDraw(int iState, int* piNumQuads, void** ppQuad, int* pi
         return;
     }
 
-    // Track draw state for spectate mode support
-    PluginData::getInstance().setDrawState(iState);
+    // Note: draw state is set in HudManager::produceFrame() (shared by sync + threaded
+    // render paths), so it isn't set here anymore.
 
     // Measure HUD rendering time separately
     long long drawStartUs = getCurrentTimeUs();

@@ -5,7 +5,7 @@
 # ships Visual Studio 2022 with the v143 C++ toolset): builds all three games and
 # packages the zip + NSIS installer + debug symbols.
 #
-# Every path runs the full test matrix first (the `tests` job below calls ci.yml),
+# Every path runs the full test matrix first (the `tests` job below calls tests.yml),
 # and build-release `needs` it — so a Release can NEVER be cut from a commit whose
 # tests are red. The existence of a release IS the "tests passed" signal.
 #
@@ -46,7 +46,7 @@ jobs:
   # on this exact commit, via the reusable tests workflow. build-release needs it,
   # so nothing ships from a red commit.
   tests:
-    uses: ./.github/workflows/ci.yml
+    uses: ./.github/workflows/tests.yml
     with:
       full: true
 

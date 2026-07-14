@@ -5,6 +5,7 @@
 #include "spectate_handler.h"
 #include "../core/handler_singleton.h"
 #include "../core/plugin_data.h"
+#include "../core/plugin_thread.h"
 #include "../core/seh_compat.h"   // SEH_TRY / SEH_EXCEPT_ALL (portable SEH)
 #include "../diagnostics/logger.h"
 
@@ -104,10 +105,22 @@ static bool cameraNameAtIndex(const void* data, int numCameras, int targetIndex,
 }
 
 int SpectateHandler::handleSpectateVehicles(int iNumVehicles, Unified::SpectateVehicle* pasVehicleData, int iCurSelection, int* piSelect) {
-    // Track the currently spectated rider
+    // Track the currently spectated rider. setSpectatedRaceNum() cascades into
+    // clearTelemetryData() + a HudManager/HttpServer notify, i.e. real PluginData
+    // mutation. This callback must ANSWER the game synchronously on the game thread,
+    // but the tracking write must not race the worker in plugin-thread mode — so route
+    // just that write onto the worker (the PluginData owner). The synchronous answer
+    // below reads only the atomic request + the game's own array, so it stays inline.
     if (iCurSelection >= 0 && iCurSelection < iNumVehicles && pasVehicleData != nullptr) {
         int spectatedRaceNum = pasVehicleData[iCurSelection].raceNum;
-        PluginData::getInstance().setSpectatedRaceNum(spectatedRaceNum);
+        PluginThread& pt = PluginThread::getInstance();
+        if (pt.enabled() && !pt.onWorkerThread()) {
+            pt.enqueue([spectatedRaceNum]() {
+                PluginData::getInstance().setSpectatedRaceNum(spectatedRaceNum);
+            });
+        } else {
+            PluginData::getInstance().setSpectatedRaceNum(spectatedRaceNum);
+        }
     }
 
     // Check if a spectate switch was requested
@@ -116,7 +129,7 @@ int SpectateHandler::handleSpectateVehicles(int iNumVehicles, Unified::SpectateV
         for (int i = 0; i < iNumVehicles; ++i) {
             if (pasVehicleData[i].raceNum == m_requestedSpectateRaceNum) {
                 // Found the rider - switch to them
-                DEBUG_INFO_F("Spectating rider #%d (%s)", m_requestedSpectateRaceNum, pasVehicleData[i].name);
+                DEBUG_INFO_F("Spectating rider #%d (%s)", m_requestedSpectateRaceNum.load(std::memory_order_relaxed), pasVehicleData[i].name);
                 *piSelect = i;
                 m_requestedSpectateRaceNum = -1;  // Clear the request
                 return 1;  // Selection changed
@@ -175,7 +188,7 @@ int SpectateHandler::handleSpectateCameras(int iNumCameras, void* pCameraData, i
         static const char* kForks[]     = { "Forks" };
         static const char* kFreeRoam[]  = { "Free-Roam", "Free Roam", "Freeroam", "Free", "Orbit" };
 
-        const CameraRole reqRole = static_cast<CameraRole>(m_requestedCameraRole);
+        const CameraRole reqRole = static_cast<CameraRole>(m_requestedCameraRole.load(std::memory_order_relaxed));
         const bool isFreeRoam = (reqRole == CameraRole::FREE_ROAM);
 
         const char* const* cand = kAuto;

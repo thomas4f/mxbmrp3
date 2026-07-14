@@ -21,7 +21,7 @@ char_start = 32
 char_end = 255
 bitmap_x = 512
 bitmap_y = 512
-spacing = 4
+spacing = 20
 cell_height = 135
 filename = ${TTF}
 EOF
@@ -56,12 +56,38 @@ for cp in range(32, 127):
 
 # Our atlas must inflate to width*height bytes (raw deflate).
 w, h = i(O, 10512), i(O, 10516)
+atlas = None
 try:
     atlas = zlib.decompress(O[10532:], -15)
     if len(atlas) != w*h:
         fails.append(f"atlas size: got {len(atlas)} expected {w*h}")
 except Exception as e:
     fails.append(f"atlas inflate failed: {e}")
+
+# Inter-glyph padding: the games mipmap the atlas, so a neighbouring glyph too
+# close to a glyph's edge bleeds across the gap at coarse mip levels (the "green
+# bar to the right of the K" artifact). Guard that no ink sits within MIN_GAP px
+# to the right of any glyph's ink — i.e. the packing gap stays mip-safe. This
+# fails for the old 4px spacing and passes for the 20px normalised default.
+MIN_GAP = 12
+if atlas is not None and len(atlas) == w*h:
+    worst = None
+    for cp in range(32, 256):
+        o = 268 + cp*40
+        if i(O, o) == 0: continue
+        x0, x1, y0, y1 = i(O, o+16), i(O, o+20), i(O, o+24), i(O, o+28)
+        if x1 <= x0 or y1 <= y0: continue          # blank glyph (space)
+        xr = min(w, x1 + MIN_GAP)
+        for yy in range(y0, min(y1, h)):
+            row = yy*w
+            for xx in range(x1, xr):
+                if atlas[row + xx] != 0:
+                    d = xx - x1
+                    if worst is None or d < worst[0]: worst = (d, cp, xx, yy)
+    if worst is not None:
+        d, cp, xx, yy = worst
+        fails.append(f"inter-glyph bleed: ink {d}px right of a glyph edge "
+                     f"(cp{cp}({chr(cp)!r}) at atlas ({xx},{yy})); need >= {MIN_GAP}px gap")
 
 if fails:
     print("FAIL:"); [print("  -", f) for f in fails[:20]]

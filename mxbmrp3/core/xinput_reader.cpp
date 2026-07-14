@@ -37,6 +37,32 @@
 
 using namespace PluginConstants;
 
+// OS-call wrappers. In the headless TEST build there is never a real controller, and
+// Wine's XInput can block/hang under sustained load from the I/O thread's tight poll
+// loop — which would wedge the test harness on shutdown (join). So the test build makes
+// these no-ops: the I/O thread still exercises its full structure + lifecycle (loop,
+// drain, publish, scan cadence, start/stop/join) and the rumble send POLICY is still
+// verified (via testConsumePendingRumble), but no real XInput syscall runs. The
+// shipping (MSVC) build always issues the real calls; controller behavior + rumble feel
+// are validated in-game on Windows, not headlessly.
+namespace {
+    inline DWORD osGetState(int index, XINPUT_STATE* state) {
+#ifdef MXBMRP3_TEST_BUILD
+        (void)index; if (state) ZeroMemory(state, sizeof(XINPUT_STATE));
+        return ERROR_DEVICE_NOT_CONNECTED;
+#else
+        return XInputGetState(index, state);
+#endif
+    }
+    inline void osSetState(int index, XINPUT_VIBRATION* vib) {
+#ifdef MXBMRP3_TEST_BUILD
+        (void)index; (void)vib;
+#else
+        XInputSetState(index, vib);
+#endif
+    }
+}
+
 XInputReader& XInputReader::getInstance() {
     static XInputReader instance;
     return instance;
@@ -73,133 +99,211 @@ XInputReader::XInputReader()
     DEBUG_INFO("XInputReader initialized");
 }
 
+void XInputReader::fillFromState(const XINPUT_STATE& state, XInputData& out) const {
+    out.isConnected = true;
+    const XINPUT_GAMEPAD& pad = state.Gamepad;
+    // Sticks/triggers: raw input, no deadzone (for visualization)
+    out.leftStickX = normalizeStickValue(pad.sThumbLX, 0);
+    out.leftStickY = normalizeStickValue(pad.sThumbLY, 0);
+    out.rightStickX = normalizeStickValue(pad.sThumbRX, 0);
+    out.rightStickY = normalizeStickValue(pad.sThumbRY, 0);
+    out.leftTrigger = normalizeTriggerValue(pad.bLeftTrigger);
+    out.rightTrigger = normalizeTriggerValue(pad.bRightTrigger);
+    out.dpadUp = (pad.wButtons & XINPUT_GAMEPAD_DPAD_UP) != 0;
+    out.dpadDown = (pad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN) != 0;
+    out.dpadLeft = (pad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT) != 0;
+    out.dpadRight = (pad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) != 0;
+    out.buttonA = (pad.wButtons & XINPUT_GAMEPAD_A) != 0;
+    out.buttonB = (pad.wButtons & XINPUT_GAMEPAD_B) != 0;
+    out.buttonX = (pad.wButtons & XINPUT_GAMEPAD_X) != 0;
+    out.buttonY = (pad.wButtons & XINPUT_GAMEPAD_Y) != 0;
+    out.leftShoulder = (pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0;
+    out.rightShoulder = (pad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0;
+    out.leftThumb = (pad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB) != 0;
+    out.rightThumb = (pad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) != 0;
+    out.buttonStart = (pad.wButtons & XINPUT_GAMEPAD_START) != 0;
+    out.buttonBack = (pad.wButtons & XINPUT_GAMEPAD_BACK) != 0;
+}
+
 void XInputReader::update() {
-    // When disabled (-1), don't poll XInput at all
-    if (m_controllerIndex < 0) {
-        m_data = XInputData();  // Reset to default (disconnected) state
-    } else if (!m_data.isConnected &&
-               std::chrono::steady_clock::now() - m_lastFailedMainPoll <
-                   std::chrono::milliseconds(DISCONNECTED_POLL_INTERVAL_MS)) {
-        // Back off while the selected slot is disconnected: XInputGetState on
-        // an empty slot is the slow path (device enumeration, ms-class on bad
-        // stacks) and this runs per telemetry tick. Reconnect detection is
-        // delayed by at most DISCONNECTED_POLL_INTERVAL_MS. m_data is already
-        // the default disconnected state - nothing to update.
-    } else {
-        XINPUT_STATE state;
-        ZeroMemory(&state, sizeof(XINPUT_STATE));
-
-        // Get the state of the controller
-        DWORD result = XInputGetState(m_controllerIndex, &state);
-
-        if (result == ERROR_SUCCESS) {
-            // Controller is connected
-            m_data.isConnected = true;
-
-            // Process gamepad data
-            const XINPUT_GAMEPAD& pad = state.Gamepad;
-
-            // Left stick (raw input, no deadzone for visualization)
-            m_data.leftStickX = normalizeStickValue(pad.sThumbLX, 0);
-            m_data.leftStickY = normalizeStickValue(pad.sThumbLY, 0);
-
-            // Right stick (raw input, no deadzone for visualization)
-            m_data.rightStickX = normalizeStickValue(pad.sThumbRX, 0);
-            m_data.rightStickY = normalizeStickValue(pad.sThumbRY, 0);
-
-            // Triggers (normalize 0-255 to 0.0-1.0)
-            m_data.leftTrigger = normalizeTriggerValue(pad.bLeftTrigger);
-            m_data.rightTrigger = normalizeTriggerValue(pad.bRightTrigger);
-
-            // D-Pad
-            m_data.dpadUp = (pad.wButtons & XINPUT_GAMEPAD_DPAD_UP) != 0;
-            m_data.dpadDown = (pad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN) != 0;
-            m_data.dpadLeft = (pad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT) != 0;
-            m_data.dpadRight = (pad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) != 0;
-
-            // Buttons
-            m_data.buttonA = (pad.wButtons & XINPUT_GAMEPAD_A) != 0;
-            m_data.buttonB = (pad.wButtons & XINPUT_GAMEPAD_B) != 0;
-            m_data.buttonX = (pad.wButtons & XINPUT_GAMEPAD_X) != 0;
-            m_data.buttonY = (pad.wButtons & XINPUT_GAMEPAD_Y) != 0;
-            m_data.leftShoulder = (pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0;
-            m_data.rightShoulder = (pad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0;
-            m_data.leftThumb = (pad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB) != 0;
-            m_data.rightThumb = (pad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) != 0;
-            m_data.buttonStart = (pad.wButtons & XINPUT_GAMEPAD_START) != 0;
-            m_data.buttonBack = (pad.wButtons & XINPUT_GAMEPAD_BACK) != 0;
-        }
-        else {
-            // Controller is not connected
-            m_data.isConnected = false;
-
-            // Reset all values to default
-            m_data = XInputData();
-
-            // Start/extend the disconnected-poll backoff window
-            m_lastFailedMainPoll = std::chrono::steady_clock::now();
-        }
-    }
-
-    // Check if any controller connection state changed.
-    // Throttled to once per second: XInputGetState on a disconnected slot is
-    // very slow (device enumeration), and this runs per telemetry tick on the
-    // game thread. The result only feeds the settings UI controller list.
-    auto now = std::chrono::steady_clock::now();
-    if (now - m_lastConnectionScan >= std::chrono::seconds(1)) {
-        m_lastConnectionScan = now;
-        for (int i = 0; i < 4; i++) {
-            bool connected = isControllerConnected(i);
-            if (connected != m_lastConnectedState[i]) {
-                m_connectionStateChanged = true;
-                m_lastConnectedState[i] = connected;
-                DEBUG_INFO_F("XInputReader: Controller %d %s", i + 1, connected ? "connected" : "disconnected");
-            }
-        }
-    }
+    // Cheap now: the I/O thread does the actual XInputGetState off-thread and
+    // publishes the latest snapshot; here we just copy it into m_data (which getData()
+    // returns). No XInput call, so a degraded controller driver can't stall the caller.
+    std::lock_guard<std::mutex> lk(m_ioMutex);
+    m_data = m_dataPublished;
 }
 
 void XInputReader::setControllerIndex(int index) {
-    int oldIndex = m_controllerIndex;
-    // XInput supports controllers 0-3, or -1 for disabled
-    m_controllerIndex = std::max(-1, std::min(3, index));
+    // XInput supports controllers 0-3, or -1 for disabled.
+    int newIndex = std::max(-1, std::min(3, index));
+    m_controllerIndex.store(newIndex, std::memory_order_relaxed);
 
     // Force the next setVibration() to actually send - the new controller's
-    // motor state is unknown, so the dedup cache must not suppress it
+    // motor state is unknown, so the dedup cache must not suppress it.
     m_hasSentVibration = false;
 
-    // Poll the newly selected slot immediately (skip the disconnected backoff)
-    m_lastFailedMainPoll = std::chrono::steady_clock::time_point{};
+    // Tell the I/O thread to poll the freshly-selected slot immediately (skip the
+    // disconnected backoff). The I/O thread also detects the index change itself and
+    // stops rumble on the old slot (and on ALL slots when switching to disabled), so
+    // no XInputSetState runs on the caller thread here anymore.
+    m_pollImmediately.store(true, std::memory_order_relaxed);
 
-    // When disabling or switching controllers, stop vibration on old controller
-    if (oldIndex >= 0 && oldIndex != m_controllerIndex) {
-        XINPUT_VIBRATION vibration = {};
-        XInputSetState(oldIndex, &vibration);
-    }
-
-    // When switching to disabled, stop vibration on ALL controllers
-    // This clears any lingering vibration state from any source
-    if (m_controllerIndex < 0) {
-        XINPUT_VIBRATION vibration = {};
-        for (int i = 0; i < 4; i++) {
-            XInputSetState(i, &vibration);
-        }
+    if (newIndex < 0) {
         m_lastLeftMotor = 0.0f;
         m_lastRightMotor = 0.0f;
     }
 }
 
 bool XInputReader::didConnectionStateChange() {
-    bool changed = m_connectionStateChanged;
-    m_connectionStateChanged = false;
-    return changed;
+    return m_connectionStateChanged.exchange(false, std::memory_order_relaxed);
+}
+
+XInputReader::~XInputReader() {
+    // Static-teardown backstop: only fires if the orchestrated shutdown (stopIoThread)
+    // was skipped — e.g. the DLL is unloaded WITHOUT the Shutdown() export being
+    // called. That path runs under the Windows loader lock (FreeLibrary -> static
+    // dtors), and a std::thread::join() waits for the thread's OS-level exit, which
+    // ALSO needs the loader lock -> deadlock. So DON'T join: signal stop, spin until
+    // the thread has left our loop (an app-level flag, no loader lock involved), then
+    // detach so its CRT/OS teardown finishes without us blocking on it. By the time
+    // FreeLibrary unmaps our code, the thread is long past running any of it.
+    if (m_ioThread.joinable()) {
+        m_ioRun.store(false, std::memory_order_release);
+        while (!m_ioFinished.load(std::memory_order_acquire)) {
+            std::this_thread::yield();
+        }
+        m_ioThread.detach();
+    }
+}
+
+void XInputReader::startIoThread() {
+    if (m_ioRun.load(std::memory_order_acquire)) return;   // already running
+    m_ioFinished.store(false, std::memory_order_release);
+    m_ioRun.store(true, std::memory_order_release);
+    m_ioThread = std::thread([this]() {
+        // Top-level guard: an uncaught throw in a std::thread body calls
+        // std::terminate() and takes the host game down with it.
+        try {
+            ioThreadMain();
+        } catch (...) {
+            DEBUG_ERROR("XInputReader: I/O thread terminated by exception");
+        }
+        // LAST: signal the destructor's spin-wait that we've left our code. Keep this
+        // the final statement so no more of our (potentially-unmapped-soon) code runs.
+        m_ioFinished.store(true, std::memory_order_release);
+    });
+    DEBUG_INFO("XInputReader: I/O thread started");
+}
+
+void XInputReader::stopIoThread() {
+    if (!m_ioThread.joinable()) return;
+    m_ioRun.store(false, std::memory_order_release);
+    try { m_ioThread.join(); } catch (...) {}
+
+    // Motors off on the way out so the pad doesn't keep buzzing after the plugin
+    // unloads. One synchronous XInput call at shutdown (thread joined) is fine.
+    int idx = m_controllerIndex.load(std::memory_order_relaxed);
+    XINPUT_VIBRATION off = {};
+    if (idx >= 0) {
+        osSetState(idx, &off);
+    } else {
+        for (int i = 0; i < 4; i++) osSetState(i, &off);
+    }
+    DEBUG_INFO("XInputReader: I/O thread stopped");
+}
+
+void XInputReader::ioThreadMain() {
+    using clock = std::chrono::steady_clock;
+    int lastIdx = m_controllerIndex.load(std::memory_order_relaxed);
+    bool wasConnected = false;                 // selected-slot connection state
+    auto lastFailedPoll = clock::time_point{}; // disconnected-slot backoff anchor
+
+    while (m_ioRun.load(std::memory_order_acquire)) {
+        int idx = m_controllerIndex.load(std::memory_order_relaxed);
+
+        // Selected slot changed (or disabled): stop rumble on the old slot (all slots
+        // when disabling), and drop any pending command aimed at the old slot. This
+        // replaces the XInputSetState that setControllerIndex used to do inline.
+        if (idx != lastIdx) {
+            { std::lock_guard<std::mutex> lk(m_ioMutex); m_pendingRumble = false; }
+            XINPUT_VIBRATION off = {};
+            if (lastIdx >= 0) osSetState(lastIdx, &off);
+            if (idx < 0) for (int i = 0; i < 4; i++) osSetState(i, &off);
+            lastIdx = idx;
+            wasConnected = false;
+        }
+
+        // Execute the latest rumble command the caller's policy posted (if any).
+        bool hasCmd = false;
+        uint8_t left8 = 0, right8 = 0;
+        int cmdIdx = idx;
+        {
+            std::lock_guard<std::mutex> lk(m_ioMutex);
+            if (m_pendingRumble) {
+                hasCmd = true;
+                left8 = m_pendingLeft8;
+                right8 = m_pendingRight8;
+                cmdIdx = m_pendingIndex;
+                m_pendingRumble = false;
+            }
+        }
+        if (hasCmd && cmdIdx >= 0) {
+            XINPUT_VIBRATION vibration = {};
+            // 257 maps the 8-bit range back onto the full WORD range (255 -> 65535)
+            vibration.wLeftMotorSpeed = static_cast<WORD>(left8 * 257);
+            vibration.wRightMotorSpeed = static_cast<WORD>(right8 * 257);
+            osSetState(cmdIdx, &vibration);
+        }
+
+        // Poll the selected slot into a local, then publish. Mirrors the old update()
+        // logic: disabled -> default; disconnected -> back off (poll at most every
+        // DISCONNECTED_POLL_INTERVAL_MS) to avoid hammering the slow empty-slot path.
+        XInputData local;   // default = disconnected
+        if (idx >= 0) {
+            bool forced = m_pollImmediately.exchange(false, std::memory_order_relaxed);
+            bool skip = !wasConnected && !forced &&
+                        (clock::now() - lastFailedPoll < std::chrono::milliseconds(DISCONNECTED_POLL_INTERVAL_MS));
+            if (!skip) {
+                XINPUT_STATE state;
+                ZeroMemory(&state, sizeof(XINPUT_STATE));
+                if (osGetState(idx, &state) == ERROR_SUCCESS) {
+                    fillFromState(state, local);
+                    wasConnected = true;
+                } else {
+                    wasConnected = false;
+                    lastFailedPoll = clock::now();
+                }
+            }
+            // skip -> keep default (disconnected); wasConnected stays false
+        }
+        {
+            std::lock_guard<std::mutex> lk(m_ioMutex);
+            m_dataPublished = local;
+        }
+
+        // 1 Hz all-slot connection scan (feeds the settings UI controller list).
+        auto now = clock::now();
+        if (now - m_lastConnectionScan >= std::chrono::seconds(1)) {
+            m_lastConnectionScan = now;
+            for (int i = 0; i < 4; i++) {
+                bool connected = isControllerConnected(i);
+                if (connected != m_lastConnectedState[i]) {
+                    m_connectionStateChanged.store(true, std::memory_order_relaxed);
+                    m_lastConnectedState[i] = connected;
+                    DEBUG_INFO_F("XInputReader: Controller %d %s", i + 1, connected ? "connected" : "disconnected");
+                }
+            }
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(IO_LOOP_INTERVAL_MS));
+    }
 }
 
 bool XInputReader::isControllerConnected(int index) {
     if (index < 0 || index > 3) return false;
     XINPUT_STATE state;
     ZeroMemory(&state, sizeof(XINPUT_STATE));
-    return XInputGetState(index, &state) == ERROR_SUCCESS;
+    return osGetState(index, &state) == ERROR_SUCCESS;
 }
 
 std::string XInputReader::getControllerName(int index) {
@@ -371,12 +475,18 @@ void XInputReader::setVibration(float leftMotor, float rightMotor) {
     m_lastSentRightMotor = right8;
     m_lastVibrationSend = now;
 
-    XINPUT_VIBRATION vibration = {};
-    // 257 maps the 8-bit range back onto the full WORD range (255 -> 65535)
-    vibration.wLeftMotorSpeed = static_cast<WORD>(left8 * 257);
-    vibration.wRightMotorSpeed = static_cast<WORD>(right8 * 257);
-
-    XInputSetState(m_controllerIndex, &vibration);
+    // The policy above (idle-silence, send cap, keepalive, transition-to-zero bypass)
+    // is UNCHANGED and still runs on the caller thread at telemetry rate — only the
+    // actual XInputSetState is deferred to the I/O thread. Post the latest 8-bit motor
+    // pair; the I/O thread sends it (and coalesces if it hasn't drained the previous
+    // one yet — a skipped keepalive is harmless, the next one lands within a cap window).
+    {
+        std::lock_guard<std::mutex> lk(m_ioMutex);
+        m_pendingRumble = true;
+        m_pendingLeft8 = left8;
+        m_pendingRight8 = right8;
+        m_pendingIndex = m_controllerIndex.load(std::memory_order_relaxed);
+    }
 }
 
 void XInputReader::stopVibration() {

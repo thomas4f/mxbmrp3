@@ -2,7 +2,7 @@
 
 The shipping plugin is a Windows-only MSVC DLL, but its **logic** is portable and
 tested on Linux with no game and no Windows. Everything here runs in CI on every
-push (`.github/workflows/ci.yml`) and locally with a C++17 compiler + (for the
+push (`.github/workflows/tests.yml`) and locally with a C++17 compiler + (for the
 integration layer) mingw-w64 and Wine.
 
 There are four layers, fastest first. Reach for the cheapest one that can
@@ -17,7 +17,7 @@ change to its layer).
 | **Web overlay** — rendered DOM in a real browser | Playwright | Node.js | ~5s | `tests/web/run.sh` |
 
 Alongside the test layers, CI also runs **cppcheck** static analysis
-(`.github/workflows/ci.yml`, over `mxbmrp3/` with vendored code excluded). It's
+(`.github/workflows/tests.yml`, over `mxbmrp3/` with vendored code excluded). It's
 **report-only** — it annotates findings on the run and writes them to the job
 summary rather than failing the build, because cppcheck versions drift between
 runner images. The committed baseline is clean (intentional-pattern false
