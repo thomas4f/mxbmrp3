@@ -84,7 +84,9 @@ constexpr const char* ANALYTICS_FILENAME = "mxbmrp3_analytics.json";
 //          instead of unknown+0x0 — together these pin the "jumped to bad code"
 //          (execute AV into no module) injector-at-launch cluster. av_type absent
 //          for non-access-violation exceptions.
-constexpr const char* ANALYTICS_SDK_VERSION = "mxbmrp3-analytics@2.13.0";
+// 2.14.0 = added feat_thread (experimental plugin worker thread adoption flag;
+//          [Advanced] pluginThread) to app_started.
+constexpr const char* ANALYTICS_SDK_VERSION = "mxbmrp3-analytics@2.14.0";
 
 // Build a UUID-v4 string from 16 cryptographically-random bytes. This is the
 // ONLY identifier we ever send — it is random (not derived from hardware or
@@ -491,6 +493,8 @@ std::string AnalyticsManager::buildEventBody() const {
     props["feat_widgets"] = HudManager::getInstance().areWidgetsEnabled() ? 1 : 0;
     // Companion window (standalone HUD window): COMPANION or BOTH counts as enabled.
     props["feat_companion"] = (UiConfig::getInstance().getDisplayTarget() != DisplayTarget::IN_GAME) ? 1 : 0;
+    // Experimental plugin worker thread (INI-only [Advanced] pluginThread): adoption rate.
+    props["feat_thread"] = UiConfig::getInstance().getPluginThread() ? 1 : 0;
     // Developer mode (INI-only power-user flag): mainly to filter the dev's and
     // testers' own Release-build sessions out of real-user stats.
     props["feat_devmode"] = SettingsManager::getInstance().isDeveloperMode() ? 1 : 0;

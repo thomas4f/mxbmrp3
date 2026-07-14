@@ -41,6 +41,7 @@ TEST_CASE("analytics wiring: app_started always built; sampling gates session_en
     CHECK(has(app, "\"version_status\":\"new\""));
     CHECK(has(app, "\"feat_director\""));                             // a representative feature flag
     CHECK(has(app, "\"feat_companion\""));                            // companion HUD window adoption flag
+    CHECK(has(app, "\"feat_thread\""));                               // plugin worker thread adoption flag
     CHECK(has(app, "\"isDebug\":true"));   // capture mode routes to the debug bucket (belt-and-suspenders)
 
     // --- FULL launch: session_end + custom both enqueue. ---
