@@ -338,7 +338,9 @@ jobs:
           # debug CRT DLLs at LoadLibrary time. Stage each next to the fuzzer so the
           # load can't fail on a missing dependency: the ASan runtime + VC debug CRTs
           # (vcruntime140d/msvcp140d) live in the VC toolset/redist, the debug UCRT
-          # (ucrtbased.dll) in the Windows SDK. Best-effort search of both roots; the
+          # (ucrtbased.dll) in the Windows SDK. These roots ALSO hold arm64/x86 copies,
+          # so the hit MUST be filtered to an x64 path (an arm64 DLL next to the x64
+          # exe faults the loader with STATUS_ILLEGAL_INSTRUCTION). Best-effort; the
           # step never fails on a miss (a genuinely absent DLL surfaces as a clear
           # error 126 from the fuzzer load instead).
           $vcbin = Split-Path (Get-Command cl.exe).Source
@@ -348,11 +350,14 @@ jobs:
           foreach ($name in @('clang_rt.asan_dynamic-x86_64.dll','vcruntime140d.dll',
                               'vcruntime140_1d.dll','msvcp140d.dll','ucrtbased.dll')) {
             if (Test-Path $name) { continue }
+            $staged = $false
             foreach ($root in $roots) {
               $hit = Get-ChildItem -Path $root -Recurse -File -Filter $name -ErrorAction SilentlyContinue |
+                     Where-Object { $_.FullName -match '\\(x64|Hostx64)\\' -and $_.FullName -notmatch '\\(arm64|arm|x86)\\' } |
                      Select-Object -First 1
-              if ($hit) { Copy-Item $hit.FullName . -Force; Write-Host "staged $name from $($hit.DirectoryName)"; break }
+              if ($hit) { Copy-Item $hit.FullName . -Force; Write-Host "staged $name from $($hit.DirectoryName)"; $staged = $true; break }
             }
+            if (-not $staged) { Write-Host "note: could not stage $name (relying on PATH)" }
           }
           .\callback_fuzzer.exe $dll 1000000 $save
           if ($LASTEXITCODE -ne 0) { Write-Error "ASan caught a memory violation (exit $LASTEXITCODE) — see the stacks above"; exit $LASTEXITCODE }
