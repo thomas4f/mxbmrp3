@@ -1,0 +1,29 @@
+<Project>
+  <!--
+    AddressSanitizer CI runtime-flavor override.
+
+    The memory-safety-msvc CI job (.github/workflows/tests.yml) and
+    tests/asan/run_asan_msvc.ps1 build this project with /p:EnableASAN=true. The
+    MXB-Debug config links the STATIC debug CRT (/MTd), whose ASan runtime is
+    per-module. On recent MSVC toolsets (VS 2022 17.14+ / the VS "18" toolset the
+    windows-latest image now ships) that cross-module static-ASan model breaks when
+    the boundary fuzzer EXE LoadLibrary's the instrumented plugin DLL: the load
+    fails with error 127 (ERROR_PROC_NOT_FOUND) — a required ASan-runtime export
+    isn't resolvable across the module boundary.
+
+    The fix (see tests/asan/README.md's ASan-runtime note) is to build the DLL AND
+    the fuzzer with the DYNAMIC debug CRT (/MDd) so both resolve the single shared
+    clang_rt.asan_dynamic-x86_64.dll. This override is imported after the project
+    body (Microsoft.Cpp.targets pulls in Directory.Build.targets near the end), so
+    its ItemDefinitionGroup wins over the config's RuntimeLibrary — but ONLY when
+    EnableASAN is set. Every normal build leaves EnableASAN empty, so this is inert
+    and the shipping MSVC build is byte-for-byte unchanged. It's also MSVC-only
+    (msbuild/vcxproj), so the Linux mingw cross-build is unaffected.
+  -->
+  <ItemDefinitionGroup Condition="'$(EnableASAN)'=='true'">
+    <ClCompile>
+      <RuntimeLibrary Condition="'$(Configuration)'=='MXB-Debug'">MultiThreadedDebugDLL</RuntimeLibrary>
+      <RuntimeLibrary Condition="'$(Configuration)'!='MXB-Debug'">MultiThreadedDLL</RuntimeLibrary>
+    </ClCompile>
+  </ItemDefinitionGroup>
+</Project>

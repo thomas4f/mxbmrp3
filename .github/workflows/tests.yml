@@ -312,13 +312,15 @@ jobs:
           /p:EnableASAN=true /p:BasicRuntimeChecks=Default /p:LinkIncremental=false
           /m /v:minimal
 
-      # /MTd matches the MXB-Debug DLL's static debug CRT so both modules agree on
-      # the ASan runtime flavor. If this ever fails at DLL load with an ASan-runtime
-      # error, switch both DLL and fuzzer to the dynamic /MDd runtime (see
-      # tests/asan/README.md's ASan-runtime note).
+      # /MDd (dynamic debug CRT) matches the DLL build: the MXB-Debug DLL is forced
+      # to /MDd under ASan by mxbmrp3/Directory.Build.targets, so both modules share
+      # the single clang_rt.asan_dynamic-x86_64.dll. Static ASan (/MTd) is per-module
+      # and fails to load across the fuzzer→DLL LoadLibrary boundary on recent MSVC
+      # toolsets with error 127 (ERROR_PROC_NOT_FOUND) — see tests/asan/README.md's
+      # ASan-runtime note.
       - name: Build boundary fuzzer with AddressSanitizer
         shell: pwsh
-        run: cl /nologo /std:c++17 /MTd /EHsc /Zi /fsanitize=address tests\integration\callback_fuzzer.cpp /Fe:callback_fuzzer.exe
+        run: cl /nologo /std:c++17 /MDd /EHsc /Zi /fsanitize=address tests\integration\callback_fuzzer.cpp /Fe:callback_fuzzer.exe
 
       # Drive the real callbacks against the ASan DLL. A native temp savepath (arg 3)
       # replaces the fuzzer's Wine-only Z:\ default. Exit code is the fuzzer's:
@@ -332,6 +334,26 @@ jobs:
           New-Item -ItemType Directory -Force -Path $save | Out-Null
           $dll = "build\MXB-Debug\mxbmrp3.dlo"
           if (-not (Test-Path $dll)) { Write-Error "ASan DLL not found at $dll"; exit 1 }
+          # The /MDd fuzzer + DLL resolve the dynamic ASan runtime and the DYNAMIC
+          # debug CRT DLLs at LoadLibrary time. Stage each next to the fuzzer so the
+          # load can't fail on a missing dependency: the ASan runtime + VC debug CRTs
+          # (vcruntime140d/msvcp140d) live in the VC toolset/redist, the debug UCRT
+          # (ucrtbased.dll) in the Windows SDK. Best-effort search of both roots; the
+          # step never fails on a miss (a genuinely absent DLL surfaces as a clear
+          # error 126 from the fuzzer load instead).
+          $vcbin = Split-Path (Get-Command cl.exe).Source
+          $roots = @($vcbin, $env:VCToolsRedistDir, $env:VCINSTALLDIR,
+                     $env:WindowsSdkDir, $env:UniversalCRTSdkDir) |
+                   Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+          foreach ($name in @('clang_rt.asan_dynamic-x86_64.dll','vcruntime140d.dll',
+                              'vcruntime140_1d.dll','msvcp140d.dll','ucrtbased.dll')) {
+            if (Test-Path $name) { continue }
+            foreach ($root in $roots) {
+              $hit = Get-ChildItem -Path $root -Recurse -File -Filter $name -ErrorAction SilentlyContinue |
+                     Select-Object -First 1
+              if ($hit) { Copy-Item $hit.FullName . -Force; Write-Host "staged $name from $($hit.DirectoryName)"; break }
+            }
+          }
           .\callback_fuzzer.exe $dll 1000000 $save
           if ($LASTEXITCODE -ne 0) { Write-Error "ASan caught a memory violation (exit $LASTEXITCODE) — see the stacks above"; exit $LASTEXITCODE }
           Write-Host "MSVC ASan boundary fuzz: survived clean."

@@ -103,11 +103,13 @@ requirement, so it needs no secrets. To reproduce locally on Windows,
    msbuild mxbmrp3.sln /p:Configuration=MXB-Debug /p:Platform=x64 `
      /p:EnableASAN=true /p:BasicRuntimeChecks=Default /p:LinkIncremental=false
    ```
-   Output: `build\MXB-Debug\mxbmrp3.dlo`.
+   Output: `build\MXB-Debug\mxbmrp3.dlo`. `EnableASAN=true` also flips the DLL's CRT
+   from static (`/MTd`) to dynamic debug (`/MDd`) via `mxbmrp3/Directory.Build.targets`
+   — see the runtime note below.
 2. **Build the boundary fuzzer with ASan** (it `LoadLibrary`s the DLL). Match its CRT
-   to the DLL's (`/MTd`) so both agree on the ASan runtime — see the runtime note below:
+   to the DLL's (`/MDd`) so both share the one ASan runtime — see the runtime note below:
    ```powershell
-   cl /std:c++17 /MTd /Zi /fsanitize=address tests\integration\callback_fuzzer.cpp /Fe:callback_fuzzer.exe
+   cl /std:c++17 /MDd /Zi /fsanitize=address tests\integration\callback_fuzzer.cpp /Fe:callback_fuzzer.exe
    ```
 3. **Run**, pointing the fuzzer at the ASan DLL, with millions of iterations
    (arg 3 is a native savepath, replacing the fuzzer's Wine-only `Z:\` default):
@@ -124,13 +126,19 @@ A clean run over the fuzzer (and, optionally, real tapes) is strong, self-standi
 evidence the plugin does not corrupt memory. A hit prints the writing + allocating
 stacks — the culprit line, deterministically.
 
-> **ASan-runtime note (the one thing unverifiable off-Windows):** the `MXB-Debug`
-> config links the CRT statically (`/MTd`), so its ASan runtime is static too. MSVC
-> prefers the *dynamic* ASan runtime when an EXE loads an instrumented DLL. The fuzzer
-> is therefore built `/MTd` to match the DLL's runtime flavor. If the first real run
-> fails at DLL load with an ASan-runtime error, the fix is to build **both** with the
-> dynamic debug runtime (`/MDd`), which for the DLL means overriding its
-> `RuntimeLibrary` for this build (e.g. a scoped `Directory.Build.props`).
+> **ASan-runtime note:** the `MXB-Debug` config links the CRT statically (`/MTd`),
+> whose ASan runtime is **per-module**. When an EXE `LoadLibrary`s an instrumented
+> DLL, that per-module static runtime doesn't resolve across the boundary on recent
+> MSVC toolsets (VS 2022 17.14+ / the VS "18" toolset `windows-latest` now ships) —
+> the load fails with **error 127 (`ERROR_PROC_NOT_FOUND`)**. The fix is to build
+> **both** modules with the *dynamic* debug runtime (`/MDd`) so they share the single
+> `clang_rt.asan_dynamic-x86_64.dll`. `mxbmrp3/Directory.Build.targets` does this for
+> the DLL — it overrides `RuntimeLibrary` to `MultiThreadedDebugDLL` **only** when
+> `EnableASAN=true` (inert for every normal build, so the shipping DLL is unchanged);
+> the fuzzer is compiled `/MDd` to match. The dynamic runtime DLL lives in the
+> toolset bin (on `PATH` after vcvars/msvc-dev-cmd), and the CI run step also stages
+> it next to the fuzzer and puts the VC debug-CRT redist on `PATH` as
+> belt-and-suspenders.
 
 ---
 

@@ -14,6 +14,8 @@
    #    'Debug' config that maps the plugin project), e.g.:
    #    msbuild mxbmrp3.sln /p:Configuration=MXB-Debug /p:Platform=x64 `
    #      /p:EnableASAN=true /p:BasicRuntimeChecks=Default /p:LinkIncremental=false
+   #    (EnableASAN forces the DLL to the dynamic debug CRT /MDd via
+   #     mxbmrp3/Directory.Build.targets, so it shares the ASan runtime with the fuzzer)
    # 2) Then drive it under ASan (DLL output is build\MXB-Debug\mxbmrp3.dlo):
    pwsh tests/asan/run_asan_msvc.ps1 -Dll .\build\MXB-Debug\mxbmrp3.dlo -Iterations 5000000
 
@@ -49,16 +51,23 @@ if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
 $fuzzerSrc = Join-Path $PSScriptRoot "..\integration\callback_fuzzer.cpp"
 $fuzzerExe = Join-Path $OutDir "callback_fuzzer.exe"
 
-# /MTd matches the MXB-Debug DLL's static debug CRT so both agree on the ASan
-# runtime flavor (see README's ASan-runtime note; if a run fails at DLL load,
-# switch both DLL and fuzzer to the dynamic /MDd runtime).
-Write-Host "Building boundary fuzzer with /fsanitize=address (/MTd to match the DLL) ..."
-& cl /nologo /std:c++17 /MTd /EHsc /Zi /fsanitize=address `
+# /MDd (dynamic debug CRT) matches the DLL, which EnableASAN forces to /MDd via
+# mxbmrp3/Directory.Build.targets, so both modules share the single
+# clang_rt.asan_dynamic-x86_64.dll (see README's ASan-runtime note). The static
+# runtime (/MTd) is per-module and fails to load across the fuzzer->DLL boundary on
+# recent MSVC toolsets with error 127 (ERROR_PROC_NOT_FOUND).
+Write-Host "Building boundary fuzzer with /fsanitize=address (/MDd to match the DLL) ..."
+& cl /nologo /std:c++17 /MDd /EHsc /Zi /fsanitize=address `
      $fuzzerSrc /Fe:$fuzzerExe /Fo:"$OutDir\" /Fd:"$OutDir\" | Write-Host
 if ($LASTEXITCODE -ne 0) { throw "fuzzer build failed ($LASTEXITCODE)" }
 
-# ASan runtime DLL must be resolvable by the fuzzer + plugin; the VS toolset dir
-# is on PATH after vcvars, which is where clang_rt.asan_dynamic-x86_64.dll lives.
+# The /MDd fuzzer + plugin resolve the dynamic ASan runtime
+# (clang_rt.asan_dynamic-x86_64.dll) AND the dynamic debug CRT DLLs
+# (vcruntime140d/msvcp140d from the VC toolset, ucrtbased from the Windows SDK) at
+# load time. A vcvars/'x64 Native Tools' shell has all of these on PATH, so no
+# staging is needed here (the CI job stages them explicitly because its shell is
+# leaner). If a run fails at load with error 126 naming a *d.dll, that dependency
+# isn't on PATH -- open this from a full Native Tools prompt.
 $env:ASAN_OPTIONS = "abort_on_error=1:halt_on_error=1:print_stats=1"
 
 Write-Host "Running $Iterations iterations against $Dll under ASan ..."
