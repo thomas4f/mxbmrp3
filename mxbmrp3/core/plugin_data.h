@@ -18,6 +18,7 @@
 #include "../game/unified_types.h"    // For Unified::RaceClassificationEntry
 #include "plugin_constants.h"  // For Placeholders namespace
 #include "event_log_types.h"   // For EventLogEntry, EventLogType
+#include "segment_cumulative.h" // For SegmentCumulative (segment-timer aggregation)
 
 // Forward declarations
 struct XInputData;
@@ -1291,21 +1292,25 @@ public:
     // Segment Timer (training tool: time custom track sections). The player drops
     // a chain of boundary points (Add hotkey); segments are the open arcs between
     // consecutive points (N points = N-1 segments, no auto-close), each timed live
-    // as you drive through it (split-style). Player-only, fed from RunTelemetry each
-    // tick. In-memory only - never persisted.
+    // as you drive through it. Times AGGREGATE like the official split timer: the
+    // displayed time/delta are running totals from the chain's first point (see
+    // `cum` / segment_cumulative.h), so points on the official splits read like the
+    // regular HUD. Player-only, fed from RunTelemetry each tick. In-memory only -
+    // never persisted.
     // ========================================================================
-    enum class SegmentNoticeKind : uint8_t { None, Added, Removed, Cleared };
+    enum class SegmentNoticeKind : uint8_t { None, Added, Removed };
 
     struct SegmentTimerData {
         // Upper bound on boundary points (a training aid - far more than anyone
         // needs; keeps the per-tick crossing scan and the "Segment N" labels sane).
         static constexpr int MAX_POINTS = 20;
 
-        // Boundary points in the order added (trackPos 0-1). The points are dividers
-        // and segments are the open arcs between consecutive points: N points (N>=2)
-        // make N-1 segments, segment i spanning points[i] -> points[i+1]. The chain
-        // is NOT auto-closed - to time the stretch back to start, drop a point on the
-        // start/finish line.
+        // Boundary points in the order added (trackPos 0-1). A SINGLE point is a special
+        // case: a full-lap LOOP (segment 0 spans that point all the way around back to
+        // itself), so one marker already times laps from it. With N>=2 points the points
+        // are dividers and segments are the open arcs between consecutive points: N-1
+        // segments, segment i spanning points[i] -> points[i+1] (the chain is NOT
+        // auto-closed - to time the stretch back to start, drop a point on the S/F line).
         std::vector<float> points;
 
         // Per-segment session best (parallel, size = segmentCount()).
@@ -1317,18 +1322,27 @@ public:
         int runningSeg = -1;          // index of the segment currently being timed (-1 = none)
         std::chrono::steady_clock::time_point runStart;  // interpolated wall time of the run start
 
-        // Last completed segment (for the split-style freeze display)
-        int lastSeg = -1;             // index of the last completed segment
-        float lastTime = 0.0f;        // its time (seconds)
-        bool lastHasDelta = false;    // there was a prior best for that segment
-        float lastDelta = 0.0f;       // lastTime - its previous best (negative = faster)
-        bool lastIsBest = false;      // this completion set a new best for that segment
+        // Index of the last completed segment: drives the split-style freeze display and
+        // which segment the panel shows. The displayed time/delta come from the cumulative
+        // aggregation in `cum` below (per-arc isolated values are no longer cached here).
+        int lastSeg = -1;
         unsigned int completionCounter = 0;  // bumped on each completion (drives the display freeze)
 
-        // Number of timed segments. The points are open dividers (no wrap), so N
-        // points (N>=2) make N-1 serial segments: segment i spans points[i] ->
-        // points[i+1].
-        int segmentCount() const { return points.size() >= 2 ? static_cast<int>(points.size()) - 1 : 0; }
+        // Cumulative ("aggregate like the official splits") view of the contiguous
+        // run through the chain: the shown time/delta are running totals from the
+        // chain's first point, so points dropped on the official split positions
+        // read like the regular timing HUD. Fed by updateSegmentTimer, read by the
+        // TimingHud segment override. See segment_cumulative.h.
+        SegmentCumulative cum;
+
+        // Number of timed segments. A single point is a full-lap loop (1 segment); N>=2
+        // open dividers (no wrap) make N-1 serial segments (segment i: points[i] ->
+        // points[i+1]); 0 points, none.
+        int segmentCount() const {
+            const size_t n = points.size();
+            if (n == 1) return 1;                                     // single point = full-lap loop
+            return n >= 2 ? static_cast<int>(n) - 1 : 0;
+        }
 
         // Circular distance (0-1 lap) at/under which a closing point counts as "back
         // on the first point". A closing add within this of points[0] is snapped
@@ -1362,6 +1376,9 @@ public:
     // Segment notice (transient, consumed by NoticesHud like the other timed notices)
     bool hasSegmentNotice() const  { return m_segmentNotice != SegmentNoticeKind::None; }
     SegmentNoticeKind getSegmentNoticeKind() const  { return m_segmentNotice; }
+    // 1-based ordinal of the POINT the notice refers to (the one just added/removed), so
+    // the notice counts up as points are placed and down as they're removed.
+    int getSegmentNoticeNumber() const  { return m_segmentNoticeNumber; }
     std::chrono::steady_clock::time_point getSegmentNoticeTime() const  { return m_segmentNoticeTime; }
     void clearSegmentNotice()  { m_segmentNotice = SegmentNoticeKind::None; }
 
@@ -1533,6 +1550,7 @@ private:
     float m_segmentPrevPos = 0.0f;          // Previous tick trackPos (0-1)
     std::chrono::steady_clock::time_point m_segmentPrevWall;  // Wall time of previous tick (for interpolation)
     SegmentNoticeKind m_segmentNotice = SegmentNoticeKind::None;
+    int m_segmentNoticeNumber = 0;  // 1-based point ordinal the notice refers to (0 = none)
     std::chrono::steady_clock::time_point m_segmentNoticeTime;
     std::vector<float> m_splitPositions;    // official split positions (0-1) for snap-to-split
 

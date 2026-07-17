@@ -82,5 +82,15 @@ TEST_CASE("live gaps: per-rider liveGapMs/liveGapValid contract") {
         CHECK(riderByNum(d, 22).value("liveGapValid", true) == false);   // lapped → invalid
     }
 
+    // --- Phase 4 (regression): removeRaceEntry must evict the "active" bit ----
+    // Bob was in the last batch, so his active-track-pos bit is set. If he leaves
+    // and a NEW rider joins reusing #22 while no batches arrive (the player could
+    // be sitting in menus — no callbacks flow there to refresh the set), the
+    // rejoiner must NOT inherit the stale bit. removeRaceEntry() missed this set.
+    REQUIRE(host.hasActiveTrackPos(22) == 1);   // set by the phase-3 batch
+    host.removeEntry(22);
+    host.addEntry(22, "Carl");                  // raceNum reuse, no new batch
+    CHECK(host.hasActiveTrackPos(22) == 0);     // fresh rider, no stale "active" bit
+
     host.shutdown();
 }

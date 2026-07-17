@@ -12,25 +12,8 @@ bool SettingsHud::handleClickTabFriends(const ClickRegion& region) {
     if (!hud) hud = m_friends;
 
     switch (region.type) {
-        case ClickRegion::FRIENDS_ROW_COUNT_UP:
-            if (hud) {
-                hud->m_maxDisplayRows = applyAcceleratedClamp(
-                    hud->m_maxDisplayRows, 1,
-                    FriendsHud::MIN_DISPLAY_ROWS, FriendsHud::MAX_DISPLAY_ROWS, true);
-                hud->setDataDirty();
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::FRIENDS_ROW_COUNT_DOWN:
-            if (hud) {
-                hud->m_maxDisplayRows = applyAcceleratedClamp(
-                    hud->m_maxDisplayRows, 1,
-                    FriendsHud::MIN_DISPLAY_ROWS, FriendsHud::MAX_DISPLAY_ROWS, false);
-                hud->setDataDirty();
-                setDataDirty();
-            }
-            return true;
+        // Max rows is a data-driven STEPPED control now - registered in
+        // renderTabFriends via ctx.addSteppedControl.
 
         case ClickRegion::FRIENDS_HEADERS_TOGGLE:
             if (hud) {
@@ -40,18 +23,9 @@ bool SettingsHud::handleClickTabFriends(const ClickRegion& region) {
             }
             return true;
 
-        case ClickRegion::FRIENDS_SHOW_MODE_UP:
-        case ClickRegion::FRIENDS_SHOW_MODE_DOWN:
-            if (hud) {
-                const int count = static_cast<int>(FriendsHud::ShowMode::COUNT);
-                const int step = (region.type == ClickRegion::FRIENDS_SHOW_MODE_UP) ? 1 : (count - 1);
-                hud->m_showMode = static_cast<FriendsHud::ShowMode>(
-                    (static_cast<int>(hud->m_showMode) + step) % count);
-                hud->m_activityShowing = false;  // reset transient ON_JOIN state on mode change
-                hud->setDataDirty();
-                setDataDirty();
-            }
-            return true;
+        // Show mode is a data-driven CYCLE control now - registered in
+        // renderTabFriends via ctx.addCycleControl (resetting the transient
+        // ON_JOIN state is the descriptor's postStep).
 
         case ClickRegion::FRIENDS_SELF_TOGGLE:
             if (hud) {
@@ -82,19 +56,25 @@ BaseHud* SettingsHud::renderTabFriends(SettingsLayoutContext& ctx) {
 
     char rowCountValue[8];
     snprintf(rowCountValue, sizeof(rowCountValue), "%d", hud->m_maxDisplayRows);
-    ctx.addCycleControl("Max rows", rowCountValue, 10,
-        SettingsHud::ClickRegion::FRIENDS_ROW_COUNT_DOWN,
-        SettingsHud::ClickRegion::FRIENDS_ROW_COUNT_UP,
+    ctx.addSteppedControl("Max rows", rowCountValue, 10,
+        SettingsHud::SteppedControl::clampInt(&hud->m_maxDisplayRows, 1,
+            FriendsHud::MIN_DISPLAY_ROWS, FriendsHud::MAX_DISPLAY_ROWS, hud),
         hud, true, false, "friends.rows");
 
     ctx.addToggleControl("Column headers", hud->m_bShowHeaders,
         SettingsHud::ClickRegion::FRIENDS_HEADERS_TOGGLE, hud, nullptr, 0, true,
         "friends.headers");
 
-    ctx.addCycleControl("Show mode", FriendsHud::getShowModeName(hud->m_showMode), 10,
-        SettingsHud::ClickRegion::FRIENDS_SHOW_MODE_DOWN,
-        SettingsHud::ClickRegion::FRIENDS_SHOW_MODE_UP,
-        hud, true, false, "friends.showmode");
+    {
+        SettingsHud::CycleControl showCycle = SettingsHud::CycleControl::enumMember(
+            hud, &FriendsHud::m_showMode,
+            static_cast<int>(FriendsHud::ShowMode::COUNT), hud);
+        // Reset transient ON_JOIN state on mode change (exactly what the old
+        // dedicated handler did).
+        showCycle.postStep = [hud]() { hud->m_activityShowing = false; };
+        ctx.addCycleControl("Show mode", FriendsHud::getShowModeName(hud->m_showMode), 10,
+            showCycle, hud, true, false, "friends.showmode");
+    }
 
     ctx.addToggleControl("Show myself", hud->m_showSelf,
         SettingsHud::ClickRegion::FRIENDS_SELF_TOGGLE, hud, nullptr, 0, true,

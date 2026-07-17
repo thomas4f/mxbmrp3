@@ -118,7 +118,8 @@ void DirectorWidget::resetToDefaults() {
 }
 
 bool DirectorWidget::isClicked() const {
-    if (!m_bVisible) return false;
+    // Surface-aware visibility: the button may be enabled only on the companion.
+    if (!isVisibleOnActiveSurface()) return false;
     const InputManager& input = InputManager::getInstance();
     if (!input.shouldShowCursor()) return false;          // only clickable in cursor mode
     const CursorPosition& cursor = input.getCursorPosition();

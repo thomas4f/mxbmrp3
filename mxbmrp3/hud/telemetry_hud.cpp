@@ -284,30 +284,9 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
                                                 float x, float y, float width, float height, bool hasFullTelemetry) {
     const auto dims = getScaledDimensions();
 
-    // Grid lines (0-100% range, drawn first so dots appear on top)
-    float gridLineThickness = 0.001f * getScale();  // ~1px at 1080p for subtle grid lines
-    unsigned long gridColor = this->getColor(ColorSlot::MUTED);  // Muted gray for subtle grid lines
-
-    // Grid line percentages (defined as constants in header)
-    const float gridValues[] = {
-        GRID_LINE_100_PERCENT,
-        GRID_LINE_50_PERCENT,
-        GRID_LINE_0_PERCENT
-    };
-    for (float gridValue : gridValues) {
-        float gridY = y + height - (gridValue * height);
-        addHorizontalGridLine(x, gridY, width, gridColor, gridLineThickness);
-    }
-
-    // Y-axis labels (input %, matching the grid lines)
-    {
-        float labelX = x + dims.paddingH * 0.2f;
-        unsigned long labelColor = this->getColor(ColorSlot::TERTIARY);
-        int labelFont = this->getFont(FontCategory::SMALL);
-        addString("100%", labelX, y, PluginConstants::Justify::LEFT, labelFont, labelColor, dims.fontSizeSmall);
-        addString("50%", labelX, y + height * 0.5f, PluginConstants::Justify::LEFT, labelFont, labelColor, dims.fontSizeSmall);
-        addString("0%", labelX, y + height - dims.lineHeightSmall, PluginConstants::Justify::LEFT, labelFont, labelColor, dims.fontSizeSmall);
-    }
+    // Grid lines (0-100% range, drawn first so dots appear on top) + Y-axis
+    // input% labels — the shared strip-chart frame.
+    addStripChartFrame(x, y, width, height, "100%", "50%", "0%", dims);
 
     // Draw input histories as line graphs (only enabled inputs)
     struct InputLine {
@@ -318,7 +297,7 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
 
     // Match performance graph logic: spacing based on max history, not current size
     float pointSpacing = width / (HistoryBuffers::MAX_TELEMETRY_HISTORY - 1);
-    float lineThickness = 0.002f * getScale();  // Line thickness for graph rendering
+    float lineThickness = stripChartLineThickness();  // Line thickness for graph rendering
 
     // PERFORMANCE OPTIMIZATION: Merge 4 separate loops into single pass
     // Previous: 4 × O(199) = 796 iterations per frame

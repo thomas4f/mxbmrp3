@@ -44,8 +44,10 @@ void SettingsButtonWidget::update() {
 }
 
 bool SettingsButtonWidget::isClicked() const {
-    // Hidden by the user (settings opened via hotkey) - don't intercept clicks
-    if (!m_bVisible) {
+    // Hidden by the user (settings opened via hotkey) - don't intercept clicks.
+    // Surface-aware: the button may be hidden in-game but enabled on the
+    // companion window, where it still renders and must accept clicks.
+    if (!isVisibleOnActiveSurface()) {
         return false;
     }
 

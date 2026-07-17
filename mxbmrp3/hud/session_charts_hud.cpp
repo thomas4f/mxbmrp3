@@ -391,7 +391,7 @@ void SessionChartsHud::drawLapChart(float px, float py, float pw, float ph,
     const auto dims = getScaledDimensions();
     const int K = static_cast<int>(drawn.size());
     const int yRows = std::max(2, K);
-    const float gridThickness = 0.001f * dims.scale;
+    const float gridThickness = stripChartGridThickness();
     const unsigned long gridColor = this->getColor(ColorSlot::MUTED);
 
     auto yForRow = [&](int row0) {  // 0 = top row (leader among the shown riders)
@@ -440,9 +440,6 @@ void SessionChartsHud::drawLapChart(float px, float py, float pw, float ph,
     }
 
     if (m_enabledElements & ELEM_AXIS_LABELS) {
-        const unsigned long lc = this->getColor(ColorSlot::TERTIARY);
-        const int f = this->getFont(FontCategory::SMALL);
-        char buf[8];
         // Y is order among the SHOWN riders, so label the top/bottom rows with the
         // actual positions of the shown riders occupying them at the latest lap.
         int topPos = 0, botPos = 0;
@@ -456,17 +453,13 @@ void SessionChartsHud::drawLapChart(float px, float py, float pw, float ph,
             }
             if (best > 0) { topPos = best; botPos = worst; break; }
         }
+        char topBuf[8], botBuf[8];
         if (topPos > 0) {
-            snprintf(buf, sizeof(buf), "P%d", topPos);
-            addString(buf, px - dims.paddingH * 0.2f, py, Justify::RIGHT, f, lc, dims.fontSizeSmall);
-            snprintf(buf, sizeof(buf), "P%d", botPos);
-            addString(buf, px - dims.paddingH * 0.2f, py + ph - dims.lineHeightSmall, Justify::RIGHT, f, lc, dims.fontSizeSmall);
+            snprintf(topBuf, sizeof(topBuf), "P%d", topPos);
+            snprintf(botBuf, sizeof(botBuf), "P%d", botPos);
         }
-        addString("L1", px, py + ph + dims.lineHeightSmall * 0.2f, Justify::LEFT, f, lc, dims.fontSizeSmall);
-        if (field.maxLap > 1) {
-            snprintf(buf, sizeof(buf), "L%d", field.maxLap);
-            addString(buf, px + pw, py + ph + dims.lineHeightSmall * 0.2f, Justify::RIGHT, f, lc, dims.fontSizeSmall);
-        }
+        addChartAxisLabels(px, py, pw, ph, field.maxLap,
+                           topPos > 0 ? topBuf : nullptr, topPos > 0 ? botBuf : nullptr, dims);
     }
 }
 
@@ -502,7 +495,7 @@ void SessionChartsHud::drawTraceChart(float px, float py, float pw, float ph,
         return py + static_cast<float>(vMax - vc) / static_cast<float>(span) * ph;
     };
 
-    const float gridThickness = 0.001f * dims.scale;
+    const float gridThickness = stripChartGridThickness();
     const unsigned long gridColor = this->getColor(ColorSlot::MUTED);
     if (m_enabledElements & ELEM_GRID) {
         addHorizontalGridLine(px, py, pw, gridColor, gridThickness);
@@ -537,20 +530,13 @@ void SessionChartsHud::drawTraceChart(float px, float py, float pw, float ph,
             addRiderTag(tag.x, tag.y, field.raceNums[d.fieldIdx], d.color);
     }
     if (m_enabledElements & ELEM_AXIS_LABELS) {
-        const unsigned long lc = this->getColor(ColorSlot::TERTIARY);
-        const int f = this->getFont(FontCategory::SMALL);
-        char buf[16];
+        char topBuf[16], botBuf[16];
         if (hasData) {
-            formatSecs(buf, sizeof(buf), vMax, true);
-            addString(buf, px - dims.paddingH * 0.2f, py, Justify::RIGHT, f, lc, dims.fontSizeSmall);
-            formatSecs(buf, sizeof(buf), vMin, true);
-            addString(buf, px - dims.paddingH * 0.2f, py + ph - dims.lineHeightSmall, Justify::RIGHT, f, lc, dims.fontSizeSmall);
+            formatSecs(topBuf, sizeof(topBuf), vMax, true);
+            formatSecs(botBuf, sizeof(botBuf), vMin, true);
         }
-        addString("L1", px, py + ph + dims.lineHeightSmall * 0.2f, Justify::LEFT, f, lc, dims.fontSizeSmall);
-        if (field.maxLap > 1) {
-            snprintf(buf, sizeof(buf), "L%d", field.maxLap);
-            addString(buf, px + pw, py + ph + dims.lineHeightSmall * 0.2f, Justify::RIGHT, f, lc, dims.fontSizeSmall);
-        }
+        addChartAxisLabels(px, py, pw, ph, field.maxLap,
+                           hasData ? topBuf : nullptr, hasData ? botBuf : nullptr, dims);
     }
 }
 
@@ -582,7 +568,7 @@ void SessionChartsHud::drawGapChart(float px, float py, float pw, float ph,
         return py + static_cast<float>(gc) / static_cast<float>(gapMax) * ph;
     };
 
-    const float gridThickness = 0.001f * dims.scale;
+    const float gridThickness = stripChartGridThickness();
     const unsigned long gridColor = this->getColor(ColorSlot::MUTED);
     if (m_enabledElements & ELEM_GRID) {
         addHorizontalGridLine(px, py, pw, gridColor, gridThickness);          // leader (0)
@@ -606,17 +592,9 @@ void SessionChartsHud::drawGapChart(float px, float py, float pw, float ph,
             addRiderTag(tag.x, tag.y, field.raceNums[d.fieldIdx], d.color);
     }
     if (m_enabledElements & ELEM_AXIS_LABELS) {
-        const unsigned long lc = this->getColor(ColorSlot::TERTIARY);
-        const int f = this->getFont(FontCategory::SMALL);
-        char buf[16];
-        addString("0.0s", px - dims.paddingH * 0.2f, py, Justify::RIGHT, f, lc, dims.fontSizeSmall);
-        formatSecs(buf, sizeof(buf), gapMax, false);
-        addString(buf, px - dims.paddingH * 0.2f, py + ph - dims.lineHeightSmall, Justify::RIGHT, f, lc, dims.fontSizeSmall);
-        addString("L1", px, py + ph + dims.lineHeightSmall * 0.2f, Justify::LEFT, f, lc, dims.fontSizeSmall);
-        if (field.maxLap > 1) {
-            snprintf(buf, sizeof(buf), "L%d", field.maxLap);
-            addString(buf, px + pw, py + ph + dims.lineHeightSmall * 0.2f, Justify::RIGHT, f, lc, dims.fontSizeSmall);
-        }
+        char botBuf[16];
+        formatSecs(botBuf, sizeof(botBuf), gapMax, false);
+        addChartAxisLabels(px, py, pw, ph, field.maxLap, "0.0s", botBuf, dims);
     }
 }
 
@@ -679,7 +657,7 @@ void SessionChartsHud::drawPaceChart(float px, float py, float pw, float ph,
         return py + static_cast<float>(vMax - v) / static_cast<float>(span) * ph;
     };
 
-    const float gridThickness = 0.001f * dims.scale;
+    const float gridThickness = stripChartGridThickness();
     const unsigned long gridColor = this->getColor(ColorSlot::MUTED);
     if (m_enabledElements & ELEM_GRID) {
         addHorizontalGridLine(px, py, pw, gridColor, gridThickness);
@@ -704,20 +682,13 @@ void SessionChartsHud::drawPaceChart(float px, float py, float pw, float ph,
             addRiderTag(tag.x, tag.y, field.raceNums[d.fieldIdx], d.color);
     }
     if (m_enabledElements & ELEM_AXIS_LABELS) {
-        const unsigned long lc = this->getColor(ColorSlot::TERTIARY);
-        const int f = this->getFont(FontCategory::SMALL);
-        char buf[16];
+        char topBuf[16], botBuf[16];
         if (hasData) {
-            formatSecs(buf, sizeof(buf), vMax, false);   // slower at top
-            addString(buf, px - dims.paddingH * 0.2f, py, Justify::RIGHT, f, lc, dims.fontSizeSmall);
-            formatSecs(buf, sizeof(buf), vMin, false);   // faster at bottom
-            addString(buf, px - dims.paddingH * 0.2f, py + ph - dims.lineHeightSmall, Justify::RIGHT, f, lc, dims.fontSizeSmall);
+            formatSecs(topBuf, sizeof(topBuf), vMax, false);   // slower at top
+            formatSecs(botBuf, sizeof(botBuf), vMin, false);   // faster at bottom
         }
-        addString("L1", px, py + ph + dims.lineHeightSmall * 0.2f, Justify::LEFT, f, lc, dims.fontSizeSmall);
-        if (field.maxLap > 1) {
-            snprintf(buf, sizeof(buf), "L%d", field.maxLap);
-            addString(buf, px + pw, py + ph + dims.lineHeightSmall * 0.2f, Justify::RIGHT, f, lc, dims.fontSizeSmall);
-        }
+        addChartAxisLabels(px, py, pw, ph, field.maxLap,
+                           hasData ? topBuf : nullptr, hasData ? botBuf : nullptr, dims);
     }
 }
 
@@ -733,6 +704,29 @@ void SessionChartsHud::addRiderTag(float x, float y, int raceNum, unsigned long 
     // rect already reserves TAG_WIDTH_CHARS on the right so a finisher's tag fits.
     addString(buf, x + dims.paddingH * 0.25f, y - dims.lineHeightSmall * 0.5f,
               Justify::LEFT, this->getFont(FontCategory::SMALL), color, dims.fontSizeSmall);
+}
+
+// ---------------------------------------------------------------------------
+// Shared axis labels (Y-range pair beside the plot + "L1"/"L<max>" below it)
+// ---------------------------------------------------------------------------
+
+void SessionChartsHud::addChartAxisLabels(float px, float py, float pw, float ph, int maxLap,
+                                          const char* topLabel, const char* botLabel,
+                                          const ScaledDimensions& dims) {
+    const unsigned long lc = this->getColor(ColorSlot::TERTIARY);
+    const int f = this->getFont(FontCategory::SMALL);
+    if (topLabel)
+        addString(topLabel, px - dims.paddingH * STRIP_CHART_LABEL_INSET, py,
+                  Justify::RIGHT, f, lc, dims.fontSizeSmall);
+    if (botLabel)
+        addString(botLabel, px - dims.paddingH * STRIP_CHART_LABEL_INSET, py + ph - dims.lineHeightSmall,
+                  Justify::RIGHT, f, lc, dims.fontSizeSmall);
+    addString("L1", px, py + ph + dims.lineHeightSmall * 0.2f, Justify::LEFT, f, lc, dims.fontSizeSmall);
+    if (maxLap > 1) {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "L%d", maxLap);
+        addString(buf, px + pw, py + ph + dims.lineHeightSmall * 0.2f, Justify::RIGHT, f, lc, dims.fontSizeSmall);
+    }
 }
 
 // ---------------------------------------------------------------------------

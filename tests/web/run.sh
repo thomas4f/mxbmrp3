@@ -22,6 +22,9 @@ command -v node >/dev/null || { echo "ERROR: Node.js not found"; exit 1; }
 
 # Fetch the pinned Chromium if it isn't already present (idempotent: prints
 # "is already installed" and exits fast when PLAYWRIGHT_BROWSERS_PATH has it).
-npx playwright install chromium
+# MXB_CHROMIUM (see playwright.config.js) points at a system/preinstalled
+# Chromium instead — skip the download entirely; it's blocked in sandboxed
+# environments and unnecessary when an executable is supplied.
+[ -n "${MXB_CHROMIUM:-}" ] || npx playwright install chromium
 
 exec npx playwright test "$@"

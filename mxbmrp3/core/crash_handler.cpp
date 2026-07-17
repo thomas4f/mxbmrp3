@@ -92,7 +92,14 @@ int captureBacktrace(CONTEXT* ctxIn, CrashStack::Frame* frames, int maxFrames) {
     CONTEXT ctx = *ctxIn;   // full copy — RtlVirtualUnwind mutates nonvolatile regs
     int count = 0;
     __try {
-        for (int i = 0; i < maxFrames && ctx.Rip; ++i) {
+        // No `&& ctx.Rip` guard on the loop condition: a null indirect call faults with
+        // Rip==0, and that's the case where the NEXT frame (the caller who made the bad
+        // call) matters most — it's the only thing that says whether we or an injector
+        // made the call. So record the Rip==0 leaf, then the leaf-pop below recovers the
+        // caller from [Rsp]. The Rip==0 stop moved to the END of the body, so a genuine
+        // end-of-stack (unwind reaching Rip==0) still terminates without recording a
+        // spurious trailing "unknown+0x0".
+        for (int i = 0; i < maxFrames; ++i) {
             resolveModuleOffset(reinterpret_cast<void*>(ctx.Rip),
                                 frames[count].module, sizeof(frames[count].module),
                                 &frames[count].offset);
@@ -107,14 +114,17 @@ int captureBacktrace(CONTEXT* ctxIn, CrashStack::Frame* frames, int maxFrames) {
                 RtlVirtualUnwind(UNW_FLAG_NHANDLER, imageBase, ctx.Rip, fn,
                                  &ctx, &handlerData, &establisherFrame, nullptr);
             } else {
-                // Leaf function (no unwind data): return address sits at [Rsp].
+                // Leaf, OR a jump/call to a non-code address (incl. an Rip==0 null call):
+                // the return address to the caller sits at [Rsp]. Recover it so the next
+                // frame names who made the call.
                 if (ctx.Rsp == 0) break;
                 ctx.Rip = *reinterpret_cast<ULONG64*>(ctx.Rsp);
                 ctx.Rsp += sizeof(ULONG64);
             }
-            // The stack must unwind toward higher addresses. If it doesn't move
-            // up, the chain is corrupt or looping — stop rather than spin.
-            if (ctx.Rsp <= rspBefore) break;
+            // Stop at end-of-stack (next Rip==0) or if the stack isn't unwinding upward
+            // (corrupt/looping). The Rip==0 test is here, not in the loop guard, so an
+            // initial null-call frame is still recorded above.
+            if (ctx.Rip == 0 || ctx.Rsp <= rspBefore) break;
         }
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         // A frame walk faulted (corrupt stack) — return what we captured so far.
@@ -394,7 +404,7 @@ void install(const char* savePath) {
 
     if (savePath && savePath[0] != '\0') {
         strncpy_s(s_dumpDir, sizeof(s_dumpDir), savePath, _TRUNCATE);
-        // Trim trailing separators so we can append "\mxbmrp3_crashes"
+        // Trim trailing separators so we can append "\mxbmrp3\crashes"
         // without double-slashes.
         size_t len = strlen(s_dumpDir);
         while (len > 0 && (s_dumpDir[len - 1] == '\\' || s_dumpDir[len - 1] == '/')) {

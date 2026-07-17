@@ -322,6 +322,13 @@ void PluginManager::handleShutdown() {
     m_savePath[0] = '\0';
 }
 
+// NOTE on the `psX && offload(...)` routing pattern used by the handlers below:
+// a NULL-arg callback falls through to the synchronous call on the GAME thread
+// even in plugin-thread mode. That is only safe because every handler null-checks
+// its argument before touching any state — an invariant held by convention at
+// each of these call sites. A new handler that does unconditional work on a null
+// arg would reintroduce a cross-thread PluginData mutation; keep the null-check
+// first, or drop null events explicitly when the worker is enabled.
 void PluginManager::handleEventInit(Unified::VehicleEventData* psEventData) {
     if (psEventData && PluginThread::getInstance().offload(this, &PluginManager::handleEventInit, *psEventData)) return;
     ACCUMULATE_CALLBACK_TIME_NAMED("EventInit");
@@ -461,7 +468,13 @@ void PluginManager::handleTrackCenterline(int iNumSegments, Unified::TrackSegmen
     {
         PluginThread& pt = PluginThread::getInstance();
         if (pt.enabled() && !pt.onWorkerThread()) {
-            int cnt = (pasSegment && iNumSegments > 0) ? iNumSegments : 0;
+            // Reject implausible counts BEFORE the copy: the handler's own
+            // MAX_TRACK_SEGMENTS ceiling can't help once a garbage/version-skewed
+            // count has already driven an out-of-bounds read here. Zeroing (not
+            // clamping) mirrors TrackCenterlineHandler's reject-the-whole-array
+            // semantics — an implausible count means the data is untrustworthy.
+            int cnt = (pasSegment && iNumSegments > 0 &&
+                       iNumSegments <= Unified::MAX_TRACK_SEGMENTS) ? iNumSegments : 0;
             std::vector<Unified::TrackSegment> segs(pasSegment, pasSegment + cnt);
             // pRaceData is [S/F, split1, split2, holeshot] (4 floats) or null.
             std::vector<float> race;

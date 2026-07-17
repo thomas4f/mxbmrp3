@@ -51,6 +51,7 @@ typedef void (*PFN_Draw)(int, int*, void**, int*, void**);
 typedef void (*PFN_TrackCenter)(int, void*, void*);
 typedef void (*PFN_MapI)(int);
 typedef long long (*PFN_MapProfile)(double*, double*, double*, double*, long long*, long long*);
+typedef int  (*PFN_MapQuadStats)(double*, double*, int*);
 static PFN_MapProfile MapProfile = nullptr;
 
 static LARGE_INTEGER g_freq;
@@ -212,6 +213,28 @@ int main(int argc, char** argv) {
     resetProf(); Stat both; runScenario(both, FRAMES);
     report("map ON, rotate+zoom", both, baseAvg); reportProfile("rotate+zoom");
     MapRotate(0); MapZoom(0);
+
+    // Detail-scale sweep in ROTATE mode (the cache-defeated path, where the
+    // per-frame cost is proportional to the emitted quad count — the case the
+    // 20-200% detail dial exists for). Adaptive ON. Also prints the map's quad
+    // count per scale so the quads<->percentage mapping is visible.
+    auto MapPct      = (PFN_MapI)S("MXBMRP3_Test_MapSetDetailPct");
+    auto MapAdaptive = (PFN_MapI)S("MXBMRP3_Test_MapSetAdaptive");
+    auto MapStats    = (PFN_MapQuadStats)S("MXBMRP3_Test_MapQuadStats");
+    if (MapPct && MapAdaptive) {
+        printf("\n--- detail-scale sweep (adaptive, rotate-to-player: per-frame cost ~ quad count) ---\n");
+        MapRotate(1); MapAdaptive(1);
+        const int PCTS[] = { 20, 60, 100, 160, 200 };
+        for (int pct : PCTS) {
+            MapPct(pct);
+            resetProf(); Stat s; runScenario(s, FRAMES / 2);
+            int quads = MapStats ? MapStats(nullptr, nullptr, nullptr) : -1;
+            char name[48]; snprintf(name, sizeof(name), "rotate, detail %3d%% (%d quads)", pct, quads);
+            report(name, s, baseAvg);
+            free(s.us);
+        }
+        MapRotate(0); MapPct(100);
+    }
 
     printf("\nBudget = %.0f us/frame (240fps). Baseline map-off Draw avg = %.1f us.\n", BUDGET_US, baseAvg);
     printf("Machine-readable:\n");

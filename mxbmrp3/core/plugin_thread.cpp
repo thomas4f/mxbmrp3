@@ -11,6 +11,9 @@
 #include "../diagnostics/logger.h"
 
 #include <future>
+#ifdef MXBMRP3_TEST_BUILD
+#include <stdexcept>
+#endif
 
 PluginThread& PluginThread::getInstance() {
     static PluginThread instance;
@@ -24,10 +27,26 @@ PluginThread::~PluginThread() {
     // loader lock, where join() would deadlock (see stop() vs here in plugin_thread.h),
     // so DON'T join: signal stop, wake the worker off its CV, spin until it has left
     // the loop (app-level flag, no loader lock), then detach.
+    //
+    // KNOWN RESIDUAL WINDOW: after the worker stores m_workerFinished it still
+    // executes a handful of DLL-resident instructions (lambda epilogue + the
+    // std::thread invoke shim) before reaching CRT/OS code. If it is preempted
+    // exactly there and FreeLibrary unmaps us first, it resumes in unmapped
+    // memory. That window is a few instructions, only on the unload-without-
+    // Shutdown() path, and is inherent to the spin-then-detach technique — the
+    // alternative (join) deadlocks on the loader lock, which is worse.
     if (m_thread.joinable()) {
         m_run.store(false, std::memory_order_release);
         { std::lock_guard<std::mutex> lk(m_qMutex); m_cv.notify_all(); }
-        while (!m_workerFinished.load(std::memory_order_acquire)) {
+        // BOUNDED spin: on an ExitProcess-without-Shutdown() teardown the OS has
+        // already TERMINATED the thread - the finished flag will never be stored,
+        // and an unbounded spin would hang process exit forever. ~2s covers any
+        // legitimately slow exit; past it, detach regardless (a terminated thread
+        // makes the detach trivially safe; a pathologically still-live one lands
+        // in the same known residual window documented above).
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (!m_workerFinished.load(std::memory_order_acquire) &&
+               std::chrono::steady_clock::now() < deadline) {
             std::this_thread::yield();
         }
         m_thread.detach();
@@ -42,9 +61,19 @@ bool PluginThread::onWorkerThread() const {
 void PluginThread::start() {
     if (m_enabled.load(std::memory_order_acquire)) return;   // already running
     if (!UiConfig::getInstance().getPluginThread()) return;  // opt-in only
+    // A worker that just died by exception clears m_enabled, so reconcileEnabled()
+    // could race its two loads and land here before noticing m_aborted. Never
+    // start over an un-reaped abort — the next reconcile pass joins + latches.
+    if (m_aborted.load(std::memory_order_acquire)) return;
+    // Reap a previous thread that was never joined (defense in depth; the abort
+    // path above is handled by reconcileEnabled's stop(), which joins).
+    if (m_thread.joinable()) {
+        try { m_thread.join(); } catch (...) {}
+    }
 
     m_run.store(true, std::memory_order_release);
     m_workerFinished.store(false, std::memory_order_release);
+    m_aborted.store(false, std::memory_order_release);
     m_thread = std::thread([this]() {
         // Top-level guard: an uncaught throw in a std::thread body calls
         // std::terminate() and takes the host game down with it.
@@ -52,6 +81,17 @@ void PluginThread::start() {
             threadMain();
         } catch (...) {
             DEBUG_ERROR("PluginThread worker terminated by exception");
+            // Self-heal: without this, enabled() stays true and every game
+            // callback keeps enqueueing closures into a queue nobody drains —
+            // unbounded growth inside the host plus a frozen HUD. Flag the
+            // abort so reconcileEnabled() (game thread) joins this thread and
+            // drains the backlog in order, then clear enabled() so routing
+            // falls back to inline execution immediately. ORDER MATTERS:
+            // aborted-before-enabled means a concurrent reconcileEnabled() can
+            // never observe "not running, not aborted" and start() a new
+            // worker over this not-yet-joined thread (std::terminate).
+            m_aborted.store(true, std::memory_order_release);
+            m_enabled.store(false, std::memory_order_release);
         }
         // LAST: signal the destructor's spin-wait that we've left our code.
         m_workerFinished.store(true, std::memory_order_release);
@@ -83,7 +123,26 @@ void PluginThread::stop() {
 }
 
 void PluginThread::reconcileEnabled() {
+    if (m_aborted.load(std::memory_order_acquire)) {
+        // The worker died by exception (it already cleared enabled(), so callbacks
+        // have been running inline since). Join the finished thread and run the
+        // stranded backlog inline, in FIFO order, so PluginData ends up consistent
+        // — stop() does exactly that. Then LATCH threaded mode off: without the
+        // latch this function would restart the worker on the very next frame,
+        // and a persistent failure would respawn a thread per frame.
+        stop();
+        m_aborted.store(false, std::memory_order_release);
+        m_abortLatched = true;
+        DEBUG_ERROR("PluginThread: worker aborted - falling back to synchronous mode "
+                    "(toggle [Advanced] pluginThread off and on to re-enable)");
+    }
     bool desired = UiConfig::getInstance().getPluginThread();
+    if (m_abortLatched) {
+        // Stay in synchronous mode until the user explicitly turns the flag off
+        // (which clears the latch and re-arms a future opt-in).
+        if (!desired) m_abortLatched = false;
+        return;
+    }
     bool running = m_enabled.load(std::memory_order_acquire);
     if (desired == running) return;
     if (desired) start();
@@ -221,6 +280,14 @@ void PluginThread::threadMain() {
             doFrame = m_frameRequested;
             m_frameRequested = false;
         }
+
+#ifdef MXBMRP3_TEST_BUILD
+        // Test-only fault injection (see testAbortWorker()): escape the loop the
+        // way a real allocation/CV failure would, past the per-command guards.
+        if (m_testAbort.exchange(false, std::memory_order_acq_rel)) {
+            throw std::runtime_error("test-injected worker abort");
+        }
+#endif
 
         // Execute queued callbacks in FIFO order (preserves the game's callback
         // ordering). Always finish the whole batch — even if a stop was signalled

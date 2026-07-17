@@ -11,37 +11,11 @@
 // Static member function of SettingsHud - handles click events for GapBar tab
 bool SettingsHud::handleClickTabGapBar(const ClickRegion& region) {
     switch (region.type) {
-        case ClickRegion::GAPBAR_FREEZE_UP:
-            if (m_gapBar) {
-                m_gapBar->m_freezeDurationMs = applyAcceleratedWrap(
-                    m_gapBar->m_freezeDurationMs, GapBarHud::FREEZE_STEP_MS,
-                    GapBarHud::MIN_FREEZE_MS, GapBarHud::MAX_FREEZE_MS, true);
-                m_gapBar->setDataDirty();
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::GAPBAR_FREEZE_DOWN:
-            if (m_gapBar) {
-                m_gapBar->m_freezeDurationMs = applyAcceleratedWrap(
-                    m_gapBar->m_freezeDurationMs, GapBarHud::FREEZE_STEP_MS,
-                    GapBarHud::MIN_FREEZE_MS, GapBarHud::MAX_FREEZE_MS, false);
-                m_gapBar->setDataDirty();
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::GAPBAR_MARKER_MODE_UP:
-        case ClickRegion::GAPBAR_MARKER_MODE_DOWN:
-            if (m_gapBar) {
-                bool forward = (region.type == ClickRegion::GAPBAR_MARKER_MODE_UP);
-                int current = static_cast<int>(m_gapBar->m_markerMode);
-                int next = forward ? (current + 1) % 3 : (current + 2) % 3;
-                m_gapBar->m_markerMode = static_cast<GapBarHud::MarkerMode>(next);
-                m_gapBar->setDataDirty();
-                setDataDirty();
-            }
-            return true;
+        // Width, Range, Freeze duration and Marker scale are data-driven STEPPED
+        // controls; the Mode / Marker colors / Marker labels mod-N cycles are
+        // data-driven CYCLE controls - registered in renderTabGapBar via
+        // ctx.addSteppedControl / ctx.addCycleControl and handled by the shared
+        // SettingsHud::applySteppedControl / applyCycleControl.
 
         case ClickRegion::GAPBAR_ICON_UP:
         case ClickRegion::GAPBAR_ICON_DOWN:
@@ -66,86 +40,6 @@ bool SettingsHud::handleClickTabGapBar(const ClickRegion& region) {
         case ClickRegion::GAPBAR_GAP_BAR_TOGGLE:
             if (m_gapBar) {
                 m_gapBar->m_showGapBar = !m_gapBar->m_showGapBar;
-                m_gapBar->setDataDirty();
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::GAPBAR_RANGE_UP:
-            if (m_gapBar) {
-                m_gapBar->m_gapRangeMs = std::min(
-                    m_gapBar->m_gapRangeMs + GapBarHud::RANGE_STEP_MS,
-                    GapBarHud::MAX_RANGE_MS);
-                m_gapBar->setDataDirty();
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::GAPBAR_RANGE_DOWN:
-            if (m_gapBar) {
-                m_gapBar->m_gapRangeMs = std::max(
-                    m_gapBar->m_gapRangeMs - GapBarHud::RANGE_STEP_MS,
-                    GapBarHud::MIN_RANGE_MS);
-                m_gapBar->setDataDirty();
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::GAPBAR_WIDTH_UP:
-            if (m_gapBar) {
-                int step = GapBarHud::WIDTH_STEP_PERCENT * getHoldStepMultiplier();
-                m_gapBar->setBarWidth(m_gapBar->m_barWidthPercent + step);
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::GAPBAR_WIDTH_DOWN:
-            if (m_gapBar) {
-                int step = GapBarHud::WIDTH_STEP_PERCENT * getHoldStepMultiplier();
-                m_gapBar->setBarWidth(m_gapBar->m_barWidthPercent - step);
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::GAPBAR_MARKER_SCALE_UP:
-            if (m_gapBar) {
-                float newScale = applyAcceleratedStep(m_gapBar->m_fMarkerScale, 0.01f, true);
-                if (newScale > GapBarHud::MAX_MARKER_SCALE) newScale = GapBarHud::MAX_MARKER_SCALE;
-                m_gapBar->m_fMarkerScale = newScale;
-                m_gapBar->setDataDirty();
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::GAPBAR_MARKER_SCALE_DOWN:
-            if (m_gapBar) {
-                float newScale = applyAcceleratedStep(m_gapBar->m_fMarkerScale, 0.01f, false);
-                if (newScale < GapBarHud::MIN_MARKER_SCALE) newScale = GapBarHud::MIN_MARKER_SCALE;
-                m_gapBar->m_fMarkerScale = newScale;
-                m_gapBar->setDataDirty();
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::GAPBAR_LABEL_MODE_UP:
-        case ClickRegion::GAPBAR_LABEL_MODE_DOWN:
-            if (m_gapBar) {
-                bool forward = (region.type == ClickRegion::GAPBAR_LABEL_MODE_UP);
-                int current = static_cast<int>(m_gapBar->m_labelMode);
-                int next = forward ? (current + 1) % 4 : (current + 3) % 4;
-                m_gapBar->m_labelMode = static_cast<GapBarHud::LabelMode>(next);
-                m_gapBar->setDataDirty();
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::GAPBAR_COLOR_MODE_UP:
-        case ClickRegion::GAPBAR_COLOR_MODE_DOWN:
-            if (m_gapBar) {
-                bool forward = (region.type == ClickRegion::GAPBAR_COLOR_MODE_UP);
-                int current = static_cast<int>(m_gapBar->m_riderColorMode);
-                int next = forward ? (current + 1) % 3 : (current + 2) % 3;
-                m_gapBar->m_riderColorMode = static_cast<GapBarHud::RiderColorMode>(next);
                 m_gapBar->setDataDirty();
                 setDataDirty();
             }
@@ -182,20 +76,31 @@ BaseHud* SettingsHud::renderTabGapBar(SettingsLayoutContext& ctx) {
     ctx.addToggleControl("Show gap bar", hud->m_showGapBar,
         SettingsHud::ClickRegion::GAPBAR_GAP_BAR_TOGGLE, hud, nullptr, 0, true, "gap_bar.show_gap_bar");
 
-    // Width control (bar width percentage)
+    // Width control (bar width percentage): accelerated 1% clamp over [50, 400]
+    // (setBarWidth was just clamp + dedup + setDataDirty - same behavior).
     char widthValue[16];
     snprintf(widthValue, sizeof(widthValue), "%d%%", hud->m_barWidthPercent);
-    ctx.addCycleControl("Width", widthValue, 10,
-        SettingsHud::ClickRegion::GAPBAR_WIDTH_DOWN,
-        SettingsHud::ClickRegion::GAPBAR_WIDTH_UP,
+    ctx.addSteppedControl("Width", widthValue, 10,
+        SettingsHud::SteppedControl::clampInt(&hud->m_barWidthPercent,
+            GapBarHud::WIDTH_STEP_PERCENT,
+            GapBarHud::MIN_WIDTH_PERCENT, GapBarHud::MAX_WIDTH_PERCENT, hud),
         hud, true, false, "gap_bar.width");
 
-    // Range control (how much time fits from center to edge)
+    // Range control (how much time fits from center to edge): accelerated 250ms
+    // clamp over [1s, 5s]. Values are multiples of 250ms, so show whole seconds
+    // plainly and trim trailing zeros on the fractional steps ("1.25s", "2.5s").
     char rangeValue[16];
-    snprintf(rangeValue, sizeof(rangeValue), "%ds", hud->m_gapRangeMs / 1000);
-    ctx.addCycleControl("Range", rangeValue, 10,
-        SettingsHud::ClickRegion::GAPBAR_RANGE_DOWN,
-        SettingsHud::ClickRegion::GAPBAR_RANGE_UP,
+    if (hud->m_gapRangeMs % 1000 == 0) {
+        snprintf(rangeValue, sizeof(rangeValue), "%ds", hud->m_gapRangeMs / 1000);
+    } else if (hud->m_gapRangeMs % 500 == 0) {
+        snprintf(rangeValue, sizeof(rangeValue), "%.1fs", hud->m_gapRangeMs / 1000.0f);
+    } else {
+        snprintf(rangeValue, sizeof(rangeValue), "%.2fs", hud->m_gapRangeMs / 1000.0f);
+    }
+    ctx.addSteppedControl("Range", rangeValue, 10,
+        SettingsHud::SteppedControl::clampInt(&hud->m_gapRangeMs,
+            GapBarHud::RANGE_STEP_MS,
+            GapBarHud::MIN_RANGE_MS, GapBarHud::MAX_RANGE_MS, hud),
         hud, true, false, "gap_bar.range");
 
     // Freeze control (freeze duration for official times)
@@ -206,9 +111,9 @@ BaseHud* SettingsHud::renderTabGapBar(SettingsLayoutContext& ctx) {
     } else {
         snprintf(freezeValue, sizeof(freezeValue), "%ds", hud->m_freezeDurationMs / 1000);
     }
-    ctx.addCycleControl("Freeze", freezeValue, 10,
-        SettingsHud::ClickRegion::GAPBAR_FREEZE_DOWN,
-        SettingsHud::ClickRegion::GAPBAR_FREEZE_UP,
+    ctx.addSteppedControl("Freeze", freezeValue, 10,
+        SettingsHud::SteppedControl::wrapInt(&hud->m_freezeDurationMs,
+            GapBarHud::FREEZE_STEP_MS, GapBarHud::MIN_FREEZE_MS, GapBarHud::MAX_FREEZE_MS, hud),
         hud, true, gapFreezeIsOff, "gap_bar.freeze");
 
     // === RIDER MARKERS SECTION ===
@@ -223,8 +128,7 @@ BaseHud* SettingsHud::renderTabGapBar(SettingsLayoutContext& ctx) {
         case GapBarHud::MarkerMode::GHOST_OPPONENTS: markerModeStr = "Both"; break;
     }
     ctx.addCycleControl("Mode", markerModeStr, 10,
-        SettingsHud::ClickRegion::GAPBAR_MARKER_MODE_DOWN,
-        SettingsHud::ClickRegion::GAPBAR_MARKER_MODE_UP,
+        SettingsHud::CycleControl::enumMember(hud, &GapBarHud::m_markerMode, 3, hud),
         hud, true, false, "gap_bar.marker_mode");
 
     // Color mode control (Uniform/Brand/Position)
@@ -234,10 +138,11 @@ BaseHud* SettingsHud::renderTabGapBar(SettingsLayoutContext& ctx) {
         case GapBarHud::RiderColorMode::BRAND:        colorModeStr = "Brand"; break;
         case GapBarHud::RiderColorMode::RELATIVE_POS: colorModeStr = "Position"; break;
     }
+    // tooltipOnArrows=false: these arrows historically had no per-type tooltip
+    // fallback, so keep the tooltip on the row region only.
     ctx.addCycleControl("Marker colors", colorModeStr, 10,
-        SettingsHud::ClickRegion::GAPBAR_COLOR_MODE_DOWN,
-        SettingsHud::ClickRegion::GAPBAR_COLOR_MODE_UP,
-        hud, true, false, "gap_bar.marker_colors");
+        SettingsHud::CycleControl::enumMember(hud, &GapBarHud::m_riderColorMode, 3, hud),
+        hud, true, false, "gap_bar.marker_colors", /*tooltipOnArrows=*/false);
 
     // Icon cycle control (0=default icon, 1-N=other icons)
     // When index is 0, show the default icon's name (circle-chevron-up)
@@ -263,9 +168,9 @@ BaseHud* SettingsHud::renderTabGapBar(SettingsLayoutContext& ctx) {
     // Marker scale control (50%-300%)
     char markerScaleValue[16];
     snprintf(markerScaleValue, sizeof(markerScaleValue), "%.0f%%", hud->m_fMarkerScale * 100.0f);
-    ctx.addCycleControl("Marker scale", markerScaleValue, 10,
-        SettingsHud::ClickRegion::GAPBAR_MARKER_SCALE_DOWN,
-        SettingsHud::ClickRegion::GAPBAR_MARKER_SCALE_UP,
+    ctx.addSteppedControl("Marker scale", markerScaleValue, 10,
+        SettingsHud::SteppedControl::stepFloat(&hud->m_fMarkerScale, 0.01f,
+            GapBarHud::MIN_MARKER_SCALE, GapBarHud::MAX_MARKER_SCALE, hud),
         hud, true, false, "gap_bar.marker_scale");
 
     // Label mode control (Off/Position/Race Num/Both)
@@ -278,8 +183,7 @@ BaseHud* SettingsHud::renderTabGapBar(SettingsLayoutContext& ctx) {
         case GapBarHud::LabelMode::BOTH:     labelModeStr = "Both"; break;
     }
     ctx.addCycleControl("Marker labels", labelModeStr, 10,
-        SettingsHud::ClickRegion::GAPBAR_LABEL_MODE_DOWN,
-        SettingsHud::ClickRegion::GAPBAR_LABEL_MODE_UP,
+        SettingsHud::CycleControl::enumMember(hud, &GapBarHud::m_labelMode, 4, hud),
         hud, true, labelIsOff, "gap_bar.labels");
 
     return hud;

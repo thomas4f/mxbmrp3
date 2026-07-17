@@ -18,29 +18,11 @@ bool SettingsHud::handleClickTabTiming(const ClickRegion& region) {
             }
             return true;
 
-        case ClickRegion::TIMING_DISPLAY_MODE_UP:
-        case ClickRegion::TIMING_DISPLAY_MODE_DOWN:
-            // Toggle between Splits and Always
-            if (m_timing) {
-                m_timing->m_displayMode = (m_timing->m_displayMode == ColumnMode::SPLITS)
-                    ? ColumnMode::ALWAYS : ColumnMode::SPLITS;
-                m_timing->setDataDirty();
-                setDataDirty();
-            }
-            return true;
+        // Show mode (Splits/Always) is a data-driven CYCLE control now -
+        // registered in renderTabTiming via ctx.addCycleControl.
 
-        case ClickRegion::TIMING_DURATION_UP:
-        case ClickRegion::TIMING_DURATION_DOWN:
-            // Cycle freeze duration: Off -> 1s -> 2s -> ... -> 10s -> Off
-            if (m_timing) {
-                bool forward = (region.type == ClickRegion::TIMING_DURATION_UP);
-                m_timing->m_displayDurationMs = applyAcceleratedWrap(
-                    m_timing->m_displayDurationMs, TimingHud::DURATION_STEP_MS,
-                    TimingHud::MIN_DURATION_MS, TimingHud::MAX_DURATION_MS, forward);
-                m_timing->setDataDirty();
-                setDataDirty();
-            }
-            return true;
+        // Freeze duration is a data-driven STEPPED control now - registered in
+        // renderTabTiming via ctx.addSteppedControl.
 
         // Comparison rows (one per gap type) — merged the old primary/secondary into a flat set.
         case ClickRegion::TIMING_GAP_PB_TOGGLE:
@@ -84,10 +66,18 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
 
     // Show mode: Splits (only after crossing splits) or Always
     const char* showValue = (hud->m_displayMode == ColumnMode::ALWAYS) ? "Always" : "At Splits";
-    ctx.addCycleControl("Show mode", showValue, 10,
-        SettingsHud::ClickRegion::TIMING_DISPLAY_MODE_DOWN,
-        SettingsHud::ClickRegion::TIMING_DISPLAY_MODE_UP,
-        hud, true, false, "timing.show");
+    // Two-state cycle over {SPLITS, ALWAYS}: ColumnMode also has OFF, which
+    // this control never selects, so the get/set lambdas map the pair onto a
+    // 0/1 index instead of cycling the raw enum range.
+    {
+        SettingsHud::CycleControl showCycle;
+        showCycle.get = [hud]() { return hud->m_displayMode == ColumnMode::ALWAYS ? 1 : 0; };
+        showCycle.set = [hud](int v) { hud->m_displayMode = v ? ColumnMode::ALWAYS : ColumnMode::SPLITS; };
+        showCycle.count = 2;
+        showCycle.dirtyHud = hud;
+        ctx.addCycleControl("Show mode", showValue, 10, showCycle,
+            hud, true, false, "timing.show");
+    }
 
     // Freeze duration: how long to hold official times / gaps after crossing a split
     char freezeValue[16];
@@ -97,9 +87,9 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
     } else {
         snprintf(freezeValue, sizeof(freezeValue), "%ds", hud->m_displayDurationMs / 1000);
     }
-    ctx.addCycleControl("Freeze", freezeValue, 10,
-        SettingsHud::ClickRegion::TIMING_DURATION_DOWN,
-        SettingsHud::ClickRegion::TIMING_DURATION_UP,
+    ctx.addSteppedControl("Freeze", freezeValue, 10,
+        SettingsHud::SteppedControl::wrapInt(&hud->m_displayDurationMs,
+            TimingHud::DURATION_STEP_MS, TimingHud::MIN_DURATION_MS, TimingHud::MAX_DURATION_MS, hud),
         hud, true, freezeIsOff, "timing.freeze");
 
     // Big time row toggle

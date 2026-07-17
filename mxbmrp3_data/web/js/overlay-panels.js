@@ -837,12 +837,5 @@ var sectorsCtrl = createSlotPanel({
     onHide: function () { if (sectorsPageTimer) { clearTimeout(sectorsPageTimer); sectorsPageTimer = null; } }
 });
 
-// --- Session Charts (carousel of race-progression line charts) ---
-// A horizontal page carousel like Best Sectors, but each page is an inline SVG
-// line chart of a whole race: lap chart (position per lap), race trace (cumulative
-// time vs a reference pace), gap-to-leader, and pace. All four are derived here
-// from the raw per-rider lap series the plugin sends (lastData.laps), a direct port
-// of the in-game session_charts_math.h so the overlay reads identically to the HUD.
-// Race only; auto-shows once when the leader finishes, and is hotkey-forceable.
-
-// Distinct-hue line palette (a port of the in-game POSITION_PALETTE): high
+// (The Session Charts panel lives in overlay-charts.js, the next file in the
+// load order — its math, SVG rendering, and carousel are one cohesive unit.)

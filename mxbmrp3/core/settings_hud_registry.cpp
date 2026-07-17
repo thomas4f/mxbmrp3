@@ -272,6 +272,7 @@ void SettingsManager::cap_MapHud(const HudManager& hudManager, SettingsManager::
         // Map-specific settings
         settings["rotateToPlayer"] = std::to_string(hud.getRotateToPlayer() ? 1 : 0);
         settings["showOutline"] = std::to_string(hud.getShowOutline() ? 1 : 0);
+        settings["outlineWidthScale"] = std::to_string(hud.getOutlineWidthScale());
         settings["showTrackMarkers"] = std::to_string(hud.getShowTrackMarkers() ? 1 : 0);
         settings["riderColorMode"] = riderColorModeToString(hud.getRiderColorMode());
         settings["trackWidthScale"] = std::to_string(hud.getTrackWidthScale());
@@ -284,7 +285,9 @@ void SettingsManager::cap_MapHud(const HudManager& hudManager, SettingsManager::
         settings["zoomEnabled"] = std::to_string(hud.getZoomEnabled() ? 1 : 0);
         settings["zoomDistance"] = std::to_string(hud.getZoomDistance());
         settings["markerScale"] = std::to_string(hud.getMarkerScale());
-        settings["detail"] = detailToString(hud.getDetail());
+        settings["detailScale"] = std::to_string(hud.getDetailScale());
+        settings["detailAdaptive"] = std::to_string(hud.getAdaptiveDetail() ? 1 : 0);
+        settings[IniOnly::Map::DETAIL_BASELINE.key] = std::to_string(hud.getDetailBaseline());
         cache[name] = std::move(settings);
 }
 
@@ -299,6 +302,10 @@ void SettingsManager::app_MapHud(HudManager& hudManager, const SettingsManager::
                 // Map-specific settings
                 if (settings.count("rotateToPlayer")) hud.setRotateToPlayer(std::stoi(settings.at("rotateToPlayer")) != 0);
                 if (settings.count("showOutline")) hud.setShowOutline(std::stoi(settings.at("showOutline")) != 0);
+                if (settings.count("outlineWidthScale")) {
+                    hud.setOutlineWidthScale(parseFiniteFloat(settings.at("outlineWidthScale"),
+                                                              MapHud::DEFAULT_OUTLINE_WIDTH_SCALE));
+                }
                 if (settings.count("showTrackMarkers")) hud.setShowTrackMarkers(std::stoi(settings.at("showTrackMarkers")) != 0);
                 if (settings.count("riderColorMode")) hud.setRiderColorMode(stringToRiderColorMode(settings.at("riderColorMode")));
                 if (settings.count("trackWidthScale")) hud.setTrackWidthScale(validateTrackWidthScale(parseFiniteFloat(settings.at("trackWidthScale"))));
@@ -308,12 +315,28 @@ void SettingsManager::app_MapHud(HudManager& hudManager, const SettingsManager::
                 if (settings.count("zoomEnabled")) hud.setZoomEnabled(std::stoi(settings.at("zoomEnabled")) != 0);
                 if (settings.count("zoomDistance")) hud.setZoomDistance(validateZoomDistance(parseFiniteFloat(settings.at("zoomDistance"))));
                 if (settings.count("markerScale")) hud.setMarkerScale(parseFiniteFloat(settings.at("markerScale")));
-                if (settings.count("detail")) hud.setDetail(stringToDetail(settings.at("detail")));
+                // Detail: new scale/adaptive keys, with legacy `detail=AUTO|HIGH|LOW`
+                // migration for pre-1.27.6 INIs (only when the new keys are absent, so
+                // a file carrying both prefers the new ones). Setters clamp.
+                if (settings.count("detailScale")) {
+                    hud.setDetailScale(parseFiniteFloat(settings.at("detailScale"),
+                                                        MapHud::DEFAULT_DETAIL_SCALE));
+                } else if (settings.count("detail")) {
+                    applyLegacyMapDetail(hud, settings.at("detail"));
+                }
+                if (settings.count("detailAdaptive")) hud.setAdaptiveDetail(std::stoi(settings.at("detailAdaptive")) != 0);
+                if (settings.count(IniOnly::Map::DETAIL_BASELINE.key)) {
+                    hud.setDetailBaseline(parseFiniteFloat(settings.at(IniOnly::Map::DETAIL_BASELINE.key),
+                                                           MapHud::DEFAULT_DETAIL_BASELINE));
+                }
 
-                // Anchor-based positioning
+                // Anchor-based positioning. The anchor replaces offsetX/Y for this HUD,
+                // so it needs the same range clamp — a hand-edited anchorX=1e30 is
+                // finite but places the map unrecoverably off-screen (and auto-save
+                // would re-persist it).
                 if (settings.count("anchorPoint")) hud.setAnchorPoint(stringToAnchorPoint(settings.at("anchorPoint")));
-                if (settings.count("anchorX")) hud.m_fAnchorX = parseFiniteFloat(settings.at("anchorX"));
-                if (settings.count("anchorY")) hud.m_fAnchorY = parseFiniteFloat(settings.at("anchorY"));
+                if (settings.count("anchorX")) hud.m_fAnchorX = validateOffset(parseFiniteFloat(settings.at("anchorX")));
+                if (settings.count("anchorY")) hud.m_fAnchorY = validateOffset(parseFiniteFloat(settings.at("anchorY")));
                 hud.updatePositionFromAnchor();
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("MapHud: Failed to parse settings: %s", e.what());
@@ -975,9 +998,10 @@ void SettingsManager::testMaxAllHudSettings(HudManager& hudManager) {
         h.setVisible(true); h.setDataDirty();
     }
 #endif
-    {   // Map: highest detail + all overlays + labels
+    {   // Map: highest detail (fixed max scale = densest tessellation) + all overlays + labels
         MapHud& h = hudManager.getMapHud();
-        h.setDetail(MapHud::Detail::HIGH);
+        h.setAdaptiveDetail(false);
+        h.setDetailScale(MapHud::MAX_DETAIL_SCALE);
         h.setShowOutline(true);
         h.setShowTrackMarkers(true);
         h.setLabelMode(MapHud::LabelMode::BOTH);

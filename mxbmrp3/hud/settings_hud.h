@@ -45,6 +45,7 @@
 #include <variant>
 #include <string>
 #include <cmath>
+#include <functional>
 #include "map_hud.h"
 #include "radar_hud.h"
 #include "../core/plugin_constants.h"
@@ -106,8 +107,22 @@ public:
         float x, y, width, height;
         enum Type {
             CHECKBOX,                  // Toggle column/row visibility (bitfield)
-            GAP_COLUMN_TOGGLE,         // Toggle gap column on/off
-            GAP_SCOPE_TOGGLE,          // Toggle gap scope (Player/All)
+            // Shared data-driven stepped-value control: the region's steppedIndex
+            // selects a SteppedControl descriptor registered at layout time (same
+            // rebuild lifecycle as the click regions themselves). Replaces the old
+            // one-enum-pair-per-control pattern for plain "step + clamp/wrap +
+            // mark dirty" numeric settings; see SettingsLayoutContext::addSteppedControl.
+            STEPPED_UP,                // Step the descriptor's value up
+            STEPPED_DOWN,              // Step the descriptor's value down
+            // Shared data-driven mod-N cycle control: the region's cycleIndex
+            // selects a CycleControl descriptor registered at layout time (same
+            // rebuild lifecycle as the click regions). Replaces the old
+            // one-enum-pair-per-control pattern for plain "value = (value ± 1)
+            // mod N + mark dirty" enum/mode cycles; see
+            // SettingsLayoutContext::addCycleControl (descriptor overload).
+            // Cycles never hold-accelerate (repeat steps are always ±1).
+            CYCLE_UP,                  // Cycle the descriptor's value forward
+            CYCLE_DOWN,                // Cycle the descriptor's value backward
             GAP_REFERENCE_TOGGLE,      // Cycle gap reference forward (Leader→Player→Auto)
             GAP_REFERENCE_BACK,        // Cycle gap reference backward (Auto→Player→Leader)
             RESET_BUTTON,              // Unified reset button (General tab) - action depends on checkbox
@@ -129,106 +144,44 @@ public:
             ROW_COUNT_DOWN,            // Decrease row count (StandingsHud)
             STANDINGS_TOP_COUNT_UP,    // Increase pinned top-N positions (StandingsHud)
             STANDINGS_TOP_COUNT_DOWN,  // Decrease pinned top-N positions (StandingsHud)
-            LAP_LOG_ROW_COUNT_UP,      // Increase lap log row count (LapLogHud)
-            LAP_LOG_ROW_COUNT_DOWN,    // Decrease lap log row count (LapLogHud)
-            LAP_LOG_ORDER_UP,          // Cycle display order forward (LapLogHud)
-            LAP_LOG_ORDER_DOWN,        // Cycle display order backward (LapLogHud)
             LAP_LOG_GAP_ROW_TOGGLE,    // Toggle gap row display (LapLogHud)
             LAP_LOG_HEADERS_TOGGLE,    // Toggle column-header row (LapLogHud)
-            FRIENDS_ROW_COUNT_UP,      // Increase max friend rows (FriendsHud)
-            FRIENDS_ROW_COUNT_DOWN,    // Decrease max friend rows (FriendsHud)
             FRIENDS_HEADERS_TOGGLE,    // Toggle column-header row (FriendsHud)
-            FRIENDS_SHOW_MODE_UP,      // Cycle show mode (FriendsHud)
-            FRIENDS_SHOW_MODE_DOWN,    // Cycle show mode (FriendsHud)
             FRIENDS_SELF_TOGGLE,       // Toggle show-myself row (FriendsHud)
-            // Session Charts HUD
-            SESSION_CHARTS_COLOR_MODE_UP,          // Cycle rider color mode forward (SessionChartsHud)
-            SESSION_CHARTS_COLOR_MODE_DOWN,        // Cycle rider color mode backward (SessionChartsHud)
-            SESSION_CHARTS_TOP_COUNT_UP,           // Increase pinned top-N count (SessionChartsHud)
-            SESSION_CHARTS_TOP_COUNT_DOWN,         // Decrease pinned top-N count (SessionChartsHud)
-            SESSION_CHARTS_ROW_COUNT_UP,           // Increase rider line count (SessionChartsHud)
-            SESSION_CHARTS_ROW_COUNT_DOWN,         // Decrease rider line count (SessionChartsHud)
+            // (Session Charts: Rows to show / Top positions are data-driven
+            // STEPPED controls; Colors is a data-driven CYCLE control.)
             MAP_ROTATION_TOGGLE,       // Toggle map rotation mode (MapHud)
-            MAP_OUTLINE_TOGGLE,        // Toggle track outline (MapHud)
+            MAP_OUTLINE_UP,            // Increase outline width; from Off enables at min (MapHud)
+            MAP_OUTLINE_DOWN,          // Decrease outline width; below min disables (MapHud)
             MAP_MARKERS_TOGGLE,        // Toggle S/F, sector markers and segment lines (MapHud)
-            MAP_COLORIZE_UP,           // Cycle rider color mode forward (MapHud)
-            MAP_COLORIZE_DOWN,         // Cycle rider color mode backward (MapHud)
-            MAP_TRACK_WIDTH_UP,        // Increase track line width (MapHud)
-            MAP_TRACK_WIDTH_DOWN,      // Decrease track line width (MapHud)
-            MAP_LABEL_MODE_UP,         // Cycle label mode forward (MapHud)
-            MAP_LABEL_MODE_DOWN,       // Cycle label mode backward (MapHud)
+            // (Track width / Detail / Marker scale are data-driven STEPPED controls.)
             MAP_RANGE_UP,              // Increase map range / decrease zoom (MapHud)
             MAP_RANGE_DOWN,            // Decrease map range / increase zoom (MapHud)
             MAP_RIDER_SHAPE_UP,        // Cycle rider shape forward (MapHud)
             MAP_RIDER_SHAPE_DOWN,      // Cycle rider shape backward (MapHud)
-            MAP_MARKER_SCALE_UP,       // Increase marker scale (MapHud)
-            MAP_MARKER_SCALE_DOWN,     // Decrease marker scale (MapHud)
-            MAP_DETAIL_UP,             // Cycle detail (LOD) forward (MapHud)
-            MAP_DETAIL_DOWN,           // Cycle detail (LOD) backward (MapHud)
-            RADAR_RANGE_UP,            // Increase radar range (RadarHud)
-            RADAR_RANGE_DOWN,          // Decrease radar range (RadarHud)
-            RADAR_COLORIZE_UP,         // Cycle rider color mode forward (RadarHud)
-            RADAR_COLORIZE_DOWN,       // Cycle rider color mode backward (RadarHud)
-            RADAR_ALERT_DISTANCE_UP,   // Increase alert distance (RadarHud)
-            RADAR_ALERT_DISTANCE_DOWN, // Decrease alert distance (RadarHud)
-            RADAR_LABEL_MODE_UP,       // Cycle label mode forward (RadarHud)
-            RADAR_LABEL_MODE_DOWN,     // Cycle label mode backward (RadarHud)
-            RADAR_MODE_UP,             // Cycle radar mode forward (RadarHud)
-            RADAR_MODE_DOWN,           // Cycle radar mode backward (RadarHud)
-            RADAR_PROXIMITY_ARROWS_UP, // Cycle proximity arrow mode forward (RadarHud)
-            RADAR_PROXIMITY_ARROWS_DOWN, // Cycle proximity arrow mode backward (RadarHud)
+            MAP_DETAIL_ADAPTIVE_TOGGLE, // Toggle adaptive (screen-normalized) detail (MapHud)
+            // (Radar range / Alert distance / Arrow scale / Marker scale are
+            // data-driven STEPPED controls.)
             RADAR_PROXIMITY_SHAPE_UP,  // Cycle proximity arrow shape forward (RadarHud)
             RADAR_PROXIMITY_SHAPE_DOWN, // Cycle proximity arrow shape backward (RadarHud)
-            RADAR_PROXIMITY_SCALE_UP,  // Increase proximity arrow scale (RadarHud)
-            RADAR_PROXIMITY_SCALE_DOWN, // Decrease proximity arrow scale (RadarHud)
-            RADAR_PROXIMITY_COLOR_UP,  // Cycle proximity arrow color mode forward (RadarHud)
-            RADAR_PROXIMITY_COLOR_DOWN, // Cycle proximity arrow color mode backward (RadarHud)
             RADAR_RIDER_SHAPE_UP,      // Cycle rider shape forward (RadarHud)
             RADAR_RIDER_SHAPE_DOWN,    // Cycle rider shape backward (RadarHud)
-            RADAR_MARKER_SCALE_UP,     // Increase marker scale (RadarHud)
-            RADAR_MARKER_SCALE_DOWN,   // Decrease marker scale (RadarHud)
-            DISPLAY_MODE_UP,           // Cycle display mode forward (PerformanceHud)
-            DISPLAY_MODE_DOWN,         // Cycle display mode backward (PerformanceHud)
-            RECORDS_COUNT_UP,          // Increase records to show (RecordsHud)
-            RECORDS_COUNT_DOWN,        // Decrease records to show (RecordsHud)
-            RECORDS_PROVIDER_UP,       // Cycle provider forward (RecordsHud)
-            RECORDS_PROVIDER_DOWN,     // Cycle provider backward (RecordsHud)
+            // (Records to show is a data-driven STEPPED control.)
             RECORDS_AUTO_FETCH_TOGGLE, // Toggle auto-fetch on event start (RecordsHud)
             RECORDS_HEADERS_TOGGLE,    // Toggle column-header row (RecordsHud)
-            PITBOARD_SHOW_MODE_UP,     // Cycle pitboard show mode forward (PitboardHud)
-            PITBOARD_SHOW_MODE_DOWN,   // Cycle pitboard show mode backward (PitboardHud)
-            PITBOARD_GAP_MODE_UP,      // Cycle pitboard gap compare mode forward (PitboardHud)
-            PITBOARD_GAP_MODE_DOWN,    // Cycle pitboard gap compare mode backward (PitboardHud)
             SESSION_ICONS_TOGGLE,       // Toggle icons on/off (SessionHud)
             TIMING_TIME_TOGGLE,        // Toggle the big time row on/off (TimingHud)
-            TIMING_DISPLAY_MODE_UP,    // Cycle show mode (Splits/Always) forward (TimingHud)
-            TIMING_DISPLAY_MODE_DOWN,  // Cycle show mode backward (TimingHud)
-            TIMING_DURATION_UP,        // Increase freeze duration (TimingHud)
-            TIMING_DURATION_DOWN,      // Decrease freeze duration (TimingHud)
             TIMING_GAP_PB_TOGGLE,      // Toggle "Session PB" comparison row (TimingHud)
             TIMING_GAP_IDEAL_TOGGLE,   // Toggle "Ideal" comparison row (TimingHud)
             TIMING_GAP_OVERALL_TOGGLE, // Toggle "Overall" comparison row (TimingHud)
             TIMING_GAP_ALLTIME_TOGGLE, // Toggle "All-Time PB" comparison row (TimingHud)
             TIMING_GAP_RECORD_TOGGLE,  // Toggle "Record" comparison row (TimingHud)
             TIMING_GAP_LASTLAP_TOGGLE, // Toggle "Last Lap" comparison row (TimingHud)
-            GAPBAR_FREEZE_UP,          // Increase freeze duration (GapBarHud)
-            GAPBAR_FREEZE_DOWN,        // Decrease freeze duration (GapBarHud)
-            GAPBAR_MARKER_MODE_UP,     // Cycle marker mode forward (Ghost/Opponents/Both)
-            GAPBAR_MARKER_MODE_DOWN,   // Cycle marker mode backward
             GAPBAR_ICON_UP,            // Cycle marker icon forward (GapBarHud)
             GAPBAR_ICON_DOWN,          // Cycle marker icon backward (GapBarHud)
             GAPBAR_GAP_TEXT_TOGGLE,    // Toggle gap text visibility (GapBarHud)
-            GAPBAR_RANGE_UP,           // Increase gap range (GapBarHud)
-            GAPBAR_RANGE_DOWN,         // Decrease gap range (GapBarHud)
-            GAPBAR_WIDTH_UP,           // Increase bar width (GapBarHud)
-            GAPBAR_WIDTH_DOWN,         // Decrease bar width (GapBarHud)
-            GAPBAR_MARKER_SCALE_UP,    // Increase marker scale (GapBarHud)
-            GAPBAR_MARKER_SCALE_DOWN,  // Decrease marker scale (GapBarHud)
-            GAPBAR_LABEL_MODE_UP,      // Cycle label mode forward (Off/Position/RaceNum/Both)
-            GAPBAR_LABEL_MODE_DOWN,    // Cycle label mode backward
+            // (Range / Width / Freeze / Marker scale are data-driven STEPPED controls.)
             GAPBAR_GAP_BAR_TOGGLE,     // Toggle gap bar visualization (green/red bars)
-            GAPBAR_COLOR_MODE_UP,      // Cycle color mode forward (Uniform/Brand/Position)
-            GAPBAR_COLOR_MODE_DOWN,    // Cycle color mode backward
             COLOR_CYCLE_PREV,          // Cycle color backward (Appearance tab)
             COLOR_CYCLE_NEXT,          // Cycle color forward (Appearance tab)
             FONT_CATEGORY_PREV,        // Cycle font backward for category (Appearance tab)
@@ -268,126 +221,17 @@ public:
             TAB,                       // Select tab
             CLOSE_BUTTON,              // Close the settings menu
             // Controller/Rumble settings
+            // (The per-effect Light/Heavy/Min/Max stepper arrows are data-driven
+            // STEPPED_UP/STEPPED_DOWN controls - see SteppedControl and
+            // settings_tab_rumble.cpp. Only the toggles keep dedicated types.)
             RUMBLE_TOGGLE,             // Toggle rumble master enable
             RUMBLE_CONTROLLER_UP,      // Cycle controller index up
             RUMBLE_CONTROLLER_DOWN,    // Cycle controller index down
             RUMBLE_BLEND_TOGGLE,       // Toggle blend mode (max vs additive)
             RUMBLE_CRASH_TOGGLE,       // Toggle disable on crash
             RUMBLE_EFFECT_PROFILE_TOGGLE, // Toggle effect profile (global vs per-bike)
-            RUMBLE_SUSP_LIGHT_DOWN,    // Decrease suspension light motor strength
-            RUMBLE_SUSP_LIGHT_UP,      // Increase suspension light motor strength
-            RUMBLE_SUSP_HEAVY_DOWN,    // Decrease suspension heavy motor strength
-            RUMBLE_SUSP_HEAVY_UP,      // Increase suspension heavy motor strength
-            RUMBLE_SUSP_MIN_UP,        // Increase suspension min input
-            RUMBLE_SUSP_MIN_DOWN,      // Decrease suspension min input
-            RUMBLE_SUSP_MAX_UP,        // Increase suspension max input
-            RUMBLE_SUSP_MAX_DOWN,      // Decrease suspension max input
             RUMBLE_SUSP_SPLIT_TOGGLE,  // Toggle front/rear split for Bumps
-            RUMBLE_SUSP_FRONT_LIGHT_DOWN,  // Front: decrease suspension light motor strength
-            RUMBLE_SUSP_FRONT_LIGHT_UP,    // Front: increase suspension light motor strength
-            RUMBLE_SUSP_FRONT_HEAVY_DOWN,  // Front: decrease suspension heavy motor strength
-            RUMBLE_SUSP_FRONT_HEAVY_UP,    // Front: increase suspension heavy motor strength
-            RUMBLE_SUSP_FRONT_MIN_UP,      // Front: increase suspension min input
-            RUMBLE_SUSP_FRONT_MIN_DOWN,    // Front: decrease suspension min input
-            RUMBLE_SUSP_FRONT_MAX_UP,      // Front: increase suspension max input
-            RUMBLE_SUSP_FRONT_MAX_DOWN,    // Front: decrease suspension max input
-            RUMBLE_SUSP_REAR_LIGHT_DOWN,  // Rear: decrease suspension light motor strength
-            RUMBLE_SUSP_REAR_LIGHT_UP,    // Rear: increase suspension light motor strength
-            RUMBLE_SUSP_REAR_HEAVY_DOWN,  // Rear: decrease suspension heavy motor strength
-            RUMBLE_SUSP_REAR_HEAVY_UP,    // Rear: increase suspension heavy motor strength
-            RUMBLE_SUSP_REAR_MIN_UP,      // Rear: increase suspension min input
-            RUMBLE_SUSP_REAR_MIN_DOWN,    // Rear: decrease suspension min input
-            RUMBLE_SUSP_REAR_MAX_UP,      // Rear: increase suspension max input
-            RUMBLE_SUSP_REAR_MAX_DOWN,    // Rear: decrease suspension max input
-            RUMBLE_WHEEL_LIGHT_DOWN,   // Decrease spin light motor strength
-            RUMBLE_WHEEL_LIGHT_UP,     // Increase spin light motor strength
-            RUMBLE_WHEEL_HEAVY_DOWN,   // Decrease spin heavy motor strength
-            RUMBLE_WHEEL_HEAVY_UP,     // Increase spin heavy motor strength
-            RUMBLE_WHEEL_MIN_UP,       // Increase spin min input
-            RUMBLE_WHEEL_MIN_DOWN,     // Decrease spin min input
-            RUMBLE_WHEEL_MAX_UP,       // Increase spin max input
-            RUMBLE_WHEEL_MAX_DOWN,     // Decrease spin max input
-            RUMBLE_LOCKUP_LIGHT_DOWN,  // Decrease brake lockup light motor strength
-            RUMBLE_LOCKUP_LIGHT_UP,    // Increase brake lockup light motor strength
-            RUMBLE_LOCKUP_HEAVY_DOWN,  // Decrease brake lockup heavy motor strength
-            RUMBLE_LOCKUP_HEAVY_UP,    // Increase brake lockup heavy motor strength
-            RUMBLE_LOCKUP_MIN_UP,      // Increase brake lockup min input
-            RUMBLE_LOCKUP_MIN_DOWN,    // Decrease brake lockup min input
-            RUMBLE_LOCKUP_MAX_UP,      // Increase brake lockup max input
-            RUMBLE_LOCKUP_MAX_DOWN,    // Decrease brake lockup max input
             RUMBLE_LOCKUP_SPLIT_TOGGLE,  // Toggle front/rear split for Lockup
-            RUMBLE_LOCKUP_FRONT_LIGHT_DOWN,  // Front: decrease brake lockup light motor strength
-            RUMBLE_LOCKUP_FRONT_LIGHT_UP,    // Front: increase brake lockup light motor strength
-            RUMBLE_LOCKUP_FRONT_HEAVY_DOWN,  // Front: decrease brake lockup heavy motor strength
-            RUMBLE_LOCKUP_FRONT_HEAVY_UP,    // Front: increase brake lockup heavy motor strength
-            RUMBLE_LOCKUP_FRONT_MIN_UP,      // Front: increase brake lockup min input
-            RUMBLE_LOCKUP_FRONT_MIN_DOWN,    // Front: decrease brake lockup min input
-            RUMBLE_LOCKUP_FRONT_MAX_UP,      // Front: increase brake lockup max input
-            RUMBLE_LOCKUP_FRONT_MAX_DOWN,    // Front: decrease brake lockup max input
-            RUMBLE_LOCKUP_REAR_LIGHT_DOWN,  // Rear: decrease brake lockup light motor strength
-            RUMBLE_LOCKUP_REAR_LIGHT_UP,    // Rear: increase brake lockup light motor strength
-            RUMBLE_LOCKUP_REAR_HEAVY_DOWN,  // Rear: decrease brake lockup heavy motor strength
-            RUMBLE_LOCKUP_REAR_HEAVY_UP,    // Rear: increase brake lockup heavy motor strength
-            RUMBLE_LOCKUP_REAR_MIN_UP,      // Rear: increase brake lockup min input
-            RUMBLE_LOCKUP_REAR_MIN_DOWN,    // Rear: decrease brake lockup min input
-            RUMBLE_LOCKUP_REAR_MAX_UP,      // Rear: increase brake lockup max input
-            RUMBLE_LOCKUP_REAR_MAX_DOWN,    // Rear: decrease brake lockup max input
-            RUMBLE_WHEELIE_LIGHT_DOWN, // Decrease wheelie light motor strength
-            RUMBLE_WHEELIE_LIGHT_UP,   // Increase wheelie light motor strength
-            RUMBLE_WHEELIE_HEAVY_DOWN, // Decrease wheelie heavy motor strength
-            RUMBLE_WHEELIE_HEAVY_UP,   // Increase wheelie heavy motor strength
-            RUMBLE_WHEELIE_MIN_UP,     // Increase wheelie min input
-            RUMBLE_WHEELIE_MIN_DOWN,   // Decrease wheelie min input
-            RUMBLE_WHEELIE_MAX_UP,     // Increase wheelie max input
-            RUMBLE_WHEELIE_MAX_DOWN,   // Decrease wheelie max input
-            RUMBLE_RPM_LIGHT_DOWN,     // Decrease RPM light motor strength
-            RUMBLE_RPM_LIGHT_UP,       // Increase RPM light motor strength
-            RUMBLE_RPM_HEAVY_DOWN,     // Decrease RPM heavy motor strength
-            RUMBLE_RPM_HEAVY_UP,       // Increase RPM heavy motor strength
-            RUMBLE_RPM_MIN_UP,         // Increase RPM min input
-            RUMBLE_RPM_MIN_DOWN,       // Decrease RPM min input
-            RUMBLE_RPM_MAX_UP,         // Increase RPM max input
-            RUMBLE_RPM_MAX_DOWN,       // Decrease RPM max input
-            RUMBLE_SLIDE_LIGHT_DOWN,   // Decrease slide light motor strength
-            RUMBLE_SLIDE_LIGHT_UP,     // Increase slide light motor strength
-            RUMBLE_SLIDE_HEAVY_DOWN,   // Decrease slide heavy motor strength
-            RUMBLE_SLIDE_HEAVY_UP,     // Increase slide heavy motor strength
-            RUMBLE_SLIDE_MIN_UP,       // Increase slide min input
-            RUMBLE_SLIDE_MIN_DOWN,     // Decrease slide min input
-            RUMBLE_SLIDE_MAX_UP,       // Increase slide max input
-            RUMBLE_SLIDE_MAX_DOWN,     // Decrease slide max input
-            RUMBLE_SURFACE_LIGHT_DOWN, // Decrease surface light motor strength
-            RUMBLE_SURFACE_LIGHT_UP,   // Increase surface light motor strength
-            RUMBLE_SURFACE_HEAVY_DOWN, // Decrease surface heavy motor strength
-            RUMBLE_SURFACE_HEAVY_UP,   // Increase surface heavy motor strength
-            RUMBLE_SURFACE_MIN_UP,     // Increase surface min input
-            RUMBLE_SURFACE_MIN_DOWN,   // Decrease surface min input
-            RUMBLE_SURFACE_MAX_UP,     // Increase surface max input
-            RUMBLE_SURFACE_MAX_DOWN,   // Decrease surface max input
-            RUMBLE_STEER_LIGHT_DOWN,   // Decrease steer light motor strength
-            RUMBLE_STEER_LIGHT_UP,     // Increase steer light motor strength
-            RUMBLE_STEER_HEAVY_DOWN,   // Decrease steer heavy motor strength
-            RUMBLE_STEER_HEAVY_UP,     // Increase steer heavy motor strength
-            RUMBLE_STEER_MIN_UP,       // Increase steer min input
-            RUMBLE_STEER_MIN_DOWN,     // Decrease steer min input
-            RUMBLE_STEER_MAX_UP,       // Increase steer max input
-            RUMBLE_STEER_MAX_DOWN,     // Decrease steer max input
-            RUMBLE_REVLIM_LIGHT_DOWN,  // Decrease rev limiter light motor strength
-            RUMBLE_REVLIM_LIGHT_UP,    // Increase rev limiter light motor strength
-            RUMBLE_REVLIM_HEAVY_DOWN,  // Decrease rev limiter heavy motor strength
-            RUMBLE_REVLIM_HEAVY_UP,    // Increase rev limiter heavy motor strength
-            RUMBLE_REVLIM_MIN_UP,      // Increase rev limiter min input
-            RUMBLE_REVLIM_MIN_DOWN,    // Decrease rev limiter min input
-            RUMBLE_REVLIM_MAX_UP,      // Increase rev limiter max input
-            RUMBLE_REVLIM_MAX_DOWN,    // Decrease rev limiter max input
-            RUMBLE_PITLIM_LIGHT_DOWN,  // Decrease pit limiter light motor strength
-            RUMBLE_PITLIM_LIGHT_UP,    // Increase pit limiter light motor strength
-            RUMBLE_PITLIM_HEAVY_DOWN,  // Decrease pit limiter heavy motor strength
-            RUMBLE_PITLIM_HEAVY_UP,    // Increase pit limiter heavy motor strength
-            RUMBLE_PITLIM_MIN_UP,      // Increase pit limiter min input
-            RUMBLE_PITLIM_MIN_DOWN,    // Decrease pit limiter min input
-            RUMBLE_PITLIM_MAX_UP,      // Increase pit limiter max input
-            RUMBLE_PITLIM_MAX_DOWN,    // Decrease pit limiter max input
             RUMBLE_HUD_TOGGLE,         // Toggle RumbleHud visibility
             // Helmet Overlay settings
             HELMET_OVERLAY_TOGGLE,     // Master toggle: enable helmet overlay
@@ -473,41 +317,19 @@ public:
             // (Incident hold cap is an INI-only tunable now - no click region.)
             DIRECTOR_HUD_VISIBLE,      // Toggle the on-screen director status button
             // FMX HUD
+            // (Trick stack rows is a data-driven STEPPED control.)
             FMX_DEBUG_TOGGLE,          // Toggle FMX debug logging
-            FMX_CHAIN_ROWS_UP,         // Increase max chain display rows
-            FMX_CHAIN_ROWS_DOWN,       // Decrease max chain display rows
             // Stats HUD
-            STATS_VISIBILITY_UP,       // Cycle stats visibility mode forward
-            STATS_VISIBILITY_DOWN,     // Cycle stats visibility mode backward
             STATS_SHOW_LAP_TOGGLE,     // Toggle lap column
             STATS_SHOW_SESSION_TOGGLE, // Toggle session column
             STATS_SHOW_ALLTIME_TOGGLE, // Toggle all-time column
             // Clock Widget
             CLOCK_FORMAT_TOGGLE,       // Toggle 12h/24h format (ClockWidget)
             // Event Log HUD
-            EVENT_LOG_MODE_UP,         // Cycle display mode forward (EventLogHud)
-            EVENT_LOG_MODE_DOWN,       // Cycle display mode backward (EventLogHud)
-            EVENT_LOG_ORDER_UP,        // Cycle display order forward (EventLogHud)
-            EVENT_LOG_ORDER_DOWN,      // Cycle display order backward (EventLogHud)
-            EVENT_LOG_ROW_COUNT_UP,    // Increase max events to show (EventLogHud)
-            EVENT_LOG_ROW_COUNT_DOWN,  // Decrease max events to show (EventLogHud)
-            EVENT_LOG_DURATION_UP,     // Increase auto-hide duration (EventLogHud)
-            EVENT_LOG_DURATION_DOWN,   // Decrease auto-hide duration (EventLogHud)
-            EVENT_LOG_TIMESTAMP_UP,    // Cycle timestamp mode forward (EventLogHud)
-            EVENT_LOG_TIMESTAMP_DOWN,  // Cycle timestamp mode backward (EventLogHud)
             EVENT_LOG_ICONS_TOGGLE,    // Toggle event type icons (EventLogHud)
-            // Notices HUD
-            NOTICES_DURATION_UP,       // Increase notice duration (NoticesHud)
-            NOTICES_DURATION_DOWN,     // Decrease notice duration (NoticesHud)
             // Standings tab toggles
             LIVE_GAPS_TOGGLE,          // Toggle live gap display in races (StandingsHud per-profile member)
             FILTER_DNS_TOGGLE,         // Toggle DNS rider filtering (PluginData global)
-            ANIMATION_MODE_UP,         // Cycle position animation forward Off->Basic->Colored (StandingsHud)
-            ANIMATION_MODE_DOWN,       // Cycle position animation backward Colored->Basic->Off (StandingsHud)
-            NAME_MODE_UP,              // Cycle rider name mode forward Off->Short->Long (StandingsHud)
-            NAME_MODE_DOWN,            // Cycle rider name mode backward Long->Short->Off (StandingsHud)
-            POSGAIN_MODE_UP,           // Cycle positions-gained reference forward Off->Start->S/F->Split (StandingsHud)
-            POSGAIN_MODE_DOWN,         // Cycle positions-gained reference backward Split->S/F->Start->Off (StandingsHud)
             HEADERS_TOGGLE,            // Toggle column-header row in the standings (StandingsHud)
             SESSION_INFO_TOGGLE,       // Toggle session-info row (clock/laps/overtime) in the standings (StandingsHud)
             // Help & Community links (General tab footer)
@@ -521,8 +343,7 @@ public:
         using TargetPointer = std::variant<
             std::monostate,                              // Empty state (for types that don't need a pointer)
             uint32_t*,                                   // For CHECKBOX (targetBitfield)
-            bool*,                                       // For GAP_COLUMN_TOGGLE and other bool toggles
-            uint8_t*,                                    // For DISPLAY_MODE_UP/DOWN
+            bool*,                                       // For bool toggle regions
             ColorSlot,                                   // For COLOR_CYCLE_PREV/NEXT
             FontCategory,                                // For FONT_CATEGORY_PREV/NEXT
             HotkeyAction,                                // For HOTKEY_* controls
@@ -535,6 +356,8 @@ public:
         BaseHud* targetHud;        // HUD to mark dirty after toggle
         int tabIndex;              // Which tab to switch to (for TAB type)
         std::string tooltipId;     // Tooltip ID for hover display (Phase 3)
+        int steppedIndex = -1;     // Index into m_steppedControls (for STEPPED_UP/STEPPED_DOWN)
+        int cycleIndex = -1;       // Index into m_cycleControls (for CYCLE_UP/CYCLE_DOWN)
 
         // Constructor for simple regions (no pointer needed)
         ClickRegion(float _x, float _y, float _width, float _height, Type _type,
@@ -557,18 +380,11 @@ public:
               targetPointer(bitfield), flagBit(_flagBit), isRequired(_isRequired),
               targetHud(_targetHud), tabIndex(0), tooltipId() {}
 
-        // Constructor for GAP_COLUMN_TOGGLE regions (bool*)
+        // Constructor for bool* toggle regions
         ClickRegion(float _x, float _y, float _width, float _height, Type _type,
                    bool* boolPtr, BaseHud* _targetHud)
             : x(_x), y(_y), width(_width), height(_height), type(_type),
               targetPointer(boolPtr), flagBit(0), isRequired(false),
-              targetHud(_targetHud), tabIndex(0), tooltipId() {}
-
-        // Constructor for DISPLAY_MODE regions
-        ClickRegion(float _x, float _y, float _width, float _height, Type _type,
-                   uint8_t* displayMode, BaseHud* _targetHud)
-            : x(_x), y(_y), width(_width), height(_height), type(_type),
-              targetPointer(displayMode), flagBit(0), isRequired(false),
               targetHud(_targetHud), tabIndex(0), tooltipId() {}
 
         // Constructor for COLOR_CYCLE regions
@@ -603,6 +419,117 @@ public:
         ClickRegion() : x(0), y(0), width(0), height(0), type(CLOSE_BUTTON),
                        targetPointer(std::monostate{}), flagBit(0), isRequired(false),
                        targetHud(nullptr), tabIndex(0), tooltipId() {}
+    };
+
+    // Descriptor for the shared STEPPED_UP/STEPPED_DOWN click regions: what to
+    // step, how, within which bounds, and which HUD to mark dirty. Registered by
+    // SettingsLayoutContext::addSteppedControl during rebuildRenderData (layout
+    // time) into m_steppedControls, which is cleared and rebuilt together with
+    // m_clickRegions - so the index stored in ClickRegion::steppedIndex is stable
+    // for exactly as long as the region itself is. The value pointers follow the
+    // same lifetime rules as ClickRegion's bitfield/bool pointers (they point at
+    // long-lived HUD members).
+    struct SteppedControl {
+        enum class Kind {
+            WRAP_INT,      // applyAcceleratedWrap  (wraps at the bounds)
+            CLAMP_INT,     // applyAcceleratedClamp (clamps at the bounds)
+            FIXED_INT,     // Fixed integer step, deliberately NO hold acceleration,
+                           // clamped to [lo,hi] (the legacy plain ++/-- count steppers:
+                           // records to show, chart row counts)
+            STEP_FLOAT,    // applyAcceleratedStep  (clamped toward the pressed direction)
+            PERCENT_FLOAT, // Rumble-strength stepper: accelerated 1% step, clamp
+                           // [flo,fhi], then round to hundredths (NOT the STEP_FLOAT
+                           // snap-to-accelerated-grid - preserves the legacy sequences)
+            FIXED_FLOAT    // Fixed step, deliberately NO hold acceleration, clamped to
+                           // [flo,fhi]; loLink (when set) overrides flo with a live value
+        };
+        Kind kind = Kind::WRAP_INT;
+        int* intValue = nullptr;      // WRAP_INT / CLAMP_INT target
+        float* floatValue = nullptr;  // float-kind target
+        int step = 1, lo = 0, hi = 0;             // int kinds
+        float fstep = 0.0f, flo = 0.0f, fhi = 0.0f; // float kinds
+        const float* loLink = nullptr; // FIXED_FLOAT: dynamic lower bound (e.g. a rumble
+                                       // effect's max input clamps at its live minInput)
+        BaseHud* dirtyHud = nullptr;  // HUD to mark dirty after the change
+        // Optional extra work, run after the step and before the dirty calls (e.g.
+        // the Rumble tab marking the per-bike profile dirty / latching a split
+        // flag). Rebuilt in lockstep with the descriptor vector, so captures follow
+        // the same lifetime rules as the value pointers.
+        std::function<void()> postStep;
+        // Optional validity predicate, checked BEFORE applying the step: when it
+        // returns false the click is swallowed and the settings layout is marked
+        // dirty so the next frame rebuilds against the right target. Guards
+        // descriptors whose value pointers bind to state that can be swapped out
+        // from under an open menu — e.g. the Rumble tab's per-bike profile, which
+        // changes when the player swaps bikes (the old pointers would silently
+        // edit the PREVIOUS bike's profile). Swallowing is correct: the control
+        // the user clicked no longer shows the truth.
+        std::function<bool()> valid;
+
+        static SteppedControl wrapInt(int* value, int step, int lo, int hi, BaseHud* dirtyHud) {
+            SteppedControl c; c.kind = Kind::WRAP_INT; c.intValue = value;
+            c.step = step; c.lo = lo; c.hi = hi; c.dirtyHud = dirtyHud; return c;
+        }
+        static SteppedControl clampInt(int* value, int step, int lo, int hi, BaseHud* dirtyHud) {
+            SteppedControl c; c.kind = Kind::CLAMP_INT; c.intValue = value;
+            c.step = step; c.lo = lo; c.hi = hi; c.dirtyHud = dirtyHud; return c;
+        }
+        static SteppedControl fixedInt(int* value, int step, int lo, int hi, BaseHud* dirtyHud) {
+            SteppedControl c; c.kind = Kind::FIXED_INT; c.intValue = value;
+            c.step = step; c.lo = lo; c.hi = hi; c.dirtyHud = dirtyHud; return c;
+        }
+        static SteppedControl stepFloat(float* value, float step, float lo, float hi, BaseHud* dirtyHud) {
+            SteppedControl c; c.kind = Kind::STEP_FLOAT; c.floatValue = value;
+            c.fstep = step; c.flo = lo; c.fhi = hi; c.dirtyHud = dirtyHud; return c;
+        }
+        static SteppedControl percentFloat(float* value, BaseHud* dirtyHud) {
+            SteppedControl c; c.kind = Kind::PERCENT_FLOAT; c.floatValue = value;
+            c.fstep = 0.01f; c.flo = 0.0f; c.fhi = 1.0f; c.dirtyHud = dirtyHud; return c;
+        }
+        static SteppedControl fixedFloat(float* value, float step, float lo, float hi, BaseHud* dirtyHud) {
+            SteppedControl c; c.kind = Kind::FIXED_FLOAT; c.floatValue = value;
+            c.fstep = step; c.flo = lo; c.fhi = hi; c.dirtyHud = dirtyHud; return c;
+        }
+        static SteppedControl fixedFloatDynamicLo(float* value, float step, const float* loLink, float hi, BaseHud* dirtyHud) {
+            SteppedControl c; c.kind = Kind::FIXED_FLOAT; c.floatValue = value;
+            c.fstep = step; c.loLink = loLink; c.fhi = hi; c.dirtyHud = dirtyHud; return c;
+        }
+    };
+
+    // Descriptor for the shared CYCLE_UP/CYCLE_DOWN click regions: a plain mod-N
+    // state cycle ("value = (value ± 1) mod N; mark dirty"). Registered by the
+    // SettingsLayoutContext::addCycleControl descriptor overload during
+    // rebuildRenderData into m_cycleControls, which is cleared and rebuilt in
+    // lockstep with m_clickRegions — ClickRegion::cycleIndex is stable exactly as
+    // long as the region itself is. get/set use a 0-based state index; enums whose
+    // VISUAL cycle order differs from their numeric order (e.g. StandingsHud's
+    // PosGainMode) map inside their get/set lambdas. Deliberately NO hold
+    // acceleration: cycles step ±1 per click/repeat, whatever the hold tier.
+    struct CycleControl {
+        std::function<int()> get;        // current 0-based state index
+        std::function<void(int)> set;    // store the new state index
+        int count = 1;                   // number of states (the modulus N)
+        BaseHud* dirtyHud = nullptr;     // HUD to mark dirty after the change
+        // Optional extra work, run after set() and before the dirty calls (e.g.
+        // Stats resetting its auto-show latches, Friends clearing its transient
+        // ON_JOIN state, Standings stopping in-flight animations on OFF). Same
+        // lifetime rules as the get/set captures.
+        std::function<void()> postStep;
+
+        // The common case: cycle an enum (or integral) member of a HUD through
+        // its full 0..count-1 numeric range. Works for any enum whose visual
+        // cycle order equals its numeric order. Lambdas formed here have the
+        // access rights of SettingsHud (nested class of a friend).
+        template <typename OwnerT, typename EnumT>
+        static CycleControl enumMember(OwnerT* owner, EnumT OwnerT::* member,
+                                       int count, BaseHud* dirtyHud) {
+            CycleControl c;
+            c.get = [owner, member]() { return static_cast<int>(owner->*member); };
+            c.set = [owner, member](int v) { owner->*member = static_cast<EnumT>(v); };
+            c.count = count;
+            c.dirtyHud = dirtyHud;
+            return c;
+        }
     };
 
     // Friend declarations for settings layout system
@@ -653,15 +580,14 @@ public:
     bool handleClickTabHotkeys(const ClickRegion& region);
     bool handleClickTabRiders(const ClickRegion& region);
     bool handleClickTabRecords(const ClickRegion& region);
-    bool handleClickTabPitboard(const ClickRegion& region);
     bool handleClickTabSession(const ClickRegion& region);
     bool handleClickTabLapLog(const ClickRegion& region);
-    bool handleClickTabSessionCharts(const ClickRegion& region);
     bool handleClickTabUpdates(const ClickRegion& region);
     bool handleClickTabFmx(const ClickRegion& region);
     bool handleClickTabStats(const ClickRegion& region);
     bool handleClickTabEventLog(const ClickRegion& region);
-    bool handleClickTabNotices(const ClickRegion& region);
+    // (Notices has no tab-specific click handler: its Duration control is a
+    // shared STEPPED control and the rest uses the common handlers.)
 
     // HUD getter methods (for tab rendering functions)
     IdealLapHud* getIdealLapHud() const { return m_idealLap; }
@@ -711,6 +637,24 @@ public:
 protected:
     void rebuildLayout() override;
 
+#if defined(MXBMRP3_TEST_BUILD)
+public:
+    // Headless click seam (never in a shipping build): the settings-click path is
+    // otherwise reachable only via real OS mouse input, which the Wine harness
+    // can't synthesize. testClickStepped routes a click through the REAL path
+    // (handleClick: hit-test -> dispatchRegion -> applySteppedControl) at the
+    // center of the index-th built STEPPED_UP/STEPPED_DOWN region, with the
+    // hold-repeat counter forced so the acceleration tiers (1/5/10) are drivable.
+    // Regions are counted in layout order on the ACTIVE tab. Returns false when
+    // no such region exists (e.g. wrong tab, index out of range).
+    int testSteppedRegionCount(bool up) const;
+    bool testClickStepped(int index, bool up, int holdRepeats);
+    // Same seam for the shared CYCLE_UP/CYCLE_DOWN regions (no hold tier — cycles
+    // never accelerate).
+    int testCycleRegionCount(bool up) const;
+    bool testClickCycle(int index, bool up);
+#endif
+
 private:
     void rebuildRenderData() override;
     void handleClick(float mouseX, float mouseY);
@@ -721,12 +665,13 @@ private:
     void resetCurrentProfile();    // Reset all HUDs for current profile
 
     // Click handlers - common handlers used by multiple tabs
+    void applySteppedControl(const ClickRegion& region, bool increase);  // STEPPED_UP/STEPPED_DOWN
+    void applyCycleControl(const ClickRegion& region, bool forward);     // CYCLE_UP/CYCLE_DOWN
     void handleCheckboxClick(const ClickRegion& region);
     void handleHudToggleClick(const ClickRegion& region);
     void handleTitleToggleClick(const ClickRegion& region);
     void handleOpacityClick(const ClickRegion& region, bool increase);
     void handleScaleClick(const ClickRegion& region, bool increase);
-    void handleDisplayModeClick(const ClickRegion& region, bool increase);
     void handleTabClick(const ClickRegion& region);
     void handleCloseButtonClick();
     const char* getTabName(int tabIndex) const;  // Get display name for a tab
@@ -736,11 +681,52 @@ private:
     bool isTabAvailable(int tabId) const;
     // Note: Tab-specific handlers inlined into settings_tab_*.cpp files
 
-    // Helper methods to reduce code duplication
-    void addClickRegion(ClickRegion::Type type, float x, float y, float width, float height,
-                        BaseHud* targetHud, uint32_t* bitfield = nullptr,
-                        uint8_t* displayMode = nullptr, uint32_t flagBit = 0,
-                        bool isRequired = false, int tabIndex = 0);
+    // ------------------------------------------------------------------
+    // Per-tab descriptor registry (mirrors core/settings_hud_registry).
+    // ONE static table drives every per-tab dispatch site: the tab-list
+    // render loop (display order, name, tooltip id, backing-HUD checkbox,
+    // section icon), game gating (isTabAvailable), the active-tab render
+    // routing, the click routing, and the per-tab reset. Adding a tab =
+    // one Tab enum value + ONE row in s_tabRegistry (settings_hud.cpp) —
+    // there is no separate switch to keep in step.
+    // ------------------------------------------------------------------
+    struct TabDescriptor {
+        int tabId;                                      // Tab enum value, or TAB_SECTION_* marker
+        const char* name;                               // Display name (persisted via [Profiles] activeTab - keep stable)
+        const char* tooltipId;                          // Lowercase id for tab description lookup (TooltipManager)
+        BaseHud* (*hud)(const SettingsHud&);            // Backing HUD for the tab-list checkbox; null = master-toggle/section tab
+        bool gameGated;                                 // Tab unavailable when hud() returns null (Records/FMX/Friends)
+        BaseHud* (*render)(SettingsLayoutContext&);     // Tab renderer (static member fn in settings_tab_*.cpp)
+        bool (SettingsHud::*click)(const ClickRegion&); // Tab click handler; null = common handlers only
+        const char* resetHud;                           // HUD name for the standard per-tab reset (resetHudsToFactoryDefaults); null = none
+        void (SettingsHud::*resetExtra)();              // Custom reset steps (run after resetHud); null = none
+        const char* sectionIcon;                        // Identity icon for non-toggleable section tabs; null = none
+    };
+    // Rows are in VISUAL ORDER - the tab-list render loop iterates this table
+    // directly, so row position = position in the tab column. The negative
+    // TAB_SECTION_* rows render the section headers/controls between groups.
+    static const TabDescriptor s_tabRegistry[];
+    static const TabDescriptor* findTabDescriptor(int tabId);
+
+    // Section markers used in s_tabRegistry (negative = not a real tab)
+    static constexpr int TAB_SECTION_GLOBAL = -1;
+    static constexpr int TAB_SECTION_PROFILE = -2;
+    static constexpr int TAB_SECTION_ELEMENTS = -3;
+
+    // Per-tab custom reset bodies (referenced by s_tabRegistry rows; the simple
+    // "reset this HUD's section" tabs use TabDescriptor::resetHud instead).
+    // Implemented in settings_hud_input.cpp next to resetCurrentTab().
+    void resetTabGeneral();
+    void resetTabAppearance();
+    void resetTabStandingsExtra();   // DNS filter (global, outside the HUD snapshot)
+    void resetTabRecordsExtra();     // provider + auto-fetch (global [General] keys)
+    void resetTabWidgets();
+    void resetTabRumble();
+    void resetTabHelmet();
+    void resetTabHotkeys();
+    void resetTabUpdates();
+    void resetTabRiders();
+    void resetTabDirector();
 
     // Check if point is inside a clickable region
     bool isPointInRect(float x, float y, float rectX, float rectY, float width, float height) const;
@@ -976,6 +962,15 @@ private:
     std::chrono::steady_clock::time_point m_lastStatsRefresh{};
 
     std::vector<ClickRegion> m_clickRegions;
+
+    // Stepped-control descriptors referenced by ClickRegion::steppedIndex.
+    // Rebuilt in lockstep with m_clickRegions (rebuildRenderData / hide), never
+    // touched per frame - see SteppedControl.
+    std::vector<SteppedControl> m_steppedControls;
+
+    // Cycle-control descriptors referenced by ClickRegion::cycleIndex. Same
+    // lifecycle as m_steppedControls - see CycleControl.
+    std::vector<CycleControl> m_cycleControls;
 
     // Get tooltip ID for a click region type and current active tab
     // Returns empty string if no tooltip is available

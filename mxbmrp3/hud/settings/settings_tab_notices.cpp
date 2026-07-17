@@ -6,26 +6,10 @@
 #include "../settings_hud.h"
 #include "../notices_hud.h"
 
-// Static member function of SettingsHud - handles click events for Notices tab
-bool SettingsHud::handleClickTabNotices(const ClickRegion& region) {
-    switch (region.type) {
-        case ClickRegion::NOTICES_DURATION_UP:
-        case ClickRegion::NOTICES_DURATION_DOWN:
-            // Cycle notice duration: 1s -> 2s -> ... -> 30s -> 1s (wraps)
-            if (m_notices) {
-                bool forward = (region.type == ClickRegion::NOTICES_DURATION_UP);
-                m_notices->m_noticeDurationMs = applyAcceleratedWrap(
-                    m_notices->m_noticeDurationMs, NoticesHud::DURATION_STEP_MS,
-                    NoticesHud::MIN_NOTICE_DURATION_MS, NoticesHud::MAX_NOTICE_DURATION_MS, forward);
-                m_notices->setDataDirty();
-                setDataDirty();
-            }
-            return true;
-
-        default:
-            return false;
-    }
-}
+// Note: the Notices tab has no tab-specific click handler anymore - its only
+// custom control (Duration) is a data-driven STEPPED control registered below,
+// and everything else (visibility/opacity/scale/checkboxes) uses the common
+// handlers. Its registry row's click is null.
 
 // Static member function of SettingsHud - inherits friend access to NoticesHud
 BaseHud* SettingsHud::renderTabNotices(SettingsLayoutContext& ctx) {
@@ -45,9 +29,10 @@ BaseHud* SettingsHud::renderTabNotices(SettingsLayoutContext& ctx) {
     // Duration cycle control: 1s -> 2s -> ... -> 30s (wraps)
     char durationValue[16];
     snprintf(durationValue, sizeof(durationValue), "%ds", hud->m_noticeDurationMs / 1000);
-    ctx.addCycleControl("Duration", durationValue, 10,
-        SettingsHud::ClickRegion::NOTICES_DURATION_DOWN,
-        SettingsHud::ClickRegion::NOTICES_DURATION_UP,
+    ctx.addSteppedControl("Duration", durationValue, 10,
+        SettingsHud::SteppedControl::wrapInt(&hud->m_noticeDurationMs,
+            NoticesHud::DURATION_STEP_MS, NoticesHud::MIN_NOTICE_DURATION_MS,
+            NoticesHud::MAX_NOTICE_DURATION_MS, hud),
         hud, true, false, "notices.duration");
     ctx.addSpacing(0.5f);
 

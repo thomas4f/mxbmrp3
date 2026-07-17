@@ -281,7 +281,24 @@ void PluginData::removeRaceEntry(int raceNum) {
         m_lastSfPositions.erase(raceNum);
         m_lastSplitPositions.erase(raceNum);
         m_cachedHazardTypes.erase(raceNum);
+        // Also the live-gap "recently seen in a RaceTrackPosition batch" set: while
+        // the player sits in menus no batches arrive to refresh it, so a departed
+        // rider would otherwise stay "active" indefinitely and a rejoiner reusing
+        // the number would inherit hasActiveTrackPos() == true (liveGapValid).
+        m_activeTrackPosRiders.erase(raceNum);
         m_blueFlagsDirty = true;
+        // The derived hazard-raceNum vector must be rebuilt too: erasing the type
+        // cache above keeps IT consistent, but m_cachedHazardRaceNums still lists
+        // the departed rider — and with no callbacks arriving in menus, the next
+        // RaceTrackPosition batch that would refresh it may never come.
+        m_hazardsDirty = true;
+        m_hazardTypesDirty = true;
+        // Same stale-in-menus class for the derived position caches: their source
+        // (m_classificationOrder) legitimately lists the rider until the next
+        // classification, but that classification may never arrive in menus —
+        // dirty them so the next lookup rebuilds instead of serving the departed
+        // rider's position indefinitely.
+        m_bPositionCacheDirty = true;
 
         // Reset lap timer if we're removing the display rider
         if (raceNum == m_displayLapTimerRaceNum) {
@@ -797,6 +814,12 @@ void PluginData::clear() {
     m_newSessionPB = false;
     m_newFastestLap = false;
     m_newAllTimePB = false;
+    m_newDefaultSetup = false;
+
+    // Reset the player's PB live gap — otherwise a stale valid flag survives an
+    // event exit and the gap bar can briefly show the previous event's delta.
+    m_liveGapMs = 0;
+    m_liveGapValid = false;
 
     // Reset the segment timer (points are track-specific; drop on session change).
     // Keep m_splitPositions: they're track-specific and only re-delivered on track

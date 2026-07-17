@@ -138,6 +138,15 @@ private:
     // on its own row, so its tags never overlap. Gated on ELEM_LEGEND.
     void addRiderTag(float x, float y, int raceNum, unsigned long color);
 
+    // The axis-label set every chart shares: the Y-range pair right-justified
+    // against the plot's left edge (top value at py, bottom value at the last
+    // small-text row), then the X-range pair below the plot ("L1" left, "L<max>"
+    // right — the latter only when there is more than one lap). Pass nullptr for
+    // topLabel/botLabel to skip the Y pair (charts suppress it until data exists).
+    void addChartAxisLabels(float px, float py, float pw, float ph, int maxLap,
+                            const char* topLabel, const char* botLabel,
+                            const ScaledDimensions& dims);
+
     // X position for a 0-based lap index across the plotting width.
     float xForLap(float px, float pw, int lapIndex0, int maxLap) const {
         if (maxLap <= 1) return px + pw * 0.5f;

@@ -7,6 +7,8 @@
 #include "../diagnostics/logger.h"
 
 #include <algorithm>
+#include <chrono>
+#include <thread>
 
 namespace {
 // Reduce a registered resource path (".../fonts/RobotoMono-Regular.fnt") to its
@@ -54,7 +56,32 @@ CompanionWindow& CompanionWindow::getInstance() {
     return instance;
 }
 
-CompanionWindow::~CompanionWindow() { stop(); }
+CompanionWindow::~CompanionWindow() {
+    // Static-teardown backstop: only fires if the orchestrated shutdown (stop())
+    // was skipped — e.g. the DLL is unloaded WITHOUT the Shutdown() export being
+    // called. That path runs under the Windows loader lock (FreeLibrary -> static
+    // dtors), and a std::thread::join() waits for the thread's OS-level exit, which
+    // ALSO needs the loader lock -> deadlock. So DON'T join: signal stop, spin until
+    // the thread has left our loop (an app-level flag, no loader lock involved), then
+    // detach so its CRT/OS teardown finishes without us blocking on it. Same shape
+    // (and same known residual window) as ~XInputReader / ~PluginThread.
+    if (m_thread.joinable()) {
+        m_enabled.store(false);
+        m_run.store(false);
+        // BOUNDED spin: on an ExitProcess-without-Shutdown() teardown the OS has
+        // already TERMINATED the thread - the finished flag will never be stored,
+        // and an unbounded spin would hang process exit forever. ~2s covers any
+        // legitimately slow exit; past it, detach regardless (a terminated thread
+        // makes the detach trivially safe; a pathologically still-live one lands
+        // in the same known residual window documented above).
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (!m_threadFinished.load(std::memory_order_acquire) &&
+               std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::yield();
+        }
+        m_thread.detach();
+    }
+}
 
 void CompanionWindow::setAssetRoot(const std::string& root) {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -82,14 +109,38 @@ void CompanionWindow::setEnabled(bool enabled) {
     // before starting a new one — assigning over a joinable std::thread terminates.
     if (m_thread.joinable() && m_thread.get_id() != std::this_thread::get_id())
         m_thread.join();
+    // Re-assert the open state AFTER the reap: if the previous thread was mid-
+    // exception-unwind, its catch block stores m_enabled=false / m_userClosed=true
+    // during the join above — which would leave this freshly-requested window
+    // permanently suppressed (submit no-ops) and immediately fall the display
+    // target back to In-game. The join is a full barrier, so these stores win.
+    m_enabled.store(true);
+    m_userClosed.store(false);
     // Complete the one-time GDI init on this (caller) thread before the render
     // thread exists, so the two can't race Wine's win32u GDI bootstrap. See
     // warmUpGdiOnce().
     warmUpGdiOnce();
+    m_threadFinished.store(false, std::memory_order_release);
     m_run.store(true);
     m_thread = std::thread([this] {
         try { threadMain(); }
-        catch (...) { DEBUG_WARN("CompanionWindow: thread terminated by exception"); }
+        catch (...) {
+            DEBUG_WARN("CompanionWindow: thread terminated by exception");
+            // Self-heal: leaving m_enabled true would keep the game frame
+            // suppressed (displayTarget=COMPANION) with no live window — the
+            // user would have no HUD anywhere. Flag the close so HudManager's
+            // existing user-closed fallback restores the In-game display.
+            // (The window itself can't be destroyed from here — threadMain owns
+            // the HWND — but the render loop catches its own failures and
+            // destroys the window cleanly; this is the outer backstop.)
+            m_enabled.store(false);
+            m_run.store(false);
+            m_userClosed.store(true);
+        }
+        // LAST: signal the destructor's spin-wait that we've left our code. Keep
+        // this the final statement so no more of our (potentially-unmapped-soon)
+        // code runs. See ~CompanionWindow.
+        m_threadFinished.store(true, std::memory_order_release);
     });
 }
 
@@ -269,6 +320,16 @@ void CompanionWindow::threadMain() {
     HBITMAP memBmp = nullptr, oldBmp = nullptr;
     int bbW = 0, bbH = 0;
 
+    // Snapshot scratch, hoisted out of the loop: vector/string ASSIGNMENT reuses
+    // existing capacity, so the per-frame copy under m_mutex is a memcpy-grade fill
+    // instead of fresh allocations — the game thread's submit() blocks on this same
+    // mutex, so keeping the critical section short bounds game-thread stalls at
+    // high companionRefreshHz.
+    std::vector<SPluginQuad_t> quads;
+    std::vector<SPluginString_t> strings;
+    std::vector<std::string> fontBases, spriteBases;
+    std::string root;
+
     while (m_run.load()) {
         MSG msg;
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
@@ -278,10 +339,7 @@ void CompanionWindow::threadMain() {
         if (!m_run.load()) break;
 
         // Snapshot the latest frame under the lock, then render outside it.
-        std::vector<SPluginQuad_t> quads;
-        std::vector<SPluginString_t> strings;
-        std::vector<std::string> fontBases, spriteBases;
-        int firstIcon; std::string root; bool have;
+        int firstIcon; bool have;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             quads = m_quads; strings = m_strings;
@@ -309,7 +367,20 @@ void CompanionWindow::threadMain() {
             f.strings = strings.data(); f.stringCount = (int)strings.size();
             f.fontNames = &fontBases; f.spriteNames = &spriteBases;
             f.firstIcon = firstIcon; f.assetRoot = root;
-            renderer.render(img, f, 12, 15, 20);  // dark backdrop for legibility (fills the whole client)
+            try {
+                renderer.render(img, f, 12, 15, 20);  // dark backdrop for legibility (fills the whole client)
+            } catch (...) {
+                // A throwing render (e.g. bad_alloc from a corrupt user-supplied
+                // asset) would otherwise repeat every frame. Close the window
+                // cleanly and engage the user-closed fallback so the in-game
+                // HUD comes back instead of leaving the user HUD-less.
+                DEBUG_WARN("CompanionWindow: render failed - closing window, "
+                           "falling back to In-game display");
+                m_enabled.store(false);
+                m_userClosed.store(true);
+                m_run.store(false);
+                break;  // cleanup below destroys the window
+            }
         } else {
             img.fill(12, 15, 20, 255);
         }

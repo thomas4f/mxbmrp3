@@ -252,6 +252,9 @@ font_title=RobotoMono-Bold ; Roboto Mono Bold font
 ```
 Use the [Color Override Picker](https://thomas4f.github.io/mxbmrp3/tools/color_override_picker.html) to convert RGB colors to ABGR format. See [Advanced Settings](#advanced-settings) for how to edit and hot-reload the INI file.
 
+### Getting the most FPS
+Turn down the map's **Detail**, slim or disable its **Track outline**, and hide HUDs you don't use. Beyond that, take stock of your `plugins` folder: every installed plugin does work on every frame whether you use it or not, and some cost far more than others. Removing plugins you don't need is often the biggest FPS win of all.
+
 ### Experimental: run the plugin on its own thread
 By default the plugin does its work during the game's frame. Set `pluginThread=1` in the `[Advanced]` section of the [INI file](#advanced-settings) to move the plugin's HUD building and event handling onto a separate thread, so a heavy HUD rebuild can't cost you frames. It's **off by default and experimental** - try it if you're chasing the smoothest possible frame times. Toggle it live with the **Reload Config** hotkey.
 

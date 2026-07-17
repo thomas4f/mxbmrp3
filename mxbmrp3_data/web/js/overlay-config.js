@@ -274,10 +274,14 @@ function loadSettings() {
     CONFIG.slotRows = clamp(CONFIG.slotRows, 3, 20);
     CONFIG.nameChars = clamp(CONFIG.nameChars, 3, 30);
     if (["start", "sf", "split"].indexOf(CONFIG.posDeltaRef) < 0) {
-        CONFIG.posDeltaRef = "start";
+        CONFIG.posDeltaRef = "sf";   // match the shipped default above
     }
-    CONFIG.towerX = Math.max(0, CONFIG.towerX);
-    CONFIG.towerY = Math.max(0, CONFIG.towerY);
+    // Clamp the persisted tower position to the CURRENT viewport (minus a grab
+    // margin): a position saved on a large display would otherwise load the tower
+    // permanently off-screen on a smaller one — the drag handler only clamps
+    // during a drag, which is unreachable if the tower is already off-screen.
+    CONFIG.towerX = clamp(CONFIG.towerX, 0, Math.max(0, window.innerWidth - 40));
+    CONFIG.towerY = clamp(CONFIG.towerY, 0, Math.max(0, window.innerHeight - 40));
     CONFIG.maxEvents = clamp(CONFIG.maxEvents, 0, 20);
     CONFIG.focusDuration = clamp(CONFIG.focusDuration, 0, 30000);
     CONFIG.slotDuration = clamp(CONFIG.slotDuration, 3, 30);

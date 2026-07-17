@@ -127,6 +127,16 @@ void AssetManager::syncDirectory(const std::string& sourceDir, const std::string
     }
 
     do {
+        // Skip symlinks/junctions (defense-in-depth): CopyFileA follows a file
+        // symlink and copies the TARGET's contents, and copies under web\ are then
+        // served by the embedded HTTP server — a planted link could expose an
+        // arbitrary local file over the overlay endpoint. Real override files are
+        // never reparse points.
+        if (findData.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) {
+            DEBUG_WARN_F("AssetManager: Skipping reparse point in user assets: %s",
+                findData.cFileName);
+            continue;
+        }
         if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
             std::string destPath = destDir + "\\" + findData.cFileName;
 

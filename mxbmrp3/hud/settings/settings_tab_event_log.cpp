@@ -11,70 +11,10 @@ bool SettingsHud::handleClickTabEventLog(const ClickRegion& region) {
     if (!m_eventLog) return false;
 
     switch (region.type) {
-        case ClickRegion::EVENT_LOG_MODE_UP:
-        case ClickRegion::EVENT_LOG_MODE_DOWN: {
-            int mode = static_cast<int>(m_eventLog->m_displayMode);
-            if (region.type == ClickRegion::EVENT_LOG_MODE_UP) {
-                mode = (mode + 1) % 3;
-            } else {
-                mode = (mode + 2) % 3;
-            }
-            m_eventLog->m_displayMode = static_cast<EventLogHud::DisplayMode>(mode);
-            m_eventLog->setDataDirty();
-            setDataDirty();
-            return true;
-        }
-
-        case ClickRegion::EVENT_LOG_ORDER_UP:
-        case ClickRegion::EVENT_LOG_ORDER_DOWN: {
-            m_eventLog->m_displayOrder = (m_eventLog->m_displayOrder == EventLogHud::DisplayOrder::NEWEST_FIRST)
-                ? EventLogHud::DisplayOrder::OLDEST_FIRST
-                : EventLogHud::DisplayOrder::NEWEST_FIRST;
-            m_eventLog->setDataDirty();
-            setDataDirty();
-            return true;
-        }
-
-        case ClickRegion::EVENT_LOG_ROW_COUNT_UP:
-            m_eventLog->m_maxDisplayEvents = applyAcceleratedClamp(
-                m_eventLog->m_maxDisplayEvents, 1,
-                EventLogHud::MIN_DISPLAY_EVENTS, EventLogHud::MAX_DISPLAY_EVENTS, true);
-            m_eventLog->setDataDirty();
-            setDataDirty();
-            return true;
-
-        case ClickRegion::EVENT_LOG_ROW_COUNT_DOWN:
-            m_eventLog->m_maxDisplayEvents = applyAcceleratedClamp(
-                m_eventLog->m_maxDisplayEvents, 1,
-                EventLogHud::MIN_DISPLAY_EVENTS, EventLogHud::MAX_DISPLAY_EVENTS, false);
-            m_eventLog->setDataDirty();
-            setDataDirty();
-            return true;
-
-        case ClickRegion::EVENT_LOG_DURATION_UP:
-        case ClickRegion::EVENT_LOG_DURATION_DOWN: {
-            bool forward = (region.type == ClickRegion::EVENT_LOG_DURATION_UP);
-            m_eventLog->m_autoHideDurationMs = applyAcceleratedWrap(
-                m_eventLog->m_autoHideDurationMs, EventLogHud::AUTO_HIDE_STEP_MS,
-                EventLogHud::MIN_AUTO_HIDE_MS, EventLogHud::MAX_AUTO_HIDE_MS, forward);
-            m_eventLog->setDataDirty();
-            setDataDirty();
-            return true;
-        }
-
-        case ClickRegion::EVENT_LOG_TIMESTAMP_UP:
-        case ClickRegion::EVENT_LOG_TIMESTAMP_DOWN: {
-            int mode = static_cast<int>(m_eventLog->m_timestampMode);
-            if (region.type == ClickRegion::EVENT_LOG_TIMESTAMP_UP) {
-                mode = (mode + 1) % 3;
-            } else {
-                mode = (mode + 2) % 3;
-            }
-            m_eventLog->m_timestampMode = static_cast<EventLogHud::TimestampMode>(mode);
-            m_eventLog->setDataDirty();
-            setDataDirty();
-            return true;
-        }
+        // Max events and auto-hide Duration are data-driven STEPPED controls;
+        // Show mode / Order / Timestamp are data-driven CYCLE controls -
+        // registered in renderTabEventLog via ctx.addSteppedControl /
+        // ctx.addCycleControl.
 
         case ClickRegion::EVENT_LOG_ICONS_TOGGLE: {
             m_eventLog->m_showIcons = !m_eventLog->m_showIcons;
@@ -115,35 +55,40 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
     case EventLogHud::DisplayMode::ON:        modeStr = "Always"; break;
     case EventLogHud::DisplayMode::AUTO_HIDE: modeStr = "Auto-hide"; break;
     }
+    // tooltipOnArrows=false on all three cycles below: these arrows historically
+    // had no per-type tooltip fallback (no TAB_EVENT_LOG section in
+    // getTooltipIdForRegion), so keep the tooltip on the row region only.
     ctx.addCycleControl("Show mode", modeStr, 10,
-        SettingsHud::ClickRegion::EVENT_LOG_MODE_DOWN,
-        SettingsHud::ClickRegion::EVENT_LOG_MODE_UP,
-        hud, true, isOff, "event_log.display_mode");
+        SettingsHud::CycleControl::enumMember(hud, &EventLogHud::m_displayMode, 3, hud),
+        hud, true, isOff, "event_log.display_mode", /*tooltipOnArrows=*/false);
 
     // Auto-hide duration (only meaningful in auto-hide mode)
     bool autoHideEnabled = (hud->m_displayMode == EventLogHud::DisplayMode::AUTO_HIDE);
     char durationValue[16];
     snprintf(durationValue, sizeof(durationValue), "%ds", hud->m_autoHideDurationMs / 1000);
-    ctx.addCycleControl("Duration", durationValue, 10,
-        SettingsHud::ClickRegion::EVENT_LOG_DURATION_DOWN,
-        SettingsHud::ClickRegion::EVENT_LOG_DURATION_UP,
-        hud, autoHideEnabled, false, "event_log.duration");
+    // tooltipOnArrows=false: these arrows historically had no per-type tooltip
+    // fallback (no TAB_EVENT_LOG section in getTooltipIdForRegion), so keep the
+    // tooltip on the row region only.
+    ctx.addSteppedControl("Duration", durationValue, 10,
+        SettingsHud::SteppedControl::wrapInt(&hud->m_autoHideDurationMs,
+            EventLogHud::AUTO_HIDE_STEP_MS, EventLogHud::MIN_AUTO_HIDE_MS,
+            EventLogHud::MAX_AUTO_HIDE_MS, hud),
+        hud, autoHideEnabled, false, "event_log.duration", /*tooltipOnArrows=*/false);
 
     // Display order: Newest / Oldest
     const char* orderStr = (hud->m_displayOrder == EventLogHud::DisplayOrder::NEWEST_FIRST)
         ? "Newest" : "Oldest";
     ctx.addCycleControl("Order", orderStr, 10,
-        SettingsHud::ClickRegion::EVENT_LOG_ORDER_DOWN,
-        SettingsHud::ClickRegion::EVENT_LOG_ORDER_UP,
-        hud, true, false, "event_log.order");
+        SettingsHud::CycleControl::enumMember(hud, &EventLogHud::m_displayOrder, 2, hud),
+        hud, true, false, "event_log.order", /*tooltipOnArrows=*/false);
 
     // Max events to show
     char rowCountValue[8];
     snprintf(rowCountValue, sizeof(rowCountValue), "%d", hud->m_maxDisplayEvents);
-    ctx.addCycleControl("Max events", rowCountValue, 10,
-        SettingsHud::ClickRegion::EVENT_LOG_ROW_COUNT_DOWN,
-        SettingsHud::ClickRegion::EVENT_LOG_ROW_COUNT_UP,
-        hud, true, false, "event_log.max_events");
+    ctx.addSteppedControl("Max events", rowCountValue, 10,
+        SettingsHud::SteppedControl::clampInt(&hud->m_maxDisplayEvents, 1,
+            EventLogHud::MIN_DISPLAY_EVENTS, EventLogHud::MAX_DISPLAY_EVENTS, hud),
+        hud, true, false, "event_log.max_events", /*tooltipOnArrows=*/false);
 
     // Timestamp mode: Off / Session / Clock
     const char* timestampStr = "Off";
@@ -154,9 +99,8 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
     case EventLogHud::TimestampMode::CLOCK:   timestampStr = "Clock"; break;
     }
     ctx.addCycleControl("Timestamp", timestampStr, 10,
-        SettingsHud::ClickRegion::EVENT_LOG_TIMESTAMP_DOWN,
-        SettingsHud::ClickRegion::EVENT_LOG_TIMESTAMP_UP,
-        hud, true, tsOff, "event_log.timestamp");
+        SettingsHud::CycleControl::enumMember(hud, &EventLogHud::m_timestampMode, 3, hud),
+        hud, true, tsOff, "event_log.timestamp", /*tooltipOnArrows=*/false);
     ctx.addSpacing(0.5f);
 
     // === EVENTS SECTION ===

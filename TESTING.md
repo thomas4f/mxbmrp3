@@ -1,20 +1,23 @@
 # Testing MXBMRP3
 
 The shipping plugin is a Windows-only MSVC DLL, but its **logic** is portable and
-tested on Linux with no game and no Windows. Everything here runs in CI on every
-push (`.github/workflows/tests.yml`) and locally with a C++17 compiler + (for the
-integration layer) mingw-w64 and Wine.
+tested on Linux with no game and no Windows. Everything here runs in CI
+(`.github/workflows/tests.yml` — automatically on every push in the free public
+mirror; in the metered private repo the jobs are gated to manual/release runs, see
+the workflow header) and locally with a C++17 compiler + (for the integration
+layer) mingw-w64 and Wine.
 
-There are four layers, fastest first. Reach for the cheapest one that can
+There are five layers, fastest first. Reach for the cheapest one that can
 exercise your change (the table in `CLAUDE.md` → *Testing Discipline* maps a
 change to its layer).
 
 | Layer | Framework | Needs | Runtime | Runner |
 |---|---|---|---|---|
-| **Unit** — pure header logic | doctest | just `g++` | ~1s | `tests/unit/run_tests.sh` |
-| **Integration** — real plugin, driven headless | doctest + Wine | mingw-w64, wine64 | ~30s | `tests/integration/run_tests.sh` |
-| **Specialized** — persistence / fuzz / perf | bespoke | mingw-w64, wine64, python3 | ~1–3min | `tests/integration/run_*.sh` |
+| **Unit** — pure header logic | doctest | just `g++` | ~1s run (~20s cold compile) | `tests/unit/run_tests.sh` |
+| **Integration** — real plugin, driven headless | doctest + Wine | mingw-w64, wine64 | ~2 min warm (ccache); ~5-8 min cold (full cross-build + one Wine binary per `tests/*.cpp`) | `tests/integration/run_tests.sh` |
+| **Specialized** — persistence / fuzz / perf / installer | bespoke | mingw-w64, wine64, python3 | ~1–3min | `tests/integration/run_*.sh` |
 | **Web overlay** — rendered DOM in a real browser | Playwright | Node.js | ~5s | `tests/web/run.sh` |
+| **Memory safety** — ASan/UBSan over the portable memory surface | doctest + a targeted harness | g++/clang, libasan | ~seconds | `ASAN=1 tests/unit/run_tests.sh` + `tests/asan/run.sh` |
 
 Alongside the test layers, CI also runs **cppcheck** static analysis
 (`.github/workflows/tests.yml`, over `mxbmrp3/` with vendored code excluded). It's
@@ -71,7 +74,8 @@ assert (see any `*_test.cpp`).
    depend only on the plugin's *computation*, never on the HTTP server, sockets, or
    the snapshot-rebuild gating that sits in front of it in production.
    `host.snapshot()` calls `buildJsonSnapshot()` directly for exactly this reason.
-   Exactly one test (`http_test.cpp`) exercises the serving path itself. When a
+   Only the two http tests (`http_test.cpp`, `http_robust_test.cpp`) exercise the
+   serving path itself. When a
    test needs a workaround to satisfy machinery it isn't testing (an earlier
    version had to fire a dummy update just to defeat the rebuild gate), that's the
    signal a layer is coupled that shouldn't be — fix the seam, don't paper over it.
@@ -126,11 +130,31 @@ Windows.
 Add a case to `tests/unit/test_plugin_utils.cpp` (or a new `tests/unit/test_*.cpp`, then
 list it in `run_tests.sh`). A function belongs here iff it depends on nothing but
 the C++ standard library — anything reaching into `PluginData` or the game API is
-an integration test instead. Current TUs: `test_plugin_utils.cpp` (color/time/hex
-helpers) and `test_notice_priority.cpp` (`hud/notice_priority.h` — the masked-
-notice display-timer decision). Exactly one TU defines the doctest impl + `main`
+an integration test instead. The authoritative TU list is the `SOURCES` array in
+`run_tests.sh` (regenerate this census with `ls tests/unit/test_*.cpp`); the runner
+also compiles the production `mxbmrp3/core/ui_config.cpp` under test. What each pins:
+
+- `test_plugin_utils.cpp` — color/time/hex helpers in `core/plugin_utils.h` (also owns the doctest impl + `main`)
+- `test_notice_priority.cpp` — `hud/notice_priority.h`, the masked-notice display-timer decision
+- `test_analytics_remote_config.cpp` — the remote sampling cost lever (`parseFullSample`/`shouldSendFull`): fails open to full, deterministic 0.0/1.0 endpoints
+- `test_analytics_endpoint.cpp` — App-Key → Aptabase ingest-region routing (unknown/self-hosted → "" = no send)
+- `test_director_airtime.cpp` — the director's lull round-robin (`pickNextAirtimeNum`): cursor keys on race number, not grid position
+- `test_session_charts_math.cpp` — the race-progression chart derivations in `hud/session_charts_math.h`
+- `test_tooltip_length.cpp` — every settings tooltip fits the 2-line/~120-char render limit (compiles the real tooltip table)
+- `test_update_asset_select.cpp` — the updater's release-asset picker (the symbols-zip-matched-first regression)
+- `test_ui_config.cpp` — INI-only grid-overlay defaults + the `majorEvery` clamp
+- `test_render_frame_buffer.cpp` — the plugin-worker-thread triple buffer: the producer never writes the displayed slot; `acquire()` returns the latest published frame
+- `test_crash_stack_format.cpp` — the crash handler's backtrace string formatting + the whole-frame `MAX_STACK_CHARS` budget
+- `test_hud_sw_renderer.cpp` — golden-frame sampling of the companion window's software renderer (`core/hud_sw_renderer.cpp` compiled natively): quad fill, per-quad alpha, the texel×color modulate (white-icon tinting), `.fnt` text against a real shipped font, and the scale-viewport mapping
+- `test_fmx_scoring.cpp` — FMX trick scoring (`core/fmx_manager` math): rotation scale floors at 1×, air/ground tricks scale with duration (floored) and distance
+- `test_segment_cumulative.cpp` — cumulative custom-segment timing: a contiguous run aggregates like the official splits; on-sector identity; isolated-arc fallback
+
+Exactly one TU defines the doctest impl + `main`
 (`DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN`); every other TU just `#include "doctest.h"`
 with no config macro, or the impl is defined twice and the link fails.
+`ASAN=1 ./tests/unit/run_tests.sh` rebuilds the same suite under
+AddressSanitizer + UBSan — see *Layer 5 — Memory safety* below; a new unit TU gets
+that coverage automatically (the `SOURCES` list is shared, no second list).
 
 ## Layer 2 — Integration tests (`tests/integration/tests/`)
 
@@ -149,9 +173,10 @@ earlier version routed everything through the live HTTP server and one test had 
 fire a dummy update just to defeat the rebuild gate — accidental coupling that's
 now gone.) The JSON *contract* it reads is still the plugin's own stable public
 output, so asserting it isn't coupling to the overlay — the overlay is a separate
-consumer with its own layer. The single `http_test.cpp` owns the serving path: it
+consumer with its own layer. `http_test.cpp` owns the serving path: it
 starts the real server, fetches over a socket, and checks it serves exactly what
-`snapshot()` builds. Internal state that never reaches the snapshot (e.g. the
+`snapshot()` builds (`http_robust_test.cpp` covers that path's survival against
+hostile clients). Internal state that never reaches the snapshot (e.g. the
 real-time gap) is read through its own typed hook — see *Test-only hooks* below.
 
 ```bash
@@ -172,7 +197,9 @@ own defaults: `MXBMRP3_PERF_TIMEOUT` (180s), `MXBMRP3_PERSIST_TIMEOUT` (60s),
 
 Each `tests/*.cpp` is a self-contained doctest binary with its own plugin
 lifecycle and HTTP port, run in an isolated Wine process with a clean save dir.
-The current suite:
+The runner auto-discovers every `tests/integration/tests/*.cpp` — this table is a
+representative guide, not the authoritative census (regenerate that with
+`ls tests/integration/tests/`):
 
 | Test | What it pins |
 |---|---|
@@ -187,15 +214,20 @@ The current suite:
 | `trackpos_stale_test.cpp` | a rider outside the **~10-closest** track-position batch keeps a **frozen** gap, not one recomputed from a stale position (the leader-dropout corruption) |
 | `livegaps_test.cpp` | the overlay live-gap data contract: per-rider `liveGapMs`/`liveGapValid` (valid for leader/active, false for dropped-out/lapped) — always emitted; the on/off is a client-side overlay setting |
 | `session_format_test.cpp` | race-**format** clock: pure-laps/time/time+laps `format` string, and the **finish-before-timer** overtime state machine (`00:00` freeze → N TO GO → FINAL LAP → CHECKERED) |
+| `timing_reference_test.cpp` | Timing HUD via the `MXBMRP3_Test_Timing*` hooks: progressive reference selection (S1 → S1+S2 → whole lap, tracking the lap timer's track-position sector from the first flying lap), pit-exit timer reset, INVALID shown for a cut lap but suppressed on a pit out-lap, freeze on the first flying lap after a garage start, grid-start timing from the gate drop + the green-flag grace window, and panel height a whole number of grid bands |
 | `spectate_test.cpp` | the camera/spectate chip follows the spectated rider through `SpectateVehicles` |
 | `sessionstate_test.cpp` | `RaceSessionState` green snapshots the grid; session started/ended events |
 | `director_test.cpp` | auto-director **battle detection** splits two close groups at the gap break; director advisory inert by default |
 | `director_lock_test.cpp` | auto-director **rider lock (hold)** release rules: the lock survives ordinary standings churn but is released when a new session (session-generation bump) resets the field |
 | `director_broadcast_test.cpp` | auto-director **broadcast measurement**: replays a real tape with an injected sim-clock (from tape timestamps) so the wall-clock shot pacing plays out, then parses the director's own cut log to report cut count/rate, shot-length spread, shot-type + camera mix, and per-rider screen time — asserting it lands in a plausible broadcast band and rotates across the field (not glued to the leader). Uses the `MXBMRP3_Test_DirectorSetNowMs` clock hook + `replayTapeTimed()` |
+| `director_events_test.cpp` | director **transparency events**: shot decisions and state changes reach the event log as Director-typed entries, state transitions carry the director button's state colors (cuts keep the per-type default), and they're emitted **unconditionally** — the in-game toggle and the overlay filter at *display* time (raw-data contract) |
 | `reset_test.cpp` | **Reset All scope** (#212/#214): per-profile HUD settings revert to factory default, global sections (Rumble/Hotkeys) untouched |
 | `reset_profile_test.cpp` | per-profile **operations** on the profile-diff (`[HudName:Profile]`): active-profile / per-HUD reset scope, copy-to-all, and switch-profile persistence |
 | `autoswitch_test.cpp` | **auto-by-session profile switch**: with the flag armed, the active profile follows the session type (Practice/Qualify/Race); with it off, a session change no longer overrides a manual pick |
 | `stats_test.cpp` | player **personal-best lap** persists to the stats JSON (faster-replaces-only) + top speed and the `finiteOrZero` +Inf write guard |
+| `odometer_test.cpp` | **odometer/distance accumulation**: distance integrates speed over the wall-clock gap between telemetry ticks, so the test injects the odometer clock (`MXBMRP3_Test_StatsSetNowUs`) for exact per-tick dt — accumulation is exact, the **~100m dirty-coalescing** marks dirty once then resets, a +Inf/NaN sample adds nothing (finiteOrZero), a >0.5s gap is discarded, and the total persists finite on the leave-track flush |
+| `fmx_test.cpp` | **FMX trick detection + scoring** through the real RunTelemetry path under the injectable FMX clock (`Fmx::clockNow()` / `MXBMRP3_Test_FmxSetNowUs`, 10ms sim steps): a sub-debounce hop banks nothing (airborne debounce); a sustained airborne full-pitch rotation classifies as **BACKFLIP**, survives the 0.75s landing grace, and banks a non-zero score into the session when the 2s chain window expires; a crash during grace fails the trick without touching the session score (state via `MXBMRP3_Test_FmxState`) |
+| `records_parse_test.cpp` | records provider (MXB-only): canned CBR / MXB-Ranked responses through the **real parse path** (`MXBMRP3_Test_RecordsParse`) — field mapping incl. seconds→ms + date truncation, malformed/truncated/empty JSON rejected without crashing (zero records), absurd values handled sanely (multi-KB names truncated, negative/wrong-typed times, >MAX_RECORDS capped); plus the **fetch worker** via the stub seam (`MXBMRP3_Test_RecordsSetFetchStub`: sleep + canned response, no network) completing through the real thread, and **shutdown mid-fetch** pinning the join contract — `HudManager::clear()` joins the fetch thread (now owned by `RecordsFetcher`, `core/records_fetcher.{h,cpp}`) *before* nulling the cached HUD pointers the worker touches (TimingHud) |
 | `version_test.cpp` | update-checker version ordering (numeric, not lexicographic) |
 | `updater_test.cpp` | update install pipeline (backup→extract→verify→**rollback**) + **locked-file retry**: aborts intact when the target is held; a transient lock is recovered by the move retry |
 | `settings_migration_test.cpp` | a version-mismatched INI (missing / `=4` / `=99` version line) keeps the user's HUD settings instead of silently wiping them |
@@ -203,12 +235,28 @@ The current suite:
 | `settings_sections_test.cpp` | every section `captureToCache()` produces is actually **serialized** to the INI (via `MXBMRP3_Test_CapturedSections`) — belt-and-suspenders guard on the per-HUD serializer registry (the old capture/apply/`hudOrder` "third hardcoded list" / FriendsHud silent-revert trap, now structurally one list) |
 | `settings_idempotency_test.cpp` | **apply-path coverage (defaults)**: `save→load→save` is byte-identical (and a second round too), forcing `applyProfile` to read back every serialized enum/float/int/bitmask at its default and re-capture it — an asymmetric parse/clamp/format bug diverges the files |
 | `settings_apply_values_test.cpp` | **apply-path coverage (non-defaults)**: `[Hud:Practice]` overrides carrying non-default enum/float/int values survive a load→save round-trip only if `applyProfile` applied them to the live HUD (re-captured as a sparse diff) — closes the idempotency test's default-only blind spot (`stringToX`/`validateX`/`std::stoi`) |
+| `settings_defer_test.cpp` | **deferred auto-save**: `markDirty()` applies a change live but writes *nothing* to disk; `flushIfDirty()` (the leave-track flush) then writes exactly once; a flush with nothing dirty is a no-op — the "no settings write while the player is on track" contract |
+| `companion_decouple_test.cpp` | **per-surface companion decoupling** on the live StandingsHud (via the `MXBMRP3_Test_Standings*` hooks): mirror-while-unconfigured → snapshot-on-first-edit (diverge) → clear-reverts-to-mirror; a diverged HUD persists its `companion*` keys through the real serializer while a configured-but-equal HUD writes **none** (upgrade-safe sparse save); per-surface render routing (game-frame suppression, companion filtering + offset, X-close fallback); and a HUD hidden in-game but shown on the companion still updates |
+| `gamepad_layout_test.cpp` | gamepad widget interior stays pinned to the fontSize-sized controller frame — golden bottom/right-extent signature (guards the #256 `LineHeights::NORMAL` regression that slid the buttons off the controller face); fake controller via `MXBMRP3_Test_FakeGamepad` |
+| `map_render_test.cpp` | MapHud **world-ribbon cache is transparent**: a real 2D track emits non-empty, all-finite quads in every view mode, and default-view geometry is bit-for-bit reproducible across a detail round-trip and rotate/zoom visits; the detail **20-200% dial** has real range, **adaptive** mode normalizes quad count across track lengths (fixed mode scales with length), legacy `detail=AUTO\|HIGH\|LOW` INI values migrate to scale/adaptive; a degenerate 1D track never produces a non-finite vertex |
+| `xinput_thread_test.cpp` | XInput **I/O thread**: the rumble send policy (first-send, idle-silence, transition-to-zero, disabled-guard) and 8-bit quantization survive the move off-thread — asserted on the command `setVibration()` posts, with the I/O thread stopped so it can't drain the post first |
+| `settings_click_test.cpp` | the settings-menu **click path**, headless: a click routed through the real `handleClick` → hit-test `m_clickRegions` → `dispatchRegion` → `applySteppedControl` seam (`MXBMRP3_Test_SettingsClickStepped`), pinning the `SteppedControl` descriptors' clamp + hold-repeat acceleration tiers |
+| `stripchart_parity_test.cpp` | the four strip-chart HUDs (Telemetry, Rumble, Performance, Session Charts) stay **quad/string-identical** after their shared grid-line / axis-label / history-polyline blocks moved into the `BaseHud` strip-chart helpers |
+| `rumble_effect_test.cpp` | rumble **effect math** (the values users tune): telemetry→channel mapping through the real RunTelemetry path — zero telemetry is silent, slip ramps map correctly, a suspension spike scales by the per-bike profile JSON, airborne suppresses ground effects, malformed profile JSON falls back without crashing |
+| `plugin_thread_test.cpp` | the **`[Advanced] pluginThread=1` worker thread**: every game-state callback applied on a separate thread is functionally equivalent to the sync path — the same synthetic race produces the same standings (with a `pluginThreadFlush()` barrier before asserting) |
+| `plugin_thread_golden_test.cpp` | threaded twin of `replay_golden_test`: the same real full-race callback capture (the committed `*.tape.gz` fixture) reconstructs the **identical** golden result with the worker on — no event dropped, reordered, or raced across the queue |
+| `plugin_thread_latency_test.cpp` | the worker's whole point: a 60 ms stall injected into `produceFrame` (via `MXBMRP3_Test_SetProduceDelayMs`) is paid by the game's Draw in sync mode but **not** in threaded mode; performance metrics stay live off-thread |
+| `plugin_thread_abort_test.cpp` | worker killed by an escaping exception (via `MXBMRP3_Test_PluginThreadAbortWorker`): routing falls back inline immediately, the stranded backlog is drained in order, and threaded mode latches off (no respawn loop) |
+| `plugin_thread_switch_test.cpp` | **runtime legacy↔threaded switch** (the RELOAD_CONFIG path): flip the `[Advanced] pluginThread` flag and the next Draw's `reconcileEnabled()` starts/stops the worker — standings stay correct in sync, then threaded, then sync again, on one running instance |
+| `plugin_thread_teardown_test.cpp` | teardown with the worker **still running** and a callback still queued: `shutdown()` joins the worker first and drains the queue inline — clean return, no hang, no use-after-free |
 | `analytics_wiring_test.cpp` | analytics **event wiring** via the dry-run capture seam (no network): app_started is the always-sent tier (anon id + feature flags + `isDebug`); a full launch enqueues session_end + custom, a minimal launch drops both, a crash bypasses the gate. Analytics is compiled into the test DLL but never auto-inits; capture mode makes the real senders no-ops |
 | `http_test.cpp` | the **serving path**: the real HTTP server answers `/api/state` and it byte-matches the direct `snapshot()` |
 | `http_robust_test.cpp` | slow-loris / partial / malformed clients don't wedge the server or stall the game-thread snapshot |
 | `replay_test.cpp` | the tape read/dispatch machinery: a `TapeWriter`-synthesized tape round-trips through `replayTape()` (no game needed) |
+| `recorder_test.cpp` | the **in-plugin recorder** end-to-end: disabled (default) writes nothing; enabled, a known synthetic stream produces a well-formed `MXBHREC` tape (raw bytes asserted: magic, framing, per-type counts, the compound packings) that replays back to the same standings |
 | `replay_golden_test.cpp` | **real-data golden master** (solo): replays a real 1-lap MXB Club capture, asserts the reconstructed result |
 | `replay_golden_multi_test.cpp` | **real-data golden master** (24-rider Farm14 race): the whole pipeline at once — winner, time gaps, fastest-lap chip on a non-winner, a real penalty, a lapped rider, DSQ/DNS/retired |
+| `teardown_test.cpp` | shutdown/unload **under load**: HTTP/SSE server live + the real 24-rider tape churning standings, then Shutdown → `FreeLibrary` (static destruction) is clean; plus the unload-**without**-Shutdown (auto-save backstop) path — guards the analytics-reported AV-on-teardown class (core + HTTP path only; Discord/Steam/records are compiled out of the test DLL) |
 
 ### Writing a new integration test
 
@@ -271,6 +319,10 @@ The harness pieces:
   seeding needed), and `state()` returning parsed JSON.
 - `assertions.h` — `checkStandings()`, `hasEvent()`, `riderByNum()`.
 - `integration_main.h` — shared `main()` that takes the DLL path positionally.
+- `ini.h` — INI parse/diff helpers for the settings/persistence tests.
+- `tape.h` — the callback-tape format (byte-identical twin of the in-plugin
+  recorder) + `TapeWriter` for synthesizing tapes.
+- `zipwrite.h` — in-memory zip builder (the updater test's download stand-in).
 - `doctest.h` — vendored single-header framework.
 
 ### Test-only hooks
@@ -327,7 +379,7 @@ Producing and playing tapes:
 
 For **automated** testing, `PluginHost::replayTape()` reads that same format and
 dispatches each event into the plugin's real exports, then a test asserts the
-resulting `snapshot()` — headless, in CI, under Wine. Two tests use it:
+resulting `snapshot()` — headless, in CI, under Wine. The core users:
 
 - `replay_test.cpp` — a round-trip on a tape synthesized with `harness/tape.h`'s
   `TapeWriter` (proves the read/dispatch machinery without needing a game).
@@ -343,10 +395,16 @@ resulting `snapshot()` — headless, in CI, under Wine. Two tests use it:
   fastest-lap chip on a non-winner, a real Cutting penalty, a lapped rider, and
   DSQ/DNS/retired states. These are the fidelity anchors for the synthetic tests.
 
-The captured tape lives gzipped under `tests/integration/tests/fixtures/` (recorder
+The same tapes are reused by other tests: `plugin_thread_golden_test.cpp` replays
+the solo capture with the worker thread on (identical-result equivalence),
+`teardown_test.cpp` replays the 24-rider capture to load the shutdown path, and
+`director_broadcast_test.cpp` replays it under an injected sim-clock via
+`replayTapeTimed()`.
+
+The captured tapes live gzipped under `tests/integration/tests/fixtures/` (recorder
 format, slimmed to the state-changing events — telemetry/vehicle/draw/track-
-position dropped, verified to yield the identical `/api/state` as the full 9 MB
-capture); `run_tests.sh` unpacks fixtures before the run. Assert the *final*
+position dropped, verified to yield the identical `/api/state` as the full
+multi-megabyte captures); `run_tests.sh` unpacks fixtures before the run. Assert the *final*
 classification + key events, not every frame — real timing is noisy.
 
 > **Maintenance:** `harness/tape.h` must stay byte-identical to
@@ -420,6 +478,45 @@ No game, no plugin, no network — just Node.js. See `tests/web/README.md` for t
 gotchas (rows are `translateY`-slotted over a stable DOM order, so ranking is read
 by on-screen Y; tests live outside `mxbmrp3_data/web/` because that folder ships
 to users). Adding a case is one `test(...)` in `tests/web/tests/overlay.spec.js`.
+
+## Layer 5 — Memory safety (`tests/asan/`)
+
+Answers one question: **is the plugin corrupting memory?** Two shipped crashes
+were access violations in innocent heap walks — the signature of heap corruption,
+where the dump's `module+offset` shows the *victim*, never the *writer*.
+AddressSanitizer instead faults **at the corrupting write**, with the writing and
+allocating stacks. Two native pieces (no game, no Windows, no Wine — just
+g++/clang + libasan) gate every push via the `memory-safety` job in
+`.github/workflows/tests.yml`:
+
+- **The whole unit suite under ASan + UBSan** — `ASAN=1 ./tests/unit/run_tests.sh`
+  rebuilds the same TUs with `-fsanitize=address,undefined`, so every surface the
+  unit tests already exercise is checked for out-of-bounds / use-after-free / UB,
+  not just for correct results. A new unit test gets this coverage automatically
+  (the `SOURCES` list is shared — no second list).
+- **A targeted harness** (`tests/asan/memory_safety_fuzz.cpp` + `tests/asan/run.sh`)
+  aimed at the fixed-buffer / index surface behind the two shipped heap-corruption
+  crashes: `RaceEntryData`'s fixed buffers over hostile names/numbers, the
+  leader-timing `clamp((int)(trackPos*100), 0, 99)` index over NaN/Inf/huge/random
+  bit patterns, and churn of the two crash-site container types.
+
+The **faithful** pass is the separate `memory-safety-msvc` CI job: it builds the
+real plugin DLL with MSVC `/fsanitize=address` (`MXB-Debug` — exempt from the
+Release analytics-key requirement, so no secrets) and drives it through the real
+DLL-boundary callbacks with `callback_fuzzer.cpp` on a Windows runner, covering
+the live `PluginData`/`StatsManager`/HUD/HttpServer pipeline the portable layer
+can't compile. It runs automatically in the free public mirror but is **opt-in**
+in the metered private repo (the `asan_msvc` checkbox on Run workflow — a Windows
+runner burns minutes at 2x). `tests/asan/run_asan_msvc.ps1` reproduces it locally
+on Windows.
+
+Where a memory-safety test goes: adversarial cases for a fixed buffer or index
+computation belong in `memory_safety_fuzz.cpp`; anything expressible as a normal
+unit test is already covered by the `ASAN=1` rerun. Note the honest limit: ASan
+catches spatial (out-of-bounds) and temporal (use-after-free / double-free)
+errors on the paths actually executed — it does **not** catch pure data races.
+`tests/asan/README.md` has the full policy, the MSVC ASan-runtime (`/MDd`) note,
+and the no-rebuild PageHeap option for in-the-wild reproduction.
 
 ## Coverage
 

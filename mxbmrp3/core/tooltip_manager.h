@@ -198,10 +198,11 @@ private:
 
             {"map.range", "Zoom level. Full shows entire track, or select a specific range in meters."},
             {"map.rotation", "When On, the map rotates so your heading is always up. When Off, the map stays fixed to track."},
-            {"map.outline", "Show the track outline. Helps orientation; disable for more FPS on long tracks."},
+            {"map.outline", "Track outline width; Off hides it. Outline doubles the map's quads - Off is fastest."},
             {"map.markers", "Show S/F, sector markers and segment lines. Off leaves just the track and riders."},
             {"map.track_width", "Thickness of the track outline line."},
-            {"map.detail", "Ribbon detail. Auto adapts to map size; High/Low force a fixed density."},
+            {"map.detail", "Track detail 20-200%. Higher = smoother ribbon, more quads = more CPU/GPU cost."},
+            {"map.detail_adaptive", "Adapt density to the on-screen map, so every track looks and costs about the same."},
             {"map.colorize", "Rider marker colors. Uniform uses same color, Brand uses bike colors, Position by relative pos."},
             {"map.rider_shape", "Icon shape for rider markers on the map. Off hides non-tracked riders."},
             {"map.marker_scale", "Size of rider markers relative to the map."},

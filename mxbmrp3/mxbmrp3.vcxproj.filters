@@ -345,6 +345,9 @@
     <ClInclude Include="core\settings_hud_registry_decls.inc">
       <Filter>Header Files\core</Filter>
     </ClInclude>
+    <ClInclude Include="core\records_fetcher.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
     <ClInclude Include="core\rumble_profile_manager.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
@@ -370,6 +373,9 @@
       <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="core\http_server.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\http_server_internal.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="core\widget_constants.h">
@@ -465,7 +471,16 @@
     <ClInclude Include="core\fmx_manager.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
+    <ClInclude Include="core\fmx_scoring.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\fmx_manager_internal.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
     <ClInclude Include="core\director_manager.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\director_manager_internal.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="core\stats_manager.h">
@@ -554,6 +569,12 @@
     <ClCompile Include="core\hud_manager.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
+    <ClCompile Include="core\hud_manager_render.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\hud_manager_input.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
     <ClCompile Include="core\hotkey_manager.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
@@ -600,6 +621,9 @@
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="hud\base_hud.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\base_hud_render.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="diagnostics\logger.cpp">
@@ -666,6 +690,9 @@
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\settings_hud.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\settings_hud_render.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\settings_hud_input.cpp">
@@ -779,6 +806,9 @@
     <ClCompile Include="core\settings_hud_registry_widgets.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
+    <ClCompile Include="core\records_fetcher.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
     <ClCompile Include="core\rumble_profile_manager.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
@@ -788,16 +818,25 @@
     <ClCompile Include="core\update_downloader.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
+    <ClCompile Include="core\update_downloader_install.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
     <ClCompile Include="core\discord_manager.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="core\analytics_manager.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
+    <ClCompile Include="core\analytics_manager_transport.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
     <ClCompile Include="core\steam_friends_manager.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="core\http_server.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\http_server_snapshot.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="hud\map_hud.cpp">
@@ -822,6 +861,9 @@
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\timing_hud.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
+    <ClCompile Include="hud\timing_hud_gaps.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
     <ClCompile Include="hud\gap_bar_hud.cpp">
@@ -857,6 +899,9 @@
     <ClCompile Include="hud\version_widget.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
+    <ClCompile Include="hud\version_widget_game.cpp">
+      <Filter>Source Files\hud</Filter>
+    </ClCompile>
     <ClCompile Include="hud\fuel_widget.cpp">
       <Filter>Source Files\hud</Filter>
     </ClCompile>
@@ -890,10 +935,22 @@
     <ClCompile Include="core\fmx_manager.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
+    <ClCompile Include="core\fmx_manager_detection.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\fmx_manager_scoring.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
     <ClCompile Include="core\director_manager.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
+    <ClCompile Include="core\director_manager_evaluate.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
     <ClCompile Include="core\stats_manager.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\stats_manager_persistence.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="hud\stats_hud.cpp">

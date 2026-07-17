@@ -183,7 +183,8 @@ private:
     // scoring is ratio-based to prevent tap-farming the bonus.
     static constexpr float COASTER_CLUTCH_THRESHOLD = 0.85f;
     static constexpr float COASTER_PROMOTION_TIME = 0.5f;
-    static constexpr int COASTER_SCORE_BONUS = 10;
+    // COASTER_SCORE_BONUS moved to core/fmx_scoring.h (Fmx::COASTER_SCORE_BONUS)
+    // alongside the pure scoring math it belongs to.
 
     // Stuck detection — fail tricks if stationary too long (anti-fence exploit)
     float m_stuckTime = 0.0f;

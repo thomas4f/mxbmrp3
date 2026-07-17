@@ -14,6 +14,7 @@
       "version": "1.26",
       "path": "mxbmrp3/vendor/stb/stb_truetype.h",
       "shipped": false,
+      "repoHasReleases": false,
       "note": "Single-header TrueType rasterizer used ONLY by the dev tool tools/mxbmrp3_fontgen to rasterize .ttf into PiBoSo .fnt atlases — not compiled into the shipped plugin. stb has no release tags; version is the header's own 'v' comment."
     },
     {

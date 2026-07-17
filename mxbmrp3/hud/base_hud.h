@@ -7,6 +7,7 @@
 #include <string>
 #include <cmath>
 #include <chrono>
+#include <deque>
 #include <optional>
 #include <array>
 #include <atomic>
@@ -208,6 +209,16 @@ public:
     // edit (the "decoupled from the start" behavior). No-op once configured.
     void snapshotCompanionFromGame() { ensureCompanionConfigured(); }
 
+    // Visibility on the surface the user is currently on: a widget hidden in-game
+    // but enabled on the companion must still accept clicks there (and vice versa).
+    // Pair this with isPointInActiveBounds() in click gates — testing m_bVisible
+    // alone makes a companion-only widget render but ignore clicks.
+    bool isVisibleOnActiveSurface() const {
+        bool companion =
+            InputManager::getInstance().getActiveSurface() == InputManager::Surface::Companion;
+        return companion ? getCompanionVisible() : isVisible();
+    }
+
     // Hit-test at the surface the user is currently on: a companion HUD sits at its
     // companion offset, so an interactive widget (settings/director button, drag)
     // must test there, not at the game offset. Mirrors to the game offset until the
@@ -401,6 +412,37 @@ protected:
                   unsigned long color, const ScaledDimensions& dim) {
         addString(text, x, rowY + labelRowYOffset(dim), justify, fontIndex, color, dim.fontSizeSmall);
     }
+
+    // ========================================================================
+    // History Strip Charts (Telemetry / Performance / Rumble HUDs)
+    // ========================================================================
+    // Shared styling for the scrolling history graphs, so the graph HUDs stay
+    // visually identical. Thicknesses are in normalized units at 100% HUD scale
+    // (multiply by getScale(); the inline helpers below do it).
+    static constexpr float STRIP_CHART_GRID_THICKNESS = 0.001f;  // ~1px at 1080p, subtle grid lines
+    static constexpr float STRIP_CHART_LINE_THICKNESS = 0.002f;  // history trace thickness
+    static constexpr float STRIP_CHART_LABEL_INSET = 0.2f;       // axis-label inset, in paddingH units
+
+    float stripChartGridThickness() const { return STRIP_CHART_GRID_THICKNESS * getScale(); }
+    float stripChartLineThickness() const { return STRIP_CHART_LINE_THICKNESS * getScale(); }
+
+    // The shared strip-chart "frame": grid lines at 100%/50%/0% of the value range
+    // (drawn first so the data traces render on top) plus the matching axis-label
+    // triple down the left inside edge (SMALL font, TERTIARY color, top/middle/
+    // bottom). Label text stays at the call site (snprintf into a stack buffer for
+    // dynamic ranges, string literals for the fixed 0-100% charts).
+    void addStripChartFrame(float x, float y, float width, float height,
+                            const char* topLabel, const char* midLabel, const char* botLabel,
+                            const ScaledDimensions& dims);
+
+    // One scrolling history trace: a polyline over a deque of 0..1 samples, with
+    // the newest sample pinned to the right edge (the graph scrolls left as the
+    // deque fills). Segments where both endpoints are near zero are skipped so an
+    // idle channel costs nothing. maxHistory fixes the point spacing so the graph
+    // width is constant regardless of how full the deque is.
+    void addStripChartHistoryLine(const std::deque<float>& history, unsigned long color,
+                                  float x, float y, float width, float height,
+                                  float lineThickness, size_t maxHistory);
 
     // Helper method to calculate text color with opacity (eliminates duplication in widgets)
     unsigned long getTextColorWithOpacity(uint8_t r = 255, uint8_t g = 255, uint8_t b = 255) const;

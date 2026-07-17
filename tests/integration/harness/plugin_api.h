@@ -12,6 +12,7 @@
 // ============================================================================
 #pragma once
 #include <cstring>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -158,6 +159,34 @@ struct ClassRow {
     int state      = 0;
     int bestLapNum = 2;
     int pit        = 0;   // 0 = on track, 1 = in the pits
+};
+
+// A full RunTelemetry frame for the FMX / odometer / rumble tests — just the
+// fields the trick/stats/rumble logic reads, with grounded-and-rolling defaults
+// so a test spells out only what the maneuver changes (e.g. wheels-off +
+// pitchVel for a flip, or a suspension-velocity spike for a rumble bump).
+struct TelemetryRow {
+    float speed = 10.0f;                          // m/s (speedometer)
+    int   gear  = 3;
+    float posX = 0.0f, posY = 0.0f, posZ = 0.0f;  // meters (teleport/trick-distance)
+    float pitch = 0.0f, yaw = 0.0f, roll = 0.0f;              // degrees
+    float pitchVel = 0.0f, yawVel = 0.0f, rollVel = 0.0f;     // degrees/second
+    int   frontMaterial = 1, rearMaterial = 1;    // wheel contact; 0 = off the ground
+    int   crashed = 0;
+    float clutch = 0.0f;
+    float time = 0.0f, trackPos = 0.0f;           // the extra RunTelemetry args
+    // Rumble inputs (m_afSuspVelocity / m_iRPM / m_fThrottle / m_fSteerTorque).
+    // Suspension velocity keeps the GAME's sign: negative = compressing (the
+    // telemetry handler negates it into a positive "bump" input).
+    float suspVelFront = 0.0f, suspVelRear = 0.0f;  // m/s
+    int   rpm = 0;
+    float throttle = 0.0f;
+    float steerTorque = 0.0f;                     // Nm
+    // Per-wheel speed; NaN (the default) mirrors `speed` — grounded, rolling,
+    // no slip. Set explicitly to author wheelspin (rear > speed) or a brake
+    // lockup (wheel < speed).
+    float wheelSpeedFront = std::numeric_limits<float>::quiet_NaN();
+    float wheelSpeedRear  = std::numeric_limits<float>::quiet_NaN();
 };
 
 // A rider's position on the centerline for a RaceTrackPosition batch.

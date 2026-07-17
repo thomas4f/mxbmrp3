@@ -164,6 +164,19 @@ public:
     std::string getCurrentTrackId() const;
     std::string getCurrentBikeName() const;
 
+#if defined(MXBMRP3_TEST_BUILD)
+    // Test-only odometer seam. Distance is integrated over the WALL-CLOCK gap
+    // between telemetry calls (odometerNow below), so a headless test firing
+    // callbacks back-to-back would accumulate ~nothing — the injectable clock
+    // makes each tick's dt exact and the expected distance deterministic
+    // (mirrors DirectorManager::testSetNowMs). The white-box reads expose the
+    // ~100m dirty-coalescing (m_dirty / m_unsavedDistance are never observable
+    // through the file: a save only happens off-track). Never in a shipping DLL.
+    static void testSetNowUs(long long us);   // µs on the steady_clock timeline; -1 = real clock
+    bool testIsDirty() const { return m_dirty; }
+    double testUnsavedDistance() const { return m_unsavedDistance; }
+#endif
+
 private:
     StatsManager() = default;
     ~StatsManager() = default;
@@ -173,6 +186,12 @@ private:
     static std::string makeKey(const std::string& trackId, const std::string& bikeName);
     const std::string& getFilePath() const;
     void migrateOldFiles();
+
+    // The odometer's wall clock. Only the distance integration in
+    // updateTelemetry() reads time through this (the session/pause timers keep
+    // the plain steady_clock — they're wall-clock by contract and never
+    // asserted to exact values); in a shipping build it IS steady_clock::now().
+    static std::chrono::steady_clock::time_point odometerNow();
 
     // Category-scoped PB lookup (scans all bikes in the same category on a track)
     const StatsPersonalBestData* getPersonalBestForCategory(const std::string& trackId,

@@ -55,6 +55,26 @@ public:
     }
     bool getShowOutline() const { return m_bShowOutline; }
 
+    // Outline width scale — scales the visible RIM (the part of the outline pass
+    // that sticks out past the fill), not the whole outline ribbon: 100% is the
+    // classic look (rim = 0.4x track width), 50% a thin edge, 300% a fat border.
+    // Shares one settings control with the on/off ("Off" sits below the minimum,
+    // like the zoom Range control).
+    void setOutlineWidthScale(float scale) {
+        scale = (scale < MIN_OUTLINE_WIDTH_SCALE) ? MIN_OUTLINE_WIDTH_SCALE
+              : (scale > MAX_OUTLINE_WIDTH_SCALE) ? MAX_OUTLINE_WIDTH_SCALE : scale;
+        if (m_fOutlineWidthScale != scale) {
+            m_fOutlineWidthScale = scale;
+            setDataDirty();
+        }
+    }
+    float getOutlineWidthScale() const { return m_fOutlineWidthScale; }
+
+    // 100% is the classic pre-1.27.6 rim; the default ships at a slimmer 50%.
+    static constexpr float DEFAULT_OUTLINE_WIDTH_SCALE = 0.5f;
+    static constexpr float MIN_OUTLINE_WIDTH_SCALE = 0.25f;
+    static constexpr float MAX_OUTLINE_WIDTH_SCALE = 3.0f;
+
     // Track markers toggle - show S/F, sector/split markers and segment-timer lines.
     // Off leaves just the track ribbon and rider markers. Not part of the ribbon cache
     // (these draw after renderTrack), so it does not belong in TrackRibbonKey.
@@ -150,21 +170,62 @@ public:
     static constexpr float MIN_MARKER_SCALE = 0.5f;          // Min 50%
     static constexpr float MAX_MARKER_SCALE = 3.0f;          // Max 300%
 
-    // Track detail (LOD) - controls ribbon subdivision density
-    enum class Detail {
-        AUTO = 0,    // Adaptive: subdivision scales with on-screen size (default)
-        HIGH,        // Fixed 1.0m — predictable dense rendering regardless of zoom
-        LOW          // Fixed 4.0m — predictable sparse rendering for low-end hardware
-    };
-    static constexpr int DETAIL_COUNT = 3;
+    // Track detail — controls ribbon subdivision density (quad count).
+    //
+    // Two independent knobs (replacing the old Auto/High/Low preset):
+    //  * Detail scale 20-200% — quad DENSITY scales linearly with the
+    //    percentage (200% emits ~10x the ribbon quads of 20%). This is the
+    //    user's CPU/GPU budget dial: the game re-renders every emitted quad on
+    //    every frame, so at very high frame rates (300-400 fps) quad count is
+    //    the fps-proportional cost, and a percentage gives real granularity
+    //    where the old three presets didn't (and matches the other % knobs).
+    //  * Adaptive (default ON) — density is normalized in SCREEN space (a
+    //    target on-screen step between quads), so a long/windy track gets the
+    //    same visual density — and roughly the same quad count — as a short
+    //    one at the same scale. OFF = fixed meters-per-quad, predictable in
+    //    world units regardless of how big the track draws.
+    //
+    // The mapping from scale to density is anchored by DETAIL_BASELINE (an
+    // INI-only multiplier, default 1.0): 100% at baseline 1.0 reproduces the
+    // old AUTO exactly; fixed-mode 200% is the old HIGH (1.0m).
+    static constexpr float MIN_DETAIL_SCALE = 0.2f;
+    static constexpr float MAX_DETAIL_SCALE = 2.0f;
+    // Default is deliberately LEANER than the old AUTO (which sits at 100%):
+    // 50% halves the default quad budget with little visible difference at the
+    // default map size. Legacy `detail=AUTO` INIs migrate to 100%, not this
+    // default, so upgraders keep their exact old look.
+    static constexpr float DEFAULT_DETAIL_SCALE = 0.5f;
+    static constexpr float MIN_DETAIL_BASELINE = 0.25f;
+    static constexpr float MAX_DETAIL_BASELINE = 4.0f;
+    static constexpr float DEFAULT_DETAIL_BASELINE = 1.0f;
 
-    void setDetail(Detail detail) {
-        if (m_detail != detail) {
-            m_detail = detail;
+    void setDetailScale(float scale) {
+        scale = (scale < MIN_DETAIL_SCALE) ? MIN_DETAIL_SCALE
+              : (scale > MAX_DETAIL_SCALE) ? MAX_DETAIL_SCALE : scale;
+        if (m_fDetailScale != scale) {
+            m_fDetailScale = scale;
             setDataDirty();
         }
     }
-    Detail getDetail() const { return m_detail; }
+    float getDetailScale() const { return m_fDetailScale; }
+
+    void setAdaptiveDetail(bool adaptive) {
+        if (m_bAdaptiveDetail != adaptive) {
+            m_bAdaptiveDetail = adaptive;
+            setDataDirty();
+        }
+    }
+    bool getAdaptiveDetail() const { return m_bAdaptiveDetail; }
+
+    void setDetailBaseline(float baseline) {
+        baseline = (baseline < MIN_DETAIL_BASELINE) ? MIN_DETAIL_BASELINE
+                 : (baseline > MAX_DETAIL_BASELINE) ? MAX_DETAIL_BASELINE : baseline;
+        if (m_fDetailBaseline != baseline) {
+            m_fDetailBaseline = baseline;
+            setDataDirty();
+        }
+    }
+    float getDetailBaseline() const { return m_fDetailBaseline; }
 
     // Zoom mode - follow player showing limited track distance
     void setZoomEnabled(bool enabled) {
@@ -252,6 +313,7 @@ private:
 
     // Track outline
     bool m_bShowOutline;  // Show white outline around black track for visual clarity
+    float m_fOutlineWidthScale;  // Rim thickness scale (see setOutlineWidthScale)
     bool m_bShowTrackMarkers;  // Show S/F, sector markers and segment-timer lines
 
     // Rider colorization
@@ -278,8 +340,10 @@ private:
     // Marker scale (independent of HUD scale)
     float m_fMarkerScale;        // Scale factor for rider icons and labels
 
-    // Track detail (LOD)
-    Detail m_detail;
+    // Track detail (LOD) — see the public setters for semantics
+    float m_fDetailScale;
+    bool m_bAdaptiveDetail;
+    float m_fDetailBaseline;   // INI-only multiplier the 20-200% scale anchors to
 
     // Cached track-ribbon quads (outline + fill passes of renderTrack).
     // The ribbon re-tessellates the whole centerline with per-sample trig on
@@ -300,8 +364,11 @@ private:
         float offsetX = 0.0f, offsetY = 0.0f;                // Effective HUD offset (zoom-adjusted)
         float clipLeft = 0.0f, clipTop = 0.0f, clipRight = 0.0f, clipBottom = 0.0f;
         float trackWidthScale = 0.0f;
+        float outlineWidthScale = 0.0f;
         float zoomDistance = 0.0f;
-        int detail = -1;
+        float detailScale = 0.0f;
+        bool adaptiveDetail = false;
+        float detailBaseline = 0.0f;
         bool zoomEnabled = false;
         bool showOutline = false;
         bool showTitle = false;
@@ -318,8 +385,11 @@ private:
                 && clipLeft == o.clipLeft && clipTop == o.clipTop
                 && clipRight == o.clipRight && clipBottom == o.clipBottom
                 && trackWidthScale == o.trackWidthScale
+                && outlineWidthScale == o.outlineWidthScale
                 && zoomDistance == o.zoomDistance
-                && detail == o.detail
+                && detailScale == o.detailScale
+                && adaptiveDetail == o.adaptiveDetail
+                && detailBaseline == o.detailBaseline
                 && zoomEnabled == o.zoomEnabled
                 && showOutline == o.showOutline
                 && showTitle == o.showTitle
@@ -350,12 +420,16 @@ private:
     // make the emitted world points depend on a NEW input, add it to WorldRibbonKey
     // — miss it and the ribbon serves stale geometry in rotate/zoom.
     struct WorldRibbonPoint { float cx, cy, upx, upy; };  // center + UNIT perpendicular
+    // Key fields: detail scale/baseline are FOLDED into the resolved lodSpacing
+    // (they act only through it), so they don't appear separately; adaptiveDetail
+    // also drives curveMinSteps, so it must be keyed in its own right.
     struct WorldRibbonKey {
-        int detail = -1;
+        bool adaptiveDetail = false;
         bool zoomEnabled = false;
         float lodSpacing = 0.0f;
         bool operator==(const WorldRibbonKey& o) const {
-            return detail == o.detail && zoomEnabled == o.zoomEnabled && lodSpacing == o.lodSpacing;
+            return adaptiveDetail == o.adaptiveDetail && zoomEnabled == o.zoomEnabled
+                && lodSpacing == o.lodSpacing;
         }
     };
     std::vector<WorldRibbonPoint> m_worldRibbon;

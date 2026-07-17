@@ -48,11 +48,38 @@ test('every forced-empty broadcast panel shows the same "No data" placeholder', 
     await expect(emptyRow, `${name} shows one placeholder row`).toHaveCount(1, { timeout: 10_000 });
     // ...under its own correct title.
     await expect(panel.locator(p.titleSel), `${name} title`).toHaveText(p.title);
-    const info = await emptyRow.locator('.board-name').evaluate((el) => ({
+    const readInfo = () => emptyRow.locator('.board-name').evaluate((el) => ({
       text: el.textContent.trim(),
       font: getComputedStyle(el).fontFamily,
     }));
-    seen.push({ name, ...info });
+    // The font is asserted identical across panels below. A one-shot read has
+    // flaked (transient computed style straight after the slide-in), so every
+    // read is polled: the FIRST panel until two consecutive reads agree (a
+    // stable reference — without this the reference itself could be the
+    // transient), and each later panel until it matches that reference. Bounded
+    // waits that converge when the transient settles but still fail on a
+    // genuine, persistent font difference.
+    if (seen.length) {
+      await expect
+        .poll(async () => (await readInfo()).font, { message: `${name} font settles to the shared font` })
+        .toBe(seen[0].font);
+    } else {
+      // Reference panel: require a NON-EMPTY font stable across two consecutive
+      // reads. Chromium returns "" from getComputedStyle while the panel is
+      // mid-slide/masked (not rendered) — the observed flake was exactly this
+      // test capturing "" as the reference and then failing every later panel
+      // against it. Empty is "not ready yet", never a valid reference.
+      let prev = null;
+      await expect
+        .poll(async () => {
+          const cur = (await readInfo()).font;
+          const stable = cur !== '' && cur === prev;
+          prev = cur;
+          return stable;
+        }, { message: `${name} font stabilizes non-empty (reference panel)` })
+        .toBe(true);
+    }
+    seen.push({ name, ...(await readInfo()) });
     await page.screenshot({ path: path.join(SHOTS, 'empty-' + name + '.png') });
   }
 

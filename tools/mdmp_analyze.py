@@ -758,6 +758,17 @@ def record_sample(reg_path, d, dump_path, note=None):
 
 def main(argv):
     global KNOWN_PATH
+    # Usage before anything else: no args (or -h/--help) previously fell through
+    # to the dump loop, which either exited silently or tracebacked with
+    # FileNotFoundError('--help') — an ironic rough edge in a triage tool.
+    if not argv or "-h" in argv or "--help" in argv:
+        print("usage: mdmp_analyze.py [--known <registry.json>] <file.dmp> ...")
+        print("       mdmp_analyze.py --compare <a.dmp> <b.dmp>")
+        print("       mdmp_analyze.py --record [--note \"<text>\"] <file.dmp> ...")
+        print("Standalone minidump triage: fingerprint, exception, registers,")
+        print("faulting instruction, module attribution, crash classifier.")
+        print("Optional disassembly: pip install -r tools/requirements.txt (capstone).")
+        return
     # Optional: --known <registry.json> overrides registry auto-discovery.
     if "--known" in argv:
         i = argv.index("--known")

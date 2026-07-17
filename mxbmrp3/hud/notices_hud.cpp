@@ -328,9 +328,12 @@ void NoticesHud::update() {
         bool active = r.show;
         PluginData::SegmentNoticeKind kind = active ? pluginData.getSegmentNoticeKind()
                                                     : PluginData::SegmentNoticeKind::None;
-        if (active != m_bShowSegment || kind != m_segmentNoticeKind) {
+        int number = active ? pluginData.getSegmentNoticeNumber() : 0;
+        if (active != m_bShowSegment || kind != m_segmentNoticeKind ||
+            number != m_segmentNoticeNumber) {
             m_bShowSegment = active;
             m_segmentNoticeKind = kind;
+            m_segmentNoticeNumber = number;
             setDataDirty();
         }
     }
@@ -520,16 +523,28 @@ void NoticesHud::rebuildRenderData() {
             this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::POSITIVE), dim.fontSizeLarge);
     }
     else if (showSegment) {
-        // Segment-timer action feedback. Adding a point = positive (green); removing
-        // or clearing = neutral background.
+        // Segment-timer action feedback. Adding a point = positive (green); removing = neutral.
         bool isAdd = (m_segmentNoticeKind == PluginData::SegmentNoticeKind::Added);
         ColorSlot slot = isAdd ? ColorSlot::POSITIVE : ColorSlot::PRIMARY;
 
-        const char* text = "SEGMENT";
+        // Name the point involved by its 1-based position ("SEG 3 ADDED"), so notices count
+        // up as you place points and down as you remove them — the last removal is
+        // "SEG 1 REMOVED" (no special "cleared" state). (The >= 1 guard is defensive —
+        // add/remove always carry a positive ordinal.)
+        char text[24] = "SEGMENT";
         switch (m_segmentNoticeKind) {
-            case PluginData::SegmentNoticeKind::Added:   text = "SEG ADDED";   break;
-            case PluginData::SegmentNoticeKind::Removed: text = "SEG REMOVED"; break;
-            case PluginData::SegmentNoticeKind::Cleared: text = "SEG CLEARED"; break;
+            case PluginData::SegmentNoticeKind::Added:
+                if (m_segmentNoticeNumber >= 1)
+                    snprintf(text, sizeof(text), "SEG %d ADDED", m_segmentNoticeNumber);
+                else
+                    strcpy_s(text, sizeof(text), "SEG ADDED");
+                break;
+            case PluginData::SegmentNoticeKind::Removed:
+                if (m_segmentNoticeNumber >= 1)
+                    snprintf(text, sizeof(text), "SEG %d REMOVED", m_segmentNoticeNumber);
+                else
+                    strcpy_s(text, sizeof(text), "SEG REMOVED");
+                break;
             default: break;
         }
 

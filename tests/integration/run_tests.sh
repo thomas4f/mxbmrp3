@@ -110,7 +110,16 @@ for src in "${SELECTED[@]}"; do
     # Free :8080 from any lingering process (the server disables SO_REUSEADDR).
     wineserver -k 2>/dev/null || true
     started=${SECONDS}
-    ( cd "${BUILD}" && timeout "${PER_TEST_TIMEOUT}" wine "${name}.exe" mxbmrp3_test.dlo 2>"/tmp/${name}.trace.txt" )
+    # Cross-check the exit code against a SENTINEL FILE the harness writes
+    # (integration_main.h, after ctx.run()): Wine has been observed to lose the
+    # child's exit code (a doctest FAILURE run returned ec=0), and stdout capture
+    # has been observed to MISS output a passing run printed (fresh-prefix console
+    # redirection race — the first shape of this check grepped the tee'd stdout
+    # for the SUCCESS banner and false-failed on exactly that). Ordinary file I/O
+    # suffers neither failure mode. Delete the sentinel first so a crashed/killed
+    # run can't inherit a stale PASS.
+    rm -f "${BUILD}/wine_test_status.txt"
+    ( cd "${BUILD}" && timeout "${PER_TEST_TIMEOUT}" wine "${name}.exe" mxbmrp3_test.dlo 2>"/tmp/${name}.trace.txt" | tee "/tmp/${name}.out.txt" )
     ec=$?
     elapsed=$((SECONDS - started))
     wineserver -w 2>/dev/null || true
@@ -124,6 +133,13 @@ for src in "${SELECTED[@]}"; do
         echo "FAIL: ${name} exited ${ec} (after ${elapsed}s)"
         # Always surface the driver/wine stderr on failure so CI shows *why*
         # (a missing doctest banner above means wine never started the exe).
+        echo "--- ${name} stderr (tail) ---"; tail -30 "/tmp/${name}.trace.txt" 2>/dev/null; echo "---"
+        rc=1
+    elif ! grep -q "^PASS" "${BUILD}/wine_test_status.txt" 2>/dev/null; then
+        # Exit code 0 but the sentinel says otherwise: either Wine dropped the
+        # exit code on a failing run (sentinel says FAIL — observed in practice)
+        # or the binary died before writing it (no file). Never count as a pass.
+        echo "FAIL: ${name} exited 0 but the harness sentinel is $(cat "${BUILD}/wine_test_status.txt" 2>/dev/null || echo missing) (exit code lost under Wine?)"
         echo "--- ${name} stderr (tail) ---"; tail -30 "/tmp/${name}.trace.txt" 2>/dev/null; echo "---"
         rc=1
     else

@@ -177,7 +177,8 @@ private:
     static constexpr int MIN_RANGE_MS = 1000;       // 1 second minimum
     static constexpr int MAX_RANGE_MS = 5000;       // 5 seconds maximum
     static constexpr int DEFAULT_RANGE_MS = 2000;   // 2 seconds default
-    static constexpr int RANGE_STEP_MS = 1000;      // 1 second steps
+    static constexpr int RANGE_STEP_MS = 250;       // 0.25 second steps (accelerated stepper;
+                                                    // old 1000ms-multiple saves stay valid)
 
     // Bar width as a percentage of the base width (base = 2x the Notices/Timing box width)
     static constexpr int MIN_WIDTH_PERCENT = 50;      // 50% = same width as Notices/Timing

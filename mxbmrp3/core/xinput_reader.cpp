@@ -167,9 +167,20 @@ XInputReader::~XInputReader() {
     // the thread has left our loop (an app-level flag, no loader lock involved), then
     // detach so its CRT/OS teardown finishes without us blocking on it. By the time
     // FreeLibrary unmaps our code, the thread is long past running any of it.
+    // (Same known residual window as ~PluginThread: a few DLL-resident
+    // instructions run after the flag store — lambda epilogue + thread shim —
+    // inherent to spin-then-detach; join would deadlock on the loader lock.)
     if (m_ioThread.joinable()) {
         m_ioRun.store(false, std::memory_order_release);
-        while (!m_ioFinished.load(std::memory_order_acquire)) {
+        // BOUNDED spin: on an ExitProcess-without-Shutdown() teardown the OS has
+        // already TERMINATED the thread - the finished flag will never be stored,
+        // and an unbounded spin would hang process exit forever. ~2s covers any
+        // legitimately slow exit; past it, detach regardless (a terminated thread
+        // makes the detach trivially safe; a pathologically still-live one lands
+        // in the same known residual window documented above).
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (!m_ioFinished.load(std::memory_order_acquire) &&
+               std::chrono::steady_clock::now() < deadline) {
             std::this_thread::yield();
         }
         m_ioThread.detach();
@@ -178,6 +189,12 @@ XInputReader::~XInputReader() {
 
 void XInputReader::startIoThread() {
     if (m_ioRun.load(std::memory_order_acquire)) return;   // already running
+    // A previous thread that died by exception (catch below clears m_ioRun) is
+    // finished but never joined — assigning over a joinable std::thread calls
+    // std::terminate(). Reap it first (instant: m_ioFinished is already set).
+    if (m_ioThread.joinable()) {
+        try { m_ioThread.join(); } catch (...) {}
+    }
     m_ioFinished.store(false, std::memory_order_release);
     m_ioRun.store(true, std::memory_order_release);
     m_ioThread = std::thread([this]() {
@@ -187,6 +204,10 @@ void XInputReader::startIoThread() {
             ioThreadMain();
         } catch (...) {
             DEBUG_ERROR("XInputReader: I/O thread terminated by exception");
+            // Self-heal: keep m_ioRun truthful so a later startIoThread() isn't
+            // refused by the already-running check (input/rumble would otherwise
+            // stay silently dead for the rest of the session).
+            m_ioRun.store(false, std::memory_order_release);
         }
         // LAST: signal the destructor's spin-wait that we've left our code. Keep this
         // the final statement so no more of our (potentially-unmapped-soon) code runs.
@@ -308,10 +329,16 @@ bool XInputReader::isControllerConnected(int index) {
 
 std::string XInputReader::getControllerName(int index) {
     if (index < 0 || index > 3) return "";
-    if (!isControllerConnected(index)) return "";
+    // Cached connection state only — a live isControllerConnected() here would
+    // issue XInputGetState on EMPTY slots (the ms-class enumeration path) on the
+    // frame-producing thread every time the settings controller tab redraws. The
+    // I/O thread keeps the cache fresh at 1 Hz.
+    const XInputReader& self = getInstance();
+    if (!self.isControllerConnectedCached(index)) return "";
 
-    // Cache controller names to avoid querying WinRT every frame
-    // Cache is invalidated when controller connection state changes
+    // Cache controller names to avoid querying WinRT every frame.
+    // Refreshed when the I/O thread's connection snapshot changes. These statics
+    // are unsynchronized — only the frame-owner thread calls this (settings UI).
     static std::string s_cachedNames[4] = {"", "", "", ""};
     static bool s_cachedConnected[4] = {false, false, false, false};
     static bool s_cacheInitialized = false;
@@ -319,7 +346,7 @@ std::string XInputReader::getControllerName(int index) {
     // Check if we need to refresh the cache
     bool needsRefresh = !s_cacheInitialized;
     for (int i = 0; i < 4 && !needsRefresh; i++) {
-        bool connected = isControllerConnected(i);
+        bool connected = self.isControllerConnectedCached(i);
         if (connected != s_cachedConnected[i]) {
             needsRefresh = true;
         }
@@ -329,7 +356,7 @@ std::string XInputReader::getControllerName(int index) {
         // Clear cache
         for (int i = 0; i < 4; i++) {
             s_cachedNames[i] = "";
-            s_cachedConnected[i] = isControllerConnected(i);
+            s_cachedConnected[i] = self.isControllerConnectedCached(i);
         }
         s_cacheInitialized = true;
 

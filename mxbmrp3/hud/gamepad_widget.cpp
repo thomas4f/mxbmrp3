@@ -9,6 +9,7 @@
 #include "../core/xinput_reader.h"
 #include "../diagnostics/logger.h"
 #include <cmath>
+#include <cstring>
 #include <algorithm>
 
 using namespace PluginConstants;
@@ -16,6 +17,14 @@ using namespace PluginConstants;
 GamepadWidget::GamepadWidget() {
     DEBUG_INFO("GamepadWidget created");
     setDraggable(true);
+
+    // Zero the rebuild-gate snapshot INCLUDING padding: the update() gate
+    // memcmp-compares whole structs, and default-init leaves padding bytes
+    // indeterminate — later copy-assigns from XInputReader's object keep ITS
+    // padding, so after the first real frame both sides agree, but this makes
+    // the comparison well-defined from the very first compare on any toolchain
+    // (worst case without it was a redundant rebuild, never a wrong frame).
+    std::memset(&m_lastRenderedInput, 0, sizeof(m_lastRenderedInput));
 
     // Pre-allocate render buffers
     m_quads.reserve(50);  // Sticks + triggers + bumpers + face + dpad + menu buttons
@@ -38,8 +47,20 @@ void GamepadWidget::update() {
         return;
     }
 
-    // Always rebuild - XInput data updates every physics callback
-    rebuildRenderData();
+    // Rebuild only when the rendered inputs actually changed. The widget reads
+    // XInputReader DIRECTLY (not PluginData), so the InputTelemetry dirty flag
+    // alone would freeze it in modes with no telemetry callbacks (replay,
+    // spectate) — instead a POD snapshot of the controller state is the change
+    // signal. An idle controller at 240fps skips the few-hundred-quad rebuild
+    // entirely; a moving one rebuilds at most once per render frame, as before.
+    const XInputData& xinput = XInputReader::getInstance().getData();
+    const bool inputChanged = !m_hasRenderedInput ||
+        std::memcmp(&xinput, &m_lastRenderedInput, sizeof(XInputData)) != 0;
+    if (inputChanged || isDataDirty() || isLayoutDirty()) {
+        m_lastRenderedInput = xinput;
+        m_hasRenderedInput = true;
+        rebuildRenderData();
+    }
     clearDataDirty();
     clearLayoutDirty();
 }

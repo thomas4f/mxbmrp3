@@ -7,9 +7,9 @@
 #include "base_hud.h"
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
+#include "../core/records_fetcher.h"
 #include <vector>
 #include <string>
-#include <thread>
 #include <atomic>
 #include <mutex>
 
@@ -31,12 +31,10 @@ public:
         return (m_enabledColumns & col) != 0;
     }
 
-    // Data providers (hardcoded endpoints)
-    enum class DataProvider : uint8_t {
-        CBR = 0,
-        MXB_RANKED = 1,
-        COUNT
-    };
+    // Data providers (hardcoded endpoints). The type lives in RecordsFetcher
+    // (core/records_fetcher.h) with the transport/parse code; aliased so
+    // existing consumers (settings serde/tabs) keep spelling RecordsHud::DataProvider.
+    using DataProvider = RecordsFetcher::DataProvider;
 
     // Check if current provider supports sector times
     bool providerHasSectors() const {
@@ -66,28 +64,9 @@ public:
         ClickRegionType type;
     };
 
-    // Record entry from API response
-    struct RecordEntry {
-        int position;
-        char rider[64];
-        char bike[64];
-        int laptime;          // milliseconds
-        int sector1;          // milliseconds (MXB-Ranked only, -1 if not available)
-        int sector2;          // milliseconds (MXB-Ranked only, -1 if not available)
-        int sector3;          // milliseconds (MXB-Ranked only, -1 if not available)
-        int sector4;          // milliseconds (4-sector games only, -1 if not available)
-        char date[32];        // Formatted date string
-
-        RecordEntry() : position(0), laptime(-1), sector1(-1), sector2(-1), sector3(-1), sector4(-1) {
-            rider[0] = '\0';
-            bike[0] = '\0';
-            date[0] = '\0';
-        }
-
-        bool hasSectors() const {
-            return sector1 > 0 && sector2 > 0 && sector3 > 0;
-        }
-    };
+    // Record entry from API response (defined next to the parse code that
+    // fills it — core/records_fetcher.h)
+    using RecordEntry = RecordsFetcher::RecordEntry;
 
     // Column positions helper struct
     struct ColumnPositions {
@@ -131,19 +110,46 @@ public:
     friend class SettingsHud;
     friend class SettingsManager;
 
+#if defined(MXBMRP3_TEST_BUILD)
+    // --- Test seams (tests/integration/tests/records_parse_test.cpp) --------
+    // Never compiled into a shipping (MSVC) build. See core/test_hooks.cpp for
+    // the exported MXBMRP3_Test_Records* wrappers.
+    //
+    // Run a canned HTTP response body through the REAL parse path, exactly as
+    // the fetch worker would for that provider (0=CBR, 1=MXB_RANKED). Returns
+    // false on a parse error (same signal the worker turns into FETCH_ERROR).
+    bool testParseResponse(int provider, const std::string& response);
+    // Read back the parsed records (copied under m_recordsMutex).
+    int  testRecordCount() const;
+    bool testGetRecord(int index, RecordEntry& out) const;
+    // Start a real fetch through the same cooldown/state gate as the Compare
+    // button, and read the fetch state (FetchState as int).
+    void testStartFetch() { startFetch(); }
+    int  testFetchState() const { return static_cast<int>(m_fetchState.load()); }
+    // Arm the fetch-worker stub: the worker sleeps delayMs, then completes with
+    // `response` through the normal parse/notify path instead of touching the
+    // network — keeps the worker's lifetime (and its cross-HUD TimingHud
+    // completion) real while a test stays offline and bounded. delayMs < 0
+    // disarms. Used by the shutdown-during-fetch join-contract test.
+    static void testSetFetchStub(int delayMs, const char* response);
+#endif
+
 protected:
     void rebuildLayout() override;
 
 private:
     void rebuildRenderData() override;
 
-    // HTTP fetch operations
+    // HTTP fetch operations. The transport + parse live in RecordsFetcher
+    // (core/records_fetcher.h); the HUD snapshots the fetch inputs on the game
+    // thread (startFetch), and stores the fetcher's result (onFetchComplete —
+    // runs ON THE WORKER THREAD, so it only touches m_recordsMutex-guarded
+    // members, atomics, and setDataDirty()).
     void startFetch();
-    void performFetch();  // Runs in background thread
-    bool processFetchResult(const std::string& response);  // Returns true on success
-    std::string buildRequestUrl() const;
-    static std::string getProviderBaseUrl(DataProvider provider);
-    static const char* getProviderDisplayName(DataProvider provider);
+    void onFetchComplete(RecordsFetcher::Result&& result);
+    // Store a successfully parsed result under m_recordsMutex (shared by the
+    // worker completion and the canned-response test seam).
+    void storeParsedRecords(RecordsFetcher::Result&& result);
 
     // Category management
     void buildCategoryList();
@@ -165,8 +171,7 @@ private:
     // Base position (0,0) - actual position comes from m_fOffsetX/m_fOffsetY
     static constexpr float START_X = 0.0f;
     static constexpr float START_Y = 0.0f;
-    static constexpr int MAX_RECORDS = 50;  // API only returns 50 results
-    static constexpr size_t MAX_RESPONSE_SIZE = 256 * 1024;  // 256KB max response to prevent memory exhaustion
+    static constexpr int MAX_RECORDS = RecordsFetcher::MAX_RECORDS;  // API only returns 50 results
     static constexpr int HEADER_ROWS = 3;  // Title + Provider/Category/Compare + empty row (no column headers)
     static constexpr int FOOTER_ROWS = 1;  // Gap row only (footer text renders in bottom padding)
 
@@ -197,22 +202,25 @@ private:
     bool m_bShowHeaders = false;  // Show a column-header row (fills the row HEADER_ROWS already reserves)
     bool m_bShowFooter = true;  // Show provider attribution at bottom (configurable via INI)
 
-    // Fetch state
+    // Fetch state. The worker thread + fetch-input snapshot live in
+    // RecordsFetcher; startFetch() (game thread) snapshots the inputs
+    // (m_provider / session trackName / resolved category) and passes them in,
+    // so the worker never touches PluginData or game-thread-mutated state.
+    // m_fetchState stays here: the CAS single-flight gate runs on the game
+    // thread in startFetch(), the worker's completion (onFetchComplete) writes
+    // SUCCESS/FETCH_ERROR, and the settings tab reads it for the button label.
     std::atomic<FetchState> m_fetchState;
-    std::thread m_fetchThread;
     mutable std::mutex m_recordsMutex;
     std::string m_lastError;
     std::string m_apiNotice;  // Notice from API response
     DataProvider m_recordsProvider;  // Provider that current records were fetched from
-
-    // Fetch inputs snapshotted on the game thread in startFetch() and read by
-    // buildRequestUrl() on the worker thread. buildRequestUrl() runs off the game
-    // thread, so it must not touch PluginData or game-thread-mutated state
-    // (m_provider / m_categoryIndex / m_categoryList) directly — everything it
-    // needs is captured here first, while still on the game thread.
-    DataProvider m_fetchProvider;   // Provider captured at fetch start
-    std::string m_fetchTrackName;   // Track name captured at fetch start
-    std::string m_fetchCategory;    // Resolved category (empty => "All" / no filter)
+    // Declared LAST among these members deliberately: members destroy in reverse
+    // declaration order, and the fetcher's destructor joins a worker whose
+    // completion callback touches the mutex-guarded members above — so the
+    // fetcher must be destroyed FIRST, while the mutex and result strings are
+    // still alive. (The orchestrated path joins long before any destructor runs;
+    // this ordering is the backstop's backstop.)
+    RecordsFetcher m_fetcher;
 
     // UI state
     bool m_fetchButtonHovered;

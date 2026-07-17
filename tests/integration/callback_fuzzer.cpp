@@ -80,6 +80,12 @@ int main(int argc, char** argv) {
     int dsCount = 0;
     for (const char* n : dsNames) { if (auto p = sym(n)) ds[dsCount++] = (PFN_DS)p; }
 
+    // Test-build-only hook: flips the EXPERIMENTAL plugin worker thread on. The
+    // threaded path copies callback payloads onto a queue BEFORE the downstream
+    // handlers' validation runs, so it has its own count-clamp obligations —
+    // fuzz both modes (sync first half, threaded second half).
+    auto PtEnable = (PFN_Shutdown)   sym("MXBMRP3_Test_PluginThreadEnable");
+
     auto Telem    = (PFN_Telem)      sym("RunTelemetry");
     auto Class    = (PFN_Class)      sym("RaceClassification");
     auto TrackPos = (PFN_TrackPos)   sym("RaceTrackPosition");
@@ -108,6 +114,11 @@ int main(int argc, char** argv) {
     unsigned char* zbuf = (unsigned char*)calloc(1, 256 * 1024);
 
     for (long it = 0; it < iters; ++it) {
+        // Halfway through, switch to plugin-thread mode: the pre-queue copy in
+        // PluginManager must reject over-cap array counts (TrackCenterline) just
+        // like the sync handlers do — an unbounded copy there faults right here.
+        if (PtEnable && it == iters / 2) PtEnable();
+
         // Cheaply perturb the front of the buffer each iteration.
         *(uint32_t*)buf = rnd();
         buf[4] = (unsigned char)rnd();

@@ -25,12 +25,10 @@
 #include "../core/stats_manager.h"
 #include "../core/ui_config.h"
 
-// Use WinHTTP for HTTPS support (built into Windows, no external dependencies)
+// The HTTP transport + JSON parse live in core/records_fetcher.{h,cpp}
+// (included via records_hud.h); this file keeps presentation + fetch
+// orchestration only.
 #include <windows.h>
-#include <winhttp.h>
-#pragma comment(lib, "winhttp.lib")
-
-#include "../vendor/nlohmann/json.hpp"
 
 using namespace PluginConstants;
 
@@ -84,7 +82,6 @@ RecordsHud::RecordsHud()
     , m_categoryIndex(0)
     , m_fetchState(FetchState::IDLE)
     , m_recordsProvider(DataProvider::CBR)
-    , m_fetchProvider(DataProvider::CBR)
     , m_fetchButtonHovered(false)
     , m_fetchResultTimestamp(0)
     , m_fetchStartTimestamp(0)
@@ -123,35 +120,8 @@ void RecordsHud::joinFetchThread() {
     // nulled: the fetch thread calls getTimingHud() on completion, so it
     // must be gone before m_pTiming is reset (and before TimingHud is
     // destroyed). Also called from the destructor as a safety net.
-    if (m_fetchThread.joinable()) {
-        m_fetchThread.join();
-    }
-}
-
-// ============================================================================
-// Data Provider Configuration
-// ============================================================================
-
-std::string RecordsHud::getProviderBaseUrl(DataProvider provider) {
-    switch (provider) {
-        case DataProvider::CBR:
-            return "https://server.cbrservers.com/api/records/top";
-        case DataProvider::MXB_RANKED:
-            return "https://mxb-ranked.com/pub-api/stats/GetTrackFastestLapsByBikeCategory";
-        default:
-            return "";
-    }
-}
-
-const char* RecordsHud::getProviderDisplayName(DataProvider provider) {
-    switch (provider) {
-        case DataProvider::CBR:
-            return "CBR";
-        case DataProvider::MXB_RANKED:
-            return "MXB Ranked";
-        default:
-            return "Unknown";
-    }
+    // Delegates to the fetcher, which owns the worker thread.
+    m_fetcher.join();
 }
 
 // ============================================================================
@@ -187,73 +157,8 @@ const char* RecordsHud::getCurrentCategoryDisplay() const {
 }
 
 // ============================================================================
-// HTTP Fetch Operations
+// HTTP Fetch Operations (transport + parse in core/records_fetcher.cpp)
 // ============================================================================
-
-// URL encode a string for use in query parameters
-static void appendUrlEncoded(std::string& url, const char* str) {
-    for (const char* p = str; *p; ++p) {
-        if ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
-            (*p >= '0' && *p <= '9') || *p == '-' || *p == '_' || *p == '.') {
-            url += *p;
-        } else if (*p == ' ') {
-            url += "%20";
-        } else {
-            char hex[4];
-            snprintf(hex, sizeof(hex), "%%%02X", static_cast<unsigned char>(*p));
-            url += hex;
-        }
-    }
-}
-
-std::string RecordsHud::buildRequestUrl() const {
-    // Runs on the worker thread: read only the fetch-time snapshot captured by
-    // startFetch() on the game thread (m_fetchProvider / m_fetchTrackName /
-    // m_fetchCategory), never live PluginData or m_provider/m_categoryIndex/
-    // m_categoryList.
-    std::string baseUrl = getProviderBaseUrl(m_fetchProvider);
-    if (baseUrl.empty()) return "";
-
-    if (m_fetchProvider == DataProvider::MXB_RANKED) {
-        // MXB-Ranked uses path-based URL: /trackname or /trackname/category
-        // No limit parameter supported
-        std::string url = baseUrl;
-
-        // Add track name parameter (required)
-        if (!m_fetchTrackName.empty()) {
-            url += "/";
-            appendUrlEncoded(url, m_fetchTrackName.c_str());
-        } else {
-            return "";  // Track name is required for MXB-Ranked
-        }
-
-        // Add category parameter (optional - omit for "All")
-        if (!m_fetchCategory.empty()) {
-            url += "/";
-            appendUrlEncoded(url, m_fetchCategory.c_str());
-        }
-        // If "All", omit category to get all categories
-
-        return url;
-    } else {
-        // CBR uses query parameters
-        std::string url = baseUrl + "?limit=" + std::to_string(MAX_RECORDS);
-
-        // Add track parameter
-        if (!m_fetchTrackName.empty()) {
-            url += "&track=";
-            appendUrlEncoded(url, m_fetchTrackName.c_str());
-        }
-
-        // Add category parameter if not "All"
-        if (!m_fetchCategory.empty()) {
-            url += "&category=";
-            appendUrlEncoded(url, m_fetchCategory.c_str());
-        }
-
-        return url;
-    }
-}
 
 void RecordsHud::startFetch() {
     // Cooldown check - prevent spam (silently ignore if on cooldown)
@@ -278,431 +183,71 @@ void RecordsHud::startFetch() {
     // Record fetch start time for cooldown
     m_fetchStartTimestamp = now;
 
-    // Wait for previous thread if any
-    if (m_fetchThread.joinable()) {
-        m_fetchThread.join();
-    }
-
-    // Snapshot every input buildRequestUrl() needs, here on the game thread, before
-    // the worker starts. This is the only place these are read for the fetch, so the
-    // worker never touches PluginData or game-thread-mutated state directly.
-    m_fetchProvider = m_provider;
+    // Snapshot every input the fetcher's buildRequestUrl() needs, here on the game
+    // thread, before the worker starts. This is the only place these are read for
+    // the fetch, so the worker never touches PluginData or game-thread-mutated
+    // state directly.
+    DataProvider fetchProvider = m_provider;
     const SessionData& session = PluginData::getInstance().getSessionData();
-    m_fetchTrackName = session.trackName;
+    std::string fetchTrackName = session.trackName;
+    std::string fetchCategory;
     if (m_categoryIndex > 0 && m_categoryIndex < static_cast<int>(m_categoryList.size())) {
-        m_fetchCategory = m_categoryList[m_categoryIndex];
+        fetchCategory = m_categoryList[m_categoryIndex];
+    }
+    // else: index 0 ("All") => no category filter (empty)
+
+    // Start new fetch thread (the fetcher joins any previous, finished worker
+    // first). The completion callback runs ON THE WORKER THREAD.
+    m_fetcher.start(fetchProvider, std::move(fetchTrackName), std::move(fetchCategory),
+                    [this](RecordsFetcher::Result&& result) {
+                        onFetchComplete(std::move(result));
+                    });
+}
+
+// Runs ON THE FETCH WORKER THREAD (see RecordsFetcher). Only touches
+// m_recordsMutex-guarded members, atomics, and setDataDirty(); the cross-HUD
+// TimingHud touch below is why HudManager::clear() joins the fetch thread
+// BEFORE nulling its cached HUD pointers (joinFetchThread).
+void RecordsHud::onFetchComplete(RecordsFetcher::Result&& result) {
+    if (result.parsed) {
+        storeParsedRecords(std::move(result));
+        m_fetchState = FetchState::SUCCESS;
+        DEBUG_INFO("RecordsHud: Fetch successful");
+        // Notify TimingHud so it can update RC reference time immediately
+        HudManager::getInstance().getTimingHud().setDataDirty();
     } else {
-        m_fetchCategory.clear();  // index 0 ("All") => no category filter
-    }
-
-    // Start new fetch thread
-    m_fetchThread = std::thread(&RecordsHud::performFetch, this);
-}
-
-void RecordsHud::performFetch() {
-    // Exception barrier: an uncaught throw in a std::thread calls
-    // std::terminate() and kills the host game process. The body below does
-    // std::string / std::wstring / std::vector allocations and WinHTTP calls
-    // — any of those can throw under memory pressure or unexpected response
-    // shapes. processFetchResult is internally guarded, but the outer thread
-    // body wasn't.
-    try {
-
-        DEBUG_INFO("RecordsHud: Starting HTTP fetch");
-
-        std::string url = buildRequestUrl();
-        if (url.empty()) {
-            {
-                std::lock_guard<std::mutex> lock(m_recordsMutex);
-                m_lastError = "Invalid URL";
-            }
-            m_fetchState = FetchState::FETCH_ERROR;
-            m_fetchResultTimestamp = GetTickCount();
-            setDataDirty();
-            return;
-        }
-
-        DEBUG_INFO_F("RecordsHud: Fetching URL: %s", url.c_str());
-
-        // Parse URL to extract host and path
-        std::wstring wHost;
-        std::wstring wPath;
-        INTERNET_PORT port = INTERNET_DEFAULT_HTTPS_PORT;
-        bool useHttps = true;
-
-        // Skip protocol
-        size_t hostStart = url.find("://");
-        if (hostStart != std::string::npos) {
-            std::string protocol = url.substr(0, hostStart);
-            if (protocol == "http") {
-                useHttps = false;
-                port = INTERNET_DEFAULT_HTTP_PORT;
-            }
-            hostStart += 3;
-        } else {
-            hostStart = 0;
-        }
-
-        // Find end of host
-        size_t pathStart = url.find('/', hostStart);
-        std::string host;
-        std::string path;
-        if (pathStart != std::string::npos) {
-            host = url.substr(hostStart, pathStart - hostStart);
-            path = url.substr(pathStart);
-        } else {
-            host = url.substr(hostStart);
-            path = "/";
-        }
-
-        // Convert to wide strings for WinHTTP
-        wHost.assign(host.begin(), host.end());
-        wPath.assign(path.begin(), path.end());
-
-        // Create user agent string
-        char userAgentA[128];
-        snprintf(userAgentA, sizeof(userAgentA), "%s/%s",
-                 PluginConstants::PLUGIN_DISPLAY_NAME,
-                 PluginConstants::PLUGIN_VERSION);
-        std::wstring userAgent(userAgentA, userAgentA + strlen(userAgentA));
-
-        // Initialize WinHTTP
-        HINTERNET hSession = WinHttpOpen(userAgent.c_str(),
-                                         WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-                                         WINHTTP_NO_PROXY_NAME,
-                                         WINHTTP_NO_PROXY_BYPASS, 0);
-        if (!hSession) {
-            {
-                std::lock_guard<std::mutex> lock(m_recordsMutex);
-                m_lastError = "WinHttpOpen failed";
-            }
-            m_fetchState = FetchState::FETCH_ERROR;
-            m_fetchResultTimestamp = GetTickCount();
-            setDataDirty();
-            DEBUG_WARN("RecordsHud: WinHttpOpen failed");
-            return;
-        }
-
-        // Set timeouts (10 seconds for each operation)
-        WinHttpSetTimeouts(hSession, 10000, 10000, 10000, 10000);
-
-        // Connect to server
-        HINTERNET hConnect = WinHttpConnect(hSession, wHost.c_str(), port, 0);
-        if (!hConnect) {
-            WinHttpCloseHandle(hSession);
-            {
-                std::lock_guard<std::mutex> lock(m_recordsMutex);
-                m_lastError = "Connection failed";
-            }
-            m_fetchState = FetchState::FETCH_ERROR;
-            m_fetchResultTimestamp = GetTickCount();
-            setDataDirty();
-            DEBUG_WARN("RecordsHud: WinHttpConnect failed");
-            return;
-        }
-
-        // Create request
-        DWORD flags = useHttps ? WINHTTP_FLAG_SECURE : 0;
-        HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"GET", wPath.c_str(),
-                                                NULL, WINHTTP_NO_REFERER,
-                                                WINHTTP_DEFAULT_ACCEPT_TYPES, flags);
-        if (!hRequest) {
-            WinHttpCloseHandle(hConnect);
-            WinHttpCloseHandle(hSession);
-            {
-                std::lock_guard<std::mutex> lock(m_recordsMutex);
-                m_lastError = "Request failed";
-            }
-            m_fetchState = FetchState::FETCH_ERROR;
-            m_fetchResultTimestamp = GetTickCount();
-            setDataDirty();
-            DEBUG_WARN("RecordsHud: WinHttpOpenRequest failed");
-            return;
-        }
-
-        // Add Accept header
-        WinHttpAddRequestHeaders(hRequest, L"Accept: application/json",
-                                 (DWORD)-1, WINHTTP_ADDREQ_FLAG_ADD);
-
-        // Send request
-        BOOL bResults = WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS,
-                                            0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0);
-        if (!bResults) {
-            WinHttpCloseHandle(hRequest);
-            WinHttpCloseHandle(hConnect);
-            WinHttpCloseHandle(hSession);
-            {
-                std::lock_guard<std::mutex> lock(m_recordsMutex);
-                m_lastError = "Send failed";
-            }
-            m_fetchState = FetchState::FETCH_ERROR;
-            m_fetchResultTimestamp = GetTickCount();
-            setDataDirty();
-            DEBUG_WARN("RecordsHud: WinHttpSendRequest failed");
-            return;
-        }
-
-        // Receive response
-        bResults = WinHttpReceiveResponse(hRequest, NULL);
-        if (!bResults) {
-            WinHttpCloseHandle(hRequest);
-            WinHttpCloseHandle(hConnect);
-            WinHttpCloseHandle(hSession);
-            {
-                std::lock_guard<std::mutex> lock(m_recordsMutex);
-                m_lastError = "No response";
-            }
-            m_fetchState = FetchState::FETCH_ERROR;
-            m_fetchResultTimestamp = GetTickCount();
-            setDataDirty();
-            DEBUG_WARN("RecordsHud: WinHttpReceiveResponse failed");
-            return;
-        }
-
-        // Check status code
-        DWORD statusCode = 0;
-        DWORD statusCodeSize = sizeof(statusCode);
-        WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-                            WINHTTP_HEADER_NAME_BY_INDEX, &statusCode, &statusCodeSize, WINHTTP_NO_HEADER_INDEX);
-
-        if (statusCode != 200) {
-            WinHttpCloseHandle(hRequest);
-            WinHttpCloseHandle(hConnect);
-            WinHttpCloseHandle(hSession);
-            {
-                std::lock_guard<std::mutex> lock(m_recordsMutex);
-                m_lastError = "HTTP " + std::to_string(statusCode);
-            }
-            m_fetchState = FetchState::FETCH_ERROR;
-            m_fetchResultTimestamp = GetTickCount();
-            setDataDirty();
-            DEBUG_WARN_F("RecordsHud: HTTP error %d", statusCode);
-            return;
-        }
-
-        // Read response body with size limit
-        std::string responseBody;
-        DWORD dwSize = 0;
-        DWORD dwDownloaded = 0;
-        bool sizeLimitExceeded = false;
-
-        do {
-            dwSize = 0;
-            if (!WinHttpQueryDataAvailable(hRequest, &dwSize)) {
-                break;
-            }
-
-            if (dwSize == 0) break;
-
-            // Check size limit to prevent memory exhaustion
-            if (responseBody.size() + dwSize > MAX_RESPONSE_SIZE) {
-                sizeLimitExceeded = true;
-                DEBUG_WARN_F("RecordsHud: Response size limit exceeded (current=%zu, chunk=%lu, limit=%zu)",
-                             responseBody.size(), dwSize, MAX_RESPONSE_SIZE);
-                break;
-            }
-
-            std::vector<char> buffer(dwSize + 1, 0);
-
-            if (WinHttpReadData(hRequest, buffer.data(), dwSize, &dwDownloaded)) {
-                responseBody.append(buffer.data(), dwDownloaded);
-            }
-
-        } while (dwSize > 0);
-
-        if (sizeLimitExceeded) {
-            WinHttpCloseHandle(hRequest);
-            WinHttpCloseHandle(hConnect);
-            WinHttpCloseHandle(hSession);
-            {
-                std::lock_guard<std::mutex> lock(m_recordsMutex);
-                m_lastError = "Response too large";
-            }
-            m_fetchState = FetchState::FETCH_ERROR;
-            m_fetchResultTimestamp = GetTickCount();
-            setDataDirty();
-            return;
-        }
-
-        // Clean up
-        WinHttpCloseHandle(hRequest);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
-
-        // Process response
-        if (!responseBody.empty()) {
-            if (processFetchResult(responseBody)) {
-                m_fetchState = FetchState::SUCCESS;
-                DEBUG_INFO("RecordsHud: Fetch successful");
-                // Notify TimingHud so it can update RC reference time immediately
-                HudManager::getInstance().getTimingHud().setDataDirty();
-            } else {
-                m_fetchState = FetchState::FETCH_ERROR;
-                DEBUG_WARN("RecordsHud: Failed to parse response");
-            }
-        } else {
-            {
-                std::lock_guard<std::mutex> lock(m_recordsMutex);
-                m_lastError = "Empty response";
-            }
-            m_fetchState = FetchState::FETCH_ERROR;
-            DEBUG_WARN("RecordsHud: Empty response");
-        }
-
-        m_fetchResultTimestamp = GetTickCount();
-        setDataDirty();
-
-    } catch (const std::exception& e) {
-        DEBUG_WARN_F("RecordsHud fetch thread terminated by exception: %s", e.what());
         // Atomic state first (noexcept). The string assignment can itself
-        // throw bad_alloc — if the original throw was bad_alloc, allocating
-        // a new error string defeats the catch. Acquire the lock once
-        // outside the inner try so a second lock_guard in a nested catch
-        // can't throw std::system_error and propagate out of the thread.
+        // throw bad_alloc — if the failure was bad_alloc, allocating a new
+        // error string defeats the fetcher's exception barrier. Acquire the
+        // lock once outside the inner try so a second lock_guard in a nested
+        // catch can't throw std::system_error and propagate out of the thread.
         m_fetchState = FetchState::FETCH_ERROR;
         {
             std::lock_guard<std::mutex> lock(m_recordsMutex);
             try {
-                m_lastError = e.what();
+                m_lastError = std::move(result.error);
             } catch (...) {
                 m_lastError.clear();  // noexcept
             }
         }
-        m_fetchResultTimestamp = GetTickCount();
-        setDataDirty();
-    } catch (...) {
-        DEBUG_WARN("RecordsHud fetch thread terminated by unknown exception");
-        m_fetchState = FetchState::FETCH_ERROR;
-        {
-            std::lock_guard<std::mutex> lock(m_recordsMutex);
-            try {
-                m_lastError = "Unknown error";
-            } catch (...) {
-                m_lastError.clear();  // noexcept
-            }
-        }
-        m_fetchResultTimestamp = GetTickCount();
-        setDataDirty();
+    }
+    m_fetchResultTimestamp = GetTickCount();
+    setDataDirty();
+}
+
+void RecordsHud::storeParsedRecords(RecordsFetcher::Result&& result) {
+    // Lock for all member variable writes. The result was parsed with the
+    // provider snapshotted on the game thread in startFetch(), never the live
+    // m_provider - the user can cycle providers mid-fetch and the response must
+    // be parsed with the schema it was requested with.
+    std::lock_guard<std::mutex> lock(m_recordsMutex);
+    m_records = std::move(result.records);
+    m_recordsProvider = result.provider;  // Track which provider these records came from
+    if (!result.apiNotice.empty()) {
+        m_apiNotice = std::move(result.apiNotice);
     }
 }
 
-bool RecordsHud::processFetchResult(const std::string& response) {
-    try {
-        nlohmann::json j = nlohmann::json::parse(response);
-
-        // Lock for all member variable writes
-        // Use m_fetchProvider (snapshotted on the game thread in startFetch),
-        // never the live m_provider - the user can cycle providers mid-fetch
-        // and the response must be parsed with the schema it was requested with.
-        std::lock_guard<std::mutex> lock(m_recordsMutex);
-        m_records.clear();
-        m_recordsProvider = m_fetchProvider;  // Track which provider these records came from
-
-        // Determine which format we're parsing based on provider
-        // CBR: { "notice": "...", "records": [...] }
-        // MXB-Ranked: [...]
-        const nlohmann::json* recordsArray = nullptr;
-
-        if (m_fetchProvider == DataProvider::MXB_RANKED) {
-            // MXB-Ranked returns a direct array
-            if (j.is_array()) {
-                recordsArray = &j;
-            }
-        } else {
-            // CBR wraps records in an object
-            if (j.contains("notice") && j["notice"].is_string()) {
-                m_apiNotice = j["notice"].get<std::string>();
-            }
-            if (j.contains("records") && j["records"].is_array()) {
-                recordsArray = &j["records"];
-            }
-        }
-
-        if (recordsArray) {
-            int position = 1;
-            for (const auto& record : *recordsArray) {
-                if (m_records.size() >= MAX_RECORDS) break;
-
-                RecordEntry entry;
-                entry.position = position++;
-
-                if (m_fetchProvider == DataProvider::MXB_RANKED) {
-                    // MXB-Ranked format: name, bike, lapTime (seconds), sector1-3 (seconds), createDateTimeUtc
-                    if (record.contains("name") && record["name"].is_string()) {
-                        std::string name = record["name"].get<std::string>();
-                        strncpy_s(entry.rider, sizeof(entry.rider), name.c_str(), sizeof(entry.rider) - 1);
-                    }
-
-                    if (record.contains("bike") && record["bike"].is_string()) {
-                        std::string bike = record["bike"].get<std::string>();
-                        strncpy_s(entry.bike, sizeof(entry.bike), bike.c_str(), sizeof(entry.bike) - 1);
-                    }
-
-                    // MXB-Ranked returns times in seconds (float), convert to milliseconds
-                    if (record.contains("lapTime") && record["lapTime"].is_number()) {
-                        entry.laptime = static_cast<int>(record["lapTime"].get<double>() * 1000.0);
-                    }
-
-                    // Parse sector times (seconds to milliseconds)
-                    if (record.contains("sector1") && record["sector1"].is_number()) {
-                        entry.sector1 = static_cast<int>(record["sector1"].get<double>() * 1000.0);
-                    }
-                    if (record.contains("sector2") && record["sector2"].is_number()) {
-                        entry.sector2 = static_cast<int>(record["sector2"].get<double>() * 1000.0);
-                    }
-                    if (record.contains("sector3") && record["sector3"].is_number()) {
-                        entry.sector3 = static_cast<int>(record["sector3"].get<double>() * 1000.0);
-                    }
-
-                    // Parse date from createDateTimeUtc
-                    if (record.contains("createDateTimeUtc") && record["createDateTimeUtc"].is_string()) {
-                        std::string timestamp = record["createDateTimeUtc"].get<std::string>();
-                        if (timestamp.length() >= 10) {
-                            strncpy_s(entry.date, sizeof(entry.date), timestamp.substr(0, 10).c_str(), sizeof(entry.date) - 1);
-                        }
-                    }
-                } else {
-                    // CBR format: player, bike, laptime (milliseconds), timestamp
-                    if (record.contains("player") && record["player"].is_string()) {
-                        std::string player = record["player"].get<std::string>();
-                        strncpy_s(entry.rider, sizeof(entry.rider), player.c_str(), sizeof(entry.rider) - 1);
-                    }
-
-                    if (record.contains("bike") && record["bike"].is_string()) {
-                        std::string bike = record["bike"].get<std::string>();
-                        strncpy_s(entry.bike, sizeof(entry.bike), bike.c_str(), sizeof(entry.bike) - 1);
-                    }
-
-                    // CBR returns laptime in milliseconds
-                    if (record.contains("laptime") && record["laptime"].is_number()) {
-                        entry.laptime = record["laptime"].get<int>();
-                    }
-
-                    // Parse timestamp and format as date
-                    if (record.contains("timestamp") && record["timestamp"].is_string()) {
-                        std::string timestamp = record["timestamp"].get<std::string>();
-                        if (timestamp.length() >= 10) {
-                            strncpy_s(entry.date, sizeof(entry.date), timestamp.substr(0, 10).c_str(), sizeof(entry.date) - 1);
-                        }
-                    }
-                    // CBR doesn't provide sector times - leave as -1 (default)
-                }
-
-                m_records.push_back(entry);
-            }
-
-            DEBUG_INFO_F("RecordsHud: Parsed %zu records from %s",
-                         m_records.size(), getProviderDisplayName(m_fetchProvider));
-        }
-
-        return true;
-    } catch (const std::exception& e) {
-        std::lock_guard<std::mutex> lock(m_recordsMutex);
-        m_lastError = "Parse error";
-        DEBUG_WARN_F("RecordsHud: JSON parse error: %s", e.what());
-        return false;
-    }
-}
 
 // ============================================================================
 // Click Handling
@@ -974,7 +519,7 @@ void RecordsHud::rebuildRenderData() {
     m_clickRegions.push_back({rowX, currentY, charWidth * 2, dim.lineHeightNormal, ClickRegionType::PROVIDER_LEFT});
     rowX += charWidth * 2;  // "< "
 
-    addString(getProviderDisplayName(m_provider), rowX, currentY, Justify::LEFT,
+    addString(RecordsFetcher::getProviderDisplayName(m_provider), rowX, currentY, Justify::LEFT,
               this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::PRIMARY), dim.fontSize);
     rowX += providerFixedWidth;  // Fixed width regardless of actual name length
 
@@ -1380,7 +925,7 @@ void RecordsHud::rebuildRenderData() {
         // color-highlighted).
         char footer[128];
         snprintf(footer, sizeof(footer), "Submit by playing on %s servers",
-                 getProviderDisplayName(recordsProvider));
+                 RecordsFetcher::getProviderDisplayName(recordsProvider));
         addString(footer, contentStartX, currentY,
                   Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSizeSmall);
     }
@@ -1435,3 +980,40 @@ void RecordsHud::resetToDefaults() {
     m_fetchState = FetchState::IDLE;
     setDataDirty();
 }
+
+// ============================================================================
+// Test seams (MXBMRP3_TEST_BUILD only — see records_hud.h / core/test_hooks.cpp)
+// ============================================================================
+
+#if defined(MXBMRP3_TEST_BUILD)
+bool RecordsHud::testParseResponse(int provider, const std::string& response) {
+    // The REAL parse path (RecordsFetcher::parseResponse) with the provider a
+    // startFetch() snapshot would carry, stored through the same
+    // m_recordsMutex-guarded path the worker's completion uses.
+    RecordsFetcher::Result result;
+    DataProvider p = static_cast<DataProvider>(provider);
+    if (!RecordsFetcher::parseResponse(p, response, result)) return false;
+    result.parsed = true;
+    result.provider = p;
+    storeParsedRecords(std::move(result));
+    return true;
+}
+
+void RecordsHud::testSetFetchStub(int delayMs, const char* response) {
+    // The stub lives with the worker it stubs (core/records_fetcher.cpp);
+    // forwarded so the exported hook name/shape is unchanged.
+    RecordsFetcher::testSetFetchStub(delayMs, response);
+}
+
+int RecordsHud::testRecordCount() const {
+    std::lock_guard<std::mutex> lock(m_recordsMutex);
+    return static_cast<int>(m_records.size());
+}
+
+bool RecordsHud::testGetRecord(int index, RecordEntry& out) const {
+    std::lock_guard<std::mutex> lock(m_recordsMutex);
+    if (index < 0 || index >= static_cast<int>(m_records.size())) return false;
+    out = m_records[index];
+    return true;
+}
+#endif

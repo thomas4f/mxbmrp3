@@ -52,8 +52,8 @@ mxbmrp3/
 │   │   ├── base_hud.*          # Abstract base class for all HUDs
 │   │   ├── *_hud.*             # Full HUDs (complex, configurable)
 │   │   ├── *_widget.*          # Simple widgets (focused display)
-│   │   └── settings/           # Settings UI components
-│   │       ├── settings_hud.*      # Main settings menu
+│   │   ├── settings_hud.*      # Main SettingsHud (menu build / _input / _render) — in hud/, matches *_hud.*
+│   │   └── settings/           # Settings UI helpers (NOT settings_hud.*)
 │   │       ├── settings_layout.*   # Layout helper context
 │   │       └── settings_tab_*.cpp  # Individual tab renderers
 │   └── diagnostics/            # Debugging tools
@@ -324,7 +324,7 @@ Features:
 Manages per-bike rumble profiles stored in a JSON file:
 - Allows different rumble effect settings for different bikes
 - Each profile stores complete `RumbleConfig` (effect strengths, input ranges)
-- Automatically loads/saves from `{save_path}/mxbmrp3/rumble_profiles.json`
+- Automatically loads/saves from `{save_path}/mxbmrp3/mxbmrp3_rumble_profiles.json`
 
 Features:
 - Toggle between global settings (INI) and per-bike profiles (JSON)
@@ -335,7 +335,7 @@ Features:
 **XInputReader (`core/xinput_reader.*`) — dedicated I/O thread, send policy & connection cost.** Every `XInputGetState`/`XInputSetState` runs on a **dedicated I/O thread** (`ioThreadMain`, started in `PluginManager::initialize`, stopped in `shutdown` *after* the plugin worker is joined), so a slow/degraded controller driver can never stall whichever thread drives telemetry/hotkeys — the game thread in legacy mode, the plugin worker in threaded mode. The split follows the same "state producer vs. blocking I/O" rule as HttpServer/Discord: the **caller keeps the rumble policy + all effect math** (it feeds the RumbleHud graph and must stay on the state thread), and only the actual OS calls move. Concretely: `update()` is now a cheap copy of the snapshot the I/O thread published (no XInput call); `setVibration()` runs its **unchanged** policy on the caller and *posts* the resulting 8-bit motor pair, which the I/O thread executes; `setControllerIndex()` just sets the atomic slot + a "poll now" flag (the I/O thread detects the change and stops rumble on the old/all slots). The handoffs are a short mutex around two small buffers (never held across an XInput call) plus a couple of atomics; the I/O thread is the sole caller of `XInput*` on the hot path. The tuning below is unchanged — it just runs on the I/O thread now:
 
 - *Empty-slot cost.* `XInputGetState` on a **disconnected** slot triggers device enumeration and can cost milliseconds on degraded driver/wrapper/Bluetooth stacks. Now that it's on the I/O thread that cost can't reach the frame anyway, but the mitigations remain (they save wasted syscalls): the 4-slot connection scan (which only feeds the settings-UI controller list) is throttled to once per second, and the selected slot backs off to one poll per `DISCONNECTED_POLL_INTERVAL_MS` (500ms) while unplugged. Switching controller index sets a "poll now" flag so a new selection polls immediately. Don't reintroduce per-tick empty-slot polling.
-- *Rumble send policy (`setVibration`).* Empirically derived from field reports; do **not** "simplify" back to value-dedup. Two opposing hardware facts shape it: (1) controllers **decay** rumble without a continuous feed — a constant nonzero value sent once stops buzzing after a moment, so the "XInput state persists until changed" assumption is false in practice; (2) Bluetooth pads **choke** on sustained 100Hz `XInputSetState` traffic — each call is a radio transaction, the queue backs up, and FPS progressively collapses over a few laps (recovering instantly on USB). So: nonzero values are re-sent every `send_interval_ms` (INI `[Rumble]`, default 16ms ≈ 60Hz) **even when unchanged** — the keepalive the motors need, at a rate the BT link sustains; an all-zero (idle) state is sent once then silenced — no traffic from a resting pad; and a transition to zero **bypasses** the rate cap so a final `stopVibration()` before telemetry halts can never be swallowed (which would leave the motors running). Values are quantized to 8 bits (the BT protocol's per-motor resolution) so jitter doesn't defeat the idle check.
+- *Rumble send policy (`setVibration`).* Empirically derived from field reports; do **not** "simplify" back to value-dedup. Two opposing hardware facts shape it: (1) controllers **decay** rumble without a continuous feed — a constant nonzero value sent once stops buzzing after a moment, so the "XInput state persists until changed" assumption is false in practice; (2) some **degraded/buggy Bluetooth** stacks **choke** on sustained high-rate `XInputSetState` traffic — each call is a radio transaction, the queue backs up, and FPS progressively collapses over a few laps (recovering instantly on USB). That is a driver issue, **not** inherent to the send rate — a healthy stack handles the default fine. So: nonzero values are re-sent every `send_interval_ms` (the cap; INI `[Rumble]`, default `DEFAULT_RUMBLE_SEND_INTERVAL_MS` = 10ms = 100Hz, matching the telemetry tick) **even when unchanged** — the keepalive the motors need; an all-zero (idle) state is sent once then silenced — no traffic from a resting pad; and a transition to zero **bypasses** the rate cap so a final `stopVibration()` before telemetry halts can never be swallowed (which would leave the motors running). The cap exists and is user-tunable purely as the escape hatch for those degraded stacks — raising `send_interval_ms` trades responsiveness for less Bluetooth traffic. Values are quantized to 8 bits (the BT protocol's per-motor resolution) so jitter doesn't defeat the idle check.
 
 ### 8. StatsManager (`core/stats_manager.*`)
 
@@ -381,7 +381,7 @@ Manages FMX (Freestyle Motocross) trick detection and scoring:
 - Pause compensation (shifts steady_clock time points on resume)
 
 **Data types** are defined in `fmx_types.h`:
-- `TrickType` enum (27 trick types across ground, air, and combination categories)
+- `TrickType` enum (trick types across ground, air, and combination categories; the exact count is pinned by `TrickType::COUNT` + a `static_assert`)
 - `TrickInstance` - Active or completed trick with rotation, timing, and scoring data
 - `RotationTracker` - Angular velocity integration for reliable rotation accumulation
 - `GroundContactState` - Wheel contact, speed, and slip detection
@@ -871,8 +871,8 @@ In-game settings menu (toggle with `~` key). Allows users to:
 The settings UI uses a helper class (`SettingsLayoutContext`) for consistent layout across all tabs:
 
 ```
+mxbmrp3/hud/settings_hud.h/.cpp  # Main SettingsHud class (in hud/, alongside settings_hud_input.cpp / settings_hud_render.cpp)
 mxbmrp3/hud/settings/
-├── settings_hud.h/.cpp          # Main SettingsHud class
 ├── settings_layout.h/.cpp       # SettingsLayoutContext helper
 ├── settings_tab_general.cpp     # General preferences & profiles
 ├── settings_tab_appearance.cpp  # Fonts & colors
@@ -945,10 +945,11 @@ Maps semantic font categories to user-selected fonts:
 | `TITLE` | EnterSansman-Italic | HUD titles |
 | `NORMAL` | RobotoMono-Regular | Standard text |
 | `STRONG` | RobotoMono-Bold | Emphasized text |
+| `DIGITS` | RobotoMono-Regular | Numeric displays |
 | `MARKER` | FuzzyBubbles-Regular | Handwritten style |
 | `SMALL` | Tiny5-Regular | Map/radar labels |
 
-Access via `PluginConstants::Fonts::getTitle()`, `getNormal()`, etc.
+The authoritative category set and defaults live in the `FontCategory` enum + `FontConfig` defaults (`core/font_config.*`) — add a category there and this table is illustrative, not exhaustive. Access via `PluginConstants::Fonts::getTitle()`, `getNormal()`, etc.
 
 ### ColorConfig (`core/color_config.*`)
 
@@ -1160,15 +1161,15 @@ namespace PluginConstants {
     // ColorConfig::getInstance().getPrimary(), getSecondary(), etc.
 
     namespace Session {
-        constexpr int RACE_1 = 6;
-        constexpr int RACE_2 = 7;
+        constexpr const char* RACE_1 = "Race 1";
+        constexpr const char* RACE_2 = "Race 2";
     }
 }
 ```
 
 **INI-only tuning knobs.** A few power-user settings have no in-game control and are edited directly in the INI (documented inline, clamped on load, reset covered by the global-snapshot replay). Two were added for the performance work:
 
-- `[Rumble] send_interval_ms` (4–200, default 16) — the continuous-rumble-feed cadence cap. Lower = more responsive; higher = less Bluetooth traffic on degraded stacks. Global (on XInputReader), never per-bike, since send cadence is a transport property, not an effect preference.
+- `[Rumble] send_interval_ms` (4–200, default `DEFAULT_RUMBLE_SEND_INTERVAL_MS` = 10) — the continuous-rumble-feed cadence cap. Lower = more responsive; higher = less Bluetooth traffic on degraded stacks. Global (on XInputReader), never per-bike, since send cadence is a transport property, not an effect preference.
 - `[Advanced] gapNotifyIntervalMs` (0–1000, default 100) — live-gap HUD refresh coalescing (see *Data Change Notifications*). `0` restores notify-on-every-change for anyone who prefers per-frame gap updates over frame budget.
 
 ## Debugging
@@ -1371,17 +1372,17 @@ The adapter layer isolates changes - core HUDs don't need modification for most 
 | Event log types/flags | `core/event_log_types.h` |
 | Event log HUD | `hud/event_log_hud.cpp` |
 | Web overlay (HTML/CSS/JS) | `mxbmrp3_data/web/` |
-| Settings UI | `hud/settings/settings_hud.cpp` |
+| Settings UI | `hud/settings_hud.cpp` (tabs in `hud/settings/`) |
 | Settings layout helpers | `hud/settings/settings_layout.cpp` |
 | Settings tabs | `hud/settings/settings_tab_*.cpp` |
 | Tooltip definitions | `core/tooltip_manager.h` (embedded) |
 | Tooltip manager | `core/tooltip_manager.h` |
 | Settings file | `{save_path}/mxbmrp3/mxbmrp3_settings.ini` |
 | Stats file | `{save_path}/mxbmrp3/mxbmrp3_stats.json` |
-| Rumble profiles file | `{save_path}/mxbmrp3/rumble_profiles.json` |
+| Rumble profiles file | `{save_path}/mxbmrp3/mxbmrp3_rumble_profiles.json` |
 | Log file | `{save_path}/mxbmrp3/mxbmrp3.log` |
 | Build output (MX Bikes) | `build/MXB-Release/mxbmrp3.dlo` |
-| Build output (GP Bikes) | `build/GPB-Release/gpbmrp3.dlo` |
+| Build output (GP Bikes) | `build/GPB-Release/mxbmrp3_gpb.dlo` |
 | Runtime assets | `{game_path}/plugins/mxbmrp3_data/{fonts,textures,icons}/` |
 | User asset overrides | `{save_path}/mxbmrp3/{fonts,textures,icons}/` |
 
@@ -1401,6 +1402,6 @@ The adapter layer isolates changes - core HUDs don't need modification for most 
 | Add new texture | Place `.tga` file in `mxbmrp3_data/textures/` (auto-discovered) |
 | Add new icon | Place `.tga` file in `mxbmrp3_data/icons/` (auto-discovered, alphabetical order) |
 | Add new event log type | Add enum to `event_log_types.h`, add flag, update `eventLogTypeToFlag()`, add to handlers |
-| Add field to web overlay | Add to `buildJsonSnapshot()` in `http_server.cpp`, consume in the overlay scripts (`overlay-*.js`) |
+| Add field to web overlay | Add to `HttpServer::buildJsonSnapshot()` in `http_server_snapshot.cpp`, consume in the overlay scripts (`overlay-*.js`) |
 | Add game-specific feature | Add to `unified_types.h`, update adapters, add feature flag to `game_config.h` |
 | Support new game | Create adapter in `game/adapters/`, add API file in `vendor/piboso/`, update `game_config.h` |

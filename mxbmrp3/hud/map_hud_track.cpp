@@ -52,33 +52,39 @@ void MapHud::renderTrack(const RotationCache& rotation, unsigned long trackColor
     float cullMinY = m_minY - cullMargin;
     float cullMaxY = m_maxY + cullMargin;
 
-    // Resolve LOD to ribbon subdivision spacing (meters per quad).
-    // AUTO: adaptive — targets ~3-4 px between quads at typical 1080p viewport.
-    //       m_fTrackScale converts world meters to normalized screen units
-    //       and is already zoom-aware (overridden in zoom mode), so this
-    //       gives correct density across zoom levels without extra fudge.
-    // Fixed presets: predictable density in meters. Zoom mode reduces the
-    //       configured spacing proportionally so close zoom stays smooth.
-    const bool autoLod = (m_detail == Detail::AUTO);
+    // Resolve detail scale/adaptive/baseline to ribbon subdivision spacing
+    // (meters per quad). Quad density scales linearly with the 20-200% detail
+    // scale (200% emits ~10x the quads of 20%), anchored by the INI-only
+    // baseline multiplier.
+    //
+    // Adaptive ON: density is a target step in NORMALIZED SCREEN units.
+    //   m_fTrackScale converts world meters to normalized screen units and is
+    //   already zoom-aware (overridden in zoom mode), so this normalizes quad
+    //   count across track lengths AND zoom levels: a long/windy track gets the
+    //   same on-screen density — and roughly the same quad count — as a short
+    //   one. 100% at baseline 1.0 == the old AUTO preset (0.002 ≈ 3-4 px
+    //   between quads at 1080p).
+    // Adaptive OFF: fixed meters-per-quad, predictable in world units. 100%
+    //   = 2.0m; 200% = 1.0m (the old HIGH), 60% ≈ 3.3m (≈ old LOW 4.0m).
+    //   Zoom mode reduces the spacing proportionally so close zoom stays smooth.
+    const float density = m_fDetailScale * m_fDetailBaseline;
     float lodSpacing;
-    if (autoLod) {
-        // Set conservatively so detail at close zoom and high-DPI displays
-        // still looks clean; raise carefully if quad count becomes a problem
-        // on a new track.
-        constexpr float AUTO_TARGET_NORM_STEP = 0.002f;
-        lodSpacing = AUTO_TARGET_NORM_STEP / std::max(m_fTrackScale, 1e-6f);
-        // Clamp so degenerate scales don't produce extreme values.
-        lodSpacing = std::clamp(lodSpacing, 0.5f, 32.0f);
+    if (m_bAdaptiveDetail) {
+        constexpr float BASE_NORM_STEP = 0.002f;   // 100%, baseline 1.0
+        lodSpacing = (BASE_NORM_STEP / density) / std::max(m_fTrackScale, 1e-6f);
     } else {
-        // AUTO is handled above; only fixed presets reach this branch.
-        lodSpacing = (m_detail == Detail::HIGH) ? 1.0f : 4.0f;
+        constexpr float BASE_METERS = 2.0f;        // 100%, baseline 1.0
+        lodSpacing = BASE_METERS / density;
         if (m_bZoomEnabled) {
-            lodSpacing = std::max(0.5f, lodSpacing * (m_fZoomDistance / MAX_ZOOM_DISTANCE));
+            lodSpacing = lodSpacing * (m_fZoomDistance / MAX_ZOOM_DISTANCE);
         }
     }
-    // Subdivision floor: AUTO allows tiny segments to collapse to 1 quad
-    // (they're sub-pixel anyway). Fixed presets keep min=3 for consistency.
-    const int curveMinSteps = autoLod ? 1 : 3;
+    // Clamp so degenerate scales / extreme scale+baseline combinations don't
+    // produce absurd values (0.25m floor ~= 4 quads per meter ceiling).
+    lodSpacing = std::clamp(lodSpacing, 0.25f, 64.0f);
+    // Subdivision floor: adaptive allows tiny segments to collapse to 1 quad
+    // (they're sub-pixel anyway). Fixed mode keeps min=3 for consistency.
+    const int curveMinSteps = m_bAdaptiveDetail ? 1 : 3;
 
     // (Re)build the view-independent world-space centerline for this LOD. This is
     // the expensive arc walk; it's cached across the per-frame rebuilds that
@@ -169,7 +175,7 @@ void MapHud::renderTrack(const RotationCache& rotation, unsigned long trackColor
 // shape and LOD. renderTrack() then culls + transforms these per frame.
 void MapHud::ensureWorldRibbon(float lodSpacing, int curveMinSteps) {
     WorldRibbonKey key;
-    key.detail = static_cast<int>(m_detail);
+    key.adaptiveDetail = m_bAdaptiveDetail;   // scale/baseline are folded into lodSpacing
     key.zoomEnabled = m_bZoomEnabled;
     key.lodSpacing = lodSpacing;
     if (m_worldRibbonValid && key == m_worldRibbonKey) {
@@ -186,7 +192,16 @@ void MapHud::ensureWorldRibbon(float lodSpacing, int curveMinSteps) {
 
     // Emit one centerline sample: store position + UNIT perpendicular (half-width is
     // applied per-frame per pass in renderTrack, so it isn't baked in here).
+    // DEDUPE: the per-segment loops emit each segment joint twice (end of segment
+    // k == start of segment k+1) — a degenerate zero-area quad per boundary that
+    // the game still pays per-quad overhead for. Skip a sample identical to the
+    // previous one (the perpendicular is continuous across a joint, so keeping
+    // the first is exact).
     auto emit = [&](float cx, float cy, float headingDeg) {
+        if (!m_worldRibbon.empty()) {
+            const auto& last = m_worldRibbon.back();
+            if (last.cx == cx && last.cy == cy) return;
+        }
         float perpRad = (headingDeg + 90.0f) * DEG_TO_RAD;
         m_worldRibbon.push_back({ cx, cy, std::sin(perpRad), std::cos(perpRad) });
     };
@@ -195,9 +210,27 @@ void MapHud::ensureWorldRibbon(float lodSpacing, int curveMinSteps) {
     float currentY = m_trackSegments[0].startY;
     float currentAngle = m_trackSegments[0].angle;
 
+    // SHORT-SEGMENT MERGE: a segment shorter than the sample spacing doesn't
+    // deserve samples of its own — it only advances the walk (exact geometry;
+    // the next emitted sample lands where it should). Without this, the ribbon
+    // floors at ~2 samples per segment, so on segment-DENSE tracks (real tracks
+    // carry 100-200+ segments, many of them tiny) the low end of the detail
+    // dial stopped doing anything: 20% through 160% all emitted the same count.
+    // `carry` accumulates the skipped length so a RUN of short segments still
+    // gets a sample roughly every lodSpacing meters, not zero forever.
+    float carry = 0.0f;
     for (const auto& segment : m_trackSegments) {
         float startX = currentX;
         float startY = currentY;
+
+        if (segment.length + carry < lodSpacing) {
+            // Too short for its own samples: advance exactly, emit nothing.
+            float radius = (segment.type == TrackSegmentType::STRAIGHT) ? 0.0f : segment.radius;
+            advanceAlongArc(currentX, currentY, currentAngle, radius, segment.length);
+            carry += segment.length;
+            continue;
+        }
+        carry = 0.0f;
 
         if (segment.type == TrackSegmentType::STRAIGHT) {
             float angleRad = currentAngle * DEG_TO_RAD;
@@ -231,6 +264,10 @@ void MapHud::ensureWorldRibbon(float lodSpacing, int curveMinSteps) {
             advanceAlongArc(currentX, currentY, currentAngle, segRadius, arcLength);
         }
     }
+    // Close the walk: if the track ended inside a merged run, the endpoint was
+    // never emitted — the ribbon would stop short of the start/finish seam.
+    // (emit() dedupes, so this is a no-op when the last segment emitted it.)
+    emit(currentX, currentY, currentAngle);
 
     m_worldRibbonKey = key;
     m_worldRibbonValid = true;
@@ -274,11 +311,12 @@ void MapHud::renderStartMarker(const RotationCache& rotation,
     float titleOffset = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
 
     // Draw triangle quad at track start pointing in direction.
-    // Base spans the outline-edge width (wider than the track fill) for visibility,
-    // and the tip is scaled the same way so the triangle keeps its proportions.
+    // Base spans the TRACK FILL width (not fill + outline rim): the outline width
+    // is user-scalable now, and a marker sized to the rim looked like it
+    // overflowed the track whenever the rim was slimmer than the classic 1.4x.
     float forwardAngleRad = startAngle * DEG_TO_RAD;
-    float baseHalfWidth = effectiveWidthMeters * 0.5f * OUTLINE_WIDTH_MULTIPLIER;
-    float pointLength   = effectiveWidthMeters * 0.5f * OUTLINE_WIDTH_MULTIPLIER;
+    float baseHalfWidth = effectiveWidthMeters * 0.5f;
+    float pointLength   = effectiveWidthMeters * 0.5f;
     float pointX = startX + std::sin(forwardAngleRad) * pointLength;
     float pointY = startY + std::cos(forwardAngleRad) * pointLength;
 
@@ -346,10 +384,11 @@ void MapHud::drawDirectionMarker(const RaceMarker& marker, unsigned long color,
     float baseWidthMeters = std::min(trackWidth, trackHeight) * TRACK_WIDTH_BASE_RATIO;
     float effectiveWidthMeters = std::clamp(baseWidthMeters * m_fTrackWidthScale, 1.0f, 30.0f);
 
-    // Triangle dimensions (matches renderStartMarker). Base sits at the marker
-    // position; the point extends forward in travel direction.
-    float baseHalfWidth = effectiveWidthMeters * 0.5f * OUTLINE_WIDTH_MULTIPLIER;
-    float pointLength   = effectiveWidthMeters * 0.5f * OUTLINE_WIDTH_MULTIPLIER;
+    // Triangle dimensions (matches renderStartMarker: track-fill width, not
+    // fill + user-scalable outline rim). Base sits at the marker position; the
+    // point extends forward in travel direction.
+    float baseHalfWidth = effectiveWidthMeters * 0.5f;
+    float pointLength   = effectiveWidthMeters * 0.5f;
     float cullMargin = effectiveWidthMeters;
 
     auto dim = getScaledDimensions();

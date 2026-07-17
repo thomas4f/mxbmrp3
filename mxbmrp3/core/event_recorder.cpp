@@ -97,8 +97,13 @@ bool EventRecorder::startRecording(const char* filePath) {
     m_startTimeUs = getCurrentTimeUs();
     m_eventCount = 0;
 
-    // Write initial header
+    // Write initial header (a failure closes the file and clears m_recording —
+    // report the start as failed rather than recording into a headerless file).
     writeHeader();
+    if (!m_recording) {
+        DEBUG_WARN_F("EventRecorder: Failed to write header: %s", filePath);
+        return false;
+    }
 
     DEBUG_INFO_F("EventRecorder: Started recording to %s", filePath);
     return true;
@@ -131,7 +136,10 @@ void EventRecorder::writeHeader() {
     header.endTimeUs = 0;  // Will be updated on close
 
     // Write header at beginning of file
-    fwrite(&header, sizeof(header), 1, m_file);
+    if (fwrite(&header, sizeof(header), 1, m_file) != 1) {
+        handleWriteFailure();
+        return;
+    }
     fflush(m_file);
 }
 
@@ -149,10 +157,28 @@ void EventRecorder::updateHeader() {
     header.numEvents = m_eventCount;
     header.endTimeUs = getCurrentTimeUs();
 
-    fseek(m_file, 0, SEEK_SET);
-    fwrite(&header, sizeof(header), 1, m_file);
+    if (fseek(m_file, 0, SEEK_SET) != 0 ||
+        fwrite(&header, sizeof(header), 1, m_file) != 1) {
+        // Close-time rewrite failed: the count/end-time stay at their initial
+        // values. Informational only (the replayer reads to EOF), so just log.
+        DEBUG_WARN("EventRecorder: header rewrite failed - tape counts stay stale");
+        return;
+    }
     fflush(m_file);
     fseek(m_file, 0, SEEK_END);   // restore append position (defensive)
+}
+
+void EventRecorder::handleWriteFailure() {
+    // Disk full / I/O error mid-write: keep the events flushed so far (the
+    // replayer reads to EOF), but stop recording — continuing would only
+    // interleave more partial records into the tape. Dev-only tool, so a loud
+    // log line is the right amount of ceremony.
+    DEBUG_WARN("EventRecorder: write failed (disk full?) - recording stopped, tape truncated");
+    m_recording = false;
+    if (m_file) {
+        fclose(m_file);
+        m_file = nullptr;
+    }
 }
 
 void EventRecorder::writeEvent(Recording::EventType type, const void* data, size_t size) {
@@ -161,13 +187,22 @@ void EventRecorder::writeEvent(Recording::EventType type, const void* data, size
     // Calculate timestamp relative to recording start
     uint64_t timestamp = getCurrentTimeUs() - m_startTimeUs;
 
-    // Write event header
+    // Write event header. A failed write (disk full, I/O error) previously went
+    // unnoticed: the tape silently truncated/corrupted while m_eventCount kept
+    // climbing. Stop on first failure instead — a partial trailing record is fine
+    // (the replayer reads to EOF and drops an incomplete tail), more writes aren't.
     Recording::EventHeader eventHeader(type, static_cast<uint32_t>(size), timestamp);
-    fwrite(&eventHeader, sizeof(eventHeader), 1, m_file);
+    if (fwrite(&eventHeader, sizeof(eventHeader), 1, m_file) != 1) {
+        handleWriteFailure();
+        return;
+    }
 
     // Write event data
     if (data && size > 0) {
-        fwrite(data, size, 1, m_file);
+        if (fwrite(data, size, 1, m_file) != 1) {
+            handleWriteFailure();
+            return;
+        }
     }
 
     m_eventCount++;

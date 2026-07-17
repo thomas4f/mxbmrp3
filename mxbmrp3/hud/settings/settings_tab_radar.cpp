@@ -8,18 +8,6 @@
 #include "../../core/asset_manager.h"
 #include <cmath>
 
-// Helper to cycle enum value forward or backward with wrapping
-template<typename T>
-static T cycleEnumRadar(T current, int count, bool forward) {
-    int val = static_cast<int>(current);
-    if (forward) {
-        val = (val + 1) % count;
-    } else {
-        val = (val - 1 + count) % count;
-    }
-    return static_cast<T>(val);
-}
-
 // Static member function of SettingsHud - handles click events for Radar tab
 bool SettingsHud::handleClickTabRadar(const ClickRegion& region) {
     RadarHud* radarHud = dynamic_cast<RadarHud*>(region.targetHud);
@@ -27,74 +15,14 @@ bool SettingsHud::handleClickTabRadar(const ClickRegion& region) {
     if (!radarHud) radarHud = m_radarHud;
 
     switch (region.type) {
-        case ClickRegion::RADAR_RANGE_UP:
-        case ClickRegion::RADAR_RANGE_DOWN:
-            if (radarHud) {
-                // Accelerated 10m step (matches the map's zoom range); setter clamps.
-                bool increase = (region.type == ClickRegion::RADAR_RANGE_UP);
-                float newRange = applyAcceleratedStep(radarHud->getRadarRange(), RadarHud::RADAR_RANGE_STEP, increase);
-                radarHud->setRadarRange(newRange);
-                setDataDirty();
-            }
-            return true;
+        // Radar range, Alert distance, Arrow scale and Marker scale are data-driven
+        // STEPPED controls - registered in renderTabRadar via ctx.addSteppedControl
+        // (their setters were just clamp + dedup + setDataDirty) and handled by the
+        // shared SettingsHud::applySteppedControl.
 
-        case ClickRegion::RADAR_COLORIZE_UP:
-        case ClickRegion::RADAR_COLORIZE_DOWN:
-            if (radarHud) {
-                auto newMode = cycleEnumRadar(radarHud->getRiderColorMode(), 3,
-                    region.type == ClickRegion::RADAR_COLORIZE_UP);
-                radarHud->setRiderColorMode(newMode);
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::RADAR_MODE_UP:
-        case ClickRegion::RADAR_MODE_DOWN:
-            if (radarHud) {
-                int current = static_cast<int>(radarHud->getRadarMode());
-                int count = 3;  // Off, On, Auto-hide
-                if (region.type == ClickRegion::RADAR_MODE_UP) {
-                    current = (current + 1) % count;
-                } else {
-                    current = (current - 1 + count) % count;
-                }
-                radarHud->setRadarMode(static_cast<RadarHud::RadarMode>(current));
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::RADAR_PROXIMITY_ARROWS_UP:
-        case ClickRegion::RADAR_PROXIMITY_ARROWS_DOWN:
-            if (radarHud) {
-                int current = static_cast<int>(radarHud->getProximityArrowMode());
-                int next = (region.type == ClickRegion::RADAR_PROXIMITY_ARROWS_UP)
-                    ? (current + 1) % 3
-                    : (current + 2) % 3;
-                radarHud->setProximityArrowMode(static_cast<RadarHud::ProximityArrowMode>(next));
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::RADAR_ALERT_DISTANCE_UP:
-        case ClickRegion::RADAR_ALERT_DISTANCE_DOWN:
-            if (radarHud) {
-                // Accelerated 10m step (matches the map's zoom range); setter clamps.
-                bool increase = (region.type == ClickRegion::RADAR_ALERT_DISTANCE_UP);
-                float newDist = applyAcceleratedStep(radarHud->getAlertDistance(), RadarHud::ALERT_DISTANCE_STEP, increase);
-                radarHud->setAlertDistance(newDist);
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::RADAR_LABEL_MODE_UP:
-        case ClickRegion::RADAR_LABEL_MODE_DOWN:
-            if (radarHud) {
-                auto newMode = cycleEnumRadar(radarHud->getLabelMode(), 4,
-                    region.type == ClickRegion::RADAR_LABEL_MODE_UP);
-                radarHud->setLabelMode(newMode);
-                setDataDirty();
-            }
-            return true;
+        // Show mode / Marker colors / Marker labels / Arrow mode / Arrow colors
+        // are data-driven CYCLE controls now - registered in renderTabRadar via
+        // ctx.addCycleControl.
 
         case ClickRegion::RADAR_PROXIMITY_SHAPE_UP:
         case ClickRegion::RADAR_PROXIMITY_SHAPE_DOWN:
@@ -107,26 +35,6 @@ bool SettingsHud::handleClickTabRadar(const ClickRegion& region) {
             }
             return true;
 
-        case ClickRegion::RADAR_PROXIMITY_SCALE_UP:
-        case ClickRegion::RADAR_PROXIMITY_SCALE_DOWN:
-            if (radarHud) {
-                bool increase = (region.type == ClickRegion::RADAR_PROXIMITY_SCALE_UP);
-                float scale = applyAcceleratedStep(radarHud->getProximityArrowScale(), 0.01f, increase);
-                radarHud->setProximityArrowScale(scale);
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::RADAR_PROXIMITY_COLOR_UP:
-        case ClickRegion::RADAR_PROXIMITY_COLOR_DOWN:
-            if (radarHud) {
-                int current = static_cast<int>(radarHud->getProximityArrowColorMode());
-                int next = (current + 1) % 2;
-                radarHud->setProximityArrowColorMode(static_cast<RadarHud::ProximityArrowColorMode>(next));
-                setDataDirty();
-            }
-            return true;
-
         case ClickRegion::RADAR_RIDER_SHAPE_UP:
         case ClickRegion::RADAR_RIDER_SHAPE_DOWN:
             if (radarHud) {
@@ -134,16 +42,6 @@ bool SettingsHud::handleClickTabRadar(const ClickRegion& region) {
                 // [1..count], no Off slot; skips HUD identity icons.
                 radarHud->setRiderShape(AssetManager::getInstance()
                     .stepShapeIndexSkippingHud(radarHud->getRiderShape(), forward, false));
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::RADAR_MARKER_SCALE_UP:
-        case ClickRegion::RADAR_MARKER_SCALE_DOWN:
-            if (radarHud) {
-                bool increase = (region.type == ClickRegion::RADAR_MARKER_SCALE_UP);
-                float newScale = applyAcceleratedStep(radarHud->getMarkerScale(), 0.01f, increase);
-                radarHud->setMarkerScale(newScale);
                 setDataDirty();
             }
             return true;
@@ -177,16 +75,17 @@ BaseHud* SettingsHud::renderTabRadar(SettingsLayoutContext& ctx) {
         case RadarHud::RadarMode::AUTO_HIDE: radarModeDisplayStr = "Auto-hide"; break;
     }
     ctx.addCycleControl("Show mode", radarModeDisplayStr, 10,
-        SettingsHud::ClickRegion::RADAR_MODE_DOWN,
-        SettingsHud::ClickRegion::RADAR_MODE_UP,
+        SettingsHud::CycleControl::enumMember(hud, &RadarHud::m_radarMode, 3, hud),
         hud, true, radarModeIsOff, "radar.mode");
 
-    // Range control
+    // Range control: accelerated 10m step (matches the map's zoom range),
+    // clamped to [10m, 200m]
     char rangeValue[16];
     snprintf(rangeValue, sizeof(rangeValue), "%.0fm", hud->getRadarRange());
-    ctx.addCycleControl("Radar range", rangeValue, 10,
-        SettingsHud::ClickRegion::RADAR_RANGE_DOWN,
-        SettingsHud::ClickRegion::RADAR_RANGE_UP,
+    ctx.addSteppedControl("Radar range", rangeValue, 10,
+        SettingsHud::SteppedControl::stepFloat(&hud->m_fRadarRangeMeters,
+            RadarHud::RADAR_RANGE_STEP,
+            RadarHud::MIN_RADAR_RANGE, RadarHud::MAX_RADAR_RANGE, hud),
         hud, true, false, "radar.range");
 
     ctx.addSpacing(0.5f);
@@ -202,8 +101,7 @@ BaseHud* SettingsHud::renderTabRadar(SettingsLayoutContext& ctx) {
         case RadarHud::RiderColorMode::RELATIVE_POS: radarColorModeStr = "Position"; break;
     }
     ctx.addCycleControl("Marker colors", radarColorModeStr, 10,
-        SettingsHud::ClickRegion::RADAR_COLORIZE_DOWN,
-        SettingsHud::ClickRegion::RADAR_COLORIZE_UP,
+        SettingsHud::CycleControl::enumMember(hud, &RadarHud::m_riderColorMode, 3, hud),
         hud, true, false, "radar.colorize");
 
     // Rider shape control - uses all icons from AssetManager
@@ -213,12 +111,13 @@ BaseHud* SettingsHud::renderTabRadar(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::RADAR_RIDER_SHAPE_UP,
         hud, true, false, "radar.rider_shape");
 
-    // Marker scale control (independent scale for icons/labels)
+    // Marker scale control (independent scale for icons/labels): accelerated
+    // 1% step, clamped to [50%, 300%]
     char radarMarkerScaleValue[16];
     snprintf(radarMarkerScaleValue, sizeof(radarMarkerScaleValue), "%.0f%%", hud->getMarkerScale() * 100.0f);
-    ctx.addCycleControl("Marker scale", radarMarkerScaleValue, 10,
-        SettingsHud::ClickRegion::RADAR_MARKER_SCALE_DOWN,
-        SettingsHud::ClickRegion::RADAR_MARKER_SCALE_UP,
+    ctx.addSteppedControl("Marker scale", radarMarkerScaleValue, 10,
+        SettingsHud::SteppedControl::stepFloat(&hud->m_fMarkerScale, 0.01f,
+            RadarHud::MIN_MARKER_SCALE, RadarHud::MAX_MARKER_SCALE, hud),
         hud, true, false, "radar.marker_scale");
 
     // Label mode control
@@ -234,8 +133,7 @@ BaseHud* SettingsHud::renderTabRadar(SettingsLayoutContext& ctx) {
             break;
     }
     ctx.addCycleControl("Marker labels", radarModeStr, 10,
-        SettingsHud::ClickRegion::RADAR_LABEL_MODE_DOWN,
-        SettingsHud::ClickRegion::RADAR_LABEL_MODE_UP,
+        SettingsHud::CycleControl::enumMember(hud, &RadarHud::m_labelMode, 4, hud),
         hud, true, radarLabelIsOff, "radar.labels");
     ctx.addSpacing(0.5f);
 
@@ -250,17 +148,20 @@ BaseHud* SettingsHud::renderTabRadar(SettingsLayoutContext& ctx) {
         case RadarHud::ProximityArrowMode::EDGE:   proxArrowModeStr = "Edge"; break;
         case RadarHud::ProximityArrowMode::CIRCLE: proxArrowModeStr = "Circle"; break;
     }
+    // tooltipOnArrows=false: the proximity-arrow cycles historically had no
+    // per-type tooltip fallback, so keep the tooltip on the row region only.
     ctx.addCycleControl("Arrow mode", proxArrowModeStr, 10,
-        SettingsHud::ClickRegion::RADAR_PROXIMITY_ARROWS_DOWN,
-        SettingsHud::ClickRegion::RADAR_PROXIMITY_ARROWS_UP,
-        hud, true, proxArrowIsOff, "radar.proximity_arrows");
+        SettingsHud::CycleControl::enumMember(hud, &RadarHud::m_proximityArrowMode, 3, hud),
+        hud, true, proxArrowIsOff, "radar.proximity_arrows", /*tooltipOnArrows=*/false);
 
-    // Alert distance control (when triangles/arrows activate)
+    // Alert distance control (when triangles/arrows activate): accelerated 10m
+    // step, clamped to [10m, 100m]
     char alertValue[16];
     snprintf(alertValue, sizeof(alertValue), "%.0fm", hud->getAlertDistance());
-    ctx.addCycleControl("Alert distance", alertValue, 10,
-        SettingsHud::ClickRegion::RADAR_ALERT_DISTANCE_DOWN,
-        SettingsHud::ClickRegion::RADAR_ALERT_DISTANCE_UP,
+    ctx.addSteppedControl("Alert distance", alertValue, 10,
+        SettingsHud::SteppedControl::stepFloat(&hud->m_fAlertDistance,
+            RadarHud::ALERT_DISTANCE_STEP,
+            RadarHud::MIN_ALERT_DISTANCE, RadarHud::MAX_ALERT_DISTANCE, hud),
         hud, !proxArrowIsOff, false, "radar.alert_distance");
 
     // Proximity arrow color mode control
@@ -270,9 +171,8 @@ BaseHud* SettingsHud::renderTabRadar(SettingsLayoutContext& ctx) {
         case RadarHud::ProximityArrowColorMode::POSITION: proxColorModeStr = "Position"; break;
     }
     ctx.addCycleControl("Arrow colors", proxColorModeStr, 10,
-        SettingsHud::ClickRegion::RADAR_PROXIMITY_COLOR_DOWN,
-        SettingsHud::ClickRegion::RADAR_PROXIMITY_COLOR_UP,
-        hud, !proxArrowIsOff, false, "radar.proximity_color");
+        SettingsHud::CycleControl::enumMember(hud, &RadarHud::m_proximityArrowColorMode, 2, hud),
+        hud, !proxArrowIsOff, false, "radar.proximity_color", /*tooltipOnArrows=*/false);
 
     // Proximity arrow shape control
     std::string proxShapeStr = getShapeDisplayName(hud->getProximityArrowShape(), 10);
@@ -281,13 +181,14 @@ BaseHud* SettingsHud::renderTabRadar(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::RADAR_PROXIMITY_SHAPE_UP,
         hud, !proxArrowIsOff, false, "radar.proximity_shape");
 
-    // Proximity arrow scale control
+    // Proximity arrow scale control: accelerated 1% step, clamped to [50%, 300%].
+    // Arrows never had a per-type tooltip.
     char proxScaleValue[16];
     snprintf(proxScaleValue, sizeof(proxScaleValue), "%.0f%%", hud->getProximityArrowScale() * 100.0f);
-    ctx.addCycleControl("Arrow scale", proxScaleValue, 10,
-        SettingsHud::ClickRegion::RADAR_PROXIMITY_SCALE_DOWN,
-        SettingsHud::ClickRegion::RADAR_PROXIMITY_SCALE_UP,
-        hud, !proxArrowIsOff, false, "radar.proximity_scale");
+    ctx.addSteppedControl("Arrow scale", proxScaleValue, 10,
+        SettingsHud::SteppedControl::stepFloat(&hud->m_fProximityArrowScale, 0.01f,
+            RadarHud::MIN_PROXIMITY_ARROW_SCALE, RadarHud::MAX_PROXIMITY_ARROW_SCALE, hud),
+        hud, !proxArrowIsOff, false, "radar.proximity_scale", /*tooltipOnArrows=*/false);
 
     return hud;
 }

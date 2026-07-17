@@ -16,52 +16,10 @@ static const char* getColorModeName(SessionChartsHud::RiderColorMode mode) {
     }
 }
 
-// Static member of SettingsHud - handles clicks for the Session Charts tab.
-bool SettingsHud::handleClickTabSessionCharts(const ClickRegion& region) {
-    SessionChartsHud* hud = dynamic_cast<SessionChartsHud*>(region.targetHud);
-    if (!hud) hud = m_sessionCharts;
-    if (!hud) return false;
-
-    switch (region.type) {
-        case ClickRegion::SESSION_CHARTS_COLOR_MODE_UP:
-        case ClickRegion::SESSION_CHARTS_COLOR_MODE_DOWN: {
-            int n = static_cast<int>(SessionChartsHud::RiderColorMode::COLOR_MODE_COUNT);
-            int cur = static_cast<int>(hud->m_riderColorMode);
-            cur = (region.type == ClickRegion::SESSION_CHARTS_COLOR_MODE_UP)
-                    ? (cur + 1) % n : (cur - 1 + n) % n;
-            hud->m_riderColorMode = static_cast<SessionChartsHud::RiderColorMode>(cur);
-            hud->setDataDirty();
-            setDataDirty();
-            return true;
-        }
-
-        case ClickRegion::SESSION_CHARTS_TOP_COUNT_UP:
-        case ClickRegion::SESSION_CHARTS_TOP_COUNT_DOWN: {
-            int step = (region.type == ClickRegion::SESSION_CHARTS_TOP_COUNT_UP) ? 1 : -1;
-            int maxTop = std::min(SessionChartsHud::MAX_TOP_COUNT, hud->m_displayRowCount);
-            hud->m_topPositionsCount = std::max(SessionChartsHud::MIN_TOP_COUNT,
-                                                std::min(hud->m_topPositionsCount + step, maxTop));
-            hud->setDataDirty();
-            setDataDirty();
-            return true;
-        }
-
-        case ClickRegion::SESSION_CHARTS_ROW_COUNT_UP:
-        case ClickRegion::SESSION_CHARTS_ROW_COUNT_DOWN: {
-            int step = (region.type == ClickRegion::SESSION_CHARTS_ROW_COUNT_UP) ? 1 : -1;
-            hud->m_displayRowCount = std::max(SessionChartsHud::MIN_ROW_COUNT,
-                                              std::min(hud->m_displayRowCount + step, SessionChartsHud::MAX_ROW_COUNT));
-            // Keep the pinned top-N no larger than the total rows drawn.
-            hud->m_topPositionsCount = std::min(hud->m_topPositionsCount, hud->m_displayRowCount);
-            hud->setDataDirty();
-            setDataDirty();
-            return true;
-        }
-
-        default:
-            return false;
-    }
-}
+// Note: the Session Charts tab has no tab-specific click handler anymore -
+// Rows to show / Top positions are data-driven STEPPED controls and Colors is
+// a data-driven CYCLE control (registered in renderTabSessionCharts); the rest
+// uses the common handlers.
 
 // Static member of SettingsHud - inherits friend access to SessionChartsHud.
 BaseHud* SettingsHud::renderTabSessionCharts(SettingsLayoutContext& ctx) {
@@ -96,25 +54,36 @@ BaseHud* SettingsHud::renderTabSessionCharts(SettingsLayoutContext& ctx) {
 
     // Rider line colours
     ctx.addCycleControl("Colors", getColorModeName(hud->m_riderColorMode), 10,
-        SettingsHud::ClickRegion::SESSION_CHARTS_COLOR_MODE_DOWN,
-        SettingsHud::ClickRegion::SESSION_CHARTS_COLOR_MODE_UP,
-        hud, true, false, "session_charts.colors");
+        SettingsHud::CycleControl::enumMember(hud, &SessionChartsHud::m_riderColorMode,
+            static_cast<int>(SessionChartsHud::RiderColorMode::COLOR_MODE_COUNT), hud),
+        hud, true, false, "session_charts.colors", /*tooltipOnArrows=*/false);
 
     // Total rider lines (top-N + player window). Order matches the Standings HUD:
     // Rows to show first, then the Top positions pinned within it.
+    // Both are plain ±1 clamped steppers with deliberately NO hold acceleration
+    // (verbatim from the old handlers), so they use fixedInt. Arrows never had a
+    // per-type tooltip. postStep keeps the pinned top-N no larger than the total
+    // rows drawn (same as the old ROW_COUNT handler).
     char buf[8];
     snprintf(buf, sizeof(buf), "%d", hud->m_displayRowCount);
-    ctx.addCycleControl("Rows to show", buf, 10,
-        SettingsHud::ClickRegion::SESSION_CHARTS_ROW_COUNT_DOWN,
-        SettingsHud::ClickRegion::SESSION_CHARTS_ROW_COUNT_UP,
-        hud, true, false, "session_charts.rows");
+    SettingsHud::SteppedControl rowsControl = SettingsHud::SteppedControl::fixedInt(
+        &hud->m_displayRowCount, 1,
+        SessionChartsHud::MIN_ROW_COUNT, SessionChartsHud::MAX_ROW_COUNT, hud);
+    rowsControl.postStep = [hud]() {
+        hud->m_topPositionsCount = std::min(hud->m_topPositionsCount, hud->m_displayRowCount);
+    };
+    ctx.addSteppedControl("Rows to show", buf, 10, rowsControl,
+        hud, true, false, "session_charts.rows", /*tooltipOnArrows=*/false);
 
-    // Top-N pinned leaders (label harmonized with the Standings HUD)
+    // Top-N pinned leaders (label harmonized with the Standings HUD). The upper
+    // bound tracks the rows drawn; it's re-resolved on every rebuild, and the
+    // Rows control above re-clamps this value whenever it shrinks.
     snprintf(buf, sizeof(buf), "%d", hud->m_topPositionsCount);
-    ctx.addCycleControl("Top positions", buf, 10,
-        SettingsHud::ClickRegion::SESSION_CHARTS_TOP_COUNT_DOWN,
-        SettingsHud::ClickRegion::SESSION_CHARTS_TOP_COUNT_UP,
-        hud, true, false, "session_charts.top_n");
+    ctx.addSteppedControl("Top positions", buf, 10,
+        SettingsHud::SteppedControl::fixedInt(&hud->m_topPositionsCount, 1,
+            SessionChartsHud::MIN_TOP_COUNT,
+            std::min(SessionChartsHud::MAX_TOP_COUNT, hud->m_displayRowCount), hud),
+        hud, true, false, "session_charts.top_n", /*tooltipOnArrows=*/false);
 
     ctx.addSpacing(0.5f);
 

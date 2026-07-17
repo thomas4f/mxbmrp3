@@ -32,7 +32,14 @@ def component(dep):
         "scope": "required" if dep.get("shipped") else "optional",
     }
     if repo:
-        c["purl"] = "pkg:github/{}@{}".format(repo, ver)
+        # A versioned github purl (pkg:github/owner/repo@X.Y) only resolves when the
+        # repo actually tags releases. For repos that don't (repoHasReleases: false,
+        # e.g. nothings/stb — its version is the header's own comment), emit the
+        # unversioned purl; the component's "version" field still carries it.
+        if dep.get("repoHasReleases") is False:
+            c["purl"] = "pkg:github/{}".format(repo)
+        else:
+            c["purl"] = "pkg:github/{}@{}".format(repo, ver)
         c["externalReferences"] = [
             {"type": "vcs", "url": "https://github.com/{}".format(repo)}
         ]

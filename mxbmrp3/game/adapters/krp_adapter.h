@@ -249,8 +249,13 @@ struct Adapter {
         result.airTemperature = src->m_fAirTemperature;
         result.trackTemperature = src->m_fTrackTemperature;
 
-        // KRP-specific grid and entry data
-        result.numEntries = src->m_iNumEntries;
+        // KRP-specific grid and entry data. Clamp the stored count to what the
+        // copy loop below actually fills: a consumer iterating
+        // entries[0..numEntries) with a game-provided count above
+        // MAX_RACE_ENTRIES (or negative) would otherwise walk off the arrays.
+        result.numEntries = (src->m_iNumEntries < 0) ? 0
+            : (src->m_iNumEntries > Unified::MAX_RACE_ENTRIES
+                   ? Unified::MAX_RACE_ENTRIES : src->m_iNumEntries);
         result.group1 = src->m_iGroup1;
         result.group2 = src->m_iGroup2;
         for (int i = 0; i < Unified::MAX_RACE_ENTRIES && i < src->m_iNumEntries; i++) {

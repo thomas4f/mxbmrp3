@@ -104,10 +104,25 @@ function addRow(parent, label, controlEl, tooltip) {
 }
 
 function createToggle(value, onChange) {
+    // Keyboard-operable switch: the counters are real <button>s, but this stays a
+    // styled <div> (button default styling would fight .settings-toggle), so give
+    // it the switch role, a tab stop, and Enter/Space activation explicitly.
     var el = document.createElement("div");
     el.className = "settings-toggle" + (value ? " on" : "");
-    el.addEventListener("click", function () {
-        onChange(el.classList.toggle("on"));
+    el.setAttribute("role", "switch");
+    el.setAttribute("tabindex", "0");
+    el.setAttribute("aria-checked", value ? "true" : "false");
+    function flip() {
+        var on = el.classList.toggle("on");
+        el.setAttribute("aria-checked", on ? "true" : "false");
+        onChange(on);
+    }
+    el.addEventListener("click", flip);
+    el.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+            e.preventDefault();
+            flip();
+        }
     });
     return el;
 }

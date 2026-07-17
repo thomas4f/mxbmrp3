@@ -131,6 +131,17 @@ public:
     // when disabled or already on the worker thread.
     void flush();
 
+#ifdef MXBMRP3_TEST_BUILD
+    // Test-only fault injection: make threadMain() throw an exception that ESCAPES
+    // its loop on the next wakeup (simulating a bad_alloc-class worker death), so
+    // the abort self-heal path — catch clears enabled(), reconcileEnabled() joins,
+    // drains and latches — can be exercised headless. Compiled out of ship builds.
+    void testAbortWorker() {
+        m_testAbort.store(true, std::memory_order_release);
+        enqueue([]() {});   // no-op wakeup; the throw fires before the batch runs
+    }
+#endif
+
 private:
     PluginThread() = default;
     ~PluginThread();
@@ -148,6 +159,16 @@ private:
     // the loader lock). Spinning on an app-level flag needs no loader lock. stop() (the
     // normal path, not under the lock) still join()s cleanly.
     std::atomic<bool> m_workerFinished{ false };
+    // Set by the worker's top-level catch when threadMain() is killed by an escaped
+    // exception (after it clears m_enabled so routing falls back to inline). Consumed
+    // by reconcileEnabled() on the game thread, which joins the dead thread, drains
+    // the stranded queue, and latches threaded mode off (m_abortLatched, game-thread
+    // only) so a persistent failure can't respawn a worker every frame.
+    std::atomic<bool> m_aborted{ false };
+    bool m_abortLatched = false;
+#ifdef MXBMRP3_TEST_BUILD
+    std::atomic<bool> m_testAbort{ false };   // see testAbortWorker()
+#endif
     // True while the worker is parked on the CV with nothing left to do. flush()
     // waits for this AFTER its sentinel so a frame build triggered by a Draw can't
     // still be reading PluginData when the test reads a snapshot. (Test-path only.)

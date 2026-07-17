@@ -18,6 +18,8 @@
 #include "integration_main.h"
 #include "plugin_host.h"
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <vector>
 
 typedef void   (*PFN_MapI)(int);
@@ -115,12 +117,16 @@ TEST_CASE("map: world-ribbon cache is transparent across LOD + view-mode round-t
     MapStats base = read();
     finiteNonEmpty(base, "default");
 
-    // Golden quad count for this fixed scenario. Captured byte-identically from the
-    // PRE-CACHE renderTrack (commit addebaf~1) and the world-ribbon version — both
-    // emit 647 quads with the same vertex checksum here — so this pins the
-    // refactor's output as equivalent to the original, not merely self-consistent.
-    // If a deliberate LOD/geometry change moves it, re-baseline this number.
-    CHECK(base.count == 647);
+    // Golden quad count for this fixed scenario. History: the pre-cache renderTrack
+    // and the world-ribbon refactor both emitted 647 here (pinning that refactor as
+    // byte-identical). The detail-scale rework re-baselined it to 521: the ribbon
+    // builder now DEDUPES the duplicated sample at every segment joint, which used
+    // to emit one degenerate zero-area quad per boundary per pass — 63 boundaries
+    // x 2 passes = 126 quads of pure per-quad overhead, gone with zero visual
+    // change (647 - 126 = 521 exactly; the non-degenerate geometry is untouched —
+    // adaptive 100% keeps the old AUTO's sample positions). If a deliberate
+    // LOD/geometry change moves it, re-baseline this number.
+    CHECK(base.count == 521);
 
     // --- Detail-LOD round-trip: forces the world cache to rebuild -------------
     // HIGH subdivides the ribbon more finely (strictly more quads), LOW less; on
@@ -146,6 +152,155 @@ TEST_CASE("map: world-ribbon cache is transparent across LOD + view-mode round-t
     CHECK(afterZoom.count == base.count);
     CHECK(afterZoom.sumX == doctest::Approx(base.sumX));
     CHECK(afterZoom.sumY == doctest::Approx(base.sumY));
+
+    host.shutdown();
+}
+
+TEST_CASE("map: detail scale drives quad count; adaptive normalizes across track length") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    REQUIRE(host.startup("Z:\\tmp\\mxbmrp3-tests\\mapdetail\\") >= 0);
+
+    auto MapVisible  = host.sym<PFN_MapI>("MXBMRP3_Test_MapSetVisible");
+    auto MapPct      = host.sym<PFN_MapI>("MXBMRP3_Test_MapSetDetailPct");
+    auto MapAdaptive = host.sym<PFN_MapI>("MXBMRP3_Test_MapSetAdaptive");
+    auto MapStatsFn  = host.sym<PFN_MapQuadStats>("MXBMRP3_Test_MapQuadStats");
+    REQUIRE(MapVisible);
+    REQUIRE(MapPct);
+    REQUIRE(MapAdaptive);
+    REQUIRE(MapStatsFn);
+
+    host.eventInit("PerfTrack", "Player");
+    host.raceEvent("PerfTrack");
+    host.session(6, 2);
+    host.addEntry(1, "Rider 1");
+    host.classify(6, 120000, { { .num = 1, .best = 90000, .gap = 0 } });
+    host.raceTrackPosition({ { .num = 1, .trackPos = 0.10f, .posX = 100.0f, .posZ = 50.0f, .yaw = 45.0f } });
+    MapVisible(1);
+
+    auto count = [&]() {
+        host.draw();
+        double sx, sy; int bad = 0;
+        int c = MapStatsFn(&sx, &sy, &bad);
+        CHECK(bad == 0);
+        return c;
+    };
+
+    // --- Detail scale is a monotonic density dial (adaptive mode) -------------
+    host.trackCenterline(circleTrack(), { 800.0f, 400.0f, 1200.0f, 0.0f });
+    MapAdaptive(1);
+    MapPct(20);  int d20  = count();
+    MapPct(100); int d100 = count();
+    MapPct(200); int d200 = count();
+    INFO("adaptive quad counts: 20%=" << d20 << " 100%=" << d100 << " 200%=" << d200);
+    CHECK(d20 > 0);
+    CHECK(d100 > d20);
+    CHECK(d200 > d100);
+    // Density scales linearly with the percentage NOMINALLY (10x from 20% to
+    // 200%), but the per-segment floor of one step inflates low-end counts on
+    // this 64-segment circle, and quads that aren't the ribbon (background,
+    // markers, rider) add a constant. The CONTRACT asserted is "the dial has
+    // real range": coarse ratios, not exact linearity.
+    CHECK(d200 >= d20 * 3);
+    CHECK(d100 >= d20 * 2);
+
+    // --- Adaptive normalizes quad count across track length -------------------
+    // A 3x longer loop drawn in the same map box must land within ~15% of the
+    // short loop's quad count at the same detail scale (screen-space density is
+    // the invariant). Fixed mode is the contrast: same meters-per-quad -> the
+    // longer track gets ~3x the quads.
+    MapPct(100);
+    int shortAdaptive = count();
+    host.trackCenterline(circleTrack(64, 4800.0f), { 2400.0f, 1200.0f, 3600.0f, 0.0f });
+    int longAdaptive = count();
+    INFO("adaptive: short=" << shortAdaptive << " long=" << longAdaptive);
+    CHECK(longAdaptive > shortAdaptive * 0.85);
+    CHECK(longAdaptive < shortAdaptive * 1.15);
+
+    MapAdaptive(0);   // fixed meters-per-quad
+    int longFixed = count();
+    host.trackCenterline(circleTrack(), { 800.0f, 400.0f, 1200.0f, 0.0f });
+    int shortFixed = count();
+    INFO("fixed: short=" << shortFixed << " long=" << longFixed);
+    CHECK(longFixed > shortFixed * 2);   // ~3x nominal; assert the coarse ratio
+
+    // --- Outline: one control for on/off + rim width ---------------------------
+    // Off drops the whole outline pass (roughly half the ribbon quads); changing
+    // the WIDTH re-emits the same tessellation (same count) with different vertex
+    // positions (different checksum).
+    auto MapOutline = host.sym<PFN_MapI>("MXBMRP3_Test_MapSetOutline");
+    auto MapSumSq   = host.sym<int(*)(double*, double*)>("MXBMRP3_Test_MapQuadSumSq");
+    REQUIRE(MapOutline);
+    REQUIRE(MapSumSq);
+    MapAdaptive(1);
+    MapOutline(100);
+    host.draw();
+    double onX2 = 0, onY2 = 0;
+    int onCount = MapSumSq(&onX2, &onY2);
+
+    MapOutline(0);
+    int offCount = count();
+    INFO("outline: on=" << onCount << " off=" << offCount);
+    CHECK(offCount < onCount);
+    CHECK(offCount * 2 > onCount * 0.8);   // the drop is ~the outline pass, not everything
+
+    MapOutline(200);
+    host.draw();
+    double wideX2 = 0, wideY2 = 0;
+    int wideCount = MapSumSq(&wideX2, &wideY2);
+    CHECK(wideCount == onCount);                      // same tessellation, wider quads
+    // The plain vertex SUM is blind to width (symmetric edges cancel); the
+    // squared sum keeps the width term. The rim is small in normalized units, so
+    // the delta is well below Approx's relative epsilon — exact inequality is
+    // right here: the rebuild is deterministic, so equal bits == nothing changed.
+    CHECK(wideX2 != onX2);
+    MapOutline(100);
+
+    host.shutdown();
+}
+
+TEST_CASE("map: legacy detail=AUTO/HIGH/LOW INI values migrate to scale/adaptive") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    REQUIRE(host.startup("Z:\\tmp\\mxbmrp3-tests\\maplegacy\\") >= 0);
+
+    auto DetailState = host.sym<int(*)()>("MXBMRP3_Test_MapDetailState");
+    REQUIRE(DetailState);
+
+    // Factory default (no INI yet): adaptive ON at the lean 50% — deliberately
+    // NOT the 100% that legacy AUTO migrates to (upgraders keep their old look,
+    // fresh installs get the lighter budget).
+    CHECK(DetailState() == 1050);
+
+    // Write a settings INI carrying the given [MapHud] detail lines, then reload
+    // settings from it (the hand-edit + RELOAD_CONFIG workflow).
+    auto loadWithMapSection = [&](const char* lines) {
+        namespace fs = std::filesystem;
+        fs::create_directories("Z:\\tmp\\mxbmrp3-tests\\maplegacy\\mxbmrp3");
+        std::ofstream f("Z:\\tmp\\mxbmrp3-tests\\maplegacy\\mxbmrp3\\mxbmrp3_settings.ini",
+                        std::ios::binary | std::ios::trunc);
+        f << "[Settings]\nversion=4\n\n[MapHud]\n" << lines << "\n";
+        f.close();
+        host.loadSettings("Z:\\tmp\\mxbmrp3-tests\\maplegacy\\");
+    };
+
+    // DetailState encodes percent + 1000*adaptive.
+    loadWithMapSection("detail=HIGH");
+    CHECK(DetailState() == 200);    // fixed, 200% (the old 1.0m)
+
+    loadWithMapSection("detail=LOW");
+    CHECK(DetailState() == 60);     // fixed, 60% (~the old 4.0m)
+
+    loadWithMapSection("detail=AUTO");
+    CHECK(DetailState() == 1100);   // adaptive, 100% (the old AUTO exactly)
+
+    // New keys win over a stale legacy key in the same file.
+    loadWithMapSection("detail=LOW\ndetailScale=1.4\ndetailAdaptive=1");
+    CHECK(DetailState() == 1140);
+
+    // Out-of-range values clamp instead of aborting the section.
+    loadWithMapSection("detailScale=9.9\ndetailAdaptive=0");
+    CHECK(DetailState() == 200);
 
     host.shutdown();
 }

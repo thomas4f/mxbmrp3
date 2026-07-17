@@ -70,6 +70,15 @@ private:
     AnalyticsManager(const AnalyticsManager&) = delete;
     AnalyticsManager& operator=(const AnalyticsManager&) = delete;
 
+#if defined(MXBMRP3_TEST_BUILD)
+    // Dry-run capture mode (test builds only): when true, isConfigured() reports
+    // configured and every real network sender becomes a no-op, so a test build
+    // physically cannot phone home. Set by testPrime(). A private static member
+    // (was a file-local static) so analytics_manager.cpp and its transport TU
+    // (analytics_manager_transport.cpp) share one flag; defined in the former.
+    static bool s_testCaptureMode;
+#endif
+
     // True only when a real Aptabase App Key has been configured (not the
     // shipped placeholder). When false, no Aptabase event is sent.
     static bool isConfigured();

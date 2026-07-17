@@ -58,12 +58,12 @@ graph:
 - **`RaceEntryData`'s fixed buffers** (`formattedRaceNum[8]`, `truncatedName[4]`,
   `name[100]`) over hostile rider names (empty, over-length, multi-byte UTF-8,
   emoji) and race numbers (`0`, `999`, `INT_MAX`, `INT_MIN`, negatives).
-- **The leader-timing position-index clamp** — the exact
-  `clamp((int)(trackPos*100), 0, 99)` from `plugin_data_standings.cpp`, fed
+- **The leader-timing position-index clamp** — the clamp from
+  `plugin_data_standings.cpp` that bounds `(int)(trackPos * NUM_TIMING_POINTS)` to
+  `[0, NUM_TIMING_POINTS-1]` (`NUM_TIMING_POINTS = 100`), fed
   NaN/Inf/huge/negative/denormal floats and 500 K random bit patterns, with the
-  clamped result used to index a **real `std::array<LeaderTimingPoint, 100>`** (the
-  `+0x378d8` value type). If the clamp ever fails to bound the index, ASan faults
-  on the out-of-bounds write.
+  clamped result used to index a **real `std::array<LeaderTimingPoint, NUM_TIMING_POINTS>`**.
+  If the clamp ever fails to bound the index, ASan faults on the out-of-bounds write.
 - **Churn of the two crash-site container types** (`map<int, array<…,100>>` and
   `map<string,double>`): build / mutate / prune / clear, mirroring the erase
   pattern in `updateRealTimeGaps`.

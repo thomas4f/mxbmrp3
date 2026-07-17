@@ -41,7 +41,6 @@ function render(data) {
     }
     // Hide overlay when idle (no active session) if configured
     var idle = !data.session || !data.session.type;
-    lastIdle = idle;
     overlay.classList.toggle("idle", idle && CONFIG.hideInMenus);
 
     renderHeader(data.session);
@@ -550,7 +549,7 @@ var EVENT_TYPE_MAP = [
     "leaderChange", // 15 LeaderChange
     "pit",          // 16 PitEntry
     "pit",          // 17 PitExit
-    "director"      // 18 DirectorCut
+    "director"      // 18 Director
 ];
 
 function isEventEnabled(type) {

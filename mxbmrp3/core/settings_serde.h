@@ -270,22 +270,18 @@ namespace Settings {
         return defaultVal;
     }
 
-    // MapHud::Detail (track ribbon LOD)
-    inline const char* detailToString(MapHud::Detail detail) {
-        switch (detail) {
-            case MapHud::Detail::AUTO: return "AUTO";
-            case MapHud::Detail::HIGH: return "HIGH";
-            case MapHud::Detail::LOW:  return "LOW";
-            default: return "AUTO";
-        }
-    }
-
-    inline MapHud::Detail stringToDetail(const std::string& str, MapHud::Detail defaultVal = MapHud::Detail::AUTO) {
-        if (str == "AUTO") return MapHud::Detail::AUTO;
-        if (str == "HIGH") return MapHud::Detail::HIGH;
-        if (str == "LOW")  return MapHud::Detail::LOW;
-        DEBUG_WARN_F("Unknown Detail '%s', using default", str.c_str());
-        return defaultVal;
+    // Legacy map-detail preset -> scale/adaptive migration. Pre-1.27.6 INIs carry
+    // `detail=AUTO|HIGH|LOW`; newer files carry detailScale/detailAdaptive
+    // instead (see app_MapHud). AUTO was adaptive at what is now 100%; HIGH was
+    // fixed 1.0m (= fixed 200%); LOW was fixed 4.0m (closest new point: fixed
+    // 60% ≈ 3.3m).
+    inline void applyLegacyMapDetail(MapHud& hud, const std::string& str) {
+        // AUTO maps to a literal 100% — the old AUTO's exact density — NOT the
+        // (leaner) new default, so upgraders keep the look they had.
+        if (str == "AUTO")      { hud.setAdaptiveDetail(true);  hud.setDetailScale(1.0f); }
+        else if (str == "HIGH") { hud.setAdaptiveDetail(false); hud.setDetailScale(2.0f); }
+        else if (str == "LOW")  { hud.setAdaptiveDetail(false); hud.setDetailScale(0.6f); }
+        else DEBUG_WARN_F("Unknown legacy Detail '%s', keeping current", str.c_str());
     }
 
     // MapHud::AnchorPoint

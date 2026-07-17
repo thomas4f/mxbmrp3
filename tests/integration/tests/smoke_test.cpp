@@ -32,6 +32,19 @@ TEST_CASE("smoke: Startup -> DrawInit -> Draw -> Shutdown") {
     // Draw must return without crashing and hand back non-negative primitive counts.
     host.draw();
 
+    // A minimally-populated frame must actually emit primitives: an event with
+    // one entry always renders at least the version widget / enabled HUD chrome,
+    // so zero quads here means the render pipeline silently died (the survival
+    // checks above can't catch that).
+    host.eventInit("TestTrack", "Alice");
+    host.raceEvent("TestTrack");
+    host.session(/*session=*/6, /*numLaps=*/10, /*lengthMs=*/0);
+    host.addEntry(10, "Alice");
+    host.classify(6, 1000, { { .num = 10, .best = 90000, .laps = 1, .gap = 0 } });
+    host.draw();
+    CHECK(host.lastGameQuads() > 0);
+    CHECK(host.lastGameStrings() > 0);
+
     host.shutdown();
     CHECK(true);  // reaching here means the full lifecycle survived
 }

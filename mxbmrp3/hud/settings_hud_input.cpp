@@ -75,32 +75,11 @@ void SettingsHud::handleClick(float mouseX, float mouseY) {
 }
 
 void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
-    // Try tab-specific handlers first (implemented in separate files)
+    // Try the active tab's handler first (implemented in settings_tab_*.cpp,
+    // routed via the descriptor registry; null click = common handlers only)
     bool handled = false;
-    switch (m_activeTab) {
-        case TAB_MAP:        handled = handleClickTabMap(region); break;
-        case TAB_RADAR:      handled = handleClickTabRadar(region); break;
-        case TAB_TIMING:     handled = handleClickTabTiming(region); break;
-        case TAB_GAP_BAR:    handled = handleClickTabGapBar(region); break;
-        case TAB_STANDINGS:  handled = handleClickTabStandings(region); break;
-        case TAB_RUMBLE:     handled = handleClickTabRumble(region); break;
-        case TAB_HELMET:     handled = handleClickTabHelmet(region); break;
-        case TAB_APPEARANCE: handled = handleClickTabAppearance(region); break;
-        case TAB_GENERAL:    handled = handleClickTabGeneral(region); break;
-        case TAB_HOTKEYS:    handled = handleClickTabHotkeys(region); break;
-        case TAB_RIDERS:     handled = handleClickTabRiders(region); break;
-        case TAB_RECORDS:    handled = handleClickTabRecords(region); break;
-        case TAB_PITBOARD:   handled = handleClickTabPitboard(region); break;
-        case TAB_SESSION:    handled = handleClickTabSession(region); break;
-        case TAB_LAP_LOG:    handled = handleClickTabLapLog(region); break;
-        case TAB_FRIENDS:    handled = handleClickTabFriends(region); break;
-        case TAB_SESSION_CHARTS: handled = handleClickTabSessionCharts(region); break;
-        case TAB_UPDATES:    handled = handleClickTabUpdates(region); break;
-        case TAB_FMX:        handled = handleClickTabFmx(region); break;
-        case TAB_STATS:      handled = handleClickTabStats(region); break;
-        case TAB_EVENT_LOG:  handled = handleClickTabEventLog(region); break;
-        case TAB_NOTICES:    handled = handleClickTabNotices(region); break;
-        default: break;
+    if (const TabDescriptor* tabDesc = findTabDescriptor(m_activeTab); tabDesc && tabDesc->click) {
+        handled = (this->*(tabDesc->click))(region);
     }
 
     if (handled) {
@@ -118,6 +97,20 @@ void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
 
         case ClickRegion::CHECKBOX:
             handleCheckboxClick(region);
+            break;
+
+        // Shared data-driven stepped-value controls (see SteppedControl): the
+        // region's steppedIndex selects the descriptor registered at layout time.
+        case ClickRegion::STEPPED_UP:
+        case ClickRegion::STEPPED_DOWN:
+            applySteppedControl(region, region.type == ClickRegion::STEPPED_UP);
+            break;
+
+        // Shared data-driven mod-N cycle controls (see CycleControl): the
+        // region's cycleIndex selects the descriptor registered at layout time.
+        case ClickRegion::CYCLE_UP:
+        case ClickRegion::CYCLE_DOWN:
+            applyCycleControl(region, region.type == ClickRegion::CYCLE_UP);
             break;
 
         case ClickRegion::HUD_TOGGLE:
@@ -338,14 +331,9 @@ void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
         case ClickRegion::SCALE_DOWN:
             handleScaleClick(region, false);
             break;
-        // Note: ROW_COUNT, LAP_LOG_ROW_COUNT, MAP_*, RADAR_* handlers moved to tab files
+        // Note: ROW_COUNT, MAP_*, RADAR_* handlers moved to tab files
+        // (Performance/Telemetry display style is a shared CYCLE control now.)
 
-        case ClickRegion::DISPLAY_MODE_UP:
-            handleDisplayModeClick(region, true);
-            break;
-        case ClickRegion::DISPLAY_MODE_DOWN:
-            handleDisplayModeClick(region, false);
-            break;
         // Profile cycle controls are in sidebar, must work from ALL tabs
         case ClickRegion::PROFILE_CYCLE_UP:
             {
@@ -354,7 +342,7 @@ void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
                 SettingsManager::getInstance().switchProfile(HudManager::getInstance(), nextProfile);
                 rebuildRenderData();
             }
-            return;  // Don't save - switchProfile already saves
+            return;  // No save here - switchProfile marks settings dirty; the deferred save flushes it
         case ClickRegion::PROFILE_CYCLE_DOWN:
             {
                 ProfileType prevProfile = ProfileManager::getPreviousProfile(
@@ -362,7 +350,7 @@ void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
                 SettingsManager::getInstance().switchProfile(HudManager::getInstance(), prevProfile);
                 rebuildRenderData();
             }
-            return;  // Don't save - switchProfile already saves
+            return;  // No save here - switchProfile marks settings dirty; the deferred save flushes it
         // Note: Tab-specific handlers moved to settings_tab_*.cpp files:
         // RECORDS_COUNT, PITBOARD_SHOW_MODE, TIMING_*, GAPBAR_*,
         // COLOR_CYCLE_*, FONT_CATEGORY_*, SPEED_UNIT, FUEL_UNIT,
@@ -491,222 +479,21 @@ void SettingsHud::resetCurrentTab() {
     // guarantees every INI-controllable setting — including INI-only members and
     // per-HUD color/font overrides — returns to default, and by default it preserves
     // each HUD's current visibility so a per-tab reset doesn't hide an element the
-    // user is positioning. (The Widgets tab opts out — see its case below — and the
-    // full "Reset all settings" path resets visibility instead.)
-    auto resetHuds = [](const std::vector<std::string>& names, bool keepVisibility = true) {
-        SettingsManager::getInstance().resetHudsToFactoryDefaults(HudManager::getInstance(), names, keepVisibility);
-    };
-
-    // Reset only the HUD(s) associated with the current tab
-    switch (m_activeTab) {
-        case TAB_GENERAL:
-            // General tab - reset all settings displayed on the General tab.
-            // (Display section — units/clock format, grid snap, screen clamp — moved to
-            // the Appearance tab; reset there via the [Display] factory snapshot.)
-            // Preferences section
-            UiConfig::getInstance().setPBScope(PBScope::CATEGORY);
-            XInputReader::getInstance().getRumbleConfig().controllerIndex = 0;
-            XInputReader::getInstance().setControllerIndex(0);
-            UiConfig::getInstance().setAutoSave(true);
-#if GAME_HAS_STEAM_FRIENDS
-            SteamFriendsManager::getInstance().setEnabled(true);  // default on, unlike Discord/HTTP
-#endif
-#if GAME_HAS_DISCORD
-            DiscordManager::getInstance().setEnabled(false);
-#endif
-#if GAME_HAS_HTTP_SERVER
-            HttpServer::getInstance().setEnabled(false);
-            HttpServer::getInstance().resetPortToDefault();
-#endif
-            // Profiles section
-            ProfileManager::getInstance().setAutoSwitchEnabled(false);
-            // Mark all HUDs dirty for drop shadow / unit changes
-            HudManager::getInstance().markAllHudsDirty();
-            break;
-        case TAB_APPEARANCE:
-            // Appearance tab - reset display (units/clock format), fonts, and colors. These
-            // map 1:1 to the [Display]/[Fonts]/[Colors] INI sections (no other tab touches
-            // them), so restore them straight from the factory-default snapshot — the same
-            // path the full reset uses — instead of by hand. Adding a new [Display] key no
-            // longer requires updating this tab's reset.
-            SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
-                HudManager::getInstance(), {"Display", "Fonts", "Colors"});
-            // Mark all HUDs dirty so they pick up new colors
-            if (m_idealLap) m_idealLap->setDataDirty();
-            if (m_lapLog) m_lapLog->setDataDirty();
-            if (m_standings) m_standings->setDataDirty();
-            if (m_performance) m_performance->setDataDirty();
-            if (m_telemetry) m_telemetry->setDataDirty();
-            if (m_mapHud) m_mapHud->setDataDirty();
-            if (m_radarHud) m_radarHud->setDataDirty();
-            if (m_pitboard) m_pitboard->setDataDirty();
-            if (m_records) m_records->setDataDirty();
-            if (m_timing) m_timing->setDataDirty();
-            if (m_gapBar) m_gapBar->setDataDirty();
-            if (m_lap) m_lap->setDataDirty();
-            if (m_position) m_position->setDataDirty();
-            if (m_time) m_time->setDataDirty();
-            if (m_session) m_session->setDataDirty();
-            if (m_speed) m_speed->setDataDirty();
-            if (m_speedo) m_speedo->setDataDirty();
-            if (m_tacho) m_tacho->setDataDirty();
-            if (m_notices) m_notices->setDataDirty();
-            if (m_bars) m_bars->setDataDirty();
-            if (m_version) m_version->setDataDirty();
-            if (m_fuel) m_fuel->setDataDirty();
-            if (m_sessionCharts) m_sessionCharts->setDataDirty();
-            if (m_gear) m_gear->setDataDirty();
-            if (m_lean) m_lean->setDataDirty();
-            if (m_clock) m_clock->setDataDirty();
-            if (m_gamepad) m_gamepad->setDataDirty();
-            if (m_fmxHud) m_fmxHud->setDataDirty();
-            if (m_statsHud) m_statsHud->setDataDirty();
-            if (m_eventLog) m_eventLog->setDataDirty();
-            break;
-        case TAB_STANDINGS:
-            resetHuds({"StandingsHud"});
-            // DNS filter lives in PluginData (the global [General] section), not the
-            // per-HUD snapshot, so resetHuds() can't restore it. Reset it explicitly.
-            // (Live gaps is now a StandingsHud member, restored by resetHuds above.)
-            PluginData::getInstance().setFilterDnsRiders(false);
-            break;
-        case TAB_MAP:
-            resetHuds({"MapHud"});
-            break;
-        case TAB_RADAR:
-            resetHuds({"RadarHud"});
-            break;
-        case TAB_LAP_LOG:
-            resetHuds({"LapLogHud"});
-            break;
-        case TAB_FRIENDS:
-            resetHuds({"FriendsHud"});
-            break;
-        case TAB_SESSION_CHARTS:
-            resetHuds({"SessionChartsHud"});
-            break;
-        case TAB_IDEAL_LAP:
-            resetHuds({"IdealLapHud"});
-            break;
-        case TAB_TELEMETRY:
-            resetHuds({"TelemetryHud"});
-            break;
-        case TAB_RECORDS:
-            resetHuds({"RecordsHud"});
-            // Provider and auto-fetch are saved in the global [General] section, not
-            // the per-HUD snapshot, so resetHuds() can't restore them. Reset them
-            // explicitly to their factory defaults (CBR provider, auto-fetch off).
-            if (m_records) {
-                m_records->m_provider = RecordsHud::DataProvider::CBR;
-                m_records->m_bAutoFetch = false;
-                m_records->setDataDirty();
-            }
-            break;
-        case TAB_PITBOARD:
-            resetHuds({"PitboardHud"});
-            break;
-        case TAB_SESSION:
-            resetHuds({"SessionHud"});
-            break;
-        case TAB_PERFORMANCE:
-            resetHuds({"PerformanceHud"});
-            break;
-        case TAB_TIMING:
-            resetHuds({"TimingHud"});
-            break;
-        case TAB_GAP_BAR:
-            resetHuds({"GapBarHud"});
-            break;
-        case TAB_NOTICES:
-            resetHuds({"NoticesHud"});
-            break;
-        case TAB_EVENT_LOG:
-            resetHuds({"EventLogHud"});
-            break;
-        case TAB_WIDGETS: {
-            // Reset all widgets in a single pass
-            std::vector<std::string> widgets = {
-                "LapWidget", "PositionWidget", "TimeWidget", "SpeedWidget", "GearWidget",
-                "SpeedoWidget", "TachoWidget", "BarsWidget", "VersionWidget", "FuelWidget",
-                "GamepadWidget", "LeanWidget", "GForceWidget", "CompassWidget", "ClockWidget",
-                "PointerWidget", "SettingsButtonWidget"
-            };
-#if GAME_HAS_TYRE_TEMP
-            widgets.push_back("TyreTempWidget");
-#endif
-#if GAME_HAS_ECU
-            widgets.push_back("EcuWidget");
-#endif
-            // keepVisibility=false: the Widgets tab exposes a per-widget "Visible"
-            // toggle for every row, so Reset restores those toggles to factory
-            // defaults too (not just position/scale/opacity).
-            resetHuds(widgets, false);
-            break;
+    // user is positioning. (The Widgets tab opts out — see resetTabWidgets() — and
+    // the full "Reset all settings" path resets visibility instead.)
+    //
+    // Routed via the descriptor registry: resetHud is the standard keep-visibility
+    // HUD reset; resetExtra covers anything outside the per-HUD snapshot (see the
+    // resetTab* bodies below).
+    const TabDescriptor* tabDesc = findTabDescriptor(m_activeTab);
+    if (tabDesc && (tabDesc->resetHud || tabDesc->resetExtra)) {
+        if (tabDesc->resetHud) {
+            SettingsManager::getInstance().resetHudsToFactoryDefaults(
+                HudManager::getInstance(), {tabDesc->resetHud}, /*keepVisibility=*/true);
         }
-        case TAB_RUMBLE: {
-            // Reset rumble configuration from the [Rumble] snapshot (same path as the full
-            // reset) plus the RumbleHud. Preserve the master "enabled" toggle, like every
-            // other per-tab reset leaves its master alone. controllerIndex is configured on
-            // the General tab and isn't part of [Rumble], so the replay never touches it.
-            RumbleConfig& rumbleCfg = XInputReader::getInstance().getGlobalRumbleConfig();
-            bool wasEnabled = rumbleCfg.enabled;
-            SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
-                HudManager::getInstance(), {"Rumble"});
-            rumbleCfg.enabled = wasEnabled;
-            resetHuds({"RumbleHud"});
-            break;
-        }
-        case TAB_HELMET:
-            // HelmetOverlay maps 1:1 to the [HelmetOverlay] snapshot section. Replay it (same
-            // path as the full reset) while preserving visibility, so a per-tab reset doesn't
-            // hide the overlay the user is positioning.
-            if (m_helmetOverlay) {
-                bool wasVisible = m_helmetOverlay->isVisible();
-                SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
-                    HudManager::getInstance(), {"HelmetOverlay"});
-                m_helmetOverlay->setVisible(wasVisible);
-                m_helmetOverlay->setDataDirty();
-            }
-            break;
-        case TAB_HOTKEYS:
-            // Hotkey bindings map 1:1 to the [Hotkeys] snapshot section.
-            SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
-                HudManager::getInstance(), {"Hotkeys"});
-            break;
-        case TAB_UPDATES: {
-            // Update settings map 1:1 to the [Updates] snapshot section. Replay it (same
-            // path as the full reset), but leave the "Check for Updates" mode (the master
-            // on/off toggle) alone — like a HUD's visibility in the resetHuds() path, the
-            // master state is preserved here; full "Reset all settings" disables it instead.
-            UpdateChecker::UpdateMode mode = UpdateChecker::getInstance().getMode();
-            SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
-                HudManager::getInstance(), {"Updates"});
-            UpdateChecker::getInstance().setMode(mode);
-            break;
-        }
-        case TAB_FMX:
-            resetHuds({"FmxHud"});
-            break;
-        case TAB_STATS:
-            resetHuds({"StatsHud"});
-            break;
-        case TAB_RIDERS:
-            // Clear all tracked riders
-            TrackedRidersManager::getInstance().clearAll();
-            break;
-        case TAB_DIRECTOR: {
-            // Director maps 1:1 to the [Director] snapshot section. Replay it but leave
-            // the master enable alone (like Updates' check toggle); a full "Reset all
-            // settings" disables it instead.
-            bool wasEnabled = DirectorManager::getInstance().isEnabled();
-            SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
-                HudManager::getInstance(), {"Director"});
-            DirectorManager::getInstance().setEnabled(wasEnabled);
-            break;
-        }
-        default:
-            DEBUG_WARN_F("Unknown tab index for reset: %d", m_activeTab);
-            break;
+        if (tabDesc->resetExtra) (this->*(tabDesc->resetExtra))();
+    } else {
+        DEBUG_WARN_F("Unknown tab index for reset: %d", m_activeTab);
     }
 
     // Update settings display
@@ -714,6 +501,177 @@ void SettingsHud::resetCurrentTab() {
 
     // Deferred: persisted on leave-track (auto-save) or via the Save button.
     SettingsManager::getInstance().markDirty();
+}
+
+// ----------------------------------------------------------------------------
+// Per-tab custom reset bodies (TabDescriptor::resetExtra). Each covers the
+// settings its tab shows that live OUTSIDE the per-HUD factory snapshot
+// (global sections, manager state), so the registry's resetHud pass can't
+// restore them. Simple tabs have no body here - resetHud alone is enough.
+// ----------------------------------------------------------------------------
+
+void SettingsHud::resetTabGeneral() {
+    // General tab - reset all settings displayed on the General tab.
+    // (Display section — units/clock format, grid snap, screen clamp — moved to
+    // the Appearance tab; reset there via the [Display] factory snapshot.)
+    // Preferences section
+    UiConfig::getInstance().setPBScope(PBScope::CATEGORY);
+    XInputReader::getInstance().getRumbleConfig().controllerIndex = 0;
+    XInputReader::getInstance().setControllerIndex(0);
+    UiConfig::getInstance().setAutoSave(true);
+#if GAME_HAS_STEAM_FRIENDS
+    SteamFriendsManager::getInstance().setEnabled(true);  // default on, unlike Discord/HTTP
+#endif
+#if GAME_HAS_DISCORD
+    DiscordManager::getInstance().setEnabled(false);
+#endif
+#if GAME_HAS_HTTP_SERVER
+    HttpServer::getInstance().setEnabled(false);
+    HttpServer::getInstance().resetPortToDefault();
+#endif
+    // Profiles section
+    ProfileManager::getInstance().setAutoSwitchEnabled(false);
+    // Mark all HUDs dirty for drop shadow / unit changes
+    HudManager::getInstance().markAllHudsDirty();
+}
+
+void SettingsHud::resetTabAppearance() {
+    // Appearance tab - reset display (units/clock format), fonts, and colors. These
+    // map 1:1 to the [Display]/[Fonts]/[Colors] INI sections (no other tab touches
+    // them), so restore them straight from the factory-default snapshot — the same
+    // path the full reset uses — instead of by hand. Adding a new [Display] key no
+    // longer requires updating this tab's reset.
+    SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
+        HudManager::getInstance(), {"Display", "Fonts", "Colors"});
+    // Mark all HUDs dirty so they pick up new colors
+    if (m_idealLap) m_idealLap->setDataDirty();
+    if (m_lapLog) m_lapLog->setDataDirty();
+    if (m_standings) m_standings->setDataDirty();
+    if (m_performance) m_performance->setDataDirty();
+    if (m_telemetry) m_telemetry->setDataDirty();
+    if (m_mapHud) m_mapHud->setDataDirty();
+    if (m_radarHud) m_radarHud->setDataDirty();
+    if (m_pitboard) m_pitboard->setDataDirty();
+    if (m_records) m_records->setDataDirty();
+    if (m_timing) m_timing->setDataDirty();
+    if (m_gapBar) m_gapBar->setDataDirty();
+    if (m_lap) m_lap->setDataDirty();
+    if (m_position) m_position->setDataDirty();
+    if (m_time) m_time->setDataDirty();
+    if (m_session) m_session->setDataDirty();
+    if (m_speed) m_speed->setDataDirty();
+    if (m_speedo) m_speedo->setDataDirty();
+    if (m_tacho) m_tacho->setDataDirty();
+    if (m_notices) m_notices->setDataDirty();
+    if (m_bars) m_bars->setDataDirty();
+    if (m_version) m_version->setDataDirty();
+    if (m_fuel) m_fuel->setDataDirty();
+    if (m_sessionCharts) m_sessionCharts->setDataDirty();
+    if (m_gear) m_gear->setDataDirty();
+    if (m_lean) m_lean->setDataDirty();
+    if (m_clock) m_clock->setDataDirty();
+    if (m_gamepad) m_gamepad->setDataDirty();
+    if (m_fmxHud) m_fmxHud->setDataDirty();
+    if (m_statsHud) m_statsHud->setDataDirty();
+    if (m_eventLog) m_eventLog->setDataDirty();
+}
+
+void SettingsHud::resetTabStandingsExtra() {
+    // DNS filter lives in PluginData (the global [General] section), not the
+    // per-HUD snapshot, so the resetHud pass can't restore it. Reset it explicitly.
+    // (Live gaps is now a StandingsHud member, restored by the resetHud pass.)
+    PluginData::getInstance().setFilterDnsRiders(false);
+}
+
+void SettingsHud::resetTabRecordsExtra() {
+    // Provider and auto-fetch are saved in the global [General] section, not
+    // the per-HUD snapshot, so the resetHud pass can't restore them. Reset them
+    // explicitly to their factory defaults (CBR provider, auto-fetch off).
+    if (m_records) {
+        m_records->m_provider = RecordsHud::DataProvider::CBR;
+        m_records->m_bAutoFetch = false;
+        m_records->setDataDirty();
+    }
+}
+
+void SettingsHud::resetTabWidgets() {
+    // Reset all widgets in a single pass
+    std::vector<std::string> widgets = {
+        "LapWidget", "PositionWidget", "TimeWidget", "SpeedWidget", "GearWidget",
+        "SpeedoWidget", "TachoWidget", "BarsWidget", "VersionWidget", "FuelWidget",
+        "GamepadWidget", "LeanWidget", "GForceWidget", "CompassWidget", "ClockWidget",
+        "PointerWidget", "SettingsButtonWidget"
+    };
+#if GAME_HAS_TYRE_TEMP
+    widgets.push_back("TyreTempWidget");
+#endif
+#if GAME_HAS_ECU
+    widgets.push_back("EcuWidget");
+#endif
+    // keepVisibility=false: the Widgets tab exposes a per-widget "Visible"
+    // toggle for every row, so Reset restores those toggles to factory
+    // defaults too (not just position/scale/opacity).
+    SettingsManager::getInstance().resetHudsToFactoryDefaults(
+        HudManager::getInstance(), widgets, /*keepVisibility=*/false);
+}
+
+void SettingsHud::resetTabRumble() {
+    // Reset rumble configuration from the [Rumble] snapshot (same path as the full
+    // reset) plus the RumbleHud. Preserve the master "enabled" toggle, like every
+    // other per-tab reset leaves its master alone. controllerIndex is configured on
+    // the General tab and isn't part of [Rumble], so the replay never touches it.
+    RumbleConfig& rumbleCfg = XInputReader::getInstance().getGlobalRumbleConfig();
+    bool wasEnabled = rumbleCfg.enabled;
+    SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
+        HudManager::getInstance(), {"Rumble"});
+    rumbleCfg.enabled = wasEnabled;
+    SettingsManager::getInstance().resetHudsToFactoryDefaults(
+        HudManager::getInstance(), {"RumbleHud"}, /*keepVisibility=*/true);
+}
+
+void SettingsHud::resetTabHelmet() {
+    // HelmetOverlay maps 1:1 to the [HelmetOverlay] snapshot section. Replay it (same
+    // path as the full reset) while preserving visibility, so a per-tab reset doesn't
+    // hide the overlay the user is positioning.
+    if (m_helmetOverlay) {
+        bool wasVisible = m_helmetOverlay->isVisible();
+        SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
+            HudManager::getInstance(), {"HelmetOverlay"});
+        m_helmetOverlay->setVisible(wasVisible);
+        m_helmetOverlay->setDataDirty();
+    }
+}
+
+void SettingsHud::resetTabHotkeys() {
+    // Hotkey bindings map 1:1 to the [Hotkeys] snapshot section.
+    SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
+        HudManager::getInstance(), {"Hotkeys"});
+}
+
+void SettingsHud::resetTabUpdates() {
+    // Update settings map 1:1 to the [Updates] snapshot section. Replay it (same
+    // path as the full reset), but leave the "Check for Updates" mode (the master
+    // on/off toggle) alone — like a HUD's visibility in the resetHud path, the
+    // master state is preserved here; full "Reset all settings" disables it instead.
+    UpdateChecker::UpdateMode mode = UpdateChecker::getInstance().getMode();
+    SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
+        HudManager::getInstance(), {"Updates"});
+    UpdateChecker::getInstance().setMode(mode);
+}
+
+void SettingsHud::resetTabRiders() {
+    // Clear all tracked riders
+    TrackedRidersManager::getInstance().clearAll();
+}
+
+void SettingsHud::resetTabDirector() {
+    // Director maps 1:1 to the [Director] snapshot section. Replay it but leave
+    // the master enable alone (like Updates' check toggle); a full "Reset all
+    // settings" disables it instead.
+    bool wasEnabled = DirectorManager::getInstance().isEnabled();
+    SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
+        HudManager::getInstance(), {"Director"});
+    DirectorManager::getInstance().setEnabled(wasEnabled);
 }
 
 void SettingsHud::resetCurrentProfile() {
@@ -735,6 +693,122 @@ void SettingsHud::resetCurrentProfile() {
 
     // Deferred: persisted on leave-track (auto-save) or via the Save button.
     SettingsManager::getInstance().markDirty();
+}
+
+// Shared handler for STEPPED_UP/STEPPED_DOWN: apply the registered descriptor's
+// step (with the usual hold-to-repeat acceleration) and mark the target HUD +
+// this menu dirty - the exact archetype the per-control enum pairs used to
+// hand-roll. Only calls setDataDirty (never rebuildRenderData) so the region
+// reference and descriptor vector stay valid for the caller.
+void SettingsHud::applySteppedControl(const ClickRegion& region, bool increase) {
+    if (region.steppedIndex < 0 ||
+        region.steppedIndex >= static_cast<int>(m_steppedControls.size())) {
+        DEBUG_WARN_F("Stepped region with invalid descriptor index: %d", region.steppedIndex);
+        return;
+    }
+    const SteppedControl& control = m_steppedControls[region.steppedIndex];
+    if (control.valid && !control.valid()) {
+        // The state this descriptor bound to at layout time is no longer the
+        // active target (e.g. the per-bike rumble profile changed under an open
+        // menu - the pointers would edit the PREVIOUS bike's profile). Swallow
+        // the click and mark the layout dirty so the next frame rebuilds the
+        // controls against the right target.
+        DEBUG_INFO("Stepped control target changed since layout; click ignored");
+        setDataDirty();
+        return;
+    }
+    switch (control.kind) {
+        case SteppedControl::Kind::WRAP_INT:
+            if (control.intValue) {
+                *control.intValue = applyAcceleratedWrap(
+                    *control.intValue, control.step, control.lo, control.hi, increase);
+            }
+            break;
+        case SteppedControl::Kind::CLAMP_INT:
+            if (control.intValue) {
+                *control.intValue = applyAcceleratedClamp(
+                    *control.intValue, control.step, control.lo, control.hi, increase);
+            }
+            break;
+        case SteppedControl::Kind::FIXED_INT:
+            if (control.intValue) {
+                // Fixed integer step with deliberately NO hold acceleration (matches
+                // the old plain ++/-- count handlers), clamped to [lo, hi].
+                int next = *control.intValue + (increase ? control.step : -control.step);
+                if (next < control.lo) next = control.lo;
+                if (next > control.hi) next = control.hi;
+                *control.intValue = next;
+            }
+            break;
+        case SteppedControl::Kind::STEP_FLOAT:
+            if (control.floatValue) {
+                float next = applyAcceleratedStep(*control.floatValue, control.fstep, increase);
+                // Clamp toward the pressed direction only (matches the old
+                // per-control handlers, which bounded UP at max and DOWN at min).
+                if (increase) { if (next > control.fhi) next = control.fhi; }
+                else          { if (next < control.flo) next = control.flo; }
+                *control.floatValue = next;
+            }
+            break;
+        case SteppedControl::Kind::PERCENT_FLOAT:
+            if (control.floatValue) {
+                // Verbatim rumble-strength semantics (the old adjustEffectStrength):
+                // accelerated 1% step, clamp, THEN round to hundredths. Deliberately
+                // not STEP_FLOAT - its snap-to-accelerated-grid would change the
+                // value sequences under hold acceleration.
+                float step = control.fstep * getHoldStepMultiplier();
+                float value = *control.floatValue;
+                if (increase) {
+                    value = std::round(std::min(value + step, control.fhi) * 100.0f) / 100.0f;
+                } else {
+                    value = std::round(std::max(value - step, control.flo) * 100.0f) / 100.0f;
+                }
+                *control.floatValue = value;
+            }
+            break;
+        case SteppedControl::Kind::FIXED_FLOAT:
+            if (control.floatValue) {
+                // Fixed step with deliberately NO hold acceleration (matches the old
+                // rumble Min/Max input steppers). The lower bound can be linked to a
+                // live value (a rumble effect's Max input clamps at its current Min).
+                if (increase) {
+                    *control.floatValue = std::min(*control.floatValue + control.fstep, control.fhi);
+                } else {
+                    float lo = control.loLink ? *control.loLink : control.flo;
+                    *control.floatValue = std::max(*control.floatValue - control.fstep, lo);
+                }
+            }
+            break;
+    }
+    if (control.postStep) control.postStep();
+    if (control.dirtyHud) control.dirtyHud->setDataDirty();
+    setDataDirty();
+}
+
+// Shared handler for CYCLE_UP/CYCLE_DOWN: step the registered descriptor's
+// 0-based state index forward/backward mod count and mark the target HUD +
+// this menu dirty - the archetype the per-control enum pairs (label/color/mode
+// cycles) used to hand-roll. Deliberately NO hold acceleration: a held cycle
+// repeats at the base cadence with step 1, exactly like the old handlers
+// (which ignored the hold tier). Only calls setDataDirty (never
+// rebuildRenderData) so the region reference and descriptor vector stay valid
+// for the caller.
+void SettingsHud::applyCycleControl(const ClickRegion& region, bool forward) {
+    if (region.cycleIndex < 0 ||
+        region.cycleIndex >= static_cast<int>(m_cycleControls.size())) {
+        DEBUG_WARN_F("Cycle region with invalid descriptor index: %d", region.cycleIndex);
+        return;
+    }
+    const CycleControl& control = m_cycleControls[region.cycleIndex];
+    if (control.get && control.set && control.count > 0) {
+        const int current = control.get();
+        const int next = forward ? (current + 1) % control.count
+                                 : (current + control.count - 1) % control.count;
+        control.set(next);
+    }
+    if (control.postStep) control.postStep();
+    if (control.dirtyHud) control.dirtyHud->setDataDirty();
+    setDataDirty();
 }
 
 void SettingsHud::handleCheckboxClick(const ClickRegion& region) {
@@ -811,40 +885,8 @@ void SettingsHud::handleScaleClick(const ClickRegion& region, bool increase) {
 // Note: handleRowCountClick, handleLapLogRowCountClick, handleMap*, handleRadar*
 // moved to respective tab files (settings_tab_standings.cpp, settings_tab_lap_log.cpp,
 // settings_tab_map.cpp, settings_tab_radar.cpp)
-
-void SettingsHud::handleDisplayModeClick(const ClickRegion& region, bool increase) {
-    auto* displayMode = std::get_if<uint8_t*>(&region.targetPointer);
-    if (!displayMode || !*displayMode || !region.targetHud) return;
-
-    // DisplayMode enum values are the same for PerformanceHud and TelemetryHud (0=Graphs, 1=Values, 2=Both)
-    uint8_t currentMode = **displayMode;
-    uint8_t newMode;
-
-    if (increase) {
-        // Cycle forward: GRAPHS(0) -> VALUES(1) -> BOTH(2) -> GRAPHS(0)
-        switch (currentMode) {
-            case 0: newMode = 1; break;  // GRAPHS -> VALUES
-            case 1: newMode = 2; break;  // VALUES -> BOTH
-            case 2: newMode = 0; break;  // BOTH -> GRAPHS
-            default: newMode = 2; break; // Default to BOTH
-        }
-    } else {
-        // Cycle backward: GRAPHS(0) -> BOTH(2) -> VALUES(1) -> GRAPHS(0)
-        switch (currentMode) {
-            case 0: newMode = 2; break;  // GRAPHS -> BOTH
-            case 1: newMode = 0; break;  // VALUES -> GRAPHS
-            case 2: newMode = 1; break;  // BOTH -> VALUES
-            default: newMode = 2; break; // Default to BOTH
-        }
-    }
-
-    **displayMode = newMode;
-    region.targetHud->setDataDirty();
-    rebuildRenderData();
-
-    const char* modeNames[] = {"Graphs", "Numbers", "Both"};
-    DEBUG_INFO_F("Display mode changed to %s", modeNames[newMode]);
-}
+// Note: the Performance/Telemetry display style is a shared CYCLE control now
+// (see applyCycleControl); the old handleDisplayModeClick is gone.
 
 // Note: handlePitboardShowModeClick moved to settings_tab_pitboard.cpp
 // Note: handleColorCycleClick moved to settings_tab_appearance.cpp
@@ -864,3 +906,58 @@ void SettingsHud::handleCloseButtonClick() {
     DEBUG_INFO("Settings menu closed via close button");
 }
 
+
+#if defined(MXBMRP3_TEST_BUILD)
+// Headless click seam - see the declaration comment in settings_hud.h.
+int SettingsHud::testSteppedRegionCount(bool up) const {
+    const auto want = up ? ClickRegion::STEPPED_UP : ClickRegion::STEPPED_DOWN;
+    int n = 0;
+    for (const auto& r : m_clickRegions) {
+        if (r.type == want) ++n;
+    }
+    return n;
+}
+
+bool SettingsHud::testClickStepped(int index, bool up, int holdRepeats) {
+    const auto want = up ? ClickRegion::STEPPED_UP : ClickRegion::STEPPED_DOWN;
+    int n = 0;
+    for (const auto& r : m_clickRegions) {
+        if (r.type != want) continue;
+        if (n++ < index) continue;
+        // Copy the center out first: dispatch can dirty the layout, and a rebuild
+        // would invalidate the reference mid-call.
+        const float cx = r.x + r.width * 0.5f;
+        const float cy = r.y + r.height * 0.5f;
+        m_holdRepeatCount = holdRepeats;
+        handleClick(cx, cy);
+        m_holdRepeatCount = 0;
+        return true;
+    }
+    return false;
+}
+
+// Cycle-control twin of the stepped seam above (no hold tier - cycles never
+// accelerate, so there is nothing to force).
+int SettingsHud::testCycleRegionCount(bool up) const {
+    const auto want = up ? ClickRegion::CYCLE_UP : ClickRegion::CYCLE_DOWN;
+    int n = 0;
+    for (const auto& r : m_clickRegions) {
+        if (r.type == want) ++n;
+    }
+    return n;
+}
+
+bool SettingsHud::testClickCycle(int index, bool up) {
+    const auto want = up ? ClickRegion::CYCLE_UP : ClickRegion::CYCLE_DOWN;
+    int n = 0;
+    for (const auto& r : m_clickRegions) {
+        if (r.type != want) continue;
+        if (n++ < index) continue;
+        const float cx = r.x + r.width * 0.5f;
+        const float cy = r.y + r.height * 0.5f;
+        handleClick(cx, cy);
+        return true;
+    }
+    return false;
+}
+#endif

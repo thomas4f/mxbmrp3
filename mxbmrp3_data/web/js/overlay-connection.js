@@ -42,7 +42,6 @@ var MAX_STATUS_LINES = 3;
 // through renderEventLog() like regular events.
 var statusLines = [];
 var lastEvents = [];
-var lastIdle = false;
 var lastData = null;
 
 // Debug logging: append ?debug (or #debug) to the overlay URL to log battle-set

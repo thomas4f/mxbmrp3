@@ -261,9 +261,35 @@ jobs:
       - name: CPU performance baseline (report + gross-regression gate)
         run: ./tests/integration/run_perf.sh
 
-      # Build the NSIS installer and drive Setup.exe + uninstaller headless under
-      # Wine, asserting the install/uninstall/registry/data-wipe mechanics. Uses
-      # makensis (nsis) + wine; independent of the plugin DLL build above.
+  # Build the NSIS installer and drive Setup.exe + uninstaller headless under
+  # Wine, asserting the install/uninstall/registry/data-wipe mechanics. Needs
+  # only makensis (nsis) + wine and is independent of the plugin DLL build, so
+  # it runs as its OWN job in parallel with cross-build-smoke instead of
+  # serializing ~1-2 min onto the end of the long pole.
+  installer:
+    name: Installer mechanics (makensis + Wine)
+    if: >-
+      github.event.repository.private == false ||
+      github.event_name == 'workflow_dispatch' ||
+      inputs.full
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install NSIS + Wine
+        run: |
+          sudo apt-get update -qq
+          # 64-bit Wine only, same rationale as cross-build-smoke (the 32-bit
+          # loader's registry redirection broke the installer's HKLM assertions).
+          sudo apt-get install -y --no-install-recommends wine wine64 nsis
+          if ! command -v wine >/dev/null; then
+            for c in /usr/lib/wine/wine64 /usr/lib/x86_64-linux-gnu/wine/wine64; do
+              [ -x "$c" ] && { sudo ln -sf "$c" /usr/bin/wine; break; }
+            done
+          fi
+          wine --version
+
       - name: Installer mechanics (makensis + Wine)
         run: ./tests/integration/run_installer_test.sh
 
@@ -377,7 +403,9 @@ jobs:
       inputs.full
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    continue-on-error: true
+    # No continue-on-error: FINDINGS are already report-only inside the step (they
+    # never make the step exit nonzero), so the only thing that can fail this job
+    # is cppcheck itself crashing/misconfigured — which SHOULD be red, not masked.
     steps:
       - uses: actions/checkout@v7
 
@@ -389,13 +417,25 @@ jobs:
           cppcheck --version
           # --platform=win64 gives correct type sizes; --max-configs=1 + a fixed
           # config avoids the combinatorial #ifdef explosion; vendored libs skipped.
+          # Findings are report-only (below), but a nonzero exit from cppcheck
+          # ITSELF (crash/misconfiguration — with no --error-exitcode, findings
+          # don't affect the exit code) must fail the step: the old `|| true`
+          # made a broken tool indistinguishable from "no findings".
+          set +e
           cppcheck --quiet --enable=warning --inline-suppr --std=c++17 --language=c++ \
             --platform=win64 --max-configs=1 -DGAME_MXBIKES=1 -D_WIN32=1 \
             -I mxbmrp3 -i mxbmrp3/vendor \
             --suppress=missingInclude --suppress=missingIncludeSystem \
             --suppressions-list=.cppcheck-suppressions \
             --template='{file}:{line}: {severity}: {message} [{id}]' \
-            -j"$(nproc)" mxbmrp3 2> cppcheck.txt || true
+            -j"$(nproc)" mxbmrp3 2> cppcheck.txt
+          cc_rc=$?
+          set -e
+          if [ "$cc_rc" -ne 0 ]; then
+            echo "::error::cppcheck itself failed (exit $cc_rc) — tool crash or misconfiguration, not findings"
+            cat cppcheck.txt
+            exit "$cc_rc"
+          fi
           if [ -s cppcheck.txt ]; then
             { echo "## cppcheck findings (report-only)"; echo; echo '```'; cat cppcheck.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
             echo "::warning::cppcheck reported $(wc -l < cppcheck.txt) finding(s) — see the job summary"

@@ -16,7 +16,25 @@
 #include "plugin_host.h"
 #include "assertions.h"
 
+#include <filesystem>
+#include <fstream>
+
 TEST_CASE("http: the server serves /api/state and it matches the direct snapshot") {
+    // Stage web files BEFORE the server starts, so set_mount_point() succeeds and
+    // the static mount is genuinely in play for the /sw.js + /custom.css checks
+    // below. The server's web root is plugins\mxbmrp3_data\web relative to CWD.
+    namespace fs = std::filesystem;
+    const fs::path webRoot = fs::path("plugins") / "mxbmrp3_data" / "web";
+    fs::create_directories(webRoot);
+    {
+        std::ofstream f(webRoot / "sw.js", std::ios::binary);
+        f << "var CACHE_NAME = \"mxbmrp3-overlay-__PLUGIN_VERSION__\";\n";
+    }
+    {
+        std::ofstream f(webRoot / "custom.css", std::ios::binary);
+        f << ":root { --test-marker: 1; }\n";
+    }
+
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup("Z:\\tmp\\mxbmrp3-tests\\http\\");
@@ -49,5 +67,24 @@ TEST_CASE("http: the server serves /api/state and it matches the direct snapshot
     CHECK(served["standings"] == direct["standings"]);
     CHECK(served["session"]["type"] == direct["session"]["type"]);
 
+    // Regression: /sw.js and /custom.css need CUSTOM serving (version
+    // substitution, Cache-Control: no-cache), but both files also exist under
+    // the static mount — and httplib serves mounted files BEFORE dispatching
+    // Get() handlers, so a plain Get() registration was dead code and the raw
+    // on-disk sw.js (placeholder cache name, no no-cache header) shipped to
+    // every browser. The fix intercepts the two paths in the pre-routing
+    // handler; this pins that the custom path wins WITH the mount active.
+    const std::string swFull = host.rawGetFull("/sw.js");
+    CHECK(swFull.find("mxbmrp3-overlay-") != std::string::npos);
+    CHECK(swFull.find("__PLUGIN_VERSION__") == std::string::npos);   // substituted
+    CHECK(swFull.find("Cache-Control: no-cache") != std::string::npos);
+
+    // custom.css: served with the no-cache header (the mount would add
+    // ETag/Last-Modified but no Cache-Control — the stale-edit bug).
+    const std::string cssFull = host.rawGetFull("/custom.css");
+    CHECK(cssFull.find("--test-marker") != std::string::npos);
+    CHECK(cssFull.find("Cache-Control: no-cache") != std::string::npos);
+
     host.shutdown();
 }
+

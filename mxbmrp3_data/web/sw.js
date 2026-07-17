@@ -117,9 +117,12 @@ self.addEventListener("fetch", function (event) {
     }
 
     // Cache-first for the static shell, with background refresh on success.
+    // Navigations ignore the query string ("/?debug" or an OBS source saved with
+    // params must still hit the precached "./" when offline); asset requests
+    // keep exact matching.
     event.respondWith(
         caches.open(CACHE_NAME).then(function (cache) {
-            return cache.match(req).then(function (cached) {
+            return cache.match(req, { ignoreSearch: req.mode === "navigate" }).then(function (cached) {
                 var network = fetch(req).then(function (resp) {
                     if (resp && resp.ok && resp.type !== "opaque") {
                         cache.put(req, resp.clone());

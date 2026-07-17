@@ -9,41 +9,13 @@
 // Static member function of SettingsHud - handles click events for Records tab
 bool SettingsHud::handleClickTabRecords(const ClickRegion& region) {
     switch (region.type) {
-        case ClickRegion::RECORDS_COUNT_UP:
-            if (m_records && m_records->m_recordsToShow < 30) {
-                m_records->m_recordsToShow++;
-                m_records->setDataDirty();
-                setDataDirty();
-            }
-            return true;
+        // Records to show is a data-driven STEPPED control - registered in
+        // renderTabRecords via ctx.addSteppedControl and handled by the shared
+        // SettingsHud::applySteppedControl.
 
-        case ClickRegion::RECORDS_COUNT_DOWN:
-            if (m_records && m_records->m_recordsToShow > 3) {
-                m_records->m_recordsToShow--;
-                m_records->setDataDirty();
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::RECORDS_PROVIDER_UP:
-            if (m_records) {
-                int current = static_cast<int>(m_records->m_provider);
-                int count = static_cast<int>(RecordsHud::DataProvider::COUNT);
-                m_records->m_provider = static_cast<RecordsHud::DataProvider>((current + 1) % count);
-                m_records->setDataDirty();
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::RECORDS_PROVIDER_DOWN:
-            if (m_records) {
-                int current = static_cast<int>(m_records->m_provider);
-                int count = static_cast<int>(RecordsHud::DataProvider::COUNT);
-                m_records->m_provider = static_cast<RecordsHud::DataProvider>((current + count - 1) % count);
-                m_records->setDataDirty();
-                setDataDirty();
-            }
-            return true;
+        // Provider is a data-driven CYCLE control now - registered in
+        // renderTabRecords via ctx.addCycleControl. (Cycling only selects the
+        // provider; a fetch happens via Compare / auto-fetch, not here.)
 
         case ClickRegion::RECORDS_AUTO_FETCH_TOGGLE:
             if (m_records) {
@@ -94,16 +66,16 @@ BaseHud* SettingsHud::renderTabRecords(SettingsLayoutContext& ctx) {
         default: break;
     }
     ctx.addCycleControl("Provider", providerName, 10,
-        SettingsHud::ClickRegion::RECORDS_PROVIDER_DOWN,
-        SettingsHud::ClickRegion::RECORDS_PROVIDER_UP,
-        hud, true, false, "records.provider");
+        SettingsHud::CycleControl::enumMember(hud, &RecordsHud::m_provider,
+            static_cast<int>(RecordsHud::DataProvider::COUNT), hud),
+        hud, true, false, "records.provider", /*tooltipOnArrows=*/false);
 
-    // Rows count control
+    // Rows count control: plain ±1 clamped stepper over [3, 30] with deliberately
+    // NO hold acceleration (verbatim from the old RECORDS_COUNT handlers).
     char recordsValue[8];
     snprintf(recordsValue, sizeof(recordsValue), "%d", hud->m_recordsToShow);
-    ctx.addCycleControl("Records to show", recordsValue, 10,
-        SettingsHud::ClickRegion::RECORDS_COUNT_DOWN,
-        SettingsHud::ClickRegion::RECORDS_COUNT_UP,
+    ctx.addSteppedControl("Records to show", recordsValue, 10,
+        SettingsHud::SteppedControl::fixedInt(&hud->m_recordsToShow, 1, 3, 30, hud),
         hud, true, false, "records.count");
 
     // Auto-fetch toggle

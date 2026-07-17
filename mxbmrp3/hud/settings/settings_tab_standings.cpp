@@ -61,32 +61,8 @@ bool SettingsHud::handleClickTabStandings(const ClickRegion& region) {
             }
             return true;
 
-        case ClickRegion::GAP_COLUMN_TOGGLE:
-            // Cycle backward: OFF <- PLAYER <- ADJACENT <- ALL <- OFF
-            if (standingsHud) {
-                switch (standingsHud->m_gapMode) {
-                    case StandingsHud::GapMode::OFF:      standingsHud->m_gapMode = StandingsHud::GapMode::ALL; break;
-                    case StandingsHud::GapMode::PLAYER:   standingsHud->m_gapMode = StandingsHud::GapMode::OFF; break;
-                    case StandingsHud::GapMode::ADJACENT: standingsHud->m_gapMode = StandingsHud::GapMode::PLAYER; break;
-                    case StandingsHud::GapMode::ALL:      standingsHud->m_gapMode = StandingsHud::GapMode::ADJACENT; break;
-                }
-                standingsHud->setDataDirty();
-                rebuildRenderData();
-            }
-            return true;
-        case ClickRegion::GAP_SCOPE_TOGGLE:
-            // Cycle forward: OFF -> PLAYER -> ADJACENT -> ALL -> OFF
-            if (standingsHud) {
-                switch (standingsHud->m_gapMode) {
-                    case StandingsHud::GapMode::OFF:      standingsHud->m_gapMode = StandingsHud::GapMode::PLAYER; break;
-                    case StandingsHud::GapMode::PLAYER:   standingsHud->m_gapMode = StandingsHud::GapMode::ADJACENT; break;
-                    case StandingsHud::GapMode::ADJACENT: standingsHud->m_gapMode = StandingsHud::GapMode::ALL; break;
-                    case StandingsHud::GapMode::ALL:      standingsHud->m_gapMode = StandingsHud::GapMode::OFF; break;
-                }
-                standingsHud->setDataDirty();
-                rebuildRenderData();
-            }
-            return true;
+        // Gap column (Off/Player/Adjacent/All) is a data-driven CYCLE control
+        // now - registered in renderTabStandings via ctx.addCycleControl.
 
         case ClickRegion::GAP_REFERENCE_TOGGLE:
             // Cycle forward: Leader → Player → Auto → Leader
@@ -162,97 +138,10 @@ bool SettingsHud::handleClickTabStandings(const ClickRegion& region) {
             }
             return true;
 
-        case ClickRegion::ANIMATION_MODE_UP:
-            if (standingsHud) {
-                using AM = StandingsHud::AnimationMode;
-                switch (standingsHud->m_animationMode) {
-                    case AM::OFF:     standingsHud->m_animationMode = AM::BASIC;   break;
-                    case AM::BASIC:   standingsHud->m_animationMode = AM::COLORED; break;
-                    case AM::COLORED: standingsHud->m_animationMode = AM::OFF;     break;
-                }
-                // Stop any in-flight animations immediately when transitioning to OFF;
-                // otherwise rows would keep sliding until the cleanup timer drains.
-                if (standingsHud->m_animationMode == AM::OFF) {
-                    standingsHud->m_activeAnimations.clear();
-                }
-                standingsHud->setDataDirty();
-                rebuildRenderData();
-            }
-            return true;
-
-        case ClickRegion::ANIMATION_MODE_DOWN:
-            if (standingsHud) {
-                using AM = StandingsHud::AnimationMode;
-                switch (standingsHud->m_animationMode) {
-                    case AM::OFF:     standingsHud->m_animationMode = AM::COLORED; break;
-                    case AM::BASIC:   standingsHud->m_animationMode = AM::OFF;     break;
-                    case AM::COLORED: standingsHud->m_animationMode = AM::BASIC;   break;
-                }
-                if (standingsHud->m_animationMode == AM::OFF) {
-                    standingsHud->m_activeAnimations.clear();
-                }
-                standingsHud->setDataDirty();
-                rebuildRenderData();
-            }
-            return true;
-
-        case ClickRegion::NAME_MODE_UP:
-            if (standingsHud) {
-                using NM = StandingsHud::NameMode;
-                switch (standingsHud->m_nameMode) {
-                    case NM::OFF:   standingsHud->m_nameMode = NM::SHORT; break;
-                    case NM::SHORT: standingsHud->m_nameMode = NM::LONG;  break;
-                    case NM::LONG:  standingsHud->m_nameMode = NM::OFF;   break;
-                }
-                standingsHud->setDataDirty();
-                rebuildRenderData();
-            }
-            return true;
-
-        case ClickRegion::NAME_MODE_DOWN:
-            if (standingsHud) {
-                using NM = StandingsHud::NameMode;
-                switch (standingsHud->m_nameMode) {
-                    case NM::OFF:   standingsHud->m_nameMode = NM::LONG;  break;
-                    case NM::SHORT: standingsHud->m_nameMode = NM::OFF;   break;
-                    case NM::LONG:  standingsHud->m_nameMode = NM::SHORT; break;
-                }
-                standingsHud->setDataDirty();
-                rebuildRenderData();
-            }
-            return true;
-
-        case ClickRegion::POSGAIN_MODE_UP:
-            // Cycle forward: Off -> Sector -> Lap -> Race -> Off. The widest-scope
-            // reference (Race, which falls back to the last S/F) sits last, since it's
-            // the broadest fallback of the chain.
-            if (standingsHud) {
-                using PM = StandingsHud::PosGainMode;
-                switch (standingsHud->m_posGainMode) {
-                    case PM::OFF:        standingsHud->m_posGainMode = PM::LAST_SPLIT; break;
-                    case PM::LAST_SPLIT: standingsHud->m_posGainMode = PM::LAST_SF;    break;
-                    case PM::LAST_SF:    standingsHud->m_posGainMode = PM::RACE_START; break;
-                    case PM::RACE_START: standingsHud->m_posGainMode = PM::OFF;        break;
-                }
-                standingsHud->setDataDirty();
-                rebuildRenderData();
-            }
-            return true;
-
-        case ClickRegion::POSGAIN_MODE_DOWN:
-            // Cycle backward: Off -> Race -> Lap -> Sector -> Off
-            if (standingsHud) {
-                using PM = StandingsHud::PosGainMode;
-                switch (standingsHud->m_posGainMode) {
-                    case PM::OFF:        standingsHud->m_posGainMode = PM::RACE_START; break;
-                    case PM::RACE_START: standingsHud->m_posGainMode = PM::LAST_SF;    break;
-                    case PM::LAST_SF:    standingsHud->m_posGainMode = PM::LAST_SPLIT; break;
-                    case PM::LAST_SPLIT: standingsHud->m_posGainMode = PM::OFF;        break;
-                }
-                standingsHud->setDataDirty();
-                rebuildRenderData();
-            }
-            return true;
+        // Animate positions / Rider name / Positions gained-lost are data-driven
+        // CYCLE controls now - registered in renderTabStandings via
+        // ctx.addCycleControl (stopping in-flight animations on OFF is the
+        // animation descriptor's postStep).
 
         default:
             return false;
@@ -324,9 +213,16 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
             case StandingsHud::AnimationMode::COLORED: animModeValue = "Colored"; break;
             default: animModeValue = "Basic"; break;
         }
-        ctx.addCycleControl("Animate positions", animModeValue, 10,
-            SettingsHud::ClickRegion::ANIMATION_MODE_DOWN,
-            SettingsHud::ClickRegion::ANIMATION_MODE_UP,
+        SettingsHud::CycleControl animCycle = SettingsHud::CycleControl::enumMember(
+            hud, &StandingsHud::m_animationMode, 3, hud);
+        // Stop any in-flight animations immediately when transitioning to OFF;
+        // otherwise rows would keep sliding until the cleanup timer drains.
+        animCycle.postStep = [hud]() {
+            if (hud->m_animationMode == StandingsHud::AnimationMode::OFF) {
+                hud->m_activeAnimations.clear();
+            }
+        };
+        ctx.addCycleControl("Animate positions", animModeValue, 10, animCycle,
             hud, true, hud->m_animationMode == StandingsHud::AnimationMode::OFF,
             "standings.animate_positions");
     }
@@ -379,11 +275,22 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
             case StandingsHud::PosGainMode::OFF:
             default:                                    posGainValue = "Off";    break;
         }
-        ctx.addCycleControl("Positions gained/lost", posGainValue, 10,
-            SettingsHud::ClickRegion::POSGAIN_MODE_DOWN,
-            SettingsHud::ClickRegion::POSGAIN_MODE_UP,
+        // The VISUAL cycle order (Off -> Sector -> Lap -> Race) is the reverse of
+        // the enum's numeric order (OFF, RACE_START, LAST_SF, LAST_SPLIT), so the
+        // get/set lambdas map through visual index v = (4 - enum) % 4 - a
+        // self-inverse mapping, hence identical in both directions.
+        SettingsHud::CycleControl posGainCycle;
+        posGainCycle.get = [hud]() {
+            return (4 - static_cast<int>(hud->m_posGainMode)) % 4;
+        };
+        posGainCycle.set = [hud](int v) {
+            hud->m_posGainMode = static_cast<StandingsHud::PosGainMode>((4 - v) % 4);
+        };
+        posGainCycle.count = 4;
+        posGainCycle.dirtyHud = hud;
+        ctx.addCycleControl("Positions gained/lost", posGainValue, 10, posGainCycle,
             hud, true, hud->m_posGainMode == StandingsHud::PosGainMode::OFF,
-            "standings.col_posgain");
+            "standings.col_posgain", /*tooltipOnArrows=*/false);
     }
     ctx.addToggleControl("Race number", (hud->m_enabledColumns & StandingsHud::COL_RACENUM) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_RACENUM, true,
@@ -398,8 +305,7 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
             default: nameModeValue = "Short"; break;
         }
         ctx.addCycleControl("Rider name", nameModeValue, 10,
-            SettingsHud::ClickRegion::NAME_MODE_DOWN,
-            SettingsHud::ClickRegion::NAME_MODE_UP,
+            SettingsHud::CycleControl::enumMember(hud, &StandingsHud::m_nameMode, 3, hud),
             hud, true, hud->m_nameMode == StandingsHud::NameMode::OFF,
             "standings.col_name");
     }
@@ -424,8 +330,7 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
             case StandingsHud::GapMode::ALL:      gapModeValue = "All"; break;
         }
         ctx.addCycleControl("Gap column", gapModeValue, 10,
-            SettingsHud::ClickRegion::GAP_COLUMN_TOGGLE,
-            SettingsHud::ClickRegion::GAP_SCOPE_TOGGLE,
+            SettingsHud::CycleControl::enumMember(hud, &StandingsHud::m_gapMode, 4, hud),
             hud, true, isOff, "standings.gap_mode");
     }
 

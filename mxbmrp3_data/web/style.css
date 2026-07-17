@@ -116,6 +116,7 @@ html {
     --font-digits:   var(--gf-digits, 'RobotoMono-Regular', monospace);
     --font-display:  var(--gf-title, 'EnterSansman-Italic', sans-serif);
     --font-small:    var(--gf-small, 'Tiny5-Regular', monospace);  /* small labels (charts axis/tags) */
+    --font-strong:   var(--gf-strong, 'RobotoMono-Bold', monospace);  /* synced from in-game STRONG; for custom.css use */
 
     /* Font scale (relative to root font-size) */
     --fs-lg:         1.2rem;              /* Timer                 */

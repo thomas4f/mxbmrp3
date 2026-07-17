@@ -6,6 +6,15 @@
 // ============================================================================
 "use strict";
 
+// --- Session Charts (carousel of race-progression line charts) ---
+// A horizontal page carousel like Best Sectors, but each page is an inline SVG
+// line chart of a whole race: lap chart (position per lap), race trace (cumulative
+// time vs a reference pace), gap-to-leader, and pace. All four are derived here
+// from the raw per-rider lap series the plugin sends (lastData.laps), a direct port
+// of the in-game session_charts_math.h so the overlay reads identically to the HUD.
+// Race only; auto-shows once when the leader finishes, and is hotkey-forceable.
+
+// Distinct-hue line palette (a port of the in-game POSITION_PALETTE): high
 // separation, no greys/blacks that would vanish as thin lines. Cycled by draw order.
 var CHART_PALETTE = [
     "#e6194b", "#3cb44b", "#0082c8", "#f58231", "#911eb4", "#46f0f0",
@@ -167,7 +176,7 @@ function chartName(type, isRace) {
 }
 // Compact seconds label, e.g. "12.3s" (or "1:23.4" for >=60s). Rounds to tenths
 // BEFORE splitting into minutes so 59.96s can't print "0:60.0". Mirrors the C++
-// formatSecs() in session_charts_hud.cpp — keep them in step (same integer rounding).
+// formatSecs() in hud/session_charts_math.h — keep them in step (same integer rounding).
 function fmtChartSecs(ms, showSign) {
     var sign = showSign ? (ms > 0 ? "+" : (ms < 0 ? "-" : "")) : "";
     var tenths = Math.round(Math.abs(ms) / 100);

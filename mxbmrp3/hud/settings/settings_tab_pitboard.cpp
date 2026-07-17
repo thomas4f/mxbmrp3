@@ -6,54 +6,10 @@
 #include "../settings_hud.h"
 #include "../pitboard_hud.h"
 
-// Static member function of SettingsHud - handles click events for Pitboard tab
-bool SettingsHud::handleClickTabPitboard(const ClickRegion& region) {
-    PitboardHud* pitboardHud = dynamic_cast<PitboardHud*>(region.targetHud);
-    if (!pitboardHud) pitboardHud = m_pitboard;
-
-    switch (region.type) {
-        case ClickRegion::PITBOARD_SHOW_MODE_UP:
-            if (pitboardHud) {
-                int mode = static_cast<int>(pitboardHud->m_displayMode);
-                mode = (mode + 1) % 3;  // 3 modes: Always, Pit, Splits
-                pitboardHud->m_displayMode = static_cast<PitboardHud::DisplayMode>(mode);
-                rebuildRenderData();
-            }
-            return true;
-
-        case ClickRegion::PITBOARD_SHOW_MODE_DOWN:
-            if (pitboardHud) {
-                int mode = static_cast<int>(pitboardHud->m_displayMode);
-                mode = (mode + 2) % 3;  // Go backward
-                pitboardHud->m_displayMode = static_cast<PitboardHud::DisplayMode>(mode);
-                rebuildRenderData();
-            }
-            return true;
-
-        case ClickRegion::PITBOARD_GAP_MODE_UP:
-            if (pitboardHud) {
-                int mode = static_cast<int>(pitboardHud->m_gapCompareMode);
-                mode = (mode + 1) % PitboardHud::GAP_COUNT;
-                pitboardHud->m_gapCompareMode = static_cast<uint8_t>(mode);
-                pitboardHud->setDataDirty();
-                rebuildRenderData();
-            }
-            return true;
-
-        case ClickRegion::PITBOARD_GAP_MODE_DOWN:
-            if (pitboardHud) {
-                int mode = static_cast<int>(pitboardHud->m_gapCompareMode);
-                mode = (mode + PitboardHud::GAP_COUNT - 1) % PitboardHud::GAP_COUNT;
-                pitboardHud->m_gapCompareMode = static_cast<uint8_t>(mode);
-                pitboardHud->setDataDirty();
-                rebuildRenderData();
-            }
-            return true;
-
-        default:
-            return false;
-    }
-}
+// Note: the Pitboard tab has no tab-specific click handler anymore - Show mode
+// and Gap compare are data-driven CYCLE controls (registered in
+// renderTabPitboard via ctx.addCycleControl) and the rest uses the common
+// handlers.
 
 // Static member function of SettingsHud - inherits friend access to PitboardHud
 BaseHud* SettingsHud::renderTabPitboard(SettingsLayoutContext& ctx) {
@@ -80,8 +36,8 @@ BaseHud* SettingsHud::renderTabPitboard(SettingsLayoutContext& ctx) {
         displayModeText = "At Splits";
     }
     ctx.addCycleControl("Show mode", displayModeText, 10,
-        SettingsHud::ClickRegion::PITBOARD_SHOW_MODE_DOWN,
-        SettingsHud::ClickRegion::PITBOARD_SHOW_MODE_UP,
+        SettingsHud::CycleControl::enumMember(hud, &PitboardHud::m_displayMode,
+            PitboardHud::MODE_COUNT, hud),
         hud, true, false, "pitboard.show_mode");
     ctx.addSpacing(0.5f);
 
@@ -124,8 +80,8 @@ BaseHud* SettingsHud::renderTabPitboard(SettingsLayoutContext& ctx) {
     }
     bool gapEnabled = (hud->m_enabledRows & PitboardHud::ROW_GAP) != 0;
     ctx.addCycleControl("Gap compare", gapModeText, 10,
-        SettingsHud::ClickRegion::PITBOARD_GAP_MODE_DOWN,
-        SettingsHud::ClickRegion::PITBOARD_GAP_MODE_UP,
+        SettingsHud::CycleControl::enumMember(hud, &PitboardHud::m_gapCompareMode,
+            PitboardHud::GAP_COUNT, hud),
         hud, gapEnabled, false, "pitboard.gap_compare");
 
     return hud;

@@ -20,26 +20,10 @@ bool SettingsHud::handleClickTabStats(const ClickRegion& region) {
     if (!hud) return false;
 
     switch (region.type) {
-        case ClickRegion::STATS_VISIBILITY_UP: {
-            int mode = static_cast<int>(hud->m_visibilityMode);
-            mode = (mode + 1) % static_cast<int>(StatsHud::VisibilityMode::COUNT);
-            hud->m_visibilityMode = static_cast<StatsHud::VisibilityMode>(mode);
-            hud->m_finishAutoShown = false;
-            hud->m_wasInPits = false;
-            hud->setDataDirty();
-            setDataDirty();
-            return true;
-        }
-        case ClickRegion::STATS_VISIBILITY_DOWN: {
-            int mode = static_cast<int>(hud->m_visibilityMode);
-            mode = (mode - 1 + static_cast<int>(StatsHud::VisibilityMode::COUNT)) % static_cast<int>(StatsHud::VisibilityMode::COUNT);
-            hud->m_visibilityMode = static_cast<StatsHud::VisibilityMode>(mode);
-            hud->m_finishAutoShown = false;
-            hud->m_wasInPits = false;
-            hud->setDataDirty();
-            setDataDirty();
-            return true;
-        }
+        // Show mode is a data-driven CYCLE control now - registered in
+        // renderTabStats via ctx.addCycleControl (its auto-show latch resets are
+        // the descriptor's postStep).
+
         case ClickRegion::STATS_SHOW_LAP_TOGGLE: {
             hud->m_showLap = !hud->m_showLap;
             hud->setDataDirty();
@@ -79,12 +63,21 @@ BaseHud* SettingsHud::renderTabStats(SettingsLayoutContext& ctx) {
     // === LAYOUT SECTION ===
     ctx.addSectionHeader("Layout");
 
-    // Visibility mode
+    // Visibility mode. postStep resets the transient auto-show latches on any
+    // mode change (exactly what the old dedicated handlers did); arrows had no
+    // per-type tooltip fallback, so keep the tooltip on the row region only.
     const char* visModeName = StatsHud::getVisibilityModeName(hud->m_visibilityMode);
-    ctx.addCycleControl("Show mode", visModeName, 10,
-        SettingsHud::ClickRegion::STATS_VISIBILITY_DOWN,
-        SettingsHud::ClickRegion::STATS_VISIBILITY_UP,
-        hud, true, false, "stats.visibility_mode");
+    {
+        SettingsHud::CycleControl visCycle = SettingsHud::CycleControl::enumMember(
+            hud, &StatsHud::m_visibilityMode,
+            static_cast<int>(StatsHud::VisibilityMode::COUNT), hud);
+        visCycle.postStep = [hud]() {
+            hud->m_finishAutoShown = false;
+            hud->m_wasInPits = false;
+        };
+        ctx.addCycleControl("Show mode", visModeName, 10, visCycle,
+            hud, true, false, "stats.visibility_mode", /*tooltipOnArrows=*/false);
+    }
 
     // Column toggles
     ctx.addToggleControl("Last lap", hud->m_showLap,

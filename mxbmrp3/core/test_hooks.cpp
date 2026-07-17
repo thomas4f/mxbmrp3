@@ -28,6 +28,7 @@
 #include "../hud/timing_hud.h"
 #include "../hud/gamepad_widget.h"
 #include "xinput_reader.h"
+#include "rumble_profile_manager.h"
 #include "input_manager.h"
 #include "analytics_manager.h"
 #include "plugin_manager.h"
@@ -36,12 +37,19 @@
 #include "xinput_reader.h"
 #include "profile_manager.h"
 #include "director_manager.h"
+#include "stats_manager.h"
+#if GAME_HAS_FMX
+#include "fmx_manager.h"
+#endif
 #include "update_checker.h"
 #include "update_downloader.h"
 #include "http_server.h"
 #include "../game/game_config.h"
 #if GAME_HAS_RECORDER
 #include "event_recorder.h"
+#endif
+#if GAME_HAS_RECORDS_PROVIDER
+#include "../hud/records_hud.h"
 #endif
 #include <string>
 #include <vector>
@@ -159,6 +167,39 @@ __declspec(dllexport) void MXBMRP3_Test_LoadSettings(const char* savePath) {
 // current tab's name out. Read/written through the same accessors save/load use.
 __declspec(dllexport) void MXBMRP3_Test_SetActiveTab(const char* name) {
     HudManager::getInstance().getSettingsHud().setActiveTabByName(name ? name : "");
+}
+
+// Count / click the shared stepped-control regions on the ACTIVE settings tab,
+// through the real click path (hit-test -> dispatchRegion -> applySteppedControl).
+// The settings-click surface is otherwise reachable only via real OS mouse input;
+// this seam makes the converted steppers' step/clamp/wrap/acceleration behavior
+// assertable headless. holdRepeats forces the hold-repeat counter (accel tiers:
+// <6 -> x1, <16 -> x5, else x10) for the duration of the one click.
+__declspec(dllexport) int MXBMRP3_Test_SettingsSteppedCount(int up) {
+    return HudManager::getInstance().getSettingsHud().testSteppedRegionCount(up != 0);
+}
+__declspec(dllexport) int MXBMRP3_Test_SettingsClickStepped(int index, int up, int holdRepeats) {
+    return HudManager::getInstance().getSettingsHud().testClickStepped(index, up != 0, holdRepeats) ? 1 : 0;
+}
+
+// Cycle-control twin of the stepped seam: count / click the shared
+// CYCLE_UP/CYCLE_DOWN regions on the ACTIVE settings tab through the real click
+// path (hit-test -> dispatchRegion -> applyCycleControl). No hold tier - cycles
+// never accelerate.
+__declspec(dllexport) int MXBMRP3_Test_SettingsCycleCount(int up) {
+    return HudManager::getInstance().getSettingsHud().testCycleRegionCount(up != 0);
+}
+__declspec(dllexport) int MXBMRP3_Test_SettingsClickCycle(int index, int up) {
+    return HudManager::getInstance().getSettingsHud().testClickCycle(index, up != 0) ? 1 : 0;
+}
+
+// The ACTIVE rumble config's Bumps light-motor strength. Reads through the same
+// getRumbleConfig() resolution the Rumble tab binds to (global, or the current
+// bike's profile in per-bike mode), so the stepped-control profile-binding
+// guard is assertable headless: a click swallowed after a bike swap leaves BOTH
+// the old and the new profile's value unchanged.
+__declspec(dllexport) float MXBMRP3_Test_RumbleActiveBumpsLight() {
+    return XInputReader::getInstance().getRumbleConfig().suspensionEffect.lightStrength;
 }
 
 // Open/close the settings menu (SettingsHud) — mirrors the TOGGLE_SETTINGS hotkey.
@@ -395,6 +436,23 @@ __declspec(dllexport) int MXBMRP3_Test_GetRealTimeGap(int raceNum) {
     return s ? s->realTimeGap : -1;
 }
 
+// Whether the rider is in the "recently seen in a RaceTrackPosition batch" set
+// that feeds liveGapValid. Internal state (the JSON flag ANDs this with other
+// conditions, so it can't be observed in isolation there) — used to pin that
+// removeRaceEntry() evicts a departed rider so a raceNum reuse doesn't inherit
+// a stale "active" bit.
+__declspec(dllexport) int MXBMRP3_Test_HasActiveTrackPos(int raceNum) {
+    return PluginData::getInstance().hasActiveTrackPos(raceNum) ? 1 : 0;
+}
+
+// Number of riders in the derived hazard-ahead list (the cached vector NoticesHud
+// consumes). Internal state (not in /api/state) — used to pin that removeRaceEntry()
+// invalidates the cache: no callbacks arrive while the player sits in menus, so a
+// departed rider left in the cached list would linger there indefinitely.
+__declspec(dllexport) int MXBMRP3_Test_HazardRaceNumCount() {
+    return static_cast<int>(PluginData::getInstance().getHazardRaceNums().size());
+}
+
 // Run the update extract/install pipeline against destDir with an in-memory ZIP,
 // bypassing the WinHTTP download. Exercises the real backup → extract → verify →
 // rollback path (and the locked-file retry). Returns 1 on success, 0 on failure;
@@ -591,9 +649,38 @@ __declspec(dllexport) void MXBMRP3_Test_MapSetRotate(int on) {
 __declspec(dllexport) void MXBMRP3_Test_MapSetZoom(int on) {
     HudManager::getInstance().getMapHud().setZoomEnabled(on != 0);
 }
-// detail: 0=AUTO, 1=HIGH (1.0m), 2=LOW (4.0m)
+// Legacy preset shim, kept so older drivers/tests keep meaning the same thing:
+// 0=AUTO (adaptive, 100%), 1=HIGH (fixed, 200% = 1.0m), 2=LOW (fixed, 60% ≈
+// 3.3m). New code uses the percent/adaptive hooks below.
 __declspec(dllexport) void MXBMRP3_Test_MapSetDetail(int detail) {
-    HudManager::getInstance().getMapHud().setDetail(static_cast<MapHud::Detail>(detail));
+    MapHud& map = HudManager::getInstance().getMapHud();
+    switch (detail) {
+        case 1:  map.setAdaptiveDetail(false); map.setDetailScale(2.0f);  break;
+        case 2:  map.setAdaptiveDetail(false); map.setDetailScale(0.6f);  break;
+        default: map.setAdaptiveDetail(true);  map.setDetailScale(1.0f); break;  // old AUTO == 100%, not the new default
+    }
+}
+// Detail scale as the settings row shows it: a percentage (20-200).
+__declspec(dllexport) void MXBMRP3_Test_MapSetDetailPct(int pct) {
+    HudManager::getInstance().getMapHud().setDetailScale(static_cast<float>(pct) / 100.0f);
+}
+// Outline control as the combined settings row drives it: 0 = off, else on with
+// the rim width at pct/100 (100 = the classic 1.4x pass multiplier).
+__declspec(dllexport) void MXBMRP3_Test_MapSetOutline(int pct) {
+    MapHud& map = HudManager::getInstance().getMapHud();
+    if (pct <= 0) { map.setShowOutline(false); return; }
+    map.setShowOutline(true);
+    map.setOutlineWidthScale(static_cast<float>(pct) / 100.0f);
+}
+__declspec(dllexport) void MXBMRP3_Test_MapSetAdaptive(int on) {
+    HudManager::getInstance().getMapHud().setAdaptiveDetail(on != 0);
+}
+// Read back the detail state as percent + 1000*adaptive (e.g. 1100 = adaptive
+// 100%, 60 = fixed 60%), so the legacy-INI migration can be asserted headless.
+__declspec(dllexport) int MXBMRP3_Test_MapDetailState() {
+    const MapHud& map = HudManager::getInstance().getMapHud();
+    int pct = static_cast<int>(map.getDetailScale() * 100.0f + 0.5f);
+    return pct + (map.getAdaptiveDetail() ? 1000 : 0);
 }
 // Map render stats: quad count + a position checksum (sum of every quad vertex
 // X and Y) + a non-finite flag. The checksum is a cheap geometry fingerprint used
@@ -613,6 +700,23 @@ __declspec(dllexport) int MXBMRP3_Test_MapQuadStats(double* sumX, double* sumY, 
     if (sumX) *sumX = sx;
     if (sumY) *sumY = sy;
     if (anyNonFinite) *anyNonFinite = bad;
+    return static_cast<int>(quads.size());
+}
+// Sum-of-SQUARES variant of the checksum above. The plain sum is blind to ribbon
+// WIDTH changes (left/right edges move symmetrically, center ± w*perp, so the
+// width term cancels); the squared sum keeps it (2c^2 + 2w^2), so tests can
+// assert that a width-only change actually moved the vertices.
+__declspec(dllexport) int MXBMRP3_Test_MapQuadSumSq(double* sumSqX, double* sumSqY) {
+    const auto& quads = HudManager::getInstance().getMapHud().getQuads();
+    double sx2 = 0, sy2 = 0;
+    for (const auto& q : quads) {
+        for (int i = 0; i < 4; ++i) {
+            double x = q.m_aafPos[i][0], y = q.m_aafPos[i][1];
+            sx2 += x * x; sy2 += y * y;
+        }
+    }
+    if (sumSqX) *sumSqX = sx2;
+    if (sumSqY) *sumSqY = sy2;
     return static_cast<int>(quads.size());
 }
 // Read + reset the accumulated per-phase rebuild time (microseconds), rebuild
@@ -696,6 +800,12 @@ __declspec(dllexport) void MXBMRP3_Test_SetPluginThreadFlag(int on) {
 __declspec(dllexport) void MXBMRP3_Test_PluginThreadFlush() {
     PluginThread::getInstance().flush();
 }
+// Fault injection: kill the worker with an exception that escapes threadMain(),
+// so the abort self-heal (inline fallback + reconcileEnabled join/drain/latch)
+// can be asserted. See plugin_thread_test.cpp.
+__declspec(dllexport) void MXBMRP3_Test_PluginThreadAbortWorker() {
+    PluginThread::getInstance().testAbortWorker();
+}
 __declspec(dllexport) void MXBMRP3_Test_PluginThreadStop() {
     // Clear the flag too, so the game-thread reconcileEnabled() (in handleDraw) doesn't
     // immediately restart the worker on the next draw.
@@ -728,6 +838,47 @@ __declspec(dllexport) int MXBMRP3_Test_XInputConsumePending(int* left8, int* rig
     if (idx) *idx = c;
     return has ? 1 : 0;
 }
+// --- Rumble effect math seam. updateRumbleFromTelemetry() runs on every real
+// RunTelemetry (the handler derives the spike/slip inputs from the raw frame),
+// but its outputs — the per-channel contributions and the combined motor values,
+// i.e. the numbers users tune in the Rumble tab — are in-game-only (the rumble
+// graph + the motor feed), never in /api/state. These read them back, and flip
+// the per-bike-profile mode / reload the profile JSON without a plugin restart,
+// so rumble_effect_test can pin the math and the JSON load/fallback. The send
+// POLICY stays pinned separately by xinput_thread_test. ---
+__declspec(dllexport) void MXBMRP3_Test_RumbleSetPerBike(int on) {
+    XInputReader::getInstance().getGlobalRumbleConfig().usePerBikeEffects = on != 0;
+}
+// Master enable. Off (the default), updateRumbleFromTelemetry still computes
+// every per-channel value (the graph stays live) but feeds the motors 0 — so a
+// test asserting the COMBINED heavy/light values must switch it on.
+__declspec(dllexport) void MXBMRP3_Test_RumbleSetEnabled(int on) {
+    XInputReader::getInstance().getGlobalRumbleConfig().enabled = on != 0;
+}
+__declspec(dllexport) void MXBMRP3_Test_RumbleLoadProfiles(const char* savePath) {
+    RumbleProfileManager::getInstance().load(savePath ? savePath : "");
+}
+__declspec(dllexport) int MXBMRP3_Test_RumbleHasProfile() {
+    return RumbleProfileManager::getInstance().hasProfileForCurrentBike() ? 1 : 0;
+}
+__declspec(dllexport) void MXBMRP3_Test_RumbleChannels(
+        float* heavy, float* light, float* susp, float* suspRear, float* spin,
+        float* lock, float* lockRear, float* wheelie, float* rpm, float* slide,
+        float* surface, float* steer) {
+    const XInputReader& xi = XInputReader::getInstance();
+    if (heavy)    *heavy    = xi.getLastHeavyMotor();
+    if (light)    *light    = xi.getLastLightMotor();
+    if (susp)     *susp     = xi.getLastSuspensionRumble();
+    if (suspRear) *suspRear = xi.getLastSuspensionRumbleRear();
+    if (spin)     *spin     = xi.getLastWheelspinRumble();
+    if (lock)     *lock     = xi.getLastLockupRumble();
+    if (lockRear) *lockRear = xi.getLastLockupRumbleRear();
+    if (wheelie)  *wheelie  = xi.getLastWheelieRumble();
+    if (rpm)      *rpm      = xi.getLastRpmRumble();
+    if (slide)    *slide    = xi.getLastSlideRumble();
+    if (surface)  *surface  = xi.getLastSurfaceRumble();
+    if (steer)    *steer    = xi.getLastSteerRumble();
+}
 // Read the live PerformanceHud metrics (fps / plugin ms / plugin %), to assert they
 // stay live in plugin-thread mode (the worker publishes them, not DrawHandler).
 __declspec(dllexport) void MXBMRP3_Test_GetDebugMetrics(float* fps, float* pluginMs, float* pct) {
@@ -736,6 +887,131 @@ __declspec(dllexport) void MXBMRP3_Test_GetDebugMetrics(float* fps, float* plugi
     if (pluginMs) *pluginMs = m.pluginTimeMs;
     if (pct) *pct = m.pluginPercent;
 }
+
+#if GAME_HAS_FMX
+// --- FMX trick-detection seam. FmxManager's whole state machine runs on the wall
+// clock (dt integration, the 0.5s airborne/ground debounces, the 0.75s landing
+// grace, the 2s chain window), so back-to-back headless callbacks give dt≈0 and
+// nothing ever advances. The injectable clock (Fmx::clockNow) lets a test step
+// simulated time with each telemetry frame; this hook sets it (µs; -1 restores
+// the real clock). ---
+__declspec(dllexport) void MXBMRP3_Test_FmxSetNowUs(long long us) {
+    Fmx::testSetNowUs(us);
+}
+
+// Read the FMX score/chain/active-trick state in one call. The FMX score is
+// in-game-only (never in /api/state), so detection results are read directly.
+// lastTrickType is the most recent trick banked into the chain — or, once the
+// chain has completed/failed (which moves the chain into the end animation),
+// the final type snapshotted there. Any out-pointer may be null.
+__declspec(dllexport) void MXBMRP3_Test_FmxState(int* sessionScore, int* tricksCompleted,
+        int* tricksFailed, int* chainCount, int* chainScore,
+        int* activeState, int* activeType, int* lastTrickType) {
+    const FmxManager& fmx = FmxManager::getInstance();
+    const Fmx::FmxScore& score = fmx.getScore();
+    if (sessionScore)    *sessionScore    = score.sessionScore;
+    if (tricksCompleted) *tricksCompleted = score.tricksCompleted;
+    if (tricksFailed)    *tricksFailed    = score.tricksFailed;
+    if (chainCount)      *chainCount      = score.chainCount;
+    if (chainScore)      *chainScore      = score.chainScore;
+    if (activeState)     *activeState     = static_cast<int>(fmx.getActiveTrick().state);
+    if (activeType)      *activeType      = static_cast<int>(fmx.getActiveTrick().type);
+    if (lastTrickType) {
+        const auto& chain = fmx.getChainTricks();
+        *lastTrickType = static_cast<int>(chain.empty()
+            ? fmx.getChainEndAnimation().finalType
+            : chain.back().type);
+    }
+}
+#endif
+
+// --- Stats odometer seam. Distance integrates speed over the WALL-CLOCK gap
+// between telemetry calls, so the odometer test injects the clock (µs; -1
+// restores the real one) to make each tick's dt — and the expected distance —
+// exact. ---
+__declspec(dllexport) void MXBMRP3_Test_StatsSetNowUs(long long us) {
+    StatsManager::testSetNowUs(us);
+}
+
+// Read the live odometer state: the current bike's odometer + the session trip
+// (both meters), plus the ~100m dirty-coalescing internals (distance accumulated
+// since the last dirty mark, and the dirty flag itself) — neither observable
+// through the stats file, because a save only ever happens off-track. Any
+// out-pointer may be null.
+__declspec(dllexport) void MXBMRP3_Test_StatsOdometerState(double* bikeOdometer,
+        double* sessionTrip, double* unsavedDistance, int* dirty) {
+    const StatsManager& sm = StatsManager::getInstance();
+    if (bikeOdometer)    *bikeOdometer    = sm.getOdometerForCurrentBike();
+    if (sessionTrip)     *sessionTrip     = sm.getSessionTripDistance();
+    if (unsavedDistance) *unsavedDistance = sm.testUnsavedDistance();
+    if (dirty)           *dirty           = sm.testIsDirty() ? 1 : 0;
+}
+
+// Force a stats save (the same save() the RunStop/RunDeinit leave-track flush
+// calls; a no-op when clean). Lets a test establish a known-clean baseline
+// before asserting the dirty-coalescing behaviour.
+__declspec(dllexport) void MXBMRP3_Test_StatsSave() {
+    StatsManager::getInstance().save();
+}
+
+#if GAME_HAS_RECORDS_PROVIDER
+// --- Records fetch/parse seam. The records fetch is user/auto-triggered network
+// I/O whose response parsing was previously only testable live in-game. These
+// hooks (a) run a canned response body through the REAL parse path and read the
+// parsed records back (records_parse_test), and (b) arm a stubbed fetch worker
+// (sleep + canned response, no network) so a test can hold a fetch in flight
+// and pin the join contract: HudManager::clear() joins the fetch thread BEFORE
+// nulling the cached HUD pointers the worker touches on completion (TimingHud). ---
+//
+// Parse `json` as `provider` (0=CBR, 1=MXB_RANKED) through the real parse path.
+// Returns the parsed record count, or -1 on a parse error.
+__declspec(dllexport) int MXBMRP3_Test_RecordsParse(int provider, const char* json) {
+    RecordsHud& hud = HudManager::getInstance().getRecordsHud();
+    if (!hud.testParseResponse(provider, json ? json : "")) return -1;
+    return hud.testRecordCount();
+}
+// Current parsed-record count (readable independent of the last parse result).
+__declspec(dllexport) int MXBMRP3_Test_RecordsCount() {
+    return HudManager::getInstance().getRecordsHud().testRecordCount();
+}
+// Copy one parsed record out (strings truncated to the caller's caps; any
+// out-pointer may be null). Returns 1 if index is valid, 0 otherwise.
+__declspec(dllexport) int MXBMRP3_Test_RecordsGet(int index,
+        char* rider, int riderCap, char* bike, int bikeCap,
+        int* laptime, int* s1, int* s2, int* s3, char* date, int dateCap) {
+    RecordsHud::RecordEntry e;
+    if (!HudManager::getInstance().getRecordsHud().testGetRecord(index, e)) return 0;
+    auto copy = [](char* dst, int cap, const char* src) {
+        if (!dst || cap <= 0) return;
+        strncpy(dst, src, cap - 1);
+        dst[cap - 1] = '\0';
+    };
+    copy(rider, riderCap, e.rider);
+    copy(bike, bikeCap, e.bike);
+    copy(date, dateCap, e.date);
+    if (laptime) *laptime = e.laptime;
+    if (s1) *s1 = e.sector1;
+    if (s2) *s2 = e.sector2;
+    if (s3) *s3 = e.sector3;
+    return 1;
+}
+// Arm/disarm the fetch-worker stub (delayMs < 0 disarms): the worker sleeps,
+// then completes with `response` through the normal parse/notify path.
+__declspec(dllexport) void MXBMRP3_Test_RecordsSetFetchStub(int delayMs, const char* response) {
+    RecordsHud::testSetFetchStub(delayMs, response ? response : "");
+}
+// Start a real fetch (same cooldown/state gate as the Compare button).
+// Returns 1 if a fetch is now in flight, 0 if the gate refused it.
+__declspec(dllexport) int MXBMRP3_Test_RecordsStartFetch() {
+    RecordsHud& hud = HudManager::getInstance().getRecordsHud();
+    hud.testStartFetch();
+    return hud.testFetchState() == static_cast<int>(RecordsHud::FetchState::FETCHING) ? 1 : 0;
+}
+// Fetch state as int (0=IDLE, 1=FETCHING, 2=SUCCESS, 3=FETCH_ERROR).
+__declspec(dllexport) int MXBMRP3_Test_RecordsFetchState() {
+    return HudManager::getInstance().getRecordsHud().testFetchState();
+}
+#endif
 
 #if GAME_HAS_RECORDER
 // Callback-tape recorder: open a tape at an explicit path and finalize it. Lets a

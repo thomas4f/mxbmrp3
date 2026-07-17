@@ -65,6 +65,7 @@ MapHud::MapHud()
       m_bRotateToPlayer(false), m_fLastRotationAngle(0.0f),
       m_fLastPlayerX(0.0f), m_fLastPlayerZ(0.0f),
       m_bShowOutline(true),
+      m_fOutlineWidthScale(DEFAULT_OUTLINE_WIDTH_SCALE),
       m_bShowTrackMarkers(true),
       m_riderColorMode(RiderColorMode::RELATIVE_POS),
       m_labelMode(LabelMode::RACE_NUM),
@@ -75,7 +76,9 @@ MapHud::MapHud()
       m_bZoomEnabled(false),
       m_fZoomDistance(DEFAULT_ZOOM_DISTANCE),
       m_fMarkerScale(DEFAULT_MARKER_SCALE),
-      m_detail(Detail::AUTO) {
+      m_fDetailScale(DEFAULT_DETAIL_SCALE),
+      m_bAdaptiveDetail(true),
+      m_fDetailBaseline(DEFAULT_DETAIL_BASELINE) {
 
     // One-time setup
     DEBUG_INFO("MapHud created");
@@ -675,13 +678,21 @@ void MapHud::rebuildRenderData() {
     // Calculate clip bounds for track rendering (absolute screen coords)
     // Clip to the map area below the title
     // Inset by half outline width since we clip on centerline but edges extend beyond
-    // OUTLINE_WIDTH_MULTIPLIER lives in map_hud_internal.h (also reused by marker triangles).
+    // OUTLINE_WIDTH_MULTIPLIER lives in map_hud_internal.h (markers size to the
+    // track fill width now, so this clip inset is its only remaining consumer).
     // Calculate effective track width for clipping (same ratio as renderTrack)
     float clipTrackWidth = m_maxX - m_minX;
     float clipTrackHeight = m_maxY - m_minY;
     float clipBaseWidthMeters = std::min(clipTrackWidth, clipTrackHeight) * TRACK_WIDTH_BASE_RATIO;
     float clipEffectiveWidthMeters = std::clamp(clipBaseWidthMeters * m_fTrackWidthScale, 1.0f, 30.0f);
-    float outlineHalfWidth = clipEffectiveWidthMeters * 0.5f * OUTLINE_WIDTH_MULTIPLIER * m_fTrackScale;
+    // User outline scale acts on the RIM (the extra width past the fill), so the
+    // classic 1.4x pass multiplier becomes 1 + 0.4*scale — 100% keeps the exact
+    // shipped look. The clip inset follows the effective multiplier so a fat
+    // outline isn't cut off at the map edge (outline OFF keeps the historical
+    // 1.4x inset rather than shrinking the clip rect).
+    float effOutlineMult = 1.0f + (OUTLINE_WIDTH_MULTIPLIER - 1.0f) * m_fOutlineWidthScale;
+    float clipOutlineMult = m_bShowOutline ? effOutlineMult : OUTLINE_WIDTH_MULTIPLIER;
+    float outlineHalfWidth = clipEffectiveWidthMeters * 0.5f * clipOutlineMult * m_fTrackScale;
     float clipLeft = x + m_fOffsetX + outlineHalfWidth;
     float clipTop = y + titleHeight + m_fOffsetY + outlineHalfWidth;
     float clipRight = x + width + m_fOffsetX - outlineHalfWidth;
@@ -723,8 +734,11 @@ void MapHud::rebuildRenderData() {
     ribbonKey.clipRight = clipRight;
     ribbonKey.clipBottom = clipBottom;
     ribbonKey.trackWidthScale = m_fTrackWidthScale;
+    ribbonKey.outlineWidthScale = m_fOutlineWidthScale;
     ribbonKey.zoomDistance = m_fZoomDistance;
-    ribbonKey.detail = static_cast<int>(m_detail);
+    ribbonKey.detailScale = m_fDetailScale;
+    ribbonKey.adaptiveDetail = m_bAdaptiveDetail;
+    ribbonKey.detailBaseline = m_fDetailBaseline;
     ribbonKey.zoomEnabled = m_bZoomEnabled;
     ribbonKey.showOutline = m_bShowOutline;
     ribbonKey.showTitle = m_bShowTitle;
@@ -748,7 +762,7 @@ void MapHud::rebuildRenderData() {
         ++g_mapRibbonMiss;
 #endif
         if (m_bShowOutline) {
-            renderTrack(rotation, outlineColor, OUTLINE_WIDTH_MULTIPLIER,
+            renderTrack(rotation, outlineColor, effOutlineMult,
                         clipLeft, clipTop, clipRight, clipBottom);  // White outline
         }
         renderTrack(rotation, fillColor, 1.0f,
@@ -837,6 +851,7 @@ void MapHud::resetToDefaults() {
     m_fAnchorY = 0.0113039f;
     m_bRotateToPlayer = false;
     m_bShowOutline = true;  // Enable outline by default
+    m_fOutlineWidthScale = DEFAULT_OUTLINE_WIDTH_SCALE;
     m_bShowTrackMarkers = true;  // Show S/F, sector markers and segment lines by default
     m_riderColorMode = RiderColorMode::RELATIVE_POS;  // Default to relative position coloring
     m_labelMode = LabelMode::RACE_NUM;
@@ -846,7 +861,9 @@ void MapHud::resetToDefaults() {
     m_bZoomEnabled = false;
     m_fZoomDistance = DEFAULT_ZOOM_DISTANCE;
     m_fMarkerScale = DEFAULT_MARKER_SCALE;
-    m_detail = Detail::AUTO;
+    m_fDetailScale = DEFAULT_DETAIL_SCALE;
+    m_bAdaptiveDetail = true;
+    m_fDetailBaseline = DEFAULT_DETAIL_BASELINE;
     // Reset bounds to trigger "first rebuild" behavior in rebuildRenderData
     // This ensures position is recalculated from anchor values
     setBounds(0.0f, 0.0f, 0.0f, 0.0f);

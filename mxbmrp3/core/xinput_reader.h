@@ -269,8 +269,19 @@ public:
     void setControllerIndex(int index);
     int getControllerIndex() const { return m_controllerIndex; }
 
-    // Check if a specific controller index is connected (0-3)
+    // Check if a specific controller index is connected (0-3).
+    // LIVE poll: XInputGetState on an EMPTY slot is the ms-class device-enumeration
+    // path — only the I/O thread's 1 Hz scan (and one-shot init) should call this.
+    // UI/frame-thread consumers use isControllerConnectedCached() below.
     static bool isControllerConnected(int index);
+
+    // Connection state as last observed by the I/O thread's 1 Hz scan — no XInput
+    // call, safe from any thread at any rate. May lag a plug/unplug by up to a
+    // second, which is fine for UI (the settings controller list).
+    bool isControllerConnectedCached(int index) const {
+        if (index < 0 || index > 3) return false;
+        return m_lastConnectedState[index].load(std::memory_order_relaxed);
+    }
 
     // Check if any controller connection state changed since last call
     // Returns true once per state change (consumes the flag)
@@ -419,10 +430,11 @@ private:
     // polls the freshly-selected slot immediately.
     std::atomic<bool> m_pollImmediately{ false };
 
-    // Connection state tracking for change detection (I/O-thread-owned now). The
-    // all-slot scan is throttled to 1 Hz: XInputGetState on a disconnected slot is
-    // notoriously slow (device enumeration). The result only feeds the settings UI.
-    bool m_lastConnectedState[4];
+    // Connection state tracking for change detection. WRITTEN by the I/O thread's
+    // 1 Hz all-slot scan (XInputGetState on a disconnected slot is notoriously slow
+    // — device enumeration), READ from other threads via isControllerConnectedCached
+    // (settings UI / getControllerName), hence atomic.
+    std::atomic<bool> m_lastConnectedState[4];
     std::atomic<bool> m_connectionStateChanged{ false };
     std::chrono::steady_clock::time_point m_lastConnectionScan;
 

@@ -80,3 +80,46 @@ TEST_CASE("track position: a rider outside the batch doesn't get a stale live ga
 
     host.shutdown();
 }
+
+TEST_CASE("track position: removeRaceEntry invalidates the cached hazard list") {
+    // The hazard-ahead list NoticesHud consumes is a DERIVED cache
+    // (m_cachedHazardRaceNums) rebuilt only when m_hazardsDirty is set. A departed
+    // rider must dirty it in removeRaceEntry(): with no callbacks arriving while
+    // the player sits in menus, no later RaceTrackPosition batch is guaranteed to
+    // refresh it, so a stale entry would otherwise linger indefinitely (and a
+    // rejoiner reusing the number would look like an instant hazard).
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\trackpos_hazard\\");
+
+    host.eventInit("TestTrack", "Alice");
+    host.raceEvent("TestTrack");
+    // Pit-start shape (session arrives already in progress, default state 16):
+    // never enters the grid-start grace that suppresses hazards.
+    host.session(RACE1, /*numLaps=*/0, /*lengthMs=*/300000);
+    host.addEntry(10, "Alice");   // display rider
+    host.addEntry(22, "Bob");     // will crash ahead of Alice
+    host.draw();
+    host.spectateVehicles({ { 10, "Alice" }, { 22, "Bob" } }, /*curSelectionIndex=*/0);
+
+    host.classify(RACE1, 1000, {
+        { .num = 10, .laps = 1, .gap = 0 },
+        { .num = 22, .laps = 1, .gap = 500 },
+    });
+    // Seed batch first: the hazard state machine only evaluates riders already in
+    // m_trackPositions (the first sighting just initializes their entry). Then Bob
+    // crashes just ahead of Alice (within the awareness window) -> one hazard
+    // (crashed = immediate confirm, no stationary timer needed).
+    host.raceTrackPosition({ { .num = 10, .trackPos = 0.09f },
+                             { .num = 22, .trackPos = 0.13f } });
+    host.raceTrackPosition({ { .num = 10, .trackPos = 0.10f },
+                             { .num = 22, .trackPos = 0.13f, .crashed = 1 } });
+    REQUIRE(host.hazardRaceNumCount() == 1);   // also builds the cache (clears dirty)
+
+    // Bob disconnects. No further callbacks — the cache must be invalidated by the
+    // removal itself, not by a future batch that may never arrive.
+    host.removeEntry(22);
+    CHECK(host.hazardRaceNumCount() == 0);     // stale pre-fix: still listed Bob
+
+    host.shutdown();
+}

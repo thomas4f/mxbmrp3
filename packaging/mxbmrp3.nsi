@@ -84,6 +84,50 @@
     RMDir /r "$userDocuments\PiBoSo\${DocsFolder}\${PLUGIN_NAME_LC}"
 !macroend
 
+; Install the plugin DLO + the whole mxbmrp3_data payload into one game's plugins
+; folder. ONE definition for all three games — the per-game sections used to carry
+; three hand-duplicated copies of this file list, so a new data subfolder (or a new
+; file extension in an existing one) silently shipped to fewer than all games.
+; Subfolder globs are *.* on purpose: the build workspace only contains files that
+; are meant to ship, and extension-globs (e.g. fonts\*.ttf) are exactly the drift
+; trap this macro removes. When ADDING a new mxbmrp3_data subfolder: add it here
+; (once), plus sw.js PRECACHE_URLS / AssetManager::syncUserAssets per CLAUDE.md.
+!macro INSTALL_GAME_FILES InstallPath DloFile GameName
+  DetailPrint "Installing ${PLUGIN_NAME} for ${GameName}..."
+
+  ; Plugin DLO
+  SetOutPath "${InstallPath}"
+  File "${PLUGIN_SOURCE_PATH}\${DloFile}"
+
+  ; Fonts
+  SetOutPath "${InstallPath}\mxbmrp3_data\fonts"
+  File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\fonts\*.fnt"
+
+  ; Textures
+  SetOutPath "${InstallPath}\mxbmrp3_data\textures"
+  File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\textures\*.tga"
+
+  ; Icons
+  SetOutPath "${InstallPath}\mxbmrp3_data\icons"
+  File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\icons\*.tga"
+
+  ; Web overlay files (root files + each asset subfolder)
+  SetOutPath "${InstallPath}\mxbmrp3_data\web"
+  File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\*.*"
+  SetOutPath "${InstallPath}\mxbmrp3_data\web\js"
+  File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\js\*.*"
+  SetOutPath "${InstallPath}\mxbmrp3_data\web\fonts"
+  File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\fonts\*.*"
+  SetOutPath "${InstallPath}\mxbmrp3_data\web\icons"
+  File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\icons\*.*"
+
+  ; Web overlay logos (optional - the folder may legitimately be empty)
+  SetOutPath "${InstallPath}\mxbmrp3_data\web\logos"
+  File /nonfatal "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\logos\*.*"
+
+  DetailPrint "${GameName} installation complete."
+!macroend
+
 ; ---------------------------------------------------------------------------
 ; On-demand elevation helpers
 ;
@@ -965,115 +1009,18 @@ Section "Install ${PLUGIN_NAME}" Section_InstallPlugin
     ${EndIf}
   ${EndIf}
 
-  ; Install for MX Bikes if selected (paths already include \plugins)
+  ; Install for each selected game (paths already include \plugins). The file list
+  ; lives ONCE in INSTALL_GAME_FILES so all three games always ship the same payload.
   ${If} $isMXBikesSelected == "1"
-    DetailPrint "Installing ${PLUGIN_NAME} for MX Bikes..."
-
-    ; Plugin DLO
-    SetOutPath "$MXBikesInstallPath"
-    File "${PLUGIN_SOURCE_PATH}\${MXBIKES_DLO}"
-
-    ; Fonts
-    SetOutPath "$MXBikesInstallPath\mxbmrp3_data\fonts"
-    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\fonts\*.fnt"
-
-    ; Textures
-    SetOutPath "$MXBikesInstallPath\mxbmrp3_data\textures"
-    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\textures\*.tga"
-
-    ; Icons
-    SetOutPath "$MXBikesInstallPath\mxbmrp3_data\icons"
-    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\icons\*.tga"
-
-    ; Web overlay files
-    SetOutPath "$MXBikesInstallPath\mxbmrp3_data\web"
-    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\*.*"
-    SetOutPath "$MXBikesInstallPath\mxbmrp3_data\web\js"
-    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\js\*.js"
-    SetOutPath "$MXBikesInstallPath\mxbmrp3_data\web\fonts"
-    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\fonts\*.ttf"
-    SetOutPath "$MXBikesInstallPath\mxbmrp3_data\web\icons"
-    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\icons\*.svg"
-
-    ; Web overlay logos
-    SetOutPath "$MXBikesInstallPath\mxbmrp3_data\web\logos"
-    File /nonfatal "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\logos\*.png"
-
-    DetailPrint "MX Bikes installation complete."
+    !insertmacro INSTALL_GAME_FILES "$MXBikesInstallPath" "${MXBIKES_DLO}" "MX Bikes"
   ${EndIf}
 
-  ; Install for GP Bikes if selected (paths already include \plugins)
   ${If} $isGPBikesSelected == "1"
-    DetailPrint "Installing ${PLUGIN_NAME} for GP Bikes..."
-
-    ; Plugin DLO
-    SetOutPath "$GPBikesInstallPath"
-    File "${PLUGIN_SOURCE_PATH}\${GPBIKES_DLO}"
-
-    ; Fonts
-    SetOutPath "$GPBikesInstallPath\mxbmrp3_data\fonts"
-    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\fonts\*.fnt"
-
-    ; Textures
-    SetOutPath "$GPBikesInstallPath\mxbmrp3_data\textures"
-    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\textures\*.tga"
-
-    ; Icons
-    SetOutPath "$GPBikesInstallPath\mxbmrp3_data\icons"
-    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\icons\*.tga"
-
-    ; Web overlay files
-    SetOutPath "$GPBikesInstallPath\mxbmrp3_data\web"
-    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\*.*"
-    SetOutPath "$GPBikesInstallPath\mxbmrp3_data\web\js"
-    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\js\*.js"
-    SetOutPath "$GPBikesInstallPath\mxbmrp3_data\web\fonts"
-    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\fonts\*.ttf"
-    SetOutPath "$GPBikesInstallPath\mxbmrp3_data\web\icons"
-    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\icons\*.svg"
-
-    ; Web overlay logos
-    SetOutPath "$GPBikesInstallPath\mxbmrp3_data\web\logos"
-    File /nonfatal "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\logos\*.png"
-
-    DetailPrint "GP Bikes installation complete."
+    !insertmacro INSTALL_GAME_FILES "$GPBikesInstallPath" "${GPBIKES_DLO}" "GP Bikes"
   ${EndIf}
 
-  ; Install for Kart Racing Pro if selected (paths already include \plugins)
   ${If} $isKRPSelected == "1"
-    DetailPrint "Installing ${PLUGIN_NAME} for Kart Racing Pro..."
-
-    ; Plugin DLO
-    SetOutPath "$KRPInstallPath"
-    File "${PLUGIN_SOURCE_PATH}\${KRP_DLO}"
-
-    ; Fonts
-    SetOutPath "$KRPInstallPath\mxbmrp3_data\fonts"
-    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\fonts\*.fnt"
-
-    ; Textures
-    SetOutPath "$KRPInstallPath\mxbmrp3_data\textures"
-    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\textures\*.tga"
-
-    ; Icons
-    SetOutPath "$KRPInstallPath\mxbmrp3_data\icons"
-    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\icons\*.tga"
-
-    ; Web overlay files
-    SetOutPath "$KRPInstallPath\mxbmrp3_data\web"
-    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\*.*"
-    SetOutPath "$KRPInstallPath\mxbmrp3_data\web\js"
-    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\js\*.js"
-    SetOutPath "$KRPInstallPath\mxbmrp3_data\web\fonts"
-    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\fonts\*.ttf"
-    SetOutPath "$KRPInstallPath\mxbmrp3_data\web\icons"
-    File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\icons\*.svg"
-
-    ; Web overlay logos
-    SetOutPath "$KRPInstallPath\mxbmrp3_data\web\logos"
-    File /nonfatal "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\logos\*.png"
-
-    DetailPrint "Kart Racing Pro installation complete."
+    !insertmacro INSTALL_GAME_FILES "$KRPInstallPath" "${KRP_DLO}" "Kart Racing Pro"
   ${EndIf}
 
   ; Write uninstaller to INSTDIR (first selected game's plugins folder)

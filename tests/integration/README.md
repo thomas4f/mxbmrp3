@@ -24,8 +24,11 @@ The cross-build powers the Layer-2 and Layer-3 tests (see `../TESTING.md`):
 ./run_perf.sh           # CPU performance baseline (50-rider grid)
 ```
 
-117 translation units compile clean into a genuine PE32+ DLL exporting the full
-PiBoSo plugin API. Under Wine it runs the real lifecycle: all managers
+Every `*.cpp` under `core/`, `handlers/`, `hud/`, `diagnostics/` (minus the
+`Makefile`'s `EXCLUDE`, currently `discord_manager`), plus `mxb_api.cpp` and the
+miniz `.c` files, compiles clean into a genuine PE32+ DLL exporting the full PiBoSo
+plugin API — ~150 translation units (the `Makefile` prints the exact
+`TUs = N C++ + M C` count on each build). Under Wine it runs the real lifecycle: all managers
 initialize, settings load/save round-trips, HUDs rebuild render primitives, and
 the HTTP overlay server starts on :8080. Feature parity with the shipping build
 **except** Discord Rich Presence and Aptabase analytics (see below). All of it is

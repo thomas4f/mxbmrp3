@@ -202,6 +202,11 @@ private:
     // Whether the panel's content is showing now: Always -> yes; At-Splits -> only during the
     // freeze after a split/lap (or continuously in segment mode); Off -> never.
     bool contentVisible() const;
+    // Whether the custom segment timer owns the panel: at least one segment armed AND the
+    // local player is actually on track. It's a player-only training tool fed by the
+    // player's own telemetry, so while spectating/replaying another rider the panel shows
+    // that rider's regular timing instead (the single gate for all segment-mode sites).
+    bool segmentModeActive() const;
     int calculateGap(int currentTime, int referenceTime) const;
     void resetLiveTimingState();
 

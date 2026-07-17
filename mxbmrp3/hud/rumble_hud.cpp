@@ -38,8 +38,15 @@ void RumbleHud::update() {
         return;
     }
 
-    // Always rebuild - rumble values update every frame
-    rebuildRenderData();
+    // Rebuild only when new telemetry arrived (data dirty fires per
+    // InputTelemetry change, ~100Hz while riding) or layout changed. The rumble
+    // effect values and their history deques are all telemetry-driven, so the
+    // graph output is identical between telemetry ticks — rebuilding every render
+    // frame (~2,600 line-segment quads with all channels on) wasted most of the
+    // work at 240fps. Same fix TelemetryHud received for the identical pattern.
+    if (isDataDirty() || isLayoutDirty()) {
+        rebuildRenderData();
+    }
     clearDataDirty();
     clearLayoutDirty();
 }
@@ -57,7 +64,10 @@ void RumbleHud::resetToDefaults() {
     setPosition(0.7315f, 0.37547f);
     setScale(1.0f);
     m_bShowMaxMarkers = false;  // Max markers OFF by default
-    m_maxMarkerLingerFrames = 60;  // ~1 second at 60fps
+    // Linger counts REBUILDS, which since the dirty-gate fix tick at telemetry
+    // rate (~100Hz while riding), not render fps — so 60 ≈ 0.6s on track (and
+    // markers freeze while paused/in menus, when no telemetry arrives).
+    m_maxMarkerLingerFrames = 60;
 
     // Reset max tracking state
     for (int i = 0; i < 2; ++i) {
@@ -66,34 +76,6 @@ void RumbleHud::resetToDefaults() {
     }
 
     setDataDirty();
-}
-
-void RumbleHud::addHistoryGraph(const std::deque<float>& history, unsigned long color,
-                                 float x, float y, float width, float height,
-                                 float lineThickness, size_t maxHistory) {
-    if (history.size() < 2) return;
-
-    // Calculate point spacing based on max history size for consistent graph width
-    float pointSpacing = width / (maxHistory - 1);
-
-    // Offset so newest data is always at right edge (scrolls left as data fills in)
-    size_t offset = maxHistory - history.size();
-
-    // Draw line segments connecting consecutive points
-    for (size_t i = 0; i < history.size() - 1; ++i) {
-        float value1 = std::max(0.0f, std::min(1.0f, history[i]));
-        float value2 = std::max(0.0f, std::min(1.0f, history[i + 1]));
-
-        // Skip segments where both values are near zero
-        if (value1 < 0.01f && value2 < 0.01f) continue;
-
-        float x1 = x + (offset + i) * pointSpacing;
-        float x2 = x + (offset + i + 1) * pointSpacing;
-        float y1 = y + height - (value1 * height);
-        float y2 = y + height - (value2 * height);
-
-        addLineSegment(x1, y1, x2, y2, color, lineThickness);
-    }
 }
 
 void RumbleHud::addVerticalBar(float x, float y, float barWidth, float barHeight,
@@ -263,84 +245,64 @@ void RumbleHud::rebuildRenderData() {
     float graphStartX = contentStartX;
     float graphStartY = currentY;
 
-    // Grid lines (0%, 50%, 100%)
-    unsigned long gridColor = this->getColor(ColorSlot::MUTED);
-    float gridLineThickness = 0.001f * getScale();
-
-    const float gridValues[] = {
-        GRID_LINE_100_PERCENT,
-        GRID_LINE_50_PERCENT,
-        GRID_LINE_0_PERCENT
-    };
-    for (float gridValue : gridValues) {
-        float gridY = graphStartY + graphHeight - (gridValue * graphHeight);
-        addHorizontalGridLine(graphStartX, gridY, graphWidth, gridColor, gridLineThickness);
-    }
-
-    // Y-axis labels (effect %, matching the grid lines), like the other graph HUDs
-    {
-        float labelX = graphStartX + dims.paddingH * 0.2f;
-        unsigned long axisColor = this->getColor(ColorSlot::TERTIARY);
-        int axisFont = this->getFont(FontCategory::SMALL);
-        addString("100%", labelX, graphStartY, Justify::LEFT, axisFont, axisColor, dims.fontSizeSmall);
-        addString("50%", labelX, graphStartY + graphHeight * 0.5f, Justify::LEFT, axisFont, axisColor, dims.fontSizeSmall);
-        addString("0%", labelX, graphStartY + graphHeight - dims.lineHeightSmall, Justify::LEFT, axisFont, axisColor, dims.fontSizeSmall);
-    }
+    // Grid lines (0%, 50%, 100%) + Y-axis effect% labels — the shared strip-chart
+    // frame, like the other graph HUDs.
+    addStripChartFrame(graphStartX, graphStartY, graphWidth, graphHeight, "100%", "50%", "0%", dims);
 
     // Draw all graphs overlaid (only when on track - no telemetry data during spectate/replay)
-    float lineThickness = 0.002f * getScale();
+    float lineThickness = stripChartLineThickness();
     size_t maxHistory = XInputReader::MAX_RUMBLE_HISTORY;
 
     if (isOnTrack) {
         // Effects first (underneath motors)
         if (bumpsPrimaryOn) {
-            addHistoryGraph(xinput.getSuspensionHistory(), bumpsColor,
+            addStripChartHistoryLine(xinput.getSuspensionHistory(), bumpsColor,
                             graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
         }
         // Rear suspension trace (only when split) in the rear-wheel color
         if (bumpsRearOn) {
-            addHistoryGraph(xinput.getSuspensionRearHistory(), bumpsRearColor,
+            addStripChartHistoryLine(xinput.getSuspensionRearHistory(), bumpsRearColor,
                             graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
         }
         if (config.wheelspinEffect.isEnabled()) {
-            addHistoryGraph(xinput.getWheelspinHistory(), wheelColor,
+            addStripChartHistoryLine(xinput.getWheelspinHistory(), wheelColor,
                             graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
         }
         if (lockupPrimaryOn) {
-            addHistoryGraph(xinput.getLockupHistory(), lockupColor,
+            addStripChartHistoryLine(xinput.getLockupHistory(), lockupColor,
                             graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
         }
         // Rear lockup trace (only when split) in the rear-wheel color
         if (lockupRearOn) {
-            addHistoryGraph(xinput.getLockupRearHistory(), lockupRearColor,
+            addStripChartHistoryLine(xinput.getLockupRearHistory(), lockupRearColor,
                             graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
         }
         if (config.wheelieEffect.isEnabled()) {
-            addHistoryGraph(xinput.getWheelieHistory(), wheelieColor,
+            addStripChartHistoryLine(xinput.getWheelieHistory(), wheelieColor,
                             graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
         }
         if (config.rpmEffect.isEnabled()) {
-            addHistoryGraph(xinput.getRpmHistory(), rpmColor,
+            addStripChartHistoryLine(xinput.getRpmHistory(), rpmColor,
                             graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
         }
         if (config.slideEffect.isEnabled()) {
-            addHistoryGraph(xinput.getSlideHistory(), slideColor,
+            addStripChartHistoryLine(xinput.getSlideHistory(), slideColor,
                             graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
         }
         if (config.surfaceEffect.isEnabled()) {
-            addHistoryGraph(xinput.getSurfaceHistory(), terrainColor,
+            addStripChartHistoryLine(xinput.getSurfaceHistory(), terrainColor,
                             graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
         }
         if (config.steerEffect.isEnabled()) {
-            addHistoryGraph(xinput.getSteerHistory(), steerColor,
+            addStripChartHistoryLine(xinput.getSteerHistory(), steerColor,
                             graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
         }
         if (config.revLimiterEffect.isEnabled()) {
-            addHistoryGraph(xinput.getRevLimiterHistory(), revLimColor,
+            addStripChartHistoryLine(xinput.getRevLimiterHistory(), revLimColor,
                             graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
         }
         if (config.pitLimiterEffect.isEnabled()) {
-            addHistoryGraph(xinput.getPitLimiterHistory(), pitLimColor,
+            addStripChartHistoryLine(xinput.getPitLimiterHistory(), pitLimColor,
                             graphStartX, graphStartY, graphWidth, graphHeight, lineThickness, maxHistory);
         }
     }

@@ -220,5 +220,11 @@ function applyFonts(fonts) {
     if (fonts.small && availableFonts[fonts.small]) {
         root.setProperty("--gf-small", "'" + fonts.small + "'");
     }
+    // No shipped rule consumes --gf-strong yet, but the plugin sends it and a
+    // custom.css can use var(--font-strong) — keep the sync complete so the
+    // in-game STRONG font choice follows through like the other categories.
+    if (fonts.strong && availableFonts[fonts.strong]) {
+        root.setProperty("--gf-strong", "'" + fonts.strong + "'");
+    }
 }
 

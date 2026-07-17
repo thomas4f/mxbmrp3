@@ -15,18 +15,12 @@
 #include "../../game/game_config.h"
 #include <cmath>
 #include <algorithm>
+#include <functional>
 
-// Helper to adjust rumble effect strengths (used by many click handlers)
-static void adjustEffectStrength(float& value, bool increase, int stepMultiplier = 1) {
-    float step = 0.01f * stepMultiplier;
-    if (increase) {
-        value = std::round(std::min(value + step, 1.0f) * 100.0f) / 100.0f;
-    } else {
-        value = std::round(std::max(value - step, 0.0f) * 100.0f) / 100.0f;
-    }
-}
-
-// Member function of SettingsHud - handles click events for Rumble tab
+// Member function of SettingsHud - handles click events for Rumble tab.
+// Only the toggles live here: the per-effect Light/Heavy/Min/Max stepper arrows
+// are shared data-driven STEPPED_UP/STEPPED_DOWN controls registered in
+// renderTabRumble and applied by SettingsHud::applySteppedControl.
 bool SettingsHud::handleClickTabRumble(const ClickRegion& region) {
     // Use per-bike or global config for effect settings
     RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
@@ -39,58 +33,6 @@ bool SettingsHud::handleClickTabRumble(const ClickRegion& region) {
         if (isPerBikeMode) {
             RumbleProfileManager::getInstance().markDirty();
         }
-    };
-
-    // Lambda for effect adjustments - avoids massive switch statement
-    auto handleEffectControl = [&](RumbleEffect& effect,
-        ClickRegion::Type lightDown, ClickRegion::Type lightUp,
-        ClickRegion::Type heavyDown, ClickRegion::Type heavyUp,
-        ClickRegion::Type minDown, ClickRegion::Type minUp,
-        ClickRegion::Type maxDown, ClickRegion::Type maxUp,
-        float minStep = 1.0f, float maxStep = 1.0f, float maxLimit = 100.0f) -> bool {
-        int sm = getHoldStepMultiplier();
-        if (region.type == lightUp) {
-            adjustEffectStrength(effect.lightStrength, true, sm);
-            markProfileDirty();
-            setDataDirty();
-            return true;
-        } else if (region.type == lightDown) {
-            adjustEffectStrength(effect.lightStrength, false, sm);
-            markProfileDirty();
-            setDataDirty();
-            return true;
-        } else if (region.type == heavyUp) {
-            adjustEffectStrength(effect.heavyStrength, true, sm);
-            markProfileDirty();
-            setDataDirty();
-            return true;
-        } else if (region.type == heavyDown) {
-            adjustEffectStrength(effect.heavyStrength, false, sm);
-            markProfileDirty();
-            setDataDirty();
-            return true;
-        } else if (region.type == minUp) {
-            effect.minInput = std::min(effect.minInput + minStep, maxLimit);
-            markProfileDirty();
-            setDataDirty();
-            return true;
-        } else if (region.type == minDown) {
-            effect.minInput = std::max(effect.minInput - minStep, 0.0f);
-            markProfileDirty();
-            setDataDirty();
-            return true;
-        } else if (region.type == maxUp) {
-            effect.maxInput = std::min(effect.maxInput + maxStep, maxLimit);
-            markProfileDirty();
-            setDataDirty();
-            return true;
-        } else if (region.type == maxDown) {
-            effect.maxInput = std::max(effect.maxInput - maxStep, effect.minInput);
-            markProfileDirty();
-            setDataDirty();
-            return true;
-        }
-        return false;
     };
 
     switch (region.type) {
@@ -155,154 +97,8 @@ bool SettingsHud::handleClickTabRumble(const ClickRegion& region) {
         // so it works regardless of which tab is active
 
         default:
-            break;
+            return false;
     }
-
-    // Handle suspension effect controls (m/s, max 50)
-    if (handleEffectControl(config.suspensionEffect,
-        ClickRegion::RUMBLE_SUSP_LIGHT_DOWN, ClickRegion::RUMBLE_SUSP_LIGHT_UP,
-        ClickRegion::RUMBLE_SUSP_HEAVY_DOWN, ClickRegion::RUMBLE_SUSP_HEAVY_UP,
-        ClickRegion::RUMBLE_SUSP_MIN_DOWN, ClickRegion::RUMBLE_SUSP_MIN_UP,
-        ClickRegion::RUMBLE_SUSP_MAX_DOWN, ClickRegion::RUMBLE_SUSP_MAX_UP,
-        1.0f, 1.0f, 50.0f)) {
-        return true;
-    }
-
-    // Handle suspension FRONT controls (used only when split)
-    if (handleEffectControl(config.suspensionEffectFront,
-        ClickRegion::RUMBLE_SUSP_FRONT_LIGHT_DOWN, ClickRegion::RUMBLE_SUSP_FRONT_LIGHT_UP,
-        ClickRegion::RUMBLE_SUSP_FRONT_HEAVY_DOWN, ClickRegion::RUMBLE_SUSP_FRONT_HEAVY_UP,
-        ClickRegion::RUMBLE_SUSP_FRONT_MIN_DOWN, ClickRegion::RUMBLE_SUSP_FRONT_MIN_UP,
-        ClickRegion::RUMBLE_SUSP_FRONT_MAX_DOWN, ClickRegion::RUMBLE_SUSP_FRONT_MAX_UP,
-        1.0f, 1.0f, 50.0f)) {
-        config.suspensionSplitInitialized = true;  // user has set the split values; don't reseed
-        return true;
-    }
-
-    // Handle suspension REAR controls (used only when split)
-    if (handleEffectControl(config.suspensionEffectRear,
-        ClickRegion::RUMBLE_SUSP_REAR_LIGHT_DOWN, ClickRegion::RUMBLE_SUSP_REAR_LIGHT_UP,
-        ClickRegion::RUMBLE_SUSP_REAR_HEAVY_DOWN, ClickRegion::RUMBLE_SUSP_REAR_HEAVY_UP,
-        ClickRegion::RUMBLE_SUSP_REAR_MIN_DOWN, ClickRegion::RUMBLE_SUSP_REAR_MIN_UP,
-        ClickRegion::RUMBLE_SUSP_REAR_MAX_DOWN, ClickRegion::RUMBLE_SUSP_REAR_MAX_UP,
-        1.0f, 1.0f, 50.0f)) {
-        config.suspensionSplitInitialized = true;
-        return true;
-    }
-
-    // Handle wheelspin effect controls (ratio, max 50)
-    if (handleEffectControl(config.wheelspinEffect,
-        ClickRegion::RUMBLE_WHEEL_LIGHT_DOWN, ClickRegion::RUMBLE_WHEEL_LIGHT_UP,
-        ClickRegion::RUMBLE_WHEEL_HEAVY_DOWN, ClickRegion::RUMBLE_WHEEL_HEAVY_UP,
-        ClickRegion::RUMBLE_WHEEL_MIN_DOWN, ClickRegion::RUMBLE_WHEEL_MIN_UP,
-        ClickRegion::RUMBLE_WHEEL_MAX_DOWN, ClickRegion::RUMBLE_WHEEL_MAX_UP,
-        1.0f, 1.0f, 50.0f)) {
-        return true;
-    }
-
-    // Handle brake lockup effect controls (ratio 0-1, max 1.0)
-    if (handleEffectControl(config.brakeLockupEffect,
-        ClickRegion::RUMBLE_LOCKUP_LIGHT_DOWN, ClickRegion::RUMBLE_LOCKUP_LIGHT_UP,
-        ClickRegion::RUMBLE_LOCKUP_HEAVY_DOWN, ClickRegion::RUMBLE_LOCKUP_HEAVY_UP,
-        ClickRegion::RUMBLE_LOCKUP_MIN_DOWN, ClickRegion::RUMBLE_LOCKUP_MIN_UP,
-        ClickRegion::RUMBLE_LOCKUP_MAX_DOWN, ClickRegion::RUMBLE_LOCKUP_MAX_UP,
-        0.05f, 0.05f, 1.0f)) {
-        return true;
-    }
-
-    // Handle brake lockup FRONT controls (used only when split)
-    if (handleEffectControl(config.brakeLockupEffectFront,
-        ClickRegion::RUMBLE_LOCKUP_FRONT_LIGHT_DOWN, ClickRegion::RUMBLE_LOCKUP_FRONT_LIGHT_UP,
-        ClickRegion::RUMBLE_LOCKUP_FRONT_HEAVY_DOWN, ClickRegion::RUMBLE_LOCKUP_FRONT_HEAVY_UP,
-        ClickRegion::RUMBLE_LOCKUP_FRONT_MIN_DOWN, ClickRegion::RUMBLE_LOCKUP_FRONT_MIN_UP,
-        ClickRegion::RUMBLE_LOCKUP_FRONT_MAX_DOWN, ClickRegion::RUMBLE_LOCKUP_FRONT_MAX_UP,
-        0.05f, 0.05f, 1.0f)) {
-        config.brakeLockupSplitInitialized = true;  // user has set the split values; don't reseed
-        return true;
-    }
-
-    // Handle brake lockup REAR controls (used only when split)
-    if (handleEffectControl(config.brakeLockupEffectRear,
-        ClickRegion::RUMBLE_LOCKUP_REAR_LIGHT_DOWN, ClickRegion::RUMBLE_LOCKUP_REAR_LIGHT_UP,
-        ClickRegion::RUMBLE_LOCKUP_REAR_HEAVY_DOWN, ClickRegion::RUMBLE_LOCKUP_REAR_HEAVY_UP,
-        ClickRegion::RUMBLE_LOCKUP_REAR_MIN_DOWN, ClickRegion::RUMBLE_LOCKUP_REAR_MIN_UP,
-        ClickRegion::RUMBLE_LOCKUP_REAR_MAX_DOWN, ClickRegion::RUMBLE_LOCKUP_REAR_MAX_UP,
-        0.05f, 0.05f, 1.0f)) {
-        config.brakeLockupSplitInitialized = true;
-        return true;
-    }
-
-    // Handle wheelie effect controls (degrees, max 90)
-    if (handleEffectControl(config.wheelieEffect,
-        ClickRegion::RUMBLE_WHEELIE_LIGHT_DOWN, ClickRegion::RUMBLE_WHEELIE_LIGHT_UP,
-        ClickRegion::RUMBLE_WHEELIE_HEAVY_DOWN, ClickRegion::RUMBLE_WHEELIE_HEAVY_UP,
-        ClickRegion::RUMBLE_WHEELIE_MIN_DOWN, ClickRegion::RUMBLE_WHEELIE_MIN_UP,
-        ClickRegion::RUMBLE_WHEELIE_MAX_DOWN, ClickRegion::RUMBLE_WHEELIE_MAX_UP,
-        1.0f, 1.0f, 90.0f)) {
-        return true;
-    }
-
-    // Handle RPM effect controls (RPM, max 20000)
-    if (handleEffectControl(config.rpmEffect,
-        ClickRegion::RUMBLE_RPM_LIGHT_DOWN, ClickRegion::RUMBLE_RPM_LIGHT_UP,
-        ClickRegion::RUMBLE_RPM_HEAVY_DOWN, ClickRegion::RUMBLE_RPM_HEAVY_UP,
-        ClickRegion::RUMBLE_RPM_MIN_DOWN, ClickRegion::RUMBLE_RPM_MIN_UP,
-        ClickRegion::RUMBLE_RPM_MAX_DOWN, ClickRegion::RUMBLE_RPM_MAX_UP,
-        100.0f, 100.0f, 20000.0f)) {
-        return true;
-    }
-
-    // Handle slide effect controls (degrees, max 90)
-    if (handleEffectControl(config.slideEffect,
-        ClickRegion::RUMBLE_SLIDE_LIGHT_DOWN, ClickRegion::RUMBLE_SLIDE_LIGHT_UP,
-        ClickRegion::RUMBLE_SLIDE_HEAVY_DOWN, ClickRegion::RUMBLE_SLIDE_HEAVY_UP,
-        ClickRegion::RUMBLE_SLIDE_MIN_DOWN, ClickRegion::RUMBLE_SLIDE_MIN_UP,
-        ClickRegion::RUMBLE_SLIDE_MAX_DOWN, ClickRegion::RUMBLE_SLIDE_MAX_UP,
-        1.0f, 1.0f, 90.0f)) {
-        return true;
-    }
-
-    // Handle surface effect controls (m/s, max 200 ~720km/h)
-    if (handleEffectControl(config.surfaceEffect,
-        ClickRegion::RUMBLE_SURFACE_LIGHT_DOWN, ClickRegion::RUMBLE_SURFACE_LIGHT_UP,
-        ClickRegion::RUMBLE_SURFACE_HEAVY_DOWN, ClickRegion::RUMBLE_SURFACE_HEAVY_UP,
-        ClickRegion::RUMBLE_SURFACE_MIN_DOWN, ClickRegion::RUMBLE_SURFACE_MIN_UP,
-        ClickRegion::RUMBLE_SURFACE_MAX_DOWN, ClickRegion::RUMBLE_SURFACE_MAX_UP,
-        1.39f, 1.39f, 200.0f)) {
-        return true;
-    }
-
-    // Handle steer effect controls (Nm, max 200)
-    if (handleEffectControl(config.steerEffect,
-        ClickRegion::RUMBLE_STEER_LIGHT_DOWN, ClickRegion::RUMBLE_STEER_LIGHT_UP,
-        ClickRegion::RUMBLE_STEER_HEAVY_DOWN, ClickRegion::RUMBLE_STEER_HEAVY_UP,
-        ClickRegion::RUMBLE_STEER_MIN_DOWN, ClickRegion::RUMBLE_STEER_MIN_UP,
-        ClickRegion::RUMBLE_STEER_MAX_DOWN, ClickRegion::RUMBLE_STEER_MAX_UP,
-        1.0f, 1.0f, 200.0f)) {
-        return true;
-    }
-
-    // Handle rev limiter controls (percent of limiter RPM, 1% steps, allow buffer past 100)
-    if (handleEffectControl(config.revLimiterEffect,
-        ClickRegion::RUMBLE_REVLIM_LIGHT_DOWN, ClickRegion::RUMBLE_REVLIM_LIGHT_UP,
-        ClickRegion::RUMBLE_REVLIM_HEAVY_DOWN, ClickRegion::RUMBLE_REVLIM_HEAVY_UP,
-        ClickRegion::RUMBLE_REVLIM_MIN_DOWN, ClickRegion::RUMBLE_REVLIM_MIN_UP,
-        ClickRegion::RUMBLE_REVLIM_MAX_DOWN, ClickRegion::RUMBLE_REVLIM_MAX_UP,
-        1.0f, 1.0f, 110.0f)) {
-        return true;
-    }
-
-    // Handle pit limiter controls (binary input; min/max barely matter, Light/Heavy do)
-    if (handleEffectControl(config.pitLimiterEffect,
-        ClickRegion::RUMBLE_PITLIM_LIGHT_DOWN, ClickRegion::RUMBLE_PITLIM_LIGHT_UP,
-        ClickRegion::RUMBLE_PITLIM_HEAVY_DOWN, ClickRegion::RUMBLE_PITLIM_HEAVY_UP,
-        ClickRegion::RUMBLE_PITLIM_MIN_DOWN, ClickRegion::RUMBLE_PITLIM_MIN_UP,
-        ClickRegion::RUMBLE_PITLIM_MAX_DOWN, ClickRegion::RUMBLE_PITLIM_MAX_UP,
-        0.05f, 0.05f, 1.0f)) {
-        return true;
-    }
-
-    return false;
 }
 
 // Static member function of SettingsHud - inherits friend access to RumbleHud
@@ -375,20 +171,69 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
         PluginConstants::Fonts::getStrong(), colors.getPrimary(), ctx.fontSize);
     ctx.currentY += ctx.lineHeightNormal;
 
-    // Lambda for rumble effect rows
+    // The stepped descriptors below bind raw pointers into the ACTIVE rumble
+    // config resolved above. In per-bike profile mode that object changes when
+    // the player swaps bikes — which can happen while this menu sits open — and
+    // a click through the stale layout would then edit the PREVIOUS bike's
+    // profile. Capture the bound config's identity here and validate it at
+    // click time (SteppedControl::valid): on mismatch the click is swallowed
+    // and the layout rebuilt against the right profile. The const getRumbleConfig
+    // overload is used deliberately — it never auto-creates a profile, and it
+    // falls back to the global config when the new bike has no profile yet
+    // (which also compares unequal to a stale per-bike binding, as required).
+    // Per-bike profiles live in a node-based map, so the bound pointer stays
+    // valid (just no longer active) after a swap.
+    RumbleConfig* boundConfig = &rumbleConfig;
+    auto configStillActive = [boundConfig]() {
+        const XInputReader& reader = XInputReader::getInstance();
+        return &reader.getRumbleConfig() == boundConfig;
+    };
+
+    // Register a stepped descriptor (with the rumble post-step work and the
+    // profile-binding guard above) and return its index into m_steppedControls
+    // (rebuilt in lockstep with m_clickRegions).
+    auto registerStepped = [&](SettingsHud::SteppedControl control,
+                               const std::function<void()>& postStep) -> int {
+        control.postStep = postStep;
+        control.valid = configStillActive;
+        ctx.parent->m_steppedControls.push_back(std::move(control));
+        return static_cast<int>(ctx.parent->m_steppedControls.size()) - 1;
+    };
+
+    // Push one stepper arrow click region tied to a registered descriptor.
+    auto addArrowRegion = [&](float x, bool up, int steppedIndex) {
+        SettingsHud::ClickRegion region(x, ctx.currentY, cw * 2, ctx.lineHeightNormal,
+            up ? SettingsHud::ClickRegion::STEPPED_UP
+               : SettingsHud::ClickRegion::STEPPED_DOWN,
+            nullptr);
+        region.steppedIndex = steppedIndex;
+        ctx.parent->m_clickRegions.push_back(region);
+    };
+
+    // Lambda for rumble effect rows. The arrows are shared STEPPED_UP/STEPPED_DOWN
+    // controls: Light/Heavy are accelerated 1% strength steppers (percentFloat);
+    // Min/Max step by the fixed inputStep (no hold acceleration) up to inputLimit,
+    // with Max clamping down at the effect's live Min (fixedFloatDynamicLo) - all
+    // copied verbatim from the old per-effect click handlers.
+    // splitInitializedFlag (front/rear rows only) latches "user has set the split
+    // values" on any step so they are never reseeded from the combined effect.
     auto addRumbleRow = [&](const char* name, RumbleEffect& effect,
-                            SettingsHud::ClickRegion::Type lightDown,
-                            SettingsHud::ClickRegion::Type lightUp,
-                            SettingsHud::ClickRegion::Type heavyDown,
-                            SettingsHud::ClickRegion::Type heavyUp,
-                            SettingsHud::ClickRegion::Type minDown,
-                            SettingsHud::ClickRegion::Type minUp,
-                            SettingsHud::ClickRegion::Type maxDown,
-                            SettingsHud::ClickRegion::Type maxUp,
+                            float inputStep, float inputLimit,
                             bool useIntegers = false,
                             const char* unit = "",
                             float displayFactor = 1.0f,
-                            const char* tooltipId = nullptr) {
+                            const char* tooltipId = nullptr,
+                            bool* splitInitializedFlag = nullptr) {
+        (void)unit;  // Unit is described in the tooltip instead of displayed inline
+        // Every rumble stepper marks the per-bike profile dirty when per-bike mode
+        // is active (checked at click time, exactly like the old handler did).
+        std::function<void()> postStep = [splitInitializedFlag]() {
+            if (XInputReader::getInstance().getGlobalRumbleConfig().usePerBikeEffects) {
+                RumbleProfileManager::getInstance().markDirty();
+            }
+            if (splitInitializedFlag) *splitInitializedFlag = true;
+        };
+
         // Add row-wide tooltip region if tooltipId is provided
         if (tooltipId && tooltipId[0] != '\0') {
             ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
@@ -402,6 +247,8 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
 
         // Light motor strength control
         {
+            int lightIndex = registerStepped(
+                SettingsHud::SteppedControl::percentFloat(&effect.lightStrength, nullptr), postStep);
             char valueStr[8];
             int percent = static_cast<int>(std::round(effect.lightStrength * 100.0f));
             if (percent <= 0) {
@@ -414,10 +261,7 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
             float currentX = lightX;
             ctx.parent->addString("<", currentX, ctx.currentY, PluginConstants::Justify::LEFT,
                 PluginConstants::Fonts::getNormal(), colors.getAccent(), ctx.fontSize);
-            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-                lightDown, nullptr
-            ));
+            addArrowRegion(currentX, false, lightIndex);
             currentX += cw * 2;
             // Use percent for color to match display logic (avoids floating point precision issues)
             ctx.parent->addString(valueStr, currentX, ctx.currentY, PluginConstants::Justify::LEFT,
@@ -425,14 +269,13 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
             currentX += cw * 4;
             ctx.parent->addString(" >", currentX, ctx.currentY, PluginConstants::Justify::LEFT,
                 PluginConstants::Fonts::getNormal(), colors.getAccent(), ctx.fontSize);
-            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-                lightUp, nullptr
-            ));
+            addArrowRegion(currentX, true, lightIndex);
         }
 
         // Heavy motor strength control
         {
+            int heavyIndex = registerStepped(
+                SettingsHud::SteppedControl::percentFloat(&effect.heavyStrength, nullptr), postStep);
             char valueStr[8];
             int percent = static_cast<int>(std::round(effect.heavyStrength * 100.0f));
             if (percent <= 0) {
@@ -445,10 +288,7 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
             float currentX = heavyX;
             ctx.parent->addString("<", currentX, ctx.currentY, PluginConstants::Justify::LEFT,
                 PluginConstants::Fonts::getNormal(), colors.getAccent(), ctx.fontSize);
-            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-                heavyDown, nullptr
-            ));
+            addArrowRegion(currentX, false, heavyIndex);
             currentX += cw * 2;
             // Use percent for color to match display logic (avoids floating point precision issues)
             ctx.parent->addString(valueStr, currentX, ctx.currentY, PluginConstants::Justify::LEFT,
@@ -456,14 +296,14 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
             currentX += cw * 4;
             ctx.parent->addString(" >", currentX, ctx.currentY, PluginConstants::Justify::LEFT,
                 PluginConstants::Fonts::getNormal(), colors.getAccent(), ctx.fontSize);
-            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-                heavyUp, nullptr
-            ));
+            addArrowRegion(currentX, true, heavyIndex);
         }
 
-        // Min input control
+        // Min input control (fixed step, clamped to [0, inputLimit])
         {
+            int minIndex = registerStepped(
+                SettingsHud::SteppedControl::fixedFloat(&effect.minInput,
+                    inputStep, 0.0f, inputLimit, nullptr), postStep);
             char valueStr[8];
             float displayValue = effect.minInput * displayFactor;
             if (displayFactor != 1.0f) {
@@ -477,24 +317,21 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
             float currentX = minX;
             ctx.parent->addString("<", currentX, ctx.currentY, PluginConstants::Justify::LEFT,
                 PluginConstants::Fonts::getNormal(), colors.getAccent(), ctx.fontSize);
-            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-                minDown, nullptr
-            ));
+            addArrowRegion(currentX, false, minIndex);
             currentX += cw * 2;
             ctx.parent->addString(valueStr, currentX, ctx.currentY, PluginConstants::Justify::LEFT,
                 PluginConstants::Fonts::getNormal(), effect.isEnabled() ? colors.getPrimary() : colors.getMuted(), ctx.fontSize);
             currentX += cw * 6;
             ctx.parent->addString(">", currentX, ctx.currentY, PluginConstants::Justify::LEFT,
                 PluginConstants::Fonts::getNormal(), colors.getAccent(), ctx.fontSize);
-            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-                minUp, nullptr
-            ));
+            addArrowRegion(currentX, true, minIndex);
         }
 
-        // Max input control
+        // Max input control (fixed step, up to inputLimit; down clamps at live Min)
         {
+            int maxIndex = registerStepped(
+                SettingsHud::SteppedControl::fixedFloatDynamicLo(&effect.maxInput,
+                    inputStep, &effect.minInput, inputLimit, nullptr), postStep);
             char valueStr[8];
             float displayValue = effect.maxInput * displayFactor;
             if (displayFactor != 1.0f) {
@@ -508,20 +345,14 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
             float currentX = maxX;
             ctx.parent->addString("<", currentX, ctx.currentY, PluginConstants::Justify::LEFT,
                 PluginConstants::Fonts::getNormal(), colors.getAccent(), ctx.fontSize);
-            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-                maxDown, nullptr
-            ));
+            addArrowRegion(currentX, false, maxIndex);
             currentX += cw * 2;
             ctx.parent->addString(valueStr, currentX, ctx.currentY, PluginConstants::Justify::LEFT,
                 PluginConstants::Fonts::getNormal(), effect.isEnabled() ? colors.getPrimary() : colors.getMuted(), ctx.fontSize);
             currentX += cw * 6;
             ctx.parent->addString(">", currentX, ctx.currentY, PluginConstants::Justify::LEFT,
                 PluginConstants::Fonts::getNormal(), colors.getAccent(), ctx.fontSize);
-            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-                maxUp, nullptr
-            ));
+            addArrowRegion(currentX, true, maxIndex);
             // Unit is now described in tooltip instead of displayed inline
         }
 
@@ -554,96 +385,60 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
     if (rumbleConfig.suspensionSplit) {
         drawEffectHeader("Bumps", "rumble.bumps");
         addRumbleRow("- Front", rumbleConfig.suspensionEffectFront,
-            SettingsHud::ClickRegion::RUMBLE_SUSP_FRONT_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_FRONT_LIGHT_UP,
-            SettingsHud::ClickRegion::RUMBLE_SUSP_FRONT_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_FRONT_HEAVY_UP,
-            SettingsHud::ClickRegion::RUMBLE_SUSP_FRONT_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_FRONT_MIN_UP,
-            SettingsHud::ClickRegion::RUMBLE_SUSP_FRONT_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_FRONT_MAX_UP, true, "m/s", 1.0f, "rumble.bumps");
+            1.0f, 50.0f, true, "m/s", 1.0f, "rumble.bumps",
+            &rumbleConfig.suspensionSplitInitialized);
         addRumbleRow("- Rear", rumbleConfig.suspensionEffectRear,
-            SettingsHud::ClickRegion::RUMBLE_SUSP_REAR_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_REAR_LIGHT_UP,
-            SettingsHud::ClickRegion::RUMBLE_SUSP_REAR_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_REAR_HEAVY_UP,
-            SettingsHud::ClickRegion::RUMBLE_SUSP_REAR_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_REAR_MIN_UP,
-            SettingsHud::ClickRegion::RUMBLE_SUSP_REAR_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_REAR_MAX_UP, true, "m/s", 1.0f, "rumble.bumps");
+            1.0f, 50.0f, true, "m/s", 1.0f, "rumble.bumps",
+            &rumbleConfig.suspensionSplitInitialized);
     } else {
         addRumbleRow("Bumps", rumbleConfig.suspensionEffect,
-            SettingsHud::ClickRegion::RUMBLE_SUSP_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_LIGHT_UP,
-            SettingsHud::ClickRegion::RUMBLE_SUSP_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_HEAVY_UP,
-            SettingsHud::ClickRegion::RUMBLE_SUSP_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_MIN_UP,
-            SettingsHud::ClickRegion::RUMBLE_SUSP_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_SUSP_MAX_UP, true, "m/s", 1.0f, "rumble.bumps");
+            1.0f, 50.0f, true, "m/s", 1.0f, "rumble.bumps");
     }
     addRumbleRow("Slide", rumbleConfig.slideEffect,
-        SettingsHud::ClickRegion::RUMBLE_SLIDE_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_SLIDE_LIGHT_UP,
-        SettingsHud::ClickRegion::RUMBLE_SLIDE_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_SLIDE_HEAVY_UP,
-        SettingsHud::ClickRegion::RUMBLE_SLIDE_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_SLIDE_MIN_UP,
-        SettingsHud::ClickRegion::RUMBLE_SLIDE_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_SLIDE_MAX_UP, true, "deg", 1.0f, "rumble.slide");
+        1.0f, 90.0f, true, "deg", 1.0f, "rumble.slide");
     addRumbleRow("Spin", rumbleConfig.wheelspinEffect,
-        SettingsHud::ClickRegion::RUMBLE_WHEEL_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_WHEEL_LIGHT_UP,
-        SettingsHud::ClickRegion::RUMBLE_WHEEL_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_WHEEL_HEAVY_UP,
-        SettingsHud::ClickRegion::RUMBLE_WHEEL_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_WHEEL_MIN_UP,
-        SettingsHud::ClickRegion::RUMBLE_WHEEL_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_WHEEL_MAX_UP, true, "x", 1.0f, "rumble.spin");
+        1.0f, 50.0f, true, "x", 1.0f, "rumble.spin");
     // Lockup (front/rear splittable)
     drawSplitMarker(rumbleConfig.brakeLockupSplit, SettingsHud::ClickRegion::RUMBLE_LOCKUP_SPLIT_TOGGLE);
     if (rumbleConfig.brakeLockupSplit) {
         drawEffectHeader("Lockup", "rumble.lockup");
         addRumbleRow("- Front", rumbleConfig.brakeLockupEffectFront,
-            SettingsHud::ClickRegion::RUMBLE_LOCKUP_FRONT_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_FRONT_LIGHT_UP,
-            SettingsHud::ClickRegion::RUMBLE_LOCKUP_FRONT_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_FRONT_HEAVY_UP,
-            SettingsHud::ClickRegion::RUMBLE_LOCKUP_FRONT_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_FRONT_MIN_UP,
-            SettingsHud::ClickRegion::RUMBLE_LOCKUP_FRONT_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_FRONT_MAX_UP, false, "ratio", 1.0f, "rumble.lockup");
+            0.05f, 1.0f, false, "ratio", 1.0f, "rumble.lockup",
+            &rumbleConfig.brakeLockupSplitInitialized);
         addRumbleRow("- Rear", rumbleConfig.brakeLockupEffectRear,
-            SettingsHud::ClickRegion::RUMBLE_LOCKUP_REAR_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_REAR_LIGHT_UP,
-            SettingsHud::ClickRegion::RUMBLE_LOCKUP_REAR_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_REAR_HEAVY_UP,
-            SettingsHud::ClickRegion::RUMBLE_LOCKUP_REAR_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_REAR_MIN_UP,
-            SettingsHud::ClickRegion::RUMBLE_LOCKUP_REAR_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_REAR_MAX_UP, false, "ratio", 1.0f, "rumble.lockup");
+            0.05f, 1.0f, false, "ratio", 1.0f, "rumble.lockup",
+            &rumbleConfig.brakeLockupSplitInitialized);
     } else {
         addRumbleRow("Lockup", rumbleConfig.brakeLockupEffect,
-            SettingsHud::ClickRegion::RUMBLE_LOCKUP_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_LIGHT_UP,
-            SettingsHud::ClickRegion::RUMBLE_LOCKUP_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_HEAVY_UP,
-            SettingsHud::ClickRegion::RUMBLE_LOCKUP_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_MIN_UP,
-            SettingsHud::ClickRegion::RUMBLE_LOCKUP_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_LOCKUP_MAX_UP, false, "ratio", 1.0f, "rumble.lockup");
+            0.05f, 1.0f, false, "ratio", 1.0f, "rumble.lockup");
     }
     addRumbleRow("Wheelie", rumbleConfig.wheelieEffect,
-        SettingsHud::ClickRegion::RUMBLE_WHEELIE_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_WHEELIE_LIGHT_UP,
-        SettingsHud::ClickRegion::RUMBLE_WHEELIE_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_WHEELIE_HEAVY_UP,
-        SettingsHud::ClickRegion::RUMBLE_WHEELIE_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_WHEELIE_MIN_UP,
-        SettingsHud::ClickRegion::RUMBLE_WHEELIE_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_WHEELIE_MAX_UP, true, "deg", 1.0f, "rumble.wheelie");
+        1.0f, 90.0f, true, "deg", 1.0f, "rumble.wheelie");
     addRumbleRow("Steer", rumbleConfig.steerEffect,
-        SettingsHud::ClickRegion::RUMBLE_STEER_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_STEER_LIGHT_UP,
-        SettingsHud::ClickRegion::RUMBLE_STEER_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_STEER_HEAVY_UP,
-        SettingsHud::ClickRegion::RUMBLE_STEER_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_STEER_MIN_UP,
-        SettingsHud::ClickRegion::RUMBLE_STEER_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_STEER_MAX_UP, true, "Nm", 1.0f, "rumble.steer");
+        1.0f, 200.0f, true, "Nm", 1.0f, "rumble.steer");
     addRumbleRow("RPM", rumbleConfig.rpmEffect,
-        SettingsHud::ClickRegion::RUMBLE_RPM_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_RPM_LIGHT_UP,
-        SettingsHud::ClickRegion::RUMBLE_RPM_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_RPM_HEAVY_UP,
-        SettingsHud::ClickRegion::RUMBLE_RPM_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_RPM_MIN_UP,
-        SettingsHud::ClickRegion::RUMBLE_RPM_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_RPM_MAX_UP, true, "rpm", 1.0f, "rumble.rpm");
+        100.0f, 20000.0f, true, "rpm", 1.0f, "rumble.rpm");
 
-    // Rev Limiter: Min/Max are a percentage of the bike's real limiter RPM (auto per-bike)
+    // Rev Limiter: Min/Max are a percentage of the bike's real limiter RPM (auto
+    // per-bike); 1% steps, allow buffer past 100
     addRumbleRow("Rev Lim", rumbleConfig.revLimiterEffect,
-        SettingsHud::ClickRegion::RUMBLE_REVLIM_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_REVLIM_LIGHT_UP,
-        SettingsHud::ClickRegion::RUMBLE_REVLIM_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_REVLIM_HEAVY_UP,
-        SettingsHud::ClickRegion::RUMBLE_REVLIM_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_REVLIM_MIN_UP,
-        SettingsHud::ClickRegion::RUMBLE_REVLIM_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_REVLIM_MAX_UP, true, "%", 1.0f, "rumble.revlimiter");
+        1.0f, 110.0f, true, "%", 1.0f, "rumble.revlimiter");
 
 #if GAME_HAS_PIT_LIMITER
     // Pit Limiter: binary effect; Light/Heavy set intensity (only games that report it)
     addRumbleRow("Pit Lim", rumbleConfig.pitLimiterEffect,
-        SettingsHud::ClickRegion::RUMBLE_PITLIM_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_PITLIM_LIGHT_UP,
-        SettingsHud::ClickRegion::RUMBLE_PITLIM_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_PITLIM_HEAVY_UP,
-        SettingsHud::ClickRegion::RUMBLE_PITLIM_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_PITLIM_MIN_UP,
-        SettingsHud::ClickRegion::RUMBLE_PITLIM_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_PITLIM_MAX_UP, false, "", 1.0f, "rumble.pitlimiter");
+        0.05f, 1.0f, false, "", 1.0f, "rumble.pitlimiter");
 #endif
 
-    // Surface uses user's speed unit preference
+    // Surface uses user's speed unit preference (m/s internally, max 200 ~720km/h;
+    // 1.39 m/s step = ~5 km/h)
     {
         SpeedWidget* speedWidget = ctx.parent->getSpeedWidget();
         bool isKmh = speedWidget && speedWidget->getSpeedUnit() == SpeedWidget::SpeedUnit::KMH;
         const char* surfaceUnit = isKmh ? "km/h" : "mph";
         float surfaceFactor = isKmh ? 3.6f : 2.23694f;  // m/s to km/h or mph
         addRumbleRow("Surface", rumbleConfig.surfaceEffect,
-            SettingsHud::ClickRegion::RUMBLE_SURFACE_LIGHT_DOWN, SettingsHud::ClickRegion::RUMBLE_SURFACE_LIGHT_UP,
-            SettingsHud::ClickRegion::RUMBLE_SURFACE_HEAVY_DOWN, SettingsHud::ClickRegion::RUMBLE_SURFACE_HEAVY_UP,
-            SettingsHud::ClickRegion::RUMBLE_SURFACE_MIN_DOWN, SettingsHud::ClickRegion::RUMBLE_SURFACE_MIN_UP,
-            SettingsHud::ClickRegion::RUMBLE_SURFACE_MAX_DOWN, SettingsHud::ClickRegion::RUMBLE_SURFACE_MAX_UP, true, surfaceUnit, surfaceFactor, "rumble.surface");
+            1.39f, 200.0f, true, surfaceUnit, surfaceFactor, "rumble.surface");
     }
 
     // Info text

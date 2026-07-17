@@ -103,7 +103,12 @@ Renderer::FntFont* Renderer::fnt(const std::string& base, const std::string& roo
             fo.ah = i32(FNT_BITMAP_HDR + 8);
             int ctype = i32(FNT_BITMAP_HDR + 16);
             size_t need = size_t(fo.aw) * fo.ah;
-            if (fo.aw > 0 && fo.ah > 0 && ctype == 2 && fo.cellH > 0) {
+            // Cap the file-declared atlas dimensions: fonts live in user-overridable
+            // asset dirs, and a corrupt header declaring e.g. 100000x100000 would
+            // throw bad_alloc out of the render loop. Legit atlases top out at 2048².
+            constexpr int kMaxAtlasDim = 8192;
+            if (fo.aw > 0 && fo.ah > 0 && fo.aw <= kMaxAtlasDim && fo.ah <= kMaxAtlasDim &&
+                ctype == 2 && fo.cellH > 0) {
                 fo.atlas.assign(need, 0);
                 const uint8_t* src = &d[FNT_BITMAP_HDR + 24];
                 size_t srcLen = d.size() - (FNT_BITMAP_HDR + 24);
@@ -128,7 +133,11 @@ Renderer::Tex* Renderer::tex(const std::string& base, bool icon, const std::stri
             int idLen = d[0], imgType = d[2], bpp = d[16], desc = d[17];
             t.w = d[12] | (d[13] << 8); t.h = d[14] | (d[15] << 8);
             int bpx = bpp / 8;
-            if ((imgType == 2 || imgType == 10) && (bpp == 24 || bpp == 32) && t.w > 0 && t.h > 0) {
+            // Same rationale as the font-atlas cap: TGA dimensions are file-declared
+            // (user-overridable assets), so bound them before allocating w*h*4.
+            constexpr int kMaxTexDim = 8192;
+            if ((imgType == 2 || imgType == 10) && (bpp == 24 || bpp == 32) &&
+                t.w > 0 && t.h > 0 && t.w <= kMaxTexDim && t.h <= kMaxTexDim) {
                 size_t o = 18 + idLen, px = size_t(t.w) * t.h;
                 t.rgba.assign(px * 4, 0);
                 auto put = [&](size_t i, const uint8_t* s) { t.rgba[i] = s[2]; t.rgba[i + 1] = s[1]; t.rgba[i + 2] = s[0]; t.rgba[i + 3] = bpx == 4 ? s[3] : 255; };

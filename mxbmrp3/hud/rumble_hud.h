@@ -7,7 +7,6 @@
 #include "base_hud.h"
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
-#include <deque>
 
 class RumbleHud : public BaseHud {
 public:
@@ -26,11 +25,6 @@ public:
 private:
     void rebuildRenderData() override;
 
-    // Helper to draw a line graph from history buffer
-    void addHistoryGraph(const std::deque<float>& history, unsigned long color,
-                         float x, float y, float width, float height,
-                         float lineThickness, size_t maxHistory);
-
     // Helper to draw a vertical bar (similar to BarsWidget)
     void addVerticalBar(float x, float y, float barWidth, float barHeight,
                         float value, unsigned long color);
@@ -47,12 +41,6 @@ private:
     // Total: graph + gap + bar + gap + bar + gap + legend = 29 + 1 + 1 + 1 + 1 + 1 + 9 = 43
     static constexpr int BACKGROUND_WIDTH_CHARS = GRAPH_WIDTH_CHARS + GAP_WIDTH_CHARS + BAR_WIDTH_CHARS + GAP_WIDTH_CHARS + BAR_WIDTH_CHARS + GAP_WIDTH_CHARS + LEGEND_WIDTH_CHARS;
     static constexpr float GRAPH_HEIGHT_LINES = 6;   // Height in line units
-
-    // Graph grid line percentages
-    // 3 lines at 0/50/100% for cleaner visual (bottom/middle/top)
-    static constexpr float GRID_LINE_100_PERCENT = 1.0f;
-    static constexpr float GRID_LINE_50_PERCENT = 0.5f;
-    static constexpr float GRID_LINE_0_PERCENT = 0.0f;
 
     // Max marker tracking for motor bars (0 = light, 1 = heavy)
     // Markers show when value starts decreasing, hide when increasing

@@ -15,21 +15,13 @@ bool SettingsHud::handleClickTabFmx(const ClickRegion& region) {
     if (!hud) return false;
 
     switch (region.type) {
+        // Trick stack rows is a data-driven STEPPED control - registered in
+        // renderTabFmx via ctx.addSteppedControl and handled by the shared
+        // SettingsHud::applySteppedControl.
+
         case ClickRegion::FMX_DEBUG_TOGGLE:
             hud->m_showDebugLogging = !hud->m_showDebugLogging;
             FmxManager::getInstance().setLoggingEnabled(hud->m_showDebugLogging);
-            hud->setDataDirty();
-            setDataDirty();
-            return true;
-
-        case ClickRegion::FMX_CHAIN_ROWS_UP:
-            hud->m_maxChainDisplayRows = applyAcceleratedClamp(hud->m_maxChainDisplayRows, 1, 0, 10, true);
-            hud->setDataDirty();
-            setDataDirty();
-            return true;
-
-        case ClickRegion::FMX_CHAIN_ROWS_DOWN:
-            hud->m_maxChainDisplayRows = applyAcceleratedClamp(hud->m_maxChainDisplayRows, 1, 0, 10, false);
             hud->setDataDirty();
             setDataDirty();
             return true;
@@ -62,10 +54,11 @@ BaseHud* SettingsHud::renderTabFmx(SettingsLayoutContext& ctx) {
     } else {
         snprintf(rowsValue, sizeof(rowsValue), "%d", trickRows);
     }
-    ctx.addCycleControl("Trick stack", rowsValue, 10,
-        SettingsHud::ClickRegion::FMX_CHAIN_ROWS_DOWN,
-        SettingsHud::ClickRegion::FMX_CHAIN_ROWS_UP,
-        hud, true, trickRows == 0, "fmx.chain_rows");
+    // Accelerated 1-step clamp over [0, 10]; 0 = Off (verbatim from the old
+    // FMX_CHAIN_ROWS handler). Arrows never had a per-type tooltip.
+    ctx.addSteppedControl("Trick stack", rowsValue, 10,
+        SettingsHud::SteppedControl::clampInt(&hud->m_maxChainDisplayRows, 1, 0, 10, hud),
+        hud, true, trickRows == 0, "fmx.chain_rows", /*tooltipOnArrows=*/false);
 
     // Trick stats only relevant when trick stack is enabled
     bool trickStackEnabled = trickRows > 0;

@@ -336,7 +336,9 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         RumbleConfig& rumbleConfig = XInputReader::getInstance().getRumbleConfig();
         int controllerIdx = rumbleConfig.controllerIndex;
         bool isDisabled = (controllerIdx < 0);
-        bool isConnected = !isDisabled && XInputReader::isControllerConnected(controllerIdx);
+        // Cached (I/O-thread) state, not a live XInput poll — a settings rebuild
+        // must never hit the slow disconnected-slot enumeration path.
+        bool isConnected = !isDisabled && XInputReader::getInstance().isControllerConnectedCached(controllerIdx);
         std::string controllerName = isDisabled ? "" : XInputReader::getControllerName(controllerIdx);
 
         // Add tooltip row

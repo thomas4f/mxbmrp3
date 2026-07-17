@@ -93,6 +93,7 @@ private:
     bool m_bShowDefaultSetup;              // Currently showing default setup warning (track entry)
     bool m_bShowSegment;                   // Currently showing a segment-timer action notice
     PluginData::SegmentNoticeKind m_segmentNoticeKind = PluginData::SegmentNoticeKind::None;  // Which segment action to show
+    int m_segmentNoticeNumber = 0;         // 1-based segment the notice refers to (0 = none yet)
 
     // Trigger timestamps for timed notices
     std::chrono::steady_clock::time_point m_overtimeTriggerTime;

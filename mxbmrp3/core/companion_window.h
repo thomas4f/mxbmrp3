@@ -102,6 +102,9 @@ private:
     std::atomic<bool> m_geomMax{ false };
     std::atomic<int> m_refreshHz{ 0 };   // 0 = V-Sync; N = fixed N Hz cap
     std::thread m_thread;
+    // Signals the destructor's spin-wait that the window thread has left our code
+    // (loader-lock-safe teardown — see ~CompanionWindow). Starts true: no thread yet.
+    std::atomic<bool> m_threadFinished{ true };
 
     std::mutex m_mutex;
     std::vector<SPluginQuad_t> m_quads;

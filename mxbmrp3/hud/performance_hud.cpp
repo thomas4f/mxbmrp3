@@ -239,20 +239,7 @@ void PerformanceHud::rebuildRenderData() {
     float legendStartX = showGraphs ? (contentStartX + graphWidth + gapWidth) : contentStartX;
 
     float pointSpacing = graphWidth / (GRAPH_HISTORY_SIZE - 1);
-    float lineThickness = 0.002f * getScale();  // Line thickness for graph rendering
-    float gridLineThickness = 0.001f * getScale();  // ~1px at 1080p for subtle grid lines
-    unsigned long gridColor = this->getColor(ColorSlot::MUTED);  // Muted gray for subtle grid lines
-
-    // Draws the 100%/50%/0% axis value labels down the left edge of a graph
-    // spanning [topY, topY + graphHeight], matching the other graph HUDs' style.
-    auto addGraphAxisLabels = [&](float topY, const char* topLabel, const char* midLabel, const char* botLabel) {
-        float lx = contentStartX + dims.paddingH * 0.2f;
-        unsigned long c = this->getColor(ColorSlot::TERTIARY);
-        int f = this->getFont(FontCategory::SMALL);
-        addString(topLabel, lx, topY, Justify::LEFT, f, c, dims.fontSizeSmall);
-        addString(midLabel, lx, topY + graphHeight * 0.5f, Justify::LEFT, f, c, dims.fontSizeSmall);
-        addString(botLabel, lx, topY + graphHeight - dims.lineHeightSmall, Justify::LEFT, f, c, dims.fontSizeSmall);
-    };
+    float lineThickness = stripChartLineThickness();  // Line thickness for graph rendering
 
     // FPS Section: subheading, then graph on left + legend on right
     if (hasFps) {
@@ -264,23 +251,13 @@ void PerformanceHud::rebuildRenderData() {
     if (m_enabledElements & ELEM_FPS) {
         // FPS Graph - only render if graphs are shown
         if (showGraphs) {
-            // Draw FPS grid lines (0-MAX_FPS_DISPLAY range, at 0%/50%/100%)
-            const float fpsGridValues[] = {
-                MAX_FPS_DISPLAY * 1.0f,   // 250 FPS (100%)
-                MAX_FPS_DISPLAY * 0.5f,   // 125 FPS (50%)
-                MAX_FPS_DISPLAY * 0.0f    //   0 FPS (0%)
-            };
-            for (float fpsValue : fpsGridValues) {
-                float normalizedValue = fpsValue / MAX_FPS_DISPLAY;
-                float gridY = currentY + graphHeight - (normalizedValue * graphHeight);
-                addHorizontalGridLine(contentStartX, gridY, graphWidth, gridColor, gridLineThickness);
-            }
-
-            // FPS axis labels (top / middle / bottom)
+            // FPS grid lines (0-MAX_FPS_DISPLAY range, at 0%/50%/100%) + axis
+            // labels (top / middle / bottom) — the shared strip-chart frame.
             char fpsTopBuf[12], fpsMidBuf[12];
             snprintf(fpsTopBuf, sizeof(fpsTopBuf), "%.0f FPS", MAX_FPS_DISPLAY);
             snprintf(fpsMidBuf, sizeof(fpsMidBuf), "%.0f FPS", MAX_FPS_DISPLAY * 0.5f);
-            addGraphAxisLabels(currentY, fpsTopBuf, fpsMidBuf, "0 FPS");
+            addStripChartFrame(contentStartX, currentY, graphWidth, graphHeight,
+                               fpsTopBuf, fpsMidBuf, "0 FPS", dims);
 
             // Render FPS graph (continuous line segments)
             for (int i = 0; i < GRAPH_HISTORY_SIZE - 1; ++i) {
@@ -381,23 +358,13 @@ void PerformanceHud::rebuildRenderData() {
         // CPU Time Graph - only render if graphs are shown
         // Conservative ceiling: MAX_PLUGIN_TIME_MS gives safe buffer (leaves ~3ms for game at 144fps)
         if (showGraphs) {
-            // Draw Plugin Time grid lines (0-MAX_PLUGIN_TIME_MS range, at 0%/50%/100%)
-            const float msGridValues[] = {
-                MAX_PLUGIN_TIME_MS * 1.0f,   // 4.0ms (100%)
-                MAX_PLUGIN_TIME_MS * 0.5f,   // 2.0ms (50%)
-                MAX_PLUGIN_TIME_MS * 0.0f    // 0.0ms (0%)
-            };
-            for (float msValue : msGridValues) {
-                float normalizedValue = msValue / MAX_PLUGIN_TIME_MS;
-                float gridY = currentY + graphHeight - (normalizedValue * graphHeight);
-                addHorizontalGridLine(contentStartX, gridY, graphWidth, gridColor, gridLineThickness);
-            }
-
-            // CPU time axis labels in ms (top / middle / bottom)
+            // Plugin Time grid lines (0-MAX_PLUGIN_TIME_MS range, at 0%/50%/100%)
+            // + ms axis labels (top / middle / bottom) — the shared strip-chart frame.
             char msTopBuf[12], msMidBuf[12];
             snprintf(msTopBuf, sizeof(msTopBuf), "%.1f ms", MAX_PLUGIN_TIME_MS);
             snprintf(msMidBuf, sizeof(msMidBuf), "%.1f ms", MAX_PLUGIN_TIME_MS * 0.5f);
-            addGraphAxisLabels(currentY, msTopBuf, msMidBuf, "0.0 ms");
+            addStripChartFrame(contentStartX, currentY, graphWidth, graphHeight,
+                               msTopBuf, msMidBuf, "0.0 ms", dims);
 
             // Render Plugin Time graph (continuous line segments, 0-4ms range)
             for (int i = 0; i < GRAPH_HISTORY_SIZE - 1; ++i) {

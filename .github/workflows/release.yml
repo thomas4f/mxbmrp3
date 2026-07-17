@@ -41,6 +41,13 @@ on:
 permissions:
   contents: write   # needed to create the tag + GitHub Release
 
+# Two simultaneous release dispatches would race the tag-existence check and could
+# double-create the tag/artifacts. Queue them instead (never cancel a running
+# release mid-build).
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   # Pre-release gate: the full test matrix (unit + Wine integration + web overlay)
   # on this exact commit, via the reusable tests workflow. build-release needs it,
@@ -54,13 +61,13 @@ jobs:
     needs: tests
     runs-on: windows-latest
     timeout-minutes: 40
-    env:
-      # The two secret keys the vcxproj injects at build time. Unset = keyless build,
-      # which a Release config rejects unless MXBMRP3_ALLOW_NO_ANALYTICS is defined
-      # (see the build step). The GoatCounter *code* is public and hardcoded in
-      # plugin_constants.h, so it is NOT a secret here.
-      APTABASE_KEY: ${{ secrets.APTABASE_KEY }}
-      GOATCOUNTER_TOKEN: ${{ secrets.GOATCOUNTER_TOKEN }}
+    # NOTE: the two analytics secrets are scoped to the ONE build step that needs
+    # them (see "Build All-Release") rather than job-level env — job-level env is
+    # visible to every step, including the third-party actions below (setup-msbuild,
+    # nsis-install, action-gh-release), which would make a hijacked action tag an
+    # exfiltration path. For the same reason those three are pinned to full commit
+    # SHAs (the trailing comment records the tag each SHA was resolved from — when
+    # bumping, resolve the new tag's SHA and update both).
     steps:
       - uses: actions/checkout@v7
         with:
@@ -70,7 +77,7 @@ jobs:
           fetch-depth: 0
 
       - name: Add MSBuild to PATH
-        uses: microsoft/setup-msbuild@v3
+        uses: microsoft/setup-msbuild@30375c66a4eea26614e0d39710365f22f8b0af57  # v3.0.0
 
       # mxbmrp3.nsi uses `Target AMD64-Unicode` to emit a 64-bit installer — a
       # directive only the negrutiu NSIS fork (https://github.com/negrutiu/nsis)
@@ -82,7 +89,7 @@ jobs:
       # output is selected by the script directive, not the compiler arch), and it
       # replaces the runner's preinstalled NSIS. Version pinned for reproducibility.
       - name: Install NSIS (negrutiu 64-bit fork)
-        uses: negrutiu/nsis-install@v3
+        uses: negrutiu/nsis-install@9c575d44c2938a43e38a305caeb403de90303c60  # v3
         with:
           distro: negrutiu
           version: v3.12.7487.317
@@ -116,12 +123,21 @@ jobs:
 
       - name: Build All-Release (MXB + GPB + KRP)
         shell: pwsh
+        env:
+          # The two secret keys the vcxproj injects at build time — step-scoped so no
+          # other step (esp. third-party actions) sees them. Unset = keyless build,
+          # which a Release config rejects unless MXBMRP3_ALLOW_NO_ANALYTICS is
+          # defined. The GoatCounter *code* is public and hardcoded in
+          # plugin_constants.h, so it is NOT a secret here.
+          APTABASE_KEY: ${{ secrets.APTABASE_KEY }}
+          GOATCOUNTER_TOKEN: ${{ secrets.GOATCOUNTER_TOKEN }}
         run: |
           # A Release (NDEBUG) build hard-errors unless the analytics keys are present.
-          # They come from the two env vars above (APTABASE_KEY / GOATCOUNTER_TOKEN),
-          # which the vcxproj injects as defines — so set those two as repo Actions
-          # Secrets before running this (a keyless build is not wired). The GoatCounter
-          # site code is public and hardcoded in plugin_constants.h, so it's not needed here.
+          # They come from the two step-scoped env vars above (APTABASE_KEY /
+          # GOATCOUNTER_TOKEN), which the vcxproj injects as defines — so set those
+          # two as repo Actions Secrets before running this (a keyless build is not
+          # wired). The GoatCounter site code is public and hardcoded in
+          # plugin_constants.h, so it's not needed here.
           msbuild mxbmrp3.sln /p:Configuration=All-Release /p:Platform=x64 /m /v:minimal
 
       - name: Stage + package (zip)
@@ -224,7 +240,7 @@ jobs:
       # than shipping a release missing a file.
       - name: Create draft GitHub Release
         if: inputs.release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3.0.2
         with:
           name: MXBMRP3 ${{ steps.ver.outputs.tag }}
           tag_name: ${{ steps.ver.outputs.tag }}

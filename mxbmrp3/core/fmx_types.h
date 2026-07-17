@@ -11,6 +11,33 @@
 namespace Fmx {
 
 // ============================================================================
+// FMX clock
+// Every FMX wall-clock read (dt integration, grace/chain windows, trick
+// timestamps — FmxManager AND FmxScore below) goes through this one helper so
+// the headless test harness can substitute a simulated clock and play the
+// debounce/grace/chain timing out deterministically (mirrors
+// DirectorManager::nowMs). In a shipping build this is exactly
+// steady_clock::now(); the override never exists outside MXBMRP3_TEST_BUILD.
+// ============================================================================
+#if defined(MXBMRP3_TEST_BUILD)
+// Simulated time in µs on the steady_clock timeline; -1 = use the real clock.
+// Set via the MXBMRP3_Test_FmxSetNowUs hook. Never compiled into a shipping DLL.
+inline long long g_testNowUs = -1;
+inline void testSetNowUs(long long us) { g_testNowUs = us; }
+#endif
+
+inline std::chrono::steady_clock::time_point clockNow() {
+#if defined(MXBMRP3_TEST_BUILD)
+    if (g_testNowUs >= 0) {
+        return std::chrono::steady_clock::time_point(
+            std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                std::chrono::microseconds(g_testNowUs)));
+    }
+#endif
+    return std::chrono::steady_clock::now();
+}
+
+// ============================================================================
 // Trick Type Enumeration
 // ============================================================================
 enum class TrickType {
@@ -586,17 +613,17 @@ struct FmxScore {
         chainCount = 0;
         chainScore = 0;
         chainElapsed = 0.0f;
-        chainStartTime = std::chrono::steady_clock::now();
+        chainStartTime = clockNow();
     }
 
     // Reset only the chain timer (preserves count/score) — used when entering chain state
     void restartChainTimer() {
-        chainStartTime = std::chrono::steady_clock::now();
+        chainStartTime = clockNow();
         chainElapsed = 0.0f;
     }
 
     void updateChainElapsed() {
-        auto now = std::chrono::steady_clock::now();
+        auto now = clockNow();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             now - chainStartTime).count();
         chainElapsed = elapsed / 1000.0f;

@@ -12,37 +12,9 @@ bool SettingsHud::handleClickTabLapLog(const ClickRegion& region) {
     if (!lapLogHud) lapLogHud = m_lapLog;
 
     switch (region.type) {
-        case ClickRegion::LAP_LOG_ROW_COUNT_UP:
-            if (lapLogHud) {
-                lapLogHud->m_maxDisplayLaps = applyAcceleratedClamp(
-                    lapLogHud->m_maxDisplayLaps, 1,
-                    LapLogHud::MIN_DISPLAY_LAPS, LapLogHud::MAX_DISPLAY_LAPS, true);
-                lapLogHud->setDataDirty();
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::LAP_LOG_ROW_COUNT_DOWN:
-            if (lapLogHud) {
-                lapLogHud->m_maxDisplayLaps = applyAcceleratedClamp(
-                    lapLogHud->m_maxDisplayLaps, 1,
-                    LapLogHud::MIN_DISPLAY_LAPS, LapLogHud::MAX_DISPLAY_LAPS, false);
-                lapLogHud->setDataDirty();
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::LAP_LOG_ORDER_UP:
-        case ClickRegion::LAP_LOG_ORDER_DOWN:
-            if (lapLogHud) {
-                // Toggle between OLDEST_FIRST and NEWEST_FIRST
-                lapLogHud->m_displayOrder = (lapLogHud->m_displayOrder == LapLogHud::DisplayOrder::OLDEST_FIRST)
-                    ? LapLogHud::DisplayOrder::NEWEST_FIRST
-                    : LapLogHud::DisplayOrder::OLDEST_FIRST;
-                lapLogHud->setDataDirty();
-                setDataDirty();
-            }
-            return true;
+        // Laps-to-show is a data-driven STEPPED control and Order is a
+        // data-driven CYCLE control - registered in renderTabLapLog via
+        // ctx.addSteppedControl / ctx.addCycleControl.
 
         case ClickRegion::LAP_LOG_GAP_ROW_TOGGLE:
             if (lapLogHud) {
@@ -83,17 +55,16 @@ BaseHud* SettingsHud::renderTabLapLog(SettingsLayoutContext& ctx) {
     // Row count
     char rowCountValue[8];
     snprintf(rowCountValue, sizeof(rowCountValue), "%d", hud->m_maxDisplayLaps);
-    ctx.addCycleControl("Laps to show", rowCountValue, 10,
-        SettingsHud::ClickRegion::LAP_LOG_ROW_COUNT_DOWN,
-        SettingsHud::ClickRegion::LAP_LOG_ROW_COUNT_UP,
+    ctx.addSteppedControl("Laps to show", rowCountValue, 10,
+        SettingsHud::SteppedControl::clampInt(&hud->m_maxDisplayLaps, 1,
+            LapLogHud::MIN_DISPLAY_LAPS, LapLogHud::MAX_DISPLAY_LAPS, hud),
         hud, true, false, "lap_log.rows");
 
     // Display order
     const char* orderValue = (hud->m_displayOrder == LapLogHud::DisplayOrder::OLDEST_FIRST)
         ? "Oldest" : "Newest";
     ctx.addCycleControl("Display order", orderValue, 10,
-        SettingsHud::ClickRegion::LAP_LOG_ORDER_DOWN,
-        SettingsHud::ClickRegion::LAP_LOG_ORDER_UP,
+        SettingsHud::CycleControl::enumMember(hud, &LapLogHud::m_displayOrder, 2, hud),
         hud, true, false, "lap_log.order");
 
     // Column headers toggle

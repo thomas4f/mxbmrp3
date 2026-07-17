@@ -105,8 +105,7 @@ void SettingsLayoutContext::addCycleControl(
     BaseHud* targetHud,
     bool enabled,
     bool isOff,
-    const char* tooltipId,
-    uint8_t* displayMode
+    const char* tooltipId
 ) {
     float cw = charWidth();
     ColorConfig& colors = ColorConfig::getInstance();
@@ -131,17 +130,10 @@ void SettingsLayoutContext::addCycleControl(
     parent->addString("<", currentX, currentY, Justify::LEFT,
         Fonts::getNormal(), enabled ? colors.getAccent() : colors.getMuted(), fontSize);
     if (enabled) {
-        if (displayMode) {
-            parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                currentX, currentY, cw * 2, lineHeightNormal,
-                downType, displayMode, targetHud
-            ));
-        } else {
-            parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                currentX, currentY, cw * 2, lineHeightNormal,
-                downType, targetHud, 0, false, 0
-            ));
-        }
+        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, currentY, cw * 2, lineHeightNormal,
+            downType, targetHud, 0, false, 0
+        ));
     }
     currentX += cw * 2;
 
@@ -155,20 +147,85 @@ void SettingsLayoutContext::addCycleControl(
     parent->addString(" >", currentX, currentY, Justify::LEFT,
         Fonts::getNormal(), enabled ? colors.getAccent() : colors.getMuted(), fontSize);
     if (enabled) {
-        if (displayMode) {
-            parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                currentX, currentY, cw * 2, lineHeightNormal,
-                upType, displayMode, targetHud
-            ));
-        } else {
-            parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                currentX, currentY, cw * 2, lineHeightNormal,
-                upType, targetHud, 0, false, 0
-            ));
-        }
+        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, currentY, cw * 2, lineHeightNormal,
+            upType, targetHud, 0, false, 0
+        ));
     }
 
     currentY += lineHeightNormal;
+}
+
+void SettingsLayoutContext::addCycleControl(
+    const char* label,
+    const char* value,
+    int valueWidth,
+    const SettingsHud::CycleControl& control,
+    BaseHud* targetHud,
+    bool enabled,
+    bool isOff,
+    const char* tooltipId,
+    bool tooltipOnArrows
+) {
+    // Register the descriptor for this rebuild (m_cycleControls is cleared in
+    // lockstep with m_clickRegions, so the index stays valid exactly as long as
+    // the regions below do). Registered even when disabled (no arrow regions),
+    // keeping index assignment deterministic.
+    const int cycleIndex = static_cast<int>(parent->m_cycleControls.size());
+    parent->m_cycleControls.push_back(control);
+
+    // Emit the row via the legacy cycle control, then tag the arrow regions it
+    // created with the descriptor index (and optionally the row tooltip, which
+    // is what the old per-type tooltip fallback resolved to for these controls).
+    const size_t firstRegion = parent->m_clickRegions.size();
+    addCycleControl(label, value, valueWidth,
+        SettingsHud::ClickRegion::CYCLE_DOWN,
+        SettingsHud::ClickRegion::CYCLE_UP,
+        targetHud, enabled, isOff, tooltipId);
+    for (size_t r = firstRegion; r < parent->m_clickRegions.size(); ++r) {
+        auto& region = parent->m_clickRegions[r];
+        if (region.type == SettingsHud::ClickRegion::CYCLE_UP ||
+            region.type == SettingsHud::ClickRegion::CYCLE_DOWN) {
+            region.cycleIndex = cycleIndex;
+            if (tooltipOnArrows && tooltipId) region.tooltipId = tooltipId;
+        }
+    }
+}
+
+void SettingsLayoutContext::addSteppedControl(
+    const char* label,
+    const char* value,
+    int valueWidth,
+    const SettingsHud::SteppedControl& control,
+    BaseHud* targetHud,
+    bool enabled,
+    bool isOff,
+    const char* tooltipId,
+    bool tooltipOnArrows
+) {
+    // Register the descriptor for this rebuild (m_steppedControls is cleared in
+    // lockstep with m_clickRegions, so the index stays valid exactly as long as
+    // the regions below do). Registered even when disabled (no arrow regions),
+    // keeping index assignment deterministic.
+    const int steppedIndex = static_cast<int>(parent->m_steppedControls.size());
+    parent->m_steppedControls.push_back(control);
+
+    // Emit the row via the standard cycle control, then tag the arrow regions it
+    // created with the descriptor index (and optionally the row tooltip, which is
+    // what the old per-type tooltip fallback resolved to for these controls).
+    const size_t firstRegion = parent->m_clickRegions.size();
+    addCycleControl(label, value, valueWidth,
+        SettingsHud::ClickRegion::STEPPED_DOWN,
+        SettingsHud::ClickRegion::STEPPED_UP,
+        targetHud, enabled, isOff, tooltipId);
+    for (size_t r = firstRegion; r < parent->m_clickRegions.size(); ++r) {
+        auto& region = parent->m_clickRegions[r];
+        if (region.type == SettingsHud::ClickRegion::STEPPED_UP ||
+            region.type == SettingsHud::ClickRegion::STEPPED_DOWN) {
+            region.steppedIndex = steppedIndex;
+            if (tooltipOnArrows && tooltipId) region.tooltipId = tooltipId;
+        }
+    }
 }
 
 void SettingsLayoutContext::addToggleControl(

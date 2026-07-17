@@ -73,7 +73,6 @@ struct SettingsLayoutContext {
     // If enabled is false, no click regions are added and muted color is used
     // If isOff is true, the value is muted (for "Off" state visual consistency)
     // tooltipId is optional - if provided, a row-wide hover region is created
-    // displayMode is optional - if provided, passed to click handler for DISPLAY_MODE_* types
     void addCycleControl(
         const char* label,
         const char* value,
@@ -83,8 +82,50 @@ struct SettingsLayoutContext {
         BaseHud* targetHud,
         bool enabled = true,
         bool isOff = false,
+        const char* tooltipId = nullptr
+    );
+
+    // Add a cycle control whose arrows step a mod-N state through the shared
+    // data-driven cycle handler (ClickRegion::CYCLE_UP/CYCLE_DOWN + a
+    // CycleControl descriptor registered for this rebuild). Use this instead of
+    // a dedicated enum pair when the handler would be the plain archetype
+    // "value = (value ± 1) mod N; hud->setDataDirty(); setDataDirty();"
+    // (optionally with uniform postStep work). Cycles never hold-accelerate.
+    // tooltipOnArrows mirrors addSteppedControl: stamp tooltipId onto the two
+    // arrow regions when the old per-type getTooltipIdForRegion fallback had an
+    // entry for the control; pass false for controls whose arrows historically
+    // showed no tooltip.
+    void addCycleControl(
+        const char* label,
+        const char* value,
+        int valueWidth,
+        const SettingsHud::CycleControl& control,
+        BaseHud* targetHud,
+        bool enabled = true,
+        bool isOff = false,
         const char* tooltipId = nullptr,
-        uint8_t* displayMode = nullptr
+        bool tooltipOnArrows = true
+    );
+
+    // Add a cycle control whose arrows step a numeric HUD member through the
+    // shared data-driven stepped handler (ClickRegion::STEPPED_UP/STEPPED_DOWN +
+    // a SteppedControl descriptor registered for this rebuild). Use this instead
+    // of a dedicated enum pair when the handler would be the plain archetype
+    // "value = applyAccelerated*(...); hud->setDataDirty(); setDataDirty();".
+    // Handlers with any other side effect keep their own enum pair.
+    // tooltipOnArrows: also stamp tooltipId onto the two arrow regions (matches
+    // the old per-type getTooltipIdForRegion fallback; pass false for controls
+    // whose arrows historically showed no tooltip).
+    void addSteppedControl(
+        const char* label,
+        const char* value,
+        int valueWidth,
+        const SettingsHud::SteppedControl& control,
+        BaseHud* targetHud,
+        bool enabled = true,
+        bool isOff = false,
+        const char* tooltipId = nullptr,
+        bool tooltipOnArrows = true
     );
 
     // Add a toggle control with < On/Off > pattern
@@ -103,7 +144,7 @@ struct SettingsLayoutContext {
         const char* valueOverride = nullptr
     );
 
-    // Overload for bool* toggle controls (e.g., GAP_COLUMN_TOGGLE)
+    // Overload for bool* toggle controls (e.g., LAP_LOG_GAP_ROW_TOGGLE)
     void addToggleControl(
         const char* label,
         bool isOn,

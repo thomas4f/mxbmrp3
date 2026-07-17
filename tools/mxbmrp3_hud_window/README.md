@@ -42,7 +42,16 @@ settings menu open) through the actual callbacks, enable the window
 
 ```bash
 tools/mxbmrp3_hud_window/companion_demo.sh out.png       # runs under Wine + Xvfb
+tools/mxbmrp3_hud_window/companion_demo.sh out.png 12 tab Map   # a specific settings tab
+SHOT_RES=2560x1440 tools/mxbmrp3_hud_window/companion_demo.sh out.png  # custom resolution
 ```
+
+Captures default to **1920x1080**. The capture resolution IS the window's render
+resolution: the companion window restores its size from the `[Display]`
+`companionWindowW/H` settings, so the script seeds those into the scenario's
+settings INI and sizes the virtual X display to match (`SHOT_RES=WxH` overrides).
+Without the seed the window opens at the plugin's 980x560 default and every
+capture comes out sub-1080p regardless of the X screen size.
 
 Requires the headless toolchain (mingw-w64 posix + wine64) plus Xvfb + ImageMagick
 (`import`) for the capture. See `.claude/hooks/session-start.sh` / DEVELOPMENT.md.

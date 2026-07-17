@@ -34,11 +34,23 @@ jobs:
         run: |
           set -euo pipefail
           : > behind.md
-          while IFS=$'\t' read -r name repo cur; do
+          : > notcovered.md
+          while IFS=$'\t' read -r name repo cur hasrel; do
             if [ -z "$repo" ] || [ "$repo" = "null" ]; then continue; fi
+            # Repos with no release tags (repoHasReleases: false, e.g. nothings/stb)
+            # can't be version-compared — record them in the issue instead of
+            # skipping silently, so the blind spot stays visible.
+            if [ "$hasrel" = "false" ]; then
+              echo "note: $repo publishes no releases — not comparable"
+              printf -- '- **%s** (`%s`): vendored `%s` — upstream publishes no releases, review manually\n' \
+                "$name" "$repo" "$cur" >> notcovered.md
+              continue
+            fi
             latest=$(gh api "repos/$repo/releases/latest" --jq '.tag_name' 2>/dev/null | sed 's/^[vV]//') || latest=""
             if [ -z "$latest" ]; then
-              echo "note: no published release for $repo — skipping"
+              echo "note: no published release found for $repo — not comparable"
+              printf -- '- **%s** (`%s`): vendored `%s` — latest-release lookup failed, review manually\n' \
+                "$name" "$repo" "$cur" >> notcovered.md
               continue
             fi
             curn=$(printf '%s' "$cur" | sed 's/^[vV]//')
@@ -50,7 +62,7 @@ jobs:
             else
               echo "ok: $name $curn (upstream latest $latest)"
             fi
-          done < <(jq -r '.deps[] | [.name, (.repo // ""), .version] | @tsv' "$MANIFEST")
+          done < <(jq -r '.deps[] | [.name, (.repo // ""), .version, (.repoHasReleases // true | tostring)] | @tsv' "$MANIFEST")
 
       - name: Open, update, or close the tracking issue
         run: |
@@ -60,6 +72,9 @@ jobs:
           if [ -s behind.md ]; then
             body=$(printf '%s\n\n%s\n\n_Bump the file(s) at the library'\''s `path` in `%s`, then update its `version`._\n' \
               "These vendored C/C++ dependencies are behind their upstream latest release:" "$(cat behind.md)" "$MANIFEST")
+            if [ -s notcovered.md ]; then
+              body=$(printf '%s\n\n%s\n\n%s\n' "$body" "Not covered by this check (no upstream releases to compare):" "$(cat notcovered.md)")
+            fi
             if [ -n "$existing" ]; then
               gh issue edit "$existing" --body "$body"
               echo "updated tracking issue #$existing"

@@ -46,9 +46,15 @@ namespace Recording {
         uint32_t flags;          // Feature flags (reserved)
         char reserved[32];       // Reserved for future use
 
-        FileHeader() : version(1), numEvents(0), startTimeUs(0), endTimeUs(0), flags(0) {
+        FileHeader() {
+            // Zero the WHOLE struct first, including the 4 tail padding bytes the
+            // 8-byte alignment adds (68 declared -> 72 written): the full
+            // sizeof(FileHeader) is fwritten to the tape, so indeterminate padding
+            // would leak stack bytes and make otherwise-identical tapes
+            // nondeterministic. Legal: trivially-copyable, no members initialized yet.
+            memset(this, 0, sizeof(*this));
             memcpy(magic, "MXBHREC\0", 8);
-            memset(reserved, 0, sizeof(reserved));
+            version = 1;
         }
     };
 
@@ -154,6 +160,7 @@ private:
     void writeHeader();
     void updateHeader();
     void writeEvent(Recording::EventType type, const void* data, size_t size);
+    void handleWriteFailure();
     uint64_t getCurrentTimeUs() const;
 
     FILE* m_file;

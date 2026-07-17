@@ -123,20 +123,22 @@ int SpectateHandler::handleSpectateVehicles(int iNumVehicles, Unified::SpectateV
         }
     }
 
-    // Check if a spectate switch was requested
+    // Check if a spectate switch was requested. Consume the request with a single
+    // exchange() up front: the director (worker thread) may post a NEW request at
+    // any moment, and the old read-then-clear pattern could clobber it — e.g. the
+    // "rider not found" clear overwrote a valid request posted after the loop read.
     if (m_requestedSpectateRaceNum >= 0 && pasVehicleData != nullptr && piSelect != nullptr) {
+        const int requested = m_requestedSpectateRaceNum.exchange(-1, std::memory_order_relaxed);
         // Find the rider with the requested race number
         for (int i = 0; i < iNumVehicles; ++i) {
-            if (pasVehicleData[i].raceNum == m_requestedSpectateRaceNum) {
+            if (pasVehicleData[i].raceNum == requested) {
                 // Found the rider - switch to them
-                DEBUG_INFO_F("Spectating rider #%d (%s)", m_requestedSpectateRaceNum.load(std::memory_order_relaxed), pasVehicleData[i].name);
+                DEBUG_INFO_F("Spectating rider #%d (%s)", requested, pasVehicleData[i].name);
                 *piSelect = i;
-                m_requestedSpectateRaceNum = -1;  // Clear the request
                 return 1;  // Selection changed
             }
         }
-        // Rider not found - clear the invalid request
-        m_requestedSpectateRaceNum = -1;
+        // Rider not found - the request was already consumed by the exchange
     }
 
     // No change requested or no match found
@@ -175,6 +177,10 @@ int SpectateHandler::handleSpectateCameras(int iNumCameras, void* pCameraData, i
     // requested role to an index by matching camera names on this track; fall back
     // to Auto (index 0, always present) if the desired camera isn't defined here.
     if (m_requestedCameraRole >= 0 && pCameraData != nullptr && piSelect != nullptr && iNumCameras > 0) {
+        // Consume the request atomically up front (same rationale as the rider path
+        // above): a plain read followed by a separate "= -1" would silently discard
+        // a newer request the director posted between the two statements.
+        const int reqRoleRaw = m_requestedCameraRole.exchange(-1, std::memory_order_relaxed);
         static const char* kAuto[]      = { "Auto" };
         static const char* kTrackside[] = { "Trackside", "Camera Set" };
         static const char* kStart[]     = { "Start" };
@@ -188,7 +194,7 @@ int SpectateHandler::handleSpectateCameras(int iNumCameras, void* pCameraData, i
         static const char* kForks[]     = { "Forks" };
         static const char* kFreeRoam[]  = { "Free-Roam", "Free Roam", "Freeroam", "Free", "Orbit" };
 
-        const CameraRole reqRole = static_cast<CameraRole>(m_requestedCameraRole.load(std::memory_order_relaxed));
+        const CameraRole reqRole = static_cast<CameraRole>(reqRoleRaw);
         const bool isFreeRoam = (reqRole == CameraRole::FREE_ROAM);
 
         const char* const* cand = kAuto;
@@ -207,8 +213,7 @@ int SpectateHandler::handleSpectateCameras(int iNumCameras, void* pCameraData, i
 
         int idx = findCameraIndexByName(pCameraData, iNumCameras, cand, nCand);
 
-        int role = m_requestedCameraRole;
-        m_requestedCameraRole = -1;  // one-shot
+        const int role = reqRoleRaw;  // one-shot, consumed by the exchange above
 
         // Free-Roam must resolve to a real manual camera - falling back to Auto would
         // defeat the takeover (no hand control). If this track exposes none, leave the

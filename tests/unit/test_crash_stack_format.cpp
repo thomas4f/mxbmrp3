@@ -68,11 +68,14 @@ TEST_CASE("avTypeName: ExceptionInformation[0] -> read/write/execute, else empty
 TEST_CASE("formatFrame: too-small outSize leaves empty string and returns 0") {
     char buf[128];
     // Pass a size smaller than the rendered text (8 < len("mxbmrp3.dlo+0x378d8")).
-    // (Small explicit size into a big buffer, not a tiny array, so the fortify
-    //  _FORTIFY_SOURCE snprintf-truncation warning doesn't fire on the test itself.)
-    CHECK(formatFrame(buf, 8, "mxbmrp3.dlo", 0x378d8ULL) == 0);
+    // The size goes through a volatile so the compiler can't constant-fold it into
+    // the inlined fortified snprintf — otherwise _FORTIFY_SOURCE emits a compile-time
+    // truncation warning about the exact behavior this test deliberately exercises.
+    volatile size_t smallSize = 8;
+    CHECK(formatFrame(buf, smallSize, "mxbmrp3.dlo", 0x378d8ULL) == 0);
     CHECK(buf[0] == '\0');
-    CHECK(formatFrame(buf, 0, "x", 1ULL) == 0);  // zero-size buffer is a no-op
+    volatile size_t zeroSize = 0;
+    CHECK(formatFrame(buf, zeroSize, "x", 1ULL) == 0);  // zero-size buffer is a no-op
 }
 
 TEST_CASE("formatFrameList: space-delimited, no quotes/brackets") {

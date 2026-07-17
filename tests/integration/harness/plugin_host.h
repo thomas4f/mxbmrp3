@@ -15,6 +15,7 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -53,8 +54,12 @@ public:
         m_spectate  = sym<PFN_Spectate>("SpectateVehicles");
         m_runInit   = sym<PFN_Void_DS>("RunInit");
         m_runDeinit = sym<PFN_Shutdown>("RunDeinit");
+        m_runStart  = sym<PFN_Shutdown>("RunStart");
+        m_runStop   = sym<PFN_Shutdown>("RunStop");
         m_telemetry = sym<PFN_Telemetry>("RunTelemetry");
         m_getRTG    = sym<int(*)(int)>("MXBMRP3_Test_GetRealTimeGap");
+        m_hasATP    = sym<int(*)(int)>("MXBMRP3_Test_HasActiveTrackPos");
+        m_hazCount  = sym<int(*)()>("MXBMRP3_Test_HazardRaceNumCount");
         m_draw      = sym<PFN_Draw>("Draw");
         m_startHttp = sym<void(*)()>("MXBMRP3_Test_StartHttp");
         m_snapshot  = sym<const char*(*)()>("MXBMRP3_Test_Snapshot");
@@ -62,6 +67,7 @@ public:
         m_ptEnabled = sym<int(*)()>("MXBMRP3_Test_PluginThreadEnabled");
         m_ptFlush   = sym<void(*)()>("MXBMRP3_Test_PluginThreadFlush");
         m_ptStop    = sym<void(*)()>("MXBMRP3_Test_PluginThreadStop");
+        m_ptAbort   = sym<void(*)()>("MXBMRP3_Test_PluginThreadAbortWorker");
         m_setProduceDelay = sym<void(*)(int)>("MXBMRP3_Test_SetProduceDelayMs");
         m_getDebugMetrics = sym<void(*)(float*,float*,float*)>("MXBMRP3_Test_GetDebugMetrics");
         m_setPtFlag = sym<void(*)(int)>("MXBMRP3_Test_SetPluginThreadFlag");
@@ -69,6 +75,11 @@ public:
         m_xiSetIndex = sym<void(*)(int)>("MXBMRP3_Test_XInputSetIndex");
         m_xiVibrate = sym<void(*)(float,float)>("MXBMRP3_Test_XInputVibrate");
         m_xiConsume = sym<int(*)(int*,int*,int*)>("MXBMRP3_Test_XInputConsumePending");
+        m_ruSetPerBike  = sym<void(*)(int)>("MXBMRP3_Test_RumbleSetPerBike");
+        m_ruSetEnabled  = sym<void(*)(int)>("MXBMRP3_Test_RumbleSetEnabled");
+        m_ruLoad        = sym<void(*)(const char*)>("MXBMRP3_Test_RumbleLoadProfiles");
+        m_ruHasProfile  = sym<int(*)()>("MXBMRP3_Test_RumbleHasProfile");
+        m_ruChannels    = sym<void(*)(float*,float*,float*,float*,float*,float*,float*,float*,float*,float*,float*,float*)>("MXBMRP3_Test_RumbleChannels");
         m_startRec  = sym<int(*)(const char*)>("MXBMRP3_Test_StartRecording");
         m_stopRec   = sym<void(*)()>("MXBMRP3_Test_StopRecording");
         m_resetAll  = sym<void(*)()>("MXBMRP3_Test_ResetAll");
@@ -105,6 +116,11 @@ public:
         m_loadSettings = sym<void(*)(const char*)>("MXBMRP3_Test_LoadSettings");
         m_setActiveTab = sym<void(*)(const char*)>("MXBMRP3_Test_SetActiveTab");
         m_showSettings = sym<void(*)(int)>("MXBMRP3_Test_ShowSettings");
+        m_stepCount    = sym<int(*)(int)>("MXBMRP3_Test_SettingsSteppedCount");
+        m_stepClick    = sym<int(*)(int,int,int)>("MXBMRP3_Test_SettingsClickStepped");
+        m_cycleCount   = sym<int(*)(int)>("MXBMRP3_Test_SettingsCycleCount");
+        m_cycleClick   = sym<int(*)(int,int)>("MXBMRP3_Test_SettingsClickCycle");
+        m_ruBumpsLight = sym<float(*)()>("MXBMRP3_Test_RumbleActiveBumpsLight");
         m_companion = sym<void(*)(int)>("MXBMRP3_Test_CompanionWindow");
         m_getActiveTab = sym<void(*)(char*, int)>("MXBMRP3_Test_GetActiveTab");
         m_capturedSections = sym<void(*)(char*, int)>("MXBMRP3_Test_CapturedSections");
@@ -130,6 +146,17 @@ public:
         m_forceSurface      = sym<void(*)(int)>("MXBMRP3_Test_ForceActiveSurface");
         m_rcSetVisible      = sym<void(*)(int)>("MXBMRP3_Test_SessionChartsSetVisible");
         m_rcSetCharts       = sym<void(*)(int)>("MXBMRP3_Test_SessionChartsSetCharts");
+        m_fmxSetNow         = sym<void(*)(long long)>("MXBMRP3_Test_FmxSetNowUs");
+        m_fmxState          = sym<void(*)(int*,int*,int*,int*,int*,int*,int*,int*)>("MXBMRP3_Test_FmxState");
+        m_statsSetNow       = sym<void(*)(long long)>("MXBMRP3_Test_StatsSetNowUs");
+        m_statsOdoState     = sym<void(*)(double*,double*,double*,int*)>("MXBMRP3_Test_StatsOdometerState");
+        m_statsSave         = sym<void(*)()>("MXBMRP3_Test_StatsSave");
+        m_recParse          = sym<int(*)(int, const char*)>("MXBMRP3_Test_RecordsParse");
+        m_recCount          = sym<int(*)()>("MXBMRP3_Test_RecordsCount");
+        m_recGet            = sym<int(*)(int, char*, int, char*, int, int*, int*, int*, int*, char*, int)>("MXBMRP3_Test_RecordsGet");
+        m_recSetStub        = sym<void(*)(int, const char*)>("MXBMRP3_Test_RecordsSetFetchStub");
+        m_recStartFetch     = sym<int(*)()>("MXBMRP3_Test_RecordsStartFetch");
+        m_recFetchState     = sym<int(*)()>("MXBMRP3_Test_RecordsFetchState");
     }
     ~PluginHost() { if (m_h) FreeLibrary(m_h); }
 
@@ -169,10 +196,11 @@ public:
 
     // --- driving the game callbacks -----------------------------------------
     void eventInit(const char* trackName, const char* riderName,
-                   float trackLength = 1600.0f, int type = 2) {
+                   float trackLength = 1600.0f, int type = 2,
+                   const char* bikeName = "Test 450") {
         SPluginsBikeEvent_t ev{};
         setStr(ev.m_szRiderName, riderName);
-        setStr(ev.m_szBikeName, "Test 450");
+        setStr(ev.m_szBikeName, bikeName);
         setStr(ev.m_szCategory, "MX1");
         setStr(ev.m_szTrackName, trackName);
         ev.m_fTrackLength = trackLength; ev.m_iType = type;
@@ -309,6 +337,9 @@ public:
     // Internal real-time gap (ms) for a rider — 0 for the leader, -1 unknown
     // (via the MXBMRP3_Test_GetRealTimeGap hook; not in the JSON snapshot).
     int realTimeGap(int raceNum) { return m_getRTG ? m_getRTG(raceNum) : -2; }
+    // Internal "recently seen in a RaceTrackPosition batch" bit (feeds liveGapValid).
+    int hasActiveTrackPos(int raceNum) { return m_hasATP ? m_hasATP(raceNum) : -1; }
+    int hazardRaceNumCount() { return m_hazCount ? m_hazCount() : -1; }
 
     // SpectateVehicles: the game's rider list + which index the camera is on.
     // curSelection's rider becomes the spectated/"camera" rider (gets the camera
@@ -347,16 +378,46 @@ public:
         if (m_runInit) m_runInit(&s, (int)sizeof(s));
     }
     void runDeinit() { if (m_runDeinit) m_runDeinit(); }
+    // RunStart/RunStop: sim resume / pause (RunStart sets the isPlayerRunning
+    // flag that gates FmxManager's telemetry processing; RunStop is the pit
+    // leave-track flush).
+    void runStart() { if (m_runStart) m_runStart(); }
+    void runStop()  { if (m_runStop) m_runStop(); }
     // RunTelemetry: one telemetry frame. speedMs (m/s) feeds stats top-speed and,
     // integrated over the WALL-CLOCK gap between calls, the odometer/distance;
     // gear feeds the shift counter. time/pos are the extra RunTelemetry args
     // (session time, centerline position). Top speed is captured on a single call;
-    // distance needs two calls with a real delay and speed >= 0.1 m/s.
+    // distance needs two calls with a time delta (real, or injected via
+    // statsSetNowUs) and speed >= 0.1 m/s.
     void telemetry(float speedMs, int gear = 3, float time = 0.0f, float pos = 0.0f) {
         SPluginsBikeData_t d{};
         d.m_fSpeedometer = speedMs;
         d.m_iGear = gear;
         if (m_telemetry) m_telemetry(&d, (int)sizeof(d), time, pos);
+    }
+    // RunTelemetry with the orientation/contact/rumble fields the FMX trick
+    // detection and the rumble effect engine read (see TelemetryRow). Wheel
+    // speeds default to mirroring the vehicle speed so a grounded, rolling
+    // frame carries no burnout slip / lockup.
+    void telemetryFrame(const TelemetryRow& r) {
+        SPluginsBikeData_t d{};
+        d.m_fSpeedometer = r.speed;
+        d.m_iGear = r.gear;
+        d.m_fPosX = r.posX; d.m_fPosY = r.posY; d.m_fPosZ = r.posZ;
+        d.m_fYaw = r.yaw; d.m_fPitch = r.pitch; d.m_fRoll = r.roll;
+        d.m_fYawVelocity = r.yawVel; d.m_fPitchVelocity = r.pitchVel; d.m_fRollVelocity = r.rollVel;
+        d.m_aiWheelMaterial[0] = r.frontMaterial;
+        d.m_aiWheelMaterial[1] = r.rearMaterial;
+        d.m_afWheelSpeed[0] = std::isnan(r.wheelSpeedFront) ? r.speed : r.wheelSpeedFront;
+        d.m_afWheelSpeed[1] = std::isnan(r.wheelSpeedRear)  ? r.speed : r.wheelSpeedRear;
+        d.m_afSuspVelocity[0] = r.suspVelFront;
+        d.m_afSuspVelocity[1] = r.suspVelRear;
+        d.m_iRPM = r.rpm;
+        d.m_fThrottle = r.throttle;
+        d.m_fSteerTorque = r.steerTorque;
+        d.m_iCrashed = r.crashed;
+        d.m_fClutch = r.clutch;
+        if (m_telemetry) m_telemetry(&d, (int)sizeof(d), r.time, r.trackPos);
     }
 
     // --- replay a recorded callback tape ------------------------------------
@@ -520,6 +581,19 @@ public:
     // Active settings tab (by display name) — for the persisted-tab restore test.
     void setActiveTab(const char* name) { if (m_setActiveTab) m_setActiveTab(name); }
     void showSettings(bool v = true) { if (m_showSettings) m_showSettings(v ? 1 : 0); }
+    // Stepped-control click seam: count/click STEPPED_UP (up=true) / STEPPED_DOWN
+    // regions on the active tab, in layout order. holdRepeats drives the accel tier.
+    int steppedCount(bool up) { return m_stepCount ? m_stepCount(up ? 1 : 0) : -1; }
+    bool clickStepped(int index, bool up, int holdRepeats = 0) {
+        return m_stepClick && m_stepClick(index, up ? 1 : 0, holdRepeats) != 0;
+    }
+    // Cycle-control click seam: count/click CYCLE_UP (up=true) / CYCLE_DOWN
+    // regions on the active tab, in layout order (no hold tier - cycles never
+    // accelerate).
+    int cycleCount(bool up) { return m_cycleCount ? m_cycleCount(up ? 1 : 0) : -1; }
+    bool clickCycle(int index, bool up) {
+        return m_cycleClick && m_cycleClick(index, up ? 1 : 0) != 0;
+    }
     void companionWindow(bool v = true) { if (m_companion) m_companion(v ? 1 : 0); }
     // Force a fake connected controller and show the gamepad widget (preview/tests).
     void fakeGamepad(bool on = true) { if (m_fakeGamepad) m_fakeGamepad(on ? 1 : 0); }
@@ -528,6 +602,82 @@ public:
     void forceActiveSurface(int surface) { if (m_forceSurface) m_forceSurface(surface); }
     void sessionChartsSetVisible(bool v) { if (m_rcSetVisible) m_rcSetVisible(v ? 1 : 0); }
     void sessionChartsSetCharts(int mask) { if (m_rcSetCharts) m_rcSetCharts(mask); }
+
+    // --- FMX trick detection (GAME_HAS_FMX builds only) ----------------------
+    // The FMX state machine runs on the wall clock; inject simulated time (µs,
+    // -1 restores the real clock) before each telemetryFrame() so debounces,
+    // grace and the chain window play out deterministically.
+    bool hasFmx() const { return m_fmxSetNow && m_fmxState; }
+    void fmxSetNowUs(long long us) { if (m_fmxSetNow) m_fmxSetNow(us); }
+    // Score/chain/active-trick state (Fmx::TrickType / TrickState as ints);
+    // lastTrickType = newest chained trick, or the completed/failed chain's
+    // final type once the chain has been banked or lost.
+    struct FmxState {
+        int sessionScore = -1, tricksCompleted = -1, tricksFailed = -1;
+        int chainCount = -1, chainScore = -1;
+        int activeState = -1, activeType = -1, lastTrickType = -1;
+    };
+    FmxState fmxState() {
+        FmxState s;
+        if (m_fmxState) m_fmxState(&s.sessionScore, &s.tricksCompleted, &s.tricksFailed,
+                                   &s.chainCount, &s.chainScore,
+                                   &s.activeState, &s.activeType, &s.lastTrickType);
+        return s;
+    }
+
+    // --- Stats odometer seam --------------------------------------------------
+    // Inject the odometer's wall clock (µs, -1 restores the real clock) so each
+    // telemetry tick's dt — and the expected integrated distance — is exact.
+    bool hasStatsOdometer() const { return m_statsSetNow && m_statsOdoState && m_statsSave; }
+    void statsSetNowUs(long long us) { if (m_statsSetNow) m_statsSetNow(us); }
+    // Live odometer state: current bike's odometer + session trip (meters), and
+    // the ~100m dirty-coalescing internals (unsaved distance, dirty flag).
+    struct OdometerState { double bikeOdometer = -1, sessionTrip = -1, unsaved = -1; int dirty = -1; };
+    OdometerState statsOdometerState() {
+        OdometerState s;
+        if (m_statsOdoState) m_statsOdoState(&s.bikeOdometer, &s.sessionTrip, &s.unsaved, &s.dirty);
+        return s;
+    }
+    // Force a stats save (same save() as the leave-track flush; no-op when clean).
+    void statsSave() { if (m_statsSave) m_statsSave(); }
+
+    // --- Records fetch/parse seam (GAME_HAS_RECORDS_PROVIDER builds only) -----
+    // See the MXBMRP3_Test_Records* hooks: canned-response parsing through the
+    // REAL parse path, plus a stubbed fetch worker for the shutdown-during-fetch
+    // join-contract test.
+    bool hasRecords() const {
+        return m_recParse && m_recCount && m_recGet && m_recSetStub
+            && m_recStartFetch && m_recFetchState;
+    }
+    // Parse a canned response as provider (0=CBR, 1=MXB_RANKED); returns the
+    // parsed record count, or -1 on a parse error (-2 = hook missing).
+    int recordsParse(int provider, const std::string& json) {
+        return m_recParse ? m_recParse(provider, json.c_str()) : -2;
+    }
+    int recordsCount() { return m_recCount ? m_recCount() : -1; }
+    struct RecordRow {
+        bool ok = false;
+        std::string rider, bike, date;
+        int laptime = -1, s1 = -1, s2 = -1, s3 = -1;
+    };
+    RecordRow recordsGet(int index) {
+        RecordRow r;
+        if (!m_recGet) return r;
+        char rider[128] = {0}, bike[128] = {0}, date[64] = {0};
+        r.ok = m_recGet(index, rider, (int)sizeof(rider), bike, (int)sizeof(bike),
+                        &r.laptime, &r.s1, &r.s2, &r.s3, date, (int)sizeof(date)) != 0;
+        if (r.ok) { r.rider = rider; r.bike = bike; r.date = date; }
+        return r;
+    }
+    // Arm the fetch-worker stub (delayMs < 0 disarms): sleep + canned response
+    // through the normal completion path, no network.
+    void recordsSetFetchStub(int delayMs, const std::string& response) {
+        if (m_recSetStub) m_recSetStub(delayMs, response.c_str());
+    }
+    // Start a real fetch; true if a worker is now in flight.
+    bool recordsStartFetch() { return m_recStartFetch && m_recStartFetch() != 0; }
+    // Fetch state (0=IDLE, 1=FETCHING, 2=SUCCESS, 3=FETCH_ERROR; -1 = hook missing).
+    int recordsFetchState() { return m_recFetchState ? m_recFetchState() : -1; }
     // Gamepad content extent inside its frame: {bottom-most Y, right-most X} as
     // fractions of the box. {-1,-1} if not rendered. A golden signature of the layout.
     struct GamepadExtent { float bottom = -1.0f, right = -1.0f; };
@@ -635,6 +785,13 @@ public:
     // Flip ONLY the [Advanced] flag, as a live INI reload would; the next draw()'s
     // reconcileEnabled() starts/stops the worker to match (the RELOAD_CONFIG path).
     void setPluginThreadFlag(bool on) { if (m_setPtFlag) m_setPtFlag(on ? 1 : 0); }
+    // Fault injection: kill the worker with an escaping exception (see the abort
+    // self-heal test). Returns false if the hook isn't exported.
+    bool pluginThreadAbortWorker() {
+        if (!m_ptAbort) return false;
+        m_ptAbort();
+        return true;
+    }
 
     // XInput I/O-thread test seam: stop the worker, then drive/inspect the rumble
     // command setVibration posts (proves the send policy survives off-threading).
@@ -646,6 +803,37 @@ public:
         RumblePost p;
         if (m_xiConsume) p.posted = m_xiConsume(&p.left8, &p.right8, &p.idx) != 0;
         return p;
+    }
+
+    // --- Rumble effect math seam (see MXBMRP3_Test_Rumble* hooks) -------------
+    // The per-channel effect contributions + combined motor values that
+    // updateRumbleFromTelemetry() computed for the LAST telemetry frame —
+    // in-game-only state (the rumble graph / motor feed), never in /api/state.
+    bool hasRumbleMath() const {
+        return m_ruSetPerBike && m_ruSetEnabled && m_ruLoad && m_ruHasProfile && m_ruChannels;
+    }
+    void rumbleSetPerBike(bool on) { if (m_ruSetPerBike) m_ruSetPerBike(on ? 1 : 0); }
+    // The ACTIVE rumble config's Bumps light strength (global, or the current
+    // bike's profile in per-bike mode) - see MXBMRP3_Test_RumbleActiveBumpsLight.
+    float rumbleActiveBumpsLight() { return m_ruBumpsLight ? m_ruBumpsLight() : -1.0f; }
+    // Master enable: off (default) still computes every channel but feeds the
+    // motors 0 — turn on before asserting the combined heavy/light values.
+    void rumbleSetEnabled(bool on) { if (m_ruSetEnabled) m_ruSetEnabled(on ? 1 : 0); }
+    // (Re)load the per-bike profile JSON from savePath — same parse as startup,
+    // so a test can rewrite the file and reload without a plugin restart.
+    void rumbleLoadProfiles(const char* savePath) { if (m_ruLoad) m_ruLoad(savePath); }
+    bool rumbleHasProfile() { return m_ruHasProfile && m_ruHasProfile() != 0; }
+    struct RumbleChannels {
+        float heavy = -1, light = -1;              // combined motors (pre-quantization)
+        float susp = -1, suspRear = -1, spin = -1, lock = -1, lockRear = -1,
+              wheelie = -1, rpm = -1, slide = -1, surface = -1, steer = -1;
+    };
+    RumbleChannels rumbleChannels() {
+        RumbleChannels c;
+        if (m_ruChannels)
+            m_ruChannels(&c.heavy, &c.light, &c.susp, &c.suspRear, &c.spin, &c.lock,
+                         &c.lockRear, &c.wheelie, &c.rpm, &c.slide, &c.surface, &c.steer);
+        return c;
     }
     // Inject an artificial per-frame render-build stall (ms), simulating a slow HUD.
     void setProduceDelayMs(int ms) { if (m_setProduceDelay) m_setProduceDelay(ms); }
@@ -670,6 +858,11 @@ public:
     // Via the real HTTP server + socket (needs startHttp()). Reserve for the
     // contract test that the server actually serves what the plugin builds.
     std::string rawState() { return httpGet("127.0.0.1", 8080, "/api/state"); }
+    // Any path, body only / full response (status line + headers + body). The
+    // full variant exists for header assertions (e.g. Cache-Control on the
+    // custom-served /sw.js and /custom.css).
+    std::string rawGet(const char* path) { return httpGet("127.0.0.1", 8080, path); }
+    std::string rawGetFull(const char* path) { return httpGetFull("127.0.0.1", 8080, path); }
     json state() {
         std::string body = rawState();
         return body.empty() ? json() : json::parse(body, nullptr, /*allow_exceptions=*/false);
@@ -738,8 +931,9 @@ private:
         std::strncpy(dst, src ? src : "", N - 1); dst[N - 1] = '\0';
     }
 
-    // Minimal blocking HTTP GET; returns the body with headers stripped, or "".
-    static std::string httpGet(const char* host, int port, const char* path) {
+    // Minimal blocking HTTP GET; returns the FULL response (status line +
+    // headers + body), or "".
+    static std::string httpGetFull(const char* host, int port, const char* path) {
         WSADATA w; if (WSAStartup(MAKEWORD(2, 2), &w) != 0) return "";
         SOCKET s = socket(AF_INET, SOCK_STREAM, 0);
         sockaddr_in a{}; a.sin_family = AF_INET; a.sin_port = htons((u_short)port);
@@ -752,6 +946,12 @@ private:
         std::string resp; char buf[8192]; int r;
         while ((r = recv(s, buf, sizeof(buf), 0)) > 0) resp.append(buf, r);
         closesocket(s); WSACleanup();
+        return resp;
+    }
+
+    // As above, but with headers stripped: body only, or "".
+    static std::string httpGet(const char* host, int port, const char* path) {
+        std::string resp = httpGetFull(host, port, path);
         size_t hdr = resp.find("\r\n\r\n");
         return hdr == std::string::npos ? resp : resp.substr(hdr + 4);
     }
@@ -769,8 +969,11 @@ private:
     PFN_Spectate m_spectate = nullptr;
     PFN_Void_DS  m_runInit = nullptr;
     PFN_Shutdown m_runDeinit = nullptr;
+    PFN_Shutdown m_runStart = nullptr, m_runStop = nullptr;
     PFN_Telemetry m_telemetry = nullptr;
     int         (*m_getRTG)(int) = nullptr;
+    int         (*m_hasATP)(int) = nullptr;
+    int         (*m_hazCount)() = nullptr;
     PFN_Draw     m_draw = nullptr;
     void        (*m_startHttp)() = nullptr;
     const char* (*m_snapshot)() = nullptr;
@@ -778,6 +981,7 @@ private:
     int         (*m_ptEnabled)() = nullptr;
     void        (*m_ptFlush)() = nullptr;
     void        (*m_ptStop)() = nullptr;
+    void        (*m_ptAbort)() = nullptr;
     void        (*m_setProduceDelay)(int) = nullptr;
     void        (*m_getDebugMetrics)(float*,float*,float*) = nullptr;
     void        (*m_setPtFlag)(int) = nullptr;
@@ -785,6 +989,11 @@ private:
     void        (*m_xiSetIndex)(int) = nullptr;
     void        (*m_xiVibrate)(float,float) = nullptr;
     int         (*m_xiConsume)(int*,int*,int*) = nullptr;
+    void        (*m_ruSetPerBike)(int) = nullptr;
+    void        (*m_ruSetEnabled)(int) = nullptr;
+    void        (*m_ruLoad)(const char*) = nullptr;
+    int         (*m_ruHasProfile)() = nullptr;
+    void        (*m_ruChannels)(float*,float*,float*,float*,float*,float*,float*,float*,float*,float*,float*,float*) = nullptr;
     int         (*m_startRec)(const char*) = nullptr;
     void        (*m_stopRec)() = nullptr;
     void        (*m_resetAll)() = nullptr;
@@ -821,6 +1030,11 @@ private:
     void        (*m_setAutoSave)(int) = nullptr;
     void        (*m_loadSettings)(const char*) = nullptr;
     void        (*m_setActiveTab)(const char*) = nullptr;
+    int         (*m_stepCount)(int) = nullptr;
+    int         (*m_stepClick)(int,int,int) = nullptr;
+    int         (*m_cycleCount)(int) = nullptr;
+    int         (*m_cycleClick)(int,int) = nullptr;
+    float       (*m_ruBumpsLight)() = nullptr;
     void        (*m_showSettings)(int) = nullptr;
     void        (*m_companion)(int) = nullptr;
     void        (*m_stSetVisible)(int) = nullptr;
@@ -837,6 +1051,17 @@ private:
     void        (*m_forceSurface)(int) = nullptr;
     void        (*m_rcSetVisible)(int) = nullptr;
     void        (*m_rcSetCharts)(int) = nullptr;
+    void        (*m_fmxSetNow)(long long) = nullptr;
+    void        (*m_fmxState)(int*,int*,int*,int*,int*,int*,int*,int*) = nullptr;
+    void        (*m_statsSetNow)(long long) = nullptr;
+    void        (*m_statsOdoState)(double*,double*,double*,int*) = nullptr;
+    void        (*m_statsSave)() = nullptr;
+    int         (*m_recParse)(int, const char*) = nullptr;
+    int         (*m_recCount)() = nullptr;
+    int         (*m_recGet)(int, char*, int, char*, int, int*, int*, int*, int*, char*, int) = nullptr;
+    void        (*m_recSetStub)(int, const char*) = nullptr;
+    int         (*m_recStartFetch)() = nullptr;
+    int         (*m_recFetchState)() = nullptr;
     int         m_lastGameQuads = 0;
     int         m_lastGameStrings = 0;
     void        (*m_getActiveTab)(char*, int) = nullptr;

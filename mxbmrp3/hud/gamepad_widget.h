@@ -7,6 +7,7 @@
 #include "base_hud.h"
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
+#include "../core/xinput_reader.h"   // XInputData (rebuild-gate snapshot)
 #include <map>
 
 class GamepadWidget : public BaseHud {
@@ -70,6 +71,12 @@ public:
 
 private:
     void rebuildRenderData() override;
+
+    // Last controller state that was actually rendered — the rebuild gate (see
+    // update()). POD snapshot compared bytewise; both copies originate from the
+    // same XInputReader object, so padding bytes compare consistently.
+    XInputData m_lastRenderedInput{};
+    bool m_hasRenderedInput = false;
 
     // Helper to add a stick with position indicator
     // isPressed = L3/R3 click state for coloring the stick sprite
