@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="416" viewBox="0 0 760 416" role="img"><style>
+  text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
+  .grid{stroke:#d0d7de;stroke-width:1}
+  .axis{stroke:#57606a;stroke-width:1}
+  .lbl{fill:#57606a;font-size:12px}
+  .val{fill:#24292f;font-size:12px;font-weight:600}
+  .title{fill:#24292f;font-size:14px;font-weight:700}
+  .sub{fill:#57606a;font-size:11px}
+  @media (prefers-color-scheme: dark){
+    .grid{stroke:#30363d}
+    .axis{stroke:#8b949e}
+    .lbl{fill:#8b949e}
+    .val{fill:#e6edf3}
+    .title{fill:#e6edf3}
+    .sub{fill:#8b949e}
+  }
+</style><text x="12" y="20" class="title">Features (feat_*)</text><text x="12" y="37" class="sub">% of 3,450 MX Bikes installs</text><text x="200" y="60" class="lbl" text-anchor="end">Widgets (master)</text><rect x="210" y="44" width="454" height="22" rx="3" fill="#3fb950"/><text x="670" y="60" class="val">98% (3,396)</text><text x="200" y="90" class="lbl" text-anchor="end">Steam friends</text><rect x="210" y="74" width="452" height="22" rx="3" fill="#58a6ff"/><text x="668" y="90" class="val">98% (3,383)</text><text x="200" y="120" class="lbl" text-anchor="end">Update checker</text><rect x="210" y="104" width="404" height="22" rx="3" fill="#d29922"/><text x="620" y="120" class="val">88% (3,027)</text><text x="200" y="150" class="lbl" text-anchor="end">Helmet overlay</text><rect x="210" y="134" width="76" height="22" rx="3" fill="#bc8cff"/><text x="292" y="150" class="val">17% (570)</text><text x="200" y="180" class="lbl" text-anchor="end">Discord presence</text><rect x="210" y="164" width="40" height="22" rx="3" fill="#f778ba"/><text x="256" y="180" class="val">9% (304)</text><text x="200" y="210" class="lbl" text-anchor="end">Controller rumble</text><rect x="210" y="194" width="26" height="22" rx="3" fill="#39c5cf"/><text x="242" y="210" class="val">6% (195)</text><text x="200" y="240" class="lbl" text-anchor="end">Auto-director</text><rect x="210" y="224" width="11" height="22" rx="3" fill="#ff7b72"/><text x="227" y="240" class="val">3% (41 of 1,638)</text><text x="200" y="270" class="lbl" text-anchor="end">Profile auto-switch</text><rect x="210" y="254" width="11" height="22" rx="3" fill="#a5d6ff"/><text x="227" y="270" class="val">2% (40 of 1,638)</text><text x="200" y="300" class="lbl" text-anchor="end">Companion window</text><rect x="210" y="284" width="5" height="22" rx="3" fill="#7ee787"/><text x="221" y="300" class="val">1% (20 of 1,637)</text><text x="200" y="330" class="lbl" text-anchor="end">Web overlay (OBS)</text><rect x="210" y="314" width="5" height="22" rx="3" fill="#ffa657"/><text x="221" y="330" class="val">1% (41)</text><text x="200" y="360" class="lbl" text-anchor="end">Developer mode</text><rect x="210" y="344" width="1" height="22" rx="3" fill="#3fb950"/><text x="217" y="360" class="val">&lt;1% (7)</text><text x="200" y="390" class="lbl" text-anchor="end">Worker thread</text><rect x="210" y="374" width="1" height="22" rx="3" fill="#58a6ff"/><text x="217" y="390" class="val">&lt;1% (1 of 1,103)</text></svg>

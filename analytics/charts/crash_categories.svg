@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="236" viewBox="0 0 760 236" role="img"><style>
+  text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
+  .grid{stroke:#d0d7de;stroke-width:1}
+  .axis{stroke:#57606a;stroke-width:1}
+  .lbl{fill:#57606a;font-size:12px}
+  .val{fill:#24292f;font-size:12px;font-weight:600}
+  .title{fill:#24292f;font-size:14px;font-weight:700}
+  .sub{fill:#57606a;font-size:11px}
+  @media (prefers-color-scheme: dark){
+    .grid{stroke:#30363d}
+    .axis{stroke:#8b949e}
+    .lbl{fill:#8b949e}
+    .val{fill:#e6edf3}
+    .title{fill:#e6edf3}
+    .sub{fill:#8b949e}
+  }
+</style><text x="12" y="20" class="title">Crashes by faulting-module category</text><text x="12" y="37" class="sub">where the fault occurred</text><text x="160" y="60" class="lbl" text-anchor="end">System / runtime</text><rect x="170" y="44" width="494" height="22" rx="3" fill="#3fb950"/><text x="670" y="60" class="val">1,001 (61%)</text><text x="160" y="90" class="lbl" text-anchor="end">Game</text><rect x="170" y="74" width="273" height="22" rx="3" fill="#58a6ff"/><text x="449" y="90" class="val">554 (34%)</text><text x="160" y="120" class="lbl" text-anchor="end">Unknown</text><rect x="170" y="104" width="32" height="22" rx="3" fill="#d29922"/><text x="208" y="120" class="val">65 (4%)</text><text x="160" y="150" class="lbl" text-anchor="end">Graphics driver</text><rect x="170" y="134" width="7" height="22" rx="3" fill="#bc8cff"/><text x="183" y="150" class="val">16 (&lt;1%)</text><text x="160" y="180" class="lbl" text-anchor="end">Other / third-party</text><rect x="170" y="164" width="1" height="22" rx="3" fill="#f778ba"/><text x="177" y="180" class="val">3 (&lt;1%)</text><text x="160" y="210" class="lbl" text-anchor="end">Overlay / capture</text><rect x="170" y="194" width="1" height="22" rx="3" fill="#39c5cf"/><text x="177" y="210" class="val">3 (&lt;1%)</text></svg>

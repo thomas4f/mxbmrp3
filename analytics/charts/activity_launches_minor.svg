@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="320" viewBox="0 0 760 320" role="img"><style>
+  text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
+  .grid{stroke:#d0d7de;stroke-width:1}
+  .axis{stroke:#57606a;stroke-width:1}
+  .lbl{fill:#57606a;font-size:12px}
+  .val{fill:#24292f;font-size:12px;font-weight:600}
+  .title{fill:#24292f;font-size:14px;font-weight:700}
+  .sub{fill:#57606a;font-size:11px}
+  @media (prefers-color-scheme: dark){
+    .grid{stroke:#30363d}
+    .axis{stroke:#8b949e}
+    .lbl{fill:#8b949e}
+    .val{fill:#e6edf3}
+    .title{fill:#e6edf3}
+    .sub{fill:#8b949e}
+  }
+</style><text x="12" y="20" class="title">Daily launches - GP Bikes &amp; Kart Racing Pro</text><text x="12" y="37" class="sub">lower-volume games, own scale</text><line x1="52" y1="274.0" x2="744" y2="274.0" class="grid" stroke-dasharray="3 3"/><text x="46" y="278.0" class="sub" text-anchor="end">0</text><line x1="52" y1="224.0" x2="744" y2="224.0" class="grid" stroke-dasharray="3 3"/><text x="46" y="228.0" class="sub" text-anchor="end">25</text><line x1="52" y1="174.0" x2="744" y2="174.0" class="grid" stroke-dasharray="3 3"/><text x="46" y="178.0" class="sub" text-anchor="end">50</text><line x1="52" y1="124.0" x2="744" y2="124.0" class="grid" stroke-dasharray="3 3"/><text x="46" y="128.0" class="sub" text-anchor="end">75</text><line x1="52" y1="74.0" x2="744" y2="74.0" class="grid" stroke-dasharray="3 3"/><text x="46" y="78.0" class="sub" text-anchor="end">100</text><text x="52.0" y="290" class="sub" text-anchor="middle">06-27</text><text x="117.9" y="290" class="sub" text-anchor="middle">06-29</text><text x="183.8" y="290" class="sub" text-anchor="middle">07-01</text><text x="249.7" y="290" class="sub" text-anchor="middle">07-03</text><text x="315.6" y="290" class="sub" text-anchor="middle">07-05</text><text x="381.5" y="290" class="sub" text-anchor="middle">07-07</text><text x="447.4" y="290" class="sub" text-anchor="middle">07-09</text><text x="513.3" y="290" class="sub" text-anchor="middle">07-11</text><text x="579.2" y="290" class="sub" text-anchor="middle">07-13</text><text x="645.1" y="290" class="sub" text-anchor="middle">07-15</text><text x="711.0" y="290" class="sub" text-anchor="middle">07-17</text><text x="744.0" y="290" class="sub" text-anchor="middle">07-18</text><polyline points="52.0,274.0 85.0,228.0 117.9,224.0 150.9,158.0 183.8,200.0 216.8,218.0 249.7,240.0 282.7,174.0 315.6,160.0 348.6,238.0 381.5,192.0 414.5,220.0 447.4,220.0 480.4,192.0 513.3,88.0 546.3,170.0 579.2,130.0 612.2,166.0 645.1,198.0 678.1,170.0 711.0,160.0 744.0,220.0" fill="none" stroke="#58a6ff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><polyline points="52.0,274.0 85.0,272.0 117.9,274.0 150.9,264.0 183.8,260.0 216.8,226.0 249.7,250.0 282.7,232.0 315.6,264.0 348.6,246.0 381.5,274.0 414.5,270.0 447.4,274.0 480.4,262.0 513.3,238.0 546.3,258.0 579.2,260.0 612.2,250.0 645.1,264.0 678.1,272.0 711.0,250.0 744.0,258.0" fill="none" stroke="#d29922" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><rect x="52" y="44" width="11" height="11" rx="2" fill="#58a6ff"/><text x="68" y="54" class="lbl">GP Bikes</text><rect x="158" y="44" width="11" height="11" rx="2" fill="#d29922"/><text x="174" y="54" class="lbl">Kart Racing Pro</text></svg>

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="320" viewBox="0 0 760 320" role="img"><style>
+  text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
+  .grid{stroke:#d0d7de;stroke-width:1}
+  .axis{stroke:#57606a;stroke-width:1}
+  .lbl{fill:#57606a;font-size:12px}
+  .val{fill:#24292f;font-size:12px;font-weight:600}
+  .title{fill:#24292f;font-size:14px;font-weight:700}
+  .sub{fill:#57606a;font-size:11px}
+  @media (prefers-color-scheme: dark){
+    .grid{stroke:#30363d}
+    .axis{stroke:#8b949e}
+    .lbl{fill:#8b949e}
+    .val{fill:#e6edf3}
+    .title{fill:#e6edf3}
+    .sub{fill:#8b949e}
+  }
+</style><text x="12" y="20" class="title">Daily launches - MX Bikes</text><text x="12" y="37" class="sub">launches per day</text><line x1="52" y1="274.0" x2="744" y2="274.0" class="grid" stroke-dasharray="3 3"/><text x="46" y="278.0" class="sub" text-anchor="end">0</text><line x1="52" y1="224.0" x2="744" y2="224.0" class="grid" stroke-dasharray="3 3"/><text x="46" y="228.0" class="sub" text-anchor="end">2,500</text><line x1="52" y1="174.0" x2="744" y2="174.0" class="grid" stroke-dasharray="3 3"/><text x="46" y="178.0" class="sub" text-anchor="end">5,000</text><line x1="52" y1="124.0" x2="744" y2="124.0" class="grid" stroke-dasharray="3 3"/><text x="46" y="128.0" class="sub" text-anchor="end">7,500</text><line x1="52" y1="74.0" x2="744" y2="74.0" class="grid" stroke-dasharray="3 3"/><text x="46" y="78.0" class="sub" text-anchor="end">10,000</text><text x="52.0" y="290" class="sub" text-anchor="middle">06-27</text><text x="117.9" y="290" class="sub" text-anchor="middle">06-29</text><text x="183.8" y="290" class="sub" text-anchor="middle">07-01</text><text x="249.7" y="290" class="sub" text-anchor="middle">07-03</text><text x="315.6" y="290" class="sub" text-anchor="middle">07-05</text><text x="381.5" y="290" class="sub" text-anchor="middle">07-07</text><text x="447.4" y="290" class="sub" text-anchor="middle">07-09</text><text x="513.3" y="290" class="sub" text-anchor="middle">07-11</text><text x="579.2" y="290" class="sub" text-anchor="middle">07-13</text><text x="645.1" y="290" class="sub" text-anchor="middle">07-15</text><text x="711.0" y="290" class="sub" text-anchor="middle">07-17</text><text x="744.0" y="290" class="sub" text-anchor="middle">07-18</text><polyline points="52.0,274.0 85.0,252.8 117.9,221.2 150.9,211.4 183.8,200.7 216.8,203.5 249.7,202.0 282.7,202.4 315.6,190.5 348.6,197.1 381.5,178.1 414.5,178.3 447.4,169.2 480.4,158.4 513.3,179.4 546.3,175.7 579.2,167.2 612.2,168.6 645.1,162.8 678.1,157.8 711.0,156.2 744.0,225.9" fill="none" stroke="#3fb950" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><rect x="52" y="44" width="11" height="11" rx="2" fill="#3fb950"/><text x="68" y="54" class="lbl">MX Bikes</text></svg>
