@@ -25,5 +25,5 @@ cairosvg==2.9.0
 #   - pyarrow: REQUIRED to read the Parquet exports.
 #   - pandas:  REQUIRED for the aggregations.
 #   The SVG charting (tools/analytics_svg.py) is pure-stdlib, no extra dep.
-pyarrow>=15.0.0
+pyarrow>=25.0.0
 pandas>=2.0.0
