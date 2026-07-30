@@ -27,6 +27,25 @@
 option(MXBMRP3_TEST_BUILD
        "Build the mingw/Wine test configuration instead of the shipping DLLs" OFF)
 
+# AddressSanitizer build of the MSVC plugin DLLs, for the memory-safety CI job
+# (.github/workflows/tests.yml) and tests/asan/run_asan_msvc.ps1. This must be a
+# CONFIGURE-time option, not msbuild /p: switches: the flags it has to undo
+# (/RTC1, the static CRT) are baked into the generated vcxproj as literal
+# ItemDefinitionGroup metadata, which /p: global properties cannot override.
+# (The old hand-written vcxproj took /p:EnableASAN etc. plus a
+# Directory.Build.targets CRT override; both stopped reaching the build when the
+# projects moved to build/msvc — MSBuild's upward Directory.Build.targets search
+# never finds mxbmrp3/, and the MXB-Debug config name they keyed on is gone.)
+option(MXBMRP3_ASAN
+       "Build the MSVC plugin DLLs with AddressSanitizer (/fsanitize=address)" OFF)
+if(MSVC AND MXBMRP3_ASAN)
+    # CMake's default Debug flags include /RTC1, which is incompatible with
+    # /fsanitize=address (cl hard-errors with D8016). Strip it for both
+    # languages — the plugin targets compile C++ plus the vendored miniz C.
+    string(REPLACE "/RTC1" "" CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
+    string(REPLACE "/RTC1" "" CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
+endif()
+
 set(MXB_SRC ${CMAKE_CURRENT_SOURCE_DIR})
 
 # --- sources ----------------------------------------------------------------
@@ -89,8 +108,25 @@ function(mxb_add_plugin NAME GAME_DEF API_TU)
         # CMake's own default is /MD — leaving this unset produces a DLL that
         # loads on a dev box and fails for every user without the redist, and no
         # test in this repo can see it.
-        set_property(TARGET ${NAME} PROPERTY
-                     MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+        #
+        # Under MXBMRP3_ASAN the CRT flips to DYNAMIC (/MDd Debug, /MD Release):
+        # static ASan is per-module and fails to resolve across the boundary
+        # fuzzer's LoadLibrary of the instrumented DLL on recent MSVC toolsets
+        # (error 127, ERROR_PROC_NOT_FOUND) — both modules must share the single
+        # clang_rt.asan_dynamic-x86_64.dll. See tests/asan/README.md's
+        # ASan-runtime note. ASan builds are never shipped, so the redist
+        # constraint above doesn't apply to them.
+        if(MXBMRP3_ASAN)
+            set_property(TARGET ${NAME} PROPERTY
+                         MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+            target_compile_options(${NAME} PRIVATE /fsanitize=address)
+            # ASan requires non-incremental linking (the Debug default is
+            # incremental); CMake maps this to LinkIncremental=false.
+            target_link_options(${NAME} PRIVATE /INCREMENTAL:NO)
+        else()
+            set_property(TARGET ${NAME} PROPERTY
+                         MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+        endif()
         # UNICODE/_UNICODE is the vcxproj's <CharacterSet>Unicode</CharacterSet>,
         # which MSBuild expands to these two defines and CMake does not. Without
         # them the TCHAR macros resolve to their ANSI variants: logger.cpp passes

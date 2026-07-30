@@ -625,8 +625,9 @@ g++/clang + libasan) gate CI via the `memory-safety` job in
   bit patterns, and churn of the two crash-site container types.
 
 The **faithful** pass is the separate `memory-safety-msvc` CI job: it builds the
-real plugin DLL with MSVC `/fsanitize=address` (`MXB-Debug` — exempt from the
-Release analytics-key requirement, so no secrets) and drives it through the real
+real plugin DLL with MSVC `/fsanitize=address` (`MXBMRP3_ASAN=ON`, `Debug` config —
+exempt from the Release analytics-key requirement, so no secrets) and drives it
+through the real
 DLL-boundary callbacks with `callback_fuzzer.cpp` on a Windows runner, covering
 the live `PluginData`/`StatsManager`/HUD/HttpServer pipeline the portable layer
 can't compile. It runs automatically in the free public mirror but is **opt-in**

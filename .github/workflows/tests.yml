@@ -447,8 +447,8 @@ jobs:
   # shipped heap-corruption crashes live in — so an out-of-bounds write or
   # use-after-free anywhere the fuzzer reaches faults AT the write, with the stack.
   # Windows-only (MSVC ASan); heavy, so gated like the other build jobs. Uses the
-  # MXB-Debug config, which is exempt from the Release analytics-key requirement, so
-  # no secrets are needed. See tests/asan/README.md.
+  # Debug config (MXBMRP3_ASAN=ON), which is exempt from the Release analytics-key
+  # requirement, so no secrets are needed. See tests/asan/README.md.
   memory-safety-msvc:
     name: Memory safety (MSVC ASan, real DLL)
     # Auto in the free public mirror (Windows Actions are free there too); in the
@@ -463,7 +463,7 @@ jobs:
     # (mxbmrp3/CMakeLists.txt) an MSVC-only warning introduced from the Linux side
     # fails the RELEASE BUILD rather than the gate before it.
     #
-    # Adding `inputs.full` here would NOT close that: this job builds MXB-Debug,
+    # Adding `inputs.full` here would NOT close that: this job builds Debug,
     # MX Bikes only, while the shipping build is Release across three games — so
     # it would spend Windows minutes on every release and still miss a
     # Release-only or GPB/KRP-only diagnostic. The honest fast check is the
@@ -488,23 +488,22 @@ jobs:
         with:
           arch: x64
 
-      # Build the MX Bikes DLL with /fsanitize=address. EnableASAN is the documented
-      # MSBuild switch; BasicRuntimeChecks=Default drops the Debug config's /RTC
-      # (incompatible with ASan) and LinkIncremental=false satisfies ASan's linker
-      # requirement — set explicitly so the build doesn't depend on the toolset
-      # auto-stripping them.
-      - name: Build MX Bikes DLL with AddressSanitizer (MXB-Debug)
+      # Build the MX Bikes DLL with /fsanitize=address. MXBMRP3_ASAN is a
+      # CONFIGURE-time CMake option, not msbuild /p: switches: the flags it has
+      # to change (/RTC1 off, CRT static→dynamic, incremental link off) are baked
+      # into the generated vcxproj as literal item metadata, which /p: global
+      # properties cannot override — see the option's comment in
+      # mxbmrp3/CMakeLists.txt.
+      - name: Build MX Bikes DLL with AddressSanitizer (Debug)
         shell: pwsh
-        run: >-
-          cmake -S . -B build/msvc -G "Visual Studio 17 2022" -A x64
-          cmake --build build/msvc
-          /p:Configuration=MXB-Debug /p:Platform=x64
-          /p:EnableASAN=true /p:BasicRuntimeChecks=Default /p:LinkIncremental=false
-          /m /v:minimal
+        run: |
+          cmake -S . -B build/msvc -DMXBMRP3_ASAN=ON -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build/msvc --config Debug --target mxbmrp3 -- /m /v:minimal
 
-      # /MDd (dynamic debug CRT) matches the DLL build: the MXB-Debug DLL is forced
-      # to /MDd under ASan by mxbmrp3/Directory.Build.targets, so both modules share
-      # the single clang_rt.asan_dynamic-x86_64.dll. Static ASan (/MTd) is per-module
+      # /MDd (dynamic debug CRT) matches the DLL build: MXBMRP3_ASAN forces the
+      # Debug DLL to /MDd, so both modules share the single
+      # clang_rt.asan_dynamic-x86_64.dll. Static ASan (/MTd) is per-module
       # and fails to load across the fuzzer→DLL LoadLibrary boundary on recent MSVC
       # toolsets with error 127 (ERROR_PROC_NOT_FOUND) — see tests/asan/README.md's
       # ASan-runtime note.

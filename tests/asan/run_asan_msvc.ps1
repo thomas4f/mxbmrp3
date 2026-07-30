@@ -10,12 +10,13 @@
  individual component installed. Run from a "x64 Native Tools Command Prompt for
  VS 2022" (so cl / msbuild are on PATH), or let the script find vcvars.
 
-   # 1) Build the plugin DLL with ASan first (MXB-Debug|x64 — there is no plain
-   #    'Debug' config that maps the plugin project), e.g.:
-   #    msbuild mxbmrp3.sln /p:Configuration=MXB-Debug /p:Platform=x64 `
-   #      /p:EnableASAN=true /p:BasicRuntimeChecks=Default /p:LinkIncremental=false
-   #    (EnableASAN forces the DLL to the dynamic debug CRT /MDd via
-   #     mxbmrp3/Directory.Build.targets, so it shares the ASan runtime with the fuzzer)
+   # 1) Build the plugin DLL with ASan first — configure with MXBMRP3_ASAN=ON
+   #    (a configure-time option; msbuild /p: switches can't retrofit ASan onto
+   #    the generated vcxproj), then build the Debug config:
+   #    cmake -S . -B build/msvc -DMXBMRP3_ASAN=ON -G "Visual Studio 17 2022" -A x64
+   #    cmake --build build/msvc --config Debug --target mxbmrp3 -- /m
+   #    (MXBMRP3_ASAN forces the DLL to the dynamic debug CRT /MDd,
+   #     so it shares the ASan runtime with the fuzzer)
    # 2) Then drive it under ASan (DLL output is build\MXB-Debug\mxbmrp3.dlo):
    pwsh tests/asan/run_asan_msvc.ps1 -Dll .\build\MXB-Debug\mxbmrp3.dlo -Iterations 5000000
 
@@ -51,8 +52,8 @@ if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
 $fuzzerSrc = Join-Path $PSScriptRoot "..\integration\callback_fuzzer.cpp"
 $fuzzerExe = Join-Path $OutDir "callback_fuzzer.exe"
 
-# /MDd (dynamic debug CRT) matches the DLL, which EnableASAN forces to /MDd via
-# mxbmrp3/Directory.Build.targets, so both modules share the single
+# /MDd (dynamic debug CRT) matches the DLL, which MXBMRP3_ASAN forces to /MDd,
+# so both modules share the single
 # clang_rt.asan_dynamic-x86_64.dll (see README's ASan-runtime note). The static
 # runtime (/MTd) is per-module and fails to load across the fuzzer->DLL boundary on
 # recent MSVC toolsets with error 127 (ERROR_PROC_NOT_FOUND).

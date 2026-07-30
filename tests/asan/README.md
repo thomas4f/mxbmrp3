@@ -87,25 +87,25 @@ callbacks** by the existing boundary fuzzer — so it covers the live `PluginDat
 this is the definitive test.
 
 **In CI:** the `memory-safety-msvc` job in `.github/workflows/tests.yml` does exactly
-this on a `windows-latest` runner — it builds the `MXB-Debug` DLL with
-`/fsanitize=address` and runs the boundary fuzzer against it. It runs **automatically
+this on a `windows-latest` runner — it builds the `Debug` DLL with `MXBMRP3_ASAN=ON` and
+runs the boundary fuzzer against it. It runs **automatically
 in the free public mirror** and is **opt-in in the metered private repo** (tick
 "Also run the Windows MSVC AddressSanitizer job" on Run workflow); see the workflow
-header for the full policy. `MXB-Debug` is exempt from the Release analytics-key
+header for the full policy. `Debug` is exempt from the Release analytics-key
 requirement, so it needs no secrets. To reproduce locally on Windows,
 `run_asan_msvc.ps1` automates the same flow; the steps are:
 
-1. **Build the plugin DLL with ASan** — `/fsanitize=address` via the `EnableASAN`
-   MSBuild property, `MXB-Debug|x64` (the config that maps the plugin project; there
-   is no plain `Debug` mapping). `BasicRuntimeChecks=Default` / `LinkIncremental=false`
-   make the Debug config ASan-compatible:
+1. **Build the plugin DLL with ASan** — configure with `MXBMRP3_ASAN=ON`, then build
+   the `Debug` config. The option must be set at *configure* time (not msbuild `/p:`
+   switches — the flags it changes are baked into the generated vcxproj as item
+   metadata, which `/p:` cannot override): it adds `/fsanitize=address`, drops the
+   ASan-incompatible `/RTC1`, and disables incremental linking:
    ```powershell
-   cmake --build build/msvc --config Debug --target mxbmrp3 `
-     /p:EnableASAN=true /p:BasicRuntimeChecks=Default /p:LinkIncremental=false
+   cmake -S . -B build/msvc -DMXBMRP3_ASAN=ON -G "Visual Studio 17 2022" -A x64
+   cmake --build build/msvc --config Debug --target mxbmrp3 -- /m
    ```
-   Output: `build\MXB-Debug\mxbmrp3.dlo`. `EnableASAN=true` also flips the DLL's CRT
-   from static (`/MTd`) to dynamic debug (`/MDd`) via `mxbmrp3/Directory.Build.targets`
-   — see the runtime note below.
+   Output: `build\MXB-Debug\mxbmrp3.dlo`. `MXBMRP3_ASAN` also flips the DLL's CRT
+   from static (`/MTd`) to dynamic debug (`/MDd`) — see the runtime note below.
 2. **Build the boundary fuzzer with ASan** (it `LoadLibrary`s the DLL). Match its CRT
    to the DLL's (`/MDd`) so both share the one ASan runtime — see the runtime note below:
    ```powershell
@@ -126,16 +126,16 @@ A clean run over the fuzzer (and, optionally, real tapes) is strong, self-standi
 evidence the plugin does not corrupt memory. A hit prints the writing + allocating
 stacks — the culprit line, deterministically.
 
-> **ASan-runtime note:** the `MXB-Debug` config links the CRT statically (`/MTd`),
+> **ASan-runtime note:** the normal `Debug` config links the CRT statically (`/MTd`),
 > whose ASan runtime is **per-module**. When an EXE `LoadLibrary`s an instrumented
 > DLL, that per-module static runtime doesn't resolve across the boundary on recent
 > MSVC toolsets (VS 2022 17.14+ / the VS "18" toolset `windows-latest` now ships) —
 > the load fails with **error 127 (`ERROR_PROC_NOT_FOUND`)**. The fix is to build
 > **both** modules with the *dynamic* debug runtime (`/MDd`) so they share the single
-> `clang_rt.asan_dynamic-x86_64.dll`. `mxbmrp3/Directory.Build.targets` does this for
-> the DLL — it overrides `RuntimeLibrary` to `MultiThreadedDebugDLL` **only** when
-> `EnableASAN=true` (inert for every normal build, so the shipping DLL is unchanged);
-> the fuzzer is compiled `/MDd` to match. The dynamic runtime DLL lives in the
+> `clang_rt.asan_dynamic-x86_64.dll`. `MXBMRP3_ASAN=ON` does this for the DLL — it
+> switches `MSVC_RUNTIME_LIBRARY` to the DLL runtime **only** in ASan builds (a
+> normal configure is unchanged, so the shipping DLL keeps its static CRT); the
+> fuzzer is compiled `/MDd` to match. The dynamic runtime DLL lives in the
 > toolset bin (on `PATH` after vcvars/msvc-dev-cmd), and the CI run step also stages
 > it next to the fuzzer and puts the VC debug-CRT redist on `PATH` as
 > belt-and-suspenders.
