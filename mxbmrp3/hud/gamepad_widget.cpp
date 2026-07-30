@@ -24,7 +24,11 @@ GamepadWidget::GamepadWidget() {
     // padding, so after the first real frame both sides agree, but this makes
     // the comparison well-defined from the very first compare on any toolchain
     // (worst case without it was a redundant rebuild, never a wrong frame).
-    std::memset(&m_lastRenderedInput, 0, sizeof(m_lastRenderedInput));
+    // The void* cast is the documented way to tell the compiler this is a
+    // deliberate byte-clear (-Wclass-memaccess fires on the typed form because
+    // XInputData is not trivially default-constructible). Padding is exactly
+    // what we are here to zero, so a typed assignment would not do.
+    std::memset(static_cast<void*>(&m_lastRenderedInput), 0, sizeof(m_lastRenderedInput));
 
     // Pre-allocate render buffers
     m_quads.reserve(50);  // Sticks + triggers + bumpers + face + dpad + menu buttons
@@ -51,7 +55,7 @@ void GamepadWidget::update() {
     // XInputReader DIRECTLY (not PluginData), so the InputTelemetry dirty flag
     // alone would freeze it in modes with no telemetry callbacks (replay,
     // spectate) — instead a POD snapshot of the controller state is the change
-    // signal. An idle controller at 240fps skips the few-hundred-quad rebuild
+    // signal. An idle controller at 480fps skips the few-hundred-quad rebuild
     // entirely; a moving one rebuilds at most once per render frame, as before.
     const XInputData& xinput = XInputReader::getInstance().getData();
     const bool inputChanged = !m_hasRenderedInput ||
@@ -597,8 +601,20 @@ void GamepadWidget::addTriggerButton(float centerX, float centerY, float width, 
         SPluginQuad_t buttonQuad;
         if (spriteIndex > 0) {
             buttonQuad.m_iSprite = spriteIndex;
-            // Interpolate color from dark to white based on trigger value
-            int brightness = 40 + static_cast<int>(value * 215);  // 40 to 255
+            // Interpolate color from dark to white based on trigger value.
+            //
+            // Clamped rather than cast, but DEFENSIVELY — not fixing a live bug.
+            // Today's only caller passes XInputData::leftTrigger/rightTrigger,
+            // which normalizeTriggerValue() bounds to exactly 0..1, so this maxes
+            // at 255 and never wraps. The clamp is here because makeColor takes
+            // uint8_t while the arithmetic is int: an unnormalised value from a
+            // future caller would wrap to a DARK button instead of saturating
+            // white, which is a silent-wrong-pixel failure rather than a loud one.
+            // MSVC /W4 flagged the implicit narrowing (C4244); GCC's
+            // -Wall -Wextra does not cover that family at all.
+            const int brightnessI = 40 + static_cast<int>(value * 215);  // 40 to 255
+            const uint8_t brightness =
+                static_cast<uint8_t>(brightnessI < 0 ? 0 : (brightnessI > 255 ? 255 : brightnessI));
             buttonQuad.m_ulColor = PluginUtils::makeColor(brightness, brightness, brightness);
         } else {
             buttonQuad.m_iSprite = SpriteIndex::SOLID_COLOR;

@@ -405,37 +405,15 @@ void RadarHud::rebuildRenderData() {
         return;
     }
 
-    // Pre-calculate max rider opacity for background fade (only if auto-hide is enabled)
+    // Pre-calculate max rider opacity for background fade (only if auto-hide is enabled).
+    // The fade math is pure — unit-tested in tests/unit/test_radar_fade.cpp.
     float maxRiderOpacity = 1.0f;  // Default: fully visible
     if (m_radarMode == RadarMode::AUTO_HIDE && localPlayer) {
-        maxRiderOpacity = 0.0f;  // Start at 0, find max
-        float trackLength = pluginData.getSessionData().trackLength;
-
-        for (const auto& pos : m_riderPositions) {
-            if (pos.raceNum == displayRaceNum) continue;
-
-            float relX = pos.posX - playerX;
-            float relZ = pos.posZ - playerZ;
-            float distance = std::sqrt(relX * relX + relZ * relZ);
-            if (distance > m_fRadarRangeMeters) continue;
-
-            // Calculate track distance fade
-            float trackDist = std::abs(pos.trackPos - localPlayer->trackPos);
-            if (trackDist > 0.5f) trackDist = 1.0f - trackDist;
-
-            float trackFadeOpacity = 1.0f;
-            if (trackLength > 0.0f) {
-                float trackDistMeters = trackDist * trackLength;
-                if (trackDistMeters >= m_fRadarRangeMeters) continue;
-                trackFadeOpacity = 1.0f - (trackDistMeters / m_fRadarRangeMeters);
-            } else {
-                constexpr float FALLBACK_THRESHOLD = 0.05f;
-                if (trackDist >= FALLBACK_THRESHOLD) continue;
-                trackFadeOpacity = 1.0f - (trackDist / FALLBACK_THRESHOLD);
-            }
-
-            maxRiderOpacity = std::max(maxRiderOpacity, trackFadeOpacity);
-        }
+        maxRiderOpacity = RadarFade::maxRiderOpacity(
+            m_riderPositions.empty() ? nullptr : m_riderPositions.data(),
+            static_cast<int>(m_riderPositions.size()), displayRaceNum,
+            playerX, playerZ, localPlayer->trackPos,
+            m_fRadarRangeMeters, pluginData.getSessionData().trackLength);
     }
 
     // Add background (opacity scaled by max rider visibility when fade enabled)

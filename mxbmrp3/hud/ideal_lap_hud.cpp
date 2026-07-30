@@ -198,7 +198,9 @@ void IdealLapHud::rebuildRenderData() {
     int idealS1 = idealLapData ? idealLapData->bestSector1 : -1;
     int idealS2 = idealLapData ? idealLapData->bestSector2 : -1;
     int idealS3 = idealLapData ? idealLapData->bestSector3 : -1;
-    int idealS4 = idealLapData ? idealLapData->bestSector4 : -1;  // Only valid for 4-sector games
+#if GAME_SECTOR_COUNT >= 4
+    int idealS4 = idealLapData ? idealLapData->bestSector4 : -1;
+#endif
     int idealLapTime = idealLapData ? idealLapData->getIdealLapTime() : -1;
 
     // Calculate current sector times from current lap (accumulated times)
@@ -215,7 +217,9 @@ void IdealLapHud::rebuildRenderData() {
     int prevBestS1 = idealLapData ? idealLapData->previousBestSector1 : -1;
     int prevBestS2 = idealLapData ? idealLapData->previousBestSector2 : -1;
     int prevBestS3 = idealLapData ? idealLapData->previousBestSector3 : -1;
-    int prevBestS4 = idealLapData ? idealLapData->previousBestSector4 : -1;  // Only valid for 4-sector games
+#if GAME_SECTOR_COUNT >= 4
+    int prevBestS4 = idealLapData ? idealLapData->previousBestSector4 : -1;
+#endif
 
     // Helper for adding a row
     // Shows the ideal time and gap from current to ideal

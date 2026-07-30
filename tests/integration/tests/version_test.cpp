@@ -9,6 +9,7 @@
 #include "doctest.h"
 #include "integration_main.h"
 #include <windows.h>
+#include <string>
 
 typedef int (*PFN_Cmp)(const char*, const char*);
 
@@ -36,6 +37,44 @@ TEST_CASE("update-checker: numeric, per-component version ordering") {
     // Short forms normalize (missing components = 0).
     CHECK(order("1.25",  "1.25.0.0") == 0);
     CHECK(order("1.26",  "1.25.9")   == 1);
+
+    FreeLibrary(h);
+}
+
+// ============================================================================
+// The three constant exports the game reads BEFORE it will talk to the plugin
+// at all. Trivial to implement, not trivial in consequence: the interface and
+// mod-data versions are the handshake that decides whether the game loads this
+// DLL and which struct layouts it will hand it, so a wrong number here is a
+// plugin that silently doesn't load or one that gets fed the wrong shapes.
+//
+// mxb_api.cpp static_asserts the literals against the adapter's constants, so
+// this adds the half the compiler can't see: that the EXPORTS exist under the
+// exact names the game looks up, and answer what the adapter agreed to.
+// (API_COVERAGE.md's last ⚪ row.)
+// ============================================================================
+TEST_CASE("api handshake: GetModID / GetModDataVersion / GetInterfaceVersion") {
+    HMODULE h = LoadLibraryA(dllPath());
+    REQUIRE(h != nullptr);
+
+    auto modId = (char* (*)())GetProcAddress(h, "GetModID");
+    auto modDataVersion = (int (*)())GetProcAddress(h, "GetModDataVersion");
+    auto interfaceVersion = (int (*)())GetProcAddress(h, "GetInterfaceVersion");
+    REQUIRE(modId != nullptr);
+    REQUIRE(modDataVersion != nullptr);
+    REQUIRE(interfaceVersion != nullptr);
+
+    // This build is the MX Bikes target; the id is what the game matches on.
+    REQUIRE(modId() != nullptr);
+    CHECK(std::string(modId()) == "mxbikes");
+
+    CHECK(modDataVersion() == 8);
+    CHECK(interfaceVersion() == 9);
+
+    // Constant across calls — the game may ask more than once, and the string
+    // must stay valid (it's a static buffer, not a temporary).
+    CHECK(std::string(modId()) == "mxbikes");
+    CHECK(interfaceVersion() == 9);
 
     FreeLibrary(h);
 }

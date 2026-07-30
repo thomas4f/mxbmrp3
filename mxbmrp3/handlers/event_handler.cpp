@@ -4,6 +4,7 @@
 // ============================================================================
 #include "event_handler.h"
 #include "../core/handler_singleton.h"
+#include "../diagnostics/logger.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_utils.h"
 #include "../core/stats_manager.h"
@@ -11,9 +12,7 @@
 #include "../core/discord_manager.h"
 #endif
 
-DEFINE_HANDLER_SINGLETON(EventHandler)
-
-void EventHandler::handleEventInit(Unified::VehicleEventData* psEventData) {
+void Handlers::handleEventInit(Unified::VehicleEventData* psEventData) {
     HANDLER_NULL_CHECK(psEventData);
 
     // Event logging now handled by PluginManager
@@ -70,7 +69,7 @@ void EventHandler::handleEventInit(Unified::VehicleEventData* psEventData) {
     }
 }
 
-void EventHandler::handleEventDeinit() {
+void Handlers::handleEventDeinit() {
     // Event logging now handled by PluginManager
 
     // Clear stats context when event ends

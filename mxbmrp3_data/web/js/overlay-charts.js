@@ -109,6 +109,74 @@ function cmRobustRange(vals) {
     return { lo: Math.max(dataLo, q1 - 1.5 * iqr), hi: Math.min(dataHi, q3 + 1.5 * iqr) };
 }
 
+// ---- Sector resolution (port of the same block in session_charts_math.h) --
+// The charts above sample once per completed lap. The plugin also sends each rider's
+// per-sector times (laps[].s), including the lap IN PROGRESS, so the same curves can be
+// drawn 3-4x denser — which is what turns "the gap grew on lap 7" into "the gap grew in
+// sector 2 of lap 7". No new ranking logic is needed: cmPositionsPerLap/cmGapToLeaderPerLap
+// rank riders at each ARRAY INDEX and never interpret one as a lap, so a series indexed by
+// lap*sectors + sector just works. Mirrored helpers — keep in step with the C++ (pinned by
+// tests/fixtures/cpp_js_parity.json, asserted from both sides).
+function cmCumulativeBySector(sectorMs, sectorsPerLap) {
+    var out = [], sum = 0;
+    if (!(sectorsPerLap > 0)) return out;
+    for (var i = 0; i < sectorMs.length; i++) {
+        // Stop at the first hole rather than skipping it: cumulative time is only
+        // meaningful as an unbroken sum from the race start, so summing past a missing
+        // sector would under-report every later point and show time the rider never made up.
+        if (!(sectorMs[i] > 0)) break;
+        sum += sectorMs[i];
+        out.push(sum);
+    }
+    return out;
+}
+// Laps completed at a sector-resolution index: sector s of lap l ENDS at l+(s+1)/sectors,
+// so the final sector of a lap coincides with that lap's per-lap sample.
+function cmLapsAtSectorIndex(index, sectorsPerLap) {
+    if (!(sectorsPerLap > 0)) return 0;
+    return (index + 1) / sectorsPerLap;
+}
+// Top and bottom ABSOLUTE positions among the drawn riders, at the latest sample any of
+// them has a position for — the lap chart's Y axis is order among the SHOWN riders, so its
+// labels need the real positions there. The bound is derived from the data, not passed in:
+// positions follows the FIELD's resolution, and both renderers open-coded it with a
+// lap-count bound that was wrong once sector points existed. {0,0} when there is nothing to
+// label. Mirrors latestPositionExtent in session_charts_math.h.
+function cmLatestPositionExtent(drawnPositions) {
+    var maxPoints = 0, i;
+    for (i = 0; i < drawnPositions.length; i++) maxPoints = Math.max(maxPoints, drawnPositions[i].length);
+    for (var k = maxPoints - 1; k >= 0; k--) {
+        var best = -1, worst = -1;
+        for (i = 0; i < drawnPositions.length; i++) {
+            var p = drawnPositions[i];
+            if (k >= p.length || p[k] <= 0) continue;
+            if (best < 0 || p[k] < best) best = p[k];
+            if (worst < 0 || p[k] > worst) worst = p[k];
+        }
+        if (best > 0) return { top: best, bottom: worst };
+    }
+    return { top: 0, bottom: 0 };
+}
+// Fractional-lap X mapping shared by both resolutions. Anchoring on the first available
+// sample keeps it on the left edge either way, so enabling sector points makes a chart
+// denser without sliding it sideways. Per-lap (firstLaps=1, laps=l0+1) reduces to the
+// original l0/(maxLap-1).
+function cmXFracForLaps(laps, firstLaps, maxLaps) {
+    var span = maxLaps - firstLaps;
+    if (span <= 0) return 0.5;                 // single sample: centre it
+    var t = (laps - firstLaps) / span;
+    return t < 0 ? 0 : (t > 1 ? 1 : t);
+}
+// Trace value at a series index: after 1 1/3 laps the reference rider has used 1 1/3
+// reference laps. INTEGER arithmetic on the index, not a float lap count — see
+// traceValueAtSector in session_charts_math.h for why (a float/double lap count truncates
+// to different milliseconds on the two sides). Per-lap (sectorsPerLap 1) reduces to
+// refPace*(l+1) - cum.
+function cmTraceValueAtSector(refPaceMs, index, sectorsPerLap, cumulativeMs) {
+    if (!(sectorsPerLap > 0)) return -cumulativeMs;
+    return Math.trunc(refPaceMs * (index + 1) / sectorsPerLap) - cumulativeMs;
+}
+
 // ---- Field assembly + drawn-subset selection -----------------------------
 // Build the full-field derived data from lastData.laps (already in classification
 // order, oldest-first). Positions/gaps must be computed over the WHOLE field.
@@ -120,7 +188,8 @@ function chartsHaveData() {
 }
 function buildChartField(isRace) {
     var laps = (lastData && lastData.laps) ? lastData.laps : [];
-    var field = { raceNums: [], lapMs: [], lapValid: [], cumulative: [], positions: [], gaps: [], refPaceMs: 0, maxLap: 0, isRace: isRace };
+    var field = { raceNums: [], lapMs: [], lapValid: [], sectorMs: [], cumulative: [], positions: [], gaps: [],
+                  refPaceMs: 0, maxLap: 0, isRace: isRace, pointsPerLap: 1, maxLaps: 0 };
     for (var i = 0; i < laps.length; i++) {
         var t = laps[i].t || [];
         if (!t.length) continue;
@@ -130,23 +199,84 @@ function buildChartField(isRace) {
         field.raceNums.push(laps[i].num);
         field.lapMs.push(t);
         field.lapValid.push(valid);
+        field.sectorMs.push(laps[i].s || []);
         field.maxLap = Math.max(field.maxLap, t.length);
     }
     var n = field.raceNums.length;
-    for (i = 0; i < n; i++) field.cumulative.push(cmCumulative(field.lapMs[i]));
+
+    // Per-lap cumulative is always built: it is the trace baseline's basis (below) and the
+    // fallback series, whatever resolution the charts end up drawn at.
+    var perLapCum = [];
+    for (i = 0; i < n; i++) perLapCum.push(cmCumulative(field.lapMs[i]));
+
+    // Sector resolution, if the client asked for it AND the data supports it. Races only,
+    // for the two reasons documented at SessionChartsHud::collectField: off-race the charts
+    // rank by best lap so far (which a partial lap cannot improve, so sector points would
+    // draw identical stacked values per lap), AND cmBestLapSoFar returns a PER-LAP array —
+    // pairing that with a sector-resolution xForPoint would make the Y series and the X
+    // mapping disagree about what an index means. Mirrors SessionChartsHud::collectField.
+    var sectorsPerLap = chartSectorsPerLap();
+    var wantSectors = !!CONFIG.chartSectorPoints && isRace && sectorsPerLap > 0;
+    var sectorsUsable = wantSectors, sectorCum = [];
+    if (wantSectors) {
+        for (i = 0; i < n && sectorsUsable; i++) {
+            sectorCum.push(cmCumulativeBySector(field.sectorMs[i], sectorsPerLap));
+            // A series that doesn't reach the rider's completed-lap count has a hole in it
+            // (a track with misplaced split markers reports a zero sector). Fall the WHOLE
+            // field back to per-lap rather than mixing resolutions — the ranking functions
+            // compare riders by array index, so mixing would rank one rider's sector
+            // against another's lap.
+            if (sectorCum[i].length < field.lapMs[i].length * sectorsPerLap) sectorsUsable = false;
+        }
+    }
+
+    field.pointsPerLap = sectorsUsable ? sectorsPerLap : 1;
+    for (i = 0; i < n; i++) field.cumulative.push(sectorsUsable ? sectorCum[i] : perLapCum[i]);
+
+    // X domain end, in laps completed. At sector resolution the furthest-along rider is
+    // usually part way through a lap; clamping that to maxLap would stack their last points
+    // on the right edge.
+    field.maxLaps = field.maxLap;
+    if (sectorsUsable) {
+        for (i = 0; i < n; i++) {
+            if (!field.cumulative[i].length) continue;
+            field.maxLaps = Math.max(field.maxLaps,
+                cmLapsAtSectorIndex(field.cumulative[i].length - 1, field.pointsPerLap));
+        }
+    }
+
     var ranks = [];
     for (i = 0; i < n; i++) ranks.push(isRace ? field.cumulative[i] : cmBestLapSoFar(field.lapMs[i], field.lapValid[i]));
     field.positions = cmPositionsPerLap(ranks, field.raceNums);
     field.gaps = cmGapToLeaderPerLap(ranks);
     if (isRace) {
-        var li = cmLeaderIndex(field.cumulative, field.raceNums);
-        if (li >= 0 && field.cumulative[li].length) {
-            var lc = field.cumulative[li];
+        // Deliberately from the PER-LAP cumulative: the reference is the leader's average
+        // LAP time, so counting sectors as laps would divide it by the sector count and put
+        // everyone wildly "ahead" of the reference.
+        var li = cmLeaderIndex(perLapCum, field.raceNums);
+        if (li >= 0 && perLapCum[li].length) {
+            var lc = perLapCum[li];
             field.refPaceMs = Math.floor(lc[lc.length - 1] / lc.length);
         }
     }
     return field;
 }
+// Stride of every laps[].s array, straight from the plugin (snapshot.sectorCount) — MX
+// Bikes/KRP send 3, GP Bikes 4, and the overlay is served by all of them.
+//
+// This is NOT inferred from the data, and an earlier version that tried to was wrong in the
+// common case. `s` also carries the lap in progress, so a rider sits at 3L+k entries against
+// L completed laps, and floor((3L+k)/L) = 3 + floor(k/L) — which is 4 for the whole of lap 2
+// of every race (L=1, one split crossed) and for any rider lapped far enough that k >= L. A
+// wrong stride makes the hole check below fail for everyone, silently dropping the field to
+// per-lap, and it flickers frame to frame as riders cross splits.
+function chartSectorsPerLap() {
+    var n = (lastData && lastData.sectorCount) | 0;
+    return (n >= 3 && n <= 4) ? n : 0;
+}
+// Laps completed at a series index, and at the earliest sample a series can hold.
+function chartLapsAt(field, index) { return cmLapsAtSectorIndex(index, field.pointsPerLap); }
+function chartFirstLaps(field) { return chartLapsAt(field, 0); }
 // Draw the top of the field (leaders — the field is in classification order),
 // capped to the shared Panel Rows knob and the line palette size. Colour by draw
 // order; the director subject (if on camera and shown) gets a thicker line to stand out.
@@ -217,18 +347,31 @@ function renderChartSvg(type, field, drawn, W, H, rh) {
     var padT = Math.round(H * 0.06) + 3, padB = Math.round(axisFont * 1.7);
     var px = padL, py = padT, pw = Math.max(1, W - padL - padR), ph = Math.max(1, H - padT - padB);
     var maxLap = field.maxLap;
-    function xForLap(l0) { return maxLap <= 1 ? px + pw / 2 : px + (l0 / (maxLap - 1)) * pw; }
+    // Per-lap index (the pace chart, and lap-number axis labels), expressed through the
+    // shared fractional mapping — it reduces to the original l0/(maxLap-1).
+    function xForLap(l0) { return px + cmXFracForLaps(l0 + 1, 1, maxLap) * pw; }
+    // Index into the resolution-aware series (cumulative/positions/gaps). Identical to
+    // xForLap when the field is per-lap.
+    function xForPoint(i) { return px + cmXFracForLaps(chartLapsAt(field, i), chartFirstLaps(field), field.maxLaps) * pw; }
     var svg = ['<svg class="charts-svg" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">'];
     var gridTop = '<line class="chart-grid" x1="' + px + '" y1="' + py + '" x2="' + (px + pw) + '" y2="' + py + '"/>';
     var gridBot = '<line class="chart-grid" x1="' + px + '" y1="' + (py + ph) + '" x2="' + (px + pw) + '" y2="' + (py + ph) + '"/>';
 
     // Bottom lap labels + a Y-label pair, shared by all charts.
-    function axisLabels(topLabel, botLabel) {
+    // domainEndLaps MUST be the domain the caller placed its points over — the right
+    // label is ceil() of it. The pace chart plots per-LAP while the others span
+    // field.maxLaps, so passing the wrong one puts "L4" under a chart ending at lap 3.
+    function axisLabels(topLabel, botLabel, domainEndLaps) {
         var s = "";
         if (topLabel != null) s += '<text class="chart-axis" text-anchor="end" x="' + (px - 4) + '" y="' + (py + axisFont * 0.9) + '" font-size="' + axisFont + '">' + esc(topLabel) + '</text>';
         if (botLabel != null) s += '<text class="chart-axis" text-anchor="end" x="' + (px - 4) + '" y="' + (py + ph) + '" font-size="' + axisFont + '">' + esc(botLabel) + '</text>';
         s += '<text class="chart-axis" x="' + px + '" y="' + (py + ph + axisFont * 1.2) + '" font-size="' + axisFont + '">L1</text>';
-        if (maxLap > 1) s += '<text class="chart-axis" text-anchor="end" x="' + (px + pw) + '" y="' + (py + ph + axisFont * 1.2) + '" font-size="' + axisFont + '">L' + maxLap + '</text>';
+        // The lap the RIGHT EDGE falls in — see addChartAxisLabels in session_charts_hud.cpp.
+        // ceil(field.maxLaps), not maxLap: at sector resolution the domain ends at the
+        // furthest-along rider's real progress (3.33 laps), which "L3" under-labels. No-op
+        // at per-lap resolution.
+        var edgeLap = Math.ceil(domainEndLaps);
+        if (edgeLap > 1) s += '<text class="chart-axis" text-anchor="end" x="' + (px + pw) + '" y="' + (py + ph + axisFont * 1.2) + '" font-size="' + axisFont + '">L' + edgeLap + '</text>';
         return s;
     }
 
@@ -238,7 +381,9 @@ function renderChartSvg(type, field, drawn, W, H, rh) {
         // Bump chart: rank the shown riders among themselves at each lap (own row each).
         var rowOf = [];
         for (var di = 0; di < K; di++) rowOf.push(new Array(field.positions[drawn[di].idx].length).fill(-1));
-        for (var lap = 0; lap < maxLap; lap++) {
+        var maxPoints = 0;
+        for (var mi = 0; mi < rowOf.length; mi++) maxPoints = Math.max(maxPoints, rowOf[mi].length);
+        for (var lap = 0; lap < maxPoints; lap++) {
             var present = [];
             for (di = 0; di < K; di++) {
                 var pos = field.positions[drawn[di].idx];
@@ -253,31 +398,30 @@ function renderChartSvg(type, field, drawn, W, H, rh) {
             var pts = [], last = null;
             for (lap = 0; lap < rowOf[di].length; lap++) {
                 if (rowOf[di][lap] < 0) { pts.push(null); continue; }
-                var p = [xForLap(lap), yForRow(rowOf[di][lap])]; pts.push(p); last = p;
+                var p = [xForPoint(lap), yForRow(rowOf[di][lap])]; pts.push(p); last = p;
             }
             svg.push(svgPolyline(pts, drawn[di].color, drawn[di].subject));
             if (last) tags += svgTag(last[0], last[1], drawn[di].num, drawn[di].color, tagFont);
         }
         svg.push(tags);
-        // Y labels: the actual positions of the shown riders at the latest lap.
-        var topPos = 0, botPos = 0;
-        for (lap = maxLap - 1; lap >= 0; lap--) {
-            var best = -1, worst = -1;
-            for (di = 0; di < K; di++) {
-                var pp = field.positions[drawn[di].idx];
-                if (lap >= pp.length || pp[lap] <= 0) continue;
-                if (best < 0 || pp[lap] < best) best = pp[lap];
-                if (worst < 0 || pp[lap] > worst) worst = pp[lap];
-            }
-            if (best > 0) { topPos = best; botPos = worst; break; }
-        }
-        svg.push(axisLabels(topPos > 0 ? "P" + topPos : null, topPos > 0 ? "P" + botPos : null));
+        // Y labels: positions of whoever occupies the top and bottom rows at the latest
+        // sample. Shared helper (mirrors latestPositionExtent in session_charts_math.h, and
+        // pinned by cpp_js_parity.json) — the search bound must follow the SERIES, not the
+        // lap count, which is what the open-coded loop here got wrong.
+        var drawnPositions = [];
+        for (di = 0; di < K; di++) drawnPositions.push(field.positions[drawn[di].idx]);
+        var extent = cmLatestPositionExtent(drawnPositions);
+        var topPos = extent.top, botPos = extent.bottom;
+        svg.push(axisLabels(topPos > 0 ? "P" + topPos : null, topPos > 0 ? "P" + botPos : null, field.maxLaps));
     } else if (type === CHART_TYPES.TRACE) {
         var hasData = field.refPaceMs > 0;
         var vals = [];
         for (di = 0; di < drawn.length; di++) {
             var cum = field.cumulative[drawn[di].idx];
-            for (var l = 0; l < cum.length; l++) vals.push(field.refPaceMs * (l + 1) - cum[l]);
+            // Same expression the points below are plotted with — a range scanned at a
+            // different resolution than the line would clip the line to the wrong extent.
+            for (var l = 0; l < cum.length; l++)
+                vals.push(cmTraceValueAtSector(field.refPaceMs, l, field.pointsPerLap, cum[l]));
         }
         var rr2 = cmRobustRange(vals);
         var vMin = Math.min(rr2 ? rr2.lo : 0, 0), vMax = Math.max(rr2 ? rr2.hi : 0, 0);
@@ -289,12 +433,15 @@ function renderChartSvg(type, field, drawn, W, H, rh) {
         var traceTags = "";
         for (di = 0; di < drawn.length; di++) {
             var cumr = field.cumulative[drawn[di].idx], tpts = [], tlast = null;
-            for (l = 0; l < cumr.length; l++) { var tv = [xForLap(l), yForVal(field.refPaceMs * (l + 1) - cumr[l])]; tpts.push(tv); tlast = tv; }
+            for (l = 0; l < cumr.length; l++) {
+                var tv = [xForPoint(l), yForVal(cmTraceValueAtSector(field.refPaceMs, l, field.pointsPerLap, cumr[l]))];
+                tpts.push(tv); tlast = tv;
+            }
             svg.push(svgPolyline(tpts, drawn[di].color, drawn[di].subject));
             if (tlast) traceTags += svgTag(tlast[0], tlast[1], drawn[di].num, drawn[di].color, tagFont);
         }
         svg.push(traceTags);
-        svg.push(axisLabels(hasData ? fmtChartSecs(vMax, true) : null, hasData ? fmtChartSecs(vMin, true) : null));
+        svg.push(axisLabels(hasData ? fmtChartSecs(vMax, true) : null, hasData ? fmtChartSecs(vMin, true) : null, field.maxLaps));
     } else if (type === CHART_TYPES.GAP) {
         var gvals = [];
         for (di = 0; di < drawn.length; di++)
@@ -306,12 +453,12 @@ function renderChartSvg(type, field, drawn, W, H, rh) {
         var gapTags = "";
         for (di = 0; di < drawn.length; di++) {
             var gaps = field.gaps[drawn[di].idx], gpts = [], glast = null;
-            for (l = 0; l < gaps.length; l++) { var gv = [xForLap(l), yForGap(gaps[l])]; gpts.push(gv); glast = gv; }
+            for (l = 0; l < gaps.length; l++) { var gv = [xForPoint(l), yForGap(gaps[l])]; gpts.push(gv); glast = gv; }
             svg.push(svgPolyline(gpts, drawn[di].color, drawn[di].subject));
             if (glast) gapTags += svgTag(glast[0], glast[1], drawn[di].num, drawn[di].color, tagFont);
         }
         svg.push(gapTags);
-        svg.push(axisLabels("0.0s", fmtChartSecs(gapMax, false)));
+        svg.push(axisLabels("0.0s", fmtChartSecs(gapMax, false), field.maxLaps));
     } else if (type === CHART_TYPES.PACE) {
         // Clean racing-pace band: exclude the opening lap, invalid laps, and laps
         // slower than median*1.4 (matches the in-game ELEM_FILTER_OUTLIERS default).
@@ -346,7 +493,9 @@ function renderChartSvg(type, field, drawn, W, H, rh) {
             if (plast) paceTags += svgTag(plast[0], plast[1], drawn[di].num, drawn[di].color, tagFont);
         }
         svg.push(paceTags);
-        svg.push(axisLabels(hasPace ? fmtChartSecs(pMax, false) : null, hasPace ? fmtChartSecs(pMin, false) : null));
+        // maxLap, not maxLaps: the pace chart plots lap TIMES through xForLap, so its
+        // domain is whole laps whatever resolution the field is at.
+        svg.push(axisLabels(hasPace ? fmtChartSecs(pMax, false) : null, hasPace ? fmtChartSecs(pMin, false) : null, maxLap));
     }
     svg.push('</svg>');
     return svg.join("");

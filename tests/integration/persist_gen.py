@@ -11,7 +11,8 @@
 # setting was applied in memory but never written back (the hudOrder "third
 # hardcoded list" trap that caused the FriendsHud silent-revert bug).
 # ============================================================================
-import sys, re
+import re
+import sys
 
 baseline, out, expect = sys.argv[1], sys.argv[2], sys.argv[3]
 
@@ -22,7 +23,12 @@ baseline, out, expect = sys.argv[1], sys.argv[2], sys.argv[3]
 #    flipping a "1" to "0" is a legitimate clamp, not a persistence failure.
 #  - activeProfile / autoSwitch: navigation state, not a user "setting"; flipping
 #    the active profile would change which profile the reset scope tests observe.
-SKIP = {"autoSave", "activeProfile", "autoSwitch"}
+#  - maxShotSec: an INTEGER that merely LOOKS boolean because its default is 0
+#    ("Max shot = Off", the director's forced-rotation switch). Same situation as
+#    scale/opacity below: 1 is outside its 5..40 range and correctly clamps to 5,
+#    which is a valid-range clamp, not a lost setting. Its real values are covered
+#    by director_home_test.cpp.
+SKIP = {"autoSave", "activeProfile", "autoSwitch", "maxShotSec"}
 SKIP_SUBSTR = ("scale", "opacity", "alpha")  # case-insensitive
 def skip_key(key):
     kl = key.lower()

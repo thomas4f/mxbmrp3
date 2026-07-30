@@ -4,7 +4,7 @@
 // (it builds render primitives and processes callbacks on the CPU; the GPU only
 // consumes the quads/strings it emits), so headless timing under Wine is
 // representative of the cost the plugin actually controls — measured against the
-// 240fps frame budget (4.17ms).
+// 480fps frame budget (2.08ms).
 //
 // Sets up a FULL 50-rider race (MAX_RACE_ENTRIES) with a populated track and
 // positions, then times the hot callbacks: Draw (per-frame render build),
@@ -52,6 +52,8 @@ struct SPluginsBikeData_t {
     float m_afWheelSpeed[2]; int m_aiWheelMat[2]; float m_afBrakeP[2]; float m_fSteerTorque;
 };
 
+#include "perf_scenario.h"   // buildPerfTrack() + PERF_RIDERS (needs the structs above)
+
 typedef int  (*PFN_Startup)(char*);
 typedef void (*PFN_Shutdown)();
 typedef void (*PFN_DS)(void*, int);
@@ -74,8 +76,8 @@ static int cmp(const void* a, const void* b) { double x=*(const double*)a,y=*(co
 static double pct(Stat& s, double p) { if (!s.n) return 0; int i=(int)(p*(s.n-1)); return s.us[i]; }
 static double avg(Stat& s) { double t=0; for (int i=0;i<s.n;++i) t+=s.us[i]; return s.n?t/s.n:0; }
 
-static const int RIDERS = 50;
-static const double BUDGET_US = 4170.0;  // 240 fps frame budget
+static const int RIDERS = PERF_RIDERS;   // full 50-rider grid (API max)
+static const double BUDGET_US = 2083.0;  // 480 fps frame budget
 
 int main(int argc, char** argv) {
     const char* dll = (argc > 1) ? argv[1] : "mxbmrp3_test.dlo";
@@ -95,11 +97,17 @@ int main(int argc, char** argv) {
     char savePath[] = "Z:\\tmp\\mxbperf\\";
     Startup(savePath);
 
-    // --- Populate a full 50-rider race on a real track ----------------------
+    // --- Build the shared long/complex circuit + a full 50-rider grid -------
+    // buildPerfTrack() synthesizes ~2400 m over ~950 segments (hairpins,
+    // sweepers, esses, straights), a heavier superset than the real Farm14
+    // capture (1669 m / 24 riders). See perf_scenario.h.
+    SPluginsTrackSegment_t* segs=nullptr; float trackLen=0.0f;
+    const int SEGS = buildPerfTrack(&segs, &trackLen);
+
     SPluginsBikeEvent_t ev{}; strcpy(ev.m_szRiderName,"Player"); strcpy(ev.m_szBikeName,"Test 450");
-    strcpy(ev.m_szCategory,"MX1"); strcpy(ev.m_szTrackName,"PerfTrack"); ev.m_fTrackLength=1600.0f; ev.m_iType=2;
+    strcpy(ev.m_szCategory,"MX1"); strcpy(ev.m_szTrackName,"PerfTrack"); ev.m_fTrackLength=trackLen; ev.m_iType=2;
     EventInit(&ev,(int)sizeof(ev));
-    SPluginsRaceEvent_t re{}; re.m_iType=2; strcpy(re.m_szName,"PerfTrack"); strcpy(re.m_szTrackName,"PerfTrack"); re.m_fTrackLength=1600.0f;
+    SPluginsRaceEvent_t re{}; re.m_iType=2; strcpy(re.m_szName,"PerfTrack"); strcpy(re.m_szTrackName,"PerfTrack"); re.m_fTrackLength=trackLen;
     if (RaceEvent) RaceEvent(&re,(int)sizeof(re));
     // Warmup session (5 min) then race is simulated by re-sending session; here race1.
     SPluginsRaceSession_t ss{}; ss.m_iSession=6; ss.m_iSessionState=16; ss.m_iSessionLength=480000; ss.m_iSessionNumLaps=2;
@@ -109,10 +117,7 @@ int main(int argc, char** argv) {
         snprintf(e.m_szName,100,"Rider %02d",i+1); strcpy(e.m_szBikeName,"Test 450"); strcpy(e.m_szBikeShortName,"T450");
         strcpy(e.m_szCategory,"MX1"); e.m_iNumberOfGears=5; e.m_iMaxRPM=13000; RaceAddEntry(&e,(int)sizeof(e)); }
 
-    // A valid ~256-segment loop so the map HUD has real geometry to render.
-    const int SEGS=256; SPluginsTrackSegment_t* segs=(SPluginsTrackSegment_t*)calloc(SEGS,sizeof(SPluginsTrackSegment_t));
-    for (int i=0;i<SEGS;++i){ segs[i].m_iType=0; segs[i].m_fLength=1600.0f/SEGS; segs[i].m_fAngle=360.0f*i/SEGS; }
-    float raceData[4]={800.0f,400.0f,1200.0f,0.0f};
+    float raceData[4]={0.0f, trackLen*0.33f, trackLen*0.66f, 0.0f};  // start/finish + 2 splits (m)
     if (TrackCenterline) TrackCenterline(SEGS,segs,raceData);
 
     // Classification (standings) + positions (map) for all 50.
@@ -135,7 +140,8 @@ int main(int argc, char** argv) {
     cla.init("RaceClassification (50)", 4000);
     telem.init("RunTelemetry (100Hz)", 30000);
 
-    for (int i=0;i<30000;++i){ int nq,ns; void*q; void*s; uint64_t t0=nowUs(); Draw(0,&nq,&q,&ns,&s); draw.add((double)(nowUs()-t0)); }
+    int lastNq=0, lastNs=0;
+    for (int i=0;i<30000;++i){ int nq=0,ns=0; void*q; void*s; uint64_t t0=nowUs(); Draw(0,&nq,&q,&ns,&s); draw.add((double)(nowUs()-t0)); lastNq=nq; lastNs=ns; }
     for (int i=0;i<15000;++i){ for(int r=0;r<RIDERS;++r) pos[r].m_fTrackPos=(float)((i+r)%1000)/1000.0f;
         uint64_t t0=nowUs(); RaceTrackPosition(RIDERS,pos,(int)sizeof(pos[0])); tpos.add((double)(nowUs()-t0)); }
     for (int i=0;i<4000;++i){ for(int r=0;r<RIDERS;++r) cls.e[r].m_iGap=(r*450+i)%60000;
@@ -153,14 +159,22 @@ int main(int argc, char** argv) {
         s->name,s->n,avg(*s),pct(*s,0.50),pct(*s,0.99),pct(*s,1.0));
 
     double dAvg=avg(draw), dP99=pct(draw,0.99);
-    printf("\nDraw() vs 240fps budget (%.0f us/frame): avg %.1f%%  p99 %.1f%%\n",
+    printf("\nDraw() vs 480fps budget (%.0f us/frame): avg %.1f%%  p99 %.1f%%\n",
         BUDGET_US, 100.0*dAvg/BUDGET_US, 100.0*dP99/BUDGET_US);
 
+    // What we hand the game engine to RENDER each frame (the times above are only
+    // the CPU cost of BUILDING these; the engine's cost to draw them is separate
+    // and not measured headlessly). Primitive COUNT is the proxy for that cost —
+    // the map HUD is the big variable (see map_perf_driver, up to ~1266 more quads
+    // at 200% detail); everything here is default-on HUDs with the map off.
+    printf("Primitives emitted to engine per frame (default HUDs, map off): %d quads, %d strings\n",
+        lastNq, lastNs);
+
     // Projection to a session: 5min warmup + (8min + ~2 laps) race ~= 960s.
-    // Realistic rates: Draw 240Hz, RaceTrackPosition 30Hz, RunTelemetry 100Hz,
+    // Realistic rates: Draw 480Hz, RaceTrackPosition 30Hz, RunTelemetry 100Hz,
     // RaceClassification 5Hz.
     double sessionS=960.0;
-    double drawCpu = 240.0*sessionS*dAvg/1e6;
+    double drawCpu = 480.0*sessionS*dAvg/1e6;
     double tposCpu = 30.0*sessionS*avg(tpos)/1e6;
     double telemCpu= 100.0*sessionS*avg(telem)/1e6;
     double claCpu  = 5.0*sessionS*avg(cla)/1e6;

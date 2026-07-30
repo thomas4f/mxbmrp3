@@ -20,11 +20,41 @@ command -v node >/dev/null || { echo "ERROR: Node.js not found"; exit 1; }
 # Install deps once. Skip the auto browser download — we resolve Chromium below.
 [ -d node_modules ] || PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install --no-audit --no-fund
 
-# Fetch the pinned Chromium if it isn't already present (idempotent: prints
-# "is already installed" and exits fast when PLAYWRIGHT_BROWSERS_PATH has it).
-# MXB_CHROMIUM (see playwright.config.js) points at a system/preinstalled
-# Chromium instead — skip the download entirely; it's blocked in sandboxed
-# environments and unnecessary when an executable is supplied.
-[ -n "${MXB_CHROMIUM:-}" ] || npx playwright install chromium
+# Resolve a browser BEFORE reaching for the network. Playwright's `install` step
+# pins an exact build and downloads it from cdn.playwright.dev, which is blocked
+# in sandboxed environments (403 "host not permitted") — and is pure waste on an
+# image that already ships Chromium under PLAYWRIGHT_BROWSERS_PATH. Discovering
+# what is already here first makes the common cases (CI image, dev box, sandbox)
+# all work without anyone having to hand-set MXB_CHROMIUM, which is what this
+# used to require. MXB_CHROMIUM (see playwright.config.js) still wins when set
+# explicitly.
+if [ -z "${MXB_CHROMIUM:-}" ]; then
+    for cand in \
+        "${PLAYWRIGHT_BROWSERS_PATH:-/opt/pw-browsers}"/chromium-*/chrome-linux/chrome \
+        "${PLAYWRIGHT_BROWSERS_PATH:-/opt/pw-browsers}"/chromium/chrome-linux/chrome \
+        "$(command -v chromium 2>/dev/null || true)" \
+        "$(command -v chromium-browser 2>/dev/null || true)" \
+        "$(command -v google-chrome 2>/dev/null || true)"
+    do
+        if [ -n "${cand}" ] && [ -x "${cand}" ]; then
+            export MXB_CHROMIUM="${cand}"
+            echo "Using preinstalled browser: ${MXB_CHROMIUM}"
+            break
+        fi
+    done
+fi
+
+# Still nothing — try the download, but treat a failure as "prerequisite
+# unavailable" (exit 3) rather than a test failure. CTest maps 3 to SKIPPED
+# (SKIP_RETURN_CODE, set by mxb_gate in CMakeLists.txt):
+# a machine with no browser and no route to fetch one hasn't found a bug, and
+# reporting it as one buries real failures.
+if [ -z "${MXB_CHROMIUM:-}" ]; then
+    if ! npx playwright install chromium; then
+        echo "SKIP: no usable Chromium found and the pinned build could not be downloaded." >&2
+        echo "      Set MXB_CHROMIUM=/path/to/chrome to use an existing browser." >&2
+        exit 3
+    fi
+fi
 
 exec npx playwright test "$@"

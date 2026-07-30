@@ -20,7 +20,7 @@
     {
       "name": "cpp-httplib",
       "repo": "yhirose/cpp-httplib",
-      "version": "0.50.1",
+      "version": "0.51.0",
       "path": "mxbmrp3/vendor/httplib/httplib.h",
       "shipped": true
     },

@@ -59,13 +59,19 @@ public:
     // Standard update interval for live timing displays (~167Hz for smooth ticking)
     static constexpr int TICK_UPDATE_INTERVAL_MS = 6;
 
-    BaseHud() : m_bDataDirty(true), m_bLayoutDirty(true), m_bDraggable(false), m_bDragging(false),
-        m_fOffsetX(0.0f), m_fOffsetY(0.0f), m_fDragStartX(0.0f), m_fDragStartY(0.0f),
-        m_fInitialOffsetX(0.0f), m_fInitialOffsetY(0.0f),
-        m_fBoundsLeft(0.0f), m_fBoundsTop(0.0f), m_fBoundsRight(0.0f), m_fBoundsBottom(0.0f),
+    // Order here MUST match the member declaration order below — C++ initializes
+    // in declaration order whatever this list says, so a mismatch is misleading
+    // rather than wrong, and it produced all 18 of the build's warnings. Enforced
+    // by -Werror on the tests/unit targets, which compile this header.
+    BaseHud() :
         m_fScale(1.0f), m_bVisible(true), m_bShowTitle(true), m_fBackgroundOpacity(0.85f),
         m_bShowBackgroundTexture(false), m_iBackgroundTextureIndex(0),
-        m_lastTickUpdate(), m_benchmarkIndex(-1) {}
+        m_fOffsetX(0.0f), m_fOffsetY(0.0f),
+        m_fBoundsLeft(0.0f), m_fBoundsTop(0.0f), m_fBoundsRight(0.0f), m_fBoundsBottom(0.0f),
+        m_lastTickUpdate(), m_benchmarkIndex(-1),
+        m_bDataDirty(true), m_bLayoutDirty(true), m_bDraggable(false), m_bDragging(false),
+        m_fDragStartX(0.0f), m_fDragStartY(0.0f),
+        m_fInitialOffsetX(0.0f), m_fInitialOffsetY(0.0f) {}
 
     virtual ~BaseHud() = default;
 
@@ -81,8 +87,39 @@ public:
         if (m_bVisible != visible) {
             m_bVisible = visible;
             if (visible) setDataDirty();  // Rebuild when becoming visible
+            onVisibilityChanged();
         }
     }
+
+    // Called immediately after ANY change that may flip isVisibleAnySurface(), from
+    // BOTH surface setters. A HUD whose show/hide edge has a SIDE EFFECT overrides
+    // this; doing that work only on the next frame instead is a real bug, twice
+    // measured: TelemetryHud clears its history on becoming visible and callers feed
+    // samples between the toggle and the next draw (stripchart_parity_test does
+    // exactly that, and a deferred clear wiped the samples it had just fed), while
+    // BenchmarkWidget exports its report on hide and bench_driver tears down with no
+    // draw at all.
+    //
+    // Overriders MUST be idempotent: the per-frame sync in update() calls the same
+    // code to catch the one transition no setter can see -- the companion window
+    // itself opening or closing. Edge-guard on your own remembered state, not on the
+    // call.
+    virtual void onVisibilityChanged() {}
+
+    // Whether this HUD belongs on the companion window AT ALL, independent of its
+    // on/off there. Default true: the companion is a second surface for the HUD set,
+    // and per-HUD on/off is what decouple() is for.
+    //
+    // False is for a HUD that is an IN-GAME EFFECT rather than a panel -- one whose
+    // meaning is tied to the player's view of the game, not to a place to put
+    // information. Such a HUD has no position, scale or title to decouple, so the
+    // per-surface model does not describe it, and drawing it on a second monitor
+    // covers the very HUDs the companion exists to show. HelmetOverlayHud is the
+    // case: a full-screen immersion overlay driven by lean angle and suspension
+    // travel. Excluding it here also makes the settings UI honest -- the tab bar
+    // already treats the helmet as a shared global toggle rather than a per-surface
+    // one, which was only half-true while the renderer still drew it per-surface.
+    virtual bool rendersOnCompanion() const { return true; }
     bool isVisible() const { return m_bVisible; }
 
     // True if this HUD is shown on ANY active surface — the game, or the companion
@@ -194,7 +231,11 @@ public:
     bool getCompanionVisible() const { return m_bCompanionConfigured ? m_bCompanionVisible.load() : m_bVisible.load(); }
     float getCompanionOffsetX() const { return m_bCompanionConfigured ? m_fCompanionOffsetX : m_fOffsetX; }
     float getCompanionOffsetY() const { return m_bCompanionConfigured ? m_fCompanionOffsetY : m_fOffsetY; }
-    void setCompanionVisible(bool visible) { ensureCompanionConfigured(); m_bCompanionVisible.store(visible); }
+    void setCompanionVisible(bool visible) {
+        ensureCompanionConfigured();
+        m_bCompanionVisible.store(visible);
+        onVisibilityChanged();   // same edge, other surface — see the hook
+    }
     void setCompanionPosition(float x, float y) { ensureCompanionConfigured(); m_fCompanionOffsetX = x; m_fCompanionOffsetY = y; }
     // Settings load applies the persisted companion instance verbatim (configured).
     void applyCompanionState(bool visible, float x, float y) {
@@ -343,6 +384,16 @@ protected:
     void addHorizontalGridLine(float x, float y, float width, unsigned long color, float thickness);
     static void setQuadPositions(SPluginQuad_t& quad, float x, float y, float width, float height);
 
+    // Right-pointing triangle in the same box setQuadPositions would fill: the two
+    // right-hand vertices collapse onto a single tip at the vertical middle. The
+    // draw primitive is four arbitrary corners (m_aafPos[4][2]), not a rect, so a
+    // degenerate edge is a legal quad -- addNeedleQuad already relies on that.
+    //
+    // Used for the standings brand indicator, which real broadcast graphics draw as
+    // an arrow rather than a bar.
+    static void setQuadPositionsArrowRight(SPluginQuad_t& quad, float x, float y,
+                                           float width, float height);
+
     // Add a gauge needle (trapezoid: flat tip, wider base) pointing outward at angleRad.
     // Shared by SpeedoWidget and TachoWidget.
     void addNeedleQuad(float centerX, float centerY, float angleRad,
@@ -371,7 +422,12 @@ protected:
     };
     StyledStringBounds calculateStyledStringBounds() const;
 
-    // Scaled dimensions helper (eliminates repeated calculations in rebuildLayout/rebuildRenderData)
+    // Scaled dimensions helper (eliminates repeated calculations in rebuildLayout/rebuildRenderData).
+    // Public TYPE (the members stay protected): SettingsLayoutContext — a standalone
+    // struct, not a BaseHud — carries a ScaledDimensions between the settings tabs.
+    // gcc/MSVC let the protected nested-type access slide; clang (which fronts the
+    // thread-safety analysis pass) correctly rejects it.
+public:
     struct ScaledDimensions {
         float fontSize;
         float fontSizeExtraSmall;
@@ -400,6 +456,7 @@ protected:
             return GRID_UNIT_H * units * scale;
         }
     };
+protected:
     ScaledDimensions getScaledDimensions() const;
 
     // Vertical offset to center Small-size text within a normal-height row band.

@@ -1,805 +1,15 @@
 // ============================================================================
 // core/plugin_data.h
-// Central data store for all game state received from the game API
+// Central data store for all game state received from the game API.
+//
+// The VALUE TYPES this store holds (SessionData, StandingsData, telemetry
+// buffers, ...) live in plugin_data_types.h, which this header includes — so
+// existing includers see no change. Include that header directly when you only
+// need the data and not the singleton.
 // ============================================================================
 #pragma once
 
-#include <cstdint>
-#include <unordered_map>
-#include <unordered_set>
-#include <map>
-#include <vector>
-#include <array>
-#include <deque>
-#include <cstring>
-#include <chrono>
-
-#include "../game/game_config.h"      // For SPluginQuad_t, SPluginString_t (via correct game API)
-#include "../game/unified_types.h"    // For Unified::RaceClassificationEntry
-#include "plugin_constants.h"  // For Placeholders namespace
-#include "event_log_types.h"   // For EventLogEntry, EventLogType
-#include "segment_cumulative.h" // For SegmentCumulative (segment-timer aggregation)
-
-// Forward declarations
-struct XInputData;
-class XInputReader;
-
-// Data structure for race session and event information
-struct SessionData {
-    // Event data
-    char riderName[100];
-    char bikeName[100];
-    char category[100];
-    char trackId[100];      // Short track identifier (e.g., "club")
-    char trackName[100];    // Full track name (e.g., "Club MX")
-    float trackLength;      // meters
-    int eventType;
-    // Raw server type from the MX Bikes API (m_iServerType).
-    // -1 = unknown (pre-EventInit, or non-MX-Bikes game)
-    //  0 = offline / testing
-    //  1 = online race server
-    //  2 = online practice-day server
-    int serverType;
-    char serverName[100];   // Server name (only set when online)
-
-    bool isServerKnown() const { return serverType >= 0; }
-    bool isOnline() const { return serverType > 0; }
-    bool isOffline() const { return serverType == 0; }
-
-    // Bike setup data
-    int shiftRPM;           // RPM threshold for shift warning (recommended shift point)
-    int limiterRPM;         // RPM limiter threshold
-    float steerLock;        // Maximum steering angle in degrees
-    float engineOptTemperature;   // Optimal engine temperature in Celsius
-    float engineTempAlarmLow;     // Engine temperature low alarm threshold in Celsius
-    float engineTempAlarmHigh;    // Engine temperature high alarm threshold in Celsius
-
-    // Session data
-    int session;
-    int sessionSeries;      // KRP heat index within a session (0 on other games); distinguishes heats that share the same `session` id
-    int sessionGeneration;  // Monotonic counter, incremented on every new session (RaceSession callback)
-    int sessionState;
-    int sessionLength;      // milliseconds
-    int sessionNumLaps;
-    int conditions;
-    float airTemperature;
-    float trackTemperature;     // Celsius (-1 = not available, e.g., MX Bikes)
-    char setupFileName[100];
-
-    // Overtime tracking for time+laps races
-    bool overtimeStarted;   // True when sessionTime goes negative
-    int finishLap;          // Lap number riders need to complete to finish (leaderLapAtOvertime + sessionNumLaps)
-    int lastSessionTime;    // Previous sessionTime value for detecting overtime transition
-    int leaderFinishTime;   // Leader's total race time in milliseconds (-1 if not finished)
-
-    // Non-race session expiry tracking (practice/warmup/qualifying)
-    bool sessionTimeExpired; // True when sessionTime goes negative in non-race sessions
-
-    SessionData() : trackLength(0.0f), eventType(2), serverType(-1),
-        shiftRPM(13500), limiterRPM(14000), steerLock(30.0f),
-        engineOptTemperature(85.0f), engineTempAlarmLow(60.0f), engineTempAlarmHigh(110.0f),
-        session(-1), sessionSeries(0), sessionGeneration(0), sessionState(-1), sessionLength(-1), sessionNumLaps(-1),
-        conditions(-1), airTemperature(-1.0f), trackTemperature(-1.0f), overtimeStarted(false), finishLap(-1), lastSessionTime(0), leaderFinishTime(-1),
-        sessionTimeExpired(false) {
-        riderName[0] = '\0';
-        bikeName[0] = '\0';
-        category[0] = '\0';
-        trackId[0] = '\0';
-        trackName[0] = '\0';
-        serverName[0] = '\0';
-        setupFileName[0] = '\0';
-    }
-
-    void clear() {
-        riderName[0] = '\0';
-        bikeName[0] = '\0';
-        category[0] = '\0';
-        trackId[0] = '\0';
-        trackName[0] = '\0';
-        trackLength = 0.0f;
-        eventType = 2;  // Default to Race (Testing events are offline-only)
-        serverType = -1;  // Unknown
-        serverName[0] = '\0';
-        shiftRPM = 13500;  // Default fallback value
-        limiterRPM = 14000;  // Default fallback value
-        steerLock = 30.0f;  // Default fallback value
-        engineOptTemperature = 85.0f;  // Default fallback value
-        engineTempAlarmLow = 60.0f;    // Default fallback value
-        engineTempAlarmHigh = 110.0f;  // Default fallback value
-        session = -1;
-        sessionSeries = 0;
-        // Also bumped by incrementSessionGeneration() in RaceSessionHandler — the double
-        // bump is intentional: clear() catches event exits that bypass RaceSessionHandler
-        ++sessionGeneration;
-        sessionState = -1;
-        sessionLength = -1;
-        sessionNumLaps = -1;
-        conditions = -1;
-        airTemperature = -1.0f;
-        trackTemperature = -1.0f;
-        setupFileName[0] = '\0';
-        overtimeStarted = false;
-        finishLap = -1;
-        lastSessionTime = 0;
-        leaderFinishTime = -1;
-        sessionTimeExpired = false;
-    }
-
-    // Race finish detection helpers
-    // numLaps = completed laps (0 = on first lap, 5 = completed 5 laps)
-    // numLapsAtLeaderFinish = rider's numLaps when leader finished (-1 if leader hasn't finished)
-    // For timed+laps races: finishLap set during overtime (covers non-lapped riders)
-    // For pure lap races: use sessionNumLaps directly (covers non-lapped riders)
-    // For lapped riders in either type: use numLapsAtLeaderFinish (rider finishes on next line crossing after leader)
-    bool isRiderFinished(int numLaps, int numLapsAtLeaderFinish = -1) const {
-        // Lapped rider finish: leader has finished and rider crossed the line since
-        if (numLapsAtLeaderFinish >= 0 && numLaps > numLapsAtLeaderFinish) {
-            return true;
-        }
-        if (sessionLength > 0 && sessionNumLaps > 0) {
-            // Timed+laps race
-            return finishLap > 0 && numLaps > finishLap;
-        }
-        // Pure lap or pure time race
-        return (finishLap > 0 && numLaps > finishLap) ||
-               (sessionNumLaps > 0 && finishLap <= 0 && numLaps >= sessionNumLaps);
-    }
-
-    bool isRiderOnLastLap(int numLaps, int numLapsAtLeaderFinish = -1) const {
-        // Lapped rider: on last lap once leader has finished (next line crossing = finish)
-        if (numLapsAtLeaderFinish >= 0 && numLaps == numLapsAtLeaderFinish) {
-            return true;
-        }
-        if (sessionLength > 0 && sessionNumLaps > 0) {
-            // Timed+laps race
-            return finishLap > 0 && numLaps == finishLap;
-        }
-        // Pure lap race: last lap when completed = total - 1
-        return sessionNumLaps > 0 && numLaps == sessionNumLaps - 1;
-    }
-};
-
-// Race entry data for tracking riders/vehicles in race events
-struct RaceEntryData {
-    int raceNum;
-    char name[100];
-    char bikeName[100];
-    const char* bikeAbbr;        // Cached bike abbreviation (points to static string)
-    const char* brandName;       // Cached brand name (points to static string, e.g. "Honda")
-    unsigned long bikeBrandColor; // Cached bike brand color
-    char formattedRaceNum[8];    // Pre-formatted race number "#999"
-    char truncatedName[4];       // Pre-truncated rider name (max 3 chars)
-
-    RaceEntryData() : raceNum(-1), bikeAbbr(nullptr), brandName(""), bikeBrandColor(0) {
-        name[0] = '\0';
-        bikeName[0] = '\0';
-        formattedRaceNum[0] = '\0';
-        truncatedName[0] = '\0';
-    }
-
-    RaceEntryData(int num, const char* riderName, const char* bike, const char* abbr, const char* brand, unsigned long brandColor)
-        : raceNum(num), bikeAbbr(abbr), brandName(brand), bikeBrandColor(brandColor) {
-        // Copy name
-        strncpy_s(name, sizeof(name), riderName, sizeof(name) - 1);
-        name[sizeof(name) - 1] = '\0';
-
-        // Copy bike name
-        strncpy_s(bikeName, sizeof(bikeName), bike, sizeof(bikeName) - 1);
-        bikeName[sizeof(bikeName) - 1] = '\0';
-
-        // Pre-format race number
-        snprintf(formattedRaceNum, sizeof(formattedRaceNum), "#%d", raceNum);
-
-        // Pre-truncate name (max 3 chars)
-        size_t nameLen = strlen(riderName);
-        if (nameLen > 3) nameLen = 3;
-        memcpy(truncatedName, riderName, nameLen);
-        truncatedName[nameLen] = '\0';
-    }
-};
-
-// Standings data for race classification (current race position)
-struct StandingsData {
-    int raceNum;
-    int state;          // EntryState: 0=Racing, 1=DNS, 2=Unknown, 3=Retired, 4=DSQ
-    int bestLap;        // milliseconds
-    int bestLapNum;     // best lap index
-    int numLaps;        // number of laps completed
-    int gap;            // gap to leader in milliseconds (official from splits)
-    int gapLaps;        // gap to leader in laps
-    int realTimeGap;    // real-time estimated gap in milliseconds
-    int penalty;        // penalty time in milliseconds
-    int pit;            // 0 = on track, 1 = in pits
-    int finishTime;     // total race time in milliseconds (-1 if not finished)
-    int numLapsAtLeaderFinish;  // rider's numLaps when leader finished (-1 = leader hasn't finished)
-    bool sessionFinished;       // true when rider crosses start/finish line after non-race session time expires
-
-    StandingsData() : raceNum(-1), state(0), bestLap(-1), bestLapNum(-1),
-        numLaps(0), gap(0), gapLaps(0), realTimeGap(0), penalty(0), pit(0), finishTime(-1), numLapsAtLeaderFinish(-1),
-        sessionFinished(false) {
-    }
-
-    StandingsData(int num, int st, int bLap, int bLapNum, int nLaps,
-        int g, int gLaps, int pen, int p)
-        : raceNum(num), state(st), bestLap(bLap), bestLapNum(bLapNum),
-        numLaps(nLaps), gap(g), gapLaps(gLaps), realTimeGap(0), penalty(pen), pit(p), finishTime(-1), numLapsAtLeaderFinish(-1),
-        sessionFinished(false) {
-    }
-};
-
-// Hazard type for riders who are stationary or going wrong way on track
-enum class HazardType {
-    None,        // No hazard
-    Stationary,  // Rider is stationary on track
-    WrongWay     // Rider is going the wrong way (higher priority than Stationary)
-};
-
-// Real-time track position data for gap calculation
-struct TrackPositionData {
-    float trackPos;       // 0.0 to 1.0 along centerline
-    int numLaps;          // Current lap count for handling wraparound
-    int sessionTime;      // Session time in milliseconds when this position was recorded
-    bool crashed;
-
-    // Wrong-way detection
-    static constexpr float TELEPORT_THRESHOLD = 0.05f;  // Single-frame jump > 5% of track = teleport (reset/pit exit)
-    float previousTrackPos;   // Previous frame's trackPos for direction detection
-    bool wrongWay;            // True if rider is going backwards on track
-    std::chrono::steady_clock::time_point wrongWaySince;  // When rider started going backward (epoch = inactive)
-
-    // Hazard detection state
-    float lastSignificantTrackPos;  // Track pos when last significant movement detected
-    std::chrono::steady_clock::time_point stationarySince;  // When rider became stationary (epoch = inactive)
-    std::chrono::steady_clock::time_point hazardClearedAt;  // When hazard conditions cleared (for cooldown, epoch = inactive)
-    HazardType hazardType = HazardType::None;
-    bool hazardConfirmed = false;  // True once duration threshold passed (survives type transitions)
-    std::chrono::steady_clock::time_point pitExitGraceStart;  // Per-rider grace after leaving pits
-    bool movedSincePitExit = true;  // False after pit 1→0 until rider moves beyond tolerance; suppresses Stationary hazard for motionless pit-exit riders
-
-    // Session crash counter — rising-edge count of the crashed flag.
-    // Mirrors StatsManager's player-only edge detection, but per-rider so
-    // spectated riders can show a session crash count. Resets with the
-    // m_trackPositions map on new-session transitions.
-    int sessionCrashCount = 0;
-    bool prevCrashedState = false;
-
-    TrackPositionData()
-        : trackPos(0.0f), numLaps(0), sessionTime(0), crashed(false)
-        , previousTrackPos(0.0f), wrongWay(false)
-        , lastSignificantTrackPos(0.0f) {
-    }
-};
-
-// Leader timing point for time-based gap calculation
-// Stores when leader crossed each 1% position on track
-struct LeaderTimingPoint {
-    int sessionTime;      // Session time in milliseconds when leader crossed this position
-    int lapNum;           // Which lap this timing is from
-
-    LeaderTimingPoint() : sessionTime(0), lapNum(-1) {}
-    LeaderTimingPoint(int time, int lap) : sessionTime(time), lapNum(lap) {}
-};
-
-// Debug metrics for performance monitoring
-struct DebugMetrics {
-    float currentFps;       // Current frames per second
-    float pluginTimeMs;     // Plugin draw time in milliseconds
-    float pluginPercent;    // Plugin time as percentage of frame budget
-
-    DebugMetrics() : currentFps(0.0f), pluginTimeMs(0.0f), pluginPercent(0.0f) {}
-};
-
-// Per-callback timing entry for benchmark profiling (developer mode only)
-struct CallbackTimingEntry {
-    char name[24];              // Callback name (e.g., "RunTelemetry", "Draw")
-    long long totalTimeUs;      // Accumulated time this frame (microseconds)
-    long long peakTimeUs;       // Peak single-call time over measurement window
-    int callCount;              // Number of calls this frame
-
-    CallbackTimingEntry() : totalTimeUs(0), peakTimeUs(0), callCount(0) {
-        name[0] = '\0';
-    }
-};
-
-// Per-HUD rebuild timing entry for benchmark profiling
-struct HudTimingEntry {
-    char name[24];              // HUD name (e.g., "Standings", "Map")
-    long long lastRebuildTimeUs; // Duration of last rebuildRenderData() call
-    int rebuildCount;           // Number of rebuilds over measurement window
-
-    HudTimingEntry() : lastRebuildTimeUs(0), rebuildCount(0) {
-        name[0] = '\0';
-    }
-};
-
-// Benchmark metrics for detailed profiling (developer mode only)
-// Collected by DrawHandler, consumed by BenchmarkWidget
-struct BenchmarkMetrics {
-    static constexpr int MAX_CALLBACKS = 32;
-    static constexpr int MAX_HUDS = 32;
-
-    // Per-callback timing (indexed by callback ID)
-    std::array<CallbackTimingEntry, MAX_CALLBACKS> callbacks;
-    int callbackCount = 0;
-
-    // Per-HUD rebuild timing
-    std::array<HudTimingEntry, MAX_HUDS> huds;
-    int hudCount = 0;
-
-    // Aggregate metrics
-    long long collectRenderTimeUs = 0;  // Time spent in collectRenderData()
-    int totalQuads = 0;                 // Total quads rendered this frame
-    int totalStrings = 0;               // Total strings rendered this frame
-
-    // Active flag - when false, timing macros skip per-callback recording
-    bool active = false;
-
-    void reset() {
-        for (int i = 0; i < callbackCount; ++i) {
-            callbacks[i].totalTimeUs = 0;
-            callbacks[i].callCount = 0;
-        }
-        for (int i = 0; i < hudCount; ++i) {
-            huds[i].lastRebuildTimeUs = 0;
-        }
-        collectRenderTimeUs = 0;
-        totalQuads = 0;
-        totalStrings = 0;
-    }
-
-    // Register a callback slot (returns index, -1 if full)
-    int registerCallback(const char* callbackName) {
-        if (callbackCount >= MAX_CALLBACKS) return -1;
-        int idx = callbackCount++;
-        strncpy_s(callbacks[idx].name, sizeof(callbacks[idx].name), callbackName, _TRUNCATE);
-        return idx;
-    }
-
-    // Register a HUD slot (returns index, -1 if full)
-    int registerHud(const char* hudName) {
-        if (hudCount >= MAX_HUDS) return -1;
-        int idx = hudCount++;
-        strncpy_s(huds[idx].name, sizeof(huds[idx].name), hudName, _TRUNCATE);
-        return idx;
-    }
-
-    // Record a callback timing
-    void recordCallback(int index, long long timeUs) {
-        if (index < 0 || index >= callbackCount) return;
-        callbacks[index].totalTimeUs += timeUs;
-        callbacks[index].callCount++;
-        if (timeUs > callbacks[index].peakTimeUs) {
-            callbacks[index].peakTimeUs = timeUs;
-        }
-    }
-
-    // Record a HUD rebuild timing
-    void recordHudRebuild(int index, long long timeUs) {
-        if (index < 0 || index >= hudCount) return;
-        huds[index].lastRebuildTimeUs = timeUs;
-        huds[index].rebuildCount++;
-    }
-};
-
-// Bike telemetry data from physics simulation
-struct BikeTelemetryData {
-    float speedometer;  // Ground speed in meters/second
-    int gear;           // Current gear (0 = Neutral)
-    int numberOfGears;  // Total number of gears (for normalization)
-    int rpm;            // Engine RPM
-    float fuel;         // Current fuel in liters
-    float maxFuel;      // Fuel tank capacity in liters
-    float frontSuspLength;      // Current front suspension length in meters
-    float rearSuspLength;       // Current rear suspension length in meters
-    float frontSuspMaxTravel;   // Front suspension maximum travel in meters
-    float rearSuspMaxTravel;    // Rear suspension maximum travel in meters
-    float roll;         // Lean angle in degrees (negative = left, positive = right)
-    float pitch;        // Pitch angle in degrees (negative = nose up / wheelie, positive = nose down / endo)
-    float accelX;       // Lateral G-force (chassis-local; positive = right)
-    float accelY;       // Vertical G-force (chassis-local; positive = up, ~1g at rest)
-    float accelZ;       // Longitudinal G-force (chassis-local; positive = forward / throttle, negative = brake)
-    float engineTemperature;    // Engine temperature in Celsius
-    float waterTemperature;     // Water/coolant temperature in Celsius
-    float treadTemperature[2][3];  // Tyre tread temps [wheel: 0=front,1=rear][section: 0=left,1=mid,2=right] (GP Bikes only)
-    // ECU / electronic rider aids (GP Bikes only)
-    int ecuMode;                // Page the rider is adjusting: 0=engine map, 1=TC, 2=engine brake
-    char engineMapping[4];      // Engine mapping label (e.g. "1", "STD")
-    int tractionControl;        // Traction control level
-    int engineBraking;          // Engine braking level
-    int antiWheeling;           // Anti-wheeling level
-    int ecuState;               // Bitfield of active intervention: 1=TC, 2=EB, 4=AW
-    bool isValid;       // True if telemetry data is currently available
-
-    BikeTelemetryData() : speedometer(0.0f), gear(0), numberOfGears(6), rpm(0), fuel(0.0f), maxFuel(0.0f),
-                          frontSuspLength(0.0f), rearSuspLength(0.0f),
-                          frontSuspMaxTravel(0.0f), rearSuspMaxTravel(0.0f),
-                          roll(0.0f), pitch(0.0f),
-                          accelX(0.0f), accelY(0.0f), accelZ(0.0f),
-                          engineTemperature(0.0f), waterTemperature(0.0f),
-                          treadTemperature{},
-                          ecuMode(0), engineMapping{}, tractionControl(0),
-                          engineBraking(0), antiWheeling(0), ecuState(0),
-                          isValid(false) {}
-};
-
-// Input telemetry data from controller/bike inputs
-struct InputTelemetryData {
-    // Telemetry data (processed bike inputs)
-    float steer;        // Steering in degrees (negative = right)
-    float throttle;     // 0 to 1
-    float frontBrake;   // 0 to 1
-    float rearBrake;    // 0 to 1
-    float clutch;       // 0 to 1 (0 = fully engaged)
-
-    // XInput data (raw controller inputs)
-    float leftStickX;       // -1 to 1 (left stick horizontal)
-    float leftStickY;       // -1 to 1 (left stick vertical)
-    float rightStickX;      // -1 to 1 (rider lean left/right)
-    float rightStickY;      // -1 to 1 (rider lean forward/back)
-    float leftTrigger;      // 0 to 1 (left trigger)
-    float rightTrigger;     // 0 to 1 (right trigger)
-    bool xinputConnected;   // XInput controller connected
-
-    InputTelemetryData() : steer(0.0f), throttle(0.0f), frontBrake(0.0f),
-                           rearBrake(0.0f), clutch(0.0f),
-                           leftStickX(0.0f), leftStickY(0.0f),
-                           rightStickX(0.0f), rightStickY(0.0f),
-                           leftTrigger(0.0f), rightTrigger(0.0f),
-                           xinputConnected(false) {}
-};
-
-// History buffers for graphing telemetry and input data over time
-struct HistoryBuffers {
-    // Stick sample with X and Y position (used for both sticks)
-    struct StickSample {
-        float x;
-        float y;
-
-        StickSample() : x(0.0f), y(0.0f) {}
-        StickSample(float _x, float _y) : x(_x), y(_y) {}
-    };
-
-    // History buffers (newest at back, oldest at front)
-    std::deque<float> throttle;
-    std::deque<float> frontBrake;
-    std::deque<float> rearBrake;
-    std::deque<float> clutch;
-    std::deque<float> steer;
-    std::deque<float> rpm;               // Engine RPM (normalized 0-1 range)
-    std::deque<float> gear;              // Current gear (normalized 0-1 range, gear/numberOfGears)
-    std::deque<float> frontSusp;         // Front suspension compression (normalized 0-1 range)
-    std::deque<float> rearSusp;          // Rear suspension compression (normalized 0-1 range)
-    std::deque<StickSample> leftStick;   // Left analog stick (steering/throttle)
-    std::deque<StickSample> rightStick;  // Right analog stick (rider lean)
-
-    // History configuration (time depends on telemetry rate set in plugin_manager.cpp)
-    // At 100Hz physics rate: 200 samples = 2 seconds of data for telemetry graphs
-    static constexpr size_t MAX_TELEMETRY_HISTORY = 200;
-    // At 100Hz physics rate: 50 samples = 500ms of data for stick trails
-    static constexpr size_t MAX_STICK_HISTORY = 50;
-
-    // Add sample to history buffer
-    void addSample(std::deque<float>& buffer, float value) {
-        buffer.push_back(value);
-        if (buffer.size() > MAX_TELEMETRY_HISTORY) {
-            buffer.pop_front();
-        }
-    }
-
-    void addStickSample(std::deque<StickSample>& buffer, float x, float y) {
-        buffer.emplace_back(x, y);
-        if (buffer.size() > MAX_STICK_HISTORY) {
-            buffer.pop_front();
-        }
-    }
-
-    void clear() {
-        throttle.clear();
-        frontBrake.clear();
-        rearBrake.clear();
-        clutch.clear();
-        steer.clear();
-        rpm.clear();
-        gear.clear();
-        frontSusp.clear();
-        rearSusp.clear();
-        leftStick.clear();
-        rightStick.clear();
-    }
-};
-
-// Current lap split data (accumulated times from race start for current lap, player-only)
-struct CurrentLapData {
-    int lapNum;
-    int split1;     // milliseconds - accumulated time to split 1 (-1 if not crossed yet)
-    int split2;     // milliseconds - accumulated time to split 2 (-1 if not crossed yet)
-    int split3;     // milliseconds - accumulated time to split 3 (-1 if not crossed yet)
-
-    CurrentLapData() : lapNum(-1), split1(-1), split2(-1), split3(-1) {}
-
-    void clear() {
-        lapNum = -1;
-        split1 = -1;
-        split2 = -1;
-        split3 = -1;
-    }
-};
-
-// Ideal lap data (best sector times and last lap time, per-rider)
-struct IdealLapData {
-    int lastCompletedLapNum;  // 0-indexed - last completed lap number (for detection)
-    int lastLapTime;     // milliseconds - last completed lap time (0 if no timing data)
-    int lastLapSector1;  // milliseconds - last completed lap sector 1 time
-    int lastLapSector2;  // milliseconds - last completed lap sector 2 time
-    int lastLapSector3;  // milliseconds - last completed lap sector 3 time
-    int lastLapSector4;  // milliseconds - last completed lap sector 4 time (GP Bikes only)
-    int bestSector1;     // milliseconds - best sector 1 time across all laps
-    int bestSector2;     // milliseconds - best sector 2 time across all laps
-    int bestSector3;     // milliseconds - best sector 3 time across all laps
-    int bestSector4;     // milliseconds - best sector 4 time across all laps (GP Bikes only)
-
-    // Previous PB data (for comparison when new PB is set)
-    int previousBestLapTime;     // milliseconds - previous personal best lap time
-    int previousBestSector1;     // milliseconds - previous PB sector 1 time
-    int previousBestSector2;     // milliseconds - previous PB sector 2 time
-    int previousBestSector3;     // milliseconds - previous PB sector 3 time
-    int previousBestSector4;     // milliseconds - previous PB sector 4 time (GP Bikes only)
-
-    // Previous ideal sector data (for comparison when new best sector is set)
-    int previousIdealSector1;    // milliseconds - previous best sector 1 time
-    int previousIdealSector2;    // milliseconds - previous best sector 2 time
-    int previousIdealSector3;    // milliseconds - previous best sector 3 time
-    int previousIdealSector4;    // milliseconds - previous best sector 4 time (GP Bikes only)
-
-    IdealLapData() : lastCompletedLapNum(-1), lastLapTime(-1),
-                        lastLapSector1(-1), lastLapSector2(-1), lastLapSector3(-1), lastLapSector4(-1),
-                        bestSector1(-1), bestSector2(-1), bestSector3(-1), bestSector4(-1),
-                        previousBestLapTime(-1), previousBestSector1(-1),
-                        previousBestSector2(-1), previousBestSector3(-1), previousBestSector4(-1),
-                        previousIdealSector1(-1), previousIdealSector2(-1),
-                        previousIdealSector3(-1), previousIdealSector4(-1) {}
-
-    void clear() {
-        lastCompletedLapNum = -1;
-        lastLapTime = -1;
-        lastLapSector1 = -1;
-        lastLapSector2 = -1;
-        lastLapSector3 = -1;
-        lastLapSector4 = -1;
-        bestSector1 = -1;
-        bestSector2 = -1;
-        bestSector3 = -1;
-        bestSector4 = -1;
-        previousBestLapTime = -1;
-        previousBestSector1 = -1;
-        previousBestSector2 = -1;
-        previousBestSector3 = -1;
-        previousBestSector4 = -1;
-        previousIdealSector1 = -1;
-        previousIdealSector2 = -1;
-        previousIdealSector3 = -1;
-        previousIdealSector4 = -1;
-    }
-
-    // Get previous ideal lap time (sum of previous best sectors)
-    // For 3-sector games: S1+S2+S3, for 4-sector games: S1+S2+S3+S4
-    int getPreviousIdealLapTime() const {
-        if (previousIdealSector1 > 0 && previousIdealSector2 > 0 && previousIdealSector3 > 0) {
-            int total = previousIdealSector1 + previousIdealSector2 + previousIdealSector3;
-            if (previousIdealSector4 > 0) total += previousIdealSector4;
-            return total;
-        }
-        return -1;
-    }
-
-    // Get ideal lap time (sum of best sectors)
-    // For 3-sector games: S1+S2+S3, for 4-sector games: S1+S2+S3+S4
-    int getIdealLapTime() const {
-        if (bestSector1 > 0 && bestSector2 > 0 && bestSector3 > 0) {
-            int total = bestSector1 + bestSector2 + bestSector3;
-            if (bestSector4 > 0) total += bestSector4;
-            return total;
-        }
-        return -1;
-    }
-};
-
-// Historical lap data for lap log HUD
-struct LapLogEntry {
-    int lapNum;       // Lap number (1-based)
-    int sector1;      // milliseconds - sector 1 time
-    int sector2;      // milliseconds - sector 2 time
-    int sector3;      // milliseconds - sector 3 time
-    int sector4;      // milliseconds - sector 4 time (GP Bikes only, -1 if N/A)
-    int lapTime;      // milliseconds - total lap time
-    bool isValid;     // false if lap was invalid
-    bool isComplete;  // true if lap is completed, false if in progress
-
-    LapLogEntry() : lapNum(-1), sector1(-1), sector2(-1), sector3(-1), sector4(-1),
-                    lapTime(-1), isValid(true), isComplete(false) {}
-
-    LapLogEntry(int lap, int s1, int s2, int s3, int s4, int total, bool valid, bool complete)
-        : lapNum(lap), sector1(s1), sector2(s2), sector3(s3), sector4(s4),
-          lapTime(total), isValid(valid), isComplete(complete) {}
-};
-
-// ============================================================================
-// Centralized Lap Timer for real-time elapsed time calculation
-// Used by TimingHud, IdealLapHud, and other components that need live timing
-// Uses wall clock time since session time can count UP (practice) or DOWN (races)
-// ============================================================================
-struct LapTimer {
-    // Wall clock anchor for elapsed time calculation
-    std::chrono::steady_clock::time_point anchorTime;  // Real time when anchor was set
-    int anchorAccumulatedTime;    // Known accumulated lap time at anchor (ms)
-    bool anchorValid;             // Do we have a usable anchor?
-
-    // Pause support
-    std::chrono::steady_clock::time_point pausedAt;  // When pause started
-    bool isPaused;                // Is timer currently paused?
-
-    // Track position monitoring for S/F line detection
-    float lastTrackPos;           // Previous track position (0.0-1.0)
-    int lastLapNum;               // Previous lap number
-    bool trackMonitorInitialized; // Have we received first position?
-
-    // Current state
-    int currentLapNum;            // Current lap being timed
-    int currentSector;            // Current sector (0=before S1, 1=before S2, 2=before S3)
-    int lastSplit1Time;           // Accumulated time at S1 (for sector 2 calculation)
-    int lastSplit2Time;           // Accumulated time at S2 (for sector 3 calculation)
-
-    // Grid (standing) start grace: the anchor was set at the green flag so the live time
-    // spans the grid->S/F run and matches the official splits (accumulated from the start).
-    // While set, an intermediate S/F crossing must NOT reset the anchor to 0 (that would drop
-    // the grid->S/F time and make the timer "jump" when the first official split arrives).
-    // Cleared when the first lap completes (resetLapTimerForNewLap) or on any reset.
-    bool anchoredFromRaceStart;
-
-    // Threshold for S/F line detection (position jump > 0.5 = S/F crossing)
-    static constexpr float WRAP_THRESHOLD = 0.5f;
-
-    LapTimer()
-        : anchorAccumulatedTime(0), anchorValid(false), isPaused(false)
-        , lastTrackPos(0.0f), lastLapNum(0), trackMonitorInitialized(false)
-        , currentLapNum(0), currentSector(0)
-        , lastSplit1Time(-1), lastSplit2Time(-1)
-        , anchoredFromRaceStart(false) {}
-
-    void reset() {
-        anchorAccumulatedTime = 0;
-        anchorValid = false;
-        isPaused = false;
-        lastTrackPos = 0.0f;
-        lastLapNum = 0;
-        trackMonitorInitialized = false;
-        currentLapNum = 0;
-        currentSector = 0;
-        lastSplit1Time = -1;
-        lastSplit2Time = -1;
-        anchoredFromRaceStart = false;
-    }
-
-    void setAnchor(int accumulatedTime) {
-        anchorTime = std::chrono::steady_clock::now();
-        anchorAccumulatedTime = accumulatedTime;
-        anchorValid = true;
-        isPaused = false;  // Clear pause state when setting new anchor
-    }
-
-    // Drop the anchor without touching track monitoring, so getElapsedLapTime() returns the
-    // placeholder (-1) until the next S/F crossing re-anchors it. Used on pit exit: the
-    // in-progress lap is dead, so the live timer should read like a fresh track entry rather
-    // than keep ticking. Keeping trackMonitorInitialized means the next S/F crossing is still
-    // detected (updateLapTimerTrackPosition re-anchors on !anchorValid).
-    void invalidateAnchor() {
-        anchorValid = false;
-        isPaused = false;
-        // The grid-start anchor is abandoned once the lap is dropped (e.g. the rider pitted on
-        // lap 1), so end the grace: the next S/F crossing must re-anchor normally rather than be
-        // skipped (which would leave the timer stuck on the placeholder until the lap completes).
-        anchoredFromRaceStart = false;
-    }
-
-    // Pause/resume support - adjusts anchor to exclude pause duration
-    void pause() {
-        if (!isPaused && anchorValid) {
-            pausedAt = std::chrono::steady_clock::now();
-            isPaused = true;
-        }
-    }
-
-    void resume() {
-        if (isPaused && anchorValid) {
-            // Adjust anchor forward by the pause duration so elapsed time is correct
-            auto pauseDuration = std::chrono::steady_clock::now() - pausedAt;
-            anchorTime += pauseDuration;
-            isPaused = false;
-        }
-    }
-
-    // Calculate elapsed lap time since anchor
-    int getElapsedLapTime() const {
-        if (!anchorValid) {
-            return -1;  // No anchor - show placeholder
-        }
-
-        // Use pause time if paused, otherwise use now
-        auto endTime = isPaused ? pausedAt : std::chrono::steady_clock::now();
-        auto wallElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            endTime - anchorTime
-        ).count();
-
-        int elapsed = anchorAccumulatedTime + static_cast<int>(wallElapsed);
-
-        // Sanity check - don't show negative time
-        if (elapsed < 0) elapsed = 0;
-
-        return elapsed;
-    }
-
-    // Calculate elapsed sector time
-    // sectorIndex: 0=S1 (from lap start), 1=S2 (from S1), 2=S3 (from S2)
-    int getElapsedSectorTime(int sectorIndex) const {
-        int lapTime = getElapsedLapTime();
-        if (lapTime < 0) {
-            return -1;  // No valid elapsed time
-        }
-
-        switch (sectorIndex) {
-            case 0:  // S1: time from lap start
-                return lapTime;
-            case 1:  // S2: time from S1
-                if (lastSplit1Time > 0) {
-                    return lapTime - lastSplit1Time;
-                }
-                return -1;  // S1 not crossed yet
-            case 2:  // S3: time from S2
-                if (lastSplit2Time > 0) {
-                    return lapTime - lastSplit2Time;
-                }
-                return -1;  // S2 not crossed yet
-            default:
-                return -1;
-        }
-    }
-};
-
-// Data change notification types
-enum class DataChangeType {
-    // NOTE: this fires on real session transitions AND ~once per second during a
-    // session — setSessionTime() emits it on every whole-second boundary (the SSE
-    // overlay clock heartbeat). It is NOT a clean "new session" edge. A consumer that
-    // must act only on a genuine session change should gate on
-    // SessionData::sessionGeneration, not on this notification (see DirectorManager).
-    SessionData,
-    RaceEntries,
-    Standings,
-    DebugMetrics,
-    InputTelemetry,
-    IdealLap,
-    LapLog,
-    SpectateTarget,  // Spectate target changed (switch to different rider)
-    TrackedRiders,   // Tracked riders list or settings changed
-    EventLog         // New event log entry added
-};
-
-// Helper function to convert DataChangeType to string for debugging
-inline const char* dataChangeTypeToString(DataChangeType type) {
-    switch (type) {
-    case DataChangeType::SessionData: return "SessionData";
-    case DataChangeType::RaceEntries: return "RaceEntries";
-    case DataChangeType::Standings: return "Standings";
-    case DataChangeType::DebugMetrics: return "DebugMetrics";
-    case DataChangeType::InputTelemetry: return "InputTelemetry";
-    case DataChangeType::IdealLap: return "IdealLap";
-    case DataChangeType::LapLog: return "LapLog";
-    case DataChangeType::SpectateTarget: return "SpectateTarget";
-    case DataChangeType::TrackedRiders: return "TrackedRiders";
-    case DataChangeType::EventLog: return "EventLog";
-    default: return "Unknown";
-    }
-}
+#include "plugin_data_types.h"
 
 class PluginData {
 public:
@@ -1103,7 +313,7 @@ public:
 
     // Wrong-way detection (based on track position changes)
     bool isPlayerGoingWrongWay() const;  // Check if display rider is going wrong way
-    const TrackPositionData* getPlayerTrackPosition() const;  // Get display rider's track position data for debugging
+    const RiderTrackState* getPlayerTrackPosition() const;  // Get display rider's track position data for debugging
 
     // Standing (grid) start grace: true from the green-flag state flip, through the (variable)
     // gate hold and the launch, until the DISPLAY rider crosses the first split. Reused to
@@ -1129,30 +339,31 @@ public:
     int getRiderLappingTarget(int raceNum) const;
 
     // Blue flag tuning (INI-only advanced setting)
-    void setBlueFlagAwarenessDistance(float meters) { m_blueFlagAwarenessDistance = std::max(10.0f, std::min(meters, 500.0f)); }
-    float getBlueFlagAwarenessDistance() const { return m_blueFlagAwarenessDistance; }
+    // Blue-flag + hazard tuning (INI-only advanced settings) live in one struct;
+    // see core/proximity_tuning.h for the clamp ranges.
+    const ProximityTuning& proximityTuning() const { return m_proximity; }
+    ProximityTuning& proximityTuning() { return m_proximity; }
 
     // Shared exclusion check for hazard/blue flag detection
     bool isRiderExcludedFromDetection(const StandingsData& standing) const;
+
+    // Whether requestSpectateRider(raceNum) would actually land on this rider: they must be
+    // an active participant currently on track. DNS/retired/DSQ/unknown riders (and anyone
+    // sitting in the pits) are not in the game's spectate vehicle list, so the request is
+    // consumed and silently dropped.
+    //
+    // ONE RULE, EVERY SURFACE. Standings, Map, Event Log and Session Charts all offer
+    // click-to-spectate, and each must gate BOTH its hover highlight and its click region on
+    // this — a row that highlights and then does nothing when clicked reads as a broken HUD.
+    // Standings owned the only copy of this test; the other surfaces either lacked it or
+    // (Map) offered a click region for every rider drawn.
+    bool isRiderSpectatable(int raceNum) const;
 
     // Hazard detection (stationary or wrong-way riders ahead on track)
     HazardType getRiderHazardType(int raceNum) const;
     bool isHazardAhead() const;
     const std::vector<int>& getHazardRaceNums() const;
 
-    // Hazard tuning (INI-only advanced settings)
-    void setHazardStationaryTolerance(float meters) { m_hazardStationaryToleranceMeters = std::max(1.0f, std::min(meters, 50.0f)); }
-    float getHazardStationaryTolerance() const { return m_hazardStationaryToleranceMeters; }
-    void setHazardStationaryDurationMs(int ms) { m_hazardStationaryDurationMs = std::max(1000, std::min(ms, 30000)); }
-    int getHazardStationaryDurationMs() const { return m_hazardStationaryDurationMs; }
-    void setHazardAwarenessDistance(float meters) { m_hazardAwarenessDistance = std::max(10.0f, std::min(meters, 500.0f)); }
-    float getHazardAwarenessDistance() const { return m_hazardAwarenessDistance; }
-    void setHazardWrongWayDurationMs(int ms) { m_hazardWrongWayDurationMs = std::max(100, std::min(ms, 10000)); }
-    int getHazardWrongWayDurationMs() const { return m_hazardWrongWayDurationMs; }
-    void setHazardCooldownMs(int ms) { m_hazardCooldownMs = std::max(0, std::min(ms, 30000)); }
-    int getHazardCooldownMs() const { return m_hazardCooldownMs; }
-    void setHazardGracePeriodMs(int ms) { m_hazardGracePeriodMs = std::max(0, std::min(ms, 60000)); }
-    int getHazardGracePeriodMs() const { return m_hazardGracePeriodMs; }
 
     // Live-gap HUD refresh coalescing (INI-only setting: [Advanced]
     // gapNotifyIntervalMs). 0 = notify on every change (pre-coalescing
@@ -1385,14 +596,19 @@ public:
     // ========================================================================
     // Event Log (ring buffer of notable race events)
     // ========================================================================
-    void addEventLogEntry(EventLogType type, const char* message, const char* detail = nullptr, int iconColorSlot = -1);
+    // raceNum: the rider the event is about, or -1 for a session-level event. Only used to
+    // offer click-to-spectate on the row — see EventLogEntry::raceNum.
+    void addEventLogEntry(EventLogType type, const char* message, const char* detail = nullptr,
+                          int iconColorSlot = -1, int raceNum = -1);
     const std::deque<EventLogEntry>& getEventLog() const { return m_eventLog; }
 
 private:
-    PluginData() : m_currentSessionTime(0), m_playerRaceNum(-1), m_bPlayerRaceNumValid(false),
+    // Order matches the member declaration order below (see BaseHud's note).
+    PluginData() : m_bPositionCacheDirty(true),
+                   m_currentSessionTime(0), m_playerRaceNum(-1), m_bPlayerRaceNumValid(false),
                    m_bPlayerNotFoundWarned(false), m_bWaitingForPlayerEntry(false),
-                   m_iPendingPlayerRaceNum(-1), m_bPlayerIsRunning(false), m_drawState(0),
-                   m_spectatedRaceNum(-1), m_bPositionCacheDirty(true) {}
+                   m_iPendingPlayerRaceNum(-1), m_bPlayerIsRunning(false),
+                   m_drawState(0), m_spectatedRaceNum(-1) {}
     ~PluginData() {}
     PluginData(const PluginData&) = delete;
     PluginData& operator=(const PluginData&) = delete;
@@ -1408,7 +624,7 @@ private:
 
     // Initialize per-rider hazard state after a pit 1→0 transition
     // (grace period + movement-tracking flag). No-op if the rider has no
-    // TrackPositionData entry yet.
+    // RiderTrackState entry yet.
     void startPitExitGrace(int raceNum);
 
     // Update cached player race number by searching race entries
@@ -1427,6 +643,48 @@ private:
         return false;
     }
 
+    // ------------------------------------------------------------------------
+    // Per-rider container registry.
+    //
+    // Any container keyed by raceNum that holds AUTHORITATIVE per-rider state
+    // must be evicted in removeRaceEntry() and reset in clear() — otherwise a
+    // new rider joining mid-event with a departed rider's number inherits stale
+    // standings / gap / position-reference / lap-history state. That rule used
+    // to be a hand-maintained erase list in removeRaceEntry() and was found
+    // violated repeatedly; PerRider<> makes it hold by construction: declaring
+    // the member registers erase + clear callbacks with the owning PluginData,
+    // and removeRaceEntry() / clear() iterate the registry. The declaration IS
+    // the registration — there is no second list to update.
+    //
+    // NOT registered, on purpose:
+    //  - m_raceEntries: the primary entity map removeRaceEntry() itself drives
+    //    (it needs the entry alive for logging/player checks, then erases it).
+    //  - Derived caches rebuilt wholesale from other state when their dirty
+    //    flag is set (m_positionCache, m_filteredPositionCache,
+    //    m_cachedBlueFlaggedSet, m_cachedLapperToLapped, m_cachedHazardTypes):
+    //    the dirty flag is their eviction mechanism — removeRaceEntry() sets it.
+    struct PerRiderHook {
+        void (*eraseFn)(void* container, int raceNum);
+        void (*clearFn)(void* container);
+        void* container;
+    };
+    std::vector<PerRiderHook> m_perRiderHooks;  // declared before every PerRider<> member (init order)
+
+    template <typename C>
+    class PerRider : public C {
+    public:
+        explicit PerRider(PluginData& owner) {
+            owner.m_perRiderHooks.push_back({
+                [](void* c, int raceNum) { static_cast<C*>(c)->erase(raceNum); },
+                [](void* c) { static_cast<C*>(c)->clear(); },
+                static_cast<C*>(this) });
+        }
+        // No copy: a copy would dodge registration (or double-register), and the
+        // singleton owner never needs one.
+        PerRider(const PerRider&) = delete;
+        PerRider& operator=(const PerRider&) = delete;
+    };
+
     SessionData m_sessionData;
     DebugMetrics m_debugMetrics;
     BenchmarkMetrics m_benchmarkMetrics;
@@ -1434,15 +692,15 @@ private:
     InputTelemetryData m_inputTelemetry;
     HistoryBuffers m_historyBuffers;
     std::unordered_map<int, RaceEntryData> m_raceEntries;
-    std::unordered_map<int, StandingsData> m_standings;
-    std::unordered_map<int, int> m_lastValidOfficialGap;  // Cache of last valid official gap per rider (prevents flicker)
+    PerRider<std::unordered_map<int, StandingsData>> m_standings{*this};
+    PerRider<std::unordered_map<int, int>> m_lastValidOfficialGap{*this};  // Cache of last valid official gap per rider (prevents flicker)
     std::vector<int> m_classificationOrder;  // Official race position order from game
     int m_lastLeaderRaceNum = -1;  // Previous race leader (for leader change detection, race sessions only)
     mutable std::unordered_map<int, int> m_positionCache;  // Cached position lookup (race number -> position), rebuilt when classification changes
     mutable bool m_bPositionCacheDirty;  // Flag to rebuild position cache
-    std::unordered_map<int, int> m_raceStartPositions;  // raceNum -> official starting position (1-based), snapshotted at race green flag
-    std::unordered_map<int, int> m_lastSfPositions;     // raceNum -> position at last start/finish crossing (rolling, "Since S/F" mode)
-    std::unordered_map<int, int> m_lastSplitPositions;  // raceNum -> position at last split crossing (rolling, "Since split" mode)
+    PerRider<std::unordered_map<int, int>> m_raceStartPositions{*this};  // raceNum -> official starting position (1-based), snapshotted at race green flag
+    PerRider<std::unordered_map<int, int>> m_lastSfPositions{*this};     // raceNum -> position at last start/finish crossing (rolling, "Since S/F" mode)
+    PerRider<std::unordered_map<int, int>> m_lastSplitPositions{*this};  // raceNum -> position at last split crossing (rolling, "Since split" mode)
 
     // Display filters (global toggles saved in [General])
     bool m_shortTimeFormat = true;               // Compact time format: drop leading 0: for sub-minute times (keeps ms precision)
@@ -1453,31 +711,33 @@ private:
     mutable std::unordered_map<int, int> m_filteredPositionCache;
     mutable bool m_bFilteredOrderDirty = true;
 
-    std::unordered_map<int, TrackPositionData> m_trackPositions;  // Real-time track positions
-    std::unordered_set<int> m_activeTrackPosRiders;  // Riders in the most recent API track position batch
+    PerRider<std::unordered_map<int, RiderTrackState>> m_trackPositions{*this};  // Real-time track positions
+    // Riders in the most recent API track position batch. Feeds liveGapValid;
+    // no batches arrive while the player sits in menus, so a departed rider's
+    // stale "active" bit would never refresh out on its own (hence PerRider).
+    PerRider<std::unordered_set<int>> m_activeTrackPosRiders{*this};
     mutable bool m_cachedPlayerBlueFlagged = false;        // Cached: is the display rider blue-flagged?
     mutable bool m_cachedPlayerLapping = false;            // Cached: is the display rider lapping a backmarker ahead?
     mutable std::unordered_set<int> m_cachedBlueFlaggedSet;  // Cached per-rider blue flag lookup (recomputed when dirty)
     mutable std::unordered_map<int, int> m_cachedLapperToLapped;  // Cached: lapper raceNum -> the backmarker it's catching
+    // Reused scratch for rebuildBlueFlagCaches: one flat pass collects every rider
+    // that has a track position (with laps/pos + the two role flags), so the pairwise
+    // proximity loop reads this array instead of doing 2 hash lookups per inner
+    // iteration (the O(n^2) map-lookup cost). Reused across rebuilds (clear keeps cap).
+    // The loop that consumes it is pure logic in core/blue_flag_detect.h.
+    mutable std::vector<BlueFlag::Rider> m_blueFlagScratch;
     mutable bool m_blueFlagsDirty = true;                // Invalidated when track positions change
-    float m_blueFlagAwarenessDistance = 100.0f;          // Blue flag detection range in meters
 
     // Hazard detection state and configuration
     mutable std::vector<int> m_cachedHazardRaceNums;     // Cached hazard result (recomputed when dirty)
     mutable std::unordered_map<int, HazardType> m_cachedHazardTypes;  // Cached per-rider hazard type (recomputed when dirty)
     mutable bool m_hazardsDirty = true;                  // Invalidated when track positions change
     mutable bool m_hazardTypesDirty = true;              // Invalidated alongside m_hazardsDirty
-    float m_hazardStationaryToleranceMeters = 5.0f;      // Movement below this = "not moving"
-    int m_hazardStationaryDurationMs = 2000;             // Time stationary before flagged
-    int m_hazardWrongWayDurationMs = 1500;               // Time going backward before flagged
-    float m_hazardAwarenessDistance = 100.0f;            // Meters ahead to check for hazards
-    int m_hazardCooldownMs = 1000;                       // Hysteresis before clearing hazard state
-    int m_hazardGracePeriodMs = 10000;                   // Per-rider pit-exit hazard grace (the
-                                                         // grid-start grace is now sector-based, see isInGridStartGrace)
-    std::unordered_map<int, CurrentLapData> m_riderCurrentLap;  // Current lap split data per rider
-    std::unordered_map<int, IdealLapData> m_riderIdealLap;  // Ideal lap sectors per rider
-    std::unordered_map<int, std::deque<LapLogEntry>> m_riderLapLog;  // Lap log per rider (newest first, deque for O(1) front insert)
-    std::unordered_map<int, LapLogEntry> m_riderBestLap;  // Best lap entry per rider (for easy access)
+    ProximityTuning m_proximity;   // INI-only blue-flag + hazard tuning
+    PerRider<std::unordered_map<int, CurrentLapData>> m_riderCurrentLap{*this};  // Current lap split data per rider
+    PerRider<std::unordered_map<int, IdealLapData>> m_riderIdealLap{*this};  // Ideal lap sectors per rider
+    PerRider<std::unordered_map<int, std::deque<LapLogEntry>>> m_riderLapLog{*this};  // Lap log per rider (newest first, deque for O(1) front insert)
+    PerRider<std::unordered_map<int, LapLogEntry>> m_riderBestLap{*this};  // Best lap entry per rider (for easy access)
     LapLogEntry m_overallBestLap;          // Overall best lap (any rider) with splits for gap comparison
     LapLogEntry m_previousOverallBestLap;  // Previous overall best (for showing improvement)
 

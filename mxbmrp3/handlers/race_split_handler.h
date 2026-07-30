@@ -6,15 +6,8 @@
 
 #include "../game/unified_types.h"
 
-class RaceSplitHandler {
-public:
-    static RaceSplitHandler& getInstance();
+namespace Handlers {
 
-    void handleRaceSplit(Unified::RaceSplitData* psRaceSplit);
+void handleRaceSplit(Unified::RaceSplitData* psRaceSplit);
 
-private:
-    RaceSplitHandler() {}
-    ~RaceSplitHandler() {}
-    RaceSplitHandler(const RaceSplitHandler&) = delete;
-    RaceSplitHandler& operator=(const RaceSplitHandler&) = delete;
-};
+}  // namespace Handlers

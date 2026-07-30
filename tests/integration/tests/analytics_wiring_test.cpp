@@ -80,5 +80,22 @@ TEST_CASE("analytics wiring: app_started always built; sampling gates session_en
     // Access-violation sub-type also rides along (2.13.0).
     CHECK(has(crash, "\"av_type\":\"read\""));
 
+    // --- Null-frame attribution contract of the backtrace resolver. ---
+    // A call through a null function pointer (Rip==0) must resolve to the
+    // canonical "unknown+0x0". Regression: GetModuleHandleExA treats a NULL
+    // lpModuleName as "return the host EXE's handle" (even with FROM_ADDRESS on
+    // some Windows builds), which used to label null-call frames as
+    // <hostexe>+<0 minus the exe base> — the "mxbikes.exe+0xfffffffec0000000"
+    // rows on the v1.27.7.44 dashboard, splitting one signature in two and
+    // smearing it onto the game module.
+    if (!host.resolveFrame(0).empty()) {
+        CHECK(host.resolveFrame(0) == "unknown+0x0");
+        // Sanity on the resolved path: an address inside a module names it.
+        std::string self = host.resolveFrame(
+            reinterpret_cast<unsigned long long>(&GetModuleHandleA));
+        CHECK(has(self, "+0x"));
+        CHECK(!has(self, "unknown"));
+    }
+
     host.shutdown();
 }

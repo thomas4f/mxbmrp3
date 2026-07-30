@@ -1,5 +1,6 @@
 ﻿; mxbmrp3.nsi
-; Build for 64-bit using https://github.com/negrutiu/nsis
+; Builds a 64-bit installer via `Target AMD64-Unicode`, which official NSIS has
+; supported since 3.07 — stock makensis >= 3.07 is all this needs (see release.yml).
 
 !include "MUI2.nsh"
 !include "FileFunc.nsh"
@@ -302,12 +303,38 @@ ShowInstDetails show
 ShowUninstDetails show
 
 ; File properties
+;
+; Mirrors the DLL's VERSIONINFO block (mxbmrp3.rc) so Setup.exe and the plugin it
+; installs identify themselves the same way in Explorer's Details tab and Task
+; Manager. FileDescription matters most: it is the "Program name" Windows shows on
+; the UAC consent prompt when Setup relaunches itself elevated, so it must lead with
+; a product name, not a URL (the URL moved to Comments, which is where it belongs).
+; Its wording is the GitHub repository description with a "Setup" prefix, matching
+; mxbmrp3.rc's FileDescription — keep the two in step. Naming the engine family
+; rather than the individual games is deliberate: the DLL's old wording enumerated
+; them and went stale, still claiming "MX Bikes and GP Bikes" a release cycle after
+; Kart Racing Pro shipped. Keeping it short also matters here specifically, because
+; the UAC prompt truncates a long "Program name".
+;
+; The values are duplicated rather than shared because .rc and .nsi are compiled by
+; different toolchains with no common header — keep the two blocks in step by hand.
+;
+; This block is also load-bearing for antivirus reputation. Unsigned installers are
+; scored partly on version-info completeness and internal consistency, and this one
+; previously carried only 5 keys, no CompanyName/OriginalFilename, and a build
+; TIMESTAMP where FileVersion belongs — so FileVersion and ProductVersion disagreed
+; on every build. PLUGIN_VERSION is the "MAJOR.MINOR.PATCH.BUILD" string derived from
+; resource.h + the git commit count, i.e. exactly what the DLL's FILEVERSION carries.
 VIProductVersion "${PLUGIN_VERSION}"
-VIAddVersionKey "ProductName" "MXBMRP3"
-VIAddVersionKey "LegalCopyright" "thomas4f"
-VIAddVersionKey "FileDescription" "https://github.com/thomas4f/MXBMRP3"
-VIAddVersionKey "FileVersion" "${__DATE__} ${__TIME__}"
-VIAddVersionKey "ProductVersion" "${PLUGIN_VERSION}"
+VIAddVersionKey "CompanyName"      "${PLUGIN_PUBLISHER}"
+VIAddVersionKey "FileDescription"  "MXBMRP3 Setup - Plugin for PiBoSo Racing Simulators"
+VIAddVersionKey "FileVersion"      "${PLUGIN_VERSION}"
+VIAddVersionKey "InternalName"     "${PLUGIN_NAME_LC}-Setup"
+VIAddVersionKey "LegalCopyright"   "Copyright (c) 2025-2026 ${PLUGIN_PUBLISHER}"
+VIAddVersionKey "OriginalFilename" "${PLUGIN_NAME_LC}-Setup.exe"
+VIAddVersionKey "ProductName"      "${PLUGIN_NAME}"
+VIAddVersionKey "ProductVersion"   "${PLUGIN_VERSION}"
+VIAddVersionKey "Comments"         "https://github.com/thomas4f/MXBMRP3"
 
 ; .onInit: Determine registry view & locate games
 Function .onInit

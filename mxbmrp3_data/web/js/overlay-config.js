@@ -188,6 +188,14 @@ var CONFIG = {
     // want the real-time feel and accept the extra motion.
     battleLiveGaps: false,
 
+    // Sample the lap / trace / gap charts once per SECTOR instead of once per lap. The
+    // plugin always sends the per-sector times (laps[].s), including the lap in progress —
+    // this only picks whether the charts use them, matching the in-game "Sector points"
+    // toggle. Off by default for the same reason it is in game: 3-4x the points is a
+    // density choice, and a full grid is already busy at one point per lap. Races only
+    // (off-race the charts rank by best lap, which has no sector analogue).
+    chartSectorPoints: false,
+
     // --- Session charts ---
     // Same bottom slot as the other boards. A carousel that pages one race-
     // progression chart at a time (each an inline SVG line chart), like the best-

@@ -11,6 +11,7 @@
 // It is also not referenced by mxbmrp3.vcxproj; only the cross-build's source
 // glob picks it up. See tests/integration/ and DEVELOPMENT.md.
 // ============================================================================
+#include "steam_friends_manager.h"
 #include "../game/game_config.h"
 
 #if defined(MXBMRP3_TEST_BUILD)
@@ -23,9 +24,13 @@
 #include "../hud/standings_hud.h"
 #include "../hud/map_hud.h"
 #include "../hud/benchmark_widget.h"
+#include "../hud/helmet_overlay_hud.h"
+#include "../hud/director_widget.h"
 #include "../hud/event_log_hud.h"
 #include "../hud/notices_hud.h"
+#include "../hud/telemetry_hud.h"
 #include "../hud/timing_hud.h"
+#include "../hud/session_charts_hud.h"
 #include "../hud/gamepad_widget.h"
 #include "xinput_reader.h"
 #include "rumble_profile_manager.h"
@@ -38,6 +43,7 @@
 #include "profile_manager.h"
 #include "director_manager.h"
 #include "stats_manager.h"
+#include "../handlers/spectate_handler.h"
 #if GAME_HAS_FMX
 #include "fmx_manager.h"
 #endif
@@ -51,15 +57,32 @@
 #if GAME_HAS_RECORDS_PROVIDER
 #include "../hud/records_hud.h"
 #endif
+#include "crash_handler.h"
+
 #include <string>
 #include <vector>
 #include <cmath>
+#include <cstdio>
 
 extern "C" {
 
 #if GAME_HAS_HTTP_SERVER
 // Start the web overlay server directly (default off), so an integration test can
 // read /api/state without seeding a settings file and restarting the plugin.
+// Start the Steam friend-scan worker without Steam. The scan itself needs the
+// Steam client, but the THREADING LIFECYCLE does not: with no connection
+// scanFriends() returns immediately, so the worker just loops on its condvar.
+// That is exactly what a shutdown has to join, and the failure this pins is a
+// hang or a use-after-free at teardown rather than anything Steam-specific.
+// Returns 1 if a worker is running afterwards.
+__declspec(dllexport) int MXBMRP3_Test_SteamStartWorker() {
+    return SteamFriendsManager::getInstance().testStartWorker() ? 1 : 0;
+}
+
+__declspec(dllexport) int MXBMRP3_Test_SteamWorkerRunning() {
+    return SteamFriendsManager::getInstance().testWorkerRunning() ? 1 : 0;
+}
+
 __declspec(dllexport) void MXBMRP3_Test_StartHttp() {
     HttpServer::getInstance().setEnabled(true);
     HttpServer::getInstance().start();
@@ -74,6 +97,15 @@ __declspec(dllexport) const char* MXBMRP3_Test_Snapshot() {
     static std::string buf;
     buf = HttpServer::getInstance().testSnapshot();
     return buf.c_str();
+}
+
+// The SSE sequence: bumped once per actual snapshot rebuild inside
+// onDataChanged. Lets a test tell "this change type rebuilt" from "this change
+// type was gated away while nothing was consuming" — a distinction with no
+// other observable, since a gated change simply leaves the previous snapshot
+// in place. Used by http_gating_test.cpp.
+__declspec(dllexport) unsigned long long MXBMRP3_Test_SnapshotSeq() {
+    return HttpServer::getInstance().testSnapshotSeq();
 }
 #endif
 
@@ -186,11 +218,34 @@ __declspec(dllexport) int MXBMRP3_Test_SettingsClickStepped(int index, int up, i
 // CYCLE_UP/CYCLE_DOWN regions on the ACTIVE settings tab through the real click
 // path (hit-test -> dispatchRegion -> applyCycleControl). No hold tier - cycles
 // never accelerate.
+// Click the Director tab's "Visible" row through the real click path, and read the
+// DirectorWidget's per-surface visibility. Together these pin that the row edits
+// the FOCUSED surface: it used to call setVisible() unconditionally, so on the
+// companion window it flipped the game flag while the widget stayed on screen and
+// the label reported the other surface. Same defect the helmet toggle had.
+__declspec(dllexport) int MXBMRP3_Test_ClickDirectorHudVisible() {
+    return HudManager::getInstance().getSettingsHud().testClickDirectorHudVisible() ? 1 : 0;
+}
+
+__declspec(dllexport) void MXBMRP3_Test_DirectorWidgetVisibility(int* game, int* companion) {
+    DirectorWidget* w = HudManager::getInstance().getDirectorWidget();
+    if (game)      *game      = (w && w->isVisible()) ? 1 : 0;
+    if (companion) *companion = (w && w->getCompanionVisible()) ? 1 : 0;
+}
+
 __declspec(dllexport) int MXBMRP3_Test_SettingsCycleCount(int up) {
     return HudManager::getInstance().getSettingsHud().testCycleRegionCount(up != 0);
 }
 __declspec(dllexport) int MXBMRP3_Test_SettingsClickCycle(int index, int up) {
     return HudManager::getInstance().getSettingsHud().testClickCycle(index, up != 0) ? 1 : 0;
+}
+
+// Text signature of the ACTIVE settings tab's emitted click regions (type +
+// tooltip id, in order) and string count. A characterization seam: the settings
+// panel's rendered output is otherwise invisible below the Wine layer, so this
+// is what lets a test assert that a layout refactor changed nothing.
+__declspec(dllexport) void MXBMRP3_Test_SettingsRegionSignature(char* out, int cap) {
+    HudManager::getInstance().getSettingsHud().testRegionSignature(out, cap);
 }
 
 // The ACTIVE rumble config's Bumps light-motor strength. Reads through the same
@@ -238,6 +293,21 @@ __declspec(dllexport) void MXBMRP3_Test_AnalyticsAppStarted(char* out, int cap) 
     std::string body = AnalyticsManager::getInstance().testBuildAppStarted();
     strncpy(out, body.c_str(), cap - 1);
     out[cap - 1] = '\0';
+}
+// Start the real custom-event worker thread (capture mode keeps its sends
+// no-ops). Exists so a teardown test can shut down with a LIVE analytics thread
+// parked on its condvar — the join that ~AnalyticsManager has to get right.
+__declspec(dllexport) int MXBMRP3_Test_AnalyticsStartEventWorker() {
+    return AnalyticsManager::getInstance().testStartEventWorker() ? 1 : 0;
+}
+__declspec(dllexport) int MXBMRP3_Test_AnalyticsEventWorkerRunning() {
+    return AnalyticsManager::getInstance().testEventWorkerRunning() ? 1 : 0;
+}
+// Run the real AnalyticsManager::shutdown() (drain + join). In a shipping build
+// PluginManager's orchestrated Shutdown() does this; with GAME_HAS_ANALYTICS off
+// it never runs, so a test that wants the join exercised has to ask for it.
+__declspec(dllexport) void MXBMRP3_Test_AnalyticsShutdown() {
+    AnalyticsManager::getInstance().shutdown();
 }
 __declspec(dllexport) void MXBMRP3_Test_AnalyticsQueueSessionEnd() {
     AnalyticsManager::getInstance().testQueueSessionEnd();
@@ -301,6 +371,27 @@ __declspec(dllexport) void MXBMRP3_Test_DirectorSetStories(int mask) {
     d.setFollowDrops((mask & 32) != 0);
 }
 
+// Set the director's shot pacing directly (seconds). maxSec = 0 is "Max shot = Off",
+// the forced-rotation switch: the director then cuts only for stories and falls back to
+// the broadcaster's own rider. A test drives this instead of clicking the settings tab.
+__declspec(dllexport) void MXBMRP3_Test_DirectorSetShotSec(int minSec, int maxSec) {
+    DirectorManager& d = DirectorManager::getInstance();
+    d.setMaxShotSec(maxSec);   // max first: setMinShotSec would otherwise raise a lower max
+    d.setMinShotSec(minSec);
+}
+// The rider the director treats as "home" - whoever the broadcaster had on camera when it
+// was enabled, plus every later manual pick. -1 until one is adopted. Lets a test assert
+// the home rider is captured (and re-captured) without inferring it from a cut.
+__declspec(dllexport) int MXBMRP3_Test_DirectorHomeSubject() {
+    return DirectorManager::getInstance().getHomeSubject();
+}
+// The rider the director currently intends to follow, regardless of whether it is
+// "actively directing" (the /api/state advisory blanks the subject while paused/held,
+// which a pacing test needs to see through).
+__declspec(dllexport) int MXBMRP3_Test_DirectorSubject() {
+    return DirectorManager::getInstance().getCurrentSubject();
+}
+
 // --- Broadcast-measurement hook. The director's shot pacing (min/max shot, holds,
 // variety cadence) is wall-clock driven, so a naive tape replay - which fires every
 // event back-to-back in milliseconds - collapses a whole race into one shot. This lets
@@ -337,6 +428,45 @@ __declspec(dllexport) int MXBMRP3_Test_EventLogIconColorSlot(const char* message
             return it->iconColorSlot;
     }
     return -2;
+}
+
+// Put the Event Log into AUTO_HIDE with a given duration, so a test can drive the
+// hide-on-timeout path. That path is the one that used to leave click regions behind on an
+// invisible HUD (the ON/hidden path returns above the input block and was never affected),
+// so it cannot be exercised any other way.
+__declspec(dllexport) void MXBMRP3_Test_EventLogSetAutoHide(int enabled, int durationMs) {
+    EventLogHud& hud = HudManager::getInstance().getEventLogHud();
+    hud.testSetAutoHide(enabled != 0, durationMs);
+}
+
+// Whether requestSpectateRider(raceNum) would land — the shared gate behind click-to-
+// spectate on Standings / Map / Event Log / Session Charts.
+__declspec(dllexport) int MXBMRP3_Test_IsRiderSpectatable(int raceNum) {
+    return PluginData::getInstance().isRiderSpectatable(raceNum) ? 1 : 0;
+}
+
+// How many Event Log rows currently offer click-to-spectate. See
+// EventLogHud::testSpectateRegionCount.
+__declspec(dllexport) int MXBMRP3_Test_EventLogSpectateRegionCount() {
+    return HudManager::getInstance().getEventLogHud().testSpectateRegionCount();
+}
+
+// Session Charts: the sample resolution collectField() settled on (1 = per lap,
+// GAME_SECTOR_COUNT = per sector) and the display rider's series length, into out[0]/out[1].
+// Also flips ELEM_SECTOR_POINTS on/off first when `sectorPoints` is 0 or 1 (-1 = leave as
+// configured), so a test can compare both resolutions over one race.
+__declspec(dllexport) void MXBMRP3_Test_ChartSeries(int sectorPoints, int* out) {
+    if (!out) return;
+    SessionChartsHud& hud = HudManager::getInstance().getSessionChartsHud();
+    if (sectorPoints >= 0) {
+        uint32_t elems = hud.getEnabledElements();
+        if (sectorPoints) elems |=  SessionChartsHud::ELEM_SECTOR_POINTS;
+        else              elems &= ~SessionChartsHud::ELEM_SECTOR_POINTS;
+        hud.setEnabledElements(elems);
+    }
+    SessionChartsHud::TestSeries s = hud.testSeries();
+    out[0] = s.pointsPerLap;
+    out[1] = s.points;
 }
 
 // Hide the Notices HUD (the "ALL-TIME PB" etc. flashes) so a demo/screenshot of another
@@ -445,12 +575,37 @@ __declspec(dllexport) int MXBMRP3_Test_HasActiveTrackPos(int raceNum) {
     return PluginData::getInstance().hasActiveTrackPos(raceNum) ? 1 : 0;
 }
 
+// Blue-flag caches (lazy-rebuilt): pin the O(n^2) lapping/blue-flag detection so it
+// can be refactored without changing behavior. Not in /api/state.
+__declspec(dllexport) int MXBMRP3_Test_IsRiderBlueFlagged(int raceNum) {
+    return PluginData::getInstance().isRiderBlueFlagged(raceNum) ? 1 : 0;
+}
+__declspec(dllexport) int MXBMRP3_Test_IsRiderLapping(int raceNum) {
+    return PluginData::getInstance().isRiderLapping(raceNum) ? 1 : 0;
+}
+__declspec(dllexport) int MXBMRP3_Test_RiderLappingTarget(int raceNum) {
+    return PluginData::getInstance().getRiderLappingTarget(raceNum);
+}
+
 // Number of riders in the derived hazard-ahead list (the cached vector NoticesHud
 // consumes). Internal state (not in /api/state) — used to pin that removeRaceEntry()
 // invalidates the cache: no callbacks arrive while the player sits in menus, so a
 // departed rider left in the cached list would linger there indefinitely.
 __declspec(dllexport) int MXBMRP3_Test_HazardRaceNumCount() {
     return static_cast<int>(PluginData::getInstance().getHazardRaceNums().size());
+}
+
+// Consume the "new all-time PB" notice flag: 1 if it was set (and clears it), else 0.
+// Consume-once rather than a plain read so each lap in a test asserts independently —
+// in game NoticesHud clears it on a display TIMER, so a plain read would make the
+// assertion depend on how much wall time passed between callbacks. The flag is not in
+// /api/state, and it is the only observable that distinguishes "stored a PB for this
+// bike" from "beat the reference the player is shown" (see PersonalBestUpdate).
+__declspec(dllexport) int MXBMRP3_Test_TakeNewAllTimePB() {
+    PluginData& pd = PluginData::getInstance();
+    if (!pd.hasNewAllTimePB()) return 0;
+    pd.clearAllTimePB();
+    return 1;
 }
 
 // Run the update extract/install pipeline against destDir with an in-memory ZIP,
@@ -490,6 +645,63 @@ __declspec(dllexport) void MXBMRP3_Test_StandingsSetCompanionVisible(int visible
 
 __declspec(dllexport) void MXBMRP3_Test_StandingsClearCompanion() {
     HudManager::getInstance().getStandingsHud().clearCompanionState();
+}
+
+// TelemetryHud surface visibility + history-buffer depth.
+//
+// These exist for the PRODUCER side of the visibility invariant, which no other
+// hook can reach: the telemetry graphs are drawn from PluginData's history
+// buffers, and those are only filled when HudManager::isTelemetryHistoryNeeded()
+// says someone is watching. That predicate is a HudManager-internal decision that
+// never reaches /api/state, so a black-box test cannot tell "buffers filled" from
+// "buffers empty but the HUD is hidden anyway". Depth is the observable that
+// distinguishes them. See telemetry_companion_test.cpp.
+__declspec(dllexport) void MXBMRP3_Test_TelemetrySetVisible(int visible) {
+    HudManager::getInstance().getTelemetryHud().setVisible(visible != 0);
+}
+
+__declspec(dllexport) void MXBMRP3_Test_TelemetrySetCompanionVisible(int visible) {
+    HudManager::getInstance().getTelemetryHud().setCompanionVisible(visible != 0);
+}
+
+__declspec(dllexport) void MXBMRP3_Test_TelemetryClearCompanion() {
+    HudManager::getInstance().getTelemetryHud().clearCompanionState();
+}
+
+// BenchmarkWidget's collection switch vs its visibility, on either surface.
+// The bug these exist for: bm.active is the PRODUCER gate for the whole
+// instrumentation, and it used to be latched from setVisible() — the game
+// toggle — so a widget enabled only on the companion window rendered its tables
+// and never filled them. Visibility alone cannot see this: the widget draws
+// either way. `active` is the observable that separates "showing data" from
+// "showing an empty frame". See benchmark_companion_test.cpp.
+__declspec(dllexport) void MXBMRP3_Test_BenchmarkSetVisible(int visible) {
+    if (auto* w = HudManager::getInstance().getBenchmarkWidget()) w->setVisible(visible != 0);
+}
+
+__declspec(dllexport) void MXBMRP3_Test_BenchmarkSetCompanionVisible(int visible) {
+    if (auto* w = HudManager::getInstance().getBenchmarkWidget()) w->setCompanionVisible(visible != 0);
+}
+
+__declspec(dllexport) int MXBMRP3_Test_BenchmarkMetricsActive() {
+    return PluginData::getInstance().getBenchmarkMetrics().active ? 1 : 0;
+}
+
+// -1 when the widget does not exist (developer mode off), so a test can tell
+// "not built" from "built but inactive" rather than reading a false negative.
+__declspec(dllexport) int MXBMRP3_Test_BenchmarkExists() {
+    return HudManager::getInstance().getBenchmarkWidget() ? 1 : 0;
+}
+
+// Samples currently held in the throttle history buffer (every graph buffer is
+// appended in the same guarded block, so one is a faithful proxy for "is history
+// being accumulated at all").
+__declspec(dllexport) int MXBMRP3_Test_TelemetryHistoryDepth() {
+    return static_cast<int>(PluginData::getInstance().getHistoryBuffers().throttle.size());
+}
+
+__declspec(dllexport) void MXBMRP3_Test_TelemetryClearHistory() {
+    PluginData::getInstance().clearHistoryBuffers();
 }
 
 // Session Charts HUD: drive visibility and which charts are shown for headless render
@@ -545,6 +757,57 @@ __declspec(dllexport) void MXBMRP3_Test_SurfaceFrameStats(
     if (companionSumX) { double s = 0; for (const auto& q : c) s += q.m_aafPos[0][0]; *companionSumX = s; }
 }
 
+// HelmetOverlayHud visibility. The helmet is the one HUD excluded from the
+// companion surface entirely (BaseHud::rendersOnCompanion) -- it is a full-screen
+// in-game effect, not a panel -- so a test needs to turn it on and confirm the
+// companion frame does NOT grow. See companion_decouple_test.cpp.
+__declspec(dllexport) void MXBMRP3_Test_HelmetSetVisible(int visible) {
+    HelmetOverlayHud& h = HudManager::getInstance().getHelmetOverlayHud();
+    h.setVisible(visible != 0);
+    // Visibility ALONE emits nothing headlessly. The helmet parts need a discovered
+    // texture variant (> 0), and no helmet textures are staged for the harness, so
+    // anyHelmetPart stays false and the overlay draws zero quads -- a test would then
+    // "prove" the companion is unaffected because NOTHING was affected. The visor
+    // tint is a plain untextured quad, so switching it on is what makes the overlay
+    // actually render here. Found by the positive control in companion_decouple_test.
+    if (visible) h.m_visorMode = HelmetOverlayHud::VISOR_MODE;
+}
+
+// Companion-surface visibility for the helmet. Needed to make the exclusion test
+// MEAN anything: the companion instance is snapshotted from the game flag on the
+// first companion frame, so a test that only sets the game flag leaves the companion
+// one false and the frame stays flat for that reason instead of the exclusion --
+// which is exactly how the first version of that test passed against a mutant.
+__declspec(dllexport) void MXBMRP3_Test_HelmetSetCompanionVisible(int visible) {
+    HudManager::getInstance().getHelmetOverlayHud().setCompanionVisible(visible != 0);
+}
+
+// The predicate every update() gate reads. Pins that a HUD excluded from the
+// companion cannot answer "visible somewhere" off a stale companion flag -- if it
+// could, it would rebuild every frame for a surface that never draws it.
+__declspec(dllexport) int MXBMRP3_Test_HelmetVisibleAnySurface() {
+    return HudManager::getInstance().getHelmetOverlayHud().isVisibleAnySurface() ? 1 : 0;
+}
+
+__declspec(dllexport) int MXBMRP3_Test_HelmetVisible() {
+    return HudManager::getInstance().getHelmetOverlayHud().isVisible() ? 1 : 0;
+}
+
+// Vertical inset of a row's race-number inside its plate, as a fraction of plate
+// height. The bug it exists for is invisible in a screenshot: the number was
+// centred by the rebuild path and left uncentred by the drag/layout path, so it
+// only moved while the HUD was being dragged.
+__declspec(dllexport) float MXBMRP3_Test_StandingsPlateInsetY(int row) {
+    return HudManager::getInstance().getStandingsHud().testPlateNumberInsetY(row);
+}
+
+// Move the standings HUD on the GAME surface. Triggers the layout fast path
+// (rebuildLayout) rather than a full rebuild -- which is the whole point: that is
+// the path the plate offset was missing from.
+__declspec(dllexport) void MXBMRP3_Test_StandingsSetOffset(float x, float y) {
+    HudManager::getInstance().getStandingsHud().setPosition(x, y);
+}
+
 // Move the StandingsHud on the companion surface (configures its instance), so a
 // test can exercise the offset-delta translation independent of visibility.
 __declspec(dllexport) void MXBMRP3_Test_StandingsSetCompanionOffset(float x, float y) {
@@ -592,8 +855,10 @@ __declspec(dllexport) void MXBMRP3_Test_GamepadContentExtent(float* outBottom, f
         x0 = y0 = 1e9f; x1 = y1 = -1e9f;
         for (int i = 0; i < 4; ++i) {
             float x = q.m_aafPos[i][0], y = q.m_aafPos[i][1];
-            if (x < x0) x0 = x; if (x > x1) x1 = x;
-            if (y < y0) y0 = y; if (y > y1) y1 = y;
+            if (x < x0) x0 = x;
+            if (x > x1) x1 = x;
+            if (y < y0) y0 = y;
+            if (y > y1) y1 = y;
         }
     };
     float bx0, by0, bx1, by1;
@@ -743,13 +1008,30 @@ __declspec(dllexport) long long MXBMRP3_Test_MapProfile(
 // driver capture a whole-plugin timing breakdown using the plugin's own component.
 __declspec(dllexport) void MXBMRP3_Test_BenchmarkWidget(int on) {
     BenchmarkWidget* bw = HudManager::getInstance().getBenchmarkWidget();
-    if (bw) bw->setVisible(on != 0);
+    if (!bw) return;
+    // setVisible() runs the transition synchronously via BaseHud::onVisibilityChanged,
+    // which is what bench_driver depends on: it does Benchmark(0) then Shutdown() with
+    // no frame between, and without a synchronous edge no report is written and
+    // run_perf.sh fails its analyzer contract check with no BENCH line to parse.
+    bw->setVisible(on != 0);
 }
 
 // Force every HUD/widget visible (or hidden) so the benchmark driver can profile
 // the plugin with EVERYTHING enabled, not just the default-on HUDs.
 __declspec(dllexport) void MXBMRP3_Test_ShowAllHuds(int on) {
     HudManager::getInstance().testSetAllHudsVisible(on != 0);
+}
+
+// How many HUDs are currently registered with the benchmark profiler. Registration
+// happens once, in HudManager::initialize(); anything that wipes it leaves the whole
+// per-HUD footprint table silently empty (recordHudRebuild() bounds-checks against this
+// count), which is exactly the bug benchmark_registry_test.cpp pins. Also exposes the
+// callback registry count, whose slots alias across a wipe rather than going empty.
+__declspec(dllexport) int MXBMRP3_Test_BenchmarkHudCount() {
+    return PluginData::getInstance().getBenchmarkMetrics().hudCount;
+}
+__declspec(dllexport) int MXBMRP3_Test_BenchmarkCallbackCount() {
+    return PluginData::getInstance().getBenchmarkMetrics().callbackCount;
 }
 
 // Crank the heavy HUDs' individual settings to maximum (all columns/rows/events,
@@ -806,6 +1088,12 @@ __declspec(dllexport) void MXBMRP3_Test_PluginThreadFlush() {
 __declspec(dllexport) void MXBMRP3_Test_PluginThreadAbortWorker() {
     PluginThread::getInstance().testAbortWorker();
 }
+// Fault injection: make the worker take batches off the queue and discard them
+// unrun, so flush()'s bounded wait (and the abandoned sentinel's lifetime) can be
+// asserted deterministically. See plugin_thread_flush_test.cpp.
+__declspec(dllexport) void MXBMRP3_Test_PluginThreadSwallowBatches(int on) {
+    PluginThread::getInstance().testSwallowBatches(on != 0);
+}
 __declspec(dllexport) void MXBMRP3_Test_PluginThreadStop() {
     // Clear the flag too, so the game-thread reconcileEnabled() (in handleDraw) doesn't
     // immediately restart the worker on the next draw.
@@ -817,6 +1105,15 @@ __declspec(dllexport) void MXBMRP3_Test_PluginThreadStop() {
 // but on the worker in plugin-thread mode.
 __declspec(dllexport) void MXBMRP3_Test_SetProduceDelayMs(int ms) {
     HudManager::testSetProduceDelayMs(ms);
+}
+// Render-load probe: emit `quads` extra synthetic primitives each frame. type:
+// 0=solid-fill quad, 1=sprite (textured) quad, 2=text string. fullscreen!=0 makes
+// the fill quads full-screen (fill-rate) vs tiny (submit). Lets a driver verify the
+// emission plumbing and an in-game sweep measure the engine's per-primitive cost.
+__declspec(dllexport) void MXBMRP3_Test_SetRenderProbe(int quads, int type, int fullscreen) {
+    UiConfig::getInstance().setRenderProbeQuads(quads);
+    UiConfig::getInstance().setRenderProbeType(type);
+    UiConfig::getInstance().setRenderProbeFullscreen(fullscreen != 0);
 }
 // XInput I/O thread: stop it so a test can inspect the rumble command setVibration
 // posts without the worker draining it; drive index/vibration; read the pending post.
@@ -1027,6 +1324,83 @@ __declspec(dllexport) void MXBMRP3_Test_StopRecording() {
     EventRecorder::getInstance().stopRecording();
 }
 #endif
+
+// Crash-backtrace frame resolver, formatted exactly like a dashboard stack
+// frame ("module+0xoffset"). Pins the null-frame contract: address 0 resolves
+// to the canonical "unknown+0x0" and is NEVER attributed to the host EXE via
+// GetModuleHandleExA's NULL-lpModuleName rule (which produced the
+// "mxbikes.exe+0xfffffffec0000000" mislabels on the v1.27.7.44 dashboard —
+// 0 minus the game's 0x140000000 base, wrapped). Also usable for sanity checks
+// on real addresses (an in-module address must name that module).
+__declspec(dllexport) void MXBMRP3_Test_ResolveFrame(unsigned long long addr,
+                                                     char* out, int cap) {
+    if (!out || cap <= 0) return;
+    char mod[64];
+    unsigned long long off = 0;
+    CrashHandler::resolveModuleOffset(reinterpret_cast<void*>(addr),
+                                      mod, sizeof(mod), &off);
+    snprintf(out, static_cast<size_t>(cap), "%s+0x%llx", mod, off);
+}
+
+// --- Display-rider telemetry -------------------------------------------------
+// The live bike/input telemetry PluginData holds for the display rider. Not in
+// the /api/state snapshot (the overlay has no use for it), so this is the only
+// way a headless test can assert what RaceVehicleData — the sole telemetry
+// source while spectating or in a replay — actually landed. Any out-pointer may
+// be null.
+__declspec(dllexport) void MXBMRP3_Test_BikeTelemetry(float* speedometer, int* gear,
+                                                      int* rpm, float* throttle,
+                                                      float* frontBrake, float* roll,
+                                                      int* valid) {
+    const BikeTelemetryData& bike = PluginData::getInstance().getBikeTelemetry();
+    const InputTelemetryData& in = PluginData::getInstance().getInputTelemetry();
+    if (speedometer) *speedometer = bike.speedometer;
+    if (gear)        *gear        = bike.gear;
+    if (rpm)         *rpm         = bike.rpm;
+    if (roll)        *roll        = bike.roll;
+    if (valid)       *valid       = bike.isValid ? 1 : 0;
+    if (throttle)    *throttle    = in.throttle;
+    if (frontBrake)  *frontBrake  = in.frontBrake;
+}
+
+// --- Current-lap splits ------------------------------------------------------
+// A rider's live current-lap split accumulators (-1 = not crossed yet). These
+// drive the in-game timing/split display only and never reach /api/state, so
+// without this hook a headless test cannot see them at all — which is what let
+// run_split_test's "nothing happened" assertion pass a mutation that made
+// RunSplit start recording splits. Returns 1 if the rider has current-lap data.
+__declspec(dllexport) int MXBMRP3_Test_CurrentLapSplits(int raceNum, int* lapNum,
+                                                        int* s1, int* s2, int* s3) {
+    const CurrentLapData* d = PluginData::getInstance().getCurrentLapData(raceNum);
+    if (lapNum) *lapNum = d ? d->lapNum : -1;
+    if (s1) *s1 = d ? d->split1 : -1;
+    if (s2) *s2 = d ? d->split2 : -1;
+    if (s3) *s3 = d ? d->split3 : -1;
+    return d ? 1 : 0;
+}
+
+// --- Spectate camera control -------------------------------------------------
+// Post a camera-role request exactly as the director does, so a test can drive
+// the real SpectateCameras callback and observe the index it selects. The role
+// int is a SpectateHandler::CameraRole (== Cameras::Role).
+__declspec(dllexport) void MXBMRP3_Test_RequestSpectateCamera(int role) {
+    SpectateHandler::getInstance().requestSpectateCamera(
+        static_cast<SpectateHandler::CameraRole>(role));
+}
+
+// Whether the broadcaster is on a hand-flown camera (Orbit / Free / Free-Roam).
+// The director pauses entirely while this is set, so it is the observable that
+// makes the manual-camera detection in SpectateCameras assertable.
+__declspec(dllexport) int MXBMRP3_Test_ManualCameraActive() {
+    return SpectateHandler::getInstance().isManualCameraActive() ? 1 : 0;
+}
+
+// Drop the per-session camera tracking so the next SpectateCameras call
+// re-resolves the manual flag from scratch (the handler short-circuits when
+// neither the selection nor the camera count changed).
+__declspec(dllexport) void MXBMRP3_Test_ResetCameraTracking() {
+    SpectateHandler::getInstance().resetCameraTracking();
+}
 
 } // extern "C"
 

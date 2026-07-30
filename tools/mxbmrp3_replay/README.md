@@ -6,8 +6,11 @@ chosen speed. Distinct from the headless asserted replay in the test harness
 watch its output — most usefully, **preview the web overlay against real data**
 in a browser or OBS without launching the game.
 
-Build the `mxbmrp3_replay` project in Visual Studio (x64). It's MSVC/Windows-only
-and not part of the Linux cross-build.
+Build the `mxbmrp3_replay` target (defined in
+[`tools/CMakeLists.txt`](../CMakeLists.txt), x64) — from the generated
+`build/msvc/mxbmrp3.sln`, or `cmake --build build/msvc --target mxbmrp3_replay`.
+It's Windows-only (it `LoadLibrary`s a `.dlo`) and not part of the Linux
+cross-build.
 
 ## Usage
 

@@ -142,96 +142,39 @@ void LapLogHud::rebuildRenderData() {
     // Don't show live timing if rider has finished (timer is meaningless after checkered flag)
     bool showCurrentLapRow = m_showLiveTiming && data.isLapTimerValid() && !data.isDisplayRiderFinished();
 
-    // Build display list: order depends on m_displayOrder setting
-    // Special indices: -5 = gap row, -4 = current lap, -3 = best lap, -2 = placeholder
-    struct DisplayEntry {
-        int historyIndex;
-        DisplayEntry(int idx) : historyIndex(idx) {}
-    };
-    std::vector<DisplayEntry> displayList;
-
     // Get the best lap entry (stored separately)
     const LapLogEntry* bestLapEntry = data.getBestLapEntry();
-
-    // Calculate how many slots are available for recent laps
-    int maxRecentLaps = m_maxDisplayLaps;
-    if (showCurrentLapRow) {
-        maxRecentLaps--;  // Reserve slot for current lap
-    }
-
-    // Check if best lap is in the recent history (first N laps)
-    bool bestLapInRecent = false;
-    if (bestLapEntry && lapLog) {
-        for (int i = 0; i < maxRecentLaps && i < static_cast<int>(lapLog->size()); i++) {
-            if ((*lapLog)[i].lapNum == bestLapEntry->lapNum) {
-                bestLapInRecent = true;
-                break;
-            }
-        }
-    }
-
-    // If best lap is not in the recent window, reserve a slot for it
-    bool showBestLapSeparately = bestLapEntry && !bestLapInRecent;
-    if (showBestLapSeparately) {
-        maxRecentLaps--;  // Reserve slot for best lap
-    }
-
-    // Calculate number of recent laps to display
-    int lapLogSize = lapLog ? static_cast<int>(lapLog->size()) : 0;
-    int numRecentLaps = (maxRecentLaps < lapLogSize) ? maxRecentLaps : lapLogSize;
 
     // Show gap row when enabled AND live timing is on (gap data requires live timing)
     bool showGapRow = m_showGapRow && m_showLiveTiming;
 
-    // Calculate how many placeholder rows we need to fill the configured size
-    // The HUD always shows m_maxDisplayLaps rows (plus gap row if enabled)
-    int filledSlots = numRecentLaps + (showCurrentLapRow ? 1 : 0) + (showBestLapSeparately ? 1 : 0);
-    int placeholderCount = m_maxDisplayLaps - filledSlots;
-    if (placeholderCount < 0) placeholderCount = 0;
-
-    // Build display list based on display order
-    if (m_displayOrder == DisplayOrder::OLDEST_FIRST) {
-        // OLDEST_FIRST: best lap (if separate) at top, placeholders, oldest->newest, current lap, gap row at bottom
-        if (showBestLapSeparately) {
-            displayList.push_back(DisplayEntry(-3));  // -3 = best lap at top
-        }
-        // Placeholders at top (after best lap)
-        for (int i = 0; i < placeholderCount; i++) {
-            displayList.push_back(DisplayEntry(-2));  // -2 = placeholder
-        }
-        // Add recent laps in reverse order (oldest to newest)
-        for (int i = numRecentLaps - 1; i >= 0; i--) {
-            displayList.push_back(DisplayEntry(i));
-        }
-        if (showCurrentLapRow) {
-            displayList.push_back(DisplayEntry(-4));  // -4 = current lap
-        }
-        if (showGapRow) {
-            displayList.push_back(DisplayEntry(-5));  // -5 = gap row at bottom edge
-        }
-    } else {
-        // NEWEST_FIRST: gap row at top edge, current lap, newest->oldest, placeholders, best lap (if separate) at bottom
-        if (showGapRow) {
-            displayList.push_back(DisplayEntry(-5));  // -5 = gap row at top edge
-        }
-        if (showCurrentLapRow) {
-            displayList.push_back(DisplayEntry(-4));  // -4 = current lap
-        }
-        // Add recent laps in order (newest to oldest)
-        for (int i = 0; i < numRecentLaps; i++) {
-            displayList.push_back(DisplayEntry(i));
-        }
-        // Placeholders at bottom (before best lap)
-        for (int i = 0; i < placeholderCount; i++) {
-            displayList.push_back(DisplayEntry(-2));  // -2 = placeholder
-        }
-        if (showBestLapSeparately) {
-            displayList.push_back(DisplayEntry(-3));  // -3 = best lap at bottom
-        }
+    // Which rows to draw and in what order — pure slot arithmetic, unit-tested in
+    // tests/unit/test_lap_log_plan.cpp. The lap numbers go in as a flat array so
+    // the planner needs nothing from PluginData.
+    m_planLapNums.clear();
+    if (lapLog) {
+        m_planLapNums.reserve(lapLog->size());
+        for (const LapLogEntry& e : *lapLog) m_planLapNums.push_back(e.lapNum);
     }
 
+    LapLogPlan::Input planIn;
+    planIn.lapLogSize = static_cast<int>(m_planLapNums.size());
+    planIn.maxDisplayLaps = m_maxDisplayLaps;
+    planIn.lapNums = m_planLapNums.empty() ? nullptr : m_planLapNums.data();
+    planIn.lapNumCount = static_cast<int>(m_planLapNums.size());
+    planIn.hasBestLap = (bestLapEntry != nullptr);
+    planIn.bestLapNum = bestLapEntry ? bestLapEntry->lapNum : -1;
+    planIn.showCurrentLap = showCurrentLapRow;
+    planIn.showGapRow = showGapRow;
+    planIn.order = (m_displayOrder == DisplayOrder::OLDEST_FIRST)
+        ? LapLogPlan::Order::OLDEST_FIRST
+        : LapLogPlan::Order::NEWEST_FIRST;
+
+    LapLogPlan::compute(planIn, m_plan);
+    const std::vector<int>& displayList = m_plan.rows;
+
     // Calculate height: m_maxDisplayLaps rows plus gap row if enabled
-    int numDataRows = m_maxDisplayLaps + (showGapRow ? 1 : 0);
+    int numDataRows = m_plan.dataRowCount;
 
     int widthChars = getBackgroundWidthChars();
     float backgroundWidth = PluginUtils::calculateMonospaceTextWidth(widthChars, dim.fontSize)
@@ -262,7 +205,9 @@ void LapLogHud::rebuildRenderData() {
     float s1RightX = m_columns.s1 + colRightOffset;
     float s2RightX = m_columns.s2 + colRightOffset;
     float s3RightX = m_columns.s3 + colRightOffset;
+#if GAME_SECTOR_COUNT >= 4
     float s4RightX = m_columns.s4 + colRightOffset;
+#endif
     float timeRightX = m_columns.time + colRightOffset;
 
     // Get best sector times from cached ideal lap data (performance optimization)
@@ -271,7 +216,9 @@ void LapLogHud::rebuildRenderData() {
     int bestSector1 = idealLapData ? idealLapData->bestSector1 : -1;
     int bestSector2 = idealLapData ? idealLapData->bestSector2 : -1;
     int bestSector3 = idealLapData ? idealLapData->bestSector3 : -1;
-    int bestSector4 = idealLapData ? idealLapData->bestSector4 : -1;  // Only valid for 4-sector games
+#if GAME_SECTOR_COUNT >= 4
+    int bestSector4 = idealLapData ? idealLapData->bestSector4 : -1;
+#endif
 
     // Best lap time: use the separately-stored best lap entry if available
     int bestLapTime = (bestLapEntry && bestLapEntry->isComplete) ? bestLapEntry->lapTime : -1;
@@ -301,7 +248,7 @@ void LapLogHud::rebuildRenderData() {
 
     // Render data rows from top to bottom (current lap, best lap, then oldest to newest)
     for (int displayIdx = 0; displayIdx < static_cast<int>(displayList.size()); displayIdx++) {
-        const DisplayEntry& displayEntry = displayList[displayIdx];
+        const int rowKind = displayList[displayIdx];
 
         char lapStr[8];
         char s1Str[16];
@@ -313,7 +260,7 @@ void LapLogHud::rebuildRenderData() {
         char timeStr[16];
 
         // Handle current lap in progress (live timing row)
-        if (displayEntry.historyIndex == -4) {
+        if (rowKind == LapLogPlan::kCurrentLap) {
             // Current lap in progress - show live timing
             int currentLapNum = data.getLapTimerCurrentLap();
             int activeSector = getCurrentActiveSector();
@@ -421,7 +368,7 @@ void LapLogHud::rebuildRenderData() {
         }
 
         // Handle gap row (shows live gap to PB, colorized)
-        if (displayEntry.historyIndex == -5) {
+        if (rowKind == LapLogPlan::kGap) {
             char gapStr[32];
             unsigned long gapColor = this->getColor(ColorSlot::MUTED);
 
@@ -453,7 +400,7 @@ void LapLogHud::rebuildRenderData() {
 
         // Handle placeholder row - show muted dash placeholders so empty slots read as
         // a table awaiting data (filled in as laps complete) rather than blank rows.
-        if (displayEntry.historyIndex == -2) {
+        if (rowKind == LapLogPlan::kPlaceholder) {
             unsigned long mutedColor = this->getColor(ColorSlot::MUTED);
             addLabel(Placeholders::GENERIC, lapRightX, currentY, Justify::RIGHT, this->getFont(FontCategory::STRONG), mutedColor, dim);
             addString(showSectors ? Placeholders::LAP_TIME : "", s1RightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), mutedColor, dim.fontSize);
@@ -469,12 +416,12 @@ void LapLogHud::rebuildRenderData() {
 
         // Determine which entry to display
         const LapLogEntry* entryPtr = nullptr;
-        if (displayEntry.historyIndex == -3 && bestLapEntry) {
+        if (rowKind == LapLogPlan::kBestLap && bestLapEntry) {
             // Use best lap entry (stored separately)
             entryPtr = bestLapEntry;
-        } else if (lapLog && displayEntry.historyIndex >= 0 && displayEntry.historyIndex < static_cast<int>(lapLog->size())) {
+        } else if (lapLog && rowKind >= 0 && rowKind < static_cast<int>(lapLog->size())) {
             // Use entry from history
-            entryPtr = &(*lapLog)[displayEntry.historyIndex];
+            entryPtr = &(*lapLog)[rowKind];
         }
 
         if (entryPtr) {

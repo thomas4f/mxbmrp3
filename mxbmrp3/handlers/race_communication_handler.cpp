@@ -3,7 +3,6 @@
 // Processes race communication messages (penalties, warnings)
 // ============================================================================
 #include "race_communication_handler.h"
-#include "../core/handler_singleton.h"
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
 #include "../core/plugin_data.h"
@@ -12,9 +11,7 @@
 
 using namespace PluginConstants;
 
-DEFINE_HANDLER_SINGLETON(RaceCommunicationHandler)
-
-void RaceCommunicationHandler::handleRaceCommunication(Unified::RaceCommunicationData* psRaceCommunication) {
+void Handlers::handleRaceCommunication(Unified::RaceCommunicationData* psRaceCommunication) {
     if (!psRaceCommunication) {
         DEBUG_WARN("handleRaceCommunication called with NULL pointer");
         return;
@@ -62,15 +59,18 @@ void RaceCommunicationHandler::handleRaceCommunication(Unified::RaceCommunicatio
         switch (psRaceCommunication->state) {
         case Unified::EntryState::DNS:
             snprintf(eventMsg, sizeof(eventMsg), "%s did not start", riderLabel);
-            pluginData.addEventLogEntry(EventLogType::RiderDNS, eventMsg);
+            pluginData.addEventLogEntry(EventLogType::RiderDNS, eventMsg, nullptr, -1,
+                                        psRaceCommunication->raceNum);
             break;
         case Unified::EntryState::Retired:
             snprintf(eventMsg, sizeof(eventMsg), "%s retired", riderLabel);
-            pluginData.addEventLogEntry(EventLogType::RiderRetired, eventMsg);
+            pluginData.addEventLogEntry(EventLogType::RiderRetired, eventMsg, nullptr, -1,
+                                        psRaceCommunication->raceNum);
             break;
         case Unified::EntryState::DSQ: {
             snprintf(eventMsg, sizeof(eventMsg), "%s disqualified", riderLabel);
-            pluginData.addEventLogEntry(EventLogType::RiderDSQ, eventMsg);
+            pluginData.addEventLogEntry(EventLogType::RiderDSQ, eventMsg, nullptr, -1,
+                                        psRaceCommunication->raceNum);
             break;
         }
         default:
@@ -124,7 +124,8 @@ void RaceCommunicationHandler::handleRaceCommunication(Unified::RaceCommunicatio
         } else {
             snprintf(eventMsg, sizeof(eventMsg), "%s penalty (%s)", riderLabel, offenceStr);
         }
-        pluginData.addEventLogEntry(EventLogType::Penalty, eventMsg);
+        pluginData.addEventLogEntry(EventLogType::Penalty, eventMsg, nullptr, -1,
+                                    psRaceCommunication->raceNum);
 
         // Record penalty in stats (player only) - count + time in one call
         if (psRaceCommunication->raceNum == pluginData.getPlayerRaceNum()) {
@@ -137,7 +138,8 @@ void RaceCommunicationHandler::handleRaceCommunication(Unified::RaceCommunicatio
         const char* riderLabel = entry ? entry->formattedRaceNum : "???";
         char eventMsg[64];
         snprintf(eventMsg, sizeof(eventMsg), "%s penalty cleared", riderLabel);
-        pluginData.addEventLogEntry(EventLogType::PenaltyClear, eventMsg);
+        pluginData.addEventLogEntry(EventLogType::PenaltyClear, eventMsg, nullptr, -1,
+                                    psRaceCommunication->raceNum);
     }
     // Handle penalty change (GP Bikes, WRS, KRP only)
     else if (psRaceCommunication->commType == Unified::CommunicationType::PenaltyChange) {
@@ -145,6 +147,7 @@ void RaceCommunicationHandler::handleRaceCommunication(Unified::RaceCommunicatio
         const char* riderLabel = entry ? entry->formattedRaceNum : "???";
         char eventMsg[64];
         snprintf(eventMsg, sizeof(eventMsg), "%s penalty changed", riderLabel);
-        pluginData.addEventLogEntry(EventLogType::PenaltyChange, eventMsg);
+        pluginData.addEventLogEntry(EventLogType::PenaltyChange, eventMsg, nullptr, -1,
+                                    psRaceCommunication->raceNum);
     }
 }

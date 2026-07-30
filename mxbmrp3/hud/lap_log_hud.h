@@ -5,9 +5,11 @@
 #pragma once
 
 #include "base_hud.h"
+#include "lap_log_plan.h"
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
 #include <chrono>
+#include <vector>
 
 class LapLogHud : public BaseHud {
 public:
@@ -89,6 +91,12 @@ private:
     bool m_showLiveTiming = true;  // Show current lap in progress with live sectors/timer
     bool m_showGapRow = true;      // Show gap-to-PB row when live timing is active
     bool m_bShowHeaders = false;   // Show a column-header row labeling each column above the lap rows
+
+    // Scratch for LapLogPlan::compute() — members, not locals, so a steady-state
+    // rebuild reuses their capacity instead of allocating (480fps budget). Both
+    // are needed for that: the input lap numbers AND the plan the rows go into.
+    std::vector<int> m_planLapNums;
+    LapLogPlan::Plan m_plan;
 
     // Check if we need frequent updates for ticking timer
     bool needsFrequentUpdates() const override;

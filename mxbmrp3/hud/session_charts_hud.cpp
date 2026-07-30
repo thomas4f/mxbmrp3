@@ -8,6 +8,8 @@
 #include "../core/plugin_data.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
+#include "../core/input_manager.h"
+#include "../core/plugin_manager.h"
 #include "../diagnostics/logger.h"
 #include <algorithm>
 #include <cstdio>
@@ -94,6 +96,33 @@ void SessionChartsHud::update() {
         clearLayoutDirty();
         return;
     }
+    // Click-to-spectate on a rider tag, in spectate/replay only (same gate as MapHud and
+    // the Event Log). No hover highlight: the tags are small-font labels sitting on the
+    // plot, and a box behind one would fight the chart lines it labels.
+    const PluginData& pluginData = PluginData::getInstance();
+    int drawState = pluginData.getDrawState();
+    if (drawState == ViewState::SPECTATE || drawState == ViewState::REPLAY) {
+        InputManager& input = InputManager::getInstance();
+        if (input.getLeftButton().isClicked()) {
+            // Shift into build space so tags line up when dragged on the companion.
+            CursorPosition cursor = input.getCursorPosition();
+            mapCursorToHudSpace(cursor.x, cursor.y);
+            if (cursor.isValid && isPointInBounds(cursor.x, cursor.y)) {
+                handleClick(cursor.x, cursor.y);
+            }
+        }
+    }
+
+    // Detect session changes (new event/track/bike) and reset. sessionGeneration is
+    // bumped on every RaceSession callback, so comparing it catches every transition
+    // without subscribing to the 1 Hz session-clock notifications that share that
+    // change type (see handlesDataType).
+    const int currentGeneration = pluginData.getSessionData().sessionGeneration;
+    if (currentGeneration != m_cachedSessionGeneration) {
+        m_cachedSessionGeneration = currentGeneration;
+        setDataDirty();
+    }
+
     // Chart data only changes on lap completion / spectate / session change, all
     // of which set the data-dirty flag; positions are derived, not polled.
     processDirtyFlags();
@@ -103,12 +132,18 @@ bool SessionChartsHud::handlesDataType(DataChangeType dataType) const {
     switch (dataType) {
         case DataChangeType::LapLog:         // a rider completed a lap (the data source)
         case DataChangeType::SpectateTarget: // player-window recenters on the new target
-        case DataChangeType::SessionData:    // new session clears the field
         case DataChangeType::RaceEntries:    // grid/entries changed
             return true;
         default:
             // Deliberately NOT Standings: it fires many times/sec on full grids,
             // and the chart series only change when a lap completes (LapLog).
+            //
+            // Nor SessionData, for the same reason at a slower rate: setSessionTime()
+            // notifies with that type on every whole-second boundary (the session-clock
+            // heartbeat), which would drive a full session recompute once a second for a
+            // subscription only ever needed on a session CHANGE. The change itself is
+            // caught by the sessionGeneration compare in update(), the same way
+            // TimingHud / GapBarHud / LeanWidget catch it.
             return false;
     }
 }
@@ -116,6 +151,51 @@ bool SessionChartsHud::handlesDataType(DataChangeType dataType) const {
 // ---------------------------------------------------------------------------
 // Data collection
 // ---------------------------------------------------------------------------
+
+void SessionChartsHud::collectSectorTimes(int raceNum, std::vector<int>& out) const {
+    const PluginData& pluginData = PluginData::getInstance();
+    out.clear();
+
+    // Completed laps, oldest-first, flattened with a fixed GAME_SECTOR_COUNT stride so the
+    // same index means the same point on track for every rider.
+    const std::deque<LapLogEntry>* log = pluginData.getLapLog(raceNum);
+    if (log) {
+        out.reserve(log->size() * GAME_SECTOR_COUNT + GAME_SECTOR_COUNT);
+        for (auto it = log->rbegin(); it != log->rend(); ++it) {
+            if (!it->isComplete || it->lapTime <= 0) continue;
+            out.push_back(it->sector1);
+            out.push_back(it->sector2);
+            out.push_back(it->sector3);
+#if GAME_SECTOR_COUNT >= 4
+            out.push_back(it->sector4);
+#endif
+        }
+    }
+
+    // The LIVE leading edge: sectors of the lap currently in progress, which the lap log
+    // will not hold until the rider crosses start/finish. RaceSplit fires for EVERY rider,
+    // not just the player, so this is real data for the whole field — it is the difference
+    // between a chart that updates once a lap and one that updates three or four times.
+    //
+    // Appended positionally rather than by matching lap numbers: completing a lap calls
+    // setCurrentLapNumber(), which CLEARS the splits (plugin_data.cpp), so CurrentLapData
+    // always describes the lap after the last logged one and cannot double-count it. That
+    // ordering is the invariant this relies on — not the lap-number convention, which
+    // differs between the RaceLap and RaceSplit callbacks.
+    const CurrentLapData* cur = pluginData.getCurrentLapData(raceNum);
+    if (cur) {
+        // Splits are ACCUMULATED within the lap; sectors are their successive differences.
+        // Stops at the first split not yet crossed (-1), which is what makes the series end
+        // exactly where the rider currently is on track.
+        int prev = 0;
+        const int splits[3] = { cur->split1, cur->split2, cur->split3 };
+        for (int s = 0; s < GAME_SECTOR_COUNT - 1; ++s) {
+            if (splits[s] <= prev) break;   // not crossed yet, or nonsense ordering
+            out.push_back(splits[s] - prev);
+            prev = splits[s];
+        }
+    }
+}
 
 void SessionChartsHud::collectField(FieldData& field) const {
     const PluginData& pluginData = PluginData::getInstance();
@@ -146,30 +226,102 @@ void SessionChartsHud::collectField(FieldData& field) const {
         field.maxLap = std::max(field.maxLap, static_cast<int>(laps.size()));
     }
 
-    // Cumulative race time (drives the race trace; race only).
+    // Cumulative race time (drives the race trace; race only), at the configured
+    // resolution. See FieldData::pointsPerLap for why the choice is field-wide.
     field.cumulative.assign(order.size(), {});
+    // Races only, for two reasons — the second is why this is a gate and not a preference.
+    //
+    // Nothing to plot: off-race the charts rank by BEST LAP so far (the provisional
+    // qualifying order, and each rider's gap to the session-best lap), which a partial lap
+    // cannot improve. Sector points would draw GAME_SECTOR_COUNT identical stacked values
+    // per lap — stair-steps advertising resolution that isn't there.
+    //
+    // And it would be wrong, not merely useless: bestLapSoFar() consumes lapMs, so off-race
+    // `rank` (and therefore positions/gaps) is a PER-LAP array. The renderers index those by
+    // series index while xForPoint maps that index at the field's resolution, so a
+    // sector-resolution field with a per-lap rank makes the two disagree about what an index
+    // means and squeezes the whole race into the left third of the plot. Padding each value
+    // out to the sector stride would fix the geometry and buy only the stair-steps above.
+    //
+    // A genuinely useful off-race sector view is a DIFFERENT quantity — the current lap's
+    // cumulative sector time against your own best at the same sector ("up or down at S1",
+    // which TimingHud answers today) — so it belongs as a new chart type, not as these at a
+    // higher resolution. The snapshot ships laps[].s in every session type, so that would
+    // need no plugin-side data change.
+    const bool wantSectors = (m_enabledElements & ELEM_SECTOR_POINTS) != 0 && field.isRace;
+    bool sectorsUsable = wantSectors;
+    std::vector<std::vector<long long>> sectorCum;
+    if (wantSectors) {
+        sectorCum.assign(order.size(), {});
+        for (size_t i = 0; i < order.size() && sectorsUsable; ++i) {
+            std::vector<int> sectors;
+            collectSectorTimes(order[i], sectors);
+            sectorCum[i] = SessionChartsMath::cumulativeBySector(sectors, GAME_SECTOR_COUNT);
+            // A rider whose sector series doesn't reach their completed-lap count has a
+            // hole in it — a track with misplaced split markers reports a zero sector, and
+            // cumulativeBySector stops there (it cannot sum past an unanchored gap). Rather
+            // than silently dropping that rider's later laps, fall the WHOLE field back to
+            // per-lap: the alternative is mixed resolutions, and the ranking functions
+            // compare riders by array index, so mixing would rank one rider's sector
+            // against another's lap.
+            const size_t completed = field.lapMs[i].size();
+            if (sectorCum[i].size() < completed * static_cast<size_t>(GAME_SECTOR_COUNT)) {
+                sectorsUsable = false;
+            }
+        }
+    }
+
+    // Per-lap cumulative is always built: it is the trace baseline's basis (below) and the
+    // fallback series, independent of the resolution the charts end up drawn at.
+    std::vector<std::vector<long long>> perLapCum(order.size());
     for (size_t i = 0; i < order.size(); ++i) {
-        field.cumulative[i] = SessionChartsMath::cumulative(field.lapMs[i]);
+        perLapCum[i] = SessionChartsMath::cumulative(field.lapMs[i]);
+    }
+
+    field.pointsPerLap = sectorsUsable ? GAME_SECTOR_COUNT : 1;
+    for (size_t i = 0; i < order.size(); ++i) {
+        field.cumulative[i] = sectorsUsable ? std::move(sectorCum[i]) : perLapCum[i];
+    }
+
+    // X domain: how far the furthest-along rider has actually got. At sector resolution
+    // that is usually part way through a lap, and clamping it back to maxLap would stack
+    // the leader's last points on the right edge.
+    field.maxLaps = static_cast<float>(field.maxLap);
+    if (sectorsUsable) {
+        for (size_t i = 0; i < order.size(); ++i) {
+            if (field.cumulative[i].empty()) continue;
+            field.maxLaps = std::max(field.maxLaps,
+                field.lapsAt(static_cast<int>(field.cumulative[i].size()) - 1));
+        }
     }
 
     // Ranking basis for the position and gap charts: cumulative race time in a
     // race, best-lap-so-far otherwise. The latter gives the provisional
     // qualifying/practice order and each rider's gap to the session-best lap.
-    std::vector<std::vector<long long>> rank(order.size());
-    for (size_t i = 0; i < order.size(); ++i) {
-        rank[i] = field.isRace ? field.cumulative[i]
-                               : SessionChartsMath::bestLapSoFar(field.lapMs[i], field.lapValid[i]);
+    // In a RACE the ranking basis IS field.cumulative, so bind to it rather than copying
+    // every rider's whole series into a second array — that copy ran on every rebuild and
+    // grew with the race. Off-race the basis is a different quantity and has to be built.
+    std::vector<std::vector<long long>> rankStorage;
+    if (!field.isRace) {
+        rankStorage.resize(order.size());
+        for (size_t i = 0; i < order.size(); ++i) {
+            rankStorage[i] = SessionChartsMath::bestLapSoFar(field.lapMs[i], field.lapValid[i]);
+        }
     }
+    const std::vector<std::vector<long long>>& rank = field.isRace ? field.cumulative : rankStorage;
     field.positions = SessionChartsMath::positionsPerLap(rank, field.raceNums);
     field.gaps = SessionChartsMath::gapToLeaderPerLap(rank);
 
-    // Reference pace / trace need a mass start — race only.
+    // Reference pace / trace need a mass start — race only. Deliberately computed from the
+    // PER-LAP cumulative even when the charts are drawn at sector resolution: the reference
+    // is the leader's average LAP time, so counting sectors as laps would divide it by the
+    // sector count and put every rider wildly "ahead" of the reference.
     if (field.isRace) {
-        int leader = SessionChartsMath::leaderIndex(field.cumulative, field.raceNums);
-        if (leader >= 0 && !field.cumulative[leader].empty()) {
+        int leader = SessionChartsMath::leaderIndex(perLapCum, field.raceNums);
+        if (leader >= 0 && !perLapCum[leader].empty()) {
             field.refPaceMs = SessionChartsMath::referencePaceMs(
-                field.cumulative[leader].back(),
-                static_cast<int>(field.cumulative[leader].size()));
+                perLapCum[leader].back(),
+                static_cast<int>(perLapCum[leader].size()));
         }
     }
 }
@@ -273,6 +425,7 @@ void SessionChartsHud::selectDrawn(const FieldData& field, std::vector<DrawnRide
 void SessionChartsHud::rebuildRenderData() {
     m_quads.clear();
     clearStrings();
+    m_tagClickRegions.clear();
 
     const auto dims = getScaledDimensions();
 
@@ -410,7 +563,12 @@ void SessionChartsHud::drawLapChart(float px, float py, float pw, float ph,
     std::vector<std::vector<int>> rowOf(K);
     for (int di = 0; di < K; ++di)
         rowOf[di].assign(field.positions[drawn[di].fieldIdx].size(), -1);
-    for (int lap = 0; lap < field.maxLap; ++lap) {
+    // Iterate the SERIES, not laps: at sector resolution there are pointsPerLap entries
+    // per lap, and rowOf is sized from field.positions (which follows the series).
+    int maxPoints = 0;
+    for (int di = 0; di < K; ++di)
+        maxPoints = std::max(maxPoints, static_cast<int>(rowOf[di].size()));
+    for (int lap = 0; lap < maxPoints; ++lap) {
         std::vector<std::pair<int, int>> present;  // (absolute position, di)
         for (int di = 0; di < K; ++di) {
             const std::vector<int>& pos = field.positions[drawn[di].fieldIdx];
@@ -430,7 +588,7 @@ void SessionChartsHud::drawLapChart(float px, float py, float pw, float ph,
         Pt prev, tag;
         for (int lap = 0; lap < static_cast<int>(rowOf[di].size()); ++lap) {
             if (rowOf[di][lap] < 0) { prev.ok = false; continue; }
-            Pt cur{ xForLap(px, pw, lap, field.maxLap), yForRow(rowOf[di][lap]), true };
+            Pt cur{ xForPoint(px, pw, lap, field), yForRow(rowOf[di][lap]), true };
             if (prev.ok) addLineSegment(prev.x, prev.y, cur.x, cur.y, d.color, thick);
             if (m_enabledElements & ELEM_DOTS) addDot(cur.x, cur.y, d.color, dotSize);
             prev = cur; tag = cur;
@@ -440,25 +598,21 @@ void SessionChartsHud::drawLapChart(float px, float py, float pw, float ph,
     }
 
     if (m_enabledElements & ELEM_AXIS_LABELS) {
-        // Y is order among the SHOWN riders, so label the top/bottom rows with the
-        // actual positions of the shown riders occupying them at the latest lap.
-        int topPos = 0, botPos = 0;
-        for (int lap = field.maxLap - 1; lap >= 0; --lap) {
-            int best = -1, worst = -1;
-            for (int di = 0; di < K; ++di) {
-                const std::vector<int>& p = field.positions[drawn[di].fieldIdx];
-                if (lap >= static_cast<int>(p.size()) || p[lap] <= 0) continue;
-                if (best < 0 || p[lap] < best)  best = p[lap];
-                if (worst < 0 || p[lap] > worst) worst = p[lap];
-            }
-            if (best > 0) { topPos = best; botPos = worst; break; }
-        }
+        // Y is order among the SHOWN riders, so label the top/bottom rows with the actual
+        // positions of whoever occupies them at the latest sample. The search bound lives in
+        // latestPositionExtent() — it follows the series, not the lap count, which is what
+        // this loop got wrong when it was open-coded here.
+        std::vector<std::vector<int>> drawnPositions;
+        drawnPositions.reserve(K);
+        for (int di = 0; di < K; ++di) drawnPositions.push_back(field.positions[drawn[di].fieldIdx]);
+        const auto extent = SessionChartsMath::latestPositionExtent(drawnPositions);
+        const int topPos = extent.top, botPos = extent.bottom;
         char topBuf[8], botBuf[8];
         if (topPos > 0) {
             snprintf(topBuf, sizeof(topBuf), "P%d", topPos);
             snprintf(botBuf, sizeof(botBuf), "P%d", botPos);
         }
-        addChartAxisLabels(px, py, pw, ph, field.maxLap,
+        addChartAxisLabels(px, py, pw, ph, field.maxLaps,
                            topPos > 0 ? topBuf : nullptr, topPos > 0 ? botBuf : nullptr, dims);
     }
 }
@@ -482,7 +636,8 @@ void SessionChartsHud::drawTraceChart(float px, float py, float pw, float ph,
     for (const DrawnRider& d : drawn) {
         const std::vector<long long>& cum = field.cumulative[d.fieldIdx];
         for (size_t l = 0; l < cum.size(); ++l)
-            vals.push_back(SessionChartsMath::traceValueMs(field.refPaceMs, static_cast<int>(l) + 1, cum[l]));
+            vals.push_back(SessionChartsMath::traceValueAtSector(
+                field.refPaceMs, static_cast<int>(l), field.pointsPerLap, cum[l]));
     }
     SessionChartsMath::AxisRange rr = SessionChartsMath::robustRange(vals);
     long long vMin = std::min<long long>(rr.valid ? rr.lo : 0, 0);
@@ -520,8 +675,9 @@ void SessionChartsHud::drawTraceChart(float px, float py, float pw, float ph,
         float thick = d.isPlayer ? lineThickness * 1.6f : lineThickness;
         Pt prev, tag;
         for (size_t l = 0; l < cum.size(); ++l) {
-            long long v = SessionChartsMath::traceValueMs(field.refPaceMs, static_cast<int>(l) + 1, cum[l]);
-            Pt cur{ xForLap(px, pw, static_cast<int>(l), field.maxLap), yForVal(v), true };
+            long long v = SessionChartsMath::traceValueAtSector(
+                field.refPaceMs, static_cast<int>(l), field.pointsPerLap, cum[l]);
+            Pt cur{ xForPoint(px, pw, static_cast<int>(l), field), yForVal(v), true };
             if (prev.ok) addLineSegment(prev.x, prev.y, cur.x, cur.y, d.color, thick);
             if (m_enabledElements & ELEM_DOTS) addDot(cur.x, cur.y, d.color, dotSize);
             prev = cur; tag = cur;
@@ -535,7 +691,7 @@ void SessionChartsHud::drawTraceChart(float px, float py, float pw, float ph,
             formatSecs(topBuf, sizeof(topBuf), vMax, true);
             formatSecs(botBuf, sizeof(botBuf), vMin, true);
         }
-        addChartAxisLabels(px, py, pw, ph, field.maxLap,
+        addChartAxisLabels(px, py, pw, ph, field.maxLaps,
                            hasData ? topBuf : nullptr, hasData ? botBuf : nullptr, dims);
     }
 }
@@ -583,7 +739,7 @@ void SessionChartsHud::drawGapChart(float px, float py, float pw, float ph,
         float thick = d.isPlayer ? lineThickness * 1.6f : lineThickness;
         Pt prev, tag;
         for (size_t l = 0; l < cum.size(); ++l) {
-            Pt cur{ xForLap(px, pw, static_cast<int>(l), field.maxLap), yForGap(gaps[l]), true };
+            Pt cur{ xForPoint(px, pw, static_cast<int>(l), field), yForGap(gaps[l]), true };
             if (prev.ok) addLineSegment(prev.x, prev.y, cur.x, cur.y, d.color, thick);
             if (m_enabledElements & ELEM_DOTS) addDot(cur.x, cur.y, d.color, dotSize);
             prev = cur; tag = cur;
@@ -594,7 +750,7 @@ void SessionChartsHud::drawGapChart(float px, float py, float pw, float ph,
     if (m_enabledElements & ELEM_AXIS_LABELS) {
         char botBuf[16];
         formatSecs(botBuf, sizeof(botBuf), gapMax, false);
-        addChartAxisLabels(px, py, pw, ph, field.maxLap, "0.0s", botBuf, dims);
+        addChartAxisLabels(px, py, pw, ph, field.maxLaps, "0.0s", botBuf, dims);
     }
 }
 
@@ -604,6 +760,12 @@ void SessionChartsHud::drawGapChart(float px, float py, float pw, float ph,
 
 void SessionChartsHud::drawPaceChart(float px, float py, float pw, float ph,
                                   const FieldData& field, const std::vector<DrawnRider>& drawn) {
+    // The pace chart plots LAP TIMES, so its X domain is whole laps whatever resolution the
+    // field is at — unlike the three sector-aware charts, which span field.maxLaps. ONE
+    // local for both the point placement and the axis label so the two cannot disagree:
+    // they did, when the label was switched to the field domain and the points were not,
+    // putting "L4" under a chart whose last point is lap 3.
+    const float paceDomainEnd = static_cast<float>(field.maxLap);
     const auto dims = getScaledDimensions();
     const bool filter = (m_enabledElements & ELEM_FILTER_OUTLIERS);
 
@@ -673,7 +835,7 @@ void SessionChartsHud::drawPaceChart(float px, float py, float pw, float ph,
         Pt prev, tag;
         for (size_t l = 0; l < laps.size(); ++l) {
             if (!included(d.fieldIdx, static_cast<int>(l), laps[l])) { prev.ok = false; continue; }
-            Pt cur{ xForLap(px, pw, static_cast<int>(l), field.maxLap), yForVal(laps[l]), true };
+            Pt cur{ xForLap(px, pw, static_cast<int>(l), paceDomainEnd), yForVal(laps[l]), true };
             if (prev.ok) addLineSegment(prev.x, prev.y, cur.x, cur.y, d.color, thick);
             if (m_enabledElements & ELEM_DOTS) addDot(cur.x, cur.y, d.color, dotSize);
             prev = cur; tag = cur;
@@ -687,7 +849,7 @@ void SessionChartsHud::drawPaceChart(float px, float py, float pw, float ph,
             formatSecs(topBuf, sizeof(topBuf), vMax, false);   // slower at top
             formatSecs(botBuf, sizeof(botBuf), vMin, false);   // faster at bottom
         }
-        addChartAxisLabels(px, py, pw, ph, field.maxLap,
+        addChartAxisLabels(px, py, pw, ph, paceDomainEnd,
                            hasData ? topBuf : nullptr, hasData ? botBuf : nullptr, dims);
     }
 }
@@ -700,17 +862,65 @@ void SessionChartsHud::addRiderTag(float x, float y, int raceNum, unsigned long 
     const auto dims = getScaledDimensions();
     char buf[8];
     snprintf(buf, sizeof(buf), "#%d", raceNum);
+    const float tagX = x + dims.paddingH * 0.25f;
+    const float tagY = y - dims.lineHeightSmall * 0.5f;
     // Just right of the line's last point, vertically centred on it. The plotting
     // rect already reserves TAG_WIDTH_CHARS on the right so a finisher's tag fits.
-    addString(buf, x + dims.paddingH * 0.25f, y - dims.lineHeightSmall * 0.5f,
+    addString(buf, tagX, tagY,
               Justify::LEFT, this->getFont(FontCategory::SMALL), color, dims.fontSizeSmall);
+
+    // Click-to-spectate on the tag (Standings/Map/Event Log all offer it). The tag is the
+    // only part of a chart that identifies a rider, so it is the natural target — the lines
+    // themselves overlap too much to hit-test meaningfully. Gated on isRiderSpectatable, so
+    // a retired rider's line keeps its label but the label is inert.
+    //
+    // The SAME chart can be drawn more than once per rebuild (one per enabled chart type),
+    // so a rider gets one region per chart — all with the same raceNum, which is harmless:
+    // whichever is hit requests the same rider.
+    if (PluginData::getInstance().isRiderSpectatable(raceNum)) {
+        TagClickRegion region;
+        region.x = tagX;
+        region.y = tagY;
+        // Tag text is "#" + up to 3 digits; size the box from the glyph metrics rather
+        // than the drawn string so a 1-digit number is still comfortably clickable.
+        region.width = PluginUtils::calculateMonospaceTextWidth(TAG_WIDTH_CHARS, dims.fontSizeSmall);
+        region.height = dims.lineHeightSmall;
+        region.raceNum = raceNum;
+        applyOffset(region.x, region.y);
+        m_tagClickRegions.push_back(region);
+    }
+}
+
+SessionChartsHud::TestSeries SessionChartsHud::testSeries() const {
+    FieldData field;
+    collectField(field);
+    TestSeries out;
+    out.pointsPerLap = field.pointsPerLap;
+    const int displayRaceNum = PluginData::getInstance().getDisplayRaceNum();
+    for (size_t i = 0; i < field.raceNums.size(); ++i) {
+        if (field.raceNums[i] == displayRaceNum) {
+            out.points = static_cast<int>(field.cumulative[i].size());
+            break;
+        }
+    }
+    return out;
+}
+
+void SessionChartsHud::handleClick(float mouseX, float mouseY) {
+    for (const auto& region : m_tagClickRegions) {
+        if (isPointInRect(mouseX, mouseY, region.x, region.y, region.width, region.height)) {
+            DEBUG_INFO_F("SessionChartsHud: Switching to rider #%d", region.raceNum);
+            PluginManager::getInstance().requestSpectateRider(region.raceNum);
+            return;   // Only process one click
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
 // Shared axis labels (Y-range pair beside the plot + "L1"/"L<max>" below it)
 // ---------------------------------------------------------------------------
 
-void SessionChartsHud::addChartAxisLabels(float px, float py, float pw, float ph, int maxLap,
+void SessionChartsHud::addChartAxisLabels(float px, float py, float pw, float ph, float domainEndLaps,
                                           const char* topLabel, const char* botLabel,
                                           const ScaledDimensions& dims) {
     const unsigned long lc = this->getColor(ColorSlot::TERTIARY);
@@ -722,9 +932,16 @@ void SessionChartsHud::addChartAxisLabels(float px, float py, float pw, float ph
         addString(botLabel, px - dims.paddingH * STRIP_CHART_LABEL_INSET, py + ph - dims.lineHeightSmall,
                   Justify::RIGHT, f, lc, dims.fontSizeSmall);
     addString("L1", px, py + ph + dims.lineHeightSmall * 0.2f, Justify::LEFT, f, lc, dims.fontSizeSmall);
-    if (maxLap > 1) {
+    // The lap the RIGHT EDGE falls in, which is not always maxLap. At sector resolution the
+    // domain ends at field.maxLaps — the furthest-along rider's actual progress — so a
+    // leader a third of the way through lap 4 puts the edge at 3.33 and "L3" under-labels
+    // it by a third of a lap. ceil() names the lap that edge is inside, and is a no-op at
+    // per-lap resolution (maxLaps is then exactly maxLap), so the default rendering stays
+    // byte-identical.
+    const int edgeLap = static_cast<int>(std::ceil(domainEndLaps));
+    if (edgeLap > 1) {
         char buf[8];
-        snprintf(buf, sizeof(buf), "L%d", maxLap);
+        snprintf(buf, sizeof(buf), "L%d", edgeLap);
         addString(buf, px + pw, py + ph + dims.lineHeightSmall * 0.2f, Justify::RIGHT, f, lc, dims.fontSizeSmall);
     }
 }

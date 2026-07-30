@@ -7,12 +7,51 @@
 "use strict";
 
 // --- Bottom-slot panels ---
-// The standings tower has one shared "bottom slot" used by several broadcast
-// panels (fastest-last-lap, fastest-laps, down-the-order, battle). Only one is
-// visible at a time. Each panel is a small spec around createSlotPanel(), which
-// owns the gate slide, the masking flag (held through the slide-out), mutual
-// exclusion, the appearance interval + auto-hide, and reporting how many bottom
-// tower rows it covers (so renderStandings can hide the chips hanging off them).
+// The standings tower has one shared "bottom slot". Only one panel is visible at
+// a time. Each panel is a small spec around createSlotPanel(), which owns the
+// gate slide, the masking flag (held through the slide-out), mutual exclusion,
+// the show trigger + auto-hide, and reporting how many bottom tower rows it
+// covers (so renderStandings can hide the chips hanging off them, since chips
+// hang outside the tower and a panel can't cover them).
+//
+// THE ROSTER (name: how it is triggered) — panels live in overlay-panels.js and
+// overlay-charts.js; adding one is a single createSlotPanel spec, so don't
+// reintroduce per-panel show/hide/timer/mask globals or per-panel row/duration
+// settings:
+//   fastlap / bestlap  event-driven: eventKey() is a signature of the board's
+//                      headline metric, so the board shows ONCE when it changes,
+//                      holds autoHide, hides. Not on a cadence timer.
+//   sectors            non-race only; horizontal page carousel over per-sector
+//                      ranked riders, autoHide 0 (self-terminating via paging).
+//   charts             race-only, priority 2 so it pre-empts the timed boards;
+//                      auto-shows once the leader finishes. A carousel like
+//                      sectors. Both carousels build their TITLE INTO each page
+//                      so the header slides in with its content.
+//   tail               down-the-order: no event and no cadence — it is coverage,
+//                      not a story, so it appears only when a caster forces it.
+//   battle             triggerOnEligible, always mirrored to the in-game
+//                      director (no toggle, no force hotkey): it shows only the
+//                      battle currently on camera. A cut to a DIFFERENT battle is
+//                      a full panel change via restart() — slide fully out, then
+//                      a fresh one in — never an in-place two-card reel.
+//
+// THREE SHARED KNOBS size/time every panel instead of per-panel settings:
+// CONFIG.slotRows (rider rows), CONFIG.slotDuration (seconds holding the slot —
+// carousels split it across pages via slotPageMs(), tail across its scroll
+// phases, battle ignores it and holds while the camera stays), and
+// CONFIG.slotRest (global inter-panel gap; see slotRestUntil below).
+//
+// FORCED-EMPTY CONTRACT: a broadcaster force is gated on neither enabled() nor
+// eligible() — disabling only stops the automatic show, and a caster may want a
+// panel outside its usual conditions. build() is the backstop (a force before
+// data exists returns 0), so every forceable panel opts into showEmptyWhenForced
+// and renders the ONE shared slotEmptyRow() placeholder — identical across every
+// panel, so the caster always gets the same confirmation the hotkey fired. Keep
+// it shared: the old per-panel styling had boards saying "No data", charts saying
+// "No lap data yet" in a different font, and tail/sectors silently no-opping.
+// The framework skips onShow for a forced-empty, so a panel with autoHide 0 sets
+// its own finite self-hide inside renderEmpty; a placeholder-aware refresh then
+// upgrades it in place the moment real data arrives.
 var slotPanels = [];
 
 // True while forceSlot() is mid-hand-off (it has slid the current panel out

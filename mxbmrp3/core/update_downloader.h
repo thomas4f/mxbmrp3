@@ -7,6 +7,7 @@
 #include <string>
 #include <thread>
 #include <mutex>
+#include "thread_safety.h"
 #include <atomic>
 #include <functional>
 #include <vector>
@@ -107,7 +108,7 @@ public:
     bool testExtractAndInstall(const std::string& destDir,
                                const std::vector<char>& zipBytes, std::string& err) {
         setDebugMode(false);
-        { std::lock_guard<std::mutex> lock(m_mutex); m_pluginPath = destDir; }
+        { MutexLock lock(m_mutex); m_pluginPath = destDir; }
         return extractAndInstall(zipBytes, err);
     }
 #endif
@@ -172,30 +173,32 @@ private:
     std::atomic<size_t> m_totalBytes;
 
     // Step-by-step progress tracking
-    StepStatus m_stepStatus[static_cast<int>(Step::STEP_COUNT)];
+    StepStatus m_stepStatus[static_cast<int>(Step::STEP_COUNT)] MXB_GUARDED_BY(m_mutex);
 
     // Error message
-    std::string m_errorMessage;
+    std::string m_errorMessage MXB_GUARDED_BY(m_mutex);
 
     // Threading
-    mutable std::mutex m_mutex;
+    mutable Mutex m_mutex;
     std::thread m_workerThread;
-    std::function<void()> m_stateChangeCallback;
+    // Copy under the lock, invoke OUTSIDE it (see notifyStateChange) — exactly the
+    // shape the analysis should be pinning, so it carries the annotation.
+    std::function<void()> m_stateChangeCallback MXB_GUARDED_BY(m_mutex);
 
     // HTTP handle tracking for cross-thread cancellation via WinHttpCloseHandle.
     // All three handles are stored so shutdown can close them explicitly rather than
     // relying on ambiguous cascade-close behavior when only the session is closed.
-    std::mutex m_httpHandleMutex;
-    void* m_hHttpSession{nullptr};
-    void* m_hHttpConnect{nullptr};
-    void* m_hHttpRequest{nullptr};
+    Mutex m_httpHandleMutex;
+    void* m_hHttpSession MXB_GUARDED_BY(m_httpHandleMutex) {nullptr};
+    void* m_hHttpConnect MXB_GUARDED_BY(m_httpHandleMutex) {nullptr};
+    void* m_hHttpRequest MXB_GUARDED_BY(m_httpHandleMutex) {nullptr};
 
     // Plugin path (cached)
-    std::string m_pluginPath;
+    std::string m_pluginPath MXB_GUARDED_BY(m_mutex);
 
     // Debug mode: extract to test subdirectory
     std::atomic<bool> m_debugMode;
 
     // Donation nudge enable flag (INI: [Updates] donationNudge)
-    bool m_donationNudgeEnabled = true;
+    bool m_donationNudgeEnabled = true;  // mt-plain: settings load/save only, game thread; the download worker never reads it
 };

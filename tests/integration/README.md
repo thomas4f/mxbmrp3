@@ -2,19 +2,19 @@
 
 Cross-compiles the plugin to a **loadable Windows x64 DLL** using mingw-w64, so a
 non-Windows host (CI, a Linux dev box, Wine) can exercise the real plugin data
-pipeline end-to-end — not just the isolated pure functions in `../tests`.
+pipeline end-to-end — not just the isolated pure functions in `../unit`.
 
-This is **not** the shipping build. The shipping `.dlo` is built with MSVC via
-`mxbmrp3.sln` (see the root `CLAUDE.md`). This is a parallel *portability*
-configuration used only for testing.
+This is **not** the shipping build. The shipping `.dlo` is built with MSVC (see
+the root `CLAUDE.md`). This is a parallel *portability* configuration used only
+for testing.
 
-> **Where the tests live and how to run them: [`../TESTING.md`](../TESTING.md).**
+> **Where the tests live and how to run them: [`../../TESTING.md`](../../TESTING.md).**
 > This file covers only the cross-build itself — the build engine and how it
 > diverges from the shipping MSVC build.
 
 ## What runs here
 
-The cross-build powers the Layer-2 and Layer-3 tests (see `../TESTING.md`):
+The cross-build powers the Layer-2 and Layer-3 tests (see `../../TESTING.md`):
 
 ```
 ./run_tests.sh          # every doctest integration test in tests/ (smoke/race/sessions/director/reset/version)
@@ -22,45 +22,67 @@ The cross-build powers the Layer-2 and Layer-3 tests (see `../TESTING.md`):
 ./run_fuzz.sh           # config-file survival fuzzing
 ./run_fuzz_callbacks.sh # DLL-boundary callback survival fuzzing
 ./run_perf.sh           # CPU performance baseline (50-rider grid)
+./run_installer_test.sh # NSIS installer install/uninstall mechanics (makensis + Wine)
+./run_tape_bench.sh     # per-HUD render footprint over a real tape (inspection, not gated)
 ```
 
-Every `*.cpp` under `core/`, `handlers/`, `hud/`, `diagnostics/` (minus the
-`Makefile`'s `EXCLUDE`, currently `discord_manager`), plus `mxb_api.cpp` and the
-miniz `.c` files, compiles clean into a genuine PE32+ DLL exporting the full PiBoSo
-plugin API — ~150 translation units (the `Makefile` prints the exact
-`TUs = N C++ + M C` count on each build). Under Wine it runs the real lifecycle: all managers
-initialize, settings load/save round-trips, HUDs rebuild render primitives, and
-the HTTP overlay server starts on :8080. Feature parity with the shipping build
-**except** Discord Rich Presence and Aptabase analytics (see below). All of it is
-wired into CI (`.github/workflows/tests.yml`).
+This directory also holds the **enforced invariant checks** (compile/grep
+passes, no Wine, CI fails on violations): `check_game_configs.sh` (GPB/KRP
+feature-macro syntax), `check_visibility_gates.sh` (HUD `isVisibleAnySurface()`
+gates), `check_api_guards.sh` (DLL-export exception barriers),
+`check_thread_safety.sh` (clang `-Wthread-safety` over the annotated mutexes),
+`check_mt_flags.sh` (a plain `bool` in a thread-owning class),
+`check_hud_raw_cache.sh` (raw `Unified::` members cached in a HUD),
+`check_style.sh` (tabs/trailing-WS/CRLF/final newline) and
+`check_session_hook.sh` (the SessionStart hook's own behaviour).
+Each script's header documents its invariant and escape-hatch annotation.
+
+Every `*.cpp` under `core/`, `handlers/`, `hud/`, `diagnostics/` (minus
+`discord_manager.cpp`, which `mxbmrp3/CMakeLists.txt` drops under
+`MXBMRP3_TEST_BUILD` because `GAME_HAS_DISCORD` is 0 there and the TU would only
+drag the SDK in), plus `mxb_api.cpp` and the miniz `.c` files, compiles clean
+into a genuine PE32+ DLL exporting the full PiBoSo plugin API — ~150 translation
+units. `build.sh` prints the exported-symbol count on each link; a sudden drop
+means a TU quietly stopped being compiled. Under Wine it runs the real lifecycle:
+all managers initialize, settings load/save round-trips, HUDs rebuild render
+primitives, and the HTTP overlay server starts on :8080. Feature parity with the
+shipping build **except** Discord Rich Presence and Aptabase analytics (see
+below). All of it is wired into CI (`.github/workflows/tests.yml`).
 
 ## Requirements
 
 ```
-sudo apt-get install -y gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 wine64
-sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
-sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
+./tools/install_deps.sh mingw wine     # from the repo root
 ```
 
-The **posix** thread variant is required (`std::thread`/`std::mutex`). `python3`
-is needed for the config-fuzz / persist runners; `ccache` is optional.
+`tools/install_deps.sh` is the single source of truth for the toolchain (CI, the
+SessionStart hook and `DEVELOPMENT.md` all call it) and applies the two fixups
+that are easy to miss by hand: the **posix** mingw threading alternative
+(`std::thread`/`std::mutex` need it) and the `/usr/bin/wine` launcher. `python3`
+is needed for the config-fuzz / persist runners; `ccache` is optional but
+installed with the `mingw` group.
 
 ## Build
 
 ```
 ./build.sh            # incremental parallel build -> build/mxbmrp3_test.dlo
-./build.sh clean      # remove build/
+./build.sh clean      # remove the build tree and the DLL
 ./build.sh -B         # force full rebuild
 ```
 
-`build.sh` is a thin wrapper over the `Makefile` (the real engine). Like Visual
-Studio, it doesn't rebuild the whole thing every time:
+`build.sh` is a thin wrapper over **CMake**, which replaced the Makefile that
+used to live here — that Makefile was a second, independent description of the
+same source tree sitting alongside the vcxproj's explicit list, with nothing
+comparing the two. Both are gone: `mxbmrp3/CMakeLists.txt` is the single
+definition for every toolchain. The build tree is `build/cross/`, configured from
+the `cross` preset so the toolchain file and `MXBMRP3_TEST_BUILD` live only in
+`CMakePresets.json`. It doesn't rebuild everything every time:
 
-- **Incremental** — `gcc -MMD` records each TU's header dependencies, so editing
-  one `.cpp` (or a header) recompiles only the affected TUs + the link.
-- **Parallel** — `make -j$(nproc)` compiles independent TUs concurrently.
-- **ccache** (optional, `sudo apt-get install ccache`) — caches objects by
-  content hash, so unchanged TUs are served instantly even after `make clean`.
+- **Incremental** — CMake/Ninja-style dependency tracking recompiles only the
+  affected TUs + the link when you edit one `.cpp` or header.
+- **Parallel** — the build runs at `-j$(nproc)`.
+- **ccache** (optional) — caches objects by content hash, so unchanged TUs are
+  served instantly even after a clean.
 
 Approximate timings (4 cores):
 
@@ -102,4 +124,5 @@ Source changes that support this (all no-ops on MSVC):
 `core/test_hooks.cpp` adds `MXBMRP3_Test_*` exports (start the web server, reset
 settings, compare versions, force a save) used by the tests. The whole file is
 gated on `MXBMRP3_TEST_BUILD`, so these exports **never exist in a shipping DLL**.
-It's compiled only by this build's source glob, not `mxbmrp3.vcxproj`.
+It's compiled only under `MXBMRP3_TEST_BUILD`; mxbmrp3/CMakeLists.txt removes it
+from the source list for every shipping target.

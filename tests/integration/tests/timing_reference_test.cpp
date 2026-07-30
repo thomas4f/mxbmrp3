@@ -443,3 +443,59 @@ TEST_CASE("timing panel: height is a whole number of grid bands") {
 
     host.shutdown();
 }
+
+// A player-scoped comparison must go blank when the panel is showing someone else.
+// All-Time PB comes from StatsManager, which only ever stores the LOCAL player's laps,
+// and Record is fetched for the local player's own bike/class. Every other row reads the
+// display rider's data, so the panel follows a spectate switch — which meant these two
+// silently kept the player's reference and scored the SPECTATED rider's lap against it.
+// On screen that is a gap that reads as if it were theirs; the reporter hit it as a green
+// "all-time PB" notice next to a red Alltime row (the notice half is fixed separately, see
+// pb_scope_test.cpp). Suppressed at the reference source, so this hook — the same
+// cumulativeReferenceMs() the panel renders from — sees exactly what the panel shows.
+TEST_CASE("timing reference: player-scoped rows blank out while spectating another rider") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\timing_ref\\");
+
+    host.eventInit("TestTrack", "Thomas");
+    host.raceEvent("TestTrack", /*type=*/2);
+    host.session(RACE, /*numLaps=*/10, /*lengthMs=*/0);
+    host.addEntry(4, "Thomas");        // first active entry → the local player
+    host.addEntry(7, "Rival");
+    host.draw();
+    host.spectateVehicles({ { 4, "Thomas" }, { 7, "Rival" } }, /*curSelectionIndex=*/0);
+
+    // A completed lap for the player populates both the session PB and (via StatsManager
+    // + cacheAllTimePB) the all-time reference.
+    host.classify(RACE, 200000, { { .num = 4, .best = 90000, .laps = 1, .gap = 0 } });
+    host.raceLap(RACE, 4, /*lapNum=*/1, /*lapTime=*/90000, /*best=*/2, /*split0=*/30000, /*split1=*/61000);
+
+    // Watching yourself: the all-time reference is live at every split.
+    REQUIRE(host.timingReferenceMs(GAP_ALLTIME, SPLIT_LAP) == 90000);
+    CHECK(host.timingReferenceMs(GAP_ALLTIME, 0) == 30000);
+    CHECK(host.timingReferenceMs(GAP_ALLTIME, 1) == 61000);
+
+    // Switch the camera to #7. The all-time reference must go away at EVERY split (-1 =
+    // unavailable, which the panel renders as "N/A" muted) rather than keep showing yours.
+    host.spectateVehicles({ { 4, "Thomas" }, { 7, "Rival" } }, /*curSelectionIndex=*/1);
+    CHECK(host.timingReferenceMs(GAP_ALLTIME, SPLIT_LAP) == -1);
+    CHECK(host.timingReferenceMs(GAP_ALLTIME, 0) == -1);
+    CHECK(host.timingReferenceMs(GAP_ALLTIME, 1) == -1);
+
+    // Control: a display-rider-scoped row is NOT suppressed. #7 has their own lap, so
+    // Session PB keeps working and reports THEIR time — proving the suppression is scoped
+    // to the player-only references and didn't just blank the whole panel.
+    host.classify(RACE, 260000, { { .num = 4, .best = 90000, .laps = 1, .gap = 0 },
+                                  { .num = 7, .best = 95000, .laps = 1, .gap = 5000 } });
+    host.raceLap(RACE, 7, /*lapNum=*/1, /*lapTime=*/95000, /*best=*/1, /*split0=*/32000, /*split1=*/64000);
+    CHECK(host.timingReferenceMs(GAP_PB, SPLIT_LAP) == 95000);
+    CHECK(host.timingReferenceMs(GAP_ALLTIME, SPLIT_LAP) == -1);   // still suppressed
+
+    // Back to the player: the all-time reference returns (suppression is a view state, not
+    // a one-way teardown of the cache).
+    host.spectateVehicles({ { 4, "Thomas" }, { 7, "Rival" } }, /*curSelectionIndex=*/0);
+    CHECK(host.timingReferenceMs(GAP_ALLTIME, SPLIT_LAP) == 90000);
+
+    host.shutdown();
+}

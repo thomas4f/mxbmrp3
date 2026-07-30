@@ -42,4 +42,11 @@ TEST_CASE("ideal lap: sum of a rider's best sectors across laps") {
     auto r = riderByNum(d, 10);
     REQUIRE(r.is_object());
     CHECK(r.value("idealLapMs", -1) == 88000);
+    // Explicit teardown through the orchestrated Shutdown export. ~PluginHost
+    // now does this too (it used to be a bare FreeLibrary, which is what made
+    // the unload-without-Shutdown() path reachable from a test), so this is
+    // belt-and-braces — shutdown() is idempotent. Kept because it tears down
+    // while the test's own scope is still intact rather than during
+    // destruction, which keeps a teardown failure attributable to this case.
+    host.shutdown();
 }

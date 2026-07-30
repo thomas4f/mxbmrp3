@@ -33,41 +33,9 @@ bool s_installed = false;
 // recursion. InterlockedExchange gives us an atomic test-and-set.
 volatile LONG s_dumping = 0;
 
-// Resolve a code address to its owning module's basename + offset. Fills `mod`
-// (>= 1 byte) with the basename, or "unknown" if the address isn't in a loaded
-// module, and *offset with (addr - moduleBase). GetModuleHandleExA with
-// FROM_ADDRESS|UNCHANGED_REFCOUNT resolves without loading anything or bumping a
-// refcount — safe from inside the filter (no heap, no disk). Shared by the leaf
-// fault resolver and the per-frame backtrace walk.
-//
-// When the address is in NO loaded module, `mod` stays "unknown" and `*offset`
-// carries the RAW address (not 0). That case is diagnostically important — an
-// execute access violation whose faulting IP is in no module means control flow
-// jumped through a null/corrupt function pointer or into freed/JIT memory (the
-// injector-at-launch fingerprint behind the "unknown+0x0" cluster). Reporting the
-// real address distinguishes a literal null call (0x0) from a wild jump, and gives
-// unresolved backtrace frames (e.g. an injected thunk) their address instead of 0.
-void resolveModuleOffset(void* addr, char* mod, size_t modSize,
-                         unsigned long long* offset) {
-    if (modSize) strncpy_s(mod, modSize, "unknown", _TRUNCATE);
-    *offset = reinterpret_cast<unsigned long long>(addr);  // raw addr unless resolved below
-    HMODULE hMod = nullptr;
-    if (GetModuleHandleExA(
-            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-            GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-            static_cast<LPCSTR>(addr), &hMod) && hMod) {
-        char modPath[MAX_PATH];
-        DWORD n = GetModuleFileNameA(hMod, modPath, sizeof(modPath));
-        if (n > 0 && n < sizeof(modPath)) {
-            const char* base = modPath;
-            for (const char* p = modPath; *p; ++p)
-                if (*p == '\\' || *p == '/') base = p + 1;
-            strncpy_s(mod, modSize, base, _TRUNCATE);
-        }
-        *offset = static_cast<unsigned long long>(
-            reinterpret_cast<ULONG_PTR>(addr) - reinterpret_cast<ULONG_PTR>(hMod));
-    }
-}
+// resolveModuleOffset (declared in the header, defined in the CrashHandler
+// namespace block at the bottom of this file) is used throughout the filter
+// below via its qualified name.
 
 #ifdef _MSC_VER
 // Walk the FAULTING thread's stack (from the exception CONTEXT) and record the
@@ -100,7 +68,7 @@ int captureBacktrace(CONTEXT* ctxIn, CrashStack::Frame* frames, int maxFrames) {
         // end-of-stack (unwind reaching Rip==0) still terminates without recording a
         // spurious trailing "unknown+0x0".
         for (int i = 0; i < maxFrames; ++i) {
-            resolveModuleOffset(reinterpret_cast<void*>(ctx.Rip),
+            CrashHandler::resolveModuleOffset(reinterpret_cast<void*>(ctx.Rip),
                                 frames[count].module, sizeof(frames[count].module),
                                 &frames[count].offset);
             ++count;
@@ -269,7 +237,7 @@ LONG WINAPI crashFilter(EXCEPTION_POINTERS* info) {
         // resolver — same logic the per-frame backtrace below uses.
         char modName[CrashStack::MODULE_NAME_SIZE] = "unknown";
         unsigned long long offset = 0;
-        resolveModuleOffset(faultAddr, modName, sizeof(modName), &offset);
+        CrashHandler::resolveModuleOffset(faultAddr, modName, sizeof(modName), &offset);
 
         // Access-violation sub-type (read/write/execute) from ExceptionInformation[0].
         // Meaningful only for access violations; "" otherwise (field omitted). Fixed
@@ -398,6 +366,52 @@ LONG WINAPI crashFilter(EXCEPTION_POINTERS* info) {
 }  // namespace
 
 namespace CrashHandler {
+
+// Resolve a code address to its owning module's basename + offset. Fills `mod`
+// (>= 1 byte) with the basename, or "unknown" if the address isn't in a loaded
+// module, and *offset with (addr - moduleBase). GetModuleHandleExA with
+// FROM_ADDRESS|UNCHANGED_REFCOUNT resolves without loading anything or bumping a
+// refcount — safe from inside the filter (no heap, no disk). Shared by the leaf
+// fault resolver and the per-frame backtrace walk above.
+//
+// When the address is in NO loaded module, `mod` stays "unknown" and `*offset`
+// carries the RAW address (not 0). That case is diagnostically important — an
+// execute access violation whose faulting IP is in no module means control flow
+// jumped through a null/corrupt function pointer or into freed/JIT memory (the
+// injector-at-launch fingerprint behind the "unknown+0x0" cluster). Reporting the
+// real address distinguishes a literal null call (0x0) from a wild jump, and gives
+// unresolved backtrace frames (e.g. an injected thunk) their address instead of 0.
+//
+// Address 0 is special-cased BEFORE the OS lookup: GetModuleHandleExA documents
+// that a NULL lpModuleName returns the host EXE's handle, and that NULL-string
+// rule can win over FROM_ADDRESS — so resolving a null-call frame "succeeds"
+// with the game's module handle on some Windows builds, and the offset math then
+// wraps (0 - 0x140000000 = "mxbikes.exe+0xfffffffec0000000", exactly what a
+// slice of the v1.27.7.44 dashboard rows showed). That split the ONE null-call
+// signature into two labels and smeared it onto the game module. Null is always
+// reported as the canonical "unknown+0x0".
+void resolveModuleOffset(void* addr, char* mod, size_t modSize,
+                         unsigned long long* offset) {
+    if (modSize) strncpy_s(mod, modSize, "unknown", _TRUNCATE);
+    *offset = reinterpret_cast<unsigned long long>(addr);  // raw addr unless resolved below
+    if (!addr) return;  // null call — never ask the OS (NULL-lpModuleName quirk above)
+    HMODULE hMod = nullptr;
+    if (GetModuleHandleExA(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+            GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            static_cast<LPCSTR>(addr), &hMod) && hMod) {
+        char modPath[MAX_PATH];
+        DWORD n = GetModuleFileNameA(hMod, modPath, sizeof(modPath));
+        if (n > 0 && n < sizeof(modPath)) {
+            const char* base = modPath;
+            for (const char* p = modPath; *p; ++p)
+                if (*p == '\\' || *p == '/') base = p + 1;
+            strncpy_s(mod, modSize, base, _TRUNCATE);
+        }
+        *offset = static_cast<unsigned long long>(
+            reinterpret_cast<ULONG_PTR>(addr) - reinterpret_cast<ULONG_PTR>(hMod));
+    }
+}
 
 void install(const char* savePath) {
     if (s_installed) return;

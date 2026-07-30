@@ -76,6 +76,10 @@ private:
     // Notice state
     bool m_bIsWrongWay = false;            // Whether player is currently going wrong way
     bool m_bIsHazardAhead = false;         // Whether there's a hazard rider ahead
+    // Whether the hazard ahead is a rider coming AT you rather than one stopped on the
+    // track. Same notice slot and same priority — only the wording differs, because
+    // "HAZARD AHEAD" reads as something to steer around and an oncoming rider is not.
+    bool m_bHazardIsWrongWay = false;
     bool m_bIsBlueFlagged = false;         // Whether player should yield (blue flag)
     bool m_bIsLapping = false;             // Whether player is closing on a backmarker ahead (mirror of blue flag)
 

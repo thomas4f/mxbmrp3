@@ -43,12 +43,6 @@ void MapHud::renderRiders(const RotationCache& rotation,
     constexpr float baseConeSize = 0.006f;
     float scaledConeSize = baseConeSize * m_fScale * m_fMarkerScale;
 
-    // Calculate geometric centroid offset to center arrow on player position
-    // Centroid = (tip_forward + left_forward + back_forward + right_forward) / 4
-    // Where: tip=1.0, left/right≈0.0704 (=0.45*cos(81°)), back=-0.2
-    // Centroid ≈ 0.235 forward from screenX,screenY
-    constexpr float CENTROID_OFFSET = 0.235f;  // Offset to center arrow shape
-
     // Get plugin data to access rider names/numbers
     const PluginData& pluginData = PluginData::getInstance();
     int displayRaceNum = pluginData.getDisplayRaceNum();
@@ -279,17 +273,23 @@ void MapHud::renderRiders(const RotationCache& rotation,
         // Render rider sprite (outline baked into sprite asset)
         createRotatedSprite(spriteHalfSize, riderColor);
 
-        // Add click region for this rider (for spectator switching)
-        // Click region is a rectangle centered on the sprite, with offset applied
-        RiderClickRegion clickRegion;
-        float clickWidth = spriteHalfSize * 2.0f / UI_ASPECT_RATIO;  // Account for aspect ratio
-        float clickHeight = spriteHalfSize * 2.0f;
-        clickRegion.x = screenX - spriteHalfSize / UI_ASPECT_RATIO + m_fOffsetX;
-        clickRegion.y = screenY - spriteHalfSize + m_fOffsetY;
-        clickRegion.width = clickWidth;
-        clickRegion.height = clickHeight;
-        clickRegion.raceNum = pos.raceNum;
-        m_riderClickRegions.push_back(clickRegion);
+        // Add click region for this rider (for spectator switching). Gated like every other
+        // surface: the map draws a marker for anyone with a track position, which includes
+        // riders who have retired or pulled into the garage but are still on the last
+        // reported spot — clicking those did nothing at all. The marker still renders; only
+        // the click target is withheld.
+        if (pluginData.isRiderSpectatable(pos.raceNum)) {
+            // Click region is a rectangle centered on the sprite, with offset applied
+            RiderClickRegion clickRegion;
+            float clickWidth = spriteHalfSize * 2.0f / UI_ASPECT_RATIO;  // Account for aspect ratio
+            float clickHeight = spriteHalfSize * 2.0f;
+            clickRegion.x = screenX - spriteHalfSize / UI_ASPECT_RATIO + m_fOffsetX;
+            clickRegion.y = screenY - spriteHalfSize + m_fOffsetY;
+            clickRegion.width = clickWidth;
+            clickRegion.height = clickHeight;
+            clickRegion.raceNum = pos.raceNum;
+            m_riderClickRegions.push_back(clickRegion);
+        }
 
         // Render label centered on arrow based on label mode
         if (m_labelMode != LabelMode::NONE) {

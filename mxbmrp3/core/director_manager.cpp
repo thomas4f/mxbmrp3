@@ -52,8 +52,13 @@ void DirectorManager::resetRuntime() {
     // per-eval refresh, but resetting them here is harmless and keeps it uniform.
     long long now = nowMs();
     m_currentSubject = -1;
+    // The home rider is a race NUMBER, and a new session/track re-deals them - so it is
+    // dropped here like every other per-rider baseline and re-adopted from whoever the
+    // broadcaster is spectating on the next decision pass.
+    m_homeSubject = -1;
     m_currentPartner = -1;
     m_currentShotType = SHOT_SOLO;
+    m_currentIsBattle = false;
     m_currentCameraRole = -1;
     m_shotStartMs = now;
     m_lastDecisionMs = 0;
@@ -114,10 +119,20 @@ void DirectorManager::setEnabled(bool enabled) {
 
 void DirectorManager::setMinShotSec(int sec) {
     m_minShotSec = std::clamp(sec, MIN_SHOT_LO, MIN_SHOT_HI);
-    if (m_maxShotSec < m_minShotSec) m_maxShotSec = m_minShotSec;  // keep max >= min
+    // Keep max >= min. Off (0) is exempt: it isn't a shorter maximum, it's no maximum at
+    // all, so raising the min must not silently switch forced rotation back on.
+    if (m_maxShotSec > 0 && m_maxShotSec < m_minShotSec) m_maxShotSec = m_minShotSec;
 }
 
 void DirectorManager::setMaxShotSec(int sec) {
+    // 0 = Off (forced rotation disabled - the director only cuts for stories and returns
+    // to the broadcaster's rider), matching setVarietyEvery's "0 = Off, everything else
+    // clamps INTO the range" contract. Only an explicit 0 means Off: a below-range value
+    // clamps UP to the floor, so a hand-edited `maxShotSec=3` reads as "cut fast", not as
+    // the inverse ("never rotate"). Hand-editing the INI is a supported workflow and this
+    // setter is the load path, so the two steppers - not the setter - own the Off jumps at
+    // either end of the range (see settings_hud_input.cpp).
+    if (sec <= 0) { m_maxShotSec = 0; return; }
     m_maxShotSec = std::clamp(sec, MAX_SHOT_LO, MAX_SHOT_HI);
     if (m_minShotSec > m_maxShotSec) m_minShotSec = m_maxShotSec;  // keep min <= max
 }
@@ -170,6 +185,18 @@ void DirectorManager::toggleLock() {
 
 int DirectorManager::pickShot(bool isBattle, const std::vector<int>& group, int* outTarget) {
     using CR = SpectateHandler::CameraRole;
+
+    // Forced rotation off: the caster is following THEIR rider and the director is only
+    // covering stories, so the show stays on the plain TV shot - Trackside to frame a
+    // fight, Auto (the game's own trackside director) otherwise. An onboard dip is a
+    // director flourish that belongs to a director running the whole broadcast; dropping
+    // into a helmet cam on someone else's chosen shot reads as the camera misbehaving.
+    // The variety cadence is skipped entirely (m_shotCount doesn't advance), so turning
+    // the max shot back on resumes it from where it left off rather than mid-cycle.
+    // This covers every CUT. The two states that hold a camera WITHOUT cutting - a rider
+    // lock, and a shot already on an onboard when the setting changed - are corrected back
+    // to the TV shot by evaluate() itself, so "Off means TV cameras" holds in all cases.
+    if (!forcedRotation()) return static_cast<int>(isBattle ? CR::TRACKSIDE : CR::AUTO);
 
     // Forward-facing onboards (look AHEAD at the rider in front) - the chaser's-eye view
     // in a battle, and the solo variety set. Direction matters: a forward cam on the front
@@ -294,6 +321,12 @@ void DirectorManager::cutTo(int raceNum, bool isBattle, long long now, int force
 
     m_currentSubject = target;
     m_currentShotType = (shotType >= 0) ? shotType : (isBattle ? SHOT_BATTLE : SHOT_SOLO);
+    // Remember whether pickShot framed this as a PAIR (Trackside) rather than solo
+    // (Auto). Recorded from the flag itself rather than re-derived from the shot type:
+    // battle, overtake, lapper and drop all frame as a pair, and a future story type
+    // would have to be added to any such list by hand. See the Max-shot-Off camera
+    // correction in evaluate(), which is the only reader.
+    m_currentIsBattle = isBattle;
     m_currentPartner = partner;
     m_currentCameraRole = role;
     m_shotStartMs = now;
@@ -358,7 +391,17 @@ void DirectorManager::emitCutEvent(int subject, int partner) {
             break;
         case SHOT_INCIDENT:  snprintf(msg, sizeof(msg), "Incident %s", subjLab); break;
         case SHOT_FASTEST:   snprintf(msg, sizeof(msg), "Fastest lap %s", subjLab); break;
-        case SHOT_FINISH:    snprintf(msg, sizeof(msg), "Race winner %s", subjLab); break;
+        // SHOT_FINISH covers the whole run-in to the flag, not just the win: once the
+        // leader crosses, the lock moves down the order to whoever is still racing to
+        // the line, and every one of those cuts is tagged "finish" too. Only the rider
+        // who actually took the win gets the winner line -- there is one winner, and
+        // labelling P4's run to the flag "Race winner" made the log nonsense.
+        // Mirrors the overlay caption, which already reads FINISHED vs FINISHING
+        // (overlay-focus.js); the log had no such split.
+        case SHOT_FINISH:
+            if (subject == m_finishedWinnerNum) snprintf(msg, sizeof(msg), "Race winner %s", subjLab);
+            else                                snprintf(msg, sizeof(msg), "Finishing %s", subjLab);
+            break;
         case SHOT_FINAL_LAP: snprintf(msg, sizeof(msg), "Final lap %s", subjLab); break;
         case SHOT_PACE:      snprintf(msg, sizeof(msg), "Fast sector %s", subjLab); break;
         case SHOT_LAPPER:    snprintf(msg, sizeof(msg), "Lapping %s", subjLab); break;
@@ -375,7 +418,11 @@ void DirectorManager::emitCutEvent(int subject, int partner) {
     snprintf(key, sizeof(key), "%d:%d:%d", m_currentShotType, a, b);
     if (strcmp(key, m_lastCutKey) == 0) return;      // same shot/subjects as the previous cut
     strncpy_s(m_lastCutKey, sizeof(m_lastCutKey), key, _TRUNCATE);
-    PluginData::getInstance().addEventLogEntry(EventLogType::Director, msg);
+    // Tag the cut with its subject so the row is click-to-spectate like any other: a
+    // broadcaster reading the feed most often wants to jump to whoever the director just
+    // cut to. (State-change lines from logDirectorEvent stay session-level — "director
+    // enabled" is about no one.)
+    PluginData::getInstance().addEventLogEntry(EventLogType::Director, msg, nullptr, -1, subject);
 }
 
 void DirectorManager::armHold(int shotType, long long now, long long lingerMs) {

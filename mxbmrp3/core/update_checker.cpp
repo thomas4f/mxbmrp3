@@ -57,7 +57,7 @@ void UpdateChecker::shutdown() {
     // worker is joined, so nothing can fire it now - and a future late
     // checkForUpdates() must not call into destroyed HUDs.
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        MutexLock lock(m_mutex);
         m_completionCallback = nullptr;
     }
 }
@@ -67,7 +67,7 @@ void UpdateChecker::closeHttpHandles() {
     HINTERNET c;
     HINTERNET s;
     {
-        std::lock_guard<std::mutex> lock(m_httpHandleMutex);
+        MutexLock lock(m_httpHandleMutex);
         r = static_cast<HINTERNET>(m_hHttpRequest);  m_hHttpRequest = nullptr;
         c = static_cast<HINTERNET>(m_hHttpConnect);   m_hHttpConnect = nullptr;
         s = static_cast<HINTERNET>(m_hHttpSession);   m_hHttpSession = nullptr;
@@ -110,47 +110,47 @@ bool UpdateChecker::isOnCooldown() const {
 }
 
 std::string UpdateChecker::getLatestVersion() const {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    MutexLock lock(m_mutex);
     return m_latestVersion;
 }
 
 std::string UpdateChecker::getReleaseNotes() const {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    MutexLock lock(m_mutex);
     return m_releaseNotes;
 }
 
 std::string UpdateChecker::getDownloadUrl() const {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    MutexLock lock(m_mutex);
     return m_downloadUrl;
 }
 
 size_t UpdateChecker::getDownloadSize() const {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    MutexLock lock(m_mutex);
     return m_downloadSize;
 }
 
 std::string UpdateChecker::getAssetName() const {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    MutexLock lock(m_mutex);
     return m_assetName;
 }
 
 std::string UpdateChecker::getChecksumHash() const {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    MutexLock lock(m_mutex);
     return m_checksumHash;
 }
 
 void UpdateChecker::setDismissedVersion(const std::string& version) {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    MutexLock lock(m_mutex);
     m_dismissedVersion = version;
 }
 
 std::string UpdateChecker::getDismissedVersion() const {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    MutexLock lock(m_mutex);
     return m_dismissedVersion;
 }
 
 void UpdateChecker::setChannel(UpdateChannel channel) {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    MutexLock lock(m_mutex);
     UpdateChannel old = m_channel.exchange(channel);
     if (old != channel) {
         m_dismissedVersion.clear();  // Clear stale dismissal from other channel
@@ -158,7 +158,7 @@ void UpdateChecker::setChannel(UpdateChannel channel) {
 }
 
 bool UpdateChecker::isLatestPrerelease() const {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    MutexLock lock(m_mutex);
     return m_latestIsPrerelease;
 }
 
@@ -166,13 +166,13 @@ bool UpdateChecker::shouldShowUpdateNotification() const {
     if (m_status != Status::UPDATE_AVAILABLE) {
         return false;
     }
-    std::lock_guard<std::mutex> lock(m_mutex);
+    MutexLock lock(m_mutex);
     // Show notification if no version dismissed, or if latest version differs from dismissed
     return m_dismissedVersion.empty() || m_latestVersion != m_dismissedVersion;
 }
 
 void UpdateChecker::setCompletionCallback(std::function<void()> callback) {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    MutexLock lock(m_mutex);
     m_completionCallback = callback;
 }
 
@@ -198,7 +198,7 @@ void UpdateChecker::workerThread() {
 
         if (success) {
             {
-                std::lock_guard<std::mutex> lock(m_mutex);
+                MutexLock lock(m_mutex);
                 m_latestVersion = latestVersion;
             }
 
@@ -227,7 +227,7 @@ void UpdateChecker::workerThread() {
         // Call completion callback if set
         std::function<void()> callback;
         {
-            std::lock_guard<std::mutex> lock(m_mutex);
+            MutexLock lock(m_mutex);
             callback = m_completionCallback;
         }
         if (callback) {
@@ -359,7 +359,7 @@ bool UpdateChecker::fetchLatestRelease(std::string& outVersion, std::string& out
     // Handle creation above is non-blocking, so publishing after all three
     // are ready means shutdown can always close the complete set.
     {
-        std::lock_guard<std::mutex> lock(m_httpHandleMutex);
+        MutexLock lock(m_httpHandleMutex);
         m_hHttpSession = hSession;
         m_hHttpConnect = hConnect;
         m_hHttpRequest = hRequest;
@@ -527,7 +527,7 @@ bool UpdateChecker::fetchLatestRelease(std::string& outVersion, std::string& out
 
         // Store the additional data under mutex
         {
-            std::lock_guard<std::mutex> lock(m_mutex);
+            MutexLock lock(m_mutex);
             m_releaseNotes = releaseNotes;
             m_downloadUrl = downloadUrl;
             m_assetName = assetName;

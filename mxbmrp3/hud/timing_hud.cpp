@@ -621,7 +621,12 @@ void TimingHud::rebuildRenderData() {
                 PluginUtils::formatLapTime(refTime, out.value, sizeof(out.value));
                 out.isReference = true;
             } else {
-                const char* missing = (type == GAP_TO_RECORD) ? Placeholders::NOT_AVAILABLE : Placeholders::GENERIC;
+                // "N/A" (not "-") when the comparison genuinely doesn't apply: no record
+                // fetched, or a player-scoped reference while spectating someone else.
+                // "-" stays for a reference that simply has no time YET this session.
+                const bool notApplicable = (type == GAP_TO_RECORD) ||
+                                           !comparisonAppliesToDisplayRider(type);
+                const char* missing = notApplicable ? Placeholders::NOT_AVAILABLE : Placeholders::GENERIC;
                 strcpy_s(out.value, sizeof(out.value), missing);
             }
         }

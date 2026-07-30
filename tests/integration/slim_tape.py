@@ -22,7 +22,10 @@
 #   full   verbatim copy (drops nothing).
 # Gzip the output before committing to tests/integration/tests/fixtures/.
 # ============================================================================
-import sys, struct, argparse, collections
+import argparse
+import collections
+import struct
+import sys
 
 NAMES = {1:'Startup',2:'Shutdown',3:'EventInit',4:'EventDeinit',5:'RunInit',
 6:'RunDeinit',7:'RunStart',8:'RunStop',9:'RunLap',10:'RunSplit',11:'RunTelemetry',

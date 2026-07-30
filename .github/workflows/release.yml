@@ -1,20 +1,34 @@
 # ============================================================================
 # Release build (Windows / MSVC).  *** validate with a dry run before first real use ***
 #
-# Automates make_release.bat on a GitHub-hosted Windows runner (windows-latest
-# ships Visual Studio 2022 with the v143 C++ toolset): builds all three games and
-# packages the zip + NSIS installer + debug symbols.
+# Automates make_release.bat on a GitHub-hosted Windows runner (pinned to
+# windows-2022 for Visual Studio 2022 / the v143 toolset — see build-release's
+# runs-on): builds all three games and packages the zip + NSIS installer + debug
+# symbols.
 #
-# Every path runs the full test matrix first (the `tests` job below calls tests.yml),
-# and build-release `needs` it — so a Release can NEVER be cut from a commit whose
-# tests are red. The existence of a release IS the "tests passed" signal.
+# A REAL release runs the full test matrix first (the `tests` job below calls
+# tests.yml) and build-release is gated on it — so a Release can NEVER be cut from
+# a commit whose tests are red. The existence of a release IS the "tests passed"
+# signal, and since tests.yml has no push trigger, this gate is the only thing
+# standing between an untested commit and a published Release. Don't loosen it.
+# A DRY RUN skips the tests (see the `tests` job's comment) — it validates the
+# build and packaging path, which is the only thing a dry run is for.
+#
+# DON'T USE THIS TO CHECK WHETHER A BRANCH IS GREEN. Run the `tests` workflow
+# directly — same coverage, none of the Windows runner (billed at 2x on the
+# metered private repo). `tests` alone is ~19 billed Linux minutes, and the local
+# `ctest` suite is free and covers everything except the CI Chromium, MSVC and
+# packaging.
+# This workflow is for validating the RELEASE PATH, which is worth doing twice:
+# once as a dry run, once for real.
 #
 # TWO MODES — one entry point, the button (there is NO tag-push trigger; the tag is
 # an OUTPUT of releasing, not a precondition, so it can never drift from resource.h):
 #   • DRY RUN  — "Run workflow" (workflow_dispatch) with "Create draft release"
-#                OFF. Runs tests, builds, packages, uploads the zip + installer +
-#                symbols as workflow ARTIFACTS. No Release, no tag. Validate here.
-#   • RELEASE  — "Run workflow" with "Create draft release" ON. Same as above PLUS
+#                OFF. SKIPS the tests; builds, packages, uploads the zip +
+#                installer + symbols as workflow ARTIFACTS. No Release, no tag.
+#   • RELEASE  — "Run workflow" with "Create draft release" ON. Runs the full test
+#                matrix, then everything above, PLUS
 #                it auto-creates the vX.Y.Z tag (derived from resource.h) at the
 #                dispatched commit and opens a DRAFT Release with every asset
 #                attached. You review and hit Publish.
@@ -50,24 +64,47 @@ concurrency:
 
 jobs:
   # Pre-release gate: the full test matrix (unit + Wine integration + web overlay)
-  # on this exact commit, via the reusable tests workflow. build-release needs it,
-  # so nothing ships from a red commit.
+  # on this exact commit, via the reusable tests workflow. A REAL release cannot be
+  # cut from a red commit — build-release's `if:` below enforces that.
+  #
+  # DRY RUNS SKIP IT (~19 billed Linux minutes saved per run). A dry run exists to
+  # validate the BUILD AND PACKAGING path, not the tests: you get there by running
+  # the `tests` workflow directly first, which is cheaper and is what you should be
+  # doing to check a branch anyway. Skipping here only removes a duplicate.
   tests:
+    if: inputs.release
     uses: ./.github/workflows/tests.yml
     with:
       full: true
 
   build-release:
     needs: tests
-    runs-on: windows-latest
+    # `needs: tests` alone would skip this whenever tests is skipped, so the
+    # condition has to be explicit — and it is written to FAIL CLOSED. Read it as:
+    # run only if the tests job passed, or was deliberately not run (dry run).
+    # A tests result of 'failure' makes this false, so a real release still cannot
+    # be built from a red commit; that is the invariant this file exists to hold.
+    if: ${{ !cancelled() && (needs.tests.result == 'success' || needs.tests.result == 'skipped') }}
+    # PINNED, not `windows-latest`. GitHub rolled that label from Server 2022 to
+    # Server 2025, which ships Visual Studio 2026 and NO VS 2022 — the configure
+    # step died on "Generator Visual Studio 17 2022 could not find any instance of
+    # Visual Studio", one dry run after the previous release had built fine on the
+    # same line of YAML. The image label is part of the build definition here: this
+    # job produces the DLL players inject into their game, statically linked (/MT),
+    # so the CRT ships INSIDE it and a silent compiler roll is a silent change to
+    # what users run. Pin it, and move to a newer toolset deliberately (bump this,
+    # the generator below, and CMakePresets.json together, then test in-game).
+    # windows-2022 is GA; when GitHub retires it this fails loudly, which is the
+    # point.
+    runs-on: windows-2022
     timeout-minutes: 40
     # NOTE: the two analytics secrets are scoped to the ONE build step that needs
     # them (see "Build All-Release") rather than job-level env — job-level env is
     # visible to every step, including the third-party actions below (setup-msbuild,
-    # nsis-install, action-gh-release), which would make a hijacked action tag an
-    # exfiltration path. For the same reason those three are pinned to full commit
-    # SHAs (the trailing comment records the tag each SHA was resolved from — when
-    # bumping, resolve the new tag's SHA and update both).
+    # action-gh-release), which would make a hijacked action tag an exfiltration
+    # path. For the same reason those two are pinned to full commit SHAs (the
+    # trailing comment records the tag each SHA was resolved from — when bumping,
+    # resolve the new tag's SHA and update both).
     steps:
       - uses: actions/checkout@v7
         with:
@@ -79,20 +116,46 @@ jobs:
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@30375c66a4eea26614e0d39710365f22f8b0af57  # v3.0.0
 
-      # mxbmrp3.nsi uses `Target AMD64-Unicode` to emit a 64-bit installer — a
-      # directive only the negrutiu NSIS fork (https://github.com/negrutiu/nsis)
-      # supports. The official NSIS that `choco install nsis` provides rejects it
-      # (and choco didn't put makensis on PATH either), which is why the previous
-      # run failed with "makensis is not recognized". Use the fork's first-party
-      # installer action: it installs the negrutiu distro and registers makensis on
-      # PATH. The default x86 compiler still builds the AMD64 target (the 64-bit
-      # output is selected by the script directive, not the compiler arch), and it
-      # replaces the runner's preinstalled NSIS. Version pinned for reproducibility.
-      - name: Install NSIS (negrutiu 64-bit fork)
-        uses: negrutiu/nsis-install@9c575d44c2938a43e38a305caeb403de90303c60  # v3
-        with:
-          distro: negrutiu
-          version: v3.12.7487.317
+      # mxbmrp3.nsi uses `Target AMD64-Unicode` to emit a 64-bit installer. Contrary
+      # to what this step used to claim, that directive is NOT fork-only: official
+      # NSIS has shipped amd64/arm64 targets since 3.07, and the windows-2022 image
+      # preinstalls official NSIS 3.10. The earlier "makensis is not recognized"
+      # failure was only ever a PATH problem (choco doesn't register makensis); it
+      # was misdiagnosed as the directive being rejected, which is how we ended up
+      # building releases with a third-party NSIS fork.
+      #
+      # Staying on the STOCK stub is deliberate. AV vendors whitelist the official
+      # NSIS stub bytes across millions of installers, whereas an uncommon fork-built
+      # stub trips generic heuristics — mxbmrp3-Setup.exe collected NSIS-flavoured
+      # false positives on VirusTotal (e.g. Zillya's "Downloader.Minix", which is its
+      # generic label for NSIS stubs rather than a real family match). It also drops
+      # one third-party action from the supply chain (see the NOTE above).
+      #
+      # The preinstalled makensis is x86; the 64-bit output is selected by the script
+      # directive, not the compiler arch, so an x86 makensis builds the AMD64 target.
+      - name: Locate NSIS (official, preinstalled on the runner)
+        shell: pwsh
+        run: |
+          $exe = Get-Command makensis -ErrorAction SilentlyContinue
+          if (-not $exe) {
+            foreach ($p in @("${env:ProgramFiles(x86)}\NSIS\makensis.exe",
+                             "$env:ProgramFiles\NSIS\makensis.exe")) {
+              if (Test-Path $p) { $exe = Get-Item $p; break }
+            }
+          }
+          if (-not $exe) { Write-Error "makensis not found on the runner"; exit 1 }
+          $path = $exe.Path
+          # Below 3.07 there is no AMD64 target and NSIS would silently emit a 32-bit
+          # stub instead of failing, so assert the version rather than trusting the
+          # runner image. `makensis /VERSION` prints e.g. "v3.10".
+          $raw = (& $path /VERSION | Out-String).Trim()
+          if ($raw -notmatch 'v?(\d+)\.(\d+)') { Write-Error "cannot parse NSIS version: '$raw'"; exit 1 }
+          $maj = [int]$Matches[1]; $min = [int]$Matches[2]
+          if ($maj -lt 3 -or ($maj -eq 3 -and $min -lt 7)) {
+            Write-Error "NSIS $raw is too old for 'Target AMD64-Unicode' (need >= 3.07)"; exit 1
+          }
+          Write-Host "Using official NSIS $raw at $path"
+          Add-Content -Path $env:GITHUB_PATH -Value (Split-Path -Parent $path)
 
       - name: Derive version (resource.h + commit count)
         id: ver
@@ -124,7 +187,7 @@ jobs:
       - name: Build All-Release (MXB + GPB + KRP)
         shell: pwsh
         env:
-          # The two secret keys the vcxproj injects at build time — step-scoped so no
+          # The two secret keys mxbmrp3/CMakeLists.txt injects — step-scoped so no
           # other step (esp. third-party actions) sees them. Unset = keyless build,
           # which a Release config rejects unless MXBMRP3_ALLOW_NO_ANALYTICS is
           # defined. The GoatCounter *code* is public and hardcoded in
@@ -134,11 +197,87 @@ jobs:
         run: |
           # A Release (NDEBUG) build hard-errors unless the analytics keys are present.
           # They come from the two step-scoped env vars above (APTABASE_KEY /
-          # GOATCOUNTER_TOKEN), which the vcxproj injects as defines — so set those
+          # GOATCOUNTER_TOKEN), which mxbmrp3/CMakeLists.txt turns into defines — set
           # two as repo Actions Secrets before running this (a keyless build is not
           # wired). The GoatCounter site code is public and hardcoded in
           # plugin_constants.h, so it's not needed here.
-          msbuild mxbmrp3.sln /p:Configuration=All-Release /p:Platform=x64 /m /v:minimal
+          # Configure AND build in this step: the analytics keys above are
+          # step-scoped env, and CMake reads them at CONFIGURE time (MSBuild read
+          # them per build). A tree configured without them builds keyless, which
+          # plugin_constants.h then rejects with a #error.
+          cmake -S . -B build/msvc -G "Visual Studio 17 2022" -A x64
+          cmake --build build/msvc --config Release -- /m /v:minimal
+
+      # Smoke-load the freshly built MSVC artifacts. The pre-release test gate
+      # exercises the mingw TEST build under Wine — the MSVC .dlo users actually
+      # run was never EXECUTED before shipping. LoadLibrary catches a corrupt or
+      # mislinked artifact (broken DllMain/static-init, missing link dependency);
+      # resolving the PiBoSo entry points catches an export-surface regression;
+      # calling the constant getters (annotated api-guard-exempt — no plugin
+      # state, cannot throw) verifies each DLL identifies as the right game.
+      - name: Smoke-load built DLLs (LoadLibrary + export probe)
+        shell: pwsh
+        run: |
+          $src = '
+          using System;
+          using System.Runtime.InteropServices;
+          public static class K32 {
+              [DllImport("kernel32", SetLastError=true, CharSet=CharSet.Ansi, BestFitMapping=false)]
+              public static extern IntPtr LoadLibraryA(string path);
+              [DllImport("kernel32", CharSet=CharSet.Ansi, ExactSpelling=true)]
+              public static extern IntPtr GetProcAddress(IntPtr h, string name);
+          }
+          public delegate IntPtr StrFn();
+          public delegate int IntFn();
+          '
+          Add-Type -TypeDefinition $src
+          $targets = @(
+            @{ path = "build\MXB-Release\mxbmrp3.dlo";     modId = "mxbikes" },
+            @{ path = "build\GPB-Release\mxbmrp3_gpb.dlo"; modId = "gpbikes" },
+            @{ path = "build\KRP-Release\mxbmrp3_krp.dlo"; modId = "krp" }
+          )
+          $exports = "GetModID","GetModDataVersion","GetInterfaceVersion","Startup","Shutdown","EventInit","EventDeinit"
+          foreach ($t in $targets) {
+            $abs = (Resolve-Path $t.path).Path
+            $h = [K32]::LoadLibraryA($abs)
+            if ($h -eq [IntPtr]::Zero) {
+              Write-Error "LoadLibrary FAILED for $($t.path) (Win32 error $([Runtime.InteropServices.Marshal]::GetLastWin32Error()))"; exit 1
+            }
+            foreach ($e in $exports) {
+              if ([K32]::GetProcAddress($h, $e) -eq [IntPtr]::Zero) {
+                Write-Error "$($t.path): export '$e' not found"; exit 1
+              }
+            }
+            $modFn = [Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer([K32]::GetProcAddress($h, "GetModID"), [StrFn])
+            $modId = [Runtime.InteropServices.Marshal]::PtrToStringAnsi($modFn.Invoke())
+            if ($modId -ne $t.modId) {
+              Write-Error "$($t.path): GetModID returned '$modId', expected '$($t.modId)'"; exit 1
+            }
+            $ifFn = [Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer([K32]::GetProcAddress($h, "GetInterfaceVersion"), [IntFn])
+            # The test hooks must NOT be here. core/test_hooks.cpp is already
+            # double-gated (mxbmrp3/CMakeLists.txt drops the TU from every
+            # shipping target, and the file's body is #if MXBMRP3_TEST_BUILD),
+            # but both gates are compile-time and neither is checked against the
+            # ARTIFACT. This asserts the property on the actual .dlo users get:
+            # a shipping DLL must not expose an internal-state backdoor.
+            #
+            # Probing three rather than one: a regression that re-adds the TU
+            # brings back all 130 of them, and naming several makes the check
+            # survive any single hook being renamed.
+            #
+            # Every name here is verified to EXIST in the test build. That is the
+            # load-bearing part of a negative assertion: a probe for a symbol
+            # that was deleted (MXBMRP3_Test_AllocCount, removed with the perf
+            # probes in caaf0b5b) is absent from every DLL forever, so it passes
+            # while testing nothing. If you edit this list, confirm the name
+            # still appears in `nm --defined-only` on the test DLL.
+            foreach ($th in "MXBMRP3_Test_CapturedSections","MXBMRP3_Test_ResolveFrame","MXBMRP3_Test_BenchmarkWidget") {
+              if ([K32]::GetProcAddress($h, $th) -ne [IntPtr]::Zero) {
+                Write-Error "$($t.path): TEST HOOK '$th' is exported from a shipping DLL"; exit 1
+              }
+            }
+            Write-Host ("ok  {0,-36} modId={1,-8} interfaceVersion={2}  (no test hooks)" -f $t.path, $modId, $ifFn.Invoke())
+          }
 
       - name: Stage + package (zip)
         id: pkg
@@ -168,6 +307,35 @@ jobs:
           Pop-Location
           if ($rc -ne 0) { Write-Error "7z zip packaging failed (exit $rc)"; exit $rc }
           "outdir=$out" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      # The staging Copy-Items above fail loudly on a missing FILE, but a path
+      # bug that drops a whole subtree (e.g. a web/ subfolder not making it into
+      # the recursive copy) would zip "successfully" and ship broken. Assert the
+      # archive actually contains the release manifest: all three DLLs, the docs,
+      # and sentinel files from the data subtrees users depend on.
+      - name: Verify zip contents
+        shell: pwsh
+        run: |
+          $zip = Join-Path "${{ steps.pkg.outputs.outdir }}" "mxbmrp3.zip"
+          $listing = & 7z l $zip | Out-String
+          $required = @(
+            "mxbmrp3.dlo", "mxbmrp3_gpb.dlo", "mxbmrp3_krp.dlo",
+            "README.txt", "LICENSE", "THIRD_PARTY_LICENSES.md",
+            "mxbmrp3_data\web\index.html", "mxbmrp3_data\web\sw.js",
+            "mxbmrp3_data\web\js\overlay-render.js",
+            "mxbmrp3_data\fonts", "mxbmrp3_data\icons"
+          )
+          # Match either path separator: the zip stores forward slashes; 7-Zip's
+          # listing usually shows backslashes on Windows, but don't bet the
+          # release on which one this build prints.
+          $missing = $required | Where-Object {
+            $pat = [regex]::Escape($_) -replace '\\\\', '[\\/]'
+            $listing -notmatch $pat
+          }
+          if ($missing) {
+            Write-Error ("zip is missing required entries:`n  " + ($missing -join "`n  ")); exit 1
+          }
+          Write-Host "zip manifest ok ($($required.Count) required entries present)"
 
       - name: Build NSIS installer
         shell: pwsh
@@ -231,13 +399,93 @@ jobs:
           path: ${{ steps.pkg.outputs.outdir }}/mxbmrp3-symbols-v${{ steps.ver.outputs.version }}.zip
           if-no-files-found: error
 
+      # The Release body IS the CHANGELOG.md section for this version — one text,
+      # written once, for players. It replaced a hardcoded body plus
+      # generate_release_notes, which on the PUBLIC repo listed a single squashed
+      # "mirror" commit (see mirror.yml) and so said nothing useful.
+      #
+      # A dry run only WARNS on a missing section; a real release FAILS. That is
+      # what keeps the changelog from rotting: you cannot ship a version that
+      # isn't written up, and you find out at the dry run, not at the release.
+      #
+      # Parsed inline rather than with a changelog-reader Action: the format is a
+      # fixed heading and the parse is ten lines, so a third-party action here
+      # would buy nothing and put an outside dependency on the path that composes
+      # what users read on the download page. Values arrive as env vars, never as
+      # ${{ }} interpolated into the script body — the same reason.
+      - name: Build release notes from CHANGELOG.md
+        shell: python
+        env:
+          TAG: ${{ steps.ver.outputs.tag }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          NOTES: ${{ runner.temp }}/release_notes.md
+          STRICT: ${{ inputs.release }}
+        run: |
+          import os
+          import re
+          import sys
+
+          # This runs on WINDOWS, where Python's stdout defaults to the locale
+          # codepage (cp1252), not UTF-8. The notes are written to NOTES with an
+          # explicit encoding, so the file was never at risk — but the print()
+          # at the end that echoes them into the job log died on the first
+          # character cp1252 has no mapping for. It got as far as the release
+          # body's own leading "✅" and threw UnicodeEncodeError, failing
+          # the step after a clean 15-minute build. Reconfigure once here so any
+          # future emoji, arrow or curly quote in CHANGELOG.md is a display
+          # detail rather than a failed release.
+          sys.stdout.reconfigure(encoding="utf-8")
+
+          ver = os.environ["TAG"].lstrip("v")
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+          # Keep a Changelog heading: `## [1.27.8] - 2026-07-26`. The body runs to
+          # the next `## `, or — for the OLDEST entry, which has no next version —
+          # to the trailing `[x.y.z]: <url>` link-reference block, which would
+          # otherwise be pasted into the release notes verbatim.
+          m = re.search(r"^## \[" + re.escape(ver) + r"\][^\n]*\n"
+                        r"(.*?)(?=^## |^\[[^\]]+\]:|\Z)", text, re.S | re.M)
+          notes = m.group(1).strip() if m else ""
+          if not notes:
+              why = ("CHANGELOG.md has no entries under '## [%s]'. Move the "
+                     "[Unreleased] section under the new version heading." % ver)
+              if os.environ["STRICT"] == "true":
+                  sys.exit("::error::" + why)
+              print("::warning::" + why + " (dry run — not blocking)")
+              notes = "_No changelog section for %s._" % ver
+
+          # Built line-by-line rather than as one triple-quoted literal: YAML
+          # block scalars strip the block's own indentation, so a multi-line
+          # string here reads differently in the file than Python receives it.
+          body = "\n".join([
+              notes,
+              "",
+              "### Downloads",
+              "",
+              "| File | For |",
+              "|------|-----|",
+              "| `mxbmrp3-Setup.exe` | Guided installer (recommended) |",
+              "| `mxbmrp3.zip` | Manual install |",
+              "| `mxbmrp3.cdx.json` | CycloneDX SBOM — third-party components "
+              "inside the DLL |",
+              "",
+              "✅ Built from `%s` with the full test suite passing — "
+              "[run log](%s)." % (os.environ["SHA"], os.environ["RUN_URL"]),
+              "",
+          ])
+
+          with open(os.environ["NOTES"], "w", encoding="utf-8") as fh:
+              fh.write(body)
+          print(body)
+
       # Cut a DRAFT Release when the button was run with "Create draft release" ON.
       # A plain dry-run dispatch stops at the artifacts above. action-gh-release
       # creates the vX.Y.Z tag (from resource.h) at this commit, since a Release must
       # be tag-backed — so the tag is a byproduct of releasing, never a manual step.
-      # draft:true means it waits for you to Publish; the body states the tests passed
-      # and lists every asset, and fail_on_unmatched_files means the job errors rather
-      # than shipping a release missing a file.
+      # draft:true means it waits for you to Publish; the body comes from the step
+      # above (changelog section + assets + build provenance), and
+      # fail_on_unmatched_files means the job errors rather than shipping a
+      # release missing a file.
       - name: Create draft GitHub Release
         if: inputs.release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3.0.2
@@ -245,19 +493,13 @@ jobs:
           name: MXBMRP3 ${{ steps.ver.outputs.tag }}
           tag_name: ${{ steps.ver.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          generate_release_notes: true
+          # OFF deliberately: on the public repo every release is one squashed
+          # mirror commit, so the auto-generated list is a single meaningless
+          # line. body_path carries the human-written notes instead.
+          generate_release_notes: false
           draft: true          # opens as a draft so you review before publishing
           fail_on_unmatched_files: true
-          body: |
-            ### Downloads
-
-            | File | For |
-            |------|-----|
-            | `mxbmrp3-Setup.exe` | Guided installer (recommended) |
-            | `mxbmrp3.zip` | Manual install |
-            | `mxbmrp3.cdx.json` | CycloneDX SBOM — third-party components inside the DLL |
-
-            ✅ Built from `${{ github.sha }}` with the full test suite passing — [run log](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
+          body_path: ${{ runner.temp }}/release_notes.md
           # Debug symbols are deliberately NOT attached to the public Release — they
           # ship only as the "mxbmrp3-symbols-*" workflow artifact (see the upload
           # step above) for crash triage. Attaching the symbols .zip here put a

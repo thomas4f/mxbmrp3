@@ -43,7 +43,7 @@ void RumbleHud::update() {
     // effect values and their history deques are all telemetry-driven, so the
     // graph output is identical between telemetry ticks — rebuilding every render
     // frame (~2,600 line-segment quads with all channels on) wasted most of the
-    // work at 240fps. Same fix TelemetryHud received for the identical pattern.
+    // work at 480fps. Same fix TelemetryHud received for the identical pattern.
     if (isDataDirty() || isLayoutDirty()) {
         rebuildRenderData();
     }
@@ -124,21 +124,8 @@ void RumbleHud::updateMaxTracking(int barIndex, float currentValue) {
     // Use small threshold to avoid jitter from noise
     constexpr float THRESHOLD = 0.02f;
 
-    if (currentValue > m_markerValues[barIndex] + THRESHOLD) {
-        // Value exceeds marker - update marker position, hide it
-        m_markerValues[barIndex] = currentValue;
-        m_maxFramesRemaining[barIndex] = 0;
-    } else if (currentValue < m_markerValues[barIndex] - THRESHOLD && m_maxFramesRemaining[barIndex] == 0) {
-        // Value dropped below marker - start showing marker (linger at peak)
-        m_maxFramesRemaining[barIndex] = m_maxMarkerLingerFrames;
-    } else if (m_maxFramesRemaining[barIndex] > 0) {
-        // Marker is showing - countdown
-        m_maxFramesRemaining[barIndex]--;
-        // When linger ends, reset marker to 0 so it disappears
-        if (m_maxFramesRemaining[barIndex] == 0) {
-            m_markerValues[barIndex] = 0.0f;
-        }
-    }
+    PeakMarker::advanceActive(m_markerValues[barIndex], m_maxFramesRemaining[barIndex],
+                              currentValue, THRESHOLD, m_maxMarkerLingerFrames);
 }
 
 void RumbleHud::addMaxMarker(float x, float y, float barWidth, float barHeight, float maxValue) {

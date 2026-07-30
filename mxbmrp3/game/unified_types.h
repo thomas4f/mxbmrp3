@@ -209,102 +209,102 @@ struct SessionData {
 };
 
 // Real-time telemetry data (from RunTelemetry callback)
+//
+// Defaults are declared per-field rather than via memset: the nested vehicle
+// structs give TelemetryData a non-trivial default constructor, so memset over
+// it is not well-defined (and -Wclass-memaccess flags it). Value-init here is
+// equivalent code after optimization, and each field's default is visible at
+// the field.
+//
+// CONSEQUENCE: padding bytes are now indeterminate, so DO NOT memcmp() two of
+// these. That is not hypothetical — GamepadWidget uses exactly that trick on
+// XInputData as a cheap change signal (see the note at gamepad_widget.cpp), so
+// "cheap telemetry change detection" is a natural thing to reach for here next.
+// Compare the fields you care about instead.
 struct TelemetryData {
     // Common fields (all games)
-    int rpm;
-    int gear;                       // 0 = neutral, -1 = reverse (cars)
-    float speedometer;              // m/s
-    float fuel;                     // liters
-    float throttle;                 // 0-1
-    float clutch;                   // 0-1 (0 = engaged)
+    int rpm = 0;
+    int gear = 0;                   // 0 = neutral, -1 = reverse (cars)
+    float speedometer = 0;          // m/s
+    float fuel = 0;                 // liters
+    float throttle = 0;             // 0-1
+    float clutch = 0;               // 0-1 (0 = engaged)
 
     // Position and orientation
-    float posX, posY, posZ;         // world position (meters)
-    float velocityX, velocityY, velocityZ;  // m/s
-    float accelX, accelY, accelZ;   // G-forces
-    float rotMatrix[3][3];
-    float yaw, pitch, roll;         // degrees
-    float yawVel, pitchVel, rollVel; // degrees/second
+    float posX = 0, posY = 0, posZ = 0;                 // world position (meters)
+    float velocityX = 0, velocityY = 0, velocityZ = 0;  // m/s
+    float accelX = 0, accelY = 0, accelZ = 0;           // G-forces
+    float rotMatrix[3][3] = {};
+    float yaw = 0, pitch = 0, roll = 0;                 // degrees
+    float yawVel = 0, pitchVel = 0, rollVel = 0;        // degrees/second
 
     // Track position
-    float trackPos;                 // 0-1 along centerline
-    float onTrackTime;              // seconds
-    int crashed;                    // 1 = crashed/detached
+    float trackPos = 0;             // 0-1 along centerline
+    float onTrackTime = 0;          // seconds
+    int crashed = 0;                // 1 = crashed/detached
 
     // Input state
-    float steer;                    // degrees (bikes) or -1 to 1 (cars/karts)
-    float brake;                    // 0-1 (combined for cars, front for bikes)
+    float steer = 0;                // degrees (bikes) or -1 to 1 (cars/karts)
+    float brake = 0;                // 0-1 (combined for cars, front for bikes)
 
     // Temperatures
-    float engineTemperature;        // Celsius
-    float waterTemperature;         // Celsius
+    float engineTemperature = 0;    // Celsius
+    float waterTemperature = 0;     // Celsius
 
     // Wheel data (variable count by vehicle type)
-    int wheelCount;
-    float wheelSpeed[MAX_WHEELS];   // m/s
-    int wheelMaterial[MAX_WHEELS];  // 0 = not in contact
+    int wheelCount = 2;
+    float wheelSpeed[MAX_WHEELS] = {};   // m/s
+    int wheelMaterial[MAX_WHEELS] = {};  // 0 = not in contact
 
-    VehicleType vehicleType;
+    VehicleType vehicleType = VehicleType::Bike;
 
     // ---- Vehicle-type specific fields ----
 
     // Bike-specific (MX Bikes, GP Bikes)
     struct BikeData {
-        float frontBrake;           // 0-1
-        float rearBrake;            // 0-1
-        float suspLength[2];        // front, rear (meters)
-        float suspVelocity[2];      // front, rear (m/s)
-        float brakePressure[2];     // front, rear (kPa)
-        float steerTorque;          // Nm
-        float pitchRel;             // degrees relative to ground
-        float rollRel;              // degrees relative to ground
-        float riderLRLean;          // -1 to 1 (GP Bikes only)
-        int pitLimiter;             // GP Bikes only
+        float frontBrake = 0;       // 0-1
+        float rearBrake = 0;        // 0-1
+        float suspLength[2] = {};   // front, rear (meters)
+        float suspVelocity[2] = {}; // front, rear (m/s)
+        float brakePressure[2] = {};// front, rear (kPa)
+        float steerTorque = 0;      // Nm
+        float pitchRel = 0;         // degrees relative to ground
+        float rollRel = 0;          // degrees relative to ground
+        float riderLRLean = 0;      // -1 to 1 (GP Bikes only)
+        int pitLimiter = 0;         // GP Bikes only
 
         // GP Bikes ECU
-        int ecuMode;                // 0=engine map, 1=TC, 2=engine brake
-        char engineMapping[4];
-        int tractionControl;
-        int engineBraking;
-        int antiWheeling;
-        int ecuState;               // bitfield: 1=TC, 2=EB, 4=AW active
+        int ecuMode = 0;            // 0=engine map, 1=TC, 2=engine brake
+        char engineMapping[4] = {};
+        int tractionControl = 0;
+        int engineBraking = 0;
+        int antiWheeling = 0;
+        int ecuState = 0;           // bitfield: 1=TC, 2=EB, 4=AW active
 
         // GP Bikes tread temps [wheel][section: left/mid/right]
-        float treadTemperature[2][3];
-
-        BikeData() { memset(this, 0, sizeof(*this)); }
+        float treadTemperature[2][3] = {};
     } bike;
 
     // Car-specific (WRS)
     struct CarData {
-        float handbrake;            // 0-1
-        float turboPressure;        // bar
-        float oilPressure;          // bar
-        float brakeBias;            // 0-1 (1 = fully front)
-        float suspNormLength[MAX_WHEELS];  // normalized 0-1
-        float steerTorque;          // Nm
-        int pitLimiter;
-
-        CarData() { memset(this, 0, sizeof(*this)); }
+        float handbrake = 0;        // 0-1
+        float turboPressure = 0;    // bar
+        float oilPressure = 0;      // bar
+        float brakeBias = 0;        // 0-1 (1 = fully front)
+        float suspNormLength[MAX_WHEELS] = {};  // normalized 0-1
+        float steerTorque = 0;      // Nm
+        int pitLimiter = 0;
     } car;
 
     // Kart-specific (KRP)
     struct KartData {
-        float cylinderHeadTemp;     // Celsius
-        float frontBrakesInput;     // 0-1 (separate from rear)
-        float inputSteer;           // degrees
-        float inputThrottle;        // 0-1 (before processing)
-        float inputBrake;           // 0-1 (before processing)
-        float steerTorque;          // Nm
-
-        KartData() { memset(this, 0, sizeof(*this)); }
+        float cylinderHeadTemp = 0; // Celsius
+        float frontBrakesInput = 0; // 0-1 (separate from rear)
+        float inputSteer = 0;       // degrees
+        float inputThrottle = 0;    // 0-1 (before processing)
+        float inputBrake = 0;       // 0-1 (before processing)
+        float steerTorque = 0;      // Nm
     } kart;
-
-    TelemetryData() {
-        memset(this, 0, sizeof(*this));
-        vehicleType = VehicleType::Bike;
-        wheelCount = 2;
-    }
 };
 
 // Player lap data (from RunLap callback)

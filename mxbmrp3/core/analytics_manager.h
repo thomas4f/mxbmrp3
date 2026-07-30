@@ -16,6 +16,7 @@
 #include <atomic>
 #include <thread>
 #include <mutex>
+#include "thread_safety.h"
 #include <deque>
 #include <map>
 #include <vector>
@@ -62,6 +63,13 @@ public:
     void testSeedAndReportCrash(const std::string& markerPath,
                                 const std::string& fault, const std::string& code);  // never gated
     std::vector<std::string> testDrainPending();    // pop + return the queued event bodies
+    // Start the REAL custom-event worker thread (testPrime() deliberately doesn't:
+    // the wiring test wants the queue, not a thread). Capture mode keeps postSync()
+    // a no-op, so the thread just parks on its condvar — which is precisely the
+    // state shutdown()/~AnalyticsManager has to wake and JOIN. Without a live
+    // worker no test ever exercises that join. Returns true if one is running.
+    bool testStartEventWorker();
+    bool testEventWorkerRunning() const;
 #endif
 
 private:
@@ -187,15 +195,15 @@ private:
 
     // Live WinHTTP handles, published by postBeacon so shutdown() can cancel
     // the blocking send. void* to keep windows.h out of this header.
-    std::mutex m_handleMutex;
-    void* m_hSession;
-    void* m_hConnect;
-    void* m_hRequest;
+    Mutex m_handleMutex;
+    void* m_hSession MXB_GUARDED_BY(m_handleMutex);
+    void* m_hConnect MXB_GUARDED_BY(m_handleMutex);
+    void* m_hRequest MXB_GUARDED_BY(m_handleMutex);
 
     // Custom-event queue drained by m_eventWorker (started only when Aptabase is
     // active this launch). Each entry is a finished JSON body ready to POST.
-    std::deque<std::string> m_eventQueue;
-    std::mutex m_eventMutex;
+    std::deque<std::string> m_eventQueue MXB_GUARDED_BY(m_eventMutex);
+    Mutex m_eventMutex;
     std::condition_variable m_eventCv;
     std::thread m_eventWorker;
 };

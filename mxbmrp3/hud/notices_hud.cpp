@@ -150,21 +150,28 @@ void NoticesHud::update() {
     // Check hazard ahead status (poll cached query, filter by enabled notice types)
     {
         bool hazardAhead = false;
+        bool hazardIsWrongWay = false;
         bool stationaryEnabled = (m_enabledNotices & NOTICE_HAZARD_STATIONARY) != 0;
         bool wrongWayEnabled = (m_enabledNotices & NOTICE_HAZARD_WRONG_WAY) != 0;
         if (stationaryEnabled || wrongWayEnabled) {
             const auto& hazardRaceNums = pluginData.getHazardRaceNums();
             for (int raceNum : hazardRaceNums) {
                 HazardType type = pluginData.getRiderHazardType(raceNum);
-                if ((stationaryEnabled && type == HazardType::Stationary) ||
-                    (wrongWayEnabled && type == HazardType::WrongWay)) {
+                if (wrongWayEnabled && type == HazardType::WrongWay) {
+                    // Don't break: an oncoming rider outranks a stopped one for WORDING,
+                    // so once one is found it wins regardless of scan order.
                     hazardAhead = true;
+                    hazardIsWrongWay = true;
                     break;
+                }
+                if (stationaryEnabled && type == HazardType::Stationary) {
+                    hazardAhead = true;   // keep scanning in case a wrong-way rider follows
                 }
             }
         }
-        if (hazardAhead != m_bIsHazardAhead) {
+        if (hazardAhead != m_bIsHazardAhead || hazardIsWrongWay != m_bHazardIsWrongWay) {
             m_bIsHazardAhead = hazardAhead;
+            m_bHazardIsWrongWay = hazardIsWrongWay;
             setDataDirty();
         }
     }
@@ -459,7 +466,10 @@ void NoticesHud::rebuildRenderData() {
         noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::WARNING), m_fBackgroundOpacity);
         m_quads.push_back(noticeQuad);
 
-        addString("HAZARD AHEAD", noticeCenterX, noticeY, Justify::CENTER,
+        // Same slot, same WARNING colour — only the wording separates a rider coming at
+        // you from one stopped on the track, which call for opposite reactions.
+        addString(m_bHazardIsWrongWay ? "RIDER ONCOMING" : "HAZARD AHEAD",
+            noticeCenterX, noticeY, Justify::CENTER,
             this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::WARNING), dim.fontSizeLarge);
     }
     else if (showBlueFlag) {
@@ -627,6 +637,7 @@ void NoticesHud::resetToDefaults() {
     // Reset notice state
     m_bIsWrongWay = false;
     m_bIsHazardAhead = false;
+    m_bHazardIsWrongWay = false;
     m_bIsBlueFlagged = false;
     m_bShowOvertime = false;
     m_bOvertimeTriggered = false;

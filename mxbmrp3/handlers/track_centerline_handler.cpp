@@ -3,16 +3,13 @@
 // Processes track centerline data for map rendering
 // ============================================================================
 #include "track_centerline_handler.h"
-#include "../core/handler_singleton.h"
 #include "../core/hud_manager.h"
 #include "../core/plugin_data.h"
 #include "../diagnostics/logger.h"
 #include <vector>
 #include <cmath>
 
-DEFINE_HANDLER_SINGLETON(TrackCenterlineHandler)
-
-void TrackCenterlineHandler::handleTrackCenterline(int iNumSegments, Unified::TrackSegment* pasSegment, void* pRaceData) {
+void Handlers::handleTrackCenterline(int iNumSegments, Unified::TrackSegment* pasSegment, void* pRaceData) {
     // Safety: Validate track centerline data before processing. A null pointer,
     // non-positive count, or an implausibly large count (garbage / game-plugin
     // struct skew) would drive an out-of-bounds read of the unsized segment array

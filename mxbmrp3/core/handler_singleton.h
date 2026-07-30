@@ -6,7 +6,14 @@
 
 #include "../diagnostics/logger.h"
 
-// Macro to define singleton getInstance() for handler classes
+// Macro to define singleton getInstance() for handler classes.
+//
+// Only the two handlers that carry state across callbacks use this
+// (DrawHandler, SpectateHandler). The rest are stateless dispatch and are plain
+// free functions in `namespace Handlers` — a singleton around a class with no
+// members is pure ceremony, and each one was a global to reason about at
+// teardown. Don't reintroduce one for a handler that has nothing to remember.
+//
 // Usage: Place DEFINE_HANDLER_SINGLETON(HandlerClassName) in the .cpp file
 #define DEFINE_HANDLER_SINGLETON(ClassName) \
     ClassName& ClassName::getInstance() { \

@@ -294,40 +294,17 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
     // Appearance tab; persisted under [Display].)
     ctx.addSectionHeader("Preferences");
 
-    // PB scope toggle
+    // PB scope. Both arrows drive the same 2-state toggle.
     {
-        // Add tooltip row
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "general.pb_scope"
-        ));
-
-        ctx.parent->addString("PB Scope", ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
-
-        bool isCategory = UiConfig::getInstance().getPBScope() == PBScope::CATEGORY;
-        float currentX = ctx.controlX;
-
-        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::PB_SCOPE_TOGGLE, nullptr
-        ));
-        currentX += cw * 2;
-
-        std::string formattedValue = ctx.formatValue(isCategory ? "Category" : "Bike", VALUE_WIDTH, false);
-        ctx.parent->addString(formattedValue.c_str(), currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getPrimary(), ctx.fontSize);
-        currentX += cw * VALUE_WIDTH;
-
-        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::PB_SCOPE_TOGGLE, nullptr
-        ));
-
-        ctx.currentY += ctx.lineHeightNormal;
+        // "Class" is what the game calls this grouping (MX1, MX2, …). The plugin's
+        // internals follow the PiBoSo API, which names the same field m_szCategory —
+        // so PBScope::CATEGORY and the persisted pbScope=CATEGORY value keep the API
+        // spelling while every user-facing string says Class.
+        const bool isCategory = UiConfig::getInstance().getPBScope() == PBScope::CATEGORY;
+        ctx.addCycleControl("PB Scope", isCategory ? "Class" : "Bike", VALUE_WIDTH,
+            SettingsHud::ClickRegion::PB_SCOPE_TOGGLE,
+            SettingsHud::ClickRegion::PB_SCOPE_TOGGLE,
+            nullptr, true, false, "general.pb_scope");
     }
 
     // Controller selector (used by both Gamepad Widget and Rumble)
@@ -341,58 +318,32 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         bool isConnected = !isDisabled && XInputReader::getInstance().isControllerConnectedCached(controllerIdx);
         std::string controllerName = isDisabled ? "" : XInputReader::getControllerName(controllerIdx);
 
-        // Add tooltip row
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "general.controller"
-        ));
-
-        ctx.parent->addString("Controller", ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
-
-        // Controller uses standard value width (truncates long device names)
-        // Format: "1: Name.." = slot (1) + ": " (2) + name (up to 7) = 10 max
-        float currentX = ctx.controlX;
-        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::RUMBLE_CONTROLLER_DOWN, nullptr
-        ));
-        currentX += cw * 2;
-
-        // Show controller status
-        // Format: "Disabled" or "1: Name.." or "1: N/C"
+        // Value text: "Disabled", or "<slot>: <name>" / ": OK" / ": N/C".
+        // formatValue() pads and truncates to VALUE_WIDTH, so the name is cut to
+        // fit here only to keep the slot prefix readable.
         char displayStr[32];
         if (isDisabled) {
-            snprintf(displayStr, sizeof(displayStr), "%-*s", VALUE_WIDTH, "Disabled");
+            snprintf(displayStr, sizeof(displayStr), "%s", "Disabled");
         } else {
             int slot = controllerIdx + 1;
-            char tempStr[16];
             if (!controllerName.empty()) {
-                snprintf(tempStr, sizeof(tempStr), "%d: %.7s", slot, controllerName.c_str());
+                snprintf(displayStr, sizeof(displayStr), "%d: %.7s", slot, controllerName.c_str());
             } else if (isConnected) {
-                snprintf(tempStr, sizeof(tempStr), "%d: OK", slot);
+                snprintf(displayStr, sizeof(displayStr), "%d: OK", slot);
             } else {
-                snprintf(tempStr, sizeof(tempStr), "%d: N/C", slot);
+                snprintf(displayStr, sizeof(displayStr), "%d: N/C", slot);
             }
-            snprintf(displayStr, sizeof(displayStr), "%-*s", VALUE_WIDTH, tempStr);
         }
 
-        // Color: muted for disabled, positive for connected, muted for not connected
-        uint32_t textColor = isDisabled ? colorConfig.getMuted() :
-            (isConnected ? colorConfig.getPositive() : colorConfig.getMuted());
-        ctx.parent->addString(displayStr, currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), textColor, ctx.fontSize);
-        currentX += cw * VALUE_WIDTH;
+        // Three-state value colour (connected reads green), which the standard
+        // primary/muted pair can't express — hence the override.
+        const unsigned long valueColor = (!isDisabled && isConnected)
+            ? colorConfig.getPositive() : colorConfig.getMuted();
 
-        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::RUMBLE_CONTROLLER_UP, nullptr
-        ));
-
-        ctx.currentY += ctx.lineHeightNormal;
+        ctx.addCycleControl("Controller", displayStr, VALUE_WIDTH,
+            SettingsHud::ClickRegion::RUMBLE_CONTROLLER_DOWN,
+            SettingsHud::ClickRegion::RUMBLE_CONTROLLER_UP,
+            nullptr, true, false, "general.controller", valueColor);
     }
 
     // Auto-save toggle
@@ -427,75 +378,38 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         // can see the feature exists and what's needed to use it.
         const bool steamAvailable = SteamFriendsManager::isSteamRuntimeAvailable();
 
-        // Add tooltip row (kept even when disabled so hover still explains it)
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "general.steam_friends"
-        ));
-
-        ctx.parent->addString("Steam", ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), steamAvailable ? colorConfig.getSecondary() : colorConfig.getMuted(), ctx.fontSize);
-
-        float currentX = ctx.controlX;
-
-        if (!steamAvailable) {
-            // Disabled: muted arrows + "N/A", no click regions.
-            ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
-                Fonts::getNormal(), colorConfig.getMuted(), ctx.fontSize);
-            currentX += cw * 2;
-
-            std::string formattedSteam = ctx.formatValue("N/A", VALUE_WIDTH, false);
-            ctx.parent->addString(formattedSteam.c_str(), currentX, ctx.currentY, Justify::LEFT,
-                Fonts::getNormal(), colorConfig.getMuted(), ctx.fontSize);
-            currentX += cw * VALUE_WIDTH;
-
-            ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
-                Fonts::getNormal(), colorConfig.getMuted(), ctx.fontSize);
-        } else {
-            bool steamEnabled = SteamFriendsManager::getInstance().isEnabled();
-            SteamFriendsManager::Status steamStatus = SteamFriendsManager::getInstance().getStatus();
-
-            ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
-                Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-                SettingsHud::ClickRegion::STEAM_FRIENDS_TOGGLE, nullptr
-            ));
-            currentX += cw * 2;
-
-            // Off when disabled; On (green) when enabled and hooked; On (muted)
-            // when enabled but not yet hooked (Steam present but not ready).
-            const char* statusText;
-            uint32_t statusColor;
-            if (!steamEnabled) {
-                statusText = "Off";
-                statusColor = colorConfig.getMuted();
-            } else if (steamStatus == SteamFriendsManager::Status::CONNECTED) {
-                statusText = "On";
-                statusColor = colorConfig.getPositive();
-            } else {
-                statusText = "On";
-                statusColor = colorConfig.getMuted();
-            }
-
-            std::string formattedSteam = ctx.formatValue(statusText, VALUE_WIDTH, false);
-            ctx.parent->addString(formattedSteam.c_str(), currentX, ctx.currentY, Justify::LEFT,
-                Fonts::getNormal(), statusColor, ctx.fontSize);
-            currentX += cw * VALUE_WIDTH;
-
-            ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
-                Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-                SettingsHud::ClickRegion::STEAM_FRIENDS_TOGGLE, nullptr
-            ));
+        // Value: Off (muted) / On green when actually hooked / On muted when
+        // enabled but Steam isn't ready — a third state the primary/muted pair
+        // can't express, hence the colour override. When the runtime is absent
+        // entirely the row renders disabled (muted label + arrows, no click
+        // regions), which is what `enabled` already does.
+        const char* statusText = "N/A";
+        unsigned long valueColor = colorConfig.getMuted();
+        if (steamAvailable) {
+            const bool steamEnabled = SteamFriendsManager::getInstance().isEnabled();
+            const bool hooked =
+                SteamFriendsManager::getInstance().getStatus() == SteamFriendsManager::Status::CONNECTED;
+            statusText = steamEnabled ? "On" : "Off";
+            if (steamEnabled && hooked) valueColor = colorConfig.getPositive();
         }
 
-        ctx.currentY += ctx.lineHeightNormal;
+        ctx.addCycleControl("Steam", statusText, VALUE_WIDTH,
+            SettingsHud::ClickRegion::STEAM_FRIENDS_TOGGLE,
+            SettingsHud::ClickRegion::STEAM_FRIENDS_TOGGLE,
+            nullptr, steamAvailable, false, "general.steam_friends", valueColor);
     }
 #endif
 
 #if GAME_HAS_DISCORD
-    // Discord Rich Presence toggle
+    // Discord Rich Presence toggle.
+    //
+    // DELIBERATELY hand-rolled rather than ctx.addCycleControl: while CONNECTING
+    // the arrows must go muted and non-clickable (clicking mid-connect froze the
+    // game) while the LABEL stays secondary. The helper derives label, arrow
+    // colour and clickability from one `enabled` flag, so routing this through it
+    // would also mute the label — a visual change in a state no headless test can
+    // reach (Discord is compiled out of MXBMRP3_TEST_BUILD). Give the helper a
+    // separate label-enable if a second control ever needs this split.
     {
         // Add tooltip row
         ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
@@ -568,40 +482,14 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
     // Anonymous usage analytics toggle (opt-out). Simple On/Off; no connection
     // state — the beacon is a single fire-and-forget send at startup.
     {
-        // Add tooltip row
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "general.analytics"
-        ));
-
-        ctx.parent->addString("Analytics", ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
-
-        bool analyticsEnabled = AnalyticsManager::getInstance().isEnabled();
-        float currentX = ctx.controlX;
-
-        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::ANALYTICS_TOGGLE, nullptr
-        ));
-        currentX += cw * 2;
-
-        const char* statusText = analyticsEnabled ? "On" : "Off";
-        uint32_t statusColor = analyticsEnabled ? colorConfig.getPositive() : colorConfig.getMuted();
-        std::string formattedAnalytics = ctx.formatValue(statusText, VALUE_WIDTH, false);
-        ctx.parent->addString(formattedAnalytics.c_str(), currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), statusColor, ctx.fontSize);
-        currentX += cw * VALUE_WIDTH;
-
-        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::ANALYTICS_TOGGLE, nullptr
-        ));
-
-        ctx.currentY += ctx.lineHeightNormal;
+        // Green when on (the beacon is live), muted when off — a positive/muted
+        // pair rather than the standard primary/muted, hence the override.
+        const bool analyticsEnabled = AnalyticsManager::getInstance().isEnabled();
+        ctx.addCycleControl("Analytics", analyticsEnabled ? "On" : "Off", VALUE_WIDTH,
+            SettingsHud::ClickRegion::ANALYTICS_TOGGLE,
+            SettingsHud::ClickRegion::ANALYTICS_TOGGLE,
+            nullptr, true, false, "general.analytics",
+            analyticsEnabled ? colorConfig.getPositive() : colorConfig.getMuted());
     }
 #endif
 

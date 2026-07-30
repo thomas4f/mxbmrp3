@@ -235,8 +235,14 @@ void TimingHud::calculateAllGaps(int splitTime, int splitIndex, bool isLapComple
         }
 #endif
 
-        int gap = calculateGap(splitTime, previousAllTimeTime);
-        m_officialData.gapToAllTime.set(gap, previousAllTimeTime);
+        // Player-scoped: comparing a spectated rider's split to the local player's PB is
+        // meaningless, so clear rather than set (the row then renders "N/A" muted).
+        if (!comparisonAppliesToDisplayRider(GAP_TO_ALLTIME)) {
+            m_officialData.gapToAllTime.reset();
+        } else {
+            int gap = calculateGap(splitTime, previousAllTimeTime);
+            m_officialData.gapToAllTime.set(gap, previousAllTimeTime);
+        }
     }
 
     // === Gap to Record (fastest from server records) ===
@@ -265,8 +271,14 @@ void TimingHud::calculateAllGaps(int splitTime, int splitIndex, bool isLapComple
             }
         }
 
-        int gap = calculateGap(splitTime, recordTime);
-        m_officialData.gapToRecord.set(gap, recordTime);
+        // Player-scoped for the same reason as All-Time PB: records are fetched for the
+        // local player's own bike/class, not the spectated rider's.
+        if (!comparisonAppliesToDisplayRider(GAP_TO_RECORD)) {
+            m_officialData.gapToRecord.reset();
+        } else {
+            int gap = calculateGap(splitTime, recordTime);
+            m_officialData.gapToRecord.set(gap, recordTime);
+        }
     }
 #endif
 
@@ -375,9 +387,24 @@ int TimingHud::currentTargetSplit() const {
     return -1;
 }
 
+bool TimingHud::comparisonAppliesToDisplayRider(GapTypeFlags type) const {
+    if (!isPlayerScopedComparison(type)) return true;
+    const PluginData& pluginData = PluginData::getInstance();
+    const int displayRaceNum = pluginData.getDisplayRaceNum();
+    // Mirrors StatsHud's isSpectating: a negative display rider (no target yet) is the
+    // player's own panel, not a spectate.
+    return displayRaceNum < 0 || displayRaceNum == pluginData.getPlayerRaceNum();
+}
+
 // Whole-lap reference (target) time for a gap type (segment-agnostic; the render path handles
 // segment mode before calling). -1 when unavailable.
 int TimingHud::fullLapReferenceMs(GapTypeFlags type) const {
+    // A player-scoped reference has no meaning against a spectated rider. Suppressed here,
+    // at the reference source, so the test-visible passive-reference API can never report a
+    // number the panel isn't showing (the read/display split that produced the false
+    // all-time-PB notice — see PersonalBestUpdate in stats_manager.h).
+    if (!comparisonAppliesToDisplayRider(type)) return -1;
+
     const PluginData& pluginData = PluginData::getInstance();
     if (type == GAP_TO_PB) {
         const LapLogEntry* personalBest = pluginData.getBestLapEntry();
@@ -415,6 +442,7 @@ int TimingHud::fullLapReferenceMs(GapTypeFlags type) const {
 // sector being driven. Segment-agnostic. -1 when the reference lacks the needed sectors.
 int TimingHud::cumulativeReferenceMs(GapTypeFlags type, int targetSplit) const {
     if (targetSplit < 0) return fullLapReferenceMs(type);
+    if (!comparisonAppliesToDisplayRider(type)) return -1;   // same rule at the split entry point
     const PluginData& pluginData = PluginData::getInstance();
 
     // All-Time PB keeps its cumulative points pre-summed (cacheAllTimePB()).
@@ -428,7 +456,11 @@ int TimingHud::cumulativeReferenceMs(GapTypeFlags type, int targetSplit) const {
     }
 
     // Everything else exposes per-sector reference times; sum the first (targetSplit+1).
-    int s1 = -1, s2 = -1, s3 = -1;
+    // s3 is summed only under #if GAME_SECTOR_COUNT >= 4 (below), but it is
+    // assigned from every reference source; [[maybe_unused]] beats guarding
+    // five assignment sites.
+    int s1 = -1, s2 = -1;
+    [[maybe_unused]] int s3 = -1;
     switch (type) {
         case GAP_TO_PB: {
             const LapLogEntry* pb = pluginData.getBestLapEntry();

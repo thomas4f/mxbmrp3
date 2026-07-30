@@ -1,37 +1,55 @@
 # ============================================================================
-# CI (Linux). The shipping plugin is built with MSVC (mxbmrp3.sln) and is NOT
+# CI (Linux). The shipping plugin is built with MSVC (from mxbmrp3/CMakeLists.txt) and is NOT
 # built here. These jobs guard the platform-independent logic on Linux:
 #
-#   unit-tests        — pure-logic unit tests (color math, formatting, parsing);
-#                       just a C++17 compiler. Runs on every push.
+#   unit-tests        — pure-logic unit tests (color math, formatting, parsing,
+#                       chart math, C++/JS parity vectors) + the vendored-manifest
+#                       and docs-honesty checks; just a C++17 compiler and python3.
+#                       The cheapest job, and what cross-build-smoke gates on.
+#   memory-safety     — the same unit suite + a targeted harness under
+#                       ASan/UBSan (Linux, seconds). See tests/asan/.
 #   web-overlay       — drive the web overlay's ?demo mode in headless Chromium
 #                       (Playwright) and assert the rendered DOM. Node only, no
-#                       Wine. Gated to PRs / main / manual.
+#                       Wine.
 #   cross-build-smoke — cross-compile the whole plugin to a Windows DLL with
-#                       mingw-w64 and run the headless test suite under Wine:
+#                       mingw-w64, run the enforced invariant checks (GPB/KRP
+#                       configs, visibility gates, API guards, clang
+#                       thread-safety), then the headless test suite under Wine:
 #                       the doctest integration tests (tests/integration/tests/ — smoke
 #                       lifecycle, race standings/gaps/DSQ, multi-session logic,
-#                       auto-director battles, reset scope, version ordering),
-#                       then the specialized modalities (settings persistence,
-#                       config/callback fuzzing, CPU perf baseline, and the NSIS
-#                       installer mechanics — makensis-built Setup.exe driven
-#                       headless under Wine). Each drives the real callbacks and
-#                       asserts the plugin's own /api/state JSON (or, for the
-#                       installer, the on-disk + registry outcomes). Catches
-#                       portability breakage AND logic regressions in the real
-#                       init/adapter/PluginData/HUD/HTTP pipeline, no game or
-#                       Windows needed. See tests/integration/ and TESTING.md.
+#                       auto-director battles, reset scope, version ordering)
+#                       and the specialized modalities (settings persistence,
+#                       config/callback fuzzing, CPU perf baseline). Each drives
+#                       the real callbacks and asserts the plugin's own
+#                       /api/state JSON. Catches portability breakage AND logic
+#                       regressions in the real init/adapter/PluginData/HUD/HTTP
+#                       pipeline, no game or Windows needed. See
+#                       tests/integration/ and TESTING.md.
+#   installer         — NSIS installer mechanics: the makensis-built Setup.exe
+#                       driven headless under Wine, asserting the on-disk +
+#                       registry outcomes.
+#   memory-safety-msvc— the Windows MSVC ASan job (opt-in, see below).
+#   cppcheck          — static analysis; BLOCKING (the tree is at zero findings).
+#   bare-box-skips    — runs ctest with the optional toolchains scrubbed from PATH
+#                       and asserts a missing tool SKIPS rather than FAILS. The
+#                       only job that exercises that path: every other one installs
+#                       what it needs, which is how 11 gates once shipped failing
+#                       on a bare dev box with CI green.
 #
 # WHERE THESE RUN (metered private repo + free public mirror):
-#   • PUBLIC mirror (thomas4f/mxbmrp3): Actions are FREE, so every job runs
-#     AUTOMATICALLY on push/PR there — that's where continuous testing happens.
-#     The mirror.yml squash (workflows included) is what lands commits on public.
-#   • This PRIVATE repo: nothing runs automatically. A push/PR still creates a
-#     workflow run, but every job's `if:` gate SKIPS it (a skipped job allocates
-#     no runner → zero billable minutes). Trigger the suite by hand via
-#     "Run workflow" (workflow_dispatch) when you want to check before mirroring.
+#   • NEITHER repo runs this on a push. There is no `push` trigger at all (see
+#     `on:` below for why): a mirrored commit has already been through this suite
+#     in the private repo, so the public re-run only cost wall-clock waiting.
+#   • PULL REQUESTS: Actions are FREE in the PUBLIC mirror (thomas4f/mxbmrp3), so
+#     every job runs there automatically — that is the path a contributor's branch
+#     takes, and the one commit that has NOT already been tested. In this PRIVATE
+#     repo a PR still creates a workflow run, but every job's `if:` gate SKIPS it
+#     (a skipped job allocates no runner → zero billable minutes).
+#   • ON DEMAND: "Run workflow" (workflow_dispatch) runs the full suite from any
+#     branch, in either repo. This is how you check before mirroring or releasing.
 #   • RELEASE gate (release.yml → workflow_call): always runs — a release is
-#     deliberate and must be validated.
+#     deliberate and must be validated. This is what makes dropping the push
+#     trigger safe: nothing can be published without a green run on that commit.
 #   • The Windows MSVC ASan job needs its own opt-in (asan_msvc) in the private/
 #     manual path — nothing is free in the metered private repo (Linux draws the
 #     monthly quota at 1x), and a Windows runner burns it at a 2x multiplier, so it
@@ -41,12 +59,16 @@
 name: tests
 
 on:
-  # Only `main` (not every branch): in the public mirror the mirror.yml squash lands
-  # on main, which is what should auto-run there; in the private repo a feature-branch
-  # push then creates NO run at all (it would only skip via the gates anyway), which
-  # keeps the Actions tab clean. Manual `Run workflow` still works from any branch.
-  push:
-    branches: [main]
+  # NO `push` trigger, deliberately. The mirror.yml squash lands already-tested
+  # commits on the public mirror's main, so a push run there re-tested a commit the
+  # private repo had just validated with the same toolchain on the same sources —
+  # it never caught anything it could catch, and it made every mirror push a run to
+  # wait on. The gate that actually protects users is release.yml, which calls this
+  # workflow (workflow_call, below) before it will publish anything.
+  #
+  # `pull_request` stays: an outside contributor's branch is the one case where the
+  # commit has NOT already been through the private suite, so it must not depend on
+  # someone remembering to press Run workflow.
   pull_request:
   workflow_dispatch:        # allow running the full suite on a branch on demand
     inputs:
@@ -57,7 +79,7 @@ on:
   workflow_call:            # let release.yml run this as a pre-release gate
     inputs:
       full:
-        description: "Force every job to run (used by the release gate)."
+        description: "Run every job EXCEPT memory-safety-msvc (used by the release gate; that one needs asan_msvc)."
         type: boolean
         default: false
       asan_msvc:
@@ -85,7 +107,7 @@ jobs:
   unit-tests:
     name: Pure-logic unit tests
     # Shared gate: auto in the free public mirror; manual/release-gate only in the
-    # metered private repo (skipped here on a plain push/PR → zero minutes).
+    # metered private repo (skipped here on a plain PR → zero minutes).
     if: >-
       github.event.repository.private == false ||
       github.event_name == 'workflow_dispatch' ||
@@ -98,17 +120,85 @@ jobs:
       - name: Compiler version
         run: g++ --version
 
+      # CMake + CTest own the unit build (tests/unit/CMakeLists.txt). Configuring
+      # builds nothing; the target does.
       - name: Build & run tests
-        run: ./tests/unit/run_tests.sh
+        run: |
+          cmake -S . -B build/tests
+          cmake --build build/tests --target unit_tests -j"$(nproc)"
+          ./build/tests/tests/unit/unit_tests
+
+      # vendored.json must describe the source actually vendored: each entry's
+      # `version` is compared against the version the file self-declares. The
+      # weekly vendored-deps job checks manifest-vs-UPSTREAM; this closes the
+      # other side (re-vendored file, forgotten manifest bump → SBOM misreports
+      # what ships). Pure stdlib, no network.
+      - name: Vendored manifest matches vendored sources
+        run: python3 tools/check_vendored_manifest.py
+
+
+      # Line coverage for the pure-logic layer only — the production code
+      # actually linked into the unit binary. Scoped by design: the DLL-boundary
+      # surface is tracked by hand in tests/integration/API_COVERAGE.md, where a
+      # line percentage would be both expensive and misleading. The floor is a
+      # RATCHET: raise it when coverage improves, never lower it to go green.
+      # gcovr is installed explicitly — coverage.sh exits 3 (SKIP) without it,
+      # and a silently skipped ratchet is worse than a missing one.
+      - name: Unit-layer line coverage (gcov)
+        run: |
+          ./tools/install_deps.sh coverage
+          ./tests/unit/coverage.sh 95
+
+      # File hygiene (tabs / trailing whitespace / CRLF / final newline),
+      # mirroring .editorconfig. Every rule already held across the whole tree
+      # when it was added, so it protects a property rather than demanding a
+      # cleanup. Code LAYOUT is deliberately not checked — the script's header
+      # records the clang-format evaluation and why it was rejected.
+      - name: File hygiene (tabs, trailing whitespace, line endings)
+        run: ./tests/integration/check_style.sh
+
+      # The SessionStart hook decides whether a web session is provisioned at
+      # all, and an unprovisioned box makes gates report SKIPPED — which reads
+      # like a passing suite. Three consecutive fixes to that file each broke it
+      # a new way (silent, then session-failing, then duplicated), invisibly to
+      # every other gate. Eight configurations, fully stubbed: no apt, no sudo,
+      # no wineboot, no dependence on this runner's toolchain.
+      - name: SessionStart hook behaviour (provisioning + reporting)
+        run: ./tests/integration/check_session_hook.sh
+
+      # Docs rot silently and are followed anyway. This fails on a path that no
+      # longer exists, on a Maintenance Invariant that claims an enforcement it
+      # doesn't have (or carries no Enforced/Pinned/Convention label at all), and
+      # on CLAUDE.md exceeding its size budget. Pure stdlib, ~1s.
+      - name: Docs are honest (paths resolve, invariants labelled, budget kept)
+        run: python3 tools/check_docs.py
+
+      # The Python helper tools (SBOM, minidump triage, the check_*.py gates,
+      # fixture generators) had no linter at all. Config + rationale for the rule
+      # set — and for why the FORMATTER is deliberately off — is in ruff.toml.
+      # Blocking at zero findings, same discipline as the cppcheck gate.
+      - name: Python lint (ruff)
+        run: |
+          ./tools/install_deps.sh lint
+          ruff check .
 
       # The portable .fnt font generator must keep reproducing the shipped
       # bitmap fonts (structure/metrics/atlas) — regression guard for the tool.
       - name: Font generator (mxbmrp3_fontgen) regression
         run: ./tools/mxbmrp3_fontgen/test.sh
 
+      # The analytics report generator (Aptabase export -> analytics/REPORT.md)
+      # ships a synthetic-data self-test covering install_id dedup, coverage,
+      # dev exclusions, the known-crash join and per-game adoption. Guards edits
+      # to analytics_report.py / analytics_svg.py.
+      - name: Analytics report generator self-test
+        run: |
+          ./tools/install_deps.sh analytics
+          python3 tools/analytics_report.py --selftest
+
   # Native AddressSanitizer + UBSan over the plugin's portable memory surface
   # (fixed buffers, the leader-timing index clamp, the crash-site container
-  # types). Fast (seconds, just libasan), so it gates every push alongside the
+  # types). Fast (seconds, just libasan), so it runs alongside the
   # unit tests — a heap/stack overflow in that surface faults here instead of
   # shipping. The faithful full-callback ASan pass is the MSVC path (Windows);
   # see tests/asan/README.md. Distinct job so an ASan report is legible on its own.
@@ -128,7 +218,10 @@ jobs:
       # formatting/parsing, session-charts math, config parsing, …), not just the
       # targeted harness below.
       - name: Unit suite under ASan/UBSan
-        run: ASAN=1 ./tests/unit/run_tests.sh
+        run: |
+          cmake -S . -B build/tests
+          cmake --build build/tests --target unit_tests_asan -j"$(nproc)"
+          ./build/tests/tests/unit/unit_tests_asan
 
       # Targeted harness for the fixed-buffer / index surface behind the two
       # shipped heap-corruption crashes (RaceEntryData buffers, the leader-timing
@@ -151,7 +244,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm
@@ -171,6 +264,11 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
+      # NOTE: this job deliberately does NOT call tests/web/run.sh (which the
+      # `web-overlay` CTest gate uses). run.sh exists to find-or-fetch Chromium on
+      # a developer box; here setup-node's npm cache and the keyed Playwright
+      # browser cache above do that job better. Both paths end at the same
+      # `npx playwright test`, so the tests can't diverge — only the setup does.
       - name: Run overlay tests
         run: npm test
 
@@ -178,7 +276,16 @@ jobs:
     name: Cross-compile (mingw) + run under Wine
     # The heavy job (~4-8 min). Shared gate: it runs automatically (free) in the
     # public mirror, and only on manual dispatch / the release gate in the metered
-    # private repo — never on a plain private push/PR.
+    # private repo — never on a plain private PR.
+    #
+    # GATED BEHIND unit-tests to protect the METER, and only this job is: measured
+    # over a full run, this is 54% of the billed Linux time (~10 min) while every
+    # other job is 1-2 min. unit-tests is 78s and carries style, docs, ruff and the
+    # unit suite, so a lint or logic break costs 78s instead of ~11 min. Gating the
+    # cheap jobs too would trade real wall-clock for ~2 min of saving, so they stay
+    # parallel. (A skipped unit-tests skips this too — which is what its own `if:`
+    # would have done anyway.)
+    needs: unit-tests
     if: >-
       github.event.repository.private == false ||
       github.event_name == 'workflow_dispatch' ||
@@ -192,34 +299,17 @@ jobs:
 
       - name: Install mingw-w64 + Wine
         run: |
-          sudo apt-get update -qq
-          # Everything here is 64-bit: the plugin cross-builds to an x86_64 DLL, the
-          # test harnesses are x86_64, and the NSIS installer is amd64. So we install
-          # 64-bit Wine ONLY — no i386 architecture, no wine32:i386. Beyond slimming the
-          # install (libwine:i386 alone is a ~100 MB download every run), dropping the
-          # 32-bit side is a correctness fix: with wine32 present, Debian's /usr/bin/wine
-          # wrapper prefers the 32-bit loader, whose reg.exe reads the WOW6432Node-
-          # redirected view and can't see the amd64 installer's 64-bit registry keys —
-          # which silently broke the installer test's HKLM assertions.
-          # `wine` provides the /usr/bin/wine launcher; `wine64` alone (Ubuntu's
-          # 9.0 repack) ships only libwine, no launcher — which is why the Wine
-          # test job had been silently failing at "wine not found".
-          sudo apt-get install -y --no-install-recommends \
-            gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 ccache wine wine64 nsis
-          # std::thread/std::mutex require the posix threading variant.
-          sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
-          sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
+          # Package list, the 64-bit-Wine-only rationale and the posix-mingw
+          # update-alternatives all live in tools/install_deps.sh — one table,
+          # shared with the SessionStart hook and DEVELOPMENT.md.
+          ./tools/install_deps.sh mingw wine nsis
           # Fail loudly HERE if the launcher still isn't on PATH, rather than
           # letting every downstream test skip with "wine not found".
-          if ! command -v wine >/dev/null; then
-            for c in /usr/lib/wine/wine64 /usr/lib/x86_64-linux-gnu/wine/wine64; do
-              [ -x "$c" ] && { sudo ln -sf "$c" /usr/bin/wine; break; }
-            done
-          fi
+          command -v wine >/dev/null || { echo "::error::wine not on PATH"; exit 1; }
           wine --version
 
       # Persist ccache across runs so the 117-TU cross-build is near-instant when
-      # unchanged (the Makefile wraps the compiler in ccache). Content-hashed, so
+      # unchanged (CMAKE_CXX_COMPILER_LAUNCHER wraps the compiler in ccache). Content-hashed, so
       # the sha-keyed save + prefix restore-key is the standard pattern.
       - name: Cache ccache
         uses: actions/cache@v6
@@ -240,6 +330,49 @@ jobs:
       - name: Syntax-check GPB/KRP game configs
         run: ./tests/integration/check_game_configs.sh
 
+      # HUD visibility-gate lint: a rebuild/tick gate must use
+      # isVisibleAnySurface(), never isVisible()/m_bVisible alone, or a HUD
+      # enabled only on the companion window renders stale. Every direct read
+      # in hud/*.cpp must either be one of the allowed forms or carry an
+      # explicit `vis-gate:` justification (see the script header).
+      - name: Visibility-gate lint (hud/*.cpp)
+        run: ./tests/integration/check_visibility_gates.sh
+
+      # DLL-export exception barrier: every export in vendor/piboso/*_api.cpp
+      # must wrap its body in API_GUARD_CATCH (an uncaught throw across the
+      # PiBoSo boundary crashes the host game) or carry an api-guard-exempt
+      # justification. See the script header.
+      - name: API-guard lint (vendor/piboso/*_api.cpp)
+        run: ./tests/integration/check_api_guards.sh
+
+      # Clang Thread Safety Analysis: mutex-guarded members are annotated
+      # MXB_GUARDED_BY / MXB_REQUIRES (core/thread_safety.h), and this pass
+      # fails on any unlocked access — the RecordsHud helper-without-lock crash
+      # class as a compile error. clang front-end-parses the mingw-target TUs
+      # (-fsyntax-only, no codegen); the shipping/test builds are unaffected
+      # (the attributes expand to nothing outside clang).
+      # The unit layer's Win32 shim carries VK_*/XINPUT_GAMEPAD_* values GENERATED
+      # from mingw's real headers. Without this check that generator is a good
+      # intention: the committed block could drift from the ABI and every gate
+      # would stay green. This job already has mingw, so verifying costs nothing.
+      - name: Unit shim constants match the real mingw headers
+        run: ./tests/unit/shim/regen_constants.sh --check
+
+      - name: Thread-safety analysis (clang -Wthread-safety)
+        run: ./tests/integration/check_thread_safety.sh
+
+      # The other half of the threading invariant. -Wthread-safety only checks
+      # members that are MUTEX-annotated; a plain unannotated bool is outside
+      # the analysis entirely. This requires every `bool m_*` in a class that
+      # owns a std::thread to be std::atomic, MXB_GUARDED_BY, or carry an
+      # `mt-plain: <which thread>` reason. See the script header.
+      - name: Cross-thread flag lint (thread-owning classes)
+        run: ./tests/integration/check_mt_flags.sh
+      - name: HUD raw-data caching lint
+        run: ./tests/integration/check_hud_raw_cache.sh
+      - name: HUD raw-data caching lint (self-test)
+        run: ./tests/integration/check_hud_raw_cache.sh --self-test
+
       # Every doctest integration test in tests/integration/tests/ (smoke lifecycle,
       # race standings/gaps/DSQ, multi-session business logic, auto-director
       # battle detection, Reset All scope, update-checker version ordering). Each
@@ -258,6 +391,20 @@ jobs:
       - name: Fuzz DLL-boundary callbacks (adversarial sizes/counts must not crash)
         run: ./tests/integration/run_fuzz_callbacks.sh
 
+      # MUST NOT run concurrently with anything on this runner. It asserts avg and both
+      # p99s against the 2.08ms (480fps) frame budget, so a competing process is not noise
+      # around the measurement, it IS the measurement — and a perf gate that cries wolf
+      # gets ignored, which is worse than not having one. That currently holds for free
+      # (steps in a job are sequential and no other job shares this runner), which is
+      # exactly why it is easy to break by accident: backgrounding work with `&` in an
+      # earlier step, or adding a `services:` container to this job, would starve it with
+      # nothing here to stop it. CMakeLists.txt enforces the same rule for local `ctest -j`
+      # via RUN_SERIAL, but that property has no effect on this direct invocation.
+      #
+      # Not worth its own job: that would duplicate the mingw+Wine install and the ~118-TU
+      # cross-build on every run, to protect a gate measured at 7-10x headroom (Draw avg
+      # 146us vs a 1500us ceiling; worst map p99 308us vs the 2083us budget). Revisit if
+      # that headroom ever gets thin.
       - name: CPU performance baseline (report + gross-regression gate)
         run: ./tests/integration/run_perf.sh
 
@@ -279,10 +426,10 @@ jobs:
 
       - name: Install NSIS + Wine
         run: |
-          sudo apt-get update -qq
-          # 64-bit Wine only, same rationale as cross-build-smoke (the 32-bit
-          # loader's registry redirection broke the installer's HKLM assertions).
-          sudo apt-get install -y --no-install-recommends wine wine64 nsis
+          # python: Case 0 parses Setup.exe's version resource (see the gate's tool
+          # list in CMakeLists.txt). Preinstalled on the runner, but declared so the
+          # job matches what the gate actually requires.
+          ./tools/install_deps.sh wine nsis python
           if ! command -v wine >/dev/null; then
             for c in /usr/lib/wine/wine64 /usr/lib/x86_64-linux-gnu/wine/wine64; do
               [ -x "$c" ] && { sudo ln -sf "$c" /usr/bin/wine; break; }
@@ -306,13 +453,29 @@ jobs:
     name: Memory safety (MSVC ASan, real DLL)
     # Auto in the free public mirror (Windows Actions are free there too); in the
     # metered private repo it's OPT-IN only — a Windows runner carries a 2x minute
-    # multiplier, so it never runs on a plain push/PR/dispatch there unless you tick
+    # multiplier, so it never runs on a plain PR/dispatch there unless you tick
     # "Also run the Windows MSVC AddressSanitizer job" on Run workflow. The native
     # Linux memory-safety job covers the portable surface without it.
+    #
+    # NOTE the absence of `inputs.full`, which is deliberate and is the one place
+    # `full` does not mean "everything". A release therefore reaches build-release
+    # WITHOUT any MSVC compile having happened, so with /W4 /WX now enforced
+    # (mxbmrp3/CMakeLists.txt) an MSVC-only warning introduced from the Linux side
+    # fails the RELEASE BUILD rather than the gate before it.
+    #
+    # Adding `inputs.full` here would NOT close that: this job builds MXB-Debug,
+    # MX Bikes only, while the shipping build is Release across three games — so
+    # it would spend Windows minutes on every release and still miss a
+    # Release-only or GPB/KRP-only diagnostic. The honest fast check is the
+    # maintainer's local VS build, which /WX now makes self-reporting.
     if: >-
       github.event.repository.private == false ||
       inputs.asan_msvc
-    runs-on: windows-latest
+    # Pinned for the same reason as release.yml's build-release: `windows-latest`
+    # is Server 2025 + Visual Studio 2026, with no VS 2022 for the generator below.
+    # Keeping this on the release job's image is also what makes an ASan finding
+    # here meaningful — it must be the same compiler that builds the shipping DLL.
+    runs-on: windows-2022
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -333,7 +496,8 @@ jobs:
       - name: Build MX Bikes DLL with AddressSanitizer (MXB-Debug)
         shell: pwsh
         run: >-
-          msbuild mxbmrp3.sln
+          cmake -S . -B build/msvc -G "Visual Studio 17 2022" -A x64
+          cmake --build build/msvc
           /p:Configuration=MXB-Debug /p:Platform=x64
           /p:EnableASAN=true /p:BasicRuntimeChecks=Default /p:LinkIncremental=false
           /m /v:minimal
@@ -389,13 +553,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { Write-Error "ASan caught a memory violation (exit $LASTEXITCODE) — see the stacks above"; exit $LASTEXITCODE }
           Write-Host "MSVC ASan boundary fuzz: survived clean."
 
-  # Static analysis (cppcheck). Report-only: it annotates findings and writes them
-  # to the run summary but does NOT fail the build (continue-on-error), because
-  # cppcheck versions drift between runner images. The committed baseline is clean,
-  # so any annotation here is a new finding worth a look. To make it blocking later,
-  # drop continue-on-error. Gated like the other heavy jobs; vendored code excluded.
+  # Static analysis (cppcheck). BLOCKING: the tree is at zero findings, so any new
+  # one fails the build. It was report-only until that baseline was actually driven
+  # to zero — findings nobody has to act on are findings nobody reads (two
+  # error-severity ones had accumulated unnoticed, plus a suppression left stale by
+  # a file split). The known trade-off is that cppcheck versions drift between
+  # runner images, so a toolchain bump can surface a new finding unrelated to the
+  # diff; that is a real cost, accepted because the alternative measurably rotted.
+  # Gated like the other heavy jobs; vendored code excluded.
   cppcheck:
-    name: Static analysis (cppcheck, report-only)
+    name: Static analysis (cppcheck)
     # Shared gate: auto in the free public mirror; manual/release-gate only in private.
     if: >-
       github.event.repository.private == false ||
@@ -403,43 +570,101 @@ jobs:
       inputs.full
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # No continue-on-error: FINDINGS are already report-only inside the step (they
-    # never make the step exit nonzero), so the only thing that can fail this job
-    # is cppcheck itself crashing/misconfigured — which SHOULD be red, not masked.
+    # No continue-on-error: both failure modes should be red — findings (the step
+    # exits 1 on a non-empty report) and cppcheck itself crashing/misconfigured
+    # (a nonzero exit from the tool, distinguished from findings inside the step).
     steps:
       - uses: actions/checkout@v7
 
       - name: Install cppcheck
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends cppcheck
+        run: ./tools/install_deps.sh cppcheck
 
-      - name: Run cppcheck (warning severity, MXB config, vendor excluded)
+      # One script, shared with local runs (tests/run_cppcheck.sh), so the flags
+      # cannot drift between here and what a developer reproduces. It is BLOCKING:
+      # the baseline is zero findings. See the script header for why --enable=warning
+      # specifically, and how to land a legitimate new finding.
+      - name: Run cppcheck (blocking, zero-finding baseline)
+        run: ./tests/run_cppcheck.sh
+
+
+  # The gate that guards the gates. Every OTHER job here installs the toolchain it
+  # needs and invokes targets directly, so nothing in CI ever exercised the
+  # "prerequisite absent" path — which is exactly how 11 of 24 gates shipped
+  # reporting FAILED instead of SKIPPED on a normal dev box while CI stayed green.
+  # (The bespoke lint that used to cover this class was deleted in the same commit
+  # that introduced the regression; this is where that invariant now lives.)
+  #
+  # Deterministic by construction: rather than trusting ubuntu-latest to LACK a
+  # tool — image contents drift, and a runner that gains cppcheck would silently
+  # turn this job into a no-op — it builds a PATH of symlinks to the real binaries
+  # with the toolchains removed. Two assertions: nothing may FAIL, and enough
+  # tests must actually report SKIPPED that the scrub is proven to have worked.
+  bare-box-skips:
+    name: Missing toolchain skips, never fails
+    # Shared gate: auto in the free public mirror; manual/release-gate only in private.
+    if: >-
+      github.event.repository.private == false ||
+      github.event_name == 'workflow_dispatch' ||
+      inputs.full
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build a PATH with the optional toolchains removed
         run: |
-          cppcheck --version
-          # --platform=win64 gives correct type sizes; --max-configs=1 + a fixed
-          # config avoids the combinatorial #ifdef explosion; vendored libs skipped.
-          # Findings are report-only (below), but a nonzero exit from cppcheck
-          # ITSELF (crash/misconfiguration — with no --error-exitcode, findings
-          # don't affect the exit code) must fail the step: the old `|| true`
-          # made a broken tool indistinguishable from "no findings".
-          set +e
-          cppcheck --quiet --enable=warning --inline-suppr --std=c++17 --language=c++ \
-            --platform=win64 --max-configs=1 -DGAME_MXBIKES=1 -D_WIN32=1 \
-            -I mxbmrp3 -i mxbmrp3/vendor \
-            --suppress=missingInclude --suppress=missingIncludeSystem \
-            --suppressions-list=.cppcheck-suppressions \
-            --template='{file}:{line}: {severity}: {message} [{id}]' \
-            -j"$(nproc)" mxbmrp3 2> cppcheck.txt
-          cc_rc=$?
-          set -e
-          if [ "$cc_rc" -ne 0 ]; then
-            echo "::error::cppcheck itself failed (exit $cc_rc) — tool crash or misconfiguration, not findings"
-            cat cppcheck.txt
-            exit "$cc_rc"
-          fi
-          if [ -s cppcheck.txt ]; then
-            { echo "## cppcheck findings (report-only)"; echo; echo '```'; cat cppcheck.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-            echo "::warning::cppcheck reported $(wc -l < cppcheck.txt) finding(s) — see the job summary"
-            cat cppcheck.txt
-          else
-            echo "cppcheck: no findings" | tee -a "$GITHUB_STEP_SUMMARY"
-          fi
+          mkdir -p "$RUNNER_TEMP/bare"
+          hide='^(x86_64-w64-mingw32-.*|i686-w64-mingw32-.*|wine.*|clang.*|cppcheck.*|makensis|node|npm|npx|gcovr|ruff)$'
+          IFS=: read -ra dirs <<< "$PATH"
+          for d in "${dirs[@]}"; do
+            [ -d "$d" ] || continue
+            for f in "$d"/*; do
+              [ -e "$f" ] || continue          # empty dir -> unexpanded glob
+              b=$(basename "$f")
+              printf '%s' "$b" | grep -Eq "$hide" && continue
+              [ -e "$RUNNER_TEMP/bare/$b" ] || ln -s "$f" "$RUNNER_TEMP/bare/$b"
+            done
+          done
+          for t in x86_64-w64-mingw32-g++ wine clang++ cppcheck makensis node gcovr; do
+            if PATH="$RUNNER_TEMP/bare" command -v "$t" >/dev/null 2>&1; then
+              echo "::error::$t is still reachable — the scrub did not work"; exit 1
+            fi
+          done
+
+      # cmake/ctest/g++/python3 survive the scrub, so the gates that need nothing
+      # optional still run for real; the other 11 must skip.
+      - name: ctest on a bare box (JUnit for a machine-readable result)
+        run: |
+          cmake -S . -B build/tests
+          PATH="$RUNNER_TEMP/bare" ctest --test-dir build/tests \
+            --output-junit "$RUNNER_TEMP/bare.xml" --output-on-failure
+
+      - name: Assert nothing failed and the skips actually happened
+        shell: python
+        env:
+          JUNIT: ${{ runner.temp }}/bare.xml
+        run: |
+          import os
+          import sys
+          import xml.etree.ElementTree as ET
+
+          cases = ET.parse(os.environ["JUNIT"]).getroot().iter("testcase")
+          failed, skipped, total = [], [], 0
+          for c in cases:
+              total += 1
+              if c.find("failure") is not None:
+                  failed.append(c.get("name"))
+              elif c.find("skipped") is not None:
+                  skipped.append(c.get("name"))
+          print("total=%d skipped=%d failed=%d" % (total, len(skipped), len(failed)))
+          print("skipped: " + ", ".join(sorted(skipped)))
+          if failed:
+              sys.exit("::error::a missing toolchain must SKIP, not FAIL: "
+                       + ", ".join(sorted(failed)))
+          # Guards against the job quietly becoming vacuous (scrub stopped working,
+          # or every gate lost its TOOLS declaration).
+          if len(skipped) < 8:
+              sys.exit("::error::only %d tests skipped on a bare box; expected the "
+                       "mingw/wine/clang/cppcheck/nsis/node gates to skip. Either "
+                       "the PATH scrub broke or a gate is missing its TOOLS "
+                       "declaration in CMakeLists.txt." % len(skipped))

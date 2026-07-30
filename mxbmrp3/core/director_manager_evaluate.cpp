@@ -2,10 +2,42 @@
 // core/director_manager_evaluate.cpp
 // DirectorManager::evaluate() — the auto-director's core decision pass: it scores
 // every rider (leaders, battles, incidents, fastest laps, overtakes) and decides
-// whether/where to cut the camera. Extracted verbatim from director_manager.cpp
-// (the single biggest method there) when that file grew past ~1.3k lines; the
-// class, members, and public API are unchanged. Tuning constants + helpers it
-// shares with the rest of DirectorManager live in director_manager_internal.h.
+// whether/where to cut the camera.
+//
+// HOW TO READ evaluate(). It is a PRIORITY LADDER, and the order of its rungs is
+// the logic: each story is tried in turn, and the first one that wins cuts the
+// camera and returns. That is why it stays one long function rather than being
+// split further — the sequence IS the editorial policy, and breaking it into
+// pieces that call each other would hide the one thing a reader needs to see.
+// The rungs, in order:
+//
+//   gates            not spectating / throttled / manual camera / rider lock
+//   incident         a fresh crash or a followed rider in trouble (cuts instantly)
+//   fastest lap      a new overall best (honors the min-shot floor)
+//   pace             non-race only: a rider on a session-best sector
+//   non-race show    practice/qualify: sit on the pace-setter with variety dips
+//   race scoring     battles / overtakes / lappers / drops vs the leader baseline
+//   finish lock      the leader's last lap onward: never leave the front
+//   pacing           min-shot floor, max-shot variety, round-robin airtime
+//
+// The pacing rung is the only one "Max shot = Off" (forcedRotation() == false) turns
+// off: every story rung still fires, the min-shot floor still spaces them, and the
+// dead-air floor the ladder falls back to becomes the broadcaster's own rider
+// (pickBaselineSubject) instead of the leader — so the show cuts for stories and
+// returns home, never on a timer.
+//
+// What is NOT here, deliberately:
+//   * the self-contained blocks the ladder consults (collectRiders,
+//     detectIncidentSubject, updateSectorBests, runNonRaceShow, scoreRaceStories)
+//     are member functions above — they own the stateful per-rider caches;
+//   * every story-SCORE formula is in director_scoring.h and the overtake/drop
+//     comparisons are in director_detect.h, both pure and unit-tested without a
+//     game (test_director_scoring.cpp / test_director_detect.cpp). The relative
+//     ranking of story types is pinned there, so a retune that accidentally
+//     inverts two of them fails a test instead of shipping.
+//
+// Tuning constants + helpers shared with the rest of DirectorManager live in
+// director_manager_internal.h.
 // ============================================================================
 #include "director_manager.h"
 #include "director_manager_internal.h"
@@ -27,6 +59,286 @@
 #include <cstring>
 
 using namespace director_detail;
+
+std::vector<Rider> DirectorManager::collectRiders() const {
+    PluginData& pd = PluginData::getInstance();
+    const SessionData& sd = pd.getSessionData();
+
+    std::vector<Rider> riders;
+    riders.reserve(32);
+    for (const auto& kv : pd.getStandings()) {
+        const StandingsData& s = kv.second;
+        if (s.state != 0) continue;  // 0 = Racing (skip DNS/Retired/DSQ)
+        if (s.pit != 0) continue;    // never follow a rider who is in the pits
+        int pos = pd.getPositionForRaceNum(s.raceNum);
+        if (pos <= 0) continue;
+        // Official split gap for battle scoring, matching PluginData::getBattleGroups
+        // (stable - realTimeGap flickers as the active batch is recomputed each frame,
+        // which made the overlay battle panel dance). The director uses no live gaps at
+        // all now; overtakes are detected from official position swaps.
+        int gtl = s.gap;
+        // A rider who has crossed the line for good is still "Racing" state on the
+        // slow-down lap, but shouldn't anchor incidents or battles (a crash or a close
+        // gap among finishers isn't a story). The finish-lock has its own front-most-
+        // still-racing logic and doesn't use this flag.
+        bool finished = sd.isRiderFinished(s.numLaps, s.numLapsAtLeaderFinish);
+        riders.push_back(Rider{ pos, s.raceNum, gtl, s.gapLaps, s.numLaps, s.bestLap, finished });
+    }
+    std::sort(riders.begin(), riders.end(),
+              [](const Rider& a, const Rider& b) { return a.position < b.position; });
+    return riders;
+}
+
+// See the declaration in director_manager.h for what this owns.
+int DirectorManager::detectIncidentSubject(const std::vector<Rider>& riders,
+                                           long long now, bool seedOnly,
+                                           bool currentPresent, bool currentFinished) {
+    PluginData& pd = PluginData::getInstance();
+
+    // Fresh crash: front-most rider whose per-rider crash counter ticked up this eval.
+    // Riders beyond the max-position cutoff are ignored (same setting as battles) so a
+    // packed field's constant backmarker crashes don't hijack the camera. The crash
+    // cache is still updated for everyone so edge detection stays correct.
+    // Don't let a fresh crash preempt an incident shot that hasn't met its minimum hold
+    // yet: a pile-up otherwise whips the camera between crashes back-to-back. This spaces
+    // incident cuts by at least the shared "Hold" time (reusing that knob - no extra
+    // setting). After the minimum, a new crash can still take over.
+    const bool incidentYoung = (m_holdShotType == SHOT_INCIDENT && now < m_holdUntilMs
+                                && (now - m_holdStartMs) < holdMs());
+    // Position-weigh incident preemption: while we're framing a live battle/overtake,
+    // a fresh crash only cuts in if it's at a comparable-or-BETTER position than the
+    // rider we're on (posWeight is monotonic, so posWeight(crashPos) >= posWeight(curPos)
+    // is just crashPos <= curPos). So a P10 tip-over can't yank the camera off a P2 fight,
+    // but a front-runner going down still cuts. Only battle/overtake shots are protected -
+    // a solo/leader/pace shot has nothing exciting to lose, so a crash always takes it.
+    const bool protectStory = (m_currentShotType == SHOT_BATTLE || m_currentShotType == SHOT_OVERTAKE)
+                              && currentPresent && m_currentSubject >= 0;
+    const int protectPos = protectStory ? pd.getPositionForRaceNum(m_currentSubject) : 0;
+    int crashSubject = -1;
+    // Rebuild the crash-count snapshot from the CURRENT rider set (as evaluate()
+    // does for m_prevPosition) rather than accumulating forever: a departed rider's
+    // entry would otherwise linger, so a rejoiner reusing the race number inherits
+    // the old baseline (one suppressed/phantom crash edge) and the map grows
+    // unboundedly across a long spectate session.
+    std::unordered_map<int, int> newCrashCount;
+    newCrashCount.reserve(riders.size());
+    for (const Rider& r : riders) {
+        int cc = pd.getRiderSessionCrashCount(r.raceNum);
+        auto it = m_prevCrashCount.find(r.raceNum);
+        bool freshCrash = (it != m_prevCrashCount.end()) && cc > it->second;
+        newCrashCount[r.raceNum] = cc;
+        bool withinCut = (m_battleMaxPos <= 0 || r.position <= m_battleMaxPos);
+        // Don't let a lower-order crash steal a better story we're already framing.
+        bool outrankedByStory = (protectPos > 0 && r.position > protectPos);
+        // Skip finished riders (a spill on the slow-down lap isn't a story) and skip
+        // the rider we're already holding an active incident on - a flailing/ragdolling
+        // rider whose crashed flag re-edges would otherwise re-cut every eval and reset
+        // the linger, trapping the camera past the max-incident cap.
+        bool alreadyHeld = (m_holdShotType == SHOT_INCIDENT && now < m_holdUntilMs
+                            && r.raceNum == m_currentSubject);
+        if (m_followIncidents && freshCrash && withinCut && !seedOnly && !r.finished
+            && !alreadyHeld && !incidentYoung && !outrankedByStory && crashSubject < 0)
+            crashSubject = r.raceNum;
+    }
+    m_prevCrashCount = std::move(newCrashCount);
+
+    // Tracked rider left the track / stopped: if the rider we are following becomes a
+    // confirmed hazard (stationary or wrong-way) - an off into the dirt, a stall, a
+    // fence - without a crash edge, fold it into the incident path so we hold the
+    // moment, then release back to the race. Latched per-subject so a sustained stall
+    // fires once, not every eval. (Spectated riders expose no pure off-surface flag,
+    // so crash + confirmed hazard is the best "rider in trouble" signal we have.)
+    if (m_followIncidents && currentPresent && !currentFinished && m_currentSubject >= 0) {
+        int spos = pd.getPositionForRaceNum(m_currentSubject);
+        bool withinCut = (m_battleMaxPos <= 0 || (spos > 0 && spos <= m_battleMaxPos));
+        bool subjHazard = withinCut && pd.getRiderHazardType(m_currentSubject) != HazardType::None;
+        if (subjHazard) {
+            if (crashSubject < 0 && m_hazardLatchSubject != m_currentSubject) {
+                crashSubject = m_currentSubject;
+                m_hazardLatchSubject = m_currentSubject;
+            }
+        } else if (m_hazardLatchSubject == m_currentSubject) {
+            m_hazardLatchSubject = -1;  // cleared - allow a future episode to fire
+        }
+    }
+    return crashSubject;
+}
+
+// See the declaration in director_manager.h for what this owns.
+int DirectorManager::updateSectorBests(const std::vector<Rider>& riders,
+                                       bool seedOnly, int& outSplit) {
+    PluginData& pd = PluginData::getInstance();
+    int paceSubject = -1, pacePos = INT_MAX;
+    outSplit = -1;
+    for (const Rider& r : riders) {
+        const CurrentLapData* cl = pd.getCurrentLapData(r.raceNum);
+        if (!cl) continue;
+        // Individual sector times from the cumulative splits (-1 until crossed).
+        const int sec[3] = {
+            cl->split1,
+            (cl->split2 > 0 && cl->split1 > 0) ? (cl->split2 - cl->split1) : -1,
+            (cl->split3 > 0 && cl->split2 > 0) ? (cl->split3 - cl->split2) : -1,
+        };
+        // Out-lap riders (no completed lap) can refresh the baseline but never trigger a
+        // cut: their sectors are cold and there's no reference lap to be "on pace" against.
+        const bool eligible = (r.numLaps >= 1);
+        for (int i = 0; i < 3; ++i) {
+            if (sec[i] <= 0) continue;
+            const bool hadBaseline = (m_bestSectorMs[i] > 0);
+            if (!hadBaseline || sec[i] < m_bestSectorMs[i]) {
+                if (hadBaseline && !seedOnly && eligible &&
+                    (i > outSplit || (i == outSplit && r.position < pacePos))) {
+                    paceSubject = r.raceNum; outSplit = i; pacePos = r.position;
+                }
+                m_bestSectorMs[i] = sec[i];
+            }
+        }
+    }
+    return paceSubject;
+}
+
+// See the declaration in director_manager.h for what this owns.
+void DirectorManager::runNonRaceShow(long long now, bool currentPresent, int paceSetterNum,
+                                     const std::function<int(int, int)>& nextAirtimeSubject) {
+    // Baseline: sit on the pace-setter (rank P1 = fastest so far), dipping to the NEXT
+    // rider for variety once we have held past the max shot - so a quiet track still mixes
+    // it up and every rider gets some airtime (not just P2). The min-shot floor keeps cuts
+    // from chattering. With forced rotation off the caller hands us the broadcaster's own
+    // rider as the baseline instead, and the dip below never fires - we just ride the
+    // stories and come back here.
+    const int paceSetter = paceSetterNum;
+    const long long shotElapsed = now - m_shotStartMs;
+    if (m_currentSubject < 0 || !currentPresent) {
+        cutTo(paceSetter, false, now, -1, -1, -1, nullptr,
+              m_currentSubject < 0 ? "acquire" : "subject-gone");
+        return;
+    }
+    if (m_currentSubject == paceSetter) {
+        // A variety ONBOARD dip is brief flavour, not a hero shot: cap it at the
+        // min-shot so it doesn't hold the pace-setter on a bike cam for the full
+        // max-shot (which reads as the camera being "stuck" onboard). A trackside /
+        // Auto hero shot holds the full max-shot as before. Cutting away re-runs
+        // pickShot, which returns to Auto/trackside unless the cadence dips again.
+        const long long dwellCap = isOnboardRole(m_currentCameraRole) ? minShotMs() : maxShotMs();
+        if (forcedRotation() && shotElapsed >= dwellCap) {
+            int v = nextAirtimeSubject(m_currentSubject, paceSetter);
+            if (v >= 0) cutTo(v, false, now, -1, -1, -1, nullptr, "maxshot");
+        }
+        return;
+    }
+    // Currently on someone other than the baseline (a variety dip or a finished hot lap):
+    // return to it once the minimum shot has elapsed. With forced rotation off the baseline
+    // IS the broadcaster's rider, so this is the non-race half of the race path's "home"
+    // cut and logs the same reason - one name for "the story ended, go back" in both modes.
+    if (shotElapsed >= minShotMs())
+        cutTo(paceSetter, false, now, -1, -1, -1, nullptr,
+              (!forcedRotation() && paceSetter == m_homeSubject) ? "home" : "return");
+    return;
+}
+
+// See the declaration in director_manager.h for what this owns.
+DirectorManager::StoryScores DirectorManager::scoreRaceStories(
+        const std::vector<Rider>& riders, long long now) {
+    PluginData& pd = PluginData::getInstance();
+    StoryScores out;
+
+    out.baselineNum = riders.front().raceNum;
+    for (const Rider& r : riders) { if (!r.finished) { out.baselineNum = r.raceNum; break; } }
+    // With forced rotation off the broadcaster's own rider replaces the leader as the
+    // dead-air floor, so once a story ends the scoring hands the camera back to them.
+    out.baselineNum = pickBaselineSubject(riders, forcedRotation(), m_homeSubject, out.baselineNum);
+    out.bestSubject = out.baselineNum;
+    double bestScore = leaderBaselineScore();  // so there is never dead air
+    double altScore = -1.0;
+
+    // partner = the other rider framed in a battle/overtake shot (-1 for solo).
+    auto consider = [&](int subject, double score, bool isBattle, int partner) {
+        if (score > bestScore) {
+            bestScore = score; out.bestSubject = subject;
+            out.bestIsBattle = isBattle; out.bestPartner = partner;
+        }
+        if (subject != m_currentSubject && score > altScore) {
+            altScore = score; out.altSubject = subject;
+            out.altIsBattle = isBattle; out.altPartner = partner;
+        }
+    };
+
+    // Register the leader baseline as a candidate too, so it can also be the alt
+    // (variety) pick when we are currently following someone else.
+    consider(out.baselineNum, bestScore, false, -1);
+
+    // Battles: use the shared battle definition (PluginData::getBattleGroups) so the
+    // director and the web overlay agree on what a battle is - one brain, one config
+    // (battle gap + max position both live in the Director settings). Follow the front
+    // rider of each group (chaser framed behind); closeness from the front pair's gap.
+    // A bigger group (3+ riders nose-to-tail) scores higher than a lone pair.
+    std::unordered_map<int, int> gapByNum;
+    gapByNum.reserve(riders.size());
+    for (const Rider& r : riders) gapByNum[r.raceNum] = r.gapToLeaderMs;
+    // The "Follow battles" toggle gates only the director's subject scoring; the
+    // battle-gap value still defines a battle for the overlay panel independently, so
+    // when off we simply don't score any battle groups (empty -> findGroup() nullptr).
+    out.battleGroups = m_followBattles ? pd.getBattleGroups(m_battleGapMs, m_battleMaxPos)
+                                       : std::vector<std::vector<int>>{};
+    for (const auto& grp : out.battleGroups) {
+        if (grp.size() < 2) continue;
+        int frontNum = grp[0], chaserNum = grp[1];
+        int frontPos = pd.getPositionForRaceNum(frontNum);
+        auto fg = gapByNum.find(frontNum), cg = gapByNum.find(chaserNum);
+        if (frontPos <= 0 || fg == gapByNum.end() || cg == gapByNum.end()) continue;
+        int interval = cg->second - fg->second;
+        if (interval <= 0) continue;  // defensive; getBattleGroups already guarantees > 0
+        consider(frontNum, battleScore(interval, m_battleGapMs, frontPos,
+                                      static_cast<int>(grp.size())), true, chaserNum);
+    }
+
+    // Overtake reward: a freshly-completed pass outscores routine battles for a short
+    // window so the director cuts to (or holds) the move. Framed as a battle so the
+    // camera frames both riders (Trackside). Falls through if the overtaker dropped out.
+    if (m_catchOvertakes && m_overtakeSubject >= 0 && now < m_overtakeUntilMs) {
+        int opos = pd.getPositionForRaceNum(m_overtakeSubject);
+        // A multi-place move (one rider clearing several at once) is a bigger story than
+        // a single pass, so it scores higher - enough to win out over a routine battle
+        // and, between two passes, to prefer the rider who gained more. Capped so a pile
+        // of lapped-rider passes can't dominate. size = riders involved in the move
+        // (overtaker + those passed), so the badge "+K" reads K = passed-beyond-the-
+        // immediate, same as a battle group's "+K". (See overtakeScore in
+        // director_scoring.h for the multipliers and the ranking they encode.)
+        if (opos > 0) consider(m_overtakeSubject, overtakeScore(opos, m_overtakeGained),
+                               true, m_overtakePartner);
+        else m_overtakeUntilMs = 0;
+    }
+
+    // Lappers (opt-in): a front-runner working through backmarkers (1+ laps up, closing on
+    // traffic) is good filler content but ranks BELOW a real position battle. Score the
+    // front-most lapper within the cutoff; m_lapperSubject tags the shot so the badge reads
+    // "lapping #N" and groupFor() leaves it Trackside (no chaser dip on a lapping shot).
+    m_lapperSubject = -1;
+    if (m_followLappers) {
+        for (const Rider& r : riders) {
+            if (m_battleMaxPos > 0 && r.position > m_battleMaxPos) continue;
+            int lapped = pd.getRiderLappingTarget(r.raceNum);
+            if (lapped < 0) continue;
+            m_lapperSubject = r.raceNum;   // riders are position-sorted -> front-most lapper
+            consider(r.raceNum, lapperScore(r.position), true, lapped);  // < a close battle's ~*2.0
+            break;
+        }
+    }
+
+    // Drops (opt-in): a rider tumbling down the order while its boost window is live. A
+    // real story but below a battle/overtake - scored a touch above a lapper, weighted by
+    // the rider's CURRENT (dropped) position. Framed Trackside solo (shotFor tags it
+    // SHOT_DROP; groupFor leaves it Trackside with no chaser dip).
+    if (m_followDrops && m_dropSubject >= 0 && now < m_dropUntilMs) {
+        int dpos = pd.getPositionForRaceNum(m_dropSubject);
+        if (dpos > 0) {
+            consider(m_dropSubject, dropScore(dpos, m_dropLost, kDropThreshold), true, -1);
+        } else {
+            m_dropUntilMs = 0;  // subject left the race
+        }
+    }
+    return out;
+}
 
 void DirectorManager::evaluate() {
     PluginData& pd = PluginData::getInstance();
@@ -85,12 +397,14 @@ void DirectorManager::evaluate() {
             // with no manual-override grace so the director starts working right away.
             if (spectated >= 0) {
                 m_currentSubject = spectated;
+                m_homeSubject = spectated;   // the broadcaster's rider - the floor when rotation is off
                 m_shotStartMs = now;
             }
         } else if (now >= m_pendingUntilMs && spectated >= 0 && spectated != m_currentSubject) {
             // The spectated rider changed to someone we didn't pick -> the user took
             // control. Adopt it and yield for a grace period before resuming.
             m_currentSubject = spectated;
+            m_homeSubject = spectated;   // the caster re-homed the broadcast on this rider
             m_shotStartMs = now;
             m_manualOverrideUntilMs = now + kManualGraceMs;
             m_riderLock = false;  // caster manually chose a rider -> release the lock
@@ -101,10 +415,34 @@ void DirectorManager::evaluate() {
         }
     }
     if (now < m_manualOverrideUntilMs) return;  // respect the human
+
+    // Forced rotation off means TV cameras only. pickShot pins every CUT to Auto/
+    // Trackside, but two states hold a camera without ever cutting again: a rider lock
+    // (which makes no cuts at all) and an ordinary shot that was already dipped into an
+    // onboard when the setting changed. Either would sit on a bike cam indefinitely, so
+    // put the camera back on the TV shot here instead of waiting for a cut that may never
+    // come. One-shot: once the role is AUTO this is a cheap comparison that does nothing.
+    // Placed after the manual-camera and manual-override gates so it never fights a
+    // broadcaster who is hand-flying or has just taken a shot themselves.
+    if (!forcedRotation() && m_currentSubject >= 0 && isOnboardRole(m_currentCameraRole)) {
+        // Same choice pickShot makes: Trackside frames a pair, Auto a solo shot. A
+        // locked shot never reaches pickShot again, so this is its only chance to be the
+        // right TV camera rather than merely a TV camera. Keyed on the flag cutTo
+        // recorded, not on the shot type - battle, overtake, lapper AND drop all frame
+        // as a pair, so a shot-type list here would silently miss the last two.
+        const int tv = static_cast<int>(m_currentIsBattle ? SpectateHandler::CameraRole::TRACKSIDE
+                                                          : SpectateHandler::CameraRole::AUTO);
+        m_currentCameraRole = tv;
+        spectate.requestSpectateCamera(static_cast<SpectateHandler::CameraRole>(tv));
+        DEBUG_INFO("Director: Max shot Off -> camera back to the TV shot");
+    }
+
     if (m_riderLock) {
         // Rider locked: keep the subject pinned, but keep the show alive by rotating the
         // camera on the shot cadence (TV <-> onboards) instead of freezing on one angle.
-        if (m_currentSubject >= 0 && (now - m_shotStartMs) >= maxShotMs()) {
+        // The cadence IS the max shot, so with forced rotation off the angle holds too -
+        // "Max shot = Off" means the director changes nothing on a timer, camera included.
+        if (m_currentSubject >= 0 && forcedRotation() && (now - m_shotStartMs) >= maxShotMs()) {
             int next = nextLockedCamera(m_currentCameraRole);
             if (next != m_currentCameraRole) {
                 m_currentCameraRole = next;
@@ -119,29 +457,8 @@ void DirectorManager::evaluate() {
 
     // Snapshot racing riders.
     const SessionData& sd = pd.getSessionData();
-    std::vector<Rider> riders;
-    riders.reserve(32);
-    for (const auto& kv : pd.getStandings()) {
-        const StandingsData& s = kv.second;
-        if (s.state != 0) continue;  // 0 = Racing (skip DNS/Retired/DSQ)
-        if (s.pit != 0) continue;    // never follow a rider who is in the pits
-        int pos = pd.getPositionForRaceNum(s.raceNum);
-        if (pos <= 0) continue;
-        // Official split gap for battle scoring, matching PluginData::getBattleGroups
-        // (stable - realTimeGap flickers as the active batch is recomputed each frame,
-        // which made the overlay battle panel dance). The director uses no live gaps at
-        // all now; overtakes are detected from official position swaps below.
-        int gtl = s.gap;
-        // A rider who has crossed the line for good is still "Racing" state on the
-        // slow-down lap, but shouldn't anchor incidents or battles (a crash or a close
-        // gap among finishers isn't a story). The finish-lock has its own front-most-
-        // still-racing logic and doesn't use this flag.
-        bool finished = sd.isRiderFinished(s.numLaps, s.numLapsAtLeaderFinish);
-        riders.push_back(Rider{ pos, s.raceNum, gtl, s.gapLaps, s.numLaps, s.bestLap, finished });
-    }
+    std::vector<Rider> riders = collectRiders();
     if (riders.empty()) return;
-    std::sort(riders.begin(), riders.end(),
-              [](const Rider& a, const Rider& b) { return a.position < b.position; });
 
     // Lull round-robin. When the director has held a shot for the full max-shot but there's no
     // real story to cut to (a quiet race sitting on the leader, or a non-race sitting on the
@@ -157,7 +474,7 @@ void DirectorManager::evaluate() {
         // The walk itself lives in DirectorManager::pickNextAirtimeNum (header-only, so
         // it's unit-tested in isolation). Only the last-resort variety pick calls this,
         // and only on a lull dip (every several seconds at most), so gathering the race
-        // numbers here is off the hot path. See director_airtime_test.cpp.
+        // numbers here is off the hot path. See test_director_airtime.cpp.
         std::vector<int> raceNums;
         raceNums.reserve(riders.size());
         for (const Rider& r : riders) raceNums.push_back(r.raceNum);
@@ -181,72 +498,7 @@ void DirectorManager::evaluate() {
     m_wasPaused = false;
     const int kTrackside = static_cast<int>(SpectateHandler::CameraRole::TRACKSIDE);
 
-    // Fresh crash: front-most rider whose per-rider crash counter ticked up this eval.
-    // Riders beyond the max-position cutoff are ignored (same setting as battles) so a
-    // packed field's constant backmarker crashes don't hijack the camera. The crash
-    // cache is still updated for everyone so edge detection stays correct.
-    // Don't let a fresh crash preempt an incident shot that hasn't met its minimum hold
-    // yet: a pile-up otherwise whips the camera between crashes back-to-back. This spaces
-    // incident cuts by at least the shared "Hold" time (reusing that knob - no extra
-    // setting). After the minimum, a new crash can still take over.
-    const bool incidentYoung = (m_holdShotType == SHOT_INCIDENT && now < m_holdUntilMs
-                                && (now - m_holdStartMs) < holdMs());
-    // Position-weigh incident preemption: while we're framing a live battle/overtake,
-    // a fresh crash only cuts in if it's at a comparable-or-BETTER position than the
-    // rider we're on (posWeight is monotonic, so posWeight(crashPos) >= posWeight(curPos)
-    // is just crashPos <= curPos). So a P10 tip-over can't yank the camera off a P2 fight,
-    // but a front-runner going down still cuts. Only battle/overtake shots are protected -
-    // a solo/leader/pace shot has nothing exciting to lose, so a crash always takes it.
-    const bool protectStory = (m_currentShotType == SHOT_BATTLE || m_currentShotType == SHOT_OVERTAKE)
-                              && currentPresent && m_currentSubject >= 0;
-    const int protectPos = protectStory ? pd.getPositionForRaceNum(m_currentSubject) : 0;
-    int crashSubject = -1;
-    // Rebuild the crash-count snapshot from the CURRENT rider set (like
-    // m_prevPosition below) rather than accumulating forever: a departed rider's
-    // entry would otherwise linger, so a rejoiner reusing the race number inherits
-    // the old baseline (one suppressed/phantom crash edge) and the map grows
-    // unboundedly across a long spectate session.
-    std::unordered_map<int, int> newCrashCount;
-    newCrashCount.reserve(riders.size());
-    for (const Rider& r : riders) {
-        int cc = pd.getRiderSessionCrashCount(r.raceNum);
-        auto it = m_prevCrashCount.find(r.raceNum);
-        bool freshCrash = (it != m_prevCrashCount.end()) && cc > it->second;
-        newCrashCount[r.raceNum] = cc;
-        bool withinCut = (m_battleMaxPos <= 0 || r.position <= m_battleMaxPos);
-        // Don't let a lower-order crash steal a better story we're already framing.
-        bool outrankedByStory = (protectPos > 0 && r.position > protectPos);
-        // Skip finished riders (a spill on the slow-down lap isn't a story) and skip
-        // the rider we're already holding an active incident on - a flailing/ragdolling
-        // rider whose crashed flag re-edges would otherwise re-cut every eval and reset
-        // the linger, trapping the camera past the max-incident cap.
-        bool alreadyHeld = (m_holdShotType == SHOT_INCIDENT && now < m_holdUntilMs
-                            && r.raceNum == m_currentSubject);
-        if (m_followIncidents && freshCrash && withinCut && !seedOnly && !r.finished
-            && !alreadyHeld && !incidentYoung && !outrankedByStory && crashSubject < 0)
-            crashSubject = r.raceNum;
-    }
-    m_prevCrashCount = std::move(newCrashCount);
-
-    // Tracked rider left the track / stopped: if the rider we are following becomes a
-    // confirmed hazard (stationary or wrong-way) - an off into the dirt, a stall, a
-    // fence - without a crash edge, fold it into the incident path so we hold the
-    // moment, then release back to the race. Latched per-subject so a sustained stall
-    // fires once, not every eval. (Spectated riders expose no pure off-surface flag,
-    // so crash + confirmed hazard is the best "rider in trouble" signal we have.)
-    if (m_followIncidents && currentPresent && !currentFinished && m_currentSubject >= 0) {
-        int spos = pd.getPositionForRaceNum(m_currentSubject);
-        bool withinCut = (m_battleMaxPos <= 0 || (spos > 0 && spos <= m_battleMaxPos));
-        bool subjHazard = withinCut && pd.getRiderHazardType(m_currentSubject) != HazardType::None;
-        if (subjHazard) {
-            if (crashSubject < 0 && m_hazardLatchSubject != m_currentSubject) {
-                crashSubject = m_currentSubject;
-                m_hazardLatchSubject = m_currentSubject;
-            }
-        } else if (m_hazardLatchSubject == m_currentSubject) {
-            m_hazardLatchSubject = -1;  // cleared - allow a future episode to fire
-        }
-    }
+    const int crashSubject = detectIncidentSubject(riders, now, seedOnly, currentPresent, currentFinished);
 
     // Overall fastest lap: holder, and whether it just improved this eval.
     int fastestHolder = -1, fastestMs = INT_MAX;
@@ -271,41 +523,14 @@ void DirectorManager::evaluate() {
     // Overtakes are a race-only signal: non-race standings rank is by best lap, so a
     // position swap there means someone beat another's time, not an on-track pass.
     if (m_catchOvertakes && isRace) {
-        int overtaker = -1, overtaken = -1, overtakerPos = INT_MAX, overtakerPrev = 0;
-        for (size_t i = 0; i + 1 < riders.size(); ++i) {
-            const Rider& a = riders[i];      // now ahead (lower position)
-            const Rider& b = riders[i + 1];  // now directly behind
-            if (a.gapLaps != b.gapLaps) continue;   // same lap only
-            // A finished rider's slow-down lap shuffles positions without an
-            // on-track pass, so exclude pairs touching one (mirrors getBattleGroups).
-            if (a.finished || b.finished) continue;
-            auto pa = m_prevPosition.find(a.raceNum);
-            auto pb = m_prevPosition.find(b.raceNum);
-            if (pa == m_prevPosition.end() || pb == m_prevPosition.end()) continue;
-            if (pa->second > pb->second) {   // a was behind b, now ahead -> a passed b
-                bool within = (m_battleMaxPos <= 0 || a.position <= m_battleMaxPos);
-                if (within && a.position < overtakerPos) {
-                    overtaker = a.raceNum; overtaken = b.raceNum; overtakerPos = a.position; overtakerPrev = pa->second;
-                }
-            }
-        }
-        if (overtaker >= 0 && !seedOnly) {
-            // Count how many racing riders the overtaker actually got by this move:
-            // those who were ahead of it last eval and are now behind it. Only the
-            // current on-track field is scanned, so positions gained from a rider
-            // ahead pitting/retiring don't inflate the count.
-            int passed = 0;
-            for (const Rider& r : riders) {
-                if (r.raceNum == overtaker || r.finished) continue;  // skip finished riders (slow-down-lap drift)
-                auto pr = m_prevPosition.find(r.raceNum);
-                if (pr != m_prevPosition.end() && pr->second < overtakerPrev && r.position > overtakerPos) passed++;
-            }
-            if (passed < 1) passed = 1;   // at least the immediate rider
-            m_overtakeSubject = overtaker;
-            m_overtakePartner = overtaken;   // the rider just passed (framed behind)
-            m_overtakeGained = passed;
+        const OvertakeResult ot = detectOvertake(riders, m_prevPosition, m_battleMaxPos);
+        if (ot.valid() && !seedOnly) {
+            m_overtakeSubject = ot.overtaker;
+            m_overtakePartner = ot.overtaken;   // the rider just passed (framed behind)
+            m_overtakeGained = ot.gained;
             m_overtakeUntilMs = now + kOvertakeWindowMs;
-            DEBUG_INFO_F("Director: overtake - #%d passed #%d (+%d)", overtaker, overtaken, passed - 1);
+            DEBUG_INFO_F("Director: overtake - #%d passed #%d (+%d)",
+                         ot.overtaker, ot.overtaken, ot.gained - 1);
         }
         m_prevPosition.clear();
         // Only snapshot riders who have completed lap 1 (numLaps >= 1). A rider on the
@@ -333,22 +558,10 @@ void DirectorManager::evaluate() {
             for (const Rider& r : riders) if (r.numLaps >= 1) m_dropBasePos[r.raceNum] = r.position;
             m_dropWindowStartMs = now;
         } else {  // seedOnly already reseeded above via the first branch
-            int worstNum = -1, worstLost = 0;
-            for (const Rider& r : riders) {
-                if (r.finished || r.numLaps < 1) continue;
-                auto it = m_dropBasePos.find(r.raceNum);
-                if (it == m_dropBasePos.end()) continue;
-                int lost = r.position - it->second;  // positive = fell back this many places
-                // Gate on where the drama STARTED (the baseline position): a top-runner
-                // sliding back is the story, even though they end up deep in the field.
-                bool within = (m_battleMaxPos <= 0 || it->second <= m_battleMaxPos);
-                if (within && lost >= kDropThreshold && lost > worstLost) {
-                    worstNum = r.raceNum; worstLost = lost;
-                }
-            }
-            if (worstNum >= 0) {
-                m_dropSubject = worstNum;
-                m_dropLost = worstLost;
+            const DropResult drop = detectDrop(riders, m_dropBasePos, m_battleMaxPos, kDropThreshold);
+            if (drop.valid()) {
+                m_dropSubject = drop.raceNum;
+                m_dropLost = drop.lost;
                 m_dropUntilMs = now + kOvertakeWindowMs;
             }
         }
@@ -403,31 +616,8 @@ void DirectorManager::evaluate() {
     // real time on the board. The resulting paceSubject only drives a CUT in the non-race
     // branch below (fastest sectors is a non-race-only story); in a race the baseline is
     // still tracked here so a session transition is seamless, but paceSubject goes unused.
-    int paceSubject = -1, paceSplit = -1, pacePos = INT_MAX;
-    for (const Rider& r : riders) {
-        const CurrentLapData* cl = pd.getCurrentLapData(r.raceNum);
-        if (!cl) continue;
-        // Individual sector times from the cumulative splits (-1 until crossed).
-        const int sec[3] = {
-            cl->split1,
-            (cl->split2 > 0 && cl->split1 > 0) ? (cl->split2 - cl->split1) : -1,
-            (cl->split3 > 0 && cl->split2 > 0) ? (cl->split3 - cl->split2) : -1,
-        };
-        // Out-lap riders (no completed lap) can refresh the baseline but never trigger a
-        // cut: their sectors are cold and there's no reference lap to be "on pace" against.
-        const bool eligible = (r.numLaps >= 1);
-        for (int i = 0; i < 3; ++i) {
-            if (sec[i] <= 0) continue;
-            const bool hadBaseline = (m_bestSectorMs[i] > 0);
-            if (!hadBaseline || sec[i] < m_bestSectorMs[i]) {
-                if (hadBaseline && !seedOnly && eligible &&
-                    (i > paceSplit || (i == paceSplit && r.position < pacePos))) {
-                    paceSubject = r.raceNum; paceSplit = i; pacePos = r.position;
-                }
-                m_bestSectorMs[i] = sec[i];
-            }
-        }
-    }
+    int paceSplit = -1;
+    const int paceSubject = updateSectorBests(riders, seedOnly, paceSplit);
     // NON-RACE ONLY: pace is THE story - a priority interrupt that rides the hot lap
     // (Trackside) and preempts the pace-setter baseline below. It's a stopwatch session,
     // so chasing session-best sectors IS the show. In a RACE it's deliberately not a
@@ -453,36 +643,12 @@ void DirectorManager::evaluate() {
     // lap), so after the shared stories above the director sits on the session
     // pace-setter with the usual variety pacing, keeping a stopwatch session moving.
     if (!isRace) {
-        // Baseline: sit on the pace-setter (rank P1 = fastest so far), dipping to the NEXT
-        // rider for variety once we have held past the max shot - so a quiet track still mixes
-        // it up and every rider gets some airtime (not just P2). The min-shot floor keeps cuts
-        // from chattering.
-        const int paceSetter = leader.raceNum;
-        const long long shotElapsed = now - m_shotStartMs;
-        if (m_currentSubject < 0 || !currentPresent) {
-            cutTo(paceSetter, false, now, -1, -1, -1, nullptr,
-                  m_currentSubject < 0 ? "acquire" : "subject-gone");
-            return;
-        }
-        if (m_currentSubject == paceSetter) {
-            // A variety ONBOARD dip is brief flavour, not a hero shot: cap it at the
-            // min-shot so it doesn't hold the pace-setter on a bike cam for the full
-            // max-shot (which reads as the camera being "stuck" onboard). A trackside /
-            // Auto hero shot holds the full max-shot as before. Cutting away re-runs
-            // pickShot, which returns to Auto/trackside unless the cadence dips again.
-            using CR = SpectateHandler::CameraRole;
-            const bool onboard = (m_currentCameraRole >= static_cast<int>(CR::ONBOARD_FRONT) &&
-                                  m_currentCameraRole <= static_cast<int>(CR::FORKS));
-            const long long dwellCap = onboard ? minShotMs() : maxShotMs();
-            if (shotElapsed >= dwellCap) {
-                int v = nextAirtimeSubject(m_currentSubject, paceSetter);
-                if (v >= 0) cutTo(v, false, now, -1, -1, -1, nullptr, "maxshot");
-            }
-            return;
-        }
-        // Currently on someone other than the pace-setter (a variety dip or a finished
-        // hot lap): return to the pace-setter once the minimum shot has elapsed.
-        if (shotElapsed >= minShotMs()) cutTo(paceSetter, false, now, -1, -1, -1, nullptr, "return");
+        // The pace-setter is the floor, unless forced rotation is off - then it's the
+        // broadcaster's own rider, and runNonRaceShow's "return" cut hands the camera
+        // back to them after each hot-lap story instead of to the fastest man on track.
+        runNonRaceShow(now, currentPresent,
+                       pickBaselineSubject(riders, forcedRotation(), m_homeSubject, leader.raceNum),
+                       nextAirtimeSubject);
         return;
     }
 
@@ -493,102 +659,17 @@ void DirectorManager::evaluate() {
     // Leader baseline: the front-most rider STILL RACING, so with Finish lock off we
     // don't park the camera on a finished winner sitting on their slow-down lap while
     // the race for position continues behind. Falls back to the leader if all finished.
-    int baselineNum = leader.raceNum;
-    for (const Rider& r : riders) { if (!r.finished) { baselineNum = r.raceNum; break; } }
-    int bestSubject = baselineNum; bool bestIsBattle = false; int bestPartner = -1;
-    double bestScore = posWeight(1) * 0.6;  // leader baseline so there is never dead air
-    int altSubject = -1; bool altIsBattle = false; int altPartner = -1;
-    double altScore = -1.0;
-
-    // partner = the other rider framed in a battle/overtake shot (-1 for solo).
-    auto consider = [&](int subject, double score, bool isBattle, int partner) {
-        if (score > bestScore) { bestScore = score; bestSubject = subject; bestIsBattle = isBattle; bestPartner = partner; }
-        if (subject != m_currentSubject && score > altScore) { altScore = score; altSubject = subject; altIsBattle = isBattle; altPartner = partner; }
-    };
-
-    // Register the leader baseline as a candidate too, so it can also be the alt
-    // (variety) pick when we are currently following someone else.
-    consider(baselineNum, bestScore, false, -1);
-
-    // Battles: use the shared battle definition (PluginData::getBattleGroups) so the
-    // director and the web overlay agree on what a battle is - one brain, one config
-    // (battle gap + max position both live in the Director settings). Follow the front
-    // rider of each group (chaser framed behind); closeness from the front pair's gap.
-    // A bigger group (3+ riders nose-to-tail) scores higher than a lone pair.
-    std::unordered_map<int, int> gapByNum;
-    gapByNum.reserve(riders.size());
-    for (const Rider& r : riders) gapByNum[r.raceNum] = r.gapToLeaderMs;
-    // The "Follow battles" toggle gates only the director's subject scoring; the
-    // battle-gap value still defines a battle for the overlay panel independently, so
-    // when off we simply don't score any battle groups (empty -> findGroup() nullptr).
-    const auto battleGroups = m_followBattles ? pd.getBattleGroups(m_battleGapMs, m_battleMaxPos)
-                                              : std::vector<std::vector<int>>{};
-    // Look up the group a battle front leads (so a cut can hand pickShot the riders to
-    // rotate the onboard through). Returns nullptr for non-battle-front subjects.
-    auto findGroup = [&](int frontNum) -> const std::vector<int>* {
-        for (const auto& g : battleGroups) if (!g.empty() && g[0] == frontNum) return &g;
-        return nullptr;
-    };
-    for (const auto& grp : battleGroups) {
-        if (grp.size() < 2) continue;
-        int frontNum = grp[0], chaserNum = grp[1];
-        int frontPos = pd.getPositionForRaceNum(frontNum);
-        auto fg = gapByNum.find(frontNum), cg = gapByNum.find(chaserNum);
-        if (frontPos <= 0 || fg == gapByNum.end() || cg == gapByNum.end()) continue;
-        int interval = cg->second - fg->second;
-        if (interval <= 0) continue;  // defensive; getBattleGroups already guarantees > 0
-        int groupSize = static_cast<int>(grp.size());
-        double closeness = 1.0 - static_cast<double>(interval) / m_battleGapMs;
-        double sizeBoost = std::min(2.0, 1.0 + (groupSize - 2) * 0.25);  // 2->1.0, 3->1.25 ... cap 2.0
-        double score = closeness * posWeight(frontPos) * 2.0 * sizeBoost;
-        consider(frontNum, score, true, chaserNum);
-    }
-
-    // Overtake reward: a freshly-completed pass outscores routine battles for a short
-    // window so the director cuts to (or holds) the move. Framed as a battle so the
-    // camera frames both riders (Trackside). Falls through if the overtaker dropped out.
-    if (m_catchOvertakes && m_overtakeSubject >= 0 && now < m_overtakeUntilMs) {
-        int opos = pd.getPositionForRaceNum(m_overtakeSubject);
-        // A multi-place move (one rider clearing several at once) is a bigger story than
-        // a single pass, so it scores higher - enough to win out over a routine battle
-        // and, between two passes, to prefer the rider who gained more. Capped so a pile
-        // of lapped-rider passes can't dominate. size = riders involved in the move
-        // (overtaker + those passed), so the badge "+K" reads K = passed-beyond-the-
-        // immediate, same as a battle group's "+K".
-        double passBoost = std::min(2.5, 1.0 + (m_overtakeGained - 1) * 0.5);  // 1 pass=1.0, 2=1.5, 3=2.0, cap 2.5
-        if (opos > 0) consider(m_overtakeSubject, posWeight(opos) * 3.0 * passBoost, true, m_overtakePartner);
-        else m_overtakeUntilMs = 0;
-    }
-
-    // Lappers (opt-in): a front-runner working through backmarkers (1+ laps up, closing on
-    // traffic) is good filler content but ranks BELOW a real position battle. Score the
-    // front-most lapper within the cutoff; m_lapperSubject tags the shot so the badge reads
-    // "lapping #N" and groupFor() leaves it Trackside (no chaser dip on a lapping shot).
-    m_lapperSubject = -1;
-    if (m_followLappers) {
-        for (const Rider& r : riders) {
-            if (m_battleMaxPos > 0 && r.position > m_battleMaxPos) continue;
-            int lapped = pd.getRiderLappingTarget(r.raceNum);
-            if (lapped < 0) continue;
-            m_lapperSubject = r.raceNum;   // riders are position-sorted -> front-most lapper
-            consider(r.raceNum, posWeight(r.position) * 1.2, true, lapped);  // < a close battle's ~*2.0
-            break;
-        }
-    }
-
-    // Drops (opt-in): a rider tumbling down the order while its boost window is live. A
-    // real story but below a battle/overtake - scored a touch above a lapper, weighted by
-    // the rider's CURRENT (dropped) position. Framed Trackside solo (shotFor tags it
-    // SHOT_DROP; groupFor leaves it Trackside with no chaser dip).
-    if (m_followDrops && m_dropSubject >= 0 && now < m_dropUntilMs) {
-        int dpos = pd.getPositionForRaceNum(m_dropSubject);
-        if (dpos > 0) {
-            double dropBoost = std::min(2.0, 1.0 + (m_dropLost - kDropThreshold) * 0.25);
-            consider(m_dropSubject, posWeight(dpos) * 1.6 * dropBoost, true, -1);
-        } else {
-            m_dropUntilMs = 0;  // subject left the race
-        }
-    }
+    const StoryScores scores = scoreRaceStories(riders, now);
+    const int baselineNum = scores.baselineNum;
+    int bestSubject = scores.bestSubject;
+    bool bestIsBattle = scores.bestIsBattle;
+    int bestPartner = scores.bestPartner;
+    int altSubject = scores.altSubject;
+    bool altIsBattle = scores.altIsBattle;
+    int altPartner = scores.altPartner;
+    // Look up the group a battle front leads (so a cut can hand pickShot the riders
+    // to rotate the onboard through). Returns nullptr for non-battle-front subjects.
+    auto findGroup = [&](int frontNum) { return scores.findGroup(frontNum); };
 
     // Fastest sectors is a NON-RACE-only story (handled above as a priority interrupt):
     // in a race, chasing session-best individual sectors is too granular - it would pull
@@ -701,8 +782,12 @@ void DirectorManager::evaluate() {
 
     if (targetSubject == m_currentSubject) {
         // Best story is still our current subject. Hold unless we have lingered past
-        // the max shot, in which case force variety to a different subject.
-        if (shotElapsed >= maxShotMs() && altSubject >= 0) {
+        // the max shot, in which case force variety to a different subject. Both branches
+        // are the forced rotation: with Max shot Off neither fires, so a shot only ever
+        // ends when a STORY outscores it (or the subject leaves) - which is the point.
+        if (!forcedRotation()) {
+            return;  // no timer-driven cut; hold until a story earns the camera
+        } else if (shotElapsed >= maxShotMs() && altSubject >= 0) {
             targetSubject = altSubject;
             targetIsBattle = altIsBattle;
             targetPartner = altPartner;
@@ -722,6 +807,10 @@ void DirectorManager::evaluate() {
             return;  // plain hold (no re-cut)
         }
     }
+    // With forced rotation off, a cut back to the broadcaster's own rider is a RETURN, not
+    // a story that outbid the last one - name it so the cut log and director_report.py can
+    // tell "the story ended" apart from "a better story won".
+    if (!forcedRotation() && targetSubject == m_homeSubject && !targetIsBattle) reason = "home";
     if (finishWindow) reason = "finish";
 
     // A different subject wins - honor the minimum shot length before cutting away.

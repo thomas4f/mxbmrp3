@@ -5,11 +5,16 @@
 // HUD's quad/string vectors. Extracted verbatim from settings_hud.cpp (it was
 // ~890 lines, the bulk of that file) when the file grew past ~1.8k lines; the
 // SettingsHud class, members, and public API are unchanged — only where this
-// one method body lives moves. The layout-local lambdas it uses stay intact
-// (an intentional design — see CLAUDE.md). Companion to settings_hud_input.cpp.
+// one method body lives moves. Companion to settings_hud_input.cpp.
+//
+// The tab bar and its two icon helpers are member functions below, not lambdas.
+// They were lambdas until the "8+ parameters" claim behind that choice was
+// actually measured (it is 2, and 5 for the bar); the per-tab CONTROL lambdas
+// this file used to hold are gone entirely, replaced by SettingsLayoutContext.
 // ============================================================================
 #include "settings_hud.h"
 #include "settings/settings_layout.h"
+#include "settings/text_wrap.h"
 #include "telemetry_hud.h"
 #include "rumble_hud.h"
 #include "helmet_overlay_hud.h"
@@ -111,106 +116,84 @@ const SettingsHud::TabDescriptor* SettingsHud::findTabDescriptor(int tabId) {
     return nullptr;
 }
 
-void SettingsHud::rebuildRenderData() {
-    if (!m_bVisible) return;
+// ==========================================================================
+// Tab-bar drawing helpers, split out of rebuildRenderData().
+//
+// These were lambdas, held that way by a rule (CLAUDE.md "Design Decisions", plus
+// a NOTE in this file) claiming a conversion would need "8+ parameters". Measured
+// rather than assumed, each needs TWO beyond its original arguments: the scaled
+// dimensions and the checkbox cell width. Everything else they touch -- addIcon,
+// addString, m_clickRegions, m_hoveredRegionIndex -- is a member, which a member
+// function gets for free and a lambda had to capture by reference.
+// ==========================================================================
 
-    clearStrings();
-    m_quads.clear();
-    m_clickRegions.clear();
-    m_steppedControls.clear();  // rebuilt in lockstep with the click regions
-    m_cycleControls.clear();    // rebuilt in lockstep with the click regions
+// Shared dim level for "inactive" tab icons (disabled toggles + non-toggle section
+// tabs) so they read as equally subdued; enabled toggles stay at full opacity.
+constexpr float INACTIVE_ICON_OPACITY = 0.5f;
 
-    // Update cached window size (use actual pixel dimensions)
-    const InputManager& input = InputManager::getInstance();
-    m_cachedWindowWidth = input.getWindowWidth();
-    m_cachedWindowHeight = input.getWindowHeight();
 
-    auto dim = getScaledDimensions();
+// Draws an identity icon in a tab's checkbox cell at the given colour. Returns false
+// if no icon is assigned/available (caller can fall back to text). Icons render a bit
+// smaller than the row font (they fill their glyph box more than text fills the em) and
+// nudged up ~2px (at 1080p, scaled) so they sit optically centred on the row.
+bool SettingsHud::drawTabIcon(float x, float y, const char* iconName, unsigned long color,
+                              const ScaledDimensions& dim, float checkboxWidth) {
 
-    // Layout constants - compact panel for single HUD
-    constexpr int panelWidthChars = SettingsHud::SETTINGS_PANEL_WIDTH;
-    constexpr float sectionSpacing = 0.0150f;
-    constexpr float tabSpacing = 0.0050f;
+    // Same global switch that drives the title-bar icons gates the tab icons.
+    int spriteIndex = (UiConfig::getInstance().getTitleIcons() && iconName && iconName[0])
+        ? AssetManager::getInstance().getIconSpriteIndex(iconName) : 0;
+    if (spriteIndex <= 0) return false;
+    constexpr float TAB_ICON_SCALE = 0.63f;
+    float cellW = checkboxWidth * 0.25f;
+    float iconCenterY = y + dim.lineHeightNormal * 0.5f - (2.0f / 1080.0f) * dim.scale;
+    addIcon(x + cellW * 1.5f, iconCenterY, spriteIndex, color, dim.fontSize * TAB_ICON_SCALE);
+    return true;
+}
 
-    float panelWidth = PluginUtils::calculateMonospaceTextWidth(panelWidthChars, dim.fontSize) + dim.paddingH + dim.paddingH;
+// Draws a tab's enable/disable toggle in semantic colours: POSITIVE when enabled,
+// NEGATIVE when disabled (a disabled icon lightens 10% on hover as an affordance).
+// Falls back to the legacy "[x]"/"[ ]" text when no icon is available.
+// Call right after pushing the tab's toggle ClickRegion so the hover check targets it.
+void SettingsHud::drawTabToggle(float x, float y, const char* iconName, bool enabled,
+                                const ScaledDimensions& dim, float checkboxWidth) {
 
-    // Estimate height - sized to fit all tabs + content (Friends tab added one more row;
-    // the Rumble tab's expanded front/rear splits and Rev/Pit Limiter rows are the tallest case)
-    int estimatedRows = 33;
-    float backgroundHeight = dim.paddingV + dim.lineHeightLarge + dim.lineHeightNormal + (estimatedRows * dim.lineHeightNormal) + dim.paddingV;
+    ColorConfig& cc = ColorConfig::getInstance();
+    // Full-opacity semantic base: POSITIVE (enabled) / NEGATIVE (disabled).
+    unsigned long base = enabled ? cc.getPositive() : cc.getNegative();
+    bool hovered = (m_hoveredRegionIndex >= 0 &&
+                    m_hoveredRegionIndex == static_cast<int>(m_clickRegions.size()) - 1);
+    unsigned long iconColor;
+    if (hovered) {
+        // Clear affordance in BOTH states: full opacity + a strong lighten, so a
+        // disabled icon jumps from dimmed to bright and an enabled one brightens.
+        // (lightenColor keeps alpha, so build from the full-opacity base.)
+        iconColor = PluginUtils::lightenColor(base, 0.25f);
+    } else {
+        // Enabled pops at full; disabled is dimmed to the muted section level so it
+        // doesn't scream.
+        iconColor = enabled ? base : PluginUtils::applyOpacity(base, INACTIVE_ICON_OPACITY);
+    }
+    if (!drawTabIcon(x, y, iconName, iconColor, dim, checkboxWidth)) {
+        // Text fallback (no icon assigned, or asset missing on this build)
+        addString(enabled ? "[x]" : "[ ]", x, y, Justify::LEFT,
+            Fonts::getNormal(), iconColor, dim.fontSize);
+    }
 
-    // Center the panel horizontally and vertically
-    float startX = (1.0f - panelWidth) / 2.0f;
-    float startY = (1.0f - backgroundHeight) / 2.0f;
+}
 
-    setBounds(startX, startY, startX + panelWidth, startY + backgroundHeight);
-    addBackgroundQuad(startX, startY, panelWidth, backgroundHeight);
-
-    float contentStartX = startX + dim.paddingH;
-    float currentY = startY + dim.paddingV;
-
-    // Main title
-    float titleX = contentStartX + (panelWidth - dim.paddingH - dim.paddingH) / 2.0f;
-    addString("MXBMRP3 SETTINGS", titleX, currentY, Justify::CENTER,
-        Fonts::getTitle(), ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
-
-    currentY += dim.lineHeightLarge + tabSpacing;
-
-    // Vertical tab bar on left side
-    float tabStartX = contentStartX;
-    float tabStartY = currentY;
-    float tabWidth = PluginUtils::calculateMonospaceTextWidth(SettingsHud::SETTINGS_TAB_WIDTH, dim.fontSize);
-
-    float checkboxWidth = PluginUtils::calculateMonospaceTextWidth(4, dim.fontSize);  // "[X] " or "    "
-
-    // Shared dim level for "inactive" tab icons (disabled toggles + non-toggle section
-    // tabs) so they read as equally subdued; enabled toggles stay at full opacity.
-    constexpr float INACTIVE_ICON_OPACITY = 0.5f;
-
-    // Draws an identity icon in a tab's checkbox cell at the given colour. Returns false
-    // if no icon is assigned/available (caller can fall back to text). Icons render a bit
-    // smaller than the row font (they fill their glyph box more than text fills the em) and
-    // nudged up ~2px (at 1080p, scaled) so they sit optically centred on the row.
-    auto drawTabIcon = [&](float x, float y, const char* iconName, unsigned long color) -> bool {
-        // Same global switch that drives the title-bar icons gates the tab icons.
-        int spriteIndex = (UiConfig::getInstance().getTitleIcons() && iconName && iconName[0])
-            ? AssetManager::getInstance().getIconSpriteIndex(iconName) : 0;
-        if (spriteIndex <= 0) return false;
-        constexpr float TAB_ICON_SCALE = 0.63f;
-        float cellW = checkboxWidth * 0.25f;
-        float iconCenterY = y + dim.lineHeightNormal * 0.5f - (2.0f / 1080.0f) * dim.scale;
-        addIcon(x + cellW * 1.5f, iconCenterY, spriteIndex, color, dim.fontSize * TAB_ICON_SCALE);
-        return true;
-    };
-
-    // Draws a tab's enable/disable toggle in semantic colours: POSITIVE when enabled,
-    // NEGATIVE when disabled (a disabled icon lightens 10% on hover as an affordance).
-    // Falls back to the legacy "[x]"/"[ ]" text when no icon is available.
-    // Call right after pushing the tab's toggle ClickRegion so the hover check targets it.
-    auto drawTabToggle = [&](float x, float y, const char* iconName, bool enabled) {
-        ColorConfig& cc = ColorConfig::getInstance();
-        // Full-opacity semantic base: POSITIVE (enabled) / NEGATIVE (disabled).
-        unsigned long base = enabled ? cc.getPositive() : cc.getNegative();
-        bool hovered = (m_hoveredRegionIndex >= 0 &&
-                        m_hoveredRegionIndex == static_cast<int>(m_clickRegions.size()) - 1);
-        unsigned long iconColor;
-        if (hovered) {
-            // Clear affordance in BOTH states: full opacity + a strong lighten, so a
-            // disabled icon jumps from dimmed to bright and an enabled one brightens.
-            // (lightenColor keeps alpha, so build from the full-opacity base.)
-            iconColor = PluginUtils::lightenColor(base, 0.25f);
-        } else {
-            // Enabled pops at full; disabled is dimmed to the muted section level so it
-            // doesn't scream.
-            iconColor = enabled ? base : PluginUtils::applyOpacity(base, INACTIVE_ICON_OPACITY);
-        }
-        if (!drawTabIcon(x, y, iconName, iconColor)) {
-            // Text fallback (no icon assigned, or asset missing on this build)
-            addString(enabled ? "[x]" : "[ ]", x, y, Justify::LEFT,
-                Fonts::getNormal(), iconColor, dim.fontSize);
-        }
-    };
-
+// ==========================================================================
+// The vertical tab bar. Split out for the same reason as the helpers above, and
+// measured the same way: the loop reads exactly FIVE values from the enclosing
+// scope -- the two tab-bar origins, the tab and checkbox widths, and the scaled
+// dimensions. tabStartY is advanced locally and deliberately NOT returned: the
+// content column starts at the panel cursor, not below the tabs, so the final
+// value has no reader.
+//
+// Region emission ORDER is behaviour here -- clicks are hit-tested in order -- and
+// is pinned by tests/integration/tests/settings_layout_test.cpp's golden.
+// ==========================================================================
+void SettingsHud::buildTabBar(const ScaledDimensions& dim, float tabStartX,
+                              float tabStartY, float tabWidth, float checkboxWidth) {
     // Visual tab order comes straight from the descriptor registry (rows are in
     // display order; negative TAB_SECTION_* rows are the section headers).
     for (const TabDescriptor& tabRow : s_tabRegistry) {
@@ -284,12 +267,15 @@ void SettingsHud::rebuildRenderData() {
         BaseHud* tabHud = tabRow.hud ? tabRow.hud(*this) : nullptr;
 
         // Determine if this tab's HUD/widgets are enabled. Per-HUD checkboxes show
-        // the focused surface's on/off (companion vs game); the manager/global
-        // toggles (widgets/rumble/helmet/updates/director) are shared, not decoupled.
-        bool companionSurface = InputManager::getInstance().getActiveSurface() == InputManager::Surface::Companion;
+        // the focused surface's on/off (companion vs game); the manager/global toggles
+        // (widgets/rumble/updates/director) are shared, not decoupled.
+        //
+        // The helmet reads its GAME flag even on the companion, and that is correct
+        // rather than an oversight: it never renders on the companion at all
+        // (BaseHud::rendersOnCompanion), so the game flag is its only visibility.
         bool isHudEnabled;
         if (tabHud) {
-            isHudEnabled = companionSurface ? tabHud->getCompanionVisible() : tabHud->isVisible();
+            isHudEnabled = tabHud->isVisibleOnActiveSurface();
         } else if (i == TAB_WIDGETS) {
             isHudEnabled = HudManager::getInstance().areWidgetsEnabled();
         } else if (i == TAB_RUMBLE) {
@@ -318,7 +304,7 @@ void SettingsHud::rebuildRenderData() {
             ));
 
             // Identity icon (or text fallback) for the individual HUD
-            drawTabToggle(currentTabX, tabStartY, tabHud->getIconName(), isHudEnabled);
+            drawTabToggle(currentTabX, tabStartY, tabHud->getIconName(), isHudEnabled, dim, checkboxWidth);
 
             currentTabX += checkboxWidth;
         } else if (i == TAB_WIDGETS) {
@@ -328,7 +314,7 @@ void SettingsHud::rebuildRenderData() {
                 ClickRegion::WIDGETS_TOGGLE, nullptr
             ));
 
-            drawTabToggle(currentTabX, tabStartY, "hud-widgets", isHudEnabled);
+            drawTabToggle(currentTabX, tabStartY, "hud-widgets", isHudEnabled, dim, checkboxWidth);
 
             currentTabX += checkboxWidth;
         } else if (i == TAB_RUMBLE) {
@@ -338,7 +324,7 @@ void SettingsHud::rebuildRenderData() {
                 ClickRegion::RUMBLE_TOGGLE, nullptr
             ));
 
-            drawTabToggle(currentTabX, tabStartY, "hud-rumble", isHudEnabled);
+            drawTabToggle(currentTabX, tabStartY, "hud-rumble", isHudEnabled, dim, checkboxWidth);
 
             currentTabX += checkboxWidth;
         } else if (i == TAB_HELMET) {
@@ -350,9 +336,9 @@ void SettingsHud::rebuildRenderData() {
 
             // Helmet icon is game-specific (the helmet shape differs per game).
 #if defined(GAME_MXBIKES)
-            drawTabToggle(currentTabX, tabStartY, "hud-helmet-mx", isHudEnabled);
+            drawTabToggle(currentTabX, tabStartY, "hud-helmet-mx", isHudEnabled, dim, checkboxWidth);
 #else
-            drawTabToggle(currentTabX, tabStartY, "hud-helmet", isHudEnabled);
+            drawTabToggle(currentTabX, tabStartY, "hud-helmet", isHudEnabled, dim, checkboxWidth);
 #endif
 
             currentTabX += checkboxWidth;
@@ -363,7 +349,7 @@ void SettingsHud::rebuildRenderData() {
                 ClickRegion::UPDATE_CHECK_TOGGLE, nullptr
             ));
 
-            drawTabToggle(currentTabX, tabStartY, "hud-updates", isHudEnabled);
+            drawTabToggle(currentTabX, tabStartY, "hud-updates", isHudEnabled, dim, checkboxWidth);
 
             currentTabX += checkboxWidth;
         } else if (i == TAB_DIRECTOR) {
@@ -373,7 +359,7 @@ void SettingsHud::rebuildRenderData() {
                 ClickRegion::DIRECTOR_ENABLE_TOGGLE, nullptr
             ));
 
-            drawTabToggle(currentTabX, tabStartY, "video", isHudEnabled);
+            drawTabToggle(currentTabX, tabStartY, "video", isHudEnabled, dim, checkboxWidth);
 
             currentTabX += checkboxWidth;
         } else {
@@ -381,7 +367,7 @@ void SettingsHud::rebuildRenderData() {
             // it's distinct from the positive/negative toggle icons and matches the tab
             // label's colour family rather than looking disabled).
             drawTabIcon(currentTabX, tabStartY, tabRow.sectionIcon ? tabRow.sectionIcon : "",
-                ColorConfig::getInstance().getAccent());
+                ColorConfig::getInstance().getAccent(), dim, checkboxWidth);
             currentTabX += checkboxWidth;
         }
 
@@ -444,214 +430,74 @@ void SettingsHud::rebuildRenderData() {
 
         tabStartY += dim.lineHeightNormal;
     }
+}
+
+void SettingsHud::rebuildRenderData() {
+    if (!m_bVisible) return;  // vis-gate: menu is active-surface-only (see show())
+
+    clearStrings();
+    m_quads.clear();
+    m_clickRegions.clear();
+    m_steppedControls.clear();  // rebuilt in lockstep with the click regions
+    m_cycleControls.clear();    // rebuilt in lockstep with the click regions
+
+    // Update cached window size (use actual pixel dimensions)
+    const InputManager& input = InputManager::getInstance();
+    m_cachedWindowWidth = input.getWindowWidth();
+    m_cachedWindowHeight = input.getWindowHeight();
+
+    auto dim = getScaledDimensions();
+
+    // Layout constants - compact panel for single HUD
+    constexpr int panelWidthChars = SettingsHud::SETTINGS_PANEL_WIDTH;
+    constexpr float sectionSpacing = 0.0150f;
+    constexpr float tabSpacing = 0.0050f;
+
+    float panelWidth = PluginUtils::calculateMonospaceTextWidth(panelWidthChars, dim.fontSize) + dim.paddingH + dim.paddingH;
+
+    // Estimate height - sized to fit all tabs + content (Friends tab added one more row;
+    // the Rumble tab's expanded front/rear splits and Rev/Pit Limiter rows are the tallest case)
+    int estimatedRows = 33;
+    float backgroundHeight = dim.paddingV + dim.lineHeightLarge + dim.lineHeightNormal + (estimatedRows * dim.lineHeightNormal) + dim.paddingV;
+
+    // Center the panel horizontally and vertically
+    float startX = (1.0f - panelWidth) / 2.0f;
+    float startY = (1.0f - backgroundHeight) / 2.0f;
+
+    setBounds(startX, startY, startX + panelWidth, startY + backgroundHeight);
+    addBackgroundQuad(startX, startY, panelWidth, backgroundHeight);
+
+    float contentStartX = startX + dim.paddingH;
+    float currentY = startY + dim.paddingV;
+
+    // Main title
+    float titleX = contentStartX + (panelWidth - dim.paddingH - dim.paddingH) / 2.0f;
+    addString("MXBMRP3 SETTINGS", titleX, currentY, Justify::CENTER,
+        Fonts::getTitle(), ColorConfig::getInstance().getPrimary(), dim.fontSizeLarge);
+
+    currentY += dim.lineHeightLarge + tabSpacing;
+
+    // Vertical tab bar on left side
+    float tabStartX = contentStartX;
+    float tabStartY = currentY;
+    float tabWidth = PluginUtils::calculateMonospaceTextWidth(SettingsHud::SETTINGS_TAB_WIDTH, dim.fontSize);
+
+    float checkboxWidth = PluginUtils::calculateMonospaceTextWidth(4, dim.fontSize);  // "[X] " or "    "
+
+    buildTabBar(dim, tabStartX, tabStartY, tabWidth, checkboxWidth);
 
     // Content area starts to the right of the tabs
-    float contentAreaStartX = contentStartX + tabWidth + PluginUtils::calculateMonospaceTextWidth(2, dim.fontSize);  // 2-char gap after tabs
+    float contentAreaStartX = contentStartX + tabWidth
+        + PluginUtils::calculateMonospaceTextWidth(SettingsMetrics::TAB_CONTENT_GAP, dim.fontSize);
     // Content starts at the same Y as the tabs — currentY is already there (the tab
     // loop advances a separate cursor), so nothing to set here.
 
-    // Helper lambdas for controls
-    // NOTE: These lambdas are intentionally NOT extracted to member functions.
-    // They capture local layout state (dim, currentY, contentAreaStartX, etc.) which
-    // would require passing 8+ parameters if converted to methods. Lambdas improve
-    // readability and maintainability here. See CLAUDE.md "Design Decisions".
     float leftColumnX = contentAreaStartX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::SETTINGS_LEFT_COLUMN, dim.fontSize);
     float rightColumnX = contentAreaStartX + PluginUtils::calculateMonospaceTextWidth(SettingsHud::SETTINGS_RIGHT_COLUMN, dim.fontSize);
 
-    // Helper lambda to add cycle control with < value > pattern - shared across all controls
-    // If enabled is false, no click regions are added and muted color is used
-    // If isOff is true, the value is muted (for "Off" state visual consistency)
-    auto addCycleControl = [&](float baseX, float y, const char* value, int maxValueWidth,
-                               ClickRegion::Type downType, ClickRegion::Type upType, BaseHud* targetHud,
-                               bool enabled = true, bool isOff = false) {
-        float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
-        float currentX = baseX;
-        unsigned long valueColor = (enabled && !isOff) ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getMuted();
 
-        // Left arrow "<" - only show when enabled
-        if (enabled) {
-            addString("<", currentX, y, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
-            m_clickRegions.push_back(ClickRegion(
-                currentX, y, charWidth * 2, dim.lineHeightNormal,
-                downType, targetHud, 0, false, 0
-            ));
-        }
-        currentX += charWidth * 2;  // "< " (spacing preserved even if arrow hidden)
-
-        // Value with fixed width (left-aligned, padded)
-        char paddedValue[32];
-        snprintf(paddedValue, sizeof(paddedValue), "%-*s", maxValueWidth, value);
-        addString(paddedValue, currentX, y, Justify::LEFT, Fonts::getNormal(), valueColor, dim.fontSize);
-        currentX += PluginUtils::calculateMonospaceTextWidth(maxValueWidth, dim.fontSize);
-
-        // Right arrow " >" - only show when enabled
-        if (enabled) {
-            addString(" >", currentX, y, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
-            m_clickRegions.push_back(ClickRegion(
-                currentX, y, charWidth * 2, dim.lineHeightNormal,
-                upType, targetHud, 0, false, 0
-            ));
-        }
-    };
-
-    // Helper lambda to add toggle control with < On/Off > pattern - for boolean settings
-    // Both arrows trigger the same toggle action. If enabled is false, muted colors are used.
-    // "Off" values are also muted for visual consistency.
-    auto addToggleControl = [&](float baseX, float y, bool isOn,
-                                ClickRegion::Type toggleType, BaseHud* targetHud,
-                                uint32_t* bitfield = nullptr, uint32_t flag = 0,
-                                bool enabled = true) {
-        float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
-        float currentX = baseX;
-        unsigned long valueColor = (enabled && isOn) ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getMuted();
-        const char* value = isOn ? "On" : "Off";
-        constexpr int VALUE_WIDTH = 3;  // "Off" is longest
-
-        // Left arrow "<" - only show when enabled
-        if (enabled) {
-            addString("<", currentX, y, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
-            if (bitfield != nullptr) {
-                // CHECKBOX type with bitfield
-                m_clickRegions.push_back(ClickRegion(
-                    currentX, y, charWidth * 2, dim.lineHeightNormal,
-                    toggleType, bitfield, flag, false, targetHud
-                ));
-            } else {
-                // Simple toggle without bitfield
-                m_clickRegions.push_back(ClickRegion(
-                    currentX, y, charWidth * 2, dim.lineHeightNormal,
-                    toggleType, targetHud
-                ));
-            }
-        }
-        currentX += charWidth * 2;  // "< " (spacing preserved even if arrow hidden)
-
-        // Value with fixed width
-        char paddedValue[8];
-        snprintf(paddedValue, sizeof(paddedValue), "%-*s", VALUE_WIDTH, value);
-        addString(paddedValue, currentX, y, Justify::LEFT, Fonts::getNormal(), valueColor, dim.fontSize);
-        currentX += PluginUtils::calculateMonospaceTextWidth(VALUE_WIDTH, dim.fontSize);
-
-        // Right arrow " >" - only show when enabled
-        if (enabled) {
-            addString(" >", currentX, y, Justify::LEFT, Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
-            if (bitfield != nullptr) {
-                // CHECKBOX type with bitfield
-                m_clickRegions.push_back(ClickRegion(
-                    currentX, y, charWidth * 2, dim.lineHeightNormal,
-                    toggleType, bitfield, flag, false, targetHud
-                ));
-            } else {
-                // Simple toggle without bitfield
-                m_clickRegions.push_back(ClickRegion(
-                    currentX, y, charWidth * 2, dim.lineHeightNormal,
-                    toggleType, targetHud
-                ));
-            }
-        }
-    };
-
-    auto addHudControls = [&](BaseHud* hud, bool enableTitle = true) -> float {
-        // Save starting Y for right column (data toggles)
-        float sectionStartY = currentY;
-
-        // LEFT COLUMN: Basic controls
-        float controlX = leftColumnX;
-        float toggleX = controlX + PluginUtils::calculateMonospaceTextWidth(12, dim.fontSize);  // Align all toggles
-
-        // Visibility toggle
-        bool isVisible = hud->isVisible();
-        addString("Visible", controlX, currentY, Justify::LEFT,
-            Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
-        addToggleControl(toggleX, currentY, isVisible, ClickRegion::HUD_TOGGLE, hud);
-        currentY += dim.lineHeightNormal;
-
-        // Title toggle (can be disabled/grayed out)
-        bool showTitle = enableTitle ? hud->getShowTitle() : false;
-        addString("Title", controlX, currentY, Justify::LEFT,
-            Fonts::getNormal(), enableTitle ? ColorConfig::getInstance().getSecondary() : ColorConfig::getInstance().getMuted(), dim.fontSize);
-        addToggleControl(toggleX, currentY, showTitle, ClickRegion::TITLE_TOGGLE, hud, nullptr, 0, enableTitle);
-        currentY += dim.lineHeightNormal;
-
-        // Background texture variant cycle (Off, 1, 2, ...)
-        // Only enable if textures are available for this HUD
-        bool hasTextures = !hud->getAvailableTextureVariants().empty();
-        addString("Texture", controlX, currentY, Justify::LEFT,
-            Fonts::getNormal(), hasTextures ? ColorConfig::getInstance().getSecondary() : ColorConfig::getInstance().getMuted(), dim.fontSize);
-        char textureValue[16];
-        int variant = hud->getTextureVariant();
-        if (!hasTextures || variant == 0) {
-            snprintf(textureValue, sizeof(textureValue), "Off");
-        } else {
-            snprintf(textureValue, sizeof(textureValue), "%d", variant);
-        }
-        addCycleControl(toggleX, currentY, textureValue, 4,
-            ClickRegion::TEXTURE_VARIANT_DOWN, ClickRegion::TEXTURE_VARIANT_UP, hud, hasTextures);
-        currentY += dim.lineHeightNormal;
-
-        // Background opacity controls
-        addString("Opacity", controlX, currentY, Justify::LEFT,
-            Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
-        char opacityValue[16];
-        int opacityPercent = static_cast<int>(std::round(hud->getBackgroundOpacity() * 100.0f));
-        snprintf(opacityValue, sizeof(opacityValue), "%d%%", opacityPercent);
-        addCycleControl(toggleX, currentY, opacityValue, 4,
-            ClickRegion::BACKGROUND_OPACITY_DOWN, ClickRegion::BACKGROUND_OPACITY_UP, hud);
-        currentY += dim.lineHeightNormal;
-
-        // Scale controls
-        addString("Scale", controlX, currentY, Justify::LEFT,
-            Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), dim.fontSize);
-        char scaleValue[16];
-        int scalePercent = static_cast<int>(std::round(hud->getScale() * 100.0f));
-        snprintf(scaleValue, sizeof(scaleValue), "%d%%", scalePercent);
-        addCycleControl(toggleX, currentY, scaleValue, 4,
-            ClickRegion::SCALE_DOWN, ClickRegion::SCALE_UP, hud);
-        currentY += dim.lineHeightNormal;
-
-        // Return the starting Y for right column (data toggles)
-        return sectionStartY;
-    };
-
-    // Data toggle control - displays "Label: < On/Off >" format
-    // labelWidth should accommodate the longest label in the group for alignment
-    auto addDataToggle = [&](const char* label, uint32_t* bitfield, uint32_t flag, bool isRequired, BaseHud* hud, float yPos, int labelWidth = 12) {
-        float dataX = rightColumnX;
-        bool isChecked = (*bitfield & flag) != 0;
-        bool enabled = !isRequired;
-
-        // Label with padding
-        char paddedLabel[32];
-        snprintf(paddedLabel, sizeof(paddedLabel), "%-*s", labelWidth, label);
-        addString(paddedLabel, dataX, yPos, Justify::LEFT, Fonts::getNormal(),
-            enabled ? ColorConfig::getInstance().getSecondary() : ColorConfig::getInstance().getMuted(), dim.fontSize);
-
-        // Toggle control
-        float toggleX = dataX + PluginUtils::calculateMonospaceTextWidth(labelWidth, dim.fontSize);
-        addToggleControl(toggleX, yPos, isChecked, ClickRegion::CHECKBOX, hud, bitfield, flag, enabled);
-    };
-
-    // Helper for grouped toggles that toggle multiple bits
-    auto addGroupToggle = [&](const char* label, uint32_t* bitfield, uint32_t groupFlags, bool isRequired, BaseHud* hud, float yPos, int labelWidth = 12) {
-        float dataX = rightColumnX;
-        // Group is checked if all bits in group are set
-        bool isChecked = (*bitfield & groupFlags) == groupFlags;
-        bool enabled = !isRequired;
-
-        // Label with padding
-        char paddedLabel[32];
-        snprintf(paddedLabel, sizeof(paddedLabel), "%-*s", labelWidth, label);
-        addString(paddedLabel, dataX, yPos, Justify::LEFT, Fonts::getNormal(),
-            enabled ? ColorConfig::getInstance().getSecondary() : ColorConfig::getInstance().getMuted(), dim.fontSize);
-
-        // Toggle control
-        float toggleX = dataX + PluginUtils::calculateMonospaceTextWidth(labelWidth, dim.fontSize);
-        addToggleControl(toggleX, yPos, isChecked, ClickRegion::CHECKBOX, hud, bitfield, groupFlags, enabled);
-    };
 
     // Render controls for active tab only
-    BaseHud* activeHud = nullptr;
-    float dataStartY = 0.0f;
 
     // Create layout context for extracted tabs
     // controlX is where the toggle controls start (labelX + 24 chars for Phase 3 descriptive labels)
@@ -665,11 +511,10 @@ void SettingsHud::rebuildRenderData() {
     if (const TabDescriptor* tabDesc = findTabDescriptor(m_activeTab); tabDesc && tabDesc->render) {
         // Route to the extracted per-tab renderer (settings_tab_*.cpp) via the registry.
         layoutCtx.currentY = currentY;   // Sync context cursor
-        activeHud = tabDesc->render(layoutCtx);
+        tabDesc->render(layoutCtx);
         currentY = layoutCtx.currentY;   // Sync local cursor back
     } else {
         DEBUG_WARN_F("Invalid tab index: %d, defaulting to TAB_STANDINGS", m_activeTab);
-        activeHud = m_standings;
     }
 
     currentY += sectionSpacing;
@@ -694,51 +539,26 @@ void SettingsHud::rebuildRenderData() {
         }
     }
 
-    // Render description or tooltip at the reserved position (replaces each other)
-    // Calculate max width for word wrapping (contentAreaWidth - left margin from labels)
-    float descTextWidth = layoutCtx.panelWidth - (layoutCtx.labelX - contentAreaStartX);
-    int maxCharsPerLine = static_cast<int>(descTextWidth / PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize));
+    // Render description or tooltip at the reserved position (replaces each other).
+    // The box spans from the label column to the content edge — a whole number of
+    // character cells, so take it from SettingsMetrics rather than dividing the
+    // emitted float span by one character's width. That round-trip returned one
+    // char FEWER at HUD scale 0.70 (float rounding), silently narrowing the box at
+    // one scale only; the integer form is exact at every scale, and is the same
+    // value tests/unit/test_tooltip_length.cpp measures shipped tooltips against.
+    constexpr int maxCharsPerLine = SettingsMetrics::tooltipCharsPerLine();
 
-    // Helper lambda to render up to 2 lines of word-wrapped text
+    // Helper lambda to render up to 2 lines of word-wrapped text. The wrapping
+    // itself is TextWrap::wrap (settings/text_wrap.h) — pure and unit-tested, and
+    // the same function tests/unit/test_tooltip_length.cpp runs every shipped
+    // tooltip through to prove none of them render cut off.
     auto renderWrappedText = [&](const std::string& text, unsigned long color) {
         float lineY = layoutCtx.tooltipY;
-        size_t lineStart = 0;
-        int lineCount = 0;
-        constexpr int MAX_LINES = 2;
-
-        while (lineStart < text.length() && lineCount < MAX_LINES) {
-            std::string wrappedLine;
-            size_t lineEnd = lineStart + maxCharsPerLine;
-
-            if (lineEnd >= text.length()) {
-                // Last line - use remaining text
-                wrappedLine = text.substr(lineStart);
-                lineStart = text.length();
-            } else {
-                // Find last space before lineEnd for word wrap
-                size_t lastSpace = text.rfind(' ', lineEnd);
-                if (lastSpace != std::string::npos && lastSpace > lineStart) {
-                    wrappedLine = text.substr(lineStart, lastSpace - lineStart);
-                    lineStart = lastSpace + 1;  // Skip the space
-                } else {
-                    // No space found - hard break
-                    wrappedLine = text.substr(lineStart, maxCharsPerLine);
-                    lineStart += maxCharsPerLine;
-                }
-
-                // If this is the last line and there's more text, add ellipsis
-                if (lineCount == MAX_LINES - 1 && lineStart < text.length()) {
-                    if (wrappedLine.length() > 3) {
-                        wrappedLine.resize(wrappedLine.length() - 3);
-                        wrappedLine += "...";
-                    }
-                }
-            }
-
-            addString(wrappedLine.c_str(), layoutCtx.labelX, lineY, Justify::LEFT,
+        for (const std::string& line : TextWrap::wrap(text, maxCharsPerLine,
+                                                      TextWrap::TOOLTIP_LINES).lines) {
+            addString(line.c_str(), layoutCtx.labelX, lineY, Justify::LEFT,
                 Fonts::getNormal(), color, dim.fontSize);
             lineY += dim.lineHeightNormal;
-            lineCount++;
         }
     };
 

@@ -29,7 +29,13 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "CompanyName",      "thomas4f"
-            VALUE "FileDescription",  "Customizable HUD plugin for MX Bikes and GP Bikes displaying real-time race information and telemetry"
+            // Matches the GitHub repository description, and the installer's
+            // FileDescription (packaging/mxbmrp3.nsi) modulo its "Setup" prefix.
+            // Deliberately names the ENGINE FAMILY rather than the individual games: the
+            // previous wording enumerated them and promptly went stale, still claiming
+            // "MX Bikes and GP Bikes" a release cycle after Kart Racing Pro shipped.
+            // Adding a fourth PiBoSo title should not require editing this string.
+            VALUE "FileDescription",  "Plugin for PiBoSo Racing Simulators"
             VALUE "FileVersion",      VER_STRING
             VALUE "InternalName",     "mxbmrp3"
             VALUE "LegalCopyright",   "Copyright (c) 2025-2026 thomas4f"

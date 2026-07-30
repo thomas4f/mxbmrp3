@@ -14,8 +14,11 @@
 // ============================================================================
 #pragma once
 
+#include <functional>
 #include <unordered_map>
 #include <vector>
+
+#include "director_scoring.h"   // director_detail::Rider (evaluate()'s phase signatures)
 
 class DirectorManager {
 public:
@@ -23,7 +26,7 @@ public:
 
     // Tunable ranges (exposed in the Director settings tab for live tuning).
     static constexpr int MIN_SHOT_LO = 2,  MIN_SHOT_HI = 20;   // seconds
-    static constexpr int MAX_SHOT_LO = 5,  MAX_SHOT_HI = 40;   // seconds
+    static constexpr int MAX_SHOT_LO = 5,  MAX_SHOT_HI = 40;   // seconds (0 = Off, see setMaxShotSec)
     static constexpr int BATTLE_GAP_LO = 500, BATTLE_GAP_HI = 5000, BATTLE_GAP_STEP = 250;  // ms
     static constexpr int BATTLE_MAXPOS_HI = 40;   // ignore battles beyond this position (0 = no limit)
     static constexpr int RESUME_HI = 120, RESUME_STEP = 5;     // seconds (0 = off)
@@ -36,8 +39,16 @@ public:
     void setEnabled(bool enabled);
     int getMinShotSec() const { return m_minShotSec; }      // shortest time on one shot
     void setMinShotSec(int sec);
-    int getMaxShotSec() const { return m_maxShotSec; }      // longest time before forcing variety
+    // Longest time on one subject before the director forces a change of scene. 0 = Off:
+    // FORCED ROTATION DISABLED — the director then only ever cuts for a story (incident,
+    // fastest lap, battle, overtake, ...) and returns to the broadcaster's own rider when
+    // there is none, instead of pacing the field on a timer. See forcedRotation().
+    int getMaxShotSec() const { return m_maxShotSec; }
     void setMaxShotSec(int sec);
+    // Is the timer-driven rotation on? Everything the max shot drives — the forced variety
+    // cut, the lull round-robin, the non-race dip, the rider-lock camera cycle — is gated on
+    // this one predicate, so "Max shot = Off" cannot half-apply.
+    bool forcedRotation() const { return m_maxShotSec > 0; }
     int getBattleGapMs() const { return m_battleGapMs; }    // max gap that counts as a battle
     void setBattleGapMs(int ms);
     int getBattleMaxPos() const { return m_battleMaxPos; }  // ignore battles whose leader is beyond this position (0 = no limit)
@@ -149,6 +160,29 @@ public:
         return pick;
     }
 
+    // The rider the BROADCASTER put on camera: whoever was already spectated when the
+    // director was enabled, plus every later manual pick. -1 until one is adopted.
+    // Only consulted while forced rotation is off, where it is the dead-air floor
+    // (see pickBaselineSubject); with rotation on the director paces the whole field
+    // and the home rider is just history. Read by a headless test.
+    int getHomeSubject() const { return m_homeSubject; }
+
+    // The dead-air floor for one decision pass: which rider the camera falls back to when
+    // no story is running. With forced rotation ON that is `fallback` — the leader in a
+    // race, the pace-setter in a non-race — and the director paces on from there. With it
+    // OFF the broadcaster's own rider owns the floor, so a story cut RETURNS to them once
+    // the story ends rather than drifting up the order. Degrades to `fallback` while that
+    // rider isn't followable (pitted, retired, finished) or was never established, so
+    // "Max shot = Off" never means dead air. Header-only so it is unit-tested in isolation
+    // (test_director_airtime.cpp).
+    static int pickBaselineSubject(const std::vector<director_detail::Rider>& riders,
+                                   bool forcedRotation, int homeSubject, int fallback) {
+        if (forcedRotation || homeSubject < 0) return fallback;
+        for (const director_detail::Rider& r : riders)
+            if (r.raceNum == homeSubject && !r.finished) return homeSubject;
+        return fallback;
+    }
+
     const char* getCurrentShotType() const;                          // solo/battle/incident/fastest/finish/overtake/pace/finalLap/lapper/drop
     // Which individual sector the current "pace" shot is up on: 0 = S1, 1 = S2, 2 = S3
     // (-1 when the current shot isn't a pace shot). Lets the overlay caption name
@@ -211,6 +245,64 @@ private:
     enum ShotType { SHOT_SOLO = 0, SHOT_BATTLE, SHOT_INCIDENT, SHOT_FASTEST, SHOT_FINISH, SHOT_OVERTAKE, SHOT_PACE, SHOT_FINAL_LAP, SHOT_LAPPER, SHOT_DROP };
 
     void evaluate();
+
+    // evaluate() phases. evaluate() itself is the priority ladder — each story is
+    // tried in order and a winner cuts and returns — so these are the self-
+    // contained blocks that ladder consults, pulled out to keep the ladder itself
+    // readable. They deliberately stay MEMBERS rather than free functions: each
+    // reads or updates the per-rider edge-detection caches (m_prevCrashCount,
+    // m_bestSectorMs, ...) that make the detection stateful. The genuinely
+    // stateless parts — every story-score formula, and the overtake/drop
+    // comparisons — live in director_scoring.h / director_detect.h instead, where
+    // they are unit-tested without a game.
+    //
+    // Snapshot of the racing, on-track field for one decision pass, sorted by
+    // position. Built once and read by every phase below.
+    std::vector<director_detail::Rider> collectRiders() const;
+    // Front-most rider with a fresh crash edge, or a followed rider who just
+    // became a confirmed hazard. Refreshes the per-rider crash baseline for the
+    // WHOLE field either way, so edge detection stays correct even while the
+    // camera is elsewhere. -1 = no incident to cut to.
+    int detectIncidentSubject(const std::vector<director_detail::Rider>& riders,
+                              long long now, bool seedOnly, bool currentPresent,
+                              bool currentFinished);
+    // Refresh the session-best individual sector times (S1/S2/S3) from the live
+    // cumulative splits. Returns the rider on the deepest freshly-improved sector
+    // (-1 = none) and writes which sector into `outSplit`. The BASELINE update
+    // always runs — even for out-lap riders and even when the feature is off — so
+    // the records stay current across a session; only the returned cut candidate
+    // is gated.
+    int updateSectorBests(const std::vector<director_detail::Rider>& riders,
+                          bool seedOnly, int& outSplit);
+    // The non-race (practice/qualify/warmup) timing show: sit on the pace-setter
+    // with variety dips. Terminal — it cuts as needed and evaluate() returns.
+    void runNonRaceShow(long long now, bool currentPresent, int paceSetterNum,
+                        const std::function<int(int, int)>& nextAirtimeSubject);
+
+    // One race decision pass's scored candidates. `best` is the highest-scoring
+    // story overall; `alt` is the highest whose subject differs from the one we
+    // are already on, which is what a max-shot variety cut needs (falling back to
+    // `best` there would just re-pick the current subject and never cut away).
+    struct StoryScores {
+        int baselineNum = -1;   // front-most rider STILL RACING (the dead-air floor)
+        int bestSubject = -1;  bool bestIsBattle = false;  int bestPartner = -1;
+        int altSubject = -1;   bool altIsBattle = false;   int altPartner = -1;
+        // Front-first race numbers per battle group, as PluginData defines them —
+        // kept so a cut can hand pickShot the riders to rotate an onboard through.
+        std::vector<std::vector<int>> battleGroups;
+        // The group `frontNum` leads, or nullptr if it isn't a battle front.
+        const std::vector<int>* findGroup(int frontNum) const {
+            for (const auto& g : battleGroups)
+                if (!g.empty() && g[0] == frontNum) return &g;
+            return nullptr;
+        }
+    };
+    // Score every race story type (battles, the overtake reward, lappers, drops)
+    // against the leader baseline. The RANKING between story types lives in
+    // director_scoring.h; this decides which riders are candidates at all.
+    StoryScores scoreRaceStories(const std::vector<director_detail::Rider>& riders,
+                                 long long now);
+
     void resetRuntime();   // clear all runtime/story state (enable toggle + new session)
     long long nowMs() const;
     // forceRole >= 0 pins the camera (a SpectateHandler::CameraRole as int) instead
@@ -226,8 +318,9 @@ private:
     // dip, or a session reset. Values: "acquire" (first shot / post-reset, incl. a new
     // session), "subject-gone" (followed rider left the race), "story" (a better-placed
     // rider/battle/overtake won the scoring), "maxshot" (held the max -> forced variety
-    // dip), "return" (non-race: back to the pace-setter after a dip), and the story cuts
-    // that name themselves: "incident", "fastest", "pace", "finish". The bypass set
+    // dip), "return" (non-race: back to the pace-setter after a dip), "home" (forced
+    // rotation off: the story ended, so back to the broadcaster's own rider), and the
+    // story cuts that name themselves: "incident", "fastest", "pace", "finish". The bypass
     // (acquire / subject-gone / incident / finish) is exactly the cuts that skip the
     // min-shot floor by design; everything else honors it.
     void cutTo(int raceNum, bool isBattle, long long now, int forceRole = -1,
@@ -278,7 +371,12 @@ private:
     // pre-existing click-to-spectate. Broadcasters enable it once.
     bool m_enabled = false;
     int m_minShotSec = 8;       // hold a shot at least this long (broadcast-like floor)
-    int m_maxShotSec = 25;      // force variety after this long (let a good battle breathe)
+    // Off by default (like the director itself being opt-in): a caster who enables the
+    // director has a rider on screen already, and the least surprising thing it can do is
+    // cover the stories and hand that shot back - not start touring the field. Turning it
+    // on is one click for anyone who wants the full auto-broadcast. Existing installs are
+    // unaffected: [Director] is written unconditionally, so a saved 25 stays 25.
+    int m_maxShotSec = 0;       // force variety after this long (0 = Off, see setMaxShotSec)
     int m_battleGapMs = 2500;   // adjacent gap (ms) that counts as a battle
     int m_battleMaxPos = 10;    // ignore battles whose leader is beyond this position (0 = no limit)
     int m_manualResumeSec = 5;  // reclaim control this long after the caster goes manual (0 = off)
@@ -305,8 +403,10 @@ private:
 
     // Runtime state
     int m_currentSubject = -1;          // rider the director intends to follow
+    int m_homeSubject = -1;             // rider the BROADCASTER put on camera (see getHomeSubject)
     int m_currentPartner = -1;          // other rider in the current battle shot (-1 = none)
     int m_currentShotType = SHOT_SOLO;  // kind of the current shot (ShotType)
+    bool m_currentIsBattle = false;     // pickShot framed this shot as a pair (see cutTo)
     int m_currentCameraRole = -1;       // last camera role requested (for the status HUD)
     long long m_shotStartMs = 0;        // when the current shot began
     long long m_lastDecisionMs = 0;     // last time evaluate() actually ran
@@ -351,7 +451,8 @@ private:
     int m_dropLost = 0;                 // positions lost in the move (for the caption)
     long long m_dropUntilMs = 0;        // boost the dropping rider's score until this time
     int m_lapperSubject = -1;           // front-most lapper this eval (for the SHOT_LAPPER tag)
-    int m_finishedWinnerNum = -1;       // leader registered as finished (winner-celebration edge)
+    int m_finishedWinnerNum = -1;       // leader registered as finished (winner-celebration edge; also
+                                        // what tells emitCutEvent which SHOT_FINISH cut is the actual win)
     long long m_winnerHoldUntilMs = 0;  // hold on the winner this long after they finish, then move on
 
     // "Pace" runtime state. The director cuts to a rider who has just beaten the

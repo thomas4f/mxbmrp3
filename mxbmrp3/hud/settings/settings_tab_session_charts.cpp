@@ -108,6 +108,9 @@ BaseHud* SettingsHud::renderTabSessionCharts(SettingsLayoutContext& ctx) {
     ctx.addToggleControl("Filter outliers", (hud->m_enabledElements & SessionChartsHud::ELEM_FILTER_OUTLIERS) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledElements, SessionChartsHud::ELEM_FILTER_OUTLIERS, true,
         "session_charts.filter_outliers");
+    ctx.addToggleControl("Sector points", (hud->m_enabledElements & SessionChartsHud::ELEM_SECTOR_POINTS) != 0,
+        SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledElements, SessionChartsHud::ELEM_SECTOR_POINTS, true,
+        "session_charts.sector_points");
 
     return hud;
 }

@@ -99,7 +99,9 @@ void FriendsHud::rebuildRenderData() {
     }
 
     // Snapshot the roster - the manager owns ingestion + the same-server flag.
-    const std::vector<SteamFriend>& roster = SteamFriendsManager::getInstance().getFriends();
+    // BY VALUE, and it must outlive `view` below, which holds pointers into it:
+    // the scan runs on a worker thread and rewrites the manager's copy.
+    const std::vector<SteamFriend> roster = SteamFriendsManager::getInstance().getFriends();
 
     // Order: same-server, then online (other server), then offline-with-data,
     // then keyless/unknown; alphabetical within each group.

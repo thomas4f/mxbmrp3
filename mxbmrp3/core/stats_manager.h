@@ -45,6 +45,26 @@ struct StatsPersonalBestData {
     bool isValid() const { return lapTime > 0; }
 };
 
+// Outcome of recording a lap into the all-time personal-best store.
+//
+// WHY TWO FLAGS. The store is ALWAYS keyed by track+bike (a PB belongs to the bike
+// that set it), but what the user is SHOWN as their all-time reference depends on
+// UiConfig's PBScope: under PBScope::CATEGORY the TimingHud "Alltime" row compares
+// against the fastest lap across every bike in the class, not just the current bike.
+// Those two questions have different answers, and returning a bare bool let the
+// caller silently use the storage answer to drive a user-facing notice: on a new
+// bike in a class you already had a faster time in, the write succeeded (that bike
+// had no PB yet) so the green "ALL-TIME PB" notice fired while the Alltime row
+// showed red against the class best. Name both facts so a caller has to pick one.
+//
+// Invariant: beatsScopedBest implies stored. The category best is the minimum over
+// every bike in the class INCLUDING this one, so it is never slower than this bike's
+// own stored PB — beating it therefore always beats the bike's own.
+struct PersonalBestUpdate {
+    bool stored = false;           // the lap became this track+bike's stored PB (a write happened)
+    bool beatsScopedBest = false;  // the lap beat the best in the ACTIVE PBScope (what the user is shown)
+};
+
 // Global stats aggregated across all tracks/bikes
 struct GlobalStats {
     int raceCount = 0;
@@ -95,13 +115,13 @@ public:
     int64_t getCurrentTotalTimeOnTrackMs() const;  // Persisted + live session time
     double getCurrentTotalDistanceM() const;       // Persisted + live session distance
     const StatsPersonalBestData* getPersonalBest(std::string* outBikeName = nullptr) const;
-    bool updatePersonalBest(const StatsPersonalBestData& entry);
+    PersonalBestUpdate updatePersonalBest(const StatsPersonalBestData& entry);
 
     // Query — by explicit track+bike
     const StatsPersonalBestData* getPersonalBest(const std::string& trackId, const std::string& bikeName,
                                                   std::string* outBikeName = nullptr) const;
-    bool updatePersonalBest(const std::string& trackId, const std::string& bikeName,
-                            const StatsPersonalBestData& entry);
+    PersonalBestUpdate updatePersonalBest(const std::string& trackId, const std::string& bikeName,
+                                          const StatsPersonalBestData& entry);
 
     // ========================================================================
     // Query — session (for HUD)

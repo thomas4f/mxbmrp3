@@ -14,7 +14,9 @@
 // MAINTENANCE: keep the EventType values, FileHeader / EventHeader layouts, and
 // the compound-payload prefixes that tape.h mirrors — RaceClassification
 // (ClassificationPrefix) and RaceTrackPosition (TrackPositionPrefix) — byte-identical
-// to tests/integration/harness/tape.h. Default alignment (NOT packed). The other
+// to tests/integration/harness/tape.h. ENFORCED: both files static_assert the same
+// literal sizes/offsets (the contract block below), so a one-sided edit fails to
+// compile. Default alignment (NOT packed). The other
 // packed payloads (RunTelemetry, RaceCommunication) are recorder-internal: the
 // replayer doesn't dispatch them, so tape.h defines no prefix for them, but their
 // on-disk layout must still stay self-consistent across record/parse. The committed
@@ -27,6 +29,7 @@
 
 #if GAME_HAS_RECORDER
 
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -100,6 +103,39 @@ namespace Recording {
         EventHeader(EventType type, uint32_t size, uint64_t timestamp)
             : eventType(static_cast<uint32_t>(type)), dataSize(size), timestampUs(timestamp) {}
     };
+
+    // ------------------------------------------------------------------------
+    // TAPE FORMAT CONTRACT — literal-value layout pins.
+    //
+    // tests/integration/harness/tape.h asserts these SAME literals against ITS
+    // mirror structs, so either side drifting (a reordered field, a changed
+    // type, a packing difference — including an MSVC/mingw divergence: tapes
+    // are recorded by the MSVC build in-game and replayed by the mingw build
+    // in CI) fails to COMPILE instead of surfacing as a golden-master tape
+    // mysteriously misreplaying. If you change the format deliberately, update
+    // the literals HERE AND in tape.h, bump FileHeader::version, and
+    // re-record the committed golden-master tapes (see TESTING.md).
+    static_assert(sizeof(FileHeader) == 72, "tape contract: FileHeader layout changed — update tape.h + golden tapes");
+    static_assert(offsetof(FileHeader, magic) == 0 && offsetof(FileHeader, version) == 8 &&
+                  offsetof(FileHeader, numEvents) == 12 && offsetof(FileHeader, startTimeUs) == 16 &&
+                  offsetof(FileHeader, endTimeUs) == 24 && offsetof(FileHeader, flags) == 32 &&
+                  offsetof(FileHeader, reserved) == 36,
+                  "tape contract: FileHeader field offsets changed — update tape.h + golden tapes");
+    static_assert(sizeof(EventHeader) == 16 &&
+                  offsetof(EventHeader, eventType) == 0 && offsetof(EventHeader, dataSize) == 4 &&
+                  offsetof(EventHeader, timestampUs) == 8,
+                  "tape contract: EventHeader layout changed — update tape.h + golden tapes");
+    static_assert(static_cast<uint32_t>(EventType::RaceVehicleData) == 27,
+                  "tape contract: EventType values changed — update tape.h + golden tapes");
+    // The compound payloads embed raw SPlugins* structs, so the committed tapes
+    // are coupled to the API struct layout at record time. PiBoSo reshapes these
+    // between game versions — when that happens this fires, telling you the
+    // tapes need re-recording (and tape.h's plugin_api.h mirror needs the same
+    // change).
+    static_assert(sizeof(SPluginsRaceClassification_t) == 16 &&
+                  sizeof(SPluginsRaceClassificationEntry_t) == 36 &&
+                  sizeof(SPluginsRaceTrackPosition_t) == 28,
+                  "tape contract: tape-embedded API struct layout changed — update tape.h + re-record golden tapes");
 }
 
 class EventRecorder {

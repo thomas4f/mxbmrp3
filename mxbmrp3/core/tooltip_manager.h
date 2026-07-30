@@ -3,12 +3,15 @@
 // Manages tooltips for settings UI elements.
 // Strings are compiled into the plugin (no external file).
 //
-// LENGTH LIMIT: tooltips render as at most 2 word-wrapped lines (~60 chars each)
-// in the settings panel; anything beyond ~120 characters is hard-truncated with
-// "..." (see renderWrappedText in settings_hud.cpp, MAX_LINES=2). Keep every
-// description <= ~120 chars - prefer ~100 to leave wrap margin. Measuring stick:
-// "rumble.bumps" (~94 chars) fills the box without truncating - treat that as the
-// comfortable ceiling.
+// LENGTH LIMIT: tooltips render as at most 2 word-wrapped lines in the settings
+// panel (SettingsMetrics::tooltipCharsPerLine() chars each, currently 51);
+// anything that does not fit is cut off, with "..." when the last line has room
+// for it. Don't count characters by hand — tests/unit/test_tooltip_length.cpp
+// runs every entry below through the renderer's own wrap (TextWrap::wrap) and
+// fails on any that truncates, so a too-long tooltip is a red unit build rather
+// than something you find in-game. Note the raw character count is only a rough
+// guide: where the line breaks fall matters, so a 117-char description can
+// overflow while a 105-char one does not.
 // ============================================================================
 #pragma once
 
@@ -147,6 +150,7 @@ private:
             {"session_charts.zero_line", "Show the dashed reference line (the trace's reference pace)."},
             {"session_charts.dots", "Draw a dot at each lap's point along every line."},
             {"session_charts.filter_outliers", "Pace chart: hide the opening lap, invalid laps, and slow outliers."},
+            {"session_charts.sector_points", "Plot a point per sector instead of per lap on the lap, trace and gap charts. Races only."},
 
             {"telemetry.display", "Display mode. Graphs shows visual meters, Numbers shows text values, Both shows both."},
             {"telemetry.throttle", "Show throttle input percentage."},
@@ -252,7 +256,7 @@ private:
             {"appearance.drop_shadow", "Add a shadow behind all text for improved readability."},
             {"appearance.hud_icons", "Show identity icons in the UI: beside HUD titles, on the settings tabs, and on the settings button."},
             {"appearance.display_target", "Where the HUD draws: In-game, a Companion window you can drag to a second monitor, or Both."},
-            {"general.pb_scope", "Bike = PB per bike. Category = PB across all bikes in the same class."},
+            {"general.pb_scope", "Bike = PB per bike. Class = PB across all bikes in the same class (MX1, MX2, ...)."},
 
             {"updates.check_enabled", "Check for updates when the game starts."},
             {"updates.debug_mode", "Test update installation without overwriting the real plugin."},
@@ -387,7 +391,7 @@ private:
             {"event_log.leader_change", "Log when a different rider takes the lead position. Race sessions only."},
             {"event_log.finished", "Log when a rider crosses the finish line with their finishing position."},
             {"event_log.pit", "Log when a rider enters or exits the pits. Can be frequent in practice sessions."},
-            {"event_log.director", "Show the auto-director's shot decisions and state changes in the log. A broadcaster aid; frequent, so off by default."},
+            {"event_log.director", "Show the auto-director's shot decisions and state changes in the log. Frequent, so off by default."},
 
             {"helmet.helmet_enabled", "Enable the helmet overlay."},
             {"helmet.upper_tex", "Upper helmet texture (visor rim and top)."},
@@ -403,7 +407,7 @@ private:
             {"helmet.visor_tint_color", "Color of the tint."},
             {"director.enabled", "Enable the auto-director. Acts only while spectating or watching a replay."},
             {"director.min_shot", "Shortest time on a shot before cutting away - the main pace dial. Raise it to slow cuts down."},
-            {"director.max_shot", "Longest time on one rider before the director cuts away, so nobody stays on camera too long."},
+            {"director.max_shot", "Longest time on one rider before cutting away. Off = cut only for stories, then back to your rider."},
             {"director.battle_gap", "How close (seconds) two riders must be to count as a battle. Used by camera and overlay."},
             {"director.battle_max_pos", "Ignore battles/incidents/overtakes past this position. Off = no limit. Gates the overlay."},
             {"director.resume_after", "After manual control, auto-resume once the controller is idle this long. Off = stay paused."},
@@ -416,7 +420,7 @@ private:
             {"director.catch_overtakes", "Cut to a rider who just completed an on-track pass. Multi-place moves score higher."},
             {"director.follow_lappers", "Follow a front-runner lapping backmarkers (a lap up in traffic). Below a real battle."},
             {"director.follow_drops", "Follow a rider tumbling down the order - losing several places fast. Below a real battle."},
-            {"director.variety_every", "How often to dip into an onboard camera: every Nth cut. Lower = more; Off = always trackside."},
+            {"director.variety_every", "How often to dip into an onboard camera: every Nth cut. Needs Max shot on; Off = always trackside."},
             {"director.hold", "How long to hold a story shot (crash / fastest lap) before cutting back."},
             {"director.cam_fender", "Fender onboards to allow: Off, Front (rider ahead), Rear (a chaser), or Both."},
             {"director.cam_helmet", "Helmet views to allow: Off, Helmet 1 (POV), Helmet 2 (side), or Both. All forward-facing."},

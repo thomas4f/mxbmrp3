@@ -12,20 +12,28 @@
 //  - We do NOT call SteamAPI_Init(). The game already initialized Steam; we
 //    hook its loaded steam_api64.dll via GetModuleHandle + GetProcAddress and
 //    piggyback on the game's callback pump (no SteamAPI_RunCallbacks here).
-//  - All Steam calls happen on the game thread (from onDataChanged), where
-//    PluginData is safe to read. No background thread needed - this is far
-//    simpler than DiscordManager's threaded model and avoids the races it
-//    has to guard against.
+//  - The friend SCAN runs on a worker thread, not the game thread. It used to
+//    run inline from onDataChanged(), which cost a periodic frame-time spike
+//    against a 2.08ms budget; see the "worker thread" block near m_worker for
+//    why, why gating it on HUD visibility would be circular, and the contract
+//    the worker holds. Presence BROADCAST (updateLocalPresence) stays on the
+//    game thread, which is the only place PluginData is safe to read — the
+//    worker reads a snapshot taken there instead.
 //  - Risky flat-API calls are wrapped in SEH helpers (.cpp) that return PODs,
 //    because __try/__except cannot live in a function with C++ unwinding.
 // ============================================================================
 #pragma once
 
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <cstring>
 #include <string>
-#include <chrono>
+#include <thread>
 #include <vector>
+
+#include "thread_safety.h"
 
 // Forward declaration (avoid pulling plugin_data.h into the header)
 enum class DataChangeType;
@@ -89,9 +97,11 @@ public:
     // to decide whether to offer the control or show it disabled.
     static bool isSteamRuntimeAvailable();
 
-    // Current roster of friends in our game, rebuilt each scan. Read by the
-    // Friends HUD on the game thread (same thread the scan runs on, so no lock).
-    const std::vector<SteamFriend>& getFriends() const { return m_roster; }
+    // Current roster of friends in our game, rebuilt each scan. Returned BY
+    // VALUE: the scan runs on the worker thread now, so handing out a reference
+    // to m_roster would let the HUD iterate it while the worker rewrites it.
+    // The roster is only the friends in our game, so the copy is small.
+    std::vector<SteamFriend> getFriends() const;
 
     // Our own presence as a SteamFriend row (name "You"), kept current by
     // updateLocalPresence() from the same fields it broadcasts. The Friends HUD
@@ -101,7 +111,14 @@ public:
     // Timestamp of the last *friend* activity (a friend newly in our game, or one
     // that moved to a new server) - refreshed by the scan, read by the Friends
     // HUD's "On Join" mode. Default-constructed (epoch) means "no activity yet".
-    std::chrono::steady_clock::time_point getLastActivityTime() const { return m_lastActivityTime; }
+    std::chrono::steady_clock::time_point getLastActivityTime() const;
+
+#if defined(MXBMRP3_TEST_BUILD)
+    // Lifecycle-only test seams (see core/test_hooks.cpp). The scan needs Steam;
+    // the start/join contract does not, and that is the part a teardown can hang on.
+    bool testStartWorker() { startWorker(); return m_worker.joinable(); }
+    bool testWorkerRunning() const { return m_worker.joinable(); }
+#endif
 
 private:
     SteamFriendsManager();
@@ -123,12 +140,19 @@ private:
     void scanFriends();
 
     Status m_status;
-    bool m_enabled;            // user toggle; default on, game thread only
+    // setEnabled() (settings UI) writes it; onDataChanged()/initialize() read
+    // it. The worker never looks at it.
+    // mt-plain: game thread only.
+    bool m_enabled;            // user toggle; default on
 
     // steam_api64.dll interfaces + resolved functions
     void* m_friends;           // ISteamFriends*
     void* m_utils;             // ISteamUtils*
     uint32_t m_appId;          // our AppID (0 = unknown, no game filter)
+    // Written on the game thread by hookSteamApi() BEFORE the worker starts and
+    // cleared only after stopWorker() has joined — the same join-before-teardown
+    // rule that makes m_friends/m_fn* safe for the worker to read unlocked.
+    // mt-plain: game thread, entirely outside the worker's lifetime.
     bool m_readsValidated;     // GetFriendCount passed on the acquired interface
 
     // Flat function pointers (resolved once in hookSteamApi)
@@ -178,12 +202,51 @@ private:
         }
     };
     PresenceInputs m_lastPresenceInputs;
+    // updateLocalPresence() is its sole writer and reader, and that is never
+    // called from the worker.
+    // mt-plain: game thread only.
     bool m_hasPresenceInputs = false;                       // fingerprint valid?
-    std::string m_lastRosterSig;                            // only log a scan when its content changes
-    std::vector<SteamFriend> m_roster;                      // current friends-in-game, for the HUD
     SteamFriend m_self;                                     // our own presence as a row ("Show myself")
-    std::chrono::steady_clock::time_point m_lastActivityTime; // last new-friend / server-change (On Join)
-    std::chrono::steady_clock::time_point m_lastScan;       // throttle the read scan
     std::chrono::steady_clock::time_point m_lastHookAttempt; // throttle deferred re-hook
     static constexpr int SCAN_INTERVAL_MS = 10000;          // re-scan / re-hook at most every 10s
+
+    // ---- worker thread ----------------------------------------------------
+    // WHY: scanFriends() loops EVERY Steam friend making ~11 SEH-wrapped Steam
+    // API calls each — cross-process IPC — and it used to run inline on the game
+    // thread from onDataChanged(). At 10s intervals that showed up as a periodic
+    // 0.x ms -> 2.x ms spike in the plugin's frame time, against a 2.08 ms
+    // budget. It cannot instead be gated on the Friends HUD being visible: two
+    // of the HUD's show modes (WITH_FRIENDS, ON_JOIN) derive visibility FROM the
+    // scan results, so gating would be circular and the HUD could never reappear.
+    //
+    // CONTRACT (mirrors RecordsFetcher's, see its header):
+    //  - The worker NEVER touches PluginData or any game-thread-mutated state.
+    //    Everything it needs is snapshotted into m_scanInputs under m_mutex by
+    //    the game thread in onDataChanged().
+    //  - The Steam interface pointers (m_friends, m_fn*) are set once on the
+    //    game thread before the worker starts and torn down only after it is
+    //    joined, so the worker sees them stable and unguarded by construction.
+    //  - stopWorker() joins. shutdown() and setEnabled(false) BOTH join before
+    //    touching any of the above — that ordering is what makes the previous
+    //    point true.
+    //  - The worker body carries a top-level try/catch: an uncaught throw in a
+    //    std::thread calls std::terminate() and kills the host game.
+    void startWorker();
+    void stopWorker();
+    void workerLoop();
+
+    // Inputs the scan needs from the game thread. Snapshotted, never read live.
+    struct ScanInputs {
+        std::string localServer;   // empty when offline — never matches a friend
+        std::string localTrack;
+    };
+
+    mutable Mutex m_mutex;
+    std::thread m_worker;
+    std::condition_variable m_cv;                           // wakes the worker to stop early
+    std::atomic<bool> m_workerStop{false};
+    ScanInputs m_scanInputs MXB_GUARDED_BY(m_mutex);
+    std::vector<SteamFriend> m_roster MXB_GUARDED_BY(m_mutex);          // friends-in-game, for the HUD
+    std::string m_lastRosterSig MXB_GUARDED_BY(m_mutex);                // only log a scan when content changes
+    std::chrono::steady_clock::time_point m_lastActivityTime MXB_GUARDED_BY(m_mutex); // new friend / server change
 };

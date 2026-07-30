@@ -4,12 +4,11 @@
 // ============================================================================
 #include "race_split_handler.h"
 #include "../core/handler_singleton.h"
+#include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
 #include "../core/plugin_data.h"
 
-DEFINE_HANDLER_SINGLETON(RaceSplitHandler)
-
-void RaceSplitHandler::handleRaceSplit(Unified::RaceSplitData* psRaceSplit) {
+void Handlers::handleRaceSplit(Unified::RaceSplitData* psRaceSplit) {
     HANDLER_NULL_CHECK(psRaceSplit);
 
     // RaceSplit events fire for ALL riders (includes spectated players)

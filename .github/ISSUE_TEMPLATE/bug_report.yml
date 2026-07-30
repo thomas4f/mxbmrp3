@@ -1,0 +1,46 @@
+name: Bug report
+description: Something isn't working right
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! A little context goes a long way — the fields
+        below mirror what's usually needed to reproduce an issue.
+
+        **Crashes**: check [Known MX Bikes Crashes](https://github.com/thomas4f/mxbmrp3/blob/main/crash_analysis/KNOWN_GAME_CRASHES.md)
+        first — the plugin's crash handler catches *game* crashes too, and many
+        reported crashes are known game-engine bugs with no plugin fix possible.
+  - type: input
+    id: game
+    attributes:
+      label: Game & version
+      placeholder: "MX Bikes beta21 / GP Bikes beta22b / Kart Racing Pro release 14"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Plugin version
+      description: Shown in the settings UI and at the top of `mxbmrp3_log.txt`.
+      placeholder: "1.27.6"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: >-
+        What did you expect, and what happened instead? Track, session type
+        (practice/race, online/offline), bike, and reproduction steps help a lot.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log file / crash files
+      description: >-
+        Attach `Documents\PiBoSo\[Game]\mxbmrp3\mxbmrp3_log.txt`. For a crash,
+        also attach BOTH files of the matching pair (same timestamp/pid) from
+        `Documents\PiBoSo\[Game]\mxbmrp3\crashes\` — the `.dmp` and the `.log`.
+        Drag & drop files into this field.

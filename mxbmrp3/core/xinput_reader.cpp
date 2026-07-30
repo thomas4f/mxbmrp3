@@ -6,6 +6,7 @@
 #include "rumble_profile_manager.h"
 #include "../diagnostics/logger.h"
 #include "plugin_constants.h"
+#include "thread_detach_grace.h"
 #include <algorithm>
 #include <chrono>
 
@@ -82,6 +83,7 @@ XInputReader::XInputReader()
     , m_lastSuspensionRumble(0.0f)
     , m_lastWheelspinRumble(0.0f)
     , m_lastLockupRumble(0.0f)
+    , m_lastWheelieRumble(0.0f)
     , m_lastRpmRumble(0.0f)
     , m_lastSlideRumble(0.0f)
     , m_lastSurfaceRumble(0.0f)
@@ -90,7 +92,6 @@ XInputReader::XInputReader()
     , m_lastPitLimiterRumble(0.0f)
     , m_lastSuspensionRumbleRear(0.0f)
     , m_lastLockupRumbleRear(0.0f)
-    , m_lastWheelieRumble(0.0f)
 {
     // Initialize connection state
     for (int i = 0; i < 4; i++) {
@@ -129,7 +130,7 @@ void XInputReader::update() {
     // Cheap now: the I/O thread does the actual XInputGetState off-thread and
     // publishes the latest snapshot; here we just copy it into m_data (which getData()
     // returns). No XInput call, so a degraded controller driver can't stall the caller.
-    std::lock_guard<std::mutex> lk(m_ioMutex);
+    MutexLock lk(m_ioMutex);
     m_data = m_dataPublished;
 }
 
@@ -159,31 +160,13 @@ bool XInputReader::didConnectionStateChange() {
 }
 
 XInputReader::~XInputReader() {
-    // Static-teardown backstop: only fires if the orchestrated shutdown (stopIoThread)
-    // was skipped — e.g. the DLL is unloaded WITHOUT the Shutdown() export being
-    // called. That path runs under the Windows loader lock (FreeLibrary -> static
-    // dtors), and a std::thread::join() waits for the thread's OS-level exit, which
-    // ALSO needs the loader lock -> deadlock. So DON'T join: signal stop, spin until
-    // the thread has left our loop (an app-level flag, no loader lock involved), then
-    // detach so its CRT/OS teardown finishes without us blocking on it. By the time
-    // FreeLibrary unmaps our code, the thread is long past running any of it.
-    // (Same known residual window as ~PluginThread: a few DLL-resident
-    // instructions run after the flag store — lambda epilogue + thread shim —
-    // inherent to spin-then-detach; join would deadlock on the loader lock.)
+    // Static-teardown backstop: fires ONLY when the orchestrated shutdown
+    // (stopIoThread) was skipped — the DLL unloaded without the Shutdown()
+    // export. Never joins: that deadlocks on the loader lock. The whole
+    // rationale, the bounded spin and the grace live in thread_detach_grace.h.
     if (m_ioThread.joinable()) {
         m_ioRun.store(false, std::memory_order_release);
-        // BOUNDED spin: on an ExitProcess-without-Shutdown() teardown the OS has
-        // already TERMINATED the thread - the finished flag will never be stored,
-        // and an unbounded spin would hang process exit forever. ~2s covers any
-        // legitimately slow exit; past it, detach regardless (a terminated thread
-        // makes the detach trivially safe; a pathologically still-live one lands
-        // in the same known residual window documented above).
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-        while (!m_ioFinished.load(std::memory_order_acquire) &&
-               std::chrono::steady_clock::now() < deadline) {
-            std::this_thread::yield();
-        }
-        m_ioThread.detach();
+        ThreadTeardown::spinThenDetach(m_ioThread, m_ioFinished);
     }
 }
 
@@ -246,7 +229,7 @@ void XInputReader::ioThreadMain() {
         // when disabling), and drop any pending command aimed at the old slot. This
         // replaces the XInputSetState that setControllerIndex used to do inline.
         if (idx != lastIdx) {
-            { std::lock_guard<std::mutex> lk(m_ioMutex); m_pendingRumble = false; }
+            { MutexLock lk(m_ioMutex); m_pendingRumble = false; }
             XINPUT_VIBRATION off = {};
             if (lastIdx >= 0) osSetState(lastIdx, &off);
             if (idx < 0) for (int i = 0; i < 4; i++) osSetState(i, &off);
@@ -259,7 +242,7 @@ void XInputReader::ioThreadMain() {
         uint8_t left8 = 0, right8 = 0;
         int cmdIdx = idx;
         {
-            std::lock_guard<std::mutex> lk(m_ioMutex);
+            MutexLock lk(m_ioMutex);
             if (m_pendingRumble) {
                 hasCmd = true;
                 left8 = m_pendingLeft8;
@@ -298,7 +281,7 @@ void XInputReader::ioThreadMain() {
             // skip -> keep default (disconnected); wasConnected stays false
         }
         {
-            std::lock_guard<std::mutex> lk(m_ioMutex);
+            MutexLock lk(m_ioMutex);
             m_dataPublished = local;
         }
 
@@ -440,10 +423,12 @@ float XInputReader::normalizeTriggerValue(BYTE value) const {
         return 0.0f;
     }
 
-    // Safety: Prevent division by zero (TRIGGER_THRESHOLD should be < TRIGGER_MAX, but be defensive)
-    if (TRIGGER_THRESHOLD >= XInputLimits::TRIGGER_MAX) {
-        return 0.0f;
-    }
+    // Prevent division by zero. Both operands are compile-time constants, so
+    // this is checked at COMPILE time rather than by a branch that can never
+    // be taken (which is what MSVC /W4 flagged as C4127). A static_assert
+    // actually fires if someone edits either constant; the dead `if` could not.
+    static_assert(TRIGGER_THRESHOLD < XInputLimits::TRIGGER_MAX,
+                  "TRIGGER_THRESHOLD must be below TRIGGER_MAX or normalisation divides by zero");
 
     // Normalize 0-255 to 0.0-1.0
     return static_cast<float>(value - TRIGGER_THRESHOLD) / (XInputLimits::TRIGGER_MAX - TRIGGER_THRESHOLD);
@@ -508,7 +493,7 @@ void XInputReader::setVibration(float leftMotor, float rightMotor) {
     // pair; the I/O thread sends it (and coalesces if it hasn't drained the previous
     // one yet — a skipped keepalive is harmless, the next one lands within a cap window).
     {
-        std::lock_guard<std::mutex> lk(m_ioMutex);
+        MutexLock lk(m_ioMutex);
         m_pendingRumble = true;
         m_pendingLeft8 = left8;
         m_pendingRight8 = right8;

@@ -5,7 +5,8 @@ It rasterizes a TrueType/OpenType font and writes the exact `.fnt` binary the
 PiBoSo games (MX Bikes / GP Bikes / KRP / WRS) load — so the output works both
 in-game and in this plugin's companion-window software renderer.
 
-Build it in Visual Studio (the `mxbmrp3_fontgen` project in `mxbmrp3.sln`, x64) or
+Build it in Visual Studio (the `mxbmrp3_fontgen` target in the generated
+`build/msvc/mxbmrp3.sln`, x64) or
 cross-platform with `build.sh`:
 
 ```bash
@@ -96,6 +97,17 @@ width, and vertical position** in-game:
 Any field you set explicitly wins, so `normalize = 1` with `center = 0` (or a
 custom `voffset` / `cell_height`) keeps your manual tweak. The shipped fonts
 (except the reference RobotoMono-Regular) are generated this way.
+
+**`cell_height` is a quality/memory knob, NOT a performance one.** Both the
+in-game and companion text renderers iterate the *destination* pixels of each
+glyph and sample the atlas (`scale = size × screenH / cellH` cancels the cell
+resolution), so per-frame text cost tracks the **on-screen** text size (pixel
+area), not the atlas resolution. Measured on the software rasterizer across cell
+48→270 at a fixed on-screen size: ~30µs/string, **flat within noise** (the small
+atlas was no faster, the large one no slower); the same text at 0.012→0.030
+on-screen size went 15→75µs/string (∝ area). So pick `cell_height` for crispness
+when a HUD scales text *up* (and mind the atlas memory/load), never for speed —
+the levers for text render cost are on-screen size and character count.
 
 `scale` from the old format is accepted but ignored — use `cell_height` instead
 (it is predictable; `fontgen`'s `scale` is not).

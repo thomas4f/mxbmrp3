@@ -530,3 +530,150 @@ test('leader-finish charts auto-show is not lost to a manually-forced panel', as
 
   expect(pageErrors).toEqual([]);
 });
+
+test('session charts draw a point per sector when sector points are enabled', async ({ page }) => {
+  // The plugin ships per-sector times alongside per-lap ones (snapshot laps[].s), so the
+  // overlay can draw the same curves 3-4x denser — the client picks, per the raw-data /
+  // presentation split. This asserts the rendered SVG actually gets denser rather than just
+  // the flag flipping: same race, same charts, count the polyline vertices both ways.
+  const pageErrors = [];
+  page.on('pageerror', (e) => pageErrors.push(String(e)));
+
+  // Gap chart only: one page, so the vertex count is unambiguous.
+  await page.addInitScript(() => {
+    localStorage.setItem('mxbmrp3_settings', JSON.stringify({
+      fastLap: false, bestLap: false, sectors: false, tail: false, battle: false,
+      charts: true, chartLap: false, chartTrace: false, chartGap: true, chartPace: false,
+      chartSectorPoints: false,
+    }));
+  });
+  await page.goto('/index.html?demo&race&speed=20');
+  await expect(page.locator('#session-type')).toContainText('Race', { timeout: 30_000 });
+  await page.waitForFunction(() => typeof window.mxbmrp3ForceSlot === 'function', { timeout: 30_000 });
+
+  // Wait for a few completed laps AND for the sector series to be present — the demo
+  // synthesises `s` alongside `t`, mirroring the plugin's snapshot.
+  await expect
+    .poll(() => page.evaluate(() => {
+      const laps = (window.mxbmrp3LastData && window.mxbmrp3LastData.laps) || [];
+      return laps.some((l) => l.t && l.t.length >= 3 && l.s && l.s.length >= 9);
+    }), { timeout: 40_000 })
+    .toBe(true);
+
+  // Count vertices in the drawn polylines at each resolution. Freeze the data first so
+  // both counts describe the SAME race state — the demo keeps running otherwise and the
+  // second measurement would simply have more laps.
+  const counts = await page.evaluate(() => {
+    const frozen = JSON.parse(JSON.stringify(window.mxbmrp3LastData));
+    const isRace = true;
+    function vertices() {
+      window.lastData = frozen;
+      const field = buildChartField(isRace);
+      const drawn = selectChartDrawn(field);
+      const svg = renderChartSvg(CHART_TYPES.GAP, field, drawn, 800, 300, 20);
+      let total = 0;
+      // points="x,y x,y ..." — count coordinate pairs across every polyline.
+      for (const m of svg.matchAll(/points="([^"]*)"/g)) {
+        total += m[1].trim().split(/\s+/).filter(Boolean).length;
+      }
+      return { total, pointsPerLap: field.pointsPerLap, maxLap: field.maxLap };
+    }
+    CONFIG.chartSectorPoints = false;
+    const perLap = vertices();
+    CONFIG.chartSectorPoints = true;
+    const bySector = vertices();
+    // Characterise the raw arrays: is the live edge present, and would the old
+    // infer-from-lengths approach have picked a stride other than 3?
+    let liveEdgeSeen = false, inferredWouldBeWrong = false;
+    for (const l of frozen.laps || []) {
+      if (!l.s || !l.t || !l.t.length) continue;
+      if (l.s.length > l.t.length * 3) liveEdgeSeen = true;
+      if (Math.floor(l.s.length / l.t.length) !== 3) inferredWouldBeWrong = true;
+    }
+    return { perLap, bySector, shape: { liveEdgeSeen, inferredWouldBeWrong } };
+  });
+
+  // Per-lap stays per-lap; sector mode reports the game's sector count (3 in the demo).
+  expect(counts.perLap.pointsPerLap).toBe(1);
+  expect(counts.bySector.pointsPerLap).toBe(3);
+  // The stride comes from the plugin (snapshot.sectorCount), never inferred from the arrays.
+  // Inferring floor(s.length / t.length) yields 3 + floor(k/L) once the live in-progress
+  // sectors are present, which is 4 for the whole of lap 2 of every race — and a wrong
+  // stride silently disables sector points. The demo emits that same 3L+k shape, so this
+  // asserts the data really is in the state that used to break it.
+  expect(counts.shape.liveEdgeSeen, 'demo must produce s.length > t.length*3 somewhere')
+    .toBe(true);
+
+  // The stride comes from the plugin (snapshot.sectorCount) and must NOT be inferred from the
+  // arrays. Asserted directly on the pathological shape rather than hoping the sampled
+  // moment has it: a rider with one completed lap who has crossed one split has s=4, t=1,
+  // so floor(s.length/t.length) is 4 — that is lap 2 of EVERY race, and a stride of 4 on a
+  // 3-sector game makes the hole check fail for the whole field and silently disables
+  // sector points.
+  const strideProbe = await page.evaluate(() => {
+    const saved = window.lastData;
+    window.lastData = { sectorCount: 3, laps: [{ num: 1, t: [90000], s: [30000, 30000, 30000, 30000] }] };
+    const fromPlugin = chartSectorsPerLap();
+    const wouldInfer = Math.floor(window.lastData.laps[0].s.length / window.lastData.laps[0].t.length);
+    window.lastData = saved;
+    return { fromPlugin, wouldInfer };
+  });
+  expect(strideProbe.wouldInfer, 'the shape that broke inference').toBe(4);
+  expect(strideProbe.fromPlugin, 'stride must come from snapshot.sectorCount, not the arrays').toBe(3);
+  expect(counts.perLap.total).toBeGreaterThan(0);
+  // Denser by roughly the sector count. A loose lower bound (2x) rather than exactly 3x:
+  // riders join the series at different laps and the last rider may be mid-lap, so the
+  // ratio is near 3 but not pinned to it.
+  expect(counts.bySector.total).toBeGreaterThan(counts.perLap.total * 2);
+
+  expect(pageErrors, `page errors: ${pageErrors.join(' | ')}`).toEqual([]);
+});
+
+test('each chart labels its right edge with the lap that edge is actually in', async ({ page }) => {
+  // The right-edge label is ceil() of the chart's X domain, and the charts do NOT share a
+  // domain: the sector-aware ones (lap/trace/gap) span field.maxLaps — the furthest-along
+  // rider's real progress, fractional once anyone is mid-lap — while the PACE chart plots
+  // lap TIMES through xForLap and therefore always ends on a whole lap. Labelling pace with
+  // the field domain put "L4" under a chart whose last point is lap 3.
+  //
+  // Driven from synthetic data rather than the running demo so the fractional case is
+  // guaranteed rather than hoped for.
+  await page.goto('/index.html?demo&race&speed=50');
+  await page.waitForFunction(() => typeof renderChartSvg === 'function', { timeout: 30_000 });
+
+  const labels = await page.evaluate(() => {
+    const saved = window.lastData;
+    // Three completed laps each, and #1 is one sector into lap 4 => maxLaps = 3.333.
+    window.lastData = {
+      sectorCount: 3,
+      laps: [
+        { num: 1, t: [90000, 90000, 90000], s: [30000, 30000, 30000, 30000, 30000, 30000,
+                                                30000, 30000, 30000, 30000] },
+        { num: 2, t: [91000, 91000, 91000], s: [30000, 30000, 31000, 30000, 30000, 31000,
+                                                30000, 30000, 31000] },
+      ],
+    };
+    CONFIG.chartSectorPoints = true;
+    const field = buildChartField(true);
+    const drawn = selectChartDrawn(field);
+    const edge = (type) => {
+      const svg = renderChartSvg(type, field, drawn, 800, 300, 20);
+      // The right-edge lap label is the last "L<n>" text in the emitted SVG.
+      const all = [...svg.matchAll(/>L(\d+)</g)].map((m) => Number(m[1]));
+      return all.length ? all[all.length - 1] : -1;
+    };
+    const out = { maxLap: field.maxLap, maxLaps: field.maxLaps,
+                  gap: edge(CHART_TYPES.GAP), pace: edge(CHART_TYPES.PACE) };
+    window.lastData = saved;
+    return out;
+  });
+
+  // Precondition: the field really is mid-lap, so the two domains differ.
+  expect(labels.maxLap).toBe(3);
+  expect(labels.maxLaps).toBeGreaterThan(3);
+
+  // The sector-aware chart's edge is inside lap 4...
+  expect(labels.gap, 'gap chart spans field.maxLaps (3.33), so its edge is in lap 4').toBe(4);
+  // ...but the pace chart ends on the last COMPLETED lap, so it must say L3.
+  expect(labels.pace, 'pace chart plots whole laps, so its edge is lap 3').toBe(3);
+});

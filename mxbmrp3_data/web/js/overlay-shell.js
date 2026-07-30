@@ -49,7 +49,20 @@ function applyRootSizing() {
     root.setProperty("--name-chars", CONFIG.nameChars);
     root.fontSize = CONFIG.fontSize + "px";
     if (mobileFitMQ.matches && overlay.offsetWidth > 0) {
-        root.fontSize = (CONFIG.fontSize * window.innerWidth / overlay.offsetWidth) + "px";
+        // Scale the root font-size so the tower's width meets the viewport's.
+        // ONE proportional step assumes the width scales linearly with the root
+        // font size, and it very nearly does — but borders and sub-pixel
+        // rounding are not rem-scaled, so the step can land a few px short.
+        // Chromium 1194 happens to land exactly; 1228 landed 5px short, which
+        // is a visibly unfilled strip on a 390px phone. Iterating multiplies the
+        // residual down; it stops early when already within a pixel, so on a
+        // browser where one step is exact this costs a single extra layout read.
+        for (var pass = 0; pass < 3; pass++) {
+            var next = parseFloat(root.fontSize) * window.innerWidth / overlay.offsetWidth;
+            if (!isFinite(next) || next <= 0) break;
+            root.fontSize = next + "px";
+            if (Math.abs(overlay.offsetWidth - window.innerWidth) <= 1) break;
+        }
     }
 }
 applyRootSizing();

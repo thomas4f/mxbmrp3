@@ -6,15 +6,8 @@
 
 #include "../game/unified_types.h"
 
-class RunLapHandler {
-public:
-    static RunLapHandler& getInstance();
+namespace Handlers {
 
-    void handleRunLap(Unified::PlayerLapData* psLapData);
+void handleRunLap(Unified::PlayerLapData* psLapData);
 
-private:
-    RunLapHandler() {}
-    ~RunLapHandler() {}
-    RunLapHandler(const RunLapHandler&) = delete;
-    RunLapHandler& operator=(const RunLapHandler&) = delete;
-};
+}  // namespace Handlers

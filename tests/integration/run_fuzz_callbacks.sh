@@ -17,9 +17,9 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD="${HERE}/build"
 ITERS="${1:-100000}"
 
-export WINEPREFIX="${WINEPREFIX:-$HOME/.wineprefix-mxbmrp3}"
-export WINEARCH=win64
-export WINEDEBUG="${WINEDEBUG:--all}"
+. "${HERE}/wine_env.sh"
+mxb_wine_env
+mxb_wine_no_crash_debugger   # a crash exits instead of hanging winedbg
 SAVE=/tmp/mxbfuzz          # callback_fuzzer's hardcoded Z:\tmp\mxbfuzz\
 # Wall-clock cap for the whole fuzz run. Scales with the iteration count (arg 1), so
 # raise it if you pass a much larger ITERS. A hang leaves rc==124 (treated as a fail).

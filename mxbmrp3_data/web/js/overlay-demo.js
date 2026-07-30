@@ -6,6 +6,9 @@
 // ============================================================================
 "use strict";
 
+// Sector count the demo synthesises, mirroring MX Bikes (snapshot.sectorCount).
+var DEMO_SECTORS = 3;
+
 // race, looping. Nothing here touches the live code path.
 function startDemo() {
     demoActive = true;                 // suppress persistence of scaled timings
@@ -90,7 +93,7 @@ function startDemo() {
     // battle AND at least one separate chase pack, instead of one bunched train. The
     // director then cuts between DISTINCT battles as the spectate cycle moves through the
     // order — which is exactly what the overlay's horizontal battle→battle wipe exists to
-    // show (and what tests/web/overlay.spec.js asserts). Shifting everything behind P2 by
+    // show (and what tests/web/tests/overlay.spec.js asserts). Shifting everything behind P2 by
     // a fixed amount preserves the midfield's internal spacing (and its own battles).
     for (var ri = 2; ri < roster.length; ri++) roster[ri].pace += 700;
 
@@ -180,7 +183,11 @@ function startDemo() {
             if (r.crossedSf) {
                 var lt = Math.round(p + (Math.random() * 600 - 300));
                 r.lastLapMs = lt;
-                r.lapHistory.push({ t: lt, v: 1 });   // demo laps are all valid
+                // Split the lap into 3 sectors that sum EXACTLY to it (the remainder goes
+                // to the last), so the demo's sector series and lap series agree the way
+                // real data does — a chart switching resolution must not shift.
+                var s1 = Math.round(lt * 0.34), s2 = Math.round(lt * 0.33);
+                r.lapHistory.push({ t: lt, v: 1, s: [s1, s2, lt - s1 - s2] });
                 if (r.bestLapMs === 0 || lt < r.bestLapMs) r.bestLapMs = lt;
                 if (sim.bestOverall === 0 || lt < sim.bestOverall) {
                     sim.bestOverall = lt;
@@ -237,7 +244,18 @@ function startDemo() {
         for (var i = 0; i < order.length; i++) {
             var r = order[i];
             if (r.lapHistory && r.lapHistory.length) {
-                out.push({ num: r.num, t: r.lapHistory.map(function (h) { return h.t; }) });
+                var sectors = [];
+                for (var k = 0; k < r.lapHistory.length; k++)
+                    sectors = sectors.concat(r.lapHistory[k].s || []);
+                // The LIVE edge, like the plugin's CurrentLapData: sectors of the lap in
+                // progress, derived from how far through the current lap this rider is.
+                // Without it the demo never reproduces the 3L+k shape that `s` really has,
+                // and a client that inferred the sector stride from s.length/t.length would
+                // look correct here while being wrong in game (it was).
+                var frac = r.dist - Math.floor(r.dist);
+                var live = Math.min(DEMO_SECTORS - 1, Math.floor(frac * DEMO_SECTORS));
+                for (var q = 0; q < live; q++) sectors.push(Math.round(r.lastLapMs / DEMO_SECTORS) || 30000);
+                out.push({ num: r.num, t: r.lapHistory.map(function (h) { return h.t; }), s: sectors });
             }
         }
         return out;
@@ -322,6 +340,7 @@ function startDemo() {
             },
             standings: standings,
             sectors: demoSectors,
+            sectorCount: DEMO_SECTORS,
             laps: demoLaps(order),
             director: demoDirector(standings, specNum, false),
             events: sim.events.slice()
@@ -343,8 +362,7 @@ function startDemo() {
 
         // Update +/- reference snapshots now that classification (order) is known:
         // the Lap reference snaps each rider's position at the S/F line, the Sector
-        // reference at each sector change (3 sectors/lap).
-        var DEMO_SECTORS = 3;
+        // reference at each sector change (DEMO_SECTORS sectors/lap, file-scope).
         for (var oi = 0; oi < order.length; oi++) {
             var od = order[oi];
             var pos = oi + 1;
@@ -445,6 +463,7 @@ function startDemo() {
             },
             standings: standings,
             battles: battles,
+            sectorCount: DEMO_SECTORS,
             laps: demoLaps(order),
             director: dir,
             events: sim.events.slice()

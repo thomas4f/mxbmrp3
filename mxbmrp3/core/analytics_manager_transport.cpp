@@ -98,7 +98,7 @@ void AnalyticsManager::postAptabase(const std::wstring& host, const std::string&
         // Publish handles so shutdown() can cancel the blocking send by closing
         // them (CancelSynchronousIo does not work with WinHTTP).
         {
-            std::lock_guard<std::mutex> lock(m_handleMutex);
+            MutexLock lock(m_handleMutex);
             m_hSession = hSession;
             m_hConnect = hConnect;
             m_hRequest = hRequest;
@@ -157,7 +157,7 @@ void AnalyticsManager::postAptabase(const std::wstring& host, const std::string&
 }
 
 void AnalyticsManager::closeHandles() {
-    std::lock_guard<std::mutex> lock(m_handleMutex);
+    MutexLock lock(m_handleMutex);
     // Close child handles before parent (WinHTTP documented best practice).
     if (m_hRequest) { WinHttpCloseHandle(m_hRequest); m_hRequest = nullptr; }
     if (m_hConnect) { WinHttpCloseHandle(m_hConnect); m_hConnect = nullptr; }
@@ -194,7 +194,7 @@ void AnalyticsManager::sendGoatCounterHit() {
     // Publish handles so shutdown() can cancel the POST. Safe to reuse the slots:
     // the Aptabase POST (if any) has already finished and cleared them.
     {
-        std::lock_guard<std::mutex> lock(m_handleMutex);
+        MutexLock lock(m_handleMutex);
         m_hSession = hSession;
         m_hConnect = hConnect;
         m_hRequest = hRequest;
@@ -284,7 +284,7 @@ bool AnalyticsManager::fetchRemoteConfig(std::string& out) {
 
     // Publish handles so shutdown() can cancel this GET (reused by the beacon after).
     {
-        std::lock_guard<std::mutex> lock(m_handleMutex);
+        MutexLock lock(m_handleMutex);
         m_hSession = hSession; m_hConnect = hConnect; m_hRequest = hRequest;
     }
     if (m_shutdownRequested) { closeHandles(); return false; }

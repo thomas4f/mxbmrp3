@@ -6,7 +6,10 @@
 #   python3 tools/gen_known_crashes.py
 #
 # Optional args: <registry.json> <output.md>
-import json, os, sys, datetime
+import datetime
+import json
+import os
+import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "..", "crash_analysis", "known_game_crashes.json")

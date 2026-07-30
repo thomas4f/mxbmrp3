@@ -104,6 +104,50 @@ inline long long traceValueMs(long long refPaceMs, int lapCount, long long cumul
     return refPaceMs * static_cast<long long>(lapCount) - cumulativeMs;
 }
 
+// Same value at a series index, for a trace sampled at sector resolution: after 1 1/3 laps
+// the reference rider has used 1 1/3 reference laps.
+//
+// Deliberately INTEGER arithmetic on the index rather than a float lap count. The overlay
+// mirrors this function, and `laps` there is a JS double while it was a C++ float — 1/3 is
+// inexact in both but not equally, so refPace * laps could truncate to a different
+// millisecond on each side. Sub-pixel on screen, but it is exactly the silent C++/JS drift
+// the parity fixture exists to catch, and the fixture can only pin a value both sides agree
+// on. refPaceMs*(index+1) stays far inside the range JS represents exactly.
+//
+// Per-lap (sectorsPerLap == 1, index == l) reduces to traceValueMs(refPace, l+1, cum).
+inline long long traceValueAtSector(long long refPaceMs, int index, int sectorsPerLap,
+                                    long long cumulativeMs) {
+    if (sectorsPerLap <= 0) return -cumulativeMs;
+    return refPaceMs * static_cast<long long>(index + 1) / sectorsPerLap - cumulativeMs;
+}
+
+// Top and bottom ABSOLUTE positions among a drawn subset, at the latest sample any of them
+// has a position for. The lap chart's Y axis is order among the SHOWN riders, so its axis
+// labels need the real positions of whoever occupies the top and bottom rows right now.
+//
+// Pure and shared because the search bound is easy to get wrong: `positions` follows the
+// FIELD's resolution, so the last sample is positions.size()-1, NOT maxLap-1. Both
+// renderers open-coded this loop and the in-game one was still bounding on maxLap after the
+// sector-resolution change — at 3 sectors that labelled the chart with the standings from a
+// third of the way into the race while the lines showed the present.
+//
+// Returns {0,0} when no drawn rider has any position (nothing to label).
+struct PositionExtent { int top = 0; int bottom = 0; };
+inline PositionExtent latestPositionExtent(const std::vector<std::vector<int>>& drawnPositions) {
+    size_t maxPoints = 0;
+    for (const auto& p : drawnPositions) maxPoints = std::max(maxPoints, p.size());
+    for (size_t k = maxPoints; k-- > 0; ) {
+        int best = -1, worst = -1;
+        for (const auto& p : drawnPositions) {
+            if (k >= p.size() || p[k] <= 0) continue;
+            if (best < 0 || p[k] < best)   best = p[k];
+            if (worst < 0 || p[k] > worst) worst = p[k];
+        }
+        if (best > 0) return { best, worst };
+    }
+    return {};
+}
+
 // Index of the leader among the given per-rider cumulative vectors, or -1 if
 // there is no data. The leader is the rider who has completed the most laps and,
 // among those, has the lowest cumulative time at that lap (tie-break: lowest
@@ -293,6 +337,75 @@ inline AxisRange robustRange(std::vector<long long> vals, double k = 1.5) {
     r.hi = std::min(dataHi, fenceHi);
     r.valid = true;
     return r;
+}
+
+// ---------------------------------------------------------------------------
+// Sector resolution
+//
+// The charts above sample once per completed lap. Every rider's per-sector times are
+// available too — RaceLap carries the whole lap's splits, and RaceSplit arrives live for
+// every rider mid-lap — so the same curves can be drawn 3-4x denser, which is what turns
+// "the gap grew on lap 7" into "the gap grew in sector 2 of lap 7".
+//
+// The trick is that NONE of the ranking math above needs to change. positionsPerLap() and
+// gapToLeaderPerLap() rank riders at each ARRAY INDEX; they never interpret an index as a
+// lap. Feed them a series indexed by lapIndex*sectorsPerLap + sectorIndex and the same
+// index still means "the same point on track for every rider", so positions and gaps come
+// out at sector resolution for free.
+// ---------------------------------------------------------------------------
+
+// Cumulative elapsed time sampled at SECTOR boundaries.
+//
+// sectorMs is flattened oldest-first with a fixed stride: sectorMs[l*sectorsPerLap + s] is
+// sector s of lap l. A non-positive entry means "no time here" — a split the game never
+// reported, or a lap still in progress.
+//
+// The series STOPS at the first missing sector rather than skipping it. Cumulative time is
+// only meaningful as an unbroken sum from the race start: skipping a hole would silently
+// under-report every later point and show the rider gaining time they never made up. A
+// rider mid-lap therefore just has a shorter series — the same shape as a rider with fewer
+// completed laps, which the ranking functions already handle by absence.
+inline std::vector<long long> cumulativeBySector(const std::vector<int>& sectorMs,
+                                                 int sectorsPerLap) {
+    std::vector<long long> out;
+    if (sectorsPerLap <= 0) return out;
+    out.reserve(sectorMs.size());
+    long long sum = 0;
+    for (size_t i = 0; i < sectorMs.size(); ++i) {
+        if (sectorMs[i] <= 0) break;      // hole: everything after it is unanchored
+        sum += sectorMs[i];
+        out.push_back(sum);
+    }
+    return out;
+}
+
+// Laps completed at a sector-resolution index (0-based). Sector s of lap l ENDS at
+// l + (s+1)/sectorsPerLap laps, so the final sector of a lap lands exactly on the lap
+// boundary and coincides with that lap's per-lap sample. Index 0 of a 3-sector game is
+// 1/3 of a lap.
+inline float lapsAtSectorIndex(int index, int sectorsPerLap) {
+    if (sectorsPerLap <= 0) return 0.0f;
+    return static_cast<float>(index + 1) / static_cast<float>(sectorsPerLap);
+}
+
+// Fractional-lap X mapping shared by both resolutions, so a chart's geometry is identical
+// whichever it draws at.
+//
+// `laps` is laps-completed at the point being plotted, `firstLaps` the laps-completed of
+// the FIRST sample the series can contain (1.0 per-lap; 1/sectorsPerLap at sector
+// resolution) and `maxLap` the highest completed-lap count in the field. Anchoring on the
+// first available sample keeps that sample on the left edge in both modes, so enabling
+// sector points makes a chart denser without sliding it sideways.
+//
+// Per-lap (firstLaps = 1, laps = lapIndex0 + 1) reduces to lapIndex0/(maxLap-1) — the exact
+// expression the per-lap path has always used.
+inline float xFracForLaps(float laps, float firstLaps, float maxLaps) {
+    const float span = maxLaps - firstLaps;
+    if (span <= 0.0f) return 0.5f;                  // single sample: centre it
+    float t = (laps - firstLaps) / span;
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    return t;
 }
 
 } // namespace SessionChartsMath

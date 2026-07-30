@@ -21,9 +21,9 @@ Status legend:
 | DrawInit | sprite/font counts | ✅ | smoke |
 | Draw | render primitives (quads/strings) | 🟡 | smoke (count), perf (timing) — content not asserted |
 | EventInit | track/player, session JSON | ✅ | race / sessions |
-| EventDeinit | clears event state | ⚪ | — |
+| EventDeinit | clears event state | ✅ | deinit_test (a populated 3-rider session goes empty; nothing survives into a different event that reuses a race number; safe with nothing to clear) |
 | RaceEvent | session type | ✅ | race / sessions |
-| RaceDeinit | clears race state | ⚪ | — |
+| RaceDeinit | clears race state | ✅ | deinit_test (standings emptied, then repopulate cleanly; safe with nothing to clear). Mutation-tested: a clear that no-ops is caught |
 | RaceAddEntry | rider name/bike in standings | ✅ | race / sessions |
 | RaceRemoveEntry | removes rider; clears per-rider maps | ✅ | sessions (reused-number reset) |
 | RaceSession | session type/state/clock/length | ✅ | race / sessions |
@@ -35,17 +35,17 @@ Status legend:
 | RaceSplit | **live** current-lap splits + `posDeltaSplit` (NOT the best-sectors board — that's RaceLap) | ✅ | posdelta_split_test (positions gained/lost since the last split). Live current-lap split *display* is in-game-only (🟠 fuzz) |
 | RaceHoleshot | holeshot event | ⛔ | **intentionally not exported** — the game never fires it (`plugin_manager.cpp:458`); struct kept as vendor-API spec only |
 | RaceTrackPosition | map positions, real-time gaps, lapper detection | ✅ | trackpos_test (leader gap via GetRealTimeGap; lapped rider → gap 0) · trackpos_stale_test (rider outside the ~10-closest batch keeps a frozen gap, not a stale-derived one — the leader-dropout corruption). Map geometry still ⛔ |
-| RaceVehicleData | per-rider rpm/gear/lean | 🟠 | fuzz — **gap** |
+| RaceVehicleData | per-rider rpm/gear/lean | ✅ | vehicle_data_test, via `MXBMRP3_Test_BikeTelemetry` (telemetry is not in the JSON): display-rider-only updates, `active=0` ignored, lean NEGATED into roll, and standing down for RunTelemetry on track. Mutation-tested: dropping the negation or the display-rider filter are both caught |
 | RunInit | player run start → stats session timers begin | ✅ | stats_test (drives `RunInit` to open the stats session) |
 | RunDeinit | player run end → leave-track flush: player stats persisted (and settings, in prod) | ✅ | stats_test (drives `RunDeinit`; the deferred personal-best is written to the stats JSON only here, not mid-ride) |
 | RunStart / RunStop | RunStart: sim resume (arms isPlayerRunning, which FMX gates on). RunStop: leave-track (pits) → settings flush + stats save | ✅ / 🟠 | fmx_test drives RunStart (FmxManager gates trick detection on isPlayerRunning). RunStop's prod-only pit-flush stays uncovered headless; the equivalent flush is asserted via the settings-defer hooks + RunDeinit |
 | RunLap | player lap → lap log, personal best, ideal lap | ⛔ | **stub** — the handler is empty; the lap/PB logic runs in the player-gated RaceLap path (covered by stats_test) |
-| RunSplit | player split → sector | 🟠 | fuzz — **gap** |
+| RunSplit | player split → sector | ✅ | run_split_test — asserts the **deliberate no-op** (RaceSplit owns splits): no current-lap split state is created and RaceSplit's stays untouched, read via `MXBMRP3_Test_CurrentLapSplits`. A snapshot-only assertion is NOT enough here: current-lap splits never reach `/api/state`, and that version passed a mutation that made RunSplit start recording |
 | RunTelemetry | player speed/rpm/gear/lean/fuel → widgets/helmet + stats (distance/top speed) + FMX | ✅ | odometer_test (distance integration over injected-clock ticks, ~100m dirty coalescing, non-finite rejection, >0.5s gap clamp, persisted total) · fmx_test (trick detection off orientation/contact frames) · stats_test (top speed + the `finiteOrZero` +Inf write guard) · perf. Widget/helmet rendering stays ⛔ (not in /api/state) |
 | TrackCenterline | map geometry | 🟡 | perf; fuzz (crash — bug fixed). Geometry correctness ⛔ (map is rendered, not in JSON) |
 | SpectateVehicles | spectate target (the `camera` chip) | ✅ | spectate_test (camera chip follows the spectated rider, moves on a camera cut; `isSpectating` too) |
-| SpectateCameras | camera-name matching (director) | 🟠 | fuzz — **gap** |
-| GetModID / GetModDataVersion / GetInterfaceVersion | constants | ⚪ | trivial |
+| SpectateCameras | camera-name matching (director) | ✅ | spectate_cameras_test (role request → `*piSelect` + return flag, consumed exactly once, no re-cut when already there, Free-Roam leaves the camera alone, manual-camera detection + re-resolve on a list change) · test_camera_resolve.cpp unit-tests the resolution rules case-by-case |
+| GetModID / GetModDataVersion / GetInterfaceVersion | constants (the load-time handshake) | ✅ | version_test (exports resolve under the exact names the game looks up; mod id `mxbikes`, mod-data 8, interface 9; stable across repeated calls). `mxb_api.cpp` static_asserts the literals against the adapter constants — this covers the half the compiler can't see |
 
 ## Internal actions (`MXBMRP3_Test_*` hooks)
 
@@ -143,12 +143,16 @@ Legend: ✅ fully headless-testable · ⚠️ decision logic testable, external 
 3. ~~**Best-sectors board** (`sectors[]`)~~ — ✅ done (sectors_test): per-sector fastest-first ranking. (It's fed by RaceLap splits, not RaceSplit — a finding while writing it.) Remaining: **RaceSplit**'s own `posDeltaSplit` (race, positions gained since last split).
 4. ~~**Reset active-profile / HUD scope + copy/switch**~~ — ✅ done (reset_profile_test): profile-diff perturbation clears the active-profile / named-HUD diff (base + non-active profiles untouched); copy-to-all propagates the active diff; switch persists the active profile and preserves diffs. Remaining: **auto-by-session** profile switch.
 5. ~~**RaceSessionState** transitions~~ — ✅ done (sessionstate_test): green snapshots the grid (`posDeltaStart`), started/ended events.
-6. ~~**SpectateVehicles**~~ — ✅ done (spectate_test): the `camera` chip follows the spectated rider. (**RaceVehicleData** rpm/gear/lean isn't emitted to the JSON — in-game only, so ⛔ for a black-box test.)
+6. ~~**SpectateVehicles**~~ — ✅ done (spectate_test): the `camera` chip follows the spectated rider. (**RaceVehicleData** rpm/gear/lean isn't emitted to the JSON — it is now asserted through the `MXBMRP3_Test_BikeTelemetry` hook instead: vehicle_data_test.)
 7. ~~**Personal bests / stats file, ideal lap, posDeltaSplit**~~ — ✅ done: stats_test (PB persist + faster-replaces-only, top speed + `finiteOrZero` guard), ideal_lap_test (`idealLapMs`), posdelta_split_test (positions gained since the last split). ~~Remaining: **distance/odometer** accumulation~~ — ✅ done (odometer_test, via the injectable odometer clock). (RaceHoleshot / RunLap are intentionally unexported/stub — not gaps.)
 
-Callbacks with no headless-observable effect (RunStart/Stop, deinits, TrackCenterline
-geometry, the widget/helmet half of RunTelemetry) are covered for **survival** by the
-callback fuzzer and marked ⛔/🟠 above rather than left as silent gaps.
+Callbacks with no headless-observable effect (RunStop's prod-only pit flush,
+TrackCenterline geometry, the widget/helmet half of RunTelemetry) are covered for
+**survival** by the callback fuzzer and marked ⛔/🟠 above rather than left as silent
+gaps. The **deinits** are no longer in that group — deinit_test asserts them directly.
+
+No ⚪ rows remain in the game-callback table. What is left is ⛔ (nothing a headless
+harness can observe) and 🟡/🟠 (driven, output not asserted); each says which.
 
 ~~**Top remaining open gap: FMX (freestyle trick scoring) — whole subsystem untested.**~~
 — ✅ done (fmx_test), exactly along the sketched seam: every FMX wall-clock read

@@ -223,15 +223,26 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
     out << IniOnly::Advanced::CURSOR_ACTIVATION_THRESHOLD.key << "=" << UiConfig::getInstance().getCursorActivationThreshold() << " ; " << IniOnly::Advanced::CURSOR_ACTIVATION_THRESHOLD.description << "\n";
     out << IniOnly::Advanced::SEGMENT_SNAP_TO_SPLITS.key << "=" << (UiConfig::getInstance().getSnapSegmentsToSplits() ? 1 : 0) << " ; " << IniOnly::Advanced::SEGMENT_SNAP_TO_SPLITS.description << "\n";
     out << IniOnly::Advanced::SEGMENT_SNAP_THRESHOLD.key << "=" << UiConfig::getInstance().getSegmentSnapThreshold() << " ; " << IniOnly::Advanced::SEGMENT_SNAP_THRESHOLD.description << "\n";
-    out << IniOnly::Advanced::HAZARD_STATIONARY_TOLERANCE.key << "=" << PluginData::getInstance().getHazardStationaryTolerance() << " ; " << IniOnly::Advanced::HAZARD_STATIONARY_TOLERANCE.description << "\n";
-    out << IniOnly::Advanced::HAZARD_STATIONARY_DURATION_MS.key << "=" << PluginData::getInstance().getHazardStationaryDurationMs() << " ; " << IniOnly::Advanced::HAZARD_STATIONARY_DURATION_MS.description << "\n";
-    out << IniOnly::Advanced::HAZARD_WRONG_WAY_DURATION_MS.key << "=" << PluginData::getInstance().getHazardWrongWayDurationMs() << " ; " << IniOnly::Advanced::HAZARD_WRONG_WAY_DURATION_MS.description << "\n";
-    out << IniOnly::Advanced::HAZARD_AWARENESS_DISTANCE.key << "=" << PluginData::getInstance().getHazardAwarenessDistance() << " ; " << IniOnly::Advanced::HAZARD_AWARENESS_DISTANCE.description << "\n";
-    out << IniOnly::Advanced::HAZARD_COOLDOWN_MS.key << "=" << PluginData::getInstance().getHazardCooldownMs() << " ; " << IniOnly::Advanced::HAZARD_COOLDOWN_MS.description << "\n";
-    out << IniOnly::Advanced::HAZARD_GRACE_PERIOD_MS.key << "=" << PluginData::getInstance().getHazardGracePeriodMs() << " ; " << IniOnly::Advanced::HAZARD_GRACE_PERIOD_MS.description << "\n";
-    out << IniOnly::Advanced::BLUE_FLAG_AWARENESS_DISTANCE.key << "=" << PluginData::getInstance().getBlueFlagAwarenessDistance() << " ; " << IniOnly::Advanced::BLUE_FLAG_AWARENESS_DISTANCE.description << "\n";
+    // Bind through a CONST reference so these pure reads resolve to the const
+    // proximityTuning() overload. getInstance() hands back a non-const PluginData,
+    // so writing it inline picks the mutable overload for what is only a read —
+    // harmless, but it hands a writable handle to the clamped fields to code that
+    // has no business writing them. Setting always goes through the clamped
+    // setters (see applyGlobalLine below and proximity_tuning.h).
+    const ProximityTuning& prox = static_cast<const PluginData&>(PluginData::getInstance()).proximityTuning();
+    out << IniOnly::Advanced::HAZARD_STATIONARY_TOLERANCE.key << "=" << prox.hazardStationaryTolerance << " ; " << IniOnly::Advanced::HAZARD_STATIONARY_TOLERANCE.description << "\n";
+    out << IniOnly::Advanced::HAZARD_STATIONARY_DURATION_MS.key << "=" << prox.hazardStationaryDurationMs << " ; " << IniOnly::Advanced::HAZARD_STATIONARY_DURATION_MS.description << "\n";
+    out << IniOnly::Advanced::HAZARD_WRONG_WAY_DURATION_MS.key << "=" << prox.hazardWrongWayDurationMs << " ; " << IniOnly::Advanced::HAZARD_WRONG_WAY_DURATION_MS.description << "\n";
+    out << IniOnly::Advanced::HAZARD_AWARENESS_DISTANCE.key << "=" << prox.hazardAwarenessDistance << " ; " << IniOnly::Advanced::HAZARD_AWARENESS_DISTANCE.description << "\n";
+    out << IniOnly::Advanced::HAZARD_WRONG_WAY_AWARENESS_DISTANCE.key << "=" << prox.hazardWrongWayAwarenessDistance << " ; " << IniOnly::Advanced::HAZARD_WRONG_WAY_AWARENESS_DISTANCE.description << "\n";
+    out << IniOnly::Advanced::HAZARD_COOLDOWN_MS.key << "=" << prox.hazardCooldownMs << " ; " << IniOnly::Advanced::HAZARD_COOLDOWN_MS.description << "\n";
+    out << IniOnly::Advanced::HAZARD_GRACE_PERIOD_MS.key << "=" << prox.hazardGracePeriodMs << " ; " << IniOnly::Advanced::HAZARD_GRACE_PERIOD_MS.description << "\n";
+    out << IniOnly::Advanced::BLUE_FLAG_AWARENESS_DISTANCE.key << "=" << prox.blueFlagAwarenessDistance << " ; " << IniOnly::Advanced::BLUE_FLAG_AWARENESS_DISTANCE.description << "\n";
     out << IniOnly::Advanced::GAP_NOTIFY_INTERVAL_MS.key << "=" << PluginData::getInstance().getGapNotifyIntervalMs() << " ; " << IniOnly::Advanced::GAP_NOTIFY_INTERVAL_MS.description << "\n";
     out << IniOnly::Advanced::PLUGIN_THREAD.key << "=" << (UiConfig::getInstance().getPluginThread() ? 1 : 0) << " ; " << IniOnly::Advanced::PLUGIN_THREAD.description << "\n";
+    out << IniOnly::Advanced::RENDER_PROBE_QUADS.key << "=" << UiConfig::getInstance().getRenderProbeQuads() << " ; " << IniOnly::Advanced::RENDER_PROBE_QUADS.description << "\n";
+    out << IniOnly::Advanced::RENDER_PROBE_FULLSCREEN.key << "=" << (UiConfig::getInstance().getRenderProbeFullscreen() ? 1 : 0) << " ; " << IniOnly::Advanced::RENDER_PROBE_FULLSCREEN.description << "\n";
+    out << IniOnly::Advanced::RENDER_PROBE_TYPE.key << "=" << UiConfig::getInstance().getRenderProbeType() << " ; " << IniOnly::Advanced::RENDER_PROBE_TYPE.description << "\n";
 #if GAME_HAS_HTTP_SERVER
     out << IniOnly::Advanced::WEB_SERVER_PORT.key << "=" << HttpServer::getInstance().getPort() << " ; " << IniOnly::Advanced::WEB_SERVER_PORT.description << "\n";
     out << IniOnly::Advanced::WEB_SERVER_THROTTLE_MS.key << "=" << HttpServer::getInstance().getThrottleMs() << " ; " << IniOnly::Advanced::WEB_SERVER_THROTTLE_MS.description << "\n";
@@ -703,23 +714,31 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
             } else if (key == "segmentSnapThreshold") {
                 UiConfig::getInstance().setSegmentSnapThreshold(parseFiniteFloat(value));
             } else if (key == "hazardStationaryTolerance") {
-                PluginData::getInstance().setHazardStationaryTolerance(parseFiniteFloat(value));
+                PluginData::getInstance().proximityTuning().setHazardStationaryTolerance(parseFiniteFloat(value));
             } else if (key == "hazardStationaryDurationMs") {
-                PluginData::getInstance().setHazardStationaryDurationMs(std::stoi(value));
+                PluginData::getInstance().proximityTuning().setHazardStationaryDurationMs(std::stoi(value));
             } else if (key == "hazardWrongWayDurationMs") {
-                PluginData::getInstance().setHazardWrongWayDurationMs(std::stoi(value));
+                PluginData::getInstance().proximityTuning().setHazardWrongWayDurationMs(std::stoi(value));
             } else if (key == "hazardAwarenessDistance") {
-                PluginData::getInstance().setHazardAwarenessDistance(parseFiniteFloat(value));
+                PluginData::getInstance().proximityTuning().setHazardAwarenessDistance(parseFiniteFloat(value));
+            } else if (key == "hazardWrongWayAwarenessDistance") {
+                PluginData::getInstance().proximityTuning().setHazardWrongWayAwarenessDistance(parseFiniteFloat(value));
             } else if (key == "hazardCooldownMs") {
-                PluginData::getInstance().setHazardCooldownMs(std::stoi(value));
+                PluginData::getInstance().proximityTuning().setHazardCooldownMs(std::stoi(value));
             } else if (key == "hazardGracePeriodMs") {
-                PluginData::getInstance().setHazardGracePeriodMs(std::stoi(value));
+                PluginData::getInstance().proximityTuning().setHazardGracePeriodMs(std::stoi(value));
             } else if (key == "blueFlagAwarenessDistance") {
-                PluginData::getInstance().setBlueFlagAwarenessDistance(parseFiniteFloat(value));
+                PluginData::getInstance().proximityTuning().setBlueFlagAwarenessDistance(parseFiniteFloat(value));
             } else if (key == "gapNotifyIntervalMs") {
                 PluginData::getInstance().setGapNotifyIntervalMs(std::stoi(value));
             } else if (key == "pluginThread") {
                 UiConfig::getInstance().setPluginThread(std::stoi(value) != 0);
+            } else if (key == "renderProbeQuads") {
+                UiConfig::getInstance().setRenderProbeQuads(std::stoi(value));
+            } else if (key == "renderProbeFullscreen") {
+                UiConfig::getInstance().setRenderProbeFullscreen(std::stoi(value) != 0);
+            } else if (key == "renderProbeType") {
+                UiConfig::getInstance().setRenderProbeType(std::stoi(value));
             }
 #if GAME_HAS_HTTP_SERVER
             else if (key == "webServerPort") {

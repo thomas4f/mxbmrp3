@@ -283,3 +283,147 @@ TEST_CASE("formatSecs: compact seconds labels, sign, and the minute carry") {
     CHECK(fmt(-59960, true)  == "-1:00.0");
     CHECK(fmt(-119960, true) == "-2:00.0");
 }
+
+// ---------------------------------------------------------------------------
+// Sector resolution
+// ---------------------------------------------------------------------------
+
+TEST_CASE("charts: cumulativeBySector sums sector times into a per-sector series") {
+    using SessionChartsMath::cumulativeBySector;
+
+    // Two 3-sector laps: 30/31/29 then 30/30/30.
+    const std::vector<int> sectors = { 30000, 31000, 29000, 30000, 30000, 30000 };
+    const auto cum = cumulativeBySector(sectors, 3);
+    REQUIRE(cum.size() == 6);
+    CHECK(cum[0] == 30000);
+    CHECK(cum[2] == 90000);    // end of lap 1 == that lap's per-lap cumulative
+    CHECK(cum[5] == 180000);   // end of lap 2
+
+    // The per-lap series must remain a strict subset: every lap boundary in the sector
+    // series equals the same lap's value from cumulative(). That equality is what lets a
+    // chart switch resolution without the line moving.
+    const auto perLap = SessionChartsMath::cumulative(std::vector<int>{ 90000, 90000 });
+    REQUIRE(perLap.size() == 2);
+    CHECK(cum[2] == perLap[0]);
+    CHECK(cum[5] == perLap[1]);
+}
+
+TEST_CASE("charts: a sector series stops at the first hole rather than skipping it") {
+    using SessionChartsMath::cumulativeBySector;
+
+    // Lap in progress: two sectors crossed, the third not yet.
+    CHECK(cumulativeBySector({ 30000, 31000, 0 }, 3).size() == 2);
+    // A missing split mid-history truncates too. Continuing past it would sum a lap's
+    // worth of time that never happened and show the rider gaining time — worse than
+    // simply having a shorter line.
+    const auto truncated = cumulativeBySector({ 30000, 31000, 29000, 30000, -1, 30000 }, 3);
+    REQUIRE(truncated.size() == 4);
+    CHECK(truncated.back() == 120000);
+    // Degenerate stride is rejected rather than dividing by zero.
+    CHECK(cumulativeBySector({ 30000 }, 0).empty());
+    CHECK(cumulativeBySector({}, 3).empty());
+}
+
+TEST_CASE("charts: sector indices land on the right fraction of a lap") {
+    using SessionChartsMath::lapsAtSectorIndex;
+    // 3 sectors: the third sector of lap 1 IS one completed lap.
+    CHECK(lapsAtSectorIndex(0, 3) == doctest::Approx(1.0f / 3.0f));
+    CHECK(lapsAtSectorIndex(2, 3) == doctest::Approx(1.0f));
+    CHECK(lapsAtSectorIndex(5, 3) == doctest::Approx(2.0f));
+    // 4-sector games (GP Bikes) divide the same way.
+    CHECK(lapsAtSectorIndex(3, 4) == doctest::Approx(1.0f));
+    CHECK(lapsAtSectorIndex(7, 4) == doctest::Approx(2.0f));
+    CHECK(lapsAtSectorIndex(0, 0) == doctest::Approx(0.0f));   // guarded stride
+}
+
+TEST_CASE("charts: the X mapping is unchanged for per-lap points") {
+    using SessionChartsMath::xFracForLaps;
+    using SessionChartsMath::lapsAtSectorIndex;
+
+    // Per-lap: firstLaps = 1 and laps = lapIndex0 + 1 must reproduce the historical
+    // lapIndex0 / (maxLap - 1). This equality is the whole reason the shared mapping is
+    // safe to adopt — a chart with sector points OFF must render exactly as before.
+    const int maxLap = 5;
+    for (int lapIdx = 0; lapIdx < maxLap; ++lapIdx) {
+        const float expected = static_cast<float>(lapIdx) / static_cast<float>(maxLap - 1);
+        CHECK(xFracForLaps(static_cast<float>(lapIdx + 1), 1.0f, maxLap) == doctest::Approx(expected));
+    }
+
+    // Sector resolution over the same race spans the identical [0,1] range, and each lap
+    // boundary lands strictly right of the previous one.
+    const float firstLaps = lapsAtSectorIndex(0, 3);
+    CHECK(xFracForLaps(lapsAtSectorIndex(0, 3), firstLaps, maxLap) == doctest::Approx(0.0f));
+    CHECK(xFracForLaps(lapsAtSectorIndex(3 * maxLap - 1, 3), firstLaps, maxLap) == doctest::Approx(1.0f));
+    float prev = -1.0f;
+    for (int k = 0; k < 3 * maxLap; ++k) {
+        const float x = xFracForLaps(lapsAtSectorIndex(k, 3), firstLaps, maxLap);
+        CHECK(x > prev);
+        prev = x;
+    }
+
+    // A single-sample series is centred rather than dividing by a zero span.
+    CHECK(xFracForLaps(1.0f, 1.0f, 1) == doctest::Approx(0.5f));
+    // Out-of-range input clamps instead of drawing outside the plot rectangle.
+    CHECK(xFracForLaps(99.0f, 1.0f, 5) == doctest::Approx(1.0f));
+    CHECK(xFracForLaps(0.0f, 1.0f, 5) == doctest::Approx(0.0f));
+}
+
+TEST_CASE("charts: ranking math works unchanged at sector resolution") {
+    using SessionChartsMath::cumulativeBySector;
+
+    // Two riders, two 3-sector laps. #7 builds a 4s lead at 29s/sector, then loses 5s in
+    // sector 2 of lap 2 (35s) and is passed — an overtake that happens mid-lap, which a
+    // per-lap chart can only ever show at the following lap boundary.
+    const std::vector<int> a = { 30000, 30000, 30000, 30000, 30000, 30000 };  // #4, even
+    const std::vector<int> b = { 29000, 29000, 29000, 29000, 35000, 30000 };  // #7, ahead then loses
+    std::vector<std::vector<long long>> cums = { cumulativeBySector(a, 3), cumulativeBySector(b, 3) };
+    const std::vector<int> raceNums = { 4, 7 };
+
+    const auto pos = SessionChartsMath::positionsPerLap(cums, raceNums);
+    REQUIRE(pos.size() == 2);
+    REQUIRE(pos[0].size() == 6);
+    // #7 leads through lap 1 and into lap 2...
+    CHECK(pos[1][2] == 1);
+    CHECK(pos[0][2] == 2);
+    // ...and the lead changes IN sector 2 of lap 2 (index 4), not at the lap boundary.
+    CHECK(pos[0][4] == 1);
+    CHECK(pos[1][4] == 2);
+
+    const auto gaps = SessionChartsMath::gapToLeaderPerLap(cums);
+    CHECK(gaps[1][2] == 0);        // leader pinned to zero at the end of lap 1
+    CHECK(gaps[0][2] == 3000);     // #4 three seconds back
+    CHECK(gaps[0][4] == 0);        // #4 now leads
+    CHECK(gaps[1][4] == 1000);     // #7 a second back after the bad sector
+}
+
+TEST_CASE("charts: the lap-chart axis labels read the LATEST sample, not the latest lap") {
+    using SessionChartsMath::latestPositionExtent;
+
+    // Two riders over two 3-sector laps (6 samples). They swap in the final sector, so a
+    // search bounded by the LAP count (index 1, a third of the way in) reports the old
+    // order while the drawn lines already show the new one — the bug this pins.
+    const std::vector<std::vector<int>> positions = {
+        { 1, 1, 1, 1, 1, 2 },   // leader until the last sector
+        { 2, 2, 2, 2, 2, 1 },
+    };
+    auto e = latestPositionExtent(positions);
+    CHECK(e.top == 1);
+    CHECK(e.bottom == 2);
+
+    // The extent is the min/max at that sample, so a sparse field labels its real spread.
+    const std::vector<std::vector<int>> spread = { { 3, 3 }, { 8, 9 }, { 5, 5 } };
+    auto s = latestPositionExtent(spread);
+    CHECK(s.top == 3);
+    CHECK(s.bottom == 9);
+
+    // Riders of differing length: the latest sample is the longest row's end, and riders
+    // absent there are simply skipped rather than dragging the extent to 0.
+    const std::vector<std::vector<int>> ragged = { { 1, 1, 1 }, { 2 } };
+    auto r = latestPositionExtent(ragged);
+    CHECK(r.top == 1);
+    CHECK(r.bottom == 1);
+
+    // Nothing to label.
+    CHECK(latestPositionExtent({}).top == 0);
+    CHECK(latestPositionExtent({ { 0, 0 } }).top == 0);
+}

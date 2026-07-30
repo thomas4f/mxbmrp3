@@ -82,7 +82,7 @@ private:
     Tex* tex(const std::string& base, bool icon, const std::string& root);
     void drawQuad(Image&, const SPluginQuad_t&, const Frame&);
     void drawString(Image&, const SPluginString_t&, const Frame&);
-    void drawStringFnt(Image&, const SPluginString_t&, const Frame&, FntFont&);
+    void drawStringFnt(Image&, const SPluginString_t&, FntFont&);
 
     std::map<std::string, FntFont> m_fnts;
     std::map<std::string, Tex> m_texs;

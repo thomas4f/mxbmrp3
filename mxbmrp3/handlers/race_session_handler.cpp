@@ -4,11 +4,10 @@
 // ============================================================================
 #include "race_session_handler.h"
 #include "../core/handler_singleton.h"
+#include "../diagnostics/logger.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_utils.h"
 #include "../core/fmx_manager.h"
-
-DEFINE_HANDLER_SINGLETON(RaceSessionHandler)
 
 // Log "Session started" event with optional format detail (e.g., "03:00 + 2L")
 static void logSessionStarted(PluginData& data, const char* sessionStr, int sessionLength, int sessionNumLaps) {
@@ -36,7 +35,7 @@ static void logSessionStarted(PluginData& data, const char* sessionStr, int sess
     }
 }
 
-void RaceSessionHandler::handleRaceSession(Unified::RaceSessionData* psRaceSession) {
+void Handlers::handleRaceSession(Unified::RaceSessionData* psRaceSession) {
     HANDLER_NULL_CHECK(psRaceSession);
 
     int eventType = PluginData::getInstance().getSessionData().eventType;
@@ -114,7 +113,7 @@ void RaceSessionHandler::handleRaceSession(Unified::RaceSessionData* psRaceSessi
     }
 }
 
-void RaceSessionHandler::handleRaceSessionState(Unified::RaceSessionStateData* psRaceSessionState) {
+void Handlers::handleRaceSessionState(Unified::RaceSessionStateData* psRaceSessionState) {
     HANDLER_NULL_CHECK(psRaceSessionState);
 
     int eventType = PluginData::getInstance().getSessionData().eventType;
@@ -190,10 +189,12 @@ void RaceSessionHandler::handleRaceSessionState(Unified::RaceSessionStateData* p
                     } else {
                         snprintf(eventMsg, sizeof(eventMsg), "%s: %s", sessionStr, stateStr);
                     }
-                    EventLogType eventType = isComplete  ? EventLogType::SessionComplete :
-                                             isPreStart  ? EventLogType::SessionPreStart :
-                                                           EventLogType::SessionStateChange;
-                    data.addEventLogEntry(eventType, eventMsg);
+                    // logType, not eventType: the enclosing scope already has an
+                    // `int eventType` (the SESSION's event type from PluginData).
+                    EventLogType logType = isComplete  ? EventLogType::SessionComplete :
+                                           isPreStart  ? EventLogType::SessionPreStart :
+                                                         EventLogType::SessionStateChange;
+                    data.addEventLogEntry(logType, eventMsg);
                 }
             }
         }

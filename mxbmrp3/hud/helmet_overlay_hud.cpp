@@ -198,7 +198,7 @@ void HelmetOverlayHud::rebuildRenderData() {
 
     // Hide when crashed — the game forces an external camera so the helmet
     // would float in mid-air. Reset vibration state so there's no jolt on recovery.
-    const TrackPositionData* playerPos = pluginData.getPlayerTrackPosition();
+    const RiderTrackState* playerPos = pluginData.getPlayerTrackPosition();
     if (playerPos && playerPos->crashed) {
         m_smoothedVibration = 0.0f;
         m_hasVibBaseline = false;
@@ -296,7 +296,7 @@ void HelmetOverlayHud::rebuildRenderData() {
         m_prevVibSource = vibSource;
 
         // Frame-rate-independent exponential low-pass: weight = exp(-decay * dt).
-        // Produces consistent feel across 60fps and 240fps.
+        // Produces consistent feel across 60fps and 480fps.
         const auto now = std::chrono::steady_clock::now();
         const float dt = std::chrono::duration<float>(now - m_lastVibrationTime).count();
         m_lastVibrationTime = now;

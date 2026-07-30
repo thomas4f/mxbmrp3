@@ -185,6 +185,58 @@ void HudManager::produceFrame(int iState) {
         collectRenderData();
     }
 
+    // Render-load probe ([Advanced] renderProbeQuads, off by default): append N
+    // synthetic quads for the ENGINE to draw. The engine's cost to render our
+    // primitives happens after Draw() returns and no in-plugin timer can see it — but
+    // it IS measurable differentially: sweep N (uncapped FPS, fixed scene) and the
+    // frame-time slope is the engine's per-primitive cost. Appended to the GAME frame
+    // only, OUTSIDE collectRenderTime (synthetic engine load, not our build cost); the
+    // count flows into bm.totalQuads via *piNumQuads, so the benchmark logs (N, fps).
+    {
+        int probeN = UiConfig::getInstance().getRenderProbeQuads();
+        if (probeN > 0) {   // draw() still zeroes the handoff in COMPANION-suppressed frames
+            // renderProbeType selects WHICH primitive to stress, since the three the
+            // plugin emits have different engine costs: 0=solid-fill quad (cheapest —
+            // just fill), 1=sprite quad (textured: adds a texture fetch, and we cycle
+            // across ALL registered sprites so it also exercises texture-switch /
+            // batch-break cost), 2=text string (glyph-atlas sampling, the text path).
+            const int type = UiConfig::getInstance().getRenderProbeType();
+            if (type == 2) {
+                // Text: N identical short strings (overlap is fine — each is still
+                // rasterized). Count flows into bm.totalStrings via *piNumString.
+                SPluginString_t st{};
+                strncpy_s(st.m_szString, sizeof(st.m_szString), "PROBE 12:34.567", _TRUNCATE);
+                st.m_afPos[0] = 0.5f; st.m_afPos[1] = 0.5f;
+                st.m_iFont = 1;              // 1-based; font 1 is always registered
+                st.m_fSize = 0.02f; st.m_iJustify = 0; st.m_ulColor = 0xFFFFFFFFul;
+                m_strings.insert(m_strings.end(), static_cast<size_t>(probeN), st);
+            } else {
+                SPluginQuad_t q{};
+                q.m_ulColor = 0x40FFFFFFul;   // ABGR; icons are tinted to this, textures ignore it
+                const bool fs = (type == 0) && UiConfig::getInstance().getRenderProbeFullscreen();
+                if (fs) {
+                    q.m_aafPos[0][0]=0.f; q.m_aafPos[0][1]=0.f; q.m_aafPos[1][0]=0.f; q.m_aafPos[1][1]=1.f;
+                    q.m_aafPos[2][0]=1.f; q.m_aafPos[2][1]=1.f; q.m_aafPos[3][0]=1.f; q.m_aafPos[3][1]=0.f;
+                } else {
+                    // Tiny quad: negligible fill, so this isolates submit / texture-sample cost.
+                    q.m_aafPos[0][0]=0.f; q.m_aafPos[0][1]=0.f; q.m_aafPos[1][0]=0.f; q.m_aafPos[1][1]=0.01f;
+                    q.m_aafPos[2][0]=0.01f; q.m_aafPos[2][1]=0.01f; q.m_aafPos[3][0]=0.01f; q.m_aafPos[3][1]=0.f;
+                }
+                const int spriteCount = (type == 1) ? static_cast<int>(m_spriteNames.size()) : 0;
+                if (type == 1 && spriteCount > 0) {
+                    // Cycle across every registered sprite to induce texture switches.
+                    for (int i = 0; i < probeN; ++i) {
+                        q.m_iSprite = 1 + (i % spriteCount);   // 1-based sprite index
+                        m_quads.push_back(q);
+                    }
+                } else {
+                    q.m_iSprite = 0;   // 0 = solid fill (fill mode, or sprite mode with no sprites)
+                    m_quads.insert(m_quads.end(), static_cast<size_t>(probeN), q);
+                }
+            }
+        }
+    }
+
     // Route this frame to the game and/or the standalone companion window per the
     // display target. The companion always gets the full frame; the in-game HUD is
     // suppressed in COMPANION mode — except while the settings menu is open, so the
@@ -362,6 +414,24 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
         }
     }
 
+    // Benchmark: record each HUD's per-frame primitive footprint (game pass only —
+    // the companion pass would double-count). Cheap, gated on the profiler being
+    // active. A hidden HUD emits nothing this frame. Base counts (pre-shadow);
+    // drop shadow ~doubles the string total globally.
+    {
+        auto& bm = PluginData::getInstance().getBenchmarkMetrics();
+        if (!companion && bm.active) {
+            for (const auto& hud : m_huds) {
+                if (!hud) continue;
+                int idx = hud->getBenchmarkIndex();
+                if (idx < 0) continue;
+                bool vis = hud->isVisible();
+                bm.recordHudPrimitives(idx, vis ? static_cast<int>(hud->getQuads().size()) : 0,
+                                            vis ? static_cast<int>(hud->getStrings().size()) : 0);
+            }
+        }
+    }
+
     // Reserve space for pointer and settings button (always allocated, conditionally added)
     totalQuads += 2;     // Pointer quad + settings button background quad
     totalStrings += 1;   // Settings button text
@@ -413,7 +483,11 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
         // Guard the deref: m_huds provably holds no nulls (registerHud filters
         // them), but this file is written defensively, so don't dereference before
         // the null check. visible is false for a null hud, so the body is safe.
-        bool visible = hud && (companion ? hud->getCompanionVisible() : hud->isVisible());
+        // rendersOnCompanion() gates the companion pass BEFORE its on/off: a HUD that
+        // is an in-game effect rather than a panel never belongs on the second
+        // surface, whatever its companion visibility says. See BaseHud.
+        bool visible = hud && (companion ? (hud->rendersOnCompanion() && hud->getCompanionVisible())
+                                         : hud->isVisible());
         if (visible) {
             // Where this HUD's primitives start, so we can translate them to the
             // companion position afterward (delta is 0 for the game / a mirrored HUD).

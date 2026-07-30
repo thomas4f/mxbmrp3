@@ -8,6 +8,7 @@
 #include <string>
 #include <fstream>
 #include <mutex>
+#include "../core/thread_safety.h"
 #include <atomic>
 #include <cstdio>
 
@@ -51,7 +52,8 @@ private:
     Logger& operator=(const Logger&) = delete;
 
     void log(const char* level, const char* message);
-    void getCurrentTimestamp(char* buffer, size_t bufferSize);
+    // Reads/refreshes the cached timestamp — called from log() under m_mutex.
+    void getCurrentTimestamp(char* buffer, size_t bufferSize) MXB_REQUIRES(m_mutex);
     std::string getLogFilePath(const char* savePath) const;
 
 #ifdef _DEBUG
@@ -69,19 +71,24 @@ private:
     // Atomic: written under m_logMutex in initialize()/shutdown() but read lock-free
     // at the top of log() (called from the game thread and background threads).
     std::atomic<bool> m_initialized;
-    std::ofstream m_logFile;
-    std::string m_logFilePath;
+    // The members the mutex actually exists for — concurrent writes to an
+    // ofstream's streambuf are the race it serializes. These used to carry
+    // prose ("guarded by m_mutex after init") instead of the annotation,
+    // because initialize() opened the file outside the lock; it no longer does,
+    // so the analysis checks them like everything else.
+    std::ofstream m_logFile MXB_GUARDED_BY(m_mutex);
+    std::string m_logFilePath MXB_GUARDED_BY(m_mutex);
 
     // Serializes log() so concurrent calls from the game thread and
     // background threads (HttpServer, Discord, UpdateChecker, RecordsHud,
     // UpdateDownloader) don't race on the ofstream's streambuf — which
     // is UB under the C++ standard and tends to mangle output lines in
     // practice. Also protects m_lastTimestampMs / m_cachedTimestamp.
-    std::mutex m_mutex;
+    Mutex m_mutex;
 
     // Timestamp caching for performance
-    int64_t m_lastTimestampMs;
-    char m_cachedTimestamp[16];
+    int64_t m_lastTimestampMs MXB_GUARDED_BY(m_mutex);
+    char m_cachedTimestamp[16] MXB_GUARDED_BY(m_mutex);
 
 #ifdef _DEBUG
     bool m_consoleInitialized;

@@ -55,14 +55,27 @@ void Logger::initialize(const char* savePath) {
     initializeConsole();
 #endif
 
-    // Open log file (overwrite mode - fresh log each session)
-    m_logFilePath = getLogFilePath(savePath);
-    m_logFile.open(m_logFilePath, std::ios::out | std::ios::trunc);
+    // Open log file (overwrite mode - fresh log each session).
+    //
+    // Under the lock, and the scope is deliberately tight: m_mutex is NOT
+    // recursive (see the caution in log()), and every info()/warn() below takes
+    // it — holding it across them would deadlock on the startup banner. So the
+    // open happens here and the results are carried out in locals; nothing
+    // below this block touches the guarded members.
+    bool opened = false;
+    std::string logPath;
+    {
+        MutexLock lock(m_mutex);
+        m_logFilePath = getLogFilePath(savePath);
+        m_logFile.open(m_logFilePath, std::ios::out | std::ios::trunc);
+        opened = m_logFile.is_open();
+        logPath = m_logFilePath;
+    }
 
-    if (!m_logFile.is_open()) {
+    if (!opened) {
         // In debug builds, warn via console
 #ifdef _DEBUG
-        std::cerr << "WARNING: Failed to open log file: " << m_logFilePath << std::endl;
+        std::cerr << "WARNING: Failed to open log file: " << logPath << std::endl;
 #endif
         // Continue without file logging - at least debug console works
     }
@@ -106,8 +119,8 @@ void Logger::initialize(const char* savePath) {
         }
     }
 
-    if (m_logFile.is_open()) {
-        info("Log file: %s", m_logFilePath.c_str());
+    if (opened) {
+        info("Log file: %s", logPath.c_str());
     } else {
         warn("File logging disabled (could not open log file)");
     }
@@ -123,7 +136,7 @@ void Logger::shutdown() {
     // thread before shutting the logger down last), but a future thread that
     // logs past this point would otherwise race the close.
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        MutexLock lock(m_mutex);
         if (m_logFile.is_open()) {
             m_logFile.close();
         }
@@ -161,7 +174,7 @@ void Logger::log(const char* level, const char* message) {
     // a logger that itself logs. Doing so will deadlock the calling
     // thread. The crash filter in crash_handler.cpp deliberately avoids
     // Logger for this reason.
-    std::lock_guard<std::mutex> lock(m_mutex);
+    MutexLock lock(m_mutex);
 
     char timestamp[16];
     getCurrentTimestamp(timestamp, sizeof(timestamp));
@@ -196,7 +209,7 @@ void Logger::log(const char* level, const char* message) {
 #endif
 }
 
-void Logger::getCurrentTimestamp(char* buffer, size_t bufferSize) {
+void Logger::getCurrentTimestamp(char* buffer, size_t bufferSize) {  // MXB_REQUIRES(m_mutex)
     // Cache timestamp at millisecond granularity to avoid expensive
     // system clock calls and localtime_s conversions on every log statement
     auto now = std::chrono::system_clock::now();

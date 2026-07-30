@@ -483,6 +483,17 @@ void BaseHud::setQuadPositions(SPluginQuad_t& quad, float x, float y, float widt
     quad.m_aafPos[3][1] = y;
 }
 
+void BaseHud::setQuadPositionsArrowRight(SPluginQuad_t& quad, float x, float y,
+                                         float width, float height) {
+    // Same winding as setQuadPositions (TL, BL, then the right-hand pair), with the
+    // right edge collapsed to one point so the quad renders as a triangle.
+    const float tipY = y + height * 0.5f;
+    quad.m_aafPos[0][0] = x;         quad.m_aafPos[0][1] = y;
+    quad.m_aafPos[1][0] = x;         quad.m_aafPos[1][1] = y + height;
+    quad.m_aafPos[2][0] = x + width; quad.m_aafPos[2][1] = tipY;
+    quad.m_aafPos[3][0] = x + width; quad.m_aafPos[3][1] = tipY;
+}
+
 void BaseHud::updateBackgroundQuadPosition(float startX, float startY, float width, float height) {
     if (!m_quads.empty()) {
         float x = startX;

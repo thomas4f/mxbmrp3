@@ -99,7 +99,7 @@ bool PitboardHud::shouldBeVisible() const {
     }
 
     const PluginData& data = PluginData::getInstance();
-    const TrackPositionData* trackPos = data.getPlayerTrackPosition();
+    const RiderTrackState* trackPos = data.getPlayerTrackPosition();
 
     // Pit mode - show from 75% to 95% track position
     if (m_displayMode == MODE_PIT) {
@@ -557,9 +557,11 @@ int PitboardHud::calculateCompareGap(bool& hasGap, GapCompareMode& effectiveMode
                 // Scan standings for best lap time (any rider)
                 const auto& standings = data.getStandings();
                 int best = -1;
-                for (const auto& [raceNum, standing] : standings) {
-                    if (standing.bestLap > 0 && (best < 0 || standing.bestLap < best))
-                        best = standing.bestLap;
+                // `st`, not `standing`: this function already has a `standing`
+                // pointer for the DISPLAYED rider; this loop is over all riders.
+                for (const auto& [raceNum, st] : standings) {
+                    if (st.bestLap > 0 && (best < 0 || st.bestLap < best))
+                        best = st.bestLap;
                 }
                 refTime = best;
             } else if (m_splitType == SPLIT_1) {

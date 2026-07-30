@@ -17,7 +17,6 @@ public:
     void update() override;
     bool handlesDataType(DataChangeType dataType) const override;
     const char* getIconName() const override { return "hud-performance"; }
-    void setVisible(bool visible) override;
     void resetToDefaults();
 
     // Element flags - each bit represents a metric that can be toggled
@@ -42,6 +41,13 @@ public:
     friend class SettingsManager;
 
 private:
+    // Clears the graph history on the ANY-SURFACE show edge; see the definition.
+    void syncVisibilityEdge();
+    void onVisibilityChanged() override { syncVisibilityEdge(); }
+    // Edge state for the above: visible on SOME surface last frame. Not m_bVisible,
+    // which is the game surface alone.
+    bool m_bWasVisibleAnySurface = false;
+
     void rebuildRenderData() override;
 
     // Calculate dynamic width based on enabled elements

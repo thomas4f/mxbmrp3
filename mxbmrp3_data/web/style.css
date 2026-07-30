@@ -174,10 +174,22 @@ html {
        substituted at the DECLARING element (here :root, where --posdelta-w is always 2rem),
        so folding it in here would freeze the ± reserve and defeat the hide-posdelta
        collapse. (Same rule as --col-gap-w-measured; see app.js.) */
-    --tower-width-base: calc(var(--name-chars) * 1ch + var(--col-pos-w) + var(--col-gap-w) + var(--badge-w) + 1.5rem + var(--sp-md));
+    /* The brand marker is reserved EXPLICITLY. It never was: the strip fitted inside
+       the flat 1.5rem slack while it was a 0.15rem bar, so widening it into an arrow
+       silently pushed the gap column toward the tower edge. Naming it here means a
+       future size change costs width instead of overflowing. */
+    --tower-width-base: calc(var(--name-chars) * 1ch + var(--col-pos-w) + var(--col-gap-w) + var(--badge-w) + var(--strip-w) + var(--strip-arrow-w) + 1.5rem + var(--sp-md));
 
     /* Brand strip & chips */
+    /* Brand marker. --strip-w is the LAYOUT unit (the gap either side, and what the
+       battle-panel indents reserve); --strip-arrow-w is how wide the arrow is drawn.
+       They were one value while the marker was a bar, where a thin stripe reads
+       fine. As a triangle the same box loses half its ink to the taper, so at
+       0.15rem against a 0.8rem height it rendered as a near-invisible needle
+       (1:5.3). Widening the drawn shape without widening the gap keeps the tower
+       columns where they were. */
     --strip-w:       0.15rem;
+    --strip-arrow-w: 0.30rem;
     --chip-size:     0.9rem;
 
     /* Animation — durations + easing for every transition/animation in the
@@ -498,6 +510,11 @@ body {
     align-items: center;
     background: var(--badge-bg);
     color: var(--badge-text);
+    /* Title face, matching in-game and real broadcast number plates (the shipped
+       title font is italic). --badge-w auto-fits by measuring a probe that carries
+       this same class, so the reserved width follows the font rather than the
+       3ch fallback. */
+    font-family: var(--font-display);
     font-weight: bold;
     font-size: var(--fs-sm);
     padding: var(--sp-2xs) var(--sp-sm);
@@ -509,10 +526,16 @@ body {
 
 .brand-strip {
     display: inline-block;
-    width: var(--strip-w);
-    height: 0.8rem;
+    width: var(--strip-arrow-w);
+    /* Shorter than the plate and wider than the old bar, so the arrowhead reads as
+       a shape rather than a spike: ~1:1.5 instead of 1:5.3. */
+    height: 0.62rem;
     margin-left: var(--strip-w);
-    border-radius: var(--sp-2xs);
+    /* Right-pointing arrow, not a bar: broadcast timing towers draw the brand
+       marker as an arrow, and the in-game HUD builds the same shape from a quad
+       with its right edge collapsed to a point (BaseHud::setQuadPositionsArrowRight).
+       clip-path supersedes the rounded corners, so the radius is gone. */
+    clip-path: polygon(0 0, 100% 50%, 0 100%);
     background: transparent;
 }
 
@@ -1022,7 +1045,7 @@ body {
        space on the right so values clear the floating headline. The sp-md*3 is the
        battle-main left pad + col-num left margin + col-num right margin (the col-num
        margins are the gaps around the plate). */
-    padding: 0 var(--battle-headline-w) 0 calc(var(--col-pos-w) + var(--posdelta-w) + var(--badge-w) + var(--strip-w) * 2 + var(--sp-md) * 3);
+    padding: 0 var(--battle-headline-w) 0 calc(var(--col-pos-w) + var(--posdelta-w) + var(--badge-w) + var(--strip-w) + var(--strip-arrow-w) + var(--sp-md) * 3);
     font-size: var(--fs-xs);
     color: var(--text-dim);
 }
@@ -1124,7 +1147,7 @@ body {
        row now leads with the plate (position moved to the right), so the fallback is just
        the plate width + margins — no leading position/± columns. */
     padding-left: var(--focus-sub-indent,
-        calc(var(--badge-w) + var(--strip-w) * 2 + var(--sp-md) * 3));
+        calc(var(--badge-w) + var(--strip-w) + var(--strip-arrow-w) + var(--sp-md) * 3));
 }
 
 /* ============================================================================

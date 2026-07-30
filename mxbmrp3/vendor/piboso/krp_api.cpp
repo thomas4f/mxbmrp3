@@ -22,17 +22,20 @@ using Adapter = Adapters::KRP::Adapter;
 static_assert(Adapter::MOD_DATA_VERSION == 6, "MOD_DATA_VERSION mismatch: update GetModDataVersion() return value");
 static_assert(Adapter::INTERFACE_VERSION == 9, "INTERFACE_VERSION mismatch: update GetInterfaceVersion() return value");
 
+// api-guard-exempt: returns a static constant, cannot throw
 __declspec(dllexport) char* GetModID()
 {
 	static char modId[] = "krp";
 	return modId;
 }
 
+// api-guard-exempt: returns a literal, cannot throw
 __declspec(dllexport) int GetModDataVersion()
 {
 	return 6;
 }
 
+// api-guard-exempt: returns a literal, cannot throw
 __declspec(dllexport) int GetInterfaceVersion()
 {
 	return 9;
@@ -347,7 +350,7 @@ __declspec(dllexport) void RaceClassification(void* _pData, int _iDataSize, void
 		unified.numEntries = numEntries;
 
 		// Static buffer pattern: Avoid heap allocations in high-frequency callbacks.
-		// These callbacks fire every frame at 240fps+ so per-call allocations would
+		// These callbacks fire every frame at 480fps+ so per-call allocations would
 		// create significant GC pressure. Thread-safe: Piboso plugin callbacks are
 		// serialized on the game thread, even though the process itself runs other
 		// threads (HttpServer SSE, UpdateChecker, etc.) — those don't touch this buffer.

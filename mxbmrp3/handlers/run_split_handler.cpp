@@ -7,9 +7,7 @@
 #include "../core/plugin_utils.h"
 #include "../core/plugin_data.h"
 
-DEFINE_HANDLER_SINGLETON(RunSplitHandler)
-
-void RunSplitHandler::handleRunSplit(Unified::PlayerSplitData* psSplitData) {
+void Handlers::handleRunSplit(Unified::PlayerSplitData* psSplitData) {
     HANDLER_NULL_CHECK(psSplitData);
 
     // NOTE: RunSplit events are player-only, limiting spectate mode functionality.

@@ -218,6 +218,21 @@ private:
     // Whole-lap target for a gap type (segment-agnostic); helper for cumulativeReferenceMs.
     int fullLapReferenceMs(GapTypeFlags type) const;
 
+    // Comparison types scoped to the LOCAL PLAYER's own history rather than to whoever the
+    // panel is displaying: All-Time PB (StatsManager stores the player's laps only) and
+    // Record (fetched for the player's own bike/class). Every other type reads the DISPLAY
+    // rider's data, so the whole panel follows a spectate switch — leaving these two live
+    // meant a spectated rider's lap was scored against YOUR reference, reading as if it
+    // were theirs. StatsHud already drops its all-time column while spectating for the
+    // same reason; this brings TimingHud in line.
+    static bool isPlayerScopedComparison(GapTypeFlags type) {
+        return type == GAP_TO_ALLTIME || type == GAP_TO_RECORD;
+    }
+    // False only when a player-scoped comparison is asked for while displaying someone
+    // else — the single predicate behind the suppressed gap, the suppressed passive
+    // reference, and the "N/A" the panel renders in their place.
+    bool comparisonAppliesToDisplayRider(GapTypeFlags type) const;
+
     // Display mode (Off/Splits/Always) controls when HUD content is shown
     ColumnMode m_displayMode;
 

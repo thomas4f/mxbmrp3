@@ -76,4 +76,11 @@ TEST_CASE("settings save is deferred: markDirty writes nothing, flushIfDirty per
     host.save();                        // manual Save button
     CHECK_FALSE(readFile(iniPath).empty());
     CHECK_FALSE(host.isDirty());        // manual save cleared it
+    // Explicit teardown through the orchestrated Shutdown export. ~PluginHost
+    // now does this too (it used to be a bare FreeLibrary, which is what made
+    // the unload-without-Shutdown() path reachable from a test), so this is
+    // belt-and-braces — shutdown() is idempotent. Kept because it tears down
+    // while the test's own scope is still intact rather than during
+    // destruction, which keeps a teardown failure attributable to this case.
+    host.shutdown();
 }

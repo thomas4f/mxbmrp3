@@ -4,6 +4,7 @@
 // ============================================================================
 #pragma once
 
+#include <algorithm>   // std::clamp (render-probe bounds)
 #include <atomic>
 #include <cstdint>
 #include <cmath>
@@ -118,6 +119,27 @@ public:
     bool getPluginThread() const { return m_bPluginThread.load(std::memory_order_relaxed); }
     void setPluginThread(bool enabled) { m_bPluginThread.store(enabled, std::memory_order_relaxed); }
 
+    // Render-load probe (INI-only debug aid, off by default). Emit N extra synthetic
+    // quads each frame for the ENGINE to draw so its per-primitive render cost — which
+    // no in-plugin timer can see — can be measured differentially (sweep N, watch the
+    // frame time rise; the slope is the engine cost). Fullscreen mode measures
+    // fill-rate; tiny mode measures per-quad submit cost. Atomic: in plugin-thread
+    // mode the worker reads these in produceFrame() while settings-load writes them.
+    int  getRenderProbeQuads() const { return m_renderProbeQuads.load(std::memory_order_relaxed); }
+    // Clamped at BOTH ends: this count becomes an insert() of that many primitives
+    // EVERY frame, so a fat-fingered INI value (an extra zero) would allocate its way
+    // out of the frame budget the probe exists to measure. The cap is far above any
+    // useful sweep — the heaviest real handoff is ~1300 quads.
+    static constexpr int MAX_RENDER_PROBE_QUADS = 100000;
+    void setRenderProbeQuads(int n) {
+        m_renderProbeQuads.store(std::clamp(n, 0, MAX_RENDER_PROBE_QUADS), std::memory_order_relaxed);
+    }
+    bool getRenderProbeFullscreen() const { return m_renderProbeFullscreen.load(std::memory_order_relaxed); }
+    void setRenderProbeFullscreen(bool on) { m_renderProbeFullscreen.store(on, std::memory_order_relaxed); }
+    // 0 = solid-fill quad, 1 = sprite (textured) quad, 2 = text string.
+    int  getRenderProbeType() const { return m_renderProbeType.load(std::memory_order_relaxed); }
+    void setRenderProbeType(int t) { m_renderProbeType.store((t < 0 || t > 2) ? 0 : t, std::memory_order_relaxed); }
+
     // Drop shadow settings (for text rendering)
     bool getDropShadow() const { return m_bDropShadow; }
     void setDropShadow(bool enabled) { m_bDropShadow = enabled; }
@@ -150,6 +172,9 @@ private:
     float m_fCursorActivationThreshold = 0.015f;  // Mouse travel from rest before cursor appears (~29px horiz on 1080p)
     bool m_bTitleIcons = true;       // HUD title identity icons enabled by default
     std::atomic<bool> m_bPluginThread{ false };  // Experimental plugin worker thread (INI-only, off by default; live-toggle via reconcileEnabled)
+    std::atomic<int>  m_renderProbeQuads{ 0 };       // DEBUG: extra synthetic quads/frame for engine render-cost measurement (INI-only, off by default)
+    std::atomic<bool> m_renderProbeFullscreen{ false };  // DEBUG: probe quads full-screen (fill-rate) vs tiny (submit cost)
+    std::atomic<int>  m_renderProbeType{ 0 };        // DEBUG: 0=fill quad, 1=sprite quad, 2=text string
 
     // Grid overlay (INI-only debug aid)
     bool m_bGridOverlay = false;                       // Off by default

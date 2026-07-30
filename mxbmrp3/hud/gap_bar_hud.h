@@ -232,6 +232,17 @@ private:
     float m_fMarkerScale;             // Marker scale multiplier (0.5-3.0, like MapHud)
 
     // Rider position storage for flat map mode (updated from HudManager)
+    // Pushed whole by HudManager::updateRiderPositions; assign() replaces it each batch.
+    // raw-cache: WEAKEST of the three exemptions, and the honest label matters — only
+    // raceNum + trackPos are read here, both of which PluginData does store. This is a
+    // convenience copy of the current batch, not data unavailable elsewhere; it is safe
+    // only because it is replaced wholesale. A fair candidate to drop in favour of
+    // PluginData + hasActiveTrackPos() for freshness — but not a free one, so nobody
+    // has to rediscover the blockers: (1) PluginData exposes only
+    // getPlayerTrackPosition(), so this needs a NEW public per-rider accessor for
+    // RiderTrackState; (2) it trades batch order for unordered_map order, changing the
+    // draw order of overlapping opponent markers. No headless test covers this bar's
+    // markers, so (2) wants an in-game look before anyone commits to it.
     std::vector<Unified::TrackPositionData> m_riderPositions;
 
     // Cached gap for publishing to PluginData (avoids calculating twice)

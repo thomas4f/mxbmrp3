@@ -8,11 +8,12 @@ generated report is.
 
 ## Regenerate
 
-1. In Aptabase, export the month(s) you want as Parquet.
+1. In Aptabase, export the month(s) you want (CSV or Parquet — the tool reads either,
+   and they can be mixed in one run; Aptabase withdrew the Parquet export at one point).
 2. Run the generator (Windows `&`, or one command per line):
 
    ```
-   python3 tools/analytics_report.py path\to\mxbmrp3release2026XX.parquet ...
+   python3 tools/analytics_report.py path\to\mxbmrp3release2026XX.csv ...
    ```
 
    Pass any number of files (or a glob). They're merged and de-duplicated, and the report's
@@ -20,9 +21,9 @@ generated report is.
    `analytics/`; override with `--out`.
 
 3. Commit the regenerated `analytics/REPORT.md` + `analytics/charts/*.svg`. Do **not** commit
-   the `.parquet` (it's git-ignored).
+   the raw export (both `.csv` and `.parquet` are git-ignored).
 
-Requires `pandas` + `pyarrow` (`python3 -m pip install -r tools/requirements.txt`). The SVG
+Requires `pandas`; `pyarrow` only for Parquet input (`python3 -m pip install -r tools/requirements.txt`). The SVG
 charts have no extra dependency (`tools/analytics_svg.py`). Run `--selftest` to exercise the
 whole pipeline on synthetic data with no export on hand.
 

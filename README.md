@@ -253,7 +253,7 @@ font_title=RobotoMono-Bold ; Roboto Mono Bold font
 Use the [Color Override Picker](https://thomas4f.github.io/mxbmrp3/tools/color_override_picker.html) to convert RGB colors to ABGR format. See [Advanced Settings](#advanced-settings) for how to edit and hot-reload the INI file.
 
 ### Getting the most FPS
-Turn down the map's **Detail**, slim or disable its **Track outline**, and hide HUDs you don't use. Beyond that, take stock of your `plugins` folder: every installed plugin does work on every frame whether you use it or not, and some cost far more than others. Removing plugins you don't need is often the biggest FPS win of all.
+Turn down the map's **Detail**, slim or disable its **Track outline**, and hide HUDs you don't use. Text is the most expensive thing the plugin draws, and **Drop Shadow** (Settings > Appearance, on by default) draws every character twice - turning it off roughly halves the plugin's text-rendering cost, which adds up on text-heavy layouts at very high refresh rates. Beyond that, take stock of your `plugins` folder: every installed plugin does work on every frame whether you use it or not, and some cost far more than others. Removing plugins you don't need is often the biggest FPS win of all.
 
 ### Experimental: run the plugin on its own thread
 By default the plugin does its work during the game's frame. Set `pluginThread=1` in the `[Advanced]` section of the [INI file](#advanced-settings) to move the plugin's HUD building and event handling onto a separate thread, so a heavy HUD rebuild can't cost you frames. It's **off by default and experimental** - try it if you're chasing the smoothest possible frame times. Toggle it live with the **Reload Config** hotkey.
@@ -429,6 +429,8 @@ Analytics are processed by two open-source services: [Aptabase](https://aptabase
 
 When analytics is on, the plugin may also fetch a small config file from this repository that can only ever reduce what's sent, never add to it. Turning the Analytics toggle off stops this too.
 
+**What the data actually adds up to:** the aggregate results are published in **[`analytics/REPORT.md`](analytics/REPORT.md)** - installs, activity over time per game, version adoption, geography, feature/HUD popularity, and crash trends (grouped by which module faulted). It's generated straight from the anonymous pings described above, so you can see exactly what they amount to. As a snapshot, a recent month showed ~3,500 active installs across MX Bikes, GP Bikes, and Kart Racing Pro in 80+ countries; see the report for current figures.
+
 ## Feedback & Issues
 
 Bug reports, feature requests, and questions are all welcome. Open an issue on [GitHub](https://github.com/thomas4f/mxbmrp3/issues) or leave a comment on [MXB-Mods](https://mxb-mods.com/mxbmrp3/).
@@ -474,11 +476,12 @@ Documents\PiBoSo\[Game]\mxbmrp3\
 Built with C++17, Visual Studio 2022, the PiBoSo Plugin API, and Claude Code.
 
 - **[`DEVELOPMENT.md`](DEVELOPMENT.md)** - building (Windows shipping build + Linux cross-build) and running the test suites
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) - how to report bugs and contribute changes (and how the public mirror works)
 - [`TESTING.md`](TESTING.md) - the layered test suite (unit / integration / specialized) and how to add a test
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) - full technical documentation with diagrams
 - [`CLAUDE.md`](CLAUDE.md) - quick-start context for developers and AI assistants
 
-Quick start: clone, open `mxbmrp3.sln` in Visual Studio 2022 (x64), and build. The full configuration table, the Linux cross-build, and the unit/integration tests are documented in [`DEVELOPMENT.md`](DEVELOPMENT.md).
+Quick start: clone, run `cmake --preset msvc`, then open the generated `build/msvc/mxbmrp3.sln` in Visual Studio 2022 and build. The full configuration table, the Linux cross-build, and the unit/integration tests are documented in [`DEVELOPMENT.md`](DEVELOPMENT.md).
 
 ## License
 

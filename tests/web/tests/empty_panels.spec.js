@@ -38,8 +38,26 @@ test('every forced-empty broadcast panel shows the same "No data" placeholder', 
   for (const [name, p] of Object.entries(PANELS)) {
     // Fresh load per panel so it is forced at the flag-drop (no laps yet) — the first
     // completed lap would give the lap/charts panels real data and defeat the test.
-    await page.goto('/index.html?demo&race&speed=1');
+    // speed=0.1 (the demo's floor) and a huge slot dwell together hold the
+    // assertion's window open. Both are load-bearing, and neither is about
+    // making the test "slower to be safe":
+    //
+    //   - At the default speed=1 the demo completes a lap ~5s in, which gives the
+    //     lap/charts panels REAL data and replaces the very placeholder row this
+    //     test reads. 0.1 pushes that past a minute. (Instrumented: the row
+    //     existed only between t=1.0s and t=5.0s.)
+    //   - A forced panel still auto-hides when its dwell expires (~6.5s here,
+    //     CONFIG.slotDuration scaled by the demo). Once it slides out the row is
+    //     gone for good.
+    //
+    // Either expiry ends the window, after which getComputedStyle has no element
+    // to read and the polls below can NEVER converge — so under load this failed
+    // ~40% of the time, and RAISING the timeouts made it worse, not better, by
+    // guaranteeing the read landed after the window rather than inside it. The
+    // fix is to stop the window closing, not to wait longer for a closed one.
+    await page.goto('/index.html?demo&race&speed=0.1');
     await expect(page.locator('#standings-body .standings-row').first()).toBeVisible({ timeout: 30_000 });
+    await page.evaluate(() => { window.CONFIG.slotDuration = 600_000; window.CONFIG.slotRest = 0; });
     await page.evaluate((n) => window.mxbmrp3ForceSlot(n), name);
 
     const panel = page.locator('#' + p.id);
@@ -59,9 +77,15 @@ test('every forced-empty broadcast panel shows the same "No data" placeholder', 
     // transient), and each later panel until it matches that reference. Bounded
     // waits that converge when the transient settles but still fail on a
     // genuine, persistent font difference.
+    // `last` records the exact read that satisfied the poll — pushing a FRESH
+    // readInfo() afterwards was a race: the poll could pass on a settled value
+    // and the re-read then catch the next transient (the under-load flake where
+    // the final same-font check saw 2 fonts despite every per-panel poll passing).
+    let last = null;
     if (seen.length) {
       await expect
-        .poll(async () => (await readInfo()).font, { message: `${name} font settles to the shared font` })
+        .poll(async () => { last = await readInfo(); return last.font; },
+              { message: `${name} font settles to the shared font` })
         .toBe(seen[0].font);
     } else {
       // Reference panel: require a NON-EMPTY font stable across two consecutive
@@ -72,14 +96,14 @@ test('every forced-empty broadcast panel shows the same "No data" placeholder', 
       let prev = null;
       await expect
         .poll(async () => {
-          const cur = (await readInfo()).font;
-          const stable = cur !== '' && cur === prev;
-          prev = cur;
+          last = await readInfo();
+          const stable = last.font !== '' && last.font === prev;
+          prev = last.font;
           return stable;
         }, { message: `${name} font stabilizes non-empty (reference panel)` })
         .toBe(true);
     }
-    seen.push({ name, ...(await readInfo()) });
+    seen.push({ name, ...last });
     await page.screenshot({ path: path.join(SHOTS, 'empty-' + name + '.png') });
   }
 

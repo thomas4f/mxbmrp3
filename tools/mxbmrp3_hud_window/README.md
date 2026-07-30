@@ -70,11 +70,16 @@ Requires the headless toolchain (mingw-w64 posix + wine64) plus Xvfb + ImageMagi
   8-bit grayscale atlas. Decompressed once with miniz (`tinfl`) and cached. Because
   the atlas cell height maps 1:1 to a string's normalized size, the on-screen metrics
   are exact — no calibration constant needed (the `.ttf` fallback still uses `FONT_PX`).
-- The vertical position of a glyph inside its cell is baked into the atlas by PiBoSo's
-  `fontgen` from the source `.ttf`'s vertical metrics — there is **no** per-glyph
-  y-offset field in `.fnt` and **no** offset/baseline key in `fontgen.cfg`. Most fonts
-  bake near-centered (±4% of cell height); Tiny5 is an outlier (~+10%, ink low in the
-  cell), which is why it can look vertically off on the number plate.
+- The vertical position of a glyph inside its cell is baked into the atlas, and there
+  is **no** per-glyph y-offset field in `.fnt` to correct it at render time. This used
+  to say Tiny5 was an outlier that "can look vertically off on the number plate" — no
+  longer true, and worth knowing why: our own `mxbmrp3_fontgen` centres the CAP/DIGIT
+  band in the cell when `normalize = 1` (which every shipped font uses), naming that
+  exact case in its code. Measured across all six shipped fonts on a real standings
+  capture, the race-number ink lands within 1.3 points of the same offset — Tiny5
+  included, mid-pack. So a number that looks off in the plate is NOT a font problem;
+  look at the HUD's own geometry instead (the plate is centred on the row, the number
+  is drawn at the row's ordinary text origin).
 
 ## Open points / known limitations
 

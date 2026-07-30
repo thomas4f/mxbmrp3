@@ -3,7 +3,6 @@
 // Processes run telemetry data (input, controller, vehicle telemetry)
 // ============================================================================
 #include "run_telemetry_handler.h"
-#include "../core/handler_singleton.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
 #include "../core/xinput_reader.h"
@@ -13,9 +12,7 @@
 #include <algorithm>
 #include <cmath>
 
-DEFINE_HANDLER_SINGLETON(RunTelemetryHandler)
-
-void RunTelemetryHandler::handleRunTelemetry(Unified::TelemetryData* psTelemetryData) {
+void Handlers::handleRunTelemetry(Unified::TelemetryData* psTelemetryData) {
     // Update input telemetry data
     if (psTelemetryData) {
         // Update speedometer, gear, RPM, and fuel
@@ -27,7 +24,7 @@ void RunTelemetryHandler::handleRunTelemetry(Unified::TelemetryData* psTelemetry
 
         // Update stats: distance, top speed, crash detection
         {
-            const TrackPositionData* playerPos = PluginData::getInstance().getPlayerTrackPosition();
+            const RiderTrackState* playerPos = PluginData::getInstance().getPlayerTrackPosition();
             bool isCrashed = playerPos && playerPos->crashed;
             StatsManager::getInstance().updateTelemetry(psTelemetryData->speedometer, isCrashed, psTelemetryData->gear);
         }
@@ -217,7 +214,7 @@ void RunTelemetryHandler::handleRunTelemetry(Unified::TelemetryData* psTelemetry
         bool suppressRumble = false;
         const RumbleConfig& rumbleConfig = XInputReader::getInstance().getRumbleConfig();
         if (!rumbleConfig.rumbleWhenCrashed) {
-            const TrackPositionData* playerPos = PluginData::getInstance().getPlayerTrackPosition();
+            const RiderTrackState* playerPos = PluginData::getInstance().getPlayerTrackPosition();
             if (playerPos && playerPos->crashed) {
                 suppressRumble = true;
             }

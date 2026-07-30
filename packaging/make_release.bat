@@ -3,7 +3,7 @@ setlocal EnableDelayedExpansion
 
 REM This script lives in packaging\ but operates on the repo root. %~dp0 is its own
 REM dir (…\packaging\, trailing backslash); cd to the parent so every relative path
-REM below (mxbmrp3\resource.h, dist\, build\, tools\, mxbmrp3.sln) resolves from root
+REM below (mxbmrp3\resource.h, dist\, build\, tools\, CMakeLists.txt) resolves from root
 REM regardless of where the script was invoked from.
 set "SCRIPT_DIR=%~dp0"
 cd /d "%SCRIPT_DIR%.." || exit /b 1
@@ -29,7 +29,7 @@ set "SKIP_CONFIRM=0"
 if /i "%~1"=="/y" set "SKIP_CONFIRM=1"
 
 REM Derive the version: MAJOR.MINOR.PATCH from resource.h + BUILD from the git commit
-REM count. This mirrors mxbmrp3.vcxproj's StampVersion target, so the zip/installer
+REM count. This mirrors cmake/stamp_version.cmake, so the zip/installer
 REM version always matches the auto-stamped DLL FILEVERSION.
 for /f "tokens=3" %%i in ('findstr /b /c:"#define VER_MAJOR " mxbmrp3\resource.h') do set "VMAJOR=%%i"
 for /f "tokens=3" %%i in ('findstr /b /c:"#define VER_MINOR " mxbmrp3\resource.h') do set "VMINOR=%%i"
@@ -46,7 +46,6 @@ REM Absolute so makensis (which resolves paths relative to the .nsi's dir, not C
 REM writes/reads the right place from packaging\mxbmrp3.nsi.
 set "VERSION_DIR=%CD%\dist\%RELEASE_NAME%-v%VERSION%"
 set "STAGING_DIR=%CD%\dist\staging"
-set "SOLUTION=mxbmrp3.sln"
 
 echo.
 echo === Building release %RELEASE_NAME% v%VERSION% ===
@@ -69,13 +68,14 @@ if exist "%VERSION_DIR%\%RELEASE_NAME%.zip" (
     )
 )
 
-REM 2) Build all game configurations via the All-Release meta-config
-REM    (build_all/build_all.vcxproj dispatches to mxbmrp3.vcxproj in parallel
-REM    for MXB-Release, GPB-Release, KRP-Release — single source of truth with
-REM    the Visual Studio dropdown's All-Release option).
+REM 2) Build every game target in Release. `cmake --build` with no --target
+REM    builds them all (mxbmrp3, mxbmrp3_gpb, mxbmrp3_krp), and the outputs land
+REM    in build\<GAME>-Release\ exactly where the staging copies below expect —
+REM    the paths are pinned by RUNTIME_OUTPUT_DIRECTORY in mxbmrp3/CMakeLists.txt.
 echo.
 echo === Building All-Release (MXB + GPB + KRP) ===
-msbuild "%SOLUTION%" /p:Configuration=All-Release /p:Platform=x64 /m /v:minimal || (
+cmake -S . -B build\msvc -G "Visual Studio 17 2022" -A x64 || exit /b %ERRORLEVEL%
+cmake --build build\msvc --config Release -- /m /v:minimal || (
     echo ERROR: All-Release build failed
     exit /b 1
 )

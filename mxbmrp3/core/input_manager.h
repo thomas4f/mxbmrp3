@@ -112,13 +112,15 @@ public:
     void forceWindowRefresh();
 
 private:
-    InputManager() : m_bInitialized(false), m_gameWindow(nullptr), m_processId(0),
-        m_bCursorEnabled(false), m_bWasCursorEnabled(false),
+    // Order matches the member declaration order below (see BaseHud's note).
+    InputManager() :
+        m_gameWindow(nullptr), m_processId(0),
+        m_windowWidth(0), m_windowHeight(0),
+        m_activeWindow(nullptr), m_activeSurface(Surface::Game),
+        m_bInitialized(false), m_bCursorEnabled(false), m_bWasCursorEnabled(false),
         m_bShouldShowCursor(false), m_bWasCursorVisible(false), m_bCursorSuppressed(false),
         m_fLastMouseX(0.0f), m_fLastMouseY(0.0f),
-        m_framesSinceLastMovement(0), m_framesSinceFocusLost(0),
-        m_windowWidth(0), m_windowHeight(0),
-        m_activeWindow(nullptr), m_activeSurface(Surface::Game) {}
+        m_framesSinceLastMovement(0), m_framesSinceFocusLost(0) {}
     ~InputManager() { shutdown(); }
     InputManager(const InputManager&) = delete;
     InputManager& operator=(const InputManager&) = delete;

@@ -159,14 +159,8 @@ void DrawHandler::handleDraw(int iState, int* piNumQuads, void** ppQuad, int* pi
     // Note: draw state is set in HudManager::produceFrame() (shared by sync + threaded
     // render paths), so it isn't set here anymore.
 
-    // Measure HUD rendering time separately
-    long long drawStartUs = getCurrentTimeUs();
-
     // Delegate to HUD manager
     HudManager::getInstance().draw(iState, piNumQuads, ppQuad, piNumString, ppString);
-
-    long long drawEndUs = getCurrentTimeUs();
-    long long drawTimeUs = drawEndUs - drawStartUs;
 
     // Total plugin time is the accumulated time from all callbacks this frame
     long long totalFrameTimeUs = m_accumulatedFrameTimeUs;

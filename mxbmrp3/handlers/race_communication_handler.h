@@ -6,15 +6,8 @@
 
 #include "../game/unified_types.h"
 
-class RaceCommunicationHandler {
-public:
-    static RaceCommunicationHandler& getInstance();
+namespace Handlers {
 
-    void handleRaceCommunication(Unified::RaceCommunicationData* psRaceCommunication);
+void handleRaceCommunication(Unified::RaceCommunicationData* psRaceCommunication);
 
-private:
-    RaceCommunicationHandler() {}
-    ~RaceCommunicationHandler() {}
-    RaceCommunicationHandler(const RaceCommunicationHandler&) = delete;
-    RaceCommunicationHandler& operator=(const RaceCommunicationHandler&) = delete;
-};
+}  // namespace Handlers

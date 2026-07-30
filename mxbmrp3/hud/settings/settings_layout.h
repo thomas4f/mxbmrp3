@@ -73,6 +73,10 @@ struct SettingsLayoutContext {
     // If enabled is false, no click regions are added and muted color is used
     // If isOff is true, the value is muted (for "Off" state visual consistency)
     // tooltipId is optional - if provided, a row-wide hover region is created
+    // valueColor - 0 derives the value colour from enabled/isOff (the common
+    //   case); pass a colour for a control whose value carries a THIRD state the
+    //   primary/muted pair can't say, e.g. a live connection reading green
+    //   (Controller / Steam / Analytics). Arrows and label are unaffected.
     void addCycleControl(
         const char* label,
         const char* value,
@@ -82,7 +86,8 @@ struct SettingsLayoutContext {
         BaseHud* targetHud,
         bool enabled = true,
         bool isOff = false,
-        const char* tooltipId = nullptr
+        const char* tooltipId = nullptr,
+        unsigned long valueColor = 0
     );
 
     // Add a cycle control whose arrows step a mod-N state through the shared

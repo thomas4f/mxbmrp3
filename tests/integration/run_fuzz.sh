@@ -14,9 +14,9 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD="${HERE}/build"
 
-export WINEPREFIX="${WINEPREFIX:-$HOME/.wineprefix-mxbmrp3}"
-export WINEARCH=win64
-export WINEDEBUG="${WINEDEBUG:--all}"
+. "${HERE}/wine_env.sh"
+mxb_wine_env
+mxb_wine_no_crash_debugger   # a crash exits instead of hanging winedbg
 SAVE=/tmp/mxbsave          # loader.exe's hardcoded Z:\tmp\mxbsave\
 CORPUS=/tmp/fuzz_corpus
 # Wall-clock cap per corpus case (a single load). A hang on one case counts as a fail

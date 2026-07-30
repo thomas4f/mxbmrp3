@@ -20,6 +20,8 @@
 // ============================================================================
 #pragma once
 
+#include <cstddef>
+
 namespace CrashHandler {
 
 // Install the process-wide unhandled exception filter. Idempotent —
@@ -31,5 +33,13 @@ void install(const char* savePath);
 // Restore the previous filter (if any). Safe to call even if install() was
 // never called.
 void uninstall();
+
+// Resolve a code address to its owning module's basename + offset (see the
+// definition for the full contract, including the null-call / unresolved-frame
+// labeling). Lives here (not TU-local) so the headless test harness can pin
+// the null-frame contract: resolving address 0 must yield "unknown" + 0x0 and
+// must NEVER be attributed to the host EXE (the GetModuleHandleEx NULL quirk).
+void resolveModuleOffset(void* addr, char* mod, size_t modSize,
+                         unsigned long long* offset);
 
 }  // namespace CrashHandler

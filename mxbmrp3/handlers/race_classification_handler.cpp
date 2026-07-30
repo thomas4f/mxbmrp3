@@ -4,14 +4,13 @@
 // ============================================================================
 #include "race_classification_handler.h"
 #include "../core/handler_singleton.h"
+#include "../diagnostics/logger.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_utils.h"
 #include "../core/hud_manager.h"
 #include "draw_handler.h"
 
-DEFINE_HANDLER_SINGLETON(RaceClassificationHandler)
-
-void RaceClassificationHandler::handleRaceClassification(
+void Handlers::handleRaceClassification(
     Unified::RaceClassificationData* psRaceClassification,
     Unified::RaceClassificationEntry* pasRaceClassificationEntry,
     int iNumEntries)

@@ -5,6 +5,7 @@
 #pragma once
 
 #include "base_hud.h"
+#include "../core/thread_safety.h"
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
 #include "../core/records_fetcher.h"
@@ -187,7 +188,7 @@ private:
 
     // Data
     ColumnPositions m_columns;
-    std::vector<RecordEntry> m_records;
+    std::vector<RecordEntry> m_records MXB_GUARDED_BY(m_recordsMutex);
     std::vector<ClickRegion> m_clickRegions;
     std::vector<std::string> m_categoryList;  // Available categories
 
@@ -210,10 +211,10 @@ private:
     // thread in startFetch(), the worker's completion (onFetchComplete) writes
     // SUCCESS/FETCH_ERROR, and the settings tab reads it for the button label.
     std::atomic<FetchState> m_fetchState;
-    mutable std::mutex m_recordsMutex;
-    std::string m_lastError;
-    std::string m_apiNotice;  // Notice from API response
-    DataProvider m_recordsProvider;  // Provider that current records were fetched from
+    mutable Mutex m_recordsMutex;
+    std::string m_lastError MXB_GUARDED_BY(m_recordsMutex);
+    std::string m_apiNotice MXB_GUARDED_BY(m_recordsMutex);  // Notice from API response
+    DataProvider m_recordsProvider MXB_GUARDED_BY(m_recordsMutex);  // Provider that current records were fetched from
     // Declared LAST among these members deliberately: members destroy in reverse
     // declaration order, and the fetcher's destructor joins a worker whose
     // completion callback touches the mutex-guarded members above — so the

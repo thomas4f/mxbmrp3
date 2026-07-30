@@ -19,7 +19,6 @@ public:
     void update() override;
     bool handlesDataType(DataChangeType dataType) const override;
     const char* getIconName() const override { return "hud-telemetry"; }
-    void setVisible(bool visible) override;
     void resetToDefaults();
 
     // Element flags - each bit represents a metric that can be toggled
@@ -52,6 +51,12 @@ public:
     friend class SettingsManager;
 
 private:
+    // Clears the history buffers on the ANY-SURFACE show edge; see the definition.
+    void syncVisibilityEdge();
+    void onVisibilityChanged() override { syncVisibilityEdge(); }
+    // Edge state for the above: visible on SOME surface last frame.
+    bool m_bWasVisibleAnySurface = false;
+
     void rebuildRenderData() override;
 
     // Calculate dynamic width based on display mode

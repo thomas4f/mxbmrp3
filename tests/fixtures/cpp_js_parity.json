@@ -1,0 +1,433 @@
+{
+  "_comment": "Shared golden vectors for helpers mirrored across the C++/JS boundary. The SAME file is asserted by tests/unit/test_cpp_js_parity.cpp (against the real C++ implementations) and tests/web/tests/parity.spec.js (against the real overlay JS, evaluated in the browser) \u2014 so the two sides can only pass together. If a mirrored helper's behavior changes deliberately, update BOTH implementations and these vectors. isColorDark: hex is the '#rrggbb' the overlay receives; the C++ test recomposes it into the plugin's 0xBBGGRR word. formatSecs: ms+showSign -> the exact axis label; includes the 59.96s->'1:00.0' minute-carry and the .x50 rounding boundary. cumulativeBySector/lapsAtSectorIndex/xFracForLaps: the sector-resolution chart helpers (session_charts_math.h <-> overlay-charts.js cmCumulativeBySector / cmLapsAtSectorIndex / cmXFracForLaps). The truncate-at-a-hole rule and the per-lap equivalence of the X mapping are the two places the ports could silently diverge and draw different charts from the same race. traceValueAtSector: the race-trace Y at a series index; integer arithmetic on the index (not a float lap count) so the two sides cannot truncate to different milliseconds. latestPositionExtent: the lap chart's axis-label selection; its search bound must follow the SERIES length, which is what a lap-count bound got wrong at sector resolution.",
+  "isColorDark": [
+    {
+      "hex": "#000000",
+      "dark": true
+    },
+    {
+      "hex": "#ffffff",
+      "dark": false
+    },
+    {
+      "hex": "#ff0000",
+      "dark": true
+    },
+    {
+      "hex": "#00ff00",
+      "dark": false
+    },
+    {
+      "hex": "#0000ff",
+      "dark": true
+    },
+    {
+      "hex": "#ffff00",
+      "dark": false
+    },
+    {
+      "hex": "#00ffff",
+      "dark": false
+    },
+    {
+      "hex": "#ff00ff",
+      "dark": true
+    },
+    {
+      "hex": "#808080",
+      "dark": false
+    },
+    {
+      "hex": "#7f7f7f",
+      "dark": true
+    },
+    {
+      "hex": "#e37222",
+      "dark": false
+    },
+    {
+      "hex": "#1e90ff",
+      "dark": true
+    }
+  ],
+  "formatSecs": [
+    {
+      "ms": 0,
+      "showSign": false,
+      "out": "0.0s"
+    },
+    {
+      "ms": 0,
+      "showSign": true,
+      "out": "0.0s"
+    },
+    {
+      "ms": 12345,
+      "showSign": false,
+      "out": "12.3s"
+    },
+    {
+      "ms": 59949,
+      "showSign": false,
+      "out": "59.9s"
+    },
+    {
+      "ms": 59950,
+      "showSign": false,
+      "out": "1:00.0"
+    },
+    {
+      "ms": 59960,
+      "showSign": false,
+      "out": "1:00.0"
+    },
+    {
+      "ms": -3210,
+      "showSign": true,
+      "out": "-3.2s"
+    },
+    {
+      "ms": -3210,
+      "showSign": false,
+      "out": "3.2s"
+    },
+    {
+      "ms": 61230,
+      "showSign": true,
+      "out": "+1:01.2"
+    },
+    {
+      "ms": -61230,
+      "showSign": true,
+      "out": "-1:01.2"
+    },
+    {
+      "ms": 600040,
+      "showSign": false,
+      "out": "10:00.0"
+    },
+    {
+      "ms": 3599940,
+      "showSign": false,
+      "out": "59:59.9"
+    }
+  ],
+  "cumulativeBySector": [
+    {
+      "_why": "plain 3-sector laps; lap boundaries equal the per-lap cumulative",
+      "sectors": [
+        30000,
+        31000,
+        29000,
+        30000,
+        30000,
+        30000
+      ],
+      "sectorsPerLap": 3,
+      "out": [
+        30000,
+        61000,
+        90000,
+        120000,
+        150000,
+        180000
+      ]
+    },
+    {
+      "_why": "lap in progress: two sectors crossed, third not yet",
+      "sectors": [
+        30000,
+        31000,
+        0
+      ],
+      "sectorsPerLap": 3,
+      "out": [
+        30000,
+        61000
+      ]
+    },
+    {
+      "_why": "a hole TRUNCATES, never skips - summing past it invents time",
+      "sectors": [
+        30000,
+        31000,
+        29000,
+        30000,
+        -1,
+        30000
+      ],
+      "sectorsPerLap": 3,
+      "out": [
+        30000,
+        61000,
+        90000,
+        120000
+      ]
+    },
+    {
+      "_why": "4-sector game (GP Bikes)",
+      "sectors": [
+        20000,
+        20000,
+        20000,
+        20000
+      ],
+      "sectorsPerLap": 4,
+      "out": [
+        20000,
+        40000,
+        60000,
+        80000
+      ]
+    },
+    {
+      "_why": "degenerate stride is rejected, not divided by",
+      "sectors": [
+        30000
+      ],
+      "sectorsPerLap": 0,
+      "out": []
+    },
+    {
+      "_why": "empty input",
+      "sectors": [],
+      "sectorsPerLap": 3,
+      "out": []
+    }
+  ],
+  "lapsAtSectorIndex": [
+    {
+      "index": 0,
+      "sectorsPerLap": 3,
+      "out": 0.3333333333333333
+    },
+    {
+      "index": 2,
+      "sectorsPerLap": 3,
+      "out": 1.0
+    },
+    {
+      "index": 5,
+      "sectorsPerLap": 3,
+      "out": 2.0
+    },
+    {
+      "index": 3,
+      "sectorsPerLap": 4,
+      "out": 1.0
+    },
+    {
+      "index": 0,
+      "sectorsPerLap": 0,
+      "out": 0.0
+    }
+  ],
+  "xFracForLaps": [
+    {
+      "_why": "per-lap: first sample pinned to the left edge",
+      "laps": 1.0,
+      "firstLaps": 1.0,
+      "maxLaps": 5.0,
+      "out": 0.0
+    },
+    {
+      "_why": "per-lap: reduces to l0/(maxLap-1), here l0=2",
+      "laps": 3.0,
+      "firstLaps": 1.0,
+      "maxLaps": 5.0,
+      "out": 0.5
+    },
+    {
+      "_why": "per-lap: last sample on the right edge",
+      "laps": 5.0,
+      "firstLaps": 1.0,
+      "maxLaps": 5.0,
+      "out": 1.0
+    },
+    {
+      "_why": "sector: first sample ALSO pinned left, so enabling it doesn't slide the chart",
+      "laps": 0.3333333333333333,
+      "firstLaps": 0.3333333333333333,
+      "maxLaps": 5.0,
+      "out": 0.0
+    },
+    {
+      "_why": "sector: end of the race is still the right edge",
+      "laps": 5.0,
+      "firstLaps": 0.3333333333333333,
+      "maxLaps": 5.0,
+      "out": 1.0
+    },
+    {
+      "_why": "single sample is centred, not divided by a zero span",
+      "laps": 1.0,
+      "firstLaps": 1.0,
+      "maxLaps": 1.0,
+      "out": 0.5
+    },
+    {
+      "_why": "clamped rather than drawn outside the plot",
+      "laps": 99.0,
+      "firstLaps": 1.0,
+      "maxLaps": 5.0,
+      "out": 1.0
+    },
+    {
+      "_why": "clamped low",
+      "laps": 0.0,
+      "firstLaps": 1.0,
+      "maxLaps": 5.0,
+      "out": 0.0
+    }
+  ],
+  "traceValueAtSector": [
+    {
+      "_why": "per-lap (stride 1) reduces to refPace*(l+1) - cum; exactly on pace",
+      "refPaceMs": 60000,
+      "index": 2,
+      "sectorsPerLap": 1,
+      "cumulativeMs": 180000,
+      "out": 0
+    },
+    {
+      "_why": "per-lap, one second ahead of the reference rider",
+      "refPaceMs": 60000,
+      "index": 2,
+      "sectorsPerLap": 1,
+      "cumulativeMs": 179000,
+      "out": 1000
+    },
+    {
+      "_why": "per-lap, one second behind",
+      "refPaceMs": 60000,
+      "index": 2,
+      "sectorsPerLap": 1,
+      "cumulativeMs": 181000,
+      "out": -1000
+    },
+    {
+      "_why": "1/3 of a lap: 90000/3 == 30000 exactly, the case a float lap count rounds",
+      "refPaceMs": 90000,
+      "index": 0,
+      "sectorsPerLap": 3,
+      "cumulativeMs": 30000,
+      "out": 0
+    },
+    {
+      "_why": "2/3 of a lap",
+      "refPaceMs": 90000,
+      "index": 1,
+      "sectorsPerLap": 3,
+      "cumulativeMs": 61000,
+      "out": -1000
+    },
+    {
+      "_why": "end of lap 1 at sector resolution equals the per-lap sample",
+      "refPaceMs": 90000,
+      "index": 2,
+      "sectorsPerLap": 3,
+      "cumulativeMs": 90000,
+      "out": 0
+    },
+    {
+      "_why": "non-divisible refPace: integer division truncates identically both sides",
+      "refPaceMs": 90001,
+      "index": 0,
+      "sectorsPerLap": 3,
+      "cumulativeMs": 0,
+      "out": 30000
+    },
+    {
+      "_why": "4-sector game",
+      "refPaceMs": 80000,
+      "index": 3,
+      "sectorsPerLap": 4,
+      "cumulativeMs": 80000,
+      "out": 0
+    },
+    {
+      "_why": "degenerate stride is guarded, not divided by",
+      "refPaceMs": 90000,
+      "index": 0,
+      "sectorsPerLap": 0,
+      "cumulativeMs": 5000,
+      "out": -5000
+    }
+  ],
+  "latestPositionExtent": [
+    {
+      "_why": "two riders swap in the final sector; a lap-count bound reports the stale order",
+      "positions": [
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          2
+        ],
+        [
+          2,
+          2,
+          2,
+          2,
+          2,
+          1
+        ]
+      ],
+      "top": 1,
+      "bottom": 2
+    },
+    {
+      "_why": "extent is min/max at that sample, so a sparse field shows its real spread",
+      "positions": [
+        [
+          3,
+          3
+        ],
+        [
+          8,
+          9
+        ],
+        [
+          5,
+          5
+        ]
+      ],
+      "top": 3,
+      "bottom": 9
+    },
+    {
+      "_why": "ragged rows: riders absent at the latest sample are skipped, not counted as 0",
+      "positions": [
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          2
+        ]
+      ],
+      "top": 1,
+      "bottom": 1
+    },
+    {
+      "_why": "nothing to label",
+      "positions": [],
+      "top": 0,
+      "bottom": 0
+    },
+    {
+      "_why": "all-zero positions mean no rider present",
+      "positions": [
+        [
+          0,
+          0
+        ]
+      ],
+      "top": 0,
+      "bottom": 0
+    }
+  ]
+}

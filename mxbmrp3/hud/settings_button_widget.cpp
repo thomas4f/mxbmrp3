@@ -29,7 +29,7 @@ SettingsButtonWidget::SettingsButtonWidget()
     rebuildRenderData();
 }
 
-bool SettingsButtonWidget::handlesDataType(DataChangeType dataType) const {
+bool SettingsButtonWidget::handlesDataType(DataChangeType /*dataType*/) const {
     // Settings button doesn't depend on any game data
     return false;
 }

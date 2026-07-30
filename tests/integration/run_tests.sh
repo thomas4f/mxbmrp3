@@ -23,9 +23,9 @@ ROOT="$(cd "${HERE}/../.." && pwd)"
 BUILD="${HERE}/build"
 TESTS_DIR="${HERE}/tests"
 
-export WINEPREFIX="${WINEPREFIX:-$HOME/.wineprefix-mxbmrp3}"
-export WINEARCH=win64
-export WINEDEBUG="${WINEDEBUG:--all}"
+. "${HERE}/wine_env.sh"
+mxb_wine_env
+mxb_wine_no_crash_debugger   # a crash exits instead of hanging winedbg
 # Save/settings tree; Z:\tmp\mxbmrp3-tests\ (in the tests) maps here. Wiped per
 # run so no test inherits another's (or a prior run's) settings.ini.
 SAVE_ROOT=/tmp/mxbmrp3-tests
@@ -41,7 +41,7 @@ command -v x86_64-w64-mingw32-g++ >/dev/null || { echo "ERROR: mingw-w64 not fou
 command -v wine >/dev/null || { echo "ERROR: wine not found"; exit 1; }
 
 CXX=x86_64-w64-mingw32-g++
-# ccache-wrap the compile (matching the Makefile) so the heavy doctest.h +
+# ccache-wrap the compile (matching the cross-build) so the heavy doctest.h +
 # nlohmann/json.hpp parse is cached by content — an unchanged test recompiles in
 # milliseconds instead of ~6s, and the CI cache persists it across runs. ccache
 # only caches the compile-to-object step, so we split compile (-c) from link.

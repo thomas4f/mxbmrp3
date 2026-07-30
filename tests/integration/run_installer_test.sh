@@ -28,7 +28,7 @@
 #     useMachineReg is always 1 here) — same WRITE_UNINSTALL_REG macro, other root
 #   - the interactive pages themselves (rendered once by hand; see the PR notes)
 #
-# Requires: makensis (nsis), wine64.
+# Requires: makensis (nsis), wine64, python3 (Case 0's version-info assertions).
 # ============================================================================
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -37,9 +37,22 @@ NSI="${REPO}/packaging/mxbmrp3.nsi"
 
 WORK="$(mktemp -d /tmp/mxbmrp3-installer.XXXXXX)"
 STAGE="${WORK}/staging"
-export WINEPREFIX="${WINEPREFIX:-$HOME/.wineprefix-mxbmrp3-installer}"
-export WINEARCH=win64
-export WINEDEBUG="${WINEDEBUG:--all}"
+. "${HERE}/wine_env.sh"
+mxb_wine_env installer
+
+# This test's assertions are "is this path/key GONE?", so it can only run in a prefix
+# nothing else is writing. Every other Wine gate shares the unsuffixed prefix, and under
+# `ctest -j` the integration suite recreates the default savepath directory continuously —
+# a shared prefix here reports a broken uninstaller when the uninstaller worked fine.
+# CMakeLists.txt leaves this gate OUT of the mxbmrp3_test_dll RESOURCE_LOCK on exactly
+# that basis, so the isolation is load-bearing, not belt-and-braces. Assert it rather than
+# assume it: an inherited WINEPREFIX silently defeated the suffix once already.
+case "${WINEPREFIX}" in
+    *-installer) ;;
+    *) echo "ERROR: installer test needs its own WINEPREFIX, got '${WINEPREFIX}'"
+       echo "       (unset WINEPREFIX, or point it at a base that isn't shared)"
+       exit 1 ;;
+esac
 
 # The shipped installer is a 64-bit (amd64) NSIS build (`Target AMD64-Unicode`), so
 # Setup.exe writes the 64-bit registry view. On a multiarch runner Debian's /usr/bin/wine
@@ -87,18 +100,48 @@ assert_no_file_eventually() {
   fail "$2 (still present after wait: $1)"
 }
 
+# The registry assertions POLL, for the same reason assert_no_file_eventually
+# does: the installer's elevated child writes these keys, and its exit can lose
+# a race with `wineserver -w` — the very lingering the comment above describes.
+# A single-shot `reg query` then reads a half-written key, which is exactly how
+# this failed under `ctest -j`: within one install, DisplayName read as missing
+# while MXBikesPath beside it read fine, and both passed on a serial re-run.
+# Polling makes a genuinely-missing key still fail, just ~10s later.
+#
+# reg_wait CONDITION_CMD... — true as soon as the condition holds, else after ~10s.
+reg_wait() {
+  local i
+  for i in $(seq 1 40); do
+    if "$@" >/dev/null 2>&1; then return 0; fi
+    sleep 0.25
+  done
+  return 1
+}
+# reg_value_matches KEY VALUENAME EXPECTED_SUBSTR — the predicate reg_has polls on.
+reg_value_matches() {
+  "${WINE}" reg query "$1" /v "$2" 2>/dev/null | grep -qi -- "$3"
+}
+
 # reg_has KEY VALUENAME EXPECTED_SUBSTR DESC
 reg_has() {
-  local out; out="$("${WINE}" reg query "$1" /v "$2" 2>/dev/null)"
-  if echo "$out" | grep -qi -- "$3"; then pass "$4"; else fail "$4 (want '$2'~'$3' in $1)"; fi
+  if reg_wait reg_value_matches "$1" "$2" "$3"; then pass "$4"; else fail "$4 (want '$2'~'$3' in $1)"; fi
 }
-# reg_absent_key KEY DESC
+# reg_absent_key KEY DESC — polls for the DELETE to land, mirroring reg_has.
 reg_absent_key() {
-  if "${WINE}" reg query "$1" >/dev/null 2>&1; then fail "$2 (key still present: $1)"; else pass "$2"; fi
+  if reg_wait_gone "${WINE}" reg query "$1"; then pass "$2"; else fail "$2 (key still present: $1)"; fi
 }
 # reg_absent_value KEY VALUENAME DESC
 reg_absent_value() {
-  if "${WINE}" reg query "$1" /v "$2" >/dev/null 2>&1; then fail "$3 (value still present: $2)"; else pass "$3"; fi
+  if reg_wait_gone "${WINE}" reg query "$1" /v "$2"; then pass "$3"; else fail "$3 (value still present: $2)"; fi
+}
+# reg_wait_gone CMD... — true as soon as CMD FAILS (i.e. the key/value is gone).
+reg_wait_gone() {
+  local i
+  for i in $(seq 1 40); do
+    if ! "$@" >/dev/null 2>&1; then return 0; fi
+    sleep 0.25
+  done
+  return 1
 }
 
 cleanup() { wineserver -k 2>/dev/null || true; rm -rf "${WORK}"; }
@@ -128,6 +171,82 @@ makensis -V1 -DPLUGIN_VERSION=9.9.9.0 -DPLUGIN_SOURCE_PATH="${STAGE}" \
   || { echo "ERROR: makensis failed"; exit 1; }
 SETUP="${WORK}/mxbmrp3-Setup.exe"
 [ -f "${SETUP}" ] || { echo "ERROR: Setup.exe not produced"; exit 1; }
+
+# ---------------------------------------------------------------------------
+echo ""
+echo "== Case 0: Setup.exe carries complete, consistent version info =="
+# Static assertion on the produced PE — no Wine needed. Two things are pinned:
+#
+#   1. All nine StringFileInfo keys exist. The installer shipped for months with
+#      only five (no CompanyName/OriginalFilename/InternalName/Comments) while the
+#      DLL's mxbmrp3.rc had the full set, and nothing caught the gap.
+#   2. FileVersion / ProductVersion agree with each other AND with the binary
+#      FIXEDFILEINFO. FileVersion used to be "${__DATE__} ${__TIME__}", so the two
+#      disagreed on every single build.
+#
+# Both matter for antivirus reputation on an unsigned installer (see the block
+# comment in packaging/mxbmrp3.nsi), which is why they are worth a test rather than
+# a convention. Values are read by walking UTF-16LE runs: in a StringFileInfo block
+# each key is immediately followed by its value, so adjacency is enough and we don't
+# need a full VS_VERSIONINFO parser.
+python3 - "${SETUP}" <<'PYEOF' || exit 1
+import re, struct, sys
+
+blob = open(sys.argv[1], 'rb').read()
+runs = [m.group().decode('utf-16-le')
+        for m in re.finditer(rb'(?:[\x20-\x7e]\x00){2,}', blob)]
+idx = {}
+for i, s in enumerate(runs):
+    idx.setdefault(s, i)
+
+EXPECTED_VER = "9.9.9.0"   # matches -DPLUGIN_VERSION above
+required = ["CompanyName", "FileDescription", "FileVersion", "InternalName",
+            "LegalCopyright", "OriginalFilename", "ProductName", "ProductVersion",
+            "Comments"]
+
+fail = 0
+vals = {}
+for key in required:
+    if key not in idx or idx[key] + 1 >= len(runs):
+        print(f"  FAIL: version key missing: {key}"); fail = 1; continue
+    vals[key] = runs[idx[key] + 1]
+    print(f"  PASS: {key} = {vals[key]}")
+
+for key in ("FileVersion", "ProductVersion"):
+    if vals.get(key) != EXPECTED_VER:
+        print(f"  FAIL: {key} is {vals.get(key)!r}, expected {EXPECTED_VER!r}"); fail = 1
+
+# The UAC consent prompt shows FileDescription as "Program name" — a bare URL there
+# is the exact thing this test exists to prevent regressing to.
+desc = vals.get("FileDescription", "")
+if desc.startswith("http://") or desc.startswith("https://"):
+    print(f"  FAIL: FileDescription is a bare URL ({desc!r}); belongs in Comments"); fail = 1
+else:
+    print("  PASS: FileDescription is a product name, not a URL")
+
+# The UAC prompt truncates a long "Program name", so keep this short enough to read
+# in full there. No lower bound and no required game names: the description names the
+# PiBoSo engine family precisely so that adding a title cannot make it stale.
+if len(desc) > 80:
+    print(f"  FAIL: FileDescription is {len(desc)} chars; UAC truncates it: {desc!r}"); fail = 1
+else:
+    print(f"  PASS: FileDescription is {len(desc)} chars, short enough for the UAC prompt")
+
+off = blob.find(struct.pack('<I', 0xFEEF04BD))
+if off < 0:
+    print("  FAIL: FIXEDFILEINFO signature not found"); fail = 1
+else:
+    _, _, fv_ms, fv_ls, pv_ms, pv_ls = struct.unpack_from('<IIIIII', blob, off)
+    fmt = lambda ms, ls: f"{ms >> 16}.{ms & 0xffff}.{ls >> 16}.{ls & 0xffff}"
+    for label, got in (("FILEVERSION", fmt(fv_ms, fv_ls)),
+                       ("PRODUCTVERSION", fmt(pv_ms, pv_ls))):
+        if got != EXPECTED_VER:
+            print(f"  FAIL: binary {label} is {got}, expected {EXPECTED_VER}"); fail = 1
+        else:
+            print(f"  PASS: binary {label} = {got}")
+
+sys.exit(fail)
+PYEOF
 
 echo "== Booting Wine prefix =="
 [ -d "${WINEPREFIX}" ] || "${WINE}" wineboot -i >/dev/null 2>&1

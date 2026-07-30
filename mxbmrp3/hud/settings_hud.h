@@ -5,6 +5,7 @@
 #pragma once
 
 #include "base_hud.h"
+#include "settings/settings_metrics.h"
 #include "ideal_lap_hud.h"
 #include "lap_log_hud.h"
 #include "friends_hud.h"
@@ -84,7 +85,7 @@ public:
     virtual ~SettingsHud() = default;
 
     void update() override;
-    bool handlesDataType(DataChangeType dataType) const override { return false; }
+    bool handlesDataType(DataChangeType /*dataType*/) const override { return false; }
 
     // Show/hide the settings panel
     void show();
@@ -335,7 +336,16 @@ public:
             // Help & Community links (General tab footer)
             OPEN_LINK_DOCS,            // Open documentation site
             OPEN_LINK_COMMUNITY,       // Open community forum
-            OPEN_LINK_KOFI             // Open Ko-fi donation page
+            OPEN_LINK_KOFI,            // Open Ko-fi donation page
+
+            // Sentinel, always last. settings_layout_test.cpp's golden encodes
+            // region types as raw ORDINALS, and this enum is unnumbered and
+            // grouped by topic — so inserting a control next to its relatives
+            // shifts every later value and rewrites the whole golden, for a
+            // change that never touched the General tab. The test asserts this
+            // count FIRST, so that edit fails with one readable line instead of
+            // a wall of shifted numbers.
+            COUNT
         } type;
 
         // Type-safe variant instead of unsafe union (C++17)
@@ -652,11 +662,33 @@ public:
     // Same seam for the shared CYCLE_UP/CYCLE_DOWN regions (no hold tier — cycles
     // never accelerate).
     int testCycleRegionCount(bool up) const;
+    // Characterization seam: a stable text signature of the ACTIVE tab's emitted
+    // click regions (type + tooltip id, in emission order) plus the string count.
+    // Lets a headless test pin the settings panel's rendered output across a
+    // refactor — region ORDER and TYPE are behaviour (they are what a click hits),
+    // and nothing else below the Wine layer can see them.
+    void testRegionSignature(char* out, int cap) const;
     bool testClickCycle(int index, bool up);
+
+    // Click the Director tab's "Visible" row through the REAL path. Named rather
+    // than taking a ClickRegion::Type ordinal: that enum is unnumbered and grouped
+    // by topic, so an ordinal crossing the DLL boundary silently means something
+    // else the moment a control is inserted near its relatives.
+    bool testClickDirectorHudVisible();
 #endif
 
 private:
     void rebuildRenderData() override;
+
+    // Tab-bar build, split out of rebuildRenderData(). See the comment at their
+    // definitions in settings_hud_render.cpp for the parameter count that a long-
+    // standing "8+ parameters" rule had assumed rather than measured.
+    void buildTabBar(const ScaledDimensions& dim, float tabStartX,
+                     float tabStartY, float tabWidth, float checkboxWidth);
+    bool drawTabIcon(float x, float y, const char* iconName, unsigned long color,
+                     const ScaledDimensions& dim, float checkboxWidth);
+    void drawTabToggle(float x, float y, const char* iconName, bool enabled,
+                       const ScaledDimensions& dim, float checkboxWidth);
     void handleClick(float mouseX, float mouseY);
     void dispatchRegion(const ClickRegion& region, bool skipSave = false);  // Dispatch a click region directly
     void handleRightClick(float mouseX, float mouseY);  // Right-click for shape cycling
@@ -668,6 +700,9 @@ private:
     void applySteppedControl(const ClickRegion& region, bool increase);  // STEPPED_UP/STEPPED_DOWN
     void applyCycleControl(const ClickRegion& region, bool forward);     // CYCLE_UP/CYCLE_DOWN
     void handleCheckboxClick(const ClickRegion& region);
+    // Every per-HUD on/off routes through this; see the definition for why a direct
+    // setVisible() in a click handler is a bug on the companion surface.
+    void toggleHudOnActiveSurface(class BaseHud* hud);
     void handleHudToggleClick(const ClickRegion& region);
     void handleTitleToggleClick(const ClickRegion& region);
     void handleOpacityClick(const ClickRegion& region, bool increase);
@@ -731,11 +766,14 @@ private:
     // Check if point is inside a clickable region
     bool isPointInRect(float x, float y, float rectX, float rectY, float width, float height) const;
 
-    // Settings panel layout constants (character widths for monospace text)
-    static constexpr int SETTINGS_PANEL_WIDTH = 71;     // Settings panel total width (fits Rumble effects table)
-    static constexpr int SETTINGS_TAB_WIDTH = 16;       // Width of vertical tab column (fits "[X] Ideal Lap")
-    static constexpr int SETTINGS_LEFT_COLUMN = 2;      // Left column offset within content area
-    static constexpr int SETTINGS_RIGHT_COLUMN = 28;    // Right column offset within content area
+    // Settings panel layout constants (character widths for monospace text).
+    // The values live in settings/settings_metrics.h, which derives the content
+    // and tooltip widths from them and is included by the unit test that checks
+    // shipped tooltips fit; these are the in-class names for the same numbers.
+    static constexpr int SETTINGS_PANEL_WIDTH = SettingsMetrics::PANEL_WIDTH;
+    static constexpr int SETTINGS_TAB_WIDTH = SettingsMetrics::TAB_WIDTH;
+    static constexpr int SETTINGS_LEFT_COLUMN = SettingsMetrics::LEFT_COLUMN;
+    static constexpr int SETTINGS_RIGHT_COLUMN = SettingsMetrics::RIGHT_COLUMN;
 
     // Settings UI element dimensions (character widths)
     static constexpr int CHECKBOX_WIDTH = 4;            // "[ ]" or "[X]"

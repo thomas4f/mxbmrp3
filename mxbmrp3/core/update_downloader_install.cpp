@@ -349,7 +349,7 @@ std::string UpdateDownloader::mapToInstallPath(const std::string& zipFilename) c
 bool UpdateDownloader::extractAndInstall(const std::vector<char>& zipData, std::string& outError) {
     std::string pluginDir;
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        MutexLock lock(m_mutex);
         pluginDir = m_pluginPath;
     }
 

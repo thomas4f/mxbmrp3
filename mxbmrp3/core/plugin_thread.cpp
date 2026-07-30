@@ -3,6 +3,7 @@
 // See plugin_thread.h for the design rationale.
 // ============================================================================
 #include "plugin_thread.h"
+#include "thread_detach_grace.h"
 
 #include "ui_config.h"
 #include "hud_manager.h"
@@ -11,6 +12,7 @@
 #include "../diagnostics/logger.h"
 
 #include <future>
+#include <memory>
 #ifdef MXBMRP3_TEST_BUILD
 #include <stdexcept>
 #endif
@@ -21,35 +23,15 @@ PluginThread& PluginThread::getInstance() {
 }
 
 PluginThread::~PluginThread() {
-    // Static-teardown backstop. The orchestrated shutdown path calls stop() (a clean
-    // join) while every singleton is still alive; this only fires if that was skipped
-    // (the DLL unloaded WITHOUT the Shutdown() export). That runs under the Windows
-    // loader lock, where join() would deadlock (see stop() vs here in plugin_thread.h),
-    // so DON'T join: signal stop, wake the worker off its CV, spin until it has left
-    // the loop (app-level flag, no loader lock), then detach.
-    //
-    // KNOWN RESIDUAL WINDOW: after the worker stores m_workerFinished it still
-    // executes a handful of DLL-resident instructions (lambda epilogue + the
-    // std::thread invoke shim) before reaching CRT/OS code. If it is preempted
-    // exactly there and FreeLibrary unmaps us first, it resumes in unmapped
-    // memory. That window is a few instructions, only on the unload-without-
-    // Shutdown() path, and is inherent to the spin-then-detach technique — the
-    // alternative (join) deadlocks on the loader lock, which is worse.
+    // Static-teardown backstop: fires ONLY when the orchestrated shutdown
+    // (stop(), a clean join) was skipped — the DLL unloaded without the
+    // Shutdown() export. Never joins here: that deadlocks on the loader lock
+    // (see stop() vs here in plugin_thread.h). The whole rationale, the
+    // bounded spin and the grace live in thread_detach_grace.h.
     if (m_thread.joinable()) {
         m_run.store(false, std::memory_order_release);
-        { std::lock_guard<std::mutex> lk(m_qMutex); m_cv.notify_all(); }
-        // BOUNDED spin: on an ExitProcess-without-Shutdown() teardown the OS has
-        // already TERMINATED the thread - the finished flag will never be stored,
-        // and an unbounded spin would hang process exit forever. ~2s covers any
-        // legitimately slow exit; past it, detach regardless (a terminated thread
-        // makes the detach trivially safe; a pathologically still-live one lands
-        // in the same known residual window documented above).
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-        while (!m_workerFinished.load(std::memory_order_acquire) &&
-               std::chrono::steady_clock::now() < deadline) {
-            std::this_thread::yield();
-        }
-        m_thread.detach();
+        { MutexLock lk(m_qMutex); m_cv.notify_all(); }
+        ThreadTeardown::spinThenDetach(m_thread, m_workerFinished);
     }
 }
 
@@ -108,14 +90,14 @@ void PluginThread::stop() {
     // makes every routing helper fall back to inline execution during teardown.
     m_enabled.store(false, std::memory_order_release);
     m_run.store(false, std::memory_order_release);
-    { std::lock_guard<std::mutex> lk(m_qMutex); m_cv.notify_all(); }
+    { MutexLock lk(m_qMutex); m_cv.notify_all(); }
     try { m_thread.join(); } catch (...) {}
 
     // Drain whatever the worker didn't get to, inline on the calling (game) thread —
     // the worker is joined, so this is single-threaded and safe. Keeps PluginData
     // consistent for the shutdown-time stats/settings saves.
     std::deque<std::function<void()>> leftover;
-    { std::lock_guard<std::mutex> lk(m_qMutex); leftover.swap(m_queue); }
+    { MutexLock lk(m_qMutex); leftover.swap(m_queue); }
     for (auto& cmd : leftover) {
         try { if (cmd) cmd(); } catch (...) {}
     }
@@ -152,7 +134,7 @@ void PluginThread::reconcileEnabled() {
 void PluginThread::enqueue(std::function<void()> fn) {
     if (!fn) return;
     {
-        std::lock_guard<std::mutex> lk(m_qMutex);
+        MutexLock lk(m_qMutex);
         m_queue.push_back(std::move(fn));
     }
     m_cv.notify_one();
@@ -160,16 +142,51 @@ void PluginThread::enqueue(std::function<void()> fn) {
 
 void PluginThread::flush() {
     if (!enabled() || onWorkerThread()) return;
+
     // 1) FIFO sentinel: guarantees every command queued before now has run.
-    std::promise<void> done;
-    std::future<void> fut = done.get_future();
-    enqueue([&done]() { done.set_value(); });
-    fut.wait();
+    //
+    // The promise is SHARED-OWNED and captured BY VALUE, not by reference to a
+    // local. Both properties are load-bearing, and they are coupled to the
+    // bounded wait below: that wait can return while the sentinel is still
+    // sitting in m_queue (worker died before draining it), after which stop()'s
+    // leftover drain still runs it. With a by-reference capture that call would
+    // touch a promise whose stack frame is long gone — the exact use-after-free
+    // cppcheck flags as `danglingLifetime` here. Shared ownership keeps the
+    // promise alive for as long as EITHER side still references it, so the late
+    // set_value() lands somewhere valid and is simply ignored.
+    auto done = std::make_shared<std::promise<void>>();
+    std::future<void> fut = done->get_future();
+    enqueue([done]() { done->set_value(); });
+
+    // BOUNDED, not fut.wait(): threadMain() moves the whole batch out of m_queue
+    // (batch.swap) BEFORE running any of it, so a worker that throws in that
+    // window destroys the sentinel with the unwound batch and never calls
+    // set_value(). An unbounded wait would park the CALLING thread forever — and
+    // because reconcileEnabled()'s abort self-heal runs on that same thread,
+    // nothing could ever reap the worker and recover. Timing out instead turns a
+    // permanent hang into a logged, diagnosable failure.
+    if (fut.wait_for(std::chrono::seconds(5)) != std::future_status::ready) {
+        DEBUG_ERROR("PluginThread: flush() timed out waiting for the worker sentinel "
+                    "(worker died mid-batch?) - continuing unsynchronized");
+        return;
+    }
+
     // 2) Wait for the worker to finish any frame build that a Draw requested and go
     //    back to idle — otherwise produceFrame() could still be touching PluginData
     //    while the caller reads a snapshot on this thread.
+    //
+    // Also exits on m_aborted: a worker that died by exception leaves m_run true
+    // (only stop() clears it) and m_idle false (cleared right after the CV wait),
+    // so those two conditions alone would spin this thread forever on exactly the
+    // failure the sentinel timeout above is there to survive.
+    const auto idleDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (m_run.load(std::memory_order_acquire) &&
-           !m_idle.load(std::memory_order_acquire)) {
+           !m_idle.load(std::memory_order_acquire) &&
+           !m_aborted.load(std::memory_order_acquire)) {
+        if (std::chrono::steady_clock::now() >= idleDeadline) {
+            DEBUG_ERROR("PluginThread: flush() timed out waiting for the worker to go idle");
+            return;
+        }
         std::this_thread::yield();
     }
 }
@@ -194,7 +211,7 @@ void PluginThread::requestFrame(int iState) {
     m_fpsLastTp = now;
 
     {
-        std::lock_guard<std::mutex> lk(m_qMutex);
+        MutexLock lk(m_qMutex);
         m_frameRequested = true;
     }
     m_cv.notify_one();
@@ -269,9 +286,10 @@ void PluginThread::threadMain() {
         std::deque<std::function<void()>> batch;
         bool doFrame = false;
         {
-            std::unique_lock<std::mutex> lk(m_qMutex);
+            CvLock lk(m_qMutex);
             m_idle.store(true, std::memory_order_release);
-            m_cv.wait(lk, [this]() {
+            // Predicate runs with the lock held (cv contract) — see thread_safety.h.
+            m_cv.wait(lk.native(), [this]() MXB_REQUIRES(m_qMutex) {
                 return !m_run.load(std::memory_order_acquire) ||
                        !m_queue.empty() || m_frameRequested;
             });
@@ -286,6 +304,16 @@ void PluginThread::threadMain() {
         // way a real allocation/CV failure would, past the per-command guards.
         if (m_testAbort.exchange(false, std::memory_order_acq_rel)) {
             throw std::runtime_error("test-injected worker abort");
+        }
+#endif
+
+#ifdef MXBMRP3_TEST_BUILD
+        // Test-only fault injection (see testSwallowBatches()): drop the batch the
+        // way an unwind would, having already taken it off m_queue. Any flush()
+        // sentinel in it is abandoned unrun.
+        if (m_testSwallow.load(std::memory_order_acquire)) {
+            batch.clear();
+            continue;
         }
 #endif
 

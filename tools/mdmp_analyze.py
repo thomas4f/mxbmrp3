@@ -19,11 +19,59 @@
 # section. The registry is auto-discovered next to the dump, next to this script,
 # or in CWD; override with --known <file.json> or $MDMP_KNOWN.
 #
+# --record appends a dump's provenance (filename/sha256/pid/capture time/fault)
+# to the matching crash's `samples` list in known_game_crashes.json, so you know
+# which .dmp/.log files to keep for a given bug. It records ONLY dumps that match
+# a catalogued crash (idempotent by sha256); an unmatched dump is reported, not
+# added, keeping the catalogue limited to understood crashes. `samples` is
+# internal provenance and is never emitted into the player-facing
+# KNOWN_GAME_CRASHES.md. --note "<text>" attaches free-text context (a video
+# link, session notes) to the recorded sample; it is never auto-filled, and a
+# --note on a dump already on file updates that sample's note.
+#
+# ---------------------------------------------------------------------------
+# HOW TO READ THE OUTPUT (this is a reference tool, not an auto-analyzer)
+#
+# It surfaces facts and heuristic leads for a human to reason over. Treat the
+# VERDICT as a signpost, not a conclusion. Two things bias readers wrongly:
+#
+#   * Don't tunnel-vision. Vanilla MX Bikes has many DISTINCT crashes; this
+#     triages whatever showed up, it does not confirm a favourite diagnosis.
+#     The classifier covers the common families -- access violation
+#     (read/write/execute), debug-fill/heap-guard sentinels (use-after-free or
+#     uninitialised: 0xFEEEFEEE, 0xCDCDCDCD, 0xCCCCCCCC, ...), 64->32-bit
+#     pointer truncation, near-null deref, stack overflow, /GS __fastfail
+#     stack-buffer-overrun, heap corruption, unhandled C++ throw, illegal or
+#     privileged instruction. When nothing matches it SAYS so and tells you to
+#     inspect by hand: that means "investigate", not "boring".
+#   * The live-stack output is a scan, not a real unwind, so it includes
+#     residue -- weight the frames nearest RSP. When the fault is in a
+#     system/runtime LEAF (CRT/ntdll/GPU driver), the verdict reports the
+#     nearest non-system caller as the likely culprit rather than blaming the
+#     leaf module.
+#
+# Method that works: fingerprint first (sha256/capture time/PID catch a re-sent
+# duplicate before you waste effort); always read the paired .log for session
+# context; then get a second repro -- an identical signature across two dumps is
+# strong evidence of a single root cause. One worked example of many: the
+# mxbikes.exe+0x2a42f0 read-AV turned out to be a 64-bit pointer truncated to
+# 32-bit (so it crashes only when ASLR places the stack above 4 GB), dodged via
+# Exploit Protection -> disable High-entropy ASLR for mxbikes.exe. Use that as a
+# template for METHOD, not as the expected answer.
+# ---------------------------------------------------------------------------
+#
 # Usage:
 #   python3 tools/mdmp_analyze.py <file.dmp> [<file2.dmp> ...]
 #   python3 tools/mdmp_analyze.py --compare <a.dmp> <b.dmp>
 #   python3 tools/mdmp_analyze.py --known <registry.json> <file.dmp> ...
-import struct, sys, hashlib, datetime, json, os
+#   python3 tools/mdmp_analyze.py --record [--note "<text>"] <file.dmp>
+# Optional disassembly: python3 -m pip install -r tools/requirements.txt
+import datetime
+import hashlib
+import json
+import os
+import struct
+import sys
 from collections import Counter
 
 # Optional path to a known-crash registry (JSON). Set by --known; otherwise
@@ -121,7 +169,7 @@ def parse_dump(path):
         _, rva = streams[4][0]
         n = struct.unpack_from("<I", data, rva)[0]
         off = rva + 4
-        for i in range(n):
+        for _ in range(n):
             base, size = struct.unpack_from("<QI", data, off)
             tds = struct.unpack_from("<I", data, off + 16)[0]  # MINIDUMP_MODULE.TimeDateStamp
             name_rva = struct.unpack_from("<I", data, off + 20)[0]
@@ -181,7 +229,7 @@ def parse_dump(path):
         nmem, base_rva = struct.unpack_from("<QQ", data, rva)
         off = rva + 16
         cur = base_rva
-        for i in range(nmem):
+        for _ in range(nmem):
             sa, sz = struct.unpack_from("<QQ", data, off)
             mem_ranges.append((sa, sz, cur))
             cur += sz
@@ -190,7 +238,7 @@ def parse_dump(path):
         _, rva = streams[5][0]
         nmem = struct.unpack_from("<I", data, rva)[0]
         off = rva + 4
-        for i in range(nmem):
+        for _ in range(nmem):
             sa, dsize, drva = struct.unpack_from("<QII", data, off)
             mem_ranges.append((sa, dsize, drva))
             off += 16
@@ -232,7 +280,7 @@ def parse_dump(path):
         _, rva = streams[3][0]
         n = struct.unpack_from("<I", data, rva)[0]
         off = rva + 4
-        for i in range(n):
+        for _ in range(n):
             (tid, susp, prio_c, prio, teb,
              stk_start, stk_size, stk_rva,
              ctx_size, ctx_rva2) = struct.unpack_from("<IIIIQQII II", data, off)
@@ -576,7 +624,7 @@ def print_report(d):
 
     # Third-party / injected modules
     extra_mods = []
-    for base, size, name in d["modules"]:
+    for _base, _size, name in d["modules"]:
         low = name.lower()
         sn = name.split("\\")[-1]
         if "\\windows\\" in low or "mx bikes" in low:
@@ -605,7 +653,7 @@ def print_report(d):
                   "ddraw", "dinput8", "dsound", "winmm", "version", "wininet"}
     name_counts = Counter(name.split("\\")[-1].lower() for _, _, name in d["modules"])
     proxies = []
-    for base, size, name in d["modules"]:
+    for _base, _size, name in d["modules"]:
         sn = name.split("\\")[-1]
         stem = sn.lower().rsplit(".", 1)[0]
         if stem in PROXY_DLLS and "\\windows\\" not in name.lower():
@@ -630,7 +678,7 @@ def print_report(d):
     culprit = crash_mod
     if d.get("is_system") and d["is_system"](fault_addr_for_mod):
         nearest = next((m for sp, val, m in live_frames if not d["is_system"](val)), None)
-        print(f"  ^ this is a system/runtime leaf (not the culprit). Nearest non-system caller:")
+        print("  ^ this is a system/runtime leaf (not the culprit). Nearest non-system caller:")
         print(f"    {nearest or '(none found in scan -- needs a symboled unwind)'}")
         culprit = nearest or crash_mod
     if culprit and "mrp3" in culprit.lower():
@@ -656,7 +704,7 @@ def signature(d):
 
 def compare(a, b):
     da, db = parse_dump(a), parse_dump(b)
-    print(f"\n==================== COMPARE ====================")
+    print("\n==================== COMPARE ====================")
     if da["sha256"] == db["sha256"]:
         print("  IDENTICAL FILES (same sha256) -- this is the SAME dump re-sent, not a new crash.")
         return

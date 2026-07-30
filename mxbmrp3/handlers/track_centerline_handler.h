@@ -6,15 +6,8 @@
 
 #include "../game/unified_types.h"
 
-class TrackCenterlineHandler {
-public:
-    static TrackCenterlineHandler& getInstance();
+namespace Handlers {
 
-    void handleTrackCenterline(int iNumSegments, Unified::TrackSegment* pasSegment, void* pRaceData);
+void handleTrackCenterline(int iNumSegments, Unified::TrackSegment* pasSegment, void* pRaceData);
 
-private:
-    TrackCenterlineHandler() {}
-    ~TrackCenterlineHandler() {}
-    TrackCenterlineHandler(const TrackCenterlineHandler&) = delete;
-    TrackCenterlineHandler& operator=(const TrackCenterlineHandler&) = delete;
-};
+}  // namespace Handlers

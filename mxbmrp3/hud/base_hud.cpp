@@ -204,9 +204,24 @@ bool BaseHud::isPointInBounds(float x, float y) const {
 }
 
 bool BaseHud::isVisibleAnySurface() const {
-    if (m_bVisible.load()) return true;
+    if (m_bVisible.load()) return true;  // vis-gate: this IS the any-surface check
     // The companion is a second surface: a HUD enabled only there must still update.
-    return CompanionWindow::getInstance().isEnabled() && getCompanionVisible();
+    //
+    // rendersOnCompanion() has to be asked HERE too, not only in collectSurface().
+    // Otherwise a HUD excluded from the companion can still answer "visible on some
+    // surface" off a companion flag that no longer reaches a renderer, and every
+    // update() gated on this predicate rebuilds for a frame nobody draws. The helmet
+    // reaches that state from ordinary use: on in game, open the companion (the
+    // snapshot copies the game flag into the companion one), then switch it off in
+    // game -- now the game flag is false, the companion flag is true, and the overlay
+    // is drawn on neither surface while rebuilding full-screen every frame.
+    //
+    // Same producer/consumer asymmetry that check_visibility_gates.sh exists to
+    // police: the new gate went into the renderer but not into the predicate the
+    // renderer's own consumers read.
+    return rendersOnCompanion()
+        && CompanionWindow::getInstance().isEnabled()
+        && getCompanionVisible();
 }
 
 bool BaseHud::isPointInBoundsAt(float x, float y, float offX, float offY) const {

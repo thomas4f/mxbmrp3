@@ -260,6 +260,8 @@ private:
     };
 
     // Track segment storage
+    // The centreline arrives once per session via updateTrackData.
+    // raw-cache: input to the ribbon caches; PluginData never stores track geometry.
     std::vector<Unified::TrackSegment> m_trackSegments;
 
     // Race marker layout (fixed size for the supported games)
@@ -281,6 +283,9 @@ private:
     float m_sfMeters = -1.0f;
 
     // Rider position storage (updated frequently)
+    // Pushed whole by HudManager::updateRiderPositions; assign() replaces it each batch.
+    // raw-cache: the map plots riders in world space, and handleRaceTrackPosition drops
+    // posX/posY/posZ/yaw before PluginData sees them — there is no other source.
     std::vector<Unified::TrackPositionData> m_riderPositions;
 
     // Click regions for rider selection (populated during renderRiders)

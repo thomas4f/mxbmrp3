@@ -39,6 +39,7 @@ struct SPluginsRaceClassificationEntry_t {
 };
 struct SPluginsRaceTrackPosition_t { int m_iRaceNum; float m_fPosX, m_fPosY, m_fPosZ, m_fYaw, m_fTrackPos; int m_iCrashed; };
 struct SPluginsTrackSegment_t { int m_iType; float m_fLength, m_fRadius, m_fAngle; float m_afStart[2]; float m_fHeight; };
+#include "perf_scenario.h"   // buildPerfTrack() + PERF_RIDERS (needs the structs above)
 struct SPluginsBikeData_t {
     int m_iRPM; float m_fEngineT, m_fWaterT; int m_iGear; float m_fFuel, m_fSpeed;
     float m_fPosX, m_fPosY, m_fPosZ, m_fVelX, m_fVelY, m_fVelZ, m_fAccX, m_fAccY, m_fAccZ;
@@ -59,7 +60,7 @@ typedef void (*PFN_BenchI)(int);
 typedef void (*PFN_ShowAll)(int);
 typedef void (*PFN_MaxSettings)();
 
-static const int RIDERS = 40;
+static const int RIDERS = PERF_RIDERS;   // full 50-rider grid (API max)
 
 int main(int argc, char** argv) {
     const char* dll = (argc > 1) ? argv[1] : "mxbmrp3_test.dlo";
@@ -87,10 +88,15 @@ int main(int argc, char** argv) {
     char savePath[] = "Z:\\tmp\\mxbperf\\";
     Startup(savePath);
 
+    // Long/complex circuit + full grid shared with the perf drivers (perf_scenario.h):
+    // ~2400 m over ~950 segments, a heavier superset of the real Farm14 capture.
+    SPluginsTrackSegment_t* segs=nullptr; float trackLen=0.0f;
+    const int SEGS = buildPerfTrack(&segs, &trackLen);
+
     SPluginsBikeEvent_t ev{}; strcpy(ev.m_szRiderName,"Player"); strcpy(ev.m_szBikeName,"Test 450");
-    strcpy(ev.m_szCategory,"MX1"); strcpy(ev.m_szTrackName,"BenchTrack"); ev.m_fTrackLength=1600.0f; ev.m_iType=2;
+    strcpy(ev.m_szCategory,"MX1"); strcpy(ev.m_szTrackName,"BenchTrack"); ev.m_fTrackLength=trackLen; ev.m_iType=2;
     EventInit(&ev,(int)sizeof(ev));
-    SPluginsRaceEvent_t re{}; re.m_iType=2; strcpy(re.m_szName,"BenchTrack"); strcpy(re.m_szTrackName,"BenchTrack"); re.m_fTrackLength=1600.0f;
+    SPluginsRaceEvent_t re{}; re.m_iType=2; strcpy(re.m_szName,"BenchTrack"); strcpy(re.m_szTrackName,"BenchTrack"); re.m_fTrackLength=trackLen;
     if (RaceEvent) RaceEvent(&re,(int)sizeof(re));
     SPluginsRaceSession_t ss{}; ss.m_iSession=6; ss.m_iSessionState=16; ss.m_iSessionLength=480000; ss.m_iSessionNumLaps=6;
     if (RaceSession) RaceSession(&ss,(int)sizeof(ss));
@@ -99,11 +105,7 @@ int main(int argc, char** argv) {
         snprintf(e.m_szName,100,"Rider %02d",i+1); strcpy(e.m_szBikeName,"Test 450"); strcpy(e.m_szBikeShortName,"T450");
         strcpy(e.m_szCategory,"MX1"); e.m_iNumberOfGears=5; e.m_iMaxRPM=13000; RaceAddEntry(&e,(int)sizeof(e)); }
 
-    // Real 2D loop (circle of curve segments) so the map has genuine geometry.
-    const int SEGS=256; SPluginsTrackSegment_t* segs=(SPluginsTrackSegment_t*)calloc(SEGS,sizeof(SPluginsTrackSegment_t));
-    const float TRACK_LEN=1600.0f, RADIUS=TRACK_LEN/(2.0f*3.14159265f);
-    for (int i=0;i<SEGS;++i){ segs[i].m_iType=1; segs[i].m_fLength=TRACK_LEN/SEGS; segs[i].m_fRadius=RADIUS; segs[i].m_fAngle=0.0f; }
-    float raceData[4]={800.0f,400.0f,1200.0f,0.0f};
+    float raceData[4]={0.0f, trackLen*0.33f, trackLen*0.66f, 0.0f};
     if (TrackCenterline) TrackCenterline(SEGS,segs,raceData);
 
     struct { SPluginsRaceClassification_t hdr; SPluginsRaceClassificationEntry_t e[64]; } cls{};

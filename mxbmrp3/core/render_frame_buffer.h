@@ -25,18 +25,22 @@
 #pragma once
 
 #include <mutex>
+#include "thread_safety.h"
 #include <utility>
 
 template <class Frame>
 class RenderFrameBuffer {
 public:
     // Producer: the slot to fill this cycle. Stable until the next publish().
-    Frame& writeSlot() { return m_slots[m_write]; }
+    // Deliberately lock-free: m_write only changes inside publish(), which the
+    // SAME producer thread calls — so this read can't race. TSA can't express
+    // "single-producer owns this index between publishes", hence the opt-out.
+    Frame& writeSlot() MXB_NO_TSA { return m_slots[m_write]; }
 
     // Producer: make the just-filled write slot the latest "ready" frame and take a
     // recycled slot to write next. Never touches the consumer's display slot.
     void publish() {
-        std::lock_guard<std::mutex> lk(m_mutex);
+        MutexLock lk(m_mutex);
         std::swap(m_write, m_ready);
         m_haveReady = true;
         m_everProduced = true;
@@ -46,7 +50,7 @@ public:
     // return a reference to it. If nothing new was published since the last call, the
     // previously displayed frame is returned again (no tearing, no stale-swap).
     const Frame& acquire() {
-        std::lock_guard<std::mutex> lk(m_mutex);
+        MutexLock lk(m_mutex);
         if (m_haveReady) {
             std::swap(m_ready, m_display);
             m_haveReady = false;
@@ -56,22 +60,22 @@ public:
 
     // True once the producer has published at least one frame.
     bool everProduced() const {
-        std::lock_guard<std::mutex> lk(m_mutex);
+        MutexLock lk(m_mutex);
         return m_everProduced;
     }
 
     // Test/introspection: current physical slot indices. The three are always a
     // permutation of {0,1,2}; in particular write != display always holds.
-    int writeIndex() const   { std::lock_guard<std::mutex> lk(m_mutex); return m_write; }
-    int readyIndex() const   { std::lock_guard<std::mutex> lk(m_mutex); return m_ready; }
-    int displayIndex() const { std::lock_guard<std::mutex> lk(m_mutex); return m_display; }
+    int writeIndex() const   { MutexLock lk(m_mutex); return m_write; }
+    int readyIndex() const   { MutexLock lk(m_mutex); return m_ready; }
+    int displayIndex() const { MutexLock lk(m_mutex); return m_display; }
 
 private:
     Frame m_slots[3]{};
-    int m_write = 0;
-    int m_ready = 1;
-    int m_display = 2;
-    bool m_haveReady = false;
-    bool m_everProduced = false;
-    mutable std::mutex m_mutex;
+    int m_write MXB_GUARDED_BY(m_mutex) = 0;
+    int m_ready MXB_GUARDED_BY(m_mutex) = 1;
+    int m_display MXB_GUARDED_BY(m_mutex) = 2;
+    bool m_haveReady MXB_GUARDED_BY(m_mutex) = false;
+    bool m_everProduced MXB_GUARDED_BY(m_mutex) = false;
+    mutable Mutex m_mutex;
 };

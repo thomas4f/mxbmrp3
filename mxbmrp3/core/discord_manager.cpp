@@ -149,7 +149,7 @@ void DiscordManager::connectionThread() {
                 ).count();
 
                 if (elapsed >= MIN_UPDATE_INTERVAL_MS) {
-                    std::lock_guard<std::mutex> lock(m_pipeMutex);
+                    MutexLock lock(m_pipeMutex);
                     PresenceSendResult result = sendPresenceUpdate();
                     if (result == PresenceSendResult::Success) {
                         m_lastUpdateTime = now;
@@ -184,7 +184,7 @@ void DiscordManager::connectionThread() {
 }
 
 bool DiscordManager::connect() {
-    std::lock_guard<std::mutex> lock(m_pipeMutex);
+    MutexLock lock(m_pipeMutex);
 
     // Try connecting to discord-ipc-0 through discord-ipc-9
     char pipeName[64];
@@ -228,7 +228,7 @@ bool DiscordManager::connect() {
 }
 
 void DiscordManager::disconnect() {
-    std::lock_guard<std::mutex> lock(m_pipeMutex);
+    MutexLock lock(m_pipeMutex);
     disconnectInternal();
 }
 
@@ -274,7 +274,7 @@ DiscordManager::PresenceSendResult DiscordManager::sendPresenceUpdate() {
     // logging.
     int gen;
     {
-        std::lock_guard<std::mutex> lock(m_snapshotMutex);
+        MutexLock lock(m_snapshotMutex);
         gen = m_snapshot.sessionGeneration;
     }
 #ifdef _DEBUG
@@ -394,7 +394,7 @@ std::string DiscordManager::buildPresenceJson() const {
     // session.serverName / session.trackName etc. mid-read).
     SessionSnapshot session;
     {
-        std::lock_guard<std::mutex> lock(m_snapshotMutex);
+        MutexLock lock(m_snapshotMutex);
         session = m_snapshot;
     }
 
@@ -588,7 +588,7 @@ void DiscordManager::updateSnapshot() {
     next.drawState      = pd.getDrawState();
     next.sessionGeneration = session.sessionGeneration;
 
-    std::lock_guard<std::mutex> lock(m_snapshotMutex);
+    MutexLock lock(m_snapshotMutex);
     m_snapshot = next;
 }
 

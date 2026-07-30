@@ -45,7 +45,7 @@ VersionWidget::VersionWidget() {
     rebuildRenderData();
 }
 
-bool VersionWidget::handlesDataType(DataChangeType dataType) const {
+bool VersionWidget::handlesDataType(DataChangeType /*dataType*/) const {
     return false;  // No data changes - version is constant
 }
 
@@ -88,7 +88,10 @@ void VersionWidget::update() {
 }
 
 void VersionWidget::handleClickDetection() {
-    if (!m_bVisible) return;
+    // Any-surface: the notification buttons are clickable on the companion too
+    // (the hit-test below maps the cursor via mapCursorToHudSpace), so a widget
+    // enabled only there must still process clicks.
+    if (!isVisibleAnySurface()) return;
 
     const InputManager& input = InputManager::getInstance();
     if (!input.isCursorEnabled()) return;

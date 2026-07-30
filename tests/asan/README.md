@@ -31,7 +31,7 @@ There are two layers, by necessity of the toolchain.
 ## Layer 1 — native ASan (runs here + in CI)
 
 Two complementary pieces, both host g++/clang + `libasan` (no game, no Windows, no
-Wine), both fast enough to gate every push. The CI `memory-safety` job runs both.
+Wine), both fast enough to gate every run. The CI `memory-safety` job runs both.
 
 **(a) The whole unit suite under ASan** — reuses the existing pure-logic tests, so
 every portable surface they already exercise (`sanitizeUntrusted`, `fitText`,
@@ -40,7 +40,7 @@ airtime, update-asset selection, …) is checked for out-of-bounds / use-after-f
 UB, not just for correct output. New unit tests get sanitizer coverage for free.
 
 ```sh
-ASAN=1 ./tests/unit/run_tests.sh
+ctest --test-dir build/tests -R unit-asan
 ```
 
 **(b) A targeted fixed-buffer / index harness** (`memory_safety_fuzz.cpp` +
@@ -100,7 +100,7 @@ requirement, so it needs no secrets. To reproduce locally on Windows,
    is no plain `Debug` mapping). `BasicRuntimeChecks=Default` / `LinkIncremental=false`
    make the Debug config ASan-compatible:
    ```powershell
-   msbuild mxbmrp3.sln /p:Configuration=MXB-Debug /p:Platform=x64 `
+   cmake --build build/msvc --config Debug --target mxbmrp3 `
      /p:EnableASAN=true /p:BasicRuntimeChecks=Default /p:LinkIncremental=false
    ```
    Output: `build\MXB-Debug\mxbmrp3.dlo`. `EnableASAN=true` also flips the DLL's CRT

@@ -13,9 +13,7 @@
 #include "../hud/fuel_widget.h"
 #include "../diagnostics/logger.h"
 
-DEFINE_HANDLER_SINGLETON(RunHandler)
-
-void RunHandler::handleRunInit(Unified::SessionData* psSessionData) {
+void Handlers::handleRunInit(Unified::SessionData* psSessionData) {
     HANDLER_NULL_CHECK(psSessionData);
 
     // Event logging now handled by PluginManager
@@ -40,7 +38,7 @@ void RunHandler::handleRunInit(Unified::SessionData* psSessionData) {
     StatsManager::getInstance().recordSessionStart(psSessionData->session);
 }
 
-void RunHandler::handleRunStart() {
+void Handlers::handleRunStart() {
     // Event logging now handled by PluginManager
 
     // Set player running flag (cleared in RunStop/RunDeinit)
@@ -58,7 +56,7 @@ void RunHandler::handleRunStart() {
     InputManager::getInstance().forceWindowRefresh();
 }
 
-void RunHandler::handleRunStop() {
+void Handlers::handleRunStop() {
     // Event logging now handled by PluginManager
 
     // Clear player running flag
@@ -75,7 +73,7 @@ void RunHandler::handleRunStop() {
     StatsManager::getInstance().save();
 }
 
-void RunHandler::handleRunDeinit() {
+void Handlers::handleRunDeinit() {
     // Event logging now handled by PluginManager
 
     // Clear player running flag

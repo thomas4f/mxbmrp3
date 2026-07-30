@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstring>
 #include <mutex>
+#include "thread_safety.h"
 
 #include "../diagnostics/logger.h"
 #include "plugin_constants.h"
@@ -153,18 +154,18 @@ std::string RecordsFetcher::buildRequestUrl() const {
 // Test-only fetch-worker stub state (see MXBMRP3_Test_RecordsSetFetchStub):
 // armed on the test/game thread, read by the fetch worker. Guarded so the
 // worker never reads a half-written response string.
-static std::mutex s_testStubMutex;
+static Mutex s_testStubMutex;
 static int s_testStubDelayMs = -1;
 static std::string s_testStubResponse;
 
 void RecordsFetcher::testSetFetchStub(int delayMs, const char* response) {
-    std::lock_guard<std::mutex> lock(s_testStubMutex);
+    MutexLock lock(s_testStubMutex);
     s_testStubDelayMs = delayMs;
     s_testStubResponse = response ? response : "";
 }
 
 static bool testReadFetchStub(int& delayMs, std::string& response) {
-    std::lock_guard<std::mutex> lock(s_testStubMutex);
+    MutexLock lock(s_testStubMutex);
     if (s_testStubDelayMs < 0) return false;
     delayMs = s_testStubDelayMs;
     response = s_testStubResponse;

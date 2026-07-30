@@ -46,7 +46,7 @@ void PluginData::addSegmentPoint() {
     // Cap the number of points (a sanity bound, not a usage limit).
     if (static_cast<int>(m_segment.points.size()) >= SegmentTimerData::MAX_POINTS) return;
 
-    const TrackPositionData* pos = getPlayerTrackPosition();
+    const RiderTrackState* pos = getPlayerTrackPosition();
     if (!pos) return;  // not on track - nothing to mark yet
 
     float p = pos->trackPos;

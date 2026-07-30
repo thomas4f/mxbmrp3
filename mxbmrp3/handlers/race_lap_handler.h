@@ -6,15 +6,8 @@
 
 #include "../game/unified_types.h"
 
-class RaceLapHandler {
-public:
-    static RaceLapHandler& getInstance();
+namespace Handlers {
 
-    void handleRaceLap(Unified::RaceLapData* psRaceLap);
+void handleRaceLap(Unified::RaceLapData* psRaceLap);
 
-private:
-    RaceLapHandler() {}
-    ~RaceLapHandler() {}
-    RaceLapHandler(const RaceLapHandler&) = delete;
-    RaceLapHandler& operator=(const RaceLapHandler&) = delete;
-};
+}  // namespace Handlers

@@ -106,10 +106,13 @@ int sehGetRPKeyCount(void* fn, void* self, uint64_t id) {
     SEH_EXCEPT_ALL { return -1; }
 }
 
+#ifdef _DEBUG
+// Only the debug rich-presence key dump reads these.
 const char* sehGetRPKeyByIndex(void* fn, void* self, uint64_t id, int i) {
     SEH_TRY { return reinterpret_cast<ISteamFriends_GetFriendRichPresenceKeyByIndex_FnPtr>(fn)(self, id, i); }
     SEH_EXCEPT_ALL { return nullptr; }
 }
+#endif
 
 bool sehSetRichPresence(void* fn, void* self, const char* key, const char* value) {
     SEH_TRY { return reinterpret_cast<ISteamFriends_SetRichPresence_FnPtr>(fn)(self, key, value); }
@@ -121,8 +124,10 @@ void sehClearRichPresence(void* fn, void* self) {
     SEH_EXCEPT_ALL {}
 }
 
+#ifdef _DEBUG
 // Copy a Steam-owned string immediately (may be null / invalidated by next call)
 std::string copyStr(const char* s) { return s ? std::string(s) : std::string(); }
+#endif
 
 // The read path's canary: does GetFriendCount work on this candidate interface?
 // A version whose vtable layout doesn't match the dll's flat SteamAPI_ISteamFriends_*
@@ -209,7 +214,6 @@ SteamFriendsManager::SteamFriendsManager()
     , m_fnGetRPKeyByIndex(nullptr)
     , m_fnSetRichPresence(nullptr)
     , m_fnClearRichPresence(nullptr)
-    , m_lastScan(std::chrono::steady_clock::time_point{})
     , m_lastHookAttempt(std::chrono::steady_clock::time_point{})
 {
 }
@@ -243,18 +247,74 @@ void SteamFriendsManager::initialize() {
     onConnected();
 }
 
+std::vector<SteamFriend> SteamFriendsManager::getFriends() const {
+    MutexLock lock(m_mutex);
+    return m_roster;
+}
+
+std::chrono::steady_clock::time_point SteamFriendsManager::getLastActivityTime() const {
+    MutexLock lock(m_mutex);
+    return m_lastActivityTime;
+}
+
+// ---- worker thread ---------------------------------------------------------
+void SteamFriendsManager::startWorker() {
+    if (m_worker.joinable()) {
+        return;                       // already running
+    }
+    m_workerStop.store(false);
+    m_worker = std::thread([this] { workerLoop(); });
+}
+
+void SteamFriendsManager::stopWorker() {
+    if (!m_worker.joinable()) {
+        return;
+    }
+    m_workerStop.store(true);
+    m_cv.notify_all();                // don't sit out the remaining sleep
+    m_worker.join();
+}
+
+void SteamFriendsManager::workerLoop() {
+    // Top-level barrier: an uncaught throw here calls std::terminate() and takes
+    // the host game down with it.
+    try {
+        while (!m_workerStop.load()) {
+            scanFriends();
+            CvLock lk(m_mutex);
+            // Explicit while-loop rather than the predicate overload: TSA cannot
+            // see through the lambda (see thread_safety.h).
+            const auto deadline = std::chrono::steady_clock::now()
+                                + std::chrono::milliseconds(SCAN_INTERVAL_MS);
+            while (!m_workerStop.load()
+                   && m_cv.wait_until(lk.native(), deadline) != std::cv_status::timeout) {
+            }
+        }
+    } catch (const std::exception& e) {
+        DEBUG_WARN_F("SteamFriendsManager: worker thread stopped on exception: %s", e.what());
+    } catch (...) {
+        DEBUG_WARN("SteamFriendsManager: worker thread stopped on unknown exception");
+    }
+}
+
 void SteamFriendsManager::onConnected() {
     m_status = Status::CONNECTED;
     DEBUG_INFO_F("SteamFriendsManager: connected, AppID=%u (0 = unknown, friends not filtered by game)",
                  m_appId);
 
-    // Push initial presence and do a first scan so the log shows state right away.
+    // Push initial presence on the game thread, then hand the periodic scan to
+    // the worker. Its first pass runs immediately, so the roster is populated
+    // just as promptly as the old inline scan — just not inside a frame.
     updateLocalPresence();
-    scanFriends();
-    m_lastScan = std::chrono::steady_clock::now();
+    startWorker();
 }
 
 void SteamFriendsManager::shutdown() {
+    // Join BEFORE anything below: the worker reads m_friends and the m_fn*
+    // pointers without a lock, which is only sound because they are stable for
+    // its whole lifetime. Tearing them down first would be a use-after-free.
+    stopWorker();
+
     if (m_status == Status::CONNECTED && m_friends && m_fnClearRichPresence) {
         sehClearRichPresence(m_fnClearRichPresence, m_friends);
     }
@@ -268,10 +328,12 @@ void SteamFriendsManager::shutdown() {
     // presence and re-scans instead of short-circuiting on stale values.
     m_lastLocalStatus.clear();
     m_hasPresenceInputs = false;
-    m_lastRosterSig.clear();
-    m_roster.clear();
-    m_lastScan = std::chrono::steady_clock::time_point{};
     m_lastHookAttempt = std::chrono::steady_clock::time_point{};
+    {
+        MutexLock lock(m_mutex);
+        m_lastRosterSig.clear();
+        m_roster.clear();
+    }
 }
 
 void SteamFriendsManager::setEnabled(bool enabled) {
@@ -286,8 +348,7 @@ void SteamFriendsManager::setEnabled(bool enabled) {
         // isn't ready yet, onDataChanged() keeps retrying the hook on a throttle.
         if (m_status == Status::CONNECTED) {
             updateLocalPresence();
-            scanFriends();
-            m_lastScan = std::chrono::steady_clock::now();
+            startWorker();
         } else {
             m_status = Status::NOT_INITIALIZED;  // allow hookSteamApi() to run
             m_lastHookAttempt = std::chrono::steady_clock::now();
@@ -296,7 +357,9 @@ void SteamFriendsManager::setEnabled(bool enabled) {
             }
         }
     } else {
-        // Turn off: stop broadcasting so friends no longer see us.
+        // Turn off: join first (same ordering rule as shutdown — the worker
+        // reads m_friends/m_fn* unguarded), then stop broadcasting.
+        stopWorker();
         if (m_status == Status::CONNECTED && m_friends && m_fnClearRichPresence) {
             sehClearRichPresence(m_fnClearRichPresence, m_friends);
         }
@@ -304,8 +367,11 @@ void SteamFriendsManager::setEnabled(bool enabled) {
         // scratch instead of short-circuiting on stale values.
         m_lastLocalStatus.clear();
         m_hasPresenceInputs = false;
-        m_lastRosterSig.clear();
-        m_roster.clear();
+        {
+            MutexLock lock(m_mutex);
+            m_lastRosterSig.clear();
+            m_roster.clear();
+        }
     }
 }
 
@@ -622,10 +688,15 @@ void SteamFriendsManager::scanFriends() {
     int playingTotal = 0;
 
     // Our own session, for the same-server badge. Match on server + track; an
-    // empty local server (offline) never matches.
-    const SessionData& localSession = PluginData::getInstance().getSessionData();
-    const std::string localServer = localSession.isOnline() ? localSession.serverName : std::string();
-    const std::string localTrack  = localSession.trackName;
+    // empty local server (offline) never matches. Taken from the snapshot the
+    // game thread refreshes in onDataChanged() — this runs on the WORKER thread,
+    // where reading PluginData would be a data race.
+    std::string localServer, localTrack;
+    {
+        MutexLock lock(m_mutex);
+        localServer = m_scanInputs.localServer;
+        localTrack  = m_scanInputs.localTrack;
+    }
 
     std::vector<SteamFriend> roster;  // rebuilt every scan; the HUD reads this
 
@@ -729,7 +800,17 @@ void SteamFriendsManager::scanFriends() {
     // own session/timing changes don't (they don't change any friend's name or
     // server). A friend leaving doesn't count either. Compared against the prior
     // roster before we overwrite it.
+    // Fold the counts in so an appear/disappear with no other content change
+    // still re-logs.
+    snprintf(buf, sizeof(buf), "|%d|%d|%d", count, playingTotal, reported);
+    sig += buf;
+
+    // ONE lock for the compare-publish-throttle sequence: the activity check
+    // reads the previous roster and the publish overwrites it, so they have to
+    // be atomic with respect to a HUD rebuild reading getFriends() between them.
     {
+        MutexLock lock(m_mutex);
+
         std::set<std::string> prevKeys;
         for (const SteamFriend& f : m_roster) prevKeys.insert(f.name + '|' + f.server);
         for (const SteamFriend& f : roster) {
@@ -738,21 +819,16 @@ void SteamFriendsManager::scanFriends() {
                 break;
             }
         }
+
+        // Publish to the HUD every scan (independent of the log throttle below,
+        // which only governs whether we re-emit the verbose log).
+        m_roster = std::move(roster);
+
+        if (sig == m_lastRosterSig) {
+            return;  // roster unchanged since last scan - stay quiet
+        }
+        m_lastRosterSig = std::move(sig);
     }
-
-    // Publish the roster to the HUD every scan (independent of the log throttle
-    // below, which only governs whether we re-emit the verbose log).
-    m_roster = std::move(roster);
-
-    // Fold the counts in so an appear/disappear with no other content change
-    // still re-logs.
-    snprintf(buf, sizeof(buf), "|%d|%d|%d", count, playingTotal, reported);
-    sig += buf;
-
-    if (sig == m_lastRosterSig) {
-        return;  // roster unchanged since last scan - stay quiet
-    }
-    m_lastRosterSig = std::move(sig);
 
     DEBUG_INFO_F("=== SteamFriendsManager scan: %d friends (AppID=%u%s) ===",
                  count, m_appId,
@@ -810,12 +886,13 @@ void SteamFriendsManager::onDataChanged(DataChangeType changeType) {
 
     updateLocalPresence();
 
-    // Throttle the read scan so the log isn't flooded.
-    const auto sinceScan = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_lastScan).count();
-    if (sinceScan >= SCAN_INTERVAL_MS) {
-        m_lastScan = now;
-        scanFriends();
-    }
+    // The scan itself belongs to the worker (see the contract in the header).
+    // All the game thread does here is refresh the snapshot the worker reads —
+    // two string assignments under a lock, not ~11 Steam IPC calls per friend.
+    const SessionData& localSession = PluginData::getInstance().getSessionData();
+    MutexLock lock(m_mutex);
+    m_scanInputs.localServer = localSession.isOnline() ? localSession.serverName : std::string();
+    m_scanInputs.localTrack  = localSession.trackName;
 }
 
 const char* SteamFriendsManager::getStatusString() const {

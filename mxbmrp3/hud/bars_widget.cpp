@@ -97,7 +97,7 @@ void BarsWidget::rebuildRenderData() {
     // (red) during crash so they pop visually against the bar fills, and on the rising
     // edge of the crash state any markers that weren't already visible snap to the
     // current bar value so impact-moment telemetry is captured.
-    const TrackPositionData* playerPos = pluginData.getPlayerTrackPosition();
+    const RiderTrackState* playerPos = pluginData.getPlayerTrackPosition();
     bool isCrashed = playerPos && playerPos->crashed;
     bool crashJustStarted = isCrashed && !m_wasCrashed;
     m_wasCrashed = isCrashed;
@@ -387,21 +387,8 @@ void BarsWidget::updateMaxTracking(int barIndex, float currentValue, bool isCras
     // Use small threshold to avoid jitter from noise
     constexpr float THRESHOLD = 0.02f;
 
-    if (currentValue > m_markerValues[barIndex] + THRESHOLD) {
-        // Value exceeds marker - update marker position, hide it
-        m_markerValues[barIndex] = currentValue;
-        m_maxFramesRemaining[barIndex] = 0;
-    } else if (currentValue < m_markerValues[barIndex] - THRESHOLD && m_maxFramesRemaining[barIndex] == 0) {
-        // Value dropped below marker - start showing marker (linger at peak)
-        m_maxFramesRemaining[barIndex] = m_maxMarkerLingerFrames;
-    } else if (m_maxFramesRemaining[barIndex] > 0) {
-        // Marker is showing - countdown
-        m_maxFramesRemaining[barIndex]--;
-        // When linger ends, reset marker to 0 so it disappears
-        if (m_maxFramesRemaining[barIndex] == 0) {
-            m_markerValues[barIndex] = 0.0f;
-        }
-    }
+    PeakMarker::advanceActive(m_markerValues[barIndex], m_maxFramesRemaining[barIndex],
+                              currentValue, THRESHOLD, m_maxMarkerLingerFrames);
 }
 
 void BarsWidget::addMaxMarker(float x, float y, float barWidth, float barHeight, float maxValue, unsigned long color) {

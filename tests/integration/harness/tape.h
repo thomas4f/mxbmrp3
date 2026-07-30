@@ -10,12 +10,15 @@
 // MAINTENANCE: keep the EventType values, FileHeader and EventHeader layouts,
 // and the two compound-payload packings (RaceClassification, RaceTrackPosition)
 // byte-identical to mxbmrp3/core/event_recorder.{h,cpp}. Default alignment
-// (NOT packed), matching the recorder.
+// (NOT packed), matching the recorder. ENFORCED: both files static_assert the
+// same literal sizes/offsets (the contract block below), so a one-sided edit
+// fails to compile.
 //
 // TapeWriter lets a test synthesize a tape (used to round-trip-verify the
 // replayer without a game); the real fidelity comes from a recorded tape.
 // ============================================================================
 #pragma once
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -59,6 +62,37 @@ struct ClassificationPrefix {
 };
 // The RaceTrackPosition payload prefix, followed by `numVehicles` positions.
 struct TrackPositionPrefix { int numVehicles; };
+
+// ----------------------------------------------------------------------------
+// TAPE FORMAT CONTRACT — the same literal-value layout pins as the contract
+// block in mxbmrp3/core/event_recorder.{h,cpp}. Either side drifting (field
+// reorder, type change, packing/compiler divergence — tapes are recorded by
+// the MSVC build in-game and replayed by this mingw-built harness) fails to
+// COMPILE instead of surfacing as a golden tape mysteriously misreplaying.
+// A deliberate format change updates the literals in BOTH files, bumps
+// FileHeader::version, and re-records the golden-master tapes (TESTING.md).
+static_assert(sizeof(FileHeader) == 72, "tape contract: FileHeader layout differs from event_recorder.h");
+static_assert(offsetof(FileHeader, magic) == 0 && offsetof(FileHeader, version) == 8 &&
+              offsetof(FileHeader, numEvents) == 12 && offsetof(FileHeader, startTimeUs) == 16 &&
+              offsetof(FileHeader, endTimeUs) == 24 && offsetof(FileHeader, flags) == 32 &&
+              offsetof(FileHeader, reserved) == 36,
+              "tape contract: FileHeader field offsets differ from event_recorder.h");
+static_assert(sizeof(EventHeader) == 16 &&
+              offsetof(EventHeader, eventType) == 0 && offsetof(EventHeader, dataSize) == 4 &&
+              offsetof(EventHeader, timestampUs) == 8,
+              "tape contract: EventHeader layout differs from event_recorder.h");
+static_assert(static_cast<uint32_t>(EventType::RaceVehicleData) == 27,
+              "tape contract: EventType values differ from event_recorder.h");
+static_assert(sizeof(ClassificationPrefix) == 20 && offsetof(ClassificationPrefix, numEntries) == 16,
+              "tape contract: RaceClassification payload prefix differs from event_recorder.cpp");
+static_assert(sizeof(TrackPositionPrefix) == 4,
+              "tape contract: RaceTrackPosition payload prefix differs from event_recorder.cpp");
+// The API structs embedded raw in tape payloads (plugin_api.h mirrors mxb_api.h;
+// the committed golden tapes are coupled to this layout at record time).
+static_assert(sizeof(SPluginsRaceClassification_t) == 16 &&
+              sizeof(SPluginsRaceClassificationEntry_t) == 36 &&
+              sizeof(SPluginsRaceTrackPosition_t) == 28,
+              "tape contract: tape-embedded API struct layout differs from mxb_api.h — golden tapes need re-recording");
 
 // Minimal writer used to synthesize a tape in a test.
 class TapeWriter {

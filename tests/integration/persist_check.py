@@ -5,7 +5,8 @@
 # A value that is now absent or reverted is a persistence failure (a user change
 # that would not survive a restart).
 # ============================================================================
-import sys, re
+import re
+import sys
 
 expect_path, resaved_path = sys.argv[1], sys.argv[2]
 
@@ -18,7 +19,7 @@ for line in open(resaved_path, "r", encoding="utf-8", errors="replace").read().s
     m = re.match(r"^([^;#=\s][^=]*)=([^;\r\n]*)", line)
     if m: actual[(section, m.group(1).strip())] = m.group(2).strip()
 
-expected = [tuple(l.split("\t")) for l in open(expect_path).read().splitlines() if l.strip()]
+expected = [tuple(line.split("\t")) for line in open(expect_path).read().splitlines() if line.strip()]
 
 reverted, missing, ok = [], [], 0
 for sec, key, want in expected:

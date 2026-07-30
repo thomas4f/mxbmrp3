@@ -1,11 +1,18 @@
 // ============================================================================
 // tests/unit/test_director_airtime.cpp
-// Unit tests for DirectorManager::pickNextAirtimeNum — the lull round-robin that
-// dips the auto-director's camera to the "next" rider so a quiet race spreads
-// airtime across the field instead of gluing to the leader. The key property is
-// that the cursor keys on RACE NUMBER (stable rider identity), NOT grid position,
-// so a mid-race order shuffle never re-seeds the walk (re-showing or skipping
-// riders). Header-only helper, no game engine. See tests/unit/run_tests.sh.
+// Unit tests for the auto-director's two header-only airtime helpers, no game
+// engine. See tests/unit/run_tests.sh.
+//
+//   pickNextAirtimeNum   — the lull round-robin that dips the camera to the
+//       "next" rider so a quiet race spreads airtime across the field instead of
+//       gluing to the leader. The key property is that the cursor keys on RACE
+//       NUMBER (stable rider identity), NOT grid position, so a mid-race order
+//       shuffle never re-seeds the walk (re-showing or skipping riders).
+//   pickBaselineSubject  — the dead-air floor: who the camera falls back to with
+//       no story running. That is the leader/pace-setter normally, but the
+//       broadcaster's own rider once forced rotation is off ("Max shot = Off"),
+//       which is what makes the director return home after a story instead of
+//       drifting up the order.
 // ============================================================================
 // The doctest implementation + main() live in test_plugin_utils.cpp
 // (DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN); this TU only registers more tests.
@@ -90,4 +97,43 @@ TEST_CASE("pickNextAirtimeNum: a single eligible rider is picked every time (no 
     int cursor = -1;
     CHECK(DirectorManager::pickNextAirtimeNum({ 4, 9 }, 4, -1, cursor) == 9);
     CHECK(DirectorManager::pickNextAirtimeNum({ 4, 9 }, 4, -1, cursor) == 9);  // wrap to the only one
+}
+
+// --- pickBaselineSubject: the dead-air floor -------------------------------
+// Only the fields the helper reads matter (raceNum + finished); the rest are
+// filled with plausible values so the POD is never half-initialized.
+static director_detail::Rider rider(int raceNum, bool finished = false) {
+    return director_detail::Rider{ /*position=*/1, raceNum, /*gapToLeaderMs=*/0,
+                                   /*gapLaps=*/0, /*numLaps=*/3, /*bestLapMs=*/90000,
+                                   finished };
+}
+
+TEST_CASE("pickBaselineSubject: forced rotation on keeps the leader/pace-setter floor") {
+    const std::vector<director_detail::Rider> field = { rider(10), rider(22), rider(7) };
+    // With the max shot running, the director paces the whole field — the home rider is
+    // just history and must NOT steal the floor, even when they're right there on track.
+    CHECK(DirectorManager::pickBaselineSubject(field, /*forcedRotation=*/true,
+                                               /*homeSubject=*/22, /*fallback=*/10) == 10);
+}
+
+TEST_CASE("pickBaselineSubject: forced rotation off hands the floor to the home rider") {
+    const std::vector<director_detail::Rider> field = { rider(10), rider(22), rider(7) };
+    CHECK(DirectorManager::pickBaselineSubject(field, /*forcedRotation=*/false,
+                                               /*homeSubject=*/22, /*fallback=*/10) == 22);
+    // The leader can be the home rider too — nothing special about that case.
+    CHECK(DirectorManager::pickBaselineSubject(field, false, /*home=*/10, /*fallback=*/10) == 10);
+}
+
+TEST_CASE("pickBaselineSubject: falls back rather than ever showing dead air") {
+    const std::vector<director_detail::Rider> field = { rider(10), rider(22) };
+    // Home rider never established (director enabled with nobody spectated).
+    CHECK(DirectorManager::pickBaselineSubject(field, false, /*home=*/-1, /*fallback=*/10) == 10);
+    // Home rider off the track: retired, in the pits, or otherwise not in the pass's
+    // rider set (collectRiders drops all of those) -> hold the front instead.
+    CHECK(DirectorManager::pickBaselineSubject(field, false, /*home=*/99, /*fallback=*/10) == 10);
+    // Home rider present but done for the day — sitting on a slow-down lap isn't a shot.
+    const std::vector<director_detail::Rider> done = { rider(10), rider(22, /*finished=*/true) };
+    CHECK(DirectorManager::pickBaselineSubject(done, false, /*home=*/22, /*fallback=*/10) == 10);
+    // Empty field (every rider pitted/retired): the caller's fallback stands.
+    CHECK(DirectorManager::pickBaselineSubject({}, false, /*home=*/22, /*fallback=*/10) == 10);
 }

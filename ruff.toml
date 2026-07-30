@@ -1,0 +1,50 @@
+# ============================================================================
+# ruff.toml — linting for the standalone Python helper tools.
+#
+# This is a C++ project; Python appears only in tools/ (SBOM, minidump triage,
+# icon generation, analytics, the check_*.py gates) and tests/integration/
+# (fixture generators). Those had no linter at all, which is how an unused
+# import and two placeholder-less f-strings sat in the tree unnoticed.
+#
+# `ruff.toml` rather than `pyproject.toml`: there is no Python package here to
+# describe, so a build-system manifest would be a lie.
+#
+# LINT ONLY, NO FORMATTER — deliberately. `ruff format` would reflow every file
+# to its own layout preferences, which is the same trade this project already
+# declined for C++ (see the clang-format note in
+# tests/integration/check_style.sh). Mechanical hygiene is enforced by
+# .editorconfig + check_style.sh; code layout stays a review concern.
+#
+# The rule set is chosen to be drivable to ZERO and kept there, like the
+# cppcheck gate — a lint with a standing backlog is a lint nobody reads.
+# Run: ruff check .          (CI runs exactly this, and it is blocking)
+#      ruff check --fix .    (apply the mechanical fixes)
+# ============================================================================
+
+target-version = "py39"
+extend-exclude = ["build", "mxbmrp3/vendor"]
+
+[lint]
+# E4/E7/E9 + F is ruff's own default (imports, statements, runtime errors,
+# pyflakes). B is flake8-bugbear, which catches the real gotchas — mutable
+# default arguments, `except` that swallows control flow, loop variables that
+# silently do nothing. I is import sorting: mechanical, auto-fixable, and the
+# one layout rule that is genuinely settled convention rather than taste.
+select = ["E4", "E7", "E9", "F", "B", "I"]
+
+# E501 (line length) is absent for the same reason the formatter is: these
+# files run to ~120 columns by choice, and reflowing them buys nothing.
+ignore = [
+    # `if not path: return` / `a = 1; b = 2` — compact one-liners are a
+    # deliberate style in these scripts (they read as a single step), and
+    # rewriting ~15 of them is layout churn, not a fix.
+    "E701",  # multiple statements on one line (colon)
+    "E702",  # multiple statements on one line (semicolon)
+]
+
+[lint.per-file-ignores]
+# mdmp_analyze.py parses Windows minidump structures with struct.unpack over
+# FIXED binary layouts. Every field must be unpacked to advance the cursor even
+# when only two of them are read, so "assigned but never used" is inherent to
+# the format, not an oversight.
+"tools/mdmp_analyze.py" = ["F841"]

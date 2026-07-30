@@ -79,6 +79,27 @@ struct SPluginsSpectateVehicle_t {
     int m_iRaceNum;
     char m_szName[100];
 };
+// Per-rider live vehicle state. The only telemetry source while spectating or
+// watching a replay (RunTelemetry is player-only), so the handler feeds it into
+// the display rider's telemetry. m_iActive == 0 means every field after it is
+// unset and must be ignored.
+struct SPluginsRaceVehicleData_t {
+    int m_iRaceNum;
+    int m_iActive;
+    int m_iRPM;
+    int m_iGear;                 // 0 = Neutral
+    float m_fSpeedometer;        // meters/second
+    float m_fThrottle;           // 0 to 1
+    float m_fFrontBrake;         // 0 to 1
+    float m_fLean;               // degrees. Negative = left
+};
+// RunSplit payload — the player's own split. Distinct from SPluginsRaceSplit_t
+// (all riders); see run_split_test.cpp for why the plugin deliberately ignores it.
+struct SPluginsBikeSplit_t {
+    int m_iSplit;                // split index
+    int m_iSplitTime;            // milliseconds
+    int m_iBestDiff;             // milliseconds. Difference with best lap
+};
 struct SPluginsRaceSplit_t {
     int m_iSession;
     int m_iRaceNum;
@@ -131,6 +152,7 @@ typedef void (*PFN_Void_DS)(void*, int);                 // most (payload, size)
 typedef void (*PFN_Class)(void*, int, void*, int);       // RaceClassification (header + array)
 typedef void (*PFN_CountArray)(int, void*, int);         // RaceTrackPosition (count, array, elemSize)
 typedef int  (*PFN_Spectate)(int, void*, int, int*);     // SpectateVehicles (count, array, curSel, out select)
+typedef int  (*PFN_Cameras)(int, void*, int, int*);      // SpectateCameras (count, opaque blob, curSel, out select)
 typedef void (*PFN_Draw)(int, int*, void**, int*, void**);
 typedef void (*PFN_Telemetry)(void*, int, float, float); // RunTelemetry (payload, size, time, centerlinePos)
 typedef void (*PFN_TrackCenter)(int, void*, void*);      // TrackCenterline (numSegments, segments, raceData)

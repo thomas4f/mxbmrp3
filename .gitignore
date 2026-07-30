@@ -376,6 +376,35 @@ crash_analysis/*.dmp
 crash_analysis/*.log
 crash_analysis/*.zip
 
+# ruff's incremental cache. It ships a self-ignoring .gitignore, so git stays
+# quiet, but a filesystem-level check still sees an untracked directory.
+.ruff_cache/
+
 # Auto-generated build-number header (stamped from git commit count by the
 # StampVersion target in mxbmrp3.vcxproj; see resource.h).
 mxbmrp3/version_build.g.h
+
+# Raw Aptabase analytics exports feed tools/analytics_report.py but are never
+# committed -- only the generated analytics/REPORT.md + charts are. See analytics/README.md.
+*.parquet
+# Aptabase analytics exports (CSV since the parquet export was withdrawn). Raw
+# exports are deliberately not kept in the repo - see analytics/README.md.
+mxbmrp3*release*.csv
+
+# Per-stage logs from the deleted run_all.sh; CTest keeps its own under
+# build/tests/Testing/. Kept ignored so a stale tree stays clean.
+tests/.runall/
+# Sentinel the integration harness writes next to the test binary
+# (integration_main.h) to cross-check Wine's unreliable exit codes. It lands in
+# the CWD, so running a test binary from the repo root drops it in the tree.
+wine_test_status.txt
+
+# Layer-6 visual capture written to the repo root: companion_demo.sh's docs and
+# TESTING.md all use `out.png` as the example target. Captures are diffed within
+# a session and never committed - a baseline is only valid against the same
+# toolchain and font revision, so a checked-in one is worse than none. Anchored,
+# so it only covers the root the examples actually write to.
+#
+# The tool's own default output needs no rule here: tools/mxbmrp3_hud_window/
+# has its own .gitignore with `*.png`, which is the closer and better home.
+/out.png

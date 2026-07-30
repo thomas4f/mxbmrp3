@@ -105,7 +105,8 @@ void SettingsLayoutContext::addCycleControl(
     BaseHud* targetHud,
     bool enabled,
     bool isOff,
-    const char* tooltipId
+    const char* tooltipId,
+    unsigned long valueColorOverride
 ) {
     float cw = charWidth();
     ColorConfig& colors = ColorConfig::getInstance();
@@ -124,7 +125,17 @@ void SettingsLayoutContext::addCycleControl(
         Fonts::getNormal(), enabled ? colors.getSecondary() : colors.getMuted(), fontSize);
 
     float currentX = controlX;
-    unsigned long valueColor = (enabled && !isOff) ? colors.getPrimary() : colors.getMuted();
+    // An override wins outright: it exists for the states primary/muted cannot
+    // express (a connected device reading green), so enabled/isOff must not
+    // second-guess it. Arrows and label keep deriving from `enabled`.
+    //
+    // 0 means "not set", so a FULLY TRANSPARENT colour cannot be passed — it
+    // silently reads as unset and the derived colour is used. Safe today (every
+    // palette entry has alpha 0xFF), but PluginUtils::applyOpacity(c, 0.0f) is
+    // exactly 0, so an opacity-adjusted colour is the way in. If a second
+    // override lands, make this a std::optional rather than widening the rule.
+    unsigned long valueColor = valueColorOverride ? valueColorOverride
+        : ((enabled && !isOff) ? colors.getPrimary() : colors.getMuted());
 
     // Left arrow "<" - always visible, muted when disabled, clickable only when enabled
     parent->addString("<", currentX, currentY, Justify::LEFT,
@@ -374,8 +385,11 @@ float SettingsLayoutContext::addStandardHudControls(BaseHud* hud, bool enableTit
     // panelWidth is actually contentAreaWidth (from contentAreaStartX to right edge)
     float rowWidth = panelWidth - (labelX - contentAreaStartX);
 
-    // Visibility toggle
-    bool isVisible = hud->isVisible();
+    // Visibility toggle. ACTIVE SURFACE, not the game flag: the click below emits
+    // HUD_TOGGLE, which edits whichever surface the menu is on, so displaying
+    // isVisible() would show the game's state while the click changed the
+    // companion's. (The inline variant further down already reads it this way.)
+    bool isVisible = hud->isVisibleOnActiveSurface();
     // Add row-wide tooltip region
     parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
         labelX, currentY, rowWidth, lineHeightNormal, "common.visible"
@@ -854,9 +868,7 @@ void SettingsLayoutContext::addWidgetRow(
         // window the toggle already edits the companion instance (HUD_TOGGLE routes by
         // active surface), so the displayed On/Off must read it too — otherwise a widget
         // enabled only on the companion still shows the game's state.
-        bool companionSurface =
-            InputManager::getInstance().getActiveSurface() == InputManager::Surface::Companion;
-        bool visOn = companionSurface ? hud->getCompanionVisible() : hud->isVisible();
+        bool visOn = hud->isVisibleOnActiveSurface();
         addInlineToggle(visX, visOn, SettingsHud::ClickRegion::HUD_TOGGLE, enableVisibility);
     }
 

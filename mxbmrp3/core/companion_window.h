@@ -15,6 +15,7 @@
 #pragma once
 #include <atomic>
 #include <mutex>
+#include "thread_safety.h"
 #include <string>
 #include <thread>
 #include <vector>
@@ -42,9 +43,6 @@ public:
                 const std::vector<std::string>& fontPaths,
                 const std::vector<std::string>& spritePaths,
                 int firstIcon);
-
-    // Where the .tga assets live (default: the game-relative plugin data dir).
-    void setAssetRoot(const std::string& root);
 
     // Persisted window geometry (full-window rect, screen coords). The window
     // thread updates it as the user moves/resizes; the game thread reads it when
@@ -97,8 +95,9 @@ private:
     // w<=0 => unset (open at default). The rect is guarded by m_geomMutex (not four
     // atomics) so a cross-thread read at save time can't tear the rect (see the .cpp);
     // the maximized flag stays a lone atomic bool — a single value can't be torn.
-    mutable std::mutex m_geomMutex;
-    int m_geomX{ 0 }, m_geomY{ 0 }, m_geomW{ 0 }, m_geomH{ 0 };
+    mutable Mutex m_geomMutex;
+    int m_geomX MXB_GUARDED_BY(m_geomMutex) { 0 }, m_geomY MXB_GUARDED_BY(m_geomMutex) { 0 },
+        m_geomW MXB_GUARDED_BY(m_geomMutex) { 0 }, m_geomH MXB_GUARDED_BY(m_geomMutex) { 0 };
     std::atomic<bool> m_geomMax{ false };
     std::atomic<int> m_refreshHz{ 0 };   // 0 = V-Sync; N = fixed N Hz cap
     std::thread m_thread;
@@ -106,12 +105,21 @@ private:
     // (loader-lock-safe teardown — see ~CompanionWindow). Starts true: no thread yet.
     std::atomic<bool> m_threadFinished{ true };
 
-    std::mutex m_mutex;
-    std::vector<SPluginQuad_t> m_quads;
-    std::vector<SPluginString_t> m_strings;
-    std::vector<std::string> m_fontBases;    // basenames derived from paths (rebuilt on size change)
-    std::vector<std::string> m_spriteBases;
-    int m_firstIcon = 1 << 30;
-    std::string m_assetRoot = "plugins/mxbmrp3_data";
-    bool m_haveFrame = false;
+    Mutex m_mutex;
+    std::vector<SPluginQuad_t> m_quads MXB_GUARDED_BY(m_mutex);
+    std::vector<SPluginString_t> m_strings MXB_GUARDED_BY(m_mutex);
+    // These five ride the same lock as m_quads/m_strings above — submit() writes
+    // them under m_mutex on the game thread, the window thread copies them under
+    // m_mutex before rendering — but they had no MXB_GUARDED_BY, so the
+    // thread-safety analysis was not actually checking the very members the lock
+    // exists for. Annotated, they are.
+    std::vector<std::string> m_fontBases MXB_GUARDED_BY(m_mutex);   // basenames derived from paths (rebuilt on size change)
+    std::vector<std::string> m_spriteBases MXB_GUARDED_BY(m_mutex);
+    int m_firstIcon MXB_GUARDED_BY(m_mutex) = 1 << 30;
+    // Constant in practice — every asset root in the plugin is the same
+    // hardcoded path (AssetManager::DISCOVERY_DIR, HttpServer's web root). The
+    // annotation stays because the window thread reads it under the lock, so a
+    // setter added later is checked rather than trusted.
+    std::string m_assetRoot MXB_GUARDED_BY(m_mutex) = "plugins/mxbmrp3_data";
+    bool m_haveFrame MXB_GUARDED_BY(m_mutex) = false;
 };

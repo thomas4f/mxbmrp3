@@ -10,7 +10,10 @@
 #     on bad input; every load site must be guarded).
 # The fuzzer runs each case under Wine and asserts the plugin does not crash.
 # ============================================================================
-import sys, os, re, random
+import os
+import random
+import re
+import sys
 
 BASE = open(sys.argv[1], "r", encoding="utf-8", errors="replace").read()
 OUT = sys.argv[2]
@@ -47,9 +50,9 @@ settings_cases = {
     "ini_binary":           bytes(random.randrange(256) for _ in range(512)),
     "ini_nul_injected":     BASE.replace("=", "=\x00", 20).encode(),
     "ini_longvalue":        mutate_values(BASE, lambda v: "A"*100000).encode(),
-    "ini_no_sections":      "\n".join(l for l in BASE.splitlines() if not l.startswith("[")).encode(),
-    "ini_no_equals":        "\n".join(l.replace("=", " ") for l in BASE.splitlines()).encode(),
-    "ini_dup_lines":        "\n".join(l for l in BASE.splitlines() for _ in range(2)).encode(),
+    "ini_no_sections":      "\n".join(line for line in BASE.splitlines() if not line.startswith("[")).encode(),
+    "ini_no_equals":        "\n".join(line.replace("=", " ") for line in BASE.splitlines()).encode(),
+    "ini_dup_lines":        "\n".join(line for line in BASE.splitlines() for _ in range(2)).encode(),
     "ini_crlf_spam":        (BASE.replace("\n", "\r\n\r\n")).encode(),
 }
 

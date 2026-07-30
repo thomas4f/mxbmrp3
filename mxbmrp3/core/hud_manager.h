@@ -30,6 +30,18 @@ public:
     int initializeResources(int* piNumSprites, char** pszSpriteName, int* piNumFonts, char** pszFontName);
 
     // Called from plugin manager during draw operations (synchronous / game-thread mode)
+    //
+    // ALL QUADS DRAW BEFORE ALL STRINGS, ACROSS EVERY HUD, and this is not ours to
+    // change: the plugin API hands the game two SEPARATE arrays (`ppQuad`, then
+    // `ppString`), so it renders them as two batches. Consequences worth knowing
+    // before you go looking for a bug that is not there:
+    //   - One HUD's text can appear over ANOTHER HUD's background. Registration
+    //     order and per-HUD z-order do not help; they only order within a batch.
+    //   - A HUD cannot occlude text with an opaque panel. Overlapping HUDs will
+    //     show each other's strings through the top one, and the only real fixes
+    //     are to move a HUD or hide it.
+    // Reproducible in a screenshot: the settings panel shows other HUDs' rows
+    // through it (companion_demo.sh, any `tab` scene, with HUDs behind it).
     void draw(int iState, int* piNumQuads, void** ppQuad, int* piNumString, void** ppString);
 
     // Run the full per-frame update + collect for the given draw state, leaving the

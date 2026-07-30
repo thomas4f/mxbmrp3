@@ -7,8 +7,24 @@
 // are never starved by long-lived SSE connections holding threads.
 #define CPPHTTPLIB_THREAD_POOL_COUNT 8
 
-// httplib.h must be included before windows.h to avoid winsock conflicts
+// httplib.h must be included before windows.h to avoid winsock conflicts.
+//
+// The push/disable/pop is around the VENDORED header only — never edit
+// httplib.h itself, or the copy silently diverges from upstream and
+// vendored.json's freshness check is checking a fiction. MSVC's /W4 reports 6x
+// C4127 (conditional expression is constant) from inside it; GCC at
+// -Wall -Wextra reports none, so this is MSVC-only. Scoped to the include
+// rather than the whole TU so this file's OWN code keeps the full bar.
+// miniz gets the same exemption via CMake, where it can, because it has a .cpp;
+// httplib is header-only, so the exemption has to live at the include site.
+#ifdef _MSC_VER
+#  pragma warning(push)
+#  pragma warning(disable : 4127)
+#endif
 #include "../vendor/httplib/httplib.h"
+#ifdef _MSC_VER
+#  pragma warning(pop)
+#endif
 
 #include "http_server.h"
 #include "http_server_internal.h"
@@ -40,8 +56,8 @@ HttpServer::HttpServer()
     , m_port(DEFAULT_PORT)
     , m_throttleMs(DEFAULT_THROTTLE_MS)
     , m_bindAddress(DEFAULT_BIND_ADDRESS)
-    , m_sseSequence(0)
-    , m_webRoot("plugins\\mxbmrp3_data\\web") {
+    , m_webRoot("plugins\\mxbmrp3_data\\web")
+    , m_sseSequence(0) {
 }
 
 HttpServer::~HttpServer() {
@@ -81,10 +97,10 @@ void HttpServer::start() {
 
     // Build initial snapshot so SSE clients get data immediately
     {
-        std::lock_guard<std::mutex> lock(m_dataMutex);
+        MutexLock lock(m_dataMutex);
         m_sseSequence = 0;
-        m_cachedJson = buildJsonSnapshot();
     }
+    publishSnapshot();
     m_snapshotStale = false;
 
     // Create server on game thread so stop() always has a valid pointer.
@@ -163,13 +179,41 @@ void HttpServer::setThrottleMs(int ms) {
 }
 
 void HttpServer::setBindAddress(const std::string& addr) {
-    std::lock_guard<std::mutex> lock(m_bindMutex);
+    MutexLock lock(m_bindMutex);
     m_bindAddress = addr.empty() ? DEFAULT_BIND_ADDRESS : addr;
 }
 
 std::string HttpServer::getBindAddress() const {
-    std::lock_guard<std::mutex> lock(m_bindMutex);
+    MutexLock lock(m_bindMutex);
     return m_bindAddress;
+}
+
+bool HttpServer::buildWindowElapsed() const {
+    if (m_lastBuildTime.time_since_epoch().count() == 0) return true;   // never built
+    // Half the SSE push throttle. The server pushes at most once per throttleMs and
+    // explicitly coalesces anything arriving inside that window ("only intermediate
+    // snapshots are skipped"), so building faster than that produced snapshots nobody
+    // could ever receive — at a full grid's Standings rate that was the large majority of
+    // them, and every one is a whole-grid serialization on the GAME thread. Half rather
+    // than the full throttle so a push never waits on a build: worst-case staleness is
+    // ~1.5x throttle instead of the 2x a same-cadence build would allow.
+    const int windowMs = (std::max)(1, m_throttleMs.load() / 2);
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - m_lastBuildTime).count();
+    return elapsed >= windowMs;
+}
+
+void HttpServer::publishSnapshot() {
+    // Built on the game thread where PluginData access is safe. Server threads only read
+    // the cached string under the mutex.
+    std::string snapshot = buildJsonSnapshot();
+    {
+        MutexLock lock(m_dataMutex);
+        m_cachedJson = std::move(snapshot);
+        ++m_sseSequence;
+    }
+    m_lastBuildTime = std::chrono::steady_clock::now();
+    m_dataCondition.notify_all();
 }
 
 void HttpServer::onDataChanged(DataChangeType changeType) {
@@ -220,18 +264,25 @@ void HttpServer::onDataChanged(DataChangeType changeType) {
             return;  // Irrelevant change and nothing to catch up on
         }
     }
-    m_snapshotStale = false;
-
-    // Build JSON snapshot on the game thread where PluginData access is safe.
-    // Server threads only read the cached string under the mutex.
-    std::string snapshot = buildJsonSnapshot();
-
-    {
-        std::lock_guard<std::mutex> lock(m_dataMutex);
-        m_cachedJson = std::move(snapshot);
-        ++m_sseSequence;
+    // Rate-limit the rebuild itself, not just the push. RARE transitions are exempt and
+    // still rebuild immediately: the plugin gets no callbacks while the player sits in
+    // menus, so a deferred transition could never be rebuilt (see the Maintenance
+    // Invariant). Everything else — frequent types, and the catch-up rebuild an
+    // irrelevant type performs when the cache is stale — waits for the window.
+    //
+    // Deferring is safe because it sets the stale flag rather than dropping the change:
+    // telemetry fires every tick while on track, and each tick retries the catch-up path,
+    // so a deferred rebuild lands as soon as the window elapses. The tail case (a frequent
+    // change as the very last callback before a quiet period) is covered by the transition
+    // out of the session, which is a rare type and rebuilds unconditionally.
+    const bool rareTransition = relevant && !frequent;
+    if (!rareTransition && !buildWindowElapsed()) {
+        m_snapshotStale = true;
+        return;
     }
-    m_dataCondition.notify_all();
+
+    m_snapshotStale = false;
+    publishSnapshot();
 }
 
 // Maps the panel enum to the overlay's createSlotPanel name (overlay-panels.js). NONE is
@@ -257,14 +308,10 @@ void HttpServer::forceOverlayPanel(OverlayPanel panel) {
     m_forcedPanel.store(static_cast<int>(panel));
     m_forcedSeq.fetch_add(1);
 
-    // Built on the game thread (the caller), where PluginData access is safe.
-    std::string snapshot = buildJsonSnapshot();
-    {
-        std::lock_guard<std::mutex> lock(m_dataMutex);
-        m_cachedJson = std::move(snapshot);
-        ++m_sseSequence;
-    }
-    m_dataCondition.notify_all();
+    // Deliberately bypasses the rebuild window in buildWindowElapsed(): a broadcaster
+    // keypress is a discrete user action and must reach the overlay now, not up to half a
+    // throttle later. Rare enough that its cost does not matter.
+    publishSnapshot();
 }
 
 // ============================================================================
@@ -411,7 +458,7 @@ void HttpServer::serverThread() {
             // (see hasActiveClients) - the first response after an idle
             // period may be stale until the next data change rebuilds it
             m_lastStatePollMs.store(steadyNowMs());
-            std::lock_guard<std::mutex> lock(m_dataMutex);
+            MutexLock lock(m_dataMutex);
             res.set_content(m_cachedJson, "application/json");
         });
 
@@ -449,7 +496,7 @@ void HttpServer::serverThread() {
 
                     // Send initial snapshot immediately
                     {
-                        std::lock_guard<std::mutex> lock(m_dataMutex);
+                        MutexLock lock(m_dataMutex);
                         clientSeq = m_sseSequence;
                         std::string sseMsg = "id: " + std::to_string(clientSeq)
                             + "\ndata: " + m_cachedJson + "\n\n";
@@ -477,9 +524,11 @@ void HttpServer::serverThread() {
                     while (!m_shutdownRequested) {
                         std::string sseMsg;
                         {
-                            std::unique_lock<std::mutex> lock(m_dataMutex);
-                            m_dataCondition.wait_for(lock, kKeepaliveInterval,
-                                [this, clientSeq] {
+                            CvLock lock(m_dataMutex);
+                            // The predicate runs with the lock held (the cv
+                            // contract) — MXB_REQUIRES tells the analysis so.
+                            m_dataCondition.wait_for(lock.native(), kKeepaliveInterval,
+                                [this, clientSeq]() MXB_REQUIRES(m_dataMutex) {
                                     return m_sseSequence > clientSeq || m_shutdownRequested.load();
                                 });
 
@@ -489,7 +538,7 @@ void HttpServer::serverThread() {
                                 // Data pending — enforce the min interval since
                                 // the last push before sending it.
                                 auto nextAllowed = lastPush + std::chrono::milliseconds(throttleMs);
-                                m_dataCondition.wait_until(lock, nextAllowed,
+                                m_dataCondition.wait_until(lock.native(), nextAllowed,
                                     [this] { return m_shutdownRequested.load(); });
                                 if (m_shutdownRequested) return false;
                             }

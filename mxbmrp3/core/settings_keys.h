@@ -503,12 +503,16 @@ namespace Settings {
             constexpr Setting HAZARD_STATIONARY_TOLERANCE = {"hazardStationaryTolerance", "Movement below this in meters = not moving (1-50, default 5.0)"};
             constexpr Setting HAZARD_STATIONARY_DURATION_MS = {"hazardStationaryDurationMs", "Time stationary before flagged in ms (1000-30000, default 2000)"};
             constexpr Setting HAZARD_WRONG_WAY_DURATION_MS = {"hazardWrongWayDurationMs", "Time going backward before flagged in ms (100-10000, default 1500)"};
-            constexpr Setting HAZARD_AWARENESS_DISTANCE = {"hazardAwarenessDistance", "Distance ahead to scan for hazards in meters (10-500, default 100.0)"};
+            constexpr Setting HAZARD_AWARENESS_DISTANCE = {"hazardAwarenessDistance", "Distance ahead to scan for stationary hazards in meters (10-500, default 100.0)"};
+            constexpr Setting HAZARD_WRONG_WAY_AWARENESS_DISTANCE = {"hazardWrongWayAwarenessDistance", "Distance ahead to scan for wrong-way riders in meters; longer because they close head-on (10-500, default 250.0)"};
             constexpr Setting HAZARD_COOLDOWN_MS = {"hazardCooldownMs", "Hysteresis before clearing hazard state in ms (0-30000, default 1000)"};
             constexpr Setting HAZARD_GRACE_PERIOD_MS = {"hazardGracePeriodMs", "Grace period after race start in ms (0-60000, default 10000)"};
             constexpr Setting BLUE_FLAG_AWARENESS_DISTANCE = {"blueFlagAwarenessDistance", "Blue flag detection range in meters (10-500, default 100.0)"};
             constexpr Setting GAP_NOTIFY_INTERVAL_MS = {"gapNotifyIntervalMs", "Min interval between live-gap HUD refreshes in ms; 0=refresh on every change (0-1000, default 100)"};
             constexpr Setting PLUGIN_THREAD = {"pluginThread", "EXPERIMENTAL: run the plugin's callbacks + HUD render build on its own thread so hiccups never stall the game frame (1=on, 0=off default). Read once at startup"};
+            constexpr Setting RENDER_PROBE_QUADS = {"renderProbeQuads", "DEBUG: emit N extra synthetic quads each frame for the ENGINE to draw, to measure its per-primitive render cost differentially (sweep N with uncapped FPS at a fixed spot, watch frame time rise; slope = engine cost). 0=off default"};
+            constexpr Setting RENDER_PROBE_FULLSCREEN = {"renderProbeFullscreen", "DEBUG: make renderProbeQuads FULL-SCREEN quads (measures fill-rate) instead of tiny ones (measures per-quad submit cost); 1=fullscreen, 0=tiny default. Fill type only"};
+            constexpr Setting RENDER_PROBE_TYPE = {"renderProbeType", "DEBUG: which primitive renderProbeQuads emits — 0=solid-fill quad (default), 1=sprite quad (textured, cycles all registered sprites to exercise texture switches), 2=text string (glyph-atlas). The three have different engine costs; sweep each separately"};
             constexpr Setting WEB_SERVER_PORT = {"webServerPort", "Web server port (1024-65535, default 8080)"};
             constexpr Setting WEB_SERVER_THROTTLE_MS = {"webServerThrottleMs", "Min interval between SSE pushes in ms (50-5000, default 250)"};
             constexpr Setting WEB_SERVER_BIND_ADDRESS = {"webServerBindAddress", "Bind address (default 127.0.0.1, use 0.0.0.0 for network access)"};

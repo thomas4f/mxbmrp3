@@ -39,10 +39,10 @@ HotkeyManager& HotkeyManager::getInstance() {
 }
 
 HotkeyManager::HotkeyManager()
-    : m_captureType(CaptureType::NONE)
+    : m_prevControllerButtons(0)
+    , m_captureType(CaptureType::NONE)
     , m_captureAction(HotkeyAction::TOGGLE_STANDINGS)
     , m_captureCompleted(false)
-    , m_prevControllerButtons(0)
     , m_bInitialized(false)
 {
     m_prevKeyStates.fill(false);
@@ -118,7 +118,7 @@ void HotkeyManager::update() {
     // false edge triggers when focus returns.
     // Full 256-key refresh only while capturing a new binding (any key can
     // be captured); otherwise only the bound keys need edge tracking -
-    // 256 GetAsyncKeyState syscalls per frame are measurable at 240fps.
+    // 256 GetAsyncKeyState syscalls per frame are measurable at 480fps.
     if (m_captureType != CaptureType::NONE) {
         for (int i = 0; i < 256; i++) {
             m_prevKeyStates[i] = (GetAsyncKeyState(i) & 0x8000) != 0;

@@ -52,7 +52,9 @@ BaseHud* SettingsHud::renderTabPerformance(SettingsLayoutContext& ctx) {
         if (benchmark) {
             ctx.addSpacing(0.5f);
             ctx.addSectionHeader("Developer");
-            ctx.addToggleControl("Benchmark profiler", benchmark->isVisible(),
+            // Active surface: the row emits HUD_TOGGLE, which edits the focused
+            // surface, so the state shown must come from the same one.
+            ctx.addToggleControl("Benchmark profiler", benchmark->isVisibleOnActiveSurface(),
                 SettingsHud::ClickRegion::HUD_TOGGLE, benchmark, nullptr, 0, true,
                 "performance.benchmark");
         }

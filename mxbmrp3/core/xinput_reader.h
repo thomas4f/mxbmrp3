@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <deque>
 #include <mutex>
+#include "thread_safety.h"
 #include <string>
 #include <thread>
 #include <vector>
@@ -257,7 +258,7 @@ public:
     // preserved after moving the actual XInputSetState off-thread. Stop the I/O thread
     // first (testStopIoForTest) so it doesn't drain the command out from under the test.
     bool testConsumePendingRumble(int& left8, int& right8, int& idx) {
-        std::lock_guard<std::mutex> lk(m_ioMutex);
+        MutexLock lk(m_ioMutex);
         if (!m_pendingRumble) return false;
         left8 = m_pendingLeft8; right8 = m_pendingRight8; idx = m_pendingIndex;
         m_pendingRumble = false;
@@ -403,7 +404,7 @@ private:
     // thread, so getData() can keep returning a reference.
     XInputData m_data;
 #ifdef MXBMRP3_TEST_BUILD
-    bool m_testForced = false;
+    bool m_testForced = false;  // mt-plain: caller-thread only, alongside m_data/m_testData
     XInputData m_testData;
 #endif
     // Selected slot (0-3, or -1 = disabled). Atomic: written by the caller
@@ -418,14 +419,14 @@ private:
     // Windows loader lock, and a thread's OS-level exit also needs that lock, so a
     // join() there would deadlock. Spinning on an app-level flag needs no loader lock.
     std::atomic<bool> m_ioFinished{ false };
-    mutable std::mutex m_ioMutex;                 // guards the two handoff buffers below
-    XInputData m_dataPublished;                   // I/O thread writes, update() reads
+    mutable Mutex m_ioMutex;                      // guards the handoff buffers below
+    XInputData m_dataPublished MXB_GUARDED_BY(m_ioMutex);  // I/O thread writes, update() reads
     // Pending rumble command posted by setVibration (policy runs on the caller; the
     // I/O thread just executes the last posted 8-bit motor pair).
-    bool m_pendingRumble = false;
-    uint8_t m_pendingLeft8 = 0;
-    uint8_t m_pendingRight8 = 0;
-    int m_pendingIndex = 0;
+    bool m_pendingRumble MXB_GUARDED_BY(m_ioMutex) = false;
+    uint8_t m_pendingLeft8 MXB_GUARDED_BY(m_ioMutex) = 0;
+    uint8_t m_pendingRight8 MXB_GUARDED_BY(m_ioMutex) = 0;
+    int m_pendingIndex MXB_GUARDED_BY(m_ioMutex) = 0;
     // Set by setControllerIndex so the I/O thread skips the disconnected backoff and
     // polls the freshly-selected slot immediately.
     std::atomic<bool> m_pollImmediately{ false };
@@ -454,7 +455,7 @@ private:
     // pad generates no Bluetooth traffic. See setVibration().
     uint8_t m_lastSentLeftMotor;
     uint8_t m_lastSentRightMotor;
-    bool m_hasSentVibration;
+    bool m_hasSentVibration;  // mt-plain: send-policy state, caller thread only — the I/O thread sees only m_pendingRumble (guarded)
     std::chrono::steady_clock::time_point m_lastVibrationSend;
     int m_rumbleSendIntervalMs = DEFAULT_RUMBLE_SEND_INTERVAL_MS;
     static constexpr int DEFAULT_RUMBLE_SEND_INTERVAL_MS = 10;  // 100Hz live feed (matches the telemetry tick)

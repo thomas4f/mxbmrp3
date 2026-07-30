@@ -8,9 +8,7 @@
 #include "../core/plugin_data.h"
 #include "../core/plugin_utils.h"
 
-DEFINE_HANDLER_SINGLETON(RaceEntryHandler)
-
-void RaceEntryHandler::handleRaceAddEntry(Unified::RaceEntryData* psRaceAddEntry) {
+void Handlers::handleRaceAddEntry(Unified::RaceEntryData* psRaceAddEntry) {
     HANDLER_NULL_CHECK(psRaceAddEntry);
 
     // Store race entry data
@@ -47,7 +45,7 @@ void RaceEntryHandler::handleRaceAddEntry(Unified::RaceEntryData* psRaceAddEntry
     }
 }
 
-void RaceEntryHandler::handleRaceRemoveEntry(int raceNum) {
+void Handlers::handleRaceRemoveEntry(int raceNum) {
     // Remove race entry data
     PluginData::getInstance().removeRaceEntry(raceNum);
 }

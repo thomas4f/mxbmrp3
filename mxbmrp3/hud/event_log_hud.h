@@ -50,6 +50,25 @@ public:
     const char* getIconName() const override { return "hud-eventlog"; }
     void resetToDefaults();
 
+    // Click-to-spectate on an event row, matching StandingsHud/MapHud. Only rows naming a
+    // rider who can actually be spectated get a region, so the hover highlight and the
+    // click share one gate (PluginData::isRiderSpectatable) — a row that highlights but
+    // does nothing when clicked reads as broken. Session-level rows ("Final lap") and rows
+    // about riders who are gone (retired/DSQ) are inert by construction.
+    void handleClick(float mouseX, float mouseY);
+
+    // Test-only: how many rows currently offer click-to-spectate. Not in /api/state (click
+    // regions are pure render state), and it is the one observable that distinguishes
+    // "the row names a rider" from "the row is clickable" — the whole point of the gate.
+    int testSpectateRegionCount() const { return static_cast<int>(m_riderClickRegions.size()); }
+
+    // Test-only: drive the AUTO_HIDE path (see MXBMRP3_Test_EventLogSetAutoHide).
+    void testSetAutoHide(bool on, int durationMs) {
+        m_displayMode = on ? DisplayMode::AUTO_HIDE : DisplayMode::ON;
+        m_autoHideDurationMs = (durationMs > 0) ? durationMs : DEFAULT_AUTO_HIDE_MS;
+        setDataDirty();
+    }
+
     // Enable/disable a single event type's display-filter bit (used by test hooks; the
     // settings UI edits m_enabledEvents directly via its friend access).
     void setEventTypeEnabled(EventLogType type, bool on) {
@@ -67,6 +86,9 @@ protected:
 
 private:
     void rebuildRenderData() override;
+
+    // Drop rendered primitives + interactive state together (see the .cpp).
+    void clearRendered();
 
     // Calculate dynamic background width (in characters)
     int getBackgroundWidthChars() const;
@@ -103,6 +125,20 @@ private:
         int rowIndex;
     };
     std::vector<IconQuadInfo> m_iconQuads;
+
+    // Spectate click targets, rebuilt with the rows. rowIndex is the 0-based data row so
+    // rebuildLayout can reposition the hover highlight during a drag without a full rebuild
+    // (same trick as m_iconQuads, and as StandingsHud's m_cachedHighlightQuadIndex).
+    struct RiderClickRegion {
+        float x, y, width, height;
+        int raceNum;
+        int rowIndex;
+    };
+    std::vector<RiderClickRegion> m_riderClickRegions;
+    int m_hoveredRegionIndex = -1;          // index into m_riderClickRegions, -1 = none
+    int m_hoverQuadIndex = -1;              // the hover highlight quad in m_quads, -1 = none
+    // Matches StandingsHud's spectator hover so the two HUDs feel identical.
+    static constexpr float HOVER_HIGHLIGHT_OPACITY = 60.0f / 255.0f;
 
     // Auto-hide state
     std::chrono::steady_clock::time_point m_lastEventTime;

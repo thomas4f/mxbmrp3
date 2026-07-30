@@ -33,7 +33,8 @@ duplicateAssignExpression
 # SEH macros and thinks a path falls off the end.
 missingReturn:mxbmrp3/core/steam_friends_manager.cpp
 
-# http_server prints 32-bit ids/hashes with %x; the args are `unsigned long`,
-# which is 32-bit on the Windows (LLP64) target, so %x is correct there. cppcheck
-# flags it as a type mismatch regardless of platform.
-invalidPrintfArgType_uint:mxbmrp3/core/http_server.cpp
+# (Removed: the ABGR→CSS-hex snprintf sites that needed `invalidPrintfArgType_uint`
+# now cast their masked 0..255 channels to `unsigned` explicitly, which is correct
+# on every platform rather than only on LLP64. Fixing the source beat suppressing
+# it — and the suppression had silently gone stale anyway when http_server.cpp was
+# split into focused TUs, so it no longer matched the file the findings came from.)

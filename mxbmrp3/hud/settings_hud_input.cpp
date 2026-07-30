@@ -171,14 +171,24 @@ void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
             DirectorManager::getInstance().setMinShotSec(DirectorManager::getInstance().getMinShotSec() + 1);
             rebuildRenderData();
             break;
-        case ClickRegion::DIRECTOR_MAXSHOT_DOWN:
-            DirectorManager::getInstance().setMaxShotSec(DirectorManager::getInstance().getMaxShotSec() - 1);
+        case ClickRegion::DIRECTOR_MAXSHOT_DOWN: {
+            // Off sits one step below the low end of the range. The setter only treats an
+            // explicit 0 as Off (so a hand-edited out-of-range INI value can't mean it),
+            // which leaves both ends of the jump to the steppers.
+            DirectorManager& d = DirectorManager::getInstance();
+            int v = d.getMaxShotSec();
+            d.setMaxShotSec(v <= DirectorManager::MAX_SHOT_LO ? 0 : v - 1);
             rebuildRenderData();
             break;
-        case ClickRegion::DIRECTOR_MAXSHOT_UP:
-            DirectorManager::getInstance().setMaxShotSec(DirectorManager::getInstance().getMaxShotSec() + 1);
+        }
+        case ClickRegion::DIRECTOR_MAXSHOT_UP: {
+            // ...and back up out of Off, to the meaningful minimum.
+            DirectorManager& d = DirectorManager::getInstance();
+            int v = d.getMaxShotSec();
+            d.setMaxShotSec(v <= 0 ? DirectorManager::MAX_SHOT_LO : v + 1);
             rebuildRenderData();
             break;
+        }
         case ClickRegion::DIRECTOR_BATTLEGAP_DOWN:
             DirectorManager::getInstance().setBattleGapMs(DirectorManager::getInstance().getBattleGapMs() - DirectorManager::BATTLE_GAP_STEP);
             rebuildRenderData();
@@ -289,15 +299,21 @@ void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
             rebuildRenderData();
             break;
         case ClickRegion::DIRECTOR_HUD_VISIBLE:
-            if (DirectorWidget* dh = HudManager::getInstance().getDirectorWidget()) {
-                dh->setVisible(!dh->isVisible());
-            }
+            // DirectorWidget is an ordinary positioned widget, so its on/off decouples
+            // per surface like every other HUD's.
+            toggleHudOnActiveSurface(HudManager::getInstance().getDirectorWidget());
             rebuildRenderData();
             break;
         case ClickRegion::HELMET_OVERLAY_TOGGLE:
             if (m_helmetOverlay) {
                 // Visibility gate only — doesn't touch individual enable flags
-                // (same pattern as WIDGETS_TOGGLE)
+                // (same pattern as WIDGETS_TOGGLE).
+                //
+                // setVisible(), NOT toggleHudOnActiveSurface(): the helmet never
+                // renders on the companion (BaseHud::rendersOnCompanion), so the game
+                // flag is its only visibility and editing a companion one would create
+                // a control with no effect. This is the one per-HUD toggle where
+                // reaching for the surface-aware helper would be wrong.
                 m_helmetOverlay->setVisible(!m_helmetOverlay->isVisible());
                 rebuildRenderData();
                 DEBUG_INFO_F("Helmet overlay master toggle: %s",
@@ -834,20 +850,30 @@ void SettingsHud::handleCheckboxClick(const ClickRegion& region) {
 
 // Note: gap toggle/scope/reference click handlers moved to settings_tab_standings.cpp
 
-void SettingsHud::handleHudToggleClick(const ClickRegion& region) {
-    if (!region.targetHud) return;
-
-    // Toggle the FOCUSED surface's instance: companion window edits companion
-    // visibility, game window the game visibility.
+// Toggle the FOCUSED surface's instance: on the companion window this edits the
+// companion visibility, in game the game visibility.
+//
+// EVERY per-HUD on/off must come through here. A handler that calls setVisible()
+// directly silently edits the GAME surface no matter which window the click landed
+// in, so on the companion the HUD stays on screen and the checkbox reports the
+// other surface's state -- which is exactly what the helmet toggle did, and what
+// the Director widget's row did until this was factored out.
+void SettingsHud::toggleHudOnActiveSurface(BaseHud* hud) {
+    if (!hud) return;
     bool companion = InputManager::getInstance().getActiveSurface() == InputManager::Surface::Companion;
     if (companion) {
-        region.targetHud->setCompanionVisible(!region.targetHud->getCompanionVisible());
+        hud->setCompanionVisible(!hud->getCompanionVisible());
         DEBUG_INFO_F("HUD companion visibility toggled: %s",
-            region.targetHud->getCompanionVisible() ? "visible" : "hidden");
+            hud->getCompanionVisible() ? "visible" : "hidden");
     } else {
-        region.targetHud->setVisible(!region.targetHud->isVisible());
-        DEBUG_INFO_F("HUD visibility toggled: %s", region.targetHud->isVisible() ? "visible" : "hidden");
+        hud->setVisible(!hud->isVisible());
+        DEBUG_INFO_F("HUD visibility toggled: %s", hud->isVisible() ? "visible" : "hidden");
     }
+}
+
+void SettingsHud::handleHudToggleClick(const ClickRegion& region) {
+    if (!region.targetHud) return;
+    toggleHudOnActiveSurface(region.targetHud);
     rebuildRenderData();
 }
 
@@ -945,6 +971,39 @@ int SettingsHud::testCycleRegionCount(bool up) const {
         if (r.type == want) ++n;
     }
     return n;
+}
+
+void SettingsHud::testRegionSignature(char* out, int cap) const {
+    if (!out || cap <= 0) return;
+    out[0] = '\0';
+    int used = 0;
+    for (const auto& r : m_clickRegions) {
+        char part[96];
+        const int n = snprintf(part, sizeof(part), "%d:%s;",
+            static_cast<int>(r.type), r.tooltipId.empty() ? "-" : r.tooltipId.c_str());
+        if (n < 0 || used + n >= cap) break;
+        memcpy(out + used, part, static_cast<size_t>(n));
+        used += n;
+        out[used] = '\0';
+    }
+    char tail[64];
+    // typecount lets the test detect an ordinal SHIFT (a value inserted into
+    // ClickRegion::Type) and say so, instead of drowning it in a golden diff.
+    const int n = snprintf(tail, sizeof(tail), "typecount=%d;strings=%d",
+        static_cast<int>(ClickRegion::COUNT), static_cast<int>(m_strings.size()));
+    if (n > 0 && used + n < cap) {
+        memcpy(out + used, tail, static_cast<size_t>(n));
+        out[used + n] = '\0';
+    }
+}
+
+bool SettingsHud::testClickDirectorHudVisible() {
+    for (const auto& r : m_clickRegions) {
+        if (r.type != ClickRegion::DIRECTOR_HUD_VISIBLE) continue;
+        handleClick(r.x + r.width * 0.5f, r.y + r.height * 0.5f);
+        return true;
+    }
+    return false;
 }
 
 bool SettingsHud::testClickCycle(int index, bool up) {

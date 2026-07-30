@@ -183,12 +183,19 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
     // Gap reference toggle (Leader/Player/Auto) - muted when gap column is off
     {
         const bool refRelevant = (hud->m_gapMode != StandingsHud::GapMode::OFF);
-        const char* gapRefValue;
+        // Initialized at the declaration, like the sibling GapMode switch below:
+        // without a `default:` the compiler cannot prove the variable is written
+        // (the enum could hold an out-of-range value), and -Werror=maybe-
+        // uninitialized fails the cross-build. Initializing is what buys the
+        // exhaustive switch — a new reference mode now trips -Wswitch here
+        // instead of rendering silently as "Leader".
+        const char* gapRefValue = "Leader";
         switch (hud->m_gapReferenceMode) {
             case StandingsHud::GapReferenceMode::LEADER:      gapRefValue = "Leader"; break;
             case StandingsHud::GapReferenceMode::PLAYER:      gapRefValue = "Player"; break;
             case StandingsHud::GapReferenceMode::ALTERNATING: gapRefValue = "Auto";   break;
-            default:                                          gapRefValue = "Leader"; break;
+            // Not a real mode — listed so the switch stays EXHAUSTIVE.
+            case StandingsHud::GapReferenceMode::COUNT:                               break;
         }
         ctx.addCycleControl("Gap reference", gapRefValue, 10,
             SettingsHud::ClickRegion::GAP_REFERENCE_BACK,
@@ -328,9 +335,16 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
             case StandingsHud::GapMode::PLAYER:   gapModeValue = "Player"; break;
             case StandingsHud::GapMode::ADJACENT: gapModeValue = "Adjacent"; break;
             case StandingsHud::GapMode::ALL:      gapModeValue = "All"; break;
+            // Not a real mode — listed so the switch stays EXHAUSTIVE and a
+            // future mode still trips -Wswitch here instead of silently
+            // rendering a null label.
+            case StandingsHud::GapMode::COUNT:    gapModeValue = "All"; break;
         }
         ctx.addCycleControl("Gap column", gapModeValue, 10,
-            SettingsHud::CycleControl::enumMember(hud, &StandingsHud::m_gapMode, 4, hud),
+            // Modulus from the enum, not a literal: a new mode used to need this
+            // number bumped by hand, with nothing to catch a miss.
+            SettingsHud::CycleControl::enumMember(hud, &StandingsHud::m_gapMode,
+                static_cast<int>(StandingsHud::GapMode::COUNT), hud),
             hud, true, isOff, "standings.gap_mode");
     }
 

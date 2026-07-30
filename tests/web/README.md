@@ -63,6 +63,19 @@ see the warmup. For real-data preview instead of the synthetic demo, use
   into the timed race; the P1 row's gap column shows the `Leader` label (race
   gap semantics), not a lap time.
 
+(Representative highlights — `overlay.spec.js` also covers the bottom-slot
+panels/battle lifecycle. The other specs: `assets.spec.js` pins the asset wiring
+— every `index.html`/`style.css`/`sw.js` reference resolves and the split
+overlay scripts load in the same order everywhere; `custom_css.spec.js` the
+`custom.css` override contract; `empty_panels.spec.js` the forced-empty
+placeholder behavior; `tail.spec.js` the down-the-order scroller with data
+(below-cutoff riders, viewport sizing, the scroll pass); `mobile.spec.js` the
+phone fill-width mode (device-emulated `pointer: coarse`: width fixed point,
+focus-card/chip suppression, touch-revealed gear); `parity.spec.js` the
+JS side of the shared C++/JS golden vectors
+(`tests/fixtures/cpp_js_parity.json`) plus the `overlayPanelName()` ↔
+`createSlotPanel` name lockstep.)
+
 ## Notes / gotchas
 
 - **Don't put these under `mxbmrp3_data/web/`** — that folder is synced to the

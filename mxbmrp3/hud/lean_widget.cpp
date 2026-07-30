@@ -211,7 +211,7 @@ void LeanWidget::rebuildRenderData() {
     }
 
     // Check for crash recovery - reset max lean when recovering from crash
-    const TrackPositionData* playerPos = pluginData.getPlayerTrackPosition();
+    const RiderTrackState* playerPos = pluginData.getPlayerTrackPosition();
     bool isCrashed = playerPos && playerPos->crashed;
     if (m_wasCrashed && !isCrashed) {
         resetTracking();
@@ -236,95 +236,52 @@ void LeanWidget::rebuildRenderData() {
         // is m_steerFramesRemaining > 0; the steer value alone may be non-zero from a
         // steady hold without the linger ever arming, so checking the value isn't
         // enough — we need to check the linger state directly.
-        if (currentSteer > 1.0f && m_steerFramesRemaining[0] == 0) {
-            m_steerMarkerLeft = currentSteer;
-            m_steerFramesRemaining[0] = m_maxMarkerLingerFrames;
-        } else if (currentSteer < -1.0f && m_steerFramesRemaining[1] == 0) {
-            m_steerMarkerRight = std::abs(currentSteer);
-            m_steerFramesRemaining[1] = m_maxMarkerLingerFrames;
+        // Positive steer == left in this API, so the sides map straight across.
+        if (currentSteer > 0.0f) {
+            PeakMarker::snapOnImpact(m_steerMarkerLeft, m_steerFramesRemaining[0],
+                                     currentSteer, 1.0f, m_maxMarkerLingerFrames);
+        } else {
+            PeakMarker::snapOnImpact(m_steerMarkerRight, m_steerFramesRemaining[1],
+                                     std::abs(currentSteer), 1.0f, m_maxMarkerLingerFrames);
         }
 
         // Snap lean max marker on the side matching current lean (same gate semantics)
         if (bikeData.isValid) {
+            // Lean uses the opposite sign convention to steer: negative == left.
             float impactLean = bikeData.roll;
-            if (impactLean < -0.5f && m_maxFramesRemaining[0] == 0) {
-                m_markerValueLeft = std::abs(impactLean);
-                m_maxFramesRemaining[0] = m_maxMarkerLingerFrames;
-            } else if (impactLean > 0.5f && m_maxFramesRemaining[1] == 0) {
-                m_markerValueRight = impactLean;
-                m_maxFramesRemaining[1] = m_maxMarkerLingerFrames;
+            if (impactLean < 0.0f) {
+                PeakMarker::snapOnImpact(m_markerValueLeft, m_maxFramesRemaining[0],
+                                         std::abs(impactLean), 0.5f, m_maxMarkerLingerFrames);
+            } else {
+                PeakMarker::snapOnImpact(m_markerValueRight, m_maxFramesRemaining[1],
+                                         impactLean, 0.5f, m_maxMarkerLingerFrames);
             }
         }
 
         // Collapse to a single marker per gauge so the freeze shows one peak, not two.
         // Higher linger count == more recently set.
-        if (m_maxFramesRemaining[0] > 0 && m_maxFramesRemaining[1] > 0) {
-            if (m_maxFramesRemaining[0] >= m_maxFramesRemaining[1]) {
-                m_maxFramesRemaining[1] = 0;
-                m_markerValueRight = 0.0f;
-            } else {
-                m_maxFramesRemaining[0] = 0;
-                m_markerValueLeft = 0.0f;
-            }
-        }
-        if (m_steerFramesRemaining[0] > 0 && m_steerFramesRemaining[1] > 0) {
-            if (m_steerFramesRemaining[0] >= m_steerFramesRemaining[1]) {
-                m_steerFramesRemaining[1] = 0;
-                m_steerMarkerRight = 0.0f;
-            } else {
-                m_steerFramesRemaining[0] = 0;
-                m_steerMarkerLeft = 0.0f;
-            }
-        }
+        PeakMarker::collapseToMostRecent(m_markerValueLeft, m_maxFramesRemaining[0],
+                                         m_markerValueRight, m_maxFramesRemaining[1]);
+        PeakMarker::collapseToMostRecent(m_steerMarkerLeft, m_steerFramesRemaining[0],
+                                         m_steerMarkerRight, m_steerFramesRemaining[1]);
     }
     m_wasCrashed = isCrashed;
 
     // Steer max marker tracking (similar to lean markers)
     constexpr float STEER_THRESHOLD = 1.0f;  // 1 degree threshold
     if (!isCrashed) {
+        // Positive steer == left in this API. Exactly zero leaves both sides idle.
         if (currentSteer > 0) {
-            // Steering left (positive = left in this API)
-            if (currentSteer > m_steerMarkerLeft + STEER_THRESHOLD) {
-                m_steerMarkerLeft = currentSteer;
-                m_steerFramesRemaining[0] = 0;
-            } else if (currentSteer < m_steerMarkerLeft - STEER_THRESHOLD && m_steerFramesRemaining[0] == 0) {
-                m_steerFramesRemaining[0] = m_maxMarkerLingerFrames;
-            } else if (m_steerFramesRemaining[0] > 0) {
-                m_steerFramesRemaining[0]--;
-                if (m_steerFramesRemaining[0] == 0) m_steerMarkerLeft = 0.0f;
-            }
-            // Countdown right marker if showing (switched from right to left)
-            if (m_steerFramesRemaining[1] > 0) {
-                m_steerFramesRemaining[1]--;
-                if (m_steerFramesRemaining[1] == 0) m_steerMarkerRight = 0.0f;
-            }
+            PeakMarker::advanceActive(m_steerMarkerLeft, m_steerFramesRemaining[0],
+                                      currentSteer, STEER_THRESHOLD, m_maxMarkerLingerFrames);
+            PeakMarker::advanceIdle(m_steerMarkerRight, m_steerFramesRemaining[1]);
         } else if (currentSteer < 0) {
-            // Steering right (negative = right)
-            float absSteer = std::abs(currentSteer);
-            if (absSteer > m_steerMarkerRight + STEER_THRESHOLD) {
-                m_steerMarkerRight = absSteer;
-                m_steerFramesRemaining[1] = 0;
-            } else if (absSteer < m_steerMarkerRight - STEER_THRESHOLD && m_steerFramesRemaining[1] == 0) {
-                m_steerFramesRemaining[1] = m_maxMarkerLingerFrames;
-            } else if (m_steerFramesRemaining[1] > 0) {
-                m_steerFramesRemaining[1]--;
-                if (m_steerFramesRemaining[1] == 0) m_steerMarkerRight = 0.0f;
-            }
-            // Countdown left marker if showing (switched from left to right)
-            if (m_steerFramesRemaining[0] > 0) {
-                m_steerFramesRemaining[0]--;
-                if (m_steerFramesRemaining[0] == 0) m_steerMarkerLeft = 0.0f;
-            }
+            PeakMarker::advanceActive(m_steerMarkerRight, m_steerFramesRemaining[1],
+                                      std::abs(currentSteer), STEER_THRESHOLD, m_maxMarkerLingerFrames);
+            PeakMarker::advanceIdle(m_steerMarkerLeft, m_steerFramesRemaining[0]);
         } else {
-            // Near center - countdown both markers if showing
-            if (m_steerFramesRemaining[0] > 0) {
-                m_steerFramesRemaining[0]--;
-                if (m_steerFramesRemaining[0] == 0) m_steerMarkerLeft = 0.0f;
-            }
-            if (m_steerFramesRemaining[1] > 0) {
-                m_steerFramesRemaining[1]--;
-                if (m_steerFramesRemaining[1] == 0) m_steerMarkerRight = 0.0f;
-            }
+            PeakMarker::advanceIdle(m_steerMarkerLeft, m_steerFramesRemaining[0]);
+            PeakMarker::advanceIdle(m_steerMarkerRight, m_steerFramesRemaining[1]);
         }
     } else {
         // Freeze steer max-marker linger while crashed so the rider can read the
@@ -341,55 +298,18 @@ void LeanWidget::rebuildRenderData() {
         currentLean = bikeData.roll;
 
         // Update lean marker tracking
+        // Lean uses the opposite sign convention to steer: negative == left.
         if (currentLean < 0) {
-            // Leaning left (negative)
-            float absLean = std::abs(currentLean);
-            // Max marker: show at peak when value starts decreasing, hide when increasing
-            if (absLean > m_markerValueLeft + LEAN_THRESHOLD) {
-                // Value exceeds marker - update marker position, hide it
-                m_markerValueLeft = absLean;
-                m_maxFramesRemaining[0] = 0;
-            } else if (absLean < m_markerValueLeft - LEAN_THRESHOLD && m_maxFramesRemaining[0] == 0) {
-                // Value dropped below marker - start showing marker
-                m_maxFramesRemaining[0] = m_maxMarkerLingerFrames;
-            } else if (m_maxFramesRemaining[0] > 0) {
-                m_maxFramesRemaining[0]--;
-                if (m_maxFramesRemaining[0] == 0) m_markerValueLeft = 0.0f;
-            }
-            // Countdown right marker if showing (switched from right to left)
-            if (m_maxFramesRemaining[1] > 0) {
-                m_maxFramesRemaining[1]--;
-                if (m_maxFramesRemaining[1] == 0) m_markerValueRight = 0.0f;
-            }
+            PeakMarker::advanceActive(m_markerValueLeft, m_maxFramesRemaining[0],
+                                      std::abs(currentLean), LEAN_THRESHOLD, m_maxMarkerLingerFrames);
+            PeakMarker::advanceIdle(m_markerValueRight, m_maxFramesRemaining[1]);
         } else if (currentLean > 0) {
-            // Leaning right (positive)
-            // Max marker: show at peak when value starts decreasing, hide when increasing
-            if (currentLean > m_markerValueRight + LEAN_THRESHOLD) {
-                // Value exceeds marker - update marker position, hide it
-                m_markerValueRight = currentLean;
-                m_maxFramesRemaining[1] = 0;
-            } else if (currentLean < m_markerValueRight - LEAN_THRESHOLD && m_maxFramesRemaining[1] == 0) {
-                // Value dropped below marker - start showing marker
-                m_maxFramesRemaining[1] = m_maxMarkerLingerFrames;
-            } else if (m_maxFramesRemaining[1] > 0) {
-                m_maxFramesRemaining[1]--;
-                if (m_maxFramesRemaining[1] == 0) m_markerValueRight = 0.0f;
-            }
-            // Countdown left marker if showing (switched from left to right)
-            if (m_maxFramesRemaining[0] > 0) {
-                m_maxFramesRemaining[0]--;
-                if (m_maxFramesRemaining[0] == 0) m_markerValueLeft = 0.0f;
-            }
+            PeakMarker::advanceActive(m_markerValueRight, m_maxFramesRemaining[1],
+                                      currentLean, LEAN_THRESHOLD, m_maxMarkerLingerFrames);
+            PeakMarker::advanceIdle(m_markerValueLeft, m_maxFramesRemaining[0]);
         } else {
-            // Near center - countdown both markers if showing
-            if (m_maxFramesRemaining[0] > 0) {
-                m_maxFramesRemaining[0]--;
-                if (m_maxFramesRemaining[0] == 0) m_markerValueLeft = 0.0f;
-            }
-            if (m_maxFramesRemaining[1] > 0) {
-                m_maxFramesRemaining[1]--;
-                if (m_maxFramesRemaining[1] == 0) m_markerValueRight = 0.0f;
-            }
+            PeakMarker::advanceIdle(m_markerValueLeft, m_maxFramesRemaining[0]);
+            PeakMarker::advanceIdle(m_markerValueRight, m_maxFramesRemaining[1]);
         }
 
         // Apply smoothing only when not crashed
@@ -405,10 +325,8 @@ void LeanWidget::rebuildRenderData() {
     else {
         // Data invalid - reset lean to 0 (same as other widgets)
         m_smoothedLean = 0.0f;
-        m_markerValueLeft = 0.0f;
-        m_markerValueRight = 0.0f;
-        m_maxFramesRemaining[0] = 0;
-        m_maxFramesRemaining[1] = 0;
+        PeakMarker::clear(m_markerValueLeft, m_maxFramesRemaining[0]);
+        PeakMarker::clear(m_markerValueRight, m_maxFramesRemaining[1]);
     }
 
     // Common values used by multiple elements

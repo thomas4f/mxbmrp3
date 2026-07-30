@@ -5,6 +5,7 @@
 // ============================================================================
 
 #include "standings_hud.h"
+#include "plate_geometry.h"
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
 #include "../core/plugin_utils.h"
@@ -95,6 +96,47 @@ StandingsHud::DisplayEntry StandingsHud::DisplayEntry::fromRaceEntry(const RaceE
     snprintf(result.formattedRaceNum, sizeof(result.formattedRaceNum), "%d", entry.raceNum);
 
     return result;
+}
+
+#if defined(MXBMRP3_TEST_BUILD)
+// Where the race-number string sits inside its plate, as a fraction of the plate's
+// height (0 = string origin on the plate's top edge, 1 = on its bottom edge). The
+// value is a POSITION, not a magnitude, so small negatives are legitimate -- hence
+// the far-out-of-band NOT_FOUND sentinel rather than a negative one. (-1.0f was the
+// first choice and a real reading of -0.03 was misread as "no plate".)
+float StandingsHud::testPlateNumberInsetY(int row) const {
+    constexpr float NOT_FOUND = -1000.0f;
+    for (const auto& plate : m_raceNumPlateQuads) {
+        if (plate.rowIndex != row) continue;
+        if (plate.numberQuadIndex >= m_quads.size()) return NOT_FOUND;
+        const SPluginQuad_t& q = m_quads[plate.numberQuadIndex];
+        const float top = q.m_aafPos[0][1];
+        const float height = q.m_aafPos[1][1] - top;
+        if (height <= 0.0f) return NOT_FOUND;
+        // The race-number string for this row: the strings carry no row/column tag,
+        // so find the one whose X sits inside the plate's horizontal span.
+        const float left = q.m_aafPos[0][0], right = q.m_aafPos[2][0];
+        for (const auto& str : m_strings) {
+            const float sx = str.m_afPos[0], sy = str.m_afPos[1];
+            if (sx < left || sx > right) continue;
+            if (sy < top - height || sy > top + height * 2.0f) continue;
+            return (sy - top) / height;
+        }
+        return NOT_FOUND;
+    }
+    return NOT_FOUND;
+}
+#endif
+
+float StandingsHud::getColumnTextY(uint8_t columnIndex, float rowY, bool isPlaceholder,
+                                   const ScaledDimensions& dim) const {
+    // The plate number is the one column drawn inside a tight box, so it centres on
+    // that box instead of sitting where the top-aligned text cell puts it. See
+    // hud/plate_geometry.h.
+    if (columnIndex == COL_IDX_RACENUM && !isPlaceholder && !m_bClassicLayout) {
+        return rowY + PlateLayout::numberCenteringOffsetY(dim.lineHeightNormal, dim.fontSize);
+    }
+    return rowY;
 }
 
 float StandingsHud::getColumnTextX(uint8_t columnIndex, float columnPosition, float fontSize, bool isPlaceholder, bool gapRightAlign) const {
@@ -442,8 +484,20 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
 
         // Use Digits font for numeric columns (BEST_LAP, LAST_LAP, GAP), except text gap labels use normal font
         bool isTextGapLabel = (col.columnIndex == COL_IDX_GAP && !isPlaceholder && entry.gapStyle == DisplayEntry::GapStyle::LABEL && text[0] != '\0' && !isdigit(static_cast<unsigned char>(text[0])));
-        int font = (col.columnIndex == COL_IDX_BEST_LAP || col.columnIndex == COL_IDX_LAST_LAP || (col.columnIndex == COL_IDX_GAP && !isTextGapLabel))
-            ? this->getFont(FontCategory::DIGITS) : this->getFont(FontCategory::NORMAL);
+        // The plate number uses TITLE, matching how real broadcast graphics set a
+        // number plate (the shipped title face is italic, like the plates themselves).
+        // Only in the modern layout: classic has no plate, so the number is just
+        // another column and stays in the body font.
+        bool isPlateNumber = (col.columnIndex == COL_IDX_RACENUM && !isPlaceholder && !m_bClassicLayout);
+        int font;
+        if (isPlateNumber) {
+            font = this->getFont(FontCategory::TITLE);
+        } else if (col.columnIndex == COL_IDX_BEST_LAP || col.columnIndex == COL_IDX_LAST_LAP
+                   || (col.columnIndex == COL_IDX_GAP && !isTextGapLabel)) {
+            font = this->getFont(FontCategory::DIGITS);
+        } else {
+            font = this->getFont(FontCategory::NORMAL);
+        }
 
         // Column alignment differs by layout/content.
         //   Modern:  position right-aligned,  race number centered on the plate.
@@ -467,7 +521,12 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
             }
         }
         bool skipShadow = (col.columnIndex == COL_IDX_RACENUM && !isPlaceholder && !m_bClassicLayout);
-        addString(text, textX, currentY, justify, font, columnColor, dim.fontSize, skipShadow);
+        // The race number is the one column drawn inside a tight box, so it is the
+        // one that has to be centred on that box rather than sitting where the
+        // top-aligned text cell puts it. Everything else stays put — see
+        // hud/plate_geometry.h for why the rest of the row already reads correctly.
+        float textY = getColumnTextY(col.columnIndex, currentY, isPlaceholder, dim);
+        addString(text, textX, textY, justify, font, columnColor, dim.fontSize, skipShadow);
     }
 }
 
@@ -494,10 +553,6 @@ void StandingsHud::DisplayEntry::updateFormattedStrings() {
     } else {
         formattedPosDelta[0] = '\0';
     }
-}
-
-bool StandingsHud::shouldShowGapForScope(bool isPlayerRow) const {
-    return m_gapMode != GapMode::PLAYER || isPlayerRow;
 }
 
 void StandingsHud::addDisplayEntries(int startIdx, int endIdx, int positionBase,

@@ -2,6 +2,7 @@
 // core/companion_window.cpp  — see companion_window.h
 // ============================================================================
 #include "companion_window.h"
+#include "thread_detach_grace.h"
 
 #include "hud_sw_renderer.h"
 #include "../diagnostics/logger.h"
@@ -57,35 +58,15 @@ CompanionWindow& CompanionWindow::getInstance() {
 }
 
 CompanionWindow::~CompanionWindow() {
-    // Static-teardown backstop: only fires if the orchestrated shutdown (stop())
-    // was skipped — e.g. the DLL is unloaded WITHOUT the Shutdown() export being
-    // called. That path runs under the Windows loader lock (FreeLibrary -> static
-    // dtors), and a std::thread::join() waits for the thread's OS-level exit, which
-    // ALSO needs the loader lock -> deadlock. So DON'T join: signal stop, spin until
-    // the thread has left our loop (an app-level flag, no loader lock involved), then
-    // detach so its CRT/OS teardown finishes without us blocking on it. Same shape
-    // (and same known residual window) as ~XInputReader / ~PluginThread.
+    // Static-teardown backstop: fires ONLY when the orchestrated shutdown
+    // (stop()) was skipped — the DLL unloaded without the Shutdown() export.
+    // Never joins: that deadlocks on the loader lock. The whole rationale, the
+    // bounded spin and the grace live in thread_detach_grace.h.
     if (m_thread.joinable()) {
         m_enabled.store(false);
         m_run.store(false);
-        // BOUNDED spin: on an ExitProcess-without-Shutdown() teardown the OS has
-        // already TERMINATED the thread - the finished flag will never be stored,
-        // and an unbounded spin would hang process exit forever. ~2s covers any
-        // legitimately slow exit; past it, detach regardless (a terminated thread
-        // makes the detach trivially safe; a pathologically still-live one lands
-        // in the same known residual window documented above).
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-        while (!m_threadFinished.load(std::memory_order_acquire) &&
-               std::chrono::steady_clock::now() < deadline) {
-            std::this_thread::yield();
-        }
-        m_thread.detach();
+        ThreadTeardown::spinThenDetach(m_thread, m_threadFinished);
     }
-}
-
-void CompanionWindow::setAssetRoot(const std::string& root) {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    m_assetRoot = root;
 }
 
 void CompanionWindow::setSavedGeometry(int x, int y, int w, int h) {
@@ -93,12 +74,12 @@ void CompanionWindow::setSavedGeometry(int x, int y, int w, int h) {
     // WM_MOVE/WM_SIZE while the game thread reads them at save time, and four
     // independent atomics could be read torn mid-update (a new x/y paired with an
     // old w/h), persisting a bogus rect. A tiny mutex keeps the rect self-consistent.
-    std::lock_guard<std::mutex> lock(m_geomMutex);
+    MutexLock lock(m_geomMutex);
     m_geomX = x; m_geomY = y; m_geomW = w; m_geomH = h;
 }
 
 void CompanionWindow::getSavedGeometry(int& x, int& y, int& w, int& h) const {
-    std::lock_guard<std::mutex> lock(m_geomMutex);
+    MutexLock lock(m_geomMutex);
     x = m_geomX; y = m_geomY; w = m_geomW; h = m_geomH;
 }
 
@@ -167,7 +148,7 @@ void CompanionWindow::submit(const std::vector<SPluginQuad_t>& quads,
                              const std::vector<std::string>& spritePaths,
                              int firstIcon) {
     if (!m_enabled.load(std::memory_order_relaxed)) return;
-    std::lock_guard<std::mutex> lock(m_mutex);
+    MutexLock lock(m_mutex);
     m_quads = quads;
     m_strings = strings;
     m_firstIcon = firstIcon;
@@ -341,24 +322,27 @@ void CompanionWindow::threadMain() {
         // Snapshot the latest frame under the lock, then render outside it.
         int firstIcon; bool have;
         {
-            std::lock_guard<std::mutex> lock(m_mutex);
+            MutexLock lock(m_mutex);
             quads = m_quads; strings = m_strings;
             fontBases = m_fontBases; spriteBases = m_spriteBases;
             firstIcon = m_firstIcon; root = m_assetRoot; have = m_haveFrame;
         }
 
         RECT rc; GetClientRect(hwnd, &rc);
-        int cw = std::max(1, (int)(rc.right - rc.left)), ch = std::max(1, (int)(rc.bottom - rc.top));
+        // Named apart from the creation-time cw/ch above (the initial window
+        // size): these are the LIVE client size, re-read every paint.
+        int clientW = std::max(1, (int)(rc.right - rc.left)),
+            clientH = std::max(1, (int)(rc.bottom - rc.top));
         // A 16:9 content rect centered in the client sets the HUD's SCALE (so it never
         // distorts), but we render into the FULL client — elements positioned outside
         // [0,1] (negative / past 1, exactly as the in-game HUD allows) then land in the
         // surrounding area instead of being clipped off by a letterbox. The window is
         // freely resizable to any shape; the extra space is usable, not dead bars.
-        int rw = cw, rh = cw * 9 / 16;
-        if (rh > ch) { rh = ch; rw = ch * 16 / 9; }
+        int rw = clientW, rh = clientW * 9 / 16;
+        if (rh > clientH) { rh = clientH; rw = clientH * 16 / 9; }
         rw = std::max(1, rw); rh = std::max(1, rh);
-        int dx = (cw - rw) / 2, dy = (ch - rh) / 2;
-        if (img.w != cw || img.h != ch) img.resize(cw, ch);
+        int dx = (clientW - rw) / 2, dy = (clientH - rh) / 2;
+        if (img.w != clientW || img.h != clientH) img.resize(clientW, clientH);
         img.setViewport((float)dx, (float)dy, (float)rw, (float)rh);
 
         if (have) {
@@ -393,8 +377,8 @@ void CompanionWindow::threadMain() {
         }
         BITMAPINFO bmi{};
         bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-        bmi.bmiHeader.biWidth = cw;
-        bmi.bmiHeader.biHeight = -ch;  // top-down
+        bmi.bmiHeader.biWidth = clientW;
+        bmi.bmiHeader.biHeight = -clientH;  // top-down
         bmi.bmiHeader.biPlanes = 1;
         bmi.bmiHeader.biBitCount = 32;
         bmi.bmiHeader.biCompression = BI_RGB;
@@ -402,16 +386,16 @@ void CompanionWindow::threadMain() {
         HDC dc = GetDC(hwnd);
         // (Re)create the back buffer to match the client size.
         if (!memDC) memDC = CreateCompatibleDC(dc);
-        if (cw != bbW || ch != bbH) {
-            HBITMAP nb = CreateCompatibleBitmap(dc, cw, ch);
+        if (clientW != bbW || clientH != bbH) {
+            HBITMAP nb = CreateCompatibleBitmap(dc, clientW, clientH);
             HBITMAP prev = (HBITMAP)SelectObject(memDC, nb);
             if (!oldBmp) oldBmp = prev;         // stash the DC's original bitmap for cleanup
             if (memBmp) DeleteObject(memBmp);   // free the previous back buffer
-            memBmp = nb; bbW = cw; bbH = ch;
+            memBmp = nb; bbW = clientW; bbH = clientH;
         }
         // Compose off-screen (one full-client image), then one blit to the window.
-        StretchDIBits(memDC, 0, 0, cw, ch, 0, 0, cw, ch, bgra.data(), &bmi, DIB_RGB_COLORS, SRCCOPY);
-        BitBlt(dc, 0, 0, cw, ch, memDC, 0, 0, SRCCOPY);
+        StretchDIBits(memDC, 0, 0, clientW, clientH, 0, 0, clientW, clientH, bgra.data(), &bmi, DIB_RGB_COLORS, SRCCOPY);
+        BitBlt(dc, 0, 0, clientW, clientH, memDC, 0, 0, SRCCOPY);
         ReleaseDC(hwnd, dc);
 
         // Pace the thread: V-Sync (DwmFlush blocks until the compositor's next present —

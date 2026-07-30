@@ -119,7 +119,7 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
     // Info text - same style as the other tab hints
     ColorConfig& colors = ColorConfig::getInstance();
     ctx.currentY += ctx.lineHeightNormal * 0.5f;
-    ctx.parent->addString("Toggle PB scope (Bike/Category) in the General tab.", ctx.labelX, ctx.currentY,
+    ctx.parent->addString("Toggle PB scope (Bike/Class) in the General tab.", ctx.labelX, ctx.currentY,
         PluginConstants::Justify::LEFT, PluginConstants::Fonts::getNormal(),
         colors.getMuted(), ctx.fontSize * 0.9f);
     ctx.currentY += ctx.lineHeightNormal;

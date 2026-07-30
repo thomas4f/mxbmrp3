@@ -5,6 +5,7 @@
 #pragma once
 
 #include "../game/unified_types.h"
+#include "camera_resolve.h"
 #include <atomic>
 
 class SpectateHandler {
@@ -13,21 +14,11 @@ public:
 
     // Semantic camera roles. The SpectateCameras list is dynamic per track (track
     // cameras like Trackside/Pits/Start appear only when defined, shifting indices),
-    // so we select by NAME, never by a fixed index. Each role maps to one or more
-    // candidate camera names; the first one present on the current track is used,
-    // falling back to Auto (which is always available, index 0).
-    enum class CameraRole {
-        AUTO,            // "Auto" - game's own trackside auto-director for the subject
-        TRACKSIDE,       // "Trackside" / "Camera Set" - track TV cameras
-        START,           // "Start" - grid/start camera
-        ONBOARD_FRONT,   // "Front Fender" - forward onboard
-        ONBOARD_HELMET,  // "Helmet 1" - on-head POV (forward)
-        ONBOARD_HELMET2, // "Helmet 2" - side/secondary helmet cam (forward)
-        REAR,            // "Rear Fender" - rearward onboard (shows a chaser)
-        FORKS,           // "Forks" - down the front suspension
-        FREE_ROAM        // "Free-Roam" / "Free" / "Orbit" - manual hand-flown camera
-                         // (used by the director's gamepad-takeover grab)
-    };
+    // so we select by NAME, never by a fixed index. The roles and all the name
+    // matching they drive are pure logic and live in camera_resolve.h (unit-tested
+    // there); this alias keeps every `SpectateHandler::CameraRole::X` call site
+    // working unchanged.
+    using CameraRole = Cameras::Role;
 
     // Handle spectate vehicle selection callback
     // Returns 1 if selection changed, 0 otherwise

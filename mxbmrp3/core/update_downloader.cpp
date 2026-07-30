@@ -71,7 +71,7 @@ void UpdateDownloader::shutdown() {
     // nothing can fire it now - and a future late download must not call
     // into destroyed HUDs.
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        MutexLock lock(m_mutex);
         m_stateChangeCallback = nullptr;
     }
 }
@@ -81,7 +81,7 @@ void UpdateDownloader::closeHttpHandles() {
     HINTERNET c;
     HINTERNET s;
     {
-        std::lock_guard<std::mutex> lock(m_httpHandleMutex);
+        MutexLock lock(m_httpHandleMutex);
         r = static_cast<HINTERNET>(m_hHttpRequest);  m_hHttpRequest = nullptr;
         c = static_cast<HINTERNET>(m_hHttpConnect);   m_hHttpConnect = nullptr;
         s = static_cast<HINTERNET>(m_hHttpSession);   m_hHttpSession = nullptr;
@@ -100,7 +100,7 @@ void UpdateDownloader::reset() {
     m_bytesDownloaded = 0;
     m_totalBytes = 0;
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        MutexLock lock(m_mutex);
         m_errorMessage.clear();
         for (int i = 0; i < static_cast<int>(Step::STEP_COUNT); i++) {
             m_stepStatus[i] = StepStatus::PENDING;
@@ -122,7 +122,7 @@ void UpdateDownloader::startDownload(const std::string& url, size_t expectedSize
 
     // Store parameters and reset step tracking
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        MutexLock lock(m_mutex);
         m_downloadUrl = url;
         m_checksumHash = checksumHash;
         m_expectedSize = expectedSize;
@@ -183,7 +183,7 @@ std::string UpdateDownloader::getStatusText() const {
         case State::READY:
             return "Update installed! Restart " GAME_NAME " to apply.";
         case State::FAILED: {
-            std::lock_guard<std::mutex> lock(m_mutex);
+            MutexLock lock(m_mutex);
             return "Failed: " + m_errorMessage;
         }
     }
@@ -191,12 +191,12 @@ std::string UpdateDownloader::getStatusText() const {
 }
 
 std::string UpdateDownloader::getErrorMessage() const {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    MutexLock lock(m_mutex);
     return m_errorMessage;
 }
 
 void UpdateDownloader::setStateChangeCallback(std::function<void()> callback) {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    MutexLock lock(m_mutex);
     m_stateChangeCallback = callback;
 }
 
@@ -207,7 +207,7 @@ void UpdateDownloader::notifyStateChange() {
     // Current callbacks only trigger HUD redraws via markDataDirty(), which is thread-safe.
     std::function<void()> callback;
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        MutexLock lock(m_mutex);
         callback = m_stateChangeCallback;
     }
     if (callback) {
@@ -216,7 +216,7 @@ void UpdateDownloader::notifyStateChange() {
 }
 
 void UpdateDownloader::resetSteps() {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    MutexLock lock(m_mutex);
     for (int i = 0; i < static_cast<int>(Step::STEP_COUNT); i++) {
         m_stepStatus[i] = StepStatus::PENDING;
     }
@@ -224,14 +224,14 @@ void UpdateDownloader::resetSteps() {
 
 void UpdateDownloader::setStepStatus(Step step, StepStatus status) {
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        MutexLock lock(m_mutex);
         m_stepStatus[static_cast<int>(step)] = status;
     }
     notifyStateChange();  // Trigger UI refresh
 }
 
 std::vector<UpdateDownloader::StepInfo> UpdateDownloader::getSteps() const {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    MutexLock lock(m_mutex);
 
     // Step labels
     static const char* labels[] = {
@@ -388,7 +388,7 @@ void UpdateDownloader::workerThread() {
                 m_state = State::IDLE;
                 DEBUG_INFO("UpdateDownloader: Cancelled");
             } else {
-                std::lock_guard<std::mutex> lock(m_mutex);
+                MutexLock lock(m_mutex);
                 m_errorMessage = error;
                 m_state = State::FAILED;
                 DEBUG_WARN_F("UpdateDownloader: Download failed - %s", error.c_str());
@@ -417,7 +417,7 @@ void UpdateDownloader::workerThread() {
             std::string errorMsg = "Size mismatch: expected " + std::to_string(m_expectedSize) +
                                    ", got " + std::to_string(zipData.size());
             {
-                std::lock_guard<std::mutex> lock(m_mutex);
+                MutexLock lock(m_mutex);
                 m_errorMessage = errorMsg;
                 m_state = State::FAILED;
             }
@@ -435,7 +435,7 @@ void UpdateDownloader::workerThread() {
         // Verify SHA256 checksum if available
         std::string expectedHash;
         {
-            std::lock_guard<std::mutex> lock(m_mutex);
+            MutexLock lock(m_mutex);
             expectedHash = m_checksumHash;
         }
 
@@ -448,7 +448,7 @@ void UpdateDownloader::workerThread() {
                 // installing anyway would silently skip the integrity check, so
                 // treat it exactly like a mismatch.
                 {
-                    std::lock_guard<std::mutex> lock(m_mutex);
+                    MutexLock lock(m_mutex);
                     m_errorMessage = "SHA256 verification failed (could not compute hash)";
                     m_state = State::FAILED;
                 }
@@ -457,7 +457,7 @@ void UpdateDownloader::workerThread() {
                 return;
             } else if (actualHash != expectedHash) {
                 {
-                    std::lock_guard<std::mutex> lock(m_mutex);
+                    MutexLock lock(m_mutex);
                     m_errorMessage = "SHA256 checksum mismatch";
                     m_state = State::FAILED;
                 }
@@ -491,7 +491,7 @@ void UpdateDownloader::workerThread() {
 
         if (!extractAndInstall(zipData, error)) {
             {
-                std::lock_guard<std::mutex> lock(m_mutex);
+                MutexLock lock(m_mutex);
                 m_errorMessage = error;
                 m_state = State::FAILED;
             }
@@ -532,7 +532,7 @@ void UpdateDownloader::workerThread() {
         // propagate out of the thread and call std::terminate.
         m_state = State::FAILED;
         {
-            std::lock_guard<std::mutex> lock(m_mutex);
+            MutexLock lock(m_mutex);
             try {
                 m_errorMessage = e.what();
             } catch (...) {
@@ -548,7 +548,7 @@ void UpdateDownloader::workerThread() {
         // catch can't throw std::system_error and propagate out of the thread.
         m_state = State::FAILED;
         {
-            std::lock_guard<std::mutex> lock(m_mutex);
+            MutexLock lock(m_mutex);
             try {
                 m_errorMessage = "Unknown error";
             } catch (...) {
@@ -581,7 +581,7 @@ bool UpdateDownloader::downloadFile(std::vector<char>& outData, std::string& out
 
     std::string url;
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        MutexLock lock(m_mutex);
         url = m_downloadUrl;
     }
 
@@ -693,7 +693,7 @@ bool UpdateDownloader::downloadFile(std::vector<char>& outData, std::string& out
     // Handle creation above is non-blocking, so publishing after all three
     // are ready means shutdown can always close the complete set.
     {
-        std::lock_guard<std::mutex> lock(m_httpHandleMutex);
+        MutexLock lock(m_httpHandleMutex);
         m_hHttpSession = hSession;
         m_hHttpConnect = hConnect;
         m_hHttpRequest = hRequest;
@@ -768,7 +768,7 @@ bool UpdateDownloader::downloadFile(std::vector<char>& outData, std::string& out
 
                 // Update URL and retry with incremented depth
                 {
-                    std::lock_guard<std::mutex> lock(m_mutex);
+                    MutexLock lock(m_mutex);
                     m_downloadUrl = newUrl;
                 }
                 return downloadFile(outData, outError, redirectDepth + 1);

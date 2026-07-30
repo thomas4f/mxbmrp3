@@ -29,7 +29,7 @@ PointerWidget::PointerWidget() {
     rebuildRenderData();
 }
 
-bool PointerWidget::handlesDataType(DataChangeType dataType) const {
+bool PointerWidget::handlesDataType(DataChangeType /*dataType*/) const {
     // Pointer doesn't depend on any game data
     return false;
 }
@@ -63,6 +63,8 @@ void PointerWidget::rebuildRenderData() {
     m_quads.clear();
 
     // Don't render if widget is hidden
+    // vis-gate: the pointer renders only on the ACTIVE surface (special-cased
+    // in HudManager::collectSurface), so the game flag alone is correct.
     if (!m_bVisible) {
         return;
     }

@@ -8,6 +8,7 @@
 #include <string>
 #include <memory>
 #include <mutex>
+#include "thread_safety.h"
 #include <atomic>
 #include <thread>
 #include <chrono>
@@ -28,6 +29,17 @@ public:
     // tests can observe computed state without starting a server or fighting the
     // rebuild gate. Absent from shipping builds; see core/test_hooks.cpp.
     std::string testSnapshot() const { return buildJsonSnapshot(); }
+
+    // Test-only: the SSE sequence, which onDataChanged bumps once per actual
+    // snapshot REBUILD. It is the only externally visible difference between
+    // "this change type rebuilt" and "this change type was gated away" — the
+    // cached JSON alone can't tell them apart, since a gated frequent change
+    // leaves the previous (identical-looking) snapshot in place. See
+    // http_gating_test.cpp.
+    uint64_t testSnapshotSeq() {
+        MutexLock lock(m_dataMutex);
+        return m_sseSequence;
+    }
 #endif
 
     // Lifecycle (called by PluginManager)
@@ -88,8 +100,8 @@ private:
     std::atomic<bool> m_shutdownRequested;
     std::atomic<int> m_port;
     std::atomic<int> m_throttleMs;
-    std::string m_bindAddress;
-    mutable std::mutex m_bindMutex;  // Protects m_bindAddress (std::string not atomic)
+    std::string m_bindAddress MXB_GUARDED_BY(m_bindMutex);
+    mutable Mutex m_bindMutex;  // Protects m_bindAddress (std::string not atomic)
     std::string m_savePath;
     std::string m_webRoot;  // Path to web/ directory serving static files
 
@@ -98,10 +110,10 @@ private:
     std::unique_ptr<httplib::Server> m_server;
 
     // Cached JSON snapshot (written by game thread, read by server threads)
-    std::mutex m_dataMutex;
+    Mutex m_dataMutex;
     std::condition_variable m_dataCondition;
-    uint64_t m_sseSequence;                 // Incrementing SSE event ID (per-client tracking)
-    std::string m_cachedJson;
+    uint64_t m_sseSequence MXB_GUARDED_BY(m_dataMutex);  // Incrementing SSE event ID (per-client tracking)
+    std::string m_cachedJson MXB_GUARDED_BY(m_dataMutex);
 
     // Broadcaster panel-force command, emitted in every snapshot as
     // "overlayCmd":{panel,seq}. m_forcedSeq increments per keypress; the client
@@ -127,7 +139,16 @@ private:
                (steadyNowMs() - m_lastStatePollMs.load()) < STATE_POLL_ACTIVE_MS;
     }
     std::atomic<int64_t> m_lastStatePollMs{INT64_MIN / 2};  // Server threads write, game thread reads
-    bool m_snapshotStale = false;                           // Game thread only
+    bool m_snapshotStale = false;  // mt-plain: onDataChanged/buildJsonSnapshot are game-thread only; server threads read m_cachedJson, not this
+    // When the cached snapshot was last rebuilt. Bounds how OFTEN the game thread
+    // serializes, independently of how often it is asked to — see onDataChanged.
+    std::chrono::steady_clock::time_point m_lastBuildTime{};  // mt-plain: game-thread only, like m_snapshotStale
+
+    // True once enough time has passed to justify another rebuild. Rare transition types
+    // ignore it (they must never be deferred); everything else respects it.
+    bool buildWindowElapsed() const;
+    // Build + publish + stamp, unconditionally. The one place a rebuild happens.
+    void publishSnapshot();
     static constexpr int64_t STATE_POLL_ACTIVE_MS = 5000;
 
     // Default settings

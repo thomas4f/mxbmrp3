@@ -166,11 +166,18 @@ bool TrackedRidersManager::removeTrackedRider(const std::string& name) {
 }
 
 bool TrackedRidersManager::isTracked(const std::string& name) const {
+    // Fast path: no tracked riders configured (the default). Skip normalizeName's
+    // string allocations entirely — this runs per rider per StandingsHud rebuild.
+    if (m_trackedRiders.empty()) return false;
     std::string normalizedName = normalizeName(name);
     return m_trackedRiders.find(normalizedName) != m_trackedRiders.end();
 }
 
 const TrackedRiderConfig* TrackedRidersManager::getTrackedRider(const std::string& name) const {
+    // Fast path: no tracked riders configured (the default). Skip normalizeName's
+    // 1-3 string allocations — this runs per rider per StandingsHud rebuild, so on
+    // a full grid with the (default) empty map it was ~100-300 wasted allocs/rebuild.
+    if (m_trackedRiders.empty()) return nullptr;
     std::string normalizedName = normalizeName(name);
     auto it = m_trackedRiders.find(normalizedName);
     if (it != m_trackedRiders.end()) {

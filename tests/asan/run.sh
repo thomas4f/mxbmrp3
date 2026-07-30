@@ -4,7 +4,7 @@
 # Build and run the native AddressSanitizer + UBSan memory-safety harness for the
 # plugin's portable buffer/index surface. Needs only a native C++17 compiler with
 # libasan (default g++/clang on Linux) — no game, no Windows, no Wine. Runs fast,
-# so the CI job gates every push.
+# so the CI job is cheap enough to gate every run.
 #
 #   ./tests/asan/run.sh
 #   CXX=clang++ ./tests/asan/run.sh        # clang's ASan works too

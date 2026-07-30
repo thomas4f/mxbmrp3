@@ -40,7 +40,7 @@ namespace GameColors {
 
 void VersionWidget::startGame() {
     // Save original visibility state and ensure widget is visible for game
-    m_wasVisibleBeforeGame = m_bVisible;
+    m_wasVisibleBeforeGame = m_bVisible;  // vis-gate: save/restore of the game toggle itself
     m_bVisible = true;
 
     // Suppress cursor during game
@@ -265,8 +265,11 @@ void VersionWidget::exitGame() {
     clearStrings();
     m_quads.clear();
 
-    // Force immediate rebuild of widget render data (if still visible)
-    if (m_bVisible) {
+    // Force immediate rebuild of widget render data (if still visible on any
+    // surface — a companion-only widget must not be left with the cleared
+    // frame; update() would self-heal on the next tick via the empty-strings
+    // check, but rebuild now for consistency).
+    if (isVisibleAnySurface()) {
         rebuildRenderData();
     }
 }

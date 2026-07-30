@@ -43,7 +43,7 @@ void FmxHud::update() {
     }
 
     // Use standard dirty flag system - rebuilds only when telemetry
-    // marks us dirty (~100Hz), skipping redundant frames at 240fps
+    // marks us dirty (~100Hz), skipping redundant frames at 480fps
     processDirtyFlags();
 }
 
@@ -468,7 +468,7 @@ void FmxHud::rebuildRenderData() {
         // — matching the bars/g-force widgets. Without the !isCrashed guard on the
         // IDLE branch below, the failure animation's timer would expire mid-crash and
         // reset the arcs to live tracking while the rider is still down.
-        const TrackPositionData* playerPos = PluginData::getInstance().getPlayerTrackPosition();
+        const RiderTrackState* playerPos = PluginData::getInstance().getPlayerTrackPosition();
         bool isCrashed = playerPos && playerPos->crashed;
 
         if (hasClassifiedTrick || freshUnclassified || airborneActive) {

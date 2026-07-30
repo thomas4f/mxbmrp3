@@ -116,6 +116,16 @@ struct EventLogEntry {
     // In-game only: the web overlay picks colors client-side and ignores this.
     int iconColorSlot = -1;
 
+    // The rider this event is ABOUT, or -1 for a session-level event (green flag, overtime,
+    // time expired). Set purely so the Event Log can offer click-to-spectate on the row, the
+    // way Standings and Map do on theirs; nothing about the rendered text depends on it. The
+    // message is pre-formatted ("#42 fastest lap"), so the number could not be recovered
+    // from it afterwards — hence a field rather than parsing.
+    //
+    // A rider number here does NOT mean the row is clickable: retirements and DSQs name a
+    // rider who can no longer be spectated. PluginData::isRiderSpectatable() is the gate.
+    int raceNum = -1;
+
     EventLogEntry()
         : type(EventLogType::SessionStarted), sessionTimeMs(0) {
         message[0] = '\0';

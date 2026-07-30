@@ -50,7 +50,11 @@ public:
 
 private:
     PluginManager();
-    ~PluginManager() { shutdown(); }
+    // Static-teardown backstop — deliberately NOT the orchestrated shutdown().
+    // See the definition in plugin_manager.cpp for why calling shutdown() from
+    // here crashes (v1.27.7.44 analytics: use-after-destruction of StatsManager
+    // / PluginData during _execute_onexit_table).
+    ~PluginManager();
     PluginManager(const PluginManager&) = delete;
     PluginManager& operator=(const PluginManager&) = delete;
 

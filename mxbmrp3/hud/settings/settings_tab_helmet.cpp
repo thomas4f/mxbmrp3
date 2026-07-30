@@ -179,8 +179,6 @@ BaseHud* SettingsHud::renderTabHelmet(SettingsLayoutContext& ctx) {
 
     ctx.addTabTooltip("helmet");
 
-    ColorConfig& colors = ColorConfig::getInstance();
-
     // Helper: format a normalized 0..1 value as a percentage string
     auto fmtPct = [](float value) {
         char buf[16];

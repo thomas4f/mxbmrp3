@@ -3,14 +3,11 @@
 // Processes race vehicle data (telemetry for all riders during races/replays)
 // ============================================================================
 #include "race_vehicle_data_handler.h"
-#include "../core/handler_singleton.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
 #include "../diagnostics/logger.h"
 
-DEFINE_HANDLER_SINGLETON(RaceVehicleDataHandler)
-
-void RaceVehicleDataHandler::handleRaceVehicleData(Unified::RaceVehicleData* psRaceVehicleData) {
+void Handlers::handleRaceVehicleData(Unified::RaceVehicleData* psRaceVehicleData) {
     // Defensive null check and active vehicle check
     if (!psRaceVehicleData || !psRaceVehicleData->active) {
         return;

@@ -10,6 +10,9 @@
 #include "../core/color_config.h"
 #include "../core/font_config.h"
 #include "../core/asset_manager.h"
+#include "../core/input_manager.h"
+#include "../core/plugin_manager.h"
+#include "../diagnostics/logger.h"
 #include <ctime>
 
 EventLogHud::EventLogHud() {
@@ -41,15 +44,60 @@ bool EventLogHud::handlesDataType(DataChangeType dataType) const {
         || dataType == DataChangeType::SessionData;
 }
 
+// Drop the rendered primitives AND the interactive state together. Every hide path must
+// use this: the click/hover block in update() runs BEFORE the auto-hide check, and
+// rebuildRenderData() (the only other place that clears the regions) does not run while
+// hidden — so regions left behind after an auto-hide keep hit-testing, and a click on empty
+// screen where a row used to be still switches the camera.
+void EventLogHud::clearRendered() {
+    if (!m_quads.empty() || !m_strings.empty()) {
+        m_quads.clear();
+        clearStrings();
+    }
+    m_riderClickRegions.clear();
+    m_hoveredRegionIndex = -1;
+    m_hoverQuadIndex = -1;
+}
+
 void EventLogHud::update() {
     if (!isVisibleAnySurface() || m_displayMode == DisplayMode::OFF) {
-        if (!m_quads.empty() || !m_strings.empty()) {
-            m_quads.clear();
-            clearStrings();
-        }
+        clearRendered();
         clearDataDirty();
         clearLayoutDirty();
         return;
+    }
+
+    // Click-to-spectate + hover, in spectate/replay only — the same gate MapHud uses. On
+    // track the camera is your own bike, so a click here would do nothing.
+    {
+        PluginData& pd = PluginData::getInstance();
+        int drawState = pd.getDrawState();
+        bool canSwitchRider = (drawState == PluginConstants::ViewState::SPECTATE ||
+                               drawState == PluginConstants::ViewState::REPLAY);
+        int newHovered = -1;
+        if (canSwitchRider) {
+            InputManager& input = InputManager::getInstance();
+            // Shift into build space so rows line up when the HUD is dragged on the
+            // companion surface (no-op in-game) — same as StandingsHud.
+            CursorPosition cursor = input.getCursorPosition();
+            mapCursorToHudSpace(cursor.x, cursor.y);
+            if (cursor.isValid) {
+                for (size_t i = 0; i < m_riderClickRegions.size(); ++i) {
+                    const auto& r = m_riderClickRegions[i];
+                    if (isPointInRect(cursor.x, cursor.y, r.x, r.y, r.width, r.height)) {
+                        newHovered = static_cast<int>(i);
+                        break;
+                    }
+                }
+                if (input.getLeftButton().isClicked()) {
+                    handleClick(cursor.x, cursor.y);
+                }
+            }
+        }
+        if (newHovered != m_hoveredRegionIndex) {
+            m_hoveredRegionIndex = newHovered;
+            setDataDirty();
+        }
     }
 
     // Track new events for auto-hide timing
@@ -70,10 +118,7 @@ void EventLogHud::update() {
     // Auto-hide: check if we should be visible
     if (m_displayMode == DisplayMode::AUTO_HIDE) {
         if (!m_hasEvents) {
-            if (!m_quads.empty() || !m_strings.empty()) {
-                m_quads.clear();
-                clearStrings();
-            }
+            clearRendered();
             clearDataDirty();
             clearLayoutDirty();
             return;
@@ -82,10 +127,7 @@ void EventLogHud::update() {
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_lastEventTime).count();
         if (elapsed >= m_autoHideDurationMs) {
-            if (!m_quads.empty() || !m_strings.empty()) {
-                m_quads.clear();
-                clearStrings();
-            }
+            clearRendered();
             m_hasEvents = false;  // Stop checking timer until next event arrives
             clearDataDirty();
             clearLayoutDirty();
@@ -173,6 +215,8 @@ void EventLogHud::rebuildRenderData() {
     m_quads.clear();
     clearStrings();
     m_iconQuads.clear();
+    m_riderClickRegions.clear();
+    m_hoverQuadIndex = -1;
 
     const auto& pluginData = PluginData::getInstance();
     const auto& eventLog = pluginData.getEventLog();
@@ -260,6 +304,33 @@ void EventLogHud::rebuildRenderData() {
     // currentRow tracks absolute row index from first data row (for icon repositioning)
     int currentRow = (m_displayOrder == DisplayOrder::OLDEST_FIRST) ? emptyRows : 0;
     auto renderEntry = [&](const EventLogEntry* entry) {
+        // Spectate target for this row, if any. A rider number on the entry is not enough:
+        // retirements and DSQs name someone who can no longer be spectated, so the row must
+        // stay inert. One gate for both the region and the highlight below.
+        const bool spectatable = PluginData::getInstance().isRiderSpectatable(entry->raceNum);
+        if (spectatable) {
+            RiderClickRegion region;
+            region.x = startX;
+            region.y = currentY;
+            region.width = backgroundWidth;
+            region.height = dim.lineHeightNormal;
+            region.raceNum = entry->raceNum;
+            region.rowIndex = currentRow;
+            applyOffset(region.x, region.y);
+            // Highlight the hovered row FIRST so it sits behind this row's icon and text
+            // (quads render in push order).
+            if (static_cast<int>(m_riderClickRegions.size()) == m_hoveredRegionIndex) {
+                SPluginQuad_t hover;
+                setQuadPositions(hover, region.x, region.y, region.width, region.height);
+                hover.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
+                hover.m_ulColor = PluginUtils::applyOpacity(
+                    getColor(ColorSlot::MUTED), HOVER_HIGHLIGHT_OPACITY);
+                m_hoverQuadIndex = static_cast<int>(m_quads.size());
+                m_quads.push_back(hover);
+            }
+            m_riderClickRegions.push_back(region);
+        }
+
         // Icon (leftmost, visual anchor for scanning)
         int spriteIndex = getIconForEvent(entry->type);
         if (spriteIndex > 0) {
@@ -371,6 +442,16 @@ void EventLogHud::rebuildRenderData() {
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
 }
 
+void EventLogHud::handleClick(float mouseX, float mouseY) {
+    for (const auto& region : m_riderClickRegions) {
+        if (isPointInRect(mouseX, mouseY, region.x, region.y, region.width, region.height)) {
+            DEBUG_INFO_F("EventLogHud: Switching to rider #%d", region.raceNum);
+            PluginManager::getInstance().requestSpectateRider(region.raceNum);
+            return;   // Only process one click
+        }
+    }
+}
+
 void EventLogHud::rebuildLayout() {
     if (m_quads.empty()) {
         setBounds(0.0f, 0.0f, 0.0f, 0.0f);
@@ -434,6 +515,22 @@ void EventLogHud::rebuildLayout() {
         quad.m_aafPos[1][0] = cx - iconHalfWidth; quad.m_aafPos[1][1] = cy + iconHalfSize;
         quad.m_aafPos[2][0] = cx + iconHalfWidth; quad.m_aafPos[2][1] = cy + iconHalfSize;
         quad.m_aafPos[3][0] = cx + iconHalfWidth; quad.m_aafPos[3][1] = cy - iconHalfSize;
+    }
+
+    // Follow the drag with the spectate regions and the hover highlight. rebuildLayout is
+    // the drag fast path (no full rebuild), so without this a dragged Event Log would keep
+    // hit-testing — and highlighting — where it used to be.
+    for (auto& region : m_riderClickRegions) {
+        region.x = startX;
+        region.y = dataStartY + (region.rowIndex * dim.lineHeightNormal);
+        region.width = backgroundWidth;
+        region.height = dim.lineHeightNormal;
+        applyOffset(region.x, region.y);
+    }
+    if (m_hoverQuadIndex >= 0 && m_hoverQuadIndex < static_cast<int>(m_quads.size()) &&
+        m_hoveredRegionIndex >= 0 && m_hoveredRegionIndex < static_cast<int>(m_riderClickRegions.size())) {
+        const auto& r = m_riderClickRegions[m_hoveredRegionIndex];
+        setQuadPositions(m_quads[m_hoverQuadIndex], r.x, r.y, r.width, r.height);
     }
 
     // Update bounds (unoffset — isPointInBounds applies offset at test time)

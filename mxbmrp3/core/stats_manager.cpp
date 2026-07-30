@@ -433,19 +433,26 @@ const StatsPersonalBestData* StatsManager::getPersonalBest(std::string* outBikeN
     return it != m_personalBests.end() ? &it->second : nullptr;
 }
 
-bool StatsManager::updatePersonalBest(const StatsPersonalBestData& entry) {
-    if (!entry.isValid()) return false;
-    if (m_currentKey.empty()) return false;
+PersonalBestUpdate StatsManager::updatePersonalBest(const StatsPersonalBestData& entry) {
+    PersonalBestUpdate result;
+    if (!entry.isValid()) return result;
+    if (m_currentKey.empty()) return result;
+
+    // Scope-aware comparison BEFORE the write — see PersonalBestUpdate. Reading it
+    // after would compare the lap against itself.
+    const StatsPersonalBestData* scopedBest = getPersonalBest();
+    result.beatsScopedBest = (scopedBest == nullptr) || (entry.lapTime < scopedBest->lapTime);
 
     auto it = m_personalBests.find(m_currentKey);
     if (it != m_personalBests.end() && it->second.lapTime <= entry.lapTime) {
-        return false;  // Existing PB is faster
+        return result;  // Existing PB for this bike is faster
     }
 
     m_personalBests[m_currentKey] = entry;
     m_dirty = true;   // deferred: persisted on leave-track (RunStop/RunDeinit). A PB is set at
                       // lap completion (start/finish) — on track — and we never write on track.
-    return true;
+    result.stored = true;
+    return result;
 }
 
 // Query — by explicit track+bike
@@ -498,18 +505,28 @@ const StatsPersonalBestData* StatsManager::getPersonalBestForCategory(
     return nullptr;
 }
 
-bool StatsManager::updatePersonalBest(const std::string& trackId, const std::string& bikeName,
-                                       const StatsPersonalBestData& entry) {
-    if (!entry.isValid()) return false;
+PersonalBestUpdate StatsManager::updatePersonalBest(const std::string& trackId, const std::string& bikeName,
+                                                     const StatsPersonalBestData& entry) {
+    PersonalBestUpdate result;
+    if (!entry.isValid()) return result;
+
+    // Scope-aware comparison BEFORE the write — see PersonalBestUpdate. Under
+    // PBScope::CATEGORY this is the fastest lap across every bike in the class, which
+    // is the reference the TimingHud "Alltime" row displays; under PBScope::BIKE it is
+    // this bike's own PB and the two flags agree. Only lapTime is read, so the pointer
+    // into getPersonalBestForCategory's scratch buffer is consumed immediately.
+    const StatsPersonalBestData* scopedBest = getPersonalBest(trackId, bikeName);
+    result.beatsScopedBest = (scopedBest == nullptr) || (entry.lapTime < scopedBest->lapTime);
 
     std::string key = makeKey(trackId, bikeName);
     auto it = m_personalBests.find(key);
     if (it != m_personalBests.end() && it->second.lapTime <= entry.lapTime) {
-        return false;
+        return result;
     }
     m_personalBests[key] = entry;
     m_dirty = true;   // deferred: persisted on leave-track (RunStop/RunDeinit) — never on track.
-    return true;
+    result.stored = true;
+    return result;
 }
 
 // ============================================================================

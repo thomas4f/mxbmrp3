@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: MXB-Mods page (comments & discussion)
+    url: https://mxb-mods.com/mxbmrp3/
+    about: Questions and general discussion are also welcome here.
+  - name: Security issue (private)
+    url: https://github.com/thomas4f/mxbmrp3/security/advisories/new
+    about: Please report suspected vulnerabilities privately, not as public issues.

@@ -57,6 +57,9 @@ inline bool helmetStrengthActive(float strength) {
 
 class HelmetOverlayHud : public BaseHud {
 public:
+    // In-game immersion effect, not a panel: see BaseHud::rendersOnCompanion().
+    bool rendersOnCompanion() const override { return false; }
+
     HelmetOverlayHud();
     virtual ~HelmetOverlayHud() = default;
 

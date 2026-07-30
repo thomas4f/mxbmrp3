@@ -17,8 +17,12 @@
 //     Shutdown() runs the plugin's static-destructor teardown, which under CI's Wine
 //     is layout-sensitive and crashes (observed twice: a near-null fault in the
 //     mingw CRT's tlsmthread.c, then in ntdll's loader) once the process does it
-//     more than once. The game only ever loads the DLL once, so this is a test
-//     artifact, not a plugin bug.
+//     more than once. Part of that WAS a plugin bug — ~PluginManager used to run
+//     the full orchestrated shutdown() from static teardown, touching
+//     already-destructed singletons (the v1.27.7.44 analytics crash, since fixed
+//     and guarded by teardown_test's unload-without-Shutdown case) — but Wine's
+//     loader remains layout-sensitive on repeated load/unload cycles in one
+//     process, so the single-host + clean-shutdown discipline here stays.
 //   - Calling host.shutdown() first tears the plugin down cleanly while the
 //     singletons are alive (m_bInitialized=false), so the later FreeLibrary's
 //     static destructors are inert — the same proven-safe pattern teardown_test

@@ -7,9 +7,7 @@
 #include "../core/plugin_utils.h"
 #include "../core/plugin_data.h"
 
-DEFINE_HANDLER_SINGLETON(RunLapHandler)
-
-void RunLapHandler::handleRunLap(Unified::PlayerLapData* psLapData) {
+void Handlers::handleRunLap(Unified::PlayerLapData* psLapData) {
     HANDLER_NULL_CHECK(psLapData);
 
     // NOTE: RunLap events are player-only, limiting spectate mode functionality.

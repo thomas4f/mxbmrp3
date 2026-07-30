@@ -6,15 +6,8 @@
 
 #include "../game/unified_types.h"
 
-class RaceVehicleDataHandler {
-public:
-    static RaceVehicleDataHandler& getInstance();
+namespace Handlers {
 
-    void handleRaceVehicleData(Unified::RaceVehicleData* psRaceVehicleData);
+void handleRaceVehicleData(Unified::RaceVehicleData* psRaceVehicleData);
 
-private:
-    RaceVehicleDataHandler() = default;
-    ~RaceVehicleDataHandler() = default;
-    RaceVehicleDataHandler(const RaceVehicleDataHandler&) = delete;
-    RaceVehicleDataHandler& operator=(const RaceVehicleDataHandler&) = delete;
-};
+}  // namespace Handlers

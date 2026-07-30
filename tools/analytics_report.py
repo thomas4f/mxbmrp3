@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 # ============================================================================
 # tools/analytics_report.py
-# Turn Aptabase monthly Parquet exports into a static Markdown dashboard + SVG
-# charts, checked into analytics/ (the raw exports are NOT kept in the repo).
+# Turn Aptabase monthly exports into a static Markdown dashboard + SVG charts,
+# checked into analytics/ (the raw exports are NOT kept in the repo).
 #
-#   python3 tools/analytics_report.py <export1.parquet> [<export2.parquet> ...]
-#   python3 tools/analytics_report.py path/to/exports/*.parquet --out analytics
+#   python3 tools/analytics_report.py <export1.csv> [<export2.parquet> ...]
+#   python3 tools/analytics_report.py path/to/exports/*.csv --out analytics
+#
+# EXPORT FORMAT: .csv or .parquet, and they mix freely in one run — Aptabase has
+# offered both over time (parquet export was withdrawn), and the column schema is
+# identical either way. The only real difference is `timestamp`: parquet carries
+# epoch seconds, CSV carries "YYYY-MM-DD HH:MM:SS". See read_export()/to_utc().
 #
 # The MXBMRP3 plugin emits Aptabase events (app_started / session_end / crash /
 # app_ended / link_clicked / analytics_disabled). Aptabase ingests them well but
@@ -26,13 +31,15 @@
 #   of installs that actually reported the field, so a partial rollout can't be
 #   mistaken for "nobody uses it". See the "Data coverage" section of the report.
 #
-# Dependencies: pyarrow (parquet), pandas. Dev-only -- see tools/requirements.txt.
+# Dependencies: pandas; pyarrow only if you feed it parquet. Dev-only -- see
+# tools/requirements.txt.
 # Sibling module tools/analytics_svg.py holds the (dependency-free) SVG charts.
 # ============================================================================
 import argparse
 import glob
 import json
 import os
+import re
 import sys
 from collections import Counter, defaultdict
 
@@ -99,11 +106,44 @@ def _pretty_key(key):
     return _ACRONYMS.get(label, label)
 
 
+def read_export(path):
+    """Read one Aptabase export. Parquet or CSV — Aptabase has offered both.
+
+    CSV is read as all-strings with NA disabled so the columns behave exactly like
+    the parquet ones: this code treats "missing" as the empty string throughout
+    (`.replace("", pd.NA)`), and pandas' default NaN coercion would break that.
+    """
+    if os.path.splitext(path)[1].lower() != ".csv":
+        return pd.read_parquet(path)
+    df = pd.read_csv(path, dtype=str, keep_default_na=False)
+    # Aptabase's CSV export concatenates paginated chunks and REPEATS the header row
+    # between them (2 such rows in the 228k-row 2026-07 export). Left in, they parse
+    # as un-dated events and blow up much later, in a date reduction, with a
+    # TypeError that says nothing about the cause. Drop them at the source.
+    if "timestamp" in df.columns:
+        df = df[df["timestamp"] != "timestamp"].reset_index(drop=True)
+    return df
+
+
+def to_utc(ts):
+    """Normalize a `timestamp` column to tz-aware UTC across export formats.
+
+    Parquet carries epoch seconds (or a real datetime); CSV carries
+    "YYYY-MM-DD HH:MM:SS" strings. Dispatch on the dtype rather than guessing,
+    so a format change surfaces as bad dates rather than a crash.
+    """
+    if pd.api.types.is_datetime64_any_dtype(ts):
+        return pd.to_datetime(ts, utc=True)
+    if pd.api.types.is_numeric_dtype(ts):
+        return pd.to_datetime(ts, unit="s", utc=True)
+    return pd.to_datetime(ts, utc=True, errors="coerce")
+
+
 def load(paths):
     frames = []
     for p in paths:
         try:
-            frames.append(pd.read_parquet(p))
+            frames.append(read_export(p))
         except Exception as e:  # noqa: BLE001
             sys.exit("error: failed to read {}: {}".format(p, e))
     df = pd.concat(frames, ignore_index=True)
@@ -127,7 +167,15 @@ def load(paths):
     df["_n"] = parse("numeric_props")
     df["install_id"] = [s.get("install_id") for s in df["_s"]]
     df["game"] = [s.get("game") or "Unknown" for s in df["_s"]]
-    df["ts"] = pd.to_datetime(df["timestamp"], unit="s", utc=True)
+    df["ts"] = to_utc(df["timestamp"])
+    # Anything still undated is a malformed row. Drop it loudly rather than letting a
+    # NaT propagate into `date` and surface as an unrelated TypeError in a min()/max()
+    # reduction hundreds of lines away.
+    undated = int(df["ts"].isna().sum())
+    if undated:
+        print("warning: dropped {} row(s) with an unparseable timestamp".format(undated),
+              file=sys.stderr)
+        df = df[df["ts"].notna()].reset_index(drop=True)
     df["date"] = df["ts"].dt.date
     return df
 
@@ -318,31 +366,35 @@ def build(df, out_dir):
     d0, d1 = df["date"].min(), df["date"].max()
     n_days = (d1 - d0).days + 1
     installs = snap["install_id"].nunique()
-    games_seen = sorted(started["game"].unique())
 
     # ---- Header + summary tiles ------------------------------------------
     r.w("# MXBMRP3 - Analytics Report", "")
     r.w("<!-- GENERATED by tools/analytics_report.py from Aptabase exports. "
         "Do not edit by hand; re-run the tool. Raw exports are not kept in the repo. -->", "")
     r.w("**Data window:** {} → {} ({} days)".format(d0, d1, n_days), "")
+    # Reach only. Deliberately NOT games (always ~3, and the Games section breaks it
+    # down anyway) and NOT a raw crash-report count -- that number is meaningless
+    # without the denominator and the 1.27.5+ instrumentation caveat, both of which
+    # the Crashes section carries. A scary total up top invites the wrong reading.
     tiles = [
         ("Installs", "{:,}".format(installs)),
         ("Launches", "{:,}".format(len(started))),
-        ("Games", str(len(games_seen))),
         ("Countries", str(snap["country_name"].replace("", pd.NA).nunique())),
-        ("Crash reports", "{:,}".format(len(crashes))),
     ]
     r.w("| " + " | ".join(t[0] for t in tiles) + " |")
     r.w("|" + "|".join(["---"] * len(tiles)) + "|")
     r.w("| " + " | ".join("**{}**".format(t[1]) for t in tiles) + " |", "")
 
-    _highlights(r, df, started, sessions, crashes, snap)
-    _activity(r, df, started, sessions)
+    _highlights(r, df, started, sessions, snap)
+    # _activity owns the partial-edge trimming, so it is the single source for the day
+    # list any other daily chart must share -- two sections trimming independently is
+    # how one ends up plotting a part-day the other dropped.
+    activity_days = _activity(r, df, started, sessions)
     _games(r, started, snap)
-    _versions(r, snap)
+    _versions(r, snap, started, activity_days)
     _geography(r, snap)
     _os(r, snap)
-    _engagement(r, sessions, snap)
+    _engagement(r, sessions, snap, started)
     _features(r, snap)
     _crashes(r, started, sessions, crashes)
     _coverage(r, started, snap, dev_installs, dev_events)
@@ -353,7 +405,7 @@ def build(df, out_dir):
     return r.save()
 
 
-def _highlights(r, df, started, sessions, crashes, snap):
+def _highlights(r, df, started, sessions, snap):
     """A short, skimmable TL;DR of the standout numbers, derived from the data."""
     bullets = []
     installs = snap["install_id"].nunique()
@@ -395,20 +447,9 @@ def _highlights(r, df, started, sessions, crashes, snap):
         bullets.append("**Most-used HUD:** {} - {} of {} installs.".format(
             _pretty_key(k), pctstr(en, rep), primary))
 
-    # stability headline
-    cr, stmin, _ = crash_population(started, crashes)
-    if len(stmin):
-        lookup = load_known_crashes()[1]
-        cr = cr.copy()
-        cr["known"] = cr.apply(lambda row: match_known(row["fault"], row["game_build"], lookup), axis=1)
-        names = cr["known"].dropna().map(lambda k: k["name"])
-        top_crash = names.value_counts().index[0] if len(names) else None
-        line = "**Stability:** {} of {}+ launches produced a crash report; where a location " \
-               "was recorded, the fault was outside the plugin (see the crash breakdown)." \
-               .format(pctstr(len(cr), len(stmin)), CRASH_MIN_STR)
-        if top_crash:
-            line += " Most common: *{}*.".format(top_crash)
-        bullets.append(line)
+    # No stability headline here on purpose: the crash section below reports the same
+    # figures with the exclusions and caveats attached, and a bare percentage at the top
+    # of the report reads as a verdict without them.
 
     r.w("## Highlights", "")
     for b in bullets:
@@ -416,10 +457,57 @@ def _highlights(r, df, started, sessions, crashes, snap):
     r.w("")
 
 
+def partial_edge_days(df, min_coverage=0.9):
+    """The first/last calendar days that the export only partly covers.
+
+    An export is pulled at some instant, so its LAST day holds only the hours up to
+    that instant -- 3,627 launches against 7,727 the day before, in the first report
+    this was noticed on. Plotted as an ordinary point that is a cliff, and every
+    line chart in the report ended on a downward hook that was an artifact of when
+    somebody clicked export. The first day has the mirror problem whenever reporting
+    began mid-day (the 1.26 rollout day held 2 events from 1 install).
+
+    The summary ratio already guarded against this -- see the comment at the
+    launches-per-install figure, which divides over the whole window precisely so a
+    part-day cannot weigh as much as a full one -- but nothing applied the same
+    reasoning to the daily series.
+
+    Detected from the DATA rather than assumed: a boundary day is partial when the
+    events on it do not span at least `min_coverage` of the day. A full day at this
+    volume has events within minutes of both midnights, so the two cases are far
+    apart; the threshold is not doing subtle work. Returns (drop_first, drop_last).
+    """
+    days = sorted(df["date"].unique())
+    if len(days) < 3:            # nothing to trim to; leave the caller alone
+        return False, False
+    day_secs = 24 * 60 * 60
+
+    def covered(day, from_start):
+        ts = df.loc[df["date"] == day, "ts"]
+        if ts.empty:
+            return 0.0
+        midnight = pd.Timestamp(day, tz="UTC")
+        if from_start:           # first day: midnight -> first event
+            return 1.0 - (ts.min() - midnight).total_seconds() / day_secs
+        return (ts.max() - midnight).total_seconds() / day_secs
+
+    return covered(days[0], True) < min_coverage, covered(days[-1], False) < min_coverage
+
+
 def _activity(r, df, started, sessions):
     r.w("## Activity over time", "")
-    days = sorted(df["date"].unique())
+    all_days = sorted(df["date"].unique())
+    drop_first, drop_last = partial_edge_days(df)
+    # Trim only the DAILY SERIES. Every total in the report still counts every event:
+    # a part-day is real data, it just is not a real point on a per-day curve.
+    days = all_days[1 if drop_first else 0: len(all_days) - 1 if drop_last else len(all_days)]
     xlabels = [d.strftime("%m-%d") for d in days]
+    if drop_first or drop_last:
+        # Short on purpose: the reader needs to know the axis is trimmed, not the
+        # reasoning. Why it is trimmed lives at partial_edge_days().
+        edges = [str(d) for d, drop in ((all_days[0], drop_first), (all_days[-1], drop_last)) if drop]
+        r.w("> Daily charts omit partial export days ({}); totals include them."
+            .format(", ".join(edges)), "")
 
     def game_series(game_list):
         out = []
@@ -429,30 +517,97 @@ def _activity(r, df, started, sessions):
                         svg.GAME_COLORS.get(g, svg.PALETTE[i % len(svg.PALETTE)])))
         return out
 
-    # Split games by volume: one dominant game flattens the others to zero on a
-    # shared axis, so low-volume games get their own chart at their own scale.
+    # ONE chart, all games on a shared axis. There used to be a major/minor split at a
+    # 10%-of-launches threshold, on the reasoning that a dominant game flattens the rest
+    # to near-zero -- which is true (MX Bikes is ~99% of launches, so GP Bikes and Kart
+    # Racing Pro sit close to the axis here) and was judged not worth two charts plus a
+    # partition rule to reason about. Deliberate call, not an oversight: the low-volume
+    # games are legible in the Games table, and one chart cannot lose a game the way the
+    # threshold once lost MX Bikes.
     totals = started.groupby("game").size().sort_values(ascending=False)
-    major = [g for g in totals.index if totals[g] >= 0.10 * len(started)]
-    minor = [g for g in totals.index if g not in major]
-    r.chart("activity_launches.svg",
-            svg.lines("Daily launches" + (" - " + major[0] if len(major) == 1 else " by game"),
-                      xlabels, game_series(major), subtitle="launches per day"),
-            "Daily launches (main game)")
-    if minor:
-        r.chart("activity_launches_minor.svg",
-                svg.lines("Daily launches - " + " & ".join(minor), xlabels, game_series(minor),
-                          subtitle="lower-volume games, own scale"),
-                "Daily launches (other games)")
+    games = list(totals.index)
+    # LOG y axis whenever more than one game is plotted. MX Bikes runs ~5,000
+    # launches/day against Kart Racing Pro's ~20: on a linear axis the small games are
+    # pinned flat to the bottom and the chart only really shows one of them, which is
+    # what made the old two-chart split look necessary. A log axis lets all three be
+    # read at once. Single-game data stays linear -- there is no spread to compress,
+    # and a log axis would just make an ordinary curve harder to read.
+    if games:
+        multi = len(games) > 1
+        r.chart("activity_launches.svg",
+                svg.lines("Daily launches" + (" by game" if multi else " - " + games[0]),
+                          xlabels, game_series(games),
+                          subtitle="launches per day, all games"
+                                   + (" (log scale)" if multi else ""),
+                          log=multi),
+                "Daily launches by game" if multi else "Daily launches")
 
-    dau = started.groupby("date")["install_id"].nunique()
-    r.chart("activity_active_installs.svg",
-            svg.lines("Daily active installs", xlabels,
-                      [("Active installs", [int(dau.get(d, 0)) for d in days], svg.PALETTE[1])],
-                      subtitle="distinct installs launching per day"),
-            "Daily active installs")
-    peak = dau.max() if len(dau) else 0
-    r.w("- **Peak daily active installs:** {:,}  ·  **avg launches/day:** {:,.0f}".format(
-        int(peak), len(started) / max(1, len(days))), "")
+    # Cumulative distinct installs: the running total of installs seen at least once.
+    # CAVEAT, and why the wording below is careful: an install enters this curve when it
+    # FIRST REPORTS, not when the user installed the plugin. Analytics shipped in 1.26.0.0
+    # (2026-06-28), so 99% of installs report install_age_days=0 at their first event and
+    # nothing in the data predates that date -- the early ramp is existing users upgrading
+    # onto an instrumented build, not new users. Calling it "user growth" would overstate
+    # acquisition by most of the curve's height.
+    # Split BY GAME, in the same colours the launches chart uses for them, so the two
+    # charts in this section can be read against each other rather than as separate
+    # worlds. An install belongs to exactly one game (the plugin installs per game), so
+    # the per-game curves partition the total and the Total line is their sum -- not an
+    # independent count that could disagree.
+    def cumulative(frame):
+        first = frame.groupby("install_id")["date"].min().value_counts().sort_index()
+        run, out = 0, []
+        for d in days:
+            run += int(first.get(d, 0))
+            out.append(run)
+        return out
+
+    game_order = list(started.groupby("game").size().sort_values(ascending=False).index)
+    cume_series = [(g, cumulative(started[started["game"] == g]),
+                    svg.GAME_COLORS.get(g, svg.PALETTE[i % len(svg.PALETTE)]))
+                   for i, g in enumerate(game_order)]
+    cume_total = cumulative(started)
+    # The total is the sum of the per-game curves by construction; assert it rather than
+    # trust it, since a mismatch would mean an install counted under two games (or none)
+    # and the chart would quietly disagree with the header tile.
+    for di in range(len(days)):
+        assert sum(ser[1][di] for ser in cume_series) == cume_total[di], \
+            "per-game cumulative installs do not sum to the total on {}".format(days[di])
+    # NO Total line, deliberately. It was drawn last, so it painted over MX Bikes and
+    # made the dominant game invisible -- and reordering does not save it: MX Bikes is
+    # 98.5% of installs, so on a log axis the two curves sit ~0.3px apart and whichever
+    # is drawn second hides the other completely. A legend entry for a line nobody can
+    # distinguish is worse than no line. The exact total is in the header tile, and the
+    # assertion above still checks the per-game curves sum to it.
+    # Log axis for the same reason as the launches chart: MX Bikes ends near 5,500
+    # against Kart Racing Pro's 18, so a linear axis flattens two of the three games
+    # onto the floor. Cumulative counts start at 0 on day one, which log10(1+v) places
+    # on the floor honestly rather than dropping.
+    r.chart("activity_cumulative_installs.svg",
+            svg.lines("Cumulative installs seen", xlabels, cume_series,
+                      subtitle="running total of distinct installs, by game (log scale)",
+                      log=len(game_order) > 1),
+            "Cumulative installs seen")
+    # Just the total: "new in this window" would be the same number, since first-seen is
+    # computed within the window itself. Counted over EVERY install rather than cume[-1],
+    # which now stops at the last full day -- an install first seen on a trimmed part-day
+    # is still an install, and a headline total that quietly excluded it would be wrong in
+    # a way nobody would catch.
+    r.w("- **Installs seen to date:** {:,}".format(int(started["install_id"].nunique())), "")
+    # avg over the SAME days the charts plot. It was len(started) / len(days), which went
+    # wrong the moment `days` started excluding partial edges: the numerator still counted
+    # every launch in the window, including the part-days the denominator had dropped, and
+    # the figure rose ~6% for no real reason.
+    #
+    # "Launches per active install per day" and "peak daily active installs" used to sit
+    # here too, both from the launches-vs-installs chart that was removed with them. The
+    # ratio was that chart's headline and was near-constant anyway (median 4.11, stdev
+    # 0.32 across full days -- one number, not a trend), and Highlights already states the
+    # peak.
+    by_day = started.groupby("date").size()
+    full_day_launches = sum(int(by_day.get(d, 0)) for d in days)
+    r.w("- **avg launches/day:** {:,.0f}".format(full_day_launches / max(1, len(days))), "")
+    return days
 
 
 def _games(r, started, snap):
@@ -469,33 +624,27 @@ def _games(r, started, snap):
     for g, ins, la in rows:
         r.w("| {} | {:,} | {:,} | {:.1f}% |".format(g, ins, la, pct(la, tot)))
     r.w("")
-    # Steam vs standalone (coverage-aware on steam_runtime)
-    rep = snap[snap["_n"].map(lambda n: "steam_runtime" in n)]
-    if len(rep):
-        steam = int(rep["_n"].map(lambda n: bool(n.get("steam_runtime"))).sum())
-        r.chart("runtime_steam.svg",
-                svg.stacked_bar("Steam vs. standalone",
-                                [("Steam", steam, svg.PALETTE[0]),
-                                 ("Standalone", len(rep) - steam, svg.PALETTE[2])],
-                                subtitle="{:,} installs reporting".format(len(rep))),
-                "Steam vs standalone")
-
 
 MIN_VERSION_INSTALLS = 10  # versions below this are grouped as pre-release / dev builds
+MIN_VERSION_SHARE = 0.01   # a version needs 1% of window launches to get its own line
 
 
-def _versions(r, snap):
+def _versions(r, snap, started, days):
     r.w("## Plugin version adoption", "")
-    r.w("Each install is counted once, at its **most recent** launched version, so an install "
-        "that upgraded (e.g. 1.26 to 1.27) counts only under the newer version - never both. "
-        "Versions with fewer than {} installs (pre-release / dev builds) are grouped.".format(
+    r.w("Each install counts once, at its **most recent** version (an upgrade moves it, "
+        "never double-counts). Versions under {} installs are grouped.".format(
             MIN_VERSION_INSTALLS), "")
     vc = snap["app_version"].value_counts()
     total = len(snap)
     main = [(v, int(c)) for v, c in vc.items() if c >= MIN_VERSION_INSTALLS]
     tail = sum(int(c) for v, c in vc.items() if c < MIN_VERSION_INSTALLS)
     n_tail = sum(1 for v, c in vc.items() if c < MIN_VERSION_INSTALLS)
-    bars = [(v, c, None, cp(c, total)) for v, c in main]
+    # ONE colour per version, shared with the migration chart below. Each chart used
+    # to let its renderer assign palette slots by ITS OWN ordering -- installs here,
+    # launches there -- so the same version came out green in one and blue in the
+    # other, which reads as two different versions rather than one.
+    vercolor = {v: svg.PALETTE[i % len(svg.PALETTE)] for i, (v, _c) in enumerate(main)}
+    bars = [(v, c, vercolor[v], cp(c, total)) for v, c in main]
     if tail:
         bars.append(("Pre-release / dev ({} builds)".format(n_tail), tail, "#57606a",
                      cp(tail, total)))
@@ -503,6 +652,74 @@ def _versions(r, snap):
             svg.hbar("Installs by plugin version", bars,
                      subtitle="latest version seen per install", label_w=240),
             "Installs by plugin version")
+    # MIGRATION OVER TIME. The bar chart above is a SNAPSHOT -- every install at its
+    # latest version -- so it cannot show a rollout: an install that moved 1.26 -> 1.27
+    # mid-window looks like it was always on 1.27. This plots each day's share of
+    # launches by version, which is the shape a rollout actually has (one line falling
+    # as another rises) and is what the snapshot silently flattens.
+    #
+    # SHARE, not counts: daily volume swings by a factor of ~3 across a week, and on
+    # absolute axes every version rises and falls together with it, which reads as
+    # everything changing at once when nothing has.
+    #
+    # Only versions that clear MIN_VERSION_SHARE of window launches get a line; this
+    # window has 116 distinct versions, of which 4 carry >99% of launches and the rest
+    # are single-digit builds that would be 112 lines of floor noise. The remainder is
+    # summed into one "Other" line rather than dropped, so the lines still add to 100%.
+    if len(days) > 1 and len(started):
+        # Installs per day, not launches. Launch share over-weights heavy users -- a
+        # player who starts the game ten times counts ten times -- and the question
+        # "what is everyone running" is about people, not sessions. It also puts this
+        # chart in the same unit as the bar chart above, so the two are comparable.
+        #
+        # Each install is credited to the last version it ran that day, the same rule
+        # the bar chart uses ("an upgrade moves it, never double-counts"). Without
+        # that, an install that upgrades mid-day appears under both versions and the
+        # day sums past 100%.
+        #
+        # The populations still differ, and legitimately: the bar chart counts
+        # every install seen in the whole window, this one only installs ACTIVE on a
+        # given day. Measured here, 1.27.7.44 is 50% of all installs but 69% of the
+        # ones active on the last day, because dormant installs on older versions
+        # still sit in the bar chart's denominator. That is a real difference between
+        # "who has it" and "who is playing", not a discrepancy to reconcile away.
+        day_last = (started.sort_values("ts")
+                           .groupby(["date", "install_id"])["app_version"].last()
+                           .reset_index())
+        per_day_total = day_last.groupby("date").size()
+        vshare = day_last["app_version"].value_counts()
+        named = [v for v in vshare.index
+                 if vshare[v] >= MIN_VERSION_SHARE * len(day_last)]
+        series = []
+        for v in named:
+            by_day = day_last[day_last["app_version"] == v].groupby("date").size()
+            series.append((v, [100.0 * int(by_day.get(d, 0)) / max(1, int(per_day_total.get(d, 0)))
+                               for d in days],
+                           vercolor.get(v, svg.PALETTE[len(svg.PALETTE) - 1])))
+        rest = day_last[~day_last["app_version"].isin(named)]
+        if len(rest):
+            by_day = rest.groupby("date").size()
+            series.append(("Other ({} builds)".format(day_last["app_version"].nunique() - len(named)),
+                           [100.0 * int(by_day.get(d, 0)) / max(1, int(per_day_total.get(d, 0)))
+                            for d in days], "#57606a"))
+        # Every day's lines must add to 100%: this is a share chart, and the remainder
+        # series above is the only thing making that true. Drop it (or filter the named
+        # set inconsistently) and the lines quietly stop summing -- which reads as
+        # adoption that went nowhere rather than as a bug, so nothing downstream would
+        # question it. Checked here rather than in the selftest because this is the
+        # invariant holding for the REAL data, not for a fixture.
+        for di in range(len(days)):
+            total_share = sum(ser[1][di] for ser in series)
+            assert abs(total_share - 100.0) < 0.5 or per_day_total.get(days[di], 0) == 0, \
+                "version shares for {} sum to {:.1f}%, not 100 — a version is missing " \
+                "from both the named set and the remainder".format(days[di], total_share)
+        if series:
+            r.chart("version_migration.svg",
+                    svg.lines("Version migration", [d.strftime("%m-%d") for d in days], series,
+                              subtitle="share of each day's active installs, by plugin version",
+                              value_fmt=lambda v: "{:.0f}%".format(v)),
+                    "Version migration over time")
+
     famc = snap["app_version"].map(ver_family).value_counts()
     r.w("**By release line:** " + "  ·  ".join(
         "`{}` {}".format(f, cp(c, total)) for f, c in famc.items()), "")
@@ -550,8 +767,21 @@ def _os(r, snap):
                      subtitle="{:,} of {:,} installs report an OS".format(len(osv), len(snap))),
             "Installs by OS")
 
+    # Steam vs standalone lives here rather than under Games: it describes the RUNTIME
+    # an install is under, which is the same question this section asks, not which game
+    # it plays. Coverage-aware on steam_runtime, like every other adoption figure.
+    rep = snap[snap["_n"].map(lambda n: "steam_runtime" in n)]
+    if len(rep):
+        steam = int(rep["_n"].map(lambda n: bool(n.get("steam_runtime"))).sum())
+        r.chart("runtime_steam.svg",
+                svg.stacked_bar("Steam vs. standalone",
+                                [("Steam", steam, svg.PALETTE[0]),
+                                 ("Standalone", len(rep) - steam, svg.PALETTE[2])],
+                                subtitle="{:,} installs reporting".format(len(rep))),
+                "Steam vs standalone")
 
-def _engagement(r, sessions, snap):
+
+def _engagement(r, sessions, snap, started=None):
     r.w("## Repeat usage", "")
     lc = snap["_n"].map(lambda n: n.get("launch_count"))
     lc = pd.to_numeric(lc, errors="coerce").dropna()
@@ -567,6 +797,46 @@ def _engagement(r, sessions, snap):
                 svg.vbars("Lifetime launches per install", cats,
                           subtitle="{:,} installs reporting".format(len(lc))),
                 "Launches per install")
+
+    # How long a sitting actually lasts. duration_seconds rides every session_end, but
+    # session_end ITSELF was added in 1.27 -- 1.26 sent 83k launches and zero of them, so
+    # the naive total silently covered ~36% of launches and read as a full figure. Same
+    # schema-evolution trap the crash section handles, so this reports the denominator the
+    # same way: which versions can report at all, and what share of those launches did.
+    # The reporting versions are DERIVED (a version with no session_end predates the
+    # instrumentation), so this self-corrects as old versions age out.
+    dur = pd.to_numeric(sessions["_n"].map(lambda n: n.get("duration_seconds")),
+                        errors="coerce")
+    dur = dur[dur.notna() & (dur > 0)] / 60.0
+    if len(dur):
+        sbuckets = [("<5 min", 0, 5), ("5-15", 5, 15), ("15-30", 15, 30),
+                    ("30-60", 30, 60), ("1-2 h", 60, 120), ("2 h+", 120, 10**9)]
+        scats = [(lab, int(((dur >= lo) & (dur < hi)).sum())) for lab, lo, hi in sbuckets]
+
+        cover = ""
+        if started is not None and len(started):
+            # Keyed on the EXACT app_version, not the family: 1.26.0.0 (83k launches)
+            # reports nothing, but private 1.26.3.x dev builds do, so a family-level rule
+            # counts all of 1.26 as instrumented and the coverage figure collapses.
+            reporting = set(sessions.loc[dur.index, "app_version"])
+            n_inst = int(started["app_version"].isin(reporting).sum())
+            n_old = len(started) - n_inst
+            if n_inst:
+                cover = ("  ·  from {} of launches on versions that report one"
+                         .format(pctstr(len(dur), n_inst)))
+            if n_old:
+                cover += ("; {:,} launches on earlier versions report no session end"
+                          .format(n_old))
+        # Total is a FLOOR, not a total: every unreported session is missing from it.
+        r.w("- **Median session:** {:.0f} min  ·  **{:,} sessions**{}".format(
+            dur.median(), len(dur), cover), "")
+        r.w("- **At least {:,.0f} days** of session time across those sessions".format(
+            dur.sum() / 60.0 / 24.0), "")
+        r.chart("session_length.svg",
+                svg.vbars("Session length", scats,
+                          subtitle="{:,} reported sessions; median {:.0f} min".format(
+                              len(dur), dur.median())),
+                "Session length distribution")
 
 
 def _features(r, snap):
@@ -908,6 +1178,116 @@ def selftest():
     assert "Plugin (MXBMRP3)" not in md, "no plugin-module crash should survive dev exclusion"
     assert "About this data" in md
     assert os.path.exists(os.path.join(out, "charts", "crash_categories.svg"))
+
+    # The per-game activity chart must exist AND be referenced. The docstring above
+    # claimed "every chart is produced" without checking this one, and a regression
+    # walked straight through: gating it on `len(major) > 1` meant a single dominant
+    # game (MX Bikes is ~99% of launches, and this fixture is single-game) was never
+    # over the "more than one major" bar, so the section silently lost its main game
+    # -- and with no minor games either, emitted no per-game chart at all. The
+    # published report shipped that way. `selftest OK` printed regardless, because
+    # producing FEWER charts is not an error unless something asserts otherwise.
+    assert os.path.exists(os.path.join(out, "charts", "activity_launches.svg")), \
+        "per-game activity chart missing — a game with data fell through both the " \
+        "major and minor branches, which must PARTITION the games"
+    assert "activity_launches.svg" in md, \
+        "activity chart produced but REPORT.md does not reference it"
+
+    # partial_edge_days keys off COVERAGE, not position: a boundary day is only
+    # trimmed when the export genuinely stops short of it. Asserted both ways because
+    # the failure modes are opposite and both silent -- never trimming leaves the
+    # export-time cliff in every chart, always trimming discards a real day from a
+    # window that happens to end at midnight.
+    def _frame(last_hour):
+        ts = ([pd.Timestamp("2026-01-01 00:05", tz="UTC"), pd.Timestamp("2026-01-01 23:55", tz="UTC")]
+              + [pd.Timestamp("2026-01-02 00:05", tz="UTC"), pd.Timestamp("2026-01-02 23:55", tz="UTC")]
+              + [pd.Timestamp("2026-01-03 00:05", tz="UTC"),
+                 pd.Timestamp("2026-01-03 {:02d}:00".format(last_hour), tz="UTC")])
+        f = pd.DataFrame({"ts": ts})
+        f["date"] = f["ts"].dt.date
+        return f
+
+    assert partial_edge_days(_frame(23)) == (False, False), \
+        "a window that runs to the end of its last day must not be trimmed"
+    assert partial_edge_days(_frame(16)) == (False, True), \
+        "an export cut off mid-day must trim that day from the daily series"
+    # And a late-starting first day is caught by the same rule.
+    late = _frame(23)
+    late = late[~((late["ts"].dt.date == pd.Timestamp("2026-01-01").date())
+                  & (late["ts"].dt.hour < 12))]
+    assert partial_edge_days(late)[0] is True, \
+        "a first day that only starts reporting mid-day must be trimmed too"
+
+    # Log y axis over counts that REACH ZERO -- the one part of the log path that a
+    # chart which "looks fine" cannot show you. log10(0) is undefined, so the renderer
+    # scales log10(1+v); a zero has to land on the axis floor rather than raise, vanish,
+    # or emit a non-finite coordinate that silently truncates the polyline. Kart Racing
+    # Pro really does have zero-launch days, so this is the live case, not a hypothetical.
+    log_svg = svg.lines("t", ["a", "b", "c", "d"],
+                        [("s", [0, 1, 37, 7637], "#ffffff")], log=True)
+    coords = re.findall(r'points="([^"]+)"', log_svg)
+    assert coords, "log chart emitted no series"
+    pts = [tuple(float(v) for v in pair.split(",")) for pair in coords[0].split()]
+    assert len(pts) == 4, "a zero point was dropped from the log series"
+    ys = [y for _x, y in pts]
+    # ON CANVAS is the assertion that bites. Finiteness alone does not: substituting a
+    # tiny epsilon for the zero (log10(1e-300)) is perfectly finite and lands the point
+    # hundreds of heights off the chart, where it silently drags the polyline away.
+    assert all(0 <= y <= 320 for y in ys), \
+        "log axis put a point off-canvas — a zero count is being fed to log10() " \
+        "with an epsilon instead of scaled as log10(1+v)"
+    # And the zero belongs ON the floor: lowest on screen, i.e. the largest y.
+    assert ys[0] == max(ys), "a zero count must sit on the axis floor"
+    # Decade gridlines keep the labels in real units rather than log units.
+    assert ">10,000<" in log_svg or ">10000<" in log_svg, "log axis lost its decade ticks"
+
+    # Presence only. The share-sums-to-100 invariant is asserted inside the generator
+    # against the REAL data instead -- a fixture check here would have needed a second
+    # copy of the share arithmetic to compare against, and a mutation run showed this
+    # assertion alone does not catch a dropped remainder series.
+    assert "version_migration.svg" in md or snap["app_version"].nunique() <= 1, \
+        "multi-version data must produce a migration chart"
+
+    # --- Export-format equivalence. Aptabase withdrew the parquet export, so CSV is
+    # the live path; both must land on identical data. Written through the REAL
+    # loader (read_export + to_utc), so a regression in either shows up here rather
+    # than as silently-wrong dates in a published report.
+    csv_dir = tempfile.mkdtemp(prefix="analytics_selftest_csv_")
+    csv_path = os.path.join(csv_dir, "export.csv")
+    # Aptabase's CSV renders timestamps as "YYYY-MM-DD HH:MM:SS", not epoch seconds.
+    csv_rows = []
+    for row in rows:
+        r = dict(row)
+        r["timestamp"] = (pd.Timestamp(row["timestamp"], unit="s", tz="UTC")
+                          .strftime("%Y-%m-%d %H:%M:%S"))
+        csv_rows.append(r)
+    pd.DataFrame(csv_rows).to_csv(csv_path, index=False)
+    cdf = load([csv_path])
+    assert len(cdf) == len(rows), "CSV load dropped rows"
+    assert cdf["install_id"].nunique() == mkdf(rows)["install_id"].nunique(), \
+        "CSV load must yield the same installs as the in-memory fixture"
+    assert pd.api.types.is_datetime64_any_dtype(cdf["ts"]), "CSV timestamps must parse"
+    assert cdf["ts"].notna().all(), "CSV timestamp parse produced NaT"
+    assert sorted(str(d) for d in cdf["date"].unique()) == \
+        sorted(str(d) for d in mkdf(rows)["date"].unique()), "CSV dates must match parquet-style"
+    # A missing optional field must read as "" (the sentinel the report treats as
+    # absent), not NaN — that is what keep_default_na=False buys.
+    assert (cdf["os_version"] == "").any(), "CSV blank must stay an empty string"
+    # Aptabase's CSV concatenates paginated chunks and repeats the header row between
+    # them. Left in, such a row parses as undated and only surfaces much later as a
+    # TypeError inside a date reduction, so it is dropped at read time.
+    with open(csv_path) as fh:
+        head, body = fh.readline(), fh.read()
+    hdr_path = os.path.join(csv_dir, "export_with_repeated_header.csv")
+    with open(hdr_path, "w") as fh:
+        fh.write(head + body + head)   # a stray header row mid-file
+    hdf = load([hdr_path])
+    assert len(hdf) == len(cdf), "repeated CSV header row must be dropped, not counted"
+    assert hdf["ts"].notna().all(), "repeated header row leaked through as an undated event"
+    # And the full pipeline runs on CSV-loaded data.
+    csv_out = tempfile.mkdtemp(prefix="analytics_selftest_csvout_")
+    assert os.path.exists(build(cdf, csv_out))
+
     print("selftest OK -> {}".format(path))
 
 
@@ -915,8 +1295,8 @@ def main():
     if "--selftest" in sys.argv:
         return selftest()
     ap = argparse.ArgumentParser(
-        description="Generate a static Markdown+SVG analytics dashboard from Aptabase Parquet exports.")
-    ap.add_argument("inputs", nargs="+", help="Parquet export file(s) or globs")
+        description="Generate a static Markdown+SVG analytics dashboard from Aptabase exports (CSV or Parquet).")
+    ap.add_argument("inputs", nargs="+", help="Export file(s) or globs (.csv or .parquet)")
     ap.add_argument("--out", default=os.path.join(REPO_ROOT, "analytics"),
                     help="output directory (default: analytics/)")
     args = ap.parse_args()

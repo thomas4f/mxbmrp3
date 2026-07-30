@@ -37,6 +37,7 @@
 #include <deque>
 #include <functional>
 #include <mutex>
+#include "thread_safety.h"
 #include <thread>
 #include <vector>
 
@@ -140,6 +141,18 @@ public:
         m_testAbort.store(true, std::memory_order_release);
         enqueue([]() {});   // no-op wakeup; the throw fires before the batch runs
     }
+
+    // Test-only fault injection: while set, the worker takes each batch off
+    // m_queue and DISCARDS it unrun. That reproduces, deterministically, the one
+    // window flush() cannot otherwise be tested against — threadMain() moves the
+    // whole batch out of the queue BEFORE executing any of it, so a worker that
+    // dies in between destroys an in-flight flush() sentinel without ever calling
+    // set_value(). Clearing the flag lets the worker resume, which is what lets a
+    // test also prove the ABANDONED sentinel is still safe to run afterwards.
+    void testSwallowBatches(bool on) {
+        m_testSwallow.store(on, std::memory_order_release);
+        enqueue([]() {});   // wake the worker so the new setting takes effect
+    }
 #endif
 
 private:
@@ -165,9 +178,10 @@ private:
     // the stranded queue, and latches threaded mode off (m_abortLatched, game-thread
     // only) so a persistent failure can't respawn a worker every frame.
     std::atomic<bool> m_aborted{ false };
-    bool m_abortLatched = false;
+    bool m_abortLatched = false;  // mt-plain: written and read only by reconcileEnabled() on the game thread (the worker signals via m_aborted)
 #ifdef MXBMRP3_TEST_BUILD
     std::atomic<bool> m_testAbort{ false };   // see testAbortWorker()
+    std::atomic<bool> m_testSwallow{ false }; // see testSwallowBatches()
 #endif
     // True while the worker is parked on the CV with nothing left to do. flush()
     // waits for this AFTER its sentinel so a frame build triggered by a Draw can't
@@ -177,10 +191,10 @@ private:
     std::thread::id m_workerId;
 
     // Command queue (closures wrapping the existing handlers).
-    std::mutex m_qMutex;
+    Mutex m_qMutex;
     std::condition_variable m_cv;
-    std::deque<std::function<void()>> m_queue;
-    bool m_frameRequested = false;
+    std::deque<std::function<void()>> m_queue MXB_GUARDED_BY(m_qMutex);
+    bool m_frameRequested MXB_GUARDED_BY(m_qMutex) = false;
 
     std::atomic<int> m_drawState{ 0 };
 

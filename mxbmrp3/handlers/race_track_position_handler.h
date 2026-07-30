@@ -6,15 +6,8 @@
 
 #include "../game/unified_types.h"
 
-class RaceTrackPositionHandler {
-public:
-    static RaceTrackPositionHandler& getInstance();
+namespace Handlers {
 
-    void handleRaceTrackPosition(int iNumVehicles, Unified::TrackPositionData* pasRaceTrackPosition);
+void handleRaceTrackPosition(int iNumVehicles, Unified::TrackPositionData* pasRaceTrackPosition);
 
-private:
-    RaceTrackPositionHandler() {}
-    ~RaceTrackPositionHandler() {}
-    RaceTrackPositionHandler(const RaceTrackPositionHandler&) = delete;
-    RaceTrackPositionHandler& operator=(const RaceTrackPositionHandler&) = delete;
-};
+}  // namespace Handlers

@@ -238,7 +238,7 @@ void GForceWidget::rebuildRenderData() {
     float arcCenterY = currentY + gaugeAreaHeight * 0.5f;
 
     // Crash recovery detection
-    const TrackPositionData* playerPos = pluginData.getPlayerTrackPosition();
+    const RiderTrackState* playerPos = pluginData.getPlayerTrackPosition();
     bool isCrashed = playerPos && playerPos->crashed;
     if (m_wasCrashed && !isCrashed) {
         resetTracking();

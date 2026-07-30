@@ -35,7 +35,9 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
     // Leads the tab like Rumble/Helmet; independent of the director being enabled. ---
     ctx.addSectionHeader("Appearance");
     DirectorWidget* hud = HudManager::getInstance().getDirectorWidget();
-    const bool shown = hud && hud->isVisible();
+    // Active surface: DIRECTOR_HUD_VISIBLE now toggles whichever surface the menu is
+    // on, so the label has to report the same one it changes.
+    const bool shown = hud && hud->isVisibleOnActiveSurface();
     ctx.addToggleControl("Visible", shown,
         SettingsHud::ClickRegion::DIRECTOR_HUD_VISIBLE, nullptr,
         nullptr, 0, true, "director.hud_visible");
@@ -66,11 +68,18 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::DIRECTOR_MINSHOT_UP,
         nullptr, on, false, "director.min_shot");
 
-    snprintf(buf, sizeof(buf), "%ds", director.getMaxShotSec());
+    // Max shot doubles as the forced-rotation switch: Off (one step below the low end)
+    // stops the director cutting on a timer entirely, so it only cuts for a story and
+    // returns to the rider the broadcaster picked. Min shot still paces those story cuts
+    // and the Stories below still fire, so neither greys out - but the Onboard variety
+    // section does, since a shot the caster chose stays on the plain TV camera.
+    const int maxShot = director.getMaxShotSec();
+    if (maxShot <= 0) snprintf(buf, sizeof(buf), "Off");
+    else snprintf(buf, sizeof(buf), "%ds", maxShot);
     ctx.addCycleControl("Max shot", buf, 10,
         SettingsHud::ClickRegion::DIRECTOR_MAXSHOT_DOWN,
         SettingsHud::ClickRegion::DIRECTOR_MAXSHOT_UP,
-        nullptr, on, false, "director.max_shot");
+        nullptr, on, maxShot <= 0, "director.max_shot");
 
     // Story hold: how long a story shot (crash / fastest lap / hot lap) lingers - a
     // shot-duration knob, so it sits with Min/Max shot here rather than under Stories.
@@ -140,8 +149,18 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
     // and which onboards it may use. "Onboard every" is the cadence (0 = Off = always
     // Trackside); the camera toggles below it grey out when it's Off. Forward cams
     // (Front Fender / Helmet / Helmet 2) frame the rider ahead; Rear Fender frames a
-    // chaser. (Forks is INI-only.) ---
+    // chaser. (Forks is INI-only.)
+    //
+    // The whole section also greys out while Max shot is Off: the director is then only
+    // covering stories on a shot the caster chose, and pickShot pins those to Auto /
+    // Trackside. The stored values are left alone rather than shown as Off, so turning
+    // the max shot back on restores the cadence the user had set. ---
     ctx.addSpacing(0.5f);
+    // Static title. A header that rewrites itself as you step a control above it reads as
+    // the panel twitching, so the "why is this greyed?" answer lives in the "Onboard every"
+    // tooltip instead ("Needs Max shot on") - the same place every other explanation in
+    // this tab lives.
+    const bool rotationOn = director.forcedRotation();
     ctx.addSectionHeader("Onboard variety");
 
     const int ve = director.getVarietyEvery();
@@ -151,11 +170,10 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
     ctx.addCycleControl("Onboard every", buf, 10,
         SettingsHud::ClickRegion::DIRECTOR_VARIETY_DOWN,
         SettingsHud::ClickRegion::DIRECTOR_VARIETY_UP,
-        nullptr, on, !varietyOn, "director.variety_every");
+        nullptr, on && rotationOn, !varietyOn, "director.variety_every");
 
-    // The camera choices only matter while variety dips are on, so grey them out
-    // (on && varietyOn) when "Onboard every" is Off.
-    const bool camsOn = on && varietyOn;
+    // The camera choices only matter while variety dips are actually running.
+    const bool camsOn = on && rotationOn && varietyOn;
     // The two fender views share one cycle: Off > Front > Rear > Both.
     const bool cf = director.getCamFront();
     const bool cr = director.getCamRear();

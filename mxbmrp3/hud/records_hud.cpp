@@ -3,6 +3,7 @@
 // Displays lap records fetched from external data providers via HTTP
 // ============================================================================
 #include "records_hud.h"
+#include "records_window.h"
 #include "timing_hud.h"
 
 #include "../game/game_config.h"
@@ -223,7 +224,7 @@ void RecordsHud::onFetchComplete(RecordsFetcher::Result&& result) {
         // catch can't throw std::system_error and propagate out of the thread.
         m_fetchState = FetchState::FETCH_ERROR;
         {
-            std::lock_guard<std::mutex> lock(m_recordsMutex);
+            MutexLock lock(m_recordsMutex);
             try {
                 m_lastError = std::move(result.error);
             } catch (...) {
@@ -240,7 +241,7 @@ void RecordsHud::storeParsedRecords(RecordsFetcher::Result&& result) {
     // provider snapshotted on the game thread in startFetch(), never the live
     // m_provider - the user can cycle providers mid-fetch and the response must
     // be parsed with the schema it was requested with.
-    std::lock_guard<std::mutex> lock(m_recordsMutex);
+    MutexLock lock(m_recordsMutex);
     m_records = std::move(result.records);
     m_recordsProvider = result.provider;  // Track which provider these records came from
     if (!result.apiNotice.empty()) {
@@ -335,7 +336,7 @@ void RecordsHud::update() {
     // Clear records when event ends (track becomes empty)
     // Lock before reading m_records - the fetch thread may be reallocating it
     if (session.trackName[0] == '\0') {
-        std::lock_guard<std::mutex> lock(m_recordsMutex);
+        MutexLock lock(m_recordsMutex);
         if (!m_records.empty() || m_lastSessionTrackName[0] != '\0') {
             m_records.clear();
             m_fetchState = FetchState::IDLE;
@@ -345,8 +346,14 @@ void RecordsHud::update() {
         }
     } else {
         // Track changed (entered new event) - auto-fetch if enabled
+        // Bound the copy by the SOURCE buffer, not the destination: trackName is
+        // char[NAME_BUFFER_SIZE] (100) while the destination is char[256], so a
+        // destination-derived count (255) would let strncpy_s read up to 155 bytes
+        // past the end of session.trackName if it ever arrived unterminated. It
+        // never does today (safeCopy() in game_adapter_base.h always terminates),
+        // but that invariant lives in another file and nothing here enforces it.
         if (strcmp(session.trackName, m_lastSessionTrackName) != 0) {
-            strncpy_s(m_lastSessionTrackName, sizeof(m_lastSessionTrackName), session.trackName, sizeof(m_lastSessionTrackName) - 1);
+            strncpy_s(m_lastSessionTrackName, sizeof(m_lastSessionTrackName), session.trackName, sizeof(session.trackName) - 1);
             shouldAutoFetch = true;
         }
     }
@@ -456,7 +463,7 @@ void RecordsHud::rebuildRenderData() {
     std::string lastError;
     DataProvider recordsProvider;
     {
-        std::lock_guard<std::mutex> lock(m_recordsMutex);
+        MutexLock lock(m_recordsMutex);
         allRecords = m_records;  // Copy all for proper pagination
         lastError = m_lastError;
         recordsProvider = m_recordsProvider;  // Written by the fetch worker under this lock
@@ -854,32 +861,13 @@ void RecordsHud::rebuildRenderData() {
             int topToShow = std::min(totalRecords, TOP_POSITIONS);
             renderRecordRange(0, topToShow - 1, false);
 
-            // 2. Calculate context window around player
-            // Available rows = total - top3 - 1 (for player row)
-            int availableRows = m_recordsToShow - TOP_POSITIONS - 1;
-            int contextStart, contextEnd;
-
-            if (playerPosition >= totalRecords) {
-                // Player is slower than all fetched records - show bottom N records before them
-                contextEnd = totalRecords - 1;
-                contextStart = std::max(TOP_POSITIONS, totalRecords - availableRows);
-            } else {
-                // Player is within the records - show context around them
-                int contextBefore = availableRows / 2;
-                int contextAfter = availableRows - contextBefore - 1;
-
-                contextStart = std::max(TOP_POSITIONS, playerPosition - contextBefore);
-                contextEnd = std::min(totalRecords - 1, playerPosition + contextAfter);
-
-                // Adjust if we hit boundaries - shift the window to use all available rows
-                if (contextEnd == totalRecords - 1 && contextStart > TOP_POSITIONS) {
-                    // Hit bottom - extend start upward to fill rows
-                    contextStart = std::max(TOP_POSITIONS, contextEnd - availableRows + 1);
-                } else if (contextStart == TOP_POSITIONS && contextEnd < totalRecords - 1) {
-                    // Hit top (right after top 3) - extend end downward to fill rows
-                    contextEnd = std::min(totalRecords - 1, contextStart + availableRows - 1);
-                }
-            }
+            // 2. Calculate context window around player — pure arithmetic,
+            //    unit-tested in tests/unit/test_records_window.cpp.
+            const RecordsWindow::Range context =
+                RecordsWindow::computeContext(totalRecords, playerPosition,
+                                              m_recordsToShow, TOP_POSITIONS);
+            const int contextStart = context.start;
+            const int contextEnd = context.end;
 
             // 3. Render context around player
             for (int i = contextStart; i <= contextEnd && i < totalRecords; i++) {
@@ -936,14 +924,14 @@ void RecordsHud::rebuildRenderData() {
 // ============================================================================
 
 int RecordsHud::getFastestRecordLapTime() const {
-    std::lock_guard<std::mutex> lock(m_recordsMutex);
+    MutexLock lock(m_recordsMutex);
     if (m_records.empty()) return -1;
     // Records are sorted by lap time, first entry is fastest
     return m_records[0].laptime;
 }
 
 bool RecordsHud::getFastestRecordSectors(int& sector1, int& sector2, int& sector3, int& sector4) const {
-    std::lock_guard<std::mutex> lock(m_recordsMutex);
+    MutexLock lock(m_recordsMutex);
     if (m_records.empty()) return false;
 
     const auto& fastest = m_records[0];
@@ -973,7 +961,7 @@ void RecordsHud::resetToDefaults() {
     m_recordsToShow = 8;  // Default to 8 rows (title 2 + 2 header + 8 + 1 footer + pad 2 = 15, matches StandingsHud)
     m_bShowFooter = true;
     {
-        std::lock_guard<std::mutex> lock(m_recordsMutex);
+        MutexLock lock(m_recordsMutex);
         m_records.clear();
         m_recordsProvider = DataProvider::CBR;  // Shared with the fetch worker - write under the lock
     }
@@ -1006,12 +994,12 @@ void RecordsHud::testSetFetchStub(int delayMs, const char* response) {
 }
 
 int RecordsHud::testRecordCount() const {
-    std::lock_guard<std::mutex> lock(m_recordsMutex);
+    MutexLock lock(m_recordsMutex);
     return static_cast<int>(m_records.size());
 }
 
 bool RecordsHud::testGetRecord(int index, RecordEntry& out) const {
-    std::lock_guard<std::mutex> lock(m_recordsMutex);
+    MutexLock lock(m_recordsMutex);
     if (index < 0 || index >= static_cast<int>(m_records.size())) return false;
     out = m_records[index];
     return true;

@@ -4,31 +4,49 @@ Lightweight, **Linux/macOS-runnable** unit tests for the plugin's
 platform-independent pure logic. No game engine, no Windows, no packages to
 install — just a C++17 compiler.
 
-## Why this exists (and why it's small)
+## Why this exists
 
-The plugin is a Windows-only Visual Studio project that links against each
-game's proprietary DLL API; it **cannot be built on Linux/CI** (see the root
-`CLAUDE.md`). The manual workflow is "build in VS, test in-game." That leaves
-the game-agnostic helper logic — color math, string formatting, parsing —
-with no automated guard, even though it's the code most amenable to testing
-and most prone to silent regressions (a wrong bit-shift or luma threshold
-corrupts every rendered color and never throws).
+This is the **cheapest** layer: pure logic compiled straight from the production
+headers with a plain `g++`, no cross-build, no Wine, ~1s to run. The whole plugin
+*can* now be built and tested on Linux (the mingw cross-build in
+`../integration/`, see the root `CLAUDE.md`), but that costs minutes; anything
+expressible as a pure function belongs here instead, where the feedback is
+immediate and the failure names the function rather than a snapshot diff.
 
-These tests cover exactly that layer. They compile the **real production
-header** `core/plugin_utils.h` directly and assert its behavior.
+It is also the layer where extracted decision logic lands. A growing set of small
+headers beside the HUDs and managers (`hud/standings_gap_plan.h`,
+`hud/peak_marker.h`, `handlers/camera_resolve.h`, `core/director_scoring.h`, …)
+exists precisely so the interesting branches are reachable here rather than only
+through the DLL under Wine. `../../TESTING.md` → *Layer 1* is the authoritative
+catalogue of what each TU pins.
 
 ## Run
 
 ```bash
-./tests/unit/run_tests.sh
+cmake -S . -B build/tests                            # configure once
+ctest --test-dir build/tests -R '^unit'              # build + run all three flavours
 ```
 
-Exit code is non-zero if the build or any assertion fails. CI runs the same
-script on every push/PR via `.github/workflows/tests.yml`.
+Or drive the targets directly when you want a doctest filter:
+
+```bash
+cmake --build build/tests --target unit_tests
+./build/tests/tests/unit/unit_tests -tc='*hex*'
+```
+
+Three flavours share one source list (`tests/unit/CMakeLists.txt`): `unit_tests`
+(plain), `unit_tests_asan` (ASan + UBSan) and `unit_tests_cov` (gcov, driven by
+`./tests/unit/coverage.sh`). CI runs the same targets — see
+`.github/workflows/tests.yml`.
 
 ## What's covered
 
-`test_plugin_utils.cpp` covers the inline pure functions in `plugin_utils.h`:
+The authoritative list is `MXB_UNIT_SOURCES` in `tests/unit/CMakeLists.txt`, with
+a per-TU description of what each one pins in
+[`../../TESTING.md`](../../TESTING.md) → *Layer 1* (kept complete by
+`tools/check_docs.py`, which fails if a `test_*.cpp` exists with no entry). As
+the original example, `test_plugin_utils.cpp` covers the inline pure functions in
+`plugin_utils.h`:
 
 - **Color packing** — `makeColor` / `applyOpacity` (0xAABBGGRR layout, alpha
   replacement).
@@ -63,7 +81,7 @@ The clean way to unlock these (a genuinely worthwhile, small refactor):
    `format_utils.h/.cpp` that takes the `compact` flag as a **parameter**
    instead of reading it from the `PluginData` singleton.
 2. Have `PluginUtils` forward to them (call sites unchanged).
-3. Add `format_utils.cpp` to `SOURCES` in `run_tests.sh` and write
+3. Add `format_utils.cpp` to `MXB_UNIT_SOURCES` in `CMakeLists.txt` and write
    `test_format_utils.cpp`.
 
 That removes the singleton coupling from the hot formatting path (a small
@@ -78,15 +96,15 @@ These use [doctest](https://github.com/doctest/doctest) (single vendored header,
 `tests/integration/harness/doctest.h`) — the same framework as the Wine integration
 tests, so there's one assertion vocabulary across the project. `TEST_CASE` /
 `SUBCASE` / `CHECK` / `REQUIRE`; run a subset with a filter
-(`./tests/unit/run_tests.sh -tc='*hex*'`).
+(`./build/tests/tests/unit/unit_tests -tc='*hex*'`).
 
 ## Adding a test
 
 1. Add a `TEST_CASE("…") { … }` to `test_plugin_utils.cpp`, or create a new
    `tests/unit/test_<area>.cpp` (define the doctest main in exactly one TU with
    `DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN`; others just `#include "doctest.h"`).
-2. If you added a file, list it in the `SOURCES` array in `run_tests.sh`.
+2. If you added a file, list it in `MXB_UNIT_SOURCES` in `tests/unit/CMakeLists.txt`.
 
 Only pure, dependency-free logic belongs here (see the extension note above);
 anything touching `PluginData` or the game API is a `tests/integration/` integration
-test instead — see [`../TESTING.md`](../TESTING.md).
+test instead — see [`../../TESTING.md`](../../TESTING.md).

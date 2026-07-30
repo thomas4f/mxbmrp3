@@ -1,0 +1,79 @@
+# ============================================================================
+# CodeQL static analysis.
+#
+# Complements the existing dynamic checks (ASan/UBSan, fuzzing) with GitHub's
+# semantic static analysis:
+#   c-cpp                — the plugin, extracted from the mingw cross-build
+#                          (tests/integration/build.sh; CodeQL traces GCC-family
+#                          compilers, which mingw-w64 g++ is). Same TU set the
+#                          shipping MSVC build compiles.
+#   javascript-typescript — the web overlay (mxbmrp3_data/web/js) + dev tools.
+#                          No build needed.
+#
+# WHERE THIS RUNS: code scanning is free ONLY for public repositories — in the
+# private repo it would require GitHub Advanced Security, so the job is gated
+# to the PUBLIC mirror (thomas4f/mxbmrp3), where it runs on the mirrored
+# release pushes, PRs, and a weekly schedule. In the private repo every run
+# skips (same zero-minutes pattern as tests.yml).
+# ============================================================================
+name: codeql
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 5 * * 2"     # Tuesdays 05:00 UTC — catches new query-pack findings
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    # Public mirror only: code scanning upload is not licensed on the private
+    # repo (no Advanced Security), so even a manual dispatch would fail there.
+    # Gated on the repo NAME, not github.event.repository.private like
+    # tests.yml: this workflow also has a `schedule` trigger, and schedule
+    # events carry no event.repository payload — the missing property reads as
+    # null, and Actions' loose equality makes null == false TRUE, which would
+    # run (and fail) the weekly cron in the metered private repo.
+    if: github.repository == 'thomas4f/mxbmrp3'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write   # upload SARIF results to code scanning
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: c-cpp
+            build-mode: manual
+          - language: javascript-typescript
+            build-mode: none
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Install mingw-w64
+        if: matrix.language == 'c-cpp'
+        run: ./tools/install_deps.sh mingw
+
+      # The same cross-build CI already runs for the Wine suite; CodeQL traces
+      # the compiler invocations to build its database.
+      - name: Build (mingw cross-compile)
+        if: matrix.language == 'c-cpp'
+        run: ./tests/integration/build.sh
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"

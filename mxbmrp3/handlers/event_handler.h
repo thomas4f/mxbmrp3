@@ -6,16 +6,9 @@
 
 #include "../game/unified_types.h"
 
-class EventHandler {
-public:
-    static EventHandler& getInstance();
+namespace Handlers {
 
-    void handleEventInit(Unified::VehicleEventData* psEventData);
-    void handleEventDeinit();
+void handleEventInit(Unified::VehicleEventData* psEventData);
+void handleEventDeinit();
 
-private:
-    EventHandler() {}
-    ~EventHandler() {}
-    EventHandler(const EventHandler&) = delete;
-    EventHandler& operator=(const EventHandler&) = delete;
-};
+}  // namespace Handlers

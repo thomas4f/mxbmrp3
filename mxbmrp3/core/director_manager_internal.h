@@ -10,6 +10,9 @@
 #pragma once
 
 #include "xinput_reader.h"  // XInputData (stickMoved / cameraFlying)
+#include "director_scoring.h"  // Rider, posWeight + the story-score formulas
+#include "director_detect.h"   // detectOvertake / detectDrop
+#include "../handlers/camera_resolve.h"  // Cameras::Role (isOnboardRole)
 
 #include <cmath>            // std::fabs
 
@@ -67,20 +70,17 @@ namespace director_detail {
         return d.leftTrigger > kTrig || d.rightTrigger > kTrig;
     }
 
-    // Leaders are worth more than midfield; P1 ~1.8x, fading to 1.0 by ~P11.
-    inline double posWeight(int position) {
-        int boost = 11 - position;
-        if (boost < 0) boost = 0;
-        return 1.0 + boost * 0.08;
+    // Is this CameraRole one of the bike-mounted onboards? (The rig cams sit
+    // contiguously between ONBOARD_FRONT and FORKS in Cameras::Role — see
+    // camera_resolve.h.) Used to tell a TV shot (Auto / Trackside / Start) from an
+    // onboard when "Max shot = Off" has to put the camera back on the TV shot.
+    inline bool isOnboardRole(int role) {
+        return role >= static_cast<int>(Cameras::Role::ONBOARD_FRONT) &&
+               role <= static_cast<int>(Cameras::Role::FORKS);
     }
 
-    struct Rider {
-        int position;
-        int raceNum;
-        int gapToLeaderMs;
-        int gapLaps;
-        int numLaps;      // completed laps (for final-lap detection)
-        int bestLapMs;    // best lap so far in ms (-1 = none; for fastest-lap detection)
-        bool finished;    // crossed the line for good (don't follow incidents/battles on them)
-    };
+    // posWeight(), the Rider POD and every story-score formula now live in
+    // director_scoring.h; the overtake/drop edge detectors in director_detect.h.
+    // Both are pure and unit-tested (test_director_scoring.cpp /
+    // test_director_detect.cpp) — this header keeps only what needs the game.
 }  // namespace director_detail

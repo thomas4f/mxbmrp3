@@ -230,7 +230,7 @@ static inline float sampleAtlas(const uint8_t* a, int aw, int ah, float fx, floa
 // Draw from the game's own bitmap font. The atlas cell height maps 1:1 to the
 // string's normalized size, so scale = size*imgH / cellH gives the exact on-screen
 // metrics the game uses (advance ratio already matches MONOSPACE_CHAR_WIDTH_RATIO).
-void Renderer::drawStringFnt(Image& im, const SPluginString_t& s, const Frame& fr, FntFont& f) {
+void Renderer::drawStringFnt(Image& im, const SPluginString_t& s, FntFont& f) {
     const char* text = s.m_szString;
     float scale = s.m_fSize * im.vpH() / float(f.cellH);
 
@@ -267,7 +267,7 @@ void Renderer::drawString(Image& im, const SPluginString_t& s, const Frame& fr) 
     if (idx < 0 || idx >= (int)fr.fontNames->size()) return;
     // Every font the game registers is a .fnt bitmap font (pixel-exact,
     // allocation-free). A missing/corrupt .fnt simply renders no text.
-    if (FntFont* bf = fnt((*fr.fontNames)[idx], fr.assetRoot)) drawStringFnt(im, s, fr, *bf);
+    if (FntFont* bf = fnt((*fr.fontNames)[idx], fr.assetRoot)) drawStringFnt(im, s, *bf);
 }
 
 void Renderer::render(Image& out, const Frame& fr, uint8_t bgR, uint8_t bgG, uint8_t bgB) {

@@ -42,6 +42,8 @@ struct SPluginsRaceClassificationEntry_t {
 struct SPluginsRaceTrackPosition_t { int m_iRaceNum; float m_fPosX, m_fPosY, m_fPosZ, m_fYaw, m_fTrackPos; int m_iCrashed; };
 struct SPluginsTrackSegment_t { int m_iType; float m_fLength, m_fRadius, m_fAngle; float m_afStart[2]; float m_fHeight; };
 
+#include "perf_scenario.h"   // buildPerfTrack() + PERF_RIDERS (needs the structs above)
+
 typedef int  (*PFN_Startup)(char*);
 typedef void (*PFN_Shutdown)();
 typedef void (*PFN_DS)(void*, int);
@@ -57,8 +59,13 @@ static PFN_MapProfile MapProfile = nullptr;
 static LARGE_INTEGER g_freq;
 static uint64_t nowUs() { LARGE_INTEGER t; QueryPerformanceCounter(&t); return (uint64_t)(t.QuadPart * 1000000.0 / g_freq.QuadPart); }
 
-static const int RIDERS = 50;
-static const double BUDGET_US = 4170.0;
+static const int RIDERS = PERF_RIDERS;   // full 50-rider grid (API max)
+static const double BUDGET_US = 2083.0;  // 480 fps frame budget
+
+// Worst (highest) Draw p99 seen across every map-ON scenario. The gate in
+// run_perf.sh checks this against the 480fps budget, so the heaviest realistic
+// map path (full grid rebuilding on the long/complex circuit) is enforced too.
+static double g_worstMapP99 = 0.0;
 
 struct Stat {
     double* us; int n, cap;
@@ -72,6 +79,7 @@ static double avg(Stat& s) { double t=0; for (int i=0;i<s.n;++i) t+=s.us[i]; ret
 static PFN_Draw Draw;
 static PFN_TrackPos RaceTrackPosition;
 static SPluginsRaceTrackPosition_t* g_pos;
+static int g_lastNq = 0, g_lastNs = 0;  // primitives emitted to the engine last frame
 
 // Run the realistic frame loop: mutate positions -> RaceTrackPosition (dirties
 // the map) -> Draw (rebuilds). Time only the Draw. Returns sorted stats.
@@ -85,18 +93,24 @@ static void runScenario(Stat& out, int frames) {
             g_pos[r].m_fYaw = (float)((i + r * 7) % 360);
         }
         RaceTrackPosition(RIDERS, g_pos, (int)sizeof(g_pos[0]));
-        int nq, ns; void *q, *s;
+        int nq = 0, ns = 0; void *q, *s;
         uint64_t t0 = nowUs();
         Draw(0, &nq, &q, &ns, &s);
         out.add((double)(nowUs() - t0));
+        g_lastNq = nq; g_lastNs = ns;
     }
     qsort(out.us, out.n, sizeof(double), cmp);
 }
 
 static void report(const char* name, Stat& s, double baseAvg) {
-    double a = avg(s);
-    printf("%-30s %8.1f %8.1f %8.1f %9.1f", name, a, pct(s,0.50), pct(s,0.99), pct(s,1.0));
-    if (baseAvg >= 0) printf("  %+8.1f  (%.1f%% budget)", a - baseAvg, 100.0*(a-baseAvg)/BUDGET_US);
+    double a = avg(s), p99 = pct(s,0.99);
+    printf("%-30s %8.1f %8.1f %8.1f %9.1f", name, a, pct(s,0.50), p99, pct(s,1.0));
+    if (baseAvg >= 0) {
+        printf("  %+8.1f  (%.1f%% budget)", a - baseAvg, 100.0*(a-baseAvg)/BUDGET_US);
+        // Map-ON scenario (baseline is reported with baseAvg=-1): track the worst
+        // p99 so the gate can enforce the 480fps budget on the heavy map path.
+        if (p99 > g_worstMapP99) g_worstMapP99 = p99;
+    }
     printf("\n");
 }
 
@@ -135,10 +149,18 @@ int main(int argc, char** argv) {
     char savePath[] = "Z:\\tmp\\mxbperf\\";
     Startup(savePath);
 
+    // Long/complex circuit + full grid shared with perf_driver.cpp: ~2400 m over
+    // ~950 short CURVE/STRAIGHT segments (hairpins, sweepers, esses), a heavier
+    // superset of the real Farm14 capture (1669 m / 24 riders). Heading advances
+    // only through curve segments (see perf_scenario.h / MapHud bounds), so this
+    // is a genuine 2D track — no 1D collapse / NaN-cache artifact.
+    SPluginsTrackSegment_t* segs=nullptr; float trackLen=0.0f;
+    const int SEGS = buildPerfTrack(&segs, &trackLen);
+
     SPluginsBikeEvent_t ev{}; strcpy(ev.m_szRiderName,"Player"); strcpy(ev.m_szBikeName,"Test 450");
-    strcpy(ev.m_szCategory,"MX1"); strcpy(ev.m_szTrackName,"PerfTrack"); ev.m_fTrackLength=1600.0f; ev.m_iType=2;
+    strcpy(ev.m_szCategory,"MX1"); strcpy(ev.m_szTrackName,"PerfTrack"); ev.m_fTrackLength=trackLen; ev.m_iType=2;
     EventInit(&ev,(int)sizeof(ev));
-    SPluginsRaceEvent_t re{}; re.m_iType=2; strcpy(re.m_szName,"PerfTrack"); strcpy(re.m_szTrackName,"PerfTrack"); re.m_fTrackLength=1600.0f;
+    SPluginsRaceEvent_t re{}; re.m_iType=2; strcpy(re.m_szName,"PerfTrack"); strcpy(re.m_szTrackName,"PerfTrack"); re.m_fTrackLength=trackLen;
     if (RaceEvent) RaceEvent(&re,(int)sizeof(re));
     SPluginsRaceSession_t ss{}; ss.m_iSession=6; ss.m_iSessionState=16; ss.m_iSessionLength=480000; ss.m_iSessionNumLaps=2;
     if (RaceSession) RaceSession(&ss,(int)sizeof(ss));
@@ -147,16 +169,7 @@ int main(int argc, char** argv) {
         snprintf(e.m_szName,100,"Rider %02d",i+1); strcpy(e.m_szBikeName,"Test 450"); strcpy(e.m_szBikeShortName,"T450");
         strcpy(e.m_szCategory,"MX1"); e.m_iNumberOfGears=5; e.m_iMaxRPM=13000; RaceAddEntry(&e,(int)sizeof(e)); }
 
-    // A real 2D loop: a ~254m-radius circle of 256 CURVE segments (type != 0), so
-    // heading actually changes and the track has non-degenerate width AND height.
-    // (The old version used straight segments with a varying m_fAngle, but bounds
-    // integration only turns on curve segments, so it collapsed to a 1D line ->
-    // zero X-width -> divide-by-zero in worldToScreen -> NaN offset -> the ribbon
-    // cache could never compare equal. That was a synthetic-track artifact.)
-    const int SEGS=256; SPluginsTrackSegment_t* segs=(SPluginsTrackSegment_t*)calloc(SEGS,sizeof(SPluginsTrackSegment_t));
-    const float TRACK_LEN=1600.0f, RADIUS=TRACK_LEN/(2.0f*3.14159265f);
-    for (int i=0;i<SEGS;++i){ segs[i].m_iType=1; segs[i].m_fLength=TRACK_LEN/SEGS; segs[i].m_fRadius=RADIUS; segs[i].m_fAngle=0.0f; }
-    float raceData[4]={800.0f,400.0f,1200.0f,0.0f};
+    float raceData[4]={0.0f, trackLen*0.33f, trackLen*0.66f, 0.0f};
     if (TrackCenterline) TrackCenterline(SEGS,segs,raceData);
 
     struct { SPluginsRaceClassification_t hdr; SPluginsRaceClassificationEntry_t e[64]; } cls{};
@@ -236,10 +249,17 @@ int main(int argc, char** argv) {
         MapRotate(0); MapPct(100);
     }
 
-    printf("\nBudget = %.0f us/frame (240fps). Baseline map-off Draw avg = %.1f us.\n", BUDGET_US, baseAvg);
+    printf("\nBudget = %.0f us/frame (480fps). Baseline map-off Draw avg = %.1f us.\n", BUDGET_US, baseAvg);
+    printf("Worst map-ON Draw p99 across all scenarios = %.1f us (%.1f%% of the 480fps budget).\n",
+        g_worstMapP99, 100.0*g_worstMapP99/BUDGET_US);
+    // The engine must RENDER whatever we emit; that GPU/submit cost is separate
+    // from the CPU build times above and not measured headlessly. Primitive count
+    // is its proxy — this is the heaviest handoff (map @200% detail + all HUDs).
+    printf("Heaviest handoff to engine (map 200%% + HUDs): %d quads, %d strings per frame.\n",
+        g_lastNq, g_lastNs);
     printf("Machine-readable:\n");
-    printf("MAPPERF off=%.1f default=%.1f rotate=%.1f zoom=%.1f both=%.1f\n",
-        baseAvg, avg(def), avg(rot), avg(zoom), avg(both));
+    printf("MAPPERF off=%.1f default=%.1f rotate=%.1f zoom=%.1f both=%.1f mapdraw_p99_worst_us=%.1f\n",
+        baseAvg, avg(def), avg(rot), avg(zoom), avg(both), g_worstMapP99);
     fflush(stdout);
     if (Shutdown) Shutdown();
     return 0;

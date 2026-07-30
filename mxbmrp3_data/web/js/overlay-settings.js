@@ -306,6 +306,9 @@ function buildSettingsUI() {
     addRow(body, "Pace Chart", createToggle(CONFIG.chartPace, function (v) {
         CONFIG.chartPace = v; applySettings();
     }), "Raw lap time per lap, with the opening lap and outliers filtered out so mistakes and drop-off stand out.");
+    addRow(body, "Sector Points", createToggle(CONFIG.chartSectorPoints, function (v) {
+        CONFIG.chartSectorPoints = v; applySettings();
+    }), "Plot a point per sector instead of per lap on the lap, trace and gap charts, including the lap in progress — so a gap opening mid-lap shows where it happened. Race sessions only.");
 
     // Chips
     addSection(body, "Chips");

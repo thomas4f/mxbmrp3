@@ -12,6 +12,7 @@
 # No matplotlib / no external chart lib on purpose -- these are simple, and the
 # repo already hand-rolls its SVG assets (see tools/icon_gen.py).
 # ============================================================================
+import math
 from html import escape
 
 # Series palette (readable on both light and dark backgrounds).
@@ -144,11 +145,22 @@ def vbars(title, cats, subtitle="", value_fmt=_fmt, width=760, height=300):
 
 
 def lines(title, x_labels, series, subtitle="", value_fmt=_fmt, width=760, height=320,
-          x_tick_every=None):
+          x_tick_every=None, log=False):
     """Multi-series line chart.
 
     x_labels: list of tick labels (one per x index).
     series: list of (name, [y values], color). All y-lists share the x axis.
+
+    log=True puts the y axis on a base-10 scale, for series whose magnitudes differ
+    by orders of magnitude -- without it the small ones are pinned to the axis and
+    unreadable (MX Bikes runs ~5,000 launches/day against Kart Racing Pro's ~20).
+
+    It scales log10(1 + v), NOT log10(v), because these are COUNTS and counts reach
+    zero: Kart Racing Pro has days with no launches at all, and a plain log axis
+    cannot place them. log1p maps 0 to the axis floor honestly, is monotonic, and
+    needs no special case in the series loop -- the alternative (dropping or
+    clamping zeros) either breaks the line or draws a zero as if it were a one.
+    Gridlines are decades, so the labels stay in real units.
     """
     pad_l, pad_r, pad_t, pad_b = 52, 16, (74 if subtitle else 56), 46
     plot_w = width - pad_l - pad_r
@@ -157,7 +169,6 @@ def lines(title, x_labels, series, subtitle="", value_fmt=_fmt, width=760, heigh
     vmax = max((max(s[1]) for s in series if s[1]), default=0) or 1
     # round vmax up to a nice-ish number
     def nice(v):
-        import math
         if v <= 0:
             return 1
         mag = 10 ** math.floor(math.log10(v))
@@ -165,7 +176,12 @@ def lines(title, x_labels, series, subtitle="", value_fmt=_fmt, width=760, heigh
             if v <= m * mag:
                 return m * mag
         return 10 * mag
-    vmax = nice(vmax)
+    if log:
+        # Round the top up to a whole decade so the highest gridline is a real tick.
+        top = 10 ** int(math.ceil(math.log10(vmax))) if vmax > 0 else 1
+        lmax = math.log10(1 + top) or 1.0
+    else:
+        vmax = nice(vmax)
     parts = ['<text x="12" y="20" class="title">{}</text>'.format(escape(title))]
     if subtitle:
         parts.append('<text x="12" y="37" class="sub">{}</text>'.format(escape(subtitle)))
@@ -175,15 +191,21 @@ def lines(title, x_labels, series, subtitle="", value_fmt=_fmt, width=760, heigh
         return pad_l + (plot_w * (i / max(1, n - 1)) if n > 1 else plot_w / 2)
 
     def py(v):
+        if log:
+            return base - plot_h * (math.log10(1 + max(0, v)) / lmax)
         return base - plot_h * (v / vmax)
 
     # horizontal gridlines + y labels
-    for frac in (0, 0.25, 0.5, 0.75, 1.0):
-        gy = base - plot_h * frac
+    if log:
+        ticks = [0] + [10 ** k for k in range(0, int(round(math.log10(top))) + 1)]
+    else:
+        ticks = [vmax * frac for frac in (0, 0.25, 0.5, 0.75, 1.0)]
+    for tv in ticks:
+        gy = py(tv)
         parts.append('<line x1="{a}" y1="{y:.1f}" x2="{b}" y2="{y:.1f}" class="grid" stroke-dasharray="3 3"/>'.format(
             a=pad_l, b=width - pad_r, y=gy))
         parts.append('<text x="{x}" y="{y:.1f}" class="sub" text-anchor="end">{v}</text>'.format(
-            x=pad_l - 6, y=gy + 4, v=escape(value_fmt(vmax * frac))))
+            x=pad_l - 6, y=gy + 4, v=escape(value_fmt(tv))))
     # x tick labels
     if x_tick_every is None:
         x_tick_every = max(1, n // 8)
@@ -192,7 +214,7 @@ def lines(title, x_labels, series, subtitle="", value_fmt=_fmt, width=760, heigh
             parts.append('<text x="{x:.1f}" y="{y}" class="sub" text-anchor="middle">{v}</text>'.format(
                 x=px(i), y=base + 16, v=escape(str(lab))))
     # series polylines
-    for si, (name, ys, color) in enumerate(series):
+    for _name, ys, color in series:
         if not ys:
             continue
         pts = " ".join("{:.1f},{:.1f}".format(px(i), py(v)) for i, v in enumerate(ys))
@@ -201,7 +223,7 @@ def lines(title, x_labels, series, subtitle="", value_fmt=_fmt, width=760, heigh
     # legend (own row, below the title/subtitle so nothing overlaps)
     lx = pad_l
     ly = 54 if subtitle else 40
-    for si, (name, ys, color) in enumerate(series):
+    for name, _ys, color in series:
         parts.append('<rect x="{x}" y="{y}" width="11" height="11" rx="2" fill="{c}"/>'.format(
             x=lx, y=ly - 10, c=color))
         parts.append('<text x="{x}" y="{y}" class="lbl">{n}</text>'.format(

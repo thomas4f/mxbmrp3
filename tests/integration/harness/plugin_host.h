@@ -60,14 +60,24 @@ public:
         m_getRTG    = sym<int(*)(int)>("MXBMRP3_Test_GetRealTimeGap");
         m_hasATP    = sym<int(*)(int)>("MXBMRP3_Test_HasActiveTrackPos");
         m_hazCount  = sym<int(*)()>("MXBMRP3_Test_HazardRaceNumCount");
+        m_takeATPB  = sym<int(*)()>("MXBMRP3_Test_TakeNewAllTimePB");
+        m_spectatable = sym<int(*)(int)>("MXBMRP3_Test_IsRiderSpectatable");
+        m_evtRegions  = sym<int(*)()>("MXBMRP3_Test_EventLogSpectateRegionCount");
+        m_evtAutoHide = sym<void(*)(int,int)>("MXBMRP3_Test_EventLogSetAutoHide");
+        m_chartSeries = sym<void(*)(int,int*)>("MXBMRP3_Test_ChartSeries");
+        m_blueFlag  = sym<int(*)(int)>("MXBMRP3_Test_IsRiderBlueFlagged");
+        m_lapping   = sym<int(*)(int)>("MXBMRP3_Test_IsRiderLapping");
+        m_lapTarget = sym<int(*)(int)>("MXBMRP3_Test_RiderLappingTarget");
         m_draw      = sym<PFN_Draw>("Draw");
         m_startHttp = sym<void(*)()>("MXBMRP3_Test_StartHttp");
         m_snapshot  = sym<const char*(*)()>("MXBMRP3_Test_Snapshot");
+        m_snapshotSeq = sym<unsigned long long(*)()>("MXBMRP3_Test_SnapshotSeq");
         m_ptEnable  = sym<void(*)()>("MXBMRP3_Test_PluginThreadEnable");
         m_ptEnabled = sym<int(*)()>("MXBMRP3_Test_PluginThreadEnabled");
         m_ptFlush   = sym<void(*)()>("MXBMRP3_Test_PluginThreadFlush");
         m_ptStop    = sym<void(*)()>("MXBMRP3_Test_PluginThreadStop");
         m_ptAbort   = sym<void(*)()>("MXBMRP3_Test_PluginThreadAbortWorker");
+        m_ptSwallow = sym<void(*)(int)>("MXBMRP3_Test_PluginThreadSwallowBatches");
         m_setProduceDelay = sym<void(*)(int)>("MXBMRP3_Test_SetProduceDelayMs");
         m_getDebugMetrics = sym<void(*)(float*,float*,float*)>("MXBMRP3_Test_GetDebugMetrics");
         m_setPtFlag = sym<void(*)(int)>("MXBMRP3_Test_SetPluginThreadFlag");
@@ -95,6 +105,11 @@ public:
         m_dirNextLockedCam = sym<int(*)(int)>("MXBMRP3_Test_DirectorNextLockedCamera");
         m_dirSetNowMs = sym<void(*)(long long)>("MXBMRP3_Test_DirectorSetNowMs");
         m_dirSetStories = sym<void(*)(int)>("MXBMRP3_Test_DirectorSetStories");
+        m_dirSetShotSec = sym<void(*)(int, int)>("MXBMRP3_Test_DirectorSetShotSec");
+        m_dirHomeSubject = sym<int(*)()>("MXBMRP3_Test_DirectorHomeSubject");
+        m_dirSubject = sym<int(*)()>("MXBMRP3_Test_DirectorSubject");
+        m_benchHudCount = sym<int(*)()>("MXBMRP3_Test_BenchmarkHudCount");
+        m_benchCbCount  = sym<int(*)()>("MXBMRP3_Test_BenchmarkCallbackCount");
         m_eventLogEnableDirector = sym<void(*)(int)>("MXBMRP3_Test_EventLogEnableDirector");
         m_timingConfig = sym<void(*)(int,int,int)>("MXBMRP3_Test_TimingConfig");
         m_timingReferenceMs = sym<int(*)(int,int)>("MXBMRP3_Test_TimingReferenceMs");
@@ -119,6 +134,7 @@ public:
         m_stepCount    = sym<int(*)(int)>("MXBMRP3_Test_SettingsSteppedCount");
         m_stepClick    = sym<int(*)(int,int,int)>("MXBMRP3_Test_SettingsClickStepped");
         m_cycleCount   = sym<int(*)(int)>("MXBMRP3_Test_SettingsCycleCount");
+        m_regionSig    = sym<void(*)(char*,int)>("MXBMRP3_Test_SettingsRegionSignature");
         m_cycleClick   = sym<int(*)(int,int)>("MXBMRP3_Test_SettingsClickCycle");
         m_ruBumpsLight = sym<float(*)()>("MXBMRP3_Test_RumbleActiveBumpsLight");
         m_companion = sym<void(*)(int)>("MXBMRP3_Test_CompanionWindow");
@@ -131,11 +147,29 @@ public:
         m_anCustom     = sym<void(*)(const char*)>("MXBMRP3_Test_AnalyticsQueueCustom");
         m_anSeedCrash  = sym<void(*)(const char*, const char*, const char*)>("MXBMRP3_Test_AnalyticsSeedCrash");
         m_anDrain      = sym<int(*)(char*, int)>("MXBMRP3_Test_AnalyticsDrainPending");
+        m_resolveFrame = sym<void(*)(unsigned long long, char*, int)>("MXBMRP3_Test_ResolveFrame");
         m_extractInstall = sym<int(*)(const char*, const char*, int, char*, int)>("MXBMRP3_Test_ExtractAndInstall");
         m_stSetVisible      = sym<void(*)(int)>("MXBMRP3_Test_StandingsSetVisible");
         m_stSetCompVisible  = sym<void(*)(int)>("MXBMRP3_Test_StandingsSetCompanionVisible");
         m_stClearCompanion  = sym<void(*)()>("MXBMRP3_Test_StandingsClearCompanion");
         m_stCompanionState  = sym<void(*)(int*, int*, int*)>("MXBMRP3_Test_StandingsCompanionState");
+        m_stPlateInsetY     = sym<float(*)(int)>("MXBMRP3_Test_StandingsPlateInsetY");
+        m_stSetOffset       = sym<void(*)(float, float)>("MXBMRP3_Test_StandingsSetOffset");
+        m_tmSetVisible      = sym<void(*)(int)>("MXBMRP3_Test_TelemetrySetVisible");
+        m_tmSetCompVisible  = sym<void(*)(int)>("MXBMRP3_Test_TelemetrySetCompanionVisible");
+        m_tmClearCompanion  = sym<void(*)()>("MXBMRP3_Test_TelemetryClearCompanion");
+        m_tmHistoryDepth    = sym<int(*)()>("MXBMRP3_Test_TelemetryHistoryDepth");
+        m_tmClearHistory    = sym<void(*)()>("MXBMRP3_Test_TelemetryClearHistory");
+        m_bmSetVisible      = sym<void(*)(int)>("MXBMRP3_Test_BenchmarkSetVisible");
+        m_bmSetCompVisible  = sym<void(*)(int)>("MXBMRP3_Test_BenchmarkSetCompanionVisible");
+        m_bmActive          = sym<int(*)()>("MXBMRP3_Test_BenchmarkMetricsActive");
+        m_bmExists          = sym<int(*)()>("MXBMRP3_Test_BenchmarkExists");
+        m_helmetSetVisible  = sym<void(*)(int)>("MXBMRP3_Test_HelmetSetVisible");
+        m_helmetVisible     = sym<int(*)()>("MXBMRP3_Test_HelmetVisible");
+        m_helmetSetCompVis  = sym<void(*)(int)>("MXBMRP3_Test_HelmetSetCompanionVisible");
+        m_helmetAnySurface  = sym<int(*)()>("MXBMRP3_Test_HelmetVisibleAnySurface");
+        m_clickDirectorVis  = sym<int(*)()>("MXBMRP3_Test_ClickDirectorHudVisible");
+        m_dirWidgetVis      = sym<void(*)(int*, int*)>("MXBMRP3_Test_DirectorWidgetVisibility");
         m_setDisplayTarget  = sym<void(*)(int)>("MXBMRP3_Test_SetDisplayTarget");
         m_getDisplayTarget  = sym<int(*)()>("MXBMRP3_Test_GetDisplayTarget");
         m_surfaceFrameStats = sym<void(*)(int*, int*, double*, double*)>("MXBMRP3_Test_SurfaceFrameStats");
@@ -157,8 +191,46 @@ public:
         m_recSetStub        = sym<void(*)(int, const char*)>("MXBMRP3_Test_RecordsSetFetchStub");
         m_recStartFetch     = sym<int(*)()>("MXBMRP3_Test_RecordsStartFetch");
         m_recFetchState     = sym<int(*)()>("MXBMRP3_Test_RecordsFetchState");
+        m_steamStartWorker  = sym<int(*)()>("MXBMRP3_Test_SteamStartWorker");
+        m_steamWorkerAlive  = sym<int(*)()>("MXBMRP3_Test_SteamWorkerRunning");
+        m_eventDeinit  = sym<PFN_Shutdown>("EventDeinit");
+        m_raceDeinit   = sym<PFN_Shutdown>("RaceDeinit");
+        m_raceVehicleData = sym<PFN_Void_DS>("RaceVehicleData");
+        m_runSplit     = sym<PFN_Void_DS>("RunSplit");
+        m_cameras      = sym<PFN_Cameras>("SpectateCameras");
+        m_bikeTelemetry = sym<void(*)(float*,int*,int*,float*,float*,float*,int*)>("MXBMRP3_Test_BikeTelemetry");
+        m_curSplits    = sym<int(*)(int,int*,int*,int*,int*)>("MXBMRP3_Test_CurrentLapSplits");
+        m_anStartWorker = sym<int(*)()>("MXBMRP3_Test_AnalyticsStartEventWorker");
+        m_anWorkerAlive = sym<int(*)()>("MXBMRP3_Test_AnalyticsEventWorkerRunning");
+        m_anShutdown    = sym<void(*)()>("MXBMRP3_Test_AnalyticsShutdown");
+        m_reqCamera    = sym<void(*)(int)>("MXBMRP3_Test_RequestSpectateCamera");
+        m_manualCam    = sym<int(*)()>("MXBMRP3_Test_ManualCameraActive");
+        m_resetCamTrack = sym<void(*)()>("MXBMRP3_Test_ResetCameraTracking");
     }
-    ~PluginHost() { if (m_h) FreeLibrary(m_h); }
+    // Shut the plugin down BEFORE unloading it, unless a test opted out.
+    //
+    // This used to be a bare FreeLibrary, which left it to each test to remember
+    // host.shutdown() — four had not, and blueflag_test crashed 8/10 times under
+    // CPU load because its three SUBCASEs each unmapped the DLL with the
+    // plugin's background threads still running (the unload-without-Shutdown()
+    // path CLAUDE.md flags as having cost two shipped crashes). Fixing the four
+    // call sites left the same trap for the 65th test, and for the abort path:
+    // an explicit shutdown() is the LAST statement in a test body, so a failing
+    // REQUIRE above it skips teardown and restores exactly the crashy path.
+    // Doing it here covers every caller, present and future, plus the abort.
+    ~PluginHost() {
+        if (!m_h) return;
+        if (!m_skipShutdownOnDestroy) shutdown();
+        FreeLibrary(m_h);
+    }
+
+    // Opt OUT of the destructor's shutdown, for a test whose subject IS the
+    // unload-without-Shutdown() path (teardown_test's second case). Without this
+    // the safety above would silently turn that test into a duplicate of its
+    // first case — and the deliberate omission it relies on would look like the
+    // same oversight this destructor exists to fix. Saying it out loud makes it
+    // a declaration rather than an absence.
+    void skipShutdownOnDestroy() { m_skipShutdownOnDestroy = true; }
 
     PluginHost(const PluginHost&) = delete;
     PluginHost& operator=(const PluginHost&) = delete;
@@ -168,8 +240,28 @@ public:
 
     // --- lifecycle -----------------------------------------------------------
     // savePath is a Wine Windows path (Z:\ maps to the unix root).
-    int startup(const char* savePath) { return m_startup ? m_startup(const_cast<char*>(savePath)) : -1; }
-    void shutdown() { if (m_shutdown) m_shutdown(); }
+    // startup() re-arms the shutdown guard: several tests run start/shutdown
+    // cycles (deinit, companion_decouple, director_*), and swallowing the second
+    // shutdown would leave the plugin live across the next one.
+    int startup(const char* savePath) {
+        m_shutdownDone = false;
+        m_started = true;
+        return m_startup ? m_startup(const_cast<char*>(savePath)) : -1;
+    }
+    // Idempotent within one startup, so an explicit call followed by the
+    // destructor's does not Shutdown twice.
+    //
+    // Also a no-op before the first startup(). Shutdown() constructs
+    // PluginManager (and with it every singleton) in order to tear it down, so
+    // calling it on a host that only LOADED the DLL would build the whole
+    // plugin purely to destroy it — turning "the test never started the plugin"
+    // into a full lifecycle. Every test today calls startup(), so this guards a
+    // latent case rather than a live one; it exists because the destructor now
+    // shuts down unconditionally, which is what made the case reachable.
+    void shutdown() {
+        if (!m_started) return;
+        if (m_shutdown && !m_shutdownDone) { m_shutdownDone = true; m_shutdown(); }
+    }
 
     // Start the web overlay server (default off) via the test hook, then poll
     // until it answers — this both waits out the bind race and registers the
@@ -186,6 +278,21 @@ public:
         return false;
     }
 
+    // Start the server WITHOUT touching /api/state. startHttp() above polls,
+    // which counts as a client for the next 5s (hasActiveClients) and therefore
+    // disables the frequent-change gating — exactly what a test of that gating
+    // must not do. HttpServer::start() blocks until the port is bound and sets
+    // m_running synchronously, so no polling is needed to know it is live.
+    bool startHttpNoClient() {
+        if (!m_startHttp) { HOST_TRACE("MXBMRP3_Test_StartHttp not exported"); return false; }
+        m_startHttp();
+        return true;
+    }
+
+    // Snapshot rebuild counter (the SSE sequence). See http_gating_test.cpp.
+    bool hasSnapshotSeq() const { return m_snapshotSeq != nullptr; }
+    unsigned long long snapshotSeq() { return m_snapshotSeq ? m_snapshotSeq() : 0ull; }
+
     // Callback-tape recorder (in-plugin, GAME_HAS_RECORDER). Open a tape at `path`,
     // drive callbacks (which record into it), then stopRecording() to finalize.
     bool startRecording(const std::string& path) {
@@ -195,13 +302,24 @@ public:
     void stopRecording() { if (m_stopRec) m_stopRec(); }
 
     // --- driving the game callbacks -----------------------------------------
+    // category is the game's "Class" (MX1, MX2, ...) — the field the PiBoSo API spells
+    // m_szCategory. It selects which stored PBs the default PBScope::CATEGORY scans, so
+    // a test can put two different bikes in the same class (or deliberately not).
+    //
+    // trackId is m_szTrackID, which is NOT the track name: it is the other half of
+    // StatsManager's "trackId|bikeName" PB key. It defaults to empty (what this harness
+    // has always sent, so every existing test keeps its current keys); pass one when a
+    // test reads the stats file by key and wants a realistic one.
     void eventInit(const char* trackName, const char* riderName,
                    float trackLength = 1600.0f, int type = 2,
-                   const char* bikeName = "Test 450") {
+                   const char* bikeName = "Test 450",
+                   const char* category = "MX1",
+                   const char* trackId = "") {
         SPluginsBikeEvent_t ev{};
         setStr(ev.m_szRiderName, riderName);
         setStr(ev.m_szBikeName, bikeName);
-        setStr(ev.m_szCategory, "MX1");
+        setStr(ev.m_szCategory, category);
+        setStr(ev.m_szTrackID, trackId);
         setStr(ev.m_szTrackName, trackName);
         ev.m_fTrackLength = trackLength; ev.m_iType = type;
         ev.m_iNumberOfGears = 6;   // a real bike has gears (so the gear widget shows a digit, not "D")
@@ -340,6 +458,29 @@ public:
     // Internal "recently seen in a RaceTrackPosition batch" bit (feeds liveGapValid).
     int hasActiveTrackPos(int raceNum) { return m_hasATP ? m_hasATP(raceNum) : -1; }
     int hazardRaceNumCount() { return m_hazCount ? m_hazCount() : -1; }
+    // Consume the "new all-time PB" notice flag (true once per fired notice).
+    bool takeNewAllTimePB() { return m_takeATPB && m_takeATPB() != 0; }
+    // The shared click-to-spectate gate (Standings/Map/Event Log/Session Charts).
+    bool isRiderSpectatable(int raceNum) { return m_spectatable && m_spectatable(raceNum) != 0; }
+    // Event Log rows currently offering click-to-spectate.
+    int eventLogSpectateRegionCount() { return m_evtRegions ? m_evtRegions() : -1; }
+    // Put the Event Log into AUTO_HIDE with `durationMs` (0 = default).
+    void eventLogSetAutoHide(bool on, int durationMs = 0) { if (m_evtAutoHide) m_evtAutoHide(on ? 1 : 0, durationMs); }
+    // Session Charts sample resolution + the display rider's series length. sectorPoints:
+    // 1/0 to force ELEM_SECTOR_POINTS on/off first, -1 to leave it as configured.
+    struct ChartSeries { int pointsPerLap = -1; int points = -1; };
+    ChartSeries chartSeries(int sectorPoints = -1) {
+        ChartSeries cs;
+        if (!m_chartSeries) return cs;
+        int out[2] = { -1, -1 };
+        m_chartSeries(sectorPoints, out);
+        cs.pointsPerLap = out[0]; cs.points = out[1];
+        return cs;
+    }
+    // Blue-flag / lapping detection (lazy-rebuilt caches).
+    bool isRiderBlueFlagged(int raceNum) { return m_blueFlag && m_blueFlag(raceNum) != 0; }
+    bool isRiderLapping(int raceNum) { return m_lapping && m_lapping(raceNum) != 0; }
+    int  riderLappingTarget(int raceNum) { return m_lapTarget ? m_lapTarget(raceNum) : -2; }
 
     // SpectateVehicles: the game's rider list + which index the camera is on.
     // curSelection's rider becomes the spectated/"camera" rider (gets the camera
@@ -358,10 +499,118 @@ public:
         draw();
     }
 
-    void draw() {
+    // SpectateCameras: the game's per-track camera list. Unlike every other
+    // callback this one is an OPAQUE blob with no element size — the names are
+    // packed null-terminated strings — so the harness builds exactly that, padded
+    // out so the plugin's bounded walk can never read past the allocation.
+    // Returns the callback's own return (1 = "I changed the selection"); the
+    // chosen index is written to *outSelect.
+    int spectateCameras(const std::vector<std::string>& names, int curSelection,
+                        int* outSelect = nullptr) {
+        std::vector<unsigned char> blob;
+        for (const auto& n : names) {
+            for (char c : n) blob.push_back((unsigned char)c);
+            blob.push_back(0);
+        }
+        blob.resize(4096, 0);   // matches Cameras::kMaxBytes, the plugin's walk cap
+        int select = curSelection;
+        int ret = m_cameras ? m_cameras((int)names.size(), blob.data(), curSelection, &select) : 0;
+        if (outSelect) *outSelect = select;
+        return ret;
+    }
+
+    // EventDeinit / RaceDeinit: the game left the event / the race session ended.
+    // Both clear PluginData wholesale.
+    void eventDeinit() { if (m_eventDeinit) m_eventDeinit(); }
+    void raceDeinit()  { if (m_raceDeinit) m_raceDeinit(); }
+
+    // RaceVehicleData: one rider's live vehicle state. This is the ONLY telemetry
+    // source while spectating or in a replay, so it feeds the display rider's
+    // telemetry; active=0 means the remaining fields are unset and ignored.
+    void raceVehicleData(int raceNum, float speedMs, int gear, int rpm,
+                         float throttle, float frontBrake, float leanDeg,
+                         bool active = true) {
+        SPluginsRaceVehicleData_t d{};
+        d.m_iRaceNum = raceNum;
+        d.m_iActive = active ? 1 : 0;
+        d.m_iRPM = rpm;
+        d.m_iGear = gear;
+        d.m_fSpeedometer = speedMs;
+        d.m_fThrottle = throttle;
+        d.m_fFrontBrake = frontBrake;
+        d.m_fLean = leanDeg;
+        if (m_raceVehicleData) m_raceVehicleData(&d, (int)sizeof(d));
+    }
+
+    // RunSplit: the player's own split. Deliberately a no-op in the plugin —
+    // RaceSplit (all riders) owns split handling. See run_split_test.cpp.
+    void runSplit(int splitIndex, int splitTimeMs, int bestDiffMs = 0) {
+        SPluginsBikeSplit_t s{};
+        s.m_iSplit = splitIndex;
+        s.m_iSplitTime = splitTimeMs;
+        s.m_iBestDiff = bestDiffMs;
+        if (m_runSplit) m_runSplit(&s, (int)sizeof(s));
+    }
+
+    // Live bike/input telemetry for the display rider (not in /api/state).
+    struct BikeTelemetry {
+        float speedometer = 0.0f;
+        int gear = 0;
+        int rpm = 0;
+        float throttle = 0.0f;
+        float frontBrake = 0.0f;
+        float roll = 0.0f;
+        bool valid = false;
+    };
+    BikeTelemetry bikeTelemetry() {
+        BikeTelemetry t;
+        int valid = 0;
+        if (m_bikeTelemetry) {
+            m_bikeTelemetry(&t.speedometer, &t.gear, &t.rpm, &t.throttle,
+                            &t.frontBrake, &t.roll, &valid);
+        }
+        t.valid = (valid != 0);
+        return t;
+    }
+
+    // A rider's live current-lap splits (-1 = not crossed yet). In-game display
+    // only — never in /api/state — so this is the only way to assert them.
+    struct CurrentLapSplits {
+        bool present = false;
+        int lapNum = -1;
+        int s1 = -1, s2 = -1, s3 = -1;
+    };
+    CurrentLapSplits currentLapSplits(int raceNum) {
+        CurrentLapSplits c;
+        if (m_curSplits) {
+            c.present = m_curSplits(raceNum, &c.lapNum, &c.s1, &c.s2, &c.s3) != 0;
+        }
+        return c;
+    }
+
+    // Start the analytics custom-event worker (capture mode: no network). Lets a
+    // teardown test shut down with a live analytics thread to join.
+    bool analyticsStartEventWorker() { return m_anStartWorker && m_anStartWorker() != 0; }
+    bool analyticsEventWorkerRunning() { return m_anWorkerAlive && m_anWorkerAlive() != 0; }
+    // AnalyticsManager::shutdown() — drain the queue and JOIN the worker. In a
+    // shipping build the orchestrated Shutdown() does this; here nothing does.
+    void analyticsShutdown() { if (m_anShutdown) m_anShutdown(); }
+
+    // Post a director camera-role request (SpectateHandler::CameraRole as int).
+    void requestSpectateCamera(int role) { if (m_reqCamera) m_reqCamera(role); }
+    bool manualCameraActive() { return m_manualCam && m_manualCam() != 0; }
+    void resetCameraTracking() { if (m_resetCamTrack) m_resetCamTrack(); }
+
+    void draw() { drawWithState(1); }
+
+    // Draw with an explicit view state (0 = ON_TRACK, 1 = SPECTATE, 2 = REPLAY).
+    // Everything else here uses SPECTATE, which is what the driving helpers want;
+    // reach for this when the behaviour under test is gated on the view itself
+    // (e.g. RaceVehicleData standing down while the player is on track).
+    void drawWithState(int state) {
         if (!m_draw) return;
         int nq = 0, ns = 0; void* q = nullptr; void* s = nullptr;
-        m_draw(1, &nq, &q, &ns, &s);
+        m_draw(state, &nq, &q, &ns, &s);
         m_lastGameQuads = nq; m_lastGameStrings = ns;   // what draw() EMITTED to the game
     }
     // Quad/string counts the last draw() emitted to the game surface (0 when the
@@ -524,6 +773,18 @@ public:
     // 4=fastestLap 8=pace 16=lappers 32=drops) so one tape can be replayed under
     // different story configs for broadcast comparison.
     void directorSetStories(int mask) { if (m_dirSetStories) m_dirSetStories(mask); }
+    // Shot pacing in seconds. maxSec = 0 is "Max shot = Off" — forced rotation disabled,
+    // so the director cuts only for stories and returns to the broadcaster's own rider.
+    void directorSetShotSec(int minSec, int maxSec) { if (m_dirSetShotSec) m_dirSetShotSec(minSec, maxSec); }
+    // The broadcaster's "home" rider (-1 until adopted), and the director's raw current
+    // subject (unlike /api/state's advisory, not blanked while paused/held).
+    int directorHomeSubject() { return m_dirHomeSubject ? m_dirHomeSubject() : -2; }
+    int directorSubject() { return m_dirSubject ? m_dirSubject() : -2; }
+    // Benchmark profiler registry sizes. Registration is process-lifetime (HUDs are
+    // registered once in HudManager::initialize()), so these must survive a session
+    // teardown — a drop to 0 silently empties the profiler's per-HUD table.
+    int benchmarkHudCount() { return m_benchHudCount ? m_benchHudCount() : -1; }
+    int benchmarkCallbackCount() { return m_benchCbCount ? m_benchCbCount() : -1; }
     // Inject the director's simulated wall-clock (ms); -1 restores the real clock. Lets a
     // hand-built scenario drive the director's pacing at chosen times. (replayTapeTimed
     // feeds this from tape timestamps.)
@@ -591,6 +852,13 @@ public:
     // regions on the active tab, in layout order (no hold tier - cycles never
     // accelerate).
     int cycleCount(bool up) { return m_cycleCount ? m_cycleCount(up ? 1 : 0) : -1; }
+    // Signature of the active settings tab's emitted click regions (see the hook).
+    std::string regionSignature() {
+        if (!m_regionSig) return {};
+        std::vector<char> buf(16384, '\0');
+        m_regionSig(buf.data(), static_cast<int>(buf.size()));
+        return std::string(buf.data());
+    }
     bool clickCycle(int index, bool up) {
         return m_cycleClick && m_cycleClick(index, up ? 1 : 0) != 0;
     }
@@ -651,6 +919,10 @@ public:
     }
     // Parse a canned response as provider (0=CBR, 1=MXB_RANKED); returns the
     // parsed record count, or -1 on a parse error (-2 = hook missing).
+    // Steam friend-scan worker: lifecycle only (no Steam in a test build).
+    bool steamStartWorker() { return m_steamStartWorker && m_steamStartWorker() != 0; }
+    bool steamWorkerRunning() const { return m_steamWorkerAlive && m_steamWorkerAlive() != 0; }
+
     int recordsParse(int provider, const std::string& json) {
         return m_recParse ? m_recParse(provider, json.c_str()) : -2;
     }
@@ -693,8 +965,62 @@ public:
         return m_stSetVisible && m_stSetCompVisible && m_stClearCompanion && m_stCompanionState;
     }
     void stSetVisible(bool v)          { if (m_stSetVisible) m_stSetVisible(v ? 1 : 0); }
+    bool hasPlateHooks() const         { return m_stPlateInsetY && m_stSetOffset; }
+    // Fraction of the plate height at which the race-number string sits. A POSITION,
+    // so it can legitimately be slightly negative; kPlateInsetNotFound is the
+    // out-of-band "no plate on that row" reading (also what a missing hook returns).
+    static constexpr float kPlateInsetNotFound = -1000.0f;
+    float stPlateInsetY(int row)       { return m_stPlateInsetY ? m_stPlateInsetY(row)
+                                                               : kPlateInsetNotFound; }
+    void stSetOffset(float x, float y) { if (m_stSetOffset) m_stSetOffset(x, y); }
     void stSetCompanionVisible(bool v) { if (m_stSetCompVisible) m_stSetCompVisible(v ? 1 : 0); }
     void stClearCompanion()            { if (m_stClearCompanion) m_stClearCompanion(); }
+
+    // TelemetryHud surfaces + the history buffers its graphs are drawn from. The
+    // depth is how a test sees whether PluginData is still ACCUMULATING while the
+    // HUD is visible only on the companion window (see telemetry_companion_test).
+    bool hasTelemetrySurfaces() const {
+        return m_tmSetVisible && m_tmSetCompVisible && m_tmClearCompanion
+            && m_tmHistoryDepth && m_tmClearHistory;
+    }
+    void tmSetVisible(bool v)          { if (m_tmSetVisible) m_tmSetVisible(v ? 1 : 0); }
+    void tmSetCompanionVisible(bool v) { if (m_tmSetCompVisible) m_tmSetCompVisible(v ? 1 : 0); }
+    void tmClearCompanion()            { if (m_tmClearCompanion) m_tmClearCompanion(); }
+    int  tmHistoryDepth()              { return m_tmHistoryDepth ? m_tmHistoryDepth() : -1; }
+    void tmClearHistory()              { if (m_tmClearHistory) m_tmClearHistory(); }
+
+    // BenchmarkWidget: visibility per surface, plus whether the instrumentation
+    // is actually COLLECTING. The second is the point — the widget renders on
+    // either surface regardless, so only `active` distinguishes real data from an
+    // empty frame (see benchmark_companion_test).
+    bool hasBenchmarkSurfaces() const {
+        return m_bmSetVisible && m_bmSetCompVisible && m_bmActive && m_bmExists;
+    }
+    bool bmExists()                    { return m_bmExists && m_bmExists() != 0; }
+    void bmSetVisible(bool v)          { if (m_bmSetVisible) m_bmSetVisible(v ? 1 : 0); }
+    void bmSetCompanionVisible(bool v) { if (m_bmSetCompVisible) m_bmSetCompVisible(v ? 1 : 0); }
+    bool bmMetricsActive()             { return m_bmActive && m_bmActive() != 0; }
+
+    // HelmetOverlayHud: on/off plus the state read-back. It never renders on the
+    // companion, so a test asserts the companion frame is unchanged by it.
+    bool hasHelmetHooks() const        { return m_helmetSetVisible && m_helmetVisible && m_helmetSetCompVis; }
+    void helmetSetVisible(bool v)      { if (m_helmetSetVisible) m_helmetSetVisible(v ? 1 : 0); }
+    bool helmetVisible()               { return m_helmetVisible && m_helmetVisible() != 0; }
+    void helmetSetCompanionVisible(bool v) { if (m_helmetSetCompVis) m_helmetSetCompVis(v ? 1 : 0); }
+    bool helmetVisibleAnySurface()     { return m_helmetAnySurface && m_helmetAnySurface() != 0; }
+
+    // Director "Visible" row: click it through the real path, read the widget's
+    // per-surface state, and choose which surface the click counts as.
+    bool hasDirectorSurfaceHooks() const {
+        return m_clickDirectorVis && m_dirWidgetVis && m_forceSurface;
+    }
+    bool clickDirectorHudVisible()     { return m_clickDirectorVis && m_clickDirectorVis() != 0; }
+    struct SurfaceVis { int game = -1, companion = -1; };
+    SurfaceVis directorWidgetVisibility() {
+        SurfaceVis v;
+        if (m_dirWidgetVis) m_dirWidgetVis(&v.game, &v.companion);
+        return v;
+    }
     struct SurfaceState { int configured = -1, companionVisible = -1, gameVisible = -1; };
     SurfaceState stCompanionState() {
         SurfaceState s;
@@ -760,6 +1086,14 @@ public:
         text = buf.data();
         return n;
     }
+    // Crash-backtrace frame resolver, formatted "module+0xoffset" (the dashboard
+    // stack-frame format). Empty string if the hook isn't exported.
+    std::string resolveFrame(unsigned long long addr) {
+        if (!m_resolveFrame) return {};
+        char buf[128] = {0};
+        m_resolveFrame(addr, buf, (int)sizeof(buf));
+        return buf;
+    }
     // Run the update extract/install pipeline against destDir with an in-memory
     // zip (bypasses the network download). 1=success, 0=failed, -1=hook missing;
     // err receives the plugin's error message.
@@ -790,6 +1124,13 @@ public:
     bool pluginThreadAbortWorker() {
         if (!m_ptAbort) return false;
         m_ptAbort();
+        return true;
+    }
+    // Fault injection: while on, the worker discards each batch unrun (see the
+    // flush-bound test). Returns false if the hook isn't exported.
+    bool pluginThreadSwallowBatches(bool on) {
+        if (!m_ptSwallow) return false;
+        m_ptSwallow(on ? 1 : 0);
         return true;
     }
 
@@ -853,6 +1194,14 @@ public:
         if (!m_snapshot) return json();
         const char* s = m_snapshot();
         return (s && *s) ? json::parse(s, nullptr, /*allow_exceptions=*/false) : json();
+    }
+    // The same snapshot as raw text. Use when the assertion is "nothing at all
+    // changed" — comparing the strings catches a field a parsed comparison would
+    // need to know about in advance.
+    std::string rawSnapshot() {
+        if (!m_snapshot) return std::string();
+        const char* s = m_snapshot();
+        return s ? std::string(s) : std::string();
     }
 
     // Via the real HTTP server + socket (needs startHttp()). Reserve for the
@@ -920,7 +1269,27 @@ private:
                 m_trackPos(pre->numVehicles, positions, (int)sizeof(SPluginsRaceTrackPosition_t));
                 return true;
             }
-            default: break;   // Startup/Shutdown/Run*/telemetry/splits/etc. — skipped
+            // Recorder format (event_recorder.cpp): [int numSegments][SPluginsTrackSegment_t...];
+            // raceData is intentionally not recorded, so replay passes null. Feeds MapHud
+            // the track geometry — without it a replayed tape's map is empty even with positions.
+            case ET::TrackCenterline: {
+                if (!m_trackCenter || buf.size() < sizeof(int)) break;
+                int numSegments = *reinterpret_cast<int*>(p);
+                void* segs = (buf.size() > sizeof(int)) ? (buf.data() + sizeof(int)) : nullptr;
+                m_trackCenter(numSegments, segs, nullptr);
+                return true;
+            }
+            // Recorder format: [SPluginsBikeData_t][float time][float pos]. Feeds the
+            // telemetry-driven HUDs (speedo/tacho/gear/lean/g-force/fuel/stats).
+            case ET::RunTelemetry: {
+                const size_t need = sizeof(SPluginsBikeData_t) + 2 * sizeof(float);
+                if (!m_telemetry || buf.size() < need) break;
+                float time = *reinterpret_cast<float*>(buf.data() + sizeof(SPluginsBikeData_t));
+                float pos  = *reinterpret_cast<float*>(buf.data() + sizeof(SPluginsBikeData_t) + sizeof(float));
+                m_telemetry(p, (int)sizeof(SPluginsBikeData_t), time, pos);
+                return true;
+            }
+            default: break;   // Startup/Shutdown/Run*/splits/etc. — skipped
         }
         return false;
     }
@@ -967,6 +1336,17 @@ private:
     PFN_CountArray m_trackPos = nullptr;
     PFN_TrackCenter m_trackCenter = nullptr;
     PFN_Spectate m_spectate = nullptr;
+    PFN_Cameras  m_cameras = nullptr;
+    PFN_Shutdown m_eventDeinit = nullptr, m_raceDeinit = nullptr;
+    PFN_Void_DS  m_raceVehicleData = nullptr, m_runSplit = nullptr;
+    void (*m_bikeTelemetry)(float*,int*,int*,float*,float*,float*,int*) = nullptr;
+    int  (*m_curSplits)(int,int*,int*,int*,int*) = nullptr;
+    int  (*m_anStartWorker)() = nullptr;
+    int  (*m_anWorkerAlive)() = nullptr;
+    void (*m_anShutdown)() = nullptr;
+    void (*m_reqCamera)(int) = nullptr;
+    int  (*m_manualCam)() = nullptr;
+    void (*m_resetCamTrack)() = nullptr;
     PFN_Void_DS  m_runInit = nullptr;
     PFN_Shutdown m_runDeinit = nullptr;
     PFN_Shutdown m_runStart = nullptr, m_runStop = nullptr;
@@ -974,14 +1354,24 @@ private:
     int         (*m_getRTG)(int) = nullptr;
     int         (*m_hasATP)(int) = nullptr;
     int         (*m_hazCount)() = nullptr;
+    int         (*m_takeATPB)() = nullptr;
+    int         (*m_spectatable)(int) = nullptr;
+    int         (*m_evtRegions)() = nullptr;
+    void        (*m_evtAutoHide)(int,int) = nullptr;
+    void        (*m_chartSeries)(int,int*) = nullptr;
+    int         (*m_blueFlag)(int) = nullptr;
+    int         (*m_lapping)(int) = nullptr;
+    int         (*m_lapTarget)(int) = nullptr;
     PFN_Draw     m_draw = nullptr;
     void        (*m_startHttp)() = nullptr;
     const char* (*m_snapshot)() = nullptr;
+    unsigned long long (*m_snapshotSeq)() = nullptr;
     void        (*m_ptEnable)() = nullptr;
     int         (*m_ptEnabled)() = nullptr;
     void        (*m_ptFlush)() = nullptr;
     void        (*m_ptStop)() = nullptr;
     void        (*m_ptAbort)() = nullptr;
+    void        (*m_ptSwallow)(int) = nullptr;
     void        (*m_setProduceDelay)(int) = nullptr;
     void        (*m_getDebugMetrics)(float*,float*,float*) = nullptr;
     void        (*m_setPtFlag)(int) = nullptr;
@@ -1022,6 +1412,11 @@ private:
     int         (*m_eventLogIconColorSlot)(const char*) = nullptr;
     void        (*m_noticesSetVisible)(int) = nullptr;
     void        (*m_dirSetStories)(int) = nullptr;
+    void        (*m_dirSetShotSec)(int, int) = nullptr;
+    int         (*m_dirHomeSubject)() = nullptr;
+    int         (*m_dirSubject)() = nullptr;
+    int         (*m_benchHudCount)() = nullptr;
+    int         (*m_benchCbCount)() = nullptr;
     long long   m_lastReplayTimeMs = 0;
     void        (*m_save)() = nullptr;
     void        (*m_markDirty)() = nullptr;
@@ -1032,15 +1427,36 @@ private:
     void        (*m_setActiveTab)(const char*) = nullptr;
     int         (*m_stepCount)(int) = nullptr;
     int         (*m_stepClick)(int,int,int) = nullptr;
+    bool        m_shutdownDone = false;
+    bool        m_started = false;   // startup() was called at least once
+    bool        m_skipShutdownOnDestroy = false;
     int         (*m_cycleCount)(int) = nullptr;
+    void        (*m_regionSig)(char*,int) = nullptr;
     int         (*m_cycleClick)(int,int) = nullptr;
     float       (*m_ruBumpsLight)() = nullptr;
     void        (*m_showSettings)(int) = nullptr;
     void        (*m_companion)(int) = nullptr;
     void        (*m_stSetVisible)(int) = nullptr;
     void        (*m_stSetCompVisible)(int) = nullptr;
+    float       (*m_stPlateInsetY)(int) = nullptr;
+    void        (*m_stSetOffset)(float, float) = nullptr;
     void        (*m_stClearCompanion)() = nullptr;
     void        (*m_stCompanionState)(int*, int*, int*) = nullptr;
+    void        (*m_tmSetVisible)(int) = nullptr;
+    void        (*m_tmSetCompVisible)(int) = nullptr;
+    void        (*m_bmSetVisible)(int) = nullptr;
+    void        (*m_bmSetCompVisible)(int) = nullptr;
+    int         (*m_bmActive)() = nullptr;
+    int         (*m_bmExists)() = nullptr;
+    void        (*m_helmetSetVisible)(int) = nullptr;
+    int         (*m_helmetVisible)() = nullptr;
+    void        (*m_helmetSetCompVis)(int) = nullptr;
+    int         (*m_helmetAnySurface)() = nullptr;
+    int         (*m_clickDirectorVis)() = nullptr;
+    void        (*m_dirWidgetVis)(int*, int*) = nullptr;
+    void        (*m_tmClearCompanion)() = nullptr;
+    int         (*m_tmHistoryDepth)() = nullptr;
+    void        (*m_tmClearHistory)() = nullptr;
     void        (*m_setDisplayTarget)(int) = nullptr;
     int         (*m_getDisplayTarget)() = nullptr;
     void        (*m_surfaceFrameStats)(int*, int*, double*, double*) = nullptr;
@@ -1056,6 +1472,8 @@ private:
     void        (*m_statsSetNow)(long long) = nullptr;
     void        (*m_statsOdoState)(double*,double*,double*,int*) = nullptr;
     void        (*m_statsSave)() = nullptr;
+    int         (*m_steamStartWorker)() = nullptr;
+    int         (*m_steamWorkerAlive)() = nullptr;
     int         (*m_recParse)(int, const char*) = nullptr;
     int         (*m_recCount)() = nullptr;
     int         (*m_recGet)(int, char*, int, char*, int, int*, int*, int*, int*, char*, int) = nullptr;
@@ -1073,5 +1491,6 @@ private:
     void        (*m_anCustom)(const char*) = nullptr;
     void        (*m_anSeedCrash)(const char*, const char*, const char*) = nullptr;
     int         (*m_anDrain)(char*, int) = nullptr;
+    void        (*m_resolveFrame)(unsigned long long, char*, int) = nullptr;
     int         (*m_extractInstall)(const char*, const char*, int, char*, int) = nullptr;
 };

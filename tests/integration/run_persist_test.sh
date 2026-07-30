@@ -16,9 +16,9 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD="${HERE}/build"
 
-export WINEPREFIX="${WINEPREFIX:-$HOME/.wineprefix-mxbmrp3}"
-export WINEARCH=win64
-export WINEDEBUG="${WINEDEBUG:--all}"
+. "${HERE}/wine_env.sh"
+mxb_wine_env
+mxb_wine_no_crash_debugger   # a crash exits instead of hanging winedbg
 SAVE=/tmp/mxbsave   # loader.exe's hardcoded Z:\tmp\mxbsave\
 INI="${SAVE}/mxbmrp3/mxbmrp3_settings.ini"
 # Wall-clock cap per loader run (startup+shutdown). Aborts a hang instead of burning CI

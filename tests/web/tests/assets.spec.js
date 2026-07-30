@@ -80,3 +80,20 @@ test('the split overlay scripts are all wired into index.html and sw.js, in the 
   // one global scope with no module boundary, so load order is load-bearing.
   expect(swJs).toEqual(htmlJs);
 });
+
+// The installer copies the web root per FOLDER, with a wildcard inside each
+// (`web\js\*.*`), so a new FILE in an existing folder ships automatically — but a
+// new SUBFOLDER needs its own SetOutPath + File block, in all three game sections.
+// Miss it and the overlay 404s for installer users only (the zip, which is copied
+// wholesale, stays fine), so no other test can see it.
+test('every web subfolder is packaged by the NSIS installer', async () => {
+  const nsi = fs.readFileSync(
+    path.resolve(__dirname, '../../../packaging/mxbmrp3.nsi'), 'utf8');
+  const subfolders = fs.readdirSync(WEB_DIR, { withFileTypes: true })
+    .filter((e) => e.isDirectory()).map((e) => e.name).sort();
+
+  const missing = subfolders.filter(
+    (dir) => !new RegExp(`mxbmrp3_data\\\\web\\\\${dir}\\\\\\*\\.\\*`).test(nsi));
+  expect(missing, `web subfolder(s) absent from packaging/mxbmrp3.nsi: ${missing}`)
+    .toEqual([]);
+});

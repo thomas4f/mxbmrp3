@@ -6,9 +6,7 @@
 #include "../core/handler_singleton.h"
 #include "../core/plugin_data.h"
 
-DEFINE_HANDLER_SINGLETON(RaceEventHandler)
-
-void RaceEventHandler::handleRaceEvent(Unified::RaceEventData* psRaceEvent) {
+void Handlers::handleRaceEvent(Unified::RaceEventData* psRaceEvent) {
     HANDLER_NULL_CHECK(psRaceEvent);
 
     // Update plugin data store
@@ -18,7 +16,7 @@ void RaceEventHandler::handleRaceEvent(Unified::RaceEventData* psRaceEvent) {
     PluginData::getInstance().setTrackLength(psRaceEvent->trackLength);
 }
 
-void RaceEventHandler::handleRaceDeinit() {
+void Handlers::handleRaceDeinit() {
     // Clear data when race ends
     PluginData::getInstance().clear();
 }

@@ -5,6 +5,7 @@
 #pragma once
 
 #include "base_hud.h"
+#include "radar_fade.h"
 #include "../game/unified_types.h"
 #include <vector>
 
@@ -161,6 +162,9 @@ protected:
 
 private:
     // Rider position storage (updated frequently)
+    // Pushed whole by HudManager::updateRiderPositions; assign() replaces it each batch.
+    // raw-cache: proximity works in world space (posX/posZ/yaw), which
+    // handleRaceTrackPosition drops before PluginData sees it — there is no other source.
     std::vector<Unified::TrackPositionData> m_riderPositions;
 
     // Radar configuration

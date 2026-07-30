@@ -165,17 +165,6 @@ bool SettingsHud::isRepeatableRegionType(ClickRegion::Type type) {
     }
 }
 
-// Mode name lookup tables for debug output
-static const char* getRiderColorModeName(int mode) {
-    static const char* names[] = { "Uniform", "Brand", "Position" };
-    return (mode >= 0 && mode < 3) ? names[mode] : "Unknown";
-}
-
-static const char* getLabelModeName(int mode) {
-    static const char* names[] = { "None", "Position", "RaceNum", "Both" };
-    return (mode >= 0 && mode < 4) ? names[mode] : "Unknown";
-}
-
 SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, FriendsHud* friends, SessionChartsHud* sessionCharts,
                          StandingsHud* standings,
                          PerformanceHud* performance,
@@ -227,9 +216,6 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, FriendsHud* f
       m_lean(lean),
       m_gforce(gforce),
       m_compass(compass),
-      m_fmxHud(fmxHud),
-      m_statsHud(statsHud),
-      m_eventLog(eventLog),
       m_clock(clock),
 #if GAME_HAS_TYRE_TEMP
       m_tyreTemp(tyreTemp),
@@ -237,6 +223,9 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, FriendsHud* f
 #if GAME_HAS_ECU
       m_ecu(ecu),
 #endif
+      m_fmxHud(fmxHud),
+      m_statsHud(statsHud),
+      m_eventLog(eventLog),
       m_bVisible(false),
       m_copyTargetProfile(-1),  // -1 = no target selected
       m_resetProfileConfirmed(false),
@@ -284,6 +273,9 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, FriendsHud* f
 }
 
 void SettingsHud::show() {
+    // vis-gate: the settings MENU renders only on the ACTIVE surface (special-
+    // cased in HudManager::collectSurface); it has no companion instance, so
+    // the game flag alone is correct here and in update()/rebuildLayout().
     if (m_bVisible) return;
 
     m_bVisible = true;
@@ -311,7 +303,7 @@ void SettingsHud::showUpdatesTab() {
 }
 
 void SettingsHud::update() {
-    if (!m_bVisible) return;
+    if (!m_bVisible) return;  // vis-gate: menu is active-surface-only (see show())
 
     // Process dirty flag first (e.g., from showUpdatesTab() or external tab switch)
     if (isDataDirty()) {
@@ -444,7 +436,9 @@ void SettingsHud::update() {
 
         // For riders tab, track which tracked rider cell is hovered
         if (m_activeTab == TAB_RIDERS && m_trackedRidersCellHeight > 0.0f && m_trackedRidersPerRow > 0) {
-            int newHoveredIndex = -1;
+            // newHoveredRiderIndex: an outer `newHoveredIndex` (the hovered click
+            // region) is still in scope here.
+            int newHoveredRiderIndex = -1;
 
             // Apply offset to stored coordinates for comparison with cursor
             float ridersStartY = m_trackedRidersStartY + m_fOffsetY;
@@ -458,12 +452,12 @@ void SettingsHud::update() {
                 int col = static_cast<int>(relativeX / m_trackedRidersCellWidth);
 
                 if (col >= 0 && col < m_trackedRidersPerRow) {
-                    newHoveredIndex = row * m_trackedRidersPerRow + col;
+                    newHoveredRiderIndex = row * m_trackedRidersPerRow + col;
                 }
             }
 
-            if (newHoveredIndex != m_hoveredTrackedRiderIndex) {
-                m_hoveredTrackedRiderIndex = newHoveredIndex;
+            if (newHoveredRiderIndex != m_hoveredTrackedRiderIndex) {
+                m_hoveredTrackedRiderIndex = newHoveredRiderIndex;
                 rebuildRenderData();
             }
         }
@@ -631,7 +625,7 @@ void SettingsHud::update() {
 void SettingsHud::rebuildLayout() {
     // Rebuild everything for layout changes (dragging, scale, etc.)
     // Given the complexity of tabs and dynamic controls, full rebuild is simplest
-    if (m_bVisible) {
+    if (m_bVisible) {  // vis-gate: menu is active-surface-only (see show())
         rebuildRenderData();
     }
 }

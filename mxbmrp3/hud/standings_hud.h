@@ -5,6 +5,7 @@
 #pragma once
 
 #include "base_hud.h"
+#include "plate_geometry.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
@@ -45,14 +46,16 @@ public:
         OFF = 0,       // Gap column hidden
         PLAYER = 1,    // Show only player's gap
         ADJACENT = 2,  // Show gap to rider directly ahead (all rows)
-        ALL = 3        // Show all riders' gaps
+        ALL = 3,       // Show all riders' gaps
+        COUNT          // sentinel: cardinality, mirrored in StandingsGap::Scope
     };
 
     // Gap reference point (what gaps are relative to)
     enum class GapReferenceMode : uint8_t {
         LEADER = 0,      // Gaps relative to race leader
         PLAYER = 1,      // Gaps relative to player (negative = ahead, positive = behind)
-        ALTERNATING = 2   // Automatically cycles between Leader and Player
+        ALTERNATING = 2, // Automatically cycles between Leader and Player
+        COUNT            // sentinel: cardinality, mirrored in StandingsGap::Reference
     };
 
     // Rider name display mode
@@ -148,7 +151,8 @@ private:
         enum class GapStyle : uint8_t {
             OFFICIAL,   // Primary color (default)
             LIVE,       // Secondary color (fresh live gap)
-            LABEL       // Tertiary color (text labels like "Leader"/"Player")
+            LABEL,      // Tertiary color (text labels like "Leader"/"Player")
+            COUNT       // sentinel: cardinality, mirrored in StandingsGap::Style
         };
         GapStyle gapStyle;
         unsigned long gapColorOverride;  // Non-zero = override gap column color (e.g., adjacent coloring)
@@ -190,6 +194,32 @@ private:
     // two never disagree and make columns jump when the HUD is moved.
     float getColumnTextX(uint8_t columnIndex, float columnPosition, float fontSize, bool isPlaceholder, bool gapRightAlign = false) const;
 
+    // Vertical anchor for a column's text within its row, mirroring getColumnTextX.
+    // Only the plate number differs from the row baseline, but it MUST be applied by
+    // both the rebuild path and the drag/layout fast path -- applying it in one only
+    // is a bug visible solely while dragging, as the number jumps between centred
+    // and high. That is exactly what happened when the offset was inlined in the
+    // rebuild path alone.
+    float getColumnTextY(uint8_t columnIndex, float rowY, bool isPlaceholder,
+                         const ScaledDimensions& dim) const;
+
+#if defined(MXBMRP3_TEST_BUILD)
+public:
+    // Vertical inset of a row's race-number string inside its plate quad, as a
+    // fraction of plate height. 0.5 means the string origin sits on the plate's
+    // centre line.
+    //
+    // Exists because the bug it pins is invisible in a screenshot: the number was
+    // centred by the REBUILD path and left uncentred by the drag/layout path, so it
+    // only jumped while the HUD was being moved. Asserting the inset is equal after
+    // each path is the property; asserting an absolute Y would just track the offset.
+    // Returns a far-out-of-band -1000 when the row has no plate: the inset is a
+    // POSITION, so ordinary readings can be slightly negative (a -1 sentinel was
+    // first tried and a real -0.03 was misread as "no plate").
+    float testPlateNumberInsetY(int row) const;
+private:
+#endif
+
     // Header label and its X anchor for a column. Mirrors the non-placeholder
     // alignment used by renderRiderRow so the header sits over its column. When
     // outJustify is non-null it receives the justify used at string creation
@@ -201,9 +231,6 @@ private:
     // Updates m_cachedPlayerIndex when player found; positionBase is display position (e.g., 1 for P1)
     void addDisplayEntries(int startIdx, int endIdx, int positionBase,
                           const std::vector<int>& classificationOrder, const PluginData& pluginData);
-
-    // Returns true if gap should display for this row (accounts for PLAYER/ALL scope)
-    bool shouldShowGapForScope(bool isPlayerRow) const;
 
     // Click handling for rider selection
     void handleClick(float mouseX, float mouseY);
@@ -326,14 +353,34 @@ private:
         float stripGap;
         float plateHeight;
         float platePadY;
+        // The arrow is shorter than the plate so it reads as an arrowhead rather
+        // than a full-height spike. arrowInsetY is measured from the PLATE's top,
+        // not the row's: callers already hold the plate origin with applyOffset()
+        // applied, and re-deriving from rowY would drop that offset.
+        float arrowHeight;
+        float arrowInsetY;
 
         PlateGeometry(float fontSize, float lineHeightNormal)
             : charWidth(PluginUtils::calculateMonospaceTextWidth(1, fontSize))
             , plateWidth(charWidth * 4.0f)
-            , brandStripWidth(charWidth * 0.5f)
-            , stripGap(charWidth * 0.5f)
-            , plateHeight(lineHeightNormal * 0.8f)
-            , platePadY((lineHeightNormal - plateHeight) * 0.5f)
+            // 0.85 chars, not the 0.5 this was while it was a BAR. A triangle in the
+            // same box has half the ink of the rectangle it replaced, so at 0.5 chars
+            // against a ~0.96-em plate height it drew a 1:7 needle. 1.25 was tried
+            // first and read as too heavy next to the plate; 0.85 with the 0.7 height
+            // below gives roughly a 1:2 arrowhead. COL_RACENUM_WIDTH is 6 = plate 4 +
+            // gap + strip + padding, so anything past ~1.25 needs the column widened
+            // and the whole tower reflowed.
+            , brandStripWidth(charWidth * 0.85f)
+            // 0.3 chars, tightened from 0.5: close enough to read as part of the
+            // plate group rather than a stray mark, still a clear gap so the arrow
+            // does not hug the plate edge. Budget: 4 + 0.3 + 0.85 = 5.15 of the
+            // 6-char COL_RACENUM_WIDTH, leaving 0.85 trailing padding.
+            , stripGap(charWidth * 0.3f)
+            , plateHeight(PlateLayout::plateHeight(lineHeightNormal))
+            , platePadY(PlateLayout::platePadY(lineHeightNormal))
+            , arrowHeight(PlateLayout::plateHeight(lineHeightNormal) * 0.7f)
+            , arrowInsetY((PlateLayout::plateHeight(lineHeightNormal)
+                           - PlateLayout::plateHeight(lineHeightNormal) * 0.7f) * 0.5f)
         {}
     };
 
@@ -373,6 +420,8 @@ private:
     std::unordered_map<int, RowAnimation> m_activeAnimations;  // raceNum -> active animation
     std::unordered_map<int, int> m_previousPositions;           // raceNum -> last known race position
     std::unordered_map<int, int> m_previousSlots;               // raceNum -> last known display slot (visibility check)
+    std::unordered_map<int, int> m_scratchPositions;            // reused scratch for updateAnimationState (avoids per-rebuild map alloc)
+    std::unordered_map<int, int> m_scratchSlots;                //   "  (clear()+swap() keeps bucket capacity across rebuilds)
     std::chrono::steady_clock::time_point m_frameTime = std::chrono::steady_clock::now();
 
     float m_animationDurationMs = 500.0f;  // Duration of position slide animation (configurable 50-1000)

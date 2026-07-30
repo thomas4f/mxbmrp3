@@ -4,6 +4,7 @@
 // ============================================================================
 #include "race_lap_handler.h"
 #include "../core/handler_singleton.h"
+#include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
 #include "../core/plugin_data.h"
 #include "../core/stats_manager.h"
@@ -13,9 +14,7 @@
 #endif
 #include <ctime>
 
-DEFINE_HANDLER_SINGLETON(RaceLapHandler)
-
-void RaceLapHandler::handleRaceLap(Unified::RaceLapData* psRaceLap) {
+void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
     HANDLER_NULL_CHECK(psRaceLap);
 
     // =========================================================================
@@ -233,9 +232,16 @@ void RaceLapHandler::handleRaceLap(Unified::RaceLapData* psRaceLap) {
             pbEntry.conditions = sessionData.conditions;
             pbEntry.timestamp = std::time(nullptr);
 
-            // updatePersonalBest only saves if this beats the existing all-time PB
-            isAllTimePB = StatsManager::getInstance().updatePersonalBest(
+            // The store is always keyed by track+bike, but the notice must reflect what
+            // the player is SHOWN as their all-time reference — under the default
+            // PBScope::CATEGORY that is the fastest lap across every bike in the class.
+            // Use beatsScopedBest, never stored: a first lap on a new bike in a class you
+            // already have a faster time in is stored (that bike had no PB) yet is not an
+            // all-time PB, and firing on it both showed green against a red Alltime row
+            // and suppressed the genuine fastest-lap notice below.
+            const PersonalBestUpdate pbUpdate = StatsManager::getInstance().updatePersonalBest(
                 sessionData.trackId, sessionData.bikeName, pbEntry);
+            isAllTimePB = pbUpdate.beatsScopedBest;
             if (isAllTimePB) {
                 data.notifyAllTimePB();
 #if GAME_HAS_RECORDS_PROVIDER
@@ -274,7 +280,7 @@ void RaceLapHandler::handleRaceLap(Unified::RaceLapData* psRaceLap) {
             PluginUtils::formatLapTime(lapTime, lapTimeStr, sizeof(lapTimeStr));
             char eventMsg[64];
             snprintf(eventMsg, sizeof(eventMsg), "%s fastest lap", riderLabel);
-            data.addEventLogEntry(EventLogType::FastestLap, eventMsg, lapTimeStr);
+            data.addEventLogEntry(EventLogType::FastestLap, eventMsg, lapTimeStr, -1, raceNum);
         }
     }
 

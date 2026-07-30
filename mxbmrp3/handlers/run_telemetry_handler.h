@@ -6,15 +6,8 @@
 
 #include "../game/unified_types.h"
 
-class RunTelemetryHandler {
-public:
-    static RunTelemetryHandler& getInstance();
+namespace Handlers {
 
-    void handleRunTelemetry(Unified::TelemetryData* psTelemetryData);
+void handleRunTelemetry(Unified::TelemetryData* psTelemetryData);
 
-private:
-    RunTelemetryHandler() = default;
-    ~RunTelemetryHandler() = default;
-    RunTelemetryHandler(const RunTelemetryHandler&) = delete;
-    RunTelemetryHandler& operator=(const RunTelemetryHandler&) = delete;
-};
+}  // namespace Handlers

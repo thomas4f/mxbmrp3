@@ -266,26 +266,19 @@ void PluginData::removeRaceEntry(int raceNum) {
             m_bPlayerRaceNumValid = false;
         }
 
-        // Clean up ALL per-rider data structures. Beyond the memory (trivial),
-        // this matters for raceNum reuse: a new rider joining mid-event with a
+        // Evict ALL registered per-rider state — every PerRider<> member, see
+        // the registry in plugin_data.h. Beyond the memory (trivial), this
+        // matters for raceNum reuse: a new rider joining mid-event with a
         // departed rider's number must not inherit stale standings, gap cache,
-        // or position-gain reference points.
-        m_riderCurrentLap.erase(raceNum);
-        m_riderIdealLap.erase(raceNum);
-        m_riderLapLog.erase(raceNum);
-        m_riderBestLap.erase(raceNum);
-        m_trackPositions.erase(raceNum);
-        m_standings.erase(raceNum);
-        m_lastValidOfficialGap.erase(raceNum);
-        m_raceStartPositions.erase(raceNum);
-        m_lastSfPositions.erase(raceNum);
-        m_lastSplitPositions.erase(raceNum);
+        // position-gain reference points, lap history, or the live-gap
+        // "recently seen in a batch" bit (no callbacks arrive while the player
+        // sits in menus, so a stale entry would never refresh out on its own).
+        for (const auto& hook : m_perRiderHooks) {
+            hook.eraseFn(hook.container, raceNum);
+        }
+        // Derived caches are rebuilt wholesale from their sources — dirty them
+        // instead (m_cachedHazardTypes also erased as belt-and-suspenders).
         m_cachedHazardTypes.erase(raceNum);
-        // Also the live-gap "recently seen in a RaceTrackPosition batch" set: while
-        // the player sits in menus no batches arrive to refresh it, so a departed
-        // rider would otherwise stay "active" indefinitely and a rejoiner reusing
-        // the number would inherit hasActiveTrackPos() == true (liveGapValid).
-        m_activeTrackPosRiders.erase(raceNum);
         m_blueFlagsDirty = true;
         // The derived hazard-raceNum vector must be rebuilt too: erasing the type
         // cache above keeps IT consistent, but m_cachedHazardRaceNums still lists
@@ -584,7 +577,6 @@ void PluginData::updateLapLog(int raceNum, const LapLogEntry& entry) {
     // Get or create lap log for this rider
     std::deque<LapLogEntry>& lapLog = m_riderLapLog[raceNum];
 
-    bool wasUpdated = false;
 
     // Check if this is an update to the most recent lap (same lap number)
     // This handles both incomplete lap updates and completing an incomplete lap
@@ -608,7 +600,6 @@ void PluginData::updateLapLog(int raceNum, const LapLogEntry& entry) {
 
         if (changed) {
             lapLog[0] = entry;
-            wasUpdated = true;
             notifyHudManager(DataChangeType::LapLog);
         }
     } else {
@@ -622,7 +613,6 @@ void PluginData::updateLapLog(int raceNum, const LapLogEntry& entry) {
             lapLog.resize(static_cast<size_t>(PluginConstants::HudLimits::MAX_LAP_LOG_STORAGE));
         }
 
-        wasUpdated = true;
         notifyHudManager(DataChangeType::LapLog);
     }
 }
@@ -754,7 +744,14 @@ void PluginData::clearTelemetryData() {
 void PluginData::clear() {
     m_sessionData.clear();
     m_raceEntries.clear();
-    m_standings.clear();
+    // Reset ALL registered per-rider state — the same PerRider<> registry
+    // removeRaceEntry() iterates (standings, track positions, lap history,
+    // position references, ...), so a full event exit can't leave a reused
+    // race number inheriting a departed rider's state. (The position-reference
+    // maps are additionally reset per-session in handleRaceSession().)
+    for (const auto& hook : m_perRiderHooks) {
+        hook.clearFn(hook.container);
+    }
     m_classificationOrder.clear();
     m_lastLeaderRaceNum = -1;
     m_positionCache.clear();
@@ -762,22 +759,8 @@ void PluginData::clear() {
     m_filteredClassificationOrder.clear();
     m_filteredPositionCache.clear();
     m_bFilteredOrderDirty = true;
-    m_trackPositions.clear();
-    m_activeTrackPosRiders.clear();
     m_blueFlagsDirty = true;
-    m_riderCurrentLap.clear();
-    m_riderIdealLap.clear();
-    m_riderLapLog.clear();
-    m_riderBestLap.clear();
     clearOverallBestLap();
-
-    // Position-reference maps (race-start snapshot, "Since S/F" / "Since split"
-    // rolling references). Erased per-rider in removeRaceEntry() and reset at
-    // every new session in handleRaceSession(); also reset here so a full event
-    // exit can't leave a reused race number inheriting a departed rider's state.
-    m_raceStartPositions.clear();
-    m_lastSfPositions.clear();
-    m_lastSplitPositions.clear();
 
     // Reset the lap timer AND the grid-start gate-drop watch it drives (isInGridStartGrace keys
     // on m_awaitingGateDrop, so a stale watch surviving clear() would suppress wrong-way/hazards).
@@ -786,7 +769,6 @@ void PluginData::clear() {
 
     // Clear leader timing points
     m_leaderTimingPoints.clear();
-    m_lastValidOfficialGap.clear();
 
     // Clear telemetry data
     m_bikeTelemetry = BikeTelemetryData();
@@ -827,10 +809,18 @@ void PluginData::clear() {
     // of a same-track session (the MapHud likewise keeps its split markers).
     resetSegmentTimer();
 
-    // Reset benchmark metrics (preserves active flag, clears all registrations)
-    bool bmWasActive = m_benchmarkMetrics.active;
-    m_benchmarkMetrics = BenchmarkMetrics{};
-    m_benchmarkMetrics.active = bmWasActive;
+    // Benchmark metrics are deliberately NOT touched here. They are not session data:
+    // the registry (per-HUD and per-callback names + slot indices) is process-lifetime
+    // profiler wiring, and HUDs are registered exactly ONCE, in HudManager::initialize().
+    // Wiping it here left hudCount at 0 for the rest of the run, so every
+    // recordHudRebuild() failed its `index >= hudCount` bounds check and the report read
+    // "HUDs profiled: 0" with an empty table after the first session exit. Callbacks
+    // re-register lazily, which looks like recovery but is worse: a stale index that
+    // happens to land below the new callbackCount writes into whichever callback
+    // re-registered into that slot first, so timings surface under the wrong NAME.
+    // The measurements themselves need no clearing here - BenchmarkWidget::takeSnapshot()
+    // zeroes them every SNAPSHOT_INTERVAL_FRAMES, and peaks reset when it is shown.
+    // See benchmark_registry_test.cpp.
 
     // Clear event log
     m_eventLog.clear();
@@ -844,13 +834,15 @@ void PluginData::clear() {
 // ========================================================================
 // Event Log
 // ========================================================================
-void PluginData::addEventLogEntry(EventLogType type, const char* message, const char* detail, int iconColorSlot) {
+void PluginData::addEventLogEntry(EventLogType type, const char* message, const char* detail,
+                                  int iconColorSlot, int raceNum) {
     EventLogEntry entry;
     entry.type = type;
     entry.sessionTimeMs = m_currentSessionTime;
     entry.steadyTime = std::chrono::steady_clock::now();
     entry.systemTime = std::chrono::system_clock::now();
     entry.iconColorSlot = iconColorSlot;
+    entry.raceNum = raceNum;
     strncpy_s(entry.message, sizeof(entry.message), message, _TRUNCATE);
     if (detail) {
         strncpy_s(entry.detail, sizeof(entry.detail), detail, _TRUNCATE);

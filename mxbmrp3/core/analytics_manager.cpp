@@ -633,7 +633,7 @@ void AnalyticsManager::sendPendingCrashReport() {
             };
             std::string body = buildSessionEventBody("crash", duration, props);
             {
-                std::lock_guard<std::mutex> lock(m_eventMutex);
+                MutexLock lock(m_eventMutex);
                 m_eventQueue.push_back(std::move(body));
             }
             m_eventCv.notify_one();
@@ -666,7 +666,7 @@ void AnalyticsManager::queueSessionEnd() {
     try {
         std::string body = buildSessionEventBody("session_end", duration, {});
         {
-            std::lock_guard<std::mutex> lock(m_eventMutex);
+            MutexLock lock(m_eventMutex);
             m_eventQueue.push_back(std::move(body));
         }
         m_eventCv.notify_one();   // self-contained (shutdown() also notify_all's after)
@@ -690,7 +690,7 @@ void AnalyticsManager::trackEvent(const std::string& eventName,
         return;  // never throw on the game thread
     }
     {
-        std::lock_guard<std::mutex> lock(m_eventMutex);
+        MutexLock lock(m_eventMutex);
         m_eventQueue.push_back(std::move(body));
     }
     m_eventCv.notify_one();
@@ -702,8 +702,9 @@ void AnalyticsManager::eventWorkerLoop() {
         for (;;) {
             std::string body;
             {
-                std::unique_lock<std::mutex> lock(m_eventMutex);
-                m_eventCv.wait(lock, [this] {
+                CvLock lock(m_eventMutex);
+                // Predicate runs with the lock held (cv contract) — see thread_safety.h.
+                m_eventCv.wait(lock.native(), [this]() MXB_REQUIRES(m_eventMutex) {
                     return m_shutdownRequested || !m_eventQueue.empty();
                 });
                 if (m_eventQueue.empty()) {
@@ -826,7 +827,7 @@ void AnalyticsManager::shutdown() {
     // The empty locked scope synchronizes with the worker's wait predicate so
     // the notify can't be missed.
     {
-        std::lock_guard<std::mutex> lk(m_eventMutex);
+        MutexLock lk(m_eventMutex);
     }
     m_eventCv.notify_all();
     if (m_eventWorker.joinable()) m_eventWorker.join();
@@ -857,13 +858,22 @@ void AnalyticsManager::testPrime() {
     m_fullLaunch.store(true);
     m_pendingCrashPath.clear();
     s_testCaptureMode = true;           // real senders become no-ops; isConfigured() → true
-    std::lock_guard<std::mutex> lock(m_eventMutex);
+    MutexLock lock(m_eventMutex);
     m_eventQueue.clear();
 }
 
 void AnalyticsManager::testSetFullLaunch(bool full) { m_fullLaunch.store(full); }
 
 std::string AnalyticsManager::testBuildAppStarted() { return buildEventBody(); }
+
+bool AnalyticsManager::testStartEventWorker() {
+    if (m_eventWorker.joinable()) return true;   // never overwrite a live std::thread
+    m_shutdownRequested = false;
+    m_eventWorker = std::thread(&AnalyticsManager::eventWorkerLoop, this);
+    return m_eventWorker.joinable();
+}
+
+bool AnalyticsManager::testEventWorkerRunning() const { return m_eventWorker.joinable(); }
 
 void AnalyticsManager::testQueueSessionEnd() { queueSessionEnd(); }
 
@@ -893,7 +903,7 @@ void AnalyticsManager::testSeedAndReportCrash(const std::string& markerPath,
 }
 
 std::vector<std::string> AnalyticsManager::testDrainPending() {
-    std::lock_guard<std::mutex> lock(m_eventMutex);
+    MutexLock lock(m_eventMutex);
     std::vector<std::string> out(m_eventQueue.begin(), m_eventQueue.end());
     m_eventQueue.clear();
     return out;

@@ -194,3 +194,91 @@ TEST_CASE("director events: emitted regardless of the display filter (raw-data c
 
     host.shutdown();
 }
+
+// Only ONE rider is the race winner.
+//
+// SHOT_FINISH is not "the win" — it is the whole run-in to the flag. Once the leader
+// crosses, the finish lock moves down the order to whoever is still racing to the
+// line, and every one of those cuts is tagged "finish" too. The log line was
+// unconditionally "Race winner #N", so P2, P3, P4 each got announced as the winner
+// of the same race. Reported from real use.
+//
+// The overlay already got this right (overlay-focus.js reads FINISHED vs FINISHING
+// off rider.finished); it was only the event log that had no split.
+TEST_CASE("director events: only the actual winner is logged as the race winner") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\director_winner\\");
+    host.eventLogEnableDirector(true);
+
+    // Pure-lap race: a rider is finished once numLaps >= sessionNumLaps, so the
+    // classification's lap counts alone drive the finish (no finishLap/overtime).
+    host.eventInit("TestTrack", "Cam");
+    host.raceEvent("TestTrack");
+    host.session(/*session=*/6, /*numLaps=*/10, /*lengthMs=*/0);
+    for (int num : { 10, 22, 7, 3 }) {
+        char nm[16]; snprintf(nm, sizeof(nm), "R%d", num);
+        host.addEntry(num, nm);
+    }
+    host.draw();                     // spectate, so the director directs
+    host.directorSetEnabled(true);   // finish lock is on by default
+
+    auto positions = [&]() {
+        host.raceTrackPosition({
+            { .num = 10, .trackPos = 0.50f, .crashed = 0 },
+            { .num = 22, .trackPos = 0.40f, .crashed = 0 },
+            { .num = 7,  .trackPos = 0.30f, .crashed = 0 },
+            { .num = 3,  .trackPos = 0.20f, .crashed = 0 },
+        });
+    };
+    // #10 has taken the flag (10 of 10); the rest are on their last lap. Gaps are wide
+    // enough that the front pair is not a battle, so the finish lock frames one rider.
+    auto classifyLeaderHome = [&]() {
+        host.classify(6, 600000, {
+            { .num = 10, .best = 90000, .laps = 10, .gap = 0 },
+            { .num = 22, .best = 90500, .laps = 9,  .gap = 30000 },
+            { .num = 7,  .best = 91000, .laps = 9,  .gap = 60000 },
+            { .num = 3,  .best = 91500, .laps = 9,  .gap = 90000 },
+        });
+    };
+
+    long long t = 1000;
+    host.directorSetNowMs(t); positions(); classifyLeaderHome();
+    for (int i = 0; i < 4; ++i) { t += 500; host.directorSetNowMs(t); positions(); classifyLeaderHome(); }
+
+    // Positive control: without a winner line the rest of this case proves nothing —
+    // "no rider was called the winner" passes trivially if the finish window never
+    // opened at all.
+    auto mid = host.snapshot();
+    REQUIRE(mid.is_object());
+    REQUIRE_MESSAGE(hasEvent(mid, "Race winner #10"),
+                    "the finish lock never framed the winner, so this case cannot "
+                    "discriminate (check the pure-lap finish detection)");
+
+    // Past the 6s winner celebration: the lock moves to the front-most rider STILL
+    // racing to the flag. That cut is SHOT_FINISH as well — and is where the wrong
+    // label used to appear.
+    for (int i = 0; i < 8; ++i) { t += 1500; host.directorSetNowMs(t); positions(); classifyLeaderHome(); }
+
+    auto d = host.snapshot();
+    REQUIRE(d.is_object());
+
+    // Exactly one rider is announced as the winner, and it is the one who took the flag.
+    int winnerLines = 0;
+    for (const auto& e : d.value("events", nlohmann::json::array()))
+        if (e.value("message", std::string()).rfind("Race winner", 0) == 0) ++winnerLines;
+    CHECK_MESSAGE(winnerLines == 1,
+                  "more than one rider was logged as the race winner — the run-in cuts "
+                  "after the celebration are still borrowing the winner's line");
+    CHECK(hasEvent(d, "Race winner #10"));
+    CHECK_FALSE(hasEvent(d, "Race winner #22"));
+    CHECK_FALSE(hasEvent(d, "Race winner #7"));
+    CHECK_FALSE(hasEvent(d, "Race winner #3"));
+
+    // And the run-in cuts still say something: a rider heading for the flag reads
+    // "Finishing", matching the overlay's FINISHING caption.
+    CHECK(hasEvent(d, "Finishing #22"));
+
+    host.directorSetNowMs(-1);
+    host.shutdown();
+}

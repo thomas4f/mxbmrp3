@@ -404,9 +404,6 @@ void SettingsManager::app_GapBarHud(HudManager& hudManager, const SettingsManage
                 }
                 // Legacy compatibility: convert old showMarkers boolean to markerMode
                 else if (settings.count("showMarkers") || settings.count("showMarker")) {
-                    bool showMarkers = settings.count("showMarkers") ?
-                        (settings.at("showMarkers") == "1") :
-                        (settings.at("showMarker") == "1");
                     // Old behavior: markers on = ghost mode, off = still ghost mode (markers always shown now)
                     hud.m_markerMode = GapBarHud::MarkerMode::GHOST;
                 }

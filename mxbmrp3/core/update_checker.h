@@ -7,6 +7,7 @@
 #include <string>
 #include <thread>
 #include <mutex>
+#include "thread_safety.h"
 #include <atomic>
 #include <functional>
 #include <vector>
@@ -164,26 +165,28 @@ private:
     std::atomic<Status> m_status;
     std::atomic<UpdateMode> m_mode;  // Persisted setting: Off or Notify
     std::atomic<UpdateChannel> m_channel;  // Persisted setting: Stable or Prerelease
-    std::string m_latestVersion;
-    std::string m_releaseNotes;   // GitHub release body (markdown)
-    std::string m_downloadUrl;    // Asset browser_download_url
-    std::string m_assetName;      // Asset filename (e.g., "mxbmrp3-v1.10.3.0.zip")
-    size_t m_downloadSize;        // Asset size in bytes
-    std::string m_checksumHash;   // SHA256 hash from GitHub digest field
-    bool m_latestIsPrerelease;    // Whether the latest available version is a prerelease
-    std::string m_dismissedVersion;  // Version user chose to skip (persisted)
-    mutable std::mutex m_mutex;
+    std::string m_latestVersion MXB_GUARDED_BY(m_mutex);
+    std::string m_releaseNotes MXB_GUARDED_BY(m_mutex);   // GitHub release body (markdown)
+    std::string m_downloadUrl MXB_GUARDED_BY(m_mutex);    // Asset browser_download_url
+    std::string m_assetName MXB_GUARDED_BY(m_mutex);      // Asset filename (e.g., "mxbmrp3-v1.10.3.0.zip")
+    size_t m_downloadSize MXB_GUARDED_BY(m_mutex);        // Asset size in bytes
+    std::string m_checksumHash MXB_GUARDED_BY(m_mutex);   // SHA256 hash from GitHub digest field
+    bool m_latestIsPrerelease MXB_GUARDED_BY(m_mutex);    // Whether the latest available version is a prerelease
+    std::string m_dismissedVersion MXB_GUARDED_BY(m_mutex);  // Version user chose to skip (persisted)
+    mutable Mutex m_mutex;
     std::thread m_workerThread;
     std::atomic<bool> m_shutdownRequested;
-    std::function<void()> m_completionCallback;
+    // Copy under the lock, invoke OUTSIDE it (see the worker in update_checker.cpp) —
+    // exactly the shape the analysis should be pinning, so it carries the annotation.
+    std::function<void()> m_completionCallback MXB_GUARDED_BY(m_mutex);
 
     // HTTP handle tracking for cross-thread cancellation via WinHttpCloseHandle.
     // All three handles are stored so shutdown can close them explicitly rather than
     // relying on ambiguous cascade-close behavior when only the session is closed.
-    std::mutex m_httpHandleMutex;
-    void* m_hHttpSession{nullptr};
-    void* m_hHttpConnect{nullptr};
-    void* m_hHttpRequest{nullptr};
+    Mutex m_httpHandleMutex;
+    void* m_hHttpSession MXB_GUARDED_BY(m_httpHandleMutex) {nullptr};
+    void* m_hHttpConnect MXB_GUARDED_BY(m_httpHandleMutex) {nullptr};
+    void* m_hHttpRequest MXB_GUARDED_BY(m_httpHandleMutex) {nullptr};
     std::atomic<bool> m_debugMode;  // Forces update available for testing
     unsigned long m_lastCheckTimestamp;  // When last check started (for cooldown)
 

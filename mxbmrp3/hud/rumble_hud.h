@@ -5,6 +5,7 @@
 #pragma once
 
 #include "base_hud.h"
+#include "peak_marker.h"
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
 

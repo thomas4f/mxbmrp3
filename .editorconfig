@@ -1,0 +1,41 @@
+# ============================================================================
+# .editorconfig — mechanical file hygiene, applied by the editor as you type.
+#
+# This deliberately covers only what is objectively decidable: encoding, line
+# endings, indent character/width, trailing whitespace, and the final newline.
+# It does NOT try to impose a code-layout style — see the note in
+# tests/integration/check_style.sh for why this project does not use
+# clang-format. Layout stays a review concern; hygiene is mechanical.
+#
+# The same rules are enforced in CI by tests/integration/check_style.sh, so an
+# editor without EditorConfig support is caught rather than trusted.
+# ============================================================================
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_width = 4
+
+# Web/config conventions: 2-space, matching the existing overlay sources.
+[*.{js,css,html,json,yml,yaml}]
+indent_size = 2
+
+# Markdown: a line ending in two spaces is a hard line break, which is a
+# legitimate construct — so trailing whitespace is not trimmed here (and
+# check_style.sh skips the same rule for the same reason). Everything else
+# still applies.
+[*.md]
+trim_trailing_whitespace = false
+
+# Visual Studio owns these files and rewrites them on save (tabs in the .sln,
+# no final newline in the .filters). Fighting the IDE over generated project
+# files produces churn, not quality — check_style.sh skips them too.
+[*.{sln,vcxproj,filters}]
+trim_trailing_whitespace = false
+insert_final_newline = false
+indent_style = unset
+indent_width = unset

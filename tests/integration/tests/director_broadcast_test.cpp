@@ -180,9 +180,12 @@ constexpr int STORIES_NONE    = 0;                                          // p
 // synthetic Draw ticks between events (0 = data-only, as the original CI case). The
 // per-config savePath keeps each run's log separate so director_report.py can profile
 // them independently.
+// `maxSec` = 0 replays under the SHIPPED Max shot default (Off: story-only cutting,
+// camera pinned to the TV shot); any other value is explicit full-auto pacing.
 std::vector<Cut> runTape(PluginHost& host, const std::string& savePath,
                          const char* tapeFile, int minApplied, long long* outDurationMs,
-                         int storyMask = STORIES_DEFAULT, long long drawTickMs = 0) {
+                         int storyMask = STORIES_DEFAULT, long long drawTickMs = 0,
+                         int minSec = 8, int maxSec = 25) {
     // The plugin creates <savePath>\mxbmrp3 but NOT savePath itself, and the CI runner
     // only pre-creates the one director_broadcast dir — so make the per-config save dir
     // here or its log (and every cut) silently goes nowhere.
@@ -192,6 +195,11 @@ std::vector<Cut> runTape(PluginHost& host, const std::string& savePath,
     host.startup(savePath.c_str());
     host.draw();                     // state 1 = spectate, so the director actually directs
     host.directorSetEnabled(true);
+    // Pacing is set EXPLICITLY on every run. Most cases here measure the full-auto
+    // broadcast (8 s / 25 s), which is no longer the shipped default — the default is
+    // Max shot Off, a genuinely different show. The default gets its own case below so
+    // the out-of-box experience is measured too, rather than only the opted-in one.
+    host.directorSetShotSec(minSec, maxSec);
     host.directorSetStories(storyMask);
     const std::string tape = std::string("Z:\\tmp\\mxbmrp3-tests\\fixtures\\") + tapeFile;
     const int applied = host.replayTapeTimed(tape, drawTickMs);
@@ -272,6 +280,48 @@ TEST_CASE("director broadcast: a 24-rider race replays as a plausible broadcast"
     std::map<int, int> seen;
     for (auto& c : cuts) seen[c.subject]++;
     CHECK(seen.size() >= 12);
+}
+
+TEST_CASE("director broadcast: the SHIPPED default is a story-only show (no home rider)") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+
+    // Every other case here sets full-auto pacing explicitly, so without this one the
+    // out-of-box configuration would go unmeasured — the "is this a good broadcast?"
+    // bar would only cover a mode users have to opt into. Same 24-rider tape, shipped
+    // defaults: Max shot Off means story-only cutting.
+    //
+    // SCOPE: the tape format does not record SpectateVehicles (see EventType in
+    // event_recorder.h — 27 types, none of them the spectate callback), so no home rider
+    // is ever adopted on a replay and pickBaselineSubject falls back to the leader. That
+    // makes this the DEGRADE path — what a caster gets before picking anyone, and what
+    // happens if their rider retires — which is worth pinning on real data in its own
+    // right. The return-home behaviour itself is covered by director_home_test, which
+    // drives the spectate callback directly.
+    long long durMs = 0;
+    auto cuts = runTape(host, "Z:\\tmp\\mxbmrp3-tests\\director_default\\",
+                        "race_farm14_24riders.tape", /*minApplied=*/29000, &durMs,
+                        STORIES_DEFAULT, /*drawTickMs=*/0, /*minSec=*/8, /*maxSec=*/0);
+    const size_t n = report(cuts, durMs, "farm14 - 24 riders, SHIPPED defaults (Max shot Off)");
+
+    // Still a live show: a 16 min race with battles and fastest laps must produce real
+    // cuts. Zero would mean the switch had made the director inert, which is the whole
+    // failure mode worth guarding — "no timer" must not read as "no director".
+    CHECK(n >= 5);
+    // ...and every one of them is a story or a return to it: the timer never fires, so
+    // no cut may carry the forced-rotation reason.
+    int maxshotCuts = 0;
+    for (const auto& c : cuts) if (c.reason == "maxshot") ++maxshotCuts;
+    CHECK(maxshotCuts == 0);
+    // The camera stays on the plain TV shot — no onboard dip on a caster's own show.
+    int onboardCuts = 0;
+    for (const auto& c : cuts)
+        if (c.cam != "Auto" && c.cam != "Trackside") ++onboardCuts;
+    CHECK(onboardCuts == 0);
+    // Deliberately no bound on the cut COUNT or rider spread: measured, neither separates
+    // the two modes on a grid this busy (36 vs 55 cuts, 13 vs 16 riders got airtime), so a
+    // threshold there would be fitted to today's numbers rather than stating a property.
+    // The reason and camera mixes above are what actually define the mode.
 }
 
 TEST_CASE("director broadcast: a lone-rider session degrades gracefully (no thrash)") {

@@ -9,6 +9,7 @@
 #include <atomic>
 #include <thread>
 #include <mutex>
+#include "thread_safety.h"
 
 // Forward declarations
 enum class DataChangeType;
@@ -58,8 +59,11 @@ private:
     // IPC communication
     bool connect();
     void disconnect();
-    void disconnectInternal();  // Called with m_pipeMutex already held
-    bool sendHandshake();
+    // The pipe-I/O helper family below runs under m_pipeMutex — acquired at the
+    // three entry points (connectionThread / connect / disconnect) and required
+    // by annotation here, so an unlocked caller fails the thread-safety check.
+    void disconnectInternal() MXB_REQUIRES(m_pipeMutex);
+    bool sendHandshake() MXB_REQUIRES(m_pipeMutex);
     // Outcome of one presence-send attempt. Distinguishes a transient pipe
     // failure (worth dropping the connection over) from a serialization error
     // (same input would just throw again - skip and wait for new data).
@@ -68,12 +72,12 @@ private:
         SerializationError,
         PipeError
     };
-    PresenceSendResult sendPresenceUpdate();
-    bool readResponse();
+    PresenceSendResult sendPresenceUpdate() MXB_REQUIRES(m_pipeMutex);
+    bool readResponse() MXB_REQUIRES(m_pipeMutex);
 
     // Frame handling (Discord IPC protocol)
-    bool writeFrame(int opcode, const char* data, size_t length);
-    bool readFrame(int& opcode, std::string& data);
+    bool writeFrame(int opcode, const char* data, size_t length) MXB_REQUIRES(m_pipeMutex);
+    bool readFrame(int& opcode, std::string& data) MXB_REQUIRES(m_pipeMutex);
 
     // JSON building helper (uses nlohmann::json).
     // Reads only from m_snapshot, never PluginData - safe to call from the
@@ -94,7 +98,7 @@ private:
     std::atomic<bool> m_shutdownRequested;
 
     // Named pipe handle
-    void* m_pipe;  // HANDLE, but we avoid windows.h in header
+    void* m_pipe MXB_GUARDED_BY(m_pipeMutex);  // HANDLE, but we avoid windows.h in header
 
     // Timing. The first two are atomic: the game thread resets them
     // (onEventEnd / setEnabled) while the connection thread reads and writes
@@ -110,7 +114,7 @@ private:
 
     // Background thread for non-blocking connection
     std::thread m_connectionThread;
-    std::mutex m_pipeMutex;
+    Mutex m_pipeMutex;
 
     // Nonce for Discord IPC messages (mutable for use in const buildPresenceJson)
     mutable std::atomic<int> m_nonce;
@@ -136,7 +140,7 @@ private:
         int  drawState        = 0;   // ON_TRACK
         int  sessionGeneration = 0;  // new-session counter (first-send-per-session Release log)
     };
-    mutable std::mutex m_snapshotMutex;
-    SessionSnapshot m_snapshot;
+    mutable Mutex m_snapshotMutex;
+    SessionSnapshot m_snapshot MXB_GUARDED_BY(m_snapshotMutex);
     int m_lastLoggedSessionGen = -1;  // connection-thread only: session gen of last logged send
 };

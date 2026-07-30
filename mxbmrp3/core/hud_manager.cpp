@@ -398,6 +398,10 @@ void HudManager::initialize() {
                     name = "pointer_widget";
                 } else if (hud.get() == m_pHelmetOverlay) {
                     name = "helmet_overlay";
+                } else if (hud.get() == m_pDirector) {
+                    // The only registered HUD with no texture base name, so without this
+                    // it profiles as "unknown" — unidentifiable in every report.
+                    name = "director_widget";
                 } else {
                     name = "unknown";
                 }
@@ -746,9 +750,14 @@ void HudManager::setupDefaultResources() {
 }
 
 bool HudManager::isTelemetryHistoryNeeded() const {
-    // Returns true if TelemetryHud is visible and showing graphs
-    // This allows PluginData to skip history buffer updates when not needed
-    return m_pTelemetry && m_pTelemetry->isVisible();
+    // Lets PluginData skip history-buffer accumulation when nothing consumes it.
+    // MUST use isVisibleAnySurface(), not isVisible(): TelemetryHud::update()
+    // rebuilds whenever it is visible on EITHER surface, so gating production on
+    // the game flag alone leaves a companion-only telemetry HUD rebuilding from
+    // buffers nobody fills — empty graphs. This is the visibility-gate invariant
+    // applied to the DATA side: the consumer's gate and the producer's gate have
+    // to ask the same question.
+    return m_pTelemetry && m_pTelemetry->isVisibleAnySurface();
 }
 
 

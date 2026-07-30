@@ -96,6 +96,45 @@ PluginManager& PluginManager::getInstance() {
     return instance;
 }
 
+PluginManager::~PluginManager() {
+    // Static-teardown backstop. This only does real work when the game process
+    // tears down the DLL WITHOUT having called the Shutdown() export (host
+    // crashed elsewhere, process killed, or an unload without Shutdown) — on
+    // the normal path shutdown() already ran and this early-returns.
+    //
+    // Do NOT call the orchestrated shutdown() from here. PluginManager is the
+    // FIRST singleton constructed (every DLL export routes through
+    // getInstance()), so its atexit destructor runs LAST — by the time we get
+    // here, StatsManager, PluginData, RumbleProfileManager and the rest are
+    // already destructed, and reaching into them is use-after-destruction.
+    // Not theoretical: the v1.27.7.44 analytics crash stacks show exactly this
+    // — _execute_onexit_table -> ~PluginManager -> shutdown() faulting inside
+    // StatsManager::save() and inside PluginData::getStanding() (via
+    // tryRecordRaceFinish). Same static-destruction-order fiasco as the old
+    // ~HudManager auto-save crash (see hud_manager.cpp), one level up.
+    //
+    // Nothing else is needed here: every singleton owns its own teardown
+    // backstop for this path (~HudManager shutdownInternal(allowSave=false),
+    // ~PluginThread / ~XInputReader spin-then-detach, ~HttpServer /
+    // ~DiscordManager / ~AnalyticsManager / ~UpdateChecker joining their own
+    // threads, ~EventRecorder finalizing the tape; ~Logger flushes after all
+    // of THOSE — Logger is constructed before every singleton except us, so
+    // it outlives them all, but NOT this destructor). The one thing no
+    // destructor owns is the process-wide SEH filter — uninstall it so an
+    // unloaded DLL can't leave a dangling filter pointing into unmapped
+    // memory. Never log here: ~Logger has ALREADY run by the time we execute
+    // (we are destroyed last), and even if it hadn't, a thread killed by
+    // ExitProcess may hold the Logger mutex (the same reason the SEH filter
+    // never logs).
+    if (m_bShutdown) return;
+    m_bShutdown = true;
+    // Guarded like the call site in initialize(): uninstall() only touches POD
+    // statics and cannot throw today, but a throw escaping a destructor during
+    // _execute_onexit_table is precisely the failure mode this destructor was
+    // rewritten to avoid, and there is no outer handler here.
+    try { CrashHandler::uninstall(); } catch (...) {}
+}
+
 void PluginManager::initialize(const char* savePath) {
     // Initialize logger first (so we can log everything else)
     Logger::getInstance().initialize(savePath);
@@ -203,8 +242,9 @@ void PluginManager::initialize(const char* savePath) {
         try { DiscordManager::getInstance().shutdown(); } catch (...) {}
 #endif
 #if GAME_HAS_STEAM_FRIENDS
-        // No background thread, but initialize() may have published presence -
-        // clear it so a failed init doesn't leave stale rich presence in Steam.
+        // Joins the friend-scan worker and clears any presence initialize()
+        // published, so a failed init leaves neither a live thread nor stale
+        // rich presence in Steam.
         try { SteamFriendsManager::getInstance().shutdown(); } catch (...) {}
 #endif
         try { CrashHandler::uninstall(); } catch (...) {}
@@ -335,7 +375,7 @@ void PluginManager::handleEventInit(Unified::VehicleEventData* psEventData) {
     SCOPED_TIMER_THRESHOLD("Plugin::handleEventInit", 100);
     DEBUG_INFO("=== Event Init ===");
 
-    EventHandler::getInstance().handleEventInit(psEventData);
+    Handlers::handleEventInit(psEventData);
 }
 
 void PluginManager::handleEventDeinit() {
@@ -344,7 +384,7 @@ void PluginManager::handleEventDeinit() {
     SCOPED_TIMER_THRESHOLD("Plugin::handleEventDeinit", 100);
     DEBUG_INFO("=== Event Deinit ===");
 
-    EventHandler::getInstance().handleEventDeinit();
+    Handlers::handleEventDeinit();
 }
 
 void PluginManager::handleRunInit(Unified::SessionData* psSessionData) {
@@ -353,7 +393,7 @@ void PluginManager::handleRunInit(Unified::SessionData* psSessionData) {
     SCOPED_TIMER_THRESHOLD("Plugin::handleRunInit", 100);
     DEBUG_INFO("=== Run Init ===");
 
-    RunHandler::getInstance().handleRunInit(psSessionData);
+    Handlers::handleRunInit(psSessionData);
 }
 
 void PluginManager::handleRunDeinit() {
@@ -362,7 +402,7 @@ void PluginManager::handleRunDeinit() {
     SCOPED_TIMER_THRESHOLD("Plugin::handleRunDeinit", 100);
     DEBUG_INFO("=== Run Deinit ===");
 
-    RunHandler::getInstance().handleRunDeinit();
+    Handlers::handleRunDeinit();
 }
 
 void PluginManager::handleRunStart() {
@@ -371,7 +411,7 @@ void PluginManager::handleRunStart() {
     SCOPED_TIMER_THRESHOLD("Plugin::handleRunStart", 100);
     DEBUG_INFO("=== Run Start ===");
 
-    RunHandler::getInstance().handleRunStart();
+    Handlers::handleRunStart();
 }
 
 void PluginManager::handleRunStop() {
@@ -380,7 +420,7 @@ void PluginManager::handleRunStop() {
     SCOPED_TIMER_THRESHOLD("Plugin::handleRunStop", 100);
     DEBUG_INFO("=== Run Stop ===");
 
-    RunHandler::getInstance().handleRunStop();
+    Handlers::handleRunStop();
 
     // Window refresh and HUD validation now happens automatically
     // when cursor is re-enabled (see InputManager::updateFrame)
@@ -392,7 +432,7 @@ void PluginManager::handleRunLap(Unified::PlayerLapData* psLapData) {
     SCOPED_TIMER_THRESHOLD("Plugin::handleRunLap", 500);
     DEBUG_INFO("=== Run Lap ===");
 
-    RunLapHandler::getInstance().handleRunLap(psLapData);
+    Handlers::handleRunLap(psLapData);
 }
 
 void PluginManager::handleRunSplit(Unified::PlayerSplitData* psSplitData) {
@@ -401,7 +441,7 @@ void PluginManager::handleRunSplit(Unified::PlayerSplitData* psSplitData) {
     SCOPED_TIMER_THRESHOLD("Plugin::handleRunSplit", 500);
     DEBUG_INFO("=== Run Split ===");
 
-    RunSplitHandler::getInstance().handleRunSplit(psSplitData);
+    Handlers::handleRunSplit(psSplitData);
 }
 
 void PluginManager::handleRunTelemetry(Unified::TelemetryData* psTelemetryData) {
@@ -411,7 +451,7 @@ void PluginManager::handleRunTelemetry(Unified::TelemetryData* psTelemetryData) 
     // Skip logging (high-frequency event - runs at telemetry rate)
 
     // Delegate to handler
-    RunTelemetryHandler::getInstance().handleRunTelemetry(psTelemetryData);
+    Handlers::handleRunTelemetry(psTelemetryData);
 }
 
 int PluginManager::handleDrawInit(int* piNumSprites, char** pszSpriteName, int* piNumFonts, char** pszFontName) {
@@ -494,7 +534,7 @@ void PluginManager::handleTrackCenterline(int iNumSegments, Unified::TrackSegmen
     SCOPED_TIMER_THRESHOLD("Plugin::handleTrackCenterline", 100);
     DEBUG_INFO("=== Track Centerline ===");
 
-    TrackCenterlineHandler::getInstance().handleTrackCenterline(iNumSegments, pasSegment, pRaceData);
+    Handlers::handleTrackCenterline(iNumSegments, pasSegment, pRaceData);
 }
 
 void PluginManager::handleRaceEvent(Unified::RaceEventData* psRaceEvent) {
@@ -503,7 +543,7 @@ void PluginManager::handleRaceEvent(Unified::RaceEventData* psRaceEvent) {
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceEvent", 100);
     DEBUG_INFO("=== Race Event ===");
 
-    RaceEventHandler::getInstance().handleRaceEvent(psRaceEvent);
+    Handlers::handleRaceEvent(psRaceEvent);
 }
 
 void PluginManager::handleRaceDeinit() {
@@ -513,7 +553,7 @@ void PluginManager::handleRaceDeinit() {
     DEBUG_INFO("=== Race Deinit ===");
 
     // Delegate to handler
-    RaceEventHandler::getInstance().handleRaceDeinit();
+    Handlers::handleRaceDeinit();
 }
 
 void PluginManager::handleRaceAddEntry(Unified::RaceEntryData* psRaceAddEntry) {
@@ -522,7 +562,7 @@ void PluginManager::handleRaceAddEntry(Unified::RaceEntryData* psRaceAddEntry) {
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceAddEntry", 500);
     DEBUG_INFO("=== Race Add Entry ===");
 
-    RaceEntryHandler::getInstance().handleRaceAddEntry(psRaceAddEntry);
+    Handlers::handleRaceAddEntry(psRaceAddEntry);
 }
 
 void PluginManager::handleRaceRemoveEntry(int raceNum) {
@@ -531,7 +571,7 @@ void PluginManager::handleRaceRemoveEntry(int raceNum) {
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceRemoveEntry", 100);
     DEBUG_INFO("=== Race Remove Entry ===");
 
-    RaceEntryHandler::getInstance().handleRaceRemoveEntry(raceNum);
+    Handlers::handleRaceRemoveEntry(raceNum);
 }
 
 void PluginManager::handleRaceSession(Unified::RaceSessionData* psRaceSession) {
@@ -540,7 +580,7 @@ void PluginManager::handleRaceSession(Unified::RaceSessionData* psRaceSession) {
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceSession", 100);
     DEBUG_INFO("=== Race Session ===");
 
-    RaceSessionHandler::getInstance().handleRaceSession(psRaceSession);
+    Handlers::handleRaceSession(psRaceSession);
 }
 
 void PluginManager::handleRaceSessionState(Unified::RaceSessionStateData* psRaceSessionState) {
@@ -549,7 +589,7 @@ void PluginManager::handleRaceSessionState(Unified::RaceSessionStateData* psRace
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceSessionState", 100);
     DEBUG_INFO("=== Race Session State ===");
 
-    RaceSessionHandler::getInstance().handleRaceSessionState(psRaceSessionState);
+    Handlers::handleRaceSessionState(psRaceSessionState);
 }
 
 void PluginManager::handleRaceLap(Unified::RaceLapData* psRaceLap) {
@@ -558,7 +598,7 @@ void PluginManager::handleRaceLap(Unified::RaceLapData* psRaceLap) {
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceLap", 500);
     DEBUG_INFO("=== Race Lap ===");
 
-    RaceLapHandler::getInstance().handleRaceLap(psRaceLap);
+    Handlers::handleRaceLap(psRaceLap);
 }
 
 void PluginManager::handleRaceSplit(Unified::RaceSplitData* psRaceSplit) {
@@ -566,10 +606,10 @@ void PluginManager::handleRaceSplit(Unified::RaceSplitData* psRaceSplit) {
     ACCUMULATE_CALLBACK_TIME_NAMED("RaceSplit");
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceSplit", 500);
     DEBUG_INFO("=== Race Split ===");
-    RaceSplitHandler::getInstance().handleRaceSplit(psRaceSplit);
+    Handlers::handleRaceSplit(psRaceSplit);
 }
 
-void PluginManager::handleRaceSpeed(Unified::RaceSpeedData* psRaceSpeed) {
+void PluginManager::handleRaceSpeed(Unified::RaceSpeedData* /*psRaceSpeed*/) {
     ACCUMULATE_CALLBACK_TIME_NAMED("RaceSpeed");
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceSpeed", 100);
     DEBUG_INFO("=== Race Speed ===");
@@ -589,7 +629,7 @@ void PluginManager::handleRaceCommunication(Unified::RaceCommunicationData* psRa
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceCommunication", 500);
     DEBUG_INFO("=== Race Communication ===");
 
-    RaceCommunicationHandler::getInstance().handleRaceCommunication(psRaceCommunication);
+    Handlers::handleRaceCommunication(psRaceCommunication);
 }
 
 void PluginManager::handleRaceClassification(Unified::RaceClassificationData* psRaceClassification, Unified::RaceClassificationEntry* pasRaceClassificationEntry, int iNumEntries) {
@@ -610,7 +650,7 @@ void PluginManager::handleRaceClassification(Unified::RaceClassificationData* ps
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceClassification", 100);
     // Skip logging (high-frequency event)
 
-    RaceClassificationHandler::getInstance().handleRaceClassification(
+    Handlers::handleRaceClassification(
         psRaceClassification,
         pasRaceClassificationEntry,
         iNumEntries
@@ -635,7 +675,7 @@ void PluginManager::handleRaceTrackPosition(int iNumVehicles, Unified::TrackPosi
     // Skip logging (high-frequency event - runs at vehicle update rate)
 
     // Null check and bounds validation moved to handler
-    RaceTrackPositionHandler::getInstance().handleRaceTrackPosition(iNumVehicles, pasRaceTrackPosition);
+    Handlers::handleRaceTrackPosition(iNumVehicles, pasRaceTrackPosition);
 }
 
 void PluginManager::handleRaceVehicleData(Unified::RaceVehicleData* psRaceVehicleData) {
@@ -644,7 +684,7 @@ void PluginManager::handleRaceVehicleData(Unified::RaceVehicleData* psRaceVehicl
     SCOPED_TIMER_THRESHOLD("Plugin::handleRaceVehicleData", 500);
     // Skip logging (high-frequency event)
 
-    RaceVehicleDataHandler::getInstance().handleRaceVehicleData(psRaceVehicleData);
+    Handlers::handleRaceVehicleData(psRaceVehicleData);
 }
 
 int PluginManager::handleSpectateVehicles(int iNumVehicles, Unified::SpectateVehicle* pasVehicleData, int iCurSelection, int* piSelect) {

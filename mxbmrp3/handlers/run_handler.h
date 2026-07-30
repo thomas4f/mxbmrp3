@@ -6,18 +6,11 @@
 
 #include "../game/unified_types.h"
 
-class RunHandler {
-public:
-    static RunHandler& getInstance();
+namespace Handlers {
 
-    void handleRunInit(Unified::SessionData* psSessionData);
-    void handleRunStart();
-    void handleRunStop();
-    void handleRunDeinit();
+void handleRunInit(Unified::SessionData* psSessionData);
+void handleRunStart();
+void handleRunStop();
+void handleRunDeinit();
 
-private:
-    RunHandler() {}
-    ~RunHandler() {}
-    RunHandler(const RunHandler&) = delete;
-    RunHandler& operator=(const RunHandler&) = delete;
-};
+}  // namespace Handlers

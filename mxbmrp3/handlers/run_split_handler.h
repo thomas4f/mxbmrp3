@@ -6,15 +6,8 @@
 
 #include "../game/unified_types.h"
 
-class RunSplitHandler {
-public:
-    static RunSplitHandler& getInstance();
+namespace Handlers {
 
-    void handleRunSplit(Unified::PlayerSplitData* psSplitData);
+void handleRunSplit(Unified::PlayerSplitData* psSplitData);
 
-private:
-    RunSplitHandler() {}
-    ~RunSplitHandler() {}
-    RunSplitHandler(const RunSplitHandler&) = delete;
-    RunSplitHandler& operator=(const RunSplitHandler&) = delete;
-};
+}  // namespace Handlers

@@ -301,6 +301,11 @@ void EventRecorder::recordRaceClassification(const SPluginsRaceClassification_t*
         int numEntries;
         // Entries follow after this
     } classificationData;
+    // Tape contract: tape.h's ClassificationPrefix mirrors this layout with the
+    // same literals (see the contract block in event_recorder.h).
+    static_assert(sizeof(ClassificationData) == 20 &&
+                  offsetof(ClassificationData, numEntries) == 16,
+                  "tape contract: RaceClassification payload prefix changed — update tape.h + golden tapes");
 
     memcpy(&classificationData.header, data, sizeof(SPluginsRaceClassification_t));
     classificationData.numEntries = numEntries;
@@ -327,10 +332,14 @@ void EventRecorder::recordRaceTrackPosition(const SPluginsRaceTrackPosition_t* p
     if (!m_recording || !positions || numVehicles <= 0) return;   // fast-path (allocates below; fires many/sec)
 
     // Pack track position data (count + positions)
-    struct TrackPositionData {
+    struct TrackPositionPrefix {
         int numVehicles;
         // Positions follow after this
     } trackPositionData;
+    // Tape contract: tape.h's TrackPositionPrefix mirrors this (see event_recorder.h)
+    // and now shares its name — this used to be a third `TrackPositionData`.
+    static_assert(sizeof(TrackPositionPrefix) == 4,
+                  "tape contract: RaceTrackPosition payload prefix changed — update tape.h + golden tapes");
 
     trackPositionData.numVehicles = numVehicles;
 

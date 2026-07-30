@@ -31,8 +31,12 @@ TelemetryHud::TelemetryHud() {
 }
 
 void TelemetryHud::update() {
+    // Before the early-out: the show edge has to be seen to clear the buffers.
+    syncVisibilityEdge();
+
     // OPTIMIZATION: Skip expensive graph rebuild when not visible
-    // History is cleared in setVisible() when becoming visible, so graph starts fresh.
+    // History is cleared by syncVisibilityEdge() on the show edge, so the graph
+    // starts fresh.
     if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
@@ -42,7 +46,7 @@ void TelemetryHud::update() {
     // Rebuild only when new telemetry arrived (data dirty fires per
     // InputTelemetry change, ~100Hz) or layout changed. The graph output is
     // identical between telemetry ticks, so rebuilding every render frame
-    // (e.g. 240fps) wasted >50% of the ~1600 line-segment builds.
+    // (e.g. 480fps) wasted >50% of the ~1600 line-segment builds.
     if (isDataDirty() || isLayoutDirty()) {
         rebuildRenderData();
     }
@@ -54,12 +58,25 @@ bool TelemetryHud::handlesDataType(DataChangeType dataType) const {
     return dataType == DataChangeType::InputTelemetry;
 }
 
-void TelemetryHud::setVisible(bool visible) {
-    bool wasVisible = isVisible();
-    BaseHud::setVisible(visible);
+// Clear the history buffers when this HUD first becomes visible on ANY surface.
+//
+// Was keyed off setVisible() -- the GAME toggle -- so enabling the HUD only on the
+// companion window drew whatever stale samples were left over rather than starting
+// fresh. setCompanionVisible() is not virtual and never reached the override.
+//
+// Note this is the CONSUMER side of the same HUD whose PRODUCER side is pinned by
+// telemetry_companion_test.cpp: accumulation already asks isVisibleAnySurface()
+// (isTelemetryHistoryNeeded), so the reset had to ask the same question or the
+// first companion-only screenful mixes fresh samples into an old buffer.
+//
+// Per frame rather than in the setters: any-surface visibility also flips when the
+// companion window opens or closes, and no setter runs then.
+void TelemetryHud::syncVisibilityEdge() {
+    const bool visibleNow = isVisibleAnySurface();
+    if (visibleNow == m_bWasVisibleAnySurface) return;
+    m_bWasVisibleAnySurface = visibleNow;
 
-    // Clear history buffers when becoming visible so graph starts fresh
-    if (visible && !wasVisible) {
+    if (visibleNow) {
         PluginData::getInstance().clearHistoryBuffers();
     }
 }
@@ -127,7 +144,6 @@ void TelemetryHud::rebuildRenderData() {
 
     // Side-by-side layout: graph on left (36 chars), gap (1 char), legend on right (9 chars)
     float graphWidth = PluginUtils::calculateMonospaceTextWidth(GRAPH_WIDTH_CHARS, dims.fontSize);
-    float legendWidth = PluginUtils::calculateMonospaceTextWidth(LEGEND_WIDTH_CHARS, dims.fontSize);
     float gapWidth = PluginUtils::calculateMonospaceTextWidth(1, dims.fontSize);
     // Position legend: if showing graphs, place after graph + gap; otherwise start at left edge
     float legendStartX = showGraphs ? (contentStartX + graphWidth + gapWidth) : contentStartX;

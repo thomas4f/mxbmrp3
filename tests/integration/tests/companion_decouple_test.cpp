@@ -327,3 +327,179 @@ TEST_CASE("companion decouple: a HUD hidden in-game but shown on the companion s
     host.companionWindow(false);
     host.shutdown();
 }
+
+// The helmet overlay is the one HUD that never reaches the companion surface.
+//
+// REPORTED FROM REAL USE: with the overlay on, clicking the helmet button in the
+// settings tab bar did not turn it off — it stayed on the companion window, and only
+// the in-tab control worked. Two causes, both fixed: the tab-bar handler called
+// setVisible() unconditionally (the GAME surface) no matter which window the click
+// landed in, and the renderer drew the helmet per-surface as though it were an
+// ordinary panel.
+//
+// It is not one. It is a full-screen immersion effect driven by lean angle and
+// suspension travel, with no position, scale or title to decouple — so on a second
+// monitor it covers the very HUDs the companion exists to show. Excluding it makes
+// the settings UI honest too: the tab bar already treated the helmet as a shared
+// global toggle, which was only half-true while the renderer decoupled it.
+//
+// Asserted on the FRAME rather than on a visibility flag, because the flag was never
+// the bug: the helmet was genuinely "visible", and the question is whether the
+// companion frame contains it.
+TEST_CASE("companion routing: the helmet overlay never renders on the companion") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    REQUIRE_MESSAGE(host.hasHelmetHooks(),
+                    "MXBMRP3_Test_Helmet* hooks not exported (test build?)");
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\companion_helmet\\");
+    host.session(/*session=*/1, /*numLaps=*/0);
+
+    host.setDisplayTarget(2 /*BOTH*/);
+    host.companionWindow(true);
+
+    // ON_TRACK, not the harness default of SPECTATE: the overlay deliberately draws
+    // nothing while spectating or in a replay (the player is not inside a helmet in
+    // those views), so on the default state this case would compare two frames that
+    // never contained a helmet and pass without testing anything.
+    // BOTH surfaces, every time. The companion instance is snapshotted from the game
+    // flag on the first companion frame, so setting only the game flag leaves the
+    // companion one false -- and the companion frame then stays flat because the HUD
+    // is switched off there, not because it is excluded. The first version of this
+    // case did exactly that and passed against a mutant with the exclusion removed.
+    // Setting both leaves rendersOnCompanion() as the only thing that can keep it out.
+    host.helmetSetVisible(false);
+    host.helmetSetCompanionVisible(false);
+    host.drawWithState(0 /*ON_TRACK*/);
+    const auto off = host.surfaceFrameStats();
+
+    host.helmetSetVisible(true);
+    host.helmetSetCompanionVisible(true);
+    host.drawWithState(0 /*ON_TRACK*/);
+    const auto on = host.surfaceFrameStats();
+
+    // Positive control: the helmet must actually be drawing somewhere, or the
+    // companion assertion below passes for the trivial reason that nothing changed.
+    REQUIRE_MESSAGE(on.gameQuads > off.gameQuads,
+                    "enabling the helmet did not add quads to the GAME frame — the "
+                    "overlay is not rendering at all, so this case cannot discriminate");
+    CHECK(host.helmetVisible());
+
+    CHECK_MESSAGE(on.companionQuads == off.companionQuads,
+                  "the helmet overlay reached the companion frame — it is an in-game "
+                  "effect with no position or scale to decouple, and on a second "
+                  "monitor it covers the HUDs the companion exists to show "
+                  "(BaseHud::rendersOnCompanion)");
+
+    host.companionWindow(false);
+    host.shutdown();
+}
+
+// The Director tab's "Visible" row edits the FOCUSED surface.
+//
+// Found while investigating the helmet report, and never reported by anyone: this
+// row called setVisible() unconditionally, i.e. the GAME flag, whichever window the
+// click landed in. On the companion that means the widget you just clicked "off"
+// stays on screen, and the row's own label reports the other surface's state --
+// exactly the helmet symptom, on a different control.
+//
+// Unlike the helmet, DirectorWidget IS an ordinary positioned widget, so the fix is
+// to decouple properly rather than to exclude it. Both now route through
+// SettingsHud::toggleHudOnActiveSurface().
+//
+// Driven through the REAL click path (hit-test -> dispatchRegion), because the bug
+// lived in the dispatch, not in the widget: calling a setter directly from the test
+// would exercise the half that was never broken.
+TEST_CASE("companion routing: the Director visible row edits the focused surface") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    REQUIRE_MESSAGE(host.hasDirectorSurfaceHooks(),
+                    "Director surface hooks not exported (test build?)");
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\companion_director\\");
+    host.session(/*session=*/1, /*numLaps=*/0);
+
+    host.setDisplayTarget(2 /*BOTH*/);
+    host.companionWindow(true);
+    host.showSettings(true);
+    host.setActiveTab("Director");
+    host.draw();
+
+    const auto before = host.directorWidgetVisibility();
+    // Computed first: doctest decomposes the expression it is handed and rejects a
+    // top-level && ("Expression Too Complex Please Rewrite As Binary Comparison").
+    const bool widgetPresent = (before.game >= 0) && (before.companion >= 0);
+    REQUIRE_MESSAGE(widgetPresent,
+                    "DirectorWidget missing — nothing to toggle, so this case cannot "
+                    "discriminate");
+
+    // Click as though the menu is on the COMPANION window.
+    host.forceActiveSurface(1 /*Companion*/);
+    host.draw();
+    REQUIRE_MESSAGE(host.clickDirectorHudVisible(),
+                    "no DIRECTOR_HUD_VISIBLE region on the Director tab — the row moved "
+                    "or stopped being emitted, so nothing was clicked");
+
+    const auto after = host.directorWidgetVisibility();
+    CHECK_MESSAGE(after.companion != before.companion,
+                  "clicking the Director visible row on the COMPANION surface did not "
+                  "change its companion visibility — the handler is editing the game "
+                  "flag again (SettingsHud::toggleHudOnActiveSurface)");
+    CHECK_MESSAGE(after.game == before.game,
+                  "clicking on the companion surface changed the GAME visibility — the "
+                  "two surfaces are meant to decouple");
+
+    host.forceActiveSurface(0 /*Game*/);
+    host.companionWindow(false);
+    host.shutdown();
+}
+
+// A HUD excluded from the companion must not report itself visible off a companion
+// flag that no longer reaches any renderer.
+//
+// The exclusion first went into collectSurface() only, leaving isVisibleAnySurface()
+// answering the old question. That predicate is what every update() gate reads, so
+// the helmet kept rebuilding a full-screen overlay every frame for a surface that
+// never drew it -- on the 2.08ms budget, and reachable from ordinary use rather than
+// a contrived setup. This is the exact sequence, which is also what the original bug
+// report did:
+//
+//   1. helmet on in game
+//   2. open the companion -- snapshotCompanionFromGame() copies the GAME flag into
+//      the companion one, so the companion flag becomes true
+//   3. switch the helmet off in game
+//   -> game flag false, companion flag true, drawn on neither surface
+//
+// Producer/consumer gate asymmetry, the class check_visibility_gates.sh polices: the
+// new gate went into the renderer but not into the predicate its consumers read.
+TEST_CASE("companion routing: an excluded HUD is not 'visible on some surface'") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    REQUIRE_MESSAGE(host.hasHelmetHooks(), "helmet hooks not exported (test build?)");
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\companion_helmet_pred\\");
+    host.session(/*session=*/1, /*numLaps=*/0);
+    host.setDisplayTarget(2 /*BOTH*/);
+
+    // 1. On in game, companion closed.
+    host.helmetSetVisible(true);
+    host.drawWithState(0 /*ON_TRACK*/);
+    REQUIRE_MESSAGE(host.helmetVisibleAnySurface(),
+                    "helmet not visible on any surface while shown in game — the "
+                    "predicate is broken in the other direction and the rest of this "
+                    "case would pass for the wrong reason");
+
+    // 2. Open the companion: the snapshot copies the game flag across.
+    host.companionWindow(true);
+    host.drawWithState(0 /*ON_TRACK*/);
+
+    // 3. Switch it off in game — the button the toggle fix was about.
+    host.helmetSetVisible(false);
+    host.drawWithState(0 /*ON_TRACK*/);
+
+    CHECK_MESSAGE(!host.helmetVisibleAnySurface(),
+                  "helmet still reports visible on some surface with the game flag off "
+                  "and only a companion flag left — it renders on neither, so every "
+                  "update() gated on this predicate rebuilds for nothing "
+                  "(BaseHud::isVisibleAnySurface must consult rendersOnCompanion)");
+
+    host.companionWindow(false);
+    host.shutdown();
+}
