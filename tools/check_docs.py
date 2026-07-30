@@ -251,6 +251,38 @@ def check_test_catalogue(failures):
                     "add a row saying what it pins")
 
 
+def check_gate_catalogue(failures):
+    """Every CTest gate must be findable in the docs.
+
+    The catalogue check above censuses TESTING.md against *test files*, so a new
+    GATE could land fully undocumented and nothing complained — which is exactly
+    what happened with `codeql`: registered in CMakeLists.txt, described in
+    DEVELOPMENT.md, absent from TESTING.md (the file CLAUDE.md calls the guide),
+    and green the whole time.
+
+    Matching is deliberately loose — the script's basename stem, or the gate
+    name, in EITHER TESTING.md or DEVELOPMENT.md. Prose refers to these as
+    "run_fuzz / run_perf" as often as by full path, and a check that forces one
+    spelling would be a check people work around rather than a check that keeps
+    the docs honest. The bar is "a reader can find it", not "cited canonically".
+    """
+    cml = open(os.path.join(REPO, "CMakeLists.txt"), encoding="utf-8").read()
+    docs = ""
+    for name in ("TESTING.md", "DEVELOPMENT.md"):
+        docs += open(os.path.join(REPO, name), encoding="utf-8").read()
+    pattern = r'^mxb_gate\((\S+)\s+\S+\s+\S+\s+"[^"]*"\s+"(.*?)"\)'
+    for match in re.finditer(pattern, cml, re.M | re.S):
+        gate, command = match.group(1), match.group(2)
+        script = re.search(r'((?:tests|tools)/[\w/.-]+\.(?:sh|py))', command)
+        stem = os.path.splitext(os.path.basename(script.group(1)))[0] if script else None
+        if (stem and stem in docs) or gate in docs:
+            continue
+        failures.append(
+            f"CTest gate `{gate}` is registered in CMakeLists.txt but appears in "
+            "neither TESTING.md nor DEVELOPMENT.md — say what it checks and when "
+            "to run it")
+
+
 def check_budget(failures):
     for doc, budget in DOC_BUDGETS.items():
         size = os.path.getsize(os.path.join(REPO, doc))
@@ -364,6 +396,7 @@ def main():
     check_paths(failures)
     check_invariant_labels(failures)
     check_test_catalogue(failures)
+    check_gate_catalogue(failures)
     check_budget(failures)
     check_gate_tools_installable(failures)
     check_ci_runs_every_gate(failures)

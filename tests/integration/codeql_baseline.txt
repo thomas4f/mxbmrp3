@@ -1,0 +1,30 @@
+# Accepted CodeQL findings — the gate (run_codeql.sh) reports these as KNOWN and
+# does not fail on them. Everything NOT listed here fails the gate.
+#
+# Format: <rule-id> <sink-path-prefix> [source-path-substring]
+#         (# comments and blank lines ignored)
+#
+# CURRENTLY EMPTY, deliberately kept. The gate needs some way to say "reviewed,
+# accepted", or the first genuine won't-fix leaves two options: fix it, or stop
+# running the gate — which is how a check quietly stops being a check. Adding a
+# line is a deliberate act: say WHY, and keep the entry as narrow as the finding.
+#
+# ALWAYS give the third field on a taint finding. Results are keyed on the SINK,
+# and a sink is usually shared: logger.cpp is where EVERY log line in the plugin
+# lands, so a two-field entry would also accept a future flow carrying something
+# genuinely sensitive into an unrelated DEBUG_INFO_F. With the source pinned, the
+# entry holds only while every path still starts where you accepted it starting.
+#
+# Vendored code is NOT listed here — it is filtered by path before this point
+# (same exclusion codeql.yml applies to the uploaded SARIF), because we don't
+# patch those sources at all.
+#
+# Keep in step with the alert's disposition on GitHub: an entry here should
+# correspond to an alert dismissed in code scanning, so the two agree on what is
+# accepted rather than each holding a different opinion.
+#
+# The only entry this file has held was cpp/cleartext-storage-file for the Steam
+# friends roster, accepted because the persona names sat behind an opt-in INI
+# key. It is gone because the LOGGING went instead: identifying detail is never
+# formatted now, so the flow doesn't exist and there is nothing to accept.
+# Prefer that outcome to an entry here — a finding you delete cannot rot.

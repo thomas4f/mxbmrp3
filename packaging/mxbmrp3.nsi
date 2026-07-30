@@ -295,7 +295,13 @@ UninstPage Custom un.ShowUninstallSelectionPage un.LeaveUninstallSelectionPage
 !insertmacro MUI_UNPAGE_INSTFILES
 
 ; Completing MXBMRP3 Uninstall
+;
+; This text is the DATA-KEPT case. When the user ticks "also remove settings and
+; data" on the selection page, un.FinishPageShow rewrites it — telling someone to
+; manually delete a folder the uninstaller just deleted reads as "the wipe didn't
+; work", which is the opposite of what a final screen should convey.
 !define MUI_FINISHPAGE_TEXT "${PLUGIN_NAME} has been uninstalled from your computer.$\n$\nTo remove all settings and data, manually delete:$\n  Documents\PiBoSo\[Game]\${PLUGIN_NAME_LC}\$\n$\nClick Finish to close Setup."
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW un.FinishPageShow
 !insertmacro MUI_UNPAGE_FINISH
 
 !insertmacro MUI_LANGUAGE "English"
@@ -1277,6 +1283,25 @@ FunctionEnd
 
 Function un.OnRemoveUserDataCheckboxClick
   ${NSD_GetState} $removeUserDataCheckbox $removeUserDataSelected
+FunctionEnd
+
+; Finish page: swap in the data-removed wording when the wipe actually ran.
+;
+; SHOW rather than PRE: MUI2 builds this page with nsDialogs and creates the text
+; label inside its own show handler (Contrib/Modern UI 2/Pages/Finish.nsh), so a
+; PRE function would run before the control exists. It publishes the handle as
+; $mui.FinishPage.Text, which is what makes this a supported override rather than
+; a GetDlgItem guess at a control id.
+;
+; Wording is deliberately scoped to "the games you uninstalled": the wipe in
+; un.RemoveUserData only touches games selected for uninstall, so data for a game
+; left installed survives, and a blanket "all your data is gone" would be a lie
+; in the partial-uninstall case.
+Function un.FinishPageShow
+  ${If} $removeUserDataSelected == "1"
+    SendMessage $mui.FinishPage.Text ${WM_SETTEXT} 0 \
+      "STR:${PLUGIN_NAME} has been uninstalled from your computer.$\n$\nSettings and data for the games you uninstalled have also been removed.$\n$\nClick Finish to close Setup."
+  ${EndIf}
 FunctionEnd
 
 Function un.OnMXBikesCheckboxClick

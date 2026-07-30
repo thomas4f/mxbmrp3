@@ -119,6 +119,12 @@ Full build/test details, prerequisites, and both build tracks live in
   parallelises. The gate list, what each lint enforces, the per-layer scripts and
   the release/packaging flow are all in **[`DEVELOPMENT.md`](DEVELOPMENT.md)**;
   [`TESTING.md`](TESTING.md) is the layered guide + how to add a test.
+- **The CodeQL gate is opt-in and everything above excludes it.** It costs ~15 min
+  (clean rebuild under the extractor), so it skips unless `MXBMRP3_CODEQL=1` — a
+  label wouldn't do it, since `-L` selects rather than excludes. Run it before a
+  release, or after touching a parser, a trust boundary or a dependency; never in
+  an edit-compile-test loop. `MXBMRP3_CODEQL=1 ctest --test-dir build/tests -R codeql`,
+  and see TESTING.md → *CodeQL* for the two false-green guards it carries.
 - **NEVER append anything to a test/build command** — not `| tee`, not a trailing
   `echo "EXIT=$?"`. You get the LAST command's status, so both report **success
   while gates failed**, and that bogus 0 is what reaches the completion

@@ -1,10 +1,18 @@
 # ============================================================================
-# Release build (Windows / MSVC).  *** validate with a dry run before first real use ***
+# Release build (Windows / MSVC + Linux packaging).
+#   *** validate with a dry run before first real use ***
 #
-# Automates make_release.bat on a GitHub-hosted Windows runner (pinned to
-# windows-2022 for Visual Studio 2022 / the v143 toolset — see build-release's
-# runs-on): builds all three games and packages the zip + NSIS installer + debug
-# symbols.
+# Automates make_release.bat across TWO jobs:
+#   build-release (windows-2022, VS 2022 / v143 toolset — see its runs-on):
+#       compiles all three games with MSVC, stages the payload, and packages the
+#       zip + debug symbols. This is the job that produces what users run.
+#   package (ubuntu-latest): downloads that staging tree verbatim, builds the
+#       NSIS installer over it, and publishes the artifacts / draft Release.
+#
+# The split is NOT arbitrary and not a cost optimisation: `Target AMD64-Unicode`
+# needs an amd64 NSIS stub, and the official NSIS Windows distribution ships x86
+# stubs only. See the `package` job's header for the full reasoning. Nothing is
+# compiled on Linux — it only runs the packager over the MSVC artifacts.
 #
 # A REAL release runs the full test matrix first (the `tests` job below calls
 # tests.yml) and build-release is gated on it — so a Release can NEVER be cut from
@@ -98,6 +106,10 @@ jobs:
     # point.
     runs-on: windows-2022
     timeout-minutes: 40
+    # Consumed by the `package` job, which finishes the release on Linux.
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      tag: ${{ steps.ver.outputs.tag }}
     # NOTE: the two analytics secrets are scoped to the ONE build step that needs
     # them (see "Build All-Release") rather than job-level env — job-level env is
     # visible to every step, including the third-party actions below (setup-msbuild,
@@ -115,47 +127,6 @@ jobs:
 
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@30375c66a4eea26614e0d39710365f22f8b0af57  # v3.0.0
-
-      # mxbmrp3.nsi uses `Target AMD64-Unicode` to emit a 64-bit installer. Contrary
-      # to what this step used to claim, that directive is NOT fork-only: official
-      # NSIS has shipped amd64/arm64 targets since 3.07, and the windows-2022 image
-      # preinstalls official NSIS 3.10. The earlier "makensis is not recognized"
-      # failure was only ever a PATH problem (choco doesn't register makensis); it
-      # was misdiagnosed as the directive being rejected, which is how we ended up
-      # building releases with a third-party NSIS fork.
-      #
-      # Staying on the STOCK stub is deliberate. AV vendors whitelist the official
-      # NSIS stub bytes across millions of installers, whereas an uncommon fork-built
-      # stub trips generic heuristics — mxbmrp3-Setup.exe collected NSIS-flavoured
-      # false positives on VirusTotal (e.g. Zillya's "Downloader.Minix", which is its
-      # generic label for NSIS stubs rather than a real family match). It also drops
-      # one third-party action from the supply chain (see the NOTE above).
-      #
-      # The preinstalled makensis is x86; the 64-bit output is selected by the script
-      # directive, not the compiler arch, so an x86 makensis builds the AMD64 target.
-      - name: Locate NSIS (official, preinstalled on the runner)
-        shell: pwsh
-        run: |
-          $exe = Get-Command makensis -ErrorAction SilentlyContinue
-          if (-not $exe) {
-            foreach ($p in @("${env:ProgramFiles(x86)}\NSIS\makensis.exe",
-                             "$env:ProgramFiles\NSIS\makensis.exe")) {
-              if (Test-Path $p) { $exe = Get-Item $p; break }
-            }
-          }
-          if (-not $exe) { Write-Error "makensis not found on the runner"; exit 1 }
-          $path = $exe.Path
-          # Below 3.07 there is no AMD64 target and NSIS would silently emit a 32-bit
-          # stub instead of failing, so assert the version rather than trusting the
-          # runner image. `makensis /VERSION` prints e.g. "v3.10".
-          $raw = (& $path /VERSION | Out-String).Trim()
-          if ($raw -notmatch 'v?(\d+)\.(\d+)') { Write-Error "cannot parse NSIS version: '$raw'"; exit 1 }
-          $maj = [int]$Matches[1]; $min = [int]$Matches[2]
-          if ($maj -lt 3 -or ($maj -eq 3 -and $min -lt 7)) {
-            Write-Error "NSIS $raw is too old for 'Target AMD64-Unicode' (need >= 3.07)"; exit 1
-          }
-          Write-Host "Using official NSIS $raw at $path"
-          Add-Content -Path $env:GITHUB_PATH -Value (Split-Path -Parent $path)
 
       - name: Derive version (resource.h + commit count)
         id: ver
@@ -337,16 +308,6 @@ jobs:
           }
           Write-Host "zip manifest ok ($($required.Count) required entries present)"
 
-      - name: Build NSIS installer
-        shell: pwsh
-        run: |
-          $ver = "${{ steps.ver.outputs.version }}"
-          # NSIS resolves File/OutFile relative to the .nsi's own dir (packaging\),
-          # not CWD — so pass ABSOLUTE paths for the staging source and output dir.
-          $out   = (Resolve-Path "${{ steps.pkg.outputs.outdir }}").Path
-          $stage = (Resolve-Path "dist\staging").Path
-          makensis "-DPLUGIN_VERSION=$ver" "-DOUTPUT_DIR=$out" "-DPLUGIN_SOURCE_PATH=$stage" packaging\mxbmrp3.nsi
-
       # Archive the debug symbols (.pdb) + linker maps (.map) for all three games.
       # A crash reported by the analytics dashboard is just "mxbmrp3.dlo+0xNNNN" — an
       # RVA that only resolves to a function against the SYMBOLS FOR THAT EXACT BUILD.
@@ -376,19 +337,29 @@ jobs:
           $out = "${{ steps.pkg.outputs.outdir }}"
           python tools\gen_sbom.py --version $ver --out "$out\mxbmrp3.cdx.json"
 
-      # Always publish the zip + installer as downloadable workflow artifacts. This is
-      # what makes a manual (workflow_dispatch) run on a branch a real DRY RUN: it
-      # validates the whole MSVC build + NSIS packaging and hands you the files to
-      # inspect / test-install, without creating a Release or a tag.
-      - name: Upload build artifacts
+      # INTERNAL handoff to the `package` job, not the user-facing artifact — that
+      # one is published there, once Setup.exe exists. Two paths: the built outputs
+      # (zip + SBOM) and the staging tree makensis packages. Staging is the MSVC
+      # payload verbatim: the three .dlo files this job just compiled, plus
+      # mxbmrp3_data and the docs. Nothing is rebuilt downstream; Linux only runs
+      # the packager over these exact bytes.
+      - name: Upload payload for packaging
         uses: actions/upload-artifact@v7
         with:
-          name: mxbmrp3-v${{ steps.ver.outputs.version }}
+          name: release-payload-v${{ steps.ver.outputs.version }}
           path: |
-            ${{ steps.pkg.outputs.outdir }}/mxbmrp3-Setup.exe
             ${{ steps.pkg.outputs.outdir }}/mxbmrp3.zip
             ${{ steps.pkg.outputs.outdir }}/mxbmrp3.cdx.json
           if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload staging tree for the installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-staging-v${{ steps.ver.outputs.version }}
+          path: dist/staging
+          if-no-files-found: error
+          retention-days: 1
 
       # Symbols as a SEPARATE artifact (not attached to the public Release): keep them
       # for triage without pushing large .pdb files at end users. Retained 90 days.
@@ -397,6 +368,102 @@ jobs:
         with:
           name: mxbmrp3-symbols-v${{ steps.ver.outputs.version }}
           path: ${{ steps.pkg.outputs.outdir }}/mxbmrp3-symbols-v${{ steps.ver.outputs.version }}.zip
+          if-no-files-found: error
+
+
+  # ---------------------------------------------------------------------------
+  # Package the installer and publish. LINUX, deliberately.
+  #
+  # WHY NOT ON THE WINDOWS JOB, where the payload is built: `Target AMD64-Unicode`
+  # needs an amd64 stub, and the OFFICIAL NSIS Windows distribution does not ship
+  # one. nsis-3.10.zip contains thirteen stubs and every one is `-x86-`; the
+  # `Target` directive is understood by makensis, but the stub it needs has to be
+  # cross-compiled from source. Debian/Ubuntu DO build them, which is why the
+  # installer test has always produced a working amd64 Setup.exe here while the
+  # Windows release job failed with:
+  #     Error: reading stub ".../Stubs/lzma_solid-amd64-unicode"
+  # A version assert cannot catch that — the runner really does have NSIS 3.10.
+  #
+  # Nothing is COMPILED here. The .dlo files are the MSVC artifacts from
+  # build-release, downloaded verbatim; this job only runs the packager over them.
+  # The mingw cross-build is a test configuration and never ships.
+  #
+  # Bonus property worth keeping: this is now the same toolchain
+  # tests/integration/run_installer_test.sh exercises, so the installer we ship is
+  # built the way the installer we test is built. Shipping a differently-built
+  # artifact than the tested one is exactly how the amd64 stub gap reached a
+  # release unnoticed.
+  package:
+    needs: build-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install NSIS
+        run: ./tools/install_deps.sh nsis
+
+      # Fail with the REASON rather than NSIS's "reading stub" mid-compile error,
+      # which reads like file corruption and cost a release to diagnose.
+      - name: Verify the amd64 stub exists
+        run: |
+          stub=/usr/share/nsis/Stubs/lzma_solid-amd64-unicode
+          if [ ! -f "$stub" ]; then
+            echo "ERROR: $stub is missing - this NSIS build has no amd64 stub," >&2
+            echo "       so 'Target AMD64-Unicode' in packaging/mxbmrp3.nsi cannot link." >&2
+            echo "       Official NSIS ships x86 stubs ONLY; Debian/Ubuntu build the" >&2
+            echo "       amd64 ones from source, which is why this job runs here." >&2
+            exit 1
+          fi
+          echo "amd64 stub present: $(makensis -VERSION)"
+
+      - name: Download staging tree (MSVC payload)
+        uses: actions/download-artifact@v7
+        with:
+          name: release-staging-v${{ needs.build-release.outputs.version }}
+          path: staging
+
+      - name: Download built payload (zip + SBOM)
+        uses: actions/download-artifact@v7
+        with:
+          name: release-payload-v${{ needs.build-release.outputs.version }}
+          path: dist
+
+      # Sanity-check the handoff before packaging: an artifact round-trip that
+      # silently dropped the payload would otherwise produce a valid-looking
+      # installer containing nothing.
+      - name: Verify staging survived the round-trip
+        run: |
+          for f in mxbmrp3.dlo mxbmrp3_gpb.dlo mxbmrp3_krp.dlo \
+                   mxbmrp3_data/web/index.html mxbmrp3_data/fonts; do
+            [ -e "staging/$f" ] || { echo "ERROR: staging/$f missing after download" >&2; exit 1; }
+          done
+          echo "staging ok: $(du -sh staging | cut -f1)"
+
+      - name: Build NSIS installer
+        run: |
+          ver="${{ needs.build-release.outputs.version }}"
+          # NSIS resolves File/OutFile relative to the .nsi's own dir (packaging/),
+          # not CWD - so pass ABSOLUTE paths for the staging source and output dir.
+          makensis "-DPLUGIN_VERSION=$ver" \
+                   "-DOUTPUT_DIR=$(pwd)/dist" \
+                   "-DPLUGIN_SOURCE_PATH=$(pwd)/staging" \
+                   packaging/mxbmrp3.nsi
+          [ -f dist/mxbmrp3-Setup.exe ] || { echo "ERROR: Setup.exe not produced" >&2; exit 1; }
+          file dist/mxbmrp3-Setup.exe
+
+      # Always publish the zip + installer as downloadable workflow artifacts. This is
+      # what makes a manual (workflow_dispatch) run on a branch a real DRY RUN: it
+      # validates the whole MSVC build + NSIS packaging and hands you the files to
+      # inspect / test-install, without creating a Release or a tag.
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: mxbmrp3-v${{ needs.build-release.outputs.version }}
+          path: |
+            dist/mxbmrp3-Setup.exe
+            dist/mxbmrp3.zip
+            dist/mxbmrp3.cdx.json
           if-no-files-found: error
 
       # The Release body IS the CHANGELOG.md section for this version — one text,
@@ -416,7 +483,7 @@ jobs:
       - name: Build release notes from CHANGELOG.md
         shell: python
         env:
-          TAG: ${{ steps.ver.outputs.tag }}
+          TAG: ${{ needs.build-release.outputs.tag }}
           SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           NOTES: ${{ runner.temp }}/release_notes.md
@@ -426,15 +493,13 @@ jobs:
           import re
           import sys
 
-          # This runs on WINDOWS, where Python's stdout defaults to the locale
-          # codepage (cp1252), not UTF-8. The notes are written to NOTES with an
-          # explicit encoding, so the file was never at risk — but the print()
-          # at the end that echoes them into the job log died on the first
-          # character cp1252 has no mapping for. It got as far as the release
-          # body's own leading "✅" and threw UnicodeEncodeError, failing
-          # the step after a clean 15-minute build. Reconfigure once here so any
-          # future emoji, arrow or curly quote in CHANGELOG.md is a display
-          # detail rather than a failed release.
+          # KEPT after this step moved from the Windows runner to Linux, where
+          # stdout is UTF-8 and this is a no-op. It is not dead weight: on
+          # Windows, Python's stdout defaults to the locale codepage (cp1252),
+          # and the print() at the end that echoes the notes into the job log
+          # died on the release body's own leading "✅" with
+          # UnicodeEncodeError — failing the step after a clean 15-minute build.
+          # One line to keep that from coming back if this ever moves again.
           sys.stdout.reconfigure(encoding="utf-8")
 
           ver = os.environ["TAG"].lstrip("v")
@@ -490,8 +555,8 @@ jobs:
         if: inputs.release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3.0.2
         with:
-          name: MXBMRP3 ${{ steps.ver.outputs.tag }}
-          tag_name: ${{ steps.ver.outputs.tag }}
+          name: MXBMRP3 ${{ needs.build-release.outputs.tag }}
+          tag_name: ${{ needs.build-release.outputs.tag }}
           target_commitish: ${{ github.sha }}
           # OFF deliberately: on the public repo every release is one squashed
           # mirror commit, so the auto-generated list is a single meaningless
@@ -508,6 +573,6 @@ jobs:
           # update aborted with "Release not for this game". Keep this list free of
           # any .zip other than mxbmrp3.zip.
           files: |
-            ${{ steps.pkg.outputs.outdir }}/mxbmrp3-Setup.exe
-            ${{ steps.pkg.outputs.outdir }}/mxbmrp3.zip
-            ${{ steps.pkg.outputs.outdir }}/mxbmrp3.cdx.json
+            dist/mxbmrp3-Setup.exe
+            dist/mxbmrp3.zip
+            dist/mxbmrp3.cdx.json

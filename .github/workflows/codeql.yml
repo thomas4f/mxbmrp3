@@ -69,11 +69,50 @@ jobs:
 
       # The same cross-build CI already runs for the Wine suite; CodeQL traces
       # the compiler invocations to build its database.
+      #
+      # CCACHE_DISABLE is load-bearing, not tidiness: CMakeLists.txt uses ccache as
+      # a compiler launcher, and CodeQL only extracts TUs whose compiler actually
+      # RAN. A cache hit is therefore an un-scanned file, and a fully warm cache
+      # yields an empty database that analyzes to zero findings and uploads a clean
+      # bill of health. This job happens not to restore a ccache today — that is
+      # the only reason it works, and it must not silently become the reason it
+      # stops. (The local gate, run_codeql.sh, sets this for the same reason and
+      # additionally hard-fails on an empty database.)
       - name: Build (mingw cross-compile)
         if: matrix.language == 'c-cpp'
+        env:
+          CCACHE_DISABLE: 1
         run: ./tests/integration/build.sh
 
+      # Analyze but DON'T upload yet: the SARIF goes through a path filter first.
       - name: Perform CodeQL Analysis
+        id: analyze
         uses: github/codeql-action/analyze@v4
         with:
+          category: "/language:${{ matrix.language }}"
+          upload: false
+          output: sarif-results
+
+      # Drop findings inside vendored third-party code. We don't patch cpp-httplib
+      # et al., so their alerts are permanent noise that buries our own — e.g. the
+      # cpp/non-https-url hit on httplib's proxy request-target builder, in a client
+      # path this plugin never instantiates.
+      #
+      # NOTE: `paths-ignore` in the CodeQL config does NOT do this for c-cpp. It
+      # only gates extraction for interpreted languages; for compiled ones the
+      # build decides what gets extracted, so filtering has to happen on the SARIF.
+      # This is the filter the CodeQL docs themselves point to for that case.
+      - name: Filter vendored code out of results
+        uses: advanced-security/filter-sarif@f3b8118a9349d88f7b1c0c488476411145b6270d  # v1
+        with:
+          patterns: |
+            -mxbmrp3/vendor/**
+            -tests/integration/harness/doctest.h
+          input: sarif-results/${{ matrix.language }}.sarif
+          output: sarif-results/${{ matrix.language }}.sarif
+
+      - name: Upload filtered results
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: sarif-results/${{ matrix.language }}.sarif
           category: "/language:${{ matrix.language }}"

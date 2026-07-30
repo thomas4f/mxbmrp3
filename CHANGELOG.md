@@ -36,8 +36,10 @@ performance fixes.
 - "Category" is now called "Class", matching the game; labels only, nothing you
   saved changes
 - Onboard variety settings grey out while Max shot is Off
-- The installer is built with official NSIS and carries full version info, so
-  browsers and scanners are less likely to flag it
+- The installer now carries full version information, so Windows and security
+  scanners can identify what it is
+- The log no longer records your Steam friends' names or servers, so a log
+  pasted into a bug report carries nobody else's details
 - The plugin now budgets itself against 480fps instead of 240fps
 - Cheaper blue-flag detection and standings rebuilds
 - Each session chart now labels its own right edge with its own range
@@ -82,6 +84,8 @@ performance fixes.
 - The race number sitting high in the standings number plate instead of centred
 - Every rider the auto-director followed to the flag being logged as the race
   winner; only the rider who actually won is now, and the rest read "Finishing"
+- The uninstaller telling you to delete settings and data by hand even after you
+  ticked the box to remove them
 
 ## [1.27.7] - 2026-07-18
 

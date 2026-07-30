@@ -57,6 +57,11 @@ DEP_GROUPS=(
     # and check_docs.py only cross-checks binaries a gate declares — so a box
     # provisioned exactly as documented still failed with "'import' not found".
     "screenshot|imagemagick xvfb||import Xvfb"
+    # No apt/pip package exists — GitHub ships the CLI + query packs only as a
+    # ~1 GB tarball, fetched by the fixup below. Listed here anyway because this
+    # table is what check_docs.py cross-checks a gate's TOOLS against, and because
+    # "what does the toolchain need" should have exactly one answer.
+    "codeql|||codeql"
     "coverage||gcovr|gcovr"
     "lint||ruff|ruff"
     # Defers to tools/requirements.txt rather than repeating pandas/pyarrow:
@@ -123,6 +128,26 @@ for c in "${CHOSEN[@]}"; do
             $SUDO update-alternatives --set "x86_64-w64-mingw32-${t}" \
                 "/usr/bin/x86_64-w64-mingw32-${t}-posix" >/dev/null 2>&1 || true
         done
+        ;;
+    codeql)
+        # The bundle (CLI + precompiled query packs) is what the codeql-action
+        # uses in CI; the CLI alone would download packs per run. ~1 GB, so it is
+        # skipped when already unpacked — this group is opt-in, never part of a
+        # default provision on a dev box.
+        # Deliberately `releases/latest`, NOT a pinned bundle: this gate is the
+        # early-warning copy of what codeql.yml runs, and codeql-action@v4 itself
+        # resolves the latest bundle - so pinning here would drift the local query
+        # packs AWAY from the authority over time. The cost is that a bundle
+        # release can change local findings without a commit; when local and
+        # GitHub disagree, GitHub is right.
+        if ! command -v codeql >/dev/null 2>&1; then
+            CODEQL_HOME="${CODEQL_HOME:-/opt/codeql}"
+            echo "==> codeql: fetching bundle into ${CODEQL_HOME} (~1 GB)"
+            $SUDO mkdir -p "${CODEQL_HOME}"
+            curl -sSL "https://github.com/github/codeql-action/releases/latest/download/codeql-bundle-linux64.tar.gz" \
+                | $SUDO tar xz -C "${CODEQL_HOME}" --strip-components=1
+            $SUDO ln -sf "${CODEQL_HOME}/codeql" /usr/local/bin/codeql
+        fi
         ;;
     wine)
         # Some images ship the loader without a /usr/bin/wine launcher on PATH.

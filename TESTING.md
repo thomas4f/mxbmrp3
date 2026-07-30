@@ -91,6 +91,62 @@ header (two already had).
 Each script's header documents the invariant and its escape-hatch annotation;
 CLAUDE.md → *Maintenance Invariants* maps rule → enforcement.
 
+Two more gates round out the analysis side: **`python-lint`** (`ruff check .`
+over the repo's Python — the dev tools and doc checkers) and
+**`shim-constants`** (`tests/unit/shim/regen_constants.sh --check`, which
+re-derives the shim's copied API constants and fails if they drifted from the
+vendored headers, so a hand-edited constant can't silently disagree with the
+game's).
+
+### CodeQL (deep static analysis, opt-in)
+
+**`./tests/integration/run_codeql.sh`** runs GitHub's own CodeQL security
+queries over the C++ tree — the `cpp-code-scanning` suite, the same one the
+codeql-action evaluates. It is analysis, not a test layer: like cppcheck it reads
+the code rather than running it, which is why it sits here and not as a seventh
+layer above.
+
+It exists because **`codeql.yml` can only run on the public mirror** (code
+scanning needs Advanced Security, which the private repo doesn't have) and the
+mirror only receives code at release time — so without a local run, the first
+CodeQL scan of any change is its release. That is literally how v1.28.0 shipped
+and then collected three alerts.
+
+It is the **only opt-in gate**: a bare `ctest` skips it, even where the CodeQL
+bundle is installed. Labels select rather than exclude, so `slow` alone wouldn't
+have kept a 15-minute scan out of the default run once anyone had installed the
+tool once — and a suite that costs a quarter of an hour after a one-line edit is
+a suite people stop running.
+
+```bash
+./tools/install_deps.sh codeql                                  # ~1 GB bundle, once
+MXBMRP3_CODEQL=1 ctest --test-dir build/tests -R codeql          # via CTest
+./tests/integration/run_codeql.sh                                # or directly
+./tests/integration/run_codeql.sh --keep-db                      # reuse the database
+```
+
+Budget ~10–15 min: it rebuilds the plugin clean under the CodeQL extractor, then
+evaluates the queries. Reach for it **before a release**, or after touching a
+parser, a trust boundary, or a dependency — not in an edit-compile-test loop.
+
+Two guards protect the result from being falsely green, and both exist because
+the failure happened:
+
+- **Empty database.** An incremental build compiles nothing the extractor can
+  observe, producing a database that analyzes to zero findings. `CCACHE_DISABLE=1`
+  plus `-B` prevents it; a missing `db-cpp/` fails loudly.
+- **Partial database.** The subtler one: a run that extracted **42 of 444 files**
+  reported `no findings` and exited 0, indistinguishable from a real pass — the
+  code the finding lived in simply wasn't in the database. The script now reads
+  CodeQL's own scanned-file count and fails below a floor (a healthy run scans
+  ~307). Raise the floor as the tree grows; never lower it to make a run pass.
+
+Accepted findings live in `tests/integration/codeql_baseline.txt` — printed as
+`KNOWN` and excused, everything else fails. Entries take a source-path substring
+as well as a sink, because results are keyed on the *sink*, and a sink like
+`logger.cpp` is shared by every log line in the plugin. The file is currently
+empty by design: prefer deleting the flow to accepting it.
+
 The script pins **`--enable=warning`** for a reason. The `.cppcheck-suppressions`
 baseline is curated for that severity only — broadening to
 `--enable=warning,performance,portability` surfaces extra classes CI doesn't gate

@@ -251,7 +251,14 @@ void CompanionWindow::threadMain() {
     WNDCLASSW wc{};
     wc.lpfnWndProc = companionWndProc;
     wc.hInstance = hInst;
-    wc.hCursor = LoadCursorW(nullptr, reinterpret_cast<LPCWSTR>(IDC_ARROW));
+    // IDC_ARROW is an integer ordinal (32512) smuggled through a pointer type, not
+    // a string. Without UNICODE defined it expands via MAKEINTRESOURCEA to LPSTR,
+    // so reaching the W API used to need a char*->wchar_t* reinterpret_cast — which
+    // reads as a real encoding bug to a static analyser (CodeQL
+    // cpp/incorrect-string-type-conversion) even though LoadCursorW checks
+    // IS_INTRESOURCE and never dereferences it. MAKEINTRESOURCEW builds the same
+    // ordinal from the integer, so no cast is needed.
+    wc.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));  // IDC_ARROW
     wc.hbrBackground = nullptr;
     wc.lpszClassName = kClassName;
     RegisterClassW(&wc);  // ignore "already registered" on re-open

@@ -684,6 +684,15 @@ void SteamFriendsManager::scanFriends() {
     std::vector<std::string> lines;
     std::string sig;
     char buf[640];
+    // SEPARATE buffer for the change-detection signature, which deliberately
+    // folds in the real persona name / track / server. Sharing one buffer with
+    // the log lines above makes the identifying data reachable from the logging
+    // path as far as any dataflow analysis is concerned - CodeQL treats a char
+    // array as a single entity, so a name written here would taint every later
+    // use of it, and cpp/cleartext-storage-file fired on the REDACTED lines for
+    // exactly that reason. Keeping the two apart is what makes "no third-party
+    // identity reaches mxbmrp3.log" checkable rather than merely true.
+    char sigbuf[640];
     int reported = 0;
     int playingTotal = 0;
 
@@ -734,11 +743,15 @@ void SteamFriendsManager::scanFriends() {
         // confirms reads work.
         if (playing) {
             ++playingTotal;
-            snprintf(buf, sizeof(buf), "  [in-game] '%s' app=%u keys=%d%s",
-                     name.c_str(), friendApp, keyCount,
+            snprintf(buf, sizeof(buf), "  [in-game] app=%u keys=%d%s",
+                     friendApp, keyCount,
                      (friendApp == m_appId) ? "  <-- MX Bikes" : "");
             lines.emplace_back(buf);
-            sig += buf;
+            // The signature always folds in the NAME so a rename still re-logs;
+            // it is an in-memory change-detection key, never written to the log.
+            snprintf(sigbuf, sizeof(sigbuf), "  [in-game] '%s' app=%u keys=%d",
+                     name.c_str(), friendApp, keyCount);
+            sig += sigbuf;
         }
 
         if (!report) continue;
@@ -766,14 +779,24 @@ void SteamFriendsManager::scanFriends() {
                         && server == localServer && track == localTrack;
         roster.push_back(std::move(fe));
 
-        snprintf(buf, sizeof(buf), "  friend '%s' (id=%llu, gameID=0x%llX) track='%s' server='%s'",
+        // Log what diagnoses the read path - did we get a friend, did the keys
+        // arrive - and nothing that identifies the person. No persona name, no
+        // SteamID, no server value: these are THIRD PARTIES' names and
+        // whereabouts, and mxbmrp3.log gets pasted into public bug reports. There
+        // is deliberately no opt-in flag to widen this; a setting that can put
+        // someone else's data in a shared file is not worth the diagnostic.
+        snprintf(buf, sizeof(buf), "  friend (gameID=0x%llX) track=%s server=%s",
+                 static_cast<unsigned long long>(gi.m_gameID),
+                 track.empty() ? "(empty)" : "(present)",
+                 server.empty() ? "(empty)" : "(present)");
+        lines.emplace_back(buf);
+        // As above: the signature keys on the real values so a friend switching
+        // server still re-logs, but it never reaches the file itself.
+        snprintf(sigbuf, sizeof(sigbuf), "  friend '%s' (id=%llu) track='%s' server='%s'",
                  name.c_str(),
                  static_cast<unsigned long long>(id),
-                 static_cast<unsigned long long>(gi.m_gameID),
-                 track.empty() ? "(empty)" : track.c_str(),
-                 server.empty() ? "(empty)" : server.c_str());
-        lines.emplace_back(buf);
-        sig += buf;
+                 track.c_str(), server.c_str());
+        sig += sigbuf;
 
 #ifdef _DEBUG
         // Debug-only: full rich-presence key dump (tells us if keys arrive under
@@ -787,6 +810,9 @@ void SteamFriendsManager::scanFriends() {
                 const std::string rawKey = copyStr(sehGetRPKeyByIndex(m_fnGetRPKeyByIndex, m_friends, id, k));
                 const std::string dispKey = PluginUtils::sanitizeUntrusted(rawKey.c_str(), 64);
                 const std::string val = PluginUtils::sanitizeUntrusted(sehGetRichPresence(m_fnGetFriendRichPresence, m_friends, id, rawKey.c_str()));
+                // buf for both here, unlike the Release path above: this block is
+                // _DEBUG-only and deliberately DOES log the values, so there is no
+                // redacted/identifying split to keep apart.
                 snprintf(buf, sizeof(buf), "      [%d] %s = %s", k, dispKey.c_str(), val.c_str());
                 lines.emplace_back(buf);
                 sig += buf;
@@ -802,8 +828,8 @@ void SteamFriendsManager::scanFriends() {
     // roster before we overwrite it.
     // Fold the counts in so an appear/disappear with no other content change
     // still re-logs.
-    snprintf(buf, sizeof(buf), "|%d|%d|%d", count, playingTotal, reported);
-    sig += buf;
+    snprintf(sigbuf, sizeof(sigbuf), "|%d|%d|%d", count, playingTotal, reported);
+    sig += sigbuf;
 
     // ONE lock for the compare-publish-throttle sequence: the activity check
     // reads the previous roster and the publish overwrites it, so they have to
@@ -821,7 +847,7 @@ void SteamFriendsManager::scanFriends() {
         }
 
         // Publish to the HUD every scan (independent of the log throttle below,
-        // which only governs whether we re-emit the verbose log).
+        // which only governs whether we re-emit the roster log).
         m_roster = std::move(roster);
 
         if (sig == m_lastRosterSig) {

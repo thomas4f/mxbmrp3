@@ -186,6 +186,29 @@ mxb_gate(thread-safety slow 900 "clang++ x86_64-w64-mingw32-g++" "./tests/integr
 mxb_gate(game-configs slow 1800 "x86_64-w64-mingw32-g++" "./tests/integration/check_game_configs.sh")
 mxb_gate(cppcheck slow 900 "cppcheck" "./tests/run_cppcheck.sh")
 mxb_gate(installer slow 900 "makensis wine python3" "./tests/integration/run_installer_test.sh")
+# GitHub's CodeQL, run locally. codeql.yml can only scan the PUBLIC mirror, which
+# only sees code at release time — so without this the first scan of a change is
+# also its release (how v1.28.0's three alerts arrived). Longest gate here by a
+# distance: a clean cross-build under the extractor plus query evaluation, hence
+# the 3600s timeout. SKIPs unless `./tools/install_deps.sh codeql` was run.
+# ci-covers-differently: CI runs CodeQL through the dedicated codeql.yml (the
+# official action, on the public mirror, uploading to code scanning) rather than
+# this gate. Duplicating it in tests.yml would add ~15 min to every run for the
+# same queries. This gate is the LOCAL/private-repo path, where codeql.yml cannot
+# run at all — that's the window it exists to close.
+#
+# OPT-IN, unlike every other gate here: it skips unless MXBMRP3_CODEQL=1 is set,
+# even on a box that HAS the bundle installed. `slow` alone doesn't achieve that
+# — CTest labels select (-L), they don't exclude, so a bare `ctest` runs
+# everything — and the tool-missing SKIP stops protecting you the moment you
+# install CodeQL once. Without this, editing a string costs 15 minutes on any
+# developer's machine that ran install_deps.sh, and a gate people route around
+# is a gate that stops being run at all. The opt-in lives HERE rather than in
+# run_codeql.sh so invoking that script directly still just works.
+#
+#   MXBMRP3_CODEQL=1 ctest --test-dir build/tests -R codeql
+mxb_gate(codeql slow 3600 "codeql x86_64-w64-mingw32-g++ python3"
+         "test \"\${MXBMRP3_CODEQL}\" = 1 || { echo 'SKIP: opt-in gate — set MXBMRP3_CODEQL=1 (~15 min scan)'; exit 3; }; ./tests/integration/run_codeql.sh")
 
 # CTest runs these in order within a label; the integration suite dominates, so
 # `-j` is worth using locally. CI runs them per-job instead (see tests.yml).
