@@ -90,6 +90,14 @@ if compgen -G "${TESTS_DIR}/fixtures/"'*.gz' >/dev/null 2>&1; then
     done
 fi
 
+# The cross-boundary fixtures in tests/fixtures/ are shared with the web suite
+# (Playwright reads them straight from the repo), so they are plain files rather
+# than gzipped tapes — copy them where the Wine-side tests can read them.
+if compgen -G "${ROOT}/tests/fixtures/"'*.json' >/dev/null 2>&1; then
+    mkdir -p "${SAVE_ROOT}/fixtures"
+    cp "${ROOT}/tests/fixtures/"*.json "${SAVE_ROOT}/fixtures/"
+fi
+
 rc=0
 total=${#SELECTED[@]}
 i=0

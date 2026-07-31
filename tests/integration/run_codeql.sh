@@ -52,6 +52,9 @@ KEEP_DB=0
 # findings and looks like a pass. -B is not optional here.
 if [ "${KEEP_DB}" -eq 0 ] || [ ! -d "${DB_DIR}" ]; then
     rm -rf "${DB_DIR}"
+    # `codeql database create` refuses to create the DB's PARENT directory, so on
+    # a fresh checkout (no build/ yet) it dies before building anything.
+    mkdir -p "${ROOT}/build"
     echo "==> building CodeQL database (clean cross-build, several minutes)"
     # CCACHE_DISABLE is NOT optional. CMakeLists.txt wires ccache in as
     # CMAKE_CXX_COMPILER_LAUNCHER, and CodeQL extracts by tracing real compiler
@@ -97,10 +100,12 @@ codeql database analyze "${DB_DIR}" \
 # mid-run) reads as good news, which is the worst possible failure mode for a
 # gate you consult before a release.
 #
-# The floor is deliberately blunt: a healthy run scans ~307 of 444 (the rest are
-# headers and TUs the cross-build excludes), so anything below 250 means the
-# build didn't do what this script assumes. Raise it if the tree grows; do NOT
-# lower it to make a run pass.
+# The floor is deliberately blunt: a healthy run scans ~307 of the files in the
+# database (the rest are headers and TUs the cross-build excludes), so anything
+# below 250 means the build didn't do what this script assumes. Raise it if the
+# tree grows; do NOT lower it to make a run pass. The denominator is left
+# unquoted on purpose — it was "444" and the tree is at 446, and a number that
+# rots on every added file is how a floor stops being trusted.
 # `|| true` is load-bearing under `set -euo pipefail`: with no matching line the
 # grep pipeline exits 1, which fails the ASSIGNMENT and aborts the script right
 # here — before the -z branch below can say why. The gate still failed, but

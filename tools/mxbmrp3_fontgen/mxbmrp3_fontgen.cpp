@@ -47,6 +47,17 @@
 
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "../../mxbmrp3/vendor/stb/stb_truetype.h"
+
+// MINIZ_NO_ZLIB_COMPATIBLE_NAMES drops miniz's zlib-alias layer (compress/
+// inflate/crc32/zError/...), which this file does not use — it goes straight to
+// tdefl_*/mz_free. Not tidiness: those aliases are `static MZ_FORCEINLINE`
+// wrappers, and build.sh compiles at -std=c++17, whose STRICT ISO mode defines
+// __STRICT_ANSI__ — under which miniz expands MZ_FORCEINLINE to NOTHING. They
+// land as plain unused statics and -Wall emits 19 -Wunused-function warnings
+// per build. The plugin never sees this because CMake's CXX_EXTENSIONS default
+// gives it -std=gnu++17, where the same macro expands to __inline__ and GCC
+// stays quiet. Upstream's own knob, so miniz stays unpatched (vendored.json).
+#define MINIZ_NO_ZLIB_COMPATIBLE_NAMES
 #include "../../mxbmrp3/vendor/miniz/miniz.h"
 
 namespace {

@@ -49,10 +49,25 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # sarif-name: the analyze step names its output after the CANONICAL
+          # language name (the action resolves the `c-cpp`/`javascript-typescript`
+          # aliases to `cpp`/`javascript` — src/languages/builtin.json), so the
+          # filter/upload steps must reference cpp.sarif / javascript.sarif, not
+          # the alias used in `language:`.
+          #
+          # Same trap one step further out: the filename is
+          # `<canonical><analysis.sarifExtension>`, and a SECOND analysis kind
+          # emits a SECOND file. Adding `analysis-kinds: code-quality` would
+          # produce `<lang>.quality.sarif` alongside this one, which the filter
+          # and upload steps below would silently not cover — evaluated for 1.28
+          # and not wired up (the C++ quality suite resolves to zero queries;
+          # eslint covers the JS side in tests.yml at a fraction of the cost).
           - language: c-cpp
             build-mode: manual
+            sarif-name: cpp
           - language: javascript-typescript
             build-mode: none
+            sarif-name: javascript
 
     steps:
       - uses: actions/checkout@v7
@@ -108,11 +123,11 @@ jobs:
           patterns: |
             -mxbmrp3/vendor/**
             -tests/integration/harness/doctest.h
-          input: sarif-results/${{ matrix.language }}.sarif
-          output: sarif-results/${{ matrix.language }}.sarif
+          input: sarif-results/${{ matrix.sarif-name }}.sarif
+          output: sarif-results/${{ matrix.sarif-name }}.sarif
 
       - name: Upload filtered results
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: sarif-results/${{ matrix.language }}.sarif
+          sarif_file: sarif-results/${{ matrix.sarif-name }}.sarif
           category: "/language:${{ matrix.language }}"

@@ -321,7 +321,13 @@ void TrackedRidersManager::load(const char* savePath) {
 
                 if (name.empty() || colorStr.empty()) continue;
 
-                // Parse color (#RRGGBB hex format)
+                // Parse color. The hex is the low 24 bits of the game's ABGR
+                // word, so it reads #BBGGRR, NOT #RRGGBB — red is "#0000ff"
+                // here. Said plainly because the comment used to claim RRGGBB,
+                // and a hand-edited file that believes it gets its channels
+                // reversed (the writer below emits the same order, so anything
+                // set through the UI round-trips correctly). Do NOT "fix" the
+                // order: it would recolour every existing user's file.
                 unsigned long color = ColorPalette::RED;
                 if (colorStr.length() == 7 && colorStr[0] == '#') {
                     try {
@@ -382,7 +388,9 @@ void TrackedRidersManager::save() {
             nlohmann::json riderJson;
             riderJson["name"] = config.name;
 
-            // Format color as #RRGGBB
+            // Format the low 24 bits of the ABGR word — i.e. #BBGGRR, matching
+            // what the parser above reads back. See the note there before
+            // changing the channel order.
             std::ostringstream colorStream;
             colorStream << "#" << std::hex << std::setfill('0') << std::setw(6) << (config.color & 0xFFFFFF);
             riderJson["color"] = colorStream.str();

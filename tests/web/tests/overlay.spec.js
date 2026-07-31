@@ -141,7 +141,7 @@ test('battle card shows real-time (live) intervals when the overlay toggle is on
 
   const seen = await page.evaluate(() => window.__liveBattle);
   // The live interval reads as a gap time (a signed seconds value), not empty/NaN.
-  expect(seen.text).toMatch(/[+\-]?\d/);
+  expect(seen.text).toMatch(/[+-]?\d/);
   // The front-of-battle headline is a position ordinal (e.g. "1ST"), never a live gap.
   expect(seen.hasFront).toBe(true);
   expect(seen.frontText).toMatch(/[A-Z]/);
@@ -213,7 +213,7 @@ test('battle card falls back to official splits when Live Gaps is off', async ({
     const grab = () => {
       if (window.__offBattle) return;
       const vals = Array.from(document.querySelectorAll('#battle-list .battle-value'));
-      const interval = vals.find((e) => /[+\-]?\d+\.\d/.test(e.textContent));   // a split, not an ordinal
+      const interval = vals.find((e) => /[+-]?\d+\.\d/.test(e.textContent));   // a split, not an ordinal
       if (!interval) return;
       window.__offBattle = {
         intervalText: interval.textContent.trim(),
@@ -230,7 +230,7 @@ test('battle card falls back to official splits when Live Gaps is off', async ({
     .not.toBeNull();
 
   const off = await page.evaluate(() => window.__offBattle);
-  expect(off.intervalText).toMatch(/[+\-]?\d+\.\d/);   // an official split rendered
+  expect(off.intervalText).toMatch(/[+-]?\d+\.\d/);   // an official split rendered
   expect(off.liveCount).toBe(0);                        // but nothing marked live
 
   expect(pageErrors).toEqual([]);

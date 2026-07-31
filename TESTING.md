@@ -51,8 +51,19 @@ scrolling past mid-run.
 | **Unit** — pure header logic | doctest | just `g++` (+ CMake) | ~1s run (~20s cold compile) | `ctest -R '^unit'` |
 | **Integration** — real plugin, driven headless | doctest + Wine | mingw-w64, wine64 | ~2 min warm (ccache); ~5-8 min cold (full cross-build + one Wine binary per `tests/*.cpp`) | `tests/integration/run_tests.sh` |
 | **Specialized** — persistence / fuzz / perf / installer | bespoke | mingw-w64, wine64, python3 | ~1–3min | `tests/integration/run_*.sh` |
-| **Web overlay** — rendered DOM in a real browser | Playwright | Node.js | ~40s | `tests/web/run.sh` (see the browser caveat below) |
+| **Web overlay** — rendered DOM in a real browser | Playwright | Node.js | ~40s | `tests/web/run.sh` (see the browser caveat below); `tests/web/lint.sh` for the eslint gate |
 | **Memory safety** — ASan/UBSan over the portable memory surface | doctest + a targeted harness | g++/clang, libasan | ~seconds | `ctest -R unit-asan` + `tests/asan/run.sh` |
+
+Two gates sit outside the layers because they cover a *tool*, not the plugin.
+Both ran in CI for months without being gates — so `ctest` was green while CI ran
+more than it, and that is how 19 compiler warnings per build sat unread in a CI
+log. `check_docs.py` now checks that direction too, so a CI step that isn't a
+gate fails the docs check:
+
+| Gate | What it covers |
+|---|---|
+| `fontgen` | `tools/mxbmrp3_fontgen/test.sh` — regenerates `RobotoMono-Regular.fnt` from the source `.ttf` and asserts it is structurally identical to the shipped font (cell height, per-glyph advances, atlas dims, inflate round-trip, mip-safe glyph gaps) |
+| `analytics-selftest` | `tools/analytics_report.py --selftest`. Needs pandas (`./tools/install_deps.sh analytics`); without it the gate SKIPs rather than fails |
 
 Alongside the test layers, CI also runs **cppcheck** static analysis
 (`.github/workflows/tests.yml`, over `mxbmrp3/` with vendored code excluded). It is
@@ -265,6 +276,7 @@ game API is an integration test instead. The authoritative TU list is
 - `test_render_frame_buffer.cpp` — the plugin-worker-thread triple buffer: the producer never writes the displayed slot; `acquire()` returns the latest published frame
 - `test_crash_stack_format.cpp` — the crash handler's backtrace string formatting + the whole-frame `MAX_STACK_CHARS` budget
 - `test_hud_sw_renderer.cpp` — golden-frame sampling of the companion window's software renderer (`core/hud_sw_renderer.cpp` compiled natively): quad fill, per-quad alpha, the texel×color modulate (white-icon tinting), `.fnt` text against a real shipped font, and the scale-viewport mapping
+- `test_hud_sw_assets.cpp` — malformed `.fnt`/`.tga` input to the same renderer's two binary parsers. Both read **user-supplied** files from the scanned asset dirs, so their hardening is a trust boundary: a bad header must be rejected with the frame untouched (dimension caps, magic, compression type, decompressed size), while a sound header with a truncated payload decodes what it has *in bounds* — the RLE/copy-loop guards, whose teeth are the `unit-asan` gate (deleting one is a heap-buffer-overflow there)
 - `test_fmx_scoring.cpp` — FMX trick scoring (`core/fmx_manager` math): rotation scale floors at 1×, air/ground tricks scale with duration (floored) and distance
 - `test_segment_cumulative.cpp` — cumulative custom-segment timing: a contiguous run aggregates like the official splits; on-sector identity; isolated-arc fallback
 - `test_blue_flag_detect.cpp` — the blue-flag/lapping proximity core (`core/blue_flag_detect.h`): start/finish wraparound, directionality, the deliberately asymmetric backmarker-vs-lapper eligibility, stale-sample rejection, the first-lapper-wins ordering the director depends on, and output clearing (the containers are reused every rebuild). The end-to-end wiring stays pinned by `blueflag_test.cpp`
@@ -371,6 +383,7 @@ without a row here, so a new test can't land invisibly:
 | `hazard_reach_test.cpp` | a **wrong-way** hazard is scanned for further ahead (`hazardWrongWayAwarenessDistance`, 250m) than a **stationary** one (`hazardAwarenessDistance`, 100m), because an oncoming rider closes the gap at roughly double the rate and the 1.5s wrong-way confirmation eats most of the warning. Pinned as a matched pair at ONE distance — a wrong-way rider and a crashed rider both 208m ahead, only the first in reach — so it can't pass by simply raising the threshold for everyone |
 | `blueflag_test.cpp` | **blue-flag detection semantics**, via the `MXBMRP3_Test_IsRiderBlueFlagged`/`IsRiderLapping`/`RiderLappingTarget` hooks: proximity threshold, the leader/lead-lap cases, the same-lap early-out, and pit exclusion. Written **test-first** against the original O(n²) implementation, so it pins behaviour across the scratch-array refactor rather than describing it |
 | `livegaps_test.cpp` | the overlay live-gap data contract: per-rider `liveGapMs`/`liveGapValid` (valid for leader/active, false for dropped-out/lapped) — always emitted; the on/off is a client-side overlay setting |
+| `overlay_snapshot_test.cpp` | the **whole** `/api/state` shape, not one field of it: the live snapshot must keep every key path and JSON type of `tests/fixtures/overlay_snapshot.json`. Its twin, `tests/web/tests/overlay_snapshot.spec.js`, feeds that same file through the overlay's real `render()`, so a renamed field fails here, and an overlay still reading the old name fails there. Closes the hole where both suites passed while the live overlay drew nothing — every other web test drives `?demo`, whose snapshot the overlay writes itself. Regenerate deliberately: the test dumps the live JSON to `/tmp/mxbmrp3-tests/overlay_snapshot.new.json` and prints the copy command |
 | `session_format_test.cpp` | race-**format** clock: pure-laps/time/time+laps `format` string, and the **finish-before-timer** overtime state machine (`00:00` freeze → N TO GO → FINAL LAP → CHECKERED) |
 | `timing_reference_test.cpp` | Timing HUD via the `MXBMRP3_Test_Timing*` hooks: progressive reference selection (S1 → S1+S2 → whole lap, tracking the lap timer's track-position sector from the first flying lap), pit-exit timer reset, INVALID shown for a cut lap but suppressed on a pit out-lap, freeze on the first flying lap after a garage start, grid-start timing from the gate drop + the green-flag grace window, and panel height a whole number of grid bands |
 | `spectate_test.cpp` | the camera/spectate chip follows the spectated rider through `SpectateVehicles` |
@@ -653,6 +666,34 @@ names come through, the race phase shows `Leader` on P1, no uncaught JS errors).
 > once passed locally and failed in CI on the same commit. Assert a **property**
 > — does not overflow, fills the width, element is hidden — never an exact pixel,
 > because pixels are a property of the browser build.
+
+**One spec deliberately does NOT use `?demo`.** `overlay_snapshot.spec.js` loads
+`tests/fixtures/overlay_snapshot.json` — captured from the real plugin by
+`tests/integration/tests/overlay_snapshot_test.cpp` — and feeds it to the same
+`render()` the SSE stream calls. Everything else here drives the demo, whose
+snapshot the overlay writes itself, so a field renamed in `buildJsonSnapshot()`
+would leave both suites green while the live overlay drew nothing. The C++ twin
+fails on the rename; this one fails if the client still reads the old name.
+Note the trap found while writing it: an assertion that mirrors the client's own
+`fullName || name` fallback launders the drift it is meant to catch, so the spec
+requires the preferred field outright.
+
+**Lint (`tests/web/lint.sh`, the `eslint` gate).** The same Node install also
+carries ESLint over every `.js` in the tree — the overlay, `sw.js` and this
+suite — in about a second:
+
+```bash
+./tests/web/lint.sh             # what CI and the ctest gate run
+./tests/web/lint.sh --fix       # apply the fixable ones
+```
+
+It is eslint's own `recommended` set, minus three rules the shipped overlay's
+design makes unusable (`no-undef` and `no-unused-vars: vars` because the 11 files
+share **one global scope** and ESLint sees one file at a time; `no-redeclare`
+because ES5 has no block scope). `tests/web/eslint.config.mjs` states each
+reason at the rule. The gate exists because the JS had no lint at all: the two
+dead-code nits fixed during the 1.28 release prep were found by hand-running
+CodeQL's *code-quality* suite, which no CI job runs.
 
 No game, no plugin, no network — just Node.js. See `tests/web/README.md` for the
 gotchas (rows are `translateY`-slotted over a stable DOM order, so ranking is read

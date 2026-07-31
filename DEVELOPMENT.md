@@ -98,6 +98,7 @@ ctest --test-dir build/tests -R '^unit'   # Layer 1: pure-logic unit tests (doct
 ./tests/integration/run_tests.sh     # Layer 2: doctest integration tests under Wine (real callbacks)
 ./tests/integration/run_persist_test.sh   # Layer 3: settings round-trip (and run_fuzz / run_perf / ...)
 ./tests/web/run.sh            # Layer 4: Playwright overlay tests (?demo, headless Chromium, Node.js)
+./tests/web/lint.sh           # ... + eslint over every .js in the tree (seconds, no browser)
 ./tests/asan/run.sh           # Layer 5: AddressSanitizer sweep (see TESTING.md)
 tools/mxbmrp3_hud_window/companion_demo.sh out.png   # Layer 6: visual (instrument, not a gate)
 ```
@@ -115,7 +116,9 @@ on violations — run them before pushing anything they cover:
 ./tests/integration/check_style.sh            # tabs/trailing-WS/CRLF/final newline
 ./tests/run_cppcheck.sh                       # cppcheck static analysis (zero-finding baseline)
 ./tests/integration/check_session_hook.sh     # the SessionStart hook still provisions + reports
+./tests/web/lint.sh                           # eslint over every .js (overlay + the web suite)
 python3 tools/check_vendored_manifest.py      # vendored.json matches vendored sources
+python3 tools/check_docs.py                   # doc paths/labels, and CI vs the gate list both ways
 ```
 
 Separate from those, `./tests/integration/run_codeql.sh` runs **GitHub's CodeQL
@@ -177,8 +180,9 @@ By group: unit tests need `build`; the integration and specialized tests add
 `mingw wine python`; the installer test adds `nsis` (plus `python`, for its
 version-info assertions); the thread-safety check adds
 `clang` (any recent version — it only front-end-parses, no codegen or linking);
-the Layer 4 web tests need `node` and nothing else, since `tests/web/run.sh`
-fetches Playwright + Chromium on first run. `coverage`, `lint` and `analytics`
+the Layer 4 web tests and the `eslint` gate need `node` and nothing else, since
+`tests/web/run.sh` fetches Playwright + Chromium on first run and `lint.sh`
+shares that same npm install. `coverage`, `lint` and `analytics`
 are pip-only. `codeql` is opt-in and the odd one out — no apt/pip package exists,
 so the group fetches GitHub's ~1 GB CLI+query bundle into `/opt/codeql`; it is
 never pulled in by a default provision.
@@ -281,6 +285,22 @@ private iteration history is never exposed. The `mirror` workflow
 copy — it creates a single commit whose tree is identical to private `main`,
 parented on `public/main` (`git commit-tree`), and pushes it. No working-tree
 copy, so it can't half-apply.
+
+**Before you start: the one thing CI cannot tell you.** Run these locally on
+`main` first — a full `ctest` is free and reproduces every Linux job, but the
+CodeQL gate is opt-in and skips unless you ask for it:
+
+```bash
+ctest --test-dir build/tests                          # ~12 min, every gate but codeql
+MXBMRP3_CODEQL=1 ctest --test-dir build/tests -R codeql   # ~15 min, opt-in
+```
+
+That second line is not optional diligence, it is the only pre-release scan that
+exists: [`codeql.yml`](.github/workflows/codeql.yml) is gated to the PUBLIC
+mirror, and the mirror only receives code at step 4 below — so without the local
+gate, the first CodeQL scan of a change happens *at* its release. That is exactly
+how v1.28.0's three alerts arrived. `ctest` alone cannot substitute: `codeql`
+skips silently in it, and a SKIP is not a pass.
 
 The end-to-end release flow (all buttons, no local git):
 

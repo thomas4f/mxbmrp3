@@ -4,8 +4,10 @@ tools/check_docs.py - keep the project docs honest, mechanically.
 
 The docs carry rules that the code cannot state about itself, and they are read
 before every task. That only works while they are TRUE: a stale rule is worse
-than a missing one, because it is followed anyway. Three failure modes are
-mechanical, so they are checked here instead of by review:
+than a missing one, because it is followed anyway. These failure modes are
+mechanical, so they are checked here instead of by review (plus the CI/gate
+cross-checks at the bottom of the file, which keep `ctest` and the workflow
+describing the same suite in BOTH directions):
 
   1. DANGLING PATH - a doc names a file that was renamed, split or deleted.
      Every path-shaped token in every tracked .md must resolve to something on
@@ -387,6 +389,55 @@ def check_ci_runs_every_gate(failures):
                         "did the mxb_gate() line format change?" % seen)
 
 
+def check_every_ci_script_is_a_gate(failures):
+    """...and the other direction: a script CI runs must be a registered gate.
+
+    check_ci_runs_every_gate above walks gate -> CI. Nothing walked CI -> gate,
+    and the gap is not hypothetical: `tools/mxbmrp3_fontgen/test.sh` and
+    `tools/analytics_report.py --selftest` ran in CI for months with no gate, so
+    a developer's `ctest` came back green while CI ran two more things. That is
+    how 19 -Wunused-function warnings per fontgen build survived — the only
+    place they were printed was a CI log nobody had reason to open.
+
+    Scope is tests.yml, matching the forward check. release.yml is deliberately
+    out: packaging, SBOM and the MSVC smoke-load have no headless Linux
+    equivalent to be a gate of. install_deps.sh is out because provisioning is
+    not a check. Anything else declares itself with `# not-a-gate: <reason>` on
+    the line or in the comment block above it.
+    """
+    cml = open(os.path.join(REPO, "CMakeLists.txt"), encoding="utf-8").read()
+    path = os.path.join(REPO, ".github", "workflows", "tests.yml")
+    lines = open(path, encoding="utf-8").read().splitlines()
+
+    seen = 0
+    for i, line in enumerate(lines):
+        if line.lstrip().startswith("#"):
+            continue
+        for script in re.findall(r"(?:\./)?(?:tests|tools)/[\w/.\-]+\.(?:sh|py)",
+                                 line):
+            bare = script[2:] if script.startswith("./") else script
+            if bare == "tools/install_deps.sh":
+                continue
+            seen += 1
+            block = [line]
+            j = i - 1
+            while j >= 0 and lines[j].lstrip().startswith("#"):
+                block.append(lines[j])
+                j -= 1
+            if any("not-a-gate:" in b for b in block):
+                continue
+            if bare in cml:
+                continue
+            failures.append(
+                f"tests.yml runs {bare}, but no mxb_gate() in CMakeLists.txt "
+                f"registers it — `ctest` would be green while CI runs more than "
+                f"it. Register a gate, or annotate the step with "
+                f"`# not-a-gate: <reason>`.")
+    if seen < 10:
+        failures.append("check_every_ci_script_is_a_gate: found only %d scripts "
+                        "in tests.yml — did the workflow's shape change?" % seen)
+
+
 def main():
     if "--list-paths" in sys.argv:
         check_paths([], list_only=True)
@@ -400,6 +451,7 @@ def main():
     check_budget(failures)
     check_gate_tools_installable(failures)
     check_ci_runs_every_gate(failures)
+    check_every_ci_script_is_a_gate(failures)
 
     if failures:
         print("Documentation check FAILED:\n", file=sys.stderr)
@@ -412,7 +464,7 @@ def main():
         f"{doc} {os.path.getsize(os.path.join(REPO, doc)):,}/{budget:,}"
         for doc, budget in DOC_BUDGETS.items())
     print(f"Docs clean: paths resolve, invariants labelled, gate tools installable, "
-          f"CI runs every gate, {sizes} bytes.")
+          f"CI and the gate list agree both ways, {sizes} bytes.")
     return 0
 
 

@@ -347,10 +347,13 @@ public:
         if (m_sessionState) m_sessionState(&ss, (int)sizeof(ss));
         draw();
     }
-    void addEntry(int num, const char* name) {
+    // bikeName defaults to a name deliberately OUTSIDE PluginUtils' brand map, so
+    // existing tests keep the brand-less entry they were written against; pass a
+    // real one (e.g. "FACTORY CRF450R") to exercise the brand/brandColor fields.
+    void addEntry(int num, const char* name, const char* bikeName = "Test 450") {
         SPluginsRaceAddEntry_t e{};
         e.m_iRaceNum = num; setStr(e.m_szName, name);
-        setStr(e.m_szBikeName, "Test 450"); setStr(e.m_szBikeShortName, "T450");
+        setStr(e.m_szBikeName, bikeName); setStr(e.m_szBikeShortName, "T450");
         setStr(e.m_szCategory, "MX1"); e.m_iNumberOfGears = 5; e.m_iMaxRPM = 13000;
         if (m_addEntry) m_addEntry(&e, (int)sizeof(e));
     }

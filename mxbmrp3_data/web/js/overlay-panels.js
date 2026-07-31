@@ -581,8 +581,7 @@ function battleNowMs() { return Date.now(); }
 // True if `group` is exactly the held set (same riders, same count) — a pure data refresh.
 function sameBattleMembers(group) {
     if (!battleShownNums) return false;
-    var held = 0; for (var k in battleShownNums) held++;
-    if (group.length !== held) return false;
+    if (group.length !== Object.keys(battleShownNums).length) return false;
     for (var i = 0; i < group.length; i++) if (!battleShownNums[group[i].num]) return false;
     return true;
 }

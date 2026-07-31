@@ -73,7 +73,7 @@ function cmLeaderIndex(cumulatives, raceNums) {
     for (var i = 0; i < cumulatives.length; i++) {
         var laps = cumulatives[i].length;
         if (laps === 0) continue;
-        var cum = cumulatives[i][laps - 1], take = false;
+        var cum = cumulatives[i][laps - 1], take;
         if (best < 0) take = true;
         else if (laps !== bestLaps) take = laps > bestLaps;
         else if (cum !== bestCum) take = cum < bestCum;
@@ -340,7 +340,6 @@ function svgTag(x, y, num, color, tagFont) {
 // Render one chart into an SVG string sized WxH (px). Returns "" for the race-only
 // trace in a non-race session (the caller shows a note instead).
 function renderChartSvg(type, field, drawn, W, H, rh) {
-    var isRace = field.isRace;
     var axisFont = Math.max(9, Math.round(rh * 0.42));
     var tagFont = Math.max(10, Math.round(rh * 0.5));
     var padL = Math.round(axisFont * 3.4), padR = Math.round(tagFont * 2.8);

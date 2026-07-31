@@ -20,10 +20,12 @@ An [open-source](https://github.com/thomas4f/mxbmrp3) plugin for MX Bikes, GP Bi
 [![Download ZIP Archive](https://img.shields.io/badge/Download-ZIP_Archive-blue?style=for-the-badge)](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3.zip)
 
 > **Quick Start**
-> 1. Download the installer above, run it, and follow the on-screen steps. Windows may show several "unknown publisher" warnings - [why & how to proceed](#windows-warns-me-when-downloading-or-installing).
+> 1. Download the installer above and run it
 > 2. Launch the game and load a track
 > 3. Move the mouse to bring up the pointer, then right-click and drag to reposition elements
 > 4. Press **Tilde (~)** or click the settings button to toggle elements, adjust opacity, and more
+>
+> The installer isn't signed yet, so Windows will warn about an "unknown publisher" - [why & how to proceed](#windows-warns-me-when-downloading-or-installing).
 
 See [Installation](#installation) for detailed setup instructions, or [Configuration](#configuration) to fine-tune everything.
 
@@ -119,7 +121,7 @@ The plugin is active in-game only - it does nothing in the main menus, so all co
 
 Use the settings menu (**Tilde** or the settings button in the top-right) to configure all HUDs and widgets. Hover over any setting to see its description - all controls have in-game tooltips explaining their function.
 
-With **Auto-Save** on (the default), changes are saved automatically when you leave the track, so configuring HUDs never causes a stutter. You can also save at any time with the **Save** button at the bottom of the settings menu, which lights up whenever you have unsaved changes.
+**Auto-Save** (on by default) writes your changes when you leave the track, so tweaking HUDs never stutters mid-session. To save sooner, use the **Save** button at the bottom of the menu - it lights up whenever you have unsaved changes.
 
 The settings menu provides global settings that apply to all profiles, followed by per-element tabs for the individual HUDs and widgets:
 
@@ -429,7 +431,7 @@ Analytics are processed by two open-source services: [Aptabase](https://aptabase
 
 When analytics is on, the plugin may also fetch a small config file from this repository that can only ever reduce what's sent, never add to it. Turning the Analytics toggle off stops this too.
 
-**What the data actually adds up to:** the aggregate results are published in **[`analytics/REPORT.md`](analytics/REPORT.md)** - installs, activity over time per game, version adoption, geography, feature/HUD popularity, and crash trends (grouped by which module faulted). It's generated straight from the anonymous pings described above, so you can see exactly what they amount to. As a snapshot, a recent month showed ~3,500 active installs across MX Bikes, GP Bikes, and Kart Racing Pro in 80+ countries; see the report for current figures.
+**What the data actually adds up to:** the aggregate results are published in **[`analytics/REPORT.md`](analytics/REPORT.md)** - installs, activity over time per game, version adoption, geography, feature/HUD popularity, and crash trends (grouped by which module faulted). It's generated straight from the anonymous pings described above, so you can see exactly what they amount to. As a dated snapshot, the 33 days to 2026-07-29 saw 5,575 installs across MX Bikes, GP Bikes, and Kart Racing Pro in 85 countries; see the report for current figures.
 
 ## Feedback & Issues
 

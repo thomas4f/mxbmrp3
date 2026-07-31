@@ -1,9 +1,14 @@
 # Web overlay tests (Playwright)
 
-Headless browser tests for the OBS/browser overlay in `../mxbmrp3_data/web`. They
+Headless browser tests for the OBS/browser overlay in `../mxbmrp3_data/web`. Most
 drive the overlay's built-in **`?demo` mode** — a synthetic 22-rider warmup +
 race that feeds the same snapshots into `render()` that the live SSE stream
 would — and assert the **rendered DOM**. No game, no plugin, no network.
+
+`overlay_snapshot.spec.js` is the deliberate exception: it renders a **real**
+plugin snapshot (`../fixtures/overlay_snapshot.json`, captured by the C++
+integration suite) instead, because a demo the overlay writes itself cannot
+notice the plugin renaming a field.
 
 This is the client-side complement to the C++ integration tests: those assert the
 plugin's `/api/state` JSON (what the overlay *receives*); these assert what the
@@ -16,6 +21,14 @@ overlay *draws* from it (tower rows, ordering, gaps, session/clock).
 ./run.sh --headed         # watch the browser drive the overlay
 ./run.sh -g "race phase"  # filter by test title
 ```
+
+## Lint
+
+`./lint.sh` runs ESLint over every `.js` in the repo (the overlay, `sw.js` and
+this suite) from the same npm install — seconds, no browser. `--fix` applies the
+fixable ones. The rule set is eslint's `recommended`; `eslint.config.mjs`
+documents the three rules the overlay's shared-global-scope, ES5-by-design
+client makes unusable.
 
 `run.sh` installs deps on first use and resolves Chromium (a no-op when a
 preinstalled browser is already on `PLAYWRIGHT_BROWSERS_PATH`). Requires Node.js;

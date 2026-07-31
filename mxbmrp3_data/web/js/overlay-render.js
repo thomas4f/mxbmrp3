@@ -384,7 +384,7 @@ function renderStandings(standings, session) {
         row.style.transform = "translateY(" + (i * rowHeight) + "px)";
 
         // Detect position changes (skip first render)
-        if (prevPositions.hasOwnProperty(num) && prevPositions[num] !== i) {
+        if (Object.prototype.hasOwnProperty.call(prevPositions, num) && prevPositions[num] !== i) {
             var tintClass = (i < prevPositions[num]) ? "promoted" : "demoted";
             row.classList.remove("promoted", "demoted");
             // Force reflow to restart animation

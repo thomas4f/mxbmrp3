@@ -232,8 +232,12 @@ var demoActive = false;
 function deepMerge(defaults, overrides) {
     var result = {};
     for (var key in defaults) {
-        if (!defaults.hasOwnProperty(key)) continue;
-        if (overrides && overrides.hasOwnProperty(key)) {
+        // Called through Object.prototype, not off the object: `overrides` is
+        // whatever JSON.parse gave back from localStorage, so a stored
+        // {"hasOwnProperty": ...} would otherwise throw here and lose every
+        // saved setting to the catch below.
+        if (!Object.prototype.hasOwnProperty.call(defaults, key)) continue;
+        if (overrides && Object.prototype.hasOwnProperty.call(overrides, key)) {
             if (typeof defaults[key] === "object" && defaults[key] !== null &&
                 typeof overrides[key] === "object" && overrides[key] !== null) {
                 result[key] = deepMerge(defaults[key], overrides[key]);
@@ -267,7 +271,7 @@ function loadSettings() {
         if (stored) {
             var merged = deepMerge(CONFIG, stored);
             for (var key in merged) {
-                if (merged.hasOwnProperty(key)) CONFIG[key] = merged[key];
+                if (Object.prototype.hasOwnProperty.call(merged, key)) CONFIG[key] = merged[key];
             }
             // logoEnabled has dynamic keys — deepMerge against {} would
             // discard them, so load directly from stored.

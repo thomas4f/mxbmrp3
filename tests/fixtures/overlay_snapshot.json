@@ -1,0 +1,293 @@
+{
+  "battles": [
+    [
+      10,
+      22,
+      7
+    ]
+  ],
+  "director": {
+    "active": false,
+    "camera": "-",
+    "gained": -1,
+    "lost": -1,
+    "on": false,
+    "paceSplit": -1,
+    "shot": "solo",
+    "subject": -1,
+    "with": -1
+  },
+  "events": [
+    {
+      "clockMs": 1785507377343,
+      "clockTime": "14:16:17",
+      "detail": "8 laps",
+      "message": "Race 1 started",
+      "sessionTime": "00:00",
+      "sessionTimeMs": 0,
+      "type": 0
+    }
+  ],
+  "laps": [
+    {
+      "num": 10,
+      "s": [
+        31333,
+        31333,
+        31334
+      ],
+      "t": [
+        94000
+      ]
+    },
+    {
+      "num": 22,
+      "s": [
+        31733,
+        31733,
+        31734
+      ],
+      "t": [
+        95200
+      ]
+    },
+    {
+      "num": 7,
+      "s": [
+        32266,
+        32267,
+        32267
+      ],
+      "t": [
+        96800
+      ]
+    },
+    {
+      "num": 46,
+      "s": [
+        33033,
+        33033,
+        33034
+      ],
+      "t": [
+        99100
+      ],
+      "v": [
+        0
+      ]
+    }
+  ],
+  "overlayCmd": {
+    "panel": "",
+    "seq": 0
+  },
+  "sectorCount": 3,
+  "sectors": [
+    {
+      "riders": [
+        {
+          "ms": 31333,
+          "num": 10
+        },
+        {
+          "ms": 31733,
+          "num": 22
+        },
+        {
+          "ms": 32266,
+          "num": 7
+        }
+      ],
+      "s": 1
+    },
+    {
+      "riders": [
+        {
+          "ms": 31333,
+          "num": 10
+        },
+        {
+          "ms": 31733,
+          "num": 22
+        },
+        {
+          "ms": 32267,
+          "num": 7
+        }
+      ],
+      "s": 2
+    },
+    {
+      "riders": [
+        {
+          "ms": 31334,
+          "num": 10
+        },
+        {
+          "ms": 31734,
+          "num": 22
+        },
+        {
+          "ms": 32267,
+          "num": 7
+        }
+      ],
+      "s": 3
+    }
+  ],
+  "session": {
+    "compactTimes": true,
+    "fonts": {
+      "digits": "RobotoMono-Regular",
+      "normal": "RobotoMono-Regular",
+      "small": "Tiny5-Regular",
+      "strong": "RobotoMono-Bold",
+      "title": "EnterSansman-Italic"
+    },
+    "format": "8L",
+    "isRace": true,
+    "isSpectating": true,
+    "leaderLap": 2,
+    "numLaps": 8,
+    "palette": {
+      "accent": "#ff69b4",
+      "background": "#000000",
+      "muted": "#646464",
+      "negative": "#ff0000",
+      "neutral": "#ffff00",
+      "positive": "#00ff00",
+      "primary": "#ffffff",
+      "secondary": "#bebebe",
+      "tertiary": "#8c8c8c",
+      "warning": "#ffa500"
+    },
+    "pluginVersion": "1.28.0.109",
+    "sessionLength": 0,
+    "state": "In Progress",
+    "time": "02:40",
+    "timeMs": 160000,
+    "trackLength": 1600.0,
+    "trackName": "TestTrack",
+    "type": "Race 1"
+  },
+  "standings": [
+    {
+      "bestLap": "",
+      "bestLapMs": 0,
+      "bike": "FACTORY CRF450R",
+      "brand": "Honda",
+      "brandColor": "#de1c21",
+      "chips": [],
+      "finished": false,
+      "fullName": "Alice",
+      "gap": "Leader",
+      "gapLaps": 0,
+      "gapMs": 0,
+      "idealLap": "1:34.000",
+      "idealLapMs": 94000,
+      "inPit": false,
+      "lastLap": "1:34.000",
+      "lastLapMs": 94000,
+      "liveGapMs": 0,
+      "liveGapValid": true,
+      "name": "Ali",
+      "num": 10,
+      "numLaps": 2,
+      "penalty": 0,
+      "penaltyMs": 0,
+      "pos": 1,
+      "posDeltaSf": 0,
+      "posDeltaSplit": 0,
+      "posDeltaStart": 0,
+      "state": 0
+    },
+    {
+      "bestLap": "",
+      "bestLapMs": 0,
+      "bike": "Test 450",
+      "brandColor": "#808080",
+      "chips": [
+        "camera"
+      ],
+      "finished": false,
+      "fullName": "Bob",
+      "gap": "+1.200",
+      "gapLaps": 0,
+      "gapMs": 1200,
+      "idealLap": "1:35.200",
+      "idealLapMs": 95200,
+      "inPit": false,
+      "lastLap": "1:35.200",
+      "lastLapMs": 95200,
+      "liveGapMs": 0,
+      "liveGapValid": false,
+      "name": "Bob",
+      "num": 22,
+      "numLaps": 2,
+      "penalty": 0,
+      "penaltyMs": 0,
+      "plateColor": "#0033ff",
+      "pos": 2,
+      "posDeltaSf": 0,
+      "posDeltaSplit": 0,
+      "posDeltaStart": 0,
+      "state": 0
+    },
+    {
+      "bestLap": "",
+      "bestLapMs": 0,
+      "bike": "Test 450",
+      "brandColor": "#808080",
+      "chips": [],
+      "finished": false,
+      "fullName": "Carol",
+      "gap": "+3.000",
+      "gapLaps": 0,
+      "gapMs": 3000,
+      "idealLap": "1:36.800",
+      "idealLapMs": 96800,
+      "inPit": false,
+      "lastLap": "1:36.800",
+      "lastLapMs": 96800,
+      "liveGapMs": 0,
+      "liveGapValid": false,
+      "name": "Car",
+      "num": 7,
+      "numLaps": 2,
+      "penalty": 0,
+      "penaltyMs": 0,
+      "pos": 3,
+      "posDeltaSf": 0,
+      "posDeltaSplit": 0,
+      "posDeltaStart": 0,
+      "state": 0
+    },
+    {
+      "bestLap": "",
+      "bestLapMs": 0,
+      "bike": "Test 450",
+      "brandColor": "#808080",
+      "chips": [],
+      "finished": false,
+      "fullName": "Dave",
+      "gap": "+6.400",
+      "gapLaps": 0,
+      "gapMs": 6400,
+      "inPit": false,
+      "lastLap": "1:39.100",
+      "lastLapMs": 99100,
+      "liveGapMs": 0,
+      "liveGapValid": false,
+      "name": "Dav",
+      "num": 46,
+      "numLaps": 2,
+      "penalty": 0,
+      "penaltyMs": 0,
+      "pos": 4,
+      "posDeltaSf": 0,
+      "posDeltaSplit": 0,
+      "posDeltaStart": 0,
+      "state": 0
+    }
+  ]
+}

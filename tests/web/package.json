@@ -2,11 +2,13 @@
   "name": "mxbmrp3-tests/web",
   "version": "1.0.0",
   "private": true,
-  "description": "Headless browser tests for the MXBMRP3 web overlay (Playwright).",
+  "description": "Headless browser tests (Playwright) and the ESLint config for the MXBMRP3 web overlay.",
   "scripts": {
     "test": "playwright test"
   },
   "devDependencies": {
-    "@playwright/test": "1.62.0"
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.62.0",
+    "eslint": "10.8.0"
   }
 }

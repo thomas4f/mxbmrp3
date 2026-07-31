@@ -9,8 +9,8 @@
 #   memory-safety     — the same unit suite + a targeted harness under
 #                       ASan/UBSan (Linux, seconds). See tests/asan/.
 #   web-overlay       — drive the web overlay's ?demo mode in headless Chromium
-#                       (Playwright) and assert the rendered DOM. Node only, no
-#                       Wine.
+#                       (Playwright) and assert the rendered DOM, plus eslint
+#                       over every .js in the tree. Node only, no Wine.
 #   cross-build-smoke — cross-compile the whole plugin to a Windows DLL with
 #                       mingw-w64, run the enforced invariant checks (GPB/KRP
 #                       configs, visibility gates, API guards, clang
@@ -30,11 +30,15 @@
 #                       registry outcomes.
 #   memory-safety-msvc— the Windows MSVC ASan job (opt-in, see below).
 #   cppcheck          — static analysis; BLOCKING (the tree is at zero findings).
-#   bare-box-skips    — runs ctest with the optional toolchains scrubbed from PATH
-#                       and asserts a missing tool SKIPS rather than FAILS. The
-#                       only job that exercises that path: every other one installs
-#                       what it needs, which is how 11 gates once shipped failing
-#                       on a bare dev box with CI green.
+#   bare-box-skips    — a SELF-TEST of the skip mechanism, not a job that drops
+#                       coverage: it runs ctest with the optional toolchains
+#                       scrubbed from PATH and asserts a missing tool SKIPS rather
+#                       than FAILS. The only job that runs ctest, and the only one
+#                       where anything skips — every other job invokes the gate
+#                       scripts directly, and they exit 1 with a readable error
+#                       when a tool is missing, so a missing tool in CI is a RED
+#                       job, never a silent pass. It exists because 11 gates once
+#                       shipped failing on a bare dev box with CI green.
 #
 # WHERE THESE RUN (metered private repo + free public mirror):
 #   • NEITHER repo runs this on a push. There is no `push` trigger at all (see
@@ -252,6 +256,14 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      # Before the browser: eslint needs none, and a lint failure should not cost
+      # a Chromium download. Spelled out rather than `.` because this job sets a
+      # tests/web default and the step has to escape it — lint.sh runs from the
+      # repo root so the config's globs resolve.
+      - name: Lint JS (eslint)
+        working-directory: ${{ github.workspace }}
+        run: ./tests/web/lint.sh
 
       # Cache the downloaded Chromium across runs, keyed on the pinned Playwright
       # version (which determines the browser revision).
@@ -599,7 +611,11 @@ jobs:
   # with the toolchains removed. Two assertions: nothing may FAIL, and enough
   # tests must actually report SKIPPED that the scrub is proven to have worked.
   bare-box-skips:
-    name: Missing toolchain skips, never fails
+    # Names the ASSERTION, not a reduction in coverage: nothing is skipped in any
+    # other job — they invoke the gate scripts directly, which exit 1 with a
+    # readable error when a tool is missing. This job is the only one that runs
+    # ctest, and it runs it with the toolchains deliberately hidden.
+    name: Skip semantics self-test (bare box)
     # Shared gate: auto in the free public mirror; manual/release-gate only in private.
     if: >-
       github.event.repository.private == false ||
@@ -618,7 +634,13 @@ jobs:
           for d in "${dirs[@]}"; do
             [ -d "$d" ] || continue
             for f in "$d"/*; do
-              [ -e "$f" ] || continue          # empty dir -> unexpanded glob
+              # -f -x, not -e: a NON-EXECUTABLE file in an earlier PATH dir would
+              # otherwise be linked first and shadow the real tool behind it, and
+              # the gate that needed it dies with "Permission denied" (126) — a
+              # FAILURE, which is the one thing this job exists to rule out.
+              # Found reproducing this job locally, where /root/.local/bin/env is
+              # a mode-644 shell snippet that shadowed /usr/bin/env exactly so.
+              [ -f "$f" ] && [ -x "$f" ] || continue
               b=$(basename "$f")
               printf '%s' "$b" | grep -Eq "$hide" && continue
               [ -e "$RUNNER_TEMP/bare/$b" ] || ln -s "$f" "$RUNNER_TEMP/bare/$b"

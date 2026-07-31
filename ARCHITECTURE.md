@@ -1194,7 +1194,11 @@ summary. Six layers:
    `buildJsonSnapshot`.
 3. **Specialized** (`tests/integration/run_*.sh`) — persistence round-trip,
    config/callback fuzzing, CPU perf baseline, installer mechanics.
-4. **Web overlay** (`tests/web/`) — Playwright asserts the rendered DOM.
+4. **Web overlay** (`tests/web/`) — Playwright asserts the rendered DOM, plus
+   eslint over every `.js`. One spec closes the seam BETWEEN the layers: it
+   renders a real captured `/api/state` snapshot (`tests/fixtures/`), so a field
+   renamed in the plugin cannot pass a C++ suite reading the new name and a
+   client suite driving its own synthetic demo.
 5. **Memory safety** (`tests/asan/`) — the unit suite under ASan/UBSan, plus a
    targeted harness and an MSVC-DLL CI job over the real callback boundary.
 6. **Visual** (`tools/mxbmrp3_hud_window/companion_demo.sh`) — screenshots the

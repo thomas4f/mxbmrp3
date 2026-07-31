@@ -57,6 +57,7 @@ set(MXB_UNIT_SOURCES
     test_standings_gap_plan.cpp
     test_text_wrap.cpp
     test_hud_sw_renderer.cpp
+    test_hud_sw_assets.cpp
     test_thread_detach_grace.cpp
     shim/logger_stub.cpp
     ${MXB_ROOT}/mxbmrp3/core/hud_sw_renderer.cpp

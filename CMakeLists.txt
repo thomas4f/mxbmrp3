@@ -66,8 +66,10 @@ project(mxbmrp3 C CXX)
 enable_testing()
 
 # ccache when present, matching what tests/integration/Makefile did: it caches
-# objects across even a clean rebuild, which is what keeps the 117-TU cross-build
-# cheap in CI (the workflow caches ~/.ccache between runs).
+# objects across even a clean rebuild, which is what keeps the whole-plugin
+# cross-build cheap in CI (the workflow caches ~/.ccache between runs). The TU
+# count used to be quoted here and had drifted by a third — same reason
+# CLAUDE.md refuses to quote counts: they move every time a file lands.
 find_program(CCACHE_PROGRAM ccache)
 if(CCACHE_PROGRAM)
     set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
@@ -159,6 +161,21 @@ if(TARGET unit_tests)
     mxb_gate(unit-asan fast 900 "g++" "cmake --build '${CMAKE_BINARY_DIR}' --target unit_tests_asan -j && '$<TARGET_FILE:unit_tests_asan>'")
 endif()
 mxb_gate(asan-harness fast 600 "g++" "./tests/asan/run.sh")
+
+# The .fnt generator's regression test: builds fontgen and asserts the font it
+# regenerates is structurally identical to the shipped one. It ran in CI for a
+# long time WITHOUT being a gate, so `ctest` was green while CI ran something
+# else — and 19 -Wunused-function warnings per build sat unread in its log
+# because no local runner ever printed it. That asymmetry is now itself checked
+# (check_docs.py's CI->gate direction).
+mxb_gate(fontgen fast 300 "g++ python3" "./tools/mxbmrp3_fontgen/test.sh")
+
+# The analytics report generator's self-test — the other orphan CI step. Its
+# prerequisite is a pip module, not a binary, so the TOOLS column cannot express
+# it; the probe below is the same shape mxb_gate generates for a binary, and
+# keeps a box without pandas at SKIPPED rather than FAILED.
+mxb_gate(analytics-selftest fast 300 "python3"
+         "python3 -c 'import pandas' >/dev/null 2>&1 || { echo 'SKIP: pandas not installed (./tools/install_deps.sh analytics)'; exit 3; }; python3 tools/analytics_report.py --selftest")
 # ci-covers-differently: the CI job runs `npm ci` + `npx playwright test` with
 # setup-node's npm cache and a keyed Playwright browser cache; run.sh exists to
 # find-or-fetch Chromium on a dev box.
@@ -171,6 +188,13 @@ mxb_gate(asan-harness fast 600 "g++" "./tests/asan/run.sh")
 # must assert a PROPERTY (does not overflow, fills the width) rather than an
 # exact pixel, because pixels are a property of the browser build.
 mxb_gate(web-overlay fast 900 "node" "./tests/web/run.sh")
+
+# ESLint over every .js in the tree. Seconds, no browser. It exists because the
+# JS side had no lint at all: two dead-code nits reached the 1.28 release prep
+# and were caught only by hand-running CodeQL's code-quality suite, which CI does
+# not run (`codeql` is opt-in, and runs the SECURITY suite). Three recommended
+# rules are off for the shipped overlay — eslint.config.mjs says which and why.
+mxb_gate(eslint fast 600 "node" "./tests/web/lint.sh")
 
 # --- slow: needs mingw-w64, wine, clang, cppcheck or nsis. The TOOLS column is
 #     what turns "not installed" into SKIPPED here; the scripts themselves exit 1
