@@ -418,13 +418,13 @@ jobs:
           echo "amd64 stub present: $(makensis -VERSION)"
 
       - name: Download staging tree (MSVC payload)
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: release-staging-v${{ needs.build-release.outputs.version }}
           path: staging
 
       - name: Download built payload (zip + SBOM)
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: release-payload-v${{ needs.build-release.outputs.version }}
           path: dist
