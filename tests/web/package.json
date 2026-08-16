@@ -9,6 +9,6 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.62.0",
-    "eslint": "10.8.0"
+    "eslint": "10.8.1"
   }
 }
