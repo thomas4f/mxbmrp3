@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MX Bikes Trainer Repair</title>
+<!-- ==========================================================================
+     Browser twin of tools/trnfix. Single file, no build step, no
+     dependency, and no network call of any kind -- players hand this a folder
+     of their own lap data, so "nothing leaves your computer" has to be literally
+     true and is asserted by tests/web/tests/trnfix_web.spec.js.
+
+     It cannot write to the trainers folder (browsers do not allow that), so it
+     hands back a zip.
+
+     This is the player-facing subset. The bisection instrument (--graft) and the
+     repairs that were tried and failed live in the exe only -- a page a player is
+     pointed at from Discord should offer what works, not a lab bench. See
+     ../README.md for the crash itself and the bisection that produced the repair.
+     ========================================================================== -->
+<style>
+  body { font-family: sans-serif; max-width: 720px; margin: 40px auto; padding: 0 20px; }
+  h1 { font-size: 1.1em; margin-bottom: 4px; }
+  h2 { font-size: 0.95em; margin: 24px 0 8px; }
+  p.info { font-size: 0.85em; color: #666; margin: 0 0 24px; }
+  p.privacy { border-left: 2px solid #ddd; padding-left: 10px; }
+  p.privacy strong { color: #444; }
+  #summary { margin: 24px 0 8px; }
+  #progress { margin: 24px 0 8px; }
+  #progress progress { width: 200px; vertical-align: middle; }
+  .drop { border: 1px dashed #ccc; border-radius: 4px; padding: 20px; text-align: center; }
+  .drop.over { border-color: #888; background: #f4f4f4; }
+  .drop p { font-size: 0.85em; color: #666; margin: 0 0 12px; }
+  .drop p.alt { margin: 10px 0 0; font-size: 0.8em; }
+  button.link { font-size: inherit; padding: 0; border: 0; background: none;
+                color: #06c; text-decoration: underline; cursor: pointer; }
+  td button.link { font-size: 0.85em; }
+  td.quiet { color: #888; }
+  .drop .path { font-family: monospace; font-size: 0.8em; color: #888; margin-top: 12px; }
+  button { font-size: 0.85em; padding: 4px 12px; cursor: pointer; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.85em; margin-bottom: 8px; }
+  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #eee; white-space: nowrap; }
+  th { color: #666; font-weight: normal; border-bottom: 1px solid #ddd; }
+  /* The filename is the only cell allowed to wrap; the rest are short values a
+     player reads across, and wrapping them makes the table hard to scan. */
+  td:first-child { white-space: normal; word-break: break-all; }
+  td.mono { font-family: monospace; }
+  td.flagged { color: #a00; }
+  .note { font-size: 0.85em; color: #666; border-left: 2px solid #ddd; padding-left: 10px; }
+  .note ul { margin: 0; padding-left: 16px; }
+  .note li { margin-bottom: 5px; }
+  .note code { font-family: monospace; color: #888; }
+  .explain { margin-top: 36px; border-top: 1px solid #eee; font-size: 0.85em; }
+  .explain h2 { margin-top: 20px; }
+  .explain p { color: #444; line-height: 1.5; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<h1>MX Bikes Trainer Repair</h1>
+<p class="info">MX Bikes sometimes writes leftover memory into a trainer file and trusts it on the
+next load. Usually nothing happens; an unlucky one crashes or freezes the game on that track. This
+finds those files and clears the leftovers out.</p>
+
+<p class="info privacy"><strong>Your trainers never leave your computer.</strong><br>
+No upload, no server. The page opens them in your own browser and hands them straight back.</p>
+
+<div class="drop" id="drop">
+  <p>Drop your trainers folder here</p>
+  <button id="pick" type="button">Choose folder&hellip;</button>
+  <p class="alt">or pick <button id="pickfiles" type="button" class="link">files</button> instead</p>
+  <input type="file" id="folder" webkitdirectory directory multiple class="hidden">
+  <input type="file" id="loose" multiple accept=".trn,.zip" class="hidden">
+  <div class="path">Documents\PiBoSo\MX Bikes\profiles\&lt;your name&gt;\trainers\</div>
+</div>
+
+<p class="info hidden" id="progress">
+  <progress id="bar" value="0" max="1"></progress> <span id="ptext"></span>
+</p>
+
+<div id="results" class="hidden">
+  <p class="info" id="summary"></p>
+  <table>
+    <thead><tr>
+      <th>Trainer file</th><th>Leftover bytes</th><th>Size</th><th>Status</th><th>Download</th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <p class="info hidden" id="nothing">Nothing to do. None of these trainers carry leftover bytes.</p>
+
+  <div id="actions">
+    <h2>Download</h2>
+    <p><button id="build" type="button">Download all as zip</button></p>
+    <div class="note">
+      <ul>
+        <li>Only files carrying leftovers are written, and your lap is kept.</li>
+        <li>Back up your trainers folder, then copy the files into
+        <code>Documents\PiBoSo\MX Bikes\profiles\&lt;your name&gt;\trainers\</code></li>
+        <li>If a track still crashes after this, delete its trainer file. You lose that lap, but the
+        crash goes with it.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<section class="explain">
+  <h2>What is actually wrong</h2>
+
+  <p><strong>When the file is saved.</strong> MX Bikes sets aside room for the bike's name, the name
+  does not fill it, and the game never clears the rest. Whatever was in memory at that moment gets
+  written into your file. This does not happen on every save, and it looks more likely when other
+  plugins are loaded.</p>
+
+  <p><strong>When the file is loaded.</strong> The game reads that space back and treats it as text.
+  Usually it is harmless. Sometimes it points somewhere that does not exist, and the game crashes or
+  hangs on the loading screen. The <em>same</em> file can load fine one launch and fail the next.</p>
+
+  <p><strong>So the damage is already in the file.</strong> Removing plugins does not undo it:
+  damaged trainers have crashed with none loaded at all. No plugin reads or writes these files, only
+  the game does. This is an MX Bikes bug and only PiBoSo can fix it properly. This tool just clears
+  the leftover bytes back out.</p>
+</section>
+
+<script>
+"use strict";
+
+/* --- trainer bytes -------------------------------------------------------
+   Mirrors mxbmrp3_trnfix.cpp. The two are separate implementations of the same
+   byte logic and are checked against each other on the real matched pair. */
+
+const MAGIC = [0x47, 0x48, 0x53, 0x00];     // "GHS\0"
+
+/* The bike-name buffer, and the end of the slack that follows it.
+
+   The record holds a fixed-width name buffer at NAME_AT, the name is
+   NUL-terminated inside it, and the bytes from that terminator to NAME_PAD_END
+   are slack the game never writes. In all six trainers on record that load,
+   those bytes are zero; in all five that have crashed, they hold whatever was
+   on the stack at save time.
+
+   NAME_PAD_END is not a guess: a graft bisection against a matched good/bad
+   pair narrowed the fatal bytes to 0x7f..0x85, which is inside this span --
+   copying the donor's 0x0..0x86 made the crashing file load, copying 0x0..0x7f
+   did not. Clearing the slack alone was then confirmed in game. */
+const NAME_AT = 0x62;
+const NAME_PAD_END = 0x92;
+
+/* Locates the name and its slack. Returns null when the layout does not match,
+   which is the signal to leave the file alone rather than to guess at it --
+   guessing where the name ends means zeroing somebody's lap data. */
+function namePad(b) {
+  if (b.length < NAME_PAD_END) return null;
+  let nul = -1;
+  for (let i = NAME_AT; i < NAME_PAD_END; i++) {
+    const c = b[i];
+    if (c === 0) { nul = i; break; }
+    if (c < 0x20 || c > 0x7e) return null;      // not a plain ASCII name
+  }
+  if (nul < 0) return null;                     // name fills the whole buffer
+  let dirty = 0;
+  for (let i = nul + 1; i < NAME_PAD_END; i++) if (b[i] !== 0) dirty++;
+  return { name: String.fromCharCode(...b.subarray(NAME_AT, nul)), from: nul + 1, dirty };
+}
+
+function analyse(bytes) {
+  if (bytes.length < 16) return { state: "skip", why: "too small to be a trainer" };
+  for (let i = 0; i < 4; i++)
+    if (bytes[i] !== MAGIC[i]) return { state: "skip", why: "not a trainer file" };
+  return { state: "trainer", pad: namePad(bytes) };
+}
+
+/* The repair the bisection produced: put zeros where a trainer that loads has
+   zeros. Returns null, meaning "leave this file alone", when the slack is
+   already clear or the layout is not the one we know. */
+function patch(bytes) {
+  const out = bytes.slice();
+  const pad = namePad(out);
+  if (!pad || !pad.dirty) return null;
+  out.fill(0, pad.from, NAME_PAD_END);
+  return out;
+}
+
+/* --- zip -----------------------------------------------------------------
+   Written store-only by hand, and read with DecompressionStream, so the page
+   stays dependency-free. Reading matters because "zip up your trainers folder
+   and drop it here" is what people actually do when asked for their files. */
+const CRC = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(buf) {
+  let c = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) c = CRC[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+function makeZip(entries) {
+  const enc = new TextEncoder(), chunks = [], central = [];
+  let offset = 0;
+  const u16 = v => [v & 0xff, (v >> 8) & 0xff];
+  const u32 = v => [v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >>> 24) & 0xff];
+  for (const e of entries) {
+    const name = enc.encode(e.name), crc = crc32(e.data), n = e.data.length;
+    const local = [...u32(0x04034b50), ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0),
+                   ...u32(crc), ...u32(n), ...u32(n), ...u16(name.length), ...u16(0)];
+    chunks.push(new Uint8Array(local), name, e.data);
+    central.push({ name, crc, n, offset });
+    offset += local.length + name.length + n;
+  }
+  const cstart = offset;
+  for (const c of central) {
+    const hdr = [...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0),
+                 ...u32(c.crc), ...u32(c.n), ...u32(c.n), ...u16(c.name.length),
+                 ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(c.offset)];
+    chunks.push(new Uint8Array(hdr), c.name);
+    offset += hdr.length + c.name.length;
+  }
+  chunks.push(new Uint8Array([...u32(0x06054b50), ...u16(0), ...u16(0),
+    ...u16(central.length), ...u16(central.length), ...u32(offset - cstart), ...u32(cstart), ...u16(0)]));
+  return new Blob(chunks, { type: "application/zip" });
+}
+
+const u16at = (b, o) => b[o] | (b[o + 1] << 8);
+const u32at = (b, o) => (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0;
+
+/* Reads the central directory rather than scanning for local headers: only the
+   directory carries reliable sizes, because an entry written by a streaming
+   zipper leaves them zero in its local header and puts them in a trailing data
+   descriptor instead.
+
+   `onEntry` is called per trainer found. A folder of a season's trainers takes
+   a few seconds to inflate, and a page that looks frozen for that long reads as
+   broken. */
+async function readZip(buf, label, onEntry) {
+  const out = [];
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= 0 && i >= buf.length - 65557; i--)
+    if (u32at(buf, i) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) return out;
+
+  const count = u16at(buf, eocd + 10);
+  let p = u32at(buf, eocd + 16);
+  for (let n = 0; n < count && p + 46 <= buf.length; n++) {
+    if (u32at(buf, p) !== 0x02014b50) break;
+    const method   = u16at(buf, p + 10);
+    const compSize = u32at(buf, p + 20);
+    const nameLen  = u16at(buf, p + 28);
+    const extraLen = u16at(buf, p + 30);
+    const cmtLen   = u16at(buf, p + 32);
+    const local    = u32at(buf, p + 42);
+    const name     = new TextDecoder().decode(buf.subarray(p + 46, p + 46 + nameLen));
+    p += 46 + nameLen + extraLen + cmtLen;
+
+    if (!/\.trn$/i.test(name)) continue;
+    // Zip64 puts the real values in the extra field; trainer zips are far too
+    // small to need it, so skip such an entry rather than read a 4GB sentinel.
+    if (compSize === 0xffffffff || local === 0xffffffff) continue;
+    if (local + 30 > buf.length || u32at(buf, local) !== 0x04034b50) continue;
+
+    const start = local + 30 + u16at(buf, local + 26) + u16at(buf, local + 28);
+    const raw = buf.subarray(start, start + compSize);
+    let bytes = null;
+    if (method === 0) {
+      bytes = raw.slice();
+    } else if (method === 8 && typeof DecompressionStream === "function") {
+      try {
+        const ds = new DecompressionStream("deflate-raw");
+        const blob = await new Response(new Blob([raw]).stream().pipeThrough(ds)).blob();
+        bytes = new Uint8Array(await blob.arrayBuffer());
+      } catch { bytes = null; }
+    }
+    if (bytes) out.push({ name: label + " > " + name, bytes });
+    if (onEntry) await onEntry(name, out.length);
+  }
+  return out;
+}
+
+/* --- state + UI ---------------------------------------------------------- */
+let scanned = [];
+
+const $ = id => document.getElementById(id);
+
+/* What would be written for one file, or null for "leave it alone". Both the
+   per-row button and the zip go through here, so they cannot disagree about
+   which files are worth writing or what ends up in them. */
+function output(s) {
+  if (s.res.state !== "trainer") return null;
+  const data = patch(s.bytes);
+  if (!data) return null;
+  // Entries read from an archive are labelled "archive.zip > path/inside.trn";
+  // what a player unpacks must carry the bare filename.
+  return { name: s.name.split(/[\\/>]/).pop().trim(), data };
+}
+
+function save(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+/* Status and the download link are separate cells on purpose. Status says what
+   this file got, and it must not change under the reader when they click:
+   a cell that rewrites itself after a download is movement for its own sake. */
+function statusCells(s, i) {
+  if (!output(s)) return '<td class="quiet">skipped</td><td></td>';
+  return '<td>fixed</td>' +
+         `<td><button type="button" class="link save" data-i="${i}">download</button></td>`;
+}
+
+function render() {
+  // Damaged first, then everything the tool is leaving alone.
+  const dirty = scanned.filter(s => output(s));
+  const rest  = scanned.filter(s => !output(s));
+
+  // Same two words as the Status column, so the count and the table agree.
+  $("summary").innerHTML =
+    `<span class="stat flagged"><span class="n">${dirty.length}</span> fixed</span> &middot; ` +
+    `<span class="stat"><span class="n">${rest.length}</span> skipped</span>`;
+
+  const order = [...dirty, ...rest];
+  $("rows").innerHTML = order.map(s => {
+    const r = s.res;
+    const size = `<td class="mono">${s.bytes.length.toLocaleString()} B</td>`;
+    if (r.state === "skip")
+      return `<tr><td>${esc(s.name)}</td><td>${r.why}</td>${size}<td class="quiet">skipped</td><td></td></tr>`;
+    const pad = r.pad;
+    const cell = !pad ? '<td>layout not recognised</td>'
+      : pad.dirty ? `<td class="flagged mono">${pad.dirty}</td>`
+                  : '<td>none</td>';
+    const i = scanned.indexOf(s);
+    return `<tr><td>${esc(s.name)}</td>${cell}${size}${statusCells(s, i)}</tr>`;
+  }).join("");
+
+  $("results").classList.remove("hidden");
+  $("actions").classList.toggle("hidden", dirty.length === 0);
+  $("nothing").classList.toggle("hidden", dirty.length > 0);
+}
+function esc(s) {
+  return s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+/* Delegated: the rows are rebuilt each time one is taken. */
+$("rows").addEventListener("click", e => {
+  const btn = e.target.closest("button.save");
+  if (!btn) return;
+  const s = scanned[Number(btn.dataset.i)];
+  const out = output(s);
+  if (out) save(new Blob([out.data]), out.name);
+});
+
+/* Hands the browser a chance to paint. Without it the whole read is one task
+   and nothing on screen moves until it finishes. */
+const tick = () => new Promise(r => setTimeout(r, 0));
+
+function progress(done, total, what) {
+  $("progress").classList.remove("hidden");
+  $("bar").value = done;
+  $("bar").max = Math.max(total, 1);
+  $("ptext").textContent = `reading ${done} of ${total}: ${what}`;
+}
+
+/* A .zip is expanded in place, so a player can hand over whatever shape their
+   files happen to be in. */
+async function collect(files) {
+  const out = [];
+  let n = 0;
+  for (const f of files) {
+    progress(n, files.length, f.name);
+    await tick();
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    if (/\.zip$/i.test(f.name)) {
+      // Inflating is the slow part, so the count moves per entry rather than
+      // sitting still on "1 of 1" for the whole archive.
+      let k = 0;
+      out.push(...await readZip(bytes, f.name, async name => {
+        if (++k % 8 === 0) { progress(n, files.length, `${f.name} (${k}: ${name})`); await tick(); }
+      }));
+    } else if (/\.trn$/i.test(f.name)) {
+      out.push({ name: f.webkitRelativePath || f.name, bytes });
+    }
+    n++;
+  }
+  return out;
+}
+
+async function ingest(fileList) {
+  const files = [...fileList].filter(f => /\.(trn|zip)$/i.test(f.name));
+  $("results").classList.add("hidden");
+  let found = [];
+  try {
+    found = await collect(files);
+  } finally {
+    $("progress").classList.add("hidden");
+  }
+  $("results").classList.remove("hidden");
+  if (!found.length) {
+    $("summary").textContent = "No .trn files found there.";
+    $("rows").innerHTML = "";
+    $("actions").classList.add("hidden");
+    $("nothing").classList.add("hidden");
+    return;
+  }
+  scanned = found.map(f => ({ ...f, res: analyse(f.bytes) }));
+  scanned.sort((a, b) => a.name.localeCompare(b.name));
+  render();
+}
+
+/* Directory drops arrive as entries, not files, so walk them. Depth is capped:
+   a stray drop of an entire drive should fail fast rather than hang the tab. */
+async function walk(entry, out, depth = 0) {
+  if (depth > 8) return;
+  if (entry.isFile) {
+    await new Promise(res => entry.file(f => { out.push(f); res(); }, res));
+  } else if (entry.isDirectory) {
+    const reader = entry.createReader();
+    for (;;) {
+      const batch = await new Promise(res => reader.readEntries(res, () => res([])));
+      if (!batch.length) break;
+      for (const e of batch) await walk(e, out, depth + 1);
+    }
+  }
+}
+
+const drop = $("drop");
+["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => {
+  e.preventDefault(); drop.classList.add("over");
+}));
+["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => {
+  e.preventDefault(); drop.classList.remove("over");
+}));
+drop.addEventListener("drop", async e => {
+  const items = [...(e.dataTransfer.items || [])];
+  const entries = items.map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  if (entries.length) {
+    const out = [];
+    for (const en of entries) await walk(en, out);
+    ingest(out);
+  } else {
+    ingest(e.dataTransfer.files || []);
+  }
+});
+
+$("pick").addEventListener("click", () => $("folder").click());
+$("pickfiles").addEventListener("click", () => $("loose").click());
+$("folder").addEventListener("change", e => ingest(e.target.files));
+$("loose").addEventListener("change", e => ingest(e.target.files));
+$("build").addEventListener("click", () => {
+  const entries = scanned.map(output).filter(Boolean);
+  if (!entries.length) { alert("Nothing to do: none of those trainers carry leftover bytes."); return; }
+  save(makeZip(entries), "trainers-repaired.zip");
+});
+
+</script>
+</body>
+</html>
