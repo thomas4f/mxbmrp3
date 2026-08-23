@@ -118,7 +118,7 @@ jobs:
       # build decides what gets extracted, so filtering has to happen on the SARIF.
       # This is the filter the CodeQL docs themselves point to for that case.
       - name: Filter vendored code out of results
-        uses: advanced-security/filter-sarif@f3b8118a9349d88f7b1c0c488476411145b6270d  # v1
+        uses: advanced-security/filter-sarif@2da736ff05ef065cb2894ac6892e47b5eac2c3c0  # v1.1
         with:
           patterns: |
             -mxbmrp3/vendor/**
