@@ -8,6 +8,7 @@
 // serialization, the file serialize/build helpers, and save/load orchestration.
 // ============================================================================
 #include "settings_manager.h"
+#include "../hud/settings/whats_new.h"
 #include "settings_keys.h"
 #include "settings_serde.h"
 #include "settings_hud_registry.h"
@@ -15,56 +16,12 @@
 #include "hud_manager.h"
 #include "profile_manager.h"
 #include "../diagnostics/logger.h"
-#include "../hud/ideal_lap_hud.h"
-#include "../hud/lap_log_hud.h"
-#include "../hud/friends_hud.h"
-#include "../hud/session_charts_hud.h"
-#include "../hud/standings_hud.h"
-#include "../hud/performance_hud.h"
-#include "../hud/telemetry_hud.h"
-#include "../hud/time_widget.h"
-#include "../hud/clock_widget.h"
-#include "../hud/position_widget.h"
-#include "../hud/lap_widget.h"
-#include "../hud/session_hud.h"
-#include "../hud/speed_widget.h"
-#include "../hud/gear_widget.h"
-#include "../hud/speedo_widget.h"
-#include "../hud/tacho_widget.h"
-#include "../hud/timing_hud.h"
-#include "../hud/gap_bar_hud.h"
-#include "../hud/bars_widget.h"
-#include "../hud/version_widget.h"
-#include "../hud/notices_hud.h"
-#include "../hud/fuel_widget.h"
-#include "../hud/settings_button_widget.h"
-#include "../hud/pointer_widget.h"
-#include "../hud/map_hud.h"
-#include "../hud/radar_hud.h"
-#include "../hud/pitboard_hud.h"
 // settings_hud.h is core (every game has the settings menu, and getSettingsHud() is
 // used unconditionally below), and it pulls records_hud.h itself; both .cpp files are
 // compiled on every game, so neither include may be gated on GAME_HAS_RECORDS_PROVIDER
 // — gating it broke the GPB/KRP builds (SettingsHud left incomplete -> C2027). The
 // *provider* feature stays runtime/registration-gated; only these includes are always on.
-#include "../hud/records_hud.h"
 #include "../hud/settings_hud.h"
-#include "../hud/rumble_hud.h"
-#include "../hud/helmet_overlay_hud.h"
-#include "../hud/benchmark_widget.h"
-#include "../hud/gamepad_widget.h"
-#include "../hud/lean_widget.h"
-#include "../hud/gforce_widget.h"
-#include "../hud/compass_widget.h"
-#if GAME_HAS_TYRE_TEMP
-#include "../hud/tyre_temp_widget.h"
-#endif
-#if GAME_HAS_ECU
-#include "../hud/ecu_widget.h"
-#endif
-#include "../hud/fmx_hud.h"
-#include "../hud/stats_hud.h"
-#include "../hud/event_log_hud.h"
 #include "fmx_manager.h"
 #include "color_config.h"
 #include "font_config.h"
@@ -90,7 +47,6 @@
 #include "hotkey_manager.h"
 #include "director_manager.h"
 #include "companion_window.h"
-#include "../hud/director_widget.h"
 #include "tracked_riders_manager.h"
 #include "asset_manager.h"
 #include "../game/game_config.h"
@@ -378,6 +334,48 @@ void SettingsManager::replayGlobalDefaults(HudManager& hudManager, const std::ve
     // lives in [Advanced]. Preserve it across the snapshot replay.
     const bool developerMode = m_developerMode;
 
+    // ...and so are the dismissed what's-new markers, for the same reason: they are a
+    // record of what this player has already been shown, not a setting they chose.
+    // Restoring them would re-decorate the menu with tags for features they went and
+    // looked at, which reads as the plugin having forgotten rather than as a reset.
+    // The snapshot is captured BEFORE the file loads, so its whatsNewSeen is empty and
+    // replaying it would otherwise clear the set. (To see the markers again on purpose:
+    // clear whatsNewSeen in the INI.)
+    const std::string whatsNewSeen = WhatsNew::serialize();
+    // The update tag's seen-version rides along for the same reason: it records what
+    // this player has already been SHOWN, not a setting they chose, so a factory
+    // reset that re-armed a tag for an update they went and looked at would read as
+    // the plugin having forgotten. (The SKIP version is a choice and is reset.)
+    const std::string updateTagSeen = UpdateChecker::getInstance().getUpdateTagSeenVersion();
+
+    // Colours and fonts are SPARSE in the snapshot -- only slots the user pinned are
+    // written -- so absence means "follow the theme" and the replay alone cannot
+    // express it. Clear the overrides first, exactly like the per-HUD apply clears
+    // authoritatively when a key is absent; the replay then re-pins whatever the
+    // snapshot does carry. Without this, "reset" would leave every override standing,
+    // because there is no line in the snapshot saying to remove it.
+    //
+    // GATED ON THE FILTER, because this function is also the per-TAB reset. Ungated, the
+    // clear ran before the section filter was consulted, so "Reset Hotkeys" -- or Rumble,
+    // Helmet, Updates, Director -- wiped every colour and font the user had pinned on the
+    // Appearance tab: the filter then kept the [Colors]/[Fonts] lines OUT of the replay,
+    // so nothing put them back. A tab reset must touch that tab's sections and nothing
+    // else.
+    const auto sectionSelected = [&](const char* name) {
+        return !sectionFilter ||
+               std::find(sectionFilter->begin(), sectionFilter->end(), name) != sectionFilter->end();
+    };
+    if (sectionSelected("Colors")) {
+        for (int i = 0; i < static_cast<int>(ColorSlot::COUNT); ++i) {
+            ColorConfig::getInstance().clearOverride(static_cast<ColorSlot>(i));
+        }
+    }
+    if (sectionSelected("Fonts")) {
+        for (int i = 0; i < static_cast<int>(FontCategory::COUNT); ++i) {
+            FontConfig::getInstance().clearOverride(static_cast<FontCategory>(i));
+        }
+    }
+
     // Replay the captured default INI through the same applier loadSettings() uses, so the
     // reset path covers every global setting that save/load cover, automatically.
     std::istringstream stream(m_globalDefaultsIni);
@@ -406,8 +404,12 @@ void SettingsManager::replayGlobalDefaults(HudManager& hudManager, const std::ve
         std::string key = line.substr(0, equals);
         std::string value = line.substr(equals + 1);
 
-        // Strip inline comments (everything after ';'), matching loadSettings().
-        size_t commentPos = value.find(';');
+        // Strip inline comments (everything after ';') -- except where the value
+        // IS a folder name the user chose, in which case a `;` is data. See
+        // Settings::isFolderNameValue for the bug that costs (a permanently
+        // destroyed theme/pack choice) and why the test is on the KEY.
+        size_t commentPos = Settings::isFolderNameValue(key)
+                          ? std::string::npos : value.find(';');
         if (commentPos != std::string::npos) {
             value.resize(commentPos);
             size_t valueEnd = value.find_last_not_of(" \t");
@@ -418,6 +420,8 @@ void SettingsManager::replayGlobalDefaults(HudManager& hudManager, const std::ve
     }
 
     m_developerMode = developerMode;
+    WhatsNew::deserialize(whatsNewSeen);
+    UpdateChecker::getInstance().setUpdateTagSeenVersion(updateTagSeen);
 }
 
 void SettingsManager::resetGlobalsToFactoryDefaults(HudManager& hudManager) {

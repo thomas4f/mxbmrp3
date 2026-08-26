@@ -8,6 +8,7 @@
 // ============================================================================
 
 #include "plugin_data.h"
+#include "spotter_manager.h"
 #include "plugin_utils.h"
 #include "ui_config.h"
 #include "xinput_reader.h"
@@ -36,10 +37,8 @@ void PluginData::updateTrackPosition(int raceNum, float trackPos, int numLaps, b
         RiderTrackState& data = it->second;
 
         // Detect teleport (reset to track / pit exit) by checking single-frame position jump.
-        // Compute wrapped delta to handle normal start/finish crossing correctly.
-        float rawDelta = trackPos - data.trackPos;
-        if (rawDelta > 0.5f) rawDelta -= 1.0f;   // wrapped backward through S/F
-        if (rawDelta < -0.5f) rawDelta += 1.0f;   // wrapped forward through S/F
+        // Wrapped so a normal start/finish crossing doesn't read as a jump.
+        const float rawDelta = alongTrackDelta(trackPos, data.trackPos);
         if (std::abs(rawDelta) > RiderTrackState::TELEPORT_THRESHOLD) {
             // Large non-wraparound jump = teleport. Reset state to prevent false wrong-way.
             data.previousTrackPos = trackPos;
@@ -187,6 +186,12 @@ void PluginData::updateTrackPosition(int raceNum, float trackPos, int numLaps, b
         // StatsManager player-only pattern, but applied per rider.
         if (crashed && !data.prevCrashedState) {
             data.sessionCrashCount++;
+            // Same edge, spoken. Tapped here rather than polled because this
+            // is the only place the transition exists — a consumer reading
+            // the counter would have to keep its own previous value, which is
+            // the state this already owns.
+            SpotterManager::getInstance().onRiderCrash(
+                raceNum, getDisplayRaceNum(), getSessionElapsedTime());
         }
         data.prevCrashedState = crashed;
 
@@ -324,6 +329,7 @@ void PluginData::rebuildBlueFlagCaches() const {
     int playerLaps = -1;
     float playerTrackPos = 0.0f;
     bool playerActive = false;
+    bool playerFinished = false;
     {
         auto stIt = m_standings.find(playerRaceNum);
         auto posIt = m_trackPositions.find(playerRaceNum);
@@ -333,25 +339,29 @@ void PluginData::rebuildBlueFlagCaches() const {
             playerLaps = stIt->second.numLaps;
             playerTrackPos = posIt->second.trackPos;
             playerActive = true;
+            playerFinished = m_sessionData.isRiderFinished(
+                stIt->second.numLaps, stIt->second.numLapsAtLeaderFinish);
         }
     }
 
     // One flat pass: collect every rider that has a track position, tagged with its
-    // lap/pos and the two role flags. This replaces the per-inner-iteration hash
+    // lap/pos and the role flags. This replaces the per-inner-iteration hash
     // lookups (m_activeTrackPosRiders.count + m_trackPositions.find) that made the
-    // pairwise loop below expensive — the loop now reads a contiguous array. The two
-    // roles have DIFFERENT eligibility, preserved exactly: a BACKMARKER (outer) must
-    // not be excluded/finished, but a LAPPER (inner) only needs to be active — an
-    // excluded/finished rider with more laps can still trigger a blue flag, as before.
+    // pairwise loop below expensive — the loop now reads a contiguous array. The
+    // roles have DIFFERENT eligibility: a BACKMARKER (outer) must not be
+    // excluded/finished; a LAPPER (inner) must be active and not finished, but an
+    // otherwise-excluded rider (pit lane) with more laps can still trigger a blue
+    // flag. Why finished bars the lapper role is at BlueFlag::Rider.
     m_blueFlagScratch.clear();
     for (const auto& [rn, st] : m_standings) {
         auto posIt = m_trackPositions.find(rn);
         if (posIt == m_trackPositions.end()) continue;   // both roles require a track position
-        bool eligibleBackmarker =
-            !isRiderExcludedFromDetection(st)
-            && !m_sessionData.isRiderFinished(st.numLaps, st.numLapsAtLeaderFinish);
+        const bool finished =
+            m_sessionData.isRiderFinished(st.numLaps, st.numLapsAtLeaderFinish);
+        bool eligibleBackmarker = !isRiderExcludedFromDetection(st) && !finished;
         m_blueFlagScratch.push_back({ rn, st.numLaps, posIt->second.trackPos,
-                                      m_activeTrackPosRiders.count(rn) > 0, eligibleBackmarker });
+                                      m_activeTrackPosRiders.count(rn) > 0,
+                                      eligibleBackmarker, finished });
     }
 
     // The pairwise proximity pass itself is pure logic over the flat array —
@@ -361,7 +371,8 @@ void PluginData::rebuildBlueFlagCaches() const {
     // (the scratch is built in that order), so "first lapper found" /
     // last-writer-wins results are byte-identical to the inline version.
     BlueFlag::detect(m_blueFlagScratch, maxLaps, awarenessThreshold,
-                     BlueFlag::Player{ playerRaceNum, playerLaps, playerTrackPos, playerActive },
+                     BlueFlag::Player{ playerRaceNum, playerLaps, playerTrackPos,
+                                       playerActive, playerFinished },
                      m_cachedBlueFlaggedSet, m_cachedLapperToLapped, m_cachedPlayerLapping);
 
     // Player blue flag is just a lookup into the per-rider set
@@ -395,6 +406,24 @@ int PluginData::getRiderLappingTarget(int raceNum) const {
     }
     auto it = m_cachedLapperToLapped.find(raceNum);
     return (it != m_cachedLapperToLapped.end()) ? it->second : -1;
+}
+
+int PluginData::getRiderLappedBy(int raceNum) const {
+    if (m_blueFlagsDirty) {
+        rebuildBlueFlagCaches();
+    }
+    // LOWEST race number when more than one lapper is closing, not the first
+    // the container happens to yield: m_cachedLapperToLapped is unordered, so
+    // "first" can differ between two rebuilds of identical state and the
+    // callout would name a different bike each time it fired. Which of two
+    // simultaneous lappers is "the" one is arbitrary either way — being
+    // arbitrary the SAME way is the part that matters.
+    int lapper = -1;
+    for (const auto& kv : m_cachedLapperToLapped) {
+        if (kv.second != raceNum) continue;
+        if (lapper < 0 || kv.first < lapper) lapper = kv.first;
+    }
+    return lapper;
 }
 
 bool PluginData::isPlayerLapping() const {

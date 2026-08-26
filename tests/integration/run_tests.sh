@@ -49,6 +49,11 @@ CCACHE="$(command -v ccache || true)"
 # doctest.h + harness headers; nlohmann/json.hpp lives under mxbmrp3/vendor.
 INCS=(-I"${HERE}/harness" -I"${ROOT}/mxbmrp3/vendor")
 CXXFLAGS=(-std=c++17 -O1)
+# The SHIPPED spotter pack, so a test can load the real wording instead of a
+# stand-in. The plugin has no built-in phrases any more — that file is where
+# the spotter's words live — so a test asserting what it says has to read it.
+# Z: is Wine's mapping of /, and forward slashes are fine for the CRT.
+CXXFLAGS+=(-DMXB_SHIPPED_PACK_INI="\"Z:${ROOT}/mxbmrp3_data/spotters/default/default.ini\"")
 # Static link: the tests use std::string/std::thread, whose mingw runtime DLLs
 # aren't on Wine's search path. -lws2_32 for the HTTP GET.
 LDFLAGS=(-static -static-libgcc -static-libstdc++)

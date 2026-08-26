@@ -7,7 +7,6 @@
 #include "../core/plugin_constants.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
-#include "../core/ui_config.h"
 #include "../core/asset_manager.h"
 #include "../core/tracked_riders_manager.h"
 #include "../diagnostics/logger.h"
@@ -21,6 +20,20 @@ using namespace PluginConstants::Math;
 static constexpr const char* DEFAULT_RIDER_ICON = "circle";
 static constexpr const char* DEFAULT_PROXIMITY_ARROW_ICON = "angle-up";
 
+// SPRITE indices, and turning one back into a shape index goes through
+// AssetManager::shapeIndexForSprite() -- never `sprite - firstIcon + 1`.
+//
+// getIconSpriteIndex() returns the active THEME's override when it has one, and an
+// override sprite is registered PAST the base icon block, so the subtraction returns
+// a number off the end of the vocabulary. renderRiderSprite() then range-rejects it
+// and silently falls back to the ordinary rider marker -- while the colour override
+// still applies. Under a theme shipping icons/flag.tga, a blue-flagged rider went blue
+// and kept a circle instead of the flag.
+//
+// The arithmetic was correct until getIconSpriteIndex() gained theme overrides on this
+// branch (the base-only lookup is getBaseIconSpriteIndex() now). asset_manager.h
+// documents it as "THE TRAP THIS EXISTS FOR"; MapHud was already doing it right, and
+// radar was the last site still open-coding it.
 void RadarHud::CachedIcons::ensureInitialized() {
     if (initialized) return;
     const AssetManager& assets = AssetManager::getInstance();
@@ -35,7 +48,7 @@ static int getShapeIndexByFilename(const char* filename) {
     const auto& assetMgr = AssetManager::getInstance();
     int spriteIndex = assetMgr.getIconSpriteIndex(filename);
     if (spriteIndex <= 0) return 1;  // Fallback to first icon
-    return spriteIndex - assetMgr.getFirstIconSpriteIndex() + 1;
+    return assetMgr.shapeIndexForSprite(spriteIndex);
 }
 
 RadarHud::RadarHud()
@@ -50,10 +63,17 @@ RadarHud::RadarHud()
       m_fProximityArrowScale(DEFAULT_PROXIMITY_ARROW_SCALE),
       m_proximityArrowColorMode(ProximityArrowColorMode::DISTANCE),
       m_fMarkerScale(DEFAULT_MARKER_SCALE) {
+    // No caption on this panel -- see BaseHud::m_titleSupported.
+    disableTitle();
 
     // One-time setup
+    // The dial artwork IS this HUD -- see BaseHud::m_textureRequired.
+    m_textureRequired = true;
     DEBUG_INFO("RadarHud created");
     setDraggable(true);
+    // Body card: this HUD draws a content BLOCK under its title, which is what the
+    // themed card frames. Opt-in; see BaseHud::m_bContentCard.
+    m_bContentCard = true;
     m_riderPositions.reserve(GameLimits::MAX_CONNECTIONS);
     m_quads.reserve(RESERVE_QUADS);
     m_strings.reserve(RESERVE_STRINGS);
@@ -202,51 +222,13 @@ void RadarHud::renderRiderSprite(float radarX, float radarY, float yaw, unsigned
     }
 
     // Determine sprite index - directly convert shape index to sprite index
-    // shapeIndex 1-N maps to icon sprite indices (dynamically assigned)
-    int spriteIndex = AssetManager::getInstance().getFirstIconSpriteIndex() + effectiveShape - 1;
-
-    // Helper lambda to create rotated sprite quad
-    auto createRotatedSprite = [&](float halfSize, unsigned long spriteColor) {
-        // Define corner offsets in uniform (square) space for proper rotation
-        // TL, BL, BR, TR in local space
-        float corners[4][2] = {
-            {-halfSize, -halfSize},  // Top-left
-            {-halfSize,  halfSize},  // Bottom-left
-            { halfSize,  halfSize},  // Bottom-right
-            { halfSize, -halfSize}   // Top-right
-        };
-
-        // Rotate corners in uniform space, then apply aspect ratio to X
-        float rotatedCorners[4][2];
-        for (int i = 0; i < 4; i++) {
-            float dx = corners[i][0];
-            float dy = corners[i][1];
-            // Rotate in uniform space
-            float rotX = dx * cosYaw - dy * sinYaw;
-            float rotY = dx * sinYaw + dy * cosYaw;
-            // Apply aspect ratio to X after rotation
-            rotatedCorners[i][0] = screenX + rotX / UI_ASPECT_RATIO;
-            rotatedCorners[i][1] = screenY + rotY;
-            applyOffset(rotatedCorners[i][0], rotatedCorners[i][1]);
-        }
-
-        // Create rotated sprite quad
-        SPluginQuad_t sprite;
-        sprite.m_aafPos[0][0] = rotatedCorners[0][0];  // Top-left
-        sprite.m_aafPos[0][1] = rotatedCorners[0][1];
-        sprite.m_aafPos[1][0] = rotatedCorners[1][0];  // Bottom-left
-        sprite.m_aafPos[1][1] = rotatedCorners[1][1];
-        sprite.m_aafPos[2][0] = rotatedCorners[2][0];  // Bottom-right
-        sprite.m_aafPos[2][1] = rotatedCorners[2][1];
-        sprite.m_aafPos[3][0] = rotatedCorners[3][0];  // Top-right
-        sprite.m_aafPos[3][1] = rotatedCorners[3][1];
-        sprite.m_iSprite = spriteIndex;
-        sprite.m_ulColor = spriteColor;
-        m_quads.push_back(sprite);
-    };
+    // shapeIndex 1-N maps to icon sprite indices (dynamically assigned), and the
+    // active theme's override for that name if it has one.
+    int spriteIndex = AssetManager::getInstance().iconSpriteForShape(effectiveShape);
 
     // Render rider sprite (outline baked into sprite asset)
-    createRotatedSprite(spriteHalfSize, color);
+    addRotatedSpriteQuad(screenX, screenY, spriteHalfSize, cosYaw, sinYaw,
+                         spriteIndex, color);
 }
 
 void RadarHud::renderRiderLabel(float radarX, float radarY, int raceNum, int position,
@@ -266,74 +248,40 @@ void RadarHud::renderRiderLabel(float radarX, float radarY, int raceNum, int pos
     float screenX = centerX + (radarX * radarRadius) / UI_ASPECT_RATIO;
     float screenY = centerY - radarY * radarRadius;
 
-    // Offset label below the icon (based on icon size plus small gap)
-    float labelY = screenY + scaledConeSize + (dim.fontSizeSmall * 0.3f * m_fMarkerScale);
+    // Where the label sits relative to the icon: shared with MapHud and GapBarHud
+    // (marker_label.h). No player boost -- the radar never draws the player, whose
+    // marker IS its centre, so there is no boosted label here to size.
+    const MarkerLabel::Placement lp = MarkerLabel::place(
+        m_labelAnchor, screenX, screenY, scaledConeSize, labelFontSize);
 
     char labelStr[20];
-    switch (m_labelMode) {
-        case LabelMode::POSITION:
-            if (position > 0) {
-                snprintf(labelStr, sizeof(labelStr), "P%d", position);
-            } else {
-                labelStr[0] = '\0';
-            }
-            break;
-
-        case LabelMode::RACE_NUM:
-            snprintf(labelStr, sizeof(labelStr), "%d", raceNum);
-            break;
-
-        case LabelMode::BOTH:
-            if (position > 0) {
-                snprintf(labelStr, sizeof(labelStr), "P%d #%d", position, raceNum);
-            } else {
-                snprintf(labelStr, sizeof(labelStr), "#%d", raceNum);
-            }
-            break;
-
-        default:
-            labelStr[0] = '\0';
-            break;
-    }
-
-    if (labelStr[0] != '\0') {
-        // Use podium colors for position labels
-        unsigned long labelColor = this->getColor(ColorSlot::PRIMARY);
-        if (m_labelMode == LabelMode::POSITION || m_labelMode == LabelMode::BOTH) {
-            if (position == Position::FIRST) {
-                labelColor = PodiumColors::GOLD;
-            } else if (position == Position::SECOND) {
-                labelColor = PodiumColors::SILVER;
-            } else if (position == Position::THIRD) {
-                labelColor = PodiumColors::BRONZE;
-            }
-        }
+    if (MarkerLabel::format(m_labelMode, position, raceNum, labelStr, sizeof(labelStr))) {
+        // Podium colors for position labels
+        unsigned long labelColor =
+            MarkerLabel::color(m_labelMode, position, this->getColor(ColorSlot::PRIMARY));
 
         // Apply opacity to colors to match sprite fading
         labelColor = PluginUtils::applyOpacity(labelColor, opacity);
 
-        // Text outline (readability effect for the number/position labels). It serves
-        // the same purpose as the global drop shadow, so honor that toggle: render the
-        // outline only when drop shadow is enabled (matches MapHud). Rider ICONS are
-        // separate sprite quads with their own baked outlines and never take the shadow.
-        if (UiConfig::getInstance().getDropShadow()) {
-            unsigned long outlineColor = PluginUtils::applyOpacity(0x000000, opacity);  // Black with matching opacity
-            float outlineOffset = labelFontSize * 0.05f;  // Small offset for outline
-
-            // Render outline at 4 cardinal directions (skip drop shadow - this IS the outline)
-            addString(labelStr, screenX - outlineOffset, labelY, Justify::CENTER,
-                     this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
-            addString(labelStr, screenX + outlineOffset, labelY, Justify::CENTER,
-                     this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
-            addString(labelStr, screenX, labelY - outlineOffset, Justify::CENTER,
-                     this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
-            addString(labelStr, screenX, labelY + outlineOffset, Justify::CENTER,
-                     this->getFont(FontCategory::SMALL), outlineColor, labelFontSize, true);
-        }
-
-        // Render main text on top
-        addString(labelStr, screenX, labelY, Justify::CENTER,
-                 this->getFont(FontCategory::SMALL), labelColor, labelFontSize, true);
+        // THE STANDARD DROP SHADOW, exactly as MapHud and the gap bar draw the same
+        // label: one string with skipShadow=false, and HudManager::collectRenderData
+        // lays the shadow in behind it from [Display] dropShadowOffsetX/Y, honouring
+        // the global toggle and any per-HUD override.
+        //
+        // This used to hand-roll an outline -- the string four more times in black at
+        // +-5% of the font -- gated on the same toggle so it at least switched with it,
+        // but drawing a four-way surround where the other two draw a bottom-right
+        // shadow, at five strings per label against their two.
+        //
+        // THE FADE IS WHY IT COULD NOT MOVE BEFORE: this label dims as its rider leaves
+        // proximity range, the outline was faded to match by hand, and the shared
+        // shadow used to write the configured colour verbatim -- a solid shadow behind
+        // half-visible text. It modulates by the string's own alpha now
+        // (PluginUtils::modulateAlpha), so the shadow fades with the label and the
+        // outline has nothing left to do. (Rider ICONS are separate sprite quads with
+        // their own baked outlines and never take the shadow -- this is only the text.)
+        addString(labelStr, lp.x, lp.y, lp.justify,
+                 this->getFont(FontCategory::SMALL), labelColor, labelFontSize, false);
     }
 }
 
@@ -358,7 +306,7 @@ void RadarHud::rebuildRenderData() {
     // Calculate dimensions
     auto dim = getScaledDimensions();
 
-    float titleHeight = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
+    float titleHeight = reservedTitleHeight(dim, TitleTier::Large);
 
     // Radar size based on screen height
     float radarDiameter = RADAR_SIZE * m_fScale;
@@ -368,11 +316,22 @@ void RadarHud::rebuildRenderData() {
     float width = radarDiameter / UI_ASPECT_RATIO + dim.paddingH * 2;
     float height = radarDiameter + titleHeight + dim.paddingV * 2;
 
-    float x = 0.0f;
     float y = 0.0f;
 
+    // The BOX lands on the lattice; the radar circle inside it does not change size.
+    // Same treatment MapHud gets, and for the same reason -- both size themselves from
+    // a diameter divided by UI_ASPECT_RATIO, which is the one thing in a panel's size
+    // that has no reason to land on a cell boundary. See fitPanelToGrid.
+    const GridFit fit = fitPanelToGrid(width, height);
+
+    // CENTRE-ANCHORED, like the centre stack: half the DRAWN box to the left of the
+    // stored centre, so the dial stays put as scale changes its width.
+    float x = centerAnchoredPanelLeft(fit.w);
+
     // Set bounds for dragging
-    setBounds(x, y, x + width, y + height);
+    setBounds(x, y, x + fit.w, y + fit.h);
+    x += fit.padX;   // content re-centred in the snapped box; `width`/`height` below
+    y += fit.padY;   // stay the CONTENT's size, so centerX/centerY still land right
 
     // Get plugin data and find local player (needed for opacity calculation)
     const PluginData& pluginData = PluginData::getInstance();
@@ -401,6 +360,12 @@ void RadarHud::rebuildRenderData() {
 
     // If radar mode is OFF, skip radar rendering but still render proximity arrows
     if (m_radarMode == RadarMode::OFF) {
+        // This path never reaches addBackgroundQuad, which is what ARMS the panel rect
+        // and the fill strips. Without clearing them, finalizeThemedFill re-cuts using
+        // last rebuild's indices -- which now hold proximity arrows -- and stretches one
+        // across the old panel. NoticesHud's comment called itself "the one such caller";
+        // this is the second.
+        invalidatePanelRect();
         renderProximityArrows(localPlayer, playerX, playerZ, cosYaw, sinYaw, gradient);
         return;
     }
@@ -422,15 +387,16 @@ void RadarHud::rebuildRenderData() {
     addBackgroundQuad(x, y, width, height);
     m_fBackgroundOpacity = savedOpacity;
 
-    // Add title (also fades with background when fade enabled)
-    if (m_bShowTitle) {
-        float titleX = x + dim.paddingH;
-        float titleY = y + dim.paddingV;
-        unsigned long titleColor = PluginUtils::applyOpacity(
-            this->getColor(ColorSlot::PRIMARY), maxRiderOpacity);
-        addTitleString("RADAR", titleX, titleY, Justify::LEFT,
-                      this->getFont(FontCategory::SMALL), titleColor, dim.fontSizeLarge);
-    }
+    // THE BODY CARD, asked for directly. This called addTitleString("RADAR", ...) to
+    // get it, which was the legacy chain's only remaining purpose here: the radar
+    // disableTitle()s in its constructor, so that call could only ever take the
+    // title-hidden early-out -- emit the card, emit an empty string, return. The
+    // empty string was the caller's to want and this HUD never did.
+    //
+    // The card still matters even though the radar's default is theme-less: the
+    // opt-out is a per-HUD SETTING (setThemeOverride(THEME_NONE) at defaults), so a
+    // player who names a theme for the radar gets a frame, and this is what fills it.
+    emitContentCard(0.0f);
 
     // Calculate radar center position
     float centerX = x + width * 0.5f;
@@ -475,9 +441,10 @@ void RadarHud::rebuildRenderData() {
             // Only track section distances for riders within alert distance
             if (distance > m_fAlertDistance) continue;
 
-            // Filter by track distance (skip riders on parallel straights)
-            float trackDist = std::abs(pos.trackPos - localPlayer->trackPos);
-            if (trackDist > 0.5f) trackDist = 1.0f - trackDist;  // Handle wraparound
+            // Filter by track distance (skip riders on parallel straights).
+            // Distance only — which side of us they are on doesn't matter here.
+            const float trackDist =
+                trackSeparation(pos.trackPos, localPlayer->trackPos);
 
             float trackLength = pluginData.getSessionData().trackLength;
             if (trackLength > 0.0f) {
@@ -638,8 +605,7 @@ void RadarHud::rebuildRenderData() {
 
         // Calculate track distance fade (riders on parallel straights fade out)
         float trackFadeOpacity = 1.0f;
-        float trackDist = std::abs(pos.trackPos - localPlayer->trackPos);
-        if (trackDist > 0.5f) trackDist = 1.0f - trackDist;  // Handle wraparound
+        float trackDist = trackSeparation(pos.trackPos, localPlayer->trackPos);
 
         float trackLength = pluginData.getSessionData().trackLength;
         if (trackLength > 0.0f) {
@@ -730,15 +696,14 @@ void RadarHud::rebuildRenderData() {
         HazardType hazardType = pluginData.getRiderHazardType(pos.raceNum);
         if (hazardType != HazardType::None) {
             m_iconCache.ensureInitialized();
-            int firstIcon = AssetManager::getInstance().getFirstIconSpriteIndex();
             if (hazardType == HazardType::WrongWay) {
                 if (m_iconCache.circleExclamation > 0) {
-                    trackedShape = m_iconCache.circleExclamation - firstIcon + 1;
+                    trackedShape = AssetManager::getInstance().shapeIndexForSprite(m_iconCache.circleExclamation);
                     riderColor = PluginUtils::applyOpacity(ColorPalette::RED, trackFadeOpacity);
                 }
             } else {
                 if (m_iconCache.flag > 0) {
-                    trackedShape = m_iconCache.flag - firstIcon + 1;
+                    trackedShape = AssetManager::getInstance().shapeIndexForSprite(m_iconCache.flag);
                     riderColor = PluginUtils::applyOpacity(ColorPalette::YELLOW, trackFadeOpacity);
                 }
             }
@@ -747,9 +712,8 @@ void RadarHud::rebuildRenderData() {
         // Blue flag icon override (lower priority than hazard)
         if (hazardType == HazardType::None && pluginData.isRiderBlueFlagged(pos.raceNum)) {
             m_iconCache.ensureInitialized();
-            int firstIcon = AssetManager::getInstance().getFirstIconSpriteIndex();
             if (m_iconCache.flag > 0) {
-                trackedShape = m_iconCache.flag - firstIcon + 1;
+                trackedShape = AssetManager::getInstance().shapeIndexForSprite(m_iconCache.flag);
                 riderColor = PluginUtils::applyOpacity(ColorPalette::BLUE, trackFadeOpacity);
             }
         }
@@ -758,9 +722,8 @@ void RadarHud::rebuildRenderData() {
             const StandingsData* standing = pluginData.getStanding(pos.raceNum);
             if (standing && pluginData.getSessionData().isRiderFinished(standing->numLaps, standing->numLapsAtLeaderFinish)) {
                 m_iconCache.ensureInitialized();
-                int firstIcon = AssetManager::getInstance().getFirstIconSpriteIndex();
                 if (m_iconCache.flagCheckered > 0) {
-                    trackedShape = m_iconCache.flagCheckered - firstIcon + 1;
+                    trackedShape = AssetManager::getInstance().shapeIndexForSprite(m_iconCache.flagCheckered);
                     riderColor = PluginUtils::applyOpacity(ColorPalette::WHITE, trackFadeOpacity);
                 }
             }
@@ -780,31 +743,33 @@ void RadarHud::rebuildRenderData() {
     renderProximityArrows(localPlayer, playerX, playerZ, cosYaw, sinYaw, gradient);
 }
 
-void RadarHud::setScale(float scale) {
-    if (scale <= 0.0f) scale = 0.1f;
-    float oldScale = m_fScale;
-    if (oldScale == scale) return;
-
-    // Calculate current dimensions
-    float oldWidth = m_fBoundsRight - m_fBoundsLeft;
-    float oldHeight = m_fBoundsBottom - m_fBoundsTop;
-
-    // Calculate new dimensions (scale changes proportionally)
-    float ratio = scale / oldScale;
-    float newWidth = oldWidth * ratio;
-    float newHeight = oldHeight * ratio;
-
-    // Adjust offset to keep center fixed
-    float deltaX = (oldWidth - newWidth) / 2.0f;
-    float deltaY = (oldHeight - newHeight) / 2.0f;
-    setPosition(m_fOffsetX + deltaX, m_fOffsetY + deltaY);
-
-    // Apply the new scale
-    m_fScale = scale;
-    setDataDirty();
+// The dial's own width, without a theme; see the declaration for who else needs it.
+float RadarHud::unthemedContentWidth(float scale) {
+    const LayoutMetrics& L = layoutDefaults();
+    return RADAR_SIZE * scale / UI_ASPECT_RATIO
+         + 2.0f * (L.panelPaddingXCells * L.cellW * scale);
 }
 
+// No setScale override: this panel is CENTRE-ANCHORED (offsetX is its centre), so the
+// layout recentres on every width change and a scale change needs no offset
+// compensation. It used to call setScaleKeepingCenter, which kept the dial centred by
+// REWRITING the stored offset on each scale step -- a persisted setting edited as a
+// side effect of another one, computed from bounds left over from the previous render,
+// so it was only right once the panel had drawn at least once.
+
 void RadarHud::resetToDefaults() {
+    // NEVER THEMED, by default. This panel is a TEXTURE with markers on it -- the dial
+    // is the art and the transparency around it is the point -- so a frame, a title band
+    // and a content card have nothing to frame and only eat the space the dial needs.
+    // Reported from the game after the theme treatment landed: there is no version of
+    // this panel that a nine-slice improves.
+    //
+    // THEME_NONE rather than deleting the code paths: a sprite background already
+    // bypasses theming upstream (resolveActiveTheme), so the texture-on default was
+    // unthemed anyway -- this covers the case where the user switches the texture OFF,
+    // which is what still let a theme in. It stays a per-HUD SETTING, so anyone who
+    // wants the frame can name a theme for this HUD and get it back.
+    setThemeOverride(THEME_NONE);
     m_bVisible = false;
     m_bShowTitle = false;  // No title for radar (compact display)
     setTextureVariant(1);  // Use first texture variant by default
@@ -816,12 +781,18 @@ void RadarHud::resetToDefaults() {
     m_proximityArrowMode = ProximityArrowMode::OFF;  // Disable proximity arrows by default
     m_fAlertDistance = DEFAULT_ALERT_DISTANCE;
     m_labelMode = LabelMode::POSITION;
+    m_labelAnchor = LabelAnchor::BELOW;
     m_riderShapeIndex = getShapeIndexByFilename(DEFAULT_RIDER_ICON);
     m_proximityArrowShapeIndex = getShapeIndexByFilename(DEFAULT_PROXIMITY_ARROW_ICON);
     m_fProximityArrowScale = DEFAULT_PROXIMITY_ARROW_SCALE;
     m_proximityArrowColorMode = ProximityArrowColorMode::DISTANCE;
     m_fMarkerScale = DEFAULT_MARKER_SCALE;
-    setPosition(0.43275f, 0.01173f);  // Horizontally centered at scale 1.0
+    // CENTRE-ANCHORED: offsetX is the dial's centre, so this is centred at EVERY
+    // scale. It was 0.43275f, "horizontally centered at scale 1.0" -- and that frozen
+    // decimal was 0.5 minus half the CONTENT width, so it did not even centre the
+    // drawn box, which fitPanelToGrid rounds up to whole cells. About 3px out at
+    // 1080p, and further at every scale but one.
+    setPosition(CENTER_ANCHOR_X, cellsY(1));
     setDataDirty();
 }
 
@@ -845,8 +816,7 @@ void RadarHud::renderProximityArrows(const Unified::TrackPositionData* localPlay
     constexpr float CIRCLE_CENTER_Y = 0.5f;   // Screen center Y
 
     // Get sprite index for the configured arrow shape
-    int arrowSpriteIndex = AssetManager::getInstance().getFirstIconSpriteIndex() +
-                           m_proximityArrowShapeIndex - 1;
+    int arrowSpriteIndex = AssetManager::getInstance().iconSpriteForShape(m_proximityArrowShapeIndex);
     bool arrowShouldRotate = TrackedRidersManager::shouldRotate(m_proximityArrowShapeIndex);
 
     // Process each rider and render arrows for those within alert distance
@@ -867,8 +837,7 @@ void RadarHud::renderProximityArrows(const Unified::TrackPositionData* localPlay
         if (distance > m_fAlertDistance || distance < 1.0f) continue;
 
         // Filter by track distance (skip riders on parallel straights)
-        float trackDist = std::abs(pos.trackPos - localPlayer->trackPos);
-        if (trackDist > 0.5f) trackDist = 1.0f - trackDist;
+        float trackDist = trackSeparation(pos.trackPos, localPlayer->trackPos);
 
         if (trackLength > 0.0f) {
             float trackDistMeters = trackDist * trackLength;

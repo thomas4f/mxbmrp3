@@ -4,6 +4,7 @@
 // diagram, styled to match the FMX HUD combo-arc meter.
 // ============================================================================
 #include "gforce_widget.h"
+#include "severity_ramp.h"
 
 #include <cstdio>
 #include <cmath>
@@ -19,6 +20,8 @@ using namespace PluginConstants::Math;
 
 GForceWidget::GForceWidget()
 {
+    m_panelKind = PanelKind::Widget;
+    m_bContentCard = true;
     DEBUG_INFO("GForceWidget created");
     setDraggable(true);
     m_quads.reserve(RING_SEGMENTS + 4);   // bg quad + ring arc segments + 2 dots
@@ -75,7 +78,7 @@ void GForceWidget::update() {
     }
     m_lastDisplayedRaceNum = currentDisplayRaceNum;
 
-    rebuildRenderData();
+    rebuildAndRecord();
     clearDataDirty();
     clearLayoutDirty();
 }
@@ -104,84 +107,16 @@ void GForceWidget::addIconDot(float x, float y, int spriteIndex, unsigned long c
 }
 
 unsigned long GForceWidget::getMagnitudeColor(float magnitude) const {
-    float denom = (m_maxScale > 0.01f) ? m_maxScale : 1.0f;
-    float t = std::min(1.0f, std::max(0.0f, magnitude / denom));
-
-    auto extractR = [](unsigned long v) { return static_cast<uint8_t>(v & 0xFF); };
-    auto extractG = [](unsigned long v) { return static_cast<uint8_t>((v >> 8) & 0xFF); };
-    auto extractB = [](unsigned long v) { return static_cast<uint8_t>((v >> 16) & 0xFF); };
-    auto extractA = [](unsigned long v) { return static_cast<uint8_t>((v >> 24) & 0xFF); };
-
-    unsigned long lo = this->getColor(ColorSlot::POSITIVE);
-    unsigned long mid = this->getColor(ColorSlot::NEUTRAL);
-    unsigned long hi = this->getColor(ColorSlot::NEGATIVE);
-
-    uint8_t r, g, b, a;
-    // Piecewise linear (mirrors RadarHud proximity gradient):
-    // 0.0–0.5 → POSITIVE → NEUTRAL, 0.5–1.0 → NEUTRAL → NEGATIVE.
-    // Alpha is lerped alongside RGB so a user customizing palette slots with non-FF
-    // alpha doesn't silently get fully opaque output.
-    if (t < 0.5f) {
-        float u = t * 2.0f;
-        r = static_cast<uint8_t>(extractR(lo) + u * (extractR(mid) - extractR(lo)));
-        g = static_cast<uint8_t>(extractG(lo) + u * (extractG(mid) - extractG(lo)));
-        b = static_cast<uint8_t>(extractB(lo) + u * (extractB(mid) - extractB(lo)));
-        a = static_cast<uint8_t>(extractA(lo) + u * (extractA(mid) - extractA(lo)));
-    } else {
-        float u = (t - 0.5f) * 2.0f;
-        r = static_cast<uint8_t>(extractR(mid) + u * (extractR(hi) - extractR(mid)));
-        g = static_cast<uint8_t>(extractG(mid) + u * (extractG(hi) - extractG(mid)));
-        b = static_cast<uint8_t>(extractB(mid) + u * (extractB(hi) - extractB(mid)));
-        a = static_cast<uint8_t>(extractA(mid) + u * (extractA(hi) - extractA(mid)));
-    }
-    return PluginUtils::makeColor(r, g, b, a);
+    // The ramp itself now lives in SeverityRamp::at -- LeanWidget says the same
+    // thing about lean angle, and two gauges reading "fine / serious / at the
+    // limit" have to agree on where the middle is.
+    const float denom = (m_maxScale > 0.01f) ? m_maxScale : 1.0f;
+    return SeverityRamp::at(magnitude / denom,
+                            this->getColor(ColorSlot::POSITIVE),
+                            this->getColor(ColorSlot::NEUTRAL),
+                            this->getColor(ColorSlot::NEGATIVE));
 }
 
-// FMX-style arc segment renderer — builds connected inner/outer-edge quads.
-// Color (incl. alpha) is preserved, unlike addLineSegment which forces full alpha.
-void GForceWidget::addArcSegment(float centerX, float centerY, float innerRadius, float outerRadius,
-                                  float startAngleRad, float endAngleRad,
-                                  unsigned long color, int numSegments)
-{
-    if (numSegments < 1) numSegments = 1;
-    float angleStep = (endAngleRad - startAngleRad) / numSegments;
-
-    float prevInnerX = 0.0f, prevInnerY = 0.0f;
-    float prevOuterX = 0.0f, prevOuterY = 0.0f;
-    bool hasPrev = false;
-
-    for (int i = 0; i <= numSegments; ++i) {
-        float angle = startAngleRad + i * angleStep;
-        float innerX = centerX + std::sin(angle) * innerRadius / UI_ASPECT_RATIO;
-        float innerY = centerY - std::cos(angle) * innerRadius;
-        float outerX = centerX + std::sin(angle) * outerRadius / UI_ASPECT_RATIO;
-        float outerY = centerY - std::cos(angle) * outerRadius;
-
-        if (hasPrev) {
-            float sPIX = prevInnerX, sPIY = prevInnerY;
-            float sPOX = prevOuterX, sPOY = prevOuterY;
-            float sIX = innerX, sIY = innerY;
-            float sOX = outerX, sOY = outerY;
-            applyOffset(sPIX, sPIY);
-            applyOffset(sPOX, sPOY);
-            applyOffset(sIX, sIY);
-            applyOffset(sOX, sOY);
-
-            SPluginQuad_t quad;
-            quad.m_aafPos[0][0] = sPOX; quad.m_aafPos[0][1] = sPOY;
-            quad.m_aafPos[1][0] = sPIX; quad.m_aafPos[1][1] = sPIY;
-            quad.m_aafPos[2][0] = sIX;  quad.m_aafPos[2][1] = sIY;
-            quad.m_aafPos[3][0] = sOX;  quad.m_aafPos[3][1] = sOY;
-            quad.m_iSprite = SpriteIndex::SOLID_COLOR;
-            quad.m_ulColor = color;
-            m_quads.push_back(quad);
-        }
-
-        prevInnerX = innerX; prevInnerY = innerY;
-        prevOuterX = outerX; prevOuterY = outerY;
-        hasPrev = true;
-    }
-}
 
 void GForceWidget::rebuildRenderData() {
     clearStrings();
@@ -196,42 +131,46 @@ void GForceWidget::rebuildRenderData() {
     float startY = 0.0f;
 
     // Standard small-widget footprint (3 content rows × GFORCE_WIDTH chars), same as
-    // LeanWidget/FuelWidget. Donut dimensions are pinned to the FMX rotation-arc
-    // constants so visually it reads as one of those arcs, regardless of the widget's
-    // content-area row count. The donut may extend into the vertical padding region
+    // LeanWidget/FuelWidget. The donut may extend into the vertical padding region
     // (still inside the background quad).
+    //
+    // Donut dimensions are a FRACTION OF THE GAUGE AREA. They used to be absolute
+    // normalized lengths pinned to the FMX rotation-arc constants -- 0.035 and 0.006,
+    // scaled only by the HUD's own scale setting -- so raising [font] size grew this
+    // widget's PANEL (rows * line-height) and left the donut exactly the size it was.
+    // The widget appeared to ignore the one knob advertised as moving the whole UI.
+    // The ratios reproduce the shipped donut to within a pixel at the default font
+    // (gauge area 0.0704; 0.0704 * 0.5 = 0.0352 against the old 0.035).
     constexpr int GAUGE_ROWS = 3;
-    constexpr float ARC_MID_RADIUS_BASE = 0.035f;  // FMX rotation-arc ARC_RADIUS
-    constexpr float ARC_THICKNESS_BASE = 0.006f;   // FMX rotation-arc ARC_THICKNESS
 
     float contentWidth = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::GFORCE_WIDTH, dim.fontSize);
-    float backgroundWidth = contentWidth + dim.paddingH + dim.paddingH;
-
-    float titleHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
     float gaugeAreaHeight = dim.lineHeightNormal * GAUGE_ROWS;
-    float contentHeight = titleHeight + gaugeAreaHeight;
-    float backgroundHeight = dim.paddingV + contentHeight + dim.paddingV;
 
-    // FMX-style: middle radius scaled by m_fScale, thickness 17% of middle radius
-    float arcThickness = ARC_THICKNESS_BASE * dim.scale;
-    float ringMidRadius = ARC_MID_RADIUS_BASE * dim.scale;
+    // BOX-MODEL: the plan owns padding, chrome, the title band and the body card;
+    // the gauge area is the single section's content.
+    BaseHud::PanelWant want;
+    want.contentW = contentWidth;
+    want.sectionH = { gaugeAreaHeight };
+    want.captionW = planTitleWidth(dim, "G-Force");
+    PanelPlan& p = planPanel(dim, want);
+    const float backgroundWidth = p.width();
+    const float backgroundHeight = p.height();
+
+    // Sized from the gauge area, which already carries the font size AND the HUD's
+    // scale -- so the donut tracks [font] size like the panel around it.
+    float arcThickness = gaugeAreaHeight * WidgetDimensions::GAUGE_RING_THICKNESS_RATIO;
+    float ringMidRadius = gaugeAreaHeight * WidgetDimensions::GAUGE_RING_MID_RADIUS_RATIO;
     float outerRadius = ringMidRadius + arcThickness * 0.5f;
     float innerRadius = ringMidRadius - arcThickness * 0.5f;
 
-    addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
+    addPlanBackground(p, startX, startY);
+    addPlanTitle(p, "G-Force", this->getFont(FontCategory::TITLE),
+        this->getColor(ColorSlot::PRIMARY));
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
 
-    float contentStartX = startX + dim.paddingH;
-    float contentStartY = startY + dim.paddingV;
-    float centerX = contentStartX + (contentWidth / 2.0f);
-
-    float currentY = contentStartY;
-
-    if (m_bShowTitle) {
-        addString("G-Force", contentStartX, currentY, Justify::LEFT,
-            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSize);
-        currentY += titleHeight;
-    }
+    // Gauge content is centered on the CARD (PanelPlan::sectionBoxCenterX).
+    float centerX = p.sectionBoxCenterX();
+    float currentY = p.contentY();
 
     // Donut centered both horizontally and vertically in the gauge area
     float arcCenterX = centerX;
@@ -388,7 +327,9 @@ void GForceWidget::rebuildRenderData() {
     }
 
     // Center text inside the ring — top line = current live G magnitude, bottom line =
-    // recorded peak this stint. Font matches LeanWidget's value style: DIGITS at fontSize.
+    // recorded peak this stint. DIGITS at the SMALL size, matching TyreTempWidget's
+    // readout rather than LeanWidget's: both of these sit INSIDE a gauge whose
+    // geometry they must not crowd, where Lean's value has a row to itself.
     // Spectate / data-invalid handling mirrors LeanWidget's steer value (lean_widget.cpp:589):
     //   - spectate/replay → "N/A" in MUTED
     //   - on track but telemetry invalid → "-" in MUTED
@@ -418,15 +359,20 @@ void GForceWidget::rebuildRenderData() {
         }
 
         // Two-row text block centered vertically — same formula as FMX rotation arcs:
-        // blockHeight = lineHeightNormal + fontSize so the block visually centers on
-        // arcCenterY, and rows advance by lineHeightNormal.
-        float blockHeight = dim.lineHeightNormal + dim.fontSize;
-        float textY1 = arcCenterY - blockHeight * 0.5f;
-        float textY2 = textY1 + dim.lineHeightNormal;
+        // blockHeight = lineHeight + fontSize so the block visually centers on
+        // arcCenterY, and rows advance by one line. SMALL throughout: the row
+        // advance has to follow the font, or two small values sit a normal line
+        // apart and the block stops reading as a pair.
+        const float valueFontSize = dim.fontSizeSmall;
+        float blockHeight = dim.lineHeightSmall + valueFontSize;
+        // Minus what addString adds back -- an explicit block centring compounds with
+        // its per-string row centring.
+        float textY1 = arcCenterY - blockHeight * 0.5f - rowCenterOffset(valueFontSize);
+        float textY2 = textY1 + dim.lineHeightSmall;
         addString(currentBuf, arcCenterX, textY1, Justify::CENTER,
-            this->getFont(FontCategory::DIGITS), currentColor, dim.fontSize);
+            this->getFont(FontCategory::DIGITS), currentColor, valueFontSize);
         addString(peakBuf, arcCenterX, textY2, Justify::CENTER,
-            this->getFont(FontCategory::DIGITS), peakColor, dim.fontSize);
+            this->getFont(FontCategory::DIGITS), peakColor, valueFontSize);
     }
 }
 
@@ -440,7 +386,7 @@ void GForceWidget::resetToDefaults() {
     m_bShowMaxMarker = true;
     m_maxMarkerLingerFrames = 60;
     m_maxScale = 20.0f;
-    setPosition(0.5995f, 0.86828f);
+    setPosition(cellsX(96), cellsY(74));
     resetTracking();
     m_wasCrashed = false;
     m_lastDisplayedRaceNum = -1;

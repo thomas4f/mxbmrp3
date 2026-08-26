@@ -7,6 +7,7 @@
 #pragma once
 
 #include "base_hud.h"
+#include "marker_label.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
 #include "../game/unified_types.h"
@@ -106,12 +107,20 @@ public:
     };
 
     // Label display mode - controls what labels appear above markers (like MapHud)
-    enum class LabelMode {
-        NONE = 0,       // No labels
-        POSITION = 1,   // Show position (P1, P2, etc.)
-        RACE_NUM = 2,   // Show race number
-        BOTH = 3        // Show both (P1 #5)
-    };
+    // Shared with MapHud/RadarHud/GapBarHud — see hud/marker_label.h
+    using LabelMode = MarkerLabel::Mode;
+
+    // Where the rider label sits relative to the icon (INI-only, no UI), exactly as
+    // MapHud has shipped it -- one key, one enum, one placement function.
+    using LabelAnchor = MarkerLabel::Anchor;
+
+    void setLabelAnchor(LabelAnchor anchor) {
+        if (m_labelAnchor != anchor) {
+            m_labelAnchor = anchor;
+            setDataDirty();
+        }
+    }
+    LabelAnchor getLabelAnchor() const { return m_labelAnchor; }
 
     // Rider color mode - controls how opponent markers are colored (like MapHud/RadarHud)
     enum class RiderColorMode {
@@ -128,9 +137,6 @@ public:
     const char* getIconName() const override { return "hud-gapbar"; }
     void resetToDefaults();
 
-    // Override setScale to grow from center instead of top-left
-    void setScale(float scale);
-
     // Set bar width (keeps bar centered when adjusting)
     void setBarWidth(int percent);
 
@@ -143,6 +149,27 @@ public:
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;
     friend class SettingsManager;
+
+public:
+    // TEST ONLY (test_hooks.cpp): plant a live gap so the fill's geometry can be
+    // measured headlessly -- producing one for real needs a full lap of
+    // timing-point history the harness cannot cheaply drive.
+    //
+    // STICKY, and that is the whole point of the flag. update() recomputes
+    // m_cachedGap/Valid from live state on a steady_clock interval, so a planted
+    // gap survived only until the next tick crossed UPDATE_INTERVAL_MS -- which in
+    // a quiet run never happened between the plant and the draw, and under a loaded
+    // `ctest -j 4` did. The fill then simply was not emitted and the geometry case
+    // failed with "0 candidate(s)", passing on its own and failing in the suite.
+    // A wall-clock race is not a flake; the plant now outranks the recompute.
+    void testForceGap(int ms, bool valid) {
+        m_cachedGap = ms;
+        m_cachedGapValid = valid;
+        m_testGapForced = true;
+        setDataDirty();
+    }
+
+private:
 
 protected:
     void rebuildLayout() override;
@@ -183,7 +210,7 @@ private:
     // Bar width as a percentage of the base width (base = 2x the Notices/Timing box width)
     static constexpr int MIN_WIDTH_PERCENT = 50;      // 50% = same width as Notices/Timing
     static constexpr int MAX_WIDTH_PERCENT = 400;     // 400% maximum
-    static constexpr int DEFAULT_WIDTH_PERCENT = 50;  // default: match the Notices/Timing width
+    static constexpr int DEFAULT_WIDTH_PERCENT = 50;  // default: the PANEL matches Notices/Timing
     static constexpr int WIDTH_STEP_PERCENT = 1;      // 1% steps
 
     // Best lap timing data
@@ -223,6 +250,7 @@ private:
     int m_freezeDurationMs;           // How long to freeze on official times
     MarkerMode m_markerMode;          // What markers to show (ghost/opponents/both)
     LabelMode m_labelMode;            // What labels to show on markers (like MapHud)
+    LabelAnchor m_labelAnchor = LabelAnchor::BELOW;  // ...and where they sit
     RiderColorMode m_riderColorMode;  // How to color opponent markers (like MapHud/RadarHud)
     int m_riderIconIndex;             // Icon shape index (0=OFF/default, 1-N from AssetManager)
     bool m_showGapText;               // Show gap timer text (can hide for pure flat map mode)
@@ -248,6 +276,10 @@ private:
     // Cached gap for publishing to PluginData (avoids calculating twice)
     int m_cachedGap = 0;              // Last calculated gap in milliseconds
     bool m_cachedGapValid = false;    // Is the cached gap valid?
+    // Set only by testForceGap (see it): makes a planted gap outrank update()'s
+    // rate-limited recompute. Never set in a shipping run -- nothing but the test
+    // hook writes it -- so the live path is byte-for-byte what it was.
+    bool m_testGapForced = false;
 
     // Marker scale constants (matches MapHud pattern)
     static constexpr float DEFAULT_MARKER_BASE_SIZE = 0.012f;  // Base full size (halfSize = 0.006, matches MapHud/StandingsHud)
@@ -261,6 +293,9 @@ private:
     unsigned long calculateRiderColor(int riderRaceNum, int displayRaceNum) const;
     void renderMarkerIcon(float centerX, float centerY, float size, int spriteIndex,
                          unsigned long color, int shapeIndex);
+    // playerBoost: 1.0 for the pack, MarkerLabel::PLAYER_BOOST for the local player's
+    // own marker, which draws larger -- the label sizes and offsets with it.
     void renderMarkerLabel(float centerX, float centerY, float iconHalfSize,
-                          int raceNum, int position, const ScaledDimensions& dim);
+                          int raceNum, int position, const ScaledDimensions& dim,
+                          float playerBoost = 1.0f);
 };

@@ -3,6 +3,7 @@
 // Displays controller button overlay - shows pressed buttons, sticks, triggers
 // ============================================================================
 #include "gamepad_widget.h"
+#include "../core/layout_config.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
 #include "../core/asset_manager.h"
@@ -15,6 +16,14 @@
 using namespace PluginConstants;
 
 GamepadWidget::GamepadWidget() {
+    // No caption on this panel -- see BaseHud::m_titleSupported.
+    disableTitle();
+    // The controller artwork IS this widget -- see BaseHud::m_textureRequired.
+    m_textureRequired = true;
+    m_packKind = PackKind::Gamepad;
+
+    m_panelKind = PanelKind::Widget;
+    m_bContentCard = true;
     DEBUG_INFO("GamepadWidget created");
     setDraggable(true);
 
@@ -34,13 +43,34 @@ GamepadWidget::GamepadWidget() {
     m_quads.reserve(50);  // Sticks + triggers + bumpers + face + dpad + menu buttons
     m_strings.reserve(10);
 
-    // Set texture base name for dynamic texture discovery
-    setTextureBaseName("gamepad_widget");
+    // No setTextureBaseName here: the background is the selected PACK's art, not a
+    // variant of a shared texture, so it is resolved through activePack() in
+    // rebuildRenderData rather than through BaseHud's variant machinery.
 
     // Set all configurable defaults
     resetToDefaults();
 
     rebuildRenderData();
+}
+
+void GamepadWidget::setGamepadPack(const std::string& name) {
+    if (m_gamepadPack == name) return;
+    m_gamepadPack = name;
+    setDataDirty();
+}
+
+const GamepadAsset* GamepadWidget::activePack() const {
+    const AssetManager& assets = AssetManager::getInstance();
+    // Degrade, do not blank: a name this install has no folder for falls back to
+    // the shipped pack, and m_gamepadPack is deliberately NOT rewritten -- putting
+    // the folder back restores the user's choice without them re-picking it.
+    if (const GamepadAsset* named = assets.getGamepadByName(m_gamepadPack)) return named;
+    return assets.getDefaultGamepad();
+}
+
+int GamepadWidget::packSprite(GamepadSprite::Part part) const {
+    const GamepadAsset* pack = activePack();
+    return pack ? pack->sprites[part] : 0;
 }
 
 void GamepadWidget::update() {
@@ -63,7 +93,7 @@ void GamepadWidget::update() {
     if (inputChanged || isDataDirty() || isLayoutDirty()) {
         m_lastRenderedInput = xinput;
         m_hasRenderedInput = true;
-        rebuildRenderData();
+        rebuildAndRecord();
     }
     clearDataDirty();
     clearLayoutDirty();
@@ -80,23 +110,33 @@ void GamepadWidget::rebuildRenderData() {
     const auto dims = getScaledDimensions();
     const XInputData& xinput = XInputReader::getInstance().getData();
 
-    // Pin the gamepad's INTERIOR to fontSize, not the global LineHeights::NORMAL. The
-    // controller frame (backgroundWidth/Height) is fontSize-derived, but NORMAL (and the
-    // equal Padding::HUD_VERTICAL) is tuned to the snap grid and was bumped in #256
-    // (0.0222 -> ~0.0235) — which grew the rows and stick widths relative to the frame
-    // and pushed the buttons out of the bottom/right. 1.11 is the ratio NORMAL /
-    // FontSizes::NORMAL had when this layout was authored (0.0222 / 0.0200, cbbd1a2);
-    // using it reproduces that known-good geometry at every scale and locks the interior
-    // to the frame regardless of future grid retuning.
-    const float lineH = dims.fontSize * 1.11f;   // interior line height (formerly dims.lineHeightNormal)
-    const float padV  = lineH;                    // vertical padding (HUD_VERTICAL == NORMAL when authored)
-
-    // Calculate dimensions
+    // THE FRAME IS THE UNIT: size the frame from the type, then read back the em
+    // that produced it and spend every interior distance in that em. See
+    // hud/gamepad_geometry.h for why the interior cannot be measured against the
+    // global grid, and for the two bugs that came of trying.
     float backgroundWidth = PluginUtils::calculateMonospaceTextWidth(BACKGROUND_WIDTH_CHARS, dims.fontSize)
         + dims.paddingH + dims.paddingH;
+
+    const float fontSize = GamepadLayout::interiorEm(backgroundWidth);
+    const float u = GamepadLayout::unitScale(fontSize);          // authored units -> screen
+    const float charW = fontSize * GamepadLayout::kCharRatio;    // one char == one cell here
+    const float lineH = fontSize * GamepadLayout::kLineRatio;
+    const float padH  = charW * GamepadLayout::kPadChars;
+    const float padV  = lineH;                    // vertical padding (HUD_VERTICAL == NORMAL when authored)
+
     float stickHeight = STICK_HEIGHT_LINES * lineH;
 
-    const auto& layout = getCurrentLayout();
+    // The pack supplies BOTH the artwork and the numbers that place buttons on it;
+    // they are one unit, which is why a pad is a pack rather than a texture variant.
+    const GamepadAsset* pack = activePack();
+    static const GamepadLayout::PadGeometry kNoPackGeometry;
+    const GamepadLayout::PadGeometry& layout = pack ? pack->geometry : kNoPackGeometry;
+
+    // Keep BaseHud's background sprite pointing at the active pack. Assigned only on
+    // change: setBackgroundTextureIndex invalidates the theme memo, and this runs on
+    // every rebuild.
+    const int packBackground = pack ? pack->sprites[GamepadSprite::BACKGROUND] : 0;
+    if (getBackgroundTextureIndex() != packBackground) setBackgroundTextureIndex(packBackground);
 
     // Layout: triggers/bumpers row + sticks row + buttons row (face/dpad/menu)
     // Content proportions unchanged - extra texture padding handled via background aspect ratio
@@ -106,15 +146,26 @@ void GamepadWidget::rebuildRenderData() {
     float backgroundHeight = backgroundWidth * (layout.backgroundHeight / layout.backgroundWidth) * UI_ASPECT_RATIO;
     float stickWidthForLayout = STICK_HEIGHT_LINES * lineH / UI_ASPECT_RATIO;
 
-    setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + backgroundHeight);
+    // The BOX lands on the lattice. Only the HEIGHT is off here -- it is derived from
+    // the controller texture's aspect through UI_ASPECT_RATIO, so it lands wherever the
+    // art does -- and the art keeps its size: ORIGIN_* re-centres the content in the
+    // snapped box rather than stretching the controller. See fitPanelToGrid.
+    const GridFit fit = fitPanelToGrid(backgroundWidth, backgroundHeight);
+    setBounds(START_X, START_Y, START_X + fit.w, START_Y + fit.h);
+    const float ORIGIN_X = START_X + fit.padX;
+    const float ORIGIN_Y = START_Y + fit.padY;
 
     // When not connected, tint the background texture dark instead of full brightness
+    // bg-quad-exempt: draws the texture a SECOND time in a custom dark tint on top of
+    // the normal background; addBackgroundQuad has no tint parameter and this is an
+    // extra layer, not a replacement for it.
     if (!xinput.isConnected && m_bShowBackgroundTexture && m_iBackgroundTextureIndex > 0) {
         SPluginQuad_t quadEntry;
-        float bgX = START_X, bgY = START_Y, bgW = backgroundWidth, bgH = backgroundHeight;
+        float bgX = ORIGIN_X, bgY = ORIGIN_Y, bgW = backgroundWidth, bgH = backgroundHeight;
         applyOffset(bgX, bgY);
         applyTextureAspectCorrection(bgX, bgY, bgW, bgH);
         setQuadPositions(quadEntry, bgX, bgY, bgW, bgH);
+        // bg-quad-exempt: same disconnected-tint layer as the condition above.
         quadEntry.m_iSprite = m_iBackgroundTextureIndex;
         // Dark tint instead of white - texture shape preserved but appears blacked out
         unsigned long darkTint = PluginUtils::makeColor(15, 15, 15);
@@ -122,26 +173,41 @@ void GamepadWidget::rebuildRenderData() {
         m_quads.push_back(quadEntry);
 
         // Centered disconnect message
-        float centerX = START_X + backgroundWidth / 2;
-        float centerY = START_Y + backgroundHeight / 2;
+        float centerX = ORIGIN_X + backgroundWidth / 2;
+        float centerY = ORIGIN_Y + backgroundHeight / 2;
         int ctrlNum = XInputReader::getInstance().getControllerIndex() + 1; // 0-based to 1-based
         char titleBuf[64];
         snprintf(titleBuf, sizeof(titleBuf), "Controller %d Not Connected", ctrlNum);
-        addString(titleBuf, centerX, centerY - lineH * 0.5f,
-                  Justify::CENTER, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::NEGATIVE), dims.fontSize);
-        addString("Check MXBMRP3 Settings > General", centerX, centerY + lineH * 0.5f,
-                  Justify::CENTER, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dims.fontSize * 0.8f);
+        // Minus addString's own row centring, which compounds with this explicit one.
+        addString(titleBuf, centerX, centerY - lineH * 0.5f - rowCenterOffset(fontSize),
+                  Justify::CENTER, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::NEGATIVE), fontSize);
+        addString("Check MXBMRP3 Settings > General", centerX,
+                  centerY + lineH * 0.5f - rowCenterOffset(fontSize * 0.8f),
+                  Justify::CENTER, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), fontSize * 0.8f);
         return;
     }
 
     // Add background quad (normal brightness)
-    addBackgroundQuad(START_X, START_Y, backgroundWidth, backgroundHeight);
+    addBackgroundQuad(ORIGIN_X, ORIGIN_Y, backgroundWidth, backgroundHeight);
+    // No caption at all here -- not a title toggle switched off, NO title -- so
+    // nothing reaches the caption path, and that is what emits the body card
+    // the constructor asked for with m_bContentCard. Without this the flag drew
+    // nothing while still reserving the card's clearance (contentPaddingX reads the
+    // same flag), so a themed panel was a frame around bare content with an
+    // unexplained cell of padding inside it. Same call the captioned widgets make
+    // from their `else` branch.
+    //
+    // A sprite background opts a panel out of theming entirely, upstream of this
+    // (resolveActiveTheme), so on the widgets that ship with one this is inert until
+    // the sprite is switched off -- at which point they get the same treatment as
+    // every other widget instead of the one they had.
+    // check_hud_helpers.sh rule 10 fails the build if a new one forgets the call.
+    emitContentCard(0.0f);
 
-    float contentStartX = START_X + dims.paddingH;
-    float contentStartY = START_Y + padV;
+    float contentStartX = ORIGIN_X + padH;
+    float contentStartY = ORIGIN_Y + padV;
     float currentY = contentStartY;
-    float contentWidth = backgroundWidth - dims.paddingH * 2;
-    float scale = getScale();
+    float contentWidth = backgroundWidth - padH * 2;
     // ========================================================================
     // ROW 1: Triggers and Bumpers
     // ========================================================================
@@ -157,32 +223,32 @@ void GamepadWidget::rebuildRenderData() {
     float bumperHeight = bumperWidth * (layout.bumperHeight / layout.bumperWidth) * UI_ASPECT_RATIO;
 
     // Left trigger (LT) - with offset
-    float ltOffsetX = layout.leftTriggerX * scale;
-    float ltOffsetY = layout.leftTriggerY * scale;
+    float ltOffsetX = layout.leftTriggerX * u;
+    float ltOffsetY = layout.leftTriggerY * u;
     float ltCenterX = contentStartX + triggerWidth / 2 + ltOffsetX;
     float ltCenterY = triggerCenterY + ltOffsetY;
     addTriggerButton(ltCenterX, ltCenterY, triggerWidth, triggerHeight,
                      xinput.leftTrigger, true);
 
     // Left bumper (LB) - with offset
-    float lbOffsetX = layout.leftBumperX * scale;
-    float lbOffsetY = layout.leftBumperY * scale;
-    float lbCenterX = contentStartX + triggerWidth + dims.gridH(1) + bumperWidth / 2 + lbOffsetX;
+    float lbOffsetX = layout.leftBumperX * u;
+    float lbOffsetY = layout.leftBumperY * u;
+    float lbCenterX = contentStartX + triggerWidth + charW + bumperWidth / 2 + lbOffsetX;
     float lbCenterY = triggerCenterY + lbOffsetY;
     addBumperButton(lbCenterX, lbCenterY, bumperWidth, bumperHeight,
                     xinput.leftShoulder, true);
 
     // Right bumper (RB) - with offset
-    float rbOffsetX = layout.rightBumperX * scale;
-    float rbOffsetY = layout.rightBumperY * scale;
-    float rbCenterX = contentStartX + contentWidth - triggerWidth - dims.gridH(1) - bumperWidth / 2 + rbOffsetX;
+    float rbOffsetX = layout.rightBumperX * u;
+    float rbOffsetY = layout.rightBumperY * u;
+    float rbCenterX = contentStartX + contentWidth - triggerWidth - charW - bumperWidth / 2 + rbOffsetX;
     float rbCenterY = triggerCenterY + rbOffsetY;
     addBumperButton(rbCenterX, rbCenterY, bumperWidth, bumperHeight,
                     xinput.rightShoulder, false);
 
     // Right trigger (RT) - with offset
-    float rtOffsetX = layout.rightTriggerX * scale;
-    float rtOffsetY = layout.rightTriggerY * scale;
+    float rtOffsetX = layout.rightTriggerX * u;
+    float rtOffsetY = layout.rightTriggerY * u;
     float rtCenterX = contentStartX + contentWidth - triggerWidth / 2 + rtOffsetX;
     float rtCenterY = triggerCenterY + rtOffsetY;
     addTriggerButton(rtCenterX, rtCenterY, triggerWidth, triggerHeight,
@@ -194,19 +260,19 @@ void GamepadWidget::rebuildRenderData() {
     // ROW 2: Analog Sticks
     // ========================================================================
     // Use stickWidthForLayout for X positioning (preserves original positions)
-    float stickSpacing = PluginUtils::calculateMonospaceTextWidth(STICK_SPACING_CHARS, dims.fontSize);
+    float stickSpacing = STICK_SPACING_CHARS * charW;
 
     // Left stick - with offset
-    float lsOffsetX = layout.leftStickX * scale;
-    float lsOffsetY = layout.leftStickY * scale;
+    float lsOffsetX = layout.leftStickX * u;
+    float lsOffsetY = layout.leftStickY * u;
     float leftStickCenterX = contentStartX + stickWidthForLayout / 2 + lsOffsetX;
     float leftStickCenterY = currentY + stickHeight / 2 + lsOffsetY;
     addStick(leftStickCenterX, leftStickCenterY, xinput.leftStickX, xinput.leftStickY,
              stickWidthForLayout, stickHeight, backgroundWidth, layout, xinput.leftThumb);
 
     // Right stick - with offset
-    float rsOffsetX = layout.rightStickX * scale;
-    float rsOffsetY = layout.rightStickY * scale;
+    float rsOffsetX = layout.rightStickX * u;
+    float rsOffsetY = layout.rightStickY * u;
     float rightStickCenterX = contentStartX + stickWidthForLayout + stickSpacing + stickWidthForLayout / 2 + rsOffsetX;
     float rightStickCenterY = currentY + stickHeight / 2 + rsOffsetY;
     addStick(rightStickCenterX, rightStickCenterY, xinput.rightStickX, xinput.rightStickY,
@@ -220,8 +286,8 @@ void GamepadWidget::rebuildRenderData() {
     float buttonRowY = currentY + lineH * 0.15f;
 
     // D-Pad (left side, aligned with left stick) - with offset
-    float dpadOffsetX = layout.dpadX * scale;
-    float dpadOffsetY = layout.dpadY * scale;
+    float dpadOffsetX = layout.dpadX * u;
+    float dpadOffsetY = layout.dpadY * u;
     float dpadCenterX = contentStartX + stickWidthForLayout / 2 + dpadOffsetX;
     float dpadCenterY = buttonRowY + lineH * 0.9f + dpadOffsetY;
 
@@ -243,8 +309,8 @@ void GamepadWidget::rebuildRenderData() {
                   xinput.dpadRight, 1);
 
     // Menu buttons (center - Back and Start) - with offset
-    float menuOffsetX = layout.menuButtonsX * scale;
-    float menuOffsetY = layout.menuButtonsY * scale;
+    float menuOffsetX = layout.menuButtonsX * u;
+    float menuOffsetY = layout.menuButtonsY * u;
     float menuBtnWidth = backgroundWidth * (layout.menuButtonWidth / layout.backgroundWidth);
     float menuBtnHeight = menuBtnWidth * (layout.menuButtonHeight / layout.menuButtonWidth) * UI_ASPECT_RATIO;
     float menuCenterX = contentStartX + contentWidth / 2 + menuOffsetX;
@@ -260,8 +326,8 @@ void GamepadWidget::rebuildRenderData() {
                   menuBtnWidth, menuBtnHeight, xinput.buttonStart);
 
     // Face buttons (right side, aligned with right stick) - diamond layout - with offset
-    float faceOffsetX = layout.faceButtonsX * scale;
-    float faceOffsetY = layout.faceButtonsY * scale;
+    float faceOffsetX = layout.faceButtonsX * u;
+    float faceOffsetY = layout.faceButtonsY * u;
     float faceButtonSize = backgroundWidth * (layout.faceButtonSize / layout.backgroundWidth) * UI_ASPECT_RATIO;
     float faceCenterX = contentStartX + stickWidthForLayout + stickSpacing + stickWidthForLayout / 2 + faceOffsetX;
     float faceCenterY = buttonRowY + lineH * 0.9f + faceOffsetY;
@@ -279,14 +345,12 @@ void GamepadWidget::rebuildRenderData() {
 
 void GamepadWidget::addStick(float centerX, float centerY, float stickX, float stickY,
                               float width, float height, float backgroundWidth,
-                              const LayoutConfig& layout, bool isPressed) {
+                              const GamepadLayout::PadGeometry& layout, bool isPressed) {
     float ox = centerX, oy = centerY;
     applyOffset(ox, oy);
 
     // Try to use stick sprite texture
-    int spriteIndex = (m_textureVariant > 0)
-        ? AssetManager::getInstance().getSpriteIndex("gamepad_stick", m_textureVariant)
-        : 0;
+    int spriteIndex = packSprite(GamepadSprite::STICK);
 
     // Calculate stick position - reduced movement range (30% of area)
     float moveRange = 0.3f;
@@ -341,16 +405,15 @@ void GamepadWidget::addFaceButton(float centerX, float centerY, float size, bool
         else if (strcmp(label, "Y") == 0) buttonIndex = 4;
     }
 
-    // Find per-button sprites (e.g., gamepad_face_button_1_2.tga, gamepad_face_button_1_pressed_2.tga)
+    // Per-button art from the pack: face_button_<n>.tga and face_button_<n>_pressed.tga.
+    // The two runs are contiguous in GamepadSprite::Part (static_assert'd there), so
+    // the button number indexes straight into each.
     int unpressedSprite = 0;
     int pressedSprite = 0;
-    if (m_textureVariant > 0 && buttonIndex > 0) {
-        char spriteName[48];
-        snprintf(spriteName, sizeof(spriteName), "gamepad_face_button_%d", buttonIndex);
-        unpressedSprite = AssetManager::getInstance().getSpriteIndex(spriteName, m_textureVariant);
-
-        snprintf(spriteName, sizeof(spriteName), "gamepad_face_button_%d_pressed", buttonIndex);
-        pressedSprite = AssetManager::getInstance().getSpriteIndex(spriteName, m_textureVariant);
+    if (buttonIndex > 0) {
+        const int n = buttonIndex - 1;
+        unpressedSprite = packSprite(static_cast<GamepadSprite::Part>(GamepadSprite::FACE_1 + n));
+        pressedSprite = packSprite(static_cast<GamepadSprite::Part>(GamepadSprite::FACE_1_PRESSED + n));
     }
 
     SPluginQuad_t buttonQuad;
@@ -379,10 +442,7 @@ void GamepadWidget::addDpadButton(float centerX, float centerY, float width, flo
     float ox = centerX, oy = centerY;
     applyOffset(ox, oy);
 
-    // Get sprite index for gamepad_dpad_button texture
-    int spriteIndex = (m_textureVariant > 0)
-        ? AssetManager::getInstance().getSpriteIndex("gamepad_dpad_button", m_textureVariant)
-        : 0;
+    int spriteIndex = packSprite(GamepadSprite::DPAD_BUTTON);
 
     SPluginQuad_t buttonQuad;
     if (spriteIndex > 0) {
@@ -460,7 +520,7 @@ void GamepadWidget::addTriggerButton(float centerX, float centerY, float width, 
     float hh = height / 2.0f;
 
     // Fill mode: draw trigger shape with quads that fill from bottom to top
-    if (getCurrentLayout().triggerFillMode == 1) {
+    if (m_triggerFillMode == 1) {
         // SVG-accurate trigger shape using multiple segments
         // Based on the SVG path: 89x61 viewBox with curved outer edge
         // The outer edge (left for LT, right for RT) curves inward at the top
@@ -592,11 +652,7 @@ void GamepadWidget::addTriggerButton(float centerX, float centerY, float width, 
         }
     } else {
         // Fade mode (default): use texture with brightness interpolation
-        int spriteIndex = 0;
-        if (m_textureVariant > 0) {
-            const char* textureName = isLeft ? "gamepad_trigger_button_l" : "gamepad_trigger_button_r";
-            spriteIndex = AssetManager::getInstance().getSpriteIndex(textureName, m_textureVariant);
-        }
+        int spriteIndex = packSprite(isLeft ? GamepadSprite::TRIGGER_L : GamepadSprite::TRIGGER_R);
 
         SPluginQuad_t buttonQuad;
         if (spriteIndex > 0) {
@@ -634,12 +690,7 @@ void GamepadWidget::addBumperButton(float centerX, float centerY, float width, f
     float ox = centerX, oy = centerY;
     applyOffset(ox, oy);
 
-    // Get sprite index for bumper texture
-    int spriteIndex = 0;
-    if (m_textureVariant > 0) {
-        const char* textureName = isLeft ? "gamepad_bumper_button_l" : "gamepad_bumper_button_r";
-        spriteIndex = AssetManager::getInstance().getSpriteIndex(textureName, m_textureVariant);
-    }
+    int spriteIndex = packSprite(isLeft ? GamepadSprite::BUMPER_L : GamepadSprite::BUMPER_R);
 
     SPluginQuad_t buttonQuad;
     if (spriteIndex > 0) {
@@ -668,14 +719,12 @@ void GamepadWidget::addMenuButton(float centerX, float centerY, float width, flo
     float ox = centerX, oy = centerY;
     applyOffset(ox, oy);
 
-    // Get sprite index for menu button texture, fall back to face_button if not available
-    int spriteIndex = 0;
-    if (m_textureVariant > 0) {
-        spriteIndex = AssetManager::getInstance().getSpriteIndex("gamepad_menu_button", m_textureVariant);
-        if (spriteIndex == 0) {
-            spriteIndex = AssetManager::getInstance().getSpriteIndex("gamepad_face_button", m_textureVariant);
-        }
-    }
+    // Menu button art, falling back to the pack's generic face button. A pack is only
+    // accepted with its whole sprite set present, so this fallback is now vestigial --
+    // kept because it costs nothing and is the correct behaviour if a future pack
+    // format ever makes menu_button optional.
+    int spriteIndex = packSprite(GamepadSprite::MENU_BUTTON);
+    if (spriteIndex == 0) spriteIndex = packSprite(GamepadSprite::FACE);
 
     SPluginQuad_t buttonQuad;
     if (spriteIndex > 0) {
@@ -696,107 +745,21 @@ void GamepadWidget::addMenuButton(float centerX, float centerY, float width, flo
 }
 
 void GamepadWidget::resetToDefaults() {
+    // NEVER THEMED, by default -- same reasoning as RadarHud: this widget is a pad
+    // TEXTURE with the buttons lit on top of it, so the art is the panel and a themed
+    // frame around it is decoration around decoration. See the note there for why this
+    // is the override rather than deleted code paths.
+    setThemeOverride(THEME_NONE);
     m_bVisible = false;  // Hidden by default
     m_bShowTitle = false;  // No title (overlays gamepad texture)
-    setTextureVariant(1);  // Default to texture variant 1
+    // The pad artwork IS this widget. Through the setter, not the member: it owns the
+    // theme-memo invalidation a background texture needs (and check_hud_helpers.sh
+    // fails the build on a HUD touching the member directly).
+    setShowBackgroundTexture(true);
+    m_gamepadPack = AssetManager::DEFAULT_GAMEPAD;
+    m_triggerFillMode = 0;
     m_fBackgroundOpacity = 1.0f;  // 100% opacity
     m_fScale = 1.0f;
-    setPosition(0.374f, 0.72748f);
-    // Reset layouts to defaults
-    initDefaultLayouts();
+    setPosition(cellsX(68), cellsY(62));
     setDataDirty();
-}
-
-GamepadWidget::LayoutConfig& GamepadWidget::getLayout(int variant) {
-    // If layout doesn't exist, create with defaults
-    if (m_layouts.find(variant) == m_layouts.end()) {
-        m_layouts[variant] = LayoutConfig{};
-    }
-    return m_layouts[variant];
-}
-
-const GamepadWidget::LayoutConfig& GamepadWidget::getCurrentLayout() const {
-    auto it = m_layouts.find(m_textureVariant);
-    if (it != m_layouts.end()) {
-        return it->second;
-    }
-    // Fallback to default layout
-    static LayoutConfig defaultLayout;
-    return defaultLayout;
-}
-
-void GamepadWidget::initDefaultLayouts() {
-    m_layouts.clear();
-
-    // Layout for variant 1 (Xbox controller, 750x630 texture)
-    LayoutConfig& layout1 = m_layouts[1];
-    layout1.backgroundWidth = 750.0f;
-    layout1.backgroundHeight = 630.0f;
-    layout1.triggerWidth = 89.0f;
-    layout1.triggerHeight = 61.0f;
-    layout1.bumperWidth = 171.0f;
-    layout1.bumperHeight = 63.0f;
-    layout1.dpadWidth = 32.0f;
-    layout1.dpadHeight = 53.0f;
-    layout1.faceButtonSize = 47.0f;
-    layout1.menuButtonWidth = 33.0f;
-    layout1.menuButtonHeight = 33.0f;
-    layout1.stickSize = 83.0f;
-    layout1.leftTriggerX = 0.041f;
-    layout1.leftTriggerY = 0.0143f;
-    layout1.rightTriggerX = -0.041f;
-    layout1.rightTriggerY = 0.0143f;
-    layout1.leftBumperX = -0.01f;
-    layout1.leftBumperY = 0.0573f;
-    layout1.rightBumperX = 0.01f;
-    layout1.rightBumperY = 0.0573f;
-    layout1.leftStickX = 0.015f;
-    layout1.leftStickY = 0.0563f;
-    layout1.rightStickX = -0.049f;
-    layout1.rightStickY = 0.1263f;
-    layout1.dpadX = 0.0473f;
-    layout1.dpadY = 0.0408f;
-    layout1.faceButtonsX = -0.0162f;
-    layout1.faceButtonsY = -0.0343f;
-    layout1.menuButtonsX = 0.0004f;
-    layout1.menuButtonsY = -0.0393f;
-    layout1.dpadSpacing = 0.95f;
-    layout1.faceButtonSpacing = 1.07f;
-    layout1.menuButtonSpacing = 1.14f;
-
-    // Layout for variant 2 (PS4 controller, 806x599 texture)
-    LayoutConfig& layout2 = m_layouts[2];
-    layout2.backgroundWidth = 806.0f;
-    layout2.backgroundHeight = 599.0f;
-    layout2.triggerWidth = 99.0f;
-    layout2.triggerHeight = 91.0f;
-    layout2.bumperWidth = 99.0f;
-    layout2.bumperHeight = 22.0f;
-    layout2.dpadWidth = 32.0f;
-    layout2.dpadHeight = 45.0f;
-    layout2.faceButtonSize = 50.0f;
-    layout2.menuButtonWidth = 27.0f;
-    layout2.menuButtonHeight = 45.0f;
-    layout2.stickSize = 94.0f;
-    layout2.leftTriggerX = 0.0238f;
-    layout2.leftTriggerY = -0.0221f;
-    layout2.rightTriggerX = -0.0238f;
-    layout2.rightTriggerY = -0.0221f;
-    layout2.leftBumperX = -0.0133f;
-    layout2.leftBumperY = 0.012f;
-    layout2.rightBumperX = 0.0133f;
-    layout2.rightBumperY = 0.012f;
-    layout2.leftStickX = 0.0398f;
-    layout2.leftStickY = 0.0873f;
-    layout2.rightStickX = -0.041f;
-    layout2.rightStickY = 0.0873f;
-    layout2.dpadX = 0.001f;
-    layout2.dpadY = -0.066f;
-    layout2.faceButtonsX = -0.0023f;
-    layout2.faceButtonsY = -0.066f;
-    layout2.menuButtonsX = 0.0001f;
-    layout2.menuButtonsY = -0.1195f;
-    layout2.dpadSpacing = 1.55f;
-    layout2.faceButtonSpacing = 1.15f;
-    layout2.menuButtonSpacing = 5.51f;
 }

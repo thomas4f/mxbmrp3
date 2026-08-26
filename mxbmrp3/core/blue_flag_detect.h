@@ -41,27 +41,43 @@
 
 namespace BlueFlag {
 
-// One rider's contribution. The two role flags are deliberately separate
-// because the roles have DIFFERENT eligibility, and conflating them changes
-// behaviour: a BACKMARKER (the one shown a blue flag) must not be excluded or
-// finished, but a LAPPER only needs a fresh position sample — a rider who has
-// already finished, or is in the pits, can still be the reason someone ahead of
-// them on track is being lapped.
+// One rider's contribution. The role flags are deliberately separate because
+// the roles have DIFFERENT eligibility, and conflating them changes behaviour:
+// a BACKMARKER (the one shown a blue flag) must not be excluded or finished; a
+// LAPPER needs a fresh position sample and must not be FINISHED — but MAY be
+// otherwise excluded (pit lane), since a rider on pit exit can still be the
+// reason someone ahead of them on track is being lapped.
+//
+// WHY A FINISHED LAPPER DOESN'T COUNT. `laps` is the LIVE count, and it stops
+// meaning "race progress" the moment the leader takes the flag: a finished
+// rider keeps completing cool-down laps, while everyone still racing is one
+// crossing behind by definition. Feed that in raw and P2, racing to the flag
+// on the lead lap, reads as "being lapped" by the winner cruising to the pits
+// — and the phantom deficit grows every cool-down lap. Nobody needs to yield
+// to a rider whose race is over, so the finished are no lappers. (A finished
+// BACKMARKER was always excluded; this is the same rule on the other role.)
+// Before the leader finishes nobody is finished, so this is provably inert
+// during the race itself. Pinned by the "finished riders lap nobody" cases in
+// test_blue_flag_detect.cpp.
 struct Rider {
     int raceNum = 0;
     int laps = 0;
     float trackPos = 0.0f;          // 0..1 along the centerline
     bool active = false;            // has a fresh track-position sample this batch
     bool eligibleBackmarker = false;  // not excluded from detection, not finished
+    bool finished = false;          // has taken the checkered — bars the LAPPER role
 };
 
 // The display rider, for the mirror case ("am I the one doing the lapping?").
-// active=false disables that half without affecting anything else.
+// active=false disables that half without affecting anything else. `finished`
+// bars the mirror the same way it bars the lapper role: a player cruising
+// after the flag is not "lapping" the backmarkers they roll past.
 struct Player {
     int raceNum = -1;
     int laps = -1;
     float trackPos = 0.0f;
     bool active = false;
+    bool finished = false;
 };
 
 // Track-position distance from `behind` forward to `ahead`, wrapping through
@@ -105,7 +121,7 @@ inline void detect(const std::vector<Rider>& riders,
         // Mirror case: is the display rider the lapper closing on this
         // backmarker from behind? Folded into the same pass so the common
         // "player is lapping someone" question costs no extra traversal.
-        if (player.active && !playerLapping
+        if (player.active && !player.finished && !playerLapping
             && player.raceNum != rider.raceNum && player.laps > rider.laps) {
             if (distanceBehind(player.trackPos, rider.trackPos) <= awarenessThreshold) {
                 playerLapping = true;
@@ -116,8 +132,9 @@ inline void detect(const std::vector<Rider>& riders,
             if (other.raceNum == rider.raceNum) continue;
             if (other.laps < rider.laps + 1) continue;
             // A stale position may be from a previous lap, which would read as
-            // false proximity — so a lapper must have a fresh sample.
-            if (!other.active) continue;
+            // false proximity — so a lapper must have a fresh sample. And a
+            // finished rider laps nobody (see the struct comment).
+            if (!other.active || other.finished) continue;
 
             if (distanceBehind(other.trackPos, rider.trackPos) <= awarenessThreshold) {
                 blueFlagged.insert(rider.raceNum);

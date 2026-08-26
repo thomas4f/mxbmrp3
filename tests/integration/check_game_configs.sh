@@ -43,7 +43,7 @@ INCS="-I${HERE}/shim -I${SRC}"
 # reason (signatures are the game's, and the names document the contract) —
 # applied per-file below rather than to everything, so the shared sources are
 # held to the full bar.
-FLAGS="-std=c++17 -m64 -O1 -Wall -Wextra -Werror -Wno-unknown-pragmas -fsyntax-only ${BASE_DEFS} ${INCS}"
+FLAGS="-std=c++17 -m64 -O1 -Wall -Wextra -Werror -Wshadow=local -Wno-unknown-pragmas -fsyntax-only ${BASE_DEFS} ${INCS}"
 
 # The shared sources every game compiles (matches the cross-build's glob). Exclude
 # discord_manager (GAME_HAS_DISCORD=0 in the test build — the cross-build drops it too).
@@ -87,6 +87,13 @@ printf 'void mxb_canary_var() { int unusedCanary = 0; }\n' \
     > "${selftest_dir}/canary_var.cpp"
 printf 'void mxb_canary_param(int unusedCanaryParam) { }\n' \
     > "${selftest_dir}/canary_param.cpp"
+# A LOCAL SHADOWING A LOCAL, which is in neither -Wall nor -Wextra: it needs
+# -Wshadow=local to be present by name, so the first two canaries cannot speak
+# for it. This is the diagnostic that mirrors MSVC's C4456 — the shipping
+# compiler errors on it under /WX, so a green run here without this flag means
+# the user's build breaks and ours does not.
+printf 'int mxb_canary_shadow(int v) { int c = v; { int c = 1; v += c; } return v + c; }\n' \
+    > "${selftest_dir}/canary_shadow.cpp"
 
 # $1 = canary file, $2 = what a clean compile would mean
 check_canary() {
@@ -107,6 +114,9 @@ check_canary "${selftest_dir}/canary_var.cpp" \
 # EXEMPT_RULE's pattern.
 check_canary "${selftest_dir}/canary_param.cpp" \
     "An unused PARAMETER was accepted at a non-piboso path: the exemption has widened."
+# Catches -Wshadow=local going missing (it is not implied by -Wall/-Wextra).
+check_canary "${selftest_dir}/canary_shadow.cpp" \
+    "A local shadowing a local was accepted: -Wshadow=local is not live, and MSVC's C4456 will fail the shipping build instead."
 
 rc=0
 for cfg in "${CONFIGS[@]}"; do

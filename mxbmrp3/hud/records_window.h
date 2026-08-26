@@ -85,4 +85,42 @@ inline Range computeContext(int totalRecords, int playerPosition,
     return r;
 }
 
+// ---------------------------------------------------------------------------
+// PANEL WIDTH, in characters. Here rather than inline in rebuildRenderData for the
+// same reason the window above is: it is integer arithmetic over the column set, and
+// the only bug it has had cannot be seen in the numbers -- only in a themed render.
+//
+// EVERY ENABLED COLUMN CONTRIBUTES ITS FULL WIDTH, gap included, the last one too.
+// That trailing gap is the last column's right CLEARANCE inside the panel, not waste:
+// without it the panel is exactly as wide as its content, so the lap time's final
+// digit lands on the same pixel as the player row's highlight band. Measured at 1px
+// of clearance before, 10 after. It only showed with a THEME installed back when the
+// highlight spanned the card's interior (it spans the CONTENT COLUMN now, so the
+// clearance is the column's either way) -- which is why it survived until a user
+// reported it, and why this is worth a test rather than a comment. StandingsHud has
+// always summed its widths this way.
+//
+// Pinned by tests/unit/test_records_window.cpp.
+struct ColumnWidths {
+    int pos = 0, rider = 0, bike = 0, sector = 0, laptime = 0, date = 0;
+};
+struct ColumnFlags {
+    bool pos = false, rider = false, bike = false, sectors = false;
+    bool laptime = false, date = false;
+};
+
+// minChars: the controls row (provider / category / Compare) sets a floor the columns
+// may be narrower than.
+inline int backgroundWidthChars(const ColumnWidths& w, const ColumnFlags& on,
+                                int sectorCount, int minChars) {
+    int chars = 0;
+    if (on.pos)     chars += w.pos;
+    if (on.rider)   chars += w.rider;
+    if (on.bike)    chars += w.bike;
+    if (on.sectors) chars += w.sector * sectorCount;
+    if (on.laptime) chars += w.laptime;
+    if (on.date)    chars += w.date;
+    return std::max(chars, minChars);
+}
+
 }  // namespace RecordsWindow

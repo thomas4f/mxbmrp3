@@ -3,6 +3,7 @@
 // Settings interface for configuring which columns/rows are visible in HUDs
 // ============================================================================
 #include "settings_hud.h"
+#include "settings/whats_new.h"
 #include "settings/settings_layout.h"
 #include "telemetry_hud.h"
 #include "rumble_hud.h"
@@ -76,6 +77,8 @@ bool SettingsHud::isRepeatableRegionType(ClickRegion::Type type) {
         case ClickRegion::COPY_TARGET_DOWN:
         case ClickRegion::TEXTURE_VARIANT_UP:
         case ClickRegion::TEXTURE_VARIANT_DOWN:
+        case ClickRegion::HUD_THEME_UP:
+        case ClickRegion::HUD_THEME_DOWN:
         case ClickRegion::BACKGROUND_OPACITY_UP:
         case ClickRegion::BACKGROUND_OPACITY_DOWN:
         case ClickRegion::SCALE_UP:
@@ -169,7 +172,7 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, FriendsHud* f
                          StandingsHud* standings,
                          PerformanceHud* performance,
                          TelemetryHud* telemetry,
-                         TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesHud* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean, GForceWidget* gforce, CompassWidget* compass,
+                         TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, CrashWidget* crash, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesHud* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean, GForceWidget* gforce, CompassWidget* compass,
                          FmxHud* fmxHud,
                          StatsHud* statsHud,
                          EventLogHud* eventLog,
@@ -198,6 +201,7 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, FriendsHud* f
       m_radarHud(radarHud),
       m_speed(speed),
       m_gear(gear),
+      m_crash(crash),
       m_speedo(speedo),
       m_tacho(tacho),
       m_timing(timing),
@@ -260,7 +264,35 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, FriendsHud* f
       m_holdRepeatCount(0),
       m_holdSavePending(false)
 {
+    // No caption on this panel -- see BaseHud::m_titleSupported.
+    disableTitle();
     DEBUG_INFO("SettingsHud created");
+    // The one panel of this kind, and the only thing that makes a theme's
+    // [card] settings-title-band / settings-content reachable. Without it this
+    // panel inherits PanelKind::Hud and BOTH those keys parse, store and then
+    // govern nothing -- while the menu silently follows the hud-* pair instead.
+    // Found by perturbing every theme key and diffing the render: they were the
+    // only two that moved no pixels for a reason other than scene coverage.
+    m_panelKind = PanelKind::Settings;
+    // THIS PANEL'S CONTENT IS CARDED, which it always was -- it just used to emit
+    // the cards itself. Now that its body is declared to PanelBox, the pair says
+    // the same thing to the engine: `settings-content` decides whether the cards
+    // draw (contentCardKind reads the Settings family), and the engine draws one
+    // per section of BOTH columns.
+    m_bContentCard = true;
+    m_bContentSections = true;
+    // THE MENU IS ALWAYS CAPTIONED. m_bShowTitle is a per-HUD setting with a row in
+    // this very panel; the panel itself has no such row and no section in the
+    // profile, so its flag is whatever the base class left -- and the old code
+    // never asked, drawing the caption with a bare addString. Going through
+    // addPlanTitle asks, so the answer has to be stated rather than inherited.
+    m_bShowTitle = true;
+    // This panel's cards sit in two COLUMNS (tab groups left, section cards
+    // right), so the fill complement is gutters plus per-column gaps rather than
+    // full-width strips -- see NineSlice::cutFill. Budget: 3 gutters + 4 tab-column
+    // gaps + a gap per content section + 1, comfortably under 24 on the busiest
+    // tab today. Outrunning it degrades to the uniform stacked fill, not a hole.
+    m_fillReserve = 24;
     setDraggable(true);
 
     // Pre-allocate vectors
@@ -280,12 +312,61 @@ void SettingsHud::show() {
 
     m_bVisible = true;
 
+    // Re-measure on OPEN as well as on layout changes: a tab whose rows follow live
+    // data (Riders lists the session's entries) can have changed while the menu was
+    // closed, and none of that dirties the layout.
+    invalidateTallestTab();
+
     // Rebuild UI
     rebuildRenderData();
 }
 
+// Dismiss a hovered row's what's-new band, and mark the settings dirty when that
+// actually changed something.
+//
+// ONE OWNER for the pair, because the mark is the half that is easy to leave out
+// and impossible to see: hovering a row touches nothing else in the panel, so
+// without it the flag stays clear, flushIfDirty is a no-op at the next pit stop,
+// and every marker the player dismissed is back on the next launch, forever. The
+// test hook calls THIS rather than WhatsNew::dismissRow -- it used to call the
+// latter, which meant the persistence test drove a path with no mark in it and
+// went green against exactly the bug it exists to catch.
+//
+// Guarded on the return so the pointer crossing rows does not rewrite the settings
+// file once per row.
+void SettingsHud::dismissMarkedRow(const char* tooltipId) {
+    if (WhatsNew::dismissRow(m_activeTab, tooltipId)) markSettingsDirty();
+}
+
 void SettingsHud::hide() {
+    // ONLY ON A REAL CLOSE. The constructor ends with hide() to start the panel
+    // hidden, and hide() dismisses the open tab -- so unguarded, every launch
+    // dismissed TAB_GENERAL (m_activeTab's initial value) before the settings file
+    // had even loaded. A file carrying whatsNewSeen then overwrote it on load and
+    // hid the bug; a file WITHOUT that key (fresh install, or any 1.28 INI) kept it
+    // and saved it, permanently spending the General tab's next marker on a player
+    // who was never shown one. Latent today only because no marker names that tab.
+    const bool wasVisible = m_bVisible;  // vis-gate: transition edge, not a render gate
     m_bVisible = false;
+    // The tab that was open when the panel closed counts as seen, which the CLICK
+    // path alone would miss: the menu reopens on the last-focused tab, so a player
+    // who always lands on the same one never clicks it, and its "New" tag would
+    // outlive every other. Dismissed on close rather than on open so the tag is
+    // still there while they are looking at it.
+    //
+    // markSettingsDirty for the same reason the hover path does it: closing the menu
+    // is not itself an edit, so nothing else would ever write this to disk.
+    if (wasVisible && WhatsNew::dismissTab(m_activeTab)) markSettingsDirty();
+    // ...and the Updates tab's "Update" tag, on the same edge and for the same
+    // reason: the player has seen what it was pointing at. Keyed on the VERSION
+    // (markUpdateTagSeen), so a newer release re-arms it without anything here
+    // knowing that happened.
+    if (wasVisible && m_activeTab == TAB_UPDATES &&
+        UpdateChecker::getInstance().shouldShowUpdateTag()) {
+        UpdateChecker::getInstance().markUpdateTagSeen();
+        markSettingsDirty();
+    }
+    disarmResets();
     clearStrings();
     m_quads.clear();
     m_clickRegions.clear();
@@ -307,7 +388,7 @@ void SettingsHud::update() {
 
     // Process dirty flag first (e.g., from showUpdatesTab() or external tab switch)
     if (isDataDirty()) {
-        rebuildRenderData();
+        rebuildAndRecord();
         clearDataDirty();
     }
 
@@ -316,7 +397,7 @@ void SettingsHud::update() {
     bool dirtyNow = SettingsManager::getInstance().isDirty();
     if (dirtyNow != m_lastSettingsDirty) {
         m_lastSettingsDirty = dirtyNow;
-        rebuildRenderData();
+        rebuildAndRecord();
     }
 
     // Check for window resize (need to rebuild click regions with new coordinates)
@@ -328,7 +409,7 @@ void SettingsHud::update() {
         // Window resized - rebuild everything to update click regions
         m_cachedWindowWidth = currentWidth;
         m_cachedWindowHeight = currentHeight;
-        rebuildRenderData();
+        rebuildAndRecord();
         DEBUG_INFO_F("SettingsHud rebuilt after window resize: %dx%d", currentWidth, currentHeight);
         return;  // Skip other processing this frame
     }
@@ -379,6 +460,13 @@ void SettingsHud::update() {
                 // Use tooltipId from region if set (Phase 3), otherwise fall back to type-based lookup
                 if (!region.tooltipId.empty()) {
                     m_hoveredTooltipId = region.tooltipId;
+                    // Hovering a marked row is what dismisses its band: the player
+                    // has the pointer on it, which is all the marker was asking for.
+                    // Here because this is the ONE place a hovered row's identity is
+                    // resolved -- doing it per row helper would be the same test in
+                    // a dozen places, drifting.
+                    //
+                    dismissMarkedRow(region.tooltipId.c_str());
                 } else {
                     const char* tooltipId = getTooltipIdForRegion(region.type, m_activeTab);
                     m_hoveredTooltipId = tooltipId ? tooltipId : "";
@@ -386,7 +474,7 @@ void SettingsHud::update() {
             } else {
                 m_hoveredTooltipId.clear();
             }
-            rebuildRenderData();  // Rebuild to update button backgrounds and tooltip
+            rebuildAndRecord();  // Rebuild to update button backgrounds and tooltip
         }
 
         // For hotkeys tab, track row and column hover
@@ -430,7 +518,7 @@ void SettingsHud::update() {
             if (newHoveredRow != m_hoveredHotkeyRow || newHoveredColumn != m_hoveredHotkeyColumn) {
                 m_hoveredHotkeyRow = newHoveredRow;
                 m_hoveredHotkeyColumn = newHoveredColumn;
-                rebuildRenderData();
+                rebuildAndRecord();
             }
         }
 
@@ -458,7 +546,7 @@ void SettingsHud::update() {
 
             if (newHoveredRiderIndex != m_hoveredTrackedRiderIndex) {
                 m_hoveredTrackedRiderIndex = newHoveredRiderIndex;
-                rebuildRenderData();
+                rebuildAndRecord();
             }
         }
     }
@@ -576,16 +664,16 @@ void SettingsHud::update() {
         // Check for ESC to cancel capture
         if ((GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0) {
             hotkeyMgr.cancelCapture();
-            rebuildRenderData();
+            rebuildAndRecord();
         }
         // Rebuild every frame during capture to show real-time modifier feedback
         else {
-            rebuildRenderData();
+            rebuildAndRecord();
         }
     }
     // Check if capture completed (must be outside isCapturing block - capture ends same frame)
     if (hotkeyMgr.wasCaptureCompleted()) {
-        rebuildRenderData();
+        rebuildAndRecord();
         // Mark dirty after a binding change (persisted on leave-track).
         markSettingsDirty();
     }
@@ -625,6 +713,14 @@ void SettingsHud::update() {
 void SettingsHud::rebuildLayout() {
     // Rebuild everything for layout changes (dragging, scale, etc.)
     // Given the complexity of tabs and dynamic controls, full rebuild is simplest
+    //
+    // NO invalidateTallestTab() HERE. This runs on every frame of a drag -- a drag
+    // is a position change and arrives as a layout dirty exactly like a scale change
+    // does -- and dropping the measurement made the next rebuild re-lay all
+    // twenty-eight tabs, per frame, to re-derive a number that a drag cannot move.
+    // The measurement is keyed on what actually moves it now (SettingsHud::TallestKey:
+    // the row metrics and the theme generation), so a scale or theme change still
+    // re-measures and a drag does not.
     if (m_bVisible) {  // vis-gate: menu is active-surface-only (see show())
         rebuildRenderData();
     }
@@ -656,7 +752,18 @@ void SettingsHud::setActiveTabByName(const char* name) {
         if (std::strcmp(getTabName(t), name) == 0) {
             // Ignore a tab that isn't available on this build (e.g. a saved "FMX" loaded on
             // karts) - keep the constructor default rather than landing on an empty tab.
-            if (isTabAvailable(t)) m_activeTab = t;
+            //
+            // REBUILT, like handleTabClick does: the two are the same event arriving by
+            // different routes (a click, or a restore / a test hook), and a tab change
+            // is the largest layout change this panel has. Without it the panel keeps
+            // drawing the PREVIOUS tab until something else dirties it -- which is what
+            // made settings_fit_test report one number for all twenty-eight tabs, the
+            // same stale reading twenty-eight times, and pass.
+            if (isTabAvailable(t) && t != m_activeTab) {
+                m_activeTab = t;
+                disarmResets();
+                rebuildRenderData();
+            }
             return;
         }
     }

@@ -1,8 +1,9 @@
 // ============================================================================
 // tests/unit/test_settings_serde.cpp
-// The settings layer's enum<->string converters (core/settings_serde.h).
+// The settings layer's enum<->string converters (core/settings_serde.h and
+// the HUD-typed half in core/settings_serde_hud.h).
 //
-// WHY THIS MATTERS MORE THAN IT LOOKS. These 25 pairs are the entire on-disk
+// WHY THIS MATTERS MORE THAN IT LOOKS. These pairs are the entire on-disk
 // representation of every enum setting the plugin has. They are hand-written
 // twin switch statements — one mapping enum->text for the save, one mapping
 // text->enum for the load — and nothing but agreement between those two tables
@@ -25,9 +26,10 @@
 // This file compiles the REAL header, not a copy — see tests/unit/shim/ for the
 // handful of Win32 typedefs that lets it do so with a plain g++.
 // ============================================================================
+#include <vector>
 #include "doctest.h"
 
-#include "core/settings_serde.h"
+#include "core/settings_serde_hud.h"
 
 #include <string>
 
@@ -56,10 +58,18 @@ void checkRoundTrip(const char* label, ToStr toStr, ToEnum toEnum,
 }
 
 // Every stringTo* must return the caller's default for input it doesn't know.
+// `digitsAreJunk` is false for the ONE converter that legitimately reads a bare
+// number: labelMode accepts the ordinal the gap bar wrote before the three marker
+// HUDs agreed on a spelling, so "0" is a valid input there and asserting it falls
+// back would be asserting the migration is broken. Every other converter keeps the
+// numeric cases, which is what stops this being a blanket exemption.
 template <typename E, typename ToEnum>
-void checkUnknownFallsBackToDefault(const char* label, ToEnum toEnum, E a, E b) {
-    for (const char* junk : {"", " ", "\t", "off", "Off", "OFFF", "OF", "nonsense",
-                             "0", "-1", "ALWAYS_NOT_A_MODE", "ÅÄÖ"}) {
+void checkUnknownFallsBackToDefault(const char* label, ToEnum toEnum, E a, E b,
+                                    bool digitsAreJunk = true) {
+    std::vector<const char*> junkInputs = {"", " ", "\t", "off", "Off", "OFFF", "OF",
+                                           "nonsense", "ALWAYS_NOT_A_MODE", "ÅÄÖ"};
+    if (digitsAreJunk) { junkInputs.push_back("0"); junkInputs.push_back("-1"); }
+    for (const char* junk : junkInputs) {
         INFO(label << ": junk input \"" << junk << '"');
         // Asserted against TWO different defaults: a converter that ignored the
         // parameter and returned its own hardcoded fallback would satisfy one.
@@ -113,8 +123,8 @@ TEST_CASE("every enum<->string converter round-trips") {
         radarRiderColorModeToString, stringToRadarRiderColorMode,
         { RH::RiderColorMode::UNIFORM, RH::RiderColorMode::BRAND, RH::RiderColorMode::RELATIVE_POS });
 
-    checkRoundTrip<RH::LabelMode>("radarLabelMode", radarLabelModeToString, stringToRadarLabelMode,
-        { RH::LabelMode::NONE, RH::LabelMode::POSITION, RH::LabelMode::RACE_NUM, RH::LabelMode::BOTH });
+    // RadarHud::LabelMode is the same MarkerLabel::Mode as MapHud's since the
+    // marker_label.h extraction — the "labelMode" round-trip above covers it.
 
     checkRoundTrip<GapBarHud::RiderColorMode>("gapBarRiderColorMode",
         gapBarRiderColorModeToString, stringToGapBarRiderColorMode,
@@ -191,7 +201,13 @@ TEST_CASE("unknown text falls back to the CALLER's default, not a hardcoded one"
     checkUnknownFallsBackToDefault<MH::RiderColorMode>("riderColorMode", stringToRiderColorMode,
         MH::RiderColorMode::BRAND, MH::RiderColorMode::RELATIVE_POS);
     checkUnknownFallsBackToDefault<MH::LabelMode>("labelMode", stringToLabelMode,
-        MH::LabelMode::POSITION, MH::LabelMode::BOTH);
+        MH::LabelMode::POSITION, MH::LabelMode::BOTH, /*digitsAreJunk=*/false);
+    // ...and what it DOES do with a digit, so the exemption above cannot quietly
+    // become "labelMode accepts anything": 0..3 are the legacy ordinals, and a
+    // number outside that range is junk like any other.
+    CHECK(stringToLabelMode("2", MH::LabelMode::BOTH) == MH::LabelMode::RACE_NUM);
+    CHECK(stringToLabelMode("4", MH::LabelMode::BOTH) == MH::LabelMode::BOTH);
+    CHECK(stringToLabelMode("12", MH::LabelMode::BOTH) == MH::LabelMode::BOTH);
     checkUnknownFallsBackToDefault<MH::LabelAnchor>("labelAnchor", stringToLabelAnchor,
         MH::LabelAnchor::ABOVE, MH::LabelAnchor::RIGHT);
     checkUnknownFallsBackToDefault<MH::AnchorPoint>("anchorPoint", stringToAnchorPoint,
@@ -213,13 +229,11 @@ TEST_CASE("unknown text falls back to the CALLER's default, not a hardcoded one"
     checkUnknownFallsBackToDefault<uint8_t>("pitboardGapCompareMode", stringToPitboardGapCompareMode,
         PitboardHud::GAP_LEADER, PitboardHud::GAP_IDEAL);
 
-    // The remaining converters, so that ALL 25 have their fallback arm exercised
+    // The remaining converters, so that ALL of them have their fallback arm exercised
     // rather than a representative sample. Coverage showed the difference: the
     // unlisted ones were the only unhit lines left in the header.
     checkUnknownFallsBackToDefault<RH::RiderColorMode>("radarRiderColorMode",
         stringToRadarRiderColorMode, RH::RiderColorMode::BRAND, RH::RiderColorMode::RELATIVE_POS);
-    checkUnknownFallsBackToDefault<RH::LabelMode>("radarLabelMode", stringToRadarLabelMode,
-        RH::LabelMode::POSITION, RH::LabelMode::BOTH);
     checkUnknownFallsBackToDefault<GapBarHud::RiderColorMode>("gapBarRiderColorMode",
         stringToGapBarRiderColorMode, GapBarHud::RiderColorMode::BRAND,
         GapBarHud::RiderColorMode::UNIFORM);
@@ -255,7 +269,6 @@ TEST_CASE("every toString has a working default arm for an out-of-range value") 
     CHECK_DEFAULT_ARM(labelAnchorToString,          MH::LabelAnchor);
     CHECK_DEFAULT_ARM(anchorPointToString,          MH::AnchorPoint);
     CHECK_DEFAULT_ARM(radarRiderColorModeToString,  RH::RiderColorMode);
-    CHECK_DEFAULT_ARM(radarLabelModeToString,       RH::LabelMode);
     CHECK_DEFAULT_ARM(gapBarRiderColorModeToString, GapBarHud::RiderColorMode);
     CHECK_DEFAULT_ARM(proximityArrowModeToString,   RH::ProximityArrowMode);
     CHECK_DEFAULT_ARM(proximityArrowColorModeToString, RH::ProximityArrowColorMode);
@@ -272,7 +285,7 @@ TEST_CASE("matching is exact: no trimming, no case folding") {
     // Documenting the ACTUAL behaviour rather than an aspiration. A hand-edited
     // INI with `gapMode = all` (lowercase) or a stray space silently reverts to
     // the default — worth knowing, and worth failing loudly if someone later adds
-    // normalisation on only one of the 25 converters.
+    // normalisation on only one of the converters.
     using SH = StandingsHud;
     CHECK(stringToGapMode("ALL", SH::GapMode::OFF) == SH::GapMode::ALL);
     CHECK(stringToGapMode("all", SH::GapMode::OFF) == SH::GapMode::OFF);

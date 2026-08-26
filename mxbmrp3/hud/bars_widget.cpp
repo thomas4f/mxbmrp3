@@ -33,6 +33,8 @@ namespace {
 }
 
 BarsWidget::BarsWidget() {
+    m_panelKind = PanelKind::Widget;
+    m_bContentCard = true;
     // One-time setup
     DEBUG_INFO("BarsWidget created");
     setDraggable(true);
@@ -62,7 +64,7 @@ void BarsWidget::update() {
     }
 
     // Always rebuild - telemetry updates at physics rate (100Hz)
-    rebuildRenderData();
+    rebuildAndRecord();
     clearDataDirty();
     clearLayoutDirty();
 }
@@ -109,8 +111,26 @@ void BarsWidget::rebuildRenderData() {
     float barWidth = PluginUtils::calculateMonospaceTextWidth(BAR_WIDTH_CHARS, dims.fontSize);
     float halfBarWidth = barWidth * 0.5f;  // For split bars (FBR/RBR, FSU/RSU)
     float barSpacing = PluginUtils::calculateMonospaceTextWidth(1, dims.fontSize) * BAR_SPACING_CHARS;  // 0.5 char spacing
-    float barHeight = BAR_HEIGHT_LINES * dims.lineHeightNormal;
-    float labelHeight = LABEL_HEIGHT_LINES * dims.lineHeightNormal;
+    // THREE LINES, like every gauge beside it, with the letters on the same line
+    // as a neighbouring compass's cardinals.
+    //
+    // The label INK is pinned to the bottom of the content box, and the compass
+    // insets its cardinal ring by half a cap's ink so its letters reach the rim
+    // of an identical three-line box. Both therefore land on `section -
+    // capInk/2` without either widget knowing the other's numbers -- they agree
+    // because they measure from the same edge with the same constant.
+    //
+    // THE GAP IS FREE. Pinning the ink to the bottom edge fixes its centre, so
+    // the breathing room under the bars comes out of BAR HEIGHT and moves
+    // nothing else -- which is why it can be tuned by eye without breaking the
+    // alignment. The row reserves ink + gap and no ascender/descender slack:
+    // these are fixed capitals, and the slack a text row normally keeps is what
+    // made this widget stand taller than its neighbours.
+    const float sectionHeight = CONTENT_LINES * dims.lineHeightNormal;
+    const float labelInk = dims.fontSizeSmall * WidgetDimensions::CAP_INK_RATIO;
+    const float labelGap = labelInk * 0.35f;
+    const float labelRowHeight = m_bShowLabels ? labelInk + labelGap : 0.0f;
+    const float barHeight = sectionHeight - labelRowHeight;
 
     // Count enabled bars to calculate width dynamically
     int enabledBarCount = 0;
@@ -127,24 +147,46 @@ void BarsWidget::rebuildRenderData() {
     float barsWidth = enabledBarCount > 0
         ? (enabledBarCount * barWidth) + ((enabledBarCount - 1) * barSpacing)
         : 0.0f;
-    float backgroundWidth = dims.paddingH * 2 + barsWidth;
-    float titleHeight = m_bShowTitle ? dims.lineHeightNormal : 0.0f;
-    float backgroundHeight = dims.paddingV + titleHeight + barHeight + labelHeight;
+    // BOX-MODEL: the plan owns padding, chrome, the title band and the body card
+    // (it pads BOTH ends and ceils the height itself, so the hand-rolled height
+    // this replaced -- and the top-only-padding bug it carried -- is gone).
+    // The label row is part of sectionHeight, so the box measures it like any
+    // other content -- no drawing outside what the plan was told about.
+    BaseHud::PanelWant want;
+    want.contentW = barsWidth;
+    want.sectionH = { sectionHeight };
+    want.captionW = planTitleWidth(dims, "Bars");
+    PanelPlan& p = planPanel(dims, want);
+    const float backgroundWidth = p.width();
+    const float backgroundHeight = p.height();
 
     setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + backgroundHeight);
 
-    // Add background quad
-    addBackgroundQuad(START_X, START_Y, backgroundWidth, backgroundHeight);
+    // Background, title band and body card at the plan's coordinates
+    addPlanBackground(p, START_X, START_Y);
+    addPlanTitle(p, "Bars", this->getFont(FontCategory::TITLE),
+        this->getColor(ColorSlot::PRIMARY));
 
-    float contentStartX = START_X + dims.paddingH;
-    float contentStartY = START_Y + dims.paddingV;
-
-    // Title label (optional)
-    if (m_bShowTitle) {
-        addString("Bars", contentStartX, contentStartY, Justify::LEFT,
-            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dims.fontSize);
-        contentStartY += titleHeight;
-    }
+    // CENTRED ON THE CARD, like the Lean and G-force gauges beside it
+    // (PanelPlan::sectionBoxCenterX). The panel's centre is the same place only
+    // while the [content] terms are left/right symmetric -- `margin = 4 6 8 0`
+    // moved it outside the card and the bars followed it off.
+    //
+    // barsWidth, not contentW(): they are the same number (the bars ARE this panel's
+    // content ask) but the block being centred is the bars, and saying so is what keeps
+    // this true if the panel ever gains a wider row.
+    float contentStartX = p.sectionBoxCenterX() - barsWidth / 2.0f;
+    float contentStartY = p.contentY();
+    // The letters, INK-CENTRED IN THEIR OWN ROW at the bottom of the content --
+    // a row the bars gave up, so it is inside the card and cannot collide with a
+    // theme's frame. SMALL font, because the row is one small line: a normal-size
+    // cap inks 0.63 of its em and would fill it edge to edge.
+    const float labelFontSize = dims.fontSizeSmall;
+    // Ink-centred in the INK BAND ALONE, below the gap -- so the ink fills
+    // [barsBottom + gap, contentBottom] exactly and its centre is the mark the
+    // compass's cardinals land on.
+    const float labelBandTop = contentStartY + barHeight + labelGap;
+    const float labelTextY = inkCenteredY(labelBandTop, labelInk, labelFontSize);
 
     // Get current values - throttle and front brake always available from inputTelemetry
     // (history buffers are only populated when TelemetryHud is visible)
@@ -203,8 +245,8 @@ void BarsWidget::rebuildRenderData() {
             addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[0], maxMarkerColor);
         }
         if (m_bShowLabels) {
-            addString("T", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                      this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
+            addString("T", currentX + barWidth / 2.0f, labelTextY, Justify::CENTER,
+                      this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), labelFontSize);
         }
         currentX += barWidth + barSpacing;
     }
@@ -226,8 +268,8 @@ void BarsWidget::rebuildRenderData() {
             addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[1], maxMarkerColor);
         }
         if (m_bShowLabels) {
-            addString("B", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                      this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
+            addString("B", currentX + barWidth / 2.0f, labelTextY, Justify::CENTER,
+                      this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), labelFontSize);
         }
         currentX += barWidth + barSpacing;
     }
@@ -240,8 +282,8 @@ void BarsWidget::rebuildRenderData() {
             addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[2], maxMarkerColor);
         }
         if (m_bShowLabels) {
-            addString("C", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                      this->getFont(FontCategory::STRONG), hasFullTelemetry ? this->getColor(ColorSlot::TERTIARY) : mutedColor, dims.fontSize);
+            addString("C", currentX + barWidth / 2.0f, labelTextY, Justify::CENTER,
+                      this->getFont(FontCategory::STRONG), hasFullTelemetry ? this->getColor(ColorSlot::TERTIARY) : mutedColor, labelFontSize);
         }
         currentX += barWidth + barSpacing;
     }
@@ -254,8 +296,8 @@ void BarsWidget::rebuildRenderData() {
             addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[3], maxMarkerColor);
         }
         if (m_bShowLabels) {
-            addString("R", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                      this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dims.fontSize);
+            addString("R", currentX + barWidth / 2.0f, labelTextY, Justify::CENTER,
+                      this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), labelFontSize);
         }
         currentX += barWidth + barSpacing;
     }
@@ -271,8 +313,8 @@ void BarsWidget::rebuildRenderData() {
             addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[4], maxMarkerColor);
         }
         if (m_bShowLabels) {
-            addString("S", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                      this->getFont(FontCategory::STRONG), hasFullTelemetry ? this->getColor(ColorSlot::TERTIARY) : mutedColor, dims.fontSize);
+            addString("S", currentX + barWidth / 2.0f, labelTextY, Justify::CENTER,
+                      this->getFont(FontCategory::STRONG), hasFullTelemetry ? this->getColor(ColorSlot::TERTIARY) : mutedColor, labelFontSize);
         }
         currentX += barWidth + barSpacing;
     }
@@ -285,8 +327,8 @@ void BarsWidget::rebuildRenderData() {
             addMaxMarker(currentX, contentStartY, barWidth, barHeight, m_markerValues[5], maxMarkerColor);
         }
         if (m_bShowLabels) {
-            addString("F", currentX + barWidth / 2.0f, contentStartY + barHeight, Justify::CENTER,
-                      this->getFont(FontCategory::STRONG), hasFullTelemetry ? this->getColor(ColorSlot::TERTIARY) : mutedColor, dims.fontSize);
+            addString("F", currentX + barWidth / 2.0f, labelTextY, Justify::CENTER,
+                      this->getFont(FontCategory::STRONG), hasFullTelemetry ? this->getColor(ColorSlot::TERTIARY) : mutedColor, labelFontSize);
         }
         currentX += barWidth + barSpacing;
     }
@@ -295,14 +337,14 @@ void BarsWidget::rebuildRenderData() {
     const float tempOpt = sessionData.engineOptTemperature;
     const float tempAlarmLow = sessionData.engineTempAlarmLow;
     const float tempAlarmHigh = sessionData.engineTempAlarmHigh;
-    const float labelY = contentStartY + barHeight;
+    const float labelY = labelTextY;
 
     // Bar 6: Engine Temperature (E)
     if (m_enabledColumns & COL_ENGINE_TEMP) {
         renderTemperatureBar(6, currentX, contentStartY, labelY, barWidth, barHeight,
                              bikeTelemetry.engineTemperature, tempOpt, tempAlarmLow, tempAlarmHigh,
                              hasFullTelemetry, isCrashed, crashJustStarted,
-                             maxMarkerColor, mutedColor, "E", dims.fontSize);
+                             maxMarkerColor, mutedColor, "E", labelFontSize);
         currentX += barWidth + barSpacing;
     }
 
@@ -311,7 +353,7 @@ void BarsWidget::rebuildRenderData() {
         renderTemperatureBar(7, currentX, contentStartY, labelY, barWidth, barHeight,
                              bikeTelemetry.waterTemperature, tempOpt, tempAlarmLow, tempAlarmHigh,
                              hasFullTelemetry, isCrashed, crashJustStarted,
-                             maxMarkerColor, mutedColor, "W", dims.fontSize);
+                             maxMarkerColor, mutedColor, "W", labelFontSize);
         currentX += barWidth + barSpacing;
     }
 }
@@ -505,7 +547,7 @@ void BarsWidget::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 1.0f;  // Full opacity
     m_fScale = 1.0f;
-    setPosition(0.671f, 0.86828f);
+    setPosition(cellsX(109), cellsY(74));
 #if GAME_HAS_TYRE_TEMP
     // GP Bikes: include engine temp by default (has reliable temp data)
     m_enabledColumns = COL_DEFAULT | COL_ENGINE_TEMP;

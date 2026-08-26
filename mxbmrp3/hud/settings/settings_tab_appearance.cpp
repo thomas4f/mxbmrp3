@@ -2,6 +2,7 @@
 // hud/settings/settings_tab_appearance.cpp
 // Tab renderer for Appearance settings (fonts and colors)
 // ============================================================================
+#include <cstring>
 #include "settings_layout.h"
 #include "../settings_hud.h"
 #include "../../core/plugin_utils.h"
@@ -87,6 +88,48 @@ bool SettingsHud::handleClickTabAppearance(const ClickRegion& region) {
             }
             return true;
 
+        case ClickRegion::THEME_PREV:
+        case ClickRegion::THEME_NEXT:
+            {
+                // The cycle is [None, <each discovered theme>]. Stored by NAME, so
+                // the index is only ever a transient position in this list -- adding
+                // or removing a theme folder can never repoint a saved setting.
+                const auto& themes = AssetManager::getInstance().getThemes();
+                const int count = static_cast<int>(themes.size()) + 1;   // +1 for None
+                const std::string& cur = UiConfig::getInstance().getThemeName();
+                int index = 0;
+                for (size_t i = 0; i < themes.size(); ++i) {
+                    if (themes[i].name == cur) { index = static_cast<int>(i) + 1; break; }
+                }
+                index += (region.type == ClickRegion::THEME_NEXT) ? 1 : -1;
+                if (index < 0) index = count - 1;
+                if (index >= count) index = 0;
+                UiConfig::getInstance().setThemeName(
+                    index == 0 ? std::string() : themes[static_cast<size_t>(index) - 1].name);
+                // Every HUD's background geometry changes (1 quad <-> 9), so this is
+                // a full rebuild, not a reposition.
+                HudManager::getInstance().markAllHudsDirty();
+                // ...and then re-validate, because a theme does not only redraw a
+                // panel, it RESIZES it: the frame clearance is added to every panel's
+                // padding, so switching from a 1-cell frame to an 8-cell one grows
+                // every HUD by fourteen cells of width. Anything sitting flush against
+                // the right or bottom edge grows straight off the display and stays
+                // there -- validateAllHudPositions() otherwise only runs on a cursor
+                // or window transition, and switching theme happens with the cursor
+                // already up, so nothing fires until the menu is closed and reopened.
+                // Found playing theme designer; the settings button widget is the one
+                // that stings, since it is how you get back to this tab.
+                // REQUEST, never call directly: we are inside a click handler, and
+                // validateAllHudPositions() calls update() on every dirty HUD --
+                // including this one, whose update() re-reads the same still-true
+                // click edge and dispatches this handler again. That recursed into a
+                // stack overflow. HudManager flushes the request once the frame's
+                // update pass is over.
+                HudManager::getInstance().requestPositionValidation();
+                rebuildRenderData();
+            }
+            return true;
+
         // Display section unit toggles (moved here from the General tab).
         // CLOCK_FORMAT_TOGGLE is handled by the common handlers (works from any tab).
         case ClickRegion::SPEED_UNIT_TOGGLE:
@@ -135,208 +178,66 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
 
     FontConfig& fontConfig = FontConfig::getInstance();
     ColorConfig& colorConfig = ColorConfig::getInstance();
-    float charWidth = PluginUtils::calculateMonospaceTextWidth(1, ctx.fontSize);
-    const float cw = charWidth;  // alias used by the Display unit/format rows below
-    // panelWidth is actually contentAreaWidth (from contentAreaStartX to right edge)
-    float rowWidth = ctx.panelWidth - (ctx.labelX - ctx.contentAreaStartX);
     // Standard value width for the unit/format cycle controls (matches the General tab)
     constexpr int VALUE_WIDTH = 10;
 
     // === DISPLAY SECTION ===
-    // Shown first so units/format sit at the top of the Appearance tab.
-    ctx.addSectionHeader("Display");
+    // Shown first so the theme and the units/format sit at the top of the tab.
+    ctx.addSectionHeading("Display");
 
-    // HUD display target: In-game / Companion (standalone window) / Both. First
-    // control in the tab. A < value > cycler with friendly labels; opens/closes the
-    // companion window on change.
-    {
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "appearance.display_target"));
-
-        ctx.parent->addString("HUD Display", ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
-
-        DisplayTarget target = UiConfig::getInstance().getDisplayTarget();
-        const char* valueLabel = (target == DisplayTarget::COMPANION) ? "Companion"
-                               : (target == DisplayTarget::BOTH)      ? "Both"
-                                                                      : "In-game";
-        float currentX = ctx.controlX;
-
-        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::DISPLAY_TARGET_TOGGLE, nullptr));
-        currentX += cw * 2;
-
-        std::string formattedValue = ctx.formatValue(valueLabel, VALUE_WIDTH, false);
-        ctx.parent->addString(formattedValue.c_str(), currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getPrimary(), ctx.fontSize);
-        currentX += cw * VALUE_WIDTH;
-
-        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::DISPLAY_TARGET_TOGGLE, nullptr));
-
-        ctx.currentY += ctx.lineHeightNormal;
+    // Panel theme: None + every theme discovered under mxbmrp3_data\themes\.
+    // Hidden entirely when no themes are installed -- a cycler with one option is
+    // just noise, and the folder is optional (users can delete it).
+    if (AssetManager::getInstance().getThemeCount() > 0) {
+        const std::string& themeName = UiConfig::getInstance().getThemeName();
+        const ThemeAsset* theme = themeName.empty()
+            ? nullptr : AssetManager::getInstance().getThemeByName(themeName);
+        // An unknown saved name reads as "None", matching what actually renders.
+        const std::string valueLabel = theme ? theme->displayName : std::string("None");
+        ctx.addCycleControl("Panel Theme", valueLabel.c_str(), VALUE_WIDTH,
+                            SettingsHud::ClickRegion::THEME_PREV,
+                            SettingsHud::ClickRegion::THEME_NEXT,
+                            /*targetHud=*/nullptr, /*enabled=*/true, /*isOff=*/false,
+                            "appearance.theme");
     }
 
     // Speed unit toggle
     {
         SpeedWidget* speedWidget = ctx.parent->getSpeedWidget();
-
-        // Add tooltip row
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "appearance.speed_unit"
-        ));
-
-        ctx.parent->addString("Speed Unit", ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
-
-        // Display current unit with < > cycle pattern (arrows=accent, value=primary)
-        bool isKmh = speedWidget && speedWidget->getSpeedUnit() == SpeedWidget::SpeedUnit::KMH;
-        float currentX = ctx.controlX;
-
-        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::SPEED_UNIT_TOGGLE, speedWidget
-        ));
-        currentX += cw * 2;
-
-        // Left-align value within VALUE_WIDTH for consistent positioning
-        std::string formattedValue = ctx.formatValue(isKmh ? "km/h" : "mph", VALUE_WIDTH, false);
-        ctx.parent->addString(formattedValue.c_str(), currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getPrimary(), ctx.fontSize);
-        currentX += cw * VALUE_WIDTH;
-
-        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::SPEED_UNIT_TOGGLE, speedWidget
-        ));
-
-        ctx.currentY += ctx.lineHeightNormal;
+        ctx.addCycleControl("Speed Unit", (speedWidget && speedWidget->getSpeedUnit() == SpeedWidget::SpeedUnit::KMH) ? "km/h" : "mph", VALUE_WIDTH,
+                            SettingsHud::ClickRegion::SPEED_UNIT_TOGGLE,
+                            SettingsHud::ClickRegion::SPEED_UNIT_TOGGLE,
+                            speedWidget, /*enabled=*/true, /*isOff=*/false,
+                            "appearance.speed_unit");
     }
 
     // Fuel unit toggle
     {
         FuelWidget* fuelWidget = ctx.parent->getFuelWidget();
-
-        // Add tooltip row
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "appearance.fuel_unit"
-        ));
-
-        ctx.parent->addString("Fuel Unit", ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
-
-        // Display current unit with < > cycle pattern (arrows=accent, value=primary)
-        bool isGallons = fuelWidget && fuelWidget->getFuelUnit() == FuelWidget::FuelUnit::GALLONS;
-        float currentX = ctx.controlX;
-
-        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::FUEL_UNIT_TOGGLE, fuelWidget
-        ));
-        currentX += cw * 2;
-
-        // Left-align value within VALUE_WIDTH for consistent positioning
-        std::string formattedFuel = ctx.formatValue(isGallons ? "gal" : "L", VALUE_WIDTH, false);
-        ctx.parent->addString(formattedFuel.c_str(), currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getPrimary(), ctx.fontSize);
-        currentX += cw * VALUE_WIDTH;
-
-        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::FUEL_UNIT_TOGGLE, fuelWidget
-        ));
-
-        ctx.currentY += ctx.lineHeightNormal;
+        ctx.addCycleControl("Fuel Unit", (fuelWidget && fuelWidget->getFuelUnit() == FuelWidget::FuelUnit::GALLONS) ? "gal" : "L", VALUE_WIDTH,
+                            SettingsHud::ClickRegion::FUEL_UNIT_TOGGLE,
+                            SettingsHud::ClickRegion::FUEL_UNIT_TOGGLE,
+                            fuelWidget, /*enabled=*/true, /*isOff=*/false,
+                            "appearance.fuel_unit");
     }
 
     // Temperature unit toggle
     {
-        // Add tooltip row
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "appearance.temp_unit"
-        ));
-
-        ctx.parent->addString("Temp Unit", ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
-
-        // Display current unit with < > cycle pattern (arrows=accent, value=primary)
-        bool isFahrenheit = UiConfig::getInstance().getTemperatureUnit() == TemperatureUnit::FAHRENHEIT;
-        float currentX = ctx.controlX;
-
-        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::TEMP_UNIT_TOGGLE, nullptr
-        ));
-        currentX += cw * 2;
-
-        // Left-align value within VALUE_WIDTH for consistent positioning
-        std::string formattedTemp = ctx.formatValue(isFahrenheit ? "F" : "C", VALUE_WIDTH, false);
-        ctx.parent->addString(formattedTemp.c_str(), currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getPrimary(), ctx.fontSize);
-        currentX += cw * VALUE_WIDTH;
-
-        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::TEMP_UNIT_TOGGLE, nullptr
-        ));
-
-        ctx.currentY += ctx.lineHeightNormal;
+        ctx.addCycleControl("Temp Unit", (UiConfig::getInstance().getTemperatureUnit() == TemperatureUnit::FAHRENHEIT) ? "F" : "C", VALUE_WIDTH,
+                            SettingsHud::ClickRegion::TEMP_UNIT_TOGGLE,
+                            SettingsHud::ClickRegion::TEMP_UNIT_TOGGLE,
+                            nullptr, /*enabled=*/true, /*isOff=*/false,
+                            "appearance.temp_unit");
     }
 
     // Clock format toggle
     {
         ClockWidget* clockWidget = ctx.parent->getClockWidget();
-
-        // Add tooltip row
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "appearance.clock_format"
-        ));
-
-        ctx.parent->addString("Clock Format", ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
-
-        bool is24h = clockWidget && clockWidget->getFormat24h();
-        float currentX = ctx.controlX;
-
-        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::CLOCK_FORMAT_TOGGLE, clockWidget
-        ));
-        currentX += cw * 2;
-
-        std::string formattedValue = ctx.formatValue(is24h ? "24h" : "12h", VALUE_WIDTH, false);
-        ctx.parent->addString(formattedValue.c_str(), currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getPrimary(), ctx.fontSize);
-        currentX += cw * VALUE_WIDTH;
-
-        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::CLOCK_FORMAT_TOGGLE, clockWidget
-        ));
-
-        ctx.currentY += ctx.lineHeightNormal;
+        ctx.addCycleControl("Clock Format", (clockWidget && clockWidget->getFormat24h()) ? "24h" : "12h", VALUE_WIDTH,
+                            SettingsHud::ClickRegion::CLOCK_FORMAT_TOGGLE,
+                            SettingsHud::ClickRegion::CLOCK_FORMAT_TOGGLE,
+                            clockWidget, /*enabled=*/true, /*isOff=*/false,
+                            "appearance.clock_format");
     }
 
     // Compact time format toggle
@@ -354,53 +255,63 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::TITLE_ICONS_TOGGLE, nullptr, nullptr, 0, true,
         "appearance.hud_icons");
 
+    // HUD display target: In-game / Companion (standalone window) / Both. LAST
+    // control in the section: it is the one setting here that moves the whole UI to
+    // another window, so it reads as the section's conclusion rather than its opening
+    // question -- and Panel Theme, which people actually come to this tab for, gets
+    // the top. A < value > cycler with friendly labels; opens/closes the companion
+    // window on change.
+    {
+        DisplayTarget target = UiConfig::getInstance().getDisplayTarget();
+        const char* valueLabel = (target == DisplayTarget::COMPANION) ? "Companion"
+                               : (target == DisplayTarget::BOTH)      ? "Both"
+                                                                      : "In-game";
+        ctx.addCycleControl("HUD Display", valueLabel, VALUE_WIDTH,
+                            SettingsHud::ClickRegion::DISPLAY_TARGET_TOGGLE,
+                            SettingsHud::ClickRegion::DISPLAY_TARGET_TOGGLE,
+                            /*targetHud=*/nullptr, /*enabled=*/true, /*isOff=*/false,
+                            "appearance.display_target");
+    }
+
+
     // (Grid Snap / Screen Clamp placement toggles live on the General tab's
     // Behavior section; still persisted under [Display].)
 
     // === FONTS SECTION ===
-    ctx.addSpacing(0.5f);
-    ctx.addSectionHeader("Fonts");
+    ctx.addSectionHeading("Fonts");
 
     // Helper lambda to add a font category row with cycle buttons
     auto addFontRow = [&](FontCategory category, const char* tooltipId) {
         const char* categoryName = FontConfig::getCategoryName(category);
         const char* fontDisplayName = fontConfig.getFontDisplayName(category);
 
-        // Add tooltip row
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, tooltipId
-        ));
-
-        // Category name label
-        ctx.parent->addString(categoryName, ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
-
-        // Font name with cycle arrows
-        float cycleX = ctx.labelX + PluginUtils::calculateMonospaceTextWidth(12, ctx.fontSize);
-
-        // Left arrow "<" with click region for PREV
-        ctx.parent->addString("<", cycleX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            cycleX, ctx.currentY, charWidth * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::FONT_CATEGORY_PREV, category
-        ));
-        cycleX += charWidth * 2;
-
-        // Font name (no click region)
-        ctx.parent->addString(fontDisplayName, cycleX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getPrimary(), ctx.fontSize);
-        cycleX += charWidth * 22;  // Max font display name width
-
-        // Right arrow ">" with click region for NEXT
-        ctx.parent->addString(" >", cycleX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            cycleX, ctx.currentY, charWidth * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::FONT_CATEGORY_NEXT, category
-        ));
-
-        ctx.currentY += ctx.lineHeightNormal;
+        // "Default" when the face IS the default, else its name.
+        //
+        // VALUE EQUALITY, not the override flag. The flag answers "did the user touch
+        // this", which is not the question: cycle all the way round back to the
+        // default face and the flag says "mine" while the screen is identical to
+        // untouched. "Default" means the ACTIVE THEME's font where the theme supplies
+        // one, else the built-in -- what you get by not touching it.
+        const bool isDefaultFont =
+            std::strcmp(fontConfig.getFontName(category),
+                        FontConfig::getThemeOrDefaultFontName(category)) == 0;
+        // The value is TRUNCATED to the field by the shared helper, like every other
+        // row. This used to draw the raw name after the field shrank from 22
+        // characters to STANDARD_VALUE_WIDTH, and the shipped names are 13-21
+        // characters ("RobotoMono-Regular" renders as "Roboto Mono Regular"), so the
+        // name ran straight through the ">" arrow beside it.
+        //
+        // NOTHING AFTER THE CONTROL. "Default" is simply one of the values the cycler
+        // steps through, and the row reads as every other row on the tab. It used to
+        // trail the resolved name in muted parentheses -- "Default  (Roboto Mono
+        // Regular)" -- which answered a question ("which font IS the default") that the
+        // row was not asking, put a second column of text on six rows that no other
+        // control has, and needed its own truncation maths to stay inside the panel.
+        ctx.addCycleControl(categoryName, isDefaultFont ? "Default" : fontDisplayName,
+                            STANDARD_VALUE_WIDTH,
+                            SettingsHud::ClickRegion::FONT_CATEGORY_PREV,
+                            SettingsHud::ClickRegion::FONT_CATEGORY_NEXT,
+                            category, tooltipId);
     };
 
     // All font categories
@@ -412,8 +323,7 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
     addFontRow(FontCategory::SMALL, "appearance.font_small");
 
     // === COLORS SECTION ===
-    ctx.addSpacing(0.5f);
-    ctx.addSectionHeader("Colors");
+    ctx.addSectionHeading("Colors");
 
     // Helper lambda to add a color row with preview and cycle buttons
     auto addColorRow = [&](ColorSlot slot, const char* tooltipId) {
@@ -421,16 +331,9 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
         unsigned long color = colorConfig.getColor(slot);
         const char* colorName = ColorPalette::getColorName(color);
 
-        // Add tooltip row
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, tooltipId
-        ));
-
-        // Slot name label
-        ctx.parent->addString(slotName, ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
-
-        // Color preview quad (small square showing the actual color)
+        // Colour swatch, between the label and the control column -- the control
+        // itself starts at ctx.controlX like every other row's. Emitted BEFORE the
+        // cycler, which is what advances ctx.currentY off this row.
         float previewX = ctx.labelX + PluginUtils::calculateMonospaceTextWidth(12, ctx.fontSize);
         float previewSize = ctx.lineHeightNormal * 0.8f;
         {
@@ -439,37 +342,24 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
             float quadY = ctx.currentY + ctx.lineHeightNormal * 0.1f;
             ctx.parent->applyOffset(quadX, quadY);
             ctx.parent->setQuadPositions(previewQuad, quadX, quadY, previewSize, previewSize);
+            // solid-quad-exempt: this IS the colour -- a swatch showing the palette
+            // entry exactly, not a surface the entry is drawn on. A themed 9-slice
+            // would tint it with the button's own art, and it would stop answering
+            // the only question it is asked.
             previewQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
             previewQuad.m_ulColor = color;
             ctx.parent->m_quads.push_back(previewQuad);
         }
 
-        // Color name with cycle arrows (following addCycleControl pattern)
-        float cycleX = previewX + previewSize + PluginUtils::calculateMonospaceTextWidth(1, ctx.fontSize);
-
-        // Left arrow "<" with click region for PREV
-        ctx.parent->addString("<", cycleX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            cycleX, ctx.currentY, charWidth * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::COLOR_CYCLE_PREV, slot
-        ));
-        cycleX += charWidth * 2;
-
-        // Color name (no click region)
-        ctx.parent->addString(colorName, cycleX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getPrimary(), ctx.fontSize);
-        cycleX += charWidth * 10;  // Max color name width
-
-        // Right arrow ">" with click region for NEXT
-        ctx.parent->addString(" >", cycleX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            cycleX, ctx.currentY, charWidth * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::COLOR_CYCLE_NEXT, slot
-        ));
-
-        ctx.currentY += ctx.lineHeightNormal;
+        // "Default" when the colour IS the default -- see addFontRow for why this is
+        // value equality rather than the override flag. No trailing "(Light Gray)"
+        // either: "Default" is a value of the cycler, not a state annotated beside it.
+        const bool isDefaultColor = (color == ColorConfig::getThemeOrDefaultColor(slot));
+        ctx.addCycleControl(slotName, isDefaultColor ? "Default" : colorName,
+                            STANDARD_VALUE_WIDTH,
+                            SettingsHud::ClickRegion::COLOR_CYCLE_PREV,
+                            SettingsHud::ClickRegion::COLOR_CYCLE_NEXT,
+                            slot, tooltipId);
     };
 
     // All color slots

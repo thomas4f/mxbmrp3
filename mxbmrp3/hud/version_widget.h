@@ -22,6 +22,14 @@ public:
 
     // Check if game is active (used by HudManager to bypass widgets toggle)
     bool isGameActive() const { return m_gameActive; }
+#ifdef MXBMRP3_TEST_BUILD
+    // The two terms the notification button row is laid out from, read from the
+    // same source rebuildRenderData() reads them from, so a test can assert the
+    // RULE (a text row, then the junction) instead of a pixel count that moves
+    // with the font. See MXBMRP3_Test_VersionRowTerms.
+    float testRowHeight() const { return getScaledDimensions().lineHeightNormal; }
+    float testJunctionY() const { return panelGapY(getScaledDimensions()); }
+#endif
 
     // Update notification mode - auto-enables widget when update is available
     void showUpdateNotification();
@@ -37,6 +45,14 @@ protected:
 
 private:
     void rebuildRenderData() override;
+    // The shared box-model plan for all three modes: content width + row count
+    // in. `stackMember` picks which width rule applies -- the centre-stack
+    // contract for the plain version row (the stack minimum owns the width), or
+    // content-sized for the update popup, which carries a button row the stack
+    // width cannot hold. See BaseHud::wantCenterStackWidth.
+    PanelPlan notifyPlan(const ScaledDimensions& dim, float contentWidth,
+                         int rows, float extraH = 0.0f,
+                         bool stackMember = false) const;
 
     // Mini-game constants
     static constexpr int BRICK_COLS = 8;

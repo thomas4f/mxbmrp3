@@ -57,8 +57,7 @@ void PluginData::addSegmentPoint() {
     if (ui.getSnapSegmentsToSplits() && !m_splitPositions.empty()) {
         float bestDist = ui.getSegmentSnapThreshold();
         for (float sp : m_splitPositions) {
-            float dist = std::fabs(p - sp);
-            if (dist > 0.5f) dist = 1.0f - dist;  // wrap-around
+            const float dist = trackSeparation(p, sp);
             if (dist <= bestDist) { bestDist = dist; p = sp; }
         }
     }
@@ -68,8 +67,7 @@ void PluginData::addSegmentPoint() {
     // the coincident-crossing tie-break in updateSegmentTimer keeps timing clean.
     // (Needs >=2 existing points so the closer is at least the 3rd, matching isClosed.)
     if (m_segment.points.size() >= 2) {
-        float d = std::fabs(p - m_segment.points.front());
-        if (d > 0.5f) d = 1.0f - d;  // circular distance on the 0-1 lap
+        const float d = trackSeparation(p, m_segment.points.front());
         if (d <= SegmentTimerData::CLOSE_EPS) p = m_segment.points.front();
     }
 

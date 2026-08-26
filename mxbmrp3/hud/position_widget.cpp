@@ -12,10 +12,9 @@
 
 using namespace PluginConstants;
 
-PositionWidget::PositionWidget()
-    : m_cachedPosition(-1)
-    , m_cachedTotalEntries(-1)
-{
+PositionWidget::PositionWidget() {
+    m_panelKind = PanelKind::Widget;
+    m_bContentCard = true;
     // One-time setup
     DEBUG_INFO("PositionWidget created");
     setDraggable(true);
@@ -31,7 +30,12 @@ PositionWidget::PositionWidget()
 }
 
 bool PositionWidget::handlesDataType(DataChangeType dataType) const {
+    // RaceEntries as well as Standings: this widget shows "P3 / 22", and the
+    // denominator changes when a rider joins or leaves, which fires RaceEntries and
+    // not Standings. Subscribing to both is what let the per-frame poll below go --
+    // see update().
     return dataType == DataChangeType::Standings ||
+           dataType == DataChangeType::RaceEntries ||
            dataType == DataChangeType::SpectateTarget;
 }
 
@@ -43,20 +47,25 @@ void PositionWidget::update() {
         return;
     }
 
-    // Check if position or total entries changed
-    int currentPosition = calculatePlayerPosition();
-    const PluginData& pluginData = PluginData::getInstance();
-    int totalEntries = static_cast<int>(pluginData.getDisplayClassificationOrder().size());
-
-    if (currentPosition != m_cachedPosition || totalEntries != m_cachedTotalEntries) {
-        setDataDirty();
-    }
-
-    // Check data dirty first (takes precedence)
+    // NO PER-FRAME POLL. This recomputed the position and the entry count EVERY
+    // FRAME just to notice a change the dirty flag already reports -- and it was the
+    // most expensive widget in the plugin for it, at 1.41us/frame across a stint
+    // with ZERO rebuilds, ten times its peers.
+    //
+    // The cost was not the comparison, it was what the lookup drags behind it:
+    // getDisplayPositionForRaceNum() serves a LAZILY REBUILT cache, and this was the
+    // only per-frame caller, so it was the one paying to rebuild it -- clear plus a
+    // fresh unordered_map node, i.e. a heap round-trip (1.5-3.4us in the game
+    // process, see small_vec.h) on each of the ~1200 frames a Classification landed.
+    // Every other reader takes that cache during its own gated rebuild and finds it
+    // warm.
+    //
+    // The poll was redundant regardless: position changes with the classification
+    // (Standings) and the entry count with a join or leave (RaceEntries), and this
+    // widget now subscribes to both, plus SpectateTarget for whose position is
+    // shown. There is no path that moves this readout without one of the three.
     if (isDataDirty()) {
-        rebuildRenderData();
-        m_cachedPosition = currentPosition;
-        m_cachedTotalEntries = totalEntries;
+        rebuildAndRecord();
         clearDataDirty();
         clearLayoutDirty();
     }
@@ -79,41 +88,9 @@ int PositionWidget::calculatePlayerPosition() const {
 }
 
 void PositionWidget::rebuildLayout() {
-    // Fast path - only update positions (not colors/opacity)
-    auto dim = getScaledDimensions();
-
-    float startX = 0.0f;
-    float startY = 0.0f;
-
-    // Calculate dimensions using base helper
-    float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::STANDARD_WIDTH);
-
-    // Height calculation is widget-specific due to lineHeightLarge value display
-    float labelHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
-    float contentHeight = labelHeight + dim.lineHeightLarge;  // Label (optional, 1 line) + Value (2 lines)
-    float backgroundHeight = dim.paddingV + contentHeight + dim.paddingV;
-
-    // Set bounds for drag detection
-    setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
-
-    // Update background quad position
-    updateBackgroundQuadPosition(startX, startY, backgroundWidth, backgroundHeight);
-
-    float contentStartX = startX + dim.paddingH;
-    float contentStartY = startY + dim.paddingV;
-    float currentY = contentStartY;
-
-    // Position strings if they exist
-    int stringIndex = 0;
-
-    // Label (optional, controlled by title toggle)
-    if (m_bShowTitle && positionString(stringIndex, contentStartX, currentY)) {
-        stringIndex++;
-        currentY += labelHeight;
-    }
-
-    // Position value (extra large font - spans 2 lines)
-    positionString(stringIndex, contentStartX, currentY);
+    // BOX-MODEL: one source of geometry — the fast path duplicated the sizing
+    // arithmetic, and a handful of strings is cheaper to rebuild than the drift.
+    rebuildRenderData();
 }
 
 void PositionWidget::rebuildRenderData() {
@@ -131,29 +108,27 @@ void PositionWidget::rebuildRenderData() {
     float startX = 0.0f;
     float startY = 0.0f;
 
-    // Calculate dimensions using base helper
-    float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::STANDARD_WIDTH);
+    // BOX-MODEL: the plan owns padding, chrome, the title band and the content
+    // origin. The fixed 12-char column (shared with Lap/Time/Clock) is the
+    // content width, so the four standard widgets keep tiling with each other.
+    BaseHud::PanelWant want;
+    want.contentW = PluginUtils::calculateMonospaceTextWidth(
+        WidgetDimensions::STANDARD_WIDTH, dim.fontSize);
+    want.sectionH = { bigValueRowHeight(dim) };  // Value (2 lines)
+    want.captionW = planTitleWidth(dim, "Position");
+    PanelPlan& p = planPanel(dim, want);
+    const float backgroundWidth = p.width();
+    const float backgroundHeight = p.height();
 
-    // Height calculation is widget-specific due to lineHeightLarge value display
-    float labelHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
-    float contentHeight = labelHeight + dim.lineHeightLarge;  // Label (optional, 1 line) + Value (2 lines)
-    float backgroundHeight = dim.paddingV + contentHeight + dim.paddingV;
-
-    // Add background quad
-    addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
-
-    float contentStartX = startX + dim.paddingH;
-    float contentStartY = startY + dim.paddingV;
-    float currentY = contentStartY;
+    addPlanBackground(p, startX, startY);
 
     // Use full opacity for text
     unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
 
-    // Label (optional, controlled by title toggle)
-    if (m_bShowTitle) {
-        addString("Position", contentStartX, currentY, Justify::LEFT, this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
-        currentY += labelHeight;
-    }
+    addPlanTitle(p, "Position", this->getFont(FontCategory::TITLE), textColor);
+
+    const float contentStartX = p.contentX();
+    float currentY = p.contentY();
 
     // Build position value string (e.g., "1/24" or "-")
     char positionValueBuffer[32];
@@ -164,7 +139,7 @@ void PositionWidget::rebuildRenderData() {
     }
 
     // Add position value (extra large font - spans 2 lines)
-    addString(positionValueBuffer, contentStartX, currentY, Justify::LEFT,
+    addString(positionValueBuffer, contentStartX, bigValueTextY(currentY, dim), Justify::LEFT,
         this->getFont(FontCategory::TITLE), textColor, dim.fontSizeExtraLarge);
 
     // Set bounds for drag detection
@@ -177,6 +152,6 @@ void PositionWidget::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.0f;
     m_fScale = 1.0f;
-    setPosition(0.0055f, 0.01173f);
+    setPosition(cellsX(1), cellsY(1));
     setDataDirty();
 }

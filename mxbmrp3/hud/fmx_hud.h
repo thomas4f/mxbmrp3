@@ -42,15 +42,17 @@ private:
     void rebuildRenderData() override;
     void rebuildLayout() override;
 
-    // Arc rendering helpers
-    void addArcSegment(float centerX, float centerY, float innerRadius, float outerRadius,
-                       float startAngleRad, float endAngleRad, unsigned long color, int numSegments);
     void addRotationArc(float centerX, float centerY, float radius, float thickness,
                         float startAngle, float accumulatedAngle, float peakAngle,
                         unsigned long bgColor, unsigned long fillColor, unsigned long markerColor);
 
     // Calculate actual content height (accounts for variable-height sections)
-    float getContentHeight() const;
+    // The blocks FMX draws, each its own sibling section card (the Performance
+    // / Session Charts shape): trick stack, combo arc + score, rotation arcs,
+    // and the dev-only debug rows. Enabled blocks only, in EMIT ORDER — the
+    // body indexes plan.contentY() by the same counter, so this list and the
+    // emit below cannot disagree about which card a block sits in.
+    SmallVec<float, 8> sectionHeights(const ScaledDimensions& dim) const;
 
     // Trick stack display entries (fixed buffer — no heap allocation per rebuild)
     struct TrickStackEntry {

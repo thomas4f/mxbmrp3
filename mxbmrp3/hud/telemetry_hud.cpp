@@ -18,6 +18,9 @@ TelemetryHud::TelemetryHud() {
     // One-time setup
     DEBUG_INFO("TelemetryHud created");
     setDraggable(true);
+    // Body card: this HUD is a table of rows, which is exactly what a themed
+    // body card is for. Opt-in -- see BaseHud::m_bContentCard.
+    m_bContentCard = true;
     m_quads.reserve(1000);   // 1 bg + 4 grid + 4 inputs × 199 line segments = ~1000 quads max
     m_strings.reserve(9);    // Title + up to 4 × (label + value) in duotone = 1 + 8 = 9
 
@@ -48,7 +51,7 @@ void TelemetryHud::update() {
     // identical between telemetry ticks, so rebuilding every render frame
     // (e.g. 480fps) wasted >50% of the ~1600 line-segment builds.
     if (isDataDirty() || isLayoutDirty()) {
-        rebuildRenderData();
+        rebuildAndRecord();
     }
     clearDataDirty();
     clearLayoutDirty();
@@ -98,14 +101,9 @@ void TelemetryHud::rebuildRenderData() {
     // During SPECTATE/REPLAY, only limited SPluginsRaceVehicleData_t is available (throttle, front brake, RPM, gear).
     bool hasFullTelemetry = (pluginData.getDrawState() == PluginConstants::ViewState::ON_TRACK);
 
-    // Calculate dimensions
+    // Calculate dimensions (the plan owns the panel box below)
     int widthChars = getBackgroundWidthChars();
-    float backgroundWidth = PluginUtils::calculateMonospaceTextWidth(widthChars, dims.fontSize)
-        + dims.paddingH + dims.paddingH;
-    float graphHeight = GRAPH_HEIGHT_LINES * dims.lineHeightNormal;
-
-    // Height: top pad + title (if shown) + max(graph height, legend height) + bottom pad
-    float titleHeight = m_bShowTitle ? dims.lineHeightLarge : 0.0f;
+    float graphHeight = static_cast<float>(m_graphRows) * dims.lineHeightNormal;
 
     // Determine if we show graphs and/or values based on display mode
     bool showGraphs = (m_displayMode == DISPLAY_GRAPHS || m_displayMode == DISPLAY_BOTH);
@@ -126,21 +124,22 @@ void TelemetryHud::rebuildRenderData() {
 
     // Content height is max of graph height and legend height
     float contentHeight = showGraphs ? (graphHeight > legendHeight ? graphHeight : legendHeight) : legendHeight;
-    float backgroundHeight = dims.paddingV + titleHeight + contentHeight + dims.paddingV;
 
-    setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + backgroundHeight);
+    // BOX-MODEL: one section; the caption band is the plan's.
+    BaseHud::PanelWant want;
+    want.contentW = PluginUtils::calculateMonospaceTextWidth(widthChars, dims.fontSize);
+    want.sectionH = { contentHeight };
+    want.captionW = planTitleWidth(dims, "Telemetry", TitleTier::Large);
+    want.tier = TitleTier::Large;
+    PanelPlan& plan = planPanel(dims, want);
+    setBounds(START_X, START_Y, START_X + plan.width(), START_Y + plan.height());
+    addPlanBackground(plan, START_X, START_Y);
 
-    // Add background quad
-    addBackgroundQuad(START_X, START_Y, backgroundWidth, backgroundHeight);
+    float contentStartX = plan.contentX();
+    float currentY = plan.contentY();
 
-    float contentStartX = START_X + dims.paddingH;
-    float contentStartY = START_Y + dims.paddingV;
-    float currentY = contentStartY;
-
-    // Title
-    addTitleString("Telemetry", contentStartX, currentY, PluginConstants::Justify::LEFT,
-        this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dims.fontSizeLarge);
-    currentY += titleHeight;
+    addPlanTitle(plan, "Telemetry", this->getFont(FontCategory::TITLE),
+                 this->getColor(ColorSlot::PRIMARY));
 
     // Side-by-side layout: graph on left (36 chars), gap (1 char), legend on right (9 chars)
     float graphWidth = PluginUtils::calculateMonospaceTextWidth(GRAPH_WIDTH_CHARS, dims.fontSize);
@@ -325,7 +324,7 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
     for (size_t i = 0; i < HistoryBuffers::MAX_TELEMETRY_HISTORY - 1; ++i) {
         // Front brake graph (always available - available for player and spectated riders)
         if (m_enabledElements & ELEM_FRONT_BRAKE) {
-            const std::deque<float>& data = history.frontBrake;
+            const auto& data = history.frontBrake;
             if (i < data.size() && (i + 1) < data.size()) {
                 // Offset so newest data is always at right edge
                 size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
@@ -345,7 +344,7 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
 
         // Rear brake graph (only available when ON_TRACK, not in spectate/replay)
         if ((m_enabledElements & ELEM_REAR_BRAKE) && hasFullTelemetry) {
-            const std::deque<float>& data = history.rearBrake;
+            const auto& data = history.rearBrake;
             if (i < data.size() && (i + 1) < data.size()) {
                 size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
                 float x1 = x + (offset + i) * pointSpacing;
@@ -364,7 +363,7 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
 
         // Clutch graph (only available when ON_TRACK, not in spectate/replay)
         if ((m_enabledElements & ELEM_CLUTCH) && hasFullTelemetry) {
-            const std::deque<float>& data = history.clutch;
+            const auto& data = history.clutch;
             if (i < data.size() && (i + 1) < data.size()) {
                 size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
                 float x1 = x + (offset + i) * pointSpacing;
@@ -383,7 +382,7 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
 
         // RPM graph
         if (m_enabledElements & ELEM_RPM) {
-            const std::deque<float>& data = history.rpm;
+            const auto& data = history.rpm;
             if (i < data.size() && (i + 1) < data.size()) {
                 size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
                 float x1 = x + (offset + i) * pointSpacing;
@@ -402,7 +401,7 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
 
         // Front suspension graph (only available when ON_TRACK, not in spectate/replay)
         if ((m_enabledElements & ELEM_FRONT_SUSP) && hasFullTelemetry && bikeTelemetry.frontSuspMaxTravel > 0) {
-            const std::deque<float>& data = history.frontSusp;
+            const auto& data = history.frontSusp;
             if (i < data.size() && (i + 1) < data.size()) {
                 size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
                 float x1 = x + (offset + i) * pointSpacing;
@@ -421,7 +420,7 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
 
         // Rear suspension graph (only available when ON_TRACK, not in spectate/replay)
         if ((m_enabledElements & ELEM_REAR_SUSP) && hasFullTelemetry && bikeTelemetry.rearSuspMaxTravel > 0) {
-            const std::deque<float>& data = history.rearSusp;
+            const auto& data = history.rearSusp;
             if (i < data.size() && (i + 1) < data.size()) {
                 size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
                 float x1 = x + (offset + i) * pointSpacing;
@@ -440,7 +439,7 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
 
         // Gear graph (always available)
         if (m_enabledElements & ELEM_GEAR) {
-            const std::deque<float>& data = history.gear;
+            const auto& data = history.gear;
             if (i < data.size() && (i + 1) < data.size()) {
                 size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
                 float x1 = x + (offset + i) * pointSpacing;
@@ -458,7 +457,7 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
 
         // Throttle graph (rendered last within each iteration so it appears on top)
         if (m_enabledElements & ELEM_THROTTLE) {
-            const std::deque<float>& data = history.throttle;
+            const auto& data = history.throttle;
             if (i < data.size() && (i + 1) < data.size()) {
                 size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
                 float x1 = x + (offset + i) * pointSpacing;
@@ -483,7 +482,8 @@ void TelemetryHud::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.7315f, 0.44587f);
+    m_graphRows = DEFAULT_GRAPH_ROWS;
+    setPosition(cellsX(133), cellsY(38));
     m_enabledElements = ELEM_DEFAULT;
     m_displayMode = DISPLAY_DEFAULT;
     setDataDirty();

@@ -171,6 +171,34 @@ bool UpdateChecker::shouldShowUpdateNotification() const {
     return m_dismissedVersion.empty() || m_latestVersion != m_dismissedVersion;
 }
 
+bool UpdateChecker::shouldShowUpdateTag() const {
+    // isEnabled() as well as the status, because m_status is sticky: an
+    // UPDATE_AVAILABLE from a check made before the user switched updates off
+    // survives, and a tag pointing at a tab whose feature is disabled is noise.
+    if (!isEnabled() || m_status != Status::UPDATE_AVAILABLE) {
+        return false;
+    }
+    MutexLock lock(m_mutex);
+    return m_tagSeenVersion.empty() || m_latestVersion != m_tagSeenVersion;
+}
+
+void UpdateChecker::markUpdateTagSeen() {
+    MutexLock lock(m_mutex);
+    // The VERSION, not a flag: a newer release re-arms the tag by itself, and one
+    // that never comes leaves it down forever.
+    m_tagSeenVersion = m_latestVersion;
+}
+
+void UpdateChecker::setUpdateTagSeenVersion(const std::string& version) {
+    MutexLock lock(m_mutex);
+    m_tagSeenVersion = version;
+}
+
+std::string UpdateChecker::getUpdateTagSeenVersion() const {
+    MutexLock lock(m_mutex);
+    return m_tagSeenVersion;
+}
+
 void UpdateChecker::setCompletionCallback(std::function<void()> callback) {
     MutexLock lock(m_mutex);
     m_completionCallback = callback;

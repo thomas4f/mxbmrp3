@@ -8,6 +8,7 @@
 #pragma once
 
 #include "base_hud.h"
+#include "../core/widget_constants.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
 #include "../game/game_config.h"
@@ -55,7 +56,9 @@ private:
     static constexpr int NUM_ROWS = 2;
     static constexpr int CONTENT_CHARS = 8;        // Content width in chars (matches TyreTemp/Bars; padding added via calculateBackgroundWidth)
     static constexpr float CHIP_COL_GAP_CHARS = 0.5f;   // Horizontal gap between the two columns
-    static constexpr float CONTENT_LINES = 3.0f;        // Content-area height (line-height units); matches TyreTemp/Bars
+    // The shared small-widget footprint; see WidgetDimensions for why it is one
+    // constant rather than a copy per widget.
+    static constexpr float CONTENT_LINES = WidgetDimensions::SMALL_WIDGET_CONTENT_LINES;
     static constexpr float CHIP_ROW_GAP_LINES = 0.3f;   // Vertical gap between the two rows
 
     // Color modulation factors (see plugin_utils lighten/darkenColor)

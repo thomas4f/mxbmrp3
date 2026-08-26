@@ -885,6 +885,22 @@ def _features(r, snap):
     render("HUD adoption (hud_*)", "hud_", "huds.svg", _pretty_key)
     render("Widget adoption (widget_*)", "widget_", "widgets.svg", _pretty_key)
 
+    # Panel theme. Not a feat_ flag because it is a CHOICE among values rather
+    # than on/off, and "none" is one of the answers -- running unthemed is a
+    # preference worth seeing next to the themes, not an absence. The plugin
+    # sends a label, never a user's own folder name (see core/analytics_theme.h),
+    # so "custom" is as specific as a third-party theme ever gets here.
+    th = psnap["_s"].map(lambda s: s.get("panel_theme"))
+    th = th[th.notna()]
+    if len(th):
+        tc = th.value_counts()
+        r.chart("panel_theme.svg",
+                svg.hbar("Panel theme", [(str(k), int(v), None, cp(v, len(th)))
+                                         for k, v in tc.items()],
+                         subtitle="{:,} of {:,} {} installs report a theme "
+                                  "(older builds do not)".format(len(th), len(psnap), primary)),
+                "Panel theme")
+
     # counts of enabled HUDs/widgets per install (primary game)
     hc = pd.to_numeric(psnap["_n"].map(lambda n: n.get("hud_count")), errors="coerce").dropna()
     wc = pd.to_numeric(psnap["_n"].map(lambda n: n.get("widget_count")), errors="coerce").dropna()
@@ -1060,6 +1076,7 @@ def _coverage(r, started, snap, dev_installs=0, dev_events=0):
         "HUDs / widgets": lambda row: any(k.startswith(("hud_", "widget_")) for k in row["_n"]),
         "OS version": lambda row: bool(row["os_version"]),
         "Update channel": lambda row: "update_channel" in row["_s"],
+        "Panel theme": lambda row: "panel_theme" in row["_s"],
         "Crash detail": lambda row: ver_ge(row["app_version"], *CRASH_MIN),
     }
     fams = sorted(started["fam"].unique())
@@ -1104,8 +1121,13 @@ def selftest():
     flags = {"feat_overlay": 1, "feat_rumble": 0, "hud_map": 1, "hud_standings": 0,
              "widget_speed": 1, "hud_count": 5, "widget_count": 3, "launch_count": 2,
              "steam_runtime": 1}
-    ev("app_started", base, "userA1", "install-1", npr=flags)
-    ev("app_started", base + 86400, "userA2", "install-1", npr=flags)
+    # panel_theme rides on install-1 only, so the theme chart's denominator is the
+    # REPORTING installs (1) rather than all of them (2) -- the same coverage-aware
+    # shape the feat_* flags have, and the state the world is actually in while
+    # older builds are still out there.
+    ev("app_started", base, "userA1", "install-1", sp={"panel_theme": "carbon-dark"}, npr=flags)
+    ev("app_started", base + 86400, "userA2", "install-1",
+       sp={"panel_theme": "carbon-dark"}, npr=flags)
     ev("session_end", base + 100, "userA1", "install-1", npr={"duration_seconds": 600})
     # A minimal (early-build) launch with NO feature flags -> coverage must exclude it.
     ev("app_started", base + 200, "userB1", "install-2",
@@ -1192,6 +1214,17 @@ def selftest():
         "major and minor branches, which must PARTITION the games"
     assert "activity_launches.svg" in md, \
         "activity chart produced but REPORT.md does not reference it"
+
+    # The panel-theme chart, both halves: produced AND referenced. A categorical
+    # prop is rendered by its own branch rather than by the feat_ loop, so it is
+    # not covered by any of the assertions above -- and a section that silently
+    # renders nothing is precisely the failure this file exists to catch (see the
+    # per-game chart post-mortem directly above).
+    assert os.path.exists(os.path.join(out, "charts", "panel_theme.svg")), \
+        "panel_theme chart missing — the theme label reached the payload but no " \
+        "section renders it, so the data would be collected and never seen"
+    assert "panel_theme.svg" in md, \
+        "panel theme chart produced but REPORT.md does not reference it"
 
     # partial_edge_days keys off COVERAGE, not position: a boundary day is only
     # trimmed when the export genuinely stops short of it. Asserted both ways because

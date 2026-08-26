@@ -18,7 +18,9 @@
 
 #include "settings_manager.h"
 #include "ui_config.h"
+#include "render_probe_sweep.h"
 #include "hud_manager.h"
+#include "../hud/settings/whats_new.h"
 #include "companion_window.h"
 #include "../hud/settings_hud.h"
 #include "../hud/standings_hud.h"
@@ -30,8 +32,22 @@
 #include "../hud/notices_hud.h"
 #include "../hud/telemetry_hud.h"
 #include "../hud/timing_hud.h"
+#include "../hud/map_hud.h"
+#include "../hud/session_hud.h"
 #include "../hud/session_charts_hud.h"
+#include "../hud/performance_hud.h"
 #include "../hud/gamepad_widget.h"
+#include "../hud/gforce_widget.h"
+#include "../hud/lap_widget.h"
+#include "../hud/position_widget.h"
+#include "../hud/speed_widget.h"
+#include "../hud/gear_widget.h"
+#include "../hud/crash_widget.h"
+#include "asset_manager.h"
+#include "layout_config.h"
+#include "plugin_constants.h"
+#include <algorithm>
+#include <cstring>
 #include "xinput_reader.h"
 #include "rumble_profile_manager.h"
 #include "input_manager.h"
@@ -43,6 +59,7 @@
 #include "profile_manager.h"
 #include "director_manager.h"
 #include "stats_manager.h"
+#include "spotter_manager.h"
 #include "../handlers/spectate_handler.h"
 #if GAME_HAS_FMX
 #include "fmx_manager.h"
@@ -63,6 +80,15 @@
 #include <vector>
 #include <cmath>
 #include <cstdio>
+
+// PerformanceHud's element mask. It ships as CPU alone -- one section -- so the themed
+// geometry gates could not exercise the section-boundary arithmetic on it and passed
+// vacuously. 3 = FPS | CPU gives it two.
+void MXBMRP3_Test_SetPerformanceElementsImpl(unsigned int mask) {
+    PerformanceHud& hud = HudManager::getInstance().getPerformanceHud();
+    hud.m_enabledElements = mask;
+    hud.setDataDirty();
+}
 
 extern "C" {
 
@@ -110,16 +136,891 @@ __declspec(dllexport) unsigned long long MXBMRP3_Test_SnapshotSeq() {
 #endif
 
 
+// ---- Spotter -----------------------------------------------------------
+// The spotter's cue DECISIONS are what tests assert — the cue log records
+// every composed phrase whether or not audio playback succeeded, so a Wine
+// prefix with no SAPI voice still tests detection, phrasing, and filtering.
+
+__declspec(dllexport) void MXBMRP3_Test_SpotterEnable(int on) {
+    SpotterManager::getInstance().setEnabled(on != 0);
+}
+
+__declspec(dllexport) void MXBMRP3_Test_SpotterSubtitles(int on) {
+    SpotterManager::getInstance().setSubtitlesEnabled(on != 0);
+}
+
+__declspec(dllexport) void MXBMRP3_Test_SpotterCategoryMask(unsigned mask) {
+    SpotterManager::getInstance().setCategoryMask(mask);
+}
+
+// Inject cue-pack CONTENT directly (the harness stages no asset tree — the
+// installSyntheticTheme rationale). Empty text clears back to built-ins.
+__declspec(dllexport) void MXBMRP3_Test_SpotterInstallPack(const char* iniText) {
+    SpotterManager::getInstance().testInstallPack(
+        iniText ? iniText : "", "Z:\\tmp\\spotter-pack");
+}
+
+// Pin which alternate a cue with variants speaks: -1 rolls (shipping
+// behaviour), 0 always takes the base row. See SpotterManager::testPinVariant
+// for why a test that asserts exact words wants this rather than a seed.
+__declspec(dllexport) void MXBMRP3_Test_SpotterPinVariant(int idx) {
+    SpotterManager::getInstance().testPinVariant(idx);
+}
+
+// Fire the settings menu's voice preview. What is worth asserting is what it
+// must NOT do — reach the cue log — so this exists to let a test call it and
+// then read the log back. Audio is unobservable under Wine either way.
+// The Spotter Cue hotkey, which HudManager reaches through the input path a
+// headless run has no way to drive. It was one of the emitters that skipped
+// the category gate, so it needs to be reachable to pin that it no longer can.
+__declspec(dllexport) void MXBMRP3_Test_SpotterHotkey() {
+    SpotterManager::getInstance().speakHotkeyCue();
+}
+
+__declspec(dllexport) void MXBMRP3_Test_SpotterPreview(int ttsOnly) {
+    SpotterManager::getInstance().previewVoice(ttsOnly != 0);
+}
+
+// Newline-joined cues, oldest first, each "sessionTimeMs<TAB>text" — the
+// timestamp makes the dump a usable subtitle transcript (demo-tape renders,
+// cue-timing debugging); assertions match on the text with find().
+__declspec(dllexport) void MXBMRP3_Test_SpotterCueLog(char* out, int cap) {
+    if (!out || cap <= 0) return;
+    std::string joined;
+    for (const auto& e : SpotterManager::getInstance().getCueLog()) {
+        joined += std::to_string(e.sessionTimeMs);
+        joined += '\t';
+        joined += e.text;
+        joined += '\n';
+    }
+    // Truncate from the FRONT, keeping the newest cues. The other way round
+    // is what a fixed buffer does by default, and it is silently wrong here:
+    // a test asserts on what it just provoked, so dropping the tail hands back
+    // a log missing exactly the lines under test — and the suite's "must NOT
+    // say X" checks then pass on text that was merely cut off. The ring holds
+    // 96 entries, which outgrows any single buffer a caller picks, so the
+    // choice of which end to lose is not hypothetical.
+    const int size = static_cast<int>(joined.size());
+    const int n = size < cap - 1 ? size : cap - 1;
+    const int from = size - n;
+    for (int i = 0; i < n; ++i) out[i] = joined[from + i];
+    out[n] = '\0';
+}
+
+// Which audio route the LAST cue took: "<chosen key>|" plus one of
+// "mix:a.wav+b.wav", "wav:x.wav", "tts", "silent" (the cue resolved to nothing at
+// all) or "muted" (its category is switched off). The cue log carries only the
+// words, so this is the only headless way to tell a pack's recording from the TTS
+// that stands in for it — and TTS is silence on Wine/Proton, so "spoke the right
+// words" is not the same question as "played". Every exit from emitCue records,
+// deliberately: a seam that answers for some cues and keeps the previous cue's
+// answer for the rest is read as this cue's answer, which is worse than none.
+__declspec(dllexport) void MXBMRP3_Test_SpotterLastAudio(char* out, int cap) {
+    if (!out || cap <= 0) return;
+    const std::string& s = SpotterManager::getInstance().testLastAudioRoute();
+    const int n = static_cast<int>(s.size()) < cap - 1 ? static_cast<int>(s.size()) : cap - 1;
+    for (int i = 0; i < n; ++i) out[i] = s[i];
+    out[n] = '\0';
+}
+
 // Reset EVERYTHING to factory defaults (per-profile HUDs for all profiles +
 // globals). Mirrors settings_hud.cpp's "Reset All". Persists.
 __declspec(dllexport) void MXBMRP3_Test_ResetAll() {
     SettingsManager::getInstance().resetAllToFactoryDefaults(HudManager::getInstance());
 }
 
+// The GLOBAL half of the settings menu's "Reset Everything": replays the
+// factory-default snapshot over [General]/[Advanced]/colours/fonts/hotkeys.
+//
+// Separate from MXBMRP3_Test_ResetAll, which is the PER-PROFILE half. The button
+// calls both, and a test that calls only one is testing half a button -- which is
+// how the what's-new case first "proved" that reset does not clear a dismissal
+// when in fact the half that clears it had not been called.
+__declspec(dllexport) void MXBMRP3_Test_ResetGlobals() {
+    SettingsManager::getInstance().resetGlobalsToFactoryDefaults(HudManager::getInstance());
+}
+
 // Reset the ACTIVE profile's HUDs/widgets to defaults; globals + other profiles
 // untouched. Does not persist on its own — call MXBMRP3_Test_Save().
 __declspec(dllexport) void MXBMRP3_Test_ResetActiveProfile() {
     SettingsManager::getInstance().resetActiveProfileToFactoryDefaults(HudManager::getInstance());
+}
+
+// StandingsHud's per-HUD panel-theme override. Exists for theme_override_test.cpp:
+// the override is captured SPARSELY (written only when the HUD has diverged), so its
+// apply side has to clear authoritatively when the key is absent -- and it did not,
+// which left a HUD pinned to a theme through Reset to Defaults and through entering
+// a profile whose cache carries no theme key. Reading it back is the only way to see
+// that from a test.
+//
+// StandingsHud stands in for "a per-profile HUD": the override lives on BaseHud, so
+// one instance exercises the whole capture/apply path, and the hook needs no name
+// parameter.
+__declspec(dllexport) void MXBMRP3_Test_StandingsTheme(char* out, int cap) {
+    if (!out || cap <= 0) return;
+    const std::string& v = HudManager::getInstance().getStandingsHud().getThemeOverride();
+    const int n = (static_cast<int>(v.size()) < cap - 1) ? static_cast<int>(v.size()) : cap - 1;
+    for (int i = 0; i < n; ++i) out[i] = v[i];
+    out[n] = '\0';
+}
+
+// Install a synthetic panel theme and select it globally. No files on disk: every
+// themed layout rule is arithmetic over these four numbers, and requiring the
+// shipped themes to be staged next to the integration suite is what kept this
+// entire surface untested. See AssetManager::installSyntheticTheme.
+//
+// insets are in GRID CELLS, matching a theme ini's `size` keys.
+// Give the CURRENTLY INSTALLED synthetic theme an icon override: `icon` draws at
+// `sprite`, and that sprite maps back to shape index `shape`. 0 if no theme is
+// installed.
+//
+// INJECTED, not loaded: the integration harness stages no assets, so there is no
+// icons/ directory to discover and no base vocabulary to key a real override to.
+// The rule that a theme may only override a name the base set HAS is enforced in
+// discoverThemes() against the real set and is not what this hook models -- what it
+// models is the resolution surviving a theme SWITCH, which is memoised state
+// (AssetManager::activeIconTheme) and therefore the part that can go stale.
+__declspec(dllexport) int MXBMRP3_Test_SetThemeIconOverride(const char* icon, int sprite,
+                                                            int shape) {
+    if (!icon || !*icon) return 0;
+    if (!AssetManager::getInstance().testSetThemeIconOverride(icon, sprite, shape)) return 0;
+    HudManager::getInstance().markAllHudsDirty();
+    return 1;
+}
+
+// `[card] band-size`, injected into the last installed synthetic theme. Negative puts
+// the band back on `[card] size`, which is where it sits for a theme that never names
+// the key -- so a case can assert the fallback as well as the split.
+__declspec(dllexport) int MXBMRP3_Test_SetThemeTitleBorder(float cells) {
+    if (!AssetManager::getInstance().testSetThemeTitleBorder(cells)) return 0;
+    HudManager::getInstance().markAllHudsDirty();
+    return 1;
+}
+
+// `[panel] padding-x/-y`, injected into the last installed synthetic theme. Negative
+// puts an axis back on the built-in, which is where it sits for a theme that never
+// names the key -- so a case can assert the fallback as well as the override.
+// An ASYMMETRIC `[content] border`, injected into the last installed synthetic theme
+// -- the case a uniform border cannot express. See testSetThemeContentBorder.
+__declspec(dllexport) int MXBMRP3_Test_SetThemeContentBorder(float t, float r,
+                                                             float b, float l) {
+    if (!AssetManager::getInstance().testSetThemeContentBorder(t, r, b, l)) return 0;
+    HudManager::getInstance().markAllHudsDirty();
+    return 1;
+}
+
+// ...and `[content] margin`, the term that moves the card inside the panel --
+// what separates the card's centre from the panel's for the centring tests.
+__declspec(dllexport) int MXBMRP3_Test_SetThemeContentMargin(float t, float r,
+                                                             float b, float l) {
+    if (!AssetManager::getInstance().testSetThemeContentMargin(t, r, b, l)) return 0;
+    HudManager::getInstance().markAllHudsDirty();
+    return 1;
+}
+
+// ...and `[title] margin`, so the sweep can move the TITLE band the same way.
+__declspec(dllexport) int MXBMRP3_Test_SetThemeTitleMargin(float t, float r,
+                                                           float b, float l) {
+    if (!AssetManager::getInstance().testSetThemeTitleMargin(t, r, b, l)) return 0;
+    HudManager::getInstance().markAllHudsDirty();
+    return 1;
+}
+
+__declspec(dllexport) int MXBMRP3_Test_SetThemePanelPadding(float xCells, float yCells) {
+    if (!AssetManager::getInstance().testSetThemePanelPadding(xCells, yCells)) return 0;
+    HudManager::getInstance().markAllHudsDirty();
+    return 1;
+}
+
+// The LIVE lattice, so a geometry test derives its expectations from the metric
+// roots instead of freezing the shipped values into literals -- a frozen 11733
+// or 0.046934 asserts the DEFAULT, not the design, and goes red the moment
+// uiLineHeight moves. out[4]: cellW, cellH, a border cell's vertical extent
+// (cellW * aspect -- the theme art lattice, font-derived, line-height-free),
+// and lineHeightNormal.
+__declspec(dllexport) void MXBMRP3_Test_LayoutCells(double* out) {
+    const LayoutMetrics& m = layoutDefaults();
+    out[0] = m.cellW;
+    out[1] = m.cellH;
+    out[2] = static_cast<double>(m.cellW) * PluginConstants::UI_ASPECT_RATIO;
+    out[3] = m.lineHeightNormal;
+}
+
+// What the plugin would DRAW for an icon name, and for a 1-based shape index --
+// the two resolution entry points, read back through the same calls every HUD makes.
+__declspec(dllexport) int MXBMRP3_Test_IconSpriteForName(const char* name) {
+    return (name && *name) ? AssetManager::getInstance().getIconSpriteIndex(name) : 0;
+}
+__declspec(dllexport) int MXBMRP3_Test_IconSpriteForShape(int shapeIndex) {
+    return AssetManager::getInstance().iconSpriteForShape(shapeIndex);
+}
+// And the inverse, which the marker paths use to ask whether a glyph is directional.
+__declspec(dllexport) int MXBMRP3_Test_ShapeForIconSprite(int sprite) {
+    return AssetManager::getInstance().shapeIndexForSprite(sprite);
+}
+
+__declspec(dllexport) void MXBMRP3_Test_InstallTheme(const char* name, float frameBorder,
+        float cardBorder, int titleBand, int contentCard, int cardSprites,
+        int buttonSprites) {
+    ThemeAsset t;
+    t.name = name ? name : "synthetic";
+    t.displayName = t.name;
+    t.frameBorder = frameBorder;
+    t.cardBorder = cardBorder;
+    // hasCard() is "cardCenterSprite > 0", so the card set has to LOOK present or
+    // no band and no card is ever emitted. The values are arbitrary: nothing asserts
+    // which texture a slice drew, and the emitters never validate an index.
+    t.centerSprite = 1;
+    // cardSprites = 0 models the theme folder that ships frame slices only. hasCard()
+    // is "cardCenterSprite > 0", so leaving it at zero is what makes a theme ASK for a
+    // band and a card and get neither -- the case a skinner hits by forgetting the art,
+    // and the one the [card]-without-inner warning was added for.
+    t.cardCenterSprite = (cardSprites != 0) ? 1 : 0;
+    for (int i = 0; i < 4; ++i) {
+        t.cornerSprites[i] = 1; t.edgeSprites[i] = 1;
+        t.cardCornerSprites[i] = t.cardCenterSprite;
+        t.cardEdgeSprites[i]   = t.cardCenterSprite;
+    }
+    // The BUTTON set is a third, independent one: hasButton() is
+    // "buttonCenterSprite > 0", and a theme folder that ships frame and card art but
+    // no button_*.tga is a real shape (every button then falls back to a flat quad).
+    // Off by default so the existing geometry cases keep counting exactly the quads
+    // they were written against; a case about buttons asks for it.
+    if (buttonSprites != 0) {
+        t.buttonCenterSprite = 1;
+        for (int i = 0; i < 4; ++i) {
+            t.buttonCornerSprites[i] = 1;
+            t.buttonEdgeSprites[i]   = 1;
+        }
+    }
+    t.titleBand = titleBand != 0;
+    t.contentCard = contentCard != 0;
+    t.tintable = true;
+    AssetManager::getInstance().installSyntheticTheme(t);
+    UiConfig::getInstance().setThemeName(t.name);
+    // Every HUD's background geometry changes (1 quad <-> 9), so this is a full
+    // rebuild, not a reposition -- exactly what the Appearance tab does after the
+    // same setThemeName. Without it the HUDs keep their previous quads and a test
+    // silently measures the OLD theme, which is how the first run of
+    // theme_geometry_test passed 16 assertions against flat panels.
+    HudManager::getInstance().markAllHudsDirty();
+    // A theme RESIZES every panel, so positions are re-validated. The Appearance tab
+    // REQUESTS this (it runs inside a click handler, where validating re-enters the
+    // update that dispatched it); this hook is not in a handler, so it validates
+    // directly and a test sees the settled result without driving another frame.
+    HudManager::getInstance().validateAllHudPositions();
+}
+
+// --- Appearance palette / font precedence (theme_palette_test) ---------------
+// The three-step precedence is built-in default -> THEME -> user override, and it
+// had no test at all: the Appearance rows build their click regions by hand, so
+// MXBMRP3_Test_SettingsClickCycle cannot reach them, and ColorConfig does not link
+// into the unit suite. A regression where cycleColor() wrote the slot array
+// directly -- bypassing the override flag, so the theme's value kept winning and
+// cycling appeared to do nothing -- shipped and was caught by a user.
+
+// Effective colour for a slot: what actually gets drawn, after precedence.
+__declspec(dllexport) unsigned long MXBMRP3_Test_EffectiveColor(int slot) {
+    return ColorConfig::getInstance().getColor(static_cast<ColorSlot>(slot));
+}
+// Whether the USER has overridden this slot (as opposed to inheriting it).
+__declspec(dllexport) int MXBMRP3_Test_ColorOverridden(int slot) {
+    return ColorConfig::getInstance().isOverridden(static_cast<ColorSlot>(slot)) ? 1 : 0;
+}
+// What the slot resolves to with no user override: the theme's value, or the
+// built-in default when the theme has no opinion.
+__declspec(dllexport) unsigned long MXBMRP3_Test_ThemeOrDefaultColor(int slot) {
+    return ColorConfig::getThemeOrDefaultColor(static_cast<ColorSlot>(slot));
+}
+__declspec(dllexport) void MXBMRP3_Test_CycleColor(int slot, int forward) {
+    ColorConfig::getInstance().cycleColor(static_cast<ColorSlot>(slot), forward != 0);
+}
+__declspec(dllexport) void MXBMRP3_Test_ClearColorOverride(int slot) {
+    ColorConfig::getInstance().clearOverride(static_cast<ColorSlot>(slot));
+}
+// Give the ACTIVE synthetic theme an opinion about one colour slot, so a test can
+// tell "inherited from the theme" from "built-in default".
+__declspec(dllexport) void MXBMRP3_Test_SetThemeColor(int slot, unsigned long abgr) {
+    AssetManager::getInstance().testSetActiveThemeColor(static_cast<ColorSlot>(slot), abgr);
+}
+
+// Same three questions for fonts. `out` receives the effective font NAME.
+__declspec(dllexport) void MXBMRP3_Test_EffectiveFont(int cat, char* out, int cap) {
+    if (!out || cap <= 0) return;
+    const char* v = FontConfig::getInstance().getFontName(static_cast<FontCategory>(cat));
+    const std::string s = v ? v : "";
+    const int n = (static_cast<int>(s.size()) < cap - 1) ? static_cast<int>(s.size()) : cap - 1;
+    for (int i = 0; i < n; ++i) out[i] = s[i];
+    out[n] = '\0';
+}
+__declspec(dllexport) int MXBMRP3_Test_FontOverridden(int cat) {
+    return FontConfig::getInstance().isOverridden(static_cast<FontCategory>(cat)) ? 1 : 0;
+}
+__declspec(dllexport) void MXBMRP3_Test_CycleFont(int cat, int forward) {
+    FontConfig::getInstance().cycleFont(static_cast<FontCategory>(cat), forward != 0);
+}
+// Set a font by name, bypassing the asset list. cycleFont() cannot be exercised
+// headlessly -- it early-returns when AssetManager has discovered no fonts, and the
+// integration suite stages no .fnt files -- but the PRECEDENCE machinery it drives
+// is exactly what regressed, and setFont() reaches it without any assets.
+__declspec(dllexport) void MXBMRP3_Test_SetFont(int cat, const char* name) {
+    FontConfig::getInstance().setFont(static_cast<FontCategory>(cat), name ? name : "");
+}
+// How many fonts discovery found. 0 headlessly, which is why the test above exists.
+__declspec(dllexport) int MXBMRP3_Test_FontCount() {
+    return static_cast<int>(AssetManager::getInstance().getFonts().size());
+}
+
+__declspec(dllexport) void MXBMRP3_Test_ClearFontOverride(int cat) {
+    FontConfig::getInstance().clearOverride(static_cast<FontCategory>(cat));
+}
+
+// Defined below with the rest of the panel sweep; declared here so the name a test
+// toggles by is produced by the SAME function it reads panels back with, rather than
+// by a second lookup that would drift from it.
+__declspec(dllexport) void MXBMRP3_Test_PanelName(int i, char* out, int cap);
+
+// The Gap Bar's own width setting (percent) -- the second way this panel changes
+// width, and the one a scale test cannot reach.
+__declspec(dllexport) void MXBMRP3_Test_GapBarWidth(int percent) {
+    HudManager::getInstance().getGapBarHud().setBarWidth(percent);
+}
+
+// Runtime setScale, by the registration name MXBMRP3_Test_PanelName reports -- the
+// path a settings click takes, which is where the Gap Bar's centre drift lived: an
+// INI load sets the field before layout, so only a RUNTIME change exercised the old
+// setScaleKeepingCenter double-compensation. Returns 1 if a HUD matched.
+__declspec(dllexport) int MXBMRP3_Test_SetHudScale(const char* name, float scale) {
+    if (!name) return 0;
+    const auto& huds = HudManager::getInstance().getHuds();
+    for (int i = 0; i < static_cast<int>(huds.size()); i++) {
+        char label[64];
+        MXBMRP3_Test_PanelName(i, label, static_cast<int>(sizeof(label)));
+        if (strcmp(label, name) != 0) continue;
+        huds[static_cast<size_t>(i)]->setScale(scale);
+        return 1;
+    }
+    return 0;
+}
+
+// Toggle ANY registered HUD's title, by the same registration name -- so a test
+// reads a panel and toggles its caption through one name instead of needing a
+// per-HUD hook for each. (This was SetGForceTitle, one widget wide, and the second
+// HUD that needed it would have made it two.) Returns 1 if a HUD matched.
+__declspec(dllexport) int MXBMRP3_Test_SetHudTitle(const char* name, int on) {
+    if (!name) return 0;
+    const auto& huds = HudManager::getInstance().getHuds();
+    for (int i = 0; i < static_cast<int>(huds.size()); i++) {
+        char label[64];
+        MXBMRP3_Test_PanelName(i, label, static_cast<int>(sizeof(label)));
+        if (strcmp(label, name) != 0) continue;
+        huds[static_cast<size_t>(i)]->setShowTitle(on != 0);
+        HudManager::getInstance().markAllHudsDirty();
+        return 1;
+    }
+    return 0;
+}
+
+// Clear the global theme selection (back to unthemed flat panels).
+__declspec(dllexport) void MXBMRP3_Test_ClearTheme() {
+    UiConfig::getInstance().setThemeName(std::string());
+    HudManager::getInstance().markAllHudsDirty();
+}
+
+// RESOLVE A PANEL BY ITS REGISTRATION NAME -- the one every element carries (see
+// BaseHud::setHarnessId), which is also what MXBMRP3_Test_PanelName reports and what
+// the benchmark report prints. Returns nullptr for a name nothing answers to; every
+// caller below treats that as "no such panel" and returns its empty answer.
+//
+// THIS REPLACED A 21-CASE SWITCH ON AN INTEGER ID, and the switch was the last of the
+// hand-maintained lookup tables in this file. Three things were wrong with it:
+//
+//   - Its `default:` arm returned THE G-FORCE WIDGET. An id nobody had added a case
+//     for did not fail -- it silently handed back a real panel's geometry, and a test
+//     asserting against it passed while measuring the wrong thing. (The G-force id
+//     itself had no case; it WAS the default, so the fallback was load-bearing and
+//     could not simply be deleted.)
+//   - It had already diverged from its mirror once: this switch read 1 as the Gap Bar
+//     while MXBMRP3_Test_HudPanelRect's own copy read 1 as the G-force widget, so one
+//     PluginHost::HudId meant two different panels depending on the hook asked. Latent
+//     only because no test happened to ask for that id both ways.
+//   - Every entry needed a typed HudManager::getXxxHud() getter, so "make this panel
+//     measurable" was a plugin-side edit. Twenty-three of the forty-four registered
+//     elements had no id at all, and the sweep that centres content on its card box
+//     could not see a HUD until someone added one -- which is exactly how VersionWidget
+//     went unswept while its own anchor drifted.
+//
+// A name lookup has none of that: all 44 are addressable the moment they are
+// registered, an unknown name is an error rather than someone else's panel, and a
+// game-gated HUD (Records on GP Bikes / KRP) is simply absent instead of needing an
+// #if. PluginHost keeps its HudId enum as readable sugar and maps it to these names on
+// its own side, so the mapping table no longer exists in the plugin at all.
+static const BaseHud* testHudByName(const char* name) {
+    if (!name) return nullptr;
+    for (const auto& hud : HudManager::getInstance().getHuds()) {
+        if (hud && std::strcmp(hud->getHarnessId(), name) == 0) {
+            return static_cast<const BaseHud*>(hud.get());
+        }
+    }
+    return nullptr;
+}
+
+// The placed CARD rect of a HUD's memoized plan: x, y, w, h in the same 1e6
+// fixed point the string/quad hooks use, PRE-offset (the sweep compares deltas
+// across two draws, so the constant offset cancels). h spans the first card's
+// top to the last card's bottom. Returns 0 while the HUD has no computed plan.
+__declspec(dllexport) int MXBMRP3_Test_HudCardRect(const char* name, int* out) {
+    const BaseHud* hud = testHudByName(name);
+    const BaseHud::PanelPlan* plan = hud ? hud->testPlacedPlan() : nullptr;
+    if (!plan || plan->g.sections.empty()) return 0;
+    auto q = [](float v) { return static_cast<int>(v * 1e6f + (v < 0 ? -0.5f : 0.5f)); };
+    if (out) {
+        out[0] = q(plan->sectionBoxX());
+        out[1] = q(plan->sectionBoxY(0));
+        out[2] = q(plan->sectionBoxW());
+        out[3] = q(plan->Y(plan->g.sections.back().bot) - plan->sectionBoxY(0));
+        // ...and the PANEL rect in the same (pre-offset) space, so a test can
+        // measure the card's inset from the panel edge without mixing spaces --
+        // drawn quads carry the HUD offset, this plan does not.
+        out[4] = q(plan->x0);
+        out[5] = q(plan->y0);
+        out[6] = q(plan->width());
+        out[7] = q(plan->height());
+    }
+    return 1;
+}
+
+
+// A HUD's rendered panel rect and quad count, quantised x1e6 so a headless test can
+// compare exactly. `name` is the panel's registration name (testHudByName above).
+// Drive a Draw first so the rect reflects the current config.
+__declspec(dllexport) void MXBMRP3_Test_HudPanelRect(const char* name, int* w, int* h, int* quads) {
+    const BaseHud* hud = testHudByName(name);
+    // Guarded because it can now BE null: under the old id switch an unmapped id
+    // returned the G-force widget, so this deref was safe by accident.
+    if (!hud) { if (w) *w = 0; if (h) *h = 0; if (quads) *quads = 0; return; }
+    float l = 0, t = 0, r = 0, b = 0;
+    hud->panelRect(l, t, r, b);
+    auto q = [](float v) { return static_cast<int>(v * 1e6f + 0.5f); };
+    if (w) *w = q(r - l);
+    if (h) *h = q(b - t);
+    if (quads) *quads = static_cast<int>(hud->getQuads().size());
+}
+
+// Every section card a HUD emitted this rebuild, as (top, bottom) pairs quantised
+// x1e6, newest rebuild only. `which`: 0 = Timing, 1 = Performance -- the two HUDs
+// that stack cards without a heading between them and with one, respectively.
+// Returns the number of CARDS written (so `cap` must hold 2*that ints).
+//
+// Exists because a section card is padded on both sides of its content: two sections
+// whose content abuts overlap by twice that pad, the later card draws over the
+// earlier, and the only visible symptom is the earlier card looking short. Nothing
+// measurable from a screenshot distinguishes that from a deliberate layout, which is
+// the whole reason the rects are read directly here.
+__declspec(dllexport) int MXBMRP3_Test_SectionCards(const char* name, int* out, int cap) {
+    // Was its own two-case mapping (0 = Timing, else Performance) -- a THIRD naming
+    // scheme in this file, on top of the id switch and the panel-name ladder, and one
+    // that answered "Performance" to every id it did not recognise. Same name lookup
+    // as everything else now, so any panel with section cards can be asked.
+    const BaseHud* hud = testHudByName(name);
+    if (!hud) return 0;
+    const auto& spans = hud->sectionCardSpans();
+    auto q = [](float v) { return static_cast<int>(v * 1e6f + (v < 0 ? -0.5f : 0.5f)); };
+    int written = 0;
+    for (const auto& sp : spans) {
+        if (out && (written * 2 + 1) < cap) {
+            out[written * 2]     = q(sp.top);
+            out[written * 2 + 1] = q(sp.bottom);
+        }
+        written++;
+    }
+    return written;
+}
+
+// EVERY registered HUD's panel size, in MILLI-CELLS (w and h interleaved), plus its
+// icon name as a label. Returns the HUD count; writes min(count, cap/2) pairs.
+//
+// The grid sweep. A panel whose height is not a whole number of cells cannot tile
+// with the one below it, and the error is invisible on the panel itself -- it only
+// shows up as the NEXT HUD down sitting half a cell out. Individual ids on
+// MXBMRP3_Test_HudPanelRect answer that one HUD at a time, which is how three
+// sectioned panels shipped off the lattice at once: the case that existed measured a
+// widget and a table HUD, and neither has a section boundary. This asks all of them.
+__declspec(dllexport) int MXBMRP3_Test_PanelCells(int* outWH, int cap) {
+    const auto& huds = HudManager::getInstance().getHuds();
+    const LayoutMetrics& L = layoutDefaults();
+    int i = 0;
+    for (const auto& hud : huds) {
+        if (outWH && (i * 2 + 1) < cap) {
+            float l = 0, t = 0, r = 0, b = 0;
+            hud->panelRect(l, t, r, b);
+            outWH[i * 2]     = static_cast<int>(((r - l) / L.cellW) * 1000.0f + 0.5f);
+            outWH[i * 2 + 1] = static_cast<int>(((b - t) / L.cellH) * 1000.0f + 0.5f);
+        }
+        i++;
+    }
+    return i;
+}
+
+// THE VERTICAL PADDING SWEEP: per HUD, (frameBorderY, paddingV) quantised x1e6.
+//
+// A themed panel always draws a frame, so its content owes that frame's edge slice a
+// clearance at BOTH ends -- paddingV is spent top and bottom. Charge less than the
+// margin and the first and last rows are drawn ON the frame art. That is one scalar
+// comparison per HUD, which is why this is a sweep and not a per-panel hook: the
+// shortfall depends on the THEME's frame size and the panel's inner geometry, not on
+// anything a particular HUD does, so any single panel is a poor witness for the set.
+//
+// Reads BaseHud::contentPaddingY(), the one spelling of the quantity -- the same call
+// getScaledDimensions() puts in ScaledDimensions::paddingV. It was recomposed here
+// (the base padding widened by the theme's borders) on the argument that the risky term was
+// called directly, which is true of that term and not of the composition: had paddingV
+// gained or lost one, this sweep would have gone on measuring the old formula and
+// passing. check_hud_helpers.sh rule 11 bans exactly these synonyms, and does not scan
+// this file.
+__declspec(dllexport) int MXBMRP3_Test_PanelPadY(int* outPairs, int cap) {
+    const auto& huds = HudManager::getInstance().getHuds();
+    auto q = [](float v) { return static_cast<int>(v * 1e6f + (v < 0 ? -0.5f : 0.5f)); };
+    int i = 0;
+    for (const auto& hud : huds) {
+        if (outPairs && (i * 2 + 1) < cap) {
+            outPairs[i * 2]     = q(hud->frameBorderY());
+            outPairs[i * 2 + 1] = q(hud->contentPaddingY());
+        }
+        i++;
+    }
+    return i;
+}
+
+// The label for index `i` of the sweep above, so a failure names the HUD instead of
+// an index the reader then has to count out in HudManager::initialize().
+__declspec(dllexport) void MXBMRP3_Test_PanelName(int i, char* out, int cap) {
+    if (!out || cap <= 0) return;
+    out[0] = '\0';
+    const auto& huds = HudManager::getInstance().getHuds();
+    if (i < 0 || i >= static_cast<int>(huds.size())) return;
+    // The registration name, which every element has by construction. This was a
+    // ladder -- icon name, else texture base name, else "#<index>" -- and it made
+    // the harness vocabulary a lottery: the same panel answered to `hud-timing`
+    // in one test and `crash_widget` in another depending on which rung it landed
+    // on, and Version, having neither, was addressable only by an index a reader
+    // had to count out in HudManager::initialize().
+    strncpy_s(out, static_cast<size_t>(cap),
+              huds[static_cast<size_t>(i)]->getHarnessId(), _TRUNCATE);
+}
+
+// A HUD's quads as axis-aligned rects (l,t,r,b quantised x1e6, four ints each), in
+// EMISSION order -- which is draw order, so a later quad covers an earlier one.
+// Returns the quad count; writes min(count, cap/4).
+//
+// For asking whether a themed panel's quads TILE or STACK. Within one nine-slice they
+// tile by construction (NineSlice::build cuts one rect into nine disjoint pieces), but
+// a panel emits several nine-slices -- frame, title band, body card -- plus row bands
+// on top, and whether those overlap is a question about the composition, not about any
+// one of them. It matters because a translucent theme blends every layer: two quads
+// over the same pixels is double the intended opacity, and the seam where the count
+// changes reads as a band the artist never drew.
+
+// A HUD's drawn STRINGS, one per call: y quantised x1e6 into *y, the text into out.
+// Returns the total count, so a caller iterates 0..count-1. `name` is the panel's
+// registration name (testHudByName above).
+//
+// The quad hooks cannot answer "what is on which line", and that is the question a
+// layout fault actually asks. MXBMRP3_Test_HudQuadRects sees a card in the wrong place
+// only as coordinates; what a user reports is two pieces of TEXT drawn on top of each
+// other, and only the strings can say whether that happened. See title_band_test.
+__declspec(dllexport) int MXBMRP3_Test_HudStringRows(const char* name, int index,
+                                                     int* x, int* y, char* out, int cap) {
+    const BaseHud* hud = testHudByName(name);
+    if (!hud) return 0;
+    const auto& strings = hud->getStrings();
+    const int count = static_cast<int>(strings.size());
+    auto q = [](float v) { return static_cast<int>(v * 1e6f + (v < 0 ? -0.5f : 0.5f)); };
+    if (index >= 0 && index < count) {
+        if (x) *x = q(strings[static_cast<size_t>(index)].m_afPos[0]);
+        if (y) *y = q(strings[static_cast<size_t>(index)].m_afPos[1]);
+        if (out && cap > 0) {
+            strncpy(out, strings[static_cast<size_t>(index)].m_szString, static_cast<size_t>(cap) - 1);
+            out[cap - 1] = '\0';
+        }
+    }
+    return count;
+}
+
+// THE COLOUR OF ONE DRAWN STRING / ONE DRAWN QUAD, by the panel's registration name
+// and its index in emission order. Returns 0 for an unknown panel or index.
+//
+// The rect and text hooks answer "where" and "what"; neither can answer whether a
+// caption is LEGIBLE on the thing behind it, which is a relationship between two
+// colours. That question had no reader at all, which is how the Gap Bar drew its gap
+// text in the same palette slot as the fill under it -- red on red at high background
+// opacity -- while the Notices slabs beside it had been correcting for exactly that
+// since captionOnSlabColor landed.
+__declspec(dllexport) unsigned long MXBMRP3_Test_HudStringColor(const char* name, int index) {
+    const BaseHud* hud = testHudByName(name);
+    if (!hud) return 0;
+    const auto& strings = hud->getStrings();
+    if (index < 0 || index >= static_cast<int>(strings.size())) return 0;
+    return strings[static_cast<size_t>(index)].m_ulColor;
+}
+
+__declspec(dllexport) unsigned long MXBMRP3_Test_HudQuadColor(const char* name, int index) {
+    const BaseHud* hud = testHudByName(name);
+    if (!hud) return 0;
+    const auto& quads = hud->getQuads();
+    if (index < 0 || index >= static_cast<int>(quads.size())) return 0;
+    return quads[static_cast<size_t>(index)].m_ulColor;
+}
+
+// The plugin's own legibility threshold, so a test asserts against the LIVE value
+// rather than freezing 45 into an expectation that rots when it is retuned.
+__declspec(dllexport) int MXBMRP3_Test_MinGlyphLumaGap() {
+    return static_cast<int>(BaseHud::MIN_GLYPH_LUMA_GAP);
+}
+
+// BT.601 luma of a colour, 0..255 -- the quantity the threshold above compares. Exposed
+// so the test does not carry a second spelling of the plugin's own luma formula.
+__declspec(dllexport) int MXBMRP3_Test_Luma601(unsigned long color) {
+    return static_cast<int>(PluginUtils::luma601(color));
+}
+
+__declspec(dllexport) int MXBMRP3_Test_HudQuadRects(const char* name, int* out, int cap) {
+    const BaseHud* hud = testHudByName(name);
+    if (!hud) return 0;
+    const auto& quads = hud->getQuads();
+    auto q = [](float v) { return static_cast<int>(v * 1e6f + (v < 0 ? -0.5f : 0.5f)); };
+    int i = 0;
+    for (const auto& qd : quads) {
+        if (out && (i * 4 + 3) < cap) {
+            float l = qd.m_aafPos[0][0], r = l, t = qd.m_aafPos[0][1], b = t;
+            for (int k = 1; k < 4; k++) {
+                l = (std::min)(l, qd.m_aafPos[k][0]);  r = (std::max)(r, qd.m_aafPos[k][0]);
+                t = (std::min)(t, qd.m_aafPos[k][1]);  b = (std::max)(b, qd.m_aafPos[k][1]);
+            }
+            out[i * 4] = q(l); out[i * 4 + 1] = q(t); out[i * 4 + 2] = q(r); out[i * 4 + 3] = q(b);
+        }
+        i++;
+    }
+    return i;
+}
+
+// THE FILL CUT, which no screenshot and no other hook can answer. finalizeThemedFill
+// cuts the frame's centre slice into the strips nothing covers, so that a translucent
+// panel carries exactly one fill layer per pixel; the failure it exists to prevent is
+// a card drawn on an uncut fill, which is a TONE difference of a few levels rather
+// than a geometry difference. MXBMRP3_Test_HudQuadRects sees the quads but cannot say
+// which of them is a fill strip and which is a card, and its whole-panel no-overlap
+// check is meaningful only for a HUD whose every quad is theme geometry -- which the
+// settings panel, the one panel that lays its cards out in COLUMNS and so the one this
+// went wrong on, is not.
+//
+// The covers reported are the ones finalizeThemedFill actually cut against -- the
+// band and whole-body card at the centre's own x extents, inner cards at their
+// recorded rects plus the live offset -- so the test exercises the real wiring, not
+// a re-derivation of it.
+//
+// Layout: out[0] = strip count, out[1] = cover count, out[2..5] = the centre rect,
+// then one (l,t,r,b) per strip and per cover. All quantised x1e6. Returns the number
+// of ints the answer needs, so a caller can size its buffer or detect truncation.
+__declspec(dllexport) int MXBMRP3_Test_HudFillCut(const char* name, int* out, int cap) {
+    const BaseHud* hud = testHudByName(name);
+    if (!hud) return 0;
+    auto q = [](float v) { return static_cast<int>(v * 1e6f + (v < 0 ? -0.5f : 0.5f)); };
+
+    float cl = 0.0f, ct = 0.0f, cr = 0.0f, cb = 0.0f;
+    const bool themed = hud->themedCentreRect(cl, ct, cr, cb);
+
+    // A strip is DEGENERATE when the covers left it no gap -- that is the normal
+    // result, not an error, so zero-area strips are dropped rather than reported.
+    int strips[64][4];
+    int nStrip = 0;
+    if (themed) {
+        for (int i = 0; i < hud->m_fillCount && nStrip < 64; i++) {
+            const int qi = hud->fillStripQuad(i);
+            if (qi < 0 || static_cast<size_t>(qi) >= hud->getQuads().size()) continue;
+            const SPluginQuad_t& qd = hud->getQuads()[static_cast<size_t>(qi)];
+            float l = qd.m_aafPos[0][0], r = l, t = qd.m_aafPos[0][1], b = t;
+            for (int k = 1; k < 4; k++) {
+                l = (std::min)(l, qd.m_aafPos[k][0]);  r = (std::max)(r, qd.m_aafPos[k][0]);
+                t = (std::min)(t, qd.m_aafPos[k][1]);  b = (std::max)(b, qd.m_aafPos[k][1]);
+            }
+            if (r - l <= 0.0f || b - t <= 0.0f) continue;
+            strips[nStrip][0] = q(l); strips[nStrip][1] = q(t);
+            strips[nStrip][2] = q(r); strips[nStrip][3] = q(b);
+            nStrip++;
+        }
+    }
+
+    // Same three sources, same coordinates, as finalizeThemedFill's cover pass.
+    int covers[70][4];
+    int nCover = 0;
+    if (themed) {
+        // THE BAND'S OWN X, not the centre slice's. It was the centre's while every
+        // band sat on the frame's inner boundary; the settings panel's now sits one
+        // [panel] padding further in (panelSurfaceInsetX), and reading the centre
+        // here reported a band that had not moved -- which is what a test asking
+        // "does this panel respect [panel] padding" would have been told.
+        if (hud->m_bandValid && nCover < 70) {
+            covers[nCover][0] = q(hud->m_bandLeft);  covers[nCover][1] = q(hud->m_bandTop);
+            covers[nCover][2] = q(hud->m_bandRight); covers[nCover][3] = q(hud->m_bandBottom);
+            nCover++;
+        }
+        if (hud->m_wholeCardValid && nCover < 70) {
+            covers[nCover][0] = q(cl); covers[nCover][1] = q(hud->m_wholeCardTop);
+            covers[nCover][2] = q(cr); covers[nCover][3] = q(hud->m_wholeCardBottom);
+            nCover++;
+        }
+        for (const BaseHud::SectionCardSpan& sp : hud->sectionCardSpans()) {
+            if (nCover >= 70) break;
+            covers[nCover][0] = q(sp.left + hud->getOffsetX());
+            covers[nCover][1] = q(sp.top + hud->getOffsetY());
+            covers[nCover][2] = q(sp.right + hud->getOffsetX());
+            covers[nCover][3] = q(sp.bottom + hud->getOffsetY());
+            nCover++;
+        }
+    }
+
+    const int need = 6 + (nStrip + nCover) * 4;
+    if (!out || cap < need) return need;
+    out[0] = nStrip; out[1] = nCover;
+    out[2] = q(cl); out[3] = q(ct); out[4] = q(cr); out[5] = q(cb);
+    int w = 6;
+    for (int i = 0; i < nStrip; i++)
+        for (int k = 0; k < 4; k++) out[w++] = strips[i][k];
+    for (int i = 0; i < nCover; i++)
+        for (int k = 0; k < 4; k++) out[w++] = covers[i][k];
+    return need;
+}
+
+__declspec(dllexport) void MXBMRP3_Test_SetPerformanceElements(unsigned int mask) {
+    MXBMRP3_Test_SetPerformanceElementsImpl(mask);
+}
+
+// [Display] screenClamping, which keeps a panel inside the window. OFF by default --
+// deliberately, since a player may want a HUD half off the edge -- so a test that
+// wants to see clamping happen has to ask for it, and one that wants to see the
+// opt-out respected has to be able to turn it back off.
+__declspec(dllexport) void MXBMRP3_Test_SetScreenClamping(int on) {
+    UiConfig::getInstance().setScreenClamping(on != 0);
+}
+
+// A HUD's panel edges ON SCREEN -- its bounds PLUS the live position offset --
+// quantised x1e6. Same `which` mapping as MXBMRP3_Test_HudPanelRect.
+//
+// That hook is not enough to ask "is this panel still on the display", and the
+// difference is the whole reason this one exists: panelRect() is the panel's own box,
+// measured from its layout origin, and a HUD is placed by an offset applied on top of
+// it. A theme that widens every panel moves the RIGHT edge only; the width the other
+// hook reports grows either way, so it cannot tell a panel that grew inward from one
+// that grew off the screen.
+__declspec(dllexport) void MXBMRP3_Test_HudScreenEdges(const char* name, int* l, int* t,
+                                                      int* r, int* b) {
+    const BaseHud* hud = testHudByName(name);
+    if (!hud) { if (l) *l = 0; if (t) *t = 0; if (r) *r = 0; if (b) *b = 0; return; }
+    float bl = 0, bt = 0, br = 0, bb = 0;
+    hud->panelRect(bl, bt, br, bb);
+    const float ox = hud->getOffsetX(), oy = hud->getOffsetY();
+    auto q = [](float v) { return static_cast<int>(v * 1e6f + (v < 0 ? -0.5f : 0.5f)); };
+    if (l) *l = q(bl + ox);
+    if (t) *t = q(bt + oy);
+    if (r) *r = q(br + ox);
+    if (b) *b = q(bb + oy);
+}
+
+// The settings panel's horizontal margins, in fixed point (x * 1e6).
+//
+// bgL/bgR are its panel background's two edges; colL/colR the outer edges of its two
+// COLUMNS (see SettingsHud::testColumnEdgesX). A settings panel is two columns inside
+// one panel, and the only way to see that one of them has broken out of the panel's
+// margin is to compare those four numbers -- which is what a person does by eye on a
+// screenshot, and what nothing else in the suite could do at all.
+__declspec(dllexport) void MXBMRP3_Test_SettingsMarginsX(int* bgL, int* bgR,
+                                                        int* colL, int* colR) {
+    SettingsHud& hud = HudManager::getInstance().getSettingsHud();
+    float l = 0, t = 0, r = 0, b = 0;
+    static_cast<const BaseHud&>(hud).panelRect(l, t, r, b);
+    float cl = 0.0f, cr = 0.0f;
+    hud.testColumnEdgesX(cl, cr);
+    auto q = [](float v) { return static_cast<int>(v * 1e6f + (v < 0 ? -0.5f : 0.5f)); };
+    if (bgL) *bgL = q(l);
+    if (bgR) *bgR = q(r);
+    if (colL) *colL = q(cl);
+    if (colR) *colR = q(cr);
+}
+
+// The settings panel's CONTENT anchors, in fixed point (x * 1e6): the label column,
+// the control column, and the right edge of a full-width row.
+//
+// All three must be identical with a theme and without one -- the layout centres the
+// content box and hangs the panel off it, so only the panel's outer edges may move.
+// MarginsX above cannot see a violation: its two numbers are measured against the
+// panel, so the whole content column can walk sideways with the panel and stay
+// perfectly symmetric while every control the user is aiming at has moved.
+__declspec(dllexport) void MXBMRP3_Test_SettingsContentX(int* labelX, int* controlX,
+                                                        int* rowRight) {
+    SettingsHud& hud = HudManager::getInstance().getSettingsHud();
+    float l = 0.0f, c = 0.0f, r = 0.0f;
+    hud.testContentColumnX(l, c, r);
+    auto q = [](float v) { return static_cast<int>(v * 1e6f + (v < 0 ? -0.5f : 0.5f)); };
+    if (labelX)     *labelX     = q(l);
+    if (controlX)   *controlX   = q(c);
+    if (rowRight)   *rowRight   = q(r);
+}
+
+// `[panel] gap` on the synthetic theme — theme_geometry_test turns it to prove
+// the settings gutter tracks the same term the vertical seams spend.
+// Plant a live gap in the Gap Bar (see GapBarHud::testForceGap) -- the fill's
+// extent is the one geometry the layout sweeps cannot reach without it.
+__declspec(dllexport) void MXBMRP3_Test_GapBarForceGap(int ms, int valid) {
+    HudManager::getInstance().getGapBarHud().testForceGap(ms, valid != 0);
+}
+
+__declspec(dllexport) int MXBMRP3_Test_SetThemeGap(float cells) {
+    if (!AssetManager::getInstance().testSetThemeGap(cells)) return 0;
+    HudManager::getInstance().markAllHudsDirty();
+    return 1;
+}
+
+// The settings GUTTER's bounding card edges, fixed point (x * 1e6), plus the
+// vertical seam read (contentGapY) in the same units. The gutter — content
+// card left minus sidebar card right — must equal the seam for the same
+// terms: it was measured short twice (gap-only composition; the unpaid row
+// lead-in), and both bugs would have been one failing CHECK here.
+__declspec(dllexport) void MXBMRP3_Test_SettingsGutter(int* sidebarR, int* contentL,
+                                                       int* seamV) {
+    SettingsHud& hud = HudManager::getInstance().getSettingsHud();
+    float sr = 0.0f, cl = 0.0f;
+    hud.testCardEdgesX(sr, cl);
+    auto q = [](float v) { return static_cast<int>(v * 1e6f + (v < 0 ? -0.5f : 0.5f)); };
+    if (sidebarR) *sidebarR = q(sr);
+    if (contentL) *contentL = q(cl);
+    if (seamV)    *seamV    = q(hud.contentGapY());
+}
+
+// RADAR's per-HUD theme override, alongside the Standings pair above.
+//
+// Not redundant with them, and the difference is the whole point: StandingsHud's
+// FACTORY DEFAULT is an empty override, RadarHud's is THEME_NONE (it opts out of
+// theming -- the texture IS the panel). A HUD with a non-empty default is the only
+// one that can exercise "set it back to Default and have that stick", because it is
+// the only one whose base section carries a value for an absent profile key to fail
+// to override. Testing this on Standings alone is what let that bug through.
+__declspec(dllexport) void MXBMRP3_Test_RadarTheme(char* out, int cap) {
+    if (!out || cap <= 0) return;
+    const std::string& v = HudManager::getInstance().getRadarHud().getThemeOverride();
+    const int n = (static_cast<int>(v.size()) < cap - 1) ? static_cast<int>(v.size()) : cap - 1;
+    for (int i = 0; i < n; ++i) out[i] = v[i];
+    out[n] = '\0';
+}
+
+__declspec(dllexport) void MXBMRP3_Test_RadarSetTheme(const char* theme) {
+    HudManager::getInstance().getRadarHud().setThemeOverride(
+        theme ? std::string(theme) : std::string());
+}
+
+__declspec(dllexport) void MXBMRP3_Test_StandingsSetTheme(const char* theme) {
+    HudManager::getInstance().getStandingsHud().setThemeOverride(
+        theme ? std::string(theme) : std::string());
 }
 
 // Reset one named HUD (active profile) to defaults — models a per-tab "Reset".
@@ -199,6 +1100,57 @@ __declspec(dllexport) void MXBMRP3_Test_LoadSettings(const char* savePath) {
 // current tab's name out. Read/written through the same accessors save/load use.
 __declspec(dllexport) void MXBMRP3_Test_SetActiveTab(const char* name) {
     HudManager::getInstance().getSettingsHud().setActiveTabByName(name ? name : "");
+}
+
+// How far the LAST-BUILT settings tab overran the space reserved for it, in
+// thousandths of a row; negative is slack. Drive a Draw first.
+//
+// The panel measures its TALLEST tab and draws every tab at that height, so this
+// should never be positive. A gate reads it anyway (settings_fit_test): the one way
+// a measured height can be wrong is a renderer that lays out differently between the
+// measure pass and the real one, and nothing else would notice.
+__declspec(dllexport) int MXBMRP3_Test_SettingsOverflowRows() {
+    const float rows = HudManager::getInstance().getSettingsHud().testOverflowRows();
+    return static_cast<int>(rows * 1000.0f + (rows < 0.0f ? -0.5f : 0.5f));
+}
+
+// StandingsHud's player-row highlight band, as a span (x, width) in fixed point
+// (x * 1e6). Returns 0 when the HUD emitted no band this rebuild.
+//
+// A full-row band belongs to the CONTENT COLUMN, and saying so needs two numbers no
+// other hook reports together: the band's own span, and the card it must sit inside
+// (MXBMRP3_Test_HudFillCut's section covers). See standings_row_band_test.
+__declspec(dllexport) int MXBMRP3_Test_StandingsRowBand(int* x, int* w) {
+    float bx = 0.0f, bw = 0.0f;
+    HudManager::getInstance().getStandingsHud().testRowBandX(bx, bw);
+    auto q = [](float v) { return static_cast<int>(v * 1e6f + (v < 0 ? -0.5f : 0.5f)); };
+    if (x) *x = q(bx);
+    if (w) *w = q(bw);
+    return (bw > 0.0f) ? 1 : 0;
+}
+
+// The i-th SELECTABLE tab's display name, in tab-list order. Returns 0 past the end,
+// which is how a caller enumerates. The panel's height is the tab's own now, so
+// "does the settings menu fit the screen" has to be asked of every tab, and a list
+// of names in the test would be a list a new tab is not added to.
+// Every selectable tab INCLUDING the ones hidden from the sidebar list. See
+// SettingsHud::testAnyTabNameAt for why this is not the same enumeration.
+__declspec(dllexport) int MXBMRP3_Test_SettingsAnyTabName(int i, char* out, int cap) {
+    if (!out || cap <= 0) return 0;
+    out[0] = '\0';
+    const char* name = HudManager::getInstance().getSettingsHud().testAnyTabNameAt(i);
+    if (!name) return 0;
+    strncpy_s(out, static_cast<size_t>(cap), name, _TRUNCATE);
+    return 1;
+}
+
+__declspec(dllexport) int MXBMRP3_Test_SettingsTabName(int i, char* out, int cap) {
+    if (!out || cap <= 0) return 0;
+    out[0] = '\0';
+    const char* name = HudManager::getInstance().getSettingsHud().testTabNameAt(i);
+    if (!name) return 0;
+    strncpy_s(out, static_cast<size_t>(cap), name, _TRUNCATE);
+    return 1;
 }
 
 // Count / click the shared stepped-control regions on the ACTIVE settings tab,
@@ -335,6 +1287,51 @@ __declspec(dllexport) int MXBMRP3_Test_AnalyticsDrainPending(char* out, int cap)
 // Update-checker version comparison: <0 if a<b, 0 if equal/unparseable, >0 if a>b.
 __declspec(dllexport) int MXBMRP3_Test_CompareVersions(const char* a, const char* b) {
     return UpdateChecker::compareVersions(a ? a : "", b ? b : "");
+}
+
+// Publish an UPDATE_AVAILABLE result with no network; "" clears back to the plain
+// version state. The only way to reach the update-available UI headlessly -- see
+// UpdateChecker::testSetUpdateAvailable for why setDebugMode() is not it. Also
+// enables updates, since both the settings footer and the Version widget gate the
+// state on isEnabled().
+// The two terms the Version widget lays its notification BUTTON ROW out from --
+// one text row and the [panel] junction gap -- in fixed point (x * 1e6).
+//
+// Positions are deliberately NOT here: the caller reads the drawn message and the
+// drawn button label out of MXBMRP3_Test_HudStringRows and checks the distance
+// between them is at least a row plus a junction. Two strings from the same list
+// are the only pair that compare cleanly -- the widget stores its button bounds
+// BEFORE the HUD offset while the strings carry it, so mixing the two measures the
+// widget's screen position instead of its layout (which is what the first version
+// of this hook did, and it read short by exactly the offset).
+//
+// The terms ride out so the test can state the RULE rather than a pixel count that
+// moves with the font, the UI scale and the theme; and they are measured at all
+// because a panel's HEIGHT cannot tell the junction from the button box -- a test
+// comparing the plain and button states passes on the box's contribution whether
+// the junction is spent or not, which is exactly what the first version of that
+// test did.
+__declspec(dllexport) void MXBMRP3_Test_VersionRowTerms(int* rowH, int* junction) {
+    const VersionWidget& v = HudManager::getInstance().getVersionWidget();
+    auto q = [](float x) { return static_cast<int>(x * 1e6f + (x < 0 ? -0.5f : 0.5f)); };
+    if (rowH) *rowH = q(v.testRowHeight());
+    if (junction) *junction = q(v.testJunctionY());
+}
+
+__declspec(dllexport) void MXBMRP3_Test_UpdateSetAvailable(const char* latest) {
+    UpdateChecker& checker = UpdateChecker::getInstance();
+    checker.setEnabled(true);
+    checker.testSetUpdateAvailable(latest ? latest : "9.9.9");
+    // AND DRIVE THE WIDGET. testSetUpdateAvailable only publishes the checker's
+    // state; in the game the notification appears because the check's COMPLETION
+    // CALLBACK calls this (settings_manager.cpp), and no callback runs here. Without
+    // it the widget stayed in its plain one-row state and a test measuring the
+    // button row measured nothing -- which is what this hook's own comment promises
+    // it reaches.
+    if (latest && *latest) {
+        HudManager::getInstance().getVersionWidget().showUpdateNotification();
+    }
+    HudManager::getInstance().markAllHudsDirty();
 }
 
 // --- Auto-director controls (the rider lock invariants). The director only
@@ -491,6 +1488,140 @@ __declspec(dllexport) void MXBMRP3_Test_TimingConfig(int gapEnabled, int primary
     t.setTimeEnabled(true);
 }
 
+// THE WHAT'S-NEW MARKERS (hud/settings/whats_new.h). Live count, whether a tab is
+// tagged, and the two dismissal paths, so a test can drive the rules rather than
+// take a screenshot and squint at a coloured band.
+//
+// Reset clears the DISMISSED SET, not the table: "a player who has seen nothing",
+// which is the state the markers are designed for and the one a fresh install has.
+__declspec(dllexport) void MXBMRP3_Test_WhatsNewReset() {
+    WhatsNew::deserialize("");
+}
+
+__declspec(dllexport) int MXBMRP3_Test_WhatsNewLiveCount() {
+    int n = 0;
+    for (int i = 0; i < WhatsNew::MARKER_COUNT; ++i) {
+        if (WhatsNew::isLive(WhatsNew::MARKERS[i])) ++n;
+    }
+    return n;
+}
+
+// By TAB NAME, the same string the sidebar shows and MXBMRP3_Test_SetActiveTab
+// takes -- a test naming "Widgets" should not have to know it is tab 14.
+__declspec(dllexport) int MXBMRP3_Test_WhatsNewTabTagged(const char* tabName) {
+    if (!tabName) return 0;
+    const SettingsHud& sh = HudManager::getInstance().getSettingsHud();
+    const int t = sh.testTabIndexForName(tabName);
+    return (t >= 0 && WhatsNew::tabHasLive(t)) ? 1 : 0;
+}
+
+// DOES MARKER `i` POINT AT A ROW THAT ACTUALLY EXISTS? Opens the marker's tab,
+// renders it, and looks for a click region carrying the marker's tooltip id.
+//
+// The failure this catches is SILENT: a marker naming a row id that no row
+// registers draws nothing at all -- no band, and no complaint. The tab still gets
+// its "New" tag, so the menu looks like the feature was marked while the row it
+// was pointing at is unmarked. Nothing else in the build can tell the difference.
+__declspec(dllexport) int MXBMRP3_Test_WhatsNewMarkerResolves(int index) {
+    if (index < 0 || index >= WhatsNew::MARKER_COUNT) return -1;
+    const WhatsNew::Marker& m = WhatsNew::MARKERS[index];
+    SettingsHud& sh = HudManager::getInstance().getSettingsHud();
+    // show() first: rebuildRenderData is vis-gated, so a hidden panel registers no
+    // click regions at all and EVERY marker would read as unresolved -- a uniform
+    // failure that says nothing about the table. Left open afterwards on purpose:
+    // hide() dismisses the active tab's tag, which is not this hook's business.
+    sh.show();
+    sh.testClickTab(m.tabId);
+    sh.update();
+    return sh.testHasRegionWithTooltip(m.rowTooltipId) ? 1 : 0;
+}
+
+// The marker's tab, by name, so a failure names the tab rather than an index.
+__declspec(dllexport) void MXBMRP3_Test_WhatsNewMarkerName(int index, char* out, int cap) {
+    if (!out || cap <= 0) return;
+    out[0] = '\0';
+    if (index < 0 || index >= WhatsNew::MARKER_COUNT) return;
+    const WhatsNew::Marker& m = WhatsNew::MARKERS[index];
+    const SettingsHud& sh = HudManager::getInstance().getSettingsHud();
+    snprintf(out, static_cast<size_t>(cap), "%s / %s",
+             sh.testTabNameForIndex(m.tabId), m.rowTooltipId);
+}
+
+// The footer's About button: one click. Five in a row still start the easter egg,
+// which is why this is a click rather than a "go to About" setter.
+__declspec(dllexport) void MXBMRP3_Test_ClickAbout() {
+    HudManager::getInstance().getSettingsHud().testClickAbout();
+}
+
+// Wipe the tag's seen-version in memory, the way whatsNewReset does for markers --
+// so a persistence case can clear RAM and prove the value came back from the file.
+// Re-announcing the same version cannot do that job: the tag is keyed on the version
+// string, so a version already seen stays seen, which is the whole point of it.
+__declspec(dllexport) void MXBMRP3_Test_UpdateTagReset() {
+    UpdateChecker::getInstance().setUpdateTagSeenVersion("");
+}
+
+// The About button's rect in the footer, fixed point (x * 1e6), read from its own
+// CLICK REGION rather than re-derived: a test that recomputed the geometry would be
+// asserting against its own copy of the layout, not the panel's.
+__declspec(dllexport) int MXBMRP3_Test_AboutButtonRect(int* l, int* t, int* r, int* b) {
+    return HudManager::getInstance().getSettingsHud()
+        .testAboutButtonRect(l, t, r, b) ? 1 : 0;
+}
+
+// Is the Updates tab wearing its "Update" tag right now?
+__declspec(dllexport) int MXBMRP3_Test_UpdateTagLive() {
+    return UpdateChecker::getInstance().shouldShowUpdateTag() ? 1 : 0;
+}
+
+__declspec(dllexport) int MXBMRP3_Test_WhatsNewMarkerCount() {
+    return WhatsNew::MARKER_COUNT;
+}
+
+// The dismissed SET as it would be written to the INI. Live counts cannot see a
+// dismissal of something no marker names -- a stray tab key, say -- and that is
+// precisely the shape of the constructor's premature TAB_GENERAL dismissal.
+__declspec(dllexport) void MXBMRP3_Test_WhatsNewSerialize(char* out, int cap) {
+    if (!out || cap <= 0) return;
+    const std::string s = WhatsNew::serialize();
+    snprintf(out, static_cast<size_t>(cap), "%s", s.c_str());
+}
+
+// A tab CLICK by name -- the path that dismisses the tab's tag.
+__declspec(dllexport) int MXBMRP3_Test_WhatsNewClickTab(const char* tabName) {
+    SettingsHud& sh = HudManager::getInstance().getSettingsHud();
+    const int t = sh.testTabIndexForName(tabName);
+    if (t < 0) return 0;
+    sh.testClickTab(t);
+    return 1;
+}
+
+// The HOVER path, by the row's tooltip id, against whatever tab is open.
+__declspec(dllexport) void MXBMRP3_Test_WhatsNewHoverRow(const char* rowTooltipId) {
+    // Through SettingsHud, NOT WhatsNew::dismissRow: the real hover path also marks
+    // the settings dirty, and that is the half a persistence test has to exercise.
+    HudManager::getInstance().getSettingsHud().testHoverDismissRow(rowTooltipId);
+}
+
+// The Timing HUD's optional READOUT rows, as a bitmask of ReadoutFlags. They are all
+// off by default (this panel is read at a glance mid-corner), so a test that wants one
+// has to switch it on -- and the two TEXT rows, Server and Track, are the only rows
+// whose value can be too long for the panel, which is what makes them worth driving.
+// The Timing HUD's TEXT-readout character budget at the current scale -- the live
+// value the panel truncates Server and Track to. Exposed so a test asserts against the
+// number the code uses rather than a copy of it.
+__declspec(dllexport) int MXBMRP3_Test_TimingTextBudget() {
+    return HudManager::getInstance().getTimingHud().readoutTextBudget();
+}
+
+__declspec(dllexport) void MXBMRP3_Test_TimingReadouts(unsigned int mask) {
+    TimingHud& t = HudManager::getInstance().getTimingHud();
+    for (int i = 0; i < READOUT_COUNT; i++) {
+        const ReadoutFlags f = READOUT_INFO[i].flag;
+        t.setReadoutEnabled(f, (mask & static_cast<unsigned int>(f)) != 0);
+    }
+}
+
 // The Timing HUD's reference (ms) for a gap type at a given split boundary: the cumulative
 // target (S1 / S1+S2 / … ; -1 = full lap), or -1 if unavailable. targetSplit == -999 uses the
 // LIVE sector the rider is driving toward (passiveReferenceMs, i.e. currentTargetSplit()).
@@ -520,15 +1651,17 @@ __declspec(dllexport) int MXBMRP3_Test_TimingFrozen() {
     return HudManager::getInstance().getTimingHud().isFrozen() ? 1 : 0;
 }
 // The Timing panel's rendered geometry (each value ×1e6 as an int, so a headless test can do
-// exact integer comparisons). Lets a test assert the panel is a whole number of grid bands
-// (height == (showTime ? lineHeightLarge : 0) + rows*lineHeightNormal). Drive a Draw first so
-// the bounds reflect the current config.
-__declspec(dllexport) void MXBMRP3_Test_TimingGeometry(int* height, int* paddingV,
-        int* fontLarge, int* fontNormal, int* lineLarge, int* lineNormal) {
+// exact integer comparisons). contentTop/contentBot are the section stack's extent measured
+// from the panel top, so a test can pin what a row COSTS without also having to know which
+// padding vocabulary the panel is built in -- see TimingHud::TestGeometry. Drive a Draw first
+// so the bounds reflect the current config.
+__declspec(dllexport) void MXBMRP3_Test_TimingGeometry(int* height, int* contentTop,
+        int* contentBot, int* fontLarge, int* fontNormal, int* lineLarge, int* lineNormal) {
     TimingHud::TestGeometry g = HudManager::getInstance().getTimingHud().testGeometry();
     auto q = [](float v) { return static_cast<int>(v * 1e6f + 0.5f); };
     if (height)     *height     = q(g.height);
-    if (paddingV)   *paddingV   = q(g.paddingV);
+    if (contentTop) *contentTop = q(g.contentTop);
+    if (contentBot) *contentBot = q(g.contentBot);
     if (fontLarge)  *fontLarge  = q(g.fontLarge);
     if (fontNormal) *fontNormal = q(g.fontNormal);
     if (lineLarge)  *lineLarge  = q(g.lineLarge);
@@ -839,6 +1972,240 @@ __declspec(dllexport) void MXBMRP3_Test_FakeGamepad(int connected) {
     HudManager::getInstance().getGamepadWidget().setVisible(connected != 0);
 }
 
+// [Advanced] uiFontSize at runtime, so a test can ask what a HUD does when the user
+// changes the base type size -- the one input that reaches every panel. The INI path
+// does exactly this (settings_manager_global.cpp), but only at load, and a test that
+// has to restart the plugin to change one number cannot compare two states of the
+// same HUD.
+__declspec(dllexport) void MXBMRP3_Test_SetUiFontSize(float value) {
+    layoutSetFontSize(LayoutConfig::getInstance().mutableDefaults(), value);
+    HudManager::getInstance().markAllHudsDirty();
+}
+
+// THE BOX MODEL'S EIGHT AIR TERMS at runtime, in the same CSS shorthand the
+// [Advanced] keys take. Same argument as MXBMRP3_Test_SetUiFontSize: the INI path
+// does exactly this but only at load, and comparing two states of the same panel is
+// the only way to ask "does this term reach this panel at all".
+//
+// Which is what it exists for. FOUR OF THE EIGHT were dead on an UNTHEMED panel --
+// layoutPanel collapsed the whole title/content box on "is there art to draw a
+// border with", and the settings panel gated its content padding the same way --
+// and the whole suite was green, because every geometry case either installs a
+// theme or asserts a term against itself. `which` is the order the keys are
+// written in settings_manager_global.cpp.
+__declspec(dllexport) void MXBMRP3_Test_SetBoxTerm(int which, const char* shorthand) {
+    if (!shorthand) return;
+    LayoutMetrics& L = LayoutConfig::getInstance().mutableDefaults();
+    const LayoutMetrics defaults;
+    switch (which) {
+        case 0: layoutSetBoxSides(L.boxPanelPadding, shorthand, defaults.boxPanelPadding); break;
+        case 1: layoutSetBoxSides(L.boxTitleMargin, shorthand, defaults.boxTitleMargin); break;
+        case 2: layoutSetBoxSides(L.boxTitlePadding, shorthand, defaults.boxTitlePadding); break;
+        case 3: layoutSetBoxSides(L.boxContentMargin, shorthand, defaults.boxContentMargin); break;
+        case 4: layoutSetBoxSides(L.boxContentPadding, shorthand, defaults.boxContentPadding); break;
+        case 5: layoutSetBoxSides(L.boxButtonMargin, shorthand, defaults.boxButtonMargin); break;
+        case 6: layoutSetBoxSides(L.boxButtonPadding, shorthand, defaults.boxButtonPadding); break;
+        case 7: layoutSetBoxScalar(L.boxPanelGap, shorthand, defaults.boxPanelGap); break;
+        default: return;
+    }
+    HudManager::getInstance().markAllHudsDirty();
+}
+
+// GAMEPAD PACKS. Install a pack with no files (see installSyntheticGamepad), then
+// read back both halves of the name-keyed selection: what is STORED and which pack
+// is actually in USE. The distinction is the whole point -- an unresolvable name
+// must degrade to the shipped default for rendering WITHOUT rewriting what is
+// stored, so putting the folder back restores the user's choice.
+// `geometryWidth` lets a case prove the widget draws the selected pack's numbers
+// rather than the built-in fallback.
+__declspec(dllexport) void MXBMRP3_Test_InstallGamepad(const char* name, float geometryWidth) {
+    GamepadAsset pad;
+    pad.name = name ? name : "synthetic";
+    pad.displayName = pad.name;
+    pad.geometry.backgroundWidth = geometryWidth;
+    // Non-zero so nothing downstream treats the pack as art-less; no case asserts
+    // which sprite was drawn, and the emitters never validate an index.
+    for (int i = 0; i < GamepadSprite::COUNT; ++i) pad.sprites[i] = i + 1;
+    AssetManager::getInstance().installSyntheticGamepad(pad);
+}
+
+// PACK SKINS (the `base` key). Three observables, because the feature has three
+// halves a black box cannot separate: which pack a stem's FILE resolved from,
+// whether the skin INHERITED the base's geometry, and whether its own ini keys
+// still override on top. All read the real discovery output -- pack_skin_test.cpp
+// stages an actual gamepads/ tree and runs the real scan against it.
+__declspec(dllexport) int MXBMRP3_Test_GamepadStemSource(const char* pack, int stem) {
+    if (!pack || stem < 0 || stem >= GamepadSprite::COUNT) return -1;
+    const GamepadAsset* p = AssetManager::getInstance().getGamepadByName(pack);
+    if (!p) return -1;
+    return p->spriteFromBase[stem] ? 1 : 0;
+}
+
+__declspec(dllexport) float MXBMRP3_Test_GamepadGeomWidth(const char* pack) {
+    const GamepadAsset* p = pack ? AssetManager::getInstance().getGamepadByName(pack) : nullptr;
+    return p ? p->geometry.backgroundWidth : 0.0f;
+}
+
+__declspec(dllexport) int MXBMRP3_Test_PitboardStemSource(const char* pack, int stem) {
+    if (!pack || stem < 0 || stem >= PitboardSprite::COUNT) return -1;
+    const PitboardAsset* b = AssetManager::getInstance().getPitboardByName(pack);
+    if (!b) return -1;
+    return b->spriteFromBase[stem] ? 1 : 0;
+}
+
+__declspec(dllexport) float MXBMRP3_Test_PitboardPackArtWidth(const char* pack) {
+    const PitboardAsset* b = pack ? AssetManager::getInstance().getPitboardByName(pack) : nullptr;
+    return b ? b->geometry.artWidth : 0.0f;
+}
+
+// Returns the pack's row-text colour as the game's ABGR word, 0 for an unknown
+// pack. Pins both halves of [text] color: that it rides the base-inheritance
+// geometry copy, and that it parses through parseRgbHex rather than the float
+// path (a 32-bit colour word does not survive a float round-trip, so a value
+// like #ffffff would come back mangled if it were ever moved to the numeric
+// table).
+__declspec(dllexport) unsigned int MXBMRP3_Test_PitboardTextColor(const char* pack) {
+    const PitboardAsset* b = pack ? AssetManager::getInstance().getPitboardByName(pack) : nullptr;
+    return b ? b->geometry.textColor : 0u;
+}
+
+// THE STEM TABLE ITSELF, so a fixture that has to stage a complete pack on
+// disk stages exactly what discovery requires. pack_skin_test builds real
+// gamepads/<name>/ trees; hardcoding the seventeen names there would be a
+// second copy of GamepadSprite::kStems, and the CLAUDE.md invariant that keeps
+// discovery and registration in step (one table, static_assert'd) would not
+// cover it -- add a stem and the fixture silently stages an incomplete base
+// pack, which surfaces as a misleading "missing X.tga" cascade pointing at the
+// feature instead of the fixture. Integration tests are black-box (they link
+// no plugin source, only harness + vendor), so a hook is how they read it.
+__declspec(dllexport) int MXBMRP3_Test_GamepadStemCount(void) {
+    return static_cast<int>(GamepadSprite::COUNT);
+}
+
+__declspec(dllexport) void MXBMRP3_Test_GamepadStemName(int index, char* out, int cap) {
+    if (!out || cap <= 0) return;
+    out[0] = '\0';
+    if (index < 0 || index >= static_cast<int>(GamepadSprite::COUNT)) return;
+    strncpy_s(out, static_cast<size_t>(cap), GamepadSprite::kStems[index], _TRUNCATE);
+}
+
+__declspec(dllexport) void MXBMRP3_Test_ClearGamepads(void) {
+    AssetManager::getInstance().clearSyntheticGamepads();
+}
+
+// PIT BOARD PACKS -- same three-hook shape as the gamepad ones above, for the
+// same reason: the selection rule is what is under test, not the file scan.
+// `artWidth`/`artHeight` let a case prove the panel takes its shape from the
+// SELECTED pack rather than from the constant this replaced.
+__declspec(dllexport) void MXBMRP3_Test_InstallPitboard(const char* name, float artW, float artH) {
+    PitboardAsset board;
+    board.name = name ? name : "synthetic";
+    board.displayName = board.name;
+    board.geometry.artWidth = artW;
+    board.geometry.artHeight = artH;
+    for (int i = 0; i < PitboardSprite::COUNT; ++i) board.sprites[i] = i + 1;
+    AssetManager::getInstance().installSyntheticPitboard(board);
+}
+
+// THE PACK CYCLE, as the settings UI drives it. These exist because the bug they
+// pin was UI REACHABILITY -- the widget state was fine, but no control could reach
+// it -- which is invisible to any test that only calls the widget's own setters.
+__declspec(dllexport) void MXBMRP3_Test_CyclePack(int pitboard, int forward) {
+    SettingsHud& settings = HudManager::getInstance().getSettingsHud();
+    if (pitboard) settings.cyclePitboardPack(forward != 0);
+    else          settings.cycleGamepadPack(forward != 0);
+}
+
+// showBackgroundTexture for either pack-driven HUD: the flag whose only control is
+// the Off entry in those cycles.
+__declspec(dllexport) int MXBMRP3_Test_PackShowBg(int pitboard) {
+    return pitboard ? (HudManager::getInstance().getPitboardHud().getShowBackgroundTexture() ? 1 : 0)
+                    : (HudManager::getInstance().getGamepadWidget().getShowBackgroundTexture() ? 1 : 0);
+}
+
+__declspec(dllexport) void MXBMRP3_Test_SetPackShowBg(int pitboard, int on) {
+    if (pitboard) HudManager::getInstance().getPitboardHud().setShowBackgroundTexture(on != 0);
+    else          HudManager::getInstance().getGamepadWidget().setShowBackgroundTexture(on != 0);
+}
+
+__declspec(dllexport) void MXBMRP3_Test_ClearPitboards(void) {
+    AssetManager::getInstance().clearSyntheticPitboards();
+}
+
+__declspec(dllexport) void MXBMRP3_Test_SetPitboardPack(const char* name) {
+    HudManager::getInstance().getPitboardHud().setPitboardPack(name ? name : "");
+}
+
+__declspec(dllexport) void MXBMRP3_Test_PitboardPackStored(char* out, int cap) {
+    if (!out || cap <= 0) return;
+    const std::string& s = HudManager::getInstance().getPitboardHud().getPitboardPack();
+    const int n = (static_cast<int>(s.size()) < cap - 1) ? static_cast<int>(s.size()) : cap - 1;
+    for (int i = 0; i < n; ++i) out[i] = s[i];
+    out[n] = '\0';
+}
+
+__declspec(dllexport) void MXBMRP3_Test_PitboardPackActive(char* out, int cap) {
+    if (!out || cap <= 0) return;
+    out[0] = '\0';
+    const PitboardAsset* pack = HudManager::getInstance().getPitboardHud().activePack();
+    if (!pack) return;
+    const std::string& s = pack->name;
+    const int n = (static_cast<int>(s.size()) < cap - 1) ? static_cast<int>(s.size()) : cap - 1;
+    for (int i = 0; i < n; ++i) out[i] = s[i];
+    out[n] = '\0';
+}
+
+// THE RELOAD_CONFIG HOTKEY'S ASSET HALF, driven directly. Re-reads every theme's
+// and every pack's ini without re-discovering sprites -- see
+// AssetManager::reloadThemeLayouts().
+//
+// What this exists to pin is that the reload REACHES all three asset types. It used
+// to reach themes and pads only: the board's loop was written out by hand like the
+// pad's and simply never written, so RELOAD_CONFIG silently ignored a board's ini
+// while README promised it did not, and the sync above it copied the files across.
+// Nothing caught it because nothing drove this path.
+__declspec(dllexport) void MXBMRP3_Test_ReloadAssetLayouts(void) {
+    AssetManager::getInstance().reloadThemeLayouts();
+}
+
+// A pack's CURRENT art width, so a test can watch the reload act on it. A synthetic
+// pack has no ini on disk, so a reload that reaches it resets the geometry to the
+// built-in default -- which is the observable difference between "the loop ran" and
+// "the loop is missing", with no filesystem staging required.
+__declspec(dllexport) float MXBMRP3_Test_PitboardArtWidth(void) {
+    const PitboardAsset* pack = HudManager::getInstance().getPitboardHud().activePack();
+    return pack ? pack->geometry.artWidth : 0.0f;
+}
+__declspec(dllexport) float MXBMRP3_Test_GamepadArtWidth(void) {
+    const GamepadAsset* pack = HudManager::getInstance().getGamepadWidget().activePack();
+    return pack ? pack->geometry.backgroundWidth : 0.0f;
+}
+
+__declspec(dllexport) void MXBMRP3_Test_SetGamepadPack(const char* name) {
+    HudManager::getInstance().getGamepadWidget().setGamepadPack(name ? name : "");
+}
+
+// The STORED name -- what a save would write back.
+__declspec(dllexport) void MXBMRP3_Test_GamepadPackStored(char* out, int cap) {
+    if (!out || cap <= 0) return;
+    const std::string& s = HudManager::getInstance().getGamepadWidget().getGamepadPack();
+    const int n = (static_cast<int>(s.size()) < cap - 1) ? static_cast<int>(s.size()) : cap - 1;
+    for (int i = 0; i < n; ++i) out[i] = s[i];
+    out[n] = '\0';
+}
+
+// The pack actually RESOLVED for rendering; empty when none is installed.
+__declspec(dllexport) void MXBMRP3_Test_GamepadPackActive(char* out, int cap) {
+    if (!out || cap <= 0) return;
+    out[0] = '\0';
+    const GamepadAsset* pack = HudManager::getInstance().getGamepadWidget().activePack();
+    if (!pack) return;
+    const std::string& s = pack->name;
+    const int n = (static_cast<int>(s.size()) < cap - 1) ? static_cast<int>(s.size()) : cap - 1;
+    for (int i = 0; i < n; ++i) out[i] = s[i];
+    out[n] = '\0';
+}
+
 // Where the gamepad's content sits inside its controller frame, as the fraction of
 // the frame (quad[0], the background box) spanned from its top to the LOWEST-RIGHT
 // content pixel: out[0] = bottom-most content Y fraction, out[1] = right-most X
@@ -1022,6 +2389,147 @@ __declspec(dllexport) void MXBMRP3_Test_ShowAllHuds(int on) {
     HudManager::getInstance().testSetAllHudsVisible(on != 0);
 }
 
+// --- RENDER PROBE (see tools/probetheme/README.md) -------------------
+// The probe injects synthetic quads for the ENGINE to draw, so its cost is
+// invisible to every in-plugin timer by construction -- there is nothing here to
+// assert about speed. What CAN go wrong is the probe emitting the wrong primitive
+// and the report saying otherwise, which turns a measurement session into a
+// confidently wrong conclusion. These two expose exactly that.
+// Lowest/highest textured sprite in the last frame handed to the game, plus the
+// count of sprite-0 (untextured) quads.
+__declspec(dllexport) void MXBMRP3_Test_FrameSpriteSpan(int* outMin, int* outMax,
+                                                        int* outUntextured) {
+    int lo = 0, hi = 0, flat = 0;
+    HudManager::getInstance().testLastFrameSpriteSpan(lo, hi, flat);
+    if (outMin) *outMin = lo;
+    if (outMax) *outMax = hi;
+    if (outUntextured) *outUntextured = flat;
+}
+__declspec(dllexport) int MXBMRP3_Test_RegisteredSpriteCount() {
+    return HudManager::getInstance().registeredSpriteCount();
+}
+// Stand up a sprite table without assets on disk -- see testInstallSpriteTable.
+__declspec(dllexport) void MXBMRP3_Test_InstallSpriteTable(int count) {
+    HudManager::getInstance().testInstallSpriteTable(count);
+}
+// Read back the live probe settings, so a test can assert the sweep put them back.
+__declspec(dllexport) void MXBMRP3_Test_GetRenderProbe(int* n, int* type, int* fs, int* sprite) {
+    UiConfig& ui = UiConfig::getInstance();
+    if (n)      *n = ui.getRenderProbeQuads();
+    if (type)   *type = ui.getRenderProbeType();
+    if (fs)     *fs = ui.getRenderProbeFullscreen() ? 1 : 0;
+    if (sprite) *sprite = ui.getRenderProbeSprite();
+}
+// The automatic sweep (core/render_probe_sweep.h). start/abort are one action in
+// game (one hotkey toggles), but split here so a test can drive each edge.
+__declspec(dllexport) void MXBMRP3_Test_ProbeSweepStart() {
+    RenderProbeSweep::getInstance().start();
+}
+__declspec(dllexport) void MXBMRP3_Test_ProbeSweepAbort() {
+    RenderProbeSweep::getInstance().abort();
+}
+__declspec(dllexport) int MXBMRP3_Test_ProbeSweepRunning() {
+    return RenderProbeSweep::getInstance().isRunning() ? 1 : 0;
+}
+// The probe's text length, which the sweep also steps and so must also restore.
+__declspec(dllexport) void MXBMRP3_Test_SetRenderProbeTextChars(int n) {
+    UiConfig::getInstance().setRenderProbeTextChars(n);
+}
+// The sweep's report for a SYNTHETIC result set (per-quad costs supplied, no
+// 40s sweep) — the seam that makes the DERIVED block's arithmetic assertable.
+// Front truncation is fine here: the derived block sits mid-report and the
+// buffer callers pass outgrows the whole report anyway.
+__declspec(dllexport) void MXBMRP3_Test_ProbeSweepReport(double fillUs, double alpha0Us,
+                                                         double degenUs,
+                                                         char* out, int cap) {
+    if (!out || cap <= 0) return;
+    const std::string s = RenderProbeSweep::getInstance().testReportSynthetic(
+        fillUs, alpha0Us, degenUs);
+    const int n = static_cast<int>(s.size()) < cap - 1 ? static_cast<int>(s.size()) : cap - 1;
+    for (int i = 0; i < n; ++i) out[i] = s[i];
+    out[n] = '\0';
+}
+__declspec(dllexport) int MXBMRP3_Test_GetRenderProbeTextChars() {
+    return UiConfig::getInstance().getRenderProbeTextChars();
+}
+// A named panel's background opacity. At 0 the whole background chain is skipped
+// (see BaseHud::backgroundIsInvisible), which is the behaviour under test.
+__declspec(dllexport) int MXBMRP3_Test_SetHudOpacity(const char* name, float opacity) {
+    // Matched on the REGISTRATION NAME, like every other name-addressed hook here.
+    // It used to match on the TEXTURE BASE NAME, and the note here warned against
+    // MXBMRP3_Test_PanelName because that preferred the ICON name -- "two naming
+    // schemes for the same panel is how a test ends up silently matching nothing and
+    // passing". The warning was right and the fix was to delete the second scheme:
+    // PanelName now answers with the registration name too, so there is one
+    // vocabulary. It also makes the elements with NO texture stem (Version, the
+    // settings panel, the director widget) addressable here for the first time.
+    if (!name) return 0;
+    for (const auto& hud : HudManager::getInstance().getHuds()) {
+        if (!hud || std::strcmp(hud->getHarnessId(), name) != 0) continue;
+        hud->setBackgroundOpacity(opacity);
+        hud->setDataDirty();
+        return 1;
+    }
+    return 0;
+}
+
+// Reposition a named panel. Marks it LAYOUT-dirty, not data-dirty, so the next
+// update() takes the layout fast path (updateBackgroundQuadPosition) rather than a
+// full rebuild -- which is the path that rewrites the recorded background span.
+__declspec(dllexport) int MXBMRP3_Test_SetHudOffset(const char* name, float x, float y) {
+    if (!name) return 0;   // registration name, as above
+    for (const auto& hud : HudManager::getInstance().getHuds()) {
+        if (!hud || std::strcmp(hud->getHarnessId(), name) != 0) continue;
+        hud->setPosition(x, y);
+        return 1;
+    }
+    return 0;
+}
+
+// The LARGEST quad a named panel emits, as area x 1e6.
+//
+// For the zero-opacity drag case, where the corruption is geometric rather than
+// countable: with the background skipped, m_bgQuadFirst points at the first CONTENT
+// quad, and the layout fast path would rewrite THAT to the full panel rect on a
+// reposition. The quad count is unchanged -- one quad simply becomes panel-sized --
+// so only a size measure can see it. A pure translation preserves every area, which
+// makes "unchanged after a move" the exact assertion.
+__declspec(dllexport) int MXBMRP3_Test_HudMaxQuadArea(const char* name) {
+    if (!name) return -1;   // registration name, as above
+    for (const auto& hud : HudManager::getInstance().getHuds()) {
+        if (!hud || std::strcmp(hud->getHarnessId(), name) != 0) continue;
+        double best = 0.0;
+        for (const SPluginQuad_t& q : hud->getQuads()) {
+            float minX = q.m_aafPos[0][0], maxX = minX;
+            float minY = q.m_aafPos[0][1], maxY = minY;
+            for (int c = 1; c < 4; ++c) {
+                minX = (std::min)(minX, q.m_aafPos[c][0]);
+                maxX = (std::max)(maxX, q.m_aafPos[c][0]);
+                minY = (std::min)(minY, q.m_aafPos[c][1]);
+                maxY = (std::max)(maxY, q.m_aafPos[c][1]);
+            }
+            best = (std::max)(best, static_cast<double>(maxX - minX) * (maxY - minY));
+        }
+        return static_cast<int>(best * 1e6);
+    }
+    return -1;
+}
+
+// Developer mode, which reveals the Performance tab's Developer section. The settings
+// panel measures EVERY tab to size itself, so a section that only exists in developer
+// mode is measured only in developer mode -- and is invisible to any test that does
+// not turn it on.
+__declspec(dllexport) void MXBMRP3_Test_SetDeveloperMode(int on) {
+    SettingsManager::getInstance().setDeveloperMode(on != 0);
+    HudManager::getInstance().markAllHudsDirty();
+}
+
+// The global drop-shadow setting, which doubles the string count when on.
+__declspec(dllexport) void MXBMRP3_Test_SetDropShadow(int on) {
+    UiConfig::getInstance().setDropShadow(on != 0);
+    HudManager::getInstance().markAllHudsDirty();
+}
+
 // How many HUDs are currently registered with the benchmark profiler. Registration
 // happens once, in HudManager::initialize(); anything that wipes it leaves the whole
 // per-HUD footprint table silently empty (recordHudRebuild() bounds-checks against this
@@ -1032,6 +2540,42 @@ __declspec(dllexport) int MXBMRP3_Test_BenchmarkHudCount() {
 }
 __declspec(dllexport) int MXBMRP3_Test_BenchmarkCallbackCount() {
     return PluginData::getInstance().getBenchmarkMetrics().callbackCount;
+}
+// How many panels SHOULD carry a benchmark slot: every registered HUD except the
+// BenchmarkWidget, which excludes itself. Paired with BenchmarkHudCount so a test
+// can compare two live numbers instead of a hardcoded one that rots on every new HUD.
+__declspec(dllexport) int MXBMRP3_Test_ProfilableHudCount() {
+    return HudManager::getInstance().profilableHudCount();
+}
+// The BenchmarkWidget's snapshot-array capacity and the count it actually stored.
+// A count ABOVE the capacity is the out-of-bounds read that corrupted the exported
+// report; the pair is exposed so a test can assert the invariant directly.
+__declspec(dllexport) int MXBMRP3_Test_BenchmarkSnapshotCapacity() {
+    return BenchmarkWidget::snapshotCapacity();
+}
+__declspec(dllexport) int MXBMRP3_Test_BenchmarkSnapshotCount() {
+    BenchmarkWidget* w = HudManager::getInstance().getBenchmarkWidget();
+    return w ? w->snapshotCount() : -1;
+}
+
+// A named panel's stint rebuild count, or -1 if no panel carries that name.
+//
+// The question this answers is "did THIS panel rebuild on THIS change", which is
+// the one a dirty-flag subscription is a claim about, and which nothing else here
+// could ask: the snapshot shows computed state, so a panel that quietly stops
+// updating still reports the right numbers through it. The counter only moves while
+// the profiler is collecting (bm.active), so a caller must switch the benchmark
+// widget on first.
+//
+// The name is the profiler's own -- the same string the report's per-HUD table
+// prints, and the one MXBMRP3_Test_PanelName answers with.
+__declspec(dllexport) int MXBMRP3_Test_HudRebuildCount(const char* name) {
+    if (!name) return -1;
+    const BenchmarkMetrics& bm = PluginData::getInstance().getBenchmarkMetrics();
+    for (int i = 0; i < bm.hudCount; ++i) {
+        if (std::strcmp(bm.huds[i].name, name) == 0) return bm.huds[i].stintRebuildCount;
+    }
+    return -1;
 }
 
 // Crank the heavy HUDs' individual settings to maximum (all columns/rows/events,
@@ -1108,12 +2652,17 @@ __declspec(dllexport) void MXBMRP3_Test_SetProduceDelayMs(int ms) {
 }
 // Render-load probe: emit `quads` extra synthetic primitives each frame. type:
 // 0=solid-fill quad, 1=sprite (textured) quad, 2=text string. fullscreen!=0 makes
-// the fill quads full-screen (fill-rate) vs tiny (submit). Lets a driver verify the
+// the quads full-screen (fill-rate) vs tiny (submit). sprite: 0=cycle every
+// registered sprite (a texture switch per quad), k=pin sprite k (sampling, no
+// switching) -- the pair that separates those two costs. Lets a driver verify the
 // emission plumbing and an in-game sweep measure the engine's per-primitive cost.
-__declspec(dllexport) void MXBMRP3_Test_SetRenderProbe(int quads, int type, int fullscreen) {
+// See tools/probetheme/README.md for the run matrix.
+__declspec(dllexport) void MXBMRP3_Test_SetRenderProbe(int quads, int type, int fullscreen,
+                                                       int sprite) {
     UiConfig::getInstance().setRenderProbeQuads(quads);
     UiConfig::getInstance().setRenderProbeType(type);
     UiConfig::getInstance().setRenderProbeFullscreen(fullscreen != 0);
+    UiConfig::getInstance().setRenderProbeSprite(sprite);
 }
 // XInput I/O thread: stop it so a test can inspect the rumble command setVibration
 // posts without the worker draining it; drive index/vibration; read the pending post.
@@ -1247,6 +2796,14 @@ __declspec(dllexport) void MXBMRP3_Test_StatsOdometerState(double* bikeOdometer,
 // Force a stats save (the same save() the RunStop/RunDeinit leave-track flush
 // calls; a no-op when clean). Lets a test establish a known-clean baseline
 // before asserting the dirty-coalescing behaviour.
+// The crash widget's streaming tally: read it, and drive the SAME reset entry
+// point the Reset button and the hotkey both call, so a test exercises the
+// widget's path rather than reaching past it into StatsManager.
+__declspec(dllexport) int MXBMRP3_Test_CrashTally(int doReset) {
+    if (doReset) HudManager::getInstance().getCrashWidget().resetCounter();
+    return StatsManager::getInstance().getCrashTally();
+}
+
 __declspec(dllexport) void MXBMRP3_Test_StatsSave() {
     StatsManager::getInstance().save();
 }

@@ -83,6 +83,21 @@ public:
     // Check if update notification should be shown (update available AND not dismissed)
     bool shouldShowUpdateNotification() const;
 
+    // THE SIDEBAR'S "Update" TAG on the Updates tab row -- live while an update is
+    // available and this version's tag has not been seen, cleared by opening the
+    // tab, and re-armed on its own when a NEWER version turns up (the seen state is
+    // a version string, not a flag).
+    //
+    // DELIBERATELY NOT the dismissed-version state above, though the shape is
+    // identical. That one means "skip this release" -- an explicit button, which
+    // also silences the startup notification. Opening a tab to read about an update
+    // is not a decision to skip it, and wiring the tag to that state would have made
+    // a glance cost the notification.
+    bool shouldShowUpdateTag() const;
+    void markUpdateTagSeen();
+    void setUpdateTagSeenVersion(const std::string& version);
+    std::string getUpdateTagSeenVersion() const;
+
     // Check if currently checking
     bool isChecking() const { return m_status == Status::CHECKING; }
 
@@ -98,6 +113,25 @@ public:
     // Debug mode: forces update to appear available (for testing)
     void setDebugMode(bool enabled) { m_debugMode = enabled; }
     bool isDebugMode() const { return m_debugMode; }
+
+#if defined(MXBMRP3_TEST_BUILD)
+    // Publish an UPDATE_AVAILABLE result without a network round trip. setDebugMode()
+    // is NOT this: it only biases the comparison inside a real check, so headless
+    // (no network, no GitHub) it never fires and the update-available UI -- the
+    // settings footer's chip and the Version widget's whole notification panel --
+    // could not be rendered or asserted at all. Test build only; the whole export
+    // surface that reaches it lives in test_hooks.cpp.
+    // An EMPTY string clears back to IDLE (the plain "vX.Y.Z" state), so one test can
+    // measure both states in a row; anything else publishes it as the latest version.
+    void testSetUpdateAvailable(const std::string& latest) {
+        {
+            MutexLock lock(m_mutex);
+            m_latestVersion = latest;
+            m_dismissedVersion.clear();   // else shouldShowUpdateNotification() hides it
+        }
+        m_status = latest.empty() ? Status::IDLE : Status::UPDATE_AVAILABLE;
+    }
+#endif
 
     // Compare two version strings, returns: -1 (a < b), 0 (a == b), 1 (a > b).
     // Strips leading "v"/"V", tolerates 3-vs-4 components and "-suffix".
@@ -173,6 +207,7 @@ private:
     std::string m_checksumHash MXB_GUARDED_BY(m_mutex);   // SHA256 hash from GitHub digest field
     bool m_latestIsPrerelease MXB_GUARDED_BY(m_mutex);    // Whether the latest available version is a prerelease
     std::string m_dismissedVersion MXB_GUARDED_BY(m_mutex);  // Version user chose to skip (persisted)
+    std::string m_tagSeenVersion MXB_GUARDED_BY(m_mutex);    // Version whose sidebar tag was seen (persisted)
     mutable Mutex m_mutex;
     std::thread m_workerThread;
     std::atomic<bool> m_shutdownRequested;

@@ -12,7 +12,27 @@
 #               print `git diff --stat` of exactly what would change. Pushes
 #               nothing. Verify here first.
 #   • PUSH    — "Run workflow" with "Push" ON: same preview, then create the
-#               squashed commit and push it to the target's main.
+#               squashed commit and push it to the target's main, and tag THIS
+#               repo vX.Y.Z at the commit that was mirrored (see below).
+#
+# WHY THIS TAGS THE PRIVATE REPO. The vX.Y.Z tag users see is created in the
+# PUBLIC repo by release.yml, at the squashed mirror commit — a byproduct of
+# publishing, never a manual step. Nothing tagged this side, so the private
+# history was a run of commits with, at best, a version bump in it: no way to
+# answer "which commit shipped as 1.29.0" short of matching trees by hand (the
+# mirror copies the tree verbatim, so that recovery does work — it is just
+# nobody's idea of traceability).
+#
+# Mirroring is the last private-side event in the flow and the moment a commit
+# becomes THE candidate for a version, so the tag is cut here, annotated with
+# the public commit it produced. Still derived from resource.h, still never
+# hand-made — the rule that keeps a tag from drifting from the version.
+#
+# A VERSION FREEZES WHEN IT EXISTS PUBLICLY. Re-mirroring the same version is
+# normal (mirror, spot something, fix, mirror again), so the tag MOVES while the
+# version is still unreleased. Once the public repo has that tag the version has
+# shipped, and the private tag stays where it is — a later mirror (a doc fix,
+# say) is still published, it just does not drag the tag off what shipped.
 #
 # SETUP: add a fine-grained PAT with `contents: write` on the target repo as
 # the secret PUBLIC_REPO_TOKEN. See DEVELOPMENT.md -> Releases for the full flow.
@@ -27,10 +47,13 @@ on:
         type: boolean
         default: false
 
-# Read-only against THIS repo; the push to the public repo authenticates with
-# PUBLIC_REPO_TOKEN, not the workflow's GITHUB_TOKEN.
+# `write` only for the vX.Y.Z tag this pushes to THIS repo (release.yml carries
+# the same permission for the same reason). The push to the PUBLIC repo
+# authenticates with PUBLIC_REPO_TOKEN instead — the workflow's GITHUB_TOKEN has
+# no access there, and nothing here gives the public repo credentials to this
+# one, which is why the tag is cut on this side rather than pushed back.
 permissions:
-  contents: read
+  contents: write
 
 # Serialize mirror runs. Two overlapping pushes would race (the loser is
 # rejected as non-ff — safe, but noisy); queue instead of cancelling so an
@@ -131,10 +154,57 @@ jobs:
           PARENT=$(git rev-parse "public/${PUBLIC_BRANCH}")
           COMMIT=$(git commit-tree "$TREE" -p "$PARENT" -m "Release v${{ steps.ver.outputs.version }}")
           echo "Created squashed commit $COMMIT (tree $TREE on top of $PARENT)"
+          echo "public_commit=$COMMIT" >> "$GITHUB_ENV"
           # Parented on public/main, so this is always a fast-forward. If someone
           # pushed to public between fetch and now it will be rejected — re-run.
           git push public "${COMMIT}:refs/heads/${PUBLIC_BRANCH}"
           echo "Pushed Release v${{ steps.ver.outputs.version }} to ${PUBLIC_REPO}@${PUBLIC_BRANCH}" >> "$GITHUB_STEP_SUMMARY"
+
+      # Cut vX.Y.Z HERE, at the private commit whose tree was just published, so
+      # the two repos name the same release. See the header for why this side and
+      # why the tag may move.
+      #
+      # Everything talks to the remotes over ls-remote/push rather than the local
+      # tag list: the checkout is fetch-depth 1 with persist-credentials off (it
+      # must be — a persisted GITHUB_TOKEN header overrides the PAT in the public
+      # remote's URL), so there are no local tags and no credentialed `origin`.
+      - name: Tag this repo at the mirrored commit
+        if: ${{ inputs.push && env.identical != 'true' }}
+        env:
+          TAG: v${{ steps.ver.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PRIVATE_URL="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          # Shipped already? The PUBLIC tag is the authority: release.yml creates
+          # it when the Release is cut, so its existence means users have that
+          # version and the private tag must keep pointing at what they got.
+          if [ -n "$(git ls-remote --tags public "refs/tags/${TAG}")" ]; then
+            echo "::notice::${TAG} is already released publicly - leaving this repo's ${TAG} where it is. Bump VER_* in mxbmrp3/resource.h before the next release."
+            echo "_Tag \`${TAG}\` untouched — that version is already released publicly._" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # Unreleased, so the tag follows the newest candidate. --force covers the
+          # re-mirror case; on a first mirror there is nothing to move.
+          #
+          # Ask for the DEREFERENCED ref first: an annotated tag answers ls-remote
+          # twice, as refs/tags/X (the tag OBJECT) and refs/tags/X^{} (the commit),
+          # and reporting the first makes the "moved from A to B" line compare a tag
+          # object against a commit — two ids that can never match. The bare ref is
+          # the fallback for a lightweight tag, which has no dereferenced form.
+          EXISTING="$(git ls-remote "$PRIVATE_URL" "refs/tags/${TAG}^{}" | cut -f1)"
+          [ -n "$EXISTING" ] || EXISTING="$(git ls-remote "$PRIVATE_URL" "refs/tags/${TAG}" | cut -f1)"
+          git tag -f -a "$TAG" -m "${TAG} - mirrored to ${PUBLIC_REPO}@${public_commit}"
+          git push --force "$PRIVATE_URL" "refs/tags/${TAG}"
+
+          if [ -n "$EXISTING" ]; then
+            echo "Moved ${TAG} from ${EXISTING} to $(git rev-parse HEAD) (that version is not released yet)"
+            echo "_Moved \`${TAG}\` to the newly mirrored commit (not yet released)._" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Tagged $(git rev-parse HEAD) as ${TAG}"
+            echo "_Tagged this repo \`${TAG}\` at the mirrored commit._" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Dry-run notice
         if: ${{ !inputs.push }}

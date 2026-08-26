@@ -3,6 +3,7 @@
 // Displays ideal lap (best individual sectors) with comparison to current
 // ============================================================================
 #include "ideal_lap_hud.h"
+#include "../core/layout_config.h"
 
 #include <cstring>
 #include <cstdio>
@@ -18,18 +19,21 @@
 using namespace PluginConstants;
 
 IdealLapHud::ColumnPositions::ColumnPositions(float contentStartX, float scale) {
-    float scaledFontSize = FontSizes::NORMAL * scale;
+    float scaledFontSize = layoutDefaults().fontSizeNormal * scale;
     label = contentStartX;
     time = label + PluginUtils::calculateMonospaceTextWidth(COL_LABEL_WIDTH, scaledFontSize);
     diff = time + PluginUtils::calculateMonospaceTextWidth(COL_TIME_WIDTH, scaledFontSize);
 }
 
 IdealLapHud::IdealLapHud()
-    : m_columns(START_X + Padding::HUD_HORIZONTAL, m_fScale)
+    : m_columns(START_X + layoutDefaults().panelPaddingX, m_fScale)
 {
     // One-time setup
     DEBUG_INFO("IdealLapHud created");
     setDraggable(true);
+    // Body card: this HUD draws a content BLOCK under its title, which is what the
+    // themed card frames. Opt-in; see BaseHud::m_bContentCard.
+    m_bContentCard = true;
     m_quads.reserve(1);
     m_strings.reserve(20);  // Header row + 6 data rows
 
@@ -76,18 +80,9 @@ bool IdealLapHud::needsFrequentUpdates() const {
 }
 
 void IdealLapHud::rebuildLayout() {
-    // Fast path - only update positions, don't rebuild strings
+    // Fast path - only update positions, don't rebuild strings. Geometry from
+    // the same plan the full rebuild uses.
     auto dim = getScaledDimensions();
-    float titleHeight = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
-
-    // Recalculate column positions for current scale
-    float contentStartX = START_X + dim.paddingH;
-    m_columns = ColumnPositions(contentStartX, m_fScale);
-
-    // Right-edge anchors for the numeric columns (must match rebuildRenderData).
-    float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
-    float timeRightX = m_columns.diff - charWidth;
-    float diffRightX = m_columns.diff + COL_DIFF_WIDTH * charWidth;
 
     // Calculate row count from actual string count
     // Title string + 3 strings per row (label, time, diff)
@@ -97,30 +92,32 @@ void IdealLapHud::rebuildLayout() {
     }
     int rowCount = static_cast<int>((stringCount - 1) / 3);  // Subtract title, divide by 3 strings per row
 
-    // Calculate background dimensions using helpers
-    float backgroundWidth = calculateBackgroundWidth(BACKGROUND_WIDTH_CHARS);
-    float backgroundHeight = calculateBackgroundHeight(rowCount);
+    BaseHud::PanelWant want;
+    want.contentW = PluginUtils::calculateMonospaceTextWidth(BACKGROUND_WIDTH_CHARS, dim.fontSize);
+    want.sectionH = { rowCount * dim.lineHeightNormal };
+    want.captionW = planTitleWidth(dim, "Ideal Lap", TitleTier::Large);
+    want.tier = TitleTier::Large;
+    PanelPlan& plan = planPanel(dim, want);
+    plan.x0 = START_X; plan.y0 = START_Y;
+    float contentStartX = plan.contentX();
+    m_columns = ColumnPositions(contentStartX, m_fScale);
 
-    setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + backgroundHeight);
+    // Right-edge anchors for the numeric columns (must match rebuildRenderData).
+    float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+    float timeRightX = m_columns.diff - charWidth;
+    float diffRightX = m_columns.diff + COL_DIFF_WIDTH * charWidth;
 
-    // Update background quad position (if background is shown)
-    updateBackgroundQuadPosition(START_X, START_Y, backgroundWidth, backgroundHeight);
+    setBounds(START_X, START_Y, START_X + plan.width(), START_Y + plan.height());
+    updateBackgroundQuadPosition(START_X, START_Y, plan.width(), plan.height());
 
-    // Update string positions
-    float contentStartY = START_Y + dim.paddingV;
-    float currentY = contentStartY;
-
+    float currentY = plan.contentY();
     size_t stringIndex = 0;
-    // Title string (always exists, but may be empty if hidden)
+    // Title string (always exists, but may be empty if hidden) — the plan's
+    // caption row, above the content.
     if (stringIndex < m_strings.size()) {
-        float x = contentStartX;
-        float y = currentY;
-        applyOffset(x, y);
-        m_strings[stringIndex].m_afPos[0] = x;
-        m_strings[stringIndex].m_afPos[1] = y;
+        positionString(stringIndex, plan.X(plan.g.captionX), planTitleY(plan));
         stringIndex++;
     }
-    currentY += titleHeight;
 
     // Handle data rows
     for (size_t i = stringIndex; i < m_strings.size(); i++) {
@@ -140,9 +137,7 @@ void IdealLapHud::rebuildLayout() {
             y += labelRowYOffset(dim);
         }
 
-        applyOffset(x, y);
-        m_strings[i].m_afPos[0] = x;
-        m_strings[i].m_afPos[1] = y;
+        positionString(i, x, y);
 
         // Move to next row after every 3 data strings
         if (colInRow == 2) {
@@ -162,26 +157,22 @@ void IdealLapHud::rebuildRenderData() {
     const IdealLapData* idealLapData = data.getIdealLapData();
     const LapLogEntry* personalBest = data.getBestLapEntry();
 
-    // Calculate enabled row count and background dimensions using helpers
+    // BOX-MODEL: the plan owns width, height, chrome and the content origin.
     int enabledRows = getEnabledRowCount();
-    float backgroundWidth = calculateBackgroundWidth(BACKGROUND_WIDTH_CHARS);
-    float backgroundHeight = calculateBackgroundHeight(enabledRows);
-
-    // Get dimensions for positioning
     auto dim = getScaledDimensions();
-    float titleHeight = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
+    BaseHud::PanelWant want;
+    want.contentW = PluginUtils::calculateMonospaceTextWidth(BACKGROUND_WIDTH_CHARS, dim.fontSize);
+    want.sectionH = { enabledRows * dim.lineHeightNormal };
+    want.captionW = planTitleWidth(dim, "Ideal Lap", TitleTier::Large);
+    want.tier = TitleTier::Large;
+    PanelPlan& plan = planPanel(dim, want);
+    setBounds(START_X, START_Y, START_X + plan.width(), START_Y + plan.height());
+    addPlanBackground(plan, START_X, START_Y);
+    addPlanTitle(plan, "Ideal Lap", this->getFont(FontCategory::TITLE),
+                 this->getColor(ColorSlot::PRIMARY));
 
-    setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + backgroundHeight);
-    addBackgroundQuad(START_X, START_Y, backgroundWidth, backgroundHeight);
-
-    float contentStartX = START_X + dim.paddingH;
-    float contentStartY = START_Y + dim.paddingV;
-    float currentY = contentStartY;
-
-    // Title row
-    addTitleString("Ideal Lap", contentStartX, currentY, Justify::LEFT,
-        this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
-    currentY += titleHeight;
+    float contentStartX = plan.contentX();
+    float currentY = plan.contentY();
 
     // Recalculate column positions for current scale
     m_columns = ColumnPositions(contentStartX, m_fScale);
@@ -375,7 +366,7 @@ void IdealLapHud::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.2695f, 0.75094f);
+    setPosition(cellsX(49), cellsY(64));
     m_enabledRows = ROW_DEFAULT;
     setDataDirty();
 }

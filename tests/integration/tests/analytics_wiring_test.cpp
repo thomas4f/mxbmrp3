@@ -44,6 +44,33 @@ TEST_CASE("analytics wiring: app_started always built; sampling gates session_en
     CHECK(has(app, "\"feat_thread\""));                               // plugin worker thread adoption flag
     CHECK(has(app, "\"isDebug\":true"));   // capture mode routes to the debug bucket (belt-and-suspenders)
 
+    // --- panel_theme: the label, through the REAL AssetManager lookup. ---
+    // The classifier's own rules are pinned in tests/unit/test_analytics_theme.cpp;
+    // what only this layer can prove is that the payload asks the live theme
+    // registry, in an order where the answer exists. If the property were built
+    // before asset discovery every install would report "missing", and a unit test
+    // holding the flag itself could never see that.
+    CHECK(has(app, "\"panel_theme\":\"none\""));   // nothing selected in this scenario
+    if (host.hasThemeGeometry()) {
+        // A SHIPPED name reports itself: installing under the shipped theme's name
+        // makes the lookup resolve, so the label is the name rather than "custom".
+        // carbon-dark, since the theme cull: "debug" is no longer in
+        // kShippedThemes (its master stays in assets/, unshipped).
+        host.installTheme("carbon-dark", 1.0f, 1.0f, /*titleBand=*/1, /*card=*/1);
+        CHECK(has(host.analyticsAppStarted(), "\"panel_theme\":\"carbon-dark\""));
+
+        // A third-party theme is counted but never named — the user's folder name
+        // is exactly what must not reach the payload.
+        host.installTheme("skinner-pack-2000", 1.0f, 1.0f, /*titleBand=*/1, /*card=*/1);
+        const std::string custom = host.analyticsAppStarted();
+        CHECK(has(custom, "\"panel_theme\":\"custom\""));
+        CHECK(!has(custom, "skinner-pack-2000"));
+
+        // Back to unthemed, so nothing below inherits a theme.
+        host.clearTheme();
+        CHECK(has(host.analyticsAppStarted(), "\"panel_theme\":\"none\""));
+    }
+
     // --- FULL launch: session_end + custom both enqueue. ---
     host.analyticsSetFullLaunch(true);
     host.analyticsQueueSessionEnd();

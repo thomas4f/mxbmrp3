@@ -10,6 +10,9 @@
 #pragma once
 
 #include "plugin_data_types.h"
+#include "plugin_utils.h"
+#include "live_gap_engine.h"
+#include "lap_timer.h"
 
 class PluginData {
 public:
@@ -200,6 +203,22 @@ public:
         int numLaps, int gap, int gapLaps, int penalty, int pit, bool notify);
     void batchUpdateStandings(Unified::RaceClassificationEntry* entries, int numEntries);
     const std::unordered_map<int, StandingsData>& getStandings() const { return m_standings; }  // Collection (never null)
+    // The session's best lap by ANYONE, -1 when nobody has set one. Lives here
+    // rather than on a HUD because it is a question about the STANDINGS, and
+    // three consumers were each scanning them: TimingHud's "Overall" row, the
+    // pit board's lap reference, and the spotter's {overall_best} — the last
+    // of which duplicated the scan on the grounds that a core singleton must
+    // not reach into a HUD, which was true and pointed at this instead.
+    int getOverallBestLapTime() const {
+        int best = -1;
+        for (const auto& [raceNum, standing] : m_standings) {
+            (void)raceNum;
+            if (standing.bestLap > 0 && (best < 0 || standing.bestLap < best)) {
+                best = standing.bestLap;
+            }
+        }
+        return best;
+    }
     const StandingsData* getStanding(int raceNum) const;  // Per-rider (nullable)
 
     // Classification order (preserves the game's official race position order)
@@ -282,6 +301,34 @@ public:
     // Notifies SessionData on whole-second boundaries (drives 1Hz HUD/SSE refresh).
     void setSessionTime(int sessionTime);
     int getSessionTime() const { return m_currentSessionTime; }
+    // ELAPSED ms since the session clock started — monotonic ascending in
+    // BOTH session kinds, unlike getSessionTime(), which is the raw game
+    // clock and counts DOWN (to zero, then negative in overtime) in timed
+    // sessions. Anything doing cooldown/interval arithmetic (the spotter's
+    // detectors) or stamping an ordered timeline (finish times, cue log)
+    // must use this one; the raw clock silently breaks it in every timed
+    // race. Same formula batchUpdateStandings uses for finishTime.
+    int getSessionElapsedTime() const {
+        // NOTHING has elapsed before the green flag, and the raw clock says
+        // otherwise: through PRE_START and the sighting lap the game sends a
+        // NEGATIVE countdown (race_classification_handler documents it), so
+        // `length - time` came out ABOVE the session length and then dropped
+        // to ~0 at the green. That is the one place this was not the
+        // monotonic value it promises to be, and it is not a quiet one: cues
+        // do fire on the grid (spectate target, session state, proximity),
+        // so a whole race's transcript opened with timestamps from beyond its
+        // own end. Overtime's negative clock is deliberately NOT clamped —
+        // bonus laps take real time, so elapsed passing the length is true.
+        if (m_sessionData.sessionState &
+            (PluginConstants::SessionState::PRE_START |
+             PluginConstants::SessionState::SIGHTING_LAP)) {
+            return 0;
+        }
+        if (m_sessionData.sessionLength > 0) {
+            return m_sessionData.sessionLength - m_currentSessionTime;
+        }
+        return m_currentSessionTime > 0 ? m_currentSessionTime : 0;
+    }
 
     // Leader's laps-to-go once a time+lap race enters overtime (the timed clock
     // has expired and the field is running the bonus laps). Drives the session
@@ -337,6 +384,16 @@ public:
     // follow a front-runner carving through traffic.
     bool isRiderLapping(int raceNum) const;
     int getRiderLappingTarget(int raceNum) const;
+    // ...and the other direction: WHO is closing to lap this rider (-1 = nobody).
+    // The blue flag tells you one is coming; this is which bike to expect, which
+    // is the only part of it you can act on.
+    //
+    // A scan of the same cache rather than a second map beside it: it is the
+    // grid at worst, and it is asked once per blue-flag CUE (cooldown-gated,
+    // seconds apart), never per frame. A reverse map would be a derived cache
+    // whose eviction has to stay in step with the forward one — which is the
+    // failure this file has had before — to save nothing measurable.
+    int getRiderLappedBy(int raceNum) const;
 
     // Blue flag tuning (INI-only advanced setting)
     // Blue-flag + hazard tuning (INI-only advanced settings) live in one struct;
@@ -565,10 +622,9 @@ public:
         // points is blocked (a further point would overlap the closing segment).
         bool isClosed() const {
             if (points.size() < 3) return false;
-            float d = points.front() - points.back();
-            if (d < 0.0f) d = -d;
-            if (d > 0.5f) d = 1.0f - d;  // circular distance on the 0-1 lap
-            return d <= CLOSE_EPS;       // back on the first point
+            // Back on the first point, circular distance on the 0-1 lap.
+            return trackSeparation(points.front(), points.back()) <=
+                   CLOSE_EPS;
         }
     };
 
@@ -598,8 +654,13 @@ public:
     // ========================================================================
     // raceNum: the rider the event is about, or -1 for a session-level event. Only used to
     // offer click-to-spectate on the row — see EventLogEntry::raceNum.
+    // nums: the event's NUMBERS, for consumers that need to compute with them
+    // rather than render them (the spotter speaks the amounts). Defaulted —
+    // most events have none, and the three that do are the three whose detail
+    // column the spotter used to parse back. See EventNumbers.
     void addEventLogEntry(EventLogType type, const char* message, const char* detail = nullptr,
-                          int iconColorSlot = -1, int raceNum = -1);
+                          int iconColorSlot = -1, int raceNum = -1,
+                          const EventNumbers& nums = {});
     const std::deque<EventLogEntry>& getEventLog() const { return m_eventLog; }
 
 private:
@@ -751,11 +812,10 @@ private:
     bool m_awaitingGateDrop = false;
     bool m_gateDropSawHold = false;
 
-    // Leader timing points for time-based gap calculation
-    // Stores when leader crossed each 1% position, indexed by lap number
-    // Map key = lap number, Value = array of 100 timing points (1% resolution)
-    static constexpr size_t NUM_TIMING_POINTS = 100;
-    static constexpr size_t MAX_LAPS_TO_KEEP = 20;  // Keep up to 20 laps of timing data
+    // Live leader-relative gaps: the timing-point store and gap math live in
+    // the pure LiveGap::Engine (live_gap_engine.h, unit-tested without the
+    // game); this class owns the flattening, the staleness gating and the
+    // notification coalescing (plugin_data_livegaps.cpp).
     static constexpr int GAP_UPDATE_THRESHOLD_MS = 100;  // Minimum gap change (in ms) to trigger cache update (prevents flicker from small oscillations)
     // Time-coalescing for the Standings notification out of updateRealTimeGaps.
     // The per-rider threshold alone doesn't throttle on full grids: leader
@@ -768,7 +828,13 @@ private:
     int m_gapNotifyIntervalMs = DEFAULT_GAP_NOTIFY_INTERVAL_MS;
     std::chrono::steady_clock::time_point m_lastGapNotify{};
     bool m_gapNotifyPending = false;
-    std::map<int, std::array<LeaderTimingPoint, NUM_TIMING_POINTS>> m_leaderTimingPoints;
+    LiveGap::Engine m_liveGapEngine;
+    // Scratch buffers reused across updateRealTimeGaps calls (steady state
+    // allocates nothing on the ~30Hz path).
+    std::vector<LiveGap::Rider> m_liveGapRiders;
+    std::vector<StandingsData*> m_liveGapStandings;  // index-parallel with m_liveGapRiders
+    std::vector<int> m_liveGapPrev;
+    std::vector<LiveGap::GapResult> m_liveGapResults;
     int m_currentSessionTime;  // Most recent session time in milliseconds
 
     // Thread safety: These mutable cache members are NOT thread-safe

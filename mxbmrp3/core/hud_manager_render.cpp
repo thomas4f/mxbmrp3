@@ -11,6 +11,7 @@
 // ============================================================================
 
 #include "hud_manager.h"
+#include "layout_config.h"
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
 #include "asset_manager.h"
@@ -23,6 +24,7 @@
 #include "director_manager.h"
 #include "profile_manager.h"
 #include "ui_config.h"
+#include "render_probe_sweep.h"
 #include "../hud/base_hud.h"
 #include "../hud/standings_hud.h"
 #include "../hud/performance_hud.h"
@@ -132,6 +134,8 @@ void HudManager::produceFrame(int iState) {
     // Track draw state for spectate-mode support. Done here (not in DrawHandler) so it
     // runs on whichever thread owns the render build — the game thread in sync mode,
     // the worker thread in plugin-thread mode — and never races PluginData.
+    // Bracketed for the benchmark's Draw attribution -- see BenchmarkMetrics.
+    const long long frameStart = DrawHandler::getCurrentTimeUs();
     PluginData::getInstance().setDrawState(iState);
 
 #if defined(MXBMRP3_TEST_BUILD)
@@ -162,27 +166,71 @@ void HudManager::produceFrame(int iState) {
         m_lastDrawTime = now;
     }
 
-    // Update input data once per frame at the beginning
-    InputManager::getInstance().updateFrame();
-
-    // Update hotkey manager (checks for triggered actions)
-    HotkeyManager::getInstance().update();
-
     auto& bm = PluginData::getInstance().getBenchmarkMetrics();
+    if (bm.active) { bm.frameHeadTimeUs += DrawHandler::getCurrentTimeUs() - frameStart; ++bm.frameTimerSamples; }
+
+    // Update input data once per frame at the beginning, then the hotkey manager
+    // (checks for triggered actions). Timed together with updateHuds()' own poll
+    // block as framePollTimeUs -- see BenchmarkMetrics for why Draw is attributed.
+    {
+        // ZEROED HERE, then accumulated by both poll sites this frame -- the
+        // collect/update timers are single-site and can just assign.
+        const long long pollStart = bm.active ? DrawHandler::getCurrentTimeUs() : 0;
+        InputManager::getInstance().updateFrame();
+        HotkeyManager::getInstance().update();
+        if (bm.active) bm.framePollTimeUs += DrawHandler::getCurrentTimeUs() - pollStart;
+    }
 
     // Update all HUDs (they will only rebuild if marked dirty)
     // Note: No per-frame callback reset here. Callbacks accumulate across
     // the entire snapshot interval. BenchmarkWidget::takeSnapshot() resets them.
-    updateHuds();
+    if (bm.active) {
+        const long long updStart = DrawHandler::getCurrentTimeUs();
+        updateHuds();
+        bm.updateHudsTimeUs += DrawHandler::getCurrentTimeUs() - updStart;
+    } else {
+        updateHuds();
+    }
 
     // Collect render data from all HUDs
     // Note: PointerWidget is registered last, so pointer renders on top
     if (bm.active) {
         long long collectStart = DrawHandler::getCurrentTimeUs();
         collectRenderData();
-        bm.collectRenderTimeUs = DrawHandler::getCurrentTimeUs() - collectStart;
+        bm.collectRenderTimeUs += DrawHandler::getCurrentTimeUs() - collectStart;
     } else {
         collectRenderData();
+    }
+
+    const long long tailStart = bm.active ? DrawHandler::getCurrentTimeUs() : 0;
+
+    // The automatic sweep, if one is running: it steps the probe settings below
+    // through the whole matrix on its own schedule. Ticked HERE, immediately before
+    // the emission that reads those settings, so a step's configuration is the one
+    // its own frames are drawn with -- ticking after would attribute every frame to
+    // the previous step's settings for one frame at each boundary.
+    RenderProbeSweep::getInstance().tick();
+
+    // The sweep's own status line, drawn as a bare string rather than through a HUD.
+    // A HUD would be the wrong vehicle twice over: the sweep is meant to be run with
+    // every panel switched OFF (so the probe is nearly the whole load), and it must
+    // stay visible under exactly that condition. One string, no panel, no rebuild.
+    //
+    // It is also the answer to the failure that prompted the sweep: five hand-driven
+    // runs produced perfect reports of an experiment that never happened. A sweep you
+    // can watch cannot fail that way in silence.
+    if (RenderProbeSweep::getInstance().isRunning()) {
+        const std::string& status = RenderProbeSweep::getInstance().statusLine();
+        if (!status.empty()) {
+            SPluginString_t st{};
+            strncpy_s(st.m_szString, sizeof(st.m_szString), status.c_str(), _TRUNCATE);
+            st.m_afPos[0] = 0.5f; st.m_afPos[1] = 0.04f;
+            st.m_iFont = 1;                 // 1-based; font 1 is always registered
+            st.m_fSize = 0.03f;
+            st.m_iJustify = 1;              // centred
+            st.m_ulColor = 0xFF00FFFFul;    // ABGR: yellow, so it reads as instrumentation
+            m_strings.push_back(st);
+        }
     }
 
     // Render-load probe ([Advanced] renderProbeQuads, off by default): append N
@@ -205,25 +253,69 @@ void HudManager::produceFrame(int iState) {
                 // Text: N identical short strings (overlap is fine — each is still
                 // rasterized). Count flows into bm.totalStrings via *piNumString.
                 SPluginString_t st{};
-                strncpy_s(st.m_szString, sizeof(st.m_szString), "PROBE 12:34.567", _TRUNCATE);
+                // Built to renderProbeTextChars, not a fixed literal: the engine bills
+                // per GLYPH, so a per-string cost means nothing without the length it
+                // was measured at. A hardcoded 15 here is what overstated drop shadow
+                // by 1.7x -- the plugin's own strings average about nine.
+                const int chars = UiConfig::getInstance().getRenderProbeTextChars();
+                char text[UiConfig::MAX_PROBE_TEXT_CHARS + 1];
+                for (int i = 0; i < chars; ++i) text[i] = "0123456789:.-"[i % 13];
+                text[chars] = '\0';
+                strncpy_s(st.m_szString, sizeof(st.m_szString), text, _TRUNCATE);
                 st.m_afPos[0] = 0.5f; st.m_afPos[1] = 0.5f;
                 st.m_iFont = 1;              // 1-based; font 1 is always registered
                 st.m_fSize = 0.02f; st.m_iJustify = 0; st.m_ulColor = 0xFFFFFFFFul;
                 m_strings.insert(m_strings.end(), static_cast<size_t>(probeN), st);
             } else {
                 SPluginQuad_t q{};
-                q.m_ulColor = 0x40FFFFFFul;   // ABGR; icons are tinted to this, textures ignore it
-                const bool fs = (type == 0) && UiConfig::getInstance().getRenderProbeFullscreen();
+                // ABGR; icons are tinted to this, textures ignore it. Alpha is
+                // configurable so alpha-0 can be measured against alpha-64 -- see
+                // UiConfig::getRenderProbeAlpha for the question that answers.
+                q.m_ulColor = 0x00FFFFFFul |
+                    (static_cast<unsigned long>(UiConfig::getInstance().getRenderProbeAlpha()) << 24);
+                // Fullscreen applies to SPRITE quads too, not just fill. It used to be
+                // type-0-only, which left the one case a themed panel actually is
+                // unmeasurable: a nine-slice's centre is a large STRETCHED TEXTURED
+                // quad, so "textured fill" is the combination that matters and was the
+                // combination the probe could not produce. Text (type 2) has no rect
+                // to grow, so it is still excluded.
+                const bool fs = (type != 2) && UiConfig::getInstance().getRenderProbeFullscreen();
                 if (fs) {
                     q.m_aafPos[0][0]=0.f; q.m_aafPos[0][1]=0.f; q.m_aafPos[1][0]=0.f; q.m_aafPos[1][1]=1.f;
                     q.m_aafPos[2][0]=1.f; q.m_aafPos[2][1]=1.f; q.m_aafPos[3][0]=1.f; q.m_aafPos[3][1]=0.f;
+                } else if (UiConfig::getInstance().getRenderProbeTextChars() == 1) {
+                    // DEGENERATE (zero-area), selected by the otherwise-meaningless
+                    // textChars=1 on a quad type rather than by adding a sixth knob.
+                    //
+                    // The question it answers is not academic: finalizeThemedFill
+                    // reserves fill strips and DEGENERATES the unused ones in place
+                    // rather than removing them, so every themed panel submits several
+                    // zero-area quads every frame. Alpha 0 turned out to be charged in
+                    // full, which says the cost is submission rather than rasterisation
+                    // -- but a zero-area quad can be rejected earlier than a
+                    // zero-alpha one, and "probably the same" is exactly the kind of
+                    // reasoning this whole instrument exists to replace.
+                    for (int c = 0; c < 4; ++c) { q.m_aafPos[c][0] = 0.5f; q.m_aafPos[c][1] = 0.5f; }
                 } else {
                     // Tiny quad: negligible fill, so this isolates submit / texture-sample cost.
                     q.m_aafPos[0][0]=0.f; q.m_aafPos[0][1]=0.f; q.m_aafPos[1][0]=0.f; q.m_aafPos[1][1]=0.01f;
                     q.m_aafPos[2][0]=0.01f; q.m_aafPos[2][1]=0.01f; q.m_aafPos[3][0]=0.01f; q.m_aafPos[3][1]=0.f;
                 }
                 const int spriteCount = (type == 1) ? static_cast<int>(m_spriteNames.size()) : 0;
-                if (type == 1 && spriteCount > 0) {
+                // renderProbeSprite pins ONE sprite for the whole frame instead of
+                // cycling. Cycling measures "textured AND a texture switch per quad",
+                // which is the worst case and not the one a themed panel is -- a panel
+                // draws its 27 quads from ~9 sprites. Pinning gives texture sampling
+                // with no switching; the two runs differ by exactly the switch cost.
+                // An out-of-range pin falls back to cycling rather than to sprite 0,
+                // because sprite 0 is the UNTEXTURED path: a typo would otherwise
+                // produce a run that measured flat fill while the report said sprite.
+                const int pin = UiConfig::getInstance().getRenderProbeSprite();
+                const bool pinned = (type == 1 && pin > 0 && pin <= spriteCount);
+                if (pinned) {
+                    q.m_iSprite = pin;
+                    m_quads.insert(m_quads.end(), static_cast<size_t>(probeN), q);
+                } else if (type == 1 && spriteCount > 0) {
                     // Cycle across every registered sprite to induce texture switches.
                     for (int i = 0; i < probeN; ++i) {
                         q.m_iSprite = 1 + (i % spriteCount);   // 1-based sprite index
@@ -270,6 +362,7 @@ void HudManager::produceFrame(int iState) {
         InputManager::getInstance().getActiveSurface() == InputManager::Surface::Companion;
     bool settingsOnGame = m_pSettingsHud && m_pSettingsHud->isVisible() && !activeCompanion;
     m_bSuppressInGame = (target == DisplayTarget::COMPANION && !settingsOnGame);
+    if (bm.active) bm.frameTailTimeUs += DrawHandler::getCurrentTimeUs() - tailStart;
 }
 
 void HudManager::updateHuds() {
@@ -280,6 +373,11 @@ void HudManager::updateHuds() {
         m_lastActiveCompanion = activeCompanion;
         if (m_pSettingsHud && m_pSettingsHud->isVisible()) m_pSettingsHud->setDataDirty();
     }
+
+    // The poll block below is FRAME work, not HUD work: it is attributed to
+    // framePollTimeUs so updateHudsTimeUs reads as the HUDs' own cost.
+    auto& bmPoll = PluginData::getInstance().getBenchmarkMetrics();
+    const long long pollStart = bmPoll.active ? DrawHandler::getCurrentTimeUs() : 0;
 
     // Handle settings button click for SettingsHud toggle
     handleSettingsButton();
@@ -299,6 +397,8 @@ void HudManager::updateHuds() {
     // Handle keyboard shortcuts for HUD toggles
     processKeyboardInput();
 
+    if (bmPoll.active) bmPoll.framePollTimeUs += DrawHandler::getCurrentTimeUs() - pollStart;
+
     // Only allow one HUD to be dragged at a time
     // Process HUDs in reverse order (last registered = top layer, gets priority)
 
@@ -309,6 +409,8 @@ void HudManager::updateHuds() {
     // companion can't be grabbed at all).
     bool dragCompanion =
         InputManager::getInstance().getActiveSurface() == InputManager::Surface::Companion;
+
+    const long long dragSearchStart = bmPoll.active ? DrawHandler::getCurrentTimeUs() : 0;
 
     // Use cached dragging HUD if valid, otherwise find new target
     BaseHud* inputTarget = nullptr;
@@ -349,6 +451,8 @@ void HudManager::updateHuds() {
     }
 
     // Now update all HUDs
+    if (bmPoll.active) bmPoll.frameHudInputTimeUs += DrawHandler::getCurrentTimeUs() - dragSearchStart;
+
     for (auto& hud : m_huds) {
         if (hud) {
             // Allow mouse input only for the target HUD (and only if visible)
@@ -358,7 +462,13 @@ void HudManager::updateHuds() {
             // momentarily flips (cursor slips off the window), so the drag isn't cut.
             bool visibleHere = dragCompanion ? hud->getCompanionVisible() : hud->isVisible();
             if (hud->isDraggable() && (visibleHere || hud->isDragging())) {
-                hud->handleMouseInput(allowInput);
+                if (bmPoll.active) {
+                    const long long miStart = DrawHandler::getCurrentTimeUs();
+                    hud->handleMouseInput(allowInput);
+                    bmPoll.frameHudInputTimeUs += DrawHandler::getCurrentTimeUs() - miStart;
+                } else {
+                    hud->handleMouseInput(allowInput);
+                }
 
                 // Cache the HUD if it just started dragging
                 if (hud->isDragging() && !m_pDraggingHud) {
@@ -367,8 +477,29 @@ void HudManager::updateHuds() {
             }
 
             // Always call update() to handle data/layout dirty flags
-            hud->update();
+            // Per-HUD update timing: `update - rebuild` is what a HUD costs on the
+            // frames it is NOT dirty, and the aggregate could not say which HUD.
+            if (bmPoll.active && hud->getBenchmarkIndex() >= 0) {
+                const long long uStart = DrawHandler::getCurrentTimeUs();
+                hud->update();
+                bmPoll.recordHudUpdate(hud->getBenchmarkIndex(),
+                                       DrawHandler::getCurrentTimeUs() - uStart);
+            } else {
+                hud->update();
+            }
         }
+    }
+
+    // Deferred position validation, run HERE because here is the one place it is
+    // safe: every HUD's update() has returned, so nothing below us is an input
+    // handler. validatePosition() calls update() on a dirty HUD, so doing this from
+    // inside a handler re-enters the update that dispatched it -- and the click edge
+    // stays true for the rest of the frame, so it dispatches the same button again.
+    // The theme-cycle button did exactly that and recursed ~1400 deep into a stack
+    // overflow. Enforced by check_hud_helpers.sh rule 9: HUD code REQUESTS.
+    if (m_validationPending) {
+        m_validationPending = false;
+        validateAllHudPositions();
     }
 }
 
@@ -529,6 +660,14 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
                 continue;
             }
 
+            // A HUD that rebuilt DIRECTLY (a widget setter, the settings panel's
+            // click paths) rather than through processDirtyFlags arrives here with
+            // its themed fill still ARMED: the centre slice covering the whole
+            // interior, every card stacked on it at double opacity. Cut it now,
+            // before the quads are read. Consume-once, so it is a no-op for the
+            // dirty-pipeline rebuilds that already finalized -- one int compare.
+            hud->finalizeThemedFill();
+
             const auto& hudQuads = hud->getQuads();
             const auto& hudStrings = hud->getStrings();
             const auto& skipShadowFlags = hud->getStringSkipShadow();
@@ -544,7 +683,7 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
             int titleIconIdx = hud->m_titleIconQuadIndex;
             // Mirror the title string's own shadow decision so the icon and the title
             // text beside it always agree (today the title string never opts out, but
-            // this keeps them in lockstep if addTitleString ever gains a skip flag).
+            // this keeps them in lockstep if the caption path ever gains a skip flag).
             int titleStrIdx = hud->m_titleStringIndex;
             bool titleStrSkips = titleStrIdx >= 0 &&
                                  titleStrIdx < static_cast<int>(skipShadowFlags.size()) &&
@@ -562,7 +701,7 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
                 const auto& iconQuad = hudQuads[titleIconIdx];
                 SPluginQuad_t shadowQuad = iconQuad;
                 float iconHeight = iconQuad.m_aafPos[1][1] - iconQuad.m_aafPos[0][1];
-                float shadowSize = std::min(iconHeight, PluginConstants::FontSizes::EXTRA_LARGE);
+                float shadowSize = std::min(iconHeight, layoutDefaults().fontSizeExtraLarge);
                 float dx = shadowSize * shadowOffsetXPct;
                 float dy = shadowSize * shadowOffsetYPct;
                 for (int c = 0; c < 4; ++c) {
@@ -588,10 +727,16 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
                         // Add shadow string first (so it renders behind)
                         SPluginString_t shadowStr = str;
                         // Offset proportional to font size, capped at EXTRA_LARGE to avoid exaggerated shadows on oversized fonts
-                        float shadowSize = std::min(str.m_fSize, PluginConstants::FontSizes::EXTRA_LARGE);
+                        float shadowSize = std::min(str.m_fSize, layoutDefaults().fontSizeExtraLarge);
                         shadowStr.m_afPos[0] += shadowSize * shadowOffsetXPct;
                         shadowStr.m_afPos[1] += shadowSize * shadowOffsetYPct;
-                        shadowStr.m_ulColor = shadowColor;
+                        // MODULATED BY THE STRING'S OWN ALPHA, not written verbatim: a
+                        // HUD that fades a string (the radar fades a rider label out as
+                        // the rider leaves proximity range) would otherwise get a solid
+                        // shadow behind half-visible text. A no-op for opaque strings,
+                        // which is nearly all of them.
+                        shadowStr.m_ulColor =
+                            PluginUtils::modulateAlpha(shadowColor, str.m_ulColor);
                         outStrings.push_back(shadowStr);
                     }
 
@@ -622,13 +767,17 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
     }
 }
 
-// Grid line spacing = the snap lattice (HudGrid). Vertical lines every GRID_SIZE_HORIZONTAL
-// across X, horizontal lines every GRID_SIZE_VERTICAL across Y, in normalized [0,1] screen
-// space — exactly the grid SNAP_TO_GRID_X/Y quantize to. Kept in one place so the count
-// helper and the drawer can't drift.
+// Grid line spacing = the snap lattice itself: vertical lines every cellW across X,
+// horizontal lines every cellH across Y, in normalized [0,1] screen space — exactly
+// what snapX/snapY quantize to. Kept in one place so the count helper and the
+// drawer can't drift, and read from the live metrics so the overlay still shows the
+// truth after a theme file moves the type.
 namespace {
-    constexpr float GRID_CELL_W = PluginConstants::HudGrid::GRID_SIZE_HORIZONTAL;  // 0.0055
-    constexpr float GRID_CELL_H = PluginConstants::HudGrid::GRID_SIZE_VERTICAL;    // ~0.011734
+    // Not constexpr any more -- the grid derives from uiFontSize/uiLineHeight ([Advanced]),
+    // so these read it at call time. Functions rather than file-scope constants
+    // because a namespace-scope initialiser would run before LayoutConfig::load().
+    inline float gridCellW() { return layoutDefaults().cellW; }   // 0.0055 by default
+    inline float gridCellH() { return layoutDefaults().cellH; }   // ~0.011734 by default
     // Line thicknesses in normalized units (~1px minor / ~2px major at 1080p).
     constexpr float GRID_MINOR_W = 0.00055f, GRID_MAJOR_W = 0.00110f;  // vertical-line width
     constexpr float GRID_MINOR_H = 0.00095f, GRID_MAJOR_H = 0.00190f;  // horizontal-line height
@@ -636,7 +785,7 @@ namespace {
 }
 
 size_t HudManager::gridOverlayQuadCount() {
-    return static_cast<size_t>(gridLineCount(GRID_CELL_W) + gridLineCount(GRID_CELL_H));
+    return static_cast<size_t>(gridLineCount(gridCellW()) + gridLineCount(gridCellH()));
 }
 
 void HudManager::appendGridOverlay(std::vector<SPluginQuad_t>& outQuads) const {
@@ -658,17 +807,17 @@ void HudManager::appendGridOverlay(std::vector<SPluginQuad_t>& outQuads) const {
     };
 
     // Vertical lines (index 0 at x=0). Centered on the grid line so major lines don't shift it.
-    const int vCount = gridLineCount(GRID_CELL_W);
+    const int vCount = gridLineCount(gridCellW());
     for (int i = 0; i < vCount; ++i) {
         const bool major = (i % majorEvery) == 0;
         const float w = major ? GRID_MAJOR_W : GRID_MINOR_W;
-        pushLine(i * GRID_CELL_W - w * 0.5f, 0.0f, w, 1.0f, major ? majorColor : minorColor);
+        pushLine(i * gridCellW() - w * 0.5f, 0.0f, w, 1.0f, major ? majorColor : minorColor);
     }
     // Horizontal lines (index 0 at y=0).
-    const int hCount = gridLineCount(GRID_CELL_H);
+    const int hCount = gridLineCount(gridCellH());
     for (int j = 0; j < hCount; ++j) {
         const bool major = (j % majorEvery) == 0;
         const float h = major ? GRID_MAJOR_H : GRID_MINOR_H;
-        pushLine(0.0f, j * GRID_CELL_H - h * 0.5f, 1.0f, h, major ? majorColor : minorColor);
+        pushLine(0.0f, j * gridCellH() - h * 0.5f, 1.0f, h, major ? majorColor : minorColor);
     }
 }

@@ -118,12 +118,10 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("map");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeader("Appearance");
+    ctx.addSectionHeading("Appearance");
     ctx.addStandardHudControls(hud);
-    ctx.addSpacing(0.5f);
-
     // === LAYOUT SECTION ===
-    ctx.addSectionHeader("Layout");
+    ctx.addSectionHeading("Layout");
 
     // Range control (Full = no zoom, or zoom distance in meters)
     char rangeValue[16];
@@ -141,12 +139,10 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
     ctx.addToggleControl("Rotate with player", hud->getRotateToPlayer(),
         SettingsHud::ClickRegion::MAP_ROTATION_TOGGLE, hud, nullptr, 0, true,
         "map.rotation");
-    ctx.addSpacing(0.5f);
-
     // === TRACK SECTION ===
     // Order: the ribbon itself first (width, then the tessellation pair that
     // shapes it), decorations after (outline rim, markers).
-    ctx.addSectionHeader("Track");
+    ctx.addSectionHeading("Track");
 
     // Track line width scale: accelerated 1% step, clamped to [50%, 300%]
     char trackWidthValue[16];
@@ -186,10 +182,8 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
     ctx.addToggleControl("Show markers", hud->getShowTrackMarkers(),
         SettingsHud::ClickRegion::MAP_MARKERS_TOGGLE, hud, nullptr, 0, true,
         "map.markers");
-    ctx.addSpacing(0.5f);
-
     // === RIDER MARKERS SECTION ===
-    ctx.addSectionHeader("Rider Markers");
+    ctx.addSectionHeading("Rider Markers");
 
     // Rider color mode
     const char* mapColorModeStr = "";
@@ -235,12 +229,7 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
         SettingsHud::CycleControl::enumMember(hud, &MapHud::m_labelMode, 4, hud),
         hud, true, labelIsOff, "map.labels");
 
-    // Performance tip (mirrors the "More options" footer style on the Widgets tab)
-    ctx.currentY += ctx.lineHeightNormal * 0.5f;
-    ctx.parent->addString("Tip: lower Detail or Track outline to gain FPS.",
-        ctx.labelX, ctx.currentY,
-        PluginConstants::Justify::LEFT, PluginConstants::Fonts::getNormal(),
-        ColorConfig::getInstance().getMuted(), ctx.fontSize * 0.9f);
+    ctx.addNote("Tip: lower Detail or Track outline to gain FPS.");
 
     return hud;
 }

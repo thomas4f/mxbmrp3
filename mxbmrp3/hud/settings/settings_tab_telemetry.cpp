@@ -14,12 +14,10 @@ BaseHud* SettingsHud::renderTabTelemetry(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("telemetry");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeader("Appearance");
+    ctx.addSectionHeading("Appearance");
     ctx.addStandardHudControls(hud);
-    ctx.addSpacing(0.5f);
-
     // === LAYOUT SECTION ===
-    ctx.addSectionHeader("Layout");
+    ctx.addSectionHeading("Layout");
 
     // Display mode cycle control
     const char* modeText = "";
@@ -31,10 +29,21 @@ BaseHud* SettingsHud::renderTabTelemetry(SettingsLayoutContext& ctx) {
     ctx.addCycleControl("Style", modeText, 10,
         SettingsHud::CycleControl::enumMember(hud, &TelemetryHud::m_displayMode, 3, hud),
         hud, true, false, "telemetry.display");
-    ctx.addSpacing(0.5f);
 
+    // Panel HEIGHT, in text rows. The knob the Telemetry HUD was missing: its graph
+    // was a fixed line count, so the panel could only be resized by the scale slider,
+    // which moves the fonts too. One row is lineHeightNormal, so every value keeps the
+    // panel a whole number of grid cells tall.
+    {
+        char rowsBuf[8];
+        snprintf(rowsBuf, sizeof(rowsBuf), "%d", hud->m_graphRows);
+        ctx.addSteppedControl("Graph height", rowsBuf, 10,
+            SettingsHud::SteppedControl::clampInt(&hud->m_graphRows, 1,
+                TelemetryHud::MIN_GRAPH_ROWS, TelemetryHud::MAX_GRAPH_ROWS, hud),
+            hud, true, false, "telemetry.graph_rows");
+    }
     // === CONTENT SECTION ===
-    ctx.addSectionHeader("Content");
+    ctx.addSectionHeading("Content");
 
     ctx.addToggleControl("Throttle", (hud->m_enabledElements & TelemetryHud::ELEM_THROTTLE) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledElements, TelemetryHud::ELEM_THROTTLE, true,

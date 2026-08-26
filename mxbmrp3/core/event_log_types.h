@@ -133,4 +133,43 @@ struct EventLogEntry {
     }
 };
 
+// The NUMBERS behind an event, carried alongside the display strings rather
+// than recovered from them.
+//
+// The spotter used to parse them back out of EventLogEntry::detail — "1:48.231"
+// to milliseconds, "5s" to 5, "2L" to 2 — with hand-rolled readers for each.
+// Every one of those numbers existed structurally in the handler a few lines
+// earlier, and the round trip cost three things:
+//
+//   - three display formats became load-bearing for AUDIO, silently. Rewording
+//     the penalty column would have changed what a voice says, and the branch
+//     that added the spotter had already been forced to move the penalty's
+//     seconds INTO the detail column to feed the parser;
+//   - the lap-time reading existed twice, once from a string and once from
+//     milliseconds, so a wording fix ("one hundred point four" for a lap on
+//     the minute) had to be made in both to keep the backends agreeing;
+//   - a parse can fail, so every consumer needed a "not that shape" path for
+//     data that was never in doubt.
+//
+// Defaulted throughout: an event with no number attached is the common case,
+// and -1 means "not applicable", which is what an unparseable detail used to
+// mean anyway.
+struct EventNumbers {
+    int lapTimeMs = -1;   // FastestLap: the lap just set
+    int penaltyMs = -1;   // Penalty: the amount, as the game reports it
+    int bonusLaps = -1;   // OvertimeStarted: the bonus laps after the clock
+    int position = -1;    // RiderFinished: where they finished
+
+    // BUILD ONE THROUGH THESE, not with a braced list. Four same-typed ints in
+    // a row means `{-1, 5000}` is a penalty only by counting commas, and
+    // inserting a field in the middle would silently reassign every existing
+    // site with no diagnostic — the compiler cannot tell a penalty from a lap
+    // time. (Designated initialisers would pin it too, but this builds as
+    // C++17 for MSVC, where they are not available.)
+    static EventNumbers lapTime(int ms)     { EventNumbers n; n.lapTimeMs = ms;  return n; }
+    static EventNumbers penalty(int ms)     { EventNumbers n; n.penaltyMs = ms;  return n; }
+    static EventNumbers bonus(int laps)     { EventNumbers n; n.bonusLaps = laps; return n; }
+    static EventNumbers finished(int pos)   { EventNumbers n; n.position = pos;  return n; }
+};
+
 // Note: ring buffer capacity is PluginConstants::HudLimits::MAX_EVENT_LOG_CAPACITY

@@ -3,6 +3,7 @@
 // Lap Log - displays recent lap times with sector splits and personal best
 // ============================================================================
 #include "lap_log_hud.h"
+#include "../core/layout_config.h"
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
 #include "../core/plugin_utils.h"
@@ -20,7 +21,7 @@ static_assert(LapLogHud::MAX_DISPLAY_LAPS <= HudLimits::MAX_LAP_LOG_CAPACITY,
               "MAX_DISPLAY_LAPS cannot exceed MAX_LAP_LOG_CAPACITY");
 
 LapLogHud::ColumnPositions::ColumnPositions(float contentStartX, float scale, uint32_t enabledColumns) {
-    float scaledFontSize = FontSizes::NORMAL * scale;
+    float scaledFontSize = layoutDefaults().fontSizeNormal * scale;
     float current = contentStartX;
     bool showSectors = (enabledColumns & COL_SECTORS) != 0;
 
@@ -51,10 +52,13 @@ LapLogHud::ColumnPositions::ColumnPositions(float contentStartX, float scale, ui
 }
 
 LapLogHud::LapLogHud()
-    : m_columns(START_X + Padding::HUD_HORIZONTAL, m_fScale, m_enabledColumns)
+    : m_columns(START_X + layoutDefaults().panelPaddingX, m_fScale, m_enabledColumns)
 {
     // One-time setup
     DEBUG_INFO("LapLogHud created");
+    // Body card: this HUD's content is a block the theme can frame -- exactly what
+    // a themed body card is for. Opt-in; see BaseHud::m_bContentCard.
+    m_bContentCard = true;
     setDraggable(true);
     m_quads.reserve(1);
     m_strings.reserve(1 + m_maxDisplayLaps * NUM_COLUMNS);  // Title + data rows (NUM_COLUMNS strings per row)
@@ -176,20 +180,20 @@ void LapLogHud::rebuildRenderData() {
     // Calculate height: m_maxDisplayLaps rows plus gap row if enabled
     int numDataRows = m_plan.dataRowCount;
 
-    int widthChars = getBackgroundWidthChars();
-    float backgroundWidth = PluginUtils::calculateMonospaceTextWidth(widthChars, dim.fontSize)
-        + dim.paddingH + dim.paddingH;
-    // Title (large if shown) + optional header row + data rows (normal)
-    float titleHeight = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
+    // BOX-MODEL: optional header row + data rows as one section; the caption
+    // band is the plan's.
     float headerHeight = m_bShowHeaders ? dim.lineHeightNormal : 0.0f;
-    float backgroundHeight = dim.paddingV + titleHeight + headerHeight + (dim.lineHeightNormal * numDataRows) + dim.paddingV;
+    BaseHud::PanelWant want;
+    want.contentW = PluginUtils::calculateMonospaceTextWidth(getBackgroundWidthChars(), dim.fontSize);
+    want.sectionH = { headerHeight + dim.lineHeightNormal * numDataRows };
+    want.captionW = planTitleWidth(dim, "Lap Log", TitleTier::Large);
+    want.tier = TitleTier::Large;
+    PanelPlan& plan = planPanel(dim, want);
+    setBounds(START_X, START_Y, START_X + plan.width(), START_Y + plan.height());
+    addPlanBackground(plan, START_X, START_Y);
 
-    setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + backgroundHeight);
-    addBackgroundQuad(START_X, START_Y, backgroundWidth, backgroundHeight);
-
-    float contentStartX = START_X + dim.paddingH;
-    // Title at top (if shown), data flows downward
-    float currentY = START_Y + dim.paddingV;
+    float contentStartX = plan.contentX();
+    float currentY = plan.contentY();
 
     // Recalculate column positions for current scale
     m_columns = ColumnPositions(contentStartX, m_fScale, m_enabledColumns);
@@ -226,10 +230,9 @@ void LapLogHud::rebuildRenderData() {
     // Check if sectors are enabled
     bool showSectors = (m_enabledColumns & COL_SECTORS) != 0;
 
-    // Render title at TOP (if shown)
-    addTitleString("Lap Log", contentStartX, currentY, Justify::LEFT,
-        this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
-    currentY += titleHeight;
+    // Render title at TOP (if shown) — the plan's caption row, above currentY.
+    addPlanTitle(plan, "Lap Log", this->getFont(FontCategory::TITLE),
+                 this->getColor(ColorSlot::PRIMARY));
 
     // Optional column-header row (Strong font), numeric columns follow their right-aligned data
     if (m_bShowHeaders) {
@@ -539,7 +542,7 @@ void LapLogHud::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.0055f, 0.75094f);
+    setPosition(cellsX(1), cellsY(64));
     m_enabledColumns = COL_DEFAULT;
     m_maxDisplayLaps = 5;
     m_showLiveTiming = true;

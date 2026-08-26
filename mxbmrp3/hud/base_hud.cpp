@@ -3,6 +3,7 @@
 // Base class for all HUD display elements with common rendering and positioning logic
 // ============================================================================
 #include "base_hud.h"
+#include "../core/layout_config.h"
 #include "../core/plugin_constants.h"
 #include "../core/plugin_manager.h"
 #include "../core/plugin_utils.h"
@@ -78,14 +79,24 @@ bool BaseHud::handleMouseInput(bool allowInput) {
         }
 
         // Snap to grid if enabled (use separate horizontal/vertical grids for perfect alignment)
+        // grid-snap-exempt: this IS the drag path snapEdgeX/Y exists for -- it needs
+        // the gate around the whole clamp+snap block, not per-axis inside it.
         if (UiConfig::getInstance().getGridSnapping()) {
-            newOffsetX = PluginConstants::HudGrid::SNAP_TO_GRID_X(newOffsetX);
-            newOffsetY = PluginConstants::HudGrid::SNAP_TO_GRID_Y(newOffsetY);
+            // Snap the panel's resulting top-LEFT EDGE, not the offset. Snapping the
+            // offset quantises only the drag delta, so a HUD whose layout starts at an
+            // off-grid x (most of them: a default position is a designed number, not a
+            // multiple of 0.0055) stayed off-grid no matter where it was dropped -- the
+            // rows inside it on the lattice, the panel around them between two lines.
+            //
+            // Only the offset changes, so nothing moves until the user drags: a saved
+            // position from an older build keeps its exact pixels until it is touched.
+            newOffsetX += layout().snapDeltaX(m_fBoundsLeft + newOffsetX);
+            newOffsetY += layout().snapDeltaY(m_fBoundsTop + newOffsetY);
 
             // Edge magnetism: snap to window edges if within one grid cell
             // This allows HUDs to be positioned flush against screen borders
-            const float gridH = PluginConstants::HudGrid::GRID_SIZE_HORIZONTAL;
-            const float gridV = PluginConstants::HudGrid::GRID_SIZE_VERTICAL;
+            const float gridH = layoutDefaults().cellW;
+            const float gridV = layoutDefaults().cellH;
 
             // Calculate where HUD edges would be with current offset
             float hudLeft = m_fBoundsLeft + newOffsetX;
@@ -264,19 +275,29 @@ bool BaseHud::clampPositionToBounds(float& offsetX, float& offsetY, const Window
     return needsAdjustment;
 }
 
+void BaseHud::rebuildAndRecord() {
+    // THE WHOLE DIRTY PATH IS THE REBUILD, not just rebuildRenderData(): the two
+    // calls below run on exactly the same frames and are part of what a rebuild
+    // costs. Timed only around the middle one, their cost fell out of the per-HUD
+    // table and into the Draw remainder instead.
+    auto& bm = PluginData::getInstance().getBenchmarkMetrics();
+    if (bm.active && m_benchmarkIndex >= 0) {
+        long long start = DrawHandler::getCurrentTimeUs();
+        rebuildRenderData();
+        onAfterDataRebuild();
+        finalizeThemedFill();   // see its declaration: one fill layer per pixel
+        bm.recordHudRebuild(m_benchmarkIndex, DrawHandler::getCurrentTimeUs() - start);
+    } else {
+        rebuildRenderData();
+        onAfterDataRebuild();
+        finalizeThemedFill();
+    }
+}
+
 void BaseHud::processDirtyFlags() {
     if (isDataDirty()) {
         // Time the rebuild if benchmark is active and this HUD is registered
-        auto& bm = PluginData::getInstance().getBenchmarkMetrics();
-        if (bm.active && m_benchmarkIndex >= 0) {
-            long long start = DrawHandler::getCurrentTimeUs();
-            rebuildRenderData();
-            long long elapsed = DrawHandler::getCurrentTimeUs() - start;
-            bm.recordHudRebuild(m_benchmarkIndex, elapsed);
-        } else {
-            rebuildRenderData();
-        }
-        onAfterDataRebuild();
+        rebuildAndRecord();
         clearDataDirty();
         clearLayoutDirty();
     }
@@ -302,15 +323,48 @@ void BaseHud::setTextureBaseName(const std::string& baseName) {
         int spriteIndex = AssetManager::getInstance().getSpriteIndex(baseName, m_textureVariant);
         if (spriteIndex > 0) {
             m_iBackgroundTextureIndex = spriteIndex;
+            invalidateThemeCache();
         }
     }
 }
 
+bool BaseHud::hasBackgroundArtwork() const {
+    // No default case, so adding a pack kind fails to compile here rather than
+    // silently falling through to the texture-variant answer.
+    switch (m_packKind) {
+        case PackKind::Gamepad:  return AssetManager::getInstance().getGamepadCount() > 0;
+        case PackKind::Pitboard: return AssetManager::getInstance().getPitboardCount() > 0;
+        case PackKind::None:     break;
+    }
+    return !getAvailableTextureVariants().empty();
+}
+
 void BaseHud::setTextureVariant(int variant) {
     if (variant < 0) variant = 0;
+    // Variant 0 IS "off" for a texture cycle, so a HUD whose artwork is mandatory
+    // (see m_textureRequired) snaps a 0 up to its first real variant instead. This
+    // is what makes a stale `textureVariant=0` in an existing INI self-heal rather
+    // than stranding the HUD in a state its settings row no longer offers.
+    if (variant == 0 && m_textureRequired) {
+        const std::vector<int> avail = getAvailableTextureVariants();
+        if (!avail.empty()) variant = avail.front();
+    }
 
     if (m_textureVariant != variant) {
         m_textureVariant = variant;
+
+        // ONCE, at the top, covering every branch below -- the same shape
+        // setShowBackgroundTexture() uses. A background texture SUPERSEDES the theme
+        // (resolveActiveTheme returns nullptr while one is on), so all four exits
+        // from here can change which theme this HUD resolves to.
+        //
+        // It was on the success branch only, and the asymmetry is what made it easy
+        // to miss: turning a texture ON invalidated, turning it OFF did not. Cycling
+        // a HUD's Texture control to "Off" under a global theme then left the memo
+        // holding nullptr, so the rebuild that setDataDirty() triggers drew a FLAT
+        // background -- and stayed flat until something else bumped the generation,
+        // because nothing does so on a normal frame.
+        invalidateThemeCache();
 
         // Update background texture index based on variant
         if (variant == 0) {
@@ -326,6 +380,22 @@ void BaseHud::setTextureVariant(int variant) {
                 m_bShowBackgroundTexture = false;
                 DEBUG_WARN_F("Texture variant %d not found for %s", variant, m_textureBaseName.c_str());
             }
+        } else {
+            // A VARIANT WAS ASKED FOR AND THERE IS NO STEM TO RESOLVE IT AGAINST.
+            // This arm did not exist, so the request was dropped in silence: no
+            // sprite, no warning, and a HUD whose artwork is mandatory
+            // (m_textureRequired) simply drew nothing where its dial should be.
+            //
+            // It could not happen while HudManager ALSO set the stem at
+            // registration, because that second call covered a HUD that forgot to
+            // declare one in its constructor -- ClockWidget and FmxHud were both
+            // relying on exactly that. The duplicate declaration is gone, so the
+            // constructor is now the only place a stem comes from and forgetting it
+            // is a real mistake. Say so.
+            m_bShowBackgroundTexture = false;
+            DEBUG_WARN_F("Texture variant %d requested with no texture base name "
+                         "(declare one in the HUD's constructor, before resetToDefaults)",
+                         variant);
         }
 
         setDataDirty();
@@ -342,8 +412,10 @@ void BaseHud::cycleTextureVariant(bool forward) {
         return;
     }
 
-    // Build cycle order: 0 (Off), then all variants
-    std::vector<int> cycleOrder = {0};
+    // Off, then the variants -- EXCEPT where the artwork is the widget, which
+    // cycles the variants alone (see m_textureRequired for what Off looked like).
+    std::vector<int> cycleOrder;
+    if (!m_textureRequired) cycleOrder.push_back(0);
     cycleOrder.insert(cycleOrder.end(), variants.begin(), variants.end());
 
     // Find current position in cycle

@@ -11,16 +11,12 @@
 #include <chrono>
 #include <thread>
 
+#include "asset_path.h"
+
 namespace {
-// Reduce a registered resource path (".../fonts/RobotoMono-Regular.fnt") to its
-// base name ("RobotoMono-Regular"), which the renderer maps to a .ttf / .tga.
-std::string baseName(const std::string& path) {
-    size_t slash = path.find_last_of("/\\");
-    std::string n = (slash == std::string::npos) ? path : path.substr(slash + 1);
-    size_t dot = n.find_last_of('.');
-    if (dot != std::string::npos) n.resize(dot);
-    return n;
-}
+// Path -> renderer name. The rule (and the bug that produced it) lives in
+// core/asset_path.h, which the unit suite pins directly.
+using AssetPath::renderName;
 
 // Force the process's one-time GDI subsystem init to complete on the CALLER
 // thread before the render thread is spawned. The render loop's first paint does
@@ -160,11 +156,11 @@ void CompanionWindow::submit(const std::vector<SPluginQuad_t>& quads,
     // stale basenames. (AssetManager registers once at startup, so it holds today.)
     if (m_fontBases.size() != fontPaths.size()) {
         m_fontBases.clear();
-        for (const auto& p : fontPaths) m_fontBases.push_back(baseName(p));
+        for (const auto& p : fontPaths) m_fontBases.push_back(renderName(p));
     }
     if (m_spriteBases.size() != spritePaths.size()) {
         m_spriteBases.clear();
-        for (const auto& p : spritePaths) m_spriteBases.push_back(baseName(p));
+        for (const auto& p : spritePaths) m_spriteBases.push_back(renderName(p));
     }
     m_haveFrame = true;
 }
@@ -234,6 +230,20 @@ LRESULT CALLBACK companionWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             return MA_NOACTIVATE;
         case WM_ERASEBKGND:
             return 1;  // we paint the whole client ourselves; skip flicker
+        case WM_PAINT: {
+            // EXPOSURE DAMAGE. There is no back buffer and no background brush
+            // (hbrBackground is null, WM_ERASEBKGND returns 1), so nothing but our own
+            // blit ever fills the client -- and the unchanged-frame skip means the loop
+            // will not blit again while the HUD is static, which in menus is forever.
+            // Uncover the window on a non-composited desktop (DWM off, RDP, a bare Wine
+            // prefix -- the same configurations the loop's DwmFlush fallback is for) and
+            // the exposed strip kept whatever was underneath.
+            //
+            // DefWindowProc still runs: its BeginPaint/EndPaint is what VALIDATES the
+            // region, and skipping that would have Windows re-post WM_PAINT forever.
+            CompanionWindow::getInstance().requestRepaint();
+            return DefWindowProcW(hwnd, msg, wp, lp);
+        }
         case WM_SETCURSOR:
             // Hide the OS cursor over the client area — the plugin draws its own
             // cursor there (same as the game window does). Defer the non-client
@@ -299,14 +309,6 @@ void CompanionWindow::threadMain() {
 
     hudsw::Renderer renderer;
     hudsw::Image img;
-    std::vector<uint8_t> bgra;  // BGRA scratch for the DIB (Win32 wants blue-first)
-
-    // Back buffer: we compose each frame off-screen and blit it to the window in a
-    // single BitBlt, so the window never shows a half-drawn (fill-then-image) frame.
-    // Without this, drawing straight to the window DC flickers badly.
-    HDC memDC = nullptr;
-    HBITMAP memBmp = nullptr, oldBmp = nullptr;
-    int bbW = 0, bbH = 0;
 
     // Snapshot scratch, hoisted out of the loop: vector/string ASSIGNMENT reuses
     // existing capacity, so the per-frame copy under m_mutex is a memcpy-grade fill
@@ -317,6 +319,9 @@ void CompanionWindow::threadMain() {
     std::vector<SPluginString_t> strings;
     std::vector<std::string> fontBases, spriteBases;
     std::string root;
+    uint64_t lastFrameId = 0;      // see the unchanged-frame skip below
+    bool paintedOnce = false;
+    std::vector<uint8_t> bgra;     // BGRA scratch for the present swizzle (capacity reused)
 
     while (m_run.load()) {
         MSG msg;
@@ -326,6 +331,21 @@ void CompanionWindow::threadMain() {
         }
         if (!m_run.load()) break;
 
+        // Reload Config landed: drop the decoded art so this frame re-reads it. Done
+        // HERE, on the thread that owns the renderer, rather than from the hotkey.
+        // exchange() so a request is consumed exactly once.
+        if (m_artReload.exchange(false, std::memory_order_relaxed)) {
+            renderer.dropTextureCache();
+            // The frame's IDENTITY is unchanged -- same quads, same strings, same client
+            // size -- so without this the unchanged-frame check below skips the very
+            // repaint the reload exists to produce, and the window keeps showing the old
+            // art until something unrelated happens to change the HUD. Reloading art
+            // while parked in the pits or in a menu is exactly when a user does this.
+            m_forceRepaint.store(true, std::memory_order_relaxed);
+            DEBUG_INFO("CompanionWindow: theme art reloaded (companion only -- "
+                       "in-game sprites are fixed at init and need a restart)");
+        }
+
         // Snapshot the latest frame under the lock, then render outside it.
         int firstIcon; bool have;
         {
@@ -333,6 +353,31 @@ void CompanionWindow::threadMain() {
             quads = m_quads; strings = m_strings;
             fontBases = m_fontBases; spriteBases = m_spriteBases;
             firstIcon = m_firstIcon; root = m_assetRoot; have = m_haveFrame;
+        }
+
+        // SKIP AN UNCHANGED FRAME. This thread runs on its own cadence -- V-Sync, or a
+        // fixed Hz -- and re-rendered every tick whether or not the HUD had moved. The
+        // software rasteriser is fill-rate bound, measured linear in pixel count (0.80 /
+        // 3.17 / 6.33 ms at 540p / 1080p / 1440p for a heavy themed frame), and a THEME
+        // multiplies the fill: a flat panel is one quad, a themed one is 27. So the cost
+        // is real and it was being paid continuously for an identical picture.
+        //
+        // Worst in MENUS, where it is pure waste: the plugin receives no callbacks there,
+        // so the last frame is re-rasterised forever at full price.
+        //
+        // Hashing the frame is ~21KB of streaming reads against milliseconds of fill, and
+        // the strings/sprite tables go in too -- a lap time changing without any quad
+        // moving still has to redraw.
+        uint64_t h = 1469598103934665603ULL;
+        auto mix = [&h](const void* p, size_t n) {
+            const unsigned char* b = static_cast<const unsigned char*>(p);
+            for (size_t i = 0; i < n; ++i) { h ^= b[i]; h *= 1099511628211ULL; }
+        };
+        if (have) {
+            mix(quads.data(), quads.size() * sizeof(SPluginQuad_t));
+            mix(strings.data(), strings.size() * sizeof(SPluginString_t));
+            for (const std::string& fb : fontBases) mix(fb.data(), fb.size());
+            for (const std::string& sb : spriteBases) mix(sb.data(), sb.size());
         }
 
         RECT rc; GetClientRect(hwnd, &rc);
@@ -351,6 +396,23 @@ void CompanionWindow::threadMain() {
         int dx = (clientW - rw) / 2, dy = (clientH - rh) / 2;
         if (img.w != clientW || img.h != clientH) img.resize(clientW, clientH);
         img.setViewport((float)dx, (float)dy, (float)rw, (float)rh);
+
+        // The client size is part of the identity: a resize must repaint even if the HUD
+        // is byte-identical. So is `have`, so the first real frame replaces the backdrop.
+        const uint64_t frameId = h ^ (uint64_t(uint32_t(clientW)) << 32)
+                                   ^ uint64_t(uint32_t(clientH)) ^ (have ? 0x9E37ULL : 0ULL);
+        const bool forced = m_forceRepaint.exchange(false, std::memory_order_relaxed);
+        if (frameId == lastFrameId && paintedOnce && !forced) {
+            // Same pacing as a painted frame -- the loop still ticks at V-Sync or the Hz
+            // cap, it just does not rasterise. (hz is read again below for the normal
+            // path; reading it here keeps the skip self-contained.)
+            const int skipHz = m_refreshHz.load(std::memory_order_relaxed);
+            if (skipHz > 0) Sleep(1000 / skipHz);
+            else if (FAILED(DwmFlush())) Sleep(16);
+            continue;                      // nothing changed; do not rasterise or blit
+        }
+        lastFrameId = frameId;
+        paintedOnce = true;
 
         if (have) {
             hudsw::Frame f;
@@ -376,11 +438,30 @@ void CompanionWindow::threadMain() {
             img.fill(12, 15, 20, 255);
         }
 
-        // Present: convert RGBA -> BGRA. The image already covers the whole client, so
-        // one blit paints everything (no separate letterbox fill needed).
+        // Present: swizzle RGBA -> BGRA a word at a time, then ONE StretchDIBits
+        // straight to the window DC.
+        //
+        // Every piece of this is the MEASURED winner, per-stage-timed inside this loop
+        // running under Wine (CW-PAINT experiments, n=45 per arm):
+        //   - swizzle + BI_RGB beats handing GDI the RGBA buffer as BI_BITFIELDS
+        //     (4.0 ms vs 5.2 ms): GDI's internal conversion costs more than our own
+        //     word-wise pass, so "zero-copy" was the slower path -- it had been verified
+        //     pixel-identical, never faster.
+        //   - blitting straight to the window beats the memDC + BitBlt back buffer by
+        //     another ~1.2 ms/paint. The back buffer guarded against fill-then-image
+        //     flicker, and since the present became a single full-client blit there is
+        //     no second step to flicker against; WM_ERASEBKGND already returns 1.
+        //   - the swizzle itself is one 32-bit load/store per pixel, not four byte moves
+        //     (2.31 vs 3.42 ms at 1080p, measured in isolation).
         bgra.resize(img.px.size());
-        for (size_t i = 0; i < img.px.size(); i += 4) {
-            bgra[i] = img.px[i + 2]; bgra[i + 1] = img.px[i + 1]; bgra[i + 2] = img.px[i]; bgra[i + 3] = img.px[i + 3];
+        {
+            const uint32_t* s32 = reinterpret_cast<const uint32_t*>(img.px.data());
+            uint32_t* d32 = reinterpret_cast<uint32_t*>(bgra.data());
+            const size_t n = img.px.size() / 4;
+            for (size_t i = 0; i < n; ++i) {
+                const uint32_t v = s32[i];
+                d32[i] = (v & 0xFF00FF00u) | ((v & 0xFFu) << 16) | ((v >> 16) & 0xFFu);
+            }
         }
         BITMAPINFO bmi{};
         bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -391,18 +472,8 @@ void CompanionWindow::threadMain() {
         bmi.bmiHeader.biCompression = BI_RGB;
 
         HDC dc = GetDC(hwnd);
-        // (Re)create the back buffer to match the client size.
-        if (!memDC) memDC = CreateCompatibleDC(dc);
-        if (clientW != bbW || clientH != bbH) {
-            HBITMAP nb = CreateCompatibleBitmap(dc, clientW, clientH);
-            HBITMAP prev = (HBITMAP)SelectObject(memDC, nb);
-            if (!oldBmp) oldBmp = prev;         // stash the DC's original bitmap for cleanup
-            if (memBmp) DeleteObject(memBmp);   // free the previous back buffer
-            memBmp = nb; bbW = clientW; bbH = clientH;
-        }
-        // Compose off-screen (one full-client image), then one blit to the window.
-        StretchDIBits(memDC, 0, 0, clientW, clientH, 0, 0, clientW, clientH, bgra.data(), &bmi, DIB_RGB_COLORS, SRCCOPY);
-        BitBlt(dc, 0, 0, clientW, clientH, memDC, 0, 0, SRCCOPY);
+        StretchDIBits(dc, 0, 0, clientW, clientH, 0, 0, clientW, clientH,
+                      bgra.data(), &bmi, DIB_RGB_COLORS, SRCCOPY);
         ReleaseDC(hwnd, dc);
 
         // Pace the thread: V-Sync (DwmFlush blocks until the compositor's next present —
@@ -414,11 +485,6 @@ void CompanionWindow::threadMain() {
         else if (FAILED(DwmFlush())) Sleep(16);
     }
 
-    if (memDC) {
-        if (oldBmp) SelectObject(memDC, oldBmp);
-        if (memBmp) DeleteObject(memBmp);
-        DeleteDC(memDC);
-    }
     DestroyWindow(hwnd);
     DEBUG_INFO("CompanionWindow: closed");
 }

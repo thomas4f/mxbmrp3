@@ -232,7 +232,18 @@ private:
     // + 10 + padding(2) = 15 rows (matching the StandingsHud default), and the HUD
     // grows taller as charts are added (each adds a subheading + 10 rows). Multi-chart
     // stacks can exceed the screen — position/scale is left to the user.
-    static constexpr float GRAPH_HEIGHT_LINES = 10.0f;
+    // Graph HEIGHT, in text rows -- a user setting, not a constant. This is the knob
+    // that makes the panel shrink and grow the way Standings' "Rows to show" does;
+    // it was a fixed 10 lines, so the only way to change this HUD's height was the
+    // scale slider, which changes everything else with it.
+    //
+    // Rows rather than pixels so it lands on the same lattice every other panel uses:
+    // one row is lineHeightNormal, so any value here keeps the panel a whole number of
+    // grid cells tall and it still tiles with the HUDs beside it.
+    static constexpr int MIN_GRAPH_ROWS = 3;
+    static constexpr int MAX_GRAPH_ROWS = 30;
+    static constexpr int DEFAULT_GRAPH_ROWS = 10;
+    int m_graphRows = DEFAULT_GRAPH_ROWS;
 
     // Configuration (saved to INI)
     uint32_t m_enabledCharts = CHART_DEFAULT;   // which charts are shown (checkboxes)

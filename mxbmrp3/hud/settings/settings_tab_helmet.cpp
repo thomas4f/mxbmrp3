@@ -209,7 +209,7 @@ BaseHud* SettingsHud::renderTabHelmet(SettingsLayoutContext& ctx) {
     // ========================================================================
     // HELMET SECTION
     // ========================================================================
-    ctx.addSectionHeader("Helmet");
+    ctx.addSectionHeading("Helmet");
 
     ctx.addToggleControl("Visible", hud->m_helmetEnabled,
         SettingsHud::ClickRegion::HELMET_HELMET_TOGGLE, hud,
@@ -262,8 +262,7 @@ BaseHud* SettingsHud::renderTabHelmet(SettingsLayoutContext& ctx) {
     // ========================================================================
     // EFFECTS SECTION
     // ========================================================================
-    ctx.addSpacing(0.5f);
-    ctx.addSectionHeader("Effects");
+    ctx.addSectionHeading("Effects");
 
     {
         char buf[16];
@@ -307,8 +306,7 @@ BaseHud* SettingsHud::renderTabHelmet(SettingsLayoutContext& ctx) {
     // ========================================================================
     // VISOR SECTION
     // ========================================================================
-    ctx.addSpacing(0.5f);
-    ctx.addSectionHeader("Visor");
+    ctx.addSectionHeading("Visor");
 
     {
         static const char* modeNames[] = { "Off", "Goggles", "Visor" };

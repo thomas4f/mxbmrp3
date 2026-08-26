@@ -100,6 +100,22 @@
   SetOutPath "${InstallPath}"
   File "${PLUGIN_SOURCE_PATH}\${DloFile}"
 
+  ; Licence notices. Required, not courtesy: everything below carries assets whose
+  ; licences make the notice a CONDITION of redistributing a copy -- the OFL-1.1
+  ; font families under fonts\ and web\fonts\ (OFL section 2), and Gamepad Viewer's
+  ; MIT-licensed artwork under gamepads\. The zip has always carried both files at
+  ; its root; the installer carried neither, so the recommended install path was
+  ; the one shipping the fonts and the art with no notice attached.
+  ;
+  ; Inside mxbmrp3_data\ rather than beside the DLO, for two reasons: the notice
+  ; then sits with the payload it covers, and the uninstaller's existing
+  ; `RMDir /r mxbmrp3_data` takes it away again -- a file next to the DLO would
+  ; need its own Delete in all three per-game blocks, which is exactly the kind of
+  ; hand-duplicated list this macro exists to remove.
+  SetOutPath "${InstallPath}\mxbmrp3_data"
+  File "${PLUGIN_SOURCE_PATH}\LICENSE"
+  File "${PLUGIN_SOURCE_PATH}\THIRD_PARTY_LICENSES.md"
+
   ; Fonts
   SetOutPath "${InstallPath}\mxbmrp3_data\fonts"
   File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\fonts\*.fnt"
@@ -111,6 +127,38 @@
   ; Icons
   SetOutPath "${InstallPath}\mxbmrp3_data\icons"
   File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\icons\*.tga"
+
+  ; Panel themes (one folder per theme: corner/edge/center .tga + <name>.ini, plus
+  ; an optional icons\ subfolder overriding icons from the set above).
+  ; /r because each theme is its own subdirectory -- unlike the flat asset folders
+  ; above, the set of directory names is not known here -- and it carries the icon
+  ; subfolder with it.
+  ; The DEBUG theme is not here to exclude: it is not BUILT. Its master and ini
+  ; live in assets/themes/, and a skinner cuts the slices with tools/themeslice
+  ; when they want it -- so nothing downstream has to remember to leave it out.
+  SetOutPath "${InstallPath}\mxbmrp3_data\themes"
+  File /r "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\themes\*.*"
+
+  ; Gamepad packs (one folder per pad: its .tga set + <name>.ini placing the buttons
+  ; on the artwork). /r for the same reason as themes -- each pack is its own
+  ; subdirectory and the set of names is not known here.
+  SetOutPath "${InstallPath}\mxbmrp3_data\gamepads"
+  File /r "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\gamepads\*.*"
+
+  ; Pit board packs (one folder per board: background.tga + <name>.ini placing the
+  ; rows on it). /r for the same reason as themes and gamepads.
+  SetOutPath "${InstallPath}\mxbmrp3_data\pitboards"
+  File /r "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\pitboards\*.*"
+
+  ; Spotter voice packs. Only the TEXT-ONLY `default` pack is bundled -- it is
+  ; a few KB of phrases spoken by Windows TTS, and it ships so the spotter's
+  ; wording is a file people can read and edit. Packs with RECORDED audio are
+  ; a separate download (tens of MB of wav for a feature that is off until you
+  ; turn it on), baked by tools/spottergen and extracted here or into
+  ; the user's own Documents folder. /r for the same reason as themes,
+  ; gamepads and pitboards -- each pack is its own subdirectory.
+  SetOutPath "${InstallPath}\mxbmrp3_data\spotters"
+  File /r "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\spotters\*.*"
 
   ; Web overlay files (root files + each asset subfolder)
   SetOutPath "${InstallPath}\mxbmrp3_data\web"
@@ -1411,7 +1459,13 @@ Section "Uninstall"
     DetailPrint "Removing from MX Bikes..."
     Delete "$MXBikesInstallPath\${MXBIKES_DLO}"
     RMDir /r "$MXBikesInstallPath\mxbmrp3_data"
-    Delete "$MXBikesInstallPath\${PLUGIN_NAME_LC}_uninstall.exe"
+    ; /REBOOTOK on the SELF-delete only. The uninstaller runs as NSIS's temp copy
+    ; (Au_.exe), and its Delete of the original exe races the original stub still
+    ; closing its own image handle. A plain Delete loses that race silently (no
+    ; retry) and the exe is orphaned forever; /REBOOTOK falls back to
+    ; MoveFileEx(DELAY_UNTIL_REBOOT), so the file is gone now or at next boot.
+    ; Everything else this section deletes is not running, so stays plain.
+    Delete /REBOOTOK "$MXBikesInstallPath\${PLUGIN_NAME_LC}_uninstall.exe"
     ; Clear this path from registry (delete from both hives; no-op on the absent one)
     DeleteRegValue HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "MXBikesPath"
     DeleteRegValue HKCU64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "MXBikesPath"
@@ -1423,7 +1477,7 @@ Section "Uninstall"
     DetailPrint "Removing from GP Bikes..."
     Delete "$GPBikesInstallPath\${GPBIKES_DLO}"
     RMDir /r "$GPBikesInstallPath\mxbmrp3_data"
-    Delete "$GPBikesInstallPath\${PLUGIN_NAME_LC}_uninstall.exe"
+    Delete /REBOOTOK "$GPBikesInstallPath\${PLUGIN_NAME_LC}_uninstall.exe"  ; see the MX Bikes note
     ; Clear this path from registry (delete from both hives; no-op on the absent one)
     DeleteRegValue HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "GPBikesPath"
     DeleteRegValue HKCU64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "GPBikesPath"
@@ -1435,7 +1489,7 @@ Section "Uninstall"
     DetailPrint "Removing from Kart Racing Pro..."
     Delete "$KRPInstallPath\${KRP_DLO}"
     RMDir /r "$KRPInstallPath\mxbmrp3_data"
-    Delete "$KRPInstallPath\${PLUGIN_NAME_LC}_uninstall.exe"
+    Delete /REBOOTOK "$KRPInstallPath\${PLUGIN_NAME_LC}_uninstall.exe"  ; see the MX Bikes note
     ; Clear this path from registry (delete from both hives; no-op on the absent one)
     DeleteRegValue HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "KRPPath"
     DeleteRegValue HKCU64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "KRPPath"

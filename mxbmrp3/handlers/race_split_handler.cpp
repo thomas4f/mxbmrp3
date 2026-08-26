@@ -7,6 +7,7 @@
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
 #include "../core/plugin_data.h"
+#include "../core/spotter_manager.h"
 
 void Handlers::handleRaceSplit(Unified::RaceSplitData* psRaceSplit) {
     HANDLER_NULL_CHECK(psRaceSplit);
@@ -21,11 +22,19 @@ void Handlers::handleRaceSplit(Unified::RaceSplitData* psRaceSplit) {
 
     // Filter out historical split events from previous sessions
     // When joining mid-race, the game sends RaceSplit events from earlier sessions
-    // which would create phantom "current lap" data
+    // which would create phantom "current lap" data.
+    // KRP multi-heat formats reuse the same `session` id across heats and only
+    // differ by `sessionSeries` (0 on other games), so compare both — the same
+    // two-field filter the lap handler documents; with only `session` a
+    // mid-heat KRP join replayed the previous heat's splits into the sector
+    // and on-pace cues.
     int currentSession = data.getSessionData().session;
-    if (psRaceSplit->session != currentSession) {
-        DEBUG_INFO_F("RaceSplit: Ignoring event from session %d (current session is %d)",
-                     psRaceSplit->session, currentSession);
+    int currentSeries = data.getSessionData().sessionSeries;
+    if (psRaceSplit->session != currentSession ||
+        psRaceSplit->sessionSeries != currentSeries) {
+        DEBUG_INFO_F("RaceSplit: Ignoring event from session %d/series %d (current is %d/%d)",
+                     psRaceSplit->session, psRaceSplit->sessionSeries,
+                     currentSession, currentSeries);
         return;
     }
 
@@ -46,6 +55,13 @@ void Handlers::handleRaceSplit(Unified::RaceSplitData* psRaceSplit) {
     // Update current lap split data (used by IdealLapHud for real-time tracking)
     // splitIndex is 0-indexed (0 = split 1, 1 = split 2, 2 = split 3/finish line)
     data.updateCurrentLapSplit(raceNum, lapNum, splitIndex, splitTime);
+
+    // Spotter: every rider's split is a timing point for the pace tracker (it
+    // may resolve a pending behind-gap report), and the focused rider's is
+    // also the sector cue. AFTER updateCurrentLapSplit, so the manager reads
+    // this split rather than the previous one; gating lives in the manager.
+    SpotterManager::getInstance().onRaceSplit(raceNum, lapNum, splitIndex,
+                                              splitTime);
 
     // Update centralized lap timer anchor for real-time elapsed time calculation
     // This allows HUDs to show continuously ticking time from last split

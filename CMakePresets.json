@@ -1,36 +1,46 @@
 {
   "version": 3,
-  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
-
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
   "configurePresets": [
     {
       "name": "msvc",
-      "displayName": "MSVC — the shipping plugin (Windows)",
+      "displayName": "MSVC \u2014 the shipping plugin (Windows)",
       "description": "Generates build/msvc/mxbmrp3.sln. Open that in Visual Studio, or build from the command line with --preset. Set APTABASE_KEY/GOATCOUNTER_TOKEN BEFORE configuring: CMake reads them here, not at build time.",
       "generator": "Visual Studio 17 2022",
       "architecture": "x64",
       "binaryDir": "${sourceDir}/build/msvc",
-      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
     },
     {
       "name": "tests",
-      "displayName": "Tests — register the CTest gates (any host)",
+      "displayName": "Tests \u2014 register the CTest gates (any host)",
       "description": "Builds nothing on Linux beyond the unit-test targets; this is the tree ctest --test-dir build/tests uses.",
       "binaryDir": "${sourceDir}/build/tests"
     },
     {
       "name": "cross",
-      "displayName": "Cross-build — Windows DLL via mingw-w64 (Linux)",
+      "displayName": "Cross-build \u2014 Windows DLL via mingw-w64 (Linux)",
       "description": "The headless test configuration. tests/integration/build.sh wraps this; it is NOT shippable.",
       "binaryDir": "${sourceDir}/build/cross",
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/mingw-w64-x86_64.cmake",
         "MXBMRP3_TEST_BUILD": "ON"
       },
-      "condition": { "type": "notEquals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+      "condition": {
+        "type": "notEquals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
     }
   ],
-
   "buildPresets": [
     {
       "name": "mxb",
@@ -38,14 +48,18 @@
       "description": "The inner loop: one target instead of three. Release enables /GL + /LTCG, whose intermediates are large, so building all three at once is both slower and much heavier on disk.",
       "configurePreset": "msvc",
       "configuration": "Release",
-      "targets": [ "mxbmrp3" ]
+      "targets": [
+        "mxbmrp3"
+      ]
     },
     {
       "name": "mxb-debug",
       "displayName": "MX Bikes only, Debug",
       "configurePreset": "msvc",
       "configuration": "Debug",
-      "targets": [ "mxbmrp3" ]
+      "targets": [
+        "mxbmrp3"
+      ]
     },
     {
       "name": "all-games",
@@ -58,7 +72,9 @@
       "name": "cross",
       "displayName": "Cross-build the test DLL",
       "configurePreset": "cross",
-      "targets": [ "mxbmrp3_test" ]
+      "targets": [
+        "mxbmrp3_test"
+      ]
     }
   ]
 }

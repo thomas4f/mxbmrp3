@@ -11,9 +11,13 @@
 // ============================================================================
 #pragma once
 
+#include <cstddef>
+#include <string>
+
 #include "../game/game_config.h"
 
 namespace Settings {
+
 
     // ========================================================================
     // Settings Key Constants
@@ -26,6 +30,10 @@ namespace Settings {
             constexpr const char* SHOW_TITLE = "showTitle";
             constexpr const char* SHOW_BG_TEXTURE = "showBackgroundTexture";
             constexpr const char* TEXTURE_VARIANT = "textureVariant";
+            // Per-HUD panel-theme override: empty/absent = follow the global
+            // Appearance theme, "none" = force a flat background on this HUD,
+            // anything else = that theme by name. See BaseHud::THEME_NONE.
+            constexpr const char* THEME = "theme";
             constexpr const char* BG_OPACITY = "backgroundOpacity";
             constexpr const char* SCALE = "scale";
             constexpr const char* OFFSET_X = "offsetX";
@@ -59,6 +67,30 @@ namespace Settings {
             constexpr const char* SHOW_HEADERS = "showHeaders";
             constexpr const char* SHOW_SESSION_INFO = "showSessionInfo";
             constexpr const char* LIVE_GAPS = "liveGaps";
+        }
+
+        // The two by-name asset keys that live in GLOBAL sections rather than a
+        // per-HUD one. Named here so isFolderNameValue() below can reference every
+        // one of the four through a symbol -- see it for why a literal is not
+        // good enough.
+        namespace Global {
+            constexpr const char* PANEL_THEME = "panelTheme";
+            constexpr const char* SPOTTER_PACK = "pack";
+        }
+
+        // GamepadWidget-specific keys
+        namespace Gamepad {
+            // The selected pad pack's DIRECTORY NAME under mxbmrp3_data/gamepads/.
+            // A name, never an index: discovery order shifts when a pack is added or
+            // removed, and an index would silently hand the user a different pad.
+            constexpr const char* PACK = "gamepadPack";
+        }
+
+        // PitboardHud-specific keys
+        namespace Pitboard {
+            // The selected board pack's DIRECTORY NAME under mxbmrp3_data/pitboards/.
+            // A name, never an index -- same rule the gamepad pack follows.
+            constexpr const char* PACK = "pitboardPack";
         }
 
         // MapHud-specific keys
@@ -365,7 +397,8 @@ namespace Settings {
 
         // LeanWidget settings
         namespace Lean {
-            constexpr Setting ARC_FILL_COLOR = {"arcFillColor", "Arc fill color (hex 0xAABBGGRR, default 0xFFFFFFFF = white)"};
+            constexpr Setting ARC_FILL_COLOR = {"arcFillColor", "Arc fill color when fillColorMode=1 (hex 0xAABBGGRR, default 0xFFFFFFFF = white)"};
+            constexpr Setting FILL_COLOR_MODE = {"fillColorMode", "Lean arc / steer bar fill color: 0 = severity ramp from the palette, positive -> neutral -> negative as the reading approaches full scale (default, matches the G-force ring and radar); 1 = the fixed arcFillColor below"};
             constexpr Setting ROW_ARC = {"row_arc", "Show lean angle arc (1 = on, default; 0 = off)"};
             constexpr Setting ROW_LEAN_VALUE = {"row_lean_value", "Show lean angle value (1 = on, default; 0 = off)"};
             constexpr Setting ROW_STEER_BAR = {"row_steer_bar", "Show steering bar (1 = on, default; 0 = off)"};
@@ -469,14 +502,25 @@ namespace Settings {
         }
     #endif
 
+        // CrashWidget settings
+        namespace Crash {
+            constexpr Setting SHOW_RESET_BUTTON = {"showResetButton", "Show the Reset button under the count (1 = on, default; 0 = off - reset by hotkey instead, for a clean capture)"};
+        }
+
         // GamepadWidget settings
         namespace Gamepad {
             constexpr Setting TRIGGER_FILL_MODE = {"triggerFillMode", "0=fade (brightness, default), 1=fill (bottom-up)"};
         }
 
+        // Shared by the three HUDs that draw rider MARKER labels -- MapHud, RadarHud
+        // and GapBarHud. One key, one description, one meaning: the placement it names
+        // is carried out for all three by MarkerLabel::place().
+        namespace Marker {
+            constexpr Setting LABEL_ANCHOR = {"labelAnchor", "Rider label position relative to icon (BELOW, ABOVE, LEFT, RIGHT; default BELOW)"};
+        }
+
         // MapHud settings
         namespace Map {
-            constexpr Setting LABEL_ANCHOR = {"labelAnchor", "Rider label position relative to icon (BELOW, ABOVE, LEFT, RIGHT; default BELOW)"};
             constexpr Setting DETAIL_BASELINE = {"detailBaseline",
                 "Density multiplier the 20-200% Detail scale multiplies (0.25-4.0, default 1.0)"};
         }
@@ -489,6 +533,26 @@ namespace Settings {
         // Advanced section settings
         namespace Advanced {
             constexpr Setting DEVELOPER_MODE = {"developerMode", "Enable developer options in UI (1 = on; 0 = off, default)"};
+            // The UI's two layout roots. Everything else the layout uses is a compiled
+            // constant; these two are here because they answer a question a user
+            // actually has, and answer it without moving anything relative to anything
+            // else -- both feed derive(), so every tier, row and grid cell follows.
+            constexpr Setting UI_FONT_SIZE = {"uiFontSize", "Base UI text size as a fraction of screen height; scales every panel, row and grid cell with it (0.002-0.2, default 0.02)"};
+            constexpr Setting UI_LINE_HEIGHT = {"uiLineHeight", "Row pitch as a multiple of uiFontSize -- raise for airier rows, lower for denser ones (0.5-4.0, default 1.1)"};
+            // The box model's AIR-TERM BUILT-INS: what a panel spends when the
+            // active theme does not name the key (and, for panelPadding, what an
+            // unthemed panel spends -- its only air term). Grid cells in CSS
+            // shorthand: `2` all sides, `2 4` vertical horizontal, `1 2 3 4`
+            // top right bottom left; each side 0-12, fractional allowed.
+            // Borders are deliberately absent: no art, nothing to draw one with.
+            constexpr Setting BOX_PANEL_PADDING = {"panelPadding", "Air between a panel's border and its content, cells, CSS shorthand (0-12/side, default 1)"};
+            constexpr Setting BOX_TITLE_MARGIN = {"titleMargin", "Air outside a themed title band, cells, CSS shorthand (0-12/side, default 0)"};
+            constexpr Setting BOX_TITLE_PADDING = {"titlePadding", "Air between a title band's edge and its caption, cells, CSS shorthand (0-12/side, default 0)"};
+            constexpr Setting BOX_CONTENT_MARGIN = {"contentMargin", "Air outside each section card; the seam between two boxes is the SUM of facing margins, cells, CSS shorthand (0-12/side, default 0)"};
+            constexpr Setting BOX_CONTENT_PADDING = {"contentPadding", "Air between a section card's edge and its rows, cells, CSS shorthand (0-12/side, default 0)"};
+            constexpr Setting BOX_BUTTON_MARGIN = {"buttonMargin", "Air outside each footer button; the gap between two is the SUM, cells, CSS shorthand (0-12/side, default 0)"};
+            constexpr Setting BOX_BUTTON_PADDING = {"buttonPadding", "Air between a button's edge and its label, cells, CSS shorthand (0-12/side, default 0.5 1)"};
+            constexpr Setting BOX_PANEL_GAP = {"panelGap", "Air at each junction between a panel's stacked children (band/cards/buttons), never at the frame edges; ONE number, cells (0-12, default 1)"};
             constexpr Setting DROP_SHADOW_OFFSET_X = {"dropShadowOffsetX", "Shadow X offset as a fraction of font size (default 0.03)"};
             constexpr Setting DROP_SHADOW_OFFSET_Y = {"dropShadowOffsetY", "Shadow Y offset as a fraction of font size (default 0.04)"};
             constexpr Setting DROP_SHADOW_COLOR = {"dropShadowColor", "Shadow color (hex 0xAABBGGRR, default 0xAA000000 = semi-transparent black)"};
@@ -511,12 +575,57 @@ namespace Settings {
             constexpr Setting GAP_NOTIFY_INTERVAL_MS = {"gapNotifyIntervalMs", "Min interval between live-gap HUD refreshes in ms; 0=refresh on every change (0-1000, default 100)"};
             constexpr Setting PLUGIN_THREAD = {"pluginThread", "EXPERIMENTAL: run the plugin's callbacks + HUD render build on its own thread so hiccups never stall the game frame (1=on, 0=off default). Read once at startup"};
             constexpr Setting RENDER_PROBE_QUADS = {"renderProbeQuads", "DEBUG: emit N extra synthetic quads each frame for the ENGINE to draw, to measure its per-primitive render cost differentially (sweep N with uncapped FPS at a fixed spot, watch frame time rise; slope = engine cost). 0=off default"};
-            constexpr Setting RENDER_PROBE_FULLSCREEN = {"renderProbeFullscreen", "DEBUG: make renderProbeQuads FULL-SCREEN quads (measures fill-rate) instead of tiny ones (measures per-quad submit cost); 1=fullscreen, 0=tiny default. Fill type only"};
+            constexpr Setting RENDER_PROBE_FULLSCREEN = {"renderProbeFullscreen", "DEBUG: make renderProbeQuads FULL-SCREEN quads (measures fill-rate) instead of tiny ones (measures per-quad submit cost); 1=fullscreen, 0=tiny default. Fill and sprite types (not text)"};
             constexpr Setting RENDER_PROBE_TYPE = {"renderProbeType", "DEBUG: which primitive renderProbeQuads emits — 0=solid-fill quad (default), 1=sprite quad (textured, cycles all registered sprites to exercise texture switches), 2=text string (glyph-atlas). The three have different engine costs; sweep each separately"};
+            constexpr Setting RENDER_PROBE_SPRITE = {"renderProbeSprite", "DEBUG: which sprite renderProbeType=1 draws — 0=cycle every registered sprite (max texture switching, default), k=pin sprite k for every quad (texture sampling, zero switching). Pinned-vs-cycled is the texture-SWITCH cost; pinning two sprites of different resolution is the texture-SIZE cost. Out-of-range falls back to cycling"};
+            constexpr Setting RENDER_PROBE_TEXT_CHARS = {"renderProbeTextChars", "DEBUG: characters per string for renderProbeType=2 (1-90, default 15). The engine bills per GLYPH, so a per-string cost is only meaningful next to the length it was measured at; sweep this to separate us-per-character from what a string costs before its first glyph"};
+            constexpr Setting RENDER_PROBE_ALPHA = {"renderProbeAlpha", "DEBUG: alpha of the probe's quads (0-255, default 64). Sweep 64 vs 0 at the same N to find out whether the engine charges full price for a FULLY TRANSPARENT quad -- HUDs emit their background quad even at zero opacity, which is 27 invisible quads per themed panel"};
             constexpr Setting WEB_SERVER_PORT = {"webServerPort", "Web server port (1024-65535, default 8080)"};
             constexpr Setting WEB_SERVER_THROTTLE_MS = {"webServerThrottleMs", "Min interval between SSE pushes in ms (50-5000, default 250)"};
             constexpr Setting WEB_SERVER_BIND_ADDRESS = {"webServerBindAddress", "Bind address (default 127.0.0.1, use 0.0.0.0 for network access)"};
         }
+    }
+
+    // ========================================================================
+    // FOLDER-NAME VALUES: the keys whose value is a directory the user chose,
+    // where a `;` is DATA and not the start of an inline comment.
+    //
+    // `;` is legal in a Windows directory name and the loader's comment strip
+    // was unconditional, so a theme in `retro;90s` loaded as `retro`, degraded
+    // to unthemed, and then the next save wrote the TRUNCATED name back --
+    // destroying the choice permanently, which is the one thing the by-name
+    // asset storage exists to prevent (CLAUDE.md: an unknown name degrades
+    // WITHOUT rewriting the stored value).
+    //
+    // ONE TABLE, THROUGH THE KEY SYMBOLS, and that is the point of this block
+    // rather than a comment somewhere: the first version of this rule spelled
+    // the four names as string literals of its own, so renaming Gamepad::PACK
+    // would have left the exemption silently pointing at a key that no longer
+    // exists and truncated every pad name again -- with nothing to notice. Now
+    // a rename either updates both or fails to compile.
+    //
+    // TWO RULES COME WITH BEING ON THIS LIST, and both are checked by
+    // run_persist_test.sh's semicolon case rather than trusted:
+    //   1. the writer must never give these keys an inline comment (it would be
+    //      read as part of the name);
+    //   2. a value containing `;` must survive a load -> save round trip.
+    //
+    // tts_voice is deliberately NOT here: its line IS written with a comment, so
+    // it must keep stripping. A Windows voice name with a semicolon in it would
+    // truncate, which is the trade that buys the comment.
+    inline bool isFolderNameValue(const std::string& key) {
+        // The table is here rather than behind an accessor: it had one, with one
+        // caller, an hour after being written. One consumer is a local array.
+        static const char* const kKeys[] = {
+            Keys::Global::PANEL_THEME,
+            Keys::Global::SPOTTER_PACK,
+            Keys::Gamepad::PACK,
+            Keys::Pitboard::PACK,
+        };
+        for (const char* k : kKeys) {
+            if (key == k) return true;
+        }
+        return false;
     }
 
 } // namespace Settings

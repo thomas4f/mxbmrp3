@@ -5,6 +5,7 @@
 #include "plugin_utils.h"
 #include "plugin_constants.h"
 #include "plugin_data.h"
+#include "layout_config.h"
 #include "../game/game_config.h"
 #include <climits>
 #include <cstdio>
@@ -370,14 +371,23 @@ const char* PluginUtils::getOffenceString(int offence) {
     }
 }
 
+// The character advance comes from the LAYOUT, not a constant: [font] char-width
+// is a measurement of the .fnt in use, and this function is what turns the
+// settings panel's character counts into positions. Reading a compile-time copy
+// meant a changed char-width moved the grid and the panel width while every column
+// inside stayed where the old ratio put them.
+//
+// layoutDefaults(), not a theme's metrics: char-width is a root, so it is global by
+// construction and this has no HUD in scope to ask anyway.
 float PluginUtils::calculateMonospaceTextWidth(int numChars, float fontSize) {
     if (numChars <= 0) return 0.0f;
-
-    using namespace PluginConstants::FontMetrics;
-
-    float cellWidth = fontSize * MONOSPACE_CHAR_WIDTH_RATIO;
-
-    // Width = numChars * cellWidth (no separate spacing - included in cell width)
+    // Grouped as numChars * (cell width), NOT (numChars * fontSize) * ratio. The
+    // two differ in float32 rounding, and swapping them shifted every text-derived
+    // coordinate in the plugin by ~4e-6 px -- invisible, but it showed up as an
+    // unexplained residual in the strip-chart parity goldens that the documented
+    // lineHeightNormal change did not account for. An arithmetic-neutral refactor
+    // should be arithmetic-neutral.
+    const float cellWidth = fontSize * layoutDefaults().charWidthRatio;
     return numChars * cellWidth;
 }
 
@@ -786,8 +796,12 @@ std::string PluginUtils::fitText(const std::string& s, int maxChars) {
     for (unsigned char c : s) if ((c & 0xC0) != 0x80) ++cps;
     if (cps <= maxChars) return s;
 
-    // Reserve 3 cells for the ellipsis so the result stays within budget.
-    const int keep = (maxChars > 3) ? (maxChars - 3) : 0;
+    // CUT, not ellipsised. The three cells an ellipsis costs are three characters of
+    // the thing the reader was trying to make out, and a clipped word already reads
+    // as clipped -- the marker adds nothing a narrow column has room for. It was also
+    // applied inconsistently across the settings tabs, so two truncations of the same
+    // length looked like two different states; one behaviour everywhere is the point.
+    const int keep = maxChars;
     std::string out;
     int seen = 0;
     for (size_t i = 0; i < s.size();) {
@@ -801,6 +815,5 @@ std::string PluginUtils::fitText(const std::string& s, int maxChars) {
             out += s[i]; ++i;
         }
     }
-    out += "...";
     return out;
 }

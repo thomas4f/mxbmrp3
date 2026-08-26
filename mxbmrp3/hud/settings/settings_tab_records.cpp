@@ -51,12 +51,10 @@ BaseHud* SettingsHud::renderTabRecords(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("records");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeader("Appearance");
+    ctx.addSectionHeading("Appearance");
     ctx.addStandardHudControls(hud);
-    ctx.addSpacing(0.5f);
-
     // === LAYOUT SECTION ===
-    ctx.addSectionHeader("Layout");
+    ctx.addSectionHeading("Layout");
 
     // Provider control
     const char* providerName = "Unknown";
@@ -82,11 +80,9 @@ BaseHud* SettingsHud::renderTabRecords(SettingsLayoutContext& ctx) {
     ctx.addToggleControl("Auto-fetch", hud->m_bAutoFetch,
         SettingsHud::ClickRegion::RECORDS_AUTO_FETCH_TOGGLE, hud, nullptr, 0, true,
         "records.autofetch");
-    ctx.addSpacing(0.5f);
-
     // === CONTENT SECTION ===
     // Core columns (Position, Rider, Bike, Lap time) are always shown
-    ctx.addSectionHeader("Content");
+    ctx.addSectionHeading("Content");
 
     // Column-header row
     ctx.addToggleControl("Column headers", hud->m_bShowHeaders,
@@ -103,11 +99,7 @@ BaseHud* SettingsHud::renderTabRecords(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, RecordsHud::COL_DATE, true,
         "records.col_date");
 
-    // Info text
-    ctx.currentY += ctx.lineHeightNormal * 0.5f;
-    ctx.parent->addString("Your records are saved to mxbmrp3_personal_bests.json.", ctx.labelX, ctx.currentY,
-        PluginConstants::Justify::LEFT, PluginConstants::Fonts::getNormal(),
-        ColorConfig::getInstance().getMuted(), ctx.fontSize * 0.9f);
+    ctx.addNote("Tip: your records are saved to mxbmrp3_stats.json.");
 
     return hud;
 }

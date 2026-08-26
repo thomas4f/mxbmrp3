@@ -16,6 +16,19 @@
 # Two drivers run against the SAME demanding scenario (a full 50-rider grid on a
 # long/complex ~2400m circuit — see perf_scenario.h, a heavier superset of the
 # real Farm14 capture):
+# ALL THREE DRIVERS RUN THEMED (a synthetic 9-slice with a title band and a body card, installed
+# via MXBMRP3_Test_InstallTheme — no .tga files needed). Every measurement here used
+# to be on FLAT panels, which skips the 9-slice path entirely: the most expensive
+# thing a theme does was unmeasured, and so was the activeTheme() memoisation that
+# makes it affordable. First themed measurement: Draw avg 116.3us / p99 185us,
+# against ~100us unthemed — so a theme costs roughly 16% of Draw, comfortably inside
+# the budget. Each driver prints which mode it ran in.
+#
+# This said "BOTH RUN THEMED" while only perf_driver installed one -- so the driver
+# left flat was map_perf_driver, the one this same header calls the most expensive
+# path the plugin has. A claim about coverage is worth exactly as much as the
+# grep that backs it.
+#
 #   * perf_driver     — isolated per-callback cost (Draw / TrackPos / Class / Telemetry)
 #   * map_perf_driver — the realistic interleaved MAP hot loop (position update +
 #                       Draw every frame; the map's per-frame rebuild is the
@@ -32,7 +45,7 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD="${HERE}/build"
-DRAW_MAX_US="${1:-1500}"     # gross-regression ceiling; baseline avg ~100us.
+DRAW_MAX_US="${1:-1500}"     # gross-regression ceiling; baseline avg ~116us THEMED.
                              # Deliberately kept BELOW the 480fps budget (2083us/frame),
                              # so passing the gate proves the average Draw fits a single
                              # 480fps frame with room to spare.
@@ -120,9 +133,14 @@ fi
 if command -v python3 >/dev/null 2>&1; then
     echo "== Checking benchmark report <-> analyzer contract =="
     ( cd "${BUILD}" && timeout "${PERF_TIMEOUT}" wine bench_driver.exe mxbmrp3_test.dlo >/dev/null 2>&1 )
+    brc=$?
     wineserver -w
+    # rc checked like the two driver phases above: a timeout otherwise surfaces
+    # as "wrote no report", which sends the reader after the export path
+    # instead of the hang.
+    if [ "${brc}" -eq 124 ]; then echo "== PERF FAIL: bench_driver TIMED OUT after ${PERF_TIMEOUT}s (raise MXBMRP3_PERF_TIMEOUT) =="; exit 1; fi
     bench_report=$(ls -t "${SAVE}"/mxbmrp3/benchmarks/benchmark_*.txt 2>/dev/null | head -1)
-    if [ -z "${bench_report}" ]; then echo "== PERF FAIL: bench_driver wrote no report =="; exit 1; fi
+    if [ -z "${bench_report}" ]; then echo "== PERF FAIL: bench_driver wrote no report (exit ${brc}) =="; exit 1; fi
     if ! python3 "${HERE}/../../tools/benchmark_report.py" "${bench_report}" >/tmp/bench_analyzed.txt 2>&1; then
         echo "== PERF FAIL: tools/benchmark_report.py could not parse the BENCH line =="
         cat /tmp/bench_analyzed.txt; exit 1

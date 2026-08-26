@@ -75,6 +75,75 @@ TEST_CASE("benchmark registry: HUD registrations survive RaceDeinit") {
     host.shutdown();
 }
 
+TEST_CASE("benchmark registry: every panel gets a slot") {
+    // THE BUG THIS PINS. MAX_HUDS was 32 against 42 registrable panels, so
+    // registerHud() returned -1 for the last ten registered and they were profiled
+    // nowhere. It failed silently in the worst way -- a -1 index is also how a HUD
+    // legitimately opts out, the report's "HUDs profiled: 32" line reads as a count
+    // of what was enabled rather than the cap it actually is, and the per-HUD table
+    // just stopped at director_widget (the 32nd). An in-game report with everything
+    // switched on had 41us/frame of a 125us updateHuds outside the table entirely,
+    // including the two most expensive panels in the plugin.
+    //
+    // Two LIVE numbers, never a literal: a hardcoded expectation would have to be
+    // bumped by hand on every new HUD, which is the same maintenance burden that let
+    // the cap rot in the first place.
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\bench_registry_all\\");
+
+    openSession(host);
+
+    const int profilable = host.profilableHudCount();
+    const int registered = host.benchmarkHudCount();
+    REQUIRE_MESSAGE(profilable > 0,
+                    "MXBMRP3_Test_ProfilableHudCount absent -- rebuild the test DLL");
+    CHECK_MESSAGE(registered == profilable,
+                  "benchmark registry holds " << registered << " of " << profilable
+                  << " panels -- MAX_HUDS is too small, and the overflow is invisible "
+                  << "in the exported report");
+
+    host.shutdown();
+}
+
+TEST_CASE("benchmark registry: the snapshot array holds everything the registry does") {
+    // THE BUG THIS PINS. BenchmarkWidget kept its OWN `MAX_HUD_SNAPSHOTS = 32`, a
+    // second hand-written copy of BenchmarkMetrics::MAX_HUDS. Raising MAX_HUDS to 64
+    // left this one at 32: takeSnapshot() stored an UNCLAMPED m_hudSnapshotCount of
+    // 40 while its copy loop filled only 32 entries, so every reader -- the live
+    // table, the exported report, the BENCH line -- walked 40 entries of a
+    // 32-element array. Out-of-bounds READS, not writes: the copy loops were capped,
+    // the count was not. A real exported report showed it as rows with garbage names
+    // and negative quad/string counts.
+    //
+    // Asserting count <= capacity is what catches it. Comparing the count to the
+    // registry would NOT: it was already 40 on both sides of the bug -- 40 was
+    // exactly the problem.
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\bench_snapshot\\");
+    openSession(host);
+
+    const int capacity = host.benchmarkSnapshotCapacity();
+    REQUIRE_MESSAGE(capacity > 0,
+                    "MXBMRP3_Test_BenchmarkSnapshotCapacity absent -- rebuild the test DLL");
+    CHECK_MESSAGE(host.benchmarkHudCount() <= capacity,
+                  "the registry holds " << host.benchmarkHudCount() << " panels but the "
+                  << "widget's snapshot array only fits " << capacity);
+
+    // Drive real snapshots: takeSnapshot() runs on an interval, so the count is only
+    // populated once the widget has been visible for a while.
+    host.bmSetVisible(true);
+    for (int i = 0; i < 120; ++i) host.draw();
+    const int stored = host.benchmarkSnapshotCount();
+    CHECK_MESSAGE(stored <= capacity,
+                  "snapshot count " << stored << " exceeds its array's " << capacity
+                  << " entries -- every reader of it runs off the end");
+    host.bmSetVisible(false);
+
+    host.shutdown();
+}
+
 TEST_CASE("benchmark registry: callback slots are not recycled under new names") {
     PluginHost host(dllPath());
     REQUIRE(host.loaded());

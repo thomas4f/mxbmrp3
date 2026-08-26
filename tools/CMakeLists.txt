@@ -1,6 +1,8 @@
 # ============================================================================
 # tools/CMakeLists.txt — the two Windows dev tools that used to live in
-# mxbmrp3.sln as hand-maintained vcxproj files.
+# mxbmrp3.sln as hand-maintained vcxproj files. NOT every tool under tools/:
+# mxbmrp3_hud_window builds through its own companion_demo.sh (mingw + Wine).
+# Only these two were vcxproj projects.
 #
 # They came along in the CMake migration for one reason: deleting mxbmrp3.sln
 # would otherwise have orphaned them, leaving two build definitions in a repo
@@ -12,9 +14,10 @@
 #   mxbmrp3_fontgen — regenerates the shipped .fnt bitmap fonts from a .ttf
 #                     (also builds cross-platform via its own test.sh, which is
 #                     what CI runs; this target is just the Windows convenience)
+#
 # ============================================================================
 
-# Both are Windows-only in this form: mxbmrp3_replay LoadLibrary()s a .dlo, and
+# Both are Windows-only in this form: mxbmrp3_replay LoadLibrary()s a .dlo, and the
 # both were MSVC-only projects. The Linux side builds fontgen through test.sh.
 if(NOT WIN32)
     return()
@@ -36,11 +39,12 @@ function(mxb_add_tool NAME)
     endif()
 endfunction()
 
-mxb_add_tool(mxbmrp3_replay ${CMAKE_CURRENT_SOURCE_DIR}/mxbmrp3_replay/main.cpp)
+mxb_add_tool(mxbmrp3_replay ${CMAKE_CURRENT_SOURCE_DIR}/replay/main.cpp)
 target_include_directories(mxbmrp3_replay PRIVATE ${CMAKE_SOURCE_DIR}/mxbmrp3)
 
 mxb_add_tool(mxbmrp3_fontgen
-    ${CMAKE_CURRENT_SOURCE_DIR}/mxbmrp3_fontgen/mxbmrp3_fontgen.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/fontgen/mxbmrp3_fontgen.cpp
     ${CMAKE_SOURCE_DIR}/mxbmrp3/vendor/miniz/miniz.c
     ${CMAKE_SOURCE_DIR}/mxbmrp3/vendor/miniz/miniz_tdef.c
     ${CMAKE_SOURCE_DIR}/mxbmrp3/vendor/miniz/miniz_tinfl.c)
+

@@ -4,6 +4,8 @@
 // ============================================================================
 #pragma once
 
+#include "history_ring.h"
+
 #include <windows.h>
 #include <Xinput.h>
 #include <atomic>
@@ -341,20 +343,20 @@ public:
     static constexpr size_t MAX_RUMBLE_HISTORY = 200;
 
     // Get history buffers for graph visualization
-    const std::deque<float>& getHeavyMotorHistory() const { return m_heavyMotorHistory; }
-    const std::deque<float>& getLightMotorHistory() const { return m_lightMotorHistory; }
-    const std::deque<float>& getSuspensionHistory() const { return m_suspensionHistory; }
-    const std::deque<float>& getWheelspinHistory() const { return m_wheelspinHistory; }
-    const std::deque<float>& getLockupHistory() const { return m_lockupHistory; }
-    const std::deque<float>& getWheelieHistory() const { return m_wheelieHistory; }
-    const std::deque<float>& getRpmHistory() const { return m_rpmHistory; }
-    const std::deque<float>& getSlideHistory() const { return m_slideHistory; }
-    const std::deque<float>& getSurfaceHistory() const { return m_surfaceHistory; }
-    const std::deque<float>& getSteerHistory() const { return m_steerHistory; }
-    const std::deque<float>& getRevLimiterHistory() const { return m_revLimiterHistory; }
-    const std::deque<float>& getPitLimiterHistory() const { return m_pitLimiterHistory; }
-    const std::deque<float>& getSuspensionRearHistory() const { return m_suspensionRearHistory; }
-    const std::deque<float>& getLockupRearHistory() const { return m_lockupRearHistory; }
+    const HistoryRing<float, MAX_RUMBLE_HISTORY>& getHeavyMotorHistory() const { return m_heavyMotorHistory; }
+    const HistoryRing<float, MAX_RUMBLE_HISTORY>& getLightMotorHistory() const { return m_lightMotorHistory; }
+    const HistoryRing<float, MAX_RUMBLE_HISTORY>& getSuspensionHistory() const { return m_suspensionHistory; }
+    const HistoryRing<float, MAX_RUMBLE_HISTORY>& getWheelspinHistory() const { return m_wheelspinHistory; }
+    const HistoryRing<float, MAX_RUMBLE_HISTORY>& getLockupHistory() const { return m_lockupHistory; }
+    const HistoryRing<float, MAX_RUMBLE_HISTORY>& getWheelieHistory() const { return m_wheelieHistory; }
+    const HistoryRing<float, MAX_RUMBLE_HISTORY>& getRpmHistory() const { return m_rpmHistory; }
+    const HistoryRing<float, MAX_RUMBLE_HISTORY>& getSlideHistory() const { return m_slideHistory; }
+    const HistoryRing<float, MAX_RUMBLE_HISTORY>& getSurfaceHistory() const { return m_surfaceHistory; }
+    const HistoryRing<float, MAX_RUMBLE_HISTORY>& getSteerHistory() const { return m_steerHistory; }
+    const HistoryRing<float, MAX_RUMBLE_HISTORY>& getRevLimiterHistory() const { return m_revLimiterHistory; }
+    const HistoryRing<float, MAX_RUMBLE_HISTORY>& getPitLimiterHistory() const { return m_pitLimiterHistory; }
+    const HistoryRing<float, MAX_RUMBLE_HISTORY>& getSuspensionRearHistory() const { return m_suspensionRearHistory; }
+    const HistoryRing<float, MAX_RUMBLE_HISTORY>& getLockupRearHistory() const { return m_lockupRearHistory; }
 
     // Process telemetry and apply rumble effects
     // suspVelFront/suspVelRear: front/rear suspension compression velocity (m/s, positive = compression).
@@ -477,27 +479,24 @@ private:
     float m_lastLockupRumbleRear;
 
     // History buffers for graph visualization
-    std::deque<float> m_heavyMotorHistory;
-    std::deque<float> m_lightMotorHistory;
-    std::deque<float> m_suspensionHistory;
-    std::deque<float> m_wheelspinHistory;
-    std::deque<float> m_lockupHistory;
-    std::deque<float> m_wheelieHistory;
-    std::deque<float> m_rpmHistory;
-    std::deque<float> m_slideHistory;
-    std::deque<float> m_surfaceHistory;
-    std::deque<float> m_steerHistory;
-    std::deque<float> m_revLimiterHistory;
-    std::deque<float> m_pitLimiterHistory;
-    std::deque<float> m_suspensionRearHistory;
-    std::deque<float> m_lockupRearHistory;
+    HistoryRing<float, MAX_RUMBLE_HISTORY> m_heavyMotorHistory;
+    HistoryRing<float, MAX_RUMBLE_HISTORY> m_lightMotorHistory;
+    HistoryRing<float, MAX_RUMBLE_HISTORY> m_suspensionHistory;
+    HistoryRing<float, MAX_RUMBLE_HISTORY> m_wheelspinHistory;
+    HistoryRing<float, MAX_RUMBLE_HISTORY> m_lockupHistory;
+    HistoryRing<float, MAX_RUMBLE_HISTORY> m_wheelieHistory;
+    HistoryRing<float, MAX_RUMBLE_HISTORY> m_rpmHistory;
+    HistoryRing<float, MAX_RUMBLE_HISTORY> m_slideHistory;
+    HistoryRing<float, MAX_RUMBLE_HISTORY> m_surfaceHistory;
+    HistoryRing<float, MAX_RUMBLE_HISTORY> m_steerHistory;
+    HistoryRing<float, MAX_RUMBLE_HISTORY> m_revLimiterHistory;
+    HistoryRing<float, MAX_RUMBLE_HISTORY> m_pitLimiterHistory;
+    HistoryRing<float, MAX_RUMBLE_HISTORY> m_suspensionRearHistory;
+    HistoryRing<float, MAX_RUMBLE_HISTORY> m_lockupRearHistory;
 
     // Helper to push value to history buffer with size limit
-    void pushToHistory(std::deque<float>& buffer, float value) {
-        buffer.push_back(value);
-        if (buffer.size() > MAX_RUMBLE_HISTORY) {
-            buffer.pop_front();
-        }
+    void pushToHistory(HistoryRing<float, MAX_RUMBLE_HISTORY>& buffer, float value) {
+        buffer.push(value);
     }
 
     // Rumble configuration

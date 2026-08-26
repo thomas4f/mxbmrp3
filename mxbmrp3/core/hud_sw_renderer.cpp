@@ -74,7 +74,14 @@ void fillQuad(Image& im, const float p[4][2], Color col) {
 }  // namespace
 
 void Image::fill(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
-    for (size_t i = 0; i < px.size(); i += 4) { px[i] = r; px[i + 1] = g; px[i + 2] = b; px[i + 3] = a; }
+    // One 32-bit store per pixel, not four byte stores: this clear runs before EVERY
+    // frame and covers the whole client, and the byte loop was measured at ~2 ms of a
+    // 1080p companion paint all by itself.
+    uint32_t v;
+    uint8_t bytes[4] = { r, g, b, a };
+    std::memcpy(&v, bytes, 4);
+    uint32_t* p = reinterpret_cast<uint32_t*>(px.data());
+    std::fill(p, p + px.size() / 4, v);
 }
 
 Renderer::FntFont* Renderer::fnt(const std::string& base, const std::string& root) {
@@ -126,7 +133,23 @@ Renderer::Tex* Renderer::tex(const std::string& base, bool icon, const std::stri
     auto it = m_texs.find(base);
     if (it != m_texs.end()) return it->second.ok ? &it->second : nullptr;
     Tex t;
-    std::ifstream f(root + (icon ? "/icons/" : "/textures/") + base + ".tga", std::ios::binary);
+    // `base` arrives from AssetPath::renderName (see core/asset_path.h), which is
+    // the single definition of this naming and already normalised the separators
+    // and dropped the "mxbmrp3_data" segment. This is that mapping's INVERSE, and
+    // it reads only what renderName's two outcomes leave behind:
+    //
+    //   a bare basename ("hud-laplog")   -> the icon flag picks the flat folder
+    //   a relative path ("themes/x/corner") -> resolved against the asset root
+    //
+    // Theme sprites take the second branch because they live in a per-theme
+    // subdirectory the icon/texture split cannot express. Re-normalising here was
+    // dead code that quietly claimed a second opinion about the format; if this
+    // ever stops matching, asset_path.h is the side to change (and its unit test
+    // pins what renderName may emit).
+    const std::string rel = (base.find('/') != std::string::npos)
+        ? "/" + base + ".tga"
+        : (icon ? "/icons/" : "/textures/") + base + ".tga";
+    std::ifstream f(root + rel, std::ios::binary);
     if (f) {
         std::vector<uint8_t> d((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
         if (d.size() >= 18) {

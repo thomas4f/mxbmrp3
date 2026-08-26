@@ -47,12 +47,10 @@ BaseHud* SettingsHud::renderTabFriends(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("friends");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeader("Appearance");
+    ctx.addSectionHeading("Appearance");
     ctx.addStandardHudControls(hud);
-    ctx.addSpacing(0.5f);
-
     // === LAYOUT SECTION ===
-    ctx.addSectionHeader("Layout");
+    ctx.addSectionHeading("Layout");
 
     char rowCountValue[8];
     snprintf(rowCountValue, sizeof(rowCountValue), "%d", hud->m_maxDisplayRows);
@@ -80,10 +78,8 @@ BaseHud* SettingsHud::renderTabFriends(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::FRIENDS_SELF_TOGGLE, hud, nullptr, 0, true,
         "friends.self");
 
-    ctx.addSpacing(0.5f);
-
     // === CONTENT SECTION ===
-    ctx.addSectionHeader("Content");
+    ctx.addSectionHeading("Content");
 
     bool serverOn = (hud->m_enabledColumns & FriendsHud::COL_SERVER) != 0;
     ctx.addToggleControl("Server", serverOn, SettingsHud::ClickRegion::CHECKBOX, hud,

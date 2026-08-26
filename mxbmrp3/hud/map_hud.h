@@ -5,6 +5,7 @@
 #pragma once
 
 #include "base_hud.h"
+#include "marker_label.h"
 #include "../game/unified_types.h"
 #include <array>
 #include <vector>
@@ -106,12 +107,8 @@ public:
     float getTrackWidthScale() const { return m_fTrackWidthScale; }
 
     // Rider label display mode
-    enum class LabelMode {
-        NONE = 0,       // No labels
-        POSITION = 1,   // Show position (P1, P2, etc.)
-        RACE_NUM = 2,   // Show race number
-        BOTH = 3        // Show both (P1 #5)
-    };
+    // Shared with MapHud/RadarHud/GapBarHud — see hud/marker_label.h
+    using LabelMode = MarkerLabel::Mode;
 
     void setLabelMode(LabelMode mode) {
         if (m_labelMode != mode) {
@@ -121,13 +118,11 @@ public:
     }
     LabelMode getLabelMode() const { return m_labelMode; }
 
-    // Where the rider label sits relative to the icon (INI-only, no UI)
-    enum class LabelAnchor {
-        BELOW = 0,   // Centered under the icon (default)
-        ABOVE = 1,   // Centered over the icon
-        LEFT = 2,    // Left of the icon, right-aligned
-        RIGHT = 3    // Right of the icon, left-aligned
-    };
+    // Where the rider label sits relative to the icon (INI-only, no UI).
+    // An alias of the shared enum, exactly as LabelMode is: the placement it names
+    // is carried out by MarkerLabel::place() for all three marker HUDs, and existing
+    // call sites (MapHud::LabelAnchor::LEFT) and the serde keep working unchanged.
+    using LabelAnchor = MarkerLabel::Anchor;
 
     void setLabelAnchor(LabelAnchor anchor) {
         if (m_labelAnchor != anchor) {
@@ -310,6 +305,19 @@ private:
     float m_fBaseMapHeight;  // Base (unscaled) map height
     bool m_bHasTrackData;
 
+    // WHERE THE MAP AREA SITS INSIDE THE PANEL, from the engine's plan: the frame's
+    // clearance, the caption row and the card's border, on both axes. Set once in
+    // rebuildRenderData() and read by every site that converts a world point to a
+    // screen point (map_hud_track.cpp, map_hud_riders.cpp).
+    //
+    // It replaced five independent reservedTitleHeight(dim, Large) calls -- one per
+    // drawing site -- which were the map's own spelling of "how far down does the
+    // title push us" and covered the Y axis only. That was true while the panel had
+    // no horizontal inset at all; the map was the one panel whose content ran to its
+    // own edges, so a themed frame drew over the track. One owner, both axes.
+    float m_fContentDX = 0.0f;
+    float m_fContentDY = 0.0f;
+
     // Rotation mode
     bool m_bRotateToPlayer;  // Rotate map so local player always points up
     float m_fLastRotationAngle;  // Last rotation angle before crash (keeps map orientation stable)
@@ -365,7 +373,11 @@ private:
         float angle = 0.0f;                                  // Rotation
         float minX = 0.0f, maxX = 0.0f, minY = 0.0f, maxY = 0.0f;  // Render bounds (zoom-overridden)
         float trackScale = 0.0f, baseMapWidth = 0.0f, baseMapHeight = 0.0f;
-        float scale = 0.0f;                                  // m_fScale (also drives title offset height)
+        float scale = 0.0f;                                  // m_fScale
+        // The map area's origin inside the panel (m_fContentDX/DY). An INPUT to
+        // renderTrack's output, so it belongs here: it moves with the theme's frame,
+        // card and title terms, none of which the other fields can stand in for.
+        float contentDX = 0.0f, contentDY = 0.0f;
         float offsetX = 0.0f, offsetY = 0.0f;                // Effective HUD offset (zoom-adjusted)
         float clipLeft = 0.0f, clipTop = 0.0f, clipRight = 0.0f, clipBottom = 0.0f;
         float trackWidthScale = 0.0f;
@@ -386,6 +398,7 @@ private:
                 && trackScale == o.trackScale
                 && baseMapWidth == o.baseMapWidth && baseMapHeight == o.baseMapHeight
                 && scale == o.scale
+                && contentDX == o.contentDX && contentDY == o.contentDY
                 && offsetX == o.offsetX && offsetY == o.offsetY
                 && clipLeft == o.clipLeft && clipTop == o.clipTop
                 && clipRight == o.clipRight && clipBottom == o.clipBottom
@@ -501,6 +514,48 @@ private:
     void renderRiders(const RotationCache& rotation,
                      float clipLeft, float clipTop, float clipRight, float clipBottom);
 
+    // PIN A MARKER THAT FELL OUTSIDE THE MAP TO THE NEAREST EDGE, per axis, and
+    // report whether it moved. `halfSize` is the marker's UNROTATED half-size and
+    // cos/sinYaw its rotation, because the inset owed is the rotated square's
+    // half-extent -- h * (|cos| + |sin|), up to 1.41h on the diagonal.
+    //
+    // Per-axis is what makes a pinned marker informative rather than decorative:
+    // off the left of the map, x pins to the left edge while y still tracks the
+    // subject up and down it, so the icon sits beside where the thing actually is.
+    //
+    // x/y are in POST-applyOffset (clip) space, which is the space the clip bounds
+    // are in; callers holding pre-offset draw coordinates convert with the offset
+    // delta they already measured for the clip test.
+    //
+    // One owner because there are two callers with the same geometry to get right --
+    // the off-map player in renderRiders and the off-view track pointer below.
+    bool clampMarkerToClip(float& x, float& y, float halfSize,
+                           float cosYaw, float sinYaw,
+                           float clipLeft, float clipTop,
+                           float clipRight, float clipBottom) const;
+
+    // "THE TRACK IS THAT WAY": an arrow pinned to the map's edge, pointing at the
+    // nearest point of the centerline, drawn only when that point is off-view.
+    //
+    // ZOOM MODE ONLY, and that is the whole reason it exists. Zoom centres the view
+    // on the player (calculateZoomBounds), so the player's own icon can never leave
+    // the panel -- what leaves is the TRACK. Ride far enough off and the map is an
+    // empty box with your arrow in the middle of it, which is precisely when you
+    // most want it. The full-track view has the opposite problem and its own answer
+    // (the player clamp in renderRiders); neither covers the other's case.
+    void renderOffTrackPointer(const RotationCache& rotation,
+                               float clipLeft, float clipTop,
+                               float clipRight, float clipBottom);
+
+    // The off-track pointer's LAST chosen ribbon sample, and whether it is usable.
+    // Hysteresis state: the coarse probe below can flip between two lobes of similar
+    // distance from one frame to the next, and an arrow that snaps between two
+    // directions reads as broken even when both answers are defensible. Reset
+    // whenever the ribbon is rebuilt, because an index means nothing across a
+    // re-tessellation. mt-plain: game thread only (rebuildRenderData).
+    size_t m_pointerLastSample = 0;
+    bool m_pointerLastValid = false;
+
     // Handle click on rider marker to switch spectator target
     void handleClick(float mouseX, float mouseY);
 
@@ -509,6 +564,7 @@ private:
         int circleExclamation = 0;
         int flag = 0;
         int flagCheckered = 0;
+        int angleUp = 0;          // the off-view track pointer (renderOffTrackPointer)
         bool initialized = false;
 
         void ensureInitialized();

@@ -19,6 +19,10 @@ enum class FontCategory {
     COUNT
 };
 
+// Category from the ini key that names it ("title"), or -1. Same names as the
+// settings file's [Fonts] section.
+int fontCategoryFromName(const char* name);
+
 class FontConfig {
 public:
     static FontConfig& getInstance();
@@ -32,8 +36,28 @@ public:
     // Get current font display name for a category (formatted for UI)
     const char* getFontDisplayName(FontCategory category) const;
 
-    // Set font for a category by font name
+    // Set font for a category by font name. A USER OVERRIDE -- it pins the
+    // category, so it survives a theme change and is what gets persisted.
     void setFont(FontCategory category, const std::string& fontName);
+
+    // Whether the user pinned this category. Only pinned ones are written, so a
+    // category the user never touched keeps following whatever theme is active.
+    bool isOverridden(FontCategory category) const;
+    void clearOverride(FontCategory category);
+
+    // The font in effect when the user has NOT pinned it: the active theme's if it
+    // names one, else the built-in default.
+    //
+    // LIFETIME: the returned pointer is BORROWED, and which owner it points at
+    // depends on the answer -- a built-in default is a string literal and lives
+    // forever, but a theme's font name aliases that ThemeAsset's own std::string.
+    // AssetManager::reloadThemeLayouts() ASSIGNS over `theme.fonts` (so a deleted
+    // key falls back to the built-in), and discovery rebuilds m_themes outright;
+    // either invalidates the pointer. So: use it, or copy it, before returning to
+    // the caller -- never store it across a RELOAD_CONFIG or an asset rediscovery.
+    // Callers today all consume it immediately (a strcmp, or a copy into
+    // m_fontNames), which is the pattern to keep.
+    static const char* getThemeOrDefaultFontName(FontCategory category);
 
     // Cycle to next/previous font in the available fonts for a category
     void cycleFont(FontCategory category, bool forward = true);
@@ -59,4 +83,21 @@ private:
 
     // Stores the font filename (without extension) for each category
     std::array<std::string, static_cast<size_t>(FontCategory::COUNT)> m_fontNames;
+    std::array<bool, static_cast<size_t>(FontCategory::COUNT)> m_overridden{};
+
+    // THE NAME -> INDEX STEP, memoised per category. getFont() runs at every
+    // addString (318 call sites) and resolved the name through
+    // AssetManager::getFontIndexByName(), a LINEAR SCAN with a string compare per
+    // entry -- plus a second lookup for TITLE/STRONG's heavier cut.
+    //
+    // That scan's own comment argued a map would buy nothing because "m_fonts is a
+    // handful of entries". True at the six fonts that shipped with 1.28; the font
+    // set is EIGHTEEN now, so every string a HUD draws pays three times the compares
+    // it used to, and a widget drawing one number cost 6us to rebuild.
+    //
+    // Keyed on the theme generation (covers discovery, a config reload and a change
+    // of selected theme) AND the resolved name, which is what changes when the user
+    // picks a different face for a category -- so no separate invalidation to forget.
+    struct FontIndexMemo { unsigned int gen = 0; std::string name; int index = 0; };
+    mutable std::array<FontIndexMemo, static_cast<size_t>(FontCategory::COUNT)> m_indexMemo;
 };

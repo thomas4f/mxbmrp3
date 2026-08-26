@@ -83,6 +83,44 @@ static int g_lastNq = 0, g_lastNs = 0;  // primitives emitted to the engine last
 
 // Run the realistic frame loop: mutate positions -> RaceTrackPosition (dirties
 // the map) -> Draw (rebuilds). Time only the Draw. Returns sorted stats.
+// Park every rider far outside the track so the ribbon culls away entirely and
+// MapHud's off-track pointer fires on EVERY frame (renderOffTrackPointer). That
+// path walks the world ribbon to find the nearest centerline sample, so it is the
+// feature's worst case by construction.
+//
+// Every rider rather than just the player, because the driver does not resolve
+// which race number the map considers local; moving all of them makes the
+// question moot.
+//
+// WHAT THIS MEASURED (2026-08-25, 3 runs per config, medians of the `riders`
+// phase; the whole-Draw column is useless for an effect this size under Wine --
+// the map-OFF baseline shows a 165ms max against a 90us median):
+//
+//                    pointer out   pointer in    delta   % of 2.08ms budget
+//   default (zoom off)      4.0          3.9     -0.10       -0.005%   <- control
+//   zoom                    3.8          5.7     +1.90       +0.091%
+//   zoom, off-track         3.9          5.9     +2.00       +0.096%
+//
+// So the worst case is ~2.1us, a tenth of a percent of the frame -- but ~17% of
+// the map's own ~12.5us zoom rebuild, which is the number to quote when deciding
+// whether more work belongs on this path.
+//
+// TWO THINGS THE TABLE DOES NOT SAY ON ITS OWN.
+//
+// `default` is the CONTROL, not a scenario: renderOffTrackPointer returns on its
+// first line when zoom is off, so it cannot cost anything there. Its -0.1us is
+// this harness's run-to-run drift, and it is what makes the +1.9 believable -- a
+// single pair of runs put `default` at +0.5us, which would have been quoted as
+// signal.
+//
+// And `zoom` is NOT a typical-riding number: the sweep scatters riders over
+// 1600m while the zoom window is 100m, so the ribbon culls on most frames there
+// too and the pointer fires. The proof is in the table -- `zoom` (5.7) and
+// `zoom, off-track` (5.9) would not sit that close otherwise. BOTH zoom rows are
+// worst-case; normal on-track riding pays the O(1) trackQuads test and nothing
+// else, which is what the control row shows.
+static bool g_offTrack = false;
+
 static void runScenario(Stat& out, int frames) {
     out.init(frames);
     for (int i = 0; i < frames; ++i) {
@@ -91,6 +129,12 @@ static void runScenario(Stat& out, int frames) {
             g_pos[r].m_fPosX = (float)((i * 3 + r * 7) % 1600);
             g_pos[r].m_fPosZ = (float)((i * 5 + r * 11) % 1600);
             g_pos[r].m_fYaw = (float)((i + r * 7) % 360);
+            if (g_offTrack) {
+                // Still MOVING (so the map re-dirties like any other frame), just
+                // 40 km away from anything.
+                g_pos[r].m_fPosX += 40000.0f;
+                g_pos[r].m_fPosZ += 40000.0f;
+            }
         }
         RaceTrackPosition(RIDERS, g_pos, (int)sizeof(g_pos[0]));
         int nq = 0, ns = 0; void *q, *s;
@@ -148,6 +192,16 @@ int main(int argc, char** argv) {
 
     char savePath[] = "Z:\\tmp\\mxbperf\\";
     Startup(savePath);
+
+    // Themed, like perf_driver -- see run_perf.sh's header. This driver measures the
+    // MAP hot loop, the most expensive path the plugin has, so leaving it flat while
+    // claiming both ran themed measured the cheap path and reported the expensive one.
+    if (auto InstallTheme = (void(*)(const char*,float,float,int,int,int))GetProcAddress(h, "MXBMRP3_Test_InstallTheme")) {
+        InstallTheme("perf", 3.0f, 1.0f, 1, 1, /*cardSprites=*/1);
+        printf("scenario: THEMED (synthetic 9-slice, band + body card)\n");
+    } else {
+        printf("scenario: unthemed (MXBMRP3_Test_InstallTheme not exported)\n");
+    }
 
     // Long/complex circuit + full grid shared with perf_driver.cpp: ~2400 m over
     // ~950 short CURVE/STRAIGHT segments (hairpins, sweepers, esses), a heavier
@@ -220,6 +274,13 @@ int main(int argc, char** argv) {
     MapZoom(1); MapRotate(0);
     resetProf(); Stat zoom; runScenario(zoom, FRAMES);
     report("map ON, zoom", zoom, baseAvg); reportProfile("zoom");
+
+    // Zoom with the whole grid off the map: the off-track pointer's worst case, and
+    // the only scenario in this driver that reaches it at all.
+    g_offTrack = true;
+    resetProf(); Stat zoomOff; runScenario(zoomOff, FRAMES);
+    report("map ON, zoom, off-track", zoomOff, baseAvg); reportProfile("zoom off-track");
+    g_offTrack = false;
 
     // Rotate + zoom together (worst case).
     MapRotate(1);

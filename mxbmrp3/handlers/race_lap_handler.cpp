@@ -8,6 +8,7 @@
 #include "../core/plugin_utils.h"
 #include "../core/plugin_data.h"
 #include "../core/stats_manager.h"
+#include "../core/spotter_manager.h"
 #include "../core/hud_manager.h"
 #if GAME_HAS_RECORDS_PROVIDER
 #include "../hud/records_hud.h"
@@ -94,13 +95,35 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
             isLastLap ? "YES" : "NO",
             isFinished ? "YES" : "NO");
 
-        // Event log: white flag — only when the leader starts the final lap
+        // Event log: the white flag, which is TWO moments and not one.
+        //
+        // The LEADER starting the last lap is a fact about the race, and fires
+        // with no raceNum so it reads as session-level ("Final lap").
+        //
+        // YOU starting your last lap is a different moment — a lap or more
+        // later if you are down the order, and the one that actually concerns
+        // you. It fires with your race number, which is what lets the spotter
+        // resolve "you" and reach final_lap_you. Only for the DISPLAY rider:
+        // every other rider's last lap is noise on a full grid, the same
+        // reason finished_other is default-quiet.
         if (isLastLap) {
-            int position = data.getPositionForRaceNum(psRaceLap->raceNum);
-            if (position == 1) {
-                char eventMsg[64];
-                snprintf(eventMsg, sizeof(eventMsg), "Final lap");
-                data.addEventLogEntry(EventLogType::FinalLap, eventMsg);
+            // YOURS wins when you are also the leader. These were the other
+            // way round — `position == 1` first, `else if` you — so a player
+            // leading the race only ever got the session-level cue, and a pack
+            // that muted final_lap left the leader silent on their own last
+            // lap. The two facts coincide there; the one about you is the one
+            // worth having, and firing both would just say it twice.
+            //
+            // The two rows say DIFFERENT things, because on this branch a
+            // mid-pack display rider gets both — the leader's when they take
+            // the white flag, and their own a lap or more later. Identical
+            // text there read as the log repeating itself, and "Final lap"
+            // stopped describing the second one.
+            if (psRaceLap->raceNum == data.getDisplayRaceNum()) {
+                data.addEventLogEntry(EventLogType::FinalLap, "Your final lap",
+                                      nullptr, -1, psRaceLap->raceNum);
+            } else if (data.getPositionForRaceNum(psRaceLap->raceNum) == 1) {
+                data.addEventLogEntry(EventLogType::FinalLap, "Final lap");
             }
         }
 
@@ -244,6 +267,11 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
             isAllTimePB = pbUpdate.beatsScopedBest;
             if (isAllTimePB) {
                 data.notifyAllTimePB();
+                // The spotter speaks the same edge the notice latches on —
+                // taken here so it never has to read (or worse, clear) the
+                // consumable notice flags NoticesHud owns.
+                SpotterManager::getInstance().onPersonalBest(
+                    data.getSessionElapsedTime(), lapTime);
 #if GAME_HAS_RECORDS_PROVIDER
                 // Notify RecordsHud to refresh player's position in the leaderboard
                 HudManager::getInstance().getRecordsHud().setDataDirty();
@@ -261,6 +289,11 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
                 data.notifyFastestLap();
             } else {
                 data.notifySessionPB();
+                // Third tier of the same ladder, and the one the spotter used
+                // to drop: in practice this is the most common good-news
+                // moment there is.
+                SpotterManager::getInstance().onSessionBest(
+                    data.getSessionElapsedTime(), lapTime);
             }
         }
 
@@ -280,9 +313,31 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
             PluginUtils::formatLapTime(lapTime, lapTimeStr, sizeof(lapTimeStr));
             char eventMsg[64];
             snprintf(eventMsg, sizeof(eventMsg), "%s fastest lap", riderLabel);
-            data.addEventLogEntry(EventLogType::FastestLap, eventMsg, lapTimeStr, -1, raceNum);
+            data.addEventLogEntry(EventLogType::FastestLap, eventMsg, lapTimeStr, -1, raceNum,
+                                  EventNumbers::lapTime(lapTime));
         }
     }
+
+    // Spotter: the lap report (lap_completed — your position, your lap time),
+    // places made up, and the gap reports either side. WHERE this sits is load-bearing three times over,
+    // and it took a broken test each time to find out:
+    //
+    //  - FUNCTION SCOPE, not inside `if (bestFlag > 0)`. Nested there, the
+    //    lap report only spoke on a personal-best lap.
+    //  - OUTSIDE the `sessionNumLaps > 0` block it originally lived in. That
+    //    block is about race distance, so a session with no lap count — every
+    //    practice and qualifying session, and a purely timed race — never
+    //    reached the call at all, whatever the manager would have decided.
+    //  - AFTER the lap log, ideal lap and best-lap entry are committed, so
+    //    {last_lap_time}, {gap_to_last_lap} and the reference-lap variables
+    //    describe the lap that just ended rather than the one before it. The
+    //    cost is that the PB cues speak first, which reads fine: the news,
+    //    then the position.
+    //
+    // Before setCurrentLapNumber/resetLapTimerForNewLap below, which move the
+    // rider on to the lap they are now starting.
+    SpotterManager::getInstance().onRaceLapCompleted(
+        raceNum, psRaceLap->lapNum, lapTime, isLapValid);
 
     // Initialize tracking for the next lap (clears splits, sets lap number)
     // After completing lap N, we're now on lap N+1, but the API gives us N

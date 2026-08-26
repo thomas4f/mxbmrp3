@@ -4,6 +4,8 @@
 // Shows "[=]" when settings closed, "[x]" when settings open
 // ============================================================================
 #include "settings_button_widget.h"
+#include "corner_buttons.h"
+#include "../core/layout_config.h"
 #include "../core/hud_manager.h"
 #include "../core/input_manager.h"
 #include "../core/plugin_utils.h"
@@ -17,6 +19,9 @@ using namespace PluginConstants;
 
 SettingsButtonWidget::SettingsButtonWidget()
 {
+    // No caption on this panel -- see BaseHud::m_titleSupported.
+    disableTitle();
+    m_panelKind = PanelKind::Widget;
     // One-time setup
     DEBUG_INFO("SettingsButtonWidget created");
     setDraggable(true);
@@ -91,22 +96,30 @@ void SettingsButtonWidget::rebuildRenderData() {
     float startX = 0.0f;  // Base position (upper left)
     float startY = 0.0f;
 
-    // PIXEL-SQUARE grid-aligned box, sized so a 2x2 block fills one square gauge widget
-    // (e.g. the compass = 12 x 10 grid cells): each button is HALF that, 6 x 5 cells. On
-    // the current grid 6*gridH == 5*gridV in pixels, so the box is a true pixel-square;
-    // whole cells in both axes keep every edge on a grid line, so four buttons snap
-    // perfectly inside a gauge widget and any pair tiles flush. Cells scale with m_fScale
-    // (default 1.0). Identical to DirectorWidget's camera button.
-    const float gridH = HudGrid::GRID_SIZE_HORIZONTAL;
-    const float gridV = HudGrid::GRID_SIZE_VERTICAL;
-    int hCells = static_cast<int>(6.0f * m_fScale + 0.5f); if (hCells < 1) hCells = 1;
-    int vCells = static_cast<int>(5.0f * m_fScale + 0.5f); if (vCells < 1) vCells = 1;
-    float backgroundWidth = hCells * gridH;
-    float backgroundHeight = vCells * gridV;
+    // Content + padding, like every other panel. This was a fixed 6 x 5 grid cells --
+    // a true pixel-square that let a 2x2 block fill one square gauge widget -- which
+    // also made panelPaddingXCells/panelPaddingYCells no-ops on the only two buttons in the UI. The glyph
+    // is the content and the panel padding surrounds it, so the box now follows the
+    // same rule every other panel does.
+    //
+    // The tiling property is the cost: the box is only pixel-square when the padding
+    // makes it so (the grid cell is 10.56 x 12.672px, so equal cell counts are not
+    // equal pixels). Uniform padding was the explicit trade.
+    const float btnIcon = dim.fontSizeLarge * layout().titleIconSize;
+    // BOTH AXES ON THE LATTICE. Unlike a dial, this box is not art -- it is a chip
+    // (a themed button slice set, or a plain solid quad), which is MEANT to be sized to
+    // the box, so growing it to whole cells distorts nothing and the glyph stays centred
+    // in it. The trade the comment above describes is unchanged: the box is still not
+    // pixel-square, because a cell is not. It is now a whole number of cells, which is
+    // what tiling actually needs. See fitPanelToGrid.
+    const GridFit btnFit = fitPanelToGrid(dim.paddingH + btnIcon + dim.paddingH,
+                                          panelHeight(dim, btnIcon));
+    const float backgroundWidth = btnFit.w;
+    const float backgroundHeight = btnFit.h;
     // Menu/close glyph at the SAME size as a HUD title/identity icon. HUD titles draw at
     // the LARGE font, so the identity icon is fontSizeLarge * 0.63 (~20px at 1080p) - use
     // that exact size (not fontSize * 0.63, which is smaller) for a consistent glyph.
-    float iconSize = dim.fontSizeLarge * TITLE_ICON_SCALE;
+    float iconSize = dim.fontSizeLarge * layout().titleIconSize;
 
     // Vertically center the "[=]"/"[x]" text fallback (icons off) in the box.
     float contentStartY = startY + (backgroundHeight - dim.fontSize) * 0.5f;
@@ -123,26 +136,44 @@ void SettingsButtonWidget::rebuildRenderData() {
         isHovering = isPointInActiveBounds(cursor.x, cursor.y);
     }
 
-    // Add HUD background
-    addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
+    // Accent "chip" (full on hover, dimmed otherwise). Holds its normal weight at/above
+    // 10% opacity (unchanged), then fades with the slider below 10% so the whole box can
+    // vanish at 0% - the glyph below stays fully opaque.
+    const float chipScale = (m_fBackgroundOpacity < 0.1f) ? (m_fBackgroundOpacity / 0.1f) : 1.0f;
+    const float chipAlpha = (isHovering ? 1.0f : 128.0f / 255.0f) * chipScale;
+    const unsigned long chipColor =
+        PluginUtils::applyOpacity(this->getColor(ColorSlot::ACCENT), chipAlpha);
 
-    // Add button-style background (accent with opacity, full on hover). Holds its normal
-    // weight at/above 10% opacity (unchanged), then fades with the slider below 10% so the
-    // whole box can vanish at 0% - the glyph below stays fully opaque.
-    {
+    // This widget IS a button, so it takes the theme's BUTTON slices rather than the
+    // panel frame. Drawing the frame here and then covering it with an opaque chip is
+    // what made it look unthemed: the frame was emitted, then hidden.
+    if (addThemedButton(startX, startY, backgroundWidth, backgroundHeight, chipColor)) {
+        // The themed branch never reaches addBackgroundQuad, which is what ARMS the
+        // panel rect and the fill strips -- so last rebuild's indices would survive
+        // into this one and finalizeThemedFill would re-cut using them. Third caller
+        // of this shape, after NoticesHud and RadarHud; see invalidatePanelRect().
+        //
+        // Harmless today only because this widget has no rebuildLayout() fast path
+        // and its quad list happens to be rebuilt whole each time. That is not a
+        // property worth relying on: adding a fast path here would turn it into the
+        // stretched-strip bug the other two already hit.
+        invalidatePanelRect();
+    } else {
+        addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
         SPluginQuad_t buttonBgQuad;
         float x = startX, y = startY;
         applyOffset(x, y);
         setQuadPositions(buttonBgQuad, x, y, backgroundWidth, backgroundHeight);
         buttonBgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        const float chipScale = (m_fBackgroundOpacity < 0.1f) ? (m_fBackgroundOpacity / 0.1f) : 1.0f;
-        const float chipAlpha = (isHovering ? 1.0f : 128.0f / 255.0f) * chipScale;
-        buttonBgQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::ACCENT), chipAlpha);
+        buttonBgQuad.m_ulColor = chipColor;
         m_quads.push_back(buttonBgQuad);
     }
 
-    // Use PRIMARY color when hovering, ACCENT when not (accent on accent)
-    unsigned long textColor = isHovering ? this->getColor(ColorSlot::PRIMARY) : this->getColor(ColorSlot::ACCENT);
+    // Whatever reads on the chip -- see BaseHud::chipGlyphColor() for why this is
+    // derived from the chip rather than naming a slot. Hover is carried by the
+    // chip's own alpha (50% -> 100%) rather than by a second glyph colour, so the
+    // glyph no longer changes hue under the cursor.
+    unsigned long textColor = this->chipGlyphColor(chipColor);
 
     // Button content: when UI icons are enabled, a flat "menu" icon while closed and a
     // flat "close" icon while open; otherwise the legacy "[=]"/"[x]" text. The flat icons
@@ -175,13 +206,22 @@ void SettingsButtonWidget::resetToDefaults() {
     // the slider floors at 0%.
     m_fMinBackgroundOpacity = 0.0f;
     m_fBackgroundOpacity = 0.1f;  // Match TimingHud opacity (default; slider reaches 0)
-    // 100% scale -> a pixel-square 6x5 grid-cell button (6*gridH x 5*gridV ~= 0.033 x
-    // 0.0587, ~63x63 px; a 2x2 block = one square gauge widget). Default position is
-    // grid-aligned (x = 174 cells, y = 1 cell) with the right edge near the corner
-    // (~0.990). The camera button is the same box and defaults flush to its left, so out
-    // of the box the pair is a clean grid-aligned row; both are draggable and, with grid
-    // snapping on, tile flush beside/below any widget.
+    // 100% scale -> a button sized icon + padding on each axis: an 8 x 6 grid-cell box
+    // (0.044 x 0.0704, ~84 x 76 px at 1080p). Default position is grid-aligned
+    // (x = 172 cells, y = 1 cell) so the RIGHT EDGE lands on 180 cells = 0.990, just
+    // inside the corner. The camera button is the same box and defaults one cell to its
+    // left; both are draggable and, with grid snapping on, tile flush beside/below any
+    // widget.
+    //
+    // THE POSITION IS DERIVED FROM THE BOX, and both moved when the box did. This was
+    // x = 174 for a 6-cell box, which put the right edge at 180 cells; when the box grew
+    // to 8 cells (fitPanelToGrid rounding it onto the lattice) the two defaults stayed
+    // put, so the right edge went to 182 cells = 1.001 -- 1.9px off the screen -- and the
+    // camera button at 167 overlapped this one by a full cell. A click in that strip hit
+    // BOTH: isClicked() is a const edge test that consumes nothing, and HudManager polls
+    // each button unconditionally on the same frame, so one click toggled the auto
+    // director AND opened the settings panel.
     m_fScale = 1.0f;
-    setPosition(0.9570f, 0.01173f);
+    setPosition(cellsX(CornerButtons::SETTINGS_X), cellsY(CornerButtons::BUTTON_Y));
     setDataDirty();
 }

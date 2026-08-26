@@ -5,7 +5,7 @@
 #pragma once
 
 #include "base_hud.h"
-#include "settings/settings_metrics.h"
+#include "../core/layout_metrics.h"
 #include "ideal_lap_hud.h"
 #include "lap_log_hud.h"
 #include "friends_hud.h"
@@ -19,6 +19,7 @@
 #include "session_hud.h"
 #include "speed_widget.h"
 #include "gear_widget.h"
+#include "crash_widget.h"
 #include "speedo_widget.h"
 #include "tacho_widget.h"
 #include "timing_hud.h"
@@ -68,7 +69,7 @@ public:
                 StandingsHud* standings,
                 PerformanceHud* performance,
                 TelemetryHud* telemetry,
-                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesHud* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean, GForceWidget* gforce, CompassWidget* compass,
+                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, CrashWidget* crash, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesHud* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean, GForceWidget* gforce, CompassWidget* compass,
                 FmxHud* fmxHud,
                 StatsHud* statsHud,
                 EventLogHud* eventLog,
@@ -86,6 +87,22 @@ public:
 
     void update() override;
     bool handlesDataType(DataChangeType /*dataType*/) const override { return false; }
+
+    // The settings panel never drop-shadows, whatever the user set globally.
+    //
+    // A shadow buys legibility against the GAME, behind text that has no panel under
+    // it. This one always draws its own background, so every shadow here is a second
+    // string rendered underneath an opaque surface -- invisible work. And it is the
+    // heaviest string emitter in the plugin by a wide margin (84 against the next
+    // panel's 44), so it was paying that twice over more than anything else.
+    //
+    // It also reads better: a shadow behind dense UI text on a solid panel muddies
+    // the glyph edges rather than separating them from anything.
+    bool alwaysSkipDropShadow() const override { return true; }
+
+    // The settings menu is a page, not a corner label: centred on screen, the only
+    // thing you are looking at, and its caption is a heading. See centreTitle.
+    bool centreTitle() const override { return true; }
 
     // Show/hide the settings panel
     void show();
@@ -137,6 +154,13 @@ public:
             TITLE_TOGGLE,              // Toggle HUD title
             TEXTURE_VARIANT_UP,        // Cycle texture variant forward (Off, 1, 2, ...)
             TEXTURE_VARIANT_DOWN,      // Cycle texture variant backward
+            // GamepadWidget only: its background is a PACK (art + geometry), not a
+            // variant of a shared texture, so its Texture column cycles pack names.
+            GAMEPAD_PACK_UP,
+            GAMEPAD_PACK_DOWN,
+            // PitboardHud only, same reasoning: its background is a board PACK.
+            PITBOARD_PACK_UP,
+            PITBOARD_PACK_DOWN,
             BACKGROUND_OPACITY_UP,     // Increase background opacity
             BACKGROUND_OPACITY_DOWN,   // Decrease background opacity
             SCALE_UP,                  // Increase scale
@@ -192,6 +216,10 @@ public:
             TEMP_UNIT_TOGGLE,          // Toggle temperature unit (C/F)
             PB_SCOPE_TOGGLE,           // Toggle personal best scope (Bike/Category)
             DISPLAY_TARGET_TOGGLE,     // Cycle HUD display: In-game / Companion / Both
+            THEME_PREV,                // Cycle the global 9-slice panel theme backwards
+            THEME_NEXT,                // ...and forwards (None + each discovered theme)
+            HUD_THEME_DOWN,            // Per-HUD theme override (Default/None/named)
+            HUD_THEME_UP,
             GRID_SNAP_TOGGLE,          // Toggle grid snapping for HUD positioning
             SCREEN_CLAMP_TOGGLE,       // Toggle screen clamping for HUD positioning
             MENU_ONLY_CURSOR_TOGGLE,   // Toggle menu-only cursor (controller-as-mouse fix)
@@ -297,6 +325,12 @@ public:
             DIRECTOR_BATTLEMAXPOS_DOWN,// Decrease battle max-position cutoff
             DIRECTOR_RESUME_UP,        // Increase manual-resume timeout
             DIRECTOR_RESUME_DOWN,      // Decrease manual-resume timeout
+            SPOTTER_ENABLED_TOGGLE,    // Spotter master enable (audio callouts)
+            SPOTTER_TTSVOICE_PREV,     // Cycle the Windows TTS voice
+            SPOTTER_TTSVOICE_NEXT,
+            SPOTTER_SUBTITLES_TOGGLE,  // Spotter subtitle widget content on/off
+            SPOTTER_PACK_PREV,         // Cycle voice pack backward
+            SPOTTER_PACK_NEXT,         // Cycle voice pack forward
             DIRECTOR_GAMEPAD_TAKEOVER, // Toggle stick-push gamepad takeover
             DIRECTOR_CAM_FENDER_UP,    // Cycle Fender cam: Off > Front > Rear > Both
             DIRECTOR_CAM_FENDER_DOWN,  // Cycle Fender cam (reverse)
@@ -337,6 +371,12 @@ public:
             OPEN_LINK_DOCS,            // Open documentation site
             OPEN_LINK_COMMUNITY,       // Open community forum
             OPEN_LINK_KOFI,            // Open Ko-fi donation page
+            // APPENDED, not filed next to its relatives, for the reason the sentinel
+            // below states: the golden encodes region types as raw ordinals, so a new
+            // value in the middle shifts every later one and rewrites a golden for a
+            // tab it never touched. At the end only the count moves.
+            PROBE_SWEEP,               // Developer: run the render-probe sweep
+            OPEN_LINK_OVERLAY,         // Open the live web overlay in a browser
 
             // Sentinel, always last. settings_layout_test.cpp's golden encodes
             // region types as raw ORDINALS, and this enum is unnumbered and
@@ -574,6 +614,9 @@ public:
     static BaseHud* renderTabStats(SettingsLayoutContext& ctx);
     static BaseHud* renderTabEventLog(SettingsLayoutContext& ctx);
     static BaseHud* renderTabDirector(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabSpotter(SettingsLayoutContext& ctx);
+    // The About page. Hidden from the tab list; opened by the footer's About button.
+    static BaseHud* renderTabAbout(SettingsLayoutContext& ctx);
 
     // Static click handler functions (implemented in tab files)
     // Return true if the click was handled, false otherwise
@@ -593,6 +636,20 @@ public:
     bool handleClickTabSession(const ClickRegion& region);
     bool handleClickTabLapLog(const ClickRegion& region);
     bool handleClickTabUpdates(const ClickRegion& region);
+    bool handleClickTabPerformance(const ClickRegion& region);
+
+    // Drop any armed Reset. Called on every way OUT of the armed state that is not
+    // the confirming click: closing the menu, and switching tabs by any route.
+    //
+    // An arm that outlives the screen it was made on is a trap -- you would come back
+    // to the tab later, or reopen the menu, and find a button already saying
+    // "Confirm?" with no memory of having pressed it, one click from throwing a
+    // profile away. Arming is a statement about right now.
+    void disarmResets() {
+        m_resetProfileConfirmed = false;
+        m_resetAllConfirmed = false;
+    }
+    bool handleClickTabSpotter(const ClickRegion& region);
     bool handleClickTabFmx(const ClickRegion& region);
     bool handleClickTabStats(const ClickRegion& region);
     bool handleClickTabEventLog(const ClickRegion& region);
@@ -615,6 +672,7 @@ public:
     RadarHud* getRadarHud() const { return m_radarHud; }
     SpeedWidget* getSpeedWidget() const { return m_speed; }
     GearWidget* getGearWidget() const { return m_gear; }
+    CrashWidget* getCrashWidget() const { return m_crash; }
     SpeedoWidget* getSpeedoWidget() const { return m_speedo; }
     TachoWidget* getTachoWidget() const { return m_tacho; }
     TimingHud* getTimingHud() const { return m_timing; }
@@ -647,6 +705,19 @@ public:
 protected:
     void rebuildLayout() override;
 
+    // NO SURFACE OVERRIDES AND NO edgeInsetX. This panel's surfaces -- the caption
+    // band, the sidebar's cards and the content column's -- are PanelBox's boxes
+    // now, placed from panelInnerLeft/panelInner like every other plan panel's, so
+    // there is nothing here to keep in step with the base class.
+    //
+    // What they used to be is worth one line, because two reported bugs came out of
+    // it: an override composing frame border + [panel] padding, against a base class
+    // that took a MAX of the two. "The settings panel does not respect the panel
+    // padding like huds do" was that composition missing; "holes at the sides of the
+    // settings title" was the band using one spelling while the cards used the other.
+    // One engine, one answer, no spellings.
+
+
 #if defined(MXBMRP3_TEST_BUILD)
 public:
     // Headless click seam (never in a shipping build): the settings-click path is
@@ -658,7 +729,79 @@ public:
     // Regions are counted in layout order on the ACTIVE tab. Returns false when
     // no such region exists (e.g. wrong tab, index out of range).
     int testSteppedRegionCount(bool up) const;
+    // The open tab, and a NAME -> index lookup, for the what's-new hooks: a test
+    // naming "Widgets" should not have to know it is tab 14, and getTabName is
+    // private. Test-build only, like everything else in this block.
+    int testActiveTab() const { return m_activeTab; }
+    const char* testTabNameForIndex(int t) const { return getTabName(t); }
+    // Does the LAST-BUILT tab carry a row registering this tooltip id? The
+    // what's-new markers key on those ids, and one naming a row that does not
+    // exist draws nothing and says nothing.
+    bool testHasRegionWithTooltip(const char* tooltipId) const {
+        if (!tooltipId) return false;
+        for (const ClickRegion& r : m_clickRegions) {
+            if (r.tooltipId == tooltipId) return true;
+        }
+        return false;
+    }
+    // A tab CLICK, through handleTabClick -- the path the sidebar takes, which is
+    // the one that dismisses a what's-new tag. setActiveTabByName deliberately does
+    // NOT dismiss: it is also the persisted-tab restore, and clearing a tag before
+    // the player has opened the menu would spend the marker on nobody.
+    void testClickTab(int tabIndex) {
+        ClickRegion r;
+        r.type = ClickRegion::TAB;
+        r.tabIndex = tabIndex;
+        handleTabClick(r);
+    }
+    // The HOVER dismissal, through the same helper the real pointer path uses --
+    // dismiss plus markSettingsDirty, never WhatsNew::dismissRow on its own. A hook
+    // that called the free function directly is what let the persistence case pass
+    // while dismissals never reached disk.
+    void testHoverDismissRow(const char* tooltipId) { dismissMarkedRow(tooltipId); }
+    // The footer's About button, through dispatchRegion -- the same path a real
+    // click takes, so the tab change AND the easter-egg counter both run. A test
+    // that set m_activeTab directly would prove neither.
+    // The About button's own click region, so a test measures the geometry the panel
+    // actually built. Returns false when the footer has not been drawn yet.
+    bool testAboutButtonRect(int* l, int* t, int* r, int* b) const {
+        for (const ClickRegion& reg : m_clickRegions) {
+            if (reg.type != ClickRegion::VERSION_CLICK) continue;
+            auto q = [](float v) { return static_cast<int>(v * 1e6f + (v < 0 ? -0.5f : 0.5f)); };
+            if (l) *l = q(reg.x);
+            if (t) *t = q(reg.y);
+            if (r) *r = q(reg.x + reg.width);
+            if (b) *b = q(reg.y + reg.height);
+            return true;
+        }
+        return false;
+    }
+    void testClickAbout() {
+        ClickRegion r;
+        r.type = ClickRegion::VERSION_CLICK;
+        dispatchRegion(r, /*skipSave=*/true);
+    }
+    // Every SELECTABLE tab, hidden ones included -- a different question from
+    // testTabNameAt, which enumerates the SIDEBAR LIST. About is hidden from the
+    // list but its content still counts toward the panel's height, so a test
+    // sweeping "every tab that can set the panel height" needs this one and a test
+    // asserting "what the sidebar shows" needs the other. Conflating them is what
+    // made title_band_test stop finding the tallest tab.
+    const char* testAnyTabNameAt(int i) const;
+    int testTabIndexForName(const char* name) const {
+        if (!name) return -1;
+        for (int t = 0; t < TAB_COUNT; ++t) {
+            if (std::strcmp(getTabName(t), name) == 0) return t;
+        }
+        return -1;
+    }
     bool testClickStepped(int index, bool up, int holdRepeats);
+    // The i-th SELECTABLE tab's display name, in tab-list order; nullptr past the
+    // end. Enumeration rather than a list in the test, because the panel is as tall
+    // as the tab it is showing now — so "does the menu fit the screen" is a question
+    // about EVERY tab, and a list in the test is a list that a new tab is not added
+    // to. See theme_geometry_test's screen-fit case.
+    const char* testTabNameAt(int i) const;
     // Same seam for the shared CYCLE_UP/CYCLE_DOWN regions (no hold tier — cycles
     // never accelerate).
     int testCycleRegionCount(bool up) const;
@@ -675,19 +818,189 @@ public:
     // by topic, so an ordinal crossing the DLL boundary silently means something
     // else the moment a control is inserted near its relatives.
     bool testClickDirectorHudVisible();
+
+    // The panel's two COLUMN edges as the last rebuild placed them: the outer edge of
+    // the tab column and the outer edge of the content column's full-width rows. Under
+    // a theme those are the two columns' card edges; without one they are the tab
+    // highlight's left and the row highlight's right. Same two numbers either way,
+    // which is the point -- the symmetry rule they exist to pin is the same rule in
+    // both modes, and it broke separately in each.
+    //
+    // Stashed rather than measured back out of m_quads: unthemed a full-width row is
+    // only drawn UNDER THE CURSOR, so a headless scan of the emitted quads answers
+    // with whatever else happens to be rightmost (the Close button) and reads as a
+    // 27-cell margin. Measured that, hence this.
+    // The gutter's bounding card edges (test builds; see the fields). The
+    // gutter — content card left minus sidebar card right — must equal the
+    // vertical seam read (contentGapY) for the same terms; theme_geometry_test
+    // pins that after it was measured broken twice (gap-only composition, the
+    // unpaid row lead-in).
+    void testCardEdgesX(float& sidebarRight, float& contentLeft) const {
+#if defined(MXBMRP3_TEST_BUILD)
+        sidebarRight = m_testSidebarCardRightX; contentLeft = m_testContentCardLeftX;
+#else
+        sidebarRight = 0.0f; contentLeft = 0.0f;
+#endif
+    }
+    void testColumnEdgesX(float& left, float& right) const {
+        left = m_testColumnLeftX; right = m_testColumnRightX;
+    }
+
+    // The CONTENT column's three x anchors as the last rebuild placed them: the label
+    // column, the control column (where a row's `< >` steppers and checkboxes start)
+    // and the right edge of a full-width row (what right-aligned glyphs are placed
+    // against). All three are theme-INVARIANT by construction
+    // -- the layout anchors the content box and hangs the panel off it -- which is the
+    // rule these exist to pin, and which testColumnEdgesX cannot see: its two numbers
+    // are relative to the panel, so they stay symmetric while the whole content walks
+    // sideways together.
+    void testContentColumnX(float& labelX, float& controlX, float& rowRight) const {
+        labelX = m_testLabelX; controlX = m_testControlX; rowRight = m_testRowRightX;
+    }
 #endif
 
 private:
     void rebuildRenderData() override;
+    // Dismiss a hovered row's what's-new band + mark dirty. See the definition for
+    // why the two must not be separable.
+    void dismissMarkedRow(const char* tooltipId);
+
+    // The tallest tab's content height in rows, measured by laying every tab out.
+    // Cached; -1 means "not measured". See the definition for why it is measured
+    // rather than declared, and why it runs per LAYOUT rather than per rebuild.
+    // The tallest tab's BODY HEIGHT, laid out -- not its content flow.
+    //
+    // It used to return a row COUNT (a tab's cursor end plus one card pad), and that
+    // is a different quantity from the height the engine produces: a column's body is
+    // sum(section heights) PLUS, per section, the card's own margin/border/padding,
+    // PLUS a seam between each pair. None of that scales with the cursor, all of it
+    // scales with the SECTION COUNT -- so a tab with more sections outgrew the floor
+    // and the panel changed height as you switched tabs, which is the one thing the
+    // floor exists to prevent. (Reported as General vs Appearance resizing.)
+    //
+    // So each tab is laid out for real and the tallest body wins. Deliberately NOT by
+    // adding the per-card terms here: this file's own header records that every
+    // geometry fault reported against this panel was a second spelling of something
+    // PanelBox already computes, and a hand-summed `nSections * (pad+border+margin) +
+    // (n-1) * gap` would be exactly that again. The layout is cached behind the same
+    // key as before, so the cost is a dozen layouts when the metrics move, never per
+    // frame -- and it already ran a full tab RENDER per tab to get here.
+    float measureTallestBodyH(const ScaledDimensions& dim,
+                              float labelX, float controlX, float rightColumnX,
+                              float contentAreaStartX, float contentAreaWidth,
+                              float panelContentRightX,
+                              float sidebarAsk, float contentAsk,
+                              const std::vector<float>& tabGroups);
+    float m_tallestContentRows = -1.0f;
+    // What one dry layout pass over a tab learned: where its cursor ended, and the
+    // content height of every section it opened, in order. See measureTab.
+    struct TabMeasure {
+        float endY = 0.0f;
+        std::vector<float> sections;
+    };
+    // The sidebar's sections: one content height per tab-list group, in registry
+    // order. The seam between groups is the engine's, not stated here.
+    std::vector<float> measureTabGroups(const ScaledDimensions& dim) const;
+    TabMeasure measureTab(int tabId, const ScaledDimensions& dim,
+                          float labelX, float controlX, float rightColumnX,
+                          float contentAreaStartX, float contentAreaWidth,
+                          float panelContentRightX);
+    // WHAT THE MEASUREMENT DEPENDS ON. Every tab's height is a row COUNT times
+    // lineHeightNormal, so only the row metrics and the theme's box terms can move
+    // it -- and a theme's generation counter covers discovery and a change of
+    // selected theme alike (the same key ColorConfig's memo uses).
+    //
+    // A KEY RATHER THAN A SENTINEL, because the sentinel was dropped from
+    // rebuildLayout(), and rebuildLayout() runs on every frame of a DRAG. A drag
+    // arrives as a layout dirty exactly like a scale change does, so the panel
+    // re-laid all twenty-eight tabs per frame to answer a question whose inputs had
+    // not moved -- roughly 29x the cost of the one rebuild the drag actually needs.
+    // The old comment named the triggers correctly ("theme, scale, fonts, the set of
+    // tabs") and then invalidated on something that is none of them.
+    struct TallestKey {
+        float lineHeight = 0.0f;
+        float fontSize = 0.0f;
+        float cellW = 0.0f;
+        unsigned int themeGen = 0;   // 0 is never a live generation
+        bool operator==(const TallestKey& o) const {
+            return lineHeight == o.lineHeight && fontSize == o.fontSize
+                && cellW == o.cellW && themeGen == o.themeGen;
+        }
+    };
+    TallestKey m_tallestKey;
+public:
+    // Drop the measurement. Called from show(), for the one input the key cannot
+    // see: LIVE DATA moved while the menu was closed (the Riders tab lists session
+    // entries, the Updates tab follows the downloader). The stale window this leaves
+    // open while the menu IS open is the documented trade at measureTallestContentRows.
+    void invalidateTallestTab() { m_tallestContentRows = -1.0f; }
+private:
+
+#if defined(MXBMRP3_TEST_BUILD)
+public:
+    // How far the last-built tab overran the space reserved for it, in rows;
+    // negative is slack. Should be <= 0 always, now that the height is MEASURED from
+    // the tallest tab: a positive value means the measure pass and the real lay-out
+    // disagree about some tab. See MXBMRP3_Test_SettingsOverflowRows and
+    // settings_fit_test.
+    float testOverflowRows() const { return m_testOverflowRows; }
+private:
+    float m_testOverflowRows = 0.0f;
+#endif
 
     // Tab-bar build, split out of rebuildRenderData(). See the comment at their
     // definitions in settings_hud_render.cpp for the parameter count that a long-
     // standing "8+ parameters" rule had assumed rather than measured.
-    void buildTabBar(const ScaledDimensions& dim, float tabStartX,
-                     float tabStartY, float tabWidth, float checkboxWidth);
+    // Distance from the panel's TOP EDGE to where tab content begins -- the title
+    // and the air around it. See the definition for why it is one function.
+    // A settings card's interior pad per end, in CELLS: the panel's own base
+    // (settingsSectionPadding) plus the resolved [content] padding side — the
+    // same term a plan panel's card spends between its edge and its rows, so
+    // [Advanced] contentPadding / a theme's [content] padding reach these
+    // cards too. The composition applies only while a themed card is drawn
+    // (the plan's own rule: a collapsed content box spends no padding).
+    float cardPadTopY() const;
+    float cardPadBotY() const;
+    // The horizontal twin, in CHARACTERS (== x-cells at the shipped grid): the
+    // row lead-in base plus the resolved [content] padding side — how far a
+    // card reaches past its rows each side. Spent at the card edges AND paid
+    // back to the trough/width chain (the pair that must move together).
+    float cardPadLeftCells() const;
+    // [content] MARGIN's horizontal sides, in CHARACTERS -- air OUTSIDE the cards,
+    // between them and the panel's inner edge, exactly as a plan panel spends
+    // c.m.l/c.m.r (PanelBox: cardLeft = panelInnerLeft + c.m.l).
+    //
+    // The vertical sides were always live here -- contentGapCells() reads them as
+    // the seam between two section cards -- and these two were not read at all, so
+    // a theme's `[content] margin = 2` spread the settings sections apart while
+    // every card still ran flush to the panel's surface line. Reported as "[content]
+    // margin does not appear to apply to the content of the settings menu"; half of
+    // it did. Not gated on hasThemedCard(): margin is AIR, and only the border
+    // reads as zero unthemed (the same split cardBorderOverhangX makes).
+    // The caption's box height, band or not -- see titleAdvance for why the two
+    // differ by the band's border and by nothing else.
+    // THE PANEL'S OWN PAD and the caption block's, resolved from the box terms
+    // (theme key → [Advanced] built-in) and converted the BOX way — one stated
+    // cell square on screen, as PanelBox::Spec::unit spends every vertical term.
+    //
+    // These replaced reads of basePaddingY()/dim.paddingH, which resolve the
+    // LEGACY panelPadding{X,Y}Cells on a different lattice: that pair is
+    // unreachable from any ini, so [Advanced] panelPadding, titleMargin and
+    // titlePadding were all inert on this panel while they worked everywhere
+    // else (pinned, when they were still inert, by box_terms_test).
+    // The sidebar↔content trough, in characters: the same composed seam read
+    // the vertical card seams spend (contentGapCells = sectionGap + gap), so
+    // the gutter measures what the air between two cards measures.
+    // (Characters and cells are the same width at the shipped
+    // one-cell-per-char grid.)
+    void buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan,
+                     const PanelBox::ColumnGeom& col, float tabStartX,
+                     float tabWidth, float checkboxWidth);
     bool drawTabIcon(float x, float y, const char* iconName, unsigned long color,
                      const ScaledDimensions& dim, float checkboxWidth);
-    void drawTabToggle(float x, float y, const char* iconName, bool enabled,
+    // `onBand` = this row is the SELECTED tab, so the icon is drawn over the accent
+    // band rather than the panel. See the definition for what that changes.
+    void drawTabToggle(float x, float y, const char* iconName, bool enabled, bool onBand,
                        const ScaledDimensions& dim, float checkboxWidth);
     void handleClick(float mouseX, float mouseY);
     void dispatchRegion(const ClickRegion& region, bool skipSave = false);  // Dispatch a click region directly
@@ -704,6 +1017,19 @@ private:
     // setVisible() in a click handler is a bug on the companion surface.
     void toggleHudOnActiveSurface(class BaseHud* hud);
     void handleHudToggleClick(const ClickRegion& region);
+    // Step a HUD through [Default, None, <installed themes>].
+    void cycleHudThemeOverride(BaseHud* hud, bool forward);
+    // Step a HUD's pack cycle: [Off, <installed packs>]. PUBLIC so test_hooks.cpp
+    // can drive them: the Off entry in these cycles is the
+    // only control over each HUD's showBackgroundTexture, and shipping without it
+    // stranded users with the art switched off and no way back. That is a UI-
+    // reachability bug, which no headless test could see through the widgets alone.
+    // See asset_pack_test.cpp.
+public:
+    void cycleGamepadPack(bool forward);
+    // Pitboard tab: step through the installed board packs by name.
+    void cyclePitboardPack(bool forward);
+private:
     void handleTitleToggleClick(const ClickRegion& region);
     void handleOpacityClick(const ClickRegion& region, bool increase);
     void handleScaleClick(const ClickRegion& region, bool increase);
@@ -722,7 +1048,7 @@ private:
     // render loop (display order, name, tooltip id, backing-HUD checkbox,
     // section icon), game gating (isTabAvailable), the active-tab render
     // routing, the click routing, and the per-tab reset. Adding a tab =
-    // one Tab enum value + ONE row in s_tabRegistry (settings_hud.cpp) —
+    // one Tab enum value + ONE row in s_tabRegistry (settings_hud_render.cpp) —
     // there is no separate switch to keep in step.
     // ------------------------------------------------------------------
     struct TabDescriptor {
@@ -736,6 +1062,28 @@ private:
         const char* resetHud;                           // HUD name for the standard per-tab reset (resetHudsToFactoryDefaults); null = none
         void (SettingsHud::*resetExtra)();              // Custom reset steps (run after resetHud); null = none
         const char* sectionIcon;                        // Identity icon for non-toggleable section tabs; null = none
+        // A parenthesised suffix on the SIDEBAR LABEL only -- "Spotter (Beta)".
+        // Deliberately not folded into `name`: that string is persisted as
+        // [Profiles] activeTab and is what setActiveTabByName matches on, so
+        // renaming a tab to badge it would strand everyone who had it open and
+        // rename the "Reset <tab>" button with it. null = no badge.
+        const char* badge;
+        // NOT IN THE SIDEBAR LIST, but still a real selectable tab: the About page,
+        // which is reached from the footer's About button instead of a row of its
+        // own. The sidebar is ~31 rows and at or near what sets the panel's height,
+        // so a listed row is not free; a page nobody needs to find twice does not
+        // have to cost one.
+        //
+        // LAST in the aggregate, with a DEFAULT MEMBER INITIALISER. The build runs
+        // -Werror=missing-field-initializers, so simply omitting the field in the
+        // thirty rows above is an error, not a silent false -- the default is what
+        // makes "every existing row is listed" hold without touching any of them.
+        //
+        // isTabAvailable() deliberately still returns true for a hidden tab -- it
+        // gates SELECTABILITY (and the persisted-tab restore, so the menu reopens on
+        // About if that is where it was closed). Only the list/measure loops read
+        // this.
+        bool hidden = false;
     };
     // Rows are in VISUAL ORDER - the tab-list render loop iterates this table
     // directly, so row position = position in the tab column. The negative
@@ -746,7 +1094,6 @@ private:
     // Section markers used in s_tabRegistry (negative = not a real tab)
     static constexpr int TAB_SECTION_GLOBAL = -1;
     static constexpr int TAB_SECTION_PROFILE = -2;
-    static constexpr int TAB_SECTION_ELEMENTS = -3;
 
     // Per-tab custom reset bodies (referenced by s_tabRegistry rows; the simple
     // "reset this HUD's section" tabs use TabDescriptor::resetHud instead).
@@ -762,18 +1109,15 @@ private:
     void resetTabUpdates();
     void resetTabRiders();
     void resetTabDirector();
+    void resetTabSpotter();
 
     // Check if point is inside a clickable region
     bool isPointInRect(float x, float y, float rectX, float rectY, float width, float height) const;
 
     // Settings panel layout constants (character widths for monospace text).
-    // The values live in settings/settings_metrics.h, which derives the content
-    // and tooltip widths from them and is included by the unit test that checks
-    // shipped tooltips fit; these are the in-class names for the same numbers.
-    static constexpr int SETTINGS_PANEL_WIDTH = SettingsMetrics::PANEL_WIDTH;
-    static constexpr int SETTINGS_TAB_WIDTH = SettingsMetrics::TAB_WIDTH;
-    static constexpr int SETTINGS_LEFT_COLUMN = SettingsMetrics::LEFT_COLUMN;
-    static constexpr int SETTINGS_RIGHT_COLUMN = SettingsMetrics::RIGHT_COLUMN;
+    // The tunable ones live in core/layout_metrics.h, which derives the content and
+    // tooltip widths from them; the ones below are fixed by the glyphs they measure
+    // ("[X]" is three characters in every theme), so they stay compiled in.
 
     // Settings UI element dimensions (character widths)
     static constexpr int CHECKBOX_WIDTH = 4;            // "[ ]" or "[X]"
@@ -801,6 +1145,7 @@ private:
     RadarHud* m_radarHud;
     SpeedWidget* m_speed;
     GearWidget* m_gear;
+    CrashWidget* m_crash;
     SpeedoWidget* m_speedo;
     TachoWidget* m_tacho;
     TimingHud* m_timing;
@@ -857,6 +1202,13 @@ private:
 #endif
 
     // Tab system
+    //
+    // PUBLIC, alone among the members around it: the what's-new marker table
+    // (hud/settings/whats_new.cpp) names tabs by these values, and the alternative
+    // was a second copy of the enum as integer literals -- wrong the first time a
+    // tab moves. The tab INDEX is already public surface anyway (setActiveTabByName,
+    // ClickRegion::tabIndex); only the names were not.
+public:
     enum Tab {
         TAB_GENERAL = 0,       // General settings (preferences, profiles)
         TAB_STANDINGS = 1,     // F1
@@ -885,8 +1237,11 @@ private:
         TAB_HELMET = 24,       // Helmet overlay (immersion)
         TAB_FRIENDS = 25,      // Friends (Steam friends in-game)
         TAB_DIRECTOR = 26,     // Auto-director (spectate broadcast tool)
-        TAB_COUNT = 27
+        TAB_SPOTTER = 27,      // Spotter (audio callouts + subtitles)
+        TAB_ABOUT = 28,        // About (hidden from the tab list; opened from the footer)
+        TAB_COUNT = 29
     };
+private:
     int m_activeTab;
 
     // Mark settings dirty after a settings-panel edit (always — independent of auto-save, so
@@ -998,6 +1353,22 @@ private:
 
     // Stats tab periodic refresh timer (epoch default triggers immediate first refresh)
     std::chrono::steady_clock::time_point m_lastStatsRefresh{};
+
+#if defined(MXBMRP3_TEST_BUILD)
+    // See testColumnEdgesX().
+    float m_testColumnLeftX = 0.0f;
+    float m_testColumnRightX = 0.0f;
+    // See testCardEdgesX(): the DRAWN card edges bounding the gutter, recorded
+    // at the two rewriteThemedCard sites — measured where the art lands, not
+    // re-derived from the chain that places it (a re-derivation would agree
+    // with the chain's bugs).
+    float m_testSidebarCardRightX = 0.0f;
+    float m_testContentCardLeftX = 0.0f;
+    // See testContentColumnX().
+    float m_testLabelX = 0.0f;
+    float m_testControlX = 0.0f;
+    float m_testRowRightX = 0.0f;
+#endif
 
     std::vector<ClickRegion> m_clickRegions;
 

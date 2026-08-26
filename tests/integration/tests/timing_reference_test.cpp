@@ -399,12 +399,17 @@ TEST_CASE("grid-start grace: active from the green flag until the first split, o
 }
 
 TEST_CASE("timing panel: height is a whole number of grid bands") {
-    // The Timing panel is a stack of grid-aligned bands: the big time row occupies one
-    // lineHeightLarge band and each comparison row one lineHeightNormal band, with no outer
-    // padding. So a time-only panel is exactly lineHeightLarge tall (identical to the Notices
-    // and Gap Bar boxes) and each comparison row adds exactly one lineHeightNormal — the whole
-    // panel lands on the vertical snap grid at every row count. The rendered geometry isn't in
-    // /api/state, so read it via MXBMRP3_Test_TimingGeometry.
+    // The Timing panel is a stack of grid-aligned bands -- the big time row occupies one
+    // lineHeightLarge band and each comparison row one lineHeightNormal band -- inside the
+    // same panelPaddingYCells every other panel has, top and bottom. Each comparison row
+    // adds exactly one lineHeightNormal, so the panel lands on the vertical snap grid at
+    // every row count. The rendered geometry isn'"'"'t in /api/state, so read it via
+    // MXBMRP3_Test_TimingGeometry.
+    //
+    // This asserted `height == lineLarge` -- no padding at all -- which was true until
+    // the panel took the standard padding and stopped being true without anyone
+    // noticing. paddingV comes back from the same hook, so the expectation is written
+    // from it rather than assumed away again.
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup("Z:\\tmp\\mxbmrp3-tests\\timing_pad\\");
@@ -421,24 +426,52 @@ TEST_CASE("timing panel: height is a whole number of grid bands") {
     // of the separately-quantized pieces vs. the quantized total.
     auto approxEq = [](int a, int b) { return std::abs(a - b) <= 3; };
 
+    // The assertions are on the CONTENT STACK, not on `height == 2 * padding + rows`.
+    // That form asked two questions at once — what a row costs, and what the panel's
+    // chrome is — and only the first is this test's. It broke on the second when the
+    // panel moved to the box model: the height became boxPanelPadding's while the
+    // padding it was checked against was still the legacy panelPaddingYCells, and a
+    // real row-height regression would have been indistinguishable from that. The
+    // panel's own height also carries the box model's ceil-to-whole-cell remainder,
+    // which no exact sum of rows can predict.
     SUBCASE("time only") {
         host.timingConfig(/*gapEnabled=*/false, /*primaryGap=*/0, /*secondaryMask=*/0);
         host.draw();
         PluginHost::TimingGeom g = host.timingGeometry();
         REQUIRE(g.height > 0);       // panel actually rendered (guards a vacuous all-zero pass)
-        // Just the big time row: one lineHeightLarge band.
-        CHECK(approxEq(g.height, g.lineLarge));
+        // Just the big time row. ONE NORMAL ROW, not a lineHeightLarge band: the big
+        // time is drawn at the large font but its INK is about half that cell, so the
+        // band reserved twice the height it showed. See BaseHud::bigValueRowHeight --
+        // the same row the Position/Lap/Time/Clock values and the GapBar and Notices
+        // boxes now use.
+        CHECK(approxEq(g.contentBot - g.contentTop, g.lineNormal));
+        // ...and it is a NORMAL row, not the large one it used to reserve.
+        CHECK(g.lineLarge > g.lineNormal);
+        CHECK(g.contentBot - g.contentTop < g.lineLarge);
+        // The stack sits inside the panel, chrome above it and below it.
+        CHECK(g.contentTop > 0);
+        CHECK(g.contentBot <= g.height);
     }
     SUBCASE("time plus two comparison rows") {
         host.timingConfig(/*gapEnabled=*/false, /*primaryGap=*/0, /*secondaryMask=*/GAP_PB | GAP_ALLTIME);
         host.draw();
         PluginHost::TimingGeom g = host.timingGeometry();
         REQUIRE(g.height > 0);
-        // Time band + two comparison bands: height == lineHeightLarge + 2*lineHeightNormal.
-        CHECK(approxEq(g.height, g.lineLarge + 2 * g.lineNormal));
-        // And it is TALLER than the time-only panel by exactly the two rows
-        // (a positive sanity check that rows extend the box downward).
-        CHECK(g.height > g.lineLarge);
+        // Time band + two comparison bands -- three normal rows now that the time
+        // band is one (see the time-only case above), plus the seam the box model
+        // leaves between the two sibling section cards.
+        const int stack = g.contentBot - g.contentTop;
+        CHECK(stack >= 3 * g.lineNormal);
+        // Each comparison row costs exactly ONE normal row: the two-row stack minus
+        // the one-row stack is 2 * lineNormal and nothing else. The seam is constant
+        // across both (one seam either way once there are two sections), so this is
+        // the exact statement the old `2 * padding + 3 * rows` was reaching for.
+        host.timingConfig(/*gapEnabled=*/false, /*primaryGap=*/0, /*secondaryMask=*/GAP_PB);
+        host.draw();
+        PluginHost::TimingGeom one = host.timingGeometry();
+        CHECK(approxEq(stack - (one.contentBot - one.contentTop), g.lineNormal));
+        // And rows extend the box DOWNWARD -- the panel grew with them.
+        CHECK(g.height > one.height);
     }
 
     host.shutdown();
@@ -496,6 +529,150 @@ TEST_CASE("timing reference: player-scoped rows blank out while spectating anoth
     // a one-way teardown of the cache).
     host.spectateVehicles({ { 4, "Thomas" }, { 7, "Rival" } }, /*curSelectionIndex=*/0);
     CHECK(host.timingReferenceMs(GAP_ALLTIME, SPLIT_LAP) == 90000);
+
+    host.shutdown();
+}
+
+// ============================================================================
+// THE READOUTS SECTION: a row each for the figures people otherwise run a whole
+// widget to see, in a third section under the comparison rows.
+//
+// All OFF by default -- this panel sits mid-screen and is read at a glance, so
+// extra rows are opt-in. Which makes the default state worth asserting too: a
+// new section that quietly appeared for every existing user would be the bug.
+//
+// Every value is a READ of the source that already owns it (the session clock
+// through formatSessionClock, fuel through FuelWidget's accumulated history), so
+// what this pins is the wiring -- the rows appear, carry their labels, and the
+// panel grows to hold them.
+// ============================================================================
+TEST_CASE("timing: the readout rows are off by default and appear when enabled") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    const char* save = "Z:\\tmp\\mxbmrp3-tests\\timing_readouts\\";
+    host.startup(save);
+    REQUIRE(host.hasStringRows());
+    REQUIRE(host.hasScreenEdges());
+
+    host.eventInit("TestTrack", "Player");
+    host.raceEvent("TestTrack");
+    host.addEntry(12, "Player");
+    host.session(6, /*numLaps=*/5, /*lengthMs=*/480000);
+    host.classify(6, 400000, { { .num = 12, .best = 108500, .laps = 1, .gap = 0 } });
+    host.draw();
+
+    auto labels = [&]() {
+        std::string all;
+        for (const auto& r : host.hudStringRows(PluginHost::HUD_TIMING)) all += "[" + r.text + "]";
+        return all;
+    };
+    auto height = [&]() {
+        const auto e = host.hudScreenEdges(PluginHost::HUD_TIMING);
+        return e.b - e.t;
+    };
+
+    // Shipped defaults: the comparison rows are there, the readouts are not.
+    const std::string plain = labels();
+    const int plainH = height();
+    INFO("default rows: " << plain);
+    REQUIRE_MESSAGE(plainH > 0, "timing panel rendered nothing at defaults");
+    CHECK(plain.find("[Pos]") == std::string::npos);
+    CHECK(plain.find("[Fuel]") == std::string::npos);
+
+    // Turn two on through the INI, the way the settings tab writes them.
+    host.writeSettingsFile(save,
+        "[Settings]\nversion=6\n\n[TimingHud]\nvisible=1\n"
+        "readout_position=1\nreadout_lap=1\n");
+    host.loadSettings(save);
+    host.draw();
+
+    const std::string withRows = labels();
+    INFO("with readouts: " << withRows);
+    CHECK(withRows.find("[Position]") != std::string::npos);
+    CHECK(withRows.find("[Lap]") != std::string::npos);
+    // ...and only the two that were asked for.
+    CHECK(withRows.find("[Fuel]") == std::string::npos);
+    CHECK(withRows.find("[Time]") == std::string::npos);
+    // NOT "[Session]": the Session PB comparison row is on by default and owns
+    // that word, which is why the readout is labelled "Format".
+    CHECK(withRows.find("[Format]") == std::string::npos);
+    // The panel grew to hold them rather than drawing over what was there.
+    CHECK(height() > plainH);
+
+    host.shutdown();
+}
+
+// ---------------------------------------------------------------------------
+// THE TWO TEXT READOUTS: Server and Track.
+//
+// Every other readout has a value of bounded length -- a position, a lap count, a
+// clock, a session format, a fuel figure. These two carry free text from the session,
+// and this panel's width is not theirs to grow: it is pinned to the centre stack so it
+// lines up with the Notices panel above it (wantCenterStackWidth). So they truncate,
+// and the thing worth pinning is that they truncate rather than overrun the label
+// beside them -- an overrun is invisible to a width assertion and obvious on screen.
+//
+// Both values are read from the sources the Session panel already prints, so the pair
+// cannot disagree about what server you are on; that shared-source rule is what the
+// name check below is really asserting.
+// ---------------------------------------------------------------------------
+TEST_CASE("timing: the server and track readouts fit the panel") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\timing_text_readouts\\");
+    REQUIRE_MESSAGE(host.timingReadouts(0), "MXBMRP3_Test_TimingReadouts not exported");
+    host.showAllHuds(true);
+    // A track name comfortably longer than the panel is wide, so truncation is
+    // exercised rather than merely available.
+    host.eventInit("Southwick National Motocross Circuit", "Thomas");
+    host.session(1, 0, 0);
+    host.runInit(1);
+    host.addEntry(4, "Thomas");
+
+    const unsigned READOUT_SERVER_BIT = 1u << 5;
+    const unsigned READOUT_TRACK_BIT  = 1u << 6;
+    REQUIRE(host.timingReadouts(READOUT_SERVER_BIT | READOUT_TRACK_BIT));
+    host.draw();
+
+    const auto rows = host.hudStringRows("timing_hud");
+    REQUIRE_MESSAGE(!rows.empty(), "Timing drew nothing");
+
+    auto labelled = [&](const char* label) {
+        for (const auto& r : rows) if (r.text == label) return true;
+        return false;
+    };
+    CHECK(labelled("Server"));
+    CHECK(labelled("Track"));
+
+    // THE VALUE FITS THE PANEL'S BUDGET.
+    //
+    // Asserted on the value's LENGTH against the budget the panel itself reports, not
+    // on where the string sits. Two earlier versions of this check were structurally
+    // incapable of failing and both passed against a deliberately broken build:
+    //   - comparing the string's x against the panel edges. The values are RIGHT-
+    //     justified, so x is the ANCHOR, which is inside the panel however long the
+    //     text is; an overrun runs LEFT from a point that always passes.
+    //   - looking for the whole track name in the output. The row's value buffer is 24
+    //     bytes and truncates silently, so the name never appears in full even with the
+    //     budget disabled, and the search found nothing either way.
+    const int budget = host.timingTextBudget();
+    REQUIRE_MESSAGE(budget >= 4, "MXBMRP3_Test_TimingTextBudget not exported");
+
+    bool sawServer = false, sawTrack = false;
+    for (size_t i = 0; i + 1 < rows.size(); ++i) {
+        const bool isServer = (rows[i].text == "Server");
+        const bool isTrack  = (rows[i].text == "Track");
+        if (!isServer && !isTrack) continue;
+        // The value is the next string emitted on that row (label then value).
+        const std::string& value = rows[i + 1].text;
+        INFO((isServer ? "Server" : "Track") << " value \"" << value << "\" is "
+             << value.size() << " chars against a budget of " << budget);
+        CHECK(static_cast<int>(value.size()) <= budget);
+        sawServer = sawServer || isServer;
+        sawTrack  = sawTrack  || isTrack;
+    }
+    CHECK(sawServer);
+    CHECK(sawTrack);
 
     host.shutdown();
 }

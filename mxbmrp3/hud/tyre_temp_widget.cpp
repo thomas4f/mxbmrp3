@@ -17,6 +17,8 @@
 using namespace PluginConstants;
 
 TyreTempWidget::TyreTempWidget() {
+    m_panelKind = PanelKind::Widget;
+    m_bContentCard = true;
     DEBUG_INFO("TyreTempWidget created");
     setDraggable(true);
 
@@ -56,7 +58,7 @@ void TyreTempWidget::update() {
     }
 
     // Always rebuild - tyre temps update at telemetry rate
-    rebuildRenderData();
+    rebuildAndRecord();
     clearDataDirty();
     clearLayoutDirty();
 }
@@ -84,30 +86,44 @@ void TyreTempWidget::rebuildRenderData() {
 
     // Widget width: match BarsWidget's 6-bar GP Bikes default (6*1 + 5*0.4 = 8 chars)
     constexpr int WIDGET_WIDTH_CHARS = 8;
-    float backgroundWidth = calculateBackgroundWidth(WIDGET_WIDTH_CHARS);
     float contentWidth = PluginUtils::calculateMonospaceTextWidth(WIDGET_WIDTH_CHARS, dim.fontSize);
 
     bool showBars = (m_enabledRows & ROW_BARS) != 0;
     bool showValues = (m_enabledRows & ROW_VALUES) != 0;
 
-    // Height layout (matches BarsWidget):
-    // - paddingV at top
-    // - one row per wheel; when bars are shown the row is BAR_ROW_LINES tall so
-    //   the temperature value sits centered inside the taller colored bar
-    // - labelHeight at bottom (L/M/R column labels); collapses when labels are hidden
-    float labelHeight = m_bShowLabels ? (LABEL_HEIGHT_LINES * dim.lineHeightNormal) : 0.0f;
-    float wheelRowLines = showBars ? BAR_ROW_LINES : (showValues ? 1.0f : 0.0f);
-    float wheelRowHeight = wheelRowLines * dim.lineHeightNormal;
-    float contentHeight = wheelRowHeight * NUM_WHEELS;
-    float backgroundHeight = dim.paddingV + contentHeight + labelHeight;
+    // Height layout, on BarsWidget's terms: three lines like every gauge, one row
+    // per wheel (the temperature value sits centred inside its coloured bar), and
+    // the L/M/R row taken from INSIDE that box -- ink plus a gap, no
+    // ascender/descender slack. See BarsWidget for why it is measured that way
+    // and why it lands on the compass's cardinal mark.
+    const float contentHeight = CONTENT_LINES * dim.lineHeightNormal;
+    const float labelInk = dim.fontSizeSmall * WidgetDimensions::CAP_INK_RATIO;
+    const float labelGap = labelInk * 0.35f;
+    const float labelRowHeight = m_bShowLabels ? labelInk + labelGap : 0.0f;
+    const float wheelsHeight = contentHeight - labelRowHeight;
+    float wheelRowHeight = (showBars || showValues)
+        ? wheelsHeight / static_cast<float>(NUM_WHEELS)
+        : 0.0f;
 
-    // Add background quad
-    addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
+    // BOX-MODEL: the plan owns padding, chrome and the card (this panel has no
+    // caption at all); the widget states only its content — the wheel rows.
+    BaseHud::PanelWant want;
+    want.contentW = contentWidth;
+    want.sectionH = { contentHeight };
+    want.captionW = planTitleWidth(dim, "Tyre Temp");
+    PanelPlan& p = planPanel(dim, want);
+
+    const float backgroundWidth = p.width();
+    const float backgroundHeight = p.height();
+
+    addPlanBackground(p, startX, startY);
+    addPlanTitle(p, "Tyre Temp", this->getFont(FontCategory::TITLE),
+        this->getColor(ColorSlot::PRIMARY));
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
 
-    float contentStartX = startX + dim.paddingH;
+    float contentStartX = p.contentX();
 
     // Bar geometry: the three section bars hug each other (no horizontal gap)
     // and split the content width evenly, so each wheel reads as one continuous
@@ -133,11 +149,17 @@ void TyreTempWidget::rebuildRenderData() {
     // follows that). Matches BarsWidget / GForceWidget.
     unsigned long barBgColor = PluginUtils::applyOpacity(mutedColor, 0.5f);
 
-    // Wheel labels: F, R - embedded in the left padding, one per wheel row
-    const char* wheelLabels[NUM_WHEELS] = {"F", "R"};
+    // NO F/R ROW LABELS. They were drawn centred in the panel's LEFT PADDING
+    // band -- outside the content the box model measures, and the same place a
+    // theme's frame border occupies, which is what put the bottom labels on the
+    // border before they were moved inside. Two rows, front above rear, is the
+    // convention every tyre readout uses and the letters were not earning their
+    // place; the L/M/R row below stays because across-the-tread position is not
+    // guessable.
+    const float labelFontSize = dim.fontSizeSmall;
 
-    // Content starts after the top padding; L/M/R labels go at the bottom (BarsWidget-style)
-    float currentY = startY + dim.paddingV;
+    // Content starts at the plan's origin; L/M/R labels go at the bottom (BarsWidget-style)
+    float currentY = p.contentY();
 
     // Draw both wheels (0 = front, 1 = rear). Each wheel is one row; the value
     // is drawn centered inside the colored bar rather than on a separate row.
@@ -149,15 +171,11 @@ void TyreTempWidget::rebuildRenderData() {
         // small font keeps 3 digits within the column whether bars are shown or
         // not. Vertically centered within the row/bar.
         float valueFontSize = dim.fontSizeSmall;
-        float textY = currentY + (wheelRowHeight - valueFontSize) * 0.5f;
-
-        // Wheel label (F/R) centered in the left padding and in the row
-        if (m_bShowLabels && (showBars || showValues)) {
-            float wheelLabelX = startX + dim.paddingH * 0.5f;
-            float wheelLabelY = currentY + (wheelRowHeight - dim.fontSize) * 0.5f;
-            addString(wheelLabels[wheel], wheelLabelX, wheelLabelY, Justify::CENTER,
-                this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dim.fontSize);
-        }
+        // MINUS what addString adds back: it centres in a row of the string's own
+        // size, and this is an explicit centring, so the two compound (the sibling
+        // label below already carried this subtraction; this line did not).
+        float textY = currentY + (wheelRowHeight - valueFontSize) * 0.5f
+                    - rowCenterOffset(valueFontSize);
 
         for (int section = 0; section < NUM_SECTIONS; ++section) {
             float barX = barCenterX[section] - barWidth * 0.5f;
@@ -220,10 +238,14 @@ void TyreTempWidget::rebuildRenderData() {
     // strip, matching BarsWidget's bottom-aligned bar labels.
     if (m_bShowLabels) {
         const char* labels[NUM_SECTIONS] = {"L", "M", "R"};
-        float labelY = startY + dim.paddingV + contentHeight;
+        // INK-centred in their own row at the bottom of the content, which the
+        // wheel rows gave up for them -- inside the card, so a theme's frame
+        // cannot run through them.
+        const float bandTop = p.contentY() + wheelsHeight + labelGap;
+        const float labelY = inkCenteredY(bandTop, labelInk, labelFontSize);
         for (int s = 0; s < NUM_SECTIONS; ++s) {
             addString(labels[s], barCenterX[s], labelY, Justify::CENTER,
-                this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dim.fontSize);
+                this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), labelFontSize);
         }
     }
 }
@@ -235,7 +257,7 @@ void TyreTempWidget::resetToDefaults() {
     m_fBackgroundOpacity = 1.0f;  // Full opacity (100%)
     m_fScale = 1.0f;
     // GP-only widget: sits left of the Compass in the bottom gauge row (pitch 0.0715).
-    setPosition(0.4565f, 0.86828f);
+    setPosition(cellsX(70), cellsY(74));
     m_coldThreshold = DEFAULT_COLD_THRESHOLD;
     m_hotThreshold = DEFAULT_HOT_THRESHOLD;
     m_enabledRows = ROW_DEFAULT;  // Show both bars and values by default

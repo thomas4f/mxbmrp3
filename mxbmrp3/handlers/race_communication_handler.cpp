@@ -113,19 +113,26 @@ void Handlers::handleRaceCommunication(Unified::RaceCommunicationData* psRaceCom
             }
         }
 
-        // Event log: e.g., "#4 5s penalty (Cutting)" or "#4 penalty (Cutting)" when no time
+        // Event log: "#4 penalty (Cutting)" with the amount in the DETAIL
+        // column ("5s"), matching the fastest-lap message+detail shape. The
+        // format is the LOG's own business now: the spotter used to parse this
+        // column back into a number to speak it, which made a display string
+        // load-bearing for audio, and takes the amount through EventNumbers
+        // instead.
         const RaceEntryData* entry = pluginData.getRaceEntry(psRaceCommunication->raceNum);
         const char* riderLabel = entry ? entry->formattedRaceNum : "???";
         char eventMsg[64];
+        snprintf(eventMsg, sizeof(eventMsg), "%s penalty (%s)", riderLabel, offenceStr);
+        char penaltyDetail[16];
+        const char* detail = nullptr;
         if (penaltyMs > 0) {
             int penaltySeconds = (penaltyMs + 500) / 1000;  // Round to nearest second
-            snprintf(eventMsg, sizeof(eventMsg), "%s %ds penalty (%s)",
-                     riderLabel, penaltySeconds, offenceStr);
-        } else {
-            snprintf(eventMsg, sizeof(eventMsg), "%s penalty (%s)", riderLabel, offenceStr);
+            snprintf(penaltyDetail, sizeof(penaltyDetail), "%ds", penaltySeconds);
+            detail = penaltyDetail;
         }
-        pluginData.addEventLogEntry(EventLogType::Penalty, eventMsg, nullptr, -1,
-                                    psRaceCommunication->raceNum);
+        pluginData.addEventLogEntry(EventLogType::Penalty, eventMsg, detail, -1,
+                                    psRaceCommunication->raceNum,
+                                    EventNumbers::penalty(penaltyMs));
 
         // Record penalty in stats (player only) - count + time in one call
         if (psRaceCommunication->raceNum == pluginData.getPlayerRaceNum()) {

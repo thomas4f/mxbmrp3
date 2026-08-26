@@ -11,7 +11,7 @@
 // ============================================================================
 #include "settings_manager.h"
 #include "settings_keys.h"
-#include "settings_serde.h"
+#include "settings_serde_hud.h"
 #include "atomic_file_writer.h"
 #include "hud_manager.h"
 #include "profile_manager.h"
@@ -24,12 +24,14 @@
 #include "../hud/performance_hud.h"
 #include "../hud/telemetry_hud.h"
 #include "../hud/time_widget.h"
+#include "../hud/spotter_widget.h"
 #include "../hud/clock_widget.h"
 #include "../hud/position_widget.h"
 #include "../hud/lap_widget.h"
 #include "../hud/session_hud.h"
 #include "../hud/speed_widget.h"
 #include "../hud/gear_widget.h"
+#include "../hud/crash_widget.h"
 #include "../hud/speedo_widget.h"
 #include "../hud/tacho_widget.h"
 #include "../hud/timing_hud.h"
@@ -144,6 +146,21 @@ void SettingsManager::app_TimeWidget(HudManager& hudManager, const SettingsManag
     auto it = cache.find(name);
     if (it == cache.end()) return;
     BaseHud& hud = hudManager.getTimeWidget();
+    applyBaseHudSettings(hud, it->second);
+    hud.setDataDirty();
+}
+
+void SettingsManager::cap_SpotterWidget(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
+    HudSettings settings;
+    const BaseHud& hud = hudManager.getSpotterWidget();
+    captureBaseHudSettings(settings, hud);
+    cache[name] = std::move(settings);
+}
+
+void SettingsManager::app_SpotterWidget(HudManager& hudManager, const SettingsManager::ProfileCache& cache, const char* name) {
+    auto it = cache.find(name);
+    if (it == cache.end()) return;
+    BaseHud& hud = hudManager.getSpotterWidget();
     applyBaseHudSettings(hud, it->second);
     hud.setDataDirty();
 }
@@ -263,6 +280,32 @@ void SettingsManager::app_GearWidget(HudManager& hudManager, const SettingsManag
         }
 }
 
+void SettingsManager::cap_CrashWidget(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
+        HudSettings settings;
+        const auto& hud = hudManager.getCrashWidget();
+        captureBaseHudSettings(settings, hud);
+        settings[IniOnly::Crash::SHOW_RESET_BUTTON.key] = hud.m_bShowResetButton ? "1" : "0";
+        cache[name] = std::move(settings);
+}
+
+void SettingsManager::app_CrashWidget(HudManager& hudManager, const SettingsManager::ProfileCache& cache, const char* name) {
+        auto it = cache.find(name);
+        if (it != cache.end()) {
+            auto& hud = hudManager.getCrashWidget();
+            applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                if (settings.count(IniOnly::Crash::SHOW_RESET_BUTTON.key)) {
+                    hud.m_bShowResetButton = std::stoi(settings.at(IniOnly::Crash::SHOW_RESET_BUTTON.key)) != 0;
+                }
+            } catch (const std::exception& e) {
+                DEBUG_WARN_F("CrashWidget: Failed to parse settings: %s", e.what());
+            }
+            hud.setDataDirty();
+        }
+}
+
 void SettingsManager::cap_SpeedoWidget(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
         HudSettings settings;
         const auto& hud = hudManager.getSpeedoWidget();
@@ -332,6 +375,7 @@ void SettingsManager::cap_TimingHud(const HudManager& hudManager, SettingsManage
         settings["displayDuration"] = std::to_string(hud.m_displayDurationMs);
         // Comparison rows (one bit per gap type) — reuses the per-key bitmask serializer.
         saveTimingSecondaryGaps(settings, hud.m_enabledComparisons);
+        saveTimingReadouts(settings, hud.m_enabledReadouts);
         cache[name] = std::move(settings);
 }
 
@@ -356,6 +400,7 @@ void SettingsManager::app_TimingHud(HudManager& hudManager, const SettingsManage
                     }
                 }
                 loadTimingSecondaryGaps(settings, hud.m_enabledComparisons);
+                loadTimingReadouts(settings, hud.m_enabledReadouts);
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("TimingHud: Failed to parse settings: %s", e.what());
             }
@@ -377,7 +422,11 @@ void SettingsManager::cap_GapBarHud(const HudManager& hudManager, SettingsManage
         settings["gapRange"] = std::to_string(hud.m_gapRangeMs);
         settings["barWidth"] = std::to_string(hud.m_barWidthPercent);
         settings["markerScale"] = std::to_string(hud.m_fMarkerScale);
-        settings["labelMode"] = std::to_string(static_cast<int>(hud.m_labelMode));
+        // The NAME, matching Map and Radar -- same enum (MarkerLabel::Mode), same key,
+        // so the three sections now read alike in the INI. The int this used to write
+        // is still accepted on load; see stringToLabelMode.
+        settings["labelMode"] = labelModeToString(hud.m_labelMode);
+        settings[IniOnly::Marker::LABEL_ANCHOR.key] = labelAnchorToString(hud.getLabelAnchor());
         settings["colorMode"] = gapBarRiderColorModeToString(hud.m_riderColorMode);
         cache[name] = std::move(settings);
 }
@@ -444,14 +493,21 @@ void SettingsManager::app_GapBarHud(HudManager& hudManager, const SettingsManage
                         hud.m_fMarkerScale = scale;
                     }
                 }
-                // Label mode
+                // Label mode -- the shared converter, which also reads the bare int
+                // this section wrote before the two spellings were unified.
                 if (settings.count("labelMode")) {
-                    int mode = std::stoi(settings.at("labelMode"));
-                    if (mode >= 0 && mode <= 3) {
-                        hud.m_labelMode = static_cast<GapBarHud::LabelMode>(mode);
-                    }
+                    hud.m_labelMode = stringToLabelMode(settings.at("labelMode"), hud.m_labelMode);
                 }
-                // Color mode (string format, with backwards compatibility for integer format)
+                // ...and where the label sits: the same key, enum and spelling MapHud
+                // and RadarHud use.
+                if (settings.count(IniOnly::Marker::LABEL_ANCHOR.key)) {
+                    hud.setLabelAnchor(stringToLabelAnchor(settings.at(IniOnly::Marker::LABEL_ANCHOR.key)));
+                }
+                // Color mode. (This carried a "with backwards compatibility for integer
+                // format" note for its whole life; there was never an integer format to
+                // be compatible with -- it shipped name-based -- and the converter has
+                // no numeric branch. Corrected rather than implemented: adding one would
+                // give meaning to a value no released build ever wrote.)
                 if (settings.count("colorMode")) {
                     hud.m_riderColorMode = stringToGapBarRiderColorMode(settings.at("colorMode"));
                 }
@@ -572,6 +628,11 @@ void SettingsManager::cap_GamepadWidget(const HudManager& hudManager, SettingsMa
         HudSettings settings;
         const auto& hud = hudManager.getGamepadWidget();
         captureBaseHudSettings(settings, hud);
+        // The pad by NAME. Written verbatim even when this install has no such pack,
+        // so a user who removes a pack folder and puts it back gets their pad back
+        // (activePack() degrades for the render, it does not rewrite the setting).
+        settings[Keys::Gamepad::PACK] = hud.getGamepadPack();
+        settings[IniOnly::Gamepad::TRIGGER_FILL_MODE.key] = std::to_string(hud.getTriggerFillMode());
         cache[name] = std::move(settings);
 }
 
@@ -580,6 +641,20 @@ void SettingsManager::app_GamepadWidget(HudManager& hudManager, const SettingsMa
         if (it != cache.end()) {
             auto& hud = hudManager.getGamepadWidget();
             applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                auto pack = settings.find(Keys::Gamepad::PACK);
+                if (pack != settings.end() && !pack->second.empty()) {
+                    hud.setGamepadPack(pack->second);
+                }
+                auto fill = settings.find(IniOnly::Gamepad::TRIGGER_FILL_MODE.key);
+                if (fill != settings.end()) {
+                    hud.setTriggerFillMode(std::stoi(fill->second) == 1 ? 1 : 0);
+                }
+            } catch (const std::exception& e) {
+                DEBUG_WARN_F("GamepadWidget: Failed to parse settings: %s", e.what());
+            }
             hud.setDataDirty();
         }
 }
@@ -591,6 +666,7 @@ void SettingsManager::cap_LeanWidget(const HudManager& hudManager, SettingsManag
         saveLeanRows(settings, hud.m_enabledRows);  // Named keys instead of bitmask
         settings["showMaxMarkers"] = hud.m_bShowMaxMarkers ? "1" : "0";
         settings["maxMarkerLingerFrames"] = std::to_string(hud.m_maxMarkerLingerFrames);
+        settings[IniOnly::Lean::FILL_COLOR_MODE.key] = std::to_string(static_cast<int>(hud.getFillColorMode()));
         settings[IniOnly::Lean::ARC_FILL_COLOR.key] = PluginUtils::formatColorHex(hud.getArcFillColor());
         cache[name] = std::move(settings);
 }
@@ -609,6 +685,11 @@ void SettingsManager::app_LeanWidget(HudManager& hudManager, const SettingsManag
                 }
                 if (settings.count("maxMarkerLingerFrames")) {
                     hud.m_maxMarkerLingerFrames = std::stoi(settings.at("maxMarkerLingerFrames"));
+                }
+                if (settings.count(IniOnly::Lean::FILL_COLOR_MODE.key)) {
+                    const int mode = std::stoi(settings.at(IniOnly::Lean::FILL_COLOR_MODE.key));
+                    hud.setFillColorMode(mode == 1 ? LeanWidget::FillColorMode::FIXED
+                                                   : LeanWidget::FillColorMode::RAMP);
                 }
                 if (settings.count(IniOnly::Lean::ARC_FILL_COLOR.key)) {
                     hud.setArcFillColor(PluginUtils::parseColorHex(settings.at(IniOnly::Lean::ARC_FILL_COLOR.key), hud.getArcFillColor()));

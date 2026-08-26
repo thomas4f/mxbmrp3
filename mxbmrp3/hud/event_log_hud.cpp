@@ -19,6 +19,9 @@ EventLogHud::EventLogHud() {
     setTextureBaseName("event_log_hud");
     setDraggable(true);
     resetToDefaults();
+    // Body card: this HUD draws a content BLOCK under its title, which is what the
+    // themed card frames. Opt-in; see BaseHud::m_bContentCard.
+    m_bContentCard = true;
 }
 
 void EventLogHud::resetToDefaults() {
@@ -27,7 +30,7 @@ void EventLogHud::resetToDefaults() {
     setTextureVariant(0);
     m_fBackgroundOpacity = 0.80f;
     m_fScale = 1.0f;
-    setPosition(0.7315f, 0.51627f);  // Right column, before Friends in the stack
+    setPosition(cellsX(133), cellsY(44));  // Right column, before Friends in the stack
     m_displayMode = DisplayMode::ON;
     m_displayOrder = DisplayOrder::OLDEST_FIRST;
     m_enabledEvents = EVENT_DEFAULT;
@@ -227,8 +230,8 @@ void EventLogHud::rebuildRenderData() {
 
     // Calculate background dimensions
     int bgWidthChars = getBackgroundWidthChars();
-    float backgroundWidth = calculateBackgroundWidth(bgWidthChars);
-    float contentStartX = startX + dim.paddingH;
+    // BOX-MODEL: sized below once the row count is known; the caption band is
+    // the plan's. contentStartX comes from the plan.
 
     // Filter events by enabled flags and collect visible entries
     std::vector<const EventLogEntry*> visibleEntries;
@@ -250,20 +253,20 @@ void EventLogHud::rebuildRenderData() {
     // Always size the background for m_maxDisplayEvents so the HUD shows its
     // full configured size even when empty or partially filled
     m_cachedNumDataRows = m_maxDisplayEvents;
-    float backgroundHeight = calculateBackgroundHeight(m_maxDisplayEvents, m_bShowTitle);
+    BaseHud::PanelWant want;
+    want.contentW = PluginUtils::calculateMonospaceTextWidth(bgWidthChars, dim.fontSize);
+    want.sectionH = { m_maxDisplayEvents * dim.lineHeightNormal };
+    want.captionW = planTitleWidth(dim, "Event Log", TitleTier::Large);
+    want.tier = TitleTier::Large;
+    PanelPlan& plan = planPanel(dim, want);
+    addPlanBackground(plan, startX, startY);
+    float contentStartX = plan.contentX();
+    float currentY = plan.contentY();
 
-    // Add background
-    addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
-
-    float currentY = startY + dim.paddingV;
-
-    // Title
-    if (m_bShowTitle) {
-        addTitleString("Event Log", contentStartX, currentY,
-                       PluginConstants::Justify::LEFT, this->getFont(FontCategory::TITLE),
-                       getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
-        currentY += dim.lineHeightLarge;
-    }
+    // Title — the plan's caption row, above currentY. addPlanTitle emits an
+    // empty string when hidden, keeping string index 0 stable.
+    addPlanTitle(plan, "Event Log", this->getFont(FontCategory::TITLE),
+                 getColor(ColorSlot::PRIMARY));
 
     // Layout: [icon] [timestamp] message — columns are optional
     float iconHalfSize = ICON_BASE_SIZE * m_fScale;
@@ -312,21 +315,29 @@ void EventLogHud::rebuildRenderData() {
             RiderClickRegion region;
             region.x = startX;
             region.y = currentY;
-            region.width = backgroundWidth;
+            region.width = plan.width();
             region.height = dim.lineHeightNormal;
             region.raceNum = entry->raceNum;
             region.rowIndex = currentRow;
+            // The band is emitted from PRE-offset coords: addRowHighlight applies the
+            // offset itself, like every other add* helper, while the REGION is stored
+            // post-offset because it is hit-tested against the cursor. Feeding it the
+            // region's own y offset the band twice, putting it off the panel entirely
+            // at any non-zero position (the reposition path below already un-offsets
+            // for the same reason). The band's X does not come from the region at all
+            // any more -- it is the plan's content column.
+            const float bandY = region.y;
             applyOffset(region.x, region.y);
             // Highlight the hovered row FIRST so it sits behind this row's icon and text
             // (quads render in push order).
             if (static_cast<int>(m_riderClickRegions.size()) == m_hoveredRegionIndex) {
-                SPluginQuad_t hover;
-                setQuadPositions(hover, region.x, region.y, region.width, region.height);
-                hover.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-                hover.m_ulColor = PluginUtils::applyOpacity(
-                    getColor(ColorSlot::MUTED), HOVER_HIGHLIGHT_OPACITY);
-                m_hoverQuadIndex = static_cast<int>(m_quads.size());
-                m_quads.push_back(hover);
+                // Inset the DRAWN highlight, not the click region: the region stays
+                // full-width so clicking anywhere on the row still works.
+                // The content column, not the row's full width -- see the note where
+                // contentRowInsetX() used to live in base_hud.h.
+                m_hoverQuadIndex = addRowHighlight(
+                    plan.contentX(), bandY, plan.contentW(), region.height,
+                    PluginUtils::applyOpacity(getColor(ColorSlot::MUTED), ROW_HOVER_ALPHA));
             }
             m_riderClickRegions.push_back(region);
         }
@@ -439,7 +450,7 @@ void EventLogHud::rebuildRenderData() {
     }
 
     // Update bounds (unoffset — isPointInBounds applies offset at test time)
-    setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
+    setBounds(startX, startY, startX + plan.width(), startY + plan.height());
 }
 
 void EventLogHud::handleClick(float mouseX, float mouseY) {
@@ -462,20 +473,41 @@ void EventLogHud::rebuildLayout() {
 
     float startX = START_X;
     float startY = START_Y;
-    float backgroundWidth = calculateBackgroundWidth(getBackgroundWidthChars());
-    float backgroundHeight = calculateBackgroundHeight(m_cachedNumDataRows, m_bShowTitle);
+    BaseHud::PanelWant want;
+    want.contentW = PluginUtils::calculateMonospaceTextWidth(getBackgroundWidthChars(), dim.fontSize);
+    want.sectionH = { m_cachedNumDataRows * dim.lineHeightNormal };
+    want.captionW = planTitleWidth(dim, "Event Log", TitleTier::Large);
+    want.tier = TitleTier::Large;
+    PanelPlan& plan = planPanel(dim, want);
+    plan.x0 = startX; plan.y0 = startY;
+    float backgroundWidth = plan.width();
+    float backgroundHeight = plan.height();
 
     // Update background quad position
     updateBackgroundQuadPosition(startX, startY, backgroundWidth, backgroundHeight);
 
     // Reposition all strings
-    float contentStartX = startX + dim.paddingH;
-    float currentY = startY + dim.paddingV;
+    float contentStartX = plan.contentX();
+    float currentY = plan.contentY();
     size_t stringIndex = 0;
 
-    if (m_bShowTitle && stringIndex < m_strings.size()) {
-        positionString(stringIndex++, contentStartX, currentY);
-        currentY += dim.lineHeightLarge;
+    // UNCONDITIONAL, mirroring rebuildRenderData above -- two faults, one line.
+    //
+    // THE INDEX. The caption ALWAYS pushes a string (an empty one when the title is
+    // hidden), so m_strings is always 1 + 3 * rows. Consuming index 0 only when the
+    // title is shown put every row's timestamp in the message column, every message in
+    // the detail column, and left the last row's detail unmoved -- scrambled until the
+    // next data-driven rebuild. Reachable unthemed: title off, then drag or rescale.
+    // Every other HUD that walks strings sequentially positions its title
+    // unconditionally; this was the last one gated.
+    //
+    // THE ADVANCE. reservedTitleHeight(), not the bare row it used to spend -- it
+    // returns 0 when the title is hidden, which is what makes the unconditional form
+    // correct, and it agrees with the full rebuild under a band-without-card theme
+    // where the bare row is a cell short. A fast path that advances differently from
+    // the rebuild it mirrors is the Standings desync again, one HUD over.
+    if (stringIndex < m_strings.size()) {
+        positionString(stringIndex++, plan.X(plan.g.captionX), planTitleY(plan));
     }
 
     // Reposition event entries (3 strings per row: timestamp, message, detail)
@@ -530,7 +562,13 @@ void EventLogHud::rebuildLayout() {
     if (m_hoverQuadIndex >= 0 && m_hoverQuadIndex < static_cast<int>(m_quads.size()) &&
         m_hoveredRegionIndex >= 0 && m_hoveredRegionIndex < static_cast<int>(m_riderClickRegions.size())) {
         const auto& r = m_riderClickRegions[m_hoveredRegionIndex];
-        setQuadPositions(m_quads[m_hoverQuadIndex], r.x, r.y, r.width, r.height);
+        // The regions are stored POST-offset (they are hit-tested against the cursor),
+        // while repositionRowHighlight takes pre-offset coords like every other
+        // add*/rewrite* helper and applies the offset itself -- so hand the origin back
+        // un-offset. Through the helper because a themed band is nine quads, not one.
+        repositionRowHighlight(m_hoverQuadIndex,
+                               plan.contentX(), r.y - m_fOffsetY,
+                               plan.contentW(), r.height);
     }
 
     // Update bounds (unoffset — isPointInBounds applies offset at test time)

@@ -262,7 +262,14 @@ jobs:
           Copy-Item build\MXB-Release\mxbmrp3.dlo      "$stage\mxbmrp3.dlo"
           Copy-Item build\GPB-Release\mxbmrp3_gpb.dlo  "$stage\mxbmrp3_gpb.dlo"
           Copy-Item build\KRP-Release\mxbmrp3_krp.dlo  "$stage\mxbmrp3_krp.dlo"
-          Copy-Item README.md, LICENSE, THIRD_PARTY_LICENSES.md $stage\
+          # No README.md: the zip's own README.txt (rendered below) is the
+          # offline doc, and it links the repo and the docs site. The GitHub
+          # README is written for GitHub — its screenshots and icons live in
+          # assets/, which is not shipped, so the bundled copy rendered with
+          # broken images anyway. LICENSE and THIRD_PARTY_LICENSES.md are NOT
+          # optional: the zip carries OFL-1.1 fonts and MIT-licensed gamepad
+          # art, both of which require their notice to travel with the copy.
+          Copy-Item LICENSE, THIRD_PARTY_LICENSES.md $stage\
           # Render the manual-install guide from the shared template (same file
           # make_release.bat uses) so the CI zip and a local zip are identical.
           (Get-Content packaging\release_readme.txt) -replace '__VERSION__', $ver | Set-Content "$stage\README.txt"
@@ -294,7 +301,9 @@ jobs:
             "README.txt", "LICENSE", "THIRD_PARTY_LICENSES.md",
             "mxbmrp3_data\web\index.html", "mxbmrp3_data\web\sw.js",
             "mxbmrp3_data\web\js\overlay-render.js",
-            "mxbmrp3_data\fonts", "mxbmrp3_data\icons"
+            "mxbmrp3_data\fonts", "mxbmrp3_data\icons",
+            "mxbmrp3_data\themes", "mxbmrp3_data\gamepads",
+            "mxbmrp3_data\pitboards", "mxbmrp3_data\spotters"
           )
           # Match either path separator: the zip stores forward slashes; 7-Zip's
           # listing usually shows backslashes on Windows, but don't bet the
@@ -395,6 +404,12 @@ jobs:
   # release unnoticed.
   package:
     needs: build-release
+    # Same transitive-skip guard build-release carries, for the same reason: a
+    # job with no `if` defaults to success(), which looks at the whole needs
+    # CHAIN — and on a dry run `tests` is skipped, so this job silently skipped
+    # too and the dry run validated everything except the installer it exists
+    # to validate (observed: run #15 uploaded no Setup.exe).
+    if: ${{ !cancelled() && needs.build-release.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -418,13 +433,13 @@ jobs:
           echo "amd64 stub present: $(makensis -VERSION)"
 
       - name: Download staging tree (MSVC payload)
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: release-staging-v${{ needs.build-release.outputs.version }}
           path: staging
 
       - name: Download built payload (zip + SBOM)
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: release-payload-v${{ needs.build-release.outputs.version }}
           path: dist

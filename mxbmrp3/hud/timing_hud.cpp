@@ -21,26 +21,22 @@
 #include "../diagnostics/timer.h"
 #include "../core/plugin_utils.h"
 #include "../core/widget_constants.h"
+#include "center_stack.h"
 #include "../core/color_config.h"
 #include "../core/stats_manager.h"
 #include "../core/hud_manager.h"
+#include "fuel_widget.h"       // the readout row reads its estimate rather than re-deriving one
 
 using namespace PluginConstants;
 
 // Positioning constants
 namespace {
-    // Both layouts center horizontally on screen (around CENTER_X) so toggling layout doesn't jump
-    constexpr float CENTER_X = 0.5f;
     constexpr float START_X = 0.0f;
     constexpr float START_Y = 0.0f;
 
-    // Default vertical position: LAST in the center-top stack (GapBar -> Notices -> Timing, one
-    // grid snap between each). The Timing HUD grows DOWN, so placing it at the bottom means it
-    // never overlaps the notice/gapbar above no matter how many comparison rows are enabled.
-    //   notice bottom (0.117336) + 1 vertical cell (0.011734) = 0.129069 (== notices divider).
-    // All three boxes are now lineHeightLarge tall (4 cells), so the whole stack lands on the
-    // grid: box tops at cells 1/6/11, box bottoms at cells 5/10.
-    constexpr float DEFAULT_POSITION_Y = 0.129069f;
+    // Default vertical position is LAST in the center-top stack, at CenterStack::timingTop()
+    // -- see hud/center_stack.h. The Timing HUD grows DOWN, so sitting at the bottom means it
+    // never overlaps the notice/gapbar above however many comparison rows are enabled.
 }
 
 TimingHud::TimingHud()
@@ -61,9 +57,20 @@ TimingHud::TimingHud()
     , m_previousAllTimeS1PlusS2PlusS3(-1)
     , m_isFrozen(false)
 {
+    // TITLE RESTORED, TEMPORARILY. This panel was one of the three the caption was taken
+    // from (see BaseHud::m_titleSupported for the twelve that keep it off). It is back so
+    // the reason the caption was unwanted can be shown rather than described -- nothing
+    // else about this HUD reverted with it: the panel, its body card, the coloured
+    // block's outset and the stack spacing are all as the last few commits left them.
     // One-time setup
     DEBUG_INFO("TimingHud created");
     setDraggable(true);
+    // Body cards, one PER SECTION, because this panel is two things: the lap TIME,
+    // and what that time is being COMPARED against. One card around both says they
+    // are one list, and the big time glyph then reads as the first row of it.
+    // See BaseHud::m_bContentSections.
+    m_bContentCard = true;
+    m_bContentSections = true;
     m_quads.reserve(1);    // Single background quad (values carry colour via text, no strips)
     m_strings.reserve(8);  // Time + (name + value) per comparison row
 
@@ -665,85 +672,245 @@ void TimingHud::rebuildRenderData() {
         }
     }
 
-    if (!m_showTime && rowCount == 0) {
+    // Hoisted above the readout build, which sizes its two TEXT rows from the font
+    // metrics; the layout section below reuses this rather than reading twice.
+    auto dim = getScaledDimensions();
+
+    // === BUILD THE READOUT ROWS (the second, non-comparison section) ===
+    //
+    // Every value here is READ from the source that already owns it, never
+    // re-derived: the session clock through formatSessionClock (the one source
+    // in-game and the web overlay share, overtime labels and all), the fuel
+    // estimate through FuelWidget, which accumulates the per-lap history the
+    // estimate needs. A second accumulation would be a second answer.
+    // 24, not the 16 a lap time needs: the session format is the long one here
+    // ("20 min + 2 laps"), and a value that silently truncates is worse than a
+    // row that costs eight bytes more on the stack.
+    // 48, not 24: a server or track name is free text, and a buffer shorter than the
+    // panel is a SECOND, invisible truncation -- it silently cut the value before the
+    // row's own budget could, which is what made an earlier test look like it passed.
+    // The row's width is the only thing that should decide what fits.
+    struct Readout { const char* name; char value[48]; };
+    Readout readouts[READOUT_COUNT];
+    int readoutCount = 0;
+    if (m_enabledReadouts != READOUT_NONE) {
+        const PluginData& pd = PluginData::getInstance();
+        const SessionData& sd = pd.getSessionData();
+        const int me = pd.getDisplayRaceNum();
+        auto add = [&](ReadoutFlags flag, const char* fmt, auto... args) {
+            if (!(m_enabledReadouts & flag)) return;
+            Readout& r = readouts[readoutCount++];
+            r.name = READOUT_INFO[readoutIndexOf(flag)].name;
+            snprintf(r.value, sizeof(r.value), fmt, args...);
+        };
+
+        const int position = pd.getDisplayPositionForRaceNum(me);
+        const int entries = static_cast<int>(pd.getDisplayClassificationOrder().size());
+        if (position > 0 && entries > 0) add(READOUT_POSITION, "%d/%d", position, entries);
+        else                             add(READOUT_POSITION, "%s", Placeholders::GENERIC);
+
+        const StandingsData* mine = pd.getStanding(me);
+        const int lap = mine ? mine->numLaps + 1 : 0;   // numLaps counts COMPLETED laps
+        if (lap <= 0)                 add(READOUT_LAP, "%s", Placeholders::GENERIC);
+        else if (sd.sessionNumLaps > 0) add(READOUT_LAP, "%d/%d", lap, sd.sessionNumLaps);
+        else                            add(READOUT_LAP, "%d", lap);
+
+        if (m_enabledReadouts & READOUT_TIME) {
+            Readout& r = readouts[readoutCount++];
+            r.name = READOUT_INFO[readoutIndexOf(READOUT_TIME)].name;
+            PluginUtils::formatSessionClock(pd.getLeaderLapsToGo(), pd.getSessionTime(),
+                                            r.value, sizeof(r.value));
+        }
+
+        if (m_enabledReadouts & READOUT_SESSION) {
+            Readout& r = readouts[readoutCount++];
+            r.name = READOUT_INFO[readoutIndexOf(READOUT_SESSION)].name;
+            // The same helper SessionHud prints, so "20 min + 2 laps" reads
+            // identically in both places and a format change lands in one.
+            PluginUtils::formatSessionFormat(sd.sessionLength, sd.sessionNumLaps,
+                                             r.value, sizeof(r.value));
+            // An unlimited session (practice with no clock and no lap target) has
+            // no format to state, and the helper answers with an empty string. A
+            // row with nothing after its label reads as broken, so it takes the
+            // same placeholder every other row here uses when it has no value.
+            if (r.value[0] == '\0') strcpy_s(r.value, sizeof(r.value), Placeholders::GENERIC);
+        }
+
+        if (m_enabledReadouts & READOUT_FUEL) {
+            Readout& r = readouts[readoutCount++];
+            r.name = READOUT_INFO[readoutIndexOf(READOUT_FUEL)].name;
+            const float laps = HudManager::getInstance().getFuelWidget().getLapsRemaining();
+            // THE UNIT IS IN THE VALUE, not the label. A bare "3.2" beside "Fuel"
+            // reads as litres as easily as laps, and the label column is the one
+            // that cannot grow -- it is sized by "Last Lap" above. The value column
+            // already carries "20 min + 2 laps", so "3.2 laps" costs nothing.
+            if (laps >= 0.0f) snprintf(r.value, sizeof(r.value), "%.1f laps", laps);
+            else strcpy_s(r.value, sizeof(r.value), Placeholders::GENERIC);
+        }
+
+        // SERVER and TRACK, read from the same places the Session panel reads them --
+        // PluginUtils::serverLabel (which answers "Online" for a game whose API has no
+        // serverType once a real opponent is present) and SessionData::trackName. A
+        // second derivation here would be a second answer to "what server am I on".
+        auto addText = [&](ReadoutFlags flag, const char* text) {
+            if (!(m_enabledReadouts & flag)) return;
+            Readout& r = readouts[readoutCount++];
+            r.name = READOUT_INFO[readoutIndexOf(flag)].name;
+            const char* src = (text && text[0] != '\0') ? text : Placeholders::GENERIC;
+            // Stored WHOLE. What fits is a property of the drawn row -- its label, the
+            // fonts, the panel's content width -- and none of that is known until the
+            // plan below exists, so the fitting happens at draw.
+            strncpy_s(r.value, sizeof(r.value), src, _TRUNCATE);
+        };
+        addText(READOUT_SERVER,
+                PluginUtils::serverLabel(sd.serverType, sd.serverName,
+                                         static_cast<int>(pd.getRaceEntries().size())));
+        addText(READOUT_TRACK, sd.trackName);
+    }
+
+    if (!m_showTime && rowCount == 0 && readoutCount == 0) {
         setBounds(0.0f, 0.0f, 0.0f, 0.0f);
         return;
     }
 
     // === LAYOUT: a centered vertical stack (big time on top, comparison rows below) ===
-    auto dim = getScaledDimensions();
+    // BOX-MODEL: two sibling section cards — the big time in one, the
+    // comparison rows in the other. The seam between them is the sum of the
+    // facing [content] margins (the model's rule), so the overlap the old
+    // sectionGapY() reservation existed to prevent cannot arise, and the panel
+    // height is the engine's ceil rather than a hand-summed stack.
+    BaseHud::PanelWant want;
+    // Fixed width, matching the NoticesHud, so the centered top-stack panels
+    // line up: the stack's shared width rides as the panel MINIMUM.
+    wantCenterStackWidth(want, dim);   // the stack minimum owns the width
+    if (m_showTime) want.sectionH.push_back(bigValueRowHeight(dim));
+    if (rowCount > 0) want.sectionH.push_back(rowCount * dim.lineHeightNormal);
+    if (readoutCount > 0) want.sectionH.push_back(readoutCount * dim.lineHeightNormal);
+    want.captionW = planTitleWidth(dim, "Timing", TitleTier::Large);
+    want.tier = TitleTier::Large;
+    PanelPlan& p = planPanel(dim, want);
 
-    // Center the panel on CENTER_X, quantizing the anchor to the grid when snapping is on (so the
-    // snapped drag offset keeps the left edge on the shared lattice — like the other centered HUDs).
-    auto snapCenteringToGrid = [](float x) -> float {
-        return UiConfig::getInstance().getGridSnapping()
-            ? PluginConstants::HudGrid::SNAP_TO_GRID_X(x)
-            : x;
-    };
+    const float backgroundWidth = p.width();
+    const float backgroundHeight = p.height();
+    // CENTRE-ANCHORED, like the rest of the centre stack: offsetX is the CENTRE
+    // (a stored delta from it until the settings v7 migration). Half this panel's
+    // own width to the left of that, so it stays centred as the width changes and
+    // keeps sharing edges with the equally wide NoticesHud above it.
+    const float bgLeftX = centerAnchoredPanelLeft(backgroundWidth);
 
-    // Fixed width, matching the NoticesHud (CENTER_STACK_WIDTH_CHARS at the large font + padding),
-    // so the two centered top-stack panels line up. Comfortably fits the time and any comparison
-    // row (name + value), and a fixed width keeps the panel from jittering as a value flips
-    // between a delta and a reference time.
-    float innerW = PluginUtils::calculateMonospaceTextWidth(
-        WidgetDimensions::CENTER_STACK_WIDTH_CHARS, dim.fontSizeLarge);
-    float backgroundWidth = dim.paddingH + innerW + dim.paddingH;
+    addPlanBackground(p, bgLeftX, START_Y);
+    addPlanTitle(p, "Timing", this->getFont(FontCategory::TITLE),
+                 this->getColor(ColorSlot::PRIMARY));
 
-    float bgLeftX = snapCenteringToGrid(CENTER_X - backgroundWidth / 2.0f);
+    // Text columns: the rows' own content box, both edges read from the plan. The
+    // right one used to be the LEFT inset mirrored, on the reasoning quoted here that
+    // "the box is symmetric unless a theme sets per-side terms" -- which is true, and
+    // is exactly the case it got wrong: a theme CAN set them, and one that did pulled
+    // every right-aligned value a whole left border inward.
+    const float leftTextX = p.contentX();
+    const float rightTextX = p.contentRight();
+    // Centred text anchors at the CARD's centre (PanelPlan::sectionBoxCenterX),
+    // the horizontal half of the sectionBox centring the big time gets below.
+    const float centerX = p.sectionBoxCenterX();
 
-    // Height is a stack of grid-aligned bands: the time row is one lineHeightLarge band (4 snap
-    // cells, glyph centered), each comparison row a lineHeightNormal band (2 cells, content
-    // centered). No outer padding, so a time-only panel is exactly lineHeightLarge tall —
-    // identical to the Notices and Gap Bar boxes — and the whole center-top stack lands on the
-    // vertical grid (see TIMING_DIVIDER_Y in notices_hud.cpp).
-    float backgroundHeight = (m_showTime ? dim.lineHeightLarge : 0.0f)
-                           + rowCount * dim.lineHeightNormal;
-
-    addBackgroundQuad(bgLeftX, START_Y, backgroundWidth, backgroundHeight);
-
-    // Text inset is HALF the width padding (1 grid cell instead of 2), so the horizontal gap
-    // from the box edge to the edge-aligned label/value matches the vertical gap of the LARGE
-    // glyph in its band — roughly uniform padding all round. The box WIDTH still budgets the
-    // full HUD_HORIZONTAL each side above (it stays locked to the Notices / center-stack width),
-    // so this only shifts the left/right-aligned text one grid cell outward each side; both
-    // insets remain on the snap grid (backgroundWidth is a whole number of cells). The centered
-    // time is unaffected. (Notices needs no equivalent — its text is center-justified.)
-    const float textInsetH = dim.paddingH * 0.5f;
-    const float leftTextX  = bgLeftX + textInsetH;
-    const float rightTextX = bgLeftX + backgroundWidth - textInsetH;
-    const float centerX    = bgLeftX + backgroundWidth / 2.0f;
-
-    float y = START_Y;
-
-    // Big time row: the large glyph centered in its lineHeightLarge band, using the same
-    // centering formula as the Notices/Gap Bar boxes so the time value sits at an identical
-    // vertical position within its band. Red on an invalid lap, muted for a placeholder, else
-    // primary.
+    size_t section = 0;
     if (m_showTime) {
         unsigned long timeColor = timeInvalid   ? this->getColor(ColorSlot::NEGATIVE)
                                 : timePlaceholder ? this->getColor(ColorSlot::MUTED)
                                                   : this->getColor(ColorSlot::PRIMARY);
-        float timeY = y + (dim.lineHeightLarge - dim.fontSizeLarge) * 0.5f;
+        // INK-centred in the section's box. Card or not, sections[].top/bot is
+        // the drawn extent — cardless it degenerates to the content rows, and
+        // the last section carries the panel's ceil remainder either way, so
+        // centring here keeps the digits centred in what the player sees.
+        // The section's DRAWN box, via the shared accessor -- this HUD spelled it by
+        // hand and was the only panel getting it right; see PanelPlan::sectionBoxY.
+        float timeY = inkCenteredY(p.sectionBoxY(section), p.sectionBoxH(section),
+                                   dim.fontSizeLarge);
         addString(timeBuffer, centerX, timeY, Justify::CENTER,
             this->getFont(FontCategory::DIGITS), timeColor, dim.fontSizeLarge);
-        y += dim.lineHeightLarge;
+        section++;
     }
 
-    // Comparison rows: name (left) + value (right), each vertically centered in its
-    // lineHeightNormal band. The name is a row label — STRONG font at the Small size,
-    // row-centered — via addLabel(), matching the other HUDs' labels (and the old secondary
-    // chips); the value is the data font (DIGITS) at the normal size, centered in the band the
-    // same way. Only the VALUE carries the semantic colour (green faster / red slower / neutral
-    // reference); no colored background strips.
-    float valueRowOffset = (dim.lineHeightNormal - dim.fontSize) * 0.5f;
-    for (int i = 0; i < rowCount; i++) {
-        const Row& r = rows[i];
-        addLabel(r.name, leftTextX, y, Justify::LEFT,
-            this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dim);
-        addString(r.val.value, rightTextX, y + valueRowOffset, Justify::RIGHT,
-            this->getFont(FontCategory::DIGITS), valueColor(r.val), dim.fontSize);
-        y += dim.lineHeightNormal;
+    if (rowCount > 0) {
+        float y = p.contentY(section);
+        for (int i = 0; i < rowCount; i++) {
+            const Row& r = rows[i];
+            addLabel(r.name, leftTextX, y, Justify::LEFT,
+                this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dim);
+            addString(r.val.value, rightTextX, y, Justify::RIGHT,
+                this->getFont(FontCategory::DIGITS), valueColor(r.val), dim.fontSize);
+            y += dim.lineHeightNormal;
+        }
+        section++;
     }
+
+    // Same label-left / value-right shape as the comparison rows above, in the
+    // neutral colour: these are readings, not deltas, so there is nothing for the
+    // faster/slower colouring to say about them.
+    if (readoutCount > 0) {
+        float y = p.contentY(section);
+        // WHAT ACTUALLY FITS, measured against the row rather than assumed.
+        //
+        // The value is right-justified at contentRight() and the label left-justified
+        // at contentX(), so a value may use the row MINUS its own label and a space.
+        // Per row, because the label is what it competes with: "Position" costs the
+        // Position row two characters and costs Server nothing.
+        //
+        // THE FIRST VERSION OF THIS GOT IT BADLY WRONG, and the arithmetic is worth
+        // stating so it is not repeated. It derived the budget from
+        // CENTER_STACK_WIDTH_CHARS, treating that 14 as normal-size characters -- but
+        // CenterStack::boxWidth measures those 14 at fontSizeLARGE, the size the big
+        // time above is drawn in. The panel is therefore half again wider in
+        // normal-size characters than the constant suggests, and the budget came out
+        // at 8 when the row had room for far more. Reported from a screenshot with
+        // "Demo Ser" cut short beside an obviously empty column.
+        const float rowW      = rightTextX - leftTextX;
+        const float valueChar = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+
+        // ONE budget for the section, sized by the LONGEST label in it rather than
+        // per row. Per-row was the first attempt and it is worse in two ways: the
+        // column appears to change width from row to row for no reason a reader can
+        // see, and it gives a test no single number to assert against. The cost is a
+        // character or two on the short-labelled rows, and only Server and Track are
+        // ever long enough to notice.
+        float widestLabel = 0.0f;
+        for (int i = 0; i < readoutCount; i++) {
+            widestLabel = (std::max)(widestLabel, PluginUtils::calculateMonospaceTextWidth(
+                static_cast<int>(std::strlen(readouts[i].name)), dim.fontSizeSmall));
+        }
+        // One value-character of air between the columns, so a full-width value
+        // cannot touch its label.
+        m_lastReadoutBudget = (std::max)(1, static_cast<int>(
+            (rowW - widestLabel - valueChar) / valueChar));
+
+        for (int i = 0; i < readoutCount; i++) {
+            addLabel(readouts[i].name, leftTextX, y, Justify::LEFT,
+                this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dim);
+
+            const char* value = readouts[i].value;
+            std::string fitted;
+            if (static_cast<int>(std::strlen(value)) > m_lastReadoutBudget) {
+                fitted = PluginUtils::fitText(value, m_lastReadoutBudget);
+                value = fitted.c_str();
+            }
+
+            addString(value, rightTextX, y, Justify::RIGHT,
+                this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
+            y += dim.lineHeightNormal;
+        }
+    }
+
+    // What the box plan actually spent, for timing_reference_test. The panel is
+    // on the box model, so its chrome is boxPanelPadding — NOT the legacy
+    // ScaledDimensions::paddingV, which still reports panelPaddingYCells for
+    // the panels that have not moved. Reporting the plan's own numbers is what
+    // keeps that test an assertion about this panel rather than about which
+    // padding vocabulary it happens to be written in.
+    // MINUS the ceil slack, which the last section absorbs: that remainder is the
+    // panel rounding itself to a whole cell, not a cost the rows asked for, and
+    // leaving it in makes "what does a row cost" unanswerable.
+    m_fTestContentTop = p.Y(p.g.sections.front().top) - START_Y;
+    m_fTestContentBot = p.Y(p.g.sections.back().bot - p.g.slackY) - START_Y;
 
     setBounds(bgLeftX, START_Y, bgLeftX + backgroundWidth, START_Y + backgroundHeight);
 }
@@ -756,11 +923,14 @@ void TimingHud::resetToDefaults() {
     // from "never touched" and Timing re-appears. This is inherent to any default
     // flip with sparse persistence — call it out in the release notes.
     m_bVisible = true;
+    // Off by DEFAULT, not unavailable -- the toggle is in the Timing tab. A caption
+    // over a panel this close to the centre of the screen is usually noise, which is
+    // why it starts off rather than why it does not exist.
     m_bShowTitle = false;
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.1f;
     m_fScale = 1.0f;
-    setPosition(0.0f, DEFAULT_POSITION_Y);
+    setPosition(CENTER_ANCHOR_X, CenterStack::stackBoxTop());
 
     // Show mode: Always show by default (content shows continuously, references passive)
     m_displayMode = ColumnMode::ALWAYS;
@@ -769,6 +939,9 @@ void TimingHud::resetToDefaults() {
 
     // Comparison rows: Session PB + All-Time PB by default
     m_enabledComparisons = GAP_DEFAULT_ENABLED;
+    // Readout rows: none. This panel is read at a glance mid-corner, so extra
+    // rows are opt-in rather than a new default (see ReadoutFlags).
+    m_enabledReadouts = READOUT_DEFAULT_ENABLED;
 
     // Reset live timing state
     resetLiveTimingState();

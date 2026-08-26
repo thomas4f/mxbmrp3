@@ -52,8 +52,9 @@ private:
     void rebuildRenderData() override;
 
     // Cached minute to avoid unnecessary rebuilds (only update once per minute)
-    int m_cachedLocalMinute;
-    int m_cachedUtcMinute;
+    // The epoch minute the display was last built for. See update(): comparing
+    // this is what replaced a localtime_s()/gmtime_s() pair per frame.
+    long long m_cachedEpochMinute = -1;
 
     // Configuration
     bool m_bShowUtc;     // Show UTC time as secondary line

@@ -23,10 +23,11 @@ namespace {
 
 // A rider that is a valid backmarker AND has a fresh sample, which is the
 // common case; individual tests flip the flags they care about.
-Rider rider(int num, int laps, float pos, bool active = true, bool eligible = true) {
+Rider rider(int num, int laps, float pos, bool active = true, bool eligible = true,
+            bool finished = false) {
     Rider r;
     r.raceNum = num; r.laps = laps; r.trackPos = pos;
-    r.active = active; r.eligibleBackmarker = eligible;
+    r.active = active; r.eligibleBackmarker = eligible; r.finished = finished;
     return r;
 }
 
@@ -138,11 +139,11 @@ TEST_CASE("the two roles have deliberately different eligibility") {
                   rider(2, 6, 0.48f) }, 6, 0.05f);
         CHECK_FALSE(out.isFlagged(1));
     }
-    SUBCASE("an INELIGIBLE rider can still be the lapper") {
-        // This asymmetry is the point: a rider who has finished or is in the
-        // pits is not shown a blue flag, but is still a real bike on track
-        // closing on someone. Collapsing the two flags into one would silently
-        // stop flagging backmarkers being caught by finished riders.
+    SUBCASE("an EXCLUDED rider can still be the lapper (pit lane)") {
+        // This asymmetry is the point: a rider on pit exit is not shown a blue
+        // flag, but is still a real bike on track closing on someone.
+        // Collapsing the flags into one would silently stop flagging
+        // backmarkers being caught out of the pit lane.
         Out out;
         out.run({ rider(1, 5, 0.50f),
                   rider(2, 6, 0.48f, /*active=*/true, /*eligible=*/false) },
@@ -210,6 +211,64 @@ TEST_CASE("outputs are cleared, so reused containers don't leak stale results") 
     CHECK(out.flagged.empty());
     CHECK(out.lapperToLapped.empty());
     CHECK_FALSE(out.playerLapping);
+}
+
+TEST_CASE("finished riders lap nobody") {
+    // The live lap count stops meaning "race progress" once the leader takes
+    // the flag: a finished rider keeps completing cool-down laps while
+    // everyone still racing is one crossing behind by definition. These pin
+    // the demo-weekend transcript bug where P2, racing to the flag on the
+    // lead lap, was blue-flagged for the winner cruising to the pits
+    // ("Blue flag, faster rider closing, rider ninety nine" eleven
+    // milliseconds after "Leader's taken the flag").
+
+    SUBCASE("P2 at the leader's finish is not lapped by the finished winner") {
+        // Leader #99 crossed for 5 laps and finished; #12 (P2) holds 4 only
+        // because their own final crossing hasn't happened yet. 5 >= 4+1 held
+        // before the finished bar, which is exactly the false flag.
+        Out out;
+        out.run({ rider(12, 4, 0.50f),
+                  rider(99, 5, 0.48f, /*active=*/true, /*eligible=*/false,
+                        /*finished=*/true) },
+                5, 0.05f);
+        CHECK_FALSE(out.isFlagged(12));
+        CHECK(out.lapperToLapped.empty());
+    }
+
+    SUBCASE("cool-down laps do not compound into a phantom deficit") {
+        // The finished winner keeps crossing the line; by the time the last
+        // riders finish they read several laps "up". Barred is barred, at any
+        // margin.
+        Out out;
+        out.run({ rider(12, 4, 0.50f),
+                  rider(99, 7, 0.48f, /*active=*/true, /*eligible=*/false,
+                        /*finished=*/true) },
+                7, 0.05f);
+        CHECK_FALSE(out.isFlagged(12));
+    }
+
+    SUBCASE("a genuinely lapped rider still yields to a rider racing to the flag") {
+        // The bar must not over-reach: #90 (two laps down, not finished) is
+        // still caught by unfinished P2 — that flag is correct and stays.
+        Out out;
+        out.run({ rider(90, 2, 0.50f),
+                  rider(12, 4, 0.48f) }, 5, 0.05f);
+        CHECK(out.isFlagged(90));
+        CHECK(out.lapperToLapped.at(12) == 90);
+    }
+
+    SUBCASE("a finished player is not 'lapping' the backmarkers they roll past") {
+        // Mirror case, same rule: cruising after the flag is not lapping.
+        Out out;
+        out.run({ rider(90, 2, 0.52f) }, 5, 0.05f,
+                Player{ 99, 5, 0.50f, /*active=*/true, /*finished=*/true });
+        CHECK_FALSE(out.playerLapping);
+
+        // And the identical geometry with an unfinished player still reports.
+        out.run({ rider(90, 2, 0.52f) }, 5, 0.05f,
+                Player{ 99, 5, 0.50f, /*active=*/true });
+        CHECK(out.playerLapping);
+    }
 }
 
 TEST_CASE("an empty field is handled without touching the outputs") {

@@ -65,6 +65,13 @@ public:
     // Draw `frame` into `out` (must be pre-sized). Fills the backdrop first.
     void render(Image& out, const Frame& frame, uint8_t bgR, uint8_t bgG, uint8_t bgB);
 
+    // Drop every decoded .tga so the next frame re-reads them from disk. This is
+    // what makes a theme's ART live-reloadable HERE and nowhere else: the GAME is
+    // handed sprite indices once at init and cannot be told about a changed file,
+    // but this renderer opens the .tga itself, so invalidating is the whole job.
+    // Fonts are deliberately kept -- a .fnt is not something anyone iterates on.
+    void dropTextureCache() { m_texs.clear(); }
+
 private:
     struct Tex { int w = 0, h = 0; std::vector<uint8_t> rgba; bool ok = false; };
 

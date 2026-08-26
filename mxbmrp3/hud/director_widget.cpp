@@ -6,6 +6,8 @@
 // SettingsButtonWidget.
 // ============================================================================
 #include "director_widget.h"
+#include "corner_buttons.h"
+#include "../core/layout_config.h"
 
 #include "../core/director_manager.h"
 #include "../handlers/spectate_handler.h"
@@ -77,6 +79,9 @@ namespace {
 }
 
 DirectorWidget::DirectorWidget() {
+    // No caption on this panel -- see BaseHud::m_titleSupported.
+    disableTitle();
+    m_panelKind = PanelKind::Widget;
     DEBUG_INFO("DirectorWidget created");
     setDraggable(true);
     m_strings.reserve(1);   // text fallback only
@@ -108,12 +113,13 @@ void DirectorWidget::resetToDefaults() {
     // fades the box away leaving just the opaque glyph - the slider floors at 0%.
     m_fMinBackgroundOpacity = 0.0f;
     m_fBackgroundOpacity = 0.1f;
-    // 100% scale, matching SettingsButtonWidget -> the same pixel-square 6x5 grid-cell box
-    // (~0.033 x 0.0587, ~63x63 px; a 2x2 block = one square gauge widget). Defaults to the
-    // LEFT of the settings button (left edge x=0.957) with a one-cell gap: 0.957 - 0.033
-    // (width) - 0.0055 (1 grid gap) = 0.9185 (= 167 grid cells). Same y (1 cell). Draggable.
+    // 100% scale, matching SettingsButtonWidget -> the same box. The position is DERIVED
+    // from the gear's, one cell to its left; see hud/corner_buttons.h for why the two
+    // defaults share a header and what it cost when they did not (this button overlapped
+    // its neighbour by a cell, and a click in the overlap toggled the director AND opened
+    // the settings panel).
     m_fScale = 1.0f;
-    setPosition(0.9185f, 0.01173f);
+    setPosition(cellsX(CornerButtons::DIRECTOR_X), cellsY(CornerButtons::BUTTON_Y));
     setDataDirty();
 }
 
@@ -185,37 +191,53 @@ void DirectorWidget::rebuildRenderData() {
     // (or icons disabled) degrades to the "DIR <state>" text button below - like
     // SettingsButtonWidget, never a meaningless coloured square.
     if (camSprite > 0) {
-        // PIXEL-SQUARE grid-aligned icon button, sized so a 2x2 block fills one square
-        // gauge widget (e.g. the compass = 12 x 10 grid cells): each button is HALF that,
-        // 6 x 5 cells. On the current grid 6*gridH == 5*gridV in pixels, so the box is a
-        // true pixel-square; whole cells in both axes keep every edge on a grid line, so
-        // four buttons snap perfectly inside a gauge widget and any pair tiles flush.
-        // Cells scale with m_fScale (default 1.0). Must match SettingsButtonWidget.
-        const float gridH = HudGrid::GRID_SIZE_HORIZONTAL;
-        const float gridV = HudGrid::GRID_SIZE_VERTICAL;
-        int hCells = static_cast<int>(6.0f * m_fScale + 0.5f); if (hCells < 1) hCells = 1;
-        int vCells = static_cast<int>(5.0f * m_fScale + 0.5f); if (vCells < 1) vCells = 1;
-        const float bgW = hCells * gridH;
-        const float bgH = vCells * gridV;
+        // Content + padding, like every other panel. This was a fixed 6 x 5 grid cells --
+        // a true pixel-square that let a 2x2 block fill one square gauge widget -- which
+        // also made panelPaddingXCells/panelPaddingYCells no-ops on the only two buttons in the UI. The glyph
+        // is the content and the panel padding surrounds it, so the box now follows the
+        // same rule every other panel does.
+        //
+        // The tiling property is the cost: the box is only pixel-square when the padding
+        // makes it so (the grid cell is 10.56 x 12.672px, so equal cell counts are not
+        // equal pixels). Uniform padding was the explicit trade.
+        const float btnIcon = dim.fontSizeLarge * layout().titleIconSize;
+        // BOTH AXES ON THE LATTICE. Unlike a dial, this box is not art -- it is a chip
+        // (a themed button slice set, or a plain solid quad), which is MEANT to be sized to
+        // the box, so growing it to whole cells distorts nothing and the glyph stays centred
+        // in it. The trade the comment above describes is unchanged: the box is still not
+        // pixel-square, because a cell is not. It is now a whole number of cells, which is
+        // what tiling actually needs. See fitPanelToGrid.
+        const GridFit btnFit = fitPanelToGrid(dim.paddingH + btnIcon + dim.paddingH,
+                                              panelHeight(dim, btnIcon));
+        const float bgW = btnFit.w;
+        const float bgH = btnFit.h;
         // Camera glyph at the SAME size as a HUD title/identity icon. HUD titles draw at
         // the LARGE font, so the identity icon is fontSizeLarge * 0.63 (~20px at 1080p) -
         // use that exact size (not fontSize * 0.63, which is smaller) for a consistent glyph.
-        const float iconSize = dim.fontSizeLarge * TITLE_ICON_SCALE;
-
-        addBackgroundQuad(startX, startY, bgW, bgH);
+        const float iconSize = dim.fontSizeLarge * layout().titleIconSize;
 
         // Accent "chip" (full on hover, dimmed otherwise) - matches SettingsButtonWidget.
         // Holds its normal weight at/above 10% opacity (unchanged), then fades with the
         // slider below 10% so the whole box can vanish at 0%, leaving just the opaque glyph.
-        {
+        const float chipScale = (m_fBackgroundOpacity < 0.1f) ? (m_fBackgroundOpacity / 0.1f) : 1.0f;
+        const float chipAlpha = (isHovering ? 1.0f : 128.0f / 255.0f) * chipScale;
+        const unsigned long chipColor =
+            PluginUtils::applyOpacity(getColor(ColorSlot::ACCENT), chipAlpha);
+
+        // A button, not a panel: takes the theme's BUTTON slices. See SettingsButtonWidget
+        // for why the old frame-plus-opaque-chip pair read as unthemed.
+        if (addThemedButton(startX, startY, bgW, bgH, chipColor)) {
+            // Same reason as SettingsButtonWidget: the themed branch skips
+            // addBackgroundQuad, which is what arms the panel rect and fill strips.
+            invalidatePanelRect();
+        } else {
+            addBackgroundQuad(startX, startY, bgW, bgH);
             SPluginQuad_t chip;
             float x = startX, y = startY;
             applyOffset(x, y);
             setQuadPositions(chip, x, y, bgW, bgH);
             chip.m_iSprite = SpriteIndex::SOLID_COLOR;
-            const float chipScale = (m_fBackgroundOpacity < 0.1f) ? (m_fBackgroundOpacity / 0.1f) : 1.0f;
-            const float chipAlpha = (isHovering ? 1.0f : 128.0f / 255.0f) * chipScale;
-            chip.m_ulColor = PluginUtils::applyOpacity(getColor(ColorSlot::ACCENT), chipAlpha);
+            chip.m_ulColor = chipColor;
             m_quads.push_back(chip);
         }
 
@@ -242,13 +264,22 @@ void DirectorWidget::rebuildRenderData() {
     const float gap = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize) * 0.5f;
     const float textW = PluginUtils::calculateMonospaceTextWidth(static_cast<int>(std::strlen(detail)), dim.fontSize);
     const float lineH = dim.lineHeightNormal;
-    const float textX = startX + dim.paddingH + dotDia + gap;
-    const float bgW = textX + textW + dim.paddingH;
-    const float bgH = dim.paddingV + lineH + dim.paddingV;
+    // Whole cells, like the icon branch above. The height already was (paddingV + a row
+    // + paddingV); the WIDTH was not, because the dot is 0.6 of the font and the gap is
+    // half a character -- neither of which has any reason to land on a cell. This box is
+    // a plain background quad, so growing it distorts nothing; the content is re-centred
+    // in it rather than left hugging one edge. See fitPanelToGrid.
+    const GridFit fit = fitPanelToGrid(dim.paddingH + dotDia + gap + textW + dim.paddingH,
+                                       panelHeight(dim, lineH));
+    const float bgW = fit.w;
+    const float bgH = fit.h;
+    const float contentX = startX + fit.padX;
+    const float contentY = startY + fit.padY;
+    const float textX = contentX + dim.paddingH + dotDia + gap;
 
     addBackgroundQuad(startX, startY, bgW, bgH);
-    addDot(startX + dim.paddingH + dotDia * 0.5f, startY + dim.paddingV + lineH * 0.5f, tint, dotDia);
+    addDot(contentX + dim.paddingH + dotDia * 0.5f, contentY + dim.paddingV + lineH * 0.5f, tint, dotDia);
     const unsigned long textColor = (st == DirState::Off) ? getColor(ColorSlot::MUTED) : getColor(ColorSlot::PRIMARY);
-    addString(detail, textX, startY + dim.paddingV, Justify::LEFT, getFont(FontCategory::NORMAL), textColor, dim.fontSize);
+    addString(detail, textX, contentY + dim.paddingV, Justify::LEFT, getFont(FontCategory::NORMAL), textColor, dim.fontSize);
     setBounds(startX, startY, startX + bgW, startY + bgH);
 }

@@ -57,6 +57,11 @@ enum class ColorSlot {
     COUNT
 };
 
+// Slot from the ini key that names it ("primary"), or -1. The names are the same
+// ones the settings file's [Colors] section uses, so a theme's palette and a user's
+// override are written identically -- one vocabulary, two files.
+int colorSlotFromName(const char* name);
+
 class ColorConfig {
 public:
     static ColorConfig& getInstance();
@@ -65,19 +70,34 @@ public:
     unsigned long getColor(ColorSlot slot) const;
 
     // Convenience getters for each slot
-    unsigned long getPrimary() const { return m_colors[static_cast<size_t>(ColorSlot::PRIMARY)]; }
-    unsigned long getSecondary() const { return m_colors[static_cast<size_t>(ColorSlot::SECONDARY)]; }
-    unsigned long getTertiary() const { return m_colors[static_cast<size_t>(ColorSlot::TERTIARY)]; }
-    unsigned long getMuted() const { return m_colors[static_cast<size_t>(ColorSlot::MUTED)]; }
-    unsigned long getBackground() const { return m_colors[static_cast<size_t>(ColorSlot::BACKGROUND)]; }
-    unsigned long getPositive() const { return m_colors[static_cast<size_t>(ColorSlot::POSITIVE)]; }
-    unsigned long getWarning() const { return m_colors[static_cast<size_t>(ColorSlot::WARNING)]; }
-    unsigned long getNeutral() const { return m_colors[static_cast<size_t>(ColorSlot::NEUTRAL)]; }
-    unsigned long getNegative() const { return m_colors[static_cast<size_t>(ColorSlot::NEGATIVE)]; }
-    unsigned long getAccent() const { return m_colors[static_cast<size_t>(ColorSlot::ACCENT)]; }
+    unsigned long getPrimary() const { return getColor(ColorSlot::PRIMARY); }
+    unsigned long getSecondary() const { return getColor(ColorSlot::SECONDARY); }
+    unsigned long getTertiary() const { return getColor(ColorSlot::TERTIARY); }
+    unsigned long getMuted() const { return getColor(ColorSlot::MUTED); }
+    unsigned long getBackground() const { return getColor(ColorSlot::BACKGROUND); }
+    unsigned long getPositive() const { return getColor(ColorSlot::POSITIVE); }
+    unsigned long getWarning() const { return getColor(ColorSlot::WARNING); }
+    unsigned long getNeutral() const { return getColor(ColorSlot::NEUTRAL); }
+    unsigned long getNegative() const { return getColor(ColorSlot::NEGATIVE); }
+    unsigned long getAccent() const { return getColor(ColorSlot::ACCENT); }
 
-    // Set color for a specific slot
+    // Set color for a specific slot. This is a USER OVERRIDE: it pins the slot, so
+    // it survives a theme change and is what gets written to the settings file.
     void setColor(ColorSlot slot, unsigned long color);
+
+    // Whether the user has pinned this slot, i.e. whether getColor() is answering
+    // from the override rather than from the theme or the built-in default.
+    //
+    // Load-bearing for PERSISTENCE, not just for the UI: only pinned slots are
+    // written, so a palette the user never touched keeps following whatever theme
+    // they pick. Writing all ten unconditionally is what would freeze the first
+    // theme's colours into the settings file forever.
+    bool isOverridden(ColorSlot slot) const;
+    void clearOverride(ColorSlot slot);
+
+    // The colour in effect for a slot when the user has NOT pinned it: the active
+    // theme's if it states one, else the built-in default.
+    static unsigned long getThemeOrDefaultColor(ColorSlot slot);
 
     // Cycle to next/previous color in the palette for a slot
     void cycleColor(ColorSlot slot, bool forward = true);
@@ -85,9 +105,6 @@ public:
     // Reset all colors to defaults
     void resetToDefaults();
 
-    // Get/set raw color array (for save/load)
-    const std::array<unsigned long, static_cast<size_t>(ColorSlot::COUNT)>& getColors() const { return m_colors; }
-    void setColors(const std::array<unsigned long, static_cast<size_t>(ColorSlot::COUNT)>& colors) { m_colors = colors; }
 
     // Get slot name for display
     static const char* getSlotName(ColorSlot slot);
@@ -102,4 +119,7 @@ private:
     ColorConfig& operator=(const ColorConfig&) = delete;
 
     std::array<unsigned long, static_cast<size_t>(ColorSlot::COUNT)> m_colors;
+    // Per-slot: has the user set this, or is it following the theme? See
+    // isOverridden().
+    std::array<bool, static_cast<size_t>(ColorSlot::COUNT)> m_overridden{};
 };

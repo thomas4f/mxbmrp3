@@ -72,6 +72,23 @@ export default [
     },
 
     {
+        // The box-model dev tool (tools/boxmodel): boxmodel.js is UMD —
+        // one file read by the page (browser), the fixture generator (node) and
+        // the Playwright parity spec — so both environments' globals are real.
+        // Not in the default gate targets (lint.sh lints mxbmrp3_data/web and
+        // tests/web unless given a path), but linted clean so passing the path
+        // works.
+        files: ["tools/boxmodel/**/*.js"],
+        languageOptions: {
+            ecmaVersion: 2022, sourceType: "commonjs",
+            globals: { module: "readonly", require: "readonly",
+                       __dirname: "readonly", console: "readonly",
+                       self: "readonly", window: "readonly" },
+        },
+        rules: { "no-unused-vars": ["error", { args: "none" }] },
+    },
+
+    {
         // The Playwright suite: modern CommonJS, linted at full strength. Its
         // in-page evaluate() callbacks reference browser and overlay globals, so
         // no-undef is off here for the same reason as above.

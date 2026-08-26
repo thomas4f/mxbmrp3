@@ -11,9 +11,13 @@
 #include "hud_manager.h"
 #include "xinput_reader.h"
 #include "director_manager.h"
+#include "spotter_manager.h"
 #include "update_checker.h"
 #include "profile_manager.h"
 #include "ui_config.h"
+#include "asset_manager.h"
+#include "analytics_spotter.h"
+#include "analytics_theme.h"
 #include "../hud/helmet_overlay_hud.h"
 #include "../game/game_config.h"
 #include "../diagnostics/logger.h"
@@ -88,7 +92,18 @@ constexpr const char* ANALYTICS_FILENAME = "mxbmrp3_analytics.json";
 //          for non-access-violation exceptions.
 // 2.14.0 = added feat_thread (experimental plugin worker thread adoption flag;
 //          [Advanced] pluginThread) to app_started.
-constexpr const char* ANALYTICS_SDK_VERSION = "mxbmrp3-analytics@2.14.0";
+// 2.15.0 = added panel_theme (which panel theme is in effect, "none" included) to
+//          app_started. A LABEL, not the stored name: shipped themes report
+//          themselves, anything else is custom/missing (see analytics_theme.h).
+// 2.16.0 = added spotter (audio callouts) to app_started. ONE label, like
+//          panel_theme: "none" when off, else WHICH VOICE PACK — a shipped one
+//          by name (`default` included), "custom" for anyone else's,
+//          "missing" for a stored name with no folder. Deliberately says
+//          nothing about TTS vs recordings: the pack is the choice, the
+//          backend is what that choice happens to use (see analytics_spotter.h).
+//          A never-reachable "tts" value was dropped before it ever shipped;
+//          the vocabulary is unchanged for anything a client could have sent.
+constexpr const char* ANALYTICS_SDK_VERSION = "mxbmrp3-analytics@2.16.0";
 
 // Build a UUID-v4 string from 16 cryptographically-random bytes. This is the
 // ONLY identifier we ever send — it is random (not derived from hardware or
@@ -500,6 +515,38 @@ std::string AnalyticsManager::buildEventBody() const {
     // Developer mode (INI-only power-user flag): mainly to filter the dev's and
     // testers' own Release-build sessions out of real-user stats.
     props["feat_devmode"] = SettingsManager::getInstance().isDeveloperMode() ? 1 : 0;
+
+    // Panel theme, as a LABEL rather than the stored name — "none" is a first-class
+    // value here (running unthemed is a choice worth counting, not a missing
+    // reading), a shipped theme reports itself, and anything else collapses to
+    // "custom"/"missing". See analytics_theme.h for why the raw name never ships.
+    // Built after AssetManager::discoverAssets() and the settings load
+    // (PluginManager::initialize orders analytics last), so the lookup sees the
+    // real discovered set — were it built earlier every install would read
+    // "missing".
+    {
+        const std::string& themeName = UiConfig::getInstance().getThemeName();
+        const bool installed =
+            AssetManager::getInstance().getThemeByName(themeName) != nullptr;
+        props["panel_theme"] = AnalyticsTheme::label(themeName, installed);
+    }
+
+    // Spotter (audio callouts): ONE label, exactly like panel_theme above —
+    // off is a value ("none"), so adoption is `spotter != "none"` rather than
+    // a separate feat_ flag, and the value when on is the PACK the player
+    // chose. Not the backend: `default` is text spoken by the OS voice and a
+    // recorded pack plays files, and both are just their name here.
+    // See analytics_spotter.h.
+    {
+        const SpotterManager& spotter = SpotterManager::getInstance();
+        const std::string& packName = spotter.getPackName();
+        bool installed = false;
+        for (const std::string& p : spotter.listAvailablePacks()) {
+            if (p == packName) { installed = true; break; }
+        }
+        props["spotter"] =
+            AnalyticsSpotter::label(spotter.isEnabled(), packName, installed);
+    }
 
     json event;
     event["timestamp"] = isoTimestamp();

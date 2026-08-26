@@ -58,15 +58,13 @@ BaseHud* SettingsHud::renderTabGapBar(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("gap_bar");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeader("Appearance");
+    ctx.addSectionHeading("Appearance");
 
     // Add standard HUD controls (Visible, Texture, Opacity, Scale)
     // Note: Gap Bar HUD has no title support
-    ctx.addStandardHudControls(hud, false);
-    ctx.addSpacing(0.5f);
-
+    ctx.addStandardHudControls(hud);
     // === GAP BAR SECTION ===
-    ctx.addSectionHeader("Gap Bar");
+    ctx.addSectionHeading("Gap Bar");
 
     // Show Gap Text toggle
     ctx.addToggleControl("Show gap", hud->m_showGapText,
@@ -117,8 +115,7 @@ BaseHud* SettingsHud::renderTabGapBar(SettingsLayoutContext& ctx) {
         hud, true, gapFreezeIsOff, "gap_bar.freeze");
 
     // === RIDER MARKERS SECTION ===
-    ctx.addSpacing(0.5f);
-    ctx.addSectionHeader("Rider Markers");
+    ctx.addSectionHeading("Rider Markers");
 
     // Marker mode cycle control (Ghost / Opponents / Both)
     const char* markerModeStr = "";

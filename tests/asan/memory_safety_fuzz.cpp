@@ -26,6 +26,7 @@
 // Survival = process exits 0 with no ASan/UBSan report.
 // ============================================================================
 #include "core/plugin_data.h"
+#include "core/live_gap_engine.h"
 
 #include <cstdio>
 #include <cstdint>
@@ -93,29 +94,22 @@ static int fuzzRaceEntryData() {
 
 // ----------------------------------------------------------------------------
 // 2. Leader-timing position-index invariant.
-//    plugin_data_standings.cpp computes, for a game-supplied float trackPos:
-//        idx = (int)(trackPos * NUM_TIMING_POINTS);
-//        idx = max(0, min(idx, NUM_TIMING_POINTS - 1));
-//    then writes m_leaderTimingPoints[lap][idx]. The whole safety of that write
-//    rests on the clamp holding for EVERY float the game can hand us — including
+//    LiveGap::Engine (core/live_gap_engine.h) computes, for a game-supplied
+//    float trackPos, Engine::positionIndex(trackPos) and writes
+//    m_laps[lap][idx]. The whole safety of that write rests on the clamp
+//    holding for EVERY float the game can hand us — including
 //    NaN/Inf/huge/negative/subnormal, where float->int conversion yields the
-//    "integer indefinite" 0x80000000. We reproduce the exact formula and USE the
-//    result to index a REAL std::array<LeaderTimingPoint, N> (the +0x378d8 type):
-//    if the clamp ever fails to bound the index, ASan faults on the OOB write.
+//    "integer indefinite" 0x80000000. Since the extraction the formula is a
+//    public function of a pure header, so we fuzz THE REAL FUNCTION (no
+//    mirrored copy to drift) and USE the result to index a REAL
+//    std::array<LiveGap::TimingPoint, N> (the +0x378d8 type): if the clamp
+//    ever fails to bound the index, ASan faults on the OOB write.
 // ----------------------------------------------------------------------------
-static constexpr int N = 100;   // mirrors PluginData::NUM_TIMING_POINTS (plugin_data.h)
-static_assert(N == 100, "keep in step with NUM_TIMING_POINTS");
-
-static int clampIndexLikeProduction(float trackPos) {
-    int idx = static_cast<int>(trackPos * static_cast<float>(N));
-    idx = idx < 0 ? 0 : idx;
-    idx = idx > (N - 1) ? (N - 1) : idx;
-    return idx;
-}
+static constexpr int N = static_cast<int>(LiveGap::NUM_TIMING_POINTS);
 
 static int fuzzLeaderTimingIndex() {
-    std::array<LeaderTimingPoint, N> arr{};   // heap-adjacent when boxed below
-    auto* boxed = new std::array<LeaderTimingPoint, N>();  // exercise the heap block too
+    std::array<LiveGap::TimingPoint, N> arr{};   // heap-adjacent when boxed below
+    auto* boxed = new std::array<LiveGap::TimingPoint, N>();  // exercise the heap block too
 
     static const float kFloats[] = {
         0.0f, 0.5f, 1.0f, 0.999999f, 1.0000001f, -0.0f, -1.0f, -1e30f, 1e30f,
@@ -130,9 +124,9 @@ static int fuzzLeaderTimingIndex() {
 
     long writes = 0;
     for (int i = 0; i < nF; ++i) {
-        int idx = clampIndexLikeProduction(kFloats[i]);
-        arr[idx]   = LeaderTimingPoint(12345, 3);   // ASan-checked indexed write
-        (*boxed)[idx] = LeaderTimingPoint(idx, i);
+        int idx = LiveGap::Engine::positionIndex(kFloats[i]);
+        arr[idx]   = LiveGap::TimingPoint{12345, 3};   // ASan-checked indexed write
+        (*boxed)[idx] = LiveGap::TimingPoint{idx, i};
         ++writes;
     }
     // Random float bit patterns — reinterpret raw uint32 as float to hit the
@@ -140,8 +134,8 @@ static int fuzzLeaderTimingIndex() {
     for (long i = 0; i < 500000; ++i) {
         uint32_t bits = rnd();
         float f; std::memcpy(&f, &bits, sizeof(f));
-        int idx = clampIndexLikeProduction(f);
-        arr[idx] = LeaderTimingPoint((int)bits, idx);
+        int idx = LiveGap::Engine::positionIndex(f);
+        arr[idx] = LiveGap::TimingPoint{(int)bits, idx};
         (*boxed)[idx].sessionTime = idx;
         ++writes;
     }
@@ -151,7 +145,8 @@ static int fuzzLeaderTimingIndex() {
 
 // ----------------------------------------------------------------------------
 // 3. Churn the exact crash-site container TYPES under ASan.
-//    +0x378d8 crashed freeing std::map<int, std::array<LeaderTimingPoint,100>>;
+//    +0x378d8 crashed freeing std::map<int, std::array<TimingPoint,100>>
+//    (LeaderTimingPoint then, LiveGap::TimingPoint since the engine extraction);
 //    +0xeaab4 crashed iterating std::map<std::string,double>. Build, mutate,
 //    partially erase, and tear these down repeatedly. Not the plugin's own
 //    mutation code (that's the MSVC path), but it confirms the node lifecycle
@@ -160,15 +155,15 @@ static int fuzzLeaderTimingIndex() {
 static int churnCrashSiteContainers() {
     long ops = 0;
     for (int round = 0; round < 200; ++round) {
-        std::map<int, std::array<LeaderTimingPoint, N>> timing;   // +0x378d8 type
+        std::map<int, std::array<LiveGap::TimingPoint, N>> timing;   // +0x378d8 type
         std::map<std::string, double> odo;                        // +0xeaab4 type
 
         const int entries = 1 + (int)(rnd() % 40);
         for (int e = 0; e < entries; ++e) {
             int lap = (int)(rnd() % 25) - 2;   // include negative/edge laps
             auto& a = timing[lap];
-            int idx = clampIndexLikeProduction((float)(rnd() % 1000) / 999.0f);
-            a[idx] = LeaderTimingPoint((int)rnd(), lap);
+            int idx = LiveGap::Engine::positionIndex((float)(rnd() % 1000) / 999.0f);
+            a[idx] = LiveGap::TimingPoint{(int)rnd(), lap};
 
             char key[32];
             snprintf(key, sizeof(key), "bike_%u", rnd() % 7);

@@ -57,12 +57,10 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("timing");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeader("Appearance");
-    ctx.addStandardHudControls(hud, false);  // No title support (center display)
-    ctx.addSpacing(0.5f);
-
+    ctx.addSectionHeading("Appearance");
+    ctx.addStandardHudControls(hud);
     // === LAYOUT SECTION ===
-    ctx.addSectionHeader("Layout");
+    ctx.addSectionHeading("Layout");
 
     // Show mode: Splits (only after crossing splits) or Always
     const char* showValue = (hud->m_displayMode == ColumnMode::ALWAYS) ? "Always" : "At Splits";
@@ -97,11 +95,9 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::TIMING_TIME_TOGGLE, hud, nullptr, 0, true,
         "timing.time");
 
-    ctx.addSpacing(0.5f);
-
     // === COMPARISONS SECTION ===
     // Each enabled comparison is one row (name + value). No primary/secondary distinction.
-    ctx.addSectionHeader("Comparisons");
+    ctx.addSectionHeading("Comparisons");
 
     ctx.addToggleControl("Session PB", hud->isComparisonEnabled(GAP_TO_PB),
         SettingsHud::ClickRegion::TIMING_GAP_PB_TOGGLE, hud, nullptr, 0, true, "timing.gap_pb");
@@ -116,16 +112,30 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
     ctx.addToggleControl("Record", hud->isComparisonEnabled(GAP_TO_RECORD),
         SettingsHud::ClickRegion::TIMING_GAP_RECORD_TOGGLE, hud, nullptr, 0, true, "timing.gap_record");
 
-    // Info text - same style as the other tab hints
-    ColorConfig& colors = ColorConfig::getInstance();
-    ctx.currentY += ctx.lineHeightNormal * 0.5f;
-    ctx.parent->addString("Toggle PB scope (Bike/Class) in the General tab.", ctx.labelX, ctx.currentY,
-        PluginConstants::Justify::LEFT, PluginConstants::Fonts::getNormal(),
-        colors.getMuted(), ctx.fontSize * 0.9f);
-    ctx.currentY += ctx.lineHeightNormal;
-    ctx.parent->addString("Bind Segment Add/Remove (Hotkeys tab) for sections.", ctx.labelX, ctx.currentY,
-        PluginConstants::Justify::LEFT, PluginConstants::Fonts::getNormal(),
-        colors.getMuted(), ctx.fontSize * 0.9f);
+    // === READOUTS SECTION ===
+    // The figures people otherwise run a whole widget to see. One row each, all
+    // off by default, driven by the same READOUT_INFO table the renderer walks --
+    // so adding a readout is one row there and nothing here.
+    //
+    // The generic CHECKBOX region with a bitfield + mask, exactly as the standings
+    // columns do it: a toggle per readout would otherwise want a ClickRegion enum
+    // value and a handler case each, one per readout, for identical behaviours.
+    ctx.addSectionHeading("Readouts");
+    for (int i = 0; i < READOUT_COUNT; i++) {
+        const ReadoutInfo& info = READOUT_INFO[i];
+        // ONE tooltip id shared by all seven rows: they are one feature (the extra
+        // readouts), so they carry one description -- and one what's-new marker
+        // covers the whole block rather than needing a row each. Hovering any of
+        // them dismisses the block, which is right: they arrived together.
+        ctx.addToggleControl(info.uiName, (hud->m_enabledReadouts & info.flag) != 0,
+            SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledReadouts, info.flag,
+            true, "timing.readouts");
+    }
+
+    // No tips here. Two lines ("PB scope lives in General", "bind Segment Add/Remove
+    // in Hotkeys") pointed at other tabs from the bottom of this one, and the readout
+    // list has grown past what the tab has room for. A tip that costs a row someone
+    // needs is worse than an undiscovered shortcut.
 
     return hud;
 }

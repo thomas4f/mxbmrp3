@@ -6,6 +6,7 @@
 #include "../core/handler_singleton.h"
 #include "../diagnostics/logger.h"
 #include "../core/plugin_data.h"
+#include "../core/spotter_manager.h"
 #include "../core/plugin_utils.h"
 #include "../core/fmx_manager.h"
 
@@ -80,6 +81,7 @@ void Handlers::handleRaceSession(Unified::RaceSessionData* psRaceSession) {
     PluginData::getInstance().setSession(psRaceSession->session);
     PluginData::getInstance().setSessionSeries(psRaceSession->sessionSeries);  // KRP heat index (0 on other games)
     PluginData::getInstance().setSessionState(psRaceSession->sessionState);
+    SpotterManager::getInstance().onSessionState(psRaceSession->sessionState);
     PluginData::getInstance().setSessionLength(psRaceSession->sessionLength);
     PluginData::getInstance().setSessionNumLaps(psRaceSession->sessionNumLaps);
     PluginData::getInstance().setConditions(static_cast<int>(psRaceSession->conditions));
@@ -156,6 +158,13 @@ void Handlers::handleRaceSessionState(Unified::RaceSessionStateData* psRaceSessi
             PluginData::getInstance().snapshotRaceStartPositions();
         }
     }
+
+    // The spotter keeps its own copy, set BEFORE the logging below: the
+    // PluginData store at the end of this function is what the change
+    // detection here compares against, so it cannot move earlier — and a cue
+    // firing on this transition needs the state being entered, not left.
+    SpotterManager::getInstance().onSessionState(
+        psRaceSessionState->sessionState);
 
     // Event log: session state changes
     {

@@ -5,6 +5,7 @@
 // ============================================================================
 
 #include "standings_hud.h"
+#include "../core/layout_config.h"
 #include "plate_geometry.h"
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
@@ -25,6 +26,17 @@
 
 using namespace PluginConstants;
 
+// The row-icon ratios live in standings_hud.h (StandingsHud::STATUS_ICON_HALF_RATIO /
+// POSGAIN_ICON_HALF_RATIO) so the layout fast path reads the same numbers this does.
+//
+// The rule is the title identity icon's (m_titleIconSize = fontSize * titleIconSize):
+// an icon sitting in a line of text is sized BY that text, so it follows uiFontSize the
+// way the glyphs beside it do. These were absolute constants times m_fScale -- the
+// HUD's own scale and not the text's -- so they were right at the default text size and
+// stayed put at every other one. 0.30 * the default 0.02 font IS the 0.006 that was
+// hardcoded, so a user who never changed the text size sees no difference; the caret is
+// stated as a fraction OF the flag so the two cannot drift apart.
+
 void StandingsHud::CachedIcons::ensureInitialized() {
     if (initialized) return;
     const AssetManager& assets = AssetManager::getInstance();
@@ -38,7 +50,7 @@ void StandingsHud::CachedIcons::ensureInitialized() {
 }
 
 StandingsHud::ColumnPositions::ColumnPositions(float contentStartX, float scale, uint32_t enabledColumns, int nameWidth, int raceNumWidth) {
-    float scaledFontSize = FontSizes::NORMAL * scale;
+    float scaledFontSize = layoutDefaults().fontSizeNormal * scale;
     float current = contentStartX;
 
     // Use helper function to set column positions (eliminates duplicated lambda)
@@ -99,11 +111,20 @@ StandingsHud::DisplayEntry StandingsHud::DisplayEntry::fromRaceEntry(const RaceE
 }
 
 #if defined(MXBMRP3_TEST_BUILD)
-// Where the race-number string sits inside its plate, as a fraction of the plate's
-// height (0 = string origin on the plate's top edge, 1 = on its bottom edge). The
-// value is a POSITION, not a magnitude, so small negatives are legitimate -- hence
-// the far-out-of-band NOT_FOUND sentinel rather than a negative one. (-1.0f was the
-// first choice and a real reading of -0.03 was misread as "no plate".)
+// How far the race number sits from its plate's centre, as a signed fraction of the
+// plate's height. ZERO IS CENTRED; positive is low, negative is high.
+//
+// It reported the string ORIGIN's inset from the plate's top edge until the number
+// went visibly low, and that framing is why: the correct value was a bare -0.033 with
+// no meaning of its own, so a test could only pin it against a hand-computed constant
+// or -- as the drag test did -- against ITSELF at another moment. Both stayed green
+// while the number sat on the plate's bottom edge. Measuring the offset from centre
+// makes the right answer 0, which a test can assert without knowing the metrics.
+//
+// The glyph CENTRE, not its origin: a string's y is the top of its cell.
+// The far-out-of-band NOT_FOUND sentinel stays -- the value is signed, so a negative
+// one is a legitimate reading (-1.0f was the first choice, and a real -0.03 was
+// misread as "no plate").
 float StandingsHud::testPlateNumberInsetY(int row) const {
     constexpr float NOT_FOUND = -1000.0f;
     for (const auto& plate : m_raceNumPlateQuads) {
@@ -116,11 +137,12 @@ float StandingsHud::testPlateNumberInsetY(int row) const {
         // The race-number string for this row: the strings carry no row/column tag,
         // so find the one whose X sits inside the plate's horizontal span.
         const float left = q.m_aafPos[0][0], right = q.m_aafPos[2][0];
+        const float fontSize = getScaledDimensions().fontSize;
         for (const auto& str : m_strings) {
             const float sx = str.m_afPos[0], sy = str.m_afPos[1];
             if (sx < left || sx > right) continue;
             if (sy < top - height || sy > top + height * 2.0f) continue;
-            return (sy - top) / height;
+            return ((sy + fontSize * 0.5f) - (top + height * 0.5f)) / height;
         }
         return NOT_FOUND;
     }
@@ -128,15 +150,32 @@ float StandingsHud::testPlateNumberInsetY(int row) const {
 }
 #endif
 
-float StandingsHud::getColumnTextY(uint8_t columnIndex, float rowY, bool isPlaceholder,
-                                   const ScaledDimensions& dim) const {
-    // The plate number is the one column drawn inside a tight box, so it centres on
-    // that box instead of sitting where the top-aligned text cell puts it. See
-    // hud/plate_geometry.h.
-    if (columnIndex == COL_IDX_RACENUM && !isPlaceholder && !m_bClassicLayout) {
-        return rowY + PlateLayout::numberCenteringOffsetY(dim.lineHeightNormal, dim.fontSize);
+void StandingsHud::setBrandMarkQuad(SPluginQuad_t& quad, float x, float y, const PlateGeometry& pg) {
+    m_iconCache.ensureInitialized();
+    if (m_iconCache.caretUp > 0) {
+        // PIXEL-SQUARE, centred on the slot the triangle occupied -- NOT stretched to
+        // fill it. caret-up.tga is square art, so filling a 0.85-char x 0.7-plate rect
+        // scaled its two axes differently and thickened its outline on one of them.
+        //
+        // Drawing it square costs nothing in silhouette, which is why this is the fix
+        // rather than a compromise: the icon's ink is 64x41 inside its 64x64 texture,
+        // so once rotated the ink is 41/64 of the quad wide -- 9.1 x 14.2px at the
+        // triangle's height, against the triangle's own 9.0 x 14.2. Centring then puts
+        // that ink within a pixel of where the triangle's was, so the proportions
+        // PlateGeometry's comments tune still hold and the column budget is unchanged.
+        // The QUAD is wider than its ink (the texture's transparent margin turns
+        // horizontal when rotated), which is exactly why it must be centred and not
+        // left-aligned like the triangle.
+        const float side = pg.arrowHeight;
+        const float w = side / PluginConstants::UI_ASPECT_RATIO;
+        setQuadPositionsRotatedCW(quad, x + (pg.brandStripWidth - w) * 0.5f, y, w, side);
+        quad.m_iSprite = m_iconCache.caretUp;
+        return;
     }
-    return rowY;
+    // No caret in the icon set: the hand-built triangle, which is what this drew
+    // before and is still the right shape -- just without the icon set's styling.
+    setQuadPositionsArrowRight(quad, x, y, pg.brandStripWidth, pg.arrowHeight);
+    quad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
 }
 
 float StandingsHud::getColumnTextX(uint8_t columnIndex, float columnPosition, float fontSize, bool isPlaceholder, bool gapRightAlign) const {
@@ -150,6 +189,16 @@ float StandingsHud::getColumnTextX(uint8_t columnIndex, float columnPosition, fl
     if (columnIndex == COL_IDX_RACENUM) {
         // Classic: right edge of 3-char field. Modern: center of 4-char plate.
         return columnPosition + charW * (m_bClassicLayout ? 3.0f : 2.0f);
+    }
+    if (columnIndex == COL_IDX_TRACKED) {
+        // Status icon: centre of the 2-char content field, like the classic-layout
+        // position above. COL_TRACKED_WIDTH is 3 = 2 content + 1 trailing spacing,
+        // the same shape every other column uses, so the centre is 1 char in.
+        //
+        // Was a quarter of the FULL column width (0.75 char), which centred it on
+        // nothing -- a quarter-char left of where it belongs, and measured against a
+        // width that includes the spacing the column does not draw in.
+        return columnPosition + charW;
     }
     if (columnIndex == COL_IDX_POSGAIN) {
         // Caret + count render as a left-aligned group: the caret sits ~0.9 char in (see
@@ -298,7 +347,7 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
                             const TrackedRidersManager& trackedMgr = TrackedRidersManager::getInstance();
                             const TrackedRiderConfig* trackedConfig = trackedMgr.getTrackedRider(raceEntry->name);
                             if (trackedConfig) {
-                                spriteIndex = AssetManager::getInstance().getFirstIconSpriteIndex() + trackedConfig->shapeIndex - 1;
+                                spriteIndex = AssetManager::getInstance().iconSpriteForShape(trackedConfig->shapeIndex);
                                 spriteColor = trackedConfig->color;
                             }
                         }
@@ -311,13 +360,17 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
 #endif
 
                 if (spriteIndex > 0) {
-                    // Render icon sprite (tracked or hazard)
-                    constexpr float baseConeSize = 0.006f;
-                    float baseHalfSize = baseConeSize * m_fScale;
-                    float spriteHalfSize = baseHalfSize;
+                    // Render icon sprite (tracked or hazard), sized as a FRACTION OF
+                    // THE ROW FONT -- the rule the title identity icon already follows
+                    // (m_titleIconSize = fontSize * titleIconSize). It was
+                    // 0.006 * m_fScale: correct at the default text size and frozen
+                    // against every other one, so raising uiFontSize grew the row and
+                    // left the flag behind in it. dim.fontSize carries m_fScale, so the
+                    // HUD's own scale still applies, and 0.30 * 0.02 IS the old 0.006 --
+                    // nothing moves for a user who never touched the size.
+                    float spriteHalfSize = dim.fontSize * STATUS_ICON_HALF_RATIO;
 
-                    float colWidth = PluginUtils::calculateMonospaceTextWidth(COL_TRACKED_WIDTH, dim.fontSize);
-                    float spriteCenterX = col.position + colWidth * 0.25f;
+                    float spriteCenterX = getColumnTextX(COL_IDX_TRACKED, col.position, dim.fontSize, false, false);
                     float spriteCenterY = currentY + dim.lineHeightNormal * 0.5f;
                     float spriteHalfWidth = spriteHalfSize / UI_ASPECT_RATIO;
 
@@ -351,10 +404,11 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
             m_iconCache.ensureInitialized();
             if (m_iconCache.caretUp > 0) {
                 bool down = (entry.posDelta < 0);
-                // Smaller than the status-flag icons (0.006f): caret-up.tga is a solid
-                // filled triangle, so it reads chunkier than a flag at the same size.
-                constexpr float baseConeSize = 0.0045f;
-                float spriteHalfSize = baseConeSize * m_fScale;
+                // Smaller than the status-flag icons: caret-up.tga is a solid filled
+                // triangle, so it reads chunkier than a flag at the same size. Same
+                // font-relative rule as those (see STATUS_ICON_HALF_RATIO) -- the two
+                // are stated as one ratio apart, so they cannot drift when either moves.
+                float spriteHalfSize = dim.fontSize * POSGAIN_ICON_HALF_RATIO;
                 float spriteHalfWidth = spriteHalfSize / UI_ASPECT_RATIO;
                 float charW = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
                 float spriteCenterX = col.position + charW * 0.9f;
@@ -521,12 +575,7 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
             }
         }
         bool skipShadow = (col.columnIndex == COL_IDX_RACENUM && !isPlaceholder && !m_bClassicLayout);
-        // The race number is the one column drawn inside a tight box, so it is the
-        // one that has to be centred on that box rather than sitting where the
-        // top-aligned text cell puts it. Everything else stays put — see
-        // hud/plate_geometry.h for why the rest of the row already reads correctly.
-        float textY = getColumnTextY(col.columnIndex, currentY, isPlaceholder, dim);
-        addString(text, textX, textY, justify, font, columnColor, dim.fontSize, skipShadow);
+        addString(text, textX, currentY, justify, font, columnColor, dim.fontSize, skipShadow);
     }
 }
 
@@ -655,39 +704,41 @@ void StandingsHud::buildColumnTable() {
 StandingsHud::HudDimensions StandingsHud::calculateHudDimensions(const ScaledDimensions& dim, int rowCount) const {
     HudDimensions result;
 
-    int widthChars = getBackgroundWidthChars();
-    result.backgroundWidth = PluginUtils::calculateMonospaceTextWidth(widthChars, dim.fontSize)
-        + dim.paddingH + dim.paddingH;
-
-    // The title block holds the plain session label (large) and, optionally, a
-    // session-info row (normal) below it. Folding the info-row height into
-    // titleHeight keeps every downstream "titleHeight + headerHeight" quad offset
-    // correct without touching those sites.
-    result.titleHeight = (m_bShowTitle ? dim.lineHeightLarge : 0.0f)
-        + (m_bShowSessionInfo ? dim.lineHeightNormal : 0.0f);
-
-    // Optional column-header row sits between the title and the rider rows.
+    // The caption band belongs to the plan; the session-info row is CONTENT (the
+    // first row of the section), folded into titleHeight so every downstream
+    // "titleHeight + headerHeight" offset keeps working unchanged.
+    result.titleHeight = m_bShowSessionInfo ? dim.lineHeightNormal : 0.0f;
     result.headerHeight = m_bShowHeaders ? dim.lineHeightNormal : 0.0f;
-
-    // Use provided rowCount or fall back to m_displayRowCount
     int actualRowCount = (rowCount >= 0) ? rowCount : m_displayRowCount;
-
-    // Calculate total height (no spacing between rows, consistent with other HUDs)
     float totalRowsHeight = actualRowCount * dim.lineHeightNormal;
-    result.backgroundHeight = dim.paddingV + result.titleHeight + result.headerHeight + totalRowsHeight + dim.paddingV;
 
-    result.contentStartX = START_X + dim.paddingH;
-    result.contentStartY = START_Y + dim.paddingV;
+    BaseHud::PanelWant want;
+    want.contentW = PluginUtils::calculateMonospaceTextWidth(getBackgroundWidthChars(), dim.fontSize);
+    want.sectionH = { result.titleHeight + result.headerHeight + totalRowsHeight };
+    want.captionW = planTitleWidth(dim, "Standings", TitleTier::Large);
+    want.tier = TitleTier::Large;
+    result.plan = planPanel(dim, want);
+    // Placed here (not only at addPlanBackground) so the fast path reads
+    // absolute positions from the same struct the build used.
+    result.plan.x0 = START_X;
+    result.plan.y0 = START_Y;
 
+    result.backgroundWidth = result.plan.width();
+    result.backgroundHeight = result.plan.height();
+    result.contentStartX = result.plan.contentX();
+    result.contentStartY = result.plan.contentY();
     return result;
 }
 
 StandingsHud::StandingsHud()
-    : m_columns(START_X + Padding::HUD_HORIZONTAL, m_fScale, m_enabledColumns)
+    : m_columns(START_X + layoutDefaults().panelPaddingX, m_fScale, m_enabledColumns)
 {
     // One-time setup
     DEBUG_INFO("StandingsHud created");
     setDraggable(true);
+    // Body card: this HUD's content is a block the theme can frame -- exactly what
+    // a themed body card is for. Opt-in; see BaseHud::m_bContentCard.
+    m_bContentCard = true;
     m_displayEntries.reserve(m_displayRowCount);  // Only build entries we display
     m_quads.reserve(1 + m_displayRowCount);       // Main background + row backgrounds
     m_strings.reserve(m_displayRowCount * 10);    // ~10 strings per entry (estimate for all columns)

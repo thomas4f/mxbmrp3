@@ -55,6 +55,12 @@ void MapHud::CachedIcons::ensureInitialized() {
     circleExclamation = assets.getIconSpriteIndex("circle-exclamation");
     flag = assets.getIconSpriteIndex("flag");
     flagCheckered = assets.getIconSpriteIndex("flag-checkered");
+    // A bare chevron, deliberately NOT one of the rider shapes: the off-view track
+    // pointer must not read as another rider sitting on the edge of the map. It
+    // points UP unrotated, which is the same zero-heading convention the rider
+    // markers use, so the rotation math is shared rather than offset by an icon's
+    // own baked angle (location-arrow points up-RIGHT, and would be 45 degrees out).
+    angleUp = assets.getIconSpriteIndex("angle-up");
     initialized = true;
 }
 
@@ -83,6 +89,9 @@ MapHud::MapHud()
     // One-time setup
     DEBUG_INFO("MapHud created");
     setDraggable(true);
+    // Body card: this HUD draws a content BLOCK under its title, which is what the
+    // themed card frames. Opt-in; see BaseHud::m_bContentCard.
+    m_bContentCard = true;
 
     // Initialize map dimensions (will be adjusted when track data loads)
     m_fBaseMapHeight = MAP_HEIGHT;
@@ -559,7 +568,6 @@ void MapHud::rebuildRenderData() {
     RotationCache rotation = createRotationCache(rotationAngle);
 
     // Calculate container size FIRST using original track bounds (before any zoom override)
-    float titleHeight = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
     float width, height, x, y;
 
     // Calculate maximum bounds across all rotation angles to ensure container fits track at any angle
@@ -592,13 +600,63 @@ void MapHud::rebuildRenderData() {
     float currWidth = currMaxX - currMinX;
     float currHeight = currMaxY - currMinY;
 
-    // Container dimensions (visually square)
-    width = squareWidth;
-    height = squareHeight + titleHeight;
+    // THE PANEL IS THE ENGINE'S BOX around a square map area.
+    //
+    // The map's SIZE is still derived -- the square comes from the track's own
+    // bounds at every rotation, which no row-and-cell composition can produce --
+    // but it is now the plan's contentW/sectionH ask, so everything WRAPPED around
+    // it is the engine's: the frame's clearance, the caption's column, its band and
+    // the card's border. That is what the Map was missing. It composed
+    // `squareHeight + titleHeight` with no horizontal inset at all, so it was the
+    // one panel whose content ran to its own edges and the one panel whose caption
+    // sat a cell right and 23px low of every other HUD's -- because the caption came
+    // from the legacy chain (contentPaddingX(), a max) while every plan panel's
+    // comes from the box model (panelInner + the title box's inset, a sum).
+    PanelWant want;
+    want.tier = TitleTier::Large;
+    want.contentW = squareWidth;
+    want.sectionH = { squareHeight };
+    want.captionW = planTitleWidth(dim, "Map", TitleTier::Large);
+    PanelPlan& plan = planPanel(dim, want);
+    width = plan.width();
+    height = plan.height();
 
-    // Center the track in the square container
+    // Where the map area starts inside the panel. The plan's origin is still (0,0)
+    // here -- addPlanBackground sets it below -- so contentX()/contentY() ARE the
+    // offsets.
+    m_fContentDX = plan.contentX();
+    m_fContentDY = plan.contentY(0);
+
+    // Centre the track in the map AREA. The offsets are NOT subtracted here: every
+    // drawing site adds them to worldToScreen's output too, so they cancel, and
+    // subtracting them once more slid the track down by a whole caption row.
     x = currMinX - (squareWidth - currWidth) / 2.0f;
     y = currMinY - (squareHeight - currHeight) / 2.0f;
+
+    // THE PANEL LANDS ON THE LATTICE; the MAP inside it stays square.
+    //
+    // The plan's own box is composed of whole cells, but its content ask is not:
+    // the square comes from track geometry, a continuous float that lands wherever
+    // it lands -- so the one panel whose size is derived rather than composed from
+    // rows and cells was the one panel that did not line up with the others.
+    // Invisible while the background was off, which is how it survived: turn a
+    // themed background on and the map is the odd one out on every edge.
+    //
+    // Rounded UP so the square never has to shrink (ceilY/ceilX leave an exact
+    // multiple alone), and the slack is split evenly -- the track keeps its
+    // position relative to the panel's centre, so this changes the panel's edges
+    // and nothing inside them.
+    //
+    // Whole cells on BOTH axes rather than equal pixels: the grid is 10.56 x
+    // 12.672px at 1080p, so a panel cannot be both, and every other themed margin
+    // quantises in cells. The map AREA is still visually square -- that is
+    // squareWidth/squareHeight, untouched -- it just sits in a box that agrees
+    // with the grid.
+    const GridFit fit = fitPanelToGrid(width, height);
+    x -= fit.padX;   // the track is positioned from x/y, so pulling the ORIGIN back by
+    y -= fit.padY;   // half the slack keeps it centred while the panel's edges move
+    width = fit.w;
+    height = fit.h;
 
     // --- ZOOM MODE: Override bounds for rendering AFTER container size is calculated ---
     float savedMinX = m_minX, savedMaxX = m_maxX;
@@ -666,14 +724,12 @@ void MapHud::rebuildRenderData() {
         updatePositionFromAnchor();
     }
 
-    // Add background
-    addBackgroundQuad(x, y, width, height);
-
-    // Add title
-    float titleX = x + dim.paddingH;
-    float titleY = y + dim.paddingV;
-    addTitleString("Map", titleX, titleY, Justify::LEFT,
-                  this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
+    // Frame, title band and the map area's card, then the caption -- all at the
+    // plan's coordinates, so the Map's title lands exactly where every other
+    // panel's does.
+    addPlanBackground(plan, x, y);
+    addPlanTitle(plan, "Map", this->getFont(FontCategory::TITLE),
+                 this->getColor(ColorSlot::PRIMARY));
 
     // Calculate clip bounds for track rendering (absolute screen coords)
     // Clip to the map area below the title
@@ -693,13 +749,33 @@ void MapHud::rebuildRenderData() {
     float effOutlineMult = 1.0f + (OUTLINE_WIDTH_MULTIPLIER - 1.0f) * m_fOutlineWidthScale;
     float clipOutlineMult = m_bShowOutline ? effOutlineMult : OUTLINE_WIDTH_MULTIPLIER;
     float outlineHalfWidth = clipEffectiveWidthMeters * 0.5f * clipOutlineMult * m_fTrackScale;
-    float clipLeft = x + m_fOffsetX + outlineHalfWidth;
-    float clipTop = y + titleHeight + m_fOffsetY + outlineHalfWidth;
-    float clipRight = x + width + m_fOffsetX - outlineHalfWidth;
-    float clipBottom = y + height + m_fOffsetY - outlineHalfWidth;
+    // THE CARD, not the panel. Clipping to the panel means clipping to the OUTSIDE of
+    // the theme's frame, so a rotating map drew over its own border and out into the
+    // frame margin -- the track only stayed inside while the panel had no frame to
+    // spill past. contentClipRect() falls back to exactly this rect (panel interior,
+    // below the title) when there is no card, so the unthemed map is unchanged.
+    //
+    // THE MAP AREA, from the plan -- not the panel rect it used to be, which counted
+    // the frame's clearance as map.
+    float clipLeft = x + m_fContentDX + m_fOffsetX + outlineHalfWidth;
+    float clipTop = y + m_fContentDY + m_fOffsetY + outlineHalfWidth;
+    float clipRight = x + m_fContentDX + squareWidth + m_fOffsetX - outlineHalfWidth;
+    float clipBottom = y + m_fContentDY + squareHeight + m_fOffsetY - outlineHalfWidth;
+    {
+        float cl, ct, cr, cb;
+        if (contentClipRect(cl, ct, cr, cb)) {
+            // max/min, so the outline inset above still applies on top of the card.
+            clipLeft   = std::max(clipLeft,   cl + outlineHalfWidth);
+            clipTop    = std::max(clipTop,    ct + outlineHalfWidth);
+            clipRight  = std::min(clipRight,  cr - outlineHalfWidth);
+            clipBottom = std::min(clipBottom, cb - outlineHalfWidth);
+        }
+    }
 
     // For zoom mode, temporarily adjust offset so content aligns with container
-    // worldToScreen outputs coords at (0,0) for zoom, but container is at (x,y)
+    // worldToScreen outputs coords at (0,0) for zoom, but the MAP AREA is at
+    // (x + contentDX, y + contentDY) -- the panel's origin plus the plan's inset,
+    // which is what the drawing sites add on top of worldToScreen's output.
     float savedOffsetX = m_fOffsetX;
     float savedOffsetY = m_fOffsetY;
     if (usingZoom) {
@@ -727,6 +803,8 @@ void MapHud::rebuildRenderData() {
     ribbonKey.baseMapWidth = m_fBaseMapWidth;
     ribbonKey.baseMapHeight = m_fBaseMapHeight;
     ribbonKey.scale = m_fScale;
+    ribbonKey.contentDX = m_fContentDX;
+    ribbonKey.contentDY = m_fContentDY;
     ribbonKey.offsetX = m_fOffsetX;
     ribbonKey.offsetY = m_fOffsetY;
     ribbonKey.clipLeft = clipLeft;
@@ -802,6 +880,22 @@ void MapHud::rebuildRenderData() {
     // renderRiders the local player is drawn last of all so the player's own icon is
     // the most visible element.
     renderRiders(rotation, clipLeft, clipTop, clipRight, clipBottom);
+
+    // ...and, in zoom mode with the track off-view, an arrow on the edge pointing
+    // back at it. After the riders so it is never hidden under one.
+    //
+    // GATED ON trackQuads, which is both the cheap test and the CORRECT one. The
+    // pointer's own work is a scan of the whole world ribbon for the nearest sample,
+    // and doing that before deciding whether to draw cost 4-5us on EVERY zoom frame
+    // -- about three times the entire rider phase, for a marker that is not drawn
+    // 99% of the time (measured with run_perf.sh: zoom riders 2.1us -> 6.3us).
+    //
+    // Zero track quads is exactly "the ribbon culled away entirely", so it is also
+    // a better trigger than the proxy it replaced ("the nearest sample is
+    // off-screen"), which could fire on a hairpin with track still plainly in view.
+    if (trackQuads == 0) {
+        renderOffTrackPointer(rotation, clipLeft, clipTop, clipRight, clipBottom);
+    }
 
 #if defined(MXBMRP3_TEST_BUILD)
     g_mapRidersUs += usSince(profRidersStart);

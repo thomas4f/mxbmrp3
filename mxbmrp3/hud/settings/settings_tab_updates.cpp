@@ -122,10 +122,13 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("updates");
 
     ColorConfig& colorConfig = ColorConfig::getInstance();
-    float cw = PluginUtils::calculateMonospaceTextWidth(1, ctx.fontSize);
-    [[maybe_unused]] float rowWidth = ctx.panelWidth - (ctx.labelX - ctx.contentAreaStartX);
+    // Value columns for this tab's two label+value pairs, in characters from
+    // labelX: the version rows align on the longer of "Current:"/"Available:",
+    // the progress rows on the widest step label.
+    constexpr int VERSION_COLUMN = 11;
+    constexpr int STEP_COLUMN = 10;
 
-    ctx.addSectionHeader("Settings");
+    ctx.addSectionHeading("Settings");
 
     // Developer mode only settings
     if (SettingsManager::getInstance().isDeveloperMode()) {
@@ -150,7 +153,7 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
                         SettingsHud::ClickRegion::UPDATE_CHECK_TOGGLE, nullptr,
                         nullptr, 0, true, "updates.check_enabled");
 
-    ctx.addSpacing(1.0f);
+    ctx.addSpacing();
 
     // Check Now button - centered (fixed width like Records HUD Compare button)
     {
@@ -159,57 +162,20 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
         bool isOnCooldown = checkerForButton.isOnCooldown() && !isChecking;
         bool isDisabled = isChecking || isOnCooldown;  // Disabled while checking or on cooldown
         const char* buttonText = isChecking ? "   ...   " : "Check Now";   // both 9 chars (button is 11 wide -> 1ch padding)
-        float buttonWidth = cw * 11;  // Fixed width for consistent centering
-        float buttonHeight = ctx.lineHeightNormal;
-
-        // Center the button like Copy/Reset in General tab
-        float buttonCenterX = ctx.contentAreaStartX + (ctx.panelWidth - ctx.paddingH - ctx.paddingH) / 2.0f;
-        float buttonX = buttonCenterX - buttonWidth / 2.0f;
-
-        size_t regionIndex = ctx.parent->m_clickRegions.size();
-        if (!isDisabled) {
-            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                buttonX, ctx.currentY, buttonWidth, buttonHeight,
-                SettingsHud::ClickRegion::UPDATE_CHECK_NOW, nullptr
-            ));
-        }
-
-        bool isHovered = !isDisabled && ctx.parent->m_hoveredRegionIndex == static_cast<int>(regionIndex);
-
-        // Background: gray when disabled, purple when active
-        SPluginQuad_t bgQuad;
-        float bgX = buttonX, bgY = ctx.currentY;
-        ctx.parent->applyOffset(bgX, bgY);
-        ctx.parent->setQuadPositions(bgQuad, bgX, bgY, buttonWidth, buttonHeight);
-        bgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        bgQuad.m_ulColor = isDisabled ? PluginUtils::applyOpacity(colorConfig.getMuted(), 0.3f)
-            : isHovered ? colorConfig.getAccent()
-            : PluginUtils::applyOpacity(colorConfig.getAccent(), 0.5f);
-        ctx.parent->m_quads.push_back(bgQuad);
-
-        // Text: gray when disabled, accent on accent when active
-        unsigned long textColor = isDisabled ? colorConfig.getMuted()
-            : isHovered ? colorConfig.getPrimary()
-            : colorConfig.getAccent();
-        ctx.parent->addString(buttonText, buttonCenterX, ctx.currentY, Justify::CENTER,
-            Fonts::getNormal(), textColor, ctx.fontSize);
-
-        ctx.currentY += ctx.lineHeightNormal;
+        // POSITIVE: this is the confirming action of the tab -- fetch and install.
+        // Paired with the red on Reset in the General tab.
+        ctx.addActionButton(buttonText, 11, SettingsHud::ClickRegion::UPDATE_CHECK_NOW,
+                            SettingsLayoutContext::ButtonRole::Positive, !isDisabled);
     }
 
-    ctx.addSpacing(1.0f);
-    ctx.addSectionHeader("Status");
+    ctx.addSectionHeading("Status");
 
-    // Current version (aligned with "Available:" label width)
-    // "Available: " is 11 chars, "Current:   " padded to match
-    float labelWidth = cw * 11;  // Width for label column
-    ctx.parent->addString("Current:", ctx.labelX, ctx.currentY, Justify::LEFT,
-        Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
+    // Current version. VERSION_COLUMN is "Available: " -- the longer of the two
+    // labels -- so the pair of version rows aligns.
     char currentVersionStr[32];
     snprintf(currentVersionStr, sizeof(currentVersionStr), "v%s", PLUGIN_VERSION);
-    ctx.parent->addString(currentVersionStr, ctx.labelX + labelWidth, ctx.currentY, Justify::LEFT,
-        Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
-    ctx.currentY += ctx.lineHeightNormal;
+    ctx.addLabelValueRow("Current:", colorConfig.getSecondary(),
+                         currentVersionStr, colorConfig.getSecondary(), VERSION_COLUMN);
 
     // Show status based on UpdateChecker and UpdateDownloader states
     UpdateChecker& checker = UpdateChecker::getInstance();
@@ -226,13 +192,8 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
     bool isReady = (downloaderState == UpdateDownloader::State::READY);
 
     if (isUpdateAvailable || isDownloading || isReady) {
-        // Show available version (aligned with "Current:" label width)
         std::string latestVersion = checker.getLatestVersion();
         bool debugMode = checker.isDebugMode();
-        float availLabelWidth = cw * 11;  // Match "Current:" alignment
-
-        ctx.parent->addString("Available:", ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
 
         char versionPart[64];
         bool isPrerelease = checker.isLatestPrerelease();
@@ -247,22 +208,18 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
         unsigned long versionColor = debugMode ? colorConfig.getWarning()
             : isPrerelease ? colorConfig.getAccent()
             : colorConfig.getPositive();
-        ctx.parent->addString(versionPart, ctx.labelX + availLabelWidth, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), versionColor, ctx.fontSize);
-        ctx.currentY += ctx.lineHeightNormal;
+        ctx.addLabelValueRow("Available:", colorConfig.getSecondary(),
+                             versionPart, versionColor, VERSION_COLUMN);
 
         // Show test directory warning in debug mode
         if (debugMode) {
-            ctx.parent->addString("Will extract to mxbmrp3_update_test/", ctx.labelX, ctx.currentY, Justify::LEFT,
-                Fonts::getNormal(), colorConfig.getWarning(), ctx.fontSize);
-            ctx.currentY += ctx.lineHeightNormal;
+            ctx.addTextRow("Will extract to mxbmrp3_update_test/", colorConfig.getWarning());
         }
     }
 
     if (isDownloading) {
         // Show step-by-step progress
-        ctx.addSpacing(1.0f);
-        ctx.addSectionHeader("Progress");
+        ctx.addSectionHeading("Progress");
         auto steps = downloader.getSteps();
         int stepIndex = 0;
         for (const auto& step : steps) {
@@ -296,27 +253,16 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
                     break;
             }
 
-            // Render step label
             unsigned long labelColor = (step.status == UpdateDownloader::StepStatus::IN_PROGRESS)
                 ? colorConfig.getAccent()
                 : colorConfig.getSecondary();
-            ctx.parent->addString(step.label, ctx.labelX, ctx.currentY, Justify::LEFT,
-                Fonts::getNormal(), labelColor, ctx.fontSize);
-
-            // Render status indicator (after label)
-            if (indicator[0] != '\0') {
-                ctx.parent->addString(indicator, ctx.labelX + cw * 10, ctx.currentY, Justify::LEFT,
-                    Fonts::getNormal(), indicatorColor, ctx.fontSize);
-            }
-
-            ctx.currentY += ctx.lineHeightNormal;
+            ctx.addLabelValueRow(step.label, labelColor, indicator, indicatorColor, STEP_COLUMN);
             stepIndex++;
         }
 
     } else if (isReady) {
         // Show completed steps
-        ctx.addSpacing(1.0f);
-        ctx.addSectionHeader("Progress");
+        ctx.addSectionHeading("Progress");
         auto steps = downloader.getSteps();
         for (const auto& step : steps) {
             const char* indicator = "OK";
@@ -327,77 +273,34 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
                 indicatorColor = colorConfig.getMuted();
             }
 
-            ctx.parent->addString(step.label, ctx.labelX, ctx.currentY, Justify::LEFT,
-                Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
-            ctx.parent->addString(indicator, ctx.labelX + cw * 10, ctx.currentY, Justify::LEFT,
-                Fonts::getNormal(), indicatorColor, ctx.fontSize);
-            ctx.currentY += ctx.lineHeightNormal;
+            ctx.addLabelValueRow(step.label, colorConfig.getSecondary(),
+                                 indicator, indicatorColor, STEP_COLUMN);
         }
 
-        ctx.addSpacing(0.5f);
+        ctx.addSpacing();
 
         // Update installed message
-        ctx.parent->addString("Update installed!", ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getPositive(), ctx.fontSize);
-        ctx.currentY += ctx.lineHeightNormal;
-
-        ctx.parent->addString("Restart " GAME_NAME " to apply.", ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
-        ctx.currentY += ctx.lineHeightNormal;
+        ctx.addTextRow("Update installed!", colorConfig.getPositive());
+        ctx.addTextRow("Restart " GAME_NAME " to apply.", colorConfig.getSecondary());
 
     } else if (downloaderState == UpdateDownloader::State::FAILED) {
         // Download failed
-        ctx.addSpacing(0.5f);
+        ctx.addSpacing();
         std::string errorText = "Error: " + downloader.getErrorMessage();
-        ctx.parent->addString(errorText.c_str(), ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getNegative(), ctx.fontSize);
-        ctx.currentY += ctx.lineHeightNormal;
-        ctx.addSpacing(0.5f);
+        ctx.addTextRow(errorText.c_str(), colorConfig.getNegative());
+        ctx.addSpacing();
 
         // Retry button - centered
-        {
-            float buttonWidth = cw * 7;  // Fits "[Retry]"
-            float buttonHeight = ctx.lineHeightNormal;
-
-            // Center the button like Copy/Reset in General tab
-            float buttonCenterX = ctx.contentAreaStartX + (ctx.panelWidth - ctx.paddingH - ctx.paddingH) / 2.0f;
-            float buttonX = buttonCenterX - buttonWidth / 2.0f;
-
-            size_t regionIndex = ctx.parent->m_clickRegions.size();
-            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                buttonX, ctx.currentY, buttonWidth, buttonHeight,
-                SettingsHud::ClickRegion::UPDATE_SKIP_VERSION, nullptr
-            ));
-
-            bool isHovered = ctx.parent->m_hoveredRegionIndex == static_cast<int>(regionIndex);
-
-            // Background: purple on purple
-            SPluginQuad_t bgQuad;
-            float bgX = buttonX, bgY = ctx.currentY;
-            ctx.parent->applyOffset(bgX, bgY);
-            ctx.parent->setQuadPositions(bgQuad, bgX, bgY, buttonWidth, buttonHeight);
-            bgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-            bgQuad.m_ulColor = isHovered ? colorConfig.getAccent()
-                : PluginUtils::applyOpacity(colorConfig.getAccent(), 0.5f);
-            ctx.parent->m_quads.push_back(bgQuad);
-
-            // Text: accent on accent when not hovered
-            unsigned long textColor = isHovered ? colorConfig.getPrimary() : colorConfig.getAccent();
-            ctx.parent->addString("Retry", buttonCenterX, ctx.currentY, Justify::CENTER,
-                Fonts::getNormal(), textColor, ctx.fontSize);
-            ctx.currentY += ctx.lineHeightNormal;
-        }
+        ctx.addActionButton("Retry", 7, SettingsHud::ClickRegion::UPDATE_SKIP_VERSION);
 
     } else if (isUpdateAvailable) {
         // Update available - show release notes and install button
         // (Available version row already shown above)
 
-        ctx.addSpacing(0.5f);
-
         // Release notes (if available)
         std::string releaseNotes = checker.getReleaseNotes();
         if (!releaseNotes.empty()) {
-            ctx.addSectionHeader("Release Notes");
+            ctx.addSectionHeading("Release Notes");
 
             // Simple line-by-line display (first few lines)
             std::istringstream stream(releaseNotes);
@@ -421,84 +324,38 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
                     line += "...";
                 }
 
-                ctx.parent->addString(line.c_str(), ctx.labelX, ctx.currentY, Justify::LEFT,
-                    Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
-                ctx.currentY += ctx.lineHeightNormal;
+                ctx.addTextRow(line.c_str(), colorConfig.getSecondary());
                 lineCount++;
             }
 
             // Show truncation note if there are more lines
             if (hasMoreLines) {
-                ctx.addSpacing(1.0f);
-                ctx.parent->addString("See GitHub for full release notes.", ctx.labelX, ctx.currentY, Justify::LEFT,
-                    Fonts::getNormal(), colorConfig.getMuted(), ctx.fontSize);
-                ctx.currentY += ctx.lineHeightNormal;
+                ctx.addSpacing();
+                ctx.addTextRow("See GitHub for full release notes.", colorConfig.getMuted());
             }
 
-            ctx.addSpacing(0.5f);
+            ctx.addSpacing();
         }
 
         // Install button - centered
-        {
-            float buttonWidth = cw * 16;  // Fits "[Install Update]"
-            float buttonHeight = ctx.lineHeightNormal;
-
-            // Center the button like Copy/Reset in General tab
-            float buttonCenterX = ctx.contentAreaStartX + (ctx.panelWidth - ctx.paddingH - ctx.paddingH) / 2.0f;
-            float buttonX = buttonCenterX - buttonWidth / 2.0f;
-
-            size_t regionIndex = ctx.parent->m_clickRegions.size();
-            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                buttonX, ctx.currentY, buttonWidth, buttonHeight,
-                SettingsHud::ClickRegion::UPDATE_INSTALL, nullptr
-            ));
-
-            bool isHovered = ctx.parent->m_hoveredRegionIndex == static_cast<int>(regionIndex);
-
-            // Background: purple on purple
-            SPluginQuad_t bgQuad;
-            float bgX = buttonX, bgY = ctx.currentY;
-            ctx.parent->applyOffset(bgX, bgY);
-            ctx.parent->setQuadPositions(bgQuad, bgX, bgY, buttonWidth, buttonHeight);
-            bgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-            bgQuad.m_ulColor = isHovered ? colorConfig.getAccent()
-                : PluginUtils::applyOpacity(colorConfig.getAccent(), 0.5f);
-            ctx.parent->m_quads.push_back(bgQuad);
-
-            // Text: accent on accent when not hovered
-            unsigned long textColor = isHovered ? colorConfig.getPrimary() : colorConfig.getAccent();
-            ctx.parent->addString("Install Update", buttonCenterX, ctx.currentY, Justify::CENTER,
-                Fonts::getNormal(), textColor, ctx.fontSize);
-            ctx.currentY += ctx.lineHeightNormal;
-        }
+        ctx.addActionButton("Install Update", 16, SettingsHud::ClickRegion::UPDATE_INSTALL);
 
     } else if (checkerStatus == UpdateChecker::Status::CHECKING) {
-        ctx.parent->addString("Checking for updates...", ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
-        ctx.currentY += ctx.lineHeightNormal;
+        ctx.addTextRow("Checking for updates...", colorConfig.getSecondary());
 
     } else if (checkerStatus == UpdateChecker::Status::UP_TO_DATE) {
-        ctx.parent->addString("You have the latest version.", ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
-        ctx.currentY += ctx.lineHeightNormal;
+        ctx.addTextRow("You have the latest version.", colorConfig.getSecondary());
 
     } else if (checkerStatus == UpdateChecker::Status::CHECK_FAILED) {
-        ctx.parent->addString("Could not check for updates.", ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getMuted(), ctx.fontSize);
-        ctx.currentY += ctx.lineHeightNormal;
+        ctx.addTextRow("Could not check for updates.", colorConfig.getMuted());
 
     } else {
         // IDLE - not checked yet. No leading spacing: the status line sits
         // directly under "Current:" to match the CHECKING / UP_TO_DATE /
         // CHECK_FAILED states (they render with no gap too).
-        if (!checker.isEnabled()) {
-            ctx.parent->addString("Enable auto-check or click Check Now.", ctx.labelX, ctx.currentY, Justify::LEFT,
-                Fonts::getNormal(), colorConfig.getMuted(), ctx.fontSize);
-        } else {
-            ctx.parent->addString("Update check pending...", ctx.labelX, ctx.currentY, Justify::LEFT,
-                Fonts::getNormal(), colorConfig.getMuted(), ctx.fontSize);
-        }
-        ctx.currentY += ctx.lineHeightNormal;
+        ctx.addTextRow(checker.isEnabled() ? "Update check pending..."
+                                           : "Enable auto-check or click Check Now.",
+                       colorConfig.getMuted());
     }
 
     return nullptr;  // No specific HUD for this tab

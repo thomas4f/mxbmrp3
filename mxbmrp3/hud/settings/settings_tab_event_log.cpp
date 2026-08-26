@@ -36,12 +36,10 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("event_log");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeader("Appearance");
+    ctx.addSectionHeading("Appearance");
     ctx.addStandardHudControls(hud);
-    ctx.addSpacing(0.5f);
-
     // === LAYOUT SECTION ===
-    ctx.addSectionHeader("Layout");
+    ctx.addSectionHeading("Layout");
 
     ctx.addToggleControl("Show icons", hud->m_showIcons,
         SettingsHud::ClickRegion::EVENT_LOG_ICONS_TOGGLE, hud,
@@ -101,13 +99,11 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
     ctx.addCycleControl("Timestamp", timestampStr, 10,
         SettingsHud::CycleControl::enumMember(hud, &EventLogHud::m_timestampMode, 3, hud),
         hud, true, tsOff, "event_log.timestamp", /*tooltipOnArrows=*/false);
-    ctx.addSpacing(0.5f);
-
     // === EVENTS SECTION ===
     // Group related events into single toggles to keep the UI concise.
     // Each toggle controls multiple bitfield flags via the CHECKBOX handler's
     // multi-bit support (set all / clear all).
-    ctx.addSectionHeader("Events");
+    ctx.addSectionHeading("Events");
 
     // Session: started + state changes
     constexpr uint32_t SESSION_GROUP = EVENT_SESSION_STARTED | EVENT_SESSION_STATE;

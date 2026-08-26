@@ -5,6 +5,7 @@
 // draws one line per rider for the selected chart type.
 // ============================================================================
 #include "session_charts_hud.h"
+#include "center_stack.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
@@ -76,6 +77,10 @@ using SessionChartsMath::formatSecs;
 SessionChartsHud::SessionChartsHud() {
     DEBUG_INFO("SessionChartsHud created");
     setDraggable(true);
+    // Body cards, one PER CHART. See BaseHud::m_bContentSections -- four charts under
+    // one card would read as a single four-panel graph rather than four views.
+    m_bContentCard = true;
+    m_bContentSections = true;
 
     // Reserve hint only (grown on rebuild, not per frame). Covers the default
     // 2-chart view over a long race (2 × 10 rows × ~100 laps × 2 for line+dot); the
@@ -450,49 +455,53 @@ void SessionChartsHud::rebuildRenderData() {
     // are added (a multi-chart stack can exceed the screen — position/scale is the
     // user's to set).
     int nCharts = static_cast<int>(charts.size());
-    float titleHeight = m_bShowTitle ? dims.lineHeightLarge : 0.0f;
     float subHeadH = dims.lineHeightNormal;                        // per-chart subheading row
-    float chartGapY = dims.lineHeightNormal;                       // full-row gap between stacked charts (keeps the HUD on-grid and matching Performance's section gap)
-    float perChartH = GRAPH_HEIGHT_LINES * dims.lineHeightNormal;
+    float perChartH = static_cast<float>(m_graphRows) * dims.lineHeightNormal;
 
     float graphWidth = PluginUtils::calculateMonospaceTextWidth(GRAPH_WIDTH_CHARS, dims.fontSize);
 
-    float contentHeight = nCharts > 0
-        ? nCharts * (subHeadH + perChartH) + (nCharts - 1) * chartGapY
-        : dims.lineHeightNormal;  // "no charts enabled" note
-
-    float backgroundWidth = dims.paddingH + graphWidth + dims.paddingH;
-    float backgroundHeight = dims.paddingV + titleHeight + contentHeight + dims.paddingV;
-
-    setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + backgroundHeight);
-    addBackgroundQuad(START_X, START_Y, backgroundWidth, backgroundHeight);
-
-    float contentStartX = START_X + dims.paddingH;
-    float currentY = START_Y + dims.paddingV;
-
-    if (m_bShowTitle) {
-        addTitleString("Charts", contentStartX, currentY, Justify::LEFT,
-            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dims.fontSizeLarge);
-        currentY += titleHeight;
+    // BOX-MODEL: one sibling section card per chart (heading + graph); the seam
+    // between two is the sum of the facing [content] margins, and the panel's
+    // height is the engine's — the beginContentSection/sectionGapY/finish dance
+    // is gone.
+    BaseHud::PanelWant want;
+    want.contentW = graphWidth;
+    if (nCharts > 0) {
+        for (int i = 0; i < nCharts; ++i) want.sectionH.push_back(subHeadH + perChartH);
+    } else {
+        want.sectionH.push_back(dims.lineHeightNormal);  // "no charts enabled" note
     }
+    want.captionW = planTitleWidth(dims, "Charts", TitleTier::Large);
+    want.tier = TitleTier::Large;
+    PanelPlan& plan = planPanel(dims, want);
+
+    setBounds(START_X, START_Y, START_X + plan.width(), START_Y + plan.height());
+    addPlanBackground(plan, START_X, START_Y);
+
+    float contentStartX = plan.contentX();
+    float currentY = plan.contentY(0);
+
+    addPlanTitle(plan, "Charts", this->getFont(FontCategory::TITLE),
+                 this->getColor(ColorSlot::PRIMARY));
 
     if (charts.empty()) {
         addString("No charts enabled", contentStartX + graphWidth * 0.5f, currentY,
             Justify::CENTER, this->getFont(FontCategory::NORMAL),
             this->getColor(ColorSlot::MUTED), dims.fontSize);
     }
-    float y = currentY;
-    for (ChartType ct : charts) {
-        // Subheading (chart name), styled like StandingsHud's session line.
-        addString(chartNameOf(ct, isRace), contentStartX, y, Justify::LEFT,
-            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dims.fontSize);
+    // ONE CARD PER CHART — a plan section each, opened at the chart's own
+    // heading. Four charts under one card would read as one four-panel graph;
+    // they are four independent views of the session.
+    for (int i = 0; i < nCharts; ++i) {
+        ChartType ct = charts[static_cast<size_t>(i)];
+        float y = plan.contentY(static_cast<size_t>(i));
+        addSectionHeading(chartNameOf(ct, isRace), contentStartX, y, dims);
         y += subHeadH;
         if (!isRace && chartIsRaceOnly(ct)) {
             drawRaceOnlyNote(contentStartX, y, graphWidth, perChartH);
         } else {
             drawChart(ct, contentStartX, y, graphWidth, perChartH, field, drawn);
         }
-        y += perChartH + chartGapY;
     }
 }
 
@@ -956,10 +965,13 @@ void SessionChartsHud::resetToDefaults() {
     setTextureVariant(0);
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
+    m_graphRows = DEFAULT_GRAPH_ROWS;
     // Upper-right by default. A single chart fits comfortably here; multi-chart
     // stacks are tall (each chart is 10 rows) and a full stack exceeds the screen,
     // so users reposition/scale to taste like any HUD.
-    setPosition(0.7315f, 0.011734f);
+    // One grid cell down from the screen edge, computed rather than written out: a
+    // frozen 0.011734 stops being one cell the moment lineHeightRatio is set.
+    setPosition(0.7315f, CenterStack::rowY(1));
 
     m_enabledCharts = CHART_DEFAULT;
     m_enabledElements = ELEM_DEFAULT;

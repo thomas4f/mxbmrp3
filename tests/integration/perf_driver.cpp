@@ -97,6 +97,24 @@ int main(int argc, char** argv) {
     char savePath[] = "Z:\\tmp\\mxbperf\\";
     Startup(savePath);
 
+    // THEMED, when the hook is there. Every measurement here used to run on flat
+    // panels, which skips the whole 9-slice path -- so the most expensive thing a
+    // theme does was unmeasured, and so was the memoisation that makes it
+    // affordable. activeTheme() is a linear name scan over the theme list, and one
+    // rebuild asks for it dozens of times (contentRowInsetX alone costs six,
+    // getScaledDimensions about twenty); StandingsHud's per-frame slide loop was
+    // running ~250 a frame on a full grid before it was cached.
+    //
+    // A synthetic theme, so this needs no .tga files staged next to the driver.
+    // Silently skipped on a build without the hook, which keeps this driver usable
+    // against a shipping DLL.
+    if (auto InstallTheme = (void(*)(const char*,float,float,int,int,int))S("MXBMRP3_Test_InstallTheme")) {
+        InstallTheme("perf", 3.0f, 1.0f, 1, 1, /*cardSprites=*/1);
+        printf("scenario: THEMED (synthetic 9-slice, band + body card)\n");
+    } else {
+        printf("scenario: unthemed (MXBMRP3_Test_InstallTheme not exported)\n");
+    }
+
     // --- Build the shared long/complex circuit + a full 50-rider grid -------
     // buildPerfTrack() synthesizes ~2400 m over ~950 segments (hairpins,
     // sweepers, esses, straights), a heavier superset than the real Farm14

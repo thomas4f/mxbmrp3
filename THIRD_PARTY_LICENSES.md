@@ -140,16 +140,50 @@ SOFTWARE.
 **Used for:** Icon graphics (in-game rider markers from v4, web overlay SVG icons from v7 Free)
 
 ```
-Icons — CC BY 4.0 License
+Icons - CC BY 4.0 License
 https://creativecommons.org/licenses/by/4.0/
 
-Fonts — SIL OFL 1.1 License
+Fonts - SIL OFL 1.1 License
 https://openfontlicense.org
 
-Code — MIT License
+Code - MIT License
 https://opensource.org/licenses/MIT
 
 Copyright 2024 Fonticons, Inc.
+```
+
+---
+
+## IBM Plex Sans
+
+**Project:** https://fonts.google.com/specimen/IBM+Plex+Sans
+**Designer:** Mike Abbink, Bold Monday (IBM)
+**Used for:** UI font (Carbon themes)
+
+```
+SIL Open Font License, Version 1.1
+
+Copyright 2019 IBM Corp. All rights reserved.
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is available with a FAQ at: http://scripts.sil.org/OFL
+```
+
+---
+
+## IBM Plex Mono
+
+**Project:** https://fonts.google.com/specimen/IBM+Plex+Mono
+**Designer:** Mike Abbink, Bold Monday (IBM)
+**Used for:** UI font (Carbon themes)
+
+```
+SIL Open Font License, Version 1.1
+
+Copyright 2017 IBM Corp. All rights reserved.
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is available with a FAQ at: http://scripts.sil.org/OFL
 ```
 
 ---

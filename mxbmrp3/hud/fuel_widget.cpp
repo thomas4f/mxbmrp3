@@ -4,6 +4,8 @@
 // ============================================================================
 #include "fuel_widget.h"
 
+#include "../core/fuel_estimate.h"
+
 #include <algorithm>
 #include <cstdio>
 #include <cmath>
@@ -12,12 +14,15 @@
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
+#include "../core/widget_constants.h"   // SMALL_WIDGET_WIDTH
 
 using namespace PluginConstants;
 
 namespace {
     // Widget dimensions
-    constexpr int FUEL_WIDGET_WIDTH = 8;  // Width in characters (compact)
+    // The shared small-widget width, not a local 8: this widget tiles with the
+    // gauges beside it, and a private copy is how that stops being true.
+    constexpr int FUEL_WIDGET_WIDTH = WidgetDimensions::SMALL_WIDGET_WIDTH;
     constexpr float FUEL_WIDGET_Y = 0.2776f;  // Base Y position for fuel widget
 
     // Format a value (+ optional unit) into the compact widget. Once the value
@@ -37,6 +42,8 @@ FuelWidget::FuelWidget()
     , m_bTrackingActive(false)
     , m_totalLapsRecorded(0)
 {
+    m_panelKind = PanelKind::Widget;
+    m_bContentCard = true;
     // One-time setup
     DEBUG_INFO("FuelWidget created");
     setDraggable(true);
@@ -75,7 +82,7 @@ void FuelWidget::update() {
 
     // OPTIMIZATION: Only rebuild render data when visible
     if (isVisibleAnySurface()) {
-        rebuildRenderData();
+        rebuildAndRecord();
     }
     clearDataDirty();
     clearLayoutDirty();
@@ -154,6 +161,16 @@ void FuelWidget::updateFuelTracking() {
     }
 }
 
+float FuelWidget::getLapsRemaining() const {
+    const PluginData& pd = PluginData::getInstance();
+    // Fuel is the PLAYER's telemetry and only exists on track — spectating or
+    // in a replay there is nothing to estimate from.
+    if (pd.getDrawState() != ViewState::ON_TRACK) return -1.0f;
+    return FuelEstimate::lapsRemaining(
+        pd.getBikeTelemetry().fuel,
+        FuelEstimate::averagePerLap(m_fuelPerLap, m_totalLapsRecorded));
+}
+
 void FuelWidget::resetFuelTracking() {
     m_fuelPerLap.clear();
     m_fuelAtRunStart = 0.0f;
@@ -175,65 +192,9 @@ int FuelWidget::getEnabledRowCount() const {
 }
 
 void FuelWidget::rebuildLayout() {
-    // Fast path - only update positions
-    auto dim = getScaledDimensions();
-
-    float startX = 0.0f;
-    float startY = 0.0f;
-
-    // Calculate dimensions based on enabled rows
-    int rowCount = getEnabledRowCount();
-    float backgroundWidth = calculateBackgroundWidth(FUEL_WIDGET_WIDTH);
-    float titleHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
-    float contentHeight = titleHeight + dim.lineHeightNormal * rowCount;
-    float backgroundHeight = dim.paddingV + contentHeight + dim.paddingV;
-
-    // Set bounds for drag detection
-    setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
-
-    // Update background quad position
-    updateBackgroundQuadPosition(startX, startY, backgroundWidth, backgroundHeight);
-
-    float contentStartX = startX + dim.paddingH;
-    float contentStartY = startY + dim.paddingV;
-    float rightX = startX + backgroundWidth - dim.paddingH;
-    float currentY = contentStartY;
-
-    // Position strings if they exist
-    size_t stringIndex = 0;
-
-    // Title (optional)
-    if (m_bShowTitle && positionString(stringIndex, contentStartX, currentY)) {
-        stringIndex++;
-        currentY += titleHeight;
-    }
-
-    // Row 1: Fuel label and value
-    if (m_enabledRows & ROW_FUEL) {
-        positionString(stringIndex++, contentStartX, currentY);
-        positionString(stringIndex++, rightX, currentY);
-        currentY += dim.lineHeightNormal;
-    }
-
-    // Row 2: Use label and value
-    if (m_enabledRows & ROW_USED) {
-        positionString(stringIndex++, contentStartX, currentY);
-        positionString(stringIndex++, rightX, currentY);
-        currentY += dim.lineHeightNormal;
-    }
-
-    // Row 3: Avg label and value
-    if (m_enabledRows & ROW_AVG) {
-        positionString(stringIndex++, contentStartX, currentY);
-        positionString(stringIndex++, rightX, currentY);
-        currentY += dim.lineHeightNormal;
-    }
-
-    // Row 4: Est label and value
-    if (m_enabledRows & ROW_EST) {
-        positionString(stringIndex++, contentStartX, currentY);
-        positionString(stringIndex, rightX, currentY);
-    }
+    // BOX-MODEL: one source of geometry — rebuild rather than reposition a
+    // duplicated copy of the sizing arithmetic (see version_widget).
+    rebuildRenderData();
 }
 
 void FuelWidget::rebuildRenderData() {
@@ -252,20 +213,27 @@ void FuelWidget::rebuildRenderData() {
     float startX = 0.0f;
     float startY = 0.0f;
 
-    // Calculate dimensions based on enabled rows
+    // BOX-MODEL: the plan owns padding, chrome, the title band and the card;
+    // the widget states only its content — one line per enabled row.
     int rowCount = getEnabledRowCount();
-    float backgroundWidth = calculateBackgroundWidth(FUEL_WIDGET_WIDTH);
-    float titleHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
-    float contentHeight = titleHeight + dim.lineHeightNormal * rowCount;
-    float backgroundHeight = dim.paddingV + contentHeight + dim.paddingV;
+    BaseHud::PanelWant want;
+    want.contentW = PluginUtils::calculateMonospaceTextWidth(FUEL_WIDGET_WIDTH, dim.fontSize);
+    want.sectionH = { dim.lineHeightNormal * rowCount };
+    want.captionW = planTitleWidth(dim, "Fuel");
+    PanelPlan& p = planPanel(dim, want);
 
-    // Add background quad
-    addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
+    const float backgroundWidth = p.width();
+    const float backgroundHeight = p.height();
 
-    float contentStartX = startX + dim.paddingH;
-    float contentStartY = startY + dim.paddingV;
-    float rightX = startX + backgroundWidth - dim.paddingH;
-    float currentY = contentStartY;
+    addPlanBackground(p, startX, startY);
+    addPlanTitle(p, "Fuel", this->getFont(FontCategory::TITLE),
+        this->getColor(ColorSlot::PRIMARY));
+
+    float contentStartX = p.contentX();
+    // The content box's own right edge. This mirrored the LEFT inset, which is the
+    // same place only on a symmetric border -- see PanelPlan::contentRight.
+    float rightX = p.contentRight();
+    float currentY = p.contentY();
 
     unsigned long labelColor = this->getColor(ColorSlot::TERTIARY);
     unsigned long valueColor = this->getColor(ColorSlot::SECONDARY);
@@ -314,32 +282,24 @@ void FuelWidget::rebuildRenderData() {
         }
 
         // Calculate average fuel per lap
-        // Skip the first lap if we have 2+ laps AND first lap is still in buffer
-        // (first lap includes grid time, which inflates consumption)
-        float avgFuelPerLap = 0.0f;
-        if (!m_fuelPerLap.empty()) {
-            float totalFuel = 0.0f;
-            // First lap is still in buffer if totalLapsRecorded == size (no rollover yet)
-            bool firstLapInBuffer = (m_totalLapsRecorded == m_fuelPerLap.size());
-            size_t startIdx = (firstLapInBuffer && m_fuelPerLap.size() > 1) ? 1 : 0;
-            for (size_t i = startIdx; i < m_fuelPerLap.size(); ++i) {
-                totalFuel += m_fuelPerLap[i];
-            }
-            avgFuelPerLap = totalFuel / static_cast<float>(m_fuelPerLap.size() - startIdx);
-        }
+        // Shared with the spotter's fuel warning, so the number spoken and the
+        // number shown cannot disagree (fuel_estimate.h — which also documents
+        // why the first lap is skipped).
+        const float avgFuelPerLap =
+            FuelEstimate::averagePerLap(m_fuelPerLap, m_totalLapsRecorded);
 
         if (avgFuelPerLap > 0.001f) {
             float displayAvg = avgFuelPerLap * unitConversion;
             formatFuelValue(avgValueBuffer, sizeof(avgValueBuffer), displayAvg, unitLabel);
 
-            // Estimated laps remaining (clamped to 99.9 to avoid triple digits)
-            float estimatedLaps = std::min(bikeData.fuel / avgFuelPerLap, 99.9f);
+            const float estimatedLaps =
+                FuelEstimate::lapsRemaining(bikeData.fuel, avgFuelPerLap);
             formatFuelValue(lapsValueBuffer, sizeof(lapsValueBuffer), estimatedLaps, "");
 
             // Color code estimated laps (negative if < 2 laps, warning if < 4)
-            if (estimatedLaps < 2.0f) {
+            if (estimatedLaps < FuelEstimate::kCriticalLaps) {
                 estColor = this->getColor(ColorSlot::NEGATIVE);
-            } else if (estimatedLaps < 4.0f) {
+            } else if (estimatedLaps < FuelEstimate::kWarnLaps) {
                 estColor = this->getColor(ColorSlot::WARNING);
             }
         } else {
@@ -349,13 +309,6 @@ void FuelWidget::rebuildRenderData() {
             avgColor = mutedColor;
             estColor = mutedColor;
         }
-    }
-
-    // Title (optional)
-    if (m_bShowTitle) {
-        addString("Fuel", contentStartX, currentY, Justify::LEFT,
-            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSize);
-        currentY += titleHeight;
     }
 
     // Row 1: Fuel level
@@ -405,7 +358,7 @@ void FuelWidget::resetToDefaults() {
     m_fScale = 1.0f;
     m_enabledRows = ROW_DEFAULT;  // Reset row visibility
     // Note: fuelUnit is NOT reset here - it's a global preference, not per-profile
-    setPosition(0.814f, 0.86828f);
+    setPosition(cellsX(148), cellsY(74));
     resetFuelTracking();
     setDataDirty();
 }

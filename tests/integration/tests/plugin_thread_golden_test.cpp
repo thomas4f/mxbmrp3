@@ -60,7 +60,7 @@ TEST_CASE("plugin thread golden: real captured session reconstructs identically 
 
     CHECK(hasEvent(d, "Race 2 started"));
     CHECK(hasEvent(d, "Race 2 ended"));
-    CHECK(hasEvent(d, "#4 finished P1"));
+    CHECK(hasEvent(d, "#4 finished"));   // position rides the detail column ("P1") now
     CHECK(hasEvent(d, "#4 fastest lap"));
 
     host.pluginThreadStop();

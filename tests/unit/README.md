@@ -2,7 +2,7 @@
 
 Lightweight, **Linux/macOS-runnable** unit tests for the plugin's
 platform-independent pure logic. No game engine, no Windows, no packages to
-install — just a C++17 compiler.
+install - just a C++17 compiler.
 
 ## Why this exists
 
@@ -36,7 +36,7 @@ cmake --build build/tests --target unit_tests
 
 Three flavours share one source list (`tests/unit/CMakeLists.txt`): `unit_tests`
 (plain), `unit_tests_asan` (ASan + UBSan) and `unit_tests_cov` (gcov, driven by
-`./tests/unit/coverage.sh`). CI runs the same targets — see
+`./tests/unit/coverage.sh`). CI runs the same targets - see
 `.github/workflows/tests.yml`.
 
 ## What's covered
@@ -48,18 +48,18 @@ a per-TU description of what each one pins in
 the original example, `test_plugin_utils.cpp` covers the inline pure functions in
 `plugin_utils.h`:
 
-- **Color packing** — `makeColor` / `applyOpacity` (0xAABBGGRR layout, alpha
+- **Color packing** - `makeColor` / `applyOpacity` (0xAABBGGRR layout, alpha
   replacement).
-- **`isColorDark`** — the BT.601 luma decision, with its 128 boundary pinned.
+- **`isColorDark`** - the BT.601 luma decision, with its 128 boundary pinned.
   This function is **mirrored byte-for-byte in the web overlay's `overlay-util.js`**
   (`CLAUDE.md` flags the mirror as a maintenance trap); the boundary test is
   what a drift on either side would break.
-- **`lightenColor` / `darkenColor`** — exact endpoints, alpha preserved.
-- **`formatScore`** — thousands grouping, zero, negatives, buffer-size guard.
-- **`formatColorHex` / `parseColorHex`** — round-trip and the documented
+- **`lightenColor` / `darkenColor`** - exact endpoints, alpha preserved.
+- **`formatScore`** - thousands grouping, zero, negatives, buffer-size guard.
+- **`formatColorHex` / `parseColorHex`** - round-trip and the documented
   "never throws, returns fallback on garbage" contract (including the
   `strtoul` leading-zero quirk).
-- **`getRelativePositionColor`** — the ahead / behind / lapped branch matrix.
+- **`getRelativePositionColor`** - the ahead / behind / lapped branch matrix.
 
 ## What's *not* covered (and how to extend)
 
@@ -73,7 +73,7 @@ that `.cpp` on Linux is currently impractical because it reaches into:
 - the full `PluginConstants::DisplayStrings::*` tables,
 
 which transitively pull in the game API headers. Stubbing all of that would be
-a large, fragile shim that would rot — contrary to this project's ethos.
+a large, fragile shim that would rot - contrary to this project's ethos.
 
 The clean way to unlock these (a genuinely worthwhile, small refactor):
 
@@ -93,7 +93,7 @@ decoupled.
 ## Framework
 
 These use [doctest](https://github.com/doctest/doctest) (single vendored header,
-`tests/integration/harness/doctest.h`) — the same framework as the Wine integration
+`tests/integration/harness/doctest.h`) - the same framework as the Wine integration
 tests, so there's one assertion vocabulary across the project. `TEST_CASE` /
 `SUBCASE` / `CHECK` / `REQUIRE`; run a subset with a filter
 (`./build/tests/tests/unit/unit_tests -tc='*hex*'`).
@@ -107,4 +107,4 @@ tests, so there's one assertion vocabulary across the project. `TEST_CASE` /
 
 Only pure, dependency-free logic belongs here (see the extension note above);
 anything touching `PluginData` or the game API is a `tests/integration/` integration
-test instead — see [`../../TESTING.md`](../../TESTING.md).
+test instead - see [`../../TESTING.md`](../../TESTING.md).

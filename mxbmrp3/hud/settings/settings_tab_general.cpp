@@ -44,6 +44,7 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
 
         case ClickRegion::GRID_SNAP_TOGGLE:
             {
+                // grid-snap-exempt: TOGGLES the gate from its own checkbox.
                 bool current = UiConfig::getInstance().getGridSnapping();
                 UiConfig::getInstance().setGridSnapping(!current);
                 setDataDirty();
@@ -195,21 +196,32 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
             }
             return true;  // Don't save - just UI state
 
+        // ARM, then PERFORM. These two region types were the radios' toggles and are
+        // now the buttons themselves: an unarmed click arms (and disarms its
+        // opposite), an armed click does the thing. The two-step is the whole
+        // protection -- neither of these is undoable -- so a handler that ever
+        // performs on the first click has removed it.
         case ClickRegion::RESET_PROFILE_CHECKBOX:
-            m_resetProfileConfirmed = !m_resetProfileConfirmed;
             if (m_resetProfileConfirmed) {
+                resetCurrentProfile();
+                m_resetProfileConfirmed = false;
+            } else {
+                m_resetProfileConfirmed = true;
                 m_resetAllConfirmed = false;
+                rebuildRenderData();
             }
-            rebuildRenderData();
-            return true;  // Don't save - just UI state
+            return true;
 
         case ClickRegion::RESET_ALL_CHECKBOX:
-            m_resetAllConfirmed = !m_resetAllConfirmed;
             if (m_resetAllConfirmed) {
+                resetToDefaults();
+                m_resetAllConfirmed = false;
+            } else {
+                m_resetAllConfirmed = true;
                 m_resetProfileConfirmed = false;
+                rebuildRenderData();
             }
-            rebuildRenderData();
-            return true;  // Don't save - just UI state
+            return true;
 
         case ClickRegion::COPY_BUTTON:
             if (m_copyTargetProfile != -1) {
@@ -223,14 +235,10 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
             }
             return true;
 
+        // The shared Reset button is gone -- each outcome has its own button now, and
+        // performs from its own case above. The type stays in the enum so no region
+        // ordinal moves (settings_layout_test's golden encodes them raw).
         case ClickRegion::RESET_BUTTON:
-            if (m_resetProfileConfirmed) {
-                resetCurrentProfile();
-                m_resetProfileConfirmed = false;
-            } else if (m_resetAllConfirmed) {
-                resetToDefaults();
-                m_resetAllConfirmed = false;
-            }
             return true;
 
         // Controller selection is also in General tab
@@ -273,6 +281,17 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
             ShellExecuteA(nullptr, "open", "https://ko-fi.com/thomas4f", nullptr, nullptr, SW_SHOWNORMAL);
             return true;
 
+        case ClickRegion::OPEN_LINK_OVERLAY:
+            {
+                // The server's own address, built where it is shown -- not a constant,
+                // because the port is a setting and a stale literal here would send the
+                // user to a page that is not being served.
+                const std::string url = "http://localhost:"
+                    + std::to_string(HttpServer::getInstance().getPort());
+                ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+            }
+            return true;
+
         default:
             return false;
     }
@@ -283,16 +302,13 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("general");
 
     ColorConfig& colorConfig = ColorConfig::getInstance();
-    float cw = PluginUtils::calculateMonospaceTextWidth(1, ctx.fontSize);
-    // panelWidth is actually contentAreaWidth (from contentAreaStartX to right edge)
-    float rowWidth = ctx.panelWidth - (ctx.labelX - ctx.contentAreaStartX);
     // Standard value width for all controls (matches addToggleControl)
     constexpr int VALUE_WIDTH = 10;  // Standard width for vertical alignment
 
     // === PREFERENCES SECTION ===
     // (Display section — speed/fuel/temp units + clock format — moved to the
     // Appearance tab; persisted under [Display].)
-    ctx.addSectionHeader("Preferences");
+    ctx.addSectionHeading("Preferences");
 
     // PB scope. Both arrows drive the same 2-state toggle.
     {
@@ -356,6 +372,8 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
     // during play). Still persisted under [Display] as menuOnlyCursor.
 
     // HUD placement toggles (moved here from the Appearance tab; persisted under [Display])
+    // grid-snap-exempt: renders the setting's own checkbox -- it reads the gate to
+    // DISPLAY it, which is the one place that legitimately does.
     ctx.addToggleControl("Grid Snap", UiConfig::getInstance().getGridSnapping(),
         SettingsHud::ClickRegion::GRID_SNAP_TOGGLE, nullptr, nullptr, 0, true,
         "general.grid_snap");
@@ -365,8 +383,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
 
 #if GAME_HAS_STEAM_FRIENDS || GAME_HAS_DISCORD || GAME_HAS_HTTP_SERVER || GAME_HAS_ANALYTICS
     // === INTEGRATIONS SECTION ===
-    ctx.addSpacing(0.5f);
-    ctx.addSectionHeader("Integrations");
+    ctx.addSectionHeading("Integrations");
 #endif
 
 #if GAME_HAS_STEAM_FRIENDS
@@ -411,33 +428,14 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
     // reach (Discord is compiled out of MXBMRP3_TEST_BUILD). Give the helper a
     // separate label-enable if a second control ever needs this split.
     {
-        // Add tooltip row
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "general.discord"
-        ));
-
-        ctx.parent->addString("Discord", ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
-
-        // Display current state with < > cycle pattern (arrows=accent, value=primary)
         bool discordEnabled = DiscordManager::getInstance().isEnabled();
         DiscordManager::State discordState = DiscordManager::getInstance().getState();
+        // The arrows go dead during CONNECTING, to prevent a freeze.
         bool isConnecting = (discordState == DiscordManager::State::CONNECTING);
-        float currentX = ctx.controlX;
 
-        // Disable toggle arrows during CONNECTING state to prevent freeze
-        uint32_t arrowColor = isConnecting ? colorConfig.getMuted() : colorConfig.getAccent();
-        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), arrowColor, ctx.fontSize);
-        if (!isConnecting) {
-            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-                SettingsHud::ClickRegion::DISCORD_TOGGLE, nullptr
-            ));
-        }
-        currentX += cw * 2;
-
-        // Show status: On (Connected), On (Connecting...), On (Not Available), Off
+        // Off / On (connected) / Connecting / On (not available). The connection
+        // state is exactly what addCycleControl's valueColour override is for --
+        // three states where enabled/isOff can only say two.
         const char* statusText;
         uint32_t statusColor;
         if (!discordEnabled) {
@@ -460,21 +458,11 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
             }
         }
 
-        std::string formattedDiscord = ctx.formatValue(statusText, VALUE_WIDTH, false);
-        ctx.parent->addString(formattedDiscord.c_str(), currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), statusColor, ctx.fontSize);
-        currentX += cw * VALUE_WIDTH;
-
-        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), arrowColor, ctx.fontSize);
-        if (!isConnecting) {
-            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-                SettingsHud::ClickRegion::DISCORD_TOGGLE, nullptr
-            ));
-        }
-
-        ctx.currentY += ctx.lineHeightNormal;
+        ctx.addCycleControl("Discord", statusText, VALUE_WIDTH,
+            SettingsHud::ClickRegion::DISCORD_TOGGLE,
+            SettingsHud::ClickRegion::DISCORD_TOGGLE,
+            nullptr, /*enabled=*/!isConnecting, /*isOff=*/false,
+            "general.discord", statusColor);
     }
 #endif
 
@@ -496,27 +484,11 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
 #if GAME_HAS_HTTP_SERVER
     // Web Server toggle
     {
-        // Add tooltip row
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "general.web_server"
-        ));
-
-        ctx.parent->addString("Web Server", ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
-
         bool serverEnabled = HttpServer::getInstance().isEnabled();
         bool serverRunning = HttpServer::getInstance().isRunning();
-        float currentX = ctx.controlX;
 
-        ctx.parent->addString("<", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::WEB_SERVER_TOGGLE, nullptr
-        ));
-        currentX += cw * 2;
-
-        // Show status: On / Off (port info moves to the note line below)
+        // Off / On / Error -- a third state, so the value colour is overridden
+        // (see the Discord row above). Port info moves to the note line below.
         std::string statusStr;
         uint32_t statusColor;
         if (!serverEnabled) {
@@ -530,19 +502,11 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
             statusColor = colorConfig.getWarning();
         }
 
-        std::string formattedValue = ctx.formatValue(statusStr.c_str(), VALUE_WIDTH, false);
-        ctx.parent->addString(formattedValue.c_str(), currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), statusColor, ctx.fontSize);
-        currentX += cw * VALUE_WIDTH;
-
-        ctx.parent->addString(" >", currentX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getAccent(), ctx.fontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            currentX, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            SettingsHud::ClickRegion::WEB_SERVER_TOGGLE, nullptr
-        ));
-
-        ctx.currentY += ctx.lineHeightNormal;
+        ctx.addCycleControl("Web Server", statusStr.c_str(), VALUE_WIDTH,
+            SettingsHud::ClickRegion::WEB_SERVER_TOGGLE,
+            SettingsHud::ClickRegion::WEB_SERVER_TOGGLE,
+            nullptr, /*enabled=*/true, /*isOff=*/false,
+            "general.web_server", statusColor);
 
         // Port control
         {
@@ -554,27 +518,28 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
                 nullptr, true, !serverEnabled, "general.web_port");
         }
 
-        // Helper note below the controls.
-        ctx.currentY += ctx.lineHeightNormal * 0.5f;
-        std::string noteStr;
-        if (!serverEnabled) {
-            noteStr = "Enable to serve a live web overlay.";
-        } else if (serverRunning) {
-            noteStr = "Live overlay at http://localhost:"
+        // THE ADDRESS, as a link, and ONLY when the server is actually serving.
+        //
+        // The three-state helper note that used to live here is gone. It said one of
+        // "enable to serve a live overlay" / the address / "port may be in use", and
+        // because those are different lengths and the row only exists in some of
+        // them, everything below it JUMPED as you toggled the server -- a line that
+        // moved the tab around to tell you what the toggle two rows up already says.
+        // What was worth keeping is the address, and that is worth more as something
+        // you can click than as a sentence about where to point a browser. Same row
+        // style as the Help & Community links at the foot of the tab (addLinkRow owns
+        // it), so a link looks like a link wherever it appears.
+        if (serverRunning) {
+            const std::string url = "http://localhost:"
                 + std::to_string(HttpServer::getInstance().getPort());
-        } else {
-            noteStr = "Port " + std::to_string(HttpServer::getInstance().getPort())
-                + " may be in use. Try a different port.";
+            ctx.addLinkRow("Live overlay at ", url.c_str(), 16,
+                           SettingsHud::ClickRegion::OPEN_LINK_OVERLAY);
         }
-        ctx.parent->addString(noteStr.c_str(), ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getMuted(), ctx.fontSize * 0.9f);
-        ctx.currentY += ctx.lineHeightNormal;
     }
 #endif
 
     // === PROFILES SECTION ===
-    ctx.addSpacing(0.5f);
-    ctx.addSectionHeader("Profiles");
+    ctx.addSectionHeading("Profiles");
 
     // Auto-switch toggle - use standard helper for consistency
     bool autoSwitchEnabled = ProfileManager::getInstance().isAutoSwitchEnabled();
@@ -599,158 +564,43 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
             nullptr, true, !hasTarget, "general.copy_profile");
 
         // [Copy] button - centered like [Close] button
-        ctx.currentY += ctx.lineHeightNormal * 0.5f;
-        {
-            float buttonWidth = PluginUtils::calculateMonospaceTextWidth(6, ctx.fontSize);
-            float buttonCenterX = ctx.contentAreaStartX + (ctx.panelWidth - ctx.paddingH - ctx.paddingH) / 2.0f;
-            float buttonX = buttonCenterX - buttonWidth / 2.0f;
-
-            size_t regionIndex = ctx.parent->m_clickRegions.size();
-            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                buttonX, ctx.currentY, buttonWidth, ctx.lineHeightNormal,
-                SettingsHud::ClickRegion::COPY_BUTTON, nullptr
-            ));
-
-            // Button background - muted when disabled, accent when enabled
-            SPluginQuad_t bgQuad;
-            float bgX = buttonX, bgY = ctx.currentY;
-            ctx.parent->applyOffset(bgX, bgY);
-            ctx.parent->setQuadPositions(bgQuad, bgX, bgY, buttonWidth, ctx.lineHeightNormal);
-            bgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-            if (!hasTarget) {
-                bgQuad.m_ulColor = PluginUtils::applyOpacity(colorConfig.getMuted(), 64.0f / 255.0f);
-            } else {
-                bgQuad.m_ulColor = (ctx.parent->m_hoveredRegionIndex == static_cast<int>(regionIndex))
-                    ? colorConfig.getAccent()
-                    : PluginUtils::applyOpacity(colorConfig.getAccent(), 128.0f / 255.0f);
-            }
-            ctx.parent->m_quads.push_back(bgQuad);
-
-            unsigned long textColor = !hasTarget ? colorConfig.getMuted()
-                : (ctx.parent->m_hoveredRegionIndex == static_cast<int>(regionIndex))
-                    ? colorConfig.getPrimary()
-                    : colorConfig.getAccent();
-            ctx.parent->addString("Copy", buttonCenterX, ctx.currentY, Justify::CENTER,
-                Fonts::getNormal(), textColor, ctx.fontSize);
-
-            ctx.currentY += ctx.lineHeightNormal;
-        }
+        ctx.addSpacing();
+        ctx.addActionButton("Copy", 6, SettingsHud::ClickRegion::COPY_BUTTON,
+                            SettingsLayoutContext::ButtonRole::Accent, hasTarget);
     }
 
     // === RESET SECTION ===
-    ctx.addSpacing(0.5f);
-    ctx.addSectionHeader("Reset");
+    ctx.addSectionHeading("Reset");
     {
-        ProfileType activeProfile = ProfileManager::getInstance().getActiveProfile();
-        const char* activeProfileName = ProfileManager::getInstance().getProfileName(activeProfile);
-        float radioWidth = PluginUtils::calculateMonospaceTextWidth(CHECKBOX_WIDTH, ctx.fontSize);
-
-        // Reset [Profile] profile radio row
-        {
-            // Add tooltip row (full width for hover)
-            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "general.reset_profile"
-            ));
-
-            float clickRowWidth = radioWidth + PluginUtils::calculateMonospaceTextWidth(22, ctx.fontSize);
-            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                ctx.labelX, ctx.currentY, clickRowWidth, ctx.lineHeightNormal,
-                SettingsHud::ClickRegion::RESET_PROFILE_CHECKBOX, nullptr
-            ));
-
-            bool resetProfileConfirmed = ctx.parent->m_resetProfileConfirmed;
-            ctx.parent->addString(resetProfileConfirmed ? "(O)" : "( )", ctx.labelX, ctx.currentY, Justify::LEFT,
-                Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
-
-            float textX = ctx.labelX + radioWidth;
-            unsigned long labelColor = colorConfig.getSecondary();
-            unsigned long profileColor = resetProfileConfirmed
-                ? colorConfig.getPrimary()
-                : colorConfig.getSecondary();
-
-            ctx.parent->addString("Reset", textX, ctx.currentY, Justify::LEFT,
-                Fonts::getNormal(), labelColor, ctx.fontSize);
-            textX += cw * 6;
-
-            ctx.parent->addString(activeProfileName, textX, ctx.currentY, Justify::LEFT,
-                Fonts::getNormal(), profileColor, ctx.fontSize);
-            textX += cw * 9;
-
-            ctx.parent->addString("profile", textX, ctx.currentY, Justify::LEFT,
-                Fonts::getNormal(), labelColor, ctx.fontSize);
-
-            ctx.currentY += ctx.lineHeightNormal;
-        }
-
-        // Reset All Settings radio row
-        {
-            // Add tooltip row (full width for hover)
-            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, "general.reset_all"
-            ));
-
-            float clickRowWidth = radioWidth + PluginUtils::calculateMonospaceTextWidth(18, ctx.fontSize);
-            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                ctx.labelX, ctx.currentY, clickRowWidth, ctx.lineHeightNormal,
-                SettingsHud::ClickRegion::RESET_ALL_CHECKBOX, nullptr
-            ));
-
-            bool resetAllConfirmed = ctx.parent->m_resetAllConfirmed;
-            ctx.parent->addString(resetAllConfirmed ? "(O)" : "( )", ctx.labelX, ctx.currentY, Justify::LEFT,
-                Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
-
-            unsigned long labelColor = resetAllConfirmed
-                ? colorConfig.getPrimary()
-                : colorConfig.getSecondary();
-            ctx.parent->addString("Reset All Settings", ctx.labelX + radioWidth, ctx.currentY, Justify::LEFT,
-                Fonts::getNormal(), labelColor, ctx.fontSize);
-
-            ctx.currentY += ctx.lineHeightNormal;
-        }
-
-        // [Reset] button - centered like [Close] button
-        ctx.currentY += ctx.lineHeightNormal * 0.5f;
-        {
-            bool resetEnabled = ctx.parent->m_resetProfileConfirmed || ctx.parent->m_resetAllConfirmed;
-            float buttonWidth = PluginUtils::calculateMonospaceTextWidth(7, ctx.fontSize);
-            float buttonCenterX = ctx.contentAreaStartX + (ctx.panelWidth - ctx.paddingH - ctx.paddingH) / 2.0f;
-            float buttonX = buttonCenterX - buttonWidth / 2.0f;
-
-            size_t regionIndex = ctx.parent->m_clickRegions.size();
-            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                buttonX, ctx.currentY, buttonWidth, ctx.lineHeightNormal,
-                SettingsHud::ClickRegion::RESET_BUTTON, nullptr
-            ));
-
-            // Button background - muted when disabled, accent when enabled
-            SPluginQuad_t bgQuad;
-            float bgX = buttonX, bgY = ctx.currentY;
-            ctx.parent->applyOffset(bgX, bgY);
-            ctx.parent->setQuadPositions(bgQuad, bgX, bgY, buttonWidth, ctx.lineHeightNormal);
-            bgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-            if (!resetEnabled) {
-                bgQuad.m_ulColor = PluginUtils::applyOpacity(colorConfig.getMuted(), 64.0f / 255.0f);
-            } else {
-                bgQuad.m_ulColor = (ctx.parent->m_hoveredRegionIndex == static_cast<int>(regionIndex))
-                    ? colorConfig.getAccent()
-                    : PluginUtils::applyOpacity(colorConfig.getAccent(), 128.0f / 255.0f);
-            }
-            ctx.parent->m_quads.push_back(bgQuad);
-
-            unsigned long textColor = !resetEnabled ? colorConfig.getMuted()
-                : (ctx.parent->m_hoveredRegionIndex == static_cast<int>(regionIndex))
-                    ? colorConfig.getPrimary()
-                    : colorConfig.getAccent();
-            ctx.parent->addString("Reset", buttonCenterX, ctx.currentY, Justify::CENTER,
-                Fonts::getNormal(), textColor, ctx.fontSize);
-
-            ctx.currentY += ctx.lineHeightNormal;
-        }
+        // TWO BUTTONS, not two radios plus a shared one. The old shape spent four
+        // rows -- a radio row each, a gap, and a Reset button whose meaning depended
+        // on which radio was lit -- to express two outcomes. A button per outcome is
+        // one row and says which one you are about to get.
+        //
+        // The confirmation survives as ARMING: the first click lights that button and
+        // renames it, the second performs it. That is the same two-step the radios
+        // gave (choose, then Reset) with the same protection against a single stray
+        // click, and arming either disarms the other so the two can never be lit at
+        // once. Both buttons are Negative: neither of these is a safe act, and a pair
+        // where one wore the accent would read as the default.
+        const bool armProfile = ctx.parent->m_resetProfileConfirmed;
+        const bool armAll = ctx.parent->m_resetAllConfirmed;
+        ctx.addActionButtonPair(
+            armProfile ? "Confirm?" : "Profile",
+            SettingsHud::ClickRegion::RESET_PROFILE_CHECKBOX,
+            SettingsLayoutContext::ButtonRole::Negative, true,
+            armAll ? "Confirm?" : "Everything",
+            SettingsHud::ClickRegion::RESET_ALL_CHECKBOX,
+            SettingsLayoutContext::ButtonRole::Negative, true,
+            /*labelChars=*/12);
+        ctx.addInlineNote(armProfile
+            ? "Resets this profile's HUD layout and options. Click again to confirm."
+            : armAll ? "Resets EVERY profile and every global setting. Click again to confirm."
+                     : "Profile resets this profile only; Everything resets all of them.");
     }
 
     // Help & Community footer — clickable links that open the browser via ShellExecute.
-    ctx.addSpacing(0.5f);
-    ctx.addSectionHeader("Help & Community");
+    ctx.addSectionHeading("Help & Community");
 
     // Each row: fixed-width muted label + the URL (the only clickable/hoverable part).
     // Prefixes are padded to 18 chars so the URLs align vertically with a gap.
@@ -762,28 +612,9 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
     static const LinkRow links[] = {
         { "Docs & guides:    ", "https://thomas4f.github.io/mxbmrp3", SettingsHud::ClickRegion::OPEN_LINK_DOCS      },
         { "Discussion:       ", "https://mxb-mods.com/mxbmrp3",       SettingsHud::ClickRegion::OPEN_LINK_COMMUNITY },
-        { "Support thomas4f: ", "https://ko-fi.com/thomas4f",          SettingsHud::ClickRegion::OPEN_LINK_KOFI      },
     };
-    float linkFontSize = ctx.fontSize * 0.9f;
-    float prefixWidth = PluginUtils::calculateMonospaceTextWidth(18, linkFontSize);
     for (const auto& link : links) {
-        // Click/hover region covers only the URL text (not the muted label), so only
-        // the link lights up and only clicking the link opens the browser.
-        float urlX = ctx.labelX + prefixWidth;
-        float urlWidth = PluginUtils::calculateMonospaceTextWidth(
-            static_cast<int>(strlen(link.url)), linkFontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            urlX, ctx.currentY, urlWidth, ctx.lineHeightNormal,
-            link.regionType, nullptr
-        ));
-        bool hovered = (ctx.parent->m_hoveredRegionIndex >= 0 &&
-                        ctx.parent->m_hoveredRegionIndex == static_cast<int>(ctx.parent->m_clickRegions.size()) - 1);
-        ctx.parent->addString(link.prefix, ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colorConfig.getMuted(), linkFontSize);
-        uint32_t urlColor = hovered ? PluginUtils::lightenColor(colorConfig.getAccent(), 0.25f) : colorConfig.getAccent();
-        ctx.parent->addString(link.url, urlX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), urlColor, linkFontSize);
-        ctx.currentY += ctx.lineHeightNormal;
+        ctx.addLinkRow(link.prefix, link.url, 18, link.regionType);
     }
 
     // No active HUD for general settings

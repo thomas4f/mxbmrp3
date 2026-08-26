@@ -34,6 +34,7 @@
 #pragma once
 
 #include "../game/unified_types.h"
+#include "../core/plugin_utils.h"
 
 #include <algorithm>
 #include <cmath>
@@ -45,11 +46,9 @@ constexpr float kFallbackTrackFraction = 0.05f;
 
 // Shortest separation between two normalised lap positions, accounting for the
 // wrap at the start/finish line. Always in [0, 0.5].
-inline float trackSeparation(float a, float b) {
-    float d = std::abs(a - b);
-    if (d > 0.5f) d = 1.0f - d;
-    return d;
-}
+// trackSeparation() is plugin_utils.h's, not a second copy here: this header
+// used to define its own, identical down to the wrap boundary, and two of them
+// is one that can drift. Included above, called unqualified.
 
 // The radar's opacity multiplier: the largest contribution of any rider close
 // enough to count, or 0 when nobody is.

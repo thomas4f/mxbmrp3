@@ -179,10 +179,10 @@ def main():
         out += table([crash_row(c, None, default_module) for c in modstable])
 
     if third_party:
-        out.append("## Not MX Bikes — third-party software")
+        out.append("## Not MX Bikes - third-party software")
         out.append("")
         out.append("*These faults are captured by the plugin's crash handler but are **not** MX Bikes "
-                   "or plugin bugs — they come from other software injected into the game. Identify "
+                   "or plugin bugs - they come from other software injected into the game. Identify "
                    "them by the module on the crash stack; the exact fault offset is machine/Windows-"
                    "specific, so don't match on it.*")
         out.append("")

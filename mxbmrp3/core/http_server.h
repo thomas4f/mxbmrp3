@@ -1,7 +1,27 @@
 // ============================================================================
 // core/http_server.h
 // Embedded HTTP server for serving race data to external tools (OBS, etc.)
-// Runs on a background thread, pushes JSON via Server-Sent Events (SSE)
+// Runs on a background thread, pushes JSON via Server-Sent Events (SSE).
+//
+// THREADING. The JSON snapshot is built on the GAME THREAD in
+// buildJsonSnapshot(), because PluginData is not thread-safe and this is the
+// only thread allowed to read it. The resulting string is cached behind an
+// annotated Mutex (thread_safety.h) that the SSE server threads read through;
+// clang's thread-safety analysis checks every access site in CI
+// (tests/integration/check_thread_safety.sh). onDataChanged() arrives on
+// PluginData's notification path, the same one HudManager is on, and
+// per-client sequence tracking keeps a multi-client wake from racing.
+//
+// THE SERVER OWNS ITS OWN LIMITS, each documented at the constant it sets:
+// MAX_SSE_CONNECTIONS (the thread pool must stay larger, so a REST request is
+// never starved by streamers) and DEFAULT_THROTTLE_MS (the per-connection push
+// rate). Comment keepalives are what detect a dead connection.
+//
+// COST CONTROL is the subtle part and lives at onDataChanged(): a full build is
+// tens of KB of string work on the game thread, and Standings fires from every
+// RaceTrackPosition callback, so frequent change types are gated on client
+// activity while rare transition types always rebuild. The comment there
+// explains why that asymmetry is load-bearing rather than an oversight.
 // ============================================================================
 #pragma once
 

@@ -424,31 +424,28 @@ void StandingsHud::rebuildRenderData() {
     // Apply scale to all dimensions
     auto dim = getScaledDimensions();
 
-    // IMPORTANT: Recalculate column positions and rebuild column table BEFORE calculating dimensions
-    // This ensures m_cachedBackgroundWidth is updated before we create the background quad
-    float contentStartX = START_X + dim.paddingH;
+    // Render all display entries (rider rows + gap rows)
+    int rowsToRender = static_cast<int>(m_displayEntries.size());
+
+    // The plan first: the columns are positioned from ITS content origin.
+    auto hudDim = calculateHudDimensions(dim, rowsToRender);
+
+    float contentStartX = hudDim.contentStartX;
     int nameColWidth = getNameColumnWidth();
     m_columns = ColumnPositions(contentStartX, m_fScale, m_enabledColumns, nameColWidth, getRaceNumColumnWidth());
     buildColumnTable();  // Rebuild column table and cache width
 
-    // Render all display entries (rider rows + gap rows)
-    int rowsToRender = static_cast<int>(m_displayEntries.size());
-
-    // Calculate dimensions based on actual rows that will be rendered
-    auto hudDim = calculateHudDimensions(dim, rowsToRender);
-
     setBounds(START_X, START_Y, START_X + hudDim.backgroundWidth, START_Y + hudDim.backgroundHeight);
 
-    addBackgroundQuad(START_X, START_Y, hudDim.backgroundWidth, hudDim.backgroundHeight);
+    addPlanBackground(hudDim.plan, START_X, START_Y);
 
     float currentY = hudDim.contentStartY;
 
     // Title: static "Standings" caption in the standard title style, toggled by
-    // the shared title control. addTitleString keeps string index 0 stable
+    // the shared title control. addPlanTitle keeps string index 0 stable
     // (emits an empty string when the title is hidden).
-    addTitleString("Standings", hudDim.contentStartX, currentY, Justify::LEFT,
-        this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
-    if (m_bShowTitle) currentY += dim.lineHeightLarge;
+    addPlanTitle(hudDim.plan, "Standings", this->getFont(FontCategory::TITLE),
+                 this->getColor(ColorSlot::PRIMARY));
 
     // Session-info row: context-aware "<session>: <clock / leader lap / overtime>"
     // on a single line below the title (e.g. "Race 2: FINAL LAP"). The overtime
@@ -499,9 +496,10 @@ void StandingsHud::rebuildRenderData() {
             snprintf(sessionInfoBuf, sizeof(sessionInfoBuf), "%s", sessionLabel);
         }
     }
-    addString(sessionInfoBuf, hudDim.contentStartX, currentY, Justify::LEFT,
-        this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSize);
-    if (m_bShowSessionInfo) currentY += dim.lineHeightNormal;
+    // A SECTION HEADING, through the shared helper -- see BaseHud. Always
+    // emitted (empty when disabled) so string index 1 stays stable for the fast path.
+    addSectionHeading(sessionInfoBuf, hudDim.contentStartX, currentY, dim);
+    if (m_bShowSessionInfo) currentY += sectionHeadingRowHeight(dim);
 
     // Optional column-header row. Emits one string per enabled column (skipping the
     // status-icon column, which has no label), in the same column-table order the
@@ -555,10 +553,10 @@ void StandingsHud::rebuildRenderData() {
                     : this->getColor(ColorSlot::NEGATIVE);
 
                 SPluginQuad_t slide;
-                float slideX = START_X;
+                float slideX = hudDim.contentStartX;
                 float slideY = rowY;
                 applyOffset(slideX, slideY);
-                setQuadPositions(slide, slideX, slideY, hudDim.backgroundWidth, dim.lineHeightNormal);
+                setQuadPositions(slide, slideX, slideY, hudDim.plan.contentW(), dim.lineHeightNormal);
                 slide.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
                 slide.m_ulColor = PluginUtils::applyOpacity(tintColor, ROW_HIGHLIGHT_OPACITY * slideFade);
                 m_slideHighlightQuads.push_back({m_quads.size(), i, entry.raceNum, promoted});
@@ -572,13 +570,6 @@ void StandingsHud::rebuildRenderData() {
             // default, bike brand color via INI). On by default; when disabled via
             // INI the accent-colored name marker in renderRiderRow takes over.
             if (m_bPlayerRowHighlight && i == m_cachedPlayerIndex) {
-                SPluginQuad_t highlight;
-                float highlightX = START_X;
-                float highlightY = rowY;
-                applyOffset(highlightX, highlightY);
-                setQuadPositions(highlight, highlightX, highlightY, hudDim.backgroundWidth, dim.lineHeightNormal);
-                highlight.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-
                 unsigned long highlightColor;
                 if (m_bPlayerRowHighlightBrand) {
                     // Brand mode: use the bike's brand color, but fall back to the
@@ -591,23 +582,28 @@ void StandingsHud::rebuildRenderData() {
                 } else {
                     highlightColor = this->getColor(ColorSlot::ACCENT);
                 }
-                highlight.m_ulColor = PluginUtils::applyOpacity(highlightColor, ROW_HIGHLIGHT_OPACITY);
-
-                m_cachedHighlightQuadIndex = static_cast<int>(m_quads.size());
-                m_quads.push_back(highlight);
+                // The index is taken BEFORE emitting: the slide animation repositions
+                // this band by index every frame (see StandingsHud::update), which is
+                // also why addRowHighlight stays one quad.
+                // THE CONTENT COLUMN -- plan.rowBandX/W, the one owner every row
+                // highlight in the plugin spans. See there for why it is the rows
+                // box and not the card's interior.
+#if defined(MXBMRP3_TEST_BUILD)
+                m_testRowBandX = hudDim.plan.rowBandX();
+                m_testRowBandW = hudDim.plan.rowBandW();
+#endif
+                m_cachedHighlightQuadIndex = addRowHighlight(
+                    hudDim.plan.rowBandX(), rowY, hudDim.plan.rowBandW(),
+                    dim.lineHeightNormal,
+                    PluginUtils::applyOpacity(highlightColor, ROW_SELECT_ALPHA));
             }
             // Hover highlight for other riders (spectator mode only). Uses the muted
             // slot to stay visually distinct from the player's own accent highlight.
             else if (i == m_hoveredRowIndex && i != m_cachedPlayerIndex) {
-                SPluginQuad_t hoverHighlight;
-                float hoverX = START_X;
-                float hoverY = rowY;
-                applyOffset(hoverX, hoverY);
-                setQuadPositions(hoverHighlight, hoverX, hoverY, hudDim.backgroundWidth, dim.lineHeightNormal);
-                hoverHighlight.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-                hoverHighlight.m_ulColor = PluginUtils::applyOpacity(
-                    this->getColor(ColorSlot::MUTED), HOVER_HIGHLIGHT_OPACITY);
-                m_quads.push_back(hoverHighlight);
+                addRowHighlight(hudDim.plan.rowBandX(), rowY, hudDim.plan.rowBandW(),
+                                dim.lineHeightNormal,
+                                PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED),
+                                                          ROW_HOVER_ALPHA));
             }
         }
 
@@ -652,11 +648,10 @@ void StandingsHud::rebuildRenderData() {
             size_t numPlateIdx = m_quads.size();
             m_quads.push_back(numPlate);
 
-            // Brand color strip quad (right of plate with gap)
+            // Brand-coloured mark, right of the plate with a gap.
             SPluginQuad_t brandStrip;
             float bsLeftX = npX + pg.plateWidth + pg.stripGap;
-            setQuadPositionsArrowRight(brandStrip, bsLeftX, npY + pg.arrowInsetY, pg.brandStripWidth, pg.arrowHeight);
-            brandStrip.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
+            setBrandMarkQuad(brandStrip, bsLeftX, npY + pg.arrowInsetY, pg);
             // Brand color always visible; dimmed for non-participants (DNS/RET/DSQ)
             float stripOpacity = isMutedRider ? 100.0f / 255.0f : 230.0f / 255.0f;
             unsigned long stripColor = PluginUtils::applyOpacity(entry.bikeBrandColor, stripOpacity);

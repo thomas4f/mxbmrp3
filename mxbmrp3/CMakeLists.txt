@@ -181,7 +181,10 @@ function(mxb_add_plugin NAME GAME_DEF API_TU)
             # resolved without the .pdb. Output-only; archived by the release
             # workflow and make_release.bat next to the .pdb.
             $<$<NOT:$<CONFIG:Debug>>:/MAP>)
-        target_link_libraries(${NAME} PRIVATE xinput)
+        # winmm: SpotterManager's PlaySound. ole32 (SAPI's CoCreateInstance) is
+        # already in CMake's default MSVC standard libraries; the mingw branch
+        # below links both explicitly.
+        target_link_libraries(${NAME} PRIVATE xinput winmm)
 
         # Analytics secrets, injected from the environment exactly as the vcxproj
         # did: each define is added ONLY when its variable is set, so a plain
@@ -260,8 +263,18 @@ function(mxb_add_plugin NAME GAME_DEF API_TU)
         #
         # -Wno-unknown-pragmas: the tree carries MSVC #pragma warning(...)
         # directives for the shipping compiler, which GCC cannot know.
+        #
+        # -Wshadow=local mirrors MSVC's C4456, which is an ERROR under the
+        # shipping build's /WX and is in neither -Wall nor -Wextra — so a local
+        # shadowing a local passed every gate here and failed on the user's
+        # machine (a `const double b` beside panel_box.h's button box, reported
+        # as two bare C2220 lines with no warning text). =local rather than
+        # plain -Wshadow deliberately: GCC's full form also flags globals, which
+        # would fire on enum members named SHORT/LONG/FIXED that collide with
+        # windows.h typedefs and that MSVC is perfectly happy with. The tree is
+        # clean at this bar, so it starts and stays at zero like the rest.
         target_compile_options(${NAME} PRIVATE
-            -m64 -O1 -Wall -Wextra -Werror -Wno-unknown-pragmas)
+            -m64 -O1 -Wall -Wextra -Werror -Wshadow=local -Wno-unknown-pragmas)
         target_link_options(${NAME} PRIVATE
             -m64 -static -static-libgcc -static-libstdc++)
         target_link_libraries(${NAME} PRIVATE

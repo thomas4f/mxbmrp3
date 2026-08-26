@@ -7,8 +7,10 @@
 // settings_manager.cpp (which owns per-HUD capture/apply/serialize and load).
 // ============================================================================
 #include "settings_manager.h"
+#include "layout_config.h"
 #include "settings_keys.h"
-#include "settings_serde.h"
+#include "../hud/settings/whats_new.h"
+#include "settings_serde_hud.h"
 #include "atomic_file_writer.h"
 #include "hud_manager.h"
 #include "profile_manager.h"
@@ -69,6 +71,7 @@
 #include "ui_config.h"
 #include "update_checker.h"
 #include "update_downloader.h"
+#include "spotter_manager.h"
 #if GAME_HAS_DISCORD
 #include "discord_manager.h"
 #endif
@@ -99,6 +102,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstdio>
 #include <windows.h>
 
 // Bring the centralized INI key names / serde helpers into scope.
@@ -169,6 +173,10 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
     out << "analytics=" << (AnalyticsManager::getInstance().isEnabled() ? 1 : 0) << " ; Anonymous usage stats (opt-out)\n";
 #endif
     out << "filterDnsRiders=" << (PluginData::getInstance().isFilterDnsRiders() ? 1 : 0) << "\n";
+    // WHICH "New" MARKERS THE PLAYER HAS ALREADY SEEN -- see hud/settings/whats_new.h.
+    // Written even when empty so the key is visible to anyone reading the file, and
+    // so clearing it by hand is an obvious way to see the markers again.
+    out << "whatsNewSeen=" << WhatsNew::serialize() << " ; dismissed 'New' markers\n";
 #if GAME_HAS_HTTP_SERVER
     out << "webServer=" << (HttpServer::getInstance().isEnabled() ? 1 : 0) << " ; Web overlay server (port and throttle in [Advanced])\n";
 #endif
@@ -198,6 +206,10 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
         // omit it from the snapshot, leaving a stale dismissal stuck across "Reset all
         // settings". An empty value loads as a no-op (setDismissedVersion("")).
         out << "dismissedVersion=" << UpdateChecker::getInstance().getDismissedVersion() << "\n";
+        // The sidebar tag's own seen-version, deliberately separate from the skip
+        // above (see UpdateChecker::shouldShowUpdateTag). Written unconditionally
+        // for the same reason that one is.
+        out << "updateTagSeen=" << UpdateChecker::getInstance().getUpdateTagSeenVersion() << "\n";
         out << "donationNudge=" << (UpdateDownloader::getInstance().isDonationNudgeEnabled() ? 1 : 0) << "\n";
         out << "\n";
     }
@@ -205,6 +217,18 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
     // Write Advanced section (power-user settings)
     out << "[Advanced]\n";
     out << IniOnly::Advanced::DEVELOPER_MODE.key << "=" << (m_developerMode ? 1 : 0) << " ; " << IniOnly::Advanced::DEVELOPER_MODE.description << "\n";
+    out << IniOnly::Advanced::UI_FONT_SIZE.key << "=" << layoutDefaults().fontSizeNormal << " ; " << IniOnly::Advanced::UI_FONT_SIZE.description << "\n";
+    out << IniOnly::Advanced::UI_LINE_HEIGHT.key << "=" << layoutDefaults().lineHeightRatio << " ; " << IniOnly::Advanced::UI_LINE_HEIGHT.description << "\n";
+    // The box model's air-term built-ins, written in the most compact shorthand
+    // that parses back to the same sides (PanelBox::formatSides).
+    out << IniOnly::Advanced::BOX_PANEL_PADDING.key << "=" << PanelBox::formatSides(layoutDefaults().boxPanelPadding) << " ; " << IniOnly::Advanced::BOX_PANEL_PADDING.description << "\n";
+    out << IniOnly::Advanced::BOX_TITLE_MARGIN.key << "=" << PanelBox::formatSides(layoutDefaults().boxTitleMargin) << " ; " << IniOnly::Advanced::BOX_TITLE_MARGIN.description << "\n";
+    out << IniOnly::Advanced::BOX_TITLE_PADDING.key << "=" << PanelBox::formatSides(layoutDefaults().boxTitlePadding) << " ; " << IniOnly::Advanced::BOX_TITLE_PADDING.description << "\n";
+    out << IniOnly::Advanced::BOX_CONTENT_MARGIN.key << "=" << PanelBox::formatSides(layoutDefaults().boxContentMargin) << " ; " << IniOnly::Advanced::BOX_CONTENT_MARGIN.description << "\n";
+    out << IniOnly::Advanced::BOX_CONTENT_PADDING.key << "=" << PanelBox::formatSides(layoutDefaults().boxContentPadding) << " ; " << IniOnly::Advanced::BOX_CONTENT_PADDING.description << "\n";
+    out << IniOnly::Advanced::BOX_BUTTON_MARGIN.key << "=" << PanelBox::formatSides(layoutDefaults().boxButtonMargin) << " ; " << IniOnly::Advanced::BOX_BUTTON_MARGIN.description << "\n";
+    out << IniOnly::Advanced::BOX_BUTTON_PADDING.key << "=" << PanelBox::formatSides(layoutDefaults().boxButtonPadding) << " ; " << IniOnly::Advanced::BOX_BUTTON_PADDING.description << "\n";
+    out << IniOnly::Advanced::BOX_PANEL_GAP.key << "=" << PanelBox::formatSides({layoutDefaults().boxPanelGap, layoutDefaults().boxPanelGap, layoutDefaults().boxPanelGap, layoutDefaults().boxPanelGap}) << " ; " << IniOnly::Advanced::BOX_PANEL_GAP.description << "\n";
     // Note: updateChannel/updateMode/updateDebugMode/dismissedVersion moved to [Updates]
     // Note: mapPixelSpacing moved to [MapHud]
     // Note: speedoNeedleColor, speedoShowOdometer, speedoShowTripmeter moved to [SpeedoWidget]
@@ -243,6 +267,9 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
     out << IniOnly::Advanced::RENDER_PROBE_QUADS.key << "=" << UiConfig::getInstance().getRenderProbeQuads() << " ; " << IniOnly::Advanced::RENDER_PROBE_QUADS.description << "\n";
     out << IniOnly::Advanced::RENDER_PROBE_FULLSCREEN.key << "=" << (UiConfig::getInstance().getRenderProbeFullscreen() ? 1 : 0) << " ; " << IniOnly::Advanced::RENDER_PROBE_FULLSCREEN.description << "\n";
     out << IniOnly::Advanced::RENDER_PROBE_TYPE.key << "=" << UiConfig::getInstance().getRenderProbeType() << " ; " << IniOnly::Advanced::RENDER_PROBE_TYPE.description << "\n";
+    out << IniOnly::Advanced::RENDER_PROBE_SPRITE.key << "=" << UiConfig::getInstance().getRenderProbeSprite() << " ; " << IniOnly::Advanced::RENDER_PROBE_SPRITE.description << "\n";
+    out << IniOnly::Advanced::RENDER_PROBE_TEXT_CHARS.key << "=" << UiConfig::getInstance().getRenderProbeTextChars() << " ; " << IniOnly::Advanced::RENDER_PROBE_TEXT_CHARS.description << "\n";
+    out << IniOnly::Advanced::RENDER_PROBE_ALPHA.key << "=" << UiConfig::getInstance().getRenderProbeAlpha() << " ; " << IniOnly::Advanced::RENDER_PROBE_ALPHA.description << "\n";
 #if GAME_HAS_HTTP_SERVER
     out << IniOnly::Advanced::WEB_SERVER_PORT.key << "=" << HttpServer::getInstance().getPort() << " ; " << IniOnly::Advanced::WEB_SERVER_PORT.description << "\n";
     out << IniOnly::Advanced::WEB_SERVER_THROTTLE_MS.key << "=" << HttpServer::getInstance().getThrottleMs() << " ; " << IniOnly::Advanced::WEB_SERVER_THROTTLE_MS.description << "\n";
@@ -261,6 +288,10 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
     out << "dropShadow=" << (UiConfig::getInstance().getDropShadow() ? 1 : 0) << "\n";
     out << "titleIcons=" << (UiConfig::getInstance().getTitleIcons() ? 1 : 0) << "\n";
     out << "gridSnapping=" << (UiConfig::getInstance().getGridSnapping() ? 1 : 0) << "\n";
+    // Panel theme by NAME (empty = none). A name survives theme folders being
+    // added, removed or reordered; an index would silently repoint.
+    out << Settings::Keys::Global::PANEL_THEME << "="
+        << UiConfig::getInstance().getThemeName() << "\n";
     out << "screenClamping=" << (UiConfig::getInstance().getScreenClamping() ? 1 : 0) << "\n";
     out << "menuOnlyCursor=" << (UiConfig::getInstance().getMenuOnlyCursor() ? 1 : 0) << "\n";
     // Companion window geometry (full-window rect). Written before displayTarget so
@@ -275,32 +306,42 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
     }
     // INI-only: companion render cadence. 0 = V-Sync (match the monitor, tear-free),
     // N = fixed N Hz cap (lower to save CPU). No settings-menu control by design.
-    out << "companionRefreshHz=" << CompanionWindow::getInstance().getRefreshHz() << "\n";
+    out << "companionRefreshHz=" << CompanionWindow::getInstance().getRefreshHz()
+        << " ; Companion render cadence: 0 = V-Sync (match the monitor), N = cap at N Hz\n";
     out << "displayTarget=" << displayTargetToString(UiConfig::getInstance().getDisplayTarget()) << "\n\n";
 
-    // Write Colors section
+    // Colors and Fonts: ONLY the slots the user actually pinned.
+    //
+    // A theme may state a palette and a font set, and the precedence is built-in
+    // default -> theme -> user (ColorConfig::getThemeOrDefaultColor). Writing all
+    // ten colours unconditionally would freeze whatever theme was active at the
+    // first save into the settings file as if the user had chosen every one of them
+    // -- and every theme picked afterwards would ship a palette that could never
+    // apply. Sparse is what keeps an untouched slot following the theme.
+    //
+    // Same shape as the sparse per-HUD save, and the same reason.
     const ColorConfig& colorConfig = ColorConfig::getInstance();
     out << "[Colors]\n";
-    out << "primary=" << PluginUtils::formatColorHex(colorConfig.getPrimary()) << "\n";
-    out << "secondary=" << PluginUtils::formatColorHex(colorConfig.getSecondary()) << "\n";
-    out << "tertiary=" << PluginUtils::formatColorHex(colorConfig.getTertiary()) << "\n";
-    out << "muted=" << PluginUtils::formatColorHex(colorConfig.getMuted()) << "\n";
-    out << "background=" << PluginUtils::formatColorHex(colorConfig.getBackground()) << "\n";
-    out << "positive=" << PluginUtils::formatColorHex(colorConfig.getPositive()) << "\n";
-    out << "warning=" << PluginUtils::formatColorHex(colorConfig.getWarning()) << "\n";
-    out << "neutral=" << PluginUtils::formatColorHex(colorConfig.getNeutral()) << "\n";
-    out << "negative=" << PluginUtils::formatColorHex(colorConfig.getNegative()) << "\n";
-    out << "accent=" << PluginUtils::formatColorHex(colorConfig.getAccent()) << "\n\n";
+    for (int i = 0; i < static_cast<int>(ColorSlot::COUNT); ++i) {
+        const ColorSlot slot = static_cast<ColorSlot>(i);
+        if (!colorConfig.isOverridden(slot)) continue;
+        std::string key = ColorConfig::getSlotName(slot);
+        for (char& c : key) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c + 32);
+        out << key << "=" << PluginUtils::formatColorHex(colorConfig.getColor(slot)) << "\n";
+    }
+    out << "\n";
 
-    // Write Fonts section
+    // Fonts: sparse for the same reason as the colours above.
     const FontConfig& fontConfig = FontConfig::getInstance();
     out << "[Fonts]\n";
-    out << "title=" << fontConfig.getFontName(FontCategory::TITLE) << "\n";
-    out << "normal=" << fontConfig.getFontName(FontCategory::NORMAL) << "\n";
-    out << "strong=" << fontConfig.getFontName(FontCategory::STRONG) << "\n";
-    out << "digits=" << fontConfig.getFontName(FontCategory::DIGITS) << "\n";
-    out << "marker=" << fontConfig.getFontName(FontCategory::MARKER) << "\n";
-    out << "small=" << fontConfig.getFontName(FontCategory::SMALL) << "\n\n";
+    for (int i = 0; i < static_cast<int>(FontCategory::COUNT); ++i) {
+        const FontCategory cat = static_cast<FontCategory>(i);
+        if (!fontConfig.isOverridden(cat)) continue;
+        std::string key = FontConfig::getCategoryName(cat);
+        for (char& c : key) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c + 32);
+        out << key << "=" << fontConfig.getFontName(cat) << "\n";
+    }
+    out << "\n";
 
     // Write Rumble section (effect configuration)
     // Always save global config to INI (per-bike effects go to JSON)
@@ -402,6 +443,60 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
         out << "visorTintOpacity=" << hud.m_visorTintOpacity << "\n\n";
     }
 
+    // Write Spotter section (global, not per-profile)
+    {
+        const SpotterManager& spotter = SpotterManager::getInstance();
+        out << "[Spotter]\n";
+        out << "enabled=" << (spotter.isEnabled() ? 1 : 0) << "\n";
+        out << "subtitles=" << (spotter.isSubtitlesEnabled() ? 1 : 0) << "\n";
+        out << "volume=" << spotter.getVolume() << " ; TTS volume 0-100\n";
+        // Two decimals, always: the stepper adds 0.05 repeatedly, so the raw
+        // float is 1.4499998 by the tenth click, and the default stream
+        // format writes unity as a bare "1" — a float that reads as a
+        // boolean, which is exactly what the persistence test's 0/1 flip
+        // then "toggles" into a clamp.
+        char speedBuf[16];
+        snprintf(speedBuf, sizeof(speedBuf), "%.2f", spotter.getSpeed());
+        out << "speed=" << speedBuf << " ; playback speed multiplier 0.50..2.00\n";
+        // One toggle per cue category (SpotterPhrase::Category order).
+        // Pack folder name under mxbmrp3_data/spotters. NO INLINE COMMENT, and it
+        // must stay that way: `pack` is one of the keys the loader does not strip
+        // a `;` from (Settings::isFolderNameValue -- a semicolon is legal in a
+        // folder name and truncating it destroyed the stored choice), so a comment
+        // added here would be read as part of the name. tts_voice below keeps its
+        // comment and keeps stripping, which is why it is not on that list.
+        // (The "empty = built-in phrases" note here was also stale: the built-ins
+        // are gone, and reloadCuePack reads an empty name as the shipped pack.)
+        out << Settings::Keys::Global::SPOTTER_PACK << "="
+            << spotter.getPackName() << "\n";
+        out << "tts_voice=" << spotter.getTtsVoice() << " ; Windows voice for TTS cues (blank = system default)\n";
+        out << "cat_general=" << (spotter.isCategoryEnabled(SpotterPhrase::Category::General) ? 1 : 0) << "\n";
+        out << "cat_timing=" << (spotter.isCategoryEnabled(SpotterPhrase::Category::Timing) ? 1 : 0) << "\n";
+        out << "cat_opponents=" << (spotter.isCategoryEnabled(SpotterPhrase::Category::Opponents) ? 1 : 0) << "\n";
+        out << "cat_proximity=" << (spotter.isCategoryEnabled(SpotterPhrase::Category::Proximity) ? 1 : 0) << "\n";
+        out << "cat_hazard=" << (spotter.isCategoryEnabled(SpotterPhrase::Category::Hazard) ? 1 : 0) << "\n";
+        // Proximity/hazard cue tuning (INI-only, like [Advanced]'s hazard knobs).
+        const SpotterHazard::Config& hz = spotter.hazardConfig();
+        // ORDER IS LOAD-BEARING, like the cat_opponents/cat_proximity pair above:
+        // every *_on_m setter raises its matching release band to stay ahead of it
+        // (the hysteresis can't invert), so writing *_clear_m FIRST would have it
+        // clamped away by the *_on_m that follows. Same file, same rule, and the
+        // symptom is a tuned release distance silently snapping back on reload.
+        out << "behind_on_m=" << hz.behindOnMeters << " ; 'rider behind' within this many meters\n";
+        out << "behind_clear_m=" << hz.clearMeters << " ; 'clear' once past this (hysteresis)\n";
+        out << "alongside_on_m=" << hz.alongsideOnMeters << " ; 'rider left/right' when overlapped within this far BEHIND\n";
+        out << "alongside_ahead_m=" << hz.alongsideAheadMeters << " ; ...and this far AHEAD (short: you can see those)\n";
+        out << "alongside_clear_m=" << hz.alongsideClearMeters << " ; side held until past this (hysteresis)\n";
+        out << "lateral_m=" << hz.lateralMeters << " ; ignore riders further ACROSS the track than this\n";
+        out << "behind_repeat_ms=" << hz.behindRepeatMs << "\n";
+        out << "behind_clear_min_ms=" << hz.clearMinEpisodeMs << " ; a 'clear' this soon after contact stays silent (0 = always voice)\n";
+        out << "blue_cooldown_ms=" << hz.blueFlagCooldownMs << "\n";
+        out << "lapping_cooldown_ms=" << hz.lappingCooldownMs << "\n";
+        out << "hazard_cooldown_ms=" << hz.hazardCooldownMs << "\n";
+        out << "on_pace_margin_ms=" << spotter.getOnPaceMarginMs()
+            << " ; 'on for a best' needs you this far up at the last split\n\n";
+    }
+
     // Write Director section (global, not per-profile)
     {
         const DirectorManager& director = DirectorManager::getInstance();
@@ -428,7 +523,8 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
         out << "followPace=" << (director.getFollowPace() ? 1 : 0) << "\n";
         out << "varietyEvery=" << director.getVarietyEvery() << "\n";
         out << "holdSec=" << director.getHoldSec() << "\n";
-        out << "incidentMaxSec=" << director.getIncidentMaxSec() << "\n";  // INI-only tunable (no GUI)
+        out << "incidentMaxSec=" << director.getIncidentMaxSec()
+            << " ; Longest incident the director will hold a camera on, in seconds\n";
         // The status-button HUD is global too (like HelmetOverlay) - persist its base
         // settings here rather than in the per-profile HUD cache.
         if (const DirectorWidget* hud = hudManager.getDirectorWidget()) {
@@ -475,6 +571,10 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                                       const std::string& value, HudManager& hudManager) {
     if (section == "General") {
         try {
+            if (key == "whatsNewSeen") {
+                WhatsNew::deserialize(value);
+                return true;
+            }
             if (key == "autoSave") {
                 UiConfig::getInstance().setAutoSave(std::stoi(value) != 0);
             }
@@ -500,6 +600,8 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                 }
             } else if (key == "dismissedVersion") {
                 UpdateChecker::getInstance().setDismissedVersion(value);
+            } else if (key == "updateTagSeen") {
+                UpdateChecker::getInstance().setUpdateTagSeenVersion(value);
             } else if (key == "controller") {
                 int idx = std::stoi(value);
                 XInputReader::getInstance().getRumbleConfig().controllerIndex = idx;
@@ -584,6 +686,11 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                 UiConfig::getInstance().setTitleIcons(std::stoi(value) != 0);
             } else if (key == "gridSnapping") {
                 UiConfig::getInstance().setGridSnapping(std::stoi(value) != 0);
+            } else if (key == Settings::Keys::Global::PANEL_THEME) {
+                // Stored verbatim without validating against the discovered set:
+                // settings load before assets are guaranteed discovered, and an
+                // unknown name already degrades to "no theme" at render time.
+                UiConfig::getInstance().setThemeName(value);
             } else if (key == "screenClamping") {
                 UiConfig::getInstance().setScreenClamping(std::stoi(value) != 0);
             } else if (key == "menuOnlyCursor") {
@@ -641,6 +748,8 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                 UpdateDownloader::getInstance().setDebugMode(debugMode);
             } else if (key == "dismissedVersion") {
                 UpdateChecker::getInstance().setDismissedVersion(value);
+            } else if (key == "updateTagSeen") {
+                UpdateChecker::getInstance().setUpdateTagSeenVersion(value);
             } else if (key == "donationNudge") {
                 UpdateDownloader::getInstance().setDonationNudgeEnabled(std::stoi(value) != 0);
             }
@@ -655,6 +764,52 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
         try {
             if (key == "developerMode") {
                 m_developerMode = (std::stoi(value) != 0);
+            }
+            // The two layout roots. Clamped, not rejected: this file is one the plugin
+            // itself rewrites, so there is no author to warn and no previous value worth
+            // keeping -- landing on the nearest sane number is the useful behaviour.
+            // Both call derive(), so the whole vocabulary follows immediately. Nothing
+            // downstream needs re-seeding: a theme has no layout of its own any more, so
+            // the ordering hazard this would otherwise have (settings load runs AFTER
+            // theme discovery) went away with per-theme layout.
+            // parseFiniteFloat, not bare std::stof: "nan" parses cleanly and then poisons
+            // every derived metric (see layoutSetFontSize). The setters guard too -- this
+            // is the load half of the both-ends rule, and it keeps the fallback here
+            // rather than relying on the clamp to notice.
+            else if (key == "uiFontSize") {
+                layoutSetFontSize(LayoutConfig::getInstance().mutableDefaults(),
+                                  Settings::parseFiniteFloat(value, LayoutMetrics{}.fontSizeNormal));
+            } else if (key == "uiLineHeight") {
+                layoutSetLineHeight(LayoutConfig::getInstance().mutableDefaults(),
+                                    Settings::parseFiniteFloat(value, LayoutMetrics{}.lineHeightRatio));
+            }
+            // The box model's air-term built-ins: CSS shorthand, each side
+            // clamped in layoutSetBoxSides (parseSides never throws, so no
+            // guard beyond the both-ends clamp is owed here).
+            else if (key == IniOnly::Advanced::BOX_PANEL_PADDING.key) {
+                layoutSetBoxSides(LayoutConfig::getInstance().mutableDefaults().boxPanelPadding,
+                                  value, LayoutMetrics{}.boxPanelPadding);
+            } else if (key == IniOnly::Advanced::BOX_TITLE_MARGIN.key) {
+                layoutSetBoxSides(LayoutConfig::getInstance().mutableDefaults().boxTitleMargin,
+                                  value, LayoutMetrics{}.boxTitleMargin);
+            } else if (key == IniOnly::Advanced::BOX_TITLE_PADDING.key) {
+                layoutSetBoxSides(LayoutConfig::getInstance().mutableDefaults().boxTitlePadding,
+                                  value, LayoutMetrics{}.boxTitlePadding);
+            } else if (key == IniOnly::Advanced::BOX_CONTENT_MARGIN.key) {
+                layoutSetBoxSides(LayoutConfig::getInstance().mutableDefaults().boxContentMargin,
+                                  value, LayoutMetrics{}.boxContentMargin);
+            } else if (key == IniOnly::Advanced::BOX_CONTENT_PADDING.key) {
+                layoutSetBoxSides(LayoutConfig::getInstance().mutableDefaults().boxContentPadding,
+                                  value, LayoutMetrics{}.boxContentPadding);
+            } else if (key == IniOnly::Advanced::BOX_BUTTON_MARGIN.key) {
+                layoutSetBoxSides(LayoutConfig::getInstance().mutableDefaults().boxButtonMargin,
+                                  value, LayoutMetrics{}.boxButtonMargin);
+            } else if (key == IniOnly::Advanced::BOX_BUTTON_PADDING.key) {
+                layoutSetBoxSides(LayoutConfig::getInstance().mutableDefaults().boxButtonPadding,
+                                  value, LayoutMetrics{}.boxButtonPadding);
+            } else if (key == IniOnly::Advanced::BOX_PANEL_GAP.key) {
+                layoutSetBoxScalar(LayoutConfig::getInstance().mutableDefaults().boxPanelGap,
+                                   value, LayoutMetrics{}.boxPanelGap);
             }
             // Legacy read-only fallbacks: updateChannel/updateDebugMode relocated to [Updates].
             // Old INIs carry them under [Advanced]; read them so values survive the upgrade,
@@ -739,6 +894,12 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                 UiConfig::getInstance().setRenderProbeFullscreen(std::stoi(value) != 0);
             } else if (key == "renderProbeType") {
                 UiConfig::getInstance().setRenderProbeType(std::stoi(value));
+            } else if (key == "renderProbeSprite") {
+                UiConfig::getInstance().setRenderProbeSprite(std::stoi(value));
+            } else if (key == "renderProbeTextChars") {
+                UiConfig::getInstance().setRenderProbeTextChars(std::stoi(value));
+            } else if (key == "renderProbeAlpha") {
+                UiConfig::getInstance().setRenderProbeAlpha(std::stoi(value));
             }
 #if GAME_HAS_HTTP_SERVER
             else if (key == "webServerPort") {
@@ -968,6 +1129,88 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
             }
         } catch (const std::exception& e) {
             DEBUG_WARN_F("Rumble: Failed to parse settings: %s", e.what());
+        }
+        return true;
+    }
+
+    // Handle Spotter section (global, not per-profile)
+    if (section == "Spotter") {
+        SpotterManager& spotter = SpotterManager::getInstance();
+        try {
+            if (key == "enabled") {
+                spotter.setEnabled(std::stoi(value) != 0);
+            } else if (key == "subtitles") {
+                spotter.setSubtitlesEnabled(std::stoi(value) != 0);
+            } else if (key == "volume") {
+                spotter.setVolume(std::stoi(value));  // setter clamps
+            } else if (key == "speed") {
+                // Fallback 1.0, not the parser's 0: a garbled value should
+                // read as "as recorded", where 0 would clamp to the slowest
+                // speed in the range and sound like a deliberate choice.
+                spotter.setSpeed(parseFiniteFloat(value, 1.0f));  // setter clamps
+            } else if (key == "rate") {
+                // LEGACY (pre-multiplier): SAPI's integer -10..10, whose scale
+                // is ~3x at 10. Converted rather than dropped so an existing
+                // INI keeps the pace its owner chose; the next save writes
+                // `speed` and this key disappears.
+                const int legacy = std::stoi(value);
+                spotter.setSpeed(static_cast<float>(
+                    std::pow(3.0, static_cast<double>(legacy) / 10.0)));
+            } else if (key == Settings::Keys::Global::SPOTTER_PACK) {
+                spotter.setPackName(value);           // validates + loads
+            } else if (key == "tts_voice") {
+                spotter.setTtsVoice(value);           // resolved against the live list
+            } else if (key == "behind_on_m") {
+                spotter.setBehindOnMeters(parseFiniteFloat(value));
+            } else if (key == "behind_clear_m") {
+                spotter.setClearMeters(parseFiniteFloat(value));
+            } else if (key == "alongside_on_m") {
+                spotter.setAlongsideOnMeters(parseFiniteFloat(value));
+            } else if (key == "alongside_ahead_m") {
+                spotter.setAlongsideAheadMeters(parseFiniteFloat(value));
+            } else if (key == "alongside_clear_m") {
+                spotter.setAlongsideClearMeters(parseFiniteFloat(value));
+            } else if (key == "lateral_m") {
+                spotter.setLateralMeters(parseFiniteFloat(value));
+            } else if (key == "behind_repeat_ms") {
+                spotter.setBehindRepeatMs(std::stoi(value));
+            } else if (key == "behind_clear_min_ms") {
+                spotter.setClearMinEpisodeMs(std::stoi(value));
+            } else if (key == "blue_cooldown_ms") {
+                spotter.setBlueFlagCooldownMs(std::stoi(value));
+            } else if (key == "lapping_cooldown_ms") {
+                spotter.setLappingCooldownMs(std::stoi(value));
+            } else if (key == "hazard_cooldown_ms") {
+                spotter.setHazardCooldownMs(std::stoi(value));
+            } else if (key == "on_pace_margin_ms") {
+                spotter.setOnPaceMarginMs(std::stoi(value));
+            } else if (key == "cat_general") {
+                spotter.setCategoryEnabled(SpotterPhrase::Category::General, std::stoi(value) != 0);
+            } else if (key == "cat_timing") {
+                spotter.setCategoryEnabled(SpotterPhrase::Category::Timing, std::stoi(value) != 0);
+            } else if (key == "cat_proximity") {
+                spotter.setCategoryEnabled(SpotterPhrase::Category::Proximity, std::stoi(value) != 0);
+            } else if (key == "cat_opponents") {
+                // Proximity was carved OUT of Opponents, so a file written
+                // before the split has no cat_proximity line and its
+                // cat_opponents answers for both. Mirror it, and let the
+                // cat_proximity line — which writeGlobalSettings emits
+                // immediately after this one — overwrite that guess whenever
+                // the file is new enough to carry one. Without this, somebody
+                // who had muted the whole group gets the spotting half back
+                // talking after an upgrade.
+                //
+                // Order-dependent by exactly that much: the mirror is only
+                // correct because our own writer puts cat_proximity after
+                // cat_opponents. Keep them in that order if either moves.
+                spotter.setCategoryEnabled(SpotterPhrase::Category::Proximity, std::stoi(value) != 0);
+                spotter.setCategoryEnabled(SpotterPhrase::Category::Opponents, std::stoi(value) != 0);
+            } else if (key == "cat_hazard") {
+                spotter.setCategoryEnabled(SpotterPhrase::Category::Hazard, std::stoi(value) != 0);
+            }
+        } catch (...) {
+            DEBUG_WARN_F("Settings: Invalid [Spotter] value: %s=%s",
+                         key.c_str(), value.c_str());
         }
         return true;
     }

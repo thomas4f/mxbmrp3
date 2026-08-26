@@ -4,6 +4,8 @@
 // ============================================================================
 #pragma once
 
+#include "../core/fuel_estimate.h"
+
 #include "base_hud.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
@@ -39,6 +41,11 @@ public:
     void resetFuelTracking();
 
     // Fuel unit setting
+    // Laps left in the tank, or -1 when it cannot be known yet. Public
+    // because the spotter's fuel warning reads THIS rather than tracking its
+    // own history — one buffer, so the number spoken is the number shown.
+    float getLapsRemaining() const;
+
     FuelUnit getFuelUnit() const { return m_fuelUnit; }
     void setFuelUnit(FuelUnit unit) { m_fuelUnit = unit; setDataDirty(); }
 
@@ -66,7 +73,10 @@ private:
     bool m_bTrackingActive;           // True if we're actively tracking fuel consumption
 
     // Fuel consumption history (stores fuel used per lap)
-    static constexpr size_t MAX_FUEL_HISTORY = 10;  // Keep last 10 laps for averaging
+    // One window size, shared with the estimator the spotter also uses — two
+    // constants would let the average and the warning disagree about how far
+    // back they look.
+    static constexpr size_t MAX_FUEL_HISTORY = FuelEstimate::kMaxHistory;
     std::vector<float> m_fuelPerLap;  // Fuel consumed per lap (most recent at back)
     size_t m_totalLapsRecorded;       // Total laps ever recorded (to know if first lap is still in buffer)
 };

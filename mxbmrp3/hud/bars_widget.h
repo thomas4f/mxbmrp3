@@ -85,9 +85,10 @@ private:
 
     // Bar dimensions (in characters/lines)
     static constexpr int BAR_WIDTH_CHARS = 1;        // Width of each bar (1 char)
-    static constexpr float BAR_HEIGHT_LINES = 3.0f;  // Height of bars (3 lines)
+    // The shared small-widget footprint; see WidgetDimensions for why it is one
+    // constant rather than a copy per widget.
+    static constexpr float CONTENT_LINES = WidgetDimensions::SMALL_WIDGET_CONTENT_LINES;
     static constexpr float BAR_SPACING_CHARS = 0.4f; // Space between bars (0.4 char) - tuned so 6 bars = 8 chars total
-    static constexpr int LABEL_HEIGHT_LINES = 1;     // Height for labels at bottom
 
     // Max marker constants
     static constexpr int NUM_BARS = 8;  // Number of trackable bars (T, B, C, R, S, F, E, W)

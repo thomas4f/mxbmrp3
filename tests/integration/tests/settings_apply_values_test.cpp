@@ -25,6 +25,7 @@
 #include "plugin_host.h"
 #include "ini.h"
 
+#include <cstdio>   // std::remove
 #include <string>
 #include <vector>
 
@@ -41,6 +42,7 @@ const std::vector<Anchor> kAnchors = {
     { "StandingsHud", "displayRowCount",  "12"        },  // int,  base 10   (range 1..100)
     { "MapHud",       "riderColorMode",   "UNIFORM"   },  // enum, base RELATIVE_POS
     { "MapHud",       "labelMode",        "NONE"      },  // enum, base RACE_NUM
+    { "GapBarHud",    "labelMode",        "RACE_NUM"  },  // enum, base NONE -- see below
     { "MapHud",       "trackWidthScale",  "2.000000"  },  // float,base 1.0  (range 0.5..3.0)
     { "LapLogHud",    "maxDisplayLaps",   "8"         },  // int,  base 5    (range 1..30)
 };
@@ -102,6 +104,72 @@ TEST_CASE("settings apply: non-default enum/float/int values round-trip via appl
                       "loaded value (app_" << std::string(a.section) << " mis-parsed/ignored it)");
         if (R.count(ovr)) CHECK_MESSAGE(R.at(ovr) == a.alt, "wrong value for " << id);
         CHECK(R.at(base) == D.at(base));   // base default untouched
+    }
+
+    host.shutdown();
+}
+
+// ---------------------------------------------------------------------------
+// The gap bar's labelMode used to be written as a BARE INT (`labelMode=2`) while
+// Map and Radar wrote the name for the same enum, the same key and the same
+// setting. Unifying the spelling is only safe if the int still LOADS: every INI
+// in the wild carries one, and an unparseable value is indistinguishable from an
+// absent one at the apply layer -- so reading names only would have reset every
+// existing gap-bar label choice to NONE on upgrade, with nothing on screen or in
+// the log to say it had happened.
+//
+// So this is the upgrade itself: seed the old spelling, load, and require that
+// the choice survived AND that the next save rewrote it in the new spelling.
+// The second half matters as much as the first -- a compat path that reads the
+// old value but keeps re-emitting it leaves the two sections disagreeing forever,
+// which is the thing being fixed.
+// ---------------------------------------------------------------------------
+TEST_CASE("settings apply: the gap bar's legacy integer labelMode loads and is rewritten as a name") {
+    const char* saveWin = "Z:\\tmp\\mxbmrp3-tests\\settings_apply_values\\";
+    const std::string iniPath =
+        "Z:\\tmp\\mxbmrp3-tests\\settings_apply_values\\mxbmrp3\\mxbmrp3_settings.ini";
+
+    // START FROM FACTORY, by deleting the INI the case above left behind. That case
+    // now carries a GapBarHud labelMode anchor, so it writes [GapBarHud:Practice]
+    // labelMode=RACE_NUM -- and inheriting that made THIS case pass with the legacy
+    // compat path deleted, because the value it asserts was already in the file
+    // before the seeded one was appended. The mutation check caught it; the guard
+    // below is what makes it stay caught.
+    std::remove(iniPath.c_str());
+
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(saveWin);
+    host.save();
+
+    const std::string defText = ini::readFile(iniPath);
+    REQUIRE_MESSAGE(!defText.empty(), "no settings.ini written at " << iniPath);
+    const ini::Key base{ "GapBarHud", "labelMode" };
+    const ini::Map D = ini::parse(defText);
+    REQUIRE(D.count(base));
+    // The premise: the base is NOT the value we are about to seed, so a load that
+    // silently dropped the override could not pass by coincidence.
+    REQUIRE(D.at(base) == "NONE");
+    // ...and no override exists YET, so the one asserted below can only have come
+    // from the seeded legacy value.
+    REQUIRE_MESSAGE(defText.find("[GapBarHud:Practice]") == std::string::npos,
+                    "a GapBarHud profile override already exists -- this case would "
+                    "assert a value it did not seed");
+
+    // 2 == RACE_NUM, in the ordinal spelling the gap bar shipped with.
+    ini::writeFile(iniPath, defText + "\n[GapBarHud:Practice]\nlabelMode=2\n");
+    host.loadSettings(saveWin);
+    host.save();
+
+    const ini::Map R = ini::parse(ini::readFile(iniPath));
+    const ini::Key ovr{ "GapBarHud:Practice", "labelMode" };
+    CHECK_MESSAGE(R.count(ovr) == 1,
+                  "the legacy integer labelMode did not survive the load -- every "
+                  "existing gap-bar label choice would reset to NONE on upgrade");
+    if (R.count(ovr)) {
+        CHECK_MESSAGE(R.at(ovr) == "RACE_NUM",
+                      "loaded, but re-emitted as '" << R.at(ovr) << "' rather than the "
+                      "name Map and Radar write -- the two spellings never converge");
     }
 
     host.shutdown();

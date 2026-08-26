@@ -15,7 +15,14 @@ using namespace PluginConstants::Math;
 
 TachoWidget::TachoWidget()
 {
+    // No caption on this panel -- see BaseHud::m_titleSupported.
+    disableTitle();
+    m_panelKind = PanelKind::Widget;
+    m_bContentCard = true;
     // One-time setup
+        // The dial face IS this gauge -- see BaseHud::m_textureRequired. Without it
+    // the widget is a red needle on an empty box: no face, no ticks, no numbers.
+    m_textureRequired = true;
     DEBUG_INFO("TachoWidget created");
     setDraggable(true);
     m_quads.reserve(2);  // dial background + needle
@@ -45,7 +52,7 @@ void TachoWidget::update() {
 
     // Always rebuild - RPM updates at high frequency (telemetry rate)
     // Rebuild is cheap (single quad calculation), no need for caching
-    rebuildRenderData();
+    rebuildAndRecord();
     clearDataDirty();
     clearLayoutDirty();
 }
@@ -74,17 +81,37 @@ void TachoWidget::rebuildRenderData() {
     float startX = 0.0f;
     float startY = 0.0f;
 
+    // The BOX lands on the lattice, the DIAL keeps its size -- see SpeedoWidget and
+    // fitPanelToGrid. Stretching a circle to whole cells on both axes is an ellipse.
+    const GridFit fit = fitPanelToGrid(dialWidth, dialHeight);
+
+    // Set bounds for drag detection (relative coordinates, offset applied by base class)
+    setBounds(startX, startY, startX + fit.w, startY + fit.h);
+    startX += fit.padX;
+    startY += fit.padY;
+
     // Calculate center of dial
     float centerX = startX + dialWidth / 2.0f;
     float centerY = startY + dialHeight / 2.0f;
-
-    // Set bounds for drag detection (relative coordinates, offset applied by base class)
-    setBounds(startX, startY, startX + dialWidth, startY + dialHeight);
 
     // Add dial as background quad (uses base class helper for consistency with PitboardHud)
     // BG Tex ON: shows dial sprite with opacity
     // BG Tex OFF: shows solid black with opacity
     addBackgroundQuad(startX, startY, dialWidth, dialHeight);
+    // No caption at all here -- not a title toggle switched off, NO title -- so
+    // nothing reaches the caption path, and that is what emits the body card
+    // the constructor asked for with m_bContentCard. Without this the flag drew
+    // nothing while still reserving the card's clearance (contentPaddingX reads the
+    // same flag), so a themed panel was a frame around bare content with an
+    // unexplained cell of padding inside it. Same call the captioned widgets make
+    // from their `else` branch.
+    //
+    // A sprite background opts a panel out of theming entirely, upstream of this
+    // (resolveActiveTheme), so on the widgets that ship with one this is inert until
+    // the sprite is switched off -- at which point they get the same treatment as
+    // every other widget instead of the one they had.
+    // check_hud_helpers.sh rule 10 fails the build if a new one forgets the call.
+    emitContentCard(0.0f);
 
     // Get target RPM from telemetry
     float targetRpm = 0.0f;
@@ -123,7 +150,7 @@ void TachoWidget::resetToDefaults() {
     setTextureVariant(1);  // Show dial texture by default
     m_fBackgroundOpacity = 1.0f;  // 100% opacity
     m_fScale = 1.0f;  // 100% default scale
-    setPosition(0.616f, 0.83308f);
+    setPosition(cellsX(112), cellsY(71));
     m_smoothedRpm = 0.0f;
     m_needleColor = DEFAULT_NEEDLE_COLOR;
     setDataDirty();

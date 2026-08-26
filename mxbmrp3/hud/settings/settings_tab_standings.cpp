@@ -156,12 +156,10 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("standings");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeader("Appearance");
+    ctx.addSectionHeading("Appearance");
     ctx.addStandardHudControls(hud);
-    ctx.addSpacing(0.5f);
-
     // === LAYOUT SECTION ===
-    ctx.addSectionHeader("Layout");
+    ctx.addSectionHeading("Layout");
 
     // Row count
     char rowCountValue[8];
@@ -241,10 +239,8 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::FILTER_DNS_TOGGLE, hud,
         static_cast<bool*>(nullptr), true,
         "standings.filter_dns", nullptr);
-    ctx.addSpacing(0.5f);
-
     // === CONTENT SECTION ===
-    ctx.addSectionHeader("Content");
+    ctx.addSectionHeading("Content");
 
     // Session-info row (live clock / leader laps / overtime label) below the title.
     // nullptr boolPtr: SESSION_INFO_TOGGLE handler flips hud->m_bShowSessionInfo directly.
@@ -352,12 +348,7 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_PENALTY, true,
         "standings.col_penalty");
 
-    // Info text - same style as the rumble tab's "Select your controller in the General tab" hint
-    ColorConfig& colors = ColorConfig::getInstance();
-    ctx.currentY += ctx.lineHeightNormal * 0.5f;
-    ctx.parent->addString("Toggle compact times in the Appearance tab.", ctx.labelX, ctx.currentY,
-        PluginConstants::Justify::LEFT, PluginConstants::Fonts::getNormal(),
-        colors.getMuted(), ctx.fontSize * 0.9f);
+    ctx.addNote("Tip: toggle compact times in the Appearance tab.");
 
     return hud;
 }

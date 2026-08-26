@@ -45,6 +45,90 @@ enum GapTypeFlags : uint8_t {
     GAP_DEFAULT_ENABLED = GAP_TO_PB | GAP_TO_ALLTIME
 };
 
+// ============================================================================
+// READOUT flags - the second, non-comparison section: a row each for the
+// figures people otherwise run a whole widget to see.
+//
+// SEPARATE FROM GapTypeFlags on purpose. Those rows all answer one question
+// ("how does this lap compare to X") and share a formatter, a colour rule and a
+// freeze; these are unrelated quantities that happen to be worth a line. Folding
+// them into the same bitfield would put "Ideal" and "Fuel" behind one iteration
+// that has to special-case half its members.
+//
+// EVERY ONE IS A READ of a source that already exists and is already shared --
+// the session clock through formatSessionClock (the documented single source, so
+// in-game and the web overlay cannot disagree), fuel through core/fuel_estimate.h,
+// position and laps through PluginData. Nothing here re-derives a figure another
+// HUD owns; that is the whole reason this is cheap.
+enum ReadoutFlags : uint32_t {
+    READOUT_NONE      = 0,
+    READOUT_POSITION  = 1 << 0,  // "Pos"     - P / total
+    READOUT_LAP       = 1 << 1,  // "Lap"     - lap / total
+    READOUT_TIME      = 1 << 2,  // "Time"    - session clock, overtime label and all
+    READOUT_SESSION   = 1 << 3,  // "Format"  - how long it runs: "20 min + 2 laps"
+    READOUT_FUEL      = 1 << 4,  // "Fuel"    - estimated laps left in the tank
+    READOUT_SERVER    = 1 << 5,  // "Server"  - the same label the Session panel prints
+    READOUT_TRACK     = 1 << 6,  // "Track"   - ...and the same track name
+    // No BEST_LAP row: your session best is already a COMPARISON row above
+    // ("Session"), and a panel that states the same lap twice is worse than one
+    // that states it once. The bit values here are internal -- each row persists
+    // under its own named key, so renumbering them changes nothing on disk.
+
+    // All OFF by default. This panel sits in the middle of the screen and is read
+    // at a glance mid-corner; a stack of extra rows is opt-in, not a new default.
+    READOUT_DEFAULT_ENABLED = READOUT_NONE
+};
+
+inline constexpr int READOUT_COUNT = 7;
+
+struct ReadoutInfo {
+    ReadoutFlags flag;
+    const char* name;       // the row's label ON THE HUD, where narrow wins
+    const char* uiName;     // ...and in the settings list, where there is room to be clear
+    const char* key;        // ...and its INI key, stated here so the two cannot drift
+};
+
+// Display order, top to bottom. One row here is the WHOLE cost of adding a
+// readout: the render loop, the settings list and the serde all walk this table
+// rather than each keeping a list of their own.
+//
+// The INI key rides along rather than being derived from the label, so renaming
+// what a row is CALLED never silently orphans what users already saved.
+inline constexpr ReadoutInfo READOUT_INFO[] = {
+    // "Position" spelled out: the label column already carries "Last Lap" at the same
+    // eight characters, and a row's label only competes with its OWN value, so this
+    // costs the Position row two characters and every other row nothing.
+    { READOUT_POSITION, "Position", "Position",  "readout_position" },
+    { READOUT_LAP,      "Lap",     "Lap",       "readout_lap"      },
+    { READOUT_TIME,     "Time",    "Time left", "readout_time"     },
+    // "Format", not "Session": the Session PB comparison row above already
+    // labels itself "Session", and two rows under one word in the same panel
+    // is the collision a render test caught the moment both were on.
+    { READOUT_SESSION,  "Format",  "Session format", "readout_session" },
+    { READOUT_FUEL,     "Fuel",    "Fuel laps left", "readout_fuel"  },
+    // THE TWO TEXT ROWS, and the only ones whose value has no natural length. The
+    // stack is CENTER_STACK_WIDTH_CHARS wide and that width is a contract with the
+    // Notices panel above it, so these truncate to fit rather than widening the
+    // panel out of line with its neighbour -- see readoutTextBudget() below for
+    // the budget and what it costs. Both read the value the Session panel already
+    // prints, so the two panels cannot disagree about what server you are on.
+    { READOUT_SERVER,   "Server",  "Server",    "readout_server" },
+    { READOUT_TRACK,    "Track",   "Track",     "readout_track"  },
+};
+// A flag's row in READOUT_INFO, so a caller naming one flag gets that row's
+// label rather than a hand-kept parallel list. Returns 0 for an unknown flag,
+// which cannot happen from the enum and keeps the lookup total.
+inline constexpr int readoutIndexOf(ReadoutFlags flag) {
+    for (int i = 0; i < READOUT_COUNT; ++i) {
+        if (READOUT_INFO[i].flag == flag) return i;
+    }
+    return 0;
+}
+
+static_assert(sizeof(READOUT_INFO) / sizeof(READOUT_INFO[0]) == READOUT_COUNT,
+              "READOUT_COUNT must match READOUT_INFO - both are walked by the "
+              "render loop, the settings tab and the serde");
+
 // Gap type count (for iteration)
 #if GAME_HAS_RECORDS_PROVIDER
 inline constexpr int GAP_TYPE_COUNT = 6;
@@ -150,6 +234,19 @@ public:
     // Comparison rows: each enabled gap type is one row (name + value). No primary/secondary.
     bool isComparisonEnabled(GapTypeFlags flag) const { return (m_enabledComparisons & flag) != 0; }
     void setComparisonEnabled(GapTypeFlags flag, bool enabled);
+    // WHAT THE LAST REBUILD LET A READOUT VALUE USE, in characters. Server and Track
+    // carry free text, and what fits is a property of the DRAWN ROW -- the panel's
+    // content width, the row's own label, the two font sizes -- so it is measured
+    // where the row is built and reported here rather than recomputed from constants.
+    //
+    // Recomputing is what went wrong the first time: the budget was derived from
+    // CENTER_STACK_WIDTH_CHARS as though those 14 characters were normal-size, when
+    // CenterStack::boxWidth measures them at fontSizeLarge. Reported by a user from a
+    // screenshot -- a truncated server name beside an obviously empty column.
+    int readoutTextBudget() const { return m_lastReadoutBudget; }
+
+    bool isReadoutEnabled(ReadoutFlags flag) const { return (m_enabledReadouts & flag) != 0; }
+    void setReadoutEnabled(ReadoutFlags flag, bool enabled);
 
     // Passive-reference selection, exposed for headless tests/tools (the rendered chip text
     // isn't in /api/state). All segment-agnostic — segment mode has its own single reference.
@@ -179,11 +276,20 @@ public:
     // band for the time row plus one lineHeightNormal band per comparison row, no outer padding
     // (height == (showTime ? lineHeightLarge : 0) + rows*lineHeightNormal) — see
     // rebuildRenderData() and tests/integration/tests/timing_reference_test.cpp.
-    struct TestGeometry { float height, paddingV, fontLarge, fontNormal, lineLarge, lineNormal; };
+    // contentTop/contentBot are the drawn section stack's extent measured from the
+    // PANEL TOP, recorded by rebuildRenderData from the box plan. They replaced a
+    // `paddingV` read off ScaledDimensions, which is the LEGACY panelPaddingYCells
+    // and stopped describing this panel the day it moved onto the box model — the
+    // test's `height == 2 * paddingV + lineNormal` then compared a box-model height
+    // against a legacy padding and failed for a reason that had nothing to do with
+    // the row height it exists to pin.
+    struct TestGeometry {
+        float height, contentTop, contentBot, fontLarge, fontNormal, lineLarge, lineNormal;
+    };
     TestGeometry testGeometry() const {
         ScaledDimensions d = getScaledDimensions();
-        return { m_fBoundsBottom - m_fBoundsTop, d.paddingV, d.fontSizeLarge,
-                 d.fontSize, d.lineHeightLarge, d.lineHeightNormal };
+        return { m_fBoundsBottom - m_fBoundsTop, m_fTestContentTop, m_fTestContentBot,
+                 d.fontSizeLarge, d.fontSize, d.lineHeightLarge, d.lineHeightNormal };
     }
 
     // Allow SettingsHud and SettingsManager to access private members
@@ -238,8 +344,18 @@ private:
 
     // Configuration
     int m_displayDurationMs;         // How long to freeze on official times (in milliseconds)
+    // The box plan's section stack, panel-top-relative, recorded each rebuild for
+    // testGeometry(). See its comment for what they replaced and why.
+    float m_fTestContentTop = 0.0f;
+    float m_fTestContentBot = 0.0f;
     bool m_showTime;                 // Show the big centered time row at the top
     uint8_t m_enabledComparisons;    // Bitfield of comparison rows to show (GapTypeFlags)
+    // uint32_t, not the narrower type the flags would fit: the settings tab's
+    // generic CHECKBOX region toggles a bitfield through a uint32_t*, which is
+    // what lets these rows exist without a ClickRegion enum value each.
+    // Set by rebuildRenderData from the drawn row; read by readoutTextBudget().
+    mutable int m_lastReadoutBudget = 0;
+    uint32_t m_enabledReadouts = READOUT_DEFAULT_ENABLED;  // ...and of readout rows (ReadoutFlags)
 
     // Cached data to detect changes (accumulated times from CurrentLapData)
     int m_cachedSplit1;              // Accumulated time to split 1

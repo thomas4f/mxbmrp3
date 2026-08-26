@@ -13,8 +13,8 @@
 #include "../core/plugin_utils.h"
 #include "../core/widget_constants.h"
 #include "../core/color_config.h"
-#include "../core/ui_config.h"
 #include "notice_priority.h"
+#include "center_stack.h"
 
 using namespace PluginConstants;
 
@@ -31,30 +31,13 @@ static const char* ordinalSuffix(int n) {
 
 // Center display positioning constants (fixed center-screen layout)
 namespace {
-    constexpr float CENTER_X = 0.5f;
-    // Center-top stack (one grid snap between each), top to bottom: GapBar (first row) ->
-    // Notices -> Timing HUD (which grows DOWN, so it sits last and never overlaps anything
-    // below). The notice grows UP with its BOTTOM one row-gap below this divider. All three
-    // boxes are lineHeightLarge tall (4 cells), so the whole stack lands on the grid.
-    // Derivation (cell = 0.0117335, box height = 0.046934):
-    //   GapBar top 0.011734 + GapBar height 0.046934 + 1 cell -> notice top   = 0.070402
-    //   notice top + noticeQuadHeight (0.046934) + rowGap (1 cell) -> divider  = 0.129069
-    //   notice bottom (0.117336) + 1 cell -> Timing top (timing_hud.cpp)       = 0.129069
+    // The notice grows UP, with its BOTTOM one row-gap above this divider -- which is
+    // the same line the Timing box starts on. Cell 11; see hud/center_stack.h for the
+    // stack's specification and why this is computed rather than written out.
     // Stable regardless of the Timing HUD's height (it's below and grows away).
-    constexpr float TIMING_DIVIDER_Y = 0.129069f;
     // Shared with the Timing HUD so the two centered top-stack panels are the same width.
     constexpr int NOTICE_WIDTH_CHARS = WidgetDimensions::CENTER_STACK_WIDTH_CHARS;
 
-    // Match TimingHud's centering exactly: when grid snapping is on, quantize the centering
-    // anchor to the horizontal grid so the notice's left edge lands on the same lattice as the
-    // Timing panel below it. Both panels are the same width, so same anchor + same snap => same
-    // left edge. Without this, two equal-width panels drift up to half a grid cell apart and
-    // read as misaligned even though their widths match.
-    inline float snapCenteringX(float x) {
-        return UiConfig::getInstance().getGridSnapping()
-            ? PluginConstants::HudGrid::SNAP_TO_GRID_X(x)
-            : x;
-    }
 }
 
 NoticesHud::NoticesHud()
@@ -72,6 +55,25 @@ NoticesHud::NoticesHud()
     , m_bShowDefaultSetup(false)
     , m_bShowSegment(false)
 {
+    // TITLE RESTORED, TEMPORARILY. This panel was one of the three the caption was taken
+    // from (see BaseHud::m_titleSupported for the twelve that keep it off). It is back so
+    // the reason the caption was unwanted can be shown rather than described -- nothing
+    // else about this HUD reverted with it: the panel, its body card, the coloured
+    // block's outset and the stack spacing are all as the last few commits left them.
+    // A PANEL AND A BODY CARD, like both siblings in the centre stack, and set here
+    // like theirs rather than derived per rebuild. It used to be `m_bContentCard =
+    // m_bShowTitle`: untitled, this widget drew NO panel at all -- the coloured slab
+    // was the whole thing -- and switching the caption on was what promoted it to a
+    // real panel. With the caption gone that left the slab as the only reachable
+    // shape, a bare button-coloured blob beside a framed Gap Bar. Reported as "what
+    // has happened to the content band of the notices, shouldn't it look like the gap
+    // bar".
+    //
+    // It costs NO height, which is what made the old gating look necessary and is not:
+    // the slab already paid a padding at each end when it was the widget, and the panel
+    // pays exactly that now, so panelH is the number CenterStack::noticesBoxHeight()
+    // already states. The slab moves inside the card instead of being the box.
+    m_bContentCard = true;
     // One-time setup
     DEBUG_INFO("NoticesHud created");
     setDraggable(true);
@@ -350,44 +352,48 @@ void NoticesHud::update() {
 }
 
 void NoticesHud::rebuildLayout() {
-    // Fast path - only update positions (not colors/opacity)
-    if (m_quads.empty()) {
-        setBounds(0.0f, 0.0f, 0.0f, 0.0f);
-        return;
-    }
+    // FULL REBUILD, like TimingHud and GapBarHud beside it.
+    //
+    // This used to be a hand-written fast path that rewrote m_quads[0] as the notice
+    // slab. That index is only the slab while this widget draws nothing else -- with
+    // a title it is the panel's first frame slice, so the fast path would drag the
+    // frame and leave the slab behind. The path had already cost two desync bugs
+    // (its own comments recorded both: a 1-quad vector written with 9 slices, and a
+    // rewrite using the wrong slice set), and it duplicated every dimension in
+    // rebuildRenderData to do it.
+    //
+    // Cheap enough to be the right trade: at most one notice is ever on screen, so a
+    // rebuild is a background, a caption and one slab.
+    rebuildRenderData();
+}
 
-    auto dim = getScaledDimensions();
-
-    // Notice dimensions (uses own scale - independent of TimingHud)
-    float noticeTextWidth = PluginUtils::calculateMonospaceTextWidth(NOTICE_WIDTH_CHARS, dim.fontSizeLarge);
-    float noticeQuadWidth = dim.paddingH + noticeTextWidth + dim.paddingH;
-    // Height = lineHeightLarge (the large-font title band, exactly 2x lineHeightNormal =
-    // 4 snap-grid cells) so this box lines up on the shared grid with the Timing/Gap Bar
-    // rows. (The old paddingV + fontSizeLarge was ~4.56 cells - off-grid.)
-    float noticeQuadHeight = dim.lineHeightLarge;
-
-    // Position notice with bottom edge at divider line (grows up)
-    // Use original gap formula (half line height) for proper spacing
-    float rowGap = dim.lineHeightNormal / 2.0f;
-    float noticeQuadX = snapCenteringX(CENTER_X - noticeQuadWidth / 2.0f);
-    float noticeQuadY = TIMING_DIVIDER_Y - rowGap - noticeQuadHeight;
-    float noticeY = noticeQuadY + (noticeQuadHeight - dim.fontSizeLarge) * 0.5f;
-
-    // Update notice quad position (apply drag offset)
-    float quadX = noticeQuadX;
-    float quadY = noticeQuadY;
-    applyOffset(quadX, quadY);
-    setQuadPositions(m_quads[0], quadX, quadY, noticeQuadWidth, noticeQuadHeight);
-
-    // Update notice string position
-    if (!m_strings.empty()) {
-        float noticeX = noticeQuadX + noticeQuadWidth / 2.0f;
-        applyOffset(noticeX, noticeY);
-        m_strings[0].m_afPos[0] = noticeX;
-        m_strings[0].m_afPos[1] = noticeY;
-    }
-
-    setBounds(noticeQuadX, noticeQuadY, noticeQuadX + noticeQuadWidth, noticeQuadY + noticeQuadHeight);
+// One notice background. A notice is a coloured slab whose COLOUR is the message
+// (red = wrong way, blue = blue flag), which is exactly what the theme's button
+// slices are for -- they are white+alpha and always take the caller's colour, so a
+// baked-colour theme cannot multiply the meaning away. The plain quad is the
+// fallback when the theme has no button set.
+//
+// Every branch below goes through here so the quad COUNT is uniform: the layout
+// fast path rewrites this span by index, and a branch that pushed its own single
+// quad would desync it.
+// A notice IS a button shape: a small coloured rectangle whose colour is state.
+// This reimplemented addButtonQuad exactly -- themed branch, offset, sprite, colour
+// -- which is the duplication that helper was written to end.
+void NoticesHud::addNoticeBackground(float x, float y, float w, float h, unsigned long color) {
+    // THE THEME'S BUTTON SLICES, and the Gap Bar's fill goes through the same call.
+    // Both are a coloured block whose colour is the reading, so a theme that shapes its
+    // buttons shapes these too -- one decision for the pair rather than one panel
+    // borrowing the art and its neighbour drawing a flat rectangle.
+    //
+    // The rect is the card's INTERIOR, which is what makes the borrowed shape sit
+    // flush: a button bevel does not colour its own edge slices, so the visible colour
+    // is inset from this rect by the theme's [button] size. That inset is the theme's
+    // to choose -- a theme wanting the colour edge to edge ships flat button art.
+    //
+    // NOT opaque: a notice borrows a button's shape but is not a control. These ship at
+    // 10% background opacity -- a whisper over the track -- and the button rule (a thing
+    // you click stays legible) would make every one a solid box.
+    addButtonQuad(x, y, w, h, color, /*opaque=*/false);
 }
 
 void NoticesHud::rebuildRenderData() {
@@ -422,95 +428,100 @@ void NoticesHud::rebuildRenderData() {
 
     auto dim = getScaledDimensions();
 
-    // Notice dimensions (uses own scale - independent of TimingHud)
-    float noticeTextWidth = PluginUtils::calculateMonospaceTextWidth(NOTICE_WIDTH_CHARS, dim.fontSizeLarge);
-    float noticeQuadWidth = dim.paddingH + noticeTextWidth + dim.paddingH;
-    // Height = lineHeightLarge (the large-font title band, exactly 2x lineHeightNormal =
-    // 4 snap-grid cells) so this box lines up on the shared grid with the Timing/Gap Bar
-    // rows. (The old paddingV + fontSizeLarge was ~4.56 cells - off-grid.)
-    float noticeQuadHeight = dim.lineHeightLarge;
+    // BOX-MODEL: one section whose content is the coloured slab's row. The slab
+    // IS the section card's border box when one is drawn — the "block meets the
+    // card's outer edge on all four sides" rule, now by construction rather than
+    // by outsetting the interior back over the border (the old
+    // contentCardSpanY + drawnCardBorder* dance). Unthemed, the card box
+    // degenerates to the content box and the slab is the row, as before.
+    //
+    // The centre-stack width rides as the panel MINIMUM (see CenterStack::boxWidth);
+    // its own stack line is measured DOWN and snapped, as before.
+    BaseHud::PanelWant want;
+    wantCenterStackWidth(want, dim);   // stack width as the minimum, nothing competing
+    want.sectionH = { bigValueRowHeight(dim) };
+    want.captionW = planTitleWidth(dim, "Notices", TitleTier::Large);
+    want.tier = TitleTier::Large;
+    // The message slab IS this panel: unthemed, it takes the cell of panel padding
+    // rather than floating inside it. Same outer rect either way; with a theme on,
+    // the frame keeps its ring. See PanelWant::contentFillsPanel.
+    want.contentFillsPanel = true;
+    PanelPlan& plan = planPanel(dim, want);
 
-    // Position notice with bottom edge at divider line (grows up)
-    // Use original gap formula (half line height) for proper spacing
-    float rowGap = dim.lineHeightNormal / 2.0f;
-    float noticeQuadX = snapCenteringX(CENTER_X - noticeQuadWidth / 2.0f);
-    float noticeQuadY = TIMING_DIVIDER_Y - rowGap - noticeQuadHeight;
-    float noticeY = noticeQuadY + (noticeQuadHeight - dim.fontSizeLarge) * 0.5f;
-    // Center text on the (snapped) box center, not raw CENTER_X, so the label stays centered
-    // inside the box after the box left edge is grid-snapped (matches TimingHud).
-    float noticeCenterX = noticeQuadX + noticeQuadWidth / 2.0f;
+    const float panelW = plan.width();
+    // CENTRE-ANCHORED: offsetX is this panel's CENTRE, so a width change recentres
+    // instead of walking an edge. It stored a DELTA from the computed centre until
+    // settings v7; the migration adds the anchor in.
+    const float panelX = centerAnchoredPanelLeft(panelW);
+    // ZERO, like GapBar's boxTop and Timing's START_Y: the panel anchors at the
+    // offset and the stored offset IS its top. This used to bake noticesBoxTop() in
+    // and treat the offset as a delta from it, which meant the same offsetY in the
+    // INI put this panel somewhere else than the two it stacks with -- invisible
+    // while the three had different defaults, and wrong the moment they share one.
+    const float panelY = snapEdgeY(0.0f);
+    addPlanBackground(plan, panelX, panelY);
+    addPlanTitle(plan, "Notices", this->getFont(FontCategory::TITLE),
+                 this->getColor(ColorSlot::PRIMARY));
+
+    // The SLAB (the card's drawn box; = the row unthemed), via the shared
+    // accessors -- the message centres on it both ways now. Its width used to be
+    // the card minus the LEFT content inset mirrored onto both sides, the same
+    // idiom that pulled Fuel's value inward (see PanelPlan::contentRight).
+    const float slabX = plan.sectionBoxX();
+    const float slabW = plan.sectionBoxW();
+    const float slabY = plan.sectionBoxY();
+    const float slabH = plan.sectionBoxH();
+
+    // INK-centred in THE SLAB, like the Timing panel's big time below it -- the message
+    // is drawn ON the slab, so the slab is the box it has to look centred in. It used
+    // to centre in the row, which is the same place until [content] border is
+    // asymmetric and a cell high when it is (PanelPlan::sectionBoxY).
+    float noticeY = inkCenteredY(slabY, slabH, dim.fontSizeLarge);
+    float noticeCenterX = slabX + slabW / 2.0f;
 
     if (showWrongWay) {
         // Add notice background (red for warning)
-        SPluginQuad_t noticeQuad;
-        float quadX = noticeQuadX;
-        float quadY = noticeQuadY;
-        applyOffset(quadX, quadY);
-        setQuadPositions(noticeQuad, quadX, quadY, noticeQuadWidth, noticeQuadHeight);
-        noticeQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::NEGATIVE), m_fBackgroundOpacity);
-        m_quads.push_back(noticeQuad);
+        addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(this->getColor(ColorSlot::NEGATIVE), m_fBackgroundOpacity));
 
         // Add notice text (red)
         addString("WRONG WAY", noticeCenterX, noticeY, Justify::CENTER,
-            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::NEGATIVE), dim.fontSizeLarge);
+            this->getFont(FontCategory::TITLE),
+            captionOnSlabColor(this->getColor(ColorSlot::NEGATIVE), m_fBackgroundOpacity),
+            dim.fontSizeLarge);
     }
     else if (showHazard) {
         // Add notice background (yellow/warning for hazard)
-        SPluginQuad_t noticeQuad;
-        float quadX = noticeQuadX;
-        float quadY = noticeQuadY;
-        applyOffset(quadX, quadY);
-        setQuadPositions(noticeQuad, quadX, quadY, noticeQuadWidth, noticeQuadHeight);
-        noticeQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::WARNING), m_fBackgroundOpacity);
-        m_quads.push_back(noticeQuad);
+        addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(this->getColor(ColorSlot::WARNING), m_fBackgroundOpacity));
 
         // Same slot, same WARNING colour — only the wording separates a rider coming at
         // you from one stopped on the track, which call for opposite reactions.
         addString(m_bHazardIsWrongWay ? "RIDER ONCOMING" : "HAZARD AHEAD",
             noticeCenterX, noticeY, Justify::CENTER,
-            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::WARNING), dim.fontSizeLarge);
+            this->getFont(FontCategory::TITLE),
+            captionOnSlabColor(this->getColor(ColorSlot::WARNING), m_fBackgroundOpacity),
+            dim.fontSizeLarge);
     }
     else if (showBlueFlag) {
         // Add notice background (blue for blue flag)
-        SPluginQuad_t noticeQuad;
-        float quadX = noticeQuadX;
-        float quadY = noticeQuadY;
-        applyOffset(quadX, quadY);
-        setQuadPositions(noticeQuad, quadX, quadY, noticeQuadWidth, noticeQuadHeight);
-        noticeQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        noticeQuad.m_ulColor = PluginUtils::applyOpacity(ColorPalette::BLUE, m_fBackgroundOpacity);
-        m_quads.push_back(noticeQuad);
+        addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(ColorPalette::BLUE, m_fBackgroundOpacity));
 
         addString("BLUE FLAG", noticeCenterX, noticeY, Justify::CENTER,
-            this->getFont(FontCategory::TITLE), ColorPalette::BLUE, dim.fontSizeLarge);
+            this->getFont(FontCategory::TITLE),
+            captionOnSlabColor(ColorPalette::BLUE, m_fBackgroundOpacity), dim.fontSizeLarge);
     }
     else if (showLapping) {
         // Add notice background (neutral/yellow — informational caution; distinct from
         // the orange WARNING that hazards use)
-        SPluginQuad_t noticeQuad;
-        float quadX = noticeQuadX;
-        float quadY = noticeQuadY;
-        applyOffset(quadX, quadY);
-        setQuadPositions(noticeQuad, quadX, quadY, noticeQuadWidth, noticeQuadHeight);
-        noticeQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::NEUTRAL), m_fBackgroundOpacity);
-        m_quads.push_back(noticeQuad);
+        addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(this->getColor(ColorSlot::NEUTRAL), m_fBackgroundOpacity));
 
         addString("LAPPER AHEAD", noticeCenterX, noticeY, Justify::CENTER,
-            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::NEUTRAL), dim.fontSizeLarge);
+            this->getFont(FontCategory::TITLE),
+            captionOnSlabColor(this->getColor(ColorSlot::NEUTRAL), m_fBackgroundOpacity),
+            dim.fontSizeLarge);
     }
     else if (showOvertime) {
         // Add notice background (neutral for overtime - informational race event)
-        SPluginQuad_t noticeQuad;
-        float quadX = noticeQuadX;
-        float quadY = noticeQuadY;
-        applyOffset(quadX, quadY);
-        setQuadPositions(noticeQuad, quadX, quadY, noticeQuadWidth, noticeQuadHeight);
-        noticeQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::BACKGROUND), m_fBackgroundOpacity);
-        m_quads.push_back(noticeQuad);
+        addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(this->getColor(ColorSlot::BACKGROUND), m_fBackgroundOpacity));
 
         addString("OVERTIME", noticeCenterX, noticeY, Justify::CENTER,
             this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
@@ -520,17 +531,12 @@ void NoticesHud::rebuildRenderData() {
         const char* text = showAllTimePB ? "ALL-TIME PB" :
                            showFastestLap ? "FASTEST LAP" : "SESSION PB";
 
-        SPluginQuad_t noticeQuad;
-        float quadX = noticeQuadX;
-        float quadY = noticeQuadY;
-        applyOffset(quadX, quadY);
-        setQuadPositions(noticeQuad, quadX, quadY, noticeQuadWidth, noticeQuadHeight);
-        noticeQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::POSITIVE), m_fBackgroundOpacity);
-        m_quads.push_back(noticeQuad);
+        addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(this->getColor(ColorSlot::POSITIVE), m_fBackgroundOpacity));
 
         addString(text, noticeCenterX, noticeY, Justify::CENTER,
-            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::POSITIVE), dim.fontSizeLarge);
+            this->getFont(FontCategory::TITLE),
+            captionOnSlabColor(this->getColor(ColorSlot::POSITIVE), m_fBackgroundOpacity),
+            dim.fontSizeLarge);
     }
     else if (showSegment) {
         // Segment-timer action feedback. Adding a point = positive (green); removing = neutral.
@@ -558,28 +564,14 @@ void NoticesHud::rebuildRenderData() {
             default: break;
         }
 
-        SPluginQuad_t noticeQuad;
-        float quadX = noticeQuadX;
-        float quadY = noticeQuadY;
-        applyOffset(quadX, quadY);
-        setQuadPositions(noticeQuad, quadX, quadY, noticeQuadWidth, noticeQuadHeight);
-        noticeQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(isAdd ? ColorSlot::POSITIVE : ColorSlot::BACKGROUND), m_fBackgroundOpacity);
-        m_quads.push_back(noticeQuad);
+        addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(this->getColor(isAdd ? ColorSlot::POSITIVE : ColorSlot::BACKGROUND), m_fBackgroundOpacity));
 
         addString(text, noticeCenterX, noticeY, Justify::CENTER,
             this->getFont(FontCategory::TITLE), this->getColor(slot), dim.fontSizeLarge);
     }
     else if (showFinished) {
         // Add notice background (semantic background color for finished)
-        SPluginQuad_t noticeQuad;
-        float quadX = noticeQuadX;
-        float quadY = noticeQuadY;
-        applyOffset(quadX, quadY);
-        setQuadPositions(noticeQuad, quadX, quadY, noticeQuadWidth, noticeQuadHeight);
-        noticeQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::BACKGROUND), m_fBackgroundOpacity);
-        m_quads.push_back(noticeQuad);
+        addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(this->getColor(ColorSlot::BACKGROUND), m_fBackgroundOpacity));
 
         // Add notice text with position (e.g., "FINISHED 1ST")
         char finishedText[32];
@@ -593,14 +585,7 @@ void NoticesHud::rebuildRenderData() {
     }
     else if (showLastLap) {
         // Add notice background (white for last lap)
-        SPluginQuad_t noticeQuad;
-        float quadX = noticeQuadX;
-        float quadY = noticeQuadY;
-        applyOffset(quadX, quadY);
-        setQuadPositions(noticeQuad, quadX, quadY, noticeQuadWidth, noticeQuadHeight);
-        noticeQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::BACKGROUND), m_fBackgroundOpacity);
-        m_quads.push_back(noticeQuad);
+        addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(this->getColor(ColorSlot::BACKGROUND), m_fBackgroundOpacity));
 
         // Add notice text (white)
         addString("FINAL LAP", noticeCenterX, noticeY, Justify::CENTER,
@@ -608,29 +593,30 @@ void NoticesHud::rebuildRenderData() {
     }
     else if (showDefaultSetup) {
         // Warn when using default setup (only fires for default/empty setups)
-        SPluginQuad_t noticeQuad;
-        float quadX = noticeQuadX;
-        float quadY = noticeQuadY;
-        applyOffset(quadX, quadY);
-        setQuadPositions(noticeQuad, quadX, quadY, noticeQuadWidth, noticeQuadHeight);
-        noticeQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        noticeQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::WARNING), m_fBackgroundOpacity);
-        m_quads.push_back(noticeQuad);
+        addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(this->getColor(ColorSlot::WARNING), m_fBackgroundOpacity));
 
         addString("DEFAULT SETUP", noticeCenterX, noticeY, Justify::CENTER,
-            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::WARNING), dim.fontSizeLarge);
+            this->getFont(FontCategory::TITLE),
+            captionOnSlabColor(this->getColor(ColorSlot::WARNING), m_fBackgroundOpacity),
+            dim.fontSizeLarge);
     }
 
-    setBounds(noticeQuadX, noticeQuadY, noticeQuadX + noticeQuadWidth, noticeQuadY + noticeQuadHeight);
+    setBounds(panelX, panelY, panelX + panelW, panelY + plan.height());
 }
 
 void NoticesHud::resetToDefaults() {
     m_bVisible = true;
+    // Off by DEFAULT, not unavailable -- the toggle is in the Notices tab. Switching
+    // it on promotes this widget from a bare coloured slab to a real panel with the
+    // slab as its content; see rebuildRenderData for why the panel keeps the slab's
+    // outer width instead of growing around it.
     m_bShowTitle = false;
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.1f;
     m_fScale = 1.0f;
-    setPosition(0.0f, 0.0f);
+    // The stack's shared anchor: offsetX is the CENTRE (all four centred elements
+    // agree since settings v7), offsetY the shared top.
+    setPosition(CENTER_ANCHOR_X, CenterStack::stackBoxTop());
     m_enabledNotices = NOTICE_DEFAULT;
     m_noticeDurationMs = DEFAULT_NOTICE_DURATION_MS;
 

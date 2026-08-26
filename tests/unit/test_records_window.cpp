@@ -125,3 +125,85 @@ TEST_CASE("records window: fillsTheTable — bounds hold and the table fills whe
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// PANEL WIDTH. The bug: the last enabled column's trailing gap was subtracted, so
+// the panel came out exactly as wide as its content and the lap time's final digit
+// landed on the same pixel as the player row's highlight band. Only visible with a
+// THEME installed -- unthemed the highlight spans the whole panel -- which is why it
+// reached a user. Measured on a themed capture: 1px of clearance before, 10 after.
+//
+// These are the shipped constants (RecordsHud::COL_*_WIDTH), duplicated because they
+// are private to the HUD; the case below that sums them independently is what keeps
+// the copies honest about the ONE property that matters, which is that every enabled
+// column contributes its whole width.
+namespace {
+constexpr int W_POS = 4, W_RIDER = 13, W_BIKE = 18, W_SECTOR = 9, W_LAPTIME = 9, W_DATE = 11;
+constexpr int W_MIN = 34;
+const RecordsWindow::ColumnWidths kW{ W_POS, W_RIDER, W_BIKE, W_SECTOR, W_LAPTIME, W_DATE };
+}  // namespace
+
+TEST_CASE("records width: every enabled column contributes its full width, gap included") {
+    using RecordsWindow::backgroundWidthChars;
+
+    // The shipped default set, wide enough that the controls-row floor is not in play.
+    RecordsWindow::ColumnFlags core;
+    core.pos = core.rider = core.bike = core.laptime = true;
+    CHECK(backgroundWidthChars(kW, core, 3, W_MIN) == W_POS + W_RIDER + W_BIKE + W_LAPTIME);
+    CHECK(backgroundWidthChars(kW, core, 3, W_MIN) == 44);
+
+    // WHICHEVER COLUMN IS LAST, it keeps its gap -- the property the old code broke,
+    // and it broke it differently depending on which column happened to be last. Each
+    // of these ends on a different one.
+    RecordsWindow::ColumnFlags withDate = core;   withDate.date = true;
+    CHECK(backgroundWidthChars(kW, withDate, 3, W_MIN) == 44 + W_DATE);
+
+    RecordsWindow::ColumnFlags withSectors = core;   withSectors.sectors = true;
+    CHECK(backgroundWidthChars(kW, withSectors, 3, W_MIN) == 44 + 3 * W_SECTOR);
+    CHECK(backgroundWidthChars(kW, withSectors, 4, W_MIN) == 44 + 4 * W_SECTOR);   // KRP
+
+    RecordsWindow::ColumnFlags noLaptime = core;   noLaptime.laptime = false;
+    CHECK(backgroundWidthChars(kW, noLaptime, 3, W_MIN) == W_POS + W_RIDER + W_BIKE);
+
+    // The controls row (provider / category / Compare) is the floor, and it only
+    // binds once the column set is trimmed well below the default.
+    RecordsWindow::ColumnFlags narrow;
+    narrow.pos = narrow.rider = true;
+    CHECK(backgroundWidthChars(kW, narrow, 3, W_MIN) == W_MIN);
+    RecordsWindow::ColumnFlags none;
+    CHECK(backgroundWidthChars(kW, none, 3, W_MIN) == W_MIN);
+}
+
+TEST_CASE("records width: the sum is never short of the content it has to hold") {
+    // Exhaustive over the 64 column combinations: the panel must be at least as wide
+    // as the columns' CONTENT (each width minus its one-character gap) PLUS one gap,
+    // which is exactly "no column is charged less than its full width". A subtraction
+    // anywhere -- for the last column or any other -- fails this.
+    for (int mask = 0; mask < 64; ++mask) {
+        RecordsWindow::ColumnFlags on;
+        on.pos     = (mask & 1)  != 0;
+        on.rider   = (mask & 2)  != 0;
+        on.bike    = (mask & 4)  != 0;
+        on.sectors = (mask & 8)  != 0;
+        on.laptime = (mask & 16) != 0;
+        on.date    = (mask & 32) != 0;
+        const int enabled = (on.pos ? 1 : 0) + (on.rider ? 1 : 0) + (on.bike ? 1 : 0)
+                          + (on.sectors ? 3 : 0) + (on.laptime ? 1 : 0) + (on.date ? 1 : 0);
+        int content = 0;
+        if (on.pos)     content += W_POS - 1;
+        if (on.rider)   content += W_RIDER - 1;
+        if (on.bike)    content += W_BIKE - 1;
+        if (on.sectors) content += 3 * (W_SECTOR - 1);
+        if (on.laptime) content += W_LAPTIME - 1;
+        if (on.date)    content += W_DATE - 1;
+
+        const int chars = backgroundWidthChars(kW, on, 3, W_MIN);
+        CAPTURE(mask);
+        // Content, plus one gap per column -- and at least one gap left over past the
+        // last column, which is the clearance the row highlight needs.
+        CHECK(chars >= content + enabled);
+        if (enabled > 0 && content + enabled > W_MIN) {
+            CHECK(chars - content >= 1);
+        }
+    }
+}

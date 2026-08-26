@@ -14,6 +14,8 @@ using namespace PluginConstants;
 TimeWidget::TimeWidget()
     : m_cachedRenderedTime(-1)
 {
+    m_panelKind = PanelKind::Widget;
+    m_bContentCard = true;
     // One-time setup
     DEBUG_INFO("TimeWidget created");
     setDraggable(true);
@@ -56,7 +58,7 @@ void TimeWidget::update() {
 
     // Check data dirty first (takes precedence)
     if (isDataDirty()) {
-        rebuildRenderData();
+        rebuildAndRecord();
         m_cachedRenderedTime = currentTime;
         clearDataDirty();
         clearLayoutDirty();
@@ -67,42 +69,10 @@ void TimeWidget::update() {
     }
 }
 
-
 void TimeWidget::rebuildLayout() {
-    // Fast path - only update positions (not colors/opacity)
-    auto dim = getScaledDimensions();
-
-    float startX = 0.0f;
-    float startY = 0.0f;
-
-    // Calculate dimensions using base helper
-    float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::STANDARD_WIDTH);
-
-    // Height calculation - consistent with PositionWidget/LapWidget (no extra height for session type)
-    float labelHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
-    float contentHeight = labelHeight + dim.lineHeightLarge;  // Label (optional, 1 line) + Value (2 lines)
-    float backgroundHeight = dim.paddingV + contentHeight + dim.paddingV;
-
-    setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
-
-    // Update background quad position (applies offset internally)
-    updateBackgroundQuadPosition(startX, startY, backgroundWidth, backgroundHeight);
-
-    float contentStartX = startX + dim.paddingH;
-    float contentStartY = startY + dim.paddingV;
-    float currentY = contentStartY;
-
-    // Position strings if they exist
-    int stringIndex = 0;
-
-    // Label (optional, controlled by title toggle)
-    if (m_bShowTitle && positionString(stringIndex, contentStartX, currentY)) {
-        stringIndex++;
-        currentY += labelHeight;
-    }
-
-    // Time value (extra large font - spans 2 lines)
-    positionString(stringIndex, contentStartX, currentY);
+    // BOX-MODEL: one source of geometry — the fast path duplicated the sizing
+    // arithmetic, and a handful of strings is cheaper to rebuild than the drift.
+    rebuildRenderData();
 }
 
 void TimeWidget::rebuildRenderData() {
@@ -129,31 +99,27 @@ void TimeWidget::rebuildRenderData() {
     float startX = 0.0f;
     float startY = 0.0f;
 
-    // Calculate dimensions using base helper
-    float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::STANDARD_WIDTH);
+    // BOX-MODEL: the plan owns padding, chrome, the title band and the content
+    // origin. The fixed 12-char column (shared with Position/Lap/Clock) is the
+    // content width, so the four standard widgets keep tiling with each other.
+    BaseHud::PanelWant want;
+    want.contentW = PluginUtils::calculateMonospaceTextWidth(
+        WidgetDimensions::STANDARD_WIDTH, dim.fontSize);
+    want.sectionH = { bigValueRowHeight(dim) };  // Value (2 lines)
+    want.captionW = planTitleWidth(dim, "Time");
+    PanelPlan& p = planPanel(dim, want);
+    const float backgroundWidth = p.width();
+    const float backgroundHeight = p.height();
 
-    // Height calculation - consistent with PositionWidget/LapWidget (no extra height for session type)
-    float labelHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
-    float contentHeight = labelHeight + dim.lineHeightLarge;  // Label (optional, 1 line) + Value (2 lines)
-    float backgroundHeight = dim.paddingV + contentHeight + dim.paddingV;
+    addPlanBackground(p, startX, startY);
+    addPlanTitle(p, "Time", this->getFont(FontCategory::TITLE), textColor);
 
-    // Add background quad
-    addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
-
-    float contentStartX = startX + dim.paddingH;
-    float contentStartY = startY + dim.paddingV;
-    float currentY = contentStartY;
-
-    // Label (optional, controlled by title toggle)
-    if (m_bShowTitle) {
-        addString("Time", contentStartX, currentY, Justify::LEFT, this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
-        currentY += labelHeight;
-    }
+    const float contentStartX = p.contentX();
+    const float currentY = p.contentY();
 
     // Time value (extra large font - spans 2 lines)
-    addString(timeBuffer, contentStartX, currentY, Justify::LEFT,
+    addString(timeBuffer, contentStartX, bigValueTextY(currentY, dim), Justify::LEFT,
         this->getFont(FontCategory::TITLE), textColor, dim.fontSizeExtraLarge);
-    currentY += dim.lineHeightLarge;
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
@@ -165,6 +131,6 @@ void TimeWidget::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.0f;
     m_fScale = 1.0f;
-    setPosition(0.1925f, 0.01173f);
+    setPosition(cellsX(35), cellsY(1));
     setDataDirty();
 }

@@ -31,9 +31,11 @@ namespace {
 
 CompassWidget::CompassWidget()
 {
+    m_panelKind = PanelKind::Widget;
+    m_bContentCard = true;
     DEBUG_INFO("CompassWidget created");
     setDraggable(true);
-    m_quads.reserve(RING_SEGMENTS + 3);  // bg + ring + 2 needle halves (or index tick)
+    m_quads.reserve(4);                  // bg + 2 needle halves (or the index tick)
     m_strings.reserve(6);                // optional title + 4 cardinal labels + heading number
 
     setTextureBaseName("compass_widget");
@@ -107,57 +109,13 @@ void CompassWidget::update() {
 
     // Always rebuild while visible so the smoothing advances every frame (the dial
     // eases between heading samples regardless of position-update rate).
-    rebuildRenderData();
+    rebuildAndRecord();
     clearDataDirty();
     clearLayoutDirty();
 }
 
 void CompassWidget::rebuildLayout() {
     rebuildRenderData();
-}
-
-void CompassWidget::addArcSegment(float centerX, float centerY, float innerRadius, float outerRadius,
-                                   float startAngleRad, float endAngleRad,
-                                   unsigned long color, int numSegments) {
-    if (numSegments < 1) numSegments = 1;
-    float angleStep = (endAngleRad - startAngleRad) / numSegments;
-
-    float prevInnerX = 0.0f, prevInnerY = 0.0f;
-    float prevOuterX = 0.0f, prevOuterY = 0.0f;
-    bool hasPrev = false;
-
-    for (int i = 0; i <= numSegments; ++i) {
-        float angle = startAngleRad + i * angleStep;
-        // sin/cos so 0 rad = up, positive = clockwise (matches Lean/GForce rings).
-        float innerX = centerX + std::sin(angle) * innerRadius / UI_ASPECT_RATIO;
-        float innerY = centerY - std::cos(angle) * innerRadius;
-        float outerX = centerX + std::sin(angle) * outerRadius / UI_ASPECT_RATIO;
-        float outerY = centerY - std::cos(angle) * outerRadius;
-
-        if (hasPrev) {
-            float sPIX = prevInnerX, sPIY = prevInnerY;
-            float sPOX = prevOuterX, sPOY = prevOuterY;
-            float sIX = innerX, sIY = innerY;
-            float sOX = outerX, sOY = outerY;
-            applyOffset(sPIX, sPIY);
-            applyOffset(sPOX, sPOY);
-            applyOffset(sIX, sIY);
-            applyOffset(sOX, sOY);
-
-            SPluginQuad_t quad;
-            quad.m_aafPos[0][0] = sPOX; quad.m_aafPos[0][1] = sPOY;
-            quad.m_aafPos[1][0] = sPIX; quad.m_aafPos[1][1] = sPIY;
-            quad.m_aafPos[2][0] = sIX;  quad.m_aafPos[2][1] = sIY;
-            quad.m_aafPos[3][0] = sOX;  quad.m_aafPos[3][1] = sOY;
-            quad.m_iSprite = SpriteIndex::SOLID_COLOR;
-            quad.m_ulColor = color;
-            m_quads.push_back(quad);
-        }
-
-        prevInnerX = innerX; prevInnerY = innerY;
-        prevOuterX = outerX; prevOuterY = outerY;
-        hasPrev = true;
-    }
 }
 
 void CompassWidget::addNeedleHalf(float centerX, float centerY, float angleRad,
@@ -200,32 +158,34 @@ void CompassWidget::rebuildRenderData() {
     // Standard small-widget footprint - identical to GForceWidget (3 content rows).
     constexpr int GAUGE_ROWS = 3;
     float contentWidth = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::COMPASS_WIDTH, dim.fontSize);
-    float backgroundWidth = contentWidth + dim.paddingH + dim.paddingH;
-
-    float titleHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
     float gaugeAreaHeight = dim.lineHeightNormal * GAUGE_ROWS;
-    float contentHeight = titleHeight + gaugeAreaHeight;
-    float backgroundHeight = dim.paddingV + contentHeight + dim.paddingV;
 
-    // Ring geometry (scaled), mirroring the GForceWidget donut.
-    float arcThickness = ARC_THICKNESS_BASE * dim.scale;
-    float ringMidRadius = ARC_MID_RADIUS_BASE * dim.scale;
-    float outerRadius = ringMidRadius + arcThickness * 0.5f;
-    float innerRadius = ringMidRadius - arcThickness * 0.5f;
+    // BOX-MODEL: the plan owns padding, chrome, the title band and the body card;
+    // the gauge area is the single section's content.
+    BaseHud::PanelWant want;
+    want.contentW = contentWidth;
+    want.sectionH = { gaugeAreaHeight };
+    want.captionW = planTitleWidth(dim, "Compass");
+    PanelPlan& p = planPanel(dim, want);
+    const float backgroundWidth = p.width();
+    const float backgroundHeight = p.height();
 
-    addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
+    // THE DIAL IS THE GAUGE AREA, sized from it -- which already carries both the
+    // font size and the HUD's scale, so it tracks [font] size like the panel around
+    // it. There is no drawn ring: the four cardinals mark the rim and the needle
+    // points between them, which is all a compass has to say. The bezel it used to
+    // draw was a muted band carrying no information the letters did not, and it was
+    // the thing that would not fit inside the panel.
+    const float dialRadius = gaugeAreaHeight * 0.5f;
+
+    addPlanBackground(p, startX, startY);
+    addPlanTitle(p, "Compass", this->getFont(FontCategory::TITLE),
+        this->getColor(ColorSlot::PRIMARY));
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
 
-    float contentStartX = startX + dim.paddingH;
-    float contentStartY = startY + dim.paddingV;
-    float centerX = contentStartX + (contentWidth / 2.0f);
-    float currentY = contentStartY;
-
-    if (m_bShowTitle) {
-        addString("Compass", contentStartX, currentY, Justify::LEFT,
-            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSize);
-        currentY += titleHeight;
-    }
+    // Gauge content is centered on the CARD (PanelPlan::sectionBoxCenterX).
+    float centerX = p.sectionBoxCenterX();
+    float currentY = p.contentY();
 
     float arcCenterX = centerX;
     float arcCenterY = currentY + gaugeAreaHeight * 0.5f;
@@ -243,29 +203,34 @@ void CompassWidget::rebuildRenderData() {
 
     float displayYaw = m_hasHeading ? m_smoothedYaw : 0.0f;
 
-    // Background ring. Muted gray when there's no heading (reads as "no data"
-    // rather than a misleading North-up lock). Fixed 50% opacity keeps it behind
-    // the labels and unaffected by the background-opacity slider.
-    unsigned long ringColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), 0.5f);
-    addArcSegment(arcCenterX, arcCenterY, innerRadius, outerRadius,
-                  0.0f, 2.0f * PI, ringColor, RING_SEGMENTS);
-
-    // Cardinal labels. Classic style: the ring is fixed (N stays at top), so labels sit
-    // at their true bearing, just outside the ring in the padding band (like BarsWidget's
-    // edge labels) - freeing the interior for a longer needle. Modern style: the whole
+    // Cardinal labels ON THE RIM: their outer edge is the dial's, so they mark it
+    // the way a bezel's engraving does and cannot leave the gauge area. (0.35 is
+    // about half a cap's ink at the small size.) Classic style: the dial is fixed
+    // (N stays at top), so a label sits at its true bearing. Modern style: the whole
     // card rotates, so a bearing b sits at screen angle (b - heading) and the faced
-    // direction lands at the top under the fixed index, with labels inside the ring.
+    // direction lands at the top under the fixed index.
+    //
+    // Classic used to put them OUTSIDE the drawn ring, in the panel's padding band,
+    // to free the interior for a longer needle. That is air the widget does not own:
+    // set the box model's terms to 0 and all four letters land outside the panel's
+    // own background.
     bool classic = (m_style == Style::Classic);
-    float labelRadius = classic
-        ? (outerRadius + dim.fontSizeSmall * 0.55f)
-        : (innerRadius - dim.fontSizeSmall * 0.6f);
+    // Inset by HALF A CAP'S INK, so the letters' ink reaches the rim exactly:
+    // the furthest out they can sit while N still clears the top of the gauge
+    // area, and the mark BarsWidget aligns its own label row to. The 0.35 this
+    // replaces was an estimate of the same quantity, a hair too generous, which
+    // left S sitting above a neighbouring bars widget's letters.
+    float labelRadius = dialRadius
+                      - dim.fontSizeSmall * WidgetDimensions::CAP_INK_RATIO * 0.5f;
     for (const auto& c : CARDINALS) {
         float dialBearing = classic ? c.bearing : (c.bearing - displayYaw);
         float angleRad = dialBearing * DEG_TO_RAD;
         float lx = arcCenterX + std::sin(angleRad) * labelRadius / UI_ASPECT_RATIO;
         float ly = arcCenterY - std::cos(angleRad) * labelRadius;
         // addString positions by the text top edge; nudge up to vertically center.
-        ly -= dim.fontSizeSmall * 0.5f;
+        // The second term is what addString adds back (rowCenterOffset): this is an
+        // explicit centring on the arc, so without it the two compound.
+        ly -= dim.fontSizeSmall * 0.5f + rowCenterOffset(dim.fontSizeSmall);
 
         unsigned long labelColor;
         if (!m_hasHeading) {
@@ -288,8 +253,14 @@ void CompassWidget::rebuildRenderData() {
         // ring stays put (no spinning letters), and with the labels in the padding the
         // needle reaches near the inner edge. The two halves meet exactly at the pivot
         // (no overlap, no hub needed).
-        float needleLength = innerRadius * 0.92f;
-        float needleHalfBase = ringMidRadius * 0.28f;
+        // Up to the letters and no further: they are the rim now.
+        float needleLength = labelRadius - dim.fontSizeSmall * 0.5f;
+        // ONE base width for both halves, deliberately: they are two triangles
+        // meeting at the pivot to make a single diamond, and a head wider than
+        // its tail reads as a lopsided shape rather than as a needle. What was
+        // wrong was the width itself -- at 0.26 the diamond was barely longer
+        // than it was wide, which reads as an arrowhead. A real needle is slim.
+        float needleHalfBase = dialRadius * 0.15f;
         float headingAngleRad = displayYaw * DEG_TO_RAD;
         float tailAngleRad = (displayYaw + 180.0f) * DEG_TO_RAD;
         unsigned long headingColor = m_hasHeading ? this->getColor(ColorSlot::NEGATIVE)
@@ -300,10 +271,14 @@ void CompassWidget::rebuildRenderData() {
         addNeedleHalf(arcCenterX, arcCenterY, tailAngleRad, needleLength, needleHalfBase, tailColor);
     } else {
         // Fixed top index: a bold radial tick at 12 o'clock pointing into the dial.
+        // Sized off the gauge area like the ring, not off dim.scale alone, so it
+        // keeps its proportion when [font] size moves the widget.
         unsigned long indexColor = this->getColor(ColorSlot::PRIMARY);
-        addLineSegment(arcCenterX, arcCenterY - outerRadius - dim.scale * 0.005f,
-                       arcCenterX, arcCenterY - innerRadius,
-                       indexColor, dim.scale * 0.004f);
+        // From the rim inward, so it reads as an index over the rotating card
+        // and starts at the dial's own edge rather than outside the panel.
+        addLineSegment(arcCenterX, arcCenterY - dialRadius,
+                       arcCenterX, arcCenterY - dialRadius + gaugeAreaHeight * 0.13f,
+                       indexColor, gaugeAreaHeight * 0.057f);
     }
 
     // Modern style only: the integer heading, perfectly centered. The classic needle
@@ -319,8 +294,11 @@ void CompassWidget::rebuildRenderData() {
             snprintf(headingBuf, sizeof(headingBuf), "%d", headingInt);
             textColor = this->getColor(ColorSlot::SECONDARY);
         }
-        // addString positions by the text top edge; nudge up to vertically center.
-        addString(headingBuf, arcCenterX, arcCenterY - dim.fontSizeSmall * 0.5f, Justify::CENTER,
+        // addString positions by the text top edge; nudge up to vertically center,
+        // minus what addString itself adds back (see the cardinal labels above).
+        addString(headingBuf, arcCenterX,
+            arcCenterY - dim.fontSizeSmall * 0.5f - rowCenterOffset(dim.fontSizeSmall),
+            Justify::CENTER,
             this->getFont(FontCategory::DIGITS), textColor, dim.fontSizeSmall);
     }
 }
@@ -335,7 +313,7 @@ void CompassWidget::resetToDefaults() {
     // Bottom gauge row (evenly spaced, pitch 0.0715, same y). G-Force is the leftmost
     // all-game gauge at 0.5995 (Bars/Lean/Fuel sit to its right); the compass takes the
     // next free slot to G-Force's left.
-    setPosition(0.528f, 0.86828f);
+    setPosition(cellsX(83), cellsY(74));
     m_targetYaw = 0.0f;
     m_smoothedYaw = 0.0f;
     m_hasHeading = false;

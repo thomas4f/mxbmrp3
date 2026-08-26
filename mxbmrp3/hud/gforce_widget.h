@@ -33,9 +33,6 @@ protected:
 private:
     void rebuildRenderData() override;
     void resetTracking();
-    // FMX-style arc segment renderer (uses quads, so opacity is honored)
-    void addArcSegment(float centerX, float centerY, float innerRadius, float outerRadius,
-                       float startAngleRad, float endAngleRad, unsigned long color, int numSegments);
     // Render a textured sprite (icon) centered at (x,y), or fall back to a solid quad
     // if the icon isn't available. Size is the full edge length in screen units.
     void addIconDot(float x, float y, int spriteIndex, unsigned long color, float size);

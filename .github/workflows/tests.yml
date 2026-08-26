@@ -189,7 +189,15 @@ jobs:
       # The portable .fnt font generator must keep reproducing the shipped
       # bitmap fonts (structure/metrics/atlas) — regression guard for the tool.
       - name: Font generator (mxbmrp3_fontgen) regression
-        run: ./tools/mxbmrp3_fontgen/test.sh
+        run: ./tools/fontgen/test.sh
+
+      # The trainer repair page. Runs in a browser and there is no second
+      # implementation to check it against, so this is its only gate.
+      - name: Trainer repair page (Playwright)
+        run: ./tests/web/run.sh tests/trnfix_web.spec.js
+
+      - name: Theme slicer (mxbmrp3_themeslice) round trip
+        run: python3 ./tools/themeslice/themeslice.py --selftest
 
       # The analytics report generator (Aptabase export -> analytics/REPORT.md)
       # ships a synthetic-data self-test covering install_id dedup, coverage,
@@ -303,7 +311,14 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       inputs.full
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Sized for a COLD-CACHE run, not a warm one. GitHub evicts caches unused for
+    # 7 days, and a cancelled or timed-out run skips the Post-step cache save — so
+    # after a quiet fortnight the first dispatch is fully cold (~7 min compile,
+    # ~10 min game-configs, ~6 min thread-safety, ~15 min test modalities) and a
+    # 30-minute ceiling kills it at the integration stage, which also skips the
+    # save and leaves the NEXT run cold too. 2026-08-26 lost two runs to that
+    # cycle. 50 clears a cold run; warm runs still finish in ~10-15.
+    timeout-minutes: 50
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
     steps:
@@ -350,6 +365,16 @@ jobs:
       - name: Visibility-gate lint (hud/*.cpp)
         run: ./tests/integration/check_visibility_gates.sh
 
+      # Card-anchor sweep coverage: a HUD that anchors content on its card box
+      # (PanelPlan::sectionBox*) must be swept by card_anchor_sweep_test. This
+      # was CLAUDE.md prose labelled "convention", and four panels had quietly
+      # fallen outside it. See the script header.
+      - name: Card-anchor sweep coverage lint
+        run: ./tests/integration/check_card_anchor_coverage.sh
+
+      - name: What's-new markers name the current release
+        run: ./tests/integration/check_whats_new.sh
+
       # DLL-export exception barrier: every export in vendor/piboso/*_api.cpp
       # must wrap its body in API_GUARD_CATCH (an uncaught throw across the
       # PiBoSo boundary crashes the host game) or carry an api-guard-exempt
@@ -380,10 +405,35 @@ jobs:
       # `mt-plain: <which thread>` reason. See the script header.
       - name: Cross-thread flag lint (thread-owning classes)
         run: ./tests/integration/check_mt_flags.sh
+
+      # Argument-evaluation-order lint. gcc (every gate here) and MSVC (the only
+      # build that ships) disagree about the order call arguments are evaluated
+      # in, so a call that both moves out of a variable and reads a member off
+      # it is correct here and wrong in the release. That is not a hypothetical:
+      # it shipped `SPOTTER SAY [position_gained] Up .` with this suite green.
+      - name: Move-then-read lint (argument evaluation order)
+        run: ./tests/integration/check_move_reads.sh
+      - name: Move-then-read lint (self-test)
+        run: ./tests/integration/check_move_reads.sh --self-test
+      - name: Caption title-tier lint
+        run: ./tests/integration/check_title_tier.sh
       - name: HUD raw-data caching lint
         run: ./tests/integration/check_hud_raw_cache.sh
       - name: HUD raw-data caching lint (self-test)
         run: ./tests/integration/check_hud_raw_cache.sh --self-test
+
+      # HUD helper-bypass lint: a HUD draws its background, title, grid snap and
+      # string Y through the BaseHud helpers (or the plan's addPlanBackground),
+      # never a hand-rolled local copy -- the copy stops tracking the helper the
+      # day the helper learns something (rule list + the shipped bugs in the
+      # script header). Restored with the box-model test suite.
+      - name: HUD helper-bypass lint (hud/*.cpp)
+        run: ./tests/integration/check_hud_helpers.sh
+
+      # Settings section-spacing lint: addSectionHeading() owns the gap above
+      # itself, so an addSpacing() before one double-spaces the boundary.
+      - name: Settings section-spacing lint
+        run: ./tests/integration/check_section_spacing.sh
 
       # Every doctest integration test in tests/integration/tests/ (smoke lifecycle,
       # race standings/gaps/DSQ, multi-session business logic, auto-director

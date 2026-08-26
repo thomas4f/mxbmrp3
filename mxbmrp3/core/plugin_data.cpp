@@ -8,6 +8,7 @@
 #include "xinput_reader.h"
 #include "rumble_profile_manager.h"
 #include "hud_manager.h"  // Direct include for notification
+#include "spotter_manager.h"
 #if GAME_HAS_DISCORD
 #include "discord_manager.h"  // Direct include for Discord presence updates
 #endif
@@ -368,6 +369,11 @@ void PluginData::setSpectatedRaceNum(int raceNum) {
 
         // Notify HudManager to update HUDs that display rider-specific data
         notifyHudManager(DataChangeType::SpectateTarget);
+
+        // "Now watching rider N" — the one cue that is about the camera
+        // rather than the race, and the reason it is here: this setter is
+        // where the change exists.
+        SpotterManager::getInstance().onSpectateTarget(raceNum);
     }
 }
 
@@ -768,7 +774,7 @@ void PluginData::clear() {
     resetAllLapTimers();
 
     // Clear leader timing points
-    m_leaderTimingPoints.clear();
+    m_liveGapEngine.clear();
 
     // Clear telemetry data
     m_bikeTelemetry = BikeTelemetryData();
@@ -835,7 +841,8 @@ void PluginData::clear() {
 // Event Log
 // ========================================================================
 void PluginData::addEventLogEntry(EventLogType type, const char* message, const char* detail,
-                                  int iconColorSlot, int raceNum) {
+                                  int iconColorSlot, int raceNum,
+                                  const EventNumbers& nums) {
     EventLogEntry entry;
     entry.type = type;
     entry.sessionTimeMs = m_currentSessionTime;
@@ -852,6 +859,23 @@ void PluginData::addEventLogEntry(EventLogType type, const char* message, const 
     if (static_cast<int>(m_eventLog.size()) > PluginConstants::HudLimits::MAX_EVENT_LOG_CAPACITY) {
         m_eventLog.pop_front();
     }
+
+    // Spotter audio: every detected event funnels through here, so this one
+    // tap is its whole event intake. Callouts phrase the spectate target as
+    // "you" while spectating (also what makes tape replays/broadcasts speak
+    // sensibly), else the player. One atomic load when the spotter is off.
+    // getDisplayRaceNum(), not the raw spectate target: that member is written
+    // only while spectating and cleared only at event exit, so watching #42 in
+    // practice and then RIDING qualifying left focused=42 for the rest of the
+    // event — your own penalties and your own flag went quiet (a rival's are
+    // default-quiet) while #42's were announced as "you". The accessor asks
+    // the question this needs, which is whether the camera is on someone else
+    // right now. The sibling tap in plugin_data_trackpos.cpp already did.
+    const int focused = getDisplayRaceNum();
+    // Elapsed, not the raw clock: cue-log timestamps must ascend (subtitle
+    // ordering, transcripts) and the raw clock counts down in timed sessions.
+    SpotterManager::getInstance().onRaceEvent(type, raceNum, focused,
+                                              getSessionElapsedTime(), nums);
 
     notifyHudManager(DataChangeType::EventLog);
 }

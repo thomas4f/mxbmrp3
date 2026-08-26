@@ -46,11 +46,6 @@ private:
     void rebuildRenderData() override;
     void resetTracking();  // Snap smoothing to the current target (session/spectate change)
 
-    // FMX-style arc segment renderer — builds connected inner/outer-edge quads
-    // so opacity is honored (same as LeanWidget/GForceWidget rings).
-    void addArcSegment(float centerX, float centerY, float innerRadius, float outerRadius,
-                       float startAngleRad, float endAngleRad, unsigned long color, int numSegments);
-
     // One half of the classic magnetic needle: a triangle with its base centered on
     // the pivot and its apex at the outer tip. Two opposite halves meet exactly at the
     // pivot with no overlap behind it (unlike BaseHud::addNeedleQuad, whose base sits
@@ -58,11 +53,9 @@ private:
     void addNeedleHalf(float centerX, float centerY, float angleRad,
                        float length, float baseHalfWidth, unsigned long color);
 
-    // Ring geometry pinned to the GForceWidget donut so the compass shares the exact
-    // gauge-widget footprint (8 chars wide, 3 content rows).
-    static constexpr int RING_SEGMENTS = 30;           // Match GForceWidget ring
-    static constexpr float ARC_MID_RADIUS_BASE = 0.035f;
-    static constexpr float ARC_THICKNESS_BASE = 0.006f;
+    // No dial art: the four cardinals mark the rim and the needle points between
+    // them. The widget still shares the exact gauge footprint (8 chars wide, 3
+    // content rows) so it tiles with G-force.
     // 0.0-1.0: lower = smoother, higher = faster response. Heading is a slower,
     // smoother signal than accel, so a gentle factor reads well.
     static constexpr float YAW_SMOOTH_FACTOR = 0.20f;

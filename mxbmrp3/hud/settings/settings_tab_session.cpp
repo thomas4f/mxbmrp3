@@ -34,22 +34,18 @@ BaseHud* SettingsHud::renderTabSession(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("session");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeader("Appearance");
-    ctx.addStandardHudControls(hud, true);  // With title support
-    ctx.addSpacing(0.5f);
-
+    ctx.addSectionHeading("Appearance");
+    ctx.addStandardHudControls(hud);
     // === LAYOUT SECTION ===
-    ctx.addSectionHeader("Layout");
+    ctx.addSectionHeading("Layout");
 
     // Icons toggle
     ctx.addToggleControl("Show icons", hud->m_bShowIcons,
         SettingsHud::ClickRegion::SESSION_ICONS_TOGGLE, hud, nullptr, 0, true,
         "session.icons");
-    ctx.addSpacing(0.5f);
-
     // === CONTENT SECTION ===
     // Order matches display order: Server (headline), Track, Format, Weather
-    ctx.addSectionHeader("Content");
+    ctx.addSectionHeading("Content");
 
     ctx.addToggleControl("Server name", (hud->m_enabledRows & SessionHud::ROW_SERVER) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, SessionHud::ROW_SERVER, true,

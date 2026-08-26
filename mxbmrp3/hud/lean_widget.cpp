@@ -3,6 +3,7 @@
 // Lean widget - displays bike lean/roll angle with half-donut arc gauge
 // ============================================================================
 #include "lean_widget.h"
+#include "severity_ramp.h"
 
 #include <cstdio>
 #include <cmath>
@@ -16,6 +17,8 @@ using namespace PluginConstants::Math;
 
 LeanWidget::LeanWidget()
 {
+    m_panelKind = PanelKind::Widget;
+    m_bContentCard = true;
     DEBUG_INFO("LeanWidget created");
     setDraggable(true);
     m_quads.reserve(ARC_SEGMENTS * 2 + 2);  // background arc + fill arc + center marker
@@ -83,7 +86,7 @@ void LeanWidget::update() {
     m_lastDisplayedRaceNum = currentDisplayRaceNum;
 
     // Always rebuild - lean angle updates at high frequency (telemetry rate)
-    rebuildRenderData();
+    rebuildAndRecord();
     clearDataDirty();
     clearLayoutDirty();
 }
@@ -103,63 +106,13 @@ int LeanWidget::getRowCount() const {
     return count;
 }
 
-void LeanWidget::addArcSegment(float centerX, float centerY, float innerRadius, float outerRadius,
-                                float startAngleRad, float endAngleRad, unsigned long color, int numSegments) {
-    // Create arc segments as quads connecting inner and outer edges
-    // Similar to MapHud ribbon rendering but for circular arcs
 
-    float angleStep = (endAngleRad - startAngleRad) / numSegments;
-
-    float prevInnerX = 0.0f, prevInnerY = 0.0f;
-    float prevOuterX = 0.0f, prevOuterY = 0.0f;
-    bool hasPrevPoint = false;
-
-    for (int i = 0; i <= numSegments; ++i) {
-        float angle = startAngleRad + i * angleStep;
-
-        // Calculate inner and outer edge points
-        // sin/cos because 0 degrees = up, positive = clockwise
-        float innerX = centerX + std::sin(angle) * innerRadius / UI_ASPECT_RATIO;
-        float innerY = centerY - std::cos(angle) * innerRadius;
-        float outerX = centerX + std::sin(angle) * outerRadius / UI_ASPECT_RATIO;
-        float outerY = centerY - std::cos(angle) * outerRadius;
-
-        if (hasPrevPoint) {
-            // Create quad connecting previous to current edges
-            float screenPrevInnerX = prevInnerX, screenPrevInnerY = prevInnerY;
-            float screenPrevOuterX = prevOuterX, screenPrevOuterY = prevOuterY;
-            float screenInnerX = innerX, screenInnerY = innerY;
-            float screenOuterX = outerX, screenOuterY = outerY;
-
-            // Apply HUD offset
-            applyOffset(screenPrevInnerX, screenPrevInnerY);
-            applyOffset(screenPrevOuterX, screenPrevOuterY);
-            applyOffset(screenInnerX, screenInnerY);
-            applyOffset(screenOuterX, screenOuterY);
-
-            // Create quad: prevOuter -> prevInner -> currInner -> currOuter (counter-clockwise to match engine)
-            SPluginQuad_t quad;
-            quad.m_aafPos[0][0] = screenPrevOuterX;
-            quad.m_aafPos[0][1] = screenPrevOuterY;
-            quad.m_aafPos[1][0] = screenPrevInnerX;
-            quad.m_aafPos[1][1] = screenPrevInnerY;
-            quad.m_aafPos[2][0] = screenInnerX;
-            quad.m_aafPos[2][1] = screenInnerY;
-            quad.m_aafPos[3][0] = screenOuterX;
-            quad.m_aafPos[3][1] = screenOuterY;
-
-            quad.m_iSprite = SpriteIndex::SOLID_COLOR;
-            quad.m_ulColor = color;
-            m_quads.push_back(quad);
-        }
-
-        // Store current as previous
-        prevInnerX = innerX;
-        prevInnerY = innerY;
-        prevOuterX = outerX;
-        prevOuterY = outerY;
-        hasPrevPoint = true;
-    }
+unsigned long LeanWidget::fillColorFor(float ratio) const {
+    if (m_fillColorMode == FillColorMode::FIXED) return m_arcFillColor;
+    return SeverityRamp::at(std::abs(ratio),
+                            this->getColor(ColorSlot::POSITIVE),
+                            this->getColor(ColorSlot::NEUTRAL),
+                            this->getColor(ColorSlot::NEGATIVE));
 }
 
 void LeanWidget::rebuildRenderData() {
@@ -178,37 +131,36 @@ void LeanWidget::rebuildRenderData() {
     float startY = 0.0f;
 
     // Use same width as SpeedWidget
-    float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::LEAN_WIDTH);
     float contentWidth = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::LEAN_WIDTH, dim.fontSize);
 
     // Calculate dynamic height based on enabled rows
     // Each row is lineHeightNormal (arc takes 2 rows)
     int rowCount = getRowCount();
-    float titleHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
-    float contentHeight = titleHeight + dim.lineHeightNormal * rowCount;
-    float backgroundHeight = dim.paddingV + contentHeight + dim.paddingV;
 
-    // Add background quad
-    addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
+    // BOX-MODEL: the plan owns padding, chrome, the title band and the body card.
+    BaseHud::PanelWant want;
+    want.contentW = contentWidth;
+    want.sectionH = { dim.lineHeightNormal * rowCount };
+    want.captionW = planTitleWidth(dim, "Lean");
+    PanelPlan& p = planPanel(dim, want);
+    const float backgroundWidth = p.width();
+    const float backgroundHeight = p.height();
+
+    // Background, title band and body card at the plan's coordinates
+    addPlanBackground(p, startX, startY);
+    addPlanTitle(p, "Lean", this->getFont(FontCategory::TITLE),
+        this->getColor(ColorSlot::PRIMARY));
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
 
-    float contentStartX = startX + dim.paddingH;
-    float contentStartY = startY + dim.paddingV;
-
-    // Calculate center X for centering elements
-    float centerX = contentStartX + (contentWidth / 2.0f);
+    // Gauge content is centered on the CARD (PanelPlan::sectionBoxCenterX);
+    // the steer bar spans contentWidth around that center.
+    float centerX = p.sectionBoxCenterX();
+    float contentStartX = centerX - contentWidth / 2.0f;
 
     // Track current Y position for row-based layout
-    float currentY = contentStartY;
-
-    // Title label (optional)
-    if (m_bShowTitle) {
-        addString("Lean", contentStartX, currentY, Justify::LEFT,
-            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSize);
-        currentY += titleHeight;
-    }
+    float currentY = p.contentY();
 
     // Check for crash recovery - reset max lean when recovering from crash
     const RiderTrackState* playerPos = pluginData.getPlayerTrackPosition();
@@ -380,12 +332,16 @@ void LeanWidget::rebuildRenderData() {
 
             int fillSegments = std::max(3, static_cast<int>(std::abs(fillAngleRad / (arcEndRad - arcStartRad)) * ARC_SEGMENTS));
 
+            // Coloured by how far the lean is toward full scale, not by which way
+            // it leans: the ramp answers "how close to the limit", and a mirrored
+            // lean is the same answer.
+            const unsigned long fillColor = fillColorFor(leanRatio);
             if (fillAngleRad < -CENTER_GAP_HALF_RAD) {
                 addArcSegment(centerX, arcCenterY, innerRadius, outerRadius,
-                              fillAngleRad, -CENTER_GAP_HALF_RAD, m_arcFillColor, fillSegments);
+                              fillAngleRad, -CENTER_GAP_HALF_RAD, fillColor, fillSegments);
             } else if (fillAngleRad > CENTER_GAP_HALF_RAD) {
                 addArcSegment(centerX, arcCenterY, innerRadius, outerRadius,
-                              CENTER_GAP_HALF_RAD, fillAngleRad, m_arcFillColor, fillSegments);
+                              CENTER_GAP_HALF_RAD, fillAngleRad, fillColor, fillSegments);
             }
         }
 
@@ -503,7 +459,7 @@ void LeanWidget::rebuildRenderData() {
                 applyOffset(fX, fY);
                 setQuadPositions(fillQuad, fX, fY, fillWidth, steerBarHeight);
                 fillQuad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-                fillQuad.m_ulColor = m_arcFillColor;
+                fillQuad.m_ulColor = fillColorFor(steerRatio);
                 m_quads.push_back(fillQuad);
             }
         }
@@ -574,7 +530,8 @@ void LeanWidget::resetToDefaults() {
     m_enabledRows = ROW_DEFAULT;  // All rows enabled
     m_bShowMaxMarkers = true;     // Max markers ON by default for lean/steer
     m_maxMarkerLingerFrames = 60; // ~1 second at 60fps
-    setPosition(0.7425f, 0.86828f);
+    m_fillColorMode = FillColorMode::RAMP;
+    setPosition(cellsX(122), cellsY(74));
     m_smoothedLean = 0.0f;
     m_markerValueLeft = 0.0f;
     m_markerValueRight = 0.0f;

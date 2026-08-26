@@ -6,6 +6,7 @@
 #include "../core/handler_singleton.h"
 #include "../diagnostics/logger.h"
 #include "../core/plugin_data.h"
+#include "../core/spotter_manager.h"
 #include "../core/plugin_utils.h"
 #include "../core/hud_manager.h"
 #include "draw_handler.h"
@@ -35,11 +36,25 @@ void Handlers::handleRaceClassification(
     // Fires at most once per start (self-disarms); no-op for pit starts (never armed).
     if (pluginData.detectGateDrop(psRaceClassification->sessionState)) {
         pluginData.startLapTimerAtRaceStart(pluginData.getDisplayRaceNum());
+        // The gate physically dropping — a moment only a standing start has,
+        // and a different one from the session becoming active. This edge
+        // already existed for the lap timer; the spotter just says it.
+        SpotterManager::getInstance().onGateDrop();
     }
 
     // Batch update all standings AND build classification order in single pass
     // This eliminates the duplicate iteration - both done in one tight loop
     pluginData.batchUpdateStandings(pasRaceClassificationEntry, iNumEntries);
+
+    // Now the order includes the lap that was just completed, so the spotter's
+    // lap report reads the standings AFTER that crossing rather than before
+    // it. Same reason the "finished P#" event log entry is raised from
+    // in here rather than from the lap handler.
+    //
+    // This also speaks a fastest lap held since the last classification — a
+    // different cue deferred to this same moment, for a different reason (see
+    // SpotterManager::PendingFastest).
+    SpotterManager::getInstance().flushDeferredCues();
 
     // Detect overtime start for time+laps races (skip if already detected)
     const SessionData& sessionData = pluginData.getSessionData();
@@ -68,11 +83,16 @@ void Handlers::handleRaceClassification(
             pluginData.setFinishLap(finishLap);
             pluginData.setOvertimeStarted(true);
 
-            // Event log: overtime started
-            char eventMsg[64];
-            snprintf(eventMsg, sizeof(eventMsg), "Overtime: %d %s left",
-                     sessionData.sessionNumLaps, sessionData.sessionNumLaps == 1 ? "lap" : "laps");
-            pluginData.addEventLogEntry(EventLogType::OvertimeStarted, eventMsg);
+            // Event log: "Overtime" with the bonus laps in the DETAIL column
+            // ("2L") for the race feed, and the same count as a NUMBER for the
+            // spotter, which speaks "two laps after this one". The column is a
+            // display format again — it used to be parsed back.
+            char overtimeDetail[8];
+            snprintf(overtimeDetail, sizeof(overtimeDetail), "%dL",
+                     sessionData.sessionNumLaps);
+            pluginData.addEventLogEntry(
+                EventLogType::OvertimeStarted, "Overtime", overtimeDetail, -1, -1,
+                EventNumbers::bonus(sessionData.sessionNumLaps));
         }
     }
 

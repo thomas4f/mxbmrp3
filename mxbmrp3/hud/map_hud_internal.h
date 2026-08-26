@@ -50,9 +50,11 @@ inline void advanceAlongArc(float& x, float& y, float& headingDeg, float radius,
 // Helper to get shape index from filename (returns 1 if not found)
 inline int getShapeIndexByFilename(const char* filename) {
     const auto& assetMgr = AssetManager::getInstance();
-    int spriteIndex = assetMgr.getIconSpriteIndex(filename);
+    // BASE index: this maps a name to its position in the vocabulary, which a theme
+    // override must not move (see AssetManager::getBaseIconSpriteIndex).
+    int spriteIndex = assetMgr.getBaseIconSpriteIndex(filename);
     if (spriteIndex <= 0) return 1;  // Fallback to first icon
-    return spriteIndex - assetMgr.getFirstIconSpriteIndex() + 1;
+    return assetMgr.shapeIndexForSprite(spriteIndex);
 }
 
 }  // namespace map_hud_detail

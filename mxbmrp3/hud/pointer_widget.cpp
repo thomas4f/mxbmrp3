@@ -11,6 +11,9 @@
 using namespace PluginConstants;
 
 PointerWidget::PointerWidget() {
+    // No caption on this panel -- see BaseHud::m_titleSupported.
+    disableTitle();
+    m_panelKind = PanelKind::Widget;
     DEBUG_INFO("PointerWidget created");
 
     // Pointer is not draggable (it follows mouse position)
@@ -82,6 +85,8 @@ void PointerWidget::rebuildRenderData() {
     }
 
     // Build pointer at mouse position
+    // bg-quad-exempt: not a panel background at all -- the pointer has no panel. The
+    // flag is reused here to pick between the sprite cursor and the drawn one.
     if (m_bShowBackgroundTexture) {
         // Sprite-based rendering (TGA texture)
         createPointerSprite(pos.x, pos.y);

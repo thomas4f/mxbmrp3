@@ -131,7 +131,9 @@ void StandingsHud::update() {
     // started the animation and then updated per-frame in rebuildLayout, so a cheap
     // layout update is sufficient regardless of mode.
     if (hasActiveAnimations()) {
-        setLayoutDirty();
+        // setContentLayoutDirty, not setLayoutDirty: a slide moves ROWS inside a
+        // panel that has not moved, and this runs every frame while it does.
+        setContentLayoutDirty();
     }
 
     // Handle dirty flags using base class helper
@@ -163,9 +165,11 @@ void StandingsHud::rebuildLayout() {
         if (!playerEntry.isPlaceholder && playerEntry.raceNum >= 0) {
             highlightY += getAnimatedRowOffset(playerEntry.raceNum, dim.lineHeightNormal);
         }
-        float highlightX = START_X;
-        applyOffset(highlightX, highlightY);
-        setQuadPositions(m_quads[m_cachedHighlightQuadIndex], highlightX, highlightY, hudDim.backgroundWidth, dim.lineHeightNormal);
+        // Through the helper: a themed band is nine quads, so the whole span has to
+        // move, and it applies the offset itself.
+        repositionRowHighlight(m_cachedHighlightQuadIndex, hudDim.contentStartX,
+                               highlightY, hudDim.plan.contentW(),
+                               dim.lineHeightNormal);
     }
 
     // Update slide-highlight quads: position tracks the row's animation offset; alpha
@@ -179,9 +183,9 @@ void StandingsHud::rebuildLayout() {
 
         float slideY = hudDim.contentStartY + hudDim.titleHeight + hudDim.headerHeight + (slide.rowIndex * dim.lineHeightNormal);
         slideY += getAnimatedRowOffset(slide.raceNum, dim.lineHeightNormal);
-        float slideX = START_X;
+        float slideX = hudDim.contentStartX;
         applyOffset(slideX, slideY);
-        setQuadPositions(m_quads[slide.quadIndex], slideX, slideY, hudDim.backgroundWidth, dim.lineHeightNormal);
+        setQuadPositions(m_quads[slide.quadIndex], slideX, slideY, hudDim.plan.contentW(), dim.lineHeightNormal);
 
         unsigned long tintColor = slide.promoted
             ? this->getColor(ColorSlot::POSITIVE)
@@ -194,12 +198,16 @@ void StandingsHud::rebuildLayout() {
         // Get tracked column position from column table
         float trackedColPosition = m_columns.tracked;
 
-        // Same size calculations as in renderRiderRow
-        constexpr float baseConeSize = 0.006f;
-        float baseHalfSize = baseConeSize * m_fScale;
-        float spriteHalfSize = baseHalfSize;
+        // Same size calculation as renderRiderRow -- through the SHARED ratio, not a
+        // second copy of the number. This kept the absolute 0.006 * m_fScale the full
+        // rebuild had moved off, so at any uiFontSize but the default every flag
+        // resized itself for the duration of a drag or a position-slide and snapped
+        // back on the next data rebuild.
+        float spriteHalfSize = dim.fontSize * STATUS_ICON_HALF_RATIO;
         float spriteHalfWidth = spriteHalfSize / UI_ASPECT_RATIO;
-        float colWidth = PluginUtils::calculateMonospaceTextWidth(COL_TRACKED_WIDTH, dim.fontSize);
+        // Same anchor the full rebuild uses, so a drag cannot move the icon relative
+        // to its column.
+        float spriteCenterX = getColumnTextX(COL_IDX_TRACKED, trackedColPosition, dim.fontSize, false, false);
 
         for (const auto& iconInfo : m_trackedIconQuads) {
             if (iconInfo.quadIndex >= m_quads.size()) continue;
@@ -212,7 +220,6 @@ void StandingsHud::rebuildLayout() {
                     rowY += getAnimatedRowOffset(entry.raceNum, dim.lineHeightNormal);
                 }
             }
-            float spriteCenterX = trackedColPosition + colWidth * 0.25f;
             float spriteCenterY = rowY + dim.lineHeightNormal * 0.5f;
 
             float x = spriteCenterX, y = spriteCenterY;
@@ -233,8 +240,9 @@ void StandingsHud::rebuildLayout() {
 
     // Update positions-gained/lost caret quad positions (mirror renderRiderRow geometry)
     if (!m_posGainIconQuads.empty()) {
-        constexpr float baseConeSize = 0.0045f;  // keep in sync with renderRiderRow
-        float spriteHalfSize = baseConeSize * m_fScale;
+        // The shared ratio, for the same reason as the status flag above: "keep in sync
+        // with renderRiderRow" is what a comment says right up until it isn't.
+        float spriteHalfSize = dim.fontSize * POSGAIN_ICON_HALF_RATIO;
         float spriteHalfWidth = spriteHalfSize / UI_ASPECT_RATIO;
         float charW = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
 
@@ -287,10 +295,11 @@ void StandingsHud::rebuildLayout() {
             SPluginQuad_t& numPlate = m_quads[plate.numberQuadIndex];
             setQuadPositions(numPlate, npX, npY, pg.plateWidth, pg.plateHeight);
 
-            // Update brand strip quad
+            // Update the brand mark (same helper as the build path, so the shape and
+            // the sprite cannot diverge from it on a drag)
             SPluginQuad_t& brandStrip = m_quads[plate.brandQuadIndex];
             float bsLeftX = npX + pg.plateWidth + pg.stripGap;
-            setQuadPositionsArrowRight(brandStrip, bsLeftX, npY + pg.arrowInsetY, pg.brandStripWidth, pg.arrowHeight);
+            setBrandMarkQuad(brandStrip, bsLeftX, npY + pg.arrowInsetY, pg);
         }
     }
 
@@ -298,24 +307,20 @@ void StandingsHud::rebuildLayout() {
     float currentY = hudDim.contentStartY;
     size_t stringIndex = 0;
 
-    // Title string (index 0, always exists, but may be empty if hidden)
+    // Title string (index 0, always exists, but may be empty if hidden). Its row
+    // is the PLAN's caption row — inside the band, above the content the plan
+    // starts at — so it does not advance currentY.
     if (stringIndex < m_strings.size()) {
-        float x = hudDim.contentStartX;
-        float y = currentY;
-        applyOffset(x, y);
-        m_strings[stringIndex].m_afPos[0] = x;
-        m_strings[stringIndex].m_afPos[1] = y;
+        positionString(stringIndex, hudDim.plan.X(hudDim.plan.g.captionX),
+                       planTitleY(hudDim.plan));
         stringIndex++;
     }
-    if (m_bShowTitle) currentY += dim.lineHeightLarge;
 
     // Session-info string (index 1, always exists, but may be empty if disabled)
     if (stringIndex < m_strings.size()) {
         float x = hudDim.contentStartX;
         float y = currentY;
-        applyOffset(x, y);
-        m_strings[stringIndex].m_afPos[0] = x;
-        m_strings[stringIndex].m_afPos[1] = y;
+        positionString(stringIndex, x, y);
         stringIndex++;
     }
     if (m_bShowSessionInfo) currentY += dim.lineHeightNormal;
@@ -329,9 +334,7 @@ void StandingsHud::rebuildLayout() {
             if (stringIndex >= m_strings.size()) break;
             float x = getColumnHeaderTextX(col.columnIndex, col.position, dim.fontSize, nullptr);
             float y = headerY;
-            applyOffset(x, y);
-            m_strings[stringIndex].m_afPos[0] = x;
-            m_strings[stringIndex].m_afPos[1] = y;
+            positionString(stringIndex, x, y);
             stringIndex++;
         }
         currentY += hudDim.headerHeight;
@@ -361,10 +364,8 @@ void StandingsHud::rebuildLayout() {
             // the two paths in sync.
             bool gapRightAlign = (col.columnIndex == COL_IDX_GAP && !isPlaceholder);
             float x = getColumnTextX(col.columnIndex, col.position, dim.fontSize, isPlaceholder, gapRightAlign);
-            float y = getColumnTextY(col.columnIndex, currentY, isPlaceholder, dim) + animOffset;
-            applyOffset(x, y);
-            m_strings[stringIndex].m_afPos[0] = x;
-            m_strings[stringIndex].m_afPos[1] = y;
+            float y = currentY + animOffset;
+            positionString(stringIndex, x, y);
             stringIndex++;
         }
 
@@ -391,7 +392,7 @@ void StandingsHud::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.0055f, 0.30507f);
+    setPosition(cellsX(1), cellsY(26));
     m_gapMode = GapMode::ALL;
     m_gapReferenceMode = GapReferenceMode::PLAYER;
     m_posGainMode = PosGainMode::OFF;

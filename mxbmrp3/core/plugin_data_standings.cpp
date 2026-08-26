@@ -7,6 +7,7 @@
 // ============================================================================
 
 #include "plugin_data.h"
+#include "battle_groups.h"
 #include "plugin_utils.h"
 #include "ui_config.h"
 #include "xinput_reader.h"
@@ -197,17 +198,9 @@ void PluginData::batchUpdateStandings(Unified::RaceClassificationEntry* entries,
         m_lastLeaderRaceNum = newLeader;
     }
 
-    // Capture finish time for each rider when they finish
-    // Calculate elapsed time based on race type (same formula for all riders)
-    auto calculateElapsedTime = [&]() -> int {
-        if (m_sessionData.sessionLength > 0) {
-            // Timed race: elapsed = sessionLength - sessionTime
-            return m_sessionData.sessionLength - m_currentSessionTime;
-        } else {
-            // Lap-based race: sessionTime is elapsed time
-            return m_currentSessionTime > 0 ? m_currentSessionTime : 0;
-        }
-    };
+    // Capture finish time for each rider when they finish (elapsed time —
+    // the shared timed/lap-race formula lives in getSessionElapsedTime).
+    auto calculateElapsedTime = [&]() -> int { return getSessionElapsedTime(); };
 
     // Check each rider for finish
     bool leaderJustFinished = false;
@@ -220,16 +213,24 @@ void PluginData::batchUpdateStandings(Unified::RaceClassificationEntry* entries,
 
             // Event log: rider finished with position from fresh classification
             {
+                // Message + position in the DETAIL column ("P1") for the race
+                // feed. The position also goes across as a NUMBER: the spotter
+                // keys the leader's flag (finished_leader) off it, and used to
+                // key it off this string, which made the column's format
+                // load-bearing for audio. It is a display format again.
                 const RaceEntryData* entry = getRaceEntry(raceNum);
                 const char* riderLabel = entry ? entry->formattedRaceNum : "???";
                 int position = getDisplayPositionForRaceNum(raceNum);
                 char eventMsg[64];
+                snprintf(eventMsg, sizeof(eventMsg), "%s finished", riderLabel);
+                char posDetail[8];
+                const char* detail = nullptr;
                 if (position > 0) {
-                    snprintf(eventMsg, sizeof(eventMsg), "%s finished P%d", riderLabel, position);
-                } else {
-                    snprintf(eventMsg, sizeof(eventMsg), "%s finished", riderLabel);
+                    snprintf(posDetail, sizeof(posDetail), "P%d", position);
+                    detail = posDetail;
                 }
-                addEventLogEntry(EventLogType::RiderFinished, eventMsg, nullptr, -1, raceNum);
+                addEventLogEntry(EventLogType::RiderFinished, eventMsg, detail, -1, raceNum,
+                                 EventNumbers::finished(position));
             }
 
             // Also update leader finish time if this is the leader
@@ -355,10 +356,11 @@ int PluginData::getPositionForRaceNum(int raceNum) const {
 }
 
 std::vector<std::vector<int>> PluginData::getBattleGroups(int gapThresholdMs, int maxLeaderPos) const {
-    // Build the racing, on-track field ordered by position, each rider carrying its
-    // official split gap to the leader (stable; see the gap-source note below).
-    struct R { int pos; int raceNum; int gap; int gapLaps; };
-    std::vector<R> rs;
+    // Build the racing, on-track field, each rider carrying its official split
+    // gap to the leader (stable; see the gap-source note below). The grouping
+    // itself is the pure core in battle_groups.h — this method owns only the
+    // eligibility filtering.
+    std::vector<BattleGroups::Rider> rs;
     rs.reserve(m_standings.size());
     // Defer battles during the opening lap of a race: off the start the whole field is
     // bunched nose-to-tail and "everyone is battling", so gap-based groups there are just
@@ -387,32 +389,7 @@ std::vector<std::vector<int>> PluginData::getBattleGroups(int gapThresholdMs, in
         int g = s.gap;
         rs.push_back({ pos, s.raceNum, g, s.gapLaps });
     }
-    std::sort(rs.begin(), rs.end(), [](const R& a, const R& b) { return a.pos < b.pos; });
-
-    std::vector<std::vector<int>> groups;
-    size_t i = 0;
-    while (i < rs.size()) {
-        size_t j = i;
-        // Greedily chain adjacent same-lap riders within the gap threshold.
-        while (j + 1 < rs.size()
-               && rs[j].gapLaps == rs[j + 1].gapLaps
-               && (rs[j + 1].gap - rs[j].gap) > 0
-               && (rs[j + 1].gap - rs[j].gap) <= gapThresholdMs) {
-            ++j;
-        }
-        if (j > i) {
-            if (maxLeaderPos <= 0 || rs[i].pos <= maxLeaderPos) {
-                std::vector<int> grp;
-                grp.reserve(j - i + 1);
-                for (size_t k = i; k <= j; ++k) grp.push_back(rs[k].raceNum);
-                groups.push_back(std::move(grp));
-            }
-            i = j + 1;
-        } else {
-            i = i + 1;
-        }
-    }
-    return groups;
+    return BattleGroups::group(rs, gapThresholdMs, maxLeaderPos);
 }
 
 void PluginData::snapshotRaceStartPositions() {

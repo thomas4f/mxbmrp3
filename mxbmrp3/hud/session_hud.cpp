@@ -37,6 +37,9 @@ SessionHud::SessionHud()
     // One-time setup
     DEBUG_INFO("SessionHud created");
     setDraggable(true);
+    // Body card: this HUD draws a content BLOCK under its title, which is what the
+    // themed card frames. Opt-in; see BaseHud::m_bContentCard.
+    m_bContentCard = true;
     m_strings.reserve(6);
 
     // Set texture base name for dynamic texture discovery
@@ -69,15 +72,15 @@ float SessionHud::calculateContentHeight(const ScaledDimensions& dim) const {
     const PluginData& pluginData = PluginData::getInstance();
     const SessionData& sessionData = pluginData.getSessionData();
 
-    float labelHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
     // Server is the headline row (promoted from the bottom in place of the removed
-    // session-type row): large line height, like the type row used to have.
-    float serverHeight = (m_enabledRows & ROW_SERVER) ? dim.lineHeightLarge : 0.0f;
+    // session-type row): large line height, like the type row used to have. The
+    // caption band is the PLAN's, not a content term.
+    float serverHeight = (m_enabledRows & ROW_SERVER) ? sectionHeadingRowHeight(dim) : 0.0f;
     float formatHeight = (m_enabledRows & ROW_FORMAT) ? dim.lineHeightNormal : 0.0f;
     float trackHeight = (m_enabledRows & ROW_TRACK) ? dim.lineHeightNormal : 0.0f;
     float weatherHeight = ((m_enabledRows & ROW_WEATHER) && sessionData.conditions >= 0) ? dim.lineHeightNormal : 0.0f;
 
-    return labelHeight + serverHeight + formatHeight + trackHeight + weatherHeight;
+    return serverHeight + formatHeight + trackHeight + weatherHeight;
 }
 
 void SessionHud::update() {
@@ -114,7 +117,7 @@ void SessionHud::update() {
 
     // Check data dirty first (takes precedence)
     if (isDataDirty()) {
-        rebuildRenderData();
+        rebuildAndRecord();
         m_cachedSessionState = sessionState;
         m_cachedSessionLength = sessionLength;
         m_cachedSessionNumLaps = sessionNumLaps;
@@ -142,26 +145,29 @@ void SessionHud::rebuildLayout() {
     float startX = 0.0f;
     float startY = 0.0f;
 
-    // Calculate dimensions
-    float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::SESSION_WIDTH);
-    float backgroundHeight = dim.paddingV + calculateContentHeight(dim) + dim.paddingV;
+    // Geometry from the same plan the full rebuild uses.
+    BaseHud::PanelWant want;
+    want.contentW = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::SESSION_WIDTH, dim.fontSize);
+    want.sectionH = { calculateContentHeight(dim) };
+    want.captionW = planTitleWidth(dim, "Session", TitleTier::Large);
+    want.tier = TitleTier::Large;
+    PanelPlan& plan = planPanel(dim, want);
+    plan.x0 = startX; plan.y0 = startY;
 
     // Individual row heights for positioning (must match rebuildRenderData — the
     // server row is the extra-large headline at the top).
-    float labelHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
-    float serverHeight = (m_enabledRows & ROW_SERVER) ? dim.lineHeightLarge : 0.0f;
+    float serverHeight = (m_enabledRows & ROW_SERVER) ? sectionHeadingRowHeight(dim) : 0.0f;
     float formatHeight = (m_enabledRows & ROW_FORMAT) ? dim.lineHeightNormal : 0.0f;
     float trackHeight = (m_enabledRows & ROW_TRACK) ? dim.lineHeightNormal : 0.0f;
 
     // Set bounds for drag detection
-    setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
+    setBounds(startX, startY, startX + plan.width(), startY + plan.height());
 
     // Update background quad position
-    updateBackgroundQuadPosition(startX, startY, backgroundWidth, backgroundHeight);
+    updateBackgroundQuadPosition(startX, startY, plan.width(), plan.height());
 
-    float contentStartX = startX + dim.paddingH;
-    float contentStartY = startY + dim.paddingV;
-    float currentY = contentStartY;
+    float contentStartX = plan.contentX();
+    float currentY = plan.contentY();
 
     // Icon setup (must match rebuildRenderData). The server headline has no icon;
     // the remaining rows use a normal-size icon and indent.
@@ -189,14 +195,16 @@ void SessionHud::rebuildLayout() {
         }
     };
 
-    // Position strings and icon quads
+    // Position strings and icon quads. Both index sequences must match the order
+    // rebuildRenderData() emits in.
     int stringIndex = 0;
-    size_t iconQuadIndex = 1;  // Icon quads start at index 1 (background is index 0)
+    size_t iconQuadIndex = static_cast<size_t>(m_firstIconQuad);
 
-    // "Session" label (optional, controlled by title toggle) - no icon
-    if (m_bShowTitle && positionString(stringIndex, contentStartX, currentY)) {
+    // "Session" title. ALWAYS string 0 -- addPlanTitle emits an empty string when
+    // the title is hidden, so the index does not shift with the toggle; only the row
+    // advance does.
+    if (positionString(stringIndex, plan.X(plan.g.captionX), planTitleY(plan))) {
         stringIndex++;
-        currentY += labelHeight;
     }
 
     // Server headline (extra-large font, no icon)
@@ -256,24 +264,26 @@ void SessionHud::rebuildRenderData() {
     float startX = 0.0f;
     float startY = 0.0f;
 
-    // Calculate dimensions
-    float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::SESSION_WIDTH);
-    float backgroundHeight = dim.paddingV + calculateContentHeight(dim) + dim.paddingV;
-
-    // Add background quad
-    addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
+    // BOX-MODEL: the plan owns the panel box; the rows are one section.
+    BaseHud::PanelWant want;
+    want.contentW = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::SESSION_WIDTH, dim.fontSize);
+    want.sectionH = { calculateContentHeight(dim) };
+    want.captionW = planTitleWidth(dim, "Session", TitleTier::Large);
+    want.tier = TitleTier::Large;
+    PanelPlan& plan = planPanel(dim, want);
+    float backgroundWidth = plan.width();
+    float backgroundHeight = plan.height();
+    addPlanBackground(plan, startX, startY);
 
     // Individual row heights for positioning. The server row is the headline now
     // (promoted to the top in place of the removed session-type row), so it uses
     // the large line height / extra-large font the type row used to.
-    float labelHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
-    float serverHeight = (m_enabledRows & ROW_SERVER) ? dim.lineHeightLarge : 0.0f;
+    float serverHeight = (m_enabledRows & ROW_SERVER) ? sectionHeadingRowHeight(dim) : 0.0f;
     float formatHeight = (m_enabledRows & ROW_FORMAT) ? dim.lineHeightNormal : 0.0f;
     float trackHeight = (m_enabledRows & ROW_TRACK) ? dim.lineHeightNormal : 0.0f;
 
-    float contentStartX = startX + dim.paddingH;
-    float contentStartY = startY + dim.paddingV;
-    float currentY = contentStartY;
+    float contentStartX = plan.contentX();
+    float currentY = plan.contentY();
 
     // Icon setup. All icon rows use the normal font size; the server headline has
     // no icon (flush-left). textOffset is the text indent past the icon (0 when
@@ -312,12 +322,23 @@ void SessionHud::rebuildRenderData() {
         m_quads.push_back(quad);
     };
 
-    // "Session" label (optional, controlled by title toggle) - no icon
-    if (m_bShowTitle) {
-        addString("Session", contentStartX, currentY, Justify::LEFT,
-            this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
-        currentY += labelHeight;
-    }
+    // "Session" -- the HUD's OWN name, which is what a title is for. This panel used
+    // to ship with the title off, so the server headline below (extra-large, in the
+    // title font) was what a reader saw at the top and read as the panel's title: a
+    // piece of DATA standing in for the caption, and the one full HUD that did that.
+    //
+    // UNCONDITIONAL, like every other HUD, rather than inside `if (m_bShowTitle)`.
+    // addPlanTitle emits an empty string when the title is hidden -- which keeps
+    // string index 0 stable for the layout fast path below -- and, crucially, emits
+    // the BODY CARD either way. Gating the call meant switching the title off also
+    // silently removed the card.
+    addPlanTitle(plan, "Session", this->getFont(FontCategory::TITLE),
+                 this->getColor(ColorSlot::PRIMARY));
+
+    // Every quad pushed from here on is a row icon; the ones before it are the
+    // panel's own furniture (background, title band, body card, title icon), and how
+    // many of those there are depends on the theme. See m_firstIconQuad.
+    m_firstIconQuad = static_cast<int>(m_quads.size());
 
     // Server row: headline at the top (server name online / "Testing" offline /
     // "Unknown"). Extra-large font, no icon (flush-left) — replaces the old
@@ -328,31 +349,29 @@ void SessionHud::rebuildRenderData() {
         // serverType in their API) as "Online" once a real opponent is present.
         const char* serverText = PluginUtils::serverLabel(sessionData.serverType, sessionData.serverName,
             static_cast<int>(pluginData.getRaceEntries().size()));
-        // Extra-large chars are ~2x normal width, so the usual MAX_DISPLAY_CHARS
-        // would overflow the fixed-width background. Truncate to what fits the
-        // content area at this font size.
-        float contentWidth = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::SESSION_WIDTH, dim.fontSize);
-        float headlineCharW = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSizeExtraLarge);
-        int maxHeadlineChars = (headlineCharW > 0.0f)
-            ? static_cast<int>(contentWidth / headlineCharW)
-            : MAX_DISPLAY_CHARS;
-        if (maxHeadlineChars < 4) maxHeadlineChars = 4;
-        // Shared ellipsis truncation (ellipsis folded into the budget).
-        std::string serverFit = PluginUtils::fitText(serverText, maxHeadlineChars);
-        addString(serverFit.c_str(), contentStartX, currentY, Justify::LEFT,
-            this->getFont(FontCategory::TITLE), textColor, dim.fontSizeExtraLarge);
+        // A SECTION HEADING, at the same size as every other panel's -- see
+        // BaseHud::addSectionHeading. It was fontSizeExtraLarge, an h1's size:
+        // together with this panel shipping its real title off, the server name was
+        // what a reader took for the caption. At normal size it reads as what it is,
+        // the heading of the block below it, and the ordinary character budget fits.
+        std::string serverFit = PluginUtils::fitText(serverText, MAX_DISPLAY_CHARS);
+        addSectionHeading(serverFit.c_str(), contentStartX, currentY, dim);
         currentY += serverHeight;
     }
 
-    // Track name (normal font with icon) - directly under the server headline,
-    // mirroring Discord's "server then track-led detail" layout.
+    // Track name, then format, then weather: DATA rows, in the NORMAL font.
+    //
+    // All three were in the TITLE font, which left them indistinguishable from the
+    // heading above them once that stopped being extra-large -- three italic rows
+    // where every other HUD reads as one heading over plain data. A heading can only
+    // open a block if the block looks different from it.
     if (m_enabledRows & ROW_TRACK) {
         addIconQuad(contentStartX, currentY, iconTrack);
         const char* trackName = sessionData.trackName[0] != '\0' ? sessionData.trackName : Placeholders::GENERIC;
         // Shared ellipsis truncation (ellipsis folded into the budget).
         std::string trackFit = PluginUtils::fitText(trackName, MAX_DISPLAY_CHARS);
         addString(trackFit.c_str(), contentStartX + textOffset, currentY, Justify::LEFT,
-            this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
+            this->getFont(FontCategory::NORMAL), textColor, dim.fontSize);
         currentY += trackHeight;
     }
 
@@ -385,7 +404,7 @@ void SessionHud::rebuildRenderData() {
         else                               snprintf(combinedBuffer, sizeof(combinedBuffer), "%s", sessionStateString);
 
         addString(combinedBuffer, contentStartX + textOffset, currentY, Justify::LEFT,
-            this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
+            this->getFont(FontCategory::NORMAL), textColor, dim.fontSize);
         currentY += formatHeight;
     }
 
@@ -429,7 +448,7 @@ void SessionHud::rebuildRenderData() {
         }
 
         addString(weatherBuffer, contentStartX + textOffset, currentY, Justify::LEFT,
-            this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
+            this->getFont(FontCategory::NORMAL), textColor, dim.fontSize);
         currentY += dim.lineHeightNormal;
     }
 
@@ -439,13 +458,13 @@ void SessionHud::rebuildRenderData() {
 
 void SessionHud::resetToDefaults() {
     m_bVisible = false;  // Disabled by default
-    m_bShowTitle = false;  // No title by default
+    m_bShowTitle = true;   // Captioned like every other full HUD -- see rebuildRenderData
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.8f;
     m_fScale = 1.0f;
     m_enabledRows = ROW_DEFAULT;  // Reset row visibility
     m_bShowIcons = true;  // Icons enabled by default
-    setPosition(0.0055f, 0.12907f);
+    setPosition(cellsX(1), cellsY(11));
 
     // Reset cached values to force rebuild on next update
     m_cachedSessionState = -1;

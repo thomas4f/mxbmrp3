@@ -59,12 +59,10 @@ BaseHud* SettingsHud::renderTabRadar(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("radar");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeader("Appearance");
-    ctx.addStandardHudControls(hud, false);  // No title support
-    ctx.addSpacing(0.5f);
-
+    ctx.addSectionHeading("Appearance");
+    ctx.addStandardHudControls(hud);
     // === RADAR SECTION ===
-    ctx.addSectionHeader("Radar");
+    ctx.addSectionHeading("Radar");
 
     // Mode control (Off/On/Auto-hide)
     const char* radarModeDisplayStr = "";
@@ -88,10 +86,8 @@ BaseHud* SettingsHud::renderTabRadar(SettingsLayoutContext& ctx) {
             RadarHud::MIN_RADAR_RANGE, RadarHud::MAX_RADAR_RANGE, hud),
         hud, true, false, "radar.range");
 
-    ctx.addSpacing(0.5f);
-
     // === RIDER MARKERS SECTION ===
-    ctx.addSectionHeader("Rider Markers");
+    ctx.addSectionHeading("Rider Markers");
 
     // Rider color mode cycle
     const char* radarColorModeStr = "";
@@ -135,10 +131,8 @@ BaseHud* SettingsHud::renderTabRadar(SettingsLayoutContext& ctx) {
     ctx.addCycleControl("Marker labels", radarModeStr, 10,
         SettingsHud::CycleControl::enumMember(hud, &RadarHud::m_labelMode, 4, hud),
         hud, true, radarLabelIsOff, "radar.labels");
-    ctx.addSpacing(0.5f);
-
     // === PROXIMITY ARROWS SECTION ===
-    ctx.addSectionHeader("Proximity Arrows");
+    ctx.addSectionHeading("Proximity Arrows");
 
     // Proximity arrows mode control (Off/Edge/Circle)
     const char* proxArrowModeStr = "";

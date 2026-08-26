@@ -33,7 +33,7 @@ static int getDefaultShapeIndex() {
     const auto& assetMgr = AssetManager::getInstance();
     int spriteIndex = assetMgr.getIconSpriteIndex(DEFAULT_RIDER_ICON);
     if (spriteIndex <= 0) return 1;
-    return spriteIndex - assetMgr.getFirstIconSpriteIndex() + 1;
+    return assetMgr.shapeIndexForSprite(spriteIndex);
 }
 
 // Helper to get valid shape bounds
@@ -57,6 +57,8 @@ static int stepEligibleShape(int shape, bool forward, int /*maxShape*/) {
 bool TrackedRidersManager::shouldRotate(int shapeIndex) {
     // Get the icon filename and check for directional patterns
     const auto& assetMgr = AssetManager::getInstance();
+    // Base index: the filename is what says whether the glyph is directional, and
+    // a theme restyling it must not change that answer.
     int spriteIndex = assetMgr.getFirstIconSpriteIndex() + shapeIndex - 1;
     std::string filename = assetMgr.getIconFilename(spriteIndex);
 
@@ -341,9 +343,11 @@ void TrackedRidersManager::load(const char* savePath) {
                 int shapeIndex = getDefaultShapeIndex();
                 std::string iconName = riderJson.value("icon", "");
                 if (!iconName.empty()) {
-                    int spriteIndex = assetMgr.getIconSpriteIndex(iconName);
+                    // BASE index -- this is the saved name being turned back into a
+                    // shape, not a draw (see AssetManager::getBaseIconSpriteIndex).
+                    int spriteIndex = assetMgr.getBaseIconSpriteIndex(iconName);
                     if (spriteIndex > 0) {
-                        shapeIndex = spriteIndex - assetMgr.getFirstIconSpriteIndex() + 1;
+                        shapeIndex = assetMgr.shapeIndexForSprite(spriteIndex);
                     }
                 }
 
@@ -397,6 +401,8 @@ void TrackedRidersManager::save() {
 
             // Convert shape index to icon filename for robustness
             const auto& assetMgr = AssetManager::getInstance();
+            // Base index: this is the name being WRITTEN to disk, so it has to be the
+            // vocabulary's name and not whatever theme happened to be on at save time.
             int spriteIndex = assetMgr.getFirstIconSpriteIndex() + config.shapeIndex - 1;
             std::string iconName = assetMgr.getIconFilename(spriteIndex);
             riderJson["icon"] = iconName.empty() ? DEFAULT_RIDER_ICON : iconName;

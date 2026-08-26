@@ -5,6 +5,7 @@
 #include "settings_layout.h"
 #include "../settings_hud.h"
 #include "../pitboard_hud.h"
+#include "../../core/asset_manager.h"
 
 // Note: the Pitboard tab has no tab-specific click handler anymore - Show mode
 // and Gap compare are data-driven CYCLE controls (registered in
@@ -19,12 +20,16 @@ BaseHud* SettingsHud::renderTabPitboard(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("pitboard");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeader("Appearance");
-    ctx.addStandardHudControls(hud, false);  // No title support
-    ctx.addSpacing(0.5f);
+    ctx.addSectionHeading("Appearance");
+    // The BOARD PACK (artwork plus the geometry that places rows on it) is the
+    // Texture row addStandardHudControls draws for a pack HUD -- see
+    // SettingsLayoutContext::addPackControl. It used to be a SECOND control here
+    // called "Board", sitting under a Theme row that could never take effect;
+    // one row named the same thing every other HUD names it replaces both.
+    ctx.addStandardHudControls(hud);
 
     // === LAYOUT SECTION ===
-    ctx.addSectionHeader("Layout");
+    ctx.addSectionHeading("Layout");
 
     // Display mode control (Always/Pit/Splits)
     const char* displayModeText = "";
@@ -39,10 +44,8 @@ BaseHud* SettingsHud::renderTabPitboard(SettingsLayoutContext& ctx) {
         SettingsHud::CycleControl::enumMember(hud, &PitboardHud::m_displayMode,
             PitboardHud::MODE_COUNT, hud),
         hud, true, false, "pitboard.show_mode");
-    ctx.addSpacing(0.5f);
-
     // === CONTENT SECTION ===
-    ctx.addSectionHeader("Content");
+    ctx.addSectionHeading("Content");
 
     ctx.addToggleControl("Rider name", (hud->m_enabledRows & PitboardHud::ROW_RIDER_ID) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, PitboardHud::ROW_RIDER_ID, true,

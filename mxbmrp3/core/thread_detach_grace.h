@@ -1,7 +1,17 @@
 // ============================================================================
 // core/thread_detach_grace.h
-// The spin-then-detach teardown backstop, shared by the three singletons that
-// own a worker thread (XInputReader, PluginThread, CompanionWindow).
+// The spin-then-detach teardown backstop, shared by the singletons that own a
+// worker thread (XInputReader, PluginThread, CompanionWindow, SpotterManager).
+//
+// THE CONTRACT ON THE WORKER: after it observes the stop signal, only
+// instructions may remain before the finished-flag store -- no waits, and
+// nothing that can need the LOADER LOCK the destructing thread holds.
+// SpotterManager is the cautionary case: its normal exit releases a SAPI
+// voice (waits on the engine's speech thread) and calls CoUninitialize (can
+// unload COM DLLs) -- either blocks on the loader lock, the flag never lands,
+// and the spin below detaches a LIVE thread. Its destructor therefore sets an
+// abandon flag telling the worker to skip that cleanup on this path
+// (m_abandonComCleanup); a worker with a similarly heavy exit needs the same.
 //
 // WHEN THIS RUNS. Only when the orchestrated Shutdown() export was SKIPPED and
 // the DLL is unloaded anyway — the path that cost two shipped crashes (see
@@ -55,11 +65,11 @@
 // and measured 5/24 -> 0/24 under full CPU saturation. A margin over a quantum,
 // not a derived bound.
 //
-// ADDITIVE: all three singletons run this in sequence, so a no-Shutdown
-// teardown pays up to 3 x (spinLimit + grace). Keeping the constants HERE is
-// what makes that arithmetic true — three copies of the number is the shape
-// where someone tunes one site and the other two silently keep the old value
-// while the comment still claims the old total.
+// ADDITIVE: the singletons run this in sequence, so a no-Shutdown teardown
+// pays up to N x (spinLimit + grace) — four workers today. Keeping the
+// constants HERE is what makes that arithmetic true — per-site copies of the
+// number is the shape where someone tunes one site and the others silently
+// keep the old value while the comment still claims the old total.
 //
 // TWO ways to actually close the window, both rejected, recorded so the choice
 // does not look binary:
@@ -88,8 +98,9 @@
 // The caller does its own signalling first, then hands the thread and its
 // finished-flag here. Two shapes today: XInputReader and CompanionWindow poll a
 // run flag (CompanionWindow's message pump is PeekMessage, so clearing the flag
-// is enough — it never blocks in GetMessage), while PluginThread additionally
-// notifies the condition variable its worker blocks on. A worker that parks in
+// is enough — it never blocks in GetMessage), while PluginThread and
+// SpotterManager additionally notify the condition variable their workers
+// block on. A worker that parks in
 // something a flag store cannot wake needs its own nudge added at the call site,
 // not here — this function only waits and detaches.
 // ============================================================================

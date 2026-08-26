@@ -39,12 +39,10 @@ BaseHud* SettingsHud::renderTabFmx(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("fmx");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeader("Appearance");
+    ctx.addSectionHeading("Appearance");
     ctx.addStandardHudControls(hud);
-    ctx.addSpacing(0.5f);
-
     // === CONTENT SECTION ===
-    ctx.addSectionHeader("Content");
+    ctx.addSectionHeading("Content");
 
     // Trick stack: cycle Off, 1, 2, ..., 10
     int trickRows = hud->m_maxChainDisplayRows;
@@ -76,8 +74,7 @@ BaseHud* SettingsHud::renderTabFmx(SettingsLayoutContext& ctx) {
 
     // === DEVELOPER SECTION (only visible in developer mode) ===
     if (SettingsManager::getInstance().isDeveloperMode()) {
-        ctx.addSpacing(0.5f);
-        ctx.addSectionHeader("Developer");
+        ctx.addSectionHeading("Developer");
 
         ctx.addToggleControl("Log telemetry", hud->m_showDebugLogging,
             SettingsHud::ClickRegion::FMX_DEBUG_TOGGLE, hud, nullptr, 0, true,

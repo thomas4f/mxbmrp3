@@ -9,6 +9,7 @@
 #include <memory>
 #include <cassert>
 #include <chrono>
+#include <functional>
 #include "../game/game_config.h"
 #include "../game/unified_types.h"
 #include "../hud/base_hud.h"
@@ -61,8 +62,70 @@ public:
     const std::vector<SPluginQuad_t>& getGameQuads() const { return m_quads; }
     const std::vector<SPluginQuad_t>& getCompanionQuads() const { return m_companionQuads; }
 
-    // HUD registration
-    void registerHud(std::unique_ptr<BaseHud> hud);
+    // Every registered HUD, in draw order. For test introspection only (the grid
+    // sweep in core/test_hooks.cpp): asking "is ANY panel off the lattice" needs the
+    // whole set, and a per-HUD id on the panel-rect hook does not scale to that.
+    const std::vector<std::unique_ptr<BaseHud>>& getHuds() const { return m_huds; }
+
+    // HUD registration. `harnessId` is REQUIRED and stamps BaseHud::getHarnessId
+    // -- the one stable name for this element, read by the benchmark report and
+    // the test harness alike (see setHarnessId for the two ladders it replaced).
+    // Required rather than defaulted precisely because the failure it prevents is
+    // an element registered without a name.
+    void registerHud(std::unique_ptr<BaseHud> hud, const char* harnessId);
+
+    // Panels that SHOULD carry a benchmark slot: every registered HUD except the
+    // BenchmarkWidget, which excludes itself from its own profile. Exposed for the
+    // test that pins "no panel is silently left unprofiled" (see MAX_HUDS).
+    // Defined in the .cpp: BenchmarkWidget is only forward-declared here, so the
+    // derived-to-base comparison needs the complete type.
+    int profilableHudCount() const;
+
+    // The sprite table as DrawInit registered it, for the benchmark report's render
+    // probe block. 1-BASED to match SPluginQuad_t::m_iSprite (0 there means "no
+    // sprite, fill with the colour"), so a reported index can be pasted straight
+    // into renderProbeSprite. Empty string for an out-of-range index.
+    int registeredSpriteCount() const { return static_cast<int>(m_spriteNames.size()); }
+    const char* spriteName(int oneBasedIndex) const {
+        return (oneBasedIndex >= 1 && oneBasedIndex <= registeredSpriteCount())
+            ? m_spriteNames[static_cast<size_t>(oneBasedIndex - 1)].c_str() : "";
+    }
+
+    // Bind a typed HUD cache pointer (m_pStandings, ...) to the slot-clearing
+    // list: clear() nulls every bound pointer before destroying the HUD
+    // objects. Binding happens at registration, so a cached pointer that could
+    // dangle after clear() cannot exist by construction — the hand-maintained
+    // null list this replaces was a known dangling-pointer trap (same
+    // declaration-is-registration idea as PerRider<>).
+    template <typename T>
+    void bindHudSlot(T*& cachePtr) {
+        m_hudSlotClearers.push_back([&cachePtr] { cachePtr = nullptr; });
+    }
+
+    // Construct a HUD, bind its typed cache pointer (see bindHudSlot), and
+    // register it in draw order under `name`. The standard one-liner for
+    // initialize(); HUDs needing constructor args or deferred registration
+    // (SettingsHud, SettingsButtonWidget, PointerWidget) compose the pieces by
+    // hand and call registerHud themselves.
+    //
+    // `name` is the HARNESS ID ONLY -- deliberately NOT also the texture base name,
+    // though for every element that has one the two strings are equal. A HUD's
+    // texture stem is declared once, by the HUD, in its constructor, because the
+    // constructor CONSUMES it: resetToDefaults() runs there and calls
+    // setTextureVariant(), which resolves the sprite through
+    // AssetManager::getSpriteIndex(m_textureBaseName, variant). Setting the stem
+    // out here would land after that, and a HUD whose artwork is mandatory
+    // (m_textureRequired -- Radar, Speedo, Tacho, Pitboard, Gamepad) would resolve
+    // its dial against an empty name. Restating it here was a duplicate declaration
+    // with nothing checking the two agreed, and one already had not.
+    template <typename T>
+    T* createHud(T*& cachePtr, const char* name) {
+        auto hud = std::make_unique<T>();
+        cachePtr = hud.get();
+        bindHudSlot(cachePtr);
+        registerHud(std::move(hud), name);
+        return cachePtr;
+    }
 
     // Data change notification callback (called by PluginData)
     void onDataChanged(DataChangeType changeType);
@@ -70,6 +133,14 @@ public:
     // Validate all HUD positions fit within current window bounds
     // Call this after resolution changes
     void validateAllHudPositions();
+    // Ask for the above to run at the END of the next updateHuds() pass, instead of
+    // right now. Call this from anything reachable from a HUD's update() -- an input
+    // handler, most of all. validatePosition() calls update() on a dirty HUD, so
+    // validating from inside a handler re-enters the very update that dispatched it:
+    // the click edge is still true for the rest of the frame, so it dispatches again,
+    // and again. That recursion shipped and cost two stack-overflow crashes
+    // (0xC00000FD, ~1400 frames deep); see teardown of the theme-cycle handler.
+    void requestPositionValidation() { m_validationPending = true; }
 
     // Mark all HUDs as needing rebuild (e.g., after color config change)
     void markAllHudsDirty();
@@ -109,6 +180,7 @@ public:
     class PerformanceHud& getPerformanceHud() const { assert(m_pPerformance && "HudManager not initialized"); return *m_pPerformance; }
     class TelemetryHud& getTelemetryHud() const { assert(m_pTelemetry && "HudManager not initialized"); return *m_pTelemetry; }
     class TimeWidget& getTimeWidget() const { assert(m_pTime && "HudManager not initialized"); return *m_pTime; }
+    class SpotterWidget& getSpotterWidget() const { assert(m_pSpotter && "HudManager not initialized"); return *m_pSpotter; }
     class PositionWidget& getPositionWidget() const { assert(m_pPosition && "HudManager not initialized"); return *m_pPosition; }
     class LapWidget& getLapWidget() const { assert(m_pLap && "HudManager not initialized"); return *m_pLap; }
     class SessionHud& getSessionHud() const { assert(m_pSession && "HudManager not initialized"); return *m_pSession; }
@@ -116,6 +188,7 @@ public:
     class RadarHud& getRadarHud() const { assert(m_pRadarHud && "HudManager not initialized"); return *m_pRadarHud; }
     class SpeedWidget& getSpeedWidget() const { assert(m_pSpeed && "HudManager not initialized"); return *m_pSpeed; }
     class GearWidget& getGearWidget() const { assert(m_pGear && "HudManager not initialized"); return *m_pGear; }
+    class CrashWidget& getCrashWidget() const { assert(m_pCrash && "HudManager not initialized"); return *m_pCrash; }
     class SpeedoWidget& getSpeedoWidget() const { assert(m_pSpeedo && "HudManager not initialized"); return *m_pSpeedo; }
     class TachoWidget& getTachoWidget() const { assert(m_pTacho && "HudManager not initialized"); return *m_pTacho; }
     class TimingHud& getTimingHud() const { assert(m_pTiming && "HudManager not initialized"); return *m_pTiming; }
@@ -160,6 +233,26 @@ public:
     // any in-game flow, so it's compiled out of every shipping DLL.
     void testSetAllHudsVisible(bool visible);
 
+    // Sprite span of the frame last handed to the game: the lowest and highest
+    // non-zero m_iSprite, and how many quads used sprite 0 (the UNTEXTURED path,
+    // "fill with m_ulColor"). Both spans are 0 when the frame has no textured quad.
+    //
+    // Exists for the render probe's test, and specifically for its one silent trap:
+    // an out-of-range renderProbeSprite must fall back to CYCLING, never to sprite
+    // 0, because sprite 0 would quietly measure flat fill while the report claimed
+    // to be measuring the textured path -- a wrong answer that looks like a result.
+    // The harness cannot check this itself; it holds no mirror of SPluginQuad_t and
+    // deliberately treats the API payloads as opaque.
+    void testLastFrameSpriteSpan(int& minSprite, int& maxSprite, int& untexturedCount) const;
+
+    // Install a synthetic sprite table of `count` entries, for the render probe's
+    // test. The real table is built in DrawInit from files on disk, and the headless
+    // harness stages no assets -- so the probe's type-1 branch, which is index
+    // arithmetic over m_spriteNames.size(), would otherwise be untestable: with an
+    // empty table it legitimately degenerates to the untextured path, and every
+    // assertion about pinning would pass vacuously.
+    void testInstallSpriteTable(int count);
+
     // Inject an artificial per-frame stall into produceFrame() (ms), standing in for a
     // slow component like the Map HUD's ribbon tessellation. Used to demonstrate that
     // such a stall blocks the game's Draw in sync mode but not in plugin-thread mode.
@@ -172,7 +265,7 @@ private:
                    m_pDraggingHud(nullptr), m_pSettingsHud(nullptr), m_pSettingsButton(nullptr),
                    m_pIdealLap(nullptr), m_pLapLog(nullptr), m_pFriends(nullptr), m_pStandings(nullptr),
                    m_pPerformance(nullptr), m_pTelemetry(nullptr),
-                   m_pTime(nullptr), m_pPosition(nullptr), m_pLap(nullptr), m_pSession(nullptr), m_pMapHud(nullptr), m_pRadarHud(nullptr), m_pSpeed(nullptr), m_pGear(nullptr), m_pSpeedo(nullptr), m_pTacho(nullptr), m_pTiming(nullptr), m_pGapBar(nullptr), m_pBars(nullptr), m_pVersion(nullptr), m_pNotices(nullptr), m_pPitboard(nullptr),
+                   m_pTime(nullptr), m_pSpotter(nullptr), m_pPosition(nullptr), m_pLap(nullptr), m_pSession(nullptr), m_pMapHud(nullptr), m_pRadarHud(nullptr), m_pSpeed(nullptr), m_pGear(nullptr), m_pCrash(nullptr), m_pSpeedo(nullptr), m_pTacho(nullptr), m_pTiming(nullptr), m_pGapBar(nullptr), m_pBars(nullptr), m_pVersion(nullptr), m_pNotices(nullptr), m_pPitboard(nullptr),
 #if GAME_HAS_RECORDS_PROVIDER
                    m_pRecords(nullptr),
 #endif
@@ -220,8 +313,14 @@ private:
     void persistDirectorEnabled();  // save the director on/off mode (auto-save-gated)
 
     bool m_bInitialized;
+
+    // Deferred validateAllHudPositions(); see requestPositionValidation().
+
+    bool m_validationPending = false;
     bool m_bResourcesInitialized;
     std::vector<std::unique_ptr<BaseHud>> m_huds;
+    // One entry per bound cache pointer (bindHudSlot); run + emptied by clear().
+    std::vector<std::function<void()>> m_hudSlotClearers;
 
     // Cache pointer to currently dragging HUD (eliminates search loop every frame)
     BaseHud* m_pDraggingHud;
@@ -241,6 +340,7 @@ private:
     class PerformanceHud* m_pPerformance;
     class TelemetryHud* m_pTelemetry;
     class TimeWidget* m_pTime;
+    class SpotterWidget* m_pSpotter;
     class PositionWidget* m_pPosition;
     class LapWidget* m_pLap;
     class SessionHud* m_pSession;
@@ -248,6 +348,7 @@ private:
     class RadarHud* m_pRadarHud;
     class SpeedWidget* m_pSpeed;
     class GearWidget* m_pGear;
+    class CrashWidget* m_pCrash;
     class SpeedoWidget* m_pSpeedo;
     class TachoWidget* m_pTacho;
     class TimingHud* m_pTiming;

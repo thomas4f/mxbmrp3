@@ -34,7 +34,7 @@ python3 tools/mdmp_analyze.py --compare crash_analysis/<a.dmp> crash_analysis/<b
 
 Once a crash is catalogued, you'll often want to remember **which `.dmp`/`.log` files prove
 it** (and attach context like a video). That lives in an optional `samples` list inside each
-crash entry in `known_game_crashes.json` — record it with `--record`:
+crash entry in `known_game_crashes.json` - record it with `--record`:
 
 ```
 python3 tools/mdmp_analyze.py --record crash_analysis/<file.dmp>
@@ -46,7 +46,7 @@ Behaviour:
 
 - **Matched crash → appended** (idempotent by `sha256`; re-running won't duplicate).
 - **No match → reported, not added.** The catalogue tracks only *understood* crashes, so a
-  dump with an unrecognised signature is never recorded — catalogue the crash first.
+  dump with an unrecognised signature is never recorded - catalogue the crash first.
 - **Add a note** (e.g. a video link or session context) with `--note`, which also works on a
   dump that's already on file (it updates that sample's note):
 
@@ -54,7 +54,7 @@ Behaviour:
   python3 tools/mdmp_analyze.py --record --note "https://youtu.be/…" crash_analysis/<file.dmp>
   ```
 
-  Notes are **never auto-filled** — they're yours to write. `--note` without `--record` is ignored.
+  Notes are **never auto-filled** - they're yours to write. `--note` without `--record` is ignored.
 
 `samples` is **internal provenance** (`source`/`sha256`/`fault`/…) and is **not** emitted into the
 player-facing `KNOWN_GAME_CRASHES.md`. The `source` basename is the real crash filename, whose

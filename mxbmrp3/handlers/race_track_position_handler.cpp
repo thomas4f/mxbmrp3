@@ -6,6 +6,7 @@
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
 #include "../core/hud_manager.h"
+#include "../core/spotter_manager.h"
 
 void Handlers::handleRaceTrackPosition(int iNumVehicles, Unified::TrackPositionData* pasRaceTrackPosition) {
     // Defensive null check and bounds validation
@@ -34,6 +35,13 @@ void Handlers::handleRaceTrackPosition(int iNumVehicles, Unified::TrackPositionD
             sessionTime
         );
     }
+
+    // Spotter proximity/hazard detectors tick on this batch. BEFORE the
+    // race-session early-return below: the spotter also calls practice and
+    // qualifying (blue flags, hazards, riders closing). One bool test when
+    // the spotter is disabled.
+    SpotterManager::getInstance().onTrackPositions(iNumVehicles,
+                                                   pasRaceTrackPosition);
 
     // Only calculate real-time gaps for race sessions in progress
     if (!pluginData.isRaceSession()) {

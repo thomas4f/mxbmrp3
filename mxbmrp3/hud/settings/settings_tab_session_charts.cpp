@@ -29,12 +29,10 @@ BaseHud* SettingsHud::renderTabSessionCharts(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("session_charts");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeader("Appearance");
+    ctx.addSectionHeading("Appearance");
     ctx.addStandardHudControls(hud);
-    ctx.addSpacing(0.5f);
-
     // === CHARTS SECTION === (independent checkboxes; any combination stacks vertically)
-    ctx.addSectionHeader("Charts");
+    ctx.addSectionHeading("Charts");
     ctx.addToggleControl("Lap chart", (hud->m_enabledCharts & SessionChartsHud::CHART_LAP) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledCharts, SessionChartsHud::CHART_LAP, true,
         "session_charts.chart_lap");
@@ -47,10 +45,8 @@ BaseHud* SettingsHud::renderTabSessionCharts(SettingsLayoutContext& ctx) {
     ctx.addToggleControl("Pace", (hud->m_enabledCharts & SessionChartsHud::CHART_PACE) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledCharts, SessionChartsHud::CHART_PACE, true,
         "session_charts.chart_pace");
-    ctx.addSpacing(0.5f);
-
     // === LAYOUT SECTION ===
-    ctx.addSectionHeader("Layout");
+    ctx.addSectionHeading("Layout");
 
     // Rider line colours
     ctx.addCycleControl("Colors", getColorModeName(hud->m_riderColorMode), 10,
@@ -85,10 +81,21 @@ BaseHud* SettingsHud::renderTabSessionCharts(SettingsLayoutContext& ctx) {
             std::min(SessionChartsHud::MAX_TOP_COUNT, hud->m_displayRowCount), hud),
         hud, true, false, "session_charts.top_n", /*tooltipOnArrows=*/false);
 
-    ctx.addSpacing(0.5f);
+    // Panel HEIGHT, in text rows. The knob the SessionCharts HUD was missing:
+    // its graph was a fixed line count, so the panel could only be resized by the
+    // scale slider, which moves the fonts too. One row is lineHeightNormal, so every
+    // value keeps the panel a whole number of grid cells tall.
+    {
+        char rowsBuf[8];
+        snprintf(rowsBuf, sizeof(rowsBuf), "%d", hud->m_graphRows);
+        ctx.addSteppedControl("Chart height", rowsBuf, 10,
+            SettingsHud::SteppedControl::clampInt(&hud->m_graphRows, 1,
+                SessionChartsHud::MIN_GRAPH_ROWS, SessionChartsHud::MAX_GRAPH_ROWS, hud),
+            hud, true, false, "session_charts.graph_rows");
+    }
 
     // === CONTENT SECTION ===
-    ctx.addSectionHeader("Content");
+    ctx.addSectionHeading("Content");
 
     ctx.addToggleControl("Grid lines", (hud->m_enabledElements & SessionChartsHud::ELEM_GRID) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledElements, SessionChartsHud::ELEM_GRID, true,

@@ -11,56 +11,19 @@
 #include "hud_manager.h"
 #include "profile_manager.h"
 #include "../diagnostics/logger.h"
-#include "../hud/ideal_lap_hud.h"
-#include "../hud/lap_log_hud.h"
-#include "../hud/friends_hud.h"
-#include "../hud/session_charts_hud.h"
+#include <cstring>   // std::strcmp, for the v4 -> v5 font-slot migration
+#include <set>       // the v7/v8 migrations' record of file-carried base keys
 #include "../hud/standings_hud.h"
-#include "../hud/performance_hud.h"
-#include "../hud/telemetry_hud.h"
-#include "../hud/time_widget.h"
-#include "../hud/clock_widget.h"
-#include "../hud/position_widget.h"
-#include "../hud/lap_widget.h"
-#include "../hud/session_hud.h"
-#include "../hud/speed_widget.h"
-#include "../hud/gear_widget.h"
-#include "../hud/speedo_widget.h"
-#include "../hud/tacho_widget.h"
-#include "../hud/timing_hud.h"
-#include "../hud/gap_bar_hud.h"
-#include "../hud/bars_widget.h"
-#include "../hud/version_widget.h"
-#include "../hud/notices_hud.h"
-#include "../hud/fuel_widget.h"
-#include "../hud/settings_button_widget.h"
-#include "../hud/pointer_widget.h"
-#include "../hud/map_hud.h"
-#include "../hud/radar_hud.h"
 #include "../hud/pitboard_hud.h"
 // settings_hud.h is core (every game has the settings menu, and getSettingsHud() is
 // used unconditionally below), and it pulls records_hud.h itself; both .cpp files are
 // compiled on every game, so neither include may be gated on GAME_HAS_RECORDS_PROVIDER
 // — gating it broke the GPB/KRP builds (SettingsHud left incomplete -> C2027). The
 // *provider* feature stays runtime/registration-gated; only these includes are always on.
-#include "../hud/records_hud.h"
 #include "../hud/settings_hud.h"
-#include "../hud/rumble_hud.h"
-#include "../hud/helmet_overlay_hud.h"
-#include "../hud/benchmark_widget.h"
+#include "../hud/version_widget.h"
 #include "../hud/gamepad_widget.h"
-#include "../hud/lean_widget.h"
-#include "../hud/gforce_widget.h"
-#include "../hud/compass_widget.h"
-#if GAME_HAS_TYRE_TEMP
-#include "../hud/tyre_temp_widget.h"
-#endif
-#if GAME_HAS_ECU
-#include "../hud/ecu_widget.h"
-#endif
-#include "../hud/fmx_hud.h"
-#include "../hud/stats_hud.h"
-#include "../hud/event_log_hud.h"
+#include "../hud/radar_hud.h"
 #include "fmx_manager.h"
 #include "color_config.h"
 #include "font_config.h"
@@ -86,7 +49,6 @@
 #include "hotkey_manager.h"
 #include "director_manager.h"
 #include "companion_window.h"
-#include "../hud/director_widget.h"
 #include "tracked_riders_manager.h"
 #include "asset_manager.h"
 #include "../game/game_config.h"
@@ -112,7 +74,24 @@ namespace {
     // Version 2: Named keys instead of bitmasks for columns/rows/elements
     // Version 3: String enums instead of integers for all enum settings
     // Version 4: Base sections + sparse profile sections (reduced INI size)
-    constexpr int SETTINGS_VERSION = 4;
+    // 5: [Colors]/[Fonts] became SPARSE -- only slots the user pinned are written, so
+    //    absence means "follow the theme". A file at 4 or below wrote all ten colours
+    //    and all six fonts unconditionally, and the load path pins every key it sees;
+    //    see the migration in loadSettings().
+    // 6: the gamepad AND the pit board are chosen by PACK NAME (gamepads/<name>/,
+    //    pitboards/<name>/) rather than by texture variant index. Files at 5 or below
+    //    store the old index; the migration in loadSettings() maps the shipped
+    //    variants onto their pack names. Both moved in the same version deliberately:
+    //    6 is unreleased, and a file already written at 6 maps to the default board
+    //    anyway, so a second version step would buy nothing.
+    // 7: Notices and Timing offsetX means the panel's CENTRE, like the Gap Bar and
+    //    Version already did, instead of a delta from a centre computed at render
+    //    time. The migration in loadSettings() adds the anchor in.
+    // 8: the Radar joins them. Its offsetX meant a LEFT EDGE, so unlike 7 the shift
+    //    is half the panel's width and depends on the stored scale -- hence its own
+    //    version rather than folding into the unreleased 7: a file already stamped 7
+    //    would skip the shift, and every dev install is stamped 7 by now.
+    constexpr int SETTINGS_VERSION = 9;
 
     // The on-disk shape has been stable since v4 (base [HudName] sections + sparse
     // [HudName:Profile] overrides). The load dispatch keys off THIS floor, not off
@@ -216,10 +195,6 @@ std::string SettingsManager::serializeSettings(const HudManager& hudManager, con
         file << buildHudSection(s.name);
     }
 
-    // GamepadWidget / PitboardHud per-variant layout blocks (read live from the widgets).
-    file << buildGamepadLayouts(hudManager);
-    file << buildPitboardLayouts(hudManager);
-
     return file.str();
 }
 
@@ -289,94 +264,6 @@ std::string SettingsManager::buildHudSection(const char* hudName) const {
     return file.str();
 }
 
-// Build the GamepadWidget per-variant layout blocks (read live from the widget).
-std::string SettingsManager::buildGamepadLayouts(const HudManager& hudManager) const {
-    std::ostringstream file;
-    // Write GamepadWidget per-variant layouts (not per-profile, global)
-    // Only save layouts that actually exist (default: variants 1 and 2)
-    {
-        file << "# GamepadWidget Per-Variant Layouts\n";
-        const auto& gamepadWidget = hudManager.getGamepadWidget();
-
-        // Check which layouts exist and save them
-        for (int variant = 1; variant <= 10; ++variant) {
-            const auto* layout = gamepadWidget.getLayoutIfExists(variant);
-            if (!layout) continue;
-
-            file << "[GamepadWidget_Layout_" << variant << "]\n";
-            file << "backgroundWidth=" << layout->backgroundWidth << "\n";
-            file << "triggerWidth=" << layout->triggerWidth << "\n";
-            file << "triggerHeight=" << layout->triggerHeight << "\n";
-            file << "bumperWidth=" << layout->bumperWidth << "\n";
-            file << "bumperHeight=" << layout->bumperHeight << "\n";
-            file << "dpadWidth=" << layout->dpadWidth << "\n";
-            file << "dpadHeight=" << layout->dpadHeight << "\n";
-            file << "faceButtonSize=" << layout->faceButtonSize << "\n";
-            file << "menuButtonWidth=" << layout->menuButtonWidth << "\n";
-            file << "menuButtonHeight=" << layout->menuButtonHeight << "\n";
-            file << "stickSize=" << layout->stickSize << "\n";
-            file << "leftTriggerX=" << layout->leftTriggerX << "\n";
-            file << "leftTriggerY=" << layout->leftTriggerY << "\n";
-            file << "rightTriggerX=" << layout->rightTriggerX << "\n";
-            file << "rightTriggerY=" << layout->rightTriggerY << "\n";
-            file << "leftBumperX=" << layout->leftBumperX << "\n";
-            file << "leftBumperY=" << layout->leftBumperY << "\n";
-            file << "rightBumperX=" << layout->rightBumperX << "\n";
-            file << "rightBumperY=" << layout->rightBumperY << "\n";
-            file << "leftStickX=" << layout->leftStickX << "\n";
-            file << "leftStickY=" << layout->leftStickY << "\n";
-            file << "rightStickX=" << layout->rightStickX << "\n";
-            file << "rightStickY=" << layout->rightStickY << "\n";
-            file << "dpadX=" << layout->dpadX << "\n";
-            file << "dpadY=" << layout->dpadY << "\n";
-            file << "faceButtonsX=" << layout->faceButtonsX << "\n";
-            file << "faceButtonsY=" << layout->faceButtonsY << "\n";
-            file << "menuButtonsX=" << layout->menuButtonsX << "\n";
-            file << "menuButtonsY=" << layout->menuButtonsY << "\n";
-            file << "dpadSpacing=" << layout->dpadSpacing << "\n";
-            file << "faceButtonSpacing=" << layout->faceButtonSpacing << "\n";
-            file << "menuButtonSpacing=" << layout->menuButtonSpacing << "\n";
-            writeSettingWithComment(file, "GamepadWidget", "triggerFillMode", std::to_string(layout->triggerFillMode));
-            file << "\n";
-        }
-    }
-    return file.str();
-}
-
-// Build the PitboardHud per-texture layout blocks (read live from the widget).
-std::string SettingsManager::buildPitboardLayouts(const HudManager& hudManager) const {
-    std::ostringstream file;
-    // Write PitboardHud per-texture layouts (not per-profile, global)
-    {
-        file << "# PitboardHud Per-Texture Layouts\n";
-        const auto& pitboardHud = hudManager.getPitboardHud();
-
-        // Check which layouts exist and save them
-        for (int variant = 1; variant <= 10; ++variant) {
-            const auto* layout = pitboardHud.getLayoutIfExists(variant);
-            if (!layout) continue;
-
-            file << "[PitboardHud_Layout_" << variant << "]\n";
-            file << "riderIdX=" << layout->riderIdX << "\n";
-            file << "riderIdY=" << layout->riderIdY << "\n";
-            file << "sessionX=" << layout->sessionX << "\n";
-            file << "sessionY=" << layout->sessionY << "\n";
-            file << "positionX=" << layout->positionX << "\n";
-            file << "positionY=" << layout->positionY << "\n";
-            file << "timeX=" << layout->timeX << "\n";
-            file << "timeY=" << layout->timeY << "\n";
-            file << "lapX=" << layout->lapX << "\n";
-            file << "lapY=" << layout->lapY << "\n";
-            file << "lastLapX=" << layout->lastLapX << "\n";
-            file << "lastLapY=" << layout->lastLapY << "\n";
-            file << "gapX=" << layout->gapX << "\n";
-            file << "gapY=" << layout->gapY << "\n";
-            file << "\n";
-        }
-    }
-    return file.str();
-}
-
 void SettingsManager::saveSettings(const HudManager& hudManager, const char* savePath) {
     // Synchronous path (explicit Save / Reset / leave-track flush / shutdown): serialize, then
     // write on this thread so the file is durable before we return.
@@ -430,11 +317,48 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
         cache.clear();
     }
 
+    // ABSENCE IS AUTHORITATIVE for [Colors] and [Fonts], which means releasing every
+    // pin BEFORE the parse and letting the file re-pin only what it actually states.
+    //
+    // Those two sections became SPARSE on write -- only slots the user pinned are
+    // emitted, and an absent key means "follow the theme". The read side was never
+    // made to match: applyGlobalLine() only ever calls setColor/setFont for keys it
+    // SEES, and the only clearOverride() calls in the whole load path were inside the
+    // v4 -> v5 migration, which a current file skips. So absence could not release
+    // anything, and the two supported ways to un-pin a slot both failed silently:
+    //
+    //   Reload Config after changing a colour with auto-save off -- the discarded
+    //   value stayed pinned and was written straight back out on the next save.
+    //
+    //   Deleting `accent=...` from [Colors] by hand -- the line reappeared, because
+    //   the slot was still pinned in memory when the file was rewritten.
+    //
+    // replayGlobalDefaults() already does exactly this before replaying the defaults
+    // snapshot (settings_hud_profiles.cpp) and is the shape copied here; the reset path
+    // was fixed for this and the load path was not.
+    //
+    // AFTER the is_open() check, deliberately: a missing file returns above, and
+    // releasing pins for a file that could not be read would silently discard the
+    // user's palette on any transient I/O failure.
+    for (int i = 0; i < static_cast<int>(ColorSlot::COUNT); ++i) {
+        ColorConfig::getInstance().clearOverride(static_cast<ColorSlot>(i));
+    }
+    for (int i = 0; i < static_cast<int>(FontCategory::COUNT); ++i) {
+        FontConfig::getInstance().clearOverride(static_cast<FontCategory>(i));
+    }
+
     std::string line;
     std::string currentSection;
     std::string currentHudName;
     int currentProfileIndex = -1;
     int loadedVersion = 0;  // Version 0 means old format (pre-versioning)
+
+    // Which centre-anchor base keys the FILE actually carried, recorded during
+    // the fold below for the v7/v8 migrations: m_hudDefaults is seeded from the
+    // factory snapshot, whose values are already in the NEW semantics, so a
+    // defaults entry may be shifted only when the file's base section overwrote
+    // it. Entries are "<hud>|<key>".
+    std::set<std::string> baseAnchorKeysInFile;
 
     while (std::getline(file, line)) {
         // Trim whitespace
@@ -461,8 +385,12 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
         std::string key = line.substr(0, equals);
         std::string value = line.substr(equals + 1);
 
-        // Strip inline comments (everything after ';')
-        size_t commentPos = value.find(';');
+        // Strip inline comments (everything after ';') -- except where the value
+        // IS a folder name the user chose, in which case a `;` is data. See
+        // Settings::isFolderNameValue for the bug that costs (a permanently
+        // destroyed theme/pack choice) and why the test is on the KEY.
+        size_t commentPos = Settings::isFolderNameValue(key)
+                          ? std::string::npos : value.find(';');
         if (commentPos != std::string::npos) {
             value.resize(commentPos);
             // Trim trailing whitespace from value
@@ -514,86 +442,6 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
             continue;
         }
 
-        // Handle GamepadWidget_Layout_N sections (per-variant layouts)
-        if (currentHudName.length() > 20 && currentHudName.substr(0, 20) == "GamepadWidget_Layout") {
-            try {
-                int variant = std::stoi(currentHudName.substr(21));
-                if (variant >= 1 && variant <= 10) {
-                    auto& hud = hudManager.getGamepadWidget();
-                    auto& layout = hud.getLayout(variant);
-
-                    if (key == "backgroundWidth") layout.backgroundWidth = parseFiniteFloat(value);
-                    else if (key == "triggerWidth") layout.triggerWidth = parseFiniteFloat(value);
-                    else if (key == "triggerHeight") layout.triggerHeight = parseFiniteFloat(value);
-                    else if (key == "bumperWidth") layout.bumperWidth = parseFiniteFloat(value);
-                    else if (key == "bumperHeight") layout.bumperHeight = parseFiniteFloat(value);
-                    else if (key == "dpadWidth") layout.dpadWidth = parseFiniteFloat(value);
-                    else if (key == "dpadHeight") layout.dpadHeight = parseFiniteFloat(value);
-                    else if (key == "faceButtonSize") layout.faceButtonSize = parseFiniteFloat(value);
-                    else if (key == "menuButtonWidth") layout.menuButtonWidth = parseFiniteFloat(value);
-                    else if (key == "menuButtonHeight") layout.menuButtonHeight = parseFiniteFloat(value);
-                    else if (key == "stickSize") layout.stickSize = parseFiniteFloat(value);
-                    else if (key == "leftTriggerX") layout.leftTriggerX = parseFiniteFloat(value);
-                    else if (key == "leftTriggerY") layout.leftTriggerY = parseFiniteFloat(value);
-                    else if (key == "rightTriggerX") layout.rightTriggerX = parseFiniteFloat(value);
-                    else if (key == "rightTriggerY") layout.rightTriggerY = parseFiniteFloat(value);
-                    else if (key == "leftBumperX") layout.leftBumperX = parseFiniteFloat(value);
-                    else if (key == "leftBumperY") layout.leftBumperY = parseFiniteFloat(value);
-                    else if (key == "rightBumperX") layout.rightBumperX = parseFiniteFloat(value);
-                    else if (key == "rightBumperY") layout.rightBumperY = parseFiniteFloat(value);
-                    else if (key == "leftStickX") layout.leftStickX = parseFiniteFloat(value);
-                    else if (key == "leftStickY") layout.leftStickY = parseFiniteFloat(value);
-                    else if (key == "rightStickX") layout.rightStickX = parseFiniteFloat(value);
-                    else if (key == "rightStickY") layout.rightStickY = parseFiniteFloat(value);
-                    else if (key == "dpadX") layout.dpadX = parseFiniteFloat(value);
-                    else if (key == "dpadY") layout.dpadY = parseFiniteFloat(value);
-                    else if (key == "faceButtonsX") layout.faceButtonsX = parseFiniteFloat(value);
-                    else if (key == "faceButtonsY") layout.faceButtonsY = parseFiniteFloat(value);
-                    else if (key == "menuButtonsX") layout.menuButtonsX = parseFiniteFloat(value);
-                    else if (key == "menuButtonsY") layout.menuButtonsY = parseFiniteFloat(value);
-                    else if (key == "dpadSpacing") layout.dpadSpacing = parseFiniteFloat(value);
-                    else if (key == "faceButtonSpacing") layout.faceButtonSpacing = parseFiniteFloat(value);
-                    else if (key == "menuButtonSpacing") layout.menuButtonSpacing = parseFiniteFloat(value);
-                    else if (key == "triggerFillMode") layout.triggerFillMode = std::stoi(value);
-                }
-            } catch (const std::exception& e) {
-                DEBUG_WARN_F("GamepadWidget Layout: Failed to parse settings: %s", e.what());
-            }
-            continue;
-        }
-
-        // Handle PitboardHud_Layout_N sections (per-texture layouts)
-        if (currentHudName.length() > 18 && currentHudName.substr(0, 18) == "PitboardHud_Layout") {
-            try {
-                int variant = std::stoi(currentHudName.substr(19));
-                if (variant >= 1 && variant <= 10) {
-                    auto& hud = hudManager.getPitboardHud();
-                    auto& layout = hud.getLayout(variant);
-
-                    // Clamp layout offsets to reasonable range (-1.0 to 1.0)
-                    auto clampOffset = [](float v) { return std::clamp(v, -1.0f, 1.0f); };
-
-                    if (key == "riderIdX") layout.riderIdX = clampOffset(parseFiniteFloat(value));
-                    else if (key == "riderIdY") layout.riderIdY = clampOffset(parseFiniteFloat(value));
-                    else if (key == "sessionX") layout.sessionX = clampOffset(parseFiniteFloat(value));
-                    else if (key == "sessionY") layout.sessionY = clampOffset(parseFiniteFloat(value));
-                    else if (key == "positionX") layout.positionX = clampOffset(parseFiniteFloat(value));
-                    else if (key == "positionY") layout.positionY = clampOffset(parseFiniteFloat(value));
-                    else if (key == "timeX") layout.timeX = clampOffset(parseFiniteFloat(value));
-                    else if (key == "timeY") layout.timeY = clampOffset(parseFiniteFloat(value));
-                    else if (key == "lapX") layout.lapX = clampOffset(parseFiniteFloat(value));
-                    else if (key == "lapY") layout.lapY = clampOffset(parseFiniteFloat(value));
-                    else if (key == "lastLapX") layout.lastLapX = clampOffset(parseFiniteFloat(value));
-                    else if (key == "lastLapY") layout.lastLapY = clampOffset(parseFiniteFloat(value));
-                    else if (key == "gapX") layout.gapX = clampOffset(parseFiniteFloat(value));
-                    else if (key == "gapY") layout.gapY = clampOffset(parseFiniteFloat(value));
-                }
-            } catch (const std::exception& e) {
-                DEBUG_WARN_F("PitboardHud Layout: Failed to parse settings: %s", e.what());
-            }
-            continue;
-        }
-
         // Handle HUD settings sections
         // Version 4+: [HudName] for base/defaults, [HudName:ProfileName] for overrides
         // Version 3: [HudName:0], [HudName:1], etc. (no base sections)
@@ -629,6 +477,11 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
                 } else {
                     m_hudDefaults[currentHudName][key] = value;
                 }
+                if ((currentHudName == "NoticesHud" || currentHudName == "TimingHud" ||
+                     currentHudName == "RadarHud") &&
+                    (key == Keys::Base::OFFSET_X || key == Keys::Base::COMPANION_X)) {
+                    baseAnchorKeysInFile.insert(currentHudName + "|" + key);
+                }
             } else if (currentProfileIndex >= 0 && currentProfileIndex < static_cast<int>(ProfileType::COUNT)) {
                 // Profile-specific section [HudName:ProfileName] - overlay onto that profile
                 m_profileCache[currentProfileIndex][currentHudName][key] = value;
@@ -643,6 +496,344 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
     }
 
     file.close();
+
+    // SPARSE COLOURS/FONTS MIGRATION (files written at version <= 4).
+    //
+    // Those files list every colour and every font, and applyGlobalLine pins each key it
+    // reads -- so an upgrading user has all sixteen slots marked "mine" and a theme's
+    // palette and font set can never show through. That is the branch's headline feature
+    // silently dead for every existing install, recoverable only via Appearance > Reset.
+    //
+    // The migration is deliberately CONSERVATIVE: unpin only the slots whose stored value
+    // equals the built-in default, which is exactly the set that carries no user intent --
+    // they are in the file because the old writer wrote everything, not because anyone
+    // chose them. A slot the user really did set to a non-default value stays pinned, and
+    // a slot they set to precisely the built-in default loses nothing but a pin (the value
+    // is unchanged; it can now follow a theme, which is what a fresh install would do).
+    // `> 0` AGREES WITH THE DISPATCH ABOVE, which treats a version-less file as the
+    // CURRENT format (a header dropped by hand-editing is a supported workflow). A
+    // current file already expresses absence properly, so there is nothing to release;
+    // migrating it would be the loader calling the same file old here and current
+    // there. The cost is a genuinely ancient hand-edited file staying pinned, whose
+    // route out is Appearance > Reset -- accepted, because the alternative reads user
+    // intent out of a file we have just declared to be current.
+    if (loadedVersion > 0 && loadedVersion < 5) {
+        int freedColors = 0, freedFonts = 0;
+        for (int i = 0; i < static_cast<int>(ColorSlot::COUNT); ++i) {
+            const ColorSlot slot = static_cast<ColorSlot>(i);
+            if (ColorConfig::getInstance().isOverridden(slot) &&
+                ColorConfig::getInstance().getColor(slot) == ColorConfig::getDefaultColor(slot)) {
+                ColorConfig::getInstance().clearOverride(slot);
+                freedColors++;
+            }
+        }
+        for (int i = 0; i < static_cast<int>(FontCategory::COUNT); ++i) {
+            const FontCategory cat = static_cast<FontCategory>(i);
+            const char* def = FontConfig::getDefaultFontName(cat);
+            const char* cur = FontConfig::getInstance().getFontName(cat);
+            // strcmp, not ==: both sides are const char*, so == compares POINTERS and
+            // would have been false for every slot -- a migration that silently did
+            // nothing for fonts while looking correct.
+            if (FontConfig::getInstance().isOverridden(cat) && def && cur &&
+                std::strcmp(cur, def) == 0) {
+                FontConfig::getInstance().clearOverride(cat);
+                freedFonts++;
+            }
+        }
+        DEBUG_INFO_F("Settings v%d -> v%d: released %d colour and %d font slot(s) to follow the theme",
+                     loadedVersion, SETTINGS_VERSION, freedColors, freedFonts);
+    }
+
+    // CENTRE-ANCHOR MIGRATION (files written at version <= 6).
+    //
+    // Notices and Timing stored offsetX as a DELTA from their computed screen-centre
+    // while the Gap Bar and Version stored the CENTRE itself -- four panels, two
+    // meanings for one key. v7 unifies on the centre (default 0.5), so the stack
+    // reads alike in the INI and a width change recentres every member the same way.
+    // The stored value gains the 0.5, which is what the semantic change costs.
+    //
+    // NOT PIXEL-EXACT, and it cannot be. The old left edge was
+    // snapEdgeX(0.5 - panelW/2) -- SNAPPED, with grid snapping on by default -- so
+    // the old rendered centre was 0.5 plus that snap delta, up to half a cell (the
+    // shipped stack measured 0.49775, about 4px at 1920). The new anchor is
+    // deliberately unsnapped, because snapping an edge and holding a centre are
+    // incompatible quantizations (see BaseHud::centerAnchoredPanelLeft). So an
+    // upgraded panel lands on its true centre, and may shift by up to half a cell
+    // getting there.
+    //
+    // The migration could not reproduce the old value even in principle: the snap
+    // delta depends on panelW, which depends on the scale, theme and fonts resolved
+    // at draw time, none of which exist while an INI is being parsed. The half-cell
+    // is the one-time cost of the panels now being where they always claimed to be
+    // -- and it lands on Gap Bar and Version too, which need no key shift (they
+    // already stored the centre) but shed the same snap.
+    //
+    // companionX rides the same layout
+    // and gets the same shift, only where the companion has actually diverged (the
+    // key is absent otherwise, and absent must stay absent -- see
+    // captureBaseHudSettings for why that gate is load-bearing).
+    //
+    // `> 0` agrees with the version dispatch above: a version-less file is treated
+    // as CURRENT, so there is nothing to shift.
+    if (loadedVersion > 0 && loadedVersion < 7) {
+        auto shiftKey = [](SettingsManager::HudSettings& section, const char* key) -> bool {
+            auto it = section.find(key);
+            if (it == section.end()) return false;
+            try {
+                const float shifted = std::stof(it->second) + 0.5f;
+                char buf[32];
+                std::snprintf(buf, sizeof(buf), "%.6f", shifted);
+                it->second = buf;
+                return true;
+            } catch (const std::exception&) {
+                return false;   // a hand-edited non-number is left alone, like everywhere
+            }
+        };
+        int shifted = 0;
+        for (auto& cache : m_profileCache) {
+            for (const char* name : { "NoticesHud", "TimingHud" }) {
+                auto it = cache.find(name);
+                if (it == cache.end()) continue;
+                if (shiftKey(it->second, Keys::Base::OFFSET_X)) ++shifted;
+                if (shiftKey(it->second, Keys::Base::COMPANION_X)) ++shifted;
+            }
+        }
+        // m_hudDefaults holds the SAME folded base-section keys (the parse writes
+        // both, see above) and is what buildHudSection() writes back as the base
+        // section -- with the profile overrides diffed against it. Skip it and the
+        // saved file keeps an old-semantics base value forever: a landmine for the
+        // hand-editor who deletes a profile override, and a pinned explicit
+        // offset in every profile that no future default change can reach.
+        // ONLY keys the file's base section carried (baseAnchorKeysInFile): the
+        // rest of m_hudDefaults is the factory snapshot, already centre-anchored.
+        for (const char* name : { "NoticesHud", "TimingHud" }) {
+            auto it = m_hudDefaults.find(name);
+            if (it == m_hudDefaults.end()) continue;
+            for (const char* key : { Keys::Base::OFFSET_X, Keys::Base::COMPANION_X }) {
+                if (!baseAnchorKeysInFile.count(std::string(name) + "|" + key)) continue;
+                if (shiftKey(it->second, key)) ++shifted;
+            }
+        }
+        DEBUG_INFO_F("Settings v%d -> v%d: re-anchored %d Notices/Timing offset(s) on the centre",
+                     loadedVersion, SETTINGS_VERSION, shifted);
+    }
+
+    // RADAR CENTRE-ANCHOR MIGRATION (files written at version <= 7).
+    //
+    // Same destination as the block above, different arithmetic. Notices and Timing
+    // stored a DELTA from their centre, so re-anchoring them was + 0.5 and needed no
+    // geometry. The Radar stored its LEFT EDGE, so the shift is half the panel's
+    // width -- which depends on the scale stored in the same section.
+    //
+    // The width is RadarHud's own, so there is one formula rather than a second
+    // spelling of it here. It is the UNTHEMED width: exact for every configuration in
+    // which the dial artwork is on (artwork bypasses theming -- see
+    // resolveActiveTheme) and for THEME_NONE, which is this HUD's default. A radar
+    // with its texture switched off AND a theme named lands a few pixels out and can
+    // be nudged; nothing else can.
+    //
+    // It is deliberately half the CONTENT width, not half the drawn box: the old
+    // default 0.43275f was 0.5 minus exactly this quantity, so an untouched radar
+    // migrates to precisely 0.5. fitPanelToGrid rounds the drawn box up to whole
+    // cells, so a radar the user DRAGGED moves by half that rounding -- under 3px at
+    // 1080p, and toward centred rather than away from it.
+    if (loadedVersion > 0 && loadedVersion < 8) {
+        auto shiftByHalfWidth = [](SettingsManager::HudSettings& section, const char* key,
+                                   float halfWidth) -> bool {
+            auto it = section.find(key);
+            if (it == section.end()) return false;
+            try {
+                const float shifted = std::stof(it->second) + halfWidth;
+                char buf[32];
+                std::snprintf(buf, sizeof(buf), "%.6f", shifted);
+                it->second = buf;
+                return true;
+            } catch (const std::exception&) {
+                return false;   // a hand-edited non-number is left alone, like everywhere
+            }
+        };
+        // One section's worth of shift, reused for the profile caches and for
+        // m_hudDefaults -- the latter for the same reason as the v7 block above:
+        // it is the base section the file writer emits, and the baseline the
+        // profile diffs are computed against. `mayShift` gates per key: the
+        // caches hold only file-loaded values (always shiftable), while the
+        // defaults map is factory-seeded, already centre-anchored, and may only
+        // be shifted where the file's base section overwrote it.
+        auto shiftRadarSection = [&](SettingsManager::HudSettings& section,
+                                     auto&& mayShift) -> int {
+            float scale = 1.0f;
+            auto scaleIt = section.find(Keys::Base::SCALE);
+            if (scaleIt != section.end()) {
+                try { scale = std::stof(scaleIt->second); }
+                catch (const std::exception&) { scale = 1.0f; }
+            }
+            if (!(scale > 0.0f) || !std::isfinite(scale)) scale = 1.0f;
+            const float halfWidth = RadarHud::unthemedContentWidth(scale) * 0.5f;
+            int n = 0;
+            for (const char* key : { Keys::Base::OFFSET_X, Keys::Base::COMPANION_X }) {
+                if (!mayShift(key)) continue;
+                if (shiftByHalfWidth(section, key, halfWidth)) ++n;
+            }
+            return n;
+        };
+        int shifted = 0;
+        for (auto& cache : m_profileCache) {
+            auto it = cache.find("RadarHud");
+            if (it == cache.end()) continue;
+            shifted += shiftRadarSection(it->second, [](const char*) { return true; });
+        }
+        {
+            auto it = m_hudDefaults.find("RadarHud");
+            if (it != m_hudDefaults.end()) {
+                shifted += shiftRadarSection(it->second, [&](const char* key) {
+                    return baseAnchorKeysInFile.count(std::string("RadarHud|") + key) > 0;
+                });
+            }
+        }
+        DEBUG_INFO_F("Settings v%d -> v%d: re-anchored %d Radar offset(s) on the centre",
+                     loadedVersion, SETTINGS_VERSION, shifted);
+    }
+
+    // ROW-PITCH DEFAULT MIGRATION (files written at version <= 8).
+    //
+    // The default uiLineHeight moved from 1.17335 -- the pre-knob shipped pitch,
+    // kept while the ratio was newly settable -- to 1.1, a tenth of a row of air
+    // between text rows instead of a sixth. See LayoutMetrics::lineHeightRatio.
+    //
+    // A migration is needed at all because the writer emits this key into EVERY
+    // INI whether or not anyone chose it, so nobody would ever see a changed
+    // default: the stored 1.17335 would keep winning forever.
+    //
+    // CONSERVATIVE, exactly like the v5 colour/font unpinning: move only a value
+    // that IS the old default, because that is the set carrying no user intent --
+    // it is in the file because the old writer wrote it, not because anyone picked
+    // it. Any other value was chosen and is left alone. Someone who deliberately
+    // set 1.17335 loses their choice here; that is the same trade v5 made, and the
+    // alternative is a default nobody can ever be moved off.
+    //
+    // Acts on the LIVE metric rather than a cache: [Advanced] is applied straight
+    // into LayoutConfig by applyGlobalLine during the parse above (there is no
+    // per-key cache to rewrite), and this runs after the file is closed, so the
+    // value read here is the one the file carried. layoutSetLineHeight re-derives
+    // the lattice, and the next save writes the new number.
+    if (loadedVersion > 0 && loadedVersion < 9) {
+        LayoutMetrics& live = LayoutConfig::getInstance().mutableDefaults();
+        if (std::fabs(live.lineHeightRatio -
+                      LayoutMetrics::PREV_DEFAULT_LINE_HEIGHT_RATIO) < 1e-4f) {
+            layoutSetLineHeight(live, LayoutMetrics{}.lineHeightRatio);
+            DEBUG_INFO_F("Settings v%d -> v%d: row pitch follows the new default (%.5f)",
+                         loadedVersion, SETTINGS_VERSION, live.lineHeightRatio);
+        }
+    }
+
+    // GAMEPAD AND PIT BOARD PACK MIGRATION (files written at version <= 5).
+    //
+    // The pad used to be chosen by TEXTURE VARIANT -- gamepad_widget_1.tga was the
+    // Xbox pad and _2 the DualShock -- and the variant number is what the file
+    // stores. Packs are named folders now, so the number has to become a name or
+    // every upgrading user silently loses their pad.
+    //
+    // Conservative in the same way the v5 block above is: map only the two variants
+    // that ever shipped, and only when the file has no pack name yet. Anything else
+    // is LEFT ALONE rather than reset -- a variant this build does not recognise is
+    // more likely a hand-edit or a newer file than a mistake to correct, and the
+    // widget already degrades an unresolvable pad to the shipped default at render
+    // time without touching what is stored.
+    //
+    // Variant 0 needs no row: it meant "no background texture", which the base-HUD
+    // showBackgroundTexture key already carries faithfully, so those users keep the
+    // pad switched off and simply pick up the default pack underneath it.
+    //
+    // `> 0` agrees with the version dispatch for the same reason spelled out above:
+    // a version-less file is treated as CURRENT, so there is nothing to migrate.
+    if (loadedVersion > 0 && loadedVersion < 6) {
+        static const std::pair<const char*, const char*> kVariantToPack[] = {
+            {"1", "xbox"},
+            {"2", "ds4"},
+        };
+        // The pit board only ever SHIPPED one texture, so its whole map is the one
+        // row -- a user who dropped in a pitboard_hud_2.tga was already outside what
+        // shipped, and that unrecognised variant is left alone like any other.
+        static const std::pair<const char*, const char*> kVariantToBoard[] = {
+            {"1", "classic"},
+        };
+
+        auto mapVariant = [](SettingsManager::HudSettings& section, const char* packKey,
+                             const std::pair<const char*, const char*>* table, size_t count) -> bool {
+            if (section.count(packKey)) return false;                 // already named
+            auto variantIt = section.find(Keys::Base::TEXTURE_VARIANT);
+            if (variantIt == section.end()) return false;
+            for (size_t i = 0; i < count; ++i) {
+                if (variantIt->second != table[i].first) continue;
+                section[packKey] = table[i].second;
+                return true;
+            }
+            return false;
+        };
+
+        int migratedPads = 0, migratedBoards = 0;
+        for (auto& cache : m_profileCache) {
+            auto padIt = cache.find("GamepadWidget");
+            if (padIt != cache.end() &&
+                mapVariant(padIt->second, Keys::Gamepad::PACK, kVariantToPack,
+                           sizeof(kVariantToPack) / sizeof(kVariantToPack[0]))) {
+                ++migratedPads;
+            }
+            auto boardIt = cache.find("PitboardHud");
+            if (boardIt != cache.end() &&
+                mapVariant(boardIt->second, Keys::Pitboard::PACK, kVariantToBoard,
+                           sizeof(kVariantToBoard) / sizeof(kVariantToBoard[0]))) {
+                ++migratedBoards;
+            }
+        }
+        // triggerFillMode CAME OUT of the per-variant layout blocks with the rest of the
+        // pad geometry, but unlike the geometry it did not move into the PACK -- it is a
+        // display preference, so it became a widget-level key in [GamepadWidget]. The
+        // pack migration above therefore does not carry it, and the old
+        // [GamepadWidget_Layout_N] sections are no longer parsed into anything that reads
+        // them: an upgrading user's choice would be silently dropped and the section
+        // pruned from the rewritten file, making it unrecoverable.
+        //
+        // The old sections DO still reach the cache (parseSectionName treats any unknown
+        // [Name] as a base section), so the value is sitting right here to be rescued.
+        //
+        // WHICH variant's value: the one the user was actually looking at, i.e. the pad
+        // their textureVariant selected. Falling back to the lowest-numbered block that
+        // has the key covers a file whose variant was never written.
+        int migratedFill = 0;
+        for (auto& cache : m_profileCache) {
+            auto padIt = cache.find("GamepadWidget");
+            if (padIt == cache.end()) continue;
+            if (padIt->second.count(IniOnly::Gamepad::TRIGGER_FILL_MODE.key)) continue;  // already current
+
+            std::string chosen;
+            auto variantIt = padIt->second.find(Keys::Base::TEXTURE_VARIANT);
+            if (variantIt != padIt->second.end()) {
+                auto sec = cache.find("GamepadWidget_Layout_" + variantIt->second);
+                if (sec != cache.end()) {
+                    auto fill = sec->second.find("triggerFillMode");
+                    if (fill != sec->second.end()) chosen = fill->second;
+                }
+            }
+            if (chosen.empty()) {
+                for (int v = 1; v <= 10 && chosen.empty(); ++v) {
+                    auto sec = cache.find("GamepadWidget_Layout_" + std::to_string(v));
+                    if (sec == cache.end()) continue;
+                    auto fill = sec->second.find("triggerFillMode");
+                    if (fill != sec->second.end()) chosen = fill->second;
+                }
+            }
+            if (!chosen.empty()) {
+                padIt->second[IniOnly::Gamepad::TRIGGER_FILL_MODE.key] = chosen;
+                ++migratedFill;
+            }
+        }
+
+        DEBUG_INFO_F("Settings v%d -> v%d: mapped %d gamepad and %d pitboard texture "
+                     "variant(s) onto pack names, rescued %d trigger fill mode(s)",
+                     loadedVersion, SETTINGS_VERSION, migratedPads, migratedBoards,
+                     migratedFill);
+    }
 
     // Check if we need to reset to defaults due to old version
     // We support v3+ (v3 used numeric profile indices, v4+ uses named profiles)
@@ -727,4 +918,17 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
     }
 
     DEBUG_INFO("Settings loaded successfully");
+}
+
+// See the declaration: one owner for the export folder.
+std::string SettingsManager::getBenchmarksDir() const {
+    if (m_savePath.empty()) return std::string();
+    std::string dir = m_savePath;
+    if (dir.back() != '/' && dir.back() != '\\') dir += '\\';
+    dir += "mxbmrp3";
+    // Idempotent, and both levels are needed: AtomicFileWriter does not create parents.
+    CreateDirectoryA(dir.c_str(), nullptr);
+    dir += "\\benchmarks";
+    CreateDirectoryA(dir.c_str(), nullptr);
+    return dir;
 }

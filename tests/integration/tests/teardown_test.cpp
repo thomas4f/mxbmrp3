@@ -29,7 +29,10 @@
 //     under Wine; capture mode makes analytics' sends no-ops) — that does not
 //     matter here, because the THREADING LIFECYCLE is identical and it is the
 //     lifecycle that faults. Records runs its real worker against a stubbed
-//     transport.
+//     transport. The SpotterManager TTS worker is live in the second case
+//     (unload WITHOUT Shutdown()), driving its spinThenDetach backstop and the
+//     abandoned-COM-cleanup contract — the CoUninitialize half only, since no
+//     SAPI voice exists under Wine (see the case body).
 //
 //   NOT COVERED — DiscordManager. It is the one subsystem compiled out of this
 //     build (GAME_HAS_DISCORD is 0 under MXBMRP3_TEST_BUILD), and the blocker is
@@ -137,6 +140,22 @@ TEST_CASE("teardown: DLL unload WITHOUT Shutdown() (auto-save backstop) is clean
             host.replayTape("Z:\\tmp\\mxbmrp3-tests\\fixtures\\race_farm14_24riders.tape");
         CHECK(applied > 0);
         for (int i = 0; i < 10; ++i) host.draw();
+
+        // A LIVE spotter worker at unload: the TTS thread starts lazily on the
+        // first audio cue and then parks in its queue wait. Its exit is the one
+        // backstop whose contract is nontrivial — the worker must SKIP its COM
+        // teardown when the destructor rather than shutdown() stops it, or
+        // m_finished never lands (SAPI release / CoUninitialize can need the
+        // loader lock the destructing thread holds) and spinThenDetach detaches
+        // a live thread into unmapped code. See m_abandonComCleanup in
+        // spotter_manager.h. Under Wine no SAPI voice is ever created, so this
+        // drives the CoInitialize/CoUninitialize half of that path only; the
+        // voice-release half needs a real engine and stays a manual check.
+        host.spotterEnable(true);
+        host.spotterCategoryMask(0x1F);
+        host.pinBaseVariant();
+        host.spotterInstallShippedPack();
+        host.spotterHotkey();
 
         // Deliberately NO host.shutdown() here — and say so to ~PluginHost, which
         // otherwise shuts down before unloading (added after four tests forgot

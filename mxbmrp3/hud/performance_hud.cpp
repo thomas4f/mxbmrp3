@@ -23,15 +23,24 @@ PerformanceHud::PerformanceHud() : m_historyIndex(0), m_fpsMin(0.0f), m_fpsMax(0
     // One-time setup
     DEBUG_INFO("PerformanceHud created");
     setDraggable(true);
+    // Body cards, one PER SECTION: Frame Rate and CPU Time are two separate graphs,
+    // and one card round both of them says they are one thing. See
+    // BaseHud::m_bContentSections.
+    m_bContentCard = true;
+    m_bContentSections = true;
 
     // Initialize history arrays
     m_fpsHistory.fill(0.0f);
     m_pluginTimeHistory.fill(0.0f);
     m_pluginTimePercentHistory.fill(0.0f);
 
-    // Pre-allocate vectors (background + 2 line graphs with grid lines)
-    m_quads.reserve(250);
-    m_strings.reserve(15);  // Title + (3 labels + 3 values) per graph x 2 graphs = 13 total
+    // Pre-allocate vectors (background + 2 line graphs with grid lines). Sized from
+    // the footprint the benchmark report actually measures for this panel with both
+    // sections on -- 286 quads / 25 strings -- not from a guess: an undersized
+    // reserve is one growth reallocation on the first rebuild, and this panel is the
+    // one that draws the graph telling you about it.
+    m_quads.reserve(300);
+    m_strings.reserve(32);
 
     // Set texture base name for dynamic texture discovery
     setTextureBaseName("performance_hud");
@@ -101,7 +110,7 @@ void PerformanceHud::update() {
 
     // Always rebuild - external notification system marks this dirty every frame
     // No need for conditional checks since updateDebugMetrics() is called every draw
-    rebuildRenderData();
+    rebuildAndRecord();
     clearDataDirty();
     clearLayoutDirty();
 }
@@ -191,13 +200,9 @@ void PerformanceHud::rebuildRenderData() {
     // Apply scale to all dimensions
     auto dims = getScaledDimensions();
 
-    // Calculate dimensions
+    // Calculate dimensions (the plan owns the panel box below)
     int widthChars = getBackgroundWidthChars();
-    float backgroundWidth = PluginUtils::calculateMonospaceTextWidth(widthChars, dims.fontSize)
-        + dims.paddingH + dims.paddingH;
-    float graphHeight = GRAPH_HEIGHT_LINES * dims.lineHeightNormal;
-    // Height: top pad + title (if shown) + max(graph height, legend height) + bottom pad
-    float titleHeight = m_bShowTitle ? dims.lineHeightLarge : 0.0f;
+    float graphHeight = static_cast<float>(m_graphRows) * dims.lineHeightNormal;
 
     // Determine if we show graphs and/or values based on display mode
     bool showGraphs = (m_displayMode == DISPLAY_GRAPHS || m_displayMode == DISPLAY_BOTH);
@@ -221,31 +226,32 @@ void PerformanceHud::rebuildRenderData() {
         cpuSectionH = showGraphs ? (std::max)(graphHeight, cpuLegendH) : cpuLegendH;
     }
 
-    // Gap between sections when both are enabled
-    float sectionGap = (hasFps && hasCpu) ? dims.lineHeightNormal : 0.0f;
-
-    // Each enabled section gets a subheading row above it (like the Session Charts HUD).
+    // BOX-MODEL: one sibling section card per enabled block (heading + chart),
+    // the seam between them the sum of the facing [content] margins — the
+    // engine's rule, replacing the beginContentSection/sectionGapY dance.
     float subHeadH = dims.lineHeightNormal;
-    float contentHeight = (hasFps ? subHeadH + fpsSectionH : 0.0f)
-                        + sectionGap
-                        + (hasCpu ? subHeadH + cpuSectionH : 0.0f);
-    float backgroundHeight = dims.paddingV + titleHeight + contentHeight + dims.paddingV;
+    const char* title = PluginThread::getInstance().enabled()
+        ? "Performance (threaded)" : "Performance";
+    BaseHud::PanelWant want;
+    want.contentW = PluginUtils::calculateMonospaceTextWidth(widthChars, dims.fontSize);
+    if (hasFps) want.sectionH.push_back(subHeadH + fpsSectionH);
+    if (hasCpu) want.sectionH.push_back(subHeadH + cpuSectionH);
+    want.captionW = planTitleWidth(dims, title, TitleTier::Large);
+    want.tier = TitleTier::Large;
+    PanelPlan& plan = planPanel(dims, want);
+    float backgroundWidth = plan.width();
 
-    setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + backgroundHeight);
-    addBackgroundQuad(START_X, START_Y, backgroundWidth, backgroundHeight);
+    setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + plan.height());
+    addPlanBackground(plan, START_X, START_Y);
 
-    float contentStartX = START_X + dims.paddingH;
-    float contentStartY = START_Y + dims.paddingV;
-    float currentY = contentStartY;
+    float contentStartX = plan.contentX();
+    float currentY = plan.contentY(0);
 
     // Title. In plugin-thread mode the CPU figure is the WORKER's build time, not the
     // game-thread cost (which is ~0) — flag it so a >100% frame-budget reading reads as
     // "off-thread build exceeds a frame", not "the game is stalled".
-    const char* title = PluginThread::getInstance().enabled()
-        ? "Performance (threaded)" : "Performance";
-    addTitleString(title, contentStartX, currentY, Justify::LEFT,
-        this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dims.fontSizeLarge);
-    currentY += titleHeight;
+    addPlanTitle(plan, title, this->getFont(FontCategory::TITLE),
+                 this->getColor(ColorSlot::PRIMARY));
 
     // Side-by-side layout: graph on left (36 chars), gap (1 char), legend on right (9 chars)
     float graphWidth = PluginUtils::calculateMonospaceTextWidth(GRAPH_WIDTH_CHARS, dims.fontSize);
@@ -256,10 +262,26 @@ void PerformanceHud::rebuildRenderData() {
     float pointSpacing = graphWidth / (GRAPH_HISTORY_SIZE - 1);
     float lineThickness = stripChartLineThickness();  // Line thickness for graph rendering
 
-    // FPS Section: subheading, then graph on left + legend on right
+    // Resolve the palette ONCE per rebuild, not once per segment. Both strip charts
+    // pick one of these three per point, and this panel draws 238 points a frame --
+    // the lookup is not free: an unpinned slot walks BaseHud's override array, then
+    // ColorConfig, then UiConfig's theme name, then the theme memo's string compare.
+    // Every one of those answers the same thing for the whole rebuild. The legend
+    // colours are hoisted for the same reason (eight uses each per section).
+    // This is what TelemetryHud has always done -- it passes one resolved colour into
+    // addStripChartHistoryLine -- and is most of why it drew MORE quads for less time.
+    const unsigned long colGood = this->getColor(ColorSlot::POSITIVE);
+    const unsigned long colWarn = this->getColor(ColorSlot::WARNING);
+    const unsigned long colBad = this->getColor(ColorSlot::NEGATIVE);
+    const unsigned long colLabel = this->getColor(ColorSlot::TERTIARY);
+    const unsigned long colValue = this->getColor(ColorSlot::SECONDARY);
+    const int fontLabel = this->getFont(FontCategory::STRONG);
+    const int fontValue = this->getFont(FontCategory::DIGITS);
+
+    // FPS Section: its OWN card, opened at the heading so the card contains the
+    // heading it belongs to, then graph on left + legend on right.
     if (hasFps) {
-        addString("Frame Rate", contentStartX, currentY, Justify::LEFT,
-            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dims.fontSize);
+        addSectionHeading("Frame Rate", contentStartX, currentY, dims);
         currentY += subHeadH;
     }
     float legendY = currentY;  // Track legend Y position separately
@@ -295,11 +317,11 @@ void PerformanceHud::rebuildRenderData() {
                     // Use color from the first point for consistency
                     unsigned long color;
                     if (fps1 >= 60.0f) {
-                        color = this->getColor(ColorSlot::POSITIVE);  // Green: good performance
+                        color = colGood;      // Green: good performance
                     } else if (fps1 >= 30.0f) {
-                        color = this->getColor(ColorSlot::WARNING);   // Yellow: caution
+                        color = colWarn;      // Yellow: caution
                     } else {
-                        color = this->getColor(ColorSlot::NEGATIVE);  // Red: bad performance
+                        color = colBad;       // Red: bad performance
                     }
 
                     addLineSegment(x1, y1, x2, y2, color, lineThickness);
@@ -319,34 +341,34 @@ void PerformanceHud::rebuildRenderData() {
 
             // FPS current value
             addLabel("FPS", legendStartX, legendY, Justify::LEFT,
-                this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dims);
+                fontLabel, colLabel, dims);
             snprintf(buffer, sizeof(buffer), "%4d", (int)metrics.currentFps);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
+                fontValue, colValue, dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Max
             addLabel("Max", legendStartX, legendY, Justify::LEFT,
-                this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dims);
+                fontLabel, colLabel, dims);
             snprintf(buffer, sizeof(buffer), "%4d", (int)m_fpsMax);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
+                fontValue, colValue, dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Avg
             addLabel("Avg", legendStartX, legendY, Justify::LEFT,
-                this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dims);
+                fontLabel, colLabel, dims);
             snprintf(buffer, sizeof(buffer), "%4d", (int)m_fpsAvg);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
+                fontValue, colValue, dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Min
             addLabel("Min", legendStartX, legendY, Justify::LEFT,
-                this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dims);
+                fontLabel, colLabel, dims);
             snprintf(buffer, sizeof(buffer), "%4d", (int)m_fpsMin);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
+                fontValue, colValue, dims.fontSize);
             legendY += dims.lineHeightNormal;
         }
     }
@@ -356,22 +378,19 @@ void PerformanceHud::rebuildRenderData() {
         float fpsGraphBottom = currentY + graphHeight;
         if (fpsGraphBottom > legendY) legendY = fpsGraphBottom;
     }
-    // Gap between FPS and CPU sections
-    if (hasFps && hasCpu) {
-        legendY += dims.lineHeightNormal;
-    }
-    currentY = legendY;
-
-    // CPU Section: subheading, then graph on left + legend on right
+    // CPU Section: its own sibling card — its content starts at the plan's
+    // second section (or the first when FPS is off); the seam is the plan's.
     if (hasCpu) {
-        addString("CPU Time", contentStartX, currentY, Justify::LEFT,
-            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dims.fontSize);
+        currentY = plan.contentY(hasFps ? 1 : 0);
+        addSectionHeading("CPU Time", contentStartX, currentY, dims);
         currentY += subHeadH;
         legendY = currentY;
+    } else {
+        currentY = legendY;
     }
     if (m_enabledElements & ELEM_CPU) {
         // CPU Time Graph - only render if graphs are shown
-        // Conservative ceiling: MAX_PLUGIN_TIME_MS gives safe buffer (leaves ~3ms for game at 144fps)
+        // Ceiling is the 480fps frame budget -- see MAX_PLUGIN_TIME_MS.
         if (showGraphs) {
             // Plugin Time grid lines (0-MAX_PLUGIN_TIME_MS range, at 0%/50%/100%)
             // + ms axis labels (top / middle / bottom) — the shared strip-chart frame.
@@ -402,12 +421,12 @@ void PerformanceHud::rebuildRenderData() {
 
                     // Use color from the first point for consistency
                     unsigned long color;
-                    if (pluginTimeMs1 < 2.0f) {
-                        color = this->getColor(ColorSlot::POSITIVE);  // Green: <2ms (safe)
-                    } else if (pluginTimeMs1 < 3.0f) {
-                        color = this->getColor(ColorSlot::WARNING);   // Yellow: 2-3ms (caution)
+                    if (pluginTimeMs1 < MAX_PLUGIN_TIME_MS * PLUGIN_TIME_WARN_FRAC) {
+                        color = colGood;      // under half the frame budget
+                    } else if (pluginTimeMs1 < MAX_PLUGIN_TIME_MS * PLUGIN_TIME_BAD_FRAC) {
+                        color = colWarn;      // half to three quarters
                     } else {
-                        color = this->getColor(ColorSlot::NEGATIVE);  // Red: >3ms (heavy)
+                        color = colBad;       // over three quarters of budget
                     }
 
                     addLineSegment(x1, y1, x2, y2, color, lineThickness);
@@ -427,36 +446,38 @@ void PerformanceHud::rebuildRenderData() {
 
             // CPU current value
             addLabel("CPU", legendStartX, legendY, Justify::LEFT,
-                this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dims);
+                fontLabel, colLabel, dims);
             snprintf(buffer, sizeof(buffer), "%5.2f", metrics.pluginTimeMs);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
+                fontValue, colValue, dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Max
             addLabel("Max", legendStartX, legendY, Justify::LEFT,
-                this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dims);
+                fontLabel, colLabel, dims);
             snprintf(buffer, sizeof(buffer), "%5.2f", m_pluginTimeMsMax);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
+                fontValue, colValue, dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Avg
             addLabel("Avg", legendStartX, legendY, Justify::LEFT,
-                this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dims);
+                fontLabel, colLabel, dims);
             snprintf(buffer, sizeof(buffer), "%5.2f", m_pluginTimeMsAvg);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
+                fontValue, colValue, dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Min
             addLabel("Min", legendStartX, legendY, Justify::LEFT,
-                this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dims);
+                fontLabel, colLabel, dims);
             snprintf(buffer, sizeof(buffer), "%5.2f", m_pluginTimeMsMin);
             addString(buffer, valueX, legendY, Justify::LEFT,
-                this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
+                fontValue, colValue, dims.fontSize);
         }
     }
+
+    // Nothing to close: the plan sized and drew every section card up front.
 }
 
 void PerformanceHud::recalculateFpsMinMax() {
@@ -519,7 +540,8 @@ void PerformanceHud::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.7315f, 0.65708f);
+    m_graphRows = DEFAULT_GRAPH_ROWS;
+    setPosition(cellsX(133), cellsY(56));
     m_enabledElements = ELEM_DEFAULT;
     m_displayMode = DISPLAY_BOTH;  // Show both graphs and values by default
 

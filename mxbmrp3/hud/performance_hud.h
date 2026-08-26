@@ -39,6 +39,12 @@ public:
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;
     friend class SettingsManager;
+    // Test-only: the shipped default is CPU alone, which is ONE section -- so the themed
+    // geometry gates were asserting whole-cell heights and no-overlap against a panel
+    // that had no section boundary at all, and passing for the wrong reason. Forcing both
+    // elements on is the only way to give this HUD the shape those gates exist to check.
+    // See core/test_hooks.cpp, which is excluded from every shipping target.
+    friend void MXBMRP3_Test_SetPerformanceElementsImpl(unsigned int);
 
 private:
     // Clears the graph history on the ANY-SURFACE show edge; see the definition.
@@ -74,11 +80,35 @@ private:
     // One section fills 10 rows so a single-section HUD is title(2) + subheading(1)
     // + 10 + padding(2) = 15 rows, matching the StandingsHud default height. (Two
     // sections stack taller, like the Session Charts HUD.)
-    static constexpr float GRAPH_HEIGHT_LINES = 10; // Height in line units
+    // Graph HEIGHT, in text rows -- a user setting, not a constant. This is the knob
+    // that makes the panel shrink and grow the way Standings' "Rows to show" does;
+    // it was a fixed 10 lines, so the only way to change this HUD's height was the
+    // scale slider, which changes everything else with it.
+    //
+    // Rows rather than pixels so it lands on the same lattice every other panel uses:
+    // one row is lineHeightNormal, so any value here keeps the panel a whole number of
+    // grid cells tall and it still tiles with the HUDs beside it.
+    static constexpr int MIN_GRAPH_ROWS = 3;
+    static constexpr int MAX_GRAPH_ROWS = 30;
+    static constexpr int DEFAULT_GRAPH_ROWS = 10;
+    int m_graphRows = DEFAULT_GRAPH_ROWS;
 
     // Graph scaling constants
     static constexpr float MAX_FPS_DISPLAY = 250.0f;  // FPS graph ceiling
-    static constexpr float MAX_PLUGIN_TIME_MS = 4.0f; // Plugin time graph ceiling (4ms @ 144fps)
+    // Plugin-time graph ceiling: THE FRAME BUDGET, so the top of the graph means
+    // "this frame is gone" rather than an arbitrary number. It was 4.0ms, tuned for a
+    // 144fps target (6.9ms frames) and never moved when the project adopted 480fps --
+    // so the whole graph lived below the quarter line, and its green band ran to 2.0ms,
+    // which at 480fps is the ENTIRE budget shown as safe.
+    //
+    // Static rather than auto-scaling on purpose: a dynamic ceiling rescales the moment
+    // anything spikes, so the trace looks the same at 0.2ms and at 2ms and a glance
+    // tells you nothing. A fixed budget line means the height IS the reading.
+    static constexpr float MAX_PLUGIN_TIME_MS = PluginConstants::FRAME_BUDGET_MS;
+    // Bands as FRACTIONS of that budget, so they follow it: comfortable below half,
+    // worth watching to three quarters, over budget above.
+    static constexpr float PLUGIN_TIME_WARN_FRAC = 0.5f;
+    static constexpr float PLUGIN_TIME_BAD_FRAC  = 0.75f;
 
     // Value history for graphing
     std::array<float, GRAPH_HISTORY_SIZE> m_fpsHistory;

@@ -90,7 +90,7 @@ endif()
 # nothing) skips it entirely and behaves exactly as before.
 if(WIN32)
     add_subdirectory(mxbmrp3)
-    add_subdirectory(tools)   # the two dev tools that shared the old solution
+    add_subdirectory(tools)   # the dev tools that shared the old solution
 endif()
 
 # Register one gate script as a CTest test.
@@ -140,10 +140,17 @@ mxb_gate(style fast 120 "-" "./tests/integration/check_style.sh")
 mxb_gate(api-guards fast 120 "-" "./tests/integration/check_api_guards.sh")
 mxb_gate(visibility-gates fast 120 "-" "./tests/integration/check_visibility_gates.sh")
 mxb_gate(mt-flags fast 120 "-" "./tests/integration/check_mt_flags.sh")
+mxb_gate(move-reads fast 120 "-" "./tests/integration/check_move_reads.sh")
 mxb_gate(hud-raw-cache fast 120 "-" "./tests/integration/check_hud_raw_cache.sh")
+mxb_gate(title-tier fast 120 "-" "./tests/integration/check_title_tier.sh")
+mxb_gate(hud-helpers fast 120 "-" "./tests/integration/check_hud_helpers.sh")
+mxb_gate(card-anchor-coverage fast 120 "-" "./tests/integration/check_card_anchor_coverage.sh")
+mxb_gate(whats-new       fast 120 "-" "./tests/integration/check_whats_new.sh")
+mxb_gate(section-spacing fast 120 "-" "./tests/integration/check_section_spacing.sh")
 # The lint's own must-catch/must-exempt cases. Separate gate so a matcher
 # regression names the broken case instead of just going quiet on the tree.
 mxb_gate(hud-raw-cache-selftest fast 120 "-" "./tests/integration/check_hud_raw_cache.sh --self-test")
+mxb_gate(move-reads-selftest fast 120 "-" "./tests/integration/check_move_reads.sh --self-test")
 # The provisioning hook, which is what makes an unprovisioned box distinguishable
 # from a healthy one — so it is the last file that should be uncovered. TOOLS is
 # "-" deliberately and the fixture stubs the whole toolchain to keep it that way:
@@ -168,7 +175,17 @@ mxb_gate(asan-harness fast 600 "g++" "./tests/asan/run.sh")
 # else — and 19 -Wunused-function warnings per build sat unread in its log
 # because no local runner ever printed it. That asymmetry is now itself checked
 # (check_docs.py's CI->gate direction).
-mxb_gate(fontgen fast 300 "g++ python3" "./tools/mxbmrp3_fontgen/test.sh")
+mxb_gate(fontgen fast 300 "g++ python3" "./tools/fontgen/test.sh")
+
+
+# The theme slicer's round trip: cut a synthetic ASYMMETRIC master into 27 slices
+# and require each one to equal its region of the source. Symmetric input cannot
+# detect a transposed cell, which is the failure that ships two corners wrong.
+# Also asserts the bootstrap never clobbers an existing ini, and that the seam
+# check fires. Stdlib python, no build, ~0.2s.
+mxb_gate(themeslice fast 120 "python3" "python3 ./tools/themeslice/themeslice.py --selftest")
+mxb_gate(spottergen-selftest fast 120 "python3"
+         "python3 ./tools/spottergen/generate.py --selftest")
 
 # The analytics report generator's self-test — the other orphan CI step. Its
 # prerequisite is a pip module, not a binary, so the TOOLS column cannot express
@@ -253,9 +270,15 @@ mxb_gate(codeql slow 3600 "codeql x86_64-w64-mingw32-g++ python3"
 # thread-safety, installer, web-overlay, the unit trio and every fast lint —
 # are deliberately left out of the lock and still run in parallel.
 #
-# A new gate that runs the cross-built DLL belongs in this list.
+# A new gate that runs the cross-built DLL belongs in this list. `codeql` was
+# added after this comment was written and was NOT added here, which is the
+# failure the comment predicts: its extractor drives build.sh, so under -j it
+# both relinked the DLL under a running `integration` (85 tests failing on
+# host.loaded(), the exit=1/reached_init=0 shape described above) and had its
+# own database clobbered in return -- 224 of ~307 files, caught only because
+# run_codeql.sh checks its own file count before believing "no findings".
 set_tests_properties(cross-build integration persistence fuzz-config
-                     fuzz-callbacks perf
+                     fuzz-callbacks perf codeql
                      PROPERTIES RESOURCE_LOCK mxbmrp3_test_dll)
 
 # `perf` additionally runs ALONE. The lock above shares an artifact; perf shares

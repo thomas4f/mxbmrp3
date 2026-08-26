@@ -22,6 +22,9 @@ using namespace PluginConstants;
 FriendsHud::FriendsHud() {
     DEBUG_INFO("FriendsHud created");
     setDraggable(true);
+    // Body card: this HUD draws a content BLOCK under its title, which is what the
+    // themed card frames. Opt-in; see BaseHud::m_bContentCard.
+    m_bContentCard = true;
     m_quads.reserve(1);
     m_strings.reserve(1 + m_maxDisplayRows * 7);  // title + up to 7 cells/row
     setTextureBaseName("friends_hud");
@@ -170,9 +173,35 @@ void FriendsHud::rebuildRenderData() {
 
     const int rowsToShow = empty ? emptyLines : std::min(static_cast<int>(view.size()), m_maxDisplayRows);
 
+    // BOX-MODEL: the caption's ask covers the title's width (widest-ask rule),
+    // so the empty box no longer hand-maxes it in; the standard-width floor
+    // rides as the panel minimum.
+    const float headerHeight = (m_bShowHeaders && !empty) ? dim.lineHeightNormal : 0.0f;
+    BaseHud::PanelWant want;
+    want.contentW = empty
+        ? std::max(PluginUtils::calculateMonospaceTextWidth(
+                       static_cast<int>(std::strlen(kEmptyMsg)), dim.fontSize),
+                   kEmptyHint ? PluginUtils::calculateMonospaceTextWidth(
+                       static_cast<int>(std::strlen(kEmptyHint)), dim.fontSize * 0.8f) : 0.0f)
+        : PluginUtils::calculateMonospaceTextWidth(getBackgroundWidthChars(), dim.fontSize);
+    want.sectionH = { headerHeight + dim.lineHeightNormal * rowsToShow };
+    want.captionW = planTitleWidth(dim, kTitle, TitleTier::Large);
+    want.tier = TitleTier::Large;
+    want.minPanelW = PluginUtils::calculateMonospaceTextWidth(MIN_WIDTH_CHARS, dim.fontSize);
+    PanelPlan& plan = planPanel(dim, want);
+    const float backgroundWidth = plan.width();
+
+    setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + plan.height());
+    addPlanBackground(plan, START_X, START_Y);
+
+    float currentY = plan.contentY();
+
+    addPlanTitle(plan, kTitle, getFont(FontCategory::TITLE), getColor(ColorSlot::PRIMARY));
+
     // Column X offsets (left-justified). Only enabled columns consume space, so
-    // disabling a column collapses the ones to its right.
-    const float contentStartX = START_X + dim.paddingH;
+    // disabling a column collapses the ones to its right. Columns start at the
+    // plan's content origin.
+    const float contentStartX = plan.contentX();
     float x = contentStartX;
     auto advance = [&](int chars) -> float {
         const float col = x;
@@ -186,38 +215,6 @@ void FriendsHud::rebuildRenderData() {
     const float xInfo   = isColumnEnabled(COL_INFO)   ? advance(COL_INFO_W)   : -1.0f;
     const float xTimer  = isColumnEnabled(COL_TIMER)  ? advance(COL_TIMER_W)  : -1.0f;
 
-    // The empty box is sized to its message (not the full table width, which
-    // would overlap other HUDs and steal their drags), then floored below.
-    float backgroundWidth;
-    if (empty) {
-        const float titleW = PluginUtils::calculateMonospaceTextWidth(
-            static_cast<int>(std::strlen(kTitle)), dim.fontSizeLarge);
-        const float msgW = PluginUtils::calculateMonospaceTextWidth(
-            static_cast<int>(std::strlen(kEmptyMsg)), dim.fontSize);
-        const float hintW = kEmptyHint ? PluginUtils::calculateMonospaceTextWidth(
-            static_cast<int>(std::strlen(kEmptyHint)), dim.fontSize * 0.8f) : 0.0f;
-        backgroundWidth = std::max({titleW, msgW, hintW}) + dim.paddingH + dim.paddingH;
-    } else {
-        backgroundWidth = PluginUtils::calculateMonospaceTextWidth(getBackgroundWidthChars(), dim.fontSize)
-            + dim.paddingH + dim.paddingH;
-    }
-    // Floor: never narrower than the standard HUD width (FMX / Stats / Standings).
-    const float minWidth = PluginUtils::calculateMonospaceTextWidth(MIN_WIDTH_CHARS, dim.fontSize)
-        + dim.paddingH + dim.paddingH;
-    backgroundWidth = std::max(backgroundWidth, minWidth);
-    const float titleHeight  = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
-    const float headerHeight = (m_bShowHeaders && !empty) ? dim.lineHeightNormal : 0.0f;
-    const float backgroundHeight = dim.paddingV + titleHeight + headerHeight
-        + dim.lineHeightNormal * rowsToShow + dim.paddingV;
-
-    setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + backgroundHeight);
-    addBackgroundQuad(START_X, START_Y, backgroundWidth, backgroundHeight);
-
-    float currentY = START_Y + dim.paddingV;
-
-    addTitleString(kTitle, contentStartX, currentY, Justify::LEFT,
-        getFont(FontCategory::TITLE), getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
-    currentY += titleHeight;
 
     if (empty) {
         addString(kEmptyMsg, contentStartX, currentY, Justify::LEFT,
@@ -340,7 +337,7 @@ void FriendsHud::resetToDefaults() {
     setTextureVariant(0);
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.7315f, 0.55147f);  // right-column tower, in settings order (after Event Log, before FMX)
+    setPosition(cellsX(133), cellsY(47));  // right-column tower, in settings order (after Event Log, before FMX)
     m_enabledColumns = COL_DEFAULT;
     m_maxDisplayRows = 8;
     m_bShowHeaders = true;

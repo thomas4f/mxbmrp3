@@ -19,6 +19,7 @@
 #include "plugin_data.h"
 #include "plugin_manager.h"
 #include "settings_manager.h"
+#include "spotter_manager.h"  // RELOAD_CONFIG re-reads the active cue pack
 #include "director_manager.h"
 #include "profile_manager.h"
 #include "ui_config.h"
@@ -35,6 +36,7 @@
 #include "../hud/session_hud.h"
 #include "../hud/speed_widget.h"
 #include "../hud/gear_widget.h"
+#include "../hud/crash_widget.h"
 #include "../hud/speedo_widget.h"
 #include "../hud/tacho_widget.h"
 #include "../hud/timing_hud.h"
@@ -285,6 +287,21 @@ void HudManager::processKeyboardInput() {
         DirectorManager::getInstance().toggleLock();  // transient - not persisted
     }
 
+    // Spotter: speak the pack's `hotkey_triggered` line. Silent until a pack
+    // defines one, so an unbound-by-default key that nobody has written a
+    // line for does nothing rather than saying something we chose.
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::SPOTTER_CUE)) {
+        SpotterManager::getInstance().speakHotkeyCue();
+    }
+
+    // Crash counter: zero the streaming tally. Bound rather than button-only
+    // because the number is watched live on stream -- reaching for the mouse to
+    // open a cursor is the part a rider on the gate cannot do.
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::CRASH_RESET)) {
+        if (m_pCrash) m_pCrash->resetCounter();
+        DEBUG_INFO("Hotkey: Crash tally reset");
+    }
+
     // Custom segment timer: Add drops a boundary point at the current position,
     // Remove deletes the last one. PluginData owns the state and emits the notice.
     // Nudge the map so the boundary markers appear/clear immediately (it only
@@ -327,11 +344,61 @@ void HudManager::processKeyboardInput() {
         if (!savePath.empty()) {
             DEBUG_INFO("Hotkey: Reloading config from file");
             settingsMgr.loadSettings(*this, savePath.c_str());
-            // Mark HUDs with per-texture layouts dirty to force rebuild
-            if (m_pGamepad) m_pGamepad->setDataDirty();
-            if (m_pPitboard) m_pPitboard->setDataDirty();
-            if (m_pSettingsHud) m_pSettingsHud->setDataDirty();
         }
+
+        // OUTSIDE the savePath guard, deliberately. The layout files live in
+        // mxbmrp3_data/themes/, not in the settings INI, so a missing or unset save
+        // path has nothing to do with whether they can be re-read -- nesting this
+        // inside would make the hotkey silently do nothing for the one user whose
+        // settings path failed to resolve, on the feature most likely to be in use
+        // while something else is misconfigured.
+        //
+        // Re-reads each theme's own <name>.ini: its slice sizes, switches, palette
+        // and font set. The layout vocabulary is NOT re-read, because there is no
+        // longer a file holding it -- uiFontSize / uiLineHeight come from [Advanced]
+        // and are picked up by the loadSettings() call above.
+        //
+        // Sprites are NOT re-registered. Their indices are pushed to the game once
+        // at init and everything holds them by number, so a theme that ADDED or
+        // REMOVED a .tga needs a restart; only the numbers are live. Full
+        // re-discovery here would renumber under the game.
+        AssetManager::getInstance().reloadThemeLayouts();
+
+        // Re-read the active spotter cue pack from disk, whether or not the
+        // settings INI named it again above — a pack author's edit-reload-listen
+        // loop must work even when the pack NAME didn't change. The call above
+        // has just re-copied every pack folder from the user's Documents, so
+        // this reads the edit they actually made.
+        //
+        // A voice pack reloads MORE completely than a theme does, and the
+        // asymmetry is worth knowing: changed .wav files are live here too.
+        // Audio has no sprite indices — the worker opens each clip by path as
+        // it plays a cue — so the restart-for-new-art rule above simply does
+        // not apply to a voice.
+        SpotterManager::getInstance().reloadCuePack();
+
+        // A CHANGED .tga is a different matter, on one surface. The companion's
+        // software renderer opens each file itself, so it can be told to re-read
+        // them -- which is what makes iterating on theme art a hotkey rather than a
+        // restart. In-game art is unchanged until the next launch, deliberately and
+        // unavoidably; the window thread logs that when it acts on this.
+        CompanionWindow::getInstance().requestArtReload();
+
+        // Every HUD, not just the three below: a layout change moves every panel,
+        // and a HUD that skipped its rebuild would render at the old spacing until
+        // something else happened to dirty it. setDataDirty (not layout-dirty) is
+        // what matters -- only the FULL rebuild re-reads getScaledDimensions(), and
+        // the layout fast path would reposition strings at the old metrics.
+        for (const std::unique_ptr<BaseHud>& hud : m_huds) {
+            if (hud) hud->setDataDirty();
+        }
+        // Mark HUDs with per-texture layouts dirty to force rebuild. Kept even
+        // though the loop above covers m_huds: SettingsHud and PointerWidget are
+        // composed by hand rather than through createHud(), so whether they are in
+        // m_huds is a detail of HudManager::initialize() rather than a guarantee.
+        if (m_pGamepad) m_pGamepad->setDataDirty();
+        if (m_pPitboard) m_pPitboard->setDataDirty();
+        if (m_pSettingsHud) m_pSettingsHud->setDataDirty();
     }
 
     // If any visibility toggle happened while settings is open, refresh it

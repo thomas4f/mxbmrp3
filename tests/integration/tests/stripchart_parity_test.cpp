@@ -41,6 +41,132 @@
 //    (exact text/pos/font/color), and the six 0%/50%/100% grid lines (found by
 //    their exact grid thickness). The polyline is intentionally not pinned.
 //  * Session Charts: fed a fixed 3-rider, 3-lap race; all four charts enabled.
+//
+// GOLDEN REFRESH, 2026-08-25 (seventh) -- THE ROW-PITCH DEFAULT.
+// POSITIONS ONLY, on all four HUDs. Every count, every colour sum, the sprite
+// sums, the font/justify/size metadata sums and every text hash are
+// BYTE-IDENTICAL; only the position sums moved, and every one of them moved
+// DOWN. That combination has exactly one cause and it is not a rendering
+// change: the same primitives, in the same order, drawn with the same fonts at
+// the same sizes in the same colours, laid out on a shorter row.
+//
+// LayoutMetrics::lineHeightRatio went 1.17335 -> 1.1 (a sixth of a row of air
+// between text rows became a tenth; see the comment on the field, and the
+// settings v9 migration that moves an existing INI onto it). cellH is half the
+// row, so the vertical snap lattice moved with it, and every panel that stacks
+// rows follows.
+//
+//   telemetry   qpos 597.617209315 -> 583.277590513   spos 33.590229988 -> 32.798418045
+//   rumble      qpos  32.127985954 ->  31.413556814   spos 31.982259870 -> 31.285067677
+//   charts      qpos 285.187308908 -> 279.215777814   spos 94.109438121 -> 91.801324189
+//   perf        gpos  43.309529305 ->  41.866000891   lpos 20.543664455 -> 19.819700003
+//
+// Session Charts drifts hardest per primitive for the same reason recorded in
+// the fifth refresh below -- its geometry is lineHeightSmall-derived.
+//
+// The order hashes moved because they chain positions, not because anything was
+// reordered: the counts pin that, and smeta pins that no font or size moved
+// with the pitch.
+//
+// GOLDEN REFRESH, 2026-08-22 (sixth) -- THE DROP SHADOW'S ALPHA.
+// RUMBLE ONLY, and only its string COLOUR sum and string order hash: the quad
+// fingerprint, both position sums, the metadata sum, the text hash and every
+// count are byte-identical, and the other three HUDs did not move at all. That
+// combination has one cause: the same strings, in the same places, one of them a
+// different colour.
+//
+// The colour is a SHADOW's. collectRenderData used to write the configured shadow
+// colour verbatim behind every shadowed string; it now modulates it by the
+// string's own alpha, so a translucent string gets a translucent shadow instead of
+// a solid one behind half-visible text. (That is what let RadarHud drop its
+// hand-rolled outline -- it fades rider labels by proximity.) Rumble is the HUD in
+// this file that draws translucent TEXT: its legend labels are makeColor(..., 230),
+// so their shadows lose ~7% alpha. Nothing moved and nothing was added.
+//
+// GOLDEN REFRESH, 2026-08-16 (fifth) -- THE SHIPPED DEFAULTS RETUNE.
+// EVERY position golden and EVERY order hash moved; NOTHING else did. The quad
+// and string COUNTS, all four colour sums, the font/justify/size metadata sum
+// and the text hash are byte-identical to the fourth refresh, in all four HUDs
+// and in both Performance subsets. That combination has exactly one cause: the
+// same elements, in the same order, drawn somewhere else -- a translation, not
+// a change of content. (The order hashes move with it because chainQuad and
+// chainStr chain POSITIONS as well as identity, by design: an element that
+// slides is a change worth failing on.)
+//
+// What slid: the unthemed box-model defaults were retuned to "the outer ring,
+// the seam, and nothing else" -- panelPadding 2 -> 1 cell, titlePadding and
+// contentMargin to 0, panelGap 0 -> 1, buttonPadding to 0.5 1 (LayoutMetrics,
+// and see its comment for the reasoning). All four of these HUDs compose
+// through planPanel and are drawn unthemed here, so each one's chrome changed
+// by construction. Per-coordinate the shift is ~0.0018 normalized for quads and
+// ~0.0026 for strings, i.e. fractions of a cell -- consistent with a padding
+// term moving by a cell and nothing else moving at all.
+//
+// These were captured AFTER the two geometry fixes that landed with them (the
+// border no longer spent where no art is drawn; titleBandBoxHeight matching
+// resolvePanelSpec's caption cell), deliberately: neither one can move an
+// unthemed plan panel, so a golden taken before them would have had to be taken
+// again, and a golden taken twice is a golden nobody trusts.
+//
+// GOLDEN REFRESH, 2026-08-12 (fourth) -- THE RE-PIN AFTER THE BOX-MODEL PORT.
+// This file was removed red, with an unresolved
+// question attached: scrapping `[content] gap-y` had taken the unthemed
+// sectionGapY() from one cell to zero, and the spec said to decide "a floor of
+// one cell, or zero as intended" before re-pinning. DECIDED: the gap came back
+// as one term shared by all three boundaries -- `[panel] gap`, default
+// LayoutMetrics::sectionGap = 1.0f cells (see contentCardTop's note in
+// nine_slice.h) -- so the unthemed advance is a cell again by design, not by
+// accident. Every golden below is captured fresh from the plan-model renderer
+// (all four HUDs now compose through planPanel); the old goldens describe a
+// renderer that no longer exists, and their history is kept above because the
+// refresh discipline -- explain the delta before re-blessing -- is the point.
+//
+// GOLDEN REFRESH, 2026-08-03 (third). Every position golden moved by ~1.5e-6 per
+// coordinate -- 0.0016px at 1080p -- and CHARTS did not move at all. That is the
+// signature of stating each HUD's DEFAULT POSITION in grid cells instead of as a
+// frozen decimal: 0.01173f was 1 cellH rounded to five places, and cellsY(1) is the
+// cell itself. Session Charts is the one HUD whose default was already exact.
+//
+// Sub-pixel, but refreshed rather than absorbed into the tolerance: the goldens are
+// worth more pinning the exact numbers than tracking a moving one, and "did anything
+// move" is the question they exist to answer.
+//
+// GOLDEN REFRESH, 2026-08-03 (second). Every STRING position golden moved and no
+// QUAD position golden did -- spos/lpos changed, qpos/gpos did not, which is the
+// signature of the change that caused it: BaseHud::rowCenterOffset() now drops a
+// glyph box to sit centred in its row instead of flush with the row's top. Strings
+// move, quads do not. The drift measured 0.00065 per coordinate, which is exactly
+// that offset at the small tier applied to Y with X untouched.
+//
+// Refreshed rather than loosened: the goldens did their job here. They are what said
+// "text moved", and the accompanying standings_layout_test failure is what said the
+// drag fast path had NOT moved with it -- the actual bug, now fixed by routing
+// repositioning through positionString() (see check_hud_helpers.sh rule 8).
+//
+// GOLDEN REFRESH, 2026-08-03. The Performance axis-label / grid-line goldens and
+// the whole Session Charts fingerprint were re-pinned after f934907 ("Sections: a
+// real gap between them"), which changed both HUDs' inter-section advance from
+// dims.lineHeightNormal to 2*sectionCardPaddingY() + [content] gap-y.
+//
+// UNTHEMED -- which is how this test runs -- sectionCardPaddingY() is zero, so that
+// advance went from 2 grid cells to 1 and every section below the first moved UP
+// by one cell per section. The arithmetic checks out exactly: the grid-line drift
+// was 0.140802 against 6 lines x 2 coords x one cell = 0.140800, and the label
+// drift 0.0704012 against 6 x 0.070400. Charts moved by the same rule, its larger
+// drift scaling with section index because chart k shifts by (k-1) cells.
+//
+// So this was an intended layout change whose UNTHEMED side effect nobody looked
+// at -- the commit was reasoning about themed cards touching. Recorded here rather
+// than silently re-pinned, because a golden refresh is exactly the move that hides
+// a real regression, and the only thing separating the two is whether someone
+// explained the delta first.
+//
+// HOW LONG IT WAS RED, corrected: this file's first version of this note claimed the
+// suite had not run since fa225d3 (where the goldens were last corrected), which was
+// wrong -- it was run green at bbe8f83 and again at 4c0ef8c. The red window opens at
+// f934907 and is a handful of commits wide, not forty. The reason it still went
+// unnoticed is narrower and more useful: f934907 landed mid-batch and the suite was
+// not run again before the batch was pushed.
 // ============================================================================
 #define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
@@ -48,6 +174,7 @@
 #include "plugin_host.h"
 #include "ini.h"
 #include <cmath>
+#include <cstdlib>
 #include <cstdint>
 #include <cstring>
 #include <map>
@@ -89,18 +216,46 @@ static uint64_t fbits(float f) {
     memcpy(&u, &f, sizeof(u));
     return u;
 }
+// ORDER hashes. Positions are chained QUANTISED, not raw and not dropped.
+//
+// Raw float bits were the original, and they made the hash hostage to the last
+// bit of every coordinate: when lineHeightNormal stopped being the literal
+// 0.023467f and became 0.02 * 1.17335, every position shifted by ~5e-7 normalized
+// -- 0.001px at 1080p -- and all four hashes flipped. A hash that changes when
+// nothing observable did cannot tell a REORDER from float noise.
+//
+// Dropping positions was the first fix and it was WRONG, in a way the sums cannot
+// cover: a quad is then identified by colour+sprite alone, and qpos is an
+// unweighted (commutative) sum. Two same-coloured, same-sprite bars of different
+// heights swapping geometry -- an ordinary bar chart -- moved neither field. That
+// is a real regression traded for noise immunity, and the comment here asserted
+// the opposite ("moves the position sums only if they are at different places",
+// which is exactly what a commutative sum cannot see).
+//
+// Quantising keeps both. QUANT is 1e-5 normalized = 0.011px at 1080p: ~20x above
+// the float drift that motivated this, and far below anything a person can see. So
+//   * sub-ULP arithmetic changes cannot move it,
+//   * ANY reorder of primitives at different places does,
+//   * and it doubles as the PER-ELEMENT position bound the additive sums lack --
+//     they pool their tolerance, so one element could absorb the whole budget
+//     (~1.6px on telemetry) unnoticed; it cannot move 0.011px without tripping
+//     this. The two together are strictly stronger than the raw-bit original.
+static constexpr float QUANT = 1e-5f;
+static uint64_t chainPos(uint64_t h, float v) {
+    return chainU64(h, (uint64_t)(int64_t)llroundf(v / QUANT));
+}
 static uint64_t chainQuad(uint64_t h, const QuadRow& q) {
     for (int c = 0; c < 4; ++c) {
-        h = chainU64(h, fbits(q.pos[c][0]));
-        h = chainU64(h, fbits(q.pos[c][1]));
+        h = chainPos(h, q.pos[c][0]);
+        h = chainPos(h, q.pos[c][1]);
     }
     h = chainU64(h, (uint64_t)q.color);
     h = chainU64(h, (uint64_t)(unsigned)q.sprite);
     return h;
 }
 static uint64_t chainStr(uint64_t h, const StrRow& s) {
-    h = chainU64(h, fbits(s.pos[0]));
-    h = chainU64(h, fbits(s.pos[1]));
+    h = chainPos(h, s.pos[0]);
+    h = chainPos(h, s.pos[1]);
     h = chainU64(h, (uint64_t)s.color);
     h = chainU64(h, (uint64_t)(unsigned)s.font);
     h = chainU64(h, (uint64_t)(unsigned)s.justify);
@@ -161,19 +316,53 @@ static std::string fpStr(const Fp& f) {
 // pinned later from the verified-correct current build - the additive sums are
 // order-independent, so without them a draw-order (z-order) regression would
 // pass unnoticed.
+// RE-BLESSED once, when the order hashes changed what they chain (see chainQuad).
+//
+// The POSITION sums were not re-derived from a changed renderer, and that is
+// measured rather than assumed. Patching derive() back to the pre-migration
+// literal `lineHeightNormal = 0.023467f` reproduces the OLD golden sums exactly --
+// bit for bit, all three phases -- so every remaining difference is that one
+// constant, spread over coordinates rather than any element moving on its own.
+// Session Charts drifts ~130x more than Telemetry only because its geometry is
+// lineHeightSmall-derived while Telemetry's is not.
+//
+// That experiment also found a difference the constant did NOT explain:
+// calculateMonospaceTextWidth had been regrouped from numChars * (fontSize *
+// ratio) to (numChars * fontSize) * ratio, which rounds differently in float32.
+// Restored, and Telemetry's sums are back to their original values -- an
+// arithmetic-neutral refactor should be arithmetic-neutral.
 struct Golden {
     int nq, ns;
     double qpos, qcol, qspr, spos, scol, smeta, stext;
     uint64_t qorder, sorder;
 };
 
+// Largest per-coordinate drift a position sum may absorb, in NORMALIZED units.
+//
+// 1e-6 is 0.002px at 1080p and 0.004px at 4K -- ~50x tighter than anything a
+// person could see, and comfortably above float32 accumulation noise. It replaces
+// a RELATIVE epsilon of 1e-9 on a sum of several hundred coordinates, which worked
+// out to a tolerance far below float32's own precision: the check could only pass
+// while the arithmetic was bit-identical, so any refactor of the layout tripped it
+// whether or not a pixel moved.
+static constexpr double kPosTolPerCoord = 1e-6;
+
+// |a - b| <= tol, reported with both values so a failure names the drift.
+#define CHECK_POS(a, b, coords)                                                   \
+    do {                                                                          \
+        const double _tol = kPosTolPerCoord * (double)(coords);                   \
+        INFO("drift " << ((a) - (b)) << " over " << (coords)                      \
+                      << " coords, tolerance " << _tol);                          \
+        CHECK(std::fabs((a) - (b)) <= _tol);                                      \
+    } while (0)
+
 static void checkAgainst(const Fp& f, const Golden& g) {
     CHECK(f.nq == g.nq);
     CHECK(f.ns == g.ns);
-    CHECK(f.qpos == doctest::Approx(g.qpos).epsilon(1e-9));
+    CHECK_POS(f.qpos, g.qpos, f.nq * 8);
     CHECK(f.qcol == doctest::Approx(g.qcol).epsilon(1e-12));
     CHECK(f.qspr == doctest::Approx(g.qspr).epsilon(1e-12));
-    CHECK(f.spos == doctest::Approx(g.spos).epsilon(1e-9));
+    CHECK_POS(f.spos, g.spos, f.ns * 2);
     CHECK(f.scol == doctest::Approx(g.scol).epsilon(1e-12));
     CHECK(f.smeta == doctest::Approx(g.smeta).epsilon(1e-12));
     CHECK(f.stext == doctest::Approx(g.stext).epsilon(1e-12));
@@ -250,7 +439,16 @@ TEST_CASE("strip-chart HUDs: primitive parity goldens") {
     const std::string defIni = ini::readFile(iniPath);
     REQUIRE_MESSAGE(!defIni.empty(), "no settings.ini written at " << iniPath);
 
-    auto loadPhase = [&](const std::set<std::string>& on, const KeyOverrides& overrides = {}) {
+    // DROP SHADOW ON, STATED RATHER THAN INHERITED. Every golden below counts
+    // shadow strings, because a shadowed string is drawn twice -- and the
+    // shipped default flipped to OFF in 1.29 (it is a second draw per glyph),
+    // which halved `ns` and every string-derived sum in one step. The goldens
+    // are not wrong and were NOT refreshed for it: refreshing is the move that
+    // hides a real regression, and the shadow path is worth pinning. So the
+    // phase declares the setting instead of riding whatever the default is,
+    // and a future default flip cannot reach these numbers again.
+    auto loadPhase = [&](const std::set<std::string>& on, KeyOverrides overrides = {}) {
+        overrides.insert({ { "Display", "dropShadow" }, "1" });
         ini::writeFile(iniPath, withOnlyVisible(defIni, on, overrides));
         host.loadSettings(saveWin);
     };
@@ -302,9 +500,9 @@ TEST_CASE("strip-chart HUDs: primitive parity goldens") {
         CHECK(fpStr(f2) == fpStr(f));         // stable across draws
         // GOLDEN(telemetry)
         checkAgainst(f, { 102, 24,
-                          610.201179266, 436195095084.0, 0.0,
-                          34.286767483, 85684202790.0, 24000.43, 14463422246.0,
-                          0xc53667d279d58c8cULL, 0x362ba1aa23bf7c7cULL });
+                          583.277590513, 436195095084.0, 0.0,
+                          32.798418045, 85684202790.0, 24000.43, 14463422246.0,
+                          0xd759b3e88eb214beULL, 0xa2b81cb3aa9c17d3ULL });
     }
 
     // =========================================================================
@@ -319,9 +517,9 @@ TEST_CASE("strip-chart HUDs: primitive parity goldens") {
         CHECK(fpStr(f2) == fpStr(f));
         // GOLDEN(rumble)
         checkAgainst(f, { 6, 24,
-                          32.838792920, 20551431668.0, 0.0,
-                          32.679687142, 85248099315.0, 24400.42, 13744300338.0,
-                          0x916c7e0777d715e0ULL, 0xf3c6c346d619579fULL });
+                          31.413556814, 20551431668.0, 0.0,
+                          31.285067677, 84962886643.0, 24400.42, 13744300338.0,
+                          0xac6a724b95036ec0ULL, 0xed3e3758697080b1ULL });
     }
 
     // =========================================================================
@@ -343,7 +541,10 @@ TEST_CASE("strip-chart HUDs: primitive parity goldens") {
         // GOLDEN(performance) — string count (2 title + 2x2 subhead + 6x2 axis + 16x2 legend)
         CHECK(ns == 50);
 
-        const char* expected[] = { "250 FPS", "125 FPS", "0 FPS", "4.0 ms", "2.0 ms", "0.0 ms" };
+        // The ms axis is the 480fps FRAME BUDGET (PluginConstants::FRAME_BUDGET_MS =
+        // 2.083) and its half, not the old 4.0/2.0 pair that was tuned for a 144fps
+        // target -- see PerformanceHud::MAX_PLUGIN_TIME_MS.
+        const char* expected[] = { "250 FPS", "125 FPS", "0 FPS", "2.1 ms", "1.0 ms", "0.0 ms" };
         double lpos = 0, lcol = 0, lmeta = 0; int found = 0;
         uint64_t lorder = 0;   // ORDER-SENSITIVE: labels chained in emission order
         for (int i = 0; i < ns; ++i) {
@@ -363,11 +564,11 @@ TEST_CASE("strip-chart HUDs: primitive parity goldens") {
         MESSAGE("perf axis labels: " << lbuf);
         CHECK(found == 12);   // 6 labels x (shadow + main)
         // GOLDEN(performance) — axis-label triple identity
-        CHECK(lpos == doctest::Approx(20.981319189).epsilon(1e-9));
+        CHECK_POS(lpos, 19.819700003, found * 2);
         CHECK(lcol == doctest::Approx(42837166920.0).epsilon(1e-12));
-        CHECK(lmeta == doctest::Approx(12000.18).epsilon(1e-9));
+        CHECK(lmeta == doctest::Approx(12000.18).epsilon(1e-12));
         // GOLDEN(performance) — axis-label emission order
-        CHECK(lorder == 0x647420719db70d49ULL);
+        CHECK(lorder == 0x38a3a04e2054d534ULL);   // ms labels read the frame budget
 
         // The six grid lines are the only quads with the exact grid thickness
         // (0.001 * scale); the trace polylines are 0.002 * scale thick.
@@ -389,10 +590,10 @@ TEST_CASE("strip-chart HUDs: primitive parity goldens") {
         MESSAGE("perf grid lines: " << gbuf);
         CHECK(gridCount == 6);
         // GOLDEN(performance) — grid-line geometry
-        CHECK(gpos == doctest::Approx(44.216040015).epsilon(1e-9));
+        CHECK_POS(gpos, 41.866000891, gridCount * 8);
         CHECK(gcol == doctest::Approx(25708616280.0).epsilon(1e-12));
         // GOLDEN(performance) — grid-line emission order
-        CHECK(gorder == 0xc391d5f9f572db34ULL);
+        CHECK(gorder == 0x92e72a14f4c7626cULL);
     }
 
     // =========================================================================
@@ -408,9 +609,9 @@ TEST_CASE("strip-chart HUDs: primitive parity goldens") {
         CHECK(fpStr(f2) == fpStr(f));
         // GOLDEN(charts)
         checkAgainst(f, { 54, 66,
-                          295.355640173, 230722193649.0, 0.0,
-                          97.364435256, 235651418535.0, 70801.06, 37242547186.0,
-                          0xeb4b86e9782e2853ULL, 0xf648732bd0d2f7e6ULL });
+                          279.215777814, 230722193649.0, 0.0,
+                          91.801324189, 235651418535.0, 70801.06, 37242547186.0,
+                          0x680697ff6e24a904ULL, 0x870a05bf12f1e77dULL });
     }
 
     // --- Baseline again: phases must leave nothing behind -----------------------

@@ -19,12 +19,10 @@ BaseHud* SettingsHud::renderTabNotices(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("notices");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeader("Appearance");
-    ctx.addStandardHudControls(hud, false);  // No title support (notices don't have a title bar)
-    ctx.addSpacing(0.5f);
-
+    ctx.addSectionHeading("Appearance");
+    ctx.addStandardHudControls(hud);
     // === LAYOUT SECTION ===
-    ctx.addSectionHeader("Layout");
+    ctx.addSectionHeading("Layout");
 
     // Duration cycle control: 1s -> 2s -> ... -> 30s (wraps)
     char durationValue[16];
@@ -34,10 +32,8 @@ BaseHud* SettingsHud::renderTabNotices(SettingsLayoutContext& ctx) {
             NoticesHud::DURATION_STEP_MS, NoticesHud::MIN_NOTICE_DURATION_MS,
             NoticesHud::MAX_NOTICE_DURATION_MS, hud),
         hud, true, false, "notices.duration");
-    ctx.addSpacing(0.5f);
-
     // === CONTENT SECTION ===
-    ctx.addSectionHeader("Warnings & Hazards");
+    ctx.addSectionHeading("Warnings & Hazards");
 
     bool wrongWayOn = (hud->m_enabledNotices & NoticesHud::NOTICE_WRONG_WAY) != 0;
     ctx.addToggleControl("Wrong way", wrongWayOn,
@@ -74,9 +70,7 @@ BaseHud* SettingsHud::renderTabNotices(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_HAZARD_WRONG_WAY, true,
         "notices.hazard_wrong_way");
-    ctx.addSpacing(0.5f);
-
-    ctx.addSectionHeader("Race Events");
+    ctx.addSectionHeading("Race Events");
 
     bool overtimeOn = (hud->m_enabledNotices & NoticesHud::NOTICE_OVERTIME) != 0;
     ctx.addToggleControl("Overtime", overtimeOn,
@@ -95,9 +89,7 @@ BaseHud* SettingsHud::renderTabNotices(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_FINISHED, true,
         "notices.finished");
-    ctx.addSpacing(0.5f);
-
-    ctx.addSectionHeader("Personal Bests");
+    ctx.addSectionHeading("Personal Bests");
 
     bool allTimePBOn = (hud->m_enabledNotices & NoticesHud::NOTICE_ALLTIME_PB) != 0;
     ctx.addToggleControl("Alltime PB", allTimePBOn,

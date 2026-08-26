@@ -26,8 +26,4 @@ private:
 
     // Calculate player's current position (1-based)
     int calculatePlayerPosition() const;
-
-    // Cached position to avoid unnecessary rebuilds
-    int m_cachedPosition;
-    int m_cachedTotalEntries;
 };

@@ -16,6 +16,8 @@ using namespace PluginConstants;
 
 SpeedWidget::SpeedWidget()
 {
+    m_panelKind = PanelKind::Widget;
+    m_bContentCard = true;
     // One-time setup
     DEBUG_INFO("SpeedWidget created");
     setDraggable(true);
@@ -46,64 +48,15 @@ void SpeedWidget::update() {
 
     // Always rebuild - speed updates at high frequency (telemetry rate)
     // Rebuild is cheap (single snprintf), no need for caching
-    rebuildRenderData();
+    rebuildAndRecord();
     clearDataDirty();
     clearLayoutDirty();
 }
 
-float SpeedWidget::calculateContentHeight(const ScaledDimensions& dim) const {
-    float height = 0.0f;
-    if (m_bShowTitle) height += dim.lineHeightNormal;  // Title label
-    height += dim.lineHeightLarge;  // Speed value always shown
-    if (m_enabledRows & ROW_UNITS) height += dim.lineHeightNormal;
-    return height;
-}
-
 void SpeedWidget::rebuildLayout() {
-    // Fast path - only update positions (not colors/opacity)
-    auto dim = getScaledDimensions();
-
-    float startX = 0.0f;
-    float startY = 0.0f;
-
-    // Calculate dimensions using base helper
-    float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::SPEED_WIDTH);
-    float contentWidth = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::SPEED_WIDTH, dim.fontSize);  // Needed for centering
-
-    // Height calculation based on enabled rows
-    float contentHeight = calculateContentHeight(dim);
-    float backgroundHeight = dim.paddingV + contentHeight + dim.paddingV;
-
-    // Set bounds for drag detection
-    setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
-
-    // Update background quad position
-    updateBackgroundQuadPosition(startX, startY, backgroundWidth, backgroundHeight);
-
-    float contentStartX = startX + dim.paddingH;
-    float contentStartY = startY + dim.paddingV;
-    float currentY = contentStartY;
-
-    float centerX = contentStartX + (contentWidth / 2.0f);
-
-    int stringIndex = 0;
-
-    // Title label (optional)
-    if (m_bShowTitle && positionString(stringIndex, centerX, currentY)) {
-        stringIndex++;
-        currentY += dim.lineHeightNormal;
-    }
-
-    // Speed value (extra large font) - always shown, centered
-    if (positionString(stringIndex, centerX, currentY)) {
-        stringIndex++;
-    }
-    currentY += dim.lineHeightLarge;
-
-    // Units label (normal font - 1 line) - centered
-    if (m_enabledRows & ROW_UNITS) {
-        positionString(stringIndex, centerX, currentY);
-    }
+    // BOX-MODEL: one source of geometry — rebuild rather than reposition a
+    // duplicated copy of the sizing arithmetic (see version_widget).
+    rebuildRenderData();
 }
 
 void SpeedWidget::rebuildRenderData() {
@@ -120,23 +73,26 @@ void SpeedWidget::rebuildRenderData() {
     float startX = 0.0f;
     float startY = 0.0f;
 
-    // Calculate dimensions using base helper
-    float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::SPEED_WIDTH);
-    float contentWidth = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::SPEED_WIDTH, dim.fontSize);  // Needed for centering
+    // BOX-MODEL: the plan owns padding, chrome, the title band and the card;
+    // the widget states only its content — the value row plus the optional
+    // units row.
+    BaseHud::PanelWant want;
+    want.contentW = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::SPEED_WIDTH, dim.fontSize);
+    float sectionH = dim.lineHeightLarge;  // Speed value always shown
+    if (m_enabledRows & ROW_UNITS) sectionH += dim.lineHeightNormal;
+    want.sectionH = { sectionH };
+    want.captionW = planTitleWidth(dim, "Speed");
+    PanelPlan& p = planPanel(dim, want);
 
-    // Height calculation based on enabled rows
-    float contentHeight = calculateContentHeight(dim);
-    float backgroundHeight = dim.paddingV + contentHeight + dim.paddingV;
-
-    // Add background quad
-    addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
-
-    float contentStartX = startX + dim.paddingH;
-    float contentStartY = startY + dim.paddingV;
-    float currentY = contentStartY;
+    const float backgroundWidth = p.width();
+    const float backgroundHeight = p.height();
 
     // Use full opacity for text
     unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
+
+    addPlanBackground(p, startX, startY);
+    addPlanTitle(p, "Speed", this->getFont(FontCategory::TITLE), textColor);
+    float currentY = p.contentY();
 
     // Build speed value string
     char speedValueBuffer[8];
@@ -153,14 +109,10 @@ void SpeedWidget::rebuildRenderData() {
         snprintf(speedValueBuffer, sizeof(speedValueBuffer), "%d", speed);
     }
 
-    float centerX = contentStartX + (contentWidth / 2.0f);
-
-    // Title label (optional)
-    if (m_bShowTitle) {
-        addString("Speed", centerX, currentY, Justify::CENTER,
-            this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
-        currentY += dim.lineHeightNormal;
-    }
+    // Value and units are centered on the CARD (PanelPlan::sectionBoxCenterX --
+    // the panel's centre is the same place only while the [content] terms are
+    // left/right symmetric); the caption sits at the plan's own column.
+    float centerX = p.sectionBoxCenterX();
 
     // Speed value (extra large font) - always shown, centered
     addString(speedValueBuffer, centerX, currentY, Justify::CENTER,
@@ -186,6 +138,6 @@ void SpeedWidget::resetToDefaults() {
     m_fScale = 1.0f;
     m_enabledRows = ROW_DEFAULT;  // Reset row visibility
     // Note: speedUnit is NOT reset here - it's a global preference, not per-profile
-    setPosition(0.924f, 0.86828f);
+    setPosition(cellsX(168), cellsY(74));
     setDataDirty();
 }

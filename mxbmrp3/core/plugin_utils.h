@@ -10,6 +10,32 @@
 #include <sstream>
 #include <iomanip>
 
+// Signed distance from `behind` to `ahead` along the racing line, as a
+// fraction of a lap in (-0.5, 0.5]. Track positions are normalised 0..1 and
+// wrap at start/finish, so a plain subtraction says 0.8 of a lap where the
+// truth is 0.2 the other way — which is the difference between "on your tail"
+// and "most of a lap back".
+//
+// Eight sites wrote these three lines themselves, in two flavours nobody would
+// notice going wrong: the SIGNED form, which answers "who is ahead" (teleport
+// detection, the spotter's rider-behind/alongside scan), and the UNSIGNED one,
+// which answers "how far apart" (the radar's proximity ring and its parallel-
+// straight fade, the segment timer's split snapping and loop closure). The
+// second is fabs() of the first, so one primitive covers both. Multiply by
+// trackLength for metres.
+inline float alongTrackDelta(float ahead, float behind) {
+    float d = ahead - behind;
+    if (d > 0.5f) d -= 1.0f;    // wrapped backward through start/finish
+    if (d < -0.5f) d += 1.0f;   // wrapped forward through start/finish
+    return d;
+}
+
+// How far apart two points are along the lap, 0..0.5, direction discarded.
+inline float trackSeparation(float a, float b) {
+    const float d = alongTrackDelta(a, b);
+    return d < 0.0f ? -d : d;
+}
+
 class PluginUtils {
 public:
     static void formatTimeMinutesSeconds(int milliseconds, char* buffer, size_t bufferSize);
@@ -129,6 +155,38 @@ public:
         return makeColor(r, g, b, a);
     }
 
+    // Scale one colour's alpha by ANOTHER colour's, keeping its RGB.
+    //
+    // FOR THE DROP SHADOW. The shadow behind a string is the configured shadow colour
+    // at its own alpha, and it used to be written verbatim -- so a string that had
+    // been faded (RadarHud fades a rider label as the rider leaves proximity range)
+    // got a fully-opaque shadow behind a half-visible label. Modulating by the
+    // string's alpha makes the shadow follow whatever the caller did to the text, and
+    // is a no-op for the opaque strings that are almost all of them (255/255 = 1).
+    static constexpr unsigned long modulateAlpha(unsigned long color, unsigned long by) {
+        const unsigned long a = ((color >> 24) & 0xFF) * ((by >> 24) & 0xFF) / 255;
+        return (color & 0x00FFFFFF) | (a << 24);
+    }
+
+    // Flatten a semi-transparent colour ONTO an opaque one and return it fully opaque.
+    // The result composites to the same pixel it would have over `under`, so a caller
+    // that encodes state as alpha keeps every state looking exactly as it did -- while
+    // the quad itself stops letting anything through.
+    //
+    // For BUTTONS. Their disabled / idle / hovered states are all alphas of one colour
+    // (64, 128, 255 of the accent), which reads correctly on an opaque panel and turns
+    // the control see-through on a panel the user has turned down. Blending here keeps
+    // the state cue and drops the transparency; see BaseHud::addButtonQuad.
+    static constexpr unsigned long flattenOnto(unsigned long color, unsigned long under) {
+        const unsigned long a = (color >> 24) & 0xFF;
+        if (a >= 255) return color;
+        const unsigned long inv = 255 - a;
+        const uint8_t r = static_cast<uint8_t>(((color & 0xFF) * a + (under & 0xFF) * inv) / 255);
+        const uint8_t g = static_cast<uint8_t>((((color >> 8) & 0xFF) * a + ((under >> 8) & 0xFF) * inv) / 255);
+        const uint8_t b = static_cast<uint8_t>((((color >> 16) & 0xFF) * a + ((under >> 16) & 0xFF) * inv) / 255);
+        return makeColor(r, g, b, 255);
+    }
+
     // True when a color is dark enough that light text reads better on it than
     // dark text (BT.601 luma, integer math). Used to flip a label to white over a
     // custom fill — e.g. a red or blue tracked number plate. Uses the standard YIQ
@@ -141,6 +199,13 @@ public:
         uint8_t b = (color >> 16) & 0xFF;
         unsigned int luma = (299u * r + 587u * g + 114u * b) / 1000u;
         return luma < 128u;
+    }
+
+    // BT.601 luma, 0..255 -- the quantity isColorDark() thresholds, exposed so a
+    // caller can ask "how far apart are these two" rather than only "is this dark".
+    static constexpr unsigned int luma601(unsigned long color) {
+        return (299u * (color & 0xFF) + 587u * ((color >> 8) & 0xFF)
+              + 114u * ((color >> 16) & 0xFF)) / 1000u;
     }
 
     // Lighten a color by blending toward white
@@ -210,6 +275,38 @@ public:
         } catch (...) {
             return fallback;
         }
+    }
+
+    // Parse an RGB hex colour as a SKINNER writes it -- "#ff8800", "ff8800",
+    // "0xff8800" -- into the game's ABGR word. Returns false when it is not one.
+    //
+    // Deliberately NOT parseColorHex above, and the difference is the byte order.
+    // That one reads the plugin's own saved settings, where the value is already the
+    // game's ABGR and is round-tripped verbatim. This one reads a theme's ini, where
+    // #rrggbb means what it means everywhere else in the world; converting at this
+    // one edge is what keeps the game's backwards packing out of the file format.
+    static bool parseRgbHex(const char* text, unsigned long& out) {
+        if (!text) return false;
+        const char* p = text;
+        while (*p == ' ' || *p == '\t') ++p;
+        if (*p == '#') ++p;
+        else if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) p += 2;
+        int digits = 0;
+        unsigned int v = 0;
+        for (; p[digits]; ++digits) {
+            const char c = p[digits];
+            unsigned int d;
+            if (c >= '0' && c <= '9') d = static_cast<unsigned int>(c - '0');
+            else if (c >= 'a' && c <= 'f') d = static_cast<unsigned int>(c - 'a' + 10);
+            else if (c >= 'A' && c <= 'F') d = static_cast<unsigned int>(c - 'A' + 10);
+            else return false;                       // trailing junk: reject the lot
+            v = (v << 4) | d;
+        }
+        if (digits != 6) return false;               // #rgb shorthand is not accepted
+        out = makeColor(static_cast<uint8_t>((v >> 16) & 0xFF),
+                        static_cast<uint8_t>((v >> 8) & 0xFF),
+                        static_cast<uint8_t>(v & 0xFF));
+        return true;
     }
 
     // Get color for a rider based on their position relative to player

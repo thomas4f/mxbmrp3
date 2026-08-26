@@ -78,13 +78,6 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
     constexpr int kbFieldWidth = 16;   // Fits "Ctrl+Shift+F12"
     constexpr int ctrlFieldWidth = 12; // Fits "Right Shoulder"
 
-    ctx.parent->addString("Toggle", actionX, ctx.currentY, Justify::LEFT,
-        Fonts::getStrong(), colorConfig.getPrimary(), ctx.fontSize);
-    ctx.parent->addString("Keyboard", keyboardX, ctx.currentY, Justify::LEFT,
-        Fonts::getStrong(), colorConfig.getPrimary(), ctx.fontSize);
-    ctx.parent->addString("Controller", controllerX, ctx.currentY, Justify::LEFT,
-        Fonts::getStrong(), colorConfig.getPrimary(), ctx.fontSize);
-    ctx.currentY += ctx.lineHeightNormal;
 
     // Store layout info for hover detection in update()
     ctx.parent->m_hotkeyContentStartY = ctx.currentY;
@@ -103,7 +96,7 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
     int currentRowIndex = 0;
 
     // panelWidth is actually contentAreaWidth (from contentAreaStartX to right edge)
-    float rowWidth = ctx.panelWidth - (ctx.labelX - ctx.contentAreaStartX);
+    float rowWidth = ctx.rowSpanWidth();
 
     // Helper to get tooltip ID for an action
     auto getTooltipId = [](HotkeyAction action) -> const char* {
@@ -132,6 +125,8 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
             case HotkeyAction::OVERLAY_FORCE_LAST_LAP:    return "hotkeys.overlay_last_lap";
             case HotkeyAction::OVERLAY_FORCE_FASTEST_LAP: return "hotkeys.overlay_fastest_lap";
             case HotkeyAction::OVERLAY_FORCE_DOWN_ORDER:  return "hotkeys.overlay_down_order";
+            case HotkeyAction::SPOTTER_CUE:               return "hotkeys.spotter_cue";
+            case HotkeyAction::CRASH_RESET:               return "hotkeys.crash_reset";
             case HotkeyAction::OVERLAY_FORCE_SECTORS:     return "hotkeys.overlay_sectors";
             case HotkeyAction::OVERLAY_FORCE_CHARTS:      return "hotkeys.overlay_charts";
             case HotkeyAction::SEGMENT_ADD:               return "hotkeys.segment_add";
@@ -287,7 +282,19 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
         ++currentRowIndex;
     };
 
-    // Settings Menu pinned at the top (the master toggle for this menu).
+    // Settings Menu pinned at the top (the master toggle for this menu). It gets its
+    // own section rather than sitting loose above the first card -- a single binding
+    // outside every card was the one row on this tab with no surface behind it.
+    //
+    // The column labels ride on this first card's heading row, in the columns they
+    // caption. They used to float above every card, which is the one place on this
+    // tab nothing else sits -- and it read as an accident next to the Riders tab,
+    // where the equivalent hint sits inside its section header.
+    const float headingY = ctx.addSectionHeading("Menu & HUDs");
+    ctx.parent->addString("Keyboard", keyboardX, headingY, Justify::LEFT,
+        Fonts::getStrong(), colorConfig.getPrimary(), ctx.fontSize);
+    ctx.parent->addString("Controller", controllerX, headingY, Justify::LEFT,
+        Fonts::getStrong(), colorConfig.getPrimary(), ctx.fontSize);
     addHotkeyRow(HotkeyAction::TOGGLE_SETTINGS);
 
     // NOTE: Several actions have no row here to keep the tab within the panel;
@@ -295,8 +302,12 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
     // (rumble_key=, timing_key=, notices_key=, stats_key=, friends_key=,
     // event_log_key=, fmx_key=, helmet_key=, performance_key=, session_key=, ...).
 
-    ctx.addSpacing(0.5f);
-    ctx.addSectionHeader("HUDs");
+    // The HUD toggles used to open their own "HUDs" section here. Merged into this
+    // one: the section above it held a single row (the menu toggle) plus a heading and
+    // the column captions, so the tab opened with a card containing one binding and
+    // then started again -- two headings and two card borders to separate a row from
+    // the rows it belongs with. One card, one heading, and the tab is that much
+    // shorter for it.
     addHotkeyRow(HotkeyAction::TOGGLE_STANDINGS);
     addHotkeyRow(HotkeyAction::TOGGLE_MAP);
     addHotkeyRow(HotkeyAction::TOGGLE_RADAR);
@@ -305,13 +316,20 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
     addHotkeyRow(HotkeyAction::TOGGLE_SESSION_CHARTS);
     addHotkeyRow(HotkeyAction::TOGGLE_TELEMETRY);
     addHotkeyRow(HotkeyAction::TOGGLE_RECORDS);
-    // Pitboard and Gap Bar are intentionally omitted from the GUI to save space;
-    // their INI keys (pitboard_key / gap_bar_key) still bind if hand-edited, like
-    // the Session toggle. The enumerators + config names live in hotkey_config.h.
+    // Pitboard, Gap Bar and Reset Crashes are intentionally omitted from the GUI to
+    // save space; their INI keys (pitboard_key / gap_bar_key / crash_reset_key) still
+    // bind if hand-edited, like the Session toggle. The enumerators + config names
+    // live in hotkey_config.h.
+    //
+    // Reset Crashes is the newest of the three and the reason this list is a rule
+    // rather than an accident: the settings panel sizes itself to its TALLEST tab,
+    // this tab is it, and adding one more row here put the panel 2% past the bottom
+    // of the screen (theme_geometry_test caught it). A row costs the whole panel, so
+    // an action whose control already exists elsewhere -- the crash widget carries
+    // its own Reset button -- takes the INI key and leaves the row.
 
     // Broadcast: the casting tools - auto-director + web-overlay panel forces.
-    ctx.addSpacing(0.5f);
-    ctx.addSectionHeader("Broadcast");
+    ctx.addSectionHeading("Broadcast");
     addHotkeyRow(HotkeyAction::DIRECTOR_TOGGLE);
     addHotkeyRow(HotkeyAction::DIRECTOR_LOCK);
 #if GAME_HAS_HTTP_SERVER
@@ -323,21 +341,22 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
     addHotkeyRow(HotkeyAction::OVERLAY_FORCE_DOWN_ORDER);
 #endif
 
-    ctx.addSpacing(0.5f);
-    ctx.addSectionHeader("Segments");
+    // Speaks whatever the active spotter pack defines as `hotkey_triggered`,
+    // so what it says is the user's line rather than ours — which also makes
+    // it the way to hear a template you are editing without waiting for the
+    // race to produce the event it belongs to.
+    addHotkeyRow(HotkeyAction::SPOTTER_CUE);
+
+    ctx.addSectionHeading("Segments");
     addHotkeyRow(HotkeyAction::SEGMENT_ADD);
     addHotkeyRow(HotkeyAction::SEGMENT_REMOVE);
 
-    ctx.addSpacing(0.5f);
-    ctx.addSectionHeader("Other");
+    ctx.addSectionHeading("Other");
     addHotkeyRow(HotkeyAction::TOGGLE_WIDGETS);
     addHotkeyRow(HotkeyAction::TOGGLE_ALL_HUDS);
     addHotkeyRow(HotkeyAction::RELOAD_CONFIG);
 
-    // Info text at bottom
-    ctx.currentY += ctx.lineHeightNormal * 0.5f;
-    ctx.parent->addString("Click to rebind, ESC to cancel.", actionX, ctx.currentY, Justify::LEFT,
-        Fonts::getNormal(), colorConfig.getMuted(), ctx.fontSize * 0.9f);
+    ctx.addNote("Tip: click to rebind, ESC to cancel.");
 
     // No active HUD for hotkeys settings
     return nullptr;

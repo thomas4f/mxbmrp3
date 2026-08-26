@@ -11,15 +11,16 @@
 using namespace PluginConstants;
 
 ClockWidget::ClockWidget()
-    : m_cachedLocalMinute(-1)
-    , m_cachedUtcMinute(-1)
-    , m_bShowUtc(false)
+    : m_bShowUtc(false)
     , m_bUtcOnTop(false)
     , m_bFormat24h(true)
 {
+    m_panelKind = PanelKind::Widget;
+    m_bContentCard = true;
     DEBUG_INFO("ClockWidget created");
     setDraggable(true);
     m_strings.reserve(3);  // label (optional), primary time, secondary line (optional)
+    setTextureBaseName("clock_widget");
 
     resetToDefaults();
 
@@ -38,31 +39,26 @@ void ClockWidget::update() {
         return;
     }
 
-    // Check if the minute changed (no need to update more frequently for a clock)
-    std::time_t now = std::time(nullptr);
-    std::tm localTm = {};
-    localtime_s(&localTm, &now);
-    int currentLocalMinute = localTm.tm_hour * 60 + localTm.tm_min;
-
-    if (currentLocalMinute != m_cachedLocalMinute) {
+    // MINUTE CHANGES ARE DETECTED FROM THE EPOCH, not from a broken-down time.
+    // This called localtime_s() (and gmtime_s() with UTC on) EVERY FRAME purely to
+    // compare a minute that changes once every 60 seconds -- and on the MSVC CRT
+    // those consult the timezone database under a lock, which measured 1.19us/frame
+    // in-game across a stint with ZERO rebuilds: the whole cost was the check.
+    //
+    // time_t is seconds since the epoch, so `now / 60` ticks at exactly the instant
+    // any wall-clock minute rolls over, in every timezone -- including the :30 and
+    // :45 offsets, whose minute boundary still lands on the same second. One integer
+    // divide replaces both conversions, and the conversions now happen only inside
+    // the rebuild that actually formats the time.
+    const std::time_t now = std::time(nullptr);
+    const long long epochMinute = static_cast<long long>(now / 60);
+    if (epochMinute != m_cachedEpochMinute) {
         setDataDirty();
     }
 
-    int currentUtcMinute = m_cachedUtcMinute;
-    if (m_bShowUtc) {
-        std::tm utcTm = {};
-        gmtime_s(&utcTm, &now);
-        currentUtcMinute = utcTm.tm_hour * 60 + utcTm.tm_min;
-        if (currentUtcMinute != m_cachedUtcMinute) {
-            setDataDirty();
-        }
-    }
-
     if (isDataDirty()) {
-        rebuildRenderData();
-        // Update cached minutes
-        m_cachedLocalMinute = currentLocalMinute;
-        m_cachedUtcMinute = currentUtcMinute;
+        rebuildAndRecord();
+        m_cachedEpochMinute = epochMinute;
         clearDataDirty();
         clearLayoutDirty();
     }
@@ -73,42 +69,9 @@ void ClockWidget::update() {
 }
 
 void ClockWidget::rebuildLayout() {
-    auto dim = getScaledDimensions();
-
-    float startX = 0.0f;
-    float startY = 0.0f;
-
-    float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::STANDARD_WIDTH);
-
-    // Height calculation - consistent with PositionWidget/LapWidget (no extra height for UTC line)
-    float labelHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
-    float contentHeight = labelHeight + dim.lineHeightLarge;  // Label (optional, 1 line) + Value (2 lines)
-    float backgroundHeight = dim.paddingV + contentHeight + dim.paddingV;
-
-    setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
-    updateBackgroundQuadPosition(startX, startY, backgroundWidth, backgroundHeight);
-
-    float contentStartX = startX + dim.paddingH;
-    float currentY = startY + dim.paddingV;
-
-    int stringIndex = 0;
-
-    // Title label
-    if (m_bShowTitle && positionString(stringIndex, contentStartX, currentY)) {
-        stringIndex++;
-        currentY += labelHeight;
-    }
-
-    // Primary time (large)
-    if (positionString(stringIndex, contentStartX, currentY)) {
-        stringIndex++;
-        currentY += dim.lineHeightLarge;
-    }
-
-    // Secondary time line (embedded in bottom padding, if UTC shown)
-    if (m_bShowUtc) {
-        positionString(stringIndex, contentStartX, currentY);
-    }
+    // BOX-MODEL: one source of geometry — the fast path duplicated the sizing
+    // arithmetic, and a handful of strings is cheaper to rebuild than the drift.
+    rebuildRenderData();
 }
 
 void ClockWidget::rebuildRenderData() {
@@ -178,29 +141,28 @@ void ClockWidget::rebuildRenderData() {
     float startX = 0.0f;
     float startY = 0.0f;
 
-    float backgroundWidth = calculateBackgroundWidth(WidgetDimensions::STANDARD_WIDTH);
+    // BOX-MODEL: the plan owns padding, chrome, the title band and the content
+    // origin. The fixed 12-char column (shared with Position/Lap/Time) is the
+    // content width, so the four standard widgets keep tiling with each other.
+    BaseHud::PanelWant want;
+    want.contentW = PluginUtils::calculateMonospaceTextWidth(
+        WidgetDimensions::STANDARD_WIDTH, dim.fontSize);
+    want.sectionH = { bigValueRowHeight(dim) };  // the big value's row; the UTC line rides in the bottom padding
+    want.captionW = planTitleWidth(dim, titleLabel);
+    PanelPlan& p = planPanel(dim, want);
+    const float backgroundWidth = p.width();
+    const float backgroundHeight = p.height();
 
-    // Height calculation - consistent with PositionWidget/LapWidget (no extra height for UTC line)
-    float labelHeight = m_bShowTitle ? dim.lineHeightNormal : 0.0f;
-    float contentHeight = labelHeight + dim.lineHeightLarge;  // Label (optional, 1 line) + Value (2 lines)
-    float backgroundHeight = dim.paddingV + contentHeight + dim.paddingV;
+    addPlanBackground(p, startX, startY);
+    addPlanTitle(p, titleLabel, this->getFont(FontCategory::TITLE), textColor);
 
-    addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
-
-    float contentStartX = startX + dim.paddingH;
-    float currentY = startY + dim.paddingV;
-
-    // Title label (optional)
-    if (m_bShowTitle) {
-        addString(titleLabel, contentStartX, currentY, Justify::LEFT,
-            this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
-        currentY += labelHeight;
-    }
+    const float contentStartX = p.contentX();
+    float currentY = p.contentY();
 
     // Primary time (extra large)
-    addString(primaryBuf, contentStartX, currentY, Justify::LEFT,
+    addString(primaryBuf, contentStartX, bigValueTextY(currentY, dim), Justify::LEFT,
         this->getFont(FontCategory::TITLE), textColor, dim.fontSizeExtraLarge);
-    currentY += dim.lineHeightLarge;
+    currentY += bigValueRowHeight(dim);
 
     // Secondary time (embedded in bottom padding - like TimeWidget's session type)
     if (m_bShowUtc) {
@@ -220,6 +182,6 @@ void ClockWidget::resetToDefaults() {
     setTextureVariant(0);
     m_fBackgroundOpacity = 0.0f;
     m_fScale = 1.0f;
-    setPosition(0.2860f, 0.01173f);
+    setPosition(cellsX(52), cellsY(1));
     setDataDirty();
 }

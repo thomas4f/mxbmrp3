@@ -39,9 +39,6 @@ public:
     SpeedUnit m_speedUnit = SpeedUnit::MPH;
     uint32_t m_enabledRows = ROW_DEFAULT;  // Bitfield of enabled rows (INI-configurable)
 
-    // Helper to calculate content height based on enabled rows
-    float calculateContentHeight(const ScaledDimensions& dim) const;
-
 protected:
     void rebuildLayout() override;
 

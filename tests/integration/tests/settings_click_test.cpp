@@ -59,6 +59,45 @@ static int iniInt(const char* path, const std::string& section, const std::strin
     return (v >= 0) ? v : iniIntOne(path, "[" + section + "]", key);
 }
 
+// The same lookup for a key whose value is a NAME rather than a number. Empty
+// when absent. (iniIntOne std::stoi's the value, so it cannot read these -- it
+// throws.)
+static std::string iniStrOne(const char* path, const std::string& header, const std::string& key) {
+    std::ifstream f(path);
+    std::string line;
+    bool in = false;
+    while (std::getline(f, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (!line.empty() && line[0] == '[') {
+            in = (line == header);
+            continue;
+        }
+        if (in && line.rfind(key + "=", 0) == 0) {
+            return line.substr(key.size() + 1);
+        }
+    }
+    return std::string();
+}
+static std::string iniStr(const char* path, const std::string& section, const std::string& key) {
+    std::string v = iniStrOne(path, "[" + section + ":Practice]", key);
+    return !v.empty() ? v : iniStrOne(path, "[" + section + "]", key);
+}
+
+// labelMode's ordinal, read back from its NAME. The gap bar used to write this key
+// as a bare int and now writes the name Map and Radar always wrote (one enum, one
+// spelling -- see stringToLabelMode); the cycle assertions below are about stepping
+// and wrapping, so they keep their modular arithmetic and this does the translation.
+// -1 for an unknown or absent value, which fails the REQUIRE below rather than
+// quietly reading as NONE.
+static int iniLabelMode(const char* path, const std::string& section) {
+    const std::string v = iniStr(path, section, "labelMode");
+    if (v == "NONE") return 0;
+    if (v == "POSITION") return 1;
+    if (v == "RACE_NUM") return 2;
+    if (v == "BOTH") return 3;
+    return -1;
+}
+
 TEST_CASE("settings clicks: stepped controls step, accelerate, clamp, and persist") {
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
@@ -159,25 +198,25 @@ TEST_CASE("settings clicks: cycle controls wrap both directions and persist") {
 
     host.save();
     const int marker0 = iniInt(INI_CYCLE, "GapBarHud", "markerMode");
-    const int label0  = iniInt(INI_CYCLE, "GapBarHud", "labelMode");
+    const int label0  = iniLabelMode(INI_CYCLE, "GapBarHud");
     REQUIRE(marker0 >= 0);
     REQUIRE(label0 >= 0);
 
     // --- Marker labels (index 2, N=4): full forward wrap ---------------------
     REQUIRE(host.clickCycle(2, /*up=*/true));
     host.save();
-    CHECK(iniInt(INI_CYCLE, "GapBarHud", "labelMode") == (label0 + 1) % 4);
+    CHECK(iniLabelMode(INI_CYCLE, "GapBarHud") == (label0 + 1) % 4);
     for (int i = 0; i < 3; ++i) REQUIRE(host.clickCycle(2, true));
     host.save();
-    CHECK(iniInt(INI_CYCLE, "GapBarHud", "labelMode") == label0);   // wrapped home
+    CHECK(iniLabelMode(INI_CYCLE, "GapBarHud") == label0);   // wrapped home
 
     // Backward from the base value wraps through the top end.
     REQUIRE(host.clickCycle(2, /*up=*/false));
     host.save();
-    CHECK(iniInt(INI_CYCLE, "GapBarHud", "labelMode") == (label0 + 3) % 4);
+    CHECK(iniLabelMode(INI_CYCLE, "GapBarHud") == (label0 + 3) % 4);
     REQUIRE(host.clickCycle(2, /*up=*/true));                       // back home
     host.save();
-    CHECK(iniInt(INI_CYCLE, "GapBarHud", "labelMode") == label0);
+    CHECK(iniLabelMode(INI_CYCLE, "GapBarHud") == label0);
 
     // --- Mode (index 0, N=3): one step each way is symmetric -----------------
     REQUIRE(host.clickCycle(0, true));

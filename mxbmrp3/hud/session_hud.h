@@ -49,6 +49,14 @@ private:
     // Helper to calculate icon quad corner positions (shared between rebuild and layout)
     void calculateIconQuadCorners(float x, float y, float fontSize, float corners[4][2]) const;
 
+    // Where the ROW icon quads begin, recorded at build time. It was a hardcoded 1
+    // ("background is quad 0"), which stopped being true the moment a theme was
+    // active: a themed panel is nine slices, plus nine for the title band, plus nine
+    // for the body card, plus the title's own identity icon. The layout fast path
+    // then repositioned FRAME SLICES as if they were row icons. Recording the real
+    // index is the fix BaseHud::m_bContentCard's declaration warns about by name.
+    int m_firstIconQuad = 1;
+
     // Cached data to avoid unnecessary rebuilds
     static constexpr int CACHE_UNINITIALIZED = -2;  // Sentinel distinct from -1 (valid serverType=Unknown)
     int m_cachedSessionState;

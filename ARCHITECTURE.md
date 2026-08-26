@@ -39,7 +39,7 @@ mxbmrp3/
 │   │   ├── base_hud.*          # Abstract base class for all HUDs
 │   │   ├── *_hud.*             # Full HUDs (complex, configurable)
 │   │   ├── *_widget.*          # Simple widgets (focused display)
-│   │   ├── settings_hud.*      # Main SettingsHud (menu build / _input / _render) — in hud/, matches *_hud.*
+│   │   ├── settings_hud.*      # Main SettingsHud (menu build / _input / _render) - in hud/, matches *_hud.*
 │   │   └── settings/           # Settings UI helpers (NOT settings_hud.*)
 │   │       ├── settings_layout.*   # Layout helper context
 │   │       └── settings_tab_*.cpp  # Individual tab renderers
@@ -60,11 +60,14 @@ mxbmrp3/
 │   │   └── tapes/              #     full master captures (git-ignored)
 │   ├── web/                    #   Layer 4: Playwright overlay tests (?demo)
 │   └── asan/                   #   Layer 5: ASan/UBSan memory-safety harness
-├── tools/                      # Dev tools & scripts
-│   ├── icon_gen.py             #   SVG -> .tga icon generator; mdmp_analyze.py; etc.
-│   ├── mxbmrp3_replay/         #   Real-time tape replay / overlay preview (MSVC)
-│   ├── mxbmrp3_fontgen/        #   Portable PiBoSo .fnt bitmap-font generator (MSVC + build.sh)
-│   └── mxbmrp3_hud_window/     #   Companion-window demo/screenshot harness (headless Wine)
+├── tools/                      # Dev tools. One file = a script, a directory = a tool
+│   ├── check_*.py gen_*.py     #   CI checks and fixture/report generators
+│   ├── *_report.py             #   Analytics, benchmark, director and minidump analysis
+│   ├── replay/                 #   Real-time tape replay / overlay preview (MSVC)
+│   ├── fontgen/                #   Portable PiBoSo .fnt bitmap-font generator (MSVC + build.sh)
+│   ├── hud_window/             #   Companion-window demo/screenshot harness (headless Wine)
+│   ├── spottergen/ themeslice/ #   Spotter-reference and theme-slice generators
+│   └── probetheme/ trnfix/     #   Theme cost probe; the trainer repair page
 ├── assets/                     # Source art (helmet .pdn, icon .svg)
 ├── crash_analysis/             # Crash catalogue (known_game_crashes.json + docs)
 └── CMakeLists.txt              # Gates + the plugin definition (mxbmrp3/CMakeLists.txt);
@@ -200,7 +203,7 @@ The API uses C structs to pass data. Each game's structs have different field na
 
 **Exception barrier (`vendor/piboso/api_guard.h`):** Every DLL export wraps its body in `API_GUARD_CATCH("ExportName")`. The host game doesn't support C++ exceptions across the DLL boundary, so any uncaught throw from PluginManager downward would terminate the host process. The macro catches `std::exception` and `...` at the boundary, logs via `DEBUG_WARN_F`, and returns a sensible fallback value. When adding a new export, follow the same pattern.
 
-**Boundary validation (version skew):** PiBoSo has reshaped plugin structs between game versions before — the `EventInit`/`RaceCommunication` defensive copies exist for exactly that — so the array-style callbacks don't trust the game's framing. `RaceClassification`/`RaceTrackPosition`/`SpectateVehicles` reject a mismatch between the game-supplied `_iElemSize` and the compiled `sizeof` (warn-**once**, then return — the feature fails safe instead of indexing with the wrong stride, which misreads every entry past index 0 and runs off the real array), null-check `_pData`/`_pArray` when counts are positive, guard the defensive-copy `memcpy` against a null `_pData`, and `std::clamp` entry counts to `0..MAX_RACE_ENTRIES` (clamping negatives too, not just capping from above). Applied identically across MXB/GPB/KRP. The symptom of skew is empty standings/map plus a single "element size N != expected M" log line. New array-style callbacks must follow the same pattern.
+**Boundary validation (version skew):** PiBoSo has reshaped plugin structs between game versions before - the `EventInit`/`RaceCommunication` defensive copies exist for exactly that - so the array-style callbacks don't trust the game's framing. `RaceClassification`/`RaceTrackPosition`/`SpectateVehicles` reject a mismatch between the game-supplied `_iElemSize` and the compiled `sizeof` (warn-**once**, then return - the feature fails safe instead of indexing with the wrong stride, which misreads every entry past index 0 and runs off the real array), null-check `_pData`/`_pArray` when counts are positive, guard the defensive-copy `memcpy` against a null `_pData`, and `std::clamp` entry counts to `0..MAX_RACE_ENTRIES` (clamping negatives too, not just capping from above). Applied identically across MXB/GPB/KRP. The symptom of skew is empty standings/map plus a single "element size N != expected M" log line. New array-style callbacks must follow the same pattern.
 
 ### 2. PluginManager (`core/plugin_manager.*`)
 
@@ -235,21 +238,26 @@ The **single source of truth** for all game state. This singleton:
 - Detects changes and notifies HudManager when data updates
 - Stores per-rider data (lap times, track positions, session bests)
 
-**What is deliberately NOT in PluginData.** It is a large class (~236 public
-methods) and the standing direction is to shrink it, but only where a piece is
-genuinely separable rather than merely movable:
-- `core/blue_flag_detect.h` — the blue-flag/lapping pairwise proximity pass, a
-  pure function over a flat array. Extracted because its inputs are five numbers
-  per rider, which makes it unit-testable with a plain g++ instead of only
-  through the DLL under Wine (`tests/unit/test_blue_flag_detect.cpp`).
-  PluginData still owns the flattening and the caches.
-- `core/proximity_tuning.h` — the seven INI-only blue-flag/hazard knobs, with
-  each clamp range next to the field it clamps. Replaced fourteen one-line
-  accessors.
-- The hazard **state machine** stays put, on purpose: its per-rider state lives
-  inside `RiderTrackState` and is updated inline in the 30Hz position loop, so
-  extracting it would add a hash lookup per rider per batch and produce a
-  component that reaches back into PluginData for everything.
+**What came out of it, and what deliberately did not.** It is a large class and the
+standing direction is to shrink it, but only where a piece is genuinely *separable*
+rather than merely movable. The bar each of these cleared: its inputs are a handful of
+numbers per rider, so it can be unit-tested with a plain g++ instead of only through the
+DLL under Wine. Each header states its own rules and the trap it exists to avoid; this is
+the index, not a second copy.
+
+| Extracted | What it is | Unit test |
+|---|---|---|
+| `core/blue_flag_detect.h` | blue-flag/lapping pairwise proximity pass | `test_blue_flag_detect.cpp` |
+| `core/proximity_tuning.h` | the seven INI-only blue-flag/hazard knobs, each clamp beside its field | - |
+| `core/battle_groups.h` | battle-group partitioning, shared by the director and the overlay panel | `test_battle_groups.cpp` |
+| `core/lap_timer.h` | the display rider's live lap-timer state machine | `test_lap_timer.cpp` |
+| `core/live_gap_engine.h` | the live leader-relative gap core | `test_live_gap_engine.cpp` |
+
+PluginData keeps the flattening, the caches, the eligibility filtering and the
+notification coalescing around each of them. The hazard **state machine** stays put on
+purpose: its per-rider state lives inside `RiderTrackState` and is updated inline in the
+30 Hz position loop, so extracting it would add a hash lookup per rider per batch and
+produce a component that reached back into PluginData for everything.
 
 Key data structures:
 - `SessionData` - Track name, session type, weather, etc.
@@ -259,7 +267,11 @@ Key data structures:
 - `IdealLapData` - Best sector/lap times per rider
 - `m_raceStartPositions` - Per-rider starting grid position (`raceNum → position`), snapshotted when a race goes green; drives the positions-gained/lost column. Cleared on each new session.
 
-**Per-rider map lifecycle.** PluginData holds many containers keyed by raceNum (`m_standings`, `m_riderLapLog`, `m_lastValidOfficialGap`, `m_raceStartPositions`, `m_lastSfPositions`, `m_lastSplitPositions`, `m_activeTrackPosRiders`, …). Every one must be **erased in `removeRaceEntry()`** (per-rider teardown) **and reset in `clear()`** (session/event teardown). The memory is trivial; the real hazard is **raceNum reuse** — the game can hand a departed rider's number to a new joiner mid-event, who would otherwise transiently inherit the old rider's standings entry, gap cache, lap history, and position-gain reference points until the next classification overwrote them. This used to be a hand-maintained erase list and was found violated repeatedly (a batch of six maps reset in `clear()` but not erased in `removeRaceEntry()`); it is now enforced **by construction** via the `PerRider<>` registry in `plugin_data.h` — declaring a per-rider member as `PerRider<container>` registers erase+clear callbacks at construction, and `removeRaceEntry()`/`clear()` iterate the registry, so there is no second list to update. Derived caches rebuilt wholesale when their dirty flag is set (`m_positionCache`, `m_cachedBlueFlaggedSet`, `m_cachedHazardTypes`, …) stay plain members: `removeRaceEntry()` dirties them instead. `racenum_reuse_test.cpp` pins the behavior end-to-end (rich state → remove → reuse → every surface fresh).
+**Per-rider containers are declared `PerRider<>`**, which registers their erase-and-clear
+so a reused race number cannot inherit a departed rider's state. It is enforced by
+construction in `plugin_data.h` and pinned by `racenum_reuse_test.cpp`; the rule and the
+one exception (derived caches, which are dirtied instead) are in CLAUDE.md's Maintenance
+Invariants.
 
 ```cpp
 // Example: Handler stores data, HUD reads it
@@ -286,7 +298,7 @@ Owns and orchestrates all HUD instances. It:
 
 Each handler processes a specific category of game events.
 
-Almost all of them are **stateless dispatch** — they read the unified event
+Almost all of them are **stateless dispatch** - they read the unified event
 struct, push it into `PluginData`, and return. Those are plain free functions in
 `namespace Handlers` (one translation unit per callback category), because a
 singleton around a class with no members buys nothing and costs a global:
@@ -332,23 +344,13 @@ Features:
 - Manual profile selection via settings menu
 - Transitions when session type changes
 
-### 7. RumbleProfileManager (`core/rumble_profile_manager.*`)
+### 7. Rumble: RumbleProfileManager + XInputReader (`core/rumble_profile_manager.*`, `core/xinput_reader.*`)
 
-Manages per-bike rumble profiles stored in a JSON file:
-- Allows different rumble effect settings for different bikes
-- Each profile stores complete `RumbleConfig` (effect strengths, input ranges)
-- Automatically loads/saves from `{save_path}/mxbmrp3/mxbmrp3_rumble_profiles.json`
+`RumbleProfileManager` keeps per-bike rumble profiles in `{save_path}/mxbmrp3/mxbmrp3_rumble_profiles.json`, keyed by bike name, each holding a complete `RumbleConfig`. A toggle chooses between the global INI settings and per-bike profiles; enabling it auto-creates a profile for the current bike. `XInputReader` reads the active config at runtime.
 
-Features:
-- Toggle between global settings (INI) and per-bike profiles (JSON)
-- Profiles keyed by bike name string
-- Auto-creates profile for current bike when enabled
-- Integrates with XInputReader for runtime config access
+**`XInputReader` runs its OS calls on a dedicated I/O thread**, and that split is the part worth knowing at this level because it is the same rule three subsystems follow. Every `XInputGetState`/`XInputSetState` happens on `ioThreadMain` - started in `PluginManager::initialize`, stopped in `shutdown` *after* the plugin worker is joined - so a degraded controller driver can never stall whichever thread drives telemetry and hotkeys (the game thread in legacy mode, the plugin worker in threaded mode). Same **state producer vs. blocking I/O** division as `HttpServer` and `DiscordManager`: the caller keeps all policy and effect math, because that feeds `RumbleHud`'s graph and must stay on the state thread; only the syscalls move. `update()` became a cheap copy of the snapshot the I/O thread published, `setVibration()` runs its unchanged policy and posts an 8-bit motor pair for the I/O thread to execute, and `setControllerIndex()` sets an atomic slot plus a poll-now flag.
 
-**XInputReader (`core/xinput_reader.*`) — dedicated I/O thread, send policy & connection cost.** Every `XInputGetState`/`XInputSetState` runs on a **dedicated I/O thread** (`ioThreadMain`, started in `PluginManager::initialize`, stopped in `shutdown` *after* the plugin worker is joined), so a slow/degraded controller driver can never stall whichever thread drives telemetry/hotkeys — the game thread in legacy mode, the plugin worker in threaded mode. The split follows the same "state producer vs. blocking I/O" rule as HttpServer/Discord: the **caller keeps the rumble policy + all effect math** (it feeds the RumbleHud graph and must stay on the state thread), and only the actual OS calls move. Concretely: `update()` is now a cheap copy of the snapshot the I/O thread published (no XInput call); `setVibration()` runs its **unchanged** policy on the caller and *posts* the resulting 8-bit motor pair, which the I/O thread executes; `setControllerIndex()` just sets the atomic slot + a "poll now" flag (the I/O thread detects the change and stops rumble on the old/all slots). The handoffs are a short mutex around two small buffers (never held across an XInput call) plus a couple of atomics; the I/O thread is the sole caller of `XInput*` on the hot path. The tuning below is unchanged — it just runs on the I/O thread now:
-
-- *Empty-slot cost.* `XInputGetState` on a **disconnected** slot triggers device enumeration and can cost milliseconds on degraded driver/wrapper/Bluetooth stacks. Now that it's on the I/O thread that cost can't reach the frame anyway, but the mitigations remain (they save wasted syscalls): the 4-slot connection scan (which only feeds the settings-UI controller list) is throttled to once per second, and the selected slot backs off to one poll per `DISCONNECTED_POLL_INTERVAL_MS` (500ms) while unplugged. Switching controller index sets a "poll now" flag so a new selection polls immediately. Don't reintroduce per-tick empty-slot polling.
-- *Rumble send policy (`setVibration`).* Empirically derived from field reports; do **not** "simplify" back to value-dedup. Two opposing hardware facts shape it: (1) controllers **decay** rumble without a continuous feed — a constant nonzero value sent once stops buzzing after a moment, so the "XInput state persists until changed" assumption is false in practice; (2) some **degraded/buggy Bluetooth** stacks **choke** on sustained high-rate `XInputSetState` traffic — each call is a radio transaction, the queue backs up, and FPS progressively collapses over a few laps (recovering instantly on USB). That is a driver issue, **not** inherent to the send rate — a healthy stack handles the default fine. So: nonzero values are re-sent every `send_interval_ms` (the cap; INI `[Rumble]`, default `DEFAULT_RUMBLE_SEND_INTERVAL_MS` = 10ms = 100Hz, matching the telemetry tick) **even when unchanged** — the keepalive the motors need; an all-zero (idle) state is sent once then silenced — no traffic from a resting pad; and a transition to zero **bypasses** the rate cap so a final `stopVibration()` before telemetry halts can never be swallowed (which would leave the motors running). The cap exists and is user-tunable purely as the escape hatch for those degraded stacks — raising `send_interval_ms` trades responsiveness for less Bluetooth traffic. Values are quantized to 8 bits (the BT protocol's per-motor resolution) so jitter doesn't defeat the idle check.
+**Two hardware constraints shape the tuning, and both are documented where they are enforced** - the empty-slot backoff inside `ioThreadMain()`, the send policy at `setVibration()`, with the reasoning inline at each. In outline: `XInputGetState` on a disconnected slot triggers device enumeration and can cost milliseconds, so scans are throttled; and controllers *decay* rumble without a continuous feed while some Bluetooth stacks choke on a sustained one, so nonzero values are re-sent on a user-tunable cap rather than deduped. The reasons are opposing and unobvious, which is exactly why they live next to the code that obeys them rather than in a second copy here. Pinned by `xinput_thread_test.cpp` and `rumble_effect_test.cpp`; CLAUDE.md carries the one-line "don't simplify this" warning.
 
 ### 8. StatsManager (`core/stats_manager.*`)
 
@@ -377,11 +379,11 @@ Unified stats system that tracks per-track/bike stats, global race stats, person
 
 Features:
 - Context-based API: set current track+bike once, then telemetry-rate calls avoid lookups
-- Migrates legacy data from old `mxbmrp3_personal_bests.json` and `odometer.json` files
+- Migrates legacy data from the old `mxbmrp3_personal_bests.json` and `mxbmrp3_odometer_data.json` files
 - Cached global totals (recomputed on load/clear, updated incrementally)
 - Dirty flag with periodic save (not every telemetry tick)
 
-**Non-finite hardening.** The persisted floats (per-bike odometer, `totalDistanceM`, `topSpeedMs`) are integrated from `speed × dt` and gated by `>=`/`>` movement/record comparisons. Those comparisons reject NaN but **not `+Inf`**, so a single non-finite speed sample from a physics glitch would integrate into the odometer and top speed — *persisted* state that never recovers without hand-editing the JSON. `updateTelemetry` sanitizes the sample at the top (`!std::isfinite` → treated as `0`, so crash/gear edge detection still runs that tick), and the three floats are clamped through `finiteOrZero()` (a file-static helper in `stats_manager.cpp`) on load so an already-corrupted file **heals** instead of re-adopting the bad value. Any new persisted float needs the same guard at both write and load.
+**Non-finite hardening.** The persisted floats (per-bike odometer, `totalDistanceM`, `topSpeedMs`) are integrated from `speed × dt`, and the `>=`/`>` comparisons that gate them reject NaN but not `+Inf` - so one bad physics sample corrupts state that survives restarts. `updateTelemetry` sanitises at the sample, `finiteOrZero()` in `stats_manager_persistence.cpp` heals an already-corrupted file on load, and the reasoning sits at both. **Any new persisted float needs the same guard at both ends** - that is a Maintenance Invariant in CLAUDE.md, pinned by `stats_test.cpp` and `odometer_test.cpp`.
 
 ### 9. FmxManager (`core/fmx_manager.*`)
 
@@ -406,36 +408,13 @@ Manages FMX (Freestyle Motocross) trick detection and scoring:
 
 ### 10. HttpServer (`core/http_server.*`)
 
-Embedded HTTP server that streams race data to browser-based overlays (OBS browser source):
+Embedded HTTP server streaming race data to browser overlays (an OBS browser source). It serves `mxbmrp3_data/web/` at `/`, pushes JSON snapshots over SSE at `/api/events`, answers `/api/state` for pollers, and scans `web/logos/` for the slideshow. Compile-time gated by `GAME_HAS_HTTP_SERVER`; runtime-gated by a settings toggle that starts and stops the server on demand.
 
-**Threading model:**
-- JSON snapshot built on the **game thread** in `buildJsonSnapshot()` (PluginData is not thread-safe)
-- Cached string protected by mutex, read by SSE server threads — like every mutex in the plugin, an annotated `Mutex` (`core/thread_safety.h`) whose guarded members clang's thread-safety analysis checks at every access site in CI (`tests/integration/check_thread_safety.sh`)
-- `onDataChanged()` called by PluginData's notification system (same path as HudManager)
-- Per-client sequence tracking prevents multi-client wake races
+**The snapshot is built on the game thread** and cached behind an annotated mutex for the SSE threads, because PluginData is not thread-safe. That, the connection limits, the throttle and the client-activity gating that keeps the build off the game thread when nobody is listening are all documented in `http_server.h` and at the code that enforces them; the gating asymmetry - frequent types gated, rare transition types never - is a Maintenance Invariant in CLAUDE.md and is pinned by `http_gating_test.cpp`.
 
-**SSE streaming (`/api/events`):**
-- Pushes JSON snapshots on data changes (standings, events, session, spectate target)
-- Throttled per-connection (default 250ms) to avoid flooding
-- Comment keepalives detect dead connections
-- Max 3 concurrent SSE connections (prevents thread pool starvation)
+**The snapshot is a contract between two languages**, which is the part no single file can state. Adding a field means extending `buildJsonSnapshot()`, consuming it in the client, and regenerating `tests/fixtures/overlay_snapshot.json` - a real captured snapshot read from *both* sides, so a rename cannot pass silently (`overlay_snapshot_test.cpp` checks the C++ side, `overlay_snapshot.spec.js` drives that same fixture through the real `render()`). CLAUDE.md's *Working with the Web Overlay* holds the boundary rules themselves: that the plugin ships raw data and the overlay decides presentation, which helpers are mirrored, why colour *roles* are chosen per renderer, and why `liveGapValid` and `canUseLiveForRider` answer different questions.
 
-**JSON data contract** (raw data, no filtering — web UI filters client-side):
-- `session` - Type, state, palette colors, font names, track info, plus `time`: the MM:SS countdown, or — once a **time+lap** race's clock expires — a leader-relative overtime label (`N TO GO` / `FINAL LAP` / `CHECKERED`). The label is single-sourced by `PluginData::getLeaderLapsToGo()` (uses the same thresholds as `isRiderFinished`/the FinalLap event) + `PluginUtils::formatSessionClock()`, which also feed the in-game StandingsHud title and TimeWidget so all three read identically.
-- `standings[]` - Per-rider: pos, num, name, gap, state, `lastLapMs`/`bestLapMs`, all chips, per-reference positions-gained/lost deltas (`posDeltaStart` vs race start, `posDeltaSf` vs last S/F, `posDeltaSplit` vs last split — each present only during races, once its reference exists), and `plateColor` (the rider's tracked-rider plate color, emitted only when tracked). The overlay chooses what to show client-side.
-- `events[]` - All event log entries with clock/session timestamps and type enum
-
-**Static file serving:**
-- Mounts `plugins/mxbmrp3_data/web/` at `/` — users can freely customize the HTML/CSS/JS
-- Web overlay syncs colors and fonts from in-game settings via CSS custom properties (`--gp-*`); the look is otherwise driven by `:root` tokens in `style.css` (palette/fonts/sizes/spacing/animation), overridable via `custom.css` (see `custom-sample.css`)
-- `GET /api/logos` — scans `web/logos/` for PNGs, returns sorted JSON array for the logo slideshow
-- The overlay's standings tower has a shared **bottom slot** cycling several broadcast panels (fastest-last-lap, fastest-laps, best-sectors, down-the-order, session-charts, battle) via a `createSlotPanel` controller (`overlay-slots.js`/`overlay-panels.js`) (mutually exclusive, client-side); the **session-charts** panel is a client-side SVG port of the in-game Session Charts HUD, fed by a raw per-rider `laps[]` array in the snapshot and auto-shown when the race leader finishes; append `?demo` to the overlay URL to replay a synthetic race with no plugin connection
-
-**Zero-client gating (game-thread cost):** `onDataChanged()` builds the full JSON snapshot (tens of KB of string work) on the game thread. `Standings` changes fire from every `RaceTrackPosition` callback, so on a full grid with OBS closed that was many wasted builds per second. The build is gated on **client activity** — `hasActiveClients()`, i.e. a live SSE connection or an `/api/state` poll within the last 5s; while inactive the cache is just marked stale, and the first notification after a client appears rebuilds it (one telemetry tick in-session). The gate is **split by change-type frequency**, and the split is load-bearing: high-frequency types (`Standings`, `EventLog`) are gated, but the **rare transition types** (`SessionData`, `RaceEntries`, `SpectateTarget`) **always** rebuild, client or not. Why: the plugin receives **no callbacks at all while the player sits in menus** (the game stops calling it), so every quiet period is *entered* via a rare-type change — if that snapshot were skipped, a client connecting later would be served a stale in-session snapshot with no rebuild opportunity ever arriving. Don't move the rare types behind the gate, and keep this no-callbacks-in-menus constraint in mind for anything that tries to defer work "to the next game-thread tick."
-
-**Feature gating:**
-- Compile-time: `GAME_HAS_HTTP_SERVER` flag in `game_config.h`
-- Runtime: user toggle in settings (starts/stops server on demand)
+**The overlay's own structure** - the standings tower's cycling bottom slot (fastest-last-lap, fastest-laps, best-sectors, down-the-order, session-charts, battle), the `?demo` mode that replays a synthetic race with no plugin attached - lives in `mxbmrp3_data/web/js/overlay-*.js`, each file's header describing its own area.
 
 ### 11. Event Log System (`core/event_log_types.h`, `hud/event_log_hud.*`)
 
@@ -483,63 +462,64 @@ Top-level Structured Exception Handling (SEH) filter for unhandled hardware faul
 
 ### 13. CompanionWindow & Software Renderer (`core/companion_window.*`, `core/hud_sw_renderer.*`)
 
-A standalone, in-process OS window that renders the plugin's own HUD **outside** the game, so a player can drag it to a second monitor (telemetry on one screen, standings on another). It is **not** a network mirror and shares nothing with the web overlay — it reads the plugin's live render primitives directly from memory and draws them itself.
+A standalone, in-process OS window that renders the plugin's own HUD **outside** the game, so a player can drag it to a second monitor (telemetry on one screen, standings on another). It is **not** a network mirror and shares nothing with the web overlay - it reads the plugin's live render primitives directly from memory and draws them itself.
 
-**How it renders (`hud_sw_renderer`):** the game normally hands our quads/strings to its own engine to draw. The companion has no engine, so `hud_sw_renderer` is a from-scratch software rasterizer for the exact same primitives: scanline convex-quad fill, affine (rotation-capable) sprite blit with bilinear atlas sampling, and text drawn from the game's own PiBoSo `.fnt` bitmap fonts (see `tools/mxbmrp3_fontgen`). Crucially it reproduces the game's **texture stage**: a texel is modulated by the quad's color (`out.rgb = tex.rgb × color.rgb`, `coverage = tex.a × color.a`) so per-quad **opacity** and the white-icon **colorization** the game does come out identical — a divergence here shows up as icons that ignore opacity or never tint. Presented via a plain Win32 window (`StretchDIBits`), natively on Windows and under Proton/Wine. Normalized HUD coords map into a **centered 16:9 viewport** (`Image::setViewport`) so the HUD keeps its aspect and never distorts in a non-16:9 window — but the renderer draws into the **full client**, so elements positioned outside `[0,1]` (negative / past 1, exactly as the in-game HUD allows) land in the surrounding area instead of being clipped to a letterbox. The window is freely resizable to any shape; only the *content scale* is 16:9, not the usable area.
+**How it renders (`hud_sw_renderer`):** the game normally hands our quads/strings to its own engine to draw. The companion has no engine, so `hud_sw_renderer` is a from-scratch software rasterizer for the exact same primitives: scanline convex-quad fill, affine (rotation-capable) sprite blit with bilinear atlas sampling, and text drawn from the game's own PiBoSo `.fnt` bitmap fonts (see `tools/fontgen`). Crucially it reproduces the game's **texture stage**: a texel is modulated by the quad's color (`out.rgb = tex.rgb × color.rgb`, `coverage = tex.a × color.a`) so per-quad **opacity** and the white-icon **colorization** the game does come out identical - a divergence here shows up as icons that ignore opacity or never tint. Presented via a plain Win32 window (`StretchDIBits`), natively on Windows and under Proton/Wine. Normalized HUD coords map into a **centered 16:9 viewport** (`Image::setViewport`) so the HUD keeps its aspect and never distorts in a non-16:9 window - but the renderer draws into the **full client**, so elements positioned outside `[0,1]` (negative / past 1, exactly as the in-game HUD allows) land in the surrounding area instead of being clipped to a letterbox. The window is freely resizable to any shape; only the *content scale* is 16:9, not the usable area.
 
-**Threading:** the game thread calls `submit()` once per `Draw` with a cheap POD copy of the current frame (quads/strings + the font/sprite registration tables) under a mutex. A dedicated **window thread** owns the Win32 message loop and renders the latest snapshot on its own cadence — so the window stays live and interactive **in menus**, when the game issues no `Draw` calls. Enabled via the `[Display]` INI target; identified by its window class (`isCompanionHwnd()`) so input can tell the two surfaces apart.
+**Threading:** the game thread calls `submit()` once per `Draw` with a cheap POD copy of the current frame (quads/strings + the font/sprite registration tables) under a mutex. A dedicated **window thread** owns the Win32 message loop and renders the latest snapshot on its own cadence - so the window stays live and interactive **in menus**, when the game issues no `Draw` calls. Enabled via the `[Display]` INI target; identified by its window class (`isCompanionHwnd()`) so input can tell the two surfaces apart.
 
-**Window behavior:** persisted geometry + maximized state (window thread writes as the user moves/resizes; game thread reads at save time), **never takes focus** from the game (`WS_EX_NOACTIVATE` is kept for the window's whole life, not cleared after show — input is routed by the window under the cursor, so the companion never needs activating to interact with), hides the OS cursor over its client area (the plugin draws its own), and closing it (the X button) falls the display target back to In-game via a consumed `consumeUserClosed()` flag.
+**Window behavior:** persisted geometry + maximized state (window thread writes as the user moves/resizes; game thread reads at save time), **never takes focus** from the game (`WS_EX_NOACTIVATE` is kept for the window's whole life, not cleared after show - input is routed by the window under the cursor, so the companion never needs activating to interact with), hides the OS cursor over its client area (the plugin draws its own), and closing it (the X button) falls the display target back to In-game via a consumed `consumeUserClosed()` flag.
 
-**Per-surface decoupling (the "two settings menus" model):** the companion is not a dumb clone — each HUD carries an *optional second instance* of its on/off + position (`base_hud.h`: `m_bCompanionConfigured` / `m_bCompanionVisible` / `m_fCompanionOffsetX/Y`). While a HUD is unconfigured its `getCompanion*()` accessors **fall back to the game values** (so both windows look identical, and a game-side change is reflected); the first companion-side edit **snapshots** the game state into the companion instance and thereafter the two are independent. `HudManager::collectSurface(companion)` builds the companion frame as a **second pass** (into `m_companionQuads`/`m_companionStrings`) gated on `CompanionWindow::isEnabled()` — `collectSurface(false)` stays byte-identical to the old single-frame game path. Which surface the settings menu / a drag edits is chosen by `InputManager::getActiveSurface()` (the focused window). Everything else — colors, fonts, sizes, columns — stays shared (one profile).
+**Per-surface decoupling (the "two settings menus" model):** the companion is not a dumb clone - each HUD carries an *optional second instance* of its on/off + position (`base_hud.h`: `m_bCompanionConfigured` / `m_bCompanionVisible` / `m_fCompanionOffsetX/Y`). While a HUD is unconfigured its `getCompanion*()` accessors **fall back to the game values** (so both windows look identical, and a game-side change is reflected); the first companion-side edit **snapshots** the game state into the companion instance and thereafter the two are independent. `HudManager::collectSurface(companion)` builds the companion frame as a **second pass** (into `m_companionQuads`/`m_companionStrings`) gated on `CompanionWindow::isEnabled()` - `collectSurface(false)` stays byte-identical to the old single-frame game path. Which surface the settings menu / a drag edits is chosen by `InputManager::getActiveSurface()` (the focused window). Everything else - colors, fonts, sizes, columns - stays shared (one profile).
 
 **Feature gating:** runtime only (the `[Display]` target: In-game / Companion / Both). Wired to analytics as `feat_companion`.
 
 ### 14. DirectorManager (`core/director_manager.*`)
 
-An **auto-director** for spectating and replays: it drives the broadcast camera by scoring an "interest" model over the field and cutting to the most compelling story, with broadcast-style pacing. It is a global (broadcast) feature persisted in the `[Director]` INI section like HelmetOverlay/Rumble — **not** per-profile — and is passive except while spectating or replaying. It is **off by default** (opt-in, so an upgrade never seizes a spectator's camera or overrides click-to-spectate); the `DirectorWidget` status button is shown for discoverability — one click enables, and the choice persists.
+An **auto-director** for spectating and replays: it scores an "interest" model over the field and cuts the broadcast camera to the most compelling story, with broadcast-style pacing. Global (broadcast) feature persisted in the `[Director]` INI section like HelmetOverlay/Rumble - **not** per-profile - passive except while spectating or replaying, and **off by default** so an upgrade never seizes a spectator's camera. The `DirectorWidget` status button is the discoverability path: one click enables, and the choice persists.
 
-**What it can and cannot control.** The plugin can choose the *spectated rider* (`SpectateVehicles`) and a *named camera* (`SpectateCameras`) through `SpectateHandler` via the proven piSelect/return-1 one-shot pattern, but it **cannot** author camera angles beyond the game's named set. So the director's job is exactly two decisions — **subject selection** plus a **name-based camera baseline** (`CameraRole`: Auto / Trackside / Start / Front Fender / Helmet 1 / Helmet 2 / Rear Fender / Forks / Free-Roam). `Auto` hands framing to the game's own trackside director; `Trackside` is the plugin-picked TV shot used for every story cut.
+**What it can and cannot control.** The plugin can choose the *spectated rider* (`SpectateVehicles`) and a *named camera* (`SpectateCameras`) through `SpectateHandler`, but it **cannot** author camera angles beyond the game's named set. So its job is exactly two decisions: **subject selection**, plus a **name-based camera baseline** (`CameraRole`). `Auto` hands framing to the game's own trackside director; `Trackside` is the plugin-picked TV shot used for every story cut.
 
-**Three drivers, one decision function.** Everything funnels into `evaluate()`, which internally coalesces to ~3×/sec (300 ms) and early-outs unless enabled and spectating/replaying:
-- `onDataChanged(changeType)` (from `HudManager::onDataChanged`) — **Standings** drives race direction; **IdealLap** (live splits, field-wide) drives the non-race timing show; **SessionData** resets all baselines, but only when `sessionGeneration` actually changes (that type also carries the 1 Hz session-clock heartbeat, so resetting on every notification would wipe director state once a second).
-- `pollManualControl()` — per-frame (throttled ~30 Hz), independent of timing data, so the gamepad takeover and auto-resume work even in quiet lulls / solo sessions / replays.
-- `pollPacing()` — per-frame wall-clock pump so the max-shot cap is enforced during quiet stretches when no data callbacks are flowing (otherwise a stable formation would blow past the cap).
+**Three drivers, one decision function.** Everything funnels into `evaluate()`, which coalesces to ~3×/sec and early-outs unless enabled and spectating/replaying:
+- `onDataChanged(changeType)` - **Standings** drives race direction, **IdealLap** the non-race timing show, **SessionData** resets baselines (but only on a real `sessionGeneration` change: that type also carries the 1 Hz clock heartbeat, so resetting per notification would wipe director state once a second).
+- `pollManualControl()` - per-frame, independent of timing data, so gamepad takeover and auto-resume work in quiet lulls, solo sessions and replays.
+- `pollPacing()` - per-frame wall-clock pump, so the max-shot cap still fires when no data callbacks are flowing.
 
-**The decision pipeline (`evaluate()`).** After the coalesce gate it: re-seeds edge baselines if the prior decision was a pause (`seedOnly`, so an edge that happened while yielded never fires a stale cut on resume); yields to a broadcaster hand-flying the camera; adopts a manually spectated rider (with a grace period); and honors the **rider lock** (pins the subject, rotating only the camera on the shot cadence). It then snapshots the racing, on-track field (skipping DNS/retired/pitting/finished-on-slow-down riders), sorted by position, and runs a fixed **priority ladder** — each rung is a `cutTo()`+return, so higher stories pre-empt lower ones:
-
-1. **Incident** (highest) — a fresh crash or a confirmed hazard (down / wrong-way) on the followed rider cuts instantly to forced Trackside and holds, extending while the rider stays a hazard up to a hard cap. Position-weighted pre-emption protects a live battle/overtake from a lower-order tip-over.
-2. **Fastest lap** — flash to a new overall-fastest-lap holder, then hold briefly (honors the min-shot floor so a flurry doesn't machine-gun the camera).
-3. **(non-race) Fastest sectors / pace** — a rider who just beat a session-best individual sector (S1/S2/S3, derived from cumulative splits) is the core timing story; it interrupts and rides the hot lap on Trackside.
-4. **(non-race) Timing show** — otherwise sit on the session pace-setter (rank P1), dipping to the next rider for variety past the max shot.
-5. **(race) Scored stories** — a leader baseline (so there's never dead air) competes with **battles** (`PluginData::getBattleGroups`, the *same* definition the overlay uses), **overtakes** (detected from official position-order flips, a short reward window), **lappers** (a front-runner working through backmarkers, opt-in), and **drops** (a rider tumbling ≥3 places in a rolling window, opt-in). The best score wins; a second-best "alt" subject exists so the max-shot can force variety.
-6. **Finish lock** — on the leader's final lap or once they finish, lock to the front (the lead battle if P1/P2 are close, else solo), run a brief winner celebration, then follow the front-most rider still running to the flag. Bypasses the min-shot so it snaps to the finish.
-
-A cut only fires past the **min-shot** floor (except the by-design bypasses: acquire / subject-gone / incident / finish); holding the **max-shot** forces a variety cut to the alt subject or a round-robin airtime dip so the camera never sticks. **Max shot = `Off` (0)**, the default, disables that forced rotation outright: every story rung still fires and still honors the min-shot floor, but nothing cuts on a timer, and the dead-air floor becomes the *broadcaster's own rider* — whoever was spectated when the director was enabled, plus every later manual pick — instead of the leader/pace-setter, so a story cut comes back home (`reason=home`) once the story ends, degrading to the leader while that rider is off-track so Off never means dead air. `pickShot` also pins every shot to Auto/Trackside while it is Off: an onboard dip belongs to a director running the whole broadcast, not to a shot the caster chose, so the Onboard-variety settings grey out with it.
-
-**Scoring weights** (`posWeight` gives P1 ≈ 1.8× fading to 1.0 by ~P11): battle = `closeness × posWeight × 2 × sizeBoost` (bigger nose-to-tail groups score higher); overtake = `posWeight × 3 × passBoost` (a multi-place move outranks a routine battle); lapper `× 1.2`; drop `× 1.6 × dropBoost`; leader baseline `posWeight(1) × 0.6`. All battle/overtake/drop logic is race-only and keyed on **official** gaps/positions (not live gaps, which flicker); overtake and drop detection defer through the opening lap so the start scramble doesn't fire spurious cuts.
-
-**Camera selection (`pickShot`).** A battle is framed Trackside on the front rider; every Nth cut dips to a **direction-correct** onboard (the defender gets a rearward cam, a chaser a forward one), rotating through the group and the enabled pool so an onboard never points up an empty track. Solo shots draw from that pool or fall back to `Auto`.
-
-**Manual control & yielding.** A deliberate stick push (gamepad takeover) grabs Free-Roam and pauses the director with no menu; it auto-resumes once the caster stops flying (`Resume after` seconds, or a 3 s fallback when that is Off so they aren't trapped). A caster manually spectating a different rider is adopted with a grace window. The reclaim path deliberately does **not** adopt a Free-Roam camera's unstable "spectated" rider — that would re-arm the yield every eval and trap the director on manual forever.
+**The priority ladder.** After yielding to a hand-flown camera and honouring the rider lock, `evaluate()` runs a fixed ladder over the racing, on-track field - incident, fastest lap, fastest sectors, timing show, scored stories (leader / battle / overtake / lapper / drop), finish lock - each rung a `cutTo()`+return, so higher stories pre-empt lower ones. **The rungs, the scoring weights, the min/max-shot pacing and the onboard-variety rules are documented at the mechanism, in `director_manager.h`** - they are tuning, they move, and a second copy here would drift.
 
 **Consumers.** Two, both reading the director's published status:
-- `DirectorWidget` (`hud/director_widget.*`) — an on-screen status button (a camera icon tinted by state) that toggles the director on click; a thin window onto `DirectorManager`, clipped unless spectating/replaying.
-- The **web overlay** — `buildJsonSnapshot()` emits a `director` advisory (`on / active / subject / with / shot / paceSplit / gained / lost / camera`, suppressed to `-1` while paused/manual/held so the overlay never highlights a stale rider) and a `battles` array from the **same** `getBattleGroups(battleGap, maxPos)`. This is the "one brain, one config" property: the in-game director and the overlay's battle panel agree on what a battle is because both read the director's battle-gap / max-position settings. The overlay's battle panel mirrors whatever the director is framing.
+- `DirectorWidget` (`hud/director_widget.*`) - an on-screen status button (a camera icon tinted by state) that toggles the director on click; clipped unless spectating/replaying.
+- The **web overlay** - `buildJsonSnapshot()` emits a `director` advisory (suppressed to `-1` while paused/manual/held so the overlay never highlights a stale rider) and a `battles` array from the **same** `getBattleGroups(battleGap, maxPos)`. That shared call is the "one brain, one config" property: the in-game director and the overlay's battle panel agree on what a battle is because both read the director's own settings.
 
-**Observability & tests.** Every cut logs one parseable line — `Director cut: t=<ms> #<num> shot=<type> cam=<name> partner=<num> reason=<reason>` (reasons: `acquire` / `subject-gone` / `story` / `maxshot` / `return` / `home` / `incident` / `fastest` / `pace` / `finish`) — so a whole broadcast can be reconstructed offline: `tools/director_report.py` runs off a real log, and `tests/integration/tests/director_broadcast_test.cpp` runs the same analysis headless off a recorded tape. **That shared cut-log format is a contract** — a one-sided change to `cutTo()` silently stops both analyses parsing. The `testSetNowMs()` hook injects a simulated wall-clock so a headless replay drives the real pacing from recorded timestamps. TESTING.md's catalogue lists the rest of the director's coverage.
+**The cut log is a contract.** Every cut logs one parseable line - `Director cut: t=<ms> #<num> shot=<type> cam=<name> partner=<num> reason=<reason>` - so a whole broadcast can be reconstructed offline. `tools/director_report.py` parses it from a real log and `tests/integration/tests/director_broadcast_test.cpp` runs the same analysis headless off a recorded tape, so a one-sided change to `cutTo()` silently breaks both. `testSetNowMs()` injects a simulated wall-clock so a headless replay drives the real pacing from recorded timestamps.
 
-**Threading.** All access (hotkeys, settings, UI dispatch, `onDataChanged`, the per-frame polls) is on the game thread, so the members are deliberately non-atomic; a future background writer would have to make the touched fields atomic (see the cross-thread-flags invariant in CLAUDE.md).
+**Threading.** All access (hotkeys, settings, UI dispatch, `onDataChanged`, the per-frame polls) is on the game thread, so the members are deliberately non-atomic; a background writer would have to make the touched fields atomic (see the cross-thread-flags invariant in CLAUDE.md).
 
-### 15. PluginThread — game-thread isolation (`core/plugin_thread.*`) — EXPERIMENTAL, opt-in
+### 15. PluginThread - game-thread isolation (`core/plugin_thread.*`) - EXPERIMENTAL, opt-in
 
 An **opt-in** mode (`[Advanced] pluginThread=1`, **off by default**) that moves *all* per-frame and per-event work onto a **dedicated worker thread**, so a hiccup on our side can never stall the game's frame. `core/plugin_thread.h`'s header states the threading model, the two O(1) game-thread touchpoints, what is deliberately not routed through the worker, and why `reconcileEnabled()` must run on the game thread; `render_frame_buffer.h` covers the triple buffer. What belongs at *this* altitude is how it changes the shape of the system:
 
-- **The single-owner property still holds.** Every handler runs verbatim on the worker, which has simply taken over the game thread's role as sole owner of PluginData/HudManager. So "PluginData is not thread-safe; it's touched on one thread" is unchanged — just not the game's. `onDataChanged` → `HttpServer::buildJsonSnapshot` therefore also runs on the worker; the SSE threads keep reading the mutex-guarded cached string as before.
-- **Spectate is the one path still partly on the game thread**, because `SpectateVehicles`/`SpectateCameras` must answer *that frame*. `SpectateHandler`'s request/tracking fields are `std::atomic`, and the one call that cascades into real mutation (`setSpectatedRaceNum`) is routed onto the worker — so the game thread only reads atomics and the game's own arrays.
-- **Performance metrics change meaning, deliberately** — in threaded mode "plugin time" is the worker's build cost, not game-thread cost. The full contract is at `DebugMetrics` in `core/plugin_data_types.h`.
+- **The single-owner property still holds.** Every handler runs verbatim on the worker, which has simply taken over the game thread's role as sole owner of PluginData/HudManager. So "PluginData is not thread-safe; it's touched on one thread" is unchanged - just not the game's. `onDataChanged` → `HttpServer::buildJsonSnapshot` therefore also runs on the worker; the SSE threads keep reading the mutex-guarded cached string as before.
+- **Spectate is the one path still partly on the game thread**, because `SpectateVehicles`/`SpectateCameras` must answer *that frame*. `SpectateHandler`'s request/tracking fields are `std::atomic`, and the one call that cascades into real mutation (`setSpectatedRaceNum`) is routed onto the worker - so the game thread only reads atomics and the game's own arrays.
+- **Performance metrics change meaning, deliberately** - in threaded mode "plugin time" is the worker's build cost, not game-thread cost. The full contract is at `DebugMetrics` in `core/plugin_data_types.h`.
 - **One-frame latency** is inherent: `Draw` serves the previous finished frame, which is what makes it non-blocking.
-- **Not a fix for game-side stalls** — it isolates *our* work, nothing about hitches inside the engine.
+- **Not a fix for game-side stalls** - it isolates *our* work, nothing about hitches inside the engine.
+
+### 16. SpotterManager (`core/spotter_manager.*`, `core/spotter_*.h`)
+
+An audio **spotter**: short spoken callouts over the game audio, the way a crew chief talks on the radio. It is a global (per-install) feature in the `[Spotter]` INI section, and it is the largest subsystem added since the HTTP server - the hub class plus ten pure headers, each with its own tests.
+
+**Where the pieces are.** `spotter_manager.*` is the hub and the only stateful part. Everything it decides is delegated to pure headers, which is why the logic is unit-testable without a game: `spotter_phrase.h` (event → words, and the cue **categories** that decide which settings switch mutes a cue), `spotter_cue_pack.h` (the pack format), `spotter_mix.h` (the chunk mixer), `spotter_hazard.h` (proximity / alongside / blue-flag edges), `spotter_milestones.h`, `spotter_pace.h` (gaps and trends), `spotter_vars.h` (the `{placeholder}` registry), `spotter_queue.h`, `spotter_stretch.h`, `spotter_tts_voice.h`. Read the hub's header first: it maps them.
+
+**One emit path, one category gate.** Every cue goes through `emitCue(key, category, vars…)`. The category a cue is emitted *as* is the same one that mutes it, by construction - this used to be checked at each of twenty-odd emitters and three had drifted, leaving settings switches that did not silence what they named. Ambient variables (position, gaps, rider names) are filled in `emitCue` from live state rather than carried by each event, so a new variable reaches every template at once.
+
+**Three output rungs**, all zero-dependency Windows built-ins, tried in order per cue: a pack's stitched **mix** (chunks assembled from memory), a pack's whole **wav**, or **SAPI TTS**. The bundled `default` pack is text only, so out of the box every cue lands on TTS. Worth knowing: **SAPI does not exist under Wine/Proton**, so on those systems a default install is silent and a recorded pack is what makes it audible.
+
+**Packs are content, not configuration.** `mxbmrp3_data/spotters/<name>/<name>.ini` is a pack's whole vocabulary - one line per cue key, `_2`/`_3` suffixes for variants picked at random, `[optional groups]` that drop when their variables are empty. A pack is chosen by NAME, never by discovery index (the asset-pack invariant in CLAUDE.md). `docs/spotter.md` is the author's guide; `docs/spotter-reference.md` is generated from the registry by `tools/spottergen`, so the documented cue set cannot drift from the code.
+
+**Threading.** All audio runs on one worker started lazily at the first cue, so the 480fps game thread never touches COM, disk or a speech engine; `say()`/`playWav()` enqueue under a mutex and notify. Speech is serialised (a spotter talking over itself is noise); wav playback is fire-and-forget through winmm, which gives **one channel, no per-sound volume and no ducking** - a backend limit, not a design choice, so the `[Spotter]` volume applies to TTS only. The worker is joined by the orchestrated `PluginManager::shutdown()`, never by the destructor, per the DLL-detach invariant.
+
+**Tests.** Pure logic in `tests/unit/test_spotter_*.cpp`; end-to-end cue behaviour in `tests/integration/tests/spotter_test.cpp`, which drives real callbacks and reads the chosen cue through a test hook rather than listening to audio. `test_spotter_pack_census.cpp` asserts every key in the registry is actually emitted by something - the check that catches a cue wired up, documented, shipped, and firing never.
 
 ## The HUD System
 
@@ -580,7 +560,7 @@ Abstract base class that all HUDs inherit from. Provides:
 - `TelemetryHud` - Throttle/brake/suspension graphs
 - `PerformanceHud` - FPS, CPU usage graphs
 - `RadarHud` - Proximity radar with nearby rider alerts
-- `PitboardHud` - Pitboard-style lap/split information
+- `PitboardHud` - Pitboard-style lap/split information. Ships as a **pack** (`pitboards/<name>/` = art + `<name>.ini` of its proportions and row offsets), selected by name - what makes a custom board portable: its geometry used to live in the *user's* settings file, and its aspect was a compiled constant
 - `RecordsHud` - Track records from online databases (CBR or MXB-Ranked providers)
 - `TimingHud` - Split time comparison popup (center display)
 - `GapBarHud` - Live gap visualization bar with ghost position marker
@@ -603,6 +583,7 @@ Abstract base class that all HUDs inherit from. Provides:
 - `TimeWidget` - Session time remaining
 - `ClockWidget` - Real-time clock
 - `GearWidget` - Current gear indicator
+- `CrashWidget` - A resettable crash tally for streaming. Deliberately NOT a view of StatsManager's per-track+bike `crashCount`: it counts across practice, races, server hops and restarts (`GlobalStats::crashTally`) and moves only on the widget's Reset button or the `CRASH_RESET` hotkey. Sized to share Speed's and Gear's content box so the three tile in a row
 - `SpeedoWidget` - Analog speedometer dial
 - `TachoWidget` - Analog tachometer dial
 - `BarsWidget` - Visual telemetry bars (throttle, brake, etc.)
@@ -611,7 +592,7 @@ Abstract base class that all HUDs inherit from. Provides:
 - `FuelWidget` - Fuel calculator with consumption tracking
 - `TyreTempWidget` - Front and rear tyre tread temperatures (GP Bikes only)
 - `EcuWidget` - Electronic rider aids: engine map, traction control, engine braking, anti-wheeling (GP Bikes only)
-- `GamepadWidget` - Controller visualization with button/stick/trigger display
+- `GamepadWidget` - Controller visualization with button/stick/trigger display. Sizes its interior from its own FRAME, not the global grid (`hud/gamepad_geometry.h` says why). Its ~30 button offsets are per-pad DATA, so a pad ships as a **pack** - `gamepads/<name>/` = 17 `.tga` + `<name>.ini`, selected by *name* - and a new pad needs no build
 - `CompassWidget` - Bike heading dial (classic north-up needle, or modern rotating card with numeric readout)
 - `VersionWidget` - Plugin version display (includes hidden Breakout game easter egg; high score persisted via StatsManager)
 - `SettingsButtonWidget` - Settings menu toggle button
@@ -634,24 +615,25 @@ Abstract base class that all HUDs inherit from. Provides:
 **[`CLAUDE.md`](CLAUDE.md) → *Common Tasks* → "Adding a New HUD" is the
 authoritative step list** and is kept current with the registries it names (the
 CMake source glob, `HudManager`, the `s_tabRegistry` tab row, the per-HUD
-serializer registry row). It is deliberately not restated here — a second copy
+serializer registry row). It is deliberately not restated here - a second copy
 drifts, and the reader can't tell which one is stale.
 
 What this layer contributes is the `BaseHud` contract those steps assume:
 
-- **Constructor** — defaults (`setDraggable`, `setPosition`), `reserve()` the
+- **Constructor** - defaults (`setDraggable`, `setPosition`), `reserve()` the
   primitive vectors, build once.
-- **`handlesDataType()`** — which changes dirty this HUD.
-- **`rebuildRenderData()`** — clear and rebuild `m_quads`/`m_strings` from
+- **`handlesDataType()`** - which changes dirty this HUD.
+- **`rebuildRenderData()`** - clear and rebuild `m_quads`/`m_strings` from
   `PluginData`, then `setBounds()`. Read fresh; cache only formatted output.
-- **`rebuildLayout()`** — the drag fast path: reposition existing primitives
+- **`rebuildLayout()`** - the drag fast path: reposition existing primitives
   rather than rebuilding. It must agree with `rebuildRenderData()` on placement
-  (`standings_layout_test.cpp` pins that after the plate-nudge bug).
-- **`update()`** — service `isDataDirty()` then `isLayoutDirty()`. Gate any
+  (`standings_layout_test` pins that after the plate-nudge bug, and the placement
+  itself beside it - two paths can agree on a wrong one).
+- **`update()`** - service `isDataDirty()` then `isLayoutDirty()`. Gate any
   skip-when-hidden check on `isVisibleAnySurface()`, never `isVisible()`.
 
-Pure decision logic — which rows to draw, which gap to show, where a glyph sits
-— increasingly lives in a small header beside the HUD (`standings_gap_plan.h`,
+Pure decision logic - which rows to draw, which gap to show, where a glyph sits
+- increasingly lives in a small header beside the HUD (`standings_gap_plan.h`,
 `lap_log_plan.h`, `peak_marker.h`, …) so it is unit-testable with plain `g++`
 instead of only through the DLL under Wine. Prefer that shape for anything with
 interesting branches; TESTING.md's Layer 1 catalogue lists them.
@@ -690,9 +672,9 @@ struct SPluginString_t {
 };
 ```
 
-**Font format & text encoding.** The game's `.fnt` bitmap fonts are a **byte-indexed 256-glyph table** built from CP1252 (see `fontgen.cfg`: `code_page = 1252`, glyphs 32–255). The renderer indexes by raw byte, so it cannot render UTF-8 — multi-byte rider names garble regardless of any truncation logic, which makes UTF-8-safe truncation *in-game* moot. The web overlay is the only UTF-8-aware renderer and handles names client-side. `m_szString` is `char[100]`, so in-game strings are also length-bounded by the struct.
+**Font format & text encoding.** The game's `.fnt` bitmap fonts are a **byte-indexed 256-glyph table** built from CP1252 (`code_page = 1252`, glyphs 32–255). The renderer indexes by raw byte, so it cannot render UTF-8 - multi-byte rider names garble regardless of any truncation logic, which makes UTF-8-safe truncation *in-game* moot. The web overlay is the only UTF-8-aware renderer and handles names client-side. `m_szString` is `char[100]`, so in-game strings are also length-bounded by the struct.
 
-**Header/label convention.** Table column headers and axis labels go through `BaseHud::addLabel()` — the STRONG font at the *Small* size, vertically centered in the row via `labelRowYOffset()` — rather than a hand-rolled `addString` at data-font size. FriendsHud (column headers) and FmxHud (rotation-arc Pitch/Yaw/Roll labels) both deviated and were brought in line; new HUDs should use the helper.
+**Header/label convention.** Table column headers and axis labels go through `BaseHud::addLabel()` - the STRONG font at the *Small* size, vertically centered in the row via `labelRowYOffset()` - rather than a hand-rolled `addString` at data-font size. FriendsHud (column headers) and FmxHud (rotation-arc Pitch/Yaw/Roll labels) both deviated and were brought in line; new HUDs should use the helper.
 
 ### Coordinate System
 
@@ -723,8 +705,11 @@ The settings layer is split across several TUs (all `SettingsManager`): `setting
 (global-section `writeGlobalSettings`/`applyGlobalLine`), `settings_hud_profiles.cpp`
 (per-profile capture/apply orchestration + profile switch/copy/reset), and
 `settings_hud_registry.{cpp,h}` (the per-HUD serializer registry, below). Shared free helpers
-live in `settings_keys.h` (INI key constants) and `settings_serde.h` (enum⇄string, bitmask
-save/load, base-HUD capture/apply, validators), all in `namespace Settings`.
+live in `settings_keys.h` (INI key constants), `settings_serde.h` (the HUD-free half:
+generic enum⇄string, bitmask primitives, base-HUD capture/apply, validators) and
+`settings_serde_hud.h` (the HUD-typed half: per-HUD enum converters and column/row bitmask
+save/loads - TUs that serialize concrete HUD types include this one), all in
+`namespace Settings`.
 
 Saves/loads HUD configuration to INI file format:
 
@@ -749,25 +734,25 @@ Settings are saved:
 - On plugin shutdown (and on change, when Auto-Save is enabled)
 - File location: `{game_save_path}/mxbmrp3/mxbmrp3_settings.ini`
 
-**Parse robustness.** Hand-editing the INI is a supported workflow (`auto_save` off, then the RELOAD_CONFIG hotkey), so **every** value-parsing site in `loadSettings()` must be exception-guarded — a single naked `std::stoul`/`std::stof` on a typo'd value throws out of the loader and aborts the parse mid-file, leaving the plugin half-configured for the session. The one offender found was the v4 base-section color path calling `parseColorHex` (a bare `std::stoul`) without a `try/catch`. `parseColorHex` itself stays a thin wrapper, so the guard belongs at each call site, wrapping the whole section's branch.
+**Parse robustness.** Hand-editing the INI is a supported workflow (`auto_save` off, then the RELOAD_CONFIG hotkey), so **every** value-parsing site in `loadSettings()` must be exception-guarded - a single naked `std::stoul`/`std::stof` on a typo'd value throws out of the loader and aborts the parse mid-file, leaving the plugin half-configured for the session. The one offender found was the v4 base-section color path calling `parseColorHex` (a bare `std::stoul`) without a `try/catch`. `parseColorHex` itself stays a thin wrapper, so the guard belongs at each call site, wrapping the whole section's branch.
 
 #### Per-profile vs global sections
 
 Settings fall into two kinds, persisted differently:
 
-- **Per-profile** — each HUD/widget has a base `[HudName]` section (the defaults) plus
+- **Per-profile** - each HUD/widget has a base `[HudName]` section (the defaults) plus
   optional `[HudName:Practice|Qualify|Race|Spectate]` override sections. Saving is **sparse**:
   a profile section only contains the keys that *differ* from the base. There are four
   profiles (`ProfileType`: Practice, Qualify, Race, Spectate) that auto-switch with the
   session type.
-- **Global** (single value, not per-profile) — `[General]`, `[Updates]`, `[Advanced]`,
+- **Global** (single value, not per-profile) - `[General]`, `[Updates]`, `[Advanced]`,
   `[Display]`, `[Colors]`, `[Fonts]`, `[Rumble]`, `[HelmetOverlay]`, `[Hotkeys]`. These are
   owned by singletons (UiConfig, ColorConfig, UpdateChecker, etc.), not by a profile.
 
 #### Per-HUD serializer registry (one list for capture / apply / serialize)
 
-The per-profile HUD sections are driven by a **single ordered table** —
-`Settings::hudSectionRegistry()` in `settings_hud_registry.cpp` — where each row is
+The per-profile HUD sections are driven by a **single ordered table** -
+`Settings::hudSectionRegistry()` in `settings_hud_registry.cpp` - where each row is
 `{ section name, capture fn, apply fn }`. All three consumers iterate it:
 
 - `captureToCache()` → `s.capture(...)` for every row (live HUD → profile cache),
@@ -789,29 +774,29 @@ apply-path tests (`settings_idempotency_test`, `settings_apply_values_test`).
 Both save and load route global sections through a **single pair** of functions, so they can't
 drift as settings are added:
 
-- `writeGlobalSettings(ostream&)` — the sole emitter for every global section. Used by
+- `writeGlobalSettings(ostream&)` - the sole emitter for every global section. Used by
   `saveSettings()` *and* by `captureFactoryDefaults()` to snapshot defaults at startup.
-- `applyGlobalLine(section, key, value)` — the sole applier. Used by `loadSettings()` *and*
+- `applyGlobalLine(section, key, value)` - the sole applier. Used by `loadSettings()` *and*
   by the reset paths.
 
 **Reset = replay the factory snapshot through the same applier.** At startup (before the
 user's INI is parsed, while every singleton holds its constructor defaults),
 `captureFactoryDefaults()` captures two snapshots:
 
-- `m_globalDefaultsIni` — global sections as INI text. `resetGlobalsToFactoryDefaults()`
+- `m_globalDefaultsIni` - global sections as INI text. `resetGlobalsToFactoryDefaults()`
   (full reset) and `resetGlobalSectionsToFactoryDefaults({...})` (per-tab reset for tabs
   that map 1:1 to a section) replay it via `applyGlobalLine`.
-- `m_hudFactoryDefaults` — pristine per-HUD constructor defaults. The per-HUD reset paths
+- `m_hudFactoryDefaults` - pristine per-HUD constructor defaults. The per-HUD reset paths
   (`resetAllToFactoryDefaults`, `resetHudsToFactoryDefaults`, `resetActiveProfileToFactoryDefaults`)
   replay *this*, **not** `m_hudDefaults`.
 
 > Why two HUD caches? `m_hudDefaults` is the sparse-save baseline and has the user's
 > hand-edited base `[HudName]` keys *folded in* at load (so they round-trip). That makes it
-> the wrong source for "reset to defaults" — it would restore the file's baseline (or, after a
+> the wrong source for "reset to defaults" - it would restore the file's baseline (or, after a
 > plugin upgrade, an *old* version's default) instead of this build's. `m_hudFactoryDefaults`
 > is captured before any folding, so reset always means this build's defaults. Don't collapse
 > the two. (Migration note: legacy keys are read from their old section as a fallback and
-> migrate to the new section on next save — e.g. update keys `[General]`/`[Advanced]` →
+> migrate to the new section on next save - e.g. update keys `[General]`/`[Advanced]` →
 > `[Updates]`, units `[General]` → `[Display]`.)
 
 ### SettingsHud (`hud/settings_hud.*`)
@@ -843,7 +828,7 @@ mxbmrp3/hud/settings/
 
 | Method | Purpose |
 |--------|---------|
-| `addSectionHeader(title)` | Section divider with label |
+| `addSectionHeading(title)` | Section divider with label |
 | `addToggleControl(label, value, ...)` | On/Off toggle with `< value >` arrows |
 | `addCycleControl(label, value, ...)` | Multi-value cycle control |
 | `addStandardHudControls(hud)` | Common controls (Visible, Title, Texture, Opacity, Scale) |
@@ -905,7 +890,7 @@ Maps semantic font categories to user-selected fonts:
 | `MARKER` | FuzzyBubbles-Regular | Handwritten style |
 | `SMALL` | Tiny5-Regular | Map/radar labels |
 
-The authoritative category set and defaults live in the `FontCategory` enum + `FontConfig` defaults (`core/font_config.*`) — add a category there and this table is illustrative, not exhaustive. Access via `PluginConstants::Fonts::getTitle()`, `getNormal()`, etc.
+The authoritative category set and defaults live in the `FontCategory` enum + `FontConfig` defaults (`core/font_config.*`) - add a category there and this table is illustrative, not exhaustive. Access via `PluginConstants::Fonts::getTitle()`, `getNormal()`, etc.
 
 ### ColorConfig (`core/color_config.*`)
 
@@ -992,9 +977,9 @@ This is crucial for performance since `Draw()` is called every frame.
 
 **Gate on the flags, not the frame.** A HUD must rebuild only when `isDataDirty()`/`isLayoutDirty()` is set, never unconditionally per frame (unless the rebuild is trivially cheap). TelemetryHud was re-tessellating ~1600 line segments (each with a `sqrt`) every frame at 480fps for data that only changes at the 100Hz telemetry rate, so more than half the rebuilds produced identical output. (Becoming visible sets data-dirty via `BaseHud::setVisible`, so the first rebuild is unaffected.) The same proportionality applies to input polling: `HotkeyManager` refreshes only the *bound* keys each frame, doing the full 256-key `GetAsyncKeyState` sweep only while capturing a new binding.
 
-**The visibility/dirty flags are atomic.** `m_bVisible`, `m_bDataDirty`, and `m_bLayoutDirty` are `std::atomic<bool>` — and `setDataDirty()` writes *both* dirty flags. Background workers legitimately mark HUDs dirty: the records fetch thread (`RecordsFetcher`) flags RecordsHud and TimingHud on completion, and the update-checker/downloader callbacks reach `VersionWidget::showUpdateNotification` (`m_bVisible` + the atomic `m_showingUpdateNotification`) and `SettingsHud::setDataDirty`. The reads happen every frame on the game thread; plain bools made that a data race (benign on x86-64 but UB). Keep any flag written cross-thread atomic.
+**The visibility/dirty flags are atomic.** `m_bVisible`, `m_bDataDirty`, and `m_bLayoutDirty` are `std::atomic<bool>` - and `setDataDirty()` writes *both* dirty flags. Background workers legitimately mark HUDs dirty: the records fetch thread (`RecordsFetcher`) flags RecordsHud and TimingHud on completion, and the update-checker/downloader callbacks reach `VersionWidget::showUpdateNotification` (`m_bVisible` + the atomic `m_showingUpdateNotification`) and `SettingsHud::setDataDirty`. The reads happen every frame on the game thread; plain bools made that a data race (benign on x86-64 but UB). Keep any flag written cross-thread atomic.
 
-**Second-level render caches key on their inputs.** Where a rebuild is dominated by sub-geometry that *doesn't* change every rebuild, cache it keyed on everything that affects its output. MapHud's `renderTrack()` does this: every `RaceTrackPosition` marks the map dirty, but with rotation/zoom off the track ribbon is bit-identical between rebuilds, so its two tessellation passes are cached in `m_ribbonQuads` keyed by `TrackRibbonKey` (rotation, render bounds, scales, HUD offset, clip rect, LOD, zoom params, title row, the two colors — every input baked into the emitted quads). **Any new input to the ribbon output must be added to the key**, or the cache serves stale geometry. In rotate-to-player/zoom-follow modes the key changes every rebuild by design, so it's a transparent pass-through there.
+**Second-level render caches key on their inputs.** Where a rebuild is dominated by sub-geometry that *doesn't* change every rebuild, cache it keyed on everything that affects its output. MapHud's `renderTrack()` does this: every `RaceTrackPosition` marks the map dirty, but with rotation/zoom off the track ribbon is bit-identical between rebuilds, so its two tessellation passes are cached in `m_ribbonQuads` keyed by `TrackRibbonKey` (rotation, render bounds, scales, HUD offset, clip rect, LOD, zoom params, title row, the two colors - every input baked into the emitted quads). **Any new input to the ribbon output must be added to the key**, or the cache serves stale geometry. In rotate-to-player/zoom-follow modes the key changes every rebuild by design, so it's a transparent pass-through there.
 
 #### Standard Pattern (Most HUDs)
 
@@ -1098,21 +1083,17 @@ void HudManager::onDataChanged(DataChangeType changeType) {
 }
 ```
 
-**The `Standings` firehose.** `DataChangeType::Standings` is the highest-frequency notification: `updateRealTimeGaps()` runs on every `RaceTrackPosition` callback, and the per-rider `GAP_UPDATE_THRESHOLD_MS` (100ms) filter is structurally defeated on full grids — leader timing is quantized to 100 points per lap, so a gap steps by ~lapTime/100 (well above the threshold) whenever *any* rider crosses a quantization boundary, which on a 30+ grid is nearly every callback. Left unchecked, that rebuilt every table HUD (Standings/Timing/Pitboard/Friends) every frame during close racing. So the notification is **time-coalesced** to at most one per `gapNotifyIntervalMs` (default 100ms): a skipped notify is carried in `m_gapNotifyPending` and flushed by a later call, so the final change is never dropped. MapHud/RadarHud are unaffected — they rebuild from their own `updateRiderPositions` path.
+**The `Standings` firehose.** `DataChangeType::Standings` is the highest-frequency notification: `updateRealTimeGaps()` runs on every `RaceTrackPosition` callback, and the per-rider `GAP_UPDATE_THRESHOLD_MS` (100ms) filter is structurally defeated on full grids - leader timing is quantized to 100 points per lap, so a gap steps by ~lapTime/100 (well above the threshold) whenever *any* rider crosses a quantization boundary, which on a 30+ grid is nearly every callback. Left unchecked, that rebuilt every table HUD (Standings/Timing/Pitboard/Friends) every frame during close racing. So the notification is **time-coalesced** to at most one per `gapNotifyIntervalMs` (default 100ms): a skipped notify is carried in `m_gapNotifyPending` and flushed by a later call, so the final change is never dropped. MapHud/RadarHud are unaffected - they rebuild from their own `updateRiderPositions` path.
 
 **New consumers must respect the firehose.** Any new `onDataChanged` consumer beyond the HUDs sits on this hot path and must be trivially cheap *or* short-circuit before any string/alloc work, gated on whether its output is even consumed: `HttpServer` gates the snapshot build on `hasActiveClients()` (see HttpServer above), and `SteamFriendsManager::updateLocalPresence` fingerprints its raw inputs in a POD `PresenceInputs` compare and returns before building ~10 strings when nothing changed (session time bucketed per second, the finest granularity the self-row clock displays).
 
 ## Constants & Configuration
 
-All magic numbers live in `plugin_constants.h`:
+Magic numbers live in `plugin_constants.h` - but the LAYOUT ones do not, and that
+distinction is the point of the split:
 
 ```cpp
 namespace PluginConstants {
-    namespace FontSizes {
-        constexpr float NORMAL = 0.0200f;
-        constexpr float LARGE = 0.0300f;
-    }
-
     // Colors are configurable via ColorConfig singleton
     // ColorConfig::getInstance().getPrimary(), getSecondary(), etc.
 
@@ -1123,10 +1104,93 @@ namespace PluginConstants {
 }
 ```
 
-**INI-only tuning knobs.** A few power-user settings have no in-game control and are edited directly in the INI (documented inline, clamped on load, reset covered by the global-snapshot replay). Two were added for the performance work:
+### The layout vocabulary is DATA (`core/layout_metrics.h`)
 
-- `[Rumble] send_interval_ms` (4–200, default `DEFAULT_RUMBLE_SEND_INTERVAL_MS` = 10) — the continuous-rumble-feed cadence cap. Lower = more responsive; higher = less Bluetooth traffic on degraded stacks. Global (on XInputReader), never per-bike, since send cadence is a transport property, not an effect preference.
-- `[Advanced] gapNotifyIntervalMs` (0–1000, default 100) — live-gap HUD refresh coalescing (see *Data Change Notifications*). `0` restores notify-on-every-change for anyone who prefers per-frame gap updates over frame budget.
+Font sizes, the snap grid, panel padding and the settings panel's block metrics
+live in one struct (`core/layout_metrics.h`) rather than as `constexpr` blocks
+spread across `plugin_constants.h` and a settings-panel header, where three copies
+of the grid axis once drifted 5.4% apart.
+
+**Two of them are settable**, from `[Advanced]` in the settings INI: `uiFontSize`
+(base text size as a fraction of screen height) and `uiLineHeight` (row pitch as a
+multiple of it). Both feed `derive()`, so every tier, row and grid cell follows.
+Everything else is a compiled constant.
+
+**It was all settable once**, from a defaults ini under the themes folder that
+documented forty keys, each of which a theme could override. That went because the usage evidence was
+unambiguous: across every theme a user would actually pick, the number of layout
+keys set was **zero** - the themes of the day set slice values, colours and fonts,
+and the only file exercising the tuning surface was the debug theme, whose job is to
+demonstrate that the surface exists. (Every shipped theme states the full box now,
+so the surface is exercised by all of them.) Two of the knobs were also measurably
+dishonest: `[panel] padding-x` was inert below 6 cells because the frame clearance
+dominated it, and `[panel] border-x/-y` existed *only* to work around a quantisation
+dead zone that no longer exists.
+
+**The grid IS the character box**, divided by `cellsPerChar` / `cellsPerRow` (1 and
+2: one cell is one character wide and half a text row tall). Nothing else defines a
+lattice - `snapX/snapY/ceilX/ceilY` hang off `LayoutMetrics`, and the grid overlay
+draws those same numbers. The lattice is SHARED, which is why it is not per-theme:
+HUDs align to each other by landing on the same grid lines.
+
+### Panel themes (`ThemeAsset`, `hud/nine_slice.h`)
+
+A theme is a folder of `.tga` under `mxbmrp3_data/themes/<name>/` plus that ini.
+Three slice SETS, each with its own `border` in GRID CELLS: `[frame]` (the panel frame),
+`[card]` (title bands, settings section cards, HUD body cards) and `[button]`. `[card]`
+also takes `title border`, sizing the TITLE BAND's border alone on those same sprites;
+absent it *follows* `border` (`ThemeAsset::titleBorderOverride`).
+
+NINE files per set (center + four corners + four edges); `ThemeAsset` says why.
+
+**Sprite order is an unchecked contract** for THEMES: `discoverThemes()` hands out
+indices in `spriteFiles` order and `setupDefaultResources()` pushes them in it;
+diverge and a theme draws another's sprites (hence the rewind on rejection). The
+asset packs removed this class by walking one shared `kStems` table.
+
+**Title bands and body cards** are new geometry rather than frame decoration - a band
+behind the caption, a card behind the content, both spanning the panel's inner width
+and placed from `[title]`. The band is universal; the body card is opt-in
+(`m_bContentCard`), and widgets may take one - a lint once banned that, and its
+post-mortem is at `core/panel_box.h`. `[card] widget-content` is the
+per-theme choice that replaced the ban.
+
+**Which themes ship is not stated here** - `mxbmrp3_data/themes/` is the list, and a
+count in prose only goes stale. The `.tga` are edited directly, or cut from a single
+master by `tools/themeslice` - which slices, never draws; the masters live in
+`assets/themes/`, alongside `debug` (master + ini, slices deliberately NOT built:
+it is a measuring instrument for a skinner, so it costs a checkout rather than
+every install).
+
+**They share one GEOMETRY and differ only in art, colour and typeface**, so a panel
+measures the same whichever a player picks and a retune is one decision rather than
+one per theme. Enforced by `tools/check_docs.py`, which compares the themes against
+*each other* rather than against a canonical copy - a copy in the checker would be
+the first place to go stale. `debug` is the one exemption, and the checker names it.
+
+**Their semantic colours follow the PLUGIN's ramp, not their design language's**:
+green positive, orange warning, yellow neutral, red negative, as `ColorConfig`'s
+built-in defaults do. The hues are the language's own; only which slot each fills
+is ours. A theme that reassigned them would make a delta mean something different
+depending on the theme, which is the one thing a palette must not do.
+
+`debug` is a measuring instrument rather than a look, and it ships because that is
+what makes it useful to a skinner: every slice of every set is a different flat
+colour, at three brightnesses for the three sets, with a brighter band on each
+slice's outer side, so a band pointing inward says which *file* is authored wrong.
+Its ini carries the legend, and it is the one theme that turns every `[card]` switch
+on and exaggerates its box terms - the shared geometry turns the bands off, which
+would leave it unable to show one. It answers "which margin did that knob just
+move?", and the 9-slice bugs this project has shipped (corners culled by reversed
+winding, a spine on the wrong axis after rotation) are visible in it and invisible
+in a tinted monochrome theme.
+Its colours are baked (`[frame] tint = 0`), so it deliberately ignores the HUD
+background colour.
+
+**INI-only tuning knobs.** Power-user settings with no in-game control, edited directly in the INI (documented inline, clamped on load, reset covered by the global-snapshot replay):
+
+- `[Rumble] send_interval_ms` (4–200, default `DEFAULT_RUMBLE_SEND_INTERVAL_MS` = 10) - the continuous-rumble-feed cadence cap. Lower = more responsive; higher = less Bluetooth traffic on degraded stacks. Global (on XInputReader), never per-bike, since send cadence is a transport property, not an effect preference.
+- `[Advanced] gapNotifyIntervalMs` (0–1000, default 100) - live-gap HUD refresh coalescing (see *Data Change Notifications*). `0` restores notify-on-every-change.
 
 ## Debugging
 
@@ -1152,24 +1216,24 @@ The plugin can time how long it takes to **build** the quads/strings (BenchmarkW
 per-callback + `collectRenderTimeUs`), but the game engine's cost to **render** them
 happens after `Draw()` returns and no in-plugin timer can see it. It is, however,
 measurable **differentially**: emit a controlled number of extra quads and watch the
-frame time rise — the slope (Δframe-time / Δquads) is the engine's per-primitive cost.
+frame time rise - the slope (Δframe-time / Δquads) is the engine's per-primitive cost.
 
 `[Advanced] renderProbeQuads=N` (INI-only, off by default; `HudManager::produceFrame`
 appends N synthetic primitives to the game frame). `renderProbeType` picks WHICH
 primitive, because the three the plugin emits have different engine costs: **0=solid-fill
-quad** (cheapest — just fill; `renderProbeFullscreen=1` makes them full-screen), **1=sprite
-quad** (textured — a texture fetch per pixel, and it cycles across every registered sprite
+quad** (cheapest - just fill; `renderProbeFullscreen=1` makes them full-screen), **1=sprite
+quad** (textured - a texture fetch per pixel, and it cycles across every registered sprite
 so it also exercises texture-switch / batch-break cost), **2=text string** (glyph-atlas
 sampling). The count flows into `bm.totalQuads`/`totalStrings`, so the BenchmarkWidget
 report already logs the `(primitives, frame-time p50/p99)` pairs. Sweep each type
-separately — flat quads are the lower bound; sprites and text cost more. **In-game recipe:** uncap
-FPS (no vsync/limiter — else adding load won't move frame time until you blow the
+separately - flat quads are the lower bound; sprites and text cost more. **In-game recipe:** uncap
+FPS (no vsync/limiter - else adding load won't move frame time until you blow the
 budget), sit at a **fixed** spot (a paused replay is ideal so the game's own frame cost
 is constant), sweep `N` (0, 2k, 5k, 10k…) via RELOAD_CONFIG, and read the frame-time
 from each report. Two modes separate the two GPU costs: **tiny** quads isolate
 per-primitive submit/draw-call cost; **fullscreen** quads isolate fill-rate (what a
 full-screen overlay like the helmet costs). This is inherently an **in-game** measurement
-— headless (Wine) never renders the quads, so only the emission plumbing is testable
+- headless (Wine) never renders the quads, so only the emission plumbing is testable
 there (`MXBMRP3_Test_SetRenderProbe`). Off by default; ships in the DLL but dormant.
 
 ### Build Configurations
@@ -1185,29 +1249,29 @@ with **no game engine**. **[`TESTING.md`](TESTING.md) is the canonical guide**
 (layers, harness, how to add a test, philosophy); this is the architectural
 summary. Six layers:
 
-1. **Unit** (`tests/unit/`) — pure logic compiled from the real headers with a
+1. **Unit** (`tests/unit/`) - pure logic compiled from the real headers with a
    plain C++17 compiler (doctest).
-2. **Integration** (`tests/integration/tests/`) — the heart of the suite. A
+2. **Integration** (`tests/integration/tests/`) - the heart of the suite. A
    mingw-w64 cross-build compiles the whole plugin to a Windows DLL; each doctest
    loads it under Wine and drives the **real PiBoSo callbacks**, exercising the
    full data flow: api exports → adapters → PluginData change detection →
    `buildJsonSnapshot`.
-3. **Specialized** (`tests/integration/run_*.sh`) — persistence round-trip,
+3. **Specialized** (`tests/integration/run_*.sh`) - persistence round-trip,
    config/callback fuzzing, CPU perf baseline, installer mechanics.
-4. **Web overlay** (`tests/web/`) — Playwright asserts the rendered DOM, plus
+4. **Web overlay** (`tests/web/`) - Playwright asserts the rendered DOM, plus
    eslint over every `.js`. One spec closes the seam BETWEEN the layers: it
    renders a real captured `/api/state` snapshot (`tests/fixtures/`), so a field
    renamed in the plugin cannot pass a C++ suite reading the new name and a
    client suite driving its own synthetic demo.
-5. **Memory safety** (`tests/asan/`) — the unit suite under ASan/UBSan, plus a
+5. **Memory safety** (`tests/asan/`) - the unit suite under ASan/UBSan, plus a
    targeted harness and an MSVC-DLL CI job over the real callback boundary.
-6. **Visual** (`tools/mxbmrp3_hud_window/companion_demo.sh`) — screenshots the
+6. **Visual** (`tools/hud_window/companion_demo.sh`) - screenshots the
    real HUD through the companion software renderer, so rendering is
    pixel-diffable. An instrument, not a gate.
 
 Two seams are architectural rather than test detail. **Observation:** logic tests
-read `PluginHost::snapshot()` — `buildJsonSnapshot()` called directly through a
-test hook, with no server, socket or rebuild gating — so they depend on the
+read `PluginHost::snapshot()` - `buildJsonSnapshot()` called directly through a
+test hook, with no server, socket or rebuild gating - so they depend on the
 plugin's computation, not the serving layer; internal state that never reaches
 the JSON is read through typed `MXBMRP3_Test_*` hooks (`core/test_hooks.cpp`,
 gated on `MXBMRP3_TEST_BUILD`, excluded from every shipping target). **Fidelity:**
@@ -1215,13 +1279,10 @@ the in-plugin recorder (`core/event_recorder`, hidden `[Recorder] enabled=1`)
 captures the real callback stream in-game; `PluginHost::replayTape()` replays it
 headlessly, so committed real-race tapes anchor the synthetic scenarios.
 
-The cross-build is a **test** configuration only — Discord/analytics compiled
-out, SEH crash-handling MSVC-only, all gated by `MXBMRP3_TEST_BUILD` / `_MSC_VER`
-so the MSVC build is byte-for-byte unchanged. It is not a shippable artifact.
-Manual in-game testing on Windows is still the final check for input and
-game-specific behaviour the headless build can't reach — rendering is no longer
-on that list (Layer 6), though the game's own GPU path is. See
-**[`TESTING.md`](TESTING.md)** to run everything and add tests.
+What the headless build cannot reach - and so what manual in-game testing is
+still for - is in **[`TESTING.md`](TESTING.md)**, along with how to run
+everything and add tests; the cross-build's divergences from the shipping DLL
+are in CLAUDE.md's *Build & Test*.
 
 ## Common Gotchas
 
@@ -1231,7 +1292,7 @@ on that list (Layer 6), though the game's own GPU path is. See
 
 3. **C++ exceptions must not cross the DLL boundary** - The host game terminates if a C++ exception escapes a DLL export. Every export in `vendor/piboso/*_api.cpp` wraps its body in `API_GUARD_CATCH` (see `vendor/piboso/api_guard.h`). When adding a new export, follow the same pattern. Similarly, every `std::thread` body (HttpServer, UpdateChecker, UpdateDownloader, DiscordManager, RecordsFetcher, CompanionWindow, SteamFriendsManager, AnalyticsManager, XInputReader, PluginThread) wraps itself in a top-level try/catch, since an uncaught throw in a `std::thread` calls `std::terminate()`. For hardware faults that don't go through the C++ exception system (null deref, OOB, divide-by-zero), the SEH filter in `core/crash_handler.*` writes a minidump for diagnosis but doesn't prevent the crash.
 
-4. **Game thread vs background threads** - All PiBoSo API callbacks (`Draw`, `RunTelemetry`, etc.) run on the game thread. `PluginData`, `HudManager`, `SettingsManager`, and the various other managers are game-thread-only and not thread-safe. Background threads exist for I/O and off-thread work (HttpServer, DiscordManager, UpdateChecker, UpdateDownloader, RecordsFetcher, CompanionWindow, SteamFriendsManager, AnalyticsManager, XInputReader, PluginThread) and must NOT touch those singletons directly. They consume snapshots built on the game thread instead (see `HttpServer::buildJsonSnapshot`, `DiscordManager::updateSnapshot`). The `Logger` has its own internal mutex and is safe to call from any thread. Two corollaries for any worker serving a HUD, both stated with their enforcement in `CLAUDE.md` → *Maintenance Invariants*: **(a)** a mutex-guarded member is guarded at *every* access site, including private helpers that merely look like they sit inside locked code (copy under the lock, pass the snapshot in); **(b)** snapshot game-thread inputs at task start, and join before teardown. The records fetch thread is the worked example of both — it now lives in `core/records_fetcher.*` while `RecordsHud` owns the data it fills, snapshots provider/track in `startFetch()`, and is joined via `RecordsHud::joinFetchThread` from `HudManager::clear()` *before* cached HUD pointers are nulled, because the worker dirties TimingHud on completion.
+4. **Game thread vs background threads** - All PiBoSo API callbacks (`Draw`, `RunTelemetry`, etc.) run on the game thread. `PluginData`, `HudManager`, `SettingsManager`, and the various other managers are game-thread-only and not thread-safe. Background threads exist for I/O and off-thread work (HttpServer, DiscordManager, UpdateChecker, UpdateDownloader, RecordsFetcher, CompanionWindow, SteamFriendsManager, AnalyticsManager, XInputReader, PluginThread) and must NOT touch those singletons directly. They consume snapshots built on the game thread instead (see `HttpServer::buildJsonSnapshot`, `DiscordManager::updateSnapshot`). The `Logger` has its own internal mutex and is safe to call from any thread. Two corollaries for any worker serving a HUD, both stated with their enforcement in `CLAUDE.md` → *Maintenance Invariants*: **(a)** a mutex-guarded member is guarded at *every* access site, including private helpers that merely look like they sit inside locked code (copy under the lock, pass the snapshot in); **(b)** snapshot game-thread inputs at task start, and join before teardown. The records fetch thread is the worked example of both - it now lives in `core/records_fetcher.*` while `RecordsHud` owns the data it fills, snapshots provider/track in `startFetch()`, and is joined via `RecordsHud::joinFetchThread` from `HudManager::clear()` *before* cached HUD pointers are nulled, because the worker dirties TimingHud on completion.
 
 5. **Sprite indices are 1-based** - Index 0 means "solid color fill", not "first sprite".
 
@@ -1254,7 +1315,7 @@ The plugin supports multiple PiBoSo racing games from a single codebase using co
 
 ### Build Targets
 
-The **game is the target**, not the configuration — `Debug`/`Release` are plain
+The **game is the target**, not the configuration - `Debug`/`Release` are plain
 configurations, and each game its own CMake target:
 
 | Target | Output | Install Location |
@@ -1338,7 +1399,7 @@ The adapter layer isolates changes - core HUDs don't need modification for most 
 
 ## Quick Reference: File Locations
 
-Deliberately not a table of every file — the tree is the index, and a
+Deliberately not a table of every file - the tree is the index, and a
 hand-maintained mirror of it goes stale on the first rename. See *Project
 Structure* above for the directory map and CLAUDE.md's *Where Things Live* for
 the handful of placements that aren't guessable.
@@ -1350,8 +1411,8 @@ Runtime paths, which are the part you genuinely can't find by looking:
 | Settings, stats, rumble profiles, log | `{save_path}/mxbmrp3/` |
 | Crash dumps | `{save_path}/mxbmrp3/crashes/` |
 | Callback tapes (recorder) | `{save_path}/mxbmrp3/tapes/` |
-| Shipped assets | `{game_path}/plugins/mxbmrp3_data/{fonts,textures,icons,web}/` |
-| User asset overrides (synced on launch) | `{save_path}/mxbmrp3/{fonts,textures,icons,web}/` |
+| Shipped assets | `{game_path}/plugins/mxbmrp3_data/{fonts,textures,icons,themes,gamepads,pitboards,spotters,web}/` |
+| User asset overrides (synced on launch) | `{save_path}/mxbmrp3/` + the same subfolders |
 | Build output | `build/<GAME>-<Config>/`, e.g. `build/MXB-Release/` |
 
 ## Quick Reference: Adding Features
@@ -1359,7 +1420,7 @@ Runtime paths, which are the part you genuinely can't find by looking:
 **[`CLAUDE.md`](CLAUDE.md) → *Common Tasks* is the authoritative version** of this
 list and is kept current with the registries it describes (adding a HUD, a
 per-HUD or global setting, a settings tab, a web-overlay field, a game-specific
-feature, a new game). It used to be duplicated here in a shorter, vaguer form —
+feature, a new game). It used to be duplicated here in a shorter, vaguer form -
 two descriptions of one subject, where the copy drifts and the reader can't tell
 which is stale. Only the entries CLAUDE.md doesn't cover live here:
 

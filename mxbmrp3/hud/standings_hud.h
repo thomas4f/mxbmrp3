@@ -194,28 +194,22 @@ private:
     // two never disagree and make columns jump when the HUD is moved.
     float getColumnTextX(uint8_t columnIndex, float columnPosition, float fontSize, bool isPlaceholder, bool gapRightAlign = false) const;
 
-    // Vertical anchor for a column's text within its row, mirroring getColumnTextX.
-    // Only the plate number differs from the row baseline, but it MUST be applied by
-    // both the rebuild path and the drag/layout fast path -- applying it in one only
-    // is a bug visible solely while dragging, as the number jumps between centred
-    // and high. That is exactly what happened when the offset was inlined in the
-    // rebuild path alone.
-    float getColumnTextY(uint8_t columnIndex, float rowY, bool isPlaceholder,
-                         const ScaledDimensions& dim) const;
+    // There is deliberately no getColumnTextY() beside getColumnTextX(). It existed to
+    // drop the race number onto its plate, and both row-placing paths had to call it or
+    // the number jumped while the HUD was dragged. addString/positionString centre EVERY
+    // glyph in its row now, so both paths just use the row's own y -- and the plate is
+    // itself centred in the row, so the number lands on it with nothing to special-case.
 
 #if defined(MXBMRP3_TEST_BUILD)
 public:
-    // Vertical inset of a row's race-number string inside its plate quad, as a
-    // fraction of plate height. 0.5 means the string origin sits on the plate's
-    // centre line.
+    // How far a row's race number sits from its plate's centre, as a signed fraction
+    // of plate height. ZERO IS CENTRED. See the definition for why it is measured from
+    // the centre rather than from the plate's top edge, and for the -1000 "no plate on
+    // this row" sentinel (the value is signed, so a -1 sentinel is ambiguous).
     //
-    // Exists because the bug it pins is invisible in a screenshot: the number was
-    // centred by the REBUILD path and left uncentred by the drag/layout path, so it
-    // only jumped while the HUD was being moved. Asserting the inset is equal after
-    // each path is the property; asserting an absolute Y would just track the offset.
-    // Returns a far-out-of-band -1000 when the row has no plate: the inset is a
-    // POSITION, so ordinary readings can be slightly negative (a -1 sentinel was
-    // first tried and a real -0.03 was misread as "no plate").
+    // Exists because neither thing it pins survives a screenshot: the number is off by
+    // a few pixels when wrong, and the drag/layout fast path once placed it differently
+    // from the rebuild path, so it only jumped while the HUD was being moved.
     float testPlateNumberInsetY(int row) const;
 private:
 #endif
@@ -261,10 +255,16 @@ private:
     void buildColumnTable();  // Build m_columnTable based on m_enabledColumns
 
     // Helper struct for shared dimension calculations
+    // BOX-MODEL: the plan owns the panel geometry; the named floats are the
+    // handful of derived offsets the row/quad sites read. titleHeight no longer
+    // contains the caption band — the plan does — only the optional session-info
+    // row folded in so every "titleHeight + headerHeight" offset downstream
+    // keeps working unchanged.
     struct HudDimensions {
+        BaseHud::PanelPlan plan;
         float backgroundWidth;
         float backgroundHeight;
-        float titleHeight;
+        float titleHeight;        // session-info row only (the band is the plan's)
         float headerHeight;       // Height of the optional column-header row between title and rows (0 if disabled)
         float contentStartX;
         float contentStartY;
@@ -296,6 +296,28 @@ private:
     std::vector<ColumnDescriptor> m_columnTable;  // Cached table of enabled columns (only includes enabled ones)
     int m_cachedBackgroundWidth = -1;  // Cached width in chars
     int m_cachedPlayerIndex = -1;  // Cached index of player in m_displayEntries (-1 if not found or beyond m_displayRowCount)
+    // ROW ICON HALF-HEIGHTS as a fraction of the row font -- shared, because BOTH the
+    // full rebuild and the layout fast path draw these and they must not disagree. They
+    // were file-local to standings_hud_render.cpp while the fast path kept the absolute
+    // constants they replaced, so every flag and caret resized itself mid-drag at any
+    // uiFontSize other than the default. See the definition comment there.
+    static constexpr float STATUS_ICON_HALF_RATIO = 0.30f;
+    static constexpr float POSGAIN_ICON_HALF_RATIO = STATUS_ICON_HALF_RATIO * 0.75f;
+
+#if defined(MXBMRP3_TEST_BUILD)
+public:
+    // The player-row band's span, exactly as handed to addRowHighlight. Width 0 when
+    // no band was emitted this rebuild.
+    //
+    // Recorded rather than re-derived: the whole bug this pins is that the band's span
+    // WAS a second derivation (frame border + card border, which stopped being the
+    // row's inset when [panel] padding started acting on a plan panel's card), so a
+    // test that computed the expected span itself would agree with whichever
+    // derivation it copied. See standings_row_band_test.
+    void testRowBandX(float& x, float& w) const { x = m_testRowBandX; w = m_testRowBandW; }
+private:
+    float m_testRowBandX = 0.0f, m_testRowBandW = 0.0f;
+#endif
     int m_cachedHighlightQuadIndex = -1;  // Cached index of player row highlight quad in m_quads (-1 if no highlight; only valid when m_bPlayerRowHighlight is on)
     int m_hoveredRowIndex = -1;  // Row index currently hovered by cursor (-1 if none)
 
@@ -378,11 +400,25 @@ private:
             , stripGap(charWidth * 0.3f)
             , plateHeight(PlateLayout::plateHeight(lineHeightNormal))
             , platePadY(PlateLayout::platePadY(lineHeightNormal))
-            , arrowHeight(PlateLayout::plateHeight(lineHeightNormal) * 0.7f)
+            // FONT-scaled, not row-scaled: the mark is an icon like the status
+            // flags, so it holds its size against the glyphs when uiLineHeight
+            // changes (see PlateLayout::kBrandMarkHeightRatio). The PLATE stays
+            // row-scaled — it is a row-filling background, like the highlight.
+            , arrowHeight(fontSize * PlateLayout::kBrandMarkHeightRatio)
             , arrowInsetY((PlateLayout::plateHeight(lineHeightNormal)
-                           - PlateLayout::plateHeight(lineHeightNormal) * 0.7f) * 0.5f)
+                           - fontSize * PlateLayout::kBrandMarkHeightRatio) * 0.5f)
         {}
     };
+
+    // The brand-coloured mark right of the number plate: the caret-up icon turned to
+    // point right, in the same rect the hand-built triangle used, so the proportions
+    // PlateGeometry's comments tune (0.85 char wide, 0.7 plate tall) still apply.
+    //
+    // Falls back to the solid triangle when the icon set has no caret-up, and lives
+    // here rather than being written out twice because the drag fast path rebuilds
+    // this quad too -- the two copies of the OLD expression are exactly what would
+    // have had to be kept in step by hand.
+    void setBrandMarkQuad(SPluginQuad_t& quad, float x, float y, const PlateGeometry& pg);
 
     // Tracking for per-row race number plate quads (bg + brand color strip)
     struct RaceNumPlateQuad {
@@ -451,8 +487,11 @@ private:
     static constexpr int MAX_ROW_COUNT = 50;
     static constexpr int DEFAULT_ROW_COUNT = 10;  // Shows top 3 + player with 2 before/after symmetrically
     static constexpr int DEFAULT_TOP_POSITIONS = 3;  // Default: always show top 3
-    static constexpr float ROW_HIGHLIGHT_OPACITY = 80.0f / 255.0f;  // Alpha for slide-highlight row background tints
-    static constexpr float HOVER_HIGHLIGHT_OPACITY = 60.0f / 255.0f;  // Alpha for spectator-mode hover row background
+    // The slide tint is a row band at selection strength, faded over time, so it
+    // takes the shared alpha rather than a second copy of the same number. The hover
+    // constant that sat beside this is gone: BaseHud::ROW_HOVER_ALPHA is the one
+    // place both it and the four other HUDs' copies now come from.
+    static constexpr float ROW_HIGHLIGHT_OPACITY = ROW_SELECT_ALPHA;
     static constexpr int MAX_TOP_POSITIONS = 10;     // Maximum top positions to always show
     static constexpr int NUM_COLUMNS = 9;
     // Base position (0,0) - actual position comes from m_fOffsetX/m_fOffsetY

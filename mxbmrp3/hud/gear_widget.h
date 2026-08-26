@@ -26,5 +26,8 @@ protected:
     void rebuildLayout() override;
 
 private:
+    // No per-quad index tracking: rebuildLayout defers to rebuildRenderData (the
+    // box-model plan is the one source of geometry), so nothing repositions the
+    // limiter circle in place anymore.
     void rebuildRenderData() override;
 };

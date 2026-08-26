@@ -45,12 +45,10 @@ BaseHud* SettingsHud::renderTabLapLog(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("lap_log");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeader("Appearance");
+    ctx.addSectionHeading("Appearance");
     ctx.addStandardHudControls(hud);
-    ctx.addSpacing(0.5f);
-
     // === LAYOUT SECTION ===
-    ctx.addSectionHeader("Layout");
+    ctx.addSectionHeading("Layout");
 
     // Row count
     char rowCountValue[8];

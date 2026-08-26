@@ -1,9 +1,9 @@
 # Web overlay tests (Playwright)
 
 Headless browser tests for the OBS/browser overlay in `../mxbmrp3_data/web`. Most
-drive the overlay's built-in **`?demo` mode** — a synthetic 22-rider warmup +
+drive the overlay's built-in **`?demo` mode** - a synthetic 22-rider warmup +
 race that feeds the same snapshots into `render()` that the live SSE stream
-would — and assert the **rendered DOM**. No game, no plugin, no network.
+would - and assert the **rendered DOM**. No game, no plugin, no network.
 
 `overlay_snapshot.spec.js` is the deliberate exception: it renders a **real**
 plugin snapshot (`../fixtures/overlay_snapshot.json`, captured by the C++
@@ -25,7 +25,7 @@ overlay *draws* from it (tower rows, ordering, gaps, session/clock).
 ## Lint
 
 `./lint.sh` runs ESLint over every `.js` in the repo (the overlay, `sw.js` and
-this suite) from the same npm install — seconds, no browser. `--fix` applies the
+this suite) from the same npm install - seconds, no browser. `--fix` applies the
 fixable ones. The rule set is eslint's `recommended`; `eslint.config.mjs`
 documents the three rules the overlay's shared-global-scope, ES5-by-design
 client makes unusable.
@@ -37,10 +37,10 @@ the overlay is served by a throwaway `python3 -m http.server` (see
 
 ## Screenshot the overlay (visual review, no game)
 
-To *eyeball* the rendered overlay — iterating on a panel, theming, or a new chart —
+To *eyeball* the rendered overlay - iterating on a panel, theming, or a new chart -
 capture a headless PNG of `?demo`. This is the **browser overlay** path; the
 in-game/companion HUD is a different renderer with its own harness
-(`tools/mxbmrp3_hud_window/`, Wine + Xvfb) — don't confuse the two.
+(`tools/hud_window/`, Wine + Xvfb) - don't confuse the two.
 
 ```bash
 cd tests/web && npm ci    # first use only (deps + Chromium)
@@ -62,23 +62,23 @@ JS
 Serve from `mxbmrp3_data/web/` directly so `overlay-*.js`/`style.css`/`custom.css` resolve
 as they do in production. Add `&speed=` to reach the timed race quickly; drop it to
 see the warmup. For real-data preview instead of the synthetic demo, use
-`tools/mxbmrp3_replay --web` (real tape → live plugin → browser).
+`tools/replay --web` (real tape → live plugin → browser).
 
 ## What's covered
 
 `tests/overlay.spec.js`:
-- **Tower renders a full, ordered field** — the 22-rider demo fills the tower;
+- **Tower renders a full, ordered field** - the 22-rider demo fills the tower;
   the visible rows carry contiguous positions `1..N`, ascend top-to-bottom on
   screen (rows are `translateY`-slotted over a stable DOM order, so ranking is
   read by on-screen Y, not DOM index), every row has a name, real roster names
   come through, the session type + clock render, and **no uncaught JS errors**.
-- **Race phase + leader gap** — `?speed=` fast-forwards the demo past the warmup
+- **Race phase + leader gap** - `?speed=` fast-forwards the demo past the warmup
   into the timed race; the P1 row's gap column shows the `Leader` label (race
   gap semantics), not a lap time.
 
-(Representative highlights — `overlay.spec.js` also covers the bottom-slot
+(Representative highlights - `overlay.spec.js` also covers the bottom-slot
 panels/battle lifecycle. The other specs: `assets.spec.js` pins the asset wiring
-— every `index.html`/`style.css`/`sw.js` reference resolves and the split
+- every `index.html`/`style.css`/`sw.js` reference resolves and the split
 overlay scripts load in the same order everywhere; `custom_css.spec.js` the
 `custom.css` override contract; `empty_panels.spec.js` the forced-empty
 placeholder behavior; `tail.spec.js` the down-the-order scroller with data
@@ -91,7 +91,7 @@ JS side of the shared C++/JS golden vectors
 
 ## Notes / gotchas
 
-- **Don't put these under `mxbmrp3_data/web/`** — that folder is synced to the
+- **Don't put these under `mxbmrp3_data/web/`** - that folder is synced to the
   user's Documents on game start, so test files there would ship. Hence the
   separate top-level `tests/web/`.
 - Rows use a **stable DOM order + `translateY`** for smooth position-change

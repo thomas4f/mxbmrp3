@@ -6,6 +6,7 @@
 #pragma once
 
 #include "base_hud.h"
+#include "../core/widget_constants.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
 #include "../game/game_config.h"
@@ -60,8 +61,9 @@ private:
     // Layout constants
     static constexpr int NUM_WHEELS = 2;       // Front (0) and Rear (1)
     static constexpr int NUM_SECTIONS = 3;     // Left (0), Middle (1), Right (2)
-    static constexpr float LABEL_HEIGHT_LINES = 1.0f; // Height for L/M/R labels
-    static constexpr float BAR_ROW_LINES = 1.5f;      // Per-wheel row height when bars shown (value sits inside the bar)
+    // The shared small-widget footprint; see WidgetDimensions for why it is one
+    // constant rather than a copy per widget.
+    static constexpr float CONTENT_LINES = WidgetDimensions::SMALL_WIDGET_CONTENT_LINES;
     static constexpr float BAR_VMARGIN_LINES = 0.1f;  // Vertical margin above/below each bar within its row
 
     // Temperature thresholds (user-configurable via INI)

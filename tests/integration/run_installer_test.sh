@@ -100,6 +100,29 @@ assert_no_file_eventually() {
   fail "$2 (still present after wait: $1)"
 }
 
+# The uninstaller's SELF-delete can legitimately end two ways: the exe is gone,
+# or Delete /REBOOTOK lost the handle race and registered the file in
+# PendingFileRenameOperations for deletion at reboot (the .nsi's comment at the
+# MX Bikes Delete has the mechanism). Both honor the contract "no orphan
+# uninstaller"; only present-AND-unregistered is a failure. The 2026-08-26 CI
+# flake was exactly the lost race on a cold runner starting six jobs at once.
+assert_self_delete() {
+  local i
+  for i in $(seq 1 40); do
+    [ ! -e "$1" ] && { pass "$2"; return; }
+    sleep 0.25
+  done
+  # Still on disk: accept it if the pending-delete fallback was registered.
+  # MoveFileEx(DELAY_UNTIL_REBOOT) stores source paths in this multi-sz value
+  # (Wine implements it the same way), each as \??\C:\... — match the basename.
+  if "${WINE}" reg query 'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager' \
+       /v PendingFileRenameOperations 2>/dev/null | grep -qi "$(basename "$1")"; then
+    pass "$2 (pending delete at reboot: self-delete race lost, /REBOOTOK fallback held)"
+  else
+    fail "$2 (still present after wait, and no pending delete registered: $1)"
+  fi
+}
+
 # The registry assertions POLL, for the same reason assert_no_file_eventually
 # does: the installer's elevated child writes these keys, and its exit can lose
 # a race with `wineserver -w` — the very lingering the comment above describes.
@@ -152,7 +175,16 @@ echo "== Building staging tree =="
 mkdir -p "${STAGE}/mxbmrp3_data/fonts" "${STAGE}/mxbmrp3_data/textures" \
          "${STAGE}/mxbmrp3_data/icons" "${STAGE}/mxbmrp3_data/web/js" \
          "${STAGE}/mxbmrp3_data/web/fonts" "${STAGE}/mxbmrp3_data/web/icons" \
-         "${STAGE}/mxbmrp3_data/web/logos"
+         "${STAGE}/mxbmrp3_data/web/logos" \
+         "${STAGE}/mxbmrp3_data/themes/testtheme" \
+         "${STAGE}/mxbmrp3_data/gamepads/testpad" \
+         "${STAGE}/mxbmrp3_data/pitboards/testboard" \
+         "${STAGE}/mxbmrp3_data/spotters/testvoice"
+# The two licence notices the installer lays into mxbmrp3_data\. Release staging
+# puts them at the staging ROOT (both zip builders copy them there), which is where
+# the .nsi File-s them from.
+echo LICENCE > "${STAGE}/LICENSE"
+echo THIRD > "${STAGE}/THIRD_PARTY_LICENSES.md"
 echo DLO-MXB > "${STAGE}/mxbmrp3.dlo"
 echo DLO-GPB > "${STAGE}/mxbmrp3_gpb.dlo"
 echo DLO-KRP > "${STAGE}/mxbmrp3_krp.dlo"
@@ -164,6 +196,27 @@ echo j > "${STAGE}/mxbmrp3_data/web/js/overlay-render.js"
 echo w > "${STAGE}/mxbmrp3_data/web/fonts/Tiny5.ttf"
 echo s > "${STAGE}/mxbmrp3_data/web/icons/gear.svg"
 echo p > "${STAGE}/mxbmrp3_data/web/logos/logo1.png"
+# A theme is a SUBDIRECTORY of themes/, never a loose file, so the installer's
+# recursive File must find one -- makensis fails the whole build on an empty
+# glob, which is how the missing themes/ line here surfaced: the .nsi shipped
+# them, the staging tree never had any, and nothing complained until the
+# installer gate ran.
+echo c > "${STAGE}/mxbmrp3_data/themes/testtheme/center.tga"
+echo n > "${STAGE}/mxbmrp3_data/themes/testtheme/testtheme.ini"
+# A gamepad pack nests exactly like a theme (gamepads/<name>/*.tga + <name>.ini),
+# so it needs its own staged subdirectory for the same reason: makensis fails the
+# build on an empty recursive glob.
+echo g > "${STAGE}/mxbmrp3_data/gamepads/testpad/background.tga"
+echo n > "${STAGE}/mxbmrp3_data/gamepads/testpad/testpad.ini"
+# Pit board packs nest identically; a third recursive File line, a third empty-glob
+# risk, so a third staged subdirectory.
+echo b > "${STAGE}/mxbmrp3_data/pitboards/testboard/background.tga"
+echo n > "${STAGE}/mxbmrp3_data/pitboards/testboard/testboard.ini"
+# Spotter voice packs nest like themes (spotters/<voice>/*.wav + <voice>.ini);
+# a fourth recursive File line, a fourth empty-glob risk, a fourth staged
+# subdirectory.
+echo a > "${STAGE}/mxbmrp3_data/spotters/testvoice/clear.wav"
+echo n > "${STAGE}/mxbmrp3_data/spotters/testvoice/testvoice.ini"
 
 echo "== Compiling installer (makensis) =="
 makensis -V1 -DPLUGIN_VERSION=9.9.9.0 -DPLUGIN_SOURCE_PATH="${STAGE}" \
@@ -278,6 +331,21 @@ echo "== Case 1: elevated-child install (MX Bikes) =="
 wineserver -w
 assert_file "${MXB}/mxbmrp3.dlo"                         "dlo installed"
 assert_file "${MXB}/mxbmrp3_data/web/js/overlay-render.js" "mxbmrp3_data tree installed"
+# Shipping the OFL fonts and the MIT gamepad art without these is a licence
+# violation, and nothing else would notice: the plugin never reads them, so the
+# install works perfectly with them absent.
+assert_file "${MXB}/mxbmrp3_data/LICENSE"                "LICENSE installed"
+assert_file "${MXB}/mxbmrp3_data/THIRD_PARTY_LICENSES.md" "third-party notices installed"
+# Themes nest one level deeper than every other asset dir (themes/<name>/*.tga),
+# so a File line that forgets /r, or an INSTALL macro that lists the folder but
+# not its contents, installs an empty themes/ and nothing else notices.
+assert_file "${MXB}/mxbmrp3_data/themes/testtheme/center.tga" "theme subfolder installed"
+# Gamepad packs nest the same way and were added later, so they get the same
+# assertion rather than riding on the theme one -- a /r dropped from either File
+# line has to fail on its own.
+assert_file "${MXB}/mxbmrp3_data/gamepads/testpad/background.tga" "gamepad pack subfolder installed"
+assert_file "${MXB}/mxbmrp3_data/pitboards/testboard/background.tga" "pitboard pack subfolder installed"
+assert_file "${MXB}/mxbmrp3_data/spotters/testvoice/clear.wav" "spotter voice pack subfolder installed"
 assert_file "${MXB}/mxbmrp3_uninstall.exe"              "uninstaller written"
 [ "$(cat "${MXB}/mxbmrp3.dlo" 2>/dev/null)" = "DLO-MXB" ] && pass "correct dlo payload" || fail "wrong dlo payload"
 reg_has    "${REG_KEY}" "DisplayName"    "MXBMRP3"       "HKLM DisplayName written"
@@ -291,7 +359,7 @@ echo "== Case 2: uninstall (elevated-child) removes files + key =="
 wineserver -w
 assert_no_file "${MXB}/mxbmrp3.dlo"                      "dlo removed"
 assert_no_dir  "${MXB}/mxbmrp3_data"                     "mxbmrp3_data removed"
-assert_no_file_eventually "${MXB}/mxbmrp3_uninstall.exe"  "uninstaller removed"
+assert_self_delete "${MXB}/mxbmrp3_uninstall.exe"  "uninstaller removed"
 reg_absent_key "${REG_KEY}"                              "HKLM key removed"
 
 echo ""
@@ -336,6 +404,10 @@ echo "== Case 6: full uninstall of the remainder deletes the key =="
 wineserver -w
 assert_no_file "${MXB}/mxbmrp3.dlo"                      "MX dlo removed"
 assert_no_file "${KRP}/mxbmrp3_krp.dlo"                  "KRP dlo removed"
+# They live inside mxbmrp3_data\ so the existing RMDir /r covers them -- which is
+# the point of putting them there, and worth pinning so a later move beside the
+# DLO cannot leave them behind.
+assert_no_file "${MXB}/mxbmrp3_data/THIRD_PARTY_LICENSES.md" "notices removed with the data tree"
 reg_absent_key "${REG_KEY}"                              "HKLM key fully removed"
 
 echo ""

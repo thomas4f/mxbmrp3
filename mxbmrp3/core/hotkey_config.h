@@ -56,7 +56,8 @@ enum class HotkeyAction : uint8_t {
     SEGMENT_REMOVE,              // Segment timer: remove the last boundary point
     DIRECTOR_TOGGLE,             // Auto-director: enable/disable
     DIRECTOR_LOCK,               // Auto-director: lock onto the current rider (pin subject)
-
+    SPOTTER_CUE,                 // Spotter: speak the pack's `hotkey_triggered` line
+    CRASH_RESET,                 // Crash widget: zero the streaming tally
     COUNT  // Must be last
 };
 
@@ -93,6 +94,8 @@ inline const char* getActionDisplayName(HotkeyAction action) {
         case HotkeyAction::OVERLAY_FORCE_DOWN_ORDER:  return "Down Order";
         case HotkeyAction::OVERLAY_FORCE_SECTORS:     return "Sectors";
         case HotkeyAction::OVERLAY_FORCE_CHARTS:      return "Charts";
+        case HotkeyAction::SPOTTER_CUE:               return "Spotter Cue";
+        case HotkeyAction::CRASH_RESET:               return "Reset Crashes";
         case HotkeyAction::SEGMENT_ADD:               return "Segment Add";
         case HotkeyAction::SEGMENT_REMOVE:            return "Segment Remove";
         case HotkeyAction::DIRECTOR_TOGGLE:           return "Director";
@@ -137,6 +140,8 @@ inline const char* getActionConfigName(HotkeyAction action) {
         case HotkeyAction::OVERLAY_FORCE_DOWN_ORDER:  return "overlay_down_order";
         case HotkeyAction::OVERLAY_FORCE_SECTORS:     return "overlay_sectors";
         case HotkeyAction::OVERLAY_FORCE_CHARTS:      return "overlay_charts";
+        case HotkeyAction::SPOTTER_CUE:               return "spotter_cue";
+        case HotkeyAction::CRASH_RESET:               return "crash_reset";
         case HotkeyAction::SEGMENT_ADD:               return "segment_add";
         case HotkeyAction::SEGMENT_REMOVE:            return "segment_remove";
         case HotkeyAction::DIRECTOR_TOGGLE:           return "director_toggle";

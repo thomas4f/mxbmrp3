@@ -53,7 +53,7 @@ TEST_CASE("replay golden: a real captured session reconstructs its result") {
     // The event narrative the plugin derived from the real stream.
     CHECK(hasEvent(d, "Race 2 started"));
     CHECK(hasEvent(d, "Race 2 ended"));
-    CHECK(hasEvent(d, "#4 finished P1"));
+    CHECK(hasEvent(d, "#4 finished"));   // position rides the detail column ("P1") now
     CHECK(hasEvent(d, "#4 fastest lap"));
 
     host.shutdown();

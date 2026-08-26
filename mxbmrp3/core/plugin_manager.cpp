@@ -36,6 +36,7 @@
 #include "stats_manager.h"
 #include "update_checker.h"
 #include "update_downloader.h"
+#include "spotter_manager.h"
 #if GAME_HAS_DISCORD
 #include "discord_manager.h"
 #endif
@@ -285,6 +286,10 @@ void PluginManager::shutdown() {
 #endif
     UpdateChecker::getInstance().shutdown();
     UpdateDownloader::getInstance().shutdown();
+
+    // Join the spotter audio worker and stop any playing cue. Interrupts a
+    // speech mid-sentence (~50ms), so this never waits out a phrase.
+    SpotterManager::getInstance().shutdown();
 
 #if GAME_HAS_DISCORD
     // Shutdown Discord Rich Presence (clears presence from Discord)

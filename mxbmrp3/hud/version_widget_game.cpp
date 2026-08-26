@@ -6,6 +6,7 @@
 // class, second TU; the standings/map HUDs use the same split pattern).
 // ============================================================================
 #include "version_widget.h"
+#include "../core/layout_config.h"
 
 #include <cmath>
 
@@ -364,9 +365,11 @@ void VersionWidget::renderGame() {
     SPluginString_t scoreString;
     strncpy_s(scoreString.m_szString, sizeof(scoreString.m_szString), scoreText, _TRUNCATE);
     scoreString.m_afPos[0] = m_gameLeft + 0.01f;
+    // string-y-exempt: absolute placement in the minigame's own field, not a text ROW --
+    // there is no row to be centred in, so rowCenterOffset would only shift it off its mark.
     scoreString.m_afPos[1] = m_gameTop + 0.01f;
     scoreString.m_iFont = this->getFont(FontCategory::NORMAL);
-    scoreString.m_fSize = FontSizes::SMALL;
+    scoreString.m_fSize = layoutDefaults().fontSizeSmall;
     scoreString.m_iJustify = Justify::LEFT;
     scoreString.m_ulColor = this->getColor(ColorSlot::PRIMARY);
     m_strings.push_back(scoreString);
@@ -385,9 +388,10 @@ void VersionWidget::renderGame() {
         strncpy_s(msgString.m_szString, sizeof(msgString.m_szString), message,
                   sizeof(msgString.m_szString) - 1);
         msgString.m_afPos[0] = m_gameLeft + GAME_AREA_WIDTH / 2.0f;
+        // string-y-exempt: same, anchored to the field's bottom edge.
         msgString.m_afPos[1] = m_gameTop + GAME_AREA_HEIGHT - 0.04f;
         msgString.m_iFont = this->getFont(FontCategory::NORMAL);
-        msgString.m_fSize = FontSizes::NORMAL;
+        msgString.m_fSize = layoutDefaults().fontSizeNormal;
         msgString.m_iJustify = Justify::CENTER;
         msgString.m_ulColor = this->getColor(ColorSlot::SECONDARY);
         m_strings.push_back(msgString);

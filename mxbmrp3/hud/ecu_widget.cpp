@@ -24,6 +24,8 @@ namespace {
 }
 
 EcuWidget::EcuWidget() {
+    m_panelKind = PanelKind::Widget;
+    m_bContentCard = true;
     DEBUG_INFO("EcuWidget created");
     setDraggable(true);
 
@@ -55,7 +57,7 @@ void EcuWidget::update() {
     }
 
     // Always rebuild - ECU values update at telemetry rate
-    rebuildRenderData();
+    rebuildAndRecord();
     clearDataDirty();
     clearLayoutDirty();
 }
@@ -91,32 +93,42 @@ void EcuWidget::rebuildRenderData() {
         { ROW_AW,  ColorSlot::ACCENT,   MASK_AW, "AW" },
     };
 
-    // Standard widget sizing: CONTENT_CHARS of content inset by paddingH (~1 char)
-    // on the left/right and paddingV on the top/bottom, matching the other widgets.
+    // Standard widget sizing: CONTENT_CHARS of content, matching the other widgets.
     float startX = 0.0f;
     float startY = 0.0f;
 
     float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
     float contentWidth = CONTENT_CHARS * charWidth;
-    float backgroundWidth = calculateBackgroundWidth(CONTENT_CHARS);
 
-    // Content area is CONTENT_LINES tall (paddingV top+bottom) so this widget sits at
-    // the same height as TyreTemp/Bars. The two chip rows split the content area evenly
-    // with a gap between them.
+    // Content area is CONTENT_LINES tall so this widget sits at the same height as
+    // TyreTemp/Bars. The two chip rows split the content area evenly with a gap
+    // between them.
     float rowGap = CHIP_ROW_GAP_LINES * dim.lineHeightNormal;
     float contentHeight = CONTENT_LINES * dim.lineHeightNormal;
     float chipRowHeight = (contentHeight - (NUM_ROWS - 1) * rowGap) / NUM_ROWS;
-    float backgroundHeight = contentHeight + 2.0f * dim.paddingV;
+
+    // BOX-MODEL: the plan owns padding, chrome and the card (this panel has no
+    // caption at all); the widget states only its content — the chip grid.
+    BaseHud::PanelWant want;
+    want.contentW = contentWidth;
+    want.sectionH = { contentHeight };
+    want.captionW = planTitleWidth(dim, "ECU");
+    PanelPlan& p = planPanel(dim, want);
+
+    const float backgroundWidth = p.width();
+    const float backgroundHeight = p.height();
 
     // Background + drag bounds
-    addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
+    addPlanBackground(p, startX, startY);
+    addPlanTitle(p, "ECU", this->getFont(FontCategory::TITLE),
+        this->getColor(ColorSlot::PRIMARY));
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
 
-    // 2x2 chip grid, inset by the standard padding so quads stay within bounds
+    // 2x2 chip grid at the plan's content origin so quads stay within bounds
     float colGap = CHIP_COL_GAP_CHARS * charWidth;
     float chipWidth = (contentWidth - (NUM_COLS - 1) * colGap) / NUM_COLS;
-    float gridLeft = startX + dim.paddingH;
-    float gridTop = startY + dim.paddingV;
+    float gridLeft = p.contentX();
+    float gridTop = p.contentY();
 
     // Small font (like TyreTemp): at 8-char content each chip column is only
     // ~3.75 chars wide, so a labelled value ("TC100") would overrun at the
@@ -137,7 +149,11 @@ void EcuWidget::rebuildRenderData() {
         float chipX = gridLeft + col * (chipWidth + colGap);
         float chipY = gridTop + row * (chipRowHeight + rowGap);
         float chipCenterX = chipX + chipWidth * 0.5f;
-        float textY = chipY + (chipRowHeight - valueFontSize) * 0.5f;
+        // MINUS what addString adds back: it centres in a row of the string's own
+        // size, and this is an explicit centring, so the two compound (the sibling
+        // label below already carried this subtraction; this line did not).
+        float textY = chipY + (chipRowHeight - valueFontSize) * 0.5f
+                    - rowCenterOffset(valueFontSize);
 
         // Chip background color: muted baseline, brightened when the aid intervenes
         unsigned long chipColor;
@@ -209,7 +225,7 @@ void EcuWidget::resetToDefaults() {
     m_fBackgroundOpacity = 1.0f;
     m_fScale = 1.0f;
     // GP-only widget: sits left of the Tyre Temp widget in the bottom gauge row (pitch 0.0715).
-    setPosition(0.385f, 0.86828f);
+    setPosition(cellsX(57), cellsY(74));
     m_enabledRows = ROW_DEFAULT;
     m_bShowLabels = true;    // Labels ON by default (INI/settings toggle)
     setDataDirty();

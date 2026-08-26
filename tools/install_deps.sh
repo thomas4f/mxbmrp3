@@ -51,7 +51,7 @@ DEP_GROUPS=(
     "clang|clang||clang++"
     "node|nodejs npm||node"
     # Headless screenshots of the REAL companion window
-    # (tools/mxbmrp3_hud_window/companion_demo.sh): Xvfb supplies the display the
+    # (tools/hud_window/companion_demo.sh): Xvfb supplies the display the
     # Win32 window maps into, `import` (ImageMagick) grabs it, `compare` diffs two
     # captures. Missing from this table until it bit: the demo is not a mxb_gate,
     # and check_docs.py only cross-checks binaries a gate declares — so a box

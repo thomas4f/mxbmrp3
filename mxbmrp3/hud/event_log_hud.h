@@ -138,7 +138,8 @@ private:
     int m_hoveredRegionIndex = -1;          // index into m_riderClickRegions, -1 = none
     int m_hoverQuadIndex = -1;              // the hover highlight quad in m_quads, -1 = none
     // Matches StandingsHud's spectator hover so the two HUDs feel identical.
-    static constexpr float HOVER_HIGHLIGHT_OPACITY = 60.0f / 255.0f;
+    // (hover alpha now comes from BaseHud::ROW_HOVER_ALPHA, shared with every other
+    // HUD that bands a row)
 
     // Auto-hide state
     std::chrono::steady_clock::time_point m_lastEventTime;

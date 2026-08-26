@@ -20,17 +20,23 @@ using namespace PluginConstants;
 
 PitboardHud::PitboardHud()
 {
+    // No caption on this panel -- see BaseHud::m_titleSupported.
+    disableTitle();
+    // The board artwork IS this HUD -- see BaseHud::m_textureRequired.
+    m_textureRequired = true;
+    m_packKind = PackKind::Pitboard;
     // One-time setup
     DEBUG_INFO("PitboardHud created");
     setDraggable(true);
+    // Body card: this HUD draws a content BLOCK under its title, which is what the
+    // themed card frames. Opt-in; see BaseHud::m_bContentCard.
+    m_bContentCard = true;
     m_quads.reserve(1);
     m_strings.reserve(8);  // Up to 7 data elements + optional title
 
-    // Set texture base name for dynamic texture discovery
-    setTextureBaseName("pitboard_hud");
-
-    // Initialize default layouts for known texture variants
-    initDefaultLayouts();
+    // No setTextureBaseName, and none passed at registration either: the board's
+    // background is the selected PACK's art, resolved through activePack() rather
+    // than through BaseHud's texture-variant machinery.
 
     // Set all configurable defaults
     resetToDefaults();
@@ -38,30 +44,24 @@ PitboardHud::PitboardHud()
     rebuildRenderData();
 }
 
-void PitboardHud::initDefaultLayouts() {
-    // Default layout (variant 1) - all offsets are 0 (use coded positions)
-    m_layouts[1] = LayoutConfig();
+void PitboardHud::setPitboardPack(const std::string& name) {
+    if (m_pitboardPack == name) return;
+    m_pitboardPack = name;
+    setDataDirty();
 }
 
-PitboardHud::LayoutConfig& PitboardHud::getLayout(int variant) {
-    auto it = m_layouts.find(variant);
-    if (it == m_layouts.end()) {
-        // Create default layout for this variant
-        m_layouts[variant] = LayoutConfig();
-        return m_layouts[variant];
-    }
-    return it->second;
+const PitboardAsset* PitboardHud::activePack() const {
+    const AssetManager& assets = AssetManager::getInstance();
+    // Degrade, do not blank: a name this install has no folder for falls back to
+    // the shipped board, and m_pitboardPack is deliberately NOT rewritten -- putting
+    // the folder back restores the user's choice without them re-picking it.
+    if (const PitboardAsset* named = assets.getPitboardByName(m_pitboardPack)) return named;
+    return assets.getDefaultPitboard();
 }
 
-const PitboardHud::LayoutConfig& PitboardHud::getCurrentLayout() const {
-    int variant = getTextureVariant();
-    auto it = m_layouts.find(variant);
-    if (it != m_layouts.end()) {
-        return it->second;
-    }
-    // Return default layout if current variant has no layout
-    static const LayoutConfig defaultLayout;
-    return defaultLayout;
+int PitboardHud::packSprite(PitboardSprite::Part part) const {
+    const PitboardAsset* pack = activePack();
+    return pack ? pack->sprites[part] : 0;
 }
 
 bool PitboardHud::handlesDataType(DataChangeType dataType) const {
@@ -87,9 +87,34 @@ int PitboardHud::getEnabledRowCount() const {
 float PitboardHud::calculateBackgroundHeight(int /*rowCount*/) const {
     // Layout: 1.0 row padding + title + rows + 1.0 row padding
     auto dim = getScaledDimensions();
+    // title-row-exempt: the ONE panel that pairs a NORMAL caption with a LARGE row,
+    // and it is deliberate. The board is a picture with its own printed header area;
+    // the caption is drawn small (MARKER font at dim.fontSize, in the pack's text colour, over the art)
+    // while the row reserved for it is the header band the artwork already has. Routing
+    // this through reservedTitleHeight would have to pick a tier, and both are wrong:
+    // Normal shrinks the board's header by a cell, Large claims a caption size this
+    // panel does not use. The bare row is larger than either tier's band needs, so it
+    // over-reserves -- which is the safe direction, and the reason this one may stay.
     float titleHeight = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
-    float padding = dim.lineHeightNormal * 1.0f;
-    return padding + titleHeight + (MAX_ROW_COUNT * dim.lineHeightNormal) + padding;
+    // panelHeight(), not a locally spelled `dim.lineHeightNormal * 1.0f`.
+    //
+    // The two are EQUAL unthemed -- a normal row is two cells and so is [panel]
+    // padding-y -- which is why the local read as a harmless synonym. It is not one:
+    // dim.paddingV IS contentPaddingY(), which widens the base padding to push
+    // content clear of the frame's edge slices, so this panel silently opted out of it.
+    // Measured at the shipped metrics: 12.67px short per side under a themed panel and
+    // 50.69px under Debug, with the rows sitting inside the frame.
+    //
+    // NO LONGER REACHABLE, and kept anyway. A background texture supersedes the theme
+    // (activeTheme() returns nullptr for it), and this HUD's artwork can no longer be
+    // switched off (m_textureRequired), so there is now no state where this panel draws
+    // a frame at all. The correct spelling costs nothing and stops the divergence
+    // reappearing the day that changes -- which is the whole argument for one spelling.
+    //
+    // (An earlier version of this comment claimed a shipped ini recommends turning the art
+    // off. It does not: its note is about the HUD's background PANEL on widgets with no
+    // texture at all -- Gear and Speed -- which is a different setting.)
+    return panelHeight(dim, titleHeight + MAX_ROW_COUNT * dim.lineHeightNormal);
 }
 
 bool PitboardHud::shouldBeVisible() const {
@@ -276,31 +301,53 @@ void PitboardHud::rebuildRenderData() {
     // Calculate enabled row count and background dimensions
     int enabledRows = getEnabledRowCount();
     float backgroundHeight = calculateBackgroundHeight(enabledRows);
-    // Match pitboard_hud.tga aspect ratio (1920x1080), corrected for UI aspect ratio
-    float backgroundWidth = (backgroundHeight * TEXTURE_ASPECT_RATIO) / UI_ASPECT_RATIO;
+    // Width from the ACTIVE PACK's own proportions, so a board drawn at any aspect
+    // keeps its shape instead of being stretched to whatever the rows needed. This
+    // was a compiled 1920/1080 named after the one shipped .tga, which is why a
+    // custom board at another aspect could not be made to look right.
+    const PitboardAsset* pack = activePack();
+    static const PitboardLayout::BoardGeometry kNoPackGeometry;
+    const PitboardLayout::BoardGeometry& layout = pack ? pack->geometry : kNoPackGeometry;
+    float backgroundWidth = layout.widthForHeight(backgroundHeight, UI_ASPECT_RATIO);
+
+    // Keep BaseHud's background sprite pointing at the active pack. Assigned only on
+    // change: setBackgroundTextureIndex invalidates the theme memo.
+    const int packBackground = pack ? pack->sprites[PitboardSprite::BACKGROUND] : 0;
+    if (getBackgroundTextureIndex() != packBackground) setBackgroundTextureIndex(packBackground);
 
     // Get dimensions for positioning
     auto dim = getScaledDimensions();
-    float titleHeight = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
-
+    // title-row-exempt: the ONE panel that pairs a NORMAL caption with a LARGE row,
+    // and it is deliberate. The board is a picture with its own printed header area;
+    // the caption is drawn small (MARKER font at dim.fontSize, in the pack's text colour, over the art)
+    // while the row reserved for it is the header band the artwork already has. Routing
+    // this through reservedTitleHeight would have to pick a tier, and both are wrong:
+    // (The caption reservation that used to sit here is gone with the title call it
+    // fed. The HEIGHT calculation keeps its own copy -- see calculateBackgroundHeight
+    // -- because that one is still read; this one had no reader once the caption row
+    // stopped being emitted, and m_bShowTitle is unreachable-true here anyway:
+    // disableTitle() in the constructor, and setShowTitle() refuses to set it.)
     setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + backgroundHeight);
     addBackgroundQuad(START_X, START_Y, backgroundWidth, backgroundHeight);
 
-    // Layout with 1.0 row top padding
     float centerX = START_X + (backgroundWidth / 2.0f);
     float leftX = START_X + (backgroundWidth * LEFT_ALIGN_OFFSET);
     float rightX = START_X + (backgroundWidth * RIGHT_ALIGN_OFFSET);
-    float currentY = START_Y + (dim.lineHeightNormal * 1.0f);
+    // The partner of calculateBackgroundHeight()'s panelHeight() -- see there for why
+    // the local `dim.lineHeightNormal * 1.0f` this replaces was not a synonym. Both
+    // sites had it, so the panel was internally consistent and uniformly wrong.
+    float currentY = panelContentY(dim, START_Y);
 
-    // Get per-texture layout offsets
-    const LayoutConfig& layout = getCurrentLayout();
-
-    // Title row (optional)
-    if (m_bShowTitle) {
-        addTitleString("Pitboard", centerX, currentY, Justify::CENTER,
-            this->getFont(FontCategory::MARKER), ColorPalette::BLACK, dim.fontSize);
-        currentY += titleHeight;
-    }
+    // THE BODY CARD, asked for directly -- the same swap the radar made, for the same
+    // reason. This called addTitleString("Pitboard", ...), which disableTitle() in the
+    // constructor made unreachable past its title-hidden early-out: card, empty
+    // string, return. There is no layout fast path here (rebuildLayout does a full
+    // rebuild), so nothing wanted that empty string either.
+    //
+    // Worth keeping rather than deleting: with a pit board pack installed the pack's
+    // artwork supersedes the theme and this draws nothing, but the NO-PACK path is a
+    // supported render (kNoPackGeometry above) and there the theme is live.
+    emitContentCard(0.0f);
 
     // Get rider data if available
     const RaceEntryData* raceEntry = (displayRaceNum > 0) ? data.getRaceEntry(displayRaceNum) : nullptr;
@@ -324,7 +371,7 @@ void PitboardHud::rebuildRenderData() {
         float riderIdPosX = centerX + (backgroundWidth * layout.riderIdX);
         float riderIdPosY = currentY + (backgroundHeight * layout.riderIdY);
         addString(riderIdStr, riderIdPosX, riderIdPosY, Justify::CENTER,
-                  this->getFont(FontCategory::MARKER), ColorPalette::BLACK, dim.fontSize, true);
+                  this->getFont(FontCategory::MARKER), layout.textColor, dim.fontSize, true);
     }
     currentY += dim.lineHeightNormal;
 
@@ -335,7 +382,7 @@ void PitboardHud::rebuildRenderData() {
             float sessionPosX = centerX + (backgroundWidth * layout.sessionX);
             float sessionPosY = currentY + (backgroundHeight * layout.sessionY);
             addString(sessionName, sessionPosX, sessionPosY, Justify::CENTER,
-                      this->getFont(FontCategory::MARKER), ColorPalette::BLACK, dim.fontSize, true);
+                      this->getFont(FontCategory::MARKER), layout.textColor, dim.fontSize, true);
         }
     }
     currentY += dim.lineHeightNormal;
@@ -352,7 +399,7 @@ void PitboardHud::rebuildRenderData() {
         float posPosX = leftX + (backgroundWidth * layout.positionX);
         float posPosY = plY + (backgroundHeight * layout.positionY);
         addString(positionStr, posPosX, posPosY, Justify::LEFT,
-                  this->getFont(FontCategory::MARKER), ColorPalette::BLACK, dim.fontSizeLarge, true);
+                  this->getFont(FontCategory::MARKER), layout.textColor, dim.fontSizeLarge, true);
     }
     if (m_enabledRows & ROW_TIME) {
         char timeStr[24];
@@ -369,7 +416,7 @@ void PitboardHud::rebuildRenderData() {
             float timePosX = centerX + (backgroundWidth * layout.timeX);
             float timePosY = currentY + (backgroundHeight * layout.timeY);
             addString(timeStr, timePosX, timePosY, Justify::CENTER,
-                      this->getFont(FontCategory::MARKER), ColorPalette::BLACK, dim.fontSize, true);
+                      this->getFont(FontCategory::MARKER), layout.textColor, dim.fontSize, true);
         }
     }
     if (m_enabledRows & ROW_LAP) {
@@ -396,7 +443,7 @@ void PitboardHud::rebuildRenderData() {
             float lapPosX = rightX + (backgroundWidth * layout.lapX);
             float lapPosY = plY + (backgroundHeight * layout.lapY);
             addString(lapStr, lapPosX, lapPosY, Justify::RIGHT,
-                      this->getFont(FontCategory::MARKER), ColorPalette::BLACK, dim.fontSizeLarge, true);
+                      this->getFont(FontCategory::MARKER), layout.textColor, dim.fontSizeLarge, true);
         }
     }
     currentY += dim.lineHeightNormal;
@@ -425,7 +472,7 @@ void PitboardHud::rebuildRenderData() {
             float lastLapPosX = centerX + (backgroundWidth * layout.lastLapX);
             float lastLapPosY = currentY + (backgroundHeight * layout.lastLapY);
             addString(timeStr, lastLapPosX, lastLapPosY, Justify::CENTER,
-                      this->getFont(FontCategory::MARKER), ColorPalette::BLACK, dim.fontSize, true);
+                      this->getFont(FontCategory::MARKER), layout.textColor, dim.fontSize, true);
         }
     }
     currentY += dim.lineHeightNormal;
@@ -448,7 +495,7 @@ void PitboardHud::rebuildRenderData() {
             float gapPosX = centerX + (backgroundWidth * layout.gapX);
             float gapPosY = currentY + (backgroundHeight * layout.gapY);
             addString(gapStr, gapPosX, gapPosY, Justify::CENTER,
-                      this->getFont(FontCategory::MARKER), ColorPalette::BLACK, dim.fontSize, true);
+                      this->getFont(FontCategory::MARKER), layout.textColor, dim.fontSize, true);
         } else if (hasGap) {
             // Format the gap string
             if (effectiveMode == GAP_LEADER && gapMs <= 0) {
@@ -460,7 +507,7 @@ void PitboardHud::rebuildRenderData() {
             float gapPosX = centerX + (backgroundWidth * layout.gapX);
             float gapPosY = currentY + (backgroundHeight * layout.gapY);
             addString(gapStr, gapPosX, gapPosY, Justify::CENTER,
-                      this->getFont(FontCategory::MARKER), ColorPalette::BLACK, dim.fontSize, true);
+                      this->getFont(FontCategory::MARKER), layout.textColor, dim.fontSize, true);
         }
     }
 }
@@ -554,16 +601,7 @@ int PitboardHud::calculateCompareGap(bool& hasGap, GapCompareMode& effectiveMode
         if (overallBest) {
             int refTime = -1;
             if (m_splitType == LAP) {
-                // Scan standings for best lap time (any rider)
-                const auto& standings = data.getStandings();
-                int best = -1;
-                // `st`, not `standing`: this function already has a `standing`
-                // pointer for the DISPLAYED rider; this loop is over all riders.
-                for (const auto& [raceNum, st] : standings) {
-                    if (st.bestLap > 0 && (best < 0 || st.bestLap < best))
-                        best = st.bestLap;
-                }
-                refTime = best;
+                refTime = data.getOverallBestLapTime();   // any rider
             } else if (m_splitType == SPLIT_1) {
                 refTime = overallBest->sector1;
             } else if (m_splitType == SPLIT_2) {
@@ -596,10 +634,14 @@ int PitboardHud::calculateCompareGap(bool& hasGap, GapCompareMode& effectiveMode
 void PitboardHud::resetToDefaults() {
     m_bVisible = false;
     m_bShowTitle = false;
-    setTextureVariant(1);  // Show texture by default
+    // The board artwork IS this panel. Through the setter, not the member: it owns
+    // the theme-memo invalidation (and check_hud_helpers.sh fails a HUD that touches
+    // the member directly).
+    setShowBackgroundTexture(true);
+    m_pitboardPack = AssetManager::DEFAULT_PITBOARD;
     m_fBackgroundOpacity = 1.0f;  // 100% opacity
     m_fScale = 1.0f;  // 100% default scale
-    setPosition(0.0055f, 0.12907f);
+    setPosition(cellsX(1), cellsY(11));
     m_enabledRows = ROW_DEFAULT;
     m_displayMode = MODE_SPLITS;  // Show at splits by default
     m_gapCompareMode = GAP_AUTO;  // Auto: leader when racing, session PB when solo

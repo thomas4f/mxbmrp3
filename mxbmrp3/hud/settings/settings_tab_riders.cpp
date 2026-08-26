@@ -197,11 +197,7 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
     // =====================================================
     // SECTION 1: Server Players Grid
     // =====================================================
-    ctx.parent->addString("Server Players", ctx.labelX, ctx.currentY, Justify::LEFT,
-        Fonts::getStrong(), colors.getPrimary(), ctx.fontSize);
-    ctx.parent->addString("(click to track/untrack)", ctx.labelX + charWidth * 16, ctx.currentY, Justify::LEFT,
-        Fonts::getNormal(), colors.getMuted(), ctx.fontSize * 0.9f);
-    ctx.currentY += ctx.lineHeightNormal;
+    ctx.addSectionHeading("Server Players", "(click to track/untrack)");
 
     // Get all race entries and build display list
     const auto& raceEntries = pluginData.getRaceEntries();
@@ -264,16 +260,11 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
     renderPagination(ctx.currentY, ctx.parent->m_serverPlayersPage, serverTotalPages,
                     SettingsHud::ClickRegion::SERVER_PAGE_PREV, SettingsHud::ClickRegion::SERVER_PAGE_NEXT);
 
-    ctx.currentY += ctx.lineHeightNormal * 0.3f;
 
     // =====================================================
     // SECTION 2: Tracked Riders Grid
     // =====================================================
-    ctx.parent->addString("Tracked Riders", ctx.labelX, ctx.currentY, Justify::LEFT,
-        Fonts::getStrong(), colors.getPrimary(), ctx.fontSize);
-    ctx.parent->addString("(L-click: color/plate, R-click: icon)", ctx.labelX + charWidth * 16, ctx.currentY, Justify::LEFT,
-        Fonts::getNormal(), colors.getMuted(), ctx.fontSize * 0.9f);
-    ctx.currentY += ctx.lineHeightNormal;
+    ctx.addSectionHeading("Tracked Riders", "(L-click: color/plate, R-click: icon)");
 
     // Get tracked riders
     const auto& allTracked = trackedMgr.getAllTrackedRiders();
@@ -330,7 +321,7 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
             // Icon sprite (clickable for color on left-click, icon on right-click)
             {
                 float spriteHalfSize = baseHalfSize;
-                int spriteIndex = AssetManager::getInstance().getFirstIconSpriteIndex() + shapeIndex - 1;
+                int spriteIndex = AssetManager::getInstance().iconSpriteForShape(shapeIndex);
 
                 float spriteCenterX = x + gridCharWidth * 1.5f;  // Center icon in 3-char space
                 float spriteCenterY = rowY + cellHeight * 0.5f;
@@ -384,10 +375,7 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
     renderPagination(ctx.currentY, ctx.parent->m_trackedRidersPage, trackedTotalPages,
                     SettingsHud::ClickRegion::TRACKED_PAGE_PREV, SettingsHud::ClickRegion::TRACKED_PAGE_NEXT);
 
-    // Info text
-    ctx.currentY += ctx.lineHeightNormal * 0.5f;
-    ctx.parent->addString("Tracked riders are saved to mxbmrp3_tracked_riders.json.", ctx.labelX, ctx.currentY,
-        Justify::LEFT, Fonts::getNormal(), colors.getMuted(), ctx.fontSize * 0.9f);
+    ctx.addNote("Tip: tracked riders are saved to mxbmrp3_tracked_riders.json.");
 
     // No active HUD for riders settings
     return nullptr;

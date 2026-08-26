@@ -57,6 +57,10 @@ protected:
 
 private:
     void rebuildRenderData() override;
+    // One notice background, themed when the theme has button slices. Uniform
+    // quad count across every notice branch -- the layout fast path rewrites
+    // this span by index.
+    void addNoticeBackground(float x, float y, float w, float h, unsigned long color);
 
     // Check if a timed notice is still within its display duration
     bool isTimedNoticeActive(std::chrono::steady_clock::time_point triggerTime) const;

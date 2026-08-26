@@ -21,6 +21,9 @@ StatsHud::StatsHud() {
     m_strings.reserve(45);  // title + header row + up to 10 rows * 4 strings
 
     setDraggable(true);
+    // Body card: this HUD draws a content BLOCK under its title, which is what the
+    // themed card frames. Opt-in; see BaseHud::m_bContentCard.
+    m_bContentCard = true;
     setTextureBaseName("stats_hud");
     resetToDefaults();
     rebuildRenderData();
@@ -105,15 +108,22 @@ bool StatsHud::computeLayout(Layout& out) const {
     int rowCount = getRowCount();
     int colGaps = (out.cols > 1) ? (out.cols - 1) * COLUMN_GAP_CHARS : 0;
     int widthChars = LABEL_WIDTH_CHARS + out.cols * COLUMN_WIDTH_CHARS + colGaps;
-    out.backgroundWidth = calculateBackgroundWidth(widthChars);
-    out.titleHeight = m_bShowTitle ? out.dim.lineHeightLarge : 0.0f;
-    float contentHeight = out.titleHeight + out.dim.lineHeightNormal * rowCount;
-    out.backgroundHeight = out.dim.paddingV + contentHeight + out.dim.paddingV;
+    // BOX-MODEL: the plan owns the box; the caption band is its, not a content
+    // term. This file spelling the panel terms itself is what once put it 34.557
+    // cells tall — the plan is the one owner now.
+    BaseHud::PanelWant want;
+    want.contentW = PluginUtils::calculateMonospaceTextWidth(widthChars, out.dim.fontSize);
+    want.sectionH = { out.dim.lineHeightNormal * rowCount };
+    want.captionW = planTitleWidth(out.dim, "Stats", TitleTier::Large);
+    want.tier = TitleTier::Large;
+    out.plan = planPanel(out.dim, want);
+    out.backgroundWidth = out.plan.width();
+    out.backgroundHeight = out.plan.height();
+    out.titleHeight = 0.0f;   // the band is the plan's; kept for struct stability
+    out.contentStartX = out.plan.contentX();
+    out.contentStartY = out.plan.contentY();
 
-    out.contentStartX = out.dim.paddingH;
-    out.contentStartY = out.dim.paddingV;
-
-    float rightX = out.backgroundWidth - out.dim.paddingH;
+    float rightX = out.plan.contentRight();
     float colStride = PluginUtils::calculateMonospaceTextWidth(COLUMN_WIDTH_CHARS + COLUMN_GAP_CHARS, out.dim.fontSize);
     for (int i = 0; i < out.cols; i++) {
         out.col[out.cols - 1 - i] = rightX - i * colStride;
@@ -134,10 +144,9 @@ void StatsHud::rebuildLayout() {
     float currentY = lay.contentStartY;
     size_t stringIndex = 0;
 
-    // Title
-    positionString(stringIndex, lay.contentStartX, currentY);
+    // Title — the plan's caption row, above the content.
+    positionString(stringIndex, lay.plan.X(lay.plan.g.captionX), planTitleY(lay.plan));
     stringIndex++;
-    currentY += lay.titleHeight;
 
     // Column headers — their own row below the title (like StandingsHud)
     float labelOffset = labelRowYOffset(lay.dim);  // Headers/row labels render at Small size, centered
@@ -166,7 +175,7 @@ void StatsHud::rebuildRenderData() {
         return;
     }
 
-    addBackgroundQuad(0, 0, lay.backgroundWidth, lay.backgroundHeight);
+    addPlanBackground(lay.plan, 0.0f, 0.0f);
     setBounds(0, 0, lay.backgroundWidth, lay.backgroundHeight);
 
     float currentY = lay.contentStartY;
@@ -206,10 +215,8 @@ void StatsHud::rebuildRenderData() {
     if (m_showSession) headerNames[headerIdx++] = "Session";
     if (m_showAllTime) headerNames[headerIdx++] = "All-time";
 
-    // Title
-    addTitleString("Stats", lay.contentStartX, currentY, Justify::LEFT,
-        this->getFont(FontCategory::TITLE), primaryColor, lay.dim.fontSizeLarge);
-    currentY += lay.titleHeight;
+    // Title — the plan's caption row, above currentY.
+    addPlanTitle(lay.plan, "Stats", this->getFont(FontCategory::TITLE), primaryColor);
 
     // Column headers — their own row below the title (like StandingsHud)
     for (int i = 0; i < lay.cols; i++) {
@@ -525,6 +532,6 @@ void StatsHud::resetToDefaults() {
     m_showLap = true;
     m_showSession = true;
     m_showAllTime = false;
-    setPosition(0.7315f, 0.62188f);
+    setPosition(cellsX(133), cellsY(53));
     setDataDirty();
 }

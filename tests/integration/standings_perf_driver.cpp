@@ -77,6 +77,16 @@ int main(int argc, char** argv) {
     char savePath[] = "Z:\\tmp\\mxbperf\\";
     Startup(savePath);
 
+    // Themed, like perf_driver -- see run_perf.sh's header. This driver measures the
+    // MAP hot loop, the most expensive path the plugin has, so leaving it flat while
+    // claiming both ran themed measured the cheap path and reported the expensive one.
+    if (auto InstallTheme = (void(*)(const char*,float,float,int,int,int))GetProcAddress(h, "MXBMRP3_Test_InstallTheme")) {
+        InstallTheme("perf", 3.0f, 1.0f, 1, 1, /*cardSprites=*/1);
+        printf("scenario: THEMED (synthetic 9-slice, band + body card)\n");
+    } else {
+        printf("scenario: unthemed (MXBMRP3_Test_InstallTheme not exported)\n");
+    }
+
     SPluginsBikeEvent_t ev{}; strcpy(ev.m_szRiderName,"Player Longname Zero One"); strcpy(ev.m_szBikeName,"Test 450");
     strcpy(ev.m_szCategory,"MX1"); strcpy(ev.m_szTrackName,"StTrack"); ev.m_fTrackLength=1600.0f; ev.m_iType=2;
     EventInit(&ev,(int)sizeof(ev));

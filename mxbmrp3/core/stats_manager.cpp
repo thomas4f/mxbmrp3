@@ -172,12 +172,20 @@ void StatsManager::updateTelemetry(float speedMs, bool isCrashed, int currentGea
     }
 
     // Crash edge detection — only count rising edges (not-crashed -> crashed)
-    if (isCrashed && !m_wasCrashed && stats) {
-        stats->crashCount++;
-        m_globalTotalsDirty = true;
-        m_sessionCrashes++;
-        m_curLapCrashes++;
+    if (isCrashed && !m_wasCrashed) {
+        // The TALLY first, and OUTSIDE the `stats` guard below. That guard exists
+        // because the per-track+bike record needs a track and a bike to be filed
+        // under; the tally needs neither -- it is a count of crashes, full stop --
+        // and a crash landing before setCurrentContext() has run would otherwise
+        // go uncounted on the one number a viewer is watching.
+        m_globalStats.crashTally++;
         m_dirty = true;
+        if (stats) {
+            stats->crashCount++;
+            m_globalTotalsDirty = true;
+            m_sessionCrashes++;
+            m_curLapCrashes++;
+        }
     }
     m_wasCrashed = isCrashed;
 
@@ -678,6 +686,16 @@ int64_t StatsManager::getGlobalTotalTimeMs() const {
 int StatsManager::getGlobalTotalCrashes() const {
     if (m_globalTotalsDirty) recomputeGlobalTotals();
     return m_cachedTotalCrashes;
+}
+
+// Back to zero, and PERSISTED at once rather than at the next autosave: the
+// button exists so a streamer can start a run clean on camera, and a count that
+// came back after a crash-to-desktop would be the one failure that matters.
+void StatsManager::resetCrashTally() {
+    if (m_globalStats.crashTally == 0) return;
+    m_globalStats.crashTally = 0;
+    m_dirty = true;
+    save();
 }
 
 int StatsManager::getGlobalTotalGearShifts() const {

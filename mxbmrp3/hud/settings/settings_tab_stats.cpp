@@ -56,12 +56,10 @@ BaseHud* SettingsHud::renderTabStats(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("stats");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeader("Appearance");
+    ctx.addSectionHeading("Appearance");
     ctx.addStandardHudControls(hud);
-    ctx.addSpacing(0.5f);
-
     // === LAYOUT SECTION ===
-    ctx.addSectionHeader("Layout");
+    ctx.addSectionHeading("Layout");
 
     // Visibility mode. postStep resets the transient auto-show latches on any
     // mode change (exactly what the old dedicated handlers did); arrows had no
@@ -92,30 +90,24 @@ BaseHud* SettingsHud::renderTabStats(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::STATS_SHOW_ALLTIME_TOGGLE,
         hud, nullptr, 0, true, "stats.show_alltime");
 
-    ctx.addSpacing(0.5f);
 
     // Colors and fonts
     ColorConfig& colors = ColorConfig::getInstance();
     unsigned long secondaryColor = colors.getSecondary();
-    unsigned long mutedColor = colors.getMuted();
-    int normalFont = PluginConstants::Fonts::getNormal();
 
-    float valueX = ctx.controlX;
     const StatsManager& stats = StatsManager::getInstance();
 
     // ============================================================
     // Overall Stats
     // ============================================================
-    ctx.addSectionHeader("Overall");
+    ctx.addSectionHeading("Overall");
 
     const GlobalStats global = stats.getGlobalStats();
 
+    // A read-only stat: label at labelX, value in the CONTROL column, so these rows
+    // line up with every other tab's cyclers.
     auto addGlobalRow = [&](const char* label, const char* value) {
-        ctx.parent->addString(label, ctx.labelX, ctx.currentY, PluginConstants::Justify::LEFT,
-            normalFont, colors.getTertiary(), ctx.fontSize);
-        ctx.parent->addString(value, valueX, ctx.currentY, PluginConstants::Justify::LEFT,
-            normalFont, secondaryColor, ctx.fontSize);
-        ctx.currentY += ctx.lineHeightNormal;
+        ctx.addLabelValueRow(label, colors.getTertiary(), value, secondaryColor);
     };
 
     char valueBuf[32];
@@ -166,10 +158,7 @@ BaseHud* SettingsHud::renderTabStats(SettingsLayoutContext& ctx) {
     snprintf(valueBuf, sizeof(valueBuf), "%d", global.breakoutHighScore);
     addGlobalRow("Breakout score", valueBuf);
 
-    // Footer
-    ctx.addSpacing(0.5f);
-    ctx.parent->addString("Your stats are saved to mxbmrp3_stats.json.", ctx.labelX, ctx.currentY,
-        PluginConstants::Justify::LEFT, normalFont, mutedColor, ctx.fontSize * 0.9f);
+    ctx.addNote("Tip: your stats are saved to mxbmrp3_stats.json.");
 
     return hud;
 }

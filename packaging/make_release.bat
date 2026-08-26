@@ -74,8 +74,19 @@ REM    in build\<GAME>-Release\ exactly where the staging copies below expect â€
 REM    the paths are pinned by RUNTIME_OUTPUT_DIRECTORY in mxbmrp3/CMakeLists.txt.
 echo.
 echo === Building All-Release (MXB + GPB + KRP) ===
+REM Parallelism: /m builds the three game targets concurrently and /MP
+REM (mxbmrp3/CMakeLists.txt) forks one cl per file inside each -- cores x
+REM projects of compiler processes, each holding hundreds of MB. On a machine
+REM without the commit headroom for that (C1060 "compiler is out of heap
+REM space", typically when a near-full C: also pins the pagefile), cap it:
+REM
+REM     set MXBMRP3_BUILD_JOBS=2 & packaging\make_release.bat
+REM
+REM which serialises the projects and holds each to N compiler processes.
+set "PAR=/m"
+if defined MXBMRP3_BUILD_JOBS set "PAR=/m:1 /p:CL_MPCount=%MXBMRP3_BUILD_JOBS%"
 cmake -S . -B build\msvc -G "Visual Studio 17 2022" -A x64 || exit /b %ERRORLEVEL%
-cmake --build build\msvc --config Release -- /m /v:minimal || (
+cmake --build build\msvc --config Release -- %PAR% /v:minimal || (
     echo ERROR: All-Release build failed
     exit /b 1
 )
@@ -105,8 +116,9 @@ copy ".\build\MXB-Release\mxbmrp3.dlo" "%STAGING_DIR%\mxbmrp3.dlo" || exit /b %E
 copy ".\build\GPB-Release\mxbmrp3_gpb.dlo" "%STAGING_DIR%\mxbmrp3_gpb.dlo" || exit /b %ERRORLEVEL%
 copy ".\build\KRP-Release\mxbmrp3_krp.dlo" "%STAGING_DIR%\mxbmrp3_krp.dlo" || exit /b %ERRORLEVEL%
 
-REM 8) Copy docs
-copy ".\README.md" "%STAGING_DIR%\" || exit /b %ERRORLEVEL%
+REM 8) Copy docs. No README.md â€” README.txt below is the offline doc (see
+REM    release.yml). The two license files are required, not courtesy: the zip
+REM    carries OFL-1.1 fonts and MIT-licensed gamepad art.
 copy ".\LICENSE" "%STAGING_DIR%\" || exit /b %ERRORLEVEL%
 copy ".\THIRD_PARTY_LICENSES.md" "%STAGING_DIR%\" || exit /b %ERRORLEVEL%
 

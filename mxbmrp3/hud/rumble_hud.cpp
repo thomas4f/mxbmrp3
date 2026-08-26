@@ -17,6 +17,9 @@ RumbleHud::RumbleHud() {
     // One-time setup
     DEBUG_INFO("RumbleHud created");
     setDraggable(true);
+    // Body card: this HUD draws a content BLOCK under its title, which is what the
+    // themed card frames. Opt-in; see BaseHud::m_bContentCard.
+    m_bContentCard = true;
     m_quads.reserve(500);   // Line segments for graphs
     m_strings.reserve(20);  // Title + labels
 
@@ -45,7 +48,7 @@ void RumbleHud::update() {
     // frame (~2,600 line-segment quads with all channels on) wasted most of the
     // work at 480fps. Same fix TelemetryHud received for the identical pattern.
     if (isDataDirty() || isLayoutDirty()) {
-        rebuildRenderData();
+        rebuildAndRecord();
     }
     clearDataDirty();
     clearLayoutDirty();
@@ -61,7 +64,7 @@ void RumbleHud::resetToDefaults() {
     m_bShowTitle = true;
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
-    setPosition(0.7315f, 0.37547f);
+    setPosition(cellsX(133), cellsY(32));
     setScale(1.0f);
     m_bShowMaxMarkers = false;  // Max markers OFF by default
     // Linger counts REBUILDS, which since the dirty-gate fix tick at telemetry
@@ -172,8 +175,6 @@ void RumbleHud::rebuildRenderData() {
     float graphWidth = PluginUtils::calculateMonospaceTextWidth(GRAPH_WIDTH_CHARS, dims.fontSize);
     float barWidth = PluginUtils::calculateMonospaceTextWidth(BAR_WIDTH_CHARS, dims.fontSize);
     float gapWidth = PluginUtils::calculateMonospaceTextWidth(GAP_WIDTH_CHARS, dims.fontSize);
-    float backgroundWidth = PluginUtils::calculateMonospaceTextWidth(BACKGROUND_WIDTH_CHARS, dims.fontSize)
-        + dims.paddingH + dims.paddingH;
     float graphHeight = GRAPH_HEIGHT_LINES * dims.lineHeightNormal;
     float barHeight = (GRAPH_HEIGHT_LINES - 1) * dims.lineHeightNormal;  // Bars are 1 line shorter to fit labels
 
@@ -191,26 +192,22 @@ void RumbleHud::rebuildRenderData() {
     if (config.pitLimiterEffect.isEnabled()) legendLines++;
     float legendHeight = legendLines * dims.lineHeightNormal;
 
-    // Height: title + max(graph height, legend height) - matching TelemetryHud/PerformanceHud
-    float titleHeight = m_bShowTitle ? dims.lineHeightLarge : 0.0f;
+    // BOX-MODEL: one section; the caption band and the cards are the plan's.
     float contentHeight = graphHeight > legendHeight ? graphHeight : legendHeight;
-    float backgroundHeight = dims.paddingV + titleHeight + contentHeight + dims.paddingV;
+    BaseHud::PanelWant want;
+    want.contentW = PluginUtils::calculateMonospaceTextWidth(BACKGROUND_WIDTH_CHARS, dims.fontSize);
+    want.sectionH = { contentHeight };
+    want.captionW = planTitleWidth(dims, "Rumble", TitleTier::Large);
+    want.tier = TitleTier::Large;
+    PanelPlan& plan = planPanel(dims, want);
+    setBounds(START_X, START_Y, START_X + plan.width(), START_Y + plan.height());
+    addPlanBackground(plan, START_X, START_Y);
 
-    setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + backgroundHeight);
+    float contentStartX = plan.contentX();
+    float currentY = plan.contentY();
 
-    // Add background quad
-    addBackgroundQuad(START_X, START_Y, backgroundWidth, backgroundHeight);
-
-    float contentStartX = START_X + dims.paddingH;
-    float contentStartY = START_Y + dims.paddingV;
-    float currentY = contentStartY;
-
-    // Title
-    if (m_bShowTitle) {
-        addTitleString("Rumble", contentStartX, currentY, Justify::LEFT,
-            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dims.fontSizeLarge);
-        currentY += titleHeight;
-    }
+    addPlanTitle(plan, "Rumble", this->getFont(FontCategory::TITLE),
+                 this->getColor(ColorSlot::PRIMARY));
 
     // Colors for motors and effects
     unsigned long heavyColor = PluginUtils::makeColor(255, 100, 100, 230);  // Red-ish for heavy motor

@@ -147,6 +147,15 @@ public:
     // Store the save path for later use (set during loadSettings)
     const std::string& getSavePath() const { return m_savePath; }
 
+    // Where exported reports go: <savePath>\mxbmrp3\benchmarks. Creates both levels,
+    // and returns empty when there is no save path to build from.
+    //
+    // ONE OWNER, because there were briefly two: the render-probe sweep built the same
+    // path by hand and left out the `mxbmrp3` segment, so its reports landed a folder
+    // above every other export and looked lost. A path spelled in two places is a path
+    // that disagrees with itself the first time either is edited.
+    std::string getBenchmarksDir() const;
+
     // Developer mode - shows debug options in UI when enabled via INI
     bool isDeveloperMode() const { return m_developerMode; }
     void setDeveloperMode(bool enabled) { m_developerMode = enabled; }
@@ -207,8 +216,6 @@ private:
     std::string buildHudSection(const char* hudName) const;
 
     // Build the GamepadWidget / PitboardHud per-variant layout blocks (read live from the widgets).
-    std::string buildGamepadLayouts(const HudManager& hudManager) const;
-    std::string buildPitboardLayouts(const HudManager& hudManager) const;
 
     // Apply one parsed key/value belonging to a global section to the live singletons.
     // Returns true if the section was a recognized global section (so the caller stops

@@ -4,10 +4,28 @@
 // ============================================================================
 #pragma once
 
+// THEME GENERATION -- bumped whenever anything a theme lookup depends on changes:
+// discovery, a config reload, or the selected theme name. BaseHud memoises its
+// resolved ThemeAsset* against this, because getThemeByName() is a linear string
+// scan and one rebuild asks for it dozens of times.
+//
+// A free inline counter rather than a member of AssetManager, and that is not
+// stylistic: ui_config.cpp is compiled into the UNIT suite and asset_manager.cpp is
+// not (it is Windows-only), so a setter reaching into AssetManager fails to link
+// there. An inline global has no TU to miss.
+inline unsigned int& mxbThemeGenerationRef() {
+    static unsigned int gen = 1;   // 0 is BaseHud's never-resolved sentinel
+    return gen;
+}
+inline unsigned int mxbThemeGeneration() { return mxbThemeGenerationRef(); }
+inline void mxbBumpThemeGeneration() { ++mxbThemeGenerationRef(); }
+
+
 #include <algorithm>   // std::clamp (render-probe bounds)
 #include <atomic>
 #include <cstdint>
 #include <cmath>
+#include <string>
 
 // Temperature unit options (used by SessionHud weather display)
 enum class TemperatureUnit : uint8_t {
@@ -37,6 +55,16 @@ public:
     // Grid snapping setting (for HUD positioning)
     bool getGridSnapping() const { return m_bGridSnapping; }
     void setGridSnapping(bool enabled) { m_bGridSnapping = enabled; }
+
+    // Active 9-slice panel theme, by AssetManager theme name. Empty = no theme
+    // (HUD backgrounds stay flat solid quads, the pre-theme behaviour and the
+    // default). Stored as a NAME rather than an index so adding, removing or
+    // reordering theme folders cannot silently repoint a saved setting at a
+    // different theme -- and so an unknown name degrades to "no theme" instead of
+    // to an arbitrary one.
+    const std::string& getThemeName() const { return m_themeName; }
+    // Bumps the theme generation so every HUD's memoised ThemeAsset* is refreshed.
+    void setThemeName(const std::string& name);
 
     // Screen clamping setting (keeps HUDs within screen bounds when dragging)
     bool getScreenClamping() const { return m_bScreenClamping; }
@@ -139,6 +167,50 @@ public:
     // 0 = solid-fill quad, 1 = sprite (textured) quad, 2 = text string.
     int  getRenderProbeType() const { return m_renderProbeType.load(std::memory_order_relaxed); }
     void setRenderProbeType(int t) { m_renderProbeType.store((t < 0 || t > 2) ? 0 : t, std::memory_order_relaxed); }
+    // WHICH sprite type 1 draws: 0 = cycle every registered sprite, k>0 = that one,
+    // every quad, for the whole frame.
+    //
+    // This is the knob that separates two costs the probe used to charge together.
+    // Type 1 always cycled, so its result was "textured AND switching texture on
+    // every quad" -- the worst case, and not the one a themed panel is: a panel's 27
+    // quads come from ~9 distinct theme sprites and the engine may well batch them.
+    // Pinning one sprite gives texture SAMPLING with zero switches; the difference
+    // between the two runs is what switching costs. An out-of-range index falls back
+    // to cycling rather than drawing nothing, so a typo cannot silently produce a
+    // run that measures the untextured path while claiming to measure the textured
+    // one.
+    int  getRenderProbeSprite() const { return m_renderProbeSprite.load(std::memory_order_relaxed); }
+    void setRenderProbeSprite(int s) {
+        m_renderProbeSprite.store(s < 0 ? 0 : s, std::memory_order_relaxed);
+    }
+    // How many characters renderProbeType=2 draws per string.
+    //
+    // THIS IS NOT COSMETIC, and its absence produced a wrong answer. The text step
+    // used a hardcoded 15-character string, so its result was "2.66 us per
+    // FIFTEEN-CHARACTER string" -- and applying that to the plugin's own strings,
+    // which average about nine, overstated the cost of drop shadow by 1.7x. The
+    // engine bills per glyph; a per-string number is only meaningful next to the
+    // length it was measured at. Sweeping the length separates the two: the slope is
+    // us per character, the intercept is what a string costs before its first glyph.
+    // Alpha the probe's quads carry (0-255, default 64).
+    //
+    // Exists to answer one question the plugin cannot answer about itself: HUDs emit
+    // their background quad even when it is FULLY TRANSPARENT ("always add quad to
+    // keep indices consistent" -- addBackgroundQuad), which is 27 invisible quads per
+    // themed panel at zero opacity. Whether that costs anything depends on whether the
+    // engine early-outs on alpha 0, and no in-plugin timer can see the answer. Sweep
+    // alpha 64 against alpha 0 at the same N: same cost means transparent quads are
+    // charged in full and skipping them is worth the surgery, cheaper means it is not.
+    int  getRenderProbeAlpha() const { return m_renderProbeAlpha.load(std::memory_order_relaxed); }
+    void setRenderProbeAlpha(int a) {
+        m_renderProbeAlpha.store(std::clamp(a, 0, 255), std::memory_order_relaxed);
+    }
+
+    static constexpr int MAX_PROBE_TEXT_CHARS = 90;   // SPluginString_t holds 100
+    int  getRenderProbeTextChars() const { return m_renderProbeTextChars.load(std::memory_order_relaxed); }
+    void setRenderProbeTextChars(int n) {
+        m_renderProbeTextChars.store(std::clamp(n, 1, MAX_PROBE_TEXT_CHARS), std::memory_order_relaxed);
+    }
 
     // Drop shadow settings (for text rendering)
     bool getDropShadow() const { return m_bDropShadow; }
@@ -160,6 +232,7 @@ private:
     UiConfig& operator=(const UiConfig&) = delete;
 
     bool m_bGridSnapping = true;    // Grid snapping enabled by default
+    std::string m_themeName;         // Empty = no panel theme (flat backgrounds)
     bool m_bScreenClamping = false;  // Screen clamping disabled by default
     bool m_bMenuOnlyCursor = false;  // Cursor follows mouse movement by default
     bool m_bAutoSave = true;         // Auto-save enabled by default
@@ -175,6 +248,9 @@ private:
     std::atomic<int>  m_renderProbeQuads{ 0 };       // DEBUG: extra synthetic quads/frame for engine render-cost measurement (INI-only, off by default)
     std::atomic<bool> m_renderProbeFullscreen{ false };  // DEBUG: probe quads full-screen (fill-rate) vs tiny (submit cost)
     std::atomic<int>  m_renderProbeType{ 0 };        // DEBUG: 0=fill quad, 1=sprite quad, 2=text string
+    std::atomic<int>  m_renderProbeSprite{ 0 };      // DEBUG: 0=cycle all sprites, k=pin sprite k (isolates texture SWITCH cost from sample cost)
+    std::atomic<int>  m_renderProbeAlpha{ 64 };      // DEBUG: probe quad alpha; 0 tests whether the engine early-outs
+    std::atomic<int>  m_renderProbeTextChars{ 15 };  // DEBUG: glyphs per probe string (the engine bills per glyph)
 
     // Grid overlay (INI-only debug aid)
     bool m_bGridOverlay = false;                       // Off by default
@@ -183,7 +259,7 @@ private:
     unsigned long m_ulGridOverlayMajorColor = 0x9933CCFF;  // Major lines (light blue)
 
     // Drop shadow settings
-    bool m_bDropShadow = true;                       // Drop shadow enabled by default
+    bool m_bDropShadow = false;                      // Off by default: every shadowed string is a second draw
     float m_fDropShadowOffsetX = 0.03f;              // 3% of font size
     float m_fDropShadowOffsetY = 0.04f;              // 4% of font size
     unsigned long m_ulDropShadowColor = 0xAA000000;  // Semi-transparent black

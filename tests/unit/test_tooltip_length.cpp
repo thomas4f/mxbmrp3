@@ -24,7 +24,7 @@
 #include "doctest.h"
 
 #include "core/tooltip_manager.h"
-#include "hud/settings/settings_metrics.h"
+#include "core/layout_metrics.h"
 #include "hud/settings/text_wrap.h"
 
 namespace {
@@ -32,7 +32,14 @@ namespace {
 // Not a magic number: the SAME constant expression the renderer passes to
 // TextWrap::wrap, from the panel's own character metrics. Widen the panel and
 // this guard widens with it on the next run.
-constexpr int TOOLTIP_CHARS_PER_LINE = SettingsMetrics::tooltipCharsPerLine();
+// The shipped default, not a live read: this guard measures TOOLTIP TEXT against
+// the box the stock panel gives it. A user who widens the panel in a theme file
+// gets a roomier box, which cannot make a tooltip that already fits stop fitting.
+// THEMED, which is the NARROWER of the two: the box gives up a character to the
+// section card's border. Guarding the wide (unthemed) box would pass a tooltip that
+// renders cut off for every user running a panel theme.
+const int TOOLTIP_CHARS_PER_LINE =
+    LayoutMetrics().settingsTooltipCharsPerLine(/*themedCard=*/true);
 
 }  // namespace
 

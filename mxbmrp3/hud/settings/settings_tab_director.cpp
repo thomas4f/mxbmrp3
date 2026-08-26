@@ -33,7 +33,7 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
 
     // --- Appearance: the on-screen status button (a separate draggable widget).
     // Leads the tab like Rumble/Helmet; independent of the director being enabled. ---
-    ctx.addSectionHeader("Appearance");
+    ctx.addSectionHeading("Appearance");
     DirectorWidget* hud = HudManager::getInstance().getDirectorWidget();
     // Active surface: DIRECTOR_HUD_VISIBLE now toggles whichever surface the menu is
     // on, so the label has to report the same one it changes.
@@ -56,8 +56,7 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
 
     // --- Director: master enable, shot pacing, and the field-wide position cutoff
     // (it gates battles, incidents, overtakes AND lappers, so it lives here). ---
-    ctx.addSpacing(0.5f);
-    ctx.addSectionHeader("Director");
+    ctx.addSectionHeading("Director");
     ctx.addToggleControl("Enabled", on,
         SettingsHud::ClickRegion::DIRECTOR_ENABLE_TOGGLE, nullptr,
         nullptr, 0, true, "director.enabled");
@@ -117,8 +116,7 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
     //   Scored candidates (weight multiplier on posWeight): Catch overtakes (x3.0) >
     //     Follow battles (x2.0) > Follow drops (x1.6) > Follow lappers (x1.2).
     // A new story slots in by its score. ---
-    ctx.addSpacing(0.5f);
-    ctx.addSectionHeader("Stories");
+    ctx.addSectionHeading("Stories");
 
     ctx.addToggleControl("Follow incidents", director.getFollowIncidents(),
         SettingsHud::ClickRegion::DIRECTOR_FOLLOW_INCIDENTS, nullptr,
@@ -141,9 +139,10 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
     ctx.addToggleControl("Follow drops", director.getFollowDrops(),
         SettingsHud::ClickRegion::DIRECTOR_FOLLOW_DROPS, nullptr,
         nullptr, 0, on, "director.follow_drops");
-    ctx.addToggleControl("Follow lappers", director.getFollowLappers(),
-        SettingsHud::ClickRegion::DIRECTOR_FOLLOW_LAPPERS, nullptr,
-        nullptr, 0, on, "director.follow_lappers");
+    // Follow lappers is INI-ONLY (director_follow_lappers=), like the tab's other
+    // omissions: this tab was overflowing the panel and the lapper story is the one
+    // the fewest broadcasts touch. The setting, its handler and its default are
+    // untouched -- only the row is gone.
 
     // --- Onboard variety: how often the director dips off Trackside into an onboard,
     // and which onboards it may use. "Onboard every" is the cadence (0 = Off = always
@@ -155,13 +154,12 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
     // covering stories on a shot the caster chose, and pickShot pins those to Auto /
     // Trackside. The stored values are left alone rather than shown as Off, so turning
     // the max shot back on restores the cadence the user had set. ---
-    ctx.addSpacing(0.5f);
     // Static title. A header that rewrites itself as you step a control above it reads as
     // the panel twitching, so the "why is this greyed?" answer lives in the "Onboard every"
     // tooltip instead ("Needs Max shot on") - the same place every other explanation in
     // this tab lives.
     const bool rotationOn = director.forcedRotation();
-    ctx.addSectionHeader("Onboard variety");
+    ctx.addSectionHeading("Onboard variety");
 
     const int ve = director.getVarietyEvery();
     const bool varietyOn = (ve > 0);
@@ -199,8 +197,7 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
 
     // --- Manual control: how the caster takes over and hands back (takeover first).
     // Last, below the cameras - it's the least-touched section. ---
-    ctx.addSpacing(0.5f);
-    ctx.addSectionHeader("Manual control");
+    ctx.addSectionHeading("Manual control");
 
     ctx.addToggleControl("Gamepad takeover", director.getGamepadTakeover(),
         SettingsHud::ClickRegion::DIRECTOR_GAMEPAD_TAKEOVER, nullptr,

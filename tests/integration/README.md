@@ -2,14 +2,14 @@
 
 Cross-compiles the plugin to a **loadable Windows x64 DLL** using mingw-w64, so a
 non-Windows host (CI, a Linux dev box, Wine) can exercise the real plugin data
-pipeline end-to-end — not just the isolated pure functions in `../unit`.
+pipeline end-to-end - not just the isolated pure functions in `../unit`.
 
 This is **not** the shipping build. The shipping `.dlo` is built with MSVC (see
 the root `CLAUDE.md`). This is a parallel *portability* configuration used only
 for testing.
 
 > **Where the tests live and how to run them: [`../../TESTING.md`](../../TESTING.md).**
-> This file covers only the cross-build itself — the build engine and how it
+> This file covers only the cross-build itself - the build engine and how it
 > diverges from the shipping MSVC build.
 
 ## What runs here
@@ -41,7 +41,7 @@ Every `*.cpp` under `core/`, `handlers/`, `hud/`, `diagnostics/` (minus
 `discord_manager.cpp`, which `mxbmrp3/CMakeLists.txt` drops under
 `MXBMRP3_TEST_BUILD` because `GAME_HAS_DISCORD` is 0 there and the TU would only
 drag the SDK in), plus `mxb_api.cpp` and the miniz `.c` files, compiles clean
-into a genuine PE32+ DLL exporting the full PiBoSo plugin API — ~150 translation
+into a genuine PE32+ DLL exporting the full PiBoSo plugin API - ~150 translation
 units. `build.sh` prints the exported-symbol count on each link; a sudden drop
 means a TU quietly stopped being compiled. Under Wine it runs the real lifecycle:
 all managers initialize, settings load/save round-trips, HUDs rebuild render
@@ -71,17 +71,17 @@ installed with the `mingw` group.
 ```
 
 `build.sh` is a thin wrapper over **CMake**, which replaced the Makefile that
-used to live here — that Makefile was a second, independent description of the
+used to live here - that Makefile was a second, independent description of the
 same source tree sitting alongside the vcxproj's explicit list, with nothing
 comparing the two. Both are gone: `mxbmrp3/CMakeLists.txt` is the single
 definition for every toolchain. The build tree is `build/cross/`, configured from
 the `cross` preset so the toolchain file and `MXBMRP3_TEST_BUILD` live only in
 `CMakePresets.json`. It doesn't rebuild everything every time:
 
-- **Incremental** — CMake/Ninja-style dependency tracking recompiles only the
+- **Incremental** - CMake/Ninja-style dependency tracking recompiles only the
   affected TUs + the link when you edit one `.cpp` or header.
-- **Parallel** — the build runs at `-j$(nproc)`.
-- **ccache** (optional) — caches objects by content hash, so unchanged TUs are
+- **Parallel** - the build runs at `-j$(nproc)`.
+- **ccache** (optional) - caches objects by content hash, so unchanged TUs are
   served instantly even after a clean.
 
 Approximate timings (4 cores):
@@ -109,15 +109,15 @@ All divergences are gated in-source by `MXBMRP3_TEST_BUILD` or `_MSC_VER`, so
 | `Xinput.h` include | as-is | case shim | Linux is case-sensitive; mingw ships lowercase `xinput.h` |
 
 Source changes that support this (all no-ops on MSVC):
-- `game/game_config.h` — `MXBMRP3_TEST_BUILD` disables Discord + analytics
-- `core/seh_compat.h` — portable `SEH_TRY` / `SEH_EXCEPT_ALL` (real SEH on MSVC,
+- `game/game_config.h` - `MXBMRP3_TEST_BUILD` disables Discord + analytics
+- `core/seh_compat.h` - portable `SEH_TRY` / `SEH_EXCEPT_ALL` (real SEH on MSVC,
   runs unguarded elsewhere)
-- `core/steam_friends_manager.cpp`, `handlers/spectate_handler.cpp` — use those
+- `core/steam_friends_manager.cpp`, `handlers/spectate_handler.cpp` - use those
   macros instead of raw `__try/__except`
-- `core/xinput_reader.cpp` — WinRT name lookup behind `#ifdef _MSC_VER`
-- `hud/timing_hud.cpp` — added missing `#include <algorithm>` (a real latent
+- `core/xinput_reader.cpp` - WinRT name lookup behind `#ifdef _MSC_VER`
+- `hud/timing_hud.cpp` - added missing `#include <algorithm>` (a real latent
   bug: it was relying on a transitive MSVC include)
-- `tests/integration/shim/Xinput.h` — case-only forwarding header (no source edit)
+- `tests/integration/shim/Xinput.h` - case-only forwarding header (no source edit)
 
 ## Test-only exports
 

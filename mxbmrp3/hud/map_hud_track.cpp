@@ -30,9 +30,6 @@ void MapHud::renderTrack(const RotationCache& rotation, unsigned long trackColor
         return;
     }
 
-    // Get dimensions for title offset
-    auto dim = getScaledDimensions();
-    float titleOffset = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
 
     // Calculate base track width from track dimensions
     float trackWidth = m_maxX - m_minX;
@@ -140,8 +137,8 @@ void MapHud::renderTrack(const RotationCache& rotation, unsigned long trackColor
         float screenLeftX, screenLeftY, screenRightX, screenRightY;
         worldToScreen(leftX, leftY, screenLeftX, screenLeftY, rotation);
         worldToScreen(rightX, rightY, screenRightX, screenRightY, rotation);
-        screenLeftY += titleOffset;
-        screenRightY += titleOffset;
+        screenLeftX += m_fContentDX;  screenLeftY += m_fContentDY;
+        screenRightX += m_fContentDX; screenRightY += m_fContentDY;
         applyOffset(screenLeftX, screenLeftY);
         applyOffset(screenRightX, screenRightY);
 
@@ -183,6 +180,11 @@ void MapHud::ensureWorldRibbon(float lodSpacing, int curveMinSteps) {
     }
 
     m_worldRibbon.clear();
+    // The off-track pointer's hysteresis holds a ribbon INDEX, and an index means
+    // nothing once the ribbon is re-tessellated at a different LOD -- it would pin
+    // the arrow to whatever now happens to sit at that position. Dropped here, at
+    // the one place the ribbon is rebuilt.
+    m_pointerLastValid = false;
     if (m_trackSegments.empty()) {
         m_worldRibbonKey = key;
         m_worldRibbonValid = true;
@@ -306,9 +308,6 @@ void MapHud::renderStartMarker(const RotationCache& rotation,
         return;
     }
 
-    // Get dimensions for title offset
-    auto dim = getScaledDimensions();
-    float titleOffset = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
 
     // Draw triangle quad at track start pointing in direction.
     // Base spans the TRACK FILL width (not fill + outline rim): the outline width
@@ -332,15 +331,15 @@ void MapHud::renderStartMarker(const RotationCache& rotation,
     // Convert to screen coordinates
     float screenPointX, screenPointY;
     worldToScreen(pointX, pointY, screenPointX, screenPointY, rotation);
-    screenPointY += titleOffset;
+    screenPointX += m_fContentDX; screenPointY += m_fContentDY;
 
     float screenBaseLeftX, screenBaseLeftY;
     worldToScreen(baseLeftX, baseLeftY, screenBaseLeftX, screenBaseLeftY, rotation);
-    screenBaseLeftY += titleOffset;
+    screenBaseLeftX += m_fContentDX; screenBaseLeftY += m_fContentDY;
 
     float screenBaseRightX, screenBaseRightY;
     worldToScreen(baseRightX, baseRightY, screenBaseRightX, screenBaseRightY, rotation);
-    screenBaseRightY += titleOffset;
+    screenBaseRightX += m_fContentDX; screenBaseRightY += m_fContentDY;
 
     // Apply HUD offset
     applyOffset(screenPointX, screenPointY);
@@ -391,8 +390,6 @@ void MapHud::drawDirectionMarker(const RaceMarker& marker, unsigned long color,
     float pointLength   = effectiveWidthMeters * 0.5f;
     float cullMargin = effectiveWidthMeters;
 
-    auto dim = getScaledDimensions();
-    float titleOffset = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
 
     // Cull if marker is outside current bounds
     if (marker.worldX < m_minX - cullMargin || marker.worldX > m_maxX + cullMargin ||
@@ -416,9 +413,9 @@ void MapHud::drawDirectionMarker(const RaceMarker& marker, unsigned long color,
     worldToScreen(pointX, pointY, sPointX, sPointY, rotation);
     worldToScreen(baseLeftX, baseLeftY, sLeftX, sLeftY, rotation);
     worldToScreen(baseRightX, baseRightY, sRightX, sRightY, rotation);
-    sPointY += titleOffset;
-    sLeftY  += titleOffset;
-    sRightY += titleOffset;
+    sPointX += m_fContentDX; sPointY += m_fContentDY;
+    sLeftX  += m_fContentDX; sLeftY  += m_fContentDY;
+    sRightX += m_fContentDX; sRightY += m_fContentDY;
     applyOffset(sPointX, sPointY);
     applyOffset(sLeftX,  sLeftY);
     applyOffset(sRightX, sRightY);

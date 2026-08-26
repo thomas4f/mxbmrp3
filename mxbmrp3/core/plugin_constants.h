@@ -108,6 +108,17 @@ namespace PluginConstants {
     constexpr int MOD_DATA_VERSION = 8;
     constexpr int INTERFACE_VERSION = 9;
 
+    // THE FRAME BUDGET the whole plugin is held to: 480fps, because that is what the
+    // high-refresh players this HUD is built for actually run. One definition, because
+    // it is a TARGET and not a measurement -- run_perf.sh gates the average and both
+    // p99s against it, BenchmarkWidget colours its readouts by it, and the Performance
+    // HUD's plugin-time graph uses it as the graph's ceiling. Changing this number
+    // changes what all three tell the player, which is exactly why it should only ever
+    // be changed in one place.
+    constexpr int TARGET_FPS = 480;
+    constexpr double FRAME_BUDGET_US = 1000000.0 / TARGET_FPS;   // 2083.3
+    constexpr float FRAME_BUDGET_MS = static_cast<float>(FRAME_BUDGET_US / 1000.0);
+
     // How long the corner status buttons (settings / director) flash into view on an
     // event (entering the track, toggling a mode) before returning to their normal
     // mouse-idle auto-hide. Milliseconds.
@@ -127,12 +138,9 @@ namespace PluginConstants {
     // All HUD elements are positioned in normalized 16:9 space
     constexpr float UI_ASPECT_RATIO = 16.0f / 9.0f;
 
-    // Icon glyphs fill their box more than text fills the em, so HUD title/identity
-    // icons are drawn a bit smaller than the title font (~0.63x). Single source of truth
-    // shared by BaseHud's title icons and the settings/camera button glyphs so they match.
-    constexpr float TITLE_ICON_SCALE = 0.63f;
-
-    // Font metrics for RobotoMono (monospace font)
+    // Font metrics for RobotoMono (monospace font). The layout's own char-width
+    // ([font] char-width) is what positions text; this is the reference value the
+    // shipped .fnt files are generated against, kept so the two can be compared.
     namespace FontMetrics {
         constexpr float MONOSPACE_CHAR_WIDTH_RATIO = 0.275f;
     }
@@ -155,83 +163,13 @@ namespace PluginConstants {
         inline int getMarker() { return FontConfig::getInstance().getFont(FontCategory::MARKER); }
         inline int getSmall() { return FontConfig::getInstance().getFont(FontCategory::SMALL); }
 
-        // CHAR_WIDTH = 0.0200f * 0.275f (FontSizes::NORMAL * FontMetrics::MONOSPACE_CHAR_WIDTH_RATIO)
-        constexpr float CHAR_WIDTH = 0.0055f;
     }
 
-    // Standard font sizes
-    namespace FontSizes {
-        constexpr float EXTRA_SMALL = 0.0125f;
-        constexpr float SMALL = 0.0150f;
-        constexpr float NORMAL = 0.0200f;
-        constexpr float LARGE = 0.0300f;
-        constexpr float EXTRA_LARGE = 0.0400f;
-    }
-
-    // Standard line heights.
-    // NORMAL is the base; the rest are fixed MULTIPLES of it (not literals) so that a
-    // change to NORMAL scales them together and preserves every widget's relationship to
-    // the snap grid (GRID_SIZE_VERTICAL = 0.5 * NORMAL, so NORMAL = 2 cells and LARGE =
-    // 4 cells). If these were literals, a NORMAL bump would knock LARGE off the grid and
-    // break vertical snap alignment for the big-value widgets (Time/Position/Lap/Speed/
-    // Gear) - which is exactly what happened when NORMAL was first bumped.
-    namespace LineHeights {
-        // 1x line height. Bumped from 0.0222 so the 8-char x 3-row gauge widgets
-        // (G-force / Lean / Fuel) render PIXEL-SQUARE at 16:9: their height is
-        // 5 x NORMAL and their width is 12 x CHAR_WIDTH, so NORMAL = 12 * CHAR_WIDTH *
-        // (16/9) / 5 makes height == width in pixels (~127x127 at 1080p). Cascades to
-        // HUD_VERTICAL (padding), GRID_SIZE_VERTICAL (snap grid) and the multiples below,
-        // so normal-height rows across the UI get ~5.7% taller. Widths are unchanged, so
-        // non-gauge widgets just get taller (still rectangular).
-        constexpr float NORMAL = 0.023467f;             // 1x line height (12 * CHAR_WIDTH * 16/9 / 5)
-        constexpr float EXTRA_SMALL = 0.625f * NORMAL;  // 0.625x normal line height
-        constexpr float SMALL = 0.75f * NORMAL;         // 0.75x normal line height
-        constexpr float LARGE = 2.0f * NORMAL;          // 2x normal line height
-        constexpr float EXTRA_LARGE = 2.0f * NORMAL;    // 2x normal line height (same as LARGE, for 0.04 font)
-    }
-
-    // HUD positioning grid for consistent alignment
-    namespace HudGrid {
-        constexpr float GRID_SIZE_HORIZONTAL = FontSizes::NORMAL * FontMetrics::MONOSPACE_CHAR_WIDTH_RATIO;
-        constexpr float GRID_SIZE_VERTICAL = 0.5f * LineHeights::NORMAL;
-
-        constexpr int roundToInt(float x) {
-            return static_cast<int>(x + (x >= 0.0f ? 0.5f : -0.5f));
-        }
-
-        constexpr float SNAP_TO_GRID_X(float pos) {
-            return static_cast<float>(roundToInt(pos / GRID_SIZE_HORIZONTAL)) * GRID_SIZE_HORIZONTAL;
-        }
-
-        constexpr float SNAP_TO_GRID_Y(float pos) {
-            return static_cast<float>(roundToInt(pos / GRID_SIZE_VERTICAL)) * GRID_SIZE_VERTICAL;
-        }
-    }
-
-    // Padding values
-    namespace Padding {
-        constexpr float NONE = 0.0000f;
-        constexpr float HUD_VERTICAL = LineHeights::NORMAL;
-        constexpr float HUD_HORIZONTAL = 2 * HudGrid::GRID_SIZE_HORIZONTAL;
-    }
-
-    // HUD element spacing patterns (in grid units)
-    // Used with ScaledDimensions::gridH() and gridV() for consistent element spacing
-    namespace HudSpacing {
-        // Background padding scale factor for styled strings
-        // Used as: dim.gridH(1) * BG_PADDING_H_SCALE
-        constexpr float BG_PADDING_H_SCALE = 0.5f;  // 0.5 char widths left/right
-
-        // Horizontal element spacing (in grid units)
-        // Used as: dim.gridH(ELEMENT_TOUCHING_H) or dim.gridH(ELEMENT_SEPARATED_H)
-        constexpr float ELEMENT_TOUCHING_H = 3.0f;    // Elements touch horizontally (2 chars text + 1 char padding)
-        constexpr float ELEMENT_SEPARATED_H = 3.5f;   // Elements have small gap horizontally (+ 0.5 char gap)
-
-        // Vertical spacing (in grid units)
-        // Used as: dim.gridV(ROW_GAP) or dim.gridV(SECTION_GAP)
-        constexpr float ROW_GAP = 0.5f;               // Small gap between rows (half-line-height)
-        constexpr float SECTION_GAP = 2.0f;           // Larger gap between sections (full-line-height)
-    }
+    // Looking for a font size, a line height, the snap grid or panel padding? They
+    // are DATA, not constants -- core/layout_metrics.h, whose header says why. There
+    // is deliberately no fallback copy here: while both existed a theme could move
+    // font.size and this file could not follow, so panels snapped to a lattice their
+    // own insides no longer used.
 
     // Brand Colors
     namespace BrandColors {

@@ -173,18 +173,33 @@ private:
     static constexpr float START_X = 0.0f;
     static constexpr float START_Y = 0.0f;
     static constexpr int MAX_RECORDS = RecordsFetcher::MAX_RECORDS;  // API only returns 50 results
-    static constexpr int HEADER_ROWS = 3;  // Title + Provider/Category/Compare + empty row (no column headers)
-    static constexpr int FOOTER_ROWS = 1;  // Gap row only (footer text renders in bottom padding)
+    // (HEADER_ROWS/FOOTER_ROWS lived here: a 3-constant row budget for the
+    // title, selector, reserved header and footer-gap rows. The selector is
+    // its own plan SECTION now and the footer note a real table row, so the
+    // heights are stated where the rows are drawn.)
 
     // Column width constants (in character counts)
     // Each width = content chars + 1 gap (matches pattern used by other HUDs)
-    // Total default (POS+RIDER+BIKE+LAPTIME): 4+13+18+8 = 43 chars (last col has no gap)
+    // Total default (POS+RIDER+BIKE+LAPTIME): 4+13+18+9 = 44 chars. The LAST column
+    // keeps its gap too -- that gap is its right clearance inside the panel, and
+    // dropping it is what made the lap time end flush with the row highlight. See
+    // rebuildRenderData.
     static constexpr int COL_POS_WIDTH = 4;       // "P99" = 3 chars + 1 gap
     static constexpr int COL_RIDER_WIDTH = 13;    // Up to 12 chars displayed + 1 gap
-    static constexpr int COL_BIKE_WIDTH = 18;     // Up to 17 chars displayed + 1 gap
+    // 17, not 18: at the default column set (POS+RIDER+BIKE+LAPTIME) the old
+    // 18 summed to 44 chars, one wider than the sibling HUDs' 43 (Telemetry's
+    // graph+legend) for no reason anyone chose. The bike name pays because it
+    // is the truncated free-text column (display follows: COL_BIKE_WIDTH - 1).
+    static constexpr int COL_BIKE_WIDTH = 17;
     static constexpr int COL_LAPTIME_WIDTH = 9;   // M:SS.mmm = 8 chars + 1 gap
     static constexpr int COL_SECTOR_WIDTH = 9;    // M:SS.mmm = 8 chars + 1 gap
     static constexpr int COL_DATE_WIDTH = 11;     // YYYY-MM-DD = 10 chars + 1 gap
+    // Floor: the controls row (provider / category / Compare) is wider than a
+    // column set trimmed down to two or three.
+    // The controls row's floor: "< " + 10 + " > " gap "< " + 10 + " >" = 30.
+    // Was 34 while the Compare chip sat inline; it lives in the plan's footer
+    // button row now.
+    static constexpr int MIN_WIDTH_CHARS = 30;
 
     // Data
     ColumnPositions m_columns;
@@ -200,7 +215,7 @@ private:
     char m_lastSessionTrackName[256] = {0};  // Track session trackName to auto-fetch on event start
     char m_lastSessionCategory[64] = {0};  // Track session category to auto-fetch on bike change
     bool m_bAutoFetch = false;  // Auto-fetch records when entering event (default off)
-    bool m_bShowHeaders = false;  // Show a column-header row (fills the row HEADER_ROWS already reserves)
+    bool m_bShowHeaders = false;  // Show a column-header row (adds a row to the table section)
     bool m_bShowFooter = true;  // Show provider attribution at bottom (configurable via INI)
 
     // Fetch state. The worker thread + fetch-input snapshot live in

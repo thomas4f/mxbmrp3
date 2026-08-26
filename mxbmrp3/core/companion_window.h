@@ -55,6 +55,15 @@ public:
     void setSavedMaximized(bool m) { m_geomMax.store(m); }
     bool getSavedMaximized() const { return m_geomMax.load(); }
 
+    // Game-thread: ask the window thread to re-read every theme .tga on its next
+    // frame. Reload Config calls this, and it is the ONLY surface where changed art
+    // can appear without restarting the game -- see hudsw::Renderer::dropTextureCache.
+    // A request rather than a direct call because the renderer lives on the window
+    // thread; the flag is atomic because the two threads are the whole point.
+    void requestArtReload() { m_artReload.store(true, std::memory_order_relaxed); }
+    // See m_forceRepaint. Called from the window thread's WM_PAINT.
+    void requestRepaint() { m_forceRepaint.store(true, std::memory_order_relaxed); }
+
     // Render cadence of the window thread. 0 = V-Sync (wait for the compositor's next
     // frame via DwmFlush — matches the monitor, tear-free); N > 0 = a fixed N Hz cap.
     // INI-only ([Display] companionRefreshHz); default V-Sync. Clamp the top end: the
@@ -122,4 +131,15 @@ private:
     // setter added later is checked rather than trusted.
     std::string m_assetRoot MXB_GUARDED_BY(m_mutex) = "plugins/mxbmrp3_data";
     bool m_haveFrame MXB_GUARDED_BY(m_mutex) = false;
+    // Set by the game thread on Reload Config, consumed once by the window thread.
+    std::atomic<bool> m_artReload{false};
+    // FORCE THE NEXT TICK TO RASTERISE, whatever the unchanged-frame check thinks. The
+    // render loop skips a frame whose content is byte-identical to the last, which is
+    // the dominant case (the plugin gets no callbacks in menus) -- so anything that
+    // changes what should be on screen WITHOUT changing the frame's identity has to say
+    // so here, or the skip strands it indefinitely. Two do: a theme-art reload (same
+    // quads, different pixels) and exposure damage (same everything, but the OS threw
+    // our pixels away). Set from the window thread AND from the render loop, hence
+    // atomic. See the two setters.
+    std::atomic<bool> m_forceRepaint{false};
 };

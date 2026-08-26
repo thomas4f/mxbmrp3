@@ -3,6 +3,7 @@
 // Speedo widget - displays rotating needle (0-230 km/h) with dial background
 // ============================================================================
 #include "speedo_widget.h"
+#include "../core/layout_config.h"
 #include "speed_widget.h"  // For SpeedUnit enum
 
 #include <cstdio>
@@ -19,7 +20,14 @@ using namespace PluginConstants::Math;
 
 SpeedoWidget::SpeedoWidget()
 {
+    // No caption on this panel -- see BaseHud::m_titleSupported.
+    disableTitle();
+    m_panelKind = PanelKind::Widget;
+    m_bContentCard = true;
     // One-time setup
+        // The dial face IS this gauge -- see BaseHud::m_textureRequired. Without it
+    // the widget is a red needle on an empty box: no face, no ticks, no numbers.
+    m_textureRequired = true;
     DEBUG_INFO("SpeedoWidget created");
     setDraggable(true);
     m_quads.reserve(6);   // dial background + needle + 4 odometer background quads
@@ -50,7 +58,7 @@ void SpeedoWidget::update() {
 
     // Always rebuild - speed updates at high frequency (telemetry rate)
     // Rebuild is cheap (single quad calculation), no need for caching
-    rebuildRenderData();
+    rebuildAndRecord();
     clearDataDirty();
     clearLayoutDirty();
 }
@@ -79,17 +87,38 @@ void SpeedoWidget::rebuildRenderData() {
     float startX = 0.0f;
     float startY = 0.0f;
 
+    // The BOX lands on the lattice, the DIAL keeps its size -- it is drawn circular by
+    // dividing by UI_ASPECT_RATIO, and stretching it to whole cells on both axes would
+    // make it an ellipse. See fitPanelToGrid.
+    const GridFit fit = fitPanelToGrid(dialWidth, dialHeight);
+
+    // Set bounds for drag detection (relative coordinates, offset applied by base class)
+    setBounds(startX, startY, startX + fit.w, startY + fit.h);
+    startX += fit.padX;
+    startY += fit.padY;
+
     // Calculate center of dial
     float centerX = startX + dialWidth / 2.0f;
     float centerY = startY + dialHeight / 2.0f;
-
-    // Set bounds for drag detection (relative coordinates, offset applied by base class)
-    setBounds(startX, startY, startX + dialWidth, startY + dialHeight);
 
     // Add dial as background quad (uses base class helper for consistency with PitboardHud)
     // BG Tex ON: shows dial sprite with opacity
     // BG Tex OFF: shows solid black with opacity
     addBackgroundQuad(startX, startY, dialWidth, dialHeight);
+    // No caption at all here -- not a title toggle switched off, NO title -- so
+    // nothing reaches the caption path, and that is what emits the body card
+    // the constructor asked for with m_bContentCard. Without this the flag drew
+    // nothing while still reserving the card's clearance (contentPaddingX reads the
+    // same flag), so a themed panel was a frame around bare content with an
+    // unexplained cell of padding inside it. Same call the captioned widgets make
+    // from their `else` branch.
+    //
+    // A sprite background opts a panel out of theming entirely, upstream of this
+    // (resolveActiveTheme), so on the widgets that ship with one this is inert until
+    // the sprite is switched off -- at which point they get the same treatment as
+    // every other widget instead of the one they had.
+    // check_hud_helpers.sh rule 10 fails the build if a new one forgets the call.
+    emitContentCard(0.0f);
 
     // Get target speed in km/h from telemetry
     float targetSpeed = 0.0f;
@@ -142,9 +171,9 @@ void SpeedoWidget::rebuildRenderData() {
     int odometerWhole = static_cast<int>(odometerDist + 0.5) % 1000000;
 
     // Sizing - use standard font size and line height, scaled with widget
-    float fontSize = FontSizes::SMALL * m_fScale;
-    float charWidth = fontSize * FontMetrics::MONOSPACE_CHAR_WIDTH_RATIO;
-    float charHeight = LineHeights::SMALL * m_fScale;
+    float fontSize = layoutDefaults().fontSizeSmall * m_fScale;
+    float charWidth = fontSize * layout().charWidthRatio;
+    float charHeight = layoutDefaults().lineHeightSmall * m_fScale;
 
     // Padding - make uniform on all sides (vertical padding comes from lineHeight > fontSize)
     float paddingV = (charHeight - fontSize) / 2.0f;
@@ -236,7 +265,7 @@ void SpeedoWidget::resetToDefaults() {
     setTextureVariant(1);  // Show dial texture by default
     m_fBackgroundOpacity = 1.0f;  // 100% opacity
     m_fScale = 1.5f;  // 150% default scale
-    setPosition(0.6875f, 0.75094f);
+    setPosition(cellsX(125), cellsY(64));
     m_smoothedSpeed = 0.0f;
     m_needleColor = DEFAULT_NEEDLE_COLOR;
     m_showOdometer = true;   // Odometer ON by default

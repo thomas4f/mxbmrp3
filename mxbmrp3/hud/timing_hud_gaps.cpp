@@ -45,19 +45,17 @@ void TimingHud::setComparisonEnabled(GapTypeFlags flag, bool enabled) {
     setDataDirty();
 }
 
-int TimingHud::getOverallBestLapTime() const {
-    const PluginData& pluginData = PluginData::getInstance();
-    const auto& standings = pluginData.getStandings();
-
-    int overallBest = -1;
-    for (const auto& [raceNum, standing] : standings) {
-        if (standing.bestLap > 0) {
-            if (overallBest < 0 || standing.bestLap < overallBest) {
-                overallBest = standing.bestLap;
-            }
-        }
+void TimingHud::setReadoutEnabled(ReadoutFlags flag, bool enabled) {
+    if (enabled) {
+        m_enabledReadouts |= flag;
+    } else {
+        m_enabledReadouts &= ~flag;
     }
-    return overallBest;
+    setDataDirty();
+}
+
+int TimingHud::getOverallBestLapTime() const {
+    return PluginData::getInstance().getOverallBestLapTime();
 }
 
 void TimingHud::calculateAllGaps(int splitTime, int splitIndex, bool isLapComplete) {

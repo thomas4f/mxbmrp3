@@ -33,6 +33,14 @@ x86/
 [Aa][Rr][Mm]64/
 bld/
 [Bb]in/
+# ...but the DEBUG THEME is source, not build output. `[Dd]ebug/` above matches it
+# by name and would silently swallow a shipped asset folder, which is exactly how
+# it went missing the first time. Directory-level negation, because git never
+# descends into an excluded directory to look at a per-file rule.
+# The debug theme SHIPS now, so it has to be committable: the generic [Dd]ebug/
+# rule above matches it by name, and git never descends into an excluded directory
+# to look at a per-file rule, so the negation has to name the directory itself.
+!mxbmrp3_data/themes/debug/
 [Oo]bj/
 [Oo]ut/
 [Ll]og/
@@ -405,6 +413,25 @@ wine_test_status.txt
 # toolchain and font revision, so a checked-in one is worse than none. Anchored,
 # so it only covers the root the examples actually write to.
 #
-# The tool's own default output needs no rule here: tools/mxbmrp3_hud_window/
+# The tool's own default output needs no rule here: tools/hud_window/
 # has its own .gitignore with `*.png`, which is the closer and better home.
 /out.png
+
+# Plugin runtime state written when dev tools run the DLL from the repo tree
+mxbmrp3_settings.ini
+mxbmrp3_stats.json
+mxbmrp3_log.txt
+
+# Recorded spotter voice packs are baked by tools/spottergen and
+# published as a separate download, not committed. The text-only `default`
+# pack IS tracked (it carries the built-in wording), so ignore the audio
+# rather than the folders.
+mxbmrp3_data/spotters/*/*.wav
+
+# Null-plugin marker files, written wherever the probe/plugin is run.
+nullplugin_*.txt
+
+# Playwright writes test-results/ next to wherever it was invoked. The suite's
+# own copy is ignored by tests/web/.gitignore, but running `npx playwright test`
+# from the repo root drops one here instead -- and it was committed once that way.
+/test-results/

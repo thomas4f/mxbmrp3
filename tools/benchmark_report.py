@@ -23,6 +23,18 @@ import argparse
 import re
 import shlex
 
+# The keys the BENCH line ENDS with. Their absence means the line was cut short, not
+# that the plugin chose not to emit them: they are written unconditionally, last.
+#
+# This exists because the line was silently truncated for real. It was built with one
+# snprintf into a char[512], outgrew it, and every exported report came out clipped at
+# exactly 512 bytes -- losing cb_total_us, and later all four probe_* keys, with no
+# error anywhere: snprintf truncates and returns, the report still parses, and every
+# surviving key is correct. Five probe sweeps were run before anyone noticed the file
+# could not say which experiment produced them. The emitter is segmented now so it
+# cannot truncate; this is the check that says so out loud if it ever does again.
+BENCH_TERMINAL_KEYS = ("cb_total_us", "probe_n", "probe_type", "probe_fs", "probe_sprite")
+
 
 def parse_bench_line(text):
     """Pull the 'BENCH ...' key=value line into a dict (numbers coerced)."""
@@ -40,6 +52,12 @@ def parse_bench_line(text):
                         d[k] = float(v)
                     except ValueError:
                         d[k] = v
+            missing = [k for k in BENCH_TERMINAL_KEYS if k not in d]
+            if missing:
+                raise ValueError(
+                    "BENCH line is missing its terminal keys (" + ", ".join(missing) +
+                    ") -- the line was TRUNCATED, so this report cannot say which run "
+                    "produced it. Re-export with a build whose BENCH emitter is segmented.")
             return d
     return None
 
@@ -102,6 +120,14 @@ def parse_stint(text, header):
     The per-interval CALLBACKS / HUD RENDER FOOTPRINT tables above them cover only
     the last snapshot interval (~0.25s), so a single expensive call can dominate
     them; these are what to read when asking "what did this stint cost?".
+
+    THE HUD TABLE CARRIES TWO MORE COLUMNS than the callback one -- `Idle us/f` (what
+    a HUD costs on the frames it does NOT rebuild) and `% upd` (its share of the
+    whole HUD pass) -- so the trailing group is optional and the row is NOT anchored
+    on `count`. It was, and adding those two columns made every HUD row stop
+    matching: the analyzer reported no stint totals at all rather than failing, which
+    is the exact silent-drift failure run_perf.sh's clean-parse gate exists to catch.
+    A future column lands in the same optional tail instead of breaking the parse.
     """
     rows = []
     in_tbl = False
@@ -114,13 +140,22 @@ def parse_stint(text, header):
                 break
             if line.startswith("Name") or line.startswith("---") or not line.strip():
                 continue
-            m = re.match(r"\s*(\S.*?)\s+(\d+)\s+([\d.]+)\s+(\d+)\s+(\d+)\s*$", line)
+            # Idle can legitimately go NEGATIVE (rebuilds recorded outside the
+            # recordHudUpdate bracket subtract from it), and a tail that only
+            # matched positive numbers silently dropped exactly those rows —
+            # the failure mode this docstring warns about, one sign short.
+            m = re.match(r"\s*(\S.*?)\s+(\d+)\s+([\d.]+)\s+(\d+)\s+(\d+)"
+                         r"(?:\s+(-?[\d.]+)\s+([\d.]+)%)?\s*$", line)
             if m:
-                rows.append({
+                row = {
                     "name": m.group(1).strip(), "total_us": int(m.group(2)),
                     "avg_us": float(m.group(3)), "peak_us": int(m.group(4)),
                     "count": int(m.group(5)),
-                })
+                }
+                if m.group(6) is not None:
+                    row["idle_us_per_frame"] = float(m.group(6))
+                    row["pct_update"] = float(m.group(7))
+                rows.append(row)
     return rows
 
 
@@ -161,8 +196,17 @@ def analyze_one(rep):
     print(f"1% low   : {b.get('lowfps_1pct','?')} fps")
     print(f"Handoff  : {b.get('quads','?')} quads ({b.get('quads_peak','?')} peak), "
           f"{b.get('strings','?')} strings ({b.get('strings_peak','?')} peak)")
+    # DRAW, ATTRIBUTED -- the three per-frame timers that together account for the
+    # Draw callback. Older reports carry only collect_us, so the other two default to
+    # 0 and simply print as such rather than breaking the parse.
     collect = b.get("collect_us", 0.0)
-    print(f"Collect  : {collect:.0f} us/frame ({100.0*collect/budget:.1f}% of budget)")
+    upd = b.get("update_huds_us", 0.0)
+    poll = b.get("frame_poll_us", 0.0)
+    head = b.get("frame_head_us", 0.0)
+    tail = b.get("frame_tail_us", 0.0)
+    tot = upd + collect + poll + head + tail
+    print(f"Draw     : update {upd:.0f} + collect {collect:.0f} + poll {poll:.0f} "
+          f"+ head {head:.0f} + tail {tail:.0f} us/frame ({100.0*tot/budget:.1f}% of budget)")
 
     # Flags — the things you'd actually act on.
     flags = []
@@ -206,8 +250,22 @@ def analyze_one(rep):
         print("Rebuild cost over the stint (heaviest first):")
         for h in sh[:5]:
             per_s = (h["total_us"] / dur) if dur else 0.0
+            share = h.get("pct_update")
+            tail = f"  {share:5.1f}% upd" if share is not None else ""
             print(f"  {h['name']:<22} {h['total_us']/1000.0:8.1f} ms total  "
-                  f"{h['avg_us']:7.0f} us x {h['count']:<5d}  ~{per_s:6.0f} us/s")
+                  f"{h['avg_us']:7.0f} us x {h['count']:<5d}  ~{per_s:6.0f} us/s{tail}")
+        # THE PANELS THAT COST WITHOUT REBUILDING. `Idle us/f` is what a HUD spends on
+        # the frames it is NOT dirty, and it is the one column the "heaviest rebuild"
+        # ranking above cannot see: position_widget sat at 1.41us/frame with ZERO
+        # rebuilds -- top of this list, absent from that one -- because its update()
+        # polled the position cache every frame. Ranked separately so that shape shows.
+        idle = [h for h in sh if h.get("idle_us_per_frame")]
+        if idle:
+            idle.sort(key=lambda h: h["idle_us_per_frame"], reverse=True)
+            print("Idle cost (per frame, not rebuilding): " +
+                  ", ".join(f"{h['name']} {h['idle_us_per_frame']:.2f}us"
+                            f"{' (0 rebuilds)' if h['count'] == 0 else ''}"
+                            for h in idle[:5]))
     if cbs:
         top = sorted(cbs, key=lambda c: c["total_us"], reverse=True)[:3]
         print("Callback cost over the stint: " +
@@ -240,7 +298,12 @@ def analyze_compare(a, b):
     row("1% low", "lowfps_1pct", " fps", better_low=False)
     row("frame p99", "ft_p99_us", " us", better_low=True, pct=True)
     row("frame max", "ft_max_us", " us", better_low=True, pct=True)
+    row("update huds", "update_huds_us", " us", better_low=True, pct=True)
     row("collect", "collect_us", " us", better_low=True, pct=True)
+    row("frame poll", "frame_poll_us", " us", better_low=True, pct=True)
+    row("frame tail", "frame_tail_us", " us", better_low=True, pct=True)
+    row("hud input", "hud_input_us", " us", better_low=True, pct=True)
+    row("plan chain", "plan_chain_us", " us", better_low=True, pct=True)
     row("quads peak", "quads_peak", "", better_low=True, pct=True)
     row("strings peak", "strings_peak", "", better_low=True, pct=True)
 

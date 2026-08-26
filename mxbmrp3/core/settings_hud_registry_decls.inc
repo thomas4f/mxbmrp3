@@ -47,6 +47,8 @@
     static void app_PositionWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
     static void cap_TimeWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
     static void app_TimeWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
+    static void cap_SpotterWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
+    static void app_SpotterWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
     static void cap_ClockWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
     static void app_ClockWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
     static void cap_SessionHud(const HudManager& hudManager, ProfileCache& cache, const char* name);
@@ -55,6 +57,8 @@
     static void app_SpeedWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
     static void cap_GearWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
     static void app_GearWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
+    static void cap_CrashWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
+    static void app_CrashWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
     static void cap_SpeedoWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
     static void app_SpeedoWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
     static void cap_TachoWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);

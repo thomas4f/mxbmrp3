@@ -5,6 +5,7 @@
 #pragma once
 
 #include "base_hud.h"
+#include "marker_label.h"
 #include "radar_fade.h"
 #include "../game/unified_types.h"
 #include <vector>
@@ -26,8 +27,16 @@ public:
     const char* getIconName() const override { return "hud-radar"; }
     void resetToDefaults();
 
-    // Override setScale to grow from center instead of top-left
-    void setScale(float scale);
+    // THE PANEL'S CONTENT WIDTH at a given scale, unthemed -- dial plus the panel's
+    // own horizontal padding, before fitPanelToGrid rounds the drawn box up to whole
+    // cells. Public and static because the settings v8 migration needs it without a
+    // RadarHud to ask: it converts a stored LEFT EDGE into a stored CENTRE, and this
+    // is the width that conversion is half of. rebuildRenderData computes the same
+    // quantity from the LIVE (theme-aware) padding; the two agree for every
+    // configuration in which the dial artwork is on, because artwork bypasses theming
+    // -- see resolveActiveTheme -- and this HUD defaults to THEME_NONE besides.
+    // radar_center_test pins the agreement rather than trusting the comment.
+    static float unthemedContentWidth(float scale);
 
     // Update rider positions (called frequently - must be fast)
     void updateRiderPositions(int numVehicles, const Unified::TrackPositionData* positions);
@@ -86,12 +95,8 @@ public:
     float getAlertDistance() const { return m_fAlertDistance; }
 
     // Rider label display mode
-    enum class LabelMode {
-        NONE = 0,       // No labels
-        POSITION = 1,   // Show position (P1, P2, etc.)
-        RACE_NUM = 2,   // Show race number
-        BOTH = 3        // Show both (P1 #5)
-    };
+    // Shared with MapHud/RadarHud/GapBarHud — see hud/marker_label.h
+    using LabelMode = MarkerLabel::Mode;
 
     void setLabelMode(LabelMode mode) {
         if (m_labelMode != mode) {
@@ -100,6 +105,18 @@ public:
         }
     }
     LabelMode getLabelMode() const { return m_labelMode; }
+
+    // Where the rider label sits relative to the icon (INI-only, no UI), exactly as
+    // MapHud has shipped it -- one key, one enum, one placement function.
+    using LabelAnchor = MarkerLabel::Anchor;
+
+    void setLabelAnchor(LabelAnchor anchor) {
+        if (m_labelAnchor != anchor) {
+            m_labelAnchor = anchor;
+            setDataDirty();
+        }
+    }
+    LabelAnchor getLabelAnchor() const { return m_labelAnchor; }
 
     // Rider shape index (1-N=icons from AssetManager)
     void setRiderShape(int shapeIndex);
@@ -191,6 +208,7 @@ private:
 
     // Rider label display mode
     LabelMode m_labelMode;
+    LabelAnchor m_labelAnchor = LabelAnchor::BELOW;
 
     // Rider shape index (1-N=icons from AssetManager)
     int m_riderShapeIndex;

@@ -23,6 +23,8 @@
 // ============================================================================
 #pragma once
 
+#include "history_ring.h"
+
 #include <cstdint>
 #include <unordered_map>
 #include <unordered_set>
@@ -300,15 +302,7 @@ struct RiderTrackState {
     }
 };
 
-// Leader timing point for time-based gap calculation
-// Stores when leader crossed each 1% position on track
-struct LeaderTimingPoint {
-    int sessionTime;      // Session time in milliseconds when leader crossed this position
-    int lapNum;           // Which lap this timing is from
-
-    LeaderTimingPoint() : sessionTime(0), lapNum(-1) {}
-    LeaderTimingPoint(int time, int lap) : sessionTime(time), lapNum(lap) {}
-};
+// (LeaderTimingPoint moved into the pure LiveGap::Engine — see live_gap_engine.h.)
 
 // Debug metrics for performance monitoring.
 //
@@ -372,10 +366,17 @@ struct HudTimingEntry {
     int       stintRebuildCount;
     int quadCount;              // Quads this HUD emitted into the game frame (0 if hidden)
     int stringCount;            // Strings this HUD emitted (base, pre-shadow; shadow ~doubles globally)
+    // THE WHOLE update() CALL, every frame, rebuild included -- so `update - rebuild`
+    // is what a HUD costs on the frames it is NOT dirty. That difference summed over
+    // the HUDs was 58.6us/frame in a 95us updateHuds, larger than every rebuild put
+    // together, and the aggregate could not say WHICH HUD it was.
+    long long stintUpdateTimeUs;
+    int       stintUpdateCount;
 
     HudTimingEntry() : lastRebuildTimeUs(0), rebuildCount(0),
                        stintTotalTimeUs(0), stintPeakTimeUs(0), stintRebuildCount(0),
-                       quadCount(0), stringCount(0) {
+                       quadCount(0), stringCount(0),
+                       stintUpdateTimeUs(0), stintUpdateCount(0) {
         name[0] = '\0';
     }
 };
@@ -384,7 +385,20 @@ struct HudTimingEntry {
 // Collected by DrawHandler, consumed by BenchmarkWidget
 struct BenchmarkMetrics {
     static constexpr int MAX_CALLBACKS = 32;
-    static constexpr int MAX_HUDS = 32;
+    // ONE SLOT PER PANEL, WITH ROOM. This was 32 against 42 registrable panels, so
+    // registerHud() returned -1 for the last ten and they vanished from every report
+    // -- silently, because a -1 index is exactly how a HUD legitimately opts out of
+    // profiling. The tell was subtle and wrong-looking rather than absent: the report
+    // prints "HUDs profiled: 32", which reads as a count of what was enabled and is
+    // really the cap, and the per-HUD table simply stopped at director_widget (the
+    // 32nd registered). Nothing was measurably broken, so nobody looked -- 41us of a
+    // 125us updateHuds sat outside the table with no row to name it.
+    //
+    // Sized well clear of the tree rather than exactly to it: the loss is invisible
+    // in the report, so a cap that a new HUD can reach is a trap that re-arms itself.
+    // Enforced by benchmark_registry_test, which fails if any registered panel is
+    // left unprofiled -- that test, not this number, is what keeps it honest.
+    static constexpr int MAX_HUDS = 64;
 
     // Per-callback timing (indexed by callback ID)
     std::array<CallbackTimingEntry, MAX_CALLBACKS> callbacks;
@@ -394,8 +408,54 @@ struct BenchmarkMetrics {
     std::array<HudTimingEntry, MAX_HUDS> huds;
     int hudCount = 0;
 
-    // Aggregate metrics
+    // Aggregate metrics. The three timers below ACCOUNT FOR Draw: the callback's
+    // own time is updateHuds + collectRender + framePoll plus the little left over,
+    // so a Draw regression can be attributed from one report instead of bisected.
+    //
+    // Draw used to be timed as one lump with only the collect broken out, and the
+    // collect is the small half -- 5us against a 180us Draw. That left the other
+    // ~114us unattributed, and a reported 3x regression could not be narrowed
+    // without rebuilding the plugin at a dozen commits.
     long long collectRenderTimeUs = 0;  // Time spent in collectRenderData()
+    long long updateHudsTimeUs = 0;     // Time spent in updateHuds() -- every HUD's
+                                        // update(), rebuilds included
+    long long framePollTimeUs = 0;      // Input, hotkeys, director polls and the
+                                        // button/keyboard handling around them
+    // The two ends of produceFrame() that none of the three above cover: the head
+    // (draw-state, the entered-the-track reveal check) and the tail (render probe,
+    // display-target routing, feeding the companion window). Added because the
+    // other three left 28.6us/frame of a 119.6us Draw unattributed -- a quarter of
+    // it -- and "unattributed" is exactly the state this whole split exists to end.
+    long long frameHeadTimeUs = 0;
+    long long frameTailTimeUs = 0;
+    // STINT TOTALS, and the frame count to divide them by. These were per-frame
+    // ASSIGNMENTS reported straight -- one frame's sample against Draw's stint
+    // average -- so the parts and the whole were measured over different windows.
+    // The tell was a NEGATIVE remainder: update+collect+poll came to 177us against
+    // a 117.9us Draw, which no real accounting can do. Averaged over the same
+    // frames as Draw, they are comparable and the arithmetic closes.
+    long long frameTimerSamples = 0;
+    // handleMouseInput() across the HUDs, plus the drag-target search around it.
+    // It shares updateHuds()' loop with update() but only update() was timed, so
+    // this sat inside updateHuds' total with nothing naming it -- 25.6us/frame of a
+    // 119.4us Draw, the last block the split could not account for.
+    long long frameHudInputTimeUs = 0;
+    // THE PLAN CHAIN's share of the rebuilds it sits inside: planPanel (spec
+    // resolution + layoutPanel), addPlanBackground and addPlanTitle. #319 replaced
+    // each HUD's own width/height arithmetic with these, and it is the one thing
+    // every plan panel gained at once -- which is why fmx_hud tripled without a
+    // line of its own changing, and why director_widget, still on the legacy
+    // chain, costs 0.1us while speed_widget costs 8.3 for the same four
+    // primitives. Timed here rather than by restoring one widget's old body, so
+    // the answer covers every HUD and leaves nothing to revert.
+    long long planChainTimeUs = 0;
+    long long planChainCalls = 0;
+    // planPanel ALONE, split out of the chain above, because the fix differs by
+    // half: if the cost is planPanel (spec resolution + layoutPanel) it is pure
+    // computation and a plan whose inputs have not moved can be cached; if it is
+    // the emit half (addPlanBackground + addPlanTitle) it is quads and strings,
+    // which have to be re-emitted every rebuild and no cache helps.
+    long long planPanelTimeUs = 0;
     int totalQuads = 0;                 // Total quads rendered this frame
     int totalStrings = 0;               // Total strings rendered this frame
 
@@ -418,6 +478,15 @@ struct BenchmarkMetrics {
             huds[i].stringCount = 0;
         }
         collectRenderTimeUs = 0;
+        updateHudsTimeUs = 0;
+        framePollTimeUs = 0;
+        frameHeadTimeUs = 0;
+        frameTailTimeUs = 0;
+        frameTimerSamples = 0;
+        frameHudInputTimeUs = 0;
+        planChainTimeUs = 0;
+        planChainCalls = 0;
+        planPanelTimeUs = 0;
         totalQuads = 0;
         totalStrings = 0;
     }
@@ -454,6 +523,12 @@ struct BenchmarkMetrics {
     }
 
     // Record a HUD rebuild timing
+    void recordHudUpdate(int index, long long timeUs) {
+        if (index < 0 || index >= hudCount) return;
+        huds[index].stintUpdateTimeUs += timeUs;
+        huds[index].stintUpdateCount++;
+    }
+
     void recordHudRebuild(int index, long long timeUs) {
         if (index < 0 || index >= hudCount) return;
         huds[index].lastRebuildTimeUs = timeUs;
@@ -551,38 +626,32 @@ struct HistoryBuffers {
         StickSample(float _x, float _y) : x(_x), y(_y) {}
     };
 
-    // History buffers (newest at back, oldest at front)
-    std::deque<float> throttle;
-    std::deque<float> frontBrake;
-    std::deque<float> rearBrake;
-    std::deque<float> clutch;
-    std::deque<float> steer;
-    std::deque<float> rpm;               // Engine RPM (normalized 0-1 range)
-    std::deque<float> gear;              // Current gear (normalized 0-1 range, gear/numberOfGears)
-    std::deque<float> frontSusp;         // Front suspension compression (normalized 0-1 range)
-    std::deque<float> rearSusp;          // Rear suspension compression (normalized 0-1 range)
-    std::deque<StickSample> leftStick;   // Left analog stick (steering/throttle)
-    std::deque<StickSample> rightStick;  // Right analog stick (rider lean)
-
     // History configuration (time depends on telemetry rate set in plugin_manager.cpp)
     // At 100Hz physics rate: 200 samples = 2 seconds of data for telemetry graphs
     static constexpr size_t MAX_TELEMETRY_HISTORY = 200;
     // At 100Hz physics rate: 50 samples = 500ms of data for stick trails
     static constexpr size_t MAX_STICK_HISTORY = 50;
 
+    // History buffers, oldest first -- see HistoryRing.
+    HistoryRing<float, MAX_TELEMETRY_HISTORY> throttle;
+    HistoryRing<float, MAX_TELEMETRY_HISTORY> frontBrake;
+    HistoryRing<float, MAX_TELEMETRY_HISTORY> rearBrake;
+    HistoryRing<float, MAX_TELEMETRY_HISTORY> clutch;
+    HistoryRing<float, MAX_TELEMETRY_HISTORY> steer;
+    HistoryRing<float, MAX_TELEMETRY_HISTORY> rpm;               // Engine RPM (normalized 0-1 range)
+    HistoryRing<float, MAX_TELEMETRY_HISTORY> gear;              // Current gear (normalized 0-1 range, gear/numberOfGears)
+    HistoryRing<float, MAX_TELEMETRY_HISTORY> frontSusp;         // Front suspension compression (normalized 0-1 range)
+    HistoryRing<float, MAX_TELEMETRY_HISTORY> rearSusp;          // Rear suspension compression (normalized 0-1 range)
+    HistoryRing<StickSample, MAX_STICK_HISTORY> leftStick;   // Left analog stick (steering/throttle)
+    HistoryRing<StickSample, MAX_STICK_HISTORY> rightStick;  // Right analog stick (rider lean)
+
     // Add sample to history buffer
-    void addSample(std::deque<float>& buffer, float value) {
-        buffer.push_back(value);
-        if (buffer.size() > MAX_TELEMETRY_HISTORY) {
-            buffer.pop_front();
-        }
+    void addSample(HistoryRing<float, MAX_TELEMETRY_HISTORY>& buffer, float value) {
+        buffer.push(value);
     }
 
-    void addStickSample(std::deque<StickSample>& buffer, float x, float y) {
-        buffer.emplace_back(x, y);
-        if (buffer.size() > MAX_STICK_HISTORY) {
-            buffer.pop_front();
-        }
+    void addStickSample(HistoryRing<StickSample, MAX_STICK_HISTORY>& buffer, float x, float y) {
+        buffer.push(StickSample(x, y));
     }
 
     void clear() {
@@ -698,7 +767,15 @@ struct IdealLapData {
 
 // Historical lap data for lap log HUD
 struct LapLogEntry {
-    int lapNum;       // Lap number (1-based)
+    // ZERO-based: race_lap_handler builds this from completedLapNumZeroIndexed,
+    // and LapLogHud prints `entry.lapNum + 1` to get the "L3" a rider expects.
+    // The comment used to say 1-based, which is a lie that reads as an
+    // invariant: the spotter tested `lapNum == 1` for "is this the opening
+    // lap", got a silent false on every first lap, and only the transcript
+    // showed it. It now reads the classification's own bestLapNum, which IS
+    // 1-based (unified_types.h) — so if you are comparing lap numbers across
+    // those two sources, they do not agree and this is why.
+    int lapNum;       // 0-based index of the lap this entry describes
     int sector1;      // milliseconds - sector 1 time
     int sector2;      // milliseconds - sector 2 time
     int sector3;      // milliseconds - sector 3 time
@@ -715,147 +792,7 @@ struct LapLogEntry {
           lapTime(total), isValid(valid), isComplete(complete) {}
 };
 
-// ============================================================================
-// Centralized Lap Timer for real-time elapsed time calculation
-// Used by TimingHud, IdealLapHud, and other components that need live timing
-// Uses wall clock time since session time can count UP (practice) or DOWN (races)
-// ============================================================================
-struct LapTimer {
-    // Wall clock anchor for elapsed time calculation
-    std::chrono::steady_clock::time_point anchorTime;  // Real time when anchor was set
-    int anchorAccumulatedTime;    // Known accumulated lap time at anchor (ms)
-    bool anchorValid;             // Do we have a usable anchor?
-
-    // Pause support
-    std::chrono::steady_clock::time_point pausedAt;  // When pause started
-    bool isPaused;                // Is timer currently paused?
-
-    // Track position monitoring for S/F line detection
-    float lastTrackPos;           // Previous track position (0.0-1.0)
-    int lastLapNum;               // Previous lap number
-    bool trackMonitorInitialized; // Have we received first position?
-
-    // Current state
-    int currentLapNum;            // Current lap being timed
-    int currentSector;            // Current sector (0=before S1, 1=before S2, 2=before S3)
-    int lastSplit1Time;           // Accumulated time at S1 (for sector 2 calculation)
-    int lastSplit2Time;           // Accumulated time at S2 (for sector 3 calculation)
-
-    // Grid (standing) start grace: the anchor was set at the green flag so the live time
-    // spans the grid->S/F run and matches the official splits (accumulated from the start).
-    // While set, an intermediate S/F crossing must NOT reset the anchor to 0 (that would drop
-    // the grid->S/F time and make the timer "jump" when the first official split arrives).
-    // Cleared when the first lap completes (resetLapTimerForNewLap) or on any reset.
-    bool anchoredFromRaceStart;
-
-    // Threshold for S/F line detection (position jump > 0.5 = S/F crossing)
-    static constexpr float WRAP_THRESHOLD = 0.5f;
-
-    LapTimer()
-        : anchorAccumulatedTime(0), anchorValid(false), isPaused(false)
-        , lastTrackPos(0.0f), lastLapNum(0), trackMonitorInitialized(false)
-        , currentLapNum(0), currentSector(0)
-        , lastSplit1Time(-1), lastSplit2Time(-1)
-        , anchoredFromRaceStart(false) {}
-
-    void reset() {
-        anchorAccumulatedTime = 0;
-        anchorValid = false;
-        isPaused = false;
-        lastTrackPos = 0.0f;
-        lastLapNum = 0;
-        trackMonitorInitialized = false;
-        currentLapNum = 0;
-        currentSector = 0;
-        lastSplit1Time = -1;
-        lastSplit2Time = -1;
-        anchoredFromRaceStart = false;
-    }
-
-    void setAnchor(int accumulatedTime) {
-        anchorTime = std::chrono::steady_clock::now();
-        anchorAccumulatedTime = accumulatedTime;
-        anchorValid = true;
-        isPaused = false;  // Clear pause state when setting new anchor
-    }
-
-    // Drop the anchor without touching track monitoring, so getElapsedLapTime() returns the
-    // placeholder (-1) until the next S/F crossing re-anchors it. Used on pit exit: the
-    // in-progress lap is dead, so the live timer should read like a fresh track entry rather
-    // than keep ticking. Keeping trackMonitorInitialized means the next S/F crossing is still
-    // detected (updateLapTimerTrackPosition re-anchors on !anchorValid).
-    void invalidateAnchor() {
-        anchorValid = false;
-        isPaused = false;
-        // The grid-start anchor is abandoned once the lap is dropped (e.g. the rider pitted on
-        // lap 1), so end the grace: the next S/F crossing must re-anchor normally rather than be
-        // skipped (which would leave the timer stuck on the placeholder until the lap completes).
-        anchoredFromRaceStart = false;
-    }
-
-    // Pause/resume support - adjusts anchor to exclude pause duration
-    void pause() {
-        if (!isPaused && anchorValid) {
-            pausedAt = std::chrono::steady_clock::now();
-            isPaused = true;
-        }
-    }
-
-    void resume() {
-        if (isPaused && anchorValid) {
-            // Adjust anchor forward by the pause duration so elapsed time is correct
-            auto pauseDuration = std::chrono::steady_clock::now() - pausedAt;
-            anchorTime += pauseDuration;
-            isPaused = false;
-        }
-    }
-
-    // Calculate elapsed lap time since anchor
-    int getElapsedLapTime() const {
-        if (!anchorValid) {
-            return -1;  // No anchor - show placeholder
-        }
-
-        // Use pause time if paused, otherwise use now
-        auto endTime = isPaused ? pausedAt : std::chrono::steady_clock::now();
-        auto wallElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            endTime - anchorTime
-        ).count();
-
-        int elapsed = anchorAccumulatedTime + static_cast<int>(wallElapsed);
-
-        // Sanity check - don't show negative time
-        if (elapsed < 0) elapsed = 0;
-
-        return elapsed;
-    }
-
-    // Calculate elapsed sector time
-    // sectorIndex: 0=S1 (from lap start), 1=S2 (from S1), 2=S3 (from S2)
-    int getElapsedSectorTime(int sectorIndex) const {
-        int lapTime = getElapsedLapTime();
-        if (lapTime < 0) {
-            return -1;  // No valid elapsed time
-        }
-
-        switch (sectorIndex) {
-            case 0:  // S1: time from lap start
-                return lapTime;
-            case 1:  // S2: time from S1
-                if (lastSplit1Time > 0) {
-                    return lapTime - lastSplit1Time;
-                }
-                return -1;  // S1 not crossed yet
-            case 2:  // S3: time from S2
-                if (lastSplit2Time > 0) {
-                    return lapTime - lastSplit2Time;
-                }
-                return -1;  // S2 not crossed yet
-            default:
-                return -1;
-        }
-    }
-};
+// (LapTimer moved to its own header — see core/lap_timer.h.)
 
 // Data change notification types
 enum class DataChangeType {

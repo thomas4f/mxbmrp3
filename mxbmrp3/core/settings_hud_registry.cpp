@@ -6,6 +6,12 @@
 // apply, and on-disk serialization in one place — collapsing what used to be three
 // parallel hardcoded lists (the "third hardcoded list" / FriendsHud trap).
 //
+// The cap_*/app_* functions are SettingsManager *members* for one reason: they
+// inherit its `friend`-ship with the HUD classes, and their bodies read and write
+// private HUD members. `hudSectionRegistry()` is likewise a friend, so it can take
+// their addresses. A free function here would compile until the first private
+// member and then fail confusingly.
+//
 // Each cap_*/app_* body is the verbatim per-HUD block moved out of the old giant
 // captureToCache/applyProfile; the only change is that the section-name literal
 // became the `name` parameter (supplied by the table), so the name lives ONLY in
@@ -18,8 +24,9 @@
 // serialization, the file serialize/build helpers, and save/load orchestration.
 // ============================================================================
 #include "settings_manager.h"
+#include <algorithm>   // std::clamp (graphRows)
 #include "settings_keys.h"
-#include "settings_serde.h"
+#include "settings_serde_hud.h"
 #include "atomic_file_writer.h"
 #include "hud_manager.h"
 #include "profile_manager.h"
@@ -277,7 +284,7 @@ void SettingsManager::cap_MapHud(const HudManager& hudManager, SettingsManager::
         settings["riderColorMode"] = riderColorModeToString(hud.getRiderColorMode());
         settings["trackWidthScale"] = std::to_string(hud.getTrackWidthScale());
         settings["labelMode"] = labelModeToString(hud.getLabelMode());
-        settings[IniOnly::Map::LABEL_ANCHOR.key] = labelAnchorToString(hud.getLabelAnchor());
+        settings[IniOnly::Marker::LABEL_ANCHOR.key] = labelAnchorToString(hud.getLabelAnchor());
         settings["riderShape"] = shapeIndexToFilename(hud.getRiderShape());
         settings["anchorPoint"] = anchorPointToString(hud.getAnchorPoint());
         settings["anchorX"] = std::to_string(hud.m_fAnchorX);
@@ -310,7 +317,7 @@ void SettingsManager::app_MapHud(HudManager& hudManager, const SettingsManager::
                 if (settings.count("riderColorMode")) hud.setRiderColorMode(stringToRiderColorMode(settings.at("riderColorMode")));
                 if (settings.count("trackWidthScale")) hud.setTrackWidthScale(validateTrackWidthScale(parseFiniteFloat(settings.at("trackWidthScale"))));
                 if (settings.count("labelMode")) hud.setLabelMode(stringToLabelMode(settings.at("labelMode")));
-                if (settings.count(IniOnly::Map::LABEL_ANCHOR.key)) hud.setLabelAnchor(stringToLabelAnchor(settings.at(IniOnly::Map::LABEL_ANCHOR.key)));
+                if (settings.count(IniOnly::Marker::LABEL_ANCHOR.key)) hud.setLabelAnchor(stringToLabelAnchor(settings.at(IniOnly::Marker::LABEL_ANCHOR.key)));
                 if (settings.count("riderShape")) hud.setRiderShape(filenameToShapeIndex(settings.at("riderShape"), 1));
                 if (settings.count("zoomEnabled")) hud.setZoomEnabled(std::stoi(settings.at("zoomEnabled")) != 0);
                 if (settings.count("zoomDistance")) hud.setZoomDistance(validateZoomDistance(parseFiniteFloat(settings.at("zoomDistance"))));
@@ -357,7 +364,8 @@ void SettingsManager::cap_RadarHud(const HudManager& hudManager, SettingsManager
         settings["proximityArrowScale"] = std::to_string(hud.getProximityArrowScale());
         settings["proximityArrowColorMode"] = proximityArrowColorModeToString(hud.getProximityArrowColorMode());
         settings["alertDistance"] = std::to_string(hud.getAlertDistance());
-        settings["labelMode"] = radarLabelModeToString(hud.getLabelMode());
+        settings["labelMode"] = labelModeToString(hud.getLabelMode());
+        settings[IniOnly::Marker::LABEL_ANCHOR.key] = labelAnchorToString(hud.getLabelAnchor());
         settings["riderShape"] = shapeIndexToFilename(hud.getRiderShape());
         settings["markerScale"] = std::to_string(hud.getMarkerScale());
         cache[name] = std::move(settings);
@@ -393,7 +401,8 @@ void SettingsManager::app_RadarHud(HudManager& hudManager, const SettingsManager
                     if (distance > RadarHud::MAX_ALERT_DISTANCE) distance = RadarHud::MAX_ALERT_DISTANCE;
                     hud.setAlertDistance(distance);
                 }
-                if (settings.count("labelMode")) hud.setLabelMode(stringToRadarLabelMode(settings.at("labelMode")));
+                if (settings.count("labelMode")) hud.setLabelMode(stringToLabelMode(settings.at("labelMode")));
+                if (settings.count(IniOnly::Marker::LABEL_ANCHOR.key)) hud.setLabelAnchor(stringToLabelAnchor(settings.at(IniOnly::Marker::LABEL_ANCHOR.key)));
                 if (settings.count("riderShape")) {
                     hud.setRiderShape(filenameToShapeIndex(settings.at("riderShape"), 1));
                 }
@@ -419,6 +428,9 @@ void SettingsManager::cap_PitboardHud(const HudManager& hudManager, SettingsMana
         savePitboardRows(settings, hud.m_enabledRows);  // Named keys instead of bitmask
         settings["displayMode"] = pitboardDisplayModeToString(hud.m_displayMode);
         settings["gapCompareMode"] = pitboardGapCompareModeToString(hud.m_gapCompareMode);
+        // The board by NAME. Written verbatim even when this install has no such
+        // pack, so removing a pack folder and putting it back restores the choice.
+        settings[Keys::Pitboard::PACK] = hud.getPitboardPack();
         cache[name] = std::move(settings);
 }
 
@@ -433,6 +445,10 @@ void SettingsManager::app_PitboardHud(HudManager& hudManager, const SettingsMana
                 loadPitboardRows(settings, hud.m_enabledRows);  // Named keys instead of bitmask
                 if (settings.count("displayMode")) hud.m_displayMode = stringToPitboardDisplayMode(settings.at("displayMode"));
                 if (settings.count("gapCompareMode")) hud.m_gapCompareMode = stringToPitboardGapCompareMode(settings.at("gapCompareMode"));
+                auto pack = settings.find(Keys::Pitboard::PACK);
+                if (pack != settings.end() && !pack->second.empty()) {
+                    hud.setPitboardPack(pack->second);
+                }
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("PitboardHud: Failed to parse settings: %s", e.what());
             }
@@ -525,6 +541,7 @@ void SettingsManager::cap_SessionChartsHud(const HudManager& hudManager, Setting
         settings["displayRowCount"] = std::to_string(hud.m_displayRowCount);
         // Advanced tuning (INI-only)
         settings["outlierFactor"] = std::to_string(hud.m_outlierFactor);
+        settings["graphRows"] = std::to_string(hud.m_graphRows);
         cache[name] = std::move(settings);
 }
 
@@ -556,6 +573,10 @@ void SettingsManager::app_SessionChartsHud(HudManager& hudManager, const Setting
                     int count = std::stoi(settings.at("displayRowCount"));
                     hud.m_displayRowCount = std::max(SessionChartsHud::MIN_ROW_COUNT,
                                                      std::min(count, SessionChartsHud::MAX_ROW_COUNT));
+                }
+                if (settings.count("graphRows")) {
+                    hud.m_graphRows = std::clamp(std::stoi(settings.at("graphRows")),
+                        SessionChartsHud::MIN_GRAPH_ROWS, SessionChartsHud::MAX_GRAPH_ROWS);
                 }
                 if (settings.count("topPositionsCount")) {
                     int count = std::stoi(settings.at("topPositionsCount"));
@@ -846,6 +867,7 @@ void SettingsManager::cap_TelemetryHud(const HudManager& hudManager, SettingsMan
         captureBaseHudSettings(settings, hud);
         saveTelemetryElements(settings, hud.m_enabledElements);  // Named keys instead of bitmask
         settings["displayMode"] = displayModeToString(hud.m_displayMode);
+        settings["graphRows"] = std::to_string(hud.m_graphRows);
         cache[name] = std::move(settings);
 }
 
@@ -859,6 +881,8 @@ void SettingsManager::app_TelemetryHud(HudManager& hudManager, const SettingsMan
             try {
                 loadTelemetryElements(settings, hud.m_enabledElements);  // Named keys instead of bitmask
                 if (settings.count("displayMode")) hud.m_displayMode = stringToDisplayMode(settings.at("displayMode"));
+                if (settings.count("graphRows")) hud.m_graphRows = std::clamp(std::stoi(settings.at("graphRows")),
+                    TelemetryHud::MIN_GRAPH_ROWS, TelemetryHud::MAX_GRAPH_ROWS);
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("TelemetryHud: Failed to parse settings: %s", e.what());
             }
@@ -872,6 +896,7 @@ void SettingsManager::cap_PerformanceHud(const HudManager& hudManager, SettingsM
         captureBaseHudSettings(settings, hud);
         savePerformanceElements(settings, hud.m_enabledElements);  // Named keys instead of bitmask
         settings["displayMode"] = displayModeToString(hud.m_displayMode);
+        settings["graphRows"] = std::to_string(hud.m_graphRows);
         cache[name] = std::move(settings);
 }
 
@@ -885,6 +910,8 @@ void SettingsManager::app_PerformanceHud(HudManager& hudManager, const SettingsM
             try {
                 loadPerformanceElements(settings, hud.m_enabledElements);  // Named keys instead of bitmask
                 if (settings.count("displayMode")) hud.m_displayMode = stringToDisplayMode(settings.at("displayMode"));
+                if (settings.count("graphRows")) hud.m_graphRows = std::clamp(std::stoi(settings.at("graphRows")),
+                    PerformanceHud::MIN_GRAPH_ROWS, PerformanceHud::MAX_GRAPH_ROWS);
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("PerformanceHud: Failed to parse settings: %s", e.what());
             }
@@ -919,10 +946,12 @@ const std::vector<HudSectionSerializer>& hudSectionRegistry() {
         { "LapWidget", &SettingsManager::cap_LapWidget, &SettingsManager::app_LapWidget },
         { "PositionWidget", &SettingsManager::cap_PositionWidget, &SettingsManager::app_PositionWidget },
         { "TimeWidget", &SettingsManager::cap_TimeWidget, &SettingsManager::app_TimeWidget },
+        { "SpotterWidget", &SettingsManager::cap_SpotterWidget, &SettingsManager::app_SpotterWidget },
         { "ClockWidget", &SettingsManager::cap_ClockWidget, &SettingsManager::app_ClockWidget },
         { "SessionHud", &SettingsManager::cap_SessionHud, &SettingsManager::app_SessionHud },
         { "SpeedWidget", &SettingsManager::cap_SpeedWidget, &SettingsManager::app_SpeedWidget },
         { "GearWidget", &SettingsManager::cap_GearWidget, &SettingsManager::app_GearWidget },
+        { "CrashWidget", &SettingsManager::cap_CrashWidget, &SettingsManager::app_CrashWidget },
         { "SpeedoWidget", &SettingsManager::cap_SpeedoWidget, &SettingsManager::app_SpeedoWidget },
         { "TachoWidget", &SettingsManager::cap_TachoWidget, &SettingsManager::app_TachoWidget },
         { "TimingHud", &SettingsManager::cap_TimingHud, &SettingsManager::app_TimingHud },

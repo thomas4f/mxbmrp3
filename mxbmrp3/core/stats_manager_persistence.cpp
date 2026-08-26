@@ -104,6 +104,7 @@ void StatsManager::load(const char* savePath) {
             m_globalStats.fastestLapCount = (std::max)(g.value("fastestLapCount", 0), 0);
             m_globalStats.penaltyTimeMs = (std::max)(g.value("penaltyTimeMs", static_cast<int64_t>(0)), static_cast<int64_t>(0));
             m_globalStats.breakoutHighScore = (std::max)(g.value("breakoutHighScore", 0), 0);
+            m_globalStats.crashTally = (std::max)(g.value("crashTally", 0), 0);
         }
 
         // Parse bike odometers
@@ -216,6 +217,9 @@ void StatsManager::save() {
         global["thirdPositions"] = m_globalStats.thirdPositions;
         global["fastestLapCount"] = m_globalStats.fastestLapCount;
         global["penaltyTimeMs"] = m_globalStats.penaltyTimeMs;
+        if (m_globalStats.crashTally > 0) {
+            global["crashTally"] = m_globalStats.crashTally;
+        }
         if (m_globalStats.breakoutHighScore > 0) {
             global["breakoutHighScore"] = m_globalStats.breakoutHighScore;
         }

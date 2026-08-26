@@ -14,12 +14,10 @@ BaseHud* SettingsHud::renderTabIdealLap(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("ideal_lap");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeader("Appearance");
+    ctx.addSectionHeading("Appearance");
     ctx.addStandardHudControls(hud);
-    ctx.addSpacing(0.5f);
-
     // === CONTENT SECTION ===
-    ctx.addSectionHeader("Content");
+    ctx.addSectionHeading("Content");
 
     // Sector rows (S1, S2, S3)
     bool sectorsOn = (hud->m_enabledRows & IdealLapHud::ROW_SECTORS) != 0;

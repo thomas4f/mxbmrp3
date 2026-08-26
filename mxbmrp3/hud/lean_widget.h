@@ -33,6 +33,19 @@ public:
     // Arc fill color (configurable via INI) - background uses ColorConfig::getMuted() like BarsWidget
     void setArcFillColor(unsigned long color) { m_arcFillColor = color; setDataDirty(); }
     unsigned long getArcFillColor() const { return m_arcFillColor; }
+
+    // HOW THE FILL IS COLOURED. Default RAMP: the lean arc and the steer bar run the
+    // palette's POSITIVE -> NEUTRAL -> NEGATIVE ramp as the reading approaches full
+    // scale, which is what the G-force ring and the radar already do -- so "green"
+    // means the same thing on all three, and a gauge that is a flat colour whatever
+    // it reads is the odd one out.
+    //
+    // A MODE rather than a straight switch to the ramp, because arcFillColor is a
+    // setting someone may have picked: ramping unconditionally would silently throw
+    // their colour away. FIXED keeps it. Same shape as RadarHud::RiderColorMode.
+    enum class FillColorMode : int { RAMP = 0, FIXED = 1 };
+    void setFillColorMode(FillColorMode mode) { m_fillColorMode = mode; setDataDirty(); }
+    FillColorMode getFillColorMode() const { return m_fillColorMode; }
     static constexpr unsigned long DEFAULT_ARC_FILL_COLOR = PluginUtils::makeColor(255, 255, 255);      // White
 
     // Public for settings access
@@ -49,8 +62,6 @@ protected:
 private:
     void rebuildRenderData() override;
     void resetTracking();  // Reset all max lean/steer values and markers
-    void addArcSegment(float centerX, float centerY, float innerRadius, float outerRadius,
-                       float startAngleRad, float endAngleRad, unsigned long color, int numSegments);
 
     // Lean gauge constants
     static constexpr float MAX_LEAN_ANGLE = 90.0f;     // Max lean angle on gauge (degrees)
@@ -87,4 +98,9 @@ private:
 
     // Arc fill color (background uses dynamic ColorConfig::getMuted())
     unsigned long m_arcFillColor = DEFAULT_ARC_FILL_COLOR;
+    FillColorMode m_fillColorMode = FillColorMode::RAMP;
+
+    // The fill colour for a reading at `ratio` of full scale (0..1, sign ignored):
+    // the severity ramp, or the fixed colour when that is the mode.
+    unsigned long fillColorFor(float ratio) const;
 };

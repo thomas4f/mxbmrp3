@@ -20,7 +20,19 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include <fstream>
 #include <sstream>
+#include <stdexcept>
+
+// Where the shipped spotter pack lives. run_tests.sh passes an absolute Wine
+// path; everything ELSE that includes this header — companion_demo, the replay
+// tool, the benchmark drivers — does not, and a header that only compiles under
+// one build script is a header that breaks the others silently (companion_demo
+// stopped compiling for exactly this reason, and no gate builds it). The
+// fallback is the staged layout those tools already run from.
+#ifndef MXB_SHIPPED_PACK_INI
+#define MXB_SHIPPED_PACK_INI "plugins/mxbmrp3_data/spotters/default/default.ini"
+#endif
 
 #include "plugin_api.h"
 #include "tape.h"
@@ -93,6 +105,20 @@ public:
         m_startRec  = sym<int(*)(const char*)>("MXBMRP3_Test_StartRecording");
         m_stopRec   = sym<void(*)()>("MXBMRP3_Test_StopRecording");
         m_resetAll  = sym<void(*)()>("MXBMRP3_Test_ResetAll");
+        m_resetGlobals = sym<void(*)()>("MXBMRP3_Test_ResetGlobals");
+        m_spotEnable = sym<void(*)(int)>("MXBMRP3_Test_SpotterEnable");
+        m_spotSubs   = sym<void(*)(int)>("MXBMRP3_Test_SpotterSubtitles");
+        m_spotMask   = sym<void(*)(unsigned)>("MXBMRP3_Test_SpotterCategoryMask");
+        m_spotLog    = sym<void(*)(char*,int)>("MXBMRP3_Test_SpotterCueLog");
+        m_spotAudio  = sym<void(*)(char*,int)>("MXBMRP3_Test_SpotterLastAudio");
+        m_spotPack   = sym<void(*)(const char*)>("MXBMRP3_Test_SpotterInstallPack");
+        m_spotPrev   = sym<void(*)(int)>("MXBMRP3_Test_SpotterPreview");
+        m_spotPin    = sym<void(*)(int)>("MXBMRP3_Test_SpotterPinVariant");
+        m_spotHotkey = sym<void(*)()>("MXBMRP3_Test_SpotterHotkey");
+        m_stTheme   = sym<void(*)(char*,int)>("MXBMRP3_Test_StandingsTheme");
+        m_stSetTheme = sym<void(*)(const char*)>("MXBMRP3_Test_StandingsSetTheme");
+        m_rdTheme   = sym<void(*)(char*,int)>("MXBMRP3_Test_RadarTheme");
+        m_rdSetTheme = sym<void(*)(const char*)>("MXBMRP3_Test_RadarSetTheme");
         m_resetActiveProfile = sym<void(*)()>("MXBMRP3_Test_ResetActiveProfile");
         m_resetHud  = sym<void(*)(const char*, int)>("MXBMRP3_Test_ResetHud");
         m_copyProfileToAll = sym<void(*)()>("MXBMRP3_Test_CopyProfileToAll");
@@ -110,8 +136,29 @@ public:
         m_dirSubject = sym<int(*)()>("MXBMRP3_Test_DirectorSubject");
         m_benchHudCount = sym<int(*)()>("MXBMRP3_Test_BenchmarkHudCount");
         m_benchCbCount  = sym<int(*)()>("MXBMRP3_Test_BenchmarkCallbackCount");
+        m_profilableHuds = sym<int(*)()>("MXBMRP3_Test_ProfilableHudCount");
+        m_snapCap  = sym<int(*)()>("MXBMRP3_Test_BenchmarkSnapshotCapacity");
+        m_snapCount= sym<int(*)()>("MXBMRP3_Test_BenchmarkSnapshotCount");
+        m_hudRebuilds = sym<int(*)(const char*)>("MXBMRP3_Test_HudRebuildCount");
+        m_setProbe = sym<void(*)(int,int,int,int)>("MXBMRP3_Test_SetRenderProbe");
+        m_spriteSpan = sym<void(*)(int*,int*,int*)>("MXBMRP3_Test_FrameSpriteSpan");
+        m_spriteCount = sym<int(*)()>("MXBMRP3_Test_RegisteredSpriteCount");
+        m_installSprites = sym<void(*)(int)>("MXBMRP3_Test_InstallSpriteTable");
+        m_getProbe = sym<void(*)(int*,int*,int*,int*)>("MXBMRP3_Test_GetRenderProbe");
+        m_sweepStart = sym<void(*)()>("MXBMRP3_Test_ProbeSweepStart");
+        m_sweepAbort = sym<void(*)()>("MXBMRP3_Test_ProbeSweepAbort");
+        m_sweepRunning = sym<int(*)()>("MXBMRP3_Test_ProbeSweepRunning");
+        m_setProbeChars = sym<void(*)(int)>("MXBMRP3_Test_SetRenderProbeTextChars");
+        m_getProbeChars = sym<int(*)()>("MXBMRP3_Test_GetRenderProbeTextChars");
+        m_setDropShadow = sym<void(*)(int)>("MXBMRP3_Test_SetDropShadow");
+        m_setDevMode = sym<void(*)(int)>("MXBMRP3_Test_SetDeveloperMode");
+        m_setHudOpacity = sym<int(*)(const char*,float)>("MXBMRP3_Test_SetHudOpacity");
+        m_setHudOffset = sym<int(*)(const char*,float,float)>("MXBMRP3_Test_SetHudOffset");
+        m_maxQuadArea = sym<int(*)(const char*)>("MXBMRP3_Test_HudMaxQuadArea");
         m_eventLogEnableDirector = sym<void(*)(int)>("MXBMRP3_Test_EventLogEnableDirector");
         m_timingConfig = sym<void(*)(int,int,int)>("MXBMRP3_Test_TimingConfig");
+        m_timingReadouts = sym<void(*)(unsigned int)>("MXBMRP3_Test_TimingReadouts");
+        m_timingTextBudget = sym<int(*)()>("MXBMRP3_Test_TimingTextBudget");
         m_timingReferenceMs = sym<int(*)(int,int)>("MXBMRP3_Test_TimingReferenceMs");
         m_timingTargetSplit = sym<int(*)()>("MXBMRP3_Test_TimingTargetSplit");
         m_timingInvalidShown = sym<int(*)()>("MXBMRP3_Test_TimingInvalidShown");
@@ -119,7 +166,7 @@ public:
         m_elapsedLapTime = sym<int(*)()>("MXBMRP3_Test_ElapsedLapTime");
         m_lapTimerFromRaceStart = sym<int(*)()>("MXBMRP3_Test_LapTimerFromRaceStart");
         m_inGridStartGrace = sym<int(*)()>("MXBMRP3_Test_InGridStartGrace");
-        m_timingGeometry = sym<void(*)(int*,int*,int*,int*,int*,int*)>("MXBMRP3_Test_TimingGeometry");
+        m_timingGeometry = sym<void(*)(int*,int*,int*,int*,int*,int*,int*)>("MXBMRP3_Test_TimingGeometry");
         m_eventLogSetVisible = sym<void(*)(int)>("MXBMRP3_Test_EventLogSetVisible");
         m_eventLogIconColorSlot = sym<int(*)(const char*)>("MXBMRP3_Test_EventLogIconColorSlot");
         m_noticesSetVisible = sym<void(*)(int)>("MXBMRP3_Test_NoticesSetVisible");
@@ -130,6 +177,23 @@ public:
         m_setAutoSave = sym<void(*)(int)>("MXBMRP3_Test_SetAutoSave");
         m_loadSettings = sym<void(*)(const char*)>("MXBMRP3_Test_LoadSettings");
         m_setActiveTab = sym<void(*)(const char*)>("MXBMRP3_Test_SetActiveTab");
+        m_wnReset      = sym<void(*)()>("MXBMRP3_Test_WhatsNewReset");
+        m_wnLiveCount  = sym<int(*)()>("MXBMRP3_Test_WhatsNewLiveCount");
+        m_wnTabTagged  = sym<int(*)(const char*)>("MXBMRP3_Test_WhatsNewTabTagged");
+        m_wnHoverRow   = sym<void(*)(const char*)>("MXBMRP3_Test_WhatsNewHoverRow");
+        m_wnClickTab   = sym<int(*)(const char*)>("MXBMRP3_Test_WhatsNewClickTab");
+        m_wnMarkerCount    = sym<int(*)()>("MXBMRP3_Test_WhatsNewMarkerCount");
+        m_wnMarkerResolves = sym<int(*)(int)>("MXBMRP3_Test_WhatsNewMarkerResolves");
+        m_wnMarkerName     = sym<void(*)(int, char*, int)>("MXBMRP3_Test_WhatsNewMarkerName");
+        m_wnSerialize      = sym<void(*)(char*, int)>("MXBMRP3_Test_WhatsNewSerialize");
+        m_clickAbout       = sym<void(*)()>("MXBMRP3_Test_ClickAbout");
+        m_updateTagLive    = sym<int(*)()>("MXBMRP3_Test_UpdateTagLive");
+        m_updateTagReset   = sym<void(*)()>("MXBMRP3_Test_UpdateTagReset");
+        m_aboutRect        = sym<int(*)(int*,int*,int*,int*)>("MXBMRP3_Test_AboutButtonRect");
+        m_settingsTabName = sym<int(*)(int,char*,int)>("MXBMRP3_Test_SettingsTabName");
+        m_settingsAnyTabName = sym<int(*)(int,char*,int)>("MXBMRP3_Test_SettingsAnyTabName");
+        m_settingsOverflow = sym<int(*)()>("MXBMRP3_Test_SettingsOverflowRows");
+        m_standingsRowBand = sym<int(*)(int*,int*)>("MXBMRP3_Test_StandingsRowBand");
         m_showSettings = sym<void(*)(int)>("MXBMRP3_Test_ShowSettings");
         m_stepCount    = sym<int(*)(int)>("MXBMRP3_Test_SettingsSteppedCount");
         m_stepClick    = sym<int(*)(int,int,int)>("MXBMRP3_Test_SettingsClickStepped");
@@ -150,6 +214,60 @@ public:
         m_resolveFrame = sym<void(*)(unsigned long long, char*, int)>("MXBMRP3_Test_ResolveFrame");
         m_extractInstall = sym<int(*)(const char*, const char*, int, char*, int)>("MXBMRP3_Test_ExtractAndInstall");
         m_stSetVisible      = sym<void(*)(int)>("MXBMRP3_Test_StandingsSetVisible");
+        m_installTheme      = sym<void(*)(const char*,float,float,int,int,int,int)>("MXBMRP3_Test_InstallTheme");
+        m_setThemeTitleBorder  = sym<int(*)(float)>("MXBMRP3_Test_SetThemeTitleBorder");
+        m_setThemePanelPad  = sym<int(*)(float,float)>("MXBMRP3_Test_SetThemePanelPadding");
+        m_layoutCells       = sym<void(*)(double*)>("MXBMRP3_Test_LayoutCells");
+        m_setHudScale       = sym<int(*)(const char*, float)>("MXBMRP3_Test_SetHudScale");
+        m_gapBarWidth       = sym<void(*)(int)>("MXBMRP3_Test_GapBarWidth");
+        m_setThemeContentBorder =
+            sym<int(*)(float,float,float,float)>("MXBMRP3_Test_SetThemeContentBorder");
+        m_setThemeContentMargin =
+            sym<int(*)(float,float,float,float)>("MXBMRP3_Test_SetThemeContentMargin");
+        m_setThemeTitleMargin =
+            sym<int(*)(float,float,float,float)>("MXBMRP3_Test_SetThemeTitleMargin");
+        m_hudCardRect = sym<int(*)(const char*,int*)>("MXBMRP3_Test_HudCardRect");
+        m_gapBarForceGap = sym<void(*)(int,int)>("MXBMRP3_Test_GapBarForceGap");
+        m_setThemeIcon      = sym<int(*)(const char*,int,int)>("MXBMRP3_Test_SetThemeIconOverride");
+        m_iconForName       = sym<int(*)(const char*)>("MXBMRP3_Test_IconSpriteForName");
+        m_iconForShape      = sym<int(*)(int)>("MXBMRP3_Test_IconSpriteForShape");
+        m_shapeForIcon      = sym<int(*)(int)>("MXBMRP3_Test_ShapeForIconSprite");
+        m_clearTheme        = sym<void(*)()>("MXBMRP3_Test_ClearTheme");
+        m_hudPanelRect      = sym<void(*)(const char*,int*,int*,int*)>("MXBMRP3_Test_HudPanelRect");
+        m_sectionCards      = sym<int(*)(const char*,int*,int)>("MXBMRP3_Test_SectionCards");
+        m_panelCells        = sym<int(*)(int*,int)>("MXBMRP3_Test_PanelCells");
+        m_panelPadY         = sym<int(*)(int*,int)>("MXBMRP3_Test_PanelPadY");
+        m_setPerfElements   = sym<void(*)(unsigned)>("MXBMRP3_Test_SetPerformanceElements");
+        m_quadRects         = sym<int(*)(const char*,int*,int)>("MXBMRP3_Test_HudQuadRects");
+        m_stringColor       = sym<unsigned long(*)(const char*,int)>("MXBMRP3_Test_HudStringColor");
+        m_quadColor         = sym<unsigned long(*)(const char*,int)>("MXBMRP3_Test_HudQuadColor");
+        m_minLumaGap        = sym<int(*)()>("MXBMRP3_Test_MinGlyphLumaGap");
+        m_luma601           = sym<int(*)(unsigned long)>("MXBMRP3_Test_Luma601");
+        m_stringRows        = sym<int(*)(const char*,int,int*,int*,char*,int)>("MXBMRP3_Test_HudStringRows");
+        m_fillCut           = sym<int(*)(const char*,int*,int)>("MXBMRP3_Test_HudFillCut");
+        m_panelName         = sym<void(*)(int,char*,int)>("MXBMRP3_Test_PanelName");
+        m_hudScreenEdges    = sym<void(*)(const char*,int*,int*,int*,int*)>("MXBMRP3_Test_HudScreenEdges");
+        m_setScreenClamping = sym<void(*)(int)>("MXBMRP3_Test_SetScreenClamping");
+        m_settingsMarginsX  = sym<void(*)(int*,int*,int*,int*)>("MXBMRP3_Test_SettingsMarginsX");
+        m_setThemeGap       = sym<int(*)(float)>("MXBMRP3_Test_SetThemeGap");
+        m_settingsGutter    = sym<void(*)(int*,int*,int*)>("MXBMRP3_Test_SettingsGutter");
+        m_settingsContentX  = sym<void(*)(int*,int*,int*)>("MXBMRP3_Test_SettingsContentX");
+        m_setHudTitle       = sym<int(*)(const char*,int)>("MXBMRP3_Test_SetHudTitle");
+        m_updateSetAvailable = sym<void(*)(const char*)>("MXBMRP3_Test_UpdateSetAvailable");
+        m_versionRowTerms   = sym<void(*)(int*,int*)>("MXBMRP3_Test_VersionRowTerms");
+        m_showAllHuds       = sym<void(*)(int)>("MXBMRP3_Test_ShowAllHuds");
+        m_effColor          = sym<unsigned long(*)(int)>("MXBMRP3_Test_EffectiveColor");
+        m_colorOverridden   = sym<int(*)(int)>("MXBMRP3_Test_ColorOverridden");
+        m_themeOrDefColor   = sym<unsigned long(*)(int)>("MXBMRP3_Test_ThemeOrDefaultColor");
+        m_cycleColor        = sym<void(*)(int,int)>("MXBMRP3_Test_CycleColor");
+        m_clearColorOv      = sym<void(*)(int)>("MXBMRP3_Test_ClearColorOverride");
+        m_setThemeColor     = sym<void(*)(int,unsigned long)>("MXBMRP3_Test_SetThemeColor");
+        m_effFont           = sym<void(*)(int,char*,int)>("MXBMRP3_Test_EffectiveFont");
+        m_fontOverridden    = sym<int(*)(int)>("MXBMRP3_Test_FontOverridden");
+        m_cycleFont         = sym<void(*)(int,int)>("MXBMRP3_Test_CycleFont");
+        m_clearFontOv       = sym<void(*)(int)>("MXBMRP3_Test_ClearFontOverride");
+        m_setFont           = sym<void(*)(int,const char*)>("MXBMRP3_Test_SetFont");
+        m_fontCount         = sym<int(*)()>("MXBMRP3_Test_FontCount");
         m_stSetCompVisible  = sym<void(*)(int)>("MXBMRP3_Test_StandingsSetCompanionVisible");
         m_stClearCompanion  = sym<void(*)()>("MXBMRP3_Test_StandingsClearCompanion");
         m_stCompanionState  = sym<void(*)(int*, int*, int*)>("MXBMRP3_Test_StandingsCompanionState");
@@ -177,6 +295,31 @@ public:
         m_companionClose    = sym<void(*)()>("MXBMRP3_Test_CompanionSimulateUserClose");
         m_fakeGamepad       = sym<void(*)(int)>("MXBMRP3_Test_FakeGamepad");
         m_gamepadExtent     = sym<void(*)(float*, float*)>("MXBMRP3_Test_GamepadContentExtent");
+        m_installGamepad    = sym<void(*)(const char*, float)>("MXBMRP3_Test_InstallGamepad");
+        m_clearGamepads     = sym<void(*)()>("MXBMRP3_Test_ClearGamepads");
+        m_installPitboard   = sym<void(*)(const char*, float, float)>("MXBMRP3_Test_InstallPitboard");
+        m_clearPitboards    = sym<void(*)()>("MXBMRP3_Test_ClearPitboards");
+        m_cyclePack         = sym<void(*)(int, int)>("MXBMRP3_Test_CyclePack");
+        m_packShowBg        = sym<int(*)(int)>("MXBMRP3_Test_PackShowBg");
+        m_gamepadStemSrc    = sym<int(*)(const char*, int)>("MXBMRP3_Test_GamepadStemSource");
+        m_gamepadGeomWidth  = sym<float(*)(const char*)>("MXBMRP3_Test_GamepadGeomWidth");
+        m_pitboardStemSrc   = sym<int(*)(const char*, int)>("MXBMRP3_Test_PitboardStemSource");
+        m_pitboardPackArtW  = sym<float(*)(const char*)>("MXBMRP3_Test_PitboardPackArtWidth");
+        m_pitboardTextColor = sym<unsigned(*)(const char*)>("MXBMRP3_Test_PitboardTextColor");
+        m_padStemCount      = sym<int(*)()>("MXBMRP3_Test_GamepadStemCount");
+        m_padStemName       = sym<void(*)(int, char*, int)>("MXBMRP3_Test_GamepadStemName");
+        m_setPackShowBg     = sym<void(*)(int, int)>("MXBMRP3_Test_SetPackShowBg");
+        m_setPitboardPack   = sym<void(*)(const char*)>("MXBMRP3_Test_SetPitboardPack");
+        m_pitboardStored    = sym<void(*)(char*, int)>("MXBMRP3_Test_PitboardPackStored");
+        m_pitboardActive    = sym<void(*)(char*, int)>("MXBMRP3_Test_PitboardPackActive");
+        m_setGamepadPack    = sym<void(*)(const char*)>("MXBMRP3_Test_SetGamepadPack");
+        m_gamepadStored     = sym<void(*)(char*, int)>("MXBMRP3_Test_GamepadPackStored");
+        m_gamepadActive     = sym<void(*)(char*, int)>("MXBMRP3_Test_GamepadPackActive");
+        m_reloadAssetLayouts = sym<void(*)()>("MXBMRP3_Test_ReloadAssetLayouts");
+        m_pitboardArtWidth  = sym<float(*)()>("MXBMRP3_Test_PitboardArtWidth");
+        m_gamepadArtWidth   = sym<float(*)()>("MXBMRP3_Test_GamepadArtWidth");
+        m_setUiFontSize     = sym<void(*)(float)>("MXBMRP3_Test_SetUiFontSize");
+        m_setBoxTerm        = sym<void(*)(int,const char*)>("MXBMRP3_Test_SetBoxTerm");
         m_forceSurface      = sym<void(*)(int)>("MXBMRP3_Test_ForceActiveSurface");
         m_rcSetVisible      = sym<void(*)(int)>("MXBMRP3_Test_SessionChartsSetVisible");
         m_rcSetCharts       = sym<void(*)(int)>("MXBMRP3_Test_SessionChartsSetCharts");
@@ -185,6 +328,7 @@ public:
         m_statsSetNow       = sym<void(*)(long long)>("MXBMRP3_Test_StatsSetNowUs");
         m_statsOdoState     = sym<void(*)(double*,double*,double*,int*)>("MXBMRP3_Test_StatsOdometerState");
         m_statsSave         = sym<void(*)()>("MXBMRP3_Test_StatsSave");
+        m_crashTally        = sym<int(*)(int)>("MXBMRP3_Test_CrashTally");
         m_recParse          = sym<int(*)(int, const char*)>("MXBMRP3_Test_RecordsParse");
         m_recCount          = sym<int(*)()>("MXBMRP3_Test_RecordsCount");
         m_recGet            = sym<int(*)(int, char*, int, char*, int, int*, int*, int*, int*, char*, int)>("MXBMRP3_Test_RecordsGet");
@@ -314,8 +458,17 @@ public:
                    float trackLength = 1600.0f, int type = 2,
                    const char* bikeName = "Test 450",
                    const char* category = "MX1",
-                   const char* trackId = "") {
+                   const char* trackId = "",
+                   // 0 = offline (the default, and what the game sends in
+                   // single player), 1 = online race, 2 = online practice day.
+                   // It decides isOnline(), which the lap-quality ladder reads:
+                   // OFFLINE a session-leading lap speaks as a session best,
+                   // because fastest-of-one means nothing; ONLINE it speaks as
+                   // the fastest lap. A case pinning either wording has to say
+                   // which world it is in.
+                   int serverType = 0) {
         SPluginsBikeEvent_t ev{};
+        ev.m_iServerType = serverType;
         setStr(ev.m_szRiderName, riderName);
         setStr(ev.m_szBikeName, bikeName);
         setStr(ev.m_szCategory, category);
@@ -380,6 +533,7 @@ public:
                                    e.data(), (int)sizeof(SPluginsRaceClassificationEntry_t));
         draw();  // let the change flush through to the snapshot
     }
+
     // RaceLap: a rider completed a lap. best: 0=neither, 1=personal best,
     // 2=overall best (fires the fastest-lap event when online). split0/split1 are
     // the ACCUMULATED split times (S1, then S1+S2); the plugin derives per-sector
@@ -411,10 +565,14 @@ public:
 
     // RaceCommunication: change a rider's state (state 4=DSQ, 3=retired, 1=DNS)
     // or apply a penalty (communication 2). Defaults to a state change.
-    void communication(int raceNum, int state, int communication = 1) {
+    // penaltySeconds rides m_iTime (the game sends seconds; the adapter
+    // converts to ms) and only means anything for communication 2.
+    void communication(int raceNum, int state, int communication = 1,
+                       int penaltySeconds = 0) {
         SPluginsRaceCommunication_t rc{};
         rc.m_iRaceNum = raceNum; rc.m_iCommunication = communication;
         rc.m_iState = state; rc.m_iReason = 2;
+        rc.m_iTime = penaltySeconds;
         if (m_comm) m_comm(&rc, (int)sizeof(rc));
         draw();
     }
@@ -701,6 +859,42 @@ public:
         return applied;
     }
 
+    // Real-time replay: same dispatch as replayTape(), but SLEEPS out the
+    // recorded inter-event gaps (capped so dead air can't stall a test).
+    // Needed whenever the behavior under test runs on the WALL clock rather
+    // than callback data — wrong-way/stationary hazard confirmation
+    // (steady_clock timers in updateTrackPosition) never trips in a burst
+    // replay no matter what the tape contains. Cost is the tape's real
+    // duration; keep such tapes short.
+    int replayTapePaced(const std::string& path, int maxGapMs = 250) {
+        FILE* f = fopen(path.c_str(), "rb");
+        if (!f) { HOST_TRACE("replayTapePaced: cannot open %s", path.c_str()); return -1; }
+        tape::FileHeader fh{};
+        if (fread(&fh, sizeof(fh), 1, f) != 1 || std::memcmp(fh.magic, "MXBHREC", 7) != 0) {
+            HOST_TRACE("replayTapePaced: %s is not a MXBHREC tape", path.c_str());
+            fclose(f); return -1;
+        }
+        int applied = 0;
+        uint64_t prevUs = 0;
+        bool first = true;
+        tape::EventHeader eh{};
+        std::vector<uint8_t> buf;
+        while (fread(&eh, sizeof(eh), 1, f) == 1) {
+            buf.resize(eh.dataSize);
+            if (eh.dataSize && fread(buf.data(), 1, eh.dataSize, f) != eh.dataSize) break;
+            if (!first && eh.timestampUs > prevUs) {
+                uint64_t gapMs = (eh.timestampUs - prevUs) / 1000;
+                if (gapMs > (uint64_t)maxGapMs) gapMs = (uint64_t)maxGapMs;
+                if (gapMs) Sleep((DWORD)gapMs);
+            }
+            first = false;
+            prevUs = eh.timestampUs;
+            if (dispatch(static_cast<tape::EventType>(eh.eventType), buf)) ++applied;
+        }
+        fclose(f);
+        return applied;
+    }
+
     // Timestamp-driven replay for broadcast measurement. Same event dispatch as
     // replayTape(), but before each event it feeds the recorded timestamp into the
     // director's injectable clock (MXBMRP3_Test_DirectorSetNowMs) so the director's
@@ -757,6 +951,100 @@ public:
 
     // --- settings actions (test hooks) --------------------------------------
     void resetAll() { if (m_resetAll) m_resetAll(); }
+    // The GLOBAL half of "Reset Everything" (see the hook). The menu button is both
+    // halves, so a test modelling that button calls resetEverything() below.
+    void resetGlobals() { if (m_resetGlobals) m_resetGlobals(); }
+    bool hasResetGlobals() const { return m_resetGlobals != nullptr; }
+    void resetEverything() { resetGlobals(); resetAll(); }
+    // Spotter: enable/filter the cue pipeline and read back what it decided
+    // to say (newline-joined, oldest first). See MXBMRP3_Test_SpotterCueLog.
+    void spotterEnable(bool on) { if (m_spotEnable) m_spotEnable(on ? 1 : 0); }
+    void spotterSubtitles(bool on) { if (m_spotSubs) m_spotSubs(on ? 1 : 0); }
+    void spotterCategoryMask(unsigned mask) { if (m_spotMask) m_spotMask(mask); }
+    void spotterInstallPack(const char* iniText) { if (m_spotPack) m_spotPack(iniText); }
+    // Load the SHIPPED pack's real text. The plugin carries no built-in
+    // wording, so this is what makes a cue speak at all — and asserting
+    // against the file users actually get beats asserting against a stand-in
+    // that can quietly drift from it.
+    // THROWS rather than asserting: doctest turns an escaped exception into a
+    // failed test case with this message, so the tests keep their hard stop
+    // while the header stays usable by the non-doctest tools that also include
+    // it. (It used to call REQUIRE_MESSAGE, which only exists under doctest.)
+    static std::string readShippedPack() {
+        std::ifstream in(MXB_SHIPPED_PACK_INI, std::ios::binary);
+        if (!in.good()) {
+            throw std::runtime_error(
+                std::string("shipped spotter pack missing: ")
+                + MXB_SHIPPED_PACK_INI);
+        }
+        std::ostringstream ss;
+        ss << in.rdbuf();
+        return ss.str();
+    }
+    // Which alternate a cue with `_2..` rows speaks: -1 rolls (what ships), 0
+    // always the base row. See SpotterManager::testPinVariant.
+    void spotterPinVariant(int idx) { if (m_spotPin) m_spotPin(idx); }
+    // BOTH shipped-pack installers pin the base row, because the reason to
+    // reach for the shipped file is to assert against the words users get —
+    // and the shipped pack carries alternates, so an unpinned assertion on any
+    // cue with a `_2` is a one-in-N flake that only shows up on some runs.
+    // Pinning here rather than at each call site is deliberate: a case added
+    // later gets it without knowing this exists, which is the failure mode
+    // that matters (nothing about a flaky exact-match assertion says "you
+    // forgot the pin"). A test that WANTS the roll calls spotterPinVariant(-1)
+    // after installing, and the two in this suite that do say so.
+    void pinBaseVariant() { spotterPinVariant(0); }
+    void spotterInstallShippedPack() {
+        m_shippedPackText = readShippedPack();
+        spotterInstallPack(m_shippedPackText.c_str());
+        pinBaseVariant();
+    }
+    // The shipped pack with `extra` laid over it — the same shape the plugin
+    // builds when a user pack overrides some of the shipped rows. What a test
+    // wants when it overrides one cue and still expects the rest to speak;
+    // spotterInstallPack alone is the isolated case, where anything the text
+    // does not define is silent.
+    void spotterInstallPackOver(const char* extra) {
+        m_shippedPackText = readShippedPack() + "\n" + extra;
+        spotterInstallPack(m_shippedPackText.c_str());
+        pinBaseVariant();
+    }
+    // The settings menu's voice preview; see MXBMRP3_Test_SpotterPreview.
+    void spotterPreview(bool ttsOnly = false) { if (m_spotPrev) m_spotPrev(ttsOnly ? 1 : 0); }
+    // The Spotter Cue hotkey. See MXBMRP3_Test_SpotterHotkey.
+    void spotterHotkey() { if (m_spotHotkey) m_spotHotkey(); }
+    // Sized for the whole 96-entry ring rather than a round number: the hook
+    // keeps the NEWEST cues when it has to cut, but a test that scrolls its
+    // own assertions out of the buffer still reads as a pass on every
+    // "must NOT say X" check, so the buffer is what keeps that from mattering.
+    std::string spotterCueLog() {
+        std::vector<char> buf(64 * 1024, '\0');
+        if (m_spotLog) m_spotLog(buf.data(), static_cast<int>(buf.size()));
+        return std::string(buf.data());
+    }
+    // Which audio route the last cue took ("<key>|wav:x.wav", "|mix:a+b",
+    // "|tts"). See MXBMRP3_Test_SpotterLastAudio: the cue log answers what was
+    // SAID, this answers what would PLAY, and on Wine "tts" means nothing does.
+    std::string spotterLastAudio() {
+        char buf[512] = {0};
+        if (m_spotAudio) m_spotAudio(buf, static_cast<int>(sizeof(buf)));
+        return std::string(buf);
+    }
+    // Per-HUD panel-theme override on StandingsHud; see MXBMRP3_Test_StandingsTheme.
+    std::string standingsTheme() {
+        char buf[64] = {0};
+        if (m_stTheme) m_stTheme(buf, static_cast<int>(sizeof(buf)));
+        return std::string(buf);
+    }
+    void setStandingsTheme(const char* v) { if (m_stSetTheme) m_stSetTheme(v); }
+    // RadarHud's, whose factory default is THEME_NONE -- see MXBMRP3_Test_RadarTheme
+    // for why a non-empty default is the only way to test clearing one.
+    std::string radarTheme() {
+        char buf[128] = {0};
+        if (m_rdTheme) m_rdTheme(buf, static_cast<int>(sizeof(buf)));
+        return buf;
+    }
+    void setRadarTheme(const char* v) { if (m_rdSetTheme) m_rdSetTheme(v); }
     // Reset the ACTIVE profile / one HUD to factory defaults (do NOT persist on
     // their own — follow with save()). switchProfile/copyProfileToAll persist.
     void resetActiveProfile() { if (m_resetActiveProfile) m_resetActiveProfile(); }
@@ -788,6 +1076,77 @@ public:
     // teardown — a drop to 0 silently empties the profiler's per-HUD table.
     int benchmarkHudCount() { return m_benchHudCount ? m_benchHudCount() : -1; }
     int benchmarkCallbackCount() { return m_benchCbCount ? m_benchCbCount() : -1; }
+    // Panels that should carry a slot -- compare against benchmarkHudCount().
+    int profilableHudCount() { return m_profilableHuds ? m_profilableHuds() : -1; }
+    // Snapshot array capacity vs the count stored in it -- count > capacity is
+    // the out-of-bounds read that corrupts the exported report.
+    int benchmarkSnapshotCapacity() { return m_snapCap ? m_snapCap() : -1; }
+    int benchmarkSnapshotCount() { return m_snapCount ? m_snapCount() : -1; }
+    // A named panel's stint rebuild count (-1 if unknown). Only moves while the
+    // profiler is collecting, so switch the benchmark widget on first with
+    // benchmarkSetVisible(true). This is how a test asks whether a panel actually
+    // rebuilt on a given change -- a dirty-flag subscription is a claim about
+    // exactly that, and snapshot()/the HTTP state cannot see it: a panel that stops
+    // updating leaves the plugin's computed numbers entirely correct.
+    int hudRebuildCount(const char* name) { return m_hudRebuilds ? m_hudRebuilds(name) : -1; }
+    // Render probe ([Advanced] renderProbe*): synthetic quads appended to the frame
+    // for the ENGINE to draw. type 0=fill 1=sprite 2=text; sprite 0=cycle all, k=pin k.
+    void setRenderProbe(int quads, int type, bool fullscreen, int sprite) {
+        if (m_setProbe) m_setProbe(quads, type, fullscreen ? 1 : 0, sprite);
+    }
+    // Lowest/highest TEXTURED sprite in the last drawn frame, and how many quads were
+    // sprite 0 (untextured). All zero if the hook is absent.
+    void frameSpriteSpan(int& lo, int& hi, int& untextured) {
+        lo = hi = untextured = 0;
+        if (m_spriteSpan) m_spriteSpan(&lo, &hi, &untextured);
+    }
+    int registeredSpriteCount() { return m_spriteCount ? m_spriteCount() : 0; }
+    // Install a synthetic sprite table. The real one is built in DrawInit from files
+    // on disk and this harness stages no assets, so a test about sprite INDEXING has
+    // to supply its own table or assert nothing.
+    void installSpriteTable(int count) { if (m_installSprites) m_installSprites(count); }
+    // The live probe settings, to assert the automatic sweep restored them.
+    void getRenderProbe(int& n, int& type, int& fs, int& sprite) {
+        n = type = fs = sprite = -1;
+        if (m_getProbe) m_getProbe(&n, &type, &fs, &sprite);
+    }
+    void probeSweepStart() { if (m_sweepStart) m_sweepStart(); }
+    void probeSweepAbort() { if (m_sweepAbort) m_sweepAbort(); }
+    bool probeSweepRunning() { return m_sweepRunning && m_sweepRunning() != 0; }
+    // The sweep's report text for a SYNTHETIC result set (supplied per-quad
+    // costs, no wall-clock sweep) — see MXBMRP3_Test_ProbeSweepReport.
+    std::string probeSweepReport(double fillUs, double alpha0Us, double degenUs) {
+        auto fn = sym<void (*)(double, double, double, char*, int)>(
+            "MXBMRP3_Test_ProbeSweepReport");
+        if (!fn) return {};
+        std::vector<char> buf(16384);
+        fn(fillUs, alpha0Us, degenUs, buf.data(), static_cast<int>(buf.size()));
+        return std::string(buf.data());
+    }
+    // Glyphs per probe string. The engine bills per glyph, so the sweep steps this
+    // too -- and must therefore restore it like every other probe setting.
+    void setRenderProbeTextChars(int n) { if (m_setProbeChars) m_setProbeChars(n); }
+    int getRenderProbeTextChars() { return m_getProbeChars ? m_getProbeChars() : -1; }
+    // Global drop shadow. On, every non-skipped string gets a second copy emitted
+    // underneath it -- so the handed-over string count is what this is observed by.
+    void setDropShadow(bool on) { if (m_setDropShadow) m_setDropShadow(on ? 1 : 0); }
+    // Developer mode: reveals the Performance tab's Developer section, which the
+    // settings panel measures like any other content.
+    void setDeveloperMode(bool on) { if (m_setDevMode) m_setDevMode(on ? 1 : 0); }
+    // A named panel's background opacity; 0 means its background draws nothing, and
+    // the plugin skips emitting it rather than emitting invisible quads.
+    bool setHudOpacity(const char* name, float opacity) {
+        return m_setHudOpacity && m_setHudOpacity(name, opacity) != 0;
+    }
+    // Move a panel. LAYOUT-dirty only, so the next frame takes the reposition fast
+    // path rather than a full rebuild -- the path that rewrites the background span.
+    bool setHudOffset(const char* name, float x, float y) {
+        return m_setHudOffset && m_setHudOffset(name, x, y) != 0;
+    }
+    // Largest quad a named panel emits (area x 1e6). A move is a pure translation, so
+    // this is invariant across one -- which is what makes it catch a quad that got
+    // stretched to the panel rect instead of translated.
+    int hudMaxQuadArea(const char* name) { return m_maxQuadArea ? m_maxQuadArea(name) : -1; }
     // Inject the director's simulated wall-clock (ms); -1 restores the real clock. Lets a
     // hand-built scenario drive the director's pacing at chosen times. (replayTapeTimed
     // feeds this from tape timestamps.)
@@ -804,6 +1163,14 @@ public:
     // Configure the Timing HUD (primary gap + secondary-chip bitmask) for a demo screenshot.
     void timingConfig(bool gapEnabled, int primaryGap, int secondaryMask) {
         if (m_timingConfig) m_timingConfig(gapEnabled ? 1 : 0, primaryGap, secondaryMask);
+    }
+    // The Timing HUD's optional readout rows (ReadoutFlags bitmask); all off by default.
+    // The live character budget the panel truncates its text readouts to.
+    int timingTextBudget() { return m_timingTextBudget ? m_timingTextBudget() : 0; }
+    bool timingReadouts(unsigned int mask) {
+        if (!m_timingReadouts) return false;
+        m_timingReadouts(mask);
+        return true;
     }
     // Timing HUD reference (ms) for a gap type at a split boundary (-1 = full lap; -999 = live
     // sector). -1 if the reference is unavailable. See MXBMRP3_Test_TimingReferenceMs.
@@ -826,11 +1193,12 @@ public:
     // MXBMRP3_Test_InGridStartGrace. Drives the wrong-way + grid-hazard suppression.
     bool inGridStartGrace() { return m_inGridStartGrace && m_inGridStartGrace() != 0; }
     // Rendered Timing panel geometry (each value ×1e6). See MXBMRP3_Test_TimingGeometry.
-    struct TimingGeom { int height, paddingV, fontLarge, fontNormal, lineLarge, lineNormal; };
+    struct TimingGeom { int height, contentTop, contentBot, fontLarge, fontNormal, lineLarge, lineNormal; };
     TimingGeom timingGeometry() {
         TimingGeom g{};
-        if (m_timingGeometry) m_timingGeometry(&g.height, &g.paddingV, &g.fontLarge,
-                                               &g.fontNormal, &g.lineLarge, &g.lineNormal);
+        if (m_timingGeometry) m_timingGeometry(&g.height, &g.contentTop, &g.contentBot,
+                                               &g.fontLarge, &g.fontNormal,
+                                               &g.lineLarge, &g.lineNormal);
         return g;
     }
     void save()     { if (m_save) m_save(); }
@@ -844,6 +1212,103 @@ public:
     void setAutoSave(bool on) { if (m_setAutoSave) m_setAutoSave(on ? 1 : 0); }
     // Active settings tab (by display name) — for the persisted-tab restore test.
     void setActiveTab(const char* name) { if (m_setActiveTab) m_setActiveTab(name); }
+
+    // --- What's-new markers (hud/settings/whats_new.h) -----------------------
+    // The "New" tags on settings tabs and the bands on their rows: how many are
+    // still live, whether a named tab is tagged, and the two dismissal paths.
+    bool hasWhatsNew() const {
+        return m_wnReset && m_wnLiveCount && m_wnTabTagged && m_wnHoverRow && m_wnClickTab;
+    }
+    void whatsNewReset() { if (m_wnReset) m_wnReset(); }
+    int  whatsNewLiveCount() { return m_wnLiveCount ? m_wnLiveCount() : 0; }
+    bool whatsNewTabTagged(const char* tab) {
+        return m_wnTabTagged && m_wnTabTagged(tab) != 0;
+    }
+    // Opening a tab goes through handleTabClick, the path the sidebar click takes
+    // and the one that dismisses the tag. Deliberately NOT setActiveTabByName: that
+    // is also the persisted-tab restore, which must not dismiss anything.
+    bool openSettingsTab(const char* tab) {
+        return m_wnClickTab && m_wnClickTab(tab) != 0;
+    }
+    void hoverSettingsRow(const char* rowTooltipId) {
+        if (m_wnHoverRow) m_wnHoverRow(rowTooltipId);
+    }
+    // Does marker `i` point at a row that this build actually draws? Opens its
+    // tab and looks for a click region carrying its tooltip id. A marker naming
+    // an id no row registers is silent -- no band, no complaint, and the tab
+    // still tagged -- so this is the only way to see it.
+    int  whatsNewMarkerCount() { return m_wnMarkerCount ? m_wnMarkerCount() : 0; }
+    bool whatsNewMarkerResolves(int index) {
+        return m_wnMarkerResolves && m_wnMarkerResolves(index) == 1;
+    }
+    // The dismissed set exactly as the INI would carry it. Reading it directly is
+    // the only way to see a dismissal of a key no marker names.
+    std::string whatsNewSerialize() {
+        char buf[512] = {0};
+        if (m_wnSerialize) m_wnSerialize(buf, static_cast<int>(sizeof(buf)));
+        return std::string(buf);
+    }
+    // The footer's About button, one click, through the real dispatch path.
+    bool hasAbout() const { return m_clickAbout && m_updateTagLive; }
+    void clickAbout() { if (m_clickAbout) m_clickAbout(); }
+    // Whether the Updates tab is wearing its "Update" tag.
+    bool updateTagLive() { return m_updateTagLive && m_updateTagLive() != 0; }
+    void updateTagReset() { if (m_updateTagReset) m_updateTagReset(); }
+    // The About button's footer rect, from its own click region, in fixed point
+    // (x * 1e6). Out-params rather than a ScreenEdges return: that type is declared
+    // further down this header, and reordering it to suit one accessor is a worse
+    // trade than four ints.
+    bool hasAboutRect() const { return m_aboutRect != nullptr; }
+    bool aboutButtonRect(int& l, int& t, int& r, int& b) {
+        return m_aboutRect && m_aboutRect(&l, &t, &r, &b) != 0;
+    }
+    std::string whatsNewMarkerName(int index) {
+        char buf[128] = {0};
+        if (m_wnMarkerName) m_wnMarkerName(index, buf, static_cast<int>(sizeof(buf)));
+        return std::string(buf);
+    }
+    // Every SELECTABLE settings tab, in tab-list order. Enumerated from the
+    // registry rather than listed here: the panel sizes itself to the tab it is
+    // showing, so a screen-fit case has to drive all of them, and a list in a
+    // test is a list a new tab does not get added to.
+    // How far the last-built settings tab overran its row budget, in rows;
+    // negative is slack. Drive a draw() first.
+    // StandingsHud's player-row band, as (x, width). `ok` is false when the HUD
+    // emitted no band this rebuild.
+    struct RowBand { double x = 0, w = 0; bool ok = false; };
+    bool hasRowBand() const { return m_standingsRowBand != nullptr; }
+    RowBand standingsRowBand() {
+        RowBand b;
+        if (!m_standingsRowBand) return b;
+        int x = 0, w = 0;
+        b.ok = m_standingsRowBand(&x, &w) != 0;
+        b.x = x / 1e6; b.w = w / 1e6;
+        return b;
+    }
+    bool hasSettingsOverflow() const { return m_settingsOverflow != nullptr; }
+    double settingsOverflowRows() {
+        return m_settingsOverflow ? m_settingsOverflow() / 1000.0 : 0.0;
+    }
+    std::vector<std::string> settingsTabNames() {
+        std::vector<std::string> out;
+        if (!m_settingsTabName) return out;
+        char buf[64];
+        for (int i = 0; m_settingsTabName(i, buf, static_cast<int>(sizeof(buf))); ++i)
+            out.push_back(buf);
+        return out;
+    }
+    // Every selectable tab, INCLUDING those hidden from the sidebar (About). Use
+    // this when the question is "which tabs can set the panel's height"; use
+    // settingsTabNames() when it is "what does the sidebar show". They differ, and
+    // a height sweep run against the list silently stops finding the tallest tab.
+    std::vector<std::string> settingsAllTabNames() {
+        std::vector<std::string> out;
+        if (!m_settingsAnyTabName) return out;
+        char buf[64];
+        for (int i = 0; m_settingsAnyTabName(i, buf, static_cast<int>(sizeof(buf))); ++i)
+            out.push_back(buf);
+        return out;
+    }
     void showSettings(bool v = true) { if (m_showSettings) m_showSettings(v ? 1 : 0); }
     // Stepped-control click seam: count/click STEPPED_UP (up=true) / STEPPED_DOWN
     // regions on the active tab, in layout order. holdRepeats drives the accel tier.
@@ -868,6 +1333,97 @@ public:
     void companionWindow(bool v = true) { if (m_companion) m_companion(v ? 1 : 0); }
     // Force a fake connected controller and show the gamepad widget (preview/tests).
     void fakeGamepad(bool on = true) { if (m_fakeGamepad) m_fakeGamepad(on ? 1 : 0); }
+    // Gamepad packs. installGamepad() adds one with no files on disk; the two
+    // readers return the STORED name and the RESOLVED one, which differ exactly when
+    // the stored name names no installed pack.
+    void clearGamepads() { if (m_clearGamepads) m_clearGamepads(); }
+    // Pit board packs, same contract as the gamepad calls below.
+    void clearPitboards() { if (m_clearPitboards) m_clearPitboards(); }
+    // The settings UI's pack cycle, and the flag its Off entry owns. `pitboard`
+    // selects which of the two pack-driven HUDs.
+    void cyclePack(bool pitboard, bool forward) {
+        if (m_cyclePack) m_cyclePack(pitboard ? 1 : 0, forward ? 1 : 0);
+    }
+    bool packShowBg(bool pitboard) {
+        return m_packShowBg && m_packShowBg(pitboard ? 1 : 0) != 0;
+    }
+    void setPackShowBg(bool pitboard, bool on) {
+        if (m_setPackShowBg) m_setPackShowBg(pitboard ? 1 : 0, on ? 1 : 0);
+    }
+    void installPitboard(const char* name, float artW = 1920.0f, float artH = 1080.0f) {
+        if (m_installPitboard) m_installPitboard(name, artW, artH);
+    }
+    // The RELOAD_CONFIG hotkey's asset half. See MXBMRP3_Test_ReloadAssetLayouts.
+    void reloadAssetLayouts() { if (m_reloadAssetLayouts) m_reloadAssetLayouts(); }
+    // The ACTIVE pack's current art width, for watching a reload act on it.
+    float pitboardArtWidth() { return m_pitboardArtWidth ? m_pitboardArtWidth() : 0.0f; }
+    float gamepadArtWidth() { return m_gamepadArtWidth ? m_gamepadArtWidth() : 0.0f; }
+    void setPitboardPack(const char* name) { if (m_setPitboardPack) m_setPitboardPack(name); }
+    std::string pitboardPackStored() {
+        char buf[128] = {0};
+        if (m_pitboardStored) m_pitboardStored(buf, static_cast<int>(sizeof(buf)));
+        return buf;
+    }
+    std::string pitboardPackActive() {
+        char buf[128] = {0};
+        if (m_pitboardActive) m_pitboardActive(buf, static_cast<int>(sizeof(buf)));
+        return buf;
+    }
+    // Pack skins (the `base` key): where a stem's file resolved from (-1 pack or
+    // stem unknown, 0 own folder, 1 base's), and the resolved geometry numbers
+    // that prove inheritance/override. See pack_skin_test.cpp.
+    int gamepadStemSource(const char* pack, int stem) {
+        return m_gamepadStemSrc ? m_gamepadStemSrc(pack, stem) : -1;
+    }
+    float gamepadGeomWidth(const char* pack) {
+        return m_gamepadGeomWidth ? m_gamepadGeomWidth(pack) : 0.0f;
+    }
+    int pitboardStemSource(const char* pack, int stem) {
+        return m_pitboardStemSrc ? m_pitboardStemSrc(pack, stem) : -1;
+    }
+    float pitboardPackArtWidth(const char* pack) {
+        return m_pitboardPackArtW ? m_pitboardPackArtW(pack) : 0.0f;
+    }
+    unsigned pitboardTextColor(const char* pack) {
+        return m_pitboardTextColor ? m_pitboardTextColor(pack) : 0u;
+    }
+
+    // GamepadSprite::kStems, read from the DLL so a fixture staging a real pack
+    // tree cannot drift from the table discovery actually walks.
+    int gamepadStemCount() { return m_padStemCount ? m_padStemCount() : 0; }
+    std::string gamepadStemName(int i) {
+        char buf[64] = {0};
+        if (m_padStemName) m_padStemName(i, buf, static_cast<int>(sizeof(buf)));
+        return buf;
+    }
+
+    void installGamepad(const char* name, float geometryWidth = 750.0f) {
+        if (m_installGamepad) m_installGamepad(name, geometryWidth);
+    }
+    void setGamepadPack(const char* name) { if (m_setGamepadPack) m_setGamepadPack(name); }
+    std::string gamepadPackStored() {
+        char buf[128] = {0};
+        if (m_gamepadStored) m_gamepadStored(buf, static_cast<int>(sizeof(buf)));
+        return buf;
+    }
+    std::string gamepadPackActive() {
+        char buf[128] = {0};
+        if (m_gamepadActive) m_gamepadActive(buf, static_cast<int>(sizeof(buf)));
+        return buf;
+    }
+    // [Advanced] uiFontSize at runtime — the one setting that resizes every panel.
+    // Marks all HUDs dirty, so draw() afterwards is a real rebuild at the new size.
+    bool hasUiFontSize() const { return m_setUiFontSize != nullptr; }
+    void setUiFontSize(float v) { if (m_setUiFontSize) m_setUiFontSize(v); }
+    // The box model's eight air terms, in the [Advanced] shorthand. Order as
+    // settings_manager_global.cpp writes them; see MXBMRP3_Test_SetBoxTerm.
+    enum BoxTermId { BOX_PANEL_PADDING = 0, BOX_TITLE_MARGIN, BOX_TITLE_PADDING,
+                     BOX_CONTENT_MARGIN, BOX_CONTENT_PADDING, BOX_BUTTON_MARGIN,
+                     BOX_BUTTON_PADDING, BOX_PANEL_GAP };
+    bool hasBoxTerms() const { return m_setBoxTerm != nullptr; }
+    void setBoxTerm(BoxTermId which, const char* shorthand) {
+        if (m_setBoxTerm) m_setBoxTerm(static_cast<int>(which), shorthand);
+    }
     // Pin the active input surface: 0=Game, 1=Companion, -1=off (for previewing
     // surface-scoped rendering like the settings menu on the companion window).
     void forceActiveSurface(int surface) { if (m_forceSurface) m_forceSurface(surface); }
@@ -911,6 +1467,12 @@ public:
     }
     // Force a stats save (same save() as the leave-track flush; no-op when clean).
     void statsSave() { if (m_statsSave) m_statsSave(); }
+
+    // The crash widget's streaming tally. crashTallyReset() goes through the
+    // widget's own resetCounter(), the entry point the button and hotkey share.
+    bool hasCrashTally() const { return m_crashTally != nullptr; }
+    int crashTally() { return m_crashTally ? m_crashTally(0) : -1; }
+    int crashTallyReset() { return m_crashTally ? m_crashTally(1) : -1; }
 
     // --- Records fetch/parse seam (GAME_HAS_RECORDS_PROVIDER builds only) -----
     // See the MXBMRP3_Test_Records* hooks: canned-response parsing through the
@@ -964,14 +1526,437 @@ public:
 
     // Per-surface HUD decoupling: drive/read the live StandingsHud's in-game and
     // companion-surface visibility (see MXBMRP3_Test_Standings* hooks).
+    // --- Themed panel geometry (theme_geometry_test) ------------------------
+    // A theme installed here has NO files behind it: the geometry is arithmetic over
+    // the insets, so the integration suite needs no asset staging. See
+    // AssetManager::installSyntheticTheme.
+    // READABLE SUGAR FOR A PANEL'S REGISTRATION NAME. The geometry hooks take the
+    // NAME now (testHudByName in core/test_hooks.cpp), so this enum is a convenience
+    // for the panels tests name often, not the addressing mechanism -- hudName() below
+    // is the only place it is translated, and every hook wrapper also takes a bare
+    // const char*, so all 44 registered elements are reachable whether or not they
+    // appear here. Adding an element to a sweep needs no plugin-side edit.
+    //
+    // WHAT THIS REPLACED, because the shape is worth not rebuilding: a 21-case switch
+    // in the plugin, mirrored here, whose `default:` arm returned the G-FORCE WIDGET --
+    // so an unmapped id silently handed back a real panel and the assertion passed
+    // against the wrong one. The two copies had already diverged (1 meant the Gap Bar
+    // to one hook and G-force to another), latent only because no case asked the same
+    // id both ways. An unknown NAME cannot do that: it resolves to nullptr and the hook
+    // returns its empty answer.
+    enum HudId { HUD_STANDINGS = 0, HUD_GFORCE = 1, HUD_TIMING = 2,
+                 HUD_PERFORMANCE = 3, HUD_SESSION_CHARTS = 4, HUD_SETTINGS = 5,
+                 HUD_GAPBAR = 6, HUD_NOTICES = 7,
+                 // Reference panels, named here but with no test asking for them today.
+                 HUD_RECORDS = 8, HUD_LAP = 9, HUD_POSITION = 10,
+                 HUD_MAP = 11,
+                 // The plainest table panel WITH a caption, which is what the caption
+                 // cases drive: three caption-geometry bugs shipped in that blind spot,
+                 // each "fixed" against the settings panel, whose cards lay out in
+                 // COLUMNS and speak for nothing else.
+                 HUD_SESSION = 12,
+                 // The only panel laying out its own button row.
+                 HUD_VERSION = 13,
+                 // The third rider-marker HUD, beside Map and the gap bar -- the set
+                 // whose labels have to agree.
+                 HUD_RADAR = 14,
+                 // The three widgets sharing one content box, so it can be checked
+                 // that they still do.
+                 HUD_SPEED = 15, HUD_GEAR = 16, HUD_CRASH = 17,
+                 // The gauge widgets, so the card-anchor sweep can cover every panel
+                 // that centres on its card.
+                 HUD_BARS = 18, HUD_COMPASS = 19, HUD_LEAN = 20 };
+
+    // THE ONE TRANSLATION. Strings are HudManager::initialize()'s registration names;
+    // an id outside the enum yields "", which resolves to no panel rather than to
+    // somebody else's.
+    static const char* hudName(HudId which) {
+        switch (which) {
+            case HUD_STANDINGS:      return "standings_hud";
+            case HUD_GFORCE:         return "gforce_widget";
+            case HUD_TIMING:         return "timing_hud";
+            case HUD_PERFORMANCE:    return "performance_hud";
+            case HUD_SESSION_CHARTS: return "session_charts_hud";
+            case HUD_SETTINGS:       return "settings_hud";
+            case HUD_GAPBAR:         return "gap_bar_hud";
+            case HUD_NOTICES:        return "notices_hud";
+            case HUD_RECORDS:        return "records_hud";
+            case HUD_LAP:            return "lap_widget";
+            case HUD_POSITION:       return "position_widget";
+            case HUD_MAP:            return "map_hud";
+            case HUD_SESSION:        return "session_widget";
+            case HUD_VERSION:        return "version_widget";
+            case HUD_RADAR:          return "radar_hud";
+            case HUD_SPEED:          return "speed_widget";
+            case HUD_GEAR:           return "gear_widget";
+            case HUD_CRASH:          return "crash_widget";
+            case HUD_BARS:           return "bars_widget";
+            case HUD_COMPASS:        return "compass_widget";
+            case HUD_LEAN:           return "lean_widget";
+        }
+        return "";
+    }
+    struct PanelRect { int w = 0, h = 0, quads = 0; };
+
+    bool hasThemeGeometry() const {
+        return m_installTheme && m_clearTheme && m_hudPanelRect && m_setHudTitle;
+    }
+    // cardSprites = false models a theme folder that ships frame slices only, so a
+    // test can ask what happens when a theme requests a band or a card it has no art
+    // for. Defaulted, because every existing caller wants the full set.
+    // buttonSprites = true adds the third (BUTTON) slice set, which is what makes
+    // addButtonQuad() draw a nine-slice instead of a flat rectangle. Off by default:
+    // the geometry cases below count exact quad totals for panels with no buttons.
+    void installTheme(const char* name, float inset, float cardBorder,
+                      int titleBand, int card, bool cardSprites = true,
+                      bool buttonSprites = false) {
+        if (m_installTheme) m_installTheme(name, inset, cardBorder, titleBand, card,
+                                           cardSprites ? 1 : 0, buttonSprites ? 1 : 0);
+    }
+    void clearTheme()                  { if (m_clearTheme) m_clearTheme(); }
+    // `[card] band-size` on the theme just installed; negative restores the default
+    // (the band follows `[card] border`). See MXBMRP3_Test_SetThemeTitleBorder.
+    bool hasTitleBorder() const { return m_setThemeTitleBorder != nullptr; }
+    // `[panel] padding-x/-y` on the theme just installed; negative restores the
+    // built-in for that axis. See MXBMRP3_Test_SetThemePanelPadding.
+    bool hasPanelPaddingKey() const { return m_setThemePanelPad != nullptr; }
+    bool setThemePanelPadding(float xCells, float yCells) {
+        return m_setThemePanelPad && m_setThemePanelPad(xCells, yCells) != 0;
+    }
+    bool setThemeTitleBorder(float cells) {
+        return m_setThemeTitleBorder && m_setThemeTitleBorder(cells) != 0;
+    }
+
+    // The plugin's LIVE lattice (MXBMRP3_Test_LayoutCells): cellW/cellH are the
+    // snap grid, artV is a theme border cell's vertical extent (cellW * aspect --
+    // font-derived, so it does NOT move with uiLineHeight), lineH is one normal
+    // text row. Geometry tests derive expectations from these rather than freeze
+    // the shipped values into literals that rot when a metric root is retuned.
+    struct LayoutCells { double cellW, cellH, artV, lineH; };
+    bool hasLayoutCells() const { return m_layoutCells != nullptr; }
+    LayoutCells layoutCells() {
+        double v[4] = {};
+        if (m_layoutCells) m_layoutCells(v);
+        return { v[0], v[1], v[2], v[3] };
+    }
+
+    // Theme icon overrides, injected into the last installed synthetic theme (see
+    // MXBMRP3_Test_SetThemeIconOverride).
+    bool hasIconTheming() const {
+        return m_setThemeIcon && m_iconForName && m_iconForShape && m_shapeForIcon;
+    }
+    bool setThemeIcon(const char* icon, int sprite, int shape) {
+        return m_setThemeIcon && m_setThemeIcon(icon, sprite, shape) != 0;
+    }
+    int iconSpriteForName(const char* name) { return m_iconForName ? m_iconForName(name) : 0; }
+    int iconSpriteForShape(int shape)       { return m_iconForShape ? m_iconForShape(shape) : 0; }
+    int shapeForIconSprite(int sprite)      { return m_shapeForIcon ? m_shapeForIcon(sprite) : 0; }
+    // Publish an UPDATE_AVAILABLE result with no network, so the update-available UI
+    // (the settings footer chip, the Version widget's notification panel) can be
+    // rendered and asserted headlessly.
+    void updateSetAvailable(const char* latest) {
+        if (m_updateSetAvailable) m_updateSetAvailable(latest);
+    }
+
+    // The two terms the Version widget's notification button row is laid out from:
+    // one text row and the [panel] junction gap, in screen units (the hook's fixed
+    // point is undone here, so they compare directly with StringRow::y).
+    struct VersionRowTerms { double rowH = 0, junction = 0; };
+    VersionRowTerms versionRowTerms() {
+        VersionRowTerms t;
+        if (!m_versionRowTerms) return t;
+        int rh = 0, j = 0;
+        m_versionRowTerms(&rh, &j);
+        t = { rh / 1e6, j / 1e6 };
+        return t;
+    }
+
+    // An asymmetric [content] border on the installed synthetic theme -- the shape a
+    // uniform border cannot make, and the one that tells a panel centring in the
+    // content band apart from one centring in the card. See testSetThemeContentBorder.
+    bool setThemeContentBorder(float t, float r, float b, float l) {
+        return m_setThemeContentBorder && m_setThemeContentBorder(t, r, b, l) != 0;
+    }
+    // ...and `[content] margin`, which moves the whole card inside the panel --
+    // the term that separates the card's centre from the panel's.
+    bool setThemeContentMargin(float t, float r, float b, float l) {
+        return m_setThemeContentMargin && m_setThemeContentMargin(t, r, b, l) != 0;
+    }
+    bool setThemeTitleMargin(float t, float r, float b, float l) {
+        return m_setThemeTitleMargin && m_setThemeTitleMargin(t, r, b, l) != 0;
+    }
+
+    // Any HUD's caption, by its REGISTRATION NAME (HudManager::initialize; the same
+    // string MXBMRP3_Test_PanelName reports and panelCells() reads a panel back
+    // under). Returns false if no HUD carries that name, so a caller can REQUIRE it
+    // rather than silently toggling nothing; this header is included by non-doctest
+    // drivers too, so it cannot assert itself.
+    // Runtime scale change by panel label (MXBMRP3_Test_SetHudScale) -- the
+    // settings-click path, distinct from a scale loaded out of the INI.
+    bool setHudScale(const char* name, float scale) {
+        return m_setHudScale && m_setHudScale(name, scale) != 0;
+    }
+    // The Gap Bar's width setting, in percent (MXBMRP3_Test_GapBarWidth).
+    bool gapBarWidth(int percent) {
+        if (!m_gapBarWidth) return false;
+        m_gapBarWidth(percent);
+        return true;
+    }
+    bool setHudTitle(const char* name, bool on) {
+        return m_setHudTitle && m_setHudTitle(name, on ? 1 : 0) != 0;
+    }
+    void setGForceTitle(bool on)       { setHudTitle("gforce_widget", on); }
+    void showAllHuds(bool on)          { if (m_showAllHuds) m_showAllHuds(on ? 1 : 0); }
+    PanelRect hudPanelRect(HudId which) { return hudPanelRect(hudName(which)); }
+    PanelRect hudPanelRect(const char* name) {
+        PanelRect r;
+        if (m_hudPanelRect) m_hudPanelRect(name, &r.w, &r.h, &r.quads);
+        return r;
+    }
+
+    // The section cards a HUD emitted, in order, as (top, bottom) in normalized Y.
+    // Empty when the HUD draws one body card (or none). See the hook for why the
+    // no-overlap invariant is unmeasurable from a screenshot.
+    // No SectionHudId enum: it was { SEC_TIMING = 0, SEC_PERFORMANCE = 1 } over a
+    // two-case mapping in the hook that answered "Performance" to every value it did
+    // not recognise. sectionCards() takes a registration name like everything else, so
+    // any panel with section cards can be asked rather than those two.
+    struct CardSpan { double top = 0.0, bottom = 0.0; };
+    bool hasSectionCards() const { return m_sectionCards != nullptr; }
+    std::vector<CardSpan> sectionCards(const char* name) {
+        std::vector<CardSpan> out;
+        if (!m_sectionCards) return out;
+        int raw[32] = {};
+        const int n = m_sectionCards(name, raw,
+                                     static_cast<int>(sizeof(raw) / sizeof(raw[0])));
+        for (int i = 0; i < n && (i * 2 + 1) < 32; i++) {
+            out.push_back({ raw[i * 2] / 1e6, raw[i * 2 + 1] / 1e6 });
+        }
+        return out;
+    }
+
+    // EVERY per-HUD sweep hook has the same shape: fill an int array with one PAIR per
+    // registered HUD, in registration order, and label index i through
+    // MXBMRP3_Test_PanelName. Written twice before this existed, and the copy carried
+    // the 256-int cap and the (i*2+1) bound with it -- so the day the HUD count outgrows
+    // the buffer, one copy silently keeps truncating. `scale` is the hook's own
+    // quantisation (x1000 cells, x1e6 screen height).
+    template <typename T>
+    std::vector<T> namedPairSweep(int (*fn)(int*, int), double scale) {
+        std::vector<T> out;
+        if (!fn) return out;
+        int raw[256] = {};
+        const int n = fn(raw, 256);
+        for (int i = 0; i < n && (i * 2 + 1) < 256; i++) {
+            char nm[64] = {};
+            if (m_panelName) m_panelName(i, nm, static_cast<int>(sizeof(nm)));
+            out.push_back({ nm, raw[i * 2] / scale, raw[i * 2 + 1] / scale });
+        }
+        return out;
+    }
+
+    // EVERY registered HUD's panel size in cells, with its label. The grid sweep --
+    // see the hook for why a per-HUD id could not answer this.
+    struct PanelCells { std::string name; double w = 0.0, h = 0.0; };
+    bool hasPanelSweep() const { return m_panelCells && m_panelName; }
+    // PerformanceHud's element mask; 3 = FPS | CPU, which is what gives it TWO sections.
+    bool hasPerfElements() const { return m_setPerfElements != nullptr; }
+    void setPerformanceElements(unsigned mask) { if (m_setPerfElements) m_setPerfElements(mask); }
+    std::vector<PanelCells> panelCells() {
+        return namedPairSweep<PanelCells>(m_panelCells, 1000.0);
+    }
+
+    // EVERY registered HUD's vertical frame margin and padding, with its label. See
+    // MXBMRP3_Test_PanelPadY for why the invariant is paddingV >= frameMarginY.
+    struct PanelPadY { std::string name; double frameMarginY = 0.0, paddingV = 0.0; };
+    bool hasPanelPadY() const { return m_panelPadY && m_panelName; }
+    std::vector<PanelPadY> panelPadY() {
+        return namedPairSweep<PanelPadY>(m_panelPadY, 1e6);
+    }
+
+    // A HUD's quads as rects, in draw order. See the hook.
+    struct QuadRect { double l = 0, t = 0, r = 0, b = 0; };
+    bool hasQuadRects() const { return m_quadRects != nullptr; }
+
+    // Plant a live gap in the Gap Bar so its fill draws (see the hook).
+    bool gapBarForceGap(int ms, bool valid) {
+        if (!m_gapBarForceGap) return false;
+        m_gapBarForceGap(ms, valid ? 1 : 0);
+        return true;
+    }
+
+    // The placed card rect of a HUD's memoized plan, pre-offset (see the hook).
+    // `panel`, when asked for, is the panel's own rect in the SAME space -- the
+    // pair a side-air measurement needs, since drawn quads carry the HUD offset
+    // and this plan does not.
+    bool hudCardRect(HudId which, QuadRect* out, QuadRect* panel = nullptr) {
+        return hudCardRect(hudName(which), out, panel);
+    }
+    bool hudCardRect(const char* name, QuadRect* out, QuadRect* panel = nullptr) {
+        if (!m_hudCardRect) return false;
+        int v[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+        if (m_hudCardRect(name, v) == 0) return false;
+        if (out) {
+            out->l = v[0] / 1e6; out->t = v[1] / 1e6;
+            out->r = (v[0] + v[2]) / 1e6; out->b = (v[1] + v[3]) / 1e6;
+        }
+        if (panel) {
+            panel->l = v[4] / 1e6; panel->t = v[5] / 1e6;
+            panel->r = (v[4] + v[6]) / 1e6; panel->b = (v[5] + v[7]) / 1e6;
+        }
+        return true;
+    }
+
+    // A HUD's drawn strings: what text sits on what line. See MXBMRP3_Test_HudStringRows
+    // for why the quad hooks cannot answer that.
+    struct StringRow { double x = 0.0, y = 0.0; std::string text; };
+    bool hasStringRows() const { return m_stringRows != nullptr; }
+    std::vector<StringRow> hudStringRows(HudId which) { return hudStringRows(hudName(which)); }
+    std::vector<StringRow> hudStringRows(const char* name) {
+        std::vector<StringRow> rows;
+        if (!m_stringRows) return rows;
+        const int count = m_stringRows(name, -1, nullptr, nullptr, nullptr, 0);
+        for (int i = 0; i < count; ++i) {
+            int x = 0, y = 0; char buf[128] = {0};
+            m_stringRows(name, i, &x, &y, buf, static_cast<int>(sizeof(buf)));
+            rows.push_back({ x / 1e6, y / 1e6, std::string(buf) });
+        }
+        return rows;
+    }
+    // COLOUR READERS, for asserting that a caption is legible on what is behind it --
+    // a relationship the rect and text hooks cannot express. Index is emission order,
+    // matching hudStringRows() / hudQuadRects().
+    bool hasInkHooks() const {
+        return m_stringColor && m_quadColor && m_minLumaGap && m_luma601;
+    }
+    unsigned long stringColor(const char* name, int i) {
+        return m_stringColor ? m_stringColor(name, i) : 0;
+    }
+    unsigned long quadColor(const char* name, int i) {
+        return m_quadColor ? m_quadColor(name, i) : 0;
+    }
+    // The plugin's own threshold and its own luma formula, read live rather than
+    // re-spelled here -- a second copy of either is a test that can agree with itself
+    // while disagreeing with the code.
+    int minGlyphLumaGap() { return m_minLumaGap ? m_minLumaGap() : 0; }
+    int luma601(unsigned long c) { return m_luma601 ? m_luma601(c) : 0; }
+
+    std::vector<QuadRect> hudQuadRects(HudId which) { return hudQuadRects(hudName(which)); }
+    std::vector<QuadRect> hudQuadRects(const char* name) {
+        std::vector<QuadRect> out;
+        if (!m_quadRects) return out;
+        static int raw[4096];
+        const int n = m_quadRects(name, raw, 4096);
+        for (int i = 0; i < n && (i * 4 + 3) < 4096; i++) {
+            out.push_back({ raw[i*4]/1e6, raw[i*4+1]/1e6, raw[i*4+2]/1e6, raw[i*4+3]/1e6 });
+        }
+        return out;
+    }
+
+    // How finalizeThemedFill cut this panel's fill: the centre it cut from, the
+    // strips it wrote, and the cards/band it cut around. See the hook.
+    struct FillCut {
+        QuadRect centre;
+        std::vector<QuadRect> strips;
+        std::vector<QuadRect> covers;
+        bool themed = false;
+    };
+    bool hasFillCut() const { return m_fillCut != nullptr; }
+    FillCut hudFillCut(HudId which) { return hudFillCut(hudName(which)); }
+    FillCut hudFillCut(const char* name) {
+        FillCut out;
+        if (!m_fillCut) return out;
+        static int raw[4096];
+        const int need = m_fillCut(name, raw, 4096);
+        if (need < 6 || need > 4096) return out;
+        const int nStrip = raw[0], nCover = raw[1];
+        out.centre = { raw[2]/1e6, raw[3]/1e6, raw[4]/1e6, raw[5]/1e6 };
+        out.themed = (out.centre.r > out.centre.l) && (out.centre.b > out.centre.t);
+        int i = 6;
+        for (int k = 0; k < nStrip; k++, i += 4)
+            out.strips.push_back({ raw[i]/1e6, raw[i+1]/1e6, raw[i+2]/1e6, raw[i+3]/1e6 });
+        for (int k = 0; k < nCover; k++, i += 4)
+            out.covers.push_back({ raw[i]/1e6, raw[i+1]/1e6, raw[i+2]/1e6, raw[i+3]/1e6 });
+        return out;
+    }
+
+    // A HUD's panel edges ON SCREEN (bounds + the live offset), quantised x1e6.
+    // hudPanelRect() reports the panel's own box and cannot answer "did this panel
+    // grow off the display" -- a widened panel is wider either way.
+    struct ScreenEdges { int l = 0, t = 0, r = 0, b = 0; };
+    bool hasScreenEdges() const { return m_hudScreenEdges && m_setScreenClamping; }
+    // [Display] screenClamping. Off by default; see the hook.
+    void setScreenClamping(bool on) { if (m_setScreenClamping) m_setScreenClamping(on ? 1 : 0); }
+    ScreenEdges hudScreenEdges(HudId which) { return hudScreenEdges(hudName(which)); }
+    ScreenEdges hudScreenEdges(const char* name) {
+        ScreenEdges e;
+        if (m_hudScreenEdges) m_hudScreenEdges(name, &e.l, &e.t, &e.r, &e.b);
+        return e;
+    }
+
+    // The settings panel's horizontal margins: its background's two edges, and the
+    // outer edges of its two COLUMNS. Fixed point (x * 1e6).
+    struct SettingsMargins { int bgL = 0, bgR = 0, colL = 0, colR = 0; };
+    bool hasSettingsMargins() const { return m_settingsMarginsX != nullptr; }
+    // [panel] gap on the synthetic theme; false if the hook is absent.
+    bool setThemeGap(float cells) { return m_setThemeGap && m_setThemeGap(cells); }
+    // The settings gutter's bounding card edges and the vertical seam read, in
+    // normalized units (converted back from the hook's 1e6 fixed point).
+    struct SettingsGutter { float sidebarCardRight, contentCardLeft, seam; };
+    SettingsGutter settingsGutter() {
+        int sr = 0, cl = 0, sv = 0;
+        if (m_settingsGutter) m_settingsGutter(&sr, &cl, &sv);
+        return { sr / 1e6f, cl / 1e6f, sv / 1e6f };
+    }
+    SettingsMargins settingsMarginsX() {
+        SettingsMargins m;
+        if (m_settingsMarginsX) m_settingsMarginsX(&m.bgL, &m.bgR, &m.colL, &m.colR);
+        return m;
+    }
+
+    // The settings panel's CONTENT anchors (label column, control column, and a
+    // full-width row's right edge), fixed point. Theme-invariant by construction; see
+    // MXBMRP3_Test_SettingsContentX.
+    struct SettingsContentX { int labelX = 0, controlX = 0, rowRight = 0; };
+    bool hasSettingsContentX() const { return m_settingsContentX != nullptr; }
+    SettingsContentX settingsContentX() {
+        SettingsContentX c;
+        if (m_settingsContentX) m_settingsContentX(&c.labelX, &c.controlX, &c.rowRight);
+        return c;
+    }
+
+    // --- Appearance palette / font precedence (theme_palette_test) ----------
+    bool hasPaletteHooks() const {
+        return m_effColor && m_colorOverridden && m_themeOrDefColor && m_cycleColor
+            && m_clearColorOv && m_setThemeColor && m_effFont && m_fontOverridden
+            && m_cycleFont && m_clearFontOv;
+    }
+    unsigned long effectiveColor(int slot)      { return m_effColor ? m_effColor(slot) : 0; }
+    int  colorOverridden(int slot)              { return m_colorOverridden ? m_colorOverridden(slot) : -1; }
+    unsigned long themeOrDefaultColor(int slot) { return m_themeOrDefColor ? m_themeOrDefColor(slot) : 0; }
+    void cycleColor(int slot, bool fwd)         { if (m_cycleColor) m_cycleColor(slot, fwd ? 1 : 0); }
+    void clearColorOverride(int slot)           { if (m_clearColorOv) m_clearColorOv(slot); }
+    void setThemeColor(int slot, unsigned long c) { if (m_setThemeColor) m_setThemeColor(slot, c); }
+    std::string effectiveFont(int cat) {
+        char buf[128] = {};
+        if (m_effFont) m_effFont(cat, buf, static_cast<int>(sizeof(buf)));
+        return std::string(buf);
+    }
+    int  fontOverridden(int cat)                { return m_fontOverridden ? m_fontOverridden(cat) : -1; }
+    void cycleFont(int cat, bool fwd)           { if (m_cycleFont) m_cycleFont(cat, fwd ? 1 : 0); }
+    void clearFontOverride(int cat)             { if (m_clearFontOv) m_clearFontOv(cat); }
+    void setFont(int cat, const char* n)        { if (m_setFont) m_setFont(cat, n); }
+    int  fontCount()                            { return m_fontCount ? m_fontCount() : -1; }
+
     bool hasCompanionDecouple() const {
         return m_stSetVisible && m_stSetCompVisible && m_stClearCompanion && m_stCompanionState;
     }
     void stSetVisible(bool v)          { if (m_stSetVisible) m_stSetVisible(v ? 1 : 0); }
     bool hasPlateHooks() const         { return m_stPlateInsetY && m_stSetOffset; }
-    // Fraction of the plate height at which the race-number string sits. A POSITION,
-    // so it can legitimately be slightly negative; kPlateInsetNotFound is the
-    // out-of-band "no plate on that row" reading (also what a missing hook returns).
+    // How far the race number sits from its plate's CENTRE, as a signed fraction of
+    // plate height: 0 is centred, positive is low. Signed, so kPlateInsetNotFound is
+    // far out of band -- it is the "no plate on that row" reading (and what a missing
+    // hook returns).
     static constexpr float kPlateInsetNotFound = -1000.0f;
     float stPlateInsetY(int row)       { return m_stPlateInsetY ? m_stPlateInsetY(row)
                                                                : kPlateInsetNotFound; }
@@ -1109,6 +2094,31 @@ public:
     }
     // (Re)load settings from savePath into live state (reads <savePath>mxbmrp3\...ini).
     void loadSettings(const char* savePath) { if (m_loadSettings) m_loadSettings(savePath); }
+
+    // Write a settings INI by hand under `savePath`, creating the mxbmrp3\ subfolder.
+    //
+    // FOR TESTING WHAT IS *NOT* IN THE FILE. Every other route into the settings goes
+    // through a capture, and a capture can only ever emit keys -- so the one shape it
+    // cannot produce is a key's ABSENCE, which is exactly what the sparse [Colors] /
+    // [Fonts] sections make meaningful ("absent" = follow the theme). Hand-writing the
+    // file is also the user-facing workflow those sections have to survive.
+    //
+    // Uses the Win32 API rather than std::ofstream because the harness runs under Wine
+    // and `savePath` is a Windows path (Z:\tmp\...) the C runtime here resolves natively.
+    void writeSettingsFile(const char* savePath, const std::string& contents) {
+        std::string dir(savePath);
+        if (!dir.empty() && dir.back() != '\\') dir += '\\';
+        dir += "mxbmrp3";
+        CreateDirectoryA(std::string(savePath).c_str(), nullptr);
+        CreateDirectoryA(dir.c_str(), nullptr);
+        const std::string path = dir + "\\mxbmrp3_settings.ini";
+        HANDLE h = CreateFileA(path.c_str(), GENERIC_WRITE, 0, nullptr,
+                               CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (h == INVALID_HANDLE_VALUE) return;
+        DWORD written = 0;
+        WriteFile(h, contents.data(), static_cast<DWORD>(contents.size()), &written, nullptr);
+        CloseHandle(h);
+    }
 
     // --- experimental plugin worker thread -----------------------------------
     // Turn on the off-thread callback/render path (see core/plugin_thread.*),
@@ -1390,6 +2400,20 @@ private:
     int         (*m_startRec)(const char*) = nullptr;
     void        (*m_stopRec)() = nullptr;
     void        (*m_resetAll)() = nullptr;
+    void        (*m_resetGlobals)() = nullptr;
+    void        (*m_spotEnable)(int) = nullptr;
+    void        (*m_spotSubs)(int) = nullptr;
+    void        (*m_spotMask)(unsigned) = nullptr;
+    void        (*m_spotLog)(char*, int) = nullptr;
+    void        (*m_spotAudio)(char*, int) = nullptr;
+    void        (*m_spotPack)(const char*) = nullptr;
+    void        (*m_spotPrev)(int) = nullptr;
+    void        (*m_spotPin)(int) = nullptr;
+    void        (*m_spotHotkey)() = nullptr;
+    void        (*m_stTheme)(char*, int) = nullptr;
+    void        (*m_stSetTheme)(const char*) = nullptr;
+    void        (*m_rdTheme)(char*, int) = nullptr;
+    void        (*m_rdSetTheme)(const char*) = nullptr;
     void        (*m_resetActiveProfile)() = nullptr;
     void        (*m_resetHud)(const char*, int) = nullptr;
     void        (*m_copyProfileToAll)() = nullptr;
@@ -1403,14 +2427,17 @@ private:
     void        (*m_dirSetNowMs)(long long) = nullptr;
     void        (*m_eventLogEnableDirector)(int) = nullptr;
     void        (*m_timingConfig)(int,int,int) = nullptr;
+    void        (*m_timingReadouts)(unsigned int) = nullptr;
+    int         (*m_timingTextBudget)() = nullptr;
     int         (*m_timingReferenceMs)(int,int) = nullptr;
     int         (*m_timingTargetSplit)() = nullptr;
     int         (*m_timingInvalidShown)() = nullptr;
     int         (*m_timingFrozen)() = nullptr;
     int         (*m_elapsedLapTime)() = nullptr;
+    std::string m_shippedPackText;   // outlives the const char* handed to the DLL
     int         (*m_lapTimerFromRaceStart)() = nullptr;
     int         (*m_inGridStartGrace)() = nullptr;
-    void        (*m_timingGeometry)(int*,int*,int*,int*,int*,int*) = nullptr;
+    void        (*m_timingGeometry)(int*,int*,int*,int*,int*,int*,int*) = nullptr;
     void        (*m_eventLogSetVisible)(int) = nullptr;
     int         (*m_eventLogIconColorSlot)(const char*) = nullptr;
     void        (*m_noticesSetVisible)(int) = nullptr;
@@ -1420,6 +2447,25 @@ private:
     int         (*m_dirSubject)() = nullptr;
     int         (*m_benchHudCount)() = nullptr;
     int         (*m_benchCbCount)() = nullptr;
+    int         (*m_profilableHuds)() = nullptr;
+    int         (*m_snapCap)() = nullptr;
+    int         (*m_snapCount)() = nullptr;
+    int         (*m_hudRebuilds)(const char*) = nullptr;
+    void        (*m_setProbe)(int,int,int,int) = nullptr;
+    void        (*m_spriteSpan)(int*,int*,int*) = nullptr;
+    int         (*m_spriteCount)() = nullptr;
+    void        (*m_installSprites)(int) = nullptr;
+    void        (*m_getProbe)(int*,int*,int*,int*) = nullptr;
+    void        (*m_sweepStart)() = nullptr;
+    void        (*m_sweepAbort)() = nullptr;
+    int         (*m_sweepRunning)() = nullptr;
+    void        (*m_setProbeChars)(int) = nullptr;
+    int         (*m_getProbeChars)() = nullptr;
+    void        (*m_setDropShadow)(int) = nullptr;
+    void        (*m_setDevMode)(int) = nullptr;
+    int         (*m_setHudOpacity)(const char*,float) = nullptr;
+    int         (*m_setHudOffset)(const char*,float,float) = nullptr;
+    int         (*m_maxQuadArea)(const char*) = nullptr;
     long long   m_lastReplayTimeMs = 0;
     void        (*m_save)() = nullptr;
     void        (*m_markDirty)() = nullptr;
@@ -1428,6 +2474,23 @@ private:
     void        (*m_setAutoSave)(int) = nullptr;
     void        (*m_loadSettings)(const char*) = nullptr;
     void        (*m_setActiveTab)(const char*) = nullptr;
+    void        (*m_wnReset)() = nullptr;
+    int         (*m_wnLiveCount)() = nullptr;
+    int         (*m_wnTabTagged)(const char*) = nullptr;
+    void        (*m_wnHoverRow)(const char*) = nullptr;
+    int         (*m_wnClickTab)(const char*) = nullptr;
+    int  (*m_wnMarkerCount)() = nullptr;
+    int  (*m_wnMarkerResolves)(int) = nullptr;
+    void (*m_wnMarkerName)(int, char*, int) = nullptr;
+    void (*m_wnSerialize)(char*, int) = nullptr;
+    void (*m_clickAbout)() = nullptr;
+    int  (*m_updateTagLive)() = nullptr;
+    void (*m_updateTagReset)() = nullptr;
+    int  (*m_aboutRect)(int*,int*,int*,int*) = nullptr;
+    int         (*m_settingsTabName)(int,char*,int) = nullptr;
+    int         (*m_settingsAnyTabName)(int,char*,int) = nullptr;
+    int         (*m_settingsOverflow)() = nullptr;
+    int         (*m_standingsRowBand)(int*,int*) = nullptr;
     int         (*m_stepCount)(int) = nullptr;
     int         (*m_stepClick)(int,int,int) = nullptr;
     bool        m_shutdownDone = false;
@@ -1438,8 +2501,59 @@ private:
     int         (*m_cycleClick)(int,int) = nullptr;
     float       (*m_ruBumpsLight)() = nullptr;
     void        (*m_showSettings)(int) = nullptr;
+    int         (*m_setThemeGap)(float) = nullptr;
+    void        (*m_settingsGutter)(int*,int*,int*) = nullptr;
     void        (*m_companion)(int) = nullptr;
     void        (*m_stSetVisible)(int) = nullptr;
+    void        (*m_installTheme)(const char*,float,float,int,int,int,int) = nullptr;
+    int         (*m_setThemeTitleBorder)(float) = nullptr;
+    int         (*m_setThemePanelPad)(float,float) = nullptr;
+    void        (*m_layoutCells)(double*) = nullptr;
+    int         (*m_setHudScale)(const char*, float) = nullptr;
+    void        (*m_gapBarWidth)(int) = nullptr;
+    void        (*m_clearTheme)() = nullptr;
+    int         (*m_setThemeIcon)(const char*,int,int) = nullptr;
+    int         (*m_iconForName)(const char*) = nullptr;
+    int         (*m_iconForShape)(int) = nullptr;
+    int         (*m_shapeForIcon)(int) = nullptr;
+    void        (*m_hudPanelRect)(const char*,int*,int*,int*) = nullptr;
+    int         (*m_sectionCards)(const char*,int*,int) = nullptr;
+    int         (*m_panelCells)(int*,int) = nullptr;
+    int         (*m_panelPadY)(int*,int) = nullptr;
+    void        (*m_setPerfElements)(unsigned) = nullptr;
+    int         (*m_quadRects)(const char*,int*,int) = nullptr;
+    unsigned long (*m_stringColor)(const char*,int) = nullptr;
+    unsigned long (*m_quadColor)(const char*,int) = nullptr;
+    int         (*m_minLumaGap)() = nullptr;
+    int         (*m_luma601)(unsigned long) = nullptr;
+    int         (*m_stringRows)(const char*,int,int*,int*,char*,int) = nullptr;
+    int         (*m_fillCut)(const char*,int*,int) = nullptr;
+    void        (*m_panelName)(int,char*,int) = nullptr;
+    void        (*m_hudScreenEdges)(const char*,int*,int*,int*,int*) = nullptr;
+    void        (*m_setScreenClamping)(int) = nullptr;
+    void        (*m_settingsMarginsX)(int*,int*,int*,int*) = nullptr;
+    void        (*m_settingsContentX)(int*,int*,int*) = nullptr;
+    int         (*m_setHudTitle)(const char*,int) = nullptr;
+    int         (*m_setThemeContentBorder)(float,float,float,float) = nullptr;
+    int         (*m_setThemeContentMargin)(float,float,float,float) = nullptr;
+    int         (*m_setThemeTitleMargin)(float,float,float,float) = nullptr;
+    int         (*m_hudCardRect)(const char*,int*) = nullptr;
+    void        (*m_gapBarForceGap)(int,int) = nullptr;
+    void        (*m_updateSetAvailable)(const char*) = nullptr;
+    void        (*m_versionRowTerms)(int*,int*) = nullptr;
+    void        (*m_showAllHuds)(int) = nullptr;
+    unsigned long (*m_effColor)(int) = nullptr;
+    int         (*m_colorOverridden)(int) = nullptr;
+    unsigned long (*m_themeOrDefColor)(int) = nullptr;
+    void        (*m_cycleColor)(int,int) = nullptr;
+    void        (*m_clearColorOv)(int) = nullptr;
+    void        (*m_setThemeColor)(int,unsigned long) = nullptr;
+    void        (*m_effFont)(int,char*,int) = nullptr;
+    int         (*m_fontOverridden)(int) = nullptr;
+    void        (*m_cycleFont)(int,int) = nullptr;
+    void        (*m_clearFontOv)(int) = nullptr;
+    void        (*m_setFont)(int,const char*) = nullptr;
+    int         (*m_fontCount)() = nullptr;
     void        (*m_stSetCompVisible)(int) = nullptr;
     float       (*m_stPlateInsetY)(int) = nullptr;
     void        (*m_stSetOffset)(float, float) = nullptr;
@@ -1467,6 +2581,31 @@ private:
     void        (*m_companionClose)() = nullptr;
     void        (*m_fakeGamepad)(int) = nullptr;
     void        (*m_gamepadExtent)(float*, float*) = nullptr;
+    void        (*m_installGamepad)(const char*, float) = nullptr;
+    void        (*m_clearGamepads)() = nullptr;
+    void        (*m_installPitboard)(const char*, float, float) = nullptr;
+    void        (*m_reloadAssetLayouts)() = nullptr;
+    float       (*m_pitboardArtWidth)() = nullptr;
+    float       (*m_gamepadArtWidth)() = nullptr;
+    void        (*m_clearPitboards)() = nullptr;
+    void        (*m_cyclePack)(int, int) = nullptr;
+    int         (*m_packShowBg)(int) = nullptr;
+    int         (*m_gamepadStemSrc)(const char*, int) = nullptr;
+    float       (*m_gamepadGeomWidth)(const char*) = nullptr;
+    int         (*m_pitboardStemSrc)(const char*, int) = nullptr;
+    float       (*m_pitboardPackArtW)(const char*) = nullptr;
+    unsigned    (*m_pitboardTextColor)(const char*) = nullptr;
+    int         (*m_padStemCount)() = nullptr;
+    void        (*m_padStemName)(int, char*, int) = nullptr;
+    void        (*m_setPackShowBg)(int, int) = nullptr;
+    void        (*m_setPitboardPack)(const char*) = nullptr;
+    void        (*m_pitboardStored)(char*, int) = nullptr;
+    void        (*m_pitboardActive)(char*, int) = nullptr;
+    void        (*m_setGamepadPack)(const char*) = nullptr;
+    void        (*m_gamepadStored)(char*, int) = nullptr;
+    void        (*m_gamepadActive)(char*, int) = nullptr;
+    void        (*m_setUiFontSize)(float) = nullptr;
+    void        (*m_setBoxTerm)(int, const char*) = nullptr;
     void        (*m_forceSurface)(int) = nullptr;
     void        (*m_rcSetVisible)(int) = nullptr;
     void        (*m_rcSetCharts)(int) = nullptr;
@@ -1475,6 +2614,7 @@ private:
     void        (*m_statsSetNow)(long long) = nullptr;
     void        (*m_statsOdoState)(double*,double*,double*,int*) = nullptr;
     void        (*m_statsSave)() = nullptr;
+    int         (*m_crashTally)(int) = nullptr;
     int         (*m_steamStartWorker)() = nullptr;
     int         (*m_steamWorkerAlive)() = nullptr;
     int         (*m_recParse)(int, const char*) = nullptr;

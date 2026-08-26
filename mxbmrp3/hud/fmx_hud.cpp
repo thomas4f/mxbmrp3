@@ -20,10 +20,14 @@ using namespace PluginConstants::Math;
 FmxHud::FmxHud() {
     DEBUG_INFO("FmxHud created");
     setDraggable(true);
+    // Body card: this HUD draws a content BLOCK under its title, which is what the
+    // themed card frames. Opt-in; see BaseHud::m_bContentCard.
+    m_bContentCard = true;
     m_quads.reserve(ARC_SEGMENTS * 9 + COMBO_ARC_SEGMENTS * 2 + 10);  // 3 rotation arcs (bg+fill+markers each) + combo arc + backgrounds
     m_strings.reserve(15);
 
     m_trickStack.reserve(12);  // Max 10 display rows + margin
+    setTextureBaseName("fmx_hud");
     resetToDefaults();
     rebuildRenderData();
 }
@@ -52,37 +56,43 @@ void FmxHud::rebuildLayout() {
     rebuildRenderData();
 }
 
-float FmxHud::getContentHeight() const {
-    auto dim = getScaledDimensions();
-    float height = 0.0f;
-
-    // Title height
-    if (m_bShowTitle) height += dim.lineHeightLarge;
-
+SmallVec<float, 8> FmxHud::sectionHeights(const ScaledDimensions& dim) const {
+    SmallVec<float, 8> out;
+    const float head = sectionHeadingRowHeight(dim);
+    // The caption band is the plan's; each block below carries its OWN
+    // subheading row, and the air between two blocks is the seam the plan
+    // spends ([content] margin, the sum of the facing margins) — which is what
+    // the hand-rolled "separator gap" row used to approximate.
     if (isTrickStackEnabled()) {
-        height += dim.lineHeightNormal;  // "Trick Stack" subheading row
         // Past trick rows use normal line height; last (active) row uses proportional advance
-        float activeTrickAdvance = dim.fontSizeLarge + (dim.lineHeightLarge - dim.fontSizeExtraLarge);
-        height += (m_maxChainDisplayRows - 1) * dim.lineHeightNormal + activeTrickAdvance;
+        const float activeTrickAdvance = dim.fontSizeLarge + (dim.lineHeightLarge - dim.fontSizeExtraLarge);
+        float h = head + (m_maxChainDisplayRows - 1) * dim.lineHeightNormal + activeTrickAdvance;
         if (m_enabledRows & ROW_TRICK_STATS) {
-            height += dim.lineHeightNormal;  // Trick stats row (duration + distance + rotation)
+            h += dim.lineHeightNormal;  // Trick stats row (duration + distance + rotation)
         }
-        height += dim.lineHeightNormal;  // Separator gap before combo arc section
+        out.push_back(h);
     }
     if (m_enabledRows & ROW_COMBO_ARC) {
-        float comboArcHeight = dim.lineHeightNormal * 2.0f;
-        float comboOuterRadius = comboArcHeight * 0.9f;
-        height += comboOuterRadius * 2.0f + dim.lineHeightSmall;
+        const float comboArcHeight = dim.lineHeightNormal * 2.0f;
+        const float comboOuterRadius = comboArcHeight * 0.9f;
+        // The arc IS the block: the multiplier draws inside it and the three
+        // score rows centre beside it. A trailing lineHeightSmall was stated
+        // here (and advanced below) with nothing ever drawn in it — reported
+        // as ~2 dead rows at the section's bottom once the ceil slack landed
+        // on top of it.
+        out.push_back(head + comboOuterRadius * 2.0f);
     }
     if (m_enabledRows & ROW_ARCS) {
-        float scaledArcDiameter = (ARC_RADIUS * 2.0f + ARC_THICKNESS) * m_fScale;
-        height += dim.lineHeightNormal + scaledArcDiameter + dim.lineHeightSmall;
+        // labelHeight (Pitch/Yaw/Roll) + the arc art + its readout row.
+        const float scaledArcDiameter = (ARC_RADIUS * 2.0f + ARC_THICKNESS) * m_fScale;
+        out.push_back(head + dim.lineHeightNormal + scaledArcDiameter + dim.lineHeightSmall);
     }
-    if (m_enabledRows & ROW_DEBUG_VALUES) height += 3.0f * dim.lineHeightSmall;
-
-    // Snap total content to whole lineHeightNormal rows so the HUD aligns with others
-    float rows = std::ceil(height / dim.lineHeightNormal);
-    return std::max(dim.lineHeightNormal, rows * dim.lineHeightNormal);
+    if (m_enabledRows & ROW_DEBUG_VALUES) {
+        out.push_back(head + 3.0f * dim.lineHeightSmall);
+    }
+    // Every block switched off: one empty row, so the panel is still a panel.
+    if (out.empty()) out.push_back(dim.lineHeightNormal);
+    return out;
 }
 
 void FmxHud::rebuildRenderData() {
@@ -100,43 +110,40 @@ void FmxHud::rebuildRenderData() {
     float startX = 0.0f;
     float startY = 0.0f;
 
-    // Calculate width — match standard HUD width (27 chars, same as IdealLapHud)
+    // BOX-MODEL: standard HUD width (27 chars, same as IdealLapHud); the plan
+    // owns the box, dynamic content height stays this HUD's own sum.
     int charWidth = 27;
-    float backgroundWidth = calculateBackgroundWidth(charWidth);
     float contentWidth = PluginUtils::calculateMonospaceTextWidth(charWidth, dim.fontSize);
+    BaseHud::PanelWant want;
+    want.contentW = contentWidth;
+    want.sectionH = sectionHeights(dim);
+    want.captionW = planTitleWidth(dim, "FMX", TitleTier::Large);
+    want.tier = TitleTier::Large;
+    PanelPlan& plan = planPanel(dim, want);
+    float backgroundWidth = plan.width();
+    addPlanBackground(plan, startX, startY);
+    setBounds(startX, startY, startX + backgroundWidth, startY + plan.height());
 
-    // Calculate dynamic height (uses actual section heights, not uniform row count)
-    float contentHeight = getContentHeight();
-    float backgroundHeight = dim.paddingV + contentHeight + dim.paddingV;
-
-    // Add background quad
-    addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
-
-    // Set bounds for drag detection
-    setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
-
-    float contentStartX = startX + dim.paddingH;
-    float contentStartY = startY + dim.paddingV;
-    float currentY = contentStartY;
+    float contentStartX = plan.contentX();
+    // Each block opens its own card by taking that section's content top; the
+    // counter walks sectionHeights() in the same order it built them.
+    size_t section = 0;
+    float currentY = plan.contentY(0);
 
     unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
     unsigned long mutedColor = this->getColor(ColorSlot::MUTED);
 
-    // === Title ===
-    float titleHeight = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
-    addTitleString("FMX", contentStartX, currentY, Justify::LEFT,
-        this->getFont(FontCategory::TITLE), textColor, dim.fontSizeLarge);
-    currentY += titleHeight;
+    // === Title === (the plan's caption row, above currentY)
+    addPlanTitle(plan, "FMX", this->getFont(FontCategory::TITLE), textColor);
 
     // Chain tricks list — used by both trick stack and combo arc sections
     const auto& chainTricks = fmx.getChainTricks();
 
     // === Rows: Trick Stack (shows chain of tricks) — above the combo arc ===
     if (isTrickStackEnabled()) {
-        // Section subheading (matches Performance / Session Charts section headers).
-        addString("Trick Stack", contentStartX, currentY, Justify::LEFT,
-            this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
-        currentY += dim.lineHeightNormal;
+        currentY = plan.contentY(section++);
+        addSectionHeading("Trick Stack", contentStartX, currentY, dim);
+        currentY += sectionHeadingRowHeight(dim);
 
         const auto& endAnimStack = fmx.getChainEndAnimation();
 
@@ -274,11 +281,11 @@ void FmxHud::rebuildRenderData() {
         currentY += dim.lineHeightNormal;
     }
 
-    // Separator gap between trick section and combo arc section
-    if (isTrickStackEnabled()) {
-        currentY += dim.lineHeightNormal;
-    }
+    // (No separator row: the air between two cards is the plan's seam.)
     if (m_enabledRows & ROW_COMBO_ARC) {
+        currentY = plan.contentY(section++);
+        addSectionHeading("Combo & Score", contentStartX, currentY, dim);
+        currentY += sectionHeadingRowHeight(dim);
         // Match LeanWidget arc dimensions
         float comboArcHeight = dim.lineHeightNormal * 2.0f;
         float barWidthRef = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
@@ -362,7 +369,14 @@ void FmxHud::rebuildRenderData() {
         char multiplierText[16];
         snprintf(multiplierText, sizeof(multiplierText), "%.1f", chainMultiplier);
         unsigned long multColor = textColor;
-        float multValueY = arcCenterY - dim.fontSize * 0.5f;
+        // THE PAIR IS ONE BLOCK, centred as one. This centred the FIRST ROW on the
+        // arc's middle (centre - fontSize/2, the single-row formula) and then hung
+        // the "x" a small line below it, which put the visible pair half a small line
+        // LOW inside the ring -- close enough to look like a rendering quirk rather
+        // than arithmetic. The block runs from the value's top to the x's bottom, so
+        // that span is what has to straddle the centre.
+        const float multBlockH = dim.lineHeightSmall + dim.fontSize;
+        float multValueY = arcCenterY - multBlockH * 0.5f;
         float multXY = multValueY + dim.lineHeightSmall;
         addString(multiplierText, arcCenterX, multValueY, Justify::CENTER,
             this->getFont(FontCategory::TITLE), multColor, dim.fontSize);
@@ -441,11 +455,14 @@ void FmxHud::rebuildRenderData() {
                 this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
         }
 
-        currentY += outerRadius * 2.0f + dim.lineHeightSmall;
+        currentY += outerRadius * 2.0f;   // the arc is the block; see sectionHeights
     }
 
     // === Rows: Rotation Arcs (Pitch, Yaw, Roll) ===
     if (m_enabledRows & ROW_ARCS) {
+        currentY = plan.contentY(section++);
+        addSectionHeading("Rotation Arcs", contentStartX, currentY, dim);
+        currentY += sectionHeadingRowHeight(dim);
         // Update arc display snapshot — same suppression pattern as trick name:
         // only switch to new data once the trick is classified, preventing
         // arcs from snapping to zero on brief bounces during a chain
@@ -578,8 +595,12 @@ void FmxHud::rebuildRenderData() {
         currentY += arcAreaHeight;
     }
 
-    // === Rows: Debug Values ===
+    // === Rows: Debug Values (dev-only) — its own card too, so the block list
+    // and the card list are the same list. ===
     if (m_enabledRows & ROW_DEBUG_VALUES) {
+        currentY = plan.contentY(section++);
+        addSectionHeading("Debug", contentStartX, currentY, dim);
+        currentY += sectionHeadingRowHeight(dim);
         char valueBuffer[64];
 
         // Pitch
@@ -606,65 +627,6 @@ void FmxHud::rebuildRenderData() {
 
 }
 
-// ============================================================================
-// Arc Rendering
-// ============================================================================
-void FmxHud::addArcSegment(float centerX, float centerY, float innerRadius, float outerRadius,
-                            float startAngleRad, float endAngleRad, unsigned long color, int numSegments) {
-    if (numSegments < 1) numSegments = 1;
-
-    float angleStep = (endAngleRad - startAngleRad) / numSegments;
-
-    float prevInnerX = 0.0f, prevInnerY = 0.0f;
-    float prevOuterX = 0.0f, prevOuterY = 0.0f;
-    bool hasPrevPoint = false;
-
-    for (int i = 0; i <= numSegments; ++i) {
-        float angle = startAngleRad + i * angleStep;
-
-        // Calculate inner and outer edge points
-        // sin/cos because 0 degrees = up, positive = clockwise
-        float innerX = centerX + std::sin(angle) * innerRadius / UI_ASPECT_RATIO;
-        float innerY = centerY - std::cos(angle) * innerRadius;
-        float outerX = centerX + std::sin(angle) * outerRadius / UI_ASPECT_RATIO;
-        float outerY = centerY - std::cos(angle) * outerRadius;
-
-        if (hasPrevPoint) {
-            // Create quad connecting previous to current edges
-            float screenPrevInnerX = prevInnerX, screenPrevInnerY = prevInnerY;
-            float screenPrevOuterX = prevOuterX, screenPrevOuterY = prevOuterY;
-            float screenInnerX = innerX, screenInnerY = innerY;
-            float screenOuterX = outerX, screenOuterY = outerY;
-
-            // Apply HUD offset
-            applyOffset(screenPrevInnerX, screenPrevInnerY);
-            applyOffset(screenPrevOuterX, screenPrevOuterY);
-            applyOffset(screenInnerX, screenInnerY);
-            applyOffset(screenOuterX, screenOuterY);
-
-            // Create quad
-            SPluginQuad_t quad;
-            quad.m_aafPos[0][0] = screenPrevOuterX;
-            quad.m_aafPos[0][1] = screenPrevOuterY;
-            quad.m_aafPos[1][0] = screenPrevInnerX;
-            quad.m_aafPos[1][1] = screenPrevInnerY;
-            quad.m_aafPos[2][0] = screenInnerX;
-            quad.m_aafPos[2][1] = screenInnerY;
-            quad.m_aafPos[3][0] = screenOuterX;
-            quad.m_aafPos[3][1] = screenOuterY;
-
-            quad.m_iSprite = SpriteIndex::SOLID_COLOR;
-            quad.m_ulColor = color;
-            m_quads.push_back(quad);
-        }
-
-        prevInnerX = innerX;
-        prevInnerY = innerY;
-        prevOuterX = outerX;
-        prevOuterY = outerY;
-        hasPrevPoint = true;
-    }
-}
 
 void FmxHud::addRotationArc(float centerX, float centerY, float radius, float thickness,
                              float startAngle, float accumulatedAngle, float peakAngle,
@@ -741,7 +703,7 @@ void FmxHud::resetToDefaults() {
     setTextureVariant(0);
     m_fBackgroundOpacity = 0.80f;
     m_fScale = 1.0f;
-    setPosition(0.7315f, 0.58667f);
+    setPosition(cellsX(133), cellsY(50));
     m_comboArcFill = 0.0f;
     m_comboArcGraceStartFill = -1.0f;
     m_comboArcEndStartFill = -1.0f;

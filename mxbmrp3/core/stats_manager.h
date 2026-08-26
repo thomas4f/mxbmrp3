@@ -74,6 +74,15 @@ struct GlobalStats {
     int fastestLapCount = 0;          // Times set overall fastest lap (bestFlag==2)
     int64_t penaltyTimeMs = 0;          // Accumulated penalty time in ms
     int breakoutHighScore = 0;          // Easter egg Breakout game high score
+    // THE CRASH TALLY the CrashWidget shows, and the only counter here the user
+    // clears themselves.
+    //
+    // NOT a sum of TrackBikeStats::crashCount, though it counts the same edge: a
+    // sum cannot be reset without destroying the per-track history it is summed
+    // from, and reset is the whole point -- a streamer starts a session at zero
+    // and their viewers watch it climb. So it runs alongside, global across every
+    // track, bike and session, and survives restarts like everything else here.
+    int crashTally = 0;
 };
 
 class StatsManager {
@@ -170,6 +179,10 @@ public:
     int getGlobalTotalLaps() const;
     int64_t getGlobalTotalTimeMs() const;      // Includes live session time
     int getGlobalTotalCrashes() const;
+    // The resettable tally (see GlobalStats::crashTally) -- distinct from
+    // getGlobalTotalCrashes(), which sums the per-track+bike history.
+    int getCrashTally() const { return m_globalStats.crashTally; }
+    void resetCrashTally();
     int getGlobalTotalGearShifts() const;
     int getGlobalTotalPenalties() const;
     int64_t getGlobalTotalPenaltyTimeMs() const;

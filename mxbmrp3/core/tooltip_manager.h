@@ -4,7 +4,8 @@
 // Strings are compiled into the plugin (no external file).
 //
 // LENGTH LIMIT: tooltips render as at most 2 word-wrapped lines in the settings
-// panel (SettingsMetrics::tooltipCharsPerLine() chars each, currently 51);
+// panel (LayoutMetrics::settingsTooltipCharsPerLine() chars each -- 50 with a panel
+// theme, 51 without, and the guard measures the narrower one);
 // anything that does not fit is cut off, with "..." when the last line has room
 // for it. Don't count characters by hand — tests/unit/test_tooltip_length.cpp
 // runs every entry below through the renderer's own wrap (TextWrap::wrap) and
@@ -66,6 +67,7 @@ private:
             {"riders", "Track specific riders with custom colors and icons. Highlighted on standings, map, and radar."},
             {"rumble", "Configure controller vibration for racing events like bumps, wheelspin, and impacts."},
             {"updates", "Automatic update checking and installation. Downloads and installs new versions from GitHub."},
+            {"about", "What this plugin is, where it came from, and who is behind it."},
             {"standings", "Live race standings showing position, gaps, and rider information for all competitors."},
             {"map", "Overhead view of the track with real-time rider positions. Supports zoom and display modes."},
             {"radar", "Shows nearby riders relative to your position. Useful for close racing awareness."},
@@ -87,6 +89,7 @@ private:
             {"stats", "Per-track statistics including lap counts, crashes, gear shifts, top speed, and riding time."},
             {"helmet", "First-person helmet overlay with lean tilt and vibration."},
             {"director", "Auto-director for spectating: follows the most interesting rider - battles, passes, hot laps."},
+            {"spotter", "Spoken race callouts - fastest laps, leader changes, penalties - with optional subtitles."},
         };
         return m;
     }
@@ -95,9 +98,13 @@ private:
         static const Map m = {
             {"common.visible", "Show or hide this element during gameplay."},
             {"common.title", "Toggle the title bar at the top of this HUD."},
-            {"common.texture", "Select a background texture variant. Off uses a solid color background."},
+            {"common.texture", "Pick the artwork this element draws from. Elements whose artwork is mandatory have no Off option."},
             {"common.opacity", "Background transparency. 0% is fully transparent, 100% is fully opaque."},
             {"common.scale", "Size multiplier. Affects all text and graphics in this HUD."},
+            {"common.theme", "Panel theme for this element only. Default follows the global theme."},
+            {"appearance.theme", "Panel frame, title band and card art shared by every element."},
+            {"gamepad.pack", "Controller artwork and the button positions that go with it."},
+            {"pitboard.pack", "Pit board artwork and the row positions that go with it."},
 
             {"standings.live_gaps", "Show real-time estimated gaps during races. When off, gaps only update at split points."},
             {"standings.animate_positions", "Animate position changes. Off: none; Basic: slide rows; Colored: slide + green/red tint."},
@@ -123,6 +130,8 @@ private:
             {"ideal_lap.laps", "Show your last lap, best lap, and calculated ideal lap times."},
 
             {"lap_log.rows", "Number of recent laps to show."},
+            {"performance.graph_rows", "Height of each graph, in text rows. Resizes the panel without scaling its text."},
+            {"telemetry.graph_rows", "Height of the graph, in text rows. Resizes the panel without scaling its text."},
             {"lap_log.order", "Display order. Oldest shows oldest laps at top, Newest shows newest at top."},
             {"lap_log.gap_row", "Show live gap to personal best below the current lap time."},
             {"lap_log.headers", "Show a header row labeling each column above the lap rows."},
@@ -135,7 +144,7 @@ private:
             {"friends.col_server", "The friend's server name (blank when offline)."},
             {"friends.col_track", "The friend's current track."},
             {"friends.col_info", "Session, format and state (e.g. Race 2, In Progress), or In Menus / Unknown between sessions."},
-            {"friends.col_timer", "The friend's session clock: MM:SS, or N TO GO / FINAL LAP / CHECKERED. A coarse snapshot, not live."},
+            {"friends.col_timer", "The friend's session clock: MM:SS, or N TO GO / FINAL LAP / CHECKERED. Coarse snapshot, not live."},
 
             {"session_charts.chart_lap", "Lap chart: running order over the laps, one row per rider. Shows overtakes."},
             {"session_charts.chart_trace", "Race trace: cumulative time vs a fixed reference pace. Race only."},
@@ -144,6 +153,7 @@ private:
             {"session_charts.colors", "Rider line colours: a hue per position, or bike brand colour."},
             {"session_charts.top_n", "Always show the top N leaders, even when rows center on you (0 = off)."},
             {"session_charts.rows", "Total rider lines shown: the top-N plus a window centered on you."},
+            {"session_charts.graph_rows", "Height of EACH chart, in text rows -- how tall the panel is, not how much data it holds."},
             {"session_charts.grid", "Show horizontal grid lines behind the chart."},
             {"session_charts.axis_labels", "Show axis labels: values on the left, lap numbers on the bottom."},
             {"session_charts.legend", "Label each line with the rider's race number at its end."},
@@ -193,6 +203,10 @@ private:
             {"timing.time", "Show the big time row at the top (current/frozen split or lap time)."},
             {"timing.show", "At Splits shows timing only after crossing a split point. Always shows timing constantly."},
             {"timing.freeze", "How long to hold the split/lap time and its gaps after crossing a split. Off shows no gaps."},
+            // One entry for all seven readout toggles: they share a tooltip id
+            // because they are one feature, and the row's own label already says
+            // which reading it is.
+            {"timing.readouts", "Extra rows below the comparisons: position, lap, time left, session format, fuel, server and track."},
             {"timing.gap_pb", "Add a comparison row against your session personal best."},
             {"timing.gap_alltime", "Add a comparison row against your all-time personal best."},
             {"timing.gap_ideal", "Add a comparison row against your ideal lap (sum of best sectors)."},
@@ -243,7 +257,7 @@ private:
             {"appearance.clock_format", "Clock time format. 24h uses 00:00-23:59, 12h uses 1:00-12:59 AM/PM."},
             {"general.grid_snap", "When enabled, HUDs snap to a grid when dragging."},
             {"general.screen_clamp", "When enabled, HUDs are clamped to stay within screen bounds when dragging."},
-            {"general.auto_save", "Auto-saves on leaving the track (never while riding); use Save anytime. Disable to edit the INI."},
+            {"general.auto_save", "Auto-saves on leaving the track (never while riding); use Save anytime. Disable to edit INI."},
             {"general.steam_friends", "Broadcast your status and see friends running the plugin. Needs the Steam build; on by default."},
             {"general.discord", "Display your track, session, and lap progress in Discord's Rich Presence."},
             {"general.analytics", "Send an anonymous usage ping at startup (random ID, no personal data). On by default."},
@@ -300,6 +314,7 @@ private:
             {"widgets.time", "Shows elapsed session time or time remaining."},
             {"widgets.speed", "Shows current ground speed in mph or km/h."},
             {"widgets.gear", "Shows current gear with shift indicator that turns red at shift point."},
+            {"widgets.crashes", "A crash tally for streaming - counts across sessions and restarts until you reset it."},
             {"widgets.speedo", "Analog speedometer gauge showing current speed, with odometer and trip meter."},
             {"widgets.tacho", "Tachometer gauge showing engine RPM."},
             {"widgets.bars", "Vertical bars showing throttle, brake, clutch, RPM, suspension, and fuel levels."},
@@ -338,10 +353,12 @@ private:
             {"hotkeys.segment_remove", "Remove the last segment boundary. With none left, the Timing HUD shows normal split/lap timing."},
             {"hotkeys.stats", "Toggle the stats HUD on/off."},
             {"hotkeys.all_huds", "Toggle all HUDs on/off."},
+            {"hotkeys.crash_reset", "Reset the Crashes widget's tally to zero."},
             {"hotkeys.reload", "Reload configuration from disk."},
             {"hotkeys.event_log", "Toggle the event log HUD on/off."},
             {"hotkeys.helmet", "Toggle the helmet overlay on/off."},
             {"hotkeys.director_toggle", "Toggle the auto-director on/off."},
+            {"hotkeys.spotter_cue", "Speak your pack's hotkey_triggered line. Nothing is built in - write it first."},
             {"hotkeys.director_lock", "Lock the director onto the current rider so it won't cut away. Press again to release."},
             {"hotkeys.friends", "Toggle the friends HUD on/off."},
             {"hotkeys.overlay_last_lap", "Web overlay: force the fastest-last-lap board in now (momentary)."},
@@ -425,6 +442,25 @@ private:
             {"director.cam_fender", "Fender onboards to allow: Off, Front (rider ahead), Rear (a chaser), or Both."},
             {"director.cam_helmet", "Helmet views to allow: Off, Helmet 1 (POV), Helmet 2 (side), or Both. All forward-facing."},
             {"director.hud_visible", "Show the camera button - its tint shows the director's state; click to toggle, drag to move."},
+            {"spotter.enabled", "Speak callouts aloud (Windows text-to-speech). Subtitles work without it."},
+            {"spotter.subtitles", "Show each callout as on-screen text for a few seconds. Drag the widget to place it."},
+            {"spotter.volume", "Callout volume, separate from the game's audio."},
+            {"spotter.speed", "Playback speed for every callout. 1.00x is as recorded."},
+            {"spotter.lateral_m", "How far ACROSS the track a rider still counts as near. "
+                                  "Wider is ignored, as the Radar ignores it."},
+            {"spotter.behind_on_m", "How close a rider behind must be to be called. "
+                                    "Shorter means fewer, later warnings."},
+            {"spotter.alongside_on_m", "How far BEHIND you a rider still counts as "
+                                       "alongside - your blind spot."},
+            {"spotter.alongside_ahead_m", "How far AHEAD still counts. Keep it short: "
+                                          "you can see those riders. 0 = none."},
+            {"spotter.cat_general", "The session and your own status: flags, your penalty, your pit lane."},
+            {"spotter.cat_timing", "Your numbers: lap and sector times, position, gaps, time left."},
+            {"spotter.cat_opponents", "The field's race news: others' laps, penalties, pit stops, retirements."},
+            {"spotter.cat_proximity", "Riders around you right now: behind, alongside, boxed in, backmarkers."},
+            {"spotter.cat_hazard", "Dangers: blue flag, rider down ahead, wrong-way rider."},
+            {"spotter.pack", "Which pack's wording and clips to use. 'default' is the shipped one."},
+            {"spotter.tts_voice", "Which Windows voice speaks the text-to-speech cues."},
         };
         return m;
     }

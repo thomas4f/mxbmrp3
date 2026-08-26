@@ -1,0 +1,1005 @@
+# Racing-style number wording, 0..999. THE shared contract between
+# SpotterPhrase::numberWords (C++) and spottergen's num_words (the
+# pack baker): asserted by test_spotter_phrase.cpp and the
+# spottergen-selftest gate, so the two sides can only pass together.
+# A deliberate wording change regenerates this file AND every pack.
+0	zero
+1	one
+2	two
+3	three
+4	four
+5	five
+6	six
+7	seven
+8	eight
+9	nine
+10	ten
+11	eleven
+12	twelve
+13	thirteen
+14	fourteen
+15	fifteen
+16	sixteen
+17	seventeen
+18	eighteen
+19	nineteen
+20	twenty
+21	twenty one
+22	twenty two
+23	twenty three
+24	twenty four
+25	twenty five
+26	twenty six
+27	twenty seven
+28	twenty eight
+29	twenty nine
+30	thirty
+31	thirty one
+32	thirty two
+33	thirty three
+34	thirty four
+35	thirty five
+36	thirty six
+37	thirty seven
+38	thirty eight
+39	thirty nine
+40	forty
+41	forty one
+42	forty two
+43	forty three
+44	forty four
+45	forty five
+46	forty six
+47	forty seven
+48	forty eight
+49	forty nine
+50	fifty
+51	fifty one
+52	fifty two
+53	fifty three
+54	fifty four
+55	fifty five
+56	fifty six
+57	fifty seven
+58	fifty eight
+59	fifty nine
+60	sixty
+61	sixty one
+62	sixty two
+63	sixty three
+64	sixty four
+65	sixty five
+66	sixty six
+67	sixty seven
+68	sixty eight
+69	sixty nine
+70	seventy
+71	seventy one
+72	seventy two
+73	seventy three
+74	seventy four
+75	seventy five
+76	seventy six
+77	seventy seven
+78	seventy eight
+79	seventy nine
+80	eighty
+81	eighty one
+82	eighty two
+83	eighty three
+84	eighty four
+85	eighty five
+86	eighty six
+87	eighty seven
+88	eighty eight
+89	eighty nine
+90	ninety
+91	ninety one
+92	ninety two
+93	ninety three
+94	ninety four
+95	ninety five
+96	ninety six
+97	ninety seven
+98	ninety eight
+99	ninety nine
+100	one hundred
+101	one oh one
+102	one oh two
+103	one oh three
+104	one oh four
+105	one oh five
+106	one oh six
+107	one oh seven
+108	one oh eight
+109	one oh nine
+110	one ten
+111	one eleven
+112	one twelve
+113	one thirteen
+114	one fourteen
+115	one fifteen
+116	one sixteen
+117	one seventeen
+118	one eighteen
+119	one nineteen
+120	one twenty
+121	one twenty one
+122	one twenty two
+123	one twenty three
+124	one twenty four
+125	one twenty five
+126	one twenty six
+127	one twenty seven
+128	one twenty eight
+129	one twenty nine
+130	one thirty
+131	one thirty one
+132	one thirty two
+133	one thirty three
+134	one thirty four
+135	one thirty five
+136	one thirty six
+137	one thirty seven
+138	one thirty eight
+139	one thirty nine
+140	one forty
+141	one forty one
+142	one forty two
+143	one forty three
+144	one forty four
+145	one forty five
+146	one forty six
+147	one forty seven
+148	one forty eight
+149	one forty nine
+150	one fifty
+151	one fifty one
+152	one fifty two
+153	one fifty three
+154	one fifty four
+155	one fifty five
+156	one fifty six
+157	one fifty seven
+158	one fifty eight
+159	one fifty nine
+160	one sixty
+161	one sixty one
+162	one sixty two
+163	one sixty three
+164	one sixty four
+165	one sixty five
+166	one sixty six
+167	one sixty seven
+168	one sixty eight
+169	one sixty nine
+170	one seventy
+171	one seventy one
+172	one seventy two
+173	one seventy three
+174	one seventy four
+175	one seventy five
+176	one seventy six
+177	one seventy seven
+178	one seventy eight
+179	one seventy nine
+180	one eighty
+181	one eighty one
+182	one eighty two
+183	one eighty three
+184	one eighty four
+185	one eighty five
+186	one eighty six
+187	one eighty seven
+188	one eighty eight
+189	one eighty nine
+190	one ninety
+191	one ninety one
+192	one ninety two
+193	one ninety three
+194	one ninety four
+195	one ninety five
+196	one ninety six
+197	one ninety seven
+198	one ninety eight
+199	one ninety nine
+200	two hundred
+201	two oh one
+202	two oh two
+203	two oh three
+204	two oh four
+205	two oh five
+206	two oh six
+207	two oh seven
+208	two oh eight
+209	two oh nine
+210	two ten
+211	two eleven
+212	two twelve
+213	two thirteen
+214	two fourteen
+215	two fifteen
+216	two sixteen
+217	two seventeen
+218	two eighteen
+219	two nineteen
+220	two twenty
+221	two twenty one
+222	two twenty two
+223	two twenty three
+224	two twenty four
+225	two twenty five
+226	two twenty six
+227	two twenty seven
+228	two twenty eight
+229	two twenty nine
+230	two thirty
+231	two thirty one
+232	two thirty two
+233	two thirty three
+234	two thirty four
+235	two thirty five
+236	two thirty six
+237	two thirty seven
+238	two thirty eight
+239	two thirty nine
+240	two forty
+241	two forty one
+242	two forty two
+243	two forty three
+244	two forty four
+245	two forty five
+246	two forty six
+247	two forty seven
+248	two forty eight
+249	two forty nine
+250	two fifty
+251	two fifty one
+252	two fifty two
+253	two fifty three
+254	two fifty four
+255	two fifty five
+256	two fifty six
+257	two fifty seven
+258	two fifty eight
+259	two fifty nine
+260	two sixty
+261	two sixty one
+262	two sixty two
+263	two sixty three
+264	two sixty four
+265	two sixty five
+266	two sixty six
+267	two sixty seven
+268	two sixty eight
+269	two sixty nine
+270	two seventy
+271	two seventy one
+272	two seventy two
+273	two seventy three
+274	two seventy four
+275	two seventy five
+276	two seventy six
+277	two seventy seven
+278	two seventy eight
+279	two seventy nine
+280	two eighty
+281	two eighty one
+282	two eighty two
+283	two eighty three
+284	two eighty four
+285	two eighty five
+286	two eighty six
+287	two eighty seven
+288	two eighty eight
+289	two eighty nine
+290	two ninety
+291	two ninety one
+292	two ninety two
+293	two ninety three
+294	two ninety four
+295	two ninety five
+296	two ninety six
+297	two ninety seven
+298	two ninety eight
+299	two ninety nine
+300	three hundred
+301	three oh one
+302	three oh two
+303	three oh three
+304	three oh four
+305	three oh five
+306	three oh six
+307	three oh seven
+308	three oh eight
+309	three oh nine
+310	three ten
+311	three eleven
+312	three twelve
+313	three thirteen
+314	three fourteen
+315	three fifteen
+316	three sixteen
+317	three seventeen
+318	three eighteen
+319	three nineteen
+320	three twenty
+321	three twenty one
+322	three twenty two
+323	three twenty three
+324	three twenty four
+325	three twenty five
+326	three twenty six
+327	three twenty seven
+328	three twenty eight
+329	three twenty nine
+330	three thirty
+331	three thirty one
+332	three thirty two
+333	three thirty three
+334	three thirty four
+335	three thirty five
+336	three thirty six
+337	three thirty seven
+338	three thirty eight
+339	three thirty nine
+340	three forty
+341	three forty one
+342	three forty two
+343	three forty three
+344	three forty four
+345	three forty five
+346	three forty six
+347	three forty seven
+348	three forty eight
+349	three forty nine
+350	three fifty
+351	three fifty one
+352	three fifty two
+353	three fifty three
+354	three fifty four
+355	three fifty five
+356	three fifty six
+357	three fifty seven
+358	three fifty eight
+359	three fifty nine
+360	three sixty
+361	three sixty one
+362	three sixty two
+363	three sixty three
+364	three sixty four
+365	three sixty five
+366	three sixty six
+367	three sixty seven
+368	three sixty eight
+369	three sixty nine
+370	three seventy
+371	three seventy one
+372	three seventy two
+373	three seventy three
+374	three seventy four
+375	three seventy five
+376	three seventy six
+377	three seventy seven
+378	three seventy eight
+379	three seventy nine
+380	three eighty
+381	three eighty one
+382	three eighty two
+383	three eighty three
+384	three eighty four
+385	three eighty five
+386	three eighty six
+387	three eighty seven
+388	three eighty eight
+389	three eighty nine
+390	three ninety
+391	three ninety one
+392	three ninety two
+393	three ninety three
+394	three ninety four
+395	three ninety five
+396	three ninety six
+397	three ninety seven
+398	three ninety eight
+399	three ninety nine
+400	four hundred
+401	four oh one
+402	four oh two
+403	four oh three
+404	four oh four
+405	four oh five
+406	four oh six
+407	four oh seven
+408	four oh eight
+409	four oh nine
+410	four ten
+411	four eleven
+412	four twelve
+413	four thirteen
+414	four fourteen
+415	four fifteen
+416	four sixteen
+417	four seventeen
+418	four eighteen
+419	four nineteen
+420	four twenty
+421	four twenty one
+422	four twenty two
+423	four twenty three
+424	four twenty four
+425	four twenty five
+426	four twenty six
+427	four twenty seven
+428	four twenty eight
+429	four twenty nine
+430	four thirty
+431	four thirty one
+432	four thirty two
+433	four thirty three
+434	four thirty four
+435	four thirty five
+436	four thirty six
+437	four thirty seven
+438	four thirty eight
+439	four thirty nine
+440	four forty
+441	four forty one
+442	four forty two
+443	four forty three
+444	four forty four
+445	four forty five
+446	four forty six
+447	four forty seven
+448	four forty eight
+449	four forty nine
+450	four fifty
+451	four fifty one
+452	four fifty two
+453	four fifty three
+454	four fifty four
+455	four fifty five
+456	four fifty six
+457	four fifty seven
+458	four fifty eight
+459	four fifty nine
+460	four sixty
+461	four sixty one
+462	four sixty two
+463	four sixty three
+464	four sixty four
+465	four sixty five
+466	four sixty six
+467	four sixty seven
+468	four sixty eight
+469	four sixty nine
+470	four seventy
+471	four seventy one
+472	four seventy two
+473	four seventy three
+474	four seventy four
+475	four seventy five
+476	four seventy six
+477	four seventy seven
+478	four seventy eight
+479	four seventy nine
+480	four eighty
+481	four eighty one
+482	four eighty two
+483	four eighty three
+484	four eighty four
+485	four eighty five
+486	four eighty six
+487	four eighty seven
+488	four eighty eight
+489	four eighty nine
+490	four ninety
+491	four ninety one
+492	four ninety two
+493	four ninety three
+494	four ninety four
+495	four ninety five
+496	four ninety six
+497	four ninety seven
+498	four ninety eight
+499	four ninety nine
+500	five hundred
+501	five oh one
+502	five oh two
+503	five oh three
+504	five oh four
+505	five oh five
+506	five oh six
+507	five oh seven
+508	five oh eight
+509	five oh nine
+510	five ten
+511	five eleven
+512	five twelve
+513	five thirteen
+514	five fourteen
+515	five fifteen
+516	five sixteen
+517	five seventeen
+518	five eighteen
+519	five nineteen
+520	five twenty
+521	five twenty one
+522	five twenty two
+523	five twenty three
+524	five twenty four
+525	five twenty five
+526	five twenty six
+527	five twenty seven
+528	five twenty eight
+529	five twenty nine
+530	five thirty
+531	five thirty one
+532	five thirty two
+533	five thirty three
+534	five thirty four
+535	five thirty five
+536	five thirty six
+537	five thirty seven
+538	five thirty eight
+539	five thirty nine
+540	five forty
+541	five forty one
+542	five forty two
+543	five forty three
+544	five forty four
+545	five forty five
+546	five forty six
+547	five forty seven
+548	five forty eight
+549	five forty nine
+550	five fifty
+551	five fifty one
+552	five fifty two
+553	five fifty three
+554	five fifty four
+555	five fifty five
+556	five fifty six
+557	five fifty seven
+558	five fifty eight
+559	five fifty nine
+560	five sixty
+561	five sixty one
+562	five sixty two
+563	five sixty three
+564	five sixty four
+565	five sixty five
+566	five sixty six
+567	five sixty seven
+568	five sixty eight
+569	five sixty nine
+570	five seventy
+571	five seventy one
+572	five seventy two
+573	five seventy three
+574	five seventy four
+575	five seventy five
+576	five seventy six
+577	five seventy seven
+578	five seventy eight
+579	five seventy nine
+580	five eighty
+581	five eighty one
+582	five eighty two
+583	five eighty three
+584	five eighty four
+585	five eighty five
+586	five eighty six
+587	five eighty seven
+588	five eighty eight
+589	five eighty nine
+590	five ninety
+591	five ninety one
+592	five ninety two
+593	five ninety three
+594	five ninety four
+595	five ninety five
+596	five ninety six
+597	five ninety seven
+598	five ninety eight
+599	five ninety nine
+600	six hundred
+601	six oh one
+602	six oh two
+603	six oh three
+604	six oh four
+605	six oh five
+606	six oh six
+607	six oh seven
+608	six oh eight
+609	six oh nine
+610	six ten
+611	six eleven
+612	six twelve
+613	six thirteen
+614	six fourteen
+615	six fifteen
+616	six sixteen
+617	six seventeen
+618	six eighteen
+619	six nineteen
+620	six twenty
+621	six twenty one
+622	six twenty two
+623	six twenty three
+624	six twenty four
+625	six twenty five
+626	six twenty six
+627	six twenty seven
+628	six twenty eight
+629	six twenty nine
+630	six thirty
+631	six thirty one
+632	six thirty two
+633	six thirty three
+634	six thirty four
+635	six thirty five
+636	six thirty six
+637	six thirty seven
+638	six thirty eight
+639	six thirty nine
+640	six forty
+641	six forty one
+642	six forty two
+643	six forty three
+644	six forty four
+645	six forty five
+646	six forty six
+647	six forty seven
+648	six forty eight
+649	six forty nine
+650	six fifty
+651	six fifty one
+652	six fifty two
+653	six fifty three
+654	six fifty four
+655	six fifty five
+656	six fifty six
+657	six fifty seven
+658	six fifty eight
+659	six fifty nine
+660	six sixty
+661	six sixty one
+662	six sixty two
+663	six sixty three
+664	six sixty four
+665	six sixty five
+666	six sixty six
+667	six sixty seven
+668	six sixty eight
+669	six sixty nine
+670	six seventy
+671	six seventy one
+672	six seventy two
+673	six seventy three
+674	six seventy four
+675	six seventy five
+676	six seventy six
+677	six seventy seven
+678	six seventy eight
+679	six seventy nine
+680	six eighty
+681	six eighty one
+682	six eighty two
+683	six eighty three
+684	six eighty four
+685	six eighty five
+686	six eighty six
+687	six eighty seven
+688	six eighty eight
+689	six eighty nine
+690	six ninety
+691	six ninety one
+692	six ninety two
+693	six ninety three
+694	six ninety four
+695	six ninety five
+696	six ninety six
+697	six ninety seven
+698	six ninety eight
+699	six ninety nine
+700	seven hundred
+701	seven oh one
+702	seven oh two
+703	seven oh three
+704	seven oh four
+705	seven oh five
+706	seven oh six
+707	seven oh seven
+708	seven oh eight
+709	seven oh nine
+710	seven ten
+711	seven eleven
+712	seven twelve
+713	seven thirteen
+714	seven fourteen
+715	seven fifteen
+716	seven sixteen
+717	seven seventeen
+718	seven eighteen
+719	seven nineteen
+720	seven twenty
+721	seven twenty one
+722	seven twenty two
+723	seven twenty three
+724	seven twenty four
+725	seven twenty five
+726	seven twenty six
+727	seven twenty seven
+728	seven twenty eight
+729	seven twenty nine
+730	seven thirty
+731	seven thirty one
+732	seven thirty two
+733	seven thirty three
+734	seven thirty four
+735	seven thirty five
+736	seven thirty six
+737	seven thirty seven
+738	seven thirty eight
+739	seven thirty nine
+740	seven forty
+741	seven forty one
+742	seven forty two
+743	seven forty three
+744	seven forty four
+745	seven forty five
+746	seven forty six
+747	seven forty seven
+748	seven forty eight
+749	seven forty nine
+750	seven fifty
+751	seven fifty one
+752	seven fifty two
+753	seven fifty three
+754	seven fifty four
+755	seven fifty five
+756	seven fifty six
+757	seven fifty seven
+758	seven fifty eight
+759	seven fifty nine
+760	seven sixty
+761	seven sixty one
+762	seven sixty two
+763	seven sixty three
+764	seven sixty four
+765	seven sixty five
+766	seven sixty six
+767	seven sixty seven
+768	seven sixty eight
+769	seven sixty nine
+770	seven seventy
+771	seven seventy one
+772	seven seventy two
+773	seven seventy three
+774	seven seventy four
+775	seven seventy five
+776	seven seventy six
+777	seven seventy seven
+778	seven seventy eight
+779	seven seventy nine
+780	seven eighty
+781	seven eighty one
+782	seven eighty two
+783	seven eighty three
+784	seven eighty four
+785	seven eighty five
+786	seven eighty six
+787	seven eighty seven
+788	seven eighty eight
+789	seven eighty nine
+790	seven ninety
+791	seven ninety one
+792	seven ninety two
+793	seven ninety three
+794	seven ninety four
+795	seven ninety five
+796	seven ninety six
+797	seven ninety seven
+798	seven ninety eight
+799	seven ninety nine
+800	eight hundred
+801	eight oh one
+802	eight oh two
+803	eight oh three
+804	eight oh four
+805	eight oh five
+806	eight oh six
+807	eight oh seven
+808	eight oh eight
+809	eight oh nine
+810	eight ten
+811	eight eleven
+812	eight twelve
+813	eight thirteen
+814	eight fourteen
+815	eight fifteen
+816	eight sixteen
+817	eight seventeen
+818	eight eighteen
+819	eight nineteen
+820	eight twenty
+821	eight twenty one
+822	eight twenty two
+823	eight twenty three
+824	eight twenty four
+825	eight twenty five
+826	eight twenty six
+827	eight twenty seven
+828	eight twenty eight
+829	eight twenty nine
+830	eight thirty
+831	eight thirty one
+832	eight thirty two
+833	eight thirty three
+834	eight thirty four
+835	eight thirty five
+836	eight thirty six
+837	eight thirty seven
+838	eight thirty eight
+839	eight thirty nine
+840	eight forty
+841	eight forty one
+842	eight forty two
+843	eight forty three
+844	eight forty four
+845	eight forty five
+846	eight forty six
+847	eight forty seven
+848	eight forty eight
+849	eight forty nine
+850	eight fifty
+851	eight fifty one
+852	eight fifty two
+853	eight fifty three
+854	eight fifty four
+855	eight fifty five
+856	eight fifty six
+857	eight fifty seven
+858	eight fifty eight
+859	eight fifty nine
+860	eight sixty
+861	eight sixty one
+862	eight sixty two
+863	eight sixty three
+864	eight sixty four
+865	eight sixty five
+866	eight sixty six
+867	eight sixty seven
+868	eight sixty eight
+869	eight sixty nine
+870	eight seventy
+871	eight seventy one
+872	eight seventy two
+873	eight seventy three
+874	eight seventy four
+875	eight seventy five
+876	eight seventy six
+877	eight seventy seven
+878	eight seventy eight
+879	eight seventy nine
+880	eight eighty
+881	eight eighty one
+882	eight eighty two
+883	eight eighty three
+884	eight eighty four
+885	eight eighty five
+886	eight eighty six
+887	eight eighty seven
+888	eight eighty eight
+889	eight eighty nine
+890	eight ninety
+891	eight ninety one
+892	eight ninety two
+893	eight ninety three
+894	eight ninety four
+895	eight ninety five
+896	eight ninety six
+897	eight ninety seven
+898	eight ninety eight
+899	eight ninety nine
+900	nine hundred
+901	nine oh one
+902	nine oh two
+903	nine oh three
+904	nine oh four
+905	nine oh five
+906	nine oh six
+907	nine oh seven
+908	nine oh eight
+909	nine oh nine
+910	nine ten
+911	nine eleven
+912	nine twelve
+913	nine thirteen
+914	nine fourteen
+915	nine fifteen
+916	nine sixteen
+917	nine seventeen
+918	nine eighteen
+919	nine nineteen
+920	nine twenty
+921	nine twenty one
+922	nine twenty two
+923	nine twenty three
+924	nine twenty four
+925	nine twenty five
+926	nine twenty six
+927	nine twenty seven
+928	nine twenty eight
+929	nine twenty nine
+930	nine thirty
+931	nine thirty one
+932	nine thirty two
+933	nine thirty three
+934	nine thirty four
+935	nine thirty five
+936	nine thirty six
+937	nine thirty seven
+938	nine thirty eight
+939	nine thirty nine
+940	nine forty
+941	nine forty one
+942	nine forty two
+943	nine forty three
+944	nine forty four
+945	nine forty five
+946	nine forty six
+947	nine forty seven
+948	nine forty eight
+949	nine forty nine
+950	nine fifty
+951	nine fifty one
+952	nine fifty two
+953	nine fifty three
+954	nine fifty four
+955	nine fifty five
+956	nine fifty six
+957	nine fifty seven
+958	nine fifty eight
+959	nine fifty nine
+960	nine sixty
+961	nine sixty one
+962	nine sixty two
+963	nine sixty three
+964	nine sixty four
+965	nine sixty five
+966	nine sixty six
+967	nine sixty seven
+968	nine sixty eight
+969	nine sixty nine
+970	nine seventy
+971	nine seventy one
+972	nine seventy two
+973	nine seventy three
+974	nine seventy four
+975	nine seventy five
+976	nine seventy six
+977	nine seventy seven
+978	nine seventy eight
+979	nine seventy nine
+980	nine eighty
+981	nine eighty one
+982	nine eighty two
+983	nine eighty three
+984	nine eighty four
+985	nine eighty five
+986	nine eighty six
+987	nine eighty seven
+988	nine eighty eight
+989	nine eighty nine
+990	nine ninety
+991	nine ninety one
+992	nine ninety two
+993	nine ninety three
+994	nine ninety four
+995	nine ninety five
+996	nine ninety six
+997	nine ninety seven
+998	nine ninety eight
+999	nine ninety nine

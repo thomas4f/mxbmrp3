@@ -110,9 +110,8 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("rumble");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeader("Appearance");
+    ctx.addSectionHeading("Appearance");
     ctx.addStandardHudControls(hud);
-    ctx.addSpacing(0.5f);
 
     // Global config for master settings (enabled, blend, crashed, profile mode)
     const RumbleConfig& globalConfig = XInputReader::getInstance().getGlobalRumbleConfig();
@@ -121,10 +120,10 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
     float cw = PluginUtils::calculateMonospaceTextWidth(1, ctx.fontSize);
     ColorConfig& colors = ColorConfig::getInstance();
     // panelWidth is actually contentAreaWidth (from contentAreaStartX to right edge)
-    float rowWidth = ctx.panelWidth - (ctx.labelX - ctx.contentAreaStartX);
+    float rowWidth = ctx.rowSpanWidth();
 
     // === RUMBLE SECTION ===
-    ctx.addSectionHeader("Rumble");
+    ctx.addSectionHeading("Rumble");
 
     // Master rumble enable (always from global config)
     ctx.addToggleControl("Enabled", globalConfig.enabled,
@@ -145,8 +144,7 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
         globalConfig.usePerBikeEffects ? "Per-Bike" : "Global");
 
     // === EFFECTS SECTION ===
-    ctx.addSpacing(0.5f);
-    ctx.addSectionHeader("Effects");
+    ctx.addSectionHeading("Effects");
 
     // Table header - columns: [gutter] Effect | Light | Heavy | Min | Max
     // The gutter holds the [+]/[-] split disclosure on splittable effects (Bumps, Lockup).
@@ -442,11 +440,7 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
             1.39f, 200.0f, true, surfaceUnit, surfaceFactor, "rumble.surface");
     }
 
-    // Info text
-    ctx.currentY += ctx.lineHeightNormal * 0.5f;
-    ctx.parent->addString("Select your controller in the General tab.", ctx.labelX, ctx.currentY,
-        PluginConstants::Justify::LEFT, PluginConstants::Fonts::getNormal(),
-        colors.getMuted(), ctx.fontSize * 0.9f);
+    ctx.addNote("Tip: select your controller in the General tab.");
 
     return hud;
 }

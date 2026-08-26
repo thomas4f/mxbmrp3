@@ -12,6 +12,7 @@
 #include "plugin_data.h"
 #include "plugin_manager.h"
 #include "settings_manager.h"
+#include "spotter_manager.h"
 #include "director_manager.h"
 #include "profile_manager.h"
 #include "ui_config.h"
@@ -23,11 +24,13 @@
 #include "../hud/lap_log_hud.h"
 #include "../hud/friends_hud.h"
 #include "../hud/time_widget.h"
+#include "../hud/spotter_widget.h"
 #include "../hud/position_widget.h"
 #include "../hud/lap_widget.h"
 #include "../hud/session_hud.h"
 #include "../hud/speed_widget.h"
 #include "../hud/gear_widget.h"
+#include "../hud/crash_widget.h"
 #include "../hud/speedo_widget.h"
 #include "../hud/tacho_widget.h"
 #include "../hud/timing_hud.h"
@@ -132,215 +135,72 @@ void HudManager::initialize() {
     // Helmet overlay registered FIRST so it draws behind all other HUDs/widgets.
     // This way HUD elements (speed, gear, lap, etc.) are always readable on top
     // of the helmet frame and visor tint, rather than being obscured by them.
-    auto helmetOverlayPtr = std::make_unique<HelmetOverlayHud>();
-    m_pHelmetOverlay = helmetOverlayPtr.get();
-    registerHud(std::move(helmetOverlayPtr));
-
-    auto standingsPtr = std::make_unique<StandingsHud>();
-    m_pStandings = standingsPtr.get();
-    m_pStandings->setTextureBaseName("standings_hud");
-    registerHud(std::move(standingsPtr));
-
-    auto mapPtr = std::make_unique<MapHud>();
-    m_pMapHud = mapPtr.get();
-    m_pMapHud->setTextureBaseName("map_hud");
-    registerHud(std::move(mapPtr));
-
-    auto radarPtr = std::make_unique<RadarHud>();
-    m_pRadarHud = radarPtr.get();
-    m_pRadarHud->setTextureBaseName("radar_hud");
-    registerHud(std::move(radarPtr));
-
-    auto lapLogPtr = std::make_unique<LapLogHud>();
-    m_pLapLog = lapLogPtr.get();
-    m_pLapLog->setTextureBaseName("lap_log_hud");
-    registerHud(std::move(lapLogPtr));
-
+    createHud(m_pHelmetOverlay, "helmet_overlay");
+    createHud(m_pStandings, "standings_hud");
+    createHud(m_pMapHud, "map_hud");
+    createHud(m_pRadarHud, "radar_hud");
+    createHud(m_pLapLog, "lap_log_hud");
 #if GAME_HAS_STEAM_FRIENDS
-    auto friendsPtr = std::make_unique<FriendsHud>();
-    m_pFriends = friendsPtr.get();
-    m_pFriends->setTextureBaseName("friends_hud");
-    registerHud(std::move(friendsPtr));
+    createHud(m_pFriends, "friends_hud");
 #endif
-
-    auto idealLapPtr = std::make_unique<IdealLapHud>();
-    m_pIdealLap = idealLapPtr.get();
-    m_pIdealLap->setTextureBaseName("ideal_lap_hud");
-    registerHud(std::move(idealLapPtr));
-
-    auto telemetryPtr = std::make_unique<TelemetryHud>();
-    m_pTelemetry = telemetryPtr.get();
-    m_pTelemetry->setTextureBaseName("telemetry_hud");
-    registerHud(std::move(telemetryPtr));
-
-    auto performancePtr = std::make_unique<PerformanceHud>();
-    m_pPerformance = performancePtr.get();
-    m_pPerformance->setTextureBaseName("performance_hud");
-    registerHud(std::move(performancePtr));
-
-    auto pitboardPtr = std::make_unique<PitboardHud>();
-    m_pPitboard = pitboardPtr.get();
-    m_pPitboard->setTextureBaseName("pitboard_hud");
-    registerHud(std::move(pitboardPtr));
-
+    createHud(m_pIdealLap, "ideal_lap_hud");
+    createHud(m_pTelemetry, "telemetry_hud");
+    createHud(m_pPerformance, "performance_hud");
+    // Pitboard and Gamepad declare no texture stem in their constructors: their
+    // background is a PACK (art + the geometry that places content on it), resolved
+    // by name through AssetManager rather than through the texture-variant machinery.
+    createHud(m_pPitboard, "pitboard_hud");
 #if GAME_HAS_RECORDS_PROVIDER
-    auto recordsPtr = std::make_unique<RecordsHud>();
-    m_pRecords = recordsPtr.get();
-    m_pRecords->setTextureBaseName("records_hud");
-    registerHud(std::move(recordsPtr));
+    createHud(m_pRecords, "records_hud");
 #endif
-
-    auto sessionChartsPtr = std::make_unique<SessionChartsHud>();
-    m_pSessionCharts = sessionChartsPtr.get();
-    m_pSessionCharts->setTextureBaseName("session_charts_hud");
-    registerHud(std::move(sessionChartsPtr));
-
+    createHud(m_pSessionCharts, "session_charts_hud");
 #if GAME_HAS_FMX
-    auto fmxPtr = std::make_unique<FmxHud>();
-    m_pFmxHud = fmxPtr.get();
-    m_pFmxHud->setTextureBaseName("fmx_hud");
-    registerHud(std::move(fmxPtr));
+    createHud(m_pFmxHud, "fmx_hud");
 #endif
-
-    auto statsPtr = std::make_unique<StatsHud>();
-    m_pStatsHud = statsPtr.get();
-    m_pStatsHud->setTextureBaseName("stats_hud");
-    registerHud(std::move(statsPtr));
-
-    auto eventLogPtr = std::make_unique<EventLogHud>();
-    m_pEventLog = eventLogPtr.get();
-    registerHud(std::move(eventLogPtr));
+    createHud(m_pStatsHud, "stats_hud");
+    createHud(m_pEventLog, "event_log_hud");
 
     // Benchmark Widget (always created, but only accessible via settings when developer mode is on)
     // Note: Must be created unconditionally because isDeveloperMode() returns false here -
     // settings are loaded later in initialize(). The settings tab gates access at render time.
-    {
-        auto benchmarkPtr = std::make_unique<BenchmarkWidget>();
-        m_pBenchmark = benchmarkPtr.get();
-        registerHud(std::move(benchmarkPtr));
-    }
+    createHud(m_pBenchmark, "benchmark_widget");
 
     // Widgets
-    auto lapPtr = std::make_unique<LapWidget>();
-    m_pLap = lapPtr.get();
-    m_pLap->setTextureBaseName("lap_widget");
-    registerHud(std::move(lapPtr));
-
-    auto positionPtr = std::make_unique<PositionWidget>();
-    m_pPosition = positionPtr.get();
-    m_pPosition->setTextureBaseName("position_widget");
-    registerHud(std::move(positionPtr));
-
-    auto timePtr = std::make_unique<TimeWidget>();
-    m_pTime = timePtr.get();
-    m_pTime->setTextureBaseName("time_widget");
-    registerHud(std::move(timePtr));
-
-    auto sessionPtr = std::make_unique<SessionHud>();
-    m_pSession = sessionPtr.get();
-    m_pSession->setTextureBaseName("session_widget");  // Keep same texture for backwards compatibility
-    registerHud(std::move(sessionPtr));
-
-    auto speedPtr = std::make_unique<SpeedWidget>();
-    m_pSpeed = speedPtr.get();
-    m_pSpeed->setTextureBaseName("speed_widget");
-    registerHud(std::move(speedPtr));
-
-    auto gearPtr = std::make_unique<GearWidget>();
-    m_pGear = gearPtr.get();
-    m_pGear->setTextureBaseName("gear_widget");
-    registerHud(std::move(gearPtr));
-
-    auto speedoPtr = std::make_unique<SpeedoWidget>();
-    m_pSpeedo = speedoPtr.get();
-    m_pSpeedo->setTextureBaseName("speedo_widget");
-    registerHud(std::move(speedoPtr));
-
-    auto tachoPtr = std::make_unique<TachoWidget>();
-    m_pTacho = tachoPtr.get();
-    m_pTacho->setTextureBaseName("tacho_widget");
-    registerHud(std::move(tachoPtr));
-
-    auto timingPtr = std::make_unique<TimingHud>();
-    m_pTiming = timingPtr.get();
-    m_pTiming->setTextureBaseName("timing_hud");
-    registerHud(std::move(timingPtr));
-
-    auto gapBarPtr = std::make_unique<GapBarHud>();
-    m_pGapBar = gapBarPtr.get();
-    m_pGapBar->setTextureBaseName("gap_bar_hud");
-    registerHud(std::move(gapBarPtr));
-
-    auto barsPtr = std::make_unique<BarsWidget>();
-    m_pBars = barsPtr.get();
-    m_pBars->setTextureBaseName("bars_widget");
-    registerHud(std::move(barsPtr));
-
-    auto versionPtr = std::make_unique<VersionWidget>();
-    m_pVersion = versionPtr.get();
-    registerHud(std::move(versionPtr));
-
-    auto noticesPtr = std::make_unique<NoticesHud>();
-    m_pNotices = noticesPtr.get();
-    registerHud(std::move(noticesPtr));
-
-    auto fuelPtr = std::make_unique<FuelWidget>();
-    m_pFuel = fuelPtr.get();
-    m_pFuel->setTextureBaseName("fuel_widget");
-    registerHud(std::move(fuelPtr));
-
-    auto rumblePtr = std::make_unique<RumbleHud>();
-    m_pRumble = rumblePtr.get();
-    m_pRumble->setTextureBaseName("rumble_hud");
-    registerHud(std::move(rumblePtr));
-
-    auto directorWidgetPtr = std::make_unique<DirectorWidget>();
-    m_pDirector = directorWidgetPtr.get();
-    registerHud(std::move(directorWidgetPtr));
-
-    auto gamepadPtr = std::make_unique<GamepadWidget>();
-    m_pGamepad = gamepadPtr.get();
-    m_pGamepad->setTextureBaseName("gamepad_widget");
-    registerHud(std::move(gamepadPtr));
-
-    auto leanPtr = std::make_unique<LeanWidget>();
-    m_pLean = leanPtr.get();
-    m_pLean->setTextureBaseName("lean_widget");
-    registerHud(std::move(leanPtr));
-
-    auto gforcePtr = std::make_unique<GForceWidget>();
-    m_pGforce = gforcePtr.get();
-    m_pGforce->setTextureBaseName("gforce_widget");
-    registerHud(std::move(gforcePtr));
-
-    auto compassPtr = std::make_unique<CompassWidget>();
-    m_pCompass = compassPtr.get();
-    m_pCompass->setTextureBaseName("compass_widget");
-    registerHud(std::move(compassPtr));
-
-    auto clockPtr = std::make_unique<ClockWidget>();
-    m_pClock = clockPtr.get();
-    m_pClock->setTextureBaseName("clock_widget");
-    registerHud(std::move(clockPtr));
-
+    createHud(m_pLap, "lap_widget");
+    createHud(m_pPosition, "position_widget");
+    createHud(m_pTime, "time_widget");
+    createHud(m_pSession, "session_widget");  // Keep same texture for backwards compatibility
+    createHud(m_pSpeed, "speed_widget");
+    createHud(m_pGear, "gear_widget");
+    createHud(m_pCrash, "crash_widget");
+    createHud(m_pSpeedo, "speedo_widget");
+    createHud(m_pTacho, "tacho_widget");
+    createHud(m_pTiming, "timing_hud");
+    createHud(m_pGapBar, "gap_bar_hud");
+    createHud(m_pBars, "bars_widget");
+    createHud(m_pVersion, "version_widget");
+    createHud(m_pNotices, "notices_hud");
+    createHud(m_pSpotter, "spotter_widget");  // spotter subtitle; content-gated on [Spotter] settings
+    createHud(m_pFuel, "fuel_widget");
+    createHud(m_pRumble, "rumble_hud");
+    createHud(m_pDirector, "director_widget");
+    createHud(m_pGamepad, "gamepad_widget");
+    createHud(m_pLean, "lean_widget");
+    createHud(m_pGforce, "gforce_widget");
+    createHud(m_pCompass, "compass_widget");
+    createHud(m_pClock, "clock_widget");
 #if GAME_HAS_TYRE_TEMP
-    auto tyreTempPtr = std::make_unique<TyreTempWidget>();
-    m_pTyreTemp = tyreTempPtr.get();
-    m_pTyreTemp->setTextureBaseName("tyre_temp_widget");
-    registerHud(std::move(tyreTempPtr));
+    createHud(m_pTyreTemp, "tyre_temp_widget");
 #endif
-
 #if GAME_HAS_ECU
-    auto ecuPtr = std::make_unique<EcuWidget>();
-    m_pEcu = ecuPtr.get();
-    m_pEcu->setTextureBaseName("ecu_widget");
-    registerHud(std::move(ecuPtr));
+    createHud(m_pEcu, "ecu_widget");
 #endif
 
     // Create PointerWidget early so it can be passed to SettingsHud
     // (will be registered last to render on top)
     auto pointerPtr = std::make_unique<PointerWidget>();
     m_pPointer = pointerPtr.get();
+    bindHudSlot(m_pPointer);
 
     // Register SettingsHud with pointers to all configurable HUDs and widgets
 #if GAME_HAS_RECORDS_PROVIDER
@@ -353,9 +213,10 @@ void HudManager::initialize() {
     // keeps its existing draw order (above SettingsHud, below the pointer).
     auto settingsButtonPtr = std::make_unique<SettingsButtonWidget>();
     m_pSettingsButton = settingsButtonPtr.get();
+    bindHudSlot(m_pSettingsButton);
 
     auto settingsPtr = std::make_unique<SettingsHud>(m_pIdealLap, m_pLapLog, m_pFriends, m_pSessionCharts, m_pStandings,
-                                                       m_pPerformance, m_pTelemetry, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pGear, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, recordsHudPtr, m_pFuel, m_pPointer, m_pRumble, m_pGamepad, m_pLean, m_pGforce, m_pCompass,
+                                                       m_pPerformance, m_pTelemetry, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pGear, m_pCrash, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, recordsHudPtr, m_pFuel, m_pPointer, m_pRumble, m_pGamepad, m_pLean, m_pGforce, m_pCompass,
                                                        m_pFmxHud,
                                                        m_pStatsHud,
                                                        m_pEventLog,
@@ -370,42 +231,40 @@ void HudManager::initialize() {
 #endif
                                                        );
     m_pSettingsHud = settingsPtr.get();
-    registerHud(std::move(settingsPtr));
+    bindHudSlot(m_pSettingsHud);
+    registerHud(std::move(settingsPtr), "settings_hud");
 
     // Register SettingsButtonWidget - draggable button to toggle settings
     // (created earlier so SettingsHud could reference it; registered here for draw order)
-    registerHud(std::move(settingsButtonPtr));
+    registerHud(std::move(settingsButtonPtr), "settings_button");
 
     // Register PointerWidget last so it renders on top of everything
-    registerHud(std::move(pointerPtr));
+    registerHud(std::move(pointerPtr), "pointer_widget");
 
     // Register all HUDs for benchmark profiling (developer mode only)
     if (m_pBenchmark) {
         auto& bm = PluginData::getInstance().getBenchmarkMetrics();
         for (auto& hud : m_huds) {
             if (hud && hud.get() != m_pBenchmark) {
-                const std::string& baseName = hud->getTextureBaseName();
-                const char* name;
-                if (!baseName.empty()) {
-                    name = baseName.c_str();
-                } else if (hud.get() == m_pVersion) {
-                    name = "version_widget";
-                } else if (hud.get() == m_pSettingsHud) {
-                    name = "settings_hud";
-                } else if (hud.get() == m_pSettingsButton) {
-                    name = "settings_button";
-                } else if (hud.get() == m_pPointer) {
-                    name = "pointer_widget";
-                } else if (hud.get() == m_pHelmetOverlay) {
-                    name = "helmet_overlay";
-                } else if (hud.get() == m_pDirector) {
-                    // The only registered HUD with no texture base name, so without this
-                    // it profiles as "unknown" — unidentifiable in every report.
-                    name = "director_widget";
-                } else {
-                    name = "unknown";
-                }
+                // The registration name, which every element has by construction.
+                // This was an if-else ladder: texture base name, else one of eight
+                // `hud.get() == m_pX` special cases, else the literal "unknown".
+                // Every element it could reach had a name, so the "unknown" arm was
+                // in fact unreachable and one special case (pointer) was redundant
+                // with the base name it already had -- the ladder was dead weight and
+                // a drift risk rather than a source of wrong rows. It mattered that
+                // it drift: bm.registerHud does not dedupe, and
+                // tools/benchmark_report.py keys its table on this string, so two
+                // elements answering to one name would silently merge.
+                const char* name = hud->getHarnessId();
                 int idx = bm.registerHud(name);
+                // -1 means the registry is FULL, not that this HUD opted out -- and
+                // the two are indistinguishable downstream, which is how ten panels
+                // went unprofiled without a word. Say so.
+                if (idx < 0) {
+                    DEBUG_ERROR_F("Benchmark registry full (MAX_HUDS=%d); '%s' will not be profiled",
+                                  BenchmarkMetrics::MAX_HUDS, name);
+                }
                 hud->setBenchmarkIndex(idx);
             }
         }
@@ -413,6 +272,14 @@ void HudManager::initialize() {
 
     // Load settings from disk (must happen after HUD registration)
     SettingsManager::getInstance().loadSettings(*this, PluginManager::getInstance().getSavePath());
+
+    // Load the spotter's cue pack for whatever name survived the settings
+    // load. A `pack=` INI line already loaded it (this re-read is a cheap
+    // no-op then), but a FRESH INSTALL has no [Spotter] section, and the
+    // default pack name must still resolve to its files — the shipped packs
+    // are what keep the spotter audible where SAPI TTS doesn't exist
+    // (Wine/Proton players).
+    SpotterManager::getInstance().reloadCuePack();
 
     // NOTE: Individual HUD scaling is available via setScale() method.
     // For grid-aligned edges, use scales where (WIDTH_CHARS × scale) = integer:
@@ -479,57 +346,16 @@ void HudManager::clear(bool allowCrossSingleton) {
     }
 #endif
 
-    // Reset cached HUD pointers BEFORE destroying the objects
-    // This prevents any dangling pointer window (defensive programming)
-    m_pIdealLap = nullptr;
-    m_pLapLog = nullptr;
-    m_pFriends = nullptr;
-    m_pStandings = nullptr;
-    m_pPerformance = nullptr;
-    m_pTelemetry = nullptr;
-    m_pTime = nullptr;
-    m_pPosition = nullptr;
-    m_pLap = nullptr;
-    m_pSession = nullptr;
-    m_pMapHud = nullptr;
-    m_pRadarHud = nullptr;
-    m_pSpeed = nullptr;
-    m_pGear = nullptr;
-    m_pSpeedo = nullptr;
-    m_pTacho = nullptr;
-    m_pTiming = nullptr;
-    m_pGapBar = nullptr;
-    m_pBars = nullptr;
-    m_pVersion = nullptr;
-    m_pNotices = nullptr;
-    m_pPitboard = nullptr;
-#if GAME_HAS_RECORDS_PROVIDER
-    m_pRecords = nullptr;
-#endif
-    m_pFuel = nullptr;
-    m_pRumble = nullptr;
-    m_pDirector = nullptr;
-    m_pGamepad = nullptr;
-    m_pLean = nullptr;
-    m_pGforce = nullptr;
-    m_pCompass = nullptr;
-    m_pClock = nullptr;
-#if GAME_HAS_TYRE_TEMP
-    m_pTyreTemp = nullptr;
-#endif
-#if GAME_HAS_ECU
-    m_pEcu = nullptr;
-#endif
-    m_pSessionCharts = nullptr;
-    m_pHelmetOverlay = nullptr;
-    m_pStatsHud = nullptr;
-    m_pFmxHud = nullptr;
-    m_pEventLog = nullptr;
-    m_pBenchmark = nullptr;
-    m_pSettingsHud = nullptr;
-    m_pSettingsButton = nullptr;
-    m_pPointer = nullptr;
-    m_pDraggingHud = nullptr;
+    // Reset cached HUD pointers BEFORE destroying the objects, to prevent any
+    // dangling pointer window. Every typed cache pointer was enrolled here by
+    // createHud()/bindHudSlot() at registration, so a HUD added tomorrow is
+    // covered without touching this function — the hand-maintained null list
+    // this replaces had to be kept in sync by review alone.
+    for (auto& clearSlot : m_hudSlotClearers) {
+        clearSlot();
+    }
+    m_hudSlotClearers.clear();
+    m_pDraggingHud = nullptr;  // transient drag state, not a registered HUD slot
 
     // Now safe to destroy HUD objects
     m_huds.clear();
@@ -606,14 +432,40 @@ int HudManager::initializeResources(int* piNumSprites, char** pszSpriteName, int
     return 0;
 }
 
-void HudManager::registerHud(std::unique_ptr<BaseHud> hud) {
+int HudManager::profilableHudCount() const {
+    int n = 0;
+    for (const auto& h : m_huds) {
+        if (h && h.get() != static_cast<const BaseHud*>(m_pBenchmark)) ++n;
+    }
+    return n;
+}
+
+void HudManager::registerHud(std::unique_ptr<BaseHud> hud, const char* harnessId) {
     if (hud) {
+        hud->setHarnessId(harnessId);
         m_huds.push_back(std::move(hud));
-        DEBUG_INFO_F("HUD registered, total HUDs: %zu", m_huds.size());
+        DEBUG_INFO_F("HUD '%s' registered, total HUDs: %zu", harnessId, m_huds.size());
     }
 }
 
 #if defined(MXBMRP3_TEST_BUILD)
+void HudManager::testInstallSpriteTable(int count) {
+    m_spriteNames.clear();
+    for (int i = 1; i <= count; ++i) m_spriteNames.push_back("test_sprite_" + std::to_string(i));
+}
+
+void HudManager::testLastFrameSpriteSpan(int& minSprite, int& maxSprite,
+                                         int& untexturedCount) const {
+    minSprite = 0;
+    maxSprite = 0;
+    untexturedCount = 0;
+    for (const SPluginQuad_t& q : m_quads) {
+        if (q.m_iSprite <= 0) { ++untexturedCount; continue; }
+        if (minSprite == 0 || q.m_iSprite < minSprite) minSprite = q.m_iSprite;
+        if (q.m_iSprite > maxSprite) maxSprite = q.m_iSprite;
+    }
+}
+
 void HudManager::testSetAllHudsVisible(bool visible) {
     for (auto& hud : m_huds) {
         if (!hud) continue;
@@ -711,8 +563,13 @@ void HudManager::setupDefaultResources() {
 
     const AssetManager& assetMgr = AssetManager::getInstance();
 
-    // Pre-allocate based on expected counts
-    size_t expectedSprites = assetMgr.getTotalTextureSprites() + assetMgr.getIconCount();
+    // Pre-allocate based on expected counts (3-11 sprites per theme, see ThemeAsset)
+    size_t expectedThemeSprites = 0;
+    for (const auto& theme : assetMgr.getThemes()) expectedThemeSprites += theme.spriteFiles.size();
+    size_t expectedSprites = assetMgr.getTotalTextureSprites() + assetMgr.getIconCount()
+                           + expectedThemeSprites
+                           + assetMgr.getGamepadCount() * GamepadSprite::COUNT
+                           + assetMgr.getPitboardCount() * PitboardSprite::COUNT;
     m_spriteNames.reserve(expectedSprites);
     m_fontNames.reserve(assetMgr.getFontCount());
 
@@ -736,6 +593,51 @@ void HudManager::setupDefaultResources() {
     }
 
     DEBUG_INFO_F("Added %zu icon sprites", iconCount);
+
+    // Add theme sprites LAST, in the same corner/edge/center order discoverThemes()
+    // assigned indices in -- the ThemeAsset indices are absolute positions in this
+    // array, so the two orders must not diverge.
+    size_t themeSprites = 0;
+    for (const auto& theme : assetMgr.getThemes()) {
+        for (const std::string& stem : theme.spriteFiles) {
+            m_spriteNames.push_back(assetMgr.getThemePath(theme.name, stem.c_str()));
+            ++themeSprites;
+        }
+    }
+
+    DEBUG_INFO_F("Added %zu theme sprites from %zu themes",
+        themeSprites, assetMgr.getThemeCount());
+
+    // Gamepad packs LAST, walking GamepadSprite::kStems in the same order
+    // discoverGamepads() handed out indices in. Unlike the theme block above there
+    // is no per-pack file list to keep in step: both sides iterate the one table,
+    // so "this pack draws another pack's sprites" is not expressible here.
+    for (const GamepadAsset& pad : assetMgr.getGamepads()) {
+        for (int i = 0; i < GamepadSprite::COUNT; ++i) {
+            // A skin's missing stems resolve to its base pack's files -- the
+            // per-stem decision discovery recorded, replayed here so the file
+            // list matches exactly what was accepted.
+            m_spriteNames.push_back(assetMgr.getGamepadPath(
+                pad.spriteFromBase[i] ? pad.baseName : pad.name,
+                GamepadSprite::kStems[i]));
+        }
+    }
+
+    DEBUG_INFO_F("Added %zu gamepad sprites from %zu packs",
+        assetMgr.getGamepadCount() * GamepadSprite::COUNT, assetMgr.getGamepadCount());
+
+    // Pit board packs after the pads, walking PitboardSprite::kStems in the order
+    // discoverPitboards() assigned indices in -- same one-table rule.
+    for (const PitboardAsset& board : assetMgr.getPitboards()) {
+        for (int i = 0; i < PitboardSprite::COUNT; ++i) {
+            m_spriteNames.push_back(assetMgr.getPitboardPath(
+                board.spriteFromBase[i] ? board.baseName : board.name,
+                PitboardSprite::kStems[i]));
+        }
+    }
+
+    DEBUG_INFO_F("Added %zu pitboard sprites from %zu packs",
+        assetMgr.getPitboardCount() * PitboardSprite::COUNT, assetMgr.getPitboardCount());
 
     // Add fonts from AssetManager (discovered dynamically)
     size_t fontCount = assetMgr.getFontCount();

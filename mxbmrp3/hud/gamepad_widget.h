@@ -5,10 +5,12 @@
 #pragma once
 
 #include "base_hud.h"
+#include "gamepad_geometry.h"
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
 #include "../core/xinput_reader.h"   // XInputData (rebuild-gate snapshot)
-#include <map>
+#include "../core/asset_manager.h"   // GamepadAsset, GamepadSprite
+#include <string>
 
 class GamepadWidget : public BaseHud {
 public:
@@ -19,51 +21,25 @@ public:
     bool handlesDataType(DataChangeType dataType) const override;
     void resetToDefaults();
 
-    // Per-variant layout configuration
-    // Stored in .ini as [GamepadWidget_Layout_N] sections
-    struct LayoutConfig {
-        // Reference background dimensions (texture aspect ratio)
-        // Defaults match variant 1 (Xbox); initDefaultLayouts() sets per-variant values
-        float backgroundWidth = 750.0f;
-        float backgroundHeight = 630.0f;
+    // THE SELECTED PAD, BY NAME. Not by index: an index into discovery order
+    // reassigns every user's pad the moment a pack is added, removed or renamed,
+    // which is the rule icon overrides and themes already follow.
+    //
+    // An unknown name degrades to the shipped default rather than to "no pad" --
+    // a user who removes a pack should see a controller, not an empty panel, and
+    // their setting is left untouched so restoring the folder restores the choice.
+    const std::string& getGamepadPack() const { return m_gamepadPack; }
+    void setGamepadPack(const std::string& name);
 
-        // Texture dimensions (on backgroundWidth reference)
-        float triggerWidth = 89.0f, triggerHeight = 61.0f;
-        float bumperWidth = 171.0f, bumperHeight = 63.0f;
-        float dpadWidth = 34.0f, dpadHeight = 56.0f;
-        float faceButtonSize = 53.0f;  // Square buttons
-        float menuButtonWidth = 33.0f, menuButtonHeight = 33.0f;  // Can be non-square
-        float stickSize = 83.0f;
+    // The pack actually in use once the name has been resolved; nullptr only when
+    // no packs are installed at all.
+    const GamepadAsset* activePack() const;
 
-        // Position offsets (applied after base layout calculation)
-        float leftTriggerX = 0.0f, leftTriggerY = 0.0f;
-        float rightTriggerX = 0.0f, rightTriggerY = 0.0f;
-        float leftBumperX = 0.0f, leftBumperY = 0.0f;
-        float rightBumperX = 0.0f, rightBumperY = 0.0f;
-        float leftStickX = 0.0f, leftStickY = 0.0f;
-        float rightStickX = 0.0f, rightStickY = 0.0f;
-        float dpadX = 0.0f, dpadY = 0.0f;
-        float faceButtonsX = 0.0f, faceButtonsY = 0.0f;
-        float menuButtonsX = 0.0f, menuButtonsY = 0.0f;
-
-        // Spacing multipliers (1.0 = neutral default)
-        float dpadSpacing = 1.0f;
-        float faceButtonSpacing = 1.0f;
-        float menuButtonSpacing = 1.0f;
-
-        // Trigger display mode: 0=fade (texture brightness), 1=fill (quad from bottom)
-        int triggerFillMode = 0;
-    };
-
-    // Get layout for a specific variant (creates default if not exists)
-    LayoutConfig& getLayout(int variant);
-    const LayoutConfig& getCurrentLayout() const;
-
-    // Get layout for a specific variant if it exists (const-safe, returns nullptr if not found)
-    const LayoutConfig* getLayoutIfExists(int variant) const {
-        auto it = m_layouts.find(variant);
-        return (it != m_layouts.end()) ? &it->second : nullptr;
-    }
+    // Trigger display: 0 = fade (texture brightness), 1 = fill (quad from bottom).
+    // A viewing preference, not pad art -- it stays a widget setting rather than
+    // moving into the pack ini, which describes the controller and nothing else.
+    int getTriggerFillMode() const { return m_triggerFillMode; }
+    void setTriggerFillMode(int mode) { m_triggerFillMode = mode; }
 
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;
@@ -71,6 +47,11 @@ public:
 
 private:
     void rebuildRenderData() override;
+
+    // Sprite index for one part of the ACTIVE pack, or 0 when no pack resolves (in
+    // which case every draw helper falls back to its solid-colour shape). Every
+    // helper goes through this rather than resolving the pack itself.
+    int packSprite(GamepadSprite::Part part) const;
 
     // Last controller state that was actually rendered — the rebuild gate (see
     // update()). POD snapshot compared bytewise; both copies originate from the
@@ -82,7 +63,7 @@ private:
     // isPressed = L3/R3 click state for coloring the stick sprite
     void addStick(float centerX, float centerY, float stickX, float stickY,
                   float width, float height, float backgroundWidth,
-                  const LayoutConfig& layout, bool isPressed);
+                  const GamepadLayout::PadGeometry& layout, bool isPressed);
 
     // Helper to add a face button with sprite texture (A/B/X/Y)
     void addFaceButton(float centerX, float centerY, float size, bool isPressed, const char* label);
@@ -107,7 +88,7 @@ private:
     // Layout constants
     static constexpr float START_X = 0.0f;
     static constexpr float START_Y = 0.0f;
-    static constexpr int BACKGROUND_WIDTH_CHARS = 43;
+    static constexpr int BACKGROUND_WIDTH_CHARS = GamepadLayout::kFrameChars;
 
     // Stick area dimensions
     static constexpr float STICK_HEIGHT_LINES = 6.0f;  // Height in text lines
@@ -120,10 +101,9 @@ private:
     static constexpr unsigned long COLOR_MENUBTN = PluginUtils::makeColor(140, 140, 140);   // Gray
     static constexpr unsigned long COLOR_INACTIVE = PluginUtils::makeColor(60, 60, 60);     // Dark gray
 
-    // Per-variant layouts (indexed by texture variant number)
-    // Variant 0 means "no texture", variants 1+ correspond to gamepad_widget_N.tga
-    std::map<int, LayoutConfig> m_layouts;
+    // Selected pack, by directory name. Resolved through activePack() at every use
+    // so a pack removed between sessions degrades rather than dangling.
+    std::string m_gamepadPack;
 
-    // Initialize default layouts for known variants
-    void initDefaultLayouts();
+    int m_triggerFillMode = 0;
 };

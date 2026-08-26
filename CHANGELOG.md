@@ -20,6 +20,82 @@ Changelog's categories.
 
 ## [Unreleased]
 
+## [1.29.1] - 2026-08-26
+
+A spotter in your ear, panel themes for every HUD, and artwork that travels:
+the gamepad, the pit board and the spotter's voice all become shareable packs.
+
+### Added
+- Spotter (beta): spoken race callouts while you ride - position, gaps,
+  hazards and more, in any Windows voice or a recorded voice pack (separate
+  download). Off by default; turn it on under Settings > Spotter. Every line
+  is an editable file, subtitles are optional, and it follows whoever you are
+  watching in spectate and replay
+- Panel themes: a frame, header band and body card around every HUD and the
+  settings menu. Two ship, Carbon dark and light - pick one under
+  Settings > Appearance, or run with none. Anything you set yourself still
+  wins, and any single HUD can use its own theme or opt out
+- Gamepad and pit board packs: artwork and the measurements that place it
+  travel together, so a pad or board you make can be shared. Two gamepads
+  (Xbox, DualShock 4) and the Classic pit board ship, each with nine
+  brand-colour skins
+- Timing HUD: a second section of readouts - position, lap, time left, session
+  format, fuel laps left, server and track
+- Crashes widget: a large crash tally counting across sessions, servers and
+  restarts until you reset it
+- Standings can show each rider's last lap time as a column
+- `uiFontSize` and `uiLineHeight` under `[Advanced]`: scale the whole
+  interface, or give every row more air
+- About page, opened from the settings footer; the Ko-fi link moves there
+- The map keeps pointing at the track when you ride off it, instead of losing
+  your marker
+- A browser page that repairs MX Bikes trainer files the game corrupts at save
+  time. Nothing to install (`tools/trnfix`)
+
+### Changed
+- The settings menu points out what is new: a "New" tag on a tab, and the row
+  itself picked out until you hover it
+- Text drop shadows are off by default - every shadowed string is a second
+  draw. Turn them back on under Settings > Appearance
+- Your gamepad and pit board are remembered by NAME, not texture number, so
+  adding a pack never hands you a different one; existing settings convert on
+  first load
+- Panels land on the layout grid and captions share one height, so HUDs beside
+  each other line up
+- The Texture setting no longer offers "Off" on the gamepad, pit board, radar,
+  speedo and tacho - there the artwork *is* the widget. Hide the widget instead
+- The settings tab list is grouped under headings, and Reset is two buttons -
+  Profile and Everything
+- Reload Config re-reads themes and packs; new artwork reaches the game on the
+  next launch
+- Faster: cheaper panel layout, fewer quads submitted, and no companion redraw
+  of an unchanged picture
+- The log records what the spotter said, so a bad callout can be reported with
+  its context
+- Updated the embedded web-overlay HTTP server library
+- Analytics now records which panel theme and spotter pack are in use (shipped
+  names only)
+- The reference half of the README moved into `docs/`, and both licence files
+  now ship with the plugin
+- Settings files are upgraded on first read by 1.29.1; going back to 1.28.0
+  afterwards is not supported
+
+### Fixed
+- The winner crossing the line raised blue flags for the riders still racing
+- The Fuel widget trusting your grid-inflated first lap when it was the only
+  sample
+- A crash when cycling spotter voices quickly
+- A third-party voice engine crashing no longer takes the game with it; the
+  voice is retired for the session
+- The gap bar, notices, timing, version and radar drifting sideways when
+  scaled; existing positions convert on first load
+- The gap bar's time reading disappearing into its own coloured fill on opaque
+  backgrounds
+- The Benchmark HUD dropping panels from its report
+- The web overlay could lose your saved settings on load in some browsers
+- The uninstaller could leave its own executable behind when a scanner still
+  held it open
+
 ## [1.28.0] - 2026-07-30
 
 Broadcast director control, richer session charts, and broad stability and
@@ -46,12 +122,27 @@ performance fixes.
 - Less web overlay work on a full grid
 - Updated the embedded web-overlay HTTP server library
 - Standings number plates: the brand marker is now a right-pointing arrow rather
-  than a bar, and the race number is set in your Title font — in-game and on the
+  than a bar, and the race number is set in your Title font - in-game and on the
   web overlay
 - The helmet overlay is now in-game only, so it can no longer cover the HUDs the
   companion window exists to show
 
 ### Fixed
+- The settings menu's title bar sticking out past everything under it. Its bar,
+  the tab list's panel and the section panels now all stop on the same line, at
+  any padding
+- The settings menu ignoring a theme's panel padding, so it sat tight inside its
+  frame while every HUD beside it kept the padding
+- Title bars being a different height in the settings menu than on a HUD, so two
+  headers side by side did not line up
+- Settings tabs whose content ran under the Save and Close buttons - most
+  visibly Help & Community on the General tab. The menu measures its tallest tab
+  and is that tall on every tab, so nothing is ever cut off and the buttons stay
+  put as you switch. It also follows your theme now: a theme with more air in it
+  makes the menu taller instead of squeezing what fits
+- Row highlights on Standings, Records and the Event Log spilling outside the
+  panel they sit in once a theme set any padding. A highlight covers its row's
+  text now, not the air around it
 - A frame-time spike every ~10 seconds from the Steam friends scan; it now runs
   in the background
 - GP Bikes and Kart Racing Pro shipping an unoptimized build; both should be
@@ -683,7 +774,8 @@ Pre-release. Its contents shipped in 1.26.0.0, minus the analytics addition.
 
 Initial public release.
 
-[Unreleased]: https://github.com/thomas4f/mxbmrp3/compare/v1.28.0...HEAD
+[Unreleased]: https://github.com/thomas4f/mxbmrp3/compare/v1.29.1...HEAD
+[1.29.1]: https://github.com/thomas4f/mxbmrp3/compare/v1.28.0...v1.29.1
 [1.28.0]: https://github.com/thomas4f/mxbmrp3/compare/v1.27.7...v1.28.0
 [1.27.7]: https://github.com/thomas4f/mxbmrp3/compare/v1.27.5...v1.27.7
 [1.27.5]: https://github.com/thomas4f/mxbmrp3/compare/v1.27.4...v1.27.5

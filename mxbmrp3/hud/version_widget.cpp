@@ -3,6 +3,7 @@
 // Version widget - displays plugin name and version
 // ============================================================================
 #include "version_widget.h"
+#include "center_stack.h"
 
 #include <cstdio>
 #include <cstring>
@@ -27,10 +28,24 @@
 
 using namespace PluginConstants;
 
+namespace {
+}  // namespace
+
+namespace {
+}  // namespace
+
 static constexpr const char* KOFI_URL = "https://ko-fi.com/thomas4f";
 
 
 VersionWidget::VersionWidget() {
+    m_panelKind = PanelKind::Widget;
+    // Body card: this widget's content is a block the theme can frame -- exactly what
+    // a themed body card is for, and what every other panel already opts into. Opt-in;
+    // see BaseHud::m_bContentCard. It was the one panel that drew a themed FRAME (via
+    // addBackgroundQuad) and then set its text straight on it, so under a theme with a
+    // card set the version line and the update prompt sat on bare frame while every
+    // widget beside them sat on a card.
+    m_bContentCard = true;
     // One-time setup
     DEBUG_INFO("VersionWidget created");
     setDraggable(true);
@@ -70,7 +85,7 @@ void VersionWidget::update() {
         updateGame(deltaTime);
 
         // Always rebuild render data when game is active
-        rebuildRenderData();
+        rebuildAndRecord();
         return;
     }
 
@@ -82,7 +97,7 @@ void VersionWidget::update() {
 
     // Rebuild render data when dirty or on first update
     if (isDataDirty() || m_strings.empty()) {
-        rebuildRenderData();
+        rebuildAndRecord();
         clearDataDirty();
     }
 }
@@ -255,85 +270,42 @@ void VersionWidget::showDonationNudge() {
 }
 
 void VersionWidget::rebuildLayout() {
-    if (m_gameActive) {
-        // Game handles its own layout
-        return;
-    }
+    if (m_gameActive) return;   // game handles its own layout
+    // BOX-MODEL: one source of geometry. This used to duplicate every mode's
+    // sizing arithmetic to reposition in place, and the two copies were kept in
+    // step by comment ("must match rebuildRenderData"). The widget is a handful
+    // of strings; rebuilding is cheaper than the drift.
+    rebuildRenderData();
+}
 
-    // Fast path - only update positions
-    auto dim = getScaledDimensions();
-
-    // Check if we should show update notification
-    bool showNotification = m_showingUpdateNotification &&
-                           UpdateChecker::getInstance().shouldShowUpdateNotification();
-
-    float backgroundWidth, backgroundHeight;
-    float contentPaddingH, contentPaddingV;
-
-    if (showNotification) {
-        // Notification mode uses full padding
-        contentPaddingH = dim.paddingH;
-        contentPaddingV = dim.paddingV;
-
-        // "MXBMRP3 " (8 chars) + version string + " available!" (11 chars)
-        std::string latestVersion = UpdateChecker::getInstance().getLatestVersion();
-        int textLength = 8 + static_cast<int>(latestVersion.length()) + 11;
-        const float textWidth = PluginUtils::calculateMonospaceTextWidth(textLength, dim.fontSize);
-
-        // Button dimensions (must match rebuildRenderData)
-        const float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
-        const float buttonGap = charWidth * 1.0f;
-        const float viewButtonWidth = charWidth * VIEW_BUTTON_CHARS;
-        const float dismissButtonWidth = charWidth * DISMISS_BUTTON_CHARS;
-
-        // Width is max of text row or button row
-        const float buttonRowWidth = viewButtonWidth + buttonGap + dismissButtonWidth;
-        const float contentWidth = std::fmax(textWidth, buttonRowWidth);
-        backgroundWidth = contentPaddingH + contentWidth + contentPaddingH;
-        // Two rows: text + buttons
-        backgroundHeight = contentPaddingV + dim.lineHeightNormal + dim.lineHeightNormal + contentPaddingV;
-    } else if (m_showingDonationNudge) {
-        contentPaddingH = dim.paddingH;
-        contentPaddingV = dim.paddingV;
-
-        // "MXBMRP3 updated successfully!" (29 chars)
-        const float nudgeTextWidth = PluginUtils::calculateMonospaceTextWidth(29, dim.fontSize);
-        const float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
-        const float buttonGap = charWidth * 1.0f;
-        const float kofiButtonWidth = charWidth * KOFI_BUTTON_CHARS;
-        const float nudgeDismissButtonWidth = charWidth * NUDGE_DISMISS_BUTTON_CHARS;
-        const float buttonRowWidth = kofiButtonWidth + buttonGap + nudgeDismissButtonWidth;
-        const float contentWidth = std::fmax(nudgeTextWidth, buttonRowWidth);
-        backgroundWidth = contentPaddingH + contentWidth + contentPaddingH;
-        backgroundHeight = contentPaddingV + dim.lineHeightNormal + dim.lineHeightNormal + contentPaddingV;
+BaseHud::PanelPlan VersionWidget::notifyPlan(const ScaledDimensions& dim,
+                                             float contentWidth, int rows,
+                                             float extraH, bool stackMember) const {
+    PanelWant want;
+    want.sectionH = { static_cast<float>(rows) * dim.lineHeightNormal + extraH };
+    want.captionW = planTitleWidth(dim, "Version");
+    if (stackMember) {
+        // THE PLAIN VERSION ROW is a centre-stack panel and takes the stack's
+        // width rule whole: the shared minimum owns the width and the string
+        // does not compete for it. It used to pass its own text width HERE too,
+        // which is invisible at shipped padding (the string is 19 normal chars
+        // against 14 large ones of interior, so the minimum wins) and 78px of
+        // divergence once [Advanced] padding grew, because a stated content
+        // width carries the padding past the minimum while its neighbours,
+        // which state none, sit on it. See BaseHud::wantCenterStackWidth.
+        //
+        // The string fitting that interior is therefore a CONSTRAINT now, not a
+        // coincidence -- version_fit_test pins it, so a longer version number
+        // fails a test instead of quietly clipping.
+        wantCenterStackWidth(want, dim);
     } else {
-        // Normal mode uses full padding for consistency
-        contentPaddingH = dim.paddingH;
-        contentPaddingV = dim.paddingV;
-
-        // "MXBMRP3 v" (9 chars) + version string
-        int textLength = 9 + static_cast<int>(strlen(PLUGIN_VERSION));
-        const float textWidth = PluginUtils::calculateMonospaceTextWidth(textLength, dim.fontSize);
-        backgroundWidth = contentPaddingH + textWidth + contentPaddingH;
-        backgroundHeight = contentPaddingV + dim.lineHeightNormal + contentPaddingV;
+        // THE UPDATE POPUP is not a stack member: it has a message and a button
+        // row that the stack width cannot hold, so it sizes to them and is
+        // deliberately wider. Same panel machinery, different job.
+        want.contentW = contentWidth;
+        want.minPanelW = CenterStack::boxWidth(dim.fontSizeLarge, centerStackPaddingX());
     }
-
-    // Base position centers widget at (0.5, 0.01) - offset applied automatically by BaseHud
-    float startX = -backgroundWidth / 2.0f;  // Centers around X=0.5 when offset=0.5
-    float startY = 0.01f;  // Top of screen
-
-    // Set bounds for drag detection
-    setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
-
-    // Update background quad position
-    updateBackgroundQuadPosition(startX, startY, backgroundWidth, backgroundHeight);
-
-    // Position first string (only used in normal mode; notification/nudge rebuilds all strings)
-    if (!showNotification && !m_showingDonationNudge) {
-        float contentStartX = startX + contentPaddingH;
-        float contentStartY = startY + contentPaddingV;
-        positionString(0, contentStartX, contentStartY);
-    }
+    return planPanel(dim, want);
 }
 
 void VersionWidget::rebuildRenderData() {
@@ -364,33 +336,53 @@ void VersionWidget::rebuildRenderData() {
 
         // Button dimensions
         const float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
-        const float buttonGap = charWidth * 1.0f;  // Gap between buttons
-        const float viewButtonWidth = charWidth * VIEW_BUTTON_CHARS;
-        const float dismissButtonWidth = charWidth * DISMISS_BUTTON_CHARS;
-        const float buttonHeight = dim.lineHeightNormal;
+        // The [button] terms, all four sides: box = insets around the label
+        // row, gap = the SUM of facing margins (1 char at shipped defaults,
+        // exactly the old hard-coded gap). The box was a bare text row, so
+        // the vertical terms acted on nothing.
+        const PlanButtonTerms bt = planButtonTerms(dim);
+        const float buttonGap = bt.gap;
+        const float viewButtonWidth = charWidth * VIEW_BUTTON_CHARS + bt.insetL + bt.insetR;
+        const float dismissButtonWidth = charWidth * DISMISS_BUTTON_CHARS + bt.insetL + bt.insetR;
+        const float buttonHeight = bt.insetT + dim.lineHeightNormal + bt.insetB;
 
         // Width is max of text row or button row
         const float buttonRowWidth = viewButtonWidth + buttonGap + dismissButtonWidth;
         const float contentWidth = std::fmax(textWidth, buttonRowWidth);
-        const float backgroundWidth = dim.paddingH + contentWidth + dim.paddingH;
-        // Two rows: text + buttons
-        const float backgroundHeight = dim.paddingV + dim.lineHeightNormal + dim.lineHeightNormal + dim.paddingV;
+        // BOX-MODEL: the plan owns padding, chrome and the content origin. The
+        // centre-stack width is a MINIMUM on the panel (widthSetBy 'min'), not
+        // a padding sum folded into the content.
+        // THE JUNCTION PLUS the box's own margin and insets. marginT alone was not
+        // enough: it is the button BOX's margin and defaults to zero, so the row
+        // still sat flush against the message. The seam above a button row is the
+        // [panel] junction gap -- what panel_box.h spends as `y += gapY` for a
+        // PLANNED row, and what the settings tabs spend as addSpacing() for a
+        // hand-laid one. This row is hand-laid, so it owes the same gap.
+        const float junctionY = panelGapY(dim);
+        const PanelPlan p = notifyPlan(dim, contentWidth, /*rows=*/2,
+                                       junctionY + bt.marginT + bt.insetT + bt.insetB);
+        const float backgroundWidth = p.width();
+        const float backgroundHeight = p.height();
 
         // Center widget at top of screen
-        float startX = -backgroundWidth / 2.0f;
+        float startX = centerAnchoredPanelLeft(backgroundWidth);
         float startY = 0.01f;
 
-        // Add background quad
-        addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
+        PanelPlan placed = p;
+        addPlanBackground(placed, startX, startY);
+        addPlanTitle(placed, "Version", this->getFont(FontCategory::TITLE),
+                     this->getColor(ColorSlot::PRIMARY));
+        float currentY = placed.contentY();
 
         // Render update available text (centered on first row)
-        float row1Y = startY + dim.paddingV;
-        float centerX = startX + backgroundWidth / 2.0f;
+        float row1Y = currentY;
+        // The CARD's centre, not the panel's (PanelPlan::sectionBoxCenterX).
+        float centerX = placed.sectionBoxCenterX();
         addString(displayText, centerX, row1Y, Justify::CENTER,
                   this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
 
         // Second row: buttons centered
-        float row2Y = row1Y + dim.lineHeightNormal;
+        float row2Y = row1Y + dim.lineHeightNormal + junctionY + bt.marginT;
         float buttonsStartX = centerX - buttonRowWidth / 2.0f;
 
         // ===== View in Settings Button (accent color) =====
@@ -405,20 +397,11 @@ void VersionWidget::rebuildRenderData() {
 
         bool isViewHovered = (m_hoveredButton == NotificationButton::VIEW);
 
-        // View button background
-        SPluginQuad_t viewBgQuad;
-        float viewBgX = viewBtnX, viewBgY = viewBtnY;
-        applyOffset(viewBgX, viewBgY);
-        setQuadPositions(viewBgQuad, viewBgX, viewBgY, viewButtonWidth, buttonHeight);
-        viewBgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        viewBgQuad.m_ulColor = isViewHovered ? this->getColor(ColorSlot::ACCENT)
-            : PluginUtils::applyOpacity(this->getColor(ColorSlot::ACCENT), 0.5f);
-        m_quads.push_back(viewBgQuad);
-
-        // View button text (center-aligned on button)
-        unsigned long viewTextColor = isViewHovered ? this->getColor(ColorSlot::PRIMARY) : this->getColor(ColorSlot::ACCENT);
-        addString("View in Settings", viewBtnX + viewButtonWidth / 2.0f, viewBtnY, Justify::CENTER,
-                  this->getFont(FontCategory::NORMAL), viewTextColor, dim.fontSize);
+        // Hover is carried by the chip's alpha, not by a second label colour.
+        addStateButton(viewBtnX, viewBtnY, viewButtonWidth, buttonHeight,
+                       "View in Settings", viewBtnY + bt.insetT, dim.fontSize,
+                       this->getColor(ColorSlot::ACCENT),
+                       isViewHovered ? ButtonState::Hovered : ButtonState::Idle);
 
         // ===== Dismiss Button (negative color) =====
         float dismissBtnX = viewBtnX + viewButtonWidth + buttonGap;
@@ -432,20 +415,10 @@ void VersionWidget::rebuildRenderData() {
 
         bool isDismissHovered = (m_hoveredButton == NotificationButton::DISMISS);
 
-        // Dismiss button background
-        SPluginQuad_t dismissBgQuad;
-        float dismissBgX = dismissBtnX, dismissBgY = dismissBtnY;
-        applyOffset(dismissBgX, dismissBgY);
-        setQuadPositions(dismissBgQuad, dismissBgX, dismissBgY, dismissButtonWidth, buttonHeight);
-        dismissBgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        dismissBgQuad.m_ulColor = isDismissHovered ? this->getColor(ColorSlot::NEGATIVE)
-            : PluginUtils::applyOpacity(this->getColor(ColorSlot::NEGATIVE), 0.5f);
-        m_quads.push_back(dismissBgQuad);
-
-        // Dismiss button text (center-aligned on button)
-        unsigned long dismissTextColor = isDismissHovered ? this->getColor(ColorSlot::PRIMARY) : this->getColor(ColorSlot::NEGATIVE);
-        addString("Dismiss", dismissBtnX + dismissButtonWidth / 2.0f, dismissBtnY, Justify::CENTER,
-                  this->getFont(FontCategory::NORMAL), dismissTextColor, dim.fontSize);
+        addStateButton(dismissBtnX, dismissBtnY, dismissButtonWidth, buttonHeight,
+                       "Dismiss", dismissBtnY + bt.insetT, dim.fontSize,
+                       this->getColor(ColorSlot::NEGATIVE),
+                       isDismissHovered ? ButtonState::Hovered : ButtonState::Idle);
 
         // Set bounds for the whole widget
         setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
@@ -457,26 +430,37 @@ void VersionWidget::rebuildRenderData() {
         const float nudgeTextWidth = PluginUtils::calculateMonospaceTextWidth(nudgeTextLen, dim.fontSize);
 
         const float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
-        const float buttonGap = charWidth * 1.0f;
-        const float kofiButtonWidth = charWidth * KOFI_BUTTON_CHARS;
-        const float nudgeDismissButtonWidth = charWidth * NUDGE_DISMISS_BUTTON_CHARS;
-        const float buttonHeight = dim.lineHeightNormal;
+        const PlanButtonTerms bt = planButtonTerms(dim);
+        const float buttonGap = bt.gap;
+        const float kofiButtonWidth = charWidth * KOFI_BUTTON_CHARS + bt.insetL + bt.insetR;
+        const float nudgeDismissButtonWidth = charWidth * NUDGE_DISMISS_BUTTON_CHARS + bt.insetL + bt.insetR;
+        const float buttonHeight = bt.insetT + dim.lineHeightNormal + bt.insetB;
         const float buttonRowWidth = kofiButtonWidth + buttonGap + nudgeDismissButtonWidth;
         const float contentWidth = std::fmax(nudgeTextWidth, buttonRowWidth);
-        const float backgroundWidth = dim.paddingH + contentWidth + dim.paddingH;
-        const float backgroundHeight = dim.paddingV + dim.lineHeightNormal + dim.lineHeightNormal + dim.paddingV;
+        // The junction, then the box's own terms -- same seam as the update
+        // notification above; the reasoning is written out there.
+        const float junctionY = panelGapY(dim);
+        const PanelPlan p = notifyPlan(dim, contentWidth, /*rows=*/2,
+                                       junctionY + bt.marginT + bt.insetT + bt.insetB);
+        const float backgroundWidth = p.width();
+        const float backgroundHeight = p.height();
 
-        float startX = -backgroundWidth / 2.0f;
+        float startX = centerAnchoredPanelLeft(backgroundWidth);
         float startY = 0.01f;
 
-        addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
+        PanelPlan placed = p;
+        addPlanBackground(placed, startX, startY);
+        addPlanTitle(placed, "Version", this->getFont(FontCategory::TITLE),
+                     this->getColor(ColorSlot::PRIMARY));
+        float currentY = placed.contentY();
 
-        float row1Y = startY + dim.paddingV;
-        float centerX = startX + backgroundWidth / 2.0f;
+        float row1Y = currentY;
+        // The CARD's centre, not the panel's (PanelPlan::sectionBoxCenterX).
+        float centerX = placed.sectionBoxCenterX();
         addString(nudgeText, centerX, row1Y, Justify::CENTER,
                   this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
 
-        float row2Y = row1Y + dim.lineHeightNormal;
+        float row2Y = row1Y + dim.lineHeightNormal + junctionY + bt.marginT;
         float buttonsStartX = centerX - buttonRowWidth / 2.0f;
 
         // Ko-fi button (accent color)
@@ -488,18 +472,10 @@ void VersionWidget::rebuildRenderData() {
         m_viewButtonHeight = buttonHeight;
 
         bool isKofiHovered = (m_hoveredButton == NotificationButton::KOFI);
-        SPluginQuad_t kofiBgQuad;
-        float kofiBgX = kofiBtnX, kofiBgY = kofiBtnY;
-        applyOffset(kofiBgX, kofiBgY);
-        setQuadPositions(kofiBgQuad, kofiBgX, kofiBgY, kofiButtonWidth, buttonHeight);
-        kofiBgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        kofiBgQuad.m_ulColor = isKofiHovered ? this->getColor(ColorSlot::ACCENT)
-            : PluginUtils::applyOpacity(this->getColor(ColorSlot::ACCENT), 0.5f);
-        m_quads.push_back(kofiBgQuad);
-
-        unsigned long kofiTextColor = isKofiHovered ? this->getColor(ColorSlot::PRIMARY) : this->getColor(ColorSlot::ACCENT);
-        addString("Support thomas4f", kofiBtnX + kofiButtonWidth / 2.0f, kofiBtnY, Justify::CENTER,
-                  this->getFont(FontCategory::NORMAL), kofiTextColor, dim.fontSize);
+        addStateButton(kofiBtnX, kofiBtnY, kofiButtonWidth, buttonHeight,
+                       "Support thomas4f", kofiBtnY + bt.insetT, dim.fontSize,
+                       this->getColor(ColorSlot::ACCENT),
+                       isKofiHovered ? ButtonState::Hovered : ButtonState::Idle);
 
         // Dismiss button (muted)
         float nudgeDismissBtnX = kofiBtnX + kofiButtonWidth + buttonGap;
@@ -510,18 +486,10 @@ void VersionWidget::rebuildRenderData() {
         m_dismissButtonHeight = buttonHeight;
 
         bool isNudgeDismissHovered = (m_hoveredButton == NotificationButton::NUDGE_DISMISS);
-        SPluginQuad_t nudgeDismissBgQuad;
-        float nudgeDismissBgX = nudgeDismissBtnX, nudgeDismissBgY = nudgeDismissBtnY;
-        applyOffset(nudgeDismissBgX, nudgeDismissBgY);
-        setQuadPositions(nudgeDismissBgQuad, nudgeDismissBgX, nudgeDismissBgY, nudgeDismissButtonWidth, buttonHeight);
-        nudgeDismissBgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        nudgeDismissBgQuad.m_ulColor = isNudgeDismissHovered ? this->getColor(ColorSlot::NEGATIVE)
-            : PluginUtils::applyOpacity(this->getColor(ColorSlot::NEGATIVE), 0.5f);
-        m_quads.push_back(nudgeDismissBgQuad);
-
-        unsigned long nudgeDismissTextColor = isNudgeDismissHovered ? this->getColor(ColorSlot::PRIMARY) : this->getColor(ColorSlot::NEGATIVE);
-        addString("Dismiss", nudgeDismissBtnX + nudgeDismissButtonWidth / 2.0f, nudgeDismissBtnY, Justify::CENTER,
-                  this->getFont(FontCategory::NORMAL), nudgeDismissTextColor, dim.fontSize);
+        addStateButton(nudgeDismissBtnX, nudgeDismissBtnY, nudgeDismissButtonWidth, buttonHeight,
+                       "Dismiss", nudgeDismissBtnY + bt.insetT, dim.fontSize,
+                       this->getColor(ColorSlot::NEGATIVE),
+                       isNudgeDismissHovered ? ButtonState::Hovered : ButtonState::Idle);
 
         setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
 
@@ -539,21 +507,38 @@ void VersionWidget::rebuildRenderData() {
         // Calculate text width based on actual string length
         const int textLength = static_cast<int>(strlen(displayText));
         const float textWidth = PluginUtils::calculateMonospaceTextWidth(textLength, dim.fontSize);
-        const float backgroundWidth = dim.paddingH + textWidth + dim.paddingH;
-        const float backgroundHeight = dim.paddingV + dim.lineHeightNormal + dim.paddingV;
+        const PanelPlan p = notifyPlan(dim, textWidth, /*rows=*/1, /*extraH=*/0.0f,
+                                       /*stackMember=*/true);
+        const float backgroundWidth = p.width();
+        const float backgroundHeight = p.height();
 
         // Base position centers widget at (0.5, 0.01) - offset applied automatically by BaseHud
-        float startX = -backgroundWidth / 2.0f;  // Centers around X=0.5 when offset=0.5
+        // CENTRE-ANCHORED, like the centre stack: offsetX is this widget's centre.
+        float startX = centerAnchoredPanelLeft(backgroundWidth);
         float startY = 0.01f;  // Top of screen
 
-        // Add background quad (opaque black)
-        addBackgroundQuad(startX, startY, backgroundWidth, backgroundHeight);
-
+        PanelPlan placed = p;
+        addPlanBackground(placed, startX, startY);
+        addPlanTitle(placed, "Version", this->getFont(FontCategory::TITLE),
+                     this->getColor(ColorSlot::PRIMARY));
         // Add main text
-        float contentStartX = startX + dim.paddingH;
-        float contentStartY = startY + dim.paddingV;
+        // INK-centred in the section's DRAWN BOX, like Timing's time. It used to centre
+        // in the content ROW, which is the same place while the card border is
+        // symmetric and a cell high when it is not (see PanelPlan::sectionBoxY). Before
+        // that it passed the bare row top, leaving addString to centre the glyph CELL
+        // -- fine for a row in a TABLE, where every row carries the same
+        // 0.11-of-a-cell bias and it cancels, but this row IS the whole body of a
+        // one-row panel, so the bias read as the text sitting high in its own box.
+        // CENTRED, like the notification message this panel turns into: the
+        // string is the entire body of a one-row panel, and the panel is sized
+        // to it, so left-justifying it only showed when a theme's padding made
+        // the panel wider than the text. On the CARD, not the panel
+        // (PanelPlan::sectionBoxCenterX), matching the ink-centring below.
+        float contentStartX = placed.sectionBoxCenterX();
+        float contentStartY = inkCenteredY(placed.sectionBoxY(), placed.sectionBoxH(),
+                                           dim.fontSize);
 
-        addString(displayText, contentStartX, contentStartY, Justify::LEFT,
+        addString(displayText, contentStartX, contentStartY, Justify::CENTER,
                   this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
 
         // Set bounds for drag detection
@@ -567,7 +552,7 @@ void VersionWidget::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 1.0f;  // Full opacity
     m_fScale = 1.0f;
-    setPosition(0.5f, 0.01173f);  // Top center (0.5 is screen center)
+    setPosition(CENTER_ANCHOR_X, cellsY(1));  // Top centre
 
     // Reset game state and restore cursor if game was active
     if (m_gameActive) {

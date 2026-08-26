@@ -8,7 +8,7 @@ generated report is.
 
 ## Regenerate
 
-1. In Aptabase, export the month(s) you want (CSV or Parquet — the tool reads either,
+1. In Aptabase, export the month(s) you want (CSV or Parquet - the tool reads either,
    and they can be mixed in one run; Aptabase withdrew the Parquet export at one point).
 2. Run the generator (Windows `&`, or one command per line):
 

@@ -6,6 +6,8 @@
 #pragma once
 
 #include "base_hud.h"
+#include "pitboard_geometry.h"
+#include "../core/asset_manager.h"   // PitboardAsset, PitboardSprite
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
 #include <chrono>
@@ -65,26 +67,16 @@ public:
     // Per-texture layout configuration
     // Stored in .ini as [PitboardHud_Layout_N] sections
     // Offsets are fractions of background width/height (0.0 = no offset)
-    struct LayoutConfig {
-        // Element position offsets (fraction of background dimensions)
-        float riderIdX = 0.0f, riderIdY = 0.0f;      // Row 1: Rider ID
-        float sessionX = 0.0f, sessionY = 0.0f;      // Row 2: Session name
-        float positionX = 0.0f, positionY = 0.0f;    // Row 3 left: Position (P1)
-        float timeX = 0.0f, timeY = 0.0f;            // Row 3 center: Time
-        float lapX = 0.0f, lapY = 0.0f;              // Row 3 right: Lap (L2)
-        float lastLapX = 0.0f, lastLapY = 0.0f;      // Row 4: Last lap time
-        float gapX = 0.0f, gapY = 0.0f;              // Row 5: Gap comparison
-    };
+    // THE SELECTED BOARD, BY NAME (see AssetManager's PitboardAsset). Not by
+    // texture-variant index: an index into discovery order reassigns every user's
+    // choice when a pack is added or renamed. An unknown name degrades to the
+    // shipped default WITHOUT rewriting what is stored.
+    const std::string& getPitboardPack() const { return m_pitboardPack; }
+    void setPitboardPack(const std::string& name);
 
-    // Get layout for a specific variant (creates default if not exists)
-    LayoutConfig& getLayout(int variant);
-    const LayoutConfig& getCurrentLayout() const;
-
-    // Get layout for a specific variant if it exists (const-safe, returns nullptr if not found)
-    const LayoutConfig* getLayoutIfExists(int variant) const {
-        auto it = m_layouts.find(variant);
-        return (it != m_layouts.end()) ? &it->second : nullptr;
-    }
+    // The pack actually in use once the name is resolved; nullptr only when no
+    // board packs are installed at all.
+    const PitboardAsset* activePack() const;
 
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;
@@ -122,7 +114,6 @@ private:
     static constexpr int MAX_ROW_COUNT = 5;            // Fixed row count for consistent background size
     static constexpr float LEFT_ALIGN_OFFSET = 0.175f;  // Position column (adjusted for 1920x1080)
     static constexpr float RIGHT_ALIGN_OFFSET = 0.825f; // Lap column (adjusted for 1920x1080)
-    static constexpr float TEXTURE_ASPECT_RATIO = 1920.0f / 1080.0f;  // pitboard_hud.tga dimensions
 
     // Display timing constants
     static constexpr int DISPLAY_DURATION_MS = 10000;  // Show for 10 seconds in Splits mode
@@ -150,10 +141,10 @@ private:
     // Cached session time for real-time updates (like TimeWidget)
     int m_cachedRenderedTime = -1;  // Last rendered session time (in ms)
 
-    // Per-texture layouts (indexed by texture variant number)
-    // Variant 0 means "no texture", variants 1+ correspond to pitboard_hud_N.tga
-    std::map<int, LayoutConfig> m_layouts;
+    // Selected pack, by directory name. Resolved through activePack() at every use
+    // so a pack removed between sessions degrades rather than dangling.
+    std::string m_pitboardPack;
 
-    // Initialize default layouts for known variants
-    void initDefaultLayouts();
+    // Sprite index for one part of the ACTIVE pack, or 0 when none resolves.
+    int packSprite(PitboardSprite::Part part) const;
 };

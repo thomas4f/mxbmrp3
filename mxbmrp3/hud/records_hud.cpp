@@ -3,6 +3,7 @@
 // Displays lap records fetched from external data providers via HTTP
 // ============================================================================
 #include "records_hud.h"
+#include "../core/layout_config.h"
 #include "records_window.h"
 #include "timing_hud.h"
 
@@ -38,7 +39,7 @@ using namespace PluginConstants;
 // ============================================================================
 
 RecordsHud::ColumnPositions::ColumnPositions(float contentStartX, float scale, uint32_t enabledColumns) {
-    float scaledFontSize = FontSizes::NORMAL * scale;
+    float scaledFontSize = layoutDefaults().fontSizeNormal * scale;
     float x = contentStartX;
 
     // Position each column based on what's enabled before it
@@ -91,6 +92,9 @@ RecordsHud::RecordsHud()
     // One-time setup
     DEBUG_INFO("RecordsHud created");
     setDraggable(true);
+    // Body card: this HUD draws a content BLOCK under its title, which is what the
+    // themed card frames. Opt-in; see BaseHud::m_bContentCard.
+    m_bContentCard = true;
     m_quads.reserve(2);  // Background + fetch button
     m_strings.reserve(60);  // Header rows + 10 record rows * 5 cols + footer
     m_records.reserve(MAX_RECORDS);
@@ -103,7 +107,7 @@ RecordsHud::RecordsHud()
     resetToDefaults();
 
     // Initialize column positions (after resetToDefaults sets m_enabledColumns)
-    m_columns = ColumnPositions(START_X + Padding::HUD_HORIZONTAL, m_fScale, m_enabledColumns);
+    m_columns = ColumnPositions(START_X + layoutDefaults().panelPaddingX, m_fScale, m_enabledColumns);
 
     // Build initial category list (after resetToDefaults sets m_provider)
     buildCategoryList();
@@ -456,7 +460,6 @@ void RecordsHud::rebuildRenderData() {
 
     // Get scaled dimensions
     auto dim = getScaledDimensions();
-    float titleHeight = m_bShowTitle ? dim.lineHeightLarge : 0.0f;
 
     // Copy ALL records for pagination (minimize mutex hold time)
     std::vector<RecordEntry> allRecords;
@@ -469,52 +472,63 @@ void RecordsHud::rebuildRenderData() {
         recordsProvider = m_recordsProvider;  // Written by the fetch worker under this lock
     }
     int totalRecords = static_cast<int>(allRecords.size());
-    int footerRows = m_bShowFooter ? FOOTER_ROWS : 0;
-    int totalRows = HEADER_ROWS + m_recordsToShow + footerRows;
+    // The table section's rows: the optional column-header row, the records,
+    // and the footer note as a real last row (it used to render in "bottom
+    // padding" off a row count three constants had to agree on).
+    const int tableRows = (m_bShowHeaders ? 1 : 0) + m_recordsToShow
+                        + (m_bShowFooter ? 1 : 0);
 
     // Calculate background width based on enabled columns
     // Note: padding is added by calculateBackgroundWidth(), don't double-count
     // Order: POS, RIDER, BIKE, SECTORS (S1/S2/S3), LAPTIME, DATE
-    int bgWidthChars = 0;
-    if (m_enabledColumns & COL_POS) bgWidthChars += COL_POS_WIDTH;
-    if (m_enabledColumns & COL_RIDER) bgWidthChars += COL_RIDER_WIDTH;
-    if (m_enabledColumns & COL_BIKE) bgWidthChars += COL_BIKE_WIDTH;
-    if (m_enabledColumns & COL_SECTORS) bgWidthChars += COL_SECTOR_WIDTH * GAME_SECTOR_COUNT;  // S1, S2, S3 (and S4 for 4-sector games)
-    if (m_enabledColumns & COL_LAPTIME) bgWidthChars += COL_LAPTIME_WIDTH;
-    if (m_enabledColumns & COL_DATE) bgWidthChars += COL_DATE_WIDTH;
-    // Remove trailing gap from last visible column (gap not needed after last column)
-    // Find the last enabled column and subtract 1 for its gap
-    uint32_t lastCol = 0;
-    if (m_enabledColumns & COL_DATE) lastCol = COL_DATE;
-    else if (m_enabledColumns & COL_LAPTIME) lastCol = COL_LAPTIME;
-    else if (m_enabledColumns & COL_SECTORS) lastCol = COL_SECTORS;
-    else if (m_enabledColumns & COL_BIKE) lastCol = COL_BIKE;
-    else if (m_enabledColumns & COL_RIDER) lastCol = COL_RIDER;
-    if (lastCol != 0 && lastCol != COL_DATE) {
-        bgWidthChars -= 1;  // Remove gap from last column (unless it's DATE which has no gap anyway)
-    }
-    bgWidthChars = std::max(bgWidthChars, 34);  // Minimum width for controls row
+    // Pure arithmetic, unit-tested in tests/unit/test_records_window.cpp -- including
+    // WHY the last column keeps its gap, which is the bug this used to have and which
+    // is invisible in the numbers. It subtracted the trailing gap here, on the reading
+    // that a gap after the last column is wasted width; it is that column's right
+    // clearance inside the panel, and without it the lap time's final digit ends on
+    // the same pixel as the player row's highlight band.
+    const int bgWidthChars = RecordsWindow::backgroundWidthChars(
+        { COL_POS_WIDTH, COL_RIDER_WIDTH, COL_BIKE_WIDTH,
+          COL_SECTOR_WIDTH, COL_LAPTIME_WIDTH, COL_DATE_WIDTH },
+        { (m_enabledColumns & COL_POS) != 0,     (m_enabledColumns & COL_RIDER) != 0,
+          (m_enabledColumns & COL_BIKE) != 0,    (m_enabledColumns & COL_SECTORS) != 0,
+          (m_enabledColumns & COL_LAPTIME) != 0, (m_enabledColumns & COL_DATE) != 0 },
+        GAME_SECTOR_COUNT, MIN_WIDTH_CHARS);
 
-    float backgroundWidth = calculateBackgroundWidth(bgWidthChars);
-    float backgroundHeight = calculateBackgroundHeight(totalRows - 1);
+    // BOX-MODEL: the selector row is its OWN section (the seam replaces the
+    // old reserved empty row), the table is the second, and Compare is the
+    // plan's footer BUTTON row rather than an inline chip on the selector row
+    // -- the first HUD on the plan's button machinery.
+    BaseHud::PanelWant want;
+    want.contentW = PluginUtils::calculateMonospaceTextWidth(bgWidthChars, dim.fontSize);
+    want.sectionH = { sectionHeadingRowHeight(dim) + dim.lineHeightNormal,
+                      static_cast<float>(tableRows) * dim.lineHeightNormal };
+    want.captionW = planTitleWidth(dim, "Records", TitleTier::Large);
+    want.tier = TitleTier::Large;
+    want.buttons = 1;
+    // "Compare" (7 chars) plus one char of air each side, as before; the
+    // [button] border/padding wrap it via the plan.
+    want.buttonW = PluginUtils::calculateMonospaceTextWidth(9, dim.fontSize);
+    want.buttonH = dim.lineHeightNormal;
+    PanelPlan& plan = planPanel(dim, want);
+    float backgroundWidth = plan.width();
+    setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + plan.height());
+    addPlanBackground(plan, START_X, START_Y);
 
-    setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + backgroundHeight);
-    addBackgroundQuad(START_X, START_Y, backgroundWidth, backgroundHeight);
-
-    float contentStartX = START_X + dim.paddingH;
-    float contentStartY = START_Y + dim.paddingV;
-    float currentY = contentStartY;
+    float contentStartX = plan.contentX();
+    float currentY = plan.contentY();
 
     // Recalculate column positions based on enabled columns
     m_columns = ColumnPositions(contentStartX, m_fScale, m_enabledColumns);
 
-    // === Title Row ===
-    addTitleString("Records", contentStartX, currentY, Justify::LEFT,
-                   this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
-    currentY += titleHeight;
+    // === Title Row === (the plan's caption row, above currentY)
+    addPlanTitle(plan, "Records", this->getFont(FontCategory::TITLE),
+                 this->getColor(ColorSlot::PRIMARY));
 
-    // === Provider / Category / Fetch Row ===
+    // === Filter section: heading row + the provider/category selectors ===
     // Note: Click regions store positions WITHOUT offset - offset is added during hit testing
+    addSectionHeading("Filter", contentStartX, currentY, dim);
+    currentY += sectionHeadingRowHeight(dim);
     float rowX = contentStartX;
     float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
 
@@ -575,45 +589,44 @@ void RecordsHud::rebuildRenderData() {
         compareColor = this->getColor(ColorSlot::POSITIVE);
     } else if (state == FetchState::FETCH_ERROR) {
         compareColor = this->getColor(ColorSlot::NEGATIVE);
-    } else if (state == FetchState::FETCHING) {
-        // Always accent during fetch (no hover feedback since button is busy)
-        compareColor = this->getColor(ColorSlot::ACCENT);
     } else {
-        // Use PRIMARY when hovered, ACCENT when not (purple on purple)
-        compareColor = m_fetchButtonHovered ? this->getColor(ColorSlot::PRIMARY) : this->getColor(ColorSlot::ACCENT);
+        // Idle and fetching alike: whatever reads ON the accent chip -- see
+        // BaseHud::chipGlyphColor(). Was "accent on accent", legible only because
+        // every theme was dark. The three cases above are left alone on purpose:
+        // those colours are the fetch RESULT, not decoration, and green/red on the
+        // chip is the point.
+        compareColor = this->buttonGlyphColor(this->getColor(ColorSlot::ACCENT));
     }
 
-    float compareWidth = PluginUtils::calculateMonospaceTextWidth(static_cast<int>(strlen("Compare")) + 2, dim.fontSize);
-
-    // Only add click region if button is enabled
+    // The plan's footer button row: box, art and label from the [button]
+    // terms; the click region is the box.
+    // Centred on the CARD rather than at the plan's left-aligned button
+    // column — a single action under a table reads as the panel's, not the
+    // first column's. The card, not the panel (PanelPlan::sectionBoxCenterX):
+    // the two agree only while the [content] terms are left/right symmetric.
+    const float btnW0 = plan.W(plan.g.btnW);
+    const float btnX = plan.sectionBoxCenterX() - btnW0 / 2.0f;
+    const float btnY = plan.Y(plan.g.btnTop);
+    const float btnW = btnW0;
+    const float btnH = plan.H(plan.g.btnH);
     if (!isButtonDisabled) {
-        m_clickRegions.push_back({rowX, currentY, compareWidth, dim.lineHeightNormal, ClickRegionType::FETCH_BUTTON});
+        m_clickRegions.push_back({btnX, btnY, btnW, btnH, ClickRegionType::FETCH_BUTTON});
     }
+    // Colour carries the state; addStateButton supplies the theme's button shape
+    // (or a plain quad) and places the label. The glyph colour is OVERRIDDEN here
+    // because it reports the fetch RESULT -- see compareColor above.
+    addStateButton(btnX, btnY, btnW, btnH, compareLabel,
+                   btnY + plan.H(plan.g.B.b.t + plan.g.B.p.t), dim.fontSize,
+                   this->getColor(ColorSlot::ACCENT),
+                   isButtonDisabled ? ButtonState::Disabled
+                   : (m_fetchButtonHovered && state != FetchState::FETCHING)
+                       ? ButtonState::Hovered : ButtonState::Idle,
+                   compareColor);
 
-    // Button background - muted when disabled, accent when enabled
-    {
-        SPluginQuad_t bgQuad;
-        float bgX = rowX;
-        float bgY = currentY;
-        applyOffset(bgX, bgY);
-        setQuadPositions(bgQuad, bgX, bgY, compareWidth, dim.lineHeightNormal);
-        bgQuad.m_iSprite = SpriteIndex::SOLID_COLOR;
-        if (isButtonDisabled) {
-            bgQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED), 64.0f / 255.0f);
-        } else {
-            bgQuad.m_ulColor = m_fetchButtonHovered && state != FetchState::FETCHING
-                ? this->getColor(ColorSlot::ACCENT)
-                : PluginUtils::applyOpacity(this->getColor(ColorSlot::ACCENT), 128.0f / 255.0f);
-        }
-        m_quads.push_back(bgQuad);
-    }
-
-    addString(compareLabel, rowX + compareWidth / 2.0f, currentY, Justify::CENTER, this->getFont(FontCategory::NORMAL), compareColor, dim.fontSize);
-
-    currentY += dim.lineHeightNormal;
+    // === Table section ===
+    currentY = plan.contentY(1);
 
     // === Column header row (optional) ===
-    // HEADER_ROWS always reserves this row; when headers are off it stays empty.
     if (m_bShowHeaders) {
         unsigned long headerColor = this->getColor(ColorSlot::TERTIARY);
         int headerFont = this->getFont(FontCategory::STRONG);
@@ -635,8 +648,8 @@ void RecordsHud::rebuildRenderData() {
             addLabel("Time", m_columns.laptime, currentY, Justify::LEFT, headerFont, headerColor, dim);
         if (isColumnEnabled(COL_DATE))
             addLabel("Date", m_columns.date, currentY, Justify::LEFT, headerFont, headerColor, dim);
+        currentY += dim.lineHeightNormal;
     }
-    currentY += dim.lineHeightNormal;
 
     // === Record Rows (with Personal Best integration) ===
     // Track how many rows we render so we can fill with placeholders
@@ -663,14 +676,14 @@ void RecordsHud::rebuildRenderData() {
                                int sector1, int sector2, int sector3, int sector4, const char* date, bool isPlayerRow) {
         // Add highlight background quad for player row
         if (isPlayerRow) {
-            SPluginQuad_t highlight;
-            float highlightX = START_X;
-            float highlightY = currentY;
-            applyOffset(highlightX, highlightY);
-            setQuadPositions(highlight, highlightX, highlightY, backgroundWidth, dim.lineHeightNormal);
-            highlight.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-            highlight.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::ACCENT), 80.0f / 255.0f);
-            m_quads.push_back(highlight);
+            // THE CONTENT COLUMN, like StandingsHud's row highlight -- one owner
+            // (plan.rowBandX/W) for every row band in the plugin. Spanning the raw
+            // backgroundWidth would run it out over the frame's edge slice; spanning
+            // the card's INTERIOR runs it out over the card's own padding.
+            addRowHighlight(plan.rowBandX(), currentY,
+                            plan.rowBandW(), dim.lineHeightNormal,
+                            PluginUtils::applyOpacity(this->getColor(ColorSlot::ACCENT),
+                                                      ROW_SELECT_ALPHA));
         }
 
         // Position (P1, P2, etc.) - skip for player row
@@ -899,11 +912,8 @@ void RecordsHud::rebuildRenderData() {
         rowsRendered++;
     }
 
-    // === Footer Note (rendered in bottom padding area) ===
+    // === Footer Note: the table section's last row ===
     if (m_bShowFooter) {
-        // Position in bottom padding: after all content rows + gap row
-        currentY = contentStartY + titleHeight + ((HEADER_ROWS - 1 + m_recordsToShow + 1) * dim.lineHeightNormal);
-
         // "Submit by playing on <provider> servers" (small font, row height unchanged).
         // Rendered as ONE string so it can't misalign: the provider used to be a
         // separately-positioned, differently-colored segment placed by the monospace
@@ -950,7 +960,7 @@ void RecordsHud::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     m_fScale = 1.0f;
-    setPosition(0.7315f, 0.48107f);
+    setPosition(cellsX(133), cellsY(41));
     m_provider = DataProvider::CBR;
     m_categoryIndex = 0;
     m_lastSessionTrackName[0] = '\0';  // Reset so update() will pick up current session track

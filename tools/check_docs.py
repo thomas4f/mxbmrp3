@@ -36,6 +36,7 @@ Pure stdlib, no network, runs in about a second. Usage:
 import glob
 import os
 import re
+import subprocess
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -70,13 +71,32 @@ DOC_BUDGETS = {
 # tests/unit/README.md still told readers the plugin "cannot be built on
 # Linux/CI" while citing a CLAUDE.md that says the opposite. Nothing caught
 # either, because path checking stopped at the root. It no longer does.
-DOCS = ["CLAUDE.md", "ARCHITECTURE.md", "TESTING.md", "DEVELOPMENT.md",
-        "CONTRIBUTING.md", "README.md", "SECURITY.md",
-        "tests/unit/README.md", "tests/integration/README.md",
-        "tests/integration/API_COVERAGE.md", "tests/web/README.md",
-        "tests/asan/README.md", "analytics/README.md",
-        "crash_analysis/README.md", "tools/mxbmrp3_replay/README.md",
-        "tools/mxbmrp3_fontgen/README.md", "tools/mxbmrp3_hud_window/README.md"]
+# EVERY tracked .md is checked, minus the exclusions below. This used to be a
+# hand-kept opt-IN list and it rotted the way such lists do: twelve of the
+# thirty-four tracked docs were outside it, including four of the seven tool
+# READMEs and the pack-authoring guide, with no reason for the split beyond who
+# remembered to add a line. Opt-OUT means a new doc is covered on the day it
+# lands, and a doc that should NOT be covered has to say why here.
+DOCS_EXCLUDED = {
+    # Historical by definition: old entries name files that were later renamed
+    # or deleted, and rewriting history to satisfy a path check would be a lie.
+    "CHANGELOG.md",
+    # Upstream licence text, verbatim. Not ours to edit, no repo paths in it.
+    "THIRD_PARTY_LICENSES.md",
+    # GENERATED wholesale from data the repo does not keep (Aptabase exports,
+    # known_game_crashes.json). Their generators own what goes in them.
+    "analytics/REPORT.md", "crash_analysis/KNOWN_GAME_CRASHES.md",
+}
+
+
+def tracked_docs():
+    out = subprocess.run(["git", "ls-files", "*.md"], cwd=REPO,
+                         capture_output=True, text=True).stdout.split()
+    return [f for f in out
+            if not f.startswith("mxbmrp3/vendor/") and f not in DOCS_EXCLUDED]
+
+
+DOCS = tracked_docs()
 
 # Directories a bare filename (`map_hud.h`) may be resolved against, so docs can
 # name a file without repeating its full path.
@@ -244,7 +264,12 @@ def check_test_catalogue(failures):
     unlisted test trips this one.
     """
     doc = open(os.path.join(REPO, "TESTING.md"), encoding="utf-8").read()
-    for pattern in ("tests/integration/tests/*.cpp", "tests/unit/test_*.cpp"):
+    # BOTH unit spellings. The glob used to be `test_*.cpp` only, and the eleven
+    # unit tests named `*_test.cpp` were silently outside the census the docstring
+    # above claims -- a blind spot created by a naming split, not by anyone
+    # forgetting a row.
+    for pattern in ("tests/integration/tests/*.cpp",
+                    "tests/unit/test_*.cpp", "tests/unit/*_test.cpp"):
         for path in sorted(glob.glob(os.path.join(REPO, pattern))):
             name = os.path.basename(path)
             if name not in doc:
@@ -297,6 +322,193 @@ def check_budget(failures):
                 "never just to make this check pass.")
 
 
+def check_named_singletons_exist(failures):
+    """Every singleton CLAUDE.md names must still be one.
+
+    The list is deliberately NOT exhaustive -- `grep -l getInstance` is, and a
+    hand-kept copy of a thing the code already states is the "don't index the
+    tree" mistake CLAUDE.md itself warns about. What a reader cannot grep for is
+    which ones matter and why, so that is all the list carries.
+
+    The failure mode worth catching is therefore not incompleteness but a name
+    that has been renamed or deleted out from under the prose: a list that is
+    short is honest, a list that is WRONG sends the next reader looking for a
+    class that is not there. Adding a singleton needs no edit here; renaming or
+    removing one does.
+    """
+    claude = open(os.path.join(REPO, "CLAUDE.md"), encoding="utf-8").read()
+    start = claude.find("**Key Singletons**")
+    if start < 0:
+        failures.append(
+            "CLAUDE.md has no '**Key Singletons**' block. If it was renamed, update "
+            "check_named_singletons_exist so the names stay checked.")
+        return
+    block = claude[start:claude.find("\n\n", start)]
+    named = set(re.findall(r"^- `([A-Za-z_][A-Za-z0-9_]*)`", block, re.M))
+
+    real = set()
+    for root, _dirs, files in os.walk(os.path.join(REPO, "mxbmrp3")):
+        if "vendor" in root.split(os.sep):
+            continue
+        for f in files:
+            if not f.endswith((".h", ".cpp")):
+                continue
+            for m in re.finditer(r"static\s+([A-Za-z_][A-Za-z0-9_]*)\s*&\s*getInstance",
+                                 open(os.path.join(root, f), encoding="utf-8",
+                                      errors="replace").read()):
+                real.add(m.group(1))
+
+    for name in sorted(named - real):
+        failures.append(
+            f"CLAUDE.md's Key Singletons names `{name}`, which is no longer a "
+            "singleton in mxbmrp3/ (no `static X& getInstance`). Renamed, removed, or "
+            "demoted -- update the entry or drop it. The list may be incomplete; it "
+            "may not be wrong.")
+
+
+def check_symbol_homes(failures):
+    """A doc that says `sym()` lives in `file.cpp` must still be right.
+
+    check_paths already proves the FILE exists, which is why this one was
+    needed: `finiteOrZero()` moved to stats_manager_persistence.cpp in a file
+    split, both CLAUDE.md and ARCHITECTURE.md kept pointing at
+    stats_manager.cpp, and every existing check stayed green because that file
+    is still there. A reader following the pointer finds the wrong file and no
+    symbol, which is worse than no pointer at all.
+
+    Deliberately narrow: only the "`sym()` ... in `path`" phrasing, which is a
+    doc making a checkable claim. Prose that merely mentions a function near a
+    filename is not a claim and is left alone.
+    """
+    # Two phrasings, both a checkable claim:
+    #   `sym()` ... in `file.cpp`      -- a function, named as a call
+    #   `sym` (file.cpp)               -- a type, table or constant
+    # The second was added after `s_tabRegistry` (settings_hud.cpp) survived
+    # in two CLAUDE.md steps and a header comment: the registry had moved to
+    # settings_hud_render.cpp, and a symbol written without parens was
+    # invisible to the first pattern.
+    patterns = (
+        re.compile(
+            r"`((?:[A-Za-z_][A-Za-z0-9_]*::)*[A-Za-z_][A-Za-z0-9_]*)\(\)`"
+            r"[^.\n]{0,40}?\bin `([a-z_0-9/]+\.(?:h|cpp))`"),
+        re.compile(
+            r"`([A-Za-z_][A-Za-z0-9_]*)`\s+\(([a-z_0-9/]+\.(?:h|cpp))\)"),
+    )
+    for doc in ("CLAUDE.md", "ARCHITECTURE.md", "TESTING.md", "DEVELOPMENT.md"):
+        full = os.path.join(REPO, doc)
+        if not os.path.exists(full):
+            continue
+        text = open(full, encoding="utf-8").read()
+        claims = [(sym, rel, is_call)
+                  for is_call, pat in zip((True, False), patterns)
+                  for sym, rel in pat.findall(text)]
+        for sym, rel, is_call in claims:
+            # resolve() answers "does this exist", not "where"; docs name files
+            # by partial path, so suffix-match under the repo the way a reader
+            # would. No hit is check_paths' problem, not this check's.
+            hits = [q for q in glob.glob(os.path.join(REPO, "**", os.path.basename(rel)),
+                                         recursive=True)
+                    if q.replace(os.sep, "/").endswith("/" + rel) and "/build/" not in
+                    q.replace(os.sep, "/")]
+            if not hits:
+                continue
+            body = "".join(open(q, encoding="utf-8", errors="replace").read() for q in hits)
+            # A call must appear as one; a table or constant only has to appear.
+            bare = re.escape(sym.split("::")[-1])
+            probe = r"\b%s\s*\(" % bare if is_call else r"\b%s\b" % bare
+            if not re.search(probe, body):
+                shown = f"{sym}()" if is_call else sym
+                failures.append(
+                    f"{doc} says `{shown}` is in `{rel}`, but that file defines no such "
+                    "symbol. Moved in a file split? Point at its new home -- a pointer "
+                    "to the wrong file is worse than none.")
+
+
+def check_build_sharing_gates_are_locked(failures):
+    """Any gate that drives build.sh must hold the RESOURCE_LOCK.
+
+    They all relink and then load the SAME artifact,
+    tests/integration/build/mxbmrp3_test.dlo, so two of them running under
+    `ctest -j` corrupt each other. CMakeLists.txt already said "a new gate that
+    runs the cross-built DLL belongs in this list" -- and then codeql was added
+    and was not, which is what makes this a check rather than a comment.
+
+    It cost a full suite run to find, and the failure does not look like a race:
+    85 integration tests failed on host.loaded() with exit=1/reached_init=0,
+    which reads like a fuzz finding, while codeql's database came back two
+    thirds complete. Comment lines are stripped before matching so a script that
+    merely MENTIONS build.sh in its rationale (check_game_configs.sh does) is
+    not dragged into the lock.
+    """
+    cml = open(os.path.join(REPO, "CMakeLists.txt"), encoding="utf-8").read()
+    locked = set()
+    m = re.search(r"set_tests_properties\(([^)]*?)PROPERTIES\s+RESOURCE_LOCK\s+\w+\)",
+                  cml, re.S)
+    if m:
+        locked = set(m.group(1).split())
+
+    # Chunk on the call rather than regexing the whole invocation: a gate body is
+    # shell, and codeql's contains a ")" inside its own SKIP message -- which is
+    # exactly how the first version of this check silently matched no codeql gate
+    # and reported all-clear while the bug it exists for was present.
+    chunks = cml.split("mxb_gate(")[1:]
+    for chunk in chunks:
+        body = chunk.split("\nmxb_gate(")[0].split("\nset_tests_properties")[0]
+        name = body.split()[0]
+        # Only tests/integration/ scripts share the artifact. tools/fontgen/test.sh
+        # also says "build.sh", meaning its OWN, which is why this is scoped by
+        # location rather than by the word alone.
+        script = re.search(r"\./(tests/integration/[A-Za-z0-9_/.-]+\.sh)", body)
+        if not script:
+            continue
+        full = os.path.join(REPO, script.group(1))
+        if not os.path.exists(full):
+            continue
+        code = "\n".join(line for line in open(full, encoding="utf-8", errors="replace")
+                          if not line.lstrip().startswith("#"))
+        if "build.sh" in code and name not in locked:
+            failures.append(
+                f"CMakeLists.txt: gate `{name}` drives build.sh but is not in the "
+                "RESOURCE_LOCK list. It shares tests/integration/build/mxbmrp3_test.dlo "
+                "with the other cross-build gates, so under `ctest -j` it will relink "
+                "that DLL while another gate is loading it.")
+
+
+def check_readme_toc(failures):
+    """README.md's Contents block must list every section, and only real ones.
+
+    It is hand-maintained, which is the same shape as the two lists that had
+    already rotted by the time anyone looked (the singleton roster and the docs
+    allowlist). It is kept rather than deleted because the README is the
+    user-facing front door and is read on mirrors and forums where GitHub's
+    generated outline does not exist -- so it earns a check instead.
+
+    The two sections ABOVE the block (Features, Get Started) are deliberately
+    not in it: a reader has already passed them.
+    """
+    readme = open(os.path.join(REPO, "README.md"), encoding="utf-8").read()
+    start = readme.find("## Contents")
+    if start < 0:
+        return
+    block = readme[start:readme.index("\n## ", start + 5)]
+    listed = re.findall(r"^- \[([^\]]+)\]\(#", block, re.M)
+    sections = [h for h in re.findall(r"^## (.+)$", readme, re.M)]
+    above = sections[:sections.index("Contents")]
+
+    for name in listed:
+        if name not in sections:
+            failures.append(
+                f"README.md Contents links to \"{name}\", which is not a section. "
+                "Renamed or removed -- fix the entry.")
+    for name in sections:
+        if name in above or name == "Contents" or name in listed:
+            continue
+        failures.append(
+            f"README.md has a \"{name}\" section that its Contents block does not "
+            "list. Add it, or move the section above Contents if it is meant to be "
+            "read before the list.")
+
+
 def check_gate_tools_installable(failures):
     """Every binary a CTest gate requires must be installable via install_deps.sh.
 
@@ -334,6 +546,328 @@ def check_gate_tools_installable(failures):
             f"CMakeLists.txt: a gate requires '{tool}', but no group in "
             f"tools/install_deps.sh lists it under `provides`. Add it there so "
             f"`./tools/install_deps.sh` actually unblocks that gate.")
+
+
+def check_tooltip_ids_resolve(failures):
+    """Every tooltip id the settings UI asks for must exist in the table.
+
+    A control names its tooltip by STRING, and a miss is silent: the row
+    renders, the hover does nothing, and no test reads tooltips. That is how
+    hotkeys.crash_reset shipped -- the Crashes widget added a hotkey action
+    with a tooltip id and no entry beside the thirty other hotkeys that have
+    one.
+
+    Both sides are read from the source, so this needs no list of its own:
+    the ids come from the settings UI (the only place they are passed) and the
+    table from tooltip_manager.h. Tokens that merely look dotted -- headers,
+    .lib names -- are excluded by extension rather than by an allowlist, so a
+    NEW tooltip namespace is covered the day it appears.
+    """
+    table = os.path.join(REPO, "mxbmrp3/core/tooltip_manager.h")
+    if not os.path.exists(table):
+        return
+    defined = set(re.findall(r'\{"([a-z0-9_.]+)",\s*"', open(table, encoding="utf-8").read()))
+    if not defined:
+        failures.append("check_tooltip_ids_resolve: parsed no tooltips from "
+                        "tooltip_manager.h. Table reshaped? This check is now blind.")
+        return
+
+    NOT_A_TOOLTIP = {"h", "cpp", "hpp", "inc", "lib", "dll", "dlo", "exe", "js",
+                     "css", "html", "ini", "json", "tga", "fnt", "wav", "txt",
+                     "png", "md", "py", "sh"}
+    ui = []
+    for root, _dirs, files in os.walk(os.path.join(REPO, "mxbmrp3/hud")):
+        for f in files:
+            if f.endswith(".cpp") and (f.startswith("settings") or "settings" in root):
+                ui.append(os.path.join(root, f))
+    missing = {}
+    for path in sorted(ui):
+        text = open(path, encoding="utf-8").read()
+        for tok in re.findall(r'"([a-z][a-z0-9_]*\.[a-z][a-z0-9_]*)"', text):
+            if tok.rsplit(".", 1)[1] in NOT_A_TOOLTIP or tok in defined:
+                continue
+            missing.setdefault(tok, os.path.relpath(path, REPO))
+    for tok, where in sorted(missing.items()):
+        failures.append(
+            f"{where}: tooltip id '{tok}' has no entry in tooltip_manager.h "
+            "(the control renders, the hover shows nothing)")
+
+
+def check_no_legacy_data_filenames(failures):
+    """No user-visible text may name a data file the plugin migrated away from.
+
+    The Records tab told users their records live in
+    mxbmrp3_personal_bests.json long after StatsManager had folded that file
+    into mxbmrp3_stats.json. Nothing caught it: the string is a valid literal,
+    the old file still exists on upgraded installs, and no test reads tooltips.
+
+    The migration source is the authority -- it declares the old names as
+    OLD_*_FILENAME -- so this needs no list of its own. Naming one anywhere
+    except that file, or the changelog recording the migration, is the bug.
+    """
+    mig = os.path.join(REPO, "mxbmrp3/core/stats_manager_persistence.cpp")
+    if not os.path.exists(mig):
+        return
+    legacy = re.findall(r'OLD_\w*FILENAME\s*=\s*"([^"]+)"',
+                        open(mig, encoding="utf-8").read())
+    if not legacy:
+        failures.append(
+            "check_no_legacy_data_filenames: found no OLD_*FILENAME constants in "
+            "stats_manager_persistence.cpp. Renamed? This check is now blind.")
+        return
+
+    allowed = {"mxbmrp3/core/stats_manager_persistence.cpp", "CHANGELOG.md"}
+    tracked = subprocess.run(["git", "ls-files", "*.cpp", "*.h", "*.md", "*.ini"],
+                             cwd=REPO, capture_output=True, text=True).stdout.split()
+    for rel in tracked:
+        if rel in allowed or rel.startswith("mxbmrp3/vendor/"):
+            continue
+        try:
+            text = open(os.path.join(REPO, rel), encoding="utf-8", errors="replace").read()
+        except OSError:
+            continue
+        for name in legacy:
+            for i, line in enumerate(text.splitlines(), 1):
+                if name not in line:
+                    continue
+                # A line that says it is describing the migration is the one
+                # legitimate mention -- ARCHITECTURE.md documents that the
+                # migration exists. Anything else is telling a user to go look
+                # in a file the plugin no longer writes.
+                if re.search(r"\b(legacy|migrat)", line, re.I):
+                    continue
+                failures.append(
+                    f"{rel}:{i} names `{name}`, which the plugin migrated away "
+                    "from. Point at the current file -- users follow these. If the "
+                    "line is describing the migration, say \"legacy\" in it.")
+
+
+def read_tab_registry(failures, check_name):
+    """Parse s_tabRegistry into (global tabs, profile tabs) name lists.
+
+    Returns None -- after appending ONE named failure -- when the anchors are
+    gone, rather than letting str.index() raise. A registry rename used to take
+    the whole gate down with a ValueError traceback, hiding every other check;
+    the file's other checks (check_named_singletons_exist) already degrade to a
+    this-check-is-blind message for exactly this case, and the registry has
+    moved once already.
+
+    One reader rather than two: check_documented_settings_paths and
+    check_readme_menu_tables both need these names, and the duplicated anchor
+    literals had to be fixed in both places.
+    """
+    path = os.path.join(REPO, "mxbmrp3/hud/settings_hud_render.cpp")
+    if not os.path.exists(path):
+        failures.append(f"{check_name}: settings_hud_render.cpp is gone -- this "
+                        "check is now blind. Point it at the registry's new home.")
+        return None
+    render = open(path, encoding="utf-8").read()
+    start = render.find("s_tabRegistry[] = {")
+    end = render.find("const SettingsHud::TabDescriptor* SettingsHud::findTabDescriptor")
+    if start < 0 or end < 0 or end <= start:
+        failures.append(
+            f"{check_name}: could not find s_tabRegistry[] (or the "
+            "findTabDescriptor definition that bounds it) in "
+            "settings_hud_render.cpp -- moved or renamed? This check is now "
+            "blind; update its anchors.")
+        return None
+
+    rows = re.findall(r'\{\s*(TAB_[A-Z_]+),\s*(?:"([^"]*)"|nullptr)', render[start:end])
+    glob, prof, in_profile = [], [], False
+    for tab, name in rows:
+        if tab == "TAB_SECTION_PROFILE":
+            in_profile = True
+        elif tab == "TAB_SECTION_GLOBAL":
+            pass
+        elif in_profile:
+            prof.append(name)
+        else:
+            glob.append(name)
+    if not glob or not prof:
+        failures.append(
+            f"{check_name}: s_tabRegistry parsed to {len(glob)} global and "
+            f"{len(prof)} profile tabs -- the row shape changed, so this check "
+            "is matching nothing. Update the row regex.")
+        return None
+    return glob, prof
+
+
+def check_documented_settings_paths(failures):
+    """A doc saying "Settings > X" must name a tab that exists.
+
+    Tab names are what a reader matches against the menu in front of them, and
+    a renamed tab leaves every doc that named it quietly wrong.
+
+    Windows' own Settings app shares the phrasing ("Settings > Apps > Installed
+    apps"), so those two prefixes are allowed through by name rather than by
+    guessing from context.
+    """
+    registry = read_tab_registry(failures, "check_documented_settings_paths")
+    if registry is None:
+        return
+    glob, prof = registry
+    tabs = set(glob) | set(prof)
+    windows = {"Apps", "Time"}          # Windows Settings, not ours
+
+    for doc in tracked_docs_all():
+        for i, line in enumerate(
+                open(os.path.join(REPO, doc), encoding="utf-8").read().splitlines(), 1):
+            for m in re.finditer(r"Settings > ([A-Z][a-zA-Z]*(?: [A-Z][a-zA-Z]*)?)", line):
+                claimed = m.group(1)
+                # docs write "Settings > General and the plugin ..." -- try the
+                # longest match first, then its first word.
+                if claimed in tabs or claimed.split()[0] in tabs:
+                    continue
+                if claimed.split()[0] in windows:
+                    continue
+                failures.append(
+                    f"{doc}:{i} says \"Settings > {claimed}\", but there is no such "
+                    "tab. Renamed, or Windows' own Settings? Tabs are in s_tabRegistry.")
+
+
+def tracked_docs_all():
+    """Every tracked .md outside vendor -- house-style and link checks want the
+    changelog and licence file too, which DOCS deliberately excludes."""
+    out = subprocess.run(["git", "ls-files", "*.md"], cwd=REPO,
+                         capture_output=True, text=True).stdout.split()
+    return [f for f in out if not f.startswith("mxbmrp3/vendor/")]
+
+
+def check_anchor_links(failures):
+    """Every `](#heading)` and `](other.md#heading)` must resolve.
+
+    check_paths proves the FILE exists; nothing proved the fragment did. A
+    heading rename breaks every inbound deep link silently -- GitHub renders a
+    dead anchor as an ordinary link that just does not move the page, so it is
+    invisible until a reader clicks it.
+
+    Slugging follows GitHub's rule closely enough for these docs: strip inline
+    HTML, links and backticks, drop punctuation, lowercase, spaces to hyphens.
+    """
+    docs = tracked_docs_all()
+    heads = {}
+    for doc in docs:
+        found = set()
+        for h in re.findall(r"^#{1,6}\s+(.+?)\s*$",
+                            open(os.path.join(REPO, doc), encoding="utf-8").read(), re.M):
+            h = re.sub(r"<[^>]+>", "", h)
+            h = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", h).replace("`", "")
+            found.add(re.sub(r"[^\w\s-]", "", h).strip().lower().replace(" ", "-"))
+        heads[doc] = found
+
+    for doc in docs:
+        body = open(os.path.join(REPO, doc), encoding="utf-8").read()
+        body = re.sub(r"```.*?```", "", body, flags=re.S)
+        for target in re.findall(r"\]\(([^)\s]+)\)", body):
+            if target.startswith(("http", "mailto")):
+                continue
+            path, _, frag = target.partition("#")
+            if not frag:
+                continue
+            ref = doc if not path else os.path.normpath(
+                os.path.join(os.path.dirname(doc), path))
+            if ref not in heads:
+                continue          # not a tracked doc; check_paths owns the file
+            if frag.lower() not in heads[ref]:
+                failures.append(
+                    f"{doc} links to `{target}`, but {ref} has no such heading. "
+                    "Renamed? A dead anchor renders as a link that does nothing.")
+
+
+def check_readme_menu_tables(failures):
+    """README's three settings tables must match the code, names and order.
+
+    They are what a user compares against the menu in front of them, so a
+    stale one is worse than none: it sends them looking for a row that moved
+    or was never there. All three had rotted by the time this was written --
+    the Widgets table was missing Pointer, Settings and Version entirely, and
+    both it and the HUDs table listed rows in an order the menu does not use.
+
+    Order is checked, not just membership, because the tables exist to be read
+    alongside the menu.
+    """
+    readme = open(os.path.join(REPO, "README.md"), encoding="utf-8").read()
+
+    # find(), not index(): a renamed README heading must report which section
+    # went missing, not raise out of the gate. Same rule as read_tab_registry.
+    def documented(start, end):
+        a, b = readme.find(start), readme.find(end)
+        if a < 0 or b < 0 or b <= a:
+            failures.append(
+                f"check_readme_menu_tables: could not slice README.md between "
+                f"{start!r} and {end!r} -- a heading was renamed or removed, so "
+                "this table is no longer being checked. Update the anchors.")
+            return None
+        return re.findall(r"\|\s*\*\*([^*]+)\*\*\s*\|", readme[a:b])
+
+    registry = read_tab_registry(failures, "check_readme_menu_tables")
+    if registry is None:
+        return
+    glob, prof = registry
+    prof = [t for t in prof if t != "Widgets"]   # its own table, below
+
+    widgets_src = open(os.path.join(
+        REPO, "mxbmrp3/hud/settings/settings_tab_widgets.cpp"), encoding="utf-8").read()
+    widgets = re.findall(r'addWidgetRow\("([^"]+)"', widgets_src)
+    if not widgets:
+        failures.append(
+            "check_readme_menu_tables: found no addWidgetRow calls in "
+            "settings_tab_widgets.cpp -- renamed? The Widgets table is no "
+            "longer being checked.")
+        return
+
+    for label, code, doc, where in (
+            ("global settings tabs", glob,
+             documented("| Icon | Tab | Description |", "### Profiles"),
+             "s_tabRegistry (settings_hud_render.cpp)"),
+            ("HUDs", prof, documented("### HUDs", "### Widgets"),
+             "s_tabRegistry (settings_hud_render.cpp)"),
+            ("Widgets", widgets, documented("### Widgets", "## More Features"),
+             "addWidgetRow calls (settings_tab_widgets.cpp)")):
+        if doc is None:
+            continue          # documented() already reported the bad anchor
+        if code == doc:
+            continue
+        missing = [c for c in code if c not in doc]
+        extra = [d for d in doc if d not in code]
+        detail = []
+        if missing:
+            detail.append("missing " + ", ".join(missing))
+        if extra:
+            detail.append("lists " + ", ".join(extra) + ", which the menu does not")
+        if not detail:
+            detail.append(f"order differs; the menu is: {', '.join(code)}")
+        failures.append(
+            f"README.md's {label} table disagrees with {where}: "
+            + "; ".join(detail) + ".")
+
+
+def check_no_em_dashes(failures):
+    """No U+2014 in any tracked doc.
+
+    A house style rule, and the kind that rots on its own: it reads as prose
+    advice, so it gets followed until someone (or some model) writes a
+    paragraph without thinking about it, and then it is quietly false. A
+    grep costs nothing and is never out of date.
+
+    En dashes (U+2013) are deliberately NOT flagged. They carry meaning here:
+    numeric ranges ("20-200%", "0x80-0x9F") and the Arrange-Act-Assert triad.
+
+    Generated docs are checked like any other, which is what catches an em
+    dash added to a generator's source -- it lands in the .md, and the
+    census gate keeps the .md in step with the source.
+
+    Runs over every tracked .md, not DOCS: the changelog and the third-party
+    licence file are excluded from the other checks for reasons that do not
+    apply to house style.
+    """
+    for doc in tracked_docs_all():
+        text = open(os.path.join(REPO, doc), encoding="utf-8").read()
+        for i, line in enumerate(text.splitlines(), 1):
+            if "\u2014" in line:
+                failures.append(
+                    f"{doc}:{i} has an em dash. Use a spaced hyphen: "
+                    f"{line.strip()[:70]}")
 
 
 def check_ci_runs_every_gate(failures):
@@ -393,7 +927,7 @@ def check_every_ci_script_is_a_gate(failures):
     """...and the other direction: a script CI runs must be a registered gate.
 
     check_ci_runs_every_gate above walks gate -> CI. Nothing walked CI -> gate,
-    and the gap is not hypothetical: `tools/mxbmrp3_fontgen/test.sh` and
+    and the gap is not hypothetical: `tools/fontgen/test.sh` and
     `tools/analytics_report.py --selftest` ran in CI for months with no gate, so
     a developer's `ctest` came back green while CI ran two more things. That is
     how 19 -Wunused-function warnings per fontgen build survived — the only
@@ -438,6 +972,244 @@ def check_every_ci_script_is_a_gate(failures):
                         "in tests.yml — did the workflow's shape change?" % seen)
 
 
+
+def check_shipped_theme_keys(failures):
+    """Every key a shipped theme ini names -- commented example or not -- must be one
+    the applier accepts.
+
+    A theme ini is EDITED BY USERS, and its commented block advertises itself as the
+    values in effect. A stale key there is worse than a missing one: uncommenting it
+    logs "unknown key" and changes nothing, so the file teaches the wrong vocabulary.
+    That is not hypothetical -- `[title] padding-x` survived in bracket.ini after the
+    hugging band it configured was removed.
+
+    Checks NAMES, not values: the accepted set is mechanically readable from
+    readThemeIni, while the values would need the C++ to answer honestly.
+
+    The set used to include the layout vocabulary too, read from layout_metrics.h's
+    key applier. There is no applier any more -- a theme states slices, colours and
+    fonts, and nothing else -- so this now enforces that smaller surface, which is
+    the point: paste a `[panel] padding-x` into a theme and it fails here rather
+    than being logged and ignored at runtime.
+    """
+    # Read from readThemeIni, not copied here. A hardcoded list would drift exactly
+    # the way this check exists to prevent, one level up: rename card.content to
+    # card.body there and bracket.ini's live `content = 1` would still be accepted
+    # here while the body card silently stopped working.
+    assets = os.path.join(REPO, "mxbmrp3", "core", "asset_manager.cpp")
+    with open(assets, encoding="utf-8") as f:
+        src = f.read()
+    accepted = set(re.findall(r'std::strcmp\(key, "([^"]+)"\)', src))
+    # The per-family overrides ([card] widget-content and friends) are a TABLE rather
+    # than a run of strcmps, because six near-identical branches is what a table is
+    # for. Read them too: this check exists so a documented key is a real one, and it
+    # would otherwise reject exactly the keys it should be protecting.
+    accepted |= set(re.findall(r'\{\s*"([^"]+)",\s*\d+,\s*(?:true|false)\s*\}', src))
+    # ...and the box-model key table (kBoxKeys): { "panel.border", &ThemeAsset::...,
+    # then that row's FLAGS } -- same table-over-strcmps reasoning as the
+    # per-family one. The flag count is deliberately open: the table gains one
+    # whenever a per-key property does (border, cardArt, scalar, fracBorder so
+    # far), and a pattern pinned to a fixed count silently matches NOTHING the
+    # next time -- which reads as "every documented key is unknown", 147 of them
+    # at once, and looks like the theme files broke rather than this regex.
+    accepted |= set(re.findall(
+        r'\{\s*"([^"]+)",\s*&ThemeAsset::\w+'
+        r'(?:,\s*(?:true|false))+\s*\}', src))
+    # ...plus the two sparse sections whose keys are slot/category names.
+    prefixes = ("colors.", "fonts.")
+
+    ini_paths = []
+    root = os.path.join(REPO, "mxbmrp3_data", "themes")
+    for theme in sorted(os.listdir(root)):
+        d = os.path.join(root, theme)
+        if not os.path.isdir(d):
+            continue
+        for name in sorted(os.listdir(d)):
+            if name.endswith(".ini"):
+                ini_paths.append(os.path.join(d, name))
+    # assets/themes too. That is where debug's ini lives (its slices are not built,
+    # so it has no folder under mxbmrp3_data), and the walk covers it:
+    # a theme ini beside its master is exactly where a typo'd key slipped past once.
+    masters = os.path.join(REPO, "assets", "themes")
+    for name in sorted(os.listdir(masters)):
+        if name.endswith(".ini"):
+            ini_paths.append(os.path.join(masters, name))
+    for path in ini_paths:
+        section = ""
+        with open(path, encoding="utf-8") as f:
+            for lineno, line in enumerate(f, 1):
+                s = line.strip()
+                # A commented-out SETTING (";key = value"), not prose.
+                if s.startswith(";"):
+                    s = s[1:].strip()
+                    # A commented SECTION HEADER still changes scope: the whole
+                    # [colors]/[fonts] block ships commented out, and reading its
+                    # keys under whatever real section came last is how this check
+                    # first reported ten colour slots as bad `settings.` keys.
+                    # The WHOLE line must be the header. Prose routinely starts
+                    # with a bracketed reference ("; [content]; off by default")
+                    # and treating that as a scope change silently rescoped every
+                    # key after it -- which is how this check first blamed
+                    # bracket.ini's `[card] content` on a `[content]` section.
+                    if not re.fullmatch(r"\[[a-z-]+\]", s):
+                        if "=" not in s or " " in s.split("=", 1)[0].strip():
+                            continue
+                if s.startswith("[") and "]" in s:
+                    section = s[1:s.index("]")].strip()
+                    continue
+                if "=" not in s:
+                    continue
+                key = s.split("=", 1)[0].strip()
+                # An ini key, not prose that happens to contain '=' -- the files
+                # are full of "; 0 = sprites carry their own colours".
+                if not re.fullmatch(r"[a-z][a-z0-9-]*", key) or not section:
+                    continue
+                scoped = f"{section}.{key}"
+                if scoped in accepted or scoped.startswith(prefixes):
+                    continue
+                failures.append(
+                    f"{os.path.relpath(path, REPO)}:{lineno}: '{scoped}' is not a key the "
+                    f"theme applier accepts, so uncommenting it would log 'unknown key' "
+                    f"and change nothing. Fix the name or delete the line.")
+
+
+# The GEOMETRY sections, in the order a theme ini states them. Colours and fonts are
+# each theme's own; these are not.
+GEOMETRY_SECTIONS = ("panel", "title", "content", "button", "frame", "card")
+
+# The one theme that is allowed to differ, and why: debug is a measuring instrument
+# rather than a look. Its values are deliberately larger than a real theme's so each
+# band is thick enough to see, and it turns every [card] switch ON -- the shared
+# geometry turns the bands off, which would leave it unable to show a band at all.
+GEOMETRY_EXEMPT = {"debug"}
+
+
+def check_shipped_pack_skins(failures):
+    """Every shipped pack that declares `base` must actually resolve.
+
+    A skin states only what it changes; discovery answers the rest from its
+    base and REJECTS THE PACK WHOLE if the base is missing, is itself a skin,
+    or the resolved file set has a hole. That rejection is a log line the user
+    never reads -- so a typo here means the shipped Midnight pads or the Carbon
+    board silently never appear, and nothing else notices.
+
+    The integration test (pack_skin_test) proves the RULE against staged packs;
+    this proves the shipped packs obey it, which is the half a synthetic
+    fixture cannot cover.
+
+    Stems come from asset_manager.h, so adding one to a kStems table makes this
+    check demand it of every shipped pack rather than going quietly out of date.
+    """
+    header = open(os.path.join(REPO, "mxbmrp3/core/asset_manager.h"),
+                  encoding="utf-8").read()
+
+    def stems_of(namespace):
+        m = re.search(namespace + r"\b.*?kStems\[\] = \{(.*?)\};", header, re.S)
+        return re.findall(r'"([^"]+)"', m.group(1)) if m else []
+
+    kinds = (("gamepads", stems_of("namespace GamepadSprite")),
+             ("pitboards", stems_of("namespace PitboardSprite")))
+
+    for subdir, stems in kinds:
+        root = os.path.join(REPO, "mxbmrp3_data", subdir)
+        if not os.path.isdir(root):
+            continue
+        if not stems:
+            failures.append(f"check_shipped_pack_skins: could not read the {subdir} "
+                            "kStems table from asset_manager.h -- this check is blind.")
+            continue
+
+        bases = {}          # pack -> base name ("" = standalone)
+        for pack in sorted(os.listdir(root)):
+            ini = os.path.join(root, pack, pack + ".ini")
+            if not os.path.isdir(os.path.join(root, pack)):
+                continue
+            if not os.path.exists(ini):
+                bases[pack] = ""
+                continue
+            text = open(ini, encoding="utf-8", errors="replace").read()
+            m = re.search(r"^\s*base\s*=\s*(\S+)", text, re.M)
+            bases[pack] = m.group(1) if m else ""
+
+        for pack, base in bases.items():
+            if not base:
+                continue
+            if base not in bases:
+                failures.append(
+                    f"mxbmrp3_data/{subdir}/{pack}: base = {base}, which is not a "
+                    "pack here. Discovery skips this pack whole -- it would never "
+                    "appear in game.")
+                continue
+            if bases[base]:
+                failures.append(
+                    f"mxbmrp3_data/{subdir}/{pack}: base = {base}, but {base} is "
+                    "itself a skin. Bases must be baseless (one level only), so "
+                    "discovery skips this pack whole.")
+                continue
+            missing = [st for st in stems
+                       if not os.path.exists(os.path.join(root, pack, st + ".tga"))
+                       and not os.path.exists(os.path.join(root, base, st + ".tga"))]
+            if missing:
+                failures.append(
+                    f"mxbmrp3_data/{subdir}/{pack}: neither it nor its base {base} "
+                    f"provides {', '.join(missing)}.tga -- the resolved set has a "
+                    "hole, so discovery skips the pack whole.")
+
+
+def check_shipped_theme_geometry(failures):
+    """Every shipped theme states the SAME box geometry.
+
+    The ten design-language themes differ in art, colour and typeface -- that is what
+    they are for -- and share one set of box terms, so a panel measures the same
+    whichever is picked and a retune is one decision rather than ten.
+
+    COMPARED AGAINST EACH OTHER, not against a copy kept here. A canonical block in
+    this file would be an eleventh place the numbers live, and the first one to go
+    stale: it is not the file anybody edits when they retune a theme. The first
+    theme in sorted order is the reference purely because something has to be, and a
+    disagreement is reported as a pair so the message never implies which is right.
+    """
+    root = os.path.join(REPO, "mxbmrp3_data", "themes")
+    geoms = {}
+    for theme in sorted(os.listdir(root)):
+        d = os.path.join(root, theme)
+        if not os.path.isdir(d) or theme in GEOMETRY_EXEMPT:
+            continue
+        ini = os.path.join(d, theme + ".ini")
+        if not os.path.isfile(ini):
+            failures.append(f"mxbmrp3_data/themes/{theme}/: no {theme}.ini "
+                            f"(a theme's ini is named after its folder)")
+            continue
+        section, keys = "", {}
+        with open(ini, encoding="utf-8") as f:
+            for line in f:
+                t = line.split(";", 1)[0].strip()
+                if t.startswith("[") and "]" in t:
+                    section = t[1:t.index("]")].strip()
+                elif "=" in t and section in GEOMETRY_SECTIONS:
+                    k, v = t.split("=", 1)
+                    keys[f"{section}.{k.strip()}"] = " ".join(v.split())
+        geoms[theme] = keys
+
+    if len(geoms) < 2:
+        return
+    ref_name = sorted(geoms)[0]
+    ref = geoms[ref_name]
+    for theme in sorted(geoms):
+        if theme == ref_name:
+            continue
+        for key in sorted(set(ref) | set(geoms[theme])):
+            a, b = ref.get(key), geoms[theme].get(key)
+            if a == b:
+                continue
+            failures.append(
+                f"theme geometry differs: [{key}] is "
+                f"{'absent' if a is None else repr(a)} in {ref_name} and "
+                f"{'absent' if b is None else repr(b)} in {theme}. Shipped themes "
+                f"share one geometry -- change both, or say why this one is exempt "
+                f"in check_docs.py's GEOMETRY_EXEMPT.")
+
+
 def main():
     if "--list-paths" in sys.argv:
         check_paths([], list_only=True)
@@ -448,8 +1220,21 @@ def main():
     check_invariant_labels(failures)
     check_test_catalogue(failures)
     check_gate_catalogue(failures)
+    check_shipped_theme_keys(failures)
+    check_shipped_theme_geometry(failures)
+    check_shipped_pack_skins(failures)
     check_budget(failures)
     check_gate_tools_installable(failures)
+    check_named_singletons_exist(failures)
+    check_symbol_homes(failures)
+    check_build_sharing_gates_are_locked(failures)
+    check_readme_toc(failures)
+    check_no_legacy_data_filenames(failures)
+    check_tooltip_ids_resolve(failures)
+    check_documented_settings_paths(failures)
+    check_anchor_links(failures)
+    check_readme_menu_tables(failures)
+    check_no_em_dashes(failures)
     check_ci_runs_every_gate(failures)
     check_every_ci_script_is_a_gate(failures)
 
@@ -463,8 +1248,10 @@ def main():
     sizes = ", ".join(
         f"{doc} {os.path.getsize(os.path.join(REPO, doc)):,}/{budget:,}"
         for doc, budget in DOC_BUDGETS.items())
-    print(f"Docs clean: paths resolve, invariants labelled, gate tools installable, "
-          f"CI and the gate list agree both ways, {sizes} bytes.")
+    print(f"Docs clean: paths resolve, invariants labelled, named singletons exist, "
+          f"symbols where docs say, build-sharing gates locked, gate tools installable, "
+          f"shipped themes share one geometry, CI and the gate list agree both "
+          f"ways, {sizes} bytes.")
     return 0
 
 

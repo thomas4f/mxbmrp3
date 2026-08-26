@@ -9,6 +9,7 @@
 // lives in hud/settings/settings_tab_*.cpp.
 // ============================================================================
 #include "settings_hud.h"
+#include "settings/whats_new.h"
 #include "settings/settings_layout.h"
 #include "telemetry_hud.h"
 #include "rumble_hud.h"
@@ -27,6 +28,7 @@
 #include "../core/update_checker.h"
 #include "../core/update_downloader.h"
 #include "../core/director_manager.h"
+#include "../core/spotter_manager.h"
 #include "director_widget.h"
 #include "../core/hotkey_manager.h"
 #if GAME_HAS_DISCORD
@@ -160,6 +162,15 @@ void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
             {
                 DirectorManager& director = DirectorManager::getInstance();
                 director.setEnabled(!director.isEnabled());
+                rebuildRenderData();
+            }
+            break;
+        // Spotter spoken-audio master. Common (not tab-scoped) because the
+        // tab list's row checkbox emits this same region from any tab.
+        case ClickRegion::SPOTTER_ENABLED_TOGGLE:
+            {
+                SpotterManager& spotter = SpotterManager::getInstance();
+                spotter.setEnabled(!spotter.isEnabled());
                 rebuildRenderData();
             }
             break;
@@ -335,6 +346,28 @@ void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
                 rebuildRenderData();
             }
             break;
+        case ClickRegion::GAMEPAD_PACK_UP:
+        case ClickRegion::GAMEPAD_PACK_DOWN:
+            if (region.targetHud) {
+                cycleGamepadPack(region.type == ClickRegion::GAMEPAD_PACK_UP);
+                rebuildRenderData();
+            }
+            break;
+        case ClickRegion::PITBOARD_PACK_UP:
+        case ClickRegion::PITBOARD_PACK_DOWN:
+            if (region.targetHud) {
+                cyclePitboardPack(region.type == ClickRegion::PITBOARD_PACK_UP);
+                rebuildRenderData();
+            }
+            break;
+        case ClickRegion::HUD_THEME_UP:
+        case ClickRegion::HUD_THEME_DOWN:
+            if (region.targetHud) {
+                cycleHudThemeOverride(region.targetHud,
+                                      region.type == ClickRegion::HUD_THEME_UP);
+                rebuildRenderData();
+            }
+            break;
         case ClickRegion::BACKGROUND_OPACITY_UP:
             handleOpacityClick(region, true);
             break;
@@ -402,17 +435,20 @@ void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
 
         case ClickRegion::VERSION_CLICK:
             {
-                // If update is available, navigate to Updates tab. Gate on isEnabled() to
-                // match the footer's render gate — a stale UPDATE_AVAILABLE status when
-                // updates are disabled shouldn't hijack the version click (easter egg).
-                if (UpdateChecker::getInstance().isEnabled() &&
-                    UpdateChecker::getInstance().getStatus() == UpdateChecker::Status::UPDATE_AVAILABLE) {
-                    m_activeTab = TAB_UPDATES;
-                    rebuildRenderData();
-                    return;  // Don't process easter egg
-                }
+                // OPEN ABOUT, AND KEEP COUNTING. This used to branch: with an update
+                // available it jumped to the Updates tab and returned before the
+                // counter, so the easter egg was unreachable for anyone who had an
+                // update pending -- and the destination changed under the player
+                // depending on state they could not see. The update notice lives on
+                // the Updates row's own tag now, so this button has one job and one
+                // destination.
+                //
+                // No early return: navigation and the counter both happen on every
+                // click. Clicks two through five land while About is already open
+                // (the footer is drawn on every tab), so the sequence still completes
+                // -- setting the tab again is idempotent.
+                m_activeTab = TAB_ABOUT;
 
-                // Otherwise, easter egg logic
                 long long currentTimeUs = DrawHandler::getCurrentTimeUs();
                 // Reset counter if timeout elapsed
                 if (m_versionClickCount > 0 && (currentTimeUs - m_lastVersionClickTimeUs) > EASTER_EGG_TIMEOUT_US) {
@@ -426,8 +462,10 @@ void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
                     if (m_version) {
                         hide();  // Close settings before starting game
                         m_version->startGame();
+                        return;   // hide() already tore the panel down; don't rebuild
                     }
                 }
+                rebuildRenderData();
             }
             break;
 
@@ -690,6 +728,21 @@ void SettingsHud::resetTabDirector() {
     DirectorManager::getInstance().setEnabled(wasEnabled);
 }
 
+void SettingsHud::resetTabSpotter() {
+    // Spotter maps 1:1 to the [Spotter] snapshot section. Replay it but keep
+    // the two MASTER switches, mirroring the Director tab's reset: a user
+    // resetting tuning shouldn't have their spotter silently switched off (or
+    // on). BOTH of them -- subtitles-only is a real mode (spotter_manager.h),
+    // so preserving `enabled` alone silenced a subtitles-only user completely
+    // while faithfully preserving the `enabled=false` they were already in.
+    const bool wasEnabled = SpotterManager::getInstance().isEnabled();
+    const bool wasSubtitles = SpotterManager::getInstance().isSubtitlesEnabled();
+    SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
+        HudManager::getInstance(), {"Spotter"});
+    SpotterManager::getInstance().setEnabled(wasEnabled);
+    SpotterManager::getInstance().setSubtitlesEnabled(wasSubtitles);
+}
+
 void SettingsHud::resetCurrentProfile() {
     // Reset only Elements (HUDs and Widgets) for the current profile by re-applying
     // the factory snapshot to the active profile. Like the per-tab and full-reset
@@ -877,6 +930,116 @@ void SettingsHud::handleHudToggleClick(const ClickRegion& region) {
     rebuildRenderData();
 }
 
+// Step a HUD's theme override through [Default, None, <each installed theme>].
+// The list is built fresh each click rather than cached: themes are discovered once
+// at startup, but the CURRENT value may name a theme that is no longer installed,
+// and that has to resolve to a position in the list before stepping.
+// Step the gamepad widget through OFF plus the installed packs, by name.
+//
+// THE "OFF" ENTRY IS LOAD-BEARING, and leaving it out shipped a bug: nothing else
+// in the plugin toggles the widget's show-background-texture flag. For every other HUD it is
+// driven by the texture cycle's own Off entry (setTextureVariant(0) is what clears
+// it), so replacing this widget's texture cycle with a pack cycle and dropping Off
+// removed the ONLY control that could turn the pad art back on. A user whose flag
+// was already false -- e.g. they had Texture on Off under the previous build, which
+// persisted showBackgroundTexture=0 -- got a black panel with the buttons floating
+// on it and no way back. Reported in-game; reproduced with showBackgroundTexture=0.
+//
+// So the cycle is Off, then each pack, exactly as cycleTextureVariant's was.
+void SettingsHud::cycleGamepadPack(bool forward) {
+    const auto& packs = AssetManager::getInstance().getGamepads();
+    if (packs.empty()) return;
+
+    GamepadWidget& hud = HudManager::getInstance().getGamepadWidget();
+
+    // PACKS ONLY -- no Off entry. The pad artwork IS this widget; without it the
+    // buttons, sticks and triggers hang in mid-air on an empty panel. See
+    // BaseHud::m_textureRequired, which also makes a stale showBackgroundTexture=0
+    // heal itself rather than stranding someone in that state.
+    //
+    // Step from the pack actually IN USE, not from the stored name: if the stored
+    // name names a pack this install does not have, the widget is already drawing
+    // the shipped default, so stepping from the missing name would jump somewhere
+    // unrelated to what is on screen.
+    int index = 0;
+    const GamepadAsset* active = hud.activePack();
+    for (size_t i = 0; i < packs.size(); ++i) {
+        if (active && packs[i].name == active->name) { index = static_cast<int>(i); break; }
+    }
+
+    const int count = static_cast<int>(packs.size());
+    index += forward ? 1 : -1;
+    if (index < 0) index = count - 1;
+    if (index >= count) index = 0;
+
+    hud.setGamepadPack(packs[static_cast<size_t>(index)].name);
+    hud.setDataDirty();
+
+    // Pads differ in aspect ratio (the shipped two are 750x630 and 806x599), so the
+    // panel changes SIZE here and one parked against an edge can grow off-screen --
+    // the same reason the theme cycle below asks for revalidation.
+    HudManager::getInstance().requestPositionValidation();
+}
+
+// Step the pitboard through the installed board packs, by name. Same shape as
+// cycleGamepadPack above, and no Off entry for the same reason: the board artwork
+// is the HUD, and without it the rows sit on an empty panel.
+void SettingsHud::cyclePitboardPack(bool forward) {
+    const auto& packs = AssetManager::getInstance().getPitboards();
+    if (packs.empty()) return;
+
+    PitboardHud& hud = HudManager::getInstance().getPitboardHud();
+    int index = 0;
+    const PitboardAsset* active = hud.activePack();
+    for (size_t i = 0; i < packs.size(); ++i) {
+        if (active && packs[i].name == active->name) { index = static_cast<int>(i); break; }
+    }
+
+    const int count = static_cast<int>(packs.size());
+    index += forward ? 1 : -1;
+    if (index < 0) index = count - 1;
+    if (index >= count) index = 0;
+
+    hud.setPitboardPack(packs[static_cast<size_t>(index)].name);
+    hud.setDataDirty();
+
+    // Boards differ in aspect, so the panel changes SIZE here and one parked
+    // against an edge can grow off-screen.
+    HudManager::getInstance().requestPositionValidation();
+}
+
+void SettingsHud::cycleHudThemeOverride(BaseHud* hud, bool forward) {
+    const auto& themes = AssetManager::getInstance().getThemes();
+    const int count = static_cast<int>(themes.size()) + 2;   // Default + None + themes
+
+    const std::string& cur = hud->getThemeOverride();
+    int index = 0;                                            // Default
+    if (cur == BaseHud::THEME_NONE) {
+        index = 1;
+    } else if (!cur.empty()) {
+        for (size_t i = 0; i < themes.size(); ++i) {
+            if (themes[i].name == cur) { index = static_cast<int>(i) + 2; break; }
+        }
+        // Unknown name leaves index at 0 (Default), which is also what it renders
+        // as -- so stepping from it goes somewhere predictable.
+    }
+
+    index += forward ? 1 : -1;
+    if (index < 0) index = count - 1;
+    if (index >= count) index = 0;
+
+    if (index == 0)      hud->setThemeOverride("");
+    else if (index == 1) hud->setThemeOverride(BaseHud::THEME_NONE);
+    else                 hud->setThemeOverride(themes[static_cast<size_t>(index) - 2].name);
+
+    // A theme RESIZES the panel, so a HUD parked flush against an edge can grow off the
+    // display -- and nothing pulls it back, because validateAllHudPositions() only runs
+    // on a cursor or window transition. The GLOBAL theme cycle has carried this call and
+    // a paragraph explaining it since it shipped; the per-HUD override steps exactly the
+    // same geometry from nearly every HUD tab and did not.
+    HudManager::getInstance().requestPositionValidation();
+}
+
 void SettingsHud::handleTitleToggleClick(const ClickRegion& region) {
     if (!region.targetHud) return;
 
@@ -919,6 +1082,12 @@ void SettingsHud::handleScaleClick(const ClickRegion& region, bool increase) {
 
 void SettingsHud::handleTabClick(const ClickRegion& region) {
     m_activeTab = region.tabIndex;
+    // OPENING a marked tab clears its "New" tag -- the tag's only claim is that
+    // there is something here you have not looked at, and now you have. The rows
+    // keep their bands until hovered; finding the row is a separate thing from
+    // knowing the tab is worth opening. See settings/whats_new.h.
+    WhatsNew::dismissTab(m_activeTab);
+    disarmResets();
     // Persist the focused tab so reopening the menu lands here next session. Deferred like
     // every other setting - markSettingsDirty() only sets the flag; the write happens on the
     // next leave-track flush (or the shutdown backstop / Save button), never on-track.

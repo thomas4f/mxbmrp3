@@ -17,6 +17,7 @@
 #include "doctest.h"
 
 #include "core/plugin_utils.h"
+#include <cmath>
 #include <string>
 
 using PU = PluginUtils;
@@ -133,4 +134,92 @@ TEST_CASE("getRelativePositionColor: ahead / behind / lapped matrix") {
     CHECK(f(5, 2, 3, 4, NEUTRAL, WARNING, FALLBACK) == PU::lightenColor(NEUTRAL, 0.5f)); // ahead, lap up
     CHECK(f(2, 5, 3, 3, NEUTRAL, WARNING, FALLBACK) == WARNING);   // behind, same lap
     CHECK(f(2, 5, 4, 3, NEUTRAL, WARNING, FALLBACK) == PU::darkenColor(WARNING, 0.7f));  // behind, lapped
+}
+
+TEST_CASE("plugin utils: RGB hex in, ABGR out") {
+    // The one conversion in the theme pipeline. A skinner writes #rrggbb, the game
+    // wants ABGR, and getting the byte order wrong is invisible in code review and
+    // obvious on screen only if you happen to pick an asymmetric colour.
+    unsigned long c = 0;
+    REQUIRE(PluginUtils::parseRgbHex("#ff8800", c));
+    CHECK(c == PluginUtils::makeColor(0xff, 0x88, 0x00));
+    CHECK((c & 0xFF) == 0xff);           // R in the low byte, which is what ABGR means
+    CHECK(((c >> 16) & 0xFF) == 0x00);   // B in the high one
+
+    // The three spellings a skinner might type, all equal.
+    unsigned long bare = 0, prefixed = 0;
+    REQUIRE(PluginUtils::parseRgbHex("ff8800", bare));
+    REQUIRE(PluginUtils::parseRgbHex("0xFF8800", prefixed));
+    CHECK(bare == c);
+    CHECK(prefixed == c);
+
+    // Rejected rather than half-parsed: strtol-style leniency here would turn a typo
+    // into a plausible wrong colour instead of a logged warning.
+    unsigned long junk = 0xdeadbeef;
+    CHECK_FALSE(PluginUtils::parseRgbHex("#ff88", junk));      // too short
+    CHECK_FALSE(PluginUtils::parseRgbHex("#ff88000", junk));   // too long
+    CHECK_FALSE(PluginUtils::parseRgbHex("#gg8800", junk));    // not hex
+    CHECK_FALSE(PluginUtils::parseRgbHex("#f80", junk));       // no 3-digit shorthand
+    CHECK_FALSE(PluginUtils::parseRgbHex("", junk));
+    CHECK(junk == 0xdeadbeef);                                  // and out is untouched
+}
+
+// Three subsystems compute along-track distance — teleport detection, the
+// radar's proximity ring, the spotter's rider-behind/alongside scan — and each
+// used to carry its own copy of the wrap. The wrap is the whole point: track
+// positions are 0..1 and reset at start/finish, so a rider 0.2 of a lap behind
+// you reads as 0.8 ahead the moment either of you crosses the line. That is
+// the difference between "on your tail" and "most of a lap back", and it is a
+// sign convention nobody notices going wrong.
+TEST_CASE("alongTrackDelta: wraps at start/finish and keeps its sign") {
+    // No wrap involved: plain difference, positive when `ahead` is further on.
+    CHECK(alongTrackDelta(0.60f, 0.50f) == doctest::Approx(0.10f));
+    CHECK(alongTrackDelta(0.50f, 0.60f) == doctest::Approx(-0.10f));
+    CHECK(alongTrackDelta(0.50f, 0.50f) == doctest::Approx(0.0f));
+
+    // Across the line, which is where a plain subtraction lies: 0.05 vs 0.95
+    // is a twentieth of a lap apart, not nineteen twentieths.
+    CHECK(alongTrackDelta(0.05f, 0.95f) == doctest::Approx(0.10f));
+    CHECK(alongTrackDelta(0.95f, 0.05f) == doctest::Approx(-0.10f));
+
+    // Exactly half a lap is the boundary, and the comparisons are strict, so
+    // it is left alone in both directions rather than flipped. At the opposite
+    // side of the track "ahead by half" and "behind by half" are equally true;
+    // what the callers need is that the answer is STABLE, not that it picks a
+    // favourite — a boundary that flipped sign frame to frame would make a
+    // proximity threshold chatter.
+    CHECK(alongTrackDelta(0.50f, 0.00f) == doctest::Approx(0.5f));
+    CHECK(alongTrackDelta(0.00f, 0.50f) == doctest::Approx(-0.5f));
+
+    // The radar takes the absolute value of this to get "how far apart",
+    // which must agree with the signed answer in both directions.
+    CHECK(std::abs(alongTrackDelta(0.05f, 0.95f)) ==
+          doctest::Approx(std::abs(alongTrackDelta(0.95f, 0.05f))));
+}
+
+// The drop shadow behind a string is the configured shadow colour, and it used to be
+// written verbatim -- so a HUD that faded a string (the radar fades a rider label out
+// as the rider leaves proximity range) got a fully-opaque shadow behind half-visible
+// text. That is the one thing that kept the radar on a hand-rolled outline instead of
+// the shared shadow every other label uses.
+TEST_CASE("modulateAlpha scales alpha by another colour's, keeping RGB") {
+    const unsigned long shadow = PU::makeColor(0, 0, 0, 200);
+
+    // Opaque text: the shadow is untouched. This is nearly every string in the plugin,
+    // so the shared path has to be a no-op here or the change is not safe to make.
+    CHECK(PU::modulateAlpha(shadow, PU::makeColor(1, 2, 3, 255)) == shadow);
+
+    // Faded text: the shadow fades with it, and keeps its own RGB rather than the
+    // string's.
+    CHECK(PU::modulateAlpha(shadow, PU::makeColor(255, 128, 0, 128))
+          == PU::makeColor(0, 0, 0, 200 * 128 / 255));
+
+    // Fully transparent text: no shadow at all, rather than a shadow with nothing on
+    // top of it -- which is what a marker just past the radar's range would draw.
+    CHECK(PU::modulateAlpha(shadow, PU::makeColor(9, 9, 9, 0)) == PU::makeColor(0, 0, 0, 0));
+
+    // A transparent SHADOW colour stays transparent whatever the text does: the
+    // modulation can only ever reduce.
+    CHECK(PU::modulateAlpha(PU::makeColor(0, 0, 0, 0), PU::makeColor(1, 1, 1, 255))
+          == PU::makeColor(0, 0, 0, 0));
 }
