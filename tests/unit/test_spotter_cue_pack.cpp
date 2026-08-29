@@ -408,3 +408,67 @@ TEST_CASE("mergePhrases: a selected alternate joins an inherited base") {
     CHECK(merged.at("rider_behind") == "Rider behind.");
     CHECK(merged.at("rider_behind_2") == "On your tail.");
 }
+
+// ============================================================================
+// [pack] name — the optional human title (SpotterCuePack::Pack::displayName).
+//
+// Optional in exactly the sense every other pack type's [pack] name is:
+// absent, the picker falls back to the FOLDER name, which is what every pack
+// written before the key existed already showed. It exists because a folder
+// name cannot spell everything a voice wants to be called — "Bill (UK English)"
+// has a bracket and a space in it, and `bill-uk` reads as `bill-uk`.
+//
+// The section must not be able to cost a pack its words: a title is a label,
+// not a contract, so a typo or an unknown key inside it is ignored rather than
+// failing the parse. That is the property most worth pinning here — the cue
+// rows are the whole point of the file and a decorative section must never
+// endanger them.
+// ============================================================================
+TEST_CASE("cue pack: [pack] name sets the display title and leaves cues alone") {
+    const SpotterCuePack::Pack p = SpotterCuePack::parse(
+        "[pack]\n"
+        "name = Bill (UK English)\n"
+        "\n"
+        "[Cues]\n"
+        "gate_drop = go go go\n");
+    CHECK(p.displayName == "Bill (UK English)");
+    CHECK(p.phrases.size() == 1);
+    CHECK(p.phrases.at("gate_drop") == "go go go");
+}
+
+TEST_CASE("cue pack: no [pack] section leaves the title empty for the caller") {
+    // Empty means "no opinion" — SpotterManager substitutes the folder name.
+    // It must NOT invent one here, or the manager cannot tell "unstated" from
+    // "stated as something".
+    const SpotterCuePack::Pack p =
+        SpotterCuePack::parse("[Cues]\ngate_drop = go\n");
+    CHECK(p.displayName.empty());
+    CHECK(p.phrases.size() == 1);
+}
+
+TEST_CASE("cue pack: a blank or malformed [pack] never costs the pack its cues") {
+    SUBCASE("empty value is not a title") {
+        const SpotterCuePack::Pack p =
+            SpotterCuePack::parse("[pack]\nname =\n[Cues]\ngate_drop = go\n");
+        CHECK(p.displayName.empty());
+        CHECK(p.phrases.size() == 1);
+    }
+    SUBCASE("unknown key inside [pack] is ignored, cues survive") {
+        const SpotterCuePack::Pack p = SpotterCuePack::parse(
+            "[pack]\nauthor = someone\nnaem = typo\n[Cues]\ngate_drop = go\n");
+        CHECK(p.displayName.empty());
+        CHECK(p.phrases.size() == 1);
+    }
+    SUBCASE("a line with no '=' inside [pack] is skipped") {
+        const SpotterCuePack::Pack p = SpotterCuePack::parse(
+            "[pack]\njust some words\nname = Real Title\n[Cues]\ngate_drop = go\n");
+        CHECK(p.displayName == "Real Title");
+        CHECK(p.phrases.size() == 1);
+    }
+}
+
+TEST_CASE("cue pack: [pack] name tolerates whitespace around the '='") {
+    const SpotterCuePack::Pack p = SpotterCuePack::parse(
+        "[pack]\n   name   =    Spaced Out   \n[Cues]\ngate_drop = go\n");
+    CHECK(p.displayName == "Spaced Out");
+}

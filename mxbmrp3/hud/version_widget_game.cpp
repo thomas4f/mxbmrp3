@@ -26,8 +26,8 @@ using namespace PluginConstants;
 // Brick colors by row (from top: red, orange, yellow, green)
 namespace BrickColors {
     constexpr unsigned long ROW_0 = ColorPalette::RED;
-    constexpr unsigned long ROW_1 = ColorPalette::ORANGE;
-    constexpr unsigned long ROW_2 = ColorPalette::YELLOW;
+    constexpr unsigned long ROW_1 = ColorPalette::AMBER;
+    constexpr unsigned long ROW_2 = ColorPalette::BRIGHT_YELLOW;
     constexpr unsigned long ROW_3 = ColorPalette::GREEN;
 }
 

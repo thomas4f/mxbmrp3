@@ -870,6 +870,9 @@ void SteamFriendsManager::scanFriends() {
 // Data-change hook (game thread)
 // ============================================================================
 
+// change-gate: the POD-fingerprint model consumer (CLAUDE.md) — state is
+// reduced to a small POD and compared before any string/alloc work, so the
+// frequent types dedupe to nothing when the presence has not changed.
 void SteamFriendsManager::onDataChanged(DataChangeType changeType) {
     // Disabled: do nothing - no presence broadcast, no friend scan, no hook retry.
     if (!m_enabled) {

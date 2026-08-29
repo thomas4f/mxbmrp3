@@ -4,6 +4,7 @@
 // ============================================================================
 #include "color_config.h"
 #include "asset_manager.h"
+#include "plugin_constants.h"   // BrandColors, for the pack-colour static_asserts below
 #include "ui_config.h"
 #include "../diagnostics/logger.h"
 
@@ -30,36 +31,29 @@ static const ThemeAsset* mxbResolveThemeMemo(const std::string& name) {
 }
 
 
-namespace ColorPalette {
-    const char* getColorName(unsigned long color) {
-        switch (color) {
-            case WHITE:      return "White";
-            case LIGHT_GRAY: return "Light Gray";
-            case GRAY:       return "Gray";
-            case DARK_GRAY:  return "Dark Gray";
-            case BLACK:      return "Black";
-            case RED:        return "Red";
-            case GREEN:      return "Green";
-            case BLUE:       return "Blue";
-            case YELLOW:     return "Yellow";
-            case ORANGE:     return "Orange";
-            case CYAN:       return "Cyan";
-            case PURPLE:     return "Purple";
-            case PINK:       return "Pink";
-            case BROWN:      return "Brown";
-            default:         return "Custom";
-        }
-    }
-
-    int getColorIndex(unsigned long color) {
-        for (size_t i = 0; i < ALL_COLORS.size(); ++i) {
-            if (ALL_COLORS[i] == color) {
-                return static_cast<int>(i);
-            }
-        }
-        return -1;  // Not in palette
-    }
-}
+// ONE DEFINITION PER VALUE, enforced. The eight pack colours in color_config.h
+// are written as literals because that header cannot include plugin_constants.h
+// -- the include runs the other way (SemanticColors is built from ColorPalette).
+// A .cpp has no such problem, so the equality is asserted here instead: the
+// shipped skins were tinted from BrandColors, and if either side is edited alone
+// this stops compiling rather than leaving a player's "Crimson" text a shade off
+// their Crimson board.
+//
+// Graphite has no entry of its OWN: #646464 was already in the palette (as
+// "Dark Gray" until this change renamed it), so the ninth skin colour is the
+// one that needed a rename rather than an addition.
+namespace {
+using namespace PluginConstants::BrandColors;
+static_assert(ColorPalette::CRIMSON == HONDA,     "Crimson must be the Honda hue the crimson skins use");
+static_assert(ColorPalette::ORANGE  == KTM,       "Orange must be the KTM hue the orange skins use");
+static_assert(ColorPalette::YELLOW  == SUZUKI,    "Yellow must be the Suzuki hue the yellow skins use");
+static_assert(ColorPalette::LIME    == KAWASAKI,  "Lime must be the Kawasaki hue the lime skins use");
+static_assert(ColorPalette::CYAN    == TM,        "Cyan must be the TM hue the cyan skins use");
+static_assert(ColorPalette::NAVY    == HUSQVARNA, "Navy must be the Husqvarna hue the navy skins use");
+static_assert(ColorPalette::ROYAL   == YAMAHA,    "Royal must be the Yamaha hue the royal skins use");
+static_assert(ColorPalette::SILVER  == ALTA,      "Silver must be the Alta hue the silver skins use");
+static_assert(ColorPalette::GRAPHITE == STARK,    "Graphite must be the Stark hue the graphite skins use");
+}  // namespace
 
 ColorConfig& ColorConfig::getInstance() {
     static ColorConfig instance;
@@ -223,11 +217,11 @@ unsigned long ColorConfig::getDefaultColor(ColorSlot slot) {
         case ColorSlot::PRIMARY:    return ColorPalette::WHITE;       // #ffffff
         case ColorSlot::SECONDARY:  return ColorPalette::LIGHT_GRAY;  // #bebebe
         case ColorSlot::TERTIARY:   return ColorPalette::GRAY;        // #8c8c8c
-        case ColorSlot::MUTED:      return ColorPalette::DARK_GRAY;   // #646464
+        case ColorSlot::MUTED:      return ColorPalette::GRAPHITE;    // #646464
         case ColorSlot::BACKGROUND: return ColorPalette::BLACK;       // #000000
         case ColorSlot::POSITIVE:   return ColorPalette::GREEN;       // #00ff00
-        case ColorSlot::WARNING:    return ColorPalette::ORANGE;      // #ffa500
-        case ColorSlot::NEUTRAL:    return ColorPalette::YELLOW;      // #ffff00
+        case ColorSlot::WARNING:    return ColorPalette::AMBER;         // #ffa500
+        case ColorSlot::NEUTRAL:    return ColorPalette::BRIGHT_YELLOW; // #ffff00
         case ColorSlot::NEGATIVE:   return ColorPalette::RED;         // #ff0000
         case ColorSlot::ACCENT:     return ColorPalette::PINK;        // #ff69b4
         default:                    return ColorPalette::WHITE;

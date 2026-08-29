@@ -105,6 +105,7 @@ private:
             {"appearance.theme", "Panel frame, title band and card art shared by every element."},
             {"gamepad.pack", "Controller artwork and the button positions that go with it."},
             {"pitboard.pack", "Pit board artwork and the row positions that go with it."},
+            {"gauges.pack", "Dial faces and the ranges that place the needles on them."},
 
             {"standings.live_gaps", "Show real-time estimated gaps during races. When off, gaps only update at split points."},
             {"standings.animate_positions", "Animate position changes. Off: none; Basic: slide rows; Colored: slide + green/red tint."},
@@ -260,7 +261,7 @@ private:
             {"general.auto_save", "Auto-saves on leaving the track (never while riding); use Save anytime. Disable to edit INI."},
             {"general.steam_friends", "Broadcast your status and see friends running the plugin. Needs the Steam build; on by default."},
             {"general.discord", "Display your track, session, and lap progress in Discord's Rich Presence."},
-            {"general.analytics", "Send an anonymous usage ping at startup (random ID, no personal data). On by default."},
+            {"general.analytics", "Anonymous usage survey: one ping at startup, no personal data. On by default."},
             {"general.web_server", "Web overlay for OBS. Add as Browser Source at the displayed port."},
             {"general.web_port", "Port for the web server. Change if the default is in use by another application."},
             {"general.auto_switch", "Automatically switch profiles based on session type."},

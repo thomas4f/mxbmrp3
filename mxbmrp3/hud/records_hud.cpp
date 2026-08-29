@@ -2,6 +2,7 @@
 // hud/records_hud.cpp
 // Displays lap records fetched from external data providers via HTTP
 // ============================================================================
+// file-budget: 1100 one HUD, one TU; the fetcher is already extracted to core
 #include "records_hud.h"
 #include "../core/layout_config.h"
 #include "records_window.h"

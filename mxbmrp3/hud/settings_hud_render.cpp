@@ -12,6 +12,7 @@
 // actually measured (it is 2, and 5 for the bar); the per-tab CONTROL lambdas
 // this file used to hold are gone entirely, replaced by SettingsLayoutContext.
 // ============================================================================
+// file-budget: 1450 the tab registry and shared render scaffolding; per-tab code is already split
 #include <cmath>
 
 #include "settings_hud.h"

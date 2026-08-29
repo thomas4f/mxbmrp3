@@ -20,7 +20,7 @@ namespace {
 // so the review is not optional.
 //
 // 1.29, the first release since 1.28.0, shipped about twenty menu-reachable
-// changes. Four are marked, and the ones left out were left out on purpose:
+// changes. Six are marked, and the ones left out were left out on purpose:
 //   - the SPOTTER tab already carries a Beta tag, and two badges on one row say
 //     less than one;
 //   - the per-HUD Theme row is the same feature as Appearance > Theme, and
@@ -46,6 +46,16 @@ const Marker kMarkers[] = {
     // no band and reports nothing, while the tab keeps its tag. It was wrong here
     // first; whats_new_test's resolve case is what found it.
     { SettingsHud::TAB_PITBOARD,   "pitboard.pack",    "1.29" },
+    // ...and now the two gauges', for the same reason and with the same shape of
+    // change: their Texture row picks a gauges PACK (the dial face plus what it
+    // READS) rather than a texture number. Two markers for one feature, unlike
+    // the single badge the table prefers, because they are two independent rows
+    // -- somebody who runs only the tacho would never see a badge left on the
+    // speedo. The ids are the row-wide tooltips addWidgetRow registers, which is
+    // what the gamepad row above uses too; a pack HUD in the WIDGETS table does
+    // not go through addPackControl and so has no "<type>.pack" id of its own.
+    { SettingsHud::TAB_WIDGETS,    "widgets.speedo",   "1.29" },
+    { SettingsHud::TAB_WIDGETS,    "widgets.tacho",    "1.29" },
     // The Timing panel's second section. All seven rows share one tooltip id, so
     // one marker bands the whole block -- which is what it is: they arrived
     // together and are one feature, not seven.

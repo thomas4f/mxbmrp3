@@ -44,6 +44,7 @@
 #endif
 #if GAME_HAS_ANALYTICS
 #include "analytics_manager.h"
+#include "install_prefs.h"
 #endif
 #include "xinput_reader.h"
 #include "hotkey_manager.h"
@@ -288,7 +289,7 @@ void SettingsManager::flushIfDirty(const HudManager& hudManager) {
     saveSettings(hudManager, m_savePath.c_str());   // clears m_settingsDirty on success
 }
 
-void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath) {
+void SettingsManager::loadSettingsImpl(HudManager& hudManager, const char* savePath) {
     std::string filePath = getSettingsFilePath(savePath);
     m_savePath = savePath ? savePath : "";
     m_settingsDirty = false;   // freshly (re)loaded state matches disk
@@ -918,6 +919,53 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
     }
 
     DEBUG_INFO("Settings loaded successfully");
+}
+
+// See the declaration. A THIN WRAPPER, and that is the whole point: loadSettingsImpl
+// returns early when there is no settings file, which is the FRESH INSTALL -- the
+// one case Setup's opt-out marker exists for. Hanging applyInstallPrefs() off the
+// tail of the implementation meant it ran on every launch that did not need it and
+// was skipped on the launch that did, silently, with the second launch behaving
+// correctly so the feature looked fine to anyone who checked twice.
+//
+// One exit and one call, so a future early return cannot reintroduce that. It runs
+// LAST either way: installPrefsSeen and the stored Analytics value are both applied
+// by then, so this either overrides a value it is entitled to override or does
+// nothing at all.
+void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath) {
+    loadSettingsImpl(hudManager, savePath);
+    applyInstallPrefs();
+}
+
+// See the declaration and core/install_prefs.h. Reads the marker Setup may have
+// left beside the plugin and honours it once.
+//
+// Marks the settings dirty rather than writing immediately: the choice then
+// persists through the SAME deferred save every other setting uses, so a fresh
+// install does not write the settings file from inside loadSettings().
+void SettingsManager::applyInstallPrefs() {
+#if GAME_HAS_ANALYTICS
+    std::string text;
+    try {
+        std::ifstream f(InstallPrefs::kPath, std::ios::binary);
+        if (!f.is_open()) return;   // the overwhelmingly common case
+        std::ostringstream buf;
+        buf << f.rdbuf();
+        text = buf.str();
+    } catch (...) {
+        DEBUG_WARN("Install prefs: unreadable, ignoring");
+        return;
+    }
+
+    const InstallPrefs::Prefs prefs = InstallPrefs::parse(text);
+    if (!InstallPrefs::shouldApply(prefs, m_installPrefsSeen)) return;
+
+    AnalyticsManager::getInstance().setEnabled(false);
+    m_installPrefsSeen = InstallPrefs::stampToRecord(prefs);
+    markDirty();
+    DEBUG_INFO_F("Install prefs: analytics disabled by Setup (stamp '%s')",
+                 m_installPrefsSeen.c_str());
+#endif
 }
 
 // See the declaration: one owner for the export folder.

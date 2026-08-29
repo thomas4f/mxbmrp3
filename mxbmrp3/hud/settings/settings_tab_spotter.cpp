@@ -234,8 +234,10 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
     // shipped one and is also the BASE every other pack layers over, so a
     // recorded pack covering half the cues still speaks the other half. Cycle
     // even while audio is off — a pack sets the subtitle text too.
+    // Shown by its title, cycled and stored by its folder name -- see
+    // SpotterManager::getPackDisplayName.
     const std::string& packName = spotter.getPackName();
-    ctx.addCycleControl("Voice pack", packName.c_str(), 10,
+    ctx.addCycleControl("Voice pack", spotter.getPackDisplayName().c_str(), 10,
         SettingsHud::ClickRegion::SPOTTER_PACK_PREV,
         SettingsHud::ClickRegion::SPOTTER_PACK_NEXT,
         nullptr, true, packName == "default", "spotter.pack");

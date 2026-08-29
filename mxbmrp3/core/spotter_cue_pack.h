@@ -1,7 +1,7 @@
 // ============================================================================
 // core/spotter_cue_pack.h
 // The spotter's cue-pack format: user-editable phrase templates and per-event
-// wav overrides, loaded from mxbmrp3_data/spotters/<name>/<name>.ini. Pure and
+// wav overrides, loaded from mxbmrp3_data/spotters/<name>/spotter.ini. Pure and
 // Windows-free so the unit suite exercises parse/expand directly
 // (test_spotter_cue_pack.cpp); SpotterManager does the file I/O and holds the
 // active pack.
@@ -196,6 +196,14 @@ namespace SpotterCuePack {
 // key -> mix token sequence (the "_wav"/"_mix" suffixes are stripped during
 // parse; all three maps use the same keys).
 struct Pack {
+    // [pack] name - OPTIONAL, and spelled the same way in every pack type, so
+    // what a modder learns writing one pack is what they write in the next.
+    // Empty means "no opinion": the picker then shows the
+    // FOLDER name, which is what every pack written before this already gets,
+    // so adding the key changes nothing for them. It exists because a folder
+    // name cannot spell everything a voice wants to be called -- "Bill (UK)"
+    // has a bracket and a space in it, and `bill-uk` reads as "bill-uk".
+    std::string displayName;
     std::map<std::string, std::string> phrases;
     std::map<std::string, std::string> wavs;
     std::map<std::string, std::vector<std::string>> mixes;
@@ -463,6 +471,7 @@ inline Pack parse(const std::string& text) {
     std::vector<std::string>& rejected = pack.rejectedMixes;
     bool inCues = false;
     bool inMix = false;
+    bool inPack = false;
     size_t pos = 0;
     while (pos <= text.size()) {
         size_t eol = text.find('\n', pos);
@@ -481,6 +490,23 @@ inline Pack parse(const std::string& text) {
         if (line[0] == '[') {
             inCues = (line == "[Cues]");
             inMix = (line == "[Mix]");
+            inPack = (line == "[pack]");
+            continue;
+        }
+        if (inPack) {
+            // One key, and unknown ones are ignored rather than rejected: this
+            // section is a label, not a contract, and a typo here must not cost
+            // a pack its words.
+            const size_t eq = line.find('=');
+            if (eq != std::string::npos) {
+                std::string k = line.substr(0, eq);
+                std::string v = line.substr(eq + 1);
+                const size_t ke = k.find_last_not_of(ws);
+                k = (ke == std::string::npos) ? std::string() : k.substr(0, ke + 1);
+                const size_t vb = v.find_first_not_of(ws);
+                v = (vb == std::string::npos) ? std::string() : v.substr(vb);
+                if (k == "name" && !v.empty()) pack.displayName = v;
+            }
             continue;
         }
         if (!inCues && !inMix) continue;

@@ -10,7 +10,7 @@
 //       spotter_transcript_driver.cpp -o build/spotter_transcript_driver.exe -lws2_32
 //   gunzip -c tests/fixtures/race_farm14_24riders.tape.gz > /tmp/farm14.tape
 //   ( . ./wine_env.sh; mxb_wine_env; cd build && wine spotter_transcript_driver.exe \
-//       mxbmrp3_test.dlo 'Z:\tmp\farm14.tape' 'Z:\...\default.ini' )
+//       mxbmrp3_test.dlo 'Z:\tmp\farm14.tape' 'Z:\...\spotter.ini' )
 //   grep 'SPOTTER SAY' /tmp/mxbspotter/mxbmrp3/mxbmrp3_log.txt
 //
 // Why this and not an assertion: the census tests can prove every cue key

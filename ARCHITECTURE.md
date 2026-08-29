@@ -515,7 +515,7 @@ An audio **spotter**: short spoken callouts over the game audio, the way a crew 
 
 **Three output rungs**, all zero-dependency Windows built-ins, tried in order per cue: a pack's stitched **mix** (chunks assembled from memory), a pack's whole **wav**, or **SAPI TTS**. The bundled `default` pack is text only, so out of the box every cue lands on TTS. Worth knowing: **SAPI does not exist under Wine/Proton**, so on those systems a default install is silent and a recorded pack is what makes it audible.
 
-**Packs are content, not configuration.** `mxbmrp3_data/spotters/<name>/<name>.ini` is a pack's whole vocabulary - one line per cue key, `_2`/`_3` suffixes for variants picked at random, `[optional groups]` that drop when their variables are empty. A pack is chosen by NAME, never by discovery index (the asset-pack invariant in CLAUDE.md). `docs/spotter.md` is the author's guide; `docs/spotter-reference.md` is generated from the registry by `tools/spottergen`, so the documented cue set cannot drift from the code.
+**Packs are content, not configuration.** `mxbmrp3_data/spotters/<name>/spotter.ini` is a pack's whole vocabulary - one line per cue key, `_2`/`_3` suffixes for variants picked at random, `[optional groups]` that drop when their variables are empty. A pack is chosen by NAME, never by discovery index (the asset-pack invariant in CLAUDE.md), and every pack type - theme, gamepad, pit board, gauges, voice - opens its ini with the same `[pack]` section and takes the same optional `base =`. `docs/spotter.md` is the author's guide; `docs/spotter-reference.md` is generated from the registry by `tools/spottergen`, so the documented cue set cannot drift from the code.
 
 **Threading.** All audio runs on one worker started lazily at the first cue, so the 480fps game thread never touches COM, disk or a speech engine; `say()`/`playWav()` enqueue under a mutex and notify. Speech is serialised (a spotter talking over itself is noise); wav playback is fire-and-forget through winmm, which gives **one channel, no per-sound volume and no ducking** - a backend limit, not a design choice, so the `[Spotter]` volume applies to TTS only. The worker is joined by the orchestrated `PluginManager::shutdown()`, never by the destructor, per the DLL-detach invariant.
 
@@ -560,7 +560,7 @@ Abstract base class that all HUDs inherit from. Provides:
 - `TelemetryHud` - Throttle/brake/suspension graphs
 - `PerformanceHud` - FPS, CPU usage graphs
 - `RadarHud` - Proximity radar with nearby rider alerts
-- `PitboardHud` - Pitboard-style lap/split information. Ships as a **pack** (`pitboards/<name>/` = art + `<name>.ini` of its proportions and row offsets), selected by name - what makes a custom board portable: its geometry used to live in the *user's* settings file, and its aspect was a compiled constant
+- `PitboardHud` - Pitboard-style lap/split information. Ships as a **pack** (`pitboards/<name>/` = art + `pitboard.ini` of its proportions and row offsets), selected by name - what makes a custom board portable: its geometry used to live in the *user's* settings file, and its aspect was a compiled constant
 - `RecordsHud` - Track records from online databases (CBR or MXB-Ranked providers)
 - `TimingHud` - Split time comparison popup (center display)
 - `GapBarHud` - Live gap visualization bar with ghost position marker
@@ -584,15 +584,14 @@ Abstract base class that all HUDs inherit from. Provides:
 - `ClockWidget` - Real-time clock
 - `GearWidget` - Current gear indicator
 - `CrashWidget` - A resettable crash tally for streaming. Deliberately NOT a view of StatsManager's per-track+bike `crashCount`: it counts across practice, races, server hops and restarts (`GlobalStats::crashTally`) and moves only on the widget's Reset button or the `CRASH_RESET` hotkey. Sized to share Speed's and Gear's content box so the three tile in a row
-- `SpeedoWidget` - Analog speedometer dial
-- `TachoWidget` - Analog tachometer dial
+- `SpeedoWidget`, `TachoWidget` - Analog dials. They ship as one **pack** (`gauges/<name>/` = `tacho.tga` + `speedo.tga` + `gauge.ini`), selected by name, because what a face READS is data about that picture: the ticks and figures are painted into the art while the needle used to be placed from constants compiled into the widgets, so any face but the shipped one was mis-drawn. That was already wrong without a modder involved - neither gauge is game-gated, so the same 230 km/h face ships to GP Bikes and Kart Racing Pro. Both faces in one pack because they are drawn as a set; each widget stores its own selection, so mixing needs no `base =` skin. `hud/gauge_geometry.h` has the format
 - `BarsWidget` - Visual telemetry bars (throttle, brake, etc.)
 - `LeanWidget` - Bike lean/roll angle display with arc gauge and steering bar
 - `GForceWidget` - Lateral/longitudinal G-force gauge with peak marker
 - `FuelWidget` - Fuel calculator with consumption tracking
 - `TyreTempWidget` - Front and rear tyre tread temperatures (GP Bikes only)
 - `EcuWidget` - Electronic rider aids: engine map, traction control, engine braking, anti-wheeling (GP Bikes only)
-- `GamepadWidget` - Controller visualization with button/stick/trigger display. Sizes its interior from its own FRAME, not the global grid (`hud/gamepad_geometry.h` says why). Its ~30 button offsets are per-pad DATA, so a pad ships as a **pack** - `gamepads/<name>/` = 17 `.tga` + `<name>.ini`, selected by *name* - and a new pad needs no build
+- `GamepadWidget` - Controller visualization with button/stick/trigger display. Sizes its interior from its own FRAME, not the global grid (`hud/gamepad_geometry.h` says why). Its ~30 button offsets are per-pad DATA, so a pad ships as a **pack** - `gamepads/<name>/` = 17 `.tga` + `gamepad.ini`, selected by *name* - and a new pad needs no build
 - `CompassWidget` - Bike heading dial (classic north-up needle, or modern rotating card with numeric readout)
 - `VersionWidget` - Plugin version display (includes hidden Breakout game easter egg; high score persisted via StatsManager)
 - `SettingsButtonWidget` - Settings menu toggle button

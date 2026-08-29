@@ -126,7 +126,7 @@ private:
     std::string m_webRoot;  // Path to web/ directory serving static files
 
     // Server thread and httplib instance
-    std::thread m_serverThread;
+    std::thread m_serverThread;   // joined-by: stop() (via shutdown() from PluginManager::shutdown)
     std::unique_ptr<httplib::Server> m_server;
 
     // Cached JSON snapshot (written by game thread, read by server threads)

@@ -20,6 +20,48 @@ Changelog's categories.
 
 ## [Unreleased]
 
+## [1.29.3] - 2026-08-29
+
+Instrument faces become packs, themes recolour in one file, every pack type
+now says the same thing at the top of its `.ini`, and an install missing its
+textures no longer draws every sprite off by one.
+
+### Added
+- Gauges packs: the tacho and speedo faces travel with the numbers saying what
+  each one reads, so a dial you draw gets a needle that agrees with it. Classic
+  ships; pick a set in the Texture column of Settings > Widgets
+- A theme recolour is one file: `base = <theme>` layers your `theme.ini` over an
+  existing theme, so a folder holding nothing but an ini is a complete theme
+- The colour picker carries the pack colours - Crimson, Orange, Yellow, Lime,
+  Cyan, Navy, Royal, Silver and Graphite - so text can match your pit board or
+  gamepad exactly instead of by eye
+- Panel themes and spotter voices can title themselves in the picker with an
+  optional `name` key, as gamepad and pit board packs already could
+- The installer has a Privacy page: what the anonymous usage ping contains, and
+  a tickbox to turn it off before the plugin ever runs
+
+### Changed
+- Every pack type opens its `.ini` with the same `[pack]` section, so what you
+  learn writing one pack is what you write in the next. Packs made since 1.29.1
+  need that one line changed
+- A pack's `.ini` has a fixed name per type - `theme.ini`, `gamepad.ini`,
+  `pitboard.ini`, `gauge.ini`, `spotter.ini` - so copying a shipped pack to
+  start your own is just "rename the folder". Packs made before this keep
+  working untouched
+- Custom `tacho_widget`/`speedo_widget` art in your `textures\` folder is copied
+  into a gauges pack for you on first run, and selected
+- Three colours renamed to make room for the pack ones: Orange is Amber, Cyan is
+  Aqua, Yellow is Bright Yellow and Dark Gray is Graphite. The colours
+  themselves are unchanged, so nothing you have set moves
+
+### Fixed
+- Pit board and gamepad widgets drawing as empty panels after upgrading from a
+  version where their artwork was a loose texture. Existing settings heal
+  themselves on the next save
+- An install with no `textures\` folder drew every theme and pack sprite off by
+  one, each element wearing its neighbour's art. The plugin now also checks the
+  whole sprite table against itself at startup and logs any skew it finds
+
 ## [1.29.1] - 2026-08-26
 
 A spotter in your ear, panel themes for every HUD, and artwork that travels:
@@ -774,7 +816,8 @@ Pre-release. Its contents shipped in 1.26.0.0, minus the analytics addition.
 
 Initial public release.
 
-[Unreleased]: https://github.com/thomas4f/mxbmrp3/compare/v1.29.1...HEAD
+[Unreleased]: https://github.com/thomas4f/mxbmrp3/compare/v1.29.3...HEAD
+[1.29.3]: https://github.com/thomas4f/mxbmrp3/compare/v1.29.1...v1.29.3
 [1.29.1]: https://github.com/thomas4f/mxbmrp3/compare/v1.28.0...v1.29.1
 [1.28.0]: https://github.com/thomas4f/mxbmrp3/compare/v1.27.7...v1.28.0
 [1.27.7]: https://github.com/thomas4f/mxbmrp3/compare/v1.27.5...v1.27.7

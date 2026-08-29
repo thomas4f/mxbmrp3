@@ -11,7 +11,7 @@
 #     point) plus phrase segments, radio-toned but WITHOUT the noise bed or
 #     clicks (a per-chunk bed drops out in the stitch gaps; clicks mark whole
 #     transmissions, not words);
-#   - the <name>.ini wiring every cue: phrase (subtitle + TTS fallback),
+#   - the spotter.ini wiring every cue: phrase (subtitle + TTS fallback),
 #     _wav for fixed cues, _mix recipes for dynamic ones.
 #
 # The wavs are GENERATED artifacts and deliberately NOT committed - edit the
@@ -383,7 +383,12 @@ def build_pack(kokoro, voice, out_root, speed, num_scheme="full"):
         if n % 100 == 0:
             print(f"    {voice}: num chunks {n}/{top}")
 
-    with open(os.path.join(pack_dir, f"{voice}.ini"), "w",
+    # spotter.ini, not "<voice>.ini": a generated pack must land in the shape the
+    # plugin now ships and the docs describe, or "copy a pack and rename the
+    # folder" -- the whole point of the fixed name -- silently does not hold for
+    # the packs this tool produces. (The legacy name is still READ, so an already
+    # generated pack keeps working; this is about what we emit from now on.)
+    with open(os.path.join(pack_dir, "spotter.ini"), "w",
               encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
 

@@ -4,18 +4,18 @@
 //
 // MAJOR/MINOR/PATCH are the manual source of truth (bump them for a release). The
 // 4th component (BUILD) is stamped AUTOMATICALLY at build time from the git commit
-// count - see the "StampVersion" target in mxbmrp3.vcxproj, which writes
-// version_build.g.h (git-ignored) before every compile. Nothing else to edit:
+// count - see cmake/stamp_version.cmake, run by the mxbmrp3_stamp_version target,
+// which writes version_build.g.h (git-ignored) before every compile. Nothing else to edit:
 // VER_STRING and core/plugin_constants.h's PLUGIN_VERSION derive from these.
 // ============================================================================
 #pragma once
 
 #define VER_MAJOR 1
 #define VER_MINOR 29
-#define VER_PATCH 1
+#define VER_PATCH 3
 
 // Generated per build (git-ignored); defines VER_BUILD_AUTO = git commit count.
-// The StampVersion target writes it before ClCompile/ResourceCompile, so it always
+// The stamp target writes it before compiling and before rc, so it always
 // exists for cl AND rc during a real build. The guard below is ONLY so a FRESH CLONE
 // (before the first build, file absent) doesn't hard-error under IntelliSense / a
 // static analyzer - a plain #include of a missing file is fatal, so the #ifndef

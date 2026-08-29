@@ -414,6 +414,8 @@ private:
     std::atomic<int> m_controllerIndex{ 0 };
 
     // ---- XInput I/O thread ----------------------------------------------------
+    // joined-by: stopIoThread() (PluginManager::shutdown, right after the
+    // plugin worker); the destructor's spinThenDetach is only the backstop.
     std::thread m_ioThread;
     std::atomic<bool> m_ioRun{ false };
     // Set true when the I/O thread has left its loop. The DESTRUCTOR spins on this

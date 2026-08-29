@@ -422,6 +422,32 @@ jobs:
       - name: HUD raw-data caching lint (self-test)
         run: ./tests/integration/check_hud_raw_cache.sh --self-test
 
+      # onDataChanged-consumer lint: DataChangeType::Standings fires many times
+      # per second on a full grid, so every consumer definition must state its
+      # `change-gate:` (trivially cheap, or gated on consumer activity before
+      # any string/alloc work). See the script header.
+      - name: onDataChanged-consumer lint (change-gate annotations)
+        run: ./tests/integration/check_change_consumers.sh
+      - name: onDataChanged-consumer lint (self-test)
+        run: ./tests/integration/check_change_consumers.sh --self-test
+
+      # Test-hook placement lint: MXBMRP3_Test_* code outside core/test_hooks.cpp
+      # compiles into the shipping targets and SHIPS — that file is the only one
+      # both gated on MXBMRP3_TEST_BUILD and excluded from shipping source lists.
+      - name: Test-hook placement lint
+        run: ./tests/integration/check_test_hook_placement.sh
+      - name: Test-hook placement lint (self-test)
+        run: ./tests/integration/check_test_hook_placement.sh --self-test
+
+      # Worker-thread join-site lint: a destructor join at DLL detach deadlocks
+      # under the loader lock, and the game does unload without Shutdown() —
+      # so every std::thread member must name its join site on the orchestrated
+      # Shutdown chain (destructor at most a spinThenDetach backstop).
+      - name: Thread join-site lint (joined-by annotations)
+        run: ./tests/integration/check_thread_join.sh
+      - name: Thread join-site lint (self-test)
+        run: ./tests/integration/check_thread_join.sh --self-test
+
       # HUD helper-bypass lint: a HUD draws its background, title, grid snap and
       # string Y through the BaseHud helpers (or the plan's addPlanBackground),
       # never a hand-rolled local copy -- the copy stops tracking the helper the
@@ -434,6 +460,14 @@ jobs:
       # itself, so an addSpacing() before one double-spaces the boundary.
       - name: Settings section-spacing lint
         run: ./tests/integration/check_section_spacing.sh
+
+      # File-size ratchet: a first-party source stays under 1,000 lines unless
+      # its header states its own ceiling (// file-budget: <N> <reason>), and
+      # fails past the number it states. Growth into a god file is a visible,
+      # reviewed edit, never drift (base_hud_render.cpp: split at ~660, regrown
+      # to 2,402 with no gate watching).
+      - name: File-size ratchet lint
+        run: ./tests/integration/check_file_budgets.sh
 
       # Every doctest integration test in tests/integration/tests/ (smoke lifecycle,
       # race standings/gaps/DSQ, multi-session business logic, auto-director

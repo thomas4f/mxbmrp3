@@ -3,6 +3,7 @@
 // Gap Bar HUD - visualizes current lap progress vs best lap timing
 // Shows a horizontal bar with current position, best lap marker, and live gap
 // ============================================================================
+// file-budget: 1300 one HUD, one TU; a split would separate layout from the gap model it draws
 #include "gap_bar_hud.h"
 
 #include <cstdio>

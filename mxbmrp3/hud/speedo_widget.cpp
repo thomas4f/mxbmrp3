@@ -28,18 +28,38 @@ SpeedoWidget::SpeedoWidget()
         // The dial face IS this gauge -- see BaseHud::m_textureRequired. Without it
     // the widget is a red needle on an empty box: no face, no ticks, no numbers.
     m_textureRequired = true;
+    // A PACK HUD -- see TachoWidget's constructor for why no texture stem is
+    // declared alongside.
+    m_packKind = PackKind::Gauges;
     DEBUG_INFO("SpeedoWidget created");
     setDraggable(true);
     m_quads.reserve(6);   // dial background + needle + 4 odometer background quads
     m_strings.reserve(5); // odometer: main + last + unit, trip: main + last
 
-    // Set texture base name for dynamic texture discovery
-    setTextureBaseName("speedo_widget");
-
     // Set all configurable defaults
     resetToDefaults();
 
     rebuildRenderData();
+}
+
+void SpeedoWidget::setGaugesPack(const std::string& name) {
+    if (m_gaugesPack == name) return;
+    m_gaugesPack = name;
+    setDataDirty();
+}
+
+const GaugesAsset* SpeedoWidget::activePack() const {
+    const AssetManager& assets = AssetManager::getInstance();
+    // Degrade, do not blank -- see PitboardHud::activePack for the full rule.
+    if (const GaugesAsset* named = assets.getGaugesByName(m_gaugesPack)) return named;
+    return assets.getDefaultGauges();
+}
+
+unsigned long SpeedoWidget::effectiveNeedleColor() const {
+    if (m_needleColorSet) return m_needleColor;
+    if (const GaugesAsset* pack = activePack())
+        return static_cast<unsigned long>(pack->geometry.speedo.needleColor);
+    return m_needleColor;
 }
 
 bool SpeedoWidget::handlesDataType(DataChangeType dataType) const {
@@ -78,6 +98,15 @@ void SpeedoWidget::rebuildRenderData() {
     const PluginData& pluginData = PluginData::getInstance();
     const BikeTelemetryData& bikeData = pluginData.getBikeTelemetry();
 
+    // What THIS face reads, how its needle is drawn, and where its readout windows
+    // are. Falls back to the built-in geometry rather than a blank gauge when no
+    // packs are installed at all.
+    const GaugesAsset* pack = activePack();
+    static const GaugeLayout::GaugeGeometry kNoPackGeometry;
+    const GaugeLayout::GaugeGeometry& gauges =
+        pack ? pack->geometry : kNoPackGeometry;
+    const GaugeLayout::Dial& dial = gauges.speedo;
+
     // Calculate dial dimensions based on scale
     float dialSize = DIAL_SIZE * m_fScale;
     float dialWidth = dialSize / UI_ASPECT_RATIO;
@@ -100,6 +129,11 @@ void SpeedoWidget::rebuildRenderData() {
     // Calculate center of dial
     float centerX = startX + dialWidth / 2.0f;
     float centerY = startY + dialHeight / 2.0f;
+
+    // Keep BaseHud's background sprite pointing at the active pack's speedo face.
+    // Assigned only on change: setBackgroundTextureIndex invalidates the theme memo.
+    const int packFace = pack ? pack->sprites[GaugeSprite::SPEEDO] : 0;
+    if (getBackgroundTextureIndex() != packFace) setBackgroundTextureIndex(packFace);
 
     // Add dial as background quad (uses base class helper for consistency with PitboardHud)
     // BG Tex ON: shows dial sprite with opacity
@@ -126,23 +160,24 @@ void SpeedoWidget::rebuildRenderData() {
         targetSpeed = bikeData.speedometer * UnitConversion::MS_TO_KMH;
     }
 
-    // Clamp target speed to dial range
-    if (targetSpeed < MIN_SPEED_KMH) targetSpeed = MIN_SPEED_KMH;
-    if (targetSpeed > MAX_SPEED_KMH) targetSpeed = MAX_SPEED_KMH;
+    // Clamp to THIS face's range before smoothing, so the needle settles at the end
+    // of the dial rather than easing towards a reading the face cannot show.
+    // The range is in km/h whatever unit the face is PRINTED in -- see
+    // gauge_geometry.h, and the pack's max-mph key.
+    if (targetSpeed < dial.min) targetSpeed = dial.min;
+    if (targetSpeed > dial.max) targetSpeed = dial.max;
 
     // Apply exponential smoothing to simulate needle inertia
     // smoothed = smoothed + (target - smoothed) * factor
     m_smoothedSpeed += (targetSpeed - m_smoothedSpeed) * NEEDLE_SMOOTH_FACTOR;
 
-    // Calculate needle angle based on smoothed speed
-    // Linear interpolation from MIN_ANGLE_DEG at 0 km/h to MAX_ANGLE_DEG at 230 km/h
-    float speedRatio = m_smoothedSpeed / MAX_SPEED_KMH;
-    float angleDeg = MIN_ANGLE_DEG + speedRatio * (MAX_ANGLE_DEG - MIN_ANGLE_DEG);
-    float angleRad = angleDeg * DEG_TO_RAD;
+    // The pack's own sweep -- Dial::angleFor is the expression that used to be
+    // written out here against compiled constants.
+    float angleRad = dial.angleFor(m_smoothedSpeed) * DEG_TO_RAD;
 
-    // Calculate needle dimensions (relative to dial size)
-    float needleLength = dialHeight * 0.42f;  // Needle extends 42% of dial height from center
-    float needleWidth = dialHeight * 0.025f;  // Needle width is 2.5% of dial height
+    // Needle dimensions, as fractions of the dial this pack drew.
+    float needleLength = dialHeight * dial.needleLength;
+    float needleWidth = dialHeight * dial.needleWidth;
 
     // ========================================================================
     // Odometer display - traditional analog style with black background
@@ -239,7 +274,7 @@ void SpeedoWidget::rebuildRenderData() {
     if (m_showOdometer) {
         char odometerDisplay[16];
         snprintf(odometerDisplay, sizeof(odometerDisplay), "%06d", odometerWhole);
-        float odometerY = startY + dialHeight * 0.33f;
+        float odometerY = startY + dialHeight * gauges.odometerY;
         addOdometerRow(odometerDisplay, odometerY);
     }
 
@@ -248,7 +283,7 @@ void SpeedoWidget::rebuildRenderData() {
         int tripTenths = static_cast<int>(tripDist * 10.0 + 0.5) % 10000;  // Wrap at 999.9
         char tripDisplay[16];
         snprintf(tripDisplay, sizeof(tripDisplay), "%04d", tripTenths);
-        float tripY = startY + dialHeight * 0.66f;
+        float tripY = startY + dialHeight * gauges.tripmeterY;
         addOdometerRow(tripDisplay, tripY);
     }
 
@@ -256,18 +291,33 @@ void SpeedoWidget::rebuildRenderData() {
     // Needle fades with the dial so the whole gauge responds to the background-opacity
     // slider as one (matches the faded odometer above).
     addNeedleQuad(centerX, centerY, angleRad, needleLength, needleWidth,
-                  PluginUtils::applyOpacity(m_needleColor, m_fBackgroundOpacity));
+                  PluginUtils::applyOpacity(effectiveNeedleColor(), m_fBackgroundOpacity));
 }
 
 void SpeedoWidget::resetToDefaults() {
     m_bVisible = false;
     m_bShowTitle = false;
-    setTextureVariant(1);  // Show dial texture by default
+    // The dial face IS this widget, exactly as the pad's and the board's art is
+    // theirs -- so this says so, the same way they do. It used to be implied by
+    // setTextureVariant(1), which was the ONLY thing here setting the flag;
+    // dropping that call when the speedometer became a pack HUD left the flag at
+    // BaseHud's `false`, so a fresh install drew a needle on an empty box and
+    // then persisted showBackgroundTexture=0. Through the setter, not the
+    // member: it owns the theme-memo invalidation, and check_hud_helpers.sh
+    // fails a HUD that touches the member directly.
+    setShowBackgroundTexture(true);
     m_fBackgroundOpacity = 1.0f;  // 100% opacity
     m_fScale = 1.5f;  // 150% default scale
     setPosition(cellsX(125), cellsY(64));
     m_smoothedSpeed = 0.0f;
+    // EMPTY, not "classic": empty means "whatever the default pack resolves to",
+    // which is how an upgrading user whose own art was migrated into gauges\\legacy
+    // gets it back without a settings key that could not have existed when their
+    // file was written. See AssetManager::getDefaultGauges.
+    m_gaugesPack.clear();
+    // Assigned directly, NOT through setNeedleColor -- see TachoWidget.
     m_needleColor = DEFAULT_NEEDLE_COLOR;
+    m_needleColorSet = false;
     m_showOdometer = true;   // Odometer ON by default
     m_showTripmeter = false; // Trip meter OFF by default
     setDataDirty();

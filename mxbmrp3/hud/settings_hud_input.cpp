@@ -8,6 +8,7 @@
 // keeps menu construction (rebuildRenderData) and lifecycle. Per-tab layout
 // lives in hud/settings/settings_tab_*.cpp.
 // ============================================================================
+// file-budget: 1350 click dispatch for every settings tab; shrinks as tabs move to SteppedControl
 #include "settings_hud.h"
 #include "settings/whats_new.h"
 #include "settings/settings_layout.h"
@@ -17,6 +18,8 @@
 #include "fmx_hud.h"
 #include "stats_hud.h"
 #include "settings_button_widget.h"
+#include "tacho_widget.h"      // cycleGaugesPack reaches both gauge widgets
+#include "speedo_widget.h"
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
 #include "../core/plugin_constants.h"
@@ -357,6 +360,17 @@ void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
         case ClickRegion::PITBOARD_PACK_DOWN:
             if (region.targetHud) {
                 cyclePitboardPack(region.type == ClickRegion::PITBOARD_PACK_UP);
+                rebuildRenderData();
+            }
+            break;
+        case ClickRegion::GAUGES_PACK_UP:
+        case ClickRegion::GAUGES_PACK_DOWN:
+            // Through the region's targetHud, unlike the two above: the tacho and
+            // the speedo each hold their own selection, so the click has to say
+            // which row it came from.
+            if (region.targetHud) {
+                cycleGaugesPack(region.targetHud,
+                                region.type == ClickRegion::GAUGES_PACK_UP);
                 rebuildRenderData();
             }
             break;
@@ -1006,6 +1020,37 @@ void SettingsHud::cyclePitboardPack(bool forward) {
     // Boards differ in aspect, so the panel changes SIZE here and one parked
     // against an edge can grow off-screen.
     HudManager::getInstance().requestPositionValidation();
+}
+
+void SettingsHud::cycleGaugesPack(BaseHud* hud, bool forward) {
+    const auto& packs = AssetManager::getInstance().getGauges();
+    if (packs.empty() || !hud) return;
+
+    // Two widgets, two unrelated classes, one accessor pair -- see
+    // activeGaugesDisplayName in settings_layout.cpp for why the cast lives at the
+    // point of use rather than behind a base-class virtual.
+    TachoWidget* tacho = dynamic_cast<TachoWidget*>(hud);
+    SpeedoWidget* speedo = tacho ? nullptr : dynamic_cast<SpeedoWidget*>(hud);
+    if (!tacho && !speedo) return;
+
+    const GaugesAsset* active = tacho ? tacho->activePack() : speedo->activePack();
+    int index = 0;
+    for (size_t i = 0; i < packs.size(); ++i) {
+        if (active && packs[i].name == active->name) { index = static_cast<int>(i); break; }
+    }
+
+    const int count = static_cast<int>(packs.size());
+    index += forward ? 1 : -1;
+    if (index < 0) index = count - 1;
+    if (index >= count) index = 0;
+
+    const std::string& picked = packs[static_cast<size_t>(index)].name;
+    if (tacho) tacho->setGaugesPack(picked); else speedo->setGaugesPack(picked);
+    hud->setDataDirty();
+
+    // No requestPositionValidation() here, unlike the pit board's cycle: a dial is
+    // drawn as a circle at the widget's own size, so switching packs cannot change
+    // the panel's dimensions and cannot push a parked gauge off-screen.
 }
 
 void SettingsHud::cycleHudThemeOverride(BaseHud* hud, bool forward) {

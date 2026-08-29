@@ -3,7 +3,15 @@
 // Manages keyboard, mouse, and XInput controller input state
 // ============================================================================
 #include "input_manager.h"
+#include "ui_viewport.h"
 #include "../diagnostics/logger.h"
+
+// ui_viewport.h is deliberately too pure to include plugin_constants.h (that
+// header's include graph is heavy), so it spells 16:9 as integers; this ties
+// the two spellings together at compile time.
+static_assert(static_cast<float>(UiViewport::kAspectW) / UiViewport::kAspectH
+                  == PluginConstants::UI_ASPECT_RATIO,
+              "UiViewport's integer aspect must match PluginConstants::UI_ASPECT_RATIO");
 #include "../diagnostics/timer.h"
 #include "../core/hud_manager.h"
 #include "../core/ui_config.h"
@@ -302,38 +310,14 @@ void InputManager::updateCursorPosition() {
         return;
     }
 
-    // Calculate UI area dimensions and convert cursor to normalized UI coordinates
-    float windowAspect = static_cast<float>(winW) / static_cast<float>(winH);
-    int uiWidth, uiHeight, uiOffsetX, uiOffsetY;
-
-    if (windowAspect > ASPECT_RATIO) {
-        // Pillarboxed (black bars on sides) - ultrawide/superwide displays
-        uiHeight = winH;
-        uiWidth = static_cast<int>(winH * ASPECT_RATIO);
-        uiOffsetX = (winW - uiWidth) / 2;
-        uiOffsetY = 0;
-    }
-    else {
-        // Letterboxed (black bars on top/bottom) - narrow displays
-        uiWidth = winW;
-        uiHeight = static_cast<int>(winW / ASPECT_RATIO);
-        uiOffsetX = 0;
-        uiOffsetY = (winH - uiHeight) / 2;
-    }
-
-    // Safety: Validate calculated UI dimensions to prevent division by zero
-    // Integer truncation could result in zero dimensions with very small window sizes
-    if (uiWidth <= 0 || uiHeight <= 0) {
-        DEBUG_WARN_F("Invalid UI dimensions (%d x %d) calculated from window (%d x %d), cannot update cursor",
-                     uiWidth, uiHeight, winW, winH);
-        m_cursorPosition.isValid = false;
-        return;
-    }
-
-    // Convert cursor to normalized UI coordinates
+    // Convert cursor to normalized UI coordinates against the centered 16:9 UI
+    // rect — UiViewport::compute, the SAME function the companion window paints
+    // with, so paint and hit-testing cannot disagree (its w/h are never 0, which
+    // is the division guard the old inline copy validated by hand).
     // Note: Coordinates naturally extend beyond [0, 1] when cursor is outside UI area
-    m_cursorPosition.x = static_cast<float>(clientPos.x - uiOffsetX) / static_cast<float>(uiWidth);
-    m_cursorPosition.y = static_cast<float>(clientPos.y - uiOffsetY) / static_cast<float>(uiHeight);
+    const UiViewport::Rect vp = UiViewport::compute(winW, winH);
+    m_cursorPosition.x = static_cast<float>(clientPos.x - vp.x) / static_cast<float>(vp.w);
+    m_cursorPosition.y = static_cast<float>(clientPos.y - vp.y) / static_cast<float>(vp.h);
     m_cursorPosition.isValid = true;
 }
 
@@ -410,39 +394,14 @@ void InputManager::refreshWindowInformation() {
     m_windowHeight = height;
 
     // Calculate window bounds in UI coordinate space whenever dimensions change
-    // This allows HUD position validation to work without requiring cursor to be enabled
-    float windowAspect = static_cast<float>(m_windowWidth) / static_cast<float>(m_windowHeight);
-    int uiWidth, uiHeight, uiOffsetX, uiOffsetY;
-
-    if (windowAspect > ASPECT_RATIO) {
-        // Pillarboxed (black bars on sides) - ultrawide/superwide displays
-        uiHeight = m_windowHeight;
-        uiWidth = static_cast<int>(m_windowHeight * ASPECT_RATIO);
-        uiOffsetX = (m_windowWidth - uiWidth) / 2;
-        uiOffsetY = 0;
-    }
-    else {
-        // Letterboxed (black bars on top/bottom) - narrow displays
-        uiWidth = m_windowWidth;
-        uiHeight = static_cast<int>(m_windowWidth / ASPECT_RATIO);
-        uiOffsetX = 0;
-        uiOffsetY = (m_windowHeight - uiHeight) / 2;
-    }
-
-    // Safety: Validate calculated UI dimensions to prevent division by zero
-    // Integer truncation could result in zero dimensions with very small window sizes
-    if (uiWidth <= 0 || uiHeight <= 0) {
-        DEBUG_WARN_F("Invalid UI dimensions (%d x %d) calculated from window (%d x %d), cannot update bounds",
-                     uiWidth, uiHeight, m_windowWidth, m_windowHeight);
-        // Keep previous bounds or use safe defaults
-        return;
-    }
-
-    // Update window bounds
-    m_windowBounds.left = static_cast<float>(-uiOffsetX) / static_cast<float>(uiWidth);
-    m_windowBounds.top = static_cast<float>(-uiOffsetY) / static_cast<float>(uiHeight);
-    m_windowBounds.right = static_cast<float>(m_windowWidth - uiOffsetX) / static_cast<float>(uiWidth);
-    m_windowBounds.bottom = static_cast<float>(m_windowHeight - uiOffsetY) / static_cast<float>(uiHeight);
+    // This allows HUD position validation to work without requiring cursor to be
+    // enabled. Same UiViewport::compute rect as the cursor map above and the
+    // companion paint loop (its w/h are never 0 — the old inline division guard).
+    const UiViewport::Rect vp = UiViewport::compute(m_windowWidth, m_windowHeight);
+    m_windowBounds.left = static_cast<float>(-vp.x) / static_cast<float>(vp.w);
+    m_windowBounds.top = static_cast<float>(-vp.y) / static_cast<float>(vp.h);
+    m_windowBounds.right = static_cast<float>(m_windowWidth - vp.x) / static_cast<float>(vp.w);
+    m_windowBounds.bottom = static_cast<float>(m_windowHeight - vp.y) / static_cast<float>(vp.h);
 }
 
 void InputManager::updateCursorVisibility() {

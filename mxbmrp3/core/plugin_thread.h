@@ -187,6 +187,8 @@ private:
     // waits for this AFTER its sentinel so a frame build triggered by a Draw can't
     // still be reading PluginData when the test reads a snapshot. (Test-path only.)
     std::atomic<bool> m_idle{ true };
+    // joined-by: stop() (PluginManager::shutdown); the destructor SPINS on
+    // m_workerFinished instead of joining (see that flag's comment).
     std::thread m_thread;
     std::thread::id m_workerId;
 

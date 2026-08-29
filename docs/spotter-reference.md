@@ -7,7 +7,7 @@ fails if this copy is stale.
 
 This is the lookup table. The two files it goes with:
 
-- `mxbmrp3_data/spotters/default/default.ini` - the shipped pack,
+- `mxbmrp3_data/spotters/default/spotter.ini` - the shipped pack,
   which is the wording itself. Every key below has a row in it, so it
   is also the worked example; copy that folder to edit it.
 - `docs/spotter.md` - the guide: what it calls and how to set it up,

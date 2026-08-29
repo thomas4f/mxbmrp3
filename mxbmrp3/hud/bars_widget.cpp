@@ -230,7 +230,7 @@ void BarsWidget::rebuildRenderData() {
     unsigned long rearBrakeColor = hasFullTelemetry ? SemanticColors::REAR_BRAKE : mutedColor;
     unsigned long clutchColor = hasFullTelemetry ? SemanticColors::CLUTCH : mutedColor;
     unsigned long rpmColor = ColorPalette::GRAY;                  // Gray (always available)
-    unsigned long fuelColor = hasFullTelemetry ? ColorPalette::YELLOW : mutedColor;
+    unsigned long fuelColor = hasFullTelemetry ? ColorPalette::BRIGHT_YELLOW : mutedColor;
     unsigned long frontSuspColor = hasFullTelemetry ? SemanticColors::FRONT_SUSP : mutedColor;
     unsigned long rearSuspColor = hasFullTelemetry ? SemanticColors::REAR_SUSP : mutedColor;
 

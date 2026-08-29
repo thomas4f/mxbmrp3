@@ -6,6 +6,7 @@
 // hotkeys, and per-feature analytics-flag sections. Split out of
 // settings_manager.cpp (which owns per-HUD capture/apply/serialize and load).
 // ============================================================================
+// file-budget: 1500 one applyGlobalLine/writeGlobalSettings pair per global section
 #include "settings_manager.h"
 #include "layout_config.h"
 #include "settings_keys.h"
@@ -86,6 +87,7 @@
 #endif
 #if GAME_HAS_ANALYTICS
 #include "analytics_manager.h"
+#include "install_prefs.h"
 #endif
 #include "xinput_reader.h"
 #include "hotkey_manager.h"
@@ -177,6 +179,15 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
     // Written even when empty so the key is visible to anyone reading the file, and
     // so clearing it by hand is an obvious way to see the markers again.
     out << "whatsNewSeen=" << WhatsNew::serialize() << " ; dismissed 'New' markers\n";
+#if GAME_HAS_ANALYTICS
+    // Which Setup analytics opt-out has already been honoured (core/install_prefs.h).
+    // Written only once one HAS been, so the key stays invisible for the overwhelming
+    // majority of installs that never saw a marker.
+    if (!m_installPrefsSeen.empty()) {
+        out << "installPrefsSeen=" << m_installPrefsSeen
+            << " ; Setup opt-out already applied; delete to re-apply\n";
+    }
+#endif
 #if GAME_HAS_HTTP_SERVER
     out << "webServer=" << (HttpServer::getInstance().isEnabled() ? 1 : 0) << " ; Web overlay server (port and throttle in [Advanced])\n";
 #endif
@@ -575,6 +586,12 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                 WhatsNew::deserialize(value);
                 return true;
             }
+#if GAME_HAS_ANALYTICS
+            if (key == "installPrefsSeen") {
+                m_installPrefsSeen = value;
+                return true;
+            }
+#endif
             if (key == "autoSave") {
                 UiConfig::getInstance().setAutoSave(std::stoi(value) != 0);
             }

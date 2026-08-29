@@ -8,9 +8,11 @@
 //
 // The ENTIRE file is gated on MXBMRP3_TEST_BUILD, so it is empty in every
 // shipping (MSVC) configuration and the exports never exist in a released DLL.
-// It is also not referenced by mxbmrp3.vcxproj; only the cross-build's source
-// glob picks it up. See tests/integration/ and DEVELOPMENT.md.
+// mxbmrp3/CMakeLists.txt also removes it from the source list of every shipping
+// target, so only the test build compiles it at all. See tests/integration/ and
+// DEVELOPMENT.md.
 // ============================================================================
+// file-budget: 3200 one export per MXBMRP3_Test_* hook; excluded from every shipping DLL
 #include "steam_friends_manager.h"
 #include "../game/game_config.h"
 
@@ -179,6 +181,13 @@ __declspec(dllexport) void MXBMRP3_Test_SpotterHotkey() {
 
 __declspec(dllexport) void MXBMRP3_Test_SpotterPreview(int ttsOnly) {
     SpotterManager::getInstance().previewVoice(ttsOnly != 0);
+}
+
+// 1 while the TTS worker is parked in its queue wait — see m_workerParked.
+// teardown_test waits on this so its DLL unload lands with the worker in a
+// known state rather than mid-way through the first cue's lazy engine load.
+__declspec(dllexport) int MXBMRP3_Test_SpotterWorkerParked() {
+    return SpotterManager::getInstance().testWorkerParked() ? 1 : 0;
 }
 
 // Newline-joined cues, oldest first, each "sessionTimeMs<TAB>text" — the
@@ -432,6 +441,46 @@ __declspec(dllexport) int MXBMRP3_Test_ColorOverridden(int slot) {
 __declspec(dllexport) unsigned long MXBMRP3_Test_ThemeOrDefaultColor(int slot) {
     return ColorConfig::getThemeOrDefaultColor(static_cast<ColorSlot>(slot));
 }
+// One named theme's identity, as "own=<n>;center=<sprite>;base=<name>;primary=<hex>",
+// or an empty string when no theme of that name is installed.
+//
+// FOUR ANSWERS IN ONE HOOK because they are one question -- did this skin layer
+// correctly? `own` is the number of files the folder itself registers (zero for
+// an ini-only theme, which is the whole point of theme bases), `center` proves
+// the inherited sprite really is the base's index rather than a new one, and
+// `primary` proves the ini was read OVER the inherited palette rather than
+// instead of it.
+__declspec(dllexport) void MXBMRP3_Test_ThemeInfo(const char* name, char* out, int cap) {
+    if (!out || cap <= 0) return;
+    out[0] = '\0';
+    if (!name) return;
+    const ThemeAsset* t = AssetManager::getInstance().getThemeByName(name);
+    if (!t) return;
+    const size_t primary = static_cast<size_t>(ColorSlot::PRIMARY);
+    snprintf(out, static_cast<size_t>(cap), "own=%zu;center=%d;base=%s;primary=%08lX;primarySet=%d",
+             t->spriteFiles.size(), t->centerSprite, t->baseName.c_str(),
+             static_cast<unsigned long>(t->colors[primary]),
+             t->colorSet[primary] ? 1 : 0);
+}
+
+// One named gauges pack as "base=<name>;tachoMax=<f>;speedoMax=<f>", empty when
+// no pack of that name is installed.
+//
+// Exists because the gauge-art migration WRITES a pack ini, and the only useful
+// question about generated config is whether the reader understood it. Asserting
+// the emitted text cannot answer that -- the migration shipped once with a
+// section the readers no longer accepted, and the test that checked the string
+// passed the whole time.
+__declspec(dllexport) void MXBMRP3_Test_GaugesInfo(const char* name, char* out, int cap) {
+    if (!out || cap <= 0) return;
+    out[0] = '\0';
+    if (!name) return;
+    const GaugesAsset* g = AssetManager::getInstance().getGaugesByName(name);
+    if (!g) return;
+    snprintf(out, static_cast<size_t>(cap), "base=%s;tachoMax=%.0f;speedoMax=%.0f",
+             g->baseName.c_str(), g->geometry.tacho.max, g->geometry.speedo.max);
+}
+
 __declspec(dllexport) void MXBMRP3_Test_CycleColor(int slot, int forward) {
     ColorConfig::getInstance().cycleColor(static_cast<ColorSlot>(slot), forward != 0);
 }
@@ -484,6 +533,26 @@ __declspec(dllexport) void MXBMRP3_Test_PanelName(int i, char* out, int cap);
 // width, and the one a scale test cannot reach.
 __declspec(dllexport) void MXBMRP3_Test_GapBarWidth(int percent) {
     HudManager::getInstance().getGapBarHud().setBarWidth(percent);
+}
+
+// Whether a HUD's background TEXTURE is switched on, by registration name:
+// 1 = on, 0 = off, -1 = no such HUD.
+//
+// The FLAG and not the resolved sprite, deliberately. The sprite index needs the
+// pack art to be installed, and the Wine harness stages no plugins\mxbmrp3_data
+// tree -- so a sprite-based check reads 0 for "no packs here" exactly as it reads
+// 0 for the bug, and cannot tell them apart. The flag is what the bug actually
+// moved (see BaseHud::setTextureVariant) and it answers in any environment.
+__declspec(dllexport) int MXBMRP3_Test_HudBackgroundTextureOn(const char* name) {
+    if (!name) return -1;
+    const auto& huds = HudManager::getInstance().getHuds();
+    for (int i = 0; i < static_cast<int>(huds.size()); i++) {
+        char label[64];
+        MXBMRP3_Test_PanelName(i, label, static_cast<int>(sizeof(label)));
+        if (strcmp(label, name) != 0) continue;
+        return huds[static_cast<size_t>(i)]->getShowBackgroundTexture() ? 1 : 0;
+    }
+    return -1;
 }
 
 // Runtime setScale, by the registration name MXBMRP3_Test_PanelName reports -- the
@@ -2080,6 +2149,21 @@ __declspec(dllexport) unsigned int MXBMRP3_Test_PitboardTextColor(const char* pa
 // no plugin source, only harness + vendor), so a hook is how they read it.
 __declspec(dllexport) int MXBMRP3_Test_GamepadStemCount(void) {
     return static_cast<int>(GamepadSprite::COUNT);
+}
+
+// The sprite-order self-check's verdict (HudManager::verifySpriteRegistrationOrder,
+// run at the end of setupDefaultResources): 0 = every index discovery recorded
+// points at its own file. This is how sprite_order_test.cpp turns the startup
+// log line into an assertable value.
+__declspec(dllexport) int MXBMRP3_Test_SpriteOrderMismatches(void) {
+    return HudManager::getInstance().spriteOrderMismatches();
+}
+
+// Must-catch probe for the same checker: re-run it with two table entries
+// swapped (restored before returning). Non-zero proves the check is not
+// vacuously green on the staged tree.
+__declspec(dllexport) int MXBMRP3_Test_SpriteOrderWithSwap(int a, int b) {
+    return HudManager::getInstance().testSpriteOrderWithSwap(a, b);
 }
 
 __declspec(dllexport) void MXBMRP3_Test_GamepadStemName(int index, char* out, int cap) {

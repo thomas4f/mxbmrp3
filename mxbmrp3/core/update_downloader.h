@@ -180,6 +180,8 @@ private:
 
     // Threading
     mutable Mutex m_mutex;
+    // joined-by: shutdown() (PluginManager::shutdown) + the re-arm join in
+    // startDownload() before spawning a replacement.
     std::thread m_workerThread;
     // Copy under the lock, invoke OUTSIDE it (see notifyStateChange) — exactly the
     // shape the analysis should be pinning, so it carries the annotation.

@@ -805,6 +805,12 @@ def check_readme_menu_tables(failures):
         return
     glob, prof = registry
     prof = [t for t in prof if t != "Widgets"]   # its own table, below
+    # The About screen is deliberately NOT in the tabs table: it is absent from
+    # the menu's tab list (it opens from the About button, bottom right), so a
+    # row for it sends readers hunting for a tab that does not exist. Filtered
+    # from the EXPECTED list, the exact-match comparison below turns a re-added
+    # About row into an "extra: About" failure -- the row cannot quietly return.
+    glob = [t for t in glob if t != "About"]
 
     widgets_src = open(os.path.join(
         REPO, "mxbmrp3/hud/settings/settings_tab_widgets.cpp"), encoding="utf-8").read()
@@ -996,7 +1002,8 @@ def check_shipped_theme_keys(failures):
     # the way this check exists to prevent, one level up: rename card.content to
     # card.body there and bracket.ini's live `content = 1` would still be accepted
     # here while the body card silently stopped working.
-    assets = os.path.join(REPO, "mxbmrp3", "core", "asset_manager.cpp")
+    # readThemeIni lives in the themes TU since asset_manager.cpp was split.
+    assets = os.path.join(REPO, "mxbmrp3", "core", "asset_manager_themes.cpp")
     with open(assets, encoding="utf-8") as f:
         src = f.read()
     accepted = set(re.findall(r'std::strcmp\(key, "([^"]+)"\)', src))
@@ -1175,10 +1182,15 @@ def check_shipped_theme_geometry(failures):
         d = os.path.join(root, theme)
         if not os.path.isdir(d) or theme in GEOMETRY_EXEMPT:
             continue
-        ini = os.path.join(d, theme + ".ini")
+        # theme.ini, or the pre-1.29.2 <name>.ini a third-party theme may still
+        # carry (core/pack_ini_path.h): the geometry comparison below cares about
+        # the numbers, not which of the two spellings holds them.
+        ini = os.path.join(d, "theme.ini")
         if not os.path.isfile(ini):
-            failures.append(f"mxbmrp3_data/themes/{theme}/: no {theme}.ini "
-                            f"(a theme's ini is named after its folder)")
+            ini = os.path.join(d, theme + ".ini")
+        if not os.path.isfile(ini):
+            failures.append(f"mxbmrp3_data/themes/{theme}/: no theme.ini "
+                            f"(see core/pack_ini_path.h)")
             continue
         section, keys = "", {}
         with open(ini, encoding="utf-8") as f:

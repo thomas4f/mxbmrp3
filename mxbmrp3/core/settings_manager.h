@@ -190,6 +190,18 @@ private:
 
     std::string getSettingsFilePath(const char* savePath) const;
 
+    // The body of loadSettings(). Split out ONLY so applyInstallPrefs() has exactly
+    // one call site: this returns early on a fresh install, which is precisely the
+    // case the opt-out marker serves, so a call hung off its tail is skipped where
+    // it matters most. See loadSettings().
+    void loadSettingsImpl(HudManager& hudManager, const char* savePath);
+
+    // Honour Setup's analytics opt-out, if it left one and it has not been honoured
+    // yet. Called at the END of loadSettings(), so installPrefsSeen has been read and
+    // the in-game value it may override is already applied. See core/install_prefs.h
+    // for why this is a stamped marker rather than a consumed sentinel.
+    void applyInstallPrefs();
+
     // Capture HUD state to a specific profile's cache
     void captureToProfile(const HudManager& hudManager, ProfileType profile);
 
@@ -265,6 +277,12 @@ private:
 
     // Stored save path for saving on profile switch
     std::string m_savePath;
+
+    // Which installer opt-out marker has already been honoured (core/install_prefs.h).
+    // Persisted as [General] installPrefsSeen so a marker the plugin cannot delete --
+    // it lives in the game folder, which may need elevation -- is applied once and
+    // never again, leaving the in-game Analytics toggle authoritative afterwards.
+    std::string m_installPrefsSeen;
 
     // Developer mode flag (shows debug options in UI)
     bool m_developerMode = false;

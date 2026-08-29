@@ -481,6 +481,9 @@ void HudManager::testSetAllHudsVisible(bool visible) {
 }
 #endif
 
+// change-gate: dirty-flag flips only (handlesDataType -> setDataDirty), no
+// alloc/string work; the actual rebuilds run later, gated on visibility.
+// DirectorManager gates internally (see its own change-gate).
 void HudManager::onDataChanged(DataChangeType changeType) {
 
     // Called when PluginData notifies that data has changed
@@ -569,7 +572,8 @@ void HudManager::setupDefaultResources() {
     size_t expectedSprites = assetMgr.getTotalTextureSprites() + assetMgr.getIconCount()
                            + expectedThemeSprites
                            + assetMgr.getGamepadCount() * GamepadSprite::COUNT
-                           + assetMgr.getPitboardCount() * PitboardSprite::COUNT;
+                           + assetMgr.getPitboardCount() * PitboardSprite::COUNT
+                           + assetMgr.getGaugesCount() * GaugeSprite::COUNT;
     m_spriteNames.reserve(expectedSprites);
     m_fontNames.reserve(assetMgr.getFontCount());
 
@@ -639,6 +643,19 @@ void HudManager::setupDefaultResources() {
     DEBUG_INFO_F("Added %zu pitboard sprites from %zu packs",
         assetMgr.getPitboardCount() * PitboardSprite::COUNT, assetMgr.getPitboardCount());
 
+    // Gauges packs after the boards, walking GaugeSprite::kStems in the order
+    // discoverGauges() assigned indices in -- same one-table rule.
+    for (const GaugesAsset& set : assetMgr.getGauges()) {
+        for (int i = 0; i < GaugeSprite::COUNT; ++i) {
+            m_spriteNames.push_back(assetMgr.getGaugesPath(
+                set.spriteFromBase[i] ? set.baseName : set.name,
+                GaugeSprite::kStems[i]));
+        }
+    }
+
+    DEBUG_INFO_F("Added %zu gauges sprites from %zu packs",
+        assetMgr.getGaugesCount() * GaugeSprite::COUNT, assetMgr.getGaugesCount());
+
     // Add fonts from AssetManager (discovered dynamically)
     size_t fontCount = assetMgr.getFontCount();
     for (size_t i = 0; i < fontCount; ++i) {
@@ -647,9 +664,87 @@ void HudManager::setupDefaultResources() {
 
     DEBUG_INFO_F("Added %zu fonts", fontCount);
 
+    m_spriteOrderMismatches = verifySpriteRegistrationOrder(assetMgr);
+
     DEBUG_INFO_F("Default HUD resources configured: %zu sprites, %zu fonts",
         m_spriteNames.size(), m_fontNames.size());
 }
+
+// The blocks above and the discover*() walks in AssetManager hand out sprite
+// indices by mirroring each other's order (textures, icons, themes, pads,
+// boards, gauges) -- two files that must agree on arithmetic neither can see.
+// This pass checks the whole agreement after the fact: every 1-based index an
+// asset recorded at discovery must point at that asset's OWN file in the table
+// just registered. A skew here is otherwise silent -- everything draws, just
+// with another asset's art (the "theme draws another theme's sprites" bug
+// class). Startup-only; runs in well under a millisecond on a full install.
+int HudManager::verifySpriteRegistrationOrder(const AssetManager& assetMgr) const {
+    int mismatches = 0;
+    auto expect = [&](int oneBased, const std::string& path, const char* kind,
+                      const std::string& owner) {
+        const int pos = oneBased - 1;   // recorded indices are 1-based (0 = SOLID_COLOR)
+        if (pos >= 0 && pos < static_cast<int>(m_spriteNames.size())
+            && m_spriteNames[static_cast<size_t>(pos)] == path) return;
+        DEBUG_ERROR_F("HudManager: sprite order skew: %s '%s' index %d should be '%s' "
+                      "but the table registered '%s' there",
+                      kind, owner.c_str(), oneBased, path.c_str(),
+                      (pos >= 0 && pos < static_cast<int>(m_spriteNames.size()))
+                          ? m_spriteNames[static_cast<size_t>(pos)].c_str()
+                          : "<out of range>");
+        ++mismatches;
+    };
+
+    for (const TextureAsset& t : assetMgr.getTextures())
+        for (size_t k = 0; k < t.variants.size(); ++k)
+            expect(t.firstSpriteIndex + static_cast<int>(k),
+                   assetMgr.getTexturePath(t.baseName, t.variants[k]), "texture", t.baseName);
+
+    const int firstIcon = assetMgr.getFirstIconSpriteIndex();
+    for (size_t i = 0; i < assetMgr.getIconCount(); ++i)
+        expect(firstIcon + static_cast<int>(i), assetMgr.getIconPath(i), "icon",
+               std::to_string(i));
+
+    // Themes record firstOwnSprite + consecutive spriteFiles (see ThemeAsset);
+    // a skin's inherited per-part indices point into its BASE's block, which the
+    // base's own walk covers, so checking own files per folder covers everything.
+    for (const ThemeAsset& t : assetMgr.getThemes())
+        for (size_t k = 0; k < t.spriteFiles.size(); ++k)
+            expect(t.firstOwnSprite + static_cast<int>(k),
+                   assetMgr.getThemePath(t.name, t.spriteFiles[k].c_str()), "theme", t.name);
+
+    for (const GamepadAsset& p : assetMgr.getGamepads())
+        for (int i = 0; i < GamepadSprite::COUNT; ++i)
+            expect(p.sprites[i],
+                   assetMgr.getGamepadPath(p.spriteFromBase[i] ? p.baseName : p.name,
+                                           GamepadSprite::kStems[i]), "gamepad", p.name);
+
+    for (const PitboardAsset& b : assetMgr.getPitboards())
+        for (int i = 0; i < PitboardSprite::COUNT; ++i)
+            expect(b.sprites[i],
+                   assetMgr.getPitboardPath(b.spriteFromBase[i] ? b.baseName : b.name,
+                                            PitboardSprite::kStems[i]), "pitboard", b.name);
+
+    for (const GaugesAsset& g : assetMgr.getGauges())
+        for (int i = 0; i < GaugeSprite::COUNT; ++i)
+            expect(g.sprites[i],
+                   assetMgr.getGaugesPath(g.spriteFromBase[i] ? g.baseName : g.name,
+                                          GaugeSprite::kStems[i]), "gauges", g.name);
+
+    return mismatches;
+}
+
+#ifdef MXBMRP3_TEST_BUILD
+int HudManager::testSpriteOrderWithSwap(int aOneBased, int bOneBased) {
+    const int n = registeredSpriteCount();
+    if (aOneBased < 1 || aOneBased > n || bOneBased < 1 || bOneBased > n) return -1;
+    std::swap(m_spriteNames[static_cast<size_t>(aOneBased - 1)],
+              m_spriteNames[static_cast<size_t>(bOneBased - 1)]);
+    const int found = verifySpriteRegistrationOrder(AssetManager::getInstance());
+    std::swap(m_spriteNames[static_cast<size_t>(aOneBased - 1)],
+              m_spriteNames[static_cast<size_t>(bOneBased - 1)]);
+    return found;
+}
+#endif
 
 bool HudManager::isTelemetryHistoryNeeded() const {
     // Lets PluginData skip history-buffer accumulation when nothing consumes it.

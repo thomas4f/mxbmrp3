@@ -1,9 +1,9 @@
 # Spotter voice packs
 
-A pack is a folder holding a `<name>.ini` that names every callout, and
+A pack is a folder holding a `spotter.ini` that names every callout, and
 optionally the audio to play for them. The plugin ships one pack, **default**,
 which is text only: its lines are spoken by Windows text-to-speech and shown as
-subtitles. Read `default/default.ini` - it documents itself and is meant to be
+subtitles. Read `default/spotter.ini` - it documents itself and is meant to be
 copied and edited.
 
 ## Recorded voices are a separate download

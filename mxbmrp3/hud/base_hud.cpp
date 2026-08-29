@@ -334,6 +334,7 @@ bool BaseHud::hasBackgroundArtwork() const {
     switch (m_packKind) {
         case PackKind::Gamepad:  return AssetManager::getInstance().getGamepadCount() > 0;
         case PackKind::Pitboard: return AssetManager::getInstance().getPitboardCount() > 0;
+        case PackKind::Gauges:   return AssetManager::getInstance().getGaugesCount() > 0;
         case PackKind::None:     break;
     }
     return !getAvailableTextureVariants().empty();
@@ -341,6 +342,29 @@ bool BaseHud::hasBackgroundArtwork() const {
 
 void BaseHud::setTextureVariant(int variant) {
     if (variant < 0) variant = 0;
+
+    // A PACK HUD HAS NO TEXTURE VARIANTS -- its artwork is the selected pack's, set
+    // through setBackgroundTextureIndex() on every rebuild -- so a variant request
+    // here has nothing to resolve against and must change nothing.
+    //
+    // Without this it fell through to the no-base-name arm at the bottom, which
+    // assumes a HUD that FORGOT to declare a stem and switches the background off to
+    // say so. For a pack HUD that assumption is wrong twice over: the stem is absent
+    // on purpose, and switching the background off is exactly the state
+    // m_textureRequired exists to prevent.
+    //
+    // It reached users as a silent upgrade break. An INI written before the pit board
+    // and the gamepad pad became packs still carries `textureVariant=1` from when
+    // they were texture-based, and applyBaseSettings walks the section's keys in map
+    // (alphabetical) order -- so `showBackgroundTexture=1` was applied first and this
+    // call turned it straight back off. The pack art vanished and the panel drew its
+    // flat background colour with the loose button/stick sprites still on top: a grey
+    // slab wearing half a controller. Nothing failed, nothing logged, and a fresh
+    // install could not reproduce it, because only an upgraded file has the key.
+    //
+    // Returning early also lets the stale key heal itself: m_textureVariant stays 0,
+    // so the next save writes 0 and the file stops carrying the trap.
+    if (m_packKind != PackKind::None) return;
     // Variant 0 IS "off" for a texture cycle, so a HUD whose artwork is mandatory
     // (see m_textureRequired) snaps a 0 up to its first real variant instead. This
     // is what makes a stale `textureVariant=0` in an existing INI self-heal rather

@@ -121,6 +121,8 @@ private:
     // throw can never escape the worker thread (std::terminate).
     void completeError(const char* what) noexcept;
 
+    // joined-by: join() (RecordsHud::joinFetchThread, from HudManager::clear()
+    // BEFORE the HUD pointers are nulled — the ordering CLAUDE.md pins).
     std::thread m_thread;
     ResultCallback m_onDone;
 

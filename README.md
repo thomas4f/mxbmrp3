@@ -134,7 +134,9 @@ The settings menu provides global settings that apply to all profiles, followed 
 | <img src="assets/icons/hud-video.svg" width="20" height="20" alt=""> | **Director** | Auto-director for spectating and replays - automatically follows the most interesting rider |
 | <img src="assets/icons/hud-spotter.svg" width="20" height="20" alt=""> | **Spotter** | Spoken race callouts and their subtitles - voice, categories, and proximity distances |
 | <img src="assets/icons/hud-updates.svg" width="20" height="20" alt=""> | **Updates** | Check for new versions and install updates in-game |
-| | **About** | What the plugin is, where it came from, and the docs/discussion links. Not in the tab list - open it with the **About** button, bottom right |
+<!-- Deliberately NO row for the About screen: it is not a tab (it opens from
+     the About button, bottom right) and does not belong in the tab list.
+     check_docs.py fails if a row for it reappears here. -->
 
 Plus a tab for each individual [HUD](#huds), and one shared **Widgets** tab covering every [widget](#widgets) - visibility, title, texture, opacity and scale for each.
 
@@ -150,7 +152,7 @@ Auto-switch (disabled by default) automatically changes profiles based on sessio
 
 ## HUDs & Widgets
 
-**HUDs** are the larger data displays - each gets its own settings tab with options like column/row toggles, gap modes, and textures. **Widgets** are simpler, single-purpose readouts (one number, gauge, or dial); rather than a tab each, they're all configured together under the shared **Widgets** tab, a row apiece for visibility, title, texture, opacity and scale. A few carry further options in the [INI](#advanced-settings) (the Lean widget's arc and markers, for one), and every element is positioned by dragging it rather than from the menu.
+**HUDs** are the larger data displays - each gets its own settings tab with options like column/row toggles, gap modes, and textures. **Widgets** are simpler, single-purpose readouts (one number, gauge, or dial); rather than a tab each, they're all configured together under the shared **Widgets** tab, a row apiece for visibility, title, texture, opacity and scale. A few carry further options in the [INI](#advanced-settings) (the Lean widget's arc and markers, for one).
 
 ### HUDs
 
@@ -192,7 +194,7 @@ Auto-switch (disabled by default) automatically changes profiles based on sessio
 | **Fuel** | Fuel calculator with consumption tracking |
 | **Tyre Temp** | Front and rear tyre temperatures (GP Bikes only) |
 | **ECU** | Engine map, traction control, engine braking and anti-wheeling (GP Bikes only) |
-| **Speedo** | Analog speedometer |
+| **Speedo** | Analog speedometer with odometer and trip meter |
 | **Tacho** | Analog tachometer |
 | **Compass** | Heading dial (classic needle or modern rotating card) |
 | **Gamepad** | Controller visualization |
@@ -299,9 +301,9 @@ If Auto-Save is enabled, your in-game state is written back when you leave the t
 
 To customize MXBMRP3, place your files in `Documents\PiBoSo\[Game]\mxbmrp3\`. This is separate from the plugin install folder (`[Game]\plugins\mxbmrp3_data\`), so your customizations are preserved across plugin updates. Do not edit the bundled files in `[Game]\plugins\mxbmrp3_data\` directly - they will be overwritten on update. The one exception is `custom.css`, a file you create yourself for web overlay styling.
 
-Fonts, textures and icons are loose files in their own subfolders. Themes, gamepad packs, pit boards and spotter voices are **packs** - a folder holding that pack's art or audio plus a `<name>.ini` describing it. Both kinds sync to the plugin on startup, and your choice is stored **by name**, so adding or removing other packs never reassigns it.
+Fonts, textures and icons are loose files in their own subfolders. Themes, gamepad packs, pit boards, gauges and spotter voices are **packs** - a folder holding that pack's art or audio plus a `<type>.ini` describing it (`theme.ini`, `gamepad.ini`, `pitboard.ini`, `gauge.ini`, `spotter.ini` - a fixed name, so copying a pack and renaming the folder is the whole job). Every pack's ini opens with the same `[pack]` section, and `base = <pack>` layers yours over a shipped one so a reskin is one or two files. Both kinds sync to the plugin on startup, and your choice is stored **by name**, so adding or removing other packs never reassigns it.
 
-- [Modding guide](docs/modding.md) - the folder layout, panel themes, textures, gamepad and pit board packs, fonts, icons, and the web overlay's HTML/CSS/JS.
+- [Modding guide](docs/modding.md) - the folder layout, panel themes, textures, gamepad, pit board and gauges packs, fonts, icons, and the web overlay's HTML/CSS/JS.
 - [Spotter voice](docs/spotter.md) - what it calls, how to set it up, and how to reword it or record your own voice.
 - [Web overlay](docs/web-overlay.md) - the OBS browser source, the overlay's own settings panel, and where they are saved.
 
@@ -374,7 +376,9 @@ The long-term fix is a code-signing certificate (a paid yearly cost, and one of 
 
 ## Privacy
 
-The plugin sends a small anonymous usage ping per game launch, so the developer can gauge how many people actively use it. It is on by default and you can opt out anytime in **Settings > General > Integrations** (the "Analytics" toggle). Turning it off sends one final anonymous opt-out ping, then nothing more.
+The plugin sends a small anonymous ping per game launch, so the developer can see how many people use it, which features are worth keeping, and what needs fixing. It is on by default. The installer asks before anything is sent: untick **Participate in the anonymous usage survey** on its Privacy page and the plugin starts with it off. You can change it at any time in **Settings > General > Integrations** (the "Usage survey" toggle). Turning it off sends one final anonymous opt-out ping, then nothing more.
+
+Turning it off doesn't disable anything else; the plugin works exactly the same. The one difference: the plugin catches crashes in the game itself, which is what the [known-crash list](crash_analysis/KNOWN_GAME_CRASHES.md) is built from, and with analytics off yours stop being reported automatically. The crash files are still written to `Documents\PiBoSo\[Game]\mxbmrp3\crashes\`, so you can still attach them to a bug report.
 
 What it sends:
 
@@ -393,9 +397,9 @@ What it sends:
 
 What it does not send: no names, no in-game/online activity, no telemetry, no lap times, no server or rider data, and no crash dump or log (those stay on your machine) - nothing identifying. The pings are fire-and-forget and never affect performance.
 
-Analytics are processed by two open-source services: [Aptabase](https://aptabase.com) handles the detailed events above, and [GoatCounter](https://www.goatcounter.com) receives a single per-launch hit as an aggregate headcount. Both are covered by the one Analytics toggle.
+Analytics are processed by two open-source services: [Aptabase](https://aptabase.com) handles the detailed events above, and [GoatCounter](https://www.goatcounter.com) receives a single per-launch hit as an aggregate headcount. Both are covered by the one Usage survey toggle.
 
-When analytics is on, the plugin may also fetch a small config file from this repository that can only ever reduce what's sent, never add to it. Turning the Analytics toggle off stops this too.
+When analytics is on, the plugin may also fetch a small config file from this repository that can only ever reduce what's sent, never add to it. Turning the Usage survey toggle off stops this too.
 
 **What the data actually adds up to:** the aggregate results are published in [`analytics/REPORT.md`](analytics/REPORT.md) - installs, activity over time per game, version adoption, geography, feature/HUD popularity, and crash trends (grouped by which module faulted). It's generated straight from the anonymous pings described above, so you can see exactly what they amount to.
 

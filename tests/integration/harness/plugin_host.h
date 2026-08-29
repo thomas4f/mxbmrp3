@@ -31,7 +31,7 @@
 // stopped compiling for exactly this reason, and no gate builds it). The
 // fallback is the staged layout those tools already run from.
 #ifndef MXB_SHIPPED_PACK_INI
-#define MXB_SHIPPED_PACK_INI "plugins/mxbmrp3_data/spotters/default/default.ini"
+#define MXB_SHIPPED_PACK_INI "plugins/mxbmrp3_data/spotters/default/spotter.ini"
 #endif
 
 #include "plugin_api.h"
@@ -115,6 +115,7 @@ public:
         m_spotPrev   = sym<void(*)(int)>("MXBMRP3_Test_SpotterPreview");
         m_spotPin    = sym<void(*)(int)>("MXBMRP3_Test_SpotterPinVariant");
         m_spotHotkey = sym<void(*)()>("MXBMRP3_Test_SpotterHotkey");
+        m_spotParked = sym<int(*)()>("MXBMRP3_Test_SpotterWorkerParked");
         m_stTheme   = sym<void(*)(char*,int)>("MXBMRP3_Test_StandingsTheme");
         m_stSetTheme = sym<void(*)(const char*)>("MXBMRP3_Test_StandingsSetTheme");
         m_rdTheme   = sym<void(*)(char*,int)>("MXBMRP3_Test_RadarTheme");
@@ -219,6 +220,7 @@ public:
         m_setThemePanelPad  = sym<int(*)(float,float)>("MXBMRP3_Test_SetThemePanelPadding");
         m_layoutCells       = sym<void(*)(double*)>("MXBMRP3_Test_LayoutCells");
         m_setHudScale       = sym<int(*)(const char*, float)>("MXBMRP3_Test_SetHudScale");
+        m_hudBgSprite       = sym<int(*)(const char*)>("MXBMRP3_Test_HudBackgroundTextureOn");
         m_gapBarWidth       = sym<void(*)(int)>("MXBMRP3_Test_GapBarWidth");
         m_setThemeContentBorder =
             sym<int(*)(float,float,float,float)>("MXBMRP3_Test_SetThemeContentBorder");
@@ -259,6 +261,8 @@ public:
         m_effColor          = sym<unsigned long(*)(int)>("MXBMRP3_Test_EffectiveColor");
         m_colorOverridden   = sym<int(*)(int)>("MXBMRP3_Test_ColorOverridden");
         m_themeOrDefColor   = sym<unsigned long(*)(int)>("MXBMRP3_Test_ThemeOrDefaultColor");
+        m_themeInfo         = sym<void(*)(const char*, char*, int)>("MXBMRP3_Test_ThemeInfo");
+        m_gaugesInfo        = sym<void(*)(const char*, char*, int)>("MXBMRP3_Test_GaugesInfo");
         m_cycleColor        = sym<void(*)(int,int)>("MXBMRP3_Test_CycleColor");
         m_clearColorOv      = sym<void(*)(int)>("MXBMRP3_Test_ClearColorOverride");
         m_setThemeColor     = sym<void(*)(int,unsigned long)>("MXBMRP3_Test_SetThemeColor");
@@ -308,6 +312,8 @@ public:
         m_pitboardTextColor = sym<unsigned(*)(const char*)>("MXBMRP3_Test_PitboardTextColor");
         m_padStemCount      = sym<int(*)()>("MXBMRP3_Test_GamepadStemCount");
         m_padStemName       = sym<void(*)(int, char*, int)>("MXBMRP3_Test_GamepadStemName");
+        m_spriteOrderMism   = sym<int(*)()>("MXBMRP3_Test_SpriteOrderMismatches");
+        m_spriteOrderSwap   = sym<int(*)(int, int)>("MXBMRP3_Test_SpriteOrderWithSwap");
         m_setPackShowBg     = sym<void(*)(int, int)>("MXBMRP3_Test_SetPackShowBg");
         m_setPitboardPack   = sym<void(*)(const char*)>("MXBMRP3_Test_SetPitboardPack");
         m_pitboardStored    = sym<void(*)(char*, int)>("MXBMRP3_Test_PitboardPackStored");
@@ -1013,6 +1019,20 @@ public:
     void spotterPreview(bool ttsOnly = false) { if (m_spotPrev) m_spotPrev(ttsOnly ? 1 : 0); }
     // The Spotter Cue hotkey. See MXBMRP3_Test_SpotterHotkey.
     void spotterHotkey() { if (m_spotHotkey) m_spotHotkey(); }
+    // Block until the TTS worker is parked in its queue wait, or `timeoutMs`
+    // elapses; returns whether it parked. Call it after a cue when the NEXT
+    // thing the test does must not race the worker — the first speech cue
+    // lazily CoCreateInstances the engine, which loads DLLs and so needs the
+    // loader lock, and how long that takes is a cold/warm Wine question rather
+    // than anything the test controls (see MXBMRP3_Test_SpotterWorkerParked).
+    bool spotterWaitWorkerParked(int timeoutMs = 5000) {
+        if (!m_spotParked) return false;
+        for (int waited = 0; waited < timeoutMs; waited += 10) {
+            if (m_spotParked()) return true;
+            ::Sleep(10);
+        }
+        return m_spotParked() != 0;
+    }
     // Sized for the whole 96-entry ring rather than a round number: the hook
     // keeps the NEWEST cues when it has to cut, but a test that scrolls its
     // own assertions out of the buffer still reads as a pass on every
@@ -1388,6 +1408,16 @@ public:
         return m_pitboardTextColor ? m_pitboardTextColor(pack) : 0u;
     }
 
+    // The sprite-order self-check's verdict (0 = discovery indices and the
+    // registered sprite table agree; -1 = hook missing). Meaningful after
+    // Startup+DrawInit have run setupDefaultResources.
+    int spriteOrderMismatches() { return m_spriteOrderMism ? m_spriteOrderMism() : -1; }
+    // Re-run the checker with sprite table entries a and b (1-based) swapped,
+    // restoring the table; non-zero = the checker catches skew (-1 = unavailable).
+    int spriteOrderWithSwap(int a, int b) {
+        return m_spriteOrderSwap ? m_spriteOrderSwap(a, b) : -1;
+    }
+
     // GamepadSprite::kStems, read from the DLL so a fixture staging a real pack
     // tree cannot drift from the table discovery actually walks.
     int gamepadStemCount() { return m_padStemCount ? m_padStemCount() : 0; }
@@ -1686,11 +1716,13 @@ public:
         return m_setThemeTitleMargin && m_setThemeTitleMargin(t, r, b, l) != 0;
     }
 
-    // Any HUD's caption, by its REGISTRATION NAME (HudManager::initialize; the same
-    // string MXBMRP3_Test_PanelName reports and panelCells() reads a panel back
-    // under). Returns false if no HUD carries that name, so a caller can REQUIRE it
-    // rather than silently toggling nothing; this header is included by non-doctest
-    // drivers too, so it cannot assert itself.
+    // Is a HUD's background texture switched on? 1 = on, 0 = off, -1 = no such
+    // HUD (or the hook is missing). The flag rather than the sprite: see
+    // MXBMRP3_Test_HudBackgroundTextureOn for why the sprite cannot answer here.
+    int hudBackgroundTextureOn(const char* name) {
+        return m_hudBgSprite ? m_hudBgSprite(name) : -1;
+    }
+
     // Runtime scale change by panel label (MXBMRP3_Test_SetHudScale) -- the
     // settings-click path, distinct from a scale loaded out of the INI.
     bool setHudScale(const char* name, float scale) {
@@ -1702,6 +1734,11 @@ public:
         m_gapBarWidth(percent);
         return true;
     }
+    // Any HUD's caption, by its REGISTRATION NAME (HudManager::initialize; the same
+    // string MXBMRP3_Test_PanelName reports and panelCells() reads a panel back
+    // under). Returns false if no HUD carries that name, so a caller can REQUIRE it
+    // rather than silently toggling nothing; this header is included by non-doctest
+    // drivers too, so it cannot assert itself.
     bool setHudTitle(const char* name, bool on) {
         return m_setHudTitle && m_setHudTitle(name, on ? 1 : 0) != 0;
     }
@@ -1934,6 +1971,21 @@ public:
     unsigned long effectiveColor(int slot)      { return m_effColor ? m_effColor(slot) : 0; }
     int  colorOverridden(int slot)              { return m_colorOverridden ? m_colorOverridden(slot) : -1; }
     unsigned long themeOrDefaultColor(int slot) { return m_themeOrDefColor ? m_themeOrDefColor(slot) : 0; }
+    // One named theme as "own=<n>;center=<sprite>;base=<name>;primary=<hex>;primarySet=<0|1>",
+    // empty when no such theme is installed. See MXBMRP3_Test_ThemeInfo for why
+    // these four travel together.
+    std::string themeInfo(const char* name) {
+        char buf[256] = {0};
+        if (m_themeInfo) m_themeInfo(name, buf, static_cast<int>(sizeof(buf)));
+        return std::string(buf);
+    }
+    // One named gauges pack as "base=<name>;tachoMax=<f>;speedoMax=<f>", empty
+    // when it is not installed. See MXBMRP3_Test_GaugesInfo.
+    std::string gaugesInfo(const char* name) {
+        char buf[256] = {0};
+        if (m_gaugesInfo) m_gaugesInfo(name, buf, static_cast<int>(sizeof(buf)));
+        return std::string(buf);
+    }
     void cycleColor(int slot, bool fwd)         { if (m_cycleColor) m_cycleColor(slot, fwd ? 1 : 0); }
     void clearColorOverride(int slot)           { if (m_clearColorOv) m_clearColorOv(slot); }
     void setThemeColor(int slot, unsigned long c) { if (m_setThemeColor) m_setThemeColor(slot, c); }
@@ -2410,6 +2462,7 @@ private:
     void        (*m_spotPrev)(int) = nullptr;
     void        (*m_spotPin)(int) = nullptr;
     void        (*m_spotHotkey)() = nullptr;
+    int         (*m_spotParked)() = nullptr;
     void        (*m_stTheme)(char*, int) = nullptr;
     void        (*m_stSetTheme)(const char*) = nullptr;
     void        (*m_rdTheme)(char*, int) = nullptr;
@@ -2510,6 +2563,7 @@ private:
     int         (*m_setThemePanelPad)(float,float) = nullptr;
     void        (*m_layoutCells)(double*) = nullptr;
     int         (*m_setHudScale)(const char*, float) = nullptr;
+    int         (*m_hudBgSprite)(const char*) = nullptr;
     void        (*m_gapBarWidth)(int) = nullptr;
     void        (*m_clearTheme)() = nullptr;
     int         (*m_setThemeIcon)(const char*,int,int) = nullptr;
@@ -2545,6 +2599,8 @@ private:
     unsigned long (*m_effColor)(int) = nullptr;
     int         (*m_colorOverridden)(int) = nullptr;
     unsigned long (*m_themeOrDefColor)(int) = nullptr;
+    void          (*m_themeInfo)(const char*, char*, int) = nullptr;
+    void          (*m_gaugesInfo)(const char*, char*, int) = nullptr;
     void        (*m_cycleColor)(int,int) = nullptr;
     void        (*m_clearColorOv)(int) = nullptr;
     void        (*m_setThemeColor)(int,unsigned long) = nullptr;
@@ -2597,6 +2653,8 @@ private:
     unsigned    (*m_pitboardTextColor)(const char*) = nullptr;
     int         (*m_padStemCount)() = nullptr;
     void        (*m_padStemName)(int, char*, int) = nullptr;
+    int         (*m_spriteOrderMism)() = nullptr;
+    int         (*m_spriteOrderSwap)(int, int) = nullptr;
     void        (*m_setPackShowBg)(int, int) = nullptr;
     void        (*m_setPitboardPack)(const char*) = nullptr;
     void        (*m_pitboardStored)(char*, int) = nullptr;

@@ -111,11 +111,13 @@ struct StagedTree {
         cwd = std::string(kRoot) + "\\" + leaf;
         makeDirs(cwd + "\\plugins\\mxbmrp3_data\\gamepads");
         makeDirs(cwd + "\\plugins\\mxbmrp3_data\\pitboards");
+        makeDirs(cwd + "\\plugins\\mxbmrp3_data\\themes");
         REQUIRE(SetCurrentDirectoryA(cwd.c_str()));
     }
     ~StagedTree() { SetCurrentDirectoryA(prev); }
     std::string pads() const { return cwd + "\\plugins\\mxbmrp3_data\\gamepads"; }
     std::string boards() const { return cwd + "\\plugins\\mxbmrp3_data\\pitboards"; }
+    std::string themes() const { return cwd + "\\plugins\\mxbmrp3_data\\themes"; }
 };
 
 // GamepadSprite::Part values this test reads. Mirrored literals, pinned by the
@@ -138,7 +140,7 @@ TEST_CASE("gamepad skin: missing stems resolve from the base, geometry inherits"
     const std::string skin = tree.pads() + "\\aaaskin";
     makeDirs(skin);
     writeTga(skin + "\\background.tga", 8, 8);
-    writeText(skin + "\\aaaskin.ini", "[pad]\nbase = basepad\n");
+    writeText(skin + "\\aaaskin.ini", "[pack]\nbase = basepad\n");
 
     host.startup((tree.cwd + "\\save\\").c_str());
 
@@ -162,7 +164,7 @@ TEST_CASE("gamepad skin: its own ini keys override the inherited geometry") {
 
     const std::string skin = tree.pads() + "\\wideskin";
     makeDirs(skin);
-    writeText(skin + "\\wideskin.ini", "[pad]\nbase = basepad\n\n[art]\nwidth = 1234\n");
+    writeText(skin + "\\wideskin.ini", "[pack]\nbase = basepad\n\n[art]\nwidth = 1234\n");
 
     host.startup((tree.cwd + "\\save\\").c_str());
 
@@ -181,17 +183,17 @@ TEST_CASE("a base that is missing or is itself a skin rejects the pack whole") {
 
     const std::string orphan = tree.pads() + "\\orphan";
     makeDirs(orphan);
-    writeText(orphan + "\\orphan.ini", "[pad]\nbase = nosuchpack\n");
+    writeText(orphan + "\\orphan.ini", "[pack]\nbase = nosuchpack\n");
 
     const std::string skin = tree.pads() + "\\firstskin";
     makeDirs(skin);
-    writeText(skin + "\\firstskin.ini", "[pad]\nbase = basepad\n");
+    writeText(skin + "\\firstskin.ini", "[pack]\nbase = basepad\n");
 
     // One level only: a skin of a skin must be rejected, not resolved through
     // a chain.
     const std::string chained = tree.pads() + "\\zchained";
     makeDirs(chained);
-    writeText(chained + "\\zchained.ini", "[pad]\nbase = firstskin\n");
+    writeText(chained + "\\zchained.ini", "[pack]\nbase = firstskin\n");
 
     host.startup((tree.cwd + "\\save\\").c_str());
 
@@ -219,19 +221,19 @@ TEST_CASE("pitboard skin: inherits, overrides, and takes its own art's size") {
     // it only survives if [text] color goes through parseRgbHex, not the
     // numeric (float) ini path.
     writeText(base + "\\baseboard.ini",
-              "[board]\nname = Base Board\n\n[text]\ncolor = #ffffff\n");
+              "[pack]\nname = Base Board\n\n[text]\ncolor = #ffffff\n");
 
     // Skin A: ini only -- art AND art-derived size come from the base.
     const std::string inionly = tree.boards() + "\\inionly";
     makeDirs(inionly);
-    writeText(inionly + "\\inionly.ini", "[board]\nbase = baseboard\n");
+    writeText(inionly + "\\inionly.ini", "[pack]\nbase = baseboard\n");
 
     // Skin B: brings its own art at a DIFFERENT aspect -- the seeded size must
     // be its own file's, not the base's, or the art draws distorted.
     const std::string ownart = tree.boards() + "\\ownart";
     makeDirs(ownart);
     writeTga(ownart + "\\background.tga", 800, 800);
-    writeText(ownart + "\\ownart.ini", "[board]\nbase = baseboard\n");
+    writeText(ownart + "\\ownart.ini", "[pack]\nbase = baseboard\n");
 
     // Skin C: states its own text colour -- override must beat inheritance.
     // #ff8800 doubles as the byte-order pin: R=ff, B=00 authored, so ABGR must
@@ -239,7 +241,7 @@ TEST_CASE("pitboard skin: inherits, overrides, and takes its own art's size") {
     const std::string tinted = tree.boards() + "\\tinted";
     makeDirs(tinted);
     writeText(tinted + "\\tinted.ini",
-              "[board]\nbase = baseboard\n\n[text]\ncolor = #ff8800\n");
+              "[pack]\nbase = baseboard\n\n[text]\ncolor = #ff8800\n");
 
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
@@ -262,3 +264,156 @@ TEST_CASE("pitboard skin: inherits, overrides, and takes its own art's size") {
     host.shutdown();
 }
 
+
+// ============================================================================
+// THEME SKINS. Same rule as the two above, and the type where it buys the most.
+// Theme art is cut from a master by tools/themeslice, so sharing SLICES is the
+// small win -- the big one is that a theme's ini carries the whole palette, the
+// fonts and the box terms, while a theme was only accepted with its full slice
+// set present. "Carbon Dark but my team's colours" therefore cost 27 .tga copies
+// to change three lines.
+//
+// What makes a theme skin different from a pad's is that theme sprite indices are
+// per FILE rather than a fixed-size array, so a skin that redraws nothing
+// registers nothing at all and simply keeps the base's indices. `own=0` in the
+// cases below is that property, and it is the one worth pinning: it is what makes
+// a one-file theme possible and what keeps HudManager's registration loop correct
+// without it knowing bases exist.
+// ============================================================================
+
+namespace {
+
+// The nine frame slices discovery requires, plus the ini. Written out rather than
+// read from a hook because there is no kStems table for themes -- the slice names
+// ARE the format, and a fixture that guessed them wrong would stage a base that
+// phase 1 rejects, failing every case below for the wrong reason.
+void stageBaseTheme(const std::string& themeDir, const char* name, const char* iniBody) {
+    const std::string dir = themeDir + "\\" + name;
+    makeDirs(dir);
+    static const char* kSlices[9] = {
+        "frame_center",
+        "frame_corner_tl", "frame_corner_tr", "frame_corner_bl", "frame_corner_br",
+        "frame_edge_top", "frame_edge_bottom", "frame_edge_left", "frame_edge_right",
+    };
+    for (const char* slice : kSlices) writeTga(dir + "\\" + slice + ".tga", 8, 8);
+    writeText(dir + "\\theme.ini", iniBody);
+}
+
+// Pull one field out of PluginHost::themeInfo's descriptor.
+std::string field(const std::string& info, const char* key) {
+    const std::string needle = std::string(key) + "=";
+    const size_t at = info.find(needle);
+    if (at == std::string::npos) return std::string();
+    const size_t from = at + needle.size();
+    const size_t to = info.find(';', from);
+    return info.substr(from, to == std::string::npos ? std::string::npos : to - from);
+}
+
+}  // namespace
+
+TEST_CASE("theme skin: an ini and nothing else is a valid theme") {
+    // THE HEADLINE CASE. No .tga at all -- the entire pack is three lines saying
+    // "carbon, but this primary". Before bases this folder was skipped outright
+    // for having no frame_center.
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    StagedTree tree("theme_inionly");
+    stageBaseTheme(tree.themes(), "basetheme", "[colors]\nprimary = #112233\n");
+
+    const std::string skin = tree.themes() + "\\aaatheme";
+    makeDirs(skin);
+    writeText(skin + "\\theme.ini",
+              "[pack]\nname = My Colours\nbase = basetheme\n\n[colors]\nprimary = #ff8800\n");
+
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\pack_skin\\save\\");
+
+    const std::string base = host.themeInfo("basetheme");
+    const std::string info = host.themeInfo("aaatheme");
+    REQUIRE_MESSAGE(!base.empty(), "the base theme was not discovered - fixture problem");
+    REQUIRE_MESSAGE(!info.empty(), "an ini-only theme was not discovered at all");
+
+    // Registers NOTHING. This is what makes it a one-file theme.
+    CHECK(field(info, "own") == "0");
+    CHECK(field(info, "base") == "basetheme");
+    // ...and draws the base's art, by the base's own sprite index.
+    CHECK(field(info, "center") == field(base, "center"));
+    // The ini was read OVER the inherited palette, not instead of it.
+    CHECK(field(info, "primary") == "FF0088FF");   // #ff8800 as ABGR
+    CHECK(field(base, "primary") == "FF332211");   // #112233, untouched
+}
+
+TEST_CASE("theme skin: a key the skin omits falls back to the base's value") {
+    // The other half of layering, and the half a naive "copy the base" gets wrong
+    // by resetting rather than inheriting: the skin states no primary at all, so
+    // the base's must survive.
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    StagedTree tree("theme_inherit");
+    stageBaseTheme(tree.themes(), "basetheme", "[colors]\nprimary = #112233\n");
+
+    const std::string skin = tree.themes() + "\\aaatheme";
+    makeDirs(skin);
+    writeText(skin + "\\theme.ini", "[pack]\nbase = basetheme\n");
+
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\pack_skin\\save2\\");
+
+    const std::string info = host.themeInfo("aaatheme");
+    REQUIRE(!info.empty());
+    CHECK(field(info, "primary") == "FF332211");
+    CHECK(field(info, "primarySet") == "1");
+    // No [pack] name, so the folder name is title-cased -- the same absence rule
+    // every other pack type follows.
+    CHECK(field(info, "own") == "0");
+}
+
+TEST_CASE("theme skin: art it DOES bring replaces the base's, file by file") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    StagedTree tree("theme_ownart");
+    stageBaseTheme(tree.themes(), "basetheme", "");
+
+    // One slice redrawn. Resolution is per FILE, so the other eight stay the
+    // base's -- a skin does not have to bring a whole set to bring anything.
+    const std::string skin = tree.themes() + "\\aaatheme";
+    makeDirs(skin);
+    writeTga(skin + "\\frame_center.tga", 8, 8);
+    writeText(skin + "\\theme.ini", "[pack]\nbase = basetheme\n");
+
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\pack_skin\\save3\\");
+
+    const std::string base = host.themeInfo("basetheme");
+    const std::string info = host.themeInfo("aaatheme");
+    REQUIRE(!info.empty());
+    CHECK(field(info, "own") == "1");
+    CHECK(field(info, "center") != field(base, "center"));
+}
+
+TEST_CASE("theme skin: an unknown base and a chained base are both rejected") {
+    // One level only, the same limit the other pack types carry -- which kills
+    // chains and cycles with a single check.
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    StagedTree tree("theme_reject");
+    stageBaseTheme(tree.themes(), "basetheme", "");
+
+    const std::string orphan = tree.themes() + "\\orphan";
+    makeDirs(orphan);
+    writeText(orphan + "\\theme.ini", "[pack]\nbase = nosuchtheme\n");
+
+    const std::string first = tree.themes() + "\\firstskin";
+    makeDirs(first);
+    writeText(first + "\\theme.ini", "[pack]\nbase = basetheme\n");
+
+    const std::string chained = tree.themes() + "\\zchained";
+    makeDirs(chained);
+    writeText(chained + "\\theme.ini", "[pack]\nbase = firstskin\n");
+
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\pack_skin\\save4\\");
+
+    CHECK_MESSAGE(host.themeInfo("orphan").empty(),
+                  "a theme naming a base that is not installed must be skipped, not "
+                  "silently accepted with no art");
+    CHECK_MESSAGE(!host.themeInfo("firstskin").empty(), "a valid one-level skin was rejected");
+    CHECK_MESSAGE(host.themeInfo("zchained").empty(),
+                  "a base that is itself a skin must be refused -- one level only");
+}

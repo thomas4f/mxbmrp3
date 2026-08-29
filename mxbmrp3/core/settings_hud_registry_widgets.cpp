@@ -306,11 +306,39 @@ void SettingsManager::app_CrashWidget(HudManager& hudManager, const SettingsMana
         }
 }
 
+// The needleColor value for a gauge that has not been given one: the literal
+// `pack`, not an omitted key and not the factory hex.
+//
+// WHY IT IS WRITTEN OUT. The save is sparse against the factory defaults, so a
+// colour that happens to EQUAL the default is dropped -- which would make
+// "somebody chose red" indistinguishable from "nobody chose anything" the moment
+// the file round-tripped, and a pack shipping its own needle colour would then
+// lose to a choice the user never made. A distinct default value keeps the two
+// apart with no extra key.
+template <typename Hud>
+static std::string needleColorSetting(const Hud& hud) {
+    return hud.hasNeedleColorOverride()
+        ? PluginUtils::formatColorHex(hud.getNeedleColor())
+        : std::string(IniOnly::NEEDLE_COLOR_FROM_PACK);
+}
+
+// ...and back. Anything that is not `pack` is a colour the user picked, including
+// a hex written by a version that had no pack to defer to.
+template <typename Hud>
+static void applyNeedleColorSetting(Hud& hud, const std::string& value) {
+    if (value == IniOnly::NEEDLE_COLOR_FROM_PACK) {
+        hud.clearNeedleColorOverride();
+        return;
+    }
+    hud.setNeedleColor(PluginUtils::parseColorHex(value, hud.getNeedleColor()));
+}
+
 void SettingsManager::cap_SpeedoWidget(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
         HudSettings settings;
         const auto& hud = hudManager.getSpeedoWidget();
         captureBaseHudSettings(settings, hud);
-        settings[IniOnly::Speedo::NEEDLE_COLOR.key] = PluginUtils::formatColorHex(hud.getNeedleColor());
+        settings[IniOnly::Speedo::PACK.key] = hud.getGaugesPack();
+        settings[IniOnly::Speedo::NEEDLE_COLOR.key] = needleColorSetting(hud);
         settings[IniOnly::Speedo::SHOW_ODOMETER.key] = hud.getShowOdometer() ? "1" : "0";
         settings[IniOnly::Speedo::SHOW_TRIPMETER.key] = hud.getShowTripmeter() ? "1" : "0";
         cache[name] = std::move(settings);
@@ -324,8 +352,11 @@ void SettingsManager::app_SpeedoWidget(HudManager& hudManager, const SettingsMan
 
             const auto& settings = it->second;
             try {
+                if (settings.count(IniOnly::Speedo::PACK.key)) {
+                    hud.setGaugesPack(settings.at(IniOnly::Speedo::PACK.key));
+                }
                 if (settings.count(IniOnly::Speedo::NEEDLE_COLOR.key)) {
-                    hud.setNeedleColor(PluginUtils::parseColorHex(settings.at(IniOnly::Speedo::NEEDLE_COLOR.key), hud.getNeedleColor()));
+                    applyNeedleColorSetting(hud, settings.at(IniOnly::Speedo::NEEDLE_COLOR.key));
                 }
                 if (settings.count(IniOnly::Speedo::SHOW_ODOMETER.key)) {
                     hud.setShowOdometer(std::stoi(settings.at(IniOnly::Speedo::SHOW_ODOMETER.key)) != 0);
@@ -344,7 +375,8 @@ void SettingsManager::cap_TachoWidget(const HudManager& hudManager, SettingsMana
         HudSettings settings;
         const auto& hud = hudManager.getTachoWidget();
         captureBaseHudSettings(settings, hud);
-        settings[IniOnly::Tacho::NEEDLE_COLOR.key] = PluginUtils::formatColorHex(hud.getNeedleColor());
+        settings[IniOnly::Tacho::PACK.key] = hud.getGaugesPack();
+        settings[IniOnly::Tacho::NEEDLE_COLOR.key] = needleColorSetting(hud);
         cache[name] = std::move(settings);
 }
 
@@ -356,8 +388,11 @@ void SettingsManager::app_TachoWidget(HudManager& hudManager, const SettingsMana
 
             const auto& settings = it->second;
             try {
+                if (settings.count(IniOnly::Tacho::PACK.key)) {
+                    hud.setGaugesPack(settings.at(IniOnly::Tacho::PACK.key));
+                }
                 if (settings.count(IniOnly::Tacho::NEEDLE_COLOR.key)) {
-                    hud.setNeedleColor(PluginUtils::parseColorHex(settings.at(IniOnly::Tacho::NEEDLE_COLOR.key), hud.getNeedleColor()));
+                    applyNeedleColorSetting(hud, settings.at(IniOnly::Tacho::NEEDLE_COLOR.key));
                 }
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("TachoWidget: Failed to parse settings: %s", e.what());

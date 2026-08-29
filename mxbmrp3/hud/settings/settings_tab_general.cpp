@@ -473,7 +473,11 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         // Green when on (the beacon is live), muted when off — a positive/muted
         // pair rather than the standard primary/muted, hence the override.
         const bool analyticsEnabled = AnalyticsManager::getInstance().isEnabled();
-        ctx.addCycleControl("Analytics", analyticsEnabled ? "On" : "Off", VALUE_WIDTH,
+        // "Usage survey" rather than "Analytics", matching the installer's Privacy
+        // page (and Debian popcon, which both borrow from). The INI key stays
+        // `analytics=` -- it is persisted, and renaming it would orphan every
+        // existing setting for a cosmetic gain.
+        ctx.addCycleControl("Usage survey", analyticsEnabled ? "On" : "Off", VALUE_WIDTH,
             SettingsHud::ClickRegion::ANALYTICS_TOGGLE,
             SettingsHud::ClickRegion::ANALYTICS_TOGGLE,
             nullptr, true, false, "general.analytics",
@@ -593,10 +597,13 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
             SettingsHud::ClickRegion::RESET_ALL_CHECKBOX,
             SettingsLayoutContext::ButtonRole::Negative, true,
             /*labelChars=*/12);
+        // Inline notes draw at 0.9x font with NO wrapping, and the settings
+        // width fits roughly 60 characters at that size — keep all three
+        // variants under that or the tail runs off the panel background.
         ctx.addInlineNote(armProfile
-            ? "Resets this profile's HUD layout and options. Click again to confirm."
-            : armAll ? "Resets EVERY profile and every global setting. Click again to confirm."
-                     : "Profile resets this profile only; Everything resets all of them.");
+            ? "Resets this profile's settings. Click again to confirm."
+            : armAll ? "Resets ALL profiles and globals. Click again to confirm."
+                     : "Profile resets this profile only; Everything resets all.");
     }
 
     // Help & Community footer — clickable links that open the browser via ShellExecute.

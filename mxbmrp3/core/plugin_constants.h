@@ -27,7 +27,7 @@ namespace PluginConstants {
 
     // --- Analytics: two secret keys injected at BUILD time + one PUBLIC site code ---
     // APTABASE_KEY and GOATCOUNTER_TOKEN come from environment variables read by
-    // mxbmrp3.vcxproj at build time (-> the MXBMRP3_* preprocessor defines used here).
+    // mxbmrp3/CMakeLists.txt at build time (-> the MXBMRP3_* defines used here).
     // With an env var unset the matching define is absent and the constant falls back
     // to its placeholder, so a plain developer build sends nothing. Set those two (as
     // repo Actions Secrets) only for an official release. The GoatCounter *code* is
@@ -99,7 +99,7 @@ namespace PluginConstants {
     // Release, define MXBMRP3_ALLOW_NO_ANALYTICS.
 #if defined(NDEBUG) && !defined(MXBMRP3_ALLOW_NO_ANALYTICS)
   #if !defined(MXBMRP3_APTABASE_KEY) || !defined(MXBMRP3_GOATCOUNTER_TOKEN)
-    #error "Release build is missing analytics keys. Set the APTABASE_KEY and GOATCOUNTER_TOKEN environment variables (see mxbmrp3.vcxproj), or define MXBMRP3_ALLOW_NO_ANALYTICS to build a keyless release on purpose. (GOATCOUNTER_CODE is hardcoded — it's public.)"
+    #error "Release build is missing analytics keys. Set the APTABASE_KEY and GOATCOUNTER_TOKEN environment variables (see mxbmrp3/CMakeLists.txt), or define MXBMRP3_ALLOW_NO_ANALYTICS to build a keyless release on purpose. (GOATCOUNTER_CODE is hardcoded — it's public.)"
   #endif
 #endif
 
@@ -206,7 +206,7 @@ namespace PluginConstants {
         constexpr unsigned long CLUTCH = ColorPalette::BLUE;
         constexpr unsigned long FRONT_SUSP = ColorPalette::PURPLE;
         constexpr unsigned long REAR_SUSP = PluginUtils::darkenColor(FRONT_SUSP, 0.6f);
-        constexpr unsigned long GEAR = ColorPalette::ORANGE;
+        constexpr unsigned long GEAR = ColorPalette::AMBER;
         constexpr unsigned long STICK_L = ColorPalette::BLUE;   // Left stick (bike control)
         constexpr unsigned long STICK_R = ColorPalette::GREEN;  // Right stick (rider lean)
     }

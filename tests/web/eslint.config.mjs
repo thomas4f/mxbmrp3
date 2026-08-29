@@ -68,6 +68,13 @@ export default [
             // unused `catch (e)` cannot be written any other way.
             "no-unused-vars": ["error",
                                { vars: "local", args: "none", caughtErrors: "none" }],
+            // The shipped overlay's half of the file-size ratchet
+            // (check_file_budgets.sh owns the C++ half): a file must not
+            // quietly regrow into a god file. Standard tool, standard rule --
+            // counted like wc so the two halves agree on what a line is.
+            // Largest file today is overlay-panels.js at ~840.
+            "max-lines": ["error",
+                          { max: 1000, skipBlankLines: false, skipComments: false }],
         },
     },
 

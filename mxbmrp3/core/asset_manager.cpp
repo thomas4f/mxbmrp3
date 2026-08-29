@@ -38,6 +38,7 @@ void AssetManager::discoverAssets(const char* savePath) {
     m_themes.clear();
     m_gamepads.clear();
     m_pitboards.clear();
+    m_gauges.clear();
     m_fontNameToIndex.clear();
     m_textureNameToIndex.clear();
     m_iconNameToIndex.clear();
@@ -58,11 +59,12 @@ void AssetManager::discoverAssets(const char* savePath) {
     // but the ordering rule is what keeps that true for the neighbours.
     discoverGamepads();
     discoverPitboards();
+    discoverGauges();
 
     m_initialized = true;
 
-    DEBUG_INFO_F("AssetManager: Discovery complete - %zu fonts, %zu texture bases (%zu sprites), %zu icons, %zu themes, %zu gamepads, %zu pitboards",
-        m_fonts.size(), m_textures.size(), m_totalTextureSprites, m_icons.size(), m_themes.size(), m_gamepads.size(), m_pitboards.size());
+    DEBUG_INFO_F("AssetManager: Discovery complete - %zu fonts, %zu texture bases (%zu sprites), %zu icons, %zu themes, %zu gamepads, %zu pitboards, %zu gauges",
+        m_fonts.size(), m_textures.size(), m_totalTextureSprites, m_icons.size(), m_themes.size(), m_gamepads.size(), m_pitboards.size(), m_gauges.size());
 }
 
 void AssetManager::syncUserAssets(const char* savePath) {
@@ -88,6 +90,7 @@ void AssetManager::syncUserAssets(const char* savePath) {
     CreateDirectoryA((userBaseDir + "\\" + GAMEPADS_SUBDIR).c_str(), NULL);
     CreateDirectoryA((userBaseDir + "\\" + PITBOARDS_SUBDIR).c_str(), NULL);
     CreateDirectoryA((userBaseDir + "\\" + SPOTTERS_SUBDIR).c_str(), NULL);
+    CreateDirectoryA((userBaseDir + "\\" + GAUGES_SUBDIR).c_str(), NULL);
     CreateDirectoryA((userBaseDir + "\\" + WEB_SUBDIR).c_str(), NULL);
     CreateDirectoryA((userBaseDir + "\\" + WEB_SUBDIR + "\\logos").c_str(), NULL);
     CreateDirectoryA((userBaseDir + "\\" + WEB_SUBDIR + "\\js").c_str(), NULL);
@@ -130,12 +133,13 @@ void AssetManager::syncUserAssets(const char* savePath) {
     syncDirectory(userBaseDir + "\\" + FONTS_SUBDIR, destFonts, "*.fnt");
     syncDirectory(userBaseDir + "\\" + TEXTURES_SUBDIR, destTextures, "*.tga");
     syncDirectory(userBaseDir + "\\" + ICONS_SUBDIR, destIcons, "*.tga");
-    // The NESTED asset types (<root>/<name>/<payload> + <name>.ini) cannot ride the
+    // The NESTED asset types (<root>/<name>/<payload> + <type>.ini) cannot ride the
     // flat syncDirectory, so each pack folder is synced in turn. Without this a
     // user-authored pack has to be dropped straight into the game's plugins folder,
     // which every other asset type does not require -- and authoring one is exactly
     // the workflow the pack format exists to support.
     m_userBaseDir = userBaseDir;
+    migrateLegacyGaugeArt(userBaseDir);
     syncAllPackTypes(userBaseDir);
     syncDirectory(userBaseDir + "\\" + WEB_SUBDIR, destWeb, "*.*");
     syncDirectory(userBaseDir + "\\" + WEB_SUBDIR + "\\logos", destWebLogos, "*.png");
@@ -255,6 +259,14 @@ void AssetManager::discoverTextures() {
 
     if (hFind == INVALID_HANDLE_VALUE) {
         DEBUG_WARN_F("AssetManager: No textures found in %s\\%s", DISCOVERY_DIR, TEXTURES_SUBDIR);
+        // Sprite indices are 1-BASED (0 is reserved for SOLID_COLOR), so with no
+        // textures at all the icon block still starts at 1 -- exactly what the
+        // full path below computes. Leaving this at its reset value 0 hands every
+        // later asset type 0-based indices while registration and the quads stay
+        // 1-based: all themed/pack art draws off by one and each first file reads
+        // as "no sprite". Latent until verifySpriteRegistrationOrder() caught it
+        // on a staged tree; pinned by sprite_order_test.cpp (no-textures trees).
+        m_firstIconSpriteIndex = 1;
         return;
     }
 
@@ -375,6 +387,104 @@ void AssetManager::discoverIcons() {
 
 // Copy every pack type's user folder across. The table it walks is PACK_TYPES in
 // the header, which is also where the reason it is a table lives.
+// See the declaration for why this exists and why it reads the USER's folder.
+//
+// The generated pack always states `base = classic`, which does two jobs at once:
+// a user who had drawn only ONE of the two faces gets a valid pack anyway (the
+// other stem resolves from the shipped set, rather than the pack being skipped
+// for an incomplete sprite set), and the ranges their art was drawn against --
+// the compiled constants classic now carries -- come along with it.
+//
+// The marker is what makes this a ONE-TIME migration rather than a standing
+// behaviour: without it, a user who looked at the generated pack and deleted it
+// would get it back on the next launch, forever. It sits in the gauges root
+// rather than inside the pack so that deleting the pack does not re-arm it.
+void AssetManager::migrateLegacyGaugeArt(const std::string& userBaseDir) {
+    if (userBaseDir.empty()) return;
+
+    const std::string gaugesRoot = userBaseDir + "\\" + GAUGES_SUBDIR;
+    const std::string marker = gaugesRoot + "\\.legacy-migrated";
+    if (GetFileAttributesA(marker.c_str()) != INVALID_FILE_ATTRIBUTES) return;
+
+    // The legacy stems, paired with what they become in a pack. Lowest variant
+    // wins: the cycle is gone, so there is one face per gauge now, and variant 1
+    // is the one every install drew by default.
+    struct LegacyFace { const char* legacyStem; const char* packStem; };
+    static constexpr LegacyFace kFaces[] = {
+        { "tacho_widget",  "tacho"  },
+        { "speedo_widget", "speedo" },
+    };
+
+    const std::string texturesDir = userBaseDir + "\\" + TEXTURES_SUBDIR + "\\";
+    std::string found[2];
+    bool any = false;
+    for (int i = 0; i < 2; ++i) {
+        for (int variant = 1; variant <= 9; ++variant) {
+            const std::string candidate = texturesDir + kFaces[i].legacyStem + "_"
+                                        + std::to_string(variant) + ".tga";
+            if (GetFileAttributesA(candidate.c_str()) == INVALID_FILE_ATTRIBUTES) continue;
+            found[i] = candidate;
+            any = true;
+            break;
+        }
+    }
+    // Nothing to carry across. Deliberately does NOT write the marker: somebody
+    // who drops custom gauge art in later still gets migrated, which is the whole
+    // point of migrating from a folder people edit by hand.
+    if (!any) return;
+
+    const std::string packDir = gaugesRoot + "\\legacy";
+    CreateDirectoryA(gaugesRoot.c_str(), NULL);
+    CreateDirectoryA(packDir.c_str(), NULL);
+
+    int copied = 0;
+    for (int i = 0; i < 2; ++i) {
+        if (found[i].empty()) continue;
+        const std::string dest = packDir + "\\" + kFaces[i].packStem + ".tga";
+        // TRUE is bFailIfExists -- so this does NOT overwrite. A pack folder that
+        // already holds a face is one the user built; the migration must not
+        // stamp on it. (The comment here used to name the opposite literal, which
+        // is the kind of thing somebody later "reconciles" the wrong way.)
+        if (CopyFileA(found[i].c_str(), dest.c_str(), TRUE)) ++copied;
+    }
+
+    const std::string ini = packDir + "\\" + PackIni::kGauges + ".ini";
+    if (GetFileAttributesA(ini.c_str()) == INVALID_FILE_ATTRIBUTES) {
+        std::ofstream f(ini, std::ios::binary);
+        if (f.is_open()) {
+            f << "; Written automatically when this version moved the dial faces into\r\n"
+                 "; packs. Your own tacho_widget/speedo_widget art from mxbmrp3\\textures\\\r\n"
+                 "; was copied in beside this file so it keeps being drawn.\r\n"
+                 ";\r\n"
+                 "; `base = classic` answers whatever this folder does not: the face you\r\n"
+                 "; did not redraw, and the ranges your art was drawn against (they used\r\n"
+                 "; to be compiled into the plugin, which is what this change fixes -- see\r\n"
+                 "; the shipped gauges/classic/gauge.ini).\r\n"
+                 ";\r\n"
+                 "; This file is yours now: rename the pack, state your own [tacho] max if\r\n"
+                 "; your face is not printed to 15000, or delete the whole folder. It is\r\n"
+                 "; written once and never rewritten.\r\n"
+                 "\r\n";
+            // Header from the shared constant, never spelled here: see
+            // PackIni::kSection for the bug that costs.
+            f << "[" << PackIni::kSection << "]\r\n"
+                 "name = Legacy\r\n"
+                 "base = classic\r\n";
+        }
+    }
+
+    // The marker goes down even if a copy failed: retrying every launch would
+    // just log the same failure forever, and the folder is now the user's to fix.
+    std::ofstream m(marker, std::ios::binary);
+    if (m.is_open()) {
+        m << "Delete this file to let the plugin look for pre-pack gauge art again.\r\n";
+    }
+
+    DEBUG_INFO_F("AssetManager: migrated %d legacy gauge face(s) from textures\\ into "
+                 "gauges\\legacy - it is selected by default; pick another in "
+                 "Settings > Widgets", copied);
+}
+
 void AssetManager::syncAllPackTypes(const std::string& userBaseDir) {
     if (userBaseDir.empty()) return;
     for (const PackType& pt : PACK_TYPES) {
@@ -387,7 +497,7 @@ void AssetManager::syncAllPackTypes(const std::string& userBaseDir) {
 // Copy each <root>/<name>/ folder from the user override directory into the plugin
 // data directory. One level of nesting only, which is the whole format for every
 // asset type this serves -- a theme, a gamepad pack, a pit board and a spotter voice
-// are each a flat folder of payload files plus a <name>.ini, so this deliberately
+// are each a flat folder of payload files plus a <type>.ini, so this deliberately
 // does not recurse further.
 void AssetManager::syncPackDirectories(const std::string& sourceRoot, const std::string& destRoot,
                                        const char* label, const char* mediaPattern) {
@@ -430,1008 +540,38 @@ void AssetManager::syncPackDirectories(const std::string& sourceRoot, const std:
     if (synced > 0) DEBUG_INFO_F("AssetManager: Synced %d user %s folder(s)", synced, label);
 }
 
-// A theme asked for a title band or a body card and has no card slice set to draw
-// one with. Silence here is the same failure the unknown-key warning exists for, one
-// level down: the key is spelled right, it parses, it is applied -- and the screen
-// does not change, because hasThemedTitleBand()/hasThemedContentCard() both require
-// hasCard(). Measured before this existed: a theme with `title-band = 1` and
-// `content = 1` but no card_center.tga produced not one line of output.
-//
-// Gated on cardKeysSet, not on the values: titleBand DEFAULTS to true, so warning on
-// the value would fire for every deliberately plain-framed theme, on every load.
-static void warnIfCardWithoutInner(const ThemeAsset& theme) {
-    if (!theme.cardKeysSet || theme.hasCard()) return;
-    DEBUG_WARN_F("Theme '%s': [card] keys are set but the theme has no card slices, so "
-                 "no title band or content card is drawn - add the card_ slice set "
-                 "(card_center.tga plus card_corner_*.tga / card_edge_*.tga)",
-                 theme.name.c_str());
-}
 
-// Scan themes/<name>/ for the three required sprites. A directory missing any of
-// them is skipped with a warning rather than half-registered -- a theme that can
-// only draw two of its three slices would render a visibly broken panel, and the
-// user's setting would still name it.
-//
-// Sprite indices continue past the icon block (see discoverAssets), so the sw
-// renderer's `firstIcon` boundary classes them as icons. That is harmless: the
-// flag only picks a directory, and Renderer::tex() resolves path-style names
-// (which theme sprites use) before consulting it.
-void AssetManager::discoverThemes() {
-    const std::string themesRoot = std::string(DISCOVERY_DIR) + "\\" + THEMES_SUBDIR;
-    const std::string searchPath = themesRoot + "\\*";
-
-    WIN32_FIND_DATAA findData;
-    HANDLE hFind = FindFirstFileA(searchPath.c_str(), &findData);
-    if (hFind == INVALID_HANDLE_VALUE) {
-        DEBUG_INFO_F("AssetManager: No themes directory (%s) - themed backgrounds unavailable", themesRoot.c_str());
-        return;
+std::string AssetManager::packIniPath(const std::string& dir, const std::string& packName,
+                                      const char* stem) const {
+    // The same pack's folder in the user's own tree, by swapping the discovery
+    // root for the user root. Every caller builds `dir` as
+    // DISCOVERY_DIR\<subdir>\<name>\, so the tail after the prefix is exactly
+    // the part the two trees share -- and the prefix is CHECKED rather than
+    // assumed, so a caller that ever builds a path some other way degrades to
+    // "cannot tell" (which warns) instead of pointing somewhere wrong.
+    std::string userDir;
+    const std::string discoveryRoot = DISCOVERY_DIR;
+    if (!m_userBaseDir.empty() && dir.compare(0, discoveryRoot.size(), discoveryRoot) == 0) {
+        userDir = m_userBaseDir + dir.substr(discoveryRoot.size());
     }
 
-    std::vector<std::string> dirs;
-    do {
-        if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
-        const std::string name = findData.cFileName;
-        if (name == "." || name == "..") continue;
-        dirs.push_back(name);
-    } while (FindNextFileA(hFind, &findData));
-    FindClose(hFind);
-
-    std::sort(dirs.begin(), dirs.end());
-
-    // Themes start after the icon block.
-    int spriteIndex = m_firstIconSpriteIndex + static_cast<int>(m_icons.size());
-
-    // A theme is three SLICE SETS of nine files each, named <set>_<part>.tga. The
-    // set names are the theme ini's section names -- frame, card, button -- so the
-    // file a skinner opens and the key that sizes it read the same.
-    static const char* kCornerFiles[4] = {"corner_tl", "corner_tr", "corner_bl", "corner_br"};
-    static const char* kEdgeFiles[4]   = {"edge_top", "edge_bottom", "edge_left", "edge_right"};
-
-    for (const std::string& dir : dirs) {
-        const std::string base = themesRoot + "\\" + dir + "\\";
-        int w = 0, h = 0;
-
-        auto exists = [&](const std::string& stem) {
-            return readTgaDimensions(base + stem + ".tga", w, h);
-        };
-
-        if (!exists("frame_center")) {
-            DEBUG_WARN_F("AssetManager: theme '%s' skipped - center.tga is required", dir.c_str());
-            continue;
-        }
-
-        ThemeAsset theme;
-        theme.name = dir;
-        theme.displayName = generateDisplayName(dir);
-        readThemeIni(themeIniPath(base, theme.name), theme);
-
-        // Sprite indices are handed out as files are found, but a theme can still be
-        // rejected below -- and HudManager only registers the sprites of themes that
-        // made it into m_themes. So remember where this theme started and rewind on
-        // rejection, or every LATER theme's indices shift by the dropped file count
-        // and each one draws another theme's sprites.
-        const int themeFirstSprite = spriteIndex;
-
-        // Register a file once and hand back its sprite index. `spriteFiles` and the
-        // index counter advance together, which is what keeps this in step with
-        // HudManager's registration loop.
-        auto add = [&](const std::string& stem) {
-            theme.spriteFiles.push_back(stem);
-            return spriteIndex++;
-        };
-
-        theme.centerSprite = add("frame_center");
-
-        // A 9-slice is nine distinct files: center + four corners + four edges. There
-        // is no shared corner.tga/edge.tga shorthand: every slice is drawn AS AUTHORED
-        // (NineSlice::build emits one winding for all nine), so a single bitmap in all
-        // four corners would only ever be right for art with no orientation at all.
-        bool complete = true;
-        for (int i = 0; i < 4; ++i) {
-            const std::string fc = std::string("frame_") + kCornerFiles[i];
-            const std::string fe = std::string("frame_") + kEdgeFiles[i];
-            theme.cornerSprites[i] = exists(fc) ? add(fc) : 0;
-            theme.edgeSprites[i]   = exists(fe) ? add(fe) : 0;
-            if (theme.cornerSprites[i] == 0 || theme.edgeSprites[i] == 0) complete = false;
-        }
-
-        // CARD slice set, optional. Per-position like the frame set, and registered
-        // AFTER it so a theme without card slices keeps exactly the sprite indices
-        // it had before this existed.
-        if (exists("card_center")) {
-            theme.cardCenterSprite = add("card_center");
-            for (int i = 0; i < 4; ++i) {
-                const std::string ic = std::string("card_") + kCornerFiles[i];
-                const std::string ie = std::string("card_") + kEdgeFiles[i];
-                theme.cardCornerSprites[i] = exists(ic) ? add(ic) : 0;
-                theme.cardEdgeSprites[i]   = exists(ie) ? add(ie) : 0;
-            }
-            // A partial card set would draw a card with holes in it; fall back to
-            // the centre alone, which is a perfectly good flat band.
-            for (int i = 0; i < 4; ++i) {
-                if (theme.cardCornerSprites[i] == 0) theme.cardCornerSprites[i] = theme.cardCenterSprite;
-                if (theme.cardEdgeSprites[i] == 0)   theme.cardEdgeSprites[i]   = theme.cardCenterSprite;
-            }
-        }
-
-        // BUTTON slice set, optional, registered after the card set.
-        if (exists("button_center")) {
-            theme.buttonCenterSprite = add("button_center");
-            for (int i = 0; i < 4; ++i) {
-                const std::string bc = std::string("button_") + kCornerFiles[i];
-                const std::string be = std::string("button_") + kEdgeFiles[i];
-                theme.buttonCornerSprites[i] = exists(bc) ? add(bc) : 0;
-                theme.buttonEdgeSprites[i]   = exists(be) ? add(be) : 0;
-            }
-            for (int i = 0; i < 4; ++i) {
-                if (theme.buttonCornerSprites[i] == 0) theme.buttonCornerSprites[i] = theme.buttonCenterSprite;
-                if (theme.buttonEdgeSprites[i] == 0)   theme.buttonEdgeSprites[i]   = theme.buttonCenterSprite;
-            }
-        }
-
-        // ICON OVERRIDES: themes/<name>/icons/<icon>.tga, one sprite each, registered
-        // after the slice sets so a theme without them keeps the indices it had before
-        // this existed. Ordered by the BASE set so registration order is a property of
-        // the install rather than of directory enumeration -- the same discipline the
-        // slice order needs (see ThemeAsset::spriteFiles).
-        //
-        // A file that names no base icon is IGNORED, loudly: a theme may restyle the
-        // vocabulary, never extend it (see ThemeAsset::iconOverrides), and silence
-        // here would read as "my icon did not load" with nothing to go on.
-        {
-            const std::string iconDir = base + ICONS_SUBDIR + "\\";
-            for (const IconAsset& icon : m_icons) {
-                if (!readTgaDimensions(iconDir + icon.filename + ".tga", w, h)) continue;
-                const int sprite = add(std::string(ICONS_SUBDIR) + "\\" + icon.filename);
-                theme.iconOverrides[icon.filename] = sprite;
-                theme.iconOverrideShape[sprite] =
-                    static_cast<int>(&icon - &m_icons[0]) + 1;
-            }
-            const std::string iconSearch = iconDir + "*.tga";
-            WIN32_FIND_DATAA iconFind;
-            HANDLE hIcon = FindFirstFileA(iconSearch.c_str(), &iconFind);
-            if (hIcon != INVALID_HANDLE_VALUE) {
-                do {
-                    if (iconFind.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
-                    std::string stem = iconFind.cFileName;
-                    const size_t dot = stem.find_last_of('.');
-                    if (dot != std::string::npos) stem = stem.substr(0, dot);
-                    if (theme.iconOverrides.count(stem)) continue;
-                    DEBUG_WARN_F("Theme '%s': icons\\%s.tga does not match any icon in the "
-                                 "base set, so it is ignored - a theme may restyle an icon, "
-                                 "not add one (put new glyphs in the user icons folder)",
-                                 dir.c_str(), stem.c_str());
-                } while (FindNextFileA(hIcon, &iconFind));
-                FindClose(hIcon);
-            }
-        }
-
-        if (!complete) {
-            DEBUG_WARN_F("AssetManager: theme '%s' skipped - it needs the whole frame_ "
-                         "slice set (frame_center.tga, frame_corner_tl/tr/bl/br.tga, "
-                         "frame_edge_top/bottom/left/right.tga)", dir.c_str());
-            spriteIndex = themeFirstSprite;   // rewind; nothing of this theme is registered
-            continue;                         // dropped before push_back, so never half-registered
-        }
-
-        warnIfCardWithoutInner(theme);
-        m_themes.push_back(theme);
+    const PackIni::Resolved r = PackIni::resolve(dir, packName, stem, userDir);
+    // Both present: the canonical file is what the plugin reads, so say which
+    // edits are going nowhere. An upgrade produces exactly this -- the user-folder
+    // sync copies the new ini in and never deletes the old one -- and a silent
+    // win here is the same "I edited it and nothing happened" the rename exists
+    // to remove.
+    // Only when the duplicate is the user's own -- see PackIni::resolve. A
+    // leftover from an older Setup is silent, which is what lets this warning
+    // mean "an edit of yours is going nowhere" again.
+    if (r.shadowed) {
+        DEBUG_WARN_F("AssetManager: pack '%s' has both %s.ini and %s.ini - reading "
+                     "%s.ini; the other is ignored and can be deleted",
+                     packName.c_str(), stem, packName.c_str(), stem);
     }
-
-    bumpThemeGeneration();
-    size_t overrides = 0;
-    for (const ThemeAsset& t : m_themes) overrides += t.iconOverrides.size();
-    DEBUG_INFO_F("AssetManager: Found %zu themes (%zu icon overrides)", m_themes.size(), overrides);
+    return r.path;
 }
 
-// The optional per-theme ini (see themeIniPath). It carries the WHOLE per-theme
-// surface -- the three slice sizes, the tint and card switches with their per-family
-// overrides, [colors] and [fonts] -- and nothing else. It could once additionally set
-// any non-root layout key, forty of them; that vocabulary is gone (see
-// core/layout_metrics.h for the measurement that removed it), which is why the
-// unknown-key message below can name the entire surface in one line.
-//
-// Shares layoutForEachIniPairRaw() rather than running its own loop: the two parses
-// have to agree on comments, whitespace and number handling, and a second copy is
-// exactly the kind that drifts once one side is fixed.
-//
-// This is the walk itself, split out from readThemeIni() below only so that
-// function's try/catch wraps something without re-indenting a hundred lines.
-static void readThemeIniPairs(const std::string& iniPath, ThemeAsset& theme) {
-    struct Ctx { ThemeAsset* t; const std::string* path; };
-    Ctx ctx{ &theme, &iniPath };
-
-    layoutForEachIniPairRaw(iniPath, [](const char* key, float parsed, const char* rawValue,
-                                        bool numeric, void* raw) -> bool {
-        Ctx& c = *static_cast<Ctx*>(raw);
-        ThemeAsset& t = *c.t;
-
-        // [colors] / [fonts] first: their values are not numbers, so they must be
-        // answered before anything reaches the numeric path.
-        if (std::strncmp(key, "colors.", 7) == 0) {
-            const int slot = colorSlotFromName(key + 7);
-            if (slot < 0) {
-                DEBUG_WARN_F("Theme '%s': unknown colour slot '%s' - ignored (the slots are "
-                             "primary, secondary, tertiary, muted, background, positive, "
-                             "warning, neutral, negative, accent)", t.name.c_str(), key + 7);
-                return false;
-            }
-            unsigned long abgr = 0;
-            if (!PluginUtils::parseRgbHex(rawValue, abgr)) {
-                DEBUG_WARN_F("Theme '%s': '%s=%s' is not an RGB hex colour - ignored "
-                             "(write #rrggbb, e.g. #ff8800)", t.name.c_str(), key, rawValue);
-                return false;
-            }
-            t.colors[static_cast<size_t>(slot)] = abgr;
-            t.colorSet[static_cast<size_t>(slot)] = true;
-            return true;
-        }
-        if (std::strncmp(key, "fonts.", 6) == 0) {
-            const int cat = fontCategoryFromName(key + 6);
-            if (cat < 0) {
-                DEBUG_WARN_F("Theme '%s': unknown font category '%s' - ignored (the categories "
-                             "are title, normal, strong, digits, marker, small)",
-                             t.name.c_str(), key + 6);
-                return false;
-            }
-            // The NAME is stored, not a resolved index: fonts are discovered
-            // separately and a theme may name one that this install does not have.
-            // FontConfig falls back when it cannot resolve it, which is the same
-            // thing it does for a user's saved font.
-            t.fonts[static_cast<size_t>(cat)] = rawValue;
-            return true;
-        }
-
-        // THE BOX-MODEL KEYS, before the numeric guard: their values are CSS
-        // shorthand ("2", "2 4", "1 2 3 4"), so a multi-number value never
-        // reads as numeric and must be answered here. One helper for all
-        // twelve; `border` additionally holds each side to whole cells (the
-        // slice-lands-on-the-lattice argument at ThemeAsset::frameBorder),
-        // while margin/padding accept fractions — half a cell of air is the
-        // shipped default in the model, and air has no art to keep on a
-        // lattice.
-        //
-        // Each key ALSO feeds its legacy scalar where the value is expressible
-        // there (uniform sides; padding's vert/horiz pair; margin's t+b as the
-        // visible gap), so the new vocabulary drives the pre-box-model layout
-        // while the port is in flight. The bridge is one-directional: legacy
-        // keys never populate the box terms.
-        {
-            struct BoxKey {
-                const char* key;
-                ThemeAsset::BoxTerm ThemeAsset::* term;
-                bool border;       // whole-cells rule per side
-                bool cardArt;      // uses card_*.tga → sets cardKeysSet
-                bool scalar;       // one number only (no per-side shorthand)
-                // Exempt from the whole-cells rule. The rule exists so a box's
-                // reserve quantises to the grid and its CONTENT ROWS stay on the
-                // lattice; a button has no rows -- it is one centred label in a
-                // box of its own -- so nothing downstream of it can fall off a
-                // lattice it never sat on. Without the exemption a bordered
-                // button cannot be shorter than 2*border + 2*padding + 2 = 4
-                // cells, which is above what Fluent, Primer and HIG specify --
-                // the design systems this was calibrated against, whether or not
-                // a theme for them ships -- and no value a theme can write
-                // reaches their sizes.
-                bool fracBorder;
-            };
-            static const BoxKey kBoxKeys[] = {
-                // panel.gap is one number, not shorthand: junction-only air
-                // between stacked children has no sides. (Unrelated to the
-                // removed pre-box-model `[content] gap` spelling, which was a
-                // section-seam scalar the content margins replaced.)
-                { "panel.gap",       &ThemeAsset::boxPanelGap,       false, false, true, false },
-                { "panel.border",    &ThemeAsset::boxPanelBorder,    true,  false, false, false },
-                { "panel.padding",   &ThemeAsset::boxPanelPadding,   false, false, false, false },
-                { "title.margin",    &ThemeAsset::boxTitleMargin,    false, false, false, false },
-                { "title.border",    &ThemeAsset::boxTitleBorder,    true,  true,  false, false },
-                { "title.padding",   &ThemeAsset::boxTitlePadding,   false, false, false, false },
-                { "content.margin",  &ThemeAsset::boxContentMargin,  false, false, false, false },
-                { "content.border",  &ThemeAsset::boxContentBorder,  true,  true,  false, false },
-                { "content.padding", &ThemeAsset::boxContentPadding, false, false, false, false },
-                { "button.margin",   &ThemeAsset::boxButtonMargin,   false, false, false, false },
-                { "button.border",   &ThemeAsset::boxButtonBorder,   true,  false, false, true  },
-                { "button.padding",  &ThemeAsset::boxButtonPadding,  false, false, false, false },
-            };
-            for (const BoxKey& bk : kBoxKeys) {
-                if (std::strcmp(key, bk.key) != 0) continue;
-                const PanelBox::Sides s = PanelBox::parseSides(rawValue);
-                const double vals[4] = { s.t, s.r, s.b, s.l };
-                for (const double v : vals) {
-                    if (v < 0.0 || v > 12.0) {
-                        DEBUG_WARN_F("Theme '%s': '%s=%s' has a side outside 0..12 cells - "
-                                     "keeping the previous value", t.name.c_str(), key, rawValue);
-                        return true;
-                    }
-                    const double rounded = std::floor(v + 0.5);
-                    if (bk.border && !bk.fracBorder && std::fabs(v - rounded) >= 0.001) {
-                        DEBUG_WARN_F("Theme '%s': '%s=%s' - a border is a slice size and "
-                                     "must be whole cells (air terms may be fractional) - "
-                                     "keeping the previous value", t.name.c_str(), key, rawValue);
-                        return true;
-                    }
-                }
-                const bool uniform = s.t == s.r && s.r == s.b && s.b == s.l;
-                if (bk.scalar && !uniform) {
-                    DEBUG_WARN_F("Theme '%s': '%s=%s' takes ONE number, not per-side "
-                                 "shorthand - keeping the previous value",
-                                 t.name.c_str(), key, rawValue);
-                    return true;
-                }
-                ThemeAsset::BoxTerm& dst = t.*(bk.term);
-                dst.v = s;
-                dst.set = true;
-                if (bk.cardArt) t.cardKeysSet = true;
-                // The legacy bridge, per key. Uniform borders feed the per-set
-                // scalar; [panel] padding feeds the x/y overrides from its
-                // horizontal/vertical pairs; [content] margin's facing pair is
-                // the visible gap two carded boxes keep (the seam is the SUM).
-                const auto f = [](double v2) { return static_cast<float>(v2); };
-                if (bk.term == &ThemeAsset::boxPanelBorder && uniform) t.frameBorder = f(s.t);
-                if (bk.term == &ThemeAsset::boxTitleBorder && uniform) t.titleBorderOverride = f(s.t);
-                if (bk.term == &ThemeAsset::boxContentBorder && uniform) t.cardBorder = f(s.t);
-                if (bk.term == &ThemeAsset::boxButtonBorder && uniform) t.buttonBorder = f(s.t);
-                if (bk.term == &ThemeAsset::boxPanelPadding) {
-                    if (s.l == s.r) t.panelPaddingXOverride = f(s.l);
-                    if (s.t == s.b) t.panelPaddingYOverride = f(s.t);
-                }
-                if (bk.term == &ThemeAsset::boxContentMargin && s.t == s.b)
-                    t.sectionGapOverride = f(s.t + s.b);
-                return true;
-            }
-        }
-
-        // Everything below is numeric. A non-number here is a typo, and saying so is
-        // the whole reason this walk sees non-numeric lines at all.
-        if (!numeric) {
-            DEBUG_WARN_F("Theme '%s': '%s=%s' is not a number - ignored",
-                         t.name.c_str(), key, rawValue);
-            return false;
-        }
-
-        // (The box keys above are the WHOLE per-side layout surface. The
-        // pre-box-model spellings -- [frame] border, [card] border,
-        // [content] gap, [panel] padding-x/-y -- are gone rather than aliased:
-        // nothing shipped with them, and an unknown-key warning is the honest
-        // answer. The scalar fields they fed remain, fed by the box keys'
-        // legacy bridge above until the last own-geometry panel migrates.)
-        if (std::strcmp(key, "frame.tint") == 0)  { t.tintable = (parsed != 0.0f); return true; }
-        if (std::strcmp(key, "card.title-band") == 0) { t.titleBand = (parsed != 0.0f); t.cardKeysSet = true; return true; }
-        // PER-FAMILY overrides, one pair per PanelKind. The plain key above is the
-        // default for all three; these say "except for this family". Stored as a
-        // tri-state so an absent key inherits rather than reading as an explicit 0.
-        {
-            struct { const char* key; int kind; bool band; } kFamily[] = {
-                { "card.hud-title-band",      0, true  }, { "card.hud-content",      0, false },
-                { "card.widget-title-band",   1, true  }, { "card.widget-content",   1, false },
-                { "card.settings-title-band", 2, true  }, { "card.settings-content", 2, false },
-            };
-            for (const auto& f : kFamily) {
-                if (std::strcmp(key, f.key) != 0) continue;
-                (f.band ? t.titleBandFor : t.contentCardFor)[f.kind] = (parsed != 0.0f) ? 1 : 0;
-                t.cardKeysSet = true;
-                return true;
-            }
-        }
-        if (std::strcmp(key, "card.content") == 0)    { t.contentCard = (parsed != 0.0f); t.cardKeysSet = true; return true; }
-
-        // Everything a theme may say is handled above, so reaching here means a
-        // typo or a stale name. Silence was the wrong default: a key that does
-        // nothing looks exactly like a key that does nothing YET, and the whole point
-        // of a reloadable file is a fast edit-look loop -- one that a misspelling
-        // turns into staring at an unchanged screen.
-        //
-        // The list in the message is the WHOLE per-theme surface. It used to fall
-        // through to the layout vocabulary here, forty more keys that no shipped theme
-        // ever set a line of.
-        DEBUG_WARN_F("Theme '%s': unknown key '%s' - ignored (a theme sets the box keys "
-                     "[panel] border/padding and [title]/[content]/[button] "
-                     "margin/border/padding in CSS shorthand, plus [frame] tint, "
-                     "[card] title-band/content and the per-family "
-                     "{hud,widget,settings}-{title-band,content}, "
-                     "[colors] and [fonts])", t.name.c_str(), key);
-        return false;
-    }, &ctx);
-}
-
-void AssetManager::readThemeIni(const std::string& iniPath, ThemeAsset& theme) {
-    // The declaration promises this never throws, and until this guard existed that
-    // was an OBSERVATION about the parser rather than a guarantee: the walk uses
-    // strtof and never std::stof, so no conversion throws today -- but a theme file
-    // is user-editable, this runs inside asset discovery, and one exception here
-    // aborts discovery for EVERY asset type, leaving the plugin with no fonts. That
-    // is the same failure the base-section parseColorHex bug caused for the settings
-    // load, which is why CLAUDE.md makes exception-guarding an INI parse site a rule
-    // rather than a judgement call. The catch keeps whatever the file applied before
-    // the throw; a half-read theme is a cosmetic problem, no assets is not.
-    try {
-        readThemeIniPairs(iniPath, theme);
-    } catch (const std::exception& e) {
-        DEBUG_WARN_F("Theme '%s': failed to read %s (%s) - keeping what was applied",
-                     theme.name.c_str(), iniPath.c_str(), e.what());
-    } catch (...) {
-        DEBUG_WARN_F("Theme '%s': failed to read %s - keeping what was applied",
-                     theme.name.c_str(), iniPath.c_str());
-    }
-
-}
-
-std::string AssetManager::themeIniPath(const std::string& dir, const std::string& themeName) {
-    return dir + themeName + ".ini";
-}
-
-// The pad ini's whole surface. Sections scope the short property names exactly as
-// the theme ini does ([size] w means one thing, [offset] left-stick-x another), and
-// it shares layoutForEachIniPairRaw for the same reason readThemeIni does: two
-// hand-edited parsers that disagree about comments or whitespace is a bug waiting
-// for whichever one is fixed first.
-//
-// Every key is optional. A pad that states nothing renders at the built-in
-// PadGeometry defaults rather than at zero -- silence must not mean "put every
-// button in the top-left corner".
-static void readGamepadIniPairs(const std::string& iniPath, GamepadAsset& pad) {
-    struct Ctx { GamepadAsset* p; };
-    Ctx ctx{ &pad };
-
-    layoutForEachIniPairRaw(iniPath, [](const char* key, float parsed, const char* rawValue,
-                                        bool numeric, void* raw) -> bool {
-        GamepadAsset& p = *static_cast<Ctx*>(raw)->p;
-
-        // [pad] name and base are the two non-numeric keys, answered before
-        // anything reaches the numeric path below.
-        if (std::strcmp(key, "pad.name") == 0) {
-            if (rawValue && *rawValue) p.displayName = rawValue;
-            return true;
-        }
-        if (std::strcmp(key, "pad.base") == 0) {
-            if (rawValue && *rawValue) p.baseName = rawValue;
-            return true;
-        }
-
-        if (!numeric) {
-            DEBUG_WARN_F("Gamepad '%s': key '%s' is not a number - ignored",
-                         p.name.c_str(), key);
-            return true;
-        }
-
-        // The key->field table lives in gamepad_geometry.h so a unit test can drive
-        // the same mapping without a filesystem; see the note there.
-        if (GamepadLayout::applyPadGeometryIni(p.geometry, key, parsed)) return true;
-
-        DEBUG_WARN_F("Gamepad '%s': unknown key '%s' - ignored (the sections are "
-                     "[pad] name/base, [art] width/height, [size], [offset] and [spacing])",
-                     p.name.c_str(), key);
-        return true;
-    }, &ctx);
-}
-
-// The board ini's surface. Same shape as readGamepadIniPairs above -- [board] name
-// is the one non-numeric key, everything else goes through the header's table.
-static void readPitboardIniPairs(const std::string& iniPath, PitboardAsset& board) {
-    struct Ctx { PitboardAsset* b; };
-    Ctx ctx{ &board };
-
-    layoutForEachIniPairRaw(iniPath, [](const char* key, float parsed, const char* rawValue,
-                                        bool numeric, void* raw) -> bool {
-        PitboardAsset& b = *static_cast<Ctx*>(raw)->b;
-
-        if (std::strcmp(key, "board.name") == 0) {
-            if (rawValue && *rawValue) b.displayName = rawValue;
-            return true;
-        }
-        if (std::strcmp(key, "board.base") == 0) {
-            if (rawValue && *rawValue) b.baseName = rawValue;
-            return true;
-        }
-        // [text] color is authored as #rrggbb, same as a theme's colours and for
-        // the same reason (plugin_utils.h at parseRgbHex): the game's ABGR
-        // packing stays out of hand-written files. Not the numeric path - a
-        // 32-bit colour word does not survive the float parse.
-        if (std::strcmp(key, "text.color") == 0) {
-            unsigned long abgr = 0;
-            if (rawValue && PluginUtils::parseRgbHex(rawValue, abgr)) {
-                b.geometry.textColor = static_cast<uint32_t>(abgr);
-            } else {
-                DEBUG_WARN_F("Pitboard '%s': 'text.color=%s' is not an RGB hex colour "
-                             "- ignored (write #rrggbb, e.g. #ffffff)",
-                             b.name.c_str(), rawValue ? rawValue : "");
-            }
-            return true;
-        }
-
-        if (!numeric) {
-            DEBUG_WARN_F("Pitboard '%s': key '%s' is not a number - ignored",
-                         b.name.c_str(), key);
-            return true;
-        }
-
-        if (PitboardLayout::applyBoardGeometryIni(b.geometry, key, parsed)) return true;
-
-        DEBUG_WARN_F("Pitboard '%s': unknown key '%s' - ignored (the sections are "
-                     "[board] name/base, [art] width/height, [text] color and [offset])",
-                     b.name.c_str(), key);
-        return true;
-    }, &ctx);
-}
-
-// BOTH handlers, like readThemeIni above. A bare `catch (const std::exception&)`
-// leaves a non-std throw to escape into asset discovery, which is the failure that
-// guard exists to stop -- and these three sit at the same trust boundary (a
-// hand-edited ini), so they must not differ in how completely they hold it.
-static void readPitboardIni(const std::string& iniPath, PitboardAsset& board) {
-    try {
-        readPitboardIniPairs(iniPath, board);
-    } catch (const std::exception& e) {
-        DEBUG_WARN_F("Pitboard '%s': failed to read '%s': %s",
-                     board.name.c_str(), iniPath.c_str(), e.what());
-    } catch (...) {
-        DEBUG_WARN_F("Pitboard '%s': failed to read '%s'",
-                     board.name.c_str(), iniPath.c_str());
-    }
-}
-
-static void readGamepadIni(const std::string& iniPath, GamepadAsset& pad) {
-    // File I/O on a hand-edited file: one malformed number must not abort the whole
-    // asset scan (the naked-std::stoul lesson from the settings loader).
-    try {
-        readGamepadIniPairs(iniPath, pad);
-    } catch (const std::exception& e) {
-        DEBUG_WARN_F("Gamepad '%s': failed to read '%s': %s",
-                     pad.name.c_str(), iniPath.c_str(), e.what());
-    } catch (...) {
-        DEBUG_WARN_F("Gamepad '%s': failed to read '%s'",
-                     pad.name.c_str(), iniPath.c_str());
-    }
-}
-
-// Peek ONE string key out of a pack ini before the pack is built -- discovery
-// needs to know whether a directory is a standalone pack or a skin before it
-// decides which phase handles it, and building the whole asset to learn one
-// key would run the geometry mapping twice for every pack.
-static std::string readPackStringKey(const std::string& iniPath, const char* fullKey) {
-    struct Ctx { const char* key; std::string value; };
-    Ctx ctx{ fullKey, {} };
-    try {
-        layoutForEachIniPairRaw(iniPath, [](const char* key, float, const char* rawValue,
-                                            bool, void* raw) -> bool {
-            Ctx& c = *static_cast<Ctx*>(raw);
-            if (std::strcmp(key, c.key) == 0 && rawValue && *rawValue) c.value = rawValue;
-            return true;
-        }, &ctx);
-    } catch (...) {
-        // A malformed ini is the pack's own problem, answered (with a warning)
-        // when the full reader runs; the peek just reports "no base".
-    }
-    return ctx.value;
-}
-
-// See the declaration. One body for both pack types, because they differ only in
-// which ini reader they hand the file to -- the reset, the display name and the
-// path are identical, and writing them out twice is what let the board's copy go
-// missing entirely.
-//
-// The geometry is reset to its own default first, so a key DELETED from a pack's
-// ini goes back to the built-in value instead of keeping its last override -- the
-// same rule the theme loop above follows, and the reason a reload is an authoring
-// tool rather than a one-way ratchet. Sprite indices are NOT touched: they reach
-// the game once at init and are held by number everywhere after.
-void AssetManager::seedPitboardArt(const std::string& dir, PitboardAsset& board) {
-    int w = 0, h = 0;
-    if (readTgaDimensions(dir + PitboardSprite::kStems[PitboardSprite::BACKGROUND] + ".tga", w, h)
-        && w > 0 && h > 0) {
-        board.geometry.artWidth = static_cast<float>(w);
-        board.geometry.artHeight = static_cast<float>(h);
-    }
-}
-
-template <typename Pack>
-void AssetManager::reloadPackLayouts(std::vector<Pack>& packs, const char* subdir,
-                                     void (*readIni)(const std::string&, Pack&),
-                                     void (*seed)(const std::string&, Pack&)) {
-    for (Pack& pack : packs) {
-        // RESET, SEED, READ -- the same three steps discovery takes, in the same
-        // order, because a step discovery takes and the reload does not is a setting
-        // the RELOAD_CONFIG hotkey silently deletes. The seed is where that bit:
-        // resetting to the struct's defaults threw away the pit board's TGA-derived
-        // art size, which only discovery knew how to recover.
-        //
-        // A SKIN resets to its BASE's geometry, not the built-ins -- and the base
-        // is guaranteed already re-read by this loop, because discovery appends
-        // all standalone packs before any skin. (Changing `base` in the ini at
-        // runtime is not honoured: the base binding, like the sprite files, is
-        // discovery-time; a reload re-reads layout only.)
-        pack.geometry = decltype(pack.geometry){};
-        if (!pack.baseName.empty()) {
-            for (const Pack& candidate : packs) {
-                if (candidate.name == pack.baseName && candidate.baseName.empty()) {
-                    pack.geometry = candidate.geometry;
-                    break;
-                }
-            }
-        }
-        pack.displayName = generateDisplayName(pack.name);
-        const std::string dir = std::string(DISCOVERY_DIR) + "\\" + subdir + "\\"
-                              + pack.name + "\\";
-        if (seed) seed(dir, pack);
-        readIni(dir + pack.name + ".ini", pack);
-    }
-}
-
-void AssetManager::reloadThemeLayouts() {
-    bumpThemeGeneration();   // every cached ThemeAsset* may now point at stale metrics
-    // Re-copy the user's packs FIRST. A pack is authored in the user's own Documents
-    // folder (savePath\mxbmrp3\<type>\<name>\), and that copy only reached the plugin
-    // folder at startup -- so before this, editing the file you are meant to edit and
-    // pressing RELOAD_CONFIG did nothing at all, silently, because the hotkey re-read
-    // the stale copy under plugins\.
-    //
-    // .tga TOO, now that one surface can act on it. Sprite indices still reach the
-    // GAME only once at init, so changed art cannot appear there without a restart --
-    // this used to be the reason for skipping .tga entirely, since copying a file that
-    // changes nothing on screen is worse than not copying it. What changed is the
-    // COMPANION window: its software renderer opens each .tga itself, so
-    // CompanionWindow::requestArtReload() makes the new bytes visible on the next
-    // frame. Copying them across is the half of that the game thread owns.
-    //
-    // Spotter voices ride the same call: the pack author's edit-reload-listen loop
-    // is the same loop as the theme author's, and SpotterManager::reloadCuePack()
-    // runs right after this on the hotkey — it re-reads the copy under plugins\,
-    // so without this pass it would re-read the stale one.
-    syncAllPackTypes(m_userBaseDir);
-
-    for (ThemeAsset& theme : m_themes) {
-        // Reset to the ThemeAsset defaults first, so a key DELETED from a theme's file
-        // goes back to the built-in value instead of keeping its last override.
-        // Sprite indices are NOT touched -- they are resolved at discovery and held by
-        // number everywhere after.
-        const ThemeAsset fresh;
-        theme.frameBorder = fresh.frameBorder;
-        theme.cardBorder  = fresh.cardBorder;
-        theme.titleBorderOverride   = fresh.titleBorderOverride;
-        theme.sectionGapOverride    = fresh.sectionGapOverride;
-        theme.panelPaddingXOverride = fresh.panelPaddingXOverride;
-        theme.panelPaddingYOverride = fresh.panelPaddingYOverride;
-        theme.buttonBorder = fresh.buttonBorder;
-        // The box terms need the same reset as the legacy scalars above, and for a
-        // sharper reason: the two vocabularies describe the SAME frame. Resetting only
-        // the scalar half means a deleted `border` key leaves the scalar back at its
-        // built-in while the box term still carries the override, and the panel is then
-        // drawn from two sources that disagree about its thickness.
-        theme.boxPanelBorder   = fresh.boxPanelBorder;
-        theme.boxPanelPadding  = fresh.boxPanelPadding;
-        theme.boxPanelGap      = fresh.boxPanelGap;
-        theme.boxTitleMargin   = fresh.boxTitleMargin;
-        theme.boxTitleBorder   = fresh.boxTitleBorder;
-        theme.boxTitlePadding  = fresh.boxTitlePadding;
-        theme.boxContentMargin  = fresh.boxContentMargin;
-        theme.boxContentBorder  = fresh.boxContentBorder;
-        theme.boxContentPadding = fresh.boxContentPadding;
-        theme.boxButtonMargin  = fresh.boxButtonMargin;
-        theme.boxButtonBorder  = fresh.boxButtonBorder;
-        theme.boxButtonPadding = fresh.boxButtonPadding;
-        theme.tintable    = fresh.tintable;
-        theme.titleBand   = fresh.titleBand;
-        theme.contentCard = fresh.contentCard;
-        for (int i = 0; i < 3; ++i) {
-            theme.titleBandFor[i]   = fresh.titleBandFor[i];
-            theme.contentCardFor[i] = fresh.contentCardFor[i];
-        }
-        // ...and the palette and font set, for the same reason and with a sharper
-        // edge: readThemeIni only ever sets colorSet[i] = TRUE, so without this a
-        // deleted [colors] line keeps applying its last value forever. These are the
-        // two sections a skinner iterates on hardest, so they were the two where
-        // "delete a line and the built-in comes back" mattered most and worked least.
-        theme.colors   = fresh.colors;
-        theme.colorSet = fresh.colorSet;
-        theme.fonts    = fresh.fonts;
-        const std::string dir = std::string(DISCOVERY_DIR) + "\\" + THEMES_SUBDIR + "\\"
-                              + theme.name + "\\";
-        theme.cardKeysSet = false;
-        readThemeIni(themeIniPath(dir, theme.name), theme);
-        warnIfCardWithoutInner(theme);
-    }
-    // Pad and board packs get the same treatment, and for the same reason: placing
-    // buttons on a controller photograph -- or rows on a board -- is an
-    // iterate-and-look loop, so re-reading the ini without a game restart is most of
-    // what makes authoring one bearable. Sprite indices are untouched here too; only
-    // the numbers are re-read.
-    //
-    // ONE CALL PER PACK TYPE, through one helper, because the two loops were written
-    // out by hand and only one of them existed: the board's was simply missing, so
-    // RELOAD_CONFIG re-read a pad's ini and silently ignored a board's -- while the
-    // sync above copied the board files across and README promised the hotkey worked.
-    // The count line below is what should have caught it (it passed m_pitboards.size()
-    // to a format string with two conversions, so the extra argument went nowhere).
-    // Written as one generic helper so a third pack type is a call, not a copy.
-    reloadPackLayouts(m_gamepads, GAMEPADS_SUBDIR, &readGamepadIni);
-    reloadPackLayouts(m_pitboards, PITBOARDS_SUBDIR, &readPitboardIni, &seedPitboardArt);
-
-    DEBUG_INFO_F("AssetManager: reloaded layout for %zu theme(s), %zu gamepad(s), %zu pitboard(s)",
-                 m_themes.size(), m_gamepads.size(), m_pitboards.size());
-}
-
-const ThemeAsset* AssetManager::getThemeByName(const std::string& name) const {
-    for (const ThemeAsset& t : m_themes) {
-        if (t.name == name) return &t;
-    }
-    return nullptr;
-}
-
-// ============================================================================
-// Gamepad packs
-// ============================================================================
-
-// Scan gamepads/<name>/ for the full sprite set named by GamepadSprite::kStems.
-//
-// ALL of them, or the pack is skipped with a warning rather than half-registered --
-// the same line discoverThemes() takes on the frame set, and for the same reason: a
-// pad missing its d-pad art would draw a visible hole while the user's setting still
-// named it. It also keeps every accepted pack exactly COUNT sprites wide, which is
-// what lets HudManager walk kStems and stay in step without a per-pack file list.
-// List the immediate subdirectories of a pack root, sorted, so discovery order is
-// stable across runs and filesystems. Shared by the two nested pack types; the
-// per-type work (which stems are required, which ini reader, what the asset holds)
-// stays in each discoverX because that is where they genuinely differ.
-//
-// Returns false when the root does not exist, which is not an error -- an install
-// without that pack type simply has none.
-static bool listPackDirs(const std::string& root, std::vector<std::string>& dirs) {
-    WIN32_FIND_DATAA findData;
-    HANDLE hFind = FindFirstFileA((root + "\\*").c_str(), &findData);
-    if (hFind == INVALID_HANDLE_VALUE) return false;
-    do {
-        if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
-        const std::string name = findData.cFileName;
-        if (name == "." || name == "..") continue;
-        dirs.push_back(name);
-    } while (FindNextFileA(hFind, &findData));
-    FindClose(hFind);
-    std::sort(dirs.begin(), dirs.end());
-    return true;
-}
-
-void AssetManager::discoverGamepads() {
-    const std::string root = std::string(DISCOVERY_DIR) + "\\" + GAMEPADS_SUBDIR;
-    std::vector<std::string> dirs;
-    if (!listPackDirs(root, dirs)) {
-        DEBUG_WARN_F("AssetManager: No gamepads directory (%s) - the gamepad widget "
-                     "has no art to draw", root.c_str());
-        return;
-    }
-
-    // Packs start after the theme block, which itself starts after the icons. Themes
-    // are registered last in setupDefaultResources today, so pads follow them.
-    int spriteIndex = m_firstIconSpriteIndex + static_cast<int>(m_icons.size());
-    for (const ThemeAsset& t : m_themes) spriteIndex += static_cast<int>(t.spriteFiles.size());
-
-    // TWO PHASES, because `base` may name a pack that sorts after the skin
-    // ("aaa-dark" over "xbox"): standalone packs first, then everything that
-    // declares a base, resolved against the standalone set. Skins therefore
-    // sort after their bases in the cycle order, which also reads sensibly.
-    //
-    // Phase 1 -- standalone packs, the all-or-nothing rule unchanged: every
-    // stem must resolve to a readable .tga before any index is handed out, so
-    // a rejected pack cannot shift the indices of the packs after it (the
-    // rewind-on-rejection bug discoverThemes() documents, avoided by not
-    // allocating in the first place).
-    for (const std::string& dir : dirs) {
-        const std::string base = root + "\\" + dir + "\\";
-        if (!readPackStringKey(base + dir + ".ini", "pad.base").empty()) continue;
-
-        bool complete = true;
-        int w = 0, h = 0;
-        for (const char* stem : GamepadSprite::kStems) {
-            if (readTgaDimensions(base + stem + ".tga", w, h)) continue;
-            DEBUG_WARN_F("AssetManager: gamepad '%s' skipped - missing %s.tga (a pack "
-                         "with no `base` needs the whole set of %d sprites)",
-                         dir.c_str(), stem, static_cast<int>(GamepadSprite::COUNT));
-            complete = false;
-            break;
-        }
-        if (!complete) continue;
-
-        GamepadAsset pad;
-        pad.name = dir;
-        pad.displayName = generateDisplayName(dir);
-        readGamepadIni(base + dir + ".ini", pad);
-
-        for (int i = 0; i < GamepadSprite::COUNT; ++i) pad.sprites[i] = spriteIndex++;
-
-        DEBUG_INFO_F("AssetManager: Found gamepad '%s' (%s), sprites %d-%d",
-                     pad.name.c_str(), pad.displayName.c_str(),
-                     pad.sprites[0], pad.sprites[GamepadSprite::COUNT - 1]);
-        m_gamepads.push_back(std::move(pad));
-    }
-    const size_t standaloneGamepads = m_gamepads.size();
-
-    // Phase 2 -- skins. Each stem resolves to the skin's own file when present,
-    // else the base's (complete by phase 1), so the resolved set is always
-    // whole and the no-half-registered-pack rule survives the feature.
-    for (const std::string& dir : dirs) {
-        const std::string skinDir = root + "\\" + dir + "\\";
-        const std::string baseKey = readPackStringKey(skinDir + dir + ".ini", "pad.base");
-        if (baseKey.empty()) continue;
-
-        // The base must be a phase-1 pack: present, and baseless itself. One
-        // level only -- a chain would make "what does this pack draw" require
-        // walking a graph, and a cycle would never terminate.
-        const GamepadAsset* basePack = nullptr;
-        for (size_t i = 0; i < standaloneGamepads; ++i) {
-            if (m_gamepads[i].name == baseKey) { basePack = &m_gamepads[i]; break; }
-        }
-        if (!basePack) {
-            DEBUG_WARN_F("AssetManager: gamepad '%s' skipped - base '%s' is not a "
-                         "standalone pack (a base cannot itself declare a base)",
-                         dir.c_str(), baseKey.c_str());
-            continue;
-        }
-
-        GamepadAsset pad;
-        pad.name = dir;
-        pad.displayName = generateDisplayName(dir);
-        pad.baseName = baseKey;
-        // The base's geometry is the starting point; the skin's ini then
-        // overrides only what it states -- the sparse rule, aimed at the base
-        // instead of the built-ins.
-        pad.geometry = basePack->geometry;
-        readGamepadIni(skinDir + dir + ".ini", pad);
-
-        int w = 0, h = 0;
-        for (int i = 0; i < GamepadSprite::COUNT; ++i) {
-            pad.spriteFromBase[i] =
-                !readTgaDimensions(skinDir + GamepadSprite::kStems[i] + ".tga", w, h);
-            pad.sprites[i] = spriteIndex++;
-        }
-
-        DEBUG_INFO_F("AssetManager: Found gamepad skin '%s' (%s) over '%s', sprites %d-%d",
-                     pad.name.c_str(), pad.displayName.c_str(), baseKey.c_str(),
-                     pad.sprites[0], pad.sprites[GamepadSprite::COUNT - 1]);
-        m_gamepads.push_back(std::move(pad));
-    }
-
-    DEBUG_INFO_F("AssetManager: Found %zu gamepad pack(s)", m_gamepads.size());
-}
-
-const GamepadAsset* AssetManager::getGamepadByName(const std::string& name) const {
-    for (const GamepadAsset& p : m_gamepads) {
-        if (p.name == name) return &p;
-    }
-    return nullptr;
-}
-
-const GamepadAsset* AssetManager::getDefaultGamepad() const {
-    if (const GamepadAsset* shipped = getGamepadByName(DEFAULT_GAMEPAD)) return shipped;
-    // The shipped pack was deleted. Any pad beats none, and discovery is sorted, so
-    // this is at least stable across runs.
-    return m_gamepads.empty() ? nullptr : &m_gamepads.front();
-}
-
-std::string AssetManager::getGamepadPath(const std::string& packName, const char* stem) const {
-    return std::string(RESOURCE_DIR) + "\\" + GAMEPADS_SUBDIR + "\\" + packName + "\\" + stem + ".tga";
-}
-
-// Scan pitboards/<name>/ for the stems named by PitboardSprite::kStems. All of
-// them or the pack is skipped, same rule discoverGamepads() and discoverThemes()
-// apply, and for the same reason: a board with no artwork would draw an empty
-// panel while the user's setting still named it.
-void AssetManager::discoverPitboards() {
-    const std::string root = std::string(DISCOVERY_DIR) + "\\" + PITBOARDS_SUBDIR;
-    std::vector<std::string> dirs;
-    if (!listPackDirs(root, dirs)) {
-        DEBUG_WARN_F("AssetManager: No pitboards directory (%s) - the pitboard has no "
-                     "art to draw", root.c_str());
-        return;
-    }
-
-    // Board packs sit past the gamepad block, which sits past the themes, which sit
-    // past the icons -- one contiguous run per type, appended in the order
-    // setupDefaultResources registers them.
-    int spriteIndex = m_firstIconSpriteIndex + static_cast<int>(m_icons.size());
-    for (const ThemeAsset& t : m_themes) spriteIndex += static_cast<int>(t.spriteFiles.size());
-    spriteIndex += static_cast<int>(m_gamepads.size()) * GamepadSprite::COUNT;
-
-    // Two phases, same shape and same reasons as discoverGamepads(): standalone
-    // boards first, then skins resolved against them.
-    for (const std::string& dir : dirs) {
-        const std::string base = root + "\\" + dir + "\\";
-        if (!readPackStringKey(base + dir + ".ini", "board.base").empty()) continue;
-
-        // Verify the whole set BEFORE handing out any index, so a rejected pack
-        // cannot shift the indices of the packs after it.
-        bool complete = true;
-        int w = 0, h = 0;
-        for (const char* stem : PitboardSprite::kStems) {
-            if (readTgaDimensions(base + stem + ".tga", w, h)) continue;
-            DEBUG_WARN_F("AssetManager: pitboard '%s' skipped - missing %s.tga",
-                         dir.c_str(), stem);
-            complete = false;
-            break;
-        }
-        if (!complete) continue;
-
-        PitboardAsset board;
-        board.name = dir;
-        board.displayName = generateDisplayName(dir);
-        // The .tga's REAL dimensions are the honest default for the aspect, so a
-        // pack that states no [art] block still draws its own art undistorted --
-        // the ini only has to say so when the author wants something else.
-        //
-        // Through the shared seed, not inline: this was written out here only, so the
-        // reload path reset the geometry and had no way to recover it (see
-        // seedPitboardArt). One implementation, reached from both.
-        seedPitboardArt(base, board);
-        readPitboardIni(base + dir + ".ini", board);
-
-        for (int i = 0; i < PitboardSprite::COUNT; ++i) board.sprites[i] = spriteIndex++;
-
-        DEBUG_INFO_F("AssetManager: Found pitboard '%s' (%s), art %.0fx%.0f, sprite %d",
-                     board.name.c_str(), board.displayName.c_str(),
-                     board.geometry.artWidth, board.geometry.artHeight,
-                     board.sprites[PitboardSprite::BACKGROUND]);
-        m_pitboards.push_back(std::move(board));
-    }
-    const size_t standaloneBoards = m_pitboards.size();
-
-    for (const std::string& dir : dirs) {
-        const std::string skinDir = root + "\\" + dir + "\\";
-        const std::string baseKey = readPackStringKey(skinDir + dir + ".ini", "board.base");
-        if (baseKey.empty()) continue;
-
-        const PitboardAsset* basePack = nullptr;
-        for (size_t i = 0; i < standaloneBoards; ++i) {
-            if (m_pitboards[i].name == baseKey) { basePack = &m_pitboards[i]; break; }
-        }
-        if (!basePack) {
-            DEBUG_WARN_F("AssetManager: pitboard '%s' skipped - base '%s' is not a "
-                         "standalone pack (a base cannot itself declare a base)",
-                         dir.c_str(), baseKey.c_str());
-            continue;
-        }
-
-        PitboardAsset board;
-        board.name = dir;
-        board.displayName = generateDisplayName(dir);
-        board.baseName = baseKey;
-        // Base geometry first (which carries the base art's seeded dimensions);
-        // then the skin's own art re-seeds ONLY if the skin brings its own file,
-        // so swapped-in art at a different aspect still draws undistorted; then
-        // the skin's ini keys override what they state.
-        board.geometry = basePack->geometry;
-        seedPitboardArt(skinDir, board);
-        readPitboardIni(skinDir + dir + ".ini", board);
-
-        int w = 0, h = 0;
-        for (int i = 0; i < PitboardSprite::COUNT; ++i) {
-            board.spriteFromBase[i] =
-                !readTgaDimensions(skinDir + PitboardSprite::kStems[i] + ".tga", w, h);
-            board.sprites[i] = spriteIndex++;
-        }
-
-        DEBUG_INFO_F("AssetManager: Found pitboard skin '%s' (%s) over '%s', art %.0fx%.0f, sprite %d",
-                     board.name.c_str(), board.displayName.c_str(), baseKey.c_str(),
-                     board.geometry.artWidth, board.geometry.artHeight,
-                     board.sprites[PitboardSprite::BACKGROUND]);
-        m_pitboards.push_back(std::move(board));
-    }
-
-    DEBUG_INFO_F("AssetManager: Found %zu pitboard pack(s)", m_pitboards.size());
-}
-
-const PitboardAsset* AssetManager::getPitboardByName(const std::string& name) const {
-    for (const PitboardAsset& b : m_pitboards) {
-        if (b.name == name) return &b;
-    }
-    return nullptr;
-}
-
-const PitboardAsset* AssetManager::getDefaultPitboard() const {
-    if (const PitboardAsset* shipped = getPitboardByName(DEFAULT_PITBOARD)) return shipped;
-    return m_pitboards.empty() ? nullptr : &m_pitboards.front();
-}
-
-std::string AssetManager::getPitboardPath(const std::string& packName, const char* stem) const {
-    return std::string(RESOURCE_DIR) + "\\" + PITBOARDS_SUBDIR + "\\" + packName + "\\" + stem + ".tga";
-}
 
 std::string AssetManager::getThemePath(const std::string& themeName, const char* part) const {
     return std::string(RESOURCE_DIR) + "\\" + THEMES_SUBDIR + "\\" + themeName + "\\" + part + ".tga";

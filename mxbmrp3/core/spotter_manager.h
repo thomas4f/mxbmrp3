@@ -32,10 +32,25 @@
 // and a subsequent PlaySound cancels the previous one (single channel).
 //
 // LIMITS THAT ARE THE BACKEND'S, NOT A DESIGN CHOICE: PlaySound gives one
-// channel, no per-sound volume and no ducking, so a cue interrupts the cue
-// before it and the [Spotter] volume applies to TTS only. Moving wav
-// playback to XAudio2 would fix all three; the queue and this API are shaped
-// so only the worker's playback calls would change.
+// channel and no ducking, so a cue interrupts the cue before it. Moving wav
+// playback to XAudio2 would fix both; the queue and this API are shaped so
+// only the worker's playback calls would change.
+//
+// The [Spotter] volume reaches ALL THREE rungs, not just TTS: SAPI takes it
+// via SetVolume, and both wav paths are scaled sample-by-sample on the way to
+// the device (SpotterMix::applyGain), because PlaySound has no per-sound
+// volume of its own. A file our RIFF reader rejects is played unscaled rather
+// than dropped, which is the one case the slider does not reach.
+//
+// IT ONLY ATTENUATES, and that is a known gap rather than an oversight: the
+// slider is 0..100 and 100 is a no-op, so a player who cannot hear the spotter
+// over the engine has nothing to turn UP -- which is what was reported against
+// 1.29.1. Raising the ceiling is cheap for the wav rungs (applyGain already
+// clamps) and is NOT cheap for TTS: SAPI's SetVolume is a USHORT capped at 100
+// and waveOutSetVolume cannot exceed unity either, so boosting speech means
+// rendering SAPI into a memory stream and gaining that. Worth knowing before
+// anyone "just widens the slider": the BUNDLED pack is text-only, so the
+// default install is exactly the case a wav-only boost would not help.
 //
 // SHUTDOWN follows the project invariants: the worker is joined by the
 // orchestrated PluginManager::shutdown() (never by the destructor — joining
@@ -282,6 +297,11 @@ public:
     // Directory names under mxbmrp3_data/spotters/, sorted (tab picker).
     std::vector<std::string> listAvailablePacks() const;
 
+    // The active pack's human title for the picker: its optional [pack] name,
+    // else the folder name. Never the identity -- getPackName() is that, and is
+    // what gets stored and cycled.
+    const std::string& getPackDisplayName() const { return m_packDisplayName; }
+
     // ---- TTS voice ([Spotter] tts_voice=; game thread) ---------------------
     // Which Windows voice speaks when no pack is selected (or a cue falls
     // back to TTS). Empty = the system default. Stored by NAME and resolved
@@ -393,6 +413,13 @@ public:
     // would make the answer depend on how many variant picks happened earlier
     // in the process, which changes whenever any other case moves.
     void testPinVariant(int idx) { m_pinVariant = idx; }
+
+    // See m_workerParked. A test that wants the worker in its steady state
+    // enqueues a cue and then polls this - the flag starts false, so polling
+    // before the first cue would read "not yet started" as "not parked".
+    bool testWorkerParked() const {
+        return m_workerParked.load(std::memory_order_acquire);
+    }
 private:
     std::string m_lastAudioRoute;   // mt-plain: game thread only (emitCue)
     int m_pinVariant = -1;          // mt-plain: game thread only (emitCue)
@@ -418,6 +445,7 @@ private:
     // settings pass; a missing folder degrades to the shipped pack's wording
     // without rewriting the name, per the stored-by-name invariant.
     std::string m_packName = "default";
+    std::string m_packDisplayName;  // game thread only; label for the picker
     SpotterCuePack::Pack m_pack;
     std::string m_packDir;
     // Proximity/hazard detector state + tuning (game thread only).
@@ -653,6 +681,8 @@ private:
     // Lazy start/stop is game-thread only (enqueue via the Draw/hotkey path,
     // shutdown via PluginManager); the thread object itself is never touched
     // by the worker, so it needs no guard.
+    // joined-by: shutdown() (PluginManager::shutdown); the destructor's
+    // spinThenDetach is only the no-Shutdown() unload backstop.
     std::thread m_workerThread;
     std::atomic<bool> m_running{false};    // cleared to stop the worker
     // LATCHED at shutdown() and never cleared. m_running alone cannot say
@@ -661,6 +691,15 @@ private:
     // orchestrated join is the "must not outlive the DLL" shape.
     std::atomic<bool> m_shutdown{false};
     std::atomic<bool> m_finished{false};   // worker's last store; see dtor
+    // True only while the worker is parked in m_cv.wait with an empty queue,
+    // i.e. it has finished every lazy first-cue setup (CoInitializeEx, the
+    // CoCreateInstance that LOADS the engine's DLLs) and is holding no state
+    // mid-flight. Read by teardown_test to reach that state deliberately
+    // instead of racing it: the loader lock a first CoCreateInstance needs is
+    // the one the destructing thread holds, so a DLL unload landing inside it
+    // detaches a worker that cannot observe m_running (see m_abandonComCleanup
+    // below, which covers the teardown half of the same lock).
+    std::atomic<bool> m_workerParked{false};
     // Set ONLY by the destructor (the unload-without-Shutdown() backstop),
     // never by shutdown(): tells the worker to SKIP its COM teardown
     // (pVoice->Release() + CoUninitialize) and store m_finished immediately.

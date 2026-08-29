@@ -353,7 +353,7 @@ void HudManager::processKeyboardInput() {
         // settings path failed to resolve, on the feature most likely to be in use
         // while something else is misconfigured.
         //
-        // Re-reads each theme's own <name>.ini: its slice sizes, switches, palette
+        // Re-reads each theme's own theme.ini: its slice sizes, switches, palette
         // and font set. The layout vocabulary is NOT re-read, because there is no
         // longer a file holding it -- uiFontSize / uiLineHeight come from [Advanced]
         // and are picked up by the loadSettings() call above.

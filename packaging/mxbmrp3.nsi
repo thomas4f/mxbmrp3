@@ -11,6 +11,8 @@
 !define PLUGIN_NAME "MXBMRP3"
 !define PLUGIN_NAME_LC "mxbmrp3"
 !define PLUGIN_PUBLISHER "thomas4f"
+; Project home page. Also the privacy policy's home (README #privacy anchor).
+!define PLUGIN_URL "https://github.com/thomas4f/MXBMRP3"
 ; The staging tree (built .dlo + mxbmrp3_data) that File commands pull from. NSIS
 ; resolves relative File paths relative to THIS script's directory, so callers pass
 ; an ABSOLUTE path (make_release.bat / release.yml) — this default only covers a
@@ -93,6 +95,14 @@
 ; are meant to ship, and extension-globs (e.g. fonts\*.ttf) are exactly the drift
 ; trap this macro removes. When ADDING a new mxbmrp3_data subfolder: add it here
 ; (once), plus sw.js PRECACHE_URLS / AssetManager::syncUserAssets per CLAUDE.md.
+;
+; Setup writes files and never deletes any. It briefly pruned each pack's
+; pre-rename <name>.ini here, which meant re-deriving PackIni::resolve's rules in
+; NSIS -- and getting them wrong, by deleting the canonical ini of a pack named
+; after its own type. The plugin decides instead: it warns about a shadowed ini
+; only when the user's own asset tree has a copy, so a leftover Setup wrote is
+; silent without anything having to remove it.
+
 !macro INSTALL_GAME_FILES InstallPath DloFile GameName
   DetailPrint "Installing ${PLUGIN_NAME} for ${GameName}..."
 
@@ -112,7 +122,33 @@
   ; `RMDir /r mxbmrp3_data` takes it away again -- a file next to the DLO would
   ; need its own Delete in all three per-game blocks, which is exactly the kind of
   ; hand-duplicated list this macro exists to remove.
+  ; Setup's analytics choice, for a plugin whose settings file does not exist yet.
+  ; WRITTEN ONLY ON OPT-OUT, and deleted otherwise: the file can say "off" or say
+  ; nothing, never "on". Setup cannot read the per-game settings (their location
+  ; depends on the game's configurable save path), so it must not be able to
+  ; overrule an in-game opt-out on upgrade. See core/install_prefs.h.
   SetOutPath "${InstallPath}\mxbmrp3_data"
+  ${If} $analyticsOptOut == "1"
+    ; The error flag is GLOBAL and STICKY -- a failed RMDir /r in the fresh-install
+    ; wipe above leaves it set, and the IfNot below would then read that instead of
+    ; this FileOpen and skip the write in silence. Every other ${Errors} site in
+    ; this script clears first; this one did not.
+    ClearErrors
+    FileOpen $9 "${InstallPath}\mxbmrp3_data\install_prefs.ini" w
+    ${IfNot} ${Errors}
+      FileWrite $9 "; Written by ${PLUGIN_NAME} Setup from the choice made on its Privacy page.$\r$\n"
+      FileWrite $9 "; Honoured ONCE by the plugin, then ignored - the in-game toggle$\r$\n"
+      FileWrite $9 "; (Settings > General > Integrations) is authoritative afterwards.$\r$\n"
+      FileWrite $9 "[Install]$\r$\n"
+      FileWrite $9 "analyticsOptOut=1$\r$\n"
+      FileWrite $9 "stamp=${PLUGIN_VERSION}$\r$\n"
+      FileClose $9
+    ${EndIf}
+  ${Else}
+    ; Left ticked: clear any marker a previous Setup wrote, so a stale file cannot
+    ; re-apply against a newer version's stamp.
+    Delete "${InstallPath}\mxbmrp3_data\install_prefs.ini"
+  ${EndIf}
   File "${PLUGIN_SOURCE_PATH}\LICENSE"
   File "${PLUGIN_SOURCE_PATH}\THIRD_PARTY_LICENSES.md"
 
@@ -128,7 +164,7 @@
   SetOutPath "${InstallPath}\mxbmrp3_data\icons"
   File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\icons\*.tga"
 
-  ; Panel themes (one folder per theme: corner/edge/center .tga + <name>.ini, plus
+  ; Panel themes (one folder per theme: corner/edge/center .tga + theme.ini, plus
   ; an optional icons\ subfolder overriding icons from the set above).
   ; /r because each theme is its own subdirectory -- unlike the flat asset folders
   ; above, the set of directory names is not known here -- and it carries the icon
@@ -139,13 +175,13 @@
   SetOutPath "${InstallPath}\mxbmrp3_data\themes"
   File /r "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\themes\*.*"
 
-  ; Gamepad packs (one folder per pad: its .tga set + <name>.ini placing the buttons
+  ; Gamepad packs (one folder per pad: its .tga set + gamepad.ini placing the buttons
   ; on the artwork). /r for the same reason as themes -- each pack is its own
   ; subdirectory and the set of names is not known here.
   SetOutPath "${InstallPath}\mxbmrp3_data\gamepads"
   File /r "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\gamepads\*.*"
 
-  ; Pit board packs (one folder per board: background.tga + <name>.ini placing the
+  ; Pit board packs (one folder per board: background.tga + pitboard.ini placing the
   ; rows on it). /r for the same reason as themes and gamepads.
   SetOutPath "${InstallPath}\mxbmrp3_data\pitboards"
   File /r "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\pitboards\*.*"
@@ -159,6 +195,12 @@
   ; gamepads and pitboards -- each pack is its own subdirectory.
   SetOutPath "${InstallPath}\mxbmrp3_data\spotters"
   File /r "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\spotters\*.*"
+
+  ; Gauges packs (one folder per set: tacho.tga + speedo.tga + gauge.ini stating
+  ; what each face READS and where its needle sweeps). /r for the same reason as
+  ; every other pack type -- each set is its own subdirectory.
+  SetOutPath "${InstallPath}\mxbmrp3_data\gauges"
+  File /r "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\gauges\*.*"
 
   ; Web overlay files (root files + each asset subfolder)
   SetOutPath "${InstallPath}\mxbmrp3_data\web"
@@ -281,6 +323,7 @@ OutFile "${OUTPUT_DIR}\${PLUGIN_NAME_LC}-Setup.exe"
 Var pluginInstallActionChoice   ; "0" = install/upgrade path, "1" = run uninstaller
 Var freshInstallSelected        ; "1" = wipe savepath data before installing
 Var removeUserDataSelected      ; uninstaller: "1" = also delete savepath data
+Var analyticsOptOut             ; "1" = user unticked usage statistics on the Privacy page
 Var userDocuments               ; Documents folder of the user who launched Setup
 Var isElevatedRun               ; "1" = this process is the relaunched elevated child
 Var useMachineReg               ; "1" = write uninstall keys to HKLM (we have admin), else HKCU
@@ -316,6 +359,7 @@ Var KRPCheckbox
 ; Existing-install page + uninstall page controls
 Var existingPluginNoteLabel
 Var removeUserDataCheckbox
+Var analyticsCheckbox
 
 ; Welcome to MXBMRP3 Setup (skipped in the relaunched elevated child — the user already
 ; made every choice in the original, un-elevated window)
@@ -325,6 +369,16 @@ Var removeUserDataCheckbox
 
 ; Existing MXBMRP3 Installation Detected
 Page Custom ShowExistingPluginInstallPage RunUninstaller
+
+; Privacy and usage statistics
+;
+; Analytics is ON by default and always has been, disclosed in the README. That
+; disclosure is only a CHOICE if the player sees it before the first ping goes out,
+; which is what this page is for -- and it is a condition of the SignPath Foundation
+; OSS policy (describe the behaviour, show it during installation, offer an option
+; to disable it). Ticked by default so it states the real default rather than
+; quietly changing it; unticking writes the marker read by core/install_prefs.h.
+Page Custom ShowPrivacyPage LeavePrivacyPage
 
 ; Choose Games and Install Locations
 Page Custom ShowGameSelectionPage LeaveGameSelectionPage
@@ -388,7 +442,7 @@ VIAddVersionKey "LegalCopyright"   "Copyright (c) 2025-2026 ${PLUGIN_PUBLISHER}"
 VIAddVersionKey "OriginalFilename" "${PLUGIN_NAME_LC}-Setup.exe"
 VIAddVersionKey "ProductName"      "${PLUGIN_NAME}"
 VIAddVersionKey "ProductVersion"   "${PLUGIN_VERSION}"
-VIAddVersionKey "Comments"         "https://github.com/thomas4f/MXBMRP3"
+VIAddVersionKey "Comments"         "${PLUGIN_URL}"
 
 ; .onInit: Determine registry view & locate games
 Function .onInit
@@ -398,6 +452,7 @@ Function .onInit
   StrCpy $isPluginAlreadyInstalled "0"
   StrCpy $pluginInstallActionChoice "0"
   StrCpy $freshInstallSelected "0"
+  StrCpy $analyticsOptOut "0"      ; analytics ships ON; the Privacy page can only turn it off
   StrCpy $isMXBikesSelected "0"
   StrCpy $isGPBikesSelected "0"
   StrCpy $isKRPSelected "0"
@@ -540,6 +595,15 @@ Function LoadInstallStateFromCmdline
   ${GetOptions} $9 "/FRESH=" $freshInstallSelected
   ${If} ${Errors}
     StrCpy $freshInstallSelected "0"
+  ${EndIf}
+
+  ; The Privacy page is skipped in the elevated child like every other custom page,
+  ; so the choice has to arrive here or an opt-out would be silently lost exactly
+  ; when the game lives somewhere that needs elevation.
+  ClearErrors
+  ${GetOptions} $9 "/NOSTATS=" $analyticsOptOut
+  ${If} ${Errors}
+    StrCpy $analyticsOptOut "0"
   ${EndIf}
 
   ; INSTDIR (uninstaller lands here) = first selected game's plugins folder
@@ -721,6 +785,129 @@ Function RunUninstaller
 FunctionEnd
 
 ; Game Selection Page
+; Privacy and usage statistics
+;
+; Summarises what the plugin sends and offers the opt-out. The full policy is the
+; README's Privacy section (linked); this page states the substance rather than
+; making the player go and read it, because a link nobody opens is not disclosure.
+;
+; The box is TICKED by default because that IS the shipped default -- presenting it
+; unticked would misstate the behaviour. Unticking is what writes the marker; leaving
+; it ticked writes nothing at all, so an upgrade can never switch analytics back on
+; for somebody who turned it off in-game (core/install_prefs.h explains why that
+; direction is deliberately impossible).
+; The Privacy page's two links. ExecShell rather than anything fancier: Setup may
+; be running elevated, and handing the URL to the shell is what opens it as the
+; logged-in user rather than as admin.
+Function OnPrivacyLinkClick
+  ExecShell "open" "${PLUGIN_URL}#privacy"
+FunctionEnd
+
+Function OnReportLinkClick
+  ExecShell "open" "${PLUGIN_URL}/blob/main/analytics/REPORT.md"
+FunctionEnd
+
+Function ShowPrivacyPage
+  ${If} $isElevatedRun == "1"
+    Abort
+  ${EndIf}
+  nsDialogs::Create 1018
+  Pop $R0
+  ${If} $R0 == error
+    Abort
+  ${EndIf}
+
+  !insertmacro MUI_HEADER_TEXT "Privacy" \
+      "Choose whether to take part in the anonymous usage survey."
+
+  ; LAYOUT BUDGET, measured from a real render rather than estimated: the usable
+  ; client area is about 115u tall and 300u wide -- roughly 75 characters and 8u
+  ; per line. An NSIS label does not scroll or ellipsize, it silently CLIPS, so a
+  ; block that grows by one line just loses that line with nothing to notice it.
+  ; That already shipped once: the closing label carried a blank line, needed
+  ; three lines in 20u, and cut "You can change this..." in half.
+  ; Keep each block inside its stated line count, or move detail to the README.
+  ;
+  ; The text is SHORT on purpose. Earlier drafts argued the case at length --
+  ; download counts versus telemetry, crashes three times over -- and the page
+  ; became a wall nobody reads, which persuades less than a page they finish.
+  ;
+  ; WHOSE crashes is stated once, and it is the game's. The plugin installs a
+  ; process-wide handler and catches faults in the host; its own frames are
+  ; almost never on the stack (zero across the 1.29.1 reports). Mentioned three
+  ; times and never attributed, it read as "this plugin is unstable" -- both
+  ; discouraging and untrue.
+  ${NSD_CreateLabel} 0 0 300u 48u "${PLUGIN_NAME} can send a small anonymous ping each game launch, so the developer can see how many people use it, which features are worth keeping, and what needs fixing.$\n$\nIt sends a random install ID, the plugin version and which game, your enabled features, operating system and language, session length, and where the game faulted if it crashed."
+  Pop $R1
+
+  ; "Content you added" rather than the old "a theme or spotter voice": those
+  ; two are the only content types the ping mentions at all (as shipped-name /
+  ; "custom" labels; pit boards, gauges, pads and fonts are never reported),
+  ; but the reader should not have to know that taxonomy for the promise to
+  ; cover everything they might make. Broader wording, same truth.
+  ${NSD_CreateLabel} 0 52u 300u 22u "It never sends your name, lap times, online activity, server or rider data, or any crash dump. Content you added yourself is never reported by name - at most it counts as $\"custom$\"."
+  Pop $R1
+
+  ; Phrasing borrowed from Debian's popularity-contest ("Participate in the
+  ; package usage survey?"), which has had two decades to settle. It NAMES a
+  ; bounded thing to join instead of asking for goodwill: "help improve
+  ; MXBMRP3" is vague enough to be either a promise or a guilt trip, while
+  ; "participate in the usage survey" is just what it is, and leaves the
+  ; deciding to the reader.
+  ;
+  ; popcon's real lesson is above this line, not on it: its description gives a
+  ; CHECKABLE consequence ("influences decisions such as which packages should
+  ; go on the first distribution CD") rather than a promise to improve. The
+  ; label above -- which features are worth keeping -- is the same move, and
+  ; the link at the bottom is this page's popcon.debian.org.
+  ${NSD_CreateCheckbox} 0 78u 300u 12u "Participate in the anonymous usage survey"
+  Pop $analyticsCheckbox
+  ${If} $analyticsOptOut != "1"
+    ${NSD_Check} $analyticsCheckbox
+  ${EndIf}
+
+  ; States the ABSENCE of a downside, not the presence of one: people decline
+  ; telemetry less readily when they suspect it gates a feature or earns them a
+  ; nagging prompt, and neither is true. The one real consequence -- the game
+  ; crashes you hit stop being reported -- is deliberately NOT here: beside the
+  ; checkbox it reads as leverage, so it lives in the README's Privacy section.
+  ${NSD_CreateLabel} 0 94u 300u 16u "Turning this off doesn't disable anything else; the plugin works exactly the same. You can change it any time in Settings > General > Integrations."
+  Pop $R1
+
+  ; Each link control is sized to ITS OWN text, not padded out: a link is
+  ; left-aligned inside its control, so leftover width shows up as dead space
+  ; between the two and reads as a layout mistake rather than a gap.
+  ;
+  ; Real link controls rather than pasted URLs: nobody retypes a URL off an
+  ; installer page. Side by side on ONE row rather than stacked: the page has
+  ; horizontal room and almost none left vertically.
+  ;
+  ; BOTH, because they answer different questions. The policy is the formal
+  ; answer to "what exactly are you taking" -- already on this page in
+  ; substance, but a reader who wants the full text should not have to hunt for
+  ; it. The report answers the one thing the page cannot: what does any of this
+  ; actually amount to? That one is the more persuasive, and checkable, so it
+  ; gets the wider and more inviting label.
+  ${NSD_CreateLink} 0 116u 54u 10u "Privacy policy"
+  Pop $R2
+  ${NSD_OnClick} $R2 OnPrivacyLinkClick
+
+  ${NSD_CreateLink} 58u 116u 160u 10u "See the published usage report"
+  Pop $R3
+  ${NSD_OnClick} $R3 OnReportLinkClick
+
+  nsDialogs::Show
+FunctionEnd
+
+Function LeavePrivacyPage
+  ${NSD_GetState} $analyticsCheckbox $R0
+  ${If} $R0 == ${BST_CHECKED}
+    StrCpy $analyticsOptOut "0"
+  ${Else}
+    StrCpy $analyticsOptOut "1"
+  ${EndIf}
+FunctionEnd
+
 Function ShowGameSelectionPage
   ${If} $isElevatedRun == "1"
     Abort
@@ -1050,6 +1237,9 @@ Function LeaveGameSelectionPage
       ${EndIf}
       ${If} $freshInstallSelected == "1"
         StrCpy $R4 '$R4 /FRESH=1'
+      ${EndIf}
+      ${If} $analyticsOptOut == "1"
+        StrCpy $R4 '$R4 /NOSTATS=1'
       ${EndIf}
 
       ClearErrors

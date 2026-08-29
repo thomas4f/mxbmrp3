@@ -71,8 +71,8 @@ namespace Settings {
 
         // The two by-name asset keys that live in GLOBAL sections rather than a
         // per-HUD one. Named here so isFolderNameValue() below can reference every
-        // one of the four through a symbol -- see it for why a literal is not
-        // good enough.
+        // one of them through a symbol -- see it for why a literal is not good
+        // enough. (Deliberately not a count: this list has grown twice.)
         namespace Global {
             constexpr const char* PANEL_THEME = "panelTheme";
             constexpr const char* SPOTTER_PACK = "pack";
@@ -360,16 +360,31 @@ namespace Settings {
             const char* description;
         };
 
+        // The selected gauges pack's DIRECTORY NAME under mxbmrp3_data/gauges/.
+        // A name, never an index -- same rule the other pack types follow. Each
+        // gauge stores its own, so a set can be mixed by picking rather than by
+        // authoring a `base =` skin.
+        constexpr const char* GAUGES_PACK = "gaugesPack";
+
+        // "the pack decides" -- the value NEEDLE_COLOR carries when the user has
+        // not chosen a colour, so a pack can ship a needle that contrasts with its
+        // own face (see hud/gauge_geometry.h). Written rather than omitted so that
+        // "nobody picked" and "somebody picked the factory red" stay distinct
+        // through a save/load round trip.
+        constexpr const char* NEEDLE_COLOR_FROM_PACK = "pack";
+
         // SpeedoWidget settings
         namespace Speedo {
-            constexpr Setting NEEDLE_COLOR = {"needleColor", "Needle color (hex 0xAABBGGRR, default 0xFF0000FF = red)"};
+            constexpr Setting PACK = {GAUGES_PACK, "Gauges pack folder name under mxbmrp3_data/gauges/ (default: classic)"};
+            constexpr Setting NEEDLE_COLOR = {"needleColor", "Needle color (hex 0xAABBGGRR, or 'pack' to use the gauges pack's own, default)"};
             constexpr Setting SHOW_ODOMETER = {"showOdometer", "Show total distance traveled (1 = on, default; 0 = off)"};
             constexpr Setting SHOW_TRIPMETER = {"showTripMeter", "Show trip distance, resets on session end (1 = on; 0 = off, default)"};
         }
 
         // TachoWidget settings
         namespace Tacho {
-            constexpr Setting NEEDLE_COLOR = {"needleColor", "Needle color (hex 0xAABBGGRR, default 0xFF0000FF = red)"};
+            constexpr Setting PACK = {GAUGES_PACK, "Gauges pack folder name under mxbmrp3_data/gauges/ (default: classic)"};
+            constexpr Setting NEEDLE_COLOR = {"needleColor", "Needle color (hex 0xAABBGGRR, or 'pack' to use the gauges pack's own, default)"};
         }
 
         // SpeedWidget settings
@@ -599,10 +614,18 @@ namespace Settings {
     //
     // ONE TABLE, THROUGH THE KEY SYMBOLS, and that is the point of this block
     // rather than a comment somewhere: the first version of this rule spelled
-    // the four names as string literals of its own, so renaming Gamepad::PACK
-    // would have left the exemption silently pointing at a key that no longer
-    // exists and truncated every pad name again -- with nothing to notice. Now
-    // a rename either updates both or fails to compile.
+    // the names as string literals of its own, so renaming Gamepad::PACK would
+    // have left the exemption silently pointing at a key that no longer exists
+    // and truncated every pad name again -- with nothing to notice. Now a rename
+    // either updates both or fails to compile.
+    //
+    // A RENAME is what the symbols protect against. ADDING a pack type is the
+    // other half and nothing here can catch it: the gauges pack shipped with its
+    // key missing from this list, so a set in a folder like `retro;90s` would
+    // have been truncated on load and the truncation written back on save --
+    // exactly the permanent loss described above. pack_by_name_test.cpp walks the
+    // pack types and requires each one's key to be exempt, so a sixth type fails
+    // there instead of at a user's install.
     //
     // TWO RULES COME WITH BEING ON THIS LIST, and both are checked by
     // run_persist_test.sh's semicolon case rather than trusted:
@@ -621,6 +644,7 @@ namespace Settings {
             Keys::Global::SPOTTER_PACK,
             Keys::Gamepad::PACK,
             Keys::Pitboard::PACK,
+            IniOnly::GAUGES_PACK,
         };
         for (const char* k : kKeys) {
             if (key == k) return true;

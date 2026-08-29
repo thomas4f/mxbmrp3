@@ -2,6 +2,7 @@
 // hud/settings_hud.h
 // Settings interface for configuring which columns/rows are visible in HUDs
 // ============================================================================
+// file-budget: 1500 one class definition; its implementation is already split across settings_hud_*.cpp
 #pragma once
 
 #include "base_hud.h"
@@ -161,6 +162,11 @@ public:
             // PitboardHud only, same reasoning: its background is a board PACK.
             PITBOARD_PACK_UP,
             PITBOARD_PACK_DOWN,
+            // TachoWidget and SpeedoWidget, same reasoning again: the dial FACE is a
+            // pack (art plus the range and sweep that place the needle on it), and
+            // each widget carries its own selection so a set can be mixed.
+            GAUGES_PACK_UP,
+            GAUGES_PACK_DOWN,
             BACKGROUND_OPACITY_UP,     // Increase background opacity
             BACKGROUND_OPACITY_DOWN,   // Decrease background opacity
             SCALE_UP,                  // Increase scale
@@ -1029,6 +1035,8 @@ public:
     void cycleGamepadPack(bool forward);
     // Pitboard tab: step through the installed board packs by name.
     void cyclePitboardPack(bool forward);
+    // Takes the HUD because the two gauges each select their own pack.
+    void cycleGaugesPack(BaseHud* hud, bool forward);
 private:
     void handleTitleToggleClick(const ClickRegion& region);
     void handleOpacityClick(const ClickRegion& region, bool increase);

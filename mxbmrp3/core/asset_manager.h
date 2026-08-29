@@ -3,6 +3,7 @@
 // Dynamic asset discovery and management for fonts, textures, icons, and web overlay
 // Scans mxbmrp3_data subdirectories at startup to build asset registries
 // ============================================================================
+// file-budget: 1300 one class + the per-type asset structs and kStems tables its static_asserts guard
 #pragma once
 
 #include "ui_config.h"      // mxbThemeGeneration()
@@ -11,8 +12,10 @@
 
 #include "layout_metrics.h"
 #include "panel_box.h"      // PanelBox::Sides — the box-model term storage below
+#include "pack_ini_path.h" // PackIni::k* — the canonical per-type ini stems
 #include "../hud/gamepad_geometry.h"    // GamepadLayout::PadGeometry (header-only, no deps)
 #include "../hud/pitboard_geometry.h"   // PitboardLayout::BoardGeometry (ditto)
+#include "../hud/gauge_geometry.h"      // GaugeLayout::GaugeGeometry (ditto)
 
 #include <string>
 #include <vector>
@@ -98,6 +101,21 @@ struct ThemeAsset {
     std::string name;                  // directory name, e.g. "carbon-dark"
     std::string displayName;           // e.g., "Carbon Dark"
 
+    // [pack] base -- the theme this one layers over, empty for a standalone one.
+    // Same rule and same one-level limit as the other pack types: what this
+    // folder and its ini state wins, per FILE and per KEY; what they leave out is
+    // answered from the base.
+    //
+    // It matters more here than anywhere else, and not for the reason it does on
+    // a pad. Theme art is cut from a master by tools/themeslice, so sharing
+    // SLICES is the small win. The big one is that a theme's ini carries the
+    // whole palette, the fonts and the box terms -- and until this existed a
+    // theme was only accepted with its full slice set present, so "Carbon Dark
+    // but my team's colours" cost 27 .tga copies to change three lines. With a
+    // base it is an ini and nothing else: `spriteFiles` stays EMPTY and every
+    // sprite index is the base's, already registered.
+    std::string baseName;
+
     // THE FRAME SET -- the 9-slice around a whole panel, and the only mandatory one.
     // Nine files: frame_center.tga, frame_corner_tl/tr/bl/br.tga and
     // frame_edge_top/bottom/left/right.tga. A directory missing any of them is
@@ -119,7 +137,20 @@ struct ThemeAsset {
 
     // Registration list, in the exact order discovery assigned indices. HudManager
     // pushes these verbatim; the two orders must not diverge.
+    // The files THIS folder registers, in registration order. A skin lists only
+    // what it redraws -- often nothing at all -- because a sprite it does not
+    // provide keeps the base's already-registered index. That is what makes
+    // HudManager's loop correct without knowing about bases: every stem in here
+    // really does live in this theme's own folder.
     std::vector<std::string> spriteFiles;
+
+    // The 1-based sprite index discovery assigned to spriteFiles[0]; -1 while the
+    // folder has registered nothing. Indices within one folder are consecutive, so
+    // spriteFiles[k] holds index firstOwnSprite + k -- the contract
+    // HudManager::verifySpriteRegistrationOrder() checks against the registered
+    // sprite table after setupDefaultResources() (the theme-sprite-order
+    // invariant, CLAUDE.md).
+    int firstOwnSprite = -1;
 
     // Corner size in GRID CELLS -- how many cells of the horizontal lattice the
     // corner art spans. The Y extent is that same distance in pixels, so a corner is
@@ -342,7 +373,7 @@ struct ThemeAsset {
 };
 
 // ============================================================================
-// GAMEPAD PACKS -- gamepads/<name>/<name>.ini plus its .tga set.
+// GAMEPAD PACKS -- gamepads/<name>/gamepad.ini plus its .tga set.
 //
 // A pad is a PACK rather than a texture variant because the artwork alone was
 // never enough: every button position is per-pad data (see PadGeometry), so the
@@ -398,7 +429,7 @@ namespace GamepadSprite {
                   "FACE_1_PRESSED..FACE_4_PRESSED must stay contiguous and in order");
 }
 
-// PIT BOARD PACKS -- pitboards/<name>/<name>.ini plus its art.
+// PIT BOARD PACKS -- pitboards/<name>/pitboard.ini plus its art.
 //
 // Same shape and same reasoning as a gamepad pack, one sprite instead of
 // seventeen. What it buys is different, though: the board's art was already
@@ -449,6 +480,61 @@ struct PitboardAsset {
     // whole RESOLVED set present (own file, else the base's), so these are all
     // non-zero or the pack is not in m_pitboards at all.
     int sprites[PitboardSprite::COUNT] = {};
+};
+
+// GAUGES PACKS -- gauges/<name>/gauge.ini plus its two dial faces.
+//
+// The third pack type, and the one whose old arrangement was not merely limiting
+// but WRONG: the ticks and figures are painted into the .tga while the needle was
+// placed from TachoWidget::MAX_RPM and MIN/MAX_ANGLE_DEG, compiled in. See
+// hud/gauge_geometry.h for why that mis-draws any face but the shipped one.
+//
+// BOTH FACES IN ONE PACK, not gauges split across a tacho/ and a speedo/ root.
+// They are drawn as a set, so splitting them would mean picking the same name
+// twice for the matched case; and the mixed case is already answered twice over
+// -- each widget selects its own pack, and `base =` makes "my tacho over the
+// shipped speedo" a two-file pack.
+namespace GaugeSprite {
+    enum Part {
+        TACHO = 0,   // the rev-counter face
+        SPEEDO,      // the speedometer face
+        COUNT
+    };
+
+    // THE REGISTRY, exactly as GamepadSprite::kStems and PitboardSprite::kStems
+    // are: discovery walks it to hand out sprite indices and HudManager walks the
+    // same table to register the files. One order, so the two cannot diverge.
+    inline constexpr const char* kStems[] = {
+        "tacho",
+        "speedo",
+    };
+    static_assert(sizeof(kStems) / sizeof(kStems[0]) == COUNT,
+                  "kStems must name exactly one file per GaugeSprite::Part");
+}
+
+struct GaugesAsset {
+    std::string name;          // directory name, e.g. "classic"
+    std::string displayName;   // [gauges] name, else generated from the directory
+
+    // [gauges] base -- see PitboardAsset::baseName; same rule, same one-level
+    // limit. Here it is also how a MIXED set is expressed: a pack with
+    // `base = classic` and only its own tacho.tga is a custom rev-counter on the
+    // shipped speedometer.
+    std::string baseName;
+
+    // What each face reads and what its needle looks like. For a based pack this
+    // starts as a COPY of the base's, so an omitted key means "same as the base"
+    // rather than "built-in default".
+    GaugeLayout::GaugeGeometry geometry;
+
+    // Per Part: file resolves from the base pack's folder (true) or this pack's
+    // own (false). See PitboardAsset.
+    bool spriteFromBase[GaugeSprite::COUNT] = {};
+
+    // Sprite index per GaugeSprite::Part. A pack is only accepted with its whole
+    // RESOLVED set present, so these are all non-zero or the pack is not in
+    // m_gauges at all -- there is no half-registered set with one blank face.
+    int sprites[GaugeSprite::COUNT] = {};
 };
 
 struct GamepadAsset {
@@ -867,6 +953,24 @@ public:
     static constexpr const char* DEFAULT_PITBOARD = "classic";
 
     // ========================================================================
+    // Gauges Pack Access -- mirrors the two pack blocks above.
+    // ========================================================================
+
+    const std::vector<GaugesAsset>& getGauges() const { return m_gauges; }
+    size_t getGaugesCount() const { return m_gauges.size(); }
+
+    const GaugesAsset* getGaugesByName(const std::string& name) const;
+    const GaugesAsset* getDefaultGauges() const;
+
+    std::string getGaugesPath(const std::string& packName, const char* stem) const;
+
+    static constexpr const char* DEFAULT_GAUGES = "classic";
+    // The pack migrateLegacyGaugeArt() writes, and the one getDefaultGauges()
+    // prefers when it exists. Named here so the writer and the reader cannot
+    // disagree about the folder.
+    static constexpr const char* LEGACY_GAUGES = "legacy";
+
+    // ========================================================================
     // Path Configuration
     // ========================================================================
 
@@ -881,6 +985,7 @@ public:
     static constexpr const char* GAMEPADS_SUBDIR = "gamepads";
     static constexpr const char* PITBOARDS_SUBDIR = "pitboards";
     static constexpr const char* SPOTTERS_SUBDIR = "spotters";
+    static constexpr const char* GAUGES_SUBDIR = "gauges";
     static constexpr const char* WEB_SUBDIR = "web";
     // User override directory (under savePath, e.g., Documents\PiBoSo\MX Bikes\mxbmrp3\)
     static constexpr const char* USER_OVERRIDE_DIR = "mxbmrp3";
@@ -888,7 +993,8 @@ public:
     // The nested PACK types, in one table.
     //
     // A pack is a folder the user can author and hand to someone else:
-    // <root>\<name>\ holding that type's payload plus a <name>.ini describing it.
+    // <root>\<name>\ holding that type's payload plus a <type>.ini describing it
+    // (theme.ini, gamepad.ini, ... -- see core/pack_ini_path.h).
     // All four share that shape, and all four need the same two things done for
     // them -- copied out of the user's Documents folder at startup, and copied
     // again on RELOAD_CONFIG so an author's edit-reload loop works.
@@ -908,14 +1014,18 @@ public:
     // there rather than going quietly unsyncable.
     struct PackType {
         const char* subdir;
-        const char* label;   // names the type in the sync log line only
+        // Names the type in the sync log line AND is the canonical stem of every
+        // pack's ini (PackIni::k*, core/pack_ini_path.h) -- the same object, so
+        // what the log calls a type and what it is called on disk cannot drift.
+        const char* label;
         const char* media;   // FindFirstFile pattern for the payload files
     };
     static constexpr PackType PACK_TYPES[] = {
-        { THEMES_SUBDIR,    "theme",    "*.tga" },
-        { GAMEPADS_SUBDIR,  "gamepad",  "*.tga" },
-        { PITBOARDS_SUBDIR, "pitboard", "*.tga" },
-        { SPOTTERS_SUBDIR,  "spotter",  "*.wav" },
+        { THEMES_SUBDIR,    PackIni::kTheme,    "*.tga" },
+        { GAMEPADS_SUBDIR,  PackIni::kGamepad,  "*.tga" },
+        { PITBOARDS_SUBDIR, PackIni::kPitboard, "*.tga" },
+        { SPOTTERS_SUBDIR,  PackIni::kSpotter,  "*.wav" },
+        { GAUGES_SUBDIR,    PackIni::kGauges,   "*.tga" },
     };
 
 private:
@@ -928,7 +1038,7 @@ private:
     void syncUserAssets(const char* savePath);
     void syncDirectory(const std::string& sourceDir, const std::string& destDir, const char* extension);
     // Every pack type shares one nested shape -- <root>/<name>/<payload> plus
-    // <name>.ini -- which the flat syncDirectory cannot carry. `label` names the
+    // its <type>.ini -- which the flat syncDirectory cannot carry. `label` names the
     // asset type in the log line only; `mediaPattern` is that type's non-ini
     // payload (art for themes/pads/boards, audio for spotter voices).
     void syncPackDirectories(const std::string& sourceRoot, const std::string& destRoot,
@@ -950,6 +1060,33 @@ private:
     void discoverThemes();
     void discoverGamepads();
     void discoverPitboards();
+    void discoverGauges();
+
+    // ONE-TIME UPGRADE PATH for gauge art that predates gauges/<name>/ packs.
+    //
+    // Making the tacho and speedo pack HUDs means they stop consulting the flat
+    // textures directory entirely (BaseHud::setTextureVariant returns early for a
+    // pack HUD), so a user who had drawn their own tacho_widget_1.tga would have
+    // watched it be replaced by the shipped face on upgrade, with no warning and
+    // no way back -- which is precisely the break the pit board and the pad
+    // caused, reported from the seat as grey boxes.
+    //
+    // So the plugin migrates rather than the user: their file becomes a real pack
+    // folder in their own Documents tree, which they can then rename, reskin or
+    // delete. Reads from the USER's own textures directory only, never the
+    // plugin's: an upgrade leaves the previously-shipped tacho_widget_1.tga
+    // behind in the plugins tree (File /r copies, it never deletes), so that copy
+    // cannot say whose art it is, while a file in Documents was put there by a
+    // person.
+    //
+    // Runs before the pack sync, so the folder it writes is picked up by the
+    // ordinary path with nothing special downstream.
+    void migrateLegacyGaugeArt(const std::string& userBaseDir);
+
+    // The half of that upgrade the migration cannot reach: gauge art in the
+    // PLUGIN's own textures directory, which nothing reads any more. See the
+    // definition for why one log line has to address two different readers.
+    void warnAboutStrandedGaugeTextures() const;
 
     // Reset every pack of one type to its built-in geometry and re-read its ini.
     // Backs reloadThemeLayouts(); see there for why it is one generic helper rather
@@ -958,15 +1095,18 @@ private:
     //
     // Defined in the .cpp, where the per-type ini readers live -- both instantiations
     // are in that same TU. `subdir` is the pack root under DISCOVERY_DIR.
+    // `stem` is the type's PackIni::k* ini stem, passed rather than derived from
+    // `subdir` because the two are not the same word ("gamepads" / "gamepad") and
+    // pluralising by hand is how a reload ends up reading a file discovery does not.
     // `seed` runs after the reset and BEFORE the ini, for a pack type whose defaults
     // are not the struct's -- see seedPitboardArt(). nullptr when there are none.
     template <typename Pack>
-    void reloadPackLayouts(std::vector<Pack>& packs, const char* subdir,
+    void reloadPackLayouts(std::vector<Pack>& packs, const char* subdir, const char* stem,
                            void (*readIni)(const std::string&, Pack&),
                            void (*seed)(const std::string&, Pack&) = nullptr);
 
     // A pit board's art proportions default to the ARTWORK's own, read from the .tga,
-    // so a pack stating no [art] block still draws undistorted (classic.ini documents
+    // so a pack stating no [art] block still draws undistorted (the classic board's pitboard.ini documents
     // exactly that). Shared by discoverPitboards() and the reload, because a default
     // applied at discovery and not at reload is a default RELOAD_CONFIG deletes --
     // which is what it did: the reset restored the compiled 1920x1080 and only the ini
@@ -983,11 +1123,27 @@ public:
     // gained, lost or renamed a .tga needs a restart; its insets and spacing do not.
     void reloadThemeLayouts();
 
-    // Where a theme's ini lives. Named after the theme -- carbon-dark/carbon-dark.ini --
-    // rather than a generic theme.ini, so a skinner with several open in an editor
-    // can tell the tabs apart. That is the entire reason; nothing reads the name.
-    // `dir` must end with a separator.
-    static std::string themeIniPath(const std::string& dir, const std::string& themeName);
+    // Where any pack's ini lives: <dir>\<stem>.ini, falling back to the pre-rename
+    // <dir>\<packName>.ini and warning when a stale copy of the latter is being
+    // shadowed. See core/pack_ini_path.h for the rule and why the fallback stays.
+    //
+    // The per-theme name it replaced was chosen so a skinner with several inis open
+    // could tell the editor tabs apart. That cost is real and was paid anyway: it
+    // also meant copying a pack to start a new one produced a folder the plugin
+    // silently ignored, which is the worse of the two. Editors show the parent
+    // folder; nothing else read the name.
+    // `dir` must end with a separator; `stem` is a PackIni::k* constant.
+    //
+    // NOT static any more: the shadow warning is only for a pack the USER owns
+    // (see PackIni::resolve), and answering that needs m_userBaseDir.
+    std::string packIniPath(const std::string& dir, const std::string& packName,
+                            const char* stem) const;
+
+    // The user's own asset tree (<savePath>\mxbmrp3), or empty before
+    // discoverAssets has run. It is where a person's files are, which is the one
+    // thing that separates a pack somebody authored from one an installer wrote
+    // -- used by the shadow warning here and by SpotterManager's.
+    const std::string& userAssetDir() const { return m_userBaseDir; }
 private:
 
     // Parse texture filename to extract base name and variant number
@@ -1001,7 +1157,7 @@ private:
     // Read TGA header to get pixel dimensions (returns false if file can't be read)
     static bool readTgaDimensions(const std::string& path, int& width, int& height);
 
-    // Parse a theme's optional ini (see themeIniPath) (inset, tintable) into `theme`. Never
+    // Parse a theme's optional ini (see packIniPath) (inset, tintable) into `theme`. Never
     // throws: the file is user-editable, and an exception here would abort all
     // asset discovery.
     static void readThemeIni(const std::string& iniPath, ThemeAsset& theme);
@@ -1013,6 +1169,7 @@ private:
     std::vector<ThemeAsset> m_themes;
     std::vector<GamepadAsset> m_gamepads;
     std::vector<PitboardAsset> m_pitboards;
+    std::vector<GaugesAsset> m_gauges;
 
     // savePath\mxbmrp3, remembered from syncUserAssets so the RELOAD_CONFIG hotkey
     // can re-copy every pack type from the folder the user actually edits. Empty

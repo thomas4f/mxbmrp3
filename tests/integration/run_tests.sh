@@ -53,7 +53,7 @@ CXXFLAGS=(-std=c++17 -O1)
 # stand-in. The plugin has no built-in phrases any more — that file is where
 # the spotter's words live — so a test asserting what it says has to read it.
 # Z: is Wine's mapping of /, and forward slashes are fine for the CRT.
-CXXFLAGS+=(-DMXB_SHIPPED_PACK_INI="\"Z:${ROOT}/mxbmrp3_data/spotters/default/default.ini\"")
+CXXFLAGS+=(-DMXB_SHIPPED_PACK_INI="\"Z:${ROOT}/mxbmrp3_data/spotters/default/spotter.ini\"")
 # Static link: the tests use std::string/std::thread, whose mingw runtime DLLs
 # aren't on Wine's search path. -lws2_32 for the HTTP GET.
 LDFLAGS=(-static -static-libgcc -static-libstdc++)

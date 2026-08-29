@@ -65,7 +65,7 @@ are gated by `MXBMRP3_TEST_BUILD` / `_MSC_VER`, so the MSVC build is unaffected.
   recorded tape (`tests/integration/spotter_transcript_driver.cpp`) and, from
   1.29.1 on, how a player's report of the default wording can be read at all.
   Deliberate and temporary - see the block comment at
-  `MXBMRP3_SPOTTER_PROBE` in `core/spotter_manager.cpp` for what it costs and how
+  `MXBMRP3_SPOTTER_PROBE` in `core/spotter_manager_internal.h` for what it costs and how
   it comes out again.
 
 The game engine doesn't support C++ exceptions in the render/telemetry path and
@@ -125,8 +125,12 @@ on violations - run them before pushing anything they cover:
 ./tests/integration/check_move_reads.sh       # std::move(x) and a read off x in one call
 ./tests/integration/check_title_tier.sh       # a full HUD's caption asks for the Large tier
 ./tests/integration/check_hud_raw_cache.sh    # raw Unified:: members cached in a HUD
+./tests/integration/check_change_consumers.sh # onDataChanged consumers state their change-gate
+./tests/integration/check_test_hook_placement.sh # MXBMRP3_Test_* code only in test_hooks.cpp
+./tests/integration/check_thread_join.sh      # std::thread members name their Shutdown-path join
 ./tests/integration/check_hud_helpers.sh      # HUD hand-rolling a BaseHud helper (12 rules)
 ./tests/integration/check_section_spacing.sh  # addSpacing() before a settings addSectionHeading()
+./tests/integration/check_file_budgets.sh     # file-size ratchet: >1,000 lines needs a stated `// file-budget:`
 ./tests/integration/check_style.sh            # tabs/trailing-WS/CRLF/final newline
 ./tests/run_cppcheck.sh                       # cppcheck static analysis (zero-finding baseline)
 ./tests/integration/check_session_hook.sh     # the SessionStart hook still provisions + reports

@@ -70,7 +70,7 @@ inline float unitScale(float em) {
 // so they track the frame however the type is sized.
 //
 // The defaults here are the LAST-RESORT fallback used when a pad has no ini at
-// all; the shipped values live in gamepads/<name>/<name>.ini. They deliberately
+// all; the shipped values live in gamepads/<name>/gamepad.ini. They deliberately
 // match the shipped Xbox pack: the previous fallback was a hand-copied struct
 // that had drifted from it (dpad 34x56 / face 53 against the real 32x53 / 47),
 // so an unrecognised pad drew at subtly wrong sizes.

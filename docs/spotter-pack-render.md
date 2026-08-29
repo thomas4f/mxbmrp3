@@ -1,6 +1,6 @@
 # The shipped spotter pack, rendered
 
-GENERATED from `mxbmrp3_data/spotters/default/default.ini` by
+GENERATED from `mxbmrp3_data/spotters/default/spotter.ini` by
 `test_spotter_pack_census.cpp`, which rewrites it and fails if this
 copy is stale. Do not edit by hand - edit the pack.
 

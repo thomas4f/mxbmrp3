@@ -6,7 +6,7 @@
 //
 // WHAT THIS PINS. The two pads' geometry used to be ~60 hardcoded assignments in
 // GamepadWidget::initDefaultLayouts() — variant 1 was the Xbox pad, variant 2 the
-// DualShock. Moving those numbers into gamepads/<name>/<name>.ini is a pure data
+// DualShock. Moving those numbers into gamepads/<name>/gamepad.ini is a pure data
 // migration, and a pure data migration has exactly one failure mode worth
 // guarding: a number that silently changed on the way across. A typo in an offset
 // does not fail to build, does not fail to parse, and does not fail any other
@@ -33,8 +33,10 @@
 #include "doctest.h"
 
 #include "hud/gamepad_geometry.h"
+#include "hud/gauge_geometry.h"
 #include "hud/pitboard_geometry.h"
 #include "core/layout_config.h"
+#include "core/pack_ini_path.h"
 
 #include <limits>
 #include <string>
@@ -49,15 +51,19 @@ using namespace GamepadLayout;
 #error "GAMEPADS_DIR must be defined by the build (see tests/unit/CMakeLists.txt)"
 #endif
 
+#ifndef GAUGES_DIR
+#error "GAUGES_DIR must be defined by the build (see tests/unit/CMakeLists.txt)"
+#endif
+
 namespace {
 
 // Read one shipped pack ini through the production walk + mapping.
 PadGeometry loadPack(const char* name) {
     PadGeometry g;
-    const std::string path = std::string(GAMEPADS_DIR) + "/" + name + "/" + name + ".ini";
+    const std::string path = std::string(GAMEPADS_DIR) + "/" + name + "/" + PackIni::kGamepad + ".ini";
     const bool opened = layoutForEachIniPairRaw(path,
         [](const char* key, float value, const char* /*raw*/, bool numeric, void* ctx) -> bool {
-            // [pad] name is the one non-numeric key and is not geometry.
+            // [pack] name is the one non-numeric key and is not geometry.
             if (numeric) applyPadGeometryIni(*static_cast<PadGeometry*>(ctx), key, value);
             return true;
         }, &g);
@@ -238,7 +244,7 @@ namespace {
 
 PitboardLayout::BoardGeometry loadBoard(const char* name) {
     PitboardLayout::BoardGeometry g;
-    const std::string path = std::string(PITBOARDS_DIR) + "/" + name + "/" + name + ".ini";
+    const std::string path = std::string(PITBOARDS_DIR) + "/" + name + "/" + PackIni::kPitboard + ".ini";
     const bool opened = layoutForEachIniPairRaw(path,
         [](const char* key, float value, const char* /*raw*/, bool numeric, void* ctx) -> bool {
             if (numeric) PitboardLayout::applyBoardGeometryIni(
@@ -341,6 +347,176 @@ TEST_CASE("every board ini key names a distinct field") {
         for (size_t j = i + 1; j < n; ++j) {
             CHECK(std::string(kBoardGeometryIni[i].key) != std::string(kBoardGeometryIni[j].key));
             CHECK(kBoardGeometryIni[i].field != kBoardGeometryIni[j].field);
+        }
+    }
+}
+
+// ============================================================================
+// GAUGES PACKS. Same format again; what the pack fixes here is the sharpest of
+// the three, because the old arrangement did not merely limit custom art -- it
+// mis-drew it. The dial's ticks and figures are painted into the .tga while the
+// needle was placed from TachoWidget::MAX_RPM / MIN_ANGLE_DEG and the speedo's
+// equivalents, all compiled in. Draw a face to any other ceiling and the needle
+// read wrong at every point but zero, with nothing anywhere to say so.
+//
+// So these cases pin the migration the same way the pitboard's do -- the
+// expectations are the ORIGINAL compiled constants, written out rather than read
+// from the file under test -- plus the arithmetic that constant fed, since
+// angleFor() is what actually has to reproduce the old expression.
+// ============================================================================
+
+namespace {
+
+GaugeLayout::GaugeGeometry loadGauges(const char* name) {
+    GaugeLayout::GaugeGeometry g;
+    const std::string path = std::string(GAUGES_DIR) + "/" + name + "/gauge.ini";
+    const bool opened = layoutForEachIniPairRaw(path,
+        [](const char* key, float value, const char* /*raw*/, bool numeric, void* ctx) -> bool {
+            if (numeric) GaugeLayout::applyGaugeGeometryIni(
+                *static_cast<GaugeLayout::GaugeGeometry*>(ctx), key, value);
+            return true;
+        }, &g);
+    REQUIRE_MESSAGE(opened, "could not open " << path);
+    return g;
+}
+
+}  // namespace
+
+TEST_CASE("shipped classic gauges match the constants they replaced") {
+    const GaugeLayout::GaugeGeometry g = loadGauges("classic");
+
+    // TachoWidget: MIN_RPM 0, MAX_RPM 15000, MIN/MAX_ANGLE_DEG -158/142.
+    CHECK(g.tacho.min == doctest::Approx(0.0f));
+    CHECK(g.tacho.max == doctest::Approx(15000.0f));
+    CHECK(g.tacho.minAngle == doctest::Approx(-158.0f));
+    CHECK(g.tacho.maxAngle == doctest::Approx(142.0f));
+
+    // SpeedoWidget: MIN_SPEED_KMH 0, MAX_SPEED_KMH 230, same sweep.
+    CHECK(g.speedo.min == doctest::Approx(0.0f));
+    CHECK(g.speedo.max == doctest::Approx(230.0f));
+    CHECK(g.speedo.minAngle == doctest::Approx(-158.0f));
+    CHECK(g.speedo.maxAngle == doctest::Approx(142.0f));
+
+    // The needle fractions were literals in both rebuildRenderData()s.
+    CHECK(g.tacho.needleLength == doctest::Approx(0.42f));
+    CHECK(g.tacho.needleWidth == doctest::Approx(0.025f));
+    CHECK(g.speedo.needleLength == doctest::Approx(0.42f));
+    CHECK(g.speedo.needleWidth == doctest::Approx(0.025f));
+
+    // ...and the odometer rows, which were dialHeight * 0.33f / * 0.66f.
+    CHECK(g.odometerY == doctest::Approx(0.33f));
+    CHECK(g.tripmeterY == doctest::Approx(0.66f));
+}
+
+TEST_CASE("needle angle reproduces the expression it replaced") {
+    const GaugeLayout::GaugeGeometry g = loadGauges("classic");
+
+    // The old tacho line, verbatim: ratio = rpm / MAX_RPM, then
+    // MIN_ANGLE + ratio * (MAX_ANGLE - MIN_ANGLE).
+    for (float rpm : {0.0f, 3000.0f, 7500.0f, 15000.0f}) {
+        const float expected = -158.0f + (rpm / 15000.0f) * (142.0f - -158.0f);
+        CHECK(g.tacho.angleFor(rpm) == doctest::Approx(expected));
+    }
+    for (float kmh : {0.0f, 60.0f, 115.0f, 230.0f}) {
+        const float expected = -158.0f + (kmh / 230.0f) * (142.0f - -158.0f);
+        CHECK(g.speedo.angleFor(kmh) == doctest::Approx(expected));
+    }
+
+    // Out of range parks at the end, as the widgets' explicit clamps did.
+    CHECK(g.tacho.angleFor(-1.0f) == doctest::Approx(g.tacho.minAngle));
+    CHECK(g.tacho.angleFor(99999.0f) == doctest::Approx(g.tacho.maxAngle));
+}
+
+TEST_CASE("a face that reads something else gets its own needle") {
+    // The case the compiled constant could not express at all: at 7500 rpm the
+    // shipped 15000 face is at mid-sweep, a 13000 face is past it. Before packs
+    // BOTH drew the shipped angle, and the second one was simply wrong.
+    const GaugeLayout::GaugeGeometry shipped = loadGauges("classic");
+    GaugeLayout::GaugeGeometry mx;
+    mx.tacho = GaugeLayout::dialRange(0.0f, 13000.0f);
+
+    CHECK(mx.tacho.angleFor(7500.0f) > shipped.tacho.angleFor(7500.0f));
+    CHECK(mx.tacho.angleFor(13000.0f) == doctest::Approx(mx.tacho.maxAngle));
+    CHECK(shipped.tacho.angleFor(13000.0f) < shipped.tacho.maxAngle);
+
+    // A face whose scale starts partway up: min is not assumed to be zero, which
+    // the old `value / MAX` ratio did assume.
+    GaugeLayout::Dial offset = GaugeLayout::dialRange(1000.0f, 11000.0f);
+    CHECK(offset.angleFor(1000.0f) == doctest::Approx(offset.minAngle));
+    CHECK(offset.angleFor(6000.0f) ==
+          doctest::Approx((offset.minAngle + offset.maxAngle) / 2.0f));
+}
+
+TEST_CASE("needle angle refuses to produce a NaN sweep") {
+    // Hand-edited ini: a face that spans nothing must park the needle, not
+    // divide by zero and take the quad with it.
+    GaugeLayout::Dial flat = GaugeLayout::dialRange(500.0f, 500.0f);
+    CHECK(flat.angleFor(500.0f) == doctest::Approx(flat.minAngle));
+    CHECK(flat.angleFor(9000.0f) == doctest::Approx(flat.minAngle));
+
+    GaugeLayout::Dial inverted = GaugeLayout::dialRange(1000.0f, 0.0f);
+    CHECK(inverted.angleFor(500.0f) == doctest::Approx(inverted.minAngle));
+}
+
+TEST_CASE("gauge ini mapping rejects what it cannot use") {
+    GaugeLayout::GaugeGeometry g;
+    const float maxBefore = g.tacho.max;
+
+    CHECK_FALSE(GaugeLayout::applyGaugeGeometryIni(g, "tacho.maxx", 1.0f));
+    CHECK_FALSE(GaugeLayout::applyGaugeGeometryIni(g, "tacho.odometer-y", 1.0f));
+    // Another pack type's vocabulary must NOT resolve here.
+    CHECK_FALSE(GaugeLayout::applyGaugeGeometryIni(g, "art.width", 1.0f));
+    CHECK_FALSE(GaugeLayout::applyGaugeGeometryIni(g, "size.stick", 1.0f));
+
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const float inf = std::numeric_limits<float>::infinity();
+    CHECK(GaugeLayout::applyGaugeGeometryIni(g, "tacho.max", nan));
+    CHECK(g.tacho.max == doctest::Approx(maxBefore));
+    CHECK(GaugeLayout::applyGaugeGeometryIni(g, "tacho.max", inf));
+    CHECK(g.tacho.max == doctest::Approx(maxBefore));
+
+    CHECK(GaugeLayout::applyGaugeGeometryIni(g, "tacho.max", 13000.0f));
+    CHECK(g.tacho.max == doctest::Approx(13000.0f));
+}
+
+TEST_CASE("max-mph writes the same field as max, converted") {
+    // The alternative spelling exists so an mph face is authored in mph rather
+    // than in a number its author has to work out -- and it is a SECOND KEY
+    // rather than a `unit =` line precisely so it cannot depend on read order.
+    GaugeLayout::GaugeGeometry g;
+    CHECK(GaugeLayout::applyGaugeGeometryIni(g, "speedo.max-mph", 140.0f));
+    CHECK(g.speedo.max == doctest::Approx(140.0f * 1.609344f));
+
+    // Whichever is stated last wins, both ways round -- there is no hidden state.
+    CHECK(GaugeLayout::applyGaugeGeometryIni(g, "speedo.max", 230.0f));
+    CHECK(g.speedo.max == doctest::Approx(230.0f));
+    CHECK(GaugeLayout::applyGaugeGeometryIni(g, "speedo.max-mph", 100.0f));
+    CHECK(g.speedo.max == doctest::Approx(160.9344f));
+
+    // It addresses the SPEEDO only: there is no tacho.max-mph, because RPM is
+    // RPM. A typo like that must be reported, not silently applied.
+    CHECK_FALSE(GaugeLayout::applyGaugeGeometryIni(g, "tacho.max-mph", 100.0f));
+}
+
+TEST_CASE("every gauge ini key names a distinct field") {
+    using GaugeLayout::kGaugeDialIni;
+    using GaugeLayout::kGaugeOwnIni;
+    constexpr size_t nd = sizeof(kGaugeDialIni) / sizeof(kGaugeDialIni[0]);
+    for (size_t i = 0; i < nd; ++i) {
+        for (size_t j = i + 1; j < nd; ++j) {
+            CHECK(std::string(kGaugeDialIni[i].key) != std::string(kGaugeDialIni[j].key));
+            // Same field is fine across DIFFERENT dials; same dial AND same field
+            // is the duplicate that would make one key unreachable.
+            const bool sameSlot = kGaugeDialIni[i].dial == kGaugeDialIni[j].dial &&
+                                  kGaugeDialIni[i].field == kGaugeDialIni[j].field;
+            CHECK_FALSE(sameSlot);
+        }
+    }
+    constexpr size_t no = sizeof(kGaugeOwnIni) / sizeof(kGaugeOwnIni[0]);
+    for (size_t i = 0; i < no; ++i) {
+        for (size_t j = i + 1; j < no; ++j) {
+            CHECK(std::string(kGaugeOwnIni[i].key) != std::string(kGaugeOwnIni[j].key));
+            CHECK(kGaugeOwnIni[i].field != kGaugeOwnIni[j].field);
         }
     }
 }

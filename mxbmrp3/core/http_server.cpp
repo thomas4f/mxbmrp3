@@ -216,6 +216,9 @@ void HttpServer::publishSnapshot() {
     m_dataCondition.notify_all();
 }
 
+// change-gate: the hasActiveClients() model consumer (CLAUDE.md) — frequent
+// types are skipped (cache marked stale) while no overlay is connected; rare
+// transition types always rebuild, per the classification below.
 void HttpServer::onDataChanged(DataChangeType changeType) {
     if (!m_running) return;
 

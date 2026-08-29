@@ -2,6 +2,7 @@
 // hud/base_hud.h
 // Base class for all HUD display elements with common rendering and positioning logic
 // ============================================================================
+// file-budget: 2500 one class definition; the split bar (unchanged class definitions) forbids carving it
 #pragma once
 #include <vector>
 #include "../core/small_vec.h"
@@ -245,7 +246,7 @@ public:
     // makes resolveActiveTheme() return nullptr -- so the theme it offers can never
     // take effect. Radar, which does have a base name, shows a Texture cycle and is
     // the shape the other two should match.
-    enum class PackKind { None, Gamepad, Pitboard };
+    enum class PackKind { None, Gamepad, Pitboard, Gauges };
     PackKind m_packKind = PackKind::None;
 
     // CAN THIS PANEL CARRY A CAPTION AT ALL. False means there is no Title row in the

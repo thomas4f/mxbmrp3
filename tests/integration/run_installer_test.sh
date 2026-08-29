@@ -179,7 +179,9 @@ mkdir -p "${STAGE}/mxbmrp3_data/fonts" "${STAGE}/mxbmrp3_data/textures" \
          "${STAGE}/mxbmrp3_data/themes/testtheme" \
          "${STAGE}/mxbmrp3_data/gamepads/testpad" \
          "${STAGE}/mxbmrp3_data/pitboards/testboard" \
-         "${STAGE}/mxbmrp3_data/spotters/testvoice"
+         "${STAGE}/mxbmrp3_data/spotters/testvoice" \
+         "${STAGE}/mxbmrp3_data/gauges/testgauges" \
+         "${STAGE}/mxbmrp3_data/gauges/gauge"
 # The two licence notices the installer lays into mxbmrp3_data\. Release staging
 # puts them at the staging ROOT (both zip builders copy them there), which is where
 # the .nsi File-s them from.
@@ -203,7 +205,7 @@ echo p > "${STAGE}/mxbmrp3_data/web/logos/logo1.png"
 # installer gate ran.
 echo c > "${STAGE}/mxbmrp3_data/themes/testtheme/center.tga"
 echo n > "${STAGE}/mxbmrp3_data/themes/testtheme/testtheme.ini"
-# A gamepad pack nests exactly like a theme (gamepads/<name>/*.tga + <name>.ini),
+# A gamepad pack nests exactly like a theme (gamepads/<name>/*.tga + gamepad.ini),
 # so it needs its own staged subdirectory for the same reason: makensis fails the
 # build on an empty recursive glob.
 echo g > "${STAGE}/mxbmrp3_data/gamepads/testpad/background.tga"
@@ -217,6 +219,29 @@ echo n > "${STAGE}/mxbmrp3_data/pitboards/testboard/testboard.ini"
 # subdirectory.
 echo a > "${STAGE}/mxbmrp3_data/spotters/testvoice/clear.wav"
 echo n > "${STAGE}/mxbmrp3_data/spotters/testvoice/testvoice.ini"
+# Gauges packs nest identically again (gauges/<name>/*.tga + gauge.ini); a fifth
+# recursive File line, a fifth empty-glob risk, a fifth staged subdirectory.
+#
+# This one carries BOTH ini spellings, which the four above do not: Setup used to
+# prune the pre-rename one here, and the assertions below are what pins that it
+# no longer touches ANY file it did not write. The pruning moved into the plugin,
+# which warns about a shadowed ini only when the user's own asset tree has a copy
+# -- one rule, in the file that already owns it, instead of a second copy of it
+# re-derived in NSIS (where it was wrong: it deleted the canonical ini of a pack
+# named after its own type).
+echo t > "${STAGE}/mxbmrp3_data/gauges/testgauges/tacho.tga"
+echo s > "${STAGE}/mxbmrp3_data/gauges/testgauges/speedo.tga"
+echo n > "${STAGE}/mxbmrp3_data/gauges/testgauges/gauge.ini"
+echo o > "${STAGE}/mxbmrp3_data/gauges/testgauges/testgauges.ini"
+# ...and a pack whose FOLDER is named after its type. `gauges\gauge\gauge.ini` is
+# both the canonical name and the legacy one, and it is what the deleted macro
+# got wrong -- it removed the file it had just tested for, and the pack stopped
+# being discovered. Kept staged now that nothing deletes anything, because "Setup
+# writes and never removes" is the property worth pinning, and this pack is the
+# one that made the old behaviour visible.
+echo t > "${STAGE}/mxbmrp3_data/gauges/gauge/tacho.tga"
+echo s > "${STAGE}/mxbmrp3_data/gauges/gauge/speedo.tga"
+echo n > "${STAGE}/mxbmrp3_data/gauges/gauge/gauge.ini"
 
 echo "== Compiling installer (makensis) =="
 makensis -V1 -DPLUGIN_VERSION=9.9.9.0 -DPLUGIN_SOURCE_PATH="${STAGE}" \
@@ -326,6 +351,80 @@ echo x > "${WORK}/game_krp/kart.exe"
 
 # ---------------------------------------------------------------------------
 echo ""
+echo "== Case 0b: each custom page still builds its OWN controls =="
+# WHY THIS IS STATIC. Every case below drives Setup with /S, so no custom page is
+# ever SHOWN -- the whole GUI is invisible to this test, and a page whose body was
+# replaced by another page's still installs perfectly. That is not hypothetical: a
+# scripted edit once matched the FIRST "NSD_CreateLabel 0 0 300u" in the file and
+# overwrote the existing-install page (its three radio buttons: upgrade / fresh /
+# uninstall) with the privacy page's content. makensis compiled it, this test went
+# green, and the only evidence was a screenshot showing the wrong page.
+#
+# So this asserts the source structure instead: each page function must still
+# contain the controls that make it that page. It cannot check layout or wording --
+# for that a human still has to look -- but it does catch a page body going missing.
+python3 - "${HERE}/../../packaging/mxbmrp3.nsi" <<'PYEOF'
+import re, sys
+src = open(sys.argv[1], encoding='utf-8').read()
+
+def body(name):
+    m = re.search(r'^Function %s\n(.*?)^FunctionEnd' % re.escape(name), src,
+                  re.S | re.M)
+    return m.group(1) if m else None
+
+# function -> (substring that must appear, how many times, what it is)
+EXPECT = {
+    'ShowExistingPluginInstallPage': [('NSD_CreateRadioButton', 3, 'action radio buttons')],
+    # Two variants per game -- "(Detected)" and "(Not detected)" -- so six for three games.
+    'ShowGameSelectionPage':         [('NSD_CreateCheckbox', 6, 'per-game checkbox variants')],
+    'ShowPrivacyPage':               [('NSD_CreateCheckbox', 1, 'analytics checkbox'),
+                                      ('NSD_CreateLink', 2, 'links (privacy policy + usage report)')],
+}
+# PAGE ORDER. The Privacy page must be declared BEFORE the game-selection page,
+# because LeaveGameSelectionPage is where Setup relaunches itself elevated and the
+# elevated child aborts every custom page. Declared after it, the page never shows
+# on the common Steam/Program Files install and $analyticsOptOut is still "0" when
+# the child's command line is built -- the opt-out silently does not exist.
+#
+# Case 8 below cannot see this: it hands /NOSTATS=1 straight to the child, which is
+# the state the parent is supposed to produce. This checks the thing that produces
+# it.
+order = [m.group(1) for m in re.finditer(r'^Page Custom (\w+)', src, re.M)]
+fails = 0
+if 'ShowPrivacyPage' not in order:
+    print("  FAIL: no Privacy page is declared"); fails += 1
+elif 'ShowGameSelectionPage' not in order:
+    print("  FAIL: no game-selection page is declared"); fails += 1
+elif order.index('ShowPrivacyPage') > order.index('ShowGameSelectionPage'):
+    print("  FAIL: Privacy page is declared AFTER game selection -- the elevated "
+          "child aborts it, so it never shows on an elevated install")
+    fails += 1
+else:
+    print("  PASS: Privacy page is declared before the elevation relaunch")
+
+for fn, checks in EXPECT.items():
+    b = body(fn)
+    if b is None:
+        print("  FAIL: %s is missing entirely" % fn); fails += 1; continue
+    # Every page must set its own header, or it inherits the previous page's.
+    if 'MUI_HEADER_TEXT' not in b:
+        print("  FAIL: %s sets no MUI_HEADER_TEXT (page would keep the previous "
+              "page's title)" % fn); fails += 1
+    else:
+        print("  PASS: %s sets its own header" % fn)
+    for needle, want, what in checks:
+        got = b.count(needle)
+        if got == want:
+            print("  PASS: %s has its %d %s" % (fn, want, what))
+        else:
+            print("  FAIL: %s has %d %s, expected %d" % (fn, got, what, want))
+            fails += 1
+sys.exit(1 if fails else 0)
+PYEOF
+if [ $? -eq 0 ]; then pass "custom pages each build their own controls";
+else fail "a custom page's body is missing or was overwritten"; fi
+
+echo ""
 echo "== Case 1: elevated-child install (MX Bikes) =="
 "${WINE}" "${SETUP}" /ELEVATED /S "/MXB=$(winpath "${MXB}")" >/dev/null 2>&1
 wineserver -w
@@ -346,6 +445,17 @@ assert_file "${MXB}/mxbmrp3_data/themes/testtheme/center.tga" "theme subfolder i
 assert_file "${MXB}/mxbmrp3_data/gamepads/testpad/background.tga" "gamepad pack subfolder installed"
 assert_file "${MXB}/mxbmrp3_data/pitboards/testboard/background.tga" "pitboard pack subfolder installed"
 assert_file "${MXB}/mxbmrp3_data/spotters/testvoice/clear.wav" "spotter voice pack subfolder installed"
+assert_file "${MXB}/mxbmrp3_data/gauges/testgauges/tacho.tga" "gauges pack subfolder installed"
+assert_file "${MXB}/mxbmrp3_data/gauges/testgauges/gauge.ini" "canonical pack ini installed"
+# Setup writes and never deletes: BOTH ini spellings survive, and the plugin is
+# what decides which to read (and whether the other is worth a word). The pack
+# named after its own type is the case the old NSIS pruning destroyed.
+assert_file "${MXB}/mxbmrp3_data/gauges/testgauges/testgauges.ini" "Setup leaves the pre-rename ini alone"
+assert_file "${MXB}/mxbmrp3_data/gauges/gauge/gauge.ini" "a pack named after its own type keeps its ini"
+# Leaving the Privacy page's box ticked must write NOTHING. A marker that appeared
+# on a default install would opt every silent/default installation OUT of analytics
+# -- silent in exactly the direction nobody would report.
+assert_no_file "${MXB}/mxbmrp3_data/install_prefs.ini"   "no opt-out marker on a default install"
 assert_file "${MXB}/mxbmrp3_uninstall.exe"              "uninstaller written"
 [ "$(cat "${MXB}/mxbmrp3.dlo" 2>/dev/null)" = "DLO-MXB" ] && pass "correct dlo payload" || fail "wrong dlo payload"
 reg_has    "${REG_KEY}" "DisplayName"    "MXBMRP3"       "HKLM DisplayName written"
@@ -423,6 +533,34 @@ wineserver -w
 assert_no_dir  "${DATA}"                                 "savepath data removed on opt-in"
 assert_no_file "${MXB}/mxbmrp3.dlo"                      "plugin removed"
 reg_absent_key "${REG_KEY}"                              "HKLM key removed"
+
+echo ""
+echo "== Case 8: /NOSTATS=1 writes the analytics opt-out marker, and a later install clears it =="
+# The Privacy page's opt-out has to survive the ELEVATION RELAUNCH -- custom pages are
+# skipped in the elevated child, so the choice only arrives as /NOSTATS=1 on its command
+# line. This drives the child directly, which is exactly the path a real elevated install
+# takes. The plugin side (honour once, then let the in-game toggle win) is unit-tested in
+# tests/unit/test_install_prefs.cpp; this case covers only what Setup puts on disk.
+"${WINE}" "${SETUP}" /ELEVATED /S "/MXB=$(winpath "${MXB}")" /NOSTATS=1 >/dev/null 2>&1
+wineserver -w
+MARKER="${MXB}/mxbmrp3_data/install_prefs.ini"
+assert_file "${MARKER}"                                  "opt-out marker written on /NOSTATS=1"
+grep -q "analyticsOptOut=1" "${MARKER}" 2>/dev/null \
+  && pass "marker states the opt-out" || fail "marker missing analyticsOptOut=1"
+# The stamp is what stops the marker re-applying on every launch and overriding the
+# in-game toggle, so an unstamped marker is a real (and silent) bug.
+grep -qE "^stamp=[0-9]" "${MARKER}" 2>/dev/null \
+  && pass "marker carries a version stamp" || fail "marker missing a stamp= line"
+
+# Re-installing WITHOUT the flag must clear it: a stale marker left behind would carry
+# an older stamp and re-apply against the new version, silently re-disabling analytics
+# for someone who had turned it back on.
+"${WINE}" "${SETUP}" /ELEVATED /S "/MXB=$(winpath "${MXB}")" >/dev/null 2>&1
+wineserver -w
+assert_no_file "${MARKER}"                               "stale marker cleared by a later install"
+
+"${WINE}" "${MXB}/mxbmrp3_uninstall.exe" /ELEVATED /S "/UMXB=$(winpath "${MXB}")" /UDATA=1 >/dev/null 2>&1
+wineserver -w
 
 # ---------------------------------------------------------------------------
 echo ""

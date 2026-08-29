@@ -91,6 +91,20 @@ public:
             ? m_spriteNames[static_cast<size_t>(oneBasedIndex - 1)].c_str() : "";
     }
 
+    // Result of verifySpriteRegistrationOrder(), run at the end of
+    // setupDefaultResources(): 0 = every index discovery recorded points at its
+    // own file in the registered sprite table. Non-zero means the discovery /
+    // registration orders diverged and some asset is drawing another's sprites
+    // (logged per mismatch). Pinned by sprite_order_test.cpp.
+    int spriteOrderMismatches() const { return m_spriteOrderMismatches; }
+
+#ifdef MXBMRP3_TEST_BUILD
+    // Test-only must-catch seam: re-run the order check with table entries a and
+    // b (1-based) swapped, then restore. A checker that returns 0 here too would
+    // be vacuous -- sprite_order_test.cpp asserts this returns non-zero.
+    int testSpriteOrderWithSwap(int aOneBased, int bOneBased);
+#endif
+
     // Bind a typed HUD cache pointer (m_pStandings, ...) to the slot-clearing
     // list: clear() nulls every bound pointer before destroying the HUD
     // objects. Binding happens at registration, so a cached pointer that could
@@ -308,6 +322,10 @@ private:
     // Number of grid quads appendGridOverlay would add (for capacity reservation).
     static size_t gridOverlayQuadCount();
     void setupDefaultResources();
+    // Cross-check every sprite index recorded at discovery against the table
+    // setupDefaultResources() just registered; returns the mismatch count.
+    // Startup-only cost. See the definition for the invariant it verifies.
+    int verifySpriteRegistrationOrder(const class AssetManager& assetMgr) const;
     void handleSettingsButton();
     void handleDirectorButton();
     void persistDirectorEnabled();  // save the director on/off mode (auto-save-gated)
@@ -400,6 +418,8 @@ private:
     // Resource management - dynamically sized based on discovered assets
     std::vector<std::string> m_spriteNames;
     std::vector<std::string> m_fontNames;
+    // Written once by setupDefaultResources() on the game thread; see the getter.
+    int m_spriteOrderMismatches = 0;
 
     std::vector<char> m_spriteBuffer;  // Null-separated sprite names for API
     std::vector<char> m_fontBuffer;    // Null-separated font names for API

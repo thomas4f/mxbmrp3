@@ -60,7 +60,11 @@ set(MXB_UNIT_SOURCES
     test_plate_geometry.cpp
     test_gamepad_geometry.cpp
     test_asset_packs.cpp
+    palette_test.cpp
+    pack_by_name_test.cpp
     test_pack_types.cpp
+    test_pack_ini_path.cpp
+    test_install_prefs.cpp
     test_records_window.cpp
     test_radar_fade.cpp
     test_severity_ramp.cpp
@@ -94,6 +98,7 @@ set(MXB_UNIT_SOURCES
     asset_path_test.cpp
     small_vec_test.cpp
     history_ring_test.cpp
+    viewport_test.cpp
     test_thread_detach_grace.cpp
     shim/logger_stub.cpp
     ${MXB_ROOT}/mxbmrp3/core/hud_sw_renderer.cpp
@@ -142,6 +147,7 @@ function(mxb_configure_unit_target TGT)
         # their inis still describe the pads whose geometry used to be hardcoded.
         GAMEPADS_DIR="${MXB_ROOT}/mxbmrp3_data/gamepads"
         PITBOARDS_DIR="${MXB_ROOT}/mxbmrp3_data/pitboards"
+        GAUGES_DIR="${MXB_ROOT}/mxbmrp3_data/gauges"
         # The SHIPPED themes, walked by test_analytics_theme.cpp: the analytics
         # label reports our own themes by name, so the list it checks against has
         # to track this directory.
@@ -150,8 +156,9 @@ function(mxb_configure_unit_target TGT)
         # test_analytics_spotter.cpp: the analytics label reports our own
         # packs by name, so its list has to track this directory.
         SPOTTERS_DIR="${MXB_ROOT}/mxbmrp3_data/spotters"
-        # test_spotter_pack_census.cpp scans spotter_manager.cpp's TEXT for the
-        # cue keys it emits: that TU is Windows-only and cannot be linked here,
+        # test_spotter_pack_census.cpp scans the spotter_manager*.cpp TUs' TEXT
+        # for the cue keys they emit: those TUs are Windows-only and cannot be
+        # linked here,
         # but its string literals are half the pack vocabulary and a typo in
         # one is invisible (the built-in phrase still speaks, the pack's
         # override just never matches).

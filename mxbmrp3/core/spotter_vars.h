@@ -157,7 +157,7 @@ struct Vars {
     // The two that mark a MOMENT rather than describing every split. Both are
     // unsigned and carry no direction word, because their cue keys only fire
     // in the one direction: you are up, or you took time off. See the
-    // on_pace_* and sector_best cues in spotter_manager.cpp.
+    // on_pace_* and sector_best cues in spotter_manager_events.cpp.
     std::string paceMargin;      // {pace_margin}       how far up at the last split
     std::string sectorBestDelta; // {sector_best_delta} taken off your best for that sector
 

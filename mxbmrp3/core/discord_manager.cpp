@@ -537,6 +537,9 @@ void DiscordManager::update() {
     }
 }
 
+// change-gate: relevant types (Standings included) copy a bounded, fixed-size
+// POD/char-array snapshot under a mutex — no allocation; the presence JSON is
+// built on the connection thread. Everything else hits the default: and returns.
 void DiscordManager::onDataChanged(DataChangeType changeType) {
     // Queue presence update for relevant data changes
     switch (changeType) {

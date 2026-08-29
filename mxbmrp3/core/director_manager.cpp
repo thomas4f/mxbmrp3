@@ -441,6 +441,9 @@ bool DirectorManager::holdActive(int shotType, long long now, bool currentPresen
     return false;
 }
 
+// change-gate: first line returns unless the director is enabled (it only is
+// while spectating with the mode on); the enabled path is bounded scans over
+// the standings snapshot, no allocation on the frequent types.
 void DirectorManager::onDataChanged(int changeType) {
     if (!m_enabled) return;
     // A new session/track resets the field: drop all story baselines so a stale one

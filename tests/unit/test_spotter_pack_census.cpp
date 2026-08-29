@@ -1,6 +1,6 @@
 // ============================================================================
 // tests/unit/test_spotter_pack_census.cpp
-// Walks the SHIPPED spotter pack (mxbmrp3_data/spotters/default/default.ini)
+// Walks the SHIPPED spotter pack (mxbmrp3_data/spotters/default/spotter.ini)
 // against the two published namespaces - every cue key in
 // SpotterCuePack::allCueKeys(), every variable in SpotterVars::bindings() -
 // and requires them to agree in BOTH directions.
@@ -32,6 +32,7 @@
 #include <fstream>
 #include <map>
 #include <set>
+#include <filesystem>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -41,7 +42,7 @@ namespace {
 
 std::string shippedPackText() {
     const std::string path =
-        std::string(SPOTTERS_DIR) + "/default/default.ini";
+        std::string(SPOTTERS_DIR) + "/default/spotter.ini";
     std::ifstream in(path, std::ios::binary);
     REQUIRE_MESSAGE(in.good(), "shipped pack missing: " << path);
     std::ostringstream ss;
@@ -239,17 +240,49 @@ TEST_CASE("every key cueKeyFor returns is in the registry") {
 }
 
 // The rest of the keys are string literals inside SpotterManager, which is a
-// Windows TU the unit suite cannot link. Scanning its source is the only way
-// to reach them, and it is worth doing: those literals are half the cue
-// vocabulary, and a typo in one produces a cue no pack can ever override -
+// set of Windows TUs the unit suite cannot link. Scanning their source is the
+// only way to reach them, and it is worth doing: those literals are half the
+// cue vocabulary, and a typo in one produces a cue no pack can ever override -
 // silently, because the built-in phrase still speaks.
+//
+// ALL the spotter_manager*.cpp TUs, not just the hub: the emit sites were
+// split across spotter_manager_{events,compose,proximity}.cpp, and a scan
+// pinned to one file would go quietly blind the next time a method moves.
+// GLOBBED rather than listed, for the same reason one level up: a
+// hand-pinned TU list goes quietly blind the next time a TU is carved out
+// (spotter_manager_events.cpp's own header already announces the next one).
+// The hub REQUIRE guards a wrong MXB_CORE_DIR; the `found >= 10` floor below
+// is what catches the scan itself matching nothing.
+static std::string slurpSpotterManagerTus() {
+    namespace fs = std::filesystem;
+    std::vector<std::string> paths;
+    for (const auto& entry : fs::directory_iterator(MXB_CORE_DIR)) {
+        const std::string name = entry.path().filename().string();
+        if (name.rfind("spotter_manager", 0) == 0 &&
+            name.size() >= 4 && name.compare(name.size() - 4, 4, ".cpp") == 0) {
+            paths.push_back(entry.path().string());
+        }
+    }
+    std::sort(paths.begin(), paths.end());
+    REQUIRE_MESSAGE(std::any_of(paths.begin(), paths.end(),
+                                [](const std::string& p) {
+                                    return p.find("spotter_manager.cpp") != std::string::npos;
+                                }),
+                    "the hub spotter_manager.cpp was not found under " << MXB_CORE_DIR);
+    std::string all;
+    for (const std::string& path : paths) {
+        std::ifstream in(path, std::ios::binary);
+        REQUIRE_MESSAGE(in.good(), "cannot read " << path);
+        std::ostringstream ss;
+        ss << in.rdbuf();
+        all += ss.str();
+        all += '\n';
+    }
+    return all;
+}
+
 TEST_CASE("every key SpotterManager emits is in the registry") {
-    const std::string path = std::string(MXB_CORE_DIR) + "/spotter_manager.cpp";
-    std::ifstream in(path, std::ios::binary);
-    REQUIRE_MESSAGE(in.good(), "cannot read " << path);
-    std::ostringstream ss;
-    ss << in.rdbuf();
-    const std::string src = ss.str();
+    const std::string src = slurpSpotterManagerTus();
 
     int found = 0;
     const std::string needle = "emitCue(\"";
@@ -291,7 +324,7 @@ TEST_CASE("every key in the registry is emitted by something") {
     // the manager (directly, or assigned to `key` for a session-kind variant),
     // or RETURNED by one of the pure headers the manager asks for a key - the
     // event-type mapping, and the milestone state machine.
-    const std::string mgr = slurp(std::string(MXB_CORE_DIR) + "/spotter_manager.cpp");
+    const std::string mgr = slurpSpotterManagerTus();
     const std::string pack = slurp(std::string(MXB_CORE_DIR) + "/spotter_cue_pack.h");
     const std::string miles = slurp(std::string(MXB_CORE_DIR) + "/spotter_milestones.h");
 
@@ -542,7 +575,7 @@ std::string generateReference() {
           "Do not edit by hand - `test_spotter_pack_census.cpp` rewrites it and\n"
           "fails if this copy is stale.\n\n"
        << "This is the lookup table. The two files it goes with:\n\n"
-       << "- `mxbmrp3_data/spotters/default/default.ini` - the shipped pack,\n"
+       << "- `mxbmrp3_data/spotters/default/spotter.ini` - the shipped pack,\n"
           "  which is the wording itself. Every key below has a row in it, so it\n"
           "  is also the worked example; copy that folder to edit it.\n"
        << "- `docs/spotter.md` - the guide: what it calls and how to set it up,\n"
@@ -643,7 +676,7 @@ std::string generatePackRender() {
 
     std::ostringstream md;
     md << "# The shipped spotter pack, rendered\n\n"
-       << "GENERATED from `mxbmrp3_data/spotters/default/default.ini` by\n"
+       << "GENERATED from `mxbmrp3_data/spotters/default/spotter.ini` by\n"
           "`test_spotter_pack_census.cpp`, which rewrites it and fails if this\n"
           "copy is stale. Do not edit by hand - edit the pack.\n\n"
        << "Every live row of the shipped pack, as the subtitle shows it and\n"

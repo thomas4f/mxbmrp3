@@ -114,7 +114,16 @@ int countTooltipRows(const std::vector<std::string>& regions, const char* toolti
 // 196 -> 197: the render-probe sweep's button (PROBE_SWEEP), APPENDED to the enum
 // rather than filed with its relatives, so no ordinal below moved and the golden
 // itself is unchanged -- only this count.
-constexpr int kClickRegionTypeCount = 198;
+//
+// 198 -> 200: GAUGES_PACK_UP/DOWN, filed with their relatives (next to the pad's
+// and the board's pack cycles) rather than appended -- so unlike PROBE_SWEEP
+// above, every ordinal at or past them shifted by two and the golden below moved
+// with them. RE-BLESSED on exactly that basis and no other: 66 of the 91 entries
+// gained 2, the other 25 (all below the insertion point) are byte-identical,
+// every LABEL is unchanged, and `strings` did not move -- so the General tab's
+// click surface is the same surface, renumbered. A diff with any other shape
+// would have been a real change to this tab, which is what the guard is for.
+constexpr int kClickRegionTypeCount = 200;
 
 }  // namespace
 
@@ -224,15 +233,15 @@ TEST_CASE("settings General tab: the emitted region sequence is unchanged") {
     // diff was exactly one region and exactly two strings is what says the move
     // touched nothing else on the tab.
     static const char* kGolden =
-        "91:general;91:appearance;91:hotkeys;91:riders;93:-;91:rumble;102:-;91:helmet;148:-;91:director;1"
-        "59:-;91:spotter;79:-;91:updates;86:-;87:-;14:-;91:standings;14:-;91:map;14:-;91:radar;14:-;91:la"
-        "p_log;14:-;91:ideal_lap;14:-;91:session_charts;14:-;91:telemetry;14:-;91:records;14:-;91:pitboar"
-        "d;14:-;91:session;14:-;91:timing;14:-;91:gap_bar;14:-;91:notices;14:-;91:event_log;14:-;91:frien"
-        "ds;14:-;91:fmx;14:-;91:stats;14:-;91:performance;90:-;91:widgets;141:general.pb_scope;68:-;68:-;"
-        "141:general.controller;95:-;94:-;141:general.auto_save;80:-;80:-;141:general.grid_snap;74:-;74:-"
-        ";141:general.screen_clamp;75:-;75:-;141:general.steam_friends;141:general.web_server;83:-;83:-;1"
-        "41:general.web_port;84:-;85:-;141:general.auto_switch;88:-;88:-;141:general.copy_profile;10:-;9:"
-        "-;12:-;13:-;193:-;194:-;92:-;8:-;140:-;typecount=198;strings=123";
+        "93:general;93:appearance;93:hotkeys;93:riders;95:-;93:rumble;104:-;93:helmet;150:-;93:director;161:-"
+        ";93:spotter;81:-;93:updates;88:-;89:-;14:-;93:standings;14:-;93:map;14:-;93:radar;14:-;93:lap_log;14"
+        ":-;93:ideal_lap;14:-;93:session_charts;14:-;93:telemetry;14:-;93:records;14:-;93:pitboard;14:-;93:se"
+        "ssion;14:-;93:timing;14:-;93:gap_bar;14:-;93:notices;14:-;93:event_log;14:-;93:friends;14:-;93:fmx;1"
+        "4:-;93:stats;14:-;93:performance;92:-;93:widgets;143:general.pb_scope;70:-;70:-;143:general.controll"
+        "er;97:-;96:-;143:general.auto_save;82:-;82:-;143:general.grid_snap;76:-;76:-;143:general.screen_clam"
+        "p;77:-;77:-;143:general.steam_friends;143:general.web_server;85:-;85:-;143:general.web_port;86:-;87:"
+        "-;143:general.auto_switch;90:-;90:-;143:general.copy_profile;10:-;9:-;12:-;13:-;195:-;196:-;94:-;8:-"
+        ";142:-;typecount=200;strings=123";
 
     MESSAGE("General tab signature: " << sig);
     CHECK(sig == kGolden);

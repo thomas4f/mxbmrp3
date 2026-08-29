@@ -23,17 +23,40 @@ TachoWidget::TachoWidget()
         // The dial face IS this gauge -- see BaseHud::m_textureRequired. Without it
     // the widget is a red needle on an empty box: no face, no ticks, no numbers.
     m_textureRequired = true;
+    // A PACK HUD: the face comes from gauges/<name>/tacho.tga, set through
+    // setBackgroundTextureIndex() on every rebuild, so there is no texture stem to
+    // declare and no variant cycle to offer. Declaring the stem as well would put
+    // the widget in both worlds at once -- see BaseHud::setTextureVariant, where a
+    // stale textureVariant key in an upgraded INI turned a pack HUD's art off.
+    m_packKind = PackKind::Gauges;
     DEBUG_INFO("TachoWidget created");
     setDraggable(true);
     m_quads.reserve(2);  // dial background + needle
-
-    // Set texture base name for dynamic texture discovery
-    setTextureBaseName("tacho_widget");
 
     // Set all configurable defaults
     resetToDefaults();
 
     rebuildRenderData();
+}
+
+void TachoWidget::setGaugesPack(const std::string& name) {
+    if (m_gaugesPack == name) return;
+    m_gaugesPack = name;
+    setDataDirty();
+}
+
+const GaugesAsset* TachoWidget::activePack() const {
+    const AssetManager& assets = AssetManager::getInstance();
+    // Degrade, do not blank -- see PitboardHud::activePack for the full rule.
+    if (const GaugesAsset* named = assets.getGaugesByName(m_gaugesPack)) return named;
+    return assets.getDefaultGauges();
+}
+
+unsigned long TachoWidget::effectiveNeedleColor() const {
+    if (m_needleColorSet) return m_needleColor;
+    if (const GaugesAsset* pack = activePack())
+        return static_cast<unsigned long>(pack->geometry.tacho.needleColor);
+    return m_needleColor;
 }
 
 bool TachoWidget::handlesDataType(DataChangeType dataType) const {
@@ -72,6 +95,14 @@ void TachoWidget::rebuildRenderData() {
     const PluginData& pluginData = PluginData::getInstance();
     const BikeTelemetryData& bikeData = pluginData.getBikeTelemetry();
 
+    // What THIS face reads and how its needle is drawn. The fallback is the
+    // built-in geometry rather than a blank gauge: with no packs installed at all
+    // the widget draws the scale it always drew.
+    const GaugesAsset* pack = activePack();
+    static const GaugeLayout::GaugeGeometry kNoPackGeometry;
+    const GaugeLayout::Dial& dial =
+        pack ? pack->geometry.tacho : kNoPackGeometry.tacho;
+
     // Calculate dial dimensions based on scale
     float dialSize = DIAL_SIZE * m_fScale;
     float dialWidth = dialSize / UI_ASPECT_RATIO;
@@ -93,6 +124,12 @@ void TachoWidget::rebuildRenderData() {
     // Calculate center of dial
     float centerX = startX + dialWidth / 2.0f;
     float centerY = startY + dialHeight / 2.0f;
+
+    // Keep BaseHud's background sprite pointing at the active pack's tacho face.
+    // Assigned only on change: setBackgroundTextureIndex invalidates the theme memo.
+    // (Same two lines PitboardHud runs, for the same reason.)
+    const int packFace = pack ? pack->sprites[GaugeSprite::TACHO] : 0;
+    if (getBackgroundTextureIndex() != packFace) setBackgroundTextureIndex(packFace);
 
     // Add dial as background quad (uses base class helper for consistency with PitboardHud)
     // BG Tex ON: shows dial sprite with opacity
@@ -119,39 +156,56 @@ void TachoWidget::rebuildRenderData() {
         targetRpm = static_cast<float>(bikeData.rpm);
     }
 
-    // Clamp target RPM to dial range
-    if (targetRpm < MIN_RPM) targetRpm = MIN_RPM;
-    if (targetRpm > MAX_RPM) targetRpm = MAX_RPM;
+    // Clamp to THIS face's range before smoothing, so the needle settles at the
+    // end of the dial rather than easing towards a reading the face cannot show.
+    if (targetRpm < dial.min) targetRpm = dial.min;
+    if (targetRpm > dial.max) targetRpm = dial.max;
 
     // Apply exponential smoothing to simulate needle inertia
     // smoothed = smoothed + (target - smoothed) * factor
     m_smoothedRpm += (targetRpm - m_smoothedRpm) * NEEDLE_SMOOTH_FACTOR;
 
-    // Calculate needle angle based on smoothed RPM
-    // Linear interpolation from MIN_ANGLE_DEG at 0 RPM to MAX_ANGLE_DEG at 15000 RPM
-    float rpmRatio = m_smoothedRpm / MAX_RPM;
-    float angleDeg = MIN_ANGLE_DEG + rpmRatio * (MAX_ANGLE_DEG - MIN_ANGLE_DEG);
-    float angleRad = angleDeg * DEG_TO_RAD;
+    // The pack's own sweep. Dial::angleFor is the expression that used to be
+    // written out here against compiled constants; it clamps too, so a face whose
+    // range changed under a parked needle cannot swing it off the dial.
+    float angleRad = dial.angleFor(m_smoothedRpm) * DEG_TO_RAD;
 
-    // Calculate needle dimensions (relative to dial size)
-    float needleLength = dialHeight * 0.42f;  // Needle extends 42% of dial height from center
-    float needleWidth = dialHeight * 0.025f;  // Needle width is 2.5% of dial height
+    // Needle dimensions, as fractions of the dial this pack drew.
+    float needleLength = dialHeight * dial.needleLength;
+    float needleWidth = dialHeight * dial.needleWidth;
 
     // Add needle quad (centered on dial, rotated based on RPM).
     // Needle fades with the dial: the whole gauge responds to the background-opacity
     // slider as one, rather than leaving a solid needle floating over a faded dial.
     addNeedleQuad(centerX, centerY, angleRad, needleLength, needleWidth,
-                  PluginUtils::applyOpacity(m_needleColor, m_fBackgroundOpacity));
+                  PluginUtils::applyOpacity(effectiveNeedleColor(), m_fBackgroundOpacity));
 }
 
 void TachoWidget::resetToDefaults() {
     m_bVisible = false;
     m_bShowTitle = false;
-    setTextureVariant(1);  // Show dial texture by default
+    // The dial face IS this widget, exactly as the pad's and the board's art is
+    // theirs -- so this says so, the same way they do. It used to be implied by
+    // setTextureVariant(1), which was the ONLY thing here setting the flag;
+    // dropping that call when the rev-counter became a pack HUD left the flag at
+    // BaseHud's `false`, so a fresh install drew a needle on an empty box and
+    // then persisted showBackgroundTexture=0. Through the setter, not the
+    // member: it owns the theme-memo invalidation, and check_hud_helpers.sh
+    // fails a HUD that touches the member directly.
+    setShowBackgroundTexture(true);
     m_fBackgroundOpacity = 1.0f;  // 100% opacity
     m_fScale = 1.0f;  // 100% default scale
     setPosition(cellsX(112), cellsY(71));
     m_smoothedRpm = 0.0f;
+    // EMPTY, not "classic": empty means "whatever the default pack resolves to",
+    // which is how an upgrading user whose own art was migrated into gauges\\legacy
+    // gets it back without a settings key that could not have existed when their
+    // file was written. See AssetManager::getDefaultGauges.
+    m_gaugesPack.clear();
+    // Assigned directly, NOT through setNeedleColor: going through the setter
+    // would latch m_needleColorSet and make the factory default look like a user
+    // choice, which is exactly what stops a pack shipping its own needle colour.
     m_needleColor = DEFAULT_NEEDLE_COLOR;
+    m_needleColorSet = false;
     setDataDirty();
 }

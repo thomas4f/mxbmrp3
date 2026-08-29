@@ -242,7 +242,7 @@ private:
     };
 
     mutable Mutex m_mutex;
-    std::thread m_worker;
+    std::thread m_worker;   // joined-by: stopWorker() (via shutdown() from PluginManager::shutdown)
     std::condition_variable m_cv;                           // wakes the worker to stop early
     std::atomic<bool> m_workerStop{false};
     ScanInputs m_scanInputs MXB_GUARDED_BY(m_mutex);

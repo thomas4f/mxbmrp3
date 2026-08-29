@@ -3,6 +3,7 @@
 // ============================================================================
 #include "companion_window.h"
 #include "thread_detach_grace.h"
+#include "ui_viewport.h"
 
 #include "hud_sw_renderer.h"
 #include "../diagnostics/logger.h"
@@ -390,12 +391,11 @@ void CompanionWindow::threadMain() {
         // [0,1] (negative / past 1, exactly as the in-game HUD allows) then land in the
         // surrounding area instead of being clipped off by a letterbox. The window is
         // freely resizable to any shape; the extra space is usable, not dead bars.
-        int rw = clientW, rh = clientW * 9 / 16;
-        if (rh > clientH) { rh = clientH; rw = clientH * 16 / 9; }
-        rw = std::max(1, rw); rh = std::max(1, rh);
-        int dx = (clientW - rw) / 2, dy = (clientH - rh) / 2;
+        // The rect comes from UiViewport::compute — the SAME function InputManager
+        // inverts for cursor hit-testing, so paint and clicks cannot disagree.
+        const UiViewport::Rect vp = UiViewport::compute(clientW, clientH);
         if (img.w != clientW || img.h != clientH) img.resize(clientW, clientH);
-        img.setViewport((float)dx, (float)dy, (float)rw, (float)rh);
+        img.setViewport((float)vp.x, (float)vp.y, (float)vp.w, (float)vp.h);
 
         // The client size is part of the identity: a resize must repaint even if the HUD
         // is byte-identical. So is `have`, so the first real frame replaces the backdrop.

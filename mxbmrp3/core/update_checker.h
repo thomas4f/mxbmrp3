@@ -209,6 +209,8 @@ private:
     std::string m_dismissedVersion MXB_GUARDED_BY(m_mutex);  // Version user chose to skip (persisted)
     std::string m_tagSeenVersion MXB_GUARDED_BY(m_mutex);    // Version whose sidebar tag was seen (persisted)
     mutable Mutex m_mutex;
+    // joined-by: shutdown() (PluginManager::shutdown) + the re-arm join in
+    // checkForUpdates() before spawning a replacement.
     std::thread m_workerThread;
     std::atomic<bool> m_shutdownRequested;
     // Copy under the lock, invoke OUTSIDE it (see the worker in update_checker.cpp) —

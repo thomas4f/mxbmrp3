@@ -18,6 +18,7 @@
 // the table. Generated once from the original functions; edit the functions here
 // when a HUD's settings change, and add a table row (below) for a new HUD.
 // ============================================================================
+// file-budget: 1150 one cap_/app_ pair per HUD section; grows a HUD at a time by design
 #include "settings_hud_registry.h"
 // profile-level operations built on them (switch, copy-to-all, and the reset
 // family). Split out of settings_manager.cpp, which keeps global-section

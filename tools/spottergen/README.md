@@ -14,7 +14,7 @@ test that pins it).
 
 Race events funnel through `PluginData::addEventLogEntry` and the
 proximity/hazard detectors tick in `SpotterManager::onTrackPositions`
-(`core/spotter_manager.cpp`); both end in `emitCue()`, which resolves a
+(`core/spotter_manager_proximity.cpp`); both end in `emitCue()`, which resolves a
 **cue key** against the active pack - variant pick, phrase template
 (subtitle + TTS fallback), then the audio ladder `_mix` (chunk stitch) >
 `_wav` (whole clip) > TTS. The pack format spec is the header comment of

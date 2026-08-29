@@ -14,7 +14,8 @@
 // So the census runs BOTH ways: every row must name a real shipped folder, and
 // every shipped folder that looks like a pack root must have a row. "Looks like
 // a pack root" is the format itself — a directory whose children are folders
-// containing <name>.ini — so a new type is recognised without being taught here.
+// containing that type's <type>.ini — so a new type is recognised without being
+// taught here.
 //
 // The media pattern is checked against the real packs too. It is the payload a
 // pack may carry across the copy, so a wrong one is not cosmetic: it either
@@ -26,6 +27,7 @@
 #include "doctest.h"
 
 #include "core/asset_manager.h"
+#include "core/pack_ini_path.h"
 
 #include <filesystem>
 #include <string>
@@ -46,10 +48,22 @@ std::string extensionOf(const std::string& pattern) {
     return star == std::string::npos ? pattern : pattern.substr(star + 1);
 }
 
-// A pack folder is <name>\ containing <name>.ini. That IS the format, so it is
-// also how a pack root is recognised without a second list to maintain.
+// A pack folder is <name>\ containing its type's <type>.ini -- theme.ini,
+// gamepad.ini, pitboard.ini, spotter.ini. That IS the format, so it is also how a
+// pack root is recognised without a second list to maintain.
+//
+// The pre-1.29.2 <name>.ini counts too, and not only for symmetry with the
+// permanent read fallback (core/pack_ini_path.h): the reverse census below walks
+// folders whose TYPE it has not established yet -- that is the whole point of it --
+// so it cannot ask for one specific stem. Accepting any of the five spellings
+// keeps a fifth pack type that ships in the old shape visible to the census that
+// exists to catch it.
 bool isPackFolder(const fs::path& dir) {
-    return fs::exists(dir / (dir.filename().string() + ".ini"));
+    if (fs::exists(dir / (dir.filename().string() + ".ini"))) return true;
+    for (const auto& pt : AssetManager::PACK_TYPES) {
+        if (fs::exists(dir / (std::string(pt.label) + ".ini"))) return true;
+    }
+    return false;
 }
 
 std::vector<fs::path> packFoldersIn(const fs::path& root) {
@@ -62,6 +76,28 @@ std::vector<fs::path> packFoldersIn(const fs::path& root) {
 }
 
 }  // namespace
+
+// The rename is only worth having if it holds. A shipped pack is the thing users
+// copy to start their own, so one left on the old name teaches the old shape --
+// and the read fallback means it would work perfectly and silently for the dev.
+TEST_CASE("PACK_TYPES: every shipped pack uses its type's canonical ini name") {
+    for (const auto& pt : AssetManager::PACK_TYPES) {
+        const fs::path root = fs::path(MXB_DATA_DIR) / pt.subdir;
+        for (const fs::path& pack : packFoldersIn(root)) {
+            CAPTURE(pack.string());
+            const std::string name = pack.filename().string();
+            const std::string stem = pt.label;
+            CHECK_MESSAGE(fs::exists(pack / (stem + ".ini")),
+                          "shipped pack has no " << stem << ".ini");
+            // A pack named after its own type resolves to one file by both rules.
+            if (name != stem) {
+                CHECK_MESSAGE(!fs::exists(pack / (name + ".ini")),
+                              "shipped pack still carries the pre-1.29.2 "
+                                  << name << ".ini");
+            }
+        }
+    }
+}
 
 TEST_CASE("PACK_TYPES: every row names a real shipped pack root") {
     for (const auto& pt : AssetManager::PACK_TYPES) {
@@ -166,7 +202,11 @@ TEST_CASE("emphasisBaseOf: a plain face is not a companion") {
 TEST_CASE("shipped themes: only [button] uses a fractional border") {
     int borders = 0, fractional = 0, themes = 0;
     for (const fs::path& theme : packFoldersIn(fs::path(MXB_DATA_DIR) / "themes")) {
-        const fs::path ini = theme / (theme.filename().string() + ".ini");
+        // Resolved the way the plugin resolves it, so this walk keeps seeing a
+        // theme whichever of the two names it carries.
+        const fs::path ini(PackIni::resolve(theme.string() + "/",
+                                            theme.filename().string(),
+                                            PackIni::kTheme).path);
         if (!fs::exists(ini)) continue;
         ++themes;
         std::ifstream in(ini);

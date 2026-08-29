@@ -33,6 +33,10 @@ gates), `check_api_guards.sh` (DLL-export exception barriers),
 `check_thread_safety.sh` (clang `-Wthread-safety` over the annotated mutexes),
 `check_mt_flags.sh` (a plain `bool` in a thread-owning class),
 `check_hud_raw_cache.sh` (raw `Unified::` members cached in a HUD),
+`check_change_consumers.sh` (`onDataChanged` definitions state their
+`change-gate:`), `check_test_hook_placement.sh` (`MXBMRP3_Test_*` code only in
+`core/test_hooks.cpp`), `check_thread_join.sh` (`std::thread` members name
+their Shutdown-path join site),
 `check_style.sh` (tabs/trailing-WS/CRLF/final newline) and
 `check_session_hook.sh` (the SessionStart hook's own behaviour).
 Each script's header documents its invariant and escape-hatch annotation.

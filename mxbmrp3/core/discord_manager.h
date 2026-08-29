@@ -113,7 +113,7 @@ private:
     static constexpr int PRESENCE_REFRESH_INTERVAL_MS = 30000;  // Force refresh every 30 seconds to detect disconnection
 
     // Background thread for non-blocking connection
-    std::thread m_connectionThread;
+    std::thread m_connectionThread;   // joined-by: shutdown() (PluginManager::shutdown)
     Mutex m_pipeMutex;
 
     // Nonce for Discord IPC messages (mutable for use in const buildPresenceJson)

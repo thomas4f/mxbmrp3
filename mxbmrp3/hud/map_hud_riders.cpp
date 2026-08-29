@@ -206,7 +206,7 @@ void MapHud::renderRiders(const RotationCache& rotation,
                 } else {
                     if (m_iconCache.flag > 0) {
                         spriteIndex = m_iconCache.flag;
-                        riderColor = ColorPalette::YELLOW;
+                        riderColor = ColorPalette::BRIGHT_YELLOW;
                     }
                 }
                 shapeIndex = AssetManager::getInstance().shapeIndexForSprite(spriteIndex);

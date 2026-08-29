@@ -6,7 +6,7 @@
 //
 // SENTENCES ARE NOT HERE, and used to be. compose() turned an event into a
 // finished phrase, which meant the plugin carried a second copy of wording
-// that mxbmrp3_data/spotters/default/default.ini already held — see
+// that mxbmrp3_data/spotters/default/spotter.ini already held — see
 // SpotterManager::reloadCuePack for what that cost and why it is gone. What
 // remains is the part a pack CANNOT express: how to say a number out loud.
 //

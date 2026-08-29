@@ -31,8 +31,9 @@
 //     lifecycle that faults. Records runs its real worker against a stubbed
 //     transport. The SpotterManager TTS worker is live in the second case
 //     (unload WITHOUT Shutdown()), driving its spinThenDetach backstop and the
-//     abandoned-COM-cleanup contract — the CoUninitialize half only, since no
-//     SAPI voice exists under Wine (see the case body).
+//     abandoned-COM-cleanup contract — the create/release + CoUninitialize
+//     half, since Wine's ISpVoice is a stub that never speaks (see the case
+//     body).
 //
 //   NOT COVERED — DiscordManager. It is the one subsystem compiled out of this
 //     build (GAME_HAS_DISCORD is 0 under MXBMRP3_TEST_BUILD), and the blocker is
@@ -148,14 +149,28 @@ TEST_CASE("teardown: DLL unload WITHOUT Shutdown() (auto-save backstop) is clean
         // m_finished never lands (SAPI release / CoUninitialize can need the
         // loader lock the destructing thread holds) and spinThenDetach detaches
         // a live thread into unmapped code. See m_abandonComCleanup in
-        // spotter_manager.h. Under Wine no SAPI voice is ever created, so this
-        // drives the CoInitialize/CoUninitialize half of that path only; the
-        // voice-release half needs a real engine and stays a manual check.
+        // spotter_manager.h. Wine DOES hand back an ISpVoice here (it is a stub
+        // whose Speak returns E_NOTIMPL), so the create/release pair is real
+        // and so is the DLL load behind it — but no engine ever speaks, so the
+        // release that has to wait out a live utterance stays a manual check.
         host.spotterEnable(true);
         host.spotterCategoryMask(0x1F);
         host.pinBaseVariant();
         host.spotterInstallShippedPack();
         host.spotterHotkey();
+
+        // WAIT FOR THE PARK, don't race it. The state this case wants is a
+        // worker sitting in its queue wait when the DLL unloads. Without this
+        // the unload landed instead inside the FIRST cue's lazy
+        // CoCreateInstance, which loads the engine's DLLs and therefore wants
+        // the loader lock the destructing thread is holding: the worker cannot
+        // reach the m_running check, spinThenDetach spins its full 2s, detaches
+        // a live thread, and the unmapped code faults the process after main
+        // returned (wine exit 5, every assertion above already green). That is
+        // the accepted no-Shutdown() hazard firing, not the contract failing -
+        // and it was a ~cold/warm-Wine coin toss, since a warm prefix resolves
+        // the same CoCreateInstance in ~35ms.
+        CHECK(host.spotterWaitWorkerParked());
 
         // Deliberately NO host.shutdown() here — and say so to ~PluginHost, which
         // otherwise shuts down before unloading (added after four tests forgot

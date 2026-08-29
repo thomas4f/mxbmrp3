@@ -319,7 +319,7 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
                     if (hazardType == HazardType::WrongWay) {
                         if (m_iconCache.circleExclamation > 0) { spriteIndex = m_iconCache.circleExclamation; spriteColor = ColorPalette::RED; }
                     } else {
-                        if (m_iconCache.flag > 0) { spriteIndex = m_iconCache.flag; spriteColor = ColorPalette::YELLOW; }
+                        if (m_iconCache.flag > 0) { spriteIndex = m_iconCache.flag; spriteColor = ColorPalette::BRIGHT_YELLOW; }
                     }
                 } else if (!isNonParticipant && pluginData.isRiderBlueFlagged(entry.raceNum)) {
                     // Blue flag icon (lower priority than hazard, higher than tracked)

@@ -109,6 +109,8 @@ private:
         m_geomW MXB_GUARDED_BY(m_geomMutex) { 0 }, m_geomH MXB_GUARDED_BY(m_geomMutex) { 0 };
     std::atomic<bool> m_geomMax{ false };
     std::atomic<int> m_refreshHz{ 0 };   // 0 = V-Sync; N = fixed N Hz cap
+    // joined-by: stop() (HudManager shutdown path); the destructor's
+    // spinThenDetach is only the no-Shutdown() unload backstop.
     std::thread m_thread;
     // Signals the destructor's spin-wait that the window thread has left our code
     // (loader-lock-safe teardown — see ~CompanionWindow). Starts true: no thread yet.

@@ -142,15 +142,22 @@ mxb_gate(visibility-gates fast 120 "-" "./tests/integration/check_visibility_gat
 mxb_gate(mt-flags fast 120 "-" "./tests/integration/check_mt_flags.sh")
 mxb_gate(move-reads fast 120 "-" "./tests/integration/check_move_reads.sh")
 mxb_gate(hud-raw-cache fast 120 "-" "./tests/integration/check_hud_raw_cache.sh")
+mxb_gate(change-consumers fast 120 "-" "./tests/integration/check_change_consumers.sh")
+mxb_gate(test-hook-placement fast 120 "-" "./tests/integration/check_test_hook_placement.sh")
+mxb_gate(thread-join fast 120 "-" "./tests/integration/check_thread_join.sh")
 mxb_gate(title-tier fast 120 "-" "./tests/integration/check_title_tier.sh")
 mxb_gate(hud-helpers fast 120 "-" "./tests/integration/check_hud_helpers.sh")
 mxb_gate(card-anchor-coverage fast 120 "-" "./tests/integration/check_card_anchor_coverage.sh")
 mxb_gate(whats-new       fast 120 "-" "./tests/integration/check_whats_new.sh")
 mxb_gate(section-spacing fast 120 "-" "./tests/integration/check_section_spacing.sh")
+mxb_gate(file-budgets    fast 120 "-" "./tests/integration/check_file_budgets.sh")
 # The lint's own must-catch/must-exempt cases. Separate gate so a matcher
 # regression names the broken case instead of just going quiet on the tree.
 mxb_gate(hud-raw-cache-selftest fast 120 "-" "./tests/integration/check_hud_raw_cache.sh --self-test")
 mxb_gate(move-reads-selftest fast 120 "-" "./tests/integration/check_move_reads.sh --self-test")
+mxb_gate(change-consumers-selftest fast 120 "-" "./tests/integration/check_change_consumers.sh --self-test")
+mxb_gate(test-hook-placement-selftest fast 120 "-" "./tests/integration/check_test_hook_placement.sh --self-test")
+mxb_gate(thread-join-selftest fast 120 "-" "./tests/integration/check_thread_join.sh --self-test")
 # The provisioning hook, which is what makes an unprovisioned box distinguishable
 # from a healthy one — so it is the last file that should be uncovered. TOOLS is
 # "-" deliberately and the fixture stubs the whole toolchain to keep it that way:
@@ -280,6 +287,16 @@ mxb_gate(codeql slow 3600 "codeql x86_64-w64-mingw32-g++ python3"
 set_tests_properties(cross-build integration persistence fuzz-config
                      fuzz-callbacks perf codeql
                      PROPERTIES RESOURCE_LOCK mxbmrp3_test_dll)
+
+# The two WEB gates share a different resource, and it bit the same way: both
+# lazy-install into one tests/web/node_modules with `[ -d node_modules ] ||
+# npm install`, so under -j one catches npm mid-rewrite of .bin and eslint dies
+# with "eslint: No such file or directory". That is a FAILURE, correctly -- node
+# is installed, the TOOLS guard passed, and a SKIP would hide an unverified
+# check behind a status that reads like "not applicable". The lock is the fix,
+# not the exit code.
+set_tests_properties(web-overlay eslint
+                     PROPERTIES RESOURCE_LOCK mxbmrp3_web_node_modules)
 
 # `perf` additionally runs ALONE. The lock above shares an artifact; perf shares
 # something the lock cannot express — the CPU itself. It asserts the average and

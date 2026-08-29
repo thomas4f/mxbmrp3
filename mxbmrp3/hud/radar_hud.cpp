@@ -704,7 +704,7 @@ void RadarHud::rebuildRenderData() {
             } else {
                 if (m_iconCache.flag > 0) {
                     trackedShape = AssetManager::getInstance().shapeIndexForSprite(m_iconCache.flag);
-                    riderColor = PluginUtils::applyOpacity(ColorPalette::YELLOW, trackFadeOpacity);
+                    riderColor = PluginUtils::applyOpacity(ColorPalette::BRIGHT_YELLOW, trackFadeOpacity);
                 }
             }
         }

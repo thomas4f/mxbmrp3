@@ -183,8 +183,9 @@ private:
     // Focus debouncing - prevents flicker during alt-tab transitions
     int m_framesSinceFocusLost;
 
-    // Constants
-    static constexpr float ASPECT_RATIO = PluginConstants::UI_ASPECT_RATIO;
+    // Constants (the 16:9 UI-rect math itself lives in ui_viewport.h — one
+    // function shared with the companion paint loop; see input_manager.cpp's
+    // static_assert tying it to PluginConstants::UI_ASPECT_RATIO)
     static constexpr int CURSOR_HIDE_FRAMES = 120;  // Frames of inactivity before hiding cursor (~2 seconds at 60fps)
     static constexpr float MOVEMENT_THRESHOLD = 0.001f;  // Minimum movement to count as "moved"
     static constexpr int FOCUS_DEBOUNCE_FRAMES = 5;  // Frames to wait before disabling cursor on focus loss

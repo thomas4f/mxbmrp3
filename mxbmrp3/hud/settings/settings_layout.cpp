@@ -2,6 +2,7 @@
 // hud/settings/settings_layout.cpp
 // Implementation of shared layout context and helper methods
 // ============================================================================
+// file-budget: 1600 the settings panel's geometry in one place; split with the next tab rework
 #include "settings_layout.h"
 #include "../settings_hud.h"
 #include "../../core/plugin_utils.h"
@@ -14,6 +15,8 @@
 #include "../../core/input_manager.h"
 #include "../gamepad_widget.h"   // the Gamepad row's pack cycle reads activePack()
 #include "../pitboard_hud.h"     // ...and the Pitboard row's
+#include "../tacho_widget.h"     // ...and both gauge rows'
+#include "../speedo_widget.h"
 
 // Defined here rather than in the header: SettingsHud is only forward-declared
 // there (the header is included BY settings_hud.h), so the parent's layout() is
@@ -788,31 +791,73 @@ void SettingsLayoutContext::addPerHudThemeControl(BaseHud* hud) {
 // dead on exactly them (see BaseHud::m_packKind). Labelled "Texture" rather than
 // "Pack" deliberately: it is the same question every other HUD's row asks, and a
 // second word for it would be a second concept in the same column.
+// The gauges pack a gauge row is DRAWING, by display name.
+//
+// Two widgets, two unrelated classes, one accessor -- there is no common base
+// carrying activePack() and adding one would put an AssetManager type in BaseHud
+// for the benefit of two panels. So the cast is picked here, in the one place
+// that needs it, rather than duplicated at both call sites.
+static std::string activeGaugesDisplayName(const BaseHud* hud) {
+    const GaugesAsset* pack = nullptr;
+    if (const auto* tacho = dynamic_cast<const TachoWidget*>(hud)) {
+        pack = tacho->activePack();
+    } else if (const auto* speedo = dynamic_cast<const SpeedoWidget*>(hud)) {
+        pack = speedo->activePack();
+    }
+    return pack ? pack->displayName : std::string("None");
+}
+
 void SettingsLayoutContext::addPackControl(BaseHud* hud) {
     const AssetManager& assets = AssetManager::getInstance();
-    const bool isPad = (hud->m_packKind == BaseHud::PackKind::Gamepad);
 
     // The pack actually IN USE, not the stored name: an uninstalled name still draws
     // the shipped default, and the row has to say what is on screen.
+    //
+    // Switched on the kind rather than a bool: this WAS `isPad ? ... : ...` in four
+    // places, which reads as "pad or board" and silently means "pad or NOT pad" --
+    // so the third pack type would have been labelled and clicked as a pit board
+    // everywhere without one line failing to compile.
     std::string label = "None";
-    if (isPad) {
-        if (const GamepadAsset* a = static_cast<GamepadWidget*>(hud)->activePack())
-            label = a->displayName;
-    } else {
-        if (const PitboardAsset* a = static_cast<PitboardHud*>(hud)->activePack())
-            label = a->displayName;
+    size_t count = 0;
+    SettingsHud::ClickRegion::Type down = SettingsHud::ClickRegion::PITBOARD_PACK_DOWN;
+    SettingsHud::ClickRegion::Type up = SettingsHud::ClickRegion::PITBOARD_PACK_UP;
+    const char* tip = "pitboard.pack";
+    switch (hud->m_packKind) {
+        case BaseHud::PackKind::Gamepad:
+            if (const GamepadAsset* a = static_cast<GamepadWidget*>(hud)->activePack())
+                label = a->displayName;
+            count = assets.getGamepadCount();
+            down = SettingsHud::ClickRegion::GAMEPAD_PACK_DOWN;
+            up = SettingsHud::ClickRegion::GAMEPAD_PACK_UP;
+            tip = "gamepad.pack";
+            break;
+        case BaseHud::PackKind::Gauges:
+            // NOT REACHED TODAY, and kept anyway. The gauges have no per-HUD tab --
+            // they are rows in the Widgets table, which builds its own compact
+            // pack cycle further down this file. What makes this arm load-bearing
+            // rather than dead is the arm BELOW it: Pitboard and None share a
+            // branch that static_casts to PitboardHud*, so deleting this one does
+            // not remove a case, it silently routes a gauge into the wrong cast.
+            // (Its "gauges.pack" tooltip is unreachable for the same reason;
+            // it is what a Gauges tab would want on the day one exists.)
+            label = activeGaugesDisplayName(hud);
+            count = assets.getGaugesCount();
+            down = SettingsHud::ClickRegion::GAUGES_PACK_DOWN;
+            up = SettingsHud::ClickRegion::GAUGES_PACK_UP;
+            tip = "gauges.pack";
+            break;
+        case BaseHud::PackKind::Pitboard:
+        case BaseHud::PackKind::None:
+            if (const PitboardAsset* a = static_cast<PitboardHud*>(hud)->activePack())
+                label = a->displayName;
+            count = assets.getPitboardCount();
+            break;
     }
 
     // Greyed with nothing to cycle -- one pack is a legitimate install, and with the
     // Off entry gone there is genuinely nowhere for the arrows to go.
-    const size_t count = isPad ? assets.getGamepadCount() : assets.getPitboardCount();
-    addCycleControl("Texture", label.c_str(), STANDARD_VALUE_WIDTH,
-        isPad ? SettingsHud::ClickRegion::GAMEPAD_PACK_DOWN
-              : SettingsHud::ClickRegion::PITBOARD_PACK_DOWN,
-        isPad ? SettingsHud::ClickRegion::GAMEPAD_PACK_UP
-              : SettingsHud::ClickRegion::PITBOARD_PACK_UP,
-        hud, /*enabled=*/count > 1, /*isOff=*/false,
-        isPad ? "gamepad.pack" : "pitboard.pack");
+    addCycleControl("Texture", label.c_str(), STANDARD_VALUE_WIDTH, down, up,
+        hud, /*enabled=*/count > 1, /*isOff=*/false, tip);
 }
 
 float SettingsLayoutContext::addStandardHudControls(BaseHud* hud) {
@@ -1371,19 +1416,35 @@ void SettingsLayoutContext::addWidgetRow(
         // is: this column is shared with every other widget row and cannot widen for
         // one of them.
         const AssetManager& assets = AssetManager::getInstance();
-        const size_t packCount = assets.getGamepadCount();
-        // No "Off": the pad artwork IS the widget, so the cycle is packs only (see
+        // No "Off": the pack artwork IS the widget, so the cycle is packs only (see
         // BaseHud::m_textureRequired). The two comments that used to sit here said the
         // opposite -- that Off was a real position and the only thing clearing
         // showBackgroundTexture -- and both stopped being true when it was removed.
+        //
+        // This block assumed pack HUD == gamepad, which held while the gamepad was
+        // the only pack widget in this table. The gauges are the second.
+        const bool isGauges = (hud->m_packKind == BaseHud::PackKind::Gauges);
+        const size_t packCount =
+            isGauges ? assets.getGaugesCount() : assets.getGamepadCount();
+        // Both branches must LEAVE the sentinel alone when there is no pack, which
+        // is why this reads as two guards rather than one assignment: the gauges
+        // helper answers "None" itself, and truncating that to three characters
+        // renders the no-packs state as "Non".
         std::string packValue = "None";
-        if (const GamepadAsset* active = static_cast<const GamepadWidget*>(hud)->activePack())
+        if (isGauges) {
+            const std::string active = activeGaugesDisplayName(hud);
+            if (active != "None") packValue = active.substr(0, 3);
+        } else if (const GamepadAsset* active =
+                       static_cast<const GamepadWidget*>(hud)->activePack()) {
             packValue = active->displayName.substr(0, 3);
+        }
         // Needs somewhere to GO now: with one pack installed and no Off entry the
         // arrows would step from a pack to itself.
         addInlineCycle(bgTexX, packValue.c_str(), 3,
-            SettingsHud::ClickRegion::GAMEPAD_PACK_DOWN,
-            SettingsHud::ClickRegion::GAMEPAD_PACK_UP,
+            isGauges ? SettingsHud::ClickRegion::GAUGES_PACK_DOWN
+                     : SettingsHud::ClickRegion::GAMEPAD_PACK_DOWN,
+            isGauges ? SettingsHud::ClickRegion::GAUGES_PACK_UP
+                     : SettingsHud::ClickRegion::GAMEPAD_PACK_UP,
             enableBgTexture && packCount > 1);
     } else if (!hasTextures && AssetManager::getInstance().getThemeCount() > 0) {
         const std::string& ov = hud->getThemeOverride();

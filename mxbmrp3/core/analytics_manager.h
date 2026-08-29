@@ -191,7 +191,7 @@ private:
     unsigned long long m_prevSessionStart = 0;  // previous launch's start (crash-duration recovery)
     std::string m_pendingCrashPath;      // <savePath>\mxbmrp3\pending_crash.json (crash marker)
 
-    std::thread m_thread;
+    std::thread m_thread;         // joined-by: shutdown() (both orchestrated paths — see plugin_manager.cpp)
 
     // Live WinHTTP handles, published by postBeacon so shutdown() can cancel
     // the blocking send. void* to keep windows.h out of this header.
@@ -205,5 +205,5 @@ private:
     std::deque<std::string> m_eventQueue MXB_GUARDED_BY(m_eventMutex);
     Mutex m_eventMutex;
     std::condition_variable m_eventCv;
-    std::thread m_eventWorker;
+    std::thread m_eventWorker;    // joined-by: shutdown() (PluginManager::shutdown)
 };
