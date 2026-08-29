@@ -85,6 +85,11 @@ wineboot -i >/dev/null 2>&1 || true
 wineserver -w 2>/dev/null || true
 echo "wine: $(wine --version 2>/dev/null)  prefix: ${WINEPREFIX}"
 rm -rf "${SAVE_ROOT}"
+# The shared discovery tree (CWD-relative plugins\mxbmrp3_data) gets the same
+# per-run wipe, and for the same reason: leftovers from a prior run masked a
+# sync bug for every local run while each fresh CI tree hit it (the 1.29.3
+# release gate, via gauges_migration_test - see syncUserAssets).
+rm -rf "${BUILD}/plugins"
 
 # Decompress committed callback-tape fixtures so replay tests can read them at
 # Z:\tmp\mxbmrp3-tests\fixtures\<name> (they're stored gzipped to keep the repo small).

@@ -105,7 +105,15 @@ void AssetManager::syncUserAssets(const char* savePath) {
 
     DEBUG_INFO_F("AssetManager: Syncing user assets from %s", userBaseDir.c_str());
 
-    // Ensure destination directories exist
+    // Ensure destination directories exist. CreateDirectoryA creates ONE level
+    // only, so the parent (plugins\) is created explicitly first: in the game it
+    // always exists (this DLL is loaded from it), but on a bare tree - the test
+    // harness's fresh build directory, i.e. every CI run - a missing parent made
+    // every CreateDirectoryA/CopyFileA below fail with ERROR_PATH_NOT_FOUND and
+    // the whole sync silently no-op. Pinned by gauges_migration_test, which
+    // run_tests.sh now runs against a wiped plugins tree.
+    const std::string discoveryDir = DISCOVERY_DIR;
+    CreateDirectoryA(discoveryDir.substr(0, discoveryDir.find('\\')).c_str(), NULL);
     CreateDirectoryA(DISCOVERY_DIR, NULL);
 
     std::string destFonts = std::string(DISCOVERY_DIR) + "\\" + FONTS_SUBDIR;
